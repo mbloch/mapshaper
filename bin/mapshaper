@@ -1,0 +1,245 @@
+#!/usr/bin/env node
+
+// --nouse_idle_notification --expose_gc
+// Running node with manual gc seems to prevent a significant slowdown
+// during file input that happens occasionally.
+// gc() calls should be uncommented below if this is enabled.
+
+var optimist = require("optimist"),
+    mapshaper = require("../");
+
+var m = mapshaper,
+    trace = m.trace,
+    assert = m.assert,
+    error = m.error,
+    MapShaper = m.MapShaper,
+    Node = m.Node,
+    Utils = m.Utils,
+    T = m.T;
+
+var ifile, ifileInfo, ofileInfo = {};
+
+var usage = ""
+  // + "Usage: mapshaper [options] [file(.shp|.json)]\n\n"
+  + "Usage: mapshaper [options] file\n\n"
+  + "A tool for simplifying polygon datasets.\n"
+  + "- Supports Douglas Peucker, Visvalingham and modified Visvalingam simplification.\n"
+  + "- Supports Input/output of Shapefile, TopoJSON and GeoJSON formats.\n\n"
+  + "Examples:\n\n"
+  + "# Use Douglas Peucker to remove all but 10% of points in a Shapefile.\n"
+  + "$ mapshaper -m dp -p 0.1 counties.shp\n\n"
+  + "# Convert a Shapefile to TopoJSON, no simplification, quantize coordinates for compression.\n"
+  + "$ mapshaper -q 10000 -f topojson states.shp "
+
+var opts = optimist
+  .usage(usage)
+
+  .options("h", {
+    alias: "help",
+    describe: "show usage and options",
+    default: false
+  }) 
+
+  /*
+  .options("o", {
+    describe: "name of output file (with or without suffix)",
+  })
+*/
+
+  .options("p", {
+    alias: "pct",
+    describe: "proportion of points to retain",
+    default: 1
+  }) 
+
+  // TODO: add topojson and kml formats
+  .options("f", {
+    alias: "o-format",
+    describe: "shapefile|geojson (defaults to input format)",
+  })
+
+  .options("m", {
+    alias: "method",
+    describe: "simplification method (dp|v|m)",
+    default: "m"
+  })
+
+  .options("l", {
+    alias: "latlong",
+    describe: "use arc length for distance and area (assumes lat-lng coords)",
+    default: false
+  })
+
+  .options("t", {
+    alias: "timing",
+    describe: "Show execution time for each phase of simplification.",
+    default: false
+  }) 
+
+
+  /* // TODO
+  // prevent points along straight lines from being stripped away, to allow reprojection
+  .options("min-segment", {
+    describe: "min segment length (no. of segments in largest dimension)",
+    default: 0
+  })
+
+  .options("remove-null", {
+    describe: "remove null shapes",
+    default: false
+  })
+
+  // round coordinates so output is more compressible (most useful with topojson output)
+  .options("q", {
+    alias: "quantize",
+    describe: "max number of distinct x-axis or y-axis coordinates",
+  })
+
+  .options("l", {
+    alias: "log",
+    describe: "write debugging information to <filename>.log",
+    default: false
+  })
+
+  .options("v", {
+    alias: "verbose",
+    describe: "show verbose messages",
+    default: false
+  }) 
+
+  .options("", {
+    alias: "-",
+    describe: "output to /dev/stdout",
+    default: false
+  })*/
+
+
+  .check(function(opts) {
+    var argv = opts._;
+
+    // check inpput file and format
+    // (if stdin input, format is inferred later)
+    if (argv.length == 0) {
+      error("Missing an input file.")
+      // TODO: read from stdin
+      ifile = "/dev/stdin";
+    } 
+    else {
+      ifile = argv[0];
+      ifileInfo = Node.getFileInfo(ifile);
+      if (!ifileInfo.exists) throw new Error("File not found (" + ifile + ")");
+      if (ifileInfo.ext != 'shp') throw new Error("Input filename must match *.shp");
+      if (opts.f) opts.f = opts.f.toLowerCase();
+      assert(!opts.f || opts.f == 'shapefile' || opts.f == 'topojson' || opts.f == 'geojson', "Invalid output format");
+    }
+
+    // check pct retained
+    assert(opts.p > 0 && opts.p <= 1, "-p option should be in the range (0,1]");
+
+    // validate simplification method
+    assert(Utils.contains(['dp', 'v', 'm'], opts.m), "Unsupported simplification method:", opts.m);
+  })
+  .argv;
+
+if (opts.help) {
+  return optimist.showHelp();
+}
+
+if (opts.f) {
+  ofileInfo.type = opts.f;
+} 
+else if (ifileInfo.ext == "shp") {
+  ofileInfo.type = "shapefile";
+} 
+else {
+  error("Missing output format.");
+}
+
+
+
+T.verbose = opts.t;
+T.start("Timing is enabled");
+
+T.start();
+var read = ifile == "/dev/stdin" ? MapShaper.importFromStream : MapShaper.importFromFile;
+var topoData = MapShaper.getArcTopology(read(ifile)); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+T.stop("Import + topology conversion complete");
+
+
+// T.start()
+// Node.gc();
+// T.stop('gc1')
+
+if (opts.p < 1) {
+  T.start();
+  var sdata,
+      arcs = topoData.arcs;
+      simplifyOpts = {};
+
+  if (opts.m == 'dp') {
+    simplifyOpts.spherical = !!opts.l;
+    sdata = m.DouglasPeucker.simplifyArcs(arcs, simplifyOpts);
+  }
+  else if (opts.m == 'v') {
+    simplifyOpts.metric = m.Visvalingam.standardMetric;
+    sdata = m.Visvalingam.simplifyArcs(arcs, simplifyOpts);
+  }
+  else if (opts.m == 'm') {
+    simplifyOpts.metric = m.Visvalingam.specialMetric;
+    sdata = m.Visvalingam.simplifyArcs(arcs, simplifyOpts);
+  }
+  else {
+    error("Unknown method:", opts.m);
+  }
+  T.stop("Simplification complete");
+
+// T.start();
+// Node.gc();
+// T.stop('gc2');
+
+  T.start();
+  topoData.arcs = MapShaper.thinArcsByPct(topoData.arcs, sdata, opts.p);
+  T.stop("Thinning complete");    
+}
+
+
+// T.start();
+// Node.gc();
+// T.stop('gc3');
+
+// OUTPUT FILE
+//
+ofileInfo.base = ifileInfo.base + "-mshp"; // TODO: use user-supplied name, if present
+var ibase = ifileInfo.directory + "/" + ifileInfo.base,
+    obase = ofileInfo.base; // currently outputs to same cwd
+
+// TODO: make sure we're not overwriting the original file/s
+
+if (ofileInfo.type == "geojson") {
+  T.start();
+  var geoJSON = MapShaper.exportGeoJSON(topoData);
+  T.stop("Export GeoJSON");
+  Node.writeFile(ofileInfo.base + ".json", geoJSON);
+}
+else if (ofileInfo.type == "shapefile") {
+  T.start();
+  var shpData = MapShaper.exportShp(topoData);
+  T.stop("Export Shapefile");
+
+  var prjFile = ibase + ".prj",
+      dbfFile = ibase + ".dbf";
+  Node.writeFile(obase + ".shp", shpData.shp);
+  Node.writeFile(obase + ".shx", shpData.shx);
+  if (Node.fileExists(prjFile)) Node.copyFile(prjFile, obase + ".prj");
+  if (Node.fileExists(dbfFile)) Node.copyFile(dbfFile, obase + ".dbf");
+
+  // if no simplification and input/output both shapefile, see if output
+  // is identical to input (to test for topology errors)
+  if (ifileInfo.ext == "shp" && opts.p == 1) {
+    var originalShp = new m.BinArray(Node.readFile(ifileInfo.path)),
+        isSame = originalShp.identical(shpData.shp);
+    trace("* No simplification; checking that input and output files are identical:", isSame);
+  }
+}
+
+T.stop("Total time");

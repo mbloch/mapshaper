@@ -1,0 +1,20 @@
+{
+	"name": "mapshaper",
+	"version": "0.1.1",
+	"description": "A tool for simplifying Shapefiles.",
+	"keywords": ["shapefile","mapshaper","polygon","simplification"],
+	"author": "Matthew Bloch <mbloch@nytimes.com>",
+	"contributors":[],
+	"repository": {
+		"type": "git",
+		"url": "http://github.com/mbloch/mapshaperjs"
+	},
+	"main": "./lib/mapshaper-lib-bundle.js",
+	"dependencies": {
+		"optimist": "0.3.x"
+	},
+	"bundledDependencies": [
+		"optimist"
+	],
+	"bin": "./bin/mapshaper"
+}
