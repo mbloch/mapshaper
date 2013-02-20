@@ -44,7 +44,7 @@ var opts = optimist
   .options("o", {
     describe: "name of output file (with or without suffix)",
   })
-*/
+  */
 
   .options("p", {
     alias: "pct",
@@ -158,11 +158,11 @@ else {
 
 
 T.verbose = opts.t;
-T.start("Timing is enabled");
+T.start("Starting timing");
 
 T.start();
 var read = ifile == "/dev/stdin" ? MapShaper.importFromStream : MapShaper.importFromFile;
-var topoData = MapShaper.getArcTopology(read(ifile)); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+var topoData = MapShaper.buildArcTopology(read(ifile)); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
 T.stop("Import + topology conversion complete");
 
 
@@ -199,7 +199,7 @@ if (opts.p < 1) {
 
   T.start();
   topoData.arcs = MapShaper.thinArcsByPct(topoData.arcs, sdata, opts.p);
-  T.stop("Thinning complete");    
+  T.stop("Thinning complete");
 }
 
 
