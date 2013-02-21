@@ -18,22 +18,20 @@ DouglasPeucker.simplifyArcs = function(arcs, opts) {
 
 DouglasPeucker.simplifyArcsSph = function(arcs) {
   var bufSize = 0,
-      xx, yy, zz; // buffers for x, y, z coords
+      xbuf, ybuf, zbuf;
 
   var data = Utils.map(arcs, function(arc) {
     var arcLen = arc[0].length;
     if (bufSize < arcLen) {
-      bufSize = arcLen * 1.2;
-      xx = new Float64Array(bufSize);
-      yy = new Float64Array(bufSize);
-      zz = new Float64Array(bufSize);
+      bufSize = Math.round(arcLen * 1.2);
+      xbuf = new Float64Array(bufSize);
+      ybuf = new Float64Array(bufSize);
+      zbuf = new Float64Array(bufSize);
     }
 
-    DouglasPeucker.calcXYZ(arc[0], arc[1], xx, yy, zz);
-    var arr = DouglasPeucker.calcArcData(xx, yy, zz);
-    // trace("3d:", arr);
-    // trace("2d:", DouglasPeucker.calcArcData(arc[0], arc[1]));
-    // error('STOP');
+    DouglasPeucker.calcXYZ(arc[0], arc[1], xbuf, ybuf, zbuf);
+    var arr = DouglasPeucker.calcArcData(xbuf, ybuf, zbuf, arcLen);
+    //var arr = DouglasPeucker.calcArcData(xbuf.subarray(0, arcLen), ybuf.subarray(0, arcLen), zbuf.subarray(0, arcLen));
     return arr;
   });
   return data;
@@ -113,8 +111,8 @@ DouglasPeucker.getDistanceSq = function(ax, ay, bx, by, cx, cy) {
 
 var dpDistCount = 0;
 var dpSegCount = 0;
-DouglasPeucker.calcArcData = function(xx, yy, zz) {
-  var len = xx.length,
+DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
+  var len = len || xx.length, // kludge: 3D data gets passed in buffers, so need len parameter.
       useZ = !!zz;
   // assert(len > 1, "Arc length must be 2 or greater");
 

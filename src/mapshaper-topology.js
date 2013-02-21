@@ -14,7 +14,7 @@
 // {
 //    arcs: [Array],   // Arcs are represented as two-element arrays
 //                     //   arc[0] is an array of x-coords, arc[1] is an array of y-coords
-//    shapes: [Array]  // Shapes are arrays of or more part; Parts are arrays of one or more arc id.
+//    shapes: [Array]  // Shapes are arrays of one or more parts; Parts are arrays of one or more arc id.
 // }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
 //
 MapShaper.buildArcTopology = function(obj) {
@@ -276,50 +276,40 @@ MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
       hashTableSize = Math.floor(pointCount * 1.5);
   // hash table larger than 1.5 * point count doesn't improve performance much.
 
-  // Hash function to convert x, y coordinates to indexes in hash table.
-  var hash = MapShaper.getXYHashFunction(bbox, hashTableSize);
-
   // Hash table for coordinates; indexes the id of the first point in each chain
   var hashChainIds = new Int32Array(hashTableSize);
   Utils.initializeArray(hashChainIds, -1);
 
+  // Hash function to convert x, y coordinates to indexes in hash table.
+  var hash = MapShaper.getXYHashFunction(bbox, hashTableSize);
+
   // Ids of next point in each chain
-  var chainedIds = new Int32Array(pointCount);  // id of next id in chain
-  Utils.initializeArray(chainedIds, -1); // Don't need -1 as a terminator using circular chains
+  var nextIds = new Int32Array(pointCount);  // id of next id in chain
+  Utils.initializeArray(nextIds, -1); // Don't need -1 as a terminator using circular chains
 
-  var nextX = xx[0],
-      nextY = yy[0],
-      partId, prevPartId = -1,
-      firstInPart, key, headId, tailId,
-      x, y;
+  var partId, firstInPart, key, headId, tailId;
 
-  for (var i=0; i<pointCount; i++) {
-    x = nextX;
-    y = nextY;
-    nextX = xx[i+1];
-    nextY = yy[i+1];
+  for (var i=0, prevPartId=-1; i<pointCount; i++, pervPartId=partId) {
     partId = partIds[i];
     firstInPart = partId != prevPartId;
-    key = hash(x, y);
+    key = hash(xx[i], yy[i]);
     headId = hashChainIds[key];
 
     // case -- first coordinate in chain: start new chain, point to self
     if (headId == -1) {
       hashChainIds[key] = i;
-      chainedIds[i] = i;
+      nextIds[i] = i;
     }
     // case -- adding to a chain: place new coordinate at end of chain, point it to head of chain to create cycle
     // 
     else {
       tailId = headId;
-      while (chainedIds[tailId] != headId) {
-        tailId = chainedIds[tailId];
+      while (nextIds[tailId] != headId) {
+        tailId = nextIds[tailId];
       }
-      chainedIds[i] = headId;
-      chainedIds[tailId] = i;
+      nextIds[i] = headId;
+      nextIds[tailId] = i;
     }
-
-    prevPartId = partId;
   }
-  return chainedIds;
+  return nextIds;
 };

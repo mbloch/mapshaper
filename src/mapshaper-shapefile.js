@@ -1,56 +1,42 @@
 /* @requires shapefile-import */
 
-function ShapefileTopoReader(buf) {
-  this.__super__(buf);
-}
-
-Opts.inherit(ShapefileTopoReader, ShapefileReader);
 
 /**
  * This replaces the default ShapefileReader.read() function.
  * Data is stored in a format used by MapShaper for topology building.
  */
-ShapefileTopoReader.prototype.read = function() {
+ShapefileReader.prototype.read = function() {
   var bin = this._bin,
-      header = this.header,
       shapes = [],
       pointCount = 0;
 
-  bin.position(100); // make sure we're reading from shape data section
+  bin.position(100); // skip to the shape data section
 
   // FIRST PASS
   // get metadata about each shape and get total point count in file
   // (need total point count to instantiate typed arrays)
   //
-  //T.start();
-  var shapeCount = 0, partCount = 0;
-
   while(this.hasNext()) {
-    shapeCount ++;
-    var meta = this.readShapeMetadata(bin, header);
+    var meta = this.readShapeMetadata(bin, this.header);
     bin.skipBytes(meta.pointCount * 16);
     // TODO: update to support M and Z types
 
     shapes.push(meta);
     pointCount += meta.pointCount;
-
   }
-  // T.stop("[ShapefileTopoReader.read()] read shape metadata");
+
 
   // SECOND PASS
   // Read coordinates and other data into buffers
-  // Identify polygon holes...
+  // TODO (?) Identify polygon holes...
   //
-  // T.start();
 
-  // Typed arrays >2x faster than new Array(pointCount);
+  // Typed arrays tested ~2x faster than new Array(pointCount) in node;
   // 
   var xx = new Float64Array(pointCount);
-  var yy = new Float64Array(pointCount);
-  var partIds = new Uint32Array(pointCount);    
-
-  //var shapeIds = new Uint32Array(pointCount);
-  var shapeIds = [];
+      yy = new Float64Array(pointCount),
+      partIds = new Uint32Array(pointCount),   
+      shapeIds = [];
 
   var x, y,
     pointId = 0, 
@@ -62,20 +48,15 @@ ShapefileTopoReader.prototype.read = function() {
     var shp = shapes[shpId];
     var offs = shp.coordOffset;
     var partCount = shp.partCount;
-    for (var i=0; i<partCount; i++) {
-      var partSize = shp.partSizes[i];
-      var partStartId = pointId;
+    for (var i=0; i<shp.partCount; i++) {
       shapeIds.push(shapeId);
 
-      for (var j=0; j<partSize; j++) {
+      for (var j=0, partSize=shp.partSizes[i]; j<partSize; j++) {
         // getFloat64() is a bottleneck (uses ~90% of time in this section)
-        // DataView seems to be slightly faster than Buffer in nodejs
-        x = dataView.getFloat64(offs, true);
-        y = dataView.getFloat64(offs + 8, true);
+        // DataView at least as fast as Buffer API in nodejs
+        xx[pointId] = dataView.getFloat64(offs, true);
+        yy[pointId] = dataView.getFloat64(offs + 8, true);
         offs += 16;
-        assert(pointId < pointCount, "Too many points!");
-        xx[pointId] = x;
-        yy[pointId] = y;
         partIds[pointId] = partId;
         pointId++;       
       }
@@ -91,14 +72,13 @@ ShapefileTopoReader.prototype.read = function() {
   }
 
   this.header.pointCount = pointCount;
-  var data = {
+  return {
     xx: xx,
     yy: yy,
     partIds: partIds,
     shapeIds: shapeIds,
     header: this.header
   };
-  return data;
 };
 
 
@@ -106,7 +86,7 @@ ShapefileTopoReader.prototype.read = function() {
 // Converts to format used for identifying topology.
 //
 MapShaper.importShpFromBuffer = function(buf) {
-  return new ShapefileTopoReader(buf).read();
+  return new ShapefileReader(buf).read();
 };
 
 // Convert topological data to buffers containing .shp and .shx file data
