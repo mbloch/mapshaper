@@ -29,7 +29,7 @@ MapShaper.buildArcTopology = function(obj) {
       shapeCount = shapeIds[shapeIds.length - 1] + 1;
 
   assert(pointCount > 0 && yy.length == pointCount && partIds.length == pointCount, "Mismatched array lengths");
-  assert(shapeIds.length == partCount, "[getArcMapShaper()] Size mismatch; shapeIds array should match partCount");
+  assert(shapeIds.length == partCount, "[buildArcTopology()] Size mismatch; shapeIds array should match partCount");
 
   var bbox = MapShaper.calcXYBounds(xx, yy);
 
@@ -64,6 +64,10 @@ MapShaper.buildArcTopology = function(obj) {
 
   return arcTable.exportData();
 
+  function sameXY(id1, id2) {
+    return xx[id1] === xx[id2] && yy[id1] === yy[id2];
+  }
+
   // Tests whether a point is a node (i.e. the endpoint of an arc).
   //
   function pointIsArcEndpoint(id) {
@@ -74,9 +78,15 @@ MapShaper.buildArcTopology = function(obj) {
         isPartEndpoint = partId !== partIds[id-1] || partId !== partIds[id+1];
 
     if (isPartEndpoint) {
+      // case -- if point is endpoint of a non-topological ring, then point is a node.
+      // TODO: some nodes formed with this rule might be removed if arcs on either side
+      //   of the node belong to the same shared boundary.
+      //
       isNode = true;
     }
     else {
+      // Count number of points with the same (x, y) coords as this point.
+      //
       var matchCount = 0,
           nextId = chainedIds[id],
           nextX, nextY,
@@ -88,6 +98,8 @@ MapShaper.buildArcTopology = function(obj) {
         if (nextX == x && nextY == y) {
           matchCount++;
           if (matchCount == 1) {
+            // If this point matches only one other point, we'll need the id of 
+            //   the matching point.
             matchId = nextId;
           }
         }
@@ -95,14 +107,23 @@ MapShaper.buildArcTopology = function(obj) {
       }
 
       if (matchCount > 1) {
+        // case -- if point matches several other points, then point is a node.
         isNode = true;
       }
       else if (matchCount == 1) {
+        // case -- point matches exactly one other point in the dataset
+        // TODO: test with edge cases: several identical points clustered together,
+        //   case where matching point is on the same ring, etc.
+        //         
         // if matching point is an endpoint, then curr point is (also) a node.
         var matchIsPartEndpoint = partIds[matchId] !== partIds[matchId + 1] || partIds[matchId] !== partIds[matchId - 1];
         if (matchIsPartEndpoint) {
           isNode = true;
-        } 
+        }
+        // if prev and next points don't match next and prev points on other ring, then point is a node
+        else if (!sameXY(id+1, matchId-1) || !sameXY(id-1, matchId+1)) {
+          isNode = true;
+        }
       }
     }
     return isNode;
@@ -285,23 +306,19 @@ MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
 
   // Ids of next point in each chain
   var nextIds = new Int32Array(pointCount);  // id of next id in chain
-  Utils.initializeArray(nextIds, -1); // Don't need -1 as a terminator using circular chains
+  // Utils.initializeArray(nextIds, -1);
+ 
+  var key, headId, tailId;
 
-  var partId, firstInPart, key, headId, tailId;
-
-  for (var i=0, prevPartId=-1; i<pointCount; i++, pervPartId=partId) {
-    partId = partIds[i];
-    firstInPart = partId != prevPartId;
+  for (var i=0; i<pointCount; i++) {
     key = hash(xx[i], yy[i]);
     headId = hashChainIds[key];
-
     // case -- first coordinate in chain: start new chain, point to self
     if (headId == -1) {
       hashChainIds[key] = i;
       nextIds[i] = i;
     }
     // case -- adding to a chain: place new coordinate at end of chain, point it to head of chain to create cycle
-    // 
     else {
       tailId = headId;
       while (nextIds[tailId] != headId) {

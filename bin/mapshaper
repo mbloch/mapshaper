@@ -115,6 +115,11 @@ var opts = optimist
 
 
   .check(function(opts) {
+    if (opts.h) {
+      optimist.showHelp();
+      process.exit(0);
+    }
+
     var argv = opts._;
 
     // check inpput file and format
@@ -123,7 +128,7 @@ var opts = optimist
       error("Missing an input file.")
       // TODO: read from stdin
       ifile = "/dev/stdin";
-    } 
+    }
     else {
       ifile = argv[0];
       ifileInfo = Node.getFileInfo(ifile);
@@ -141,9 +146,6 @@ var opts = optimist
   })
   .argv;
 
-if (opts.help) {
-  return optimist.showHelp();
-}
 
 if (opts.f) {
   ofileInfo.type = opts.f;

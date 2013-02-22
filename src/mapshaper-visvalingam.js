@@ -20,8 +20,10 @@ Visvalingam.simplifyArcs = function(arcs, opts) {
 // Calc area of triangle given coords of three vertices.
 //
 function calcTriangleArea(ax, ay, bx, by, cx, cy) {
-  var area = ((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2;
-  return Math.abs(area);
+  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
+  //var area2 = Math.abs((ax * (by - cy) + bx * (cy - ay) + cx * (ay - by)) / 2);
+  //if (area != area2) trace(area, area2);
+  return area;
 }
 
 // Calc angle in radians given three coordinates with (bx,by) at the vertex.
@@ -131,9 +133,9 @@ function VisvalingamCalculator(metric) {
 // 
 function VisvalingamHeap() {
   var capacity = 0,
-      initSize = 0,
-      itemsInHeap = 0,
-      poppedVal = 0,
+      initSize,
+      itemsInHeap,
+      poppedVal,
       heapArr, indexArr, valueArr;
 
   // Prepare the heap for simplifying a new arc.
@@ -145,6 +147,7 @@ function VisvalingamHeap() {
       indexArr = new Int32Array(capacity);
     }
     itemsInHeap = 0;
+    poppedVal = 0;
     valueArr = new Float64Array(size);
     valueArr[0] = valueArr[size-1] = Infinity;
     initSize = size;
@@ -154,7 +157,8 @@ function VisvalingamHeap() {
   //
   this.addValue = function(valIdx, val) {
     var heapIdx = itemsInHeap++;
-    assert(itemsInHeap < capacity, "Heap overflow");
+    if (itemsInHeap > capacity) error("Heap overflow.");
+    if (valIdx <= 0 || valIdx >= initSize - 1) error("Out-of-bounds point index.");
     valueArr[valIdx] = val;
     heapArr[heapIdx] = valIdx
     indexArr[valIdx] = heapIdx;
@@ -203,6 +207,14 @@ function VisvalingamHeap() {
     checkNode(0, -Infinity);
   }
 
+  function getHeapValues() {
+    var arr = [];
+    for (var i=0; i<itemsInHeap; i++) {
+      arr.push(valueArr[heapArr[i]]);
+    }
+    return arr;
+  }
+
   // Function restores order to the heap (lesser values towards the top of the heap)
   // Receives the idx of a heap item that has just been changed or added.
   // (Assumes the rest of the heap is ordered, this item may be out-of-order)
@@ -214,7 +226,7 @@ function VisvalingamHeap() {
         parentValIdx,
         parentVal;
 
-    assert(currIdx >= 0 && currIdx < itemsInHeap, "Out-of-bounds heap idx passed to reHeap()");
+    if (currIdx < 0 || currIdx >= itemsInHeap) error("Out-of-bounds heap idx passed to reHeap()");
     currValIdx = heapArr[currIdx];
     currVal = valueArr[currValIdx];
 
@@ -280,17 +292,21 @@ function VisvalingamHeap() {
   //
   this.pop = function() {
     if (itemsInHeap <= 0) error("Tried to pop from an empty heap.");
-    var retnIdx = heapArr[0];
-    itemsInHeap--;
+    // get min-val item from top of heap...
+    var minIdx = heapArr[0],
+        minVal = valueArr[minIdx],
+        lastIdx;
 
+    lastIdx = --itemsInHeap;
     if (itemsInHeap > 0) {
-      var lastValIdx = heapArr[itemsInHeap];
-      heapArr[0] = lastValIdx; // copy last item in heap into root position
-      indexArr[lastValIdx] = 0;
+      heapArr[0] = heapArr[lastIdx]; // copy last item in heap into root position
+      indexArr[heapArr[0]] = 0;
       reHeap(0);
     }
 
-    poppedVal = valueArr[retnIdx];
-    return retnIdx;
+    //checkHeapOrder();
+    if (minVal < poppedVal) error("[VisvalingamHeap.pop()] out-of-sequence value; prev:", poppedVal, "new:", minVal);
+    poppedVal = minVal;
+    return minIdx;
   };
 }
