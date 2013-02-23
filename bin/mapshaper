@@ -164,9 +164,13 @@ T.start("Starting timing");
 
 T.start();
 var read = ifile == "/dev/stdin" ? MapShaper.importFromStream : MapShaper.importFromFile;
-var topoData = MapShaper.buildArcTopology(read(ifile)); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
-T.stop("Import + topology conversion complete");
+var importData = read(ifile);
+T.stop("Shapefile import");
+T.start();
+var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+T.stop("Topology conversion");
 
+importData = null; // don't need this anymore, gc can take it.
 
 // T.start()
 // Node.gc();
