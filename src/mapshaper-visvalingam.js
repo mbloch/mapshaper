@@ -84,7 +84,7 @@ function VisvalingamCalculator(metric) {
       nextArr = new Int32Array(bufLen);
     }
 
-    heap.init(arcLen);
+    heap.init(arcLen-2); // Initialize the heap with room for the arc's internal coordinates.
 
     // Initialize Visvalingam "effective area" values and references to prev/next points for each point in arc.
     //
@@ -99,7 +99,8 @@ function VisvalingamCalculator(metric) {
     // Calculate removal thresholds for each internal point in the arc
     //
     var idx, nextIdx, prevIdx, area;
-    while(heap.size() > 0) {
+    var arr = [];
+    while(heap.heapSize() > 0) {
 
       // Remove the point with the least effective area.
       idx = heap.pop();
@@ -107,23 +108,20 @@ function VisvalingamCalculator(metric) {
         error("Popped first or last arc vertex (error condition); idx:", idx, "len:", len);
       }
 
-      // Recompute effective area of new triangles formed by removing a vertex.
-      //
+      // Recompute effective area of neighbors of the removed point.
       prevIdx = prevArr[idx];
+      nextIdx = nextArr[idx];
       if (prevIdx > 0) {
-        area = metric(xx[idx], yy[idx], xx[prevIdx], yy[prevIdx], xx[prevArr[prevIdx]], yy[prevArr[prevIdx]]);
+        area = metric(xx[nextIdx], yy[nextIdx], xx[prevIdx], yy[prevIdx], xx[prevArr[prevIdx]], yy[prevArr[prevIdx]]);
         heap.updateValue(prevIdx, area);
       }
-      nextIdx = nextArr[idx];
       if (nextIdx < arcLen-1) {
-        area = metric(xx[idx], yy[idx], xx[nextIdx], yy[nextIdx], xx[nextArr[nextIdx]], yy[nextArr[nextIdx]]);
+        area = metric(xx[prevIdx], yy[prevIdx], xx[nextIdx], yy[nextIdx], xx[nextArr[nextIdx]], yy[nextArr[nextIdx]]);
         heap.updateValue(nextIdx, area);
       }
-
       nextArr[prevIdx] = nextIdx;
       prevArr[nextIdx] = prevIdx;
     }
-
     return heap.values();
   };
 }
@@ -132,8 +130,9 @@ function VisvalingamCalculator(metric) {
 // A heap data structure used for computing Visvalingam simplification data.
 // 
 function VisvalingamHeap() {
-  var capacity = 0,
-      initSize,
+  var bufLen = 0,
+      maxItems = 0,
+      maxIdx, minIdx,
       itemsInHeap,
       poppedVal,
       heapArr, indexArr, valueArr;
@@ -141,24 +140,26 @@ function VisvalingamHeap() {
   // Prepare the heap for simplifying a new arc.
   //
   this.init = function(size) {
-    if (size > capacity) {
-      capacity = Math.round(size * 1.2);
-      heapArr = new Int32Array(capacity);
-      indexArr = new Int32Array(capacity);
+    if (size > bufLen) {
+      bufLen = Math.round(size * 1.2);
+      heapArr = new Int32Array(bufLen);
+      indexArr = new Int32Array(bufLen + 2); // requires larger...
     }
     itemsInHeap = 0;
-    poppedVal = 0;
-    valueArr = new Float64Array(size);
-    valueArr[0] = valueArr[size-1] = Infinity;
-    initSize = size;
+    poppedVal = -Infinity;
+    valueArr = new Float64Array(size + 2);
+    valueArr[0] = valueArr[size+1] = Infinity;
+    minIdx = 1; 
+    maxIdx = size;
+    maxItems = size;
   };
 
   // Add an item to the bottom of the heap and restore heap order.
   //
   this.addValue = function(valIdx, val) {
     var heapIdx = itemsInHeap++;
-    if (itemsInHeap > capacity) error("Heap overflow.");
-    if (valIdx <= 0 || valIdx >= initSize - 1) error("Out-of-bounds point index.");
+    if (itemsInHeap > maxItems) error("Heap overflow.");
+    if (valIdx < minIdx || valIdx > maxIdx) error("Out-of-bounds point index.");
     valueArr[valIdx] = val;
     heapArr[heapIdx] = valIdx
     indexArr[valIdx] = heapIdx;
@@ -168,23 +169,25 @@ function VisvalingamHeap() {
   // Return an array of threshold data after simplification is complete.
   //
   this.values = function() {
+    assert(itemsInHeap == 0, "[VisvalingamHeap.values()] Items remain on the heap.");
     return valueArr;
   }
 
-  this.size = function() {
+  this.heapSize = function() {
     return itemsInHeap;
   }
 
   // Update the value of a point in the arc.
   //
   this.updateValue = function(valIdx, val) {
+    if (valIdx < minIdx || valIdx > maxIdx) error("Out-of-range point index.");
     if (val < poppedVal) {
       // don't give updated values a lesser value than the last popped vertex...
       val = poppedVal;
     }
     valueArr[valIdx] = val;
     var heapIdx = indexArr[valIdx];
-    assert(heapIdx >= 0 && heapIdx < itemsInHeap, "[updateValue()] out-of-range heap index.");
+    if (heapIdx < 0 || heapIdx >= itemsInHeap) error("[updateValue()] out-of-range heap index.");
     reHeap(heapIdx);
   };
 
@@ -248,6 +251,7 @@ function VisvalingamHeap() {
       heapArr[parentIdx] = currValIdx;
       heapArr[currIdx] = parentValIdx;
       currIdx = parentIdx;
+      if(valueArr[heapArr[currIdx]] !== currVal) error("Lost value association");
     }
 
     // Percolating phase:
@@ -292,6 +296,10 @@ function VisvalingamHeap() {
   //
   this.pop = function() {
     if (itemsInHeap <= 0) error("Tried to pop from an empty heap.");
+    if (poppedVal === -Infinity) {
+      if (itemsInHeap != maxItems) error("pop() called before heap is populated.");
+      // trace(indexArr.subarray(1, itemsInHeap + 1));
+    }
     // get min-val item from top of heap...
     var minIdx = heapArr[0],
         minVal = valueArr[minIdx],
@@ -304,7 +312,6 @@ function VisvalingamHeap() {
       reHeap(0);
     }
 
-    //checkHeapOrder();
     if (minVal < poppedVal) error("[VisvalingamHeap.pop()] out-of-sequence value; prev:", poppedVal, "new:", minVal);
     poppedVal = minVal;
     return minIdx;
