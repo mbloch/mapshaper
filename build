@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+
+var catty = require("./lib/catty-bundle.js");
+catty.addLibrary("src");
+catty.addLibrary("node_modules/js-basics");
+catty.bundleFile("src/mapshaper-lib.js", "lib/mapshaper-lib-bundle.js");
