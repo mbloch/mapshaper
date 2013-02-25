@@ -297,14 +297,14 @@ MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
       hashTableSize = Math.floor(pointCount * 1.5);
   // hash table larger than 1.5 * point count doesn't improve performance much.
 
-  // Hash table for coordinates; indexes the id of the first point in each chain
+  // Hash table for coordinates; contains the id of the first point in each chain, indexed by hash key
   var hashChainIds = new Int32Array(hashTableSize);
   Utils.initializeArray(hashChainIds, -1);
 
-  // Hash function to convert x, y coordinates to indexes in hash table.
+  // Function to convert x, y coordinates to indexes in hash table.
   var hash = MapShaper.getXYHashFunction(bbox, hashTableSize);
 
-  // Ids of next point in each chain
+  // Ids of next point in each chain, indexed by point id
   var nextIds = new Int32Array(pointCount);  // id of next id in chain
   // Utils.initializeArray(nextIds, -1);
  

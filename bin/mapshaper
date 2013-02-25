@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // --nouse_idle_notification --expose_gc
-// Running node with manual gc seems to prevent a significant slowdown
+// Running node with manual gc seems to prevent a slowdown
 // during file input that happens occasionally.
-// gc() calls should be uncommented below if this is enabled.
+// gc() calls should be added if this is enabled.
 
 var optimist = require("optimist"),
     mapshaper = require("../");
@@ -34,6 +34,8 @@ var usage = ""
 var opts = optimist
   .usage(usage)
 
+  .boolean(['h', 't', 'l'])
+
   .options("h", {
     alias: "help",
     describe: "show usage and options",
@@ -50,7 +52,7 @@ var opts = optimist
     alias: "pct",
     describe: "proportion of points to retain",
     default: 1
-  }) 
+  })
 
   // TODO: add topojson and kml formats
   .options("f", {
@@ -123,7 +125,7 @@ var opts = optimist
     var argv = opts._;
 
     // check inpput file and format
-    // (if stdin input, format is inferred later)
+    // TODO: accept stdin input, infer format from the data
     if (argv.length == 0) {
       error("Missing an input file.")
       // TODO: read from stdin
@@ -158,7 +160,6 @@ else {
 }
 
 
-
 T.verbose = opts.t;
 T.start("Starting timing");
 
@@ -172,9 +173,6 @@ T.stop("Topology conversion");
 
 importData = null; // don't need this anymore, gc can take it.
 
-// T.start()
-// Node.gc();
-// T.stop('gc1')
 
 if (opts.p < 1) {
   T.start();
@@ -199,19 +197,12 @@ if (opts.p < 1) {
   }
   T.stop("Simplification complete");
 
-// T.start();
-// Node.gc();
-// T.stop('gc2');
 
   T.start();
   topoData.arcs = MapShaper.thinArcsByPct(topoData.arcs, sdata, opts.p);
   T.stop("Thinning complete");
 }
 
-
-// T.start();
-// Node.gc();
-// T.stop('gc3');
 
 // OUTPUT FILE
 //

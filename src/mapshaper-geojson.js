@@ -1,3 +1,6 @@
+/* @requires mapshaper-common */
+
+
 MapShaper.importJSON = function(obj) {
   if (obj.type == "Topology") {
     error("TODO: TopoJSON import.")

@@ -1,7 +1,6 @@
-
+/* @requires mapshaper-common */
 
 MapShaper.exportTopoJSON = function(obj) {
-
 
 };
 
@@ -29,3 +28,4 @@ MapShaper.importTopoJSON = function(obj) {
 
   return {arcs: arcs, objects: null};
 };
+

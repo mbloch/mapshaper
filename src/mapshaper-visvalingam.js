@@ -19,44 +19,86 @@ Visvalingam.simplifyArcs = function(arcs, opts) {
 
 // Calc area of triangle given coords of three vertices.
 //
-function calcTriangleArea(ax, ay, bx, by, cx, cy) {
+function triangleArea(ax, ay, bx, by, cx, cy) {
   var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
   //var area2 = Math.abs((ax * (by - cy) + bx * (cy - ay) + cx * (ay - by)) / 2);
   //if (area != area2) trace(area, area2);
   return area;
 }
 
+function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+
+  
+}
+
 // Calc angle in radians given three coordinates with (bx,by) at the vertex.
-//
-function calcInnerAngle(ax, ay, bx, by, cx, cy) {
-  var a1 = Math.atan2(ay - by, ax - bx);
-  var a2 = Math.atan2(cy - by, cx - bx);
-  var a3 = Math.abs(a1 - a2);
+// atan2() very slow; replaced by a faster formula 
+/*
+function innerAngle_v1(ax, ay, bx, by, cx, cy) {
+  var a1 = Math.atan2(ay - by, ax - bx),
+      a2 = Math.atan2(cy - by, cx - bx),
+      a3 = Math.abs(a1 - a2);
   if (a3 > Math.PI) {
     a3 = 2 * Math.PI - a3;
   }
   return a3;
 }
+*/
+
+function distance3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+
+function innerAngle(ax, ay, bx, by, cx, cy) {
+  var ab = Point.distance(ax, ay, bx, by),
+      bc = Point.distance(bx, by, cx, cy),
+      dp = (ax - bx) * (cx - bx) + (ay - by) * (cy - by) / (ab * bc);
+      theta = dp >= 1 ? 0 : Math.acos(dp); // dp may exceed 1 due to rounding error.
+  return theta;
+}
+
+/*
+function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab = distance3D(ax, ay, az, bx, by, bz);
+  var bc = distance3D(bx, by, bz, cx, cy, cz);
+  var dp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
+  var theta = dp >= 1 ? 0 : Math.acos(dp);
+  return theta;
+}
+*/
 
 // The standard Visvalingam metric is triangle area.
 //
-Visvalingam.standardMetric = calcTriangleArea;
+Visvalingam.standardMetric = triangleArea;
 
 
 // The original mapshaper "modified Visvalingam" function uses a step function to 
 // underweight more acute triangles.
 //
 Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
-  var area = calcTriangleArea(ax, ay, bx, by, cx, cy),
-      angle = calcInnerAngle(ax, ay, bx, by, cx, cy),
+  var area = triangleArea(ax, ay, bx, by, cx, cy),
+      angle = innerAngle(ax, ay, bx, by, cx, cy),
       weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
   return area * weight;
 };
 
+/*
+Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      angle = innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
+  return area * weight;
+};
+*/
+
 // Experimenting with a replacement for "Modified Visvalingam"
 //
 Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
-  var area = calcTriangleArea(ax, ay, bx, by, cx, cy),
+  var area = triangleArea(ax, ay, bx, by, cx, cy),
       standardLen = area * 1.4,
       hyp = Math.sqrt((ax + cx) * (ax + cx) + (ay + cy) * (ay + cy)),
       weight = hyp / standardLen;

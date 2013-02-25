@@ -1,5 +1,5 @@
 
-##A wish list for features
+###A wish list for features
 
 - Graphical interface, similar to the original Flash-based mapshaper web app
 - Add support for reading/writing TopoJSON, improve GeoJSON support, consider supporting other formats
