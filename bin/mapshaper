@@ -26,8 +26,8 @@ var usage = ""
   + "Examples:\n\n"
   + "# Use Douglas Peucker to remove all but 10% of points in a Shapefile.\n"
   + "$ mapshaper -m dp -p 0.1 counties.shp\n\n"
-  + "# Convert a Shapefile to TopoJSON, no simplification, quantize coordinates for compression.\n"
-  + "$ mapshaper -q 10000 -f topojson states.shp "
+  + "# Convert a Shapefile to GeoJSON, no simplification.\n"
+  + "$ mapshaper -f geojson states.shp "
 
 var opts = optimist
   .usage(usage)
