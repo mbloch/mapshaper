@@ -122,11 +122,10 @@ var opts = optimist
 
     var argv = opts._;
 
-    // check inpput file and format
+    // check input file and format
     // TODO: accept stdin input, infer format from the data
     if (argv.length == 0) {
       error("Missing an input file.")
-      // TODO: read from stdin
       ifile = "/dev/stdin";
     }
     else {
@@ -165,15 +164,18 @@ T.start();
 var read = ifile == "/dev/stdin" ? MapShaper.importFromStream : MapShaper.importFromFile;
 var importData = read(ifile);
 T.stop("Shapefile import");
+
 T.start();
 var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
 T.stop("Topology conversion");
 
 importData = null; // don't need this anymore, gc can take it.
 
+
 T.start();
 Node.gc();
 T.stop("gc1");
+// process.exit();
 
 if (opts.p < 1) {
   T.start();
