@@ -1,6 +1,4 @@
-#!/usr/bin/env node
-
-// --nouse_idle_notification --expose_gc
+#!/usr/bin/env node --nouse_idle_notification --expose_gc
 // Running node with manual gc seems to prevent a slowdown
 // during file input that happens occasionally.
 // gc() calls should be added if this is enabled.
@@ -173,6 +171,9 @@ T.stop("Topology conversion");
 
 importData = null; // don't need this anymore, gc can take it.
 
+T.start();
+Node.gc();
+T.stop("gc1");
 
 if (opts.p < 1) {
   T.start();
@@ -197,11 +198,18 @@ if (opts.p < 1) {
   }
   T.stop("Simplification complete");
 
+T.start();
+Node.gc();
+T.stop("gc2");
 
   T.start();
   topoData.arcs = MapShaper.thinArcsByPct(topoData.arcs, sdata, opts.p);
   T.stop("Thinning complete");
 }
+
+T.start();
+Node.gc();
+T.stop("gc3");
 
 
 // OUTPUT FILE
