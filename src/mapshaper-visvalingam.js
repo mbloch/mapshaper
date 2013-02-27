@@ -2,33 +2,136 @@
 
 var Visvalingam = {};
 
-// Simplify an array of arcs using Visvalingam's algorithm, optionally
-//   using a custom function for calculating "effective area."
-// Returns an array of simplification thresholds matching the input arcs.
-//
-Visvalingam.simplifyArcs = function(arcs, opts) {
-  var metric = opts && opts.metric || Visvalingam.standardMetric,
-      calculator = new VisvalingamCalculator(metric);
-  var data = Utils.map(arcs, function(arc, i) {
-    var thresholds = calculator.calcArcData(arc[0], arc[1]);
-    assert(thresholds.length == arc[0].length);
-    return thresholds;
-  });
-  return data;
-};
+Utils.arrayCompare = function(a, b) {
+  if(a.length != b.length) {
+    trace("Mismatched len:", a.length, b.length);
+    return;
+  }
 
-// Calc area of triangle given coords of three vertices.
-//
-function triangleArea(ax, ay, bx, by, cx, cy) {
-  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
-  //var area2 = Math.abs((ax * (by - cy) + bx * (cy - ay) + cx * (ay - by)) / 2);
-  //if (area != area2) trace(area, area2);
-  return area;
+  for (var i=0; i<a.length; i++) {
+    if (a[i] != b[i]) {
+      trace( "Mismatch at", i, "--", a[i], b[i]);
+      return false;
+    }
+  }
+  return true;
 }
 
-function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
 
-  
+Visvalingam.getArcCalculator = function(metric2D, metric3D) {
+  var bufLen = 0,
+      heap = new VisvalingamHeap(),
+      prevArr, nextArr;
+
+  // Calculate Visvalingam simplification data for an arc
+  // Receives arrays of x- and y- coordinates, optional array of z- coords
+  // Returns an array of simplification thresholds, one per arc vertex.
+  //
+  var calcArcData = function(xx, yy, zz, len) {
+    var arcLen = len || xx.length,
+        useZ = !!zz,
+        threshold,
+        ax, ay, bx, by, cx, cy;
+
+    if (arcLen > bufLen) {
+      bufLen = Math.round(arcLen * 1.2);
+      prevArr = new Int32Array(bufLen);
+      nextArr = new Int32Array(bufLen);
+    }
+
+    heap.init(arcLen-2); // Initialize the heap with room for the arc's internal coordinates.
+
+    // Initialize Visvalingam "effective area" values and references to prev/next points for each point in arc.
+    //
+    for (var i=1; i<arcLen-1; i++) {
+      ax = xx[i-1];
+      ay = yy[i-1];
+      bx = xx[i];
+      by = yy[i];
+      cx = xx[i+1];
+      cy = yy[i+1];
+
+      if (!useZ) {
+        threshold = metric2D(ax, ay, bx, by, cx, cy);
+      } else {
+        threshold = metric3D(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
+      }
+
+      heap.addValue(i, threshold);
+      nextArr[i] = i + 1;
+      prevArr[i] = i - 1;
+    }
+    prevArr[arcLen-1] = arcLen - 2;
+    nextArr[0] = 1;
+
+    // Calculate removal thresholds for each internal point in the arc
+    //
+    var idx, nextIdx, prevIdx;
+    var arr = [];
+    while(heap.heapSize() > 0) {
+
+      // Remove the point with the least effective area.
+      idx = heap.pop();
+      if (idx < 1 || idx > arcLen - 2) {
+        error("Popped first or last arc vertex (error condition); idx:", idx, "len:", len);
+      }
+
+      // Recompute effective area of neighbors of the removed point.
+      prevIdx = prevArr[idx];
+      nextIdx = nextArr[idx];
+      ax = xx[prevIdx];
+      ay = yy[prevIdx];
+      bx = xx[nextIdx];
+      by = yy[nextIdx];
+
+      if (prevIdx > 0) {
+        cx = xx[prevArr[prevIdx]];
+        cy = yy[prevArr[prevIdx]];
+        if (!useZ) {
+          threshold = metric2D(bx, by, ax, ay, cx, cy); // next point, prev point, prev-prev point
+        } else {
+          threshold = metric3D(bx, by, zz[nextIdx], ax, ay, zz[prevIdx], cx, cy, zz[prevArr[prevIdx]]);
+        }
+        heap.updateValue(prevIdx, threshold);
+      }
+      if (nextIdx < arcLen-1) {
+        cx = xx[nextArr[nextIdx]];
+        cy = yy[nextArr[nextIdx]];
+        if (!useZ) {
+          threshold = metric2D(ax, ay, bx, by, cx, cy); // prev point, next point, next-next point
+        } else {
+          threshold = metric3D(ax, ay, zz[prevIdx], bx, by, zz[nextIdx], cx, cy, zz[nextArr[nextIdx]]);
+        }
+        heap.updateValue(nextIdx, threshold);
+      }
+      nextArr[prevIdx] = nextIdx;
+      prevArr[nextIdx] = prevIdx;
+    }
+    return heap.values();
+  };
+
+  return calcArcData;
+};
+
+
+// Calc area of triangle from three points
+//
+function triangleArea(ax, ay, bx, by, cx, cy) {
+  return Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
+}
+
+//
+//
+function detSq(ax, ay, bx, by, cx, cy) {
+  var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
+  return det * det;
+}
+
+// Calc area of 3D triangle from three points
+//
+function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) + detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
+  return area;
 }
 
 // Calc angle in radians given three coordinates with (bx,by) at the vertex.
@@ -57,11 +160,11 @@ function innerAngle(ax, ay, bx, by, cx, cy) {
   var ab = Point.distance(ax, ay, bx, by),
       bc = Point.distance(bx, by, cx, cy),
       dp = (ax - bx) * (cx - bx) + (ay - by) * (cy - by) / (ab * bc);
-      theta = dp >= 1 ? 0 : Math.acos(dp); // dp may exceed 1 due to rounding error.
+      theta = dp >= 1 ? 0 : Math.acos(dp); // handle rounding error.
   return theta;
 }
 
-/*
+
 function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab = distance3D(ax, ay, az, bx, by, bz);
   var bc = distance3D(bx, by, bz, cx, cy, cz);
@@ -69,11 +172,6 @@ function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var theta = dp >= 1 ? 0 : Math.acos(dp);
   return theta;
 }
-*/
-
-// The standard Visvalingam metric is triangle area.
-//
-Visvalingam.standardMetric = triangleArea;
 
 
 // The original mapshaper "modified Visvalingam" function uses a step function to 
@@ -86,14 +184,14 @@ Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
   return area * weight;
 };
 
-/*
+
 Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
       angle = innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz),
       weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
   return area * weight;
 };
-*/
+
 
 // Experimenting with a replacement for "Modified Visvalingam"
 //
@@ -105,68 +203,9 @@ Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
   return area * weight;
 };
 
-
-// The VisvalingamCalculator class uses persistent buffers for temp simplification data,
-// to avoid overhead of creating new buffers for each arc.
-//
-function VisvalingamCalculator(metric) {
-  var bufLen = 0,
-      heap = new VisvalingamHeap(),
-      prevArr, nextArr;
-
-  // Calculate Visvalingam simplification data for an arc
-  // Receives two arrays, for x- and y- coordinates.
-  // Returns an array of simplification thresholds, one per arc vertex.
-  //
-  this.calcArcData = function(xx, yy) {
-    var arcLen = xx.length;
-    if (arcLen > bufLen) {
-      bufLen = Math.round(arcLen * 1.2);
-      prevArr = new Int32Array(bufLen);
-      nextArr = new Int32Array(bufLen);
-    }
-
-    heap.init(arcLen-2); // Initialize the heap with room for the arc's internal coordinates.
-
-    // Initialize Visvalingam "effective area" values and references to prev/next points for each point in arc.
-    //
-    for (var i=1; i<arcLen-1; i++) {
-      heap.addValue(i, metric(xx[i-1], yy[i-1], xx[i], yy[i], xx[i+1], yy[i+1]));
-      nextArr[i] = i + 1;
-      prevArr[i] = i - 1;
-    }
-    prevArr[arcLen-1] = arcLen - 2;
-    nextArr[0] = 1;
-
-    // Calculate removal thresholds for each internal point in the arc
-    //
-    var idx, nextIdx, prevIdx, area;
-    var arr = [];
-    while(heap.heapSize() > 0) {
-
-      // Remove the point with the least effective area.
-      idx = heap.pop();
-      if (idx < 1 || idx > arcLen - 2) {
-        error("Popped first or last arc vertex (error condition); idx:", idx, "len:", len);
-      }
-
-      // Recompute effective area of neighbors of the removed point.
-      prevIdx = prevArr[idx];
-      nextIdx = nextArr[idx];
-      if (prevIdx > 0) {
-        area = metric(xx[nextIdx], yy[nextIdx], xx[prevIdx], yy[prevIdx], xx[prevArr[prevIdx]], yy[prevArr[prevIdx]]);
-        heap.updateValue(prevIdx, area);
-      }
-      if (nextIdx < arcLen-1) {
-        area = metric(xx[prevIdx], yy[prevIdx], xx[nextIdx], yy[nextIdx], xx[nextArr[nextIdx]], yy[nextArr[nextIdx]]);
-        heap.updateValue(nextIdx, area);
-      }
-      nextArr[prevIdx] = nextIdx;
-      prevArr[nextIdx] = prevIdx;
-    }
-    return heap.values();
-  };
-}
+// standard Visvalingam metric is triangle area
+Visvalingam.standardSimplify = Visvalingam.getArcCalculator(triangleArea, triangleArea3D);
+Visvalingam.modifiedSimplify = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D);
 
 
 // A heap data structure used for computing Visvalingam simplification data.

@@ -181,19 +181,16 @@ if (opts.p < 1) {
   T.start();
   var sdata,
       arcs = topoData.arcs;
-      simplifyOpts = {};
+      simplifyOpts = {spherical: !!opts.l};
 
   if (opts.m == 'dp') {
-    simplifyOpts.spherical = !!opts.l;
     sdata = m.DouglasPeucker.simplifyArcs(arcs, simplifyOpts);
   }
   else if (opts.m == 'v') {
-    simplifyOpts.metric = m.Visvalingam.standardMetric;
-    sdata = m.Visvalingam.simplifyArcs(arcs, simplifyOpts);
+    sdata = MapShaper.simplifyArcs(arcs, m.Visvalingam.standardSimplify, simplifyOpts);
   }
   else if (opts.m == 'm') {
-    simplifyOpts.metric = m.Visvalingam.specialMetric;
-    sdata = m.Visvalingam.simplifyArcs(arcs, simplifyOpts);
+    sdata = MapShaper.simplifyArcs(arcs, m.Visvalingam.modifiedSimplify, simplifyOpts);
   }
   else {
     error("Unknown method:", opts.m);
