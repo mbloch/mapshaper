@@ -11,8 +11,7 @@ DouglasPeucker.simplifyArcs = function(arcs, opts) {
   var data = Utils.map(arcs, function(arc) {
     return DouglasPeucker.calcArcData(arc[0], arc[1]);
   });
-  // trace(">> dp calls / ms:", dpSegCount / ms);
-  // trace(">> dp triangles / ms:", dpDistCount / ms);
+
   return data;
 };
 
@@ -54,63 +53,62 @@ DouglasPeucker.calcXYZ = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
   }
 }
 
-DouglasPeucker.getDistanceSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var dist2,
-    ab2 = (ax - bx) * (ax - bx) + (ay - by) * (ay - by) + (az - bz) * (az - bz),
-    ac2 = (ax - cx) * (ax - cx) + (ay - cy) * (ay - cy) + (az - cz) * (az - cz),
-    bc2 = (bx - cx) * (bx - cx) + (by - cy) * (by - cy) + (bz - cz) * (bz - cz);
-
-  if ( ac2 == 0.0 ) {
+// Given a triangle with vertices abc, return the distSq of the shortest segment
+//   with one endpoint at b and the other on the line intersecting a and c.
+//   If a and c are coincident, return the distSq between b and a/c
+//
+// Receive the distSq of the triangle's three sides.
+//
+DouglasPeucker.getTriangleHeightSq = function(ab2, bc2, ac2) {
+  var dist2;
+  if (ac2 == 0.0) {
     dist2 = ab2;
-  }
-  else if ( ab2 >= bc2 + ac2 ) {
+  } else if (ab2 >= bc2 + ac2) {
     dist2 = bc2;
-  }
-  else if ( bc2 >= ab2 + ac2 ) {
+  } else if (bc2 >= ab2 + ac2) {
     dist2 = ab2;
+  } else {
+    var dval = (ab2 + ac2 - bc2);
+    dist2 = ab2 -  dval * dval / ac2  * 0.25;
   }
-  else {
-    var dval = ( ab2 + ac2 - bc2 );
-    dist2 = ab2 -  dval * dval / ac2  * 0.25 ;
-  }
-
-  if ( dist2<0.0 ) {
+  if (dist2 < 0.0) {
     dist2 = 0.0;
   }
-
-  return dist2;
-};
-
-DouglasPeucker.getDistanceSq = function(ax, ay, bx, by, cx, cy) {
-  var ab2 = (ax - bx) * (ax - bx) + (ay - by) * (ay - by),
-      ac2 = (ax - cx) * (ax - cx) + (ay - cy) * (ay - cy),
-      bc2 = (bx - cx) * (bx - cx) + (by - cy) * (by - cy),
-      dist2;
-
-  if ( ac2 === 0 ) { // if first and last points are same, avoid div/0
-    dist2 = ab2;
-  }
-  else if ( ab2 >= bc2 + ac2 ) {
-    dist2 = bc2;
-  }
-  else if ( bc2 >= ab2 + ac2 ) {
-    dist2 = ab2;
-  }
-  else {
-    var dval = ( ab2 + ac2 - bc2 );
-    dist2 = ab2 -  dval * dval / ac2  * 0.25 ;
-  }
-
-  if (dist2 < 0) {
-    dist2 = 0;
-  }
-
   return dist2;
 };
 
 
-var dpDistCount = 0;
-var dpSegCount = 0;
+function distanceSq(ax, ay, bx, by) {
+  var dx = ax - bx,
+      dy = ay - by;
+  return dx * dx + dy * dy;
+}
+
+function distanceSq3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+
+DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
+      ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
+      bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
+  return DouglasPeucker.getTriangleHeightSq(ab2, bc2, ac2);
+};
+
+
+DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
+  var ab2 = distanceSq(ax, ay, bx, by),
+      ac2 = distanceSq(ax, ay, cx, cy),
+      bc2 = distanceSq(bx, by, cx, cy);
+  return DouglasPeucker.getTriangleHeightSq(ab2, bc2, ac2);
+};
+
+
+
 DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
   var len = len || xx.length, // kludge: 3D data gets passed in buffers, so need len parameter.
       useZ = !!zz;
@@ -126,7 +124,6 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
   }
 
   function procSegment(startIdx, endIdx, depth, lastDistance) {
-    dpSegCount++;
     var thisDistance;
     var ax = xx[startIdx],
       ay = yy[startIdx],
@@ -144,11 +141,10 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
     var maxDistance = 0, maxIdx = 0;
 
     for (var i=startIdx+1; i<endIdx; i++) {
-      dpDistCount++;
       if (useZ) {
-        thisDistance = DouglasPeucker.getDistanceSq3D(ax, ay, az, xx[i], yy[i], zz[i], cx, cy, cz);
+        thisDistance = DouglasPeucker.metricSq3D(ax, ay, az, xx[i], yy[i], zz[i], cx, cy, cz);
       } else {
-        thisDistance = DouglasPeucker.getDistanceSq(ax, ay, xx[i], yy[i], cx, cy);
+        thisDistance = DouglasPeucker.metricSq(ax, ay, xx[i], yy[i], cx, cy);
       }
 
       if (thisDistance >= maxDistance) {
@@ -170,7 +166,7 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
     }
 
     if (depth == 1) {
-      // case: arc is an island polygon
+      // case -- arc is an island polygon
       if (ax == cx && ay == cy) { 
         maxDistance = lval > rval ? lval : rval;
       }
@@ -194,9 +190,5 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
     return maxDistance;
   }
 
-  // assert(dpArr.length == xx.length, "Length of DouglasPeucker threshold array doesn't match coordinate arrays.");
-  // assert(dpArr[0] == LIMIT_VALUE && dpArr[len - 1] == LIMIT_VALUE, "DouglasPeucker endpoint value/s have changed; dp array:", dpArr);
-
   return dpArr;
-
 };
