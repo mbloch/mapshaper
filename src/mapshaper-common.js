@@ -27,7 +27,8 @@ MapShaper.getThresholdByPct = function(arr, retainedPct) {
 };
 
 MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct) {
-  assert(Utils.isArray(arcs) && Utils.isArray(thresholds) && arcs.length == thresholds.length && Utils.isNumber(retainedPct), "Invalid arguments; expected [Array], [Array], [Number]");
+  assert(Utils.isArray(arcs) && Utils.isArray(thresholds) && arcs.length == thresholds.length
+      && Utils.isNumber(retainedPct), "Invalid arguments; expected [Array], [Array], [Number]");
   T.start();
   var thresh = MapShaper.getThresholdByPct(thresholds, retainedPct);
   T.stop("getThresholdByPct()");
@@ -39,7 +40,8 @@ MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct) {
 };
 
 MapShaper.thinArcsByThreshold = function(arcs, thresholds, thresh) {
-  assert(Utils.isArray(arcs) && Utils.isArray(thresholds) && arcs.length == thresholds.length && Utils.isNumber(thresh), "Invalid arguments; expected [Array], [Array], [Number]");
+  assert(Utils.isArray(arcs) && Utils.isArray(thresholds) && arcs.length == thresholds.length
+      && Utils.isNumber(thresh), "Invalid arguments; expected [Array], [Array], [Number]");
   var arcs2 = [],
     originalPoints = 0,
     thinnedPoints = 0;
@@ -78,6 +80,60 @@ MapShaper.thinArcsByThreshold = function(arcs, thresholds, thresh) {
   return arcs2;
 };
 
+
+// Convert arrays of lng and lat coords (xsrc, ysrc) into 
+// x, y, z coords on the surface of a sphere with radius 6378137
+// (the radius of Earth sphere in meters)
+//
+MapShaper.calcXYZ = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
+  var deg2rad = Math.PI / 180,
+      r = 6378137;
+  for (var i=0, len=xsrc.length; i<len; i++) {
+    var theta = xsrc[i] * deg2rad,
+        lat = ysrc[i],
+        phi = (lat > 0 ? 90 - lat : -90 - lat) * deg2rad;
+        sinPhi = Math.sin(phi);
+
+    xbuf[i] = sinPhi * Math.cos(theta) * r;
+    ybuf[i] = sinPhi * Math.sin(theta) * r;
+    zbuf[i] = Math.cos(phi) * r;
+  }
+}
+
+// Apply a simplification function to each arc in an array, return simplified arcs.
+// 
+// @simplify has signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
+//
+MapShaper.simplifyArcs = function(arcs, simplify, opts) {
+  if (opts && opts.spherical) {
+    return MapShaper.simplifyArcsSph(arcs, simplify);
+  }
+  var data = Utils.map(arcs, function(arc) {
+    return simplify(arc[0], arc[1]);
+  });
+
+  return data;  
+};
+
+MapShaper.simplifyArcsSph = function(arcs, simplify) {
+  var bufSize = 0,
+      xbuf, ybuf, zbuf;
+
+  var data = Utils.map(arcs, function(arc) {
+    var arcLen = arc[0].length;
+    if (bufSize < arcLen) {
+      bufSize = Math.round(arcLen * 1.2);
+      xbuf = new Float64Array(bufSize);
+      ybuf = new Float64Array(bufSize);
+      zbuf = new Float64Array(bufSize);
+    }
+
+    MapShaper.calcXYZ(arc[0], arc[1], xbuf, ybuf, zbuf);
+    var arr = simplify(xbuf, ybuf, zbuf, arcLen);
+    return arr;
+  });
+  return data;
+};
 
 
 MapShaper.importFromFile = function(fname) {
