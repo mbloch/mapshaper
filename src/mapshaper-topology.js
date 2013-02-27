@@ -154,9 +154,9 @@ MapShaper.buildArcTopology = function(obj) {
       if (buildingArc == false || arcStartId >= endId || arcStartId < 0) error("[ArcTable.finishArc()] invalid arc index.");
 
       // Creating subarrays on xx and yy creates many fewer objects for memory
-      //   management to track than if creating new x and y Arrays for each arc.
-      //   With 835MB ZCTA file, gc() time reduced from 580ms to 65ms,
-      //   topology time from >26s to ~17s, later processing much faster.
+      //   management to track than creating new x and y Array objects for each arc.
+      //   With 846MB ZCTA file, gc() time reduced from 580ms to 65ms,
+      //   topology time from >26s to ~17s, subsequent processing much faster.
       //   Negligible improvement on smaller files.
       //
       var xarr = xx.subarray(arcStartId, endId + 1),
@@ -275,7 +275,7 @@ MapShaper.buildArcTopology = function(obj) {
 
 // Generates a hash function to convert an x,y coordinate into an index in a 
 //   hash table.
-// @param bb A BoundingBox object giving the extent of the dataset.
+// @bb A BoundingBox giving the extent of the dataset.
 //
 MapShaper.getXYHashFunction = function(bb, hashTableSize) {
   assert(bb.hasBounds() && hashTableSize > 0, "Invalid hash function parameters; bbox:", bb, "table size:", hashTableSize);
@@ -306,7 +306,7 @@ MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
   var hash = MapShaper.getXYHashFunction(bbox, hashTableSize);
 
   // Ids of next point in each chain, indexed by point id
-  var nextIds = new Int32Array(pointCount);  // id of next id in chain
+  var nextIds = new Int32Array(pointCount);
   // Utils.initializeArray(nextIds, -1);
  
   var key, headId, tailId;
