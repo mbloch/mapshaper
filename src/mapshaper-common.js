@@ -34,14 +34,14 @@ MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct) {
   T.stop("getThresholdByPct()");
 
   T.start();
-  var thinned = MapShaper.thinArcsByThreshold(arcs, thresholds, thresh);
+  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh);
   T.stop("Thin arcs");
   return thinned;
 };
 
-MapShaper.thinArcsByThreshold = function(arcs, thresholds, thresh) {
+MapShaper.thinArcsByInterval= function(arcs, thresholds, interval) {
   assert(Utils.isArray(arcs) && Utils.isArray(thresholds) && arcs.length == thresholds.length
-      && Utils.isNumber(thresh), "Invalid arguments; expected [Array], [Array], [Number]");
+      && Utils.isNumber(interval), "Invalid arguments; expected [Array], [Array], [Number]");
   var arcs2 = [],
     originalPoints = 0,
     thinnedPoints = 0;
@@ -50,8 +50,8 @@ MapShaper.thinArcsByThreshold = function(arcs, thresholds, thresh) {
     var arc = arcs[i],
       xsrc = arc[0],
       ysrc = arc[1],
-      zz = thresholds[i],
-      len = zz.length,
+      uu = thresholds[i],
+      len = uu.length,
       xdest = [],
       ydest = [];
 
@@ -59,7 +59,7 @@ MapShaper.thinArcsByThreshold = function(arcs, thresholds, thresh) {
 
     for (var j=0; j<len; j++) {
       originalPoints++;
-      if (zz[j] >= thresh) {
+      if (uu[j] >= interval) {
         xdest.push(xsrc[j]);
         ydest.push(ysrc[j]);
         thinnedPoints++;
@@ -129,8 +129,7 @@ MapShaper.simplifyArcsSph = function(arcs, simplify) {
     }
 
     MapShaper.calcXYZ(arc[0], arc[1], xbuf, ybuf, zbuf);
-    var arr = simplify(xbuf, ybuf, zbuf, arcLen);
-    return arr;
+    return simplify(xbuf, ybuf, zbuf, arcLen);
   });
   return data;
 };

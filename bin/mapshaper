@@ -11,6 +11,7 @@ var m = mapshaper,
     assert = m.assert,
     error = m.error,
     MapShaper = m.MapShaper,
+    Visvalingam = m.Visvalingam,
     Node = m.Node,
     Utils = m.Utils,
     T = m.T;
@@ -50,6 +51,12 @@ var opts = optimist
     alias: "pct",
     describe: "proportion of points to retain",
     default: 1
+  })
+
+  .options("i", {
+    alias: "interval",
+    describe: "degree of simplification in units of distance",
+    default: 0
   })
 
   // TODO: add topojson and kml formats
@@ -137,14 +144,17 @@ var opts = optimist
       assert(!opts.f || opts.f == 'shapefile' || opts.f == 'topojson' || opts.f == 'geojson', "Invalid output format");
     }
 
+    assert(!isNaN(opts.i) && opts.i >= 0, "-i (--interval) option requires a non-negative number");
+
     // check pct retained
-    assert(opts.p > 0 && opts.p <= 1, "-p option should be in the range (0,1]");
+    assert(opts.p > 0 && opts.p <= 1, "-p (--pct) option should be in the range (0,1]");
 
     // validate simplification method
     assert(Utils.contains(['dp', 'v', 'm'], opts.m), "Unsupported simplification method:", opts.m);
   })
   .argv;
 
+var simplifyOn = opts.i > 0 || opts.p < 1;
 
 if (opts.f) {
   ofileInfo.type = opts.f;
@@ -177,32 +187,45 @@ Node.gc();
 T.stop("gc1");
 // process.exit();
 
-if (opts.p < 1) {
+if (simplifyOn) {
   T.start();
-  var sdata,
-      arcs = topoData.arcs;
-      simplifyOpts = {spherical: !!opts.l};
+  var simplifiedArcs,
+      arcs = topoData.arcs,
+      calculator;
+
+  var simplifyOpts = {
+    spherical: !!opts.l
+  };
 
   if (opts.m == 'dp') {
-    sdata = m.DouglasPeucker.simplifyArcs(arcs, simplifyOpts);
+    calculator = m.DouglasPeucker.calcArcData;
+    simplifiedArcs =MapShaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
   else if (opts.m == 'v') {
-    sdata = MapShaper.simplifyArcs(arcs, m.Visvalingam.standardSimplify, simplifyOpts);
+    var intervalScale = 0.65; // TODO: tune this constant (linear scale when converting Visv. area metric to distance units);
+    calculator = Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, intervalScale);
+    simplifiedArcs = MapShaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
   else if (opts.m == 'm') {
-    sdata = MapShaper.simplifyArcs(arcs, m.Visvalingam.modifiedSimplify, simplifyOpts);
+    intervalScale = 0.65 // TODO: tune this
+    calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale);
+    simplifiedArcs = MapShaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
   else {
     error("Unknown method:", opts.m);
   }
   T.stop("Simplification complete");
 
-T.start();
-Node.gc();
-T.stop("gc2");
+  T.start();
+  Node.gc();
+  T.stop("gc2");
 
   T.start();
-  topoData.arcs = MapShaper.thinArcsByPct(topoData.arcs, sdata, opts.p);
+  if (opts.p < 1) {
+    topoData.arcs = MapShaper.thinArcsByPct(topoData.arcs, simplifiedArcs, opts.p);
+  } else if (opts.i > 0) {
+    topoData.arcs = MapShaper.thinArcsByInterval(topoData.arcs, simplifiedArcs, opts.i);
+  }
   T.stop("Thinning complete");
 }
 
@@ -239,7 +262,7 @@ else if (ofileInfo.type == "shapefile") {
 
   // if no simplification and input/output both shapefile, see if output
   // is identical to input (to test for topology errors)
-  if (ifileInfo.ext == "shp" && opts.p == 1) {
+  if (ifileInfo.ext == "shp" && !simplifyOn) {
     var originalShp = new m.BinArray(Node.readFile(ifileInfo.path)),
         isSame = originalShp.identical(shpData.shp);
     trace("* No simplification; checking that input and output files are identical:", isSame);

@@ -6,3 +6,4 @@ node_modules/sax
 *.sublime-project
 *.sublime-workspace
 *.log
+*/.git

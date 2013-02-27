@@ -18,10 +18,11 @@ Utils.arrayCompare = function(a, b) {
 }
 
 
-Visvalingam.getArcCalculator = function(metric2D, metric3D) {
+Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   var bufLen = 0,
       heap = new VisvalingamHeap(),
-      prevArr, nextArr;
+      prevArr, nextArr,
+      scale = scale || 1;
 
   // Calculate Visvalingam simplification data for an arc
   // Receives arrays of x- and y- coordinates, optional array of z- coords
@@ -107,8 +108,17 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D) {
       nextArr[prevIdx] = nextIdx;
       prevArr[nextIdx] = prevIdx;
     }
-    return heap.values();
+
+    var values = heap.values();
+
+    // convert "effective area" to a linear equivalent
+    //
+    for (var j=0, n=values.length; j<n; j++) {
+      values[j] = Math.sqrt(values[j]) * scale;
+    }
+    return values;
   };
+
 
   return calcArcData;
 };
@@ -117,7 +127,8 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D) {
 // Calc area of triangle from three points
 //
 function triangleArea(ax, ay, bx, by, cx, cy) {
-  return Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
+  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
+  return area;
 }
 
 //
@@ -133,6 +144,7 @@ function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) + detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
   return area;
 }
+
 
 // Calc angle in radians given three coordinates with (bx,by) at the vertex.
 // atan2() very slow; replaced by a faster formula 
@@ -192,6 +204,9 @@ Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return area * weight;
 };
 
+Visvalingam.standardMetric = triangleArea;
+Visvalingam.standardMetric3D = triangleArea3D;
+
 
 // Experimenting with a replacement for "Modified Visvalingam"
 //
@@ -202,11 +217,6 @@ Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
       weight = hyp / standardLen;
   return area * weight;
 };
-
-// standard Visvalingam metric is triangle area
-Visvalingam.standardSimplify = Visvalingam.getArcCalculator(triangleArea, triangleArea3D);
-Visvalingam.modifiedSimplify = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D);
-
 
 // A heap data structure used for computing Visvalingam simplification data.
 // 
