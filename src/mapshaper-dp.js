@@ -1,9 +1,12 @@
 /* @requires arrayutils, mapshaper-common */
 
 var DouglasPeucker = {};
-var LIMIT_VALUE = Infinity;
-var MAX_ERROR = Number.MAX_VALUE;
 
+DouglasPeucker.simplifyArcs = function(arcs, opts) {
+  return MapShaper.simplifyArcs(arcs, DouglasPeucker.calcArcData, opts);
+}
+
+/*
 DouglasPeucker.simplifyArcs = function(arcs, opts) {
   if (opts && opts.spherical) {
     return DouglasPeucker.simplifyArcsSph(arcs);
@@ -52,6 +55,7 @@ DouglasPeucker.calcXYZ = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
     zbuf[i] = Math.cos(phi);
   }
 }
+*/
 
 // Given a triangle with vertices abc, return the distSq of the shortest segment
 //   with one endpoint at b and the other on the line intersecting a and c.
@@ -117,10 +121,10 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
   var dpArr = new Array(len); // new Float64Array(len);
   Utils.initializeArray(dpArr, 0);
 
-  dpArr[0] = dpArr[len-1] = LIMIT_VALUE;
+  dpArr[0] = dpArr[len-1] = Infinity;
 
   if (len > 2) {
-    procSegment(0, len-1, 1, MAX_ERROR);
+    procSegment(0, len-1, 1, Number.MAX_VALUE);
   }
 
   function procSegment(startIdx, endIdx, depth, lastDistance) {
@@ -173,9 +177,7 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
     }
 
     var dist = Math.sqrt(maxDistance);
-    if (useZ) {
-      dist = dist * 180 / Math.PI;
-    }
+
     /*
     if ( maxSegmentLen > 0 ) {
       double maxLen2 = maxSegmentLen * maxSegmentLen;
