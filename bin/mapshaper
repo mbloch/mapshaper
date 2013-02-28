@@ -20,25 +20,24 @@ var ifile, ifileInfo, ofileInfo = {};
 
 var usage = ""
   // + "Usage: mapshaper [options] [file(.shp|.json)]\n\n"
+  + "mapshaper is a tool for simplifying polygon Shapefiles.\n\n"
   + "Usage: mapshaper [options] file\n\n"
-  + "A tool for simplifying polygon datasets.\n"
-  + "- Supports Douglas Peucker, Visvalingham and modified Visvalingam simplification.\n"
-  + "- Supports Input/output of Shapefile, TopoJSON and GeoJSON formats.\n\n"
   + "Examples:\n\n"
-  + "# Use Douglas Peucker to remove all but 10% of points in a Shapefile.\n"
+  + "# Use Douglas-Peucker to remove all but 10% of points in a Shapefile.\n"
   + "$ mapshaper -m dp -p 0.1 counties.shp\n\n"
-  + "# Convert a Shapefile to GeoJSON, no simplification.\n"
-  + "$ mapshaper -f geojson states.shp "
+  + "# Use Visvalingam to simplify an unprojected Shapefile to 1km resolution.\n"
+  + "$ mapshaper -u -i 1000 -m v states.shp "
 
 var opts = optimist
   .usage(usage)
 
-  .boolean(['h', 't', 'l'])
+  // 
+  //.boolean(['h', 't', 'l'])
 
   .options("h", {
     alias: "help",
     describe: "show usage and options",
-    default: false
+    'boolean': true
   }) 
 
   /*
@@ -49,14 +48,12 @@ var opts = optimist
 
   .options("p", {
     alias: "pct",
-    describe: "proportion of points to retain",
-    default: 1
+    describe: "proportion of points to retain (0-1)"
   })
 
   .options("i", {
     alias: "interval",
-    describe: "degree of simplification in units of distance",
-    default: 0
+    describe: "degree of simplification in units of distance"
   })
 
   // TODO: add topojson and kml formats
@@ -71,18 +68,23 @@ var opts = optimist
     default: "m"
   })
 
-  .options("l", {
-    alias: "latlong",
-    describe: "use arc length for distance and area (assumes lat-lng coords)",
-    default: false
+  .options("u", {
+    alias: "unprojected",
+    describe: "simplification uses 3D distance in meters",
+    'boolean': true
   })
 
   .options("t", {
     alias: "timing",
-    describe: "Show execution time for each phase of simplification.",
-    default: false
+    describe: "show execution time of processing steps",
+    'boolean': true
   }) 
 
+  .options("k", {
+    alias: "keep-shapes",
+    describe: "prevent small shapes from disappearing",
+    'boolean': true
+  })
 
   /* // TODO
   // prevent points along straight lines from being stripped away, to allow reprojection
@@ -144,9 +146,12 @@ var opts = optimist
       assert(!opts.f || opts.f == 'shapefile' || opts.f == 'topojson' || opts.f == 'geojson', "Invalid output format");
     }
 
+    // validate interval
+    opts.i = opts.i || 0;
     assert(!isNaN(opts.i) && opts.i >= 0, "-i (--interval) option requires a non-negative number");
 
-    // check pct retained
+    // validate pct retained
+    opts.p = opts.p || 1;
     assert(opts.p > 0 && opts.p <= 1, "-p (--pct) option should be in the range (0,1]");
 
     // validate simplification method
@@ -194,7 +199,7 @@ if (simplifyOn) {
       calculator;
 
   var simplifyOpts = {
-    spherical: !!opts.l
+    spherical: !!opts.u
   };
 
   if (opts.m == 'dp') {
