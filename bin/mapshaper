@@ -226,10 +226,13 @@ if (simplifyOn) {
   T.stop("gc2");
 
   T.start();
+  var thinningOpts = {
+    minPoints: opts.k && topoData.arcMinPointCounts || null
+  };
   if (opts.p < 1) {
-    topoData.arcs = MapShaper.thinArcsByPct(topoData.arcs, simplifiedArcs, opts.p);
+    topoData.arcs = MapShaper.thinArcsByPct(topoData.arcs, simplifiedArcs, opts.p, thinningOpts);
   } else if (opts.i > 0) {
-    topoData.arcs = MapShaper.thinArcsByInterval(topoData.arcs, simplifiedArcs, opts.i);
+    topoData.arcs = MapShaper.thinArcsByInterval(topoData.arcs, simplifiedArcs, opts.i, thinningOpts);
   }
   T.stop("Thinning complete");
 }
