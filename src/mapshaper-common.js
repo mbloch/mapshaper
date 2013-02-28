@@ -34,7 +34,7 @@ MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
   T.stop("getThresholdByPct()");
 
   T.start();
-  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh);
+  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh, opts);
   T.stop("Thin arcs");
   return thinned;
 };
