@@ -12,7 +12,7 @@ ShapefileReader.prototype.read = function() {
       partCount = 0,
       shapeCount = 0;
 
-  var rememberBounds = true,
+  var rememberBounds = false,
       rememberHoles = false,
       rememberMaxParts = true;
 
@@ -49,7 +49,6 @@ ShapefileReader.prototype.read = function() {
   // Experimental: Adding arrays for part-level data: bounding boxes,
   //   ids of max part in each shape (for shape preservation)
   //
-  var rememberBounds = true;
   if (rememberBounds) {
     var partBounds = new Float64Array(partCount * 4),
         boundId = 0;
