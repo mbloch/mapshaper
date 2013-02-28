@@ -8,7 +8,13 @@
 ShapefileReader.prototype.read = function() {
   var bin = this._bin,
       shapes = [],
-      pointCount = 0;
+      pointCount = 0,
+      partCount = 0,
+      shapeCount = 0;
+
+  var rememberBounds = true,
+      rememberHoles = false,
+      rememberMaxParts = true;
 
   bin.position(100); // skip to the shape data section
 
@@ -23,6 +29,8 @@ ShapefileReader.prototype.read = function() {
 
     shapes.push(meta);
     pointCount += meta.pointCount;
+    partCount += meta.partCount;
+    shapeCount++;
   }
 
 
@@ -38,36 +46,84 @@ ShapefileReader.prototype.read = function() {
       partIds = new Uint32Array(pointCount),   
       shapeIds = [];
 
+  // Experimental: Adding arrays for part-level data: bounding boxes,
+  //   ids of max part in each shape (for shape preservation)
+  //
+  var rememberBounds = true;
+  if (rememberBounds) {
+    var partBounds = new Float64Array(partCount * 4),
+        boundId = 0;
+  }
+  if (rememberMaxParts) {
+    var maxPartFlags = new Uint8Array(partCount);
+  }
+  if (rememberHoles) {
+    var holeFlags = new Uint8Array(partCount);
+  }
+
   var x, y,
     pointId = 0, 
     partId = 0,
     shapeId = 0,
-    dataView = bin.dataView();
+    dataView = bin.dataView(),
+    minx, miny, maxx, maxy,
+    maxPartId, partArea, maxPartArea;
 
   for (var shpId=0; shpId < shapes.length; shpId++) {
     var shp = shapes[shpId];
     var offs = shp.coordOffset;
-    var partCount = shp.partCount;
-    for (var i=0; i<shp.partCount; i++) {
+    var partsInShape = shp.partCount;
+    for (var i=0; i<partsInShape; i++) {
       shapeIds.push(shapeId);
 
       for (var j=0, partSize=shp.partSizes[i]; j<partSize; j++) {
         // getFloat64() is a bottleneck (uses ~90% of time in this section)
         // DataView at least as fast as Buffer API in nodejs
-        xx[pointId] = dataView.getFloat64(offs, true);
-        yy[pointId] = dataView.getFloat64(offs + 8, true);
+        x = dataView.getFloat64(offs, true);
+        y = dataView.getFloat64(offs + 8, true);
+        if (j == 0) {
+          minx = maxx = x;
+          miny = maxy = y;
+        }
+        else {
+          if (y < miny) miny = y;
+          else if (y > maxy) maxy = y;
+          if (x < minx) minx = x;
+          else if (x > maxx) maxx = x;
+        }
+        xx[pointId] = x;
+        yy[pointId] = y;
         offs += 16;
         partIds[pointId] = partId;
         pointId++;       
       }
 
-      /*
-      if (partCount > 0 && ShapefileTopoReader.partIsCCW(xx, yy, partStartId, partSize) {
-        trace(">>> got a hole!");
+      if (rememberMaxParts) {
+        partArea = (maxx - minx) * (maxy - miny);
+        if (i === 0 || partArea > maxPartArea) {
+          if (i > 0) {
+            maxPartFlags[maxPartId] = 0;
+          }
+          maxPartFlags[partId] = 1;
+          maxPartId = partId;
+          maxPartArea = partArea;
+        }
       }
+
+      if (rememberBounds) {
+        partBounds[boundId++] = minx;
+        partBounds[boundId++] = miny;
+        partBounds[boundId++] = maxx;
+        partBounds[boundId++] = maxy;
+      }
+
+      /*
+        TODO: if rememberHoles == true, flag each hole
+        (only need to check shapes w/ >1 parts)
       */
       partId++;
     }
+
     shapeId++;
   }
 
@@ -77,7 +133,10 @@ ShapefileReader.prototype.read = function() {
     yy: yy,
     partIds: partIds,
     shapeIds: shapeIds,
-    header: this.header
+    header: this.header,
+    maxPartFlags: maxPartFlags || null,
+    partBounds: partBounds || null,
+    holeFlags: holeFlags || null
   };
 };
 

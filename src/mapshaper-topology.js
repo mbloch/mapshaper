@@ -26,7 +26,8 @@ MapShaper.buildArcTopology = function(obj) {
       shapeIds = obj.shapeIds,
       pointCount = xx.length,
       partCount = partIds[pointCount-1] + 1,
-      shapeCount = shapeIds[shapeIds.length - 1] + 1;
+      shapeCount = shapeIds[shapeIds.length - 1] + 1,
+      maxPartFlags = obj.maxPartFlags || null;
 
   assert(pointCount > 0 && yy.length == pointCount && partIds.length == pointCount, "Mismatched array lengths");
   assert(shapeIds.length == partCount, "[buildArcTopology()] Size mismatch; shapeIds array should match partCount");
@@ -144,8 +145,12 @@ MapShaper.buildArcTopology = function(obj) {
     assert(numPoints > 0 && numPoints == yy.length, "[ArcTable] invalid vertex data.");
 
     var arcs = [],
+        sharedArcs = [],
         parts = [],
         currPartId = -1;
+
+    var maxPartSize,
+      maxPartId;
 
     // End the current arc
     // Receives id of end point
@@ -196,7 +201,7 @@ MapShaper.buildArcTopology = function(obj) {
     }
   
 
-    // Tries to start a new arc starting with point at @startId.
+    // Try to start a new arc starting with point at @startId.
     // Returns true if a new arc was started.
     // Returns false if the arc matches a previously identified arc or if
     //   the point otherwise does not begin a new arc.
@@ -216,14 +221,16 @@ MapShaper.buildArcTopology = function(obj) {
           y = yy[startId],
           key = hash(x, y),
           chainedArcId = hashTable[key],
-          newArcId = arcs.length;
+          matchId = -1,
+          arcId = arcs.length; // anticipating a new arc
 
       // Check to see if this point is the first point in an arc that matches a 
       //   previously found arc.
       while (chainedArcId != -1) {
         var prevArc = arcs[chainedArcId];
         if (checkMatch(startId, prevArc)) {
-          newArcId = -1 - chainedArcId;
+          matchId = chainedArcId;
+          arcId = -1 - chainedArcId;
           break;
         }
         chainedArcId = prevArc.chainedId;
@@ -233,40 +240,65 @@ MapShaper.buildArcTopology = function(obj) {
       // Add arc id to a topological part
       //
       if (partId !== currPartId) {
-        parts[partId] = [newArcId];
+        parts[partId] = [arcId];
         currPartId = partId;
       }
       else {
-        parts[partId].push(newArcId);
+        parts[partId].push(arcId);
       }
 
       // Start a new arc if we didn't find a matching arc in reversed sequence.
       //
-      if (newArcId >= 0) {
+      if (arcId >= 0) {
         buildingArc = true;
         arcStartId = startId;
+        sharedArcs[arcId] = 0;
         return true;
       } 
-      
+      sharedArcs[matchId] = 1;
       return false;
     };
 
     // Returns topological data for the entire dataset.
     //
     this.exportData = function() {
+
+      var arcMinPointCounts = new Uint8Array(arcs.length);
+      assert(sharedArcs.length == arcs.length, "[exportData()] Shared arc array doesn't match arc count.");
+      var sharedArcFlags = new Uint8Array(sharedArcs); // convert to typed array to reduce memory mgmt overhead.
+
       // Group topological shape-parts by shape
       var shapes = [];
       Utils.forEach(shapeIds, function(shapeId, partId) {
         var part = parts[partId];
+
+        // calculate minPointCount for each arc
+        // (for protecting largest part of each shape)
+        var partLen = part.length;
+        if (maxPartFlags[partId] == 1 && partLen <= 2) {
+          for (var i=0; i<part.length; i++) {
+            var arcId = part[i];
+            if (arcId < 1) arcId = -1 - arcId;
+            if (partLen == 1) { // one-arc polygon (e.g. island) -- save two interior points
+              arcMinPointCounts[arcId] = 2;
+            }
+            else if (sharedArcFlags[arcId] != 1) {
+              arcMinPointCounts[arcId] = 1; // non-shared member of two-arc polygon: save one point
+              // TODO: improve the logic here
+            }
+          }
+        }
+
+        // add part to shape
         if (shapeId >= shapes.length) {
-          shapes[shapeId] = [part];
+          shapes[shapeId] = [part]; // first part in a new shape
         } 
         else {
           shapes[shapeId].push(part);
         }
       });
 
-      return {shapes: shapes, arcs:arcs};
+      return {shapes: shapes, arcs:arcs, arcMinPointCounts: arcMinPointCounts, sharedArcFlags: sharedArcFlags};
     };
 
   }
