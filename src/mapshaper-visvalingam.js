@@ -2,22 +2,6 @@
 
 var Visvalingam = {};
 
-Utils.arrayCompare = function(a, b) {
-  if(a.length != b.length) {
-    trace("Mismatched len:", a.length, b.length);
-    return;
-  }
-
-  for (var i=0; i<a.length; i++) {
-    if (a[i] != b[i]) {
-      trace( "Mismatch at", i, "--", a[i], b[i]);
-      return false;
-    }
-  }
-  return true;
-}
-
-
 Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   var bufLen = 0,
       heap = new VisvalingamHeap(),
@@ -146,19 +130,6 @@ function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
 }
 
 
-// Calc angle in radians given three coordinates with (bx,by) at the vertex.
-// atan2() very slow; replaced by a faster formula 
-/*
-function innerAngle_v1(ax, ay, bx, by, cx, cy) {
-  var a1 = Math.atan2(ay - by, ax - bx),
-      a2 = Math.atan2(cy - by, cx - bx),
-      a3 = Math.abs(a1 - a2);
-  if (a3 > Math.PI) {
-    a3 = 2 * Math.PI - a3;
-  }
-  return a3;
-}
-*/
 
 function distance3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
@@ -168,10 +139,26 @@ function distance3D(ax, ay, az, bx, by, bz) {
 }
 
 
+// Calc angle in radians given three coordinates with (bx,by) at the vertex.
+// atan2() relatively slow; replaced by ~2x faster formula 
+//
+/*
+function innerAngle_slow(ax, ay, bx, by, cx, cy) {
+  var a1 = Math.atan2(ay - by, ax - bx),
+      a2 = Math.atan2(cy - by, cx - bx),
+      a3 = Math.abs(a1 - a2);
+      a3 = a2 - a1
+  if (a3 > Math.PI) {
+    a3 = 2 * Math.PI - a3;
+  }
+  return a3;
+}
+*/
+
 function innerAngle(ax, ay, bx, by, cx, cy) {
   var ab = Point.distance(ax, ay, bx, by),
       bc = Point.distance(bx, by, cx, cy),
-      dp = (ax - bx) * (cx - bx) + (ay - by) * (cy - by) / (ab * bc);
+      dp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / (ab * bc);
       theta = dp >= 1 ? 0 : Math.acos(dp); // handle rounding error.
   return theta;
 }
