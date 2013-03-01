@@ -1,9 +1,6 @@
-.svn
-.DS_Store
+*.DS_Store
 *.py[oc]
 __*
-node_modules/sax
 *.sublime-project
 *.sublime-workspace
-*.log
 */.git

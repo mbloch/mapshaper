@@ -140,7 +140,7 @@ function distance3D(ax, ay, az, bx, by, bz) {
 
 
 // Calc angle in radians given three coordinates with (bx,by) at the vertex.
-// atan2() relatively slow; replaced by ~2x faster formula 
+// atan2() makes this function relatively slow, replaced by ~2x faster formula 
 //
 /*
 function innerAngle_slow(ax, ay, bx, by, cx, cy) {
@@ -376,7 +376,6 @@ function VisvalingamHeap() {
     if (itemsInHeap <= 0) error("Tried to pop from an empty heap.");
     if (poppedVal === -Infinity) {
       if (itemsInHeap != maxItems) error("pop() called before heap is populated.");
-      // trace(indexArr.subarray(1, itemsInHeap + 1));
     }
     // get min-val item from top of heap...
     var minIdx = heapArr[0],

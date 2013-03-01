@@ -217,6 +217,7 @@ MapShaper.importFromFile = function(fname) {
   return MapShaper.importShpFromBuffer(Node.readFile(fname));
 };
 
+
 // assumes Shapefile, TopoJSON or GeoJSON
 //
 MapShaper.importFromStream = function(sname) {
