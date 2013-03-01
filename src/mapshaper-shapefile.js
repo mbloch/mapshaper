@@ -13,7 +13,7 @@ ShapefileReader.prototype.read = function() {
       shapeCount = 0;
 
   var rememberBounds = false,
-      rememberHoles = false,
+      rememberHoles = true,
       rememberMaxParts = true;
 
   bin.position(100); // skip to the shape data section
@@ -116,15 +116,18 @@ ShapefileReader.prototype.read = function() {
         partBounds[boundId++] = maxy;
       }
 
-      /*
-        TODO: if rememberHoles == true, flag each hole
-        (only need to check shapes w/ >1 parts)
-      */
+
+      if (rememberHoles) {
+        var isHole = partsInShape > 1 && !mshpRingIsClockwise(xx, yy,  pointId - partSize, partSize);
+        holeFlags = isHole ? 1 : 0;
+      }
+
       partId++;
     }
 
     shapeId++;
   }
+
 
   this.header.pointCount = pointCount;
   return {

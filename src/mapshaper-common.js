@@ -307,3 +307,48 @@ MapShaper.convertTopoShape = function(shape, arcs) {
 
   return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
 };
+
+
+
+function mshpBendAngle(ax, ay, bx, by, cx, cy) {
+  var theta = innerAngle(ax, ay, bx, by, cx, cy),
+      cp = ((bx - ax) * (cy - by) - (by - ay) * (cx - bx)),
+      bend = cp < 0 ? Math.PI - theta : theta - Math.PI;
+
+  if (bend > Math.PI) {
+    bend = bend - 2 * Math.PI;
+  } else if (bend < -Math.PI) {
+    bend = 2 * Math.PI + bend;
+  }
+
+  return bend;
+}
+
+
+function mshpRingIsClockwise(xx, yy, startId, len) {
+  var endId = startId + len - 1;
+  if (startId < 0 || endId >= xx.length) error("[mshpRingIsClockwise()] Out-of-bounds section");
+
+  var cumAngle = 0,
+    bx = xx[startId],
+    by = yy[startId],
+    cx = xx[startId + 1],
+    cy = yy[startId + 1],
+    x2 = cx,
+    y2 = cy,
+    ax, ay, angle;
+
+  for (var i=startId + 2; i<=endId; i++) {
+    ax = bx;
+    ay = by;
+    bx = cx;
+    by = cy;
+    cx = xx[i],
+    cy = yy[i];
+    angle = mshpBendAngle(ax, ay, bx, by, cx, cy);
+    cumAngle += angle;
+  }
+  // wraparound
+  cumAngle += mshpBendAngle(bx, by, cx, cy, x2, y2);
+  return cumAngle > 0;
+}
