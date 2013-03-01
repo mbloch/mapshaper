@@ -119,7 +119,7 @@ ShapefileReader.prototype.read = function() {
 
       if (rememberHoles) {
         var isHole = partsInShape > 1 && !mshpRingIsClockwise(xx, yy,  pointId - partSize, partSize);
-        holeFlags = isHole ? 1 : 0;
+        holeFlags[partId] = isHole ? 1 : 0;
       }
 
       partId++;
