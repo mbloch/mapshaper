@@ -24,9 +24,9 @@ var usage = ""
   + "Usage: mapshaper [options] file\n\n"
   + "Examples:\n\n"
   + "# Use Douglas-Peucker to remove all but 10% of points in a Shapefile.\n"
-  + "$ mapshaper -m dp -p 0.1 counties.shp\n\n"
+  + "$ mapshaper --dp -p 0.1 counties.shp\n\n"
   + "# Use Visvalingam to simplify an unprojected Shapefile to 1km resolution.\n"
-  + "$ mapshaper -u -i 1000 -m v states.shp "
+  + "$ mapshaper --vis -i 1000 -u states.shp "
 
 var opts = optimist
   .usage(usage)
@@ -38,14 +38,28 @@ var opts = optimist
     alias: "help",
     describe: "show usage and options",
     'boolean': true
-  }) 
+  })
+
+  .options("dp", {
+    describe: "Use Douglas-Peucker to simplify",
+    'boolean': true
+  })
+
+  .options("vis", {
+    describe: "Use Visvalingam to simplify",
+    'boolean': true
+  })
+
+  .options("mod", {
+    describe: "Use modified Visvalingam (default)",
+    'boolean': true
+  })
 
   /*
   .options("o", {
     describe: "name of output file (with or without suffix)",
   })
   */
-
   .options("p", {
     alias: "pct",
     describe: "proportion of points to retain (0-1)"
@@ -62,15 +76,23 @@ var opts = optimist
     describe: "shapefile|geojson (defaults to input format)",
   })
 
+  /*
   .options("m", {
     alias: "method",
     describe: "simplification method (dp|v|m)",
     default: "m"
   })
+  */
 
   .options("u", {
     alias: "unprojected",
     describe: "simplification uses 3D distance in meters",
+    'boolean': true
+  })
+
+  .options("k", {
+    alias: "keep-shapes",
+    describe: "prevent small shapes from disappearing",
     'boolean': true
   })
 
@@ -80,11 +102,6 @@ var opts = optimist
     'boolean': true
   }) 
 
-  .options("k", {
-    alias: "keep-shapes",
-    describe: "prevent small shapes from disappearing",
-    'boolean': true
-  })
 
   /* // TODO
   // prevent points along straight lines from being stripped away, to allow reprojection
@@ -153,13 +170,16 @@ var opts = optimist
     // validate pct retained
     opts.p = opts.p || 1;
     assert(opts.p > 0 && opts.p <= 1, "-p (--pct) option should be in the range (0,1]");
-
-    // validate simplification method
-    assert(Utils.contains(['dp', 'v', 'm'], opts.m), "Unsupported simplification method:", opts.m);
   })
   .argv;
 
 var simplifyOn = opts.i > 0 || opts.p < 1;
+var method = "mod"; // default method
+if (opts.dp) {
+  method = "dp";
+} else if (opts.vis) {
+  method = "vis";
+}
 
 if (opts.f) {
   ofileInfo.type = opts.f;
@@ -202,22 +222,22 @@ if (simplifyOn) {
     spherical: !!opts.u
   };
 
-  if (opts.m == 'dp') {
+  if (method == 'dp') {
     calculator = m.DouglasPeucker.calcArcData;
     simplifiedArcs =MapShaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
-  else if (opts.m == 'v') {
+  else if (method == 'vis') {
     var intervalScale = 0.65; // TODO: tune this constant (linear scale when converting Visv. area metric to distance units);
     calculator = Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, intervalScale);
     simplifiedArcs = MapShaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
-  else if (opts.m == 'm') {
+  else if (method == 'mod') {
     intervalScale = 0.65 // TODO: tune this
     calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale);
     simplifiedArcs = MapShaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
   else {
-    error("Unknown method:", opts.m);
+    error("Unknown method:",method);
   }
   T.stop("Simplification complete");
 
