@@ -105,10 +105,8 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     return values;
   };
 
-
   return calcArcData;
 };
-
 
 
 
@@ -146,6 +144,7 @@ Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
 
 // A heap data structure used for computing Visvalingam simplification data.
 // 
+MapShaper.VisvalingamHeap = VisvalingamHeap; // export for testing
 function VisvalingamHeap() {
   var bufLen = 0,
       maxItems = 0,
