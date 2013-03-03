@@ -1,15 +1,20 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, core.geo, arrayutils */
 
 //
 //
 
-//
+// Strings
 // A simple json format for test data
 // Examples:
 //
 /*
 
-  [
+{
+  "polygons":[
+    "2,0 2,2 0,2 0,0 2,0"
+  ]
+
+}
     "2,0 2,2 0,2 0,0 2,0"
   ]
 
@@ -43,7 +48,7 @@ Testing.importTestData = function(obj) {
 
 
 
-Testing.importTestDataPolygons = function(arr) {
+Testing.parseStringData = function(arr) {
   var shapeIds = [],
       partIds = [],
       xx = [],
@@ -69,3 +74,27 @@ Testing.importTestDataPolygons = function(arr) {
   });
   return {shapeIds: shapeIds, partIds: partIds, xx: xx, yy: yy};
 };
+
+
+// Receive: array of array/s of points
+//
+//
+Testing.generateAsciiDiagram = function(lines) {
+  var labelIndex = {},
+      left = "//   ",
+      pre = "//\n",
+      post = "//\n",
+      MAX_LINE = "82";
+
+  // get extents
+  var bb = new BoundingBox();
+  Utils.forEach(lines, function(line) {
+    Utils.forEach(line, function(p) {
+      bb.mergePoint(p[0], p[1])
+    });
+  });
+
+  trace(bb);
+
+};
+

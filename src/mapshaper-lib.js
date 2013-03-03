@@ -1,7 +1,6 @@
-/* @requires browser, nodejs, mapshaper-topology, mapshaper-dp, mapshaper-visvalingam, mapshaper-shapefile, mapshaper-geojson, mapshaper-topojson */
+/* @requires core, nodejs, mapshaper-* */
 
-var api = {
-  MapShaper: MapShaper,
+var api = Opts.copyAllParams(MapShaper, {
   Node: Node,
   Utils: Utils,
   trace: trace,
@@ -11,7 +10,7 @@ var api = {
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam
-};
+});
 
 if (Node.inNode) {
   module.exports = api;
