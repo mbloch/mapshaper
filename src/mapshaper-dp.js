@@ -1,4 +1,4 @@
-/* @requires arrayutils, mapshaper-common */
+/* @requires arrayutils, mapshaper-common, mapshaper-geom */
 
 var DouglasPeucker = {};
 
@@ -6,101 +6,13 @@ DouglasPeucker.simplifyArcs = function(arcs, opts) {
   return MapShaper.simplifyArcs(arcs, DouglasPeucker.calcArcData, opts);
 }
 
-/*
-DouglasPeucker.simplifyArcs = function(arcs, opts) {
-  if (opts && opts.spherical) {
-    return DouglasPeucker.simplifyArcsSph(arcs);
-  }
-  var data = Utils.map(arcs, function(arc) {
-    return DouglasPeucker.calcArcData(arc[0], arc[1]);
-  });
-
-  return data;
-};
-
-DouglasPeucker.simplifyArcsSph = function(arcs) {
-  var bufSize = 0,
-      xbuf, ybuf, zbuf;
-
-  var data = Utils.map(arcs, function(arc) {
-    var arcLen = arc[0].length;
-    if (bufSize < arcLen) {
-      bufSize = Math.round(arcLen * 1.2);
-      xbuf = new Float64Array(bufSize);
-      ybuf = new Float64Array(bufSize);
-      zbuf = new Float64Array(bufSize);
-    }
-
-    DouglasPeucker.calcXYZ(arc[0], arc[1], xbuf, ybuf, zbuf);
-    var arr = DouglasPeucker.calcArcData(xbuf, ybuf, zbuf, arcLen);
-    //var arr = DouglasPeucker.calcArcData(xbuf.subarray(0, arcLen), ybuf.subarray(0, arcLen), zbuf.subarray(0, arcLen));
-    return arr;
-  });
-  return data;
-};
-
-// Convert arrays of lng and lat coords (xsrc, ysrc) into 
-// x, y, z coords on the surface of a sphere with radius == 1
-//
-DouglasPeucker.calcXYZ = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
-  var deg2rad = Math.PI / 180;
-  for (var i=0, len=xsrc.length; i<len; i++) {
-    var theta = xsrc[i] * deg2rad,
-        lat = ysrc[i],
-        phi = (lat > 0 ? 90 - lat : -90 - lat) * deg2rad;
-        sinPhi = Math.sin(phi);
-
-    xbuf[i] = sinPhi * Math.cos(theta);
-    ybuf[i] = sinPhi * Math.sin(theta);
-    zbuf[i] = Math.cos(phi);
-  }
-}
-*/
-
-// Given a triangle with vertices abc, return the distSq of the shortest segment
-//   with one endpoint at b and the other on the line intersecting a and c.
-//   If a and c are coincident, return the distSq between b and a/c
-//
-// Receive the distSq of the triangle's three sides.
-//
-DouglasPeucker.getTriangleHeightSq = function(ab2, bc2, ac2) {
-  var dist2;
-  if (ac2 == 0.0) {
-    dist2 = ab2;
-  } else if (ab2 >= bc2 + ac2) {
-    dist2 = bc2;
-  } else if (bc2 >= ab2 + ac2) {
-    dist2 = ab2;
-  } else {
-    var dval = (ab2 + ac2 - bc2);
-    dist2 = ab2 -  dval * dval / ac2  * 0.25;
-  }
-  if (dist2 < 0.0) {
-    dist2 = 0.0;
-  }
-  return dist2;
-};
-
-
-function distanceSq(ax, ay, bx, by) {
-  var dx = ax - bx,
-      dy = ay - by;
-  return dx * dx + dy * dy;
-}
-
-function distanceSq3D(ax, ay, az, bx, by, bz) {
-  var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
-  return dx * dx + dy * dy + dz * dz;
-}
 
 
 DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
       ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
       bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
-  return DouglasPeucker.getTriangleHeightSq(ab2, bc2, ac2);
+  return triangleHeightSq(ab2, bc2, ac2);
 };
 
 
@@ -108,7 +20,7 @@ DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
   var ab2 = distanceSq(ax, ay, bx, by),
       ac2 = distanceSq(ax, ay, cx, cy),
       bc2 = distanceSq(bx, by, cx, cy);
-  return DouglasPeucker.getTriangleHeightSq(ab2, bc2, ac2);
+  return triangleHeightSq(ab2, bc2, ac2);
 };
 
 

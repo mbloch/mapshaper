@@ -15,6 +15,21 @@ function distance3D(ax, ay, az, bx, by, bz) {
 }
 
 
+function distanceSq(ax, ay, bx, by) {
+  var dx = ax - bx,
+      dy = ay - by;
+  return dx * dx + dy * dy;
+}
+
+
+function distanceSq3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+
 // Calc angle in radians given three coordinates with (bx,by) at the vertex.
 // atan2() makes this function fairly slow, replaced by ~2x faster formula 
 //
@@ -82,6 +97,32 @@ function bendAngle(ax, ay, bx, by, cx, cy) {
   }
   return bend;
 }
+
+
+// Given a triangle with vertices abc, return the distSq of the shortest segment
+//   with one endpoint at b and the other on the line intersecting a and c.
+//   If a and c are coincident, return the distSq between b and a/c
+//
+// Receive the distSq of the triangle's three sides.
+//
+function triangleHeightSq(ab2, bc2, ac2) {
+  var dist2;
+  if (ac2 == 0.0) {
+    dist2 = ab2;
+  } else if (ab2 >= bc2 + ac2) {
+    dist2 = bc2;
+  } else if (bc2 >= ab2 + ac2) {
+    dist2 = ab2;
+  } else {
+    var dval = (ab2 + ac2 - bc2);
+    dist2 = ab2 -  dval * dval / ac2  * 0.25;
+  }
+  if (dist2 < 0.0) {
+    dist2 = 0.0;
+  }
+  return dist2;
+};
+
 
 
 function msRingArea(xx, yy, start, len) {
