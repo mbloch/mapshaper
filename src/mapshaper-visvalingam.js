@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, core.geo */
+/* @requires mapshaper-common, mapshaper-geom, core.geo */
 
 var Visvalingam = {};
 
@@ -24,9 +24,11 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
       nextArr = new Int32Array(bufLen);
     }
 
-    heap.init(arcLen-2); // Initialize the heap with room for the arc's internal coordinates.
+    // Initialize the heap with room for the arc's internal coordinates.
+    heap.init(arcLen-2);
 
-    // Initialize Visvalingam "effective area" values and references to prev/next points for each point in arc.
+    // Initialize Visvalingam "effective area" values and references to 
+    //   prev/next points for each point in arc.
     //
     for (var i=1; i<arcLen-1; i++) {
       ax = xx[i-1];
@@ -108,69 +110,6 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
 };
 
 
-// Calc area of triangle from three points
-//
-function triangleArea(ax, ay, bx, by, cx, cy) {
-  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
-  return area;
-}
-
-//
-//
-function detSq(ax, ay, bx, by, cx, cy) {
-  var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
-  return det * det;
-}
-
-// Calc area of 3D triangle from three points
-//
-function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) + detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
-  return area;
-}
-
-
-
-function distance3D(ax, ay, az, bx, by, bz) {
-  var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-
-// Calc angle in radians given three coordinates with (bx,by) at the vertex.
-// atan2() makes this function relatively slow, replaced by ~2x faster formula 
-//
-/*
-function innerAngle_slow(ax, ay, bx, by, cx, cy) {
-  var a1 = Math.atan2(ay - by, ax - bx),
-      a2 = Math.atan2(cy - by, cx - bx),
-      a3 = Math.abs(a1 - a2);
-      a3 = a2 - a1
-  if (a3 > Math.PI) {
-    a3 = 2 * Math.PI - a3;
-  }
-  return a3;
-}
-*/
-
-function innerAngle(ax, ay, bx, by, cx, cy) {
-  var ab = Point.distance(ax, ay, bx, by),
-      bc = Point.distance(bx, by, cx, cy),
-      dp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / (ab * bc);
-      theta = dp >= 1 ? 0 : Math.acos(dp); // handle rounding error.
-  return theta;
-}
-
-
-function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var ab = distance3D(ax, ay, az, bx, by, bz);
-  var bc = distance3D(bx, by, bz, cx, cy, cz);
-  var dp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
-  var theta = dp >= 1 ? 0 : Math.acos(dp);
-  return theta;
-}
 
 
 // The original mapshaper "modified Visvalingam" function uses a step function to 
@@ -278,7 +217,8 @@ function VisvalingamHeap() {
     }
     var valIdx = heapArr[heapIdx];
     var val = valueArr[valIdx];
-    assert(parentVal <= val, "[checkNode()] heap is out-of-order at idx:", heapIdx, "-- parentVal:", parentVal, "nodeVal:", val);
+    if (parentVal > val)
+      error("[checkNode()] heap is out-of-order at idx:", heapIdx, "-- parentVal:", parentVal, "nodeVal:", val);
     var childIdx = heapIdx * 2 + 1;
     checkNode(childIdx, val);
     checkNode(childIdx + 1, val);

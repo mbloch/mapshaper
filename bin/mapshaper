@@ -1,7 +1,10 @@
 #!/usr/bin/env node --nouse_idle_notification --expose_gc
-// Running node with manual gc seems to prevent a slowdown
-// during file input that happens occasionally.
-// gc() calls should be added if this is enabled.
+//
+// Running node with --nouse_idle-notification can improve performance significantly
+// with large files. TODO: test that this is still true, since using fewer Arrays
+// The gc() calls below are supposed to collect temp. objects from the previous
+//   processing stage. Timing gc() gives an indication of overhead from memory management.
+//
 
 var optimist = require("optimist"),
     mapshaper = require("../");
@@ -10,7 +13,7 @@ var m = mapshaper,
     trace = m.trace,
     assert = m.assert,
     error = m.error,
-    MapShaper = m.MapShaper,
+    MapShaper = m,
     Visvalingam = m.Visvalingam,
     Node = m.Node,
     Utils = m.Utils,
@@ -19,7 +22,6 @@ var m = mapshaper,
 var ifile, ifileInfo, ofileInfo = {};
 
 var usage = ""
-  // + "Usage: mapshaper [options] [file(.shp|.json)]\n\n"
   + "mapshaper is a tool for simplifying polygon Shapefiles.\n\n"
   + "Usage: mapshaper [options] file\n\n"
   + "Examples:\n\n"
@@ -30,9 +32,6 @@ var usage = ""
 
 var opts = optimist
   .usage(usage)
-
-  // 
-  //.boolean(['h', 't', 'l'])
 
   .options("h", {
     alias: "help",
@@ -70,19 +69,10 @@ var opts = optimist
     describe: "degree of simplification in units of distance"
   })
 
-  // TODO: add topojson and kml formats
   .options("f", {
     alias: "o-format",
     describe: "shapefile|geojson (defaults to input format)",
   })
-
-  /*
-  .options("m", {
-    alias: "method",
-    describe: "simplification method (dp|v|m)",
-    default: "m"
-  })
-  */
 
   .options("u", {
     alias: "unprojected",
@@ -209,8 +199,7 @@ importData = null; // don't need this anymore, gc can take it.
 
 T.start();
 Node.gc();
-T.stop("gc1");
-// process.exit();
+T.stop("gc()");
 
 if (simplifyOn) {
   T.start();
@@ -243,7 +232,7 @@ if (simplifyOn) {
 
   T.start();
   Node.gc();
-  T.stop("gc2");
+  T.stop("gc()");
 
   T.start();
   var thinningOpts = {
@@ -259,7 +248,7 @@ if (simplifyOn) {
 
 T.start();
 Node.gc();
-T.stop("gc3");
+T.stop("gc()");
 
 
 // OUTPUT FILE

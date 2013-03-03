@@ -7,11 +7,12 @@
 	"contributors":[],
 	"repository": {
 		"type": "git",
-		"url": "http://github.com/mbloch/mapshaperjs"
+		"url": "http://github.com/mbloch/mapshaper"
 	},
 	"main": "./lib/mapshaper-lib-bundle.js",
 	"dependencies": {
-		"optimist": "0.3.x"
+		"optimist": "0.3.x",
+		"mocha": "1.8.x"
 	},
 	"bundledDependencies": [
 		"optimist"

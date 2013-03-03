@@ -118,8 +118,9 @@ ShapefileReader.prototype.read = function() {
 
 
       if (rememberHoles) {
-        var isHole = partsInShape > 1 && !mshpRingIsClockwise(xx, yy,  pointId - partSize, partSize);
-        holeFlags[partId] = isHole ? 1 : 0;
+        var direction = msRingDirection(xx, yy,  pointId - partSize, partSize);
+        if (direction == 0 || direction == -1 && partSize == 1) error("Collapsed or otherwise invalid ring.");
+        holeFlags[partId] = direction == -1 ? 1 : 0;
       }
 
       partId++;
