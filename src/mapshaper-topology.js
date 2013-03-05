@@ -50,6 +50,7 @@ MapShaper.buildArcTopology = function(obj) {
 
   for (var i=0; i < pointCount; i++) {
     if (pointIsArcEndpoint(i)) {
+
       // If we're in an arc, then end it.
       if (inArc) {
         if (partIds[i] !== partIds[i-1]) error("Encountered a new ring while building an arc; i:", i, "partId:", partId);
@@ -77,6 +78,7 @@ MapShaper.buildArcTopology = function(obj) {
         y = yy[id],    
         partId = partIds[id],
         isPartEndpoint = partId !== partIds[id-1] || partId !== partIds[id+1];
+    // trace("partIsArcEndpoint()", id, "x, y:", x, y);
 
     if (isPartEndpoint) {
       // case -- if point is endpoint of a non-topological ring, then point is a node.
@@ -134,9 +136,10 @@ MapShaper.buildArcTopology = function(obj) {
   //
   function ArcTable(xx, yy, bb) {
     var numPoints = xx.length,
-        hashTableSize = Math.round(numPoints * 0.3),
+        hashTableSize = Math.round(numPoints * 0.2),
         hash = MapShaper.getXYHashFunction(bb, hashTableSize),
-        hashTable = new Int32Array(hashTableSize);
+        hashTable = new Int32Array(hashTableSize),
+        typedArrays = !!xx.subarray;
 
     var buildingArc = false,
         arcStartId = -1;
@@ -145,6 +148,7 @@ MapShaper.buildArcTopology = function(obj) {
     assert(numPoints > 0 && numPoints == yy.length, "[ArcTable] invalid vertex data.");
 
     var arcs = [],
+        chainIds = [],
         sharedArcs = [],
         parts = [],
         currPartId = -1;
@@ -164,8 +168,15 @@ MapShaper.buildArcTopology = function(obj) {
       //   topology time from >26s to ~17s, subsequent processing much faster.
       //   Negligible improvement on smaller files.
       //
-      var xarr = xx.subarray(arcStartId, endId + 1),
-          yarr = yy.subarray(arcStartId, endId + 1);
+      var xarr, yarr, lim = endId + 1;
+          if (typedArrays) {
+            xarr = xx.subarray(arcStartId, lim),
+            yarr = yy.subarray(arcStartId, lim);
+          } else {
+            xarr = xx.slice(arcStartId, lim),
+            yarr = yy.slice(arcStartId, lim);
+          }
+          
       var arc = [xarr, yarr];
 
       // Hash the last point in the arc, so this new arc can be found when we
@@ -173,21 +184,21 @@ MapShaper.buildArcTopology = function(obj) {
       var x = xx[endId],
           y = yy[endId],
           key = hash(x, y),
+          chainId = hashTable[key],
           arcId = arcs.length;
-        if (hashTable[key] != -1) {
-        arc.chainedId = hashTable[key];
-      } 
-      else {
-        arc.chainedId = -1;
-      }
+
       hashTable[key] = arcId;
 
+      // arc.chainedId = chainedId;
+      // pushing chained id onto array instead of 
+      // adding as property of arc Array
+      chainIds.push(chainId);
       arcs.push(arc);
       buildingArc = false;
       arcStartId = -1;
     };
 
-    // Tests whether the sequence of points starting with a given point id matches
+    // Tests whether the sequence of points starting with point @id matches
     //   the reverse-ordered coordinates of an arc.
     //
     function checkMatch(id, arc) {
@@ -227,13 +238,14 @@ MapShaper.buildArcTopology = function(obj) {
       // Check to see if this point is the first point in an arc that matches a 
       //   previously found arc.
       while (chainedArcId != -1) {
-        var prevArc = arcs[chainedArcId];
-        if (checkMatch(startId, prevArc)) {
+        var chainedArc = arcs[chainedArcId];
+        if (checkMatch(startId, chainedArc)) {
           matchId = chainedArcId;
           arcId = -1 - chainedArcId;
           break;
         }
-        chainedArcId = prevArc.chainedId;
+        //chainedArcId = prevArc.chainedId;
+        chainedArcId = chainIds[chainedArcId];
         // if (chainedArcId == null) error("Arc is missing valid chain id")
       }
 
@@ -263,37 +275,46 @@ MapShaper.buildArcTopology = function(obj) {
     //
     this.exportData = function() {
 
-      var arcMinPointCounts = new Uint8Array(arcs.length);
-      assert(sharedArcs.length == arcs.length, "[exportData()] Shared arc array doesn't match arc count.");
+      // export shared-arc flags
+      if (sharedArcs.length !== arcs.length) error("Shared arc array doesn't match arc count");
       var sharedArcFlags = new Uint8Array(sharedArcs); // convert to typed array to reduce memory mgmt overhead.
+
+      // export retained point data for preventing null shapes
+      //
+      var arcMinPointCounts = null;
+      if (!!maxPartFlags) {
+        var arcMinPointCounts = new Uint8Array(arcs.length);
+        Utils.forEach(parts, function(part, partId) {
+          // calculate minPointCount for each arc
+          // (to protect largest part of each shape from collapsing)
+          var partLen = part.length;
+
+          // if a part has 3 or more arcs, assume it won't collapse...
+          // TODO: look into edge cases where this isn't true
+
+          if (maxPartFlags[partId] == 1 && partLen <= 2) { 
+            for (var i=0; i<partLen; i++) {
+              var arcId = part[i];
+              if (arcId < 1) arcId = -1 - arcId;
+              if (partLen == 1) { // one-arc polygon (e.g. island) -- save two interior points
+                arcMinPointCounts[arcId] = 2;
+              }
+              else if (sharedArcFlags[arcId] != 1) {
+                arcMinPointCounts[arcId] = 1; // non-shared member of two-arc polygon: save one point
+                // TODO: improve the logic here
+              }
+            }
+          }
+        });
+      }
 
       // Group topological shape-parts by shape
       var shapes = [];
-      Utils.forEach(shapeIds, function(shapeId, partId) {
-        var part = parts[partId];
-
-        // calculate minPointCount for each arc
-        // (for protecting largest part of each shape)
-        var partLen = part.length;
-        if (maxPartFlags[partId] == 1 && partLen <= 2) {
-          for (var i=0; i<part.length; i++) {
-            var arcId = part[i];
-            if (arcId < 1) arcId = -1 - arcId;
-            if (partLen == 1) { // one-arc polygon (e.g. island) -- save two interior points
-              arcMinPointCounts[arcId] = 2;
-            }
-            else if (sharedArcFlags[arcId] != 1) {
-              arcMinPointCounts[arcId] = 1; // non-shared member of two-arc polygon: save one point
-              // TODO: improve the logic here
-            }
-          }
-        }
-
-        // add part to shape
+      Utils.forEach(parts, function(part, partId) {
+        var shapeId = shapeIds[partId];
         if (shapeId >= shapes.length) {
           shapes[shapeId] = [part]; // first part in a new shape
-        } 
-        else {
+        } else {
           shapes[shapeId].push(part);
         }
       });
@@ -307,17 +328,25 @@ MapShaper.buildArcTopology = function(obj) {
 
 // Generates a hash function to convert an x,y coordinate into an index in a 
 //   hash table.
-// @bb A BoundingBox giving the extent of the dataset.
+// @bbox A BoundingBox giving the extent of the dataset.
 //
-MapShaper.getXYHashFunction = function(bb, hashTableSize) {
-  assert(bb.hasBounds() && hashTableSize > 0, "Invalid hash function parameters; bbox:", bb, "table size:", hashTableSize);
-  var kx = hashTableSize * 171 / bb.width(),
-      ky = hashTableSize * 30269 / bb.height(),
-      bx = -bb.left,
-      by = -bb.bottom;
+MapShaper.getXYHashFunction = function(bbox, hashTableSize) {
+  hashTableSize |= 0;
+  if (!bbox.hasBounds() || hashTableSize <= 0) error("Invalid hash function parameters; bbox:", bb, "table size:", hashTableSize);
+  var mask = (1 << 29) - 1,
+      // transform coords to integer range and scramble bits a bit
+      kx = (1e8 * Math.E / bbox.width()),
+      ky = (1e8 * Math.PI / bbox.height()),
+      bx = bbox.left,
+      by = bbox.bottom;
 
   return function(x, y) {
-    var key = (((x + bx) * kx + (y + by) * ky) % hashTableSize) | 0;
+    // scramble bits some more
+    var key = x * kx + bx;
+    key ^= y * ky + by;
+    // key ^= Math.PI * 1e9;
+    key &= 0x7fffffff; // mask as positive integer
+    key %= hashTableSize; // TODO: test if power-of-2 table size is faster...
     return key;
   };
 };
@@ -327,8 +356,8 @@ MapShaper.getXYHashFunction = function(bb, hashTableSize) {
 //
 MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
   var pointCount = xx.length,
-      hashTableSize = Math.floor(pointCount * 1.5);
-  // hash table larger than 1.5 * point count doesn't improve performance much.
+      hashTableSize = Math.floor(pointCount * 1.6);
+  // hash table larger than ~1.5 * point count doesn't improve performance much.
 
   // Hash table for coordinates; contains the id of the first point in each chain, indexed by hash key
   var hashChainIds = new Int32Array(hashTableSize);
