@@ -17,3 +17,5 @@ if (Node.inNode) {
 } else {
   Opts.extendNamespace("mapshaper", api);
 }
+
+T.verbose = false; // timing messages off by default (e.g. for testing)
