@@ -85,7 +85,7 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
   if (ysrc.length != srcLen || uu.length != srcLen || srcLen < 2) error("[thinArcByThreshold()] Invalid arc data");
 
   for (var i=0; i<srcLen; i++) {
-    if (uu[i] >= interval) {
+    if (uu[i] > interval) {
       xdest.push(xsrc[i]);
       ydest.push(ysrc[i]);
     }
@@ -129,22 +129,20 @@ MapShaper.thinArcsByInterval = function(arcs, thresholds, interval, opts) {
 
 // Convert arrays of lng and lat coords (xsrc, ysrc) into 
 // x, y, z coords on the surface of a sphere with radius 6378137
-// (the radius of Earth sphere in meters)
+// (the radius of spherical Earth datum in meters)
 //
-MapShaper.convLngLatToXYZ = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
+MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
   var deg2rad = Math.PI / 180,
       r = 6378137;
   for (var i=0, len=xsrc.length; i<len; i++) {
-    var theta = xsrc[i] * deg2rad,
-        lat = ysrc[i],
-        phi = (lat > 0 ? 90 - lat : -90 - lat) * deg2rad;
-        sinPhi = Math.sin(phi);
-    xbuf[i] = sinPhi * Math.cos(theta) * r;
-    ybuf[i] = sinPhi * Math.sin(theta) * r;
-    zbuf[i] = Math.cos(phi) * r;
+    var lng = xsrc[i] * deg2rad,
+        lat = ysrc[i] * deg2rad,
+        cosLat = Math.cos(lat);
+    xbuf[i] = Math.cos(lng) * cosLat * r;
+    ybuf[i] = Math.sin(lng) * cosLat * r;
+    zbuf[i] = Math.sin(lat) * r;
   }
 }
-
 
 // Apply a simplification function to each arc in an array, return simplified arcs.
 // 
@@ -175,7 +173,7 @@ MapShaper.simplifyArcsSph = function(arcs, simplify) {
       zbuf = new Float64Array(bufSize);
     }
 
-    MapShaper.convLngLatToXYZ(arc[0], arc[1], xbuf, ybuf, zbuf);
+    MapShaper.convLngLatToSph(arc[0], arc[1], xbuf, ybuf, zbuf);
     return simplify(xbuf, ybuf, zbuf, arcLen);
   });
   return data;
