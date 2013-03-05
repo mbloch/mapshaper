@@ -4,35 +4,34 @@ var assert = require('assert'),
 
 describe("mapshaper-geom.js", function() {
 
-  describe("bendAngle()", function() {
+  describe("innerAngle()", function() {
 
-    it("returns 0 if points form a line", function() {
-      assert.equal(geom.bendAngle(0, 0, 0, 1, 0, 2, 0), 0);
-      assert.equal(geom.bendAngle(-1, 0, 0, 0, 1, 0), 0);
-      assert.equal(geom.bendAngle(1, 2, 2, 3, 3, 4), 0);
+    it("returns π if points form a line", function() {
+      assert.equal(geom.innerAngle(0, 0, 0, 1, 0, 2), Math.PI);
+      assert.equal(geom.innerAngle(-1, 0, 0, 0, 1, 0), Math.PI);
+      assert.equal(geom.innerAngle(1, 2, 2, 3, 3, 4), Math.PI);
     })
 
-    // TODO: this is an error condition, think about how to handle or avoid
     it("returns 0 if second segment doubles back", function() {
-      assert.equal(geom.bendAngle(0, 0, 0, 1, 0, -2), 0);
-      assert.equal(geom.bendAngle(1, 0, 0, -1, 2, 1), 0);
+      assert.equal(geom.innerAngle(0, 0, 0, 1, 0, -2), 0);
+      assert.equal(geom.innerAngle(1, 0, 0, -1, 2, 1), 0);
     })
 
     it("returns π/2 if abc bends right 90deg", function() {
-      assert.equal(geom.bendAngle(-1, 0, -1, 2, 3, 2), Math.PI/2);
+      assert.equal(geom.innerAngle(-1, 0, -1, 2, 3, 2), Math.PI/2);
     })
 
-    it("returns -π/2 if abc bends left 90deg", function() {
-      assert.equal(geom.bendAngle(1, 0, 1, 1, 0, 1), -Math.PI/2);
+    it("returns π/2 if abc bends left 90deg", function() {
+      assert.equal(geom.innerAngle(1, 0, 1, 1, 0, 1), Math.PI/2);
     })
 
     it("returns 0 if two adjacent points are the same", function() {
-      assert.equal(geom.bendAngle(3, 0, 3, 0, 4, 1), 0);
-      assert.equal(geom.bendAngle(3, 1, 2, 0, 2, 0), 0);
+      assert.equal(geom.innerAngle(3, 0, 3, 0, 4, 1), 0);
+      assert.equal(geom.innerAngle(3, 1, 2, 0, 2, 0), 0);
     })
 
     it("returns 0 if all points are the same", function() {
-      assert.equal(geom.bendAngle(0, -1, 0, -1, 0, -1), 0);
+      assert.equal(geom.innerAngle(0, -1, 0, -1, 0, -1), 0);
     })
 
   })

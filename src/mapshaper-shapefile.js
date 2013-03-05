@@ -13,7 +13,7 @@ ShapefileReader.prototype.read = function() {
       shapeCount = 0;
 
   var rememberBounds = false,
-      rememberHoles = true,
+      rememberHoles = true, // adds >10% to total script time, 
       rememberMaxParts = true;
 
   bin.position(100); // skip to the shape data section
@@ -49,10 +49,6 @@ ShapefileReader.prototype.read = function() {
   // Experimental: Adding arrays for part-level data: bounding boxes,
   //   ids of max part in each shape (for shape preservation)
   //
-  if (rememberBounds) {
-    var partBounds = new Float64Array(partCount * 4),
-        boundId = 0;
-  }
   if (rememberMaxParts) {
     var maxPartFlags = new Uint8Array(partCount);
   }
@@ -65,8 +61,7 @@ ShapefileReader.prototype.read = function() {
     partId = 0,
     shapeId = 0,
     dataView = bin.dataView(),
-    minx, miny, maxx, maxy,
-    maxPartId, partArea, maxPartArea;
+    signedPartArea, partArea, maxPartId, maxPartArea;
 
   for (var shpId=0; shpId < shapes.length; shpId++) {
     var shp = shapes[shpId];
@@ -74,22 +69,12 @@ ShapefileReader.prototype.read = function() {
     var partsInShape = shp.partCount;
     for (var i=0; i<partsInShape; i++) {
       shapeIds.push(shapeId);
+      partSize = shp.partSizes[i];
 
-      for (var j=0, partSize=shp.partSizes[i]; j<partSize; j++) {
-        // getFloat64() is a bottleneck (uses ~90% of time in this section)
+      for (var j=0; j<partSize; j++) {
         // DataView at least as fast as Buffer API in nodejs
         x = dataView.getFloat64(offs, true);
         y = dataView.getFloat64(offs + 8, true);
-        if (j == 0) {
-          minx = maxx = x;
-          miny = maxy = y;
-        }
-        else {
-          if (y < miny) miny = y;
-          else if (y > maxy) maxy = y;
-          if (x < minx) minx = x;
-          else if (x > maxx) maxx = x;
-        }
         xx[pointId] = x;
         yy[pointId] = y;
         offs += 16;
@@ -97,8 +82,10 @@ ShapefileReader.prototype.read = function() {
         pointId++;       
       }
 
+      signedPartArea = msSignedRingArea(xx, yy, pointId - partSize, partSize);
+
       if (rememberMaxParts) {
-        partArea = (maxx - minx) * (maxy - miny);
+        partArea = Math.abs(signedPartArea);
         if (i === 0 || partArea > maxPartArea) {
           if (i > 0) {
             maxPartFlags[maxPartId] = 0;
@@ -109,23 +96,12 @@ ShapefileReader.prototype.read = function() {
         }
       }
 
-      if (rememberBounds) {
-        partBounds[boundId++] = minx;
-        partBounds[boundId++] = miny;
-        partBounds[boundId++] = maxx;
-        partBounds[boundId++] = maxy;
-      }
-
-
       if (rememberHoles) {
-        var direction = msRingDirection(xx, yy,  pointId - partSize, partSize);
-        if (direction == 0 || direction == -1 && partSize == 1) error("Collapsed or otherwise invalid ring.");
-        holeFlags[partId] = direction == -1 ? 1 : 0;
+        if (signedPartArea == 0 || signedPartArea == -1 && partsInShape == 1) error("Collapsed or otherwise invalid ring.");
+        holeFlags[partId] = signedPartArea < 0 ? 1 : 0;
       }
-
       partId++;
     }
-
     shapeId++;
   }
 
@@ -138,7 +114,6 @@ ShapefileReader.prototype.read = function() {
     shapeIds: shapeIds,
     header: this.header,
     maxPartFlags: maxPartFlags || null,
-    partBounds: partBounds || null,
     holeFlags: holeFlags || null
   };
 };
