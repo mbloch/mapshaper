@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 
-var catty = require("./lib/catty-bundle.js");
-catty.addLibrary("src");
-catty.addLibrary("node_modules/js-basics");
-catty.bundleFile("src/mapshaper-lib.js", "lib/mapshaper-lib-bundle.js");
+var catty = require("./lib/catty-bundle.js")
+catty.addLibrary("src")
+catty.addLibrary("node_modules/js-basics")
+catty.bundleFile("src/mapshaper-lib.js", "lib/mapshaper-lib-bundle.js")
+
+/*
+if (target == "test") {
+	var spawn = require('child_process').spawn;
+	spawn("mocha", ["-R", "spec"], {stdio: "inherit"});
+} else {
+	console.log("Usage: $ build [-f] [mapshaper|test]")
+}
+*/
+

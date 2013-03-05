@@ -11,7 +11,9 @@
 	},
 	"main": "./lib/mapshaper-lib-bundle.js",
 	"dependencies": {
-		"optimist": "0.3.x",
+		"optimist": "0.3.x"
+	},
+	"devDependencies": {
 		"mocha": "1.8.x"
 	},
 	"bundledDependencies": [
