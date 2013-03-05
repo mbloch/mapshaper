@@ -334,19 +334,18 @@ MapShaper.getXYHashFunction = function(bbox, hashTableSize) {
   hashTableSize |= 0;
   if (!bbox.hasBounds() || hashTableSize <= 0) error("Invalid hash function parameters; bbox:", bb, "table size:", hashTableSize);
   var mask = (1 << 29) - 1,
-      // transform coords to integer range and scramble bits a bit
       kx = (1e8 * Math.E / bbox.width()),
       ky = (1e8 * Math.PI / bbox.height()),
-      bx = bbox.left,
-      by = bbox.bottom;
+      bx = -bbox.left,
+      by = -bbox.bottom;
 
   return function(x, y) {
-    // scramble bits some more
+    // transform coords to integer range and scramble bits a bit
     var key = x * kx + bx;
     key ^= y * ky + by;
     // key ^= Math.PI * 1e9;
     key &= 0x7fffffff; // mask as positive integer
-    key %= hashTableSize; // TODO: test if power-of-2 table size is faster...
+    key %= hashTableSize;
     return key;
   };
 };
