@@ -51,7 +51,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     }
 
     // Initialize the heap with thresholds; don't add first and last point
-    heap.addValues(valueArr, 1, arcLen-2);
+    heap.addValues(values, 1, arcLen-2);
 
     prevArr[arcLen-1] = arcLen - 2;
     nextArr[0] = 1;
