@@ -52,7 +52,6 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
 
     // Initialize the heap with thresholds; don't add first and last point
     heap.addValues(values, 1, arcLen-2);
-
     prevArr[arcLen-1] = arcLen - 2;
     nextArr[0] = 1;
 
@@ -65,7 +64,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
       // Remove the point with the least effective area.
       idx = heap.pop();
       if (idx < 1 || idx > arcLen - 2) {
-        error("Popped first or last arc vertex (error condition); idx:", idx, "len:", len);
+        error("Popped first or last arc vertex (error condition); idx:", idx, "len:", arcLen);
       }
 
       // Recompute effective area of neighbors of the removed point.
