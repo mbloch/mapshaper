@@ -126,7 +126,12 @@ function triangleHeightSq(ab2, bc2, ac2) {
 
 
 function msSignedRingArea(xx, yy, start, len) {
-  var sum = 0;
+  var sum = 0,
+      start = start || 0,
+      len = len == null ? xx.length : len;
+  if (xx[start] !== xx[len-1] || yy[start] !== yy[len-1]) {
+    return 0;
+  }
   for (var i=start, lim=start+len-1; i<lim; i++) {
     sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
   }
@@ -139,15 +144,6 @@ function msRingArea(xx, yy, start, len) {
 }
 
 
-function msRingDirection(xx, yy, start, len) {
-  var a = msSignedRingArea(xx, yy, start, len);
-  if (Math.abs(a) < 1e-14) {
-    return 0;
-  }
-  return a > 0 ? 1 : -1;
-}
-
-
 // export functions so they can be tested
 MapShaper.geom = {
   distance3D: distance3D,
@@ -157,5 +153,4 @@ MapShaper.geom = {
   triangleArea3D: triangleArea3D,
   msRingArea: msRingArea,
   msSignedRingArea: msSignedRingArea,
-  msRingDirection: msRingDirection
 };

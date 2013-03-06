@@ -36,59 +36,45 @@ describe("mapshaper-geom.js", function() {
 
   })
 
-/*
+
   describe("triangleArea()", function() {
 
     it("returns correct area if points form a CW triangle", function() {
-
+      assert.equal(geom.triangleArea(1, 3, 4, 1, 1, 1), 3);
     })
 
     it("returns correct area if points form a CCW triangle", function() {
-
+      assert.equal(geom.triangleArea(1, 1, 4, 1, 1, 3), 3);
     })
 
     it("returns 0 if triangle has collapsed", function() {
-
-    })
+      assert.equal(geom.triangleArea(1, 1, 1, 1, 2, 3), 0)
+      assert.equal(geom.triangleArea(1, 1, 2, 3, 1, 1), 0)
+      assert.equal(geom.triangleArea(2, 3, 1, 1, 1, 1), 0)
+      assert.equal(geom.triangleArea(1, 1, 1, 1, 1, 1), 0)
+   })
 
   })
 
 
-  describe("msRingArea()", function() {
+  describe("msSignedRingArea()", function() {
 
     it("returns 0 if shape has collapsed", function() {
-     
+      assert.equal(geom.msSignedRingArea([0, 1, 0], [0, 1, 0]), 0);
+      assert.equal(geom.msSignedRingArea([2, 1, 0, 2], [0, 1, 2, 0]), 0);
     })
 
     it("returns 0 if shape is not closed", function() {
-     
+      assert.equal(geom.msSignedRingArea([0, 1, 1, 2], [0, 1, 2, 1]), 0);
     })
 
-    it("returns correct area for simple shapes", function() {
-     
+    it("returns negative area if points are counter-clockwise", function() {
+      assert.equal(geom.msSignedRingArea([1, 2, 2, 1, 1], [1, 1, 2, 2, 1]), -1)
     })
 
+    it("returns positive area if points are clockwise", function() {
+      assert.equal(geom.msSignedRingArea([1, 1, 2, 2, 1], [1, 2, 2, 1, 1]), 1)
+    })
   })
-
-
-  describe("msRingDirection()", function() {
-
-    it("returns 1 if shape is CW", function() {
-     
-    })
-
-    it("returns -1 if shape is CCW", function() {
-     
-    })
-
-    it("returns 0 if shape has collapsed", function() {
-     
-    })
-
-    it("returns 0 if shape is not a ring", function() {
-     
-    })
-
-  })*/
 
 })
