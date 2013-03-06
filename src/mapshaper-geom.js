@@ -122,17 +122,18 @@ function triangleHeightSq(ab2, bc2, ac2) {
     dist2 = 0.0;
   }
   return dist2;
-};
+}
 
 
 function msSignedRingArea(xx, yy, start, len) {
   var sum = 0,
-      start = start || 0,
-      len = len == null ? xx.length : len;
-  if (xx[start] !== xx[len-1] || yy[start] !== yy[len-1]) {
-    return 0;
+      start = start | 0,
+      end = start + (len == null ? xx.length - start : len | 0) - 1;
+
+  if (start < 0 || end >= xx.length) {
+    error("Out-of-bounds array index");
   }
-  for (var i=start, lim=start+len-1; i<lim; i++) {
+  for (var i=start; i < end; i++) {
     sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
   }
   return sum / 2;
