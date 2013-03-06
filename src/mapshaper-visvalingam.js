@@ -1,10 +1,12 @@
-/* @requires mapshaper-common, mapshaper-geom, core.geo */
+/* @requires mapshaper-common, mapshaper-geom, mapshaper-heap, core.geo */
 
 var Visvalingam = {};
 
+MapShaper.Heap = Heap; // export Heap for testing
+
 Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   var bufLen = 0,
-      heap = new VisvalingamHeap(),
+      heap = new Heap(),
       prevArr, nextArr,
       scale = scale || 1;
 
@@ -24,12 +26,11 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
       nextArr = new Int32Array(bufLen);
     }
 
-    // Initialize the heap with room for the arc's internal coordinates.
-    heap.init(arcLen-2);
-
     // Initialize Visvalingam "effective area" values and references to 
     //   prev/next points for each point in arc.
     //
+    var values = new Float64Array(arcLen);
+
     for (var i=1; i<arcLen-1; i++) {
       ax = xx[i-1];
       ay = yy[i-1];
@@ -44,10 +45,14 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
         threshold = metric3D(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
       }
 
-      heap.addValue(i, threshold);
+      values[i] = threshold;
       nextArr[i] = i + 1;
       prevArr[i] = i - 1;
     }
+
+    // Initialize the heap with thresholds; don't add first and last point
+    heap.addValues(valueArr, 1, arcLen-2);
+
     prevArr[arcLen-1] = arcLen - 2;
     nextArr[0] = 1;
 
@@ -95,13 +100,12 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
       prevArr[nextIdx] = prevIdx;
     }
 
-    var values = heap.values();
-
-    // convert "effective area" to a linear equivalent
+    // convert area metric to a linear equivalent
     //
-    for (var j=0, n=values.length; j<n; j++) {
+    for (var j=1; j<arcLen-1; j++) {
       values[j] = Math.sqrt(values[j]) * scale;
     }
+    values[0] = values[arcLen-1] = Infinity; // arc endpoints
     return values;
   };
 
@@ -142,194 +146,3 @@ Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
   return area * weight;
 };
 
-// A heap data structure used for computing Visvalingam simplification data.
-// 
-MapShaper.VisvalingamHeap = VisvalingamHeap; // export for testing
-function VisvalingamHeap() {
-  var bufLen = 0,
-      maxItems = 0,
-      maxIdx, minIdx,
-      itemsInHeap,
-      poppedVal,
-      heapArr, indexArr, valueArr;
-
-  // Prepare the heap for simplifying a new arc.
-  //
-  this.init = function(size) {
-    if (size > bufLen) {
-      bufLen = Math.round(size * 1.2);
-      heapArr = new Int32Array(bufLen);
-      indexArr = new Int32Array(bufLen + 2); // requires larger...
-    }
-    itemsInHeap = 0;
-    poppedVal = -Infinity;
-    valueArr = new Float64Array(size + 2);
-    valueArr[0] = valueArr[size+1] = Infinity;
-    minIdx = 1; 
-    maxIdx = size;
-    maxItems = size;
-  };
-
-  // Add an item to the bottom of the heap and restore heap order.
-  //
-  this.addValue = function(valIdx, val) {
-    var heapIdx = itemsInHeap++;
-    if (itemsInHeap > maxItems) error("Heap overflow.");
-    if (valIdx < minIdx || valIdx > maxIdx) error("Out-of-bounds point index.");
-    valueArr[valIdx] = val;
-    heapArr[heapIdx] = valIdx
-    indexArr[valIdx] = heapIdx;
-    reHeap(heapIdx);
-  };
-
-  // Return an array of threshold data after simplification is complete.
-  //
-  this.values = function() {
-    assert(itemsInHeap == 0, "[VisvalingamHeap.values()] Items remain on the heap.");
-    return valueArr;
-  }
-
-  this.heapSize = function() {
-    return itemsInHeap;
-  }
-
-  // Update the value of a point in the arc.
-  //
-  this.updateValue = function(valIdx, val) {
-    if (valIdx < minIdx || valIdx > maxIdx) error("Out-of-range point index.");
-    if (val < poppedVal) {
-      // don't give updated values a lesser value than the last popped vertex...
-      val = poppedVal;
-    }
-    valueArr[valIdx] = val;
-    var heapIdx = indexArr[valIdx];
-    if (heapIdx < 0 || heapIdx >= itemsInHeap) error("[updateValue()] out-of-range heap index.");
-    reHeap(heapIdx);
-  };
-
-  // Check that heap is ordered starting at a given node
-  // (traverses heap recursively)
-  //
-  function checkNode(heapIdx, parentVal) {
-    if (heapIdx >= itemsInHeap) {
-      return;
-    }
-    var valIdx = heapArr[heapIdx];
-    var val = valueArr[valIdx];
-    if (parentVal > val)
-      error("[checkNode()] heap is out-of-order at idx:", heapIdx, "-- parentVal:", parentVal, "nodeVal:", val);
-    var childIdx = heapIdx * 2 + 1;
-    checkNode(childIdx, val);
-    checkNode(childIdx + 1, val);
-  }
-
-  function checkHeapOrder() {
-    checkNode(0, -Infinity);
-  }
-
-  function getHeapValues() {
-    var arr = [];
-    for (var i=0; i<itemsInHeap; i++) {
-      arr.push(valueArr[heapArr[i]]);
-    }
-    return arr;
-  }
-
-  // Function restores order to the heap (lesser values towards the top of the heap)
-  // Receives the idx of a heap item that has just been changed or added.
-  // (Assumes the rest of the heap is ordered, this item may be out-of-order)
-  //
-  function reHeap(currIdx) {
-    var currValIdx,
-        currVal,
-        parentIdx,
-        parentValIdx,
-        parentVal;
-
-    if (currIdx < 0 || currIdx >= itemsInHeap) error("Out-of-bounds heap idx passed to reHeap()");
-    currValIdx = heapArr[currIdx];
-    currVal = valueArr[currValIdx];
-
-    // Bubbling phase:
-    // Move item up in the heap until it's at the top or is heavier than its parent
-    //
-    while (currIdx > 0) {
-      parentIdx = (currIdx - 1) >> 1; // integer division by two gives idx of parent
-      parentValIdx = heapArr[parentIdx];
-      parentVal = valueArr[parentValIdx];
-
-      if (parentVal <= currVal) {
-        break;
-      }
-
-      // out-of-order; swap child && parent
-      indexArr[parentValIdx] = currIdx;
-      indexArr[currValIdx] = parentIdx;
-      heapArr[parentIdx] = currValIdx;
-      heapArr[currIdx] = parentValIdx;
-      currIdx = parentIdx;
-      if(valueArr[heapArr[currIdx]] !== currVal) error("Lost value association");
-    }
-
-    // Percolating phase:
-    // Item gets swapped with any lighter children
-    //
-    var childIdx = 2 * currIdx + 1,
-        childValIdx, childVal,
-        otherChildIdx, otherChildValIdx, otherChildVal;
-
-    while (childIdx < itemsInHeap) {
-      childValIdx = heapArr[childIdx];
-      childVal = valueArr[childValIdx];
-
-      otherChildIdx = childIdx + 1;
-      if (otherChildIdx < itemsInHeap) {
-        otherChildValIdx = heapArr[otherChildIdx];
-        otherChildVal = valueArr[otherChildValIdx];
-        if (otherChildVal < childVal) {
-          childIdx = otherChildIdx;
-          childValIdx = otherChildValIdx;
-          childVal = otherChildVal;
-        }
-      }
-
-      if (currVal <= childVal) {
-        break;
-      }
-
-      // swap curr item and child w/ lesser value
-      heapArr[childIdx] = currValIdx;
-      heapArr[currIdx] = childValIdx;
-      indexArr[childValIdx] = currIdx;
-      indexArr[currValIdx] = childIdx;
-
-      // descend in the heap:
-      currIdx = childIdx;
-      childIdx = 2 * currIdx + 1;
-    }
-  };
-
-  // Return the idx of the lowest-value item in the heap
-  //
-  this.pop = function() {
-    if (itemsInHeap <= 0) error("Tried to pop from an empty heap.");
-    if (poppedVal === -Infinity) {
-      if (itemsInHeap != maxItems) error("pop() called before heap is populated.");
-    }
-    // get min-val item from top of heap...
-    var minIdx = heapArr[0],
-        minVal = valueArr[minIdx],
-        lastIdx;
-
-    lastIdx = --itemsInHeap;
-    if (itemsInHeap > 0) {
-      heapArr[0] = heapArr[lastIdx]; // copy last item in heap into root position
-      indexArr[heapArr[0]] = 0;
-      reHeap(0);
-    }
-
-    if (minVal < poppedVal) error("[VisvalingamHeap.pop()] out-of-sequence value; prev:", poppedVal, "new:", minVal);
-    poppedVal = minVal;
-    return minIdx;
-  };
-}
