@@ -81,8 +81,8 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
       srcLen = xsrc.length,
       destLen;
 
-
-  if (ysrc.length != srcLen || uu.length != srcLen || srcLen < 2) error("[thinArcByThreshold()] Invalid arc data");
+  if (ysrc.length != srcLen || uu.length != srcLen || srcLen < 2)
+    error("[thinArcByThreshold()] Invalid arc data");
 
   for (var i=0; i<srcLen; i++) {
     if (uu[i] > interval) {
@@ -112,11 +112,14 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
 
 
 MapShaper.thinArcsByInterval = function(arcs, thresholds, interval, opts) {
-  assert(Utils.isArray(arcs) && Utils.isArray(thresholds) && arcs.length == thresholds.length
-      && Utils.isNumber(interval), "Invalid arguments; expected [Array], [Array], [Number]");
+  if (!Utils.isArray(arcs) || arcs.length != thresholds.length)
+    error("[thinArcsByInterval()] requires matching arrays of arcs and thresholds");
+  if (!Utils.isNumber(interval))
+    error("[thinArcsByInterval()] requires an interval");
 
   var retainPoints = !!opts.minPoints;
-  if (retainPoints && opts.minPoints.length != arcs.length) error("[thinArcsByInterval()] Retained point array doesn't match arc length");
+  if (retainPoints && opts.minPoints.length != arcs.length)
+    error("[thinArcsByInterval()] Retained point array doesn't match arc length");
 
   var thinned = [];
   for (var i=0, l=arcs.length; i<l; i++) {
@@ -146,7 +149,7 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
 
 // Apply a simplification function to each arc in an array, return simplified arcs.
 // 
-// @simplify has signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
+// @simplify: function(xx:array, yy:array, [zz:array], [length:integer]):array
 //
 MapShaper.simplifyArcs = function(arcs, simplify, opts) {
   if (opts && opts.spherical) {

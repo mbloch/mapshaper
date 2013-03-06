@@ -2,17 +2,11 @@
 
 var MapShaper = {};
 
-MapShaper.aboutEqual = function(a, b, msg, amt) {
-  amt = amt || 0.00001;
-  if (isNaN(a) || isNaN(b) || Math.abs(a - b) > amt) {
-    error(a, "~=", b);
-  }
-};
 
 MapShaper.importFromFile = function(fname) {
   var info = Node.getFileInfo(fname);
-  assert(info.exists, "File not found.");
-  assert(info.ext == 'shp' || info.ext == 'json', "Expected *.shp or *.json file; found:", fname);
+  if (!info.exists) error("File not found.");
+  if (info.ext != 'shp' && info.ext != 'json', "Expected *.shp or *.json file; found:", fname);
 
   if (info.ext == 'json') {
     return MapShaper.importJSON(JSON.parse(Node.readFile(fname, 'utf8')));

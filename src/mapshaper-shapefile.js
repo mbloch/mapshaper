@@ -12,8 +12,7 @@ ShapefileReader.prototype.read = function() {
       partCount = 0,
       shapeCount = 0;
 
-  var rememberBounds = false,
-      rememberHoles = true, // adds >10% to total script time, 
+  var rememberHoles = true,
       rememberMaxParts = true;
 
   bin.position(100); // skip to the shape data section
