@@ -1,7 +1,13 @@
 /* @requires arrayutils, core.geo */
 
-var MapShaper = {};
+// TODO: adapt to run in browser
+function stop(msg) {
+  msg && trace(msg);
+  process.exit(1);
+}
 
+
+var MapShaper = {};
 
 MapShaper.importFromFile = function(fname) {
   var info = Node.getFileInfo(fname);
@@ -50,6 +56,7 @@ MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
     ydest.push(ysrc[i]);
   }
 };
+
 
 MapShaper.calcXYBounds = function(xx, yy, bb) {
   if (!bb) bb = new BoundingBox();
