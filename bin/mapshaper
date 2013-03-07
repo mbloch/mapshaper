@@ -7,14 +7,10 @@
 //
 
 var mapshaper = require("../"),
-    m = mapshaper,
-    trace = m.trace,
-    assert = m.assert,
-    error = m.error,
-    Visvalingam = m.Visvalingam,
-    Node = m.Node,
-    Utils = m.Utils,
-    T = m.T;
+    Visvalingam = mapshaper.Visvalingam,
+    Node = mapshaper.Node,
+    Utils = mapshaper.Utils,
+    T = mapshaper.T;
 
 var usage = ""
   + "Usage: mapshaper [options] file\n\n"
@@ -165,7 +161,7 @@ if (opts.use_simplification) {
   };
 
   if (opts.method == 'dp') {
-    calculator = m.DouglasPeucker.calcArcData;
+    calculator = mapshaper.DouglasPeucker.calcArcData;
     simplifiedArcs = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
   else if (opts.method == 'vis') {
@@ -218,12 +214,12 @@ else if (opts.output_format == "shapefile") {
 
   if (opts.test_shp_output) {
     // check if output .shp data is identical to input (e.g. to test for topology errors)
-    var originalShp = new m.BinArray(Node.readFile(opts.input_file)),
+    var originalShp = new mapshaper.BinArray(Node.readFile(opts.input_file)),
         passes = originalShp.identical(shpData.shp),
         msg = passes ?
-          "\u001b[32m \u2713\u001b[0m Output .shp is identical to original." :
-          "\u001b[31m \u2717\u001b[0m Ouput .shp doesn't match original.";
-    trace(msg);
+          "\u001b[32m\u2713\u001b[0m Output .shp is identical to original." :
+          "\u001b[31m\u2717\u001b[0m Ouput .shp doesn't match original.";
+    console.log(msg);
   }
   else {
     var obase = opts.output_path_base,
