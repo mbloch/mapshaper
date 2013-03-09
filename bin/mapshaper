@@ -13,14 +13,13 @@ var mapshaper = require("../"),
     T = mapshaper.T;
 
 var usage = ""
-  + "Usage: mapshaper [options] file\n\n"
-  + "Examples:\n\n"
-  + "# Use Douglas-Peucker to remove all but 10% of points in a Shapefile.\n"
+  + "Usage: $ mapshaper [options] file\n\n"
+  + "Example: Use Douglas-Peucker to remove all but 10% of points in a Shapefile.\n"
   + "$ mapshaper --dp -p 0.1 counties.shp\n\n"
-  + "# Use Visvalingam to simplify an unprojected Shapefile to 1km resolution.\n"
+  + "Example: Use Visvalingam to simplify an unprojected Shapefile to 1km resolution.\n"
   + "$ mapshaper --vis -i 1000 -u states.shp"
 
-var optimist = require("optimist")
+var optimist = require("optimist");
 optimist.usage(usage)
 
   .options("h", {
@@ -28,6 +27,15 @@ optimist.usage(usage)
     describe: "show usage and options",
     'boolean': true
   })
+
+  .options("o", {
+    describe: "name of output file (with or without suffix)",
+  })
+
+  /*.options("f", {
+    alias: "o-format",
+    describe: "shapefile|geojson (defaults to input format)",
+  })*/
 
   .options("dp", {
     describe: "Use Douglas-Peucker to simplify",
@@ -44,11 +52,6 @@ optimist.usage(usage)
     'boolean': true
   })
 
-  /*
-  .options("o", {
-    describe: "name of output file (with or without suffix)",
-  })
-  */
   .options("p", {
     alias: "pct",
     describe: "proportion of points to retain (0-1)"
@@ -57,11 +60,6 @@ optimist.usage(usage)
   .options("i", {
     alias: "interval",
     describe: "degree of simplification in units of distance"
-  })
-
-  .options("f", {
-    alias: "o-format",
-    describe: "shapefile|geojson (defaults to input format)",
   })
 
   .options("u", {
@@ -122,15 +120,21 @@ optimist.usage(usage)
     describe: "output to /dev/stdout",
     default: false
   })*/
+
   .check(function(argv) {
-    opts = mapshaper.validateArgv(argv, optimist);
+    if (argv.h) {
+      optimist.showHelp();
+      process.exit(0);
+    }
+    opts = mapshaper.validateArgv(argv);
   })
   .argv;
+
 
 var info = {},
     opts;
 
-T.verbose = opts.t;
+T.verbose = opts.timing;
 T.start("Starting timing");
 
 T.start();
@@ -157,19 +161,19 @@ if (opts.use_simplification) {
       calculator;
 
   var simplifyOpts = {
-    spherical: !!opts.u
+    spherical: !!opts.use_sphere
   };
 
-  if (opts.method == 'dp') {
+  if (opts.simplify_method == 'dp') {
     calculator = mapshaper.DouglasPeucker.calcArcData;
     simplifiedArcs = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
-  else if (opts.method == 'vis') {
+  else if (opts.simplify_method == 'vis') {
     var intervalScale = 0.65; // TODO: tune this constant (linear scale when converting Visv. area metric to distance units);
     calculator = Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, intervalScale);
     simplifiedArcs = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
-  else if (opts.method == 'mod') {
+  else if (opts.simplify_method == 'mod') {
     intervalScale = 0.65 // TODO: tune this
     calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale);
     simplifiedArcs = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
@@ -185,12 +189,12 @@ if (opts.use_simplification) {
 
   T.start();
   var thinningOpts = {
-    minPoints: opts.k && topoData.arcMinPointCounts || null
+    minPoints: opts.keep_shapes && topoData.arcMinPointCounts || null
   };
-  if (opts.p < 1) {
-    topoData.arcs = mapshaper.thinArcsByPct(topoData.arcs, simplifiedArcs, opts.p, thinningOpts);
-  } else if (opts.i > 0) {
-    topoData.arcs = mapshaper.thinArcsByInterval(topoData.arcs, simplifiedArcs, opts.i, thinningOpts);
+  if (opts.simplify_pct) {
+    topoData.arcs = mapshaper.thinArcsByPct(topoData.arcs, simplifiedArcs, opts.simplify_pct, thinningOpts);
+  } else if (opts.simplify_interval) {
+    topoData.arcs = mapshaper.thinArcsByInterval(topoData.arcs, simplifiedArcs, opts.simplify_interval, thinningOpts);
   }
   T.stop("Thinning complete");
 }
@@ -198,8 +202,6 @@ if (opts.use_simplification) {
 T.start();
 Node.gc();
 T.stop("gc()");
-
-// Output... TODO: make sure not overwriting input file
 
 if (opts.output_format == "geojson") {
   T.start();
@@ -212,19 +214,19 @@ else if (opts.output_format == "shapefile") {
   var shpData = mapshaper.exportShp(topoData);
   T.stop("Export Shapefile");
 
-  if (opts.test_shp_output) {
+  if (opts.shp_test) {
     // check if output .shp data is identical to input (e.g. to test for topology errors)
     var originalShp = new mapshaper.BinArray(Node.readFile(opts.input_file)),
         passes = originalShp.identical(shpData.shp),
         msg = passes ?
-          "\u001b[32m\u2713\u001b[0m Output .shp is identical to original." :
-          "\u001b[31m\u2717\u001b[0m Ouput .shp doesn't match original.";
+          "\u001b[32m\u2713\u001b[0m Regenerated .shp is identical to original." :
+          "\u001b[31m\u2717\u001b[0m Regenerated .shp doesn't match original.";
     console.log(msg);
   }
   else {
     var obase = opts.output_path_base,
-        prjFile = obase + ".prj",
-        dbfFile = obase + ".dbf";
+        prjFile = opts.input_path_base + ".prj",
+        dbfFile = opts.input_path_base + ".dbf";
     Node.writeFile(obase + ".shp", shpData.shp);
     Node.writeFile(obase + ".shx", shpData.shx);
     if (Node.fileExists(prjFile)) Node.copyFile(prjFile, obase + ".prj");

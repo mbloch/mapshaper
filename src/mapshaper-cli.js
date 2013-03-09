@@ -1,62 +1,108 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-shapefile, mapshaper-geojson, nodejs */
 
+var cli = MapShaper.cli = {};
 
-MapShaper.validateArgv = function(opts, optimist) {
-  if (opts.h) {
-    optimist.showHelp();
-    process.exit(0);
+MapShaper.validateArgv = function(argv) {
+  var opts = {};
+  cli.validateInputOpts(opts, argv);
+  cli.validateOutputOpts(opts, argv);
+  cli.validateSimplificationOpts(opts, argv);
+
+  if (argv['shp-test']) {
+    if (opts.input_format != 'shapefile') error("--shp-test option requires shapefile input");
+    if (opts.use_simplification) console.log("--shp-test ignores simplification")
+    opts.shp_test = true;
+    opts.use_simplification = false;
+  } 
+  else {
+    if (!opts.use_simplification) error("Missing simplification parameters")
   }
 
-  // validate input file
-  //
-  var ifile = opts._[0];
+  opts.timing = !!argv.t;
+  return opts;
+};
+
+cli.validateInputOpts = function(opts, argv) {
+  var ifile = argv._[0];
   if (!ifile) error("Missing an input file.");
 
-  var fileInfo = Node.getFileInfo(ifile);
-  if (!fileInfo.exists) error("File not found (" + ifile + ")");
-  if (fileInfo.ext != 'shp') error("Input filename must match *.shp");
+  var ifileInfo = Node.getFileInfo(ifile);
+  if (!ifileInfo.exists) error("File not found (" + ifile + ")");
+  if (ifileInfo.ext != 'shp') error("Input filename must match *.shp");
 
   opts.input_file = ifile;
   opts.input_format = "shapefile";
-  opts.input_file_base = fileInfo.base;
-  opts.input_directory = fileInfo.directory;
+  opts.input_file_base = ifileInfo.base;
+  opts.input_directory = ifileInfo.directory;
+  opts.input_path_base = Node.path.join(opts.input_directory, opts.input_file_base);
+};
 
-  // validate interval
-  //
-  opts.i = opts.i || 0;
-  if(isNaN(opts.i) || opts.i < 0) error("-i (--interval) option requires a non-negative number");
-
-  // validate simplification
-  //
-  opts.p = opts.p || 1;
-  if(opts.p <= 0 || opts.p > 1) error("-p (--pct) option should be in the range (0,1]");
-
-  opts.use_simplification = opts.i || opts.p < 1;
-  if (opts.dp)
-    opts.method = "dp";
-  else if (opts.vis)
-    opts.method = "vis";
-  else
-    opts.method = "mod";
-
-  // validate output file
-  //
-  // only shapefile for now
-  if (opts.f && opts.f != "shapefile") error("Unsupported output format:", opts.f);
+cli.validateOutputOpts = function(opts, argv) {
+  // output format -- only shapefile for now
+  if (argv.f && argv.f != "shapefile") error("Unsupported output format:", argv.f);
   opts.output_format = "shapefile";
 
-  // TODO: accept user-supplied name
-  opts.output_file_base = opts.input_file_base + "-mshp";
-  opts.output_path_base = "./" + opts.output_file_base; // output to cwd
-
-  if (opts['shp-test']) {
-    if (opts.input_format != 'shapefile') {
-      error("--shp-test option requires shapfile input")
+  var obase = opts.input_file_base + "-mshp"; // default
+  if (argv.o) {
+    if (!Utils.isString(argv.o)) {
+      error("-o option needs a file name");
     }
-    opts.test_shp_output = true;
-    opts.output_format = 'shapefile';
-    opts.use_simplification = false;
+    var ofileInfo = Node.getFileInfo(argv.o);
+    if (opts.input_format == opts.output_format && ofileInfo.base
+      == opts.input_file_base && ofileInfo.directory == opts.input_directory) {
+      error("Output file shouldn't overwrite source file");
+    }
+    if (ofileInfo.is_directory) {
+      error("-o option needs a file name");
+    }
+    if (ofileInfo.ext && ofileInfo.ext != "shp") {
+      error("OUtput option looks like an unsupported file type:", ofileInfo.file);
+    }
+    obase = Node.path.join(ofileInfo.directory, ofileInfo.base);
+  }
+  opts.output_path_base = obase;
+};
+
+cli.validateSimplificationOpts = function(opts, argv) {
+  if (argv.i != null) {
+    if (isNaN(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
+    opts.simplify_interval = argv.i;
+  }
+  else if (argv.p != null) {
+    if (isNaN(argv.p) || argv.p <= 0 || argv.p >= 1) error("-p (--pct) option should be in the range (0,1)");
+    opts.simplify_pct = argv.p;
   }
 
-  return opts;
+  opts.use_simplification = opts.simplify_pct || opts.simplify_interval;
+  opts.use_sphere = argv.u;
+  opts.keep_shapes = argv.k;
+
+  if (argv.dp)
+    opts.simplify_method = "dp";
+  else if (argv.vis)
+    opts.simplify_method = "vis";
+  else
+    opts.simplify_method = "mod";
+};
+
+
+MapShaper.importFromFile = function(fname) {
+  var info = Node.getFileInfo(fname);
+  if (!info.exists) error("File not found.");
+  if (info.ext != 'shp' && info.ext != 'json', "Expected *.shp or *.json file; found:", fname);
+  if (info.ext == 'json') {
+    return MapShaper.importJSON(JSON.parse(Node.readFile(fname, 'utf8')));
+  }
+  return MapShaper.importShpFromBuffer(Node.readFile(fname));
+};
+
+
+MapShaper.importFromStream = function(sname) {
+  assert("/dev/stdin", "[importFromStream()] requires /dev/stdin; received:", sname);
+  var buf = Node.readFile(sname);
+  if (buf.readUInt32BE(0) == 9994) {
+    return MapShaper.importShpFromBuffer(buf);
+  }
+  var obj = JSON.parse(buf.toString());
+  return MapShaper.importJSON(obj);
 };
