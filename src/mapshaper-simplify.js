@@ -1,5 +1,7 @@
 /* requires mapshaper-common, mapshaper-geom */
 
+
+
 MapShaper.sortThresholds = function(arr) {
   var thresholds = [];
   var len = arr.length;
@@ -123,7 +125,7 @@ MapShaper.thinArcsByInterval = function(arcs, thresholds, interval, opts) {
 
   var thinned = [];
   for (var i=0, l=arcs.length; i<l; i++) {
-    var arc = MapShaper.thinArcByInterval(arcs[i][0], arcs[i][1], thresholds[i], interval, retainPoints ? minPoints[i] : 0);
+    var arc = MapShaper.thinArcByInterval(arcs[i][0], arcs[i][1], thresholds[i], interval, retainPoints ? opts.minPoints[i] : 0);
     thinned.push(arc);
   }
   return thinned;
