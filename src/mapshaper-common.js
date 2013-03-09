@@ -6,33 +6,7 @@ function stop(msg) {
   process.exit(1);
 }
 
-
 var MapShaper = {};
-
-MapShaper.importFromFile = function(fname) {
-  var info = Node.getFileInfo(fname);
-  if (!info.exists) error("File not found.");
-  if (info.ext != 'shp' && info.ext != 'json', "Expected *.shp or *.json file; found:", fname);
-
-  if (info.ext == 'json') {
-    return MapShaper.importJSON(JSON.parse(Node.readFile(fname, 'utf8')));
-  }
-  return MapShaper.importShpFromBuffer(Node.readFile(fname));
-};
-
-
-// assumes Shapefile, TopoJSON or GeoJSON
-//
-MapShaper.importFromStream = function(sname) {
-  assert("/dev/stdin", "[importFromStream()] requires /dev/stdin; received:", sname);
-  var buf = Node.readFile(sname);
-  if (buf.readUInt32BE(0) == 9994) {
-    return MapShaper.importShpFromBuffer(buf);
-  }
-  var obj = JSON.parse(buf.toString());
-  return MapShaper.importJSON(obj);
-};
-
 
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var len=xsrc.length;

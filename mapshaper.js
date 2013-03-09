@@ -4177,6 +4177,7 @@ cli.validateInputOpts = function(opts, argv) {
   opts.input_format = "shapefile";
   opts.input_file_base = ifileInfo.base;
   opts.input_directory = ifileInfo.directory;
+  opts.input_path_base = Node.path.join(opts.input_directory, opts.input_file_base);
 };
 
 cli.validateOutputOpts = function(opts, argv) {
