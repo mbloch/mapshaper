@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-var catty = require("./lib/catty-bundle.js")
+var catty = require("./lib/catty.js")
 catty.addLibrary("src")
-catty.addLibrary("node_modules/js-basics")
-catty.bundleFile("src/mapshaper-lib.js", "lib/mapshaper-lib-bundle.js")
+catty.addLibrary("node_modules/js-basics/src")
+catty.bundleFile("src/mapshaper-lib.js", "./mapshaper.js")
 
 /*
 if (target == "test") {
@@ -13,4 +13,3 @@ if (target == "test") {
 	console.log("Usage: $ build [-f] [mapshaper|test]")
 }
 */
-
