@@ -65,11 +65,11 @@ cli.validateOutputOpts = function(opts, argv) {
 
 cli.validateSimplificationOpts = function(opts, argv) {
   if (argv.i != null) {
-    if (isNaN(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
+    if (!Utils.isNumber(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
     opts.simplify_interval = argv.i;
   }
   else if (argv.p != null) {
-    if (isNaN(argv.p) || argv.p <= 0 || argv.p >= 1) error("-p (--pct) option should be in the range (0,1)");
+    if (!Utils.isNumber(argv.p) || argv.p <= 0 || argv.p >= 1) error("-p (--pct) option should be in the range (0,1)");
     opts.simplify_pct = argv.p;
   }
 

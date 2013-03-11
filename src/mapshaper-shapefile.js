@@ -11,9 +11,12 @@ ShapefileReader.prototype.read = function() {
     3: "polyline"
   };
 
-  if (this.header.type in supportedTypes == false) {
+  var shpType = this.header.type;
+  if (shpType in supportedTypes == false) {
     stop("Only polygon and polyline (type 5 and 3) Shapefiles are supported.");
   }
+
+  var polygonType = shpType == 5;
 
   var bin = this._bin,
       shapes = [],
@@ -21,8 +24,8 @@ ShapefileReader.prototype.read = function() {
       partCount = 0,
       shapeCount = 0;
 
-  var rememberHoles = true,
-      rememberMaxParts = true;
+  var rememberHoles = polygonType,
+      rememberMaxParts = polygonType;
 
   bin.position(100); // skip to the shape data section
 
@@ -68,6 +71,7 @@ ShapefileReader.prototype.read = function() {
     pointId = 0, 
     partId = 0,
     shapeId = 0,
+    holeCount = 0,
     dataView = bin.dataView(),
     signedPartArea, partArea, maxPartId, maxPartArea;
 
@@ -90,39 +94,52 @@ ShapefileReader.prototype.read = function() {
         pointId++;       
       }
 
-      signedPartArea = msSignedRingArea(xx, yy, pointId - partSize, partSize);
+      if (polygonType) {
+        signedPartArea = msSignedRingArea(xx, yy, pointId - partSize, partSize);
 
-      if (rememberMaxParts) {
-        partArea = Math.abs(signedPartArea);
-        if (i === 0 || partArea > maxPartArea) {
-          if (i > 0) {
-            maxPartFlags[maxPartId] = 0;
+        if (rememberMaxParts) {
+          partArea = Math.abs(signedPartArea);
+          if (i === 0 || partArea > maxPartArea) {
+            if (i > 0) {
+              maxPartFlags[maxPartId] = 0;
+            }
+            maxPartFlags[partId] = 1;
+            maxPartId = partId;
+            maxPartArea = partArea;
           }
-          maxPartFlags[partId] = 1;
-          maxPartId = partId;
-          maxPartArea = partArea;
         }
+
+        if (rememberHoles) {
+          if (signedPartArea == 0) error("A ring in shape", shapeId, "has zero area or is not closed");
+          if (signedPartArea < 0) {
+            if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
+            holeFlags[partId] = signedPartArea < 0 ? 1 : 0;
+            holeCount++;
+          }
+        }        
       }
 
-      if (rememberHoles) {
-        if (signedPartArea == 0) error("A ring in shape", shapeId, "has zero area or is not closed");
-        if (signedPartArea == -1 && partsInShape == 1) error("Shape", shapeId, "only contains a hole");
-        holeFlags[partId] = signedPartArea < 0 ? 1 : 0;
-      }
       partId++;
     }
     shapeId++;
   }
 
-  this.header.pointCount = pointCount;
+  var info = {
+    input_point_count: pointCount,
+    input_part_count: partId,
+    input_shape_count: shapeId,
+    input_geometry_type: polygonType ? "polygon" : "polyline",
+    shapefile_header: this.header
+  }
+  //this.header.pointCount = pointCount;
   return {
     xx: xx,
     yy: yy,
     partIds: partIds,
     shapeIds: shapeIds,
-    header: this.header,
     maxPartFlags: maxPartFlags || null,
-    holeFlags: holeFlags || null
+    holeFlags: holeFlags || null,
+    info: info
   };
 };
 
@@ -136,13 +153,13 @@ MapShaper.importShpFromBuffer = function(buf) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShp = function(obj) {
-  assert(Utils.isArray(obj.arcs) && Utils.isArray(obj.shapes), "Missing exportable data.");
+MapShaper.exportShp = function(arcs, shapes, shpType) {
+  if (!Utils.isArray(arcs) || !Utils.isArray(shapes)) error("Missing exportable data.");
 
   var fileBytes = 100;
   var bounds = new BoundingBox();
-  var shapeBuffers = Utils.map(obj.shapes, function(shape, i) {
-    var shpObj = MapShaper.exportShpRecord(shape, obj.arcs, i+1);
+  var shapeBuffers = Utils.map(shapes, function(shape, i) {
+    var shpObj = MapShaper.exportShpRecord(shape, arcs, i+1, shpType);
     fileBytes += shpObj.buffer.byteLength;
     shpObj.bounds && bounds.mergeBounds(shpObj.bounds);
     return shpObj.buffer;
@@ -161,7 +178,7 @@ MapShaper.exportShp = function(obj) {
   shpBin.writeInt32(fileBytes / 2);
   shpBin.littleEndian = true;
   shpBin.writeInt32(1000);
-  shpBin.writeInt32(Shapefile.POLYGON);
+  shpBin.writeInt32(shpType);
   shpBin.writeFloat64(bounds.left);
   shpBin.writeFloat64(bounds.bottom);
   shpBin.writeFloat64(bounds.right);
@@ -186,7 +203,7 @@ MapShaper.exportShp = function(obj) {
 
 // Generate an ArrayBuffer containing a Shapefile record for one shape.
 //
-MapShaper.exportShpRecord = function(shape, arcs, id) {
+MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
   var bounds = null,
       buf, view;
   if (!shape || shape.length == 0) {
@@ -196,7 +213,7 @@ MapShaper.exportShpRecord = function(shape, arcs, id) {
     view.setInt32(4, 2, false);
     view.setInt32(8, 0, true);
   } 
-  else { // assume polygon record
+  else {
     var data = MapShaper.convertTopoShape(shape, arcs),
         bounds = data.bounds,
         partsIdx = 5 * 4 + 4 * 8,
@@ -208,7 +225,7 @@ MapShaper.exportShpRecord = function(shape, arcs, id) {
     view = new DataView(buffer);
     view.setInt32(0, id, false);
     view.setInt32(4, (recordBytes - 8) / 2, false);
-    view.setInt32(8, Shapefile.POLYGON, true);
+    view.setInt32(8, shpType, true);
     view.setFloat64(12, bounds.left, true);
     view.setFloat64(20, bounds.bottom, true);
     view.setFloat64(28, bounds.right, true);

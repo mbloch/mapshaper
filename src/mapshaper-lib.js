@@ -1,8 +1,19 @@
-/* @requires core, nodejs, mapshaper-* */
+/* 
+@requires
+core,
+nodejs,
+mapshaper-cli,
+mapshaper-shapefile,
+mapshaper-simplify,
+mapshaper-topology,
+mapshaper-visvalingam,
+mapshaper-dp
+*/
 
 var api = Opts.copyAllParams(MapShaper, {
   Node: Node,
   Utils: Utils,
+  Opts: Opts,
   trace: trace,
   error: error,
   assert: assert,

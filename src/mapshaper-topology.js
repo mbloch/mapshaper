@@ -39,7 +39,7 @@ MapShaper.buildArcTopology = function(obj) {
   //
   T.start();
   var chainedIds = MapShaper.buildHashChains(xx, yy, partIds, bbox);
-  T.stop("Vertex hashing");
+  T.stop("Find matching vertices");
 
 
   // Loop through all the points in the dataset, identifying arcs.
@@ -62,7 +62,7 @@ MapShaper.buildArcTopology = function(obj) {
       inArc = arcTable.newArc(i);
     }
   }
-  T.stop("Identifying shared segments.");
+  T.stop("Find topological arcs");
 
   return arcTable.exportData();
 

@@ -10,6 +10,7 @@ var mapshaper = require("../"),
     Visvalingam = mapshaper.Visvalingam,
     Node = mapshaper.Node,
     Utils = mapshaper.Utils,
+    Opts = mapshaper.Opts,
     T = mapshaper.T;
 
 var usage = ""
@@ -130,22 +131,20 @@ optimist.usage(usage)
   })
   .argv;
 
-
 var info = {},
     opts;
 
 T.verbose = opts.timing;
-T.start("Starting timing");
+T.start("Start timing");
 
 T.start();
 var importData = mapshaper.importFromFile(opts.input_file);
-T.stop("Shapefile import");
+T.stop("Import Shapefile");
+Opts.copyAllParams(info, importData.info);
 
 T.start();
 var topoData = mapshaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
-T.stop("Topology conversion");
-
-// Opts.copyAllParams(info, importData);
+T.stop("Process topology");
 // Opts.copyAllParams(info, topoData)
 
 importData = null; // don't need this anymore, gc can take it.
@@ -156,7 +155,7 @@ T.stop("gc()");
 
 if (opts.use_simplification) {
   T.start();
-  var simplifyData,
+  var vertexData,
       arcs = topoData.arcs,
       calculator;
 
@@ -166,22 +165,22 @@ if (opts.use_simplification) {
 
   if (opts.simplify_method == 'dp') {
     calculator = mapshaper.DouglasPeucker.calcArcData;
-    simplifiedArcs = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
+    vertexData = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
   else if (opts.simplify_method == 'vis') {
     var intervalScale = 0.65; // TODO: tune this constant (linear scale when converting Visv. area metric to distance units);
     calculator = Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, intervalScale);
-    simplifiedArcs = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
+    vertexData = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
   else if (opts.simplify_method == 'mod') {
     intervalScale = 0.65 // TODO: tune this
     calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale);
-    simplifiedArcs = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
+    vertexData = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
   }
   else {
     stop("Unknown simplification method:", method);
   }
-  T.stop("Simplification complete");
+  T.stop("Calculate simplification data");
 
   T.start();
   Node.gc();
@@ -191,12 +190,16 @@ if (opts.use_simplification) {
   var thinningOpts = {
     minPoints: opts.keep_shapes && topoData.arcMinPointCounts || null
   };
+
+  var thinned;
   if (opts.simplify_pct) {
-    topoData.arcs = mapshaper.thinArcsByPct(topoData.arcs, simplifiedArcs, opts.simplify_pct, thinningOpts);
+    thinned = mapshaper.thinArcsByPct(topoData.arcs, vertexData, opts.simplify_pct, thinningOpts);
   } else if (opts.simplify_interval) {
-    topoData.arcs = mapshaper.thinArcsByInterval(topoData.arcs, simplifiedArcs, opts.simplify_interval, thinningOpts);
+    thinned = mapshaper.thinArcsByInterval(topoData.arcs, vertexData, opts.simplify_interval, thinningOpts);
   }
-  T.stop("Thinning complete");
+  topoData.arcs = thinned.arcs;
+  Opts.copyAllParams(info, thinned.info);
+  T.stop("Simplify arcs");
 }
 
 T.start();
@@ -211,7 +214,8 @@ if (opts.output_format == "geojson") {
 }
 else if (opts.output_format == "shapefile") {
   T.start();
-  var shpData = mapshaper.exportShp(topoData);
+  var shpType = info.input_geometry_type == "polyline" ? 3 : 5;
+  var shpData = mapshaper.exportShp(topoData.arcs, topoData.shapes, shpType);
   T.stop("Export Shapefile");
 
   if (opts.shp_test) {
@@ -222,8 +226,7 @@ else if (opts.output_format == "shapefile") {
           "\u001b[32m\u2713\u001b[0m Regenerated .shp is identical to original." :
           "\u001b[31m\u2717\u001b[0m Regenerated .shp doesn't match original.";
     console.log(msg);
-  }
-  else {
+  } else {
     var obase = opts.output_path_base,
         prjFile = opts.input_path_base + ".prj",
         dbfFile = opts.input_path_base + ".dbf";

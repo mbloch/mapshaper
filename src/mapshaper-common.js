@@ -36,7 +36,7 @@ MapShaper.calcXYBounds = function(xx, yy, bb) {
   if (!bb) bb = new BoundingBox();
   var xbounds = Utils.getArrayBounds(xx),
       ybounds = Utils.getArrayBounds(yy);
-  assert(xbounds.nan == 0 && ybounds.nan == 0, "[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
+  if (xbounds.nan > 0 || ybounds.nan > 0) error("[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
   bb.mergePoint(xbounds.min, ybounds.min);
   bb.mergePoint(xbounds.max, ybounds.max);
   return bb;
