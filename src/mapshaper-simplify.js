@@ -1,30 +1,26 @@
-/* requires mapshaper-common, mapshaper-geom */
+/* @requires mapshaper-common, mapshaper-geom, median */
 
-
-
-MapShaper.sortThresholds = function(arr) {
-  var thresholds = [];
-  var len = arr.length;
-  var skipCount = 10; // only use every nth point, for speed
-  for (var i=0; i<len; i++) {
-    var src = arr[i];
-    for (var j=1, maxj=src.length-2; j<=maxj; j+= skipCount) {
-      thresholds.push(src[j]);
+// TODO; calculate pct based on distinct points in the dataset
+// TODO: pass number of points as a parameter instead of calculating it
+MapShaper.getThresholdByPct = function(arr, retainPct) {
+  if (retainPct <= 0 || retainPct >= 1) error("Invalid simplification pct:", retainPct);
+  var n = arr.length;
+  var count = 0,
+      nth=2;
+  for (var i=0; i<n; i++) {
+    count += Math.ceil((arr[i].length - 2) / nth);
+  }
+  var tmp = new Float64Array(count),
+      idx = 0;
+  for (i=0; i<n; i++) {
+    var thresholds = arr[i];
+    for (var j=1, lim=thresholds.length - 1; j < lim; j+= nth) {
+      tmp[idx++] = thresholds[j];
     }
   }
-
-  Utils.sortNumbers(thresholds, false);
-  return thresholds;
-};
-
-
-MapShaper.getThresholdByPct = function(arr, retainedPct) {
-  assert(Utils.isArray(arr) && Utils.isNumber(retainedPct), "Invalid argument types; expected [Array], [Number]");
-  assert(retainedPct >= 0 && retainedPct < 1, "Invalid pct:", retainedPct);
-
-  var thresholds = MapShaper.sortThresholds(arr);
-  var idx = Utils.clamp(Math.round(thresholds.length * retainedPct), 0, thresholds.length);
-  return retainedPct >= 1 ? 0 : thresholds[idx];
+  if (idx != count) error("Counting error");
+  var k = Math.floor((1 - retainPct) * count) + 1; // rank starts at 1
+  return Utils.findValueByRank(tmp, k);
 };
 
 
@@ -33,11 +29,11 @@ MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
       && Utils.isNumber(retainedPct), "Invalid arguments; expected [Array], [Array], [Number]");
   T.start();
   var thresh = MapShaper.getThresholdByPct(thresholds, retainedPct);
-  T.stop("getThresholdByPct()");
+  T.stop("Find simplification interval");
 
   T.start();
   var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh, opts);
-  T.stop("Thin arcs");
+  T.stop("Remove vertices");
   return thinned;
 };
 
@@ -113,22 +109,33 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
 };
 
 
-MapShaper.thinArcsByInterval = function(arcs, thresholds, interval, opts) {
-  if (!Utils.isArray(arcs) || arcs.length != thresholds.length)
+MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval, opts) {
+  if (!Utils.isArray(srcArcs) || srcArcs.length != thresholds.length)
     error("[thinArcsByInterval()] requires matching arrays of arcs and thresholds");
   if (!Utils.isNumber(interval))
     error("[thinArcsByInterval()] requires an interval");
 
   var retainPoints = !!opts.minPoints;
-  if (retainPoints && opts.minPoints.length != arcs.length)
+  if (retainPoints && opts.minPoints.length != srcArcs.length)
     error("[thinArcsByInterval()] Retained point array doesn't match arc length");
 
-  var thinned = [];
-  for (var i=0, l=arcs.length; i<l; i++) {
-    var arc = MapShaper.thinArcByInterval(arcs[i][0], arcs[i][1], thresholds[i], interval, retainPoints ? opts.minPoints[i] : 0);
-    thinned.push(arc);
+  var arcs = [],
+      fullCount = 0,
+      thinnedCount = 0;
+  for (var i=0, l=srcArcs.length; i<l; i++) {
+    var srcArc = srcArcs[i];
+    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval, retainPoints ? opts.minPoints[i] : 0);
+    fullCount += srcArc[0].length;
+    thinnedCount += arc[0].length;
+    arcs.push(arc);
   }
-  return thinned;
+  return {
+    arcs: arcs,
+    info: {
+      original_arc_points: fullCount,
+      thinned_arc_points: thinnedCount
+    }
+  };
 };
 
 
@@ -157,11 +164,10 @@ MapShaper.simplifyArcs = function(arcs, simplify, opts) {
   if (opts && opts.spherical) {
     return MapShaper.simplifyArcsSph(arcs, simplify);
   }
-  var data = Utils.map(arcs, function(arc) {
+  var arcs = Utils.map(arcs, function(arc) {
     return simplify(arc[0], arc[1]);
   });
-
-  return data;  
+  return arcs
 };
 
 

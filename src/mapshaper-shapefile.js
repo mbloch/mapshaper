@@ -1,11 +1,20 @@
 /* @requires shapefile-import */
 
-
 /**
  * This replaces the default ShapefileReader.read() function.
  * Data is stored in a format used by MapShaper for topology building.
  */
 ShapefileReader.prototype.read = function() {
+
+  var supportedTypes = {
+    5: "polygon",
+    3: "polyline"
+  };
+
+  if (this.header.type in supportedTypes == false) {
+    stop("Only polygon and polyline (type 5 and 3) Shapefiles are supported.");
+  }
+
   var bin = this._bin,
       shapes = [],
       pointCount = 0,
@@ -96,14 +105,14 @@ ShapefileReader.prototype.read = function() {
       }
 
       if (rememberHoles) {
-        if (signedPartArea == 0 || signedPartArea == -1 && partsInShape == 1) error("Collapsed or otherwise invalid ring.");
+        if (signedPartArea == 0) error("A ring in shape", shapeId, "has zero area or is not closed");
+        if (signedPartArea == -1 && partsInShape == 1) error("Shape", shapeId, "only contains a hole");
         holeFlags[partId] = signedPartArea < 0 ? 1 : 0;
       }
       partId++;
     }
     shapeId++;
   }
-
 
   this.header.pointCount = pointCount;
   return {
@@ -172,7 +181,7 @@ MapShaper.exportShp = function(obj) {
     shpBin.writeBuffer(buf);
   });
 
-  return {shp: shpBuf, shx: shxBuf}; // TODO: write shx
+  return {shp: shpBuf, shx: shxBuf};
 };
 
 // Generate an ArrayBuffer containing a Shapefile record for one shape.

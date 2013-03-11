@@ -375,9 +375,6 @@ var T = {
   stack: [],
   verbose: true,
 
-  /**
-   * Start timing.
-   */
   start: function(msg) {
     if (T.verbose && msg) trace(T.prefix() + msg);
     T.stack.push(+new Date);
@@ -391,12 +388,10 @@ var T = {
     if (T.verbose) {
       var msg =  T.prefix() + elapsed + 'ms';
       if (note) {
-        // msg = note + ' ' + msg;
         msg += " " + note;
       }
       trace(msg);      
     }
-
     return elapsed;
   },
 
@@ -830,24 +825,18 @@ Utils.sum = function(arr) {
 Utils.getArrayBounds = function(arr) {
   var min = Infinity,
     max = -Infinity,
-    nan = 0;
+    nan = 0, val;
   for (var i=0, len=arr.length; i<len; i++) {
-    var val = arr[i];
-    if (val !== val) {
-      nan++;
-    }
-    else if (val < min) {
-      min = val;
-    } else if (val > max) {
-      max = val;
-    } 
+    val = arr[i];
+    if (val !== val) nan++;
+    if (val < min) min = val;
+    if (val > max) max = val;
   }
-
-  var retn = {}; // [min, max];
-  retn.min = min;
-  retn.max = max;
-  retn.nan = nan;
-  return retn;
+  return {
+    min: min,
+    max: max,
+    nan: nan
+  };
 };
 
 Utils.average = function(arr) {
@@ -1884,7 +1873,7 @@ MapShaper.calcXYBounds = function(xx, yy, bb) {
   if (!bb) bb = new BoundingBox();
   var xbounds = Utils.getArrayBounds(xx),
       ybounds = Utils.getArrayBounds(yy);
-  assert(xbounds.nan == 0 && ybounds.nan == 0, "[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
+  if (xbounds.nan > 0 || ybounds.nan > 0) error("[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
   bb.mergePoint(xbounds.min, ybounds.min);
   bb.mergePoint(xbounds.max, ybounds.max);
   return bb;
@@ -3854,9 +3843,12 @@ ShapefileReader.prototype.read = function() {
     3: "polyline"
   };
 
-  if (this.header.type in supportedTypes == false) {
+  var shpType = this.header.type;
+  if (shpType in supportedTypes == false) {
     stop("Only polygon and polyline (type 5 and 3) Shapefiles are supported.");
   }
+
+  var polygonType = shpType == 5;
 
   var bin = this._bin,
       shapes = [],
@@ -3864,8 +3856,8 @@ ShapefileReader.prototype.read = function() {
       partCount = 0,
       shapeCount = 0;
 
-  var rememberHoles = true,
-      rememberMaxParts = true;
+  var rememberHoles = polygonType,
+      rememberMaxParts = polygonType;
 
   bin.position(100); // skip to the shape data section
 
@@ -3911,6 +3903,7 @@ ShapefileReader.prototype.read = function() {
     pointId = 0, 
     partId = 0,
     shapeId = 0,
+    holeCount = 0,
     dataView = bin.dataView(),
     signedPartArea, partArea, maxPartId, maxPartArea;
 
@@ -3933,39 +3926,52 @@ ShapefileReader.prototype.read = function() {
         pointId++;       
       }
 
-      signedPartArea = msSignedRingArea(xx, yy, pointId - partSize, partSize);
+      if (polygonType) {
+        signedPartArea = msSignedRingArea(xx, yy, pointId - partSize, partSize);
 
-      if (rememberMaxParts) {
-        partArea = Math.abs(signedPartArea);
-        if (i === 0 || partArea > maxPartArea) {
-          if (i > 0) {
-            maxPartFlags[maxPartId] = 0;
+        if (rememberMaxParts) {
+          partArea = Math.abs(signedPartArea);
+          if (i === 0 || partArea > maxPartArea) {
+            if (i > 0) {
+              maxPartFlags[maxPartId] = 0;
+            }
+            maxPartFlags[partId] = 1;
+            maxPartId = partId;
+            maxPartArea = partArea;
           }
-          maxPartFlags[partId] = 1;
-          maxPartId = partId;
-          maxPartArea = partArea;
         }
+
+        if (rememberHoles) {
+          if (signedPartArea == 0) error("A ring in shape", shapeId, "has zero area or is not closed");
+          if (signedPartArea < 0) {
+            if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
+            holeFlags[partId] = signedPartArea < 0 ? 1 : 0;
+            holeCount++;
+          }
+        }        
       }
 
-      if (rememberHoles) {
-        if (signedPartArea == 0) error("A ring in shape", shapeId, "has zero area or is not closed");
-        if (signedPartArea == -1 && partsInShape == 1) error("Shape", shapeId, "only contains a hole");
-        holeFlags[partId] = signedPartArea < 0 ? 1 : 0;
-      }
       partId++;
     }
     shapeId++;
   }
 
-  this.header.pointCount = pointCount;
+  var info = {
+    input_point_count: pointCount,
+    input_part_count: partId,
+    input_shape_count: shapeId,
+    input_geometry_type: polygonType ? "polygon" : "polyline",
+    shapefile_header: this.header
+  }
+  //this.header.pointCount = pointCount;
   return {
     xx: xx,
     yy: yy,
     partIds: partIds,
     shapeIds: shapeIds,
-    header: this.header,
     maxPartFlags: maxPartFlags || null,
-    holeFlags: holeFlags || null
+    holeFlags: holeFlags || null,
+    info: info
   };
 };
 
@@ -3979,13 +3985,13 @@ MapShaper.importShpFromBuffer = function(buf) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShp = function(obj) {
-  assert(Utils.isArray(obj.arcs) && Utils.isArray(obj.shapes), "Missing exportable data.");
+MapShaper.exportShp = function(arcs, shapes, shpType) {
+  if (!Utils.isArray(arcs) || !Utils.isArray(shapes)) error("Missing exportable data.");
 
   var fileBytes = 100;
   var bounds = new BoundingBox();
-  var shapeBuffers = Utils.map(obj.shapes, function(shape, i) {
-    var shpObj = MapShaper.exportShpRecord(shape, obj.arcs, i+1);
+  var shapeBuffers = Utils.map(shapes, function(shape, i) {
+    var shpObj = MapShaper.exportShpRecord(shape, arcs, i+1, shpType);
     fileBytes += shpObj.buffer.byteLength;
     shpObj.bounds && bounds.mergeBounds(shpObj.bounds);
     return shpObj.buffer;
@@ -4004,7 +4010,7 @@ MapShaper.exportShp = function(obj) {
   shpBin.writeInt32(fileBytes / 2);
   shpBin.littleEndian = true;
   shpBin.writeInt32(1000);
-  shpBin.writeInt32(Shapefile.POLYGON);
+  shpBin.writeInt32(shpType);
   shpBin.writeFloat64(bounds.left);
   shpBin.writeFloat64(bounds.bottom);
   shpBin.writeFloat64(bounds.right);
@@ -4029,7 +4035,7 @@ MapShaper.exportShp = function(obj) {
 
 // Generate an ArrayBuffer containing a Shapefile record for one shape.
 //
-MapShaper.exportShpRecord = function(shape, arcs, id) {
+MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
   var bounds = null,
       buf, view;
   if (!shape || shape.length == 0) {
@@ -4039,7 +4045,7 @@ MapShaper.exportShpRecord = function(shape, arcs, id) {
     view.setInt32(4, 2, false);
     view.setInt32(8, 0, true);
   } 
-  else { // assume polygon record
+  else {
     var data = MapShaper.convertTopoShape(shape, arcs),
         bounds = data.bounds,
         partsIdx = 5 * 4 + 4 * 8,
@@ -4051,7 +4057,7 @@ MapShaper.exportShpRecord = function(shape, arcs, id) {
     view = new DataView(buffer);
     view.setInt32(0, id, false);
     view.setInt32(4, (recordBytes - 8) / 2, false);
-    view.setInt32(8, Shapefile.POLYGON, true);
+    view.setInt32(8, shpType, true);
     view.setFloat64(12, bounds.left, true);
     view.setFloat64(20, bounds.bottom, true);
     view.setFloat64(28, bounds.right, true);
@@ -4208,11 +4214,11 @@ cli.validateOutputOpts = function(opts, argv) {
 
 cli.validateSimplificationOpts = function(opts, argv) {
   if (argv.i != null) {
-    if (isNaN(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
+    if (!Utils.isNumber(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
     opts.simplify_interval = argv.i;
   }
   else if (argv.p != null) {
-    if (isNaN(argv.p) || argv.p <= 0 || argv.p >= 1) error("-p (--pct) option should be in the range (0,1)");
+    if (!Utils.isNumber(argv.p) || argv.p <= 0 || argv.p >= 1) error("-p (--pct) option should be in the range (0,1)");
     opts.simplify_pct = argv.p;
   }
 
@@ -4251,33 +4257,234 @@ MapShaper.importFromStream = function(sname) {
 };
 
 
-/* requires mapshaper-common, mapshaper-geom */
+/* requires mapshaper-common */
+
+function distance3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
 
 
+function distanceSq(ax, ay, bx, by) {
+  var dx = ax - bx,
+      dy = ay - by;
+  return dx * dx + dy * dy;
+}
 
-MapShaper.sortThresholds = function(arr) {
-  var thresholds = [];
-  var len = arr.length;
-  var skipCount = 10; // only use every nth point, for speed
-  for (var i=0; i<len; i++) {
-    var src = arr[i];
-    for (var j=1, maxj=src.length-2; j<=maxj; j+= skipCount) {
-      thresholds.push(src[j]);
+
+function distanceSq3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+
+// atan2() makes this function fairly slow, replaced by ~2x faster formula 
+//
+/*
+function innerAngle_slow(ax, ay, bx, by, cx, cy) {
+  var a1 = Math.atan2(ay - by, ax - bx),
+      a2 = Math.atan2(cy - by, cx - bx),
+      a3 = Math.abs(a1 - a2);
+      a3 = a2 - a1
+  if (a3 > Math.PI) {
+    a3 = 2 * Math.PI - a3;
+  }
+  return a3;
+}
+*/
+
+
+// TODO: make this safe for small angles
+//
+function innerAngle(ax, ay, bx, by, cx, cy) {
+  var ab = Point.distance(ax, ay, bx, by),
+      bc = Point.distance(bx, by, cx, cy),
+      theta, dotp;
+  if (ab == 0 || bc == 0) {
+    theta = 0;
+  } else {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
+    if (dotp >= 1) {
+      theta = 0;
+    } else if (dotp <= -1) {
+      theta = Math.PI;
+    } else {
+      theta = Math.acos(dotp); // consider using other formula at small dp
     }
   }
+  return theta;
+}
 
-  Utils.sortNumbers(thresholds, false);
-  return thresholds;
+
+function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab = distance3D(ax, ay, az, bx, by, bz),
+      bc = distance3D(bx, by, bz, cx, cy, cz),
+      theta, dotp;
+  if (ab == 0 || bc == 0) {
+    theta = 0;
+  } else {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
+    if (dotp >= 1) {
+      theta = 0;
+    } else if (dotp <= -1) {
+      theta = Math.PI;
+    } else {
+      theta = Math.acos(dotp); // consider using other formula at small dp
+    }
+  }
+  return theta;
+}
+
+
+function triangleArea(ax, ay, bx, by, cx, cy) {
+  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
+  return area;
+}
+
+
+function detSq(ax, ay, bx, by, cx, cy) {
+  var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
+  return det * det;
+}
+
+
+function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) + 
+    detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
+  return area;
+}
+
+
+// Given a triangle with vertices abc, return the distSq of the shortest segment
+//   with one endpoint at b and the other on the line intersecting a and c.
+//   If a and c are coincident, return the distSq between b and a/c
+//
+// Receive the distSq of the triangle's three sides.
+//
+function triangleHeightSq(ab2, bc2, ac2) {
+  var dist2;
+  if (ac2 == 0.0) {
+    dist2 = ab2;
+  } else if (ab2 >= bc2 + ac2) {
+    dist2 = bc2;
+  } else if (bc2 >= ab2 + ac2) {
+    dist2 = ab2;
+  } else {
+    var dval = (ab2 + ac2 - bc2);
+    dist2 = ab2 -  dval * dval / ac2  * 0.25;
+  }
+  if (dist2 < 0.0) {
+    dist2 = 0.0;
+  }
+  return dist2;
+}
+
+
+function msSignedRingArea(xx, yy, start, len) {
+  var sum = 0,
+      start = start | 0,
+      end = start + (len == null ? xx.length - start : len | 0) - 1;
+
+  if (start < 0 || end >= xx.length) {
+    error("Out-of-bounds array index");
+  }
+  for (var i=start; i < end; i++) {
+    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
+  }
+  return sum / 2;
+}
+
+
+function msRingArea(xx, yy, start, len) {
+  return Math.abs(msSignedRingArea(xx, yy, start, len));
+}
+
+
+// export functions so they can be tested
+MapShaper.geom = {
+  distance3D: distance3D,
+  innerAngle: innerAngle,
+  innerAngle3D: innerAngle3D,
+  triangleArea: triangleArea,
+  triangleArea3D: triangleArea3D,
+  msRingArea: msRingArea,
+  msSignedRingArea: msSignedRingArea,
 };
 
 
-MapShaper.getThresholdByPct = function(arr, retainedPct) {
-  assert(Utils.isArray(arr) && Utils.isNumber(retainedPct), "Invalid argument types; expected [Array], [Number]");
-  assert(retainedPct >= 0 && retainedPct < 1, "Invalid pct:", retainedPct);
+/* @requires core */
 
-  var thresholds = MapShaper.sortThresholds(arr);
-  var idx = Utils.clamp(Math.round(thresholds.length * retainedPct), 0, thresholds.length);
-  return retainedPct >= 1 ? 0 : thresholds[idx];
+// Algorithm from N. Wirth's book, implementation by N. Devillard.
+//
+Utils.findValueByRank = function(arr, rank) {
+  var k = (rank | 0) - 1, // conv. rank into array index
+      n = arr.length,
+      l = 0,
+      m = n - 1,
+      i, j, val, tmp;
+
+  if (!arr.length || k < 0 || k >= arr.length) error("[findValueByRank()] invalid input");
+
+  while (l < m) {
+    val = arr[k];
+    i = l;
+    j = m;
+    do {
+      while (arr[i] < val) {i++;}
+      while (val < arr[j]) {j--;}
+      if (i <= j) {
+        tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+        i++;
+        j--;
+      }
+    } while (i <= j);
+    if (j < k) l = i;
+    if (k < i) m = j;
+  }
+  return arr[k];
+};
+
+Utils.findMedian = function(arr) {
+  var n = arr.length,
+      rank = Math.floor(n / 2) + 1,
+      median = Utils.findValueByRank(arr, rank);
+  if ((n & 1) == 0) {
+    median = (median + Utils.findValueByRank(arr, rank - 1)) / 2;
+  }
+  return median;
+};
+
+
+
+/* @requires mapshaper-common, mapshaper-geom, median */
+
+// TODO; calculate pct based on distinct points in the dataset
+// TODO: pass number of points as a parameter instead of calculating it
+MapShaper.getThresholdByPct = function(arr, retainPct) {
+  if (retainPct <= 0 || retainPct >= 1) error("Invalid simplification pct:", retainPct);
+  var n = arr.length;
+  var count = 0,
+      nth=2;
+  for (var i=0; i<n; i++) {
+    count += Math.ceil((arr[i].length - 2) / nth);
+  }
+  var tmp = new Float64Array(count),
+      idx = 0;
+  for (i=0; i<n; i++) {
+    var thresholds = arr[i];
+    for (var j=1, lim=thresholds.length - 1; j < lim; j+= nth) {
+      tmp[idx++] = thresholds[j];
+    }
+  }
+  if (idx != count) error("Counting error");
+  var k = Math.floor((1 - retainPct) * count) + 1; // rank starts at 1
+  return Utils.findValueByRank(tmp, k);
 };
 
 
@@ -4286,11 +4493,11 @@ MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
       && Utils.isNumber(retainedPct), "Invalid arguments; expected [Array], [Array], [Number]");
   T.start();
   var thresh = MapShaper.getThresholdByPct(thresholds, retainedPct);
-  T.stop("getThresholdByPct()");
+  T.stop("Find simplification interval");
 
   T.start();
   var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh, opts);
-  T.stop("Thin arcs");
+  T.stop("Remove vertices");
   return thinned;
 };
 
@@ -4366,22 +4573,33 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
 };
 
 
-MapShaper.thinArcsByInterval = function(arcs, thresholds, interval, opts) {
-  if (!Utils.isArray(arcs) || arcs.length != thresholds.length)
+MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval, opts) {
+  if (!Utils.isArray(srcArcs) || srcArcs.length != thresholds.length)
     error("[thinArcsByInterval()] requires matching arrays of arcs and thresholds");
   if (!Utils.isNumber(interval))
     error("[thinArcsByInterval()] requires an interval");
 
   var retainPoints = !!opts.minPoints;
-  if (retainPoints && opts.minPoints.length != arcs.length)
+  if (retainPoints && opts.minPoints.length != srcArcs.length)
     error("[thinArcsByInterval()] Retained point array doesn't match arc length");
 
-  var thinned = [];
-  for (var i=0, l=arcs.length; i<l; i++) {
-    var arc = MapShaper.thinArcByInterval(arcs[i][0], arcs[i][1], thresholds[i], interval, retainPoints ? opts.minPoints[i] : 0);
-    thinned.push(arc);
+  var arcs = [],
+      fullCount = 0,
+      thinnedCount = 0;
+  for (var i=0, l=srcArcs.length; i<l; i++) {
+    var srcArc = srcArcs[i];
+    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval, retainPoints ? opts.minPoints[i] : 0);
+    fullCount += srcArc[0].length;
+    thinnedCount += arc[0].length;
+    arcs.push(arc);
   }
-  return thinned;
+  return {
+    arcs: arcs,
+    info: {
+      original_arc_points: fullCount,
+      thinned_arc_points: thinnedCount
+    }
+  };
 };
 
 
@@ -4410,11 +4628,10 @@ MapShaper.simplifyArcs = function(arcs, simplify, opts) {
   if (opts && opts.spherical) {
     return MapShaper.simplifyArcsSph(arcs, simplify);
   }
-  var data = Utils.map(arcs, function(arc) {
+  var arcs = Utils.map(arcs, function(arc) {
     return simplify(arc[0], arc[1]);
   });
-
-  return data;  
+  return arcs
 };
 
 
@@ -4478,7 +4695,7 @@ MapShaper.buildArcTopology = function(obj) {
   //
   T.start();
   var chainedIds = MapShaper.buildHashChains(xx, yy, partIds, bbox);
-  T.stop("Vertex hashing");
+  T.stop("Find matching vertices");
 
 
   // Loop through all the points in the dataset, identifying arcs.
@@ -4501,7 +4718,7 @@ MapShaper.buildArcTopology = function(obj) {
       inArc = arcTable.newArc(i);
     }
   }
-  T.stop("Identifying shared segments.");
+  T.stop("Find topological arcs");
 
   return arcTable.exportData();
 
@@ -4831,164 +5048,6 @@ MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
   return nextIds;
 };
 
-
-/* requires mapshaper-common */
-
-function distance3D(ax, ay, az, bx, by, bz) {
-  var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-
-function distanceSq(ax, ay, bx, by) {
-  var dx = ax - bx,
-      dy = ay - by;
-  return dx * dx + dy * dy;
-}
-
-
-function distanceSq3D(ax, ay, az, bx, by, bz) {
-  var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
-  return dx * dx + dy * dy + dz * dz;
-}
-
-
-// atan2() makes this function fairly slow, replaced by ~2x faster formula 
-//
-/*
-function innerAngle_slow(ax, ay, bx, by, cx, cy) {
-  var a1 = Math.atan2(ay - by, ax - bx),
-      a2 = Math.atan2(cy - by, cx - bx),
-      a3 = Math.abs(a1 - a2);
-      a3 = a2 - a1
-  if (a3 > Math.PI) {
-    a3 = 2 * Math.PI - a3;
-  }
-  return a3;
-}
-*/
-
-
-// TODO: make this safe for small angles
-//
-function innerAngle(ax, ay, bx, by, cx, cy) {
-  var ab = Point.distance(ax, ay, bx, by),
-      bc = Point.distance(bx, by, cx, cy),
-      theta, dotp;
-  if (ab == 0 || bc == 0) {
-    theta = 0;
-  } else {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
-    if (dotp >= 1) {
-      theta = 0;
-    } else if (dotp <= -1) {
-      theta = Math.PI;
-    } else {
-      theta = Math.acos(dotp); // consider using other formula at small dp
-    }
-  }
-  return theta;
-}
-
-
-function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var ab = distance3D(ax, ay, az, bx, by, bz),
-      bc = distance3D(bx, by, bz, cx, cy, cz),
-      theta, dotp;
-  if (ab == 0 || bc == 0) {
-    theta = 0;
-  } else {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
-    if (dotp >= 1) {
-      theta = 0;
-    } else if (dotp <= -1) {
-      theta = Math.PI;
-    } else {
-      theta = Math.acos(dotp); // consider using other formula at small dp
-    }
-  }
-  return theta;
-}
-
-
-function triangleArea(ax, ay, bx, by, cx, cy) {
-  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
-  return area;
-}
-
-
-function detSq(ax, ay, bx, by, cx, cy) {
-  var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
-  return det * det;
-}
-
-
-function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) + 
-    detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
-  return area;
-}
-
-
-// Given a triangle with vertices abc, return the distSq of the shortest segment
-//   with one endpoint at b and the other on the line intersecting a and c.
-//   If a and c are coincident, return the distSq between b and a/c
-//
-// Receive the distSq of the triangle's three sides.
-//
-function triangleHeightSq(ab2, bc2, ac2) {
-  var dist2;
-  if (ac2 == 0.0) {
-    dist2 = ab2;
-  } else if (ab2 >= bc2 + ac2) {
-    dist2 = bc2;
-  } else if (bc2 >= ab2 + ac2) {
-    dist2 = ab2;
-  } else {
-    var dval = (ab2 + ac2 - bc2);
-    dist2 = ab2 -  dval * dval / ac2  * 0.25;
-  }
-  if (dist2 < 0.0) {
-    dist2 = 0.0;
-  }
-  return dist2;
-}
-
-
-function msSignedRingArea(xx, yy, start, len) {
-  var sum = 0,
-      start = start | 0,
-      end = start + (len == null ? xx.length - start : len | 0) - 1;
-
-  if (start < 0 || end >= xx.length) {
-    error("Out-of-bounds array index");
-  }
-  for (var i=start; i < end; i++) {
-    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
-  }
-  return sum / 2;
-}
-
-
-function msRingArea(xx, yy, start, len) {
-  return Math.abs(msSignedRingArea(xx, yy, start, len));
-}
-
-
-// export functions so they can be tested
-MapShaper.geom = {
-  distance3D: distance3D,
-  innerAngle: innerAngle,
-  innerAngle3D: innerAngle3D,
-  triangleArea: triangleArea,
-  triangleArea3D: triangleArea3D,
-  msRingArea: msRingArea,
-  msSignedRingArea: msSignedRingArea,
-};
 
 /* @requires core */
 
@@ -5431,6 +5490,7 @@ mapshaper-dp
 var api = Opts.copyAllParams(MapShaper, {
   Node: Node,
   Utils: Utils,
+  Opts: Opts,
   trace: trace,
   error: error,
   assert: assert,
