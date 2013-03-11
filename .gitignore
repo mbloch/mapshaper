@@ -1,6 +1,6 @@
 *.DS_Store
 *.py[oc]
 __*
-*.sublime-project
-*.sublime-workspace
 */.git
+*/.gitignore
+*.min.js

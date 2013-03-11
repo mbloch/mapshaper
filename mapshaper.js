@@ -1198,6 +1198,13 @@ if (inNode) {
     return obj;
   };
 
+/*
+  Node.runInShell = function(cmd) {
+    var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
+    var spawn = require('child_process').spawn;
+    spawn(parts[0], parts.slice(1), {stdio: "inherit"});
+  };
+*/
 
   // path is relative to the node script;
   // get the absolute path to it.
@@ -1206,6 +1213,10 @@ if (inNode) {
     var scriptDir = Node.getFileInfo(require.main.filename).directory;
     return Node.path.join(scriptDir, path);
   };
+
+  //Node.resolvePathFromFile = function(path) {
+  //  return Node.path.join(__dirname, path);
+  //}
 
   Node.resolvePathFromShell = function(path) {
     // NOTE: doesn't work on abs. paths
@@ -1235,11 +1246,13 @@ if (inNode) {
     info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
     info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
     info.directory = Node.path.dirname(info.path);
+    info.relative_dir = Node.path.dirname(fpath);
     return info;
   };
 
   Node.getFileInfo = function(fpath) {
-    var stat, info = Node.parseFilename(fpath);
+    var info = Node.parseFilename(fpath),
+        stat;
     Opts.copyAllParams(info, {exists: false, is_directory: false, is_file: false});
     if (stat = Node.statSync(fpath)) {
       if (stat.isFile()) {
@@ -3848,7 +3861,7 @@ ShapefileReader.prototype.read = function() {
     stop("Only polygon and polyline (type 5 and 3) Shapefiles are supported.");
   }
 
-  var polygonType = shpType == 5;
+  var expectRings = shpType == 5;
 
   var bin = this._bin,
       shapes = [],
@@ -3856,8 +3869,8 @@ ShapefileReader.prototype.read = function() {
       partCount = 0,
       shapeCount = 0;
 
-  var rememberHoles = polygonType,
-      rememberMaxParts = polygonType;
+  var findHoles = expectRings,
+      findMaxParts = expectRings;
 
   bin.position(100); // skip to the shape data section
 
@@ -3879,23 +3892,19 @@ ShapefileReader.prototype.read = function() {
 
   // SECOND PASS
   // Read coordinates and other data into buffers
-  // TODO (?) Identify polygon holes...
   //
 
-  // Typed arrays tested ~2x faster than new Array(pointCount) in node;
+  // Using typed arrays wherever for performance
   // 
   var xx = new Float64Array(pointCount);
       yy = new Float64Array(pointCount),
       partIds = new Uint32Array(pointCount),   
       shapeIds = [];
 
-  // Experimental: Adding arrays for part-level data: bounding boxes,
-  //   ids of max part in each shape (for shape preservation)
-  //
-  if (rememberMaxParts) {
+  if (findMaxParts) {
     var maxPartFlags = new Uint8Array(partCount);
   }
-  if (rememberHoles) {
+  if (findHoles) {
     var holeFlags = new Uint8Array(partCount);
   }
 
@@ -3926,10 +3935,10 @@ ShapefileReader.prototype.read = function() {
         pointId++;       
       }
 
-      if (polygonType) {
+      if (expectRings) {
         signedPartArea = msSignedRingArea(xx, yy, pointId - partSize, partSize);
 
-        if (rememberMaxParts) {
+        if (findMaxParts) {
           partArea = Math.abs(signedPartArea);
           if (i === 0 || partArea > maxPartArea) {
             if (i > 0) {
@@ -3941,7 +3950,7 @@ ShapefileReader.prototype.read = function() {
           }
         }
 
-        if (rememberHoles) {
+        if (findHoles) {
           if (signedPartArea == 0) error("A ring in shape", shapeId, "has zero area or is not closed");
           if (signedPartArea < 0) {
             if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
@@ -3960,7 +3969,7 @@ ShapefileReader.prototype.read = function() {
     input_point_count: pointCount,
     input_part_count: partId,
     input_shape_count: shapeId,
-    input_geometry_type: polygonType ? "polygon" : "polyline",
+    input_geometry_type: expectRings ? "polygon" : "polyline",
     shapefile_header: this.header
   }
   //this.header.pointCount = pointCount;
@@ -4155,7 +4164,7 @@ MapShaper.validateArgv = function(argv) {
   var opts = {};
   cli.validateInputOpts(opts, argv);
   cli.validateOutputOpts(opts, argv);
-  cli.validateSimplificationOpts(opts, argv);
+  cli.validateSimplifyOpts(opts, argv);
 
   if (argv['shp-test']) {
     if (opts.input_format != 'shapefile') error("--shp-test option requires shapefile input");
@@ -4182,8 +4191,9 @@ cli.validateInputOpts = function(opts, argv) {
   opts.input_file = ifile;
   opts.input_format = "shapefile";
   opts.input_file_base = ifileInfo.base;
-  opts.input_directory = ifileInfo.directory;
+  opts.input_directory = ifileInfo.relative_dir;
   opts.input_path_base = Node.path.join(opts.input_directory, opts.input_file_base);
+  return opts;
 };
 
 cli.validateOutputOpts = function(opts, argv) {
@@ -4197,22 +4207,28 @@ cli.validateOutputOpts = function(opts, argv) {
       error("-o option needs a file name");
     }
     var ofileInfo = Node.getFileInfo(argv.o);
-    if (opts.input_format == opts.output_format && ofileInfo.base
-      == opts.input_file_base && ofileInfo.directory == opts.input_directory) {
-      error("Output file shouldn't overwrite source file");
-    }
     if (ofileInfo.is_directory) {
-      error("-o option needs a file name");
+      error("-o should be a file, not a directory");
     }
     if (ofileInfo.ext && ofileInfo.ext != "shp") {
-      error("OUtput option looks like an unsupported file type:", ofileInfo.file);
+      error("Output option looks like an unsupported file type:", ofileInfo.file);
     }
-    obase = Node.path.join(ofileInfo.directory, ofileInfo.base);
+    if (!Node.dirExists(ofileInfo.relative_dir)) {
+      error("Output directory not found");
+    }
+    obase = Node.path.join(ofileInfo.relative_dir, ofileInfo.base);
+
+    if (opts.input_format == opts.output_format && obase == Node.path.join(opts.input_directory, opts.input_file_base)) {
+      // TODO: overwriting is possible users types absolute path for input or output path... 
+      error("Output file shouldn't overwrite source file");
+    }
   }
+
   opts.output_path_base = obase;
+  return opts;
 };
 
-cli.validateSimplificationOpts = function(opts, argv) {
+cli.validateSimplifyOpts = function(opts, argv) {
   if (argv.i != null) {
     if (!Utils.isNumber(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
     opts.simplify_interval = argv.i;
@@ -4222,9 +4238,9 @@ cli.validateSimplificationOpts = function(opts, argv) {
     opts.simplify_pct = argv.p;
   }
 
-  opts.use_simplification = opts.simplify_pct || opts.simplify_interval;
-  opts.use_sphere = argv.u;
-  opts.keep_shapes = argv.k;
+  opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
+  opts.use_sphere = !!argv.u;
+  opts.keep_shapes = !!argv.k;
 
   if (argv.dp)
     opts.simplify_method = "dp";
@@ -4232,6 +4248,8 @@ cli.validateSimplificationOpts = function(opts, argv) {
     opts.simplify_method = "vis";
   else
     opts.simplify_method = "mod";
+
+  return opts;
 };
 
 
@@ -4418,7 +4436,8 @@ MapShaper.geom = {
 
 /* @requires core */
 
-// Algorithm from N. Wirth's book, implementation by N. Devillard.
+// See http://ndevilla.free.fr/median/median/src/wirth.c
+// Elements of @arr are reordered
 //
 Utils.findValueByRank = function(arr, rank) {
   var k = (rank | 0) - 1, // conv. rank into array index
@@ -4450,6 +4469,8 @@ Utils.findValueByRank = function(arr, rank) {
   return arr[k];
 };
 
+
+//
 Utils.findMedian = function(arr) {
   var n = arr.length,
       rank = Math.floor(n / 2) + 1,
