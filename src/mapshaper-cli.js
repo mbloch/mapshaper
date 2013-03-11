@@ -6,7 +6,7 @@ MapShaper.validateArgv = function(argv) {
   var opts = {};
   cli.validateInputOpts(opts, argv);
   cli.validateOutputOpts(opts, argv);
-  cli.validateSimplificationOpts(opts, argv);
+  cli.validateSimplifyOpts(opts, argv);
 
   if (argv['shp-test']) {
     if (opts.input_format != 'shapefile') error("--shp-test option requires shapefile input");
@@ -33,8 +33,9 @@ cli.validateInputOpts = function(opts, argv) {
   opts.input_file = ifile;
   opts.input_format = "shapefile";
   opts.input_file_base = ifileInfo.base;
-  opts.input_directory = ifileInfo.directory;
+  opts.input_directory = ifileInfo.relative_dir;
   opts.input_path_base = Node.path.join(opts.input_directory, opts.input_file_base);
+  return opts;
 };
 
 cli.validateOutputOpts = function(opts, argv) {
@@ -48,22 +49,28 @@ cli.validateOutputOpts = function(opts, argv) {
       error("-o option needs a file name");
     }
     var ofileInfo = Node.getFileInfo(argv.o);
-    if (opts.input_format == opts.output_format && ofileInfo.base
-      == opts.input_file_base && ofileInfo.directory == opts.input_directory) {
-      error("Output file shouldn't overwrite source file");
-    }
     if (ofileInfo.is_directory) {
-      error("-o option needs a file name");
+      error("-o should be a file, not a directory");
     }
     if (ofileInfo.ext && ofileInfo.ext != "shp") {
-      error("OUtput option looks like an unsupported file type:", ofileInfo.file);
+      error("Output option looks like an unsupported file type:", ofileInfo.file);
     }
-    obase = Node.path.join(ofileInfo.directory, ofileInfo.base);
+    if (!Node.dirExists(ofileInfo.relative_dir)) {
+      error("Output directory not found");
+    }
+    obase = Node.path.join(ofileInfo.relative_dir, ofileInfo.base);
+
+    if (opts.input_format == opts.output_format && obase == Node.path.join(opts.input_directory, opts.input_file_base)) {
+      // TODO: overwriting is possible users types absolute path for input or output path... 
+      error("Output file shouldn't overwrite source file");
+    }
   }
+
   opts.output_path_base = obase;
+  return opts;
 };
 
-cli.validateSimplificationOpts = function(opts, argv) {
+cli.validateSimplifyOpts = function(opts, argv) {
   if (argv.i != null) {
     if (!Utils.isNumber(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
     opts.simplify_interval = argv.i;
@@ -73,9 +80,9 @@ cli.validateSimplificationOpts = function(opts, argv) {
     opts.simplify_pct = argv.p;
   }
 
-  opts.use_simplification = opts.simplify_pct || opts.simplify_interval;
-  opts.use_sphere = argv.u;
-  opts.keep_shapes = argv.k;
+  opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
+  opts.use_sphere = !!argv.u;
+  opts.keep_shapes = !!argv.k;
 
   if (argv.dp)
     opts.simplify_method = "dp";
@@ -83,6 +90,8 @@ cli.validateSimplificationOpts = function(opts, argv) {
     opts.simplify_method = "vis";
   else
     opts.simplify_method = "mod";
+
+  return opts;
 };
 
 
