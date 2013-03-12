@@ -68,24 +68,22 @@ ShapefileReader.prototype.read = function() {
     partId = 0,
     shapeId = 0,
     holeCount = 0,
-    dataView = bin.dataView(),
+    buf = bin.buffer(),
     signedPartArea, partArea, maxPartId, maxPartArea;
 
   for (var shpId=0; shpId < shapes.length; shpId++) {
     var shp = shapes[shpId];
-    var offs = shp.coordOffset;
     var partsInShape = shp.partCount;
+    var offs = 0;
+    var coords = new Float64Array(buf.slice(shp.coordOffset, shp.coordOffset + shp.pointCount * 32));
+
     for (var i=0; i<partsInShape; i++) {
       shapeIds.push(shapeId);
-      partSize = shp.partSizes[i];
+      var partSize = shp.partSizes[i];
 
       for (var j=0; j<partSize; j++) {
-        // DataView at least as fast as Buffer API in nodejs
-        x = dataView.getFloat64(offs, true);
-        y = dataView.getFloat64(offs + 8, true);
-        xx[pointId] = x;
-        yy[pointId] = y;
-        offs += 16;
+        xx[pointId] = coords[offs++];
+        yy[pointId] = coords[offs++];
         partIds[pointId] = partId;
         pointId++;       
       }
@@ -161,16 +159,13 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
     return shpObj.buffer;
   });
 
-  var bufClass = Node.inNode ? Buffer : ArrayBuffer;
-  var shpBin = new BinArray(new bufClass(fileBytes), false),
-      shpBuf = shpBin.buffer(),
+  var shpBin = new BinArray(new ArrayBuffer(fileBytes), false),
       shxBytes = 100 + shapeBuffers.length * 8
-      shxBin = new BinArray(new bufClass(shxBytes), false),
-      shxBuf = shxBin.buffer();
+      shxBin = new BinArray(new ArrayBuffer(shxBytes), false);
 
   // write .shp header section
   shpBin.writeInt32(9994);
-  shpBin.clearBytes(5 * 4);
+  shpBin.skipBytes(5 * 4);
   shpBin.writeInt32(fileBytes / 2);
   shpBin.littleEndian = true;
   shpBin.writeInt32(1000);
@@ -180,10 +175,10 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
   shpBin.writeFloat64(bounds.right);
   shpBin.writeFloat64(bounds.top);
   // skip Z & M type bounding boxes;
-  shpBin.clearBytes(4 * 8);
+  shpBin.skipBytes(4 * 8);
 
   // write .shx header
-  shxBin.writeBuffer(shpBuf, 100); // copy .shp header to .shx
+  shxBin.writeBuffer(shpBin.buffer(), 100); // copy .shp header to .shx
   shxBin.dataView().setInt32(24, shxBytes/2, false); // set .shx file size
 
   // write record sections of .shp and .shx
@@ -194,6 +189,8 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
     shpBin.writeBuffer(buf);
   });
 
+  var shxBuf = shxBin.toNodeBuffer(),
+      shpBuf = shpBin.toNodeBuffer();
   return {shp: shpBuf, shx: shxBuf};
 };
 
@@ -201,14 +198,14 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
 //
 MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
   var bounds = null,
-      buf, view;
+      buffer, view;
   if (!shape || shape.length == 0) {
     buffer = new ArrayBuffer(12)
     view = new DataView(buffer);
     view.setInt32(0, id, false);
     view.setInt32(4, 2, false);
     view.setInt32(8, 0, true);
-  } 
+  }
   else {
     var data = MapShaper.convertTopoShape(shape, arcs),
         bounds = data.bounds,
@@ -233,14 +230,15 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
       view.setInt32(partsIdx + i * 4, pointCount, true);
       var xx = part[0], yy = part[1];
       for (var j=0, len=xx.length; j<len; j++, pointsIdx += 16) {
+        // TODO: consider getting a Float64Array view of just the points...
         view.setFloat64(pointsIdx, xx[j], true);
         view.setFloat64(pointsIdx + 8, yy[j], true);
       }
       pointCount += j;
     });
 
-    assert(data.pointCount == pointCount, "Shp record point count mismatch; pointCount:", pointCount, "data.pointCount:", data.pointCount)
-    assert(pointsIdx == recordBytes, "Shp record bytelen mismatch; pointsIdx:", pointsIdx, "recordBytes:", recordBytes, "pointCount:", pointCount)
+    if (data.pointCount != pointCount) error("Shp record point count mismatch; pointCount:", pointCount, "data.pointCount:", data.pointCount)
+    if (pointsIdx != recordBytes) error("Shp record bytelen mismatch; pointsIdx:", pointsIdx, "recordBytes:", recordBytes, "pointCount:", pointCount)
   }
   return {bounds: bounds, buffer: buffer};
 };
