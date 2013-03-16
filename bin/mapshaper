@@ -220,11 +220,12 @@ else if (opts.output_format == "shapefile") {
 
   if (opts.shp_test) {
     // check if output .shp data is identical to input (e.g. to test for topology errors)
-    var originalShp = new mapshaper.BinArray(Node.readFile(opts.input_file)),
-        passes = originalShp.identical(shpData.shp),
-        msg = passes ?
-          "\u001b[32m\u2713\u001b[0m Regenerated .shp is identical to original." :
-          "\u001b[31m\u2717\u001b[0m Regenerated .shp doesn't match original.";
+    var origShp = Node.readFile(opts.input_file),
+      newShp = shpData.shp,
+      identical = mapshaper.BinArray.buffersAreIdentical(origShp, newShp),
+      msg = identical ?
+        "\u001b[32m\u2713\u001b[0m Regenerated .shp is identical to original .shp" :
+        "\u001b[31m\u2717\u001b[0m Regenerated .shp doesn't match original .shp";
     console.log(msg);
   } else {
     var obase = opts.output_path_base,

@@ -1,10 +1,19 @@
-/* @requires shapefile-import */
+/* @requires shapefile-import, mapshaper-common */
 
-/**
- * This replaces the default ShapefileReader.read() function.
- * Data is stored in a format used by MapShaper for topology building.
- */
-ShapefileReader.prototype.read = function() {
+// Reads Shapefile data from an ArrayBuffer or Buffer
+// Converts to format used for identifying topology.
+//
+MapShaper.importShp = function(src) {
+  var reader = new ShapefileReader(src);
+  reader.read = readShpRecords;
+  return reader.read();
+};
+
+
+// This replaces the default ShapefileReader.read() function.
+// Data is stored in a format used by MapShaper for calculating topology
+//
+function readShpRecords() {
 
   var supportedTypes = {
     5: "polygon",
@@ -33,7 +42,7 @@ ShapefileReader.prototype.read = function() {
   // get metadata about each shape and get total point count in file
   // (need total point count to instantiate typed arrays)
   //
-  while(this.hasNext()) {
+  while(bin.bytesLeft() > 0) {
     var meta = this.readShapeMetadata(bin, this.header);
     bin.skipBytes(meta.pointCount * 16);
     // TODO: update to support M and Z types
@@ -43,7 +52,6 @@ ShapefileReader.prototype.read = function() {
     partCount += meta.partCount;
     shapeCount++;
   }
-
 
   // SECOND PASS
   // Read coordinates and other data into buffers
@@ -68,15 +76,17 @@ ShapefileReader.prototype.read = function() {
     partId = 0,
     shapeId = 0,
     holeCount = 0,
-    buf = bin.buffer(),
+    buf, //  = bin.buffer(),
     signedPartArea, partArea, maxPartId, maxPartArea;
 
   for (var shpId=0; shpId < shapes.length; shpId++) {
     var shp = shapes[shpId];
     var partsInShape = shp.partCount;
     var offs = 0;
-    var coords = new Float64Array(buf.slice(shp.coordOffset, shp.coordOffset + shp.pointCount * 32));
-
+    //var coords = new Float64Array(bin._buffer.slice(shp.coordOffset, shp.coordOffset + shp.pointCount * 32));
+    //bin.position(shp.coordOffset + shp.pointCount * 32);
+    bin.position(shp.coordOffset);
+    var coords = bin.readFloat64Array(shp.pointCount * 2);
     for (var i=0; i<partsInShape; i++) {
       shapeIds.push(shapeId);
       var partSize = shp.partSizes[i];
@@ -106,7 +116,9 @@ ShapefileReader.prototype.read = function() {
         if (findHoles) {
           if (signedPartArea == 0) error("A ring in shape", shapeId, "has zero area or is not closed");
           if (signedPartArea < 0) {
-            if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
+            if (partsInShape == 1) {
+              error("Shape", shapeId, "only contains a hole");
+            }
             holeFlags[partId] = signedPartArea < 0 ? 1 : 0;
             holeCount++;
           }
@@ -135,21 +147,14 @@ ShapefileReader.prototype.read = function() {
     holeFlags: holeFlags || null,
     info: info
   };
-};
+}
 
-
-// Reads Shapefile data from an ArrayBuffer or Buffer
-// Converts to format used for identifying topology.
-//
-MapShaper.importShpFromBuffer = function(buf) {
-  return new ShapefileReader(buf).read();
-};
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
 MapShaper.exportShp = function(arcs, shapes, shpType) {
   if (!Utils.isArray(arcs) || !Utils.isArray(shapes)) error("Missing exportable data.");
-
+  T.start();
   var fileBytes = 100;
   var bounds = new BoundingBox();
   var shapeBuffers = Utils.map(shapes, function(shape, i) {
@@ -158,88 +163,97 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
     shpObj.bounds && bounds.mergeBounds(shpObj.bounds);
     return shpObj.buffer;
   });
+  T.stop("export shape records");
 
-  var shpBin = new BinArray(new ArrayBuffer(fileBytes), false),
-      shxBytes = 100 + shapeBuffers.length * 8
-      shxBin = new BinArray(new ArrayBuffer(shxBytes), false);
+  T.start();
 
   // write .shp header section
-  shpBin.writeInt32(9994);
-  shpBin.skipBytes(5 * 4);
-  shpBin.writeInt32(fileBytes / 2);
-  shpBin.littleEndian = true;
-  shpBin.writeInt32(1000);
-  shpBin.writeInt32(shpType);
-  shpBin.writeFloat64(bounds.left);
-  shpBin.writeFloat64(bounds.bottom);
-  shpBin.writeFloat64(bounds.right);
-  shpBin.writeFloat64(bounds.top);
-  // skip Z & M type bounding boxes;
-  shpBin.skipBytes(4 * 8);
+  var shpBin = new BinArray(fileBytes, false)
+    .writeInt32(9994)
+    .skipBytes(5 * 4)
+    .writeInt32(fileBytes / 2)
+    .littleEndian()
+    .writeInt32(1000)
+    .writeInt32(shpType)
+    .writeFloat64(bounds.left)
+    .writeFloat64(bounds.bottom)
+    .writeFloat64(bounds.right)
+    .writeFloat64(bounds.top)
+    .skipBytes(4 * 8); // skip Z & M type bounding boxes;
 
   // write .shx header
-  shxBin.writeBuffer(shpBin.buffer(), 100); // copy .shp header to .shx
-  shxBin.dataView().setInt32(24, shxBytes/2, false); // set .shx file size
+  var shxBytes = 100 + shapeBuffers.length * 8;
+  var shxBin = new BinArray(shxBytes, false)
+    .writeBuffer(shpBin.buffer(), 100) // copy .shp header to .shx
+    .position(24)
+    .bigEndian()
+    .writeInt32(shxBytes/2)
+    .littleEndian()
+    .position(100);
 
   // write record sections of .shp and .shx
   Utils.forEach(shapeBuffers, function(buf) {
-    shxBin.writeInt32(shpBin.position() / 2);
-    //shxBin.writeBuffer(buf, 4, 4); // copy content length from shape record
-    shxBin.writeInt32((buf.byteLength - 8) / 2); // copy content length from shape record
+    shxBin.writeInt32(shpBin.position() / 2)
+    shxBin.writeInt32((buf.byteLength - 8) / 2); // content length
+    // alternative: shxBin.writeBuffer(buf, 4, 4);
     shpBin.writeBuffer(buf);
   });
-
-  var shxBuf = shxBin.toNodeBuffer(),
-      shpBuf = shpBin.toNodeBuffer();
+  T.stop("convert to binary");
+  var shxBuf = shxBin.buffer(),
+      shpBuf = shpBin.buffer();
   return {shp: shpBuf, shx: shxBuf};
 };
 
-// Generate an ArrayBuffer containing a Shapefile record for one shape.
+
+// Returns an ArrayBuffer containing a Shapefile record for one shape
+//   and the bounding box of the shape.
 //
 MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
   var bounds = null,
-      buffer, view;
+      bin;
   if (!shape || shape.length == 0) {
-    buffer = new ArrayBuffer(12)
-    view = new DataView(buffer);
-    view.setInt32(0, id, false);
-    view.setInt32(4, 2, false);
-    view.setInt32(8, 0, true);
+    bin = new BinArray(12, false)
+      .writeInt32(id)
+      .writeInt32(2)
+      .littleEndian()
+      .writeInt32(0);
   }
   else {
     var data = MapShaper.convertTopoShape(shape, arcs),
         bounds = data.bounds,
-        partsIdx = 5 * 4 + 4 * 8,
+        partsIdx = 52,
         pointsIdx = partsIdx + 4 * data.partCount,
         recordBytes = pointsIdx + 16 * data.pointCount,
         pointCount = 0;
 
-    buffer = new ArrayBuffer(recordBytes);
-    view = new DataView(buffer);
-    view.setInt32(0, id, false);
-    view.setInt32(4, (recordBytes - 8) / 2, false);
-    view.setInt32(8, shpType, true);
-    view.setFloat64(12, bounds.left, true);
-    view.setFloat64(20, bounds.bottom, true);
-    view.setFloat64(28, bounds.right, true);
-    view.setFloat64(36, bounds.top, true);
-    view.setInt32(44, data.partCount, true);
-    view.setInt32(48, data.pointCount, true);
+    bin = new BinArray(recordBytes, false)
+      .writeInt32(id)
+      .writeInt32((recordBytes - 8) / 2)
+      .littleEndian()
+      .writeInt32(shpType)
+      .writeFloat64(bounds.left)
+      .writeFloat64(bounds.bottom)
+      .writeFloat64(bounds.right)
+      .writeFloat64(bounds.top)
+      .writeInt32(data.partCount)
+      .writeInt32(data.pointCount);
 
     Utils.forEach(data.parts, function(part, i) {
-      view.setInt32(partsIdx + i * 4, pointCount, true);
-      var xx = part[0], yy = part[1];
-      for (var j=0, len=xx.length; j<len; j++, pointsIdx += 16) {
-        // TODO: consider getting a Float64Array view of just the points...
-        view.setFloat64(pointsIdx, xx[j], true);
-        view.setFloat64(pointsIdx + 8, yy[j], true);
+      bin.position(partsIdx + i * 4)
+        .writeInt32(pointCount)
+        .position(pointsIdx + pointCount * 16);
+      var xx = part[0],
+          yy = part[1];
+      for (var j=0, len=xx.length; j<len; j++) {
+        bin.writeFloat64(xx[j]);
+        bin.writeFloat64(yy[j]);
       }
       pointCount += j;
     });
+    if (data.pointCount != pointCount) error("Shp record point count mismatch; pointCount:"
+        , pointCount, "data.pointCount:", data.pointCount);
 
-    if (data.pointCount != pointCount) error("Shp record point count mismatch; pointCount:", pointCount, "data.pointCount:", data.pointCount)
-    if (pointsIdx != recordBytes) error("Shp record bytelen mismatch; pointsIdx:", pointsIdx, "recordBytes:", recordBytes, "pointCount:", pointCount)
   }
-  return {bounds: bounds, buffer: buffer};
+  return {bounds: bounds, buffer: bin.buffer()};
 };
 

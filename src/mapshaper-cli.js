@@ -24,7 +24,7 @@ MapShaper.validateArgv = function(argv) {
 
 cli.validateInputOpts = function(opts, argv) {
   var ifile = argv._[0];
-  if (!ifile) error("Missing an input file.");
+  if (!ifile) error("Missing an input file");
 
   var ifileInfo = Node.getFileInfo(ifile);
   if (!ifileInfo.exists) error("File not found (" + ifile + ")");
@@ -102,10 +102,10 @@ MapShaper.importFromFile = function(fname) {
   if (info.ext == 'json') {
     return MapShaper.importJSON(JSON.parse(Node.readFile(fname, 'utf8')));
   }
-  return MapShaper.importShpFromBuffer(Node.readFile(fname));
+  return MapShaper.importShp(fname);
 };
 
-
+/*
 MapShaper.importFromStream = function(sname) {
   assert("/dev/stdin", "[importFromStream()] requires /dev/stdin; received:", sname);
   var buf = Node.readFile(sname);
@@ -115,3 +115,4 @@ MapShaper.importFromStream = function(sname) {
   var obj = JSON.parse(buf.toString());
   return MapShaper.importJSON(obj);
 };
+*/
