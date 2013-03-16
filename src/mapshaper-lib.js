@@ -2,6 +2,7 @@
 @requires
 core,
 nodejs,
+dbf-import,
 mapshaper-cli,
 mapshaper-shapefile,
 mapshaper-simplify,
@@ -20,7 +21,8 @@ var api = Opts.copyAllParams(MapShaper, {
   T: T,
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,
-  Visvalingam: Visvalingam
+  Visvalingam: Visvalingam,
+  Shapefile: Shapefile
 });
 
 if (Node.inNode) {
