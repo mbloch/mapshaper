@@ -2,14 +2,6 @@
 
 var catty = require("./lib/catty.js")
 catty.addLibrary("src")
-catty.addLibrary("node_modules/js-basics/src")
+catty.addLibrary("lib/js-basics/src")
 catty.bundleFile("src/mapshaper-lib.js", "./mapshaper.js")
 
-/*
-if (target == "test") {
-	var spawn = require('child_process').spawn;
-	spawn("mocha", ["-R", "spec"], {stdio: "inherit"});
-} else {
-	console.log("Usage: $ build [-f] [mapshaper|test]")
-}
-*/
