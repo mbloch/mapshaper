@@ -9,23 +9,19 @@ function Heap() {
       poppedVal,
       heapArr, indexArr;
 
-  //
-  // PUBLIC METHODS
-  //
-
   this.addValues = function(values, start, end) {
     var minId = start | 0,
-        maxId = end == null ? values.length - 1 : end | 0;
-        maxItems = maxId - minId + 1;
+        maxItems = (end == null ? values.length : end + 1) - minId;
     dataOffs = minId,
     dataArr = values;
-    reserveSpace(maxItems);
     itemsInHeap = 0;
+    reserveSpace(maxItems);
     for (var i=0; i<maxItems; i++) {
-      itemsInHeap++;
-      // add item to bottom of heap and restore order
-      updateHeap(i, i + dataOffs);
-      reHeap(i);
+      insert(i, i + dataOffs); // push item onto the heap
+    }
+    itemsInHeap = maxItems;
+    for (var j=(itemsInHeap-2) >> 1; j >= 0; j--) {
+      downHeap(j);
     }
     poppedVal = -Infinity;
   };
@@ -62,16 +58,13 @@ function Heap() {
     var minValId = heapArr[0],
         lastIdx = --itemsInHeap;
     if (itemsInHeap > 0) {
-      updateHeap(0, heapArr[lastIdx]);// copy last item in heap into root position
-      reHeap(0);
+      insert(0, heapArr[lastIdx]);// copy last item in heap into root position
+      downHeap(0);
     }
     poppedVal = dataArr[minValId];
     return minValId;
   };
 
-  //
-  // PRIVATE
-  //
 
   function reserveSpace(heapSize) {
     if (!heapArr || heapSize > heapArr.length) {
@@ -81,8 +74,10 @@ function Heap() {
     }
   };
 
+
   // Associate a heap idx with the id of a value in valuesArr
-  function updateHeap(heapIdx, valId) {
+  //
+  function insert(heapIdx, valId) {
     indexArr[valId - dataOffs] = heapIdx;
     heapArr[heapIdx] = valId;
   }
@@ -106,21 +101,17 @@ function Heap() {
     return j >= itemsInHeap || dataArr[heapArr[i]] <= dataArr[heapArr[j]] ? i : j;
   }
 
-  // Function restores order to the heap (lesser values towards the top of the heap)
-  // Receives the idx of a heap item that has just been changed or added.
-  // (Assumes the rest of the heap is ordered, this item may be out-of-order)
-  //
-  function reHeap(currIdx) {
-    var valId, currVal,
-        parentIdx,
-        parentValId,
-        parentVal;
+  function reHeap(idx) {
+    if (idx < 0 || idx >= itemsInHeap)
+      error("Out-of-bounds heap idx passed to reHeap()");
+    downHeap(upHeap(idx));
+  }
 
-    if (currIdx < 0 || currIdx >= itemsInHeap) error("Out-of-bounds heap idx passed to reHeap()");
-    valId = heapArr[currIdx];
-    currVal = dataArr[valId];
+  function upHeap(currIdx) {
+    var valId = heapArr[currIdx],
+        currVal = dataArr[valId],
+        parentIdx, parentValId, parentVal;
 
-    // Bubbling phase:
     // Move item up in the heap until it's at the top or is heavier than its parent
     //
     while (currIdx > 0) {
@@ -133,16 +124,20 @@ function Heap() {
       }
 
       // out-of-order; swap child && parent
-      updateHeap(currIdx, parentValId);
-      updateHeap(parentIdx, valId);
+      insert(currIdx, parentValId);
+      insert(parentIdx, valId);
       currIdx = parentIdx;
       // if (dataArr[heapArr[currIdx]] !== currVal) error("Lost value association");
     }
+    return currIdx;
+  }
 
-    // Percolating phase:
+  function downHeap(currIdx) {
     // Item gets swapped with any lighter children
     //
-    var firstChildIdx = 2 * currIdx + 1,
+    var valId = heapArr[currIdx],
+        currVal = dataArr[valId],
+        firstChildIdx = 2 * currIdx + 1,
         minChildIdx, childValId, childVal;
 
     while (firstChildIdx < itemsInHeap) {
@@ -154,13 +149,12 @@ function Heap() {
         break;
       }
 
-      // swap curr item and child w/ lesser value
-      updateHeap(currIdx, childValId);
-      updateHeap(minChildIdx, valId);
+      insert(currIdx, childValId);
+      insert(minChildIdx, valId);
 
       // descend in the heap:
       currIdx = minChildIdx;
       firstChildIdx = 2 * currIdx + 1;
     }
-  };
+  }
 }
