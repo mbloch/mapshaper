@@ -4,3 +4,6 @@ __*
 */.git
 */.gitignore
 *.min.js
+
+# leaving out the bundled library until the project is farther along
+mapshaper.js
