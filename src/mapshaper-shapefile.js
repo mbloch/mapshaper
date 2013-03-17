@@ -1,4 +1,4 @@
-/* @requires shapefile-import, dbf-import, mapshaper-common */
+/* @requires shp-reader, dbf-reader, mapshaper-common */
 
 // Reads Shapefile data from an ArrayBuffer or Buffer
 // Converts to format used for identifying topology.
@@ -14,7 +14,7 @@ MapShaper.importDbf = function(src) {
 
 MapShaper.importShp = function(src) {
   T.start();
-  var reader = new ShapefileReader(src);
+  var reader = new ShpReader(src);
   var supportedTypes = {
     5: "polygon",
     3: "polyline"

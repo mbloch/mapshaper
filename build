@@ -2,6 +2,5 @@
 
 var catty = require("./lib/catty.js")
 catty.addLibrary("src")
-catty.addLibrary("lib/js-basics/src")
+catty.addLibrary("lib")
 catty.bundleFile("src/mapshaper-lib.js", "./mapshaper.js")
-
