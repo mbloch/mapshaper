@@ -49,16 +49,15 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
       nextArr[i] = i + 1;
       prevArr[i] = i - 1;
     }
+    prevArr[arcLen-1] = arcLen - 2;
+    nextArr[0] = 1;
 
     // Initialize the heap with thresholds; don't add first and last point
     heap.addValues(values, 1, arcLen-2);
-    prevArr[arcLen-1] = arcLen - 2;
-    nextArr[0] = 1;
 
     // Calculate removal thresholds for each internal point in the arc
     //
     var idx, nextIdx, prevIdx;
-    var arr = [];
     while(heap.heapSize() > 0) {
 
       // Remove the point with the least effective area.
@@ -133,7 +132,6 @@ Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
 
 Visvalingam.standardMetric = triangleArea;
 Visvalingam.standardMetric3D = triangleArea3D;
-
 
 // Experimenting with a replacement for "Modified Visvalingam"
 //
