@@ -161,12 +161,16 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
 // @simplify: function(xx:array, yy:array, [zz:array], [length:integer]):array
 //
 MapShaper.simplifyArcs = function(arcs, simplify, opts) {
+  T.start();
+  var arcs;
   if (opts && opts.spherical) {
-    return MapShaper.simplifyArcsSph(arcs, simplify);
+    arcs = MapShaper.simplifyArcsSph(arcs, simplify);
+  } else {
+    arcs = Utils.map(arcs, function(arc) {
+      return simplify(arc[0], arc[1]);
+    });
   }
-  var arcs = Utils.map(arcs, function(arc) {
-    return simplify(arc[0], arc[1]);
-  });
+  T.stop("Calculate simplification data");
   return arcs
 };
 

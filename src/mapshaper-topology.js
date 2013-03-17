@@ -18,6 +18,7 @@
 // }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
 //
 MapShaper.buildArcTopology = function(obj) {
+  T.start();
   assert(obj.xx && obj.yy && obj.partIds && obj.shapeIds, "[buildArcTopology()] Missing required param/s");
 
   var xx = obj.xx, 
@@ -41,7 +42,6 @@ MapShaper.buildArcTopology = function(obj) {
   var chainedIds = MapShaper.buildHashChains(xx, yy, partIds, bbox);
   T.stop("Find matching vertices");
 
-
   // Loop through all the points in the dataset, identifying arcs.
   //  
   T.start();  
@@ -63,7 +63,7 @@ MapShaper.buildArcTopology = function(obj) {
     }
   }
   T.stop("Find topological arcs");
-
+  T.stop("Process topology");
   return arcTable.exportData();
 
   function sameXY(id1, id2) {
@@ -391,3 +391,4 @@ MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
   }
   return nextIds;
 };
+

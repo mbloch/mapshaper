@@ -16,7 +16,8 @@ MapShaper.importGeoJSON = function(obj) {
 
 
 MapShaper.exportGeoJSON = function(obj) {
-  assert(!!obj.shapes && !!obj.arcs, "Missing 'shapes' and/or 'arcs' properties.");
+  T.start();
+  if (!obj.shapes || !obj.arcs) error("Missing 'shapes' and/or 'arcs' properties.");
 
   var features = Utils.map(obj.shapes, function(topoShape) {
     assert(topoShape && Utils.isArray(topoShape), "[exportGeoJSON()] Missing or invalid param/s");
@@ -29,6 +30,7 @@ MapShaper.exportGeoJSON = function(obj) {
     features: features
   };
 
+  T.stop("Export GeoJSON");
   return JSON.stringify(root);
 };
 
