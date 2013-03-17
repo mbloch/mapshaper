@@ -1,159 +1,128 @@
-/* @requires shapefile-import, mapshaper-common */
+/* @requires shapefile-import, dbf-import, mapshaper-common */
 
 // Reads Shapefile data from an ArrayBuffer or Buffer
 // Converts to format used for identifying topology.
 //
-MapShaper.importShp = function(src) {
-  var reader = new ShapefileReader(src);
-  reader.read = readShpRecords;
-  return reader.read();
+
+MapShaper.importDbf = function(src) {
+  T.start();
+  var data = new DbfReader(src, {format: table}).read();
+  T.stop("[importDbf()]");
+  return data;
 };
 
 
-// This replaces the default ShapefileReader.read() function.
-// Data is stored in a format used by MapShaper for calculating topology
-//
-function readShpRecords() {
-
+MapShaper.importShp = function(src) {
+  T.start();
+  var reader = new ShapefileReader(src);
   var supportedTypes = {
     5: "polygon",
     3: "polyline"
   };
 
-  var shpType = this.header.type;
-  if (shpType in supportedTypes == false) {
+  if (reader.type() in supportedTypes == false) {
     stop("Only polygon and polyline (type 5 and 3) Shapefiles are supported.");
   }
 
-  var expectRings = shpType == 5;
-
-  var bin = this._bin,
-      shapes = [],
-      pointCount = 0,
-      partCount = 0,
-      shapeCount = 0;
-
-  var findHoles = expectRings,
-      findMaxParts = expectRings;
-
-  bin.position(100); // skip to the shape data section
-
-  // FIRST PASS
-  // get metadata about each shape and get total point count in file
-  // (need total point count to instantiate typed arrays)
-  //
-  while(bin.bytesLeft() > 0) {
-    var meta = this.readShapeMetadata(bin, this.header);
-    bin.skipBytes(meta.pointCount * 16);
-    // TODO: update to support M and Z types
-
-    shapes.push(meta);
-    pointCount += meta.pointCount;
-    partCount += meta.partCount;
-    shapeCount++;
-  }
-
-  // SECOND PASS
-  // Read coordinates and other data into buffers
-  //
-
-  // Using typed arrays wherever for performance
-  // 
-  var xx = new Float64Array(pointCount);
-      yy = new Float64Array(pointCount),
-      partIds = new Uint32Array(pointCount),   
+  var counts = reader.getCounts(),
+      xx = new Float64Array(counts.pointCount),
+      yy = new Float64Array(counts.pointCount),
+      partIds = new Uint32Array(counts.pointCount),   
       shapeIds = [];
 
-  if (findMaxParts) {
-    var maxPartFlags = new Uint8Array(partCount);
-  }
-  if (findHoles) {
-    var holeFlags = new Uint8Array(partCount);
-  }
+  var expectRings = reader.type() == 5,
+      findMaxParts = expectRings,
+      maxPartFlags = findMaxParts ? new Uint8Array(counts.partCount) : null,
+      findHoles = expectRings,
+      holeFlags = findHoles ? new Uint8Array(counts.partCount) : null;
 
-  var x, y,
-    pointId = 0, 
-    partId = 0,
-    shapeId = 0,
-    holeCount = 0,
-    buf, //  = bin.buffer(),
-    signedPartArea, partArea, maxPartId, maxPartArea;
+  var pointId = 0, 
+      partId = 0,
+      shapeId = 0,
+      holeCount = 0;
 
-  for (var shpId=0; shpId < shapes.length; shpId++) {
-    var shp = shapes[shpId];
-    var partsInShape = shp.partCount;
-    var offs = 0;
-    //var coords = new Float64Array(bin._buffer.slice(shp.coordOffset, shp.coordOffset + shp.pointCount * 32));
-    //bin.position(shp.coordOffset + shp.pointCount * 32);
-    bin.position(shp.coordOffset);
-    var coords = bin.readFloat64Array(shp.pointCount * 2);
-    for (var i=0; i<partsInShape; i++) {
-      shapeIds.push(shapeId);
-      var partSize = shp.partSizes[i];
+  reader.forEachShape(function(shp) {
+    var maxPartId = -1,
+        maxPartArea = 0,
+        signedPartArea, partArea;
 
-      for (var j=0; j<partSize; j++) {
+    var partsInShape = shp.partCount,
+        pointsInShape = shp.pointCount,
+        partSizes = shp.getPartSizes(),
+        coords = shp.getCoords(),
+        pointsInPart;
+
+    if (partsInShape != partSizes.length) error("Shape part mismatch");
+
+    for (var j=0, offs=0; j<partsInShape; j++) {
+      pointsInPart = partSizes[j];
+      for (var i=0; i<pointsInPart; i++) {
         xx[pointId] = coords[offs++];
         yy[pointId] = coords[offs++];
         partIds[pointId] = partId;
-        pointId++;       
+        pointId++;
       }
 
-      if (expectRings) {
-        signedPartArea = msSignedRingArea(xx, yy, pointId - partSize, partSize);
 
+      if (expectRings) {
+        signedPartArea = msSignedRingArea(xx, yy, pointId - pointsInPart, pointsInPart);
+        if (signedPartArea == 0) error("A ring in shape", shapeId, "has zero area or is not closed");
         if (findMaxParts) {
           partArea = Math.abs(signedPartArea);
-          if (i === 0 || partArea > maxPartArea) {
-            if (i > 0) {
-              maxPartFlags[maxPartId] = 0;
-            }
-            maxPartFlags[partId] = 1;
+          if (partArea > maxPartArea) {
             maxPartId = partId;
             maxPartArea = partArea;
           }
         }
 
         if (findHoles) {
-          if (signedPartArea == 0) error("A ring in shape", shapeId, "has zero area or is not closed");
           if (signedPartArea < 0) {
-            if (partsInShape == 1) {
-              error("Shape", shapeId, "only contains a hole");
-            }
-            holeFlags[partId] = signedPartArea < 0 ? 1 : 0;
+            if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
+            holeFlags[partId] = 1;
             holeCount++;
           }
-        }        
+        }              
       }
 
+      shapeIds.push(shapeId);
       partId++;
+    }  // forEachPart()
+
+    if (maxPartId > -1) {
+      maxPartFlags[maxPartId] = 1;
     }
     shapeId++;
-  }
+  });  // forEachShape()
+
+  if (counts.pointCount != pointId || counts.partCount != partId || counts.shapeCount != shapeId)
+    error("Counting problem");
 
   var info = {
-    input_point_count: pointCount,
+    // shapefile_header: this.header
+    input_point_count: pointId,
     input_part_count: partId,
     input_shape_count: shapeId,
-    input_geometry_type: expectRings ? "polygon" : "polyline",
-    shapefile_header: this.header
-  }
-  //this.header.pointCount = pointCount;
+    input_geometry_type: expectRings ? "polygon" : "polyline"
+  };
+  T.stop("Import Shapefile");
   return {
     xx: xx,
     yy: yy,
     partIds: partIds,
     shapeIds: shapeIds,
-    maxPartFlags: maxPartFlags || null,
-    holeFlags: holeFlags || null,
+    maxPartFlags: maxPartFlags,
+    holeFlags: holeFlags,
     info: info
   };
-}
+};
+
 
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
 MapShaper.exportShp = function(arcs, shapes, shpType) {
   if (!Utils.isArray(arcs) || !Utils.isArray(shapes)) error("Missing exportable data.");
+  T.start();
   T.start();
   var fileBytes = 100;
   var bounds = new BoundingBox();
@@ -198,9 +167,10 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
     // alternative: shxBin.writeBuffer(buf, 4, 4);
     shpBin.writeBuffer(buf);
   });
-  T.stop("convert to binary");
   var shxBuf = shxBin.buffer(),
       shpBuf = shpBin.buffer();
+  T.stop("convert to binary");
+  T.stop("Export Shapefile");
   return {shp: shpBuf, shx: shxBuf};
 };
 
@@ -252,7 +222,6 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
     });
     if (data.pointCount != pointCount) error("Shp record point count mismatch; pointCount:"
         , pointCount, "data.pointCount:", data.pointCount);
-
   }
   return {bounds: bounds, buffer: bin.buffer()};
 };
