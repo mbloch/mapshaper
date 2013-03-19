@@ -32,6 +32,23 @@ MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
 };
 
 
+MapShaper.calcArcBounds = function(arcs) {
+  var arcCount = arcs.length,
+      i = 0;
+  var arr = new Float64Array(arcCount * 4);
+  for (var arcId=0; arcId<arcCount; arcId++) {
+    var arc = arcs[arcId];
+    var xb = Utils.getArrayBounds(arc[0]);
+    var yb = Utils.getArrayBounds(arc[1]);
+    arr[i++] = xb.min;
+    arr[i++] = yb.min;
+    arr[i++] = xb.max;
+    arr[i++] = yb.max;
+  }
+  return arr;
+};
+
+
 MapShaper.calcXYBounds = function(xx, yy, bb) {
   if (!bb) bb = new BoundingBox();
   var xbounds = Utils.getArrayBounds(xx),

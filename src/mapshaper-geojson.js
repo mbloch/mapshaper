@@ -20,7 +20,7 @@ MapShaper.exportGeoJSON = function(obj) {
   if (!obj.shapes || !obj.arcs) error("Missing 'shapes' and/or 'arcs' properties.");
 
   var features = Utils.map(obj.shapes, function(topoShape) {
-    assert(topoShape && Utils.isArray(topoShape), "[exportGeoJSON()] Missing or invalid param/s");
+    if (!topoShape || !Utils.isArray(topoShape)) error("[exportGeoJSON()] Missing or invalid param/s");
     var data = MapShaper.convertTopoShape(topoShape, obj.arcs);
     return MapShaper.getGeoJSONPolygonFeature(data.parts);      
   });

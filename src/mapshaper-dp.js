@@ -28,7 +28,6 @@ DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
 DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
   var len = len || xx.length, // kludge: 3D data gets passed in buffers, so need len parameter.
       useZ = !!zz;
-  // assert(len > 1, "Arc length must be 2 or greater");
 
   var dpArr = new Array(len); // new Float64Array(len);
   Utils.initializeArray(dpArr, 0);

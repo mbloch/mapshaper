@@ -11,13 +11,12 @@ mapshaper-visvalingam,
 mapshaper-dp
 */
 
-var api = Opts.copyAllParams(MapShaper, {
+var api = Utils.extend(MapShaper, {
   Node: Node,
   Utils: Utils,
   Opts: Opts,
   trace: trace,
   error: error,
-  assert: assert,
   T: T,
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,

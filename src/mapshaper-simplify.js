@@ -25,8 +25,9 @@ MapShaper.getThresholdByPct = function(arr, retainPct) {
 
 
 MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
-  assert(Utils.isArray(arcs) && Utils.isArray(thresholds) && arcs.length == thresholds.length
-      && Utils.isNumber(retainedPct), "Invalid arguments; expected [Array], [Array], [Number]");
+  if (!Utils.isArray(arcs) || !Utils.isArray(thresholds) ||
+      arcs.length != thresholds.length  || !Utils.isNumber(retainedPct))
+    error("Invalid arguments; expected [Array], [Array], [Number]");
   T.start();
   var thresh = MapShaper.getThresholdByPct(thresholds, retainedPct);
   T.stop("Find simplification interval");

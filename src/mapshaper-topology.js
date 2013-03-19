@@ -1,4 +1,4 @@
-/* @requires shapefile-import, arrayutils, mapshaper-common */
+/* @requires arrayutils, mapshaper-common */
 
 // buildArcTopology() converts non-topological polygon data into a topological format
 // 
@@ -19,7 +19,7 @@
 //
 MapShaper.buildArcTopology = function(obj) {
   T.start();
-  assert(obj.xx && obj.yy && obj.partIds && obj.shapeIds, "[buildArcTopology()] Missing required param/s");
+  if (!(obj.xx && obj.yy && obj.partIds && obj.shapeIds)) error("[buildArcTopology()] Missing required param/s");
 
   var xx = obj.xx, 
       yy = obj.yy,
@@ -30,8 +30,8 @@ MapShaper.buildArcTopology = function(obj) {
       shapeCount = shapeIds[shapeIds.length - 1] + 1,
       maxPartFlags = obj.maxPartFlags || null;
 
-  assert(pointCount > 0 && yy.length == pointCount && partIds.length == pointCount, "Mismatched array lengths");
-  assert(shapeIds.length == partCount, "[buildArcTopology()] Size mismatch; shapeIds array should match partCount");
+  if (!(pointCount > 0 && yy.length == pointCount && partIds.length == pointCount)) error("Mismatched array lengths");
+  if (shapeIds.length != partCount) error("[buildArcTopology()] Size mismatch; shapeIds array should match partCount");
 
   var bbox = MapShaper.calcXYBounds(xx, yy);
 
@@ -145,7 +145,7 @@ MapShaper.buildArcTopology = function(obj) {
         arcStartId = -1;
 
     Utils.initializeArray(hashTable, -1);
-    assert(numPoints > 0 && numPoints == yy.length, "[ArcTable] invalid vertex data.");
+    if (numPoints <= 0 || numPoints != yy.length) error("[ArcTable] invalid vertex data.");
 
     var arcs = [],
         chainIds = [],
