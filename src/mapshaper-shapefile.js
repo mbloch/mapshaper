@@ -1,27 +1,32 @@
 /* @requires shp-reader, dbf-reader, mapshaper-common */
 
-// Reads Shapefile data from an ArrayBuffer or Buffer
-// Converts to format used for identifying topology.
-//
 
 MapShaper.importDbf = function(src) {
   T.start();
-  var data = new DbfReader(src, {format: table}).read();
+  var data = new DbfReader(src).read("table");
   T.stop("[importDbf()]");
   return data;
 };
 
+// Reads Shapefile data from an ArrayBuffer or Buffer
+// Converts to format used for identifying topology.
+//
 
 MapShaper.importShp = function(src) {
   T.start();
   var reader = new ShpReader(src);
-  var supportedTypes = {
-    5: "polygon",
-    3: "polyline"
-  };
 
-  if (reader.type() in supportedTypes == false) {
-    stop("Only polygon and polyline (type 5 and 3) Shapefiles are supported.");
+  var supportedTypes = [
+    ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ,
+    ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ
+  ];
+  if (!Utils.contains(supportedTypes, reader.type())) {
+    stop("Only polygon and polyline Shapefiles are supported.");
+  }
+  if (reader.hasZ()) {
+    trace("Warning: Z data is being removed.");
+  } else if (reader.hasM()) {
+    trace("Warning: M data is being removed.");
   }
 
   var counts = reader.getCounts(),
@@ -30,7 +35,7 @@ MapShaper.importShp = function(src) {
       partIds = new Uint32Array(counts.pointCount),   
       shapeIds = [];
 
-  var expectRings = reader.type() == 5,
+  var expectRings = Utils.contains([5,15,25], reader.type());
       findMaxParts = expectRings,
       maxPartFlags = findMaxParts ? new Uint8Array(counts.partCount) : null,
       findHoles = expectRings,
@@ -62,7 +67,6 @@ MapShaper.importShp = function(src) {
         partIds[pointId] = partId;
         pointId++;
       }
-
 
       if (expectRings) {
         signedPartArea = msSignedRingArea(xx, yy, pointId - pointsInPart, pointsInPart);
@@ -115,7 +119,6 @@ MapShaper.importShp = function(src) {
     info: info
   };
 };
-
 
 
 // Convert topological data to buffers containing .shp and .shx file data
