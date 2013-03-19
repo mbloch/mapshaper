@@ -1,0 +1,54 @@
+#!/usr/bin/env node
+
+var api = require('../'),
+    Node = api.Node,
+    trace = api.trace,
+    Utils = api.Utils,
+    argv = Node.options()._;
+
+if (argv.length != 1)
+  stop("Usage: $ shpinfo file.shp");
+
+var info = Node.getFileInfo(argv[0]);
+if (!info.exists)
+  stop("File not found: " + info.file);
+
+var reader = new api.ShpReader(info.path),
+    hasParts = reader.hasParts(),
+    shapes = [],
+    messages = [];
+
+trace("Type", reader.type(), "shapefile");
+
+reader.forEachShape(function(shp) {
+  var msg = ["[" + shp.id + "]"];
+  if (shp.isNull) {
+    msg.push("[null]");
+  }
+  else {
+    if (hasParts) {
+      msg.push(count(shp.partCount, "part"));
+    }
+    msg.push(count(shp.pointCount, "point"));
+  }
+  shapes.push(shp);
+  messages.push(msg);
+  printMsg(msg);
+});
+
+
+var counts = reader.getCounts();
+trace("totals:", count(counts.shapeCount, "shape"), count(counts.partCount, "part"), count(counts.pointCount, "point"), count(counts.nullCount, "null shape"));
+
+function printMsg(arr) {
+  trace(arr.join(' '));
+}
+
+function stop(msg) {
+  console.log(msg);
+  process.exit(1);
+}
+
+function count(val, label) {
+  return "[" + val + "] " + label + (val == 1 ? "" : "s");
+}
