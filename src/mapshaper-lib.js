@@ -22,7 +22,8 @@ var api = Utils.extend(MapShaper, {
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
-  DbfReader: DbfReader
+  DbfReader: DbfReader,
+  BoundingBox: BoundingBox  // for testing
 });
 
 if (Node.inNode) {
