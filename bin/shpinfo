@@ -4,7 +4,8 @@ var api = require('../'),
     Node = api.Node,
     trace = api.trace,
     Utils = api.Utils,
-    argv = Node.options()._;
+    opts = Node.options({binary:"s", aliases:"s:shapes"}),
+    argv = opts._;
 
 if (argv.length != 1)
   stop("Usage: $ shpinfo file.shp");
@@ -15,33 +16,48 @@ if (!info.exists)
 
 var reader = new api.ShpReader(info.path),
     hasParts = reader.hasParts(),
+    hasM = reader.hasM(),
+    hasZ = reader.hasZ(),
+    hasBounds = reader.hasBounds(),
     shapes = [],
     messages = [];
 
 trace("Type", reader.type(), "shapefile");
 
-reader.forEachShape(function(shp) {
-  var msg = ["[" + shp.id + "]"];
-  if (shp.isNull) {
-    msg.push("[null]");
-  }
-  else {
-    if (hasParts) {
-      msg.push(count(shp.partCount, "part"));
+if (opts.s) {
+  reader.forEachShape(function(shp) {
+    var msgs = ["[" + shp.id + "]"];
+    if (shp.isNull) {
+      msgs.push("[null]");
     }
-    msg.push(count(shp.pointCount, "point"));
-  }
-  shapes.push(shp);
-  messages.push(msg);
-  printMsg(msg);
-});
+    else {
+      if (hasParts) {
+        msgs.push(msg("parts", shp.partCount));
+      }
+      msgs.push(msg("points", shp.pointCount));
+    }
+
+    if (hasZ) {
+      msgs.push(msg('Z', "+"));
+    }
+
+    if (hasM) {
+      msgs.push(msg("M", shp.hasM() ? "+" : "-"));
+    }
+
+    shapes.push(shp);
+    messages.push(msgs);
+    printMsg(msgs);
+  });  
+}
+
 
 
 var counts = reader.getCounts();
-trace("totals:", count(counts.shapeCount, "shape"), count(counts.partCount, "part"), count(counts.pointCount, "point"), count(counts.nullCount, "null shape"));
+trace("totals:", msg("shapes", counts.shapeCount), msg("parts", counts.partCount), msg("points", counts.pointCount), msg("null shapes", counts.nullCount));
 
 function printMsg(arr) {
-  trace(arr.join(' '));
+  trace(arr.join('  '));
 }
 
 function stop(msg) {
@@ -49,6 +65,12 @@ function stop(msg) {
   process.exit(1);
 }
 
-function count(val, label) {
-  return "[" + val + "] " + label + (val == 1 ? "" : "s");
+function msg(label, val) {
+  var msg = "";
+  if (label) msg += label;
+  if (val !== undefined) {
+    if (label) msg += " ";
+    msg += "[" + val + "]";
+  }
+  return msg;
 }
