@@ -80,10 +80,14 @@ MapShaper.buildArcTopology = function(obj) {
         isPartEndpoint = partId !== partIds[id-1] || partId !== partIds[id+1];
     // trace("partIsArcEndpoint()", id, "x, y:", x, y);
 
-    if (isPartEndpoint) {
+    if (partId == -1) {
+      isNode = false; // -1 == error code
+    }
+    else if (isPartEndpoint) {
       // case -- if point is endpoint of a non-topological ring, then point is a node.
       // TODO: some nodes formed with this rule might be removed if arcs on either side
-      //   of the node belong to the same shared boundary.
+      //   of the node belong to the same shared boundary...
+      //   
       //
       isNode = true;
     }
@@ -162,6 +166,26 @@ MapShaper.buildArcTopology = function(obj) {
     this.finishArc = function(endId) {
       if (buildingArc == false || arcStartId >= endId || arcStartId < 0) error("[ArcTable.finishArc()] invalid arc index.");
 
+      // TODO (as option): merge polygon arcs
+      //   pseudocode:
+      //   if point at endId is the last point in the current part
+      //      and part is a ring (i.e. polygon shapefile)
+      //      and part is not an island (i.e. arc not the first arc in curr part)
+      //      and endId only coincides with first point in curr part
+      //   then concatenate this arc with the first arc in curr part...
+      //
+      // TODO (as option): merge polyline arcs
+      //   pseudocode:
+      //   if point at endId matches an endpoint of another part in the same shape
+      //      and point doesn't coincide with any other points
+      //   then:
+      //      if matching part has been scanned:
+      //         concatenate this arc with that arc
+      //      else
+      //         ??? maybe do a similar check on the first point in a part, to catch this case
+      //
+      // Alternative: flag matching points for removal in a later stage...
+      //
       // Creating subarrays on xx and yy creates many fewer objects for memory
       //   management to track than creating new x and y Array objects for each arc.
       //   With 846MB ZCTA file, gc() time reduced from 580ms to 65ms,
@@ -372,6 +396,10 @@ MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
   var key, headId, tailId;
 
   for (var i=0; i<pointCount; i++) {
+    if (partIds[i] == -1) {
+      nextIds[i] = -1;
+      continue;
+    }
     key = hash(xx[i], yy[i]);
     headId = hashChainIds[key];
     // case -- first coordinate in chain: start new chain, point to self
