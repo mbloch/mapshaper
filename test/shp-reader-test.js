@@ -18,11 +18,7 @@ function testBounds(file) {
   var reader = new ShpReader(filePath(file));
 
   it(file + " (type " + reader.type()+ ")", function() {
-    var minx = Infinity,
-        miny = Infinity,
-        maxx = -Infinity,
-        maxy = -Infinity,
-        hasBounds = reader.hasBounds(),
+    var hasBounds = reader.hasBounds(),
         bigBox = new BoundingBox();
 
     reader.forEachShape(function(shp) {
@@ -31,18 +27,17 @@ function testBounds(file) {
           bbox = new BoundingBox();
       // check bounds of polygon, polyline and multipoint shapes
       if (hasBounds) {
-        bounds = shp.getBounds(); // bounds from shape header
-        shp.getPoints().forEach(function(p) {
+        bounds = shp.readBounds(); // bounds from shape header
+        shp.readPoints().forEach(function(p) {
           bbox.mergePoint(p[0], p[1]);
         });
-
         // test if bounds from shape header match observed bounds
         if (bounds[0] != bbox.left || bounds[1] != bbox.bottom || bounds[2] != bbox.right || bounds[3] != bbox.top) {
           assert.ok(false, "Bounds in shape " + shp.id + " header don't match observed bounds");
         }
         bigBox.mergeBounds(bbox);
       } 
-      // get bounds of single-point shapes
+      // read single-point shape
       else {
         var p = shp.read();
         bigBox.mergePoint(p[0], p[1]);
@@ -56,25 +51,19 @@ function testBounds(file) {
 }
 
 
-// Count shapes, parts, points and nulls using the ShpReader#getCounts() method
-// and by counting objects returned by ShapeRecord#read(), check that the tallies match
+// get counts of shapes, parts, points and nulls using the ShpReader#getCounts() method
+// compare to counts of objects returned by ShapeRecord#read()
 //
 function testCounts(file) {
   var reader = new ShpReader(filePath(file));
-
   it(file + " (type " + reader.type()+ ")", function() {
-
     var hasParts = reader.hasParts(),
         hasBounds = reader.hasBounds();
     var counts = reader.getCounts();
-    var data = reader.read();
-
-    if (counts.shapeCount != data.length)
-      assert.ok(false, "Shape counts don't match");
-
     var parts = 0,
         points = 0,
-        nulls = 0;
+        nulls = 0,
+        shapes = 0;
 
     reader.forEachShape(function(shp) {
       var pointsInShape = 0,
@@ -107,7 +96,11 @@ function testCounts(file) {
 
       points += pointsInShape;
       parts += partsInShape;
-    });
+      shapes++;
+   });
+
+    if (counts.shapeCount != shapes)
+      assert.ok(false, "Shape counts don't match");
 
     if (parts != counts.partCount)
       assert.ok(false, "Part counts don't match");
@@ -152,7 +145,7 @@ describe('shp-reader.js', function () {
     countTestFiles.forEach(testCounts);
   })
 
-  describe('#getBounds() measured bounds match bounds from headers', function () {
+  describe('#readBounds() observed bounds match bounds from headers', function () {
     boundsTestFiles.forEach(testBounds);
   })
 })

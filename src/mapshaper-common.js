@@ -32,6 +32,7 @@ MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
 };
 
 
+/*
 MapShaper.calcArcBounds = function(arcs) {
   var arcCount = arcs.length,
       i = 0;
@@ -47,6 +48,8 @@ MapShaper.calcArcBounds = function(arcs) {
   }
   return arr;
 };
+
+*/
 
 
 MapShaper.calcXYBounds = function(xx, yy, bb) {
@@ -73,7 +76,7 @@ MapShaper.transposeXYCoords = function(arr) {
 // Convert a topological shape to a non-topological format
 // (for exporting)
 //
-MapShaper.convertTopoShape = function(shape, arcs) {
+MapShaper.convertTopoShape = function(shape, arcs, closed) {
   var parts = [],
       pointCount = 0,
       bounds = new BoundingBox();
@@ -94,7 +97,11 @@ MapShaper.convertTopoShape = function(shape, arcs) {
         MapShaper.extendPartCoordinates(xx, yy, arc[0], arc[1], reversed);
       }
     }
-    if (xx.length > 0) {
+    var pointsInPart = xx.length,
+        validPart = !closed && pointsInPart > 0 || pointsInPart > 3;
+    // TODO: other validation:
+    // self-intersection test? test rings have non-zero area? rings follow winding rules?
+    if (validPart) {
       parts.push([xx, yy]);
       pointCount += xx.length;
       MapShaper.calcXYBounds(xx, yy, bounds);
