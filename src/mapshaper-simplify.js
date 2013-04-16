@@ -19,8 +19,8 @@ MapShaper.getThresholdByPct = function(arr, retainPct) {
     }
   }
   if (idx != count) error("Counting error");
-  var k = Math.floor((1 - retainPct) * count) + 1; // rank starts at 1
-  return Utils.findValueByRank(tmp, k);
+  var k = Math.floor((1 - retainPct) * count);
+  return Utils.findValueByRank(tmp, k + 1); // rank start at 1
 };
 
 

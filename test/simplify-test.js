@@ -3,9 +3,6 @@ var assert = require('assert'),
     trace = api.trace;
 
 
-// TODO: write assert function to compare mixed typed arrays and arrays
-// and buffers that are larger than num. of coords in them...
-//
 function coordBuffersEqual(a, b) {
   var precision = 1e-9,
       bufLen = a.length;

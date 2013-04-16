@@ -71,23 +71,23 @@ describe('mapshaper-cli.js', function() {
       });
     })
 
-    it(bad1 + " (error)", function() {
+    it(bad1 + " (invalid)", function() {
       assert.throws(function(){validate(bad1)});
     })
 
-    it(bad2 + " (error)", function() {
+    it(bad2 + " (invalid)", function() {
       assert.throws(function(){validate(bad2)});
     })
 
-    it(bad3 + " (error)", function() {
+    it(bad3 + " (invalid)", function() {
       assert.throws(function(){validate(bad3)});
     })
 
-    it(bad4 + " (error)", function() {
+    it(bad4 + " (invalid)", function() {
       assert.throws(function(){validate(bad4)});
     })
 
-    it(bad5 + " (error)", function() {
+    it(bad5 + " (invalid)", function() {
       assert.throws(function(){validate(bad5)});
     })
 
@@ -191,23 +191,23 @@ describe('mapshaper-cli.js', function() {
     })
 
 
-    it(bad1 + " (overwrites input)", function() {
+    it(bad1 + " (invalid)", function() {
       assert.throws(function() {validate(bad1)});
     })
 
-    it(bad2 + " (missing directory)", function() {
+    it(bad2 + " (invalid)", function() {
       assert.throws(function() {validate(bad2)});
     })
 
-    it(bad3 + " (-o is directory name)", function() {
+    it(bad3 + " (invalid)", function() {
       assert.throws(function() {validate(bad3)});
     })
 
-    it(bad4 + " (overwrites input)", function() {
+    it(bad4 + " (invalid)", function() {
       assert.throws(function() {validate(bad4)});
     })
 
-    it(bad5 + " (overwrites input)", function() {
+    it(bad5 + " (invalid)", function() {
       assert.throws(function() {validate(bad5)});
     })
   })

@@ -203,7 +203,7 @@ else if (opts.output_format == "shapefile") {
     // check if output .shp data is identical to input (e.g. to test for topology errors)
     var origShp = Node.readFile(opts.input_file),
       newShp = shpData.shp,
-      identical = mapshaper.BinArray.buffersAreIdentical(origShp, newShp, verbose = true),
+      identical = mapshaper.BinArray.buffersAreIdentical(origShp, newShp, true),
       msg = identical ?
         "\u001b[32m\u2713\u001b[0m Regenerated .shp is identical to original .shp" :
         "\u001b[31m\u2717\u001b[0m Regenerated .shp doesn't match original .shp";
