@@ -1,0 +1,164 @@
+/* @requires elements, events, browser */
+
+var controls = {
+  Slider: Slider,
+  Checkbox: Checkbox
+}
+
+
+function draggable(ref) {
+  var xdown, ydown;
+  var el = El(ref);
+  Browser.undraggable(el.node());
+  el.on('mousedown', function(e) {
+    xdown = e.pageX;
+    ydown = e.pageY;
+    el.dispatchEvent('dragstart');
+    Browser.on(window, 'mousemove', onmove);
+    Browser.on(window, 'mouseup', onrelease);
+  });
+
+  function onrelease(e) {
+    Browser.removeEventListener(window, 'mousemove', onmove);
+    Browser.removeEventListener(window, 'mouseup', onrelease);
+    el.dispatchEvent('dragend');
+  }
+
+  function onmove(e) {
+    el.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
+  }
+
+  return el;
+}
+
+function Slider(el, opts) {
+  this.__super__(el);
+  var _self = this;
+  var defaults = {
+    space: 7
+  };
+  opts = Opts.copyAllParams(defaults, opts);
+
+  var _pct = 0;
+  var _track,
+      _handle,
+      _handleLeft = opts.space;
+
+  function size() {
+    return _track ? _track.width() - opts.space * 2 : 0;
+  }
+
+  this.track = function(ref) {
+    if (ref && !_track) {
+      _track = El(ref);
+      _track.on('click', function(evt) {
+        trace("track")
+      })
+
+    }
+    return _track;
+  };
+
+  this.handle = function(ref) {
+    var startX;
+    if (ref && !_handle) {
+      _handle = El(ref);
+      draggable(_handle)
+        .on('drag', function(e) {
+          setHandlePos(startX + e.dx, true);
+        })
+        .on('dragstart', function(e) {
+          startX = position();
+        });
+      updateHandlePos();
+    }
+    return _handle;
+  };
+
+  function position() {
+    return Math.round(_pct * size());
+  }
+
+  this.pct = function(pct) {
+    if (pct >= 0 && pct <= 1) {
+      _pct = pct;
+    }
+    return _pct;
+  };
+
+  function setHandlePos(x, fire) {
+    x = Utils.clamp(x, 0, size());
+    var pct = x / size();
+    if (pct != _pct) {
+      _pct = pct;
+      _handle.css('left', _handleLeft + x);
+      _self.dispatchEvent('change', {pct: _pct});
+    }
+  }
+
+  function updateHandlePos() {
+    var x = _handleLeft + Math.round(position());
+    _handle.css('left', x);
+  }
+}
+
+Opts.inherit(Slider, El);
+
+
+function ClickText(ref) {
+  this.__super__(ref);
+  var _self = this,
+      _max = Infinity,
+      _min = -Infinity,
+      _formatter,
+      _parser;
+
+  Browser.on(this.el, 'blur', 
+
+  function onchange() {
+    _self.dispatchEvent('change', {value:_self.value()});
+  }
+
+  this.bounds = function(min, max) {
+    _min = min;
+    _max = max;
+    return this;
+  };
+
+  this.formatter = function(f) {
+    _formatter = f;
+    return this;
+  }
+
+  this.parser = function(f) {
+    _parser = f;
+    return this;
+  }
+
+  this.value = function(val) {
+    if (val == void 0) {
+      var valStr = this.el.value;
+      return _parser ? _parser(valStr) : parseFloat(valStr);
+    }
+    val = Utils.clamp(val, _min, _max);
+    this.el.value = _formatter ? _formatter(val) : String(val);
+    return this;
+  };
+
+}
+
+Opts.inherit(ClickText, El);
+
+function MainSlider(el) {
+  this.__super__(el);
+
+}
+
+Opts.inherit(MainSlider, Slider);
+
+
+function Checkbox(el) {
+  this.__super__(el);
+}
+
+Opts.inherit(Checkbox, Element);

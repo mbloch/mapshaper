@@ -1,0 +1,112 @@
+
+body {
+	margin: 0;
+	padding: 0;
+	background: #f0f0f0;
+	font-size: 13px;
+}
+
+#page-wrapper {
+	overflow: hidden;
+	margin-top: 22px;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	font-family: Arial, Helvetica, sans-serif;
+	line-height: 1.4;
+	color: #444;
+}
+
+.g-page-header {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	background-color:#102A5E;
+	padding:3px 0;	
+}
+
+.g-page-header .mshp-version {
+	font-size: 10px;
+	color: white;
+}
+
+.g-mapshaper-logo {
+	color: white;
+	font-weight: bold;
+	font-size: 16px;
+	margin-left: 12px;
+}
+
+.g-mapshaper-logo .g-logo-highlight {
+	color: #ffa;
+}
+
+
+
+h2, h4, h5 {
+	margin: 0;
+	padding: 0;
+}
+
+
+.mshp-page {
+	position: relative;
+	display: none;
+	margin: auto;
+}
+
+.fork-me {
+	position: absolute;
+	z-index: 5;
+	top: 0;
+	right: 0;
+	border: 0;
+	width: 149px;
+	height: 149px;
+}
+
+#mshp-intro-screen {
+	margin: auto;
+	margin-top: 24px;
+	display: block;
+	width: 500px;
+}
+
+
+#mshp-intro-screen h4 {
+	margin-top: 18px;
+	color: #597200;
+	font-size: 13px;
+}
+
+#mshp-intro-screen p,
+#mshp-intro-screen ul {
+	margin: 0.9em 0 0 0;
+}
+
+#mshp-intro-screen li {
+	margin: 0 0 6px 0px;
+	padding: 0;
+}
+
+
+
+#mshp-not-supported,
+#mshp-import,
+#g-import-options {
+	display: none;
+}
+
+#g-import-options > div {
+	margin-bottom: 3px;
+}
+
+
+#mshp-main-footer {
+	background-color: #96B5DF;
+	height: 28px;
+	bottom: 0;
+	position: absolute;
+}
+

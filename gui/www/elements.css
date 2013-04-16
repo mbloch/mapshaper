@@ -1,0 +1,214 @@
+
+body {
+	font-family: Helvetica, Arial, sans-serif;
+	line-height: 1;
+	padding: 0;
+	margin: 0;
+}
+
+.g-menu-link {
+	color: white;
+	font-size: 14px;
+	font-weight: normal;
+	padding: 0 3px 1px;
+	border: 1px solid rgba(0, 0, 0, 0);
+}
+
+.g-menu-link.inactive {
+	border: none;
+	color: #aaa;
+}
+
+.g-menu-link:hover:not(.inactive) {
+	border: 1px solid white;
+	cursor: pointer;
+}
+
+.g-square-button {
+	width: 25px;
+	height: 25px;
+	cursor: pointer;
+   	-webkit-border-radius: 2px;
+  	-moz-border-radius: 2px;
+  	display: inline-block;
+  	margin: 0 2px;
+}
+
+.g-square-button.inactive {
+	opacity: 0.5;
+}
+
+.g-bottom-panel {
+	background-color:#ACCDF5;
+	padding:5px;
+	background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#7D99C1), color-stop(100%,#ACCDF5));
+}
+
+
+
+.g-square-button:hover:not(.inactive), .g-square-button.down {
+	background-color: #AAC2E3;
+	/* top internal shadow
+	   bottom internal highlight*/
+	box-shadow: 
+	  inset -1px -1px 1px rgba(255,255,255,0.8),
+	  inset 1px 1px 1px rgba(0,0,0,0.5);
+}
+
+.g-tip {
+	color: #000;
+	font-weight: normal;
+	text-align: left;
+	position: relative;
+	display: inline-block;
+	font-size: 12px;
+	line-height: 1.2;
+	background: #fff;
+	border: 1px solid #ccc;
+	-webkit-border-radius: 6px;
+	padding: 6px;
+	bottom: 0px;
+	left: -50%;
+	white-space: nowrap;
+	box-shadow: 0 3px 7px rgba(0, 0, 0, 0.2);
+}
+
+.g-tip:after, .g-tip:before {
+	top: 100%;
+	border: solid transparent;
+	content: " ";
+	height: 0;
+	width: 0;
+	position: absolute;
+	pointer-events: none;
+}
+
+.g-tip:after {
+	border-color: rgba(136, 183, 213, 0);
+	border-top-color: #eee;
+	border-width: 6px;
+	left: 50%;
+	margin-left: -6px;
+}
+
+.g-tip:before {
+	border-color: rgba(194, 225, 245, 0);
+	border-top-color: #ccc;
+	border-width: 7px;
+	left: 50%;
+	margin-left: -7px;
+}
+
+.g-tip-button {
+	display:inline-block;
+	position: relative;
+	cursor: pointer;
+	text-align: center;
+	bottom: 1px;
+	color: #fff;
+	font: 14px/14px Verdana, sans-serif;
+	height: 15px;
+	padding: 1px 0 0 1px;
+	width: 15px;
+	font-weight: normal;
+	-webkit-border-radius: 15px;
+
+	background: #005;
+}
+
+.g-tip-button .g-tip-anchor {
+	bottom: 21px;
+	left: 8px;
+}
+
+.g-tip-anchor {
+	visibility: hidden;
+	position: absolute;
+	bottom: 0;
+	left: 0;
+}
+
+.g-tip-button:hover {
+	background-color: #BBDAFF;
+	color: #005;
+}
+
+.g-tip-button:hover * {
+	visibility: visible;
+}
+
+.g-clicktext {
+	display:inline-block;
+	line-height: 1;
+	cursor: pointer;
+	border: none;
+	outline: none;
+	padding: 0;
+	margin: 0;
+	/* text-decoration: underline; */
+	text-decoration:none;
+	text-indent: 0px;
+	border: none;
+}
+
+.g-checkbox: {
+
+}
+
+.g-checkbox + label, .g-radio + label {
+	font-size: 13px;
+}
+
+/* input[type="checkbox"] */
+.g-checkbox:checked + label, .g-radio:checked + label {
+	font-weight: bold;
+}
+
+.g-file-control {
+	display: none;
+}
+
+.g-file-btn {
+	/* -webkit-transition: background-color .22s;
+ 	 -moz-transition: background-color .22s; */
+}
+
+
+.g-panel-btn.active {
+	cursor: pointer;
+}
+
+
+.g-panel-btn.selected {
+	/* */
+	padding-left: 0;
+	background: none;
+	border: 1px solid rgba(0,0,0,0);
+}
+
+.g-panel-btn.active:hover:not(.selected) {
+	background-color: #FAFAF2;
+}
+
+.g-panel-btn {
+	display: inline-block;
+	border-radius: 4px;
+	background-color: #fff; /* #FAFAF2; */
+	border: 1px solid #B5B5B0;
+	text-align: center;
+	padding: 4px 5px;
+	font-size: 13px;
+	line-height: 1;
+	margin-right: 4px;
+}
+
+.g-panel-btn:not(.active) {
+	color: #aaa;
+	background: #eaeaea;
+	cursor: default;
+}
+
+
+#g-browser-message {
+	display: none;
+}

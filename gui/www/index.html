@@ -1,0 +1,93 @@
+<html>
+<head>
+	<title>mapshaper</title>
+	<script src="mapshaper.js" type="text/javascript"></script>
+	<link rel="stylesheet" type="text/css" href="page.css">
+	<link rel="stylesheet" type="text/css" href="elements.css">
+	<link rel="stylesheet" type="text/css" href="controls.css">
+</head>
+<body>
+
+<div id="page-wrapper">
+<div class="g-page-header">
+	<span class="g-mapshaper-logo">map<span class="g-logo-highlight">shaper</span></span> <span class="mshp-version">v. 0.1.0</span>
+</div>
+<div id="mshp-intro-screen">
+
+<a href="https://github.com/mbloch/mapshaper"><img class="fork-me" src="images/fork-me-right-cerulean@2x.png" alt="Fork me on GitHub"></a>
+
+<div>
+	<h4>Welcome to the new mapshaper!</h4>
+	<p>
+		Changes from the <a href="http://www.mapshaper.com">original</a> program include:
+	</p>	
+	<ul>
+	<li>an improved topology algorithm
+	<li>client-side processing, so your data stays private
+	<li>can be run as a non-interactive script
+	</ul>
+
+</div>
+<div id="mshp-not-supported">
+	<h4>Unfortunately, mapshaper can't run in <span class="g-unsupported-browser">this web browser</span></h4>
+	<ul>For best results, try <a href="http://www.google.com/chrome">Google Chrome</a></ul>
+</div>
+<div id="mshp-import">
+	<h4>To get started, select the .shp file from a polygon or polyline Shapefile</h4>
+	<ul>
+
+	<div><div class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><input type="file" class="g-file-control" /><span class="g-label-text">choose .shp</span></div></div>
+	<!--<div><label class="g-file-btn g-panel-btn active" id="g-dbf-import-btn"><input type="file" class="g-file-control" /><span class="g-label-text">choose .dbf</span></label></div>-->
+
+
+	<div id="g-import-options">
+	<!--<div class="g-import-info"></div>-->
+
+	<div>
+	<input type="checkbox" class="g-checkbox" id="g-import-spherical-opt"/>
+	<label for="g-import-spherical-opt">use spherical coordinates</label>
+	<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Recommended for<br>unprojected shapefiles</div></div></div>
+	</div>
+	<div>
+	<input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>
+	<label for="g-import-retain-opt">preserve tiny shapes</label>
+	<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Prevents small shapes<br /> from being removed<br />at high simplification</div></div></div>
+	</div>
+
+	<div><div class="g-next-btn g-panel-btn">next</div></div>
+	</div> <!-- g-import-options -->
+	</ul>
+</div>
+</div>
+
+<div id="mshp-main-page" class="mshp-page">
+<div id="mshp-main-sidebar">
+	<h5>Layer information</h5>
+	<div id="mshp-sidebar-info"></div>
+	<h5>Simplification method</h5>
+	<div id="mshp-sidebar-method">
+		<input type="radio" group="method" value="dp">Douglas-Peucker
+		<input type="radio" group="method" value="vis">Visvalingam
+		<input type="radio" group="method" value="mod">Modified Visvalingam
+	</div>
+	<h5>Simplification options</h5>
+	<div id="mshp-sidebar-other">
+		<input type="checkbox" value="keep">Preserve small shapes
+		<input type="checkbox" value="spherical">Spherical simplification
+	</div>
+	<h5>Display settings</h5>
+	<div id="mshp-sidebar-display">
+		<input type="checkbox" value="original-lines">Show original lines
+		<input type="checkbox" value="show-points">Show vertices
+	</div>
+</div>
+<div id="mshp-main-map"></div>
+<div id="g-main-footer" class="g-bottom-panel">
+	
+</div>
+</div>
+<div id="export-page" class="mshp-page"></div>
+</div>
+
+</body>
+</html>

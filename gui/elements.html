@@ -1,0 +1,111 @@
+<html>
+<head>
+<title></title>
+<link rel="stylesheet" type="text/css" href="www/elements.css">
+<link rel="stylesheet" type="text/css" href="www/controls.css">
+<style type="text/css">
+
+.g-element {
+	margin: 8px;
+	padding: 4px;
+	background-color: #fff;
+}
+
+body {
+	background-color: #e5e5e5;
+}
+
+</style>
+</head>
+<body>
+<div style="width: 300px">
+
+<div class="g-element">
+<div class="g-bottom-panel">
+<div class="g-slider">
+	<div class="g-handle"><img src="www/images/slider_handle_v1.png" /></div>
+	<div class="g-track"></div>
+</div>
+</div>
+</div>
+
+<div class="g-element">
+<div class="g-checkbox">
+<input type="checkbox" class="g-checkbox" id="g-box1" name="cc" />
+<label for="g-box1">label</label>
+</div>
+</div>
+
+<div class="g-element">
+<input type="radio" class="g-radio" name="g1" value="r1" id="g-r1"/><label for="g-r1"> label</label>
+<input type="radio" class="g-radio" name="g1" value="r2" id="g-r2"/><label for="g-r2"> label</label>
+</div>
+
+<div class="g-element">
+<div class="g-top-panel">
+<span class="g-menu-link">active</span><span class="g-menu-link inactive">inactive</span>
+</div>
+</div>
+
+<div class="g-element">
+<div class="g-bottom-panel">
+<div class="g-square-button"></div><div class="g-square-button down"></div>
+</div>
+</div>
+
+
+<div class="g-element">
+<div style="left: 220px" class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">I'm a tooltip<br>and i wrap</div></div></div>
+</div>
+
+</div>
+
+<div style="display: inline-block">
+
+<div class="g-element">
+<div class="g-bottom-panel">
+<div id="g-simplify-control">
+	<div class="g-slider">
+		<div class="g-handle"><img src="www/images/slider_handle_v1.png" /></div>
+		<div class="g-track"></div>		
+	</div>
+	<input type="text" value="label" class="g-clicktext" />	
+</div>
+</div>
+</div>
+
+</div>
+
+<div class="g-element">
+<div id="g-import-panel">
+<h4>Select the .shp file from a polygon or polyline Shapefile</h4>
+<div><label class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><input type="file" class="g-file-control" /><span class="g-label-text">choose a file</span></label></div>
+<div id="g-import-options">
+<div class="g-import-info"></div>
+<div class="g-checkbox">
+<input type="checkbox" class="g-checkbox" id="g-import-spherical-opt"/>
+<label for="g-import-spherical-opt">use spherical coordinates </label>
+<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Recommended for<br>unprojected shapefiles</div></div></div>
+</div>
+</div>
+<div><div class="g-next-btn g-panel-btn">next</div></div>
+</div>
+</div>
+
+<div class="g-element">
+<div>
+<h4>Unfortunately, mapshaper can't run in <span class="g-unsupported-browser">this web browser</span></h4>
+<h5>For best results, try <a href="http://www.google.com/chrome">Google Chrome</a></h5>
+</div>
+</div>
+
+<script type="text/javascript" src="www/mapshaper.js"></script>
+<script type="text/javascript">
+
+var simplifyControl = new mapshaper.controls.SimplifyControl();
+var importPanel = new mapshaper.controls.ImportPanel();
+
+</script>
+
+</body>
+</html>

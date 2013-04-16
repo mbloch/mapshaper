@@ -1,0 +1,40 @@
+
+
+#g-simplify-control .g-slider {
+	padding: 5px;
+	position: relative;
+	display: inline-block;
+}
+
+#g-simplify-control .g-track {   	
+	-webkit-border-radius: 2px;
+  	-moz-border-radius: 2px;
+	width: 300px;
+	background-color: #fff;
+	height: 2px;
+}
+
+#g-simplify-control .g-handle {
+	position: absolute;
+	top: 6px;
+}
+
+#g-simplify-control .g-handle img {
+	width: 20px;
+	height: 20px;
+	margin-left: -10px;
+	margin-top: -10px;
+}
+
+#g-simplify-control .g-clicktext {
+	width: 56px;	
+	background: rgba(255, 255, 255, 0.4);	
+	text-align: center;
+	border: 1px solid rgba(0,0,0,0);
+	font-size: 13px;
+}
+
+
+#g-simplify-control .g-clicktext:focus {
+	background: #fff;
+}
