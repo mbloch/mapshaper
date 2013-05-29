@@ -31,7 +31,6 @@ MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   }
 };
 
-
 /*
 MapShaper.calcArcBounds = function(arcs) {
   var arcCount = arcs.length,

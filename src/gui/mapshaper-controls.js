@@ -9,7 +9,6 @@ var SimplifyControl = function() {
   slider.track("#g-simplify-control .g-track");
   slider.on('change', function(e) {
     var pct = fromSliderPct(e.pct);
-    trace("pct:", pct);
     text.value(pct);
     onchange(pct);
   });
@@ -41,7 +40,14 @@ var SimplifyControl = function() {
   });
 
   function toSliderPct(p) {
-    return 1 - p;
+    p = Math.sqrt(p);
+    var pct = 1 - p;
+    return pct;
+  }
+
+  function fromSliderPct(p) {
+    var pct = 1 - p;
+    return pct * pct;
   }
 
   function onchange(val) {
@@ -51,9 +57,6 @@ var SimplifyControl = function() {
     }
   }
 
-  function fromSliderPct(p) {
-    return 1 - p;
-  }
 
   var control = new EventDispatcher();
   control.value = function(val) {

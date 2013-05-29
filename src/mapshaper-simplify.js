@@ -1,9 +1,24 @@
-/* @requires mapshaper-common, mapshaper-geom, median */
+/* @requires mapshaper-common, mapshaper-geom, median, sorting */
 
 // TODO; calculate pct based on distinct points in the dataset
 // TODO: pass number of points as a parameter instead of calculating it
 MapShaper.getThresholdByPct = function(arr, retainPct) {
   if (retainPct <= 0 || retainPct >= 1) error("Invalid simplification pct:", retainPct);
+  var tmp = MapShaper.getInnerThresholds(arr);
+  var k = Math.floor((1 - retainPct) * tmp.length);
+  return Utils.findValueByRank(tmp, k + 1); // rank start at 1
+};
+
+// Receive: array of arrays of simplification thresholds arcs[vertices[]]
+// Return: one array of all thresholds, sorted in ascending order
+//
+MapShaper.getSortedThresholds = function(arr) {
+  var merged = MapShaper.getInnerThresholds(arr);
+  Utils.quicksort(merged, false);
+  return merged;
+};
+
+MapShaper.getInnerThresholds = function(arr) {
   var n = arr.length;
   var count = 0,
       nth=2;
@@ -19,10 +34,8 @@ MapShaper.getThresholdByPct = function(arr, retainPct) {
     }
   }
   if (idx != count) error("Counting error");
-  var k = Math.floor((1 - retainPct) * count);
-  return Utils.findValueByRank(tmp, k + 1); // rank start at 1
+  return tmp;
 };
-
 
 MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
   if (!Utils.isArray(arcs) || !Utils.isArray(thresholds) ||
@@ -72,7 +85,6 @@ MapShaper.stripArc = function(xx, yy, uu, retained) {
   yy2.push(yy[len-1]);
   return [xx2, yy2];
 };
-
 
 MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints) {
   var xdest = [],

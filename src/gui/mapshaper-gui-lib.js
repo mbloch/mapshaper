@@ -3,7 +3,12 @@ mapshaper-index,
 mapshaper-shapes,
 mapshaper-controls,
 mapshaper-topology,
+mapshaper-map,
+mapshaper-maplayer,
+mapshaper-simplify,
+mapshaper-visvalingam,
 nodejs
+loading.html5
 */
 
 var api = {

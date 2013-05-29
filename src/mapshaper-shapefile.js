@@ -13,7 +13,6 @@ MapShaper.importDbf = function(src) {
 //
 
 MapShaper.importShp = function(src) {
-
   T.start();
   var reader = new ShpReader(src);
 

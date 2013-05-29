@@ -17,14 +17,14 @@
 <a href="https://github.com/mbloch/mapshaper"><img class="fork-me" src="images/fork-me-right-cerulean@2x.png" alt="Fork me on GitHub"></a>
 
 <div>
-	<h4>Welcome to the new mapshaper!</h4>
+	<h3>Welcome to the new mapshaper!</h3>
 	<p>
 		Changes from the <a href="http://www.mapshaper.com">original</a> program include:
 	</p>	
 	<ul>
 	<li>an improved topology algorithm
 	<li>client-side processing, so your data stays private
-	<li>can be run as a non-interactive script
+	<li>a command-line script, available on github
 	</ul>
 
 </div>
@@ -58,10 +58,11 @@
 	</div> <!-- g-import-options -->
 	</ul>
 </div>
-</div>
+</div> <!-- mshp-intro-screen -->
 
 <div id="mshp-main-page" class="mshp-page">
-<div id="mshp-main-sidebar">
+<div id="mshp-main-map"></div>
+<!--<div id="mshp-main-sidebar">
 	<h5>Layer information</h5>
 	<div id="mshp-sidebar-info"></div>
 	<h5>Simplification method</h5>
@@ -80,12 +81,19 @@
 		<input type="checkbox" value="original-lines">Show original lines
 		<input type="checkbox" value="show-points">Show vertices
 	</div>
+</div>-->
+<div id="mshp-main-footer" class="g-bottom-panel">
+	<div id="g-simplify-control">
+		<div class="g-slider">
+			<div class="g-handle"><img src="images/slider_handle_v1.png" /></div>
+			<div class="g-track"></div>		
+		</div>
+		<input type="text" value="label" class="g-clicktext" />	
+	</div>
+
 </div>
-<div id="mshp-main-map"></div>
-<div id="g-main-footer" class="g-bottom-panel">
-	
 </div>
-</div>
+
 <div id="export-page" class="mshp-page"></div>
 </div>
 

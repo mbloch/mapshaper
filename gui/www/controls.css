@@ -1,4 +1,7 @@
-
+#g-simplify-control {
+	text-align: center;
+	display: inline-block;
+}
 
 #g-simplify-control .g-slider {
 	padding: 5px;
@@ -9,7 +12,7 @@
 #g-simplify-control .g-track {   	
 	-webkit-border-radius: 2px;
   	-moz-border-radius: 2px;
-	width: 300px;
+	width: 420px;
 	background-color: #fff;
 	height: 2px;
 }
