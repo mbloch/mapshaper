@@ -1,0 +1,9087 @@
+(function(){
+
+var C = this.C || {}; // global constants
+var A = this.A || {};
+
+var Env = (function() {
+  var inNode = typeof module !== 'undefined' && !!module.exports;
+  var inPhantom = !inNode && !!(window.phantom && window.phantom.exit);
+  var inBrowser = !inNode; // phantom?
+  var ieVersion = inBrowser && /MSIE ([0-9]+)/.exec(navigator.appVersion) && parseInt(RegExp.$1) || NaN;
+
+  return {
+    iPhone : inBrowser && !!(navigator.userAgent.match(/iPhone/i)),
+    iPad : inBrowser && !!(navigator.userAgent.match(/iPad/i)),
+    touchEnabled : inBrowser && ("ontouchstart" in window),
+    canvas: inBrowser && !!document.createElement('canvas').getContext,
+    inNode : inNode,
+    inPhantom : inPhantom,
+    inBrowser: inBrowser,
+    ieVersion: ieVersion,
+    ie: !isNaN(ieVersion)
+  };
+})();
+
+var Utils = {
+  getUniqueName: function(prefix) {
+    var ns = Opts.getNamespace("nytg.map");
+    var count = ns.__unique || 0;
+    ns.__unique = count + 1;
+    return (prefix || "__id_") + count;
+  },
+
+  parseUrl: function parseUrl(url) {
+    var obj, 
+      matches = /^(http):\/\/([^\/]+)(.*)/.exec(url); // TODO: improve
+    if (matches) {
+      obj = {
+        protocol: matches[1],
+        host: matches[2],
+        path: matches[3]
+      };
+    }
+    else {
+      trace("[Utils.parseUrl()] unable to parse:", url);
+    }
+    return obj;
+  },
+    
+  reduce: function(arr, func, val, ctx) {
+    for (var i = 0, len = arr.length; i < len; i++) {
+      val = func.call(ctx || null, arr[i], val, i);
+    }
+    return val;
+  },
+
+
+  mapObjectToArray: function(obj, func, ctx) {
+    var i = 0,
+        arr = null,
+        retn;
+    if (!Utils.isString(obj) && Utils.isObject(obj)) {
+      arr = [];
+      for (var key in obj) {
+        if (obj.hasOwnProperty(key)) {
+          retn = func.call(ctx, obj[key], key)
+          if (retn !== void 0) arr[i++] = retn;
+        }
+      }
+    }
+    return arr;
+  },
+
+  mapObjectToObject: function(src, func, ctx) {
+    var dest = {};
+    for (var key in src) {
+      if (src.hasOwnProperty(key)) {
+        dest[key] = func.call(ctx, src[key], key)
+      }
+    }
+    return dest;
+  },
+
+  map: function(obj, func, ctx) {
+    if (!Utils.isArrayLike(obj))
+      return Utils.mapObjectToArray(obj, func, ctx);
+
+    var arr = [], retn;
+    for (var i=0, n = obj.length; i < n; i++) {
+      retn = func.call(ctx, obj[i], i);
+      if (retn !== void 0) arr[i] = retn;
+    }
+    return arr.length == obj.length ? arr : null;
+  },
+
+  // Array like: has length property, is numerically indexed and mutable.
+  //
+  isArrayLike: function(obj) {
+    // approximate test
+    return obj && (Utils.isArray(obj) || obj.length > 0 && obj[obj.length-1] !== void 0 && !Utils.isString(obj));
+  },
+
+  isFunction: function(obj) {
+    return typeof obj == 'function';
+  },
+
+  isObject: function(obj) {
+    return obj === Object(obj); // via underscore
+  },
+
+  isArray: function(obj) {
+    return obj instanceof Array; // breaks across frames and windows
+    // More robust:
+    // return Object.constructor.toString.call(obj) == '[object Array]';
+  },
+
+  /**
+   * from underscore.js; NaN -> true
+   */
+  isNumber: function(obj) {
+    // return toString.call(obj) == '[object Number]'; // ie8 breaks?
+    return obj != null && obj.constructor == Number;
+  },
+
+  isString: function(obj) {
+    return obj != null && obj.toString === String.prototype.toString; // TODO: replace w/ something better.
+  },
+
+  isBoolean: function(obj) {
+    return obj === true || obj === false;
+  },
+
+  clamp: function(val, min, max) {
+    return val < min ? min : (val > max ? max : val);
+  },
+
+  interpolate: function(val1, val2, pct) {
+    return val1 * (1-pct) + val2 * pct;
+  },
+
+  getConstructorName: function(obj) {
+    var matches = String(obj.constructor).match(/^function ([^(]+)\(/);
+    return matches && matches[1] || "";
+  },
+
+  // TODO: handle array output and/or multiple arguments
+  //
+  memoize: function(func, ctx) {
+    var index = {},
+        memos = 0;
+    var f = function(arg) {
+      if (arguments.length != 1 || (typeof arg == 'object')) error("[memoize] only works with one-arg functions that take strings or numbers");
+      if (arg in index) {
+        return index[arg];
+      }
+      if (memos++ > 1000) { // tweening groups of things might generate lots of values
+        index = {};
+      }
+      return index[arg] = func.call(ctx, arg);
+    };
+    return f;
+  },
+
+  log: function(msg) {
+    if (Env.inNode) {
+      process.stderr.write(msg + '\n'); // node messages to stdout 
+    }
+    else if (typeof console != "undefined" && console.log) {
+      if (console.log.call) {
+        console.log.call(console, msg); // Required by ____.
+      }
+      else {
+        console.log(msg);
+      }
+    }
+  },
+
+  // Display string representation of an object, for logging, etc.
+  // Functions and some objects are converted into a string label.
+  // @param validJS Strings are quoted and escaped; if false or undefined, quotes are left
+  //   off for cleaner-looking output and long strings are truncated.
+  //
+  toString: function(obj, validJS) {
+    validJS = validJS !== false;
+    var type = typeof obj,
+        str;
+
+    if (type == 'function') {
+      str = '"[function]"';
+    } else if (obj == null) { // null or undefined
+      str = String(obj);
+    } else if (Utils.isArray(obj) || obj.byteLength > 0) { // handle typed arrays (with bytelength property)
+      str = '[' + Utils.map(obj, function(o) {return Utils.toString(o, true);}).join(', ') + ']';
+    } else if (obj.constructor == Object) { // Show properties of Object instances.
+      var parts = [];
+      for (var key in obj) {
+        var keyStr = /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? key : '"' + Utils.addslashes(key) + '"';
+        parts.push( keyStr + ':' + Utils.toString(obj[key], true));
+      }
+      str = '{' + parts.join(', ') + '}';
+    } else if (obj.nodeName) { // 
+      str = '"[' + obj.nodeName + (obj.id ? " id=" + obj.id : "") + ']"';
+    }
+    // User-defined objects without a toString() method: Try to get function name from constructor function.
+    // Can't assume objects have hasOwnProperty() function (e.g. HTML nodes don't in ie <= 8)
+    else if (type == 'object' && obj.toString === Object.prototype.toString) {
+      str = '"[' + (Utils.getConstructorName(obj) || "unknown object") + ']"';
+    } else {  
+      // strings, numbers and objects with own "toString" methods. 
+      // TODO: make sure that strings made by toString methods are quoted for js.
+      str = String(obj);
+      if (Utils.isString(obj)) {
+        if (validJS) {
+          str = '"' + Utils.addslashes(str) + '"';
+        } else if (str.length > 400) {
+          str = str.substr(0, 400) + " ...";
+        }
+      }
+    }
+    return str;
+  },
+
+  strval: function(o) {
+    return Utils.toString(o, false);
+  },
+
+  serialize: function(o) {
+    return Utils.toString(o, true);
+  },
+
+  // See https://raw.github.com/kvz/phpjs/master/functions/strings/addslashes.js
+  //
+  addslashes: function(str) {
+    return (str + '').replace(/[\\"']/g, '\\$&').replace(/\u0000/g, '\\0');
+  }
+};
+
+Utils.extend = function(dest, src, noreplace) {
+  var replace = !noreplace;
+  dest = dest || {};
+  if (src) {
+    // Copy everything, including objects from prototypes...
+    // (Adding hasOwnProperty() will break some things in Opts)
+    for (var key in src) {
+      if (replace || dest[key] === void 0) {
+        dest[key] = src[key];
+      }
+    }
+  }
+  return dest;
+};
+
+var Opts = {
+  copyAllParams: Utils.extend,
+
+  copyNewParams: function(dest, src) {
+    return Utils.extend(dest, src, true);
+  },
+
+  // Copy src functions/params to targ prototype
+  // If there's a collision, retain targ param
+  extendPrototype : function(targ, src) {
+    Utils.extend(targ.prototype, src.prototype || src);
+    targ.prototype.constructor = targ;
+  },
+
+  /**
+   * Pseudoclassical inheritance
+   *
+   * Inherit from a Parent function:
+   *    Opts.inherit(Child, Parent);
+   * Call parent's constructor (inside child constructor):
+   *    this.__super__([args...]);
+   * Call a parent method (when it has been overriden by a same-named function in Child):
+   *    this.__super__.<method_name>.call(this, [args...]);
+   */
+  inherit : function(targ, src) {
+    var f = function() {
+      // replaced: // if (this.constructor === targ) {
+      if (this.__super__ == f) {
+        // add __super__ of parent to front of lookup chain
+        // so parent class constructor can call its parent using this.__super__
+        //
+        this.__super__ = src.prototype.__super__; 
+        // call parent constructor function. this.__super__ now points to parent-of-parent
+        src.apply(this, arguments); 
+        // remove temp __super__, expose targ.prototype.__super__ again
+        delete this.__super__;
+      }
+    };
+
+    f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
+    // TODO: extend targ prototype instead of wiping it out -- 
+    //   in case inherit() is called after targ.prototype = {stuff}; statement
+    targ.prototype = Utils.extend(new f(), targ.prototype); // 
+    targ.prototype.constructor = targ;
+    targ.prototype.__super__ = f;
+  },
+
+  subclass : function(parent) {
+    var child = function() {
+      this.__super__.apply(this, arguments);
+    };
+    Opts.inherit(child, parent);
+    return child;
+  },
+
+  namespaceExists : function(name) {
+    var node = window;
+    var parts = name.split('.');
+    var exists = Utils.reduce(parts, function(part, val) {
+      if (val !== false) {
+        if (node[part] == null) { // match null or undefined
+          val = false;
+        }
+        else {
+          node = node[part];
+        }
+      }
+      return val;
+    }, true);
+    return exists;
+  },
+
+  global: function() {
+    return (function() {return this})(); // default to window in DOM or global in node
+  },
+
+  getNamespace : function(name, root) {
+    var node = root || this.global();
+    var parts = name.split('.');
+
+    for (var i=0, len=parts.length; i<len; i++) {
+      var part = parts[i];
+      if (!part) continue;
+      if (!node[part]) {
+        node[part] = {};
+      }
+      node = node[part];
+    }
+    return node;
+  },
+
+  readParam : function(param, defaultVal) {
+    return param === undefined ? defaultVal : param;
+  },
+
+  extendNamespace : function(ns, obj) {
+    var nsObj = typeof ns == 'string' ? Opts.getNamespace(ns) : ns;
+    Opts.copyAllParams(nsObj, obj);
+  },
+
+  exportObject : function(path, obj, root) {
+    root = root || this.global();
+    var parts = path.split('.'),
+        name = parts.pop();
+    if (!name) error("Opts.exportObject() Invalid name:", path);
+    if (name) {
+      var ns = Opts.getNamespace(parts.join('.'), root);
+      ns[name] = obj;
+    }
+  }
+};
+
+var trace = function() {
+  if (!Env.inBrowser || (typeof Browser) == 'undefined' || Browser.traceEnabled()) {
+    Utils.log(Utils.map(arguments, Utils.strval).join(' '));
+  }
+};
+
+var error = function() {
+  var msg = Utils.map(arguments, Utils.strval).join(' ');
+  throw new Error(msg);
+};
+
+var warn = function() {
+  Utils.log(Utils.map(arguments, Utils.strval).join(' '));
+};
+
+
+/**
+ * Support for timing using T.start() and T.stop("message")
+ */
+var T = {
+  stack: [],
+  verbose: true,
+
+  start: function(msg) {
+    if (T.verbose && msg) trace(T.prefix() + msg);
+    T.stack.push(+new Date);
+  },
+
+  // Stop timing, print a message if T.verbose == true
+  //
+  stop: function(note) {
+    var startTime = T.stack.pop();
+    var elapsed = (+new Date - startTime);
+    if (T.verbose) {
+      var msg =  T.prefix() + elapsed + 'ms';
+      if (note) {
+        msg += " " + note;
+      }
+      trace(msg);
+    }
+    return elapsed;
+  },
+
+  prefix: function() {
+    var str = "- ",
+        level = this.stack.length;
+    while (level--) str = "-" + str;
+    return str;
+  }
+};
+
+
+/** @requires core */
+
+Utils.extend(C, {
+  // alignment constants
+  N: 'n',
+  E: 'e',
+  W: 'w',
+  S: 's',
+  NW: 'nw',
+  NE: 'ne',
+  SE: 'se',
+  SW: 'sw',
+  TOP: 'top',
+  LEFT: 'left',
+  RIGHT: 'right',
+  BOTTOM: 'bottom',
+  CENTER: 'c'
+});
+
+
+// Basic 2d point class
+//
+function Point(x, y) {
+  this.x = x;
+  this.y = y;
+}
+
+Point.prototype.clone = function() {
+  return new Point(this.x, this.y);
+};
+
+Point.prototype.toString = function() {
+  return "{x:" + this.x + ", y:" + this.y + "}";
+};
+
+/*
+Point.prototype.distanceToXY = function(x, y) {
+  return Point.distance(this.x, this.y, x, y);
+};
+
+Point.prototype.distanceToPoint = function(p) {
+  return Point.distance(this.x, this.y, p.x, p.y);
+};
+*/
+
+Point.distance = function(x1, y1, x2, y2) {
+  var dx = x1 - x2,
+      dy = y1 - y2;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+/*
+Point.prototype.equals = function(p) {
+  return this.x === p.x && this.y === p.y;
+};
+*/
+
+
+// Lat lon coordinate class.
+//
+function GeoPoint(lat, lng) {
+  this.lat = lat;
+  this.lng = lng;
+}
+
+GeoPoint.prototype.clone = function() {
+  return new GeoPoint(this.lat, this.lng);
+};
+
+GeoPoint.prototype.toString = function() {
+  var str = '[GeoPoint]: {lat:' + this.lat + ', lng:' + this.lng + '}';
+  return str;
+};
+
+
+function FourSides(l, t, r, b) {
+  this.left = l || 0;
+  this.top = t || 0;
+  this.right = r || 0;
+  this.bottom = b || 0;
+}
+
+FourSides.prototype.toString = function() {
+  return '{l:' + this.left + ', t:' + this.top + ', r:' +
+    this.right + ', b:' + this.bottom + '}';
+};
+
+
+
+// BoundingBox class assumes ymax is top and ymin is bottom
+// TODO: switch to using xmin, ymin, xmax, ymax instead of left, top, right, bottom
+//
+function BoundingBox() {
+  if (arguments.length == 4) {
+    this.setBounds.apply(this, arguments);
+  }
+}
+
+BoundingBox.prototype.toString = FourSides.prototype.toString;
+
+BoundingBox.prototype.hasBounds = function() {
+  return this.left !== undefined;
+};
+
+BoundingBox.prototype.hasSameBounds = function(bb) {
+  return this.left == bb.left && this.top == bb.top &&
+    this.right == bb.right && this.bottom == bb.bottom;
+};
+
+BoundingBox.prototype.width = function() {
+  return (this.right - this.left) || 0;
+};
+
+BoundingBox.prototype.height = function() {
+  return Math.abs(this.top - this.bottom) || 0; // handle flipped v bounds.
+};
+
+BoundingBox.prototype.setBounds = function(l, t, r, b) {
+  if (arguments.length == 1) {
+    // assume first arg is a BoundingBox
+    b = l.bottom;
+    r = l.right;
+    t = l.top;
+    l = l.left;
+  }
+  this.left = l;
+  this.top = t;
+  this.right = r;
+  this.bottom = b;
+  return this;
+};
+
+BoundingBox.prototype.getCenterPoint = function() {
+  if (!this.hasBounds()) error("Missing bounds");
+  return new Point(this.centerX(), this.centerY());
+};
+
+BoundingBox.prototype.centerX = function() {
+  var x = (this.left + this.right) * 0.5;
+  return x;
+};
+
+BoundingBox.prototype.centerY = function() {
+  var y = (this.top + this.bottom) * 0.5;
+  return y;
+};
+
+BoundingBox.prototype.containsPoint = function(x, y) {
+  if (x >= this.left && x <= this.right &&
+    y <= this.top && y >= this.bottom) {
+    return true;
+  }
+  return false;
+};
+
+// intended to speed up slightly bubble symbol detection; could use intersects() instead
+// * FIXED * may give false positives if bubbles are located outside corners of the box
+//
+BoundingBox.prototype.containsBufferedPoint = function( x, y, buf ) {
+  if ( x + buf > this.left && x - buf < this.right ) {
+    if ( y - buf < this.top && y + buf > this.bottom ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+BoundingBox.prototype.intersects = function(bb) {
+  if (bb.left <= this.right && bb.right >= this.left &&
+    bb.top >= this.bottom && bb.bottom <= this.top) {
+    return true;
+  }
+  return false;
+};
+
+BoundingBox.prototype.contains = function(bb) {
+  if (bb.left >= this.left && bb.top <= this.top &&
+    bb.right <= this.right && bb.bottom >= this.bottom) {
+    return true;
+  }
+  return false;
+};
+
+BoundingBox.prototype.translate = function(x, y) {
+  this.setBounds(this.left + x, this.top + y, this.right + x,
+    this.bottom + y);
+};
+
+BoundingBox.prototype.padBounds = function(l, t, r, b) {
+  this.left -= l;
+  this.top += t;
+  this.right += r;
+  this.bottom -= b;
+}
+
+/**
+ * Rescale the bounding box by a fraction. TODO: implement focus.
+ * @param {number} pct Fraction of original extents
+ * @param {number} pctY Optional amount to scale Y
+ */
+BoundingBox.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
+  var halfWidth = (this.right - this.left) * 0.5;
+  var halfHeight = (this.top - this.bottom) * 0.5;
+  var kx = pct - 1;
+  var ky = pctY === undefined ? kx : pctY - 1;
+  this.left -= halfWidth * kx;
+  this.top += halfHeight * ky;
+  this.right += halfWidth * kx;
+  this.bottom -= halfHeight * ky;
+};
+
+/**
+ * Return a bounding box with the same extent as this one.
+ * @return {BoundingBox} Cloned bb.
+ */
+BoundingBox.prototype.cloneBounds = function() {
+  var bb = new BoundingBox();
+  if (this.hasBounds()) {
+    bb.setBounds(this.left, this.top, this.right, this.bottom);
+  }
+  return bb;
+};
+
+BoundingBox.prototype.clearBounds = function() {
+  this.setBounds(new BoundingBox());
+}
+
+BoundingBox.prototype.mergePoint = function(x, y) {
+  if (this.left === void 0) {
+    this.setBounds(x, y, x, y);
+  } else {
+    // this works even if x,y are NaN
+    if (x < this.left)  this.left = x;
+    else if (x > this.right)  this.right = x;
+
+    if (y < this.bottom) this.bottom = y;
+    else if (y > this.top) this.top = y;
+  }
+};
+
+BoundingBox.prototype.mergeBounds = function(bb) {
+  var l, t, r, b;
+  if (bb.left !== void 0) {
+    l = bb.left, r = bb.right, t = bb.top, b = bb.bottom;
+  } else if (bb.length == 4) {
+    l = bb[0], r = bb[2], b = bb[1], t = bb[3]; // expects array: [xmin, ymin, xmax, ymax]
+  } else {
+    if (!this.hasBounds()) {
+      error("BoundingBox#mergeBounds() merging two empty boxes")
+    }
+    trace("BoundingBox#mergeBounds() invalid argument:", bb);
+    // return;
+  }
+
+  if (this.left === void 0) {
+    this.setBounds(l, t, r, b);
+  } else {
+    if (l < this.left) this.left = l;
+    if (r > this.right) this.right = r;
+    if (t > this.top) this.top = t;
+    if (b < this.bottom) this.bottom = b;
+  }
+};
+
+
+/**
+ * TODO: remove 256
+ */
+function TileExtent(w, h) {
+  this.mx = this.my = 1;
+  this.bx = this.by = 0;
+  this.widthInPixels = w || 256;
+  this.heightInPixels = h || 256;
+}
+
+Opts.inherit(TileExtent, BoundingBox);
+
+TileExtent.prototype.setBounds =  function() {
+  /*
+  if (b) {
+    // accept four coords (instead of one BoundingBox)
+    bb = new BoundingBox().setBounds(bb, t, r, b);
+  }
+  // trace("TileExtent() setBounds()", bb, t, r, b, "left:", bb.left)
+  this.mergeBounds(this, bb);
+  */
+  BoundingBox.prototype.setBounds.apply(this, arguments);
+  var bb = this;
+
+  var ppm = this.widthInPixels / (bb.right - bb.left);
+  this.mx = ppm;
+  //this.my = -ppm;
+  this.my = this.heightInPixels / (bb.bottom - bb.top);
+  this.bx = -ppm * bb.left;
+  this.by = -this.my * bb.top;
+  this.metersPerPixel = 1 / ppm; // 
+};
+
+TileExtent.prototype.updateBounds = TileExtent.prototype.setBounds; // TODO: remove updateBounds
+
+// apply after bounds have been set...
+//
+TileExtent.prototype.addPixelMargins = function(l, t, r, b) {
+  this.bx += l;
+  this.by -= b;
+  this.mx *= 1 - (l + r) / this.widthInPixels;
+  this.my *= 1 - (t + b) / this.heightInPixels;
+};
+
+TileExtent.prototype.transformXY = function(x, y, xy) {
+  xy = xy || new Point();
+  var xPix = x * this.mx + this.bx;
+  var yPix = y * this.my + this.by;
+  xy.x = xPix;
+  xy.y = yPix;
+  return xy;
+};
+
+TileExtent.prototype.clone = function() {
+  var ext = new TileExtent(this.widthInPixels, this.heightInPixels);
+  ext.setBounds(this);
+  return ext;
+};
+
+
+
+/* @requires core */
+
+
+Utils.findRankByValue = function(arr, value) {
+  if (isNaN(value)) return arr.length;
+
+  var rank = 1;
+  for (var i=0, n=arr.length; i<n; i++) {
+    if (value > arr[i]) rank++;
+  }
+  return rank;
+}
+
+
+// See http://ndevilla.free.fr/median/median/src/wirth.c
+// Elements of @arr are reordered
+//
+Utils.findValueByRank = function(arr, rank) {
+  var k = (rank | 0) - 1, // conv. rank into array index
+      n = arr.length,
+      l = 0,
+      m = n - 1,
+      i, j, val, tmp;
+
+  if (!arr.length || k < 0 || k >= arr.length) error("[findValueByRank()] invalid input");
+
+  while (l < m) {
+    val = arr[k];
+    i = l;
+    j = m;
+    do {
+      while (arr[i] < val) {i++;}
+      while (val < arr[j]) {j--;}
+      if (i <= j) {
+        tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+        i++;
+        j--;
+      }
+    } while (i <= j);
+    if (j < k) l = i;
+    if (k < i) m = j;
+  }
+  return arr[k];
+};
+
+
+//
+Utils.findMedian = function(arr) {
+  var n = arr.length,
+      rank = Math.floor(n / 2) + 1,
+      median = Utils.findValueByRank(arr, rank);
+  if ((n & 1) == 0) {
+    median = (median + Utils.findValueByRank(arr, rank - 1)) / 2;
+  }
+  return median;
+};
+
+
+
+/* @requires core.geo, median */
+
+function BoundsIndex(bounds, opts) {
+  var defaults = {
+    maxBinSize: 500
+  };
+  opts = Utils.extend(defaults, opts);
+
+  var maxInCell = opts.maxBinSize;
+  var capacity = 0,
+      size = 0;
+  var allCells = [newCell(new BoundingBox(-Infinity, Infinity, Infinity, -Infinity))];
+  var bbs,
+      ccx,
+      ccy;
+
+  populate(bounds);
+
+  this.size = function() {
+    return size;
+  };
+
+  // for testing
+  this.binCount = function() {
+    return allCells.length;
+  }
+
+  function populate(boxes) {
+    var box;
+    bbs = boxes;
+    capacity = boxes.length;
+    size = 0;
+    // get cx, cy
+    ccx = new Float64Array(capacity);
+    ccy = new Float64Array(capacity);
+
+    for (var i=0; i<capacity; i++) {
+      box = boxes[i];
+      ccx[i] = (box[0] + box[2]) / 2;
+      ccy[i] = (box[1] + box[3]) / 2;
+      indexItem(i);
+    }
+  };
+
+  /*
+  function SpatialView() {
+    var inCells = allCells.concat(),
+        outCells = [],
+        partialCells = [];
+
+    var bounds = new BoundingBox().setBounds(-Infinity, Infinity, Infinity, -Infinity);
+
+    this.getItemsInBoundingBox(box) {
+      // update....
+
+    }
+  } */
+
+  this.getIntersection = function(box) {
+    var targ = Utils.isArray(box) ? new BoundingBox(bbox[0], bbox[3], bbox[2], bbox[0]) : box;
+    var ids = [];
+
+    for (var i=0, n=allCells.length; i<n; i++) {
+      var cell = allCells[i];
+      if (targ.contains(cell.contentBounds)) {
+        ids.push.apply(ids, cell.ids);
+      } else if (targ.intersects(cell.contentBounds)) {
+        testCandidates(cell.ids, targ, ids);
+      }
+    }
+
+    return ids;
+  };
+
+  function testCandidates(cands, bbox, ids) {
+    var bb = new BoundingBox();
+    for (var i=0, n=cands.length; i<n; i++) {
+      var id = cands[i];
+      var box = bbs[id];
+      bb.left = box[0];
+      bb.bottom = box[1];
+      bb.right = box[2];
+      bb.top = box[3];
+      if (bbox.intersects(bb)) {
+        ids.push(id);
+      }
+    }
+  }
+
+  function indexItem(id) {
+    if (size >= capacity) error("BoundsIndex#addItem() overflow");
+    size++;
+    var cell = placeItem(id, allCells);
+    if (cell.ids.length > maxInCell) {
+      divideCell(cell);
+    }
+  }
+
+  function placeItem(id, cells) {
+    var cx = ccx[id],
+        cy = ccy[id],
+        cell;
+
+    for (var i=0, n=cells.length; i<n; i++) {
+      cell = cells[i];
+      if (cell.bounds.containsPoint(cx, cy)) {
+        addItemToCell(id, cell);
+        return cell;
+      }
+    }
+    error("BoundsIndex#placeItem() couldn't evaluate symbol at:", cx, cy);
+  }
+
+  function addItemToCell(id, cell) {
+    var box = bbs[id];
+    cell.contentBounds.mergePoint(box[0], box[1]);
+    cell.contentBounds.mergePoint(box[2], box[3]);
+    cell.ids.push(id);
+  }
+
+  function splitBoxOnY(box, y) {
+    if (!box.containsPoint(box.left, y)) error("Out-of-bounds y");
+    var box2 = new BoundingBox();
+    box2.setBounds(box.left, y, box.right, box.bottom);
+    box.bottom = y;
+    return box;
+  }
+
+  function splitBoxOnX(box, x) {
+    if (!box.containsPoint(x, box.top)) error("Out-of-bounds x");
+    var box2 = new BoundingBox();
+    box2.setBounds(x, box.top, box.right, box.bottom);
+    box.right = x;
+    return box2;
+  }
+
+  function divideCell(cell) {
+    var ids = cell.ids,
+        splitVertically = cell.contentBounds.height() > cell.contentBounds.width(),
+        centers = splitVertically ? ccy: ccx,
+        coords = Utils.filterById(centers, ids); // copy selected coords into an array
+
+    // find the partition value
+    var median = Utils.findValueByRank(coords, (ids.length / 2) | 0);
+
+    // remove content from original cell...
+    cell.ids = [];
+    cell.contentBounds = new BoundingBox();
+
+    // reduce bbox of cell, create new cell from split-off part
+    var box2 = splitVertically ? splitBoxOnY(cell.bounds, median) : splitBoxOnX(cell.bounds, median);
+    var cell2 = newCell(box2);
+    allCells.push(cell2);
+
+    // add items to one of the two cells
+    var cells = [cell, cell2];
+    for (var i=0, n=ids.length; i<n; i++) {
+      placeItem(ids[i], cells);
+    }
+  }
+
+  function newCell(bb) {
+    var cell = {
+      bounds: bb,
+      contentBounds: new BoundingBox(),
+      ids: []
+    }
+    return cell;
+  }
+}
+
+/* @requires core */
+
+Utils.sortArrayByKeys = function(arr, keys, asc) {
+  var ids = Utils.getSortedIds(keys, asc);
+  Utils.reorderArray(arr, ids);
+};
+
+Utils.getSortedIds = function(arr, asc) {
+  var ids = Utils.range(arr.length);
+  Utils.sortArrayIndex(ids, arr, asc);
+  return ids;
+};
+
+Utils.sortArrayIndex = function(ids, arr, asc) {
+  var asc = asc !== false;
+  ids.sort(function(i, j) {
+    var a = arr[i], b = arr[j];
+    // added i, j comparison to guarantee that sort is stable
+    if (asc && a > b || !asc && a < b || a === b && i < j) 
+      return 1;
+    else
+      return -1;
+  });
+};
+
+Utils.reorderArray = function(arr, idxs) {
+  var len = idxs.length;
+  var arr2 = [];
+  for (var i=0; i<len; i++) {
+    var idx = idxs[i];
+    if (idx < 0 || idx >= len) error("Out-of-bounds array idx");
+    arr2[i] = arr[idx];
+  }
+  Utils.replaceArray(arr, arr2);
+};
+
+// Sort an array of objects based on one or more properties.
+// Usage: Utils.sortOn(array, key1, asc?[, key2, asc? ...])
+//
+Utils.sortOn = function(arr) {
+  var params = Array.prototype.slice.call(arguments, 1)
+  var compare = function(objA, objB) {
+    for (var i=0, n = params.length; i < n;) {
+      var key = params[i++],
+          asc = params[i++] !== false,
+          a = objA[key],
+          b = objB[key];
+      if (a === void 0 || b === void 0) {
+        error("#sortOn() Missing key:", key);
+      }
+      if (a !== b) {
+        return asc && a > b || !asc && b > a ? 1 : -1;
+      }
+    }
+    return 0;
+  };
+  arr.sort(compare);
+  return arr;
+};
+
+Utils.sortNumbers = function(arr, asc) {
+  var compare = asc !== false ?
+    function(a, b) {return a - b} : function(a, b) {return b - a};
+  Array.prototype.sort.call(arr, compare);
+};
+
+// Sort array of values that can be compared with < > operators (strings, numbers)
+// null, undefined and NaN are sorted to the end of the array
+//
+Utils.genericSort = function(arr, asc) {
+  asc = asc !== false;
+  var compare = function(a, b) {
+    var retn = 0;
+    if (b == null) {
+      retn = a == null ? 0 : -1;
+    } else if (a == null) {
+      retn = 1;
+    } else if (a < b) {
+      retn = asc ? -1 : 1;
+    } else if (a > b) {
+      retn = asc ? 1 : -1;
+    } else if (a !== a) {
+      retn = 1;
+    } else if (b !== b) {
+      retn = -1;
+    }
+    return retn;
+  };
+  Array.prototype.sort.call(arr, compare);
+};
+
+// Sorts an array of numbers in-place
+//
+Utils.quicksort = function(arr, asc) {
+  function partition(a, lo, hi) {
+    var i = lo,
+        j = hi,
+        pivot, tmp;
+    while (i < hi) {
+      pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arryays
+      while (i <= j) {
+        while (a[i] < pivot) i++;
+        while (a[j] > pivot) j--;
+        if (i <= j) {
+          tmp = a[i];
+          a[i] = a[j];
+          a[j] = tmp;
+          i++;
+          j--;
+        }
+      }
+      if (lo < j) partition(a, lo, j);
+      lo = i;
+      j = hi;
+    }
+  } 
+  partition(arr, 0, arr.length-1);
+  if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
+  return arr;
+};
+
+/**
+ * This is much faster than Array.prototype.sort(<callback>) when "getter" returns a
+ * precalculated sort string. Unpredictable if number is returned.
+ * 
+ * @param {Array} arr Array of objects to sort.
+ * @param {function} getter Function that returns a sort key (string) for each object.
+ */
+Utils.sortOnKeyFunction = function(arr, getter) {
+  if (!arr || arr.length == 0) {
+    return;
+  }
+  // Temporarily patch toString() method w/ sort key function.
+  // Assumes array contains objects of the same type
+  // and their "constructor" property is properly set.
+  var p = arr[0].constructor.prototype;
+  var tmp = p.toString;
+  p.toString = getter;
+  arr.sort();
+  p.toString = tmp;
+};
+
+/* @requires core, sorting */
+
+Utils.contains = function(container, item) {
+  if (Utils.isString(container)) {
+    return container.indexOf(item) != -1;
+  }
+  else if (Utils.isArrayLike(container)) {
+    return Utils.indexOf(container, item) != -1;
+  }
+  error("Expected Array or String argument");
+};
+
+// transposes an object of (assumed equal-size) column arrays to an array of object-records
+//
+Utils.transposeDataBlock = function(obj) {
+  var data = null;
+  if (Utils.isArray(obj)) {
+
+  } else {
+    var keys = Utils.getKeys(obj),
+        cols = keys.length,
+        rows = obj[keys[0]].length;
+
+    data = [];
+    for (var j=0; j<rows; j++) {
+      data.push({});
+    }
+    for (var i=0; i<cols; i++) {
+      var key = keys[i];
+      var col = obj[key];
+      for (var j=0; j<rows; j++) {
+        data[j][key] = col[j];
+      }
+    }   
+  }
+  return data;
+};
+
+
+Utils.nullKeys = function(obj) {
+  var arr = Utils.filter(Utils.getKeys(obj), function(key) {
+    return obj[key] === null;
+  });
+  return arr.length == 0 ? null : arr;
+};
+
+Utils.some = function(arr, test) {
+  return Utils.reduce(arr, function(item, val) {
+    return val || test(item); // TODO: short-circuit?
+  }, false);
+};
+
+Utils.every = function(arr, test) {
+  return Utils.reduce(arr, function(item, val) {
+    return val && test(item);
+  }, true);
+};
+
+/* */
+Utils.findInArray = function(obj, arr, prop) {
+  return Utils.indexOf(arr, obj, prop);
+};
+
+Utils.toArray = function(obj) {
+  if (!Utils.isArrayLike(obj)) error("Utils.toArray() requires an array-like object");
+  var arr = [];
+  for (var i=0, n=obj.length; i<n; i++) {
+    arr.push(obj[i]);
+  }
+  return arr;
+};
+
+Utils.find = function(arr, test) {
+  for (var i=0, n=arr.length; i<n; i++) {
+    var o = arr[i];
+    if (test(o)) return o;
+  }
+  return null;
+};
+
+Utils.indexOf = function(arr, item, prop) {
+  for (var i = 0, len = arr.length || 0; i < len; i++) {
+    if (!prop) {
+      if (arr[i] === item) {
+        return i;
+      }
+    }
+    else if (arr[i][prop] === item) {
+      return i;
+    }
+  }
+  return -1;
+};
+
+Utils.getClassId = function(val, breaks) {
+  var id = -1;
+  if (!isNaN(val)) {
+    id = 0;
+    for (var j = 0, len=breaks.length; j < len; j++) {
+      var breakVal = breaks[j];
+      if (val < breakVal) {
+        break;
+      }
+      id = j + 1;
+    }
+  }
+  return id;
+};
+
+
+Utils.getInnerBreaks = function(v1, v2, breaks) {
+  var id1 = Utils.getClassId(v1, breaks);
+  var id2 = Utils.getClassId(v2, breaks);
+  var retn = [];
+  if (id1 == id2) {
+    return retn;
+  }
+  else if (id1 < id2) {
+    var start=id1;
+    var end=id2;
+    var inv = false;
+  }
+  else {
+    start = id2
+    end = id1;
+    inv = true;
+  }
+  for (var i=start; i<end; i ++) {
+    retn.push(breaks[i]);
+  }
+
+  if (inv) {
+    retn.reverse();
+  }
+  return retn;
+};
+
+Utils.range = function(len, start, inc) {
+  var arr = [],
+      v = start === void 0 ? 0 : start,
+      i = inc === void 0 ? 1 : inc;
+  while(len--) {
+    arr.push(v);
+    v += i;
+  }
+  return arr;
+};
+
+Utils.repeat = function(times, func) {
+  times = times > 0 && times || 1;
+  var i = 0;
+  while (i < times) {
+    func(i++);
+  }
+};
+
+/*
+Utils.sum = function(arr) {
+  var tot = 0;
+  for (var i=0, len=arr.length; i<len; i++) {
+    var val = arr[i];
+    if (val !== val) error("Utils#sum() Array contains NaN");
+    tot += val;
+  }
+  return tot;
+};
+*/
+
+// Calc sum, skip falsy and NaN values
+// Assumes: no other non-summable objects in array
+//
+Utils.sum = function(arr) {
+  var tot = 0,
+      val;
+  for (var i=0, n=arr.length; i<n; i++) {
+    val = arr[i];
+    if (val) {
+      tot += val;
+    }
+  }
+  return tot;
+};
+
+/**
+ * Calculate min and max values of an array, ignoring NaN values
+ */
+Utils.getArrayBounds = function(arr) {
+  var min = Infinity,
+    max = -Infinity,
+    nan = 0, val;
+  for (var i=0, len=arr.length; i<len; i++) {
+    val = arr[i];
+    if (val !== val) nan++;
+    if (val < min) min = val;
+    if (val > max) max = val;
+  }
+  return {
+    min: min,
+    max: max,
+    nan: nan
+  };
+};
+
+Utils.average = function(arr) {
+  if (!arr.length) error("Tried to find average of empty array");
+  return Utils.sum(arr) / arr.length;
+};
+
+Utils.invertIndex = function(obj) {
+  var inv = {};
+  for (var key in obj) {
+    inv[obj[key]] = key;
+  }
+  return inv;
+};
+
+Utils.invertArray = function(arr) {
+  var index = {};
+  // iterate bw so first occurence gets indexed
+  for (var i=arr.length - 1; i >= 0; i--) {
+    index[arr[i]] = i;
+  }
+  return index;
+};
+
+Utils.getKeys = function(obj) {
+  var arr = [];
+  for (var key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      arr.push(key);
+    }
+  }
+  return arr;
+};
+
+Utils.getValues = function(obj) {
+  var arr = [];
+  for (var key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      arr.push(obj[key]);
+    }
+  }
+  return arr;
+};
+
+//
+Utils.uniq = function(src) {
+  //var copy = src.concat();
+  // copy.sort();
+  var index = {};
+  return Utils.filter(src, function(el, i) {
+    if (el in index) {
+      return false;
+    }
+    index[el] = true;
+    return true;
+    // return i == 0 || el !== copy[i-1] ? true : false;
+  });
+};
+
+Utils.pluck = function(arr, key) {
+  return Utils.map(arr, function(obj) {
+    return obj[key];
+  });
+};
+
+Utils.filter = function(src, func, ctx) {
+  var dest = [];
+  for (var i=0, len=src.length; i<len; i++) {
+    var val = src[i];
+    if (func.call(ctx, val, i)) {
+      dest.push(val);
+    }
+  }
+  return dest;
+};
+
+Utils.assembleObjects = function(keys, vals) {
+  return Utils.map(keys, function(k, i) {
+    var o = {};
+    o[k] = vals[i];
+    return o;
+  })
+};
+
+Utils.indexOn = function(arr, k) {
+  return Utils.reduce(arr, function(o, index) {
+    index[o[k]] = o;
+    return index;
+  }, {});
+};
+
+Utils.indexOn2 = function(arr, k) {
+  return Utils.reduce(arr, function(o, index) {
+    var keyval = o[k];
+    if (keyval in index) {
+      index[keyval].push(o);
+    } else {
+      index[keyval] = [o]
+    }
+    return index;
+  }, {});
+};
+
+
+Utils.arrayToIndex = function(arr, arg2) {
+  if (Utils.isArray(arg2))
+    return Utils.assembleObjects(arr, arg2);
+  if (Utils.isString(arg2))
+    return Utils.indexOn(arr, arg2);
+
+  return Utils.reduce(arr, function(key, index) {
+    if (key in index) trace("[Utils.arrayToIndex()] Warning: duplicate key:", key);
+    index[key] = true;
+    return index;
+  }, {});
+};
+
+Utils.groupBy = function(arr, key) {
+  var index = {},
+      groups = [];
+  Utils.forEach(arr, function(obj) {
+    var keyval = obj[key];
+    var group = index[keyval];
+    if (!group) {
+      index[keyval] = group = [];
+      groups.push(group);
+    }
+    group.push(obj);
+  });
+  return groups;
+};
+
+Utils.forEach = function(obj, callback, ctx) {
+  Utils.map(obj, callback, ctx);
+};
+
+Utils.multiMap = function(callback) {
+  var usage = "Usage: Utils.multiMap(callback, arr1, [arr2, ...])";
+  if (!Utils.isFunction(callback)) error(usage)
+  var args = [],
+      sources = args.slice.call(arguments, 1),
+      arrLen = 0; 
+  Utils.forEach(sources, function(src, i) {
+    if (Utils.isArrayLike(src)) {
+      if (arrLen == 0) {
+        arrLen = src.length;
+      } else if (src.length != arrLen) {
+        error("#multiMap() mismatched source arrays");
+      }
+    } else {
+      args[i] = src;
+      sources[i] = null;
+    }
+  });
+
+  var retn = [];
+  for (var i=0; i<arrLen; i++) {
+    for (var j=0, n=sources.length; j<n; j++) {
+      if (sources[j]) args[j] = sources[j][i];
+    }
+    retn[i] = callback.apply(null, args);
+  }
+  return retn;
+};
+
+Utils.initializeArray = function(arr, init) {
+  // if (typeof init == "function") error("[initializeArray()] removed function initializers");
+  for (var i=0, len=arr.length; i<len; i++) {
+    arr[i] = init;
+  }
+  return arr;
+}
+
+Utils.newArray = function(size, init) {
+  return Utils.initializeArray(new Array(size), init);
+};
+
+Utils.replaceArray = function(arr, arr2) {
+  arr.splice(0, arr.length);
+  arr.push.apply(arr, arr2);
+}
+
+Utils.randomizeArray = function(arr) {
+  var tmp, swap, n=arr.length;
+  while(n) {
+    swap = Math.random() * n | 0; // assumes random() != 1
+    tmp = arr[swap];
+    arr[swap] = arr[--n];
+    arr[n] = tmp;
+  }
+  return arr;
+};
+
+Utils.swap = function(arr, i, j) {
+  var tmp = arr[i];
+  arr[i] = arr[j];
+  arr[j] = tmp;
+}
+
+Utils.getRandomIds = function(len) {
+  var ids = Utils.range(len);
+  Utils.randomizeArray(ids);
+  return ids;
+};
+
+Utils.filterById = function(src, ids) {
+  var arr = [], val;
+  for (var i=0, n=ids.length; i<n; i++) {
+    val = src[ids[i]];
+    if (val !== void 0) arr.push(val);
+  }
+  return arr;
+};
+
+
+/* @requires arrayutils, core.geo */
+
+// TODO: adapt to run in browser
+function stop(msg) {
+  msg && trace(msg);
+  process.exit(1);
+}
+
+var MapShaper = {};
+
+MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
+  var len=xsrc.length;
+  (!len || len < 2) && error("[MapShaper.extendShapePart()] invalid arc length:", len);
+  if (reversed) {
+    var inc = -1;
+    var startId = len - 1;
+    var stopId = -1;
+  } else {
+    inc = 1;
+    startId = 0;
+    stopId = len;
+  }
+
+  if (xdest.length > 0) {
+    startId += inc; // skip first point of arc if part has been started
+  }
+
+  for (var i=startId; i!=stopId; i+=inc) {
+    xdest.push(xsrc[i]);
+    ydest.push(ysrc[i]);
+  }
+};
+
+/*
+MapShaper.calcArcBounds = function(arcs) {
+  var arcCount = arcs.length,
+      i = 0;
+  var arr = new Float64Array(arcCount * 4);
+  for (var arcId=0; arcId<arcCount; arcId++) {
+    var arc = arcs[arcId];
+    var xb = Utils.getArrayBounds(arc[0]);
+    var yb = Utils.getArrayBounds(arc[1]);
+    arr[i++] = xb.min;
+    arr[i++] = yb.min;
+    arr[i++] = xb.max;
+    arr[i++] = yb.max;
+  }
+  return arr;
+};
+
+*/
+
+
+MapShaper.calcXYBounds = function(xx, yy, bb) {
+  if (!bb) bb = new BoundingBox();
+  var xbounds = Utils.getArrayBounds(xx),
+      ybounds = Utils.getArrayBounds(yy);
+  if (xbounds.nan > 0 || ybounds.nan > 0) error("[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
+  bb.mergePoint(xbounds.min, ybounds.min);
+  bb.mergePoint(xbounds.max, ybounds.max);
+  return bb;
+};
+
+MapShaper.transposeXYCoords = function(arr) {
+  var xx = arr[0],
+      yy = arr[1],
+      points = [];
+  for (var i=0, len=xx.length; i<len; i++) {
+    points.push([xx[i], yy[i]]);
+  }
+  return points;
+};
+
+
+// Convert a topological shape to a non-topological format
+// (for exporting)
+//
+MapShaper.convertTopoShape = function(shape, arcs, closed) {
+  var parts = [],
+      pointCount = 0,
+      bounds = new BoundingBox();
+
+  for (var i=0; i<shape.length; i++) {
+    var topoPart = shape[i],
+        xx = [],
+        yy = [];
+    for (var j=0; j<topoPart.length; j++) {
+      var arcId = topoPart[j],
+          reversed = false;
+      if (arcId < 0) {
+        arcId = -1 - arcId;
+        reversed = true;
+      }
+      var arc = arcs[arcId];
+      if (arc[0].length > 1) {
+        MapShaper.extendPartCoordinates(xx, yy, arc[0], arc[1], reversed);
+      }
+    }
+    var pointsInPart = xx.length,
+        validPart = !closed && pointsInPart > 0 || pointsInPart > 3;
+    // TODO: other validation:
+    // self-intersection test? test rings have non-zero area? rings follow winding rules?
+    if (validPart) {
+      parts.push([xx, yy]);
+      pointCount += xx.length;
+      MapShaper.calcXYBounds(xx, yy, bounds);
+    }
+  }
+
+  return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
+};
+
+
+
+
+
+function Transform() {
+  this.mx = this.my = 1;
+  this.bx = this.by = 0;
+}
+
+Transform.prototype.invert = function() {
+  var inv = new Transform();
+  inv.mx = 1 / this.mx;
+  inv.my = 1 / this.my;
+  inv.bx = -this.bx / this.mx;
+  inv.by = -this.by / this.my;
+  return inv;
+};
+
+
+/*
+Transform.prototype.useTileBounds = function(wPix, hPix, bb) {
+  var ppm = wPix / (bb.right - bb.left);
+  this.mx = ppm;
+  this.my = hPix / (bb.bottom - bb.top);
+  this.bx = -ppm * bb.left;
+  this.by = -this.my * bb.top;
+  return this;
+};
+*/
+
+Transform.prototype.transform = function(x, y, xy) {
+  xy = xy || [];
+  xy[0] = x * this.mx + this.bx;
+  xy[1] = y * this.my + this.by;
+  return xy;
+};
+
+// Transform.prototype.toString = function() {};
+
+function Bounds() {
+  if (arguments.length > 0) {
+    this.setBounds.apply(this, arguments);
+  }
+}
+
+Bounds.prototype.toString = function() {
+  return JSON.stringify({
+    xmin: this.xmin,
+    xmax: this.xmax,
+    ymin: this.ymin,
+    ymax: this.ymax
+  });
+};
+
+Bounds.prototype.hasBounds = function() {
+  return !isNaN(this.ymax);
+};
+
+Bounds.prototype.sameBounds =
+Bounds.prototype.equals = function(bb) {
+  return bb && this.xmin === bb.xmin && this.xmax === bb.xmax &&
+    this.ymin === bb.ymin && this.ymax === bb.ymax;
+};
+
+Bounds.prototype.width = function() {
+  return (this.xmax - this.xmin) || 0;
+};
+
+Bounds.prototype.height = function() {
+  return (this.ymax - this.ymin) || 0;
+};
+
+Bounds.prototype.setBounds = function(a, b, c, d) {
+  if (arguments.length == 1) {
+    // assume first arg is a Bounds or array
+    if (Utils.isArray(a)) {
+      b = a[1];
+      c = a[2];
+      d = a[3];
+      a = a[0];
+    } else {
+      b = a.ymin;
+      c = a.xmax;
+      d = a.ymax;
+      a = a.xmin;      
+    }
+  }
+  if (a > c || b > d) error("Bounds#setBounds() min/max reversed:", a, b, c, d);
+  this.xmin = a;
+  this.ymin = b;
+  this.xmax = c;
+  this.ymax = d;
+  return this;
+};
+
+/*
+Bounds.prototype.getCenterPoint = function() {
+  if (!this.hasBounds()) error("Missing bounds");
+  return new Point(this.centerX(), this.centerY());
+};
+*/
+
+Bounds.prototype.centerX = function() {
+  var x = (this.xmin + this.xmax) * 0.5;
+  return x;
+};
+
+Bounds.prototype.centerY = function() {
+  var y = (this.ymax + this.ymin) * 0.5;
+  return y;
+};
+
+Bounds.prototype.containsPoint = function(x, y) {
+  if (x >= this.xmin && x <= this.xmax &&
+    y <= this.ymax && y >= this.ymin) {
+    return true;
+  }
+  return false;
+};
+
+// intended to speed up slightly bubble symbol detection; could use intersects() instead
+// * FIXED * may give false positives if bubbles are located outside corners of the box
+//
+Bounds.prototype.containsBufferedPoint = function( x, y, buf ) {
+  if ( x + buf > this.xmin && x - buf < this.xmax ) {
+    if ( y - buf < this.ymax && y + buf > this.ymin ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+Bounds.prototype.intersects = function(bb) {
+  if (bb.xmin <= this.xmax && bb.xmax >= this.xmin &&
+    bb.ymax >= this.ymin && bb.ymin <= this.ymax) {
+    return true;
+  }
+  return false;
+};
+
+Bounds.prototype.contains = function(bb) {
+  if (bb.xmin >= this.xmin && bb.ymax <= this.ymax &&
+    bb.xmax <= this.xmax && bb.ymin >= this.ymin) {
+    return true;
+  }
+  return false;
+};
+
+Bounds.prototype.shift = function(x, y) {
+  this.setBounds(this.xmin + x,
+    this.ymin + y, this.xmax + x, this.ymax + y);
+};
+
+Bounds.prototype.padBounds = function(a, b, c, d) {
+  this.xmin -= a;
+  this.ymin -= b;
+  this.xmax += c;
+  this.ymax += d;
+};
+
+/**
+ * Rescale the bounding box by a fraction. TODO: implement focus.
+ * @param {number} pct Fraction of original extents
+ * @param {number} pctY Optional amount to scale Y
+ */
+Bounds.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
+  var halfWidth = (this.xmax - this.xmin) * 0.5;
+  var halfHeight = (this.ymax - this.ymin) * 0.5;
+  var kx = pct - 1;
+  var ky = pctY === undefined ? kx : pctY - 1;
+  this.xmin -= halfWidth * kx;
+  this.ymin -= halfHeight * ky;
+  this.xmax += halfWidth * kx;
+  this.ymax += halfHeight * ky;
+};
+
+/**
+ * Return a bounding box with the same extent as this one.
+ */
+Bounds.prototype.cloneBounds = // alias so child classes can override clone()
+Bounds.prototype.clone = function() {
+  return new Bounds(this.xmin, this.ymin, this.xmax, this.ymax);
+};
+
+Bounds.prototype.clearBounds = function() {
+  this.setBounds(new Bounds());
+};
+
+Bounds.prototype.mergePoint = function(x, y) {
+  if (this.xmin === void 0) {
+    this.setBounds(x, y, x, y);
+  } else {
+    // this works even if x,y are NaN
+    if (x < this.xmin)  this.xmin = x;
+    else if (x > this.xmax)  this.xmax = x;
+
+    if (y < this.ymin) this.ymin = y;
+    else if (y > this.ymax) this.ymax = y;
+  }
+};
+
+// TODO: pick a better name
+// expands either x or y dimension to match @aspect (width/height ratio)
+// @focusX, @focusY (optional): expansion focus, as a fraction of width and height
+//
+Bounds.prototype.fillOut = function(aspect, focusX, focusY) {
+  if (arguments.length < 3) {
+    focusX = 0.5;
+    focusY = 0.5;
+  }
+  var w = this.width(),
+      h = this.height(),
+      currAspect = w / h,
+      pad;
+  if (currAspect < aspect) { // fill out x dimension
+    pad = h * aspect - w;
+    this.xmin -= (1 - focusX) * pad;
+    this.xmax += focusX * pad;
+  } else {
+    pad = w / aspect - h;
+    this.ymin -= (1 - focusY) * pad;
+    this.ymax += focusY * pad;
+  }
+  return this;
+};
+
+// Returns a Transform object for mapping this onto Bounds @b2
+// @flipY (optional) Flip y-axis coords, for converting to/from pixel coords
+//
+Bounds.prototype.getTransform = function(b2, flipY) {
+  var t = new Transform();
+  t.mx = b2.width() / this.width();
+  t.bx = b2.xmin - t.mx * this.xmin;
+  if (flipY) {
+    t.my = -b2.height() / this.height();
+    t.by = b2.ymax - t.my * this.ymin;
+  } else {
+    t.my = b2.height() / this.height();
+    t.by = b2.ymin - t.my * this.ymin;
+  }
+  return t;
+};
+
+Bounds.prototype.mergeBounds = function(bb) {
+  var a, b, c, d;
+  if (bb.xmin !== void 0) {
+    a = bb.xmin, b = bb.ymin, c = bb.xmax, d = bb.ymax;
+  } else if (bb.length == 4) {
+    a = bb[0], b = bb[1], c = bb[2], d = bb[3]; // expects array: [xmin, ymin, xmax, ymax]
+  } else {
+    error("Bounds#mergeBounds() invalid argument:", bb);
+  }
+
+  if (this.xmin === void 0) {
+    this.setBounds(a, b, c, d);
+  } else {
+    if (a < this.xmin) this.xmin = a;
+    if (b < this.ymin) this.ymin = b;
+    if (c > this.xmax) this.xmax = c;
+    if (d > this.ymax) this.ymax = d;
+  }
+  return this;
+};
+
+
+/* @requires mapshaper-common, mapshaper-index, core.geo, bounds */
+
+MapShaper.calcArcBounds = function(xx, yy) {
+  var xb = Utils.getArrayBounds(xx),
+      yb = Utils.getArrayBounds(yy);
+  return [xb.min, yb.min, xb.max, yb.max];
+};
+
+// ArcCollection has methods for finding the arcs inside a bounding box and the
+//   nearest arc to an (x, y) location.
+// Receive array of arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
+//
+function ArcCollection(coords) {
+  var len = coords.length,
+      xxyy, bbox;
+
+  var arcs = [],
+      boxes = [],
+      bounds = new Bounds();
+
+  var thresholds = null,
+      sorted = null,
+      zlimit = 0;
+
+
+  for (var i=0; i<len; i++) {
+    xxyy = coords[i];
+    bbox = MapShaper.calcArcBounds(xxyy[0], xxyy[1]);
+    bounds.mergeBounds(bbox);
+    boxes.push(bbox);
+  }
+
+  var arcIter = new ArcIter();
+  // var shapeIter = new ShapeIter(this);
+
+  // 
+  // var index = new BoundsIndex(boxes);
+
+  this.getArcIter = function(i, reverse) {
+    var xx = coords[i][0],
+        yy = coords[i][1];
+    if (zlimit) {
+      arcIter.init(xx, yy, !!reverse, thresholds[i], zlimit);
+    } else {
+      arcIter.init(xx, yy, !!reverse); 
+    }
+    return arcIter;
+  };
+
+  this.setThresholds = function(arr) {
+    thresholds = arr;
+    sorted = MapShaper.getSortedThresholds(arr);
+  };
+
+  this.setRetainedPct = function(pct) {
+    if (!sorted) error ("Missing threshold data.");
+    if (pct >= 1) {
+      zlimit = 0;
+    } else {
+      var i = Math.floor(pct * sorted.length);
+      zlimit = sorted[i];
+    }
+  }
+
+  // Optimize: generally don't need a new object, could reuse
+  //
+  this.getShapeIter = function(ids) {
+    var iter = new ShapeIter(this);
+    iter.init(ids);
+    return iter;
+  }
+
+  function mergeBounds(dest, src) {
+    if (!dest) {
+      dest = src.concat();
+    } else {
+      if (src[0] < dest[0]) {
+        dest[0] = src[0];
+      }
+      if (src[1] < dest[1]) {
+        dest[1] = src[1];
+      }
+      if (src[2] > dest[2]) {
+        dest[2] = src[2];
+      }
+      if (src[3] > dest[3]) {
+        dest[3] = src[3];
+      }
+    }
+    return dest;
+  }
+
+  // TODO: rework bounds checking;
+  //   instead of creating Bounds objects for Arcs and Shapes,
+  //   instead could call a method to test for bounds intersection...
+  //
+
+  this.getArcBounds = function(i) {
+    return new Bounds(boxes[i]);
+  };
+
+  this.getShapeBounds = function(ids) {
+    var b = null;
+    for (var i=0, n=ids.length; i<n; i++) {
+      b = mergeBounds(b, boxes[ids[i]]);
+    }
+    return b;
+  };
+
+  this.getMultiShapeBounds = function(parts) {
+    var b = null;
+    for (var i=0, n=parts.length; i<n; i++) {
+      b = mergeBounds(b, getShapeBounds(parts[i]));
+    }
+    return b;
+  };
+
+
+  this.size = function() {
+    return len;
+  };
+
+  this.getBounds = function() {
+    return bounds;
+  };
+
+  this.getShapeCollection = function(data, shapeClass) {
+    var shapes = Utils.map(data, function(datum, i) {
+      return new shapeClass(this, datum);
+    }, this);
+    return new ShapeCollection(shapes);
+  };
+
+  this.getArcs = function() {
+    return this.getShapeCollection(Utils.range(this.size()), Arc);
+  };
+
+  this.getShapes = function(arr) {
+    return this.getShapeCollection(arr, Shape);
+  };
+
+  this.getMultiShapes = function(arr) {
+    return this.getShapeCollection(arr, MultiShape);
+  };
+ 
+}
+
+//
+//
+function ShapeCollection(shapes) {
+  this.getShapesInBounds = function(bb) {
+    // TODO: could avoid checking individual bounds at full extent
+    var arr = Utils.filter(shapes, function(shp) {
+      return bb.intersects(shp.bounds);
+    });
+    return arr;
+  };
+
+  this.getAllShapes = function() {
+    return shapes;
+  };
+}
+
+//
+function MultiShape(src, parts) {
+  this.bounds = src.getMultiShapeBounds(parts);
+  this.partCount = part.length;
+  this.getShapeIter = function(i) {
+    return src.getShapeIter(parts[i]);
+  };
+}
+
+function Shape(src, ids) {
+  this.bounds = src.getShapeBounds(ids);
+  this.partCount = 1;
+  this.getShapeIter = function() {
+    return src.getShapeIter(ids);
+  };
+}
+
+function Arc(src, id) {
+  this.bounds = src.getArcBounds(id);
+  this.partCount = 1;
+  this.getShapeIter = function() {
+    return src.getArcIter(id);
+  };
+}
+
+
+
+function ShapeIter(arcs) {
+  var _ids, _arc = null;
+  var i, n;
+
+  this.init = function(ids) {
+    _ids = ids;
+    i = -1;
+    n = ids.length;
+    _arc = nextArc();
+  };
+
+  function nextArc() {
+    i += 1;
+    return (i < n) ? arcs.getArcIter(_ids[i]) : null;
+  }
+
+  this.hasNext = function() {
+    while (_arc != null) {
+      if (_arc.hasNext()) {
+        this.x = _arc.x;
+        this.y = _arc.y;
+        return true;
+      } else {
+        _arc = nextArc();
+      }
+    }
+    return false;
+  };
+}
+
+
+function ArcIter() {
+  var _xx, _yy, _zz, _zlim;
+  var i, inc, stop;
+
+  this.init = function(xx, yy, fw, zz, lim) {
+    var len = xx.length;
+    _xx = xx, _yy = yy, _zz = zz, _zlim = lim;
+    if (fw) {
+      i = 0;
+      inc = 1;
+      stop = len;
+    } else {
+      i = len - 1;
+      inc = -1;
+      stop = -1;
+    }
+    this.hasNext = zz ? nextSimpleXY : nextXY;
+  };
+
+  function nextXY() {
+    if (i == stop) {
+      return false;
+    }
+    this.x = _xx[i];
+    this.y = _yy[i];
+    i += inc;
+    return true;
+  }
+
+
+  function nextSimpleXY() {
+    var z;
+    if (i == stop) {
+      return false;
+    }
+    this.x = _xx[i];
+    this.y = _yy[i];
+    // iterate to next i
+    i += inc;
+    while (i != stop) {
+      z = _zz[i];
+      if (z >= _zlim) break;
+      i += inc;
+    }
+    return true;
+  }
+};
+
+
+
+/** @requires core */
+
+
+function Handler(type, target, callback, listener, priority) {
+  this.type = type;
+  this.callback = callback;
+  this.context = listener || null;
+  this.priority = priority || 0;
+  this.target = target;
+}
+
+Handler.prototype.trigger = function(evt) {
+  if (!evt) {
+    evt = new EventData(this.type);
+    evt.target = this.target;
+  } else if (evt.target != this.target || evt.type != this.type) {
+    error("[Handler] event target/type have changed.");
+  }
+  this.callback.call(this.context, evt);
+}
+
+
+function EventData(type, target, data) {
+  this.type = type;
+  this.target = target;
+  if (data) {
+    Opts.copyNewParams(this, data);
+    this.data = data;
+  }
+}
+
+EventData.prototype.stopPropagation = function() {
+  this.__stop__ = true;
+};
+
+EventData.prototype.__stop__ = false;
+
+EventData.prototype.toString = function() {
+  var str = 'type:' + this.type + ', target: ' + Utils.strval(this.target);
+  if (this.data) {
+    str += ', data:' + Utils.strval(this.data);
+  }
+  return '[EventData]: {' + str + '}';
+};
+
+/**
+ * Base class for objects that dispatch events; public methods:
+ *   addEventListener() / on()
+ *   removeEventListener()
+ *   dispatchEvent() / trigger()
+ *
+ * @constructor
+ */
+function EventDispatcher() {}
+
+/**
+ * Dispatch an event (i.e. all registered event handlers are called).
+ * @param {string} type Name of the event type, e.g. "change".
+ * @param {object=} obj Optional data to send with the event.
+ */
+EventDispatcher.prototype.dispatchEvent = 
+EventDispatcher.prototype.trigger = function(type, obj, ctx) {
+  var evt;
+  // TODO: check for bugs if handlers are removed elsewhere while firing
+  var handlers = this._handlers;
+  if (handlers) {
+    for (var i = 0, len = handlers.length; i < len; i++) {
+      var handler = handlers[i];
+      if (handler.type == type && (!ctx || handler.context == ctx)) {
+        if (!evt) {
+          evt = new EventData(type, this, obj);
+        }
+        else if (evt.__stop__) {
+            break;
+        }
+        handler.trigger(evt);
+      }
+    }
+
+    if (type == 'ready') {
+      this.removeEventListeners(type, null, ctx);
+    }
+  }
+};
+
+
+/**
+ * Test whether a type of event has been fired.
+ * @param {string} type Event type.
+ * @return {boolean} True if event was fired else false.
+ */
+/*
+EventDispatcher.prototype.eventHasFired = function(type) {
+  return !!this._firedTypes && this._firedTypes[type] == true;
+};
+*/
+
+/**
+ * Register an event handler for a named event.
+ * @param {string} type Name of the event.
+ * @param {function} callback Event handler, called with BoundEvent argument.
+ * @param {*} context Execution context of the event handler.
+ * @param {number} priority Priority of the event; defaults to 0.
+ * removed * @return True if handler added, else false.
+ */
+EventDispatcher.prototype.addEventListener =
+EventDispatcher.prototype.on = function(type, callback, context, priority) {
+  context = context || this;
+  priority = priority || 0;
+  var handler = new Handler(type, this, callback, context, priority);
+
+  // Special case: 'ready' handler fires immediately if target is already ready.
+  // (Applicable to Waiter class objects)
+  if (type == 'ready' && this._ready) {
+    // trace("Warning: Waiter.waitFor() no longer uses this; this:", this, "handler ctx:", context);
+    handler.trigger();
+    return this;
+  }
+
+  // Insert the new event in the array of handlers according to its priority.
+  //
+  var handlers = this._handlers || (this._handlers = []);
+  var i = handlers.length;
+  while(--i >= 0 && handlers[i].priority > handler.priority) {}
+  handlers.splice(i+1, 0, handler);
+  return this;
+};
+
+
+EventDispatcher.prototype.countEventListeners = function(type) {
+  var handlers = this._handlers,
+    len = handlers && handlers.length || 0,
+    count = 0;
+  if (!type) return len;
+  for (var i = 0; i < len; i++) {
+    if (handlers[i].type === type) count++;
+  }
+  return count;
+};
+
+/**
+ * Remove an event handler.
+ * @param {string} type Event type to match.
+ * @param {function(BoundEvent)} callback Event handler function to match.
+ * @param {*=} context Execution context of the event handler to match.
+ * @return {number} Returns number of handlers removed (expect 0 or 1).
+ */
+EventDispatcher.prototype.removeEventListener =
+  function(type, callback, context) {
+  // using "this" if called w/o context (see addEventListener())
+  context = context || this;
+  return this.removeEventListeners(type, callback, context);
+};
+
+/**
+ * Remove event handlers that match function arguments.
+ * @param {string=} type Event type to match.
+ * @param {function(BoundEvent)=} callback Event handler function to match.
+ * @param {*=} context Execution context of the event handler to match.
+ * @return {number} Number of handlers removed.
+ */
+EventDispatcher.prototype.removeEventListeners =
+  function(type, callback, context) {
+  var handlers = this._handlers;
+  var newArr = [];
+  var count = 0;
+  for (var i = 0; handlers && i < handlers.length; i++) {
+    var evt = handlers[i];
+    if ((!type || type == evt.type) &&
+      (!callback || callback == evt.callback) &&
+      (!context || context == evt.context)) {
+      count += 1;
+    }
+    else {
+      newArr.push(evt);
+    }
+  }
+  this._handlers = newArr;
+  return count;
+};
+
+
+/**
+ * Support for handling asynchronous dependencies.
+ * Waiter becomes READY and fires 'ready' after any/all dependents are READY.
+ * Instantiate directly or use as a base class.
+ * Public interface:
+ *   waitFor()
+ *   startWaiting()
+ *   isReady()
+ *
+ */
+function Waiter() {}
+Opts.inherit(Waiter, EventDispatcher);
+
+/**
+ * Test whether all dependencies are complete, enter ready state if yes.
+ */
+Waiter.prototype._testReady = function() {
+  if (!this._ready && !this._waitCount && this._started) {
+    this._ready = true;
+
+    // Child classes can implement handleReadyState()
+    this.handleReadyState && this.handleReadyState();
+    this.dispatchEvent('ready');
+  }
+};
+
+
+/* */
+Waiter.prototype.callWhenReady = function(func, args, ctx, priority) {
+  this.addEventListener('ready', function(evt) {func.apply(ctx, args);}, ctx, priority);
+};
+
+
+/**
+ * Event handler, fired when dependent is ready.
+ * @param {BoundEvent} evt Event object.
+ */
+Waiter.prototype._handleDependentReady = function(evt) {
+  if (! this._waitCount) {
+    trace('[Waiter.onDependendReady()]',
+    'Counting error. Event: ' + Utils.strval(evt) + '; ready? ' + this._ready);
+    return;
+  }
+  this._waitCount -= 1;
+  this._testReady();
+};
+
+
+/**
+ * Checks if Waiter-enabled object is READY.
+ * @return {boolean} True if READY event has fired, else false.
+ */
+Waiter.prototype.isReady = function() {
+  return this._ready == true;
+};
+
+/**
+ * Wait for a dependent object to become READY.
+ * @param {*} obj Class object that implements EventDispatcher.
+ * @param {string=} type Event to wait for (optional -- default is 'ready').
+ */
+Waiter.prototype.waitFor = function(dep, type) {
+  if (!dep) {
+    trace("[Waiter.waitFor()] missing object; this:", this);
+    return this;
+  }
+  else if (!dep.addEventListener) {
+    trace("[Waiter.waitFor()] Need an EventDispatcher; this:", this);
+    return this;
+  }
+
+  if (!type) {
+    type = 'ready';
+  }
+
+  // Case: .waitFor() called after this.isReady() becomes true
+  if (this._ready) {
+    // If object is already READY, ignore....
+    if (type == 'ready' && dep.isReady()) {
+      return;
+    }
+    trace("[Waiter.waitFor()] already READY; resetting to isReady() == false;");
+    this._ready = false;
+    // return this;
+    // TODO: prepare test cases to check for logic errors.
+  }
+
+  if (type != 'ready'  || dep.isReady() == false) {
+    this._waitCount = this._waitCount ? this._waitCount + 1 : 1;
+    dep.addEventListener(type, this._handleDependentReady, this);
+  }
+
+  return this;
+};
+
+/**
+ * Start waiting for any dependents to become ready.
+ * Should be called after all waitFor() calls.
+ */
+Waiter.prototype.startWaiting = function(callback, ctx) {
+  // KLUDGE: callback may be an BoundEvent if startWaiting is used as an event handler.
+  typeof(callback) == 'function' && this.addEventListener('ready', callback, ctx); 
+  this._started = true;
+  this._testReady();
+  return this; // for chaining
+};
+
+
+
+/* @requires events, core */
+
+var pageEvents = (new function() {
+  var ieEvents = typeof window != 'undefined' && !!window.attachEvent && !window.addEventListener,
+    index = {};
+
+  function __getNodeListeners(el) {
+    var id = __getNodeKey(el);
+    var listeners = index[id] || (index[id] = []);
+    return listeners;
+  }
+
+  function __removeDOMListener(el, type, func) {
+    if (ieEvents) {
+      el.detachEvent('on' + type, func);
+    }
+    else {
+      el.removeEventListener(type, func, false);
+    }
+  }
+
+  function __findNodeListener(listeners, type, func, ctx) {
+    for (var i=0, len = listeners.length; i < len; i++) {
+      var evt = listeners[i];
+      if (evt.type == type && evt.callback == func && evt.context == ctx) {
+        return i;
+      }
+    }
+    return -1;
+  };
+
+  function __getNodeKey(el) {
+    if (!el) {
+      return '';
+    } else if (el == window) {
+      return '#';
+    }
+    return el.__evtid__ || (el.__evtid__ = Utils.getUniqueName());
+  }
+
+  this.addEventListener = function(el, type, func, ctx) {
+    if (Utils.isString(el)) { // if el is a string, treat as id
+      el = Browser.getElement(el);
+    }
+    if (el === window && 'mousemove,mousedown,mouseup,mouseover,mouseout'.indexOf(type) != -1) {
+      trace("[Browser.addEventListener()] In ie8-, window doesn't support mouse events");
+    }
+    var listeners = __getNodeListeners(el);
+    if (listeners.length > 0) {
+      if (__findNodeListener(listeners, type, func, ctx) != -1) {
+        return;
+      }
+    }
+
+    //var evt = new BoundEvent(type, el, func, ctx);
+    var evt = new Handler(type, el, func, ctx);
+    var handler = function(e) {
+      // ie8 uses evt argument and window.event (different objects), no evt.pageX
+      // chrome uses evt arg. and window.event (same obj), has evt.pageX
+      // firefox uses evt arg, window.event === undefined, has evt.pageX
+      // touch events
+      /// if (!e || !(e.pageX || e.touches)) {
+      if (!e || Browser.ieVersion <= 8) {
+        var evt = e || window.event;
+        e = {
+          target : evt.srcElement,
+          relatedTarget : type == 'mouseout' && evt.toElement || type == 'mouseover' && evt.fromElement || null,
+          currentTarget : el
+        };
+
+        if (evt.clientX !== void 0) {
+          // http://www.javascriptkit.com/jsref/event.shtml
+          // pageX: window.pageXOffset+e.clientX
+          // pageY: window.pageYOffset+e.clientY
+          e.pageX = evt.pageX || evt.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+          e.pageY = evt.pageY || evt.clientY + document.body.scrollTop + document.documentElement.scrollTop;
+        }
+        // TODO: add other event properties && methods, e.g. preventDefault, stopPropagation, etc.
+      }
+
+      // Ignoring mouseover and mouseout events between child elements
+      if (type == 'mouseover' || type == 'mouseout') {
+
+        var rel = e.relatedTarget;
+        while (rel && rel != el && rel.nodeName != 'BODY') {
+          rel = rel.parentNode;
+        }
+        if (rel == el) {
+          return;
+        }
+        if (el == window && e.relatedTarget != null) {
+          return;
+        }
+      }
+
+      var retn = func.call(ctx, e);
+      if (retn === false) {
+        trace("[Browser] Event handler blocking event:", type);
+        e.preventDefault && e.preventDefault();
+      }
+      return retn;
+    };
+    evt.handler = handler;
+
+    // handle window load if already loaded
+    // TODO: test this
+    if (el == window && type == 'load' && document.readyState == 'complete') {
+      evt.trigger();
+      return;
+    }
+
+    listeners.push(evt);
+
+    if (ieEvents) {
+      el.attachEvent('on' + type, handler);
+    }
+    else {
+      el.addEventListener(type, handler, false);
+    }
+  };
+
+  this.removeEventListener = function(el, type, func, ctx) {
+    var listeners = __getNodeListeners(el);
+    var idx = __findNodeListener(listeners, type, func, ctx);
+    if (idx == -1) {
+      return;
+    }
+    var evt = listeners[idx];
+    __removeDOMListener(el, type, evt.handler);
+    listeners.splice(idx, 1);
+  };
+});
+
+/** @requires events, core, page-events */
+
+
+var Browser = {
+
+  getIEVersion: function() {
+    return this.ieVersion;
+  },  
+
+  traceEnabled: function() {
+    var debug = Browser.getQueryVar('debug');
+    if (Env.inBrowser && (debug == null || debug == "false")) {
+      return false;
+    }
+    return true;
+  },
+ 
+  /*getPageWidth : function() {
+   return document.documentElement.clientWidth || document.body.clientWidth;
+  },*/
+ 
+  getViewportWidth : function() {
+    return document.documentElement.clientWidth;
+  },
+
+  getViewportHeight : function() {
+    return document.documentElement.clientHeight;
+  },
+
+  createElement : function(type, css, classes) {
+    try {
+      var el = document.createElement(type);
+    }
+    catch (err) {
+      trace("[Browser.createElement()] Error creating element of type:", type);
+      return null;
+    }
+
+    if (type.toLowerCase() == 'canvas' && window.CanvasSwf) {
+      CanvasSwf.initElement(el);
+    }
+
+    if (css) {
+      el.style.cssText = css;
+    }
+
+    if (classes) {
+      el.className = classes;
+    }
+    return el;
+  },
+
+  /**
+   * Return: HTML node reference or null
+   * Receive: node reference or id or "#" + id
+   */
+  getElement : function(ref) {
+    var el;
+    if (typeof ref == 'string') {
+      if (ref.charAt(0) == '#') {
+        ref = ref.substr(1);
+      }
+      if (ref == 'body') {
+        el = document.getElementsByTagName('body')[0];
+      }
+      else {
+        el = document.getElementById(ref);
+      }
+    }
+    else if (ref && ref.nodeType !== void 0) {
+      el = ref;
+    }
+    return el || null;
+  },
+
+  removeElement : function(el) {
+    el && el.parentNode && el.parentNode.removeChild(el);
+  },
+
+  getElementStyle: function(el) {
+    return el.currentStyle || window.getComputedStyle && window.getComputedStyle(el, '') || {};
+  },
+
+  elementIsFixed : function(el) {
+    // get top-level offsetParent that isn't body (cf. Firefox)
+    var body = document.body;
+    while (el && el != body) {
+      var parent = el;
+      el = el.offsetParent;
+    }
+
+    // Look for position:fixed in the computed style of the top offsetParent.
+    // var styleObj = parent && (parent.currentStyle || window.getComputedStyle && window.getComputedStyle(parent, '')) || {};
+    var styleObj = parent && Browser.getElementStyle(parent) || {};
+    return styleObj['position'] == 'fixed';
+  },
+
+  getElementFromPageXY : function(x, y) {
+    var viewX = this.pageXToViewportX(x);
+    var viewY = this.pageYToViewportY(y);
+    return document.elementFromPoint(viewX, viewY);
+  },
+
+  getPageXY : function(el) {
+    var x = 0, y = 0;
+    if (el.getBoundingClientRect) {
+      var box = el.getBoundingClientRect();
+      x = box.left - Browser.pageXToViewportX(0);
+      y = box.top - Browser.pageYToViewportY(0);
+      //trace("[] box.left:", box.left, "box.top:", box.top);
+    }
+    else {
+      var fixed = Browser.elementIsFixed(el);
+
+      while (el) {
+        x += el.offsetLeft || 0;
+        y += el.offsetTop || 0;
+        //Utils.trace("[el] id:", el.id, "class:", el.className, "el:", el, "offsLeft:", el.offsetLeft, "offsTop:", el.offsetTop);
+        el = el.offsetParent;
+      }
+
+      if (fixed) {
+        var offsX = -Browser.pageXToViewportX(0);
+        var offsY = -Browser.pageYToViewportY(0);
+        //Utils.trace("[fixed]; offsX:", offsX, "offsY:", offsY, "x:", x, "y:", y);
+        x += offsX;
+        y += offsY;
+      }
+    }
+
+    var obj = {x:x, y:y};
+    return obj;
+  },
+
+  // reference: http://stackoverflow.com/questions/871399/cross-browser-method-for-detecting-the-scrolltop-of-the-browser-window
+  __getIEPageElement : function() {
+    var d = document.documentElement;
+    return d.clientHeight ? d : document.body;
+  },
+
+  pageXToViewportX : function(x) {
+    var xOffs = window.pageXOffset;
+    if (xOffs === undefined) {
+      xOffs = Browser.__getIEPageElement().scrollLeft;
+    }
+    return x - xOffs;
+  },
+
+  pageYToViewportY : function(y) {
+    var yOffs = window.pageYOffset;
+    if (yOffs === undefined) {
+      yOffs = Browser.__getIEPageElement().scrollTop;
+    }
+    return y - yOffs;
+  },
+
+  /**
+   *  Add a DOM event handler.
+   */
+  addEventListener: pageEvents.addEventListener,
+  on: pageEvents.addEventListener,
+
+  /**
+   *  Remove a DOM event handler.
+   */
+  removeEventListener: pageEvents.removeEventListener,
+
+  getPageUrl : function() {
+    return Browser.inNode ? "" : window.location.href.toString();
+  },
+
+  getQueryString : function(url) {
+    var match = /^[^?]+\?([^#]*)/.exec(url);
+    return match && match[1] || "";
+  },
+
+  /**
+   *  Add a query variable to circumvent browser caching. 
+   *  Value is calculated from UTC minutes, so the server does not see a large
+   *  number of different values.
+   */
+  cacheBustUrl : function(url, minutes) {
+    minutes = minutes || 1; // default: 60 seconds
+    var minPerWeek = 60*24*7;
+    var utcMinutes = (+new Date) / 60000;
+    var code = Math.round((utcMinutes % minPerWeek) / minutes);
+    url = Browser.extendUrl(url, "c=" + code);
+    return url;
+  },
+
+  extendUrl : function(url, obj) {
+    var extended = url + (url.indexOf("?") == -1 ? "?" : "&");
+    if (Utils.isString(obj)) {
+      extended += obj;
+    } else if (Utils.isObject(obj)) {
+      var parts = [];
+      Utils.forEach(obj, function(val, key) {
+        parts.push(encodeURIComponent(key) + "=" + encodeURIComponent(val));
+      });
+      extended += parts.join('&');
+    } else {
+      error("Argument must be string or object");
+    }
+    return extended;
+  },
+
+  parseUrl : Utils.parseUrl,
+  /**
+   * Return query-string (GET) data as an object.
+   */
+  getQueryVars : function() {
+    var matches, rxp = /([^=&]+)=?([^&]*)/g,
+      q = this.getQueryString(this.getPageUrl()),
+      vars = {};
+    while (matches = rxp.exec(q)) {
+      //vars[matches[1]] = unescape(matches[2]);
+      // TODO: decode keys?
+      vars[matches[1]] = decodeURIComponent(matches[2]);
+    }
+    return vars;
+  },
+
+  getQueryVar : function(name) {
+    return Browser.getQueryVars()[name];
+  },
+
+
+  /**
+   * TODO: memoize?
+   */
+  getClassNameRxp : function(cname) {
+    return new RegExp("(^|\\s)" + cname + "(\\s|$)");
+  },
+
+  hasClass : function(el, cname) {
+    var rxp = this.getClassNameRxp(cname);
+    return el && rxp.test(el.className);
+  },
+
+  addClass : function(el, cname) {
+    var classes = el.className;
+    if (!classes) {
+      classes = cname;
+    }
+    else if (!this.hasClass(el, cname)) {
+      classes = classes + ' ' + cname;
+    }
+    el.className = classes;
+  },
+
+  removeClass : function(el, cname) {
+    var rxp = this.getClassNameRxp(cname);
+    el.className = el.className.replace(rxp, "$2");
+  },
+
+  replaceClass : function(el, c1, c2) {
+    var r1 = this.getClassNameRxp(c1);
+    el.className = el.className.replace(r1, '$1' + c2 + '$2');
+  },
+
+  mergeCSS : function(s1, s2) {
+    var div = this._cssdiv;
+    if (!div) {
+      div = this._cssdiv = Browser.createElement('div');
+    }
+    div.style.cssText = s1 + ";" + s2; // extra ';' for ie, which may leave off final ';'
+    return div.style.cssText;
+  },
+
+  addCSS : function(el, css) {
+    el.style.cssText = Browser.mergeCSS(el.style.cssText, css);
+  },
+
+  unselectable : function(el) {
+    var noSel = "-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-moz-user-focus:ignore;-o-user-select:none;user-select: none;";
+    noSel += "-webkit-tap-highlight-color: rgba(0,0,0,0);"
+    //div.style.cssText = Browser.mergeCSS(div.style.cssText, noSel);
+    Browser.addCSS(el, noSel);
+    el.onselectstart = function(){return false;};
+  },
+
+  undraggable : function(el) {
+    el.ondragstart = function(){return false;};
+    el.draggable = false;
+  },
+
+  /**
+   *  Loads a css file and applies it to the current page.
+   */
+  loadStylesheet : function(cssUrl) {
+    var link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.type = "text/css";
+    link.href = cssUrl;
+    Browser.appendToHead(link);
+  },
+
+  appendToHead : function(el) {
+    var head = document.getElementsByTagName("head")[0];
+    head.appendChild(el);
+  },
+
+  /**
+   * TODO: Option to supply a "target" attribute for opening in another window.
+   */
+  //navigateToURL : function(url) {
+  navigateTo : function(url) {
+    window.location.href = url;
+  }
+
+};
+
+Browser.onload = function(handler, ctx) {
+  Browser.on(window, 'load', handler, ctx); // handles case when page is already loaded.
+};
+
+// Add environment information to Browser
+//
+Opts.copyAllParams(Browser, Env);
+
+
+/* 
+@requires
+events
+arrayutils
+browser
+*/
+
+var classSelectorRE = /^\.([\w-]+)$/,
+    idSelectorRE = /^#([\w-]+)$/,
+    tagSelectorRE = /^[\w-]+$/,
+    tagOrIdSelectorRE = /^#?[\w-]+$/;
+
+function Elements(sel) {
+  if ((this instanceof Elements) == false) {
+    return new Elements(sel);
+  }
+  this.elements = [];
+  this.select(sel);
+  this.tmp = new El();
+}
+
+Elements.prototype = {
+  size: function() {
+    return this.elements.length;
+  },
+
+  select: function(sel) {
+    this.elements = Elements.__select(sel);
+    return this;
+  },
+
+  addClass: function(className) {
+    this.forEach(function(el) { el.addClass(className); });
+    return this;
+  },
+
+  removeClass: function(className) {
+    this.forEach(function(el) { el.removeClass(className); })
+    return this;
+  },
+
+  forEach: function(callback, ctx) {
+    var tmp = this.tmp;
+    for (var i=0, len=this.elements.length; i<len; i++) {
+      tmp.el = this.elements[i];
+      callback.call(ctx, tmp, i);
+    }
+    return this;
+  }
+};
+
+Elements.__select = function(selector, root) {
+  root = root || document;
+  var els;
+  if (classSelectorRE.test(selector)) {
+    els = Elements.__getElementsByClassName(RegExp.$1, root);
+  }
+  else if (tagSelectorRE.test(selector)) {
+    els = root.getElementsByTagName(selector);
+  }
+  else if (document.querySelectorAll) {
+    try {
+      els = root.querySelectorAll(selector)
+    } catch (e) {
+      error("Invalid selector:", selector);
+    }
+  }
+  else if (Browser.ieVersion() < 8) {
+    els = Elements.__ie7QSA(selector, root);
+  } else {
+    error("This browser doesn't support CSS query selectors");
+  }
+  //return Array.prototype.slice.call(els);
+  return Utils.toArray(els);
+}
+
+Elements.__getElementsByClassName = function(cname, node) {
+  if (node.getElementsByClassName) {
+    return node.getElementsByClassName(cname);
+  }
+  var a = [];
+  var re = new RegExp('(^| )'+cname+'( |$)');
+  var els = node.getElementsByTagName("*");
+  for (var i=0, j=els.length; i<j; i++)
+    if (re.test(els[i].className)) a.push(els[i]);
+  return a;
+};
+
+Elements.__ie7QSA = function(selector, root) {
+  var styleTag = Browser.createElement('STYLE');
+  Browser.appendToHead(styleTag);
+  document.__qsaels = [];
+  styleTag.styleSheet.cssText = selector + "{x:expression(document.__qsaels.push(this))}";
+  window.scrollBy(0, 0);
+  var els = document.__qsaels;
+  Browser.removeElement(styleTag);
+
+  if (root != document) {
+    els = Utils.filter(els, function(node) {
+      while (node && node != root) {
+        node = node.parentNode;
+      }
+      return !!node;
+    });
+  }
+  return els;
+};
+
+// Converts dash-separated names (e.g. background-color) to camelCase (e.g. backgroundColor)
+// Doesn't change names that are already camelCase
+//
+El.toCamelCase = function(str) {
+  var cc = str.replace(/-([a-z])/g, function (g) { return g[1].toUpperCase() });
+  return cc;
+};
+
+El.fromCamelCase = function(str) {
+  var dashed = str.replace(/([A-Z])/g, "-$1").toLowerCase();
+  return dashed;
+};
+
+El.setStyle = function(el, name, val) {
+  var jsName = Element.toCamelCase(name);
+  if (el.style[jsName] == void 0) {
+    trace("[Element.setStyle()] css property:", jsName);
+    return;
+  }
+  var cssVal = val;
+  if (isFinite(val)) {
+    cssVal = String(val); // problem if converted to scientific notation
+    if (jsName != 'opacity' && jsName != 'zIndex') {
+      cssVal += "px";
+    }
+  }
+  el.style[jsName] = cssVal;
+}
+
+El.findAll = function(sel, root) {
+  return Elements.__select(sel, root);
+};
+
+function El(ref) {
+  if (!ref) error("Element() needs a reference");
+  if (ref instanceof El) {
+    return ref;
+  }
+  else if (!(this instanceof El)) {
+    return new El(ref);
+  }
+
+  // use Elements selector on classes or complex selectors
+  //
+  if (Utils.isString(ref) && !tagOrIdSelectorRE.test(ref)) {
+    //var node = Elements.__super__(ref)[0];
+    var node = Elements.__select(ref)[0];
+    if (!node) error("Unmatched selector:", ref);
+    ref = node;
+  }
+
+  this.el = Browser.getElement(ref) || Browser.createElement(ref); // TODO: detect type of argument
+}
+
+Opts.inherit(El, EventDispatcher); // 
+
+El.removeAll = function(sel) {
+  var arr = Elements.__select(sel);
+  Utils.forEach(arr, function(el) {
+    El(el).remove();
+  });
+};
+
+Utils.extend(El.prototype, {
+
+  // TODO: test this
+  clone: function() {
+    var el = new El(this.node());
+    Utils.extend(el, this);
+    return el;
+  },
+
+  node: function() {
+    return this.el;
+  },
+
+  width: function() {
+   return this.el.offsetWidth;
+  },
+
+  height: function() {
+    return this.el.offsetHeight;
+  },
+
+  // Apply inline css styles to this Element, either as string or object.
+  //
+  css: function(css, val) {
+    if (val != null) {
+      El.setStyle(this.el, css, val);
+    }
+    else if (Utils.isString(css)) {
+      Browser.addCSS(this.el, css);
+    }
+    else if (Utils.isObject(css)) {
+      Utils.forEach(css, function(val, key) {
+        El.setStyle(this.el, key, val);
+      })
+    }
+    return this;
+  },
+
+  attr: function(obj, value) {
+    if (Utils.isString(obj)) {
+      this.el[obj] = value;
+    }
+    else if (!value) {
+      Opts.copyAllParams(this.el, obj);
+    }
+    return this;
+  },
+
+  appendChild: function(el) {
+    this.el.appendChild(el.el || el);
+    return this;
+  },
+
+  remove: function(sel) {
+    this.el.parentNode && this.el.parentNode.removeChild(this.el);
+    return this;
+  },
+
+  removeRight: function() {
+    var right;
+    trace(">>> removeRight()")
+    while (right = this.nextSibling()) {
+      trace("removing a sibling:", right.el);
+      right.remove();
+    }
+    return this;
+  },
+
+  // TODO: destroy() // removes from dom, removes event listeners
+
+  addClass: function(className) {
+    Browser.addClass(this.el, className);
+    return this;
+  },
+
+  removeClass: function(className) {
+    Browser.removeClass(this.el, className);
+    return this;
+  },
+
+  hasClass: function(className) {
+    return Browser.hasClass(this.el, className);
+  },
+
+  toggleClass: function(cname) {
+    if (this.hasClass(cname)) {
+      this.removeClass(cname);
+    } else {
+      this.addClass(cname);
+    }
+  },
+
+  computedStyle: function() {
+    return Browser.getElementStyle(this.el);
+  },
+
+  visible: function() {
+    if (this._hidden != null) {
+      return !this._hidden;
+    }
+    var style = this.computedStyle();
+    return style.display != 'none' && style.visibility != 'hidden';
+  },
+
+  showCSS: function(css) {
+    if (!css) {
+      return this._showCSS || "display:block;";
+    }
+    this._showCSS = css;
+    return this;
+  },
+
+  hideCSS: function(css) {
+    if (!css) {
+      return this._hideCSS || "display:none;";
+    }
+    this._hideCSS = css;
+    return this;
+  },
+
+  hide: function() {
+    if (this.visible()) {
+      // var styles = Browser.getElementStyle(this.el);
+      // this._display = styles.display;
+      this.css(this.hideCSS());
+      this._hidden = true;    
+    }
+    return this;
+  },
+
+  show: function(display) {
+    /*
+    this.css("display", display || this._display || 'block');
+    */
+    if (!this.visible()) {
+      this.css(this.showCSS());
+      this._hidden = false;
+    }
+    return this;
+  },
+
+  init: function(callback) {
+    if (!this.el['data-el-init']) {
+      callback(this);
+      this.el['data-el-init'] = true;
+    }
+    return this;
+  },
+
+  html: function(html) {
+    this.el.innerHTML = html;
+    return this;
+  },
+
+  text: function(obj) {
+    if (Utils.isArray(obj)) {
+      for (var i=0, el = this; i<obj.length && el; el=el.sibling(), i++) {
+        el.text(obj[i]);
+      }
+    } else {
+      this.html(obj);
+    }
+    return this;
+  },
+
+  // Shorthand for attr('id', <name>)
+  id: function(id) {
+    if (id) {
+      this.el.id = id;
+      return this;
+    }
+    return this.el.id;
+  },
+
+  findChild: function(sel) {
+    var node = Elements.__select(sel, this.el)[0];
+    if (!node) error("Unmatched selector:", sel);
+    return new El(node);
+  },
+
+  appendTo: function(ref) {
+    var parent = ref instanceof El ? ref.el : Browser.getElement(ref);
+    if (this._sibs) {
+      for (var i=0, len=this._sibs.length; i<len; i++) {
+        parent.appendChild(this._sibs[i]);
+      }
+    }
+    parent.appendChild(this.el);
+    return this;
+  },
+
+  /**
+   * Called with tagName: create new El as sibling of this El
+   * No argument: traverse to next sibling
+   */
+  sibling: function(arg) {
+    trace("Use newSibling or nextSibling instead of El.sibling()")
+    return arg ? this.newSibling(arg) : this.nextSibling();
+  },
+
+  nextSibling: function() {
+    return this.el.nextSibling ? new El(this.el.nextSibling) : null;
+  },
+
+  newSibling: function(tagName) {
+    var el = this.el,
+        sib = Browser.createElement(tagName),
+        e = new El(sib),
+        par = el.parentNode;
+    if (par) {
+      el.nextSibling ? par.insertBefore(sib, el.nextSibling) : par.appendChild(sib);
+    } else {
+      e._sibs = this._sibs || [];
+      e._sibs.push(el);
+    }
+    return e;
+  },
+
+  /**
+   * Called with tagName: Create new El, append as child to current El
+   * Called with no arg: Traverse to first child.
+   */
+  child: function(arg) {
+    trace("Use El.newChild or El.firstChild instead of El.child()");
+    return arg ? this.newChild(arg) : this.firstChild();
+  },
+
+  firstChild: function() {
+    var ch = this.el.firstChild;
+    while (ch.nodeType != 1) { // skip text nodes
+      ch = ch.nextSibling;
+    }
+    return new El(ch);
+  },
+
+  newChild: function(tagName) {
+    var ch = Browser.createElement(tagName);
+    this.el.appendChild(ch);
+    return new El(ch);
+  },
+
+  // Traverse to parent node
+  //
+  parent: function(sel) {
+    sel && error("El.parent() no longer takes an argument; see findParent()")
+    var p = this.el && this.el.parentNode;
+    return p ? new El(p) : null;
+  },
+
+  findParent: function(tagName) {
+    // error("TODO: use selector instead of tagname")
+    var p = this.el && this.el.parentNode;
+    if (tagName) {
+      tagName = tagName.toUpperCase();
+      while (p && p.tagName != tagName) {
+        p = p.parentNode;
+      }
+    }
+    return p ? new El(p) : null;
+  },
+
+  // Remove all children of this element
+  //
+  empty: function() {
+    this.el.innerHTML = '';
+    return this;
+  }
+
+});
+
+// use DOM handler for certain events
+// TODO: find a better way distinguising DOM events and other events registered on El
+// e.g. different methods
+//
+//El.prototype.__domevents = Utils.arrayToIndex("click,mousedown,mousemove,mouseup".split(','));
+El.prototype.__on = El.prototype.on;
+El.prototype.on = function(type, func, ctx) {
+  if (this.constructor == El) {
+    Browser.on(this.el, type, func, ctx);
+  } else {
+    this.__on.apply(this, arguments);
+  }
+  return this;
+};
+
+El.prototype.__removeEventListener = El.prototype.removeEventListener;
+El.prototype.removeEventListener = function(type, func, ctx) {
+  if (this.constructor == El) {
+    Browser.removeEventListener(this.el, type, func, ctx);
+  } else {
+    this.__removeEventListener.apply(this, arguments);
+  }
+  return this;
+};
+/*  */
+
+var Element = El;
+
+/**
+ * Return ElSet representing children of this El.
+ */
+/*
+El.prototype.children = function() {
+  var set = new ElSet();
+  set._parentNode = this.el;
+  return set;
+};
+*/
+
+/**
+ * Return ElSet representing right-hand siblings of this El.
+ */
+/*
+El.prototype.siblings = function() {
+  var set = new ElSet();
+  set._parentNode = this.el.parentNode;
+  set._siblingNode = this.el;
+  return set;
+};
+*/
+
+
+/* @requires elements, events, browser, mapshaper-common */
+
+function draggable(ref) {
+  var xdown, ydown;
+  var el = El(ref),
+      obj = new EventDispatcher();
+  Browser.undraggable(el.node());
+  el.on('mousedown', function(e) {
+    xdown = e.pageX;
+    ydown = e.pageY;
+    obj.dispatchEvent('dragstart');
+    Browser.on(window, 'mousemove', onmove);
+    Browser.on(window, 'mouseup', onrelease);
+  });
+
+  function onrelease(e) {
+    Browser.removeEventListener(window, 'mousemove', onmove);
+    Browser.removeEventListener(window, 'mouseup', onrelease);
+    obj.dispatchEvent('dragend');
+  }
+
+  function onmove(e) {
+    obj.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
+  }
+  return obj;
+}
+
+function Slider(ref, opts) {
+  var _el = El(ref);
+  var _self = this;
+  var defaults = {
+    space: 7
+  };
+  opts = Opts.copyAllParams(defaults, opts);
+
+  var _pct = 0;
+  var _track,
+      _handle,
+      _handleLeft = opts.space;
+
+  function size() {
+    return _track ? _track.width() - opts.space * 2 : 0;
+  }
+
+  this.track = function(ref) {
+    if (ref && !_track) {
+      _track = El(ref);
+      _handleLeft = _track.el.offsetLeft + opts.space;
+      updateHandlePos();
+    }
+    return _track;
+  };
+
+  this.handle = function(ref) {
+    var startX;
+    if (ref && !_handle) {
+      _handle = El(ref);
+      draggable(_handle)
+        .on('drag', function(e) {
+          setHandlePos(startX + e.dx, true);
+        })
+        .on('dragstart', function(e) {
+          startX = position();
+        });
+      updateHandlePos();
+    }
+    return _handle;
+  };
+
+  function position() {
+    return Math.round(_pct * size());
+  }
+
+  this.pct = function(pct) {
+    if (pct >= 0 && pct <= 1) {
+      _pct = pct;
+      updateHandlePos();
+    }
+    return _pct;
+  };
+
+  function setHandlePos(x, fire) {
+    x = Utils.clamp(x, 0, size());
+    var pct = x / size();
+    if (pct != _pct) {
+      _pct = pct;
+      _handle.css('left', _handleLeft + x);
+      _self.dispatchEvent('change', {pct: _pct});
+    }
+  }
+
+  function updateHandlePos() {
+    var x = _handleLeft + Math.round(position());
+    _handle && _handle.css('left', x);
+  }
+}
+
+Opts.inherit(Slider, EventDispatcher);
+
+
+function ClickText(ref) {
+  var _el = El(ref);
+  var _max = Infinity,
+      _min = -Infinity,
+      _formatter = function(v) {return String(v)},
+      _validator = function(v) {return !isNaN(v)},
+      _parser = function(s) {return parseFloat(s)},
+      _value = 0;
+
+  _el.on('blur', onblur, this);
+  _el.on('keydown', onpress, this);
+
+  function onpress(e) {
+    if (e.keyCode == 27) { // esc
+      this.value(_value); // reset input field to current value
+      _el.el.blur();
+    } else if (e.keyCode == 13) { // enter
+      _el.el.blur();
+    }
+  }
+
+  // Validate input contents.
+  // Update internal value and fire 'change' if valid
+  //
+  function onblur() {
+    var val = _parser(_el.el.value);
+    if (val === _value) {
+      return;
+    }
+    if (_validator(val)) {
+      this.value(val);
+      this.dispatchEvent('change', {value:this.value()});
+    } else {
+      this.value(_value);
+      this.dispatchEvent('error'); // TODO: improve
+    }
+  }
+
+  this.bounds = function(min, max) {
+    _min = min;
+    _max = max;
+    return this;
+  };
+
+  this.validator = function(f) {
+    _validator = f;
+    return this;
+  };
+
+  this.formatter = function(f) {
+    _formatter = f;
+    return this;
+  };
+
+  this.parser = function(f) {
+    _parser = f;
+    return this;
+  }
+
+  this.value = function(arg) {
+    if (arg == void 0) {
+      // var valStr = this.el.value;
+      // return _parser ? _parser(valStr) : parseFloat(valStr);
+      return _value;
+    }
+    var val = Utils.clamp(arg, _min, _max);
+    if (!_validator(val)) {
+      error("ClickText#value() invalid value:", arg);
+    } else {
+      _value = val;
+    }
+    _el.el.value = _formatter(val);
+    return this;
+  };
+}
+
+Opts.inherit(ClickText, EventDispatcher);
+
+
+function Checkbox(ref) {
+  var _el = El(ref);
+}
+
+Opts.inherit(Checkbox, EventDispatcher);
+
+function SimpleButton(ref) {
+  var _el = El(ref),
+      _active = _el.hasClass('active');
+
+  _el.on('click', function(e) {
+    if (_active) this.dispatchEvent('click');
+  }, this);
+
+  this.active = function(a) {
+    if (a === void 0) return _active;
+    if (a !== _active) {
+      _active = a;
+      _el.toggleClass('active');
+    }
+    return this;
+  };
+}
+
+Opts.inherit(SimpleButton, EventDispatcher);
+
+
+function FileChooser(el) {
+  var _el = El(el),
+      _file,
+      _validate = function() {return true};
+
+  var input = _el.findChild('input');
+  /* input element properties:
+    disabled
+    name
+    value  (path to the file)
+    multiple  ('multiple' or '')
+  */
+
+  if (!input) error("FileChooser() Missing file control");
+  Browser.on(input.el, 'change', onchange, this);
+  _el.on('click', function() {input.el.click();})
+
+  function onchange(e) {
+    var files = e.target.files,
+        file = files[0];
+    if (file && _validate(file)) { // file may be undefined (e.g. if user presses 'cancel' after a file has been selected...)
+      _file = file;
+      _el.findChild('.g-label-text').text(_file.name);
+      _el.addClass('selected');
+      this.dispatchEvent('select', {file:files[0]});      
+    }
+  }
+
+  this.validator = function(f) {
+    _validate = f;
+    return this;
+  };
+}
+
+Opts.inherit(FileChooser, EventDispatcher);
+
+
+/* @requires core */
+
+Utils.leftPad = function(str, size, pad) {
+  pad = pad || ' ';
+  str = String(str);
+  var chars = size - str.length;
+  while (chars-- > 0) {
+    str = pad + str;
+  }
+  return str;
+};
+
+Utils.trim = function(str) {
+  return str.replace(/^\s+|\s+$/g, '');
+};
+
+Utils.capitalizeWord = function(w) {
+  return w ? w.charAt(0).toUpperCase() + w.substr(1) : '';
+};
+
+
+
+
+Utils.addThousandsSep = function(str) {
+  var fmt = '',
+      start = str[0] == '-' ? 1 : 0,
+      dec = str.indexOf('.'),
+      end = str.length,
+      ins = (dec == -1 ? end : dec) - 3;
+  while (ins > start) {
+    fmt = ',' + str.substring(ins, end) + fmt;
+    end = ins;
+    ins -= 3;
+  }
+  return str.substring(0, end) + fmt;
+};
+
+
+Utils.numToStr = function(num, decimals) {
+  return decimals >= 0 ? num.toFixed(decimals) : String(num);
+};
+
+
+Utils.formatNumber = function(num, decimals, nullStr, showPos) {
+  var fmt;
+  if (isNaN(num)) {
+    fmt = nullStr || '-';
+  } else {
+    fmt = Utils.numToStr(num, decimals);
+    fmt = Utils.addThousandsSep(fmt);
+    if (showPos && parseFloat(fmt) > 0) {
+      fmt = "+" + fmt;
+    }
+  }
+  return fmt;
+};
+
+
+/* @requires events, core, arrayutils */
+
+var inNode = typeof module !== 'undefined' && !!module.exports;
+var Node = {
+  inNode: inNode,
+  arguments: inNode ? process.argv.slice(1) : null // remove "node" from head of argv list
+};
+
+
+/**
+ * Convenience functions for working with files and loading data.
+ */
+if (inNode) {
+  Node.fs = require('fs');
+  Node.path = require('path');
+
+  Node.gc = function() {
+    global.gc && global.gc();
+  };
+
+  Node.statSync = function(fpath) {
+    var obj = null;
+    try {
+      obj = Node.fs.statSync(fpath);  
+    } 
+    catch(e) {
+      //trace(e, fpath);
+    }
+    return obj;
+  };
+
+  Node.toArrayBuffer = function(src) {
+    var dest = new ArrayBuffer(src.length);
+    for (var i = 0, n=src.length; i < n; i++) {
+      dest[i] = src[i];
+    }
+    return dest;
+  };
+
+  Node.toBuffer = function(src) {
+    if (src instanceof Buffer) return src;
+    var dest = new Buffer(src.byteLength);
+    for (var i = 0, n=dest.length; i < n; i++) {
+      dest[i] = src[i];
+    }
+    return dest;
+  };
+
+  Node.shellExec = function(cmd) {
+    var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
+    var spawn = require('child_process').spawn;
+    spawn(parts[0], parts.slice(1), {stdio: "inherit"});
+  };
+
+  // Converts relative path to absolute path relative to the node script;
+  // absolute paths returned unchanged
+  //
+  Node.resolvePathFromScript = function(path) {
+    if (Node.pathIsAbsolute(path))
+      return path;
+    var scriptDir = Node.getFileInfo(require.main.filename).directory;
+    return Node.path.join(scriptDir, path);
+  };
+
+  //Node.resolvePathFromFile = function(path) {
+  //  return Node.path.join(__dirname, path);
+  //}
+  Node.pathIsAbsolute = function(path) {
+    return (path[0] == '/' || path[0] == "~");
+  };
+
+  Node.resolvePathFromShell = function(path) {
+    if (Node.pathIsAbsolute(path))
+      return path;
+    return Node.path.join(process.cwd(), path);
+  };
+
+
+  Node.dirExists = function(path) {
+    var ss = Node.statSync(path);
+    return ss && ss.isDirectory() || false;
+  };
+
+  Node.fileExists = function(path) {
+    var ss = Node.statSync(path);
+    return ss && ss.isFile() || false;
+  };
+
+  Node.parseFilename = function(fpath) {
+    // TODO: give better output if fpath is a directory
+    var info = {};
+    var filename = Node.path.basename(fpath);
+    if (filename.lastIndexOf('/') == filename.length - 1) {
+      filename = filename.substr(0, filename.length-1);
+    }
+    info.file = filename;
+    info.path = Node.path.resolve(fpath);
+    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
+    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
+    info.directory = Node.path.dirname(info.path);
+    info.relative_dir = Node.path.dirname(fpath);
+    return info;
+  };
+
+  Node.getFileInfo = function(fpath) {
+    var info = Node.parseFilename(fpath),
+        stat;
+    Opts.copyAllParams(info, {exists: false, is_directory: false, is_file: false});
+    if (stat = Node.statSync(fpath)) {
+      if (stat.isFile()) {
+        info.exists = true;
+        info.is_file = true;
+      } else {
+        info.is_directory = true;
+      }
+    }
+    return info;
+  };
+
+  /**
+   * @param charset (optional) 'utf8' to read a string; if undefined, returns Buffer
+   * @returns String if charset is provided, *** else Buffer object (node-specific object) ****
+   */
+  Node.readFile = function(fname, charset) {
+    try {
+      var content = Node.fs.readFileSync(fname, charset || void 0);
+    } catch(e) {
+      content = "";
+      trace("[Node.readFile()] Error reading file:", fname, "err:", e);
+    }
+    return content;
+  };
+
+  Node.writeFile = function(path, content) {
+    if (content instanceof ArrayBuffer)
+      content = Node.toBuffer(content);
+    Node.fs.writeFile(path, content, function(err) {
+      if (err) {
+        trace("[Node.writeFile()] Failed to write to file:", path);
+      }
+    });
+  };
+
+  Node.copyFile = function(src, dest) {
+    if (!Node.fileExists(src)) error("[copyFile()] File not found:", src);
+    var content = Node.fs.readFileSync(src);
+    Node.fs.writeFileSync(dest, content);
+  };
+
+  Node.post = function(url, data, callback, opts) {
+    opts = opts || {};
+    opts.method = 'POST';
+    opts.data = data;
+    Node.request(url, callback, opts);
+  }
+
+  Node.readResponse = function(res, callback, encoding) {
+    res.setEncoding(encoding || 'utf8');
+    var content = '';
+    res.on('data', function(chunk) {
+      content += chunk;
+    });
+    res.on('end', function() {
+      callback(null, res, content);
+    });
+  }
+
+  // Current signature: function(opts, callback), like Node.js request module
+  //    callback: function(err, response, body)
+  // Also supports old signature: function(url, callback, opts)
+  //    callback: function(body)
+  //
+  Node.request = function(opts, callback, old_opts) {
+    var url, receive;
+    if (Utils.isString(opts)) { // @opts is string -> assume url & old interface
+      url = opts;
+      opts = old_opts || {};
+      receive = function(err, resp, data) {
+        if (err) {
+          error(err);
+        } else {
+          callback(data); 
+        }
+      };
+    } else {
+      url = opts.url;
+      receive = callback;
+    }
+
+    var o = require('url').parse(url),
+        data = null,
+        // moduleName: http or https
+        moduleName = opts.protocol || o.protocol.slice(0, -1); // can override protocol (e.g. request https:// url using http)
+
+    if (moduleName != 'http' && moduleName != 'https') error("Node.request() Unsupported protocol:", o.protocol);
+    var reqOpts = {
+      host: o.hostname,
+      hostname: o.hostname,
+      path: o.path,
+      //port: o.port || module == 'https' && 443 || 80,
+      method: opts.method || 'GET',
+      headers: opts.headers || null
+    }
+
+    if (reqOpts.method == 'POST' || reqOpts.method == 'PUT') {
+      data = opts.data || opts.body || '';
+      reqOpts.headers = Utils.extend({
+        'Content-Length': data.length,
+        'Connection': 'close',
+        'Accept-Encoding': 'identity'
+      }, reqOpts.headers);
+    }
+
+    var req = require(moduleName).request(reqOpts);
+    req.on('response', function(res) {
+      if (res.statusCode > 201) {
+        receive("Node.request() Unexpected status: " + res.statusCode + " url: " + url, res, null);
+      }
+      Node.readResponse(res, receive, 'utf8');
+    });
+    
+    req.on('error', function(e) {
+      // trace("Node.request() request error:", e.message);
+      receive("Node.request() error: " + e.message, null, null);
+    });
+    req.end(data);
+  };
+
+
+
+  Node.atob = function(b64string) {
+    return new Buffer(b64string, 'base64').toString('binary')
+  };
+
+  Node.readJson = function(url, callback, opts) {
+    //Node.readUrl(url, function(str) {
+    /*
+    opts = {
+      headers: {
+        'Accept-Encoding': 'identity',
+        'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
+        'Connection': 'keep-alive',
+        'Cache-control': 'max-age=0',
+        'User-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_3) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.43 Safari/537.31'
+      }
+    }*/
+
+    Node.request(url, function(err, str) {
+      var data;
+      if (!str) {
+        callback(null);
+      }
+      try {
+        // handle JS callback
+        if (match = /^\s*([\w.-]+)\(/.exec(str)) {
+          var ctx = {};
+          Opts.exportObject(match[1], function(o) {return o}, ctx);
+          with (ctx) {
+            data = eval(str);
+          }
+        } else {
+          data = JSON.parse(str); // no callback: assume valid JSON
+        }
+      } catch(e) {
+        error("Node#readJson() Error reading from url:", url, "--", e);
+      }
+      callback(data);
+    }, opts);
+  };
+
+  // super-simple options, if not using optimist
+  Node.options = function(o) {
+    o = o || {};
+    var opts = {_:[]},
+        flags = (o.flags || o.binary || '').split(','),
+        currOpt;
+
+    var aliases = Utils.reduce((o.aliases || "").split(','), function(item, obj) {
+        var parts = item.split(':');
+        if (parts.length == 2) {
+          obj[parts[0]] = parts[1];
+          obj[parts[1]] = parts[0];
+        }
+        return obj;
+      }, {});
+
+    function setOpt(opt, val) {
+      opts[opt] = val;
+      var alias = aliases[opt];
+      if (alias) {
+        opts[alias] = val;
+      }
+    }
+
+
+    Node.arguments.slice(1).forEach(function(arg) {
+      var match, alias, switches;
+      if (arg[0] == '-') {
+        currOpt = null; // handle this as an error
+        if (match = /^--(.*)/.exec(arg)) {
+          switches = [match[1]];
+        } 
+        else if (match = /^-(.+)/.exec(arg)) {
+          switches = match[1].split('');
+        }
+        Utils.forEach(switches, function(opt) {
+          if (Utils.contains(flags, opt)) {
+            setOpt(opt, true);
+          } else {
+            currOpt = opt;
+          }
+        });
+      }
+      else if (currOpt) {
+        setOpt(currOpt, Utils.isNumber(arg) ? parseFloat(arg) : arg);
+        currOpt = null;
+      }
+      else {
+        opts._.push(arg);
+      }
+    });
+    return opts;
+  };
+}
+
+
+/*
+Node.loadUrl = function(url) {
+  return new NodeUrlLoader(url);
+};
+
+
+
+function NodeUrlLoader(url) {
+  var self = this,
+    body = "",
+    output,
+    opts = Utils.parseUrl(url);
+  delete opts.protocol;
+  opts.port = 80;
+
+  require('http').get(opts, function(resp) {
+    if (resp.headers['content-encoding'] == 'gzip') {
+      var gzip = zlib.createGunzip();
+      resp.pipe(gzip);
+      output = gzip;
+    } else {
+      output = resp;
+    }
+    output.on('data', function(chunk) {
+      body += chunk;
+    });
+    output.on('end', function() {
+      self.data = body;
+      self.startWaiting();    
+    });
+
+  }).on("error", function(e){
+    trace("[NodeUrlLoader] error: " + e.message);
+  });
+}
+
+Opts.inherit(NodeUrlLoader, Waiter);
+*/
+
+/* @requires core, nodejs */
+
+// Wrapper for DataView class for more convenient reading and writing of
+//   binary data; Remembers endianness and read/write position.
+// Has convenience methods for copying from buffers, etc.
+//
+function BinArray(buf, le) {
+  if (Utils.isNumber(buf)) {
+    buf = new ArrayBuffer(buf);
+  } else if (Node.inNode && buf instanceof Buffer == true) {
+    // Since node 0.10, DataView constructor doesn't accept Buffers,
+    //   so need to copy Buffer to ArrayBuffer
+    buf = Node.toArrayBuffer(buf);
+  }
+  if (buf instanceof ArrayBuffer == false) {
+    error("BinArray constructor requires an integer, ArrayBuffer or Buffer");
+  }
+  this._buffer = buf;
+  this._view = new DataView(buf);
+  this._idx = 0;
+  this._le = le !== false;
+  this._words = buf.byteLength % 4 == 0 ? new Uint32Array(buf) : null;
+}
+
+BinArray.bufferSize = function(buf) {
+  return (buf instanceof Buffer ? buf.length : buf.byteLength | 0)
+};
+
+BinArray.buffersAreIdentical = function(a, b) {
+  var alen = BinArray.bufferSize(a);
+  var blen = BinArray.bufferSize(b);
+  if (alen != blen) {
+    return false;
+  }
+  for (var i=0; i<alen; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+};
+
+BinArray.prototype = {
+  size: function() {
+    return this._buffer.byteLength;
+  },
+
+  littleEndian: function() {
+    this._le = true;
+    return this;
+  },
+
+  bigEndian: function() {
+    this._le = false;
+    return this;
+  },
+
+  buffer: function() {
+    return this._buffer;
+  },
+
+  bytesLeft: function() {
+    return this._buffer.byteLength - this._idx;
+  },
+
+  skipBytes: function(bytes) {
+    this._idx += (bytes + 0);
+    return this;
+  },
+
+  readUint8: function() {
+    return this._view.getUint8(this._idx++);
+  },
+
+  readInt8: function() {
+    return this._view.getInt8(this._idx++);
+  },
+
+  readUint16: function() {
+    var val = this._view.getUint16(this._idx, this._le);
+    this._idx += 2;
+    return val;
+  },
+
+  writeUint16: function(val) {
+    this._view.setUint16(this._idx, val, this._le);
+    this._idx += 2;
+    return this;
+  },
+
+  readUint32: function() {
+    var val = this._view.getUint32(this._idx, this._le);
+    this._idx += 4;
+    return val;
+  },
+
+  writeUint32: function(val) {
+    this._view.setUint32(this._idx, val, this._le);
+    this._idx += 4;
+    return this;
+  },
+
+  readInt32: function() {
+    var val = this._view.getInt32(this._idx, this._le);
+    this._idx += 4;
+    return val;
+  },
+
+  writeInt32: function(val) {
+    this._view.setInt32(this._idx, val, this._le);
+    this._idx += 4;
+    return this;
+  },
+
+  readFloat64: function() {
+    var val = this._view.getFloat64(this._idx, this._le); 
+    this._idx += 8;
+    return val;
+  },
+
+  writeFloat64: function(val) {
+    this._view.setFloat64(this._idx, val, this._le);
+    this._idx += 8;
+    return this;
+  },
+
+  // Returns a Float64Array containing @len doubles
+  //
+  readFloat64Array: function(len) {
+    var bytes = len * 8,
+        i = this._idx;
+    var arr = i % 8 === 0 ?
+      // Inconsistent: first is a view, second a copy...
+      new Float64Array(this._buffer, i, len) :
+      new Float64Array(this._buffer.slice(i, i + bytes));
+    this._idx += bytes;
+    return arr;
+  },
+
+  readUint32Array: function(len) {
+    var arr = [];
+    for (var i=0; i<len; i++) {
+      arr.push(this.readUint32());
+    }
+    return arr;
+  },
+
+  peek: function() {
+    return this._buffer[this._idx];
+  },
+
+  position: function(i) {
+    if (i != null) {
+      this._idx = i;
+      return this;
+    }
+    return this._idx;
+  },
+
+  readCString: function(fixedLen) {
+    var str = "";
+    var count = 0;
+    while(!fixedLen || count < fixedLen) {
+      var byteVal = this.readUint8();
+      count ++;
+      if (byteVal == 0) {
+        break;
+      }
+      str += String.fromCharCode(byteVal);
+    }
+
+    if (fixedLen && count < fixedLen) {
+      this.skipBytes(fixedLen - count);
+    }
+    return str;
+  },
+
+  writeBuffer: function(src, bytes, startIdx) {
+    var srcIdx, dest, destIdx, endIdx, count;
+    bytes = bytes || BinArray.bufferSize(src);
+    startIdx = startIdx | 0;
+    if (this.bytesLeft() < bytes)
+      error("Buffer overflow; available bytes:", this.bytesLeft(), "tried to write:", bytes);
+
+    // When possible, copy buffer data in 4-byte chunks... Added this for faster copying of
+    // shapefile data, which is aligned to 32 bits.
+    var useChunks = this._words && bytes > 300 && this._idx % 4 == 0 && startIdx % 4 === 0 && bytes % 4 === 0;
+    if (useChunks) {
+      dest = this._words;
+      src = new Uint32Array(src);
+      srcIdx = startIdx / 4;
+      destIdx = this._idx / 4;
+      count = bytes / 4;
+    } else {
+      dest = this._buffer;
+      srcIdx = startIdx;
+      destIdx = this._idx;
+      count = bytes;
+    }
+    while (count--) {
+      dest[destIdx++] = src[srcIdx++];
+    }
+    this._idx += bytes;
+    return this;
+  }
+
+  /*
+  // TODO: expand buffer, probably via a public method, not automatically
+  //
+  _grow: function(k) {
+    var fac = k > 1 && k <= 3 ? k : 1.7,
+        srcLen = this.bufferSize(),
+        destLen = Math.round(srcLen * fac),
+        buf = new ArrayBuffer(destLen);
+
+    var src = new Uint8Array(this._buffer),
+        dest = new Uint8Array(buf);
+
+    for (var i=0; i<srcLen; i++) {
+      dest[i] = src[i];
+    }
+
+    this._buffer = buf;
+    this._view = new DataView(buf);
+  },*/
+};
+
+
+
+/* @requires core, dataview */
+
+var ShpType = {
+  NULL: 0,
+  POINT: 1,
+  POLYLINE: 3,
+  POLYGON: 5,
+  MULTIPOINT: 8,
+  POINTZ: 11,
+  POLYLINEZ: 13,
+  POLYGONZ: 15,
+  MULTIPOINTZ: 18,
+  POINTM: 21,
+  POLYLINEM: 23,
+  POLYGONM: 25,
+  MULIPOINTM: 28,
+  MULTIPATCH: 31 // not supported
+};
+
+ShpType.polygonType = function(t) {
+  return t == 5 || t == 15 || t == 25;
+};
+
+// Read data from a .shp file
+// @src is an ArrayBuffer, Node.js Buffer or filename
+//
+//    // Example: read everthing into nested arrays
+//    // coordinates are read as 2-4 element arrays [x,y(,z,m)]
+//    // nested in arrays for shapes, parts and line-strings depending on the type
+//    var reader = new ShpReader("file.shp");
+//    var data = reader.read();
+//
+//    // Example: iterating using #nextShape()
+//    var reader = new ShpReader(buf), s;
+//    while (s = reader.nextShape()) {
+//      // process the raw coordinate data yourself...
+//      var coords = s.readCoords(); // [x,y,x,y,...]
+//      var zdata = s.readZ();  // [z,z,...]
+//      var mdata = s.readM();  // [m,m,...] or null
+//      var partSizes = s.readPartSizes(); // for types w/ parts
+//      // .. or read the shape into nested arrays
+//      var data = s.read();
+//    }
+//
+//    // Example: reading records using a callback
+//    var reader = new ShpReader(buf);
+//    reader.forEachShape(function(s) {
+//      var data = s.read();
+//    });
+//
+function ShpReader(src) {
+  if (this instanceof ShpReader == false) {
+    return new ShpReader(src);
+  }
+
+  if (Utils.isString(src)) {
+    src = Node.readFile(src)
+  }
+
+  var bin = new BinArray(src),
+      header = readHeader(bin);
+  validateHeader(header);
+
+  this.header = function() {
+    return header;
+  };
+
+  var shapeClass = this.getRecordClass(header.type);
+
+  // return data as nested arrays of shapes > parts > points > [x,y(,z,m)]
+  // TODO: implement @format param for extracting coords in different formats
+  //
+  this.read = function(format) {
+    var shapes = [];
+    this.forEachShape(function(shp) {
+      shapes.push(shp.isNull ? null : shp.read(format));
+    });
+    return shapes;
+  }
+
+  // Callback interface: for each record in a .shp file, pass a 
+  //   record object to a callback function
+  //
+  this.forEachShape = function(callback) {
+    var shape;
+    this.reset();
+    while (shape = this.nextShape()) {
+      callback(shape);
+    }
+  };
+
+  // Iterator interface for reading shape records
+  //
+  var readPos = 100;
+
+  this.nextShape = function() {
+    bin.position(readPos);
+    if (bin.bytesLeft() == 0) {
+      this.reset();
+      return null;
+    }
+    var shape = new shapeClass(bin);
+    readPos += shape.byteLength;
+    return shape;
+  };
+
+  this.reset = function() {
+    readPos = 100;
+  }
+
+  function readHeader(bin) {
+    return {
+      signature: bin.bigEndian().readUint32(),
+      byteLength: bin.skipBytes(20).readUint32() * 2,
+      version: bin.littleEndian().readUint32(),
+      type: bin.readUint32(),
+      bounds: bin.readFloat64Array(4), // xmin, ymin, xmax, ymax
+      zbounds: bin.readFloat64Array(2),
+      mbounds: bin.readFloat64Array(2)
+    };
+  }
+
+  function validateHeader(header) {
+    if (header.signature != 9994)
+      error("Not a valid .shp file");
+
+    var supportedTypes = [1,3,5,8,11,13,15,18,21,23,25,28];
+    if (!Utils.contains(supportedTypes, header.type))
+      error("Unsupported .shp type:", header.type);
+
+    if (header.byteLength != bin.size())
+      error("File size doesn't match size in header");
+  }
+}
+
+ShpReader.prototype.type = function() {
+  return this.header().type;
+}
+
+ShpReader.prototype.hasZ = function() {
+  return Utils.contains([11,13,15,18], this.type());
+};
+
+ShpReader.prototype.hasM = function() {
+  return this.hasZ() || Utils.contains([21,23,25,28], this.type());
+};
+
+// i.e. non-point type
+ShpReader.prototype.hasParts = function() {
+  return Utils.contains([3,5,13,15,23,25], this.type());
+};
+
+ShpReader.prototype.hasBounds = function() {
+  return this.hasParts() || Utils.contains([8,18,28], this.type());
+};
+
+ShpReader.prototype.getCounts = function() {
+  var counts = {
+    nullCount: 0,
+    partCount: 0,
+    shapeCount: 0,
+    pointCount: 0
+  };
+  this.forEachShape(function(shp) {
+    if (shp.isNull) counts.nullCount++;
+    counts.pointCount += shp.pointCount;
+    counts.partCount += shp.partCount;
+    counts.shapeCount++;
+  });
+  return counts;
+};
+
+// Returns a constructor function for a shape record class with
+//   properties and methods for reading data.
+//
+// Record properties
+//   type, isNull, byteLength, pointCount, partCount (all types)
+//
+// Record methods
+//   read() (all types)
+//   readBounds(), readCoords()  (all but single point types)
+//   readPartSizes() (polygon and polyline types)
+//   readZBounds(), readZ() (Z types except POINTZ)
+//   readMBounds(), readM(), hasM() (M and Z types, except POINT[MZ])
+//
+ShpReader.prototype.getRecordClass = function(type) {
+  var hasBounds = this.hasBounds(),
+      hasParts = this.hasParts(),
+      hasZ = this.hasZ(),
+      hasM = this.hasM(),
+      singlePoint = !hasBounds;
+
+  // @bin is a BinArray set to the first byte of a shape record
+  //
+  var constructor = function ShapeRecord(bin) {
+    var pos = bin.position();
+    this.id = bin.bigEndian().readUint32();
+    this.byteLength = bin.readUint32() * 2 + 8; // bytes in content section + 8 header bytes
+    this.type = bin.littleEndian().readUint32();
+    this.isNull = this.type == 0;
+    if (this.byteLength <= 0 || this.type !== 0 && this.type != type)
+      error("Unable to read a shape -- .shp file may be corrupted");
+
+    if (this.isNull) {
+      this.pointCount = 0;
+      this.partCount = 0;
+    } else if (singlePoint) {
+      this.pointCount = 1;
+      this.partCount = 1;
+    } else {
+      bin.skipBytes(32); // skip bbox
+      this.partCount = hasParts ? bin.readUint32() : 1;
+      this.pointCount = bin.readUint32();      
+    }
+    this._data = function() {
+      return this.isNull ? null : bin.position(pos);
+    }
+  };
+
+  var singlePointProto = {
+    hasM: function() {
+      return this.byteLength == 12 + (hasZ ? 30 : 24); // size with M
+    },
+
+    read: function() {
+      var n = 2;
+      if (hasZ) n++;
+      if (this.hasM()) n++; // checking for M
+      return this._data().skipBytes(12).readFloat64Array(n);
+    }
+  };
+
+  var multiCoordProto = {
+    _xypos: function() {
+      var offs = 16; // skip header, type, record size & point count
+      if (hasBounds) offs += 32;
+      if (hasParts) offs += 4 * this.partCount + 4; // skip part count & index
+      return offs;
+    },
+
+    readBounds: function() {
+      return this._data().skipBytes(12).readFloat64Array(4);
+    },
+
+    readCoords: function() {
+      return this._data().skipBytes(this._xypos()).readFloat64Array(this.pointCount * 2);
+    },
+
+    readPoints: function() {
+      var coords = this.readCoords(),
+          zz = hasZ ? this.readZ() : null,
+          mm = hasM && this.hasM() ? this.readM() : null,
+          points = [], p;
+
+      for (var i=0, n=coords.length / 2; i<n; i++) {
+        p = [coords[i*2], coords[i*2+1]];
+        if (zz) p.push(zz[i]);
+        if (mm) p.push(mm[i]);
+        points.push(p);
+      }
+      return points;
+    },
+
+    read: function() {
+      return this.readPoints();
+    }
+  };
+
+  // Mixins for various shape types
+
+  var partsProto = {
+    readPartSizes: function() {
+      var partLen,
+          startId = 0,
+          sizes = [],
+          bin = this._data().skipBytes(56); // skip to second entry in part index
+
+      for (var i=0, n=this.partCount; i<n; i++) {
+        if (i < n - 1)
+          partLen = bin.readUint32() - startId;
+        else
+          partLen = this.pointCount - startId;
+
+        if (partLen <= 0) error("ShapeRecord#readPartSizes() corrupted part");
+        sizes.push(partLen);
+        startId += partLen;
+      }
+      return sizes;
+    },
+
+    // overrides read() function from multiCoordProto
+    read: function() {
+      var points = this.readPoints();
+      var parts = Utils.map(this.readPartSizes(), function(size) {
+          return points.splice(0, size);
+        });
+      return parts;
+    }
+  };
+
+  var mProto = {
+    _mpos: function() {
+      var pos = this._xypos() + this.pointCount * 16;
+      if (hasZ) pos += this.pointCount * 8 + 16;
+      return pos;
+    },
+
+    readMBounds: function() {
+      return this.hasM() ? this._data().skipBytes(this._mpos()).readFloat64Array(2) : null;
+    },
+
+    readM: function() {
+      return this.hasM() ? this._data().skipBytes(this._mpos() + 16).readFloat64Array(this.pointCount) : null;
+    },
+
+    // Test if this record contains M data
+    // (according to the Shapefile spec, M data is optional in a record)
+    //
+    hasM: function() {
+      var bytesWithoutM = this._mpos(),
+          bytesWithM = bytesWithoutM + this.pointCount * 8 + 16;
+      if (this.byteLength == bytesWithoutM)
+        return false;
+      else if (this.byteLength == bytesWithM)
+        return true;
+      else
+        error("#hasM() Counting error");
+    }
+  };
+
+  var zProto = {
+    _zpos: function() {
+      return this._xypos() + this.pointCount * 16;
+    },
+
+    readZBounds: function() {
+      return this._data().skipBytes(this._zpos()).readFloat64Array(2);
+    },
+
+    readZ: function() {
+      return this._data().skipBytes(this._zpos() + 16).readFloat64Array(this.pointCount);
+    }
+  };
+
+  var proto;
+  if (singlePoint) {
+    proto = singlePointProto;
+  } else {
+    proto = multiCoordProto;
+    if (hasZ)
+      Utils.extend(proto, zProto);
+    if (hasM)
+      Utils.extend(proto, mProto);
+    if (hasParts)
+      Utils.extend(proto, partsProto);
+  }
+  constructor.prototype = proto;
+  proto.constructor = constructor;
+  return constructor;
+};
+
+
+/** // required by DataTable */
+
+
+function joinDataTables(dest, destKey, src, srcKey, srcFilter) {
+  if (!dest.isReady() || !src.isReady()) {
+    trace("[JoinedTable.joinTables()] Source or destination table is not ready; src:", src.isReady(), "dest:", dest.isReady());
+    return;
+  }
+
+  if (!dest.fieldExists(destKey)) {
+    trace("[JoinedTable.joinTable()] destination table is missing its key field: ", destKey);
+    return;    
+  }
+  
+  if (!src.fieldExists(srcKey)) {
+    trace("[JoinedTable.joinTable()] source table is missing its key field:", srcKey);
+    return;
+  }
+
+  var filtered = srcFilter && typeof srcFilter == 'function';
+  var destSchema = dest.schema;
+  var srcSchema = src.schema;
+  var destLen = dest.size();
+  var srcLen = src.size();
+
+  var keyArr = Utils.getKeys(srcSchema);
+  //keyArr = Utils.filter(keyArr, function(val) { return !(val in destSchema)});
+  keyArr = Utils.filter(keyArr, function(fieldName) { return !(fieldName == destKey)});
+
+  var fieldCount = keyArr.length;
+  var destDataArr = Utils.createArray(fieldCount, function() {return new Array(destLen);});
+  var srcDataArr = Utils.map(keyArr, function(key) {return src.getFieldData(key);});
+
+  var index = dest.__getIndex(destKey);
+  var srcKeyArr = src.getFieldData(srcKey);
+  var lookup = new Array(destLen);
+
+  var filterRec = src.getRecordById(0);
+  for (var i=0; i<srcLen; i++) {
+    if (filtered) {
+      filterRec.id = i;
+      if (!srcFilter(filterRec)) {
+        continue;
+      }
+    }
+    var val = srcKeyArr[i];
+    var destId = index[val];
+    lookup[i] = destId; //  === undefined ? -1 : destId;
+  }
+
+  for (var i=0; i<fieldCount; i++) {
+    var destArr = destDataArr[i];
+    var srcArr = srcDataArr[i];
+    for (var j=0; j<srcLen; j++) {
+      var destId = lookup[j];
+      if (destId !== undefined) {
+        destArr[destId] = srcArr[j];
+      }
+    }
+  }
+
+  var schema = {};
+  var data = {};
+  Opts.copyAllParams(schema, destSchema);
+  Opts.copyAllParams(data, dest.data);
+
+  Opts.copyNewParams(schema, srcSchema);
+  Opts.copyAllParams(data, Utils.arrayToIndex(keyArr, destDataArr));
+
+  dest.populate(data, schema);
+};
+
+/*
+
+JoinedTable.prototype.joinTablesV1 = function(dest, destKey, src, srcKey) {
+  if (!dest.fieldExists(destKey) || !src.fieldExists(srcKey)) {
+    trace("[JoinedTable] missing one or more key fields:", srcKey, destKey);
+    return;
+  }
+  
+  var destSchema = dest.schema;
+  var srcSchema = src.schema;
+  
+  var keyArr = Utils.getKeys(srcSchema);
+
+  keyArr = Utils.filter(keyArr, function(val) { return !(val in destSchema)});
+
+  var fieldCount = keyArr.length;
+  var destDataArr = Utils.createArray(fieldCount, Array);
+  var srcDataArr = Utils.map(keyArr, function(key) {return src.getFieldData(key);});
+
+  var nullVal = null;
+  var index = src.indexOnField(srcKey);
+  var destKeyData = dest.getFieldData(destKey);
+
+  for (var i=0, len=destKeyData.length; i<len; i++) {
+    var destVal = destKeyData[i];
+    var srcId = index[destVal];
+    var isNull = srcId === undefined;
+    for (var j=0; j<fieldCount; j++) {
+      destDataArr[j].push( isNull ? nullVal : srcDataArr[j][srcId]);
+    }
+  }
+
+
+  var schema = {};
+  var data = {};
+  Opts.copyAllParams(schema, destSchema);
+  Opts.copyAllParams(data, dest.data);
+
+  Opts.copyNewParams(schema, srcSchema);
+  Opts.copyAllParams(data, Utils.arrayToIndex(keyArr, destDataArr));
+
+  this.populate(data, schema);
+
+  //trace("[destData]", destDataArr[0]);
+
+};
+
+*/
+
+/* @requires core, events, arrayutils, table-join */
+
+Opts.copyAllParams(C, { 
+  INTEGER: 'integer',
+  STRING: 'string',
+  DOUBLE: 'double',
+  OBJECT: 'object'
+});
+
+
+/**
+ * DataTable is a js version of the as3 DataTable class.
+ * @constructor
+ */
+function DataTable() {
+  if (arguments.length > 0) {
+    var arg0 = arguments[0];
+    if (arg0 == null) {
+      error("Received empty data object -- check data source");
+    }
+    // (optional) Initialize table w/ js object.
+    if (arg0 && arg0.schema) {
+      this.populate(arg0.data || null, arg0.schema);
+    }
+  }
+  else {
+    this.__initEmptyTable();
+  }
+}
+
+Opts.inherit(DataTable, Waiter);
+
+
+DataTable.validateFieldType = function(raw) {
+  raw = raw.toLowerCase();
+  var type = C.STRING; // default type
+  switch (raw) {
+    case 'string':
+    case 'str':
+      type = C.STRING;
+      break;
+    case 'int':
+    case 'integer':
+      type = C.INTEGER;
+      break;
+    case 'double':
+    case 'decimal':
+    case 'number':
+      type = C.DOUBLE;
+      break;
+    case 'obj':
+    case 'object':
+      type = C.OBJECT;
+      break;
+  }
+  return type;
+};
+
+DataTable.prototype.toString = function() {
+  var str = "[DataTable length:" + this.size() + ", schema:" + Utils.toString(this.schema) + "]";
+  return str;
+};
+
+
+DataTable.prototype.handleReadyState = function() {
+  this._indexedField && this.indexOnField(this._indexedField); // Build index, if deferred.
+};
+
+
+/**
+ * Returns the number of rows in the table.
+ */
+DataTable.prototype.size = function() {
+  return this.length;
+};
+
+
+DataTable.prototype.joinTableByKey = function(localKey, otherTable, otherKey, filter) {
+  this.waitFor(otherTable);
+  this.addEventListener('ready', callback, this, 999);
+  function callback() {
+    joinDataTables(this, localKey, otherTable, otherKey, filter);
+  };
+  return this;
+};
+
+
+/**
+ * Import an array of objects and an o(ptional) object of field types
+ * @param arr Array of object records (i.e. each property:value is a fieldname:value pair)
+ * @param schema Object of field types; each property:value is a fieldname:type pair. Valid types include double, integer, string, object
+ */
+DataTable.prototype.importObjectRecords = function(arr, schema) {
+  if (!arr || arr.length == 0) error("Missing array of data values");
+  var rec0 = arr[0];
+  if (!Utils.isObject(rec0)) error("Expected an array of objects");
+
+  var fields, types;
+  if (schema) {
+    types = [];
+    fields = [];
+    Utils.forEach(schema, function(val, key) {
+      types.push(val);
+      fields.push(val);
+    });
+  }
+  else {
+    fields = Utils.getKeys(rec0);
+  }
+
+  return this.importArrayRecords(arr, fields, types);
+};
+
+
+/**
+ * Import an array of records.
+ * @param arr Array of Objects or Arrays
+ * @param fields Array of field names
+ * @param types Array of field types (optional).
+ */
+DataTable.prototype.importArrayRecords = function(arr, fields, types) {
+  if (!arr || arr.length == 0) error("Missing array of data values");
+
+  var rec0 = arr[0];
+  var fieldIndex;
+  if (Utils.isObject(rec0)) {
+    fieldIndex = fields;
+  }
+  else if (Utils.isArray(rec0)) {
+    fieldIndex = Utils.map(fields, function(val, i) {
+      return i;
+    });
+  }
+  else {
+    error("Invalid record type; expected Arrays or Objects");
+  }
+
+  // if missing types, try to identify them
+  if (!types) {
+    types = [];
+    Utils.forEach(fieldIndex, function(fieldId, i) {
+      var val = rec0[fieldId];
+      if (Utils.isString(val)) {
+        types.push('string');
+      }
+      else if (!isNaN(val)) {
+        types.push('double');
+      }
+      else {
+        trace("[DataTable.importArrayRecords()] unrecognized type of field:", fields[i], "-- using 'object' type");
+        types.push('object');
+      }
+    });
+  }
+  else {
+    if (types.length != fields.length) error("Mismatched types and fields; types:", types, "fields:", fields);
+  }
+
+
+  var columns = Utils.map(fields, function() {
+    return [];
+  });
+
+  for (var rid=0, len=arr.length; rid<len; rid++) {
+    var rec = arr[rid];
+    for (var j=0, numFields = fields.length; j<numFields; j++) {
+      columns[j].push(rec[fieldIndex[j]]);
+    }
+  }
+
+  // generate schema and data objects
+  var data = {}, schema = {};
+  Utils.forEach(fields, function(fname, i) {
+    data[fname] = columns[i];
+    schema[fname] = types[i];
+  });
+
+  this.populate(data, schema);
+
+  return this;
+};
+
+/*
+DataTable.prototype.importData = function(loader, parser, filter) {
+
+  var handler = function() {
+    var content = parser.parse(loader.data);
+
+    if (filter) {
+      var proxy = new DataTable();
+      proxy.populate(content.data, content.schema);
+      var proxy = proxy.filter(filter);
+      content.data = proxy.data;
+      content.schema = proxy.schema;
+    }
+
+    this.populate(content.data, content.schema);
+  };
+
+  loader.addEventListener('ready', handler, this);
+  return this;
+};
+*/
+
+DataTable.prototype.getFields = function() {
+  return Utils.getKeys(this.data);
+};
+
+DataTable.prototype.__initEmptyTable = function(rawSchema) {
+  this.data = {};
+  this.length = 0;
+  this.schema = {};
+  this._rec = new Record(this, -1);
+  //this._index = {};
+  if (rawSchema) {
+    for (var key in rawSchema) {
+      if (!rawSchema.hasOwnProperty(key)) {
+        continue;
+      }
+
+      var type = DataTable.validateFieldType(rawSchema[key]);
+      if (!type) {
+        trace("[DataTable.__initEmptyTable()] invalid type for field: ", key, ":", rawSchema[key]);
+        continue;
+      }
+
+      this.schema[key] = type;
+      this.data[key] = [];
+    }
+  }
+};
+
+
+/**
+ * Import a dataset into the table.
+ *
+ * @param {object} data Object containing data arrays, indexed by field name.
+ * @param {object} schema Object containing field types, indexed by field name.
+ */
+DataTable.prototype.populate = function(data, schema) {
+
+  // case: missing a schema object -- error condition.
+  if (!schema) error("Missing schema object");
+
+  // case: no date -- initalize empty table
+  if (!data) {
+    this.__initEmptyTable(schema);
+  }
+
+  // case: array of objects (common format for json data)
+  // case: array of arrays plus array of fields
+  // TODO: detect field types, if schema is missing
+  //
+  else if (Utils.isArray(data)) {
+    this.__initEmptyTable(schema);
+    for (var i=0, len=data.length; i<len; i++) {
+      this.appendRecordData(data[i]);
+    }
+  }
+
+  // case: optimal format: one data array per column
+  else {
+    this.__initEmptyTable();
+    var len = 0;
+    for (var key in schema) {
+      if (!schema.hasOwnProperty(key)) {
+        continue;
+      }
+
+      // initialize empty table, if data is missing...
+      if (!data) {
+        this.data[key] = [];
+        continue;
+      }
+
+      this.schema[key] = DataTable.validateFieldType(schema[key]);
+
+      if (!data[key]) {
+        trace("[DataTable.populate()] Missing data for field:", key, "schema:", schema);
+        continue;
+      }
+      var thisLen = data[key].length;
+      this.data[key] = data[key];
+      if (len > 0 && thisLen != len) {
+        trace("[DataTable.populate()] Warning: inconsistent field length. Expected length:", len, "Field name:", key, "Field length:", thisLen);
+      }
+      else {
+        len = thisLen;
+      }
+    }
+
+    this.length = len;
+  }
+
+  if (this.isReady()) {
+    // if indexed, rebuild index; TODO: remove redundancy with appendRecordData() (above)
+    if (this._indexedField) {
+      this.indexOnField(this._indexedField);
+    }
+    this.dispatchEvent('change');
+  }
+  else {
+    this.startWaiting();
+  }
+
+  return this; // for chaining
+};
+
+
+/**
+ * Returns a Record pointing to the table with a particular id.
+ *
+ * @param {number} id Id of the row (Tables are 0-indexed, like arrays).
+ * @return {Record} Record.
+ */
+DataTable.prototype.getRecordById = function(id) {
+  this._rec.id = id;
+  return this._rec;
+};
+
+/**
+ * Tests whether the table contains a particular field.
+ * @param {string} f Name of a field.
+ * @return {boolean} True or false.
+ */
+DataTable.prototype.fieldExists = function(f) {
+  return !!(this.schema && this.schema[f]);
+};
+
+DataTable.prototype.getFieldType = function(f) {
+  return this.schema[f];
+};
+
+/**
+ * Returns a Record pointing to the row containing an indexed value.
+ *
+ * @param {*} v Value in an indexed column.
+ * @return {Record} Record pointing to indexed row, or a null record.
+ */
+DataTable.prototype.getIndexedRecord = function(v, fast) {
+  var rec = fast ? this._rec : new Record(this, -1);
+  var idx = this._index[v];
+  if (idx == null) {
+    idx = -1;
+  }
+  rec.id = idx;
+  return rec;
+};
+
+
+/**
+ * Indexes the table on the contents of one field.
+ * Overwrites any previous index.
+ * Assumes the field values are unique.
+ *
+ * @param {string} fname Name of field to index on.
+ */
+DataTable.prototype.indexOnField = function(fname) {
+  this._indexedField = fname;
+  if (!this.isReady()) {
+    trace("[DataTable.indexOnField()] Table not READY; deferring indexing.]");
+    return;
+  }
+  this._index = this.__getIndex(fname);
+  //return this._index;
+};
+
+
+DataTable.prototype.__getIndex = function(fname) {
+  if (!this.fieldExists(fname)) error("Missing field:", fname);
+  var index = {};
+  var arr = this.data[fname];
+  for (var i = 0, len = this.size(); i < len; i++) {
+    index[arr[i]] = i;
+  }
+  return index;
+};
+
+
+
+/**
+ * Returns an array of all data values in a column.
+ *
+ * @param {string} f Name of field.
+ * @return {Array} Column of data.
+ */
+DataTable.prototype.getFieldData = function(f) {
+  var arr = this.data[f];
+  return arr ? arr : [];
+};
+
+DataTable.prototype.addField = function(f, type, def) {
+  var arr = Utils.createArray(this.size(), def);
+  this.insertFieldData(f, type, arr);
+};
+
+/**
+ * TODO: accept function
+ */
+DataTable.prototype.initField = function(f, val) {
+  if (this.fieldExists(f) == false) {
+    trace("[DataTAble.initField()] field does not exists:", f);
+    return;
+  }
+  var arr = Utils.createArray(this.size(), val);
+  this.insertFieldData(f, this.getFieldType(f), arr);
+};
+
+DataTable.prototype.deleteField = function(f) {
+  if (this._indexedField == f) {
+    this._indexedField = null;
+  }
+  delete this.schema[f];
+  delete this.data[f];
+  // If deleting last field, set length to 0
+  if (Utils.getKeys(this.schema).length == 0) {
+    this.length = 0;
+  }
+};
+
+/**
+ * Insert an array of values into the table.
+ * @param {string} f Field name.
+ * @param {string} type Field type.
+ * @param {Array} arr Array of values.
+ */
+DataTable.prototype.insertFieldData = function(f, type, arr) {
+  type = DataTable.validateFieldType(type);
+  this.schema[f] = type;
+  this.data[f] = arr;
+
+  if (this.length == 0) {
+    this.length == arr.length;
+  }
+  else if (arr.length != this.length) {
+    trace("[DataTable.insertFieldData() Warning: column size mismatch");
+  }
+
+  // TODO: add integrity checks
+  if (this._indexedField == f) {
+    this.indexOnField(f);
+  }
+};
+
+DataTable.prototype.getNullValueForType = function(type) {
+  var nullVal = null;
+  if (type == C.INTEGER) {
+    nullVal = 0;
+  } 
+  else if (type == C.STRING) {
+    nullVal = '';
+  }
+  else if (type == C.DOUBLE) {
+    nullVal = NaN;
+  }
+  return nullVal;
+};
+
+DataTable.prototype.forEach = function(func, ctx) {
+  this.getRecordSet().forEach(func, ctx);
+};
+
+DataTable.prototype.appendRecordData = function(obj, niceNull) {
+  var dest = this.data;
+  var ifield = this._indexedField || void 0;
+  for (var fname in dest) {
+    var val = obj[fname]; // TODO: validate? convert undefined to null?
+    
+    if (val === void 0 && niceNull) {
+      var type = this.schema[fname];
+      val = this.getNullValueForType(type);
+      if (type == 'double' && isNaN(val)) {
+        val = 0.0; // kludge for olympics graphic; need to fix
+      }
+    }
+
+    dest[fname].push(val);
+
+    // Update index, if field is indexed.
+    if (fname === ifield) {
+      this._index[val] = this.length;
+    }
+  }
+  this.length += 1;
+  return new Record(this, this.length - 1);
+};
+
+/**
+ * Insert The output of a function into a column of the table.
+ *
+ * @param {string} f Field name.
+ * @param {string} type Field type, e.g. C.DOUBLE.
+ * @param {Function(Record)} func Function object.
+ */
+DataTable.prototype.insertMappedValues = function(f, type, func, ctx) {
+  var arr = this.map(func, ctx);
+  this.insertFieldData(f, type, arr);
+};
+
+DataTable.prototype.updateField = function(f, func, ctx) {
+  if (this.fieldExists(f)) {
+    var type = this.getFieldType(f);
+    this.insertMappedValues(f, type, func, ctx);
+  } else {
+    trace("[DataTable.updateField()] Field not found:", f);
+  }
+}
+
+DataTable.prototype.updateValue = function(f, id, val) {
+  // TODO: make safer
+  if (id < 0 || id >= this.length || !this.data[f]) {
+    error("[DataTable.updateValue()] invalid field or id:", f, id);
+  }
+  this.data[f][id] = val;
+  if (this._indexedField === f) {
+    this._index[val] = id;
+  }
+};
+
+DataTable.prototype.map = function(func, ctx) {
+  var arr = [];
+  var rec = this._rec;
+  for (var rid = 0, len = this.size(); rid < len; rid++) {
+    rec.id = rid;
+    arr.push(func.call(ctx, rec));
+  }
+  return arr;
+};
+
+DataTable.prototype.insertMappedFields = function(fields, types, func) {
+  var numFields = fields.length;
+  var dataArr = Utils.createArray(numFields, Array); // Array() returns a new Array, just like new Array()
+  var rec = this._rec;
+  var tmp = [];
+  for (var rid = 0, len = this.size(); rid < len; rid++) {
+    rec.id = rid;
+    func(rec, tmp);
+    for (var j=0, len2=numFields; j<numFields; j++) {
+      dataArr[j].push(tmp[j]);
+    }
+  }
+
+  var schema = Utils.arrayToIndex(fields, types);
+  var data = Utils.arrayToIndex(fields, dataArr);
+  this.populate(data, schema);
+};
+
+
+/**
+ * Get a RecordSet containing all rows.
+ * @return {RecordSet} RecordSet object.
+ */
+DataTable.prototype.getRecordSet = function() {
+  var ids = Utils.range(this.size());
+  return new RecordSet(this, ids);
+};
+
+DataTable.prototype.records = DataTable.prototype.getRecordSet;
+
+/**
+ * Wrapper for getMatchingRecordSet that returns a single Record object.
+ * @return {Record} Matching record or null record.
+ */
+DataTable.prototype.getMatchingRecord = function() {
+  var set = this.getMatchingRecordSet.apply(this, arguments);
+  var rec = set.hasNext() ? set.nextRecord : new Record(null, -1);
+  return rec;
+};
+
+
+DataTable.prototype.filter = function(func, ctx) {
+  return this.getFilteredCopy(this.getRecordSet().filter(func, ctx).getIds());
+};
+
+DataTable.prototype.copyFields = function(fields) {
+  var src = this;
+  var dest = new DataTable();
+  Utils.forEach(fields, function(f) {
+    if (!src.fieldExists(f)) {
+      trace("[DataTable.copyFields()] Missing field:", f);
+      return;
+    }
+    dest.insertFieldData(f, src.getFieldType(f), src.getFieldData(f));
+  });
+
+  return dest.startWaiting();
+};
+
+/*
+DataTable.prototype.getFilteredCopy = function(ids) {
+  var dest = {};
+  var schema = {};
+  Opts.copyAllParams(schema, this.schema);
+  
+  var newLen = ids.length;
+  var src = this.data;
+  for (var fname in src) {
+    if (!src.hasOwnProperty(fname)) {
+      continue;
+    }
+    var oldArr = src[fname];
+    var newArr = [];
+    dest[fname] = newArr;
+
+    for (var i=0; i<newLen; i++) {
+      var oldId = ids[i];
+      newArr.push(oldArr[oldId]);
+    }
+  }
+
+  var newTable = new DataTable();
+  newTable.populate(dest, schema);
+  if (this._indexedField) {
+    newTable.indexOnField(this._indexedField);
+  }
+  return newTable;
+};
+*/
+
+DataTable.prototype.getFilteredCopy = function(ids) {
+  var schema = Opts.copyAllParams({}, this.schema);
+  
+  var newLen = ids.length;
+  var dest = Utils.map(this.data, function(arr, key) {
+    return Utils.getFilteredCopy(arr, ids);
+  });
+
+  var newTable = new DataTable().populate(dest, schema);
+  if (this._indexedField) {
+    newTable.indexOnField(this._indexedField);
+  }
+  return newTable;
+};
+
+/**
+ *  @param f Field name
+ *  @param v Field value or array of values
+ *
+ */
+DataTable.prototype.getMatchingIds = function(f, v, ids) {
+  /*
+  if (Utils.isArray(v)) {
+    trace("[DataTable.getMatcingIds()] Arrays no longer accepted.");
+    throw "TypeError";
+  }
+  */
+  var matching = [],
+    data = this.getFieldData(f),
+    func = typeof v == 'function',
+    indexed = !!ids,
+    matchArr = Utils.isArray(v),
+    len = indexed ? ids.length : this.size();
+
+  for (var i=0; i<len; i++) {
+    var idx = indexed ? ids[i] : i;
+    var val = data[idx];
+    if (matchArr) {
+      Utils.indexOf(v, val) != -1 && matching.push(idx);
+    }
+    else if (func ? v(val) : val === v) {
+      matching.push(idx);
+    }
+  }
+  return matching;
+};
+
+
+DataTable.prototype.getMatchingRecordSet = function() {
+  var ids, f, v;
+
+  for (var i=0; i<arguments.length; i+= 2) {
+    f = arguments[i];
+    v = arguments[i+1];
+    ids = this.getMatchingIds(f, v, ids);
+  }
+
+  return new RecordSet(this, ids || []);
+};
+
+
+
+
+/**
+ * An iterator class containing a subset of rows in a DataTable.
+ * @constructor
+ * @param {DataTable} table DataTable.
+ * @param {Array} ids Array of ids of each record in the RecordSet.
+ */
+function RecordSet(table, ids) {
+  this._idx = 0;
+  this.nextRecord = new Record(table, -1);
+
+  this.size = function() {
+    return ids.length;
+  };
+
+  this.hasNext = function() {
+    if (this._idx >= ids.length) {
+      this.nextRecord.id = -1;
+      this._idx = 0;
+      return false;
+    }
+    this.nextRecord.id = ids[this._idx++];
+    return true;
+  };
+
+  this.getIds = function() {
+    return ids;
+  };
+
+  this.getFieldData = function(f) {
+    var o = [];
+    var data = table.getFieldData(f);
+    for (var i=0, len=ids.length; i<len; i++) {
+      o.push(data[ids[i]]);
+    }
+    return o;
+  };
+
+  this.sortOnField = function(f, asc) {
+    Utils.sortArrayIndex(ids, table.getFieldData(f), asc);
+    return this;
+  };
+
+  this.filter = function(func, ctx) {
+    var rec = new Record(table, -1);
+    var oldIds = ids.splice(0, ids.length);
+    for (var i=0, len=oldIds.length; i<len; i++) {
+      var id = oldIds[i];
+      rec.id = id;
+      func.call(ctx, rec) && ids.push(id);
+    }
+    return this;
+  };
+
+  this.forEach = function(func, ctx) {
+    var i = 0;
+    while(this.hasNext()) {
+      func.call(ctx, this.nextRecord, i++);
+    }
+  };
+
+  this.toTable = function() {
+    return table.getFilteredCopy(ids);
+  };
+}
+
+
+
+/**
+ * A cursor with access to one row of a DataTable.
+ *
+ * @param {DataTable} table DataTable object.
+ * @param {number} rid Id of a row in a DataTable.
+ */
+function Record(table, rid) {
+  this.id = rid;
+  this._table = table;
+  this._data = table ? table.data : {}; // assume data is never replaced.
+}
+
+function NullRecord() {
+  this.__super__(null, -1);
+}
+
+Opts.inherit(NullRecord, Record);
+
+/**
+ * Return a string representation, for debugging.
+ * @return {string} String.
+ */
+Record.prototype.toString = function() {
+  var obj = this.getDataAsObject();
+  obj.id = this.id;
+  return "[Record" + Utils.strval(obj) + "]";
+};
+
+
+
+/**
+ * Test if record is null / points to a valid table row.
+ * @return {boolean} True or false.
+ */
+Record.prototype.isNull = function() {
+  return this.id < 0;
+};
+
+
+/**
+ * Return a new Record pointing to the same table row as this one.
+ * @return {Record} Cloned record.
+ */
+Record.prototype.clone = function() {
+  return new Record(this._table, this.id);
+};
+
+
+/**
+ * Return value of a string (C.STRING) field.
+ * @param {string} f Field name.
+ * @return {string} String value.
+ */
+Record.prototype.getString = function(f) {
+  return this.get(f) || '';
+};
+
+
+/**
+ * Return value of a number (C.DOUBLE) field.
+ * @param {string} f Field name.
+ * @return {number} Numeric value.
+ */
+Record.prototype.getNumber = function(f) {
+  return this.get(f) * 1.0;
+};
+
+
+/**
+ * Get value of an integer field (or coerce other type to integer).
+ * @param {string} f Field name.
+ * @return {number} Integer value.
+ */
+Record.prototype.getInteger = function(f) {
+  return this.get(f) << 0;
+};
+
+
+/**
+ * Return a data value of any type.
+ * @param {string} f Field name.
+ * @return {*} Data of any type.
+ */
+Record.prototype.get = function(f) {
+  var arr = this._data[f];
+  var val = arr && arr[this.id];
+  return val;
+};
+
+Record.prototype.set = function(f, v) {
+  // TODO: Make safer. Validate field name, object type, record index.
+  /*
+  var arr = this._data[f]; // this._table.getFieldData(f);
+  if (arr) {
+    arr[this.id] = v;
+  }
+  */
+  this._table.updateValue(f, this.id, v);
+};
+
+
+/**
+ * Fetches all the data from a Record.
+ * Optionally copy data into passed-in object, to avoid {} overhead.
+ *
+ * @param {object=} objRef Optional parameter.
+ * @return {object} Object containing record data, indexed by field name.
+ */
+Record.prototype.getDataAsObject = function(objRef) {
+  var obj = objRef || {};
+  Utils.forEach(this._data, function(val, key) {
+    obj[key] = val[this.id];
+  }, this);
+  return obj;
+};
+
+
+/* @requires dataview, data, nodejs, textutils */
+
+// DBF file format:
+// http://www.dbf2002.com/dbf-file-format.html
+// http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
+// http://www.dbase.com/Knowledgebase/INT/db7_file_fmt.htm
+// 
+// TODO: handle non-ascii characters, e.g. multibyte encodings
+// cf. http://code.google.com/p/stringencoding/
+
+
+// @src is a Buffer or ArrayBuffer or filename
+//
+function DbfReader(src) {
+  // TODO: validate src type
+  if (Utils.isString(src)) {
+    src = Node.readFile(src);
+  }
+  var bin = new BinArray(src);
+  this.header = this.readHeader(bin);
+  this.records = new Uint8Array(bin.buffer(), this.header.headerSize);
+}
+
+
+DbfReader.prototype.read = function(format) {
+  format = format || "rows";
+  if (format == "rows") {
+    read = this.readRows;
+  } else if ( format == "cols") {
+    read = this.readCols;
+  } else if (format == "table") {
+    read = this.readAsDataTable;
+  } else {
+    error("[DbfReader.read()] Unknown format:", format);
+  }
+  return read.call(this);
+};
+
+DbfReader.prototype.readCol = function(c) {
+  var rows = this.header.recordCount,
+      col = [];
+  for (var r=0; r<rows; r++) {
+    col[r] = this.getItemAtRowCol(r, c);
+  }
+  return col;
+};
+
+// TODO: handle cols with the same name
+//
+DbfReader.prototype.readCols = function() {
+  var data = {};
+  Utils.forEach(this.header.fields, function(field, col) {
+    data[field.name] = this.readCol(col);
+  }, this);
+  return data; 
+};
+
+DbfReader.prototype.readRows = function() {
+  var fields = this.header.fields,
+    rows = this.header.recordCount,
+    cols = fields.length,
+    names = Utils.map(fields, function(f) {return f.name}),
+    data = [];
+
+  for (var r=0; r<rows; r++) {
+    var rec = data[r] = {};
+    for (var c=0; c < cols; c++) {
+      rec[names[c]] = this.getItemAtRowCol(r, c);
+    }
+  }
+  return data;
+};
+
+DbfReader.prototype.readAsDataTable = function() {
+  var data = this.readCols();
+  var schema = Utils.reduce(this.header.fields, {}, function(f, obj) {
+    obj[f.name] = f.parseType;
+    return obj;
+  })
+  return new DataTable({schema: schema, data: data});
+};
+
+DbfReader.prototype.getItemAtRowCol = function(r, c) {
+  var field = this.header.fields[c],
+      offs = this.header.recordSize * r + field.columnOffset,
+      str = "";
+  for (var i=0, n=field.length; i < n; i++) {
+    str += String.fromCharCode(this.records[i + offs]);
+  }
+
+  var val = field.parser(str);
+  return val;
+};
+
+DbfReader.prototype.readHeader = function(bin) {
+  var header = {
+    version: bin.readInt8(),
+    updateYear: bin.readUint8(),
+    updateMonth: bin.readUint8(),
+    updateDay: bin.readUint8(),
+    recordCount: bin.readUint32(),
+    headerSize: bin.readUint16(),
+    recordSize: bin.readUint16(),
+    incompleteTransaction: bin.skipBytes(2).readUint8(),
+    encrypted: bin.readUint8(),
+    mdx: bin.skipBytes(12).readUint8(),
+    language: bin.readUint8()
+  };
+
+  bin.skipBytes(2);
+  header.fields = [];
+  var colOffs = 1; // first column starts on second byte of record
+  while (bin.peek() != 0x0D) {
+    var field = this.readFieldHeader(bin);
+    field.columnOffset = colOffs;
+    colOffs += field.length;
+    header.fields.push(field);
+  }
+
+  if (colOffs != header.recordSize)
+    error("Record length mismatch; header:", header.recordSize, "detected:", rowSize);
+  return header;
+};
+
+DbfReader.prototype.readFieldHeader = function(bin) {
+  var field = {
+    name: bin.readCString(11),
+    type: String.fromCharCode(bin.readUint8()),
+    address: bin.readUint32(),
+    length: bin.readUint8(),
+    decimals: bin.readUint8(),
+    id: bin.skipBytes(2).readUint8(),
+    position: bin.skipBytes(2).readUint8(),
+    indexFlag: bin.skipBytes(7).readUint8()
+  };
+
+  if (field.type == 'C') {
+    field.parseType = C.STRING;
+    field.parser = Utils.trim;
+  } else if (field.type == 'F' || field.type == 'N' && field.decimals > 0) {
+    field.parseType = C.DOUBLE;
+    field.parser = parseFloat;
+  } else if (field.type == 'I' || field.type == 'N') {
+    field.parseType = C.INTEGER;
+    field.parser = parseInt;
+  } else {
+    error("Unsupported DBF field type:", field.type);
+  }
+  return field;
+};
+
+
+/* requires mapshaper-common */
+
+function distance3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+
+function distanceSq(ax, ay, bx, by) {
+  var dx = ax - bx,
+      dy = ay - by;
+  return dx * dx + dy * dy;
+}
+
+
+function distanceSq3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+
+// atan2() makes this function fairly slow, replaced by ~2x faster formula 
+//
+/*
+function innerAngle_slow(ax, ay, bx, by, cx, cy) {
+  var a1 = Math.atan2(ay - by, ax - bx),
+      a2 = Math.atan2(cy - by, cx - bx),
+      a3 = Math.abs(a1 - a2);
+      a3 = a2 - a1
+  if (a3 > Math.PI) {
+    a3 = 2 * Math.PI - a3;
+  }
+  return a3;
+}
+*/
+
+
+// TODO: make this safe for small angles
+//
+function innerAngle(ax, ay, bx, by, cx, cy) {
+  var ab = Point.distance(ax, ay, bx, by),
+      bc = Point.distance(bx, by, cx, cy),
+      theta, dotp;
+  if (ab == 0 || bc == 0) {
+    theta = 0;
+  } else {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
+    if (dotp >= 1) {
+      theta = 0;
+    } else if (dotp <= -1) {
+      theta = Math.PI;
+    } else {
+      theta = Math.acos(dotp); // consider using other formula at small dp
+    }
+  }
+  return theta;
+}
+
+
+function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab = distance3D(ax, ay, az, bx, by, bz),
+      bc = distance3D(bx, by, bz, cx, cy, cz),
+      theta, dotp;
+  if (ab == 0 || bc == 0) {
+    theta = 0;
+  } else {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
+    if (dotp >= 1) {
+      theta = 0;
+    } else if (dotp <= -1) {
+      theta = Math.PI;
+    } else {
+      theta = Math.acos(dotp); // consider using other formula at small dp
+    }
+  }
+  return theta;
+}
+
+
+function triangleArea(ax, ay, bx, by, cx, cy) {
+  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
+  return area;
+}
+
+
+function detSq(ax, ay, bx, by, cx, cy) {
+  var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
+  return det * det;
+}
+
+
+function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) + 
+    detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
+  return area;
+}
+
+
+// Given a triangle with vertices abc, return the distSq of the shortest segment
+//   with one endpoint at b and the other on the line intersecting a and c.
+//   If a and c are coincident, return the distSq between b and a/c
+//
+// Receive the distSq of the triangle's three sides.
+//
+function triangleHeightSq(ab2, bc2, ac2) {
+  var dist2;
+  if (ac2 == 0.0) {
+    dist2 = ab2;
+  } else if (ab2 >= bc2 + ac2) {
+    dist2 = bc2;
+  } else if (bc2 >= ab2 + ac2) {
+    dist2 = ab2;
+  } else {
+    var dval = (ab2 + ac2 - bc2);
+    dist2 = ab2 -  dval * dval / ac2  * 0.25;
+  }
+  if (dist2 < 0.0) {
+    dist2 = 0.0;
+  }
+  return dist2;
+}
+
+
+function msSignedRingArea(xx, yy, start, len) {
+  var sum = 0,
+      start = start | 0,
+      end = start + (len == null ? xx.length - start : len | 0) - 1;
+
+  if (start < 0 || end >= xx.length) {
+    error("Out-of-bounds array index");
+  }
+  for (var i=start; i < end; i++) {
+    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
+  }
+  return sum / 2;
+}
+
+
+function msRingArea(xx, yy, start, len) {
+  return Math.abs(msSignedRingArea(xx, yy, start, len));
+}
+
+
+// export functions so they can be tested
+MapShaper.geom = {
+  distance3D: distance3D,
+  innerAngle: innerAngle,
+  innerAngle3D: innerAngle3D,
+  triangleArea: triangleArea,
+  triangleArea3D: triangleArea3D,
+  msRingArea: msRingArea,
+  msSignedRingArea: msSignedRingArea,
+};
+
+/* @requires shp-reader, dbf-reader, mapshaper-common, mapshaper-geom */
+
+
+MapShaper.importDbf = function(src) {
+  T.start();
+  var data = new DbfReader(src).read("table");
+  T.stop("[importDbf()]");
+  return data;
+};
+
+// Reads Shapefile data from an ArrayBuffer or Buffer
+// Converts to format used for identifying topology.
+//
+
+MapShaper.importShp = function(src) {
+  T.start();
+  var reader = new ShpReader(src);
+
+  var supportedTypes = [
+    ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ,
+    ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ
+  ];
+  if (!Utils.contains(supportedTypes, reader.type())) {
+    stop("Only polygon and polyline Shapefiles are supported.");
+  }
+  if (reader.hasZ()) {
+    trace("Warning: Z data is being removed.");
+  } else if (reader.hasM()) {
+    trace("Warning: M data is being removed.");
+  }
+
+  var counts = reader.getCounts(),
+      xx = new Float64Array(counts.pointCount),
+      yy = new Float64Array(counts.pointCount),
+      partIds = new Int32Array(counts.pointCount), // signed, using -1 as error code 
+      shapeIds = [];
+
+  var expectRings = Utils.contains([5,15,25], reader.type());
+      findMaxParts = expectRings,
+      maxPartFlags = findMaxParts ? new Uint8Array(counts.partCount) : null,
+      findHoles = expectRings,
+      holeFlags = findHoles ? new Uint8Array(counts.partCount) : null;
+
+  var pointId = 0, 
+      partId = 0,
+      shapeId = 0,
+      holeCount = 0;
+
+  reader.forEachShape(function(shp) {
+    var maxPartId = -1,
+        maxPartArea = 0,
+        signedPartArea, partArea, startId;
+
+    var partsInShape = shp.partCount,
+        pointsInShape = shp.pointCount,
+        partSizes = shp.readPartSizes(),
+        coords = shp.readCoords(),
+        pointsInPart;
+
+    if (partsInShape != partSizes.length) error("Shape part mismatch");
+
+    for (var j=0, offs=0; j<partsInShape; j++) {
+      pointsInPart = partSizes[j];
+      startId = pointId;
+      for (var i=0; i<pointsInPart; i++) {
+        xx[pointId] = coords[offs++];
+        yy[pointId] = coords[offs++];
+        partIds[pointId] = partId;
+        pointId++;
+      }
+
+      if (expectRings) {
+        signedPartArea = msSignedRingArea(xx, yy, startId, pointsInPart);
+        if (signedPartArea == 0 || pointsInPart < 4 || xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
+          trace("A ring in shape", shapeId, "has zero area or is not closed; pointsInPart:", pointsInPart, 'parts:', partsInShape);
+          for (var k=startId; k<pointId; k++) {
+            partIds[k] = -1; // -> null part
+            trace(xx[k], yy[k]);
+          }
+          continue;
+        }
+        if (findMaxParts) {
+          partArea = Math.abs(signedPartArea);
+          if (partArea > maxPartArea) {
+            maxPartId = partId;
+            maxPartArea = partArea;
+          }
+        }
+
+        if (findHoles) {
+          if (signedPartArea < 0) {
+            if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
+            holeFlags[partId] = 1;
+            holeCount++;
+          }
+        }              
+      }
+
+      shapeIds.push(shapeId);
+      partId++;
+    }  // forEachPart()
+
+    if (maxPartId > -1) {
+      maxPartFlags[maxPartId] = 1;
+    }
+    shapeId++;
+  });  // forEachShape()
+
+  var skippedPoints = counts.pointCount - pointId,
+      skippedParts = counts.partCount - partId;
+  if (counts.shapeCount != shapeId || skippedPoints < 0 || skippedParts < 0)
+    error("Counting problem");
+
+  var info = {
+    // shapefile_header: this.header
+    input_point_count: pointId,
+    input_part_count: partId,
+    input_shape_count: shapeId,
+    input_skipped_points: skippedPoints,
+    input_skipped_parts: skippedParts,
+    input_geometry_type: expectRings ? "polygon" : "polyline"
+  };
+  T.stop("Import Shapefile");
+  return {
+    xx: xx,
+    yy: yy,
+    partIds: partIds,
+    shapeIds: shapeIds,
+    maxPartFlags: maxPartFlags,
+    holeFlags: holeFlags,
+    info: info
+  };
+};
+
+
+// Convert topological data to buffers containing .shp and .shx file data
+//
+MapShaper.exportShp = function(arcs, shapes, shpType) {
+  if (!Utils.isArray(arcs) || !Utils.isArray(shapes)) error("Missing exportable data.");
+  T.start();
+  T.start();
+  var fileBytes = 100;
+  var bounds = new BoundingBox();
+  var shapeBuffers = Utils.map(shapes, function(shape, i) {
+    var shpObj = MapShaper.exportShpRecord(shape, arcs, i+1, shpType);
+    fileBytes += shpObj.buffer.byteLength;
+    shpObj.bounds && bounds.mergeBounds(shpObj.bounds);
+    return shpObj.buffer;
+  });
+  T.stop("export shape records");
+
+  T.start();
+
+  // write .shp header section
+  var shpBin = new BinArray(fileBytes, false)
+    .writeInt32(9994)
+    .skipBytes(5 * 4)
+    .writeInt32(fileBytes / 2)
+    .littleEndian()
+    .writeInt32(1000)
+    .writeInt32(shpType)
+    .writeFloat64(bounds.left)
+    .writeFloat64(bounds.bottom)
+    .writeFloat64(bounds.right)
+    .writeFloat64(bounds.top)
+    .skipBytes(4 * 8); // skip Z & M type bounding boxes;
+
+  // write .shx header
+  var shxBytes = 100 + shapeBuffers.length * 8;
+  var shxBin = new BinArray(shxBytes, false)
+    .writeBuffer(shpBin.buffer(), 100) // copy .shp header to .shx
+    .position(24)
+    .bigEndian()
+    .writeInt32(shxBytes/2)
+    .position(100);
+
+  // write record sections of .shp and .shx
+  Utils.forEach(shapeBuffers, function(buf, i) {
+    var shpOff = shpBin.position() / 2,
+        shpSize = (buf.byteLength - 8) / 2; // alternative: shxBin.writeBuffer(buf, 4, 4);
+    shxBin.writeInt32(shpOff)
+    shxBin.writeInt32(shpSize);
+    shpBin.writeBuffer(buf);
+  });
+
+  var shxBuf = shxBin.buffer(),
+      shpBuf = shpBin.buffer();
+
+  T.stop("convert to binary");
+  T.stop("Export Shapefile");
+  return {shp: shpBuf, shx: shxBuf};
+};
+
+
+// Returns an ArrayBuffer containing a Shapefile record for one shape
+//   and the bounding box of the shape.
+// TODO: remove collapsed rings, convert to null shape if necessary
+//
+MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
+  var bounds = null,
+      bin = null;
+  if (shape && shape.length > 0) {
+    var data = MapShaper.convertTopoShape(shape, arcs, ShpType.polygonType(shpType)),
+        partsIdx = 52,
+        pointsIdx = partsIdx + 4 * data.partCount,
+        recordBytes = pointsIdx + 16 * data.pointCount,
+        pointCount = 0;
+
+    data.pointCount == 0 && trace("Empty shape; data:", data)
+    if (data.pointCount > 0) {
+      bounds = data.bounds;
+      bin = new BinArray(recordBytes, false)
+        .writeInt32(id)
+        .writeInt32((recordBytes - 8) / 2)
+        .littleEndian()
+        .writeInt32(shpType)
+        .writeFloat64(bounds.left)
+        .writeFloat64(bounds.bottom)
+        .writeFloat64(bounds.right)
+        .writeFloat64(bounds.top)
+        .writeInt32(data.partCount)
+        .writeInt32(data.pointCount);
+
+      Utils.forEach(data.parts, function(part, i) {
+        bin.position(partsIdx + i * 4)
+          .writeInt32(pointCount)
+          .position(pointsIdx + pointCount * 16);
+        var xx = part[0],
+            yy = part[1];
+        for (var j=0, len=xx.length; j<len; j++) {
+          bin.writeFloat64(xx[j]);
+          bin.writeFloat64(yy[j]);
+        }
+        pointCount += j;
+      });
+      if (data.pointCount != pointCount)
+        error("Shp record point count mismatch; pointCount:"
+          , pointCount, "data.pointCount:", data.pointCount);
+    }
+
+  }
+
+  if (!bin) {
+    bin = new BinArray(12, false)
+      .writeInt32(id)
+      .writeInt32(2)
+      .littleEndian()
+      .writeInt32(0);  
+  }
+
+  return {bounds: bounds, buffer: bin.buffer()};
+};
+
+
+
+/* @require mapshaper-elements, textutils, mapshaper-shapefile */
+
+
+var SimplifyControl = function() {
+  var _value = 1;
+
+  var slider = new Slider("#g-simplify-control .g-slider");
+  slider.handle("#g-simplify-control .g-handle");
+  slider.track("#g-simplify-control .g-track");
+  slider.on('change', function(e) {
+    var pct = fromSliderPct(e.pct);
+    text.value(pct);
+    onchange(pct);
+  });
+
+  var text = new ClickText("#g-simplify-control .g-clicktext");
+  text.bounds(0, 1);
+  text.formatter(function(val) {
+    if (isNaN(val)) return '-';
+
+    var pct = val * 100;
+    var decimals = 0;
+    if (pct <= 0) decimals = 1;
+    else if (pct < 0.001) decimals = 4;
+    else if (pct < 0.01) decimals = 3;
+    else if (pct < 1) decimals = 2;
+    else if (pct < 100) decimals = 1;
+    return Utils.formatNumber(pct, decimals) + "%";
+  });
+
+  text.parser(function(s) {
+    return parseFloat(s) / 100;
+  });
+
+  text.value(0);
+  text.on('change', function(e) {
+    var pct = e.value;
+    slider.pct(toSliderPct(pct));
+    onchange(pct);
+  });
+
+  function toSliderPct(p) {
+    p = Math.sqrt(p);
+    var pct = 1 - p;
+    return pct;
+  }
+
+  function fromSliderPct(p) {
+    var pct = 1 - p;
+    return pct * pct;
+  }
+
+  function onchange(val) {
+    if (_value != val) {
+      _value = val;
+      control.dispatchEvent('change', {value:val});
+    }
+  }
+
+
+  var control = new EventDispatcher();
+  control.value = function(val) {
+    if (!isNaN(val)) {
+      // TODO: validate
+      _value = val;
+      slider.pct(toSliderPct(val));
+      text.value(val);
+    }
+    return _value;
+  };
+
+  // init components
+  control.value(_value);
+
+  return control;
+}
+
+
+function SimplifyScreen(topoData, opts) {
+
+  // initialize map
+
+
+  // initialize vector shapes
+
+
+  // calc simplification data, etc...
+
+
+}
+
+
+function ImportPanel(callback) {
+  var shpFile,
+      shpData;
+
+  var shpBtn = new FileChooser('#g-shp-import-btn');
+  shpBtn.on('select', function(e) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      shpFile = e.file;
+      shpData = MapShaper.importShp(reader.result);
+      trace(Utils.getKeys(shpData), shpData.info)
+      El("#g-import-options").show();
+      nextBtn.active(true).on('click', next, this);
+    };
+    reader.readAsArrayBuffer(e.file);
+  })
+
+  shpBtn.validator(function(file) {
+    return /.shp$/.test(file.name);
+  });
+
+  var nextBtn = new SimpleButton("#mshp-import .g-next-btn").active(false);
+  // var cancelBtn = new SimpleButton("#g-import-panel .g-cancel-btn").active(false).on('click', cancel, this);
+
+  function next() {
+    El("#mshp-intro-screen").hide();
+    callback && shpData && callback(shpData, getImportOpts())
+  }
+
+
+  function getImportOpts() {
+    var opts = {
+      simplify_method: 'mod',
+      use_sphere: El("#g-import-spherical-opt").el.checked,
+      keep_shapes: El("#g-import-retain-opt").el.checked
+    };
+
+    return opts;
+  }
+}
+
+Opts.inherit(ImportPanel, EventDispatcher);
+
+
+var controls = {
+  Slider: Slider,
+  Checkbox: Checkbox,
+  SimplifyControl: SimplifyControl,
+  ImportPanel: ImportPanel
+};
+
+
+
+/* @requires arrayutils, mapshaper-common */
+
+// buildArcTopology() converts non-topological polygon data into a topological format
+// 
+// Input format: 
+// {
+//    xx: [Array],      // x-coords of each point in the dataset (coords of all shapes are concatenated)
+//    yy: [Array],      // y-coords of each point
+//    partIds: [Array],   // Part ids of each point (part ids are 0-indexed and consecutive)
+//    shapeIds: [Array]   // Shape ids indexed by part id (shape ids are 0-indexed and consecutive)
+// }
+//
+// Output format:
+// {
+//    arcs: [Array],   // Arcs are represented as two-element arrays
+//                     //   arc[0] is an array of x-coords, arc[1] is an array of y-coords
+//    shapes: [Array]  // Shapes are arrays of one or more parts; Parts are arrays of one or more arc id.
+// }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
+//
+MapShaper.buildArcTopology = function(obj) {
+  T.start();
+  if (!(obj.xx && obj.yy && obj.partIds && obj.shapeIds)) error("[buildArcTopology()] Missing required param/s");
+
+  var xx = obj.xx, 
+      yy = obj.yy,
+      partIds = obj.partIds,
+      shapeIds = obj.shapeIds,
+      pointCount = xx.length,
+      partCount = partIds[pointCount-1] + 1,
+      shapeCount = shapeIds[shapeIds.length - 1] + 1,
+      maxPartFlags = obj.maxPartFlags || null;
+
+  if (!(pointCount > 0 && yy.length == pointCount && partIds.length == pointCount)) error("Mismatched array lengths");
+  if (shapeIds.length != partCount) error("[buildArcTopology()] Size mismatch; shapeIds array should match partCount");
+
+  var bbox = MapShaper.calcXYBounds(xx, yy);
+
+  // Create chains of vertices that hash to the same place.
+  // (some points in a chain will have identical coords, others represent a hash collision)
+  //
+  T.start();
+  var chainedIds = MapShaper.buildHashChains(xx, yy, partIds, bbox);
+  T.stop("Find matching vertices");
+
+  // Loop through all the points in the dataset, identifying arcs.
+  //  
+  T.start();  
+  var arcTable = new ArcTable(xx, yy, bbox),
+      inArc = false;
+
+  for (var i=0; i < pointCount; i++) {
+    if (pointIsArcEndpoint(i)) {
+
+      // If we're in an arc, then end it.
+      if (inArc) {
+        if (partIds[i] !== partIds[i-1]) error("Encountered a new ring while building an arc; i:", i, "partId:", partId);
+        arcTable.finishArc(i);
+      }
+
+      // Start a new arc, if this node is the first point of a new arc.
+      // (returns true if node at i starts a new arc)
+      inArc = arcTable.newArc(i);
+    }
+  }
+  T.stop("Find topological arcs");
+  T.stop("Process topology");
+  return arcTable.exportData();
+
+  function sameXY(id1, id2) {
+    return xx[id1] === xx[id2] && yy[id1] === yy[id2];
+  }
+
+  // Tests whether a point is a node (i.e. the endpoint of an arc).
+  //
+  function pointIsArcEndpoint(id) {
+    var isNode = false,
+        x = xx[id],
+        y = yy[id],    
+        partId = partIds[id],
+        isPartEndpoint = partId !== partIds[id-1] || partId !== partIds[id+1];
+    // trace("partIsArcEndpoint()", id, "x, y:", x, y);
+
+    if (partId == -1) {
+      isNode = false; // -1 == error code
+    }
+    else if (isPartEndpoint) {
+      // case -- if point is endpoint of a non-topological ring, then point is a node.
+      // TODO: some nodes formed with this rule might be removed if arcs on either side
+      //   of the node belong to the same shared boundary...
+      //   
+      //
+      isNode = true;
+    }
+    else {
+      // Count number of points with the same (x, y) coords as this point.
+      //
+      var matchCount = 0,
+          nextId = chainedIds[id],
+          nextX, nextY,
+          matchId, matchPartId;
+
+      while (nextId != id) {
+        nextX = xx[nextId];
+        nextY = yy[nextId];
+        if (nextX == x && nextY == y) {
+          matchCount++;
+          if (matchCount == 1) {
+            // If this point matches only one other point, we'll need the id of 
+            //   the matching point.
+            matchId = nextId;
+          }
+        }
+        nextId = chainedIds[nextId];
+      }
+
+      if (matchCount > 1) {
+        // case -- if point matches several other points, then point is a node.
+        isNode = true;
+      }
+      else if (matchCount == 1) {
+        // case -- point matches exactly one other point in the dataset
+        // TODO: test with edge cases: several identical points clustered together,
+        //   case where matching point is on the same ring, etc.
+        //         
+        // if matching point is an endpoint, then curr point is (also) a node.
+        var matchIsPartEndpoint = partIds[matchId] !== partIds[matchId + 1] || partIds[matchId] !== partIds[matchId - 1];
+        if (matchIsPartEndpoint) {
+          isNode = true;
+        }
+        // if prev and next points don't match next and prev points on other ring, then point is a node
+        else if (!sameXY(id+1, matchId-1) || !sameXY(id-1, matchId+1)) {
+          isNode = true;
+        }
+      }
+    }
+    return isNode;
+  }
+
+  //
+  //
+  function ArcTable(xx, yy, bb) {
+    var numPoints = xx.length,
+        hashTableSize = Math.round(numPoints * 0.2),
+        hash = MapShaper.getXYHashFunction(bb, hashTableSize),
+        hashTable = new Int32Array(hashTableSize),
+        typedArrays = !!xx.subarray;
+
+    var buildingArc = false,
+        arcStartId = -1;
+
+    Utils.initializeArray(hashTable, -1);
+    if (numPoints <= 0 || numPoints != yy.length) error("[ArcTable] invalid vertex data.");
+
+    var arcs = [],
+        chainIds = [],
+        sharedArcs = [],
+        parts = [],
+        currPartId = -1;
+
+    var maxPartSize,
+      maxPartId;
+
+    // End the current arc
+    // Receives id of end point
+    //
+    this.finishArc = function(endId) {
+      if (buildingArc == false || arcStartId >= endId || arcStartId < 0) error("[ArcTable.finishArc()] invalid arc index.");
+
+      // TODO (as option): merge polygon arcs
+      //   pseudocode:
+      //   if point at endId is the last point in the current part
+      //      and part is a ring (i.e. polygon shapefile)
+      //      and part is not an island (i.e. arc not the first arc in curr part)
+      //      and endId only coincides with first point in curr part
+      //   then concatenate this arc with the first arc in curr part...
+      //
+      // TODO (as option): merge polyline arcs
+      //   pseudocode:
+      //   if point at endId matches an endpoint of another part in the same shape
+      //      and point doesn't coincide with any other points
+      //   then:
+      //      if matching part has been scanned:
+      //         concatenate this arc with that arc
+      //      else
+      //         ??? maybe do a similar check on the first point in a part, to catch this case
+      //
+      // Alternative: flag matching points for removal in a later stage...
+      //
+      // Creating subarrays on xx and yy creates many fewer objects for memory
+      //   management to track than creating new x and y Array objects for each arc.
+      //   With 846MB ZCTA file, gc() time reduced from 580ms to 65ms,
+      //   topology time from >26s to ~17s, subsequent processing much faster.
+      //   Negligible improvement on smaller files.
+      //
+      var xarr, yarr, lim = endId + 1;
+          if (typedArrays) {
+            xarr = xx.subarray(arcStartId, lim),
+            yarr = yy.subarray(arcStartId, lim);
+          } else {
+            xarr = xx.slice(arcStartId, lim),
+            yarr = yy.slice(arcStartId, lim);
+          }
+          
+      var arc = [xarr, yarr];
+
+      // Hash the last point in the arc, so this new arc can be found when we
+      //   encounter the first point of a matching line-string.
+      var x = xx[endId],
+          y = yy[endId],
+          key = hash(x, y),
+          chainId = hashTable[key],
+          arcId = arcs.length;
+
+      hashTable[key] = arcId;
+
+      // arc.chainedId = chainedId;
+      // pushing chained id onto array instead of 
+      // adding as property of arc Array
+      chainIds.push(chainId);
+      arcs.push(arc);
+      buildingArc = false;
+      arcStartId = -1;
+    };
+
+    // Tests whether the sequence of points starting with point @id matches
+    //   the reverse-ordered coordinates of an arc.
+    //
+    function checkMatch(id, arc) {
+      var xarr = arc[0], yarr = arc[1];
+      for (var arcId = xarr.length - 1; arcId >= 0; arcId--, id++) {
+        if (xarr[arcId] !== xx[id] || yarr[arcId] !== yy[id]) {
+          return false;
+        }
+      }
+      return true;
+    }
+  
+
+    // Try to start a new arc starting with point at @startId.
+    // Returns true if a new arc was started.
+    // Returns false if the arc matches a previously identified arc or if
+    //   the point otherwise does not begin a new arc.
+    //
+    // @startId Index of an arc endpoint.
+    //
+    this.newArc = function(startId) {
+      if (buildingArc || arcStartId != -1) error("[ArcTable.newArc()] Tried to create a new arc while extending previous arc.");
+
+      var partId = partIds[startId];
+      if (partId !== partIds[startId + 1]) {
+        // case -- point is the last point in a ring -- no arc
+        return false;
+      }
+
+      var x = xx[startId],
+          y = yy[startId],
+          key = hash(x, y),
+          chainedArcId = hashTable[key],
+          matchId = -1,
+          arcId = arcs.length; // anticipating a new arc
+
+      // Check to see if this point is the first point in an arc that matches a 
+      //   previously found arc.
+      while (chainedArcId != -1) {
+        var chainedArc = arcs[chainedArcId];
+        if (checkMatch(startId, chainedArc)) {
+          matchId = chainedArcId;
+          arcId = -1 - chainedArcId;
+          break;
+        }
+        //chainedArcId = prevArc.chainedId;
+        chainedArcId = chainIds[chainedArcId];
+        // if (chainedArcId == null) error("Arc is missing valid chain id")
+      }
+
+      // Add arc id to a topological part
+      //
+      if (partId !== currPartId) {
+        parts[partId] = [arcId];
+        currPartId = partId;
+      }
+      else {
+        parts[partId].push(arcId);
+      }
+
+      // Start a new arc if we didn't find a matching arc in reversed sequence.
+      //
+      if (arcId >= 0) {
+        buildingArc = true;
+        arcStartId = startId;
+        sharedArcs[arcId] = 0;
+        return true;
+      } 
+      sharedArcs[matchId] = 1;
+      return false;
+    };
+
+    // Returns topological data for the entire dataset.
+    //
+    this.exportData = function() {
+
+      // export shared-arc flags
+      if (sharedArcs.length !== arcs.length) error("Shared arc array doesn't match arc count");
+      var sharedArcFlags = new Uint8Array(sharedArcs); // convert to typed array to reduce memory mgmt overhead.
+
+      // export retained point data for preventing null shapes
+      //
+      var arcMinPointCounts = null;
+      if (!!maxPartFlags) {
+        var arcMinPointCounts = new Uint8Array(arcs.length);
+        Utils.forEach(parts, function(part, partId) {
+          // calculate minPointCount for each arc
+          // (to protect largest part of each shape from collapsing)
+          var partLen = part.length;
+
+          // if a part has 3 or more arcs, assume it won't collapse...
+          // TODO: look into edge cases where this isn't true
+
+          if (maxPartFlags[partId] == 1 && partLen <= 2) { 
+            for (var i=0; i<partLen; i++) {
+              var arcId = part[i];
+              if (arcId < 1) arcId = -1 - arcId;
+              if (partLen == 1) { // one-arc polygon (e.g. island) -- save two interior points
+                arcMinPointCounts[arcId] = 2;
+              }
+              else if (sharedArcFlags[arcId] != 1) {
+                arcMinPointCounts[arcId] = 1; // non-shared member of two-arc polygon: save one point
+                // TODO: improve the logic here
+              }
+            }
+          }
+        });
+      }
+
+      // Group topological shape-parts by shape
+      var shapes = [];
+      Utils.forEach(parts, function(part, partId) {
+        var shapeId = shapeIds[partId];
+        if (shapeId >= shapes.length) {
+          shapes[shapeId] = [part]; // first part in a new shape
+        } else {
+          shapes[shapeId].push(part);
+        }
+      });
+
+      return {shapes: shapes, arcs:arcs, arcMinPointCounts: arcMinPointCounts, sharedArcFlags: sharedArcFlags};
+    };
+
+  }
+};
+
+
+// Generates a hash function to convert an x,y coordinate into an index in a 
+//   hash table.
+// @bbox A BoundingBox giving the extent of the dataset.
+//
+MapShaper.getXYHashFunction = function(bbox, hashTableSize) {
+  hashTableSize |= 0;
+  if (!bbox.hasBounds() || hashTableSize <= 0) error("Invalid hash function parameters; bbox:", bb, "table size:", hashTableSize);
+  var mask = (1 << 29) - 1,
+      kx = (1e8 * Math.E / bbox.width()),
+      ky = (1e8 * Math.PI / bbox.height()),
+      bx = -bbox.left,
+      by = -bbox.bottom;
+
+  return function(x, y) {
+    // transform coords to integer range and scramble bits a bit
+    var key = x * kx + bx;
+    key ^= y * ky + by;
+    // key ^= Math.PI * 1e9;
+    key &= 0x7fffffff; // mask as positive integer
+    key %= hashTableSize;
+    return key;
+  };
+};
+
+
+//
+//
+MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
+  var pointCount = xx.length,
+      hashTableSize = Math.floor(pointCount * 1.6);
+  // hash table larger than ~1.5 * point count doesn't improve performance much.
+
+  // Hash table for coordinates; contains the id of the first point in each chain, indexed by hash key
+  var hashChainIds = new Int32Array(hashTableSize);
+  Utils.initializeArray(hashChainIds, -1);
+
+  // Function to convert x, y coordinates to indexes in hash table.
+  var hash = MapShaper.getXYHashFunction(bbox, hashTableSize);
+
+  // Ids of next point in each chain, indexed by point id
+  var nextIds = new Int32Array(pointCount);
+  // Utils.initializeArray(nextIds, -1);
+ 
+  var key, headId, tailId;
+
+  for (var i=0; i<pointCount; i++) {
+    if (partIds[i] == -1) {
+      nextIds[i] = -1;
+      continue;
+    }
+    key = hash(xx[i], yy[i]);
+    headId = hashChainIds[key];
+    // case -- first coordinate in chain: start new chain, point to self
+    if (headId == -1) {
+      hashChainIds[key] = i;
+      nextIds[i] = i;
+    }
+    // case -- adding to a chain: place new coordinate at end of chain, point it to head of chain to create cycle
+    else {
+      tailId = headId;
+      while (nextIds[tailId] != headId) {
+        tailId = nextIds[tailId];
+      }
+      nextIds[i] = headId;
+      nextIds[tailId] = i;
+    }
+  }
+  return nextIds;
+};
+
+
+
+/* @requires elements, browser */
+
+function ElementPosition(ref) {
+  var self = this;
+  var el = El(ref);
+  var pageX = 0,
+      pageY = 0,
+      width = 0,
+      height = 0;
+
+  el.on('mouseover', update);
+  window.onorientationchange && Browser.on(window, 'orientationchange', update);
+  Browser.on(window, 'scroll', update);
+  Browser.on(window, 'resize', update);
+
+  // trigger an update, e.g. when map container is resized
+  this.update = function() {
+    update();
+  };
+
+  this.resize = function(w, h) {
+    el.css('width', w).css('height', h);
+    update();
+  };
+
+  this.width = function() { return width };
+  this.height = function() { return height };
+  //this.pageX = function() { return pageX };
+  //this.pageY = function() { return pageY };
+
+  this.position = function() {
+    return {
+      element: el.node(),
+      pageX: pageX,
+      pageY: pageY,
+      width: width,
+      height: height
+    };
+  }
+
+  function update() {
+    var div = el.node();
+    var xy = Browser.getPageXY(div);
+    var w = div.clientWidth,
+        h = div.clientHeight,
+        x = xy.x,
+        y = xy.y;
+
+    var resized = w != width || h != height,
+        moved = x != pageX || y != pageY;
+    if (resized || moved) {
+      pageX = x, pageY = y, width = w, height = h;
+      var pos = self.position();
+      self.dispatchEvent('change', pos);
+      resized && self.dispatchEvent('resize', pos);
+    }
+  }
+
+  update();
+}
+
+Opts.inherit(ElementPosition, EventDispatcher);
+
+
+
+function ShapeRenderer() {
+  this.drawShapes = function(shapes, style, tr, ctx) {
+    var mx = tr.mx, my = tr.my, bx = tr.bx, by = tr.by;
+    var shp, vec, x, y, nextX, nextY, drawPoint;
+    var stroked = !!(style.strokeWidth && style.strokeColor),
+        filled = !!style.fillColor;
+
+    var minSeg = 0.6;
+    var minShp = 1;
+
+    if (stroked) {
+      ctx.lineWidth = style.strokeWidth;
+      ctx.strokeStyle = style.strokeColor;
+      //ctx.lineJoin = 'round';
+    }
+    if (filled) {
+      ctx.fillStyle = style.fillColor;
+    }
+    if (!stroked && !filled) {
+      trace("#drawLine() Line is missing stroke and fill; style:", style);
+      return;
+    }
+    for (var i=0, n=shapes.length; i<n; i++) {
+      shp = shapes[i];
+      //if (shp.bounds.width() * mx < minShp && shp.bounds.height() * mx < minShp) continue;
+      for (var j=0; j<shp.partCount; j++) {
+        vec = shp.getShapeIter(j);
+        if (vec.hasNext()) {
+          ctx.beginPath();
+          drawPoint = true;
+          x = vec.x * mx + bx;
+          y = vec.y * my + by;
+          ctx.moveTo(x, y);
+          while (vec.hasNext()) {
+            nextX = vec.x * mx + bx;
+            nextY = vec.y * my + by;
+            drawPoint = Math.abs(nextX - x) > minSeg || Math.abs(nextY - y) > minSeg;
+            if (drawPoint) {
+              x = nextX, y = nextY;
+              ctx.lineTo(x, y);
+            }
+            /*
+            x = vec.x * mx + bx;
+            y = vec.y * my + by;
+            ctx.lineTo(x, y);     */
+
+          }
+
+          if (!drawPoint) {
+            ctx.lineTo(nextX, nextY);
+          }
+
+          if (filled) ctx.fill();
+          if (stroked) ctx.stroke();
+        }
+      }
+    }
+    //trace("tot:", tot, "skipped:", skipped)
+  };
+}
+
+
+function CanvasLayer() {
+
+  var canvas = El('canvas').css('position:absolute;').node(),
+      ctx = canvas.getContext('2d');
+
+  this.getContext = function() {
+    return ctx;
+  };
+
+  this.prepare = function(w, h) {
+    if (w != canvas.width || h != canvas.height) this.resize(w, h);
+    this.clear();
+  };
+
+  this.resize = function(w, h) {
+    canvas.width = w;
+    canvas.height = h;
+  };
+
+  this.clear = function() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  this.getElement = function() {
+    return El(canvas);
+  }
+}
+
+
+CanvasLayer.prototype.clear = function() {
+  if (!this.__updateCanvasSize()) {
+    var c = this._canvas;
+    var ctx = c.getContext('2d');
+
+    // Note: the commented-out lines would preserve a transform on the canvas.
+    // ctx.save();
+    // ctx.setTransform(1, 0, 0, 1, 0, 0);// Use the identity matrix while clearing the canvas
+    ctx.clearRect(0, 0, c.width, c.height);
+    // ctx.restore();
+  }
+};
+
+/* @requires elements, mapshaper-canvas */
+
+
+// Layer group contains a 
+//
+function ArcLayerGroup(src) {
+  var _self = this;
+  var _surface = new CanvasLayer();
+
+  var _arcLyr = new ShapeLayer(src.getArcs(), _surface),
+      _layers = [_arcLyr],
+      _map;
+
+  var _visible = true;
+  this.visible = function(b) {
+    return arguments.length == 0 ? _visible : _visible = !b, this;
+  };
+
+  // add arc layer
+  //
+  this.refresh = function() {
+    if (_map && _map.isReady()) {
+      drawLayers();  
+    }
+  };
+
+  this.setMap = function(map) {
+    _map = map;
+    _surface.getElement().appendTo(map.getElement());
+    map.on('display', drawLayers, this);
+    map.getExtent().on('change', drawLayers, this);
+  };
+
+  function drawLayers() {
+    if (!_self.visible()) return;
+    var ext = _map.getExtent();
+    // trace("draw; w, h:", ext.width(), ext.height());
+    _surface.prepare(ext.width(), ext.height());
+    //T.start();
+    Utils.forEach(_layers, function(lyr) {
+      lyr.draw(ext); // visibility handled by layer
+    });
+    //T.stop("draw");
+  }
+}
+
+
+function ShapeLayer(src, surface) {
+  var renderer = new ShapeRenderer();
+  var _visible = true;
+  var style = {
+    strokeWidth: 1,
+    strokeColor: "#0000CC",
+    strokeAlpha: 1
+  };
+
+  this.visible = function(b) {
+    return arguments.length == 0 ? _visible : _visible = !b, this;
+  };
+
+  this.draw = function(ext) {
+    if (!this.visible()) return;
+
+    // option: get array of shapes to render
+    // option: get array of ids of shapes
+    //
+    // get visible shapes (in bounds if any)
+    var shapes = src.getShapesInBounds(ext.getBounds());
+    var tr = ext.getTransform();
+    //trace("[ArcLayer#draw()] transform:", tr, "# in bounds:", shapes.length);
+
+    // pass to renderer
+    //
+    // renderer.drawShapes().
+    renderer.drawShapes(shapes, style, ext.getTransform(), surface.getContext());
+  }
+}
+
+Opts.inherit(ShapeLayer, Waiter);
+
+
+
+/* @requires events, core.geo, core */
+var TRANSITION_TIME = 500;
+
+/*
+var Fader = {};
+Fader.fadeIn = function(el, time) {
+  time = time || 300;
+  el.style.WebkitTransition = 'opacity ' + time + 'ms linear';
+  el.style.opacity = '1';
+};
+
+Fader.fadeOut = function(el, time) {
+  time = time || 300;
+  el.style.WebkitTransition = 'opacity ' + time + 'ms linear';
+  el.style.opacity = '0';
+};
+*/
+
+
+Timer.postpone = function(ms, func, ctx) {
+  var callback = func;
+  if (ctx) {
+    callback = function() {
+      func.call(ctx);
+    };
+  }
+  setTimeout(callback, ms);
+};
+
+function Timer() {
+  if (!(this instanceof Timer)) {
+    return new Timer();
+  }
+
+  var _startTime,
+      _prevTime,
+      _count = 0,
+      _times = 0,
+      _duration = 0,
+      _interval = 25, // default 25 = 40 frames per second
+      MIN_INTERVAL = 8,
+      _callback,
+      _timerId = null,
+      _self = this;
+
+  this.busy = function() {
+    return _timerId !== null;
+  };
+
+  this.start = function() {
+    if (_timerId !== null) {
+      this.stop();
+    }
+    _count = 0;
+    _prevTime = _startTime = +new Date;
+    //_timerId = setInterval(handleTimer, _interval);
+    _timerId = setTimeout(handleTimer, _interval);
+    return this; // assumed by FrameCounter, etc
+  };
+
+  this.stop = function() {
+    if (_timerId !== null) {
+      //clearInterval(_timerId);
+      clearTimeout(_timerId);
+      _timerId = null;
+    }
+  };
+
+  this.duration = function(ms) {
+    _duration = ms;
+    return this;
+  };
+
+  this.interval = function(ms) {
+    if (ms == null) {
+      return _interval;
+    }
+    _interval = ms | 0;
+    if (_interval < MIN_INTERVAL) {
+      trace("[Timer.interval()] Resetting to minimum interval:", MIN_INTERVAL);
+      _interval = MIN_INTERVAL;
+    }
+    return this;
+  };
+
+  this.callback = function(f) {
+    _callback = f;
+    return this;
+  };
+
+  this.times = function(i) {
+    _times = i;
+    return this;
+  };
+
+  function handleTimer() {
+    var now = +new Date,
+        interval = now - _prevTime,
+        elapsed = now - _startTime;
+    _count++;
+    if (_duration > 0 && elapsed > duration || _times > 0 && _count > _times) {
+      this.stop();
+      return;
+    }
+    var obj = {elapsed: elapsed, count: _count, time:now, interval:interval};
+    _callback && _callback(obj);
+    _self.dispatchEvent('tick', obj);
+
+    interval = +new Date - _prevTime; // update interval, now that event handlers have run
+    _prevTime = now;
+    var time = interval <= _interval ? 10 : _interval - interval;
+    _timerId = setTimeout(handleTimer, time);
+
+  };
+}
+
+Opts.inherit(Timer, EventDispatcher);
+
+var FrameCounter = new Timer().interval(25).start();
+
+
+//
+//
+function TweenTimer(obj) {
+  if (obj) {
+    var tween = new TweenTimer();
+    tween.object = obj;
+    return tween;
+  }
+
+  if (!(this instanceof TweenTimer)) {
+    return new TweenTimer();
+  }
+
+  var _self = this;
+  var _delay = 0; // not implemented
+  var _start;
+  var _busy;
+  var _quickStart = true;
+  var _snap = 0.0005;
+  var _done = false;
+  var _duration;
+  var _method;
+
+  var _src, _dest;
+
+  this.method = function(f) {
+    _method = f;
+    return this;
+  };
+
+  this.snap = function(s) {
+    _snap = s;
+    return this;
+  }
+
+  this.duration = function(ms) {
+    _duration = ms;
+    return this;
+  };
+
+  this.to = function(obj) {
+    _dest = obj;
+    return this;
+  };
+
+  this.from = function(obj) {
+    _src = obj;
+    return this;
+  };
+
+  this.startTimer =
+  this.start = function(ms, method) {
+
+    if (_busy) {
+      _self.stopTimer();
+    }
+
+    _duration = _duration || ms || 300;
+    _method = _method || method || Tween.sineInOut;
+
+    _start = (new Date).getTime();
+    if (_quickStart) {
+      _start -= FrameCounter.interval(); // msPerFrame;
+    }
+
+    _busy = true;
+    FrameCounter.addEventListener('tick', handleTimer, this);
+    return this;
+  }
+
+
+  this.setDelay =
+  this.delay = function(ms) {
+    ms = ms | 0;
+    if (ms > 0 || ms < 10000 ) {
+      _delay = ms;
+    }
+    return this;
+  };
+
+  this.__getData = function(pct) {
+    var obj = {}
+    if (_src && _dest) {
+      Opts.copyAllParams(obj, _src);
+      for (var key in obj) {
+        obj[key] = (1 - pct) * obj[key] + pct * _dest[key];
+      }
+    }
+    return obj;
+  };
+
+  this.busyTweening = this.busy = function() {
+    return _busy;
+  }
+
+  this.stopTimer =
+  this.stop = function() {
+    _busy = false;
+    FrameCounter.removeEventListener('tick', handleTimer, this);
+    _done = false;
+  }
+
+  function handleTimer() {
+
+    if (_busy == false) {
+      _self.stopTimer();
+      return;
+    }
+
+    if (_done) {
+      return;
+    }
+
+    var pct = getCurrentPct();
+
+    if (pct <= 0) { // still in 'delay' period
+      return;
+    }
+
+    if (pct + _snap >= 1) {
+      pct = 1;
+      _done = true;
+    }
+
+    _self.procTween(pct);
+
+    if (!_busy) { // ???
+      _self.stopTimer();
+      return;
+    }
+
+    if (pct == 1. && _done) {
+      _self.stopTimer();
+    }
+  }
+
+
+  function getCurrentPct() {
+    if (_busy == false) {
+      return 1;
+    }
+
+    var now = (new Date()).getTime();
+    var elapsed = now - _start - _delay;
+    if (elapsed < 0) { // negative number = still in delay period
+      return 0;
+    }
+
+    var pct = elapsed / _duration;
+
+    // prevent overflow (tween functions only valid in 0-1 range)
+    if (pct > 1.0) {
+      pct = 1.0;
+    }
+
+    if (_method != null) {
+      pct = _method(pct);
+    }
+    return pct;
+  }
+
+}
+
+Opts.inherit(TweenTimer, EventDispatcher);
+
+TweenTimer.prototype.procTween = function(pct) {
+  var isDone = pct >= 1;
+  var obj = this.__getData(pct);
+  obj.progress = pct;
+  obj.done = isDone;
+  this.dispatchEvent('tick', obj);
+  isDone && this.dispatchEvent('done');
+};
+
+var Tween = TweenTimer;
+
+// 
+//
+Tween.quadraticOut = function(n) {
+  return 1 - Math.pow((1 - n), 2);
+};
+
+// starts fast, slows down, ends fast
+//
+Tween.sineInOut = function(n) {
+  n = 0.5 - Math.cos(n * Math.PI) / 2;
+  return n;
+};
+
+// starts slow, speeds up, ends slow
+//
+Tween.inverseSine = function(n) {
+  var n2 = Math.sin(n * Math.PI) / 2;
+  if (n > 0.5) {
+    n2 = 1 - n2;
+  }
+  return n2;
+}
+
+Tween.sineInOutStrong = function(n) {
+  return Tween.sineInOut(Tween.sineInOut(n));
+};
+
+Tween.inOutStrong = function(n) {
+  return Tween.quadraticOut(Tween.sineInOut(n));
+}
+
+
+/**
+ * @constructor
+ */
+function NumberTween(callback) {
+  this.__super__();
+  
+  this.start = function(fromVal, toVal, ms, method) {
+    this._from = fromVal;
+    this._to = toVal;
+    this.startTimer(ms, method);
+  }
+
+  this.procTween = function(pct) {
+    var val = this._to * pct + this._from * (1 - pct);
+    callback(val, pct == 1);
+  }
+}
+
+Opts.inherit(NumberTween, TweenTimer);
+
+
+/**
+ * Tween class for map zooming; See NavigationManager.
+ * 
+ * @constructor
+ */
+function BoundingBoxTween(callback) {
+  // TweenTimer.call(this);
+  this.__super__();
+
+  this.start = function(a, b, ms, method) {
+    method = method || Tween.sineInOut;
+    this._bbStart = a;
+    this._bbEnd = b;
+
+
+    var deltaScale = b.width() / a.width(); // < 1 = zooming in; > 1 = zooming out
+    var deltaScaleAbs = deltaScale > 1 ? 1 / deltaScale : deltaScale; // value is <= 1; 1 == no scale change
+    var weight = 0.6;  // Relative weight of ms parameter (1 = no time adjustment)
+
+    var adjustedTime = ms * weight + ms * (1 - deltaScaleAbs) * (1 - weight);
+    //adjustedTime *= 5;  // time multiplier -- slow it down for debugging
+
+    this.startTimer(adjustedTime, method);
+  }
+
+  // Assume pct is between 0 and 1
+  //
+  this.procTween = function(pct) {
+    var a = this._bbStart;
+    var b = this._bbEnd;
+
+    var w = a.width() * (1-pct) + b.width() * pct;
+    var h = a.height() * (1-pct) + b.height() * pct;
+    var l = a.left * (1-pct) + b.left * pct;
+    var t = a.top * (1-pct) + b.top * pct;
+    var bb = new BoundingBox().setBounds(l, t, l + w, t - h); // fixes small rounding errors affecting scale
+    callback(bb, pct == 1);
+  };
+}
+
+Opts.inherit(BoundingBoxTween, TweenTimer);
+
+
+/** @requires events, browser */
+
+/**
+ * Interface for handling touch events, used internally by HybridMouse.
+ * Events
+ *  'touchstart' Fires when down-up occurs rapidly, like a 'click'. 
+ *  'touchend'   Fires once after a 'touchstart' event, if user slides a finger or 
+ *               if finger is lifted after being down for a while.
+ *  'dragstart'
+ *  'drag'
+ *  'dragend'
+ *  'pinchstart'
+ *  'pinch'
+ *  'pinchend'
+ *
+ * Event data
+ *  'pageX'
+ *  'pageY'
+ *  'mapX'
+ *  'mapY'
+ *  'centerX' (drag,pinch) REMOVE center of the map, in pixels
+ *  'centerY'
+ *  'time'
+ *  'zoomRatio' (pinch) REMOVE ratio of current pinch radius to starting radius
+ *  'deltaScale'
+ *  'shiftX'  (drag,pinch) REMOVE distance shifted since beginning of pinch or drag
+ *  'shiftY'  (drag,pinch) REMOVE
+ *  'deltaX'
+ *  'deltaY'
+ *
+ * @param {*} surface DOM element to listen for touches.
+ * @param {BoundingBox} mapBounds Bounds of graphic frame, on page
+ * @constructor
+ */
+function TouchHandler(surface, mapBounds) {
+
+
+  var downOverMap = false;
+  var touchOff = false;
+  var numTouches = 0;
+  var globalX, globalY, staticTouch;
+
+  var captureTouches = A.captureTouches !== false;
+  var DOUBLE_TAP_TIMEOUT = 600;
+  var SINGLE_TAP_TIMEOUT = 400;
+
+  var self = this,
+    isOn = false, // like 'down'
+    doubleTapStarted = false,
+    singleTapStartTime = 0,
+    singleTapStartData,
+    singleTapStarted = false,
+    prevTouchCount = 0;
+
+  var pinching = false;
+  var pinchStartX,
+    pinchStartY,
+    pinchStartRadius;
+  var pinchData;
+
+  var dragging = false;
+  var dragStartX,
+    dragStartY;
+
+  var touchId = 1; // An integer id, incremented when a new pinchstart or dragstart event fires.
+
+  var prevX, prevY, prevRadius;
+
+
+  Browser.addEventListener(surface, 'touchstart', handleTouchStart);
+  Browser.addEventListener(document, 'touchstart', handleGlobalStart);
+  Browser.addEventListener(document, 'touchend', handleTouchEnd);
+  Browser.addEventListener(document, 'touchmove', handleTouchMove);
+
+
+  self.on('touchoff', function() {
+    // zero touches
+  });
+
+  function getTouchData(touches) {
+    var obj = {zoomRatio:1, deltaScale:1, deltaX:0, deltaY:0, shiftX:0, shiftY:0};
+
+    var len = touches.length;
+    var touchCenterX = 0, touchCenterY = 0;
+    var i, touch;
+    var insideCount = 0;
+    for (i=0; i<len; i++) {
+      touch = touches[i];
+      var weight = 1/(i+1);
+      var pageX = touch.pageX;
+      var pageY = touch.pageY;
+      if (mapBounds.containsPoint(pageX, pageY)) {
+        insideCount += 1;
+      }
+
+      touchCenterX = weight * pageX + (1 - weight) * touchCenterX;
+      touchCenterY = weight * pageY + (1 - weight) * touchCenterY;      
+    }
+
+    obj.inside = insideCount;
+
+    var dist = 0;
+    if (len > 0) {
+      for (i=0; i<len; i++) {
+        touch = touches[i];
+        dist += Point.distance(touchCenterX, touchCenterY, touch.pageX, touch.pageY);
+      }
+      dist /= len;
+    }
+
+    obj.pageX = touchCenterX;
+    obj.pageY = touchCenterY;
+    obj.mapX = touchCenterX - mapBounds.left;
+    obj.mapY = touchCenterY - mapBounds.bottom; // mapBounds.bottom is actually the top, in screen space.
+    obj.centerX = mapBounds.centerX();
+    obj.centerY = mapBounds.centerY();
+    obj.radius = dist;
+    obj.time = now();
+    return obj;
+  };
+
+
+  function handleTouchChange(e) {
+
+    var touches = e.touches;
+    numTouches = touches.length;
+    var prevTouches = prevTouchCount;
+
+    if (numTouches != 1 && dragging) {
+      dragging = false;
+      self.dispatchEvent('dragend');
+    }
+
+    if (numTouches < 2 && pinching) {
+      pinching = false;
+      self.dispatchEvent('pinchend');
+    }
+
+    if (numTouches == 0) {
+      trace('handleTouchChange() signleTapStarted:', singleTapStarted, 'data:', singleTapStartData);
+      if (doubleTapStarted) {
+        if (prevTouches == 1) {
+          //trace("[handleTouchChange()] doubletap");
+          self.dispatchEvent('doubletap', singleTapStartData);
+        }
+        doubleTapStarted = false;
+      }
+
+      // check for ... double tap
+      if (singleTapStarted) {
+        if (prevTouches == 1) { 
+          doubleTapStarted = true;
+        }
+        // could fire event here
+        self.dispatchEvent('tap', singleTapStartData);
+        singleTapStarted = false;
+      }
+
+      prevTouchCount = numTouches;
+      return;
+    }
+
+    var obj = getTouchData(touches);
+    // Attach dom event object, to allow preventDefault() to be called in event handlers.
+    obj.touchEvent = e;
+    obj.touchId = touchId;
+
+    var pageX = obj.pageX;
+    var pageY = obj.pageY;
+
+    // Ignore new touches when all fingers are outside the map
+    // (experimental)
+    if (numTouches > prevTouches && obj.inside == 0) {
+     // trace("[HybridTouch.handleTouchChange()] no inside touches");
+      return;
+    }
+
+    if (numTouches == 1) { // Single finger touches the screen
+      if (prevTouches == 0) { // ... after no fingers were touching -- i.e. a 'tap'.
+
+        if (doubleTapStarted) {
+          // Cancel a double-tap if too much time has elapsed or if finger has  moved.
+          var dist = Point.distance(pageX, pageY, singleTapStartData.pageX, singleTapStartData.pageY);
+          var timeElapsed = obj.time - singleTapStartData.time;
+          if ( timeElapsed > DOUBLE_TAP_TIMEOUT || dist > 12 ) {
+            doubleTapStarted = false;
+          }
+          else {
+            // Prevent mobile safari page zoom
+            // when second touch starts (experimental)
+            // Problem: page zoom is blocked even if double-tap is disabled on the map...
+            //
+            if (numTouches == 1 && doubleTapStarted) {
+              //trace("[HybridTouch.handleTouches()] blocking second tap");
+              e.preventDefault();
+            }
+          }
+        }
+
+        // Unless a double tap is underway, initiate a new single tap.
+        if (doubleTapStarted == false) {
+          singleTapStarted = true;
+          singleTapStartData = obj;
+          singleTapStartTime = obj.time;
+        }
+      }
+
+      if (!dragging) {
+        prevX = dragStartX = pageX;
+        prevY = dragStartY = pageY;
+        dragging = true;
+        touchId += 1;
+        obj.touchId = touchId;
+        self.dispatchEvent('dragstart', obj);
+      }
+      else {
+        obj.shiftX = pageX - dragStartX;
+        obj.shiftY = pageY - dragStartY;
+        obj.deltaX = pageX - prevX;
+        obj.deltaY = pageY - prevY;
+        self.dispatchEvent('drag', obj);
+        prevX = pageX;
+        prevY = pageY;
+      }
+    }
+    else if (numTouches > 1 ) {
+      if (!pinching) {
+        pinching = true;
+        prevRadius = pinchStartRadius = obj.radius;
+        prevX = pinchStartX = obj.pageX;
+        prevY = pinchStartY = obj.pageY;
+        pinchData = obj;
+        touchId += 1;
+        obj.touchId = touchId;
+        self.dispatchEvent('pinchstart', obj);
+      }
+      else {
+        obj.startX = pinchStartX;
+        obj.startY = pinchStartY;
+        obj.zoomRatio = obj.radius / pinchStartRadius;
+        obj.deltaScale = obj.radius / prevRadius;
+        obj.shiftX = obj.pageX - obj.startX;
+        obj.shiftY = obj.pageY - obj.startY;
+        obj.deltaX = obj.pageX - prevX;
+        obj.deltaY = obj.pageY - prevY;
+        pinchData = obj;
+        self.dispatchEvent('pinch', obj);
+        prevX = obj.pageX;
+        prevY = obj.pageY;
+        prevRadius = obj.radius;
+      }
+    }
+    
+    if (numTouches == 0) {
+      // self.dispatchEvent('touchoff');
+    }
+
+    prevTouchCount = numTouches;
+  }
+
+  function turnOn() {
+    isOn = true;
+    // 'touchstart' event similar to rollover; used to initiate hover-like effect
+    if (singleTapStartData) {
+      var data = {pageX:singleTapStartData.pageX, pageY:singleTapStartData.pageY}
+      self.dispatchEvent('touchstart', data);
+      self.dispatchEvent('touchon', data);
+    }
+  }
+
+  function turnOff() {
+    if (isOn) {
+      isOn = false;
+      // 'touchend' event similar to rollout or mouseout...
+      self.dispatchEvent('touchend');
+      self.dispatchEvent('touchoff');
+    }
+  }
+
+  function now() {
+    return new Date().getTime();
+  }
+
+  function handleGlobalStart(e) {
+    var touches = e.touches;
+    numTouches = touches.length;
+    if (numTouches == 1) {
+      var obj = getTouchData(touches);
+      globalX = obj.pageX;
+      globalY = obj.pageY;
+      staticTouch = true;
+    }
+  }
+
+
+  function handleTouchStart(e) {
+    // e.preventDefault() stops the page from scrolling along with the map, which 
+    // may not be desirable, especially when map is zoomed-out...
+    //e.stopPropagation();
+
+    // mobile safari: e.targetTouches seems to include all current touches, not just new ones.
+
+    downOverMap = true;
+    handleTouchChange(e);
+    //return false; // this was triggering preventDefault() in Browser.addEventListener()
+  }
+
+  // Lifting a finger: Either a click or ends interaction.
+  function handleTouchEnd(e) {
+    // REMOVED: preventDefault() could cause problems, as this handler is registered on the window.
+    //e.preventDefault();
+    //e.stopPropagation();
+    trace("handleTouchEnd() overMap?:", downOverMap)
+
+    if (downOverMap) {
+      handleTouchChange(e);
+      // self.dispatchEvent('touchup', e);
+    }
+
+    elapsed = now() - singleTapStartTime;
+    if (downOverMap && elapsed < SINGLE_TAP_TIMEOUT) {
+      turnOn();
+    }
+    else {
+      if (staticTouch) {
+        turnOff();
+      }
+      // turnOff();
+    }
+
+    if (numTouches == 0) {
+      downOverMap = false;
+    }  
+  }
+
+  function handleTouchMove(e) {
+    //turnOff(); // Dragging ends interaction.
+    staticTouch = false;
+    if (!downOverMap) {
+      return;
+    }
+    handleTouchChange(e);
+  };
+}
+
+Opts.extendPrototype(TouchHandler, EventDispatcher);
+
+
+/** @requires core.geo, browser, hybrid-touch */
+
+
+
+function HybridMouse(opts) {
+  this._ignoredElements = [];
+  this.dragging = false;
+  this._overMap = false;
+  this._boundsOnPage = new BoundingBox();
+
+  this.opts = Utils.extend({
+    touchHover: true,
+    touchClick: false  // touchUp maps to mouseUp for click
+  }, opts);
+
+  if (!Browser.touchEnabled) {
+      // Changed from window.onmousemove; ie8- doesn't support mousemove on window
+      //Browser.addEventListener(document, 'mousemove', this.handleMouseMove, this);
+      Browser.addEventListener(document, 'mousemove', this.throttledMouseMove, this);
+
+      //Browser.addEventListener(document, 'mouseout', function() { trace("out"); });
+      //Browser.addEventListener(window, 'resize', this.updateDivBounds, this);
+      // using body instead of window; window is triggered by interaction with browser scrollbars.
+      Browser.addEventListener(document.body, 'mousedown', this.handleMouseDown, this);
+      Browser.addEventListener(document, 'mouseup', this.handleMouseUp, this);
+  }
+}
+
+
+Opts.inherit(HybridMouse, Waiter);
+
+HybridMouse.prototype.ignoreElement = function(el) {
+  if (!el || Utils.contains(this._ignoredElements, el)) {
+    return;
+  }
+  this._ignoredElements.push(el);
+};
+
+
+HybridMouse.prototype.setMapContainer = function(surface) {
+  if (!surface) {
+    trace("!!! [HybridMouse.setMapContainer()] surfac is empty");
+    return;
+  }
+  if (this._mapContainer) {
+    return;
+  }
+  this._mapContainer = surface;
+  var self = this;
+
+  if (Browser.iPhone || Browser.touchEnabled) {
+    var touch = new TouchHandler(surface, this._boundsOnPage);
+    touch.addEventListener('touchstart', this.handleTouchStart, this);
+    touch.addEventListener('touchend', this.handleTouchEnd, this);
+    if (this.opts.touchClick) {
+      touch.addEventListener('tap', handleTap, this);
+    }
+    this.touch = touch;
+  }
+
+
+  Browser.addEventListener(surface, 'mouseover', handleMouseOver, this);
+  //  Moved adding mouseout handler to handleMouseOver()
+  //  Browser.addEventListener(surface, 'mouseout', handleMouseOut, this);
+  Browser.addEventListener(surface, 'dblclick', handleDoubleClick, this);
+
+  function handleTap(e) {
+    // Assume 'tap' is over map; temporarily set overMap to true
+    var over = this._overMap;
+    this._overMap = true;
+    this._moveData = this.getStandardMouseData(e);
+    this.dispatchEvent('click', this._moveData);
+    this._overMap = over;
+  }
+
+
+  function handleMouseOver(e) {
+    //trace("[HybridMouse.handleMouseOver()]");
+    self.triggerMouseOver();
+  }
+
+  function handleDoubleClick(e) {
+    if (self.overMap()) {
+      // DOESNT WORK (Chrome) // e.preventDefault(); // Prevent map element from being selected in the browser.
+      var obj = self.getStandardMouseData(e);
+      self.dispatchEvent('dblclick', obj);
+    }
+  }
+
+  this.isReady() == false && this.startWaiting();
+};
+
+
+HybridMouse.prototype.overMap = function() {
+  return this._overMap;
+};
+
+HybridMouse.prototype.mouseDown = function() {
+  return !!this._mouseDown;
+};
+
+HybridMouse.prototype.mouseDownOverMap = function() {
+  return !!this._mouseDownOverMap;
+}
+
+// TODO: explain better; this is like a press or button-down
+HybridMouse.prototype.handleTouchStart = function(evt) {
+  this.triggerMouseOver();
+  this.handleMouseMove(evt);
+};
+
+// TODO: explain; like a button-up
+HybridMouse.prototype.handleTouchEnd = function(evt) {
+  this.triggerMouseOut();
+};
+
+/** 
+ * Now fired on body -> mouseover
+ */
+HybridMouse.prototype.handleMouseOut = function(e) {
+
+  // Don't fire mouseout if we are rolling around inside the map container.
+  // ... or have rolled over a popup, etc...
+  //
+  var target = (e.target) ? e.target : e.srcElement;
+  var surface = this._mapContainer;
+
+  while (target && target.nodeName != 'BODY' && target != window) {
+    if (target == surface || Utils.contains(this._ignoredElements, target)) {
+      this._deferringMouseOut = true;
+      return;
+    }
+    target = target.parentNode;
+  }
+
+  this.triggerMouseOut();
+}
+
+
+HybridMouse.prototype.triggerMouseOut = function() {
+  if (this._overMap) {
+    this._overMap = false;
+
+    if (true) {
+      Browser.removeEventListener(this._mapContainer, 'mouseout', this.handleMouseOut, this);
+      //Browser.removeEventListener(window, 'mouseout', this.handleMouseOut, this);
+    } else {
+      Browser.removeEventListener(document.body, 'mouseover', this.handleMouseOut, this);
+      Browser.removeEventListener(window, 'mouseout', this.handleMouseOut, this);
+    }
+
+    this.dispatchEvent('mouseout');
+  }
+};
+
+HybridMouse.prototype.triggerMouseOver = function() {
+
+  this._deferringMouseOut = false; // cancel deferred mouse out, e.g. mousing over a popup
+
+  //Utils.log("[HybridMouse.triggerMouseOver()] _overMap: " + this._overMap);
+  if (!this._overMap) {
+    this._overMap = true;
+
+    if (true) {
+      //Browser.addEventListener(window, 'mouseout', this.handleMouseOut, this);
+      Browser.addEventListener(this._mapContainer, 'mouseout', this.handleMouseOut, this);
+    } else {
+      this._mapContainer != document.body && Browser.addEventListener(document.body, 'mouseover', this.handleMouseOut, this);
+      Browser.addEventListener(window, 'mouseout', this.handleMouseOut, this);
+    }
+    this.dispatchEvent('mouseover');
+  }
+};
+
+
+HybridMouse.prototype.updateDragging = function(obj) {
+  var overMap = this.overMap();
+  var mouseDown = this.mouseDownOverMap();
+
+  if (!this.dragging) {
+    if (mouseDown && overMap) {
+      this._dragStartData = obj;
+      this.dragging = true;
+      this._prevX = obj.pageX;
+      this._prevY = obj.pageY;
+      this.dispatchEvent('dragstart', obj);
+    }
+  }
+  else if (!mouseDown) {
+    this.dragging = false;
+    this.dispatchEvent('dragend', obj);
+  }
+  else {
+    obj.shiftX = obj.pageX - this._dragStartData.pageX;
+    obj.shiftY = obj.pageY - this._dragStartData.pageY;
+    obj.deltaX = obj.pageX - this._prevX;
+    obj.deltaY = obj.pageY - this._prevY;
+    this.dispatchEvent('drag', obj);
+    this._prevX = obj.pageX;
+    this._prevY = obj.pageY;
+  }
+};
+
+HybridMouse.prototype.handleMouseDown = function(e) {
+  this._mouseDown = true;
+  if (this.overMap()) {
+    this._mouseDownOverMap = true;
+    // e.preventDefault && e.preventDefault(); // try to prevent selection
+    var data = this.getStandardMouseData(e);
+    data.downTime = (new Date()).getTime();
+    this._downData = data;
+    this.updateDragging(data);
+  }
+};
+
+
+HybridMouse.prototype.handleDownUp = function(downData, upData) {
+  // trace("downUp; down:", downData, "up:", upData, "overMap:", this.overMap());
+  if (downData && this.overMap()) {
+    if (Math.abs(downData.pageX - upData.pageX) + Math.abs(downData.pageY - upData.pageY) < 6) {
+      var elapsed = (new Date()).getTime() - downData.downTime;
+      if (elapsed < 500) {
+        this.dispatchEvent('click', upData);
+      }
+    }
+  }
+};
+
+HybridMouse.prototype.handleMouseUp = function(e) {
+  //trace("[HybridMouse.handleMouseUp(); over map?", this.overMap());
+  this._mouseDown = false;
+  this._mouseDownOverMap = false;
+  var upData = this.getStandardMouseData(e);
+  this.updateDragging(upData);
+  this.handleDownUp(this._downData, upData);
+};
+
+
+HybridMouse.prototype.updateContainerBounds = function(l, t, r, b) {
+  this._boundsOnPage.setBounds(l, t, r, b);
+};
+
+HybridMouse.prototype.getStandardMouseData = function(e) {
+  // Get x, y pixel location of mouse relative to t, l corner of the page.
+  e = this.standardizeMouseEvent(e);
+  var pageX = e.pageX;
+  var pageY = e.pageY;
+  
+  var bounds = this._boundsOnPage;
+  var mapX = pageX - bounds.left;
+  var mapY = pageY - bounds.bottom; // bottom is actually the upper bound
+
+  return { pageX:pageX, pageY:pageY, mapX:mapX, mapY:mapY, centerX:bounds.centerX(), centerY:bounds.centerY(), deltaX:0, deltaY:0, deltaScale:1 };
+};
+
+HybridMouse.prototype.getCurrentMouseData = function() {
+  var obj = {};
+  if (this._moveData) {
+    Opts.copyAllParams(obj, this._moveData);
+  }
+  return obj;
+};
+
+HybridMouse.prototype.pageX = function() {
+  return this._moveData.pageX;
+};
+
+HybridMouse.prototype.pageY = function() {
+  return this._moveData.pageY;
+};
+
+
+var moveCount = 0;
+var moveSecond = 0;
+
+HybridMouse.prototype.standardizeMouseEvent = function(e) {
+  if (e && e.pageX !== void 0) {
+    return e;
+  }
+  e = e || window.event;
+  var o = {
+    pageX : e.pageX || e.clientX + document.body.scrollLeft +
+      document.documentElement.scrollLeft,
+    pageY : e.pageY || e.clientY + document.body.scrollTop +
+      document.documentElement.scrollTop
+  };
+  return o;
+};
+
+
+/*
+HybridMouse.prototype.throttledMouseMove = function(e) {
+  e = this.standardizeMouseEvent(e); // handle ie's nonstandard events
+  this._latestMoveEvent = e;
+  if (this._throttleCount) {
+    this._throttleCount++;
+    return;
+  }
+  var minInterval = 40;
+  var now = (new Date).getTime();
+  var elapsed = now - (this._prevMoveTime || 0);
+  if (elapsed < minInterval) {
+    var self = this;
+    var ms = minInterval - elapsed;
+    this._throttleCount = 1;
+    setTimeout(function() { self._throttleCount = 0; self.throttledMouseMove(self._latestMoveEvent) }, ms);
+    return;
+  }
+  this._prevMoveTime = now;
+  this.handleMouseMove(e);
+};
+*/
+
+HybridMouse.prototype.throttledMouseMove = function(e) {
+  var minInterval = 40;
+  var now = (new Date).getTime();
+  var elapsed = now - (this._prevMoveTime || 0);
+  if (elapsed > minInterval) {
+    this._prevMoveTime = now;
+    this.handleMouseMove(e);
+  }
+};
+
+HybridMouse.prototype.handleMouseMove = function(e) {
+  /*
+  var now = (new Date).getTime();
+  var sec = Math.floor(now / 1000);
+  moveCount ++;
+  if (sec != moveSecond) {
+    moveSecond = sec;
+    trace(moveCount + "/sec");
+    moveCount = 0;
+  }
+  */
+
+  this._moveData = this.getStandardMouseData(e);
+  this.triggerMouseMove();
+};
+
+HybridMouse.prototype.triggerMouseMove = function() {
+  var obj = this._moveData;
+  if (!obj) {
+    return;
+  }
+  //var isOver = this._boundsOnPage.containsPoint(obj.pageX, obj.pageY) && this._overMap;
+
+  var isOver = this._boundsOnPage.containsPoint(obj.pageX, obj.pageY); //  && this._overMap;
+
+
+  //trace("[HybridMouse.triggerMouseMove()] over?", isOver);
+  // Fallback over / out events if map container hasn't been registered
+  //
+  if (!this._mapContainer) {
+    var wasOver = this._overMap;
+    if (isOver && !wasOver) {
+      this.triggerMouseOver();
+    }
+    else if (!isOver && wasOver) {
+      this.triggerMouseOut();
+    }
+  } else if (this._deferringMouseOut) {
+    this._deferringMouseOut = false;
+    this.triggerMouseOut();
+  }
+
+
+  //if (isOver) {
+  if (this._overMap) {
+    this.dispatchEvent('mousemove', obj);
+  }
+
+  this.updateDragging(obj);
+};
+
+
+
+
+/** @requires browser, events, arrayutils, tweening */
+
+/**
+ * 
+ * @param {Mouse} 
+ * @constructor
+ */
+function MouseWheelHandler(mouse) {
+  var self = this;
+  var prevWheelTime = 0;
+  var currDirection = 0;
+  var scrolling = false;
+  init();
+
+  function init() {
+    // reference: http://www.javascriptkit.com/javatutors/onmousewheel.shtml
+    if (window.onmousewheel !== undefined) { // ie, webkit
+      Browser.on(window, 'mousewheel', handlePageScroll, self);
+    }
+    else { // firefox
+      Browser.on(window, 'DOMMouseScroll', handlePageScroll, self);
+    }
+    FrameCounter.addEventListener('tick', handleTimer, self);
+  }
+
+  function handleTimer(evt) {
+    var sustainTime = 80;
+    var fadeTime = 60;
+    var elapsed = evt.time - prevWheelTime;
+    if (currDirection == 0 || elapsed > sustainTime + fadeTime || !mouse.overMap()) {
+      currDirection = 0;
+      scrolling = false;
+      return;
+    }
+
+    // Assign a multiplier of (0-1) if the timer fires during 'fade time' (for smoother zooming)
+    // TODO: consider moving this calculation to the navigation manager, where it is applied.
+    var multiplier = 1;
+    var fadeElapsed = elapsed - sustainTime;
+    if (fadeElapsed > 0) {
+      multiplier = Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
+    }
+
+    var obj = mouse.getCurrentMouseData();
+    obj.direction = currDirection;
+    obj.multiplier = multiplier;
+    if (!scrolling) {
+      self.dispatchEvent('mousewheelstart', obj);
+    }
+    scrolling = true;
+    self.dispatchEvent('mousewheel', obj);
+  }
+
+  function handlePageScroll(evt) {
+    if (mouse.overMap()) {
+      evt.preventDefault();
+      var direction = 0; // 1 = zoom in / scroll up, -1 = zoom out / scroll down
+      if (evt.wheelDelta) {
+        direction = evt.wheelDelta > 0 ? 1 : -1;
+      }
+      if (evt.detail) {
+        direction = evt.detail > 0 ? -1 : 1;
+      }
+
+      prevWheelTime = (new Date()).getTime();
+      currDirection = direction;
+    }
+  }
+}
+
+Opts.inherit(MouseWheelHandler, EventDispatcher);
+
+/** @requires events, tweening, hybrid-mouse, hybrid-mousewheel */
+
+
+function MshpMouse(ext) {
+  var p = ext.position(),
+      mouse = new HybridMouse({touchClick: true}),
+      _fx, _fy; // zoom foci, [0,1]
+
+  var zoomTween = new NumberTween(function(scale, done) {
+    ext.rescale(scale, _fx, _fy);
+  });
+
+  mouse.setMapContainer(p.element)
+  calibrate();
+  ext.on('resize', calibrate);
+
+  function calibrate() {
+    var o = ext.position();
+    mouse.updateContainerBounds(o.pageX, o.pageY + o.height, o.pageX + o.width, o.pageY);
+  }
+
+  mouse.on('dblclick', function(e) {
+    var from = ext.scale(),
+        to = from * 3;
+    _fx = e.mapX / ext.width();
+    _fy = e.mapY / ext.height();
+    zoomTween.start(from, to);
+  });
+
+  mouse.on('drag', function(e) {
+    ext.pan(e.deltaX, e.deltaY);
+  });
+
+  var wheel = new MouseWheelHandler(mouse);
+  wheel.on('mousewheel', function(e) {
+    var k = 1 + (0.055 * e.multiplier),
+        delta = e.direction > 0 ? k : 1 / k;
+    ext.rescale(ext.scale() * delta, e.mapX / ext.width(), e.mapY / ext.height());
+  });
+}
+
+
+/* @requires element-position, events, mapshaper-maplayer, bounds, arrayutils, mapshaper-mouse */
+
+//
+//
+function MshpMap(el, opts_) {
+  var defaults = {
+    bounds: null,
+    padding: 0 // can be [xmin, ymin, xmax, ymax] array
+  };
+  var opts = Utils.extend(defaults, opts_);
+  var missing = Utils.nullKeys(opts);
+  if (missing) {
+    error("[MshpMap()] missing required param/s:", missing.join(', '));
+  }
+
+  var _root = El(el);
+
+  var _slider,
+      _groups = [];
+
+  var _ext = new MapExtent(_root, opts.bounds).setContentPadding(opts.padding);
+  var _mouse = new MshpMouse(_ext);
+
+  this.getExtent = function() {
+    return _ext;
+  }
+
+  this.addLayerGroup = function(group) {
+    if (this.isReady()) error("#addLayerGroup() TODO: add a group after map is READY");
+    group.setMap(this);
+    _groups.push(group);
+  };
+
+
+  this.getElement = function() {
+    return _root;
+  };
+
+  this.display = function() {
+    this.startWaiting();
+    this.dispatchEvent('display');
+  };
+
+  /*
+  function editLayer(lyr) {
+    if (_activeLyr == lyr) return;
+    if (_activeLyr) error("MshpMap#editLayer() multiple layers not supported");
+    _activeLyr = lyr;
+  }
+  */
+}
+
+Opts.inherit(MshpMap, Waiter);
+
+function MapExtent(el, initialBounds) {
+  var _position = new ElementPosition(el),
+      _spacing = new FourSides(),
+      _self = this,
+      _fullBounds,
+      _cx,
+      _cy,
+      _scale = 1;
+
+  if (!initialBounds || !initialBounds.hasBounds() || _position.width() > 0 == false || _position.height() > 0 == false) {
+    error("[MapExtent] Usage: new MapExtent(w:Pixels, h:Pixels, content:Bounds)");
+  }
+
+  _position.on('resize', function() {
+    _fullBounds = getFullBounds();
+    this.dispatchEvent('change');
+    this.dispatchEvent('resize');
+  }, this);
+
+  this.resize = function(w, h) { _position.resize(w, h)};
+
+  this.reset = function() {
+    _fullBounds = getFullBounds();
+    this.recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1);
+  }
+
+  this.recenter = function(cx, cy, scale) {
+    if (!scale) scale = _scale;
+    if (!(cx == _cx && cy == _cy && scale == _scale)) {
+      _cx = cx, _cy = cy, _scale = scale;
+      _self.dispatchEvent('change');
+    }    
+  };
+
+
+  this.pan = function(xpix, ypix) {
+    var t = this.getTransform();
+    this.recenter(_cx - xpix / t.mx, _cy - ypix / t.my);
+  };
+
+  // Zoom to @scale (a multiple of the map's full scale)
+  // @xpct, @ypct: optional focus, [0-1]...
+  //
+  //
+  this.rescale = function(scale, xpct, ypct) {
+    if (arguments.length < 3) {
+      xpct = 0.5, ypct = 0.5;
+    }
+    var b = this.getBounds(),
+        fx = b.xmin + xpct * b.width(),
+        fy = b.ymax - ypct * b.height(),
+        dx = b.centerX() - fx,
+        dy = b.centerY() - fy,
+        ds = _scale / scale,
+        dx2 = dx * ds,
+        dy2 = dy * ds,
+        cx = fx + dx2,
+        cy = fy + dy2;
+    this.recenter(cx, cy, scale);
+  }
+
+  this.width = _position.width;
+  this.height = _position.height;
+  this.position = _position.position;
+  this.scale = function() { return _scale };
+
+  // this.pan = function(dx, dy) {};
+  // this.setCenter = function(x, y) {};
+  // this.zoomToBounds
+  // this.setZoom
+
+  function getFullBounds() {
+    return getContentBounds(initialBounds);
+  }
+
+  // 
+  function getContentBounds(bb) {
+    // 1. get pix bounds
+    var viewport = new Bounds(0, 0, _position.width(), _position.height());
+
+    // 2. inset by pixel padding
+    viewport.padBounds(-_spacing.left, -_spacing.top, -_spacing.right, -_spacing.bottom);
+
+    // 4. expand content bounds to fit viewport aspect ratio
+    return bb.clone().fillOut(viewport.width() / viewport.height());
+  }
+
+  this.setContentPadding = function(l, t, r, b) {
+    if (arguments.length == 1) {
+      t = l, r = l, b = l;
+    }
+    _spacing = new FourSides(l, t, r, b);
+    return this;
+  };
+
+  function getBounds() {
+    return calcBounds(_cx, _cy, _scale);
+  }
+
+  function calcBounds(cx, cy, scale) {
+    var w = _fullBounds.width() / scale,
+        h = _fullBounds.height() / scale;
+    return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+  }
+
+  this.getBounds = function() {
+    return getBounds();
+  };
+
+  // Get params for converting map to pixel coords
+  //
+  this.getTransform = function() {
+    // get transform (y-flipped);
+    return getBounds().getTransform(new Bounds(0, 0, _position.width(), _position.height()), true);
+  };
+
+  this.reset();
+}
+
+Opts.inherit(MapExtent, EventDispatcher);
+
+
+/* @requires core */
+
+Utils.loadBinaryData = function(url, callback) {
+  // TODO: throw error if ajax or arraybuffer not available
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', url, true);
+  xhr.responseType = 'arraybuffer';
+  xhr.onload = function(e) {
+    callback(this.response);
+  };
+  xhr.send();
+};
+
+/* @requires mapshaper-common, mapshaper-geom, median, sorting */
+
+// TODO; calculate pct based on distinct points in the dataset
+// TODO: pass number of points as a parameter instead of calculating it
+MapShaper.getThresholdByPct = function(arr, retainPct) {
+  if (retainPct <= 0 || retainPct >= 1) error("Invalid simplification pct:", retainPct);
+  var tmp = MapShaper.getInnerThresholds(arr);
+  var k = Math.floor((1 - retainPct) * tmp.length);
+  return Utils.findValueByRank(tmp, k + 1); // rank start at 1
+};
+
+// Receive: array of arrays of simplification thresholds arcs[vertices[]]
+// Return: one array of all thresholds, sorted in ascending order
+//
+MapShaper.getSortedThresholds = function(arr) {
+  var merged = MapShaper.getInnerThresholds(arr);
+  Utils.quicksort(merged, false);
+  return merged;
+};
+
+MapShaper.getInnerThresholds = function(arr) {
+  var n = arr.length;
+  var count = 0,
+      nth=2;
+  for (var i=0; i<n; i++) {
+    count += Math.ceil((arr[i].length - 2) / nth);
+  }
+  var tmp = new Float64Array(count),
+      idx = 0;
+  for (i=0; i<n; i++) {
+    var thresholds = arr[i];
+    for (var j=1, lim=thresholds.length - 1; j < lim; j+= nth) {
+      tmp[idx++] = thresholds[j];
+    }
+  }
+  if (idx != count) error("Counting error");
+  return tmp;
+};
+
+MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
+  if (!Utils.isArray(arcs) || !Utils.isArray(thresholds) ||
+      arcs.length != thresholds.length  || !Utils.isNumber(retainedPct))
+    error("Invalid arguments; expected [Array], [Array], [Number]");
+  T.start();
+  var thresh = MapShaper.getThresholdByPct(thresholds, retainedPct);
+  T.stop("Find simplification interval");
+
+  T.start();
+  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh, opts);
+  T.stop("Remove vertices");
+  return thinned;
+};
+
+
+// Strip interior points from an arc.
+// @retained gives the number of interior points to leave in (retains those
+//    with the highest thresholds)
+//
+MapShaper.stripArc = function(xx, yy, uu, retained) {
+  var data = [],
+      len = xx.length,
+      min, u, xx2, yy2;
+  if (len < 2) error("Invalid arc");
+
+  if (retained > 0) {
+    for (var i=1, lim=len-1; i<lim; i++) {
+      u = uu[i];
+      if (data.length < retained) {
+        data.push({i:i, u:u});
+      } else if ((min=data[0]).u < u) {
+        min.u = u;
+        min.i = i;
+      }
+      if (retained > 1) Utils.sortOn(data, 'u', true);
+    }
+    Utils.sortOn(data, 'i', true);
+  }
+  xx2 = [xx[0]];
+  yy2 = [yy[0]];
+  Utils.forEach(data, function(obj) {
+    xx2.push(xx[obj.i]);
+    yy2.push(yy[obj.i]);
+  })
+  xx2.push(xx[len-1]);
+  yy2.push(yy[len-1]);
+  return [xx2, yy2];
+};
+
+MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints) {
+  var xdest = [],
+      ydest = [],
+      srcLen = xsrc.length,
+      destLen;
+
+  if (ysrc.length != srcLen || uu.length != srcLen || srcLen < 2)
+    error("[thinArcByThreshold()] Invalid arc data");
+
+  for (var i=0; i<srcLen; i++) {
+    if (uu[i] > interval) {
+      xdest.push(xsrc[i]);
+      ydest.push(ysrc[i]);
+    }
+  }
+
+  if (xdest.length < retainedPoints + 2) { // minInteriorPoints doesn't include endpoints
+    var stripped = MapShaper.stripArc(xsrc, ysrc, uu, retainedPoints);
+    xdest = stripped[0];
+    ydest = stripped[1];
+  }
+
+  // remove island rings that have collapsed (i.e. fewer than 4 points)
+  // TODO: make sure that other kinds of collapsed rings are handled
+  //    (maybe during topology phase, via minPoints array)
+  //
+  destLen = xdest.length;
+  if (destLen < 4 && xdest[0] == xdest[destLen-1] && ydest[0] == ydest[destLen-1]) {
+    xdest = [];
+    ydest = [];
+  }
+
+  return [xdest, ydest];
+};
+
+
+MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval, opts) {
+  if (!Utils.isArray(srcArcs) || srcArcs.length != thresholds.length)
+    error("[thinArcsByInterval()] requires matching arrays of arcs and thresholds");
+  if (!Utils.isNumber(interval))
+    error("[thinArcsByInterval()] requires an interval");
+
+  var retainPoints = !!opts.minPoints;
+  if (retainPoints && opts.minPoints.length != srcArcs.length)
+    error("[thinArcsByInterval()] Retained point array doesn't match arc length");
+
+  var arcs = [],
+      fullCount = 0,
+      thinnedCount = 0;
+  for (var i=0, l=srcArcs.length; i<l; i++) {
+    var srcArc = srcArcs[i];
+    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval, retainPoints ? opts.minPoints[i] : 0);
+    fullCount += srcArc[0].length;
+    thinnedCount += arc[0].length;
+    arcs.push(arc);
+  }
+  return {
+    arcs: arcs,
+    info: {
+      original_arc_points: fullCount,
+      thinned_arc_points: thinnedCount
+    }
+  };
+};
+
+
+// Convert arrays of lng and lat coords (xsrc, ysrc) into 
+// x, y, z coords on the surface of a sphere with radius 6378137
+// (the radius of spherical Earth datum in meters)
+//
+MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
+  var deg2rad = Math.PI / 180,
+      r = 6378137;
+  for (var i=0, len=xsrc.length; i<len; i++) {
+    var lng = xsrc[i] * deg2rad,
+        lat = ysrc[i] * deg2rad,
+        cosLat = Math.cos(lat);
+    xbuf[i] = Math.cos(lng) * cosLat * r;
+    ybuf[i] = Math.sin(lng) * cosLat * r;
+    zbuf[i] = Math.sin(lat) * r;
+  }
+}
+
+// Apply a simplification function to each arc in an array, return simplified arcs.
+// 
+// @simplify: function(xx:array, yy:array, [zz:array], [length:integer]):array
+//
+MapShaper.simplifyArcs = function(arcs, simplify, opts) {
+  T.start();
+  var arcs;
+  if (opts && opts.spherical) {
+    arcs = MapShaper.simplifyArcsSph(arcs, simplify);
+  } else {
+    arcs = Utils.map(arcs, function(arc) {
+      return simplify(arc[0], arc[1]);
+    });
+  }
+  T.stop("Calculate simplification data");
+  return arcs
+};
+
+
+MapShaper.simplifyArcsSph = function(arcs, simplify) {
+  var bufSize = 0,
+      xbuf, ybuf, zbuf;
+
+  var data = Utils.map(arcs, function(arc) {
+    var arcLen = arc[0].length;
+    if (bufSize < arcLen) {
+      bufSize = Math.round(arcLen * 1.2);
+      xbuf = new Float64Array(bufSize);
+      ybuf = new Float64Array(bufSize);
+      zbuf = new Float64Array(bufSize);
+    }
+
+    MapShaper.convLngLatToSph(arc[0], arc[1], xbuf, ybuf, zbuf);
+    return simplify(xbuf, ybuf, zbuf, arcLen);
+  });
+  return data;
+};
+
+/* @requires core */
+
+// A heap data structure used for computing Visvalingam simplification data.
+//
+function Heap() {
+  var maxItems,
+      dataOffs, dataArr,
+      itemsInHeap,
+      poppedVal,
+      heapArr, indexArr;
+
+  this.addValues = function(values, start, end) {
+    var minId = start | 0,
+        maxItems = (end == null ? values.length : end + 1) - minId;
+    dataOffs = minId,
+    dataArr = values;
+    itemsInHeap = 0;
+    reserveSpace(maxItems);
+    for (var i=0; i<maxItems; i++) {
+      insert(i, i + dataOffs); // push item onto the heap
+    }
+    itemsInHeap = maxItems;
+    for (var j=(itemsInHeap-2) >> 1; j >= 0; j--) {
+      downHeap(j);
+    }
+    poppedVal = -Infinity;
+  };
+
+  this.heapSize = function() {
+    return itemsInHeap;
+  };
+
+  // Update a single value and re-heap.
+  //
+  this.updateValue = function(valId, val) {
+    // TODO: move this logic out of heap
+    if (val < poppedVal) {
+      // don't give updated values a lesser value than the last popped vertex
+      // (required by visvalingam)
+      val = poppedVal;
+    }
+    dataArr[valId] = val;
+    var heapIdx = indexArr[valId - dataOffs];
+    if (heapIdx == null || heapIdx >= itemsInHeap) error("[updateValue()] out-of-range heap index.");
+    reHeap(heapIdx);
+  };
+
+
+  this.testHeapOrder = function() {
+    checkNode(0, -Infinity);
+    return true;
+  };
+
+  // Return the idx of the lowest-value item in the heap
+  //
+  this.pop = function() {
+    if (itemsInHeap <= 0) error("Tried to pop from an empty heap.");
+    var minValId = heapArr[0],
+        lastIdx = --itemsInHeap;
+    if (itemsInHeap > 0) {
+      insert(0, heapArr[lastIdx]);// copy last item in heap into root position
+      downHeap(0);
+    }
+    poppedVal = dataArr[minValId];
+    return minValId;
+  };
+
+
+  function reserveSpace(heapSize) {
+    if (!heapArr || heapSize > heapArr.length) {
+      var bufLen = heapSize * 1.2 | 0;
+      heapArr = new Int32Array(bufLen);
+      indexArr = new Int32Array(bufLen); 
+    }
+  };
+
+
+  // Associate a heap idx with the id of a value in valuesArr
+  //
+  function insert(heapIdx, valId) {
+    indexArr[valId - dataOffs] = heapIdx;
+    heapArr[heapIdx] = valId;
+  }
+
+  // Check that heap is ordered starting at a given node
+  // (traverses heap recursively)
+  //
+  function checkNode(heapIdx, parentVal) {
+    if (heapIdx >= itemsInHeap) {
+      return;
+    }
+    var val = dataArr[heapArr[heapIdx]];
+    if (parentVal > val) error("Heap is out-of-order");
+    var childIdx = heapIdx * 2 + 1;
+    checkNode(childIdx, val);
+    checkNode(childIdx + 1, val);
+  }
+
+  function getMinChildIdx(i, j) {
+    if (i >= itemsInHeap) error("Heap index error");
+    return j >= itemsInHeap || dataArr[heapArr[i]] <= dataArr[heapArr[j]] ? i : j;
+  }
+
+  function reHeap(idx) {
+    if (idx < 0 || idx >= itemsInHeap)
+      error("Out-of-bounds heap idx passed to reHeap()");
+    downHeap(upHeap(idx));
+  }
+
+  function upHeap(currIdx) {
+    var valId = heapArr[currIdx],
+        currVal = dataArr[valId],
+        parentIdx, parentValId, parentVal;
+
+    // Move item up in the heap until it's at the top or is heavier than its parent
+    //
+    while (currIdx > 0) {
+      parentIdx = (currIdx - 1) >> 1; // integer division by two gives idx of parent
+      parentValId = heapArr[parentIdx];
+      parentVal = dataArr[parentValId];
+
+      if (parentVal <= currVal) {
+        break;
+      }
+
+      // out-of-order; swap child && parent
+      insert(currIdx, parentValId);
+      insert(parentIdx, valId);
+      currIdx = parentIdx;
+      // if (dataArr[heapArr[currIdx]] !== currVal) error("Lost value association");
+    }
+    return currIdx;
+  }
+
+  function downHeap(currIdx) {
+    // Item gets swapped with any lighter children
+    //
+    var valId = heapArr[currIdx],
+        currVal = dataArr[valId],
+        firstChildIdx = 2 * currIdx + 1,
+        minChildIdx, childValId, childVal;
+
+    while (firstChildIdx < itemsInHeap) {
+      minChildIdx = getMinChildIdx(firstChildIdx, firstChildIdx + 1);
+      childValId = heapArr[minChildIdx];
+      childVal = dataArr[childValId];
+
+      if (currVal <= childVal) {
+        break;
+      }
+
+      insert(currIdx, childValId);
+      insert(minChildIdx, valId);
+
+      // descend in the heap:
+      currIdx = minChildIdx;
+      firstChildIdx = 2 * currIdx + 1;
+    }
+  }
+}
+
+/* @requires mapshaper-common, mapshaper-geom, mapshaper-heap, core.geo */
+
+var Visvalingam = {};
+
+MapShaper.Heap = Heap; // export Heap for testing
+
+Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
+  var bufLen = 0,
+      heap = new Heap(),
+      prevArr, nextArr,
+      scale = scale || 1;
+
+  // Calculate Visvalingam simplification data for an arc
+  // Receives arrays of x- and y- coordinates, optional array of z- coords
+  // Returns an array of simplification thresholds, one per arc vertex.
+  //
+  var calcArcData = function(xx, yy, zz, len) {
+    var arcLen = len || xx.length,
+        useZ = !!zz,
+        threshold,
+        ax, ay, bx, by, cx, cy;
+
+    if (arcLen > bufLen) {
+      bufLen = Math.round(arcLen * 1.2);
+      prevArr = new Int32Array(bufLen);
+      nextArr = new Int32Array(bufLen);
+    }
+
+    // Initialize Visvalingam "effective area" values and references to 
+    //   prev/next points for each point in arc.
+    //
+    var values = new Float64Array(arcLen);
+
+    for (var i=1; i<arcLen-1; i++) {
+      ax = xx[i-1];
+      ay = yy[i-1];
+      bx = xx[i];
+      by = yy[i];
+      cx = xx[i+1];
+      cy = yy[i+1];
+
+      if (!useZ) {
+        threshold = metric2D(ax, ay, bx, by, cx, cy);
+      } else {
+        threshold = metric3D(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
+      }
+
+      values[i] = threshold;
+      nextArr[i] = i + 1;
+      prevArr[i] = i - 1;
+    }
+    prevArr[arcLen-1] = arcLen - 2;
+    nextArr[0] = 1;
+
+    // Initialize the heap with thresholds; don't add first and last point
+    heap.addValues(values, 1, arcLen-2);
+
+    // Calculate removal thresholds for each internal point in the arc
+    //
+    var idx, nextIdx, prevIdx;
+    while(heap.heapSize() > 0) {
+
+      // Remove the point with the least effective area.
+      idx = heap.pop();
+      if (idx < 1 || idx > arcLen - 2) {
+        error("Popped first or last arc vertex (error condition); idx:", idx, "len:", arcLen);
+      }
+
+      // Recompute effective area of neighbors of the removed point.
+      prevIdx = prevArr[idx];
+      nextIdx = nextArr[idx];
+      ax = xx[prevIdx];
+      ay = yy[prevIdx];
+      bx = xx[nextIdx];
+      by = yy[nextIdx];
+
+      if (prevIdx > 0) {
+        cx = xx[prevArr[prevIdx]];
+        cy = yy[prevArr[prevIdx]];
+        if (!useZ) {
+          threshold = metric2D(bx, by, ax, ay, cx, cy); // next point, prev point, prev-prev point
+        } else {
+          threshold = metric3D(bx, by, zz[nextIdx], ax, ay, zz[prevIdx], cx, cy, zz[prevArr[prevIdx]]);
+        }
+        heap.updateValue(prevIdx, threshold);
+      }
+      if (nextIdx < arcLen-1) {
+        cx = xx[nextArr[nextIdx]];
+        cy = yy[nextArr[nextIdx]];
+        if (!useZ) {
+          threshold = metric2D(ax, ay, bx, by, cx, cy); // prev point, next point, next-next point
+        } else {
+          threshold = metric3D(ax, ay, zz[prevIdx], bx, by, zz[nextIdx], cx, cy, zz[nextArr[nextIdx]]);
+        }
+        heap.updateValue(nextIdx, threshold);
+      }
+      nextArr[prevIdx] = nextIdx;
+      prevArr[nextIdx] = prevIdx;
+    }
+
+    // convert area metric to a linear equivalent
+    //
+    for (var j=1; j<arcLen-1; j++) {
+      values[j] = Math.sqrt(values[j]) * scale;
+    }
+    values[0] = values[arcLen-1] = Infinity; // arc endpoints
+    return values;
+  };
+
+  return calcArcData;
+};
+
+
+
+// The original mapshaper "modified Visvalingam" function uses a step function to 
+// underweight more acute triangles.
+//
+Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
+  var area = triangleArea(ax, ay, bx, by, cx, cy),
+      angle = innerAngle(ax, ay, bx, by, cx, cy),
+      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
+  return area * weight;
+};
+
+
+Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      angle = innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
+  return area * weight;
+};
+
+Visvalingam.standardMetric = triangleArea;
+Visvalingam.standardMetric3D = triangleArea3D;
+
+// Experimenting with a replacement for "Modified Visvalingam"
+//
+Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
+  var area = triangleArea(ax, ay, bx, by, cx, cy),
+      standardLen = area * 1.4,
+      hyp = Math.sqrt((ax + cx) * (ax + cx) + (ay + cy) * (ay + cy)),
+      weight = hyp / standardLen;
+  return area * weight;
+};
+
+
+
+/* @requires
+mapshaper-index,
+mapshaper-shapes,
+mapshaper-controls,
+mapshaper-topology,
+mapshaper-map,
+mapshaper-maplayer,
+mapshaper-simplify,
+mapshaper-visvalingam,
+nodejs
+loading.html5
+*/
+
+var api = {
+  BoundsIndex: BoundsIndex,
+  ArcCollection: ArcCollection,
+  Utils: Utils,
+  BoundingBox: BoundingBox,
+  controls: controls,
+  trace: trace,
+  error: error
+}
+
+
+if (Node.inNode) { // node.js for testing
+  module.exports = api;
+} else {
+  Opts.extendNamespace("mapshaper", api);
+}
+
+
+/* @requires mapshaper-gui-lib */
+
+if (Browser.inBrowser) {
+  Browser.onload(function() {
+    var testFile;
+    if (!browserIsSupported()) {
+      El("#mshp-not-supported").show();
+    } else if (testFile = Browser.getQueryVar('file')) {
+      editorTest(testFile);
+    } else {
+      introPage();
+    }
+  })
+}
+
+function introPage() {
+  new ImportPanel(editorPage);
+  El("#mshp-import").show();   
+}
+
+function browserIsSupported() {
+  return Env.inBrowser && Env.canvas && typeof 'ArrayBuffer' != 'undefined';
+}
+
+function editorTest(shp) {
+  Utils.loadBinaryData(shp, function(buf) {
+    var shpData = MapShaper.importShp(buf),
+        opts = {};
+    editorPage(shpData, opts);
+  })
+}
+
+function editorPage(importData, opts) {
+  trace(">>> editorPage; opts:", opts)
+  var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+
+
+  // hide intro page
+  El("#mshp-intro-screen").hide();
+  // show main page
+  El("#mshp-main-page").show();
+
+  // init editor
+
+  var arcs = new ArcCollection(topoData.arcs);
+  var intervalScale = 0.65, // TODO: tune this
+      sopts = { spherical: false },
+      calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
+      vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
+
+  arcs.setThresholds(vertexData);
+
+  var group = new ArcLayerGroup(arcs);
+
+  var opts = {
+    bounds: arcs.getBounds(),
+    spacing: 12
+  };
+
+  var map = new MshpMap("#mshp-main-map", opts);
+  map.addLayerGroup(group);
+  map.display();
+
+  var slider = new SimplifyControl();
+
+  slider.on('change', function(e) {
+    arcs.setRetainedPct(e.value);
+    group.refresh();
+  });
+}
+
+})();
