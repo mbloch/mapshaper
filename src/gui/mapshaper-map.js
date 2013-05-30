@@ -62,7 +62,7 @@ function MapExtent(el, initialBounds) {
       _scale = 1;
 
   if (!initialBounds || !initialBounds.hasBounds() || _position.width() > 0 == false || _position.height() > 0 == false) {
-    error("[MapExtent] Usage: new MapExtent(w:Pixels, h:Pixels, content:Bounds)");
+    error("[MapExtent] Usage: new MapExtent(div, bbox:Bounds)");
   }
 
   _position.on('resize', function() {
@@ -118,16 +118,11 @@ function MapExtent(el, initialBounds) {
   this.position = _position.position;
   this.scale = function() { return _scale };
 
-  // this.pan = function(dx, dy) {};
-  // this.setCenter = function(x, y) {};
-  // this.zoomToBounds
-  // this.setZoom
-
   function getFullBounds() {
     return getContentBounds(initialBounds);
   }
 
-  // 
+  //
   function getContentBounds(bb) {
     // 1. get pix bounds
     var viewport = new Bounds(0, 0, _position.width(), _position.height());
