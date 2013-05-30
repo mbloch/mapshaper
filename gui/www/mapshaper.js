@@ -1695,6 +1695,10 @@ Bounds.prototype.toString = function() {
   });
 };
 
+Bounds.prototype.toArray = function() {
+  return [this.xmin, this.ymin, this.xmax, this.ymax];
+};
+
 Bounds.prototype.hasBounds = function() {
   return !isNaN(this.ymax);
 };
@@ -1914,8 +1918,7 @@ MapShaper.calcArcBounds = function(xx, yy) {
   return [xb.min, yb.min, xb.max, yb.max];
 };
 
-// ArcCollection has methods for finding the arcs inside a bounding box and the
-//   nearest arc to an (x, y) location.
+// ArcCollection ...
 // Receive array of arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
 //
 function ArcCollection(coords) {
@@ -1940,9 +1943,6 @@ function ArcCollection(coords) {
 
   var arcIter = new ArcIter();
   // var shapeIter = new ShapeIter(this);
-
-  // 
-  // var index = new BoundsIndex(boxes);
 
   this.getArcIter = function(i, reverse) {
     var xx = coords[i][0],
@@ -1970,59 +1970,30 @@ function ArcCollection(coords) {
     }
   }
 
-  // Optimize: generally don't need a new object, could reuse
-  //
   this.getShapeIter = function(ids) {
     var iter = new ShapeIter(this);
     iter.init(ids);
     return iter;
   }
 
-  function mergeBounds(dest, src) {
-    if (!dest) {
-      dest = src.concat();
-    } else {
-      if (src[0] < dest[0]) {
-        dest[0] = src[0];
-      }
-      if (src[1] < dest[1]) {
-        dest[1] = src[1];
-      }
-      if (src[2] > dest[2]) {
-        dest[2] = src[2];
-      }
-      if (src[3] > dest[3]) {
-        dest[3] = src[3];
-      }
-    }
-    return dest;
-  }
-
-  // TODO: rework bounds checking;
-  //   instead of creating Bounds objects for Arcs and Shapes,
-  //   instead could call a method to test for bounds intersection...
-  //
-
-  this.getArcBounds = function(i) {
-    return new Bounds(boxes[i]);
+  this.testArcIntersection = function(b1, i) {
+    var b2 = boxes[i];
+    return b2[0] <= b1[2] && b2[2] >= b1[0] && b2[3] >= b1[1] && b2[1] <= b1[3];
   };
 
-  this.getShapeBounds = function(ids) {
-    var b = null;
+  this.testShapeIntersection = function(bbox, ids) {
     for (var i=0, n=ids.length; i<n; i++) {
-      b = mergeBounds(b, boxes[ids[i]]);
+      if (this.testArcIntersection(bbox, ids[i])) return true;
     }
-    return b;
+    return false;
   };
 
-  this.getMultiShapeBounds = function(parts) {
-    var b = null;
+  this.testMultiShapeIntersection = function(bbox, parts) {
     for (var i=0, n=parts.length; i<n; i++) {
-      b = mergeBounds(b, getShapeBounds(parts[i]));
+      if (this.testShapeIntersection(bbox, parts[i])) return true;
     }
-    return b;
+    return true;
   };
-
 
   this.size = function() {
     return len;
@@ -2036,7 +2007,7 @@ function ArcCollection(coords) {
     var shapes = Utils.map(data, function(datum, i) {
       return new shapeClass(this, datum);
     }, this);
-    return new ShapeCollection(shapes);
+    return new ShapeCollection(shapes, bounds);
   };
 
   this.getArcs = function() {
@@ -2050,17 +2021,19 @@ function ArcCollection(coords) {
   this.getMultiShapes = function(arr) {
     return this.getShapeCollection(arr, MultiShape);
   };
- 
 }
 
 //
 //
-function ShapeCollection(shapes) {
+function ShapeCollection(shapes, bounds) {
   this.getShapesInBounds = function(bb) {
-    // TODO: could avoid checking individual bounds at full extent
-    var arr = Utils.filter(shapes, function(shp) {
-      return bb.intersects(shp.bounds);
-    });
+    if (bb.contains(bounds)) return shapes;
+    var arr = [],
+        bbox = bb.toArray();
+    for (var i=0, n=shapes.length; i<n; i++) {
+      var shp = shapes[i];
+      if (shp.inBounds(bbox)) arr.push(shp);
+    }
     return arr;
   };
 
@@ -2071,29 +2044,34 @@ function ShapeCollection(shapes) {
 
 //
 function MultiShape(src, parts) {
-  this.bounds = src.getMultiShapeBounds(parts);
   this.partCount = part.length;
   this.getShapeIter = function(i) {
     return src.getShapeIter(parts[i]);
   };
+  this.inBounds = function(bbox) {
+    return src.testMultiShapeIntersection(bbox, parts);
+  };
 }
 
 function Shape(src, ids) {
-  this.bounds = src.getShapeBounds(ids);
   this.partCount = 1;
   this.getShapeIter = function() {
     return src.getShapeIter(ids);
   };
+  this.inBounds = function(bbox) {
+    return src.testShapeIntersection(bbox, ids);
+  };
 }
 
 function Arc(src, id) {
-  this.bounds = src.getArcBounds(id);
   this.partCount = 1;
   this.getShapeIter = function() {
     return src.getArcIter(id);
   };
+  this.inBounds = function(bbox) {
+    return src.testArcIntersection(bbox, id);
+  };
 }
-
 
 
 function ShapeIter(arcs) {
@@ -2156,7 +2134,6 @@ function ArcIter() {
     return true;
   }
 
-
   function nextSimpleXY() {
     var z;
     if (i == stop) {
@@ -2173,6 +2150,28 @@ function ArcIter() {
     }
     return true;
   }
+
+  // TODO: finish
+  //
+  function nextFilteredXY() {
+    var z, idx;
+    if (i == stop) {
+      return false;
+    }
+    idx = _ww[i];
+    this.x = _xx[idx];
+    this.y = _yy[idx];
+    i += inc;
+    while (i != stop) {
+      idx = _ww[i];
+      z = _zz[idx];
+      if (z >= _zlim) break;
+      i += inc;
+    }
+    return true;
+  }
+
+
 };
 
 
@@ -6949,19 +6948,6 @@ function CanvasLayer() {
 }
 
 
-CanvasLayer.prototype.clear = function() {
-  if (!this.__updateCanvasSize()) {
-    var c = this._canvas;
-    var ctx = c.getContext('2d');
-
-    // Note: the commented-out lines would preserve a transform on the canvas.
-    // ctx.save();
-    // ctx.setTransform(1, 0, 0, 1, 0, 0);// Use the identity matrix while clearing the canvas
-    ctx.clearRect(0, 0, c.width, c.height);
-    // ctx.restore();
-  }
-};
-
 /* @requires elements, mapshaper-canvas */
 
 
@@ -7148,7 +7134,7 @@ function Timer() {
       this.stop();
       return;
     }
-    var obj = {elapsed: elapsed, count: _count, time:now, interval:interval};
+    var obj = {elapsed: elapsed, count: _count, time:now, interval:interval, period: _interval};
     _callback && _callback(obj);
     _self.dispatchEvent('tick', obj);
 
@@ -8197,12 +8183,11 @@ function MouseWheelHandler(mouse) {
       return;
     }
 
-    // Assign a multiplier of (0-1) if the timer fires during 'fade time' (for smoother zooming)
-    // TODO: consider moving this calculation to the navigation manager, where it is applied.
-    var multiplier = 1;
+    var multiplier = evt.interval / evt.period; // 1;
     var fadeElapsed = elapsed - sustainTime;
     if (fadeElapsed > 0) {
-      multiplier = Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
+      // Adjust multiplier if the timer fires during 'fade time' (for smoother zooming)
+      multiplier *= Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
     }
 
     var obj = mouse.getCurrentMouseData();
@@ -8340,7 +8325,7 @@ function MapExtent(el, initialBounds) {
       _scale = 1;
 
   if (!initialBounds || !initialBounds.hasBounds() || _position.width() > 0 == false || _position.height() > 0 == false) {
-    error("[MapExtent] Usage: new MapExtent(w:Pixels, h:Pixels, content:Bounds)");
+    error("[MapExtent] Usage: new MapExtent(div, bbox:Bounds)");
   }
 
   _position.on('resize', function() {
@@ -8396,16 +8381,11 @@ function MapExtent(el, initialBounds) {
   this.position = _position.position;
   this.scale = function() { return _scale };
 
-  // this.pan = function(dx, dy) {};
-  // this.setCenter = function(x, y) {};
-  // this.zoomToBounds
-  // this.setZoom
-
   function getFullBounds() {
     return getContentBounds(initialBounds);
   }
 
-  // 
+  //
   function getContentBounds(bb) {
     // 1. get pix bounds
     var viewport = new Bounds(0, 0, _position.width(), _position.height());
