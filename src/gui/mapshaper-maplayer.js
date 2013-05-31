@@ -1,7 +1,7 @@
 /* @requires elements, mapshaper-canvas */
 
 
-// Layer group contains a 
+// Layer group... 
 //
 function ArcLayerGroup(src) {
   var _self = this;
@@ -16,8 +16,6 @@ function ArcLayerGroup(src) {
     return arguments.length == 0 ? _visible : _visible = !b, this;
   };
 
-  // add arc layer
-  //
   this.refresh = function() {
     if (_map && _map.isReady()) {
       drawLayers();  
@@ -34,13 +32,13 @@ function ArcLayerGroup(src) {
   function drawLayers() {
     if (!_self.visible()) return;
     var ext = _map.getExtent();
-    // trace("draw; w, h:", ext.width(), ext.height());
     _surface.prepare(ext.width(), ext.height());
-    //T.start();
+
     Utils.forEach(_layers, function(lyr) {
+      T.start();
       lyr.draw(ext); // visibility handled by layer
+      T.stop("draw");
     });
-    //T.stop("draw");
   }
 }
 
@@ -60,19 +58,9 @@ function ShapeLayer(src, surface) {
 
   this.draw = function(ext) {
     if (!this.visible()) return;
-
-    // option: get array of shapes to render
-    // option: get array of ids of shapes
-    //
-    // get visible shapes (in bounds if any)
-    var shapes = src.getShapesInBounds(ext.getBounds());
     var tr = ext.getTransform();
-    //trace("[ArcLayer#draw()] transform:", tr, "# in bounds:", shapes.length);
-
-    // pass to renderer
-    //
-    // renderer.drawShapes().
-    renderer.drawShapes(shapes, style, ext.getTransform(), surface.getContext());
+    var shapes = src.boundsFilter(ext.getBounds()).scaleFilter(tr.mx);
+    renderer.drawShapes(shapes, style, tr, surface.getContext());
   }
 }
 

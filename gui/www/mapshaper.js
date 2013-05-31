@@ -1930,6 +1930,8 @@ function ArcCollection(coords) {
       bounds = new Bounds();
 
   var thresholds = null,
+      filteredIds = null,
+      filteredSegLen = 0,
       sorted = null,
       zlimit = 0;
 
@@ -1944,20 +1946,66 @@ function ArcCollection(coords) {
   var arcIter = new ArcIter();
   // var shapeIter = new ShapeIter(this);
 
-  this.getArcIter = function(i, reverse) {
+  this.getArcIter = function(i, mpp) {
+    var reverse = i < 1;
+    if (reverse) {
+      i = -i + 1;
+    }
     var xx = coords[i][0],
-        yy = coords[i][1];
+        yy = coords[i][1],
+        filteredIds = this.getFilteredIds(i, mpp);
+
     if (zlimit) {
-      arcIter.init(xx, yy, !!reverse, thresholds[i], zlimit);
+      arcIter.init(xx, yy, !!reverse, thresholds[i], zlimit, filteredIds);
     } else {
-      arcIter.init(xx, yy, !!reverse); 
+      arcIter.init(xx, yy, !!reverse, null, null, filteredIds); 
     }
     return arcIter;
   };
 
+
   this.setThresholds = function(arr) {
     thresholds = arr;
-    sorted = MapShaper.getSortedThresholds(arr);
+
+    T.start();
+    sorted = MapShaper.getDescendingThresholds(arr, 16);
+    T.stop("sort")
+
+    T.start();
+
+    // get vertex ids for a filtered version of each arc, for faster rendering when zoomed out
+    var filterPct = 0.08,
+        filterZ = sorted[sorted.length * filterPct | 0];
+
+    var segCount = 0,
+        tot = 0;
+    filteredIds = Utils.map(thresholds, function(zz, j) {
+      var arr = [],
+          xy = coords[j],
+          x, y, prevX, prevY;
+      for (var i=0, n=zz.length; i<n; i++) {
+        if (zz[i] >= filterZ) {
+          x = xy[0][i];
+          y = xy[1][i];
+          if (i > 0) {
+            segCount++;
+            tot += Point.distance(prevX, prevY, x, y);
+          }
+          prevX = x;
+          prevY = y;
+          arr.push(i);
+        }
+      }
+      return arr;
+    });
+    filteredSegLen = tot / segCount;
+    T.stop('filter')
+    trace("segs:", segCount, 'avg:', filteredSegLen);
+  };
+
+  this.getFilteredIds = function(i, mpp) {
+    var ids = (filteredIds && filteredSegLen < mpp * 0.5) ? filteredIds[i] : null;
+    return ids;
   };
 
   this.setRetainedPct = function(pct) {
@@ -1970,15 +2018,43 @@ function ArcCollection(coords) {
     }
   }
 
-  this.getShapeIter = function(ids) {
+  this.getShapeIter = function(mpp, ids) {
     var iter = new ShapeIter(this);
-    iter.init(ids);
+    iter.init(ids, mpp);
     return iter;
-  }
+  };
 
   this.testArcIntersection = function(b1, i) {
     var b2 = boxes[i];
     return b2[0] <= b1[2] && b2[2] >= b1[0] && b2[3] >= b1[1] && b2[1] <= b1[3];
+  };
+
+  this.getArcBounds = function(i) {
+    return boxes[i];
+  };
+
+  // merge b into a
+  function mergeBounds(a, b) {
+    if (b[0] < a[0]) a[0] = b[0];
+    if (b[1] < a[1]) a[1] = b[1];
+    if (b[2] > a[2]) a[2] = b[2];
+    if (b[3] > a[3]) a[3] = b[3];
+  }
+
+  this.getShapeBounds = function(ids) {
+    var bounds = boxes[ids[0]].concat();
+    for (var i=1, n=ids.length; i<n; i++) {
+      mergeBounds(bounds, boxes[ids[i]]);
+    }
+    return bounds;
+  };
+
+  this.getMultiShapeBounds = function(parts) {
+    var bounds = this.getShapeBounds[parts[0]];
+    for (var i=1, n=parts.length; i<n; i++) {
+      mergeBounds(bounds, this.getShapeBounds(parts[i]));
+    }
+    return bounds;
   };
 
   this.testShapeIntersection = function(bbox, ids) {
@@ -2003,11 +2079,11 @@ function ArcCollection(coords) {
     return bounds;
   };
 
-  this.getShapeCollection = function(data, shapeClass) {
+  this.getShapeCollection = function(data, ShapeClass) {
     var shapes = Utils.map(data, function(datum, i) {
-      return new shapeClass(this, datum);
+      return new ShapeClass(this).init(datum);
     }, this);
-    return new ShapeCollection(shapes, bounds);
+    return new ShapeCollection(shapes, this.getBounds());
   };
 
   this.getArcs = function() {
@@ -2023,55 +2099,110 @@ function ArcCollection(coords) {
   };
 }
 
+
 //
 //
 function ShapeCollection(shapes, bounds) {
-  this.getShapesInBounds = function(bb) {
-    if (bb.contains(bounds)) return shapes;
-    var arr = [],
-        bbox = bb.toArray();
+  var _boundsFilter,
+      _scaleFilter;
+
+  this.boundsFilter = function(b) {
+    _boundsFilter = b;
+    return this;
+  };
+
+  this.scaleFilter = function(pixPer) {
+    _scaleFilter = 1/pixPer;
+    return this;
+  };
+
+  this.forEach = function(cb) {
+    var minShp = 1, // pixels
+        perPix = _scaleFilter,
+        viewBox = _boundsFilter.toArray();
+    var allIn = _boundsFilter ? _boundsFilter.contains(bounds) : true;
+
     for (var i=0, n=shapes.length; i<n; i++) {
       var shp = shapes[i];
-      if (shp.inBounds(bbox)) arr.push(shp);
+      if (perPix && shp.smallerThan(minShp * perPix)) continue;
+      if (!allIn && !shp.inBounds(viewBox)) continue;
+      for (var j=0; j<shp.partCount; j++) {
+        cb(shp.getShapeIter(perPix, j));
+      }
     }
-    return arr;
+    reset();
   };
 
-  this.getAllShapes = function() {
-    return shapes;
-  };
+  function reset() {
+    _boundsFilter = null;
+    _scaleFilter = null;
+  }
 }
+
+function Arc(src) {
+  this.src = src;
+}
+
+Arc.prototype = {
+  init: function(id) {
+    this.id = id;
+    this.bounds = this.src.getArcBounds(id);
+    return this;
+  },
+  partCount: 1,
+  getShapeIter: function(mpp) {
+    return this.src.getArcIter(this.id, mpp);
+  },
+  inBounds: function(bbox) {
+    return this.src.testArcIntersection(bbox, this.id);
+  },
+  smallerThan: function(units) {
+    var b = this.bounds;
+    return b[2] - b[0] < units && b[3] - b[1] < units;
+  }
+};
 
 //
-function MultiShape(src, parts) {
-  this.partCount = part.length;
-  this.getShapeIter = function(i) {
-    return src.getShapeIter(parts[i]);
-  };
-  this.inBounds = function(bbox) {
-    return src.testMultiShapeIntersection(bbox, parts);
-  };
+function MultiShape(src) {
+  this.src = src;
 }
 
-function Shape(src, ids) {
-  this.partCount = 1;
-  this.getShapeIter = function() {
-    return src.getShapeIter(ids);
-  };
-  this.inBounds = function(bbox) {
-    return src.testShapeIntersection(bbox, ids);
-  };
+MultiShape.prototype = {
+  init: function(parts) {
+    this.partCount = parts.length;
+    this.parts = parts;
+    this.bounds = this.src.getMultiShapeBounds(parts);
+    return this;
+  },
+  getShapeIter: function(mpp, i) {
+    return this.src.getShapeIter(mpp, this.parts[i]);
+  },
+  inBounds: function(bbox) {
+    return this.src.testMultiShapeIntersection(bbox, this.parts);
+  },
+  smallerThan: Arc.prototype.smallerThan
+};
+
+
+function Shape(src) {
+  this.src = src;
 }
 
-function Arc(src, id) {
-  this.partCount = 1;
-  this.getShapeIter = function() {
-    return src.getArcIter(id);
-  };
-  this.inBounds = function(bbox) {
-    return src.testArcIntersection(bbox, id);
-  };
-}
+Shape.prototype = {
+  partCount: 1,
+  init: function(ids) { 
+    this.ids = ids;
+    this.bounds = this.src.getShapeBounds(ids);
+    return this;
+  },
+  getShapeIter: function(mpp) {
+    return this.src.getShapeIter(mpp, this.ids);
+  },
+  inBounds: function(bbox) {
+    return this.src.testShapeIntersection(bbox, this.ids);
+  },
+  smallerThan: Arc.prototype.smallerThan
+};
 
 
 function ShapeIter(arcs) {
@@ -2106,71 +2237,83 @@ function ShapeIter(arcs) {
 
 
 function ArcIter() {
-  var _xx, _yy, _zz, _zlim;
-  var i, inc, stop;
+  var _xx, _yy, _zz, _zlim, _ww
+  var _i, _inc, _stop;
+  this.x = 0;
+  this.y = 0;
 
-  this.init = function(xx, yy, fw, zz, lim) {
-    var len = xx.length;
-    _xx = xx, _yy = yy, _zz = zz, _zlim = lim;
+  this.init = function(xx, yy, fw, zz, lim, ww) {
+    var len = ww ? ww.length : xx.length;
+    _xx = xx, _yy = yy, _zz = zz, _zlim = lim, _ww = ww;
     if (fw) {
-      i = 0;
-      inc = 1;
-      stop = len;
+      _i = 0;
+      _inc = 1;
+      _stop = len;
     } else {
-      i = len - 1;
-      inc = -1;
-      stop = -1;
+      _i = len - 1;
+      _inc = -1;
+      _stop = -1;
     }
-    this.hasNext = zz ? nextSimpleXY : nextXY;
+    if (ww) {
+      this.hasNext = zz ? nextFilteredSimpleXY : nextFilteredXY;
+    } else {
+      this.hasNext = zz ? nextSimpleXY : nextXY;
+    }
   };
 
   function nextXY() {
-    if (i == stop) {
-      return false;
-    }
-    this.x = _xx[i];
-    this.y = _yy[i];
-    i += inc;
+    if (_i == _stop) return false;
+    this.x = _xx[_i];
+    this.y = _yy[_i];
+    _i += _inc;
     return true;
   }
 
   function nextSimpleXY() {
-    var z;
+    // using local vars makes a big difference when skipping many points
+    var zz = _zz,
+        i = _i,
+        zlim = _zlim,
+        stop = _stop,
+        inc = _inc;
     if (i == stop) {
       return false;
     }
     this.x = _xx[i];
     this.y = _yy[i];
-    // iterate to next i
-    i += inc;
-    while (i != stop) {
-      z = _zz[i];
-      if (z >= _zlim) break;
+    do {
       i += inc;
-    }
+    } while (i != stop && zz[i] < zlim);
+    _i = i;
     return true;
   }
 
-  // TODO: finish
-  //
   function nextFilteredXY() {
-    var z, idx;
-    if (i == stop) {
-      return false;
-    }
-    idx = _ww[i];
+    if (_i == _stop) return false;
+    var idx = _ww[_i];
     this.x = _xx[idx];
     this.y = _yy[idx];
-    i += inc;
-    while (i != stop) {
-      idx = _ww[i];
-      z = _zz[idx];
-      if (z >= _zlim) break;
-      i += inc;
-    }
+    _i += _inc;
     return true;
   }
 
+  function nextFilteredSimpleXY() {
+    var ww = _ww,
+        zz = _zz,
+        i = _i,
+        zlim = _zlim,
+        inc = _inc,
+        stop = _stop;
+
+    if (i == stop) return false;
+    this.x = _xx[ww[i]];
+    this.y = _yy[ww[i]];
+    do {
+      i += inc;
+    } while (i != stop && zz[ww[i]] < zlim);
+    _i = i;
+    return true;
+  }
 
 };
 
@@ -6858,14 +7001,10 @@ Opts.inherit(ElementPosition, EventDispatcher);
 
 
 function ShapeRenderer() {
+
   this.drawShapes = function(shapes, style, tr, ctx) {
-    var mx = tr.mx, my = tr.my, bx = tr.bx, by = tr.by;
-    var shp, vec, x, y, nextX, nextY, drawPoint;
     var stroked = !!(style.strokeWidth && style.strokeColor),
         filled = !!style.fillColor;
-
-    var minSeg = 0.6;
-    var minShp = 1;
 
     if (stroked) {
       ctx.lineWidth = style.strokeWidth;
@@ -6879,42 +7018,40 @@ function ShapeRenderer() {
       trace("#drawLine() Line is missing stroke and fill; style:", style);
       return;
     }
-    for (var i=0, n=shapes.length; i<n; i++) {
-      shp = shapes[i];
-      //if (shp.bounds.width() * mx < minShp && shp.bounds.height() * mx < minShp) continue;
-      for (var j=0; j<shp.partCount; j++) {
-        vec = shp.getShapeIter(j);
-        if (vec.hasNext()) {
-          ctx.beginPath();
-          drawPoint = true;
-          x = vec.x * mx + bx;
-          y = vec.y * my + by;
-          ctx.moveTo(x, y);
-          while (vec.hasNext()) {
-            nextX = vec.x * mx + bx;
-            nextY = vec.y * my + by;
-            drawPoint = Math.abs(nextX - x) > minSeg || Math.abs(nextY - y) > minSeg;
-            if (drawPoint) {
-              x = nextX, y = nextY;
-              ctx.lineTo(x, y);
-            }
-            /*
-            x = vec.x * mx + bx;
-            y = vec.y * my + by;
-            ctx.lineTo(x, y);     */
 
+    // TODO: consider moving filtering and transformation inside vertex iterator...
+    //
+    shapes.forEach(function(vec) {
+      var mx = tr.mx, my = tr.my, bx = tr.bx, by = tr.by;
+      var x, y, nextX, nextY, drawPoint;
+      var minSeg = 0.6;
+
+      if (vec.hasNext()) {
+        ctx.beginPath();
+        drawPoint = true;
+        x = vec.x * mx + bx;
+        y = vec.y * my + by;
+        ctx.moveTo(x, y);
+
+        while (vec.hasNext()) {
+          nextX = vec.x * mx + bx;
+          nextY = vec.y * my + by;
+          drawPoint = Math.abs(nextX - x) > minSeg || Math.abs(nextY - y) > minSeg;
+          if (drawPoint) {
+            x = nextX, y = nextY;
+            ctx.lineTo(x, y);
           }
-
-          if (!drawPoint) {
-            ctx.lineTo(nextX, nextY);
-          }
-
-          if (filled) ctx.fill();
-          if (stroked) ctx.stroke();
         }
+
+        if (!drawPoint) {
+          ctx.lineTo(nextX, nextY);
+        }
+
+        if (filled) ctx.fill();
+        if (stroked) ctx.stroke();
       }
-    }
-    //trace("tot:", tot, "skipped:", skipped)
+
+    });
   };
 }
 
@@ -6951,7 +7088,7 @@ function CanvasLayer() {
 /* @requires elements, mapshaper-canvas */
 
 
-// Layer group contains a 
+// Layer group... 
 //
 function ArcLayerGroup(src) {
   var _self = this;
@@ -6966,8 +7103,6 @@ function ArcLayerGroup(src) {
     return arguments.length == 0 ? _visible : _visible = !b, this;
   };
 
-  // add arc layer
-  //
   this.refresh = function() {
     if (_map && _map.isReady()) {
       drawLayers();  
@@ -6984,13 +7119,13 @@ function ArcLayerGroup(src) {
   function drawLayers() {
     if (!_self.visible()) return;
     var ext = _map.getExtent();
-    // trace("draw; w, h:", ext.width(), ext.height());
     _surface.prepare(ext.width(), ext.height());
-    //T.start();
+
     Utils.forEach(_layers, function(lyr) {
+      T.start();
       lyr.draw(ext); // visibility handled by layer
+      T.stop("draw");
     });
-    //T.stop("draw");
   }
 }
 
@@ -7010,19 +7145,9 @@ function ShapeLayer(src, surface) {
 
   this.draw = function(ext) {
     if (!this.visible()) return;
-
-    // option: get array of shapes to render
-    // option: get array of ids of shapes
-    //
-    // get visible shapes (in bounds if any)
-    var shapes = src.getShapesInBounds(ext.getBounds());
     var tr = ext.getTransform();
-    //trace("[ArcLayer#draw()] transform:", tr, "# in bounds:", shapes.length);
-
-    // pass to renderer
-    //
-    // renderer.drawShapes().
-    renderer.drawShapes(shapes, style, ext.getTransform(), surface.getContext());
+    var shapes = src.boundsFilter(ext.getBounds()).scaleFilter(tr.mx);
+    renderer.drawShapes(shapes, style, tr, surface.getContext());
   }
 }
 
@@ -8459,16 +8584,16 @@ MapShaper.getThresholdByPct = function(arr, retainPct) {
 // Receive: array of arrays of simplification thresholds arcs[vertices[]]
 // Return: one array of all thresholds, sorted in ascending order
 //
-MapShaper.getSortedThresholds = function(arr) {
-  var merged = MapShaper.getInnerThresholds(arr);
+MapShaper.getDescendingThresholds = function(arr, skip) {
+  var merged = MapShaper.getInnerThresholds(arr, skip);
   Utils.quicksort(merged, false);
   return merged;
 };
 
-MapShaper.getInnerThresholds = function(arr) {
+MapShaper.getInnerThresholds = function(arr, skip) {
   var n = arr.length;
   var count = 0,
-      nth=2;
+      nth = skip || 2;
   for (var i=0; i<n; i++) {
     count += Math.ceil((arr[i].length - 2) / nth);
   }

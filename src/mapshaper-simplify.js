@@ -12,16 +12,16 @@ MapShaper.getThresholdByPct = function(arr, retainPct) {
 // Receive: array of arrays of simplification thresholds arcs[vertices[]]
 // Return: one array of all thresholds, sorted in ascending order
 //
-MapShaper.getSortedThresholds = function(arr) {
-  var merged = MapShaper.getInnerThresholds(arr);
+MapShaper.getDescendingThresholds = function(arr, skip) {
+  var merged = MapShaper.getInnerThresholds(arr, skip);
   Utils.quicksort(merged, false);
   return merged;
 };
 
-MapShaper.getInnerThresholds = function(arr) {
+MapShaper.getInnerThresholds = function(arr, skip) {
   var n = arr.length;
   var count = 0,
-      nth=2;
+      nth = skip || 2;
   for (var i=0; i<n; i++) {
     count += Math.ceil((arr[i].length - 2) / nth);
   }
