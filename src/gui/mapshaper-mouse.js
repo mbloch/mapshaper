@@ -33,7 +33,7 @@ function MshpMouse(ext) {
 
   var wheel = new MouseWheelHandler(mouse);
   wheel.on('mousewheel', function(e) {
-    var k = 1 + (0.055 * e.multiplier),
+    var k = 1 + (0.11 * e.multiplier),
         delta = e.direction > 0 ? k : 1 / k;
     ext.rescale(ext.scale() * delta, e.mapX / ext.width(), e.mapY / ext.height());
   });
