@@ -1,7 +1,7 @@
 /* @requires elements, mapshaper-canvas */
 
 
-// Layer group... 
+// Layer group...
 //
 function ArcLayerGroup(src) {
   var _self = this;
@@ -18,7 +18,7 @@ function ArcLayerGroup(src) {
 
   this.refresh = function() {
     if (_map && _map.isReady()) {
-      drawLayers();  
+      drawLayers();
     }
   };
 
@@ -59,8 +59,8 @@ function ShapeLayer(src, surface) {
   this.draw = function(ext) {
     if (!this.visible()) return;
     var tr = ext.getTransform();
-    var shapes = src.boundsFilter(ext.getBounds()).scaleFilter(tr.mx);
-    renderer.drawShapes(shapes, style, tr, surface.getContext());
+    src.boundsFilter(ext.getBounds()).scaleFilter(tr.mx);
+    renderer.drawShapes(src, style, tr, surface.getContext());
   }
 }
 

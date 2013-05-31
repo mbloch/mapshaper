@@ -1949,7 +1949,7 @@ function ArcCollection(coords) {
   this.getArcIter = function(i, mpp) {
     var reverse = i < 1;
     if (reverse) {
-      i = -i + 1;
+      i = -i - 1;
     }
     var xx = coords[i][0],
         yy = coords[i][1],
@@ -1958,7 +1958,7 @@ function ArcCollection(coords) {
     if (zlimit) {
       arcIter.init(xx, yy, !!reverse, thresholds[i], zlimit, filteredIds);
     } else {
-      arcIter.init(xx, yy, !!reverse, null, null, filteredIds); 
+      arcIter.init(xx, yy, !!reverse, null, null, filteredIds);
     }
     return arcIter;
   };
@@ -2190,7 +2190,7 @@ function Shape(src) {
 
 Shape.prototype = {
   partCount: 1,
-  init: function(ids) { 
+  init: function(ids) {
     this.ids = ids;
     this.bounds = this.src.getShapeBounds(ids);
     return this;
@@ -7088,7 +7088,7 @@ function CanvasLayer() {
 /* @requires elements, mapshaper-canvas */
 
 
-// Layer group... 
+// Layer group...
 //
 function ArcLayerGroup(src) {
   var _self = this;
@@ -7105,7 +7105,7 @@ function ArcLayerGroup(src) {
 
   this.refresh = function() {
     if (_map && _map.isReady()) {
-      drawLayers();  
+      drawLayers();
     }
   };
 
@@ -7146,8 +7146,8 @@ function ShapeLayer(src, surface) {
   this.draw = function(ext) {
     if (!this.visible()) return;
     var tr = ext.getTransform();
-    var shapes = src.boundsFilter(ext.getBounds()).scaleFilter(tr.mx);
-    renderer.drawShapes(shapes, style, tr, surface.getContext());
+    src.boundsFilter(ext.getBounds()).scaleFilter(tr.mx);
+    renderer.drawShapes(src, style, tr, surface.getContext());
   }
 }
 
@@ -8379,7 +8379,7 @@ function MshpMouse(ext) {
 
   var wheel = new MouseWheelHandler(mouse);
   wheel.on('mousewheel', function(e) {
-    var k = 1 + (0.055 * e.multiplier),
+    var k = 1 + (0.11 * e.multiplier),
         delta = e.direction > 0 ? k : 1 / k;
     ext.rescale(ext.scale() * delta, e.mapX / ext.width(), e.mapY / ext.height());
   });
