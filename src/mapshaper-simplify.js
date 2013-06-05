@@ -4,7 +4,7 @@
 // TODO: pass number of points as a parameter instead of calculating it
 MapShaper.getThresholdByPct = function(arr, retainPct) {
   if (retainPct <= 0 || retainPct >= 1) error("Invalid simplification pct:", retainPct);
-  var tmp = MapShaper.getInnerThresholds(arr);
+  var tmp = MapShaper.getInnerThresholds(arr, 2);
   var k = Math.floor((1 - retainPct) * tmp.length);
   return Utils.findValueByRank(tmp, k + 1); // rank start at 1
 };
@@ -18,16 +18,21 @@ MapShaper.getDescendingThresholds = function(arr, skip) {
   return merged;
 };
 
-MapShaper.getInnerThresholds = function(arr, skip) {
-  var n = arr.length;
+MapShaper.countInnerPoints = function(arr, skip) {
   var count = 0,
-      nth = skip || 2;
-  for (var i=0; i<n; i++) {
+      nth = skip || 1;
+  for (var i=0, n = arr.length; i<n; i++) {
     count += Math.ceil((arr[i].length - 2) / nth);
   }
+  return count;
+};
+
+MapShaper.getInnerThresholds = function(arr, skip) {
+  var count = MapShaper.countInnerPoints(arr, skip),
+      nth = skip || 1;
   var tmp = new Float64Array(count),
       idx = 0;
-  for (i=0; i<n; i++) {
+  for (i=0, n=arr.length; i<n; i++) {
     var thresholds = arr[i];
     for (var j=1, lim=thresholds.length - 1; j < lim; j+= nth) {
       tmp[idx++] = thresholds[j];
@@ -152,7 +157,7 @@ MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval, opts) {
 };
 
 
-// Convert arrays of lng and lat coords (xsrc, ysrc) into 
+// Convert arrays of lng and lat coords (xsrc, ysrc) into
 // x, y, z coords on the surface of a sphere with radius 6378137
 // (the radius of spherical Earth datum in meters)
 //
@@ -170,7 +175,7 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
 }
 
 // Apply a simplification function to each arc in an array, return simplified arcs.
-// 
+//
 // @simplify: function(xx:array, yy:array, [zz:array], [length:integer]):array
 //
 MapShaper.simplifyArcs = function(arcs, simplify, opts) {

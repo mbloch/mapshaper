@@ -13,7 +13,7 @@ loading.html5
 
 var api = {
   BoundsIndex: BoundsIndex,
-  ArcCollection: ArcCollection,
+  ArcDataset: ArcDataset,
   Utils: Utils,
   BoundingBox: BoundingBox,
   controls: controls,

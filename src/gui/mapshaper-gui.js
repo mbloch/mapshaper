@@ -15,7 +15,7 @@ if (Browser.inBrowser) {
 
 function introPage() {
   new ImportPanel(editorPage);
-  El("#mshp-import").show();   
+  El("#mshp-import").show();
 }
 
 function browserIsSupported() {
@@ -42,7 +42,7 @@ function editorPage(importData, opts) {
 
   // init editor
 
-  var arcs = new ArcCollection(topoData.arcs);
+  var arcs = new ArcDataset(topoData.arcs);
   var intervalScale = 0.65, // TODO: tune this
       sopts = { spherical: false },
       calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),

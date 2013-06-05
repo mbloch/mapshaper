@@ -1,6 +1,5 @@
 /* @requires elements, mapshaper-canvas */
 
-
 // Layer group...
 //
 function ArcLayerGroup(src) {
@@ -15,6 +14,14 @@ function ArcLayerGroup(src) {
   this.visible = function(b) {
     return arguments.length == 0 ? _visible : _visible = !b, this;
   };
+  /*
+  this.getExportList = function() {
+    var polygons = {
+      label: "polygons",
+      shapes: null
+    };
+    return [polygons];
+  };*/
 
   this.refresh = function() {
     if (_map && _map.isReady()) {
@@ -35,9 +42,7 @@ function ArcLayerGroup(src) {
     _surface.prepare(ext.width(), ext.height());
 
     Utils.forEach(_layers, function(lyr) {
-      T.start();
       lyr.draw(ext); // visibility handled by layer
-      T.stop("draw");
     });
   }
 }
@@ -58,9 +63,13 @@ function ShapeLayer(src, surface) {
 
   this.draw = function(ext) {
     if (!this.visible()) return;
-    var tr = ext.getTransform();
-    src.boundsFilter(ext.getBounds()).scaleFilter(tr.mx);
-    renderer.drawShapes(src, style, tr, surface.getContext());
+    T.start();
+
+    var shapes = src.shapes().boundsFilter(ext.getBounds()).transform(ext.getTransform());
+    var info = renderer.drawShapes(shapes, style, surface.getContext());
+    // TODO: find a way to enable circles at an appropriate zoom
+    // if (ext.scale() > 10) renderer.drawPoints(shapes.boundsFilter(ext.getBounds(), true), surface.getContext());
+    T.stop("- paths: " + info.paths + " segs: " + info.segments);
   }
 }
 

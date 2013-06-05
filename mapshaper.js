@@ -795,6 +795,8 @@ Utils.genericSort = function(arr, asc) {
   Array.prototype.sort.call(arr, compare);
 };
 
+// Sorts an array of numbers in-place
+//
 Utils.quicksort = function(arr, asc) {
   function partition(a, lo, hi) {
     var i = lo,
@@ -819,7 +821,7 @@ Utils.quicksort = function(arr, asc) {
     }
   } 
   partition(arr, 0, arr.length-1);
-  if (asc === false) arr.reverse();
+  if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
   return arr;
 };
 
@@ -1283,8 +1285,8 @@ if (inNode) {
   Node.statSync = function(fpath) {
     var obj = null;
     try {
-      obj = Node.fs.statSync(fpath);  
-    } 
+      obj = Node.fs.statSync(fpath);
+    }
     catch(e) {
       //trace(e, fpath);
     }
@@ -1441,7 +1443,7 @@ if (inNode) {
         if (err) {
           error(err);
         } else {
-          callback(data); 
+          callback(data);
         }
       };
     } else {
@@ -1480,7 +1482,7 @@ if (inNode) {
       }
       Node.readResponse(res, receive, 'utf8');
     });
-    
+
     req.on('error', function(e) {
       // trace("Node.request() request error:", e.message);
       receive("Node.request() error: " + e.message, null, null);
@@ -1507,7 +1509,7 @@ if (inNode) {
       }
     }*/
 
-    Node.request(url, function(err, str) {
+    Node.request({url: url}, function(err, req, str) {
       var data;
       if (!str) {
         callback(null);
@@ -1561,7 +1563,7 @@ if (inNode) {
         currOpt = null; // handle this as an error
         if (match = /^--(.*)/.exec(arg)) {
           switches = [match[1]];
-        } 
+        }
         else if (match = /^-(.+)/.exec(arg)) {
           switches = match[1].split('');
         }
@@ -1614,7 +1616,7 @@ function NodeUrlLoader(url) {
     });
     output.on('end', function() {
       self.data = body;
-      self.startWaiting();    
+      self.startWaiting();
     });
 
   }).on("error", function(e){
@@ -4459,13 +4461,11 @@ MapShaper.importFromStream = function(sname) {
 */
 
 
-
 /* @requires core */
 
 
 Utils.findRankByValue = function(arr, value) {
   if (isNaN(value)) return arr.length;
-
   var rank = 1;
   for (var i=0, n=arr.length; i<n; i++) {
     if (value > arr[i]) rank++;
@@ -4473,18 +4473,23 @@ Utils.findRankByValue = function(arr, value) {
   return rank;
 }
 
+Utils.findValueByPct = function(arr, pct) {
+  var rank = Math.ceil((1-pct) * (arr.length));
+  return Utils.findValueByRank(arr, rank);
+};
 
 // See http://ndevilla.free.fr/median/median/src/wirth.c
 // Elements of @arr are reordered
 //
 Utils.findValueByRank = function(arr, rank) {
-  var k = (rank | 0) - 1, // conv. rank into array index
+  if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
+
+  rank = Utils.clamp(rank | 0, 1, arr.length);
+  var k = rank - 1, // conv. rank to array index
       n = arr.length,
       l = 0,
       m = n - 1,
       i, j, val, tmp;
-
-  if (!arr.length || k < 0 || k >= arr.length) error("[findValueByRank()] invalid input");
 
   while (l < m) {
     val = arr[k];
@@ -4521,31 +4526,49 @@ Utils.findMedian = function(arr) {
 
 
 
-/* @requires mapshaper-common, mapshaper-geom, median */
+/* @requires mapshaper-common, mapshaper-geom, median, sorting */
 
 // TODO; calculate pct based on distinct points in the dataset
 // TODO: pass number of points as a parameter instead of calculating it
 MapShaper.getThresholdByPct = function(arr, retainPct) {
   if (retainPct <= 0 || retainPct >= 1) error("Invalid simplification pct:", retainPct);
-  var n = arr.length;
+  var tmp = MapShaper.getInnerThresholds(arr, 2);
+  var k = Math.floor((1 - retainPct) * tmp.length);
+  return Utils.findValueByRank(tmp, k + 1); // rank start at 1
+};
+
+// Receive: array of arrays of simplification thresholds arcs[vertices[]]
+// Return: one array of all thresholds, sorted in ascending order
+//
+MapShaper.getDescendingThresholds = function(arr, skip) {
+  var merged = MapShaper.getInnerThresholds(arr, skip);
+  Utils.quicksort(merged, false);
+  return merged;
+};
+
+MapShaper.countInnerPoints = function(arr, skip) {
   var count = 0,
-      nth=2;
-  for (var i=0; i<n; i++) {
+      nth = skip || 1;
+  for (var i=0, n = arr.length; i<n; i++) {
     count += Math.ceil((arr[i].length - 2) / nth);
   }
+  return count;
+};
+
+MapShaper.getInnerThresholds = function(arr, skip) {
+  var count = MapShaper.countInnerPoints(arr, skip),
+      nth = skip || 1;
   var tmp = new Float64Array(count),
       idx = 0;
-  for (i=0; i<n; i++) {
+  for (i=0, n=arr.length; i<n; i++) {
     var thresholds = arr[i];
     for (var j=1, lim=thresholds.length - 1; j < lim; j+= nth) {
       tmp[idx++] = thresholds[j];
     }
   }
   if (idx != count) error("Counting error");
-  var k = Math.floor((1 - retainPct) * count);
-  return Utils.findValueByRank(tmp, k + 1); // rank start at 1
+  return tmp;
 };
-
 
 MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
   if (!Utils.isArray(arcs) || !Utils.isArray(thresholds) ||
@@ -4595,7 +4618,6 @@ MapShaper.stripArc = function(xx, yy, uu, retained) {
   yy2.push(yy[len-1]);
   return [xx2, yy2];
 };
-
 
 MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints) {
   var xdest = [],
@@ -4663,7 +4685,7 @@ MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval, opts) {
 };
 
 
-// Convert arrays of lng and lat coords (xsrc, ysrc) into 
+// Convert arrays of lng and lat coords (xsrc, ysrc) into
 // x, y, z coords on the surface of a sphere with radius 6378137
 // (the radius of spherical Earth datum in meters)
 //
@@ -4681,7 +4703,7 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
 }
 
 // Apply a simplification function to each arc in an array, return simplified arcs.
-// 
+//
 // @simplify: function(xx:array, yy:array, [zz:array], [length:integer]):array
 //
 MapShaper.simplifyArcs = function(arcs, simplify, opts) {

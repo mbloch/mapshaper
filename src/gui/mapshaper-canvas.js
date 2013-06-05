@@ -2,7 +2,63 @@
 
 function ShapeRenderer() {
 
-  this.drawShapes = function(shapes, style, tr, ctx) {
+  function drawCircle(x, y, size, col, ctx) {
+    if (size > 0) {
+      ctx.beginPath();
+      ctx.fillStyle = col;
+      ctx.arc(x, y, size * 0.5, 0, Math.PI * 2, true);
+      ctx.fill();
+    }
+  }
+
+  /*
+  var index = {};
+  function drawCircle(x, y, size, col, ctx) {
+    var key = String(size) + col;
+    var img = index[key];
+    if (!img) {
+      var pixRadius = Math.ceil(size * 0.5);
+      var dw = pixRadius * 2;
+      var dh = pixRadius * 2;
+
+      img = document.createElement('canvas');
+      img.width = dw;
+      img.height = dh;
+      var ctr = dw / 2;
+      drawVectorCircle(ctr, ctr, size, col, img.getContext('2d'));
+
+      var dx = Math.round(ctr - pixRadius);
+      var dy = Math.round(ctr - pixRadius);
+
+      index[key] = img;
+    }
+
+    var wpix = img.width;
+    var xIns = (x - wpix * 0.5 + 0.5) | 0;
+    var yIns = (y - wpix * 0.5 + 0.5) | 0;
+    ctx.drawImage(img, xIns, yIns);
+  };
+  */
+
+  this.drawPoints = function(shapes, ctx) {
+    var endCol = "#000000",
+        midCol = "rgba(255, 50, 50, 0.6)",  // "#ffcccc", //
+        endSize = 5,
+        midSize = 4;
+
+    shapes.forEach(function(vec) {
+      while (vec.hasNext()) {
+        if (vec.node) {
+          drawCircle(vec.x, vec.y, endSize, endCol, ctx);
+        } else {
+          drawCircle(vec.x, vec.y, midSize, midCol, ctx);
+        }
+      }
+    });
+  }
+
+
+  this.drawShapes = function(shapes, style, ctx) {
     var stroked = !!(style.strokeWidth && style.strokeColor),
         filled = !!style.fillColor;
 
@@ -19,39 +75,26 @@ function ShapeRenderer() {
       return;
     }
 
-    // TODO: consider moving filtering and transformation inside vertex iterator...
-    //
+    var paths = 0, segs = 0;
     shapes.forEach(function(vec) {
-      var mx = tr.mx, my = tr.my, bx = tr.bx, by = tr.by;
-      var x, y, nextX, nextY, drawPoint;
-      var minSeg = 0.6;
-
       if (vec.hasNext()) {
         ctx.beginPath();
-        drawPoint = true;
-        x = vec.x * mx + bx;
-        y = vec.y * my + by;
-        ctx.moveTo(x, y);
+        ctx.moveTo(vec.x, vec.y);
+        paths++;
 
         while (vec.hasNext()) {
-          nextX = vec.x * mx + bx;
-          nextY = vec.y * my + by;
-          drawPoint = Math.abs(nextX - x) > minSeg || Math.abs(nextY - y) > minSeg;
-          if (drawPoint) {
-            x = nextX, y = nextY;
-            ctx.lineTo(x, y);
-          }
-        }
-
-        if (!drawPoint) {
-          ctx.lineTo(nextX, nextY);
+          ctx.lineTo(vec.x, vec.y);
+          segs++;
         }
 
         if (filled) ctx.fill();
         if (stroked) ctx.stroke();
       }
-
     });
+    return {
+      paths: paths,
+      segments: segs
+    }
   };
 }
 

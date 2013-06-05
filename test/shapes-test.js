@@ -1,6 +1,6 @@
 var api = require('../gui/www/mapshaper.js'),
   assert = require('assert'),
-  ArcCollection = api.ArcCollection,
+  ArcDataset = api.ArcDataset,
   BoundingBox = api.BoundingBox,
   trace = api.trace;
 
@@ -11,10 +11,10 @@ var arcs1 = [
 ];
 
 describe('mapshaper-shapes.js', function () {
-  describe('ArcCollection', function () {
+  describe('ArcDataset', function () {
     var coll;
     beforeEach(function() {
-      coll = new ArcCollection(arcs1);
+      coll = new ArcDataset(arcs1);
     })
 
     it("#size() returns the correct number of arcs", function() {
@@ -22,7 +22,7 @@ describe('mapshaper-shapes.js', function () {
     })
 
     it('#getBounds() returns the correct bounding box', function () {
-      assert.deepEqual({left:0, top:2, right:2, bottom:-1}, coll.getBounds())
+      assert.deepEqual({xmin:0, ymax:2, xmax:2, ymin:-1}, coll.getBounds())
     })
 
   })

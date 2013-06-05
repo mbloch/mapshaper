@@ -83,9 +83,8 @@ function MapExtent(el, initialBounds) {
     if (!(cx == _cx && cy == _cy && scale == _scale)) {
       _cx = cx, _cy = cy, _scale = scale;
       _self.dispatchEvent('change');
-    }    
+    }
   };
-
 
   this.pan = function(xpix, ypix) {
     var t = this.getTransform();
