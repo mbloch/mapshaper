@@ -2225,9 +2225,10 @@ function ShapeCollection(arr, collBounds) {
         return true;
       }
     };
+    //console.log(iter.hasNext)
     return function(s, i) {
       _first = true;
-      srcIter = s.getShapeIter(i, 1/_transform.mx)
+      srcIter = s.getShapeIter(i, 1/_transform.mx);
       return iter;
     }
   }
@@ -2346,10 +2347,10 @@ function ArcIter() {
   this.x = 0;
   this.y = 0;
 
-  var nextIdx;
+  var next;
 
   this.hasNext = function() {
-    var i = nextIdx();
+    var i = next();
     if (i == -1) return false;
     this.x = _xx[i];
     this.y = _yy[i];
@@ -2362,9 +2363,9 @@ function ArcIter() {
     var len = _len = xx.length;
     if (ww) {
       len = ww.length;
-      nextIdx = zz ? nextFilteredSimpleXY : nextFilteredXY;
+      next = zz ? nextFilteredSimpleIdx : nextFilteredIdx;
     } else {
-      nextIdx = zz ? nextSimpleXY : nextXY;
+      next = zz ? nextSimpleIdx : nextIdx;
     }
 
     if (fw) {
@@ -2379,14 +2380,14 @@ function ArcIter() {
     _i = _start;
   };
 
-  function nextXY() {
+  function nextIdx() {
     var i = _i;
     if (i == _stop) return -1;
     _i = i + _inc;
     return i;
   }
 
-  function nextSimpleXY() {
+  function nextSimpleIdx() {
     // using local vars makes a big difference when skipping many points
     var zz = _zz,
         i = _i,
@@ -2402,14 +2403,14 @@ function ArcIter() {
     return i;
   }
 
-  function nextFilteredXY() {
+  function nextFilteredIdx() {
     var i = _i;
     if (i == _stop) return -1;
     _i = i + _inc;
     return _ww[i];
   }
 
-  function nextFilteredSimpleXY() {
+  function nextFilteredSimpleIdx() {
     var ww = _ww,
         zz = _zz,
         i = _i,
