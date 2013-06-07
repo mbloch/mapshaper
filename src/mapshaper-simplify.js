@@ -28,9 +28,9 @@ MapShaper.countInnerPoints = function(arr, skip) {
 };
 
 MapShaper.getInnerThresholds = function(arr, skip) {
-  var count = MapShaper.countInnerPoints(arr, skip),
-      nth = skip || 1;
-  var tmp = new Float64Array(count),
+  var nth = skip || 1,
+      count = MapShaper.countInnerPoints(arr, skip),
+      tmp = new Float64Array(count),
       idx = 0;
   for (i=0, n=arr.length; i<n; i++) {
     var thresholds = arr[i];
