@@ -53,7 +53,7 @@ function ShapeLayer(src, surface) {
   var _visible = true;
   var style = {
     strokeWidth: 1,
-    strokeColor: "#0000CC",
+    strokeColor: "#335",
     strokeAlpha: 1
   };
 

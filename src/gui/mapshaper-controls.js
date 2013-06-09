@@ -4,6 +4,7 @@
 var SimplifyControl = function() {
   var _value = 1;
 
+  El('#g-simplify-control').showCSS('display:inline-block').show();
   var slider = new Slider("#g-simplify-control .g-slider");
   slider.handle("#g-simplify-control .g-handle");
   slider.track("#g-simplify-control .g-track");
@@ -75,21 +76,6 @@ var SimplifyControl = function() {
   return control;
 }
 
-
-function SimplifyScreen(topoData, opts) {
-
-  // initialize map
-
-
-  // initialize vector shapes
-
-
-  // calc simplification data, etc...
-
-
-}
-
-
 function ImportPanel(callback) {
   var shpFile,
       shpData;
@@ -101,8 +87,9 @@ function ImportPanel(callback) {
       shpFile = e.file;
       shpData = MapShaper.importShp(reader.result);
       trace(Utils.getKeys(shpData), shpData.info)
-      El("#g-import-options").show();
-      nextBtn.active(true).on('click', next, this);
+      // El("#g-import-options").show();
+      // nextBtn.active(true).on('click', next, this);
+      next();
     };
     reader.readAsArrayBuffer(e.file);
   })

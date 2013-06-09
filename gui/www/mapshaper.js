@@ -740,7 +740,6 @@ TileExtent.prototype.clone = function() {
 
 /* @requires core */
 
-
 Utils.findRankByValue = function(arr, value) {
   if (isNaN(value)) return arr.length;
   var rank = 1;
@@ -789,7 +788,6 @@ Utils.findValueByRank = function(arr, rank) {
   return arr[k];
 };
 
-
 //
 Utils.findMedian = function(arr) {
   var n = arr.length,
@@ -800,7 +798,6 @@ Utils.findMedian = function(arr) {
   }
   return median;
 };
-
 
 
 /* @requires core.geo, median */
@@ -5999,6 +5996,7 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
 var SimplifyControl = function() {
   var _value = 1;
 
+  El('#g-simplify-control').showCSS('display:inline-block').show();
   var slider = new Slider("#g-simplify-control .g-slider");
   slider.handle("#g-simplify-control .g-handle");
   slider.track("#g-simplify-control .g-track");
@@ -6070,21 +6068,6 @@ var SimplifyControl = function() {
   return control;
 }
 
-
-function SimplifyScreen(topoData, opts) {
-
-  // initialize map
-
-
-  // initialize vector shapes
-
-
-  // calc simplification data, etc...
-
-
-}
-
-
 function ImportPanel(callback) {
   var shpFile,
       shpData;
@@ -6096,8 +6079,9 @@ function ImportPanel(callback) {
       shpFile = e.file;
       shpData = MapShaper.importShp(reader.result);
       trace(Utils.getKeys(shpData), shpData.info)
-      El("#g-import-options").show();
-      nextBtn.active(true).on('click', next, this);
+      // El("#g-import-options").show();
+      // nextBtn.active(true).on('click', next, this);
+      next();
     };
     reader.readAsArrayBuffer(e.file);
   })
@@ -7344,7 +7328,7 @@ function ShapeLayer(src, surface) {
   var _visible = true;
   var style = {
     strokeWidth: 1,
-    strokeColor: "#0000CC",
+    strokeColor: "#335",
     strokeAlpha: 1
   };
 
@@ -8694,7 +8678,6 @@ function MapExtent(el, initialBounds) {
 
   // Zoom to @scale (a multiple of the map's full scale)
   // @xpct, @ypct: optional focus, [0-1]...
-  //
   //
   this.rescale = function(scale, xpct, ypct) {
     if (arguments.length < 3) {

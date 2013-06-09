@@ -4,6 +4,8 @@ body {
 	padding: 0;
 	background: #f0f0f0;
 	font-size: 13px;
+	font-family: Helvetica, Arial, sans-serif;
+	line-height: 1;
 }
 
 /*
@@ -26,10 +28,16 @@ canvas {
 	position: absolute;
 	top: 0;
 	left: 0;
+	z-index: 10;
 	width: 100%;
 	background-color:#102A5E;
-	padding-top: 3px;
-	height: 25px;	
+	padding-top: 4px;
+	height: 26px;	
+}
+
+.g-page-header {
+	background-color:#ACCDF5;
+	background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#7D99C1), color-stop(100%,#ACCDF5));	
 }
 
 .g-page-header .mshp-version {
@@ -41,7 +49,7 @@ canvas {
 	color: white;
 	font-weight: bold;
 	font-size: 16px;
-	margin-left: 12px;
+	margin: 0 0 0 12px;
 }
 
 .g-mapshaper-logo .g-logo-highlight {
@@ -67,7 +75,7 @@ h2, h4, h5 {
 
 .fork-me {
 	position: absolute;
-	z-index: 5;
+	z-index: 50;
 	top: 0;
 	right: 0;
 	border: 0;
@@ -130,6 +138,18 @@ h2, h4, h5 {
 	bottom: 0;
 	left: 0;
 	margin: 28px 0 32px 0;
+	background-color: #fff;
+	z-index: 20;
+}
+
+#mshp-main-map {
+	box-shadow: 0px 0px 17px #888;
+	margin: 38px 10px 10px 220px;
+}
+
+.g-bottom-panel {
+	background-color:#ACCDF5;
+	background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#7D99C1), color-stop(100%,#ACCDF5));
 }
 
 #mshp-main-footer {

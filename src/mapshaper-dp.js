@@ -6,8 +6,6 @@ DouglasPeucker.simplifyArcs = function(arcs, opts) {
   return MapShaper.simplifyArcs(arcs, DouglasPeucker.calcArcData, opts);
 }
 
-
-
 DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
       ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
@@ -15,15 +13,12 @@ DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return triangleHeightSq(ab2, bc2, ac2);
 };
 
-
 DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
   var ab2 = distanceSq(ax, ay, bx, by),
       ac2 = distanceSq(ax, ay, cx, cy),
       bc2 = distanceSq(bx, by, cx, cy);
   return triangleHeightSq(ab2, bc2, ac2);
 };
-
-
 
 DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
   var len = len || xx.length, // kludge: 3D data gets passed in buffers, so need len parameter.
@@ -82,7 +77,7 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
 
     if (depth == 1) {
       // case -- arc is an island polygon
-      if (ax == cx && ay == cy) { 
+      if (ax == cx && ay == cy) {
         maxDistance = lval > rval ? lval : rval;
       }
     }

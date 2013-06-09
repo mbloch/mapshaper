@@ -1,11 +1,21 @@
 #g-simplify-control {
 	text-align: center;
 	display: inline-block;
+	display: none;
+	position: absolute;
+	margin: 5px 0 0 83px;
+	top: 0px;
+}
+
+#g-simplify-control .g-label {
+	color: #fff;
+	margin: 0 4px 0 0;
 }
 
 #g-simplify-control .g-slider {
-	padding: 5px;
+	padding: 9px 5px 0px 5px;
 	position: relative;
+	vertical-align: top;
 	display: inline-block;
 }
 
@@ -19,7 +29,7 @@
 
 #g-simplify-control .g-handle {
 	position: absolute;
-	top: 6px;
+	top: 9px;
 }
 
 #g-simplify-control .g-handle img {

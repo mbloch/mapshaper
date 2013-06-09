@@ -94,7 +94,6 @@ function MapExtent(el, initialBounds) {
   // Zoom to @scale (a multiple of the map's full scale)
   // @xpct, @ypct: optional focus, [0-1]...
   //
-  //
   this.rescale = function(scale, xpct, ypct) {
     if (arguments.length < 3) {
       xpct = 0.5, ypct = 0.5;

@@ -11,11 +11,19 @@
 <div id="page-wrapper">
 <div class="g-page-header">
 	<span class="g-mapshaper-logo">map<span class="g-logo-highlight">shaper</span></span> <span class="mshp-version">v. 0.1.0</span>
+
+	<div id="g-simplify-control"><span class="g-label">Simplify</span>
+		<div class="g-slider">
+			<div class="g-handle"><img src="images/slider_handle_v1.png" /></div>
+			<div class="g-track"></div>		
+		</div>
+		<input type="text" value="label" class="g-clicktext" />	
+	</div>
 </div>
 <div id="mshp-intro-screen">
 
 <a href="https://github.com/mbloch/mapshaper"><img class="fork-me" src="images/fork-me-right-cerulean@2x.png" alt="Fork me on GitHub"></a>
-
+<!--
 <div>
 	<h3>Welcome to the new mapshaper!</h3>
 	<p>
@@ -27,22 +35,19 @@
 	<li>a command-line script, available on github
 	</ul>
 
-</div>
+</div>-->
 <div id="mshp-not-supported">
 	<h4>Unfortunately, mapshaper can't run in <span class="g-unsupported-browser">this web browser</span></h4>
 	<ul>For best results, try <a href="http://www.google.com/chrome">Google Chrome</a></ul>
 </div>
 <div id="mshp-import">
-	<h4>To get started, select the .shp file from a polygon or polyline Shapefile</h4>
+	<h4>Select the .shp file from a polygon or polyline Shapefile</h4>
 	<ul>
 
 	<div><div class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><input type="file" class="g-file-control" /><span class="g-label-text">choose .shp</span></div></div>
-	<!--<div><label class="g-file-btn g-panel-btn active" id="g-dbf-import-btn"><input type="file" class="g-file-control" /><span class="g-label-text">choose .dbf</span></label></div>-->
 
 
 	<div id="g-import-options">
-	<!--<div class="g-import-info"></div>-->
-
 	<div>
 	<input type="checkbox" class="g-checkbox" id="g-import-spherical-opt"/>
 	<label for="g-import-spherical-opt">use spherical coordinates</label>
@@ -82,16 +87,7 @@
 		<input type="checkbox" value="show-points">Show vertices
 	</div>
 </div>-->
-<div id="mshp-main-footer" class="g-bottom-panel">
-	<div id="g-simplify-control">
-		<div class="g-slider">
-			<div class="g-handle"><img src="images/slider_handle_v1.png" /></div>
-			<div class="g-track"></div>		
-		</div>
-		<input type="text" value="label" class="g-clicktext" />	
-	</div>
-
-</div>
+<!--<div id="mshp-main-footer" class="g-bottom-panel"></div>-->
 </div>
 
 <div id="export-page" class="mshp-page"></div>

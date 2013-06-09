@@ -1,11 +1,4 @@
 
-body {
-	font-family: Helvetica, Arial, sans-serif;
-	line-height: 1;
-	padding: 0;
-	margin: 0;
-}
-
 .g-menu-link {
 	color: white;
 	font-size: 14px;
@@ -36,11 +29,6 @@ body {
 
 .g-square-button.inactive {
 	opacity: 0.5;
-}
-
-.g-bottom-panel {
-	background-color:#ACCDF5;
-	background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#7D99C1), color-stop(100%,#ACCDF5));
 }
 
 
