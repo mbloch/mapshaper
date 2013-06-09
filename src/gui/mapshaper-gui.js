@@ -26,14 +26,14 @@ function editorTest(shp) {
   Utils.loadBinaryData(shp, function(buf) {
     var shpData = MapShaper.importShp(buf),
         opts = {};
+
     editorPage(shpData, opts);
   })
 }
 
 function editorPage(importData, opts) {
-  trace(">>> editorPage; opts:", opts)
+  var decimalDegrees = containsBounds([-200, -100, 200, 100], importData.info.input_bounds);
   var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
-
 
   // hide intro page
   El("#mshp-intro-screen").hide();
@@ -41,12 +41,17 @@ function editorPage(importData, opts) {
   El("#mshp-main-page").show();
 
   // init editor
-
   var arcs = new ArcDataset(topoData.arcs);
+  var sopts = {
+    spherical: opts.spherical || decimalDegrees
+  };
+
+  trace(">> sopts:", sopts)
   var intervalScale = 0.65, // TODO: tune this
-      sopts = { spherical: false },
       calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
       vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
+
+  // TODO: protect shapes from elimination
 
   arcs.setThresholds(vertexData);
 
@@ -54,7 +59,7 @@ function editorPage(importData, opts) {
 
   var opts = {
     bounds: arcs.getBounds(),
-    spacing: 12
+    padding: 10
   };
 
   var map = new MshpMap("#mshp-main-map", opts);

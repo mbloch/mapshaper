@@ -32,7 +32,7 @@ MapShaper.importShp = function(src) {
   var counts = reader.getCounts(),
       xx = new Float64Array(counts.pointCount),
       yy = new Float64Array(counts.pointCount),
-      partIds = new Int32Array(counts.pointCount), // signed, using -1 as error code 
+      partIds = new Int32Array(counts.pointCount), // signed, using -1 as error code
       shapeIds = [];
 
   var expectRings = Utils.contains([5,15,25], reader.type());
@@ -41,7 +41,7 @@ MapShaper.importShp = function(src) {
       findHoles = expectRings,
       holeFlags = findHoles ? new Uint8Array(counts.partCount) : null;
 
-  var pointId = 0, 
+  var pointId = 0,
       partId = 0,
       shapeId = 0,
       holeCount = 0;
@@ -93,7 +93,7 @@ MapShaper.importShp = function(src) {
             holeFlags[partId] = 1;
             holeCount++;
           }
-        }              
+        }
       }
 
       shapeIds.push(shapeId);
@@ -112,7 +112,7 @@ MapShaper.importShp = function(src) {
     error("Counting problem");
 
   var info = {
-    // shapefile_header: this.header
+    input_bounds: reader.header().bounds,
     input_point_count: pointId,
     input_part_count: partId,
     input_shape_count: shapeId,
@@ -245,7 +245,7 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
       .writeInt32(id)
       .writeInt32(2)
       .littleEndian()
-      .writeInt32(0);  
+      .writeInt32(0);
   }
 
   return {bounds: bounds, buffer: bin.buffer()};

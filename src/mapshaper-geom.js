@@ -23,7 +23,7 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
 }
 
 
-// atan2() makes this function fairly slow, replaced by ~2x faster formula 
+// atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
 /*
 function innerAngle_slow(ax, ay, bx, by, cx, cy) {
@@ -94,7 +94,7 @@ function detSq(ax, ay, bx, by, cx, cy) {
 
 
 function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) + 
+  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
     detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
   return area;
 }
@@ -144,6 +144,18 @@ function msRingArea(xx, yy, start, len) {
   return Math.abs(msSignedRingArea(xx, yy, start, len));
 }
 
+
+// merge B into A
+function mergeBounds(a, b) {
+  if (b[0] < a[0]) a[0] = b[0];
+  if (b[1] < a[1]) a[1] = b[1];
+  if (b[2] > a[2]) a[2] = b[2];
+  if (b[3] > a[3]) a[3] = b[3];
+}
+
+function containsBounds(a, b) {
+  return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
+}
 
 // export functions so they can be tested
 MapShaper.geom = {

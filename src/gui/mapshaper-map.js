@@ -54,7 +54,7 @@ Opts.inherit(MshpMap, Waiter);
 
 function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
-      _spacing = new FourSides(),
+      _padding = new FourSides(),
       _self = this,
       _fullBounds,
       _cx,
@@ -121,23 +121,30 @@ function MapExtent(el, initialBounds) {
     return getContentBounds(initialBounds);
   }
 
+  // Receive: Geographic bounds of content to be centered in the map with padding
+  // Return: Geographic bounds of map window centered on @bounds
   //
-  function getContentBounds(bb) {
-    // 1. get pix bounds
-    var viewport = new Bounds(0, 0, _position.width(), _position.height());
+  function getContentBounds(content) {
+    var bounds = content.clone();
+    var p = _padding,
+        wpix = _position.width() - p.left - p.right,
+        hpix = _position.height() - p.top - p.bottom;
 
-    // 2. inset by pixel padding
-    viewport.padBounds(-_spacing.left, -_spacing.top, -_spacing.right, -_spacing.bottom);
+    // expand bounds to match padded map aspect ratio
+    bounds.fillOut(wpix / hpix);
 
-    // 4. expand content bounds to fit viewport aspect ratio
-    return bb.clone().fillOut(viewport.width() / viewport.height());
+    // expand bounds to fit map viewport
+    var mpp = bounds.width() / wpix;
+    bounds.padBounds(p.left * mpp, p.top * mpp, p.right * mpp, p.bottom * mpp);
+    return bounds;
   }
 
   this.setContentPadding = function(l, t, r, b) {
     if (arguments.length == 1) {
       t = l, r = l, b = l;
     }
-    _spacing = new FourSides(l, t, r, b);
+    _padding = new FourSides(l, t, r, b);
+    this.reset();
     return this;
   };
 

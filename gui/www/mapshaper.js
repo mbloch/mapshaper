@@ -5593,7 +5593,7 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
 }
 
 
-// atan2() makes this function fairly slow, replaced by ~2x faster formula 
+// atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
 /*
 function innerAngle_slow(ax, ay, bx, by, cx, cy) {
@@ -5664,7 +5664,7 @@ function detSq(ax, ay, bx, by, cx, cy) {
 
 
 function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) + 
+  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
     detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
   return area;
 }
@@ -5715,6 +5715,18 @@ function msRingArea(xx, yy, start, len) {
 }
 
 
+// merge B into A
+function mergeBounds(a, b) {
+  if (b[0] < a[0]) a[0] = b[0];
+  if (b[1] < a[1]) a[1] = b[1];
+  if (b[2] > a[2]) a[2] = b[2];
+  if (b[3] > a[3]) a[3] = b[3];
+}
+
+function containsBounds(a, b) {
+  return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
+}
+
 // export functions so they can be tested
 MapShaper.geom = {
   distance3D: distance3D,
@@ -5760,7 +5772,7 @@ MapShaper.importShp = function(src) {
   var counts = reader.getCounts(),
       xx = new Float64Array(counts.pointCount),
       yy = new Float64Array(counts.pointCount),
-      partIds = new Int32Array(counts.pointCount), // signed, using -1 as error code 
+      partIds = new Int32Array(counts.pointCount), // signed, using -1 as error code
       shapeIds = [];
 
   var expectRings = Utils.contains([5,15,25], reader.type());
@@ -5769,7 +5781,7 @@ MapShaper.importShp = function(src) {
       findHoles = expectRings,
       holeFlags = findHoles ? new Uint8Array(counts.partCount) : null;
 
-  var pointId = 0, 
+  var pointId = 0,
       partId = 0,
       shapeId = 0,
       holeCount = 0;
@@ -5821,7 +5833,7 @@ MapShaper.importShp = function(src) {
             holeFlags[partId] = 1;
             holeCount++;
           }
-        }              
+        }
       }
 
       shapeIds.push(shapeId);
@@ -5840,7 +5852,7 @@ MapShaper.importShp = function(src) {
     error("Counting problem");
 
   var info = {
-    // shapefile_header: this.header
+    input_bounds: reader.header().bounds,
     input_point_count: pointId,
     input_part_count: partId,
     input_shape_count: shapeId,
@@ -5973,7 +5985,7 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
       .writeInt32(id)
       .writeInt32(2)
       .littleEndian()
-      .writeInt32(0);  
+      .writeInt32(0);
   }
 
   return {bounds: bounds, buffer: bin.buffer()};
@@ -6314,13 +6326,6 @@ function ArcDataset(coords) {
     return this.getShapeTable(arr, MultiShape);
   };
 
-  // merge B into A
-  function mergeBounds(a, b) {
-    if (b[0] < a[0]) a[0] = b[0];
-    if (b[1] < a[1]) a[1] = b[1];
-    if (b[2] > a[2]) a[2] = b[2];
-    if (b[3] > a[3]) a[3] = b[3];
-  }
 }
 
 //
@@ -7262,8 +7267,11 @@ function CanvasLayer() {
   };
 
   this.prepare = function(w, h) {
-    if (w != canvas.width || h != canvas.height) this.resize(w, h);
-    this.clear();
+    if (w != canvas.width || h != canvas.height) {
+      this.resize(w, h);
+    } else {
+      this.clear();
+    }
   };
 
   this.resize = function(w, h) {
@@ -7352,7 +7360,7 @@ function ShapeLayer(src, surface) {
     var info = renderer.drawShapes(shapes, style, surface.getContext());
     // TODO: find a way to enable circles at an appropriate zoom
     // if (ext.scale() > 10) renderer.drawPoints(shapes.filterPoints(ext.getBounds()), surface.getContext());
-    T.stop("- paths: " + info.paths + " segs: " + info.segments);
+    T.stop("- paths: " + info.paths + " segs: " + info.segments + " scale: " + ext.scale());
   }
 }
 
@@ -8647,7 +8655,7 @@ Opts.inherit(MshpMap, Waiter);
 
 function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
-      _spacing = new FourSides(),
+      _padding = new FourSides(),
       _self = this,
       _fullBounds,
       _cx,
@@ -8714,23 +8722,30 @@ function MapExtent(el, initialBounds) {
     return getContentBounds(initialBounds);
   }
 
+  // Receive: Geographic bounds of content to be centered in the map with padding
+  // Return: Geographic bounds of map window centered on @bounds
   //
-  function getContentBounds(bb) {
-    // 1. get pix bounds
-    var viewport = new Bounds(0, 0, _position.width(), _position.height());
+  function getContentBounds(content) {
+    var bounds = content.clone();
+    var p = _padding,
+        wpix = _position.width() - p.left - p.right,
+        hpix = _position.height() - p.top - p.bottom;
 
-    // 2. inset by pixel padding
-    viewport.padBounds(-_spacing.left, -_spacing.top, -_spacing.right, -_spacing.bottom);
+    // expand bounds to match padded map aspect ratio
+    bounds.fillOut(wpix / hpix);
 
-    // 4. expand content bounds to fit viewport aspect ratio
-    return bb.clone().fillOut(viewport.width() / viewport.height());
+    // expand bounds to fit map viewport
+    var mpp = bounds.width() / wpix;
+    bounds.padBounds(p.left * mpp, p.top * mpp, p.right * mpp, p.bottom * mpp);
+    return bounds;
   }
 
   this.setContentPadding = function(l, t, r, b) {
     if (arguments.length == 1) {
       t = l, r = l, b = l;
     }
-    _spacing = new FourSides(l, t, r, b);
+    _padding = new FourSides(l, t, r, b);
+    this.reset();
     return this;
   };
 
@@ -9355,14 +9370,14 @@ function editorTest(shp) {
   Utils.loadBinaryData(shp, function(buf) {
     var shpData = MapShaper.importShp(buf),
         opts = {};
+
     editorPage(shpData, opts);
   })
 }
 
 function editorPage(importData, opts) {
-  trace(">>> editorPage; opts:", opts)
+  var decimalDegrees = containsBounds([-200, -100, 200, 100], importData.info.input_bounds);
   var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
-
 
   // hide intro page
   El("#mshp-intro-screen").hide();
@@ -9370,12 +9385,17 @@ function editorPage(importData, opts) {
   El("#mshp-main-page").show();
 
   // init editor
-
   var arcs = new ArcDataset(topoData.arcs);
+  var sopts = {
+    spherical: opts.spherical || decimalDegrees
+  };
+
+  trace(">> sopts:", sopts)
   var intervalScale = 0.65, // TODO: tune this
-      sopts = { spherical: false },
       calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
       vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
+
+  // TODO: protect shapes from elimination
 
   arcs.setThresholds(vertexData);
 
@@ -9383,7 +9403,7 @@ function editorPage(importData, opts) {
 
   var opts = {
     bounds: arcs.getBounds(),
-    spacing: 12
+    padding: 10
   };
 
   var map = new MshpMap("#mshp-main-map", opts);

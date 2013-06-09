@@ -109,8 +109,11 @@ function CanvasLayer() {
   };
 
   this.prepare = function(w, h) {
-    if (w != canvas.width || h != canvas.height) this.resize(w, h);
-    this.clear();
+    if (w != canvas.width || h != canvas.height) {
+      this.resize(w, h);
+    } else {
+      this.clear();
+    }
   };
 
   this.resize = function(w, h) {
