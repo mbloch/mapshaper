@@ -1,25 +1,37 @@
+#mapshaper
 
-###Using mapshaper
+Tools for topologically-aware Shapefile simplification
 
-- Currently, there is a commandline script (bin/mapshaper) that runs in Node.js. A graphical interface is in the works.
-- To view a list of options and examples, run `$ mapshaper -h`.
-- Simplification methods include: Douglas-Peucker, Visvalingam and a modified version of Visvalingam's algorithm designed to smooth spiky features.
-- Mapshaper currently reads Shapefiles and writes Shapefiles and GeoJSON files.
+###Interactive tool
 
+- To setup the mapshaper gui for online use, copy the files in gui/www/ to a web server. All processing in done in the browser, there is no backend process to run.
 
-###Building
-- Run `$ build` in the project directory to rebuild the mapshaper library from source files.
-- Run `$ mocha -R spec` in the project directory to run the tests
+- You can run the mapshaper gui directly from the filesystem by opening gui/www/index.html in a web browser.
 
+- Mapshaper works well in recent versions of Chrome, Safari and Firefox.
+
+###Commandline tool
+
+- `bin/mapshaper` is a [Node.js](http://nodejs.org) script.
+
+- Example commands:
+ 
+	`$ mapshaper -p 0.1 counties.shp` Retain 10% of removable vertices using default simplification.
+
+	`$ mapshaper -i 100 states.shp --dp` Remove features smaller than ~100 meters using Douglas-Peucker simplification
+
+	`$ mapshaper -h` Print help information
+
+###Building and testing
+
+- The `build` script rebuilds the JavaScript files used by the commandline and gui interfaces. Run `$ build` and `$ build gui` if you make any changes to files in the src/ directory. `$ build [gui] -f` watches for changes to source files and auto-updates the library files.
+
+- Run `$ mocha` or `$ mocha -R spec` in the project directory to run the tests.
 
 ###Wish list
 
-- Start a Wiki for tips and discussion
-- Improved GeoJSON support, reading/writing TopoJSON, support for other formats via OGR2OGR bindings
-- Support for selections and aggregations using attributes or geometry
-- Option to specify different simplification for a selection of parts or shapes
-- Option to export aggregated layers alongside original layer (e.g. states + country from county-level data)
+- Support for GeoJSON, TopoJSON and other formats.
+- Support for creating and exporting selections and aggregations.
 - Update the original "modified Visvalingam" method, add control over degree of smoothing
-- Think about replacing depencency on old utility functions with underscore.js
 - Work on preventing or removing vector intersections
-- Experiment with more advanced simplification methods and smoothing
+- Experiment with more advanced simplification and smoothing methods
