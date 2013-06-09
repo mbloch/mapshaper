@@ -8719,23 +8719,23 @@ function MapExtent(el, initialBounds) {
   this.scale = function() { return _scale };
 
   function getFullBounds() {
-    return getContentBounds(initialBounds);
+    return centerAlign(initialBounds);
   }
 
   // Receive: Geographic bounds of content to be centered in the map with padding
-  // Return: Geographic bounds of map window centered on @bounds
+  // Return: Geographic bounds of map window centered on @contentBounds
   //
-  function getContentBounds(content) {
-    var bounds = content.clone();
+  function centerAlign(contentBounds) {
+    var bounds = contentBounds.clone();
     var p = _padding,
-        wpix = _position.width() - p.left - p.right,
-        hpix = _position.height() - p.top - p.bottom;
+        wpix = _self.width() - p.left - p.right,
+        hpix = _self.height() - p.top - p.bottom;
 
     // expand bounds to match padded map aspect ratio
     bounds.fillOut(wpix / hpix);
 
-    // expand bounds to fit map viewport
-    var mpp = bounds.width() / wpix;
+    // add padding to bounds
+    var mpp = bounds.width() / wpix; // per-pixel scale
     bounds.padBounds(p.left * mpp, p.top * mpp, p.right * mpp, p.bottom * mpp);
     return bounds;
   }
