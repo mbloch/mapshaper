@@ -144,7 +144,7 @@ h2, h4, h5 {
 
 #mshp-main-map {
 	box-shadow: 0px 0px 17px #888;
-	margin: 38px 10px 10px 220px;
+	margin: 38px 10px 10px 10px;
 }
 
 .g-bottom-panel {
