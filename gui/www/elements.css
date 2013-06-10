@@ -194,7 +194,14 @@
 	cursor: default;
 }
 
-
 #g-browser-message {
 	display: none;
+}
+
+.g-home-btn {
+	cursor:pointer;
+	position: absolute;
+	z-index: 50;
+	padding: 4px;
+	margin: 2px;
 }

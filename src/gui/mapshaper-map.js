@@ -31,7 +31,6 @@ function MshpMap(el, opts_) {
     _groups.push(group);
   };
 
-
   this.getElement = function() {
     return _root;
   };
@@ -39,7 +38,17 @@ function MshpMap(el, opts_) {
   this.display = function() {
     this.startWaiting();
     this.dispatchEvent('display');
+    initHomeButton();
   };
+
+  function initHomeButton() {
+    El('div').addClass('g-home-btn').appendTo(_root)
+      .newChild('img').attr('src', "images/home.png")
+      .css('cursor:pointer;padding-left:1px;')
+      .on('click', function() {
+        _ext.reset();
+      });
+  }
 
   /*
   function editLayer(lyr) {
