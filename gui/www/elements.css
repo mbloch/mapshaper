@@ -166,9 +166,10 @@
 
 
 .g-panel-btn.selected {
-	padding-left: 0;
+	/*padding-left: 0;*/
+	color: #aaa;
 	background: none;
-	border: 1px solid rgba(0,0,0,0);
+	border: 1px solid rgba(0,0,0,0.1);
 }
 
 .g-panel-btn.active:hover:not(.selected) {

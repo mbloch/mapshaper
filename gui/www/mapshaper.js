@@ -3390,16 +3390,19 @@ function FileChooser(el) {
 
   if (!input) error("FileChooser() Missing file control");
   Browser.on(input.el, 'change', onchange, this);
-  _el.on('click', function() {input.el.click();})
+  _el.on('click', function() {
+    input.el.click();
+  });
 
   function onchange(e) {
     var files = e.target.files,
         file = files[0];
     if (file && _validate(file)) { // file may be undefined (e.g. if user presses 'cancel' after a file has been selected...)
-      _file = file;
-      _el.findChild('.g-label-text').text(_file.name);
+      input.attr('disabled', true); // button is disabled after first successful selection
       _el.addClass('selected');
-      this.dispatchEvent('select', {file:files[0]});      
+      _file = file;
+      // _el.findChild('.g-label-text').text(_file.name);
+      this.dispatchEvent('select', {file:files[0]});
     }
   }
 
