@@ -22,7 +22,7 @@ MapShaper.exportGeoJSON = function(obj) {
   var features = Utils.map(obj.shapes, function(topoShape) {
     if (!topoShape || !Utils.isArray(topoShape)) error("[exportGeoJSON()] Missing or invalid param/s");
     var data = MapShaper.convertTopoShape(topoShape, obj.arcs);
-    return MapShaper.getGeoJSONPolygonFeature(data.parts);      
+    return MapShaper.getGeoJSONPolygonFeature(data.parts);
   });
 
   var root = {
@@ -37,7 +37,6 @@ MapShaper.exportGeoJSON = function(obj) {
 // TODO: Implement the GeoJSON spec for holes.
 //
 MapShaper.getGeoJSONPolygonFeature = function(ringsIn) {
-  //error(ringsIn);
   var rings = Utils.map(ringsIn, MapShaper.transposeXYCoords),
       ringCount = rings.length,
       geom = {};

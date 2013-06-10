@@ -189,6 +189,7 @@ function SimpleButton(ref) {
 
   _el.on('click', function(e) {
     if (_active) this.dispatchEvent('click');
+    return false;
   }, this);
 
   this.active = function(a) {

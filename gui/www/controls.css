@@ -1,3 +1,11 @@
+#g-export-control {
+	position: absolute;
+	top: 0px;
+	right: 0px;
+	display: none;
+	margin: 3px 9px 0 0;
+}
+
 #g-simplify-control {
 	text-align: center;
 	display: inline-block;

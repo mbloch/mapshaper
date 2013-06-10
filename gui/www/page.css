@@ -37,7 +37,8 @@ canvas {
 
 .g-page-header {
 	background-color:#ACCDF5;
-	background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#7D99C1), color-stop(100%,#ACCDF5));	
+	/*background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#7D99C1), color-stop(100%,#ACCDF5));*/	
+	background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#6E90BA), color-stop(100%,#8DBCE2));	
 }
 
 .g-page-header .mshp-version {

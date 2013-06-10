@@ -185,7 +185,6 @@ function ArcDataset(coords) {
   this.getMultiShapes = function(arr) {
     return this.getShapeTable(arr, MultiShape);
   };
-
 }
 
 //

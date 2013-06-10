@@ -1,6 +1,73 @@
 /* @require mapshaper-elements, textutils, mapshaper-shapefile */
 
 
+var ExportControl = function(arcData, topoData) {
+  var filename = "out";
+
+  var el = El('#g-export-control').show();
+  var anchor = el.newChild('a').attr('href', '#').node();
+  var btn = new SimpleButton('#g-export-control .g-next-btn').active(true);
+
+  btn.on('click', function() {
+    btn.active(false);
+    exportShapefileToZip();
+    return false;
+  });
+
+  function exportBlob(filename, blob) {
+    var url = URL.createObjectURL(blob);
+    anchor.href = url;
+    anchor.download = filename;
+    var clickEvent = document.createEvent("MouseEvent");
+    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+    anchor.dispatchEvent(clickEvent);
+    btn.active(true);
+  }
+
+  function exportTopoJSON() {
+
+  }
+
+  function exportShapefileToZip() {
+    var data = exportShapefile();
+    var shp = new Blob([data.shp]);
+    var shx = new Blob([data.shx]);
+    trace(shp.size, data.shp.byteLength);
+
+    function addShp(writer) {
+      writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
+        addShx(writer);
+      }, null); // last arg: onprogress
+    }
+
+    function addShx(writer) {
+      writer.add(filename + ".shx", new zip.BlobReader(shx), function() {
+        writer.close(function(blob) {
+          exportBlob(filename + ".zip", blob)
+        });
+      });
+    }
+
+    zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
+  }
+
+  function exportShapefile() {
+    var arcs = [];
+    arcData.shapes().forEach(function(iter) {
+      var xx = [], yy = [];
+      while(iter.hasNext()) {
+        xx.push(iter.x);
+        yy.push(iter.y);
+      }
+      arcs.push([xx, yy]);
+    });
+
+    return MapShaper.exportShp(arcs, topoData.shapes, 5);
+  }
+
+};
+
+
 var SimplifyControl = function() {
   var _value = 1;
 

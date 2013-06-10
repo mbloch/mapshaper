@@ -789,6 +789,7 @@ Utils.findValueByRank = function(arr, rank) {
 };
 
 //
+//
 Utils.findMedian = function(arr) {
   var n = arr.length,
       rank = Math.floor(n / 2) + 1,
@@ -3360,6 +3361,7 @@ function SimpleButton(ref) {
 
   _el.on('click', function(e) {
     if (_active) this.dispatchEvent('click');
+    return false;
   }, this);
 
   this.active = function(a) {
@@ -3862,8 +3864,10 @@ function BinArray(buf, le) {
   this._words = buf.byteLength % 4 == 0 ? new Uint32Array(buf) : null;
 }
 
+// Return length in bytes of an ArrayBuffer or Buffer
+//
 BinArray.bufferSize = function(buf) {
-  return (buf instanceof Buffer ? buf.length : buf.byteLength | 0)
+  return (buf instanceof ArrayBuffer ?  buf.byteLength : buf.length | 0);
 };
 
 BinArray.buffersAreIdentical = function(a, b) {
@@ -3953,7 +3957,7 @@ BinArray.prototype = {
   },
 
   readFloat64: function() {
-    var val = this._view.getFloat64(this._idx, this._le); 
+    var val = this._view.getFloat64(this._idx, this._le);
     this._idx += 8;
     return val;
   },
@@ -5872,13 +5876,13 @@ MapShaper.importShp = function(src) {
   };
 };
 
-
 // Convert topological data to buffers containing .shp and .shx file data
 //
 MapShaper.exportShp = function(arcs, shapes, shpType) {
   if (!Utils.isArray(arcs) || !Utils.isArray(shapes)) error("Missing exportable data.");
   T.start();
   T.start();
+
   var fileBytes = 100;
   var bounds = new BoundingBox();
   var shapeBuffers = Utils.map(shapes, function(shape, i) {
@@ -5887,8 +5891,8 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
     shpObj.bounds && bounds.mergeBounds(shpObj.bounds);
     return shpObj.buffer;
   });
-  T.stop("export shape records");
 
+  T.stop("export shape records");
   T.start();
 
   // write .shp header section
@@ -5994,6 +5998,73 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
 
 
 /* @require mapshaper-elements, textutils, mapshaper-shapefile */
+
+
+var ExportControl = function(arcData, topoData) {
+  var filename = "out";
+
+  var el = El('#g-export-control').show();
+  var anchor = el.newChild('a').attr('href', '#').node();
+  var btn = new SimpleButton('#g-export-control .g-next-btn').active(true);
+
+  btn.on('click', function() {
+    btn.active(false);
+    exportShapefileToZip();
+    return false;
+  });
+
+  function exportBlob(filename, blob) {
+    var url = URL.createObjectURL(blob);
+    anchor.href = url;
+    anchor.download = filename;
+    var clickEvent = document.createEvent("MouseEvent");
+    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+    anchor.dispatchEvent(clickEvent);
+    btn.active(true);
+  }
+
+  function exportTopoJSON() {
+
+  }
+
+  function exportShapefileToZip() {
+    var data = exportShapefile();
+    var shp = new Blob([data.shp]);
+    var shx = new Blob([data.shx]);
+    trace(shp.size, data.shp.byteLength);
+
+    function addShp(writer) {
+      writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
+        addShx(writer);
+      }, null); // last arg: onprogress
+    }
+
+    function addShx(writer) {
+      writer.add(filename + ".shx", new zip.BlobReader(shx), function() {
+        writer.close(function(blob) {
+          exportBlob(filename + ".zip", blob)
+        });
+      });
+    }
+
+    zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
+  }
+
+  function exportShapefile() {
+    var arcs = [];
+    arcData.shapes().forEach(function(iter) {
+      var xx = [], yy = [];
+      while(iter.hasNext()) {
+        xx.push(iter.x);
+        yy.push(iter.y);
+      }
+      arcs.push([xx, yy]);
+    });
+
+    return MapShaper.exportShp(arcs, topoData.shapes, 5);
+  }
+
+};
 
 
 var SimplifyControl = function() {
@@ -6312,7 +6383,6 @@ function ArcDataset(coords) {
   this.getMultiShapes = function(arr) {
     return this.getShapeTable(arr, MultiShape);
   };
-
 }
 
 //
@@ -7280,11 +7350,11 @@ function CanvasLayer() {
 
 // Layer group...
 //
-function ArcLayerGroup(src) {
+function ArcLayerGroup(arcs) {
   var _self = this;
   var _surface = new CanvasLayer();
 
-  var _arcLyr = new ShapeLayer(src.getArcs(), _surface),
+  var _arcLyr = new ShapeLayer(arcs, _surface),
       _layers = [_arcLyr],
       _map;
 
@@ -7325,7 +7395,6 @@ function ArcLayerGroup(src) {
   }
 }
 
-
 function ShapeLayer(src, surface) {
   var renderer = new ShapeRenderer();
   var _visible = true;
@@ -7346,8 +7415,8 @@ function ShapeLayer(src, surface) {
     var shapes = src.shapes().filterPaths(ext.getBounds()).transform(ext.getTransform());
     var info = renderer.drawShapes(shapes, style, surface.getContext());
     // TODO: find a way to enable circles at an appropriate zoom
-    // if (ext.scale() > 10) renderer.drawPoints(shapes.filterPoints(ext.getBounds()), surface.getContext());
-    T.stop("- paths: " + info.paths + " segs: " + info.segments + " scale: " + ext.scale());
+    if (ext.scale() > 40) renderer.drawPoints(src.shapes().filterPoints(ext.getBounds()).transform(ext.getTransform()), surface.getContext());
+    T.stop("- paths: " + info.paths + " segs: " + info.segments);
   }
 }
 
@@ -8099,7 +8168,6 @@ Opts.extendPrototype(TouchHandler, EventDispatcher);
 /** @requires core.geo, browser, hybrid-touch */
 
 
-
 function HybridMouse(opts) {
   this._ignoredElements = [];
   this.dragging = false;
@@ -8212,7 +8280,7 @@ HybridMouse.prototype.handleTouchEnd = function(evt) {
   this.triggerMouseOut();
 };
 
-/** 
+/**
  * Now fired on body -> mouseover
  */
 HybridMouse.prototype.handleMouseOut = function(e) {
@@ -8343,7 +8411,7 @@ HybridMouse.prototype.getStandardMouseData = function(e) {
   e = this.standardizeMouseEvent(e);
   var pageX = e.pageX;
   var pageY = e.pageY;
-  
+
   var bounds = this._boundsOnPage;
   var mapX = pageX - bounds.left;
   var mapY = pageY - bounds.bottom; // bottom is actually the upper bound
@@ -8619,7 +8687,6 @@ function MshpMap(el, opts_) {
     _groups.push(group);
   };
 
-
   this.getElement = function() {
     return _root;
   };
@@ -8627,7 +8694,17 @@ function MshpMap(el, opts_) {
   this.display = function() {
     this.startWaiting();
     this.dispatchEvent('display');
+    initHomeButton();
   };
+
+  function initHomeButton() {
+    El('div').addClass('g-home-btn').appendTo(_root)
+      .newChild('img').attr('src', "images/home.png")
+      .css('cursor:pointer;padding-left:1px;')
+      .on('click', function() {
+        _ext.reset();
+      });
+  }
 
   /*
   function editLayer(lyr) {
@@ -9371,24 +9448,24 @@ function editorPage(importData, opts) {
   El("#mshp-main-page").show();
 
   // init editor
-  var arcs = new ArcDataset(topoData.arcs);
+  var arcData = new ArcDataset(topoData.arcs),
+      arcs = arcData.getArcs();
   var sopts = {
     spherical: opts.spherical || decimalDegrees
   };
 
-  trace(">> sopts:", sopts)
   var intervalScale = 0.65, // TODO: tune this
       calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
       vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
 
   // TODO: protect shapes from elimination
 
-  arcs.setThresholds(vertexData);
+  arcData.setThresholds(vertexData);
 
   var group = new ArcLayerGroup(arcs);
 
   var opts = {
-    bounds: arcs.getBounds(),
+    bounds: arcData.getBounds(),
     padding: 10
   };
 
@@ -9399,9 +9476,11 @@ function editorPage(importData, opts) {
   var slider = new SimplifyControl();
 
   slider.on('change', function(e) {
-    arcs.setRetainedPct(e.value);
+    arcData.setRetainedPct(e.value);
     group.refresh();
   });
+
+  var exporter = new ExportControl(arcs, topoData);
 }
 
 })();

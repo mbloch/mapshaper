@@ -41,24 +41,24 @@ function editorPage(importData, opts) {
   El("#mshp-main-page").show();
 
   // init editor
-  var arcs = new ArcDataset(topoData.arcs);
+  var arcData = new ArcDataset(topoData.arcs),
+      arcs = arcData.getArcs();
   var sopts = {
     spherical: opts.spherical || decimalDegrees
   };
 
-  trace(">> sopts:", sopts)
   var intervalScale = 0.65, // TODO: tune this
       calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
       vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
 
   // TODO: protect shapes from elimination
 
-  arcs.setThresholds(vertexData);
+  arcData.setThresholds(vertexData);
 
   var group = new ArcLayerGroup(arcs);
 
   var opts = {
-    bounds: arcs.getBounds(),
+    bounds: arcData.getBounds(),
     padding: 10
   };
 
@@ -69,7 +69,9 @@ function editorPage(importData, opts) {
   var slider = new SimplifyControl();
 
   slider.on('change', function(e) {
-    arcs.setRetainedPct(e.value);
+    arcData.setRetainedPct(e.value);
     group.refresh();
   });
+
+  var exporter = new ExportControl(arcs, topoData);
 }

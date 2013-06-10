@@ -2,11 +2,11 @@
 
 // Layer group...
 //
-function ArcLayerGroup(src) {
+function ArcLayerGroup(arcs) {
   var _self = this;
   var _surface = new CanvasLayer();
 
-  var _arcLyr = new ShapeLayer(src.getArcs(), _surface),
+  var _arcLyr = new ShapeLayer(arcs, _surface),
       _layers = [_arcLyr],
       _map;
 
@@ -47,7 +47,6 @@ function ArcLayerGroup(src) {
   }
 }
 
-
 function ShapeLayer(src, surface) {
   var renderer = new ShapeRenderer();
   var _visible = true;
@@ -68,8 +67,8 @@ function ShapeLayer(src, surface) {
     var shapes = src.shapes().filterPaths(ext.getBounds()).transform(ext.getTransform());
     var info = renderer.drawShapes(shapes, style, surface.getContext());
     // TODO: find a way to enable circles at an appropriate zoom
-    // if (ext.scale() > 10) renderer.drawPoints(shapes.filterPoints(ext.getBounds()), surface.getContext());
-    T.stop("- paths: " + info.paths + " segs: " + info.segments + " scale: " + ext.scale());
+    if (ext.scale() > 40) renderer.drawPoints(src.shapes().filterPoints(ext.getBounds()).transform(ext.getTransform()), surface.getContext());
+    T.stop("- paths: " + info.paths + " segs: " + info.segments);
   }
 }
 

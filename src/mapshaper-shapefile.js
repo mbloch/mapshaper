@@ -132,13 +132,13 @@ MapShaper.importShp = function(src) {
   };
 };
 
-
 // Convert topological data to buffers containing .shp and .shx file data
 //
 MapShaper.exportShp = function(arcs, shapes, shpType) {
   if (!Utils.isArray(arcs) || !Utils.isArray(shapes)) error("Missing exportable data.");
   T.start();
   T.start();
+
   var fileBytes = 100;
   var bounds = new BoundingBox();
   var shapeBuffers = Utils.map(shapes, function(shape, i) {
@@ -147,8 +147,8 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
     shpObj.bounds && bounds.mergeBounds(shpObj.bounds);
     return shpObj.buffer;
   });
-  T.stop("export shape records");
 
+  T.stop("export shape records");
   T.start();
 
   // write .shp header section
