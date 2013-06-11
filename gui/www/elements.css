@@ -166,7 +166,6 @@
 
 
 .g-panel-btn.selected {
-	/*padding-left: 0;*/
 	color: #aaa;
 	background: none;
 	border: 1px solid rgba(0,0,0,0.1);
@@ -190,6 +189,22 @@
 
 .g-page-header .g-panel-btn {
 	margin-right: 0;
+	color: #fff;
+	/*background-color: #557DA5;*/
+	background-color: rgba(16, 69, 104, 0.3);
+	border: none;
+	padding: 3px 5px 4px 5px;
+	border-radius: 3px;
+}
+
+.g-page-header .g-panel-btn.active:hover:not(.selected) {
+	background-color: rgba(172, 205, 245, 0.3);
+}
+
+.g-page-header .g-panel-btn:not(.active) {
+	color: #aaa;
+	background: #eaeaea;
+	cursor: default;
 }
 
 .g-panel-btn:not(.active) {
