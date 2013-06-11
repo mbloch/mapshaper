@@ -1,7 +1,6 @@
 (function(){
 
-var C = this.C || {}; // global constants
-var A = this.A || {};
+var C = C || {}; // global constants
 
 var Env = (function() {
   var inNode = typeof module !== 'undefined' && !!module.exports;
@@ -31,7 +30,7 @@ var Utils = {
   },
 
   parseUrl: function parseUrl(url) {
-    var obj, 
+    var obj,
       matches = /^(http):\/\/([^\/]+)(.*)/.exec(url); // TODO: improve
     if (matches) {
       obj = {
@@ -45,7 +44,7 @@ var Utils = {
     }
     return obj;
   },
-    
+
   reduce: function(arr, func, val, ctx) {
     for (var i = 0, len = arr.length; i < len; i++) {
       val = func.call(ctx || null, arr[i], val, i);
@@ -162,7 +161,7 @@ var Utils = {
 
   log: function(msg) {
     if (Env.inNode) {
-      process.stderr.write(msg + '\n'); // node messages to stdout 
+      process.stderr.write(msg + '\n'); // node messages to stdout
     }
     else if (typeof console != "undefined" && console.log) {
       if (console.log.call) {
@@ -197,15 +196,15 @@ var Utils = {
         parts.push( keyStr + ':' + Utils.toString(obj[key], true));
       }
       str = '{' + parts.join(', ') + '}';
-    } else if (obj.nodeName) { // 
+    } else if (obj.nodeName) { //
       str = '"[' + obj.nodeName + (obj.id ? " id=" + obj.id : "") + ']"';
     }
     // User-defined objects without a toString() method: Try to get function name from constructor function.
     // Can't assume objects have hasOwnProperty() function (e.g. HTML nodes don't in ie <= 8)
     else if (type == 'object' && obj.toString === Object.prototype.toString) {
       str = '"[' + (Utils.getConstructorName(obj) || "unknown object") + ']"';
-    } else {  
-      // strings, numbers and objects with own "toString" methods. 
+    } else {
+      // strings, numbers and objects with own "toString" methods.
       // TODO: make sure that strings made by toString methods are quoted for js.
       str = String(obj);
       if (Utils.isString(obj)) {
@@ -280,18 +279,18 @@ var Opts = {
         // add __super__ of parent to front of lookup chain
         // so parent class constructor can call its parent using this.__super__
         //
-        this.__super__ = src.prototype.__super__; 
+        this.__super__ = src.prototype.__super__;
         // call parent constructor function. this.__super__ now points to parent-of-parent
-        src.apply(this, arguments); 
+        src.apply(this, arguments);
         // remove temp __super__, expose targ.prototype.__super__ again
         delete this.__super__;
       }
     };
 
     f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
-    // TODO: extend targ prototype instead of wiping it out -- 
+    // TODO: extend targ prototype instead of wiping it out --
     //   in case inherit() is called after targ.prototype = {stuff}; statement
-    targ.prototype = Utils.extend(new f(), targ.prototype); // 
+    targ.prototype = Utils.extend(new f(), targ.prototype); //
     targ.prototype.constructor = targ;
     targ.prototype.__super__ = f;
   },
@@ -1685,6 +1684,176 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
 
 
 
+/* requires mapshaper-common */
+
+function distance3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+
+function distanceSq(ax, ay, bx, by) {
+  var dx = ax - bx,
+      dy = ay - by;
+  return dx * dx + dy * dy;
+}
+
+
+function distanceSq3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+
+// atan2() makes this function fairly slow, replaced by ~2x faster formula
+//
+/*
+function innerAngle_slow(ax, ay, bx, by, cx, cy) {
+  var a1 = Math.atan2(ay - by, ax - bx),
+      a2 = Math.atan2(cy - by, cx - bx),
+      a3 = Math.abs(a1 - a2);
+      a3 = a2 - a1
+  if (a3 > Math.PI) {
+    a3 = 2 * Math.PI - a3;
+  }
+  return a3;
+}
+*/
+
+
+// TODO: make this safe for small angles
+//
+function innerAngle(ax, ay, bx, by, cx, cy) {
+  var ab = Point.distance(ax, ay, bx, by),
+      bc = Point.distance(bx, by, cx, cy),
+      theta, dotp;
+  if (ab == 0 || bc == 0) {
+    theta = 0;
+  } else {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
+    if (dotp >= 1) {
+      theta = 0;
+    } else if (dotp <= -1) {
+      theta = Math.PI;
+    } else {
+      theta = Math.acos(dotp); // consider using other formula at small dp
+    }
+  }
+  return theta;
+}
+
+
+function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab = distance3D(ax, ay, az, bx, by, bz),
+      bc = distance3D(bx, by, bz, cx, cy, cz),
+      theta, dotp;
+  if (ab == 0 || bc == 0) {
+    theta = 0;
+  } else {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
+    if (dotp >= 1) {
+      theta = 0;
+    } else if (dotp <= -1) {
+      theta = Math.PI;
+    } else {
+      theta = Math.acos(dotp); // consider using other formula at small dp
+    }
+  }
+  return theta;
+}
+
+
+function triangleArea(ax, ay, bx, by, cx, cy) {
+  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
+  return area;
+}
+
+
+function detSq(ax, ay, bx, by, cx, cy) {
+  var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
+  return det * det;
+}
+
+
+function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
+    detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
+  return area;
+}
+
+
+// Given a triangle with vertices abc, return the distSq of the shortest segment
+//   with one endpoint at b and the other on the line intersecting a and c.
+//   If a and c are coincident, return the distSq between b and a/c
+//
+// Receive the distSq of the triangle's three sides.
+//
+function triangleHeightSq(ab2, bc2, ac2) {
+  var dist2;
+  if (ac2 == 0.0) {
+    dist2 = ab2;
+  } else if (ab2 >= bc2 + ac2) {
+    dist2 = bc2;
+  } else if (bc2 >= ab2 + ac2) {
+    dist2 = ab2;
+  } else {
+    var dval = (ab2 + ac2 - bc2);
+    dist2 = ab2 -  dval * dval / ac2  * 0.25;
+  }
+  if (dist2 < 0.0) {
+    dist2 = 0.0;
+  }
+  return dist2;
+}
+
+
+function msSignedRingArea(xx, yy, start, len) {
+  var sum = 0,
+      start = start | 0,
+      end = start + (len == null ? xx.length - start : len | 0) - 1;
+
+  if (start < 0 || end >= xx.length) {
+    error("Out-of-bounds array index");
+  }
+  for (var i=start; i < end; i++) {
+    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
+  }
+  return sum / 2;
+}
+
+
+function msRingArea(xx, yy, start, len) {
+  return Math.abs(msSignedRingArea(xx, yy, start, len));
+}
+
+
+// merge B into A
+function mergeBounds(a, b) {
+  if (b[0] < a[0]) a[0] = b[0];
+  if (b[1] < a[1]) a[1] = b[1];
+  if (b[2] > a[2]) a[2] = b[2];
+  if (b[3] > a[3]) a[3] = b[3];
+}
+
+function containsBounds(a, b) {
+  return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
+}
+
+// export functions so they can be tested
+MapShaper.geom = {
+  distance3D: distance3D,
+  innerAngle: innerAngle,
+  innerAngle3D: innerAngle3D,
+  triangleArea: triangleArea,
+  triangleArea3D: triangleArea3D,
+  msRingArea: msRingArea,
+  msSignedRingArea: msSignedRingArea,
+};
+
 
 function Transform() {
   this.mx = this.my = 1;
@@ -1973,6 +2142,549 @@ Bounds.prototype.mergeBounds = function(bb) {
   return this;
 };
 
+
+/* @requires mapshaper-common, mapshaper-geom, bounds, sorting */
+
+MapShaper.calcArcBounds = function(xx, yy) {
+  var xb = Utils.getArrayBounds(xx),
+      yb = Utils.getArrayBounds(yy);
+  return [xb.min, yb.min, xb.max, yb.max];
+};
+
+// An interface for a set of topological arcs and the layers derived from the arcs.
+// @arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
+//
+function ArcDataset(coords) {
+
+  var _arcs = coords,
+      _thresholds = null,
+      _sortedThresholds = null,
+      filteredIds = null,
+      filteredSegLen = 0,
+      zlimit = 0;
+
+  var arcIter = new ArcIter();
+  var boxes = [],
+      _bounds = new Bounds();
+  for (var i=0, n=_arcs.length; i<n; i++) {
+    var b = MapShaper.calcArcBounds(_arcs[i][0], _arcs[i][1]);
+    _bounds.mergeBounds(b);
+    boxes.push(b);
+  }
+
+  this.getArcIter = function(i, mpp) {
+    var arc = _arcs[i],
+        filteredIds = this.getFilteredIds(i, mpp),
+        fw = i >= 0;
+    if (!fw) {
+      i = -i - 1;
+    }
+    if (zlimit) {
+      arcIter.init(arc[0], arc[1], fw, _thresholds[i], zlimit, filteredIds);
+    } else {
+      arcIter.init(arc[0], arc[1], fw, null, null, filteredIds);
+    }
+    return arcIter;
+  };
+
+  // Add simplification data to the dataset
+  // @arr is an array of arrays of removal thresholds for each arc-vertex.
+  //
+  this.setThresholds = function(thresholds) {
+    _thresholds = thresholds;
+
+    // Sort simplification thresholds for all non-endpoint vertices
+    // ... to quickly convert a simplification percentage to a threshold value.
+    // ... for large datasets, use every nth point, for faster sorting.
+    var innerCount = MapShaper.countInnerPoints(thresholds);
+    var nth = 1;
+    if (innerCount > 1e7) nth = 16;
+    else if (innerCount > 5e6) nth = 8;
+    else if (innerCount > 1e6) nth = 4;
+    else if (innerCount > 5e5) nth = 2;
+    _sortedThresholds = MapShaper.getInnerThresholds(thresholds, nth);
+    Utils.quicksort(_sortedThresholds, false);
+
+    // Calculate a filtered version of each arc, for fast rendering when zoomed out
+    var filterPct = 0.08;
+    var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];
+    filteredIds = initFilteredArcs(thresholds, filterZ);
+    filteredSegLen = calcAvgFilteredSegLen(_arcs, filteredIds);
+  };
+
+  function calcAvgFilteredSegLen(arcs, filtered) {
+    var segCount = 0, pathLen = 0;
+    Utils.forEach(filtered, function(ids, arcId) {
+      var xx = arcs[arcId][0],
+          yy = arcs[arcId][1],
+          x, y, prevX, prevY, idx;
+      for (var i=0, n=ids.length; i<n; i++) {
+        idx = ids[i];
+        x = xx[idx];
+        y = yy[idx];
+        if (i > 0) {
+          segCount++;
+          pathLen += Math.sqrt(distanceSq(prevX, prevY, x, y));
+        }
+        prevX = x;
+        prevY = y;
+      }
+    });
+    return pathLen / segCount;
+  }
+
+  // Generate arrays of coordinate ids, representing a simplified view of a collection of arcs
+  //
+  function initFilteredArcs(thresholds, zlim) {
+    return Utils.map(thresholds, function(zz, j) {
+      var ids = [];
+      for (var i=0, n=zz.length; i<n; i++) {
+        if (zz[i] >= zlim) ids.push(i);
+      }
+      return ids;
+    });
+  };
+
+  this.getFilteredIds = function(i, mpp) {
+    var ids = (filteredIds && filteredSegLen < mpp * 0.5) ? filteredIds[i] : null;
+    return ids;
+  };
+
+  this.setRetainedPct = function(pct) {
+    if (!_sortedThresholds) error ("Missing threshold data.");
+    if (pct >= 1) {
+      zlimit = 0;
+    } else {
+      zlimit = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
+    }
+  };
+
+  this.getShapeIter = function(ids, mpp) {
+    var iter = new ShapeIter(this);
+    iter.init(ids, mpp);
+    return iter;
+  };
+
+  this.testArcIntersection = function(b1, i) {
+    var b2 = boxes[i];
+    return b2[0] <= b1[2] && b2[2] >= b1[0] && b2[3] >= b1[1] && b2[1] <= b1[3];
+  };
+
+  this.getArcBounds = function(i) {
+    return boxes[i];
+  };
+
+  this.getShapeBounds = function(ids) {
+    var bounds = boxes[ids[0]].concat();
+    for (var i=1, n=ids.length; i<n; i++) {
+      mergeBounds(bounds, boxes[ids[i]]);
+    }
+    return bounds;
+  };
+
+  this.getMultiShapeBounds = function(parts) {
+    var bounds = this.getShapeBounds[parts[0]];
+    for (var i=1, n=parts.length; i<n; i++) {
+      mergeBounds(bounds, this.getShapeBounds(parts[i]));
+    }
+    return bounds;
+  };
+
+  this.testShapeIntersection = function(bbox, ids) {
+    for (var i=0, n=ids.length; i<n; i++) {
+      if (this.testArcIntersection(bbox, ids[i])) return true;
+    }
+    return false;
+  };
+
+  this.testMultiShapeIntersection = function(bbox, parts) {
+    for (var i=0, n=parts.length; i<n; i++) {
+      if (this.testShapeIntersection(bbox, parts[i])) return true;
+    }
+    return true;
+  };
+
+  this.size = function() {
+    return _arcs.length;
+  };
+
+  this.getBounds = function() {
+    return _bounds;
+  };
+
+  this.getShapeTable = function(data, ShapeClass) {
+    var shapes = Utils.map(data, function(datum, i) {
+      return new ShapeClass(this).init(datum);
+    }, this);
+    return new ShapeTable(shapes, this);
+  };
+
+  this.getArcs = function() {
+    return this.getShapeTable(Utils.range(this.size()), Arc);
+  };
+
+  this.getSimpleShapes = function(arr) {
+    return this.getShapeTable(arr, SimpleShape);
+  };
+
+  this.getMultiShapes = function(arr) {
+    return this.getShapeTable(arr, MultiShape);
+  };
+}
+
+//
+//
+function ShapeTable(arr, src) {
+  this.shapes = function() {
+    return new ShapeCollection(arr, src.getBounds());
+  };
+
+  // TODO: add method so layer can determine if vertices can be displayed at current scale
+}
+
+// An iterable collection of shapes, for drawing paths on-screen
+//   and for exporting shape data.
+//
+function ShapeCollection(arr, collBounds) {
+  var _filterBounds,
+      _transform;
+
+  var getPathIter = function() {
+    return function(s, i) {
+      return s.getShapeIter(i);
+    };
+  };
+
+  this.filterPaths = function(b) {
+    _filterBounds = b;
+    getPathIter = getDrawablePathsIter;
+    return this;
+  };
+
+  this.filterPoints = function(b) {
+    _filterBounds = b;
+    getPathIter = getDrawablePointsIter;
+    return this;
+  }
+
+  this.transform = function(tr) {
+    _transform = tr;
+    if (_filterBounds) {
+      _filterBounds = _filterBounds.clone().transform(tr);
+    }
+    return this;
+  };
+
+  // Wrap path iterator to filter out offscreen points
+  //
+  function getDrawablePointsIter() {
+    var bounds = _filterBounds || error("#getDrawablePointsIter() missing bounds");
+    var src = getDrawablePathsIter(),
+        wrapped;
+    var wrapper = {
+      x: 0,
+      y: 0,
+      node: false,
+      hasNext: function() {
+        var path = wrapped;
+        while (path.hasNext()) {
+          if (bounds.containsPoint(path.x, path.y)) {
+            this.x = path.x;
+            this.y = path.y;
+            this.node = path.node;
+            return true;
+          }
+        }
+        return false;
+      }
+    };
+
+    return function(s, i) {
+      wrapped = src(s, i);
+      return wrapper;
+    };
+  }
+
+  // Wrap vector path iterator to convert geographic coordinates to pixels
+  //   and skip over invisible clusters of points (i.e. smaller than a pixel)
+  //
+  function getDrawablePathsIter() {
+    var transform = _transform || error("#getDrawablePathsIter() Missing a Transform object; remember to call .transform()");
+    var wrapped,
+        _firstPoint;
+
+    var wrapper = {
+      x: 0,
+      y: 0,
+      node: false,
+      hasNext: function() {
+        var t = transform, mx = t.mx, my = t.my, bx = t.bx, by = t.by;
+        var path = wrapped,
+            isFirst = _firstPoint,
+            x, y, prevX, prevY,
+            minSeg = 0.6,
+            i = 0;
+        if (!isFirst) {
+          prevX = this.x;
+          prevY = this.y;
+        }
+        while (path.hasNext()) {
+          i++;
+          x = path.x * mx + bx;
+          y = path.y * my + by;
+          if (isFirst || Math.abs(x - prevX) > minSeg || Math.abs(y - prevY) > minSeg) {
+            break;
+          }
+        }
+        if (i == 0) return false;
+        _firstPoint = false;
+        this.x = x;
+        this.y = y;
+        this.node = path.node;
+        return true;
+      }
+    };
+
+    return function(s, i) {
+      _firstPoint = true;
+      wrapped = s.getShapeIter(i, 1/_transform.mx);
+      return wrapper;
+    }
+  }
+
+  this.forEach = function(cb) {
+    var allIn = true,
+        filterOnSize = _transform && _filterBounds,
+        minPathSize, geoBounds, geoBBox;
+
+    if (filterOnSize) {
+      minPathSize = 0.9 / _transform.mx;
+      geoBounds = _filterBounds.clone().transform(_transform.invert());
+      geoBBox = geoBounds.toArray();
+      allIn = geoBounds.contains(collBounds);
+    }
+    var path = getPathIter();
+
+    for (var i=0, n=arr.length; i<n; i++) {
+      var shp = arr[i];
+      if (filterOnSize && shp.smallerThan(minPathSize)) continue;  // problem: won't filter out multi-part shapes with tiny parts
+      if (!allIn && !shp.inBounds(geoBBox)) continue;
+      for (var j=0; j<shp.partCount; j++) {
+        cb(path(shp, j));
+      }
+    }
+  };
+
+  this.toArray = function() {
+    var arcs = [];
+    this.forEach(function(iter) {
+      var xx = [], yy = [];
+      while(iter.hasNext()) {
+        xx.push(iter.x);
+        yy.push(iter.y);
+      }
+      arcs.push([xx, yy]);
+    });
+    return arcs;
+  };
+}
+
+function Arc(src) {
+  this.src = src;
+}
+
+Arc.prototype = {
+  init: function(id) {
+    this.id = id;
+    this.bounds = this.src.getArcBounds(id);
+    return this;
+  },
+  partCount: 1,
+  getShapeIter: function(i, mpp) {
+    return this.src.getArcIter(this.id, mpp);
+  },
+  inBounds: function(bbox) {
+    return this.src.testArcIntersection(bbox, this.id);
+  },
+  smallerThan: function(units) {
+    var b = this.bounds;
+    return b[2] - b[0] < units && b[3] - b[1] < units;
+  }
+};
+
+//
+function MultiShape(src) {
+  this.src = src;
+}
+
+MultiShape.prototype = {
+  init: function(parts) {
+    this.partCount = parts.length;
+    this.parts = parts;
+    this.bounds = this.src.getMultiShapeBounds(parts);
+    return this;
+  },
+  getShapeIter: function(i, mpp) {
+    return this.src.getShapeIter(this.parts[i], mpp);
+  },
+  inBounds: function(bbox) {
+    return this.src.testMultiShapeIntersection(bbox, this.parts);
+  },
+  smallerThan: Arc.prototype.smallerThan
+};
+
+
+function SimpleShape(src) {
+  this.src = src;
+}
+
+SimpleShape.prototype = {
+  partCount: 1,
+  init: function(ids) {
+    this.ids = ids;
+    this.bounds = this.src.getShapeBounds(ids);
+    return this;
+  },
+  getShapeIter: function(mpp) {
+    return this.src.getShapeIter(this.ids, mpp);
+  },
+  inBounds: function(bbox) {
+    return this.src.testShapeIntersection(bbox, this.ids);
+  },
+  smallerThan: Arc.prototype.smallerThan
+};
+
+
+// Iterate along the points of an arc
+// properties: x, y, node (boolean, true if points is an arc endpoint)
+// method: hasNext()
+// usage:
+//   while (iter.hasNext()) {
+//     iter.x, iter.y; // do something w/ x & y
+//   }
+//
+function ArcIter() {
+  var _xx, _yy, _zz, _zlim, _ww, _len;
+  var _i, _inc, _start, _stop;
+  this.x = 0;
+  this.y = 0;
+  var next;
+
+  this.hasNext = function() {
+    var i = next();
+    if (i == -1) return false;
+    this.x = _xx[i];
+    this.y = _yy[i];
+    this.node = i == 0 || i == _len - 1;
+    return true;
+  };
+
+  this.init = function(xx, yy, fw, zz, lim, ww) {
+    _xx = xx, _yy = yy, _zz = zz, _zlim = lim, _ww = ww;
+    var len = _len = xx.length;
+    if (ww) {
+      len = ww.length;
+      next = zz ? nextFilteredSimpleIdx : nextFilteredIdx;
+    } else {
+      next = zz ? nextSimpleIdx : nextIdx;
+    }
+
+    if (fw) {
+      _start = 0;
+      _inc = 1;
+      _stop = len;
+    } else {
+      _start = len - 1;
+      _inc = -1;
+      _stop = -1;
+    }
+    _i = _start;
+  };
+
+  function nextIdx() {
+    var i = _i;
+    if (i == _stop) return -1;
+    _i = i + _inc;
+    return i;
+  }
+
+  function nextSimpleIdx() {
+    // using local vars makes a big difference when skipping many points
+    var zz = _zz,
+        i = _i,
+        j = i,
+        zlim = _zlim,
+        stop = _stop,
+        inc = _inc;
+    if (i == stop) return -1;
+    do {
+      j += inc;
+    } while (j != stop && zz[j] < zlim);
+    _i = j;
+    return i;
+  }
+
+  function nextFilteredIdx() {
+    var i = _i;
+    if (i == _stop) return -1;
+    _i = i + _inc;
+    return _ww[i];
+  }
+
+  function nextFilteredSimpleIdx() {
+    var ww = _ww,
+        zz = _zz,
+        i = _i,
+        j = i,
+        zlim = _zlim,
+        inc = _inc,
+        stop = _stop;
+
+    if (i == stop) return -1;
+    do {
+      j += inc;
+    } while (j != stop && zz[ww[j]] < zlim);
+    _i = j;
+    return ww[i];
+  }
+}
+
+
+// Iterate along a path made up of one or more arcs.
+// Similar interface to ArcIter()
+//
+function ShapeIter(arcs) {
+  var _ids, _mpp, _arc = null;
+  var i, n;
+
+  this.init = function(ids, mpp) {
+    _ids = ids;
+    _mpp = mpp;
+    i = -1;
+    n = ids.length;
+    _arc = nextArc();
+  };
+
+  function nextArc() {
+    i += 1;
+    return (i < n) ? arcs.getArcIter(_ids[i], _mpp) : null;
+  }
+
+  this.hasNext = function() {
+    while (_arc != null) {
+      if (_arc.hasNext()) {
+        this.x = _arc.x;
+        this.y = _arc.y;
+        this.node = _arc.node;
+        return true;
+      } else {
+        _arc = nextArc();
+        _arc.hasNext(); // skip first point of arc
+      }
+    }
+    return false;
+  };
+}
 
 /** @requires core */
 
@@ -5612,176 +6324,6 @@ DbfReader.prototype.readFieldHeader = function(bin) {
 };
 
 
-/* requires mapshaper-common */
-
-function distance3D(ax, ay, az, bx, by, bz) {
-  var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-
-function distanceSq(ax, ay, bx, by) {
-  var dx = ax - bx,
-      dy = ay - by;
-  return dx * dx + dy * dy;
-}
-
-
-function distanceSq3D(ax, ay, az, bx, by, bz) {
-  var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
-  return dx * dx + dy * dy + dz * dz;
-}
-
-
-// atan2() makes this function fairly slow, replaced by ~2x faster formula
-//
-/*
-function innerAngle_slow(ax, ay, bx, by, cx, cy) {
-  var a1 = Math.atan2(ay - by, ax - bx),
-      a2 = Math.atan2(cy - by, cx - bx),
-      a3 = Math.abs(a1 - a2);
-      a3 = a2 - a1
-  if (a3 > Math.PI) {
-    a3 = 2 * Math.PI - a3;
-  }
-  return a3;
-}
-*/
-
-
-// TODO: make this safe for small angles
-//
-function innerAngle(ax, ay, bx, by, cx, cy) {
-  var ab = Point.distance(ax, ay, bx, by),
-      bc = Point.distance(bx, by, cx, cy),
-      theta, dotp;
-  if (ab == 0 || bc == 0) {
-    theta = 0;
-  } else {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
-    if (dotp >= 1) {
-      theta = 0;
-    } else if (dotp <= -1) {
-      theta = Math.PI;
-    } else {
-      theta = Math.acos(dotp); // consider using other formula at small dp
-    }
-  }
-  return theta;
-}
-
-
-function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var ab = distance3D(ax, ay, az, bx, by, bz),
-      bc = distance3D(bx, by, bz, cx, cy, cz),
-      theta, dotp;
-  if (ab == 0 || bc == 0) {
-    theta = 0;
-  } else {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
-    if (dotp >= 1) {
-      theta = 0;
-    } else if (dotp <= -1) {
-      theta = Math.PI;
-    } else {
-      theta = Math.acos(dotp); // consider using other formula at small dp
-    }
-  }
-  return theta;
-}
-
-
-function triangleArea(ax, ay, bx, by, cx, cy) {
-  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
-  return area;
-}
-
-
-function detSq(ax, ay, bx, by, cx, cy) {
-  var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
-  return det * det;
-}
-
-
-function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
-    detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
-  return area;
-}
-
-
-// Given a triangle with vertices abc, return the distSq of the shortest segment
-//   with one endpoint at b and the other on the line intersecting a and c.
-//   If a and c are coincident, return the distSq between b and a/c
-//
-// Receive the distSq of the triangle's three sides.
-//
-function triangleHeightSq(ab2, bc2, ac2) {
-  var dist2;
-  if (ac2 == 0.0) {
-    dist2 = ab2;
-  } else if (ab2 >= bc2 + ac2) {
-    dist2 = bc2;
-  } else if (bc2 >= ab2 + ac2) {
-    dist2 = ab2;
-  } else {
-    var dval = (ab2 + ac2 - bc2);
-    dist2 = ab2 -  dval * dval / ac2  * 0.25;
-  }
-  if (dist2 < 0.0) {
-    dist2 = 0.0;
-  }
-  return dist2;
-}
-
-
-function msSignedRingArea(xx, yy, start, len) {
-  var sum = 0,
-      start = start | 0,
-      end = start + (len == null ? xx.length - start : len | 0) - 1;
-
-  if (start < 0 || end >= xx.length) {
-    error("Out-of-bounds array index");
-  }
-  for (var i=start; i < end; i++) {
-    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
-  }
-  return sum / 2;
-}
-
-
-function msRingArea(xx, yy, start, len) {
-  return Math.abs(msSignedRingArea(xx, yy, start, len));
-}
-
-
-// merge B into A
-function mergeBounds(a, b) {
-  if (b[0] < a[0]) a[0] = b[0];
-  if (b[1] < a[1]) a[1] = b[1];
-  if (b[2] > a[2]) a[2] = b[2];
-  if (b[3] > a[3]) a[3] = b[3];
-}
-
-function containsBounds(a, b) {
-  return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
-}
-
-// export functions so they can be tested
-MapShaper.geom = {
-  distance3D: distance3D,
-  innerAngle: innerAngle,
-  innerAngle3D: innerAngle3D,
-  triangleArea: triangleArea,
-  triangleArea3D: triangleArea3D,
-  msRingArea: msRingArea,
-  msSignedRingArea: msSignedRingArea,
-};
-
 /* @requires shp-reader, dbf-reader, mapshaper-common, mapshaper-geom */
 
 
@@ -6037,548 +6579,335 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
 
 
 
-/* @requires mapshaper-common, mapshaper-geom, bounds, sorting */
+/* @requires mapshaper-common */
 
-MapShaper.calcArcBounds = function(xx, yy) {
-  var xb = Utils.getArrayBounds(xx),
-      yb = Utils.getArrayBounds(yy);
-  return [xb.min, yb.min, xb.max, yb.max];
+
+MapShaper.importJSON = function(obj) {
+  if (obj.type == "Topology") {
+    error("TODO: TopoJSON import.")
+    return MapShaper.importTopoJSON(obj);
+  }
+  return MapShaper.importGeoJSON(obj);
 };
 
-// An interface for a set of topological arcs and the layers derived from the arcs.
-// @arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
+
+MapShaper.importGeoJSON = function(obj) {
+  error("TODO: implement GeoJSON importing.")
+};
+
+
+MapShaper.exportGeoJSON = function(obj) {
+  T.start();
+  if (!obj.shapes || !obj.arcs) error("Missing 'shapes' and/or 'arcs' properties.");
+
+  var features = Utils.map(obj.shapes, function(topoShape) {
+    if (!topoShape || !Utils.isArray(topoShape)) error("[exportGeoJSON()] Missing or invalid param/s");
+    var data = MapShaper.convertTopoShape(topoShape, obj.arcs);
+    return MapShaper.getGeoJSONPolygonFeature(data.parts);
+  });
+
+  var root = {
+    type: "FeatureCollection",
+    features: features
+  };
+
+  T.stop("Export GeoJSON");
+  return JSON.stringify(root);
+};
+
+// TODO: Implement the GeoJSON spec for holes.
 //
-function ArcDataset(coords) {
-
-  var _arcs = coords,
-      _thresholds = null,
-      _sortedThresholds = null,
-      filteredIds = null,
-      filteredSegLen = 0,
-      zlimit = 0;
-
-  var arcIter = new ArcIter();
-  var boxes = [],
-      _bounds = new Bounds();
-  for (var i=0, n=_arcs.length; i<n; i++) {
-    var b = MapShaper.calcArcBounds(_arcs[i][0], _arcs[i][1]);
-    _bounds.mergeBounds(b);
-    boxes.push(b);
+MapShaper.getGeoJSONPolygonFeature = function(ringsIn) {
+  var rings = Utils.map(ringsIn, MapShaper.transposeXYCoords),
+      ringCount = rings.length,
+      geom = {};
+  if (ringCount == 0) {
+    // null shape; how to represent?
+    geom.type = "Polygon";
+    geom.coordinates = [[]];
+  } else if (ringCount == 1) {
+    geom.type = "Polygon";
+    geom.coordinates = rings;
+  } else {
+    geom.type = "MultiPolygon";
+    geom.coordinates = Utils.map(rings, function(ring) {return [ring]});
   }
 
-  this.getArcIter = function(i, mpp) {
-    var arc = _arcs[i],
-        filteredIds = this.getFilteredIds(i, mpp),
-        fw = i >= 0;
-    if (!fw) {
-      i = -i - 1;
-    }
-    if (zlimit) {
-      arcIter.init(arc[0], arc[1], fw, _thresholds[i], zlimit, filteredIds);
-    } else {
-      arcIter.init(arc[0], arc[1], fw, null, null, filteredIds);
-    }
-    return arcIter;
+  var feature = {
+    type: "Feature",
+    properties: {},
+    geometry: geom
   };
 
-  // Add simplification data to the dataset
-  // @arr is an array of arrays of removal thresholds for each arc-vertex.
-  //
-  this.setThresholds = function(thresholds) {
-    _thresholds = thresholds;
+  return feature;
+};
 
-    // Sort simplification thresholds for all non-endpoint vertices
-    // ... to quickly convert a simplification percentage to a threshold value.
-    // ... for large datasets, use every nth point, for faster sorting.
-    var innerCount = MapShaper.countInnerPoints(thresholds);
-    var nth = 1;
-    if (innerCount > 1e7) nth = 16;
-    else if (innerCount > 5e6) nth = 8;
-    else if (innerCount > 1e6) nth = 4;
-    else if (innerCount > 5e5) nth = 2;
-    _sortedThresholds = MapShaper.getInnerThresholds(thresholds, nth);
-    Utils.quicksort(_sortedThresholds, false);
 
-    // Calculate a filtered version of each arc, for fast rendering when zoomed out
-    var filterPct = 0.08;
-    var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];
-    filteredIds = initFilteredArcs(thresholds, filterZ);
-    filteredSegLen = calcAvgFilteredSegLen(_arcs, filteredIds);
-  };
 
-  function calcAvgFilteredSegLen(arcs, filtered) {
-    var segCount = 0, pathLen = 0;
-    Utils.forEach(filtered, function(ids, arcId) {
-      var xx = arcs[arcId][0],
-          yy = arcs[arcId][1],
-          x, y, prevX, prevY, idx;
-      for (var i=0, n=ids.length; i<n; i++) {
-        idx = ids[i];
-        x = xx[idx];
-        y = yy[idx];
-        if (i > 0) {
-          segCount++;
-          pathLen += Math.sqrt(distanceSq(prevX, prevY, x, y));
-        }
+/* @requires mapshaper-common */
+
+//
+//
+//
+MapShaper.exportTopoJSON = function(data) {
+  if (!data.shapes || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
+  var arcs = Utils.map(data.arcs, MapShaper.transposeXYCoords),
+      shapes = data.shapes;
+
+  var srcBounds = data.bounds,
+      destBounds = new Bounds([0, 0, 100000, 100000]),
+      // TODO: adjust output bounds to suit amount of detail in output vectors
+      tr = srcBounds.getTransform(destBounds),
+      inv = tr.invert();
+
+  Utils.forEach(arcs, function(arc) {
+    var n = arc.length,
+        p, x, y, prevX, prevY;
+    for (var i=0, n=arc.length; i<n; i++) {
+      if (i == 0) {
+        prevX = 0,
+        prevY = 0;
+      } else {
         prevX = x;
         prevY = y;
       }
-    });
-    return pathLen / segCount;
-  }
-
-  // Generate arrays of coordinate ids, representing a simplified view of a collection of arcs
-  //
-  function initFilteredArcs(thresholds, zlim) {
-    return Utils.map(thresholds, function(zz, j) {
-      var ids = [];
-      for (var i=0, n=zz.length; i<n; i++) {
-        if (zz[i] >= zlim) ids.push(i);
-      }
-      return ids;
-    });
-  };
-
-  this.getFilteredIds = function(i, mpp) {
-    var ids = (filteredIds && filteredSegLen < mpp * 0.5) ? filteredIds[i] : null;
-    return ids;
-  };
-
-  this.setRetainedPct = function(pct) {
-    if (!_sortedThresholds) error ("Missing threshold data.");
-    if (pct >= 1) {
-      zlimit = 0;
-    } else {
-      zlimit = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
+      p = arc[i];
+      x = Math.round(p[0] * tr.mx + tr.bx);
+      y = Math.round(p[1] * tr.my + tr.by);
+      p[0] = x - prevX;
+      p[1] = y - prevY;
     }
-  };
+  })
 
-  this.getShapeIter = function(ids, mpp) {
-    var iter = new ShapeIter(this);
-    iter.init(ids, mpp);
-    return iter;
-  };
-
-  this.testArcIntersection = function(b1, i) {
-    var b2 = boxes[i];
-    return b2[0] <= b1[2] && b2[2] >= b1[0] && b2[3] >= b1[1] && b2[1] <= b1[3];
-  };
-
-  this.getArcBounds = function(i) {
-    return boxes[i];
-  };
-
-  this.getShapeBounds = function(ids) {
-    var bounds = boxes[ids[0]].concat();
-    for (var i=1, n=ids.length; i<n; i++) {
-      mergeBounds(bounds, boxes[ids[i]]);
-    }
-    return bounds;
-  };
-
-  this.getMultiShapeBounds = function(parts) {
-    var bounds = this.getShapeBounds[parts[0]];
-    for (var i=1, n=parts.length; i<n; i++) {
-      mergeBounds(bounds, this.getShapeBounds(parts[i]));
-    }
-    return bounds;
-  };
-
-  this.testShapeIntersection = function(bbox, ids) {
-    for (var i=0, n=ids.length; i<n; i++) {
-      if (this.testArcIntersection(bbox, ids[i])) return true;
-    }
-    return false;
-  };
-
-  this.testMultiShapeIntersection = function(bbox, parts) {
-    for (var i=0, n=parts.length; i<n; i++) {
-      if (this.testShapeIntersection(bbox, parts[i])) return true;
-    }
-    return true;
-  };
-
-  this.size = function() {
-    return _arcs.length;
-  };
-
-  this.getBounds = function() {
-    return _bounds;
-  };
-
-  this.getShapeTable = function(data, ShapeClass) {
-    var shapes = Utils.map(data, function(datum, i) {
-      return new ShapeClass(this).init(datum);
-    }, this);
-    return new ShapeTable(shapes, this);
-  };
-
-  this.getArcs = function() {
-    return this.getShapeTable(Utils.range(this.size()), Arc);
-  };
-
-  this.getSimpleShapes = function(arr) {
-    return this.getShapeTable(arr, SimpleShape);
-  };
-
-  this.getMultiShapes = function(arr) {
-    return this.getShapeTable(arr, MultiShape);
-  };
-}
-
-//
-//
-function ShapeTable(arr, src) {
-  this.shapes = function() {
-    return new ShapeCollection(arr, src.getBounds());
-  };
-
-  // TODO: add method so layer can determine if vertices can be displayed at current scale
-}
-
-// An iterable collection of shapes, for drawing paths on-screen
-//   and for exporting shape data.
-//
-function ShapeCollection(arr, collBounds) {
-  var _filterBounds,
-      _transform;
-
-  var getPathIter = function() {
-    return function(s, i) {
-      return s.getShapeIter(i);
-    };
-  };
-
-  this.filterPaths = function(b) {
-    _filterBounds = b;
-    getPathIter = getDrawablePathsIter;
-    return this;
-  };
-
-  this.filterPoints = function(b) {
-    _filterBounds = b;
-    getPathIter = getDrawablePointsIter;
-    return this;
-  }
-
-  this.transform = function(tr) {
-    _transform = tr;
-    if (_filterBounds) {
-      _filterBounds = _filterBounds.clone().transform(tr);
-    }
-    return this;
-  };
-
-  // Wrap path iterator to filter out offscreen points
-  //
-  function getDrawablePointsIter() {
-    var bounds = _filterBounds || error("#getDrawablePointsIter() missing bounds");
-    var src = getDrawablePathsIter(),
-        wrapped;
-    var wrapper = {
-      x: 0,
-      y: 0,
-      node: false,
-      hasNext: function() {
-        var path = wrapped;
-        while (path.hasNext()) {
-          if (bounds.containsPoint(path.x, path.y)) {
-            this.x = path.x;
-            this.y = path.y;
-            this.node = path.node;
-            return true;
-          }
-        }
-        return false;
-      }
-    };
-
-    return function(s, i) {
-      wrapped = src(s, i);
-      return wrapper;
-    };
-  }
-
-  // Wrap vector path iterator to convert geographic coordinates to pixels
-  //   and skip over invisible clusters of points (i.e. smaller than a pixel)
-  //
-  function getDrawablePathsIter() {
-    var transform = _transform || error("#getDrawablePathsIter() Missing a Transform object; remember to call .transform()");
-    var wrapped,
-        _firstPoint;
-
-    var wrapper = {
-      x: 0,
-      y: 0,
-      node: false,
-      hasNext: function() {
-        var t = transform, mx = t.mx, my = t.my, bx = t.bx, by = t.by;
-        var path = wrapped,
-            isFirst = _firstPoint,
-            x, y, prevX, prevY,
-            minSeg = 0.6,
-            i = 0;
-        if (!isFirst) {
-          prevX = this.x;
-          prevY = this.y;
-        }
-        while (path.hasNext()) {
-          i++;
-          x = path.x * mx + bx;
-          y = path.y * my + by;
-          if (isFirst || Math.abs(x - prevX) > minSeg || Math.abs(y - prevY) > minSeg) {
-            break;
-          }
-        }
-        if (i == 0) return false;
-        _firstPoint = false;
-        this.x = x;
-        this.y = y;
-        this.node = path.node;
-        return true;
-      }
-    };
-
-    return function(s, i) {
-      _firstPoint = true;
-      wrapped = s.getShapeIter(i, 1/_transform.mx);
-      return wrapper;
-    }
-  }
-
-  this.forEach = function(cb) {
-    var allIn = true,
-        filterOnSize = _transform && _filterBounds,
-        minPathSize, geoBounds, geoBBox;
-
-    if (filterOnSize) {
-      minPathSize = 0.9 / _transform.mx;
-      geoBounds = _filterBounds.clone().transform(_transform.invert());
-      geoBBox = geoBounds.toArray();
-      allIn = geoBounds.contains(collBounds);
-    }
-    var path = getPathIter();
-
-    for (var i=0, n=arr.length; i<n; i++) {
-      var shp = arr[i];
-      if (filterOnSize && shp.smallerThan(minPathSize)) continue;  // problem: won't filter out multi-part shapes with tiny parts
-      if (!allIn && !shp.inBounds(geoBBox)) continue;
-      for (var j=0; j<shp.partCount; j++) {
-        cb(path(shp, j));
+  var obj = {
+    type: "Topology",
+    transform: {
+      scale: [inv.mx, inv.my],
+      translate: [inv.bx, inv.by]
+    },
+    arcs: arcs,
+    objects: {
+      polygons: {
+        type: "Polygon",
+        arcs: data.shapes
       }
     }
   };
 
-  this.toArray = function() {
-    var arcs = [];
-    this.forEach(function(iter) {
-      var xx = [], yy = [];
-      while(iter.hasNext()) {
-        xx.push(iter.x);
-        yy.push(iter.y);
-      }
-      arcs.push([xx, yy]);
-    });
-    return arcs;
-  };
-}
-
-function Arc(src) {
-  this.src = src;
-}
-
-Arc.prototype = {
-  init: function(id) {
-    this.id = id;
-    this.bounds = this.src.getArcBounds(id);
-    return this;
-  },
-  partCount: 1,
-  getShapeIter: function(i, mpp) {
-    return this.src.getArcIter(this.id, mpp);
-  },
-  inBounds: function(bbox) {
-    return this.src.testArcIntersection(bbox, this.id);
-  },
-  smallerThan: function(units) {
-    var b = this.bounds;
-    return b[2] - b[0] < units && b[3] - b[1] < units;
-  }
-};
-
-//
-function MultiShape(src) {
-  this.src = src;
-}
-
-MultiShape.prototype = {
-  init: function(parts) {
-    this.partCount = parts.length;
-    this.parts = parts;
-    this.bounds = this.src.getMultiShapeBounds(parts);
-    return this;
-  },
-  getShapeIter: function(i, mpp) {
-    return this.src.getShapeIter(this.parts[i], mpp);
-  },
-  inBounds: function(bbox) {
-    return this.src.testMultiShapeIntersection(bbox, this.parts);
-  },
-  smallerThan: Arc.prototype.smallerThan
+  return JSON.stringify(obj);
 };
 
 
-function SimpleShape(src) {
-  this.src = src;
-}
+MapShaper.importTopoJSON = function(obj) {
+  var mx = 1, my = 1, bx = 0, by = 0;
+  if (obj.transform) {
+    var scale = obj.transform.scale,
+        translate = obj.transform.translate;
+    mx = scale[0];
+    my = scale[1];
+    bx = translate[0];
+    by = translate[1];
+  }
 
-SimpleShape.prototype = {
-  partCount: 1,
-  init: function(ids) {
-    this.ids = ids;
-    this.bounds = this.src.getShapeBounds(ids);
-    return this;
-  },
-  getShapeIter: function(mpp) {
-    return this.src.getShapeIter(this.ids, mpp);
-  },
-  inBounds: function(bbox) {
-    return this.src.testShapeIntersection(bbox, this.ids);
-  },
-  smallerThan: Arc.prototype.smallerThan
+  var arcs = Utils.map(obj.arcs, function(arc) {
+    var xx = [], yy = [];
+    for (var i=0, len=arc.length; i<len; i++) {
+      var p = arc[i];
+      xx.push(p[0] * mx + bx);
+      yy.push(p[1] * my + by);
+    }
+    return [xx, yy];
+  });
+
+  return {arcs: arcs, objects: null};
 };
 
 
-// Iterate along the points of an arc
-// properties: x, y, node (boolean, true if points is an arc endpoint)
-// method: hasNext()
-// usage:
-//   while (iter.hasNext()) {
-//     iter.x, iter.y; // do something w/ x & y
-//   }
-//
-function ArcIter() {
-  var _xx, _yy, _zz, _zlim, _ww, _len;
-  var _i, _inc, _start, _stop;
-  this.x = 0;
-  this.y = 0;
-  var next;
 
-  this.hasNext = function() {
-    var i = next();
-    if (i == -1) return false;
-    this.x = _xx[i];
-    this.y = _yy[i];
-    this.node = i == 0 || i == _len - 1;
-    return true;
-  };
+/* @require mapshaper-elements, textutils, mapshaper-shapefile, mapshaper-geojson, mapshaper-topojson */
 
-  this.init = function(xx, yy, fw, zz, lim, ww) {
-    _xx = xx, _yy = yy, _zz = zz, _zlim = lim, _ww = ww;
-    var len = _len = xx.length;
-    if (ww) {
-      len = ww.length;
-      next = zz ? nextFilteredSimpleIdx : nextFilteredIdx;
-    } else {
-      next = zz ? nextSimpleIdx : nextIdx;
+var ExportControl = function(arcData, topoData, opts) {
+  var filename = opts && opts.output_name || "out";
+
+  var el = El('#g-export-control').show();
+  var anchor = el.newChild('a').attr('href', '#').node();
+  var geoBtn = new SimpleButton('#g-geojson-btn').active(true).on('click', function() {
+    geoBtn.active(false);
+    setTimeout(exportGeoJSON, 10); // kludgy way to show button response
+  });
+  var shpBtn = new SimpleButton('#g-shapefile-btn').active(true).on('click', function() {
+    shpBtn.active(false);
+    exportZippedShapefile();
+  });
+  var topoBtn = new SimpleButton('#g-topojson-btn').active(true).on('click', function() {
+    topoBtn.active(false);
+    setTimeout(exportTopoJSON, 10);
+  });
+
+  function exportBlob(filename, blob) {
+    var url = URL.createObjectURL(blob);
+    anchor.href = url;
+    anchor.download = filename;
+    var clickEvent = document.createEvent("MouseEvent");
+    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+    anchor.dispatchEvent(clickEvent);
+  }
+
+  function exportGeoJSON() {
+    var json = MapShaper.exportGeoJSON({ arcs: arcData.shapes().toArray(), shapes: topoData.shapes });
+    exportBlob(filename + ".json", new Blob([json]));
+    geoBtn.active(true);
+  }
+
+  function exportTopoJSON() {
+    var json = MapShaper.exportTopoJSON({arcs: arcData.shapes().toArray(), shapes: topoData.shapes, bounds: opts.bounds});
+    exportBlob(filename + ".topo.json", new Blob([json]));
+    topoBtn.active(true);
+  }
+
+  function exportZippedShapefile() {
+    var data = exportShapefile(),
+        shp = new Blob([data.shp]),
+        shx = new Blob([data.shx]);
+
+    function addShp(writer) {
+      writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
+        addShx(writer);
+      }, null); // last arg: onprogress
     }
 
-    if (fw) {
-      _start = 0;
-      _inc = 1;
-      _stop = len;
-    } else {
-      _start = len - 1;
-      _inc = -1;
-      _stop = -1;
+    function addShx(writer) {
+      writer.add(filename + ".shx", new zip.BlobReader(shx), function() {
+        writer.close(function(blob) {
+          exportBlob(filename + ".zip", blob)
+          shpBtn.active(true);
+        });
+      }, null);
     }
-    _i = _start;
+
+    zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
+  }
+
+  function exportShapefile() {
+    return MapShaper.exportShp(arcData.shapes().toArray(), topoData.shapes, 5);
+  }
+
+};
+
+
+var SimplifyControl = function() {
+  var _value = 1;
+
+  El('#g-simplify-control').showCSS('display:inline-block').show();
+  var slider = new Slider("#g-simplify-control .g-slider");
+  slider.handle("#g-simplify-control .g-handle");
+  slider.track("#g-simplify-control .g-track");
+  slider.on('change', function(e) {
+    var pct = fromSliderPct(e.pct);
+    text.value(pct);
+    onchange(pct);
+  });
+
+  var text = new ClickText("#g-simplify-control .g-clicktext");
+  text.bounds(0, 1);
+  text.formatter(function(val) {
+    if (isNaN(val)) return '-';
+
+    var pct = val * 100;
+    var decimals = 0;
+    if (pct <= 0) decimals = 1;
+    else if (pct < 0.001) decimals = 4;
+    else if (pct < 0.01) decimals = 3;
+    else if (pct < 1) decimals = 2;
+    else if (pct < 100) decimals = 1;
+    return Utils.formatNumber(pct, decimals) + "%";
+  });
+
+  text.parser(function(s) {
+    return parseFloat(s) / 100;
+  });
+
+  text.value(0);
+  text.on('change', function(e) {
+    var pct = e.value;
+    slider.pct(toSliderPct(pct));
+    onchange(pct);
+  });
+
+  function toSliderPct(p) {
+    p = Math.sqrt(p);
+    var pct = 1 - p;
+    return pct;
+  }
+
+  function fromSliderPct(p) {
+    var pct = 1 - p;
+    return pct * pct;
+  }
+
+  function onchange(val) {
+    if (_value != val) {
+      _value = val;
+      control.dispatchEvent('change', {value:val});
+    }
+  }
+
+
+  var control = new EventDispatcher();
+  control.value = function(val) {
+    if (!isNaN(val)) {
+      // TODO: validate
+      _value = val;
+      slider.pct(toSliderPct(val));
+      text.value(val);
+    }
+    return _value;
   };
 
-  function nextIdx() {
-    var i = _i;
-    if (i == _stop) return -1;
-    _i = i + _inc;
-    return i;
-  }
+  // init components
+  control.value(_value);
 
-  function nextSimpleIdx() {
-    // using local vars makes a big difference when skipping many points
-    var zz = _zz,
-        i = _i,
-        j = i,
-        zlim = _zlim,
-        stop = _stop,
-        inc = _inc;
-    if (i == stop) return -1;
-    do {
-      j += inc;
-    } while (j != stop && zz[j] < zlim);
-    _i = j;
-    return i;
-  }
-
-  function nextFilteredIdx() {
-    var i = _i;
-    if (i == _stop) return -1;
-    _i = i + _inc;
-    return _ww[i];
-  }
-
-  function nextFilteredSimpleIdx() {
-    var ww = _ww,
-        zz = _zz,
-        i = _i,
-        j = i,
-        zlim = _zlim,
-        inc = _inc,
-        stop = _stop;
-
-    if (i == stop) return -1;
-    do {
-      j += inc;
-    } while (j != stop && zz[ww[j]] < zlim);
-    _i = j;
-    return ww[i];
-  }
+  return control;
 }
 
+function ImportPanel(callback) {
 
-// Iterate along a path made up of one or more arcs.
-// Similar interface to ArcIter()
-//
-function ShapeIter(arcs) {
-  var _ids, _mpp, _arc = null;
-  var i, n;
+  var shpBtn = new FileChooser('#g-shp-import-btn');
+  shpBtn.on('select', function(e) {
+    var reader = new FileReader(),
+        file = e.file;
+    reader.onload = function(e) {
+      var shpData = MapShaper.importShp(reader.result);
+      var opts = {
+        input_file: file.name,
+        keep_shapes: El("#g-import-retain-opt").el.checked,
+        simplify_method: 'mod'
+      };
+      El("#mshp-intro-screen").hide();
+      callback(shpData, opts)
+    };
+    reader.readAsArrayBuffer(file);
+  })
 
-  this.init = function(ids, mpp) {
-    _ids = ids;
-    _mpp = mpp;
-    i = -1;
-    n = ids.length;
-    _arc = nextArc();
-  };
+  shpBtn.validator(function(file) {
+    return /.shp$/.test(file.name);
+  });
 
-  function nextArc() {
-    i += 1;
-    return (i < n) ? arcs.getArcIter(_ids[i], _mpp) : null;
-  }
-
-  this.hasNext = function() {
-    while (_arc != null) {
-      if (_arc.hasNext()) {
-        this.x = _arc.x;
-        this.y = _arc.y;
-        this.node = _arc.node;
-        return true;
-      } else {
-        _arc = nextArc();
-        _arc.hasNext(); // skip first point of arc
-      }
-    }
-    return false;
-  };
+  // var nextBtn = new SimpleButton("#mshp-import .g-next-btn").active(false);
+  // var cancelBtn = new SimpleButton("#g-import-panel .g-cancel-btn").active(false).on('click', cancel, this);
 }
+
+Opts.inherit(ImportPanel, EventDispatcher);
+
+
+var controls = {
+  Slider: Slider,
+  Checkbox: Checkbox,
+  SimplifyControl: SimplifyControl,
+  ImportPanel: ImportPanel
+};
+
+
 
 /* @requires arrayutils, mapshaper-common */
 
@@ -7676,8 +8005,8 @@ Opts.inherit(BoundingBoxTween, TweenTimer);
 /**
  * Interface for handling touch events, used internally by HybridMouse.
  * Events
- *  'touchstart' Fires when down-up occurs rapidly, like a 'click'. 
- *  'touchend'   Fires once after a 'touchstart' event, if user slides a finger or 
+ *  'touchstart' Fires when down-up occurs rapidly, like a 'click'.
+ *  'touchend'   Fires once after a 'touchstart' event, if user slides a finger or
  *               if finger is lifted after being down for a while.
  *  'dragstart'
  *  'drag'
@@ -7713,7 +8042,6 @@ function TouchHandler(surface, mapBounds) {
   var numTouches = 0;
   var globalX, globalY, staticTouch;
 
-  var captureTouches = A.captureTouches !== false;
   var DOUBLE_TAP_TIMEOUT = 600;
   var SINGLE_TAP_TIMEOUT = 400;
 
@@ -7767,7 +8095,7 @@ function TouchHandler(surface, mapBounds) {
       }
 
       touchCenterX = weight * pageX + (1 - weight) * touchCenterX;
-      touchCenterY = weight * pageY + (1 - weight) * touchCenterY;      
+      touchCenterY = weight * pageY + (1 - weight) * touchCenterY;
     }
 
     obj.inside = insideCount;
@@ -7821,7 +8149,7 @@ function TouchHandler(surface, mapBounds) {
 
       // check for ... double tap
       if (singleTapStarted) {
-        if (prevTouches == 1) { 
+        if (prevTouches == 1) {
           doubleTapStarted = true;
         }
         // could fire event here
@@ -7923,7 +8251,7 @@ function TouchHandler(surface, mapBounds) {
         prevRadius = obj.radius;
       }
     }
-    
+
     if (numTouches == 0) {
       // self.dispatchEvent('touchoff');
     }
@@ -7967,7 +8295,7 @@ function TouchHandler(surface, mapBounds) {
 
 
   function handleTouchStart(e) {
-    // e.preventDefault() stops the page from scrolling along with the map, which 
+    // e.preventDefault() stops the page from scrolling along with the map, which
     // may not be desirable, especially when map is zoomed-out...
     //e.stopPropagation();
 
@@ -8003,7 +8331,7 @@ function TouchHandler(surface, mapBounds) {
 
     if (numTouches == 0) {
       downOverMap = false;
-    }  
+    }
   }
 
   function handleTouchMove(e) {
@@ -8552,9 +8880,20 @@ function MshpMap(el, opts_) {
   };
 
   function initHomeButton() {
-    El('div').addClass('g-home-btn').appendTo(_root)
-      .newChild('img').attr('src', "images/home.png")
-      .css('cursor:pointer;padding-left:1px;')
+    var btn = El('div').addClass('g-home-btn').appendTo(_root);
+    var _full = null;
+
+    _ext.on('change', function() {
+      var isFull = _ext.scale() === 1;
+      trace('full:', isFull);
+      if (isFull !== _full) {
+        _full = isFull;
+        if (!isFull) btn.addClass('active');
+        else btn.removeClass('active');
+      }
+    })
+
+    btn.newChild('img').attr('src', "images/home.png")
       .on('click', function() {
         _ext.reset();
       });
@@ -8598,6 +8937,7 @@ function MapExtent(el, initialBounds) {
   }
 
   this.recenter = function(cx, cy, scale) {
+    trace('recenter()')
     if (!scale) scale = _scale;
     if (!(cx == _cx && cy == _cy && scale == _scale)) {
       _cx = cx, _cy = cy, _scale = scale;
@@ -8692,6 +9032,26 @@ function MapExtent(el, initialBounds) {
 
 Opts.inherit(MapExtent, EventDispatcher);
 
+
+/* @requires events */
+/*
+Utils.monitorEvent = function(obj, evt, handler, trueEvt, falseEvt) {
+  var status = void 0; // true or false
+  obj.on(evt, function(e) {
+    var retn = handler(e);
+    if (retn !== status) {
+      if (retn === true && trueEvt) {
+        obj.dispatchEvent(trueEvt);
+      } else if (return === false) {
+        obj.dispatchEvent(falseEvt);
+      } else {
+        error("Utils#monitorEvent() Handler must return true or false");
+      }
+      status = retn;
+    }
+  });
+};
+*/
 
 /* @requires mapshaper-common, mapshaper-geom, median, sorting */
 
@@ -9227,336 +9587,6 @@ Utils.loadBinaryData = function(url, callback) {
   };
   xhr.send();
 };
-
-/* @requires mapshaper-common */
-
-
-MapShaper.importJSON = function(obj) {
-  if (obj.type == "Topology") {
-    error("TODO: TopoJSON import.")
-    return MapShaper.importTopoJSON(obj);
-  }
-  return MapShaper.importGeoJSON(obj);
-};
-
-
-MapShaper.importGeoJSON = function(obj) {
-  error("TODO: implement GeoJSON importing.")
-};
-
-
-MapShaper.exportGeoJSON = function(obj) {
-  T.start();
-  if (!obj.shapes || !obj.arcs) error("Missing 'shapes' and/or 'arcs' properties.");
-
-  var features = Utils.map(obj.shapes, function(topoShape) {
-    if (!topoShape || !Utils.isArray(topoShape)) error("[exportGeoJSON()] Missing or invalid param/s");
-    var data = MapShaper.convertTopoShape(topoShape, obj.arcs);
-    return MapShaper.getGeoJSONPolygonFeature(data.parts);
-  });
-
-  var root = {
-    type: "FeatureCollection",
-    features: features
-  };
-
-  T.stop("Export GeoJSON");
-  return JSON.stringify(root);
-};
-
-// TODO: Implement the GeoJSON spec for holes.
-//
-MapShaper.getGeoJSONPolygonFeature = function(ringsIn) {
-  var rings = Utils.map(ringsIn, MapShaper.transposeXYCoords),
-      ringCount = rings.length,
-      geom = {};
-  if (ringCount == 0) {
-    // null shape; how to represent?
-    geom.type = "Polygon";
-    geom.coordinates = [[]];
-  } else if (ringCount == 1) {
-    geom.type = "Polygon";
-    geom.coordinates = rings;
-  } else {
-    geom.type = "MultiPolygon";
-    geom.coordinates = Utils.map(rings, function(ring) {return [ring]});
-  }
-
-  var feature = {
-    type: "Feature",
-    properties: {},
-    geometry: geom
-  };
-
-  return feature;
-};
-
-
-
-/* @requires mapshaper-common */
-
-//
-//
-//
-MapShaper.exportTopoJSON = function(data) {
-  if (!data.shapes || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
-  var arcs = Utils.map(data.arcs, MapShaper.transposeXYCoords),
-      shapes = data.shapes;
-
-  var srcBounds = data.bounds,
-      destBounds = new Bounds([0, 0, 100000, 100000]),
-      // TODO: adjust output bounds to suit amount of detail in output vectors
-      tr = srcBounds.getTransform(destBounds),
-      inv = tr.invert();
-
-  Utils.forEach(arcs, function(arc) {
-    var n = arc.length,
-        p, x, y, prevX, prevY;
-    for (var i=0, n=arc.length; i<n; i++) {
-      if (i == 0) {
-        prevX = 0,
-        prevY = 0;
-      } else {
-        prevX = x;
-        prevY = y;
-      }
-      p = arc[i];
-      x = Math.round(p[0] * tr.mx + tr.bx);
-      y = Math.round(p[1] * tr.my + tr.by);
-      p[0] = x - prevX;
-      p[1] = y - prevY;
-    }
-  })
-
-  var obj = {
-    type: "Topology",
-    transform: {
-      scale: [inv.mx, inv.my],
-      translate: [inv.bx, inv.by]
-    },
-    arcs: arcs,
-    objects: {
-      polygons: {
-        type: "Polygon",
-        arcs: data.shapes
-      }
-    }
-  };
-
-  return JSON.stringify(obj);
-};
-
-
-MapShaper.importTopoJSON = function(obj) {
-  var mx = 1, my = 1, bx = 0, by = 0;
-  if (obj.transform) {
-    var scale = obj.transform.scale,
-        translate = obj.transform.translate;
-    mx = scale[0];
-    my = scale[1];
-    bx = translate[0];
-    by = translate[1];
-  }
-
-  var arcs = Utils.map(obj.arcs, function(arc) {
-    var xx = [], yy = [];
-    for (var i=0, len=arc.length; i<len; i++) {
-      var p = arc[i];
-      xx.push(p[0] * mx + bx);
-      yy.push(p[1] * my + by);
-    }
-    return [xx, yy];
-  });
-
-  return {arcs: arcs, objects: null};
-};
-
-
-
-/* @require mapshaper-elements, textutils, mapshaper-shapefile, mapshaper-geojson, mapshaper-topojson */
-
-var ExportControl = function(arcData, topoData, opts) {
-  var filename = opts && opts.output_name || "out";
-
-  var el = El('#g-export-control').show();
-  var anchor = el.newChild('a').attr('href', '#').node();
-  var geoBtn = new SimpleButton('#g-geojson-btn').active(true).on('click', function() {
-    geoBtn.active(false);
-    setTimeout(exportGeoJSON, 10); // kludgy way to show button response
-  });
-  var shpBtn = new SimpleButton('#g-shapefile-btn').active(true).on('click', function() {
-    shpBtn.active(false);
-    exportZippedShapefile();
-  });
-  var topoBtn = new SimpleButton('#g-topojson-btn').active(true).on('click', function() {
-    topoBtn.active(false);
-    setTimeout(exportTopoJSON, 10);
-  });
-
-  function exportBlob(filename, blob) {
-    var url = URL.createObjectURL(blob);
-    anchor.href = url;
-    anchor.download = filename;
-    var clickEvent = document.createEvent("MouseEvent");
-    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
-    anchor.dispatchEvent(clickEvent);
-  }
-
-  function exportGeoJSON() {
-    var json = MapShaper.exportGeoJSON({ arcs: arcData.shapes().toArray(), shapes: topoData.shapes });
-    exportBlob(filename + ".json", new Blob([json]));
-    geoBtn.active(true);
-  }
-
-  function exportTopoJSON() {
-    var json = MapShaper.exportTopoJSON({arcs: arcData.shapes().toArray(), shapes: topoData.shapes, bounds: opts.bounds});
-    exportBlob(filename + ".topo.json", new Blob([json]));
-    topoBtn.active(true);
-  }
-
-  function exportZippedShapefile() {
-    var data = exportShapefile(),
-        shp = new Blob([data.shp]),
-        shx = new Blob([data.shx]);
-
-    function addShp(writer) {
-      writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
-        addShx(writer);
-      }, null); // last arg: onprogress
-    }
-
-    function addShx(writer) {
-      writer.add(filename + ".shx", new zip.BlobReader(shx), function() {
-        writer.close(function(blob) {
-          exportBlob(filename + ".zip", blob)
-          shpBtn.active(true);
-        });
-      }, null);
-    }
-
-    zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
-  }
-
-  function exportShapefile() {
-    return MapShaper.exportShp(arcData.shapes().toArray(), topoData.shapes, 5);
-  }
-
-};
-
-
-var SimplifyControl = function() {
-  var _value = 1;
-
-  El('#g-simplify-control').showCSS('display:inline-block').show();
-  var slider = new Slider("#g-simplify-control .g-slider");
-  slider.handle("#g-simplify-control .g-handle");
-  slider.track("#g-simplify-control .g-track");
-  slider.on('change', function(e) {
-    var pct = fromSliderPct(e.pct);
-    text.value(pct);
-    onchange(pct);
-  });
-
-  var text = new ClickText("#g-simplify-control .g-clicktext");
-  text.bounds(0, 1);
-  text.formatter(function(val) {
-    if (isNaN(val)) return '-';
-
-    var pct = val * 100;
-    var decimals = 0;
-    if (pct <= 0) decimals = 1;
-    else if (pct < 0.001) decimals = 4;
-    else if (pct < 0.01) decimals = 3;
-    else if (pct < 1) decimals = 2;
-    else if (pct < 100) decimals = 1;
-    return Utils.formatNumber(pct, decimals) + "%";
-  });
-
-  text.parser(function(s) {
-    return parseFloat(s) / 100;
-  });
-
-  text.value(0);
-  text.on('change', function(e) {
-    var pct = e.value;
-    slider.pct(toSliderPct(pct));
-    onchange(pct);
-  });
-
-  function toSliderPct(p) {
-    p = Math.sqrt(p);
-    var pct = 1 - p;
-    return pct;
-  }
-
-  function fromSliderPct(p) {
-    var pct = 1 - p;
-    return pct * pct;
-  }
-
-  function onchange(val) {
-    if (_value != val) {
-      _value = val;
-      control.dispatchEvent('change', {value:val});
-    }
-  }
-
-
-  var control = new EventDispatcher();
-  control.value = function(val) {
-    if (!isNaN(val)) {
-      // TODO: validate
-      _value = val;
-      slider.pct(toSliderPct(val));
-      text.value(val);
-    }
-    return _value;
-  };
-
-  // init components
-  control.value(_value);
-
-  return control;
-}
-
-function ImportPanel(callback) {
-
-  var shpBtn = new FileChooser('#g-shp-import-btn');
-  shpBtn.on('select', function(e) {
-    var reader = new FileReader(),
-        file = e.file;
-    reader.onload = function(e) {
-      var shpData = MapShaper.importShp(reader.result);
-      var opts = {
-        input_file: file.name,
-        keep_shapes: El("#g-import-retain-opt").el.checked,
-        simplify_method: 'mod'
-      };
-      El("#mshp-intro-screen").hide();
-      callback(shpData, opts)
-    };
-    reader.readAsArrayBuffer(file);
-  })
-
-  shpBtn.validator(function(file) {
-    return /.shp$/.test(file.name);
-  });
-
-  // var nextBtn = new SimpleButton("#mshp-import .g-next-btn").active(false);
-  // var cancelBtn = new SimpleButton("#g-import-panel .g-cancel-btn").active(false).on('click', cancel, this);
-}
-
-Opts.inherit(ImportPanel, EventDispatcher);
-
-
-var controls = {
-  Slider: Slider,
-  Checkbox: Checkbox,
-  SimplifyControl: SimplifyControl,
-  ImportPanel: ImportPanel
-};
-
-
 
 /* @requires
 mapshaper-index,

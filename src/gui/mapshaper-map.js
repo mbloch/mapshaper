@@ -42,9 +42,20 @@ function MshpMap(el, opts_) {
   };
 
   function initHomeButton() {
-    El('div').addClass('g-home-btn').appendTo(_root)
-      .newChild('img').attr('src', "images/home.png")
-      .css('cursor:pointer;padding-left:1px;')
+    var btn = El('div').addClass('g-home-btn').appendTo(_root);
+    var _full = null;
+
+    _ext.on('change', function() {
+      var isFull = _ext.scale() === 1;
+      trace('full:', isFull);
+      if (isFull !== _full) {
+        _full = isFull;
+        if (!isFull) btn.addClass('active');
+        else btn.removeClass('active');
+      }
+    })
+
+    btn.newChild('img').attr('src', "images/home.png")
       .on('click', function() {
         _ext.reset();
       });
@@ -88,6 +99,7 @@ function MapExtent(el, initialBounds) {
   }
 
   this.recenter = function(cx, cy, scale) {
+    trace('recenter()')
     if (!scale) scale = _scale;
     if (!(cx == _cx && cy == _cy && scale == _scale)) {
       _cx = cx, _cy = cy, _scale = scale;
