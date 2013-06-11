@@ -25,11 +25,11 @@ function browserIsSupported() {
 function editorTest(shp) {
   Utils.loadBinaryData(shp, function(buf) {
     var shpData = MapShaper.importShp(buf),
-        opts = {};
-
+        opts = {input_file:shp};
     editorPage(shpData, opts);
   })
 }
+
 
 function editorPage(importData, opts) {
   var decimalDegrees = containsBounds([-200, -100, 200, 100], importData.info.input_bounds);
@@ -57,12 +57,12 @@ function editorPage(importData, opts) {
 
   var group = new ArcLayerGroup(arcs);
 
-  var opts = {
+  var mapOpts = {
     bounds: arcData.getBounds(),
     padding: 10
   };
 
-  var map = new MshpMap("#mshp-main-map", opts);
+  var map = new MshpMap("#mshp-main-map", mapOpts);
   map.addLayerGroup(group);
   map.display();
 
@@ -73,5 +73,12 @@ function editorPage(importData, opts) {
     group.refresh();
   });
 
-  var exporter = new ExportControl(arcs, topoData);
+  var exportOpts = {
+    bounds: arcData.getBounds()
+  };
+  if (opts.input_file) {
+    var parts = MapShaper.parseLocalPath(opts.input_file);
+    exportOpts.output_name = parts.basename;
+  }
+  var exporter = new ExportControl(arcs, topoData, exportOpts);
 }

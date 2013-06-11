@@ -188,6 +188,10 @@
 	margin-right: 4px;
 }
 
+.g-page-header .g-panel-btn {
+	margin-right: 0;
+}
+
 .g-panel-btn:not(.active) {
 	color: #aaa;
 	background: #eaeaea;
@@ -205,3 +209,10 @@
 	padding: 5px;
 	margin: 2px;
 }
+
+/*
+.g-home-btn:not(.active) {
+	opacity: 0.3;
+	cursor: default;
+}
+*/

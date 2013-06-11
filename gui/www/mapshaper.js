@@ -1538,6 +1538,48 @@ function stop(msg) {
 
 var MapShaper = {};
 
+MapShaper.parseLocalPath = function(path) {
+  var obj = {
+    ext: '',
+    directory: '',
+    filename: '',
+    basename: ''
+  };
+  var parts = path.split('/'),
+      name, i;
+
+  if (parts.length == 1) {
+    name = parts[0];
+  } else {
+    name = parts.pop();
+    obj.directory = parts.join('/');
+  }
+  i = name.lastIndexOf('.');
+  if (i > -1) {
+    obj.ext = name.substr(i);
+    obj.basename = name.substr(0, i);
+  }
+  obj.filename = name;
+  return obj;
+};
+
+/*
+    // TODO: give better output if fpath is a directory
+    var info = {};
+    var filename = Node.path.basename(fpath);
+    if (filename.lastIndexOf('/') == filename.length - 1) {
+      filename = filename.substr(0, filename.length-1);
+    }
+    info.file = filename;
+    info.path = Node.path.resolve(fpath);
+    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
+    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
+    info.directory = Node.path.dirname(info.path);
+    info.relative_dir = Node.path.dirname(fpath);
+    return info;
+*/
+
+
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var len=xsrc.length;
   (!len || len < 2) && error("[MapShaper.extendShapePart()] invalid arc length:", len);
@@ -3376,7 +3418,6 @@ function SimpleButton(ref) {
 
 Opts.inherit(SimpleButton, EventDispatcher);
 
-
 function FileChooser(el) {
   var _el = El(el),
       _file,
@@ -3403,7 +3444,6 @@ function FileChooser(el) {
       input.attr('disabled', true); // button is disabled after first successful selection
       _el.addClass('selected');
       _file = file;
-      // _el.findChild('.g-label-text').text(_file.name);
       this.dispatchEvent('select', {file:files[0]});
     }
   }
@@ -5997,205 +6037,6 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
 
 
 
-/* @require mapshaper-elements, textutils, mapshaper-shapefile */
-
-
-var ExportControl = function(arcData, topoData) {
-  var filename = "out";
-
-  var el = El('#g-export-control').show();
-  var anchor = el.newChild('a').attr('href', '#').node();
-  var btn = new SimpleButton('#g-export-control .g-next-btn').active(true);
-
-  btn.on('click', function() {
-    btn.active(false);
-    exportShapefileToZip();
-    return false;
-  });
-
-  function exportBlob(filename, blob) {
-    var url = URL.createObjectURL(blob);
-    anchor.href = url;
-    anchor.download = filename;
-    var clickEvent = document.createEvent("MouseEvent");
-    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
-    anchor.dispatchEvent(clickEvent);
-    btn.active(true);
-  }
-
-  function exportTopoJSON() {
-
-  }
-
-  function exportShapefileToZip() {
-    var data = exportShapefile();
-    var shp = new Blob([data.shp]);
-    var shx = new Blob([data.shx]);
-    trace(shp.size, data.shp.byteLength);
-
-    function addShp(writer) {
-      writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
-        addShx(writer);
-      }, null); // last arg: onprogress
-    }
-
-    function addShx(writer) {
-      writer.add(filename + ".shx", new zip.BlobReader(shx), function() {
-        writer.close(function(blob) {
-          exportBlob(filename + ".zip", blob)
-        });
-      });
-    }
-
-    zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
-  }
-
-  function exportShapefile() {
-    var arcs = [];
-    arcData.shapes().forEach(function(iter) {
-      var xx = [], yy = [];
-      while(iter.hasNext()) {
-        xx.push(iter.x);
-        yy.push(iter.y);
-      }
-      arcs.push([xx, yy]);
-    });
-
-    return MapShaper.exportShp(arcs, topoData.shapes, 5);
-  }
-
-};
-
-
-var SimplifyControl = function() {
-  var _value = 1;
-
-  El('#g-simplify-control').showCSS('display:inline-block').show();
-  var slider = new Slider("#g-simplify-control .g-slider");
-  slider.handle("#g-simplify-control .g-handle");
-  slider.track("#g-simplify-control .g-track");
-  slider.on('change', function(e) {
-    var pct = fromSliderPct(e.pct);
-    text.value(pct);
-    onchange(pct);
-  });
-
-  var text = new ClickText("#g-simplify-control .g-clicktext");
-  text.bounds(0, 1);
-  text.formatter(function(val) {
-    if (isNaN(val)) return '-';
-
-    var pct = val * 100;
-    var decimals = 0;
-    if (pct <= 0) decimals = 1;
-    else if (pct < 0.001) decimals = 4;
-    else if (pct < 0.01) decimals = 3;
-    else if (pct < 1) decimals = 2;
-    else if (pct < 100) decimals = 1;
-    return Utils.formatNumber(pct, decimals) + "%";
-  });
-
-  text.parser(function(s) {
-    return parseFloat(s) / 100;
-  });
-
-  text.value(0);
-  text.on('change', function(e) {
-    var pct = e.value;
-    slider.pct(toSliderPct(pct));
-    onchange(pct);
-  });
-
-  function toSliderPct(p) {
-    p = Math.sqrt(p);
-    var pct = 1 - p;
-    return pct;
-  }
-
-  function fromSliderPct(p) {
-    var pct = 1 - p;
-    return pct * pct;
-  }
-
-  function onchange(val) {
-    if (_value != val) {
-      _value = val;
-      control.dispatchEvent('change', {value:val});
-    }
-  }
-
-
-  var control = new EventDispatcher();
-  control.value = function(val) {
-    if (!isNaN(val)) {
-      // TODO: validate
-      _value = val;
-      slider.pct(toSliderPct(val));
-      text.value(val);
-    }
-    return _value;
-  };
-
-  // init components
-  control.value(_value);
-
-  return control;
-}
-
-function ImportPanel(callback) {
-  var shpFile,
-      shpData;
-
-  var shpBtn = new FileChooser('#g-shp-import-btn');
-  shpBtn.on('select', function(e) {
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      shpFile = e.file;
-      shpData = MapShaper.importShp(reader.result);
-      trace(Utils.getKeys(shpData), shpData.info)
-      // El("#g-import-options").show();
-      // nextBtn.active(true).on('click', next, this);
-      next();
-    };
-    reader.readAsArrayBuffer(e.file);
-  })
-
-  shpBtn.validator(function(file) {
-    return /.shp$/.test(file.name);
-  });
-
-  var nextBtn = new SimpleButton("#mshp-import .g-next-btn").active(false);
-  // var cancelBtn = new SimpleButton("#g-import-panel .g-cancel-btn").active(false).on('click', cancel, this);
-
-  function next() {
-    El("#mshp-intro-screen").hide();
-    callback && shpData && callback(shpData, getImportOpts())
-  }
-
-
-  function getImportOpts() {
-    var opts = {
-      simplify_method: 'mod',
-      use_sphere: El("#g-import-spherical-opt").el.checked,
-      keep_shapes: El("#g-import-retain-opt").el.checked
-    };
-
-    return opts;
-  }
-}
-
-Opts.inherit(ImportPanel, EventDispatcher);
-
-
-var controls = {
-  Slider: Slider,
-  Checkbox: Checkbox,
-  SimplifyControl: SimplifyControl,
-  ImportPanel: ImportPanel
-};
-
-
-
 /* @requires mapshaper-common, mapshaper-geom, bounds, sorting */
 
 MapShaper.calcArcBounds = function(xx, yy) {
@@ -6218,10 +6059,10 @@ function ArcDataset(coords) {
 
   var arcIter = new ArcIter();
   var boxes = [],
-      bounds = new Bounds();
+      _bounds = new Bounds();
   for (var i=0, n=_arcs.length; i<n; i++) {
     var b = MapShaper.calcArcBounds(_arcs[i][0], _arcs[i][1]);
-    bounds.mergeBounds(b);
+    _bounds.mergeBounds(b);
     boxes.push(b);
   }
 
@@ -6362,7 +6203,7 @@ function ArcDataset(coords) {
   };
 
   this.getBounds = function() {
-    return bounds;
+    return _bounds;
   };
 
   this.getShapeTable = function(data, ShapeClass) {
@@ -6526,6 +6367,19 @@ function ShapeCollection(arr, collBounds) {
         cb(path(shp, j));
       }
     }
+  };
+
+  this.toArray = function() {
+    var arcs = [];
+    this.forEach(function(iter) {
+      var xx = [], yy = [];
+      while(iter.hasNext()) {
+        xx.push(iter.x);
+        yy.push(iter.y);
+      }
+      arcs.push([xx, yy]);
+    });
+    return arcs;
   };
 }
 
@@ -9374,6 +9228,336 @@ Utils.loadBinaryData = function(url, callback) {
   xhr.send();
 };
 
+/* @requires mapshaper-common */
+
+
+MapShaper.importJSON = function(obj) {
+  if (obj.type == "Topology") {
+    error("TODO: TopoJSON import.")
+    return MapShaper.importTopoJSON(obj);
+  }
+  return MapShaper.importGeoJSON(obj);
+};
+
+
+MapShaper.importGeoJSON = function(obj) {
+  error("TODO: implement GeoJSON importing.")
+};
+
+
+MapShaper.exportGeoJSON = function(obj) {
+  T.start();
+  if (!obj.shapes || !obj.arcs) error("Missing 'shapes' and/or 'arcs' properties.");
+
+  var features = Utils.map(obj.shapes, function(topoShape) {
+    if (!topoShape || !Utils.isArray(topoShape)) error("[exportGeoJSON()] Missing or invalid param/s");
+    var data = MapShaper.convertTopoShape(topoShape, obj.arcs);
+    return MapShaper.getGeoJSONPolygonFeature(data.parts);
+  });
+
+  var root = {
+    type: "FeatureCollection",
+    features: features
+  };
+
+  T.stop("Export GeoJSON");
+  return JSON.stringify(root);
+};
+
+// TODO: Implement the GeoJSON spec for holes.
+//
+MapShaper.getGeoJSONPolygonFeature = function(ringsIn) {
+  var rings = Utils.map(ringsIn, MapShaper.transposeXYCoords),
+      ringCount = rings.length,
+      geom = {};
+  if (ringCount == 0) {
+    // null shape; how to represent?
+    geom.type = "Polygon";
+    geom.coordinates = [[]];
+  } else if (ringCount == 1) {
+    geom.type = "Polygon";
+    geom.coordinates = rings;
+  } else {
+    geom.type = "MultiPolygon";
+    geom.coordinates = Utils.map(rings, function(ring) {return [ring]});
+  }
+
+  var feature = {
+    type: "Feature",
+    properties: {},
+    geometry: geom
+  };
+
+  return feature;
+};
+
+
+
+/* @requires mapshaper-common */
+
+//
+//
+//
+MapShaper.exportTopoJSON = function(data) {
+  if (!data.shapes || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
+  var arcs = Utils.map(data.arcs, MapShaper.transposeXYCoords),
+      shapes = data.shapes;
+
+  var srcBounds = data.bounds,
+      destBounds = new Bounds([0, 0, 100000, 100000]),
+      // TODO: adjust output bounds to suit amount of detail in output vectors
+      tr = srcBounds.getTransform(destBounds),
+      inv = tr.invert();
+
+  Utils.forEach(arcs, function(arc) {
+    var n = arc.length,
+        p, x, y, prevX, prevY;
+    for (var i=0, n=arc.length; i<n; i++) {
+      if (i == 0) {
+        prevX = 0,
+        prevY = 0;
+      } else {
+        prevX = x;
+        prevY = y;
+      }
+      p = arc[i];
+      x = Math.round(p[0] * tr.mx + tr.bx);
+      y = Math.round(p[1] * tr.my + tr.by);
+      p[0] = x - prevX;
+      p[1] = y - prevY;
+    }
+  })
+
+  var obj = {
+    type: "Topology",
+    transform: {
+      scale: [inv.mx, inv.my],
+      translate: [inv.bx, inv.by]
+    },
+    arcs: arcs,
+    objects: {
+      polygons: {
+        type: "Polygon",
+        arcs: data.shapes
+      }
+    }
+  };
+
+  return JSON.stringify(obj);
+};
+
+
+MapShaper.importTopoJSON = function(obj) {
+  var mx = 1, my = 1, bx = 0, by = 0;
+  if (obj.transform) {
+    var scale = obj.transform.scale,
+        translate = obj.transform.translate;
+    mx = scale[0];
+    my = scale[1];
+    bx = translate[0];
+    by = translate[1];
+  }
+
+  var arcs = Utils.map(obj.arcs, function(arc) {
+    var xx = [], yy = [];
+    for (var i=0, len=arc.length; i<len; i++) {
+      var p = arc[i];
+      xx.push(p[0] * mx + bx);
+      yy.push(p[1] * my + by);
+    }
+    return [xx, yy];
+  });
+
+  return {arcs: arcs, objects: null};
+};
+
+
+
+/* @require mapshaper-elements, textutils, mapshaper-shapefile, mapshaper-geojson, mapshaper-topojson */
+
+var ExportControl = function(arcData, topoData, opts) {
+  var filename = opts && opts.output_name || "out";
+
+  var el = El('#g-export-control').show();
+  var anchor = el.newChild('a').attr('href', '#').node();
+  var geoBtn = new SimpleButton('#g-geojson-btn').active(true).on('click', function() {
+    geoBtn.active(false);
+    setTimeout(exportGeoJSON, 10); // kludgy way to show button response
+  });
+  var shpBtn = new SimpleButton('#g-shapefile-btn').active(true).on('click', function() {
+    shpBtn.active(false);
+    exportZippedShapefile();
+  });
+  var topoBtn = new SimpleButton('#g-topojson-btn').active(true).on('click', function() {
+    topoBtn.active(false);
+    setTimeout(exportTopoJSON, 10);
+  });
+
+  function exportBlob(filename, blob) {
+    var url = URL.createObjectURL(blob);
+    anchor.href = url;
+    anchor.download = filename;
+    var clickEvent = document.createEvent("MouseEvent");
+    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+    anchor.dispatchEvent(clickEvent);
+  }
+
+  function exportGeoJSON() {
+    var json = MapShaper.exportGeoJSON({ arcs: arcData.shapes().toArray(), shapes: topoData.shapes });
+    exportBlob(filename + ".json", new Blob([json]));
+    geoBtn.active(true);
+  }
+
+  function exportTopoJSON() {
+    var json = MapShaper.exportTopoJSON({arcs: arcData.shapes().toArray(), shapes: topoData.shapes, bounds: opts.bounds});
+    exportBlob(filename + ".topo.json", new Blob([json]));
+    topoBtn.active(true);
+  }
+
+  function exportZippedShapefile() {
+    var data = exportShapefile(),
+        shp = new Blob([data.shp]),
+        shx = new Blob([data.shx]);
+
+    function addShp(writer) {
+      writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
+        addShx(writer);
+      }, null); // last arg: onprogress
+    }
+
+    function addShx(writer) {
+      writer.add(filename + ".shx", new zip.BlobReader(shx), function() {
+        writer.close(function(blob) {
+          exportBlob(filename + ".zip", blob)
+          shpBtn.active(true);
+        });
+      }, null);
+    }
+
+    zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
+  }
+
+  function exportShapefile() {
+    return MapShaper.exportShp(arcData.shapes().toArray(), topoData.shapes, 5);
+  }
+
+};
+
+
+var SimplifyControl = function() {
+  var _value = 1;
+
+  El('#g-simplify-control').showCSS('display:inline-block').show();
+  var slider = new Slider("#g-simplify-control .g-slider");
+  slider.handle("#g-simplify-control .g-handle");
+  slider.track("#g-simplify-control .g-track");
+  slider.on('change', function(e) {
+    var pct = fromSliderPct(e.pct);
+    text.value(pct);
+    onchange(pct);
+  });
+
+  var text = new ClickText("#g-simplify-control .g-clicktext");
+  text.bounds(0, 1);
+  text.formatter(function(val) {
+    if (isNaN(val)) return '-';
+
+    var pct = val * 100;
+    var decimals = 0;
+    if (pct <= 0) decimals = 1;
+    else if (pct < 0.001) decimals = 4;
+    else if (pct < 0.01) decimals = 3;
+    else if (pct < 1) decimals = 2;
+    else if (pct < 100) decimals = 1;
+    return Utils.formatNumber(pct, decimals) + "%";
+  });
+
+  text.parser(function(s) {
+    return parseFloat(s) / 100;
+  });
+
+  text.value(0);
+  text.on('change', function(e) {
+    var pct = e.value;
+    slider.pct(toSliderPct(pct));
+    onchange(pct);
+  });
+
+  function toSliderPct(p) {
+    p = Math.sqrt(p);
+    var pct = 1 - p;
+    return pct;
+  }
+
+  function fromSliderPct(p) {
+    var pct = 1 - p;
+    return pct * pct;
+  }
+
+  function onchange(val) {
+    if (_value != val) {
+      _value = val;
+      control.dispatchEvent('change', {value:val});
+    }
+  }
+
+
+  var control = new EventDispatcher();
+  control.value = function(val) {
+    if (!isNaN(val)) {
+      // TODO: validate
+      _value = val;
+      slider.pct(toSliderPct(val));
+      text.value(val);
+    }
+    return _value;
+  };
+
+  // init components
+  control.value(_value);
+
+  return control;
+}
+
+function ImportPanel(callback) {
+
+  var shpBtn = new FileChooser('#g-shp-import-btn');
+  shpBtn.on('select', function(e) {
+    var reader = new FileReader(),
+        file = e.file;
+    reader.onload = function(e) {
+      var shpData = MapShaper.importShp(reader.result);
+      var opts = {
+        input_file: file.name,
+        keep_shapes: El("#g-import-retain-opt").el.checked,
+        simplify_method: 'mod'
+      };
+      El("#mshp-intro-screen").hide();
+      callback(shpData, opts)
+    };
+    reader.readAsArrayBuffer(file);
+  })
+
+  shpBtn.validator(function(file) {
+    return /.shp$/.test(file.name);
+  });
+
+  // var nextBtn = new SimpleButton("#mshp-import .g-next-btn").active(false);
+  // var cancelBtn = new SimpleButton("#g-import-panel .g-cancel-btn").active(false).on('click', cancel, this);
+}
+
+Opts.inherit(ImportPanel, EventDispatcher);
+
+
+var controls = {
+  Slider: Slider,
+  Checkbox: Checkbox,
+  SimplifyControl: SimplifyControl,
+  ImportPanel: ImportPanel
+};
+
+
+
 /* @requires
 mapshaper-index,
 mapshaper-shapes,
@@ -9432,11 +9616,11 @@ function browserIsSupported() {
 function editorTest(shp) {
   Utils.loadBinaryData(shp, function(buf) {
     var shpData = MapShaper.importShp(buf),
-        opts = {};
-
+        opts = {input_file:shp};
     editorPage(shpData, opts);
   })
 }
+
 
 function editorPage(importData, opts) {
   var decimalDegrees = containsBounds([-200, -100, 200, 100], importData.info.input_bounds);
@@ -9464,12 +9648,12 @@ function editorPage(importData, opts) {
 
   var group = new ArcLayerGroup(arcs);
 
-  var opts = {
+  var mapOpts = {
     bounds: arcData.getBounds(),
     padding: 10
   };
 
-  var map = new MshpMap("#mshp-main-map", opts);
+  var map = new MshpMap("#mshp-main-map", mapOpts);
   map.addLayerGroup(group);
   map.display();
 
@@ -9480,7 +9664,14 @@ function editorPage(importData, opts) {
     group.refresh();
   });
 
-  var exporter = new ExportControl(arcs, topoData);
+  var exportOpts = {
+    bounds: arcData.getBounds()
+  };
+  if (opts.input_file) {
+    var parts = MapShaper.parseLocalPath(opts.input_file);
+    exportOpts.output_name = parts.basename;
+  }
+  var exporter = new ExportControl(arcs, topoData, exportOpts);
 }
 
 })();

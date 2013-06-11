@@ -20,10 +20,10 @@ function ArcDataset(coords) {
 
   var arcIter = new ArcIter();
   var boxes = [],
-      bounds = new Bounds();
+      _bounds = new Bounds();
   for (var i=0, n=_arcs.length; i<n; i++) {
     var b = MapShaper.calcArcBounds(_arcs[i][0], _arcs[i][1]);
-    bounds.mergeBounds(b);
+    _bounds.mergeBounds(b);
     boxes.push(b);
   }
 
@@ -164,7 +164,7 @@ function ArcDataset(coords) {
   };
 
   this.getBounds = function() {
-    return bounds;
+    return _bounds;
   };
 
   this.getShapeTable = function(data, ShapeClass) {
@@ -328,6 +328,19 @@ function ShapeCollection(arr, collBounds) {
         cb(path(shp, j));
       }
     }
+  };
+
+  this.toArray = function() {
+    var arcs = [];
+    this.forEach(function(iter) {
+      var xx = [], yy = [];
+      while(iter.hasNext()) {
+        xx.push(iter.x);
+        yy.push(iter.y);
+      }
+      arcs.push([xx, yy]);
+    });
+    return arcs;
   };
 }
 

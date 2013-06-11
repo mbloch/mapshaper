@@ -204,7 +204,6 @@ function SimpleButton(ref) {
 
 Opts.inherit(SimpleButton, EventDispatcher);
 
-
 function FileChooser(el) {
   var _el = El(el),
       _file,
@@ -231,7 +230,6 @@ function FileChooser(el) {
       input.attr('disabled', true); // button is disabled after first successful selection
       _el.addClass('selected');
       _file = file;
-      // _el.findChild('.g-label-text').text(_file.name);
       this.dispatchEvent('select', {file:files[0]});
     }
   }

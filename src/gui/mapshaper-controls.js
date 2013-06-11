@@ -1,17 +1,21 @@
-/* @require mapshaper-elements, textutils, mapshaper-shapefile */
+/* @require mapshaper-elements, textutils, mapshaper-shapefile, mapshaper-geojson, mapshaper-topojson */
 
-
-var ExportControl = function(arcData, topoData) {
-  var filename = "out";
+var ExportControl = function(arcData, topoData, opts) {
+  var filename = opts && opts.output_name || "out";
 
   var el = El('#g-export-control').show();
   var anchor = el.newChild('a').attr('href', '#').node();
-  var btn = new SimpleButton('#g-export-control .g-next-btn').active(true);
-
-  btn.on('click', function() {
-    btn.active(false);
-    exportShapefileToZip();
-    return false;
+  var geoBtn = new SimpleButton('#g-geojson-btn').active(true).on('click', function() {
+    geoBtn.active(false);
+    setTimeout(exportGeoJSON, 10); // kludgy way to show button response
+  });
+  var shpBtn = new SimpleButton('#g-shapefile-btn').active(true).on('click', function() {
+    shpBtn.active(false);
+    exportZippedShapefile();
+  });
+  var topoBtn = new SimpleButton('#g-topojson-btn').active(true).on('click', function() {
+    topoBtn.active(false);
+    setTimeout(exportTopoJSON, 10);
   });
 
   function exportBlob(filename, blob) {
@@ -21,18 +25,24 @@ var ExportControl = function(arcData, topoData) {
     var clickEvent = document.createEvent("MouseEvent");
     clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
     anchor.dispatchEvent(clickEvent);
-    btn.active(true);
+  }
+
+  function exportGeoJSON() {
+    var json = MapShaper.exportGeoJSON({ arcs: arcData.shapes().toArray(), shapes: topoData.shapes });
+    exportBlob(filename + ".json", new Blob([json]));
+    geoBtn.active(true);
   }
 
   function exportTopoJSON() {
-
+    var json = MapShaper.exportTopoJSON({arcs: arcData.shapes().toArray(), shapes: topoData.shapes, bounds: opts.bounds});
+    exportBlob(filename + ".topo.json", new Blob([json]));
+    topoBtn.active(true);
   }
 
-  function exportShapefileToZip() {
-    var data = exportShapefile();
-    var shp = new Blob([data.shp]);
-    var shx = new Blob([data.shx]);
-    trace(shp.size, data.shp.byteLength);
+  function exportZippedShapefile() {
+    var data = exportShapefile(),
+        shp = new Blob([data.shp]),
+        shx = new Blob([data.shx]);
 
     function addShp(writer) {
       writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
@@ -44,25 +54,16 @@ var ExportControl = function(arcData, topoData) {
       writer.add(filename + ".shx", new zip.BlobReader(shx), function() {
         writer.close(function(blob) {
           exportBlob(filename + ".zip", blob)
+          shpBtn.active(true);
         });
-      });
+      }, null);
     }
 
     zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
   }
 
   function exportShapefile() {
-    var arcs = [];
-    arcData.shapes().forEach(function(iter) {
-      var xx = [], yy = [];
-      while(iter.hasNext()) {
-        xx.push(iter.x);
-        yy.push(iter.y);
-      }
-      arcs.push([xx, yy]);
-    });
-
-    return MapShaper.exportShp(arcs, topoData.shapes, 5);
+    return MapShaper.exportShp(arcData.shapes().toArray(), topoData.shapes, 5);
   }
 
 };
@@ -144,45 +145,30 @@ var SimplifyControl = function() {
 }
 
 function ImportPanel(callback) {
-  var shpFile,
-      shpData;
 
   var shpBtn = new FileChooser('#g-shp-import-btn');
   shpBtn.on('select', function(e) {
-    var reader = new FileReader();
+    var reader = new FileReader(),
+        file = e.file;
     reader.onload = function(e) {
-      shpFile = e.file;
-      shpData = MapShaper.importShp(reader.result);
-      trace(Utils.getKeys(shpData), shpData.info)
-      // El("#g-import-options").show();
-      // nextBtn.active(true).on('click', next, this);
-      next();
+      var shpData = MapShaper.importShp(reader.result);
+      var opts = {
+        input_file: file.name,
+        keep_shapes: El("#g-import-retain-opt").el.checked,
+        simplify_method: 'mod'
+      };
+      El("#mshp-intro-screen").hide();
+      callback(shpData, opts)
     };
-    reader.readAsArrayBuffer(e.file);
+    reader.readAsArrayBuffer(file);
   })
 
   shpBtn.validator(function(file) {
     return /.shp$/.test(file.name);
   });
 
-  var nextBtn = new SimpleButton("#mshp-import .g-next-btn").active(false);
+  // var nextBtn = new SimpleButton("#mshp-import .g-next-btn").active(false);
   // var cancelBtn = new SimpleButton("#g-import-panel .g-cancel-btn").active(false).on('click', cancel, this);
-
-  function next() {
-    El("#mshp-intro-screen").hide();
-    callback && shpData && callback(shpData, getImportOpts())
-  }
-
-
-  function getImportOpts() {
-    var opts = {
-      simplify_method: 'mod',
-      use_sphere: El("#g-import-spherical-opt").el.checked,
-      keep_shapes: El("#g-import-retain-opt").el.checked
-    };
-
-    return opts;
-  }
 }
 
 Opts.inherit(ImportPanel, EventDispatcher);

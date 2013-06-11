@@ -8,6 +8,48 @@ function stop(msg) {
 
 var MapShaper = {};
 
+MapShaper.parseLocalPath = function(path) {
+  var obj = {
+    ext: '',
+    directory: '',
+    filename: '',
+    basename: ''
+  };
+  var parts = path.split('/'),
+      name, i;
+
+  if (parts.length == 1) {
+    name = parts[0];
+  } else {
+    name = parts.pop();
+    obj.directory = parts.join('/');
+  }
+  i = name.lastIndexOf('.');
+  if (i > -1) {
+    obj.ext = name.substr(i);
+    obj.basename = name.substr(0, i);
+  }
+  obj.filename = name;
+  return obj;
+};
+
+/*
+    // TODO: give better output if fpath is a directory
+    var info = {};
+    var filename = Node.path.basename(fpath);
+    if (filename.lastIndexOf('/') == filename.length - 1) {
+      filename = filename.substr(0, filename.length-1);
+    }
+    info.file = filename;
+    info.path = Node.path.resolve(fpath);
+    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
+    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
+    info.directory = Node.path.dirname(info.path);
+    info.relative_dir = Node.path.dirname(fpath);
+    return info;
+*/
+
+
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var len=xsrc.length;
   (!len || len < 2) && error("[MapShaper.extendShapePart()] invalid arc length:", len);
