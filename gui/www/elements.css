@@ -190,7 +190,6 @@
 .g-page-header .g-panel-btn {
 	margin-right: 0;
 	color: #fff;
-	/*background-color: #557DA5;*/
 	background-color: rgba(16, 69, 104, 0.3);
 	border: none;
 	padding: 3px 5px 4px 5px;
@@ -221,7 +220,7 @@
 	cursor:pointer;
 	position: absolute;
 	z-index: 50;
-	padding: 5px;
+	padding: 9px;
 	margin: 2px;
 }
 

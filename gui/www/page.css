@@ -135,15 +135,17 @@ h2, h4, h5 {
 	right: 0;
 	bottom: 0;
 	left: 0;
-	margin: 28px 0 32px 0;
+	margin: 30px 0 0px 0;
 	background-color: #fff;
-	z-index: 20;
 }
 
+/* map floats above the page, with dropshadow
+/*
 #mshp-main-map {
+	z-index: 30;
 	box-shadow: 0px 0px 17px #888;
 	margin: 38px 10px 10px 10px;
-}
+}*/
 
 .g-bottom-panel {
 	background-color:#ACCDF5;
