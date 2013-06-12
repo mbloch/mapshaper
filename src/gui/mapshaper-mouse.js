@@ -1,4 +1,4 @@
-/** @requires events, tweening, hybrid-mouse, hybrid-mousewheel */
+/** @requires browser, events, tweening, hybrid-mouse, hybrid-mousewheel */
 
 
 function MshpMouse(ext) {
@@ -10,6 +10,7 @@ function MshpMouse(ext) {
     ext.rescale(scale, _fx, _fy);
   });
 
+  Browser.unselectable(p.element); // prevent text-select cursor when dragging
   mouse.setMapContainer(p.element)
   calibrate();
   ext.on('resize', calibrate);
