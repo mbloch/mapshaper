@@ -4,11 +4,11 @@ Tools for topologically-aware Shapefile simplification
 
 ###Interactive tool
 
-- To setup the mapshaper gui for online use, copy the files in gui/www/ to a web server. All processing is done in the browser, there is no backend service to run.
+- To setup mapshaper's web interface for online use, copy the files in gui/www/ to a web server. All processing is done in the browser, there is no backend service to run.
 
-- To run the mapshaper gui directly from the filesystem, open gui/www/index.html in a web browser.
+- The web interface works well in recent versions of Chrome and Firefox. Exporting doesn't work in Safari, Internet Explorer 10 hasn't been tested, Opera and IE9- don't work at all.
 
-- Mapshaper works well in recent versions of Chrome, Safari and Firefox.
+- To run the mapshaper gui directly from the filesystem, open gui/www/index.html in a web browser. Firefox works well in this mode, exporting is not fully supported in Chrome.
 
 ###Commandline tool
 
@@ -16,11 +16,11 @@ Tools for topologically-aware Shapefile simplification
 
 - Example commands:
  
-	`$ mapshaper -p 0.1 counties.shp` Retain 10% of removable vertices using default simplification.
+	`$ mapshaper -p 0.1 counties.shp`  Retain 10% of removable vertices using default simplification.
 
-	`$ mapshaper -i 100 states.shp --dp` Remove features smaller than ~100 meters using Douglas-Peucker simplification.
+	`$ mapshaper -i 100 states.shp --dp `  Remove features smaller than ~100 meters using Douglas-Peucker simplification.
 
-	`$ mapshaper -h` Print help information.
+	`$ mapshaper -h` Get help.
 
 ###Building and testing
 
