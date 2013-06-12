@@ -225,9 +225,11 @@
 	margin: 2px;
 }
 
+.g-home-btn:hover {
+	opacity: 0.7 !important;
+}
 
 .g-home-btn:not(.active) {
 	opacity: 0.3;
-	cursor: default;
 }
 
