@@ -6646,8 +6646,40 @@ MapShaper.getGeoJSONPolygonFeature = function(ringsIn) {
 
 /* @requires mapshaper-common */
 
-//
-//
+
+
+MapShaper.importTopoJSON = function(obj) {
+  var mx = 1, my = 1, bx = 0, by = 0;
+  if (obj.transform) {
+    var scale = obj.transform.scale,
+        translate = obj.transform.translate;
+    mx = scale[0];
+    my = scale[1];
+    bx = translate[0];
+    by = translate[1];
+  }
+
+  var arcs = Utils.map(obj.arcs, function(arc) {
+    var xx = [], yy = [];
+    for (var i=0, len=arc.length; i<len; i++) {
+      var p = arc[i];
+      xx.push(p[0] * mx + bx);
+      yy.push(p[1] * my + by);
+    }
+    return [xx, yy];
+  });
+
+  // TODO: import objects
+
+  return {arcs: arcs, objects: null};
+};
+
+
+// Export a TopoJSON string containing a single object, "polygons", containing a GeometryCollection
+//   of Polygon and MultiPolygon shapes
+// TODO: Adjust quantization to suit the amount of detail in the vector lines
+// TODO: Support ids from attribute data
+// TODO: Handle holes correctly
 //
 MapShaper.exportTopoJSON = function(data) {
   if (!data.shapes || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
@@ -6656,7 +6688,6 @@ MapShaper.exportTopoJSON = function(data) {
 
   var srcBounds = data.bounds,
       destBounds = new Bounds([0, 0, 100000, 100000]),
-      // TODO: adjust output bounds to suit amount of detail in output vectors
       tr = srcBounds.getTransform(destBounds),
       inv = tr.invert();
 
@@ -6688,8 +6719,8 @@ MapShaper.exportTopoJSON = function(data) {
     arcs: arcs,
     objects: {
       polygons: {
-        type: "Polygon",
-        arcs: data.shapes
+        type: "GeometryCollection",
+        geometries: getTopoJsonPolygonGeometries(shapes)
       }
     }
   };
@@ -6698,31 +6729,45 @@ MapShaper.exportTopoJSON = function(data) {
 };
 
 
-MapShaper.importTopoJSON = function(obj) {
-  var mx = 1, my = 1, bx = 0, by = 0;
-  if (obj.transform) {
-    var scale = obj.transform.scale,
-        translate = obj.transform.translate;
-    mx = scale[0];
-    my = scale[1];
-    bx = translate[0];
-    by = translate[1];
-  }
-
-  var arcs = Utils.map(obj.arcs, function(arc) {
-    var xx = [], yy = [];
-    for (var i=0, len=arc.length; i<len; i++) {
-      var p = arc[i];
-      xx.push(p[0] * mx + bx);
-      yy.push(p[1] * my + by);
-    }
-    return [xx, yy];
+//
+//
+function getTopoJsonPolygonGeometries(shapes, ids) {
+  return Utils.map(shapes, function(shape, i) {
+    var id = ids ? ids[i] : i;
+    return getTopoJsonPolygonGeometry(shape, id);
   });
+}
 
-  return {arcs: arcs, objects: null};
-};
+//
+// TODO: handle holes (currently treats holes like separate rings)
+//
+function getTopoJsonPolygonGeometry(shape, id) {
+  var obj = {};
+  if (id != null) {
+    obj.id = id;
+  }
+  if (shape.length > 1) {
+    obj.type = "MultiPolygon";
+    obj.arcs = getTopoJsonMultiPolygonArcs(shape);
+  } else if (shape.length == 1) {
+    obj.type = "Polygon";
+    obj.arcs = shape;
+  } else {
+    obj.type = "Polygon";
+    obj.arcs = []; // Is this how to represent a null polygon?
+  }
+  return obj;
+}
 
-
+// TODO: Recognize holes
+// Option: Use ring direction to identify holes (shapefile import does this)
+//   ... then, find containing ring ...
+//
+function getTopoJsonMultiPolygonArcs(shape) {
+  return Utils.map(shape, function(part) {
+    return [part];
+  });
+}
 
 /* @require mapshaper-elements, textutils, mapshaper-shapefile, mapshaper-geojson, mapshaper-topojson */
 
@@ -8885,7 +8930,6 @@ function MshpMap(el, opts_) {
 
     _ext.on('change', function() {
       var isFull = _ext.scale() === 1;
-      trace('full:', isFull);
       if (isFull !== _full) {
         _full = isFull;
         if (!isFull) btn.addClass('active');
@@ -8937,7 +8981,6 @@ function MapExtent(el, initialBounds) {
   }
 
   this.recenter = function(cx, cy, scale) {
-    trace('recenter()')
     if (!scale) scale = _scale;
     if (!(cx == _cx && cy == _cy && scale == _scale)) {
       _cx = cx, _cy = cy, _scale = scale;
@@ -9032,26 +9075,6 @@ function MapExtent(el, initialBounds) {
 
 Opts.inherit(MapExtent, EventDispatcher);
 
-
-/* @requires events */
-/*
-Utils.monitorEvent = function(obj, evt, handler, trueEvt, falseEvt) {
-  var status = void 0; // true or false
-  obj.on(evt, function(e) {
-    var retn = handler(e);
-    if (retn !== status) {
-      if (retn === true && trueEvt) {
-        obj.dispatchEvent(trueEvt);
-      } else if (return === false) {
-        obj.dispatchEvent(falseEvt);
-      } else {
-        error("Utils#monitorEvent() Handler must return true or false");
-      }
-      status = retn;
-    }
-  });
-};
-*/
 
 /* @requires mapshaper-common, mapshaper-geom, median, sorting */
 
@@ -9640,7 +9663,11 @@ function introPage() {
 }
 
 function browserIsSupported() {
-  return Env.inBrowser && Env.canvas && typeof 'ArrayBuffer' != 'undefined';
+  return Env.inBrowser &&
+    Env.canvas &&
+    typeof 'ArrayBuffer' != 'undefined' &&
+    typeof 'Blob' != 'undefined' &&
+    typeof 'File' != 'undefined';
 }
 
 function editorTest(shp) {

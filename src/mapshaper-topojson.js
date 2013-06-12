@@ -1,7 +1,39 @@
 /* @requires mapshaper-common */
 
-//
-//
+
+
+MapShaper.importTopoJSON = function(obj) {
+  var mx = 1, my = 1, bx = 0, by = 0;
+  if (obj.transform) {
+    var scale = obj.transform.scale,
+        translate = obj.transform.translate;
+    mx = scale[0];
+    my = scale[1];
+    bx = translate[0];
+    by = translate[1];
+  }
+
+  var arcs = Utils.map(obj.arcs, function(arc) {
+    var xx = [], yy = [];
+    for (var i=0, len=arc.length; i<len; i++) {
+      var p = arc[i];
+      xx.push(p[0] * mx + bx);
+      yy.push(p[1] * my + by);
+    }
+    return [xx, yy];
+  });
+
+  // TODO: import objects
+
+  return {arcs: arcs, objects: null};
+};
+
+
+// Export a TopoJSON string containing a single object, "polygons", containing a GeometryCollection
+//   of Polygon and MultiPolygon shapes
+// TODO: Adjust quantization to suit the amount of detail in the vector lines
+// TODO: Support ids from attribute data
+// TODO: Handle holes correctly
 //
 MapShaper.exportTopoJSON = function(data) {
   if (!data.shapes || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
@@ -10,7 +42,6 @@ MapShaper.exportTopoJSON = function(data) {
 
   var srcBounds = data.bounds,
       destBounds = new Bounds([0, 0, 100000, 100000]),
-      // TODO: adjust output bounds to suit amount of detail in output vectors
       tr = srcBounds.getTransform(destBounds),
       inv = tr.invert();
 
@@ -42,8 +73,8 @@ MapShaper.exportTopoJSON = function(data) {
     arcs: arcs,
     objects: {
       polygons: {
-        type: "Polygon",
-        arcs: data.shapes
+        type: "GeometryCollection",
+        geometries: getTopoJsonPolygonGeometries(shapes)
       }
     }
   };
@@ -52,27 +83,42 @@ MapShaper.exportTopoJSON = function(data) {
 };
 
 
-MapShaper.importTopoJSON = function(obj) {
-  var mx = 1, my = 1, bx = 0, by = 0;
-  if (obj.transform) {
-    var scale = obj.transform.scale,
-        translate = obj.transform.translate;
-    mx = scale[0];
-    my = scale[1];
-    bx = translate[0];
-    by = translate[1];
-  }
-
-  var arcs = Utils.map(obj.arcs, function(arc) {
-    var xx = [], yy = [];
-    for (var i=0, len=arc.length; i<len; i++) {
-      var p = arc[i];
-      xx.push(p[0] * mx + bx);
-      yy.push(p[1] * my + by);
-    }
-    return [xx, yy];
+//
+//
+function getTopoJsonPolygonGeometries(shapes, ids) {
+  return Utils.map(shapes, function(shape, i) {
+    var id = ids ? ids[i] : i;
+    return getTopoJsonPolygonGeometry(shape, id);
   });
+}
 
-  return {arcs: arcs, objects: null};
-};
+//
+// TODO: handle holes (currently treats holes like separate rings)
+//
+function getTopoJsonPolygonGeometry(shape, id) {
+  var obj = {};
+  if (id != null) {
+    obj.id = id;
+  }
+  if (shape.length > 1) {
+    obj.type = "MultiPolygon";
+    obj.arcs = getTopoJsonMultiPolygonArcs(shape);
+  } else if (shape.length == 1) {
+    obj.type = "Polygon";
+    obj.arcs = shape;
+  } else {
+    obj.type = "Polygon";
+    obj.arcs = []; // Is this how to represent a null polygon?
+  }
+  return obj;
+}
 
+// TODO: Recognize holes
+// Option: Use ring direction to identify holes (shapefile import does this)
+//   ... then, find containing ring ...
+//
+function getTopoJsonMultiPolygonArcs(shape) {
+  return Utils.map(shape, function(part) {
+    return [part];
+  });
+}
