@@ -19,7 +19,11 @@ function introPage() {
 }
 
 function browserIsSupported() {
-  return Env.inBrowser && Env.canvas && typeof 'ArrayBuffer' != 'undefined';
+  return Env.inBrowser &&
+    Env.canvas &&
+    typeof 'ArrayBuffer' != 'undefined' &&
+    typeof 'Blob' != 'undefined' &&
+    typeof 'File' != 'undefined';
 }
 
 function editorTest(shp) {
