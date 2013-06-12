@@ -47,7 +47,6 @@ function MshpMap(el, opts_) {
 
     _ext.on('change', function() {
       var isFull = _ext.scale() === 1;
-      trace('full:', isFull);
       if (isFull !== _full) {
         _full = isFull;
         if (!isFull) btn.addClass('active');
@@ -99,7 +98,6 @@ function MapExtent(el, initialBounds) {
   }
 
   this.recenter = function(cx, cy, scale) {
-    trace('recenter()')
     if (!scale) scale = _scale;
     if (!(cx == _cx && cy == _cy && scale == _scale)) {
       _cx = cx, _cy = cy, _scale = scale;
