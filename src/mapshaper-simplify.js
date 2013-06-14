@@ -42,7 +42,7 @@ MapShaper.getInnerThresholds = function(arr, skip) {
   return tmp;
 };
 
-MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
+MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct) {
   if (!Utils.isArray(arcs) || !Utils.isArray(thresholds) ||
       arcs.length != thresholds.length  || !Utils.isNumber(retainedPct))
     error("Invalid arguments; expected [Array], [Array], [Number]");
@@ -51,16 +51,47 @@ MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
   T.stop("Find simplification interval");
 
   T.start();
-  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh, opts);
+  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh);
   T.stop("Remove vertices");
   return thinned;
 };
+
+MapShaper.protectPoints = function(thresholds, lockCounts) {
+  var n;
+  for (var i=0, len=thresholds.length; i<len; i++) {
+    n = lockCounts[i];
+    if (n > 0) {
+      MapShaper.lockMaxThreshold(thresholds[i], n);
+    }
+  }
+};
+
+MapShaper.lockMaxThreshold = function(zz, n) {
+  var max = 0,
+      lockVal = Infinity,
+      maxId, z;
+  for (var i=1, len = zz.length - 1; i<len; i++) {
+    z = zz[i];
+    if (z > max && z !== lockVal) {
+      max = z
+      maxId = i;
+    }
+  }
+  if (max > 0) {
+    zz[maxId] = lockVal;
+    if (n > 1) {
+      MapShaper.lockMaxThreshold(zz, n - 1);
+    }
+  }
+  return zz;
+}
 
 
 // Strip interior points from an arc.
 // @retained gives the number of interior points to leave in (retains those
 //    with the highest thresholds)
 //
+/*
 MapShaper.stripArc = function(xx, yy, uu, retained) {
   var data = [],
       len = xx.length,
@@ -90,8 +121,9 @@ MapShaper.stripArc = function(xx, yy, uu, retained) {
   yy2.push(yy[len-1]);
   return [xx2, yy2];
 };
+*/
 
-MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints) {
+MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval) {
   var xdest = [],
       ydest = [],
       srcLen = xsrc.length,
@@ -105,12 +137,6 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
       xdest.push(xsrc[i]);
       ydest.push(ysrc[i]);
     }
-  }
-
-  if (xdest.length < retainedPoints + 2) { // minInteriorPoints doesn't include endpoints
-    var stripped = MapShaper.stripArc(xsrc, ysrc, uu, retainedPoints);
-    xdest = stripped[0];
-    ydest = stripped[1];
   }
 
   // remove island rings that have collapsed (i.e. fewer than 4 points)
@@ -127,22 +153,18 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
 };
 
 
-MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval, opts) {
+MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval) {
   if (!Utils.isArray(srcArcs) || srcArcs.length != thresholds.length)
     error("[thinArcsByInterval()] requires matching arrays of arcs and thresholds");
   if (!Utils.isNumber(interval))
     error("[thinArcsByInterval()] requires an interval");
-
-  var retainPoints = !!opts.minPoints;
-  if (retainPoints && opts.minPoints.length != srcArcs.length)
-    error("[thinArcsByInterval()] Retained point array doesn't match arc length");
 
   var arcs = [],
       fullCount = 0,
       thinnedCount = 0;
   for (var i=0, l=srcArcs.length; i<l; i++) {
     var srcArc = srcArcs[i];
-    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval, retainPoints ? opts.minPoints[i] : 0);
+    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval);
     fullCount += srcArc[0].length;
     thinnedCount += arc[0].length;
     arcs.push(arc);

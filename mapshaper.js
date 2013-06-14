@@ -1,7 +1,6 @@
 (function(){
 
-var C = this.C || {}; // global constants
-var A = this.A || {};
+var C = C || {}; // global constants
 
 var Env = (function() {
   var inNode = typeof module !== 'undefined' && !!module.exports;
@@ -31,7 +30,7 @@ var Utils = {
   },
 
   parseUrl: function parseUrl(url) {
-    var obj, 
+    var obj,
       matches = /^(http):\/\/([^\/]+)(.*)/.exec(url); // TODO: improve
     if (matches) {
       obj = {
@@ -45,7 +44,7 @@ var Utils = {
     }
     return obj;
   },
-    
+
   reduce: function(arr, func, val, ctx) {
     for (var i = 0, len = arr.length; i < len; i++) {
       val = func.call(ctx || null, arr[i], val, i);
@@ -162,7 +161,7 @@ var Utils = {
 
   log: function(msg) {
     if (Env.inNode) {
-      process.stderr.write(msg + '\n'); // node messages to stdout 
+      process.stderr.write(msg + '\n'); // node messages to stdout
     }
     else if (typeof console != "undefined" && console.log) {
       if (console.log.call) {
@@ -197,15 +196,15 @@ var Utils = {
         parts.push( keyStr + ':' + Utils.toString(obj[key], true));
       }
       str = '{' + parts.join(', ') + '}';
-    } else if (obj.nodeName) { // 
+    } else if (obj.nodeName) { //
       str = '"[' + obj.nodeName + (obj.id ? " id=" + obj.id : "") + ']"';
     }
     // User-defined objects without a toString() method: Try to get function name from constructor function.
     // Can't assume objects have hasOwnProperty() function (e.g. HTML nodes don't in ie <= 8)
     else if (type == 'object' && obj.toString === Object.prototype.toString) {
       str = '"[' + (Utils.getConstructorName(obj) || "unknown object") + ']"';
-    } else {  
-      // strings, numbers and objects with own "toString" methods. 
+    } else {
+      // strings, numbers and objects with own "toString" methods.
       // TODO: make sure that strings made by toString methods are quoted for js.
       str = String(obj);
       if (Utils.isString(obj)) {
@@ -280,18 +279,18 @@ var Opts = {
         // add __super__ of parent to front of lookup chain
         // so parent class constructor can call its parent using this.__super__
         //
-        this.__super__ = src.prototype.__super__; 
+        this.__super__ = src.prototype.__super__;
         // call parent constructor function. this.__super__ now points to parent-of-parent
-        src.apply(this, arguments); 
+        src.apply(this, arguments);
         // remove temp __super__, expose targ.prototype.__super__ again
         delete this.__super__;
       }
     };
 
     f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
-    // TODO: extend targ prototype instead of wiping it out -- 
+    // TODO: extend targ prototype instead of wiping it out --
     //   in case inherit() is called after targ.prototype = {stuff}; statement
-    targ.prototype = Utils.extend(new f(), targ.prototype); // 
+    targ.prototype = Utils.extend(new f(), targ.prototype); //
     targ.prototype.constructor = targ;
     targ.prototype.__super__ = f;
   },
@@ -879,7 +878,7 @@ Utils.transposeDataBlock = function(obj) {
       for (var j=0; j<rows; j++) {
         data[j][key] = col[j];
       }
-    }   
+    }
   }
   return data;
 };
@@ -1093,8 +1092,6 @@ Utils.getValues = function(obj) {
 
 //
 Utils.uniq = function(src) {
-  //var copy = src.concat();
-  // copy.sort();
   var index = {};
   return Utils.filter(src, function(el, i) {
     if (el in index) {
@@ -1188,7 +1185,7 @@ Utils.multiMap = function(callback) {
   if (!Utils.isFunction(callback)) error(usage)
   var args = [],
       sources = args.slice.call(arguments, 1),
-      arrLen = 0; 
+      arrLen = 0;
   Utils.forEach(sources, function(src, i) {
     if (Utils.isArrayLike(src)) {
       if (arrLen == 0) {
@@ -1651,8 +1648,10 @@ function BinArray(buf, le) {
   this._words = buf.byteLength % 4 == 0 ? new Uint32Array(buf) : null;
 }
 
+// Return length in bytes of an ArrayBuffer or Buffer
+//
 BinArray.bufferSize = function(buf) {
-  return (buf instanceof Buffer ? buf.length : buf.byteLength | 0)
+  return (buf instanceof ArrayBuffer ?  buf.byteLength : buf.length | 0);
 };
 
 BinArray.buffersAreIdentical = function(a, b) {
@@ -1742,7 +1741,7 @@ BinArray.prototype = {
   },
 
   readFloat64: function() {
-    var val = this._view.getFloat64(this._idx, this._le); 
+    var val = this._view.getFloat64(this._idx, this._le);
     this._idx += 8;
     return val;
   },
@@ -3388,6 +3387,48 @@ function stop(msg) {
 
 var MapShaper = {};
 
+MapShaper.parseLocalPath = function(path) {
+  var obj = {
+    ext: '',
+    directory: '',
+    filename: '',
+    basename: ''
+  };
+  var parts = path.split('/'),
+      name, i;
+
+  if (parts.length == 1) {
+    name = parts[0];
+  } else {
+    name = parts.pop();
+    obj.directory = parts.join('/');
+  }
+  i = name.lastIndexOf('.');
+  if (i > -1) {
+    obj.ext = name.substr(i);
+    obj.basename = name.substr(0, i);
+  }
+  obj.filename = name;
+  return obj;
+};
+
+/*
+    // TODO: give better output if fpath is a directory
+    var info = {};
+    var filename = Node.path.basename(fpath);
+    if (filename.lastIndexOf('/') == filename.length - 1) {
+      filename = filename.substr(0, filename.length-1);
+    }
+    info.file = filename;
+    info.path = Node.path.resolve(fpath);
+    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
+    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
+    info.directory = Node.path.dirname(info.path);
+    info.relative_dir = Node.path.dirname(fpath);
+    return info;
+*/
+
+
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var len=xsrc.length;
   (!len || len < 2) && error("[MapShaper.extendShapePart()] invalid arc length:", len);
@@ -3880,7 +3921,7 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
 }
 
 
-// atan2() makes this function fairly slow, replaced by ~2x faster formula 
+// atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
 /*
 function innerAngle_slow(ax, ay, bx, by, cx, cy) {
@@ -3951,7 +3992,7 @@ function detSq(ax, ay, bx, by, cx, cy) {
 
 
 function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) + 
+  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
     detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
   return area;
 }
@@ -4002,6 +4043,18 @@ function msRingArea(xx, yy, start, len) {
 }
 
 
+// merge B into A
+function mergeBounds(a, b) {
+  if (b[0] < a[0]) a[0] = b[0];
+  if (b[1] < a[1]) a[1] = b[1];
+  if (b[2] > a[2]) a[2] = b[2];
+  if (b[3] > a[3]) a[3] = b[3];
+}
+
+function containsBounds(a, b) {
+  return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
+}
+
 // export functions so they can be tested
 MapShaper.geom = {
   distance3D: distance3D,
@@ -4047,7 +4100,7 @@ MapShaper.importShp = function(src) {
   var counts = reader.getCounts(),
       xx = new Float64Array(counts.pointCount),
       yy = new Float64Array(counts.pointCount),
-      partIds = new Int32Array(counts.pointCount), // signed, using -1 as error code 
+      partIds = new Int32Array(counts.pointCount), // signed, using -1 as error code
       shapeIds = [];
 
   var expectRings = Utils.contains([5,15,25], reader.type());
@@ -4056,7 +4109,7 @@ MapShaper.importShp = function(src) {
       findHoles = expectRings,
       holeFlags = findHoles ? new Uint8Array(counts.partCount) : null;
 
-  var pointId = 0, 
+  var pointId = 0,
       partId = 0,
       shapeId = 0,
       holeCount = 0;
@@ -4108,7 +4161,7 @@ MapShaper.importShp = function(src) {
             holeFlags[partId] = 1;
             holeCount++;
           }
-        }              
+        }
       }
 
       shapeIds.push(shapeId);
@@ -4127,7 +4180,7 @@ MapShaper.importShp = function(src) {
     error("Counting problem");
 
   var info = {
-    // shapefile_header: this.header
+    input_bounds: reader.header().bounds,
     input_point_count: pointId,
     input_part_count: partId,
     input_shape_count: shapeId,
@@ -4147,13 +4200,13 @@ MapShaper.importShp = function(src) {
   };
 };
 
-
 // Convert topological data to buffers containing .shp and .shx file data
 //
 MapShaper.exportShp = function(arcs, shapes, shpType) {
   if (!Utils.isArray(arcs) || !Utils.isArray(shapes)) error("Missing exportable data.");
   T.start();
   T.start();
+
   var fileBytes = 100;
   var bounds = new BoundingBox();
   var shapeBuffers = Utils.map(shapes, function(shape, i) {
@@ -4162,8 +4215,8 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
     shpObj.bounds && bounds.mergeBounds(shpObj.bounds);
     return shpObj.buffer;
   });
-  T.stop("export shape records");
 
+  T.stop("export shape records");
   T.start();
 
   // write .shp header section
@@ -4260,12 +4313,11 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
       .writeInt32(id)
       .writeInt32(2)
       .littleEndian()
-      .writeInt32(0);  
+      .writeInt32(0);
   }
 
   return {bounds: bounds, buffer: bin.buffer()};
 };
-
 
 
 /* @requires mapshaper-common */
@@ -4284,7 +4336,6 @@ MapShaper.importGeoJSON = function(obj) {
   error("TODO: implement GeoJSON importing.")
 };
 
-
 MapShaper.exportGeoJSON = function(obj) {
   T.start();
   if (!obj.shapes || !obj.arcs) error("Missing 'shapes' and/or 'arcs' properties.");
@@ -4292,7 +4343,7 @@ MapShaper.exportGeoJSON = function(obj) {
   var features = Utils.map(obj.shapes, function(topoShape) {
     if (!topoShape || !Utils.isArray(topoShape)) error("[exportGeoJSON()] Missing or invalid param/s");
     var data = MapShaper.convertTopoShape(topoShape, obj.arcs);
-    return MapShaper.getGeoJSONPolygonFeature(data.parts);      
+    return MapShaper.getGeoJSONPolygonFeature(data.parts);
   });
 
   var root = {
@@ -4307,7 +4358,6 @@ MapShaper.exportGeoJSON = function(obj) {
 // TODO: Implement the GeoJSON spec for holes.
 //
 MapShaper.getGeoJSONPolygonFeature = function(ringsIn) {
-  //error(ringsIn);
   var rings = Utils.map(ringsIn, MapShaper.transposeXYCoords),
       ringCount = rings.length,
       geom = {};
@@ -4463,7 +4513,6 @@ MapShaper.importFromStream = function(sname) {
 
 /* @requires core */
 
-
 Utils.findRankByValue = function(arr, value) {
   if (isNaN(value)) return arr.length;
   var rank = 1;
@@ -4512,7 +4561,7 @@ Utils.findValueByRank = function(arr, rank) {
   return arr[k];
 };
 
-
+//
 //
 Utils.findMedian = function(arr) {
   var n = arr.length,
@@ -4523,7 +4572,6 @@ Utils.findMedian = function(arr) {
   }
   return median;
 };
-
 
 
 /* @requires mapshaper-common, mapshaper-geom, median, sorting */
@@ -4556,9 +4604,9 @@ MapShaper.countInnerPoints = function(arr, skip) {
 };
 
 MapShaper.getInnerThresholds = function(arr, skip) {
-  var count = MapShaper.countInnerPoints(arr, skip),
-      nth = skip || 1;
-  var tmp = new Float64Array(count),
+  var nth = skip || 1,
+      count = MapShaper.countInnerPoints(arr, skip),
+      tmp = new Float64Array(count),
       idx = 0;
   for (i=0, n=arr.length; i<n; i++) {
     var thresholds = arr[i];
@@ -4570,7 +4618,7 @@ MapShaper.getInnerThresholds = function(arr, skip) {
   return tmp;
 };
 
-MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
+MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct) {
   if (!Utils.isArray(arcs) || !Utils.isArray(thresholds) ||
       arcs.length != thresholds.length  || !Utils.isNumber(retainedPct))
     error("Invalid arguments; expected [Array], [Array], [Number]");
@@ -4579,16 +4627,47 @@ MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
   T.stop("Find simplification interval");
 
   T.start();
-  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh, opts);
+  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh);
   T.stop("Remove vertices");
   return thinned;
 };
+
+MapShaper.protectPoints = function(thresholds, lockCounts) {
+  var n;
+  for (var i=0, len=thresholds.length; i<len; i++) {
+    n = lockCounts[i];
+    if (n > 0) {
+      MapShaper.lockMaxThreshold(thresholds[i], n);
+    }
+  }
+};
+
+MapShaper.lockMaxThreshold = function(zz, n) {
+  var max = 0,
+      lockVal = Infinity,
+      maxId, z;
+  for (var i=1, len = zz.length - 1; i<len; i++) {
+    z = zz[i];
+    if (z > max && z !== lockVal) {
+      max = z
+      maxId = i;
+    }
+  }
+  if (max > 0) {
+    zz[maxId] = lockVal;
+    if (n > 1) {
+      MapShaper.lockMaxThreshold(zz, n - 1);
+    }
+  }
+  return zz;
+}
 
 
 // Strip interior points from an arc.
 // @retained gives the number of interior points to leave in (retains those
 //    with the highest thresholds)
 //
+/*
 MapShaper.stripArc = function(xx, yy, uu, retained) {
   var data = [],
       len = xx.length,
@@ -4618,8 +4697,9 @@ MapShaper.stripArc = function(xx, yy, uu, retained) {
   yy2.push(yy[len-1]);
   return [xx2, yy2];
 };
+*/
 
-MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints) {
+MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval) {
   var xdest = [],
       ydest = [],
       srcLen = xsrc.length,
@@ -4633,12 +4713,6 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
       xdest.push(xsrc[i]);
       ydest.push(ysrc[i]);
     }
-  }
-
-  if (xdest.length < retainedPoints + 2) { // minInteriorPoints doesn't include endpoints
-    var stripped = MapShaper.stripArc(xsrc, ysrc, uu, retainedPoints);
-    xdest = stripped[0];
-    ydest = stripped[1];
   }
 
   // remove island rings that have collapsed (i.e. fewer than 4 points)
@@ -4655,22 +4729,18 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
 };
 
 
-MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval, opts) {
+MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval) {
   if (!Utils.isArray(srcArcs) || srcArcs.length != thresholds.length)
     error("[thinArcsByInterval()] requires matching arrays of arcs and thresholds");
   if (!Utils.isNumber(interval))
     error("[thinArcsByInterval()] requires an interval");
-
-  var retainPoints = !!opts.minPoints;
-  if (retainPoints && opts.minPoints.length != srcArcs.length)
-    error("[thinArcsByInterval()] Retained point array doesn't match arc length");
 
   var arcs = [],
       fullCount = 0,
       thinnedCount = 0;
   for (var i=0, l=srcArcs.length; i<l; i++) {
     var srcArc = srcArcs[i];
-    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval, retainPoints ? opts.minPoints[i] : 0);
+    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval);
     fullCount += srcArc[0].length;
     thinnedCount += arc[0].length;
     arcs.push(arc);
@@ -5480,8 +5550,6 @@ DouglasPeucker.simplifyArcs = function(arcs, opts) {
   return MapShaper.simplifyArcs(arcs, DouglasPeucker.calcArcData, opts);
 }
 
-
-
 DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
       ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
@@ -5489,15 +5557,12 @@ DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return triangleHeightSq(ab2, bc2, ac2);
 };
 
-
 DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
   var ab2 = distanceSq(ax, ay, bx, by),
       ac2 = distanceSq(ax, ay, cx, cy),
       bc2 = distanceSq(bx, by, cx, cy);
   return triangleHeightSq(ab2, bc2, ac2);
 };
-
-
 
 DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
   var len = len || xx.length, // kludge: 3D data gets passed in buffers, so need len parameter.
@@ -5556,7 +5621,7 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
 
     if (depth == 1) {
       // case -- arc is an island polygon
-      if (ax == cx && ay == cy) { 
+      if (ax == cx && ay == cy) {
         maxDistance = lval > rval ? lval : rval;
       }
     }
