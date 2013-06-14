@@ -55,7 +55,9 @@ function editorPage(importData, opts) {
       calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
       vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
 
-  // TODO: protect shapes from elimination
+  if (topoData.arcMinPointCounts) {
+    MapShaper.protectPoints(vertexData, topoData.arcMinPointCounts);
+  }
 
   arcData.setThresholds(vertexData);
 
@@ -84,5 +86,5 @@ function editorPage(importData, opts) {
     var parts = MapShaper.parseLocalPath(opts.input_file);
     exportOpts.output_name = parts.basename;
   }
-  var exporter = new ExportControl(arcs, topoData, exportOpts);
+  var exporter = new ExportControl(arcData, topoData, exportOpts);
 }

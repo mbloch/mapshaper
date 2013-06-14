@@ -185,6 +185,16 @@ function ArcDataset(coords) {
   this.getMultiShapes = function(arr) {
     return this.getShapeTable(arr, MultiShape);
   };
+
+  this.getPolygonShape = function(arr) {
+    if (!arr || arr.length == 0) {
+      return new NullShape();
+    // } else if (arr.length == 1) {
+    //  return new SimpleShape(this).init(arr[0]);
+    } else {
+      return new MultiShape(this).init(arr);
+    }
+  }
 }
 
 //
@@ -192,6 +202,12 @@ function ArcDataset(coords) {
 function ShapeTable(arr, src) {
   this.shapes = function() {
     return new ShapeCollection(arr, src.getBounds());
+  };
+
+  this.forEach = function(cb) {
+    for (var i=0, n=arr.length; i<n; i++) {
+      cb(arr[i], i);
+    }
   };
 
   // TODO: add method so layer can determine if vertices can be displayed at current scale
@@ -206,7 +222,7 @@ function ShapeCollection(arr, collBounds) {
 
   var getPathIter = function() {
     return function(s, i) {
-      return s.getShapeIter(i);
+      return s.getPathIter(i);
     };
   };
 
@@ -302,7 +318,7 @@ function ShapeCollection(arr, collBounds) {
 
     return function(s, i) {
       _firstPoint = true;
-      wrapped = s.getShapeIter(i, 1/_transform.mx);
+      wrapped = s.getPathIter(i, 1/_transform.mx);
       return wrapper;
     }
   }
@@ -344,6 +360,18 @@ function ShapeCollection(arr, collBounds) {
   };
 }
 
+// TODO: finish
+//
+function NullShape() {
+  error("NullShape() not implemented")
+}
+
+NullShape.prototype = {
+  partCount: 0,
+  init: function() {return this}
+};
+
+
 function Arc(src) {
   this.src = src;
 }
@@ -355,11 +383,14 @@ Arc.prototype = {
     return this;
   },
   partCount: 1,
-  getShapeIter: function(i, mpp) {
+  getPathIter: function(i, mpp) {
     return this.src.getArcIter(this.id, mpp);
   },
   inBounds: function(bbox) {
     return this.src.testArcIntersection(bbox, this.id);
+  },
+  getBounds: function() {
+    return this.bounds;
   },
   smallerThan: function(units) {
     var b = this.bounds;
@@ -379,15 +410,21 @@ MultiShape.prototype = {
     this.bounds = this.src.getMultiShapeBounds(parts);
     return this;
   },
-  getShapeIter: function(i, mpp) {
+  getPathIter: function(i, mpp) {
     return this.src.getShapeIter(this.parts[i], mpp);
+  },
+  getPath: function(i) {
+    if (i < 0 || i >= this.parts.length) error("MultiShape#getPart() invalid part id:", i);
+    return new SimpleShape(this.src).init(this.parts[i]);
+  },
+  getBounds: function() {
+    return this.bounds;
   },
   inBounds: function(bbox) {
     return this.src.testMultiShapeIntersection(bbox, this.parts);
   },
   smallerThan: Arc.prototype.smallerThan
 };
-
 
 function SimpleShape(src) {
   this.src = src;
@@ -400,8 +437,11 @@ SimpleShape.prototype = {
     this.bounds = this.src.getShapeBounds(ids);
     return this;
   },
-  getShapeIter: function(mpp) {
+  getPathIter: function(mpp) {
     return this.src.getShapeIter(this.ids, mpp);
+  },
+  getBounds: function() {
+    return this.bounds;
   },
   inBounds: function(bbox) {
     return this.src.testShapeIntersection(bbox, this.ids);

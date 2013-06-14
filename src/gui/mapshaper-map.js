@@ -14,7 +14,6 @@ function MshpMap(el, opts_) {
   }
 
   var _root = El(el);
-
   var _slider,
       _groups = [];
 

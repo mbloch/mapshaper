@@ -2330,6 +2330,16 @@ function ArcDataset(coords) {
   this.getMultiShapes = function(arr) {
     return this.getShapeTable(arr, MultiShape);
   };
+
+  this.getPolygonShape = function(arr) {
+    if (!arr || arr.length == 0) {
+      return new NullShape();
+    // } else if (arr.length == 1) {
+    //  return new SimpleShape(this).init(arr[0]);
+    } else {
+      return new MultiShape(this).init(arr);
+    }
+  }
 }
 
 //
@@ -2337,6 +2347,12 @@ function ArcDataset(coords) {
 function ShapeTable(arr, src) {
   this.shapes = function() {
     return new ShapeCollection(arr, src.getBounds());
+  };
+
+  this.forEach = function(cb) {
+    for (var i=0, n=arr.length; i<n; i++) {
+      cb(arr[i], i);
+    }
   };
 
   // TODO: add method so layer can determine if vertices can be displayed at current scale
@@ -2351,7 +2367,7 @@ function ShapeCollection(arr, collBounds) {
 
   var getPathIter = function() {
     return function(s, i) {
-      return s.getShapeIter(i);
+      return s.getPathIter(i);
     };
   };
 
@@ -2447,7 +2463,7 @@ function ShapeCollection(arr, collBounds) {
 
     return function(s, i) {
       _firstPoint = true;
-      wrapped = s.getShapeIter(i, 1/_transform.mx);
+      wrapped = s.getPathIter(i, 1/_transform.mx);
       return wrapper;
     }
   }
@@ -2489,6 +2505,18 @@ function ShapeCollection(arr, collBounds) {
   };
 }
 
+// TODO: finish
+//
+function NullShape() {
+  error("NullShape() not implemented")
+}
+
+NullShape.prototype = {
+  partCount: 0,
+  init: function() {return this}
+};
+
+
 function Arc(src) {
   this.src = src;
 }
@@ -2500,11 +2528,14 @@ Arc.prototype = {
     return this;
   },
   partCount: 1,
-  getShapeIter: function(i, mpp) {
+  getPathIter: function(i, mpp) {
     return this.src.getArcIter(this.id, mpp);
   },
   inBounds: function(bbox) {
     return this.src.testArcIntersection(bbox, this.id);
+  },
+  getBounds: function() {
+    return this.bounds;
   },
   smallerThan: function(units) {
     var b = this.bounds;
@@ -2524,15 +2555,21 @@ MultiShape.prototype = {
     this.bounds = this.src.getMultiShapeBounds(parts);
     return this;
   },
-  getShapeIter: function(i, mpp) {
+  getPathIter: function(i, mpp) {
     return this.src.getShapeIter(this.parts[i], mpp);
+  },
+  getPath: function(i) {
+    if (i < 0 || i >= this.parts.length) error("MultiShape#getPart() invalid part id:", i);
+    return new SimpleShape(this.src).init(this.parts[i]);
+  },
+  getBounds: function() {
+    return this.bounds;
   },
   inBounds: function(bbox) {
     return this.src.testMultiShapeIntersection(bbox, this.parts);
   },
   smallerThan: Arc.prototype.smallerThan
 };
-
 
 function SimpleShape(src) {
   this.src = src;
@@ -2545,8 +2582,11 @@ SimpleShape.prototype = {
     this.bounds = this.src.getShapeBounds(ids);
     return this;
   },
-  getShapeIter: function(mpp) {
+  getPathIter: function(mpp) {
     return this.src.getShapeIter(this.ids, mpp);
+  },
+  getBounds: function() {
+    return this.bounds;
   },
   inBounds: function(bbox) {
     return this.src.testShapeIntersection(bbox, this.ids);
@@ -6578,7 +6618,6 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
 };
 
 
-
 /* @requires mapshaper-common */
 
 
@@ -6594,7 +6633,6 @@ MapShaper.importJSON = function(obj) {
 MapShaper.importGeoJSON = function(obj) {
   error("TODO: implement GeoJSON importing.")
 };
-
 
 MapShaper.exportGeoJSON = function(obj) {
   T.start();
@@ -6772,6 +6810,7 @@ function getTopoJsonMultiPolygonArcs(shape) {
 /* @require mapshaper-elements, textutils, mapshaper-shapefile, mapshaper-geojson, mapshaper-topojson */
 
 var ExportControl = function(arcData, topoData, opts) {
+  var arcTable = arcData.getArcs();
   var filename = opts && opts.output_name || "out";
 
   var el = El('#g-export-control').show();
@@ -6799,14 +6838,15 @@ var ExportControl = function(arcData, topoData, opts) {
   }
 
   function exportGeoJSON() {
-    var json = MapShaper.exportGeoJSON({ arcs: arcData.shapes().toArray(), shapes: topoData.shapes });
-    exportBlob(filename + ".json", new Blob([json]));
+    var json = MapShaper.exportGeoJSON({ arcs: arcTable.shapes().toArray(), shapes: topoData.shapes });
+
+    exportBlob(filename + ".geojson", new Blob([json]));
     geoBtn.active(true);
   }
 
   function exportTopoJSON() {
-    var json = MapShaper.exportTopoJSON({arcs: arcData.shapes().toArray(), shapes: topoData.shapes, bounds: opts.bounds});
-    exportBlob(filename + ".topo.json", new Blob([json]));
+    var json = MapShaper.exportTopoJSON({arcs: arcTable.shapes().toArray(), shapes: topoData.shapes, bounds: opts.bounds});
+    exportBlob(filename + ".topojson", new Blob([json]));
     topoBtn.active(true);
   }
 
@@ -6834,7 +6874,7 @@ var ExportControl = function(arcData, topoData, opts) {
   }
 
   function exportShapefile() {
-    return MapShaper.exportShp(arcData.shapes().toArray(), topoData.shapes, 5);
+    return MapShaper.exportShp(arcTable.shapes().toArray(), topoData.shapes, 5);
   }
 
 };
@@ -7483,13 +7523,13 @@ function ShapeRenderer() {
   };
   */
 
-  this.drawPoints = function(shapes, ctx) {
+  this.drawPoints = function(paths, ctx) {
     var endCol = "#000000",
         midCol = "rgba(255, 50, 50, 0.6)",  // "#ffcccc", //
         endSize = 5,
         midSize = 4;
 
-    shapes.forEach(function(vec) {
+    paths.forEach(function(vec) {
       while (vec.hasNext()) {
         if (vec.node) {
           drawCircle(vec.x, vec.y, endSize, endCol, ctx);
@@ -7501,7 +7541,7 @@ function ShapeRenderer() {
   }
 
 
-  this.drawShapes = function(shapes, style, ctx) {
+  this.drawShapes = function(paths, style, ctx) {
     var stroked = !!(style.strokeWidth && style.strokeColor),
         filled = !!style.fillColor;
 
@@ -7518,16 +7558,16 @@ function ShapeRenderer() {
       return;
     }
 
-    var paths = 0, segs = 0;
-    shapes.forEach(function(vec) {
+    var pathCount = 0, segCount = 0;
+    paths.forEach(function(vec) {
       if (vec.hasNext()) {
         ctx.beginPath();
         ctx.moveTo(vec.x, vec.y);
-        paths++;
+        pathCount++;
 
         while (vec.hasNext()) {
           ctx.lineTo(vec.x, vec.y);
-          segs++;
+          segCount++;
         }
 
         if (filled) ctx.fill();
@@ -7535,8 +7575,8 @@ function ShapeRenderer() {
       }
     });
     return {
-      paths: paths,
-      segments: segs
+      paths: pathCount,
+      segments: segCount
     }
   };
 }
@@ -8839,7 +8879,7 @@ function MouseWheelHandler(mouse) {
 
 Opts.inherit(MouseWheelHandler, EventDispatcher);
 
-/** @requires events, tweening, hybrid-mouse, hybrid-mousewheel */
+/** @requires browser, events, tweening, hybrid-mouse, hybrid-mousewheel */
 
 
 function MshpMouse(ext) {
@@ -8851,6 +8891,7 @@ function MshpMouse(ext) {
     ext.rescale(scale, _fx, _fy);
   });
 
+  Browser.unselectable(p.element); // prevent text-select cursor when dragging
   mouse.setMapContainer(p.element)
   calibrate();
   ext.on('resize', calibrate);
@@ -8897,7 +8938,6 @@ function MshpMap(el, opts_) {
   }
 
   var _root = El(el);
-
   var _slider,
       _groups = [];
 
@@ -9120,7 +9160,7 @@ MapShaper.getInnerThresholds = function(arr, skip) {
   return tmp;
 };
 
-MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
+MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct) {
   if (!Utils.isArray(arcs) || !Utils.isArray(thresholds) ||
       arcs.length != thresholds.length  || !Utils.isNumber(retainedPct))
     error("Invalid arguments; expected [Array], [Array], [Number]");
@@ -9129,16 +9169,47 @@ MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct, opts) {
   T.stop("Find simplification interval");
 
   T.start();
-  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh, opts);
+  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh);
   T.stop("Remove vertices");
   return thinned;
 };
+
+MapShaper.protectPoints = function(thresholds, lockCounts) {
+  var n;
+  for (var i=0, len=thresholds.length; i<len; i++) {
+    n = lockCounts[i];
+    if (n > 0) {
+      MapShaper.lockMaxThreshold(thresholds[i], n);
+    }
+  }
+};
+
+MapShaper.lockMaxThreshold = function(zz, n) {
+  var max = 0,
+      lockVal = Infinity,
+      maxId, z;
+  for (var i=1, len = zz.length - 1; i<len; i++) {
+    z = zz[i];
+    if (z > max && z !== lockVal) {
+      max = z
+      maxId = i;
+    }
+  }
+  if (max > 0) {
+    zz[maxId] = lockVal;
+    if (n > 1) {
+      MapShaper.lockMaxThreshold(zz, n - 1);
+    }
+  }
+  return zz;
+}
 
 
 // Strip interior points from an arc.
 // @retained gives the number of interior points to leave in (retains those
 //    with the highest thresholds)
 //
+/*
 MapShaper.stripArc = function(xx, yy, uu, retained) {
   var data = [],
       len = xx.length,
@@ -9168,8 +9239,9 @@ MapShaper.stripArc = function(xx, yy, uu, retained) {
   yy2.push(yy[len-1]);
   return [xx2, yy2];
 };
+*/
 
-MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints) {
+MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval) {
   var xdest = [],
       ydest = [],
       srcLen = xsrc.length,
@@ -9183,12 +9255,6 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
       xdest.push(xsrc[i]);
       ydest.push(ysrc[i]);
     }
-  }
-
-  if (xdest.length < retainedPoints + 2) { // minInteriorPoints doesn't include endpoints
-    var stripped = MapShaper.stripArc(xsrc, ysrc, uu, retainedPoints);
-    xdest = stripped[0];
-    ydest = stripped[1];
   }
 
   // remove island rings that have collapsed (i.e. fewer than 4 points)
@@ -9205,22 +9271,18 @@ MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval, retainedPoints)
 };
 
 
-MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval, opts) {
+MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval) {
   if (!Utils.isArray(srcArcs) || srcArcs.length != thresholds.length)
     error("[thinArcsByInterval()] requires matching arrays of arcs and thresholds");
   if (!Utils.isNumber(interval))
     error("[thinArcsByInterval()] requires an interval");
-
-  var retainPoints = !!opts.minPoints;
-  if (retainPoints && opts.minPoints.length != srcArcs.length)
-    error("[thinArcsByInterval()] Retained point array doesn't match arc length");
 
   var arcs = [],
       fullCount = 0,
       thinnedCount = 0;
   for (var i=0, l=srcArcs.length; i<l; i++) {
     var srcArc = srcArcs[i];
-    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval, retainPoints ? opts.minPoints[i] : 0);
+    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval);
     fullCount += srcArc[0].length;
     thinnedCount += arc[0].length;
     arcs.push(arc);
@@ -9699,7 +9761,9 @@ function editorPage(importData, opts) {
       calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
       vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
 
-  // TODO: protect shapes from elimination
+  if (topoData.arcMinPointCounts) {
+    MapShaper.protectPoints(vertexData, topoData.arcMinPointCounts);
+  }
 
   arcData.setThresholds(vertexData);
 
@@ -9728,7 +9792,7 @@ function editorPage(importData, opts) {
     var parts = MapShaper.parseLocalPath(opts.input_file);
     exportOpts.output_name = parts.basename;
   }
-  var exporter = new ExportControl(arcs, topoData, exportOpts);
+  var exporter = new ExportControl(arcData, topoData, exportOpts);
 }
 
 })();

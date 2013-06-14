@@ -14,7 +14,6 @@ MapShaper.importGeoJSON = function(obj) {
   error("TODO: implement GeoJSON importing.")
 };
 
-
 MapShaper.exportGeoJSON = function(obj) {
   T.start();
   if (!obj.shapes || !obj.arcs) error("Missing 'shapes' and/or 'arcs' properties.");

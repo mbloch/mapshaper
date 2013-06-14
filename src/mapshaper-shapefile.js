@@ -250,4 +250,3 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
 
   return {bounds: bounds, buffer: bin.buffer()};
 };
-

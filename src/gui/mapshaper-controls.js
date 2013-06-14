@@ -1,6 +1,7 @@
 /* @require mapshaper-elements, textutils, mapshaper-shapefile, mapshaper-geojson, mapshaper-topojson */
 
 var ExportControl = function(arcData, topoData, opts) {
+  var arcTable = arcData.getArcs();
   var filename = opts && opts.output_name || "out";
 
   var el = El('#g-export-control').show();
@@ -28,14 +29,15 @@ var ExportControl = function(arcData, topoData, opts) {
   }
 
   function exportGeoJSON() {
-    var json = MapShaper.exportGeoJSON({ arcs: arcData.shapes().toArray(), shapes: topoData.shapes });
-    exportBlob(filename + ".json", new Blob([json]));
+    var json = MapShaper.exportGeoJSON({ arcs: arcTable.shapes().toArray(), shapes: topoData.shapes });
+
+    exportBlob(filename + ".geojson", new Blob([json]));
     geoBtn.active(true);
   }
 
   function exportTopoJSON() {
-    var json = MapShaper.exportTopoJSON({arcs: arcData.shapes().toArray(), shapes: topoData.shapes, bounds: opts.bounds});
-    exportBlob(filename + ".topo.json", new Blob([json]));
+    var json = MapShaper.exportTopoJSON({arcs: arcTable.shapes().toArray(), shapes: topoData.shapes, bounds: opts.bounds});
+    exportBlob(filename + ".topojson", new Blob([json]));
     topoBtn.active(true);
   }
 
@@ -63,7 +65,7 @@ var ExportControl = function(arcData, topoData, opts) {
   }
 
   function exportShapefile() {
-    return MapShaper.exportShp(arcData.shapes().toArray(), topoData.shapes, 5);
+    return MapShaper.exportShp(arcTable.shapes().toArray(), topoData.shapes, 5);
   }
 
 };

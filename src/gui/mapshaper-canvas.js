@@ -40,13 +40,13 @@ function ShapeRenderer() {
   };
   */
 
-  this.drawPoints = function(shapes, ctx) {
+  this.drawPoints = function(paths, ctx) {
     var endCol = "#000000",
         midCol = "rgba(255, 50, 50, 0.6)",  // "#ffcccc", //
         endSize = 5,
         midSize = 4;
 
-    shapes.forEach(function(vec) {
+    paths.forEach(function(vec) {
       while (vec.hasNext()) {
         if (vec.node) {
           drawCircle(vec.x, vec.y, endSize, endCol, ctx);
@@ -58,7 +58,7 @@ function ShapeRenderer() {
   }
 
 
-  this.drawShapes = function(shapes, style, ctx) {
+  this.drawShapes = function(paths, style, ctx) {
     var stroked = !!(style.strokeWidth && style.strokeColor),
         filled = !!style.fillColor;
 
@@ -75,16 +75,16 @@ function ShapeRenderer() {
       return;
     }
 
-    var paths = 0, segs = 0;
-    shapes.forEach(function(vec) {
+    var pathCount = 0, segCount = 0;
+    paths.forEach(function(vec) {
       if (vec.hasNext()) {
         ctx.beginPath();
         ctx.moveTo(vec.x, vec.y);
-        paths++;
+        pathCount++;
 
         while (vec.hasNext()) {
           ctx.lineTo(vec.x, vec.y);
-          segs++;
+          segCount++;
         }
 
         if (filled) ctx.fill();
@@ -92,8 +92,8 @@ function ShapeRenderer() {
       }
     });
     return {
-      paths: paths,
-      segments: segs
+      paths: pathCount,
+      segments: segCount
     }
   };
 }
