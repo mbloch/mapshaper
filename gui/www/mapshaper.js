@@ -3157,7 +3157,7 @@ var Browser = {
 
   getIEVersion: function() {
     return this.ieVersion;
-  },  
+  },
 
   traceEnabled: function() {
     var debug = Browser.getQueryVar('debug');
@@ -3166,11 +3166,11 @@ var Browser = {
     }
     return true;
   },
- 
+
   /*getPageWidth : function() {
    return document.documentElement.clientWidth || document.body.clientWidth;
   },*/
- 
+
   getViewportWidth : function() {
     return document.documentElement.clientWidth;
   },
@@ -3327,7 +3327,7 @@ var Browser = {
   },
 
   /**
-   *  Add a query variable to circumvent browser caching. 
+   *  Add a query variable to circumvent browser caching.
    *  Value is calculated from UTC minutes, so the server does not see a large
    *  number of different values.
    */
@@ -3428,7 +3428,10 @@ var Browser = {
     noSel += "-webkit-tap-highlight-color: rgba(0,0,0,0);"
     //div.style.cssText = Browser.mergeCSS(div.style.cssText, noSel);
     Browser.addCSS(el, noSel);
-    el.onselectstart = function(){return false;};
+    el.onselectstart = function(e){
+      e && e.preventDefault();
+      return false;
+    };
   },
 
   undraggable : function(el) {
