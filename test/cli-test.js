@@ -24,7 +24,7 @@ describe('mapshaper-cli.js', function() {
 
     var good1 = "-p 0.2",
         good2 = "-i 2000 --dp -k",
-        good3 = "-uk --vis -p .9";
+        good3 = "-k --vis -p .9";
 
     // var ok1 = "-p 0.4 -i 5000";
 
@@ -46,7 +46,6 @@ describe('mapshaper-cli.js', function() {
         use_simplification: true,
         simplify_pct: 0.2,
         keep_shapes: false,
-        use_sphere: false,
         simplify_method: "mod"
       });
     })
@@ -56,7 +55,6 @@ describe('mapshaper-cli.js', function() {
         use_simplification: true,
         simplify_interval: 2000,
         keep_shapes: true,
-        use_sphere: false,
         simplify_method: "dp"
       });
     })
@@ -66,7 +64,6 @@ describe('mapshaper-cli.js', function() {
         use_simplification: true,
         simplify_pct: 0.9,
         keep_shapes: true,
-        use_sphere: true,
         simplify_method: "vis"
       });
     })
