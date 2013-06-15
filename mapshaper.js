@@ -721,7 +721,7 @@ Utils.sortArrayIndex = function(ids, arr, asc) {
   ids.sort(function(i, j) {
     var a = arr[i], b = arr[j];
     // added i, j comparison to guarantee that sort is stable
-    if (asc && a > b || !asc && a < b || a === b && i < j) 
+    if (asc && a > b || !asc && a < b || a === b && i < j)
       return 1;
     else
       return -1;
@@ -792,6 +792,7 @@ Utils.genericSort = function(arr, asc) {
     return retn;
   };
   Array.prototype.sort.call(arr, compare);
+  return arr;
 };
 
 // Sorts an array of numbers in-place
@@ -818,7 +819,7 @@ Utils.quicksort = function(arr, asc) {
       lo = i;
       j = hi;
     }
-  } 
+  }
   partition(arr, 0, arr.length-1);
   if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
   return arr;
@@ -827,7 +828,7 @@ Utils.quicksort = function(arr, asc) {
 /**
  * This is much faster than Array.prototype.sort(<callback>) when "getter" returns a
  * precalculated sort string. Unpredictable if number is returned.
- * 
+ *
  * @param {Array} arr Array of objects to sort.
  * @param {function} getter Function that returns a sort key (string) for each object.
  */
@@ -1173,6 +1174,7 @@ Utils.groupBy = function(arr, key) {
     }
     group.push(obj);
   });
+  groups.index = index;
   return groups;
 };
 
@@ -4055,6 +4057,10 @@ function containsBounds(a, b) {
   return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
 }
 
+function probablyDecimalDegreeBounds(b) {
+  return containsBounds([-200, -91, 200, 90], b);
+}
+
 // export functions so they can be tested
 MapShaper.geom = {
   distance3D: distance3D,
@@ -4064,6 +4070,7 @@ MapShaper.geom = {
   triangleArea3D: triangleArea3D,
   msRingArea: msRingArea,
   msSignedRingArea: msSignedRingArea,
+  probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
 };
 
 /* @requires shp-reader, dbf-reader, mapshaper-common, mapshaper-geom */
@@ -4399,7 +4406,7 @@ MapShaper.validateArgv = function(argv) {
     if (opts.use_simplification) console.log("--shp-test ignores simplification")
     opts.shp_test = true;
     opts.use_simplification = false;
-  } 
+  }
   else {
     if (!opts.use_simplification) error("Missing simplification parameters")
   }
@@ -4447,7 +4454,7 @@ cli.validateOutputOpts = function(opts, argv) {
     obase = Node.path.join(ofileInfo.relative_dir, ofileInfo.base);
 
     if (opts.input_format == opts.output_format && obase == Node.path.join(opts.input_directory, opts.input_file_base)) {
-      // TODO: overwriting is possible users types absolute path for input or output path... 
+      // TODO: overwriting is possible users types absolute path for input or output path...
       error("Output file shouldn't overwrite source file");
     }
   }
@@ -4467,7 +4474,6 @@ cli.validateSimplifyOpts = function(opts, argv) {
   }
 
   opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
-  opts.use_sphere = !!argv.u;
   opts.keep_shapes = !!argv.k;
 
   if (argv.dp)

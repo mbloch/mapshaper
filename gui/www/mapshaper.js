@@ -989,7 +989,7 @@ Utils.sortArrayIndex = function(ids, arr, asc) {
   ids.sort(function(i, j) {
     var a = arr[i], b = arr[j];
     // added i, j comparison to guarantee that sort is stable
-    if (asc && a > b || !asc && a < b || a === b && i < j) 
+    if (asc && a > b || !asc && a < b || a === b && i < j)
       return 1;
     else
       return -1;
@@ -1060,6 +1060,7 @@ Utils.genericSort = function(arr, asc) {
     return retn;
   };
   Array.prototype.sort.call(arr, compare);
+  return arr;
 };
 
 // Sorts an array of numbers in-place
@@ -1086,7 +1087,7 @@ Utils.quicksort = function(arr, asc) {
       lo = i;
       j = hi;
     }
-  } 
+  }
   partition(arr, 0, arr.length-1);
   if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
   return arr;
@@ -1095,7 +1096,7 @@ Utils.quicksort = function(arr, asc) {
 /**
  * This is much faster than Array.prototype.sort(<callback>) when "getter" returns a
  * precalculated sort string. Unpredictable if number is returned.
- * 
+ *
  * @param {Array} arr Array of objects to sort.
  * @param {function} getter Function that returns a sort key (string) for each object.
  */
@@ -1441,6 +1442,7 @@ Utils.groupBy = function(arr, key) {
     }
     group.push(obj);
   });
+  groups.index = index;
   return groups;
 };
 
@@ -1843,6 +1845,10 @@ function containsBounds(a, b) {
   return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
 }
 
+function probablyDecimalDegreeBounds(b) {
+  return containsBounds([-200, -91, 200, 90], b);
+}
+
 // export functions so they can be tested
 MapShaper.geom = {
   distance3D: distance3D,
@@ -1852,6 +1858,7 @@ MapShaper.geom = {
   triangleArea3D: triangleArea3D,
   msRingArea: msRingArea,
   msSignedRingArea: msSignedRingArea,
+  probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
 };
 
 
@@ -9745,7 +9752,6 @@ function editorTest(shp) {
 
 
 function editorPage(importData, opts) {
-  var decimalDegrees = containsBounds([-200, -100, 200, 100], importData.info.input_bounds);
   var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
 
   // hide intro page
@@ -9757,7 +9763,7 @@ function editorPage(importData, opts) {
   var arcData = new ArcDataset(topoData.arcs),
       arcs = arcData.getArcs();
   var sopts = {
-    spherical: opts.spherical || decimalDegrees
+    spherical: opts.spherical || probablyDecimalDegreeBounds(importData.info.input_bounds)
   };
 
   var intervalScale = 0.65, // TODO: tune this

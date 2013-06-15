@@ -157,6 +157,10 @@ function containsBounds(a, b) {
   return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
 }
 
+function probablyDecimalDegreeBounds(b) {
+  return containsBounds([-200, -91, 200, 90], b);
+}
+
 // export functions so they can be tested
 MapShaper.geom = {
   distance3D: distance3D,
@@ -166,4 +170,5 @@ MapShaper.geom = {
   triangleArea3D: triangleArea3D,
   msRingArea: msRingArea,
   msSignedRingArea: msSignedRingArea,
+  probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
 };

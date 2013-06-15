@@ -36,7 +36,6 @@ function editorTest(shp) {
 
 
 function editorPage(importData, opts) {
-  var decimalDegrees = containsBounds([-200, -100, 200, 100], importData.info.input_bounds);
   var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
 
   // hide intro page
@@ -48,7 +47,7 @@ function editorPage(importData, opts) {
   var arcData = new ArcDataset(topoData.arcs),
       arcs = arcData.getArcs();
   var sopts = {
-    spherical: opts.spherical || decimalDegrees
+    spherical: opts.spherical || probablyDecimalDegreeBounds(importData.info.input_bounds)
   };
 
   var intervalScale = 0.65, // TODO: tune this

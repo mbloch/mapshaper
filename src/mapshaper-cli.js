@@ -13,7 +13,7 @@ MapShaper.validateArgv = function(argv) {
     if (opts.use_simplification) console.log("--shp-test ignores simplification")
     opts.shp_test = true;
     opts.use_simplification = false;
-  } 
+  }
   else {
     if (!opts.use_simplification) error("Missing simplification parameters")
   }
@@ -61,7 +61,7 @@ cli.validateOutputOpts = function(opts, argv) {
     obase = Node.path.join(ofileInfo.relative_dir, ofileInfo.base);
 
     if (opts.input_format == opts.output_format && obase == Node.path.join(opts.input_directory, opts.input_file_base)) {
-      // TODO: overwriting is possible users types absolute path for input or output path... 
+      // TODO: overwriting is possible users types absolute path for input or output path...
       error("Output file shouldn't overwrite source file");
     }
   }
@@ -81,7 +81,6 @@ cli.validateSimplifyOpts = function(opts, argv) {
   }
 
   opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
-  opts.use_sphere = !!argv.u;
   opts.keep_shapes = !!argv.k;
 
   if (argv.dp)

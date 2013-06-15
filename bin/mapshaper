@@ -17,8 +17,8 @@ var usage = ""
   + "Usage: $ mapshaper [options] file\n\n"
   + "Example: Use Douglas-Peucker to remove all but 10% of points in a Shapefile.\n"
   + "$ mapshaper --dp -p 0.1 counties.shp\n\n"
-  + "Example: Use Visvalingam to simplify an unprojected Shapefile to 1km resolution.\n"
-  + "$ mapshaper --vis -i 1000 -u states.shp"
+  + "Example: Use Visvalingam to simplify a Shapefile to 1km resolution.\n"
+  + "$ mapshaper --vis -i 1000 states.shp"
 
 var optimist = require("optimist");
 optimist.usage(usage)
@@ -61,12 +61,6 @@ optimist.usage(usage)
   .options("i", {
     alias: "interval",
     describe: "degree of simplification in units of distance"
-  })
-
-  .options("u", {
-    alias: "unprojected",
-    describe: "simplification uses 3D distance in meters",
-    'boolean': true
   })
 
   .options("k", {
@@ -141,7 +135,6 @@ var importData = mapshaper.importFromFile(opts.input_file);
 Opts.copyAllParams(info, importData.info);
 
 var topoData = mapshaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
-// Opts.copyAllParams(info, topoData)
 
 importData = null; // don't need this anymore, gc can take it.
 
@@ -151,7 +144,7 @@ if (opts.use_simplification) {
       calculator;
 
   var simplifyOpts = {
-    spherical: !!opts.use_sphere
+    spherical: mapshaper.geom.probablyDecimalDegreeBounds(info.input_bounds)
   };
 
   if (opts.simplify_method == 'dp') {
