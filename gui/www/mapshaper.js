@@ -6892,8 +6892,7 @@ var ExportControl = function(arcData, topoData, opts) {
 
 var SimplifyControl = function() {
   var _value = 1;
-
-  El('#g-simplify-control').showCSS('display:inline-block').show();
+  El('#g-simplify-control').show();
   var slider = new Slider("#g-simplify-control .g-slider");
   slider.handle("#g-simplify-control .g-handle");
   slider.track("#g-simplify-control .g-track");

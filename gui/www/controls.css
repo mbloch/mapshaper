@@ -6,19 +6,35 @@
 	margin: 5px 9px 0 0;
 }
 
+@media (max-width: 930px) {
+	.g-mapshaper-logo {
+		display: none;
+	}
+	
+	div #g-simplify-control-wrapper {
+		margin-left: 12px;
+		width: auto;
+	}
+}
+
+#g-simplify-control-wrapper {
+	position: absolute;
+	width: 100%;
+	margin: 5px auto 0 auto;
+	top: 0px;
+}
+
 #g-simplify-control {
 	text-align: center;
-	display: inline-block;
 	display: none;
-	position: absolute;
-	margin: 5px 0 0 83px;
-	top: 0px;
+	padding-right: 145px;
 }
 
 .g-page-header .g-label {
 	color: #fff;
 	margin: 0 4px 0 0;
 }
+
 
 #g-simplify-control .g-slider {
 	padding: 9px 5px 0px 5px;
@@ -30,7 +46,7 @@
 #g-simplify-control .g-track {   	
 	-webkit-border-radius: 2px;
   	-moz-border-radius: 2px;
-	width: 420px;
+	width: 400px;
 	background-color: #fff;
 	height: 2px;
 }
