@@ -7,6 +7,7 @@ mapshaper-map,
 mapshaper-maplayer,
 mapshaper-simplify,
 mapshaper-visvalingam,
+mapshaper-export,
 nodejs
 loading.html5
 */

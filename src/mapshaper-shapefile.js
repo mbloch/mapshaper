@@ -95,7 +95,6 @@ MapShaper.importShp = function(src) {
           }
         }
       }
-
       shapeIds.push(shapeId);
       partId++;
     }  // forEachPart()

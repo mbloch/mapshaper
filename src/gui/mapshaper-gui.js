@@ -45,7 +45,7 @@ function editorPage(importData, opts) {
 
   // init editor
   var arcData = new ArcDataset(topoData.arcs),
-      arcs = arcData.getArcs();
+      arcs = arcData.getArcTable();
   var sopts = {
     spherical: opts.spherical || probablyDecimalDegreeBounds(importData.info.input_bounds)
   };

@@ -19,6 +19,8 @@ function ArcDataset(coords) {
       zlimit = 0;
 
   var arcIter = new ArcIter();
+  var shapeIter = new ShapeIter(this);
+
   var boxes = [],
       _bounds = new Bounds();
   for (var i=0, n=_arcs.length; i<n; i++) {
@@ -28,12 +30,13 @@ function ArcDataset(coords) {
   }
 
   this.getArcIter = function(i, mpp) {
-    var arc = _arcs[i],
-        filteredIds = this.getFilteredIds(i, mpp),
-        fw = i >= 0;
+    var fw = i >= 0,
+        arc, filteredIds;
     if (!fw) {
       i = -i - 1;
     }
+    filteredIds = this.getFilteredIds(i, mpp);
+    arc = _arcs[i];
     if (zlimit) {
       arcIter.init(arc[0], arc[1], fw, _thresholds[i], zlimit, filteredIds);
     } else {
@@ -50,7 +53,7 @@ function ArcDataset(coords) {
 
     // Sort simplification thresholds for all non-endpoint vertices
     // ... to quickly convert a simplification percentage to a threshold value.
-    // ... for large datasets, use every nth point, for faster sorting.
+    // ... For large datasets, use every nth point, for faster sorting.
     var innerCount = MapShaper.countInnerPoints(thresholds);
     var nth = 1;
     if (innerCount > 1e7) nth = 16;
@@ -115,7 +118,8 @@ function ArcDataset(coords) {
   };
 
   this.getShapeIter = function(ids, mpp) {
-    var iter = new ShapeIter(this);
+    //var iter = new ShapeIter(this);
+    var iter = shapeIter;
     iter.init(ids, mpp);
     return iter;
   };
@@ -126,21 +130,23 @@ function ArcDataset(coords) {
   };
 
   this.getArcBounds = function(i) {
+    if (i < 0) i = -1 - i;
     return boxes[i];
   };
 
   this.getShapeBounds = function(ids) {
-    var bounds = boxes[ids[0]].concat();
+    var bounds = this.getArcBounds(ids[0]).concat();
     for (var i=1, n=ids.length; i<n; i++) {
-      mergeBounds(bounds, boxes[ids[i]]);
+      mergeBounds(bounds, this.getArcBounds(ids[i]));
     }
     return bounds;
   };
 
   this.getMultiShapeBounds = function(parts) {
-    var bounds = this.getShapeBounds[parts[0]];
+    var bounds = this.getShapeBounds(parts[0]), b2;
     for (var i=1, n=parts.length; i<n; i++) {
-      mergeBounds(bounds, this.getShapeBounds(parts[i]));
+      b2 = this.getShapeBounds(parts[i]);
+      mergeBounds(bounds, b2);
     }
     return bounds;
   };
@@ -174,13 +180,15 @@ function ArcDataset(coords) {
     return new ShapeTable(shapes, this);
   };
 
-  this.getArcs = function() {
+  this.getArcTable = function() {
     return this.getShapeTable(Utils.range(this.size()), Arc);
   };
 
+  /*
   this.getSimpleShapes = function(arr) {
     return this.getShapeTable(arr, SimpleShape);
   };
+  */
 
   this.getMultiShapes = function(arr) {
     return this.getShapeTable(arr, MultiShape);
@@ -195,6 +203,7 @@ function ArcDataset(coords) {
       return new MultiShape(this).init(arr);
     }
   }
+
 }
 
 //
@@ -208,6 +217,18 @@ function ShapeTable(arr, src) {
     for (var i=0, n=arr.length; i<n; i++) {
       cb(arr[i], i);
     }
+  };
+
+  this.toArray = function() {
+    return Utils.map(arr, function(shp) {
+      return shp.toArray();
+    });
+  };
+
+  this.export = function() {
+    return Utils.map(arr, function(shp) {
+      return shp.export();
+    });
   };
 
   // TODO: add method so layer can determine if vertices can be displayed at current scale
@@ -340,24 +361,12 @@ function ShapeCollection(arr, collBounds) {
       var shp = arr[i];
       if (filterOnSize && shp.smallerThan(minPathSize)) continue;  // problem: won't filter out multi-part shapes with tiny parts
       if (!allIn && !shp.inBounds(geoBBox)) continue;
-      for (var j=0; j<shp.partCount; j++) {
+      for (var j=0; j<shp.pathCount; j++) {
         cb(path(shp, j));
       }
     }
   };
 
-  this.toArray = function() {
-    var arcs = [];
-    this.forEach(function(iter) {
-      var xx = [], yy = [];
-      while(iter.hasNext()) {
-        xx.push(iter.x);
-        yy.push(iter.y);
-      }
-      arcs.push([xx, yy]);
-    });
-    return arcs;
-  };
 }
 
 // TODO: finish
@@ -367,7 +376,7 @@ function NullShape() {
 }
 
 NullShape.prototype = {
-  partCount: 0,
+  pathCount: 0,
   init: function() {return this}
 };
 
@@ -382,7 +391,7 @@ Arc.prototype = {
     this.bounds = this.src.getArcBounds(id);
     return this;
   },
-  partCount: 1,
+  pathCount: 1,
   getPathIter: function(i, mpp) {
     return this.src.getArcIter(this.id, mpp);
   },
@@ -391,6 +400,25 @@ Arc.prototype = {
   },
   getBounds: function() {
     return this.bounds;
+  },
+  // Return arc coords as an array of [x, y] points
+  toArray: function() {
+    var iter = this.getPathIter(),
+        coords = [];
+    while (iter.hasNext()) {
+      coords.push([iter.x, iter.y]);
+    }
+    return coords;
+  },
+  // Return arc coords as [[x0, x1, ... , xn-1], [y0, y1, ... , yn-1]]
+  export: function() {
+    var iter = this.getPathIter(),
+    xx = [], yy = [];
+    while (iter.hasNext()) {
+      xx.push(iter.x);
+      yy.push(iter.y);
+    }
+    return [xx, yy];
   },
   smallerThan: function(units) {
     var b = this.bounds;
@@ -405,7 +433,7 @@ function MultiShape(src) {
 
 MultiShape.prototype = {
   init: function(parts) {
-    this.partCount = parts.length;
+    this.pathCount = parts.length;
     this.parts = parts;
     this.bounds = this.src.getMultiShapeBounds(parts);
     return this;
@@ -416,6 +444,18 @@ MultiShape.prototype = {
   getPath: function(i) {
     if (i < 0 || i >= this.parts.length) error("MultiShape#getPart() invalid part id:", i);
     return new SimpleShape(this.src).init(this.parts[i]);
+  },
+  // Return array of SimpleShape objects, one for each path
+  getPaths: function() {
+    return Utils.map(this.parts, function(ids) {
+      return new SimpleShape(this.src).init(ids);
+    }, this);
+  },
+  // Return array of path groups; a path group is an array containing one positive-space path and zero or more
+  //   negative-space paths (holes) contained by the positive path -- like GeoJSON, but with SimpleShape objects
+  //   instead of GeoJSON linestrings.
+  getPathGroups: function() {
+    return groupMultiShapePaths(this);
   },
   getBounds: function() {
     return this.bounds;
@@ -431,7 +471,7 @@ function SimpleShape(src) {
 }
 
 SimpleShape.prototype = {
-  partCount: 1,
+  pathCount: 1,
   init: function(ids) {
     this.ids = ids;
     this.bounds = this.src.getShapeBounds(ids);
@@ -446,6 +486,21 @@ SimpleShape.prototype = {
   inBounds: function(bbox) {
     return this.src.testShapeIntersection(bbox, this.ids);
   },
+  getSignedArea: function() {
+    var iter = this.getPathIter(),
+        sum = 0;
+    var x, y, prevX, prevY;
+    iter.hasNext();
+    prevX = iter.x, prevY = iter.y;
+    while (iter.hasNext()) {
+      x = iter.x, y = iter.y;
+      sum += x * prevY - prevX * y;
+      prevX = x, prevY = y;
+    }
+    return sum / 2;
+  },
+  toArray: Arc.prototype.toArray,
+  export: Arc.prototype.export,
   smallerThan: Arc.prototype.smallerThan
 };
 
@@ -544,7 +599,6 @@ function ArcIter() {
   }
 }
 
-
 // Iterate along a path made up of one or more arcs.
 // Similar interface to ArcIter()
 //
@@ -574,9 +628,60 @@ function ShapeIter(arcs) {
         return true;
       } else {
         _arc = nextArc();
-        _arc.hasNext(); // skip first point of arc
+        _arc && _arc.hasNext(); // skip first point of arc
       }
     }
     return false;
   };
 }
+
+// Bundle holes with their containing rings, for Topo/GeoJSON export
+// Assume positive rings are CCW and negative rings are CW, like Shapefile
+//
+function groupMultiShapePaths(shape) {
+  if (shape.pathCount == 0) {
+    return [];
+  } else if (shape.pathCount.length == 1) {
+    return [shape.getPath(0)]; // multi-polygon with one part and 0 holes
+  }
+  var pos = [],
+      neg = [];
+  for (var i=0, n=shape.pathCount; i<n; i++) {
+    var part = shape.getPath(i),
+        area = part.getSignedArea();
+    if (area < 0) {
+      neg.push(part);
+    } else if (area > 0) {
+      pos.push(part);
+    } else {
+      trace("Zero-area ring, skipping")
+    }
+  }
+
+  if (pos.length == 0) {
+    trace("#groupMultiShapePaths() Shape is missing a ring with positive area.");
+    return [];
+  }
+  var output = Utils.map(pos, function(part) {
+    return [part];
+  });
+
+  Utils.forEach(neg, function(hole) {
+    var containerId = -1,
+        containerArea = 0;
+    for (var i=0, n=pos.length; i<n; i++) {
+      var part = pos[i],
+          inside = containsBounds(part.bounds, hole.bounds);
+      if (inside && (containerArea == 0 || boundsArea(part.bounds) < containerArea)) {
+        containerArea = boundsArea(part.bounds);
+        containerId = i;
+      }
+    }
+    if (containerId == -1) {
+      trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
+    } else {
+      output[containerId].push(hole);
+    }
+  });
+  return output;
+};

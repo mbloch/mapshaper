@@ -139,11 +139,9 @@ function msSignedRingArea(xx, yy, start, len) {
   return sum / 2;
 }
 
-
 function msRingArea(xx, yy, start, len) {
   return Math.abs(msSignedRingArea(xx, yy, start, len));
 }
-
 
 // merge B into A
 function mergeBounds(a, b) {
@@ -155,6 +153,10 @@ function mergeBounds(a, b) {
 
 function containsBounds(a, b) {
   return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
+}
+
+function boundsArea(b) {
+  return (b[2] - b[0]) * (b[3] - b[1]);
 }
 
 function probablyDecimalDegreeBounds(b) {

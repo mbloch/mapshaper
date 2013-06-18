@@ -1,4 +1,4 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-geojson */
 
 
 
@@ -24,7 +24,6 @@ MapShaper.importTopoJSON = function(obj) {
   });
 
   // TODO: import objects
-
   return {arcs: arcs, objects: null};
 };
 
@@ -36,9 +35,15 @@ MapShaper.importTopoJSON = function(obj) {
 // TODO: Handle holes correctly
 //
 MapShaper.exportTopoJSON = function(data) {
-  if (!data.shapes || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
-  var arcs = Utils.map(data.arcs, MapShaper.transposeXYCoords),
-      shapes = data.shapes;
+  if (!data.objects || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
+  var arcs = data.arcs;
+  var objects = {};
+  Utils.forEach(data.objects, function(src) {
+    var dest = exportTopoJSONObject(src.shapes, src.type),
+        name = src.name;
+    if (!dest || !name) error("#exportTopoJSON() Missing data, skipping an object");
+    objects[name] = dest;
+  });
 
   var srcBounds = data.bounds,
       destBounds = new Bounds([0, 0, 100000, 100000]),
@@ -71,54 +76,47 @@ MapShaper.exportTopoJSON = function(data) {
       translate: [inv.bx, inv.by]
     },
     arcs: arcs,
-    objects: {
-      polygons: {
-        type: "GeometryCollection",
-        geometries: getTopoJsonPolygonGeometries(shapes)
-      }
-    }
+    objects: objects
   };
 
   return JSON.stringify(obj);
 };
 
-
-//
-//
-function getTopoJsonPolygonGeometries(shapes, ids) {
-  return Utils.map(shapes, function(shape, i) {
-    var id = ids ? ids[i] : i;
-    return getTopoJsonPolygonGeometry(shape, id);
-  });
-}
-
-//
-// TODO: handle holes (currently treats holes like separate rings)
-//
-function getTopoJsonPolygonGeometry(shape, id) {
-  var obj = {};
-  if (id != null) {
-    obj.id = id;
-  }
-  if (shape.length > 1) {
-    obj.type = "MultiPolygon";
-    obj.arcs = getTopoJsonMultiPolygonArcs(shape);
-  } else if (shape.length == 1) {
-    obj.type = "Polygon";
-    obj.arcs = shape;
+function exportTopoJSONObject(shapes, type) {
+  var obj = {
+    type: "GeometryCollection"
+  };
+  if (type == 'MultiPolygon') {
+    obj.geometries = Utils.map(shapes, function(ringGroups, i) {
+      return exportTopoJSONPolygon(ringGroups, i);
+    });
   } else {
-    obj.type = "Polygon";
-    obj.arcs = []; // Is this how to represent a null polygon?
+    error("#convertTopoJSONObject() Don't know what to do with type:", type);
   }
   return obj;
 }
 
-// TODO: Recognize holes
-// Option: Use ring direction to identify holes (shapefile import does this)
-//   ... then, find containing ring ...
-//
-function getTopoJsonMultiPolygonArcs(shape) {
-  return Utils.map(shape, function(part) {
-    return [part];
+function exportTopoJSONPolygon(ringGroups, id) {
+  var obj = {
+    id: id
+  }
+  if (ringGroups.length == 0) {
+    obj.type = "Polygon";
+    obj.arcs = [];
+  }
+  else if (ringGroups.length == 1) {
+    obj.type = "Polygon";
+    obj.arcs = exportArcsForTopoJSON(ringGroups[0]);
+  } else  {
+    obj.type = "MultiPolygon";
+    obj.arcs = Utils.map(ringGroups, exportArcsForTopoJSON);
+  }
+  return obj;
+}
+
+function exportArcsForTopoJSON(paths) {
+  return Utils.map(paths, function(path) {
+    return path.ids;
   });
 }
+
