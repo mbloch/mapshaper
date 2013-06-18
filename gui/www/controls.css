@@ -7,15 +7,26 @@
 }
 
 @media (max-width: 930px) {
-	.g-mapshaper-logo {
-		display: none;
-	}
-	
 	div #g-simplify-control-wrapper {
+		top: 24px;
 		margin-left: 12px;
+		left: 0px;
 		width: auto;
 	}
+
+	.g-page-header {
+		height: 48px;
+	}
+
+	#mshp-main-map {
+		margin-top: 48px;
+	}
+
+	div #g-simplify-control {
+		padding-right: 0;
+	}
 }
+
 
 #g-simplify-control-wrapper {
 	position: absolute;
@@ -27,7 +38,7 @@
 #g-simplify-control {
 	text-align: center;
 	display: none;
-	padding-right: 145px;
+	padding-right: 140px;
 }
 
 .g-page-header .g-label {
