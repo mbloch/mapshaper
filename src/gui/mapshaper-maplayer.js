@@ -24,15 +24,13 @@ function ArcLayerGroup(arcs) {
   };*/
 
   this.refresh = function() {
-    if (_map && _map.isReady()) {
-      drawLayers();
-    }
+    _map && drawLayers();
   };
 
   this.setMap = function(map) {
     _map = map;
     _surface.getElement().appendTo(map.getElement());
-    map.on('display', drawLayers, this);
+    map.on('refresh', drawLayers, this);
     map.getExtent().on('change', drawLayers, this);
   };
 

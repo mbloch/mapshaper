@@ -1,5 +1,81 @@
 /* @require mapshaper-elements, textutils, mapshaper-shapefile */
 
+function DropControl(importer) {
+  var el = El('body');
+  el.on('dragenter', ondrag);
+  el.on('dragexit', ondrag);
+  el.on('dragover', ondrag);
+  el.on('drop', ondrop);
+
+  function ondrag(e) {
+    // blocking drag events enables drop event
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function ondrop(e) {
+    e.preventDefault();
+    importer.readFiles(e.dataTransfer.files);
+  }
+}
+
+function ImportControl(editor) {
+  // Receive: FileList
+  this.readFiles = function(files) {
+    Utils.forEach(files, this.readFile, this);
+  };
+
+  this.readFile = function(file) {
+    var name = file.name,
+        type = guessFileType(name),
+        reader;
+    if (type) {
+      reader = new FileReader();
+      reader.onload = function(e) {
+        inputFileContent(name, type, reader.result);
+      }
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
+  this.loadFile = function(path) {
+    var type = guessFileType(path);
+    if (type) {
+      Utils.loadBinaryData(path, function(buf) {
+        inputFileContent(path, type, buf);
+      });
+    }
+  };
+
+  function guessFileType(name) {
+    if (/\.shp$/.test(name)) {
+      return 'shapefile';
+    }
+    /* else if (/json$/.test(name)) { // accept .json, .geojson, .topojson
+      return 'json';
+    } */
+    return '';
+  }
+
+  function inputFileContent(path, type, buf) {
+    var fileInfo = MapShaper.parseLocalPath(path),
+        fname = fileInfo.filename,
+        data;
+
+    var opts = {
+      input_file: fname
+    };
+
+    if (type == 'shapefile') {
+      data = MapShaper.importShp(buf);
+    } else {
+      error("Unsupported file type:", fname);
+    }
+    editor.addData(data, opts);
+  }
+}
+
+Opts.inherit(ImportControl, EventDispatcher);
 
 var SimplifyControl = function() {
   var _value = 1;
@@ -57,7 +133,6 @@ var SimplifyControl = function() {
     }
   }
 
-
   var control = new EventDispatcher();
   control.value = function(val) {
     if (!isNaN(val)) {
@@ -69,41 +144,18 @@ var SimplifyControl = function() {
     return _value;
   };
 
-  // init components
   control.value(_value);
-
   return control;
 }
 
-function ImportPanel(callback) {
-
+function ImportPanel(importer) {
   var shpBtn = new FileChooser('#g-shp-import-btn');
   shpBtn.on('select', function(e) {
-    var reader = new FileReader(),
-        file = e.file;
-    reader.onload = function(e) {
-      var shpData = MapShaper.importShp(reader.result);
-      var opts = {
-        input_file: file.name,
-        keep_shapes: El("#g-import-retain-opt").el.checked,
-        simplify_method: 'mod'
-      };
-      El("#mshp-intro-screen").hide();
-      callback(shpData, opts)
-    };
-    reader.readAsArrayBuffer(file);
-  })
-
-  shpBtn.validator(function(file) {
-    return /.shp$/.test(file.name);
+    importer.readFiles(e.files);
   });
-
-  // var nextBtn = new SimpleButton("#mshp-import .g-next-btn").active(false);
-  // var cancelBtn = new SimpleButton("#g-import-panel .g-cancel-btn").active(false).on('click', cancel, this);
 }
 
 Opts.inherit(ImportPanel, EventDispatcher);
-
 
 var controls = {
   Slider: Slider,
@@ -111,4 +163,3 @@ var controls = {
   SimplifyControl: SimplifyControl,
   ImportPanel: ImportPanel
 };
-

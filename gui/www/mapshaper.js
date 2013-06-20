@@ -4289,9 +4289,7 @@ function SimpleButton(ref) {
 Opts.inherit(SimpleButton, EventDispatcher);
 
 function FileChooser(el) {
-  var _el = El(el),
-      _file,
-      _validate = function() {return true};
+  var _el = El(el);
 
   var input = _el.findChild('input');
   /* input element properties:
@@ -4308,20 +4306,13 @@ function FileChooser(el) {
   });
 
   function onchange(e) {
-    var files = e.target.files,
-        file = files[0];
-    if (file && _validate(file)) { // file may be undefined (e.g. if user presses 'cancel' after a file has been selected...)
+    var files = e.target.files;
+    if (files) { // files may be undefined (e.g. if user presses 'cancel' after a file has been selected...)
       input.attr('disabled', true); // button is disabled after first successful selection
       _el.addClass('selected');
-      _file = file;
-      this.dispatchEvent('select', {file:files[0]});
+      this.dispatchEvent('select', {files:files});
     }
   }
-
-  this.validator = function(f) {
-    _validate = f;
-    return this;
-  };
 }
 
 Opts.inherit(FileChooser, EventDispatcher);
@@ -6737,6 +6728,82 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
 
 /* @require mapshaper-elements, textutils, mapshaper-shapefile */
 
+function DropControl(importer) {
+  var el = El('body');
+  el.on('dragenter', ondrag);
+  el.on('dragexit', ondrag);
+  el.on('dragover', ondrag);
+  el.on('drop', ondrop);
+
+  function ondrag(e) {
+    // blocking drag events enables drop event
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function ondrop(e) {
+    e.preventDefault();
+    importer.readFiles(e.dataTransfer.files);
+  }
+}
+
+function ImportControl(editor) {
+  // Receive: FileList
+  this.readFiles = function(files) {
+    Utils.forEach(files, this.readFile, this);
+  };
+
+  this.readFile = function(file) {
+    var name = file.name,
+        type = guessFileType(name),
+        reader;
+    if (type) {
+      reader = new FileReader();
+      reader.onload = function(e) {
+        inputFileContent(name, type, reader.result);
+      }
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
+  this.loadFile = function(path) {
+    var type = guessFileType(path);
+    if (type) {
+      Utils.loadBinaryData(path, function(buf) {
+        inputFileContent(path, type, buf);
+      });
+    }
+  };
+
+  function guessFileType(name) {
+    if (/\.shp$/.test(name)) {
+      return 'shapefile';
+    }
+    /* else if (/json$/.test(name)) { // accept .json, .geojson, .topojson
+      return 'json';
+    } */
+    return '';
+  }
+
+  function inputFileContent(path, type, buf) {
+    var fileInfo = MapShaper.parseLocalPath(path),
+        fname = fileInfo.filename,
+        data;
+
+    var opts = {
+      input_file: fname
+    };
+
+    if (type == 'shapefile') {
+      data = MapShaper.importShp(buf);
+    } else {
+      error("Unsupported file type:", fname);
+    }
+    editor.addData(data, opts);
+  }
+}
+
+Opts.inherit(ImportControl, EventDispatcher);
 
 var SimplifyControl = function() {
   var _value = 1;
@@ -6794,7 +6861,6 @@ var SimplifyControl = function() {
     }
   }
 
-
   var control = new EventDispatcher();
   control.value = function(val) {
     if (!isNaN(val)) {
@@ -6806,41 +6872,18 @@ var SimplifyControl = function() {
     return _value;
   };
 
-  // init components
   control.value(_value);
-
   return control;
 }
 
-function ImportPanel(callback) {
-
+function ImportPanel(importer) {
   var shpBtn = new FileChooser('#g-shp-import-btn');
   shpBtn.on('select', function(e) {
-    var reader = new FileReader(),
-        file = e.file;
-    reader.onload = function(e) {
-      var shpData = MapShaper.importShp(reader.result);
-      var opts = {
-        input_file: file.name,
-        keep_shapes: El("#g-import-retain-opt").el.checked,
-        simplify_method: 'mod'
-      };
-      El("#mshp-intro-screen").hide();
-      callback(shpData, opts)
-    };
-    reader.readAsArrayBuffer(file);
-  })
-
-  shpBtn.validator(function(file) {
-    return /.shp$/.test(file.name);
+    importer.readFiles(e.files);
   });
-
-  // var nextBtn = new SimpleButton("#mshp-import .g-next-btn").active(false);
-  // var cancelBtn = new SimpleButton("#g-import-panel .g-cancel-btn").active(false).on('click', cancel, this);
 }
 
 Opts.inherit(ImportPanel, EventDispatcher);
-
 
 var controls = {
   Slider: Slider,
@@ -6848,7 +6891,6 @@ var controls = {
   SimplifyControl: SimplifyControl,
   ImportPanel: ImportPanel
 };
-
 
 
 /* @requires arrayutils, mapshaper-common */
@@ -7497,15 +7539,13 @@ function ArcLayerGroup(arcs) {
   };*/
 
   this.refresh = function() {
-    if (_map && _map.isReady()) {
-      drawLayers();
-    }
+    _map && drawLayers();
   };
 
   this.setMap = function(map) {
     _map = map;
     _surface.getElement().appendTo(map.getElement());
-    map.on('display', drawLayers, this);
+    map.on('refresh', drawLayers, this);
     map.getExtent().on('change', drawLayers, this);
   };
 
@@ -8748,7 +8788,8 @@ function MshpMouse(ext) {
     ext.rescale(scale, _fx, _fy);
   });
 
-  Browser.unselectable(p.element); // prevent text-select cursor when dragging
+  //Browser.unselectable(p.element); // prevent text-select cursor when dragging
+  Browser.unselectable(El('body').node()); // prevent text-select cursor when dragging
   mouse.setMapContainer(p.element)
   calibrate();
   ext.on('resize', calibrate);
@@ -8800,25 +8841,20 @@ function MshpMap(el, opts_) {
 
   var _ext = new MapExtent(_root, opts.bounds).setContentPadding(opts.padding);
   var _mouse = new MshpMouse(_ext);
+  initHomeButton();
 
   this.getExtent = function() {
     return _ext;
   }
 
   this.addLayerGroup = function(group) {
-    if (this.isReady()) error("#addLayerGroup() TODO: add a group after map is READY");
     group.setMap(this);
     _groups.push(group);
+    this.dispatchEvent('refresh');
   };
 
   this.getElement = function() {
     return _root;
-  };
-
-  this.display = function() {
-    this.startWaiting();
-    this.dispatchEvent('display');
-    initHomeButton();
   };
 
   function initHomeButton() {
@@ -8849,7 +8885,7 @@ function MshpMap(el, opts_) {
   */
 }
 
-Opts.inherit(MshpMap, Waiter);
+Opts.inherit(MshpMap, EventDispatcher);
 
 function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
@@ -9800,6 +9836,7 @@ Utils.loadBinaryData = function(url, callback) {
   xhr.send();
 };
 
+
 /* @requires
 mapshaper-index,
 mapshaper-shapes,
@@ -9834,21 +9871,30 @@ if (Node.inNode) { // node.js for testing
 
 /* @requires mapshaper-gui-lib */
 
+var dropper,
+    importer,
+    editor;
+
 if (Browser.inBrowser) {
   Browser.onload(function() {
     var testFile;
     if (!browserIsSupported()) {
       El("#mshp-not-supported").show();
-    } else if (testFile = Browser.getQueryVar('file')) {
-      editorTest(testFile);
+      return;
+    }
+    editor = new Editor();
+    importer = new ImportControl(editor);
+    dropper = new DropControl(importer);
+    if (testFile = Browser.getQueryVar('file')) {
+      importer.loadFile(testFile);
     } else {
       introPage();
     }
-  })
+  });
 }
 
 function introPage() {
-  new ImportPanel(editorPage);
+  new ImportPanel(importer);
   El("#mshp-import").show();
 }
 
@@ -9860,66 +9906,68 @@ function browserIsSupported() {
     typeof 'File' != 'undefined';
 }
 
-function editorTest(shp) {
-  Utils.loadBinaryData(shp, function(buf) {
-    var shpData = MapShaper.importShp(buf),
-        opts = {input_file:shp};
-    editorPage(shpData, opts);
-  })
-}
 
+function Editor() {
+  var map, slider;
 
-function editorPage(importData, opts) {
-  var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+  function init(contentBounds) {
+    El("#mshp-intro-screen").hide();
+    El("#mshp-main-page").show();
+    El("body").addClass('editing');
 
-  // hide intro page
-  El("#mshp-intro-screen").hide();
-  // show main page
-  El("#mshp-main-page").show();
+    var mapOpts = {
+      bounds: contentBounds, // arcData.getBounds(),
+      padding: 10
+    };
 
-  // init editor
-  var arcData = new ArcDataset(topoData.arcs),
+    map = new MshpMap("#mshp-main-map", mapOpts);
+    slider = new SimplifyControl();
+  };
+
+  this.addData = function(importData, opts) {
+
+    var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+    var arcData = new ArcDataset(topoData.arcs),
       arcs = arcData.getArcTable();
-  var sopts = {
-    spherical: opts.spherical || probablyDecimalDegreeBounds(importData.info.input_bounds)
+
+    if (!map) {
+      init(arcData.getBounds());
+    }
+
+    var sopts = {
+      spherical: opts.spherical || probablyDecimalDegreeBounds(importData.info.input_bounds)
+    };
+
+    var intervalScale = 0.65, // TODO: tune this
+        calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
+        vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
+
+    if (topoData.arcMinPointCounts) {
+      MapShaper.protectPoints(vertexData, topoData.arcMinPointCounts);
+    }
+
+    arcData.setThresholds(vertexData);
+
+    var group = new ArcLayerGroup(arcs);
+    map.addLayerGroup(group);
+
+    slider.on('change', function(e) {
+      arcData.setRetainedPct(e.value);
+      group.refresh();
+    });
+
+    var exportOpts = {
+      bounds: arcData.getBounds()
+    };
+    if (opts.input_file) {
+      var parts = MapShaper.parseLocalPath(opts.input_file);
+      exportOpts.output_name = parts.basename;
+    }
+
+    // TODO: figure out exporting with multiple datasets
+    var exporter = new ExportControl(arcData, topoData, exportOpts);
   };
 
-  var intervalScale = 0.65, // TODO: tune this
-      calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
-      vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
-
-  if (topoData.arcMinPointCounts) {
-    MapShaper.protectPoints(vertexData, topoData.arcMinPointCounts);
-  }
-
-  arcData.setThresholds(vertexData);
-
-  var group = new ArcLayerGroup(arcs);
-
-  var mapOpts = {
-    bounds: arcData.getBounds(),
-    padding: 10
-  };
-
-  var map = new MshpMap("#mshp-main-map", mapOpts);
-  map.addLayerGroup(group);
-  map.display();
-
-  var slider = new SimplifyControl();
-
-  slider.on('change', function(e) {
-    arcData.setRetainedPct(e.value);
-    group.refresh();
-  });
-
-  var exportOpts = {
-    bounds: arcData.getBounds()
-  };
-  if (opts.input_file) {
-    var parts = MapShaper.parseLocalPath(opts.input_file);
-    exportOpts.output_name = parts.basename;
-  }
-  var exporter = new ExportControl(arcData, topoData, exportOpts);
 }
 
 })();

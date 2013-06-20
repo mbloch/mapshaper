@@ -1,20 +1,29 @@
 /* @requires mapshaper-gui-lib */
 
+var dropper,
+    importer,
+    editor;
+
 if (Browser.inBrowser) {
   Browser.onload(function() {
     var testFile;
     if (!browserIsSupported()) {
       El("#mshp-not-supported").show();
-    } else if (testFile = Browser.getQueryVar('file')) {
-      editorTest(testFile);
+      return;
+    }
+    editor = new Editor();
+    importer = new ImportControl(editor);
+    dropper = new DropControl(importer);
+    if (testFile = Browser.getQueryVar('file')) {
+      importer.loadFile(testFile);
     } else {
       introPage();
     }
-  })
+  });
 }
 
 function introPage() {
-  new ImportPanel(editorPage);
+  new ImportPanel(importer);
   El("#mshp-import").show();
 }
 
@@ -26,64 +35,66 @@ function browserIsSupported() {
     typeof 'File' != 'undefined';
 }
 
-function editorTest(shp) {
-  Utils.loadBinaryData(shp, function(buf) {
-    var shpData = MapShaper.importShp(buf),
-        opts = {input_file:shp};
-    editorPage(shpData, opts);
-  })
-}
 
+function Editor() {
+  var map, slider;
 
-function editorPage(importData, opts) {
-  var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+  function init(contentBounds) {
+    El("#mshp-intro-screen").hide();
+    El("#mshp-main-page").show();
+    El("body").addClass('editing');
 
-  // hide intro page
-  El("#mshp-intro-screen").hide();
-  // show main page
-  El("#mshp-main-page").show();
+    var mapOpts = {
+      bounds: contentBounds, // arcData.getBounds(),
+      padding: 10
+    };
 
-  // init editor
-  var arcData = new ArcDataset(topoData.arcs),
+    map = new MshpMap("#mshp-main-map", mapOpts);
+    slider = new SimplifyControl();
+  };
+
+  this.addData = function(importData, opts) {
+
+    var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+    var arcData = new ArcDataset(topoData.arcs),
       arcs = arcData.getArcTable();
-  var sopts = {
-    spherical: opts.spherical || probablyDecimalDegreeBounds(importData.info.input_bounds)
+
+    if (!map) {
+      init(arcData.getBounds());
+    }
+
+    var sopts = {
+      spherical: opts.spherical || probablyDecimalDegreeBounds(importData.info.input_bounds)
+    };
+
+    var intervalScale = 0.65, // TODO: tune this
+        calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
+        vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
+
+    if (topoData.arcMinPointCounts) {
+      MapShaper.protectPoints(vertexData, topoData.arcMinPointCounts);
+    }
+
+    arcData.setThresholds(vertexData);
+
+    var group = new ArcLayerGroup(arcs);
+    map.addLayerGroup(group);
+
+    slider.on('change', function(e) {
+      arcData.setRetainedPct(e.value);
+      group.refresh();
+    });
+
+    var exportOpts = {
+      bounds: arcData.getBounds()
+    };
+    if (opts.input_file) {
+      var parts = MapShaper.parseLocalPath(opts.input_file);
+      exportOpts.output_name = parts.basename;
+    }
+
+    // TODO: figure out exporting with multiple datasets
+    var exporter = new ExportControl(arcData, topoData, exportOpts);
   };
 
-  var intervalScale = 0.65, // TODO: tune this
-      calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
-      vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
-
-  if (topoData.arcMinPointCounts) {
-    MapShaper.protectPoints(vertexData, topoData.arcMinPointCounts);
-  }
-
-  arcData.setThresholds(vertexData);
-
-  var group = new ArcLayerGroup(arcs);
-
-  var mapOpts = {
-    bounds: arcData.getBounds(),
-    padding: 10
-  };
-
-  var map = new MshpMap("#mshp-main-map", mapOpts);
-  map.addLayerGroup(group);
-  map.display();
-
-  var slider = new SimplifyControl();
-
-  slider.on('change', function(e) {
-    arcData.setRetainedPct(e.value);
-    group.refresh();
-  });
-
-  var exportOpts = {
-    bounds: arcData.getBounds()
-  };
-  if (opts.input_file) {
-    var parts = MapShaper.parseLocalPath(opts.input_file);
-    exportOpts.output_name = parts.basename;
-  }
-  var exporter = new ExportControl(arcData, topoData, exportOpts);
 }

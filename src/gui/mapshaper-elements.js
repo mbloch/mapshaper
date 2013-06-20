@@ -205,9 +205,7 @@ function SimpleButton(ref) {
 Opts.inherit(SimpleButton, EventDispatcher);
 
 function FileChooser(el) {
-  var _el = El(el),
-      _file,
-      _validate = function() {return true};
+  var _el = El(el);
 
   var input = _el.findChild('input');
   /* input element properties:
@@ -224,20 +222,13 @@ function FileChooser(el) {
   });
 
   function onchange(e) {
-    var files = e.target.files,
-        file = files[0];
-    if (file && _validate(file)) { // file may be undefined (e.g. if user presses 'cancel' after a file has been selected...)
+    var files = e.target.files;
+    if (files) { // files may be undefined (e.g. if user presses 'cancel' after a file has been selected...)
       input.attr('disabled', true); // button is disabled after first successful selection
       _el.addClass('selected');
-      _file = file;
-      this.dispatchEvent('select', {file:files[0]});
+      this.dispatchEvent('select', {files:files});
     }
   }
-
-  this.validator = function(f) {
-    _validate = f;
-    return this;
-  };
 }
 
 Opts.inherit(FileChooser, EventDispatcher);

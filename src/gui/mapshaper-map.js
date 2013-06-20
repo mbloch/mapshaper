@@ -19,25 +19,20 @@ function MshpMap(el, opts_) {
 
   var _ext = new MapExtent(_root, opts.bounds).setContentPadding(opts.padding);
   var _mouse = new MshpMouse(_ext);
+  initHomeButton();
 
   this.getExtent = function() {
     return _ext;
   }
 
   this.addLayerGroup = function(group) {
-    if (this.isReady()) error("#addLayerGroup() TODO: add a group after map is READY");
     group.setMap(this);
     _groups.push(group);
+    this.dispatchEvent('refresh');
   };
 
   this.getElement = function() {
     return _root;
-  };
-
-  this.display = function() {
-    this.startWaiting();
-    this.dispatchEvent('display');
-    initHomeButton();
   };
 
   function initHomeButton() {
@@ -68,7 +63,7 @@ function MshpMap(el, opts_) {
   */
 }
 
-Opts.inherit(MshpMap, Waiter);
+Opts.inherit(MshpMap, EventDispatcher);
 
 function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
