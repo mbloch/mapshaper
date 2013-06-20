@@ -1,21 +1,20 @@
 {
 	"name": "mapshaper",
-	"version": "0.1.1",
+	"version": "0.1.0",
 	"description": "A tool for simplifying Shapefiles.",
-	"keywords": ["shapefile","mapshaper","polygon","simplification"],
-	"author": "Matthew Bloch <mbloch@nytimes.com>",
+	"keywords": ["shapefile","mapshaper","polygon","generalization"],
+	"author": "Matthew Bloch <masiyou@gmail.com>",
 	"contributors":[],
 	"repository": {
 		"type": "git",
-		"url": "http://github.com/mbloch/mapshaper"
+		"url": "https://github.com/mbloch/mapshaper"
 	},
 	"main": "./mapshaper.js",
 	"dependencies": {
 		"optimist": "0.3.x"
 	},
 	"devDependencies": {
-		"mocha": "1.8.x",
-		"uglify-js": "2.2.x"
+		"mocha": "1.8.x"
 	},
 	"bundledDependencies": [
 		"optimist"
