@@ -7,22 +7,22 @@
 }
 
 @media (max-width: 930px) {
-	div #g-simplify-control-wrapper {
-		top: 24px;
+	body.editing  #g-simplify-control-wrapper {
+		top: 23px;
 		margin-left: 12px;
 		left: 0px;
 		width: auto;
 	}
 
-	.g-page-header {
+	body.editing .g-page-header {
 		height: 48px;
 	}
 
-	#mshp-main-map {
-		margin-top: 48px;
+	body.editing #mshp-main-map {
+		margin-top: 51px;
 	}
 
-	div #g-simplify-control {
+	body.editing  #g-simplify-control {
 		padding-right: 0;
 	}
 }
