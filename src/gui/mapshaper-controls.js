@@ -25,6 +25,7 @@ function ImportControl(editor) {
     Utils.forEach(files, this.readFile, this);
   };
 
+  // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
         type = guessFileType(name),
@@ -148,18 +149,8 @@ var SimplifyControl = function() {
   return control;
 }
 
-function ImportPanel(importer) {
-  var shpBtn = new FileChooser('#g-shp-import-btn');
-  shpBtn.on('select', function(e) {
-    importer.readFiles(e.files);
-  });
-}
-
-Opts.inherit(ImportPanel, EventDispatcher);
-
 var controls = {
   Slider: Slider,
   Checkbox: Checkbox,
   SimplifyControl: SimplifyControl,
-  ImportPanel: ImportPanel
 };

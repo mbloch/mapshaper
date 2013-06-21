@@ -4289,9 +4289,9 @@ function SimpleButton(ref) {
 Opts.inherit(SimpleButton, EventDispatcher);
 
 function FileChooser(el) {
-  var _el = El(el);
 
-  var input = _el.findChild('input');
+  var input = El('form').addClass('g-file-control').appendTo('body')
+    .newChild('input').attr('type', 'file').on('change', onchange, this);
   /* input element properties:
     disabled
     name
@@ -4299,9 +4299,7 @@ function FileChooser(el) {
     multiple  ('multiple' or '')
   */
 
-  if (!input) error("FileChooser() Missing file control");
-  Browser.on(input.el, 'change', onchange, this);
-  _el.on('click', function() {
+  var btn = El(el).on('click', function() {
     input.el.click();
   });
 
@@ -4309,7 +4307,7 @@ function FileChooser(el) {
     var files = e.target.files;
     if (files) { // files may be undefined (e.g. if user presses 'cancel' after a file has been selected...)
       input.attr('disabled', true); // button is disabled after first successful selection
-      _el.addClass('selected');
+      btn.addClass('selected');
       this.dispatchEvent('select', {files:files});
     }
   }
@@ -6753,6 +6751,7 @@ function ImportControl(editor) {
     Utils.forEach(files, this.readFile, this);
   };
 
+  // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
         type = guessFileType(name),
@@ -6876,20 +6875,10 @@ var SimplifyControl = function() {
   return control;
 }
 
-function ImportPanel(importer) {
-  var shpBtn = new FileChooser('#g-shp-import-btn');
-  shpBtn.on('select', function(e) {
-    importer.readFiles(e.files);
-  });
-}
-
-Opts.inherit(ImportPanel, EventDispatcher);
-
 var controls = {
   Slider: Slider,
   Checkbox: Checkbox,
   SimplifyControl: SimplifyControl,
-  ImportPanel: ImportPanel
 };
 
 
@@ -8788,8 +8777,9 @@ function MshpMouse(ext) {
     ext.rescale(scale, _fx, _fy);
   });
 
-  //Browser.unselectable(p.element); // prevent text-select cursor when dragging
-  Browser.unselectable(El('body').node()); // prevent text-select cursor when dragging
+  // TODO: find a way to reliably prevent text cursor on map pan
+  // Browser.unselectable(p.element); // prevent text-select cursor when dragging
+  // Browser.unselectable(El('body').node()); // prevent text-select cursor when dragging
   mouse.setMapContainer(p.element)
   calibrate();
   ext.on('resize', calibrate);
@@ -9894,16 +9884,28 @@ if (Browser.inBrowser) {
 }
 
 function introPage() {
-  new ImportPanel(importer);
+  new FileChooser('#g-shp-import-btn').on('select', function(e) {
+    importer.readFiles(e.files);
+  });
   El("#mshp-import").show();
 }
+/*
+function ImportPanel(importer) {
+  var shpBtn = new FileChooser('#g-shp-import-btn');
+  shpBtn.on('select', function(e) {
+    importer.readFiles(e.files);
+  });
+}
+
+Opts.inherit(ImportPanel, EventDispatcher);
+*/
 
 function browserIsSupported() {
   return Env.inBrowser &&
     Env.canvas &&
-    typeof 'ArrayBuffer' != 'undefined' &&
-    typeof 'Blob' != 'undefined' &&
-    typeof 'File' != 'undefined';
+    typeof ArrayBuffer != 'undefined' &&
+    typeof Blob != 'undefined' &&
+    typeof File != 'undefined';
 }
 
 

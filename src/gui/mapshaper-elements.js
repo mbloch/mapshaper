@@ -205,9 +205,9 @@ function SimpleButton(ref) {
 Opts.inherit(SimpleButton, EventDispatcher);
 
 function FileChooser(el) {
-  var _el = El(el);
 
-  var input = _el.findChild('input');
+  var input = El('form').addClass('g-file-control').appendTo('body')
+    .newChild('input').attr('type', 'file').on('change', onchange, this);
   /* input element properties:
     disabled
     name
@@ -215,9 +215,7 @@ function FileChooser(el) {
     multiple  ('multiple' or '')
   */
 
-  if (!input) error("FileChooser() Missing file control");
-  Browser.on(input.el, 'change', onchange, this);
-  _el.on('click', function() {
+  var btn = El(el).on('click', function() {
     input.el.click();
   });
 
@@ -225,7 +223,7 @@ function FileChooser(el) {
     var files = e.target.files;
     if (files) { // files may be undefined (e.g. if user presses 'cancel' after a file has been selected...)
       input.attr('disabled', true); // button is disabled after first successful selection
-      _el.addClass('selected');
+      btn.addClass('selected');
       this.dispatchEvent('select', {files:files});
     }
   }

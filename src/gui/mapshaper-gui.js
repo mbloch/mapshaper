@@ -23,16 +23,28 @@ if (Browser.inBrowser) {
 }
 
 function introPage() {
-  new ImportPanel(importer);
+  new FileChooser('#g-shp-import-btn').on('select', function(e) {
+    importer.readFiles(e.files);
+  });
   El("#mshp-import").show();
 }
+/*
+function ImportPanel(importer) {
+  var shpBtn = new FileChooser('#g-shp-import-btn');
+  shpBtn.on('select', function(e) {
+    importer.readFiles(e.files);
+  });
+}
+
+Opts.inherit(ImportPanel, EventDispatcher);
+*/
 
 function browserIsSupported() {
   return Env.inBrowser &&
     Env.canvas &&
-    typeof 'ArrayBuffer' != 'undefined' &&
-    typeof 'Blob' != 'undefined' &&
-    typeof 'File' != 'undefined';
+    typeof ArrayBuffer != 'undefined' &&
+    typeof Blob != 'undefined' &&
+    typeof File != 'undefined';
 }
 
 
