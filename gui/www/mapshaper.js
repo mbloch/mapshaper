@@ -8369,19 +8369,20 @@ HybridMouse.prototype.setMapContainer = function(surface) {
 
   if (Browser.iPhone || Browser.touchEnabled) {
     var touch = new TouchHandler(surface, this._boundsOnPage);
-    touch.addEventListener('touchstart', this.handleTouchStart, this);
-    touch.addEventListener('touchend', this.handleTouchEnd, this);
+    touch.on('touchstart', this.handleTouchStart, this);
+    touch.on('touchend', this.handleTouchEnd, this);
     if (this.opts.touchClick) {
-      touch.addEventListener('tap', handleTap, this);
+      touch.on('tap', handleTap, this);
     }
     this.touch = touch;
   }
 
 
-  Browser.addEventListener(surface, 'mouseover', handleMouseOver, this);
+  Browser.on(surface, 'mouseover', handleMouseOver, this);
+  Browser.on(surface, 'mousedown', function(e) {e.preventDefault();}); // prevent text selection cursor
   //  Moved adding mouseout handler to handleMouseOver()
   //  Browser.addEventListener(surface, 'mouseout', handleMouseOut, this);
-  Browser.addEventListener(surface, 'dblclick', handleDoubleClick, this);
+  Browser.on(surface, 'dblclick', handleDoubleClick, this);
 
   function handleTap(e) {
     // Assume 'tap' is over map; temporarily set overMap to true
@@ -8476,13 +8477,12 @@ HybridMouse.prototype.triggerMouseOver = function() {
 
   this._deferringMouseOut = false; // cancel deferred mouse out, e.g. mousing over a popup
 
-  //Utils.log("[HybridMouse.triggerMouseOver()] _overMap: " + this._overMap);
   if (!this._overMap) {
     this._overMap = true;
 
     if (true) {
       //Browser.addEventListener(window, 'mouseout', this.handleMouseOut, this);
-      Browser.addEventListener(this._mapContainer, 'mouseout', this.handleMouseOut, this);
+      Browser.on(this._mapContainer, 'mouseout', this.handleMouseOut, this);
     } else {
       this._mapContainer != document.body && Browser.addEventListener(document.body, 'mouseover', this.handleMouseOut, this);
       Browser.addEventListener(window, 'mouseout', this.handleMouseOut, this);
@@ -8534,7 +8534,6 @@ HybridMouse.prototype.handleMouseDown = function(e) {
 
 
 HybridMouse.prototype.handleDownUp = function(downData, upData) {
-  // trace("downUp; down:", downData, "up:", upData, "overMap:", this.overMap());
   if (downData && this.overMap()) {
     if (Math.abs(downData.pageX - upData.pageX) + Math.abs(downData.pageY - upData.pageY) < 6) {
       var elapsed = (new Date()).getTime() - downData.downTime;
@@ -8546,7 +8545,6 @@ HybridMouse.prototype.handleDownUp = function(downData, upData) {
 };
 
 HybridMouse.prototype.handleMouseUp = function(e) {
-  //trace("[HybridMouse.handleMouseUp(); over map?", this.overMap());
   this._mouseDown = false;
   this._mouseDownOverMap = false;
   var upData = this.getStandardMouseData(e);
@@ -8607,29 +8605,6 @@ HybridMouse.prototype.standardizeMouseEvent = function(e) {
 };
 
 
-/*
-HybridMouse.prototype.throttledMouseMove = function(e) {
-  e = this.standardizeMouseEvent(e); // handle ie's nonstandard events
-  this._latestMoveEvent = e;
-  if (this._throttleCount) {
-    this._throttleCount++;
-    return;
-  }
-  var minInterval = 40;
-  var now = (new Date).getTime();
-  var elapsed = now - (this._prevMoveTime || 0);
-  if (elapsed < minInterval) {
-    var self = this;
-    var ms = minInterval - elapsed;
-    this._throttleCount = 1;
-    setTimeout(function() { self._throttleCount = 0; self.throttledMouseMove(self._latestMoveEvent) }, ms);
-    return;
-  }
-  this._prevMoveTime = now;
-  this.handleMouseMove(e);
-};
-*/
-
 HybridMouse.prototype.throttledMouseMove = function(e) {
   var minInterval = 40;
   var now = (new Date).getTime();
@@ -8641,17 +8616,6 @@ HybridMouse.prototype.throttledMouseMove = function(e) {
 };
 
 HybridMouse.prototype.handleMouseMove = function(e) {
-  /*
-  var now = (new Date).getTime();
-  var sec = Math.floor(now / 1000);
-  moveCount ++;
-  if (sec != moveSecond) {
-    moveSecond = sec;
-    trace(moveCount + "/sec");
-    moveCount = 0;
-  }
-  */
-
   this._moveData = this.getStandardMouseData(e);
   this.triggerMouseMove();
 };
@@ -8661,12 +8625,8 @@ HybridMouse.prototype.triggerMouseMove = function() {
   if (!obj) {
     return;
   }
-  //var isOver = this._boundsOnPage.containsPoint(obj.pageX, obj.pageY) && this._overMap;
-
   var isOver = this._boundsOnPage.containsPoint(obj.pageX, obj.pageY); //  && this._overMap;
 
-
-  //trace("[HybridMouse.triggerMouseMove()] over?", isOver);
   // Fallback over / out events if map container hasn't been registered
   //
   if (!this._mapContainer) {
@@ -8682,8 +8642,6 @@ HybridMouse.prototype.triggerMouseMove = function() {
     this.triggerMouseOut();
   }
 
-
-  //if (isOver) {
   if (this._overMap) {
     this.dispatchEvent('mousemove', obj);
   }
@@ -8767,7 +8725,6 @@ Opts.inherit(MouseWheelHandler, EventDispatcher);
 
 /** @requires browser, events, tweening, hybrid-mouse, hybrid-mousewheel */
 
-
 function MshpMouse(ext) {
   var p = ext.position(),
       mouse = new HybridMouse({touchClick: true}),
@@ -8777,9 +8734,6 @@ function MshpMouse(ext) {
     ext.rescale(scale, _fx, _fy);
   });
 
-  // TODO: find a way to reliably prevent text cursor on map pan
-  // Browser.unselectable(p.element); // prevent text-select cursor when dragging
-  // Browser.unselectable(El('body').node()); // prevent text-select cursor when dragging
   mouse.setMapContainer(p.element)
   calibrate();
   ext.on('resize', calibrate);

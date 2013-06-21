@@ -1,6 +1,5 @@
 /** @requires browser, events, tweening, hybrid-mouse, hybrid-mousewheel */
 
-
 function MshpMouse(ext) {
   var p = ext.position(),
       mouse = new HybridMouse({touchClick: true}),
@@ -10,9 +9,6 @@ function MshpMouse(ext) {
     ext.rescale(scale, _fx, _fy);
   });
 
-  // TODO: find a way to reliably prevent text cursor on map pan
-  // Browser.unselectable(p.element); // prevent text-select cursor when dragging
-  // Browser.unselectable(El('body').node()); // prevent text-select cursor when dragging
   mouse.setMapContainer(p.element)
   calibrate();
   ext.on('resize', calibrate);
