@@ -414,7 +414,6 @@ var T = {
 
 /** @requires core */
 
-
 function Handler(type, target, callback, listener, priority) {
   this.type = type;
   this.callback = callback;
@@ -432,7 +431,6 @@ Handler.prototype.trigger = function(evt) {
   }
   this.callback.call(this.context, evt);
 }
-
 
 function EventData(type, target, data) {
   this.type = type;
@@ -462,8 +460,6 @@ EventData.prototype.toString = function() {
  *   addEventListener() / on()
  *   removeEventListener()
  *   dispatchEvent() / trigger()
- *
- * @constructor
  */
 function EventDispatcher() {}
 
@@ -472,7 +468,7 @@ function EventDispatcher() {}
  * @param {string} type Name of the event type, e.g. "change".
  * @param {object=} obj Optional data to send with the event.
  */
-EventDispatcher.prototype.dispatchEvent = 
+EventDispatcher.prototype.dispatchEvent =
 EventDispatcher.prototype.trigger = function(type, obj, ctx) {
   var evt;
   // TODO: check for bugs if handlers are removed elsewhere while firing
@@ -695,7 +691,7 @@ Waiter.prototype.waitFor = function(dep, type) {
  */
 Waiter.prototype.startWaiting = function(callback, ctx) {
   // KLUDGE: callback may be an BoundEvent if startWaiting is used as an event handler.
-  typeof(callback) == 'function' && this.addEventListener('ready', callback, ctx); 
+  typeof(callback) == 'function' && this.addEventListener('ready', callback, ctx);
   this._started = true;
   this._testReady();
   return this; // for chaining

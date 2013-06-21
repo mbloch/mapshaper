@@ -2843,7 +2843,6 @@ function groupMultiShapePaths(shape) {
 
 /** @requires core */
 
-
 function Handler(type, target, callback, listener, priority) {
   this.type = type;
   this.callback = callback;
@@ -2861,7 +2860,6 @@ Handler.prototype.trigger = function(evt) {
   }
   this.callback.call(this.context, evt);
 }
-
 
 function EventData(type, target, data) {
   this.type = type;
@@ -2891,8 +2889,6 @@ EventData.prototype.toString = function() {
  *   addEventListener() / on()
  *   removeEventListener()
  *   dispatchEvent() / trigger()
- *
- * @constructor
  */
 function EventDispatcher() {}
 
@@ -2901,7 +2897,7 @@ function EventDispatcher() {}
  * @param {string} type Name of the event type, e.g. "change".
  * @param {object=} obj Optional data to send with the event.
  */
-EventDispatcher.prototype.dispatchEvent = 
+EventDispatcher.prototype.dispatchEvent =
 EventDispatcher.prototype.trigger = function(type, obj, ctx) {
   var evt;
   // TODO: check for bugs if handlers are removed elsewhere while firing
@@ -3124,7 +3120,7 @@ Waiter.prototype.waitFor = function(dep, type) {
  */
 Waiter.prototype.startWaiting = function(callback, ctx) {
   // KLUDGE: callback may be an BoundEvent if startWaiting is used as an event handler.
-  typeof(callback) == 'function' && this.addEventListener('ready', callback, ctx); 
+  typeof(callback) == 'function' && this.addEventListener('ready', callback, ctx);
   this._started = true;
   this._testReady();
   return this; // for chaining
@@ -7971,708 +7967,139 @@ function BoundingBoxTween(callback) {
 Opts.inherit(BoundingBoxTween, TweenTimer);
 
 
-/** @requires events, browser */
+/* @requires browser, element-position, events */
 
-/**
- * Interface for handling touch events, used internally by HybridMouse.
- * Events
- *  'touchstart' Fires when down-up occurs rapidly, like a 'click'.
- *  'touchend'   Fires once after a 'touchstart' event, if user slides a finger or
- *               if finger is lifted after being down for a while.
- *  'dragstart'
- *  'drag'
- *  'dragend'
- *  'pinchstart'
- *  'pinch'
- *  'pinchend'
- *
- * Event data
- *  'pageX'
- *  'pageY'
- *  'mapX'
- *  'mapY'
- *  'centerX' (drag,pinch) REMOVE center of the map, in pixels
- *  'centerY'
- *  'time'
- *  'zoomRatio' (pinch) REMOVE ratio of current pinch radius to starting radius
- *  'deltaScale'
- *  'shiftX'  (drag,pinch) REMOVE distance shifted since beginning of pinch or drag
- *  'shiftY'  (drag,pinch) REMOVE
- *  'deltaX'
- *  'deltaY'
- *
- * @param {*} surface DOM element to listen for touches.
- * @param {BoundingBox} mapBounds Bounds of graphic frame, on page
- * @constructor
- */
-function TouchHandler(surface, mapBounds) {
+function MouseArea(element) {
+  var _self = this,
+      _dragging = false,
+      _isOver = false,
+      _isDown = false,
+      _pos = new ElementPosition(element),
+      _areaPos = _pos.position(),
+      _moveData,
+      _downData;
 
-
-  var downOverMap = false;
-  var touchOff = false;
-  var numTouches = 0;
-  var globalX, globalY, staticTouch;
-
-  var DOUBLE_TAP_TIMEOUT = 600;
-  var SINGLE_TAP_TIMEOUT = 400;
-
-  var self = this,
-    isOn = false, // like 'down'
-    doubleTapStarted = false,
-    singleTapStartTime = 0,
-    singleTapStartData,
-    singleTapStarted = false,
-    prevTouchCount = 0;
-
-  var pinching = false;
-  var pinchStartX,
-    pinchStartY,
-    pinchStartRadius;
-  var pinchData;
-
-  var dragging = false;
-  var dragStartX,
-    dragStartY;
-
-  var touchId = 1; // An integer id, incremented when a new pinchstart or dragstart event fires.
-
-  var prevX, prevY, prevRadius;
-
-
-  Browser.addEventListener(surface, 'touchstart', handleTouchStart);
-  Browser.addEventListener(document, 'touchstart', handleGlobalStart);
-  Browser.addEventListener(document, 'touchend', handleTouchEnd);
-  Browser.addEventListener(document, 'touchmove', handleTouchMove);
-
-
-  self.on('touchoff', function() {
-    // zero touches
-  });
-
-  function getTouchData(touches) {
-    var obj = {zoomRatio:1, deltaScale:1, deltaX:0, deltaY:0, shiftX:0, shiftY:0};
-
-    var len = touches.length;
-    var touchCenterX = 0, touchCenterY = 0;
-    var i, touch;
-    var insideCount = 0;
-    for (i=0; i<len; i++) {
-      touch = touches[i];
-      var weight = 1/(i+1);
-      var pageX = touch.pageX;
-      var pageY = touch.pageY;
-      if (mapBounds.containsPoint(pageX, pageY)) {
-        insideCount += 1;
-      }
-
-      touchCenterX = weight * pageX + (1 - weight) * touchCenterX;
-      touchCenterY = weight * pageY + (1 - weight) * touchCenterY;
-    }
-
-    obj.inside = insideCount;
-
-    var dist = 0;
-    if (len > 0) {
-      for (i=0; i<len; i++) {
-        touch = touches[i];
-        dist += Point.distance(touchCenterX, touchCenterY, touch.pageX, touch.pageY);
-      }
-      dist /= len;
-    }
-
-    obj.pageX = touchCenterX;
-    obj.pageY = touchCenterY;
-    obj.mapX = touchCenterX - mapBounds.left;
-    obj.mapY = touchCenterY - mapBounds.bottom; // mapBounds.bottom is actually the top, in screen space.
-    obj.centerX = mapBounds.centerX();
-    obj.centerY = mapBounds.centerY();
-    obj.radius = dist;
-    obj.time = now();
-    return obj;
-  };
-
-
-  function handleTouchChange(e) {
-
-    var touches = e.touches;
-    numTouches = touches.length;
-    var prevTouches = prevTouchCount;
-
-    if (numTouches != 1 && dragging) {
-      dragging = false;
-      self.dispatchEvent('dragend');
-    }
-
-    if (numTouches < 2 && pinching) {
-      pinching = false;
-      self.dispatchEvent('pinchend');
-    }
-
-    if (numTouches == 0) {
-      trace('handleTouchChange() signleTapStarted:', singleTapStarted, 'data:', singleTapStartData);
-      if (doubleTapStarted) {
-        if (prevTouches == 1) {
-          //trace("[handleTouchChange()] doubletap");
-          self.dispatchEvent('doubletap', singleTapStartData);
-        }
-        doubleTapStarted = false;
-      }
-
-      // check for ... double tap
-      if (singleTapStarted) {
-        if (prevTouches == 1) {
-          doubleTapStarted = true;
-        }
-        // could fire event here
-        self.dispatchEvent('tap', singleTapStartData);
-        singleTapStarted = false;
-      }
-
-      prevTouchCount = numTouches;
-      return;
-    }
-
-    var obj = getTouchData(touches);
-    // Attach dom event object, to allow preventDefault() to be called in event handlers.
-    obj.touchEvent = e;
-    obj.touchId = touchId;
-
-    var pageX = obj.pageX;
-    var pageY = obj.pageY;
-
-    // Ignore new touches when all fingers are outside the map
-    // (experimental)
-    if (numTouches > prevTouches && obj.inside == 0) {
-     // trace("[HybridTouch.handleTouchChange()] no inside touches");
-      return;
-    }
-
-    if (numTouches == 1) { // Single finger touches the screen
-      if (prevTouches == 0) { // ... after no fingers were touching -- i.e. a 'tap'.
-
-        if (doubleTapStarted) {
-          // Cancel a double-tap if too much time has elapsed or if finger has  moved.
-          var dist = Point.distance(pageX, pageY, singleTapStartData.pageX, singleTapStartData.pageY);
-          var timeElapsed = obj.time - singleTapStartData.time;
-          if ( timeElapsed > DOUBLE_TAP_TIMEOUT || dist > 12 ) {
-            doubleTapStarted = false;
-          }
-          else {
-            // Prevent mobile safari page zoom
-            // when second touch starts (experimental)
-            // Problem: page zoom is blocked even if double-tap is disabled on the map...
-            //
-            if (numTouches == 1 && doubleTapStarted) {
-              //trace("[HybridTouch.handleTouches()] blocking second tap");
-              e.preventDefault();
-            }
-          }
-        }
-
-        // Unless a double tap is underway, initiate a new single tap.
-        if (doubleTapStarted == false) {
-          singleTapStarted = true;
-          singleTapStartData = obj;
-          singleTapStartTime = obj.time;
-        }
-      }
-
-      if (!dragging) {
-        prevX = dragStartX = pageX;
-        prevY = dragStartY = pageY;
-        dragging = true;
-        touchId += 1;
-        obj.touchId = touchId;
-        self.dispatchEvent('dragstart', obj);
-      }
-      else {
-        obj.shiftX = pageX - dragStartX;
-        obj.shiftY = pageY - dragStartY;
-        obj.deltaX = pageX - prevX;
-        obj.deltaY = pageY - prevY;
-        self.dispatchEvent('drag', obj);
-        prevX = pageX;
-        prevY = pageY;
-      }
-    }
-    else if (numTouches > 1 ) {
-      if (!pinching) {
-        pinching = true;
-        prevRadius = pinchStartRadius = obj.radius;
-        prevX = pinchStartX = obj.pageX;
-        prevY = pinchStartY = obj.pageY;
-        pinchData = obj;
-        touchId += 1;
-        obj.touchId = touchId;
-        self.dispatchEvent('pinchstart', obj);
-      }
-      else {
-        obj.startX = pinchStartX;
-        obj.startY = pinchStartY;
-        obj.zoomRatio = obj.radius / pinchStartRadius;
-        obj.deltaScale = obj.radius / prevRadius;
-        obj.shiftX = obj.pageX - obj.startX;
-        obj.shiftY = obj.pageY - obj.startY;
-        obj.deltaX = obj.pageX - prevX;
-        obj.deltaY = obj.pageY - prevY;
-        pinchData = obj;
-        self.dispatchEvent('pinch', obj);
-        prevX = obj.pageX;
-        prevY = obj.pageY;
-        prevRadius = obj.radius;
-      }
-    }
-
-    if (numTouches == 0) {
-      // self.dispatchEvent('touchoff');
-    }
-
-    prevTouchCount = numTouches;
-  }
-
-  function turnOn() {
-    isOn = true;
-    // 'touchstart' event similar to rollover; used to initiate hover-like effect
-    if (singleTapStartData) {
-      var data = {pageX:singleTapStartData.pageX, pageY:singleTapStartData.pageY}
-      self.dispatchEvent('touchstart', data);
-      self.dispatchEvent('touchon', data);
-    }
-  }
-
-  function turnOff() {
-    if (isOn) {
-      isOn = false;
-      // 'touchend' event similar to rollout or mouseout...
-      self.dispatchEvent('touchend');
-      self.dispatchEvent('touchoff');
-    }
-  }
-
-  function now() {
-    return new Date().getTime();
-  }
-
-  function handleGlobalStart(e) {
-    var touches = e.touches;
-    numTouches = touches.length;
-    if (numTouches == 1) {
-      var obj = getTouchData(touches);
-      globalX = obj.pageX;
-      globalY = obj.pageY;
-      staticTouch = true;
-    }
-  }
-
-
-  function handleTouchStart(e) {
-    // e.preventDefault() stops the page from scrolling along with the map, which
-    // may not be desirable, especially when map is zoomed-out...
-    //e.stopPropagation();
-
-    // mobile safari: e.targetTouches seems to include all current touches, not just new ones.
-
-    downOverMap = true;
-    handleTouchChange(e);
-    //return false; // this was triggering preventDefault() in Browser.addEventListener()
-  }
-
-  // Lifting a finger: Either a click or ends interaction.
-  function handleTouchEnd(e) {
-    // REMOVED: preventDefault() could cause problems, as this handler is registered on the window.
-    //e.preventDefault();
-    //e.stopPropagation();
-    trace("handleTouchEnd() overMap?:", downOverMap)
-
-    if (downOverMap) {
-      handleTouchChange(e);
-      // self.dispatchEvent('touchup', e);
-    }
-
-    elapsed = now() - singleTapStartTime;
-    if (downOverMap && elapsed < SINGLE_TAP_TIMEOUT) {
-      turnOn();
-    }
-    else {
-      if (staticTouch) {
-        turnOff();
-      }
-      // turnOff();
-    }
-
-    if (numTouches == 0) {
-      downOverMap = false;
-    }
-  }
-
-  function handleTouchMove(e) {
-    //turnOff(); // Dragging ends interaction.
-    staticTouch = false;
-    if (!downOverMap) {
-      return;
-    }
-    handleTouchChange(e);
-  };
-}
-
-Opts.extendPrototype(TouchHandler, EventDispatcher);
-
-
-/** @requires core.geo, browser, hybrid-touch */
-
-
-function HybridMouse(opts) {
-  this._ignoredElements = [];
-  this.dragging = false;
-  this._overMap = false;
-  this._boundsOnPage = new BoundingBox();
-
-  this.opts = Utils.extend({
-    touchHover: true,
-    touchClick: false  // touchUp maps to mouseUp for click
-  }, opts);
+  _pos.on('change', function() {_areaPos = _pos.position()});
 
   if (!Browser.touchEnabled) {
-      // Changed from window.onmousemove; ie8- doesn't support mousemove on window
-      //Browser.addEventListener(document, 'mousemove', this.handleMouseMove, this);
-      Browser.addEventListener(document, 'mousemove', this.throttledMouseMove, this);
-
-      //Browser.addEventListener(document, 'mouseout', function() { trace("out"); });
-      //Browser.addEventListener(window, 'resize', this.updateDivBounds, this);
-      // using body instead of window; window is triggered by interaction with browser scrollbars.
-      Browser.addEventListener(document.body, 'mousedown', this.handleMouseDown, this);
-      Browser.addEventListener(document, 'mouseup', this.handleMouseUp, this);
-  }
-}
-
-
-Opts.inherit(HybridMouse, Waiter);
-
-HybridMouse.prototype.ignoreElement = function(el) {
-  if (!el || Utils.contains(this._ignoredElements, el)) {
-    return;
-  }
-  this._ignoredElements.push(el);
-};
-
-
-HybridMouse.prototype.setMapContainer = function(surface) {
-  if (!surface) {
-    trace("!!! [HybridMouse.setMapContainer()] surfac is empty");
-    return;
-  }
-  if (this._mapContainer) {
-    return;
-  }
-  this._mapContainer = surface;
-  var self = this;
-
-  if (Browser.iPhone || Browser.touchEnabled) {
-    var touch = new TouchHandler(surface, this._boundsOnPage);
-    touch.on('touchstart', this.handleTouchStart, this);
-    touch.on('touchend', this.handleTouchEnd, this);
-    if (this.opts.touchClick) {
-      touch.on('tap', handleTap, this);
-    }
-    this.touch = touch;
+    Browser.on(document, 'mousemove', onMouseMove);
+    // mousedown on body instead of window; window is triggered by interaction with browser scrollbars.
+    Browser.on(document.body, 'mousedown', onMouseDown);
+    Browser.on(document, 'mouseup', onMouseUp);
+    Browser.on(element, 'mouseover', onAreaOver);
+    Browser.on(element, 'mouseout', onAreaOut);
+    Browser.on(element, 'mousedown', onAreaDown);
+    Browser.on(element, 'dblclick', onAreaDblClick);
   }
 
-
-  Browser.on(surface, 'mouseover', handleMouseOver, this);
-  Browser.on(surface, 'mousedown', function(e) {e.preventDefault();}); // prevent text selection cursor
-  //  Moved adding mouseout handler to handleMouseOver()
-  //  Browser.addEventListener(surface, 'mouseout', handleMouseOut, this);
-  Browser.on(surface, 'dblclick', handleDoubleClick, this);
-
-  function handleTap(e) {
-    // Assume 'tap' is over map; temporarily set overMap to true
-    var over = this._overMap;
-    this._overMap = true;
-    this._moveData = this.getStandardMouseData(e);
-    this.dispatchEvent('click', this._moveData);
-    this._overMap = over;
+  function onAreaDown(e) {
+    e.preventDefault(); // prevent text selection cursor on drag
   }
 
-
-  function handleMouseOver(e) {
-    //trace("[HybridMouse.handleMouseOver()]");
-    self.triggerMouseOver();
+  function onAreaOver(e) {
+    _isOver = true;
+    _self.dispatchEvent('enter');
   }
 
-  function handleDoubleClick(e) {
-    if (self.overMap()) {
-      // DOESNT WORK (Chrome) // e.preventDefault(); // Prevent map element from being selected in the browser.
-      var obj = self.getStandardMouseData(e);
-      self.dispatchEvent('dblclick', obj);
-    }
+  function onAreaOut(e) {
+    _isOver = false;
+    _self.dispatchEvent('leave');
   }
 
-  this.isReady() == false && this.startWaiting();
-};
-
-
-HybridMouse.prototype.overMap = function() {
-  return this._overMap;
-};
-
-HybridMouse.prototype.mouseDown = function() {
-  return !!this._mouseDown;
-};
-
-HybridMouse.prototype.mouseDownOverMap = function() {
-  return !!this._mouseDownOverMap;
-}
-
-// TODO: explain better; this is like a press or button-down
-HybridMouse.prototype.handleTouchStart = function(evt) {
-  this.triggerMouseOver();
-  this.handleMouseMove(evt);
-};
-
-// TODO: explain; like a button-up
-HybridMouse.prototype.handleTouchEnd = function(evt) {
-  this.triggerMouseOut();
-};
-
-/**
- * Now fired on body -> mouseover
- */
-HybridMouse.prototype.handleMouseOut = function(e) {
-
-  // Don't fire mouseout if we are rolling around inside the map container.
-  // ... or have rolled over a popup, etc...
-  //
-  var target = (e.target) ? e.target : e.srcElement;
-  var surface = this._mapContainer;
-
-  while (target && target.nodeName != 'BODY' && target != window) {
-    if (target == surface || Utils.contains(this._ignoredElements, target)) {
-      this._deferringMouseOut = true;
-      return;
-    }
-    target = target.parentNode;
-  }
-
-  this.triggerMouseOut();
-}
-
-
-HybridMouse.prototype.triggerMouseOut = function() {
-  if (this._overMap) {
-    this._overMap = false;
-
-    if (true) {
-      Browser.removeEventListener(this._mapContainer, 'mouseout', this.handleMouseOut, this);
-      //Browser.removeEventListener(window, 'mouseout', this.handleMouseOut, this);
-    } else {
-      Browser.removeEventListener(document.body, 'mouseover', this.handleMouseOut, this);
-      Browser.removeEventListener(window, 'mouseout', this.handleMouseOut, this);
+  function onMouseUp(e) {
+    _isDown = false;
+    if (_dragging) {
+      _dragging = false;
+      _self.dispatchEvent('dragend');
     }
 
-    this.dispatchEvent('mouseout');
-  }
-};
-
-HybridMouse.prototype.triggerMouseOver = function() {
-
-  this._deferringMouseOut = false; // cancel deferred mouse out, e.g. mousing over a popup
-
-  if (!this._overMap) {
-    this._overMap = true;
-
-    if (true) {
-      //Browser.addEventListener(window, 'mouseout', this.handleMouseOut, this);
-      Browser.on(this._mapContainer, 'mouseout', this.handleMouseOut, this);
-    } else {
-      this._mapContainer != document.body && Browser.addEventListener(document.body, 'mouseover', this.handleMouseOut, this);
-      Browser.addEventListener(window, 'mouseout', this.handleMouseOut, this);
-    }
-    this.dispatchEvent('mouseover');
-  }
-};
-
-
-HybridMouse.prototype.updateDragging = function(obj) {
-  var overMap = this.overMap();
-  var mouseDown = this.mouseDownOverMap();
-
-  if (!this.dragging) {
-    if (mouseDown && overMap) {
-      this._dragStartData = obj;
-      this.dragging = true;
-      this._prevX = obj.pageX;
-      this._prevY = obj.pageY;
-      this.dispatchEvent('dragstart', obj);
-    }
-  }
-  else if (!mouseDown) {
-    this.dragging = false;
-    this.dispatchEvent('dragend', obj);
-  }
-  else {
-    obj.shiftX = obj.pageX - this._dragStartData.pageX;
-    obj.shiftY = obj.pageY - this._dragStartData.pageY;
-    obj.deltaX = obj.pageX - this._prevX;
-    obj.deltaY = obj.pageY - this._prevY;
-    this.dispatchEvent('drag', obj);
-    this._prevX = obj.pageX;
-    this._prevY = obj.pageY;
-  }
-};
-
-HybridMouse.prototype.handleMouseDown = function(e) {
-  this._mouseDown = true;
-  if (this.overMap()) {
-    this._mouseDownOverMap = true;
-    // e.preventDefault && e.preventDefault(); // try to prevent selection
-    var data = this.getStandardMouseData(e);
-    data.downTime = (new Date()).getTime();
-    this._downData = data;
-    this.updateDragging(data);
-  }
-};
-
-
-HybridMouse.prototype.handleDownUp = function(downData, upData) {
-  if (downData && this.overMap()) {
-    if (Math.abs(downData.pageX - upData.pageX) + Math.abs(downData.pageY - upData.pageY) < 6) {
-      var elapsed = (new Date()).getTime() - downData.downTime;
-      if (elapsed < 500) {
-        this.dispatchEvent('click', upData);
+    if (_downData) {
+      var obj = procMouseEvent(e),
+          elapsed = obj.time - _downData.time,
+          dx = obj.pageX - _downData.pageX,
+          dy = obj.pageY - _downData.pageY;
+      if (elapsed < 500 && Math.sqrt(dx * dx + dy * dy) < 6) {
+        _self.dispatchEvent('click', obj);
       }
     }
   }
-};
 
-HybridMouse.prototype.handleMouseUp = function(e) {
-  this._mouseDown = false;
-  this._mouseDownOverMap = false;
-  var upData = this.getStandardMouseData(e);
-  this.updateDragging(upData);
-  this.handleDownUp(this._downData, upData);
-};
-
-
-HybridMouse.prototype.updateContainerBounds = function(l, t, r, b) {
-  this._boundsOnPage.setBounds(l, t, r, b);
-};
-
-HybridMouse.prototype.getStandardMouseData = function(e) {
-  // Get x, y pixel location of mouse relative to t, l corner of the page.
-  e = this.standardizeMouseEvent(e);
-  var pageX = e.pageX;
-  var pageY = e.pageY;
-
-  var bounds = this._boundsOnPage;
-  var mapX = pageX - bounds.left;
-  var mapY = pageY - bounds.bottom; // bottom is actually the upper bound
-
-  return { pageX:pageX, pageY:pageY, mapX:mapX, mapY:mapY, centerX:bounds.centerX(), centerY:bounds.centerY(), deltaX:0, deltaY:0, deltaScale:1 };
-};
-
-HybridMouse.prototype.getCurrentMouseData = function() {
-  var obj = {};
-  if (this._moveData) {
-    Opts.copyAllParams(obj, this._moveData);
+  function onMouseDown(e) {
+    _isDown = true;
+    _downData = _moveData
   }
-  return obj;
-};
 
-HybridMouse.prototype.pageX = function() {
-  return this._moveData.pageX;
-};
+  function onMouseMove(e) {
+    _moveData = procMouseEvent(e, _moveData);
 
-HybridMouse.prototype.pageY = function() {
-  return this._moveData.pageY;
-};
-
-
-var moveCount = 0;
-var moveSecond = 0;
-
-HybridMouse.prototype.standardizeMouseEvent = function(e) {
-  if (e && e.pageX !== void 0) {
-    return e;
-  }
-  e = e || window.event;
-  var o = {
-    pageX : e.pageX || e.clientX + document.body.scrollLeft +
-      document.documentElement.scrollLeft,
-    pageY : e.pageY || e.clientY + document.body.scrollTop +
-      document.documentElement.scrollTop
-  };
-  return o;
-};
-
-
-HybridMouse.prototype.throttledMouseMove = function(e) {
-  var minInterval = 40;
-  var now = (new Date).getTime();
-  var elapsed = now - (this._prevMoveTime || 0);
-  if (elapsed > minInterval) {
-    this._prevMoveTime = now;
-    this.handleMouseMove(e);
-  }
-};
-
-HybridMouse.prototype.handleMouseMove = function(e) {
-  this._moveData = this.getStandardMouseData(e);
-  this.triggerMouseMove();
-};
-
-HybridMouse.prototype.triggerMouseMove = function() {
-  var obj = this._moveData;
-  if (!obj) {
-    return;
-  }
-  var isOver = this._boundsOnPage.containsPoint(obj.pageX, obj.pageY); //  && this._overMap;
-
-  // Fallback over / out events if map container hasn't been registered
-  //
-  if (!this._mapContainer) {
-    var wasOver = this._overMap;
-    if (isOver && !wasOver) {
-      this.triggerMouseOver();
+    if (!_dragging && _isDown && _downData.hover) {
+      _dragging = true;
+      _self.dispatchEvent('dragstart');
     }
-    else if (!isOver && wasOver) {
-      this.triggerMouseOut();
+
+    if (_dragging) {
+      var obj = {
+        dragX: _moveData.pageX - _downData.pageX,
+        dragY: _moveData.pageY - _downData.pageY
+      };
+      _self.dispatchEvent('drag', Utils.extend(obj, _moveData));
     }
-  } else if (this._deferringMouseOut) {
-    this._deferringMouseOut = false;
-    this.triggerMouseOut();
   }
 
-  if (this._overMap) {
-    this.dispatchEvent('mousemove', obj);
+  function onAreaDblClick(e) {
+    if (_isOver) _self.dispatchEvent('dblclick', procMouseEvent(e));
   }
 
-  this.updateDragging(obj);
-};
+  function procMouseEvent(e, prev) {
+    var pageX = e.pageX,
+        pageY = e.pageY;
 
+    return {
+      time: +new Date,
+      pageX: pageX,
+      pageY: pageY,
+      hover: _isOver,
+      x: pageX - _areaPos.pageX,
+      y: pageY - _areaPos.pageY,
+      dx: prev ? pageX - prev.pageX : 0,
+      dy: prev ? pageY - prev.pageY : 0
+    };
+  }
 
+  this.isOver = function() {
+    return _isOver;
+  }
+
+  this.isDown = function() {
+    return _isDown;
+  }
+
+  this.mouseData = function() {
+    return Utils.extend({}, _moveData);
+  }
+}
+
+Opts.inherit(MouseArea, EventDispatcher);
 
 
 /** @requires browser, events, arrayutils, tweening */
 
-/**
- * 
- * @param {Mouse} 
- * @constructor
- */
-function MouseWheelHandler(mouse) {
-  var self = this;
-  var prevWheelTime = 0;
-  var currDirection = 0;
-  var scrolling = false;
+// @mouse: MouseArea object
+//
+function MouseWheel(mouse) {
+  var self = this,
+      prevWheelTime = 0,
+      currDirection = 0,
+      scrolling = false;
   init();
 
   function init() {
     // reference: http://www.javascriptkit.com/javatutors/onmousewheel.shtml
     if (window.onmousewheel !== undefined) { // ie, webkit
-      Browser.on(window, 'mousewheel', handlePageScroll, self);
+      Browser.on(window, 'mousewheel', handleWheel);
     }
     else { // firefox
-      Browser.on(window, 'DOMMouseScroll', handlePageScroll, self);
+      Browser.on(window, 'DOMMouseScroll', handleWheel);
     }
     FrameCounter.addEventListener('tick', handleTimer, self);
   }
@@ -8681,7 +8108,7 @@ function MouseWheelHandler(mouse) {
     var sustainTime = 80;
     var fadeTime = 60;
     var elapsed = evt.time - prevWheelTime;
-    if (currDirection == 0 || elapsed > sustainTime + fadeTime || !mouse.overMap()) {
+    if (currDirection == 0 || elapsed > sustainTime + fadeTime || !mouse.isOver()) {
       currDirection = 0;
       scrolling = false;
       return;
@@ -8694,7 +8121,7 @@ function MouseWheelHandler(mouse) {
       multiplier *= Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
     }
 
-    var obj = mouse.getCurrentMouseData();
+    var obj = mouse.mouseData();
     obj.direction = currDirection;
     obj.multiplier = multiplier;
     if (!scrolling) {
@@ -8704,8 +8131,8 @@ function MouseWheelHandler(mouse) {
     self.dispatchEvent('mousewheel', obj);
   }
 
-  function handlePageScroll(evt) {
-    if (mouse.overMap()) {
+  function handleWheel(evt) {
+    if (mouse.isOver()) {
       evt.preventDefault();
       var direction = 0; // 1 = zoom in / scroll up, -1 = zoom out / scroll down
       if (evt.wheelDelta) {
@@ -8715,51 +8142,42 @@ function MouseWheelHandler(mouse) {
         direction = evt.detail > 0 ? -1 : 1;
       }
 
-      prevWheelTime = (new Date()).getTime();
+      prevWheelTime = +new Date;
       currDirection = direction;
     }
   }
 }
 
-Opts.inherit(MouseWheelHandler, EventDispatcher);
+Opts.inherit(MouseWheel, EventDispatcher);
 
-/** @requires browser, events, tweening, hybrid-mouse, hybrid-mousewheel */
+/** @requires browser, events, tweening, mouse-area, mouse-wheel */
 
 function MshpMouse(ext) {
   var p = ext.position(),
-      mouse = new HybridMouse({touchClick: true}),
+      mouse = new MouseArea(p.element),
       _fx, _fy; // zoom foci, [0,1]
 
   var zoomTween = new NumberTween(function(scale, done) {
     ext.rescale(scale, _fx, _fy);
   });
 
-  mouse.setMapContainer(p.element)
-  calibrate();
-  ext.on('resize', calibrate);
-
-  function calibrate() {
-    var o = ext.position();
-    mouse.updateContainerBounds(o.pageX, o.pageY + o.height, o.pageX + o.width, o.pageY);
-  }
-
   mouse.on('dblclick', function(e) {
     var from = ext.scale(),
         to = from * 3;
-    _fx = e.mapX / ext.width();
-    _fy = e.mapY / ext.height();
+    _fx = e.x / ext.width();
+    _fy = e.y / ext.height();
     zoomTween.start(from, to);
   });
 
   mouse.on('drag', function(e) {
-    ext.pan(e.deltaX, e.deltaY);
+    ext.pan(e.dx, e.dy);
   });
 
-  var wheel = new MouseWheelHandler(mouse);
+  var wheel = new MouseWheel(mouse);
   wheel.on('mousewheel', function(e) {
     var k = 1 + (0.11 * e.multiplier),
         delta = e.direction > 0 ? k : 1 / k;
-    ext.rescale(ext.scale() * delta, e.mapX / ext.width(), e.mapY / ext.height());
+    ext.rescale(ext.scale() * delta, e.x / ext.width(), e.y / ext.height());
   });
 }
 
@@ -8815,7 +8233,7 @@ function MshpMap(el, opts_) {
     })
 
     btn.newChild('img').attr('src', "images/home.png")
-      .on('click', function() {
+      .on('click', function(e) {
         _ext.reset();
       });
   }

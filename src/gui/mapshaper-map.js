@@ -49,7 +49,7 @@ function MshpMap(el, opts_) {
     })
 
     btn.newChild('img').attr('src', "images/home.png")
-      .on('click', function() {
+      .on('click', function(e) {
         _ext.reset();
       });
   }
