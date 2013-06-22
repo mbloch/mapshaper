@@ -27,48 +27,32 @@
 		<div id="g-topojson-btn" class="g-next-btn g-panel-btn">TopoJSON</div>
 	</div>
 </div>
-<div id="mshp-intro-screen">
 
-<a href="https://github.com/mbloch/mapshaper"><img class="fork-me" src="images/fork-me-right-cerulean@2x.png" alt="Fork me on GitHub"></a>
-<!--
-<div>
-	<h3>Welcome to the new mapshaper!</h3>
-	<p>
-		Changes from the <a href="http://www.mapshaper.com">original</a> program include:
-	</p>	
-	<ul>
-	<li>an improved topology algorithm
-	<li>client-side processing, so your data stays private
-	<li>a command-line script, available on github
-	</ul>
-</div>-->
 <div id="mshp-not-supported">
 	<h4>Unfortunately, mapshaper can't run in <span class="g-unsupported-browser">this web browser</span></h4>
 	<ul>For best results, try <a href="http://www.google.com/chrome">Google Chrome</a></ul>
 </div>
-<div id="mshp-import">
-	<h4>To start,  <div class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class="g-label-text">select</span></div>a polygon .shp file<br> or drag a file onto this window</h4>
-	<ul>
+<div id="mshp-intro-screen">
+	<a href="https://github.com/mbloch/mapshaper"><img class="fork-me" src="images/fork-me-right-cerulean@2x.png" alt="Fork me on GitHub"></a>
 
-	<div></div>
+	<div id="mshp-import">
+		<h4>To start,  <div class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class="g-label-text">select</span></div>a polygon .shp file<br> or drag a file onto this window</h4>
+		<ul>
 
-
-	<div id="g-import-options">
-	<div>
-	<input type="checkbox" class="g-checkbox" id="g-import-spherical-opt"/>
-	<label for="g-import-spherical-opt">use spherical coordinates</label>
-	<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Recommended for<br>unprojected shapefiles</div></div></div>
-	</div>
-	<div>
-	<input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>
-	<label for="g-import-retain-opt">preserve tiny shapes</label>
-	<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Prevents small shapes<br /> from being removed<br />at high simplification</div></div></div>
-	</div>
-
-	<div><div class="g-next-btn g-panel-btn">next</div></div>
-	</div> <!-- g-import-options -->
-	</ul>
-</div>
+		<div id="g-import-options">
+			<div>
+				<input type="checkbox" class="g-checkbox" id="g-import-spherical-opt"/>
+				<label for="g-import-spherical-opt">use spherical coordinates</label>
+				<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Recommended for<br>unprojected shapefiles</div></div></div>
+				</div>
+				<div>
+				<input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>
+				<label for="g-import-retain-opt">preserve tiny shapes</label>
+				<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Prevents small shapes<br /> from being removed<br />at high simplification</div></div></div>
+			</div>
+		</div> <!-- g-import-options -->
+		</ul>
+	</div> <!-- mshp-import -->
 </div> <!-- mshp-intro-screen -->
 
 <div id="mshp-main-page" class="mshp-page">

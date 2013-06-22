@@ -26,7 +26,7 @@ function introPage() {
   new FileChooser('#g-shp-import-btn').on('select', function(e) {
     importer.readFiles(e.files);
   });
-  El("#mshp-import").show();
+  // El("#mshp-import").show();
 }
 /*
 function ImportPanel(importer) {

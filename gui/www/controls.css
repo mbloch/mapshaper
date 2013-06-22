@@ -6,7 +6,7 @@
 	margin: 5px 9px 0 0;
 }
 
-@media (max-width: 930px) {
+@media (max-width: 890px) {
 	body.editing  #g-simplify-control-wrapper {
 		top: 23px;
 		margin-left: 12px;
@@ -38,7 +38,7 @@
 #g-simplify-control {
 	text-align: center;
 	display: none;
-	padding-right: 140px;
+	padding-right: 128px;
 }
 
 .g-page-header .g-label {
@@ -57,7 +57,7 @@
 #g-simplify-control .g-track {   	
 	-webkit-border-radius: 2px;
   	-moz-border-radius: 2px;
-	width: 400px;
+	width: 360px;
 	background-color: #fff;
 	height: 2px;
 }

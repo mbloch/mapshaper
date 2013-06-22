@@ -2,7 +2,6 @@
 body {
 	margin: 0;
 	padding: 0;
-	background: #f0f0f0;
 	font-size: 13px;
 	font-family: Helvetica, Arial, sans-serif;
 	line-height: 1;
@@ -83,10 +82,8 @@ h2, h4, h5 {
 }
 
 #mshp-intro-screen {
-	margin: auto;
+	text-align: center;
 	margin-top: 54px;
-	display: block;
-	width: 400px;
 }
 
 #mshp-intro-screen h3 {
@@ -98,7 +95,9 @@ h2, h4, h5 {
 #mshp-intro-screen h4 {
 	margin-top: 18px;
 	color: #597200;
-	font-size: 13px;
+	font-size: 14px;
+	font-weight: normal;
+	line-height: 1.5;
 }
 
 #mshp-intro-screen p,
@@ -111,9 +110,7 @@ h2, h4, h5 {
 	padding: 0;
 }
 
-
 #mshp-not-supported,
-#mshp-import,
 #g-import-options {
 	display: none;
 }
@@ -122,6 +119,11 @@ h2, h4, h5 {
 	margin-bottom: 3px;
 }
 
+#mshp-import {
+	display: inline-block;
+	padding-right: 3%;
+	text-align: left;
+}
 
 /* ======== SIMPLIFY SCREEN ======== */
 
