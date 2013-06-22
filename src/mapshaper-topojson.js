@@ -1,7 +1,5 @@
 /* @requires mapshaper-common, mapshaper-geojson */
 
-
-
 MapShaper.importTopoJSON = function(obj) {
   var mx = 1, my = 1, bx = 0, by = 0;
   if (obj.transform) {
@@ -32,7 +30,6 @@ MapShaper.importTopoJSON = function(obj) {
 //   of Polygon and MultiPolygon shapes
 // TODO: Adjust quantization to suit the amount of detail in the vector lines
 // TODO: Support ids from attribute data
-// TODO: Handle holes correctly
 //
 MapShaper.exportTopoJSON = function(data) {
   if (!data.objects || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
@@ -46,7 +43,8 @@ MapShaper.exportTopoJSON = function(data) {
   });
 
   var srcBounds = data.bounds,
-      destBounds = new Bounds([0, 0, 100000, 100000]),
+      resXY = findTopoJSONResolution(arcs),
+      destBounds = new Bounds(0, 0, srcBounds.width() / resXY[0], srcBounds.height() / resXY[1]),
       tr = srcBounds.getTransform(destBounds),
       inv = tr.invert();
 
@@ -81,6 +79,27 @@ MapShaper.exportTopoJSON = function(data) {
 
   return JSON.stringify(obj);
 };
+
+// Find the x, y values that map to x / y integer unit in topojson output
+// Calculated as 1/50 the size of average x and y offsets
+// (a compromise between compression, precision and simplicity)
+//
+function findTopoJSONResolution(arcs) {
+  var dx = 0, dy = 0, n = 0;
+  Utils.forEach(arcs, function(arc) {
+    var a, b;
+    for (var i=1, len = arc.length; i<len; i++, n++) {
+      a = arc[i-1];
+      b = arc[i];
+      dx += Math.abs(b[0] - a[0]);
+      dy += Math.abs(b[1] - a[1]);
+    }
+  });
+  var k = 0.02,
+      xres = dx * k / n,
+      yres = dy * k / n;
+  return [xres, yres];
+}
 
 function exportTopoJSONObject(shapes, type) {
   var obj = {
@@ -119,4 +138,3 @@ function exportArcsForTopoJSON(paths) {
     return path.ids;
   });
 }
-
