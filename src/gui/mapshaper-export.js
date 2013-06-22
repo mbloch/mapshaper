@@ -2,7 +2,7 @@
 
 var ExportControl = function(arcData, topoData, opts) {
   var filename = opts && opts.output_name || "out";
-
+  var blobUrl;
   var el = El('#g-export-control').show();
   var anchor = el.newChild('a').attr('href', '#').node();
   var geoBtn = new SimpleButton('#g-geojson-btn').active(true).on('click', function() {
@@ -19,8 +19,14 @@ var ExportControl = function(arcData, topoData, opts) {
   });
 
   function exportBlob(filename, blob) {
-    var url = URL.createObjectURL(blob);
-    anchor.href = url;
+    try {
+      // revoke previous download url, if any. TODO: do this when download completes (how?)
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      blobUrl = URL.createObjectURL(blob);
+    } catch(e) {
+      error("This browser doesn't support saving files.")
+    }
+    anchor.href = blobUrl;
     anchor.download = filename;
     var clickEvent = document.createEvent("MouseEvent");
     clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
