@@ -1107,6 +1107,10 @@ function distanceSq(ax, ay, bx, by) {
   return dx * dx + dy * dy;
 }
 
+function distance2D(ax, ay, bx, by) {
+  return Math.sqrt(distanceSq(ax, ay, bx, by));
+}
+
 
 function distanceSq3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
@@ -1135,8 +1139,8 @@ function innerAngle_slow(ax, ay, bx, by, cx, cy) {
 // TODO: make this safe for small angles
 //
 function innerAngle(ax, ay, bx, by, cx, cy) {
-  var ab = Point.distance(ax, ay, bx, by),
-      bc = Point.distance(bx, by, cx, cy),
+  var ab = distance2D(ax, ay, bx, by),
+      bc = distance2D(bx, by, cx, cy),
       theta, dotp;
   if (ab == 0 || bc == 0) {
     theta = 0;
@@ -2990,7 +2994,7 @@ Browser.onload = function(handler, ctx) {
 Opts.copyAllParams(Browser, Env);
 
 
-/*
+/* 
 @requires
 events
 arrayutils
@@ -3152,7 +3156,7 @@ function El(ref) {
   this.el = Browser.getElement(ref) || Browser.createElement(ref); // TODO: detect type of argument
 }
 
-Opts.inherit(El, EventDispatcher); //
+Opts.inherit(El, EventDispatcher); // 
 
 El.removeAll = function(sel) {
   var arr = Elements.__select(sel);
@@ -3286,7 +3290,7 @@ Utils.extend(El.prototype, {
       // var styles = Browser.getElementStyle(this.el);
       // this._display = styles.display;
       this.css(this.hideCSS());
-      this._hidden = true;
+      this._hidden = true;    
     }
     return this;
   },
@@ -4094,7 +4098,7 @@ function ShpReader(src) {
     return shapes;
   }
 
-  // Callback interface: for each record in a .shp file, pass a
+  // Callback interface: for each record in a .shp file, pass a 
   //   record object to a callback function
   //
   this.forEachShape = function(callback) {
@@ -4226,7 +4230,7 @@ ShpReader.prototype.getRecordClass = function(type) {
     } else {
       bin.skipBytes(32); // skip bbox
       this.partCount = hasParts ? bin.readUint32() : 1;
-      this.pointCount = bin.readUint32();
+      this.pointCount = bin.readUint32();      
     }
     this._data = function() {
       return this.isNull ? null : bin.position(pos);
@@ -4387,9 +4391,9 @@ function joinDataTables(dest, destKey, src, srcKey, srcFilter) {
 
   if (!dest.fieldExists(destKey)) {
     trace("[JoinedTable.joinTable()] destination table is missing its key field: ", destKey);
-    return;
+    return;    
   }
-
+  
   if (!src.fieldExists(srcKey)) {
     trace("[JoinedTable.joinTable()] source table is missing its key field:", srcKey);
     return;
@@ -4455,10 +4459,10 @@ JoinedTable.prototype.joinTablesV1 = function(dest, destKey, src, srcKey) {
     trace("[JoinedTable] missing one or more key fields:", srcKey, destKey);
     return;
   }
-
+  
   var destSchema = dest.schema;
   var srcSchema = src.schema;
-
+  
   var keyArr = Utils.getKeys(srcSchema);
 
   keyArr = Utils.filter(keyArr, function(val) { return !(val in destSchema)});
@@ -4499,7 +4503,7 @@ JoinedTable.prototype.joinTablesV1 = function(dest, destKey, src, srcKey) {
 
 /* @requires core, events, arrayutils, table-join */
 
-Opts.copyAllParams(C, {
+Opts.copyAllParams(C, { 
   INTEGER: 'integer',
   STRING: 'string',
   DOUBLE: 'double',
@@ -4945,7 +4949,7 @@ DataTable.prototype.getNullValueForType = function(type) {
   var nullVal = null;
   if (type == C.INTEGER) {
     nullVal = 0;
-  }
+  } 
   else if (type == C.STRING) {
     nullVal = '';
   }
@@ -4964,7 +4968,7 @@ DataTable.prototype.appendRecordData = function(obj, niceNull) {
   var ifield = this._indexedField || void 0;
   for (var fname in dest) {
     var val = obj[fname]; // TODO: validate? convert undefined to null?
-
+    
     if (val === void 0 && niceNull) {
       var type = this.schema[fname];
       val = this.getNullValueForType(type);
@@ -5090,7 +5094,7 @@ DataTable.prototype.getFilteredCopy = function(ids) {
   var dest = {};
   var schema = {};
   Opts.copyAllParams(schema, this.schema);
-
+  
   var newLen = ids.length;
   var src = this.data;
   for (var fname in src) {
@@ -5118,7 +5122,7 @@ DataTable.prototype.getFilteredCopy = function(ids) {
 
 DataTable.prototype.getFilteredCopy = function(ids) {
   var schema = Opts.copyAllParams({}, this.schema);
-
+  
   var newLen = ids.length;
   var dest = Utils.map(this.data, function(arr, key) {
     return Utils.getFilteredCopy(arr, ids);
@@ -6287,8 +6291,8 @@ MapShaper.getXYHashFunction = function(bbox, hashTableSize) {
   var mask = (1 << 29) - 1,
       kx = (1e8 * Math.E / bbox.width()),
       ky = (1e8 * Math.PI / bbox.height()),
-      bx = -bbox.left,
-      by = -bbox.bottom;
+      bx = -bbox.xmin,
+      by = -bbox.ymin;
 
   return function(x, y) {
     // transform coords to integer range and scramble bits a bit
@@ -7743,7 +7747,7 @@ function Heap() {
     if (!heapArr || heapSize > heapArr.length) {
       var bufLen = heapSize * 1.2 | 0;
       heapArr = new Int32Array(bufLen);
-      indexArr = new Int32Array(bufLen);
+      indexArr = new Int32Array(bufLen); 
     }
   };
 
