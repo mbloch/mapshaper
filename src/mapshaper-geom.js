@@ -14,6 +14,10 @@ function distanceSq(ax, ay, bx, by) {
   return dx * dx + dy * dy;
 }
 
+function distance2D(ax, ay, bx, by) {
+  return Math.sqrt(distanceSq(ax, ay, bx, by));
+}
+
 
 function distanceSq3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
@@ -42,8 +46,8 @@ function innerAngle_slow(ax, ay, bx, by, cx, cy) {
 // TODO: make this safe for small angles
 //
 function innerAngle(ax, ay, bx, by, cx, cy) {
-  var ab = Point.distance(ax, ay, bx, by),
-      bc = Point.distance(bx, by, cx, cy),
+  var ab = distance2D(ax, ay, bx, by),
+      bc = distance2D(bx, by, cx, cy),
       theta, dotp;
   if (ab == 0 || bc == 0) {
     theta = 0;

@@ -1,6 +1,7 @@
-/* 
+/*
 @requires
 core,
+bounds,
 nodejs,
 dbf-reader,
 mapshaper-cli,
@@ -23,7 +24,7 @@ var api = Utils.extend(MapShaper, {
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
   DbfReader: DbfReader,
-  BoundingBox: BoundingBox  // for testing
+  Bounds: Bounds
 });
 
 if (Node.inNode) {

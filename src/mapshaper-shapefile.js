@@ -139,7 +139,7 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
   T.start();
 
   var fileBytes = 100;
-  var bounds = new BoundingBox();
+  var bounds = new Bounds();
   var shapeBuffers = Utils.map(shapes, function(shape, i) {
     var shpObj = MapShaper.exportShpRecord(shape, arcs, i+1, shpType);
     fileBytes += shpObj.buffer.byteLength;
@@ -158,10 +158,10 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
     .littleEndian()
     .writeInt32(1000)
     .writeInt32(shpType)
-    .writeFloat64(bounds.left)
-    .writeFloat64(bounds.bottom)
-    .writeFloat64(bounds.right)
-    .writeFloat64(bounds.top)
+    .writeFloat64(bounds.xmin)
+    .writeFloat64(bounds.ymin)
+    .writeFloat64(bounds.xmax)
+    .writeFloat64(bounds.ymax)
     .skipBytes(4 * 8); // skip Z & M type bounding boxes;
 
   // write .shx header
@@ -213,10 +213,10 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
         .writeInt32((recordBytes - 8) / 2)
         .littleEndian()
         .writeInt32(shpType)
-        .writeFloat64(bounds.left)
-        .writeFloat64(bounds.bottom)
-        .writeFloat64(bounds.right)
-        .writeFloat64(bounds.top)
+        .writeFloat64(bounds.xmin)
+        .writeFloat64(bounds.ymin)
+        .writeFloat64(bounds.xmax)
+        .writeFloat64(bounds.ymax)
         .writeInt32(data.partCount)
         .writeInt32(data.pointCount);
 

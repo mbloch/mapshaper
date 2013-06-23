@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-geom, mapshaper-heap, core.geo */
+/* @requires mapshaper-common, mapshaper-geom, mapshaper-heap */
 
 var Visvalingam = {};
 
@@ -26,7 +26,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
       nextArr = new Int32Array(bufLen);
     }
 
-    // Initialize Visvalingam "effective area" values and references to 
+    // Initialize Visvalingam "effective area" values and references to
     //   prev/next points for each point in arc.
     //
     var values = new Float64Array(arcLen);
@@ -112,7 +112,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
 
 
 
-// The original mapshaper "modified Visvalingam" function uses a step function to 
+// The original mapshaper "modified Visvalingam" function uses a step function to
 // underweight more acute triangles.
 //
 Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {

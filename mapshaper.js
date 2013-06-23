@@ -1288,14 +1288,6 @@ if (inNode) {
     return obj;
   };
 
-  Node.toArrayBuffer = function(src) {
-    var dest = new ArrayBuffer(src.length);
-    for (var i = 0, n=src.length; i < n; i++) {
-      dest[i] = src[i];
-    }
-    return dest;
-  };
-
   Node.toBuffer = function(src) {
     if (src instanceof Buffer) return src;
     var dest = new Buffer(src.byteLength);
@@ -1622,7 +1614,7 @@ function NodeUrlLoader(url) {
 Opts.inherit(NodeUrlLoader, Waiter);
 */
 
-/* @requires core, nodejs */
+/* @requires core */
 
 // Wrapper for DataView class for more convenient reading and writing of
 //   binary data; Remembers endianness and read/write position.
@@ -1631,13 +1623,13 @@ Opts.inherit(NodeUrlLoader, Waiter);
 function BinArray(buf, le) {
   if (Utils.isNumber(buf)) {
     buf = new ArrayBuffer(buf);
-  } else if (Node.inNode && buf instanceof Buffer == true) {
+  } else if (Env.inNode && buf instanceof Buffer == true) {
     // Since node 0.10, DataView constructor doesn't accept Buffers,
     //   so need to copy Buffer to ArrayBuffer
-    buf = Node.toArrayBuffer(buf);
+    buf = BinArray.toArrayBuffer(buf);
   }
   if (buf instanceof ArrayBuffer == false) {
-    error("BinArray constructor requires an integer, ArrayBuffer or Buffer");
+    error("BinArray constructor takes an integer, ArrayBuffer or Buffer argument");
   }
   this._buffer = buf;
   this._view = new DataView(buf);
@@ -1645,6 +1637,14 @@ function BinArray(buf, le) {
   this._le = le !== false;
   this._words = buf.byteLength % 4 == 0 ? new Uint32Array(buf) : null;
 }
+
+BinArray.toArrayBuffer = function(src) {
+  var dest = new ArrayBuffer(src.length);
+  for (var i = 0, n=src.length; i < n; i++) {
+    dest[i] = src[i];
+  }
+  return dest;
+};
 
 // Return length in bytes of an ArrayBuffer or Buffer
 //
@@ -2898,13 +2898,13 @@ Utils.formatNumber = function(num, decimals, nullStr, showPos) {
 };
 
 
-/* @requires dataview, data, nodejs, textutils */
+/* @requires dataview, data, textutils */
 
 // DBF file format:
 // http://www.dbf2002.com/dbf-file-format.html
 // http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
 // http://www.dbase.com/Knowledgebase/INT/db7_file_fmt.htm
-// 
+//
 // TODO: handle non-ascii characters, e.g. multibyte encodings
 // cf. http://code.google.com/p/stringencoding/
 
@@ -2912,7 +2912,6 @@ Utils.formatNumber = function(num, decimals, nullStr, showPos) {
 // @src is a Buffer or ArrayBuffer or filename
 //
 function DbfReader(src) {
-  // TODO: validate src type
   if (Utils.isString(src)) {
     src = Node.readFile(src);
   }
@@ -2952,7 +2951,7 @@ DbfReader.prototype.readCols = function() {
   Utils.forEach(this.header.fields, function(field, col) {
     data[field.name] = this.readCol(col);
   }, this);
-  return data; 
+  return data;
 };
 
 DbfReader.prototype.readRows = function() {
@@ -3050,332 +3049,7 @@ DbfReader.prototype.readFieldHeader = function(bin) {
 };
 
 
-/** @requires core */
-
-Utils.extend(C, {
-  // alignment constants
-  N: 'n',
-  E: 'e',
-  W: 'w',
-  S: 's',
-  NW: 'nw',
-  NE: 'ne',
-  SE: 'se',
-  SW: 'sw',
-  TOP: 'top',
-  LEFT: 'left',
-  RIGHT: 'right',
-  BOTTOM: 'bottom',
-  CENTER: 'c'
-});
-
-
-// Basic 2d point class
-//
-function Point(x, y) {
-  this.x = x;
-  this.y = y;
-}
-
-Point.prototype.clone = function() {
-  return new Point(this.x, this.y);
-};
-
-Point.prototype.toString = function() {
-  return "{x:" + this.x + ", y:" + this.y + "}";
-};
-
-/*
-Point.prototype.distanceToXY = function(x, y) {
-  return Point.distance(this.x, this.y, x, y);
-};
-
-Point.prototype.distanceToPoint = function(p) {
-  return Point.distance(this.x, this.y, p.x, p.y);
-};
-*/
-
-Point.distance = function(x1, y1, x2, y2) {
-  var dx = x1 - x2,
-      dy = y1 - y2;
-  return Math.sqrt(dx * dx + dy * dy);
-};
-
-/*
-Point.prototype.equals = function(p) {
-  return this.x === p.x && this.y === p.y;
-};
-*/
-
-
-// Lat lon coordinate class.
-//
-function GeoPoint(lat, lng) {
-  this.lat = lat;
-  this.lng = lng;
-}
-
-GeoPoint.prototype.clone = function() {
-  return new GeoPoint(this.lat, this.lng);
-};
-
-GeoPoint.prototype.toString = function() {
-  var str = '[GeoPoint]: {lat:' + this.lat + ', lng:' + this.lng + '}';
-  return str;
-};
-
-
-function FourSides(l, t, r, b) {
-  this.left = l || 0;
-  this.top = t || 0;
-  this.right = r || 0;
-  this.bottom = b || 0;
-}
-
-FourSides.prototype.toString = function() {
-  return '{l:' + this.left + ', t:' + this.top + ', r:' +
-    this.right + ', b:' + this.bottom + '}';
-};
-
-
-
-// BoundingBox class assumes ymax is top and ymin is bottom
-// TODO: switch to using xmin, ymin, xmax, ymax instead of left, top, right, bottom
-//
-function BoundingBox() {
-  if (arguments.length == 4) {
-    this.setBounds.apply(this, arguments);
-  }
-}
-
-BoundingBox.prototype.toString = FourSides.prototype.toString;
-
-BoundingBox.prototype.hasBounds = function() {
-  return this.left !== undefined;
-};
-
-BoundingBox.prototype.hasSameBounds = function(bb) {
-  return this.left == bb.left && this.top == bb.top &&
-    this.right == bb.right && this.bottom == bb.bottom;
-};
-
-BoundingBox.prototype.width = function() {
-  return (this.right - this.left) || 0;
-};
-
-BoundingBox.prototype.height = function() {
-  return Math.abs(this.top - this.bottom) || 0; // handle flipped v bounds.
-};
-
-BoundingBox.prototype.setBounds = function(l, t, r, b) {
-  if (arguments.length == 1) {
-    // assume first arg is a BoundingBox
-    b = l.bottom;
-    r = l.right;
-    t = l.top;
-    l = l.left;
-  }
-  this.left = l;
-  this.top = t;
-  this.right = r;
-  this.bottom = b;
-  return this;
-};
-
-BoundingBox.prototype.getCenterPoint = function() {
-  if (!this.hasBounds()) error("Missing bounds");
-  return new Point(this.centerX(), this.centerY());
-};
-
-BoundingBox.prototype.centerX = function() {
-  var x = (this.left + this.right) * 0.5;
-  return x;
-};
-
-BoundingBox.prototype.centerY = function() {
-  var y = (this.top + this.bottom) * 0.5;
-  return y;
-};
-
-BoundingBox.prototype.containsPoint = function(x, y) {
-  if (x >= this.left && x <= this.right &&
-    y <= this.top && y >= this.bottom) {
-    return true;
-  }
-  return false;
-};
-
-// intended to speed up slightly bubble symbol detection; could use intersects() instead
-// * FIXED * may give false positives if bubbles are located outside corners of the box
-//
-BoundingBox.prototype.containsBufferedPoint = function( x, y, buf ) {
-  if ( x + buf > this.left && x - buf < this.right ) {
-    if ( y - buf < this.top && y + buf > this.bottom ) {
-      return true;
-    }
-  }
-  return false;
-};
-
-BoundingBox.prototype.intersects = function(bb) {
-  if (bb.left <= this.right && bb.right >= this.left &&
-    bb.top >= this.bottom && bb.bottom <= this.top) {
-    return true;
-  }
-  return false;
-};
-
-BoundingBox.prototype.contains = function(bb) {
-  if (bb.left >= this.left && bb.top <= this.top &&
-    bb.right <= this.right && bb.bottom >= this.bottom) {
-    return true;
-  }
-  return false;
-};
-
-BoundingBox.prototype.translate = function(x, y) {
-  this.setBounds(this.left + x, this.top + y, this.right + x,
-    this.bottom + y);
-};
-
-BoundingBox.prototype.padBounds = function(l, t, r, b) {
-  this.left -= l;
-  this.top += t;
-  this.right += r;
-  this.bottom -= b;
-}
-
-/**
- * Rescale the bounding box by a fraction. TODO: implement focus.
- * @param {number} pct Fraction of original extents
- * @param {number} pctY Optional amount to scale Y
- */
-BoundingBox.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
-  var halfWidth = (this.right - this.left) * 0.5;
-  var halfHeight = (this.top - this.bottom) * 0.5;
-  var kx = pct - 1;
-  var ky = pctY === undefined ? kx : pctY - 1;
-  this.left -= halfWidth * kx;
-  this.top += halfHeight * ky;
-  this.right += halfWidth * kx;
-  this.bottom -= halfHeight * ky;
-};
-
-/**
- * Return a bounding box with the same extent as this one.
- * @return {BoundingBox} Cloned bb.
- */
-BoundingBox.prototype.cloneBounds = function() {
-  var bb = new BoundingBox();
-  if (this.hasBounds()) {
-    bb.setBounds(this.left, this.top, this.right, this.bottom);
-  }
-  return bb;
-};
-
-BoundingBox.prototype.clearBounds = function() {
-  this.setBounds(new BoundingBox());
-}
-
-BoundingBox.prototype.mergePoint = function(x, y) {
-  if (this.left === void 0) {
-    this.setBounds(x, y, x, y);
-  } else {
-    // this works even if x,y are NaN
-    if (x < this.left)  this.left = x;
-    else if (x > this.right)  this.right = x;
-
-    if (y < this.bottom) this.bottom = y;
-    else if (y > this.top) this.top = y;
-  }
-};
-
-BoundingBox.prototype.mergeBounds = function(bb) {
-  var l, t, r, b;
-  if (bb.left !== void 0) {
-    l = bb.left, r = bb.right, t = bb.top, b = bb.bottom;
-  } else if (bb.length == 4) {
-    l = bb[0], r = bb[2], b = bb[1], t = bb[3]; // expects array: [xmin, ymin, xmax, ymax]
-  } else {
-    if (!this.hasBounds()) {
-      error("BoundingBox#mergeBounds() merging two empty boxes")
-    }
-    trace("BoundingBox#mergeBounds() invalid argument:", bb);
-    // return;
-  }
-
-  if (this.left === void 0) {
-    this.setBounds(l, t, r, b);
-  } else {
-    if (l < this.left) this.left = l;
-    if (r > this.right) this.right = r;
-    if (t > this.top) this.top = t;
-    if (b < this.bottom) this.bottom = b;
-  }
-};
-
-
-/**
- * TODO: remove 256
- */
-function TileExtent(w, h) {
-  this.mx = this.my = 1;
-  this.bx = this.by = 0;
-  this.widthInPixels = w || 256;
-  this.heightInPixels = h || 256;
-}
-
-Opts.inherit(TileExtent, BoundingBox);
-
-TileExtent.prototype.setBounds =  function() {
-  /*
-  if (b) {
-    // accept four coords (instead of one BoundingBox)
-    bb = new BoundingBox().setBounds(bb, t, r, b);
-  }
-  // trace("TileExtent() setBounds()", bb, t, r, b, "left:", bb.left)
-  this.mergeBounds(this, bb);
-  */
-  BoundingBox.prototype.setBounds.apply(this, arguments);
-  var bb = this;
-
-  var ppm = this.widthInPixels / (bb.right - bb.left);
-  this.mx = ppm;
-  //this.my = -ppm;
-  this.my = this.heightInPixels / (bb.bottom - bb.top);
-  this.bx = -ppm * bb.left;
-  this.by = -this.my * bb.top;
-  this.metersPerPixel = 1 / ppm; // 
-};
-
-TileExtent.prototype.updateBounds = TileExtent.prototype.setBounds; // TODO: remove updateBounds
-
-// apply after bounds have been set...
-//
-TileExtent.prototype.addPixelMargins = function(l, t, r, b) {
-  this.bx += l;
-  this.by -= b;
-  this.mx *= 1 - (l + r) / this.widthInPixels;
-  this.my *= 1 - (t + b) / this.heightInPixels;
-};
-
-TileExtent.prototype.transformXY = function(x, y, xy) {
-  xy = xy || new Point();
-  var xPix = x * this.mx + this.bx;
-  var yPix = y * this.my + this.by;
-  xy.x = xPix;
-  xy.y = yPix;
-  return xy;
-};
-
-TileExtent.prototype.clone = function() {
-  var ext = new TileExtent(this.widthInPixels, this.heightInPixels);
-  ext.setBounds(this);
-  return ext;
-};
-
-
-/* @requires arrayutils, core.geo */
+/* @requires arrayutils */
 
 // TODO: adapt to run in browser
 function stop(msg) {
@@ -3410,22 +3084,6 @@ MapShaper.parseLocalPath = function(path) {
   return obj;
 };
 
-/*
-    // TODO: give better output if fpath is a directory
-    var info = {};
-    var filename = Node.path.basename(fpath);
-    if (filename.lastIndexOf('/') == filename.length - 1) {
-      filename = filename.substr(0, filename.length-1);
-    }
-    info.file = filename;
-    info.path = Node.path.resolve(fpath);
-    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
-    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
-    info.directory = Node.path.dirname(info.path);
-    info.relative_dir = Node.path.dirname(fpath);
-    return info;
-*/
-
 
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var len=xsrc.length;
@@ -3450,28 +3108,8 @@ MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   }
 };
 
-/*
-MapShaper.calcArcBounds = function(arcs) {
-  var arcCount = arcs.length,
-      i = 0;
-  var arr = new Float64Array(arcCount * 4);
-  for (var arcId=0; arcId<arcCount; arcId++) {
-    var arc = arcs[arcId];
-    var xb = Utils.getArrayBounds(arc[0]);
-    var yb = Utils.getArrayBounds(arc[1]);
-    arr[i++] = xb.min;
-    arr[i++] = yb.min;
-    arr[i++] = xb.max;
-    arr[i++] = yb.max;
-  }
-  return arr;
-};
-
-*/
-
-
 MapShaper.calcXYBounds = function(xx, yy, bb) {
-  if (!bb) bb = new BoundingBox();
+  if (!bb) bb = new Bounds();
   var xbounds = Utils.getArrayBounds(xx),
       ybounds = Utils.getArrayBounds(yy);
   if (xbounds.nan > 0 || ybounds.nan > 0) error("[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
@@ -3497,7 +3135,7 @@ MapShaper.transposeXYCoords = function(arr) {
 MapShaper.convertTopoShape = function(shape, arcs, closed) {
   var parts = [],
       pointCount = 0,
-      bounds = new BoundingBox();
+      bounds = new Bounds();
 
   for (var i=0; i<shape.length; i++) {
     var topoPart = shape[i],
@@ -3910,6 +3548,10 @@ function distanceSq(ax, ay, bx, by) {
   return dx * dx + dy * dy;
 }
 
+function distance2D(ax, ay, bx, by) {
+  return Math.sqrt(distanceSq(ax, ay, bx, by));
+}
+
 
 function distanceSq3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
@@ -3938,8 +3580,8 @@ function innerAngle_slow(ax, ay, bx, by, cx, cy) {
 // TODO: make this safe for small angles
 //
 function innerAngle(ax, ay, bx, by, cx, cy) {
-  var ab = Point.distance(ax, ay, bx, by),
-      bc = Point.distance(bx, by, cx, cy),
+  var ab = distance2D(ax, ay, bx, by),
+      bc = distance2D(bx, by, cx, cy),
       theta, dotp;
   if (ab == 0 || bc == 0) {
     theta = 0;
@@ -4212,7 +3854,7 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
   T.start();
 
   var fileBytes = 100;
-  var bounds = new BoundingBox();
+  var bounds = new Bounds();
   var shapeBuffers = Utils.map(shapes, function(shape, i) {
     var shpObj = MapShaper.exportShpRecord(shape, arcs, i+1, shpType);
     fileBytes += shpObj.buffer.byteLength;
@@ -4231,10 +3873,10 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
     .littleEndian()
     .writeInt32(1000)
     .writeInt32(shpType)
-    .writeFloat64(bounds.left)
-    .writeFloat64(bounds.bottom)
-    .writeFloat64(bounds.right)
-    .writeFloat64(bounds.top)
+    .writeFloat64(bounds.xmin)
+    .writeFloat64(bounds.ymin)
+    .writeFloat64(bounds.xmax)
+    .writeFloat64(bounds.ymax)
     .skipBytes(4 * 8); // skip Z & M type bounding boxes;
 
   // write .shx header
@@ -4286,10 +3928,10 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
         .writeInt32((recordBytes - 8) / 2)
         .littleEndian()
         .writeInt32(shpType)
-        .writeFloat64(bounds.left)
-        .writeFloat64(bounds.bottom)
-        .writeFloat64(bounds.right)
-        .writeFloat64(bounds.top)
+        .writeFloat64(bounds.xmin)
+        .writeFloat64(bounds.ymin)
+        .writeFloat64(bounds.xmax)
+        .writeFloat64(bounds.ymax)
         .writeInt32(data.partCount)
         .writeInt32(data.pointCount);
 
@@ -4813,8 +4455,8 @@ MapShaper.simplifyArcsSph = function(arcs, simplify) {
 /* @requires arrayutils, mapshaper-common */
 
 // buildArcTopology() converts non-topological polygon data into a topological format
-// 
-// Input format: 
+//
+// Input format:
 // {
 //    xx: [Array],      // x-coords of each point in the dataset (coords of all shapes are concatenated)
 //    yy: [Array],      // y-coords of each point
@@ -4833,7 +4475,7 @@ MapShaper.buildArcTopology = function(obj) {
   T.start();
   if (!(obj.xx && obj.yy && obj.partIds && obj.shapeIds)) error("[buildArcTopology()] Missing required param/s");
 
-  var xx = obj.xx, 
+  var xx = obj.xx,
       yy = obj.yy,
       partIds = obj.partIds,
       shapeIds = obj.shapeIds,
@@ -4855,8 +4497,8 @@ MapShaper.buildArcTopology = function(obj) {
   T.stop("Find matching vertices");
 
   // Loop through all the points in the dataset, identifying arcs.
-  //  
-  T.start();  
+  //
+  T.start();
   var arcTable = new ArcTable(xx, yy, bbox),
       inArc = false;
 
@@ -4887,7 +4529,7 @@ MapShaper.buildArcTopology = function(obj) {
   function pointIsArcEndpoint(id) {
     var isNode = false,
         x = xx[id],
-        y = yy[id],    
+        y = yy[id],
         partId = partIds[id],
         isPartEndpoint = partId !== partIds[id-1] || partId !== partIds[id+1];
     // trace("partIsArcEndpoint()", id, "x, y:", x, y);
@@ -4899,7 +4541,7 @@ MapShaper.buildArcTopology = function(obj) {
       // case -- if point is endpoint of a non-topological ring, then point is a node.
       // TODO: some nodes formed with this rule might be removed if arcs on either side
       //   of the node belong to the same shared boundary...
-      //   
+      //
       //
       isNode = true;
     }
@@ -4917,7 +4559,7 @@ MapShaper.buildArcTopology = function(obj) {
         if (nextX == x && nextY == y) {
           matchCount++;
           if (matchCount == 1) {
-            // If this point matches only one other point, we'll need the id of 
+            // If this point matches only one other point, we'll need the id of
             //   the matching point.
             matchId = nextId;
           }
@@ -4933,7 +4575,7 @@ MapShaper.buildArcTopology = function(obj) {
         // case -- point matches exactly one other point in the dataset
         // TODO: test with edge cases: several identical points clustered together,
         //   case where matching point is on the same ring, etc.
-        //         
+        //
         // if matching point is an endpoint, then curr point is (also) a node.
         var matchIsPartEndpoint = partIds[matchId] !== partIds[matchId + 1] || partIds[matchId] !== partIds[matchId - 1];
         if (matchIsPartEndpoint) {
@@ -5012,7 +4654,7 @@ MapShaper.buildArcTopology = function(obj) {
             xarr = xx.slice(arcStartId, lim),
             yarr = yy.slice(arcStartId, lim);
           }
-          
+
       var arc = [xarr, yarr];
 
       // Hash the last point in the arc, so this new arc can be found when we
@@ -5026,7 +4668,7 @@ MapShaper.buildArcTopology = function(obj) {
       hashTable[key] = arcId;
 
       // arc.chainedId = chainedId;
-      // pushing chained id onto array instead of 
+      // pushing chained id onto array instead of
       // adding as property of arc Array
       chainIds.push(chainId);
       arcs.push(arc);
@@ -5046,7 +4688,7 @@ MapShaper.buildArcTopology = function(obj) {
       }
       return true;
     }
-  
+
 
     // Try to start a new arc starting with point at @startId.
     // Returns true if a new arc was started.
@@ -5071,7 +4713,7 @@ MapShaper.buildArcTopology = function(obj) {
           matchId = -1,
           arcId = arcs.length; // anticipating a new arc
 
-      // Check to see if this point is the first point in an arc that matches a 
+      // Check to see if this point is the first point in an arc that matches a
       //   previously found arc.
       while (chainedArcId != -1) {
         var chainedArc = arcs[chainedArcId];
@@ -5102,7 +4744,7 @@ MapShaper.buildArcTopology = function(obj) {
         arcStartId = startId;
         sharedArcs[arcId] = 0;
         return true;
-      } 
+      }
       sharedArcs[matchId] = 1;
       return false;
     };
@@ -5128,7 +4770,7 @@ MapShaper.buildArcTopology = function(obj) {
           // if a part has 3 or more arcs, assume it won't collapse...
           // TODO: look into edge cases where this isn't true
 
-          if (maxPartFlags[partId] == 1 && partLen <= 2) { 
+          if (maxPartFlags[partId] == 1 && partLen <= 2) {
             for (var i=0; i<partLen; i++) {
               var arcId = part[i];
               if (arcId < 1) arcId = -1 - arcId;
@@ -5162,7 +4804,7 @@ MapShaper.buildArcTopology = function(obj) {
 };
 
 
-// Generates a hash function to convert an x,y coordinate into an index in a 
+// Generates a hash function to convert an x,y coordinate into an index in a
 //   hash table.
 // @bbox A BoundingBox giving the extent of the dataset.
 //
@@ -5172,8 +4814,8 @@ MapShaper.getXYHashFunction = function(bbox, hashTableSize) {
   var mask = (1 << 29) - 1,
       kx = (1e8 * Math.E / bbox.width()),
       ky = (1e8 * Math.PI / bbox.height()),
-      bx = -bbox.left,
-      by = -bbox.bottom;
+      bx = -bbox.xmin,
+      by = -bbox.ymin;
 
   return function(x, y) {
     // transform coords to integer range and scramble bits a bit
@@ -5204,7 +4846,7 @@ MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
   // Ids of next point in each chain, indexed by point id
   var nextIds = new Int32Array(pointCount);
   // Utils.initializeArray(nextIds, -1);
- 
+
   var key, headId, tailId;
 
   for (var i=0; i<pointCount; i++) {
@@ -5395,7 +5037,7 @@ function Heap() {
   }
 }
 
-/* @requires mapshaper-common, mapshaper-geom, mapshaper-heap, core.geo */
+/* @requires mapshaper-common, mapshaper-geom, mapshaper-heap */
 
 var Visvalingam = {};
 
@@ -5423,7 +5065,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
       nextArr = new Int32Array(bufLen);
     }
 
-    // Initialize Visvalingam "effective area" values and references to 
+    // Initialize Visvalingam "effective area" values and references to
     //   prev/next points for each point in arc.
     //
     var values = new Float64Array(arcLen);
@@ -5509,7 +5151,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
 
 
 
-// The original mapshaper "modified Visvalingam" function uses a step function to 
+// The original mapshaper "modified Visvalingam" function uses a step function to
 // underweight more acute triangles.
 //
 Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
@@ -5646,9 +5288,299 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
 };
 
 
-/* 
+
+function Transform() {
+  this.mx = this.my = 1;
+  this.bx = this.by = 0;
+}
+
+Transform.prototype.invert = function() {
+  var inv = new Transform();
+  inv.mx = 1 / this.mx;
+  inv.my = 1 / this.my;
+  inv.bx = -this.bx / this.mx;
+  inv.by = -this.by / this.my;
+  return inv;
+};
+
+
+/*
+Transform.prototype.useTileBounds = function(wPix, hPix, bb) {
+  var ppm = wPix / (bb.right - bb.left);
+  this.mx = ppm;
+  this.my = hPix / (bb.bottom - bb.top);
+  this.bx = -ppm * bb.left;
+  this.by = -this.my * bb.top;
+  return this;
+};
+*/
+
+Transform.prototype.transform = function(x, y, xy) {
+  xy = xy || [];
+  xy[0] = x * this.mx + this.bx;
+  xy[1] = y * this.my + this.by;
+  return xy;
+};
+
+// Transform.prototype.toString = function() {};
+
+function Bounds() {
+  if (arguments.length > 0) {
+    this.setBounds.apply(this, arguments);
+  }
+}
+
+Bounds.prototype.toString = function() {
+  return JSON.stringify({
+    xmin: this.xmin,
+    xmax: this.xmax,
+    ymin: this.ymin,
+    ymax: this.ymax
+  });
+};
+
+Bounds.prototype.toArray = function() {
+  return [this.xmin, this.ymin, this.xmax, this.ymax];
+};
+
+Bounds.prototype.hasBounds = function() {
+  return !isNaN(this.ymax);
+};
+
+Bounds.prototype.sameBounds =
+Bounds.prototype.equals = function(bb) {
+  return bb && this.xmin === bb.xmin && this.xmax === bb.xmax &&
+    this.ymin === bb.ymin && this.ymax === bb.ymax;
+};
+
+Bounds.prototype.width = function() {
+  return (this.xmax - this.xmin) || 0;
+};
+
+Bounds.prototype.height = function() {
+  return (this.ymax - this.ymin) || 0;
+};
+
+Bounds.prototype.setBounds = function(a, b, c, d) {
+  if (arguments.length == 1) {
+    // assume first arg is a Bounds or array
+    if (Utils.isArrayLike(a)) {
+      b = a[1];
+      c = a[2];
+      d = a[3];
+      a = a[0];
+    } else {
+      b = a.ymin;
+      c = a.xmax;
+      d = a.ymax;
+      a = a.xmin;
+    }
+  }
+  if (a > c || b > d) error("Bounds#setBounds() min/max reversed:", a, b, c, d);
+  this.xmin = a;
+  this.ymin = b;
+  this.xmax = c;
+  this.ymax = d;
+  return this;
+};
+
+/*
+Bounds.prototype.getCenterPoint = function() {
+  if (!this.hasBounds()) error("Missing bounds");
+  return new Point(this.centerX(), this.centerY());
+};
+*/
+
+Bounds.prototype.centerX = function() {
+  var x = (this.xmin + this.xmax) * 0.5;
+  return x;
+};
+
+Bounds.prototype.centerY = function() {
+  var y = (this.ymax + this.ymin) * 0.5;
+  return y;
+};
+
+Bounds.prototype.containsPoint = function(x, y) {
+  if (x >= this.xmin && x <= this.xmax &&
+    y <= this.ymax && y >= this.ymin) {
+    return true;
+  }
+  return false;
+};
+
+// intended to speed up slightly bubble symbol detection; could use intersects() instead
+// * FIXED * may give false positives if bubbles are located outside corners of the box
+//
+Bounds.prototype.containsBufferedPoint = function( x, y, buf ) {
+  if ( x + buf > this.xmin && x - buf < this.xmax ) {
+    if ( y - buf < this.ymax && y + buf > this.ymin ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+Bounds.prototype.intersects = function(bb) {
+  if (bb.xmin <= this.xmax && bb.xmax >= this.xmin &&
+    bb.ymax >= this.ymin && bb.ymin <= this.ymax) {
+    return true;
+  }
+  return false;
+};
+
+Bounds.prototype.contains = function(bb) {
+  if (bb.xmin >= this.xmin && bb.ymax <= this.ymax &&
+    bb.xmax <= this.xmax && bb.ymin >= this.ymin) {
+    return true;
+  }
+  return false;
+};
+
+Bounds.prototype.shift = function(x, y) {
+  this.setBounds(this.xmin + x,
+    this.ymin + y, this.xmax + x, this.ymax + y);
+};
+
+Bounds.prototype.padBounds = function(a, b, c, d) {
+  this.xmin -= a;
+  this.ymin -= b;
+  this.xmax += c;
+  this.ymax += d;
+};
+
+/**
+ * Rescale the bounding box by a fraction. TODO: implement focus.
+ * @param {number} pct Fraction of original extents
+ * @param {number} pctY Optional amount to scale Y
+ */
+Bounds.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
+  var halfWidth = (this.xmax - this.xmin) * 0.5;
+  var halfHeight = (this.ymax - this.ymin) * 0.5;
+  var kx = pct - 1;
+  var ky = pctY === undefined ? kx : pctY - 1;
+  this.xmin -= halfWidth * kx;
+  this.ymin -= halfHeight * ky;
+  this.xmax += halfWidth * kx;
+  this.ymax += halfHeight * ky;
+};
+
+/**
+ * Return a bounding box with the same extent as this one.
+ */
+Bounds.prototype.cloneBounds = // alias so child classes can override clone()
+Bounds.prototype.clone = function() {
+  return new Bounds(this.xmin, this.ymin, this.xmax, this.ymax);
+};
+
+Bounds.prototype.clearBounds = function() {
+  this.setBounds(new Bounds());
+};
+
+Bounds.prototype.mergePoint = function(x, y) {
+  if (this.xmin === void 0) {
+    this.setBounds(x, y, x, y);
+  } else {
+    // this works even if x,y are NaN
+    if (x < this.xmin)  this.xmin = x;
+    else if (x > this.xmax)  this.xmax = x;
+
+    if (y < this.ymin) this.ymin = y;
+    else if (y > this.ymax) this.ymax = y;
+  }
+};
+
+// TODO: pick a better name
+// expands either x or y dimension to match @aspect (width/height ratio)
+// @focusX, @focusY (optional): expansion focus, as a fraction of width and height
+//
+Bounds.prototype.fillOut = function(aspect, focusX, focusY) {
+  if (arguments.length < 3) {
+    focusX = 0.5;
+    focusY = 0.5;
+  }
+  var w = this.width(),
+      h = this.height(),
+      currAspect = w / h,
+      pad;
+  if (currAspect < aspect) { // fill out x dimension
+    pad = h * aspect - w;
+    this.xmin -= (1 - focusX) * pad;
+    this.xmax += focusX * pad;
+  } else {
+    pad = w / aspect - h;
+    this.ymin -= (1 - focusY) * pad;
+    this.ymax += focusY * pad;
+  }
+  return this;
+};
+
+Bounds.prototype.update = function() {
+  var tmp;
+  if (this.xmin > this.xmax) {
+    tmp = this.xmin;
+    this.xmin = this.xmax;
+    this.xmax = tmp;
+  }
+  if (this.ymin > this.ymax) {
+    tmp = this.ymin;
+    this.ymin = this.ymax;
+    this.ymax = tmp;
+  }
+};
+
+Bounds.prototype.transform = function(t) {
+  this.xmin = this.xmin * t.mx + t.bx;
+  this.xmax = this.xmax * t.mx + t.bx;
+  this.ymin = this.ymin * t.my + t.by;
+  this.ymax = this.ymax * t.my + t.by;
+  this.update();
+  return this;
+};
+
+// Returns a Transform object for mapping this onto Bounds @b2
+// @flipY (optional) Flip y-axis coords, for converting to/from pixel coords
+//
+Bounds.prototype.getTransform = function(b2, flipY) {
+  var t = new Transform();
+  t.mx = b2.width() / this.width();
+  t.bx = b2.xmin - t.mx * this.xmin;
+  if (flipY) {
+    t.my = -b2.height() / this.height();
+    t.by = b2.ymax - t.my * this.ymin;
+  } else {
+    t.my = b2.height() / this.height();
+    t.by = b2.ymin - t.my * this.ymin;
+  }
+  return t;
+};
+
+Bounds.prototype.mergeBounds = function(bb) {
+  var a, b, c, d;
+  if (bb.xmin !== void 0) {
+    a = bb.xmin, b = bb.ymin, c = bb.xmax, d = bb.ymax;
+  } else if (bb.length == 4) {
+    a = bb[0], b = bb[1], c = bb[2], d = bb[3]; // expects array: [xmin, ymin, xmax, ymax]
+  } else {
+    error("Bounds#mergeBounds() invalid argument:", bb);
+  }
+
+  if (this.xmin === void 0) {
+    this.setBounds(a, b, c, d);
+  } else {
+    if (a < this.xmin) this.xmin = a;
+    if (b < this.ymin) this.ymin = b;
+    if (c > this.xmax) this.xmax = c;
+    if (d > this.ymax) this.ymax = d;
+  }
+  return this;
+};
+
+
+/*
 @requires
 core,
+bounds,
 nodejs,
 dbf-reader,
 mapshaper-cli,
@@ -5671,7 +5603,7 @@ var api = Utils.extend(MapShaper, {
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
   DbfReader: DbfReader,
-  BoundingBox: BoundingBox  // for testing
+  Bounds: Bounds
 });
 
 if (Node.inNode) {

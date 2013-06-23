@@ -1,4 +1,4 @@
-/* @requires arrayutils, core.geo */
+/* @requires arrayutils */
 
 // TODO: adapt to run in browser
 function stop(msg) {
@@ -33,22 +33,6 @@ MapShaper.parseLocalPath = function(path) {
   return obj;
 };
 
-/*
-    // TODO: give better output if fpath is a directory
-    var info = {};
-    var filename = Node.path.basename(fpath);
-    if (filename.lastIndexOf('/') == filename.length - 1) {
-      filename = filename.substr(0, filename.length-1);
-    }
-    info.file = filename;
-    info.path = Node.path.resolve(fpath);
-    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
-    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
-    info.directory = Node.path.dirname(info.path);
-    info.relative_dir = Node.path.dirname(fpath);
-    return info;
-*/
-
 
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var len=xsrc.length;
@@ -73,28 +57,8 @@ MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   }
 };
 
-/*
-MapShaper.calcArcBounds = function(arcs) {
-  var arcCount = arcs.length,
-      i = 0;
-  var arr = new Float64Array(arcCount * 4);
-  for (var arcId=0; arcId<arcCount; arcId++) {
-    var arc = arcs[arcId];
-    var xb = Utils.getArrayBounds(arc[0]);
-    var yb = Utils.getArrayBounds(arc[1]);
-    arr[i++] = xb.min;
-    arr[i++] = yb.min;
-    arr[i++] = xb.max;
-    arr[i++] = yb.max;
-  }
-  return arr;
-};
-
-*/
-
-
 MapShaper.calcXYBounds = function(xx, yy, bb) {
-  if (!bb) bb = new BoundingBox();
+  if (!bb) bb = new Bounds();
   var xbounds = Utils.getArrayBounds(xx),
       ybounds = Utils.getArrayBounds(yy);
   if (xbounds.nan > 0 || ybounds.nan > 0) error("[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
@@ -120,7 +84,7 @@ MapShaper.transposeXYCoords = function(arr) {
 MapShaper.convertTopoShape = function(shape, arcs, closed) {
   var parts = [],
       pointCount = 0,
-      bounds = new BoundingBox();
+      bounds = new Bounds();
 
   for (var i=0; i<shape.length; i++) {
     var topoPart = shape[i],

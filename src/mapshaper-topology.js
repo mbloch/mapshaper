@@ -1,8 +1,8 @@
 /* @requires arrayutils, mapshaper-common */
 
 // buildArcTopology() converts non-topological polygon data into a topological format
-// 
-// Input format: 
+//
+// Input format:
 // {
 //    xx: [Array],      // x-coords of each point in the dataset (coords of all shapes are concatenated)
 //    yy: [Array],      // y-coords of each point
@@ -21,7 +21,7 @@ MapShaper.buildArcTopology = function(obj) {
   T.start();
   if (!(obj.xx && obj.yy && obj.partIds && obj.shapeIds)) error("[buildArcTopology()] Missing required param/s");
 
-  var xx = obj.xx, 
+  var xx = obj.xx,
       yy = obj.yy,
       partIds = obj.partIds,
       shapeIds = obj.shapeIds,
@@ -43,8 +43,8 @@ MapShaper.buildArcTopology = function(obj) {
   T.stop("Find matching vertices");
 
   // Loop through all the points in the dataset, identifying arcs.
-  //  
-  T.start();  
+  //
+  T.start();
   var arcTable = new ArcTable(xx, yy, bbox),
       inArc = false;
 
@@ -75,7 +75,7 @@ MapShaper.buildArcTopology = function(obj) {
   function pointIsArcEndpoint(id) {
     var isNode = false,
         x = xx[id],
-        y = yy[id],    
+        y = yy[id],
         partId = partIds[id],
         isPartEndpoint = partId !== partIds[id-1] || partId !== partIds[id+1];
     // trace("partIsArcEndpoint()", id, "x, y:", x, y);
@@ -87,7 +87,7 @@ MapShaper.buildArcTopology = function(obj) {
       // case -- if point is endpoint of a non-topological ring, then point is a node.
       // TODO: some nodes formed with this rule might be removed if arcs on either side
       //   of the node belong to the same shared boundary...
-      //   
+      //
       //
       isNode = true;
     }
@@ -105,7 +105,7 @@ MapShaper.buildArcTopology = function(obj) {
         if (nextX == x && nextY == y) {
           matchCount++;
           if (matchCount == 1) {
-            // If this point matches only one other point, we'll need the id of 
+            // If this point matches only one other point, we'll need the id of
             //   the matching point.
             matchId = nextId;
           }
@@ -121,7 +121,7 @@ MapShaper.buildArcTopology = function(obj) {
         // case -- point matches exactly one other point in the dataset
         // TODO: test with edge cases: several identical points clustered together,
         //   case where matching point is on the same ring, etc.
-        //         
+        //
         // if matching point is an endpoint, then curr point is (also) a node.
         var matchIsPartEndpoint = partIds[matchId] !== partIds[matchId + 1] || partIds[matchId] !== partIds[matchId - 1];
         if (matchIsPartEndpoint) {
@@ -200,7 +200,7 @@ MapShaper.buildArcTopology = function(obj) {
             xarr = xx.slice(arcStartId, lim),
             yarr = yy.slice(arcStartId, lim);
           }
-          
+
       var arc = [xarr, yarr];
 
       // Hash the last point in the arc, so this new arc can be found when we
@@ -214,7 +214,7 @@ MapShaper.buildArcTopology = function(obj) {
       hashTable[key] = arcId;
 
       // arc.chainedId = chainedId;
-      // pushing chained id onto array instead of 
+      // pushing chained id onto array instead of
       // adding as property of arc Array
       chainIds.push(chainId);
       arcs.push(arc);
@@ -234,7 +234,7 @@ MapShaper.buildArcTopology = function(obj) {
       }
       return true;
     }
-  
+
 
     // Try to start a new arc starting with point at @startId.
     // Returns true if a new arc was started.
@@ -259,7 +259,7 @@ MapShaper.buildArcTopology = function(obj) {
           matchId = -1,
           arcId = arcs.length; // anticipating a new arc
 
-      // Check to see if this point is the first point in an arc that matches a 
+      // Check to see if this point is the first point in an arc that matches a
       //   previously found arc.
       while (chainedArcId != -1) {
         var chainedArc = arcs[chainedArcId];
@@ -290,7 +290,7 @@ MapShaper.buildArcTopology = function(obj) {
         arcStartId = startId;
         sharedArcs[arcId] = 0;
         return true;
-      } 
+      }
       sharedArcs[matchId] = 1;
       return false;
     };
@@ -316,7 +316,7 @@ MapShaper.buildArcTopology = function(obj) {
           // if a part has 3 or more arcs, assume it won't collapse...
           // TODO: look into edge cases where this isn't true
 
-          if (maxPartFlags[partId] == 1 && partLen <= 2) { 
+          if (maxPartFlags[partId] == 1 && partLen <= 2) {
             for (var i=0; i<partLen; i++) {
               var arcId = part[i];
               if (arcId < 1) arcId = -1 - arcId;
@@ -350,7 +350,7 @@ MapShaper.buildArcTopology = function(obj) {
 };
 
 
-// Generates a hash function to convert an x,y coordinate into an index in a 
+// Generates a hash function to convert an x,y coordinate into an index in a
 //   hash table.
 // @bbox A BoundingBox giving the extent of the dataset.
 //
@@ -360,8 +360,8 @@ MapShaper.getXYHashFunction = function(bbox, hashTableSize) {
   var mask = (1 << 29) - 1,
       kx = (1e8 * Math.E / bbox.width()),
       ky = (1e8 * Math.PI / bbox.height()),
-      bx = -bbox.left,
-      by = -bbox.bottom;
+      bx = -bbox.xmin,
+      by = -bbox.ymin;
 
   return function(x, y) {
     // transform coords to integer range and scramble bits a bit
@@ -392,7 +392,7 @@ MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
   // Ids of next point in each chain, indexed by point id
   var nextIds = new Int32Array(pointCount);
   // Utils.initializeArray(nextIds, -1);
- 
+
   var key, headId, tailId;
 
   for (var i=0; i<pointCount; i++) {

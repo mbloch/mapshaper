@@ -67,7 +67,7 @@ Opts.inherit(MshpMap, EventDispatcher);
 
 function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
-      _padding = new FourSides(),
+      _padPix = 0,
       _self = this,
       _fullBounds,
       _cx,
@@ -137,25 +137,20 @@ function MapExtent(el, initialBounds) {
   // Return: Geographic bounds of map window centered on @contentBounds
   //
   function centerAlign(contentBounds) {
-    var bounds = contentBounds.clone();
-    var p = _padding,
-        wpix = _self.width() - p.left - p.right,
-        hpix = _self.height() - p.top - p.bottom;
+    var bounds = contentBounds.clone(),
+        wpix = _self.width() - 2 * _padPix,
+        hpix = _self.height() - 2 * _padPix,
+        padGeo = _padPix * bounds.width() / wpix; // per-pixel scale
 
     // expand bounds to match padded map aspect ratio
     bounds.fillOut(wpix / hpix);
 
-    // add padding to bounds
-    var mpp = bounds.width() / wpix; // per-pixel scale
-    bounds.padBounds(p.left * mpp, p.top * mpp, p.right * mpp, p.bottom * mpp);
+    bounds.padBounds(padGeo, padGeo, padGeo, padGeo);
     return bounds;
   }
 
-  this.setContentPadding = function(l, t, r, b) {
-    if (arguments.length == 1) {
-      t = l, r = l, b = l;
-    }
-    _padding = new FourSides(l, t, r, b);
+  this.setContentPadding = function(pix) {
+    _padPix = pix;
     this.reset();
     return this;
   };

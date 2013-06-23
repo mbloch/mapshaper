@@ -4,7 +4,7 @@ var api = require('../'),
 var Node = api.Node,
     ShpReader = api.ShpReader,
     Utils = api.Utils,
-    BoundingBox = api.BoundingBox;
+    Bounds = api.Bounds;
 
 function filePath(file) {
   var path = Node.path.join(__dirname, "test_data", file);
@@ -19,12 +19,12 @@ function testBounds(file) {
 
   it(file + " (type " + reader.type()+ ")", function() {
     var hasBounds = reader.hasBounds(),
-        bigBox = new BoundingBox();
+        bigBox = new Bounds();
 
     reader.forEachShape(function(shp) {
       if (shp.isNull) return;
       var bounds,
-          bbox = new BoundingBox();
+          bbox = new Bounds();
       // check bounds of polygon, polyline and multipoint shapes
       if (hasBounds) {
         bounds = shp.readBounds(); // bounds from shape header
@@ -32,11 +32,11 @@ function testBounds(file) {
           bbox.mergePoint(p[0], p[1]);
         });
         // test if bounds from shape header match observed bounds
-        if (bounds[0] != bbox.left || bounds[1] != bbox.bottom || bounds[2] != bbox.right || bounds[3] != bbox.top) {
+        if (bounds[0] != bbox.xmin || bounds[1] != bbox.ymin || bounds[2] != bbox.xmax || bounds[3] != bbox.ymax) {
           assert.ok(false, "Bounds in shape " + shp.id + " header don't match observed bounds");
         }
         bigBox.mergeBounds(bbox);
-      } 
+      }
       // read single-point shape
       else {
         var p = shp.read();
@@ -44,7 +44,7 @@ function testBounds(file) {
       }
     });
     var shpBounds = reader.header().bounds;
-    if (shpBounds[0] != bigBox.left || shpBounds[1] != bigBox.bottom || shpBounds[2] != bigBox.right || shpBounds[3] != bigBox.top) {
+    if (shpBounds[0] != bigBox.xmin || shpBounds[1] != bigBox.ymin || shpBounds[2] != bigBox.xmax || shpBounds[3] != bigBox.ymax) {
       assert.ok(false, "Bounds in file header don't match observed bounds");
     }
   })
@@ -72,7 +72,7 @@ function testCounts(file) {
         nulls++;
         pointsInShape = 0;
         partsInShape = 0;
-      } 
+      }
       else {
         var shapeData = shp.read();
         if (!hasBounds) { // i.e. single point

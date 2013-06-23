@@ -412,565 +412,6 @@ var T = {
 };
 
 
-/** @requires core */
-
-Utils.extend(C, {
-  // alignment constants
-  N: 'n',
-  E: 'e',
-  W: 'w',
-  S: 's',
-  NW: 'nw',
-  NE: 'ne',
-  SE: 'se',
-  SW: 'sw',
-  TOP: 'top',
-  LEFT: 'left',
-  RIGHT: 'right',
-  BOTTOM: 'bottom',
-  CENTER: 'c'
-});
-
-
-// Basic 2d point class
-//
-function Point(x, y) {
-  this.x = x;
-  this.y = y;
-}
-
-Point.prototype.clone = function() {
-  return new Point(this.x, this.y);
-};
-
-Point.prototype.toString = function() {
-  return "{x:" + this.x + ", y:" + this.y + "}";
-};
-
-/*
-Point.prototype.distanceToXY = function(x, y) {
-  return Point.distance(this.x, this.y, x, y);
-};
-
-Point.prototype.distanceToPoint = function(p) {
-  return Point.distance(this.x, this.y, p.x, p.y);
-};
-*/
-
-Point.distance = function(x1, y1, x2, y2) {
-  var dx = x1 - x2,
-      dy = y1 - y2;
-  return Math.sqrt(dx * dx + dy * dy);
-};
-
-/*
-Point.prototype.equals = function(p) {
-  return this.x === p.x && this.y === p.y;
-};
-*/
-
-
-// Lat lon coordinate class.
-//
-function GeoPoint(lat, lng) {
-  this.lat = lat;
-  this.lng = lng;
-}
-
-GeoPoint.prototype.clone = function() {
-  return new GeoPoint(this.lat, this.lng);
-};
-
-GeoPoint.prototype.toString = function() {
-  var str = '[GeoPoint]: {lat:' + this.lat + ', lng:' + this.lng + '}';
-  return str;
-};
-
-
-function FourSides(l, t, r, b) {
-  this.left = l || 0;
-  this.top = t || 0;
-  this.right = r || 0;
-  this.bottom = b || 0;
-}
-
-FourSides.prototype.toString = function() {
-  return '{l:' + this.left + ', t:' + this.top + ', r:' +
-    this.right + ', b:' + this.bottom + '}';
-};
-
-
-
-// BoundingBox class assumes ymax is top and ymin is bottom
-// TODO: switch to using xmin, ymin, xmax, ymax instead of left, top, right, bottom
-//
-function BoundingBox() {
-  if (arguments.length == 4) {
-    this.setBounds.apply(this, arguments);
-  }
-}
-
-BoundingBox.prototype.toString = FourSides.prototype.toString;
-
-BoundingBox.prototype.hasBounds = function() {
-  return this.left !== undefined;
-};
-
-BoundingBox.prototype.hasSameBounds = function(bb) {
-  return this.left == bb.left && this.top == bb.top &&
-    this.right == bb.right && this.bottom == bb.bottom;
-};
-
-BoundingBox.prototype.width = function() {
-  return (this.right - this.left) || 0;
-};
-
-BoundingBox.prototype.height = function() {
-  return Math.abs(this.top - this.bottom) || 0; // handle flipped v bounds.
-};
-
-BoundingBox.prototype.setBounds = function(l, t, r, b) {
-  if (arguments.length == 1) {
-    // assume first arg is a BoundingBox
-    b = l.bottom;
-    r = l.right;
-    t = l.top;
-    l = l.left;
-  }
-  this.left = l;
-  this.top = t;
-  this.right = r;
-  this.bottom = b;
-  return this;
-};
-
-BoundingBox.prototype.getCenterPoint = function() {
-  if (!this.hasBounds()) error("Missing bounds");
-  return new Point(this.centerX(), this.centerY());
-};
-
-BoundingBox.prototype.centerX = function() {
-  var x = (this.left + this.right) * 0.5;
-  return x;
-};
-
-BoundingBox.prototype.centerY = function() {
-  var y = (this.top + this.bottom) * 0.5;
-  return y;
-};
-
-BoundingBox.prototype.containsPoint = function(x, y) {
-  if (x >= this.left && x <= this.right &&
-    y <= this.top && y >= this.bottom) {
-    return true;
-  }
-  return false;
-};
-
-// intended to speed up slightly bubble symbol detection; could use intersects() instead
-// * FIXED * may give false positives if bubbles are located outside corners of the box
-//
-BoundingBox.prototype.containsBufferedPoint = function( x, y, buf ) {
-  if ( x + buf > this.left && x - buf < this.right ) {
-    if ( y - buf < this.top && y + buf > this.bottom ) {
-      return true;
-    }
-  }
-  return false;
-};
-
-BoundingBox.prototype.intersects = function(bb) {
-  if (bb.left <= this.right && bb.right >= this.left &&
-    bb.top >= this.bottom && bb.bottom <= this.top) {
-    return true;
-  }
-  return false;
-};
-
-BoundingBox.prototype.contains = function(bb) {
-  if (bb.left >= this.left && bb.top <= this.top &&
-    bb.right <= this.right && bb.bottom >= this.bottom) {
-    return true;
-  }
-  return false;
-};
-
-BoundingBox.prototype.translate = function(x, y) {
-  this.setBounds(this.left + x, this.top + y, this.right + x,
-    this.bottom + y);
-};
-
-BoundingBox.prototype.padBounds = function(l, t, r, b) {
-  this.left -= l;
-  this.top += t;
-  this.right += r;
-  this.bottom -= b;
-}
-
-/**
- * Rescale the bounding box by a fraction. TODO: implement focus.
- * @param {number} pct Fraction of original extents
- * @param {number} pctY Optional amount to scale Y
- */
-BoundingBox.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
-  var halfWidth = (this.right - this.left) * 0.5;
-  var halfHeight = (this.top - this.bottom) * 0.5;
-  var kx = pct - 1;
-  var ky = pctY === undefined ? kx : pctY - 1;
-  this.left -= halfWidth * kx;
-  this.top += halfHeight * ky;
-  this.right += halfWidth * kx;
-  this.bottom -= halfHeight * ky;
-};
-
-/**
- * Return a bounding box with the same extent as this one.
- * @return {BoundingBox} Cloned bb.
- */
-BoundingBox.prototype.cloneBounds = function() {
-  var bb = new BoundingBox();
-  if (this.hasBounds()) {
-    bb.setBounds(this.left, this.top, this.right, this.bottom);
-  }
-  return bb;
-};
-
-BoundingBox.prototype.clearBounds = function() {
-  this.setBounds(new BoundingBox());
-}
-
-BoundingBox.prototype.mergePoint = function(x, y) {
-  if (this.left === void 0) {
-    this.setBounds(x, y, x, y);
-  } else {
-    // this works even if x,y are NaN
-    if (x < this.left)  this.left = x;
-    else if (x > this.right)  this.right = x;
-
-    if (y < this.bottom) this.bottom = y;
-    else if (y > this.top) this.top = y;
-  }
-};
-
-BoundingBox.prototype.mergeBounds = function(bb) {
-  var l, t, r, b;
-  if (bb.left !== void 0) {
-    l = bb.left, r = bb.right, t = bb.top, b = bb.bottom;
-  } else if (bb.length == 4) {
-    l = bb[0], r = bb[2], b = bb[1], t = bb[3]; // expects array: [xmin, ymin, xmax, ymax]
-  } else {
-    if (!this.hasBounds()) {
-      error("BoundingBox#mergeBounds() merging two empty boxes")
-    }
-    trace("BoundingBox#mergeBounds() invalid argument:", bb);
-    // return;
-  }
-
-  if (this.left === void 0) {
-    this.setBounds(l, t, r, b);
-  } else {
-    if (l < this.left) this.left = l;
-    if (r > this.right) this.right = r;
-    if (t > this.top) this.top = t;
-    if (b < this.bottom) this.bottom = b;
-  }
-};
-
-
-/**
- * TODO: remove 256
- */
-function TileExtent(w, h) {
-  this.mx = this.my = 1;
-  this.bx = this.by = 0;
-  this.widthInPixels = w || 256;
-  this.heightInPixels = h || 256;
-}
-
-Opts.inherit(TileExtent, BoundingBox);
-
-TileExtent.prototype.setBounds =  function() {
-  /*
-  if (b) {
-    // accept four coords (instead of one BoundingBox)
-    bb = new BoundingBox().setBounds(bb, t, r, b);
-  }
-  // trace("TileExtent() setBounds()", bb, t, r, b, "left:", bb.left)
-  this.mergeBounds(this, bb);
-  */
-  BoundingBox.prototype.setBounds.apply(this, arguments);
-  var bb = this;
-
-  var ppm = this.widthInPixels / (bb.right - bb.left);
-  this.mx = ppm;
-  //this.my = -ppm;
-  this.my = this.heightInPixels / (bb.bottom - bb.top);
-  this.bx = -ppm * bb.left;
-  this.by = -this.my * bb.top;
-  this.metersPerPixel = 1 / ppm; // 
-};
-
-TileExtent.prototype.updateBounds = TileExtent.prototype.setBounds; // TODO: remove updateBounds
-
-// apply after bounds have been set...
-//
-TileExtent.prototype.addPixelMargins = function(l, t, r, b) {
-  this.bx += l;
-  this.by -= b;
-  this.mx *= 1 - (l + r) / this.widthInPixels;
-  this.my *= 1 - (t + b) / this.heightInPixels;
-};
-
-TileExtent.prototype.transformXY = function(x, y, xy) {
-  xy = xy || new Point();
-  var xPix = x * this.mx + this.bx;
-  var yPix = y * this.my + this.by;
-  xy.x = xPix;
-  xy.y = yPix;
-  return xy;
-};
-
-TileExtent.prototype.clone = function() {
-  var ext = new TileExtent(this.widthInPixels, this.heightInPixels);
-  ext.setBounds(this);
-  return ext;
-};
-
-
-/* @requires core */
-
-Utils.findRankByValue = function(arr, value) {
-  if (isNaN(value)) return arr.length;
-  var rank = 1;
-  for (var i=0, n=arr.length; i<n; i++) {
-    if (value > arr[i]) rank++;
-  }
-  return rank;
-}
-
-Utils.findValueByPct = function(arr, pct) {
-  var rank = Math.ceil((1-pct) * (arr.length));
-  return Utils.findValueByRank(arr, rank);
-};
-
-// See http://ndevilla.free.fr/median/median/src/wirth.c
-// Elements of @arr are reordered
-//
-Utils.findValueByRank = function(arr, rank) {
-  if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
-
-  rank = Utils.clamp(rank | 0, 1, arr.length);
-  var k = rank - 1, // conv. rank to array index
-      n = arr.length,
-      l = 0,
-      m = n - 1,
-      i, j, val, tmp;
-
-  while (l < m) {
-    val = arr[k];
-    i = l;
-    j = m;
-    do {
-      while (arr[i] < val) {i++;}
-      while (val < arr[j]) {j--;}
-      if (i <= j) {
-        tmp = arr[i];
-        arr[i] = arr[j];
-        arr[j] = tmp;
-        i++;
-        j--;
-      }
-    } while (i <= j);
-    if (j < k) l = i;
-    if (k < i) m = j;
-  }
-  return arr[k];
-};
-
-//
-//
-Utils.findMedian = function(arr) {
-  var n = arr.length,
-      rank = Math.floor(n / 2) + 1,
-      median = Utils.findValueByRank(arr, rank);
-  if ((n & 1) == 0) {
-    median = (median + Utils.findValueByRank(arr, rank - 1)) / 2;
-  }
-  return median;
-};
-
-
-/* @requires core.geo, median */
-
-function BoundsIndex(bounds, opts) {
-  var defaults = {
-    maxBinSize: 500
-  };
-  opts = Utils.extend(defaults, opts);
-
-  var maxInCell = opts.maxBinSize;
-  var capacity = 0,
-      size = 0;
-  var allCells = [newCell(new BoundingBox(-Infinity, Infinity, Infinity, -Infinity))];
-  var bbs,
-      ccx,
-      ccy;
-
-  populate(bounds);
-
-  this.size = function() {
-    return size;
-  };
-
-  // for testing
-  this.binCount = function() {
-    return allCells.length;
-  }
-
-  function populate(boxes) {
-    var box;
-    bbs = boxes;
-    capacity = boxes.length;
-    size = 0;
-    // get cx, cy
-    ccx = new Float64Array(capacity);
-    ccy = new Float64Array(capacity);
-
-    for (var i=0; i<capacity; i++) {
-      box = boxes[i];
-      ccx[i] = (box[0] + box[2]) / 2;
-      ccy[i] = (box[1] + box[3]) / 2;
-      indexItem(i);
-    }
-  };
-
-  /*
-  function SpatialView() {
-    var inCells = allCells.concat(),
-        outCells = [],
-        partialCells = [];
-
-    var bounds = new BoundingBox().setBounds(-Infinity, Infinity, Infinity, -Infinity);
-
-    this.getItemsInBoundingBox(box) {
-      // update....
-
-    }
-  } */
-
-  this.getIntersection = function(box) {
-    var targ = Utils.isArray(box) ? new BoundingBox(bbox[0], bbox[3], bbox[2], bbox[0]) : box;
-    var ids = [];
-
-    for (var i=0, n=allCells.length; i<n; i++) {
-      var cell = allCells[i];
-      if (targ.contains(cell.contentBounds)) {
-        ids.push.apply(ids, cell.ids);
-      } else if (targ.intersects(cell.contentBounds)) {
-        testCandidates(cell.ids, targ, ids);
-      }
-    }
-
-    return ids;
-  };
-
-  function testCandidates(cands, bbox, ids) {
-    var bb = new BoundingBox();
-    for (var i=0, n=cands.length; i<n; i++) {
-      var id = cands[i];
-      var box = bbs[id];
-      bb.left = box[0];
-      bb.bottom = box[1];
-      bb.right = box[2];
-      bb.top = box[3];
-      if (bbox.intersects(bb)) {
-        ids.push(id);
-      }
-    }
-  }
-
-  function indexItem(id) {
-    if (size >= capacity) error("BoundsIndex#addItem() overflow");
-    size++;
-    var cell = placeItem(id, allCells);
-    if (cell.ids.length > maxInCell) {
-      divideCell(cell);
-    }
-  }
-
-  function placeItem(id, cells) {
-    var cx = ccx[id],
-        cy = ccy[id],
-        cell;
-
-    for (var i=0, n=cells.length; i<n; i++) {
-      cell = cells[i];
-      if (cell.bounds.containsPoint(cx, cy)) {
-        addItemToCell(id, cell);
-        return cell;
-      }
-    }
-    error("BoundsIndex#placeItem() couldn't evaluate symbol at:", cx, cy);
-  }
-
-  function addItemToCell(id, cell) {
-    var box = bbs[id];
-    cell.contentBounds.mergePoint(box[0], box[1]);
-    cell.contentBounds.mergePoint(box[2], box[3]);
-    cell.ids.push(id);
-  }
-
-  function splitBoxOnY(box, y) {
-    if (!box.containsPoint(box.left, y)) error("Out-of-bounds y");
-    var box2 = new BoundingBox();
-    box2.setBounds(box.left, y, box.right, box.bottom);
-    box.bottom = y;
-    return box;
-  }
-
-  function splitBoxOnX(box, x) {
-    if (!box.containsPoint(x, box.top)) error("Out-of-bounds x");
-    var box2 = new BoundingBox();
-    box2.setBounds(x, box.top, box.right, box.bottom);
-    box.right = x;
-    return box2;
-  }
-
-  function divideCell(cell) {
-    var ids = cell.ids,
-        splitVertically = cell.contentBounds.height() > cell.contentBounds.width(),
-        centers = splitVertically ? ccy: ccx,
-        coords = Utils.filterById(centers, ids); // copy selected coords into an array
-
-    // find the partition value
-    var median = Utils.findValueByRank(coords, (ids.length / 2) | 0);
-
-    // remove content from original cell...
-    cell.ids = [];
-    cell.contentBounds = new BoundingBox();
-
-    // reduce bbox of cell, create new cell from split-off part
-    var box2 = splitVertically ? splitBoxOnY(cell.bounds, median) : splitBoxOnX(cell.bounds, median);
-    var cell2 = newCell(box2);
-    allCells.push(cell2);
-
-    // add items to one of the two cells
-    var cells = [cell, cell2];
-    for (var i=0, n=ids.length; i<n; i++) {
-      placeItem(ids[i], cells);
-    }
-  }
-
-  function newCell(bb) {
-    var cell = {
-      bounds: bb,
-      contentBounds: new BoundingBox(),
-      ids: []
-    }
-    return cell;
-  }
-}
-
 /* @requires core */
 
 Utils.sortArrayByKeys = function(arr, keys, asc) {
@@ -1529,7 +970,7 @@ Utils.filterById = function(src, ids) {
 };
 
 
-/* @requires arrayutils, core.geo */
+/* @requires arrayutils */
 
 // TODO: adapt to run in browser
 function stop(msg) {
@@ -1564,22 +1005,6 @@ MapShaper.parseLocalPath = function(path) {
   return obj;
 };
 
-/*
-    // TODO: give better output if fpath is a directory
-    var info = {};
-    var filename = Node.path.basename(fpath);
-    if (filename.lastIndexOf('/') == filename.length - 1) {
-      filename = filename.substr(0, filename.length-1);
-    }
-    info.file = filename;
-    info.path = Node.path.resolve(fpath);
-    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
-    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
-    info.directory = Node.path.dirname(info.path);
-    info.relative_dir = Node.path.dirname(fpath);
-    return info;
-*/
-
 
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var len=xsrc.length;
@@ -1604,28 +1029,8 @@ MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   }
 };
 
-/*
-MapShaper.calcArcBounds = function(arcs) {
-  var arcCount = arcs.length,
-      i = 0;
-  var arr = new Float64Array(arcCount * 4);
-  for (var arcId=0; arcId<arcCount; arcId++) {
-    var arc = arcs[arcId];
-    var xb = Utils.getArrayBounds(arc[0]);
-    var yb = Utils.getArrayBounds(arc[1]);
-    arr[i++] = xb.min;
-    arr[i++] = yb.min;
-    arr[i++] = xb.max;
-    arr[i++] = yb.max;
-  }
-  return arr;
-};
-
-*/
-
-
 MapShaper.calcXYBounds = function(xx, yy, bb) {
-  if (!bb) bb = new BoundingBox();
+  if (!bb) bb = new Bounds();
   var xbounds = Utils.getArrayBounds(xx),
       ybounds = Utils.getArrayBounds(yy);
   if (xbounds.nan > 0 || ybounds.nan > 0) error("[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
@@ -1651,7 +1056,7 @@ MapShaper.transposeXYCoords = function(arr) {
 MapShaper.convertTopoShape = function(shape, arcs, closed) {
   var parts = [],
       pointCount = 0,
-      bounds = new BoundingBox();
+      bounds = new Bounds();
 
   for (var i=0; i<shape.length; i++) {
     var topoPart = shape[i],
@@ -1939,7 +1344,7 @@ Bounds.prototype.height = function() {
 Bounds.prototype.setBounds = function(a, b, c, d) {
   if (arguments.length == 1) {
     // assume first arg is a Bounds or array
-    if (Utils.isArray(a)) {
+    if (Utils.isArrayLike(a)) {
       b = a[1];
       c = a[2];
       d = a[3];
@@ -3585,7 +2990,7 @@ Browser.onload = function(handler, ctx) {
 Opts.copyAllParams(Browser, Env);
 
 
-/* 
+/*
 @requires
 events
 arrayutils
@@ -3747,7 +3152,7 @@ function El(ref) {
   this.el = Browser.getElement(ref) || Browser.createElement(ref); // TODO: detect type of argument
 }
 
-Opts.inherit(El, EventDispatcher); // 
+Opts.inherit(El, EventDispatcher); //
 
 El.removeAll = function(sel) {
   var arr = Elements.__select(sel);
@@ -3881,7 +3286,7 @@ Utils.extend(El.prototype, {
       // var styles = Browser.getElementStyle(this.el);
       // this._display = styles.display;
       this.css(this.hideCSS());
-      this._hidden = true;    
+      this._hidden = true;
     }
     return this;
   },
@@ -4370,372 +3775,7 @@ Utils.formatNumber = function(num, decimals, nullStr, showPos) {
 };
 
 
-/* @requires events, core, arrayutils */
-
-var inNode = typeof module !== 'undefined' && !!module.exports;
-var Node = {
-  inNode: inNode,
-  arguments: inNode ? process.argv.slice(1) : null // remove "node" from head of argv list
-};
-
-
-/**
- * Convenience functions for working with files and loading data.
- */
-if (inNode) {
-  Node.fs = require('fs');
-  Node.path = require('path');
-
-  Node.gc = function() {
-    global.gc && global.gc();
-  };
-
-  Node.statSync = function(fpath) {
-    var obj = null;
-    try {
-      obj = Node.fs.statSync(fpath);
-    }
-    catch(e) {
-      //trace(e, fpath);
-    }
-    return obj;
-  };
-
-  Node.toArrayBuffer = function(src) {
-    var dest = new ArrayBuffer(src.length);
-    for (var i = 0, n=src.length; i < n; i++) {
-      dest[i] = src[i];
-    }
-    return dest;
-  };
-
-  Node.toBuffer = function(src) {
-    if (src instanceof Buffer) return src;
-    var dest = new Buffer(src.byteLength);
-    for (var i = 0, n=dest.length; i < n; i++) {
-      dest[i] = src[i];
-    }
-    return dest;
-  };
-
-  Node.shellExec = function(cmd) {
-    var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
-    var spawn = require('child_process').spawn;
-    spawn(parts[0], parts.slice(1), {stdio: "inherit"});
-  };
-
-  // Converts relative path to absolute path relative to the node script;
-  // absolute paths returned unchanged
-  //
-  Node.resolvePathFromScript = function(path) {
-    if (Node.pathIsAbsolute(path))
-      return path;
-    var scriptDir = Node.getFileInfo(require.main.filename).directory;
-    return Node.path.join(scriptDir, path);
-  };
-
-  //Node.resolvePathFromFile = function(path) {
-  //  return Node.path.join(__dirname, path);
-  //}
-  Node.pathIsAbsolute = function(path) {
-    return (path[0] == '/' || path[0] == "~");
-  };
-
-  Node.resolvePathFromShell = function(path) {
-    if (Node.pathIsAbsolute(path))
-      return path;
-    return Node.path.join(process.cwd(), path);
-  };
-
-
-  Node.dirExists = function(path) {
-    var ss = Node.statSync(path);
-    return ss && ss.isDirectory() || false;
-  };
-
-  Node.fileExists = function(path) {
-    var ss = Node.statSync(path);
-    return ss && ss.isFile() || false;
-  };
-
-  Node.parseFilename = function(fpath) {
-    // TODO: give better output if fpath is a directory
-    var info = {};
-    var filename = Node.path.basename(fpath);
-    if (filename.lastIndexOf('/') == filename.length - 1) {
-      filename = filename.substr(0, filename.length-1);
-    }
-    info.file = filename;
-    info.path = Node.path.resolve(fpath);
-    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
-    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
-    info.directory = Node.path.dirname(info.path);
-    info.relative_dir = Node.path.dirname(fpath);
-    return info;
-  };
-
-  Node.getFileInfo = function(fpath) {
-    var info = Node.parseFilename(fpath),
-        stat;
-    Opts.copyAllParams(info, {exists: false, is_directory: false, is_file: false});
-    if (stat = Node.statSync(fpath)) {
-      if (stat.isFile()) {
-        info.exists = true;
-        info.is_file = true;
-      } else {
-        info.is_directory = true;
-      }
-    }
-    return info;
-  };
-
-  /**
-   * @param charset (optional) 'utf8' to read a string; if undefined, returns Buffer
-   * @returns String if charset is provided, *** else Buffer object (node-specific object) ****
-   */
-  Node.readFile = function(fname, charset) {
-    try {
-      var content = Node.fs.readFileSync(fname, charset || void 0);
-    } catch(e) {
-      content = "";
-      trace("[Node.readFile()] Error reading file:", fname, "err:", e);
-    }
-    return content;
-  };
-
-  Node.writeFile = function(path, content) {
-    if (content instanceof ArrayBuffer)
-      content = Node.toBuffer(content);
-    Node.fs.writeFile(path, content, function(err) {
-      if (err) {
-        trace("[Node.writeFile()] Failed to write to file:", path);
-      }
-    });
-  };
-
-  Node.copyFile = function(src, dest) {
-    if (!Node.fileExists(src)) error("[copyFile()] File not found:", src);
-    var content = Node.fs.readFileSync(src);
-    Node.fs.writeFileSync(dest, content);
-  };
-
-  Node.post = function(url, data, callback, opts) {
-    opts = opts || {};
-    opts.method = 'POST';
-    opts.data = data;
-    Node.request(url, callback, opts);
-  }
-
-  Node.readResponse = function(res, callback, encoding) {
-    res.setEncoding(encoding || 'utf8');
-    var content = '';
-    res.on('data', function(chunk) {
-      content += chunk;
-    });
-    res.on('end', function() {
-      callback(null, res, content);
-    });
-  }
-
-  // Current signature: function(opts, callback), like Node.js request module
-  //    callback: function(err, response, body)
-  // Also supports old signature: function(url, callback, opts)
-  //    callback: function(body)
-  //
-  Node.request = function(opts, callback, old_opts) {
-    var url, receive;
-    if (Utils.isString(opts)) { // @opts is string -> assume url & old interface
-      url = opts;
-      opts = old_opts || {};
-      receive = function(err, resp, data) {
-        if (err) {
-          error(err);
-        } else {
-          callback(data);
-        }
-      };
-    } else {
-      url = opts.url;
-      receive = callback;
-    }
-
-    var o = require('url').parse(url),
-        data = null,
-        // moduleName: http or https
-        moduleName = opts.protocol || o.protocol.slice(0, -1); // can override protocol (e.g. request https:// url using http)
-
-    if (moduleName != 'http' && moduleName != 'https') error("Node.request() Unsupported protocol:", o.protocol);
-    var reqOpts = {
-      host: o.hostname,
-      hostname: o.hostname,
-      path: o.path,
-      //port: o.port || module == 'https' && 443 || 80,
-      method: opts.method || 'GET',
-      headers: opts.headers || null
-    }
-
-    if (reqOpts.method == 'POST' || reqOpts.method == 'PUT') {
-      data = opts.data || opts.body || '';
-      reqOpts.headers = Utils.extend({
-        'Content-Length': data.length,
-        'Connection': 'close',
-        'Accept-Encoding': 'identity'
-      }, reqOpts.headers);
-    }
-
-    var req = require(moduleName).request(reqOpts);
-    req.on('response', function(res) {
-      if (res.statusCode > 201) {
-        receive("Node.request() Unexpected status: " + res.statusCode + " url: " + url, res, null);
-      }
-      Node.readResponse(res, receive, 'utf8');
-    });
-
-    req.on('error', function(e) {
-      // trace("Node.request() request error:", e.message);
-      receive("Node.request() error: " + e.message, null, null);
-    });
-    req.end(data);
-  };
-
-
-
-  Node.atob = function(b64string) {
-    return new Buffer(b64string, 'base64').toString('binary')
-  };
-
-  Node.readJson = function(url, callback, opts) {
-    //Node.readUrl(url, function(str) {
-    /*
-    opts = {
-      headers: {
-        'Accept-Encoding': 'identity',
-        'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
-        'Connection': 'keep-alive',
-        'Cache-control': 'max-age=0',
-        'User-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_3) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.43 Safari/537.31'
-      }
-    }*/
-
-    Node.request({url: url}, function(err, req, str) {
-      var data;
-      if (!str) {
-        callback(null);
-      }
-      try {
-        // handle JS callback
-        if (match = /^\s*([\w.-]+)\(/.exec(str)) {
-          var ctx = {};
-          Opts.exportObject(match[1], function(o) {return o}, ctx);
-          with (ctx) {
-            data = eval(str);
-          }
-        } else {
-          data = JSON.parse(str); // no callback: assume valid JSON
-        }
-      } catch(e) {
-        error("Node#readJson() Error reading from url:", url, "--", e);
-      }
-      callback(data);
-    }, opts);
-  };
-
-  // super-simple options, if not using optimist
-  Node.options = function(o) {
-    o = o || {};
-    var opts = {_:[]},
-        flags = (o.flags || o.binary || '').split(','),
-        currOpt;
-
-    var aliases = Utils.reduce((o.aliases || "").split(','), function(item, obj) {
-        var parts = item.split(':');
-        if (parts.length == 2) {
-          obj[parts[0]] = parts[1];
-          obj[parts[1]] = parts[0];
-        }
-        return obj;
-      }, {});
-
-    function setOpt(opt, val) {
-      opts[opt] = val;
-      var alias = aliases[opt];
-      if (alias) {
-        opts[alias] = val;
-      }
-    }
-
-
-    Node.arguments.slice(1).forEach(function(arg) {
-      var match, alias, switches;
-      if (arg[0] == '-') {
-        currOpt = null; // handle this as an error
-        if (match = /^--(.*)/.exec(arg)) {
-          switches = [match[1]];
-        }
-        else if (match = /^-(.+)/.exec(arg)) {
-          switches = match[1].split('');
-        }
-        Utils.forEach(switches, function(opt) {
-          if (Utils.contains(flags, opt)) {
-            setOpt(opt, true);
-          } else {
-            currOpt = opt;
-          }
-        });
-      }
-      else if (currOpt) {
-        setOpt(currOpt, Utils.isNumber(arg) ? parseFloat(arg) : arg);
-        currOpt = null;
-      }
-      else {
-        opts._.push(arg);
-      }
-    });
-    return opts;
-  };
-}
-
-
-/*
-Node.loadUrl = function(url) {
-  return new NodeUrlLoader(url);
-};
-
-
-
-function NodeUrlLoader(url) {
-  var self = this,
-    body = "",
-    output,
-    opts = Utils.parseUrl(url);
-  delete opts.protocol;
-  opts.port = 80;
-
-  require('http').get(opts, function(resp) {
-    if (resp.headers['content-encoding'] == 'gzip') {
-      var gzip = zlib.createGunzip();
-      resp.pipe(gzip);
-      output = gzip;
-    } else {
-      output = resp;
-    }
-    output.on('data', function(chunk) {
-      body += chunk;
-    });
-    output.on('end', function() {
-      self.data = body;
-      self.startWaiting();
-    });
-
-  }).on("error", function(e){
-    trace("[NodeUrlLoader] error: " + e.message);
-  });
-}
-
-Opts.inherit(NodeUrlLoader, Waiter);
-*/
-
-/* @requires core, nodejs */
+/* @requires core */
 
 // Wrapper for DataView class for more convenient reading and writing of
 //   binary data; Remembers endianness and read/write position.
@@ -4744,13 +3784,13 @@ Opts.inherit(NodeUrlLoader, Waiter);
 function BinArray(buf, le) {
   if (Utils.isNumber(buf)) {
     buf = new ArrayBuffer(buf);
-  } else if (Node.inNode && buf instanceof Buffer == true) {
+  } else if (Env.inNode && buf instanceof Buffer == true) {
     // Since node 0.10, DataView constructor doesn't accept Buffers,
     //   so need to copy Buffer to ArrayBuffer
-    buf = Node.toArrayBuffer(buf);
+    buf = BinArray.toArrayBuffer(buf);
   }
   if (buf instanceof ArrayBuffer == false) {
-    error("BinArray constructor requires an integer, ArrayBuffer or Buffer");
+    error("BinArray constructor takes an integer, ArrayBuffer or Buffer argument");
   }
   this._buffer = buf;
   this._view = new DataView(buf);
@@ -4758,6 +3798,14 @@ function BinArray(buf, le) {
   this._le = le !== false;
   this._words = buf.byteLength % 4 == 0 ? new Uint32Array(buf) : null;
 }
+
+BinArray.toArrayBuffer = function(src) {
+  var dest = new ArrayBuffer(src.length);
+  for (var i = 0, n=src.length; i < n; i++) {
+    dest[i] = src[i];
+  }
+  return dest;
+};
 
 // Return length in bytes of an ArrayBuffer or Buffer
 //
@@ -5046,7 +4094,7 @@ function ShpReader(src) {
     return shapes;
   }
 
-  // Callback interface: for each record in a .shp file, pass a 
+  // Callback interface: for each record in a .shp file, pass a
   //   record object to a callback function
   //
   this.forEachShape = function(callback) {
@@ -5178,7 +4226,7 @@ ShpReader.prototype.getRecordClass = function(type) {
     } else {
       bin.skipBytes(32); // skip bbox
       this.partCount = hasParts ? bin.readUint32() : 1;
-      this.pointCount = bin.readUint32();      
+      this.pointCount = bin.readUint32();
     }
     this._data = function() {
       return this.isNull ? null : bin.position(pos);
@@ -5339,9 +4387,9 @@ function joinDataTables(dest, destKey, src, srcKey, srcFilter) {
 
   if (!dest.fieldExists(destKey)) {
     trace("[JoinedTable.joinTable()] destination table is missing its key field: ", destKey);
-    return;    
+    return;
   }
-  
+
   if (!src.fieldExists(srcKey)) {
     trace("[JoinedTable.joinTable()] source table is missing its key field:", srcKey);
     return;
@@ -5407,10 +4455,10 @@ JoinedTable.prototype.joinTablesV1 = function(dest, destKey, src, srcKey) {
     trace("[JoinedTable] missing one or more key fields:", srcKey, destKey);
     return;
   }
-  
+
   var destSchema = dest.schema;
   var srcSchema = src.schema;
-  
+
   var keyArr = Utils.getKeys(srcSchema);
 
   keyArr = Utils.filter(keyArr, function(val) { return !(val in destSchema)});
@@ -5451,7 +4499,7 @@ JoinedTable.prototype.joinTablesV1 = function(dest, destKey, src, srcKey) {
 
 /* @requires core, events, arrayutils, table-join */
 
-Opts.copyAllParams(C, { 
+Opts.copyAllParams(C, {
   INTEGER: 'integer',
   STRING: 'string',
   DOUBLE: 'double',
@@ -5897,7 +4945,7 @@ DataTable.prototype.getNullValueForType = function(type) {
   var nullVal = null;
   if (type == C.INTEGER) {
     nullVal = 0;
-  } 
+  }
   else if (type == C.STRING) {
     nullVal = '';
   }
@@ -5916,7 +4964,7 @@ DataTable.prototype.appendRecordData = function(obj, niceNull) {
   var ifield = this._indexedField || void 0;
   for (var fname in dest) {
     var val = obj[fname]; // TODO: validate? convert undefined to null?
-    
+
     if (val === void 0 && niceNull) {
       var type = this.schema[fname];
       val = this.getNullValueForType(type);
@@ -6042,7 +5090,7 @@ DataTable.prototype.getFilteredCopy = function(ids) {
   var dest = {};
   var schema = {};
   Opts.copyAllParams(schema, this.schema);
-  
+
   var newLen = ids.length;
   var src = this.data;
   for (var fname in src) {
@@ -6070,7 +5118,7 @@ DataTable.prototype.getFilteredCopy = function(ids) {
 
 DataTable.prototype.getFilteredCopy = function(ids) {
   var schema = Opts.copyAllParams({}, this.schema);
-  
+
   var newLen = ids.length;
   var dest = Utils.map(this.data, function(arr, key) {
     return Utils.getFilteredCopy(arr, ids);
@@ -6315,13 +5363,13 @@ Record.prototype.getDataAsObject = function(objRef) {
 };
 
 
-/* @requires dataview, data, nodejs, textutils */
+/* @requires dataview, data, textutils */
 
 // DBF file format:
 // http://www.dbf2002.com/dbf-file-format.html
 // http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
 // http://www.dbase.com/Knowledgebase/INT/db7_file_fmt.htm
-// 
+//
 // TODO: handle non-ascii characters, e.g. multibyte encodings
 // cf. http://code.google.com/p/stringencoding/
 
@@ -6329,7 +5377,6 @@ Record.prototype.getDataAsObject = function(objRef) {
 // @src is a Buffer or ArrayBuffer or filename
 //
 function DbfReader(src) {
-  // TODO: validate src type
   if (Utils.isString(src)) {
     src = Node.readFile(src);
   }
@@ -6369,7 +5416,7 @@ DbfReader.prototype.readCols = function() {
   Utils.forEach(this.header.fields, function(field, col) {
     data[field.name] = this.readCol(col);
   }, this);
-  return data; 
+  return data;
 };
 
 DbfReader.prototype.readRows = function() {
@@ -6608,7 +5655,7 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
   T.start();
 
   var fileBytes = 100;
-  var bounds = new BoundingBox();
+  var bounds = new Bounds();
   var shapeBuffers = Utils.map(shapes, function(shape, i) {
     var shpObj = MapShaper.exportShpRecord(shape, arcs, i+1, shpType);
     fileBytes += shpObj.buffer.byteLength;
@@ -6627,10 +5674,10 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
     .littleEndian()
     .writeInt32(1000)
     .writeInt32(shpType)
-    .writeFloat64(bounds.left)
-    .writeFloat64(bounds.bottom)
-    .writeFloat64(bounds.right)
-    .writeFloat64(bounds.top)
+    .writeFloat64(bounds.xmin)
+    .writeFloat64(bounds.ymin)
+    .writeFloat64(bounds.xmax)
+    .writeFloat64(bounds.ymax)
     .skipBytes(4 * 8); // skip Z & M type bounding boxes;
 
   // write .shx header
@@ -6682,10 +5729,10 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
         .writeInt32((recordBytes - 8) / 2)
         .littleEndian()
         .writeInt32(shpType)
-        .writeFloat64(bounds.left)
-        .writeFloat64(bounds.bottom)
-        .writeFloat64(bounds.right)
-        .writeFloat64(bounds.top)
+        .writeFloat64(bounds.xmin)
+        .writeFloat64(bounds.ymin)
+        .writeFloat64(bounds.xmax)
+        .writeFloat64(bounds.ymax)
         .writeInt32(data.partCount)
         .writeInt32(data.pointCount);
 
@@ -6881,8 +5928,8 @@ var controls = {
 /* @requires arrayutils, mapshaper-common */
 
 // buildArcTopology() converts non-topological polygon data into a topological format
-// 
-// Input format: 
+//
+// Input format:
 // {
 //    xx: [Array],      // x-coords of each point in the dataset (coords of all shapes are concatenated)
 //    yy: [Array],      // y-coords of each point
@@ -6901,7 +5948,7 @@ MapShaper.buildArcTopology = function(obj) {
   T.start();
   if (!(obj.xx && obj.yy && obj.partIds && obj.shapeIds)) error("[buildArcTopology()] Missing required param/s");
 
-  var xx = obj.xx, 
+  var xx = obj.xx,
       yy = obj.yy,
       partIds = obj.partIds,
       shapeIds = obj.shapeIds,
@@ -6923,8 +5970,8 @@ MapShaper.buildArcTopology = function(obj) {
   T.stop("Find matching vertices");
 
   // Loop through all the points in the dataset, identifying arcs.
-  //  
-  T.start();  
+  //
+  T.start();
   var arcTable = new ArcTable(xx, yy, bbox),
       inArc = false;
 
@@ -6955,7 +6002,7 @@ MapShaper.buildArcTopology = function(obj) {
   function pointIsArcEndpoint(id) {
     var isNode = false,
         x = xx[id],
-        y = yy[id],    
+        y = yy[id],
         partId = partIds[id],
         isPartEndpoint = partId !== partIds[id-1] || partId !== partIds[id+1];
     // trace("partIsArcEndpoint()", id, "x, y:", x, y);
@@ -6967,7 +6014,7 @@ MapShaper.buildArcTopology = function(obj) {
       // case -- if point is endpoint of a non-topological ring, then point is a node.
       // TODO: some nodes formed with this rule might be removed if arcs on either side
       //   of the node belong to the same shared boundary...
-      //   
+      //
       //
       isNode = true;
     }
@@ -6985,7 +6032,7 @@ MapShaper.buildArcTopology = function(obj) {
         if (nextX == x && nextY == y) {
           matchCount++;
           if (matchCount == 1) {
-            // If this point matches only one other point, we'll need the id of 
+            // If this point matches only one other point, we'll need the id of
             //   the matching point.
             matchId = nextId;
           }
@@ -7001,7 +6048,7 @@ MapShaper.buildArcTopology = function(obj) {
         // case -- point matches exactly one other point in the dataset
         // TODO: test with edge cases: several identical points clustered together,
         //   case where matching point is on the same ring, etc.
-        //         
+        //
         // if matching point is an endpoint, then curr point is (also) a node.
         var matchIsPartEndpoint = partIds[matchId] !== partIds[matchId + 1] || partIds[matchId] !== partIds[matchId - 1];
         if (matchIsPartEndpoint) {
@@ -7080,7 +6127,7 @@ MapShaper.buildArcTopology = function(obj) {
             xarr = xx.slice(arcStartId, lim),
             yarr = yy.slice(arcStartId, lim);
           }
-          
+
       var arc = [xarr, yarr];
 
       // Hash the last point in the arc, so this new arc can be found when we
@@ -7094,7 +6141,7 @@ MapShaper.buildArcTopology = function(obj) {
       hashTable[key] = arcId;
 
       // arc.chainedId = chainedId;
-      // pushing chained id onto array instead of 
+      // pushing chained id onto array instead of
       // adding as property of arc Array
       chainIds.push(chainId);
       arcs.push(arc);
@@ -7114,7 +6161,7 @@ MapShaper.buildArcTopology = function(obj) {
       }
       return true;
     }
-  
+
 
     // Try to start a new arc starting with point at @startId.
     // Returns true if a new arc was started.
@@ -7139,7 +6186,7 @@ MapShaper.buildArcTopology = function(obj) {
           matchId = -1,
           arcId = arcs.length; // anticipating a new arc
 
-      // Check to see if this point is the first point in an arc that matches a 
+      // Check to see if this point is the first point in an arc that matches a
       //   previously found arc.
       while (chainedArcId != -1) {
         var chainedArc = arcs[chainedArcId];
@@ -7170,7 +6217,7 @@ MapShaper.buildArcTopology = function(obj) {
         arcStartId = startId;
         sharedArcs[arcId] = 0;
         return true;
-      } 
+      }
       sharedArcs[matchId] = 1;
       return false;
     };
@@ -7196,7 +6243,7 @@ MapShaper.buildArcTopology = function(obj) {
           // if a part has 3 or more arcs, assume it won't collapse...
           // TODO: look into edge cases where this isn't true
 
-          if (maxPartFlags[partId] == 1 && partLen <= 2) { 
+          if (maxPartFlags[partId] == 1 && partLen <= 2) {
             for (var i=0; i<partLen; i++) {
               var arcId = part[i];
               if (arcId < 1) arcId = -1 - arcId;
@@ -7230,7 +6277,7 @@ MapShaper.buildArcTopology = function(obj) {
 };
 
 
-// Generates a hash function to convert an x,y coordinate into an index in a 
+// Generates a hash function to convert an x,y coordinate into an index in a
 //   hash table.
 // @bbox A BoundingBox giving the extent of the dataset.
 //
@@ -7272,7 +6319,7 @@ MapShaper.buildHashChains = function(xx, yy, partIds, bbox) {
   // Ids of next point in each chain, indexed by point id
   var nextIds = new Int32Array(pointCount);
   // Utils.initializeArray(nextIds, -1);
- 
+
   var key, headId, tailId;
 
   for (var i=0; i<pointCount; i++) {
@@ -7574,7 +6621,7 @@ Opts.inherit(ShapeLayer, Waiter);
 
 
 
-/* @requires events, core.geo, core */
+/* @requires events, core */
 var TRANSITION_TIME = 500;
 
 /*
@@ -7871,7 +6918,7 @@ TweenTimer.prototype.procTween = function(pct) {
 
 var Tween = TweenTimer;
 
-// 
+//
 //
 Tween.quadraticOut = function(n) {
   return 1 - Math.pow((1 - n), 2);
@@ -7908,7 +6955,7 @@ Tween.inOutStrong = function(n) {
  */
 function NumberTween(callback) {
   this.__super__();
-  
+
   this.start = function(fromVal, toVal, ms, method) {
     this._from = fromVal;
     this._to = toVal;
@@ -7924,67 +6971,26 @@ function NumberTween(callback) {
 Opts.inherit(NumberTween, TweenTimer);
 
 
-/**
- * Tween class for map zooming; See NavigationManager.
- * 
- * @constructor
- */
-function BoundingBoxTween(callback) {
-  // TweenTimer.call(this);
-  this.__super__();
 
-  this.start = function(a, b, ms, method) {
-    method = method || Tween.sineInOut;
-    this._bbStart = a;
-    this._bbEnd = b;
-
-
-    var deltaScale = b.width() / a.width(); // < 1 = zooming in; > 1 = zooming out
-    var deltaScaleAbs = deltaScale > 1 ? 1 / deltaScale : deltaScale; // value is <= 1; 1 == no scale change
-    var weight = 0.6;  // Relative weight of ms parameter (1 = no time adjustment)
-
-    var adjustedTime = ms * weight + ms * (1 - deltaScaleAbs) * (1 - weight);
-    //adjustedTime *= 5;  // time multiplier -- slow it down for debugging
-
-    this.startTimer(adjustedTime, method);
-  }
-
-  // Assume pct is between 0 and 1
-  //
-  this.procTween = function(pct) {
-    var a = this._bbStart;
-    var b = this._bbEnd;
-
-    var w = a.width() * (1-pct) + b.width() * pct;
-    var h = a.height() * (1-pct) + b.height() * pct;
-    var l = a.left * (1-pct) + b.left * pct;
-    var t = a.top * (1-pct) + b.top * pct;
-    var bb = new BoundingBox().setBounds(l, t, l + w, t - h); // fixes small rounding errors affecting scale
-    callback(bb, pct == 1);
-  };
-}
-
-Opts.inherit(BoundingBoxTween, TweenTimer);
 
 
 /* @requires browser, element-position, events */
 
 function MouseArea(element) {
-  var _self = this,
+  var pos = new ElementPosition(element),
+      _areaPos = pos.position(),
+      _self = this,
       _dragging = false,
       _isOver = false,
       _isDown = false,
-      _pos = new ElementPosition(element),
-      _areaPos = _pos.position(),
       _moveData,
       _downData;
 
-  _pos.on('change', function() {_areaPos = _pos.position()});
+  pos.on('change', function() {_areaPos = pos.position()});
 
   if (!Browser.touchEnabled) {
     Browser.on(document, 'mousemove', onMouseMove);
-    // mousedown on body instead of window; window is triggered by interaction with browser scrollbars.
-    Browser.on(document.body, 'mousedown', onMouseDown);
+    Browser.on(document, 'mousedown', onMouseDown);
     Browser.on(document, 'mouseup', onMouseUp);
     Browser.on(element, 'mouseover', onAreaOver);
     Browser.on(element, 'mouseout', onAreaOut);
@@ -8251,7 +7257,7 @@ Opts.inherit(MshpMap, EventDispatcher);
 
 function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
-      _padding = new FourSides(),
+      _padPix = 0,
       _self = this,
       _fullBounds,
       _cx,
@@ -8321,25 +7327,20 @@ function MapExtent(el, initialBounds) {
   // Return: Geographic bounds of map window centered on @contentBounds
   //
   function centerAlign(contentBounds) {
-    var bounds = contentBounds.clone();
-    var p = _padding,
-        wpix = _self.width() - p.left - p.right,
-        hpix = _self.height() - p.top - p.bottom;
+    var bounds = contentBounds.clone(),
+        wpix = _self.width() - 2 * _padPix,
+        hpix = _self.height() - 2 * _padPix,
+        padGeo = _padPix * bounds.width() / wpix; // per-pixel scale
 
     // expand bounds to match padded map aspect ratio
     bounds.fillOut(wpix / hpix);
 
-    // add padding to bounds
-    var mpp = bounds.width() / wpix; // per-pixel scale
-    bounds.padBounds(p.left * mpp, p.top * mpp, p.right * mpp, p.bottom * mpp);
+    bounds.padBounds(padGeo, padGeo, padGeo, padGeo);
     return bounds;
   }
 
-  this.setContentPadding = function(l, t, r, b) {
-    if (arguments.length == 1) {
-      t = l, r = l, b = l;
-    }
-    _padding = new FourSides(l, t, r, b);
+  this.setContentPadding = function(pix) {
+    _padPix = pix;
     this.reset();
     return this;
   };
@@ -8369,6 +7370,69 @@ function MapExtent(el, initialBounds) {
 }
 
 Opts.inherit(MapExtent, EventDispatcher);
+
+
+/* @requires core */
+
+Utils.findRankByValue = function(arr, value) {
+  if (isNaN(value)) return arr.length;
+  var rank = 1;
+  for (var i=0, n=arr.length; i<n; i++) {
+    if (value > arr[i]) rank++;
+  }
+  return rank;
+}
+
+Utils.findValueByPct = function(arr, pct) {
+  var rank = Math.ceil((1-pct) * (arr.length));
+  return Utils.findValueByRank(arr, rank);
+};
+
+// See http://ndevilla.free.fr/median/median/src/wirth.c
+// Elements of @arr are reordered
+//
+Utils.findValueByRank = function(arr, rank) {
+  if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
+
+  rank = Utils.clamp(rank | 0, 1, arr.length);
+  var k = rank - 1, // conv. rank to array index
+      n = arr.length,
+      l = 0,
+      m = n - 1,
+      i, j, val, tmp;
+
+  while (l < m) {
+    val = arr[k];
+    i = l;
+    j = m;
+    do {
+      while (arr[i] < val) {i++;}
+      while (val < arr[j]) {j--;}
+      if (i <= j) {
+        tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+        i++;
+        j--;
+      }
+    } while (i <= j);
+    if (j < k) l = i;
+    if (k < i) m = j;
+  }
+  return arr[k];
+};
+
+//
+//
+Utils.findMedian = function(arr) {
+  var n = arr.length,
+      rank = Math.floor(n / 2) + 1,
+      median = Utils.findValueByRank(arr, rank);
+  if ((n & 1) == 0) {
+    median = (median + Utils.findValueByRank(arr, rank - 1)) / 2;
+  }
+  return median;
+};
 
 
 /* @requires mapshaper-common, mapshaper-geom, median, sorting */
@@ -8679,7 +7743,7 @@ function Heap() {
     if (!heapArr || heapSize > heapArr.length) {
       var bufLen = heapSize * 1.2 | 0;
       heapArr = new Int32Array(bufLen);
-      indexArr = new Int32Array(bufLen); 
+      indexArr = new Int32Array(bufLen);
     }
   };
 
@@ -8768,7 +7832,7 @@ function Heap() {
   }
 }
 
-/* @requires mapshaper-common, mapshaper-geom, mapshaper-heap, core.geo */
+/* @requires mapshaper-common, mapshaper-geom, mapshaper-heap */
 
 var Visvalingam = {};
 
@@ -8796,7 +7860,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
       nextArr = new Int32Array(bufLen);
     }
 
-    // Initialize Visvalingam "effective area" values and references to 
+    // Initialize Visvalingam "effective area" values and references to
     //   prev/next points for each point in arc.
     //
     var values = new Float64Array(arcLen);
@@ -8882,7 +7946,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
 
 
 
-// The original mapshaper "modified Visvalingam" function uses a step function to 
+// The original mapshaper "modified Visvalingam" function uses a step function to
 // underweight more acute triangles.
 //
 Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
@@ -8978,8 +8042,6 @@ function exportCoordsForGeoJSON(paths) {
 
 /* @requires mapshaper-common, mapshaper-geojson */
 
-
-
 MapShaper.importTopoJSON = function(obj) {
   var mx = 1, my = 1, bx = 0, by = 0;
   if (obj.transform) {
@@ -9010,7 +8072,6 @@ MapShaper.importTopoJSON = function(obj) {
 //   of Polygon and MultiPolygon shapes
 // TODO: Adjust quantization to suit the amount of detail in the vector lines
 // TODO: Support ids from attribute data
-// TODO: Handle holes correctly
 //
 MapShaper.exportTopoJSON = function(data) {
   if (!data.objects || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
@@ -9024,7 +8085,8 @@ MapShaper.exportTopoJSON = function(data) {
   });
 
   var srcBounds = data.bounds,
-      destBounds = new Bounds([0, 0, 100000, 100000]),
+      resXY = findTopoJSONResolution(arcs),
+      destBounds = new Bounds(0, 0, srcBounds.width() / resXY[0], srcBounds.height() / resXY[1]),
       tr = srcBounds.getTransform(destBounds),
       inv = tr.invert();
 
@@ -9059,6 +8121,27 @@ MapShaper.exportTopoJSON = function(data) {
 
   return JSON.stringify(obj);
 };
+
+// Find the x, y values that map to x / y integer unit in topojson output
+// Calculated as 1/50 the size of average x and y offsets
+// (a compromise between compression, precision and simplicity)
+//
+function findTopoJSONResolution(arcs) {
+  var dx = 0, dy = 0, n = 0;
+  Utils.forEach(arcs, function(arc) {
+    var a, b;
+    for (var i=1, len = arc.length; i<len; i++, n++) {
+      a = arc[i-1];
+      b = arc[i];
+      dx += Math.abs(b[0] - a[0]);
+      dy += Math.abs(b[1] - a[1]);
+    }
+  });
+  var k = 0.02,
+      xres = dx * k / n,
+      yres = dy * k / n;
+  return [xres, yres];
+}
 
 function exportTopoJSONObject(shapes, type) {
   var obj = {
@@ -9097,7 +8180,6 @@ function exportArcsForTopoJSON(paths) {
     return path.ids;
   });
 }
-
 
 
 /* @requires mapshaper-geojson, mapshaper-topojson */
@@ -9206,7 +8288,6 @@ Utils.loadBinaryData = function(url, callback) {
 
 
 /* @requires
-mapshaper-index,
 mapshaper-shapes,
 mapshaper-controls,
 mapshaper-topology,
@@ -9215,22 +8296,19 @@ mapshaper-maplayer,
 mapshaper-simplify,
 mapshaper-visvalingam,
 mapshaper-export,
-nodejs
 loading.html5
 */
 
 var api = {
-  BoundsIndex: BoundsIndex,
   ArcDataset: ArcDataset,
   Utils: Utils,
-  BoundingBox: BoundingBox,
   controls: controls,
   trace: trace,
   error: error
 }
 
 
-if (Node.inNode) { // node.js for testing
+if (Env.inNode) { // node.js for testing
   module.exports = api;
 } else {
   Opts.extendNamespace("mapshaper", api);
