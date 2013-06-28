@@ -15,9 +15,10 @@ function distanceSq(ax, ay, bx, by) {
 }
 
 function distance2D(ax, ay, bx, by) {
-  return Math.sqrt(distanceSq(ax, ay, bx, by));
+  var dx = ax - bx,
+      dy = ay - by;
+  return Math.sqrt(dx * dx + dy * dy);
 }
-
 
 function distanceSq3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
