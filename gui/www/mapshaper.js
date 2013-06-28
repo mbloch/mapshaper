@@ -6225,6 +6225,7 @@ function ArcIndex(hashTableSize, xyToUint) {
       }
       arcId = chainIds[arcId];
     }
+
     return -1;
   };
 
@@ -6472,9 +6473,13 @@ function ArcEngine(xx, yy, pathSizes, pathFlags) {
 
   function addArc(startId, endId, startId2, endId2) {
     var arcId, xarr, yarr, i;
-    var matchId = index.findArcNeighbor(xx, yy, startId, endId, nextPoint);
+    var splitArc = endId2 != null;
+    var matchId = index.findArcNeighbor(xx, yy, startId, splitArc ? endId2 : endId, nextPoint);
     if (matchId == -1) {
-      if (endId2 == null) {
+      if (splitArc) {
+        xarr = mergeArcParts(xx, startId, endId, startId2, endId2);
+        yarr = mergeArcParts(yy, startId, endId, startId2, endId2);
+      } else {
         // Creating subarrays on xx and yy creates many fewer objects for memory
         //   management to track than creating new x and y Array objects for each arc.
         //   With 846MB ZCTA file, gc() time reduced from 580ms to 65ms in Node.js,
@@ -6483,10 +6488,6 @@ function ArcEngine(xx, yy, pathSizes, pathFlags) {
         //
         xarr = xx.subarray(startId, endId + 1);
         yarr = yy.subarray(startId, endId + 1);
-      } else {
-        // trace("wrapping")
-        xarr = mergeArcParts(xx, startId, endId, startId2, endId2);
-        yarr = mergeArcParts(yy, startId, endId, startId2, endId2);
       }
 
       arcId = index.addArc(xarr, yarr);
@@ -6559,7 +6560,6 @@ function calcMinPointCounts(paths, pathFlags, arcs, sharedArcFlags) {
     }
   });
 }
-
 
 function groupPathsByShape(paths, shapeIds) {
   // Group topological shape-parts by shape
