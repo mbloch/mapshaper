@@ -70,7 +70,7 @@ function Heap() {
     if (!heapArr || heapSize > heapArr.length) {
       var bufLen = heapSize * 1.2 | 0;
       heapArr = new Int32Array(bufLen);
-      indexArr = new Int32Array(bufLen); 
+      indexArr = new Int32Array(bufLen);
     }
   };
 
@@ -81,6 +81,7 @@ function Heap() {
     indexArr[valId - dataOffs] = heapIdx;
     heapArr[heapIdx] = valId;
   }
+
 
   // Check that heap is ordered starting at a given node
   // (traverses heap recursively)
@@ -94,11 +95,6 @@ function Heap() {
     var childIdx = heapIdx * 2 + 1;
     checkNode(childIdx, val);
     checkNode(childIdx + 1, val);
-  }
-
-  function getMinChildIdx(i, j) {
-    if (i >= itemsInHeap) error("Heap index error");
-    return j >= itemsInHeap || dataArr[heapArr[i]] <= dataArr[heapArr[j]] ? i : j;
   }
 
   function reHeap(idx) {
@@ -135,15 +131,19 @@ function Heap() {
   function downHeap(currIdx) {
     // Item gets swapped with any lighter children
     //
-    var valId = heapArr[currIdx],
-        currVal = dataArr[valId],
+    var data = dataArr, heap = heapArr, // local vars, faster
+        valId = heap[currIdx],
+        currVal = data[valId],
         firstChildIdx = 2 * currIdx + 1,
+        secondChildIdx,
         minChildIdx, childValId, childVal;
 
     while (firstChildIdx < itemsInHeap) {
-      minChildIdx = getMinChildIdx(firstChildIdx, firstChildIdx + 1);
-      childValId = heapArr[minChildIdx];
-      childVal = dataArr[childValId];
+      secondChildIdx = firstChildIdx + 1;
+      minChildIdx = secondChildIdx >= itemsInHeap || data[heap[firstChildIdx]] <= data[heap[secondChildIdx]] ? firstChildIdx : secondChildIdx;
+
+      childValId = heap[minChildIdx];
+      childVal = data[childValId];
 
       if (currVal <= childVal) {
         break;
