@@ -1,6 +1,5 @@
 /* @requires shp-reader, dbf-reader, mapshaper-common, mapshaper-geom */
 
-
 MapShaper.importDbf = function(src) {
   T.start();
   var data = new DbfReader(src).read("table");
@@ -32,14 +31,13 @@ MapShaper.importShp = function(src) {
   var counts = reader.getCounts(),
       xx = new Float64Array(counts.pointCount),
       yy = new Float64Array(counts.pointCount),
-      partIds = new Int32Array(counts.pointCount), // signed, using -1 as error code
       shapeIds = [];
 
   var expectRings = Utils.contains([5,15,25], reader.type());
       findMaxParts = expectRings,
-      maxPartFlags = findMaxParts ? new Uint8Array(counts.partCount) : null,
       findHoles = expectRings,
-      holeFlags = findHoles ? new Uint8Array(counts.partCount) : null;
+      pathSizeIndex = new Uint32Array(counts.partCount),
+      pathFlags = new Uint8Array(counts.partCount);
 
   var pointId = 0,
       partId = 0,
@@ -55,7 +53,8 @@ MapShaper.importShp = function(src) {
         pointsInShape = shp.pointCount,
         partSizes = shp.readPartSizes(),
         coords = shp.readCoords(),
-        pointsInPart;
+        pointsInPart, validPointsInPart,
+        x, y, prevX, prevY;
 
     if (partsInShape != partSizes.length) error("Shape part mismatch");
 
@@ -63,20 +62,26 @@ MapShaper.importShp = function(src) {
       pointsInPart = partSizes[j];
       startId = pointId;
       for (var i=0; i<pointsInPart; i++) {
-        xx[pointId] = coords[offs++];
-        yy[pointId] = coords[offs++];
-        partIds[pointId] = partId;
-        pointId++;
+        x = coords[offs++];
+        y = coords[offs++];
+        if (i == 0 || prevX != x || prevY != y) {
+          xx[pointId] = x;
+          yy[pointId] = y;
+          pointId++;
+        }
+        prevX = x, prevY = y;
       }
 
+      validPointsInPart = pointId - startId;
+      pathSizeIndex[partId] = validPointsInPart
+
+      // TODO: check for too-small polylines
+      //
       if (expectRings) {
         signedPartArea = msSignedRingArea(xx, yy, startId, pointsInPart);
-        if (signedPartArea == 0 || pointsInPart < 4 || xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
+        if (signedPartArea == 0 || validPointsInPart < 4 || xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
           trace("A ring in shape", shapeId, "has zero area or is not closed; pointsInPart:", pointsInPart, 'parts:', partsInShape);
-          for (var k=startId; k<pointId; k++) {
-            partIds[k] = -1; // -> null part
-            trace(xx[k], yy[k]);
-          }
+          pathFlags[partId] |= C.PATH_IS_NULL;
           continue;
         }
         if (findMaxParts) {
@@ -90,7 +95,7 @@ MapShaper.importShp = function(src) {
         if (findHoles) {
           if (signedPartArea < 0) {
             if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
-            holeFlags[partId] = 1;
+            pathFlags[partId] |= C.PATH_IS_HOLE;
             holeCount++;
           }
         }
@@ -100,7 +105,7 @@ MapShaper.importShp = function(src) {
     }  // forEachPart()
 
     if (maxPartId > -1) {
-      maxPartFlags[maxPartId] = 1;
+      pathFlags[maxPartId] |= C.PATH_IS_PRIMARY;
     }
     shapeId++;
   });  // forEachShape()
@@ -109,6 +114,12 @@ MapShaper.importShp = function(src) {
       skippedParts = counts.partCount - partId;
   if (counts.shapeCount != shapeId || skippedPoints < 0 || skippedParts < 0)
     error("Counting problem");
+
+  if (skippedPoints > 0) {
+    trace("Truncating point arrays; skipped:", skippedPoints)
+    xx = xx.subarray(0, pointId);
+    yy = yy.subarray(0, pointId);
+  }
 
   var info = {
     input_bounds: reader.header().bounds,
@@ -123,10 +134,9 @@ MapShaper.importShp = function(src) {
   return {
     xx: xx,
     yy: yy,
-    partIds: partIds,
     shapeIds: shapeIds,
-    maxPartFlags: maxPartFlags,
-    holeFlags: holeFlags,
+    pathSizes: pathSizeIndex,
+    pathFlags: pathFlags,
     info: info
   };
 };

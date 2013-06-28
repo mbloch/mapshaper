@@ -1,10 +1,17 @@
-/* @requires arrayutils */
+/* @requires arrayutils, core */
 
 // TODO: adapt to run in browser
 function stop(msg) {
   msg && trace(msg);
   process.exit(1);
 }
+
+Utils.extend(C, {
+  PART_IS_HOLE: 0x1,
+  PART_IS_NULL: 0x2,
+  PART_IS_PRIMARY: 0x4
+});
+
 
 var MapShaper = {};
 

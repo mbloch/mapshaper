@@ -65,7 +65,7 @@ function ShapeLayer(src, surface) {
     var shapes = src.shapes().filterPaths(ext.getBounds()).transform(ext.getTransform());
     var info = renderer.drawShapes(shapes, style, surface.getContext());
     // TODO: find a way to enable circles at an appropriate zoom
-    //if (ext.scale() > 40) renderer.drawPoints(src.shapes().filterPoints(ext.getBounds()).transform(ext.getTransform()), surface.getContext());
+    // if (ext.scale() > 0) renderer.drawPoints(src.shapes().filterPoints(ext.getBounds()).transform(ext.getTransform()), surface.getContext());
     T.stop("- paths: " + info.paths + " segs: " + info.segments);
   }
 }
