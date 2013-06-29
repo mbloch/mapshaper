@@ -33,11 +33,12 @@ MapShaper.importShp = function(src) {
       yy = new Float64Array(counts.pointCount),
       shapeIds = [];
 
-  var expectRings = Utils.contains([5,15,25], reader.type());
+  var expectRings = Utils.contains([5,15,25], reader.type()),
       findMaxParts = expectRings,
       findHoles = expectRings,
       pathSizeIndex = new Uint32Array(counts.partCount),
-      pathFlags = new Uint8Array(counts.partCount);
+      pathFlags = new Uint8Array(counts.partCount),
+      pathData = [], pathObj;
 
   var pointId = 0,
       partId = 0,
@@ -75,6 +76,14 @@ MapShaper.importShp = function(src) {
       validPointsInPart = pointId - startId;
       pathSizeIndex[partId] = validPointsInPart
 
+      pathObj = {
+        size: validPointsInPart,
+        isHole: false,
+        isPrimary: false,
+        isNull: false,
+        shapeId: shapeId
+      }
+
       // TODO: check for too-small polylines
       //
       if (expectRings) {
@@ -82,6 +91,7 @@ MapShaper.importShp = function(src) {
         if (signedPartArea == 0 || validPointsInPart < 4 || xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
           trace("A ring in shape", shapeId, "has zero area or is not closed; pointsInPart:", pointsInPart, 'parts:', partsInShape);
           pathFlags[partId] |= C.PATH_IS_NULL;
+          pathObj.isNull = false;
           continue;
         }
         if (findMaxParts) {
@@ -97,15 +107,18 @@ MapShaper.importShp = function(src) {
             if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
             pathFlags[partId] |= C.PATH_IS_HOLE;
             holeCount++;
+            pathObj.isHole = true;
           }
         }
       }
       shapeIds.push(shapeId);
       partId++;
+      pathData.push(pathObj);
     }  // forEachPart()
 
     if (maxPartId > -1) {
       pathFlags[maxPartId] |= C.PATH_IS_PRIMARY;
+      pathObj.isPrimary = true;
     }
     shapeId++;
   });  // forEachShape()
@@ -134,9 +147,10 @@ MapShaper.importShp = function(src) {
   return {
     xx: xx,
     yy: yy,
-    shapeIds: shapeIds,
-    pathSizes: pathSizeIndex,
-    pathFlags: pathFlags,
+    pathData: pathData,
+    //shapeIds: shapeIds,
+    //pathSizes: pathSizeIndex,
+    //pathFlags: pathFlags,
     info: info
   };
 };
