@@ -4048,14 +4048,11 @@ MapShaper.importShp = function(src) {
   var expectRings = Utils.contains([5,15,25], reader.type()),
       findMaxParts = expectRings,
       findHoles = expectRings,
-      pathSizeIndex = new Uint32Array(counts.partCount),
-      pathFlags = new Uint8Array(counts.partCount),
-      pathData = [], pathObj;
+      pathData = [];
 
   var pointId = 0,
       partId = 0,
-      shapeId = 0,
-      holeCount = 0;
+      shapeId = 0;
 
   reader.forEachShape(function(shp) {
     var maxPartId = -1,
@@ -4067,6 +4064,7 @@ MapShaper.importShp = function(src) {
         partSizes = shp.readPartSizes(),
         coords = shp.readCoords(),
         pointsInPart, validPointsInPart,
+        pathObj,
         x, y, prevX, prevY;
 
     if (partsInShape != partSizes.length) error("Shape part mismatch");
@@ -4086,7 +4084,7 @@ MapShaper.importShp = function(src) {
       }
 
       validPointsInPart = pointId - startId;
-      pathSizeIndex[partId] = validPointsInPart
+      // pathSizeIndex[partId] = validPointsInPart
 
       pathObj = {
         size: validPointsInPart,
@@ -4102,8 +4100,8 @@ MapShaper.importShp = function(src) {
         signedPartArea = msSignedRingArea(xx, yy, startId, pointsInPart);
         if (signedPartArea == 0 || validPointsInPart < 4 || xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
           trace("A ring in shape", shapeId, "has zero area or is not closed; pointsInPart:", pointsInPart, 'parts:', partsInShape);
-          pathFlags[partId] |= C.PATH_IS_NULL;
-          pathObj.isNull = false;
+          // pathFlags[partId] |= C.PATH_IS_NULL;
+          pathObj.isNull = true;
           continue;
         }
         if (findMaxParts) {
@@ -4117,19 +4115,16 @@ MapShaper.importShp = function(src) {
         if (findHoles) {
           if (signedPartArea < 0) {
             if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
-            pathFlags[partId] |= C.PATH_IS_HOLE;
-            holeCount++;
             pathObj.isHole = true;
           }
         }
       }
       shapeIds.push(shapeId);
-      partId++;
       pathData.push(pathObj);
+      partId++;
     }  // forEachPart()
 
     if (maxPartId > -1) {
-      pathFlags[maxPartId] |= C.PATH_IS_PRIMARY;
       pathObj.isPrimary = true;
     }
     shapeId++;
@@ -4160,9 +4155,6 @@ MapShaper.importShp = function(src) {
     xx: xx,
     yy: yy,
     pathData: pathData,
-    //shapeIds: shapeIds,
-    //pathSizes: pathSizeIndex,
-    //pathFlags: pathFlags,
     info: info
   };
 };
