@@ -4045,16 +4045,14 @@ MapShaper.importShp = function(src) {
       yy = new Float64Array(counts.pointCount),
       shapeIds = [];
 
-  var expectRings = Utils.contains([5,15,25], reader.type());
+  var expectRings = Utils.contains([5,15,25], reader.type()),
       findMaxParts = expectRings,
       findHoles = expectRings,
-      pathSizeIndex = new Uint32Array(counts.partCount),
-      pathFlags = new Uint8Array(counts.partCount);
+      pathData = [];
 
   var pointId = 0,
       partId = 0,
-      shapeId = 0,
-      holeCount = 0;
+      shapeId = 0;
 
   reader.forEachShape(function(shp) {
     var maxPartId = -1,
@@ -4066,6 +4064,7 @@ MapShaper.importShp = function(src) {
         partSizes = shp.readPartSizes(),
         coords = shp.readCoords(),
         pointsInPart, validPointsInPart,
+        pathObj,
         x, y, prevX, prevY;
 
     if (partsInShape != partSizes.length) error("Shape part mismatch");
@@ -4085,7 +4084,15 @@ MapShaper.importShp = function(src) {
       }
 
       validPointsInPart = pointId - startId;
-      pathSizeIndex[partId] = validPointsInPart
+      // pathSizeIndex[partId] = validPointsInPart
+
+      pathObj = {
+        size: validPointsInPart,
+        isHole: false,
+        isPrimary: false,
+        isNull: false,
+        shapeId: shapeId
+      }
 
       // TODO: check for too-small polylines
       //
@@ -4093,7 +4100,8 @@ MapShaper.importShp = function(src) {
         signedPartArea = msSignedRingArea(xx, yy, startId, pointsInPart);
         if (signedPartArea == 0 || validPointsInPart < 4 || xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
           trace("A ring in shape", shapeId, "has zero area or is not closed; pointsInPart:", pointsInPart, 'parts:', partsInShape);
-          pathFlags[partId] |= C.PATH_IS_NULL;
+          // pathFlags[partId] |= C.PATH_IS_NULL;
+          pathObj.isNull = true;
           continue;
         }
         if (findMaxParts) {
@@ -4107,17 +4115,17 @@ MapShaper.importShp = function(src) {
         if (findHoles) {
           if (signedPartArea < 0) {
             if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
-            pathFlags[partId] |= C.PATH_IS_HOLE;
-            holeCount++;
+            pathObj.isHole = true;
           }
         }
       }
       shapeIds.push(shapeId);
+      pathData.push(pathObj);
       partId++;
     }  // forEachPart()
 
     if (maxPartId > -1) {
-      pathFlags[maxPartId] |= C.PATH_IS_PRIMARY;
+      pathObj.isPrimary = true;
     }
     shapeId++;
   });  // forEachShape()
@@ -4146,9 +4154,7 @@ MapShaper.importShp = function(src) {
   return {
     xx: xx,
     yy: yy,
-    shapeIds: shapeIds,
-    pathSizes: pathSizeIndex,
-    pathFlags: pathFlags,
+    pathData: pathData,
     info: info
   };
 };
@@ -5361,12 +5367,13 @@ Utils.format = (function() {
 // }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
 //
 MapShaper.buildArcTopology = function(obj) {
-  if (!(obj.xx && obj.yy && obj.shapeIds && obj.pathSizes && obj.pathFlags)) error("[buildArcTopology()] Missing required param/s");
+  if (!(obj.xx && obj.yy && obj.pathData)) error("[buildArcTopology()] Missing required param/s");
 
   T.start();
-  var topoData = new ArcEngine(obj.xx, obj.yy, obj.pathSizes, obj.pathFlags).buildTopology();
-  topoData.arcMinPointCounts = calcMinPointCounts(topoData.paths, obj.pathFlags, topoData.arcs, topoData.sharedArcFlags);
-  topoData.shapes = groupPathsByShape(topoData.paths, obj.shapeIds);
+  var topoData = new ArcEngine(obj.xx, obj.yy, obj.pathData).buildTopology();
+  topoData.arcMinPointCounts = calcMinPointCounts(topoData.paths, obj.pathData, topoData.arcs, topoData.sharedArcFlags);
+  topoData.shapes = groupPathsByShape(topoData.paths, obj.pathData);
+  delete topoData.paths;
   T.stop("Process topology");
   return topoData;
 };
@@ -5504,7 +5511,7 @@ function ArcIndex(hashTableSize, xyToUint) {
 }
 
 
-function ArcEngine(xx, yy, pathSizes, pathFlags) {
+function ArcEngine(xx, yy, pathData) {
   var pointCount = xx.length,
       xyToUint = MapShaper.getPointToUintHash(MapShaper.calcXYBounds(xx, yy)),
       index = new ArcIndex(pointCount * 0.2, xyToUint);
@@ -5512,11 +5519,7 @@ function ArcEngine(xx, yy, pathSizes, pathFlags) {
   var paths = [],
       sharedArcs = [];
 
-  var ISLAND = C.PART_IS_ISLAND,
-      HAS_UNIQUE = C.PART_HAS_UNIQUE_POINT,
-      SINGLE_NEIGHBOR = C.PART_HAS_SINGLE_NEIGHBOR;
-
-  var partIds = initPathIds(pathSizes);
+  var partIds = initPathIds(pointCount, pathData);
 
   // Create chains of vertices with same x, y coordinates
   //
@@ -5530,7 +5533,7 @@ function ArcEngine(xx, yy, pathSizes, pathFlags) {
   function nextPoint(id) {
     var partId = partIds[id];
     if (partIds[id+1] !== partId) {
-      return id - pathSizes[partId] + 2;
+      return id - pathData[partId].size + 2;
     }
     return id + 1;
   }
@@ -5538,7 +5541,7 @@ function ArcEngine(xx, yy, pathSizes, pathFlags) {
   function prevPoint(id) {
     var partId = partIds[id];
     if (partIds[id - 1] !== partId) {
-      return id + pathSizes[partId] - 2;
+      return id + pathData[partId].size - 2;
     }
     return id - 1;
   }
@@ -5615,15 +5618,16 @@ function ArcEngine(xx, yy, pathSizes, pathFlags) {
   }
 
   // TODO: extend for polylines
-  function procPath(startId, pathLen, pathId, flags) {
+  function procPath(startId, pathId, pathObj) {
     var arcIds = [],
+        pathLen = pathObj.size,
         endId = startId + pathLen - 1,
         prevId, nextId;
     var inArc = false,
         firstNodeId = -1,
         firstArcId;
 
-    if (flags & C.PATH_IS_NULL) return;
+    if (pathObj.isNull) return;
 
     // don't reach endpoint
     for (var i = startId; i < endId; i++) {
@@ -5771,9 +5775,9 @@ function ArcEngine(xx, yy, pathSizes, pathFlags) {
   this.buildTopology = function() {
     var pointId = 0;
     T.start();
-    Utils.forEach(pathSizes, function(pathSize, pathId) {
-      procPath(pointId, pathSize, pathId, pathFlags[pathId]);
-      pointId += pathSize;
+    Utils.forEach(pathData, function(pathObj, pathId) {
+      procPath(pointId, pathId, pathObj);
+      pointId += pathObj.size;
     });
     T.stop("Find topological boundaries")
 
@@ -5786,11 +5790,11 @@ function ArcEngine(xx, yy, pathSizes, pathFlags) {
 }
 
 
-function initPathIds(pathSizes) {
-  var pathIds = new Int32Array(Utils.sum(pathSizes)),
+function initPathIds(size, pathData) {
+  var pathIds = new Int32Array(size),
       j = 0;
-  for (var pathId=0, pathCount=pathSizes.length; pathId < pathCount; pathId++) {
-    for (var i=0, n=pathSizes[pathId]; i<n; i++, j++) {
+  for (var pathId=0, pathCount=pathData.length; pathId < pathCount; pathId++) {
+    for (var i=0, n=pathData[pathId].size; i<n; i++, j++) {
       pathIds[j] = pathId;
     }
   }
@@ -5798,7 +5802,7 @@ function initPathIds(pathSizes) {
 }
 
 
-function calcMinPointCounts(paths, pathFlags, arcs, sharedArcFlags) {
+function calcMinPointCounts(paths, pathData, arcs, sharedArcFlags) {
 
   // export retained point data for preventing null shapes
   //
@@ -5814,7 +5818,7 @@ function calcMinPointCounts(paths, pathFlags, arcs, sharedArcFlags) {
     // if a part has 3 or more arcs, assume it won't collapse...
     // TODO: look into edge cases where this isn't true
 
-    if (pathLen <= 2 && pathFlags[pathId] & PRIMARY) {
+    if (pathLen <= 2 && pathData[pathId].isPrimary) {
       for (var i=0; i<pathLen; i++) {
         arcId = path[i];
         if (arcId < 1) arcId = -1 - arcId;
@@ -5830,11 +5834,11 @@ function calcMinPointCounts(paths, pathFlags, arcs, sharedArcFlags) {
   });
 }
 
-function groupPathsByShape(paths, shapeIds) {
+function groupPathsByShape(paths, pathData) {
   // Group topological shape-parts by shape
   var shapes = [];
   Utils.forEach(paths, function(path, pathId) {
-    var shapeId = shapeIds[pathId];
+    var shapeId = pathData[pathId].shapeId;
     if (shapeId >= shapes.length) {
       shapes[shapeId] = [path]; // first part in a new shape
     } else {
