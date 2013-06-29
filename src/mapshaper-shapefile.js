@@ -72,7 +72,6 @@ MapShaper.importShp = function(src) {
       }
 
       validPointsInPart = pointId - startId;
-      // pathSizeIndex[partId] = validPointsInPart
 
       pathObj = {
         size: validPointsInPart,
@@ -88,7 +87,6 @@ MapShaper.importShp = function(src) {
         signedPartArea = msSignedRingArea(xx, yy, startId, pointsInPart);
         if (signedPartArea == 0 || validPointsInPart < 4 || xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
           trace("A ring in shape", shapeId, "has zero area or is not closed; pointsInPart:", pointsInPart, 'parts:', partsInShape);
-          // pathFlags[partId] |= C.PATH_IS_NULL;
           pathObj.isNull = true;
           continue;
         }
