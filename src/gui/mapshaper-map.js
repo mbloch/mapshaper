@@ -36,8 +36,12 @@ function MshpMap(el, opts_) {
   };
 
   function initHomeButton() {
-    var btn = El('div').addClass('g-home-btn').appendTo(_root);
     var _full = null;
+    var btn = El('div').addClass('g-home-btn').appendTo(_root)
+      .on('click', function(e) {
+        _ext.reset();
+      })
+      .newChild('img').attr('src', "images/home.png");
 
     _ext.on('change', function() {
       var isFull = _ext.scale() === 1;
@@ -48,10 +52,6 @@ function MshpMap(el, opts_) {
       }
     })
 
-    btn.newChild('img').attr('src', "images/home.png")
-      .on('click', function(e) {
-        _ext.reset();
-      });
   }
 
   /*
