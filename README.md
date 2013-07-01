@@ -1,18 +1,24 @@
 #mapshaper
 
-Tools for topologically-aware Shapefile simplification
+###Introduction
+
+Mapshaper is a program for simplifying cartographic lines while preserving the topological relationships between adjacent polygons and intersecting polyline paths.
+
+This software is inspired by the original mapshaper program, which I wrote at the University of Wisconsin, Madison in 2006-2007. That version is still available online at mapshaper.com.
+
+The new mapshaper was rewritten from scratch in JavaScript and improves on the original version in a few ways. Mapshaper used to send data to a server to be processed; the new version does all its processing locally, so the program can be used offline and user data stays private. The new version has a better algorithm for topology processing. And, there is a non-interactive script in addition to the web-based tool.
 
 ###Interactive tool
 
-- To setup mapshaper's web interface for online use, copy the files in gui/www/ to a web server. All processing is done in the browser, there is no backend service to run.
+- To set up mapshaper's web interface for online use, copy the files in gui/www/ to a web server. All processing is done in the browser; there is no backend service to run.
 
-- The web interface works well in recent versions of Chrome and Firefox. Exporting doesn't work in Safari, Internet Explorer 10 hasn't been tested, Opera and IE9- don't work at all.
+- Browser compatibility: The web interface works well in recent versions of Chrome and Firefox. Chrome seems more likely to run out of memory when loading large .shp files (say, >300MB). Exporting doesn't work in Safari. Opera and Internet Explorer are not supported.
 
-- To run the mapshaper gui directly from the filesystem, open gui/www/index.html in a web browser. Firefox works well in this mode, exporting is not fully supported in Chrome.
+- To run the mapshaper gui directly from the filesystem, open gui/www/index.html in a web browser. Firefox works well in this mode; offline exporting is not fully supported in Chrome.
 
 ###Commandline tool
 
-- `bin/mapshaper` is a [Node.js](http://nodejs.org) script.
+- `bin/mapshaper` is a [Node.js](http://nodejs.org) script. It was developed on OS X and is untested on other platforms.
 
 - Example commands:
  
@@ -20,18 +26,25 @@ Tools for topologically-aware Shapefile simplification
 
 	`$ mapshaper -i 100 states.shp --dp `  Remove features smaller than ~100 meters using Douglas-Peucker simplification.
 
-	`$ mapshaper -h` Get help.
+	`$ mapshaper -h` Read a help message.
 
 ###Building and testing
 
-- The `build` script rebuilds the JavaScript libraries used by the commandline and web interfaces. Run `$ build` and `$ build gui` after editing files in the src/ directory. `$ build [gui] -f` continuously monitors the source files and updates the library files when files are modified.
+- You will need to regenerate mapshaper's library files if you edit any of the files in the src/ or lib/ directories. Run `$ build` to update mapshaper.js (used by the commandline tool); run `$ build gui` to update gui/www/mapshaper.js (used by the web interface).
 
-- Run `$ mocha` or `$ mocha -R spec` in the project directory to run tests.
+- `$ build [gui] -f` continuously monitors source files and regenerates  mapshaper.js whenever a source file is modified.
+
+- Run `$ mocha` in the project directory to run mapshaper's unit tests.
+
+###Contributions
+
+… are welcome.
 
 ###Wish list
 
-- Support for GeoJSON, TopoJSON and other formats.
-- Support for creating and exporting selections and aggregations.
+- Support for more data formats.
+- Support for making selections and aggregations.
+- Work on preventing or removing polygon overlaps and self-intersections.
 - Update the original "modified Visvalingam" method, add control over degree of smoothing.
-- Work on preventing or removing vector intersections.
 - Experiment with more advanced simplification and smoothing methods.
+- Add to this list by creating a github issue.
