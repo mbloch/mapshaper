@@ -4,7 +4,7 @@
 //
 // Input format:
 // {
-//    xx: [Array],      // x-coords of each point in the dataset (coords of all shapes are concatenated)
+//    xx: [Array],      // x-coords of each point in the dataset (coords of all paths are concatenated)
 //    yy: [Array],      // y-coords of each point
 //    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isNull: false, isPrimary: true}
 // }
@@ -46,60 +46,6 @@ MapShaper.getPointToUintHash = function(bbox) {
     key &= 0x7fffffff; // mask as positive integer
     return key;
   };
-};
-
-
-// Return an array with data for chains of vertices with same x, y coordinates
-// Array ids are same as ids of x- and y-coord arrays.
-// Array values are ids of next point in each chain.
-// Unique (x, y) points link to themselves (i.e. arr[n] == n)
-//
-MapShaper.initPointChains = function(xx, yy, partIds, hash) {
-  var pointCount = xx.length,
-      hashTableSize = Math.floor(pointCount * 1.5);
-  // A hash table larger than ~1.5 * point count doesn't seem to improve performance much.
-
-  // Each hash bin contains the id of the first point in a chain of points.
-  var hashChainIds = new Int32Array(hashTableSize);
-  Utils.initializeArray(hashChainIds, -1);
-
-  var chainIds = new Int32Array(pointCount);
-  var key, headId, tailId, x, y, partId;
-
-  for (var i=0; i<pointCount; i++) {
-    if (partIds[i] == -1) {
-      chainIds[i] = -1;
-      continue;
-    }
-    x = xx[i];
-    y = yy[i];
-
-    key = hash(x, y) % hashTableSize;
-    // Points with different (x, y) coords can hash to the same bin;
-    // ... use linear probing to find a different bin for each (x, y) coord.
-    while (true) {
-      headId = hashChainIds[key];
-      if (headId == -1) {
-        // case -- first coordinate in chain: start new chain, point to self
-        hashChainIds[key] = i;
-        chainIds[i] = i;
-        break;
-      }
-      else if (xx[headId] == x && yy[headId] == y) {
-        // case -- adding to a chain: place new coordinate at end of chain, point it to head of chain to create cycle
-        tailId = headId;
-        while (chainIds[tailId] != headId) {
-          tailId = chainIds[tailId];
-        }
-        chainIds[i] = headId;
-        chainIds[tailId] = i;
-        break;
-      }
-      // case -- this bin is used by another coord, try the next bin
-      key = (key + 1) % hashTableSize;
-    }
-  }
-  return chainIds;
 };
 
 
@@ -164,30 +110,31 @@ function ArcIndex(hashTableSize, xyToUint) {
 function ArcEngine(xx, yy, pathData) {
   var pointCount = xx.length,
       xyToUint = MapShaper.getPointToUintHash(MapShaper.calcXYBounds(xx, yy)),
-      index = new ArcIndex(pointCount * 0.2, xyToUint);
+      index = new ArcIndex(pointCount * 0.2, xyToUint),
+      slice = xx.subarray && yy.subarray || xx.slice;
 
   var paths = [],
       sharedArcs = [];
 
-  var partIds = initPathIds(pointCount, pathData);
+  var pathIds = initPathIds(pointCount, pathData);
 
   T.start();
-  var chainIds = MapShaper.initPointChains(xx, yy, partIds, xyToUint);
+  var chainIds = initPointChains(xx, yy, pathIds, xyToUint);
   T.stop("Find matching vertices");
 
-  if (!(pointCount > 0 && yy.length == pointCount && partIds.length == pointCount && chainIds.length == pointCount)) error("Mismatched array lengths");
+  if (!(pointCount > 0 && yy.length == pointCount && pathIds.length == pointCount && chainIds.length == pointCount)) error("Mismatched array lengths");
 
   function nextPoint(id) {
-    var partId = partIds[id];
-    if (partIds[id+1] !== partId) {
+    var partId = pathIds[id];
+    if (pathIds[id+1] !== partId) {
       return id - pathData[partId].size + 2;
     }
     return id + 1;
   }
 
   function prevPoint(id) {
-    var partId = partIds[id];
-    if (partIds[id - 1] !== partId) {
+    var partId = pathIds[id];
+    if (pathIds[id - 1] !== partId) {
       return id + pathData[partId].size - 2;
     }
     return id - 1;
@@ -201,14 +148,14 @@ function ArcEngine(xx, yy, pathData) {
         partId, chainPartId;
 
     while (chainId != id) {
-      partId = partIds[id];
-      if (partIds[chainId] != partId) {
+      partId = pathIds[id];
+      if (pathIds[chainId] != partId) {
         return false;
       }
-      chainPartId = partIds[chainId];
+      chainPartId = pathIds[chainId];
       // if either point or chained point is not an endpoint, point is not singleton
-      if (partIds[id-1] == partId && partIds[id+1] == partId
-        || partIds[chainId-1] == chainPartId && partIds[chainId+1] == chainPartId) {
+      if (pathIds[id-1] == partId && pathIds[id+1] == partId
+        || pathIds[chainId-1] == chainPartId && pathIds[chainId+1] == chainPartId) {
         return false;
       }
       chainId = chainIds[chainId];
@@ -217,25 +164,30 @@ function ArcEngine(xx, yy, pathData) {
   }
 
 
-  //
+  // TODO: better handling of edge cases
+  // If point at @id matches one or more points on another path, return id of any of the matching points
+  // If point at @id matches points on two or more different paths, return -2
+  // If point at @id matches no other paths, return -1
   //
   function findSharedPoint(id) {
     var neighborPartId,
         neighborId = -1,
         chainPartId,
-        partId = partIds[id],
+        partId = pathIds[id],
         chainId = chainIds[id];
 
     while (chainId != id) {
-      chainPartId = partIds[chainId];
+      chainPartId = pathIds[chainId];
       if (chainPartId == partId) {
-        // skip
+        // chained point is on point's own ring -- ignore
       }
       else if (neighborId == -1) {
+        // first chained point on a different path -- remember it
         neighborId = chainId;
         neighborPartId = chainPartId;
       }
       else if (chainPartId != neighborPartId) {
+        // chain contains more than one other path -- return -2
         return -2;
       }
       chainId = chainIds[chainId];
@@ -244,6 +196,8 @@ function ArcEngine(xx, yy, pathData) {
   }
 
   // TODO: extend for polylines
+  // Convert a path to one or more arcs
+  //
   function procPath(startId, pathId, pathObj) {
     var arcIds = [],
         pathLen = pathObj.size,
@@ -256,10 +210,11 @@ function ArcEngine(xx, yy, pathData) {
 
     if (pathObj.isNull) return;
 
-    // don't reach endpoint
+    // Visit each point in the path, up to but not including the endpoint
+    //
     for (var i = startId; i < endId; i++) {
       prevId = i == startId ? endId - 1 : i - 1;
-      nextId = i + 1; // can't overrun path
+      nextId = i + 1;
 
       if (pointIsNode(i, prevId, nextId)) {
         if (inArc) {
@@ -272,10 +227,11 @@ function ArcEngine(xx, yy, pathData) {
       }
     }
 
-    // complete the ring...
+    // Identify the final arc in the path
+    //
     if (inArc) {
       if (firstNodeId == startId) {
-        // endpoint is a node: complete the circle
+        // endpoint is a node: complete the ...
         if (!pointIsNode(endId, endId-1, startId + 1)) {
           error("Topology error")
         }
@@ -286,12 +242,12 @@ function ArcEngine(xx, yy, pathData) {
       }
     }
     else {
-      sharedId = findSharedPoint(startId);
       // Not in an arc, i.e. no nodes have been found...
       // Path is either an island or a pair of matching paths
+      sharedId = findSharedPoint(startId);
       if (sharedId >= 0) {
         // island-in-hole or hole-around-island pair
-        var pairedPathId = partIds[sharedId];
+        var pairedPathId = pathIds[sharedId];
         if (pairedPathId < pathId) {
           // counterpart has already been converted to an arc; use reversed arc
           var pairedPath = paths[pairedPathId];
@@ -315,8 +271,15 @@ function ArcEngine(xx, yy, pathData) {
     paths.push(arcIds);
   };
 
+  // Test if a point on a non-topological path is at the junction between
+  // two or more topological edges (arcs)
+  // Special case: If two coinciding paths form an island-in-hole relationship,
+  //    none of their points are identified as nodes.
+  // Edge case: if three or more paths share an edge, each point along the edge is
+  //    identified as a node. This won't happen in a clean layer, but should probably be handled better.
+  //
   function pointIsNode(id, prev, next) {
-    var xarr = xx, yarr = yy, chains = chainIds, parts = partIds; // local vars: faster;
+    var xarr = xx, yarr = yy; // local vars: faster;
     var sharedId, sharedNext, sharedPrev;
 
     if (pointIsSingleton(id)) return false;
@@ -334,13 +297,7 @@ function ArcEngine(xx, yy, pathData) {
       return true;
     }
 
-    /*
-    --    --
-   |  |  |  |
-   *--x--x--*
-   |        |
-    --------
-    */
+
     return false;
   }
 
@@ -368,14 +325,8 @@ function ArcEngine(xx, yy, pathData) {
         xarr = mergeArcParts(xx, startId, endId, startId2, endId2);
         yarr = mergeArcParts(yy, startId, endId, startId2, endId2);
       } else {
-        // Creating subarrays on xx and yy creates many fewer objects for memory
-        //   management to track than creating new x and y Array objects for each arc.
-        //   With 846MB ZCTA file, gc() time reduced from 580ms to 65ms in Node.js,
-        //   topology time from >26s to ~17s, subsequent processing much faster.
-        //   Negligible improvement on smaller files.
-        //
-        xarr = xx.subarray(startId, endId + 1);
-        yarr = yy.subarray(startId, endId + 1);
+        xarr = slice.call(xx, startId, endId + 1);
+        yarr = slice.call(yy, startId, endId + 1);
       }
 
       arcId = index.addArc(xarr, yarr);
@@ -405,6 +356,8 @@ function ArcEngine(xx, yy, pathData) {
 }
 
 
+// Create a lookup table for path ids; path ids are indexed by point id
+//
 function initPathIds(size, pathData) {
   var pathIds = new Int32Array(size),
       j = 0;
@@ -416,36 +369,94 @@ function initPathIds(size, pathData) {
   return pathIds;
 }
 
-// Calculate minPointCount for each arc,
-// to protect largest ring of each polygon feature from collapsing
+
+// Return an array with data for chains of vertices with same x, y coordinates
+// Array ids are same as ids of x- and y-coord arrays.
+// Array values are ids of next point in each chain.
+// Unique (x, y) points link to themselves (i.e. arr[n] == n)
+//
+function initPointChains(xx, yy, pathIds, hash) {
+  var pointCount = xx.length,
+      hashTableSize = Math.floor(pointCount * 1.5);
+  // A hash table larger than ~1.5 * point count doesn't seem to improve performance much.
+
+  // Each hash bin contains the id of the first point in a chain of points.
+  var hashChainIds = new Int32Array(hashTableSize);
+  Utils.initializeArray(hashChainIds, -1);
+
+  var chainIds = new Int32Array(pointCount);
+  var key, headId, tailId, x, y, partId;
+
+  for (var i=0; i<pointCount; i++) {
+    if (pathIds[i] == -1) {
+      chainIds[i] = -1;
+      continue;
+    }
+    x = xx[i];
+    y = yy[i];
+
+    key = hash(x, y) % hashTableSize;
+    // Points with different (x, y) coords can hash to the same bin;
+    // ... use linear probing to find a different bin for each (x, y) coord.
+    while (true) {
+      headId = hashChainIds[key];
+      if (headId == -1) {
+        // case -- first coordinate in chain: start new chain, point to self
+        hashChainIds[key] = i;
+        chainIds[i] = i;
+        break;
+      }
+      else if (xx[headId] == x && yy[headId] == y) {
+        // case -- adding to a chain: place new coordinate at end of chain, point it to head of chain to create cycle
+        tailId = headId;
+        while (chainIds[tailId] != headId) {
+          tailId = chainIds[tailId];
+        }
+        chainIds[i] = headId;
+        chainIds[tailId] = i;
+        break;
+      }
+      // case -- this bin is used by another coord, try the next bin
+      key = (key + 1) % hashTableSize;
+    }
+  }
+  return chainIds;
+};
+
+
+// Calculate number of interior points to preserve in each arc
+// to protect selected rings from collapsing.
 //
 function calcMinPointCounts(paths, pathData, arcs, sharedArcFlags) {
   var arcMinPointCounts = new Uint8Array(arcs.length);
   Utils.forEach(paths, function(path, pathId) {
-    var pathLen = path.length,
-        arcId;
     // if a part has 3 or more arcs, assume it won't collapse...
     // TODO: look into edge cases where this isn't true
-
-    if (pathLen <= 2 && pathData[pathId].isPrimary) {
-      for (var i=0; i<pathLen; i++) {
-        arcId = path[i];
-        if (arcId < 1) arcId = -1 - arcId;
-        if (pathLen == 1) { // one-arc polygon (e.g. island) -- save two interior points
-          arcMinPointCounts[arcId] = 2;
-        }
-        else if (sharedArcFlags[arcId] != 1) {
-          arcMinPointCounts[arcId] = 1; // non-shared member of two-arc polygon: save one point
-          // TODO: improve the logic here
-        }
-      }
+    if (path.length <= 2 && pathData[pathId].isPrimary) {
+      protectPath(path, arcs, sharedArcFlags, arcMinPointCounts)
     }
   });
   return arcMinPointCounts;
 }
 
+function protectPath(path, arcs, sharedArcFlags, minArcPoints) {
+  var arcId;
+  for (var i=0, arcCount=path.length; i<arcCount; i++) {
+    arcId = path[i];
+    if (arcId < 1) arcId = -1 - arcId;
+    if (arcCount == 1) { // one-arc polygon (e.g. island) -- save two interior points
+      minArcPoints[arcId] = 2;
+    }
+    else if (sharedArcFlags[arcId] != 1) {
+      minArcPoints[arcId] = 1; // non-shared member of two-arc polygon: save one point
+      // TODO: improve the logic here
+    }
+  }
+}
+
+// Use shapeId property of @pathData objects to group paths by shape
+//
 function groupPathsByShape(paths, pathData) {
-  // Group topological shape-parts by shape
   var shapes = [];
   Utils.forEach(paths, function(path, pathId) {
     var shapeId = pathData[pathId].shapeId;
@@ -457,3 +468,12 @@ function groupPathsByShape(paths, pathData) {
   });
   return shapes;
 }
+
+// export functions for testing
+MapShaper.topology = {
+  ArcEngine: ArcEngine,
+  ArcIndex: ArcIndex,
+  groupPathsByShape: groupPathsByShape,
+  protectPath: protectPath,
+  initPathIds: initPathIds
+};
