@@ -4085,6 +4085,7 @@ MapShaper.importShp = function(src) {
         isHole: false,
         isPrimary: false,
         isNull: false,
+        isRing: expectRings,
         shapeId: shapeId
       }
 
@@ -5400,7 +5401,8 @@ function ArcIndex(hashTableSize, xyToUint) {
         return xyToUint(x, y) % hashTableSize;
       },
       chainIds = [],
-      arcs = [];
+      arcs = [],
+      sharedArcs = [];
 
   Utils.initializeArray(hashTable, -1);
 
@@ -5411,6 +5413,7 @@ function ArcIndex(hashTableSize, xyToUint) {
         arcId = arcs.length;
     hashTable[key] = arcId;
     arcs.push([xx, yy]);
+    sharedArcs.push(0);
     chainIds.push(chainId);
     return arcId;
   };
@@ -5433,6 +5436,7 @@ function ArcIndex(hashTableSize, xyToUint) {
       len = arcX.length;
       if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next]
           && arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
+        sharedArcs[arcId] = 1;
         return arcId;
       }
       arcId = chainIds[arcId];
@@ -5443,6 +5447,10 @@ function ArcIndex(hashTableSize, xyToUint) {
   this.getArcs = function() {
     return arcs;
   };
+
+  this.getSharedArcFlags = function() {
+    return new Uint8Array(sharedArcs);
+  }
 }
 
 
@@ -5455,10 +5463,8 @@ function ArcEngine(xx, yy, pathData) {
       index = new ArcIndex(pointCount * 0.2, xyToUint),
       slice = xx.subarray && yy.subarray || xx.slice;
 
-  var paths = [],
-      sharedArcs = [];
-
   var pathIds = initPathIds(pointCount, pathData);
+  var paths;
 
   T.start();
   var chainIds = initPointChains(xx, yy, pathIds, xyToUint);
@@ -5537,34 +5543,53 @@ function ArcEngine(xx, yy, pathData) {
     return neighborId;
   }
 
-  // TODO: extend for polylines
-  // Convert a path to one or more arcs
   //
-  function procPath(startId, pathId, pathObj) {
+  //
+  function procOpenPath(pathStartId, pathId, pathObj) {
+    var arcIds = [],
+        pathEndId = pathStartId + pathObj.size - 1,
+        arcStartId = pathStartId,
+        xarr, yarr;
+
+    for (var i=pathStartId + 1; i<=pathEndId; i++) {
+      if (!pointIsSingleton(i) || i == pathEndId) {
+        xarr = slice.call(xx, arcStartId, i + 1);
+        yarr = slice.call(yy, arcStartId, i + 1);
+        arcIds.push(index.addArc(xarr, yarr));
+        arcStartId = i;
+      }
+    }
+    return arcIds;
+  }
+
+
+  // Convert a closed path to one or more arcs
+  //
+  function procClosedPath(pathStartId, pathId, pathObj) {
     var arcIds = [],
         pathLen = pathObj.size,
-        endId = startId + pathLen - 1,
+        pathEndId = pathStartId + pathLen - 1,
         prevId, nextId;
     var inArc = false,
         firstNodeId = -1,
-        firstArcId,
+        arcStartId,
         sharedId;
 
     if (pathObj.isNull) return;
 
     // Visit each point in the path, up to but not including the endpoint
     //
-    for (var i = startId; i < endId; i++) {
-      prevId = i == startId ? endId - 1 : i - 1;
+    for (var i = pathStartId; i < pathEndId; i++) {
+      prevId = i == pathStartId ? pathEndId - 1 : i - 1;
       nextId = i + 1;
 
       if (pointIsNode(i, prevId, nextId)) {
         if (inArc) {
-          arcIds.push(addArc(firstArcId, i));
+          arcIds.push(addEdge(arcStartId, i));
         } else {
           firstNodeId = i;
         }
-        firstArcId = i;
+        arcStartId = i;
         inArc = true;
       }
     }
@@ -5572,21 +5597,21 @@ function ArcEngine(xx, yy, pathData) {
     // Identify the final arc in the path
     //
     if (inArc) {
-      if (firstNodeId == startId) {
-        // endpoint is a node: complete the ...
-        if (!pointIsNode(endId, endId-1, startId + 1)) {
-          error("Topology error")
+      if (firstNodeId == pathStartId) {
+        // path endpoint is a node;
+        if (!pointIsNode(pathEndId, pathEndId - 1, pathStartId + 1)) {
+          error("Topology error"); // TODO: better error handling
         }
-        arcIds.push(addArc(firstArcId, i));
+        arcIds.push(addEdge(arcStartId, i));
       } else {
         // final arc wraps around
-        arcIds.push(addArc(firstArcId, endId, startId + 1, firstNodeId))
+        arcIds.push(addEdge(arcStartId, pathEndId, pathStartId + 1, firstNodeId))
       }
     }
     else {
       // Not in an arc, i.e. no nodes have been found...
       // Path is either an island or a pair of matching paths
-      sharedId = findSharedPoint(startId);
+      sharedId = findSharedPoint(pathStartId);
       if (sharedId >= 0) {
         // island-in-hole or hole-around-island pair
         var pairedPathId = pathIds[sharedId];
@@ -5601,19 +5626,19 @@ function ArcEngine(xx, yy, pathData) {
         }
         else {
           // first of two paths: treat like an island
-          arcIds.push(addArc(startId, endId));
+          arcIds.push(addEdge(pathStartId, pathEndId));
         }
       }
       else {
         // independent island
-        arcIds.push(addArc(startId, endId));
+        arcIds.push(addEdge(pathStartId, pathEndId));
       }
     }
-
-    paths.push(arcIds);
+    return arcIds;
   };
 
-  // Test if a point on a non-topological path is at the junction between
+
+  // Test if a point on a path is at the junction between
   // two or more topological edges (arcs)
   // Special case: If two coinciding paths form an island-in-hole relationship,
   //    none of their points are identified as nodes.
@@ -5621,7 +5646,7 @@ function ArcEngine(xx, yy, pathData) {
   //    identified as a node. This won't happen in a clean layer, but should probably be handled better.
   //
   function pointIsNode(id, prev, next) {
-    var xarr = xx, yarr = yy; // local vars: faster;
+    var xarr = xx, yarr = yy; // local vars: faster
     var sharedId, sharedNext, sharedPrev;
 
     if (pointIsSingleton(id)) return false;
@@ -5638,8 +5663,6 @@ function ArcEngine(xx, yy, pathData) {
       yarr[sharedNext] != yarr[prev] || yarr[sharedPrev] != yarr[next]) {
       return true;
     }
-
-
     return false;
   }
 
@@ -5658,7 +5681,7 @@ function ArcEngine(xx, yy, pathData) {
     return dest;
   }
 
-  function addArc(startId, endId, startId2, endId2) {
+  function addEdge(startId, endId, startId2, endId2) {
     var arcId, xarr, yarr, i;
     var splitArc = endId2 != null;
     var matchId = index.findArcNeighbor(xx, yy, startId, splitArc ? endId2 : endId, nextPoint);
@@ -5672,27 +5695,29 @@ function ArcEngine(xx, yy, pathData) {
       }
 
       arcId = index.addArc(xarr, yarr);
-      sharedArcs[arcId] = 0;
     } else {
       arcId = -1 - matchId;
-      sharedArcs[matchId] = 1;
     }
     return arcId;
   }
 
   this.buildTopology = function() {
-    var pointId = 0;
+    var pointId = 0,
+        procPath;
+    paths = [];
+
     T.start();
     Utils.forEach(pathData, function(pathObj, pathId) {
-      procPath(pointId, pathId, pathObj);
+      procPath = pathObj.isRing ? procClosedPath : procOpenPath;
+      paths[pathId] = procPath(pointId, pathId, pathObj);
       pointId += pathObj.size;
     });
     T.stop("Find topological boundaries")
 
     return {
       paths: paths,
-      arcs:index.getArcs(),
-      sharedArcFlags: new Uint8Array(sharedArcs) // convert to typed array to reduce objects in memory.
+      arcs: index.getArcs(),
+      sharedArcFlags: index.getSharedArcFlags()
     };
   };
 }
@@ -5717,7 +5742,7 @@ function initPathIds(size, pathData) {
 // Array values are ids of next point in each chain.
 // Unique (x, y) points link to themselves (i.e. arr[n] == n)
 //
-function initPointChains = function(xx, yy, pathIds, hash) {
+function initPointChains(xx, yy, pathIds, hash) {
   var pointCount = xx.length,
       hashTableSize = Math.floor(pointCount * 1.5);
   // A hash table larger than ~1.5 * point count doesn't seem to improve performance much.
@@ -5775,7 +5800,7 @@ function calcMinPointCounts(paths, pathData, arcs, sharedArcFlags) {
     // if a part has 3 or more arcs, assume it won't collapse...
     // TODO: look into edge cases where this isn't true
     if (path.length <= 2 && pathData[pathId].isPrimary) {
-      preservePath(path, arcs, sharedArcFlags, arcMinPointCounts)
+      protectPath(path, arcs, sharedArcFlags, arcMinPointCounts)
     }
   });
   return arcMinPointCounts;

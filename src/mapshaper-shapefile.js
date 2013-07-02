@@ -78,6 +78,7 @@ MapShaper.importShp = function(src) {
         isHole: false,
         isPrimary: false,
         isNull: false,
+        isRing: expectRings,
         shapeId: shapeId
       }
 
