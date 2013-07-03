@@ -41,7 +41,7 @@ function MshpMap(el, opts_) {
       .on('click', function(e) {
         _ext.reset();
       })
-      .newChild('img').attr('src', "images/home.png");
+      .newChild('img').attr('src', "images/home.png").parent();
 
     _ext.on('change', function() {
       var isFull = _ext.scale() === 1;
