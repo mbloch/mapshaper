@@ -15,42 +15,60 @@ MapShaper.importGeoJSON = function(obj) {
 MapShaper.exportGeoJSON = function(obj) {
   T.start();
   if (!obj.shapes) error("#exportGeoJSON() Missing 'shapes' param.");
-  if (obj.type != "MultiPolygon") error("#exportGeoJSON() Unsupported type:", obj.type)
+  if (obj.type != "MultiPolygon" && obj.type != "MultiLineString") error("#exportGeoJSON() Unsupported type:", obj.type)
   var output = {
     type: "FeatureCollection"
   };
   output.features = Utils.map(obj.shapes, function(shape) {
     if (!shape || !Utils.isArray(shape)) error("[exportGeoJSON()] Missing or invalid param/s");
-    return MapShaper.exportGeoJSONPolygon(shape)
+    return MapShaper.exportGeoJSONFeature(shape, obj.type);
   });
 
   T.stop("Export GeoJSON");
   return JSON.stringify(output);
 };
 
-//
-MapShaper.exportGeoJSONPolygon = function(ringGroups) {
+MapShaper.exportGeoJSONGeometry = function(paths, type) {
   var geom = {};
-  if (ringGroups.length == 0) {
-    // null shape; how to represent?
-    geom.type = "Polygon";
-    geom.coordinates = [];
-  } else if (ringGroups.length == 1) {
-    geom.type = "Polygon";
-    geom.coordinates = exportCoordsForGeoJSON(ringGroups[0]);
-  } else {
-    geom.type = "MultiPolygon";
-    geom.coordinates = Utils.map(ringGroups, exportCoordsForGeoJSON);
-  }
 
+  if (paths.length == 0) {
+    geom = null; // null geometry
+  }
+  else if (type == 'MultiPolygon') {
+    if (paths.length == 1) {
+      geom.type = "Polygon";
+      geom.coordinates = exportCoordsForGeoJSON(paths[0]);
+    } else {
+      geom.type = "MultiPolygon";
+      geom.coordinates = Utils.map(paths, exportCoordsForGeoJSON);
+    }
+  }
+  else if (type == 'MultiLineString') {
+    if (paths.length == 1) {
+      geom.type = "LineString";
+      geom.coordinates = paths[0].toArray();
+    } else {
+      geom.type = "MultiLineString";
+      geom.coordinates = exportCoordsForGeoJSON(paths);
+    }
+  }
+  else {
+    geom = null;
+  }
+  return geom;
+}
+
+
+//
+//
+MapShaper.exportGeoJSONFeature = function(pathGroups, type) {
   var feature = {
     type: "Feature",
     properties: {},
-    geometry: geom
+    geometry: MapShaper.exportGeoJSONGeometry(pathGroups, type)
   };
   return feature;
 };
-
 
 function exportCoordsForGeoJSON(paths) {
   return Utils.map(paths, function(path) {

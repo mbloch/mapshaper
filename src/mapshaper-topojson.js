@@ -101,37 +101,50 @@ function findTopoJSONResolution(arcs) {
   return [xres, yres];
 }
 
+
 function exportTopoJSONObject(shapes, type) {
   var obj = {
     type: "GeometryCollection"
   };
-  if (type == 'MultiPolygon') {
-    obj.geometries = Utils.map(shapes, function(ringGroups, i) {
-      return exportTopoJSONPolygon(ringGroups, i);
-    });
-  } else {
-    error("#convertTopoJSONObject() Don't know what to do with type:", type);
+  obj.geometries = Utils.map(shapes, function(paths, i) {
+    return exportTopoJSONGeometry(paths, i, type);
+  });
+  return obj;
+}
+
+
+function exportTopoJSONGeometry(paths, id, type) {
+  var obj = {
+    id: id
+  };
+
+  if (paths.length == 0) {
+    obj = null; // null geometry... allowed?
+  }
+  else if (type == 'MultiPolygon') {
+    if (paths.length == 1) {
+      obj.type = "Polygon";
+      obj.arcs = exportArcsForTopoJSON(paths[0]);
+    } else  {
+      obj.type = "MultiPolygon";
+      obj.arcs = Utils.map(paths, exportArcsForTopoJSON);
+    }
+  }
+  else if (type == "MultiLineString") {
+    if (paths.length == 1) {
+      obj.arcs = paths[0].ids;
+      obj.type = "LineString";
+    } else {
+      obj.arcs = exportArcsForTopoJSON(paths);
+      obj.type = "MultiLineString";
+    }
+  }
+  else {
+    error ("#exportTopoJSONGeometry() unsupported type:", type)
   }
   return obj;
 }
 
-function exportTopoJSONPolygon(ringGroups, id) {
-  var obj = {
-    id: id
-  }
-  if (ringGroups.length == 0) {
-    obj.type = "Polygon";
-    obj.arcs = [];
-  }
-  else if (ringGroups.length == 1) {
-    obj.type = "Polygon";
-    obj.arcs = exportArcsForTopoJSON(ringGroups[0]);
-  } else  {
-    obj.type = "MultiPolygon";
-    obj.arcs = Utils.map(ringGroups, exportArcsForTopoJSON);
-  }
-  return obj;
-}
 
 function exportArcsForTopoJSON(paths) {
   return Utils.map(paths, function(path) {

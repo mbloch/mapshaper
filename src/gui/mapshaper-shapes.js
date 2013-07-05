@@ -188,13 +188,13 @@ function ArcDataset(coords) {
   this.getSimpleShapes = function(arr) {
     return this.getShapeTable(arr, SimpleShape);
   };
-  */
 
   this.getMultiShapes = function(arr) {
     return this.getShapeTable(arr, MultiShape);
   };
+  */
 
-  this.getPolygonShape = function(arr) {
+  this.getMultiPathShape = function(arr) {
     if (!arr || arr.length == 0) {
       return new NullShape();
     // } else if (arr.length == 1) {

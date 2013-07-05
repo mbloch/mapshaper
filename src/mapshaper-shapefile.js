@@ -42,6 +42,9 @@ MapShaper.importShp = function(src) {
       partId = 0,
       shapeId = 0;
 
+
+  // TODO: test cases: null shape; non-null shape with no valid parts
+
   reader.forEachShape(function(shp) {
     var maxPartId = -1,
         maxPartArea = 0,
@@ -53,6 +56,7 @@ MapShaper.importShp = function(src) {
         coords = shp.readCoords(),
         pointsInPart, validPointsInPart,
         pathObj,
+        err,
         x, y, prevX, prevY;
 
     if (partsInShape != partSizes.length) error("Shape part mismatch");
@@ -67,6 +71,8 @@ MapShaper.importShp = function(src) {
           xx[pointId] = x;
           yy[pointId] = y;
           pointId++;
+        } else {
+          // trace("Duplicate point:", x, y)
         }
         prevX = x, prevY = y;
       }
@@ -78,19 +84,28 @@ MapShaper.importShp = function(src) {
         isHole: false,
         isPrimary: false,
         isNull: false,
-        isRing: expectRings,
+        // isRing: expectRings,
         shapeId: shapeId
       }
 
-      // TODO: check for too-small polylines
-      //
       if (expectRings) {
         signedPartArea = msSignedRingArea(xx, yy, startId, pointsInPart);
-        if (signedPartArea == 0 || validPointsInPart < 4 || xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
-          trace("A ring in shape", shapeId, "has zero area or is not closed; pointsInPart:", pointsInPart, 'parts:', partsInShape);
-          pathObj.isNull = true;
+        err = null;
+        if (validPointsInPart < 4) {
+          err = "Only " + validPointsInPart + " valid points in ring";
+        } else if (signedPartArea == 0) {
+          err = "Zero-area ring";
+        } else if (xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
+          err = "Open path";
+        }
+
+        if (err != null) {
+          trace("Invalid ring in shape:", shapeId, "--", err);
+          // pathObj.isNull = true;
+          pointId -= validPointsInPart; // backtrack...
           continue;
         }
+
         if (findMaxParts) {
           partArea = Math.abs(signedPartArea);
           if (partArea > maxPartArea) {
@@ -105,7 +120,14 @@ MapShaper.importShp = function(src) {
             pathObj.isHole = true;
           }
         }
+      } else { // no rings (i.e. polylines)
+        if (validPointsInPart < 2) {
+          trace("Collapsed path in shape:", shapeId, "-- skipping");
+          pointId -= validPointsInPart;
+          continue;
+        }
       }
+
       shapeIds.push(shapeId);
       pathData.push(pathObj);
       partId++;
@@ -123,7 +145,7 @@ MapShaper.importShp = function(src) {
     error("Counting problem");
 
   if (skippedPoints > 0) {
-    trace("Truncating point arrays; skipped:", skippedPoints)
+    // trace("* Skipping", skippedPoints, "invalid points");
     xx = xx.subarray(0, pointId);
     yy = yy.subarray(0, pointId);
   }

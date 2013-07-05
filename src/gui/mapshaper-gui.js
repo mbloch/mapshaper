@@ -97,8 +97,10 @@ function Editor() {
       group.refresh();
     });
 
+    trace(importData.info);
     var exportOpts = {
-      bounds: arcData.getBounds()
+      bounds: arcData.getBounds(),
+      geometry: importData.info.input_geometry_type
     };
     if (opts.input_file) {
       var parts = MapShaper.parseLocalPath(opts.input_file);
@@ -108,5 +110,4 @@ function Editor() {
     // TODO: figure out exporting with multiple datasets
     var exporter = new ExportControl(arcData, topoData, exportOpts);
   };
-
 }

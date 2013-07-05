@@ -145,6 +145,13 @@ function ArcEngine(xx, yy, pathData) {
     return id - 1;
   }
 
+  function pointIsRingEndpoint(id1) {
+    var pathId = pathIds[id1],
+        pathLen = pathData[pathId].size,
+        id2 = id1 + pathLen - 1;
+    return pathLen >= 4 && xx[id1] === xx[id2] && yy[id1] === yy[id2];
+  }
+
   // Test whether point is unique
   // Endpoints of polygon rings are counted as unique
   //
@@ -267,7 +274,7 @@ function ArcEngine(xx, yy, pathData) {
     }
     else {
       // Not in an arc, i.e. no nodes have been found...
-      // Path is either an island or a pair of matching paths
+      // Assuming that path is either an island or a pair of matching paths
       sharedId = findSharedPoint(pathStartId);
       if (sharedId >= 0) {
         // island-in-hole or hole-around-island pair
@@ -359,13 +366,12 @@ function ArcEngine(xx, yy, pathData) {
   }
 
   this.buildTopology = function() {
-    var pointId = 0,
-        procPath;
+    var pointId = 0;
     paths = [];
 
     T.start();
     Utils.forEach(pathData, function(pathObj, pathId) {
-      procPath = pathObj.isRing ? procClosedPath : procOpenPath;
+      var procPath = pointIsRingEndpoint(pointId) ? procClosedPath : procOpenPath;
       paths[pathId] = procPath(pointId, pathId, pathObj);
       pointId += pathObj.size;
     });

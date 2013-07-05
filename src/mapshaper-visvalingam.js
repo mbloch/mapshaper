@@ -111,7 +111,6 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
 };
 
 
-
 // The original mapshaper "modified Visvalingam" function uses a step function to
 // underweight more acute triangles.
 //
@@ -121,7 +120,6 @@ Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
       weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
   return area * weight;
 };
-
 
 Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),

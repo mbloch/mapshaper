@@ -1,6 +1,7 @@
 /* @requires mapshaper-geojson, mapshaper-topojson */
 
 var ExportControl = function(arcData, topoData, opts) {
+  opts.geometry == 'polygon' || opts.geometry == 'polyline' || error("ExportControl() unexpected geometry type:", opts.geometry);
   var filename = opts && opts.output_name || "out";
   var blobUrl;
   var el = El('#g-export-control').show();
@@ -33,9 +34,14 @@ var ExportControl = function(arcData, topoData, opts) {
     anchor.dispatchEvent(clickEvent);
   }
 
+  function getGeometryTypeforJSON(outputType) {
+    return outputType == 'polyline' ? "MultiLineString" : "MultiPolygon";
+  }
+
   function exportGeoJSON() {
-    var shapes = MapShaper.convertPolygonsForJSON(arcData, topoData.shapes);
-    var json = MapShaper.exportGeoJSON({shapes: shapes, type: "MultiPolygon"});
+    var shapes = MapShaper.convertShapesForJSON(arcData, topoData.shapes, opts.geometry),
+        geoType = getGeometryTypeforJSON(opts.geometry),
+        json = MapShaper.exportGeoJSON({shapes: shapes, type: geoType});
     exportBlob(filename + ".geojson", new Blob([json]));
     geoBtn.active(true);
   }
@@ -43,9 +49,9 @@ var ExportControl = function(arcData, topoData, opts) {
   function exportTopoJSON() {
     // export polygons; TODO: export polylines
     var polygons = {
-      type: "MultiPolygon",
-      name: opts.output_name || "polygons",
-      shapes: MapShaper.convertPolygonsForJSON(arcData, topoData.shapes)
+      type: getGeometryTypeforJSON(opts.geometry),
+      name: opts.output_name || "features",
+      shapes: MapShaper.convertShapesForJSON(arcData, topoData.shapes, opts.geometry)
     };
 
     var json = MapShaper.exportTopoJSON({arcs: arcData.getArcTable().toArray(), objects: [polygons], bounds: opts.bounds});
@@ -77,13 +83,14 @@ var ExportControl = function(arcData, topoData, opts) {
   }
 
   function exportShapefile() {
-    return MapShaper.exportShp(arcData.getArcTable().export(), topoData.shapes, 5);
+    var type = opts.geometry == 'polyline' ? 3 : 5;
+    return MapShaper.exportShp(arcData.getArcTable().export(), topoData.shapes, type);
   }
 };
 
-MapShaper.convertPolygonsForJSON = function(arcData, shapeArr) {
+MapShaper.convertShapesForJSON = function(arcData, shapeArr, type) {
   return Utils.map(shapeArr, function(shapeIds) {
-    var shape = arcData.getPolygonShape(shapeIds);
-    return shape.getPathGroups();
+    var shape = arcData.getMultiPathShape(shapeIds);
+    return type == 'polygon' ? shape.getPathGroups() : shape.getPaths();
   });
 };
