@@ -35,27 +35,34 @@ MapShaper.parseLocalPath = function(path) {
 
 
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
-  var len=xsrc.length;
-  (!len || len < 2) && error("[MapShaper.extendShapePart()] invalid arc length:", len);
+  var srcLen = xsrc.length,
+      destLen = xdest.length,
+      prevX = destLen == 0 ? Infinity : xdest[destLen-1],
+      prevY = destLen == 0 ? Infinity : ydest[destLen-1],
+      x, y, inc, startId, stopId;
+
   if (reversed) {
-    var inc = -1;
-    var startId = len - 1;
-    var stopId = -1;
+    inc = -1;
+    startId = srcLen - 1;
+    stopId = -1;
   } else {
     inc = 1;
     startId = 0;
-    stopId = len;
-  }
-
-  if (xdest.length > 0) {
-    startId += inc; // skip first point of arc if part has been started
+    stopId = srcLen;
   }
 
   for (var i=startId; i!=stopId; i+=inc) {
-    xdest.push(xsrc[i]);
-    ydest.push(ysrc[i]);
+    x = xsrc[i];
+    y = ysrc[i];
+    if (x !== prevX || y !== prevY) {
+      xdest.push(x);
+      ydest.push(y);
+      prevX = x;
+      prevY = y;
+    }
   }
 };
+
 
 MapShaper.calcXYBounds = function(xx, yy, bb) {
   if (!bb) bb = new Bounds();
@@ -77,7 +84,6 @@ MapShaper.transposeXYCoords = function(arr) {
   return points;
 };
 
-
 // Convert a topological shape to a non-topological format
 // (for exporting)
 //
@@ -98,14 +104,13 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
         reversed = true;
       }
       var arc = arcs[arcId];
-      if (arc[0].length > 1) {
-        MapShaper.extendPartCoordinates(xx, yy, arc[0], arc[1], reversed);
-      }
+      MapShaper.extendPartCoordinates(xx, yy, arc[0], arc[1], reversed);
     }
     var pointsInPart = xx.length,
         validPart = !closed && pointsInPart > 0 || pointsInPart > 3;
     // TODO: other validation:
     // self-intersection test? test rings have non-zero area? rings follow winding rules?
+
     if (validPart) {
       parts.push([xx, yy]);
       pointCount += xx.length;
@@ -115,5 +120,3 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
 
   return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
 };
-
-
