@@ -2,7 +2,7 @@
 
 ##Introduction
 
-Mapshaper is a program for simplifying cartographic lines while preserving the topological relationships between adjacent polygons and intersecting polyline paths.
+[Mapshaper](http://www.mapshaper.org) is a program for simplifying cartographic lines while preserving the topological relationships between adjacent polygons and intersecting polyline paths.
 
 This software was inspired by the original mapshaper program, which I wrote at the University of Wisconsin, Madison in 2006-2007. That version is still available [here](http://mapshaper.com/test/MapShaper.swf).
 
