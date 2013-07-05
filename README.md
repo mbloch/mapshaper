@@ -4,7 +4,7 @@
 
 Mapshaper is a program for simplifying cartographic lines while preserving the topological relationships between adjacent polygons and intersecting polyline paths.
 
-This software was inspired by the original mapshaper program, which I wrote at the University of Wisconsin, Madison in 2006-2007. That version is still available online at mapshaper.com.
+This software was inspired by the original mapshaper program, which I wrote at the University of Wisconsin, Madison in 2006-2007. That version is still available [here](http://mapshaper.com/test/MapShaper.swf).
 
 The new mapshaper was rewritten from scratch in JavaScript and improves on the original version in a few ways. The old mapshaper sent data to a server to be processed; the new version does all its processing locally, so the program can be used offline and user data stays private. The new version has a better algorithm for topology processing. And there is a non-interactive script in addition to the web-based tool.
 
