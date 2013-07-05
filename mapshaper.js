@@ -2115,36 +2115,6 @@ BinArray.prototype = {
     return this;
   },
 
-  writeBuffer_old: function(src, bytes, startIdx) {
-    var srcIdx, dest, destIdx, endIdx, count;
-    bytes = bytes || BinArray.bufferSize(src);
-    startIdx = startIdx | 0;
-    if (this.bytesLeft() < bytes)
-      error("Buffer overflow; available bytes:", this.bytesLeft(), "tried to write:", bytes);
-
-    // When possible, copy buffer data in 4-byte chunks... Added this for faster copying of
-    // shapefile data, which is aligned to 32 bits.
-    var useChunks = this._words && bytes > 300 && this._idx % 4 == 0 && startIdx % 4 === 0 && bytes % 4 === 0;
-    if (useChunks) {
-      dest = this._words;
-      src = new Uint32Array(src);
-      srcIdx = startIdx / 4;
-      destIdx = this._idx / 4;
-      count = bytes / 4;
-    } else {
-      dest = this._buffer;
-      srcIdx = startIdx;
-      destIdx = this._idx;
-      count = bytes;
-    }
-
-    while (count--) {
-      dest[destIdx++] = src[srcIdx++];
-    }
-    this._idx += bytes;
-    return this;
-  }
-
   /*
   // TODO: expand buffer, probably via a public method, not automatically
   //
