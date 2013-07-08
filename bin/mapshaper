@@ -134,7 +134,7 @@ T.start("Start timing");
 var importData = mapshaper.importFromFile(opts.input_file);
 Opts.copyAllParams(info, importData.info);
 
-var topoData = mapshaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+var topoData = mapshaper.buildTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
 
 importData = null; // don't need this anymore, gc can take it.
 

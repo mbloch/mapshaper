@@ -67,7 +67,7 @@ function Editor() {
 
   this.addData = function(importData, opts) {
 
-    var topoData = MapShaper.buildArcTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+    var topoData = MapShaper.buildTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
     var arcData = new ArcDataset(topoData.arcs),
       arcs = arcData.getArcTable();
 

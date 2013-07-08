@@ -1,6 +1,6 @@
 var assert = require('assert'),
     api = require("../"),
-    ArcEngine = api.topology.ArcEngine,
+    buildPathTopology = api.topology.buildPathTopology,
     utils = api.Utils,
     trace = api.trace;
 
@@ -12,7 +12,7 @@ describe("mapshaper-topology.js", function() {
           xx = [1, 2, 3, 1, 1, 3, 2, 1],
           pathData = [{isHole: false, size: 4}, {isHole: true, size: 4}];
 
-      var out = new ArcEngine(xx, yy, pathData).buildTopology();
+      var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0],[-1]]);
       assert.deepEqual(out.arcs, [[[1, 2, 3, 1], [1, 3, 1, 1]]])
     })
@@ -22,7 +22,7 @@ describe("mapshaper-topology.js", function() {
           xx = [1, 2, 3, 1, 3, 2, 1, 3],
           pathData = [{isHole: false, size: 4}, {isHole: true, size: 4}];
 
-      var out = new ArcEngine(xx, yy, pathData).buildTopology();
+      var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0],[-1]]);
       assert.deepEqual(out.arcs, [[[1, 2, 3, 1], [1, 3, 1, 1]]])
     })
@@ -32,7 +32,7 @@ describe("mapshaper-topology.js", function() {
           xx = [1, 2, 3, 1, 1, 2, 3, 1],
           pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}];
 
-      var out = new ArcEngine(xx, yy, pathData).buildTopology();
+      var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0], [0]]);
     })
 
@@ -41,7 +41,7 @@ describe("mapshaper-topology.js", function() {
           xx = [1, 2, 3, 1, 3, 1, 2, 3],
           pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}];
 
-      var out = new ArcEngine(xx, yy, pathData).buildTopology();
+      var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0], [0]]);
     })
 
@@ -50,7 +50,7 @@ describe("mapshaper-topology.js", function() {
           xx = [1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1],
           pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}, {isHole: false, size: 4}];
 
-      var out = new ArcEngine(xx, yy, pathData).buildTopology();
+      var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0], [0], [0]]);
     })
 
@@ -59,7 +59,7 @@ describe("mapshaper-topology.js", function() {
           xx = [1, 2, 3, 1, 3, 1, 2, 3, 2, 3, 1, 2],
           pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}, {isHole: false, size: 4}];
 
-      var out = new ArcEngine(xx, yy, pathData).buildTopology();
+      var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0], [0], [0]]);
     })
 
@@ -68,13 +68,13 @@ describe("mapshaper-topology.js", function() {
           xx = [1, 2, 3, 1, 3, 1, 2, 3, 2, 1, 3, 2],
           pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}, {isHole: true, size: 4}];
 
-      var out = new ArcEngine(xx, yy, pathData).buildTopology();
+      var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0], [0], [-1]]);
     })
 
   })
 
-  describe("buildArcTopology()", function() {
+  describe("buildTopology()", function() {
 
     var d1 = {
       yy:       [1, 1, 3, 1, 3, 3, 1, 3],
@@ -111,7 +111,7 @@ describe("mapshaper-topology.js", function() {
     */
 
     it("d1 should make three arcs", function() {
-      var data = api.buildArcTopology(d1);
+      var data = api.buildTopology(d1);
       assert.equal(data.arcs.length, 3);
       assert.deepEqual(data.arcs, [
         [[3, 1, 2], [1, 1, 3]],
@@ -123,13 +123,13 @@ describe("mapshaper-topology.js", function() {
     });
 
     it("d2 should make three arcs", function() {
-      var data = api.buildArcTopology(d2);
+      var data = api.buildTopology(d2);
       assert.equal(data.arcs.length, 3);
       //trace(data);
     });
 
     it("d3 should make three arcs", function() {
-      var data = api.buildArcTopology(d3);
+      var data = api.buildTopology(d3);
       assert.equal(data.arcs.length, 3);
       //trace(data);
     });

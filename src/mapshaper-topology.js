@@ -1,6 +1,6 @@
 /* @requires arrayutils, format, mapshaper-common */
 
-// buildArcTopology() converts non-topological polygon data into a topological format
+// buildTopology() converts non-topological polygon data into a topological format
 //
 // Input format:
 // {
@@ -16,11 +16,11 @@
 //    shapes: [Array]  // Shapes are arrays of one or more parts; Parts are arrays of one or more arc id.
 // }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
 //
-MapShaper.buildArcTopology = function(obj) {
-  if (!(obj.xx && obj.yy && obj.pathData)) error("[buildArcTopology()] Missing required param/s");
+MapShaper.buildTopology = function(obj) {
+  if (!(obj.xx && obj.yy && obj.pathData)) error("[buildTopology()] Missing required param/s");
 
   T.start();
-  var topoData = new ArcEngine(obj.xx, obj.yy, obj.pathData).buildTopology();
+  var topoData = buildPathTopology(obj.xx, obj.yy, obj.pathData);
   topoData.arcMinPointCounts = calcMinPointCounts(topoData.paths, obj.pathData, topoData.arcs, topoData.sharedArcFlags);
   topoData.shapes = groupPathsByShape(topoData.paths, obj.pathData);
   delete topoData.paths;
@@ -116,20 +116,33 @@ function ArcIndex(hashTableSize, xyToUint) {
 // Transform spaghetti shapes into topological arcs
 // ArcEngine has one method: #buildTopology()
 //
-function ArcEngine(xx, yy, pathData) {
+function buildPathTopology(xx, yy, pathData) {
   var pointCount = xx.length,
       xyToUint = MapShaper.getPointToUintHash(MapShaper.calcXYBounds(xx, yy)),
       index = new ArcIndex(pointCount * 0.2, xyToUint),
       slice = xx.subarray && yy.subarray || xx.slice;
 
   var pathIds = initPathIds(pointCount, pathData);
-  var paths;
+  var paths = [];
 
   T.start();
   var chainIds = initPointChains(xx, yy, pathIds, xyToUint);
   T.stop("Find matching vertices");
 
-  if (!(pointCount > 0 && yy.length == pointCount && pathIds.length == pointCount && chainIds.length == pointCount)) error("Mismatched array lengths");
+  T.start();
+  var pointId = 0;
+  Utils.forEach(pathData, function(pathObj, pathId) {
+    var procPath = pointIsRingEndpoint(pointId) ? procClosedPath : procOpenPath;
+    paths[pathId] = procPath(pointId, pathId, pathObj);
+    pointId += pathObj.size;
+  });
+  T.stop("Find topological boundaries")
+
+  return {
+    paths: paths,
+    arcs: index.getArcs(),
+    sharedArcFlags: index.getSharedArcFlags()
+  };
 
   function nextPoint(id) {
     var partId = pathIds[id];
@@ -177,7 +190,7 @@ function ArcEngine(xx, yy, pathData) {
     return true;
   }
 
-  //
+  // Convert an open path to one or more topological paths
   //
   function procOpenPath(pathStartId, pathId, pathObj) {
     var arcIds = [],
@@ -348,23 +361,9 @@ function ArcEngine(xx, yy, pathData) {
     return index.addArc(xarr, yarr);
   }
 
-  this.buildTopology = function() {
+  function buildTopology() {
     var pointId = 0;
-    paths = [];
 
-    T.start();
-    Utils.forEach(pathData, function(pathObj, pathId) {
-      var procPath = pointIsRingEndpoint(pointId) ? procClosedPath : procOpenPath;
-      paths[pathId] = procPath(pointId, pathId, pathObj);
-      pointId += pathObj.size;
-    });
-    T.stop("Find topological boundaries")
-
-    return {
-      paths: paths,
-      arcs: index.getArcs(),
-      sharedArcFlags: index.getSharedArcFlags()
-    };
   };
 }
 
@@ -484,7 +483,7 @@ function groupPathsByShape(paths, pathData) {
 
 // export functions for testing
 MapShaper.topology = {
-  ArcEngine: ArcEngine,
+  buildPathTopology: buildPathTopology,
   ArcIndex: ArcIndex,
   groupPathsByShape: groupPathsByShape,
   protectPath: protectPath,
