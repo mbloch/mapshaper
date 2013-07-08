@@ -108,7 +108,7 @@ function ArcIndex(hashTableSize, xyToUint) {
 
 
   this.getSharedArcFlags = function() {
-    return new Uint8Array(sharedArcs);
+    return sharedArcs;
   }
 }
 
@@ -119,10 +119,19 @@ function buildPathTopology(xx, yy, pathData) {
   var pointCount = xx.length,
       xyToUint = MapShaper.getPointToUintHash(MapShaper.calcXYBounds(xx, yy)),
       index = new ArcIndex(pointCount * 0.2, xyToUint),
-      slice = xx.subarray && yy.subarray || xx.slice;
+      typedArrays = !!(xx.subarray && yy.subarray),
+      slice, array;
 
   var pathIds = initPathIds(pointCount, pathData);
   var paths = [];
+
+  if (typedArrays) {
+    array = Float64Array;
+    slice = xx.subarray;
+  } else {
+    array = Array;
+    slice = Array.prototype.slice;
+  }
 
   T.start();
   var chainIds = initPointChains(xx, yy, pathIds, xyToUint);
@@ -137,10 +146,15 @@ function buildPathTopology(xx, yy, pathData) {
   });
   T.stop("Find topological boundaries")
 
+  var sharedArcFlags = index.getSharedArcFlags();
+  if (typedArrays) {
+    sharedArcFlags = new Uint8Array(sharedArcFlags)
+  }
+
   return {
     paths: paths,
     arcs: index.getArcs(),
-    sharedArcFlags: index.getSharedArcFlags()
+    sharedArcFlags: sharedArcFlags
   };
 
   function nextPoint(id) {
@@ -322,7 +336,7 @@ function buildPathTopology(xx, yy, pathData) {
 
   function mergeArcParts(src, startId, endId, startId2, endId2) {
     var len = endId - startId + endId2 - startId2 + 2,
-        dest = new Float64Array(len),
+        dest = new array(len),
         j = 0, i;
     for (i=startId; i <= endId; i++) {
       dest[j++] = src[i];
