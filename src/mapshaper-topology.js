@@ -113,8 +113,7 @@ function ArcIndex(hashTableSize, xyToUint) {
 }
 
 
-// Transform spaghetti shapes into topological arcs
-// ArcEngine has one method: #buildTopology()
+// Transform spaghetti paths into topological paths
 //
 function buildPathTopology(xx, yy, pathData) {
   var pointCount = xx.length,
@@ -360,11 +359,6 @@ function buildPathTopology(xx, yy, pathData) {
     }
     return index.addArc(xarr, yarr);
   }
-
-  function buildTopology() {
-    var pointId = 0;
-
-  };
 }
 
 
