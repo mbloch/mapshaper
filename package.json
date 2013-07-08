@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "A tool for simplifying Shapefiles.",
 	"keywords": ["shapefile","mapshaper","polygon","generalization"],
 	"author": "Matthew Bloch <masiyou@gmail.com>",

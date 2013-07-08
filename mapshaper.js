@@ -5381,7 +5381,7 @@ Utils.format = (function() {
 
 /* @requires arrayutils, format, mapshaper-common */
 
-// buildArcTopology() converts non-topological polygon data into a topological format
+// buildTopology() converts non-topological polygon data into a topological format
 //
 // Input format:
 // {
@@ -5397,11 +5397,11 @@ Utils.format = (function() {
 //    shapes: [Array]  // Shapes are arrays of one or more parts; Parts are arrays of one or more arc id.
 // }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
 //
-MapShaper.buildArcTopology = function(obj) {
-  if (!(obj.xx && obj.yy && obj.pathData)) error("[buildArcTopology()] Missing required param/s");
+MapShaper.buildTopology = function(obj) {
+  if (!(obj.xx && obj.yy && obj.pathData)) error("[buildTopology()] Missing required param/s");
 
   T.start();
-  var topoData = new ArcEngine(obj.xx, obj.yy, obj.pathData).buildTopology();
+  var topoData = buildPathTopology(obj.xx, obj.yy, obj.pathData);
   topoData.arcMinPointCounts = calcMinPointCounts(topoData.paths, obj.pathData, topoData.arcs, topoData.sharedArcFlags);
   topoData.shapes = groupPathsByShape(topoData.paths, obj.pathData);
   delete topoData.paths;
@@ -5482,9 +5482,11 @@ function ArcIndex(hashTableSize, xyToUint) {
     return -1;
   };
 
+
   this.getArcs = function() {
     return arcs;
   };
+
 
   this.getSharedArcFlags = function() {
     return new Uint8Array(sharedArcs);
@@ -5495,20 +5497,33 @@ function ArcIndex(hashTableSize, xyToUint) {
 // Transform spaghetti shapes into topological arcs
 // ArcEngine has one method: #buildTopology()
 //
-function ArcEngine(xx, yy, pathData) {
+function buildPathTopology(xx, yy, pathData) {
   var pointCount = xx.length,
       xyToUint = MapShaper.getPointToUintHash(MapShaper.calcXYBounds(xx, yy)),
       index = new ArcIndex(pointCount * 0.2, xyToUint),
       slice = xx.subarray && yy.subarray || xx.slice;
 
   var pathIds = initPathIds(pointCount, pathData);
-  var paths;
+  var paths = [];
 
   T.start();
   var chainIds = initPointChains(xx, yy, pathIds, xyToUint);
   T.stop("Find matching vertices");
 
-  if (!(pointCount > 0 && yy.length == pointCount && pathIds.length == pointCount && chainIds.length == pointCount)) error("Mismatched array lengths");
+  T.start();
+  var pointId = 0;
+  Utils.forEach(pathData, function(pathObj, pathId) {
+    var procPath = pointIsRingEndpoint(pointId) ? procClosedPath : procOpenPath;
+    paths[pathId] = procPath(pointId, pathId, pathObj);
+    pointId += pathObj.size;
+  });
+  T.stop("Find topological boundaries")
+
+  return {
+    paths: paths,
+    arcs: index.getArcs(),
+    sharedArcFlags: index.getSharedArcFlags()
+  };
 
   function nextPoint(id) {
     var partId = pathIds[id];
@@ -5556,39 +5571,7 @@ function ArcEngine(xx, yy, pathData) {
     return true;
   }
 
-
-  // TODO: better handling of edge cases
-  // If point at @id matches one or more points on another path, return id of any of the matching points
-  // If point at @id matches points on two or more different paths, return -2
-  // If point at @id matches no other paths, return -1
-  //
-  function findSharedPoint(id) {
-    var neighborPartId,
-        neighborId = -1,
-        chainPartId,
-        partId = pathIds[id],
-        chainId = chainIds[id];
-
-    while (chainId != id) {
-      chainPartId = pathIds[chainId];
-      if (chainPartId == partId) {
-        // chained point is on point's own ring -- ignore
-      }
-      else if (neighborId == -1) {
-        // first chained point on a different path -- remember it
-        neighborId = chainId;
-        neighborPartId = chainPartId;
-      }
-      else if (chainPartId != neighborPartId) {
-        // chain contains more than one other path -- return -2
-        return -2;
-      }
-      chainId = chainIds[chainId];
-    }
-    return neighborId;
-  }
-
-  //
+  // Convert an open path to one or more topological paths
   //
   function procOpenPath(pathStartId, pathId, pathObj) {
     var arcIds = [],
@@ -5613,22 +5596,17 @@ function ArcEngine(xx, yy, pathData) {
   function procClosedPath(pathStartId, pathId, pathObj) {
     var arcIds = [],
         pathLen = pathObj.size,
-        pathEndId = pathStartId + pathLen - 1,
-        prevId, nextId;
+        pathEndId = pathStartId + pathLen - 1;
     var inArc = false,
         firstNodeId = -1,
-        arcStartId,
-        sharedId;
+        arcStartId;
 
     if (pathObj.isNull) return;
 
     // Visit each point in the path, up to but not including the endpoint
     //
     for (var i = pathStartId; i < pathEndId; i++) {
-      prevId = i == pathStartId ? pathEndId - 1 : i - 1;
-      nextId = i + 1;
-
-      if (pointIsNode(i, prevId, nextId)) {
+      if (pointIsNode(i)) {
         if (inArc) {
           arcIds.push(addEdge(arcStartId, i));
         } else {
@@ -5644,7 +5622,7 @@ function ArcEngine(xx, yy, pathData) {
     if (inArc) {
       if (firstNodeId == pathStartId) {
         // path endpoint is a node;
-        if (!pointIsNode(pathEndId, pathEndId - 1, pathStartId + 1)) {
+        if (!pointIsNode(pathEndId)) {
           error("Topology error"); // TODO: better error handling
         }
         arcIds.push(addEdge(arcStartId, i));
@@ -5654,59 +5632,71 @@ function ArcEngine(xx, yy, pathData) {
       }
     }
     else {
+      // TODO: refactor, messy
       // Not in an arc, i.e. no nodes have been found...
-      // Assuming that path is either an island or a pair of matching paths
-      sharedId = findSharedPoint(pathStartId);
-      if (sharedId >= 0) {
-        // island-in-hole or hole-around-island pair
-        var pairedPathId = pathIds[sharedId];
-        if (pairedPathId < pathId) {
-          // counterpart has already been converted to an arc; use reversed arc
-          var pairedPath = paths[pairedPathId];
-          if (pairedPath.length != 1) {
-            error("ArcEngine error:", pairedPath);
-          }
-
-          arcIds.push(-1 -pairedPath[0]);
+      // Assuming that path is either an island or is congruent with one or more ring-arcs
+      var matchingPathId = findIntersectingPath(pathStartId);
+      if (matchingPathId >= 0) {
+        var pairedPath = paths[matchingPathId],
+            pairedPathObj = pathData[matchingPathId];
+        if (pairedPath.length != 1) {
+          error("ArcEngine error:", pairedPath);
         }
-        else {
-          // first of two paths: treat like an island
-          arcIds.push(addEdge(pathStartId, pathEndId));
-        }
-      }
-      else {
-        // independent island
+        var pairedArcId = pairedPath[0],
+            arcId = pathObj.isHole == pairedPathObj.isHole ? pairedArcId : -1 - pairedArcId;
+        arcIds.push(arcId);
+      } else {
         arcIds.push(addEdge(pathStartId, pathEndId));
       }
     }
     return arcIds;
   };
 
+  // Return id of previously discovered path that intersects point at @pointId, or -1
+  //
+  function findIntersectingPath(pointId) {
+    var pathId = pathIds[pointId],
+        chainId = chainIds[pointId];
+
+    while (chainId != pointId) {
+      if (pathIds[chainId] < pathId) {
+        return pathIds[chainId];
+      }
+      chainId = chainIds[chainId];
+    }
+    return -1;
+  }
+
+  // @a and @b are ids of two points with same x, y coords
+  // Return false if adjacent points match, either in fw or rev direction
+  //
+  function pointsDiverge(a, b) {
+    var xarr = xx, yarr = yy; // local vars: faster
+    var aprev = prevPoint(a),
+        anext = nextPoint(a),
+        bprev = prevPoint(b),
+        bnext = nextPoint(b);
+
+    if (xarr[aprev] == xarr[bnext] && xarr[anext] == xarr[bprev] &&
+      yarr[aprev] == yarr[bnext] && yarr[anext] == yarr[bprev]) {
+      return false;
+    } else if (xarr[aprev] == xarr[bprev] && xarr[anext] == xarr[bnext] &&
+      yarr[aprev] == yarr[bprev] && yarr[anext] == yarr[bnext]) {
+      return false;
+    }
+    return true;
+  }
 
   // Test if a point on a path is at the junction between
   // two or more topological edges (arcs)
-  // Special case: If two coinciding paths form an island-in-hole relationship,
-  //    none of their points are identified as nodes.
-  // Edge case: if three or more paths share an edge, each point along the edge is
-  //    identified as a node. This won't happen in a clean layer, but should probably be handled better.
   //
-  function pointIsNode(id, prev, next) {
-    var xarr = xx, yarr = yy; // local vars: faster
-    var sharedId, sharedNext, sharedPrev;
-
-    if (pointIsSingleton(id)) return false;
-
-    sharedId = findSharedPoint(id);
-    if (sharedId < 0) {
-      return true;
-    }
-
-    sharedNext = nextPoint(sharedId);
-    sharedPrev = prevPoint(sharedId);
-
-    if (xarr[sharedNext] != xarr[prev] || xarr[sharedPrev] != xarr[next] ||
-      yarr[sharedNext] != yarr[prev] || yarr[sharedPrev] != yarr[next]) {
-      return true;
+  function pointIsNode(id) {
+    var chainId = chainIds[id];
+    while (id != chainId) {
+      if (pointsDiverge(id, chainId)) {
+        return true;
+      }
+      chainId = chainIds[chainId];
     }
     return false;
   }
@@ -5726,43 +5716,35 @@ function ArcEngine(xx, yy, pathData) {
     return dest;
   }
 
-  function addEdge(startId, endId, startId2, endId2) {
-    var arcId, xarr, yarr, i;
-    var splitArc = endId2 != null;
-    var matchId = index.findArcNeighbor(xx, yy, startId, splitArc ? endId2 : endId, nextPoint);
-    if (matchId == -1) {
-      if (splitArc) {
-        xarr = mergeArcParts(xx, startId, endId, startId2, endId2);
-        yarr = mergeArcParts(yy, startId, endId, startId2, endId2);
-      } else {
-        xarr = slice.call(xx, startId, endId + 1);
-        yarr = slice.call(yy, startId, endId + 1);
-      }
+  function addEdge(startId1, endId1, startId2, endId2) {
+    var splitArc = endId2 != null,
+        start = startId1,
+        end = splitArc ? endId2 : endId1,
+        arcId, xarr, yarr;
 
-      arcId = index.addArc(xarr, yarr);
+    // Look for previously identified arc, in reverse direction (normal topology)
+    arcId = index.findArcNeighbor(xx, yy, start, end, nextPoint);
+    if (arcId >= 0) return -1 - arcId;
+
+    // Look for matching arc in same direction
+    // (Abnormal topology, but we're accepting it because real-world Shapefiles
+    //   sometimes have duplicate paths)
+    arcId = index.findArcNeighbor(xx, yy, end, start, prevPoint);
+    if (arcId >= 0) return arcId;
+
+    if (splitArc) {
+      xarr = mergeArcParts(xx, startId1, endId1, startId2, endId2);
+      yarr = mergeArcParts(yy, startId1, endId1, startId2, endId2);
     } else {
-      arcId = -1 - matchId;
+      xarr = slice.call(xx, startId1, endId1 + 1);
+      yarr = slice.call(yy, startId1, endId1 + 1);
     }
-    return arcId;
+    return index.addArc(xarr, yarr);
   }
 
-  this.buildTopology = function() {
+  function buildTopology() {
     var pointId = 0;
-    paths = [];
 
-    T.start();
-    Utils.forEach(pathData, function(pathObj, pathId) {
-      var procPath = pointIsRingEndpoint(pointId) ? procClosedPath : procOpenPath;
-      paths[pathId] = procPath(pointId, pathId, pathObj);
-      pointId += pathObj.size;
-    });
-    T.stop("Find topological boundaries")
-
-    return {
-      paths: paths,
-      arcs: index.getArcs(),
-      sharedArcFlags: index.getSharedArcFlags()
-    };
   };
 }
 
@@ -5882,7 +5864,7 @@ function groupPathsByShape(paths, pathData) {
 
 // export functions for testing
 MapShaper.topology = {
-  ArcEngine: ArcEngine,
+  buildPathTopology: buildPathTopology,
   ArcIndex: ArcIndex,
   groupPathsByShape: groupPathsByShape,
   protectPath: protectPath,
