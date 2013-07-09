@@ -6126,22 +6126,17 @@ MapShaper.buildTopology = function(obj) {
 // @bbox A Bounds object giving the extent of the dataset.
 //
 MapShaper.getPointToUintHash = function(bbox) {
-  var mask = (1 << 29) - 1,
-      kx = (1e8 * Math.E / bbox.width()),
+  var kx = (1e8 * Math.E / bbox.width()),
       ky = (1e8 * Math.PI / bbox.height()),
       bx = -bbox.xmin,
       by = -bbox.ymin;
 
   return function(x, y) {
     // transform coords to integer range and scramble bits a bit
-    var key = x * kx + bx;
-    key ^= y * ky + by;
-    // key ^= Math.PI * 1e9;
-    key &= 0x7fffffff; // mask as positive integer
-    return key;
+    var key = x * kx + bx ^ y * ky + by;
+    return key & 0x7fffffff; // mask as positive integer
   };
 };
-
 
 //
 //
@@ -6497,9 +6492,8 @@ function initPointChains(xx, yy, pathIds, hash) {
   // Each hash bin contains the id of the first point in a chain of points.
   var hashChainIds = new Int32Array(hashTableSize);
   Utils.initializeArray(hashChainIds, -1);
-
   var chainIds = new Int32Array(pointCount);
-  var key, headId, tailId, x, y, partId;
+  var key, headId, x, y;
 
   for (var i=0; i<pointCount; i++) {
     if (pathIds[i] == -1) {
@@ -6508,8 +6502,8 @@ function initPointChains(xx, yy, pathIds, hash) {
     }
     x = xx[i];
     y = yy[i];
-
     key = hash(x, y) % hashTableSize;
+
     // Points with different (x, y) coords can hash to the same bin;
     // ... use linear probing to find a different bin for each (x, y) coord.
     while (true) {
@@ -6521,13 +6515,9 @@ function initPointChains(xx, yy, pathIds, hash) {
         break;
       }
       else if (xx[headId] == x && yy[headId] == y) {
-        // case -- adding to a chain: place new coordinate at end of chain, point it to head of chain to create cycle
-        tailId = headId;
-        while (chainIds[tailId] != headId) {
-          tailId = chainIds[tailId];
-        }
-        chainIds[i] = headId;
-        chainIds[tailId] = i;
+        // case -- extending a chain: insert new point after head of chain
+        chainIds[i] = chainIds[headId];
+        chainIds[headId] = i;
         break;
       }
       // case -- this bin is used by another coord, try the next bin
@@ -8328,10 +8318,9 @@ MapShaper.importTopoJSON = function(obj) {
 };
 
 
-// Export a TopoJSON string containing a single object, "polygons", containing a GeometryCollection
-//   of Polygon and MultiPolygon shapes
-// TODO: Adjust quantization to suit the amount of detail in the vector lines
+// Export a TopoJSON string containing a single object containing a GeometryCollection
 // TODO: Support ids from attribute data
+// TODO: Support properties
 //
 MapShaper.exportTopoJSON = function(data) {
   if (!data.objects || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
@@ -8421,13 +8410,14 @@ function exportTopoJSONGeometry(paths, id, type) {
   };
 
   if (paths.length == 0) {
-    obj = null; // null geometry... allowed?
+    // null geometry
+    obj.type = null;
   }
   else if (type == 'MultiPolygon') {
     if (paths.length == 1) {
       obj.type = "Polygon";
       obj.arcs = exportArcsForTopoJSON(paths[0]);
-    } else  {
+    } else {
       obj.type = "MultiPolygon";
       obj.arcs = Utils.map(paths, exportArcsForTopoJSON);
     }
