@@ -26,10 +26,9 @@ MapShaper.importTopoJSON = function(obj) {
 };
 
 
-// Export a TopoJSON string containing a single object, "polygons", containing a GeometryCollection
-//   of Polygon and MultiPolygon shapes
-// TODO: Adjust quantization to suit the amount of detail in the vector lines
+// Export a TopoJSON string containing a single object containing a GeometryCollection
 // TODO: Support ids from attribute data
+// TODO: Support properties
 //
 MapShaper.exportTopoJSON = function(data) {
   if (!data.objects || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
@@ -119,13 +118,14 @@ function exportTopoJSONGeometry(paths, id, type) {
   };
 
   if (paths.length == 0) {
-    obj = null; // null geometry... allowed?
+    // null geometry
+    obj.type = null;
   }
   else if (type == 'MultiPolygon') {
     if (paths.length == 1) {
       obj.type = "Polygon";
       obj.arcs = exportArcsForTopoJSON(paths[0]);
-    } else  {
+    } else {
       obj.type = "MultiPolygon";
       obj.arcs = Utils.map(paths, exportArcsForTopoJSON);
     }
