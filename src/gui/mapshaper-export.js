@@ -25,7 +25,8 @@ var ExportControl = function(arcData, topoData, opts) {
       if (blobUrl) URL.revokeObjectURL(blobUrl);
       blobUrl = URL.createObjectURL(blob);
     } catch(e) {
-      error("This browser doesn't support saving files.")
+      alert("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.")
+      return;
     }
     anchor.href = blobUrl;
     anchor.download = filename;
@@ -78,8 +79,15 @@ var ExportControl = function(arcData, topoData, opts) {
         });
       }, null);
     }
-
-    zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
+    try {
+      zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
+    } catch(e) {
+      if (Utils.parseUrl(Browser.getPageUrl()).protocol == 'file') {
+        alert("This browser doesn't support offline .zip file creation.");
+      } else {
+        alert("This browser doesn't support .zip file creation.");
+      }
+    }
   }
 
   function exportShapefile() {
