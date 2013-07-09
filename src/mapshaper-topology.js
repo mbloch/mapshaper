@@ -1,20 +1,23 @@
-/* @requires arrayutils, format, mapshaper-common */
+/* @requires arrayutils, mapshaper-common */
 
 // buildTopology() converts non-topological polygon data into a topological format
 //
 // Input format:
 // {
-//    xx: [Array],      // x-coords of each point in the dataset (coords of all paths are concatenated)
-//    yy: [Array],      // y-coords of each point
+//    xx: [Array|Float64Array],   // x-coords of each point in the dataset
+//    yy: [Array|Float64Array],   // y-coords "  "  "  "
 //    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isNull: false, isPrimary: true}
 // }
+// Note: x- and y-coords of all paths are concatenated into two long arrays, for easy indexing
+// Note: Input coords can use typed arrays (better performance) or regular arrays (for testing)
 //
 // Output format:
 // {
 //    arcs: [Array],   // Arcs are represented as two-element arrays
-//                     //   arc[0] is an array of x-coords, arc[1] is an array of y-coords
+//                     //   arc[0] and arc[1] are x- and y-coords in an Array or Float64Array
 //    shapes: [Array]  // Shapes are arrays of one or more parts; Parts are arrays of one or more arc id.
 // }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
+// Note: arcs use typed arrays or regular arrays for coords, depending on the input array type.
 //
 MapShaper.buildTopology = function(obj) {
   if (!(obj.xx && obj.yy && obj.pathData)) error("[buildTopology()] Missing required param/s");
@@ -40,7 +43,7 @@ MapShaper.getPointToUintHash = function(bbox) {
   return function(x, y) {
     // transform coords to integer range and scramble bits a bit
     var key = x * kx + bx ^ y * ky + by;
-    return key & 0x7fffffff; // mask as positive integer
+    return key & 0x7fffffff; // mask as nonnegative integer
   };
 };
 
@@ -297,7 +300,7 @@ function buildPathTopology(xx, yy, pathData) {
   // @a and @b are ids of two points with same x, y coords
   // Return false if adjacent points match, either in fw or rev direction
   //
-  function pointsDiverge(a, b) {
+  function pathsDiverge(a, b) {
     var xarr = xx, yarr = yy; // local vars: faster
     var aprev = prevPoint(a),
         anext = nextPoint(a),
@@ -320,7 +323,7 @@ function buildPathTopology(xx, yy, pathData) {
   function pointIsNode(id) {
     var chainId = chainIds[id];
     while (id != chainId) {
-      if (pointsDiverge(id, chainId)) {
+      if (pathsDiverge(id, chainId)) {
         return true;
       }
       chainId = chainIds[chainId];
@@ -395,9 +398,12 @@ function initPointChains(xx, yy, pathIds, hash) {
       hashTableSize = Math.floor(pointCount * 1.5);
   // A hash table larger than ~1.5 * point count doesn't seem to improve performance much.
 
-  // Each hash bin contains the id of the first point in a chain of points.
+  // Hash table is temporary storage for building chains of matching point ids.
+  // Each hash bin contains the id of the first point in a chain.
   var hashChainIds = new Int32Array(hashTableSize);
   Utils.initializeArray(hashChainIds, -1);
+
+  //
   var chainIds = new Int32Array(pointCount);
   var key, headId, x, y;
 
@@ -479,7 +485,7 @@ function groupPathsByShape(paths, pathData) {
   return shapes;
 }
 
-// export functions for testing
+// Export functions for testing
 MapShaper.topology = {
   buildPathTopology: buildPathTopology,
   ArcIndex: ArcIndex,
