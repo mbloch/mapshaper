@@ -31,7 +31,7 @@ var Utils = {
 
   parseUrl: function parseUrl(url) {
     var obj,
-      matches = /^(http):\/\/([^\/]+)(.*)/.exec(url); // TODO: improve
+      matches = /^(http|file|https):\/\/([^\/]+)(.*)/.exec(url); // TODO: improve
     if (matches) {
       obj = {
         protocol: matches[1],
@@ -95,7 +95,7 @@ var Utils = {
   //
   isArrayLike: function(obj) {
     // approximate test
-    return obj && (Utils.isArray(obj) || obj.length > 0 && obj[obj.length-1] !== void 0 && !Utils.isString(obj));
+    return obj && (Utils.isArray(obj) || (obj.length === 0 || obj.length > 0 && obj[obj.length-1] !== void 0) && !Utils.isString(obj));
   },
 
   isFunction: function(obj) {
@@ -2990,7 +2990,7 @@ Browser.onload = function(handler, ctx) {
 Opts.copyAllParams(Browser, Env);
 
 
-/* 
+/*
 @requires
 events
 arrayutils
@@ -3152,7 +3152,7 @@ function El(ref) {
   this.el = Browser.getElement(ref) || Browser.createElement(ref); // TODO: detect type of argument
 }
 
-Opts.inherit(El, EventDispatcher); // 
+Opts.inherit(El, EventDispatcher); //
 
 El.removeAll = function(sel) {
   var arr = Elements.__select(sel);
@@ -3163,11 +3163,16 @@ El.removeAll = function(sel) {
 
 Utils.extend(El.prototype, {
 
-  // TODO: test this
   clone: function() {
-    var el = new El(this.node());
-    Utils.extend(el, this);
-    return el;
+    var el = this.el.cloneNode(true);
+    if (el.nodeName == 'SCRIPT') {
+      // Assume scripts are templates and convert to divs, so children
+      //    can
+      el = El('div').addClass(el.className).html(el.innerHTML).node();
+    }
+    el.id = Utils.getUniqueName();
+    this.el = el;
+    return this;
   },
 
   node: function() {
@@ -3286,7 +3291,7 @@ Utils.extend(El.prototype, {
       // var styles = Browser.getElementStyle(this.el);
       // this._display = styles.display;
       this.css(this.hideCSS());
-      this._hidden = true;    
+      this._hidden = true;
     }
     return this;
   },
@@ -3311,8 +3316,12 @@ Utils.extend(El.prototype, {
   },
 
   html: function(html) {
-    this.el.innerHTML = html;
-    return this;
+    if (arguments.length == 0) {
+      return this.el.innerHTML;
+    } else {
+      this.el.innerHTML = html;
+      return this;
+    }
   },
 
   text: function(obj) {
@@ -5967,148 +5976,26 @@ var controls = {
 };
 
 
-/* @requires core, browser, textutils */
-
-/*
-A simplified version of printf formatting
-Format codes: %[flags][width][.precision]type
-
-supported flags:
-  +   add '+' before positive numbers
-  0   left-pad with '0'
-width: 1 to many
-precision: .(1 to many)
-type:
-  s     string
-  di    integers
-  f     decimal numbers
-  xX    hexidecimal (unsigned)
-  %     literal '%'
-
-Examples:
-  code    val    formatted
-  %+d     1      '+1'
-  %4i     32     '  32'
-  %04i    32     '0032'
-  %x      255    'ff'
-  %.2f    0.125  '0.13'
-  %'f     1000   '1,000'
-*/
-
-Utils.format = (function() {
-  function getPadString(len, c) {
-    var str = "";
-    for (var i=0; i<len; i++)
-      str += c;
-    return str;
-  }
-
-  function formatValue(matches, val) {
-    var flags = matches[1];
-    var padding = matches[2];
-    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
-    var type = matches[4];
-
-    if (type == '%') {
-      return '%'; // %% = literal '%'
-    }
-    var isString = type == 's',
-        isHex = type == 'x' || type == 'X',
-        isInt = type == 'd' || type == 'i',
-        isFloat = type == 'f',
-        isNumber = !isString;
-
-    var sign = "", 
-        padDigits = 0,
-        isZero = false,
-        isNeg = false;
-
-    var str;
-    if (isString) {
-      str = String(val);
-    }
-    else if (isHex) {
-      str = val.toString(16);
-      if (type == 'X')
-        str = str.toUpperCase();
-    }
-    else if (isNumber) {
-      str = Utils.numToStr(val, isInt ? 0 : decimals);
-      if (str[0] == '-') {
-        isNeg = true;
-        str = str.substr(1);
-      }
-      isZero = parseFloat(str) == 0;
-      if (flags.indexOf("'") != -1) {
-        str = Utils.addThousandsSep(str);
-      }
-      if (!isZero) { // BUG: sign is added when num rounds to 0
-        if (isNeg) {
-          sign = "\u2212"; // U+2212
-        } else if (flags.indexOf('+') != -1) {
-          sign = '+';
-        }
-      }
-    }
-
-    if (padding) {
-      var strLen = str.length + sign.length;
-      var minWidth = parseInt(padding, 10);
-      if (strLen < minWidth) {
-        padDigits = minWidth - strLen;
-        var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-        var padStr = getPadString(padDigits, padChar);
-      }
-    }
-
-    if (padDigits == 0) {
-      str = sign + str;
-    } else if (padChar == '0') {
-      str = sign + padStr + str;
-    } else {
-      str = padStr + sign + str;
-    }
-    return str;
-  }
-
-  var codeRxp = /%([\'+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
-
-  return function format(s) {
-    var arr = Array.prototype.slice.call(arguments, 1);
-    var ostr = "";
-    for (var startIdx=0, i=0, len=arr.length, matches; i<len && (matches=codeRxp.exec(s)); i++) {
-      ostr += s.substring(startIdx, codeRxp.lastIndex - matches[0].length);
-      ostr += formatValue(matches, arr[i]);
-      startIdx = codeRxp.lastIndex;
-    }
-    codeRxp.lastIndex = 0;
-
-    if (i != len) {
-      error("[Utils.format()] formatting codes did not match inputs; string:", s);
-    }
-    ostr += s.substr(startIdx);
-    return ostr;
-  };
-}());
-
-
-/* @requires arrayutils, format, mapshaper-common */
+/* @requires arrayutils, mapshaper-common */
 
 // buildTopology() converts non-topological polygon data into a topological format
 //
 // Input format:
 // {
-//    xx: [Array],      // x-coords of each point in the dataset (coords of all paths are concatenated)
-//    yy: [Array],      // y-coords of each point
+//    xx: [Array|Float64Array],   // x-coords of each point in the dataset
+//    yy: [Array|Float64Array],   // y-coords "  "  "  "
 //    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isNull: false, isPrimary: true}
 // }
+// Note: x- and y-coords of all paths are concatenated into two long arrays, for easy indexing
+// Note: Input coords can use typed arrays (better performance) or regular arrays (for testing)
 //
 // Output format:
 // {
 //    arcs: [Array],   // Arcs are represented as two-element arrays
-//                     //   arc[0] is an array of x-coords, arc[1] is an array of y-coords
+//                     //   arc[0] and arc[1] are x- and y-coords in an Array or Float64Array
 //    shapes: [Array]  // Shapes are arrays of one or more parts; Parts are arrays of one or more arc id.
 // }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
+// Note: arcs use typed arrays or regular arrays for coords, depending on the input array type.
 //
 MapShaper.buildTopology = function(obj) {
   if (!(obj.xx && obj.yy && obj.pathData)) error("[buildTopology()] Missing required param/s");
@@ -6134,7 +6021,7 @@ MapShaper.getPointToUintHash = function(bbox) {
   return function(x, y) {
     // transform coords to integer range and scramble bits a bit
     var key = x * kx + bx ^ y * ky + by;
-    return key & 0x7fffffff; // mask as positive integer
+    return key & 0x7fffffff; // mask as nonnegative integer
   };
 };
 
@@ -6391,7 +6278,7 @@ function buildPathTopology(xx, yy, pathData) {
   // @a and @b are ids of two points with same x, y coords
   // Return false if adjacent points match, either in fw or rev direction
   //
-  function pointsDiverge(a, b) {
+  function pathsDiverge(a, b) {
     var xarr = xx, yarr = yy; // local vars: faster
     var aprev = prevPoint(a),
         anext = nextPoint(a),
@@ -6414,7 +6301,7 @@ function buildPathTopology(xx, yy, pathData) {
   function pointIsNode(id) {
     var chainId = chainIds[id];
     while (id != chainId) {
-      if (pointsDiverge(id, chainId)) {
+      if (pathsDiverge(id, chainId)) {
         return true;
       }
       chainId = chainIds[chainId];
@@ -6489,9 +6376,12 @@ function initPointChains(xx, yy, pathIds, hash) {
       hashTableSize = Math.floor(pointCount * 1.5);
   // A hash table larger than ~1.5 * point count doesn't seem to improve performance much.
 
-  // Each hash bin contains the id of the first point in a chain of points.
+  // Hash table is temporary storage for building chains of matching point ids.
+  // Each hash bin contains the id of the first point in a chain.
   var hashChainIds = new Int32Array(hashTableSize);
   Utils.initializeArray(hashChainIds, -1);
+
+  //
   var chainIds = new Int32Array(pointCount);
   var key, headId, x, y;
 
@@ -6573,7 +6463,7 @@ function groupPathsByShape(paths, pathData) {
   return shapes;
 }
 
-// export functions for testing
+// Export functions for testing
 MapShaper.topology = {
   buildPathTopology: buildPathTopology,
   ArcIndex: ArcIndex,
@@ -6581,6 +6471,131 @@ MapShaper.topology = {
   protectPath: protectPath,
   initPathIds: initPathIds
 };
+
+/* @requires core, browser, textutils */
+
+/*
+A simplified version of printf formatting
+Format codes: %[flags][width][.precision]type
+
+supported flags:
+  +   add '+' before positive numbers
+  0   left-pad with '0'
+width: 1 to many
+precision: .(1 to many)
+type:
+  s     string
+  di    integers
+  f     decimal numbers
+  xX    hexidecimal (unsigned)
+  %     literal '%'
+
+Examples:
+  code    val    formatted
+  %+d     1      '+1'
+  %4i     32     '  32'
+  %04i    32     '0032'
+  %x      255    'ff'
+  %.2f    0.125  '0.13'
+  %'f     1000   '1,000'
+*/
+
+Utils.format = (function() {
+  function getPadString(len, c) {
+    var str = "";
+    for (var i=0; i<len; i++)
+      str += c;
+    return str;
+  }
+
+  function formatValue(matches, val) {
+    var flags = matches[1];
+    var padding = matches[2];
+    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
+    var type = matches[4];
+
+    if (type == '%') {
+      return '%'; // %% = literal '%'
+    }
+    var isString = type == 's',
+        isHex = type == 'x' || type == 'X',
+        isInt = type == 'd' || type == 'i',
+        isFloat = type == 'f',
+        isNumber = !isString;
+
+    var sign = "", 
+        padDigits = 0,
+        isZero = false,
+        isNeg = false;
+
+    var str;
+    if (isString) {
+      str = String(val);
+    }
+    else if (isHex) {
+      str = val.toString(16);
+      if (type == 'X')
+        str = str.toUpperCase();
+    }
+    else if (isNumber) {
+      str = Utils.numToStr(val, isInt ? 0 : decimals);
+      if (str[0] == '-') {
+        isNeg = true;
+        str = str.substr(1);
+      }
+      isZero = parseFloat(str) == 0;
+      if (flags.indexOf("'") != -1) {
+        str = Utils.addThousandsSep(str);
+      }
+      if (!isZero) { // BUG: sign is added when num rounds to 0
+        if (isNeg) {
+          sign = "\u2212"; // U+2212
+        } else if (flags.indexOf('+') != -1) {
+          sign = '+';
+        }
+      }
+    }
+
+    if (padding) {
+      var strLen = str.length + sign.length;
+      var minWidth = parseInt(padding, 10);
+      if (strLen < minWidth) {
+        padDigits = minWidth - strLen;
+        var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
+        var padStr = getPadString(padDigits, padChar);
+      }
+    }
+
+    if (padDigits == 0) {
+      str = sign + str;
+    } else if (padChar == '0') {
+      str = sign + padStr + str;
+    } else {
+      str = padStr + sign + str;
+    }
+    return str;
+  }
+
+  var codeRxp = /%([\'+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+
+  return function format(s) {
+    var arr = Array.prototype.slice.call(arguments, 1);
+    var ostr = "";
+    for (var startIdx=0, i=0, len=arr.length, matches; i<len && (matches=codeRxp.exec(s)); i++) {
+      ostr += s.substring(startIdx, codeRxp.lastIndex - matches[0].length);
+      ostr += formatValue(matches, arr[i]);
+      startIdx = codeRxp.lastIndex;
+    }
+    codeRxp.lastIndex = 0;
+
+    if (i != len) {
+      error("[Utils.format()] formatting codes did not match inputs; string:", s);
+    }
+    ostr += s.substr(startIdx);
+    return ostr;
+  };
+}());
+
 
 /* @requires elements, browser */
 
@@ -8472,7 +8487,8 @@ var ExportControl = function(arcData, topoData, opts) {
       if (blobUrl) URL.revokeObjectURL(blobUrl);
       blobUrl = URL.createObjectURL(blob);
     } catch(e) {
-      error("This browser doesn't support saving files.")
+      alert("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.")
+      return;
     }
     anchor.href = blobUrl;
     anchor.download = filename;
@@ -8525,8 +8541,15 @@ var ExportControl = function(arcData, topoData, opts) {
         });
       }, null);
     }
-
-    zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
+    try {
+      zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
+    } catch(e) {
+      if (Utils.parseUrl(Browser.getPageUrl()).protocol == 'file') {
+        alert("This browser doesn't support offline .zip file creation.");
+      } else {
+        alert("This browser doesn't support .zip file creation.");
+      }
+    }
   }
 
   function exportShapefile() {

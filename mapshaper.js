@@ -31,7 +31,7 @@ var Utils = {
 
   parseUrl: function parseUrl(url) {
     var obj,
-      matches = /^(http):\/\/([^\/]+)(.*)/.exec(url); // TODO: improve
+      matches = /^(http|file|https):\/\/([^\/]+)(.*)/.exec(url); // TODO: improve
     if (matches) {
       obj = {
         protocol: matches[1],
@@ -95,7 +95,7 @@ var Utils = {
   //
   isArrayLike: function(obj) {
     // approximate test
-    return obj && (Utils.isArray(obj) || obj.length > 0 && obj[obj.length-1] !== void 0 && !Utils.isString(obj));
+    return obj && (Utils.isArray(obj) || (obj.length === 0 || obj.length > 0 && obj[obj.length-1] !== void 0) && !Utils.isString(obj));
   },
 
   isFunction: function(obj) {
@@ -4796,606 +4796,26 @@ MapShaper.simplifyArcsSph = function(arcs, simplify) {
   return data;
 };
 
-/* @requires events, core */
-
-var pageEvents = (new function() {
-  var useAttachEvent = typeof window != 'undefined' && !!window.attachEvent && !window.addEventListener,
-      index = {};
-
-  function __getNodeListeners(el) {
-    var id = __getNodeKey(el);
-    var listeners = index[id] || (index[id] = []);
-    return listeners;
-  }
-
-  function __removeDOMListener(el, type, func) {
-    if (useAttachEvent) {
-      el.detachEvent('on' + type, func);
-    }
-    else {
-      el.removeEventListener(type, func, false);
-    }
-  }
-
-  function __findNodeListener(listeners, type, func, ctx) {
-    for (var i=0, len = listeners.length; i < len; i++) {
-      var evt = listeners[i];
-      if (evt.type == type && evt.callback == func && evt.context == ctx) {
-        return i;
-      }
-    }
-    return -1;
-  };
-
-  function __getNodeKey(el) {
-    if (!el) {
-      return '';
-    } else if (el == window) {
-      return '#';
-    }
-    return el.__evtid__ || (el.__evtid__ = Utils.getUniqueName());
-  }
-
-  this.addEventListener = function(el, type, func, ctx) {
-    if (Utils.isString(el)) { // if el is a string, treat as id
-      el = Browser.getElement(el);
-    }
-    if (el === window && 'mousemove,mousedown,mouseup,mouseover,mouseout'.indexOf(type) != -1) {
-      trace("[Browser.addEventListener()] In ie8-, window doesn't support mouse events");
-    }
-    var listeners = __getNodeListeners(el);
-    if (listeners.length > 0) {
-      if (__findNodeListener(listeners, type, func, ctx) != -1) {
-        return;
-      }
-    }
-
-    //var evt = new BoundEvent(type, el, func, ctx);
-    var evt = new Handler(type, el, func, ctx);
-    var handler = function(e) {
-      // ie8 uses evt argument and window.event (different objects), no evt.pageX
-      // chrome uses evt arg. and window.event (same obj), has evt.pageX
-      // firefox uses evt arg, window.event === undefined, has evt.pageX
-      // touch events
-      /// if (!e || !(e.pageX || e.touches)) {
-      if (!e || Browser.ieVersion <= 8) {
-        var evt = e || window.event;
-        e = {
-          target : evt.srcElement,
-          relatedTarget : type == 'mouseout' && evt.toElement || type == 'mouseover' && evt.fromElement || null,
-          currentTarget : el
-        };
-
-        if (evt.clientX !== void 0) {
-          // http://www.javascriptkit.com/jsref/event.shtml
-          // pageX: window.pageXOffset+e.clientX
-          // pageY: window.pageYOffset+e.clientY
-          e.pageX = evt.pageX || evt.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
-          e.pageY = evt.pageY || evt.clientY + document.body.scrollTop + document.documentElement.scrollTop;
-        }
-        // TODO: add other event properties && methods, e.g. preventDefault, stopPropagation, etc.
-      }
-
-      // Ignoring mouseover and mouseout events between child elements
-      if (type == 'mouseover' || type == 'mouseout') {
-
-        var rel = e.relatedTarget;
-        while (rel && rel != el && rel.nodeName != 'BODY') {
-          rel = rel.parentNode;
-        }
-        if (rel == el) {
-          return;
-        }
-        if (el == window && e.relatedTarget != null) {
-          return;
-        }
-      }
-
-      var retn = func.call(ctx, e);
-      if (retn === false) {
-        trace("[Browser] Event handler blocking event:", type);
-        e.preventDefault && e.preventDefault();
-      }
-      return retn;
-    };
-    evt.handler = handler;
-
-    // handle window load if already loaded
-    // TODO: test this
-    if (el == window && type == 'load' && document.readyState == 'complete') {
-      evt.trigger();
-      return;
-    }
-
-    listeners.push(evt);
-
-    if (useAttachEvent) {
-      el.attachEvent('on' + type, handler);
-    }
-    else {
-      el.addEventListener(type, handler, false);
-    }
-  };
-
-  this.removeEventListener = function(el, type, func, ctx) {
-    var listeners = __getNodeListeners(el);
-    var idx = __findNodeListener(listeners, type, func, ctx);
-    if (idx == -1) {
-      return;
-    }
-    var evt = listeners[idx];
-    __removeDOMListener(el, type, evt.handler);
-    listeners.splice(idx, 1);
-  };
-});
-
-
-/** @requires events, core, page-events */
-
-
-var Browser = {
-
-  getIEVersion: function() {
-    return this.ieVersion;
-  },
-
-  traceEnabled: function() {
-    var debug = Browser.getQueryVar('debug');
-    if (Env.inBrowser && (debug == null || debug == "false")) {
-      return false;
-    }
-    return true;
-  },
-
-  /*getPageWidth : function() {
-   return document.documentElement.clientWidth || document.body.clientWidth;
-  },*/
-
-  getViewportWidth : function() {
-    return document.documentElement.clientWidth;
-  },
-
-  getViewportHeight : function() {
-    return document.documentElement.clientHeight;
-  },
-
-  createElement : function(type, css, classes) {
-    try {
-      var el = document.createElement(type);
-    }
-    catch (err) {
-      trace("[Browser.createElement()] Error creating element of type:", type);
-      return null;
-    }
-
-    if (type.toLowerCase() == 'canvas' && window.CanvasSwf) {
-      CanvasSwf.initElement(el);
-    }
-
-    if (css) {
-      el.style.cssText = css;
-    }
-
-    if (classes) {
-      el.className = classes;
-    }
-    return el;
-  },
-
-  /**
-   * Return: HTML node reference or null
-   * Receive: node reference or id or "#" + id
-   */
-  getElement : function(ref) {
-    var el;
-    if (typeof ref == 'string') {
-      if (ref.charAt(0) == '#') {
-        ref = ref.substr(1);
-      }
-      if (ref == 'body') {
-        el = document.getElementsByTagName('body')[0];
-      }
-      else {
-        el = document.getElementById(ref);
-      }
-    }
-    else if (ref && ref.nodeType !== void 0) {
-      el = ref;
-    }
-    return el || null;
-  },
-
-  removeElement : function(el) {
-    el && el.parentNode && el.parentNode.removeChild(el);
-  },
-
-  getElementStyle: function(el) {
-    return el.currentStyle || window.getComputedStyle && window.getComputedStyle(el, '') || {};
-  },
-
-  elementIsFixed : function(el) {
-    // get top-level offsetParent that isn't body (cf. Firefox)
-    var body = document.body;
-    while (el && el != body) {
-      var parent = el;
-      el = el.offsetParent;
-    }
-
-    // Look for position:fixed in the computed style of the top offsetParent.
-    // var styleObj = parent && (parent.currentStyle || window.getComputedStyle && window.getComputedStyle(parent, '')) || {};
-    var styleObj = parent && Browser.getElementStyle(parent) || {};
-    return styleObj['position'] == 'fixed';
-  },
-
-  getElementFromPageXY : function(x, y) {
-    var viewX = this.pageXToViewportX(x);
-    var viewY = this.pageYToViewportY(y);
-    return document.elementFromPoint(viewX, viewY);
-  },
-
-  getPageXY : function(el) {
-    var x = 0, y = 0;
-    if (el.getBoundingClientRect) {
-      var box = el.getBoundingClientRect();
-      x = box.left - Browser.pageXToViewportX(0);
-      y = box.top - Browser.pageYToViewportY(0);
-      //trace("[] box.left:", box.left, "box.top:", box.top);
-    }
-    else {
-      var fixed = Browser.elementIsFixed(el);
-
-      while (el) {
-        x += el.offsetLeft || 0;
-        y += el.offsetTop || 0;
-        //Utils.trace("[el] id:", el.id, "class:", el.className, "el:", el, "offsLeft:", el.offsetLeft, "offsTop:", el.offsetTop);
-        el = el.offsetParent;
-      }
-
-      if (fixed) {
-        var offsX = -Browser.pageXToViewportX(0);
-        var offsY = -Browser.pageYToViewportY(0);
-        //Utils.trace("[fixed]; offsX:", offsX, "offsY:", offsY, "x:", x, "y:", y);
-        x += offsX;
-        y += offsY;
-      }
-    }
-
-    var obj = {x:x, y:y};
-    return obj;
-  },
-
-  // reference: http://stackoverflow.com/questions/871399/cross-browser-method-for-detecting-the-scrolltop-of-the-browser-window
-  __getIEPageElement : function() {
-    var d = document.documentElement;
-    return d.clientHeight ? d : document.body;
-  },
-
-  pageXToViewportX : function(x) {
-    var xOffs = window.pageXOffset;
-    if (xOffs === undefined) {
-      xOffs = Browser.__getIEPageElement().scrollLeft;
-    }
-    return x - xOffs;
-  },
-
-  pageYToViewportY : function(y) {
-    var yOffs = window.pageYOffset;
-    if (yOffs === undefined) {
-      yOffs = Browser.__getIEPageElement().scrollTop;
-    }
-    return y - yOffs;
-  },
-
-  /**
-   *  Add a DOM event handler.
-   */
-  addEventListener: pageEvents.addEventListener,
-  on: pageEvents.addEventListener,
-
-  /**
-   *  Remove a DOM event handler.
-   */
-  removeEventListener: pageEvents.removeEventListener,
-
-  getPageUrl : function() {
-    return Browser.inNode ? "" : window.location.href.toString();
-  },
-
-  getQueryString : function(url) {
-    var match = /^[^?]+\?([^#]*)/.exec(url);
-    return match && match[1] || "";
-  },
-
-  /**
-   *  Add a query variable to circumvent browser caching.
-   *  Value is calculated from UTC minutes, so the server does not see a large
-   *  number of different values.
-   */
-  cacheBustUrl : function(url, minutes) {
-    minutes = minutes || 1; // default: 60 seconds
-    var minPerWeek = 60*24*7;
-    var utcMinutes = (+new Date) / 60000;
-    var code = Math.round((utcMinutes % minPerWeek) / minutes);
-    url = Browser.extendUrl(url, "c=" + code);
-    return url;
-  },
-
-  extendUrl : function(url, obj) {
-    var extended = url + (url.indexOf("?") == -1 ? "?" : "&");
-    if (Utils.isString(obj)) {
-      extended += obj;
-    } else if (Utils.isObject(obj)) {
-      var parts = [];
-      Utils.forEach(obj, function(val, key) {
-        parts.push(encodeURIComponent(key) + "=" + encodeURIComponent(val));
-      });
-      extended += parts.join('&');
-    } else {
-      error("Argument must be string or object");
-    }
-    return extended;
-  },
-
-  parseUrl : Utils.parseUrl,
-  /**
-   * Return query-string (GET) data as an object.
-   */
-  getQueryVars : function() {
-    var matches, rxp = /([^=&]+)=?([^&]*)/g,
-      q = this.getQueryString(this.getPageUrl()),
-      vars = {};
-    while (matches = rxp.exec(q)) {
-      //vars[matches[1]] = unescape(matches[2]);
-      // TODO: decode keys?
-      vars[matches[1]] = decodeURIComponent(matches[2]);
-    }
-    return vars;
-  },
-
-  getQueryVar : function(name) {
-    return Browser.getQueryVars()[name];
-  },
-
-
-  /**
-   * TODO: memoize?
-   */
-  getClassNameRxp : function(cname) {
-    return new RegExp("(^|\\s)" + cname + "(\\s|$)");
-  },
-
-  hasClass : function(el, cname) {
-    var rxp = this.getClassNameRxp(cname);
-    return el && rxp.test(el.className);
-  },
-
-  addClass : function(el, cname) {
-    var classes = el.className;
-    if (!classes) {
-      classes = cname;
-    }
-    else if (!this.hasClass(el, cname)) {
-      classes = classes + ' ' + cname;
-    }
-    el.className = classes;
-  },
-
-  removeClass : function(el, cname) {
-    var rxp = this.getClassNameRxp(cname);
-    el.className = el.className.replace(rxp, "$2");
-  },
-
-  replaceClass : function(el, c1, c2) {
-    var r1 = this.getClassNameRxp(c1);
-    el.className = el.className.replace(r1, '$1' + c2 + '$2');
-  },
-
-  mergeCSS : function(s1, s2) {
-    var div = this._cssdiv;
-    if (!div) {
-      div = this._cssdiv = Browser.createElement('div');
-    }
-    div.style.cssText = s1 + ";" + s2; // extra ';' for ie, which may leave off final ';'
-    return div.style.cssText;
-  },
-
-  addCSS : function(el, css) {
-    el.style.cssText = Browser.mergeCSS(el.style.cssText, css);
-  },
-
-  unselectable : function(el) {
-    var noSel = "-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-moz-user-focus:ignore;-o-user-select:none;user-select: none;";
-    noSel += "-webkit-tap-highlight-color: rgba(0,0,0,0);"
-    //div.style.cssText = Browser.mergeCSS(div.style.cssText, noSel);
-    Browser.addCSS(el, noSel);
-    el.onselectstart = function(e){
-      e && e.preventDefault();
-      return false;
-    };
-  },
-
-  undraggable : function(el) {
-    el.ondragstart = function(){return false;};
-    el.draggable = false;
-  },
-
-  /**
-   *  Loads a css file and applies it to the current page.
-   */
-  loadStylesheet : function(cssUrl) {
-    var link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.type = "text/css";
-    link.href = cssUrl;
-    Browser.appendToHead(link);
-  },
-
-  appendToHead : function(el) {
-    var head = document.getElementsByTagName("head")[0];
-    head.appendChild(el);
-  },
-
-  /**
-   * TODO: Option to supply a "target" attribute for opening in another window.
-   */
-  //navigateToURL : function(url) {
-  navigateTo : function(url) {
-    window.location.href = url;
-  }
-
-};
-
-Browser.onload = function(handler, ctx) {
-  Browser.on(window, 'load', handler, ctx); // handles case when page is already loaded.
-};
-
-// Add environment information to Browser
-//
-Opts.copyAllParams(Browser, Env);
-
-
-/* @requires core, browser, textutils */
-
-/*
-A simplified version of printf formatting
-Format codes: %[flags][width][.precision]type
-
-supported flags:
-  +   add '+' before positive numbers
-  0   left-pad with '0'
-width: 1 to many
-precision: .(1 to many)
-type:
-  s     string
-  di    integers
-  f     decimal numbers
-  xX    hexidecimal (unsigned)
-  %     literal '%'
-
-Examples:
-  code    val    formatted
-  %+d     1      '+1'
-  %4i     32     '  32'
-  %04i    32     '0032'
-  %x      255    'ff'
-  %.2f    0.125  '0.13'
-  %'f     1000   '1,000'
-*/
-
-Utils.format = (function() {
-  function getPadString(len, c) {
-    var str = "";
-    for (var i=0; i<len; i++)
-      str += c;
-    return str;
-  }
-
-  function formatValue(matches, val) {
-    var flags = matches[1];
-    var padding = matches[2];
-    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
-    var type = matches[4];
-
-    if (type == '%') {
-      return '%'; // %% = literal '%'
-    }
-    var isString = type == 's',
-        isHex = type == 'x' || type == 'X',
-        isInt = type == 'd' || type == 'i',
-        isFloat = type == 'f',
-        isNumber = !isString;
-
-    var sign = "", 
-        padDigits = 0,
-        isZero = false,
-        isNeg = false;
-
-    var str;
-    if (isString) {
-      str = String(val);
-    }
-    else if (isHex) {
-      str = val.toString(16);
-      if (type == 'X')
-        str = str.toUpperCase();
-    }
-    else if (isNumber) {
-      str = Utils.numToStr(val, isInt ? 0 : decimals);
-      if (str[0] == '-') {
-        isNeg = true;
-        str = str.substr(1);
-      }
-      isZero = parseFloat(str) == 0;
-      if (flags.indexOf("'") != -1) {
-        str = Utils.addThousandsSep(str);
-      }
-      if (!isZero) { // BUG: sign is added when num rounds to 0
-        if (isNeg) {
-          sign = "\u2212"; // U+2212
-        } else if (flags.indexOf('+') != -1) {
-          sign = '+';
-        }
-      }
-    }
-
-    if (padding) {
-      var strLen = str.length + sign.length;
-      var minWidth = parseInt(padding, 10);
-      if (strLen < minWidth) {
-        padDigits = minWidth - strLen;
-        var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-        var padStr = getPadString(padDigits, padChar);
-      }
-    }
-
-    if (padDigits == 0) {
-      str = sign + str;
-    } else if (padChar == '0') {
-      str = sign + padStr + str;
-    } else {
-      str = padStr + sign + str;
-    }
-    return str;
-  }
-
-  var codeRxp = /%([\'+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
-
-  return function format(s) {
-    var arr = Array.prototype.slice.call(arguments, 1);
-    var ostr = "";
-    for (var startIdx=0, i=0, len=arr.length, matches; i<len && (matches=codeRxp.exec(s)); i++) {
-      ostr += s.substring(startIdx, codeRxp.lastIndex - matches[0].length);
-      ostr += formatValue(matches, arr[i]);
-      startIdx = codeRxp.lastIndex;
-    }
-    codeRxp.lastIndex = 0;
-
-    if (i != len) {
-      error("[Utils.format()] formatting codes did not match inputs; string:", s);
-    }
-    ostr += s.substr(startIdx);
-    return ostr;
-  };
-}());
-
-
-/* @requires arrayutils, format, mapshaper-common */
+/* @requires arrayutils, mapshaper-common */
 
 // buildTopology() converts non-topological polygon data into a topological format
 //
 // Input format:
 // {
-//    xx: [Array],      // x-coords of each point in the dataset (coords of all paths are concatenated)
-//    yy: [Array],      // y-coords of each point
+//    xx: [Array|Float64Array],   // x-coords of each point in the dataset
+//    yy: [Array|Float64Array],   // y-coords "  "  "  "
 //    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isNull: false, isPrimary: true}
 // }
+// Note: x- and y-coords of all paths are concatenated into two long arrays, for easy indexing
+// Note: Input coords can use typed arrays (better performance) or regular arrays (for testing)
 //
 // Output format:
 // {
 //    arcs: [Array],   // Arcs are represented as two-element arrays
-//                     //   arc[0] is an array of x-coords, arc[1] is an array of y-coords
+//                     //   arc[0] and arc[1] are x- and y-coords in an Array or Float64Array
 //    shapes: [Array]  // Shapes are arrays of one or more parts; Parts are arrays of one or more arc id.
 // }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
+// Note: arcs use typed arrays or regular arrays for coords, depending on the input array type.
 //
 MapShaper.buildTopology = function(obj) {
   if (!(obj.xx && obj.yy && obj.pathData)) error("[buildTopology()] Missing required param/s");
@@ -5421,7 +4841,7 @@ MapShaper.getPointToUintHash = function(bbox) {
   return function(x, y) {
     // transform coords to integer range and scramble bits a bit
     var key = x * kx + bx ^ y * ky + by;
-    return key & 0x7fffffff; // mask as positive integer
+    return key & 0x7fffffff; // mask as nonnegative integer
   };
 };
 
@@ -5678,7 +5098,7 @@ function buildPathTopology(xx, yy, pathData) {
   // @a and @b are ids of two points with same x, y coords
   // Return false if adjacent points match, either in fw or rev direction
   //
-  function pointsDiverge(a, b) {
+  function pathsDiverge(a, b) {
     var xarr = xx, yarr = yy; // local vars: faster
     var aprev = prevPoint(a),
         anext = nextPoint(a),
@@ -5701,7 +5121,7 @@ function buildPathTopology(xx, yy, pathData) {
   function pointIsNode(id) {
     var chainId = chainIds[id];
     while (id != chainId) {
-      if (pointsDiverge(id, chainId)) {
+      if (pathsDiverge(id, chainId)) {
         return true;
       }
       chainId = chainIds[chainId];
@@ -5776,9 +5196,12 @@ function initPointChains(xx, yy, pathIds, hash) {
       hashTableSize = Math.floor(pointCount * 1.5);
   // A hash table larger than ~1.5 * point count doesn't seem to improve performance much.
 
-  // Each hash bin contains the id of the first point in a chain of points.
+  // Hash table is temporary storage for building chains of matching point ids.
+  // Each hash bin contains the id of the first point in a chain.
   var hashChainIds = new Int32Array(hashTableSize);
   Utils.initializeArray(hashChainIds, -1);
+
+  //
   var chainIds = new Int32Array(pointCount);
   var key, headId, x, y;
 
@@ -5860,7 +5283,7 @@ function groupPathsByShape(paths, pathData) {
   return shapes;
 }
 
-// export functions for testing
+// Export functions for testing
 MapShaper.topology = {
   buildPathTopology: buildPathTopology,
   ArcIndex: ArcIndex,
