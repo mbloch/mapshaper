@@ -15,9 +15,13 @@
 // {
 //    arcs: [Array],   // Arcs are represented as two-element arrays
 //                     //   arc[0] and arc[1] are x- and y-coords in an Array or Float64Array
-//    shapes: [Array]  // Shapes are arrays of one or more parts; Parts are arrays of one or more arc id.
-// }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
-// Note: arcs use typed arrays or regular arrays for coords, depending on the input array type.
+//    shapes: [Array]  // Shapes are arrays of one or more path; paths are arrays of one or more arc id.
+// }                   //   Arc ids use the same numbering scheme as TopoJSON (see note).
+// Note: Arc ids in the shapes array are indices of objects in the arcs array.
+//       Negative ids signify that the arc coordinates are in reverse sequence.
+//       Negative ids are converted to array indices with the fornula fwId = ~revId.
+//       -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
+// Note: Arcs use typed arrays or regular arrays for coords, depending on the input array type.
 //
 MapShaper.buildTopology = function(obj) {
   if (!(obj.xx && obj.yy && obj.pathData)) error("[buildTopology()] Missing required param/s");
