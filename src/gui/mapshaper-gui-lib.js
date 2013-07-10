@@ -6,6 +6,7 @@ mapshaper-map,
 mapshaper-maplayer,
 mapshaper-simplify,
 mapshaper-visvalingam,
+mapshaper-dp,
 mapshaper-export,
 loading.html5
 */
@@ -17,7 +18,6 @@ var api = {
   trace: trace,
   error: error
 }
-
 
 if (Env.inNode) { // node.js for testing
   module.exports = api;

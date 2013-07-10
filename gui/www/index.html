@@ -36,48 +36,31 @@
 	<a href="https://github.com/mbloch/mapshaper"><img class="fork-me" src="images/fork-me-right-cerulean@2x.png" alt="Fork me on GitHub"></a>
 
 	<div id="mshp-import">
-		<h4>To start,  <div class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class="g-label-text">select</span></div>a polygon or polyline<br> .shp file or drag a file onto this window</h4>
-		<ul>
+		<h4>To edit a Shapefile, drag the .shp<br>file onto this window or <div class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class="g-label-text">select</span></div>it.</h4>
+
+		<h4>Options</h4>
+
 
 		<div id="g-import-options">
+
+			<div>Simplification method</div>
+			<div id="g-simplification-menu">
+				<div><input type="radio" name="method" value="dp">Douglas-Peucker</div>
+				<div><input type="radio" name="method" value="vis">Visvalingam</div>
+				<div><input type="radio" name="method" value="mod" checked="true">modified Visvalingam</div>
+			</div>
 			<div>
-				<input type="checkbox" class="g-checkbox" id="g-import-spherical-opt"/>
-				<label for="g-import-spherical-opt">use spherical coordinates</label>
-				<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Recommended for<br>unprojected shapefiles</div></div></div>
-				</div>
-				<div>
 				<input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>
-				<label for="g-import-retain-opt">preserve tiny shapes</label>
-				<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Prevents small shapes<br /> from being removed<br />at high simplification</div></div></div>
+				<label for="g-import-retain-opt">prevent shape removal</label>
+				<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Prevents small shapes<br /> from disappearing at<br />high simplification.</div></div></div>
 			</div>
 		</div> <!-- g-import-options -->
-		</ul>
+
 	</div> <!-- mshp-import -->
 </div> <!-- mshp-intro-screen -->
 
 <div id="mshp-main-page" class="mshp-page">
 <div id="mshp-main-map"></div>
-<!--<div id="mshp-main-sidebar">
-	<h5>Layer information</h5>
-	<div id="mshp-sidebar-info"></div>
-	<h5>Simplification method</h5>
-	<div id="mshp-sidebar-method">
-		<input type="radio" group="method" value="dp">Douglas-Peucker
-		<input type="radio" group="method" value="vis">Visvalingam
-		<input type="radio" group="method" value="mod">Modified Visvalingam
-	</div>
-	<h5>Simplification options</h5>
-	<div id="mshp-sidebar-other">
-		<input type="checkbox" value="keep">Preserve small shapes
-		<input type="checkbox" value="spherical">Spherical simplification
-	</div>
-	<h5>Display settings</h5>
-	<div id="mshp-sidebar-display">
-		<input type="checkbox" value="original-lines">Show original lines
-		<input type="checkbox" value="show-points">Show vertices
-	</div>
-</div>-->
-<!--<div id="mshp-main-footer" class="g-bottom-panel"></div>-->
 </div>
 
 <div id="export-page" class="mshp-page"></div>

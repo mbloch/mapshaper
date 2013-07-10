@@ -51,16 +51,23 @@ function browserIsSupported() {
 function Editor() {
   var map, slider;
 
+  var importOpts = {
+    simplifyMethod: "mod",
+    preserveShapes: false
+  };
+
   function init(contentBounds) {
     El("#mshp-intro-screen").hide();
     El("#mshp-main-page").show();
     El("body").addClass('editing');
 
+    importOpts.preserveShapes = !!El("#g-import-retain-opt").node().checked;
+    importOpts.simplifyMethod = El('#g-simplification-menu input[name=method]:checked').attr('value');
+
     var mapOpts = {
       bounds: contentBounds, // arcData.getBounds(),
       padding: 10
     };
-
     map = new MshpMap("#mshp-main-map", mapOpts);
     slider = new SimplifyControl();
   };
@@ -69,21 +76,34 @@ function Editor() {
 
     var topoData = MapShaper.buildTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
     var arcData = new ArcDataset(topoData.arcs),
-      arcs = arcData.getArcTable();
+      arcs = arcData.getArcTable(),
+      calculator, vertexData, intervalScale;
 
     if (!map) {
       init(arcData.getBounds());
     }
 
+    if (importOpts.simplifyMethod == 'dp') {
+      calculator = DouglasPeucker.calcArcData;
+    }
+    else if (importOpts.simplifyMethod == 'vis') {
+      intervalScale = 0.65; // TODO: tune this constant (linear scale when converting Visv. area metric to distance units);
+      calculator = Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, intervalScale);
+    }
+    else if (importOpts.simplifyMethod == 'mod') {
+      intervalScale = 0.65 // TODO: tune this
+      calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale);
+    }
+    else {
+      error("Unknown simplification method:", method);
+    }
+
     var sopts = {
       spherical: opts.spherical || probablyDecimalDegreeBounds(importData.info.input_bounds)
     };
+    vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
 
-    var intervalScale = 0.65, // TODO: tune this
-        calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
-        vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
-
-    if (topoData.arcMinPointCounts) {
+    if (importOpts.preserveShapes) {
       MapShaper.protectPoints(vertexData, topoData.arcMinPointCounts);
     }
 

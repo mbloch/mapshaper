@@ -42,13 +42,13 @@
 }
 
 .g-tip {
-	color: #000;
+	color: #555;
 	font-weight: normal;
 	text-align: left;
 	position: relative;
 	display: inline-block;
 	font-size: 12px;
-	line-height: 1.2;
+	line-height: 1.45;
 	background: #fff;
 	border: 1px solid #ccc;
 	-webkit-border-radius: 6px;
@@ -56,7 +56,7 @@
 	bottom: 0px;
 	left: -50%;
 	white-space: nowrap;
-	box-shadow: 0 3px 7px rgba(0, 0, 0, 0.2);
+	box-shadow: 0 1px 9px rgba(0, 0, 0, 0.3);
 }
 
 .g-tip:after, .g-tip:before {
@@ -90,16 +90,15 @@
 	position: relative;
 	cursor: pointer;
 	text-align: center;
-	bottom: 1px;
+	bottom: 0px;
 	color: #fff;
-	font: 14px/14px Verdana, sans-serif;
-	height: 15px;
+	font: 13px/13px Verdana, sans-serif;
+	height: 14px;
 	padding: 1px 0 0 1px;
-	width: 15px;
+	width: 14px;
 	font-weight: normal;
-	-webkit-border-radius: 15px;
-
-	background: #005;
+	border-radius: 14px;
+	background: #4D839E;
 }
 
 .g-tip-button .g-tip-anchor {
@@ -115,7 +114,7 @@
 }
 
 .g-tip-button:hover {
-	background-color: #BBDAFF;
+	background-color: #ddd;
 	color: #005;
 }
 
@@ -147,7 +146,7 @@
 
 /* input[type="checkbox"] */
 .g-checkbox:checked + label, .g-radio:checked + label {
-	font-weight: bold;
+	/* font-weight: bold; */
 }
 
 .g-file-control {
