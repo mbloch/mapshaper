@@ -75,12 +75,14 @@ optimist.usage(usage)
     'boolean': true
   })
 
+  /*
+  // Removing shp-test: not compatible with new topology function
   .options("shp-test", {
     describe: "test if .shp can be regenerated from topology",
     'boolean': true
   })
 
-  /* // TODO
+  // TODO
   // prevent points along straight lines from being stripped away, to allow reprojection
   .options("min-segment", {
     describe: "min segment length (no. of segments in largest dimension)",
@@ -90,12 +92,6 @@ optimist.usage(usage)
   .options("remove-null", {
     describe: "remove null shapes",
     default: false
-  })
-
-  // round coordinates so output is more compressible (most useful with topojson output)
-  .options("q", {
-    alias: "quantize",
-    describe: "max number of distinct x-axis or y-axis coordinates",
   })
 
   .options("l", {
@@ -192,25 +188,13 @@ else if (opts.output_format == "shapefile") {
   var shpType = info.input_geometry_type == "polyline" ? 3 : 5;
   var shpData = mapshaper.exportShp(topoData.arcs, topoData.shapes, shpType);
 
-  if (opts.shp_test) {
-    // check if output .shp data is identical to input (e.g. to test for topology errors)
-    var origShp = Node.readFile(opts.input_file),
-      newShp = shpData.shp,
-      identical = mapshaper.BinArray.buffersAreIdentical(origShp, newShp, true),
-      msg = identical ?
-        "\u001b[32m\u2713\u001b[0m Regenerated .shp is identical to original .shp" :
-        "\u001b[31m\u2717\u001b[0m Regenerated .shp doesn't match original .shp";
-    console.log(msg);
-  }
-  else {
-    var obase = opts.output_path_base,
-        prjFile = opts.input_path_base + ".prj",
-        dbfFile = opts.input_path_base + ".dbf";
-    Node.writeFile(obase + ".shp", shpData.shp);
-    Node.writeFile(obase + ".shx", shpData.shx);
-    if (Node.fileExists(prjFile)) Node.copyFile(prjFile, obase + ".prj");
-    if (Node.fileExists(dbfFile)) Node.copyFile(dbfFile, obase + ".dbf");
-  }
+  var obase = opts.output_path_base,
+      prjFile = opts.input_path_base + ".prj",
+      dbfFile = opts.input_path_base + ".dbf";
+  Node.writeFile(obase + ".shp", shpData.shp);
+  Node.writeFile(obase + ".shx", shpData.shx);
+  if (Node.fileExists(prjFile)) Node.copyFile(prjFile, obase + ".prj");
+  if (Node.fileExists(dbfFile)) Node.copyFile(dbfFile, obase + ".dbf");
 }
 
 info.processing_time = T.stop("Total time");

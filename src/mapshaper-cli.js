@@ -8,15 +8,7 @@ MapShaper.validateArgv = function(argv) {
   cli.validateOutputOpts(opts, argv);
   cli.validateSimplifyOpts(opts, argv);
 
-  if (argv['shp-test']) {
-    if (opts.input_format != 'shapefile') error("--shp-test option requires shapefile input");
-    if (opts.use_simplification) console.log("--shp-test ignores simplification")
-    opts.shp_test = true;
-    opts.use_simplification = false;
-  }
-  else {
-    if (!opts.use_simplification) error("Missing simplification parameters")
-  }
+  if (!opts.use_simplification) error("Missing simplification parameters")
 
   opts.timing = !!argv.t;
   return opts;
