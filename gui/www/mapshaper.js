@@ -3206,6 +3206,9 @@ Utils.extend(El.prototype, {
 
   attr: function(obj, value) {
     if (Utils.isString(obj)) {
+      if (arguments.length == 1) {
+        return this.el.getAttribute(obj);
+      }
       this.el[obj] = value;
     }
     else if (!value) {
@@ -5993,9 +5996,13 @@ var controls = {
 // {
 //    arcs: [Array],   // Arcs are represented as two-element arrays
 //                     //   arc[0] and arc[1] are x- and y-coords in an Array or Float64Array
-//    shapes: [Array]  // Shapes are arrays of one or more parts; Parts are arrays of one or more arc id.
-// }                   //   negative arc ids indicate reverse direction, using the same indexing scheme as TopoJSON.
-// Note: arcs use typed arrays or regular arrays for coords, depending on the input array type.
+//    shapes: [Array]  // Shapes are arrays of one or more path; paths are arrays of one or more arc id.
+// }                   //   Arc ids use the same numbering scheme as TopoJSON (see note).
+// Note: Arc ids in the shapes array are indices of objects in the arcs array.
+//       Negative ids signify that the arc coordinates are in reverse sequence.
+//       Negative ids are converted to array indices with the fornula fwId = ~revId.
+//       -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
+// Note: Arcs use typed arrays or regular arrays for coords, depending on the input array type.
 //
 MapShaper.buildTopology = function(obj) {
   if (!(obj.xx && obj.yy && obj.pathData)) error("[buildTopology()] Missing required param/s");
@@ -6471,131 +6478,6 @@ MapShaper.topology = {
   protectPath: protectPath,
   initPathIds: initPathIds
 };
-
-/* @requires core, browser, textutils */
-
-/*
-A simplified version of printf formatting
-Format codes: %[flags][width][.precision]type
-
-supported flags:
-  +   add '+' before positive numbers
-  0   left-pad with '0'
-width: 1 to many
-precision: .(1 to many)
-type:
-  s     string
-  di    integers
-  f     decimal numbers
-  xX    hexidecimal (unsigned)
-  %     literal '%'
-
-Examples:
-  code    val    formatted
-  %+d     1      '+1'
-  %4i     32     '  32'
-  %04i    32     '0032'
-  %x      255    'ff'
-  %.2f    0.125  '0.13'
-  %'f     1000   '1,000'
-*/
-
-Utils.format = (function() {
-  function getPadString(len, c) {
-    var str = "";
-    for (var i=0; i<len; i++)
-      str += c;
-    return str;
-  }
-
-  function formatValue(matches, val) {
-    var flags = matches[1];
-    var padding = matches[2];
-    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
-    var type = matches[4];
-
-    if (type == '%') {
-      return '%'; // %% = literal '%'
-    }
-    var isString = type == 's',
-        isHex = type == 'x' || type == 'X',
-        isInt = type == 'd' || type == 'i',
-        isFloat = type == 'f',
-        isNumber = !isString;
-
-    var sign = "", 
-        padDigits = 0,
-        isZero = false,
-        isNeg = false;
-
-    var str;
-    if (isString) {
-      str = String(val);
-    }
-    else if (isHex) {
-      str = val.toString(16);
-      if (type == 'X')
-        str = str.toUpperCase();
-    }
-    else if (isNumber) {
-      str = Utils.numToStr(val, isInt ? 0 : decimals);
-      if (str[0] == '-') {
-        isNeg = true;
-        str = str.substr(1);
-      }
-      isZero = parseFloat(str) == 0;
-      if (flags.indexOf("'") != -1) {
-        str = Utils.addThousandsSep(str);
-      }
-      if (!isZero) { // BUG: sign is added when num rounds to 0
-        if (isNeg) {
-          sign = "\u2212"; // U+2212
-        } else if (flags.indexOf('+') != -1) {
-          sign = '+';
-        }
-      }
-    }
-
-    if (padding) {
-      var strLen = str.length + sign.length;
-      var minWidth = parseInt(padding, 10);
-      if (strLen < minWidth) {
-        padDigits = minWidth - strLen;
-        var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-        var padStr = getPadString(padDigits, padChar);
-      }
-    }
-
-    if (padDigits == 0) {
-      str = sign + str;
-    } else if (padChar == '0') {
-      str = sign + padStr + str;
-    } else {
-      str = padStr + sign + str;
-    }
-    return str;
-  }
-
-  var codeRxp = /%([\'+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
-
-  return function format(s) {
-    var arr = Array.prototype.slice.call(arguments, 1);
-    var ostr = "";
-    for (var startIdx=0, i=0, len=arr.length, matches; i<len && (matches=codeRxp.exec(s)); i++) {
-      ostr += s.substring(startIdx, codeRxp.lastIndex - matches[0].length);
-      ostr += formatValue(matches, arr[i]);
-      startIdx = codeRxp.lastIndex;
-    }
-    codeRxp.lastIndex = 0;
-
-    if (i != len) {
-      error("[Utils.format()] formatting codes did not match inputs; string:", s);
-    }
-    ostr += s.substr(startIdx);
-    return ostr;
-  };
-}());
-
 
 /* @requires elements, browser */
 
@@ -8226,6 +8108,110 @@ Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
 
 
 
+/* @requires arrayutils, mapshaper-common, mapshaper-geom */
+
+var DouglasPeucker = {};
+
+DouglasPeucker.simplifyArcs = function(arcs, opts) {
+  return MapShaper.simplifyArcs(arcs, DouglasPeucker.calcArcData, opts);
+}
+
+DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
+      ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
+      bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
+  return triangleHeightSq(ab2, bc2, ac2);
+};
+
+DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
+  var ab2 = distanceSq(ax, ay, bx, by),
+      ac2 = distanceSq(ax, ay, cx, cy),
+      bc2 = distanceSq(bx, by, cx, cy);
+  return triangleHeightSq(ab2, bc2, ac2);
+};
+
+DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
+  var len = len || xx.length, // kludge: 3D data gets passed in buffers, so need len parameter.
+      useZ = !!zz;
+
+  var dpArr = new Array(len); // new Float64Array(len);
+  Utils.initializeArray(dpArr, 0);
+
+  dpArr[0] = dpArr[len-1] = Infinity;
+
+  if (len > 2) {
+    procSegment(0, len-1, 1, Number.MAX_VALUE);
+  }
+
+  function procSegment(startIdx, endIdx, depth, lastDistance) {
+    var thisDistance;
+    var ax = xx[startIdx],
+      ay = yy[startIdx],
+      cx = xx[endIdx],
+      cy = yy[endIdx],
+      az, bz, cz;
+
+    if (useZ) {
+      az = zz[startIdx]
+      cz = zz[endIdx];
+    }
+
+    (startIdx < endIdx) || error("[procSegment()] inverted idx");
+
+    var maxDistance = 0, maxIdx = 0;
+
+    for (var i=startIdx+1; i<endIdx; i++) {
+      if (useZ) {
+        thisDistance = DouglasPeucker.metricSq3D(ax, ay, az, xx[i], yy[i], zz[i], cx, cy, cz);
+      } else {
+        thisDistance = DouglasPeucker.metricSq(ax, ay, xx[i], yy[i], cx, cy);
+      }
+
+      if (thisDistance >= maxDistance) {
+        maxDistance = thisDistance;
+        maxIdx = i;
+      }
+    }
+
+    if (lastDistance < maxDistance) {
+      maxDistance = lastDistance;
+    }
+
+    var lval=0, rval=0;
+    if (maxIdx - startIdx > 1) {
+      lval = procSegment(startIdx, maxIdx, depth+1, maxDistance);
+    }
+    if (endIdx - maxIdx > 1) {
+      rval = procSegment(maxIdx, endIdx, depth+1, maxDistance);
+    }
+
+    if (depth == 1) {
+      // case -- arc is an island polygon
+      if (ax == cx && ay == cy) {
+        maxDistance = lval > rval ? lval : rval;
+      }
+    }
+
+    var dist = Math.sqrt(maxDistance);
+
+    /*
+    if ( maxSegmentLen > 0 ) {
+      double maxLen2 = maxSegmentLen * maxSegmentLen;
+      double acLen2 = (ax-cx)*(ax-cx) + (ay-cy)*(ay-cy);
+      if ( maxLen2 < acLen2 ) {
+        thresh = MAX_THRESHOLD - 2;  // mb //
+      }
+    }
+    */
+
+    dpArr[maxIdx] = dist;
+    return maxDistance;
+  }
+
+  return dpArr;
+};
+
+
 /* @requires mapshaper-common */
 
 MapShaper.importJSON = function(obj) {
@@ -8588,6 +8574,7 @@ mapshaper-map,
 mapshaper-maplayer,
 mapshaper-simplify,
 mapshaper-visvalingam,
+mapshaper-dp,
 mapshaper-export,
 loading.html5
 */
@@ -8599,7 +8586,6 @@ var api = {
   trace: trace,
   error: error
 }
-
 
 if (Env.inNode) { // node.js for testing
   module.exports = api;
@@ -8661,16 +8647,23 @@ function browserIsSupported() {
 function Editor() {
   var map, slider;
 
+  var importOpts = {
+    simplifyMethod: "mod",
+    preserveShapes: false
+  };
+
   function init(contentBounds) {
     El("#mshp-intro-screen").hide();
     El("#mshp-main-page").show();
     El("body").addClass('editing');
 
+    importOpts.preserveShapes = !!El("#g-import-retain-opt").node().checked;
+    importOpts.simplifyMethod = El('#g-simplification-menu input[name=method]:checked').attr('value');
+
     var mapOpts = {
       bounds: contentBounds, // arcData.getBounds(),
       padding: 10
     };
-
     map = new MshpMap("#mshp-main-map", mapOpts);
     slider = new SimplifyControl();
   };
@@ -8679,21 +8672,34 @@ function Editor() {
 
     var topoData = MapShaper.buildTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
     var arcData = new ArcDataset(topoData.arcs),
-      arcs = arcData.getArcTable();
+      arcs = arcData.getArcTable(),
+      calculator, vertexData, intervalScale;
 
     if (!map) {
       init(arcData.getBounds());
     }
 
+    if (importOpts.simplifyMethod == 'dp') {
+      calculator = DouglasPeucker.calcArcData;
+    }
+    else if (importOpts.simplifyMethod == 'vis') {
+      intervalScale = 0.65; // TODO: tune this constant (linear scale when converting Visv. area metric to distance units);
+      calculator = Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, intervalScale);
+    }
+    else if (importOpts.simplifyMethod == 'mod') {
+      intervalScale = 0.65 // TODO: tune this
+      calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale);
+    }
+    else {
+      error("Unknown simplification method:", method);
+    }
+
     var sopts = {
       spherical: opts.spherical || probablyDecimalDegreeBounds(importData.info.input_bounds)
     };
+    vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
 
-    var intervalScale = 0.65, // TODO: tune this
-        calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale),
-        vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
-
-    if (topoData.arcMinPointCounts) {
+    if (importOpts.preserveShapes) {
       MapShaper.protectPoints(vertexData, topoData.arcMinPointCounts);
     }
 
