@@ -35,21 +35,13 @@ MapShaper.buildTopology = function(obj) {
   return topoData;
 };
 
-// Returns a function that translates (x,y) coords into unsigned ints for hashing
-// @bbox A Bounds object giving the extent of the dataset.
-//
-MapShaper.getPointToUintHash = function(bbox) {
-  var kx = (1e8 * Math.E / (bbox.width() + 1)),
-      ky = (1e8 * Math.PI / (bbox.height() + 1)),
-      bx = -bbox.xmin,
-      by = -bbox.ymin;
 
-  return function(x, y) {
-    // transform coords to integer range and scramble bits a bit
-    var key = x * kx + bx ^ y * ky + by;
-    return key & 0x7fffffff; // mask as nonnegative integer
-  };
+// Translate (x,y) coords into unsigned int for hashing
+MapShaper.xyToUintHash = function(x, y) {
+  var key = x * 1e8 ^ x ^ y * 1e8 ^ y * 31;
+  return key & 0x7fffffff; // mask as nonnegative integer
 };
+
 
 //
 //
@@ -120,8 +112,7 @@ function ArcIndex(pointCount, xyToUint) {
 //
 function buildPathTopology(xx, yy, pathData) {
   var pointCount = xx.length,
-      xyToUint = MapShaper.getPointToUintHash(MapShaper.calcXYBounds(xx, yy)),
-      index = new ArcIndex(pointCount, xyToUint),
+      index = new ArcIndex(pointCount, MapShaper.xyToUintHash),
       typedArrays = !!(xx.subarray && yy.subarray),
       slice, array;
 
@@ -136,7 +127,7 @@ function buildPathTopology(xx, yy, pathData) {
   }
 
   T.start();
-  var chainIds = initPointChains(xx, yy, pathIds, xyToUint);
+  var chainIds = initPointChains(xx, yy, pathIds, MapShaper.xyToUintHash);
   T.stop("Find matching vertices");
 
   T.start();
