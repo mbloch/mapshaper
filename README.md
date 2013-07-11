@@ -2,17 +2,17 @@
 
 ###Introduction
 
-[Mapshaper](http://www.mapshaper.org) is a program for simplifying cartographic lines while preserving the topological relationships between adjacent polygons and intersecting polyline paths.
+Mapshaper is a program for simplifying cartographic lines while preserving the topological relationships between adjacent polygons and intersecting polyline paths. The current version can be found at [mapshaper.org](http://www.mapshaper.org).
 
-This software was inspired by the original mapshaper program, which I wrote at the University of Wisconsin, Madison in 2006-2007. That version is still available [here](http://mapshaper.com/test/MapShaper.swf).
+This software is loosely based on the original MapShaper program that I wrote at the University of Wisconsin, Madison in 2006-2007. That version is still available [here](http://mapshaper.com/test/MapShaper.swf).
 
-The new mapshaper was rewritten from scratch in JavaScript and improves on the original version in a few ways. The old mapshaper sent data to a server to be processed; the new version does all its processing locally, so the program can be used offline and user data stays private. The new version has a better algorithm for topology processing. And there is a non-interactive script in addition to the web-based tool.
+The new mapshaper was rewritten from scratch in JavaScript and improves on the original in a few ways. The earlier program sent data to a server to be processed; the new version does all its processing locally, so the program can be used offline and user data stays private. The new version has a better algorithm for topology processing. There is also a commandline script that runs in [Node.js](http://nodejs.org).
 
 ###Interactive tool
 
 To set up mapshaper's web interface for online use, copy the files in gui/www/ to a web server. All processing is done in the browser; there is no backend service to run.
 
-Browser compatibility: The web interface works well in recent versions of Chrome and Firefox. Chrome seems more likely to run out of memory when loading large .shp files (say, >300MB). Exporting doesn't work in Safari. Opera and Internet Explorer are not supported.
+Browser compatibility: The web interface works well in recent versions of Chrome and Firefox. Chrome seems more likely to run out of memory when loading large .shp files (say, >200MB). Exporting doesn't work in Safari. Opera and Internet Explorer are not supported.
 
 To run the mapshaper gui directly from the filesystem, open gui/www/index.html in a web browser. Firefox works well in this mode; offline exporting is not fully supported in Chrome.
 
@@ -48,6 +48,7 @@ To suggest additions to this list, add a github issue.
 - GeoJSON input
 - Import Shapefile attribute table (.dbf file)
 - Selection and aggregation, using attribute queries and mouse selection
+- Ability to heal minor topological problems in source data
 - Ability to prevent or remove polygon overlaps and self-intersections
 - Update the original "modified Visvalingam" method, add control over degree of smoothing.
 - Experiment with new simplification and smoothing methods.
