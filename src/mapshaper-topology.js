@@ -39,8 +39,8 @@ MapShaper.buildTopology = function(obj) {
 // @bbox A Bounds object giving the extent of the dataset.
 //
 MapShaper.getPointToUintHash = function(bbox) {
-  var kx = (1e8 * Math.E / bbox.width()),
-      ky = (1e8 * Math.PI / bbox.height()),
+  var kx = (1e8 * Math.E / (bbox.width() + 1)),
+      ky = (1e8 * Math.PI / (bbox.height() + 1)),
       bx = -bbox.xmin,
       by = -bbox.ymin;
 
@@ -53,8 +53,8 @@ MapShaper.getPointToUintHash = function(bbox) {
 
 //
 //
-function ArcIndex(hashTableSize, xyToUint) {
-  hashTableSize |= 0; // make sure we have an integer size
+function ArcIndex(pointCount, xyToUint) {
+  var hashTableSize = Math.ceil(pointCount * 0.2); // make sure we have an integer size
   var hashTable = new Int32Array(hashTableSize),
       hash = function(x, y) {
         return xyToUint(x, y) % hashTableSize;
@@ -70,6 +70,7 @@ function ArcIndex(hashTableSize, xyToUint) {
         key = hash(xx[end], yy[end]),
         chainId = hashTable[key],
         arcId = arcs.length;
+
     hashTable[key] = arcId;
     arcs.push([xx, yy]);
     sharedArcs.push(0);
@@ -83,7 +84,8 @@ function ArcIndex(hashTableSize, xyToUint) {
   //
   this.findArcNeighbor = function(xx, yy, start, end, getNext) {
     var next = getNext(start),
-        arcId = hashTable[hash(xx[start], yy[start])],
+        key = hash(xx[start], yy[start]),
+        arcId = hashTable[key],
         arcX, arcY, len;
 
     while (arcId != -1) {
@@ -103,7 +105,6 @@ function ArcIndex(hashTableSize, xyToUint) {
     return -1;
   };
 
-
   this.getArcs = function() {
     return arcs;
   };
@@ -120,7 +121,7 @@ function ArcIndex(hashTableSize, xyToUint) {
 function buildPathTopology(xx, yy, pathData) {
   var pointCount = xx.length,
       xyToUint = MapShaper.getPointToUintHash(MapShaper.calcXYBounds(xx, yy)),
-      index = new ArcIndex(pointCount * 0.2, xyToUint),
+      index = new ArcIndex(pointCount, xyToUint),
       typedArrays = !!(xx.subarray && yy.subarray),
       slice, array;
 
@@ -142,8 +143,7 @@ function buildPathTopology(xx, yy, pathData) {
   T.start();
   var pointId = 0;
   Utils.forEach(pathData, function(pathObj, pathId) {
-    var procPath = pointIsRingEndpoint(pointId) ? procClosedPath : procOpenPath;
-    paths[pathId] = procPath(pointId, pathId, pathObj);
+    paths[pathId] = convertPath(pointId, pathId, pathObj);
     pointId += pathObj.size;
   });
   T.stop("Find topological boundaries")
@@ -161,177 +161,111 @@ function buildPathTopology(xx, yy, pathData) {
 
   function nextPoint(id) {
     var partId = pathIds[id];
-    if (pathIds[id+1] !== partId) {
-      return id - pathData[partId].size + 2;
+    if (pathIds[id+1] === partId) {
+      return id + 1;
     }
-    return id + 1;
+    var len = pathData[partId].size;
+    return sameXY(id, id - len + 1) ? id - len + 2 : -1;
   }
 
   function prevPoint(id) {
     var partId = pathIds[id];
-    if (pathIds[id - 1] !== partId) {
-      return id + pathData[partId].size - 2;
+    if (pathIds[id - 1] === partId) {
+      return id - 1;
     }
-    return id - 1;
+    var len = pathData[partId].size;
+    return sameXY(id, id + len - 1) ? id + len - 2 : -1;
   }
 
-  function pointIsRingEndpoint(id1) {
-    var pathId = pathIds[id1],
-        pathLen = pathData[pathId].size,
-        id2 = id1 + pathLen - 1;
-    return pathLen >= 4 && xx[id1] === xx[id2] && yy[id1] === yy[id2];
+  function sameXY(a, b) {
+    return xx[a] == xx[b] && yy[a] == yy[b];
   }
 
-  // Test whether point is unique
-  // Endpoints of polygon rings are counted as unique
+
+  // Convert a non-topological path to one or more topological paths
   //
-  function pointIsSingleton(id) {
-    var chainId = chainIds[id],
-        partId, chainPartId;
-
-    while (chainId != id) {
-      partId = pathIds[id];
-      if (pathIds[chainId] != partId) {
-        return false;
-      }
-      chainPartId = pathIds[chainId];
-      // if either point or chained point is not an endpoint, point is not singleton
-      if (pathIds[id-1] == partId && pathIds[id+1] == partId
-        || pathIds[chainId-1] == chainPartId && pathIds[chainId+1] == chainPartId) {
-        return false;
-      }
-      chainId = chainIds[chainId];
-    }
-    return true;
-  }
-
-  // Convert an open path to one or more topological paths
-  //
-  function procOpenPath(pathStartId, pathId, pathObj) {
-    var arcIds = [],
-        pathEndId = pathStartId + pathObj.size - 1,
-        arcStartId = pathStartId,
-        xarr, yarr;
-
-    for (var i=pathStartId + 1; i<=pathEndId; i++) {
-      if (!pointIsSingleton(i) || i == pathEndId) {
-        xarr = slice.call(xx, arcStartId, i + 1);
-        yarr = slice.call(yy, arcStartId, i + 1);
-        arcIds.push(index.addArc(xarr, yarr));
-        arcStartId = i;
-      }
-    }
-    return arcIds;
-  }
-
-
-  // Convert a closed path to one or more arcs
-  //
-  function procClosedPath(pathStartId, pathId, pathObj) {
+  function convertPath(pathStartId, pathId, pathObj) {
     var arcIds = [],
         pathLen = pathObj.size,
-        pathEndId = pathStartId + pathLen - 1;
-    var inArc = false,
+        pathEndId = pathStartId + pathLen - 1,
         firstNodeId = -1,
         arcStartId;
 
-    if (pathObj.isNull) return;
+    if (pathObj.isNull) return null;
 
     // Visit each point in the path, up to but not including the endpoint
     //
     for (var i = pathStartId; i < pathEndId; i++) {
-      if (pointIsNode(i)) {
-        if (inArc) {
+      if (pointIsArcEndpoint(i)) {
+        if (firstNodeId > -1) {
           arcIds.push(addEdge(arcStartId, i));
         } else {
           firstNodeId = i;
         }
         arcStartId = i;
-        inArc = true;
       }
     }
 
     // Identify the final arc in the path
     //
-    if (inArc) {
-      if (firstNodeId == pathStartId) {
-        // path endpoint is a node;
-        if (!pointIsNode(pathEndId)) {
-          error("Topology error"); // TODO: better error handling
-        }
-        arcIds.push(addEdge(arcStartId, i));
-      } else {
-        // final arc wraps around
-        arcIds.push(addEdge(arcStartId, pathEndId, pathStartId + 1, firstNodeId))
-      }
-    }
-    else {
-      // TODO: refactor, messy
+    if (firstNodeId == -1) {
       // Not in an arc, i.e. no nodes have been found...
-      // Assuming that path is either an island or is congruent with one or more ring-arcs
-      var matchingPathId = findIntersectingPath(pathStartId);
-      if (matchingPathId >= 0) {
-        var pairedPath = paths[matchingPathId],
-            pairedPathObj = pathData[matchingPathId];
-        if (pairedPath.length != 1) {
-          error("ArcEngine error:", pairedPath);
-        }
-        var pairedArcId = pairedPath[0],
-            arcId = pathObj.isHole == pairedPathObj.isHole ? pairedArcId : -1 - pairedArcId;
-        arcIds.push(arcId);
-      } else {
-        arcIds.push(addEdge(pathStartId, pathEndId));
-      }
+      // Assuming that path is either an island or is congruent with one or more rings
+      arcIds.push(addRing(pathStartId, pathEndId));
     }
+    else if (firstNodeId == pathStartId) {
+      // path endpoint is a node;
+      if (!pointIsArcEndpoint(pathEndId)) {
+        error("Topology error"); // TODO: better error handling
+      }
+      arcIds.push(addEdge(arcStartId, i));
+    } else {
+      // final arc wraps around
+      arcIds.push(addEdge(arcStartId, pathEndId, pathStartId + 1, firstNodeId))
+    }
+
     return arcIds;
   };
-
-  // Return id of previously discovered path that intersects point at @pointId, or -1
-  //
-  function findIntersectingPath(pointId) {
-    var pathId = pathIds[pointId],
-        chainId = chainIds[pointId];
-
-    while (chainId != pointId) {
-      if (pathIds[chainId] < pathId) {
-        return pathIds[chainId];
-      }
-      chainId = chainIds[chainId];
-    }
-    return -1;
-  }
 
   // @a and @b are ids of two points with same x, y coords
   // Return false if adjacent points match, either in fw or rev direction
   //
-  function pathsDiverge(a, b) {
+  function brokenEdge(a, b) {
     var xarr = xx, yarr = yy; // local vars: faster
     var aprev = prevPoint(a),
         anext = nextPoint(a),
         bprev = prevPoint(b),
         bnext = nextPoint(b);
-
-    if (xarr[aprev] == xarr[bnext] && xarr[anext] == xarr[bprev] &&
+    if (aprev == -1 || anext == -1 || bprev == -1 || bnext == -1) {
+      return true;
+    }
+    else if (xarr[aprev] == xarr[bnext] && xarr[anext] == xarr[bprev] &&
       yarr[aprev] == yarr[bnext] && yarr[anext] == yarr[bprev]) {
       return false;
-    } else if (xarr[aprev] == xarr[bprev] && xarr[anext] == xarr[bnext] &&
+    }
+    else if (xarr[aprev] == xarr[bprev] && xarr[anext] == xarr[bnext] &&
       yarr[aprev] == yarr[bprev] && yarr[anext] == yarr[bnext]) {
       return false;
     }
     return true;
   }
 
-  // Test if a point on a path is at the junction between
-  // two or more topological edges (arcs)
+  // Test if a point @id is an endpoint of a topological path
   //
-  function pointIsNode(id) {
+  function pointIsArcEndpoint(id) {
     var chainId = chainIds[id];
-    while (id != chainId) {
-      if (pathsDiverge(id, chainId)) {
+    if (chainId == id) {
+      // point is unique -- point is arc endpoint iff it is start or end of an open path
+      return nextPoint(id) == -1 || prevPoint(id) == -1;
+    }
+    do {
+      if (brokenEdge(id, chainId)) {
+        // there is a discontinuity at @id -- point is arc endpoint
         return true;
       }
       chainId = chainIds[chainId];
-    }
+    } while (id != chainId);2
+    // path parallels all adjacent paths at @id -- point is not arc endpoint
     return false;
   }
 
@@ -358,7 +292,7 @@ function buildPathTopology(xx, yy, pathData) {
 
     // Look for previously identified arc, in reverse direction (normal topology)
     arcId = index.findArcNeighbor(xx, yy, start, end, nextPoint);
-    if (arcId >= 0) return -1 - arcId;
+    if (arcId >= 0) return ~arcId;
 
     // Look for matching arc in same direction
     // (Abnormal topology, but we're accepting it because real-world Shapefiles
@@ -374,6 +308,35 @@ function buildPathTopology(xx, yy, pathData) {
       yarr = slice.call(yy, startId1, endId1 + 1);
     }
     return index.addArc(xarr, yarr);
+  }
+
+  //
+  //
+  function addRing(startId, endId) {
+    var chainId = chainIds[startId],
+        pathId = pathIds[startId],
+        arcId;
+
+    while (chainId != startId) {
+      if (pathIds[chainId] < pathId) {
+        break;
+      }
+      chainId = chainIds[chainId];
+    }
+
+    if (chainId == startId) {
+      return addEdge(startId, endId);
+    }
+
+    for (var i=startId; i<endId; i++) {
+      arcId = index.findArcNeighbor(xx, yy, i, i, nextPoint);
+      if (arcId >= 0) return ~arcId;
+
+      arcId = index.findArcNeighbor(xx, yy, i, i, prevPoint);
+      if (arcId >= 0) return arcId;
+    }
+
+    error("Unmatched ring.")
   }
 }
 
