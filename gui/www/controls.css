@@ -6,6 +6,10 @@
 	margin: 5px 9px 0 0;
 }
 
+#g-export-buttons {
+	display: none;
+}
+
 @media (max-width: 890px) {
 	body.editing  #g-simplify-control-wrapper {
 		top: 23px;
