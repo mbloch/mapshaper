@@ -126,7 +126,6 @@ function buildPathTopology(xx, yy, pathData) {
       slice, array;
 
   var pathIds = initPathIds(pointCount, pathData);
-  var paths = [];
 
   if (typedArrays) {
     array = Float64Array;
@@ -142,9 +141,11 @@ function buildPathTopology(xx, yy, pathData) {
 
   T.start();
   var pointId = 0;
-  Utils.forEach(pathData, function(pathObj, pathId) {
-    paths[pathId] = convertPath(pointId, pathId, pathObj);
-    pointId += pathObj.size;
+  var paths = Utils.map(pathData, function(pathObj) {
+    var pathLen = pathObj.size,
+        arcs = pathObj.isNull ? null : convertPath(pointId, pointId + pathLen - 1);
+    pointId += pathLen;
+    return arcs;
   });
   T.stop("Find topological boundaries")
 
@@ -182,20 +183,17 @@ function buildPathTopology(xx, yy, pathData) {
   }
 
 
-  // Convert a non-topological path to one or more topological paths
+  // Convert a non-topological path to one or more topological arcs
+  // @start, @end are ids of first and last points in the path
   //
-  function convertPath(pathStartId, pathId, pathObj) {
+  function convertPath(start, end) {
     var arcIds = [],
-        pathLen = pathObj.size,
-        pathEndId = pathStartId + pathLen - 1,
         firstNodeId = -1,
         arcStartId;
 
-    if (pathObj.isNull) return null;
-
-    // Visit each point in the path, up to but not including the endpoint
+    // Visit each point in the path, up to but not including the last point
     //
-    for (var i = pathStartId; i < pathEndId; i++) {
+    for (var i = start; i < end; i++) {
       if (pointIsArcEndpoint(i)) {
         if (firstNodeId > -1) {
           arcIds.push(addEdge(arcStartId, i));
@@ -211,17 +209,17 @@ function buildPathTopology(xx, yy, pathData) {
     if (firstNodeId == -1) {
       // Not in an arc, i.e. no nodes have been found...
       // Assuming that path is either an island or is congruent with one or more rings
-      arcIds.push(addRing(pathStartId, pathEndId));
+      arcIds.push(addRing(start, end));
     }
-    else if (firstNodeId == pathStartId) {
+    else if (firstNodeId == start) {
       // path endpoint is a node;
-      if (!pointIsArcEndpoint(pathEndId)) {
+      if (!pointIsArcEndpoint(end)) {
         error("Topology error"); // TODO: better error handling
       }
       arcIds.push(addEdge(arcStartId, i));
     } else {
       // final arc wraps around
-      arcIds.push(addEdge(arcStartId, pathEndId, pathStartId + 1, firstNodeId))
+      arcIds.push(addEdge(arcStartId, end, start + 1, firstNodeId))
     }
 
     return arcIds;
