@@ -1,11 +1,21 @@
 /* @requires mapshaper-geojson, mapshaper-topojson */
 
 var ExportControl = function(arcData, topoData, opts) {
-  opts.geometry == 'polygon' || opts.geometry == 'polyline' || error("ExportControl() unexpected geometry type:", opts.geometry);
-  var filename = opts && opts.output_name || "out";
-  var blobUrl;
-  var el = El('#g-export-control').show();
-  var anchor = el.newChild('a').attr('href', '#').node();
+  if (opts.geometry != 'polygon' && opts.geometry != 'polyline') {
+    error("ExportControl() unexpected geometry type:", opts.geometry);
+  }
+  El('#g-export-control').show();
+  if (typeof URL == 'undefined' || !URL.createObjectURL) {
+    El('#g-export-control .g-label').text("Exporting is not supported in this browser");
+    return;
+  }
+
+  var filename = opts && opts.output_name || "out",
+      anchor = El('#g-export-control').newChild('a').attr('href', '#').node(),
+      blobUrl;
+
+  El('#g-export-buttons').css('display: inline');
+
   var geoBtn = new SimpleButton('#g-geojson-btn').active(true).on('click', function() {
     geoBtn.active(false);
     setTimeout(exportGeoJSON, 10); // kludgy way to show button response
@@ -17,7 +27,7 @@ var ExportControl = function(arcData, topoData, opts) {
   var topoBtn = new SimpleButton('#g-topojson-btn').active(true).on('click', function() {
     topoBtn.active(false);
     setTimeout(exportTopoJSON, 10);
-  });
+    });
 
   function exportBlob(filename, blob) {
     try {
