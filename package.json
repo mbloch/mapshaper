@@ -5,7 +5,7 @@
 	"keywords": ["shapefile","mapshaper"],
 	"author": "Matthew Bloch <masiyou@gmail.com>",
 	"contributors":[],
-	"license":"MPL 2.0",
+	"license":"MPL-2.0",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/mbloch/mapshaper"
