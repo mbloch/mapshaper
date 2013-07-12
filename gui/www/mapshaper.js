@@ -412,7 +412,7 @@ var T = {
 };
 
 
-/* @requires core */
+
 
 Utils.sortArrayByKeys = function(arr, keys, asc) {
   var ids = Utils.getSortedIds(keys, asc);
@@ -555,7 +555,7 @@ Utils.sortOnKeyFunction = function(arr, getter) {
   p.toString = tmp;
 };
 
-/* @requires core, sorting */
+
 
 // Test a string or array-like object for existence of substring or element
 Utils.contains = function(container, item) {
@@ -961,311 +961,1742 @@ Utils.filterById = function(src, ids) {
 };
 
 
-/* @requires arrayutils, core */
 
-// TODO: adapt to run in browser
-function stop(msg) {
-  msg && trace(msg);
-  process.exit(1);
-}
 
-var MapShaper = {};
-
-MapShaper.parseLocalPath = function(path) {
-  var obj = {
-    ext: '',
-    directory: '',
-    filename: '',
-    basename: ''
-  };
-  var parts = path.split('/'),
-      name, i;
-
-  if (parts.length == 1) {
-    name = parts[0];
-  } else {
-    name = parts.pop();
-    obj.directory = parts.join('/');
+Utils.leftPad = function(str, size, pad) {
+  pad = pad || ' ';
+  str = String(str);
+  var chars = size - str.length;
+  while (chars-- > 0) {
+    str = pad + str;
   }
-  i = name.lastIndexOf('.');
-  if (i > -1) {
-    obj.ext = name.substr(i);
-    obj.basename = name.substr(0, i);
-  }
-  obj.filename = name;
-  return obj;
+  return str;
+};
+
+Utils.trim = function(str) {
+  return str.replace(/^\s+|\s+$/g, '');
+};
+
+Utils.capitalizeWord = function(w) {
+  return w ? w.charAt(0).toUpperCase() + w.substr(1) : '';
 };
 
 
-MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
-  var srcLen = xsrc.length,
-      destLen = xdest.length,
-      prevX = destLen == 0 ? Infinity : xdest[destLen-1],
-      prevY = destLen == 0 ? Infinity : ydest[destLen-1],
-      x, y, inc, startId, stopId;
 
-  if (reversed) {
-    inc = -1;
-    startId = srcLen - 1;
-    stopId = -1;
-  } else {
-    inc = 1;
-    startId = 0;
-    stopId = srcLen;
+
+Utils.addThousandsSep = function(str) {
+  var fmt = '',
+      start = str[0] == '-' ? 1 : 0,
+      dec = str.indexOf('.'),
+      end = str.length,
+      ins = (dec == -1 ? end : dec) - 3;
+  while (ins > start) {
+    fmt = ',' + str.substring(ins, end) + fmt;
+    end = ins;
+    ins -= 3;
   }
+  return str.substring(0, end) + fmt;
+};
 
-  for (var i=startId; i!=stopId; i+=inc) {
-    x = xsrc[i];
-    y = ysrc[i];
-    if (x !== prevX || y !== prevY) {
-      xdest.push(x);
-      ydest.push(y);
-      prevX = x;
-      prevY = y;
+
+Utils.numToStr = function(num, decimals) {
+  return decimals >= 0 ? num.toFixed(decimals) : String(num);
+};
+
+
+Utils.formatNumber = function(num, decimals, nullStr, showPos) {
+  var fmt;
+  if (isNaN(num)) {
+    fmt = nullStr || '-';
+  } else {
+    fmt = Utils.numToStr(num, decimals);
+    fmt = Utils.addThousandsSep(fmt);
+    if (showPos && parseFloat(fmt) > 0) {
+      fmt = "+" + fmt;
     }
   }
+  return fmt;
 };
 
 
-MapShaper.calcXYBounds = function(xx, yy, bb) {
-  if (!bb) bb = new Bounds();
-  var xbounds = Utils.getArrayBounds(xx),
-      ybounds = Utils.getArrayBounds(yy);
-  if (xbounds.nan > 0 || ybounds.nan > 0) error("[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
-  bb.mergePoint(xbounds.min, ybounds.min);
-  bb.mergePoint(xbounds.max, ybounds.max);
-  return bb;
-};
 
-MapShaper.transposeXYCoords = function(arr) {
-  var xx = arr[0],
-      yy = arr[1],
-      points = [];
-  for (var i=0, len=xx.length; i<len; i++) {
-    points.push([xx[i], yy[i]]);
+
+function Handler(type, target, callback, listener, priority) {
+  this.type = type;
+  this.callback = callback;
+  this.context = listener || null;
+  this.priority = priority || 0;
+  this.target = target;
+}
+
+Handler.prototype.trigger = function(evt) {
+  if (!evt) {
+    evt = new EventData(this.type);
+    evt.target = this.target;
+  } else if (evt.target != this.target || evt.type != this.type) {
+    error("[Handler] event target/type have changed.");
   }
-  return points;
+  this.callback.call(this.context, evt);
+}
+
+function EventData(type, target, data) {
+  this.type = type;
+  this.target = target;
+  if (data) {
+    Opts.copyNewParams(this, data);
+    this.data = data;
+  }
+}
+
+EventData.prototype.stopPropagation = function() {
+  this.__stop__ = true;
 };
 
-// Convert a topological shape to a non-topological format
-// (for exporting)
-//
-MapShaper.convertTopoShape = function(shape, arcs, closed) {
-  var parts = [],
-      pointCount = 0,
-      bounds = new Bounds();
+EventData.prototype.__stop__ = false;
 
-  for (var i=0; i<shape.length; i++) {
-    var topoPart = shape[i],
-        xx = [],
-        yy = [];
-    for (var j=0; j<topoPart.length; j++) {
-      var arcId = topoPart[j],
-          reversed = false;
-      if (arcId < 0) {
-        arcId = -1 - arcId;
-        reversed = true;
+EventData.prototype.toString = function() {
+  var str = 'type:' + this.type + ', target: ' + Utils.strval(this.target);
+  if (this.data) {
+    str += ', data:' + Utils.strval(this.data);
+  }
+  return '[EventData]: {' + str + '}';
+};
+
+/**
+ * Base class for objects that dispatch events; public methods:
+ *   addEventListener() / on()
+ *   removeEventListener()
+ *   dispatchEvent() / trigger()
+ */
+function EventDispatcher() {}
+
+/**
+ * Dispatch an event (i.e. all registered event handlers are called).
+ * @param {string} type Name of the event type, e.g. "change".
+ * @param {object=} obj Optional data to send with the event.
+ */
+EventDispatcher.prototype.dispatchEvent =
+EventDispatcher.prototype.trigger = function(type, obj, ctx) {
+  var evt;
+  // TODO: check for bugs if handlers are removed elsewhere while firing
+  var handlers = this._handlers;
+  if (handlers) {
+    for (var i = 0, len = handlers.length; i < len; i++) {
+      var handler = handlers[i];
+      if (handler.type == type && (!ctx || handler.context == ctx)) {
+        if (!evt) {
+          evt = new EventData(type, this, obj);
+        }
+        else if (evt.__stop__) {
+            break;
+        }
+        handler.trigger(evt);
       }
-      var arc = arcs[arcId];
-      MapShaper.extendPartCoordinates(xx, yy, arc[0], arc[1], reversed);
     }
-    var pointsInPart = xx.length,
-        validPart = !closed && pointsInPart > 0 || pointsInPart > 3;
-    // TODO: other validation:
-    // self-intersection test? test rings have non-zero area? rings follow winding rules?
 
-    if (validPart) {
-      parts.push([xx, yy]);
-      pointCount += xx.length;
-      MapShaper.calcXYBounds(xx, yy, bounds);
+    if (type == 'ready') {
+      this.removeEventListeners(type, null, ctx);
     }
   }
-
-  return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
 };
 
 
-/* requires mapshaper-common */
-
-function distance3D(ax, ay, az, bx, by, bz) {
-  var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-
-function distanceSq(ax, ay, bx, by) {
-  var dx = ax - bx,
-      dy = ay - by;
-  return dx * dx + dy * dy;
-}
-
-function distance2D(ax, ay, bx, by) {
-  var dx = ax - bx,
-      dy = ay - by;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-function distanceSq3D(ax, ay, az, bx, by, bz) {
-  var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
-  return dx * dx + dy * dy + dz * dz;
-}
-
-
-// atan2() makes this function fairly slow, replaced by ~2x faster formula
-//
+/**
+ * Test whether a type of event has been fired.
+ * @param {string} type Event type.
+ * @return {boolean} True if event was fired else false.
+ */
 /*
-function innerAngle_slow(ax, ay, bx, by, cx, cy) {
-  var a1 = Math.atan2(ay - by, ax - bx),
-      a2 = Math.atan2(cy - by, cx - bx),
-      a3 = Math.abs(a1 - a2);
-      a3 = a2 - a1
-  if (a3 > Math.PI) {
-    a3 = 2 * Math.PI - a3;
+EventDispatcher.prototype.eventHasFired = function(type) {
+  return !!this._firedTypes && this._firedTypes[type] == true;
+};
+*/
+
+/**
+ * Register an event handler for a named event.
+ * @param {string} type Name of the event.
+ * @param {function} callback Event handler, called with BoundEvent argument.
+ * @param {*} context Execution context of the event handler.
+ * @param {number} priority Priority of the event; defaults to 0.
+ * removed * @return True if handler added, else false.
+ */
+EventDispatcher.prototype.addEventListener =
+EventDispatcher.prototype.on = function(type, callback, context, priority) {
+  context = context || this;
+  priority = priority || 0;
+  var handler = new Handler(type, this, callback, context, priority);
+
+  // Special case: 'ready' handler fires immediately if target is already ready.
+  // (Applicable to Waiter class objects)
+  if (type == 'ready' && this._ready) {
+    // trace("Warning: Waiter.waitFor() no longer uses this; this:", this, "handler ctx:", context);
+    handler.trigger();
+    return this;
   }
-  return a3;
+
+  // Insert the new event in the array of handlers according to its priority.
+  //
+  var handlers = this._handlers || (this._handlers = []);
+  var i = handlers.length;
+  while(--i >= 0 && handlers[i].priority > handler.priority) {}
+  handlers.splice(i+1, 0, handler);
+  return this;
+};
+
+
+EventDispatcher.prototype.countEventListeners = function(type) {
+  var handlers = this._handlers,
+    len = handlers && handlers.length || 0,
+    count = 0;
+  if (!type) return len;
+  for (var i = 0; i < len; i++) {
+    if (handlers[i].type === type) count++;
+  }
+  return count;
+};
+
+/**
+ * Remove an event handler.
+ * @param {string} type Event type to match.
+ * @param {function(BoundEvent)} callback Event handler function to match.
+ * @param {*=} context Execution context of the event handler to match.
+ * @return {number} Returns number of handlers removed (expect 0 or 1).
+ */
+EventDispatcher.prototype.removeEventListener =
+  function(type, callback, context) {
+  // using "this" if called w/o context (see addEventListener())
+  context = context || this;
+  return this.removeEventListeners(type, callback, context);
+};
+
+/**
+ * Remove event handlers that match function arguments.
+ * @param {string=} type Event type to match.
+ * @param {function(BoundEvent)=} callback Event handler function to match.
+ * @param {*=} context Execution context of the event handler to match.
+ * @return {number} Number of handlers removed.
+ */
+EventDispatcher.prototype.removeEventListeners =
+  function(type, callback, context) {
+  var handlers = this._handlers;
+  var newArr = [];
+  var count = 0;
+  for (var i = 0; handlers && i < handlers.length; i++) {
+    var evt = handlers[i];
+    if ((!type || type == evt.type) &&
+      (!callback || callback == evt.callback) &&
+      (!context || context == evt.context)) {
+      count += 1;
+    }
+    else {
+      newArr.push(evt);
+    }
+  }
+  this._handlers = newArr;
+  return count;
+};
+
+
+/**
+ * Support for handling asynchronous dependencies.
+ * Waiter becomes READY and fires 'ready' after any/all dependents are READY.
+ * Instantiate directly or use as a base class.
+ * Public interface:
+ *   waitFor()
+ *   startWaiting()
+ *   isReady()
+ *
+ */
+function Waiter() {}
+Opts.inherit(Waiter, EventDispatcher);
+
+/**
+ * Test whether all dependencies are complete, enter ready state if yes.
+ */
+Waiter.prototype._testReady = function() {
+  if (!this._ready && !this._waitCount && this._started) {
+    this._ready = true;
+
+    // Child classes can implement handleReadyState()
+    this.handleReadyState && this.handleReadyState();
+    this.dispatchEvent('ready');
+  }
+};
+
+
+/* */
+Waiter.prototype.callWhenReady = function(func, args, ctx, priority) {
+  this.addEventListener('ready', function(evt) {func.apply(ctx, args);}, ctx, priority);
+};
+
+
+/**
+ * Event handler, fired when dependent is ready.
+ * @param {BoundEvent} evt Event object.
+ */
+Waiter.prototype._handleDependentReady = function(evt) {
+  if (! this._waitCount) {
+    trace('[Waiter.onDependendReady()]',
+    'Counting error. Event: ' + Utils.strval(evt) + '; ready? ' + this._ready);
+    return;
+  }
+  this._waitCount -= 1;
+  this._testReady();
+};
+
+
+/**
+ * Checks if Waiter-enabled object is READY.
+ * @return {boolean} True if READY event has fired, else false.
+ */
+Waiter.prototype.isReady = function() {
+  return this._ready == true;
+};
+
+/**
+ * Wait for a dependent object to become READY.
+ * @param {*} obj Class object that implements EventDispatcher.
+ * @param {string=} type Event to wait for (optional -- default is 'ready').
+ */
+Waiter.prototype.waitFor = function(dep, type) {
+  if (!dep) {
+    trace("[Waiter.waitFor()] missing object; this:", this);
+    return this;
+  }
+  else if (!dep.addEventListener) {
+    trace("[Waiter.waitFor()] Need an EventDispatcher; this:", this);
+    return this;
+  }
+
+  if (!type) {
+    type = 'ready';
+  }
+
+  // Case: .waitFor() called after this.isReady() becomes true
+  if (this._ready) {
+    // If object is already READY, ignore....
+    if (type == 'ready' && dep.isReady()) {
+      return;
+    }
+    trace("[Waiter.waitFor()] already READY; resetting to isReady() == false;");
+    this._ready = false;
+    // return this;
+    // TODO: prepare test cases to check for logic errors.
+  }
+
+  if (type != 'ready'  || dep.isReady() == false) {
+    this._waitCount = this._waitCount ? this._waitCount + 1 : 1;
+    dep.addEventListener(type, this._handleDependentReady, this);
+  }
+
+  return this;
+};
+
+/**
+ * Start waiting for any dependents to become ready.
+ * Should be called after all waitFor() calls.
+ */
+Waiter.prototype.startWaiting = function(callback, ctx) {
+  // KLUDGE: callback may be an BoundEvent if startWaiting is used as an event handler.
+  typeof(callback) == 'function' && this.addEventListener('ready', callback, ctx);
+  this._started = true;
+  this._testReady();
+  return this; // for chaining
+};
+
+
+
+
+
+var inNode = typeof module !== 'undefined' && !!module.exports;
+var Node = {
+  inNode: inNode,
+  arguments: inNode ? process.argv.slice(1) : null // remove "node" from head of argv list
+};
+
+
+/**
+ * Convenience functions for working with files and loading data.
+ */
+if (inNode) {
+  Node.fs = require('fs');
+  Node.path = require('path');
+
+  Node.gc = function() {
+    global.gc && global.gc();
+  };
+
+  Node.statSync = function(fpath) {
+    var obj = null;
+    try {
+      obj = Node.fs.statSync(fpath);
+    }
+    catch(e) {
+      //trace(e, fpath);
+    }
+    return obj;
+  };
+
+  Node.toBuffer = function(src) {
+    if (src instanceof Buffer) return src;
+    var dest = new Buffer(src.byteLength);
+    for (var i = 0, n=dest.length; i < n; i++) {
+      dest[i] = src[i];
+    }
+    return dest;
+  };
+
+  Node.shellExec = function(cmd) {
+    var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
+    var spawn = require('child_process').spawn;
+    spawn(parts[0], parts.slice(1), {stdio: "inherit"});
+  };
+
+  // Converts relative path to absolute path relative to the node script;
+  // absolute paths returned unchanged
+  //
+  Node.resolvePathFromScript = function(path) {
+    if (Node.pathIsAbsolute(path))
+      return path;
+    var scriptDir = Node.getFileInfo(require.main.filename).directory;
+    return Node.path.join(scriptDir, path);
+  };
+
+  //Node.resolvePathFromFile = function(path) {
+  //  return Node.path.join(__dirname, path);
+  //}
+  Node.pathIsAbsolute = function(path) {
+    return (path[0] == '/' || path[0] == "~");
+  };
+
+  Node.resolvePathFromShell = function(path) {
+    if (Node.pathIsAbsolute(path))
+      return path;
+    return Node.path.join(process.cwd(), path);
+  };
+
+
+  Node.dirExists = function(path) {
+    var ss = Node.statSync(path);
+    return ss && ss.isDirectory() || false;
+  };
+
+  Node.fileExists = function(path) {
+    var ss = Node.statSync(path);
+    return ss && ss.isFile() || false;
+  };
+
+  Node.parseFilename = function(fpath) {
+    // TODO: give better output if fpath is a directory
+    var info = {};
+    var filename = Node.path.basename(fpath);
+    if (filename.lastIndexOf('/') == filename.length - 1) {
+      filename = filename.substr(0, filename.length-1);
+    }
+    info.file = filename;
+    info.path = Node.path.resolve(fpath);
+    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
+    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
+    info.directory = Node.path.dirname(info.path);
+    info.relative_dir = Node.path.dirname(fpath);
+    return info;
+  };
+
+  Node.getFileInfo = function(fpath) {
+    var info = Node.parseFilename(fpath),
+        stat;
+    Opts.copyAllParams(info, {exists: false, is_directory: false, is_file: false});
+    if (stat = Node.statSync(fpath)) {
+      if (stat.isFile()) {
+        info.exists = true;
+        info.is_file = true;
+      } else {
+        info.is_directory = true;
+      }
+    }
+    return info;
+  };
+
+  /**
+   * @param charset (optional) 'utf8' to read a string; if undefined, returns Buffer
+   * @returns String if charset is provided, *** else Buffer object (node-specific object) ****
+   */
+  Node.readFile = function(fname, charset) {
+    try {
+      var content = Node.fs.readFileSync(fname, charset || void 0);
+    } catch(e) {
+      content = "";
+      trace("[Node.readFile()] Error reading file:", fname, "err:", e);
+    }
+    return content;
+  };
+
+  Node.writeFile = function(path, content) {
+    if (content instanceof ArrayBuffer)
+      content = Node.toBuffer(content);
+    Node.fs.writeFile(path, content, function(err) {
+      if (err) {
+        trace("[Node.writeFile()] Failed to write to file:", path);
+      }
+    });
+  };
+
+  Node.copyFile = function(src, dest) {
+    if (!Node.fileExists(src)) error("[copyFile()] File not found:", src);
+    var content = Node.fs.readFileSync(src);
+    Node.fs.writeFileSync(dest, content);
+  };
+
+  Node.post = function(url, data, callback, opts) {
+    opts = opts || {};
+    opts.method = 'POST';
+    opts.data = data;
+    Node.request(url, callback, opts);
+  }
+
+  Node.readResponse = function(res, callback, encoding) {
+    res.setEncoding(encoding || 'utf8');
+    var content = '';
+    res.on('data', function(chunk) {
+      content += chunk;
+    });
+    res.on('end', function() {
+      callback(null, res, content);
+    });
+  }
+
+  // Current signature: function(opts, callback), like Node.js request module
+  //    callback: function(err, response, body)
+  // Also supports old signature: function(url, callback, opts)
+  //    callback: function(body)
+  //
+  Node.request = function(opts, callback, old_opts) {
+    var url, receive;
+    if (Utils.isString(opts)) { // @opts is string -> assume url & old interface
+      url = opts;
+      opts = old_opts || {};
+      receive = function(err, resp, data) {
+        if (err) {
+          error(err);
+        } else {
+          callback(data);
+        }
+      };
+    } else {
+      url = opts.url;
+      receive = callback;
+    }
+
+    var o = require('url').parse(url),
+        data = null,
+        // moduleName: http or https
+        moduleName = opts.protocol || o.protocol.slice(0, -1); // can override protocol (e.g. request https:// url using http)
+
+    if (moduleName != 'http' && moduleName != 'https') error("Node.request() Unsupported protocol:", o.protocol);
+    var reqOpts = {
+      host: o.hostname,
+      hostname: o.hostname,
+      path: o.path,
+      //port: o.port || module == 'https' && 443 || 80,
+      method: opts.method || 'GET',
+      headers: opts.headers || null
+    }
+
+    if (reqOpts.method == 'POST' || reqOpts.method == 'PUT') {
+      data = opts.data || opts.body || '';
+      reqOpts.headers = Utils.extend({
+        'Content-Length': data.length,
+        'Connection': 'close',
+        'Accept-Encoding': 'identity'
+      }, reqOpts.headers);
+    }
+
+    var req = require(moduleName).request(reqOpts);
+    req.on('response', function(res) {
+      if (res.statusCode > 201) {
+        receive("Node.request() Unexpected status: " + res.statusCode + " url: " + url, res, null);
+      }
+      Node.readResponse(res, receive, 'utf8');
+    });
+
+    req.on('error', function(e) {
+      // trace("Node.request() request error:", e.message);
+      receive("Node.request() error: " + e.message, null, null);
+    });
+    req.end(data);
+  };
+
+
+
+  Node.atob = function(b64string) {
+    return new Buffer(b64string, 'base64').toString('binary')
+  };
+
+  Node.readJson = function(url, callback, opts) {
+    //Node.readUrl(url, function(str) {
+    /*
+    opts = {
+      headers: {
+        'Accept-Encoding': 'identity',
+        'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
+        'Connection': 'keep-alive',
+        'Cache-control': 'max-age=0',
+        'User-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_3) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.43 Safari/537.31'
+      }
+    }*/
+
+    Node.request({url: url}, function(err, req, str) {
+      var data;
+      if (!str) {
+        callback(null);
+      }
+      try {
+        // handle JS callback
+        if (match = /^\s*([\w.-]+)\(/.exec(str)) {
+          var ctx = {};
+          Opts.exportObject(match[1], function(o) {return o}, ctx);
+          with (ctx) {
+            data = eval(str);
+          }
+        } else {
+          data = JSON.parse(str); // no callback: assume valid JSON
+        }
+      } catch(e) {
+        error("Node#readJson() Error reading from url:", url, "--", e);
+      }
+      callback(data);
+    }, opts);
+  };
+
+  // super-simple options, if not using optimist
+  Node.options = function(o) {
+    o = o || {};
+    var opts = {_:[]},
+        flags = (o.flags || o.binary || '').split(','),
+        currOpt;
+
+    var aliases = Utils.reduce((o.aliases || "").split(','), function(item, obj) {
+        var parts = item.split(':');
+        if (parts.length == 2) {
+          obj[parts[0]] = parts[1];
+          obj[parts[1]] = parts[0];
+        }
+        return obj;
+      }, {});
+
+    function setOpt(opt, val) {
+      opts[opt] = val;
+      var alias = aliases[opt];
+      if (alias) {
+        opts[alias] = val;
+      }
+    }
+
+
+    Node.arguments.slice(1).forEach(function(arg) {
+      var match, alias, switches;
+      if (arg[0] == '-') {
+        currOpt = null; // handle this as an error
+        if (match = /^--(.*)/.exec(arg)) {
+          switches = [match[1]];
+        }
+        else if (match = /^-(.+)/.exec(arg)) {
+          switches = match[1].split('');
+        }
+        Utils.forEach(switches, function(opt) {
+          if (Utils.contains(flags, opt)) {
+            setOpt(opt, true);
+          } else {
+            currOpt = opt;
+          }
+        });
+      }
+      else if (currOpt) {
+        setOpt(currOpt, Utils.isNumber(arg) ? parseFloat(arg) : arg);
+        currOpt = null;
+      }
+      else {
+        opts._.push(arg);
+      }
+    });
+    return opts;
+  };
 }
+
+
+/*
+Node.loadUrl = function(url) {
+  return new NodeUrlLoader(url);
+};
+
+
+
+function NodeUrlLoader(url) {
+  var self = this,
+    body = "",
+    output,
+    opts = Utils.parseUrl(url);
+  delete opts.protocol;
+  opts.port = 80;
+
+  require('http').get(opts, function(resp) {
+    if (resp.headers['content-encoding'] == 'gzip') {
+      var gzip = zlib.createGunzip();
+      resp.pipe(gzip);
+      output = gzip;
+    } else {
+      output = resp;
+    }
+    output.on('data', function(chunk) {
+      body += chunk;
+    });
+    output.on('end', function() {
+      self.data = body;
+      self.startWaiting();
+    });
+
+  }).on("error", function(e){
+    trace("[NodeUrlLoader] error: " + e.message);
+  });
+}
+
+Opts.inherit(NodeUrlLoader, Waiter);
 */
 
 
-// TODO: make this safe for small angles
-//
-function innerAngle(ax, ay, bx, by, cx, cy) {
-  var ab = distance2D(ax, ay, bx, by),
-      bc = distance2D(bx, by, cx, cy),
-      theta, dotp;
-  if (ab == 0 || bc == 0) {
-    theta = 0;
-  } else {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
-    if (dotp >= 1) {
-      theta = 0;
-    } else if (dotp <= -1) {
-      theta = Math.PI;
-    } else {
-      theta = Math.acos(dotp); // consider using other formula at small dp
-    }
-  }
-  return theta;
-}
 
-
-function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var ab = distance3D(ax, ay, az, bx, by, bz),
-      bc = distance3D(bx, by, bz, cx, cy, cz),
-      theta, dotp;
-  if (ab == 0 || bc == 0) {
-    theta = 0;
-  } else {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
-    if (dotp >= 1) {
-      theta = 0;
-    } else if (dotp <= -1) {
-      theta = Math.PI;
-    } else {
-      theta = Math.acos(dotp); // consider using other formula at small dp
-    }
-  }
-  return theta;
-}
-
-
-function triangleArea(ax, ay, bx, by, cx, cy) {
-  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
-  return area;
-}
-
-
-function detSq(ax, ay, bx, by, cx, cy) {
-  var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
-  return det * det;
-}
-
-
-function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
-    detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
-  return area;
-}
-
-
-// Given a triangle with vertices abc, return the distSq of the shortest segment
-//   with one endpoint at b and the other on the line intersecting a and c.
-//   If a and c are coincident, return the distSq between b and a/c
-//
-// Receive the distSq of the triangle's three sides.
-//
-function triangleHeightSq(ab2, bc2, ac2) {
-  var dist2;
-  if (ac2 == 0.0) {
-    dist2 = ab2;
-  } else if (ab2 >= bc2 + ac2) {
-    dist2 = bc2;
-  } else if (bc2 >= ab2 + ac2) {
-    dist2 = ab2;
-  } else {
-    var dval = (ab2 + ac2 - bc2);
-    dist2 = ab2 -  dval * dval / ac2  * 0.25;
-  }
-  if (dist2 < 0.0) {
-    dist2 = 0.0;
-  }
-  return dist2;
-}
-
-
-function msSignedRingArea(xx, yy, start, len) {
-  var sum = 0,
-      start = start | 0,
-      end = start + (len == null ? xx.length - start : len | 0) - 1;
-
-  if (start < 0 || end >= xx.length) {
-    error("Out-of-bounds array index");
-  }
-  for (var i=start; i < end; i++) {
-    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
-  }
-  return sum / 2;
-}
-
-function msRingArea(xx, yy, start, len) {
-  return Math.abs(msSignedRingArea(xx, yy, start, len));
-}
-
-// merge B into A
-function mergeBounds(a, b) {
-  if (b[0] < a[0]) a[0] = b[0];
-  if (b[1] < a[1]) a[1] = b[1];
-  if (b[2] > a[2]) a[2] = b[2];
-  if (b[3] > a[3]) a[3] = b[3];
-}
-
-function containsBounds(a, b) {
-  return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
-}
-
-function boundsArea(b) {
-  return (b[2] - b[0]) * (b[3] - b[1]);
-}
-
-function probablyDecimalDegreeBounds(b) {
-  return containsBounds([-200, -91, 200, 90], b);
-}
-
-// export functions so they can be tested
-MapShaper.geom = {
-  distance3D: distance3D,
-  innerAngle: innerAngle,
-  innerAngle3D: innerAngle3D,
-  triangleArea: triangleArea,
-  triangleArea3D: triangleArea3D,
-  msRingArea: msRingArea,
-  msSignedRingArea: msSignedRingArea,
-  probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
+Utils.loadBinaryData = function(url, callback) {
+  // TODO: throw error if ajax or arraybuffer not available
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', url, true);
+  xhr.responseType = 'arraybuffer';
+  xhr.onload = function(e) {
+    callback(this.response);
+  };
+  xhr.send();
 };
+
+
+
+
+var pageEvents = (new function() {
+  var useAttachEvent = typeof window != 'undefined' && !!window.attachEvent && !window.addEventListener,
+      index = {};
+
+  function __getNodeListeners(el) {
+    var id = __getNodeKey(el);
+    var listeners = index[id] || (index[id] = []);
+    return listeners;
+  }
+
+  function __removeDOMListener(el, type, func) {
+    if (useAttachEvent) {
+      el.detachEvent('on' + type, func);
+    }
+    else {
+      el.removeEventListener(type, func, false);
+    }
+  }
+
+  function __findNodeListener(listeners, type, func, ctx) {
+    for (var i=0, len = listeners.length; i < len; i++) {
+      var evt = listeners[i];
+      if (evt.type == type && evt.callback == func && evt.context == ctx) {
+        return i;
+      }
+    }
+    return -1;
+  };
+
+  function __getNodeKey(el) {
+    if (!el) {
+      return '';
+    } else if (el == window) {
+      return '#';
+    }
+    return el.__evtid__ || (el.__evtid__ = Utils.getUniqueName());
+  }
+
+  this.addEventListener = function(el, type, func, ctx) {
+    if (Utils.isString(el)) { // if el is a string, treat as id
+      el = Browser.getElement(el);
+    }
+    if (el === window && 'mousemove,mousedown,mouseup,mouseover,mouseout'.indexOf(type) != -1) {
+      trace("[Browser.addEventListener()] In ie8-, window doesn't support mouse events");
+    }
+    var listeners = __getNodeListeners(el);
+    if (listeners.length > 0) {
+      if (__findNodeListener(listeners, type, func, ctx) != -1) {
+        return;
+      }
+    }
+
+    //var evt = new BoundEvent(type, el, func, ctx);
+    var evt = new Handler(type, el, func, ctx);
+    var handler = function(e) {
+      // ie8 uses evt argument and window.event (different objects), no evt.pageX
+      // chrome uses evt arg. and window.event (same obj), has evt.pageX
+      // firefox uses evt arg, window.event === undefined, has evt.pageX
+      // touch events
+      /// if (!e || !(e.pageX || e.touches)) {
+      if (!e || Browser.ieVersion <= 8) {
+        var evt = e || window.event;
+        e = {
+          target : evt.srcElement,
+          relatedTarget : type == 'mouseout' && evt.toElement || type == 'mouseover' && evt.fromElement || null,
+          currentTarget : el
+        };
+
+        if (evt.clientX !== void 0) {
+          // http://www.javascriptkit.com/jsref/event.shtml
+          // pageX: window.pageXOffset+e.clientX
+          // pageY: window.pageYOffset+e.clientY
+          e.pageX = evt.pageX || evt.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+          e.pageY = evt.pageY || evt.clientY + document.body.scrollTop + document.documentElement.scrollTop;
+        }
+        // TODO: add other event properties && methods, e.g. preventDefault, stopPropagation, etc.
+      }
+
+      // Ignoring mouseover and mouseout events between child elements
+      if (type == 'mouseover' || type == 'mouseout') {
+
+        var rel = e.relatedTarget;
+        while (rel && rel != el && rel.nodeName != 'BODY') {
+          rel = rel.parentNode;
+        }
+        if (rel == el) {
+          return;
+        }
+        if (el == window && e.relatedTarget != null) {
+          return;
+        }
+      }
+
+      var retn = func.call(ctx, e);
+      if (retn === false) {
+        trace("[Browser] Event handler blocking event:", type);
+        e.preventDefault && e.preventDefault();
+      }
+      return retn;
+    };
+    evt.handler = handler;
+
+    // handle window load if already loaded
+    // TODO: test this
+    if (el == window && type == 'load' && document.readyState == 'complete') {
+      evt.trigger();
+      return;
+    }
+
+    listeners.push(evt);
+
+    if (useAttachEvent) {
+      el.attachEvent('on' + type, handler);
+    }
+    else {
+      el.addEventListener(type, handler, false);
+    }
+  };
+
+  this.removeEventListener = function(el, type, func, ctx) {
+    var listeners = __getNodeListeners(el);
+    var idx = __findNodeListener(listeners, type, func, ctx);
+    if (idx == -1) {
+      return;
+    }
+    var evt = listeners[idx];
+    __removeDOMListener(el, type, evt.handler);
+    listeners.splice(idx, 1);
+  };
+});
+
+
+
+
+
+var Browser = {
+
+  getIEVersion: function() {
+    return this.ieVersion;
+  },
+
+  traceEnabled: function() {
+    var debug = Browser.getQueryVar('debug');
+    if (Env.inBrowser && (debug == null || debug == "false")) {
+      return false;
+    }
+    return true;
+  },
+
+  /*getPageWidth : function() {
+   return document.documentElement.clientWidth || document.body.clientWidth;
+  },*/
+
+  getViewportWidth : function() {
+    return document.documentElement.clientWidth;
+  },
+
+  getViewportHeight : function() {
+    return document.documentElement.clientHeight;
+  },
+
+  createElement : function(type, css, classes) {
+    try {
+      var el = document.createElement(type);
+    }
+    catch (err) {
+      trace("[Browser.createElement()] Error creating element of type:", type);
+      return null;
+    }
+
+    if (type.toLowerCase() == 'canvas' && window.CanvasSwf) {
+      CanvasSwf.initElement(el);
+    }
+
+    if (css) {
+      el.style.cssText = css;
+    }
+
+    if (classes) {
+      el.className = classes;
+    }
+    return el;
+  },
+
+  /**
+   * Return: HTML node reference or null
+   * Receive: node reference or id or "#" + id
+   */
+  getElement : function(ref) {
+    var el;
+    if (typeof ref == 'string') {
+      if (ref.charAt(0) == '#') {
+        ref = ref.substr(1);
+      }
+      if (ref == 'body') {
+        el = document.getElementsByTagName('body')[0];
+      }
+      else {
+        el = document.getElementById(ref);
+      }
+    }
+    else if (ref && ref.nodeType !== void 0) {
+      el = ref;
+    }
+    return el || null;
+  },
+
+  removeElement : function(el) {
+    el && el.parentNode && el.parentNode.removeChild(el);
+  },
+
+  getElementStyle: function(el) {
+    return el.currentStyle || window.getComputedStyle && window.getComputedStyle(el, '') || {};
+  },
+
+  elementIsFixed : function(el) {
+    // get top-level offsetParent that isn't body (cf. Firefox)
+    var body = document.body;
+    while (el && el != body) {
+      var parent = el;
+      el = el.offsetParent;
+    }
+
+    // Look for position:fixed in the computed style of the top offsetParent.
+    // var styleObj = parent && (parent.currentStyle || window.getComputedStyle && window.getComputedStyle(parent, '')) || {};
+    var styleObj = parent && Browser.getElementStyle(parent) || {};
+    return styleObj['position'] == 'fixed';
+  },
+
+  getElementFromPageXY : function(x, y) {
+    var viewX = this.pageXToViewportX(x);
+    var viewY = this.pageYToViewportY(y);
+    return document.elementFromPoint(viewX, viewY);
+  },
+
+  getPageXY : function(el) {
+    var x = 0, y = 0;
+    if (el.getBoundingClientRect) {
+      var box = el.getBoundingClientRect();
+      x = box.left - Browser.pageXToViewportX(0);
+      y = box.top - Browser.pageYToViewportY(0);
+      //trace("[] box.left:", box.left, "box.top:", box.top);
+    }
+    else {
+      var fixed = Browser.elementIsFixed(el);
+
+      while (el) {
+        x += el.offsetLeft || 0;
+        y += el.offsetTop || 0;
+        //Utils.trace("[el] id:", el.id, "class:", el.className, "el:", el, "offsLeft:", el.offsetLeft, "offsTop:", el.offsetTop);
+        el = el.offsetParent;
+      }
+
+      if (fixed) {
+        var offsX = -Browser.pageXToViewportX(0);
+        var offsY = -Browser.pageYToViewportY(0);
+        //Utils.trace("[fixed]; offsX:", offsX, "offsY:", offsY, "x:", x, "y:", y);
+        x += offsX;
+        y += offsY;
+      }
+    }
+
+    var obj = {x:x, y:y};
+    return obj;
+  },
+
+  // reference: http://stackoverflow.com/questions/871399/cross-browser-method-for-detecting-the-scrolltop-of-the-browser-window
+  __getIEPageElement : function() {
+    var d = document.documentElement;
+    return d.clientHeight ? d : document.body;
+  },
+
+  pageXToViewportX : function(x) {
+    var xOffs = window.pageXOffset;
+    if (xOffs === undefined) {
+      xOffs = Browser.__getIEPageElement().scrollLeft;
+    }
+    return x - xOffs;
+  },
+
+  pageYToViewportY : function(y) {
+    var yOffs = window.pageYOffset;
+    if (yOffs === undefined) {
+      yOffs = Browser.__getIEPageElement().scrollTop;
+    }
+    return y - yOffs;
+  },
+
+  /**
+   *  Add a DOM event handler.
+   */
+  addEventListener: pageEvents.addEventListener,
+  on: pageEvents.addEventListener,
+
+  /**
+   *  Remove a DOM event handler.
+   */
+  removeEventListener: pageEvents.removeEventListener,
+
+  getPageUrl : function() {
+    return Browser.inNode ? "" : window.location.href.toString();
+  },
+
+  getQueryString : function(url) {
+    var match = /^[^?]+\?([^#]*)/.exec(url);
+    return match && match[1] || "";
+  },
+
+  /**
+   *  Add a query variable to circumvent browser caching.
+   *  Value is calculated from UTC minutes, so the server does not see a large
+   *  number of different values.
+   */
+  cacheBustUrl : function(url, minutes) {
+    minutes = minutes || 1; // default: 60 seconds
+    var minPerWeek = 60*24*7;
+    var utcMinutes = (+new Date) / 60000;
+    var code = Math.round((utcMinutes % minPerWeek) / minutes);
+    url = Browser.extendUrl(url, "c=" + code);
+    return url;
+  },
+
+  extendUrl : function(url, obj) {
+    var extended = url + (url.indexOf("?") == -1 ? "?" : "&");
+    if (Utils.isString(obj)) {
+      extended += obj;
+    } else if (Utils.isObject(obj)) {
+      var parts = [];
+      Utils.forEach(obj, function(val, key) {
+        parts.push(encodeURIComponent(key) + "=" + encodeURIComponent(val));
+      });
+      extended += parts.join('&');
+    } else {
+      error("Argument must be string or object");
+    }
+    return extended;
+  },
+
+  parseUrl : Utils.parseUrl,
+  /**
+   * Return query-string (GET) data as an object.
+   */
+  getQueryVars : function() {
+    var matches, rxp = /([^=&]+)=?([^&]*)/g,
+      q = this.getQueryString(this.getPageUrl()),
+      vars = {};
+    while (matches = rxp.exec(q)) {
+      //vars[matches[1]] = unescape(matches[2]);
+      // TODO: decode keys?
+      vars[matches[1]] = decodeURIComponent(matches[2]);
+    }
+    return vars;
+  },
+
+  getQueryVar : function(name) {
+    return Browser.getQueryVars()[name];
+  },
+
+
+  /**
+   * TODO: memoize?
+   */
+  getClassNameRxp : function(cname) {
+    return new RegExp("(^|\\s)" + cname + "(\\s|$)");
+  },
+
+  hasClass : function(el, cname) {
+    var rxp = this.getClassNameRxp(cname);
+    return el && rxp.test(el.className);
+  },
+
+  addClass : function(el, cname) {
+    var classes = el.className;
+    if (!classes) {
+      classes = cname;
+    }
+    else if (!this.hasClass(el, cname)) {
+      classes = classes + ' ' + cname;
+    }
+    el.className = classes;
+  },
+
+  removeClass : function(el, cname) {
+    var rxp = this.getClassNameRxp(cname);
+    el.className = el.className.replace(rxp, "$2");
+  },
+
+  replaceClass : function(el, c1, c2) {
+    var r1 = this.getClassNameRxp(c1);
+    el.className = el.className.replace(r1, '$1' + c2 + '$2');
+  },
+
+  mergeCSS : function(s1, s2) {
+    var div = this._cssdiv;
+    if (!div) {
+      div = this._cssdiv = Browser.createElement('div');
+    }
+    div.style.cssText = s1 + ";" + s2; // extra ';' for ie, which may leave off final ';'
+    return div.style.cssText;
+  },
+
+  addCSS : function(el, css) {
+    el.style.cssText = Browser.mergeCSS(el.style.cssText, css);
+  },
+
+  unselectable : function(el) {
+    var noSel = "-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-moz-user-focus:ignore;-o-user-select:none;user-select: none;";
+    noSel += "-webkit-tap-highlight-color: rgba(0,0,0,0);"
+    //div.style.cssText = Browser.mergeCSS(div.style.cssText, noSel);
+    Browser.addCSS(el, noSel);
+    el.onselectstart = function(e){
+      e && e.preventDefault();
+      return false;
+    };
+  },
+
+  undraggable : function(el) {
+    el.ondragstart = function(){return false;};
+    el.draggable = false;
+  },
+
+  /**
+   *  Loads a css file and applies it to the current page.
+   */
+  loadStylesheet : function(cssUrl) {
+    var link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.type = "text/css";
+    link.href = cssUrl;
+    Browser.appendToHead(link);
+  },
+
+  appendToHead : function(el) {
+    var head = document.getElementsByTagName("head")[0];
+    head.appendChild(el);
+  },
+
+  /**
+   * TODO: Option to supply a "target" attribute for opening in another window.
+   */
+  //navigateToURL : function(url) {
+  navigateTo : function(url) {
+    window.location.href = url;
+  }
+
+};
+
+Browser.onload = function(handler, ctx) {
+  Browser.on(window, 'load', handler, ctx); // handles case when page is already loaded.
+};
+
+// Add environment information to Browser
+//
+Opts.copyAllParams(Browser, Env);
+
+
+
+
+var classSelectorRE = /^\.([\w-]+)$/,
+    idSelectorRE = /^#([\w-]+)$/,
+    tagSelectorRE = /^[\w-]+$/,
+    tagOrIdSelectorRE = /^#?[\w-]+$/;
+
+function Elements(sel) {
+  if ((this instanceof Elements) == false) {
+    return new Elements(sel);
+  }
+  this.elements = [];
+  this.select(sel);
+  this.tmp = new El();
+}
+
+Elements.prototype = {
+  size: function() {
+    return this.elements.length;
+  },
+
+  select: function(sel) {
+    this.elements = Elements.__select(sel);
+    return this;
+  },
+
+  addClass: function(className) {
+    this.forEach(function(el) { el.addClass(className); });
+    return this;
+  },
+
+  removeClass: function(className) {
+    this.forEach(function(el) { el.removeClass(className); })
+    return this;
+  },
+
+  forEach: function(callback, ctx) {
+    var tmp = this.tmp;
+    for (var i=0, len=this.elements.length; i<len; i++) {
+      tmp.el = this.elements[i];
+      callback.call(ctx, tmp, i);
+    }
+    return this;
+  }
+};
+
+Elements.__select = function(selector, root) {
+  root = root || document;
+  var els;
+  if (classSelectorRE.test(selector)) {
+    els = Elements.__getElementsByClassName(RegExp.$1, root);
+  }
+  else if (tagSelectorRE.test(selector)) {
+    els = root.getElementsByTagName(selector);
+  }
+  else if (document.querySelectorAll) {
+    try {
+      els = root.querySelectorAll(selector)
+    } catch (e) {
+      error("Invalid selector:", selector);
+    }
+  }
+  else if (Browser.ieVersion() < 8) {
+    els = Elements.__ie7QSA(selector, root);
+  } else {
+    error("This browser doesn't support CSS query selectors");
+  }
+  //return Array.prototype.slice.call(els);
+  return Utils.toArray(els);
+}
+
+Elements.__getElementsByClassName = function(cname, node) {
+  if (node.getElementsByClassName) {
+    return node.getElementsByClassName(cname);
+  }
+  var a = [];
+  var re = new RegExp('(^| )'+cname+'( |$)');
+  var els = node.getElementsByTagName("*");
+  for (var i=0, j=els.length; i<j; i++)
+    if (re.test(els[i].className)) a.push(els[i]);
+  return a;
+};
+
+Elements.__ie7QSA = function(selector, root) {
+  var styleTag = Browser.createElement('STYLE');
+  Browser.appendToHead(styleTag);
+  document.__qsaels = [];
+  styleTag.styleSheet.cssText = selector + "{x:expression(document.__qsaels.push(this))}";
+  window.scrollBy(0, 0);
+  var els = document.__qsaels;
+  Browser.removeElement(styleTag);
+
+  if (root != document) {
+    els = Utils.filter(els, function(node) {
+      while (node && node != root) {
+        node = node.parentNode;
+      }
+      return !!node;
+    });
+  }
+  return els;
+};
+
+// Converts dash-separated names (e.g. background-color) to camelCase (e.g. backgroundColor)
+// Doesn't change names that are already camelCase
+//
+El.toCamelCase = function(str) {
+  var cc = str.replace(/-([a-z])/g, function (g) { return g[1].toUpperCase() });
+  return cc;
+};
+
+El.fromCamelCase = function(str) {
+  var dashed = str.replace(/([A-Z])/g, "-$1").toLowerCase();
+  return dashed;
+};
+
+El.setStyle = function(el, name, val) {
+  var jsName = Element.toCamelCase(name);
+  if (el.style[jsName] == void 0) {
+    trace("[Element.setStyle()] css property:", jsName);
+    return;
+  }
+  var cssVal = val;
+  if (isFinite(val)) {
+    cssVal = String(val); // problem if converted to scientific notation
+    if (jsName != 'opacity' && jsName != 'zIndex') {
+      cssVal += "px";
+    }
+  }
+  el.style[jsName] = cssVal;
+}
+
+El.findAll = function(sel, root) {
+  return Elements.__select(sel, root);
+};
+
+function El(ref) {
+  if (!ref) error("Element() needs a reference");
+  if (ref instanceof El) {
+    return ref;
+  }
+  else if (!(this instanceof El)) {
+    return new El(ref);
+  }
+
+  // use Elements selector on classes or complex selectors
+  //
+  if (Utils.isString(ref) && !tagOrIdSelectorRE.test(ref)) {
+    //var node = Elements.__super__(ref)[0];
+    var node = Elements.__select(ref)[0];
+    if (!node) error("Unmatched selector:", ref);
+    ref = node;
+  }
+
+  this.el = Browser.getElement(ref) || Browser.createElement(ref); // TODO: detect type of argument
+}
+
+Opts.inherit(El, EventDispatcher); //
+
+El.removeAll = function(sel) {
+  var arr = Elements.__select(sel);
+  Utils.forEach(arr, function(el) {
+    El(el).remove();
+  });
+};
+
+Utils.extend(El.prototype, {
+
+  clone: function() {
+    var el = this.el.cloneNode(true);
+    if (el.nodeName == 'SCRIPT') {
+      // Assume scripts are templates and convert to divs, so children
+      //    can
+      el = El('div').addClass(el.className).html(el.innerHTML).node();
+    }
+    el.id = Utils.getUniqueName();
+    this.el = el;
+    return this;
+  },
+
+  node: function() {
+    return this.el;
+  },
+
+  width: function() {
+   return this.el.offsetWidth;
+  },
+
+  height: function() {
+    return this.el.offsetHeight;
+  },
+
+  // Apply inline css styles to this Element, either as string or object.
+  //
+  css: function(css, val) {
+    if (val != null) {
+      El.setStyle(this.el, css, val);
+    }
+    else if (Utils.isString(css)) {
+      Browser.addCSS(this.el, css);
+    }
+    else if (Utils.isObject(css)) {
+      Utils.forEach(css, function(val, key) {
+        El.setStyle(this.el, key, val);
+      })
+    }
+    return this;
+  },
+
+  attr: function(obj, value) {
+    if (Utils.isString(obj)) {
+      if (arguments.length == 1) {
+        return this.el.getAttribute(obj);
+      }
+      this.el[obj] = value;
+    }
+    else if (!value) {
+      Opts.copyAllParams(this.el, obj);
+    }
+    return this;
+  },
+
+  appendChild: function(el) {
+    this.el.appendChild(el.el || el);
+    return this;
+  },
+
+  remove: function(sel) {
+    this.el.parentNode && this.el.parentNode.removeChild(this.el);
+    return this;
+  },
+
+  removeRight: function() {
+    var right;
+    trace(">>> removeRight()")
+    while (right = this.nextSibling()) {
+      trace("removing a sibling:", right.el);
+      right.remove();
+    }
+    return this;
+  },
+
+  // TODO: destroy() // removes from dom, removes event listeners
+
+  addClass: function(className) {
+    Browser.addClass(this.el, className);
+    return this;
+  },
+
+  removeClass: function(className) {
+    Browser.removeClass(this.el, className);
+    return this;
+  },
+
+  hasClass: function(className) {
+    return Browser.hasClass(this.el, className);
+  },
+
+  toggleClass: function(cname) {
+    if (this.hasClass(cname)) {
+      this.removeClass(cname);
+    } else {
+      this.addClass(cname);
+    }
+  },
+
+  computedStyle: function() {
+    return Browser.getElementStyle(this.el);
+  },
+
+  visible: function() {
+    if (this._hidden != null) {
+      return !this._hidden;
+    }
+    var style = this.computedStyle();
+    return style.display != 'none' && style.visibility != 'hidden';
+  },
+
+  showCSS: function(css) {
+    if (!css) {
+      return this._showCSS || "display:block;";
+    }
+    this._showCSS = css;
+    return this;
+  },
+
+  hideCSS: function(css) {
+    if (!css) {
+      return this._hideCSS || "display:none;";
+    }
+    this._hideCSS = css;
+    return this;
+  },
+
+  hide: function() {
+    if (this.visible()) {
+      // var styles = Browser.getElementStyle(this.el);
+      // this._display = styles.display;
+      this.css(this.hideCSS());
+      this._hidden = true;
+    }
+    return this;
+  },
+
+  show: function(display) {
+    /*
+    this.css("display", display || this._display || 'block');
+    */
+    if (!this.visible()) {
+      this.css(this.showCSS());
+      this._hidden = false;
+    }
+    return this;
+  },
+
+  init: function(callback) {
+    if (!this.el['data-el-init']) {
+      callback(this);
+      this.el['data-el-init'] = true;
+    }
+    return this;
+  },
+
+  html: function(html) {
+    if (arguments.length == 0) {
+      return this.el.innerHTML;
+    } else {
+      this.el.innerHTML = html;
+      return this;
+    }
+  },
+
+  text: function(obj) {
+    if (Utils.isArray(obj)) {
+      for (var i=0, el = this; i<obj.length && el; el=el.sibling(), i++) {
+        el.text(obj[i]);
+      }
+    } else {
+      this.html(obj);
+    }
+    return this;
+  },
+
+  // Shorthand for attr('id', <name>)
+  id: function(id) {
+    if (id) {
+      this.el.id = id;
+      return this;
+    }
+    return this.el.id;
+  },
+
+  findChild: function(sel) {
+    var node = Elements.__select(sel, this.el)[0];
+    if (!node) error("Unmatched selector:", sel);
+    return new El(node);
+  },
+
+  appendTo: function(ref) {
+    var parent = ref instanceof El ? ref.el : Browser.getElement(ref);
+    if (this._sibs) {
+      for (var i=0, len=this._sibs.length; i<len; i++) {
+        parent.appendChild(this._sibs[i]);
+      }
+    }
+    parent.appendChild(this.el);
+    return this;
+  },
+
+  /**
+   * Called with tagName: create new El as sibling of this El
+   * No argument: traverse to next sibling
+   */
+  sibling: function(arg) {
+    trace("Use newSibling or nextSibling instead of El.sibling()")
+    return arg ? this.newSibling(arg) : this.nextSibling();
+  },
+
+  nextSibling: function() {
+    return this.el.nextSibling ? new El(this.el.nextSibling) : null;
+  },
+
+  newSibling: function(tagName) {
+    var el = this.el,
+        sib = Browser.createElement(tagName),
+        e = new El(sib),
+        par = el.parentNode;
+    if (par) {
+      el.nextSibling ? par.insertBefore(sib, el.nextSibling) : par.appendChild(sib);
+    } else {
+      e._sibs = this._sibs || [];
+      e._sibs.push(el);
+    }
+    return e;
+  },
+
+  /**
+   * Called with tagName: Create new El, append as child to current El
+   * Called with no arg: Traverse to first child.
+   */
+  child: function(arg) {
+    trace("Use El.newChild or El.firstChild instead of El.child()");
+    return arg ? this.newChild(arg) : this.firstChild();
+  },
+
+  firstChild: function() {
+    var ch = this.el.firstChild;
+    while (ch.nodeType != 1) { // skip text nodes
+      ch = ch.nextSibling;
+    }
+    return new El(ch);
+  },
+
+  newChild: function(tagName) {
+    var ch = Browser.createElement(tagName);
+    this.el.appendChild(ch);
+    return new El(ch);
+  },
+
+  // Traverse to parent node
+  //
+  parent: function(sel) {
+    sel && error("El.parent() no longer takes an argument; see findParent()")
+    var p = this.el && this.el.parentNode;
+    return p ? new El(p) : null;
+  },
+
+  findParent: function(tagName) {
+    // error("TODO: use selector instead of tagname")
+    var p = this.el && this.el.parentNode;
+    if (tagName) {
+      tagName = tagName.toUpperCase();
+      while (p && p.tagName != tagName) {
+        p = p.parentNode;
+      }
+    }
+    return p ? new El(p) : null;
+  },
+
+  // Remove all children of this element
+  //
+  empty: function() {
+    this.el.innerHTML = '';
+    return this;
+  }
+
+});
+
+// use DOM handler for certain events
+// TODO: find a better way distinguising DOM events and other events registered on El
+// e.g. different methods
+//
+//El.prototype.__domevents = Utils.arrayToIndex("click,mousedown,mousemove,mouseup".split(','));
+El.prototype.__on = El.prototype.on;
+El.prototype.on = function(type, func, ctx) {
+  if (this.constructor == El) {
+    Browser.on(this.el, type, func, ctx);
+  } else {
+    this.__on.apply(this, arguments);
+  }
+  return this;
+};
+
+El.prototype.__removeEventListener = El.prototype.removeEventListener;
+El.prototype.removeEventListener = function(type, func, ctx) {
+  if (this.constructor == El) {
+    Browser.removeEventListener(this.el, type, func, ctx);
+  } else {
+    this.__removeEventListener.apply(this, arguments);
+  }
+  return this;
+};
+/*  */
+
+var Element = El;
+
+/**
+ * Return ElSet representing children of this El.
+ */
+/*
+El.prototype.children = function() {
+  var set = new ElSet();
+  set._parentNode = this.el;
+  return set;
+};
+*/
+
+/**
+ * Return ElSet representing right-hand siblings of this El.
+ */
+/*
+El.prototype.siblings = function() {
+  var set = new ElSet();
+  set._parentNode = this.el.parentNode;
+  set._siblingNode = this.el;
+  return set;
+};
+*/
+
+
+
+
+function ElementPosition(ref) {
+  var self = this;
+  var el = El(ref);
+  var pageX = 0,
+      pageY = 0,
+      width = 0,
+      height = 0;
+
+  el.on('mouseover', update);
+  window.onorientationchange && Browser.on(window, 'orientationchange', update);
+  Browser.on(window, 'scroll', update);
+  Browser.on(window, 'resize', update);
+
+  // trigger an update, e.g. when map container is resized
+  this.update = function() {
+    update();
+  };
+
+  this.resize = function(w, h) {
+    el.css('width', w).css('height', h);
+    update();
+  };
+
+  this.width = function() { return width };
+  this.height = function() { return height };
+  //this.pageX = function() { return pageX };
+  //this.pageY = function() { return pageY };
+
+  this.position = function() {
+    return {
+      element: el.node(),
+      pageX: pageX,
+      pageY: pageY,
+      width: width,
+      height: height
+    };
+  }
+
+  function update() {
+    var div = el.node();
+    var xy = Browser.getPageXY(div);
+    var w = div.clientWidth,
+        h = div.clientHeight,
+        x = xy.x,
+        y = xy.y;
+
+    var resized = w != width || h != height,
+        moved = x != pageX || y != pageY;
+    if (resized || moved) {
+      pageX = x, pageY = y, width = w, height = h;
+      var pos = self.position();
+      self.dispatchEvent('change', pos);
+      resized && self.dispatchEvent('resize', pos);
+    }
+  }
+
+  update();
+}
+
+Opts.inherit(ElementPosition, EventDispatcher);
 
 
 function Transform() {
@@ -1556,7 +2987,1161 @@ Bounds.prototype.mergeBounds = function(bb) {
 };
 
 
-/* @requires mapshaper-common, mapshaper-geom, bounds, sorting */
+
+var TRANSITION_TIME = 500;
+
+/*
+var Fader = {};
+Fader.fadeIn = function(el, time) {
+  time = time || 300;
+  el.style.WebkitTransition = 'opacity ' + time + 'ms linear';
+  el.style.opacity = '1';
+};
+
+Fader.fadeOut = function(el, time) {
+  time = time || 300;
+  el.style.WebkitTransition = 'opacity ' + time + 'ms linear';
+  el.style.opacity = '0';
+};
+*/
+
+
+Timer.postpone = function(ms, func, ctx) {
+  var callback = func;
+  if (ctx) {
+    callback = function() {
+      func.call(ctx);
+    };
+  }
+  setTimeout(callback, ms);
+};
+
+function Timer() {
+  if (!(this instanceof Timer)) {
+    return new Timer();
+  }
+
+  var _startTime,
+      _prevTime,
+      _count = 0,
+      _times = 0,
+      _duration = 0,
+      _interval = 25, // default 25 = 40 frames per second
+      MIN_INTERVAL = 8,
+      _callback,
+      _timerId = null,
+      _self = this;
+
+  this.busy = function() {
+    return _timerId !== null;
+  };
+
+  this.start = function() {
+    if (_timerId !== null) {
+      this.stop();
+    }
+    _count = 0;
+    _prevTime = _startTime = +new Date;
+    //_timerId = setInterval(handleTimer, _interval);
+    _timerId = setTimeout(handleTimer, _interval);
+    return this; // assumed by FrameCounter, etc
+  };
+
+  this.stop = function() {
+    if (_timerId !== null) {
+      //clearInterval(_timerId);
+      clearTimeout(_timerId);
+      _timerId = null;
+    }
+  };
+
+  this.duration = function(ms) {
+    _duration = ms;
+    return this;
+  };
+
+  this.interval = function(ms) {
+    if (ms == null) {
+      return _interval;
+    }
+    _interval = ms | 0;
+    if (_interval < MIN_INTERVAL) {
+      trace("[Timer.interval()] Resetting to minimum interval:", MIN_INTERVAL);
+      _interval = MIN_INTERVAL;
+    }
+    return this;
+  };
+
+  this.callback = function(f) {
+    _callback = f;
+    return this;
+  };
+
+  this.times = function(i) {
+    _times = i;
+    return this;
+  };
+
+  function handleTimer() {
+    var now = +new Date,
+        interval = now - _prevTime,
+        elapsed = now - _startTime;
+    _count++;
+    if (_duration > 0 && elapsed > duration || _times > 0 && _count > _times) {
+      this.stop();
+      return;
+    }
+    var obj = {elapsed: elapsed, count: _count, time:now, interval:interval, period: _interval};
+    _callback && _callback(obj);
+    _self.dispatchEvent('tick', obj);
+
+    interval = +new Date - _prevTime; // update interval, now that event handlers have run
+    _prevTime = now;
+    var time = interval <= _interval ? 10 : _interval - interval;
+    _timerId = setTimeout(handleTimer, time);
+
+  };
+}
+
+Opts.inherit(Timer, EventDispatcher);
+
+// FrameCounter will make a node script hang...
+// TODO: find better solution: e.g. only run counter when there is an event listener
+if (!Env.inNode) {
+  var FrameCounter = new Timer().interval(25).start();
+}
+
+//
+//
+function TweenTimer(obj) {
+  if (obj) {
+    var tween = new TweenTimer();
+    tween.object = obj;
+    return tween;
+  }
+
+  if (!(this instanceof TweenTimer)) {
+    return new TweenTimer();
+  }
+
+  var _self = this;
+  var _delay = 0; // not implemented
+  var _start;
+  var _busy;
+  var _quickStart = true;
+  var _snap = 0.0005;
+  var _done = false;
+  var _duration;
+  var _method;
+
+  var _src, _dest;
+
+  this.method = function(f) {
+    _method = f;
+    return this;
+  };
+
+  this.snap = function(s) {
+    _snap = s;
+    return this;
+  }
+
+  this.duration = function(ms) {
+    _duration = ms;
+    return this;
+  };
+
+  this.to = function(obj) {
+    _dest = obj;
+    return this;
+  };
+
+  this.from = function(obj) {
+    _src = obj;
+    return this;
+  };
+
+  this.startTimer =
+  this.start = function(ms, method) {
+
+    if (_busy) {
+      _self.stopTimer();
+    }
+
+    _duration = _duration || ms || 300;
+    _method = _method || method || Tween.sineInOut;
+
+    _start = (new Date).getTime();
+    if (_quickStart) {
+      _start -= FrameCounter.interval(); // msPerFrame;
+    }
+
+    _busy = true;
+    FrameCounter.addEventListener('tick', handleTimer, this);
+    return this;
+  }
+
+
+  this.setDelay =
+  this.delay = function(ms) {
+    ms = ms | 0;
+    if (ms > 0 || ms < 10000 ) {
+      _delay = ms;
+    }
+    return this;
+  };
+
+  this.__getData = function(pct) {
+    var obj = {}
+    if (_src && _dest) {
+      Opts.copyAllParams(obj, _src);
+      for (var key in obj) {
+        obj[key] = (1 - pct) * obj[key] + pct * _dest[key];
+      }
+    }
+    return obj;
+  };
+
+  this.busyTweening = this.busy = function() {
+    return _busy;
+  }
+
+  this.stopTimer =
+  this.stop = function() {
+    _busy = false;
+    FrameCounter.removeEventListener('tick', handleTimer, this);
+    _done = false;
+  }
+
+  function handleTimer() {
+
+    if (_busy == false) {
+      _self.stopTimer();
+      return;
+    }
+
+    if (_done) {
+      return;
+    }
+
+    var pct = getCurrentPct();
+
+    if (pct <= 0) { // still in 'delay' period
+      return;
+    }
+
+    if (pct + _snap >= 1) {
+      pct = 1;
+      _done = true;
+    }
+
+    _self.procTween(pct);
+
+    if (!_busy) { // ???
+      _self.stopTimer();
+      return;
+    }
+
+    if (pct == 1. && _done) {
+      _self.stopTimer();
+    }
+  }
+
+
+  function getCurrentPct() {
+    if (_busy == false) {
+      return 1;
+    }
+
+    var now = (new Date()).getTime();
+    var elapsed = now - _start - _delay;
+    if (elapsed < 0) { // negative number = still in delay period
+      return 0;
+    }
+
+    var pct = elapsed / _duration;
+
+    // prevent overflow (tween functions only valid in 0-1 range)
+    if (pct > 1.0) {
+      pct = 1.0;
+    }
+
+    if (_method != null) {
+      pct = _method(pct);
+    }
+    return pct;
+  }
+
+}
+
+Opts.inherit(TweenTimer, EventDispatcher);
+
+TweenTimer.prototype.procTween = function(pct) {
+  var isDone = pct >= 1;
+  var obj = this.__getData(pct);
+  obj.progress = pct;
+  obj.done = isDone;
+  this.dispatchEvent('tick', obj);
+  isDone && this.dispatchEvent('done');
+};
+
+var Tween = TweenTimer;
+
+//
+//
+Tween.quadraticOut = function(n) {
+  return 1 - Math.pow((1 - n), 2);
+};
+
+// starts fast, slows down, ends fast
+//
+Tween.sineInOut = function(n) {
+  n = 0.5 - Math.cos(n * Math.PI) / 2;
+  return n;
+};
+
+// starts slow, speeds up, ends slow
+//
+Tween.inverseSine = function(n) {
+  var n2 = Math.sin(n * Math.PI) / 2;
+  if (n > 0.5) {
+    n2 = 1 - n2;
+  }
+  return n2;
+}
+
+Tween.sineInOutStrong = function(n) {
+  return Tween.sineInOut(Tween.sineInOut(n));
+};
+
+Tween.inOutStrong = function(n) {
+  return Tween.quadraticOut(Tween.sineInOut(n));
+}
+
+
+/**
+ * @constructor
+ */
+function NumberTween(callback) {
+  this.__super__();
+
+  this.start = function(fromVal, toVal, ms, method) {
+    this._from = fromVal;
+    this._to = toVal;
+    this.startTimer(ms, method);
+  }
+
+  this.procTween = function(pct) {
+    var val = this._to * pct + this._from * (1 - pct);
+    callback(val, pct == 1);
+  }
+}
+
+Opts.inherit(NumberTween, TweenTimer);
+
+
+
+
+
+
+
+// @mouse: MouseArea object
+//
+function MouseWheel(mouse) {
+  var self = this,
+      prevWheelTime = 0,
+      currDirection = 0,
+      scrolling = false;
+  init();
+
+  function init() {
+    // reference: http://www.javascriptkit.com/javatutors/onmousewheel.shtml
+    if (window.onmousewheel !== undefined) { // ie, webkit
+      Browser.on(window, 'mousewheel', handleWheel);
+    }
+    else { // firefox
+      Browser.on(window, 'DOMMouseScroll', handleWheel);
+    }
+    FrameCounter.addEventListener('tick', handleTimer, self);
+  }
+
+  function handleTimer(evt) {
+    var sustainTime = 80;
+    var fadeTime = 60;
+    var elapsed = evt.time - prevWheelTime;
+    if (currDirection == 0 || elapsed > sustainTime + fadeTime || !mouse.isOver()) {
+      currDirection = 0;
+      scrolling = false;
+      return;
+    }
+
+    var multiplier = evt.interval / evt.period; // 1;
+    var fadeElapsed = elapsed - sustainTime;
+    if (fadeElapsed > 0) {
+      // Adjust multiplier if the timer fires during 'fade time' (for smoother zooming)
+      multiplier *= Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
+    }
+
+    var obj = mouse.mouseData();
+    obj.direction = currDirection;
+    obj.multiplier = multiplier;
+    if (!scrolling) {
+      self.dispatchEvent('mousewheelstart', obj);
+    }
+    scrolling = true;
+    self.dispatchEvent('mousewheel', obj);
+  }
+
+  function handleWheel(evt) {
+    if (mouse.isOver()) {
+      evt.preventDefault();
+      var direction = 0; // 1 = zoom in / scroll up, -1 = zoom out / scroll down
+      if (evt.wheelDelta) {
+        direction = evt.wheelDelta > 0 ? 1 : -1;
+      }
+      if (evt.detail) {
+        direction = evt.detail > 0 ? -1 : 1;
+      }
+
+      prevWheelTime = +new Date;
+      currDirection = direction;
+    }
+  }
+}
+
+Opts.inherit(MouseWheel, EventDispatcher);
+
+
+
+function MouseArea(element) {
+  var pos = new ElementPosition(element),
+      _areaPos = pos.position(),
+      _self = this,
+      _dragging = false,
+      _isOver = false,
+      _isDown = false,
+      _moveData,
+      _downData;
+
+  pos.on('change', function() {_areaPos = pos.position()});
+
+  if (!Browser.touchEnabled) {
+    Browser.on(document, 'mousemove', onMouseMove);
+    Browser.on(document, 'mousedown', onMouseDown);
+    Browser.on(document, 'mouseup', onMouseUp);
+    Browser.on(element, 'mouseover', onAreaOver);
+    Browser.on(element, 'mouseout', onAreaOut);
+    Browser.on(element, 'mousedown', onAreaDown);
+    Browser.on(element, 'dblclick', onAreaDblClick);
+  }
+
+  function onAreaDown(e) {
+    e.preventDefault(); // prevent text selection cursor on drag
+  }
+
+  function onAreaOver(e) {
+    _isOver = true;
+    _self.dispatchEvent('enter');
+  }
+
+  function onAreaOut(e) {
+    _isOver = false;
+    _self.dispatchEvent('leave');
+  }
+
+  function onMouseUp(e) {
+    _isDown = false;
+    if (_dragging) {
+      _dragging = false;
+      _self.dispatchEvent('dragend');
+    }
+
+    if (_downData) {
+      var obj = procMouseEvent(e),
+          elapsed = obj.time - _downData.time,
+          dx = obj.pageX - _downData.pageX,
+          dy = obj.pageY - _downData.pageY;
+      if (elapsed < 500 && Math.sqrt(dx * dx + dy * dy) < 6) {
+        _self.dispatchEvent('click', obj);
+      }
+    }
+  }
+
+  function onMouseDown(e) {
+    _isDown = true;
+    _downData = _moveData
+  }
+
+  function onMouseMove(e) {
+    _moveData = procMouseEvent(e, _moveData);
+
+    if (!_dragging && _isDown && _downData.hover) {
+      _dragging = true;
+      _self.dispatchEvent('dragstart');
+    }
+
+    if (_dragging) {
+      var obj = {
+        dragX: _moveData.pageX - _downData.pageX,
+        dragY: _moveData.pageY - _downData.pageY
+      };
+      _self.dispatchEvent('drag', Utils.extend(obj, _moveData));
+    }
+  }
+
+  function onAreaDblClick(e) {
+    if (_isOver) _self.dispatchEvent('dblclick', procMouseEvent(e));
+  }
+
+  function procMouseEvent(e, prev) {
+    var pageX = e.pageX,
+        pageY = e.pageY;
+
+    return {
+      time: +new Date,
+      pageX: pageX,
+      pageY: pageY,
+      hover: _isOver,
+      x: pageX - _areaPos.pageX,
+      y: pageY - _areaPos.pageY,
+      dx: prev ? pageX - prev.pageX : 0,
+      dy: prev ? pageY - prev.pageY : 0
+    };
+  }
+
+  this.isOver = function() {
+    return _isOver;
+  }
+
+  this.isDown = function() {
+    return _isDown;
+  }
+
+  this.mouseData = function() {
+    return Utils.extend({}, _moveData);
+  }
+}
+
+Opts.inherit(MouseArea, EventDispatcher);
+
+
+
+
+Utils.findRankByValue = function(arr, value) {
+  if (isNaN(value)) return arr.length;
+  var rank = 1;
+  for (var i=0, n=arr.length; i<n; i++) {
+    if (value > arr[i]) rank++;
+  }
+  return rank;
+}
+
+Utils.findValueByPct = function(arr, pct) {
+  var rank = Math.ceil((1-pct) * (arr.length));
+  return Utils.findValueByRank(arr, rank);
+};
+
+// See http://ndevilla.free.fr/median/median/src/wirth.c
+// Elements of @arr are reordered
+//
+Utils.findValueByRank = function(arr, rank) {
+  if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
+
+  rank = Utils.clamp(rank | 0, 1, arr.length);
+  var k = rank - 1, // conv. rank to array index
+      n = arr.length,
+      l = 0,
+      m = n - 1,
+      i, j, val, tmp;
+
+  while (l < m) {
+    val = arr[k];
+    i = l;
+    j = m;
+    do {
+      while (arr[i] < val) {i++;}
+      while (val < arr[j]) {j--;}
+      if (i <= j) {
+        tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+        i++;
+        j--;
+      }
+    } while (i <= j);
+    if (j < k) l = i;
+    if (k < i) m = j;
+  }
+  return arr[k];
+};
+
+//
+//
+Utils.findMedian = function(arr) {
+  var n = arr.length,
+      rank = Math.floor(n / 2) + 1,
+      median = Utils.findValueByRank(arr, rank);
+  if ((n & 1) == 0) {
+    median = (median + Utils.findValueByRank(arr, rank - 1)) / 2;
+  }
+  return median;
+};
+
+
+
+
+// Wrapper for DataView class for more convenient reading and writing of
+//   binary data; Remembers endianness and read/write position.
+// Has convenience methods for copying from buffers, etc.
+//
+function BinArray(buf, le) {
+  if (Utils.isNumber(buf)) {
+    buf = new ArrayBuffer(buf);
+  } else if (Env.inNode && buf instanceof Buffer == true) {
+    // Since node 0.10, DataView constructor doesn't accept Buffers,
+    //   so need to copy Buffer to ArrayBuffer
+    buf = BinArray.toArrayBuffer(buf);
+  }
+  if (buf instanceof ArrayBuffer == false) {
+    error("BinArray constructor takes an integer, ArrayBuffer or Buffer argument");
+  }
+  this._buffer = buf;
+  this._view = new DataView(buf);
+  this._idx = 0;
+  this._le = le !== false;
+  this._words = buf.byteLength % 4 == 0 ? new Uint32Array(buf) : null;
+}
+
+BinArray.bufferToUintArray = function(buf, wordLen) {
+  if (wordLen == 4) return new Uint32Array(buf);
+  if (wordLen == 2) return new Uint16Array(buf);
+  if (wordLen == 1) return new Uint8Array(buf);
+  error("BinArray.bufferToUintArray() invalid word length:", wordLen)
+};
+
+BinArray.maxCopySize = function(len, i) {
+  return Math.min(len & 1 || len & 2 || 4, i & 1 || i & 2 || 4);
+};
+
+BinArray.toArrayBuffer = function(src) {
+  var dest = new ArrayBuffer(src.length);
+  for (var i = 0, n=src.length; i < n; i++) {
+    dest[i] = src[i];
+  }
+  return dest;
+};
+
+// Return length in bytes of an ArrayBuffer or Buffer
+//
+BinArray.bufferSize = function(buf) {
+  return (buf instanceof ArrayBuffer ?  buf.byteLength : buf.length | 0);
+};
+
+BinArray.buffersAreIdentical = function(a, b) {
+  var alen = BinArray.bufferSize(a);
+  var blen = BinArray.bufferSize(b);
+  if (alen != blen) {
+    return false;
+  }
+  for (var i=0; i<alen; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+};
+
+BinArray.prototype = {
+  size: function() {
+    return this._buffer.byteLength;
+  },
+
+  littleEndian: function() {
+    this._le = true;
+    return this;
+  },
+
+  bigEndian: function() {
+    this._le = false;
+    return this;
+  },
+
+  buffer: function() {
+    return this._buffer;
+  },
+
+  bytesLeft: function() {
+    return this._buffer.byteLength - this._idx;
+  },
+
+  skipBytes: function(bytes) {
+    this._idx += (bytes + 0);
+    return this;
+  },
+
+  readUint8: function() {
+    return this._view.getUint8(this._idx++);
+  },
+
+  readInt8: function() {
+    return this._view.getInt8(this._idx++);
+  },
+
+  readUint16: function() {
+    var val = this._view.getUint16(this._idx, this._le);
+    this._idx += 2;
+    return val;
+  },
+
+  writeUint16: function(val) {
+    this._view.setUint16(this._idx, val, this._le);
+    this._idx += 2;
+    return this;
+  },
+
+  readUint32: function() {
+    var val = this._view.getUint32(this._idx, this._le);
+    this._idx += 4;
+    return val;
+  },
+
+  writeUint32: function(val) {
+    this._view.setUint32(this._idx, val, this._le);
+    this._idx += 4;
+    return this;
+  },
+
+  readInt32: function() {
+    var val = this._view.getInt32(this._idx, this._le);
+    this._idx += 4;
+    return val;
+  },
+
+  writeInt32: function(val) {
+    this._view.setInt32(this._idx, val, this._le);
+    this._idx += 4;
+    return this;
+  },
+
+  readFloat64: function() {
+    var val = this._view.getFloat64(this._idx, this._le);
+    this._idx += 8;
+    return val;
+  },
+
+  writeFloat64: function(val) {
+    this._view.setFloat64(this._idx, val, this._le);
+    this._idx += 8;
+    return this;
+  },
+
+  // Returns a Float64Array containing @len doubles
+  //
+  readFloat64Array: function(len) {
+    var bytes = len * 8,
+        i = this._idx;
+    var arr = i % 8 === 0 ?
+      // Inconsistent: first is a view, second a copy...
+      new Float64Array(this._buffer, i, len) :
+      new Float64Array(this._buffer.slice(i, i + bytes));
+    this._idx += bytes;
+    return arr;
+  },
+
+  readUint32Array: function(len) {
+    var arr = [];
+    for (var i=0; i<len; i++) {
+      arr.push(this.readUint32());
+    }
+    return arr;
+  },
+
+  peek: function() {
+    return this._buffer[this._idx];
+  },
+
+  position: function(i) {
+    if (i != null) {
+      this._idx = i;
+      return this;
+    }
+    return this._idx;
+  },
+
+  readCString: function(fixedLen) {
+    var str = "";
+    var count = 0;
+    while(!fixedLen || count < fixedLen) {
+      var byteVal = this.readUint8();
+      count ++;
+      if (byteVal == 0) {
+        break;
+      }
+      str += String.fromCharCode(byteVal);
+    }
+
+    if (fixedLen && count < fixedLen) {
+      this.skipBytes(fixedLen - count);
+    }
+    return str;
+  },
+
+  writeBuffer: function(buf, bytes, startIdx) {
+    bytes = bytes || BinArray.bufferSize(buf);
+    startIdx = startIdx | 0;
+    if (this.bytesLeft() < bytes)
+      error("Buffer overflow; available bytes:", this.bytesLeft(), "tried to write:", bytes);
+
+    // When possible, copy buffer data in multi-byte chunks... Added this for faster copying of
+    // shapefile data, which is aligned to 32 bits.
+    var wordSize = Math.min(BinArray.maxCopySize(bytes, startIdx), BinArray.maxCopySize(bytes, this._idx)),
+        src = BinArray.bufferToUintArray(buf, wordSize),
+        dest = BinArray.bufferToUintArray(this._buffer, wordSize),
+        count = bytes / wordSize,
+        i = startIdx / wordSize,
+        j = this._idx / wordSize;
+
+    while (count--) {
+      dest[j++] = src[i++];
+    }
+
+    this._idx += bytes;
+    return this;
+  },
+
+  /*
+  // TODO: expand buffer, probably via a public method, not automatically
+  //
+  _grow: function(k) {
+    var fac = k > 1 && k <= 3 ? k : 1.7,
+        srcLen = this.bufferSize(),
+        destLen = Math.round(srcLen * fac),
+        buf = new ArrayBuffer(destLen);
+
+    var src = new Uint8Array(this._buffer),
+        dest = new Uint8Array(buf);
+
+    for (var i=0; i<srcLen; i++) {
+      dest[i] = src[i];
+    }
+
+    this._buffer = buf;
+    this._view = new DataView(buf);
+  },*/
+};
+
+
+
+
+
+
+
+
+// TODO: adapt to run in browser
+function stop(msg) {
+  msg && trace(msg);
+  process.exit(1);
+}
+
+var MapShaper = {};
+
+MapShaper.parseLocalPath = function(path) {
+  var obj = {
+    ext: '',
+    directory: '',
+    filename: '',
+    basename: ''
+  };
+  var parts = path.split('/'),
+      name, i;
+
+  if (parts.length == 1) {
+    name = parts[0];
+  } else {
+    name = parts.pop();
+    obj.directory = parts.join('/');
+  }
+  i = name.lastIndexOf('.');
+  if (i > -1) {
+    obj.ext = name.substr(i);
+    obj.basename = name.substr(0, i);
+  }
+  obj.filename = name;
+  return obj;
+};
+
+
+MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
+  var srcLen = xsrc.length,
+      destLen = xdest.length,
+      prevX = destLen == 0 ? Infinity : xdest[destLen-1],
+      prevY = destLen == 0 ? Infinity : ydest[destLen-1],
+      x, y, inc, startId, stopId;
+
+  if (reversed) {
+    inc = -1;
+    startId = srcLen - 1;
+    stopId = -1;
+  } else {
+    inc = 1;
+    startId = 0;
+    stopId = srcLen;
+  }
+
+  for (var i=startId; i!=stopId; i+=inc) {
+    x = xsrc[i];
+    y = ysrc[i];
+    if (x !== prevX || y !== prevY) {
+      xdest.push(x);
+      ydest.push(y);
+      prevX = x;
+      prevY = y;
+    }
+  }
+};
+
+
+MapShaper.calcXYBounds = function(xx, yy, bb) {
+  if (!bb) bb = new Bounds();
+  var xbounds = Utils.getArrayBounds(xx),
+      ybounds = Utils.getArrayBounds(yy);
+  if (xbounds.nan > 0 || ybounds.nan > 0) error("[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
+  bb.mergePoint(xbounds.min, ybounds.min);
+  bb.mergePoint(xbounds.max, ybounds.max);
+  return bb;
+};
+
+MapShaper.transposeXYCoords = function(arr) {
+  var xx = arr[0],
+      yy = arr[1],
+      points = [];
+  for (var i=0, len=xx.length; i<len; i++) {
+    points.push([xx[i], yy[i]]);
+  }
+  return points;
+};
+
+// Convert a topological shape to a non-topological format
+// (for exporting)
+//
+MapShaper.convertTopoShape = function(shape, arcs, closed) {
+  var parts = [],
+      pointCount = 0,
+      bounds = new Bounds();
+
+  for (var i=0; i<shape.length; i++) {
+    var topoPart = shape[i],
+        xx = [],
+        yy = [];
+    for (var j=0; j<topoPart.length; j++) {
+      var arcId = topoPart[j],
+          reversed = false;
+      if (arcId < 0) {
+        arcId = -1 - arcId;
+        reversed = true;
+      }
+      var arc = arcs[arcId];
+      MapShaper.extendPartCoordinates(xx, yy, arc[0], arc[1], reversed);
+    }
+    var pointsInPart = xx.length,
+        validPart = !closed && pointsInPart > 0 || pointsInPart > 3;
+    // TODO: other validation:
+    // self-intersection test? test rings have non-zero area? rings follow winding rules?
+
+    if (validPart) {
+      parts.push([xx, yy]);
+      pointCount += xx.length;
+      MapShaper.calcXYBounds(xx, yy, bounds);
+    }
+  }
+
+  return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
+};
+
+
+
+
+function distance3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+
+function distanceSq(ax, ay, bx, by) {
+  var dx = ax - bx,
+      dy = ay - by;
+  return dx * dx + dy * dy;
+}
+
+function distance2D(ax, ay, bx, by) {
+  var dx = ax - bx,
+      dy = ay - by;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function distanceSq3D(ax, ay, az, bx, by, bz) {
+  var dx = ax - bx,
+      dy = ay - by,
+      dz = az - bz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+
+// atan2() makes this function fairly slow, replaced by ~2x faster formula
+//
+/*
+function innerAngle_slow(ax, ay, bx, by, cx, cy) {
+  var a1 = Math.atan2(ay - by, ax - bx),
+      a2 = Math.atan2(cy - by, cx - bx),
+      a3 = Math.abs(a1 - a2);
+      a3 = a2 - a1
+  if (a3 > Math.PI) {
+    a3 = 2 * Math.PI - a3;
+  }
+  return a3;
+}
+*/
+
+
+// TODO: make this safe for small angles
+//
+function innerAngle(ax, ay, bx, by, cx, cy) {
+  var ab = distance2D(ax, ay, bx, by),
+      bc = distance2D(bx, by, cx, cy),
+      theta, dotp;
+  if (ab == 0 || bc == 0) {
+    theta = 0;
+  } else {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
+    if (dotp >= 1) {
+      theta = 0;
+    } else if (dotp <= -1) {
+      theta = Math.PI;
+    } else {
+      theta = Math.acos(dotp); // consider using other formula at small dp
+    }
+  }
+  return theta;
+}
+
+
+function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab = distance3D(ax, ay, az, bx, by, bz),
+      bc = distance3D(bx, by, bz, cx, cy, cz),
+      theta, dotp;
+  if (ab == 0 || bc == 0) {
+    theta = 0;
+  } else {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
+    if (dotp >= 1) {
+      theta = 0;
+    } else if (dotp <= -1) {
+      theta = Math.PI;
+    } else {
+      theta = Math.acos(dotp); // consider using other formula at small dp
+    }
+  }
+  return theta;
+}
+
+
+function triangleArea(ax, ay, bx, by, cx, cy) {
+  var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
+  return area;
+}
+
+
+function detSq(ax, ay, bx, by, cx, cy) {
+  var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
+  return det * det;
+}
+
+
+function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
+    detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
+  return area;
+}
+
+
+// Given a triangle with vertices abc, return the distSq of the shortest segment
+//   with one endpoint at b and the other on the line intersecting a and c.
+//   If a and c are coincident, return the distSq between b and a/c
+//
+// Receive the distSq of the triangle's three sides.
+//
+function triangleHeightSq(ab2, bc2, ac2) {
+  var dist2;
+  if (ac2 == 0.0) {
+    dist2 = ab2;
+  } else if (ab2 >= bc2 + ac2) {
+    dist2 = bc2;
+  } else if (bc2 >= ab2 + ac2) {
+    dist2 = ab2;
+  } else {
+    var dval = (ab2 + ac2 - bc2);
+    dist2 = ab2 -  dval * dval / ac2  * 0.25;
+  }
+  if (dist2 < 0.0) {
+    dist2 = 0.0;
+  }
+  return dist2;
+}
+
+
+function msSignedRingArea(xx, yy, start, len) {
+  var sum = 0,
+      start = start | 0,
+      end = start + (len == null ? xx.length - start : len | 0) - 1;
+
+  if (start < 0 || end >= xx.length) {
+    error("Out-of-bounds array index");
+  }
+  for (var i=start; i < end; i++) {
+    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
+  }
+  return sum / 2;
+}
+
+function msRingArea(xx, yy, start, len) {
+  return Math.abs(msSignedRingArea(xx, yy, start, len));
+}
+
+// merge B into A
+function mergeBounds(a, b) {
+  if (b[0] < a[0]) a[0] = b[0];
+  if (b[1] < a[1]) a[1] = b[1];
+  if (b[2] > a[2]) a[2] = b[2];
+  if (b[3] > a[3]) a[3] = b[3];
+}
+
+function containsBounds(a, b) {
+  return a[0] <= b[0] && a[2] >= b[2] && a[1] <= b[1] && a[3] >= b[3];
+}
+
+function boundsArea(b) {
+  return (b[2] - b[0]) * (b[3] - b[1]);
+}
+
+function probablyDecimalDegreeBounds(b) {
+  return containsBounds([-200, -91, 200, 90], b);
+}
+
+// export functions so they can be tested
+MapShaper.geom = {
+  distance3D: distance3D,
+  innerAngle: innerAngle,
+  innerAngle3D: innerAngle3D,
+  triangleArea: triangleArea,
+  triangleArea3D: triangleArea3D,
+  msRingArea: msRingArea,
+  msSignedRingArea: msSignedRingArea,
+  probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
+};
+
+
 
 MapShaper.calcArcBounds = function(xx, yy) {
   var xb = Utils.getArrayBounds(xx),
@@ -2245,1257 +4830,7 @@ function groupMultiShapePaths(shape) {
 };
 
 
-/** @requires core */
 
-function Handler(type, target, callback, listener, priority) {
-  this.type = type;
-  this.callback = callback;
-  this.context = listener || null;
-  this.priority = priority || 0;
-  this.target = target;
-}
-
-Handler.prototype.trigger = function(evt) {
-  if (!evt) {
-    evt = new EventData(this.type);
-    evt.target = this.target;
-  } else if (evt.target != this.target || evt.type != this.type) {
-    error("[Handler] event target/type have changed.");
-  }
-  this.callback.call(this.context, evt);
-}
-
-function EventData(type, target, data) {
-  this.type = type;
-  this.target = target;
-  if (data) {
-    Opts.copyNewParams(this, data);
-    this.data = data;
-  }
-}
-
-EventData.prototype.stopPropagation = function() {
-  this.__stop__ = true;
-};
-
-EventData.prototype.__stop__ = false;
-
-EventData.prototype.toString = function() {
-  var str = 'type:' + this.type + ', target: ' + Utils.strval(this.target);
-  if (this.data) {
-    str += ', data:' + Utils.strval(this.data);
-  }
-  return '[EventData]: {' + str + '}';
-};
-
-/**
- * Base class for objects that dispatch events; public methods:
- *   addEventListener() / on()
- *   removeEventListener()
- *   dispatchEvent() / trigger()
- */
-function EventDispatcher() {}
-
-/**
- * Dispatch an event (i.e. all registered event handlers are called).
- * @param {string} type Name of the event type, e.g. "change".
- * @param {object=} obj Optional data to send with the event.
- */
-EventDispatcher.prototype.dispatchEvent =
-EventDispatcher.prototype.trigger = function(type, obj, ctx) {
-  var evt;
-  // TODO: check for bugs if handlers are removed elsewhere while firing
-  var handlers = this._handlers;
-  if (handlers) {
-    for (var i = 0, len = handlers.length; i < len; i++) {
-      var handler = handlers[i];
-      if (handler.type == type && (!ctx || handler.context == ctx)) {
-        if (!evt) {
-          evt = new EventData(type, this, obj);
-        }
-        else if (evt.__stop__) {
-            break;
-        }
-        handler.trigger(evt);
-      }
-    }
-
-    if (type == 'ready') {
-      this.removeEventListeners(type, null, ctx);
-    }
-  }
-};
-
-
-/**
- * Test whether a type of event has been fired.
- * @param {string} type Event type.
- * @return {boolean} True if event was fired else false.
- */
-/*
-EventDispatcher.prototype.eventHasFired = function(type) {
-  return !!this._firedTypes && this._firedTypes[type] == true;
-};
-*/
-
-/**
- * Register an event handler for a named event.
- * @param {string} type Name of the event.
- * @param {function} callback Event handler, called with BoundEvent argument.
- * @param {*} context Execution context of the event handler.
- * @param {number} priority Priority of the event; defaults to 0.
- * removed * @return True if handler added, else false.
- */
-EventDispatcher.prototype.addEventListener =
-EventDispatcher.prototype.on = function(type, callback, context, priority) {
-  context = context || this;
-  priority = priority || 0;
-  var handler = new Handler(type, this, callback, context, priority);
-
-  // Special case: 'ready' handler fires immediately if target is already ready.
-  // (Applicable to Waiter class objects)
-  if (type == 'ready' && this._ready) {
-    // trace("Warning: Waiter.waitFor() no longer uses this; this:", this, "handler ctx:", context);
-    handler.trigger();
-    return this;
-  }
-
-  // Insert the new event in the array of handlers according to its priority.
-  //
-  var handlers = this._handlers || (this._handlers = []);
-  var i = handlers.length;
-  while(--i >= 0 && handlers[i].priority > handler.priority) {}
-  handlers.splice(i+1, 0, handler);
-  return this;
-};
-
-
-EventDispatcher.prototype.countEventListeners = function(type) {
-  var handlers = this._handlers,
-    len = handlers && handlers.length || 0,
-    count = 0;
-  if (!type) return len;
-  for (var i = 0; i < len; i++) {
-    if (handlers[i].type === type) count++;
-  }
-  return count;
-};
-
-/**
- * Remove an event handler.
- * @param {string} type Event type to match.
- * @param {function(BoundEvent)} callback Event handler function to match.
- * @param {*=} context Execution context of the event handler to match.
- * @return {number} Returns number of handlers removed (expect 0 or 1).
- */
-EventDispatcher.prototype.removeEventListener =
-  function(type, callback, context) {
-  // using "this" if called w/o context (see addEventListener())
-  context = context || this;
-  return this.removeEventListeners(type, callback, context);
-};
-
-/**
- * Remove event handlers that match function arguments.
- * @param {string=} type Event type to match.
- * @param {function(BoundEvent)=} callback Event handler function to match.
- * @param {*=} context Execution context of the event handler to match.
- * @return {number} Number of handlers removed.
- */
-EventDispatcher.prototype.removeEventListeners =
-  function(type, callback, context) {
-  var handlers = this._handlers;
-  var newArr = [];
-  var count = 0;
-  for (var i = 0; handlers && i < handlers.length; i++) {
-    var evt = handlers[i];
-    if ((!type || type == evt.type) &&
-      (!callback || callback == evt.callback) &&
-      (!context || context == evt.context)) {
-      count += 1;
-    }
-    else {
-      newArr.push(evt);
-    }
-  }
-  this._handlers = newArr;
-  return count;
-};
-
-
-/**
- * Support for handling asynchronous dependencies.
- * Waiter becomes READY and fires 'ready' after any/all dependents are READY.
- * Instantiate directly or use as a base class.
- * Public interface:
- *   waitFor()
- *   startWaiting()
- *   isReady()
- *
- */
-function Waiter() {}
-Opts.inherit(Waiter, EventDispatcher);
-
-/**
- * Test whether all dependencies are complete, enter ready state if yes.
- */
-Waiter.prototype._testReady = function() {
-  if (!this._ready && !this._waitCount && this._started) {
-    this._ready = true;
-
-    // Child classes can implement handleReadyState()
-    this.handleReadyState && this.handleReadyState();
-    this.dispatchEvent('ready');
-  }
-};
-
-
-/* */
-Waiter.prototype.callWhenReady = function(func, args, ctx, priority) {
-  this.addEventListener('ready', function(evt) {func.apply(ctx, args);}, ctx, priority);
-};
-
-
-/**
- * Event handler, fired when dependent is ready.
- * @param {BoundEvent} evt Event object.
- */
-Waiter.prototype._handleDependentReady = function(evt) {
-  if (! this._waitCount) {
-    trace('[Waiter.onDependendReady()]',
-    'Counting error. Event: ' + Utils.strval(evt) + '; ready? ' + this._ready);
-    return;
-  }
-  this._waitCount -= 1;
-  this._testReady();
-};
-
-
-/**
- * Checks if Waiter-enabled object is READY.
- * @return {boolean} True if READY event has fired, else false.
- */
-Waiter.prototype.isReady = function() {
-  return this._ready == true;
-};
-
-/**
- * Wait for a dependent object to become READY.
- * @param {*} obj Class object that implements EventDispatcher.
- * @param {string=} type Event to wait for (optional -- default is 'ready').
- */
-Waiter.prototype.waitFor = function(dep, type) {
-  if (!dep) {
-    trace("[Waiter.waitFor()] missing object; this:", this);
-    return this;
-  }
-  else if (!dep.addEventListener) {
-    trace("[Waiter.waitFor()] Need an EventDispatcher; this:", this);
-    return this;
-  }
-
-  if (!type) {
-    type = 'ready';
-  }
-
-  // Case: .waitFor() called after this.isReady() becomes true
-  if (this._ready) {
-    // If object is already READY, ignore....
-    if (type == 'ready' && dep.isReady()) {
-      return;
-    }
-    trace("[Waiter.waitFor()] already READY; resetting to isReady() == false;");
-    this._ready = false;
-    // return this;
-    // TODO: prepare test cases to check for logic errors.
-  }
-
-  if (type != 'ready'  || dep.isReady() == false) {
-    this._waitCount = this._waitCount ? this._waitCount + 1 : 1;
-    dep.addEventListener(type, this._handleDependentReady, this);
-  }
-
-  return this;
-};
-
-/**
- * Start waiting for any dependents to become ready.
- * Should be called after all waitFor() calls.
- */
-Waiter.prototype.startWaiting = function(callback, ctx) {
-  // KLUDGE: callback may be an BoundEvent if startWaiting is used as an event handler.
-  typeof(callback) == 'function' && this.addEventListener('ready', callback, ctx);
-  this._started = true;
-  this._testReady();
-  return this; // for chaining
-};
-
-
-
-/* @requires events, core */
-
-var pageEvents = (new function() {
-  var useAttachEvent = typeof window != 'undefined' && !!window.attachEvent && !window.addEventListener,
-      index = {};
-
-  function __getNodeListeners(el) {
-    var id = __getNodeKey(el);
-    var listeners = index[id] || (index[id] = []);
-    return listeners;
-  }
-
-  function __removeDOMListener(el, type, func) {
-    if (useAttachEvent) {
-      el.detachEvent('on' + type, func);
-    }
-    else {
-      el.removeEventListener(type, func, false);
-    }
-  }
-
-  function __findNodeListener(listeners, type, func, ctx) {
-    for (var i=0, len = listeners.length; i < len; i++) {
-      var evt = listeners[i];
-      if (evt.type == type && evt.callback == func && evt.context == ctx) {
-        return i;
-      }
-    }
-    return -1;
-  };
-
-  function __getNodeKey(el) {
-    if (!el) {
-      return '';
-    } else if (el == window) {
-      return '#';
-    }
-    return el.__evtid__ || (el.__evtid__ = Utils.getUniqueName());
-  }
-
-  this.addEventListener = function(el, type, func, ctx) {
-    if (Utils.isString(el)) { // if el is a string, treat as id
-      el = Browser.getElement(el);
-    }
-    if (el === window && 'mousemove,mousedown,mouseup,mouseover,mouseout'.indexOf(type) != -1) {
-      trace("[Browser.addEventListener()] In ie8-, window doesn't support mouse events");
-    }
-    var listeners = __getNodeListeners(el);
-    if (listeners.length > 0) {
-      if (__findNodeListener(listeners, type, func, ctx) != -1) {
-        return;
-      }
-    }
-
-    //var evt = new BoundEvent(type, el, func, ctx);
-    var evt = new Handler(type, el, func, ctx);
-    var handler = function(e) {
-      // ie8 uses evt argument and window.event (different objects), no evt.pageX
-      // chrome uses evt arg. and window.event (same obj), has evt.pageX
-      // firefox uses evt arg, window.event === undefined, has evt.pageX
-      // touch events
-      /// if (!e || !(e.pageX || e.touches)) {
-      if (!e || Browser.ieVersion <= 8) {
-        var evt = e || window.event;
-        e = {
-          target : evt.srcElement,
-          relatedTarget : type == 'mouseout' && evt.toElement || type == 'mouseover' && evt.fromElement || null,
-          currentTarget : el
-        };
-
-        if (evt.clientX !== void 0) {
-          // http://www.javascriptkit.com/jsref/event.shtml
-          // pageX: window.pageXOffset+e.clientX
-          // pageY: window.pageYOffset+e.clientY
-          e.pageX = evt.pageX || evt.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
-          e.pageY = evt.pageY || evt.clientY + document.body.scrollTop + document.documentElement.scrollTop;
-        }
-        // TODO: add other event properties && methods, e.g. preventDefault, stopPropagation, etc.
-      }
-
-      // Ignoring mouseover and mouseout events between child elements
-      if (type == 'mouseover' || type == 'mouseout') {
-
-        var rel = e.relatedTarget;
-        while (rel && rel != el && rel.nodeName != 'BODY') {
-          rel = rel.parentNode;
-        }
-        if (rel == el) {
-          return;
-        }
-        if (el == window && e.relatedTarget != null) {
-          return;
-        }
-      }
-
-      var retn = func.call(ctx, e);
-      if (retn === false) {
-        trace("[Browser] Event handler blocking event:", type);
-        e.preventDefault && e.preventDefault();
-      }
-      return retn;
-    };
-    evt.handler = handler;
-
-    // handle window load if already loaded
-    // TODO: test this
-    if (el == window && type == 'load' && document.readyState == 'complete') {
-      evt.trigger();
-      return;
-    }
-
-    listeners.push(evt);
-
-    if (useAttachEvent) {
-      el.attachEvent('on' + type, handler);
-    }
-    else {
-      el.addEventListener(type, handler, false);
-    }
-  };
-
-  this.removeEventListener = function(el, type, func, ctx) {
-    var listeners = __getNodeListeners(el);
-    var idx = __findNodeListener(listeners, type, func, ctx);
-    if (idx == -1) {
-      return;
-    }
-    var evt = listeners[idx];
-    __removeDOMListener(el, type, evt.handler);
-    listeners.splice(idx, 1);
-  };
-});
-
-
-/** @requires events, core, page-events */
-
-
-var Browser = {
-
-  getIEVersion: function() {
-    return this.ieVersion;
-  },
-
-  traceEnabled: function() {
-    var debug = Browser.getQueryVar('debug');
-    if (Env.inBrowser && (debug == null || debug == "false")) {
-      return false;
-    }
-    return true;
-  },
-
-  /*getPageWidth : function() {
-   return document.documentElement.clientWidth || document.body.clientWidth;
-  },*/
-
-  getViewportWidth : function() {
-    return document.documentElement.clientWidth;
-  },
-
-  getViewportHeight : function() {
-    return document.documentElement.clientHeight;
-  },
-
-  createElement : function(type, css, classes) {
-    try {
-      var el = document.createElement(type);
-    }
-    catch (err) {
-      trace("[Browser.createElement()] Error creating element of type:", type);
-      return null;
-    }
-
-    if (type.toLowerCase() == 'canvas' && window.CanvasSwf) {
-      CanvasSwf.initElement(el);
-    }
-
-    if (css) {
-      el.style.cssText = css;
-    }
-
-    if (classes) {
-      el.className = classes;
-    }
-    return el;
-  },
-
-  /**
-   * Return: HTML node reference or null
-   * Receive: node reference or id or "#" + id
-   */
-  getElement : function(ref) {
-    var el;
-    if (typeof ref == 'string') {
-      if (ref.charAt(0) == '#') {
-        ref = ref.substr(1);
-      }
-      if (ref == 'body') {
-        el = document.getElementsByTagName('body')[0];
-      }
-      else {
-        el = document.getElementById(ref);
-      }
-    }
-    else if (ref && ref.nodeType !== void 0) {
-      el = ref;
-    }
-    return el || null;
-  },
-
-  removeElement : function(el) {
-    el && el.parentNode && el.parentNode.removeChild(el);
-  },
-
-  getElementStyle: function(el) {
-    return el.currentStyle || window.getComputedStyle && window.getComputedStyle(el, '') || {};
-  },
-
-  elementIsFixed : function(el) {
-    // get top-level offsetParent that isn't body (cf. Firefox)
-    var body = document.body;
-    while (el && el != body) {
-      var parent = el;
-      el = el.offsetParent;
-    }
-
-    // Look for position:fixed in the computed style of the top offsetParent.
-    // var styleObj = parent && (parent.currentStyle || window.getComputedStyle && window.getComputedStyle(parent, '')) || {};
-    var styleObj = parent && Browser.getElementStyle(parent) || {};
-    return styleObj['position'] == 'fixed';
-  },
-
-  getElementFromPageXY : function(x, y) {
-    var viewX = this.pageXToViewportX(x);
-    var viewY = this.pageYToViewportY(y);
-    return document.elementFromPoint(viewX, viewY);
-  },
-
-  getPageXY : function(el) {
-    var x = 0, y = 0;
-    if (el.getBoundingClientRect) {
-      var box = el.getBoundingClientRect();
-      x = box.left - Browser.pageXToViewportX(0);
-      y = box.top - Browser.pageYToViewportY(0);
-      //trace("[] box.left:", box.left, "box.top:", box.top);
-    }
-    else {
-      var fixed = Browser.elementIsFixed(el);
-
-      while (el) {
-        x += el.offsetLeft || 0;
-        y += el.offsetTop || 0;
-        //Utils.trace("[el] id:", el.id, "class:", el.className, "el:", el, "offsLeft:", el.offsetLeft, "offsTop:", el.offsetTop);
-        el = el.offsetParent;
-      }
-
-      if (fixed) {
-        var offsX = -Browser.pageXToViewportX(0);
-        var offsY = -Browser.pageYToViewportY(0);
-        //Utils.trace("[fixed]; offsX:", offsX, "offsY:", offsY, "x:", x, "y:", y);
-        x += offsX;
-        y += offsY;
-      }
-    }
-
-    var obj = {x:x, y:y};
-    return obj;
-  },
-
-  // reference: http://stackoverflow.com/questions/871399/cross-browser-method-for-detecting-the-scrolltop-of-the-browser-window
-  __getIEPageElement : function() {
-    var d = document.documentElement;
-    return d.clientHeight ? d : document.body;
-  },
-
-  pageXToViewportX : function(x) {
-    var xOffs = window.pageXOffset;
-    if (xOffs === undefined) {
-      xOffs = Browser.__getIEPageElement().scrollLeft;
-    }
-    return x - xOffs;
-  },
-
-  pageYToViewportY : function(y) {
-    var yOffs = window.pageYOffset;
-    if (yOffs === undefined) {
-      yOffs = Browser.__getIEPageElement().scrollTop;
-    }
-    return y - yOffs;
-  },
-
-  /**
-   *  Add a DOM event handler.
-   */
-  addEventListener: pageEvents.addEventListener,
-  on: pageEvents.addEventListener,
-
-  /**
-   *  Remove a DOM event handler.
-   */
-  removeEventListener: pageEvents.removeEventListener,
-
-  getPageUrl : function() {
-    return Browser.inNode ? "" : window.location.href.toString();
-  },
-
-  getQueryString : function(url) {
-    var match = /^[^?]+\?([^#]*)/.exec(url);
-    return match && match[1] || "";
-  },
-
-  /**
-   *  Add a query variable to circumvent browser caching.
-   *  Value is calculated from UTC minutes, so the server does not see a large
-   *  number of different values.
-   */
-  cacheBustUrl : function(url, minutes) {
-    minutes = minutes || 1; // default: 60 seconds
-    var minPerWeek = 60*24*7;
-    var utcMinutes = (+new Date) / 60000;
-    var code = Math.round((utcMinutes % minPerWeek) / minutes);
-    url = Browser.extendUrl(url, "c=" + code);
-    return url;
-  },
-
-  extendUrl : function(url, obj) {
-    var extended = url + (url.indexOf("?") == -1 ? "?" : "&");
-    if (Utils.isString(obj)) {
-      extended += obj;
-    } else if (Utils.isObject(obj)) {
-      var parts = [];
-      Utils.forEach(obj, function(val, key) {
-        parts.push(encodeURIComponent(key) + "=" + encodeURIComponent(val));
-      });
-      extended += parts.join('&');
-    } else {
-      error("Argument must be string or object");
-    }
-    return extended;
-  },
-
-  parseUrl : Utils.parseUrl,
-  /**
-   * Return query-string (GET) data as an object.
-   */
-  getQueryVars : function() {
-    var matches, rxp = /([^=&]+)=?([^&]*)/g,
-      q = this.getQueryString(this.getPageUrl()),
-      vars = {};
-    while (matches = rxp.exec(q)) {
-      //vars[matches[1]] = unescape(matches[2]);
-      // TODO: decode keys?
-      vars[matches[1]] = decodeURIComponent(matches[2]);
-    }
-    return vars;
-  },
-
-  getQueryVar : function(name) {
-    return Browser.getQueryVars()[name];
-  },
-
-
-  /**
-   * TODO: memoize?
-   */
-  getClassNameRxp : function(cname) {
-    return new RegExp("(^|\\s)" + cname + "(\\s|$)");
-  },
-
-  hasClass : function(el, cname) {
-    var rxp = this.getClassNameRxp(cname);
-    return el && rxp.test(el.className);
-  },
-
-  addClass : function(el, cname) {
-    var classes = el.className;
-    if (!classes) {
-      classes = cname;
-    }
-    else if (!this.hasClass(el, cname)) {
-      classes = classes + ' ' + cname;
-    }
-    el.className = classes;
-  },
-
-  removeClass : function(el, cname) {
-    var rxp = this.getClassNameRxp(cname);
-    el.className = el.className.replace(rxp, "$2");
-  },
-
-  replaceClass : function(el, c1, c2) {
-    var r1 = this.getClassNameRxp(c1);
-    el.className = el.className.replace(r1, '$1' + c2 + '$2');
-  },
-
-  mergeCSS : function(s1, s2) {
-    var div = this._cssdiv;
-    if (!div) {
-      div = this._cssdiv = Browser.createElement('div');
-    }
-    div.style.cssText = s1 + ";" + s2; // extra ';' for ie, which may leave off final ';'
-    return div.style.cssText;
-  },
-
-  addCSS : function(el, css) {
-    el.style.cssText = Browser.mergeCSS(el.style.cssText, css);
-  },
-
-  unselectable : function(el) {
-    var noSel = "-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-moz-user-focus:ignore;-o-user-select:none;user-select: none;";
-    noSel += "-webkit-tap-highlight-color: rgba(0,0,0,0);"
-    //div.style.cssText = Browser.mergeCSS(div.style.cssText, noSel);
-    Browser.addCSS(el, noSel);
-    el.onselectstart = function(e){
-      e && e.preventDefault();
-      return false;
-    };
-  },
-
-  undraggable : function(el) {
-    el.ondragstart = function(){return false;};
-    el.draggable = false;
-  },
-
-  /**
-   *  Loads a css file and applies it to the current page.
-   */
-  loadStylesheet : function(cssUrl) {
-    var link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.type = "text/css";
-    link.href = cssUrl;
-    Browser.appendToHead(link);
-  },
-
-  appendToHead : function(el) {
-    var head = document.getElementsByTagName("head")[0];
-    head.appendChild(el);
-  },
-
-  /**
-   * TODO: Option to supply a "target" attribute for opening in another window.
-   */
-  //navigateToURL : function(url) {
-  navigateTo : function(url) {
-    window.location.href = url;
-  }
-
-};
-
-Browser.onload = function(handler, ctx) {
-  Browser.on(window, 'load', handler, ctx); // handles case when page is already loaded.
-};
-
-// Add environment information to Browser
-//
-Opts.copyAllParams(Browser, Env);
-
-
-/*
-@requires
-events
-arrayutils
-browser
-*/
-
-var classSelectorRE = /^\.([\w-]+)$/,
-    idSelectorRE = /^#([\w-]+)$/,
-    tagSelectorRE = /^[\w-]+$/,
-    tagOrIdSelectorRE = /^#?[\w-]+$/;
-
-function Elements(sel) {
-  if ((this instanceof Elements) == false) {
-    return new Elements(sel);
-  }
-  this.elements = [];
-  this.select(sel);
-  this.tmp = new El();
-}
-
-Elements.prototype = {
-  size: function() {
-    return this.elements.length;
-  },
-
-  select: function(sel) {
-    this.elements = Elements.__select(sel);
-    return this;
-  },
-
-  addClass: function(className) {
-    this.forEach(function(el) { el.addClass(className); });
-    return this;
-  },
-
-  removeClass: function(className) {
-    this.forEach(function(el) { el.removeClass(className); })
-    return this;
-  },
-
-  forEach: function(callback, ctx) {
-    var tmp = this.tmp;
-    for (var i=0, len=this.elements.length; i<len; i++) {
-      tmp.el = this.elements[i];
-      callback.call(ctx, tmp, i);
-    }
-    return this;
-  }
-};
-
-Elements.__select = function(selector, root) {
-  root = root || document;
-  var els;
-  if (classSelectorRE.test(selector)) {
-    els = Elements.__getElementsByClassName(RegExp.$1, root);
-  }
-  else if (tagSelectorRE.test(selector)) {
-    els = root.getElementsByTagName(selector);
-  }
-  else if (document.querySelectorAll) {
-    try {
-      els = root.querySelectorAll(selector)
-    } catch (e) {
-      error("Invalid selector:", selector);
-    }
-  }
-  else if (Browser.ieVersion() < 8) {
-    els = Elements.__ie7QSA(selector, root);
-  } else {
-    error("This browser doesn't support CSS query selectors");
-  }
-  //return Array.prototype.slice.call(els);
-  return Utils.toArray(els);
-}
-
-Elements.__getElementsByClassName = function(cname, node) {
-  if (node.getElementsByClassName) {
-    return node.getElementsByClassName(cname);
-  }
-  var a = [];
-  var re = new RegExp('(^| )'+cname+'( |$)');
-  var els = node.getElementsByTagName("*");
-  for (var i=0, j=els.length; i<j; i++)
-    if (re.test(els[i].className)) a.push(els[i]);
-  return a;
-};
-
-Elements.__ie7QSA = function(selector, root) {
-  var styleTag = Browser.createElement('STYLE');
-  Browser.appendToHead(styleTag);
-  document.__qsaels = [];
-  styleTag.styleSheet.cssText = selector + "{x:expression(document.__qsaels.push(this))}";
-  window.scrollBy(0, 0);
-  var els = document.__qsaels;
-  Browser.removeElement(styleTag);
-
-  if (root != document) {
-    els = Utils.filter(els, function(node) {
-      while (node && node != root) {
-        node = node.parentNode;
-      }
-      return !!node;
-    });
-  }
-  return els;
-};
-
-// Converts dash-separated names (e.g. background-color) to camelCase (e.g. backgroundColor)
-// Doesn't change names that are already camelCase
-//
-El.toCamelCase = function(str) {
-  var cc = str.replace(/-([a-z])/g, function (g) { return g[1].toUpperCase() });
-  return cc;
-};
-
-El.fromCamelCase = function(str) {
-  var dashed = str.replace(/([A-Z])/g, "-$1").toLowerCase();
-  return dashed;
-};
-
-El.setStyle = function(el, name, val) {
-  var jsName = Element.toCamelCase(name);
-  if (el.style[jsName] == void 0) {
-    trace("[Element.setStyle()] css property:", jsName);
-    return;
-  }
-  var cssVal = val;
-  if (isFinite(val)) {
-    cssVal = String(val); // problem if converted to scientific notation
-    if (jsName != 'opacity' && jsName != 'zIndex') {
-      cssVal += "px";
-    }
-  }
-  el.style[jsName] = cssVal;
-}
-
-El.findAll = function(sel, root) {
-  return Elements.__select(sel, root);
-};
-
-function El(ref) {
-  if (!ref) error("Element() needs a reference");
-  if (ref instanceof El) {
-    return ref;
-  }
-  else if (!(this instanceof El)) {
-    return new El(ref);
-  }
-
-  // use Elements selector on classes or complex selectors
-  //
-  if (Utils.isString(ref) && !tagOrIdSelectorRE.test(ref)) {
-    //var node = Elements.__super__(ref)[0];
-    var node = Elements.__select(ref)[0];
-    if (!node) error("Unmatched selector:", ref);
-    ref = node;
-  }
-
-  this.el = Browser.getElement(ref) || Browser.createElement(ref); // TODO: detect type of argument
-}
-
-Opts.inherit(El, EventDispatcher); //
-
-El.removeAll = function(sel) {
-  var arr = Elements.__select(sel);
-  Utils.forEach(arr, function(el) {
-    El(el).remove();
-  });
-};
-
-Utils.extend(El.prototype, {
-
-  clone: function() {
-    var el = this.el.cloneNode(true);
-    if (el.nodeName == 'SCRIPT') {
-      // Assume scripts are templates and convert to divs, so children
-      //    can
-      el = El('div').addClass(el.className).html(el.innerHTML).node();
-    }
-    el.id = Utils.getUniqueName();
-    this.el = el;
-    return this;
-  },
-
-  node: function() {
-    return this.el;
-  },
-
-  width: function() {
-   return this.el.offsetWidth;
-  },
-
-  height: function() {
-    return this.el.offsetHeight;
-  },
-
-  // Apply inline css styles to this Element, either as string or object.
-  //
-  css: function(css, val) {
-    if (val != null) {
-      El.setStyle(this.el, css, val);
-    }
-    else if (Utils.isString(css)) {
-      Browser.addCSS(this.el, css);
-    }
-    else if (Utils.isObject(css)) {
-      Utils.forEach(css, function(val, key) {
-        El.setStyle(this.el, key, val);
-      })
-    }
-    return this;
-  },
-
-  attr: function(obj, value) {
-    if (Utils.isString(obj)) {
-      if (arguments.length == 1) {
-        return this.el.getAttribute(obj);
-      }
-      this.el[obj] = value;
-    }
-    else if (!value) {
-      Opts.copyAllParams(this.el, obj);
-    }
-    return this;
-  },
-
-  appendChild: function(el) {
-    this.el.appendChild(el.el || el);
-    return this;
-  },
-
-  remove: function(sel) {
-    this.el.parentNode && this.el.parentNode.removeChild(this.el);
-    return this;
-  },
-
-  removeRight: function() {
-    var right;
-    trace(">>> removeRight()")
-    while (right = this.nextSibling()) {
-      trace("removing a sibling:", right.el);
-      right.remove();
-    }
-    return this;
-  },
-
-  // TODO: destroy() // removes from dom, removes event listeners
-
-  addClass: function(className) {
-    Browser.addClass(this.el, className);
-    return this;
-  },
-
-  removeClass: function(className) {
-    Browser.removeClass(this.el, className);
-    return this;
-  },
-
-  hasClass: function(className) {
-    return Browser.hasClass(this.el, className);
-  },
-
-  toggleClass: function(cname) {
-    if (this.hasClass(cname)) {
-      this.removeClass(cname);
-    } else {
-      this.addClass(cname);
-    }
-  },
-
-  computedStyle: function() {
-    return Browser.getElementStyle(this.el);
-  },
-
-  visible: function() {
-    if (this._hidden != null) {
-      return !this._hidden;
-    }
-    var style = this.computedStyle();
-    return style.display != 'none' && style.visibility != 'hidden';
-  },
-
-  showCSS: function(css) {
-    if (!css) {
-      return this._showCSS || "display:block;";
-    }
-    this._showCSS = css;
-    return this;
-  },
-
-  hideCSS: function(css) {
-    if (!css) {
-      return this._hideCSS || "display:none;";
-    }
-    this._hideCSS = css;
-    return this;
-  },
-
-  hide: function() {
-    if (this.visible()) {
-      // var styles = Browser.getElementStyle(this.el);
-      // this._display = styles.display;
-      this.css(this.hideCSS());
-      this._hidden = true;
-    }
-    return this;
-  },
-
-  show: function(display) {
-    /*
-    this.css("display", display || this._display || 'block');
-    */
-    if (!this.visible()) {
-      this.css(this.showCSS());
-      this._hidden = false;
-    }
-    return this;
-  },
-
-  init: function(callback) {
-    if (!this.el['data-el-init']) {
-      callback(this);
-      this.el['data-el-init'] = true;
-    }
-    return this;
-  },
-
-  html: function(html) {
-    if (arguments.length == 0) {
-      return this.el.innerHTML;
-    } else {
-      this.el.innerHTML = html;
-      return this;
-    }
-  },
-
-  text: function(obj) {
-    if (Utils.isArray(obj)) {
-      for (var i=0, el = this; i<obj.length && el; el=el.sibling(), i++) {
-        el.text(obj[i]);
-      }
-    } else {
-      this.html(obj);
-    }
-    return this;
-  },
-
-  // Shorthand for attr('id', <name>)
-  id: function(id) {
-    if (id) {
-      this.el.id = id;
-      return this;
-    }
-    return this.el.id;
-  },
-
-  findChild: function(sel) {
-    var node = Elements.__select(sel, this.el)[0];
-    if (!node) error("Unmatched selector:", sel);
-    return new El(node);
-  },
-
-  appendTo: function(ref) {
-    var parent = ref instanceof El ? ref.el : Browser.getElement(ref);
-    if (this._sibs) {
-      for (var i=0, len=this._sibs.length; i<len; i++) {
-        parent.appendChild(this._sibs[i]);
-      }
-    }
-    parent.appendChild(this.el);
-    return this;
-  },
-
-  /**
-   * Called with tagName: create new El as sibling of this El
-   * No argument: traverse to next sibling
-   */
-  sibling: function(arg) {
-    trace("Use newSibling or nextSibling instead of El.sibling()")
-    return arg ? this.newSibling(arg) : this.nextSibling();
-  },
-
-  nextSibling: function() {
-    return this.el.nextSibling ? new El(this.el.nextSibling) : null;
-  },
-
-  newSibling: function(tagName) {
-    var el = this.el,
-        sib = Browser.createElement(tagName),
-        e = new El(sib),
-        par = el.parentNode;
-    if (par) {
-      el.nextSibling ? par.insertBefore(sib, el.nextSibling) : par.appendChild(sib);
-    } else {
-      e._sibs = this._sibs || [];
-      e._sibs.push(el);
-    }
-    return e;
-  },
-
-  /**
-   * Called with tagName: Create new El, append as child to current El
-   * Called with no arg: Traverse to first child.
-   */
-  child: function(arg) {
-    trace("Use El.newChild or El.firstChild instead of El.child()");
-    return arg ? this.newChild(arg) : this.firstChild();
-  },
-
-  firstChild: function() {
-    var ch = this.el.firstChild;
-    while (ch.nodeType != 1) { // skip text nodes
-      ch = ch.nextSibling;
-    }
-    return new El(ch);
-  },
-
-  newChild: function(tagName) {
-    var ch = Browser.createElement(tagName);
-    this.el.appendChild(ch);
-    return new El(ch);
-  },
-
-  // Traverse to parent node
-  //
-  parent: function(sel) {
-    sel && error("El.parent() no longer takes an argument; see findParent()")
-    var p = this.el && this.el.parentNode;
-    return p ? new El(p) : null;
-  },
-
-  findParent: function(tagName) {
-    // error("TODO: use selector instead of tagname")
-    var p = this.el && this.el.parentNode;
-    if (tagName) {
-      tagName = tagName.toUpperCase();
-      while (p && p.tagName != tagName) {
-        p = p.parentNode;
-      }
-    }
-    return p ? new El(p) : null;
-  },
-
-  // Remove all children of this element
-  //
-  empty: function() {
-    this.el.innerHTML = '';
-    return this;
-  }
-
-});
-
-// use DOM handler for certain events
-// TODO: find a better way distinguising DOM events and other events registered on El
-// e.g. different methods
-//
-//El.prototype.__domevents = Utils.arrayToIndex("click,mousedown,mousemove,mouseup".split(','));
-El.prototype.__on = El.prototype.on;
-El.prototype.on = function(type, func, ctx) {
-  if (this.constructor == El) {
-    Browser.on(this.el, type, func, ctx);
-  } else {
-    this.__on.apply(this, arguments);
-  }
-  return this;
-};
-
-El.prototype.__removeEventListener = El.prototype.removeEventListener;
-El.prototype.removeEventListener = function(type, func, ctx) {
-  if (this.constructor == El) {
-    Browser.removeEventListener(this.el, type, func, ctx);
-  } else {
-    this.__removeEventListener.apply(this, arguments);
-  }
-  return this;
-};
-/*  */
-
-var Element = El;
-
-/**
- * Return ElSet representing children of this El.
- */
-/*
-El.prototype.children = function() {
-  var set = new ElSet();
-  set._parentNode = this.el;
-  return set;
-};
-*/
-
-/**
- * Return ElSet representing right-hand siblings of this El.
- */
-/*
-El.prototype.siblings = function() {
-  var set = new ElSet();
-  set._parentNode = this.el.parentNode;
-  set._siblingNode = this.el;
-  return set;
-};
-*/
-
-
-/* @requires elements, events, browser, mapshaper-common */
 
 function draggable(ref) {
   var xdown, ydown;
@@ -3729,309 +5064,7 @@ function FileChooser(el) {
 Opts.inherit(FileChooser, EventDispatcher);
 
 
-/* @requires core */
 
-Utils.leftPad = function(str, size, pad) {
-  pad = pad || ' ';
-  str = String(str);
-  var chars = size - str.length;
-  while (chars-- > 0) {
-    str = pad + str;
-  }
-  return str;
-};
-
-Utils.trim = function(str) {
-  return str.replace(/^\s+|\s+$/g, '');
-};
-
-Utils.capitalizeWord = function(w) {
-  return w ? w.charAt(0).toUpperCase() + w.substr(1) : '';
-};
-
-
-
-
-Utils.addThousandsSep = function(str) {
-  var fmt = '',
-      start = str[0] == '-' ? 1 : 0,
-      dec = str.indexOf('.'),
-      end = str.length,
-      ins = (dec == -1 ? end : dec) - 3;
-  while (ins > start) {
-    fmt = ',' + str.substring(ins, end) + fmt;
-    end = ins;
-    ins -= 3;
-  }
-  return str.substring(0, end) + fmt;
-};
-
-
-Utils.numToStr = function(num, decimals) {
-  return decimals >= 0 ? num.toFixed(decimals) : String(num);
-};
-
-
-Utils.formatNumber = function(num, decimals, nullStr, showPos) {
-  var fmt;
-  if (isNaN(num)) {
-    fmt = nullStr || '-';
-  } else {
-    fmt = Utils.numToStr(num, decimals);
-    fmt = Utils.addThousandsSep(fmt);
-    if (showPos && parseFloat(fmt) > 0) {
-      fmt = "+" + fmt;
-    }
-  }
-  return fmt;
-};
-
-
-/* @requires core */
-
-// Wrapper for DataView class for more convenient reading and writing of
-//   binary data; Remembers endianness and read/write position.
-// Has convenience methods for copying from buffers, etc.
-//
-function BinArray(buf, le) {
-  if (Utils.isNumber(buf)) {
-    buf = new ArrayBuffer(buf);
-  } else if (Env.inNode && buf instanceof Buffer == true) {
-    // Since node 0.10, DataView constructor doesn't accept Buffers,
-    //   so need to copy Buffer to ArrayBuffer
-    buf = BinArray.toArrayBuffer(buf);
-  }
-  if (buf instanceof ArrayBuffer == false) {
-    error("BinArray constructor takes an integer, ArrayBuffer or Buffer argument");
-  }
-  this._buffer = buf;
-  this._view = new DataView(buf);
-  this._idx = 0;
-  this._le = le !== false;
-  this._words = buf.byteLength % 4 == 0 ? new Uint32Array(buf) : null;
-}
-
-BinArray.bufferToUintArray = function(buf, wordLen) {
-  if (wordLen == 4) return new Uint32Array(buf);
-  if (wordLen == 2) return new Uint16Array(buf);
-  if (wordLen == 1) return new Uint8Array(buf);
-  error("BinArray.bufferToUintArray() invalid word length:", wordLen)
-};
-
-BinArray.maxCopySize = function(len, i) {
-  return Math.min(len & 1 || len & 2 || 4, i & 1 || i & 2 || 4);
-};
-
-BinArray.toArrayBuffer = function(src) {
-  var dest = new ArrayBuffer(src.length);
-  for (var i = 0, n=src.length; i < n; i++) {
-    dest[i] = src[i];
-  }
-  return dest;
-};
-
-// Return length in bytes of an ArrayBuffer or Buffer
-//
-BinArray.bufferSize = function(buf) {
-  return (buf instanceof ArrayBuffer ?  buf.byteLength : buf.length | 0);
-};
-
-BinArray.buffersAreIdentical = function(a, b) {
-  var alen = BinArray.bufferSize(a);
-  var blen = BinArray.bufferSize(b);
-  if (alen != blen) {
-    return false;
-  }
-  for (var i=0; i<alen; i++) {
-    if (a[i] !== b[i]) {
-      return false;
-    }
-  }
-  return true;
-};
-
-BinArray.prototype = {
-  size: function() {
-    return this._buffer.byteLength;
-  },
-
-  littleEndian: function() {
-    this._le = true;
-    return this;
-  },
-
-  bigEndian: function() {
-    this._le = false;
-    return this;
-  },
-
-  buffer: function() {
-    return this._buffer;
-  },
-
-  bytesLeft: function() {
-    return this._buffer.byteLength - this._idx;
-  },
-
-  skipBytes: function(bytes) {
-    this._idx += (bytes + 0);
-    return this;
-  },
-
-  readUint8: function() {
-    return this._view.getUint8(this._idx++);
-  },
-
-  readInt8: function() {
-    return this._view.getInt8(this._idx++);
-  },
-
-  readUint16: function() {
-    var val = this._view.getUint16(this._idx, this._le);
-    this._idx += 2;
-    return val;
-  },
-
-  writeUint16: function(val) {
-    this._view.setUint16(this._idx, val, this._le);
-    this._idx += 2;
-    return this;
-  },
-
-  readUint32: function() {
-    var val = this._view.getUint32(this._idx, this._le);
-    this._idx += 4;
-    return val;
-  },
-
-  writeUint32: function(val) {
-    this._view.setUint32(this._idx, val, this._le);
-    this._idx += 4;
-    return this;
-  },
-
-  readInt32: function() {
-    var val = this._view.getInt32(this._idx, this._le);
-    this._idx += 4;
-    return val;
-  },
-
-  writeInt32: function(val) {
-    this._view.setInt32(this._idx, val, this._le);
-    this._idx += 4;
-    return this;
-  },
-
-  readFloat64: function() {
-    var val = this._view.getFloat64(this._idx, this._le);
-    this._idx += 8;
-    return val;
-  },
-
-  writeFloat64: function(val) {
-    this._view.setFloat64(this._idx, val, this._le);
-    this._idx += 8;
-    return this;
-  },
-
-  // Returns a Float64Array containing @len doubles
-  //
-  readFloat64Array: function(len) {
-    var bytes = len * 8,
-        i = this._idx;
-    var arr = i % 8 === 0 ?
-      // Inconsistent: first is a view, second a copy...
-      new Float64Array(this._buffer, i, len) :
-      new Float64Array(this._buffer.slice(i, i + bytes));
-    this._idx += bytes;
-    return arr;
-  },
-
-  readUint32Array: function(len) {
-    var arr = [];
-    for (var i=0; i<len; i++) {
-      arr.push(this.readUint32());
-    }
-    return arr;
-  },
-
-  peek: function() {
-    return this._buffer[this._idx];
-  },
-
-  position: function(i) {
-    if (i != null) {
-      this._idx = i;
-      return this;
-    }
-    return this._idx;
-  },
-
-  readCString: function(fixedLen) {
-    var str = "";
-    var count = 0;
-    while(!fixedLen || count < fixedLen) {
-      var byteVal = this.readUint8();
-      count ++;
-      if (byteVal == 0) {
-        break;
-      }
-      str += String.fromCharCode(byteVal);
-    }
-
-    if (fixedLen && count < fixedLen) {
-      this.skipBytes(fixedLen - count);
-    }
-    return str;
-  },
-
-  writeBuffer: function(buf, bytes, startIdx) {
-    bytes = bytes || BinArray.bufferSize(buf);
-    startIdx = startIdx | 0;
-    if (this.bytesLeft() < bytes)
-      error("Buffer overflow; available bytes:", this.bytesLeft(), "tried to write:", bytes);
-
-    // When possible, copy buffer data in multi-byte chunks... Added this for faster copying of
-    // shapefile data, which is aligned to 32 bits.
-    var wordSize = Math.min(BinArray.maxCopySize(bytes, startIdx), BinArray.maxCopySize(bytes, this._idx)),
-        src = BinArray.bufferToUintArray(buf, wordSize),
-        dest = BinArray.bufferToUintArray(this._buffer, wordSize),
-        count = bytes / wordSize,
-        i = startIdx / wordSize,
-        j = this._idx / wordSize;
-
-    while (count--) {
-      dest[j++] = src[i++];
-    }
-
-    this._idx += bytes;
-    return this;
-  },
-
-  /*
-  // TODO: expand buffer, probably via a public method, not automatically
-  //
-  _grow: function(k) {
-    var fac = k > 1 && k <= 3 ? k : 1.7,
-        srcLen = this.bufferSize(),
-        destLen = Math.round(srcLen * fac),
-        buf = new ArrayBuffer(destLen);
-
-    var src = new Uint8Array(this._buffer),
-        dest = new Uint8Array(buf);
-
-    for (var i=0; i<srcLen; i++) {
-      dest[i] = src[i];
-    }
-
-    this._buffer = buf;
-    this._view = new DataView(buf);
-  },*/
-};
-
-
-
-/* @requires core, dataview */
 
 var ShpType = {
   NULL: 0,
@@ -4111,7 +5144,7 @@ function ShpReader(src) {
     return shapes;
   }
 
-  // Callback interface: for each record in a .shp file, pass a 
+  // Callback interface: for each record in a .shp file, pass a
   //   record object to a callback function
   //
   this.forEachShape = function(callback) {
@@ -4243,7 +5276,7 @@ ShpReader.prototype.getRecordClass = function(type) {
     } else {
       bin.skipBytes(32); // skip bbox
       this.partCount = hasParts ? bin.readUint32() : 1;
-      this.pointCount = bin.readUint32();      
+      this.pointCount = bin.readUint32();
     }
     this._data = function() {
       return this.isNull ? null : bin.position(pos);
@@ -4393,994 +5426,7 @@ ShpReader.prototype.getRecordClass = function(type) {
 };
 
 
-/** // required by DataTable */
 
-
-function joinDataTables(dest, destKey, src, srcKey, srcFilter) {
-  if (!dest.isReady() || !src.isReady()) {
-    trace("[JoinedTable.joinTables()] Source or destination table is not ready; src:", src.isReady(), "dest:", dest.isReady());
-    return;
-  }
-
-  if (!dest.fieldExists(destKey)) {
-    trace("[JoinedTable.joinTable()] destination table is missing its key field: ", destKey);
-    return;    
-  }
-  
-  if (!src.fieldExists(srcKey)) {
-    trace("[JoinedTable.joinTable()] source table is missing its key field:", srcKey);
-    return;
-  }
-
-  var filtered = srcFilter && typeof srcFilter == 'function';
-  var destSchema = dest.schema;
-  var srcSchema = src.schema;
-  var destLen = dest.size();
-  var srcLen = src.size();
-
-  var keyArr = Utils.getKeys(srcSchema);
-  //keyArr = Utils.filter(keyArr, function(val) { return !(val in destSchema)});
-  keyArr = Utils.filter(keyArr, function(fieldName) { return !(fieldName == destKey)});
-
-  var fieldCount = keyArr.length;
-  var destDataArr = Utils.createArray(fieldCount, function() {return new Array(destLen);});
-  var srcDataArr = Utils.map(keyArr, function(key) {return src.getFieldData(key);});
-
-  var index = dest.__getIndex(destKey);
-  var srcKeyArr = src.getFieldData(srcKey);
-  var lookup = new Array(destLen);
-
-  var filterRec = src.getRecordById(0);
-  for (var i=0; i<srcLen; i++) {
-    if (filtered) {
-      filterRec.id = i;
-      if (!srcFilter(filterRec)) {
-        continue;
-      }
-    }
-    var val = srcKeyArr[i];
-    var destId = index[val];
-    lookup[i] = destId; //  === undefined ? -1 : destId;
-  }
-
-  for (var i=0; i<fieldCount; i++) {
-    var destArr = destDataArr[i];
-    var srcArr = srcDataArr[i];
-    for (var j=0; j<srcLen; j++) {
-      var destId = lookup[j];
-      if (destId !== undefined) {
-        destArr[destId] = srcArr[j];
-      }
-    }
-  }
-
-  var schema = {};
-  var data = {};
-  Opts.copyAllParams(schema, destSchema);
-  Opts.copyAllParams(data, dest.data);
-
-  Opts.copyNewParams(schema, srcSchema);
-  Opts.copyAllParams(data, Utils.arrayToIndex(keyArr, destDataArr));
-
-  dest.populate(data, schema);
-};
-
-/*
-
-JoinedTable.prototype.joinTablesV1 = function(dest, destKey, src, srcKey) {
-  if (!dest.fieldExists(destKey) || !src.fieldExists(srcKey)) {
-    trace("[JoinedTable] missing one or more key fields:", srcKey, destKey);
-    return;
-  }
-  
-  var destSchema = dest.schema;
-  var srcSchema = src.schema;
-  
-  var keyArr = Utils.getKeys(srcSchema);
-
-  keyArr = Utils.filter(keyArr, function(val) { return !(val in destSchema)});
-
-  var fieldCount = keyArr.length;
-  var destDataArr = Utils.createArray(fieldCount, Array);
-  var srcDataArr = Utils.map(keyArr, function(key) {return src.getFieldData(key);});
-
-  var nullVal = null;
-  var index = src.indexOnField(srcKey);
-  var destKeyData = dest.getFieldData(destKey);
-
-  for (var i=0, len=destKeyData.length; i<len; i++) {
-    var destVal = destKeyData[i];
-    var srcId = index[destVal];
-    var isNull = srcId === undefined;
-    for (var j=0; j<fieldCount; j++) {
-      destDataArr[j].push( isNull ? nullVal : srcDataArr[j][srcId]);
-    }
-  }
-
-
-  var schema = {};
-  var data = {};
-  Opts.copyAllParams(schema, destSchema);
-  Opts.copyAllParams(data, dest.data);
-
-  Opts.copyNewParams(schema, srcSchema);
-  Opts.copyAllParams(data, Utils.arrayToIndex(keyArr, destDataArr));
-
-  this.populate(data, schema);
-
-  //trace("[destData]", destDataArr[0]);
-
-};
-
-*/
-
-/* @requires core, events, arrayutils, table-join */
-
-Opts.copyAllParams(C, { 
-  INTEGER: 'integer',
-  STRING: 'string',
-  DOUBLE: 'double',
-  OBJECT: 'object'
-});
-
-
-/**
- * DataTable is a js version of the as3 DataTable class.
- * @constructor
- */
-function DataTable() {
-  if (arguments.length > 0) {
-    var arg0 = arguments[0];
-    if (arg0 == null) {
-      error("Received empty data object -- check data source");
-    }
-    // (optional) Initialize table w/ js object.
-    if (arg0 && arg0.schema) {
-      this.populate(arg0.data || null, arg0.schema);
-    }
-  }
-  else {
-    this.__initEmptyTable();
-  }
-}
-
-Opts.inherit(DataTable, Waiter);
-
-
-DataTable.validateFieldType = function(raw) {
-  raw = raw.toLowerCase();
-  var type = C.STRING; // default type
-  switch (raw) {
-    case 'string':
-    case 'str':
-      type = C.STRING;
-      break;
-    case 'int':
-    case 'integer':
-      type = C.INTEGER;
-      break;
-    case 'double':
-    case 'decimal':
-    case 'number':
-      type = C.DOUBLE;
-      break;
-    case 'obj':
-    case 'object':
-      type = C.OBJECT;
-      break;
-  }
-  return type;
-};
-
-DataTable.prototype.toString = function() {
-  var str = "[DataTable length:" + this.size() + ", schema:" + Utils.toString(this.schema) + "]";
-  return str;
-};
-
-
-DataTable.prototype.handleReadyState = function() {
-  this._indexedField && this.indexOnField(this._indexedField); // Build index, if deferred.
-};
-
-
-/**
- * Returns the number of rows in the table.
- */
-DataTable.prototype.size = function() {
-  return this.length;
-};
-
-
-DataTable.prototype.joinTableByKey = function(localKey, otherTable, otherKey, filter) {
-  this.waitFor(otherTable);
-  this.addEventListener('ready', callback, this, 999);
-  function callback() {
-    joinDataTables(this, localKey, otherTable, otherKey, filter);
-  };
-  return this;
-};
-
-
-/**
- * Import an array of objects and an o(ptional) object of field types
- * @param arr Array of object records (i.e. each property:value is a fieldname:value pair)
- * @param schema Object of field types; each property:value is a fieldname:type pair. Valid types include double, integer, string, object
- */
-DataTable.prototype.importObjectRecords = function(arr, schema) {
-  if (!arr || arr.length == 0) error("Missing array of data values");
-  var rec0 = arr[0];
-  if (!Utils.isObject(rec0)) error("Expected an array of objects");
-
-  var fields, types;
-  if (schema) {
-    types = [];
-    fields = [];
-    Utils.forEach(schema, function(val, key) {
-      types.push(val);
-      fields.push(val);
-    });
-  }
-  else {
-    fields = Utils.getKeys(rec0);
-  }
-
-  return this.importArrayRecords(arr, fields, types);
-};
-
-
-/**
- * Import an array of records.
- * @param arr Array of Objects or Arrays
- * @param fields Array of field names
- * @param types Array of field types (optional).
- */
-DataTable.prototype.importArrayRecords = function(arr, fields, types) {
-  if (!arr || arr.length == 0) error("Missing array of data values");
-
-  var rec0 = arr[0];
-  var fieldIndex;
-  if (Utils.isObject(rec0)) {
-    fieldIndex = fields;
-  }
-  else if (Utils.isArray(rec0)) {
-    fieldIndex = Utils.map(fields, function(val, i) {
-      return i;
-    });
-  }
-  else {
-    error("Invalid record type; expected Arrays or Objects");
-  }
-
-  // if missing types, try to identify them
-  if (!types) {
-    types = [];
-    Utils.forEach(fieldIndex, function(fieldId, i) {
-      var val = rec0[fieldId];
-      if (Utils.isString(val)) {
-        types.push('string');
-      }
-      else if (!isNaN(val)) {
-        types.push('double');
-      }
-      else {
-        trace("[DataTable.importArrayRecords()] unrecognized type of field:", fields[i], "-- using 'object' type");
-        types.push('object');
-      }
-    });
-  }
-  else {
-    if (types.length != fields.length) error("Mismatched types and fields; types:", types, "fields:", fields);
-  }
-
-
-  var columns = Utils.map(fields, function() {
-    return [];
-  });
-
-  for (var rid=0, len=arr.length; rid<len; rid++) {
-    var rec = arr[rid];
-    for (var j=0, numFields = fields.length; j<numFields; j++) {
-      columns[j].push(rec[fieldIndex[j]]);
-    }
-  }
-
-  // generate schema and data objects
-  var data = {}, schema = {};
-  Utils.forEach(fields, function(fname, i) {
-    data[fname] = columns[i];
-    schema[fname] = types[i];
-  });
-
-  this.populate(data, schema);
-
-  return this;
-};
-
-/*
-DataTable.prototype.importData = function(loader, parser, filter) {
-
-  var handler = function() {
-    var content = parser.parse(loader.data);
-
-    if (filter) {
-      var proxy = new DataTable();
-      proxy.populate(content.data, content.schema);
-      var proxy = proxy.filter(filter);
-      content.data = proxy.data;
-      content.schema = proxy.schema;
-    }
-
-    this.populate(content.data, content.schema);
-  };
-
-  loader.addEventListener('ready', handler, this);
-  return this;
-};
-*/
-
-DataTable.prototype.getFields = function() {
-  return Utils.getKeys(this.data);
-};
-
-DataTable.prototype.__initEmptyTable = function(rawSchema) {
-  this.data = {};
-  this.length = 0;
-  this.schema = {};
-  this._rec = new Record(this, -1);
-  //this._index = {};
-  if (rawSchema) {
-    for (var key in rawSchema) {
-      if (!rawSchema.hasOwnProperty(key)) {
-        continue;
-      }
-
-      var type = DataTable.validateFieldType(rawSchema[key]);
-      if (!type) {
-        trace("[DataTable.__initEmptyTable()] invalid type for field: ", key, ":", rawSchema[key]);
-        continue;
-      }
-
-      this.schema[key] = type;
-      this.data[key] = [];
-    }
-  }
-};
-
-
-/**
- * Import a dataset into the table.
- *
- * @param {object} data Object containing data arrays, indexed by field name.
- * @param {object} schema Object containing field types, indexed by field name.
- */
-DataTable.prototype.populate = function(data, schema) {
-
-  // case: missing a schema object -- error condition.
-  if (!schema) error("Missing schema object");
-
-  // case: no date -- initalize empty table
-  if (!data) {
-    this.__initEmptyTable(schema);
-  }
-
-  // case: array of objects (common format for json data)
-  // case: array of arrays plus array of fields
-  // TODO: detect field types, if schema is missing
-  //
-  else if (Utils.isArray(data)) {
-    this.__initEmptyTable(schema);
-    for (var i=0, len=data.length; i<len; i++) {
-      this.appendRecordData(data[i]);
-    }
-  }
-
-  // case: optimal format: one data array per column
-  else {
-    this.__initEmptyTable();
-    var len = 0;
-    for (var key in schema) {
-      if (!schema.hasOwnProperty(key)) {
-        continue;
-      }
-
-      // initialize empty table, if data is missing...
-      if (!data) {
-        this.data[key] = [];
-        continue;
-      }
-
-      this.schema[key] = DataTable.validateFieldType(schema[key]);
-
-      if (!data[key]) {
-        trace("[DataTable.populate()] Missing data for field:", key, "schema:", schema);
-        continue;
-      }
-      var thisLen = data[key].length;
-      this.data[key] = data[key];
-      if (len > 0 && thisLen != len) {
-        trace("[DataTable.populate()] Warning: inconsistent field length. Expected length:", len, "Field name:", key, "Field length:", thisLen);
-      }
-      else {
-        len = thisLen;
-      }
-    }
-
-    this.length = len;
-  }
-
-  if (this.isReady()) {
-    // if indexed, rebuild index; TODO: remove redundancy with appendRecordData() (above)
-    if (this._indexedField) {
-      this.indexOnField(this._indexedField);
-    }
-    this.dispatchEvent('change');
-  }
-  else {
-    this.startWaiting();
-  }
-
-  return this; // for chaining
-};
-
-
-/**
- * Returns a Record pointing to the table with a particular id.
- *
- * @param {number} id Id of the row (Tables are 0-indexed, like arrays).
- * @return {Record} Record.
- */
-DataTable.prototype.getRecordById = function(id) {
-  this._rec.id = id;
-  return this._rec;
-};
-
-/**
- * Tests whether the table contains a particular field.
- * @param {string} f Name of a field.
- * @return {boolean} True or false.
- */
-DataTable.prototype.fieldExists = function(f) {
-  return !!(this.schema && this.schema[f]);
-};
-
-DataTable.prototype.getFieldType = function(f) {
-  return this.schema[f];
-};
-
-/**
- * Returns a Record pointing to the row containing an indexed value.
- *
- * @param {*} v Value in an indexed column.
- * @return {Record} Record pointing to indexed row, or a null record.
- */
-DataTable.prototype.getIndexedRecord = function(v, fast) {
-  var rec = fast ? this._rec : new Record(this, -1);
-  var idx = this._index[v];
-  if (idx == null) {
-    idx = -1;
-  }
-  rec.id = idx;
-  return rec;
-};
-
-
-/**
- * Indexes the table on the contents of one field.
- * Overwrites any previous index.
- * Assumes the field values are unique.
- *
- * @param {string} fname Name of field to index on.
- */
-DataTable.prototype.indexOnField = function(fname) {
-  this._indexedField = fname;
-  if (!this.isReady()) {
-    trace("[DataTable.indexOnField()] Table not READY; deferring indexing.]");
-    return;
-  }
-  this._index = this.__getIndex(fname);
-  //return this._index;
-};
-
-
-DataTable.prototype.__getIndex = function(fname) {
-  if (!this.fieldExists(fname)) error("Missing field:", fname);
-  var index = {};
-  var arr = this.data[fname];
-  for (var i = 0, len = this.size(); i < len; i++) {
-    index[arr[i]] = i;
-  }
-  return index;
-};
-
-
-
-/**
- * Returns an array of all data values in a column.
- *
- * @param {string} f Name of field.
- * @return {Array} Column of data.
- */
-DataTable.prototype.getFieldData = function(f) {
-  var arr = this.data[f];
-  return arr ? arr : [];
-};
-
-DataTable.prototype.addField = function(f, type, def) {
-  var arr = Utils.createArray(this.size(), def);
-  this.insertFieldData(f, type, arr);
-};
-
-/**
- * TODO: accept function
- */
-DataTable.prototype.initField = function(f, val) {
-  if (this.fieldExists(f) == false) {
-    trace("[DataTAble.initField()] field does not exists:", f);
-    return;
-  }
-  var arr = Utils.createArray(this.size(), val);
-  this.insertFieldData(f, this.getFieldType(f), arr);
-};
-
-DataTable.prototype.deleteField = function(f) {
-  if (this._indexedField == f) {
-    this._indexedField = null;
-  }
-  delete this.schema[f];
-  delete this.data[f];
-  // If deleting last field, set length to 0
-  if (Utils.getKeys(this.schema).length == 0) {
-    this.length = 0;
-  }
-};
-
-/**
- * Insert an array of values into the table.
- * @param {string} f Field name.
- * @param {string} type Field type.
- * @param {Array} arr Array of values.
- */
-DataTable.prototype.insertFieldData = function(f, type, arr) {
-  type = DataTable.validateFieldType(type);
-  this.schema[f] = type;
-  this.data[f] = arr;
-
-  if (this.length == 0) {
-    this.length == arr.length;
-  }
-  else if (arr.length != this.length) {
-    trace("[DataTable.insertFieldData() Warning: column size mismatch");
-  }
-
-  // TODO: add integrity checks
-  if (this._indexedField == f) {
-    this.indexOnField(f);
-  }
-};
-
-DataTable.prototype.getNullValueForType = function(type) {
-  var nullVal = null;
-  if (type == C.INTEGER) {
-    nullVal = 0;
-  } 
-  else if (type == C.STRING) {
-    nullVal = '';
-  }
-  else if (type == C.DOUBLE) {
-    nullVal = NaN;
-  }
-  return nullVal;
-};
-
-DataTable.prototype.forEach = function(func, ctx) {
-  this.getRecordSet().forEach(func, ctx);
-};
-
-DataTable.prototype.appendRecordData = function(obj, niceNull) {
-  var dest = this.data;
-  var ifield = this._indexedField || void 0;
-  for (var fname in dest) {
-    var val = obj[fname]; // TODO: validate? convert undefined to null?
-    
-    if (val === void 0 && niceNull) {
-      var type = this.schema[fname];
-      val = this.getNullValueForType(type);
-      if (type == 'double' && isNaN(val)) {
-        val = 0.0; // kludge for olympics graphic; need to fix
-      }
-    }
-
-    dest[fname].push(val);
-
-    // Update index, if field is indexed.
-    if (fname === ifield) {
-      this._index[val] = this.length;
-    }
-  }
-  this.length += 1;
-  return new Record(this, this.length - 1);
-};
-
-/**
- * Insert The output of a function into a column of the table.
- *
- * @param {string} f Field name.
- * @param {string} type Field type, e.g. C.DOUBLE.
- * @param {Function(Record)} func Function object.
- */
-DataTable.prototype.insertMappedValues = function(f, type, func, ctx) {
-  var arr = this.map(func, ctx);
-  this.insertFieldData(f, type, arr);
-};
-
-DataTable.prototype.updateField = function(f, func, ctx) {
-  if (this.fieldExists(f)) {
-    var type = this.getFieldType(f);
-    this.insertMappedValues(f, type, func, ctx);
-  } else {
-    trace("[DataTable.updateField()] Field not found:", f);
-  }
-}
-
-DataTable.prototype.updateValue = function(f, id, val) {
-  // TODO: make safer
-  if (id < 0 || id >= this.length || !this.data[f]) {
-    error("[DataTable.updateValue()] invalid field or id:", f, id);
-  }
-  this.data[f][id] = val;
-  if (this._indexedField === f) {
-    this._index[val] = id;
-  }
-};
-
-DataTable.prototype.map = function(func, ctx) {
-  var arr = [];
-  var rec = this._rec;
-  for (var rid = 0, len = this.size(); rid < len; rid++) {
-    rec.id = rid;
-    arr.push(func.call(ctx, rec));
-  }
-  return arr;
-};
-
-DataTable.prototype.insertMappedFields = function(fields, types, func) {
-  var numFields = fields.length;
-  var dataArr = Utils.createArray(numFields, Array); // Array() returns a new Array, just like new Array()
-  var rec = this._rec;
-  var tmp = [];
-  for (var rid = 0, len = this.size(); rid < len; rid++) {
-    rec.id = rid;
-    func(rec, tmp);
-    for (var j=0, len2=numFields; j<numFields; j++) {
-      dataArr[j].push(tmp[j]);
-    }
-  }
-
-  var schema = Utils.arrayToIndex(fields, types);
-  var data = Utils.arrayToIndex(fields, dataArr);
-  this.populate(data, schema);
-};
-
-
-/**
- * Get a RecordSet containing all rows.
- * @return {RecordSet} RecordSet object.
- */
-DataTable.prototype.getRecordSet = function() {
-  var ids = Utils.range(this.size());
-  return new RecordSet(this, ids);
-};
-
-DataTable.prototype.records = DataTable.prototype.getRecordSet;
-
-/**
- * Wrapper for getMatchingRecordSet that returns a single Record object.
- * @return {Record} Matching record or null record.
- */
-DataTable.prototype.getMatchingRecord = function() {
-  var set = this.getMatchingRecordSet.apply(this, arguments);
-  var rec = set.hasNext() ? set.nextRecord : new Record(null, -1);
-  return rec;
-};
-
-
-DataTable.prototype.filter = function(func, ctx) {
-  return this.getFilteredCopy(this.getRecordSet().filter(func, ctx).getIds());
-};
-
-DataTable.prototype.copyFields = function(fields) {
-  var src = this;
-  var dest = new DataTable();
-  Utils.forEach(fields, function(f) {
-    if (!src.fieldExists(f)) {
-      trace("[DataTable.copyFields()] Missing field:", f);
-      return;
-    }
-    dest.insertFieldData(f, src.getFieldType(f), src.getFieldData(f));
-  });
-
-  return dest.startWaiting();
-};
-
-/*
-DataTable.prototype.getFilteredCopy = function(ids) {
-  var dest = {};
-  var schema = {};
-  Opts.copyAllParams(schema, this.schema);
-  
-  var newLen = ids.length;
-  var src = this.data;
-  for (var fname in src) {
-    if (!src.hasOwnProperty(fname)) {
-      continue;
-    }
-    var oldArr = src[fname];
-    var newArr = [];
-    dest[fname] = newArr;
-
-    for (var i=0; i<newLen; i++) {
-      var oldId = ids[i];
-      newArr.push(oldArr[oldId]);
-    }
-  }
-
-  var newTable = new DataTable();
-  newTable.populate(dest, schema);
-  if (this._indexedField) {
-    newTable.indexOnField(this._indexedField);
-  }
-  return newTable;
-};
-*/
-
-DataTable.prototype.getFilteredCopy = function(ids) {
-  var schema = Opts.copyAllParams({}, this.schema);
-  
-  var newLen = ids.length;
-  var dest = Utils.map(this.data, function(arr, key) {
-    return Utils.getFilteredCopy(arr, ids);
-  });
-
-  var newTable = new DataTable().populate(dest, schema);
-  if (this._indexedField) {
-    newTable.indexOnField(this._indexedField);
-  }
-  return newTable;
-};
-
-/**
- *  @param f Field name
- *  @param v Field value or array of values
- *
- */
-DataTable.prototype.getMatchingIds = function(f, v, ids) {
-  /*
-  if (Utils.isArray(v)) {
-    trace("[DataTable.getMatcingIds()] Arrays no longer accepted.");
-    throw "TypeError";
-  }
-  */
-  var matching = [],
-    data = this.getFieldData(f),
-    func = typeof v == 'function',
-    indexed = !!ids,
-    matchArr = Utils.isArray(v),
-    len = indexed ? ids.length : this.size();
-
-  for (var i=0; i<len; i++) {
-    var idx = indexed ? ids[i] : i;
-    var val = data[idx];
-    if (matchArr) {
-      Utils.indexOf(v, val) != -1 && matching.push(idx);
-    }
-    else if (func ? v(val) : val === v) {
-      matching.push(idx);
-    }
-  }
-  return matching;
-};
-
-
-DataTable.prototype.getMatchingRecordSet = function() {
-  var ids, f, v;
-
-  for (var i=0; i<arguments.length; i+= 2) {
-    f = arguments[i];
-    v = arguments[i+1];
-    ids = this.getMatchingIds(f, v, ids);
-  }
-
-  return new RecordSet(this, ids || []);
-};
-
-
-
-
-/**
- * An iterator class containing a subset of rows in a DataTable.
- * @constructor
- * @param {DataTable} table DataTable.
- * @param {Array} ids Array of ids of each record in the RecordSet.
- */
-function RecordSet(table, ids) {
-  this._idx = 0;
-  this.nextRecord = new Record(table, -1);
-
-  this.size = function() {
-    return ids.length;
-  };
-
-  this.hasNext = function() {
-    if (this._idx >= ids.length) {
-      this.nextRecord.id = -1;
-      this._idx = 0;
-      return false;
-    }
-    this.nextRecord.id = ids[this._idx++];
-    return true;
-  };
-
-  this.getIds = function() {
-    return ids;
-  };
-
-  this.getFieldData = function(f) {
-    var o = [];
-    var data = table.getFieldData(f);
-    for (var i=0, len=ids.length; i<len; i++) {
-      o.push(data[ids[i]]);
-    }
-    return o;
-  };
-
-  this.sortOnField = function(f, asc) {
-    Utils.sortArrayIndex(ids, table.getFieldData(f), asc);
-    return this;
-  };
-
-  this.filter = function(func, ctx) {
-    var rec = new Record(table, -1);
-    var oldIds = ids.splice(0, ids.length);
-    for (var i=0, len=oldIds.length; i<len; i++) {
-      var id = oldIds[i];
-      rec.id = id;
-      func.call(ctx, rec) && ids.push(id);
-    }
-    return this;
-  };
-
-  this.forEach = function(func, ctx) {
-    var i = 0;
-    while(this.hasNext()) {
-      func.call(ctx, this.nextRecord, i++);
-    }
-  };
-
-  this.toTable = function() {
-    return table.getFilteredCopy(ids);
-  };
-}
-
-
-
-/**
- * A cursor with access to one row of a DataTable.
- *
- * @param {DataTable} table DataTable object.
- * @param {number} rid Id of a row in a DataTable.
- */
-function Record(table, rid) {
-  this.id = rid;
-  this._table = table;
-  this._data = table ? table.data : {}; // assume data is never replaced.
-}
-
-function NullRecord() {
-  this.__super__(null, -1);
-}
-
-Opts.inherit(NullRecord, Record);
-
-/**
- * Return a string representation, for debugging.
- * @return {string} String.
- */
-Record.prototype.toString = function() {
-  var obj = this.getDataAsObject();
-  obj.id = this.id;
-  return "[Record" + Utils.strval(obj) + "]";
-};
-
-
-
-/**
- * Test if record is null / points to a valid table row.
- * @return {boolean} True or false.
- */
-Record.prototype.isNull = function() {
-  return this.id < 0;
-};
-
-
-/**
- * Return a new Record pointing to the same table row as this one.
- * @return {Record} Cloned record.
- */
-Record.prototype.clone = function() {
-  return new Record(this._table, this.id);
-};
-
-
-/**
- * Return value of a string (C.STRING) field.
- * @param {string} f Field name.
- * @return {string} String value.
- */
-Record.prototype.getString = function(f) {
-  return this.get(f) || '';
-};
-
-
-/**
- * Return value of a number (C.DOUBLE) field.
- * @param {string} f Field name.
- * @return {number} Numeric value.
- */
-Record.prototype.getNumber = function(f) {
-  return this.get(f) * 1.0;
-};
-
-
-/**
- * Get value of an integer field (or coerce other type to integer).
- * @param {string} f Field name.
- * @return {number} Integer value.
- */
-Record.prototype.getInteger = function(f) {
-  return this.get(f) << 0;
-};
-
-
-/**
- * Return a data value of any type.
- * @param {string} f Field name.
- * @return {*} Data of any type.
- */
-Record.prototype.get = function(f) {
-  var arr = this._data[f];
-  var val = arr && arr[this.id];
-  return val;
-};
-
-Record.prototype.set = function(f, v) {
-  // TODO: Make safer. Validate field name, object type, record index.
-  /*
-  var arr = this._data[f]; // this._table.getFieldData(f);
-  if (arr) {
-    arr[this.id] = v;
-  }
-  */
-  this._table.updateValue(f, this.id, v);
-};
-
-
-/**
- * Fetches all the data from a Record.
- * Optionally copy data into passed-in object, to avoid {} overhead.
- *
- * @param {object=} objRef Optional parameter.
- * @return {object} Object containing record data, indexed by field name.
- */
-Record.prototype.getDataAsObject = function(objRef) {
-  var obj = objRef || {};
-  Utils.forEach(this._data, function(val, key) {
-    obj[key] = val[this.id];
-  }, this);
-  return obj;
-};
-
-
-/* @requires dataview, data, textutils */
 
 // DBF file format:
 // http://www.dbf2002.com/dbf-file-format.html
@@ -5389,7 +5435,6 @@ Record.prototype.getDataAsObject = function(objRef) {
 //
 // TODO: handle non-ascii characters, e.g. multibyte encodings
 // cf. http://code.google.com/p/stringencoding/
-
 
 // @src is a Buffer or ArrayBuffer or filename
 //
@@ -5531,7 +5576,7 @@ DbfReader.prototype.readFieldHeader = function(bin) {
 };
 
 
-/* @requires shp-reader, dbf-reader, mapshaper-common, mapshaper-geom */
+
 
 MapShaper.importDbf = function(src) {
   T.start();
@@ -5821,7 +5866,7 @@ MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
 };
 
 
-/* @require mapshaper-elements, textutils, mapshaper-shapefile */
+
 
 function DropControl(importer) {
   var el = El('body');
@@ -5979,7 +6024,7 @@ var controls = {
 };
 
 
-/* @requires arrayutils, mapshaper-common */
+
 
 // buildTopology() converts non-topological polygon data into a topological format
 //
@@ -6016,21 +6061,13 @@ MapShaper.buildTopology = function(obj) {
   return topoData;
 };
 
-// Returns a function that translates (x,y) coords into unsigned ints for hashing
-// @bbox A Bounds object giving the extent of the dataset.
-//
-MapShaper.getPointToUintHash = function(bbox) {
-  var kx = (1e8 * Math.E / (bbox.width() + 1)),
-      ky = (1e8 * Math.PI / (bbox.height() + 1)),
-      bx = -bbox.xmin,
-      by = -bbox.ymin;
 
-  return function(x, y) {
-    // transform coords to integer range and scramble bits a bit
-    var key = x * kx + bx ^ y * ky + by;
-    return key & 0x7fffffff; // mask as nonnegative integer
-  };
+// Translate (x,y) coords into unsigned int for hashing
+MapShaper.xyToUintHash = function(x, y) {
+  var key = x * 1e8 ^ x ^ y * 1e8 ^ y * 31;
+  return key & 0x7fffffff; // mask as nonnegative integer
 };
+
 
 //
 //
@@ -6101,13 +6138,11 @@ function ArcIndex(pointCount, xyToUint) {
 //
 function buildPathTopology(xx, yy, pathData) {
   var pointCount = xx.length,
-      xyToUint = MapShaper.getPointToUintHash(MapShaper.calcXYBounds(xx, yy)),
-      index = new ArcIndex(pointCount, xyToUint),
+      index = new ArcIndex(pointCount, MapShaper.xyToUintHash),
       typedArrays = !!(xx.subarray && yy.subarray),
       slice, array;
 
   var pathIds = initPathIds(pointCount, pathData);
-  var paths = [];
 
   if (typedArrays) {
     array = Float64Array;
@@ -6118,14 +6153,16 @@ function buildPathTopology(xx, yy, pathData) {
   }
 
   T.start();
-  var chainIds = initPointChains(xx, yy, pathIds, xyToUint);
+  var chainIds = initPointChains(xx, yy, pathIds, MapShaper.xyToUintHash);
   T.stop("Find matching vertices");
 
   T.start();
   var pointId = 0;
-  Utils.forEach(pathData, function(pathObj, pathId) {
-    paths[pathId] = convertPath(pointId, pathId, pathObj);
-    pointId += pathObj.size;
+  var paths = Utils.map(pathData, function(pathObj) {
+    var pathLen = pathObj.size,
+        arcs = pathObj.isNull ? null : convertPath(pointId, pointId + pathLen - 1);
+    pointId += pathLen;
+    return arcs;
   });
   T.stop("Find topological boundaries")
 
@@ -6163,20 +6200,17 @@ function buildPathTopology(xx, yy, pathData) {
   }
 
 
-  // Convert a non-topological path to one or more topological paths
+  // Convert a non-topological path to one or more topological arcs
+  // @start, @end are ids of first and last points in the path
   //
-  function convertPath(pathStartId, pathId, pathObj) {
+  function convertPath(start, end) {
     var arcIds = [],
-        pathLen = pathObj.size,
-        pathEndId = pathStartId + pathLen - 1,
         firstNodeId = -1,
         arcStartId;
 
-    if (pathObj.isNull) return null;
-
-    // Visit each point in the path, up to but not including the endpoint
+    // Visit each point in the path, up to but not including the last point
     //
-    for (var i = pathStartId; i < pathEndId; i++) {
+    for (var i = start; i < end; i++) {
       if (pointIsArcEndpoint(i)) {
         if (firstNodeId > -1) {
           arcIds.push(addEdge(arcStartId, i));
@@ -6192,17 +6226,17 @@ function buildPathTopology(xx, yy, pathData) {
     if (firstNodeId == -1) {
       // Not in an arc, i.e. no nodes have been found...
       // Assuming that path is either an island or is congruent with one or more rings
-      arcIds.push(addRing(pathStartId, pathEndId));
+      arcIds.push(addRing(start, end));
     }
-    else if (firstNodeId == pathStartId) {
+    else if (firstNodeId == start) {
       // path endpoint is a node;
-      if (!pointIsArcEndpoint(pathEndId)) {
+      if (!pointIsArcEndpoint(end)) {
         error("Topology error"); // TODO: better error handling
       }
       arcIds.push(addEdge(arcStartId, i));
     } else {
       // final arc wraps around
-      arcIds.push(addEdge(arcStartId, pathEndId, pathStartId + 1, firstNodeId))
+      arcIds.push(addEdge(arcStartId, end, start + 1, firstNodeId))
     }
 
     return arcIds;
@@ -6442,69 +6476,6 @@ MapShaper.topology = {
   initPathIds: initPathIds
 };
 
-/* @requires elements, browser */
-
-function ElementPosition(ref) {
-  var self = this;
-  var el = El(ref);
-  var pageX = 0,
-      pageY = 0,
-      width = 0,
-      height = 0;
-
-  el.on('mouseover', update);
-  window.onorientationchange && Browser.on(window, 'orientationchange', update);
-  Browser.on(window, 'scroll', update);
-  Browser.on(window, 'resize', update);
-
-  // trigger an update, e.g. when map container is resized
-  this.update = function() {
-    update();
-  };
-
-  this.resize = function(w, h) {
-    el.css('width', w).css('height', h);
-    update();
-  };
-
-  this.width = function() { return width };
-  this.height = function() { return height };
-  //this.pageX = function() { return pageX };
-  //this.pageY = function() { return pageY };
-
-  this.position = function() {
-    return {
-      element: el.node(),
-      pageX: pageX,
-      pageY: pageY,
-      width: width,
-      height: height
-    };
-  }
-
-  function update() {
-    var div = el.node();
-    var xy = Browser.getPageXY(div);
-    var w = div.clientWidth,
-        h = div.clientHeight,
-        x = xy.x,
-        y = xy.y;
-
-    var resized = w != width || h != height,
-        moved = x != pageX || y != pageY;
-    if (resized || moved) {
-      pageX = x, pageY = y, width = w, height = h;
-      var pos = self.position();
-      self.dispatchEvent('change', pos);
-      resized && self.dispatchEvent('resize', pos);
-    }
-  }
-
-  update();
-}
-
-Opts.inherit(ElementPosition, EventDispatcher);
-
 
 
 function ShapeRenderer() {
@@ -6638,7 +6609,7 @@ function CanvasLayer() {
 }
 
 
-/* @requires elements, mapshaper-canvas */
+
 
 // Layer group...
 //
@@ -6714,542 +6685,7 @@ Opts.inherit(ShapeLayer, Waiter);
 
 
 
-/* @requires events, core */
-var TRANSITION_TIME = 500;
 
-/*
-var Fader = {};
-Fader.fadeIn = function(el, time) {
-  time = time || 300;
-  el.style.WebkitTransition = 'opacity ' + time + 'ms linear';
-  el.style.opacity = '1';
-};
-
-Fader.fadeOut = function(el, time) {
-  time = time || 300;
-  el.style.WebkitTransition = 'opacity ' + time + 'ms linear';
-  el.style.opacity = '0';
-};
-*/
-
-
-Timer.postpone = function(ms, func, ctx) {
-  var callback = func;
-  if (ctx) {
-    callback = function() {
-      func.call(ctx);
-    };
-  }
-  setTimeout(callback, ms);
-};
-
-function Timer() {
-  if (!(this instanceof Timer)) {
-    return new Timer();
-  }
-
-  var _startTime,
-      _prevTime,
-      _count = 0,
-      _times = 0,
-      _duration = 0,
-      _interval = 25, // default 25 = 40 frames per second
-      MIN_INTERVAL = 8,
-      _callback,
-      _timerId = null,
-      _self = this;
-
-  this.busy = function() {
-    return _timerId !== null;
-  };
-
-  this.start = function() {
-    if (_timerId !== null) {
-      this.stop();
-    }
-    _count = 0;
-    _prevTime = _startTime = +new Date;
-    //_timerId = setInterval(handleTimer, _interval);
-    _timerId = setTimeout(handleTimer, _interval);
-    return this; // assumed by FrameCounter, etc
-  };
-
-  this.stop = function() {
-    if (_timerId !== null) {
-      //clearInterval(_timerId);
-      clearTimeout(_timerId);
-      _timerId = null;
-    }
-  };
-
-  this.duration = function(ms) {
-    _duration = ms;
-    return this;
-  };
-
-  this.interval = function(ms) {
-    if (ms == null) {
-      return _interval;
-    }
-    _interval = ms | 0;
-    if (_interval < MIN_INTERVAL) {
-      trace("[Timer.interval()] Resetting to minimum interval:", MIN_INTERVAL);
-      _interval = MIN_INTERVAL;
-    }
-    return this;
-  };
-
-  this.callback = function(f) {
-    _callback = f;
-    return this;
-  };
-
-  this.times = function(i) {
-    _times = i;
-    return this;
-  };
-
-  function handleTimer() {
-    var now = +new Date,
-        interval = now - _prevTime,
-        elapsed = now - _startTime;
-    _count++;
-    if (_duration > 0 && elapsed > duration || _times > 0 && _count > _times) {
-      this.stop();
-      return;
-    }
-    var obj = {elapsed: elapsed, count: _count, time:now, interval:interval, period: _interval};
-    _callback && _callback(obj);
-    _self.dispatchEvent('tick', obj);
-
-    interval = +new Date - _prevTime; // update interval, now that event handlers have run
-    _prevTime = now;
-    var time = interval <= _interval ? 10 : _interval - interval;
-    _timerId = setTimeout(handleTimer, time);
-
-  };
-}
-
-Opts.inherit(Timer, EventDispatcher);
-
-var FrameCounter = new Timer().interval(25).start();
-
-
-//
-//
-function TweenTimer(obj) {
-  if (obj) {
-    var tween = new TweenTimer();
-    tween.object = obj;
-    return tween;
-  }
-
-  if (!(this instanceof TweenTimer)) {
-    return new TweenTimer();
-  }
-
-  var _self = this;
-  var _delay = 0; // not implemented
-  var _start;
-  var _busy;
-  var _quickStart = true;
-  var _snap = 0.0005;
-  var _done = false;
-  var _duration;
-  var _method;
-
-  var _src, _dest;
-
-  this.method = function(f) {
-    _method = f;
-    return this;
-  };
-
-  this.snap = function(s) {
-    _snap = s;
-    return this;
-  }
-
-  this.duration = function(ms) {
-    _duration = ms;
-    return this;
-  };
-
-  this.to = function(obj) {
-    _dest = obj;
-    return this;
-  };
-
-  this.from = function(obj) {
-    _src = obj;
-    return this;
-  };
-
-  this.startTimer =
-  this.start = function(ms, method) {
-
-    if (_busy) {
-      _self.stopTimer();
-    }
-
-    _duration = _duration || ms || 300;
-    _method = _method || method || Tween.sineInOut;
-
-    _start = (new Date).getTime();
-    if (_quickStart) {
-      _start -= FrameCounter.interval(); // msPerFrame;
-    }
-
-    _busy = true;
-    FrameCounter.addEventListener('tick', handleTimer, this);
-    return this;
-  }
-
-
-  this.setDelay =
-  this.delay = function(ms) {
-    ms = ms | 0;
-    if (ms > 0 || ms < 10000 ) {
-      _delay = ms;
-    }
-    return this;
-  };
-
-  this.__getData = function(pct) {
-    var obj = {}
-    if (_src && _dest) {
-      Opts.copyAllParams(obj, _src);
-      for (var key in obj) {
-        obj[key] = (1 - pct) * obj[key] + pct * _dest[key];
-      }
-    }
-    return obj;
-  };
-
-  this.busyTweening = this.busy = function() {
-    return _busy;
-  }
-
-  this.stopTimer =
-  this.stop = function() {
-    _busy = false;
-    FrameCounter.removeEventListener('tick', handleTimer, this);
-    _done = false;
-  }
-
-  function handleTimer() {
-
-    if (_busy == false) {
-      _self.stopTimer();
-      return;
-    }
-
-    if (_done) {
-      return;
-    }
-
-    var pct = getCurrentPct();
-
-    if (pct <= 0) { // still in 'delay' period
-      return;
-    }
-
-    if (pct + _snap >= 1) {
-      pct = 1;
-      _done = true;
-    }
-
-    _self.procTween(pct);
-
-    if (!_busy) { // ???
-      _self.stopTimer();
-      return;
-    }
-
-    if (pct == 1. && _done) {
-      _self.stopTimer();
-    }
-  }
-
-
-  function getCurrentPct() {
-    if (_busy == false) {
-      return 1;
-    }
-
-    var now = (new Date()).getTime();
-    var elapsed = now - _start - _delay;
-    if (elapsed < 0) { // negative number = still in delay period
-      return 0;
-    }
-
-    var pct = elapsed / _duration;
-
-    // prevent overflow (tween functions only valid in 0-1 range)
-    if (pct > 1.0) {
-      pct = 1.0;
-    }
-
-    if (_method != null) {
-      pct = _method(pct);
-    }
-    return pct;
-  }
-
-}
-
-Opts.inherit(TweenTimer, EventDispatcher);
-
-TweenTimer.prototype.procTween = function(pct) {
-  var isDone = pct >= 1;
-  var obj = this.__getData(pct);
-  obj.progress = pct;
-  obj.done = isDone;
-  this.dispatchEvent('tick', obj);
-  isDone && this.dispatchEvent('done');
-};
-
-var Tween = TweenTimer;
-
-//
-//
-Tween.quadraticOut = function(n) {
-  return 1 - Math.pow((1 - n), 2);
-};
-
-// starts fast, slows down, ends fast
-//
-Tween.sineInOut = function(n) {
-  n = 0.5 - Math.cos(n * Math.PI) / 2;
-  return n;
-};
-
-// starts slow, speeds up, ends slow
-//
-Tween.inverseSine = function(n) {
-  var n2 = Math.sin(n * Math.PI) / 2;
-  if (n > 0.5) {
-    n2 = 1 - n2;
-  }
-  return n2;
-}
-
-Tween.sineInOutStrong = function(n) {
-  return Tween.sineInOut(Tween.sineInOut(n));
-};
-
-Tween.inOutStrong = function(n) {
-  return Tween.quadraticOut(Tween.sineInOut(n));
-}
-
-
-/**
- * @constructor
- */
-function NumberTween(callback) {
-  this.__super__();
-
-  this.start = function(fromVal, toVal, ms, method) {
-    this._from = fromVal;
-    this._to = toVal;
-    this.startTimer(ms, method);
-  }
-
-  this.procTween = function(pct) {
-    var val = this._to * pct + this._from * (1 - pct);
-    callback(val, pct == 1);
-  }
-}
-
-Opts.inherit(NumberTween, TweenTimer);
-
-
-
-
-
-/* @requires browser, element-position, events */
-
-function MouseArea(element) {
-  var pos = new ElementPosition(element),
-      _areaPos = pos.position(),
-      _self = this,
-      _dragging = false,
-      _isOver = false,
-      _isDown = false,
-      _moveData,
-      _downData;
-
-  pos.on('change', function() {_areaPos = pos.position()});
-
-  if (!Browser.touchEnabled) {
-    Browser.on(document, 'mousemove', onMouseMove);
-    Browser.on(document, 'mousedown', onMouseDown);
-    Browser.on(document, 'mouseup', onMouseUp);
-    Browser.on(element, 'mouseover', onAreaOver);
-    Browser.on(element, 'mouseout', onAreaOut);
-    Browser.on(element, 'mousedown', onAreaDown);
-    Browser.on(element, 'dblclick', onAreaDblClick);
-  }
-
-  function onAreaDown(e) {
-    e.preventDefault(); // prevent text selection cursor on drag
-  }
-
-  function onAreaOver(e) {
-    _isOver = true;
-    _self.dispatchEvent('enter');
-  }
-
-  function onAreaOut(e) {
-    _isOver = false;
-    _self.dispatchEvent('leave');
-  }
-
-  function onMouseUp(e) {
-    _isDown = false;
-    if (_dragging) {
-      _dragging = false;
-      _self.dispatchEvent('dragend');
-    }
-
-    if (_downData) {
-      var obj = procMouseEvent(e),
-          elapsed = obj.time - _downData.time,
-          dx = obj.pageX - _downData.pageX,
-          dy = obj.pageY - _downData.pageY;
-      if (elapsed < 500 && Math.sqrt(dx * dx + dy * dy) < 6) {
-        _self.dispatchEvent('click', obj);
-      }
-    }
-  }
-
-  function onMouseDown(e) {
-    _isDown = true;
-    _downData = _moveData
-  }
-
-  function onMouseMove(e) {
-    _moveData = procMouseEvent(e, _moveData);
-
-    if (!_dragging && _isDown && _downData.hover) {
-      _dragging = true;
-      _self.dispatchEvent('dragstart');
-    }
-
-    if (_dragging) {
-      var obj = {
-        dragX: _moveData.pageX - _downData.pageX,
-        dragY: _moveData.pageY - _downData.pageY
-      };
-      _self.dispatchEvent('drag', Utils.extend(obj, _moveData));
-    }
-  }
-
-  function onAreaDblClick(e) {
-    if (_isOver) _self.dispatchEvent('dblclick', procMouseEvent(e));
-  }
-
-  function procMouseEvent(e, prev) {
-    var pageX = e.pageX,
-        pageY = e.pageY;
-
-    return {
-      time: +new Date,
-      pageX: pageX,
-      pageY: pageY,
-      hover: _isOver,
-      x: pageX - _areaPos.pageX,
-      y: pageY - _areaPos.pageY,
-      dx: prev ? pageX - prev.pageX : 0,
-      dy: prev ? pageY - prev.pageY : 0
-    };
-  }
-
-  this.isOver = function() {
-    return _isOver;
-  }
-
-  this.isDown = function() {
-    return _isDown;
-  }
-
-  this.mouseData = function() {
-    return Utils.extend({}, _moveData);
-  }
-}
-
-Opts.inherit(MouseArea, EventDispatcher);
-
-
-/** @requires browser, events, arrayutils, tweening */
-
-// @mouse: MouseArea object
-//
-function MouseWheel(mouse) {
-  var self = this,
-      prevWheelTime = 0,
-      currDirection = 0,
-      scrolling = false;
-  init();
-
-  function init() {
-    // reference: http://www.javascriptkit.com/javatutors/onmousewheel.shtml
-    if (window.onmousewheel !== undefined) { // ie, webkit
-      Browser.on(window, 'mousewheel', handleWheel);
-    }
-    else { // firefox
-      Browser.on(window, 'DOMMouseScroll', handleWheel);
-    }
-    FrameCounter.addEventListener('tick', handleTimer, self);
-  }
-
-  function handleTimer(evt) {
-    var sustainTime = 80;
-    var fadeTime = 60;
-    var elapsed = evt.time - prevWheelTime;
-    if (currDirection == 0 || elapsed > sustainTime + fadeTime || !mouse.isOver()) {
-      currDirection = 0;
-      scrolling = false;
-      return;
-    }
-
-    var multiplier = evt.interval / evt.period; // 1;
-    var fadeElapsed = elapsed - sustainTime;
-    if (fadeElapsed > 0) {
-      // Adjust multiplier if the timer fires during 'fade time' (for smoother zooming)
-      multiplier *= Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
-    }
-
-    var obj = mouse.mouseData();
-    obj.direction = currDirection;
-    obj.multiplier = multiplier;
-    if (!scrolling) {
-      self.dispatchEvent('mousewheelstart', obj);
-    }
-    scrolling = true;
-    self.dispatchEvent('mousewheel', obj);
-  }
-
-  function handleWheel(evt) {
-    if (mouse.isOver()) {
-      evt.preventDefault();
-      var direction = 0; // 1 = zoom in / scroll up, -1 = zoom out / scroll down
-      if (evt.wheelDelta) {
-        direction = evt.wheelDelta > 0 ? 1 : -1;
-      }
-      if (evt.detail) {
-        direction = evt.detail > 0 ? -1 : 1;
-      }
-
-      prevWheelTime = +new Date;
-      currDirection = direction;
-    }
-  }
-}
-
-Opts.inherit(MouseWheel, EventDispatcher);
-
-/** @requires browser, events, tweening, mouse-area, mouse-wheel */
 
 function MshpMouse(ext) {
   var p = ext.position(),
@@ -7281,7 +6717,7 @@ function MshpMouse(ext) {
 }
 
 
-/* @requires element-position, events, mapshaper-maplayer, bounds, arrayutils, mapshaper-mouse */
+
 
 //
 //
@@ -7465,70 +6901,7 @@ function MapExtent(el, initialBounds) {
 Opts.inherit(MapExtent, EventDispatcher);
 
 
-/* @requires core */
 
-Utils.findRankByValue = function(arr, value) {
-  if (isNaN(value)) return arr.length;
-  var rank = 1;
-  for (var i=0, n=arr.length; i<n; i++) {
-    if (value > arr[i]) rank++;
-  }
-  return rank;
-}
-
-Utils.findValueByPct = function(arr, pct) {
-  var rank = Math.ceil((1-pct) * (arr.length));
-  return Utils.findValueByRank(arr, rank);
-};
-
-// See http://ndevilla.free.fr/median/median/src/wirth.c
-// Elements of @arr are reordered
-//
-Utils.findValueByRank = function(arr, rank) {
-  if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
-
-  rank = Utils.clamp(rank | 0, 1, arr.length);
-  var k = rank - 1, // conv. rank to array index
-      n = arr.length,
-      l = 0,
-      m = n - 1,
-      i, j, val, tmp;
-
-  while (l < m) {
-    val = arr[k];
-    i = l;
-    j = m;
-    do {
-      while (arr[i] < val) {i++;}
-      while (val < arr[j]) {j--;}
-      if (i <= j) {
-        tmp = arr[i];
-        arr[i] = arr[j];
-        arr[j] = tmp;
-        i++;
-        j--;
-      }
-    } while (i <= j);
-    if (j < k) l = i;
-    if (k < i) m = j;
-  }
-  return arr[k];
-};
-
-//
-//
-Utils.findMedian = function(arr) {
-  var n = arr.length,
-      rank = Math.floor(n / 2) + 1,
-      median = Utils.findValueByRank(arr, rank);
-  if ((n & 1) == 0) {
-    median = (median + Utils.findValueByRank(arr, rank - 1)) / 2;
-  }
-  return median;
-};
-
-
-/* @requires mapshaper-common, mapshaper-geom, median, sorting */
 
 // TODO; calculate pct based on distinct points in the dataset
 // TODO: pass number of points as a parameter instead of calculating it
@@ -7764,7 +7137,7 @@ MapShaper.simplifyArcsSph = function(arcs, simplify) {
   return data;
 };
 
-/* @requires core */
+
 
 // A heap data structure used for computing Visvalingam simplification data.
 //
@@ -7926,7 +7299,7 @@ function Heap() {
 }
 
 
-/* @requires mapshaper-common, mapshaper-geom, mapshaper-heap */
+
 
 var Visvalingam = {};
 
@@ -8071,7 +7444,7 @@ Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
 
 
 
-/* @requires arrayutils, mapshaper-common, mapshaper-geom */
+
 
 var DouglasPeucker = {};
 
@@ -8175,7 +7548,7 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
 };
 
 
-/* @requires mapshaper-common */
+
 
 MapShaper.importJSON = function(obj) {
   if (obj.type == "Topology") {
@@ -8254,7 +7627,7 @@ function exportCoordsForGeoJSON(paths) {
 }
 
 
-/* @requires mapshaper-common, mapshaper-geojson */
+
 
 MapShaper.importTopoJSON = function(obj) {
   var mx = 1, my = 1, bx = 0, by = 0;
@@ -8409,7 +7782,7 @@ function exportArcsForTopoJSON(paths) {
 }
 
 
-/* @requires mapshaper-geojson, mapshaper-topojson */
+
 
 var ExportControl = function(arcData, topoData, opts) {
   if (opts.geometry != 'polygon' && opts.geometry != 'polyline') {
@@ -8525,49 +7898,7 @@ MapShaper.convertShapesForJSON = function(arcData, shapeArr, type) {
 };
 
 
-/* @requires core */
 
-Utils.loadBinaryData = function(url, callback) {
-  // TODO: throw error if ajax or arraybuffer not available
-  var xhr = new XMLHttpRequest();
-  xhr.open('GET', url, true);
-  xhr.responseType = 'arraybuffer';
-  xhr.onload = function(e) {
-    callback(this.response);
-  };
-  xhr.send();
-};
-
-
-/* @requires
-mapshaper-shapes,
-mapshaper-controls,
-mapshaper-topology,
-mapshaper-map,
-mapshaper-maplayer,
-mapshaper-simplify,
-mapshaper-visvalingam,
-mapshaper-dp,
-mapshaper-export,
-loading.html5
-*/
-
-var api = {
-  ArcDataset: ArcDataset,
-  Utils: Utils,
-  controls: controls,
-  trace: trace,
-  error: error
-}
-
-if (Env.inNode) { // node.js for testing
-  module.exports = api;
-} else {
-  Opts.extendNamespace("mapshaper", api);
-}
-
-
-/* @requires mapshaper-gui-lib */
 
 var dropper,
     importer,
@@ -8700,5 +8031,15 @@ function Editor() {
     var exporter = new ExportControl(arcData, topoData, exportOpts);
   };
 }
+
+var api = {
+  ArcDataset: ArcDataset,
+  Utils: Utils,
+  controls: controls,
+  trace: trace,
+  error: error
+}
+
+Opts.extendNamespace("mapshaper", api);
 
 })();
