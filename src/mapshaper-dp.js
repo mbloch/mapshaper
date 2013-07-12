@@ -1,4 +1,4 @@
-/* @requires arrayutils, mapshaper-common, mapshaper-geom */
+/* @requires mapshaper-common, mapshaper-geom */
 
 var DouglasPeucker = {};
 

@@ -1,4 +1,4 @@
-/* @requires arrayutils, core */
+/* @requires mshp-common-lib */
 
 // TODO: adapt to run in browser
 function stop(msg) {

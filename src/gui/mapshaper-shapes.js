@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-geom, bounds, sorting */
+/* @requires mapshaper-common, mapshaper-geom */
 
 MapShaper.calcArcBounds = function(xx, yy) {
   var xb = Utils.getArrayBounds(xx),

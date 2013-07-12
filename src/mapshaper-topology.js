@@ -1,4 +1,4 @@
-/* @requires arrayutils, mapshaper-common */
+/* @requires mapshaper-common */
 
 // buildTopology() converts non-topological polygon data into a topological format
 //

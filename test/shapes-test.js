@@ -1,3 +1,4 @@
+/*
 var api = require('../gui/www/mapshaper.js'),
   assert = require('assert'),
   ArcDataset = api.ArcDataset,
@@ -28,3 +29,4 @@ describe('mapshaper-shapes.js', function () {
   })
 
 })
+*/

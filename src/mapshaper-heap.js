@@ -1,4 +1,4 @@
-/* @requires core */
+/* @requires mapshaper-common */
 
 // A heap data structure used for computing Visvalingam simplification data.
 //

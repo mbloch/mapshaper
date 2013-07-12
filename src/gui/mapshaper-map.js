@@ -1,4 +1,4 @@
-/* @requires element-position, events, mapshaper-maplayer, bounds, arrayutils, mapshaper-mouse */
+/* @requires mapshaper-common, mapshaper-maplayer, mapshaper-mouse */
 
 //
 //

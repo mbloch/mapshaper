@@ -1,4 +1,12 @@
-/* @requires mapshaper-common, mapshaper-shapefile, mapshaper-geojson, nodejs */
+/* @requires
+mapshaper-topology,
+mapshaper-simplify,
+mapshaper-shapefile,
+mapshaper-visvalingam,
+mapshaper-dp,
+mapshaper-shapes,
+mapshaper-export
+*/
 
 var cli = MapShaper.cli = {};
 
@@ -103,14 +111,21 @@ MapShaper.importFromFile = function(fname) {
   return MapShaper.importShp(fname);
 };
 
-/*
-MapShaper.importFromStream = function(sname) {
-  assert("/dev/stdin", "[importFromStream()] requires /dev/stdin; received:", sname);
-  var buf = Node.readFile(sname);
-  if (buf.readUInt32BE(0) == 9994) {
-    return MapShaper.importShpFromBuffer(buf);
-  }
-  var obj = JSON.parse(buf.toString());
-  return MapShaper.importJSON(obj);
-};
-*/
+var api = Utils.extend(MapShaper, {
+  Node: Node,
+  Utils: Utils,
+  Opts: Opts,
+  trace: trace,
+  error: error,
+  T: T,
+  BinArray: BinArray,
+  DouglasPeucker: DouglasPeucker,
+  Visvalingam: Visvalingam,
+  ShpReader: ShpReader,
+  DbfReader: DbfReader,
+  Bounds: Bounds
+});
+
+module.exports = api;
+
+T.verbose = false; // timing messages off by default (e.g. for testing)

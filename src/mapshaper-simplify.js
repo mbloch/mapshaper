@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-geom, median, sorting */
+/* @requires mapshaper-common, mapshaper-geom */
 
 // TODO; calculate pct based on distinct points in the dataset
 // TODO: pass number of points as a parameter instead of calculating it

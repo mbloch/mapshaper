@@ -1,4 +1,4 @@
-/** @requires browser, events, tweening, mouse-area, mouse-wheel */
+/** @requires mapshaper-common */
 
 function MshpMouse(ext) {
   var p = ext.position(),

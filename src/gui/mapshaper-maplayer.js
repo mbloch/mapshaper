@@ -1,4 +1,4 @@
-/* @requires elements, mapshaper-canvas */
+/* @requires mapshaper-canvas */
 
 // Layer group...
 //

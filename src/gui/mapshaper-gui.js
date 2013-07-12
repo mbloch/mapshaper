@@ -1,4 +1,14 @@
-/* @requires mapshaper-gui-lib */
+/* @requires
+mapshaper-shapes,
+mapshaper-controls,
+mapshaper-topology,
+mapshaper-map,
+mapshaper-maplayer,
+mapshaper-simplify,
+mapshaper-visvalingam,
+mapshaper-dp,
+mapshaper-export
+*/
 
 var dropper,
     importer,
@@ -131,3 +141,13 @@ function Editor() {
     var exporter = new ExportControl(arcData, topoData, exportOpts);
   };
 }
+
+var api = {
+  ArcDataset: ArcDataset,
+  Utils: Utils,
+  controls: controls,
+  trace: trace,
+  error: error
+}
+
+Opts.extendNamespace("mapshaper", api);

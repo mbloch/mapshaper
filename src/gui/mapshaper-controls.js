@@ -1,4 +1,4 @@
-/* @require mapshaper-elements, textutils, mapshaper-shapefile */
+/* @require mapshaper-elements, mapshaper-shapefile */
 
 function DropControl(importer) {
   var el = El('body');

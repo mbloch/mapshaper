@@ -1,4 +1,4 @@
-/* @requires shp-reader, dbf-reader, mapshaper-common, mapshaper-geom */
+/* @requires mapshaper-common, mapshaper-geom, shp-reader, dbf-reader */
 
 MapShaper.importDbf = function(src) {
   T.start();

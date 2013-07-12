@@ -1,4 +1,4 @@
-/* requires mapshaper-common */
+/* @requires mapshaper-common */
 
 function distance3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
