@@ -36,8 +36,11 @@ MapShaper.buildTopology = function(obj) {
 };
 
 
-// Translate (x,y) coords into unsigned int for hashing
+// Hash (x,y) coords to unsigned ints
 MapShaper.xyToUintHash = function(x, y) {
+  // It's expensive to extract bits from a double, we don't know the data range,
+  // so multiply by several factors to get most of the float64 bits into integer range,
+  // coerce to integer and XOR to munge the bits together.
   var key = x * 1e8 ^ x ^ y * 1e8 ^ y * 31;
   return key & 0x7fffffff; // mask as nonnegative integer
 };
@@ -46,7 +49,7 @@ MapShaper.xyToUintHash = function(x, y) {
 //
 //
 function ArcIndex(pointCount, xyToUint) {
-  var hashTableSize = Math.ceil(pointCount * 0.2); // make sure we have an integer size
+  var hashTableSize = Math.ceil(pointCount * 0.25);
   var hashTable = new Int32Array(hashTableSize),
       hash = function(x, y) {
         return xyToUint(x, y) % hashTableSize;
@@ -253,7 +256,7 @@ function buildPathTopology(xx, yy, pathData) {
         return true;
       }
       chainId = chainIds[chainId];
-    } while (id != chainId);2
+    } while (id != chainId);
     // path parallels all adjacent paths at @id -- point is not arc endpoint
     return false;
   }
