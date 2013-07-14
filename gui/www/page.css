@@ -147,6 +147,10 @@ h2, h4, h5 {
 	text-align: left;
 }
 
+#mshp-import .g-options-block {
+	margin-left: 0px;
+}
+
 /* ======== SIMPLIFY SCREEN ======== */
 
 #mshp-main-page {

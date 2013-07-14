@@ -36,25 +36,25 @@
 	<a href="https://github.com/mbloch/mapshaper"><img class="fork-me" src="images/fork-me-right-cerulean@2x.png" alt="Fork me on GitHub"></a>
 
 	<div id="mshp-import">
-		<h4>To edit a Shapefile, drag the .shp<br>file onto this window or <div class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class="g-label-text">select</span></div>it.</h4>
+		<h4>Drag a GeoJSON file or .shp<br>file from a Shapefile
+		onto this<br>window, or <div class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class="g-label-text">select</span></div>a file.</h4>
 
-		<h4>Options</h4>
-
-
-		<div id="g-import-options">
-
-			<div>Simplification method</div>
-			<div id="g-simplification-menu">
-				<div><label><input type="radio" name="method" value="dp">Douglas-Peucker</label></div>
-				<div><label><input type="radio" name="method" value="vis">Visvalingam</label></div>
-				<div><label><input type="radio" name="method" value="mod" checked="true">modified Visvalingam</label></div>
-			</div>
-			<div>
-				<input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>
-				<label for="g-import-retain-opt">prevent shape removal</label>
-				<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Prevents small shapes<br /> from disappearing at<br />high simplification.</div></div></div>
-			</div>
-		</div> <!-- g-import-options -->
+		<div class="g-options-block">
+			<h4>Options</h4>
+			<div id="g-import-options">
+				<div>Simplification method</div>
+				<div id="g-simplification-menu">
+					<div><label><input type="radio" name="method" value="dp">Douglas-Peucker</label></div>
+					<div><label><input type="radio" name="method" value="vis">Visvalingam</label></div>
+					<div><label><input type="radio" name="method" value="mod" checked="true">modified Visvalingam</label></div>
+				</div>
+				<div>
+					<input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>
+					<label for="g-import-retain-opt">prevent shape removal</label>
+					<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Prevents small shapes<br /> from disappearing at<br />high simplification.</div></div></div>
+				</div>
+			</div> <!-- g-import-options -->
+		</div>
 
 	</div> <!-- mshp-import -->
 </div> <!-- mshp-intro-screen -->
