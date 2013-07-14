@@ -130,7 +130,8 @@ function Editor() {
     trace(importData.info);
     var exportOpts = {
       bounds: arcData.getBounds(),
-      geometry: importData.info.input_geometry_type
+      geometry: importData.info.input_geometry_type,
+      properties: importData.properties || null
     };
     if (opts.input_file) {
       var parts = MapShaper.parseLocalPath(opts.input_file);

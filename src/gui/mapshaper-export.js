@@ -1,6 +1,8 @@
 /* @requires mapshaper-geojson, mapshaper-topojson */
 
 var ExportControl = function(arcData, topoData, opts) {
+  trace("ExportControl() data keys:", Utils.getKeys(topoData));
+
   if (opts.geometry != 'polygon' && opts.geometry != 'polyline') {
     error("ExportControl() unexpected geometry type:", opts.geometry);
   }
@@ -52,7 +54,7 @@ var ExportControl = function(arcData, topoData, opts) {
   function exportGeoJSON() {
     var shapes = MapShaper.convertShapesForJSON(arcData, topoData.shapes, opts.geometry),
         geoType = getGeometryTypeforJSON(opts.geometry),
-        json = MapShaper.exportGeoJSON({shapes: shapes, type: geoType});
+        json = MapShaper.exportGeoJSON({shapes: shapes, type: geoType, properties: opts.properties});
     exportBlob(filename + ".geojson", new Blob([json]));
     geoBtn.active(true);
   }

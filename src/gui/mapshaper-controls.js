@@ -1,4 +1,4 @@
-/* @require mapshaper-elements, mapshaper-shapefile */
+/* @require mapshaper-elements, mapshaper-shapefile, mapshaper-geojson */
 
 function DropControl(importer) {
   var el = El('body');
@@ -35,7 +35,7 @@ function ImportControl(editor) {
       reader.onload = function(e) {
         inputFileContent(name, type, reader.result);
       }
-      reader.readAsArrayBuffer(file);
+      type == 'shapefile' ? reader.readAsArrayBuffer(file) : reader.readAsText(file, 'UTF-8');
     }
   };
 
@@ -52,13 +52,13 @@ function ImportControl(editor) {
     if (/\.shp$/.test(name)) {
       return 'shapefile';
     }
-    /* else if (/json$/.test(name)) { // accept .json, .geojson, .topojson
+    else if (/json$/.test(name)) { // accept .json, .geojson, .topojson
       return 'json';
-    } */
+    }
     return '';
   }
 
-  function inputFileContent(path, type, buf) {
+  function inputFileContent(path, type, content) {
     var fileInfo = MapShaper.parseLocalPath(path),
         fname = fileInfo.filename,
         data;
@@ -67,8 +67,11 @@ function ImportControl(editor) {
       input_file: fname
     };
 
+
     if (type == 'shapefile') {
-      data = MapShaper.importShp(buf);
+      data = MapShaper.importShp(content);
+    } else if (type == 'json') {
+      data = MapShaper.importJSON(JSON.parse(content));
     } else {
       error("Unsupported file type:", fname);
     }
