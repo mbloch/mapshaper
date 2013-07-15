@@ -1,5 +1,55 @@
 /* @requires mapshaper-common */
 
+var GeoJSON = {};
+
+GeoJSON.converters = {
+  LineString: function(coords, paths, shapeId) {
+    var size = coords.length;
+    if (size > 1 == false) return 0;
+    paths.push({
+      size: size,
+      coordinates: coords,
+      shapeId: shapeId,
+      isRing: false,
+      isHole: false
+    });
+    return size;
+  },
+  MultiLineString: function(coords, paths, shapeId) {
+    var count = 0;
+    for (var i=0; i<coords.length; i++) {
+      count += GeoJSON.converters.LineString(coords[i], paths, shapeId);
+    }
+    return count;
+  },
+  Polygon: function(coords, paths, shapeId) {
+    var count = 0,
+        points, isHole;
+    for (var i=0; i<coords.length; i++) {
+      isHole = i > 0;
+      points = coords[i];
+      if (!MapShaper.validateGeoJSONRing(points, isHole)) continue;
+      size = points.length;
+      paths.push({
+        size: points.length,
+        coordinates: points,
+        shapeId: shapeId,
+        isRing: true,
+        isHole: isHole
+      });
+      count += points.length;
+    }
+    return count;
+  },
+  MultiPolygon: function(coords, paths, shapeId) {
+    var count = 0;
+    for (var i=0; i<coords.length; i++) {
+      count += GeoJSON.converters.Polygon(coords[i], paths, shapeId);
+    }
+    return count;
+  }
+};
+
 MapShaper.importJSON = function(obj) {
   if (obj.type == "Topology") {
     error("TODO: TopoJSON import.")
@@ -9,12 +59,25 @@ MapShaper.importJSON = function(obj) {
 };
 
 MapShaper.importGeoJSON = function(obj) {
-  // TODO: support individual features and geometries by converting to collections of one
+  var supportedCollections = ['FeatureCollection', 'GeometryCollection'];
+  var supportedGeometries = Utils.getKeys(GeoJSON.converters);
 
-  var supported = ['FeatureCollection', 'GeometryCollection'];
+  // Convert single feature or geometry into a collection of one
+  //
+  if (obj.type == 'Feature') {
+    obj = {
+      type: 'FeatureCollection',
+      features: [obj]
+    }
+  } else if (Utils.contains(supportedGeometries, obj.type)) {
+    obj = {
+      type: 'GeometryCollection',
+      geometries: [obj]
+    }
+  }
 
-  if (!Utils.contains(supported, obj.type)) {
-    error("MapShaper.importGeoJSON() Unsupported type:", obj.type, "Expected one of:", supported.join(', '));
+  if (!Utils.contains(supportedCollections, obj.type)) {
+    error("MapShaper.importGeoJSON() Unsupported type:", obj.type, "Expected one of:", supportedCollections.join(', '));
   }
 
   // first, convert to a simpler format
@@ -38,7 +101,6 @@ MapShaper.importGeoJSON = function(obj) {
     path.coordinates = null; // no longer need array of points
   });
 
-  // TODO: do something with converted.properties
   var bounds = MapShaper.calcXYBounds(xx, yy);
   var justRings = Utils.every(converted.paths, function(path) {
     return path.isRing === true;
@@ -93,53 +155,6 @@ MapShaper.convertGeoJSONCollection = function(obj) {
   var properties = features ? [] : null;
   var paths = [];
   var pointCount = 0;
-  var converters = {
-    LineString: function(coords, paths, shapeId) {
-      var size = coords.length;
-      if (size > 1 == false) return 0;
-      paths.push({
-        size: size,
-        coordinates: coords,
-        shapeId: shapeId,
-        isRing: false,
-        isHole: false
-      });
-      return size;
-    },
-    MultiLineString: function(coords, paths, shapeId) {
-      var count = 0;
-      for (var i=0; i<coords.length; i++) {
-        count += converters.LineString(coords[i], paths, shapeId);
-      }
-      return count;
-    },
-    Polygon: function(coords, paths, shapeId) {
-      var count = 0,
-          points, isHole;
-      for (var i=0; i<coords.length; i++) {
-        isHole = i > 0;
-        points = coords[i];
-        if (!MapShaper.validateGeoJSONRing(points, isHole)) continue;
-        size = points.length;
-        paths.push({
-          size: points.length,
-          coordinates: points,
-          shapeId: shapeId,
-          isRing: true,
-          isHole: isHole
-        });
-        count += points.length;
-      }
-      return count;
-    },
-    MultiPolygon: function(coords, paths, shapeId) {
-      var count = 0;
-      for (var i=0; i<coords.length; i++) {
-        count += converters.Polygon(coords[i], paths, shapeId);
-      }
-      return count;
-    }
-  };
 
   Utils.forEach(features ? obj.features : obj.geometries, function(obj, i) {
     var geom, converter;
@@ -150,7 +165,7 @@ MapShaper.convertGeoJSONCollection = function(obj) {
       geom = obj;
     }
 
-    var converter = converters[geom.type];
+    var converter = GeoJSON.converters[geom.type];
     if (converter) {
       pointCount += converter(geom.coordinates, paths, i);
     } else {
