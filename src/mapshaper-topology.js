@@ -36,14 +36,23 @@ MapShaper.buildTopology = function(obj) {
 };
 
 
-// Hash (x,y) coords to unsigned ints
-MapShaper.xyToUintHash = function(x, y) {
-  // It's expensive to extract bits from a double, we don't know the data range,
-  // so multiply by several factors to get most of the float64 bits into integer range,
-  // coerce to integer and XOR to munge the bits together.
-  var key = x * 1e8 ^ x ^ y * 1e8 ^ y * 31;
-  return key & 0x7fffffff; // mask as nonnegative integer
-};
+// Based on a function published by Mike Bostock
+// https://github.com/mbostock/topojson/issues/64#issuecomment-16692286
+// This function is simpler but tested well on a range of inputs.
+//
+MapShaper.xyToUintHash = (function() {
+  var buf = new ArrayBuffer(16),
+      floats = new Float64Array(buf),
+      uints = new Uint32Array(buf);
+
+  return function(x, y) {
+    floats[0] = x;
+    floats[1] = y;
+    var xk = uints[0] ^ uints[1],
+        yk = uints[2] ^ uints[3];
+    return (xk << 3 ^ xk >>> 5 ^ yk) & 0x7fffffff;
+  }
+}());
 
 
 //
@@ -130,8 +139,9 @@ function buildPathTopology(xx, yy, pathData) {
   }
 
   T.start();
-  var chainIds = initPointChains(xx, yy, pathIds, MapShaper.xyToUintHash);
+  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash);
   T.stop("Find matching vertices");
+
 
   T.start();
   var pointId = 0;
@@ -347,14 +357,15 @@ function initPathIds(size, pathData) {
 }
 
 
+
 // Return an array with data for chains of vertices with same x, y coordinates
 // Array ids are same as ids of x- and y-coord arrays.
 // Array values are ids of next point in each chain.
 // Unique (x, y) points link to themselves (i.e. arr[n] == n)
 //
-function initPointChains(xx, yy, pathIds, hash) {
+function initPointChains(xx, yy, hash) {
   var pointCount = xx.length,
-      hashTableSize = Math.floor(pointCount * 1.5);
+      hashTableSize = Math.floor(pointCount * 1.4);
   // A hash table larger than ~1.5 * point count doesn't seem to improve performance much.
 
   // Hash table is temporary storage for building chains of matching point ids.
@@ -367,10 +378,6 @@ function initPointChains(xx, yy, pathIds, hash) {
   var key, headId, x, y;
 
   for (var i=0; i<pointCount; i++) {
-    if (pathIds[i] == -1) {
-      chainIds[i] = -1;
-      continue;
-    }
     x = xx[i];
     y = yy[i];
     key = hash(x, y) % hashTableSize;
@@ -418,7 +425,7 @@ function protectPath(path, arcs, sharedArcFlags, minArcPoints) {
   var arcId;
   for (var i=0, arcCount=path.length; i<arcCount; i++) {
     arcId = path[i];
-    if (arcId < 1) arcId = -1 - arcId;
+    if (arcId < 1) arcId = ~arcId;
     if (arcCount == 1) { // one-arc polygon (e.g. island) -- save two interior points
       minArcPoints[arcId] = 2;
     }
