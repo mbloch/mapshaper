@@ -41,7 +41,7 @@ MapShaper.importGeoJSON = function(obj) {
   // TODO: do something with converted.properties
   var bounds = MapShaper.calcXYBounds(xx, yy);
   var justRings = Utils.every(converted.paths, function(path) {
-    return path.isRing === true; // consider adding && checking isNull property
+    return path.isRing === true;
   });
   var info = {
     input_bounds: bounds.toArray(),
@@ -96,6 +96,7 @@ MapShaper.convertGeoJSONCollection = function(obj) {
   var converters = {
     LineString: function(coords, paths, shapeId) {
       var size = coords.length;
+      if (size > 1 == false) return 0;
       paths.push({
         size: size,
         coordinates: coords,
@@ -114,18 +115,17 @@ MapShaper.convertGeoJSONCollection = function(obj) {
     },
     Polygon: function(coords, paths, shapeId) {
       var count = 0,
-          points, isNull, isHole;
+          points, isHole;
       for (var i=0; i<coords.length; i++) {
         isHole = i > 0;
         points = coords[i];
-        isNull = !MapShaper.validateGeoJSONRing(points, isHole);
+        if (!MapShaper.validateGeoJSONRing(points, isHole)) continue;
         size = points.length;
         paths.push({
           size: points.length,
           coordinates: points,
           shapeId: shapeId,
           isRing: true,
-          isNull: isNull,
           isHole: isHole
         });
         count += points.length;

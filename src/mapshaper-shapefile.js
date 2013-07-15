@@ -30,8 +30,7 @@ MapShaper.importShp = function(src) {
 
   var counts = reader.getCounts(),
       xx = new Float64Array(counts.pointCount),
-      yy = new Float64Array(counts.pointCount),
-      shapeIds = [];
+      yy = new Float64Array(counts.pointCount);
 
   var expectRings = Utils.contains([5,15,25], reader.type()),
       findMaxParts = expectRings,
@@ -83,7 +82,6 @@ MapShaper.importShp = function(src) {
         size: validPointsInPart,
         isHole: false,
         isPrimary: false,
-        isNull: false,
         // isRing: expectRings,
         shapeId: shapeId
       }
@@ -128,7 +126,6 @@ MapShaper.importShp = function(src) {
         }
       }
 
-      shapeIds.push(shapeId);
       pathData.push(pathObj);
       partId++;
     }  // forEachPart()
