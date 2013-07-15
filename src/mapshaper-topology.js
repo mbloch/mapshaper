@@ -6,7 +6,7 @@
 // {
 //    xx: [Array|Float64Array],   // x-coords of each point in the dataset
 //    yy: [Array|Float64Array],   // y-coords "  "  "  "
-//    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isNull: false, isPrimary: true}
+//    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isPrimary: true}
 // }
 // Note: x- and y-coords of all paths are concatenated into two long arrays, for easy indexing
 // Note: Input coords can use typed arrays (better performance) or regular arrays (for testing)
@@ -36,6 +36,7 @@ MapShaper.buildTopology = function(obj) {
 };
 
 
+// Hash an x, y point to a non-negative integer
 // Based on a function published by Mike Bostock
 // https://github.com/mbostock/topojson/issues/64#issuecomment-16692286
 // This function is simpler but tested well on a range of inputs.
@@ -46,11 +47,12 @@ MapShaper.xyToUintHash = (function() {
       uints = new Uint32Array(buf);
 
   return function(x, y) {
+    var u = uints, h;
     floats[0] = x;
     floats[1] = y;
-    var xk = uints[0] ^ uints[1],
-        yk = uints[2] ^ uints[3];
-    return (xk << 3 ^ xk >>> 5 ^ yk) & 0x7fffffff;
+    h = u[0] ^ u[1];
+    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+    return h & 0x7fffffff;
   }
 }());
 
@@ -141,7 +143,6 @@ function buildPathTopology(xx, yy, pathData) {
   T.start();
   var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash);
   T.stop("Find matching vertices");
-
 
   T.start();
   var pointId = 0;
@@ -366,6 +367,7 @@ function initPathIds(size, pathData) {
 function initPointChains(xx, yy, hash) {
   var pointCount = xx.length,
       hashTableSize = Math.floor(pointCount * 1.4);
+
   // A hash table larger than ~1.5 * point count doesn't seem to improve performance much.
 
   // Hash table is temporary storage for building chains of matching point ids.
@@ -404,6 +406,35 @@ function initPointChains(xx, yy, hash) {
   }
   return chainIds;
 };
+
+
+// Test distribution and speed of a hash function, print results on console
+// Intented for testing datasets passed to MapShaper.buildTopology()
+// Caveat: Elapsed time is not a reliable measure of performance, because of breaks for garbage collection, etc.
+// @xx, @yy arrays of x, y coords; @hash(x, y) returns a positive integer; @msg optional
+//
+function testHashFunction(xx, yy, hash, msg) {
+  var pointCount = xx.length,
+      hashTableSize = Math.floor(pointCount * 0.9),
+      hashTable = new Uint32Array(hashTableSize);
+  var key, collisions = 0;
+
+  T.start();
+  for (var i=0; i<pointCount; i++) {
+    x = xx[i];
+    y = yy[i];
+    key = hash(x, y) % hashTableSize;
+    if (hashTable[key] > 0) {
+      collisions++;
+    } else {
+      hashTable[key] = 1;
+    }
+  }
+
+  msg = (msg || '') + " pct: " + collisions / pointCount * 100;
+  T.stop(msg);
+}
+
 
 
 // Calculate number of interior points to preserve in each arc
