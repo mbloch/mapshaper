@@ -45,7 +45,6 @@ According to Mozilla's [FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html), "The MPL'
 
 To suggest additions to this list, add a github issue.
 
-- GeoJSON input
 - Import Shapefile attribute table (.dbf file)
 - Selection and aggregation, using attribute queries and mouse selection
 - Ability to heal minor topological problems in source data
