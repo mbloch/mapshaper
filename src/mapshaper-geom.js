@@ -144,9 +144,18 @@ function msSignedRingArea(xx, yy, start, len) {
   return sum / 2;
 }
 
-function msRingArea(xx, yy, start, len) {
-  return Math.abs(msSignedRingArea(xx, yy, start, len));
-}
+MapShaper.reversePathCoords = function(arr, start, len) {
+  var i = start,
+      j = start + len - 1,
+      tmp;
+  while (i < j) {
+    tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+    i++, j--;
+  }
+};
+
 
 // merge B into A
 function mergeBounds(a, b) {
@@ -175,7 +184,6 @@ MapShaper.geom = {
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,
-  msRingArea: msRingArea,
   msSignedRingArea: msSignedRingArea,
   probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
 };

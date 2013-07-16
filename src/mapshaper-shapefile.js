@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-geom, shp-reader, dbf-reader */
+/* @requires mapshaper-common, mapshaper-geom, shp-reader, dbf-reader, mapshaper-import */
 
 MapShaper.importDbf = function(src) {
   T.start();
@@ -7,14 +7,13 @@ MapShaper.importDbf = function(src) {
   return data;
 };
 
-// Reads Shapefile data from an ArrayBuffer or Buffer
-// Converts to format used for identifying topology.
+// Read Shapefile data from an ArrayBuffer or Buffer
+// Convert to format used for identifying topology
 //
-
 MapShaper.importShp = function(src) {
   T.start();
-  var reader = new ShpReader(src);
 
+  var reader = new ShpReader(src);
   var supportedTypes = [
     ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ,
     ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ
@@ -28,141 +27,29 @@ MapShaper.importShp = function(src) {
     trace("Warning: M data is being removed.");
   }
 
-  var counts = reader.getCounts(),
-      xx = new Float64Array(counts.pointCount),
-      yy = new Float64Array(counts.pointCount);
-
-  var expectRings = Utils.contains([5,15,25], reader.type()),
-      findMaxParts = expectRings,
-      findHoles = expectRings,
-      pathData = [];
-
-  var pointId = 0,
-      partId = 0,
-      shapeId = 0;
-
+  var counts = reader.getCounts();
+  var importer = new PathImporter(counts.pointCount);
+  var expectRings = Utils.contains([5,15,25], reader.type());
 
   // TODO: test cases: null shape; non-null shape with no valid parts
 
   reader.forEachShape(function(shp) {
-    var maxPartId = -1,
-        maxPartArea = 0,
-        signedPartArea, partArea, startId;
-
-    var partsInShape = shp.partCount,
-        pointsInShape = shp.pointCount,
-        partSizes = shp.readPartSizes(),
+    var partSizes = shp.readPartSizes(),
         coords = shp.readCoords(),
-        pointsInPart, validPointsInPart,
-        pathObj,
-        err,
-        x, y, prevX, prevY;
+        offs = 0,
+        pointsInPart;
 
-    if (partsInShape != partSizes.length) error("Shape part mismatch");
-
-    for (var j=0, offs=0; j<partsInShape; j++) {
+    importer.startShape();
+    for (var j=0, n=shp.partCount; j<n; j++) {
       pointsInPart = partSizes[j];
-      startId = pointId;
-      for (var i=0; i<pointsInPart; i++) {
-        x = coords[offs++];
-        y = coords[offs++];
-        if (i == 0 || prevX != x || prevY != y) {
-          xx[pointId] = x;
-          yy[pointId] = y;
-          pointId++;
-        } else {
-          // trace("Duplicate point:", x, y)
-        }
-        prevX = x, prevY = y;
-      }
-
-      validPointsInPart = pointId - startId;
-
-      pathObj = {
-        size: validPointsInPart,
-        isHole: false,
-        isPrimary: false,
-        // isRing: expectRings,
-        shapeId: shapeId
-      }
-
-      if (expectRings) {
-        signedPartArea = msSignedRingArea(xx, yy, startId, pointsInPart);
-        err = null;
-        if (validPointsInPart < 4) {
-          err = "Only " + validPointsInPart + " valid points in ring";
-        } else if (signedPartArea == 0) {
-          err = "Zero-area ring";
-        } else if (xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
-          err = "Open path";
-        }
-
-        if (err != null) {
-          trace("Invalid ring in shape:", shapeId, "--", err);
-          // pathObj.isNull = true;
-          pointId -= validPointsInPart; // backtrack...
-          continue;
-        }
-
-        if (findMaxParts) {
-          partArea = Math.abs(signedPartArea);
-          if (partArea > maxPartArea) {
-            maxPartId = partId;
-            maxPartArea = partArea;
-          }
-        }
-
-        if (findHoles) {
-          if (signedPartArea < 0) {
-            if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
-            pathObj.isHole = true;
-          }
-        }
-      } else { // no rings (i.e. polylines)
-        if (validPointsInPart < 2) {
-          trace("Collapsed path in shape:", shapeId, "-- skipping");
-          pointId -= validPointsInPart;
-          continue;
-        }
-      }
-
-      pathData.push(pathObj);
-      partId++;
-    }  // forEachPart()
-
-    if (maxPartId > -1) {
-      pathObj.isPrimary = true;
+      importer.importCoordsFromFlatArray(coords, offs, pointsInPart, expectRings);
+      offs += pointsInPart * 2;
     }
-    shapeId++;
-  });  // forEachShape()
+  });
 
-  var skippedPoints = counts.pointCount - pointId,
-      skippedParts = counts.partCount - partId;
-  if (counts.shapeCount != shapeId || skippedPoints < 0 || skippedParts < 0)
-    error("Counting problem");
-
-  if (skippedPoints > 0) {
-    // trace("* Skipping", skippedPoints, "invalid points");
-    xx = xx.subarray(0, pointId);
-    yy = yy.subarray(0, pointId);
-  }
-
-  var info = {
-    input_bounds: reader.header().bounds,
-    input_point_count: pointId,
-    input_part_count: partId,
-    input_shape_count: shapeId,
-    input_skipped_points: skippedPoints,
-    input_skipped_parts: skippedParts,
-    input_geometry_type: expectRings ? "polygon" : "polyline"
-  };
+  var data = importer.done();
   T.stop("Import Shapefile");
-  return {
-    xx: xx,
-    yy: yy,
-    pathData: pathData,
-    info: info
-  };
+  return data;
 };
 
 // Convert topological data to buffers containing .shp and .shx file data
