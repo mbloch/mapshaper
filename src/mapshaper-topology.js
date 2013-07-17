@@ -29,7 +29,7 @@ MapShaper.buildTopology = function(obj) {
   T.start();
   var topoData = buildPathTopology(obj.xx, obj.yy, obj.pathData);
   topoData.arcMinPointCounts = calcMinPointCounts(topoData.paths, obj.pathData, topoData.arcs, topoData.sharedArcFlags);
-  topoData.shapes = groupPathsByShape(topoData.paths, obj.pathData);
+  topoData.shapes = groupPathsByShape(topoData.paths, obj.pathData, obj.info.input_shape_count); // kludge
   delete topoData.paths;
   T.stop("Process topology");
   return topoData;
@@ -409,9 +409,10 @@ function initPointChains(xx, yy, hash) {
 
 
 // Test distribution and speed of a hash function, print results on console
-// Intented for testing datasets passed to MapShaper.buildTopology()
+// Intended for testing datasets passed to MapShaper.buildTopology()
 // Caveat: Elapsed time is not a reliable measure of performance, because of breaks for garbage collection, etc.
 // @xx, @yy arrays of x, y coords; @hash(x, y) returns a positive integer; @msg optional
+// TODO: test other aspects of hash distribution than collision rate
 //
 function testHashFunction(xx, yy, hash, msg) {
   var pointCount = xx.length,
@@ -434,7 +435,6 @@ function testHashFunction(xx, yy, hash, msg) {
   msg = (msg || '') + " pct: " + collisions / pointCount * 100;
   T.stop(msg);
 }
-
 
 
 // Calculate number of interior points to preserve in each arc
@@ -469,11 +469,11 @@ function protectPath(path, arcs, sharedArcFlags, minArcPoints) {
 
 // Use shapeId property of @pathData objects to group paths by shape
 //
-function groupPathsByShape(paths, pathData) {
-  var shapes = [];
+function groupPathsByShape(paths, pathData, shapeCount) {
+  var shapes = new Array(shapeCount); // Array can be sparse, but should have this length
   Utils.forEach(paths, function(path, pathId) {
     var shapeId = pathData[pathId].shapeId;
-    if (shapeId >= shapes.length) {
+    if (shapeId in shapes == false) {
       shapes[shapeId] = [path]; // first part in a new shape
     } else {
       shapes[shapeId].push(path);

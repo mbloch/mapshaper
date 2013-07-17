@@ -137,9 +137,6 @@ MapShaper.exportGeoJSON = function(obj) {
   }
 
   var objects = Utils.map(obj.shapes, function(shape, i) {
-    if (!shape || !Utils.isArray(shape)) {
-      error("[exportGeoJSON()] Missing or invalid param/s");
-    }
     if (useFeatures) {
       return MapShaper.exportGeoJSONFeature(shape, obj.type, properties[i]);
     } else {
@@ -164,7 +161,7 @@ MapShaper.exportGeoJSON = function(obj) {
 MapShaper.exportGeoJSONGeometry = function(paths, type) {
   var geom = {};
 
-  if (paths.length == 0) {
+  if (!paths || paths.length == 0) {
     geom = null; // null geometry
   }
   else if (type == 'MultiPolygon') {

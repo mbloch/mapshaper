@@ -117,7 +117,7 @@ function exportTopoJSONGeometry(paths, id, type) {
     id: id
   };
 
-  if (paths.length == 0) {
+  if (!paths || paths.length == 0) {
     // null geometry
     obj.type = null;
   }

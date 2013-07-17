@@ -1,7 +1,6 @@
 /* @requires mapshaper-geojson, mapshaper-topojson */
 
 var ExportControl = function(arcData, topoData, opts) {
-  trace("ExportControl() data keys:", Utils.getKeys(topoData));
 
   if (opts.geometry != 'polygon' && opts.geometry != 'polyline') {
     error("ExportControl() unexpected geometry type:", opts.geometry);
@@ -16,7 +15,7 @@ var ExportControl = function(arcData, topoData, opts) {
       anchor = El('#g-export-control').newChild('a').attr('href', '#').node(),
       blobUrl;
 
-  El('#g-export-buttons').css('display: inline');
+  El('#g-export-buttons').css('display:inline');
 
   var geoBtn = new SimpleButton('#g-geojson-btn').active(true).on('click', function() {
     geoBtn.active(false);
@@ -110,7 +109,8 @@ var ExportControl = function(arcData, topoData, opts) {
 
 MapShaper.convertShapesForJSON = function(arcData, shapeArr, type) {
   return Utils.map(shapeArr, function(shapeIds) {
+    if (!shapeIds || shapeIds.length == 0) return null;
     var shape = arcData.getMultiPathShape(shapeIds);
-    return type == 'polygon' ? shape.getPathGroups() : shape.getPaths();
+    return type == 'polygon' ? shape.getPathGroups() : shape.getPaths(); // TODO:
   });
 };
