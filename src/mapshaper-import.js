@@ -10,6 +10,7 @@ function PathImporter(pointCount) {
 
   var paths = [],
       pointId = 0,
+      openPaths = 0,
       shapeId = -1,
       pathsInShape,
       primaryPath,
@@ -97,6 +98,7 @@ function PathImporter(pointCount) {
       // TODO: detect shapes that only contain holes
 
     } else { // no rings (i.e. polylines)
+      openPaths++;
       if (validPoints < 2) {
         trace("Collapsed path in shape:", shapeId, "-- skipping");
         pointId -= validPoints;
@@ -137,9 +139,6 @@ function PathImporter(pointCount) {
     }
 
     var bounds = MapShaper.calcXYBounds(xx, yy);
-    var justRings = Utils.every(paths, function(path) {
-        return path.isRing === true;
-      });
 
     var info = {
       input_bounds: bounds.toArray(),
@@ -147,7 +146,7 @@ function PathImporter(pointCount) {
       input_part_count: paths.length,
       input_skipped_points: skippedPoints,
       input_shape_count: shapeId + 1,
-      input_geometry_type: justRings ? 'polygon' : 'polyline'
+      input_geometry_type: openPaths > 1 ? 'polyline' : 'polygon'
     };
 
     return {
