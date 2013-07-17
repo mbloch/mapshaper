@@ -102,6 +102,7 @@ function PathImporter(pointCount) {
       if (validPoints < 2) {
         trace("Collapsed path in shape:", shapeId, "-- skipping");
         pointId -= validPoints;
+        return false;
       }
     }
 

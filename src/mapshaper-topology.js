@@ -148,7 +148,7 @@ function buildPathTopology(xx, yy, pathData) {
   var pointId = 0;
   var paths = Utils.map(pathData, function(pathObj) {
     var pathLen = pathObj.size,
-        arcs = pathObj.isNull ? null : convertPath(pointId, pointId + pathLen - 1);
+        arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
     pointId += pathLen;
     return arcs;
   });
@@ -339,7 +339,7 @@ function buildPathTopology(xx, yy, pathData) {
       if (arcId >= 0) return arcId;
     }
 
-    error("Unmatched ring.")
+    error("Unmatched ring:", pathData[pathId]);
   }
 }
 
