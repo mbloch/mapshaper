@@ -40,31 +40,9 @@ MapShaper.buildTopology = function(obj) {
 };
 
 
-// Reference hash function Copyright (c) 2012, Michael Bostock, BSD license
-// https://github.com/mbostock/topojson/issues/64#issuecomment-16692286
-MapShaper.xyToUintHash = (function() {
-  var buffer = new ArrayBuffer(8),
-      floats = new Float64Array(buffer),
-      ints = new Int32Array(buffer);
-
-  function hash1(x) {
-    floats[0] = x;
-    x = ints[1] ^ ints[0];
-    x ^= (x >>> 20) ^ (x >>> 12);
-    x ^= (x >>> 7) ^ (x >>> 4);
-    return x;
-  }
-
-  return function hash2(x, y) {
-    return (hash1(x) + 31 * hash1(y)) & 0x7fffffff;
-  };
-}());
-
-
 // Hash an x, y point to a non-negative integer
-// This function is simpler than below reference function
-// but tested well on a range of inputs.
-MapShaper.xyToUintHash2 = (function() {
+//
+MapShaper.xyToUintHash = (function() {
   var buf = new ArrayBuffer(16),
       floats = new Float64Array(buf),
       uints = new Uint32Array(buf);
@@ -148,7 +126,7 @@ function ArcIndex(pointCount, xyToUint) {
 //
 function buildPathTopology(xx, yy, pathData) {
   var pointCount = xx.length,
-      index = new ArcIndex(pointCount, MapShaper.xyToUintHash2),
+      index = new ArcIndex(pointCount, MapShaper.xyToUintHash),
       typedArrays = !!(xx.subarray && yy.subarray),
       slice, array;
 
@@ -164,7 +142,7 @@ function buildPathTopology(xx, yy, pathData) {
 
 
   T.start();
-  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash2, !"verbose");
+  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
   T.stop("Find matching vertices");
 
 
