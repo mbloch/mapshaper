@@ -24,24 +24,47 @@
 // Note: Arcs use typed arrays or regular arrays for coords, depending on the input array type.
 //
 MapShaper.buildTopology = function(obj) {
-  if (!(obj.xx && obj.yy && obj.pathData)) error("[buildTopology()] Missing required param/s");
+  if (!(obj.xx && obj.yy && obj.pathData)) error("#buildTopology() Missing required param/s");
 
   T.start();
   var topoData = buildPathTopology(obj.xx, obj.yy, obj.pathData);
-  topoData.arcMinPointCounts = calcMinPointCounts(topoData.paths, obj.pathData, topoData.arcs, topoData.sharedArcFlags);
-  topoData.shapes = groupPathsByShape(topoData.paths, obj.pathData, obj.info.input_shape_count); // kludge
-  delete topoData.paths;
+  var retainedPointCounts = calcPointRetentionData(topoData.paths, obj.pathData, topoData.sharedArcFlags);
+  var shapes = groupPathsByShape(topoData.paths, obj.pathData, obj.info.input_shape_count);
   T.stop("Process topology");
-  return topoData;
+  return {
+    arcs: topoData.arcs,
+    sharedArcFlags: topoData.sharedArcFlags,
+    arcMinPointCounts: retainedPointCounts,
+    shapes: shapes
+  };
 };
 
 
-// Hash an x, y point to a non-negative integer
-// Based on a function published by Mike Bostock
+// Reference hash function Copyright (c) 2012, Michael Bostock, BSD license
 // https://github.com/mbostock/topojson/issues/64#issuecomment-16692286
-// This function is simpler but tested well on a range of inputs.
-//
 MapShaper.xyToUintHash = (function() {
+  var buffer = new ArrayBuffer(8),
+      floats = new Float64Array(buffer),
+      ints = new Int32Array(buffer);
+
+  function hash1(x) {
+    floats[0] = x;
+    x = ints[1] ^ ints[0];
+    x ^= (x >>> 20) ^ (x >>> 12);
+    x ^= (x >>> 7) ^ (x >>> 4);
+    return x;
+  }
+
+  return function hash2(x, y) {
+    return (hash1(x) + 31 * hash1(y)) & 0x7fffffff;
+  };
+}());
+
+
+// Hash an x, y point to a non-negative integer
+// This function is simpler than below reference function
+// but tested well on a range of inputs.
+MapShaper.xyToUintHash2 = (function() {
   var buf = new ArrayBuffer(16),
       floats = new Float64Array(buf),
       uints = new Uint32Array(buf);
@@ -53,7 +76,7 @@ MapShaper.xyToUintHash = (function() {
     h = u[0] ^ u[1];
     h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
     return h & 0x7fffffff;
-  }
+  };
 }());
 
 
@@ -115,7 +138,6 @@ function ArcIndex(pointCount, xyToUint) {
     return arcs;
   };
 
-
   this.getSharedArcFlags = function() {
     return sharedArcs;
   }
@@ -126,7 +148,7 @@ function ArcIndex(pointCount, xyToUint) {
 //
 function buildPathTopology(xx, yy, pathData) {
   var pointCount = xx.length,
-      index = new ArcIndex(pointCount, MapShaper.xyToUintHash),
+      index = new ArcIndex(pointCount, MapShaper.xyToUintHash2),
       typedArrays = !!(xx.subarray && yy.subarray),
       slice, array;
 
@@ -140,9 +162,11 @@ function buildPathTopology(xx, yy, pathData) {
     slice = Array.prototype.slice;
   }
 
+
   T.start();
-  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash);
+  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash2, !"verbose");
   T.stop("Find matching vertices");
+
 
   T.start();
   var pointId = 0;
@@ -364,11 +388,11 @@ function initPathIds(size, pathData) {
 // Array values are ids of next point in each chain.
 // Unique (x, y) points link to themselves (i.e. arr[n] == n)
 //
-function initPointChains(xx, yy, hash) {
+function initPointChains(xx, yy, hash, verbose) {
   var pointCount = xx.length,
       hashTableSize = Math.floor(pointCount * 1.4);
 
-  // A hash table larger than ~1.5 * point count doesn't seem to improve performance much.
+  // A hash table larger than ~1.3 * point count doesn't seem to improve performance much.
 
   // Hash table is temporary storage for building chains of matching point ids.
   // Each hash bin contains the id of the first point in a chain.
@@ -377,7 +401,7 @@ function initPointChains(xx, yy, hash) {
 
   //
   var chainIds = new Int32Array(pointCount);
-  var key, headId, x, y;
+  var key, headId, x, y, collisions = 0;
 
   for (var i=0; i<pointCount; i++) {
     x = xx[i];
@@ -400,69 +424,49 @@ function initPointChains(xx, yy, hash) {
         chainIds[headId] = i;
         break;
       }
+
       // case -- this bin is used by another coord, try the next bin
+      collisions++;
       key = (key + 1) % hashTableSize;
     }
   }
+  verbose && trace("#initPointChains() hash collisions:", collisions / pointCount * 100 + "%");
   return chainIds;
 };
 
 
-// Test distribution and speed of a hash function, print results on console
-// Intended for testing datasets passed to MapShaper.buildTopology()
-// Caveat: Elapsed time is not a reliable measure of performance, because of breaks for garbage collection, etc.
-// @xx, @yy arrays of x, y coords; @hash(x, y) returns a positive integer; @msg optional
-// TODO: test other aspects of hash distribution than collision rate
-//
-function testHashFunction(xx, yy, hash, msg) {
-  var pointCount = xx.length,
-      hashTableSize = Math.floor(pointCount * 0.9),
-      hashTable = new Uint32Array(hashTableSize);
-  var key, collisions = 0;
-
-  T.start();
-  for (var i=0; i<pointCount; i++) {
-    x = xx[i];
-    y = yy[i];
-    key = hash(x, y) % hashTableSize;
-    if (hashTable[key] > 0) {
-      collisions++;
-    } else {
-      hashTable[key] = 1;
-    }
-  }
-
-  msg = (msg || '') + " pct: " + collisions / pointCount * 100;
-  T.stop(msg);
-}
-
-
 // Calculate number of interior points to preserve in each arc
-// to protect selected rings from collapsing.
+// to protect 'primary' rings from collapsing.
 //
-function calcMinPointCounts(paths, pathData, arcs, sharedArcFlags) {
-  var arcMinPointCounts = new Uint8Array(arcs.length);
+function calcPointRetentionData(paths, pathData, sharedArcFlags) {
+  var retainedPointCounts = new Uint8Array(sharedArcFlags.length);
   Utils.forEach(paths, function(path, pathId) {
     // if a part has 3 or more arcs, assume it won't collapse...
     // TODO: look into edge cases where this isn't true
     if (path.length <= 2 && pathData[pathId].isPrimary) {
-      protectPath(path, arcs, sharedArcFlags, arcMinPointCounts)
+      calcRetainedCountsForRing(path, sharedArcFlags, retainedPointCounts)
     }
   });
-  return arcMinPointCounts;
+  return retainedPointCounts;
 }
 
-function protectPath(path, arcs, sharedArcFlags, minArcPoints) {
+// Calculate number of interior points in each arc of a topological ring
+// that should be preserved in order to prevent ring from collapsing
+// @path an array of one or more arc ids making up the ring
+// @sharedArcFlags
+// @minArcPoints array of counts of interior points to retain, indexed by arc id
+// TODO: improve; in some cases, this method could fail to prevent degenerate rings
+//
+function calcRetainedCountsForRing(path, sharedArcFlags, minArcPoints) {
   var arcId;
   for (var i=0, arcCount=path.length; i<arcCount; i++) {
     arcId = path[i];
-    if (arcId < 1) arcId = ~arcId;
+    if (arcId < 0) arcId = ~arcId;
     if (arcCount == 1) { // one-arc polygon (e.g. island) -- save two interior points
       minArcPoints[arcId] = 2;
     }
     else if (sharedArcFlags[arcId] != 1) {
       minArcPoints[arcId] = 1; // non-shared member of two-arc polygon: save one point
-      // TODO: improve the logic here
     }
   }
 }
@@ -487,6 +491,5 @@ MapShaper.topology = {
   buildPathTopology: buildPathTopology,
   ArcIndex: ArcIndex,
   groupPathsByShape: groupPathsByShape,
-  protectPath: protectPath,
   initPathIds: initPathIds
 };
