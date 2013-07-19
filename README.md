@@ -2,9 +2,9 @@
 
 ###Introduction
 
-Mapshaper is a program for simplifying cartographic lines while preserving the topological relationships between adjacent polygons and intersecting polyline paths. The current version can be found at [mapshaper.org](http://www.mapshaper.org).
+Mapshaper is a program for simplifying cartographic lines while preserving the topological relationships between adjacent polygons and intersecting polyline paths. It can read and write Shapefile and GeoJSON files and can also export [TopoJSON](https://github.com/mbostock/topojson/wiki) files. The current version can be found at [mapshaper.org](http://www.mapshaper.org).
 
-This software is loosely based on the original MapShaper program that I wrote at the University of Wisconsin, Madison in 2006-2007. That version is still available [here](http://mapshaper.com/test/MapShaper.swf).
+This software is loosely based on the original MapShaper program that I wrote at the University of Wisconsin, Madison in 2006-2007. That version is still available [here](http://mapshaper.com/test/OldMapShaper.swf).
 
 The new mapshaper was rewritten from scratch in JavaScript and improves on the original in a few ways. The earlier program sent data to a server to be processed; the new version does all its processing locally, so the program can be used offline and user data stays private. The new version has a better algorithm for topology processing. There is also a commandline script that runs in [Node.js](http://nodejs.org).
 
@@ -43,7 +43,7 @@ According to Mozilla's [FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html), "The MPL'
 
 ###Upcoming features + wish list
 
-To suggest additions to this list, add a github issue.
+To suggest additions to this list, add an [issue](https://github.com/mbloch/mapshaper/issues).
 
 - Import Shapefile attribute table (.dbf file)
 - Selection and aggregation, using attribute queries and mouse selection
