@@ -10,7 +10,6 @@ var mapshaper = require("../"),
     Visvalingam = mapshaper.Visvalingam,
     Node = mapshaper.Node,
     Utils = mapshaper.Utils,
-    Opts = mapshaper.Opts,
     T = mapshaper.T;
 
 var usage = ""
@@ -33,10 +32,10 @@ optimist.usage(usage)
     describe: "name of output file (with or without suffix)",
   })
 
-  /*.options("f", {
-    alias: "o-format",
-    describe: "shapefile|geojson (defaults to input format)",
-  })*/
+  .options("f", {
+    alias: "format",
+    describe: "shapefile|geojson|topojson (defaults to input format)",
+  })
 
   .options("dp", {
     describe: "Use Douglas-Peucker to simplify",
@@ -127,21 +126,21 @@ var info = {},
 T.verbose = opts.timing;
 T.start("Start timing");
 
-var importData = mapshaper.importFromFile(opts.input_file);
-Opts.copyAllParams(info, importData.info);
+var importData = mapshaper.importFromFile(opts.input_file, opts.input_format),
+    properties = importData.properties || null,
+    topoData = mapshaper.buildTopology(importData), // obj.xx, obj.yy, obj.partIds, obj.shapeIds
+    arcs = topoData.arcs,
+    arcData = new mapshaper.ArcDataset(arcs);
 
-var topoData = mapshaper.buildTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
-
+Utils.extend(info, importData.info);
 importData = null; // don't need this anymore, gc can take it.
 
 if (opts.use_simplification) {
-  var vertexData,
-      arcs = topoData.arcs,
-      calculator;
-
   var simplifyOpts = {
-    spherical: mapshaper.geom.probablyDecimalDegreeBounds(info.input_bounds)
-  };
+        spherical: mapshaper.geom.probablyDecimalDegreeBounds(info.input_bounds)
+      },
+      vertexData,
+      calculator;
 
   if (opts.simplify_method == 'dp') {
     calculator = mapshaper.DouglasPeucker.calcArcData;
@@ -166,27 +165,44 @@ if (opts.use_simplification) {
   if (opts.keep_shapes && topoData.arcMinPointCounts) {
     mapshaper.protectPoints(vertexData, topoData.arcMinPointCounts);
   }
-
-  var thinned;
-  if (opts.simplify_pct) {
-    thinned = mapshaper.thinArcsByPct(topoData.arcs, vertexData, opts.simplify_pct);
-  }
-  else if (opts.simplify_interval) {
-    thinned = mapshaper.thinArcsByInterval(topoData.arcs, vertexData, opts.simplify_interval);
-  }
-  topoData.arcs = thinned.arcs;
-  Opts.copyAllParams(info, thinned.info);
+  arcData.setThresholds(vertexData);
 }
 
-mapshaper.gc();
+if (opts.simplify_pct) {
+  arcData.setRetainedPct(opts.simplify_pct);
+} else if (opts.simplify_interval) {
+  arcData.setRetainedInterval(opts.simplify_interval);
+} else {
+  // no simplification
+}
 
+var exportOpts = {
+  arcs: arcData,
+  shapes: topoData.shapes,
+  type: info.input_geometry_type
+}
 if (opts.output_format == "geojson") {
-  var geoJSON = mapshaper.exportGeoJSON(topoData);
-  Node.writeFile(opts.output_path_base + ".json", geoJSON);
+  exportOpts.properties = properties;
+  var geojson = mapshaper.exportGeoJSON(exportOpts);
+  Node.writeFile(opts.output_path_base + ".json", geojson);
+}
+else if (opts.output_format == 'topojson') {
+  topojsonOpts = {
+    arcs: arcData,
+    bounds: arcData.getBounds(),
+    objects: [{
+      name: exportOpts.type + 's',
+      type: exportOpts.type,
+      shapes: exportOpts.shapes
+    }]
+  };
+  var topojson = mapshaper.exportTopoJSON(topojsonOpts);
+  Node.writeFile(opts.output_path_base + ".topojson", topojson);
 }
 else if (opts.output_format == "shapefile") {
-  var shpType = info.input_geometry_type == "polyline" ? 3 : 5;
-  var shpData = mapshaper.exportShp(topoData.arcs, topoData.shapes, shpType);
+  //var shpType = info.input_geometry_type == "polyline" ? 3 : 5;
+  //var shpData = mapshaper.exportShp(topoData.arcs, topoData.shapes, shpType);jj
+  var shpData = mapshaper.exportShp(exportOpts);
 
   var obase = opts.output_path_base,
       prjFile = opts.input_path_base + ".prj",
