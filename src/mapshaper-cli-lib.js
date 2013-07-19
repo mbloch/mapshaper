@@ -16,8 +16,6 @@ MapShaper.validateArgv = function(argv) {
   cli.validateOutputOpts(opts, argv);
   cli.validateSimplifyOpts(opts, argv);
 
-  if (!opts.use_simplification) error("Missing simplification parameters")
-
   opts.timing = !!argv.t;
   return opts;
 };
@@ -28,10 +26,15 @@ cli.validateInputOpts = function(opts, argv) {
 
   var ifileInfo = Node.getFileInfo(ifile);
   if (!ifileInfo.exists) error("File not found (" + ifile + ")");
-  if (ifileInfo.ext != 'shp') error("Input filename must match *.shp");
+  if (ifileInfo.ext == 'shp') {
+    opts.input_format = 'shapefile';
+  } else if (/json$/.test(ifileInfo.ext)) {
+    opts.input_format = 'geojson';
+  } else {
+     error("File has an unknown extension:", ifileInfo.ext);
+  }
 
   opts.input_file = ifile;
-  opts.input_format = "shapefile";
   opts.input_file_base = ifileInfo.base;
   opts.input_directory = ifileInfo.relative_dir;
   opts.input_path_base = Node.path.join(opts.input_directory, opts.input_file_base);
@@ -39,9 +42,10 @@ cli.validateInputOpts = function(opts, argv) {
 };
 
 cli.validateOutputOpts = function(opts, argv) {
-  // output format -- only shapefile for now
-  if (argv.f && argv.f != "shapefile") error("Unsupported output format:", argv.f);
-  opts.output_format = "shapefile";
+  var supportedTypes = ["geojson", "topojson", "shapefile"],
+      fmt = argv.f && argv.f.toLowerCase() || null;
+  if (fmt && Utils.contains(supportedTypes, fmt) == false) error("Unsupported output format:", argv.f);
+  opts.output_format = fmt || opts.input_format;
 
   var obase = opts.input_file_base + "-mshp"; // default
   if (argv.o) {
@@ -101,14 +105,20 @@ MapShaper.gc = function() {
 };
 
 
-MapShaper.importFromFile = function(fname) {
-  var info = Node.getFileInfo(fname);
+MapShaper.importFromFile = function(fname, format) {
+  var info = Node.getFileInfo(fname),
+      data, content;
   if (!info.exists) error("File not found.");
-  if (info.ext != 'shp') error("Expected *.shp file; found:", fname);
-
-  // TODO: json importing
-  // data = MapShaper.importJSON(JSON.parse(Node.readFile(fname, 'utf8')));
-  return MapShaper.importShp(fname);
+  if (format == 'shapefile') {
+    content = Node.readFile(fname);
+    data = MapShaper.importShp(content);
+  } else if (/json$/.test(format)) {
+    content = Node.readFile(fname, 'utf-8');
+    data = MapShaper.importJSON(content);
+  } else {
+    error("Unexpected input file:", fname);
+  }
+  return data;
 };
 
 var api = Utils.extend(MapShaper, {

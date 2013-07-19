@@ -31,23 +31,27 @@ MapShaper.importTopoJSON = function(obj) {
 // TODO: Support properties
 //
 MapShaper.exportTopoJSON = function(data) {
-  if (!data.objects || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
-  var arcs = data.arcs;
+  T.start();
+  if (!data.objects || !data.arcs || !data.bounds) error("#exportTopoJSON() Missing a required param.");
+  var arcCoords = data.arcs.exportArcsForJSON();
   var objects = {};
   Utils.forEach(data.objects, function(src) {
-    var dest = exportTopoJSONObject(src.shapes, src.type),
+    if (src.type != 'polygon' && src.type != 'polyline') error("#exportTopoJSON() Unsupported type:", src.type);
+    var geomType = src.type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
+    var exporter = new PathExporter(data.arcs, src.type == 'polygon');
+    var dest = exportTopoJSONObject(exporter, src.shapes, geomType),
         name = src.name;
     if (!dest || !name) error("#exportTopoJSON() Missing data, skipping an object");
     objects[name] = dest;
   });
 
   var srcBounds = data.bounds,
-      resXY = findTopoJSONResolution(arcs),
+      resXY = findTopoJSONResolution(arcCoords),
       destBounds = new Bounds(0, 0, srcBounds.width() / resXY[0], srcBounds.height() / resXY[1]),
       tr = srcBounds.getTransform(destBounds),
       inv = tr.invert();
 
-  Utils.forEach(arcs, function(arc) {
+  Utils.forEach(arcCoords, function(arc) {
     var n = arc.length,
         p, x, y, prevX, prevY;
     for (var i=0, n=arc.length; i<n; i++) {
@@ -72,11 +76,13 @@ MapShaper.exportTopoJSON = function(data) {
       scale: [inv.mx, inv.my],
       translate: [inv.bx, inv.by]
     },
-    arcs: arcs,
+    arcs: arcCoords,
     objects: objects
   };
 
-  return JSON.stringify(obj);
+  var json = JSON.stringify(obj);
+  T.stop("Export TopoJSON");
+  return json;
 };
 
 // Find the x, y values that map to x / y integer unit in topojson output
@@ -101,11 +107,12 @@ function findTopoJSONResolution(arcs) {
 }
 
 
-function exportTopoJSONObject(shapes, type) {
+function exportTopoJSONObject(exporter, shapes, type) {
   var obj = {
     type: "GeometryCollection"
   };
-  obj.geometries = Utils.map(shapes, function(paths, i) {
+  obj.geometries = Utils.map(shapes, function(shape, i) {
+    var paths = exporter.exportShapeForTopoJSON(shape);
     return exportTopoJSONGeometry(paths, i, type);
   });
   return obj;
@@ -124,18 +131,18 @@ function exportTopoJSONGeometry(paths, id, type) {
   else if (type == 'MultiPolygon') {
     if (paths.length == 1) {
       obj.type = "Polygon";
-      obj.arcs = exportArcsForTopoJSON(paths[0]);
+      obj.arcs = paths[0];
     } else {
       obj.type = "MultiPolygon";
-      obj.arcs = Utils.map(paths, exportArcsForTopoJSON);
+      obj.arcs = paths;
     }
   }
   else if (type == "MultiLineString") {
     if (paths.length == 1) {
-      obj.arcs = paths[0].ids;
+      obj.arcs = paths[0];
       obj.type = "LineString";
     } else {
-      obj.arcs = exportArcsForTopoJSON(paths);
+      obj.arcs = paths;
       obj.type = "MultiLineString";
     }
   }
@@ -143,11 +150,4 @@ function exportTopoJSONGeometry(paths, id, type) {
     error ("#exportTopoJSONGeometry() unsupported type:", type)
   }
   return obj;
-}
-
-
-function exportArcsForTopoJSON(paths) {
-  return Utils.map(paths, function(path) {
-    return path.ids;
-  });
 }

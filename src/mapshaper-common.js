@@ -74,10 +74,8 @@ MapShaper.calcXYBounds = function(xx, yy, bb) {
   return bb;
 };
 
-MapShaper.transposeXYCoords = function(arr) {
-  var xx = arr[0],
-      yy = arr[1],
-      points = [];
+MapShaper.transposeXYCoords = function(xx, yy) {
+  var points = [];
   for (var i=0, len=xx.length; i<len; i++) {
     points.push([xx[i], yy[i]]);
   }

@@ -6,6 +6,8 @@ MapShaper.calcArcBounds = function(xx, yy) {
   return [xb.min, yb.min, xb.max, yb.max];
 };
 
+MapShaper.ArcDataset = ArcDataset;
+
 // An interface for a set of topological arcs and the layers derived from the arcs.
 // @arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
 //
@@ -31,16 +33,20 @@ function ArcDataset(coords) {
 
   this.getArcIter = function(i, mpp) {
     var fw = i >= 0,
-        arc, filteredIds;
+        ids = null,
+        arc;
     if (!fw) {
       i = -i - 1;
     }
-    filteredIds = this.getFilteredIds(i, mpp);
+    if (mpp != null && filteredIds && filteredSegLen < mpp * 0.5) {
+      ids = filteredIds[i];
+    }
+
     arc = _arcs[i];
     if (zlimit) {
-      arcIter.init(arc[0], arc[1], fw, _thresholds[i], zlimit, filteredIds);
+      arcIter.init(arc[0], arc[1], fw, _thresholds[i], zlimit, ids);
     } else {
-      arcIter.init(arc[0], arc[1], fw, null, null, filteredIds);
+      arcIter.init(arc[0], arc[1], fw, null, null, ids);
     }
     return arcIter;
   };
@@ -49,7 +55,14 @@ function ArcDataset(coords) {
   // @arr is an array of arrays of removal thresholds for each arc-vertex.
   //
   this.setThresholds = function(thresholds) {
+    if (thresholds.length != _arcs.length) error("ArcDataset#setThresholds() Mismatched arc/threshold counts.")
     _thresholds = thresholds;
+  };
+
+  //
+  //
+  this.setThresholdsForGUI = function(thresholds) {
+    this.setThresholds(thresholds);
 
     // Sort simplification thresholds for all non-endpoint vertices
     // ... to quickly convert a simplification percentage to a threshold value.
@@ -103,17 +116,19 @@ function ArcDataset(coords) {
     });
   };
 
-  this.getFilteredIds = function(i, mpp) {
-    var ids = (filteredIds && filteredSegLen < mpp * 0.5) ? filteredIds[i] : null;
-    return ids;
+  this.setRetainedInterval = function(z) {
+    zlimit = z;
   };
 
   this.setRetainedPct = function(pct) {
-    if (!_sortedThresholds) error ("Missing threshold data.");
     if (pct >= 1) {
       zlimit = 0;
-    } else {
+    } else if (_sortedThresholds) {
       zlimit = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
+    } else if (_thresholds) {
+      zlimit = MapShaper.getThresholdByPct(_thresholds, pct);
+    } else {
+      error ("ArcDataset#setRetainedPct() Missing simplification data.")
     }
   };
 
@@ -130,7 +145,7 @@ function ArcDataset(coords) {
   };
 
   this.getArcBounds = function(i) {
-    if (i < 0) i = -1 - i;
+    if (i < 0) i = ~i;
     return boxes[i];
   };
 
@@ -182,6 +197,10 @@ function ArcDataset(coords) {
 
   this.getArcTable = function() {
     return this.getShapeTable(Utils.range(this.size()), Arc);
+  };
+
+  this.exportArcsForJSON = function() {
+    return this.getArcTable().toArray();
   };
 
   /*
@@ -635,53 +654,3 @@ function ShapeIter(arcs) {
   };
 }
 
-// Bundle holes with their containing rings, for Topo/GeoJSON export
-// Assume positive rings are CCW and negative rings are CW, like Shapefile
-//
-function groupMultiShapePaths(shape) {
-  if (shape.pathCount == 0) {
-    return [];
-  } else if (shape.pathCount.length == 1) {
-    return [shape.getPath(0)]; // multi-polygon with one part and 0 holes
-  }
-  var pos = [],
-      neg = [];
-  for (var i=0, n=shape.pathCount; i<n; i++) {
-    var part = shape.getPath(i),
-        area = part.getSignedArea();
-    if (area < 0) {
-      neg.push(part);
-    } else if (area > 0) {
-      pos.push(part);
-    } else {
-      trace("Zero-area ring, skipping")
-    }
-  }
-
-  if (pos.length == 0) {
-    trace("#groupMultiShapePaths() Shape is missing a ring with positive area.");
-    return [];
-  }
-  var output = Utils.map(pos, function(part) {
-    return [part];
-  });
-
-  Utils.forEach(neg, function(hole) {
-    var containerId = -1,
-        containerArea = 0;
-    for (var i=0, n=pos.length; i<n; i++) {
-      var part = pos[i],
-          inside = containsBounds(part.bounds, hole.bounds);
-      if (inside && (containerArea == 0 || boundsArea(part.bounds) < containerArea)) {
-        containerArea = boundsArea(part.bounds);
-        containerId = i;
-      }
-    }
-    if (containerId == -1) {
-      trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
-    } else {
-      output[containerId].push(hole);
-    }
-  });
-  return output;
-};

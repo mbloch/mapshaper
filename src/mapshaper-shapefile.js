@@ -34,12 +34,13 @@ MapShaper.importShp = function(src) {
   // TODO: test cases: null shape; non-null shape with no valid parts
 
   reader.forEachShape(function(shp) {
+    importer.startShape();
+    if (shp.isNull) return;
     var partSizes = shp.readPartSizes(),
         coords = shp.readCoords(),
         offs = 0,
         pointsInPart;
 
-    importer.startShape();
     for (var j=0, n=shp.partCount; j<n; j++) {
       pointsInPart = partSizes[j];
       importer.importCoordsFromFlatArray(coords, offs, pointsInPart, expectRings);
@@ -54,19 +55,26 @@ MapShaper.importShp = function(src) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShp = function(arcs, shapes, shpType) {
-  if (!Utils.isArray(arcs) || !Utils.isArray(shapes)) error("Missing exportable data.");
+MapShaper.exportShp = function(obj) {
+  if (obj.arcs instanceof ArcDataset == false || !Utils.isArray(obj.shapes)) error("Missing exportable data.");
+  if (obj.type != 'polyline' && obj.type != 'polygon') error("Invalid geometry type:", obj.type);
+
+  var isPolygonType = obj.type == 'polygon';
+  var shpType = isPolygonType ? 5 : 3;
+
   T.start();
   T.start();
 
+  var exporter = new PathExporter(obj.arcs, isPolygonType)
   var fileBytes = 100;
   var bounds = new Bounds();
-  var shapeBuffers = Utils.map(shapes, function(shape, i) {
-    var shpObj = MapShaper.exportShpRecord(shape, arcs, i+1, shpType);
-    fileBytes += shpObj.buffer.byteLength;
-    shpObj.bounds && bounds.mergeBounds(shpObj.bounds);
-    return shpObj.buffer;
+  var shapeBuffers = Utils.map(obj.shapes, function(shapeIds, i) {
+    var shape = MapShaper.exportShpRecord(shapeIds, exporter, i+1, shpType);
+    fileBytes += shape.buffer.byteLength;
+    shape.bounds && bounds.mergeBounds(shape.bounds);
+    return shape.buffer;
   });
+
 
   T.stop("export shape records");
   T.start();
@@ -116,47 +124,44 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
 //   and the bounding box of the shape.
 // TODO: remove collapsed rings, convert to null shape if necessary
 //
-MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
+MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
   var bounds = null,
-      bin = null;
-  if (shape && shape.length > 0) {
-    var data = MapShaper.convertTopoShape(shape, arcs, ShpType.polygonType(shpType)),
-        partsIdx = 52,
-        pointsIdx = partsIdx + 4 * data.partCount,
+      bin = null,
+      data = exporter.exportShapeForShapefile(shapeIds);
+  if (data.pointCount > 0) {
+    var partsIdx = 52,
+        pointsIdx = partsIdx + 4 * data.pathCount,
         recordBytes = pointsIdx + 16 * data.pointCount,
         pointCount = 0;
 
-    data.pointCount == 0 && trace("Empty shape; data:", data)
-    if (data.pointCount > 0) {
-      bounds = data.bounds;
-      bin = new BinArray(recordBytes, false)
-        .writeInt32(id)
-        .writeInt32((recordBytes - 8) / 2)
-        .littleEndian()
-        .writeInt32(shpType)
-        .writeFloat64(bounds.xmin)
-        .writeFloat64(bounds.ymin)
-        .writeFloat64(bounds.xmax)
-        .writeFloat64(bounds.ymax)
-        .writeInt32(data.partCount)
-        .writeInt32(data.pointCount);
+    bounds = data.bounds;
+    bin = new BinArray(recordBytes, false)
+      .writeInt32(id)
+      .writeInt32((recordBytes - 8) / 2)
+      .littleEndian()
+      .writeInt32(shpType)
+      .writeFloat64(bounds.xmin)
+      .writeFloat64(bounds.ymin)
+      .writeFloat64(bounds.xmax)
+      .writeFloat64(bounds.ymax)
+      .writeInt32(data.pathCount)
+      .writeInt32(data.pointCount);
 
-      Utils.forEach(data.parts, function(part, i) {
-        bin.position(partsIdx + i * 4)
-          .writeInt32(pointCount)
-          .position(pointsIdx + pointCount * 16);
-        var xx = part[0],
-            yy = part[1];
-        for (var j=0, len=xx.length; j<len; j++) {
-          bin.writeFloat64(xx[j]);
-          bin.writeFloat64(yy[j]);
-        }
-        pointCount += j;
-      });
-      if (data.pointCount != pointCount)
-        error("Shp record point count mismatch; pointCount:"
-          , pointCount, "data.pointCount:", data.pointCount);
-    }
+    Utils.forEach(data.paths, function(part, i) {
+      bin.position(partsIdx + i * 4)
+        .writeInt32(pointCount)
+        .position(pointsIdx + pointCount * 16);
+      var xx = part[0],
+          yy = part[1];
+      for (var j=0, len=xx.length; j<len; j++) {
+        bin.writeFloat64(xx[j]);
+        bin.writeFloat64(yy[j]);
+      }
+      pointCount += j;
+    });
+    if (data.pointCount != pointCount)
+      error("Shp record point count mismatch; pointCount:"
+        , pointCount, "data.pointCount:", data.pointCount);
 
   }
 

@@ -1,6 +1,10 @@
 /* @requires mapshaper-common, mapshaper-import */
 
 MapShaper.importJSON = function(obj) {
+    trace("Import JSON", obj.type)
+  if (Utils.isString(obj)) {
+    obj = JSON.parse(obj);
+  }
   if (obj.type == "Topology") {
     error("TODO: TopoJSON import.")
     return MapShaper.importTopoJSON(obj);
@@ -125,22 +129,23 @@ GeoJSON.countNestedPoints = function(coords, depth) {
 
 MapShaper.exportGeoJSON = function(obj) {
   T.start();
-  if (!obj.shapes) error("#exportGeoJSON() Missing 'shapes' param.");
+  if (!obj.shapes || !obj.arcs) error("#exportGeoJSON() Missing a required parameter.");
+  if (obj.type != "polygon" && obj.type != "polyline") error("#exportGeoJSON() Unsupported type:", obj.type);
 
-  if (obj.type != "MultiPolygon" && obj.type != "MultiLineString") error("#exportGeoJSON() Unsupported type:", obj.type);
-
-  var properties = obj.properties,
+  var geomType = obj.type == 'polygon' ? 'MultiPolygon' : 'MultiLineString',
+      properties = obj.properties,
       useFeatures = !!properties;
 
   if (useFeatures && properties.length !== obj.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
   }
-
-  var objects = Utils.map(obj.shapes, function(shape, i) {
+  var exporter = new PathExporter(obj.arcs, obj.type == 'polygon');
+  var objects = Utils.map(obj.shapes, function(shapeIds, i) {
+    var shape = exporter.exportShapeForGeoJSON(shapeIds);
     if (useFeatures) {
-      return MapShaper.exportGeoJSONFeature(shape, obj.type, properties[i]);
+      return MapShaper.exportGeoJSONFeature(shape, geomType, properties[i]);
     } else {
-      return MapShaper.exportGeoJSONGeometry(shape, obj.type);
+      return MapShaper.exportGeoJSONGeometry(shape, geomType);
     }
   });
 
@@ -150,36 +155,40 @@ MapShaper.exportGeoJSON = function(obj) {
     output.features = objects;
   } else {
     output.type = 'GeometryCollection';
-    output.geometries = objects;
+    // null geometries not allowed in GeometryCollection
+    output.geometries = Utils.filter(objects, function(obj) {
+      return obj != null;
+    });
   }
 
+  var json = JSON.stringify(output);
   T.stop("Export GeoJSON");
-  return JSON.stringify(output);
+  return json;
 };
 
 
-MapShaper.exportGeoJSONGeometry = function(paths, type) {
+MapShaper.exportGeoJSONGeometry = function(coords, type) {
   var geom = {};
 
-  if (!paths || paths.length == 0) {
+  if (!coords || coords.length == 0) {
     geom = null; // null geometry
   }
   else if (type == 'MultiPolygon') {
-    if (paths.length == 1) {
+    if (coords.length == 1) {
       geom.type = "Polygon";
-      geom.coordinates = exportCoordsForGeoJSON(paths[0]);
+      geom.coordinates = coords[0];
     } else {
       geom.type = "MultiPolygon";
-      geom.coordinates = Utils.map(paths, exportCoordsForGeoJSON);
+      geom.coordinates = coords;
     }
   }
   else if (type == 'MultiLineString') {
-    if (paths.length == 1) {
+    if (coords.length == 1) {
       geom.type = "LineString";
-      geom.coordinates = paths[0].toArray();
+      geom.coordinates = coords[0];
     } else {
       geom.type = "MultiLineString";
-      geom.coordinates = exportCoordsForGeoJSON(paths);
+      geom.coordinates = coords;
     }
   }
   else {
@@ -188,11 +197,11 @@ MapShaper.exportGeoJSONGeometry = function(paths, type) {
   return geom;
 }
 
-MapShaper.exportGeoJSONFeature = function(pathGroups, type, properties) {
+MapShaper.exportGeoJSONFeature = function(coords, type, properties) {
   var feature = {
     type: "Feature",
     properties: properties || null,
-    geometry: MapShaper.exportGeoJSONGeometry(pathGroups, type)
+    geometry: MapShaper.exportGeoJSONGeometry(coords, type)
   };
   return feature;
 };

@@ -117,7 +117,7 @@ function Editor() {
       MapShaper.protectPoints(vertexData, topoData.arcMinPointCounts);
     }
 
-    arcData.setThresholds(vertexData);
+    arcData.setThresholdsForGUI(vertexData);
 
     var group = new ArcLayerGroup(arcs);
     map.addLayerGroup(group);
