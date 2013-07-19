@@ -59,7 +59,8 @@ function ArcDataset(coords) {
     _thresholds = thresholds;
   };
 
-  //
+  // Add simplification thresholds and generate a set of thinned paths for faster
+  // rendering when zoomed out.
   //
   this.setThresholdsForGUI = function(thresholds) {
     this.setThresholds(thresholds);
@@ -203,21 +204,9 @@ function ArcDataset(coords) {
     return this.getArcTable().toArray();
   };
 
-  /*
-  this.getSimpleShapes = function(arr) {
-    return this.getShapeTable(arr, SimpleShape);
-  };
-
-  this.getMultiShapes = function(arr) {
-    return this.getShapeTable(arr, MultiShape);
-  };
-  */
-
   this.getMultiPathShape = function(arr) {
     if (!arr || arr.length == 0) {
       return new NullShape();
-    // } else if (arr.length == 1) {
-    //  return new SimpleShape(this).init(arr[0]);
     } else {
       return new MultiShape(this).init(arr);
     }
@@ -225,7 +214,9 @@ function ArcDataset(coords) {
 
 }
 
-//
+// An interable collection of paths (Arc, SimpleShape, MultiShape)
+// @arr array of path objects
+// @src ArcDataset object
 //
 function ShapeTable(arr, src) {
   this.shapes = function() {
@@ -243,14 +234,6 @@ function ShapeTable(arr, src) {
       return shp.toArray();
     });
   };
-
-  this.export = function() {
-    return Utils.map(arr, function(shp) {
-      return shp.export();
-    });
-  };
-
-  // TODO: add method so layer can determine if vertices can be displayed at current scale
 }
 
 // An iterable collection of shapes, for drawing paths on-screen
@@ -394,12 +377,6 @@ function NullShape() {
   error("NullShape() not implemented")
 }
 
-NullShape.prototype = {
-  pathCount: 0,
-  init: function() {return this}
-};
-
-
 function Arc(src) {
   this.src = src;
 }
@@ -428,16 +405,6 @@ Arc.prototype = {
       coords.push([iter.x, iter.y]);
     }
     return coords;
-  },
-  // Return arc coords as [[x0, x1, ... , xn-1], [y0, y1, ... , yn-1]]
-  export: function() {
-    var iter = this.getPathIter(),
-    xx = [], yy = [];
-    while (iter.hasNext()) {
-      xx.push(iter.x);
-      yy.push(iter.y);
-    }
-    return [xx, yy];
   },
   smallerThan: function(units) {
     var b = this.bounds;
@@ -469,12 +436,6 @@ MultiShape.prototype = {
     return Utils.map(this.parts, function(ids) {
       return new SimpleShape(this.src).init(ids);
     }, this);
-  },
-  // Return array of path groups; a path group is an array containing one positive-space path and zero or more
-  //   negative-space paths (holes) contained by the positive path -- like GeoJSON, but with SimpleShape objects
-  //   instead of GeoJSON linestrings.
-  getPathGroups: function() {
-    return groupMultiShapePaths(this);
   },
   getBounds: function() {
     return this.bounds;
@@ -519,7 +480,6 @@ SimpleShape.prototype = {
     return sum / 2;
   },
   toArray: Arc.prototype.toArray,
-  export: Arc.prototype.export,
   smallerThan: Arc.prototype.smallerThan
 };
 
