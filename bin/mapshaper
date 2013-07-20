@@ -200,8 +200,6 @@ else if (opts.output_format == 'topojson') {
   Node.writeFile(opts.output_path_base + ".topojson", topojson);
 }
 else if (opts.output_format == "shapefile") {
-  //var shpType = info.input_geometry_type == "polyline" ? 3 : 5;
-  //var shpData = mapshaper.exportShp(topoData.arcs, topoData.shapes, shpType);jj
   var shpData = mapshaper.exportShp(exportOpts);
 
   var obase = opts.output_path_base,

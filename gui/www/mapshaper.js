@@ -6102,6 +6102,7 @@ MapShaper.importTopoJSON = function(obj) {
     by = translate[1];
   }
 
+
   var arcs = Utils.map(obj.arcs, function(arc) {
     var xx = [], yy = [];
     for (var i=0, len=arc.length; i<len; i++) {
