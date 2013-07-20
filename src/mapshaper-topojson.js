@@ -1,6 +1,9 @@
 /* @requires mapshaper-common, mapshaper-geojson */
 
 MapShaper.importTopoJSON = function(obj) {
+  if (Utils.isString(obj)) {
+    obj = JSON.parse(obj);
+  }
   var mx = 1, my = 1, bx = 0, by = 0;
   if (obj.transform) {
     var scale = obj.transform.scale,

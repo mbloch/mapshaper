@@ -1,7 +1,6 @@
 /* @requires mapshaper-common, mapshaper-import */
 
 MapShaper.importJSON = function(obj) {
-    trace("Import JSON", obj.type)
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
@@ -13,6 +12,9 @@ MapShaper.importJSON = function(obj) {
 };
 
 MapShaper.importGeoJSON = function(obj) {
+  if (Utils.isString(obj)) {
+    obj = JSON.parse(obj);
+  }
   var supportedGeometries = Utils.getKeys(GeoJSON.pathImporters);
   var supportedTypes = supportedGeometries.concat(['FeatureCollection', 'GeometryCollection']);
 
