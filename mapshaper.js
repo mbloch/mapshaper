@@ -2327,6 +2327,14 @@ Utils.extend(El.prototype, {
     return this.el.offsetHeight;
   },
 
+  top: function() {
+    return this.el.offsetTop;
+  },
+
+  left: function() {
+    return this.el.offsetLeft;
+  },
+
   // Apply inline css styles to this Element, either as string or object.
   //
   css: function(css, val) {
@@ -2771,6 +2779,10 @@ Bounds.prototype.height = function() {
   return (this.ymax - this.ymin) || 0;
 };
 
+Bounds.prototype.area = function() {
+  return this.width * this.height() || 0;
+};
+
 Bounds.prototype.setBounds = function(a, b, c, d) {
   if (arguments.length == 1) {
     // assume first arg is a Bounds or array
@@ -3042,7 +3054,6 @@ function Timer() {
     }
     _count = 0;
     _prevTime = _startTime = +new Date;
-    //_timerId = setInterval(handleTimer, _interval);
     _timerId = setTimeout(handleTimer, _interval);
     return this; // assumed by FrameCounter, etc
   };
@@ -3069,6 +3080,7 @@ function Timer() {
       trace("[Timer.interval()] Resetting to minimum interval:", MIN_INTERVAL);
       _interval = MIN_INTERVAL;
     }
+
     return this;
   };
 
@@ -3084,31 +3096,37 @@ function Timer() {
 
   function handleTimer() {
     var now = +new Date,
-        interval = now - _prevTime,
+        time = now - _prevTime,
         elapsed = now - _startTime;
     _count++;
     if (_duration > 0 && elapsed > duration || _times > 0 && _count > _times) {
       this.stop();
       return;
     }
-    var obj = {elapsed: elapsed, count: _count, time:now, interval:interval, period: _interval};
+    var obj = {elapsed: elapsed, count: _count, time:now, interval:time, period: _interval};
     _callback && _callback(obj);
     _self.dispatchEvent('tick', obj);
 
     interval = +new Date - _prevTime; // update interval, now that event handlers have run
     _prevTime = now;
-    var time = interval <= _interval ? 10 : _interval - interval;
-    _timerId = setTimeout(handleTimer, time);
+    var ms = Math.max(2 * _interval - time, 15);
+    // trace("time:", time, "interval:", _interval, "timer:", ms);
+    _timerId = setTimeout(handleTimer, ms);
 
   };
 }
 
 Opts.inherit(Timer, EventDispatcher);
 
+
+var FrameCounter = new Timer().interval(25);
+
 // FrameCounter will make a node script hang...
-// TODO: find better solution: e.g. only run counter when there is an event listener
+// TODO: find better solution:
+//   option: only run counter when there is an event listener
+//   option: make user responsible for calling "start()"
 if (!Env.inNode) {
-  var FrameCounter = new Timer().interval(25).start();
+  FrameCounter.start();
 }
 
 //
@@ -3609,7 +3627,6 @@ function BinArray(buf, le) {
   this._view = new DataView(buf);
   this._idx = 0;
   this._le = le !== false;
-  this._words = buf.byteLength % 4 == 0 ? new Uint32Array(buf) : null;
 }
 
 BinArray.bufferToUintArray = function(buf, wordLen) {
@@ -3637,7 +3654,7 @@ BinArray.bufferSize = function(buf) {
   return (buf instanceof ArrayBuffer ?  buf.byteLength : buf.length | 0);
 };
 
-BinArray.buffersAreIdentical = function(a, b) {
+Utils.buffersAreIdentical = function(a, b) {
   var alen = BinArray.bufferSize(a);
   var blen = BinArray.bufferSize(b);
   if (alen != blen) {
@@ -3911,10 +3928,8 @@ MapShaper.calcXYBounds = function(xx, yy, bb) {
   return bb;
 };
 
-MapShaper.transposeXYCoords = function(arr) {
-  var xx = arr[0],
-      yy = arr[1],
-      points = [];
+MapShaper.transposeXYCoords = function(xx, yy) {
+  var points = [];
   for (var i=0, len=xx.length; i<len; i++) {
     points.push([xx[i], yy[i]]);
   }
@@ -3967,7 +3982,7 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
 // {
 //    xx: [Array|Float64Array],   // x-coords of each point in the dataset
 //    yy: [Array|Float64Array],   // y-coords "  "  "  "
-//    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isNull: false, isPrimary: true}
+//    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isPrimary: true}
 // }
 // Note: x- and y-coords of all paths are concatenated into two long arrays, for easy indexing
 // Note: Input coords can use typed arrays (better performance) or regular arrays (for testing)
@@ -3985,29 +4000,44 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
 // Note: Arcs use typed arrays or regular arrays for coords, depending on the input array type.
 //
 MapShaper.buildTopology = function(obj) {
-  if (!(obj.xx && obj.yy && obj.pathData)) error("[buildTopology()] Missing required param/s");
+  if (!(obj.xx && obj.yy && obj.pathData)) error("#buildTopology() Missing required param/s");
 
   T.start();
   var topoData = buildPathTopology(obj.xx, obj.yy, obj.pathData);
-  topoData.arcMinPointCounts = calcMinPointCounts(topoData.paths, obj.pathData, topoData.arcs, topoData.sharedArcFlags);
-  topoData.shapes = groupPathsByShape(topoData.paths, obj.pathData);
-  delete topoData.paths;
+  var retainedPointCounts = calcPointRetentionData(topoData.paths, obj.pathData, topoData.sharedArcFlags);
+  var shapes = groupPathsByShape(topoData.paths, obj.pathData, obj.info.input_shape_count);
   T.stop("Process topology");
-  return topoData;
+  return {
+    arcs: topoData.arcs,
+    sharedArcFlags: topoData.sharedArcFlags,
+    arcMinPointCounts: retainedPointCounts,
+    shapes: shapes
+  };
 };
 
 
-// Translate (x,y) coords into unsigned int for hashing
-MapShaper.xyToUintHash = function(x, y) {
-  var key = x * 1e8 ^ x ^ y * 1e8 ^ y * 31;
-  return key & 0x7fffffff; // mask as nonnegative integer
-};
+// Hash an x, y point to a non-negative integer
+//
+MapShaper.xyToUintHash = (function() {
+  var buf = new ArrayBuffer(16),
+      floats = new Float64Array(buf),
+      uints = new Uint32Array(buf);
+
+  return function(x, y) {
+    var u = uints, h;
+    floats[0] = x;
+    floats[1] = y;
+    h = u[0] ^ u[1];
+    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+    return h & 0x7fffffff;
+  };
+}());
 
 
 //
 //
 function ArcIndex(pointCount, xyToUint) {
-  var hashTableSize = Math.ceil(pointCount * 0.2); // make sure we have an integer size
+  var hashTableSize = Math.ceil(pointCount * 0.25);
   var hashTable = new Int32Array(hashTableSize),
       hash = function(x, y) {
         return xyToUint(x, y) % hashTableSize;
@@ -4062,7 +4092,6 @@ function ArcIndex(pointCount, xyToUint) {
     return arcs;
   };
 
-
   this.getSharedArcFlags = function() {
     return sharedArcs;
   }
@@ -4087,15 +4116,17 @@ function buildPathTopology(xx, yy, pathData) {
     slice = Array.prototype.slice;
   }
 
+
   T.start();
-  var chainIds = initPointChains(xx, yy, pathIds, MapShaper.xyToUintHash);
+  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
   T.stop("Find matching vertices");
+
 
   T.start();
   var pointId = 0;
   var paths = Utils.map(pathData, function(pathObj) {
     var pathLen = pathObj.size,
-        arcs = pathObj.isNull ? null : convertPath(pointId, pointId + pathLen - 1);
+        arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
     pointId += pathLen;
     return arcs;
   });
@@ -4214,7 +4245,7 @@ function buildPathTopology(xx, yy, pathData) {
         return true;
       }
       chainId = chainIds[chainId];
-    } while (id != chainId);2
+    } while (id != chainId);
     // path parallels all adjacent paths at @id -- point is not arc endpoint
     return false;
   }
@@ -4286,7 +4317,7 @@ function buildPathTopology(xx, yy, pathData) {
       if (arcId >= 0) return arcId;
     }
 
-    error("Unmatched ring.")
+    error("Unmatched ring:", pathData[pathId]);
   }
 }
 
@@ -4310,25 +4341,22 @@ function initPathIds(size, pathData) {
 // Array values are ids of next point in each chain.
 // Unique (x, y) points link to themselves (i.e. arr[n] == n)
 //
-function initPointChains(xx, yy, pathIds, hash) {
+function initPointChains(xx, yy, hash, verbose) {
   var pointCount = xx.length,
-      hashTableSize = Math.floor(pointCount * 1.5);
-  // A hash table larger than ~1.5 * point count doesn't seem to improve performance much.
+      hashTableSize = Math.floor(pointCount * 1.4);
 
-  // Hash table is temporary storage for building chains of matching point ids.
-  // Each hash bin contains the id of the first point in a chain.
+  // A hash table larger than ~1.3 * point count doesn't seem to improve performance much.
+
+  // Hash table is temporary storage for building chains of coincident points.
+  // Hash bins contains the id of the first point in a chain.
   var hashChainIds = new Int32Array(hashTableSize);
   Utils.initializeArray(hashChainIds, -1);
 
-  //
+  // Array that gets populated with chain data
   var chainIds = new Int32Array(pointCount);
-  var key, headId, x, y;
+  var key, headId, x, y, collisions = 0;
 
   for (var i=0; i<pointCount; i++) {
-    if (pathIds[i] == -1) {
-      chainIds[i] = -1;
-      continue;
-    }
     x = xx[i];
     y = yy[i];
     key = hash(x, y) % hashTableSize;
@@ -4349,51 +4377,60 @@ function initPointChains(xx, yy, pathIds, hash) {
         chainIds[headId] = i;
         break;
       }
+
       // case -- this bin is used by another coord, try the next bin
+      collisions++;
       key = (key + 1) % hashTableSize;
     }
   }
+  verbose && trace("#initPointChains() hash collisions:", collisions / pointCount * 100 + "%");
   return chainIds;
 };
 
 
 // Calculate number of interior points to preserve in each arc
-// to protect selected rings from collapsing.
+// to protect 'primary' rings from collapsing.
 //
-function calcMinPointCounts(paths, pathData, arcs, sharedArcFlags) {
-  var arcMinPointCounts = new Uint8Array(arcs.length);
+function calcPointRetentionData(paths, pathData, sharedArcFlags) {
+  var retainedPointCounts = new Uint8Array(sharedArcFlags.length);
   Utils.forEach(paths, function(path, pathId) {
     // if a part has 3 or more arcs, assume it won't collapse...
     // TODO: look into edge cases where this isn't true
     if (path.length <= 2 && pathData[pathId].isPrimary) {
-      protectPath(path, arcs, sharedArcFlags, arcMinPointCounts)
+      calcRetainedCountsForRing(path, sharedArcFlags, retainedPointCounts)
     }
   });
-  return arcMinPointCounts;
+  return retainedPointCounts;
 }
 
-function protectPath(path, arcs, sharedArcFlags, minArcPoints) {
+// Calculate number of interior points in each arc of a topological ring
+// that should be preserved in order to prevent ring from collapsing
+// @path an array of one or more arc ids making up the ring
+// @sharedArcFlags
+// @minArcPoints array of counts of interior points to retain, indexed by arc id
+// TODO: improve; in some cases, this method could fail to prevent degenerate rings
+//
+function calcRetainedCountsForRing(path, sharedArcFlags, minArcPoints) {
   var arcId;
   for (var i=0, arcCount=path.length; i<arcCount; i++) {
     arcId = path[i];
-    if (arcId < 1) arcId = -1 - arcId;
+    if (arcId < 0) arcId = ~arcId;
     if (arcCount == 1) { // one-arc polygon (e.g. island) -- save two interior points
       minArcPoints[arcId] = 2;
     }
     else if (sharedArcFlags[arcId] != 1) {
       minArcPoints[arcId] = 1; // non-shared member of two-arc polygon: save one point
-      // TODO: improve the logic here
     }
   }
 }
 
 // Use shapeId property of @pathData objects to group paths by shape
 //
-function groupPathsByShape(paths, pathData) {
-  var shapes = [];
+function groupPathsByShape(paths, pathData, shapeCount) {
+  var shapes = new Array(shapeCount); // Array can be sparse, but should have this length
   Utils.forEach(paths, function(path, pathId) {
     var shapeId = pathData[pathId].shapeId;
-    if (shapeId >= shapes.length) {
+    if (shapeId in shapes == false) {
       shapes[shapeId] = [path]; // first part in a new shape
     } else {
       shapes[shapeId].push(path);
@@ -4407,9 +4444,9 @@ MapShaper.topology = {
   buildPathTopology: buildPathTopology,
   ArcIndex: ArcIndex,
   groupPathsByShape: groupPathsByShape,
-  protectPath: protectPath,
   initPathIds: initPathIds
 };
+
 
 
 
@@ -4557,9 +4594,18 @@ function msSignedRingArea(xx, yy, start, len) {
   return sum / 2;
 }
 
-function msRingArea(xx, yy, start, len) {
-  return Math.abs(msSignedRingArea(xx, yy, start, len));
-}
+MapShaper.reversePathCoords = function(arr, start, len) {
+  var i = start,
+      j = start + len - 1,
+      tmp;
+  while (i < j) {
+    tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+    i++, j--;
+  }
+};
+
 
 // merge B into A
 function mergeBounds(a, b) {
@@ -4588,7 +4634,6 @@ MapShaper.geom = {
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,
-  msRingArea: msRingArea,
   msSignedRingArea: msSignedRingArea,
   probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
 };
@@ -5343,6 +5388,168 @@ DbfReader.prototype.readFieldHeader = function(bin) {
 
 
 
+// Convert path data from a non-topological source (Shapefile, GeoJSON, etc)
+// to the format used for topology processing (see mapshaper-topology.js)
+//
+function PathImporter(pointCount) {
+  var xx = new Float64Array(pointCount),
+      yy = new Float64Array(pointCount),
+      buf = new Float64Array(1024);
+
+  var paths = [],
+      pointId = 0,
+      openPaths = 0,
+      shapeId = -1,
+      pathsInShape,
+      primaryPath,
+      primaryPathArea;
+
+  function endPrevShape() {
+    if (primaryPathArea > 0) {
+      primaryPath.isPrimary = true;
+    }
+  };
+
+  this.startShape = function() {
+    endPrevShape();
+    shapeId++;
+    primaryPath = null;
+    primaryPathArea = 0;
+    pathsInShape = 0;
+  };
+
+  // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
+  // @offs Array index of first coordinate
+  //
+  this.importCoordsFromFlatArray = function(arr, offs, pointCount, isRing, isHole) {
+    var findMaxParts = isRing,
+        detectHoles = isRing && isHole === void 0,
+        startId = pointId,
+        x, y, prevX, prevY;
+
+    for (var i=0; i<pointCount; i++) {
+      x = arr[offs++];
+      y = arr[offs++];
+      if (i == 0 || prevX != x || prevY != y) {
+        xx[pointId] = x;
+        yy[pointId] = y;
+        pointId++;
+      }
+      prevX = x, prevY = y;
+    }
+
+    var validPoints = pointId - startId;
+    var path = {
+      size: validPoints,
+      isHole: false,
+      isPrimary: false,
+      shapeId: shapeId
+    };
+
+    if (isRing) {
+      var signedArea = msSignedRingArea(xx, yy, startId, validPoints);
+      var err = null;
+      if (validPoints < 4) {
+        err = "Only " + validPoints + " valid points in ring";
+      } else if (signedArea == 0) {
+        err = "Zero-area ring";
+      } else if (xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
+        err = "Open path";
+      }
+
+      if (err != null) {
+        trace("Invalid ring in shape:", shapeId, "--", err);
+        // pathObj.isNull = true;
+        pointId -= validPoints; // backtrack...
+        return false;
+      }
+
+      if (detectHoles) {
+        if (signedArea < 0) {
+          path.isHole = true;
+        }
+      } else {
+        path.isHole = isHole;
+        if (isHole && signedArea > 0 || !isHole && signedArea < 0) {
+          // reverse coords
+          MapShaper.reversePathCoords(xx, startId, validPoints);
+          MapShaper.reversePathCoords(yy, startId, validPoints);
+          signedArea *= -1;
+        }
+      }
+
+      if (signedArea > primaryPathArea) {
+        primaryPath = path;
+        primaryPathArea = signedArea;
+      }
+
+      // TODO: detect shapes that only contain holes
+
+    } else { // no rings (i.e. polylines)
+      openPaths++;
+      if (validPoints < 2) {
+        trace("Collapsed path in shape:", shapeId, "-- skipping");
+        pointId -= validPoints;
+        return false;
+      }
+    }
+
+    paths.push(path);
+    pathsInShape++;
+    return true;
+  };
+
+
+  // Import an array of [x, y] Points
+  //
+  this.importPoints = function(points, isRing, isHole) {
+    var n = points.length,
+        size = n * 2,
+        p;
+    if (buf.length < size) buf = new Float64Array(Math.ceil(size * 1.3));
+    for (var i=0, j=0; i < n; i++) {
+      p = points[i];
+      buf[j++] = p[0];
+      buf[j++] = p[1];
+    }
+    this.importCoordsFromFlatArray(buf, 0, n, isRing, isHole);
+  };
+
+
+  // TODO: detect null shapes, shapes that only have holes (error condition)
+  //
+  this.done = function() {
+    endPrevShape();
+
+    var skippedPoints = xx.length - pointId;
+    if (xx.length > pointId) {
+      xx = xx.subarray(0, pointId);
+      yy - yy.subarray(0, pointId);
+    }
+
+    var bounds = MapShaper.calcXYBounds(xx, yy);
+
+    var info = {
+      input_bounds: bounds.toArray(),
+      input_point_count: xx.length,
+      input_part_count: paths.length,
+      input_skipped_points: skippedPoints,
+      input_shape_count: shapeId + 1,
+      input_geometry_type: openPaths > 0 ? 'polyline' : 'polygon'
+    };
+
+    return {
+      pathData: paths,
+      xx: xx,
+      yy: yy,
+      info: info
+    };
+  };
+
+}
+
+
+
 MapShaper.importDbf = function(src) {
   T.start();
   var data = new DbfReader(src).read("table");
@@ -5350,14 +5557,13 @@ MapShaper.importDbf = function(src) {
   return data;
 };
 
-// Reads Shapefile data from an ArrayBuffer or Buffer
-// Converts to format used for identifying topology.
+// Read Shapefile data from an ArrayBuffer or Buffer
+// Convert to format used for identifying topology
 //
-
 MapShaper.importShp = function(src) {
   T.start();
-  var reader = new ShpReader(src);
 
+  var reader = new ShpReader(src);
   var supportedTypes = [
     ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ,
     ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ
@@ -5371,161 +5577,54 @@ MapShaper.importShp = function(src) {
     trace("Warning: M data is being removed.");
   }
 
-  var counts = reader.getCounts(),
-      xx = new Float64Array(counts.pointCount),
-      yy = new Float64Array(counts.pointCount),
-      shapeIds = [];
-
-  var expectRings = Utils.contains([5,15,25], reader.type()),
-      findMaxParts = expectRings,
-      findHoles = expectRings,
-      pathData = [];
-
-  var pointId = 0,
-      partId = 0,
-      shapeId = 0;
-
+  var counts = reader.getCounts();
+  var importer = new PathImporter(counts.pointCount);
+  var expectRings = Utils.contains([5,15,25], reader.type());
 
   // TODO: test cases: null shape; non-null shape with no valid parts
 
   reader.forEachShape(function(shp) {
-    var maxPartId = -1,
-        maxPartArea = 0,
-        signedPartArea, partArea, startId;
-
-    var partsInShape = shp.partCount,
-        pointsInShape = shp.pointCount,
-        partSizes = shp.readPartSizes(),
+    importer.startShape();
+    if (shp.isNull) return;
+    var partSizes = shp.readPartSizes(),
         coords = shp.readCoords(),
-        pointsInPart, validPointsInPart,
-        pathObj,
-        err,
-        x, y, prevX, prevY;
+        offs = 0,
+        pointsInPart;
 
-    if (partsInShape != partSizes.length) error("Shape part mismatch");
-
-    for (var j=0, offs=0; j<partsInShape; j++) {
+    for (var j=0, n=shp.partCount; j<n; j++) {
       pointsInPart = partSizes[j];
-      startId = pointId;
-      for (var i=0; i<pointsInPart; i++) {
-        x = coords[offs++];
-        y = coords[offs++];
-        if (i == 0 || prevX != x || prevY != y) {
-          xx[pointId] = x;
-          yy[pointId] = y;
-          pointId++;
-        } else {
-          // trace("Duplicate point:", x, y)
-        }
-        prevX = x, prevY = y;
-      }
-
-      validPointsInPart = pointId - startId;
-
-      pathObj = {
-        size: validPointsInPart,
-        isHole: false,
-        isPrimary: false,
-        isNull: false,
-        // isRing: expectRings,
-        shapeId: shapeId
-      }
-
-      if (expectRings) {
-        signedPartArea = msSignedRingArea(xx, yy, startId, pointsInPart);
-        err = null;
-        if (validPointsInPart < 4) {
-          err = "Only " + validPointsInPart + " valid points in ring";
-        } else if (signedPartArea == 0) {
-          err = "Zero-area ring";
-        } else if (xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
-          err = "Open path";
-        }
-
-        if (err != null) {
-          trace("Invalid ring in shape:", shapeId, "--", err);
-          // pathObj.isNull = true;
-          pointId -= validPointsInPart; // backtrack...
-          continue;
-        }
-
-        if (findMaxParts) {
-          partArea = Math.abs(signedPartArea);
-          if (partArea > maxPartArea) {
-            maxPartId = partId;
-            maxPartArea = partArea;
-          }
-        }
-
-        if (findHoles) {
-          if (signedPartArea < 0) {
-            if (partsInShape == 1) error("Shape", shapeId, "only contains a hole");
-            pathObj.isHole = true;
-          }
-        }
-      } else { // no rings (i.e. polylines)
-        if (validPointsInPart < 2) {
-          trace("Collapsed path in shape:", shapeId, "-- skipping");
-          pointId -= validPointsInPart;
-          continue;
-        }
-      }
-
-      shapeIds.push(shapeId);
-      pathData.push(pathObj);
-      partId++;
-    }  // forEachPart()
-
-    if (maxPartId > -1) {
-      pathObj.isPrimary = true;
+      importer.importCoordsFromFlatArray(coords, offs, pointsInPart, expectRings);
+      offs += pointsInPart * 2;
     }
-    shapeId++;
-  });  // forEachShape()
+  });
 
-  var skippedPoints = counts.pointCount - pointId,
-      skippedParts = counts.partCount - partId;
-  if (counts.shapeCount != shapeId || skippedPoints < 0 || skippedParts < 0)
-    error("Counting problem");
-
-  if (skippedPoints > 0) {
-    // trace("* Skipping", skippedPoints, "invalid points");
-    xx = xx.subarray(0, pointId);
-    yy = yy.subarray(0, pointId);
-  }
-
-  var info = {
-    input_bounds: reader.header().bounds,
-    input_point_count: pointId,
-    input_part_count: partId,
-    input_shape_count: shapeId,
-    input_skipped_points: skippedPoints,
-    input_skipped_parts: skippedParts,
-    input_geometry_type: expectRings ? "polygon" : "polyline"
-  };
+  var data = importer.done();
   T.stop("Import Shapefile");
-  return {
-    xx: xx,
-    yy: yy,
-    pathData: pathData,
-    info: info
-  };
+  return data;
 };
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShp = function(arcs, shapes, shpType) {
-  if (!Utils.isArray(arcs) || !Utils.isArray(shapes)) error("Missing exportable data.");
+MapShaper.exportShp = function(obj) {
+  if (obj.arcs instanceof ArcDataset == false || !Utils.isArray(obj.shapes)) error("Missing exportable data.");
+  if (obj.type != 'polyline' && obj.type != 'polygon') error("Invalid geometry type:", obj.type);
+
+  var isPolygonType = obj.type == 'polygon';
+  var shpType = isPolygonType ? 5 : 3;
+
   T.start();
   T.start();
 
+  var exporter = new PathExporter(obj.arcs, isPolygonType)
   var fileBytes = 100;
   var bounds = new Bounds();
-  var shapeBuffers = Utils.map(shapes, function(shape, i) {
-    var shpObj = MapShaper.exportShpRecord(shape, arcs, i+1, shpType);
-    fileBytes += shpObj.buffer.byteLength;
-    shpObj.bounds && bounds.mergeBounds(shpObj.bounds);
-    return shpObj.buffer;
+  var shapeBuffers = Utils.map(obj.shapes, function(shapeIds, i) {
+    var shape = MapShaper.exportShpRecord(shapeIds, exporter, i+1, shpType);
+    fileBytes += shape.buffer.byteLength;
+    shape.bounds && bounds.mergeBounds(shape.bounds);
+    return shape.buffer;
   });
+
 
   T.stop("export shape records");
   T.start();
@@ -5575,47 +5674,44 @@ MapShaper.exportShp = function(arcs, shapes, shpType) {
 //   and the bounding box of the shape.
 // TODO: remove collapsed rings, convert to null shape if necessary
 //
-MapShaper.exportShpRecord = function(shape, arcs, id, shpType) {
+MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
   var bounds = null,
-      bin = null;
-  if (shape && shape.length > 0) {
-    var data = MapShaper.convertTopoShape(shape, arcs, ShpType.polygonType(shpType)),
-        partsIdx = 52,
-        pointsIdx = partsIdx + 4 * data.partCount,
+      bin = null,
+      data = exporter.exportShapeForShapefile(shapeIds);
+  if (data.pointCount > 0) {
+    var partsIdx = 52,
+        pointsIdx = partsIdx + 4 * data.pathCount,
         recordBytes = pointsIdx + 16 * data.pointCount,
         pointCount = 0;
 
-    data.pointCount == 0 && trace("Empty shape; data:", data)
-    if (data.pointCount > 0) {
-      bounds = data.bounds;
-      bin = new BinArray(recordBytes, false)
-        .writeInt32(id)
-        .writeInt32((recordBytes - 8) / 2)
-        .littleEndian()
-        .writeInt32(shpType)
-        .writeFloat64(bounds.xmin)
-        .writeFloat64(bounds.ymin)
-        .writeFloat64(bounds.xmax)
-        .writeFloat64(bounds.ymax)
-        .writeInt32(data.partCount)
-        .writeInt32(data.pointCount);
+    bounds = data.bounds;
+    bin = new BinArray(recordBytes, false)
+      .writeInt32(id)
+      .writeInt32((recordBytes - 8) / 2)
+      .littleEndian()
+      .writeInt32(shpType)
+      .writeFloat64(bounds.xmin)
+      .writeFloat64(bounds.ymin)
+      .writeFloat64(bounds.xmax)
+      .writeFloat64(bounds.ymax)
+      .writeInt32(data.pathCount)
+      .writeInt32(data.pointCount);
 
-      Utils.forEach(data.parts, function(part, i) {
-        bin.position(partsIdx + i * 4)
-          .writeInt32(pointCount)
-          .position(pointsIdx + pointCount * 16);
-        var xx = part[0],
-            yy = part[1];
-        for (var j=0, len=xx.length; j<len; j++) {
-          bin.writeFloat64(xx[j]);
-          bin.writeFloat64(yy[j]);
-        }
-        pointCount += j;
-      });
-      if (data.pointCount != pointCount)
-        error("Shp record point count mismatch; pointCount:"
-          , pointCount, "data.pointCount:", data.pointCount);
-    }
+    Utils.forEach(data.paths, function(part, i) {
+      bin.position(partsIdx + i * 4)
+        .writeInt32(pointCount)
+        .position(pointsIdx + pointCount * 16);
+      var xx = part[0],
+          yy = part[1];
+      for (var j=0, len=xx.length; j<len; j++) {
+        bin.writeFloat64(xx[j]);
+        bin.writeFloat64(yy[j]);
+      }
+      pointCount += j;
+    });
+    if (data.pointCount != pointCount)
+      error("Shp record point count mismatch; pointCount:"
+        , pointCount, "data.pointCount:", data.pointCount);
 
   }
 
@@ -6050,6 +6146,8 @@ MapShaper.calcArcBounds = function(xx, yy) {
   return [xb.min, yb.min, xb.max, yb.max];
 };
 
+MapShaper.ArcDataset = ArcDataset;
+
 // An interface for a set of topological arcs and the layers derived from the arcs.
 // @arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
 //
@@ -6075,16 +6173,20 @@ function ArcDataset(coords) {
 
   this.getArcIter = function(i, mpp) {
     var fw = i >= 0,
-        arc, filteredIds;
+        ids = null,
+        arc;
     if (!fw) {
       i = -i - 1;
     }
-    filteredIds = this.getFilteredIds(i, mpp);
+    if (mpp != null && filteredIds && filteredSegLen < mpp * 0.5) {
+      ids = filteredIds[i];
+    }
+
     arc = _arcs[i];
     if (zlimit) {
-      arcIter.init(arc[0], arc[1], fw, _thresholds[i], zlimit, filteredIds);
+      arcIter.init(arc[0], arc[1], fw, _thresholds[i], zlimit, ids);
     } else {
-      arcIter.init(arc[0], arc[1], fw, null, null, filteredIds);
+      arcIter.init(arc[0], arc[1], fw, null, null, ids);
     }
     return arcIter;
   };
@@ -6093,7 +6195,15 @@ function ArcDataset(coords) {
   // @arr is an array of arrays of removal thresholds for each arc-vertex.
   //
   this.setThresholds = function(thresholds) {
+    if (thresholds.length != _arcs.length) error("ArcDataset#setThresholds() Mismatched arc/threshold counts.")
     _thresholds = thresholds;
+  };
+
+  // Add simplification thresholds and generate a set of thinned paths for faster
+  // rendering when zoomed out.
+  //
+  this.setThresholdsForGUI = function(thresholds) {
+    this.setThresholds(thresholds);
 
     // Sort simplification thresholds for all non-endpoint vertices
     // ... to quickly convert a simplification percentage to a threshold value.
@@ -6147,17 +6257,19 @@ function ArcDataset(coords) {
     });
   };
 
-  this.getFilteredIds = function(i, mpp) {
-    var ids = (filteredIds && filteredSegLen < mpp * 0.5) ? filteredIds[i] : null;
-    return ids;
+  this.setRetainedInterval = function(z) {
+    zlimit = z;
   };
 
   this.setRetainedPct = function(pct) {
-    if (!_sortedThresholds) error ("Missing threshold data.");
     if (pct >= 1) {
       zlimit = 0;
-    } else {
+    } else if (_sortedThresholds) {
       zlimit = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
+    } else if (_thresholds) {
+      zlimit = MapShaper.getThresholdByPct(_thresholds, pct);
+    } else {
+      error ("ArcDataset#setRetainedPct() Missing simplification data.")
     }
   };
 
@@ -6174,7 +6286,7 @@ function ArcDataset(coords) {
   };
 
   this.getArcBounds = function(i) {
-    if (i < 0) i = -1 - i;
+    if (i < 0) i = ~i;
     return boxes[i];
   };
 
@@ -6228,21 +6340,13 @@ function ArcDataset(coords) {
     return this.getShapeTable(Utils.range(this.size()), Arc);
   };
 
-  /*
-  this.getSimpleShapes = function(arr) {
-    return this.getShapeTable(arr, SimpleShape);
+  this.exportArcsForJSON = function() {
+    return this.getArcTable().toArray();
   };
-
-  this.getMultiShapes = function(arr) {
-    return this.getShapeTable(arr, MultiShape);
-  };
-  */
 
   this.getMultiPathShape = function(arr) {
     if (!arr || arr.length == 0) {
       return new NullShape();
-    // } else if (arr.length == 1) {
-    //  return new SimpleShape(this).init(arr[0]);
     } else {
       return new MultiShape(this).init(arr);
     }
@@ -6250,7 +6354,9 @@ function ArcDataset(coords) {
 
 }
 
-//
+// An interable collection of paths (Arc, SimpleShape, MultiShape)
+// @arr array of path objects
+// @src ArcDataset object
 //
 function ShapeTable(arr, src) {
   this.shapes = function() {
@@ -6268,14 +6374,6 @@ function ShapeTable(arr, src) {
       return shp.toArray();
     });
   };
-
-  this.export = function() {
-    return Utils.map(arr, function(shp) {
-      return shp.export();
-    });
-  };
-
-  // TODO: add method so layer can determine if vertices can be displayed at current scale
 }
 
 // An iterable collection of shapes, for drawing paths on-screen
@@ -6419,12 +6517,6 @@ function NullShape() {
   error("NullShape() not implemented")
 }
 
-NullShape.prototype = {
-  pathCount: 0,
-  init: function() {return this}
-};
-
-
 function Arc(src) {
   this.src = src;
 }
@@ -6453,16 +6545,6 @@ Arc.prototype = {
       coords.push([iter.x, iter.y]);
     }
     return coords;
-  },
-  // Return arc coords as [[x0, x1, ... , xn-1], [y0, y1, ... , yn-1]]
-  export: function() {
-    var iter = this.getPathIter(),
-    xx = [], yy = [];
-    while (iter.hasNext()) {
-      xx.push(iter.x);
-      yy.push(iter.y);
-    }
-    return [xx, yy];
   },
   smallerThan: function(units) {
     var b = this.bounds;
@@ -6494,12 +6576,6 @@ MultiShape.prototype = {
     return Utils.map(this.parts, function(ids) {
       return new SimpleShape(this.src).init(ids);
     }, this);
-  },
-  // Return array of path groups; a path group is an array containing one positive-space path and zero or more
-  //   negative-space paths (holes) contained by the positive path -- like GeoJSON, but with SimpleShape objects
-  //   instead of GeoJSON linestrings.
-  getPathGroups: function() {
-    return groupMultiShapePaths(this);
   },
   getBounds: function() {
     return this.bounds;
@@ -6544,7 +6620,6 @@ SimpleShape.prototype = {
     return sum / 2;
   },
   toArray: Arc.prototype.toArray,
-  export: Arc.prototype.export,
   smallerThan: Arc.prototype.smallerThan
 };
 
@@ -6679,61 +6754,14 @@ function ShapeIter(arcs) {
   };
 }
 
-// Bundle holes with their containing rings, for Topo/GeoJSON export
-// Assume positive rings are CCW and negative rings are CW, like Shapefile
-//
-function groupMultiShapePaths(shape) {
-  if (shape.pathCount == 0) {
-    return [];
-  } else if (shape.pathCount.length == 1) {
-    return [shape.getPath(0)]; // multi-polygon with one part and 0 holes
-  }
-  var pos = [],
-      neg = [];
-  for (var i=0, n=shape.pathCount; i<n; i++) {
-    var part = shape.getPath(i),
-        area = part.getSignedArea();
-    if (area < 0) {
-      neg.push(part);
-    } else if (area > 0) {
-      pos.push(part);
-    } else {
-      trace("Zero-area ring, skipping")
-    }
-  }
-
-  if (pos.length == 0) {
-    trace("#groupMultiShapePaths() Shape is missing a ring with positive area.");
-    return [];
-  }
-  var output = Utils.map(pos, function(part) {
-    return [part];
-  });
-
-  Utils.forEach(neg, function(hole) {
-    var containerId = -1,
-        containerArea = 0;
-    for (var i=0, n=pos.length; i<n; i++) {
-      var part = pos[i],
-          inside = containsBounds(part.bounds, hole.bounds);
-      if (inside && (containerArea == 0 || boundsArea(part.bounds) < containerArea)) {
-        containerArea = boundsArea(part.bounds);
-        containerId = i;
-      }
-    }
-    if (containerId == -1) {
-      trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
-    } else {
-      output[containerId].push(hole);
-    }
-  });
-  return output;
-};
 
 
 
 
 MapShaper.importJSON = function(obj) {
+  if (Utils.isString(obj)) {
+    obj = JSON.parse(obj);
+  }
   if (obj.type == "Topology") {
     error("TODO: TopoJSON import.")
     return MapShaper.importTopoJSON(obj);
@@ -6742,47 +6770,185 @@ MapShaper.importJSON = function(obj) {
 };
 
 MapShaper.importGeoJSON = function(obj) {
-  error("TODO: implement GeoJSON importing.")
+  if (Utils.isString(obj)) {
+    obj = JSON.parse(obj);
+  }
+  var supportedGeometries = Utils.getKeys(GeoJSON.pathImporters);
+  var supportedTypes = supportedGeometries.concat(['FeatureCollection', 'GeometryCollection']);
+
+  if (!Utils.contains(supportedTypes, obj.type)) {
+    error("#importGeoJSON() Unsupported type:", obj.type);
+  }
+
+  // Convert single feature or geometry into a collection with one member
+  //
+  if (obj.type == 'Feature') {
+    obj = {
+      type: 'FeatureCollection',
+      features: [obj]
+    }
+  } else if (Utils.contains(supportedGeometries, obj.type)) {
+    obj = {
+      type: 'GeometryCollection',
+      geometries: [obj]
+    }
+  }
+
+  var properties = null;
+  if (obj.type == 'FeatureCollection') {
+    // Convert FeatureCollection to GeometryCollection, extract properties
+    properties = GeoJSON.convertFeatureCollection(obj);
+  }
+
+  // Count points in dataset (PathImporter needs total points to initialize buffers)
+  //
+  var pointCount = Utils.reduce(obj.geometries, function(geom, sum) {
+    if (geom) { // geom may be null
+      var depth = GeoJSON.geometryDepths[geom.type] || 0;
+      sum += GeoJSON.countNestedPoints(geom.coordinates, depth);
+    }
+    return sum;
+  }, 0);
+
+  // Import GeoJSON geometries
+  //
+  var importer = new PathImporter(pointCount);
+  Utils.forEach(obj.geometries, function(geom) {
+    importer.startShape();
+    var f = geom && GeoJSON.pathImporters[geom.type];
+    f && f(geom.coordinates, importer);
+  });
+
+  var data = importer.done();
+  data.properties = properties;
+  return data
 };
+
+
+var GeoJSON = MapShaper.geojson = {};
+
+// Functions for importing geometry coordinates using a PathImporter
+//
+GeoJSON.pathImporters = {
+  LineString: function(coords, importer) {
+    importer.importPoints(coords, false, false)
+  },
+  MultiLineString: function(coords, importer) {
+    for (var i=0; i<coords.length; i++) {
+      GeoJSON.pathImporters.LineString(coords[i], importer)
+    }
+  },
+  Polygon: function(coords, importer) {
+    for (var i=0; i<coords.length; i++) {
+      importer.importPoints(coords[i], true, i > 0);
+    }
+  },
+  MultiPolygon: function(coords, importer) {
+    for (var i=0; i<coords.length; i++) {
+      GeoJSON.pathImporters.Polygon(coords[i], importer)
+    }
+  }
+};
+
+// Nested depth of GeoJSON Points in coordinates arrays
+//
+GeoJSON.geometryDepths = {
+  LineString: 1,
+  MultiLineString: 2,
+  Polygon: 2,
+  MultiPolygon: 3
+};
+
+// Convert FeatureCollection to GeometryCollection, return array of properties
+//
+GeoJSON.convertFeatureCollection = function(obj) {
+  var properties = [];
+  obj.geometries = Utils.map(obj.features, function(feat) {
+    properties.push(feat.properties);
+    return feat.geometry;
+  });
+  obj.type = 'GeometryCollection';
+  delete obj.features;
+  return properties;
+};
+
+// Sum points in a GeoJSON coordinates array
+//
+GeoJSON.countNestedPoints = function(coords, depth) {
+  var tally = 0;
+  if (depth == 1) {
+    tally = coords.length;
+  } else if (depth > 1) {
+    for (var i=0, n=coords.length; i<n; i++) {
+      tally += GeoJSON.countNestedPoints(coords[i], depth-1);
+    }
+  }
+  return tally;
+};
+
 
 MapShaper.exportGeoJSON = function(obj) {
   T.start();
-  if (!obj.shapes) error("#exportGeoJSON() Missing 'shapes' param.");
-  if (obj.type != "MultiPolygon" && obj.type != "MultiLineString") error("#exportGeoJSON() Unsupported type:", obj.type)
-  var output = {
-    type: "FeatureCollection"
-  };
-  output.features = Utils.map(obj.shapes, function(shape) {
-    if (!shape || !Utils.isArray(shape)) error("[exportGeoJSON()] Missing or invalid param/s");
-    return MapShaper.exportGeoJSONFeature(shape, obj.type);
+  if (!obj.shapes || !obj.arcs) error("#exportGeoJSON() Missing a required parameter.");
+  if (obj.type != "polygon" && obj.type != "polyline") error("#exportGeoJSON() Unsupported type:", obj.type);
+
+  var geomType = obj.type == 'polygon' ? 'MultiPolygon' : 'MultiLineString',
+      properties = obj.properties,
+      useFeatures = !!properties;
+
+  if (useFeatures && properties.length !== obj.shapes.length) {
+    error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
+  }
+  var exporter = new PathExporter(obj.arcs, obj.type == 'polygon');
+  var objects = Utils.map(obj.shapes, function(shapeIds, i) {
+    var shape = exporter.exportShapeForGeoJSON(shapeIds);
+    if (useFeatures) {
+      return MapShaper.exportGeoJSONFeature(shape, geomType, properties[i]);
+    } else {
+      return MapShaper.exportGeoJSONGeometry(shape, geomType);
+    }
   });
 
+  var output = {};
+  if (useFeatures) {
+    output.type = 'FeatureCollection';
+    output.features = objects;
+  } else {
+    output.type = 'GeometryCollection';
+    // null geometries not allowed in GeometryCollection
+    output.geometries = Utils.filter(objects, function(obj) {
+      return obj != null;
+    });
+  }
+
+  var json = JSON.stringify(output);
   T.stop("Export GeoJSON");
-  return JSON.stringify(output);
+  return json;
 };
 
-MapShaper.exportGeoJSONGeometry = function(paths, type) {
+
+MapShaper.exportGeoJSONGeometry = function(coords, type) {
   var geom = {};
 
-  if (paths.length == 0) {
+  if (!coords || coords.length == 0) {
     geom = null; // null geometry
   }
   else if (type == 'MultiPolygon') {
-    if (paths.length == 1) {
+    if (coords.length == 1) {
       geom.type = "Polygon";
-      geom.coordinates = exportCoordsForGeoJSON(paths[0]);
+      geom.coordinates = coords[0];
     } else {
       geom.type = "MultiPolygon";
-      geom.coordinates = Utils.map(paths, exportCoordsForGeoJSON);
+      geom.coordinates = coords;
     }
   }
   else if (type == 'MultiLineString') {
-    if (paths.length == 1) {
+    if (coords.length == 1) {
       geom.type = "LineString";
-      geom.coordinates = paths[0].toArray();
+      geom.coordinates = coords[0];
     } else {
       geom.type = "MultiLineString";
-      geom.coordinates = exportCoordsForGeoJSON(paths);
+      geom.coordinates = coords;
     }
   }
   else {
@@ -6791,14 +6957,11 @@ MapShaper.exportGeoJSONGeometry = function(paths, type) {
   return geom;
 }
 
-
-//
-//
-MapShaper.exportGeoJSONFeature = function(pathGroups, type) {
+MapShaper.exportGeoJSONFeature = function(coords, type, properties) {
   var feature = {
     type: "Feature",
-    properties: {},
-    geometry: MapShaper.exportGeoJSONGeometry(pathGroups, type)
+    properties: properties || null,
+    geometry: MapShaper.exportGeoJSONGeometry(coords, type)
   };
   return feature;
 };
@@ -6813,6 +6976,9 @@ function exportCoordsForGeoJSON(paths) {
 
 
 MapShaper.importTopoJSON = function(obj) {
+  if (Utils.isString(obj)) {
+    obj = JSON.parse(obj);
+  }
   var mx = 1, my = 1, bx = 0, by = 0;
   if (obj.transform) {
     var scale = obj.transform.scale,
@@ -6843,23 +7009,27 @@ MapShaper.importTopoJSON = function(obj) {
 // TODO: Support properties
 //
 MapShaper.exportTopoJSON = function(data) {
-  if (!data.objects || !data.arcs || !data.bounds) error("Missing 'shapes' and/or 'arcs' properties.");
-  var arcs = data.arcs;
+  T.start();
+  if (!data.objects || !data.arcs || !data.bounds) error("#exportTopoJSON() Missing a required param.");
+  var arcCoords = data.arcs.exportArcsForJSON();
   var objects = {};
   Utils.forEach(data.objects, function(src) {
-    var dest = exportTopoJSONObject(src.shapes, src.type),
+    if (src.type != 'polygon' && src.type != 'polyline') error("#exportTopoJSON() Unsupported type:", src.type);
+    var geomType = src.type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
+    var exporter = new PathExporter(data.arcs, src.type == 'polygon');
+    var dest = exportTopoJSONObject(exporter, src.shapes, geomType),
         name = src.name;
     if (!dest || !name) error("#exportTopoJSON() Missing data, skipping an object");
     objects[name] = dest;
   });
 
   var srcBounds = data.bounds,
-      resXY = findTopoJSONResolution(arcs),
+      resXY = findTopoJSONResolution(arcCoords),
       destBounds = new Bounds(0, 0, srcBounds.width() / resXY[0], srcBounds.height() / resXY[1]),
       tr = srcBounds.getTransform(destBounds),
       inv = tr.invert();
 
-  Utils.forEach(arcs, function(arc) {
+  Utils.forEach(arcCoords, function(arc) {
     var n = arc.length,
         p, x, y, prevX, prevY;
     for (var i=0, n=arc.length; i<n; i++) {
@@ -6884,11 +7054,13 @@ MapShaper.exportTopoJSON = function(data) {
       scale: [inv.mx, inv.my],
       translate: [inv.bx, inv.by]
     },
-    arcs: arcs,
+    arcs: arcCoords,
     objects: objects
   };
 
-  return JSON.stringify(obj);
+  var json = JSON.stringify(obj);
+  T.stop("Export TopoJSON");
+  return json;
 };
 
 // Find the x, y values that map to x / y integer unit in topojson output
@@ -6913,11 +7085,12 @@ function findTopoJSONResolution(arcs) {
 }
 
 
-function exportTopoJSONObject(shapes, type) {
+function exportTopoJSONObject(exporter, shapes, type) {
   var obj = {
     type: "GeometryCollection"
   };
-  obj.geometries = Utils.map(shapes, function(paths, i) {
+  obj.geometries = Utils.map(shapes, function(shape, i) {
+    var paths = exporter.exportShapeForTopoJSON(shape);
     return exportTopoJSONGeometry(paths, i, type);
   });
   return obj;
@@ -6929,25 +7102,25 @@ function exportTopoJSONGeometry(paths, id, type) {
     id: id
   };
 
-  if (paths.length == 0) {
+  if (!paths || paths.length == 0) {
     // null geometry
     obj.type = null;
   }
   else if (type == 'MultiPolygon') {
     if (paths.length == 1) {
       obj.type = "Polygon";
-      obj.arcs = exportArcsForTopoJSON(paths[0]);
+      obj.arcs = paths[0];
     } else {
       obj.type = "MultiPolygon";
-      obj.arcs = Utils.map(paths, exportArcsForTopoJSON);
+      obj.arcs = paths;
     }
   }
   else if (type == "MultiLineString") {
     if (paths.length == 1) {
-      obj.arcs = paths[0].ids;
+      obj.arcs = paths[0];
       obj.type = "LineString";
     } else {
-      obj.arcs = exportArcsForTopoJSON(paths);
+      obj.arcs = paths;
       obj.type = "MultiLineString";
     }
   }
@@ -6958,127 +7131,178 @@ function exportTopoJSONGeometry(paths, id, type) {
 }
 
 
-function exportArcsForTopoJSON(paths) {
-  return Utils.map(paths, function(path) {
-    return path.ids;
-  });
-}
 
 
 
+// Convert topological data into formats that are useful for exporting
+// Shapefile, GeoJSON and TopoJSON
+//
+function PathExporter(arcData, polygonType) {
+  if (polygonType == null) error("PathExporter requires @polygonType parameter.");
 
-var ExportControl = function(arcData, topoData, opts) {
-  if (opts.geometry != 'polygon' && opts.geometry != 'polyline') {
-    error("ExportControl() unexpected geometry type:", opts.geometry);
+  // Export data for serializing one Shapefile record
+  //
+  this.exportShapeForShapefile = function(ids) {
+    var bounds = new Bounds();
+    var data = exportShapeData(ids);
+    var paths = Utils.map(data.pathData, function(path) {
+      bounds.mergeBounds(path.bounds);
+      return [path.xx, path.yy];
+    });
+    return {
+      bounds: bounds,
+      pointCount: data.pointCount,
+      paths: paths,
+      pathCount: paths.length
+    };
+  };
+
+  // Export path coordinates for one Shape/Feature, either nested like a
+  // GeoJSON MultiPolygon or like a GeoJSON MultiLineString
+  //
+  this.exportShapeForGeoJSON = function(ids) {
+    var obj = exportShapeData(ids);
+    if (obj.pointCount == 0) return null;
+    if (polygonType) {
+      var groups = groupMultiPolygonPaths(obj.pathData);
+      return Utils.map(groups, function(group) {
+        return convertPathsForGeoJSON(group);
+      });
+    } else {
+      return convertPathsForGeoJSON(obj.pathData);
+    }
+  };
+
+  // Export arrays of arc ids for the "arcs" parameter of a TopoJSON "object"
+  //
+  this.exportShapeForTopoJSON = function(ids) {
+    var obj = exportShapeData(ids);
+    if (obj.pointCount == 0) return null;
+    if (polygonType) {
+
+      var groups = groupMultiPolygonPaths(obj.pathData);
+      return Utils.map(groups, function(group) {
+        return convertPathsForTopoJSON(group);
+      });
+    } else {
+      return convertPathsForTopoJSON(obj.pathData);
+    }
+  };
+
+  function convertPathsForGeoJSON(paths) {
+    return Utils.map(paths, function(path) {
+      return MapShaper.transposeXYCoords(path.xx, path.yy);
+    });
   }
-  El('#g-export-control').show();
-  if (typeof URL == 'undefined' || !URL.createObjectURL) {
-    El('#g-export-control .g-label').text("Exporting is not supported in this browser");
-    return;
+
+  function convertPathsForTopoJSON(paths) {
+    return Utils.map(paths, function(path) {
+      return path.ids;
+    });
   }
 
-  var filename = opts && opts.output_name || "out",
-      anchor = El('#g-export-control').newChild('a').attr('href', '#').node(),
-      blobUrl;
-
-  El('#g-export-buttons').css('display: inline');
-
-  var geoBtn = new SimpleButton('#g-geojson-btn').active(true).on('click', function() {
-    geoBtn.active(false);
-    setTimeout(exportGeoJSON, 10); // kludgy way to show button response
-  });
-  var shpBtn = new SimpleButton('#g-shapefile-btn').active(true).on('click', function() {
-    shpBtn.active(false);
-    exportZippedShapefile();
-  });
-  var topoBtn = new SimpleButton('#g-topojson-btn').active(true).on('click', function() {
-    topoBtn.active(false);
-    setTimeout(exportTopoJSON, 10);
+  // Bundle holes with their containing rings, for Topo/GeoJSON export
+  // Assume positive rings are CCW and negative rings are CW, like Shapefile
+  // @paths array of path objects from exportShapeData()
+  //
+  function groupMultiPolygonPaths(paths) {
+    var pos = [],
+        neg = [];
+    Utils.forEach(paths, function(path) {
+      if (path.area < 0) {
+        neg.push(path);
+      } else if (path.area > 0) {
+        pos.push(path);
+      } else {
+        // trace("Zero-area ring, skipping")
+      }
     });
 
-  function exportBlob(filename, blob) {
-    try {
-      // revoke previous download url, if any. TODO: do this when download completes (how?)
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-      blobUrl = URL.createObjectURL(blob);
-    } catch(e) {
-      alert("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.")
-      return;
-    }
-    anchor.href = blobUrl;
-    anchor.download = filename;
-    var clickEvent = document.createEvent("MouseEvent");
-    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
-    anchor.dispatchEvent(clickEvent);
-  }
+    var output = Utils.map(pos, function(part) {
+      return [part];
+    });
 
-  function getGeometryTypeforJSON(outputType) {
-    return outputType == 'polyline' ? "MultiLineString" : "MultiPolygon";
-  }
-
-  function exportGeoJSON() {
-    var shapes = MapShaper.convertShapesForJSON(arcData, topoData.shapes, opts.geometry),
-        geoType = getGeometryTypeforJSON(opts.geometry),
-        json = MapShaper.exportGeoJSON({shapes: shapes, type: geoType});
-    exportBlob(filename + ".geojson", new Blob([json]));
-    geoBtn.active(true);
-  }
-
-  function exportTopoJSON() {
-    // export polygons; TODO: export polylines
-    var polygons = {
-      type: getGeometryTypeforJSON(opts.geometry),
-      name: opts.output_name || "features",
-      shapes: MapShaper.convertShapesForJSON(arcData, topoData.shapes, opts.geometry)
-    };
-
-    var json = MapShaper.exportTopoJSON({arcs: arcData.getArcTable().toArray(), objects: [polygons], bounds: opts.bounds});
-    exportBlob(filename + ".topojson", new Blob([json]));
-    topoBtn.active(true);
-  }
-
-  function exportZippedShapefile() {
-    var data = exportShapefile(),
-        shp = new Blob([data.shp]),
-        shx = new Blob([data.shx]);
-
-    function addShp(writer) {
-      writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
-        addShx(writer);
-      }, null); // last arg: onprogress
-    }
-
-    function addShx(writer) {
-      writer.add(filename + ".shx", new zip.BlobReader(shx), function() {
-        writer.close(function(blob) {
-          exportBlob(filename + ".zip", blob)
-          shpBtn.active(true);
-        });
-      }, null);
-    }
-    try {
-      zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
-    } catch(e) {
-      if (Utils.parseUrl(Browser.getPageUrl()).protocol == 'file') {
-        alert("This browser doesn't support offline .zip file creation.");
+    Utils.forEach(neg, function(hole) {
+      var containerId = -1,
+          containerArea = 0;
+      for (var i=0, n=pos.length; i<n; i++) {
+        var part = pos[i],
+            contained = part.bounds.contains(hole.bounds);
+        if (contained && (containerArea == 0 || part.area < containerArea)) {
+          containerArea = part.area;
+          containerId = i;
+        }
+      }
+      if (containerId == -1) {
+        trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
       } else {
-        alert("This browser doesn't support .zip file creation.");
+        output[containerId].push(hole);
+      }
+    });
+    return output;
+  }
+
+  //
+  //
+  function exportShapeData(ids) {
+    var pointCount = 0,
+        pathData = [],
+        path,
+        shp;
+
+    if (ids && ids.length > 0) { // may be null
+      shp = arcData.getMultiPathShape(ids);
+      for (var i=0; i<shp.pathCount; i++) {
+        path = convertPath(shp.getPath(i), polygonType);
+        if (path) {
+          pathData.push(path);
+          pointCount += path.pointCount;
+        }
       }
     }
-  }
+    return {
+      pointCount: pointCount,
+      pathData: pathData
+    }
+  };
 
-  function exportShapefile() {
-    var type = opts.geometry == 'polyline' ? 3 : 5;
-    return MapShaper.exportShp(arcData.getArcTable().export(), topoData.shapes, type);
-  }
-};
+  // Extract data from a SimpleShape object (see mapshaper-shapes.js)
+  // Returns null if shape has collapsed or is otherwise invalid
+  //
+  function convertPath(path, isRing) {
+    var xx = [],
+        yy = [],
+        iter = path.getPathIter();
 
-MapShaper.convertShapesForJSON = function(arcData, shapeArr, type) {
-  return Utils.map(shapeArr, function(shapeIds) {
-    var shape = arcData.getMultiPathShape(shapeIds);
-    return type == 'polygon' ? shape.getPathGroups() : shape.getPaths();
-  });
-};
+    var area, x, y, prevX, prevY, i = 0;
+    while (iter.hasNext()) {
+      x = iter.x;
+      y = iter.y;
+
+      if (i == 0 || prevX != x || prevY != y) {
+        xx.push(x);
+        yy.push(y);
+      }
+
+      i++;
+      prevX = x;
+      prevY = y;
+    }
+
+    if (isRing && i < 4 || i < 2) return null;
+    area = msSignedRingArea(xx, yy);
+    if (area == 0) return null;
+
+    return {
+      xx: xx,
+      yy: yy,
+      pointCount: xx.length,
+      area: area,
+      ids: path.ids,
+      bounds: MapShaper.calcXYBounds(xx, yy)
+    }
+  }
+}
 
 
 
@@ -7091,8 +7315,6 @@ MapShaper.validateArgv = function(argv) {
   cli.validateOutputOpts(opts, argv);
   cli.validateSimplifyOpts(opts, argv);
 
-  if (!opts.use_simplification) error("Missing simplification parameters")
-
   opts.timing = !!argv.t;
   return opts;
 };
@@ -7103,10 +7325,15 @@ cli.validateInputOpts = function(opts, argv) {
 
   var ifileInfo = Node.getFileInfo(ifile);
   if (!ifileInfo.exists) error("File not found (" + ifile + ")");
-  if (ifileInfo.ext != 'shp') error("Input filename must match *.shp");
+  if (ifileInfo.ext == 'shp') {
+    opts.input_format = 'shapefile';
+  } else if (/json$/.test(ifileInfo.ext)) {
+    opts.input_format = 'geojson';
+  } else {
+     error("File has an unknown extension:", ifileInfo.ext);
+  }
 
   opts.input_file = ifile;
-  opts.input_format = "shapefile";
   opts.input_file_base = ifileInfo.base;
   opts.input_directory = ifileInfo.relative_dir;
   opts.input_path_base = Node.path.join(opts.input_directory, opts.input_file_base);
@@ -7114,9 +7341,10 @@ cli.validateInputOpts = function(opts, argv) {
 };
 
 cli.validateOutputOpts = function(opts, argv) {
-  // output format -- only shapefile for now
-  if (argv.f && argv.f != "shapefile") error("Unsupported output format:", argv.f);
-  opts.output_format = "shapefile";
+  var supportedTypes = ["geojson", "topojson", "shapefile"],
+      fmt = argv.f && argv.f.toLowerCase() || null;
+  if (fmt && Utils.contains(supportedTypes, fmt) == false) error("Unsupported output format:", argv.f);
+  opts.output_format = fmt || opts.input_format;
 
   var obase = opts.input_file_base + "-mshp"; // default
   if (argv.o) {
@@ -7176,14 +7404,20 @@ MapShaper.gc = function() {
 };
 
 
-MapShaper.importFromFile = function(fname) {
-  var info = Node.getFileInfo(fname);
+MapShaper.importFromFile = function(fname, format) {
+  var info = Node.getFileInfo(fname),
+      data, content;
   if (!info.exists) error("File not found.");
-  if (info.ext != 'shp') error("Expected *.shp file; found:", fname);
-
-  // TODO: json importing
-  // data = MapShaper.importJSON(JSON.parse(Node.readFile(fname, 'utf8')));
-  return MapShaper.importShp(fname);
+  if (format == 'shapefile') {
+    content = Node.readFile(fname);
+    data = MapShaper.importShp(content);
+  } else if (/json$/.test(format)) {
+    content = Node.readFile(fname, 'utf-8');
+    data = MapShaper.importJSON(content);
+  } else {
+    error("Unexpected input file:", fname);
+  }
+  return data;
 };
 
 var api = Utils.extend(MapShaper, {
