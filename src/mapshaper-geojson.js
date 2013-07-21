@@ -36,15 +36,20 @@ MapShaper.importGeoJSON = function(obj) {
     }
   }
 
-  var properties = null;
+  var properties = null, geometries;
   if (obj.type == 'FeatureCollection') {
-    // Convert FeatureCollection to GeometryCollection, extract properties
-    properties = GeoJSON.convertFeatureCollection(obj);
+    properties = [];
+    geometries = Utils.map(obj.features, function(feat) {
+      properties.push(feat.properties);
+      return feat.geometry;
+    });
+  } else {
+    geometries = obj.geometries;
   }
 
   // Count points in dataset (PathImporter needs total points to initialize buffers)
   //
-  var pointCount = Utils.reduce(obj.geometries, function(geom, sum) {
+  var pointCount = Utils.reduce(geometries, function(geom, sum) {
     if (geom) { // geom may be null
       var depth = GeoJSON.geometryDepths[geom.type] || 0;
       sum += GeoJSON.countNestedPoints(geom.coordinates, depth);
@@ -55,7 +60,7 @@ MapShaper.importGeoJSON = function(obj) {
   // Import GeoJSON geometries
   //
   var importer = new PathImporter(pointCount);
-  Utils.forEach(obj.geometries, function(geom) {
+  Utils.forEach(geometries, function(geom) {
     importer.startShape();
     var f = geom && GeoJSON.pathImporters[geom.type];
     f && f(geom.coordinates, importer);
@@ -101,18 +106,6 @@ GeoJSON.geometryDepths = {
   MultiPolygon: 3
 };
 
-// Convert FeatureCollection to GeometryCollection, return array of properties
-//
-GeoJSON.convertFeatureCollection = function(obj) {
-  var properties = [];
-  obj.geometries = Utils.map(obj.features, function(feat) {
-    properties.push(feat.properties);
-    return feat.geometry;
-  });
-  obj.type = 'GeometryCollection';
-  delete obj.features;
-  return properties;
-};
 
 // Sum points in a GeoJSON coordinates array
 //
@@ -128,9 +121,14 @@ GeoJSON.countNestedPoints = function(coords, depth) {
   return tally;
 };
 
-
 MapShaper.exportGeoJSON = function(obj) {
   T.start();
+  var json = JSON.stringify(MapShaper.exportGeoJSONObject(obj));
+  T.stop("Export GeoJSON");
+  return json;
+}
+
+MapShaper.exportGeoJSONObject = function(obj) {
   if (!obj.shapes || !obj.arcs) error("#exportGeoJSON() Missing a required parameter.");
   if (obj.type != "polygon" && obj.type != "polyline") error("#exportGeoJSON() Unsupported type:", obj.type);
 
@@ -163,9 +161,7 @@ MapShaper.exportGeoJSON = function(obj) {
     });
   }
 
-  var json = JSON.stringify(output);
-  T.stop("Export GeoJSON");
-  return json;
+  return output;
 };
 
 
