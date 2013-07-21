@@ -108,14 +108,22 @@ function Editor() {
       error("Unknown simplification method:", method);
     }
 
+    var inputBounds = importData.info.input_bounds,
+        decimalDegrees = probablyDecimalDegreeBounds(inputBounds);
     var sopts = {
-      spherical: opts.spherical || probablyDecimalDegreeBounds(importData.info.input_bounds)
+      spherical: decimalDegrees // TODO: consider option to disable this
     };
     vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
 
-    if (importOpts.preserveShapes) {
-      MapShaper.protectPoints(vertexData, topoData.arcMinPointCounts);
+    if (decimalDegrees) {
+      MapShaper.protectWorldEdges(topoData.arcs, vertexData, inputBounds);
     }
+
+    if (importOpts.preserveShapes) {
+      MapShaper.protectRingsFromCollapse(vertexData, topoData.arcMinPointCounts);
+    }
+
+
 
     arcData.setThresholdsForGUI(vertexData);
 
@@ -127,7 +135,7 @@ function Editor() {
       group.refresh();
     });
 
-    trace(importData.info);
+    // trace(importData.info);
     var exportOpts = {
       bounds: arcData.getBounds(),
       geometry: importData.info.input_geometry_type,

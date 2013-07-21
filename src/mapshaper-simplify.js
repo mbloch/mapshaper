@@ -42,140 +42,99 @@ MapShaper.getInnerThresholds = function(arr, skip) {
   return tmp;
 };
 
-MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct) {
-  if (!Utils.isArray(arcs) || !Utils.isArray(thresholds) ||
-      arcs.length != thresholds.length  || !Utils.isNumber(retainedPct))
-    error("Invalid arguments; expected [Array], [Array], [Number]");
-  T.start();
-  var thresh = MapShaper.getThresholdByPct(thresholds, retainedPct);
-  T.stop("Find simplification interval");
 
-  T.start();
-  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh);
-  T.stop("Remove vertices");
-  return thinned;
-};
-
-MapShaper.protectPoints = function(thresholds, lockCounts) {
+MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
   var n;
   for (var i=0, len=thresholds.length; i<len; i++) {
     n = lockCounts[i];
     if (n > 0) {
-      MapShaper.lockMaxThreshold(thresholds[i], n);
+      MapShaper.lockMaxThresholds(thresholds[i], n);
     }
   }
 };
 
-MapShaper.lockMaxThreshold = function(zz, n) {
-  var max = 0,
-      lockVal = Infinity,
-      maxId, z;
-  for (var i=1, len = zz.length - 1; i<len; i++) {
-    z = zz[i];
-    if (z > max && z !== lockVal) {
-      max = z
-      maxId = i;
-    }
-  }
-  if (max > 0) {
-    zz[maxId] = lockVal;
-    if (n > 1) {
-      MapShaper.lockMaxThreshold(zz, n - 1);
-    }
-  }
-  return zz;
-}
-
-
-// Strip interior points from an arc.
-// @retained gives the number of interior points to leave in (retains those
-//    with the highest thresholds)
+// Protect polar coordinates and coordinates at the prime meridian from
+// being removed before other points in a path.
+// Assume: coordinates are in decimal degrees
 //
-/*
-MapShaper.stripArc = function(xx, yy, uu, retained) {
-  var data = [],
-      len = xx.length,
-      min, u, xx2, yy2;
-  if (len < 2) error("Invalid arc");
+MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
+  Utils.forEach(arcs, function(arc, i) {
+    var zz = thresholds[i],
+        xx = arcs[i][0],
+        yy = arcs[i][1],
+        // -179.99999999999994 rounding error
+        // found in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
+        err = 1e-12,
+        l = -180 + err,
+        r = 180 - err,
+        t = 90 - err,
+        b = -90 + err,
+        maxZ, x, y;
 
-  if (retained > 0) {
-    for (var i=1, lim=len-1; i<lim; i++) {
-      u = uu[i];
-      if (data.length < retained) {
-        data.push({i:i, u:u});
-      } else if ((min=data[0]).u < u) {
-        min.u = u;
-        min.i = i;
+    if (containsBounds([l, b, r, t], bounds) == false) return; // content doesn't reach edges
+
+    for (var i=0, n=zz.length; i<n; i++) {
+      maxZ = 0;
+      x = xx[i];
+      y = yy[i];
+      if (x > r || x < l || y < b || y > t) {
+        if (maxZ == 0) {
+          maxZ = MapShaper.findMaxThreshold(zz);
+        }
+        if (zz[i] !== Infinity) { // don't override lock value
+          zz[i] = maxZ;
+        }
       }
-      if (retained > 1) Utils.sortOn(data, 'u', true);
     }
-    Utils.sortOn(data, 'i', true);
-  }
-  xx2 = [xx[0]];
-  yy2 = [yy[0]];
-  Utils.forEach(data, function(obj) {
-    xx2.push(xx[obj.i]);
-    yy2.push(yy[obj.i]);
   })
-  xx2.push(xx[len-1]);
-  yy2.push(yy[len-1]);
-  return [xx2, yy2];
 };
-*/
 
-MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval) {
-  var xdest = [],
-      ydest = [],
-      srcLen = xsrc.length,
-      destLen;
-
-  if (ysrc.length != srcLen || uu.length != srcLen || srcLen < 2)
-    error("[thinArcByThreshold()] Invalid arc data");
-
-  for (var i=0; i<srcLen; i++) {
-    if (uu[i] > interval) {
-      xdest.push(xsrc[i]);
-      ydest.push(ysrc[i]);
+// Return largest value in an array, ignoring Infinity (lock value)
+//
+MapShaper.findMaxThreshold = function(zz) {
+  var z, maxZ = 0;
+  for (var i=0, n=zz.length; i<n; i++) {
+    z = zz[i];
+    if (z > maxZ && z < Infinity) {
+      maxZ = z;
     }
   }
-
-  // remove island rings that have collapsed (i.e. fewer than 4 points)
-  // TODO: make sure that other kinds of collapsed rings are handled
-  //    (maybe during topology phase, via minPoints array)
-  //
-  destLen = xdest.length;
-  if (destLen < 4 && xdest[0] == xdest[destLen-1] && ydest[0] == ydest[destLen-1]) {
-    xdest = [];
-    ydest = [];
-  }
-
-  return [xdest, ydest];
+  return maxZ;
 };
 
 
-MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval) {
-  if (!Utils.isArray(srcArcs) || srcArcs.length != thresholds.length)
-    error("[thinArcsByInterval()] requires matching arrays of arcs and thresholds");
-  if (!Utils.isNumber(interval))
-    error("[thinArcsByInterval()] requires an interval");
-
-  var arcs = [],
-      fullCount = 0,
-      thinnedCount = 0;
-  for (var i=0, l=srcArcs.length; i<l; i++) {
-    var srcArc = srcArcs[i];
-    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval);
-    fullCount += srcArc[0].length;
-    thinnedCount += arc[0].length;
-    arcs.push(arc);
-  }
-  return {
-    arcs: arcs,
-    info: {
-      original_arc_points: fullCount,
-      thinned_arc_points: thinnedCount
+MapShaper.replaceValue = function(arr, value, replacement) {
+  var count = 0, k;
+  for (var i=0, n=arr.length; i<n; i++) {
+    if (arr[i] === value) {
+      arr[i] = replacement;
+      count++;
     }
-  };
+  }
+  return count;
+};
+
+// Protect the highest-threshold interior vertices in an arc from removal by
+// setting their removal thresholds to Infinity
+//
+MapShaper.lockMaxThresholds = function(zz, numberToLock) {
+  var lockVal = Infinity,
+      target = numberToLock | 0,
+      lockedCount, maxVal, replacements, z;
+  do {
+    lockedCount = 0;
+    maxVal = 0;
+    for (var i=1, len = zz.length - 1; i<len; i++) { // skip arc endpoints
+      z = zz[i];
+      if (z === lockVal) {
+        lockedCount++;
+      } else if (z > maxVal) {
+        maxVal = z
+      }
+    }
+    if (lockedCount >= numberToLock) break;
+    replacements = MapShaper.replaceValue(zz, maxVal, lockVal);
+  } while (lockedCount < numberToLock && replacements > 0);
 };
 
 

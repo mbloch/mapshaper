@@ -57,6 +57,7 @@ function ArcDataset(coords) {
   this.setThresholds = function(thresholds) {
     if (thresholds.length != _arcs.length) error("ArcDataset#setThresholds() Mismatched arc/threshold counts.")
     _thresholds = thresholds;
+    return this;
   };
 
   // Add simplification thresholds and generate a set of thinned paths for faster
@@ -119,6 +120,7 @@ function ArcDataset(coords) {
 
   this.setRetainedInterval = function(z) {
     zlimit = z;
+    return this;
   };
 
   this.setRetainedPct = function(pct) {
@@ -131,6 +133,7 @@ function ArcDataset(coords) {
     } else {
       error ("ArcDataset#setRetainedPct() Missing simplification data.")
     }
+    return this;
   };
 
   this.getShapeIter = function(ids, mpp) {
@@ -548,7 +551,7 @@ function ArcIter() {
     if (i == stop) return -1;
     do {
       j += inc;
-    } while (j != stop && zz[j] < zlim);
+    } while (j != stop && zz[j] <= zlim);
     _i = j;
     return i;
   }
@@ -572,7 +575,7 @@ function ArcIter() {
     if (i == stop) return -1;
     do {
       j += inc;
-    } while (j != stop && zz[ww[j]] < zlim);
+    } while (j != stop && zz[ww[j]] <= zlim);
     _i = j;
     return ww[i];
   }

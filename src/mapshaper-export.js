@@ -1,5 +1,6 @@
 /* @requires mapshaper-geojson, mapshaper-topojson */
 
+MapShaper.PathExporter = PathExporter; // for testing
 
 // Convert topological data into formats that are useful for exporting
 // Shapefile, GeoJSON and TopoJSON
@@ -141,7 +142,7 @@ function PathExporter(arcData, polygonType) {
         yy = [],
         iter = path.getPathIter();
 
-    var area, x, y, prevX, prevY, i = 0;
+    var x, y, prevX, prevY, i = 0, area = 0;
     while (iter.hasNext()) {
       x = iter.x;
       y = iter.y;
@@ -149,16 +150,19 @@ function PathExporter(arcData, polygonType) {
       if (i == 0 || prevX != x || prevY != y) {
         xx.push(x);
         yy.push(y);
+        i++;
       }
 
-      i++;
       prevX = x;
       prevY = y;
     }
 
-    if (isRing && i < 4 || i < 2) return null;
-    area = msSignedRingArea(xx, yy);
-    if (area == 0) return null;
+    if (isRing) {
+      area = msSignedRingArea(xx, yy)
+      if (i < 4 || area == 0) return null;
+    } else if (i < 2) {
+      return null;
+    }
 
     return {
       xx: xx,

@@ -19,31 +19,25 @@ function coordBuffersEqual(a, b) {
 
 describe("mapshaper-simplify.js", function() {
   describe("thinArcByInterval()", function() {
-    var n5 = {
-      xx: [0, 1, 8, 2, 0],
-      yy: [2, 4, 3, 0, 1],
-      uu: [Infinity, 23, 43, 14, Infinity]
-    };
 
     it("removes interior vertices with threshold <= [u]", function() {
-      assert.deepEqual(api.thinArcByInterval(n5.xx, n5.yy, n5.uu, 0),
-        [[0, 1, 8, 2, 0], [2, 4, 3, 0, 1]]);
-      assert.deepEqual(api.thinArcByInterval(n5.xx, n5.yy, n5.uu, 14),
-        [[0, 1, 8, 0], [2, 4, 3, 1]]);
-      assert.deepEqual(api.thinArcByInterval(n5.xx, n5.yy, n5.uu, 25),
-        [[0, 8, 0], [2, 3, 1]]);
-      assert.deepEqual(api.thinArcByInterval(n5.xx, n5.yy, n5.uu, 45),
-        [[0, 0], [2, 1]]);
+      var n5 = {
+        xx: [0, 1, 8, 2, 0],
+        yy: [2, 4, 3, 0, 1],
+        uu: [Infinity, 23, 43, 14, Infinity]
+      };
+
+      assert.deepEqual(thinArcByInterval(n5.xx, n5.yy, n5.uu, 0),
+        [[0, 2], [1, 4], [8, 3], [2, 0], [0, 1]]);
+      assert.deepEqual(thinArcByInterval(n5.xx, n5.yy, n5.uu, 14),
+        [[0, 2], [1, 4], [8, 3], [0, 1]]);
+      assert.deepEqual(thinArcByInterval(n5.xx, n5.yy, n5.uu, 25),
+        [[0, 2], [8, 3], [0, 1]]);
+      assert.deepEqual(thinArcByInterval(n5.xx, n5.yy, n5.uu, 45),
+        [[0, 2], [0, 1]]);
     })
 
-    /*
-    it("retains highest-value interior points when @retained is used", function() {
-      assert.deepEqual(api.thinArcByInterval(n5.xx, n5.yy, n5.uu, 45, 1),
-        [[0, 8, 0], [2, 3, 1]]);
-      assert.deepEqual(api.thinArcByInterval(n5.xx, n5.yy, n5.uu, 25, 2),
-        [[0, 1, 8, 0], [2, 4, 3, 1]]);
-    })
-    */
+
   })
 
   describe("convLngLatToSph()", function() {
@@ -71,7 +65,7 @@ describe("mapshaper-simplify.js", function() {
     })
   })
 
-  describe("#lockMaxThreshold()", function() {
+  describe("#lockMaxThresholds()", function() {
     var uu2, uu3, uu5;
 
     beforeEach(function() {
@@ -82,28 +76,39 @@ describe("mapshaper-simplify.js", function() {
 
 
     it("should not modify an n2 arc", function() {
-      assert.deepEqual(api.lockMaxThreshold(uu2.concat(), 0), uu2);
-      assert.deepEqual(api.lockMaxThreshold(uu2.concat(), 1), uu2);
-      assert.deepEqual(api.lockMaxThreshold(uu2.concat(), 2), uu2);
+      var orig = uu2.concat();
+      api.lockMaxThresholds(uu2, 0)
+      assert.deepEqual(uu2, orig);
+      api.lockMaxThresholds(uu2, 1);
+      assert.deepEqual(uu2, orig);
+      api.lockMaxThresholds(uu2, 2);
+      assert.deepEqual(uu2, orig);
     })
 
-
     it("should lock the max point if n == 1", function() {
-      assert.deepEqual(api.lockMaxThreshold(uu5.concat(), 1),
-        [Infinity, 23, Infinity, 14, Infinity]);
+      api.lockMaxThresholds(uu5, 1);
+      assert.deepEqual(uu5, [Infinity, 23, Infinity, 14, Infinity]);
     })
 
     it("should lock the max 2 points from an arc if n == 2", function() {
-      assert.deepEqual(api.lockMaxThreshold(uu5.concat(), 2),
-        [Infinity, Infinity, Infinity, 14, Infinity]);
+      api.lockMaxThresholds(uu5, 2);
+      assert.deepEqual(uu5, [Infinity, Infinity, Infinity, 14, Infinity]);
     })
 
     it("should lock all points if n >= [no. interior points]", function() {
-      assert.deepEqual(api.lockMaxThreshold(uu5.concat(), 10),
-        [Infinity, Infinity, Infinity, Infinity, Infinity]);
-      assert.deepEqual(api.lockMaxThreshold(uu5.concat(), 3),
-        [Infinity, Infinity, Infinity, Infinity, Infinity]);
+      api.lockMaxThresholds(uu5, 3);
+      assert.deepEqual(uu5, [Infinity, Infinity, Infinity, Infinity, Infinity]);
     })
   })
 
 })
+
+
+// Replacement for defunct api function.
+// TODO: rework api to be simpler to use and to test?
+//
+function thinArcByInterval(xx, yy, zz, interval) {
+  var arcs = new api.ArcDataset([[xx, yy]]).setThresholds([zz]).setRetainedInterval(interval);
+  var exporter = new api.PathExporter(arcs, false);
+  return exporter.exportShapeForGeoJSON([[0]])[0];
+}

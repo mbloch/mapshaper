@@ -163,7 +163,7 @@ if (opts.use_simplification) {
   mapshaper.gc();
 
   if (opts.keep_shapes && topoData.arcMinPointCounts) {
-    mapshaper.protectPoints(vertexData, topoData.arcMinPointCounts);
+    mapshaper.protectRingsFromCollapse(vertexData, topoData.arcMinPointCounts);
   }
   arcData.setThresholds(vertexData);
 }
