@@ -122,9 +122,7 @@ var countTestFiles = [
   "shplib/brklinz.shp",
   "shplib/anno.shp",
   "shplib/3dpoints.shp",
-  "shplib/multipnt.shp",
-  "shplib/mexico/cities.shp"
-];
+  "shplib/multipnt.shp"];
 
 var boundsTestFiles = [
   "two_states.shp",
@@ -135,9 +133,7 @@ var boundsTestFiles = [
   "shplib/brklinz.shp",
   "shplib/anno.shp",
   // "shplib/3dpoints.shp", // bounds in header seem to be incorrect
-  "shplib/multipnt.shp",
-  "shplib/mexico/cities.shp"
-];
+  "shplib/multipnt.shp"];
 
 
 describe('shp-reader.js', function () {

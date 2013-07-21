@@ -14,10 +14,25 @@ describe('mapshaper-shapefile.js', function () {
       shapefileRoundTrip('test_data/two_states.shp');
     })
 
-    it('Polyline Shapefile', function () {
+    it('Polylines from shplib', function () {
       shapefileRoundTrip('test_data/shplib/pline.shp');
     })
 
+    it('Polygons from shplib', function() {
+      shapefileRoundTrip('test_data/shplib/polygon.shp');
+    })
+
+    it('World land borders from Natural Earth', function() {
+      shapefileRoundTrip('test_data/ne/ne_110m_admin_0_boundary_lines_land.shp');
+    })
+
+    it('U.S. states from Natural Earth', function() {
+      shapefileRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_shp.shp');
+    })
+
+    it('Pacific groupings from Natural Earth', function() {
+      shapefileRoundTrip('test_data/ne/ne_110m_admin_0_pacific_groupings.shp');
+    })
   })
 })
 
