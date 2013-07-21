@@ -57,7 +57,6 @@ MapShaper.xyToUintHash = (function() {
   };
 }());
 
-
 //
 //
 function ArcIndex(pointCount, xyToUint) {
@@ -142,9 +141,8 @@ function buildPathTopology(xx, yy, pathData) {
 
 
   T.start();
-  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
+  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, "verbose");
   T.stop("Find matching vertices");
-
 
   T.start();
   var pointId = 0;
@@ -360,7 +358,6 @@ function initPathIds(size, pathData) {
 }
 
 
-
 // Return an array with data for chains of vertices with same x, y coordinates
 // Array ids are same as ids of x- and y-coord arrays.
 // Array values are ids of next point in each chain.
@@ -372,12 +369,12 @@ function initPointChains(xx, yy, hash, verbose) {
 
   // A hash table larger than ~1.3 * point count doesn't seem to improve performance much.
 
-  // Hash table is temporary storage for building chains of matching point ids.
-  // Each hash bin contains the id of the first point in a chain.
+  // Hash table is temporary storage for building chains of coincident points.
+  // Hash bins contains the id of the first point in a chain.
   var hashChainIds = new Int32Array(hashTableSize);
   Utils.initializeArray(hashChainIds, -1);
 
-  //
+  // Array that gets populated with chain data
   var chainIds = new Int32Array(pointCount);
   var key, headId, x, y, collisions = 0;
 
@@ -408,7 +405,7 @@ function initPointChains(xx, yy, hash, verbose) {
       key = (key + 1) % hashTableSize;
     }
   }
-  verbose && trace("#initPointChains() hash collisions:", collisions / pointCount * 100 + "%");
+  verbose && trace(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
   return chainIds;
 };
 
