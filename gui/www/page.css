@@ -16,10 +16,7 @@ canvas {
 
 #page-wrapper {
 	overflow: hidden;
-	/* margin-top: 22px; */
-	bottom: 0;
-	left: 0;
-	right: 0;
+	height: 100%;
 	font-family: Arial, Helvetica, sans-serif;
 	line-height: 1.4;
 	color: #444;

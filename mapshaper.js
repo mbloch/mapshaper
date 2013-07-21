@@ -3851,6 +3851,131 @@ BinArray.prototype = {
 
 
 
+/*
+A simplified version of printf formatting
+Format codes: %[flags][width][.precision]type
+
+supported flags:
+  +   add '+' before positive numbers
+  0   left-pad with '0'
+width: 1 to many
+precision: .(1 to many)
+type:
+  s     string
+  di    integers
+  f     decimal numbers
+  xX    hexidecimal (unsigned)
+  %     literal '%'
+
+Examples:
+  code    val    formatted
+  %+d     1      '+1'
+  %4i     32     '  32'
+  %04i    32     '0032'
+  %x      255    'ff'
+  %.2f    0.125  '0.13'
+  %'f     1000   '1,000'
+*/
+
+Utils.format = (function() {
+  function getPadString(len, c) {
+    var str = "";
+    for (var i=0; i<len; i++)
+      str += c;
+    return str;
+  }
+
+  function formatValue(matches, val) {
+    var flags = matches[1];
+    var padding = matches[2];
+    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
+    var type = matches[4];
+
+    if (type == '%') {
+      return '%'; // %% = literal '%'
+    }
+    var isString = type == 's',
+        isHex = type == 'x' || type == 'X',
+        isInt = type == 'd' || type == 'i',
+        isFloat = type == 'f',
+        isNumber = !isString;
+
+    var sign = "", 
+        padDigits = 0,
+        isZero = false,
+        isNeg = false;
+
+    var str;
+    if (isString) {
+      str = String(val);
+    }
+    else if (isHex) {
+      str = val.toString(16);
+      if (type == 'X')
+        str = str.toUpperCase();
+    }
+    else if (isNumber) {
+      str = Utils.numToStr(val, isInt ? 0 : decimals);
+      if (str[0] == '-') {
+        isNeg = true;
+        str = str.substr(1);
+      }
+      isZero = parseFloat(str) == 0;
+      if (flags.indexOf("'") != -1) {
+        str = Utils.addThousandsSep(str);
+      }
+      if (!isZero) { // BUG: sign is added when num rounds to 0
+        if (isNeg) {
+          sign = "\u2212"; // U+2212
+        } else if (flags.indexOf('+') != -1) {
+          sign = '+';
+        }
+      }
+    }
+
+    if (padding) {
+      var strLen = str.length + sign.length;
+      var minWidth = parseInt(padding, 10);
+      if (strLen < minWidth) {
+        padDigits = minWidth - strLen;
+        var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
+        var padStr = getPadString(padDigits, padChar);
+      }
+    }
+
+    if (padDigits == 0) {
+      str = sign + str;
+    } else if (padChar == '0') {
+      str = sign + padStr + str;
+    } else {
+      str = padStr + sign + str;
+    }
+    return str;
+  }
+
+  var codeRxp = /%([\'+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+
+  return function format(s) {
+    var arr = Array.prototype.slice.call(arguments, 1);
+    var ostr = "";
+    for (var startIdx=0, i=0, len=arr.length, matches; i<len && (matches=codeRxp.exec(s)); i++) {
+      ostr += s.substring(startIdx, codeRxp.lastIndex - matches[0].length);
+      ostr += formatValue(matches, arr[i]);
+      startIdx = codeRxp.lastIndex;
+    }
+    codeRxp.lastIndex = 0;
+
+    if (i != len) {
+      error("[Utils.format()] formatting codes did not match inputs; string:", s);
+    }
+    ostr += s.substr(startIdx);
+    return ostr;
+  };
+}());
+
+
+
+
 
 
 
@@ -4033,7 +4158,6 @@ MapShaper.xyToUintHash = (function() {
   };
 }());
 
-
 //
 //
 function ArcIndex(pointCount, xyToUint) {
@@ -4120,7 +4244,6 @@ function buildPathTopology(xx, yy, pathData) {
   T.start();
   var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
   T.stop("Find matching vertices");
-
 
   T.start();
   var pointId = 0;
@@ -4383,7 +4506,7 @@ function initPointChains(xx, yy, hash, verbose) {
       key = (key + 1) % hashTableSize;
     }
   }
-  verbose && trace("#initPointChains() hash collisions:", collisions / pointCount * 100 + "%");
+  verbose && trace(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
   return chainIds;
 };
 
@@ -4682,140 +4805,99 @@ MapShaper.getInnerThresholds = function(arr, skip) {
   return tmp;
 };
 
-MapShaper.thinArcsByPct = function(arcs, thresholds, retainedPct) {
-  if (!Utils.isArray(arcs) || !Utils.isArray(thresholds) ||
-      arcs.length != thresholds.length  || !Utils.isNumber(retainedPct))
-    error("Invalid arguments; expected [Array], [Array], [Number]");
-  T.start();
-  var thresh = MapShaper.getThresholdByPct(thresholds, retainedPct);
-  T.stop("Find simplification interval");
 
-  T.start();
-  var thinned = MapShaper.thinArcsByInterval(arcs, thresholds, thresh);
-  T.stop("Remove vertices");
-  return thinned;
-};
-
-MapShaper.protectPoints = function(thresholds, lockCounts) {
+MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
   var n;
   for (var i=0, len=thresholds.length; i<len; i++) {
     n = lockCounts[i];
     if (n > 0) {
-      MapShaper.lockMaxThreshold(thresholds[i], n);
+      MapShaper.lockMaxThresholds(thresholds[i], n);
     }
   }
 };
 
-MapShaper.lockMaxThreshold = function(zz, n) {
-  var max = 0,
-      lockVal = Infinity,
-      maxId, z;
-  for (var i=1, len = zz.length - 1; i<len; i++) {
-    z = zz[i];
-    if (z > max && z !== lockVal) {
-      max = z
-      maxId = i;
-    }
-  }
-  if (max > 0) {
-    zz[maxId] = lockVal;
-    if (n > 1) {
-      MapShaper.lockMaxThreshold(zz, n - 1);
-    }
-  }
-  return zz;
-}
-
-
-// Strip interior points from an arc.
-// @retained gives the number of interior points to leave in (retains those
-//    with the highest thresholds)
+// Protect polar coordinates and coordinates at the prime meridian from
+// being removed before other points in a path.
+// Assume: coordinates are in decimal degrees
 //
-/*
-MapShaper.stripArc = function(xx, yy, uu, retained) {
-  var data = [],
-      len = xx.length,
-      min, u, xx2, yy2;
-  if (len < 2) error("Invalid arc");
+MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
+  Utils.forEach(arcs, function(arc, i) {
+    var zz = thresholds[i],
+        xx = arcs[i][0],
+        yy = arcs[i][1],
+        // -179.99999999999994 rounding error
+        // found in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
+        err = 1e-12,
+        l = -180 + err,
+        r = 180 - err,
+        t = 90 - err,
+        b = -90 + err,
+        maxZ, x, y;
 
-  if (retained > 0) {
-    for (var i=1, lim=len-1; i<lim; i++) {
-      u = uu[i];
-      if (data.length < retained) {
-        data.push({i:i, u:u});
-      } else if ((min=data[0]).u < u) {
-        min.u = u;
-        min.i = i;
+    if (containsBounds([l, b, r, t], bounds) == false) return; // content doesn't reach edges
+
+    for (var i=0, n=zz.length; i<n; i++) {
+      maxZ = 0;
+      x = xx[i];
+      y = yy[i];
+      if (x > r || x < l || y < b || y > t) {
+        if (maxZ == 0) {
+          maxZ = MapShaper.findMaxThreshold(zz);
+        }
+        if (zz[i] !== Infinity) { // don't override lock value
+          zz[i] = maxZ;
+        }
       }
-      if (retained > 1) Utils.sortOn(data, 'u', true);
     }
-    Utils.sortOn(data, 'i', true);
-  }
-  xx2 = [xx[0]];
-  yy2 = [yy[0]];
-  Utils.forEach(data, function(obj) {
-    xx2.push(xx[obj.i]);
-    yy2.push(yy[obj.i]);
   })
-  xx2.push(xx[len-1]);
-  yy2.push(yy[len-1]);
-  return [xx2, yy2];
 };
-*/
 
-MapShaper.thinArcByInterval = function(xsrc, ysrc, uu, interval) {
-  var xdest = [],
-      ydest = [],
-      srcLen = xsrc.length,
-      destLen;
-
-  if (ysrc.length != srcLen || uu.length != srcLen || srcLen < 2)
-    error("[thinArcByThreshold()] Invalid arc data");
-
-  for (var i=0; i<srcLen; i++) {
-    if (uu[i] > interval) {
-      xdest.push(xsrc[i]);
-      ydest.push(ysrc[i]);
+// Return largest value in an array, ignoring Infinity (lock value)
+//
+MapShaper.findMaxThreshold = function(zz) {
+  var z, maxZ = 0;
+  for (var i=0, n=zz.length; i<n; i++) {
+    z = zz[i];
+    if (z > maxZ && z < Infinity) {
+      maxZ = z;
     }
   }
-
-  // remove island rings that have collapsed (i.e. fewer than 4 points)
-  // TODO: make sure that other kinds of collapsed rings are handled
-  //    (maybe during topology phase, via minPoints array)
-  //
-  destLen = xdest.length;
-  if (destLen < 4 && xdest[0] == xdest[destLen-1] && ydest[0] == ydest[destLen-1]) {
-    xdest = [];
-    ydest = [];
-  }
-
-  return [xdest, ydest];
+  return maxZ;
 };
 
 
-MapShaper.thinArcsByInterval = function(srcArcs, thresholds, interval) {
-  if (!Utils.isArray(srcArcs) || srcArcs.length != thresholds.length)
-    error("[thinArcsByInterval()] requires matching arrays of arcs and thresholds");
-  if (!Utils.isNumber(interval))
-    error("[thinArcsByInterval()] requires an interval");
-
-  var arcs = [],
-      fullCount = 0,
-      thinnedCount = 0;
-  for (var i=0, l=srcArcs.length; i<l; i++) {
-    var srcArc = srcArcs[i];
-    var arc = MapShaper.thinArcByInterval(srcArc[0], srcArc[1], thresholds[i], interval);
-    fullCount += srcArc[0].length;
-    thinnedCount += arc[0].length;
-    arcs.push(arc);
-  }
-  return {
-    arcs: arcs,
-    info: {
-      original_arc_points: fullCount,
-      thinned_arc_points: thinnedCount
+MapShaper.replaceValue = function(arr, value, replacement) {
+  var count = 0, k;
+  for (var i=0, n=arr.length; i<n; i++) {
+    if (arr[i] === value) {
+      arr[i] = replacement;
+      count++;
     }
-  };
+  }
+  return count;
+};
+
+// Protect the highest-threshold interior vertices in an arc from removal by
+// setting their removal thresholds to Infinity
+//
+MapShaper.lockMaxThresholds = function(zz, numberToLock) {
+  var lockVal = Infinity,
+      target = numberToLock | 0,
+      lockedCount, maxVal, replacements, z;
+  do {
+    lockedCount = 0;
+    maxVal = 0;
+    for (var i=1, len = zz.length - 1; i<len; i++) { // skip arc endpoints
+      z = zz[i];
+      if (z === lockVal) {
+        lockedCount++;
+      } else if (z > maxVal) {
+        maxVal = z
+      }
+    }
+    if (lockedCount >= numberToLock) break;
+    replacements = MapShaper.replaceValue(zz, maxVal, lockVal);
+  } while (lockedCount < numberToLock && replacements > 0);
 };
 
 
@@ -6197,6 +6279,7 @@ function ArcDataset(coords) {
   this.setThresholds = function(thresholds) {
     if (thresholds.length != _arcs.length) error("ArcDataset#setThresholds() Mismatched arc/threshold counts.")
     _thresholds = thresholds;
+    return this;
   };
 
   // Add simplification thresholds and generate a set of thinned paths for faster
@@ -6259,6 +6342,7 @@ function ArcDataset(coords) {
 
   this.setRetainedInterval = function(z) {
     zlimit = z;
+    return this;
   };
 
   this.setRetainedPct = function(pct) {
@@ -6271,6 +6355,7 @@ function ArcDataset(coords) {
     } else {
       error ("ArcDataset#setRetainedPct() Missing simplification data.")
     }
+    return this;
   };
 
   this.getShapeIter = function(ids, mpp) {
@@ -6688,7 +6773,7 @@ function ArcIter() {
     if (i == stop) return -1;
     do {
       j += inc;
-    } while (j != stop && zz[j] < zlim);
+    } while (j != stop && zz[j] <= zlim);
     _i = j;
     return i;
   }
@@ -6712,7 +6797,7 @@ function ArcIter() {
     if (i == stop) return -1;
     do {
       j += inc;
-    } while (j != stop && zz[ww[j]] < zlim);
+    } while (j != stop && zz[ww[j]] <= zlim);
     _i = j;
     return ww[i];
   }
@@ -6794,15 +6879,20 @@ MapShaper.importGeoJSON = function(obj) {
     }
   }
 
-  var properties = null;
+  var properties = null, geometries;
   if (obj.type == 'FeatureCollection') {
-    // Convert FeatureCollection to GeometryCollection, extract properties
-    properties = GeoJSON.convertFeatureCollection(obj);
+    properties = [];
+    geometries = Utils.map(obj.features, function(feat) {
+      properties.push(feat.properties);
+      return feat.geometry;
+    });
+  } else {
+    geometries = obj.geometries;
   }
 
   // Count points in dataset (PathImporter needs total points to initialize buffers)
   //
-  var pointCount = Utils.reduce(obj.geometries, function(geom, sum) {
+  var pointCount = Utils.reduce(geometries, function(geom, sum) {
     if (geom) { // geom may be null
       var depth = GeoJSON.geometryDepths[geom.type] || 0;
       sum += GeoJSON.countNestedPoints(geom.coordinates, depth);
@@ -6813,7 +6903,7 @@ MapShaper.importGeoJSON = function(obj) {
   // Import GeoJSON geometries
   //
   var importer = new PathImporter(pointCount);
-  Utils.forEach(obj.geometries, function(geom) {
+  Utils.forEach(geometries, function(geom) {
     importer.startShape();
     var f = geom && GeoJSON.pathImporters[geom.type];
     f && f(geom.coordinates, importer);
@@ -6859,18 +6949,6 @@ GeoJSON.geometryDepths = {
   MultiPolygon: 3
 };
 
-// Convert FeatureCollection to GeometryCollection, return array of properties
-//
-GeoJSON.convertFeatureCollection = function(obj) {
-  var properties = [];
-  obj.geometries = Utils.map(obj.features, function(feat) {
-    properties.push(feat.properties);
-    return feat.geometry;
-  });
-  obj.type = 'GeometryCollection';
-  delete obj.features;
-  return properties;
-};
 
 // Sum points in a GeoJSON coordinates array
 //
@@ -6886,9 +6964,14 @@ GeoJSON.countNestedPoints = function(coords, depth) {
   return tally;
 };
 
-
 MapShaper.exportGeoJSON = function(obj) {
   T.start();
+  var json = JSON.stringify(MapShaper.exportGeoJSONObject(obj));
+  T.stop("Export GeoJSON");
+  return json;
+}
+
+MapShaper.exportGeoJSONObject = function(obj) {
   if (!obj.shapes || !obj.arcs) error("#exportGeoJSON() Missing a required parameter.");
   if (obj.type != "polygon" && obj.type != "polyline") error("#exportGeoJSON() Unsupported type:", obj.type);
 
@@ -6921,9 +7004,7 @@ MapShaper.exportGeoJSON = function(obj) {
     });
   }
 
-  var json = JSON.stringify(output);
-  T.stop("Export GeoJSON");
-  return json;
+  return output;
 };
 
 
@@ -6988,7 +7069,6 @@ MapShaper.importTopoJSON = function(obj) {
     bx = translate[0];
     by = translate[1];
   }
-
 
   var arcs = Utils.map(obj.arcs, function(arc) {
     var xx = [], yy = [];
@@ -7134,6 +7214,7 @@ function exportTopoJSONGeometry(paths, id, type) {
 
 
 
+MapShaper.PathExporter = PathExporter; // for testing
 
 // Convert topological data into formats that are useful for exporting
 // Shapefile, GeoJSON and TopoJSON
@@ -7275,7 +7356,7 @@ function PathExporter(arcData, polygonType) {
         yy = [],
         iter = path.getPathIter();
 
-    var area, x, y, prevX, prevY, i = 0;
+    var x, y, prevX, prevY, i = 0, area = 0;
     while (iter.hasNext()) {
       x = iter.x;
       y = iter.y;
@@ -7283,16 +7364,19 @@ function PathExporter(arcData, polygonType) {
       if (i == 0 || prevX != x || prevY != y) {
         xx.push(x);
         yy.push(y);
+        i++;
       }
 
-      i++;
       prevX = x;
       prevY = y;
     }
 
-    if (isRing && i < 4 || i < 2) return null;
-    area = msSignedRingArea(xx, yy);
-    if (area == 0) return null;
+    if (isRing) {
+      area = msSignedRingArea(xx, yy)
+      if (i < 4 || area == 0) return null;
+    } else if (i < 2) {
+      return null;
+    }
 
     return {
       xx: xx,
