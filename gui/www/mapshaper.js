@@ -4304,50 +4304,83 @@ MapShaper.ArcDataset = ArcDataset;
 //
 function ArcDataset(coords) {
 
-  var _arcs = coords,
-      _thresholds = null,
-      _sortedThresholds = null,
-      filteredIds = null,
-      filteredSegLen = 0,
-      zlimit = 0;
+  var _sortedThresholds = null,
+      _zlimit = 0;
 
-  var arcIter = new ArcIter();
-  var shapeIter = new ShapeIter(this);
+  var _nn = Utils.map(coords, function(arc) {
+    return arc[0].length || 0;
+  });
+  var _numPoints = Utils.sum(_nn),
+      _numArcs = _nn.length;
+  _nn = new Uint32Array(_nn);
+  var _xx = new Float64Array(_numPoints),
+      _yy = new Float64Array(_numPoints),
+      _ii = new Uint32Array(_numArcs),
+      _zz = new Float64Array(_numPoints);
 
-  var boxes = [],
-      _bounds = new Bounds();
-  for (var i=0, n=_arcs.length; i<n; i++) {
-    var b = MapShaper.calcArcBounds(_arcs[i][0], _arcs[i][1]);
-    _bounds.mergeBounds(b);
-    boxes.push(b);
-  }
-
-  this.getArcIter = function(i, mpp) {
-    var fw = i >= 0,
-        ids = null,
-        arc;
-    if (!fw) {
-      i = -i - 1;
+  var k = 0;
+  Utils.forEach(coords, function(arc, i) {
+    var xx = arc[0], yy = arc[1], n = xx.length;
+    _ii[i] = k;
+    for (var j=0; j<n; j++, k++) {
+      _xx[k] = xx[j];
+      _yy[k] = yy[j];
     }
-    if (mpp != null && filteredIds && filteredSegLen < mpp * 0.5) {
-      ids = filteredIds[i];
-    }
+  });
+  if (k != _numPoints) error("Counting problem");
 
-    arc = _arcs[i];
-    if (zlimit) {
-      arcIter.init(arc[0], arc[1], fw, _thresholds[i], zlimit, ids);
-    } else {
-      arcIter.init(arc[0], arc[1], fw, null, null, ids);
+  // Pre-allocate some path iterators for repeated use.
+  var _arcIter = new ArcIter(_xx, _yy, _zz);
+  var _shapeIter = new ShapeIter(this);
+
+  // calculate bounding boxes for each arc, store in one long array
+  var _bb = new Float64Array(_numArcs * 4),
+      _allBounds = new Bounds();
+  Utils.forEach(_ii, function(start, arcId) {
+    var end = start + _nn[arcId] - 1,
+        xx = _xx, yy = _yy,
+        xmin = Infinity, ymin = Infinity,
+        xmax = -Infinity, ymax = -Infinity,
+        x, y;
+
+    for (var j=start; j<=end; j++) {
+      x = xx[j];
+      y = yy[j];
+      if (x < xmin) xmin = x;
+      if (x > xmax) xmax = x;
+      if (y < ymin) ymin = y;
+      if (y > ymax) ymax = y;
     }
-    return arcIter;
+    var i = arcId * 4;
+    _bb[i++] = xmin;
+    _bb[i++] = ymin;
+    _bb[i++] = xmax;
+    _bb[i] = ymax;
+    _allBounds.mergeBounds([xmin, ymin, xmax, ymax]);
+  });
+
+  this.getArcIter = function(arcId) {
+    var fw = arcId >= 0,
+        i = fw ? arcId : ~arcId,
+        start = _ii[i],
+        len = _nn[i];
+
+    _arcIter.init(start, len, fw, _zlimit || 0);
+    return _arcIter;
   };
 
   // Add simplification data to the dataset
   // @arr is an array of arrays of removal thresholds for each arc-vertex.
   //
   this.setThresholds = function(thresholds) {
-    if (thresholds.length != _arcs.length) error("ArcDataset#setThresholds() Mismatched arc/threshold counts.")
-    _thresholds = thresholds;
+    if (thresholds.length != _numArcs) error("ArcDataset#setThresholds() Mismatched arc/threshold counts.")
+    var i = 0;
+    Utils.forEach(thresholds, function(arr) {
+      var zz = _zz;
+      for (var j=0, n=arr.length; j<n; i++, j++) {
+        zz[i] = arr[j];
+      }
+    });
     return this;
   };
 
@@ -4360,22 +4393,24 @@ function ArcDataset(coords) {
     // Sort simplification thresholds for all non-endpoint vertices
     // ... to quickly convert a simplification percentage to a threshold value.
     // ... For large datasets, use every nth point, for faster sorting.
-    var innerCount = MapShaper.countInnerPoints(thresholds);
     var nth = 1;
-    if (innerCount > 1e7) nth = 16;
-    else if (innerCount > 5e6) nth = 8;
-    else if (innerCount > 1e6) nth = 4;
-    else if (innerCount > 5e5) nth = 2;
-    _sortedThresholds = MapShaper.getInnerThresholds(thresholds, nth);
+    if (_numPoints > 1e7) nth = 16;
+    else if (_numPoints > 5e6) nth = 8;
+    else if (_numPoints > 1e6) nth = 4;
+    else if (_numPoints > 5e5) nth = 2;
+    _sortedThresholds = getRemovableThresholds(_zz, nth);
     Utils.quicksort(_sortedThresholds, false);
 
+    /*
     // Calculate a filtered version of each arc, for fast rendering when zoomed out
     var filterPct = 0.08;
     var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];
     filteredIds = initFilteredArcs(thresholds, filterZ);
     filteredSegLen = calcAvgFilteredSegLen(_arcs, filteredIds);
+    */
   };
 
+  /*
   function calcAvgFilteredSegLen(arcs, filtered) {
     var segCount = 0, pathLen = 0;
     Utils.forEach(filtered, function(ids, arcId) {
@@ -4408,79 +4443,72 @@ function ArcDataset(coords) {
       return ids;
     });
   };
+  */
 
   this.setRetainedInterval = function(z) {
-    zlimit = z;
+    _zlimit = z;
     return this;
   };
 
   this.setRetainedPct = function(pct) {
     if (pct >= 1) {
-      zlimit = 0;
+      _zlimit = 0;
     } else if (_sortedThresholds) {
-      zlimit = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
-    } else if (_thresholds) {
-      zlimit = MapShaper.getThresholdByPct(_thresholds, pct);
+      _zlimit = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
+    } else if (_zz) {
+      _zlimit = getThresholdByPct(_zz, pct);
     } else {
       error ("ArcDataset#setRetainedPct() Missing simplification data.")
     }
     return this;
   };
 
-  this.getShapeIter = function(ids, mpp) {
-    //var iter = new ShapeIter(this);
-    var iter = shapeIter;
-    iter.init(ids, mpp);
+  // TODO: test
+  //
+  function getRemovableThresholds(zz, skip) {
+    skip = skip | 1;
+    var tmp = new Float64Array(Math.ceil(zz.length / skip)),
+        z;
+    for (var i=0, j=0, n=_numPoints; i<n; i+=skip) {
+      z = zz[i];
+      if (z != Infinity) {
+        tmp[j++] = z;
+      }
+    }
+    return tmp.subarray(0, j);
+  }
+
+  function getThresholdByPct(zz, pct) {
+    if (pct <= 0 || pct >= 1) error("Invalid simplification pct:", pct);
+    var tmp = getRemovableThresholds(zz, 1);
+    var k = Math.floor((1 - pct) * tmp.length);
+    return Utils.findValueByRank(tmp, k + 1); // rank start at 1
+  }
+
+  this.getShapeIter = function(ids) {
+    var iter = _shapeIter;
+    iter.init(ids);
     return iter;
   };
 
-  this.testArcIntersection = function(b1, i) {
-    var b2 = boxes[i];
-    return b2[0] <= b1[2] && b2[2] >= b1[0] && b2[3] >= b1[1] && b2[1] <= b1[3];
+  this.arcIntersectsBBox = function(i, b1) {
+    var b2 = _bb,
+        j = i * 4;
+    return b2[j] <= b1[2] && b2[j+2] >= b1[0] && b2[j+3] >= b1[1] && b2[j+1] <= b1[3];
   };
 
-  this.getArcBounds = function(i) {
-    if (i < 0) i = ~i;
-    return boxes[i];
-  };
-
-  this.getShapeBounds = function(ids) {
-    var bounds = this.getArcBounds(ids[0]).concat();
-    for (var i=1, n=ids.length; i<n; i++) {
-      mergeBounds(bounds, this.getArcBounds(ids[i]));
-    }
-    return bounds;
-  };
-
-  this.getMultiShapeBounds = function(parts) {
-    var bounds = this.getShapeBounds(parts[0]), b2;
-    for (var i=1, n=parts.length; i<n; i++) {
-      b2 = this.getShapeBounds(parts[i]);
-      mergeBounds(bounds, b2);
-    }
-    return bounds;
-  };
-
-  this.testShapeIntersection = function(bbox, ids) {
-    for (var i=0, n=ids.length; i<n; i++) {
-      if (this.testArcIntersection(bbox, ids[i])) return true;
-    }
-    return false;
-  };
-
-  this.testMultiShapeIntersection = function(bbox, parts) {
-    for (var i=0, n=parts.length; i<n; i++) {
-      if (this.testShapeIntersection(bbox, parts[i])) return true;
-    }
-    return true;
-  };
+  this.arcIsSmaller = function(i, units) {
+    var bb = _bb,
+        j = i * 4;
+    return bb[j+2] - bb[j] < units && bb[j+3] - bb[j+1] < units;
+  }
 
   this.size = function() {
-    return _arcs.length;
+    return _numArcs;
   };
 
   this.getBounds = function() {
-    return _bounds;
+    return _allBounds;
   };
 
   this.getShapeTable = function(data, ShapeClass) {
@@ -4500,12 +4528,11 @@ function ArcDataset(coords) {
 
   this.getMultiPathShape = function(arr) {
     if (!arr || arr.length == 0) {
-      return new NullShape();
+      error("#getMultiPathShape() Missing arc ids")
     } else {
       return new MultiShape(this).init(arr);
     }
   }
-
 }
 
 // An interable collection of paths (Arc, SimpleShape, MultiShape)
@@ -4531,7 +4558,6 @@ function ShapeTable(arr, src) {
 }
 
 // An iterable collection of shapes, for drawing paths on-screen
-//   and for exporting shape data.
 //
 function ShapeCollection(arr, collBounds) {
   var _filterBounds,
@@ -4665,12 +4691,6 @@ function ShapeCollection(arr, collBounds) {
 
 }
 
-// TODO: finish
-//
-function NullShape() {
-  error("NullShape() not implemented")
-}
-
 function Arc(src) {
   this.src = src;
 }
@@ -4678,19 +4698,17 @@ function Arc(src) {
 Arc.prototype = {
   init: function(id) {
     this.id = id;
-    this.bounds = this.src.getArcBounds(id);
     return this;
   },
   pathCount: 1,
-  getPathIter: function(i, mpp) {
-    return this.src.getArcIter(this.id, mpp);
+  getPathIter: function(i) {
+    return this.src.getArcIter(this.id);
   },
+
   inBounds: function(bbox) {
-    return this.src.testArcIntersection(bbox, this.id);
+    return this.src.arcIntersectsBBox(this.id, bbox);
   },
-  getBounds: function() {
-    return this.bounds;
-  },
+
   // Return arc coords as an array of [x, y] points
   toArray: function() {
     var iter = this.getPathIter(),
@@ -4700,9 +4718,9 @@ Arc.prototype = {
     }
     return coords;
   },
+
   smallerThan: function(units) {
-    var b = this.bounds;
-    return b[2] - b[0] < units && b[3] - b[1] < units;
+    return this.src.arcIsSmaller(this.id, units);
   }
 };
 
@@ -4715,11 +4733,10 @@ MultiShape.prototype = {
   init: function(parts) {
     this.pathCount = parts.length;
     this.parts = parts;
-    this.bounds = this.src.getMultiShapeBounds(parts);
     return this;
   },
-  getPathIter: function(i, mpp) {
-    return this.src.getShapeIter(this.parts[i], mpp);
+  getPathIter: function(i) {
+    return this.src.getShapeIter(this.parts[i]);
   },
   getPath: function(i) {
     if (i < 0 || i >= this.parts.length) error("MultiShape#getPart() invalid part id:", i);
@@ -4730,14 +4747,7 @@ MultiShape.prototype = {
     return Utils.map(this.parts, function(ids) {
       return new SimpleShape(this.src).init(ids);
     }, this);
-  },
-  getBounds: function() {
-    return this.bounds;
-  },
-  inBounds: function(bbox) {
-    return this.src.testMultiShapeIntersection(bbox, this.parts);
-  },
-  smallerThan: Arc.prototype.smallerThan
+  }
 };
 
 function SimpleShape(src) {
@@ -4748,35 +4758,12 @@ SimpleShape.prototype = {
   pathCount: 1,
   init: function(ids) {
     this.ids = ids;
-    this.bounds = this.src.getShapeBounds(ids);
     return this;
   },
-  getPathIter: function(mpp) {
-    return this.src.getShapeIter(this.ids, mpp);
-  },
-  getBounds: function() {
-    return this.bounds;
-  },
-  inBounds: function(bbox) {
-    return this.src.testShapeIntersection(bbox, this.ids);
-  },
-  getSignedArea: function() {
-    var iter = this.getPathIter(),
-        sum = 0;
-    var x, y, prevX, prevY;
-    iter.hasNext();
-    prevX = iter.x, prevY = iter.y;
-    while (iter.hasNext()) {
-      x = iter.x, y = iter.y;
-      sum += x * prevY - prevX * y;
-      prevX = x, prevY = y;
-    }
-    return sum / 2;
-  },
-  toArray: Arc.prototype.toArray,
-  smallerThan: Arc.prototype.smallerThan
+  getPathIter: function() {
+    return this.src.getShapeIter(this.ids);
+  }
 };
-
 
 // Iterate along the points of an arc
 // properties: x, y, node (boolean, true if points is an arc endpoint)
@@ -4786,102 +4773,67 @@ SimpleShape.prototype = {
 //     iter.x, iter.y; // do something w/ x & y
 //   }
 //
-function ArcIter() {
-  var _xx, _yy, _zz, _zlim, _ww, _len;
+function ArcIter(xx, yy, zz) {
+  var _xx = xx,
+      _yy = yy,
+      _zz = zz,
+      _zlim, _len;
   var _i, _inc, _start, _stop;
-  this.x = 0;
-  this.y = 0;
-  var next;
+  this.hasNext = null;
 
-  this.hasNext = function() {
-    var i = next();
-    if (i == -1) return false;
-    this.x = _xx[i];
-    this.y = _yy[i];
-    this.node = i == 0 || i == _len - 1;
-    return true;
-  };
-
-  this.init = function(xx, yy, fw, zz, lim, ww) {
-    _xx = xx, _yy = yy, _zz = zz, _zlim = lim, _ww = ww;
-    var len = _len = xx.length;
-    if (ww) {
-      len = ww.length;
-      next = zz ? nextFilteredSimpleIdx : nextFilteredIdx;
-    } else {
-      next = zz ? nextSimpleIdx : nextIdx;
-    }
-
+  this.init = function(i, len, fw, zlim) {
+    _zlim = zlim;
+    this.hasNext = zlim ? nextSimpleIdx : nextIdx;
     if (fw) {
-      _start = 0;
+      _start = i;
       _inc = 1;
-      _stop = len;
+      _stop = i + len;
     } else {
-      _start = len - 1;
+      _start = i + len - 1;
       _inc = -1;
-      _stop = -1;
+      _stop = i - 1;
     }
     _i = _start;
   };
 
   function nextIdx() {
     var i = _i;
-    if (i == _stop) return -1;
+    if (i == _stop) return false;
     _i = i + _inc;
-    return i;
+    this.x = _xx[i];
+    this.y = _yy[i];
+    return true;
   }
 
   function nextSimpleIdx() {
-    // using local vars makes a big difference when skipping many points
+    // using local vars is significantly faster when skipping many points
     var zz = _zz,
         i = _i,
         j = i,
         zlim = _zlim,
         stop = _stop,
         inc = _inc;
-    if (i == stop) return -1;
+    if (i == stop) return false;
     do {
       j += inc;
     } while (j != stop && zz[j] <= zlim);
     _i = j;
-    return i;
-  }
-
-  function nextFilteredIdx() {
-    var i = _i;
-    if (i == _stop) return -1;
-    _i = i + _inc;
-    return _ww[i];
-  }
-
-  function nextFilteredSimpleIdx() {
-    var ww = _ww,
-        zz = _zz,
-        i = _i,
-        j = i,
-        zlim = _zlim,
-        inc = _inc,
-        stop = _stop;
-
-    if (i == stop) return -1;
-    do {
-      j += inc;
-    } while (j != stop && zz[ww[j]] <= zlim);
-    _i = j;
-    return ww[i];
+    this.x = _xx[i];
+    this.y = _yy[i];
+    return true;
   }
 }
+
 
 // Iterate along a path made up of one or more arcs.
 // Similar interface to ArcIter()
 //
 function ShapeIter(arcs) {
-  var _ids, _mpp, _arc = null;
+  var _ids, _arc = null;
   var i, n;
 
-  this.init = function(ids, mpp) {
+  this.init = function(ids) {
     _ids = ids;
-    _mpp = mpp;
     i = -1;
     n = ids.length;
     _arc = nextArc();
@@ -4889,7 +4841,7 @@ function ShapeIter(arcs) {
 
   function nextArc() {
     i += 1;
-    return (i < n) ? arcs.getArcIter(_ids[i], _mpp) : null;
+    return (i < n) ? arcs.getArcIter(_ids[i]) : null;
   }
 
   this.hasNext = function() {
@@ -4897,7 +4849,6 @@ function ShapeIter(arcs) {
       if (_arc.hasNext()) {
         this.x = _arc.x;
         this.y = _arc.y;
-        this.node = _arc.node;
         return true;
       } else {
         _arc = nextArc();
@@ -6776,7 +6727,7 @@ function buildPathTopology(xx, yy, pathData) {
 
 
   T.start();
-  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, "verbose");
+  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
   T.stop("Find matching vertices");
 
   T.start();
@@ -7532,47 +7483,6 @@ Opts.inherit(MapExtent, EventDispatcher);
 
 
 
-// TODO; calculate pct based on distinct points in the dataset
-// TODO: pass number of points as a parameter instead of calculating it
-MapShaper.getThresholdByPct = function(arr, retainPct) {
-  if (retainPct <= 0 || retainPct >= 1) error("Invalid simplification pct:", retainPct);
-  var tmp = MapShaper.getInnerThresholds(arr, 2);
-  var k = Math.floor((1 - retainPct) * tmp.length);
-  return Utils.findValueByRank(tmp, k + 1); // rank start at 1
-};
-
-// Receive: array of arrays of simplification thresholds arcs[vertices[]]
-// Return: one array of all thresholds, sorted in ascending order
-//
-MapShaper.getDescendingThresholds = function(arr, skip) {
-  var merged = MapShaper.getInnerThresholds(arr, skip);
-  Utils.quicksort(merged, false);
-  return merged;
-};
-
-MapShaper.countInnerPoints = function(arr, skip) {
-  var count = 0,
-      nth = skip || 1;
-  for (var i=0, n = arr.length; i<n; i++) {
-    count += Math.ceil((arr[i].length - 2) / nth);
-  }
-  return count;
-};
-
-MapShaper.getInnerThresholds = function(arr, skip) {
-  var nth = skip || 1,
-      count = MapShaper.countInnerPoints(arr, skip),
-      tmp = new Float64Array(count),
-      idx = 0;
-  for (i=0, n=arr.length; i<n; i++) {
-    var thresholds = arr[i];
-    for (var j=1, lim=thresholds.length - 1; j < lim; j+= nth) {
-      tmp[idx++] = thresholds[j];
-    }
-  }
-  if (idx != count) error("Counting error");
-  return tmp;
-};
 
 
 MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
@@ -8428,8 +8338,6 @@ function Editor() {
     if (importOpts.preserveShapes) {
       MapShaper.protectRingsFromCollapse(vertexData, topoData.arcMinPointCounts);
     }
-
-
 
     arcData.setThresholdsForGUI(vertexData);
 

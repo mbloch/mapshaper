@@ -123,8 +123,6 @@ function Editor() {
       MapShaper.protectRingsFromCollapse(vertexData, topoData.arcMinPointCounts);
     }
 
-
-
     arcData.setThresholdsForGUI(vertexData);
 
     var group = new ArcLayerGroup(arcs);

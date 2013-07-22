@@ -1,46 +1,5 @@
 /* @requires mapshaper-common, mapshaper-geom */
 
-// TODO; calculate pct based on distinct points in the dataset
-// TODO: pass number of points as a parameter instead of calculating it
-MapShaper.getThresholdByPct = function(arr, retainPct) {
-  if (retainPct <= 0 || retainPct >= 1) error("Invalid simplification pct:", retainPct);
-  var tmp = MapShaper.getInnerThresholds(arr, 2);
-  var k = Math.floor((1 - retainPct) * tmp.length);
-  return Utils.findValueByRank(tmp, k + 1); // rank start at 1
-};
-
-// Receive: array of arrays of simplification thresholds arcs[vertices[]]
-// Return: one array of all thresholds, sorted in ascending order
-//
-MapShaper.getDescendingThresholds = function(arr, skip) {
-  var merged = MapShaper.getInnerThresholds(arr, skip);
-  Utils.quicksort(merged, false);
-  return merged;
-};
-
-MapShaper.countInnerPoints = function(arr, skip) {
-  var count = 0,
-      nth = skip || 1;
-  for (var i=0, n = arr.length; i<n; i++) {
-    count += Math.ceil((arr[i].length - 2) / nth);
-  }
-  return count;
-};
-
-MapShaper.getInnerThresholds = function(arr, skip) {
-  var nth = skip || 1,
-      count = MapShaper.countInnerPoints(arr, skip),
-      tmp = new Float64Array(count),
-      idx = 0;
-  for (i=0, n=arr.length; i<n; i++) {
-    var thresholds = arr[i];
-    for (var j=1, lim=thresholds.length - 1; j < lim; j+= nth) {
-      tmp[idx++] = thresholds[j];
-    }
-  }
-  if (idx != count) error("Counting error");
-  return tmp;
-};
 
 
 MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
