@@ -4240,7 +4240,6 @@ function buildPathTopology(xx, yy, pathData) {
     slice = Array.prototype.slice;
   }
 
-
   T.start();
   var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
   T.stop("Find matching vertices");
@@ -6081,7 +6080,7 @@ var DouglasPeucker = {};
 
 DouglasPeucker.simplifyArcs = function(arcs, opts) {
   return MapShaper.simplifyArcs(arcs, DouglasPeucker.calcArcData, opts);
-}
+};
 
 DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
@@ -6197,6 +6196,12 @@ function ArcDataset(coords) {
   var _sortedThresholds = null,
       _zlimit = 0;
 
+  // Temporary: Convert input data by concatenating coords into long arrays
+  // and generating other data structures in a similar format
+  // TODO: input data will eventually be in the same format, so no conversion required
+  //
+
+  // generate array of arc lengths
   var _nn = Utils.map(coords, function(arc) {
     return arc[0].length || 0;
   });
@@ -6205,8 +6210,8 @@ function ArcDataset(coords) {
   _nn = new Uint32Array(_nn);
   var _xx = new Float64Array(_numPoints),
       _yy = new Float64Array(_numPoints),
-      _ii = new Uint32Array(_numArcs),
-      _zz = new Float64Array(_numPoints);
+      _ii = new Uint32Array(_numArcs), // index of first coord in each arc
+      _zz = new Float64Array(_numPoints); // this will store simplification thresholds
 
   var k = 0;
   Utils.forEach(coords, function(arc, i) {
@@ -6219,9 +6224,7 @@ function ArcDataset(coords) {
   });
   if (k != _numPoints) error("Counting problem");
 
-  // Pre-allocate some path iterators for repeated use.
-  var _arcIter = new ArcIter(_xx, _yy, _zz);
-  var _shapeIter = new ShapeIter(this);
+
 
   // calculate bounding boxes for each arc, store in one long array
   var _bb = new Float64Array(_numArcs * 4),
@@ -6249,6 +6252,11 @@ function ArcDataset(coords) {
     _allBounds.mergeBounds([xmin, ymin, xmax, ymax]);
   });
 
+  // Pre-allocate some path iterators for repeated use.
+  //
+  var _arcIter = new ArcIter(_xx, _yy, _zz);
+  var _shapeIter = new ShapeIter(this);
+
   this.getArcIter = function(arcId) {
     var fw = arcId >= 0,
         i = fw ? arcId : ~arcId,
@@ -6259,8 +6267,14 @@ function ArcDataset(coords) {
     return _arcIter;
   };
 
+  this.getShapeIter = function(ids) {
+    var iter = _shapeIter;
+    iter.init(ids);
+    return iter;
+  };
+
   // Add simplification data to the dataset
-  // @arr is an array of arrays of removal thresholds for each arc-vertex.
+  // @thresholds is an array of arrays of removal thresholds for each arc-vertex.
   //
   this.setThresholds = function(thresholds) {
     if (thresholds.length != _numArcs) error("ArcDataset#setThresholds() Mismatched arc/threshold counts.")
@@ -6271,6 +6285,7 @@ function ArcDataset(coords) {
         zz[i] = arr[j];
       }
     });
+
     return this;
   };
 
@@ -6292,6 +6307,9 @@ function ArcDataset(coords) {
     Utils.quicksort(_sortedThresholds, false);
 
     /*
+    // TODO: re-implement filtered arcs after ArcDataset input format changes to
+    //    long arrays
+    //
     // Calculate a filtered version of each arc, for fast rendering when zoomed out
     var filterPct = 0.08;
     var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];
@@ -6375,12 +6393,6 @@ function ArcDataset(coords) {
     return Utils.findValueByRank(tmp, k + 1); // rank start at 1
   }
 
-  this.getShapeIter = function(ids) {
-    var iter = _shapeIter;
-    iter.init(ids);
-    return iter;
-  };
-
   this.arcIntersectsBBox = function(i, b1) {
     var b2 = _bb,
         j = i * 4;
@@ -6391,7 +6403,7 @@ function ArcDataset(coords) {
     var bb = _bb,
         j = i * 4;
     return bb[j+2] - bb[j] < units && bb[j+3] - bb[j+1] < units;
-  }
+  };
 
   this.size = function() {
     return _numArcs;
@@ -6401,19 +6413,16 @@ function ArcDataset(coords) {
     return _allBounds;
   };
 
-  this.getShapeTable = function(data, ShapeClass) {
-    var shapes = Utils.map(data, function(datum, i) {
-      return new ShapeClass(this).init(datum);
-    }, this);
-    return new ShapeTable(shapes, this);
+  this.getArcs = function() {
+    var arcs = [];
+    for (var i=0, n=this.size(); i<n; i++) {
+      arcs.push(new Arc(this).init(i));
+    }
+    return arcs;
   };
 
-  this.getArcTable = function() {
-    return this.getShapeTable(Utils.range(this.size()), Arc);
-  };
-
-  this.exportArcsForJSON = function() {
-    return this.getArcTable().toArray();
+  this.getArc = function(id) {
+    return new Arc(this).init(id);
   };
 
   this.getMultiPathShape = function(arr) {
@@ -6423,162 +6432,6 @@ function ArcDataset(coords) {
       return new MultiShape(this).init(arr);
     }
   }
-}
-
-// An interable collection of paths (Arc, SimpleShape, MultiShape)
-// @arr array of path objects
-// @src ArcDataset object
-//
-function ShapeTable(arr, src) {
-  this.shapes = function() {
-    return new ShapeCollection(arr, src.getBounds());
-  };
-
-  this.forEach = function(cb) {
-    for (var i=0, n=arr.length; i<n; i++) {
-      cb(arr[i], i);
-    }
-  };
-
-  this.toArray = function() {
-    return Utils.map(arr, function(shp) {
-      return shp.toArray();
-    });
-  };
-}
-
-// An iterable collection of shapes, for drawing paths on-screen
-//
-function ShapeCollection(arr, collBounds) {
-  var _filterBounds,
-      _transform;
-
-  var getPathIter = function() {
-    return function(s, i) {
-      return s.getPathIter(i);
-    };
-  };
-
-  this.filterPaths = function(b) {
-    _filterBounds = b;
-    getPathIter = getDrawablePathsIter;
-    return this;
-  };
-
-  this.filterPoints = function(b) {
-    _filterBounds = b;
-    getPathIter = getDrawablePointsIter;
-    return this;
-  }
-
-  this.transform = function(tr) {
-    _transform = tr;
-    if (_filterBounds) {
-      _filterBounds = _filterBounds.clone().transform(tr);
-    }
-    return this;
-  };
-
-  // Wrap path iterator to filter out offscreen points
-  //
-  function getDrawablePointsIter() {
-    var bounds = _filterBounds || error("#getDrawablePointsIter() missing bounds");
-    var src = getDrawablePathsIter(),
-        wrapped;
-    var wrapper = {
-      x: 0,
-      y: 0,
-      node: false,
-      hasNext: function() {
-        var path = wrapped;
-        while (path.hasNext()) {
-          if (bounds.containsPoint(path.x, path.y)) {
-            this.x = path.x;
-            this.y = path.y;
-            this.node = path.node;
-            return true;
-          }
-        }
-        return false;
-      }
-    };
-
-    return function(s, i) {
-      wrapped = src(s, i);
-      return wrapper;
-    };
-  }
-
-  // Wrap vector path iterator to convert geographic coordinates to pixels
-  //   and skip over invisible clusters of points (i.e. smaller than a pixel)
-  //
-  function getDrawablePathsIter() {
-    var transform = _transform || error("#getDrawablePathsIter() Missing a Transform object; remember to call .transform()");
-    var wrapped,
-        _firstPoint;
-
-    var wrapper = {
-      x: 0,
-      y: 0,
-      node: false,
-      hasNext: function() {
-        var t = transform, mx = t.mx, my = t.my, bx = t.bx, by = t.by;
-        var path = wrapped,
-            isFirst = _firstPoint,
-            x, y, prevX, prevY,
-            minSeg = 0.6,
-            i = 0;
-        if (!isFirst) {
-          prevX = this.x;
-          prevY = this.y;
-        }
-        while (path.hasNext()) {
-          i++;
-          x = path.x * mx + bx;
-          y = path.y * my + by;
-          if (isFirst || Math.abs(x - prevX) > minSeg || Math.abs(y - prevY) > minSeg) {
-            break;
-          }
-        }
-        if (i == 0) return false;
-        _firstPoint = false;
-        this.x = x;
-        this.y = y;
-        this.node = path.node;
-        return true;
-      }
-    };
-
-    return function(s, i) {
-      _firstPoint = true;
-      wrapped = s.getPathIter(i, 1/_transform.mx);
-      return wrapper;
-    }
-  }
-
-  this.forEach = function(cb) {
-    var allIn = true,
-        filterOnSize = _transform && _filterBounds,
-        minPathSize, geoBounds, geoBBox;
-
-    if (filterOnSize) {
-      minPathSize = 0.9 / _transform.mx;
-      geoBounds = _filterBounds.clone().transform(_transform.invert());
-      geoBBox = geoBounds.toArray();
-      allIn = geoBounds.contains(collBounds);
-    }
-    var path = getPathIter();
-
-    for (var i=0, n=arr.length; i<n; i++) {
-      var shp = arr[i];
-      if (filterOnSize && shp.smallerThan(minPathSize)) continue;  // problem: won't filter out multi-part shapes with tiny parts
-      if (!allIn && !shp.inBounds(geoBBox)) continue;
-      for (var j=0; j<shp.pathCount; j++) {
-        cb(path(shp, j));
-      }
-    }
-  };
-
 }
 
 function Arc(src) {
@@ -6748,7 +6601,6 @@ function ShapeIter(arcs) {
     return false;
   };
 }
-
 
 
 
@@ -7002,7 +6854,11 @@ MapShaper.importTopoJSON = function(obj) {
 MapShaper.exportTopoJSON = function(data) {
   T.start();
   if (!data.objects || !data.arcs || !data.bounds) error("#exportTopoJSON() Missing a required param.");
-  var arcCoords = data.arcs.exportArcsForJSON();
+
+  var arcCoords = Utils.map(data.arcs.getArcs(), function(arc) {
+    return arc.toArray();
+  });
+
   var objects = {};
   Utils.forEach(data.objects, function(src) {
     if (src.type != 'polygon' && src.type != 'polyline') error("#exportTopoJSON() Unsupported type:", src.type);
