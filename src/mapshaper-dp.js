@@ -4,7 +4,7 @@ var DouglasPeucker = {};
 
 DouglasPeucker.simplifyArcs = function(arcs, opts) {
   return MapShaper.simplifyArcs(arcs, DouglasPeucker.calcArcData, opts);
-}
+};
 
 DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),

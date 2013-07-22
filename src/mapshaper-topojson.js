@@ -36,7 +36,11 @@ MapShaper.importTopoJSON = function(obj) {
 MapShaper.exportTopoJSON = function(data) {
   T.start();
   if (!data.objects || !data.arcs || !data.bounds) error("#exportTopoJSON() Missing a required param.");
-  var arcCoords = data.arcs.exportArcsForJSON();
+
+  var arcCoords = Utils.map(data.arcs.getArcs(), function(arc) {
+    return arc.toArray();
+  });
+
   var objects = {};
   Utils.forEach(data.objects, function(src) {
     if (src.type != 'polygon' && src.type != 'polyline') error("#exportTopoJSON() Unsupported type:", src.type);

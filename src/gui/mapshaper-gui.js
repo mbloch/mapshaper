@@ -86,8 +86,7 @@ function Editor() {
 
     var topoData = MapShaper.buildTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
     var arcData = new ArcDataset(topoData.arcs),
-      arcs = arcData.getArcTable(),
-      calculator, vertexData, intervalScale;
+        calculator, vertexData, intervalScale;
 
     if (!map) {
       init(arcData.getBounds());
@@ -125,7 +124,9 @@ function Editor() {
 
     arcData.setThresholdsForGUI(vertexData);
 
-    var group = new ArcLayerGroup(arcs);
+
+
+    var group = new ArcLayerGroup(arcData);
     map.addLayerGroup(group);
 
     slider.on('change', function(e) {

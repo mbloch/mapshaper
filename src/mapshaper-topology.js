@@ -139,7 +139,6 @@ function buildPathTopology(xx, yy, pathData) {
     slice = Array.prototype.slice;
   }
 
-
   T.start();
   var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
   T.stop("Find matching vertices");

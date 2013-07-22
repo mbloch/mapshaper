@@ -1,10 +1,12 @@
-/* @requires mapshaper-canvas */
+/* @requires mapshaper-canvas, mapshaper-gui-shapes */
 
-// Layer group...
+// Group of one ore more layers sharing the same set of arcs
+// @arcData an ArcDataset
 //
-function ArcLayerGroup(arcs) {
+function ArcLayerGroup(arcData) {
   var _self = this;
   var _surface = new CanvasLayer();
+  var arcs = new FilteredPathCollection(arcData.getArcs(), arcData.getBounds());
 
   var _arcLyr = new ShapeLayer(arcs, _surface),
       _layers = [_arcLyr],
@@ -14,14 +16,6 @@ function ArcLayerGroup(arcs) {
   this.visible = function(b) {
     return arguments.length == 0 ? _visible : _visible = !b, this;
   };
-  /*
-  this.getExportList = function() {
-    var polygons = {
-      label: "polygons",
-      shapes: null
-    };
-    return [polygons];
-  };*/
 
   this.refresh = function() {
     _map && drawLayers();
@@ -45,7 +39,8 @@ function ArcLayerGroup(arcs) {
   }
 }
 
-function ShapeLayer(src, surface) {
+
+function ShapeLayer(shapes, surface) {
   var renderer = new ShapeRenderer();
   var _visible = true;
   var style = {
@@ -60,13 +55,12 @@ function ShapeLayer(src, surface) {
 
   this.draw = function(ext) {
     if (!this.visible()) return;
-    T.start();
-
-    var shapes = src.shapes().filterPaths(ext.getBounds()).transform(ext.getTransform());
+    //T.start();
+    shapes.reset().filterPaths(ext.getBounds()).transform(ext.getTransform());
     var info = renderer.drawShapes(shapes, style, surface.getContext());
     // TODO: find a way to enable circles at an appropriate zoom
     // if (ext.scale() > 0) renderer.drawPoints(src.shapes().filterPoints(ext.getBounds()).transform(ext.getTransform()), surface.getContext());
-    T.stop("- paths: " + info.paths + " segs: " + info.segments);
+    // T.stop("- paths: " + info.paths + " segs: " + info.segments);
   }
 }
 
