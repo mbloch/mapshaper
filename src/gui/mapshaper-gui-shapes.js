@@ -1,8 +1,8 @@
 /* @requires mapshaper-shapes */
 
 
-// An iterable collection of paths that can be filtered to exclude points and
-// paths that can't be displayed at a given , for drawing paths on-screen
+// A collection of paths that can be filtered to exclude paths and points
+// that can't be displayed at the current map scale. For drawing paths on-screen.
 // TODO: Look into generalizing from Arc paths to SimpleShape and MultiShape
 //
 function FilteredPathCollection(arr, collBounds) {

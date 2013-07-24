@@ -4400,9 +4400,7 @@ function ArcDataset(coords) {
     return this;
   };
 
-  // Add simplification thresholds and generate a set of thinned paths for faster
-  // rendering when zoomed out.
-  //
+
   this.setThresholdsForGUI = function(thresholds) {
     this.setThresholds(thresholds);
 
@@ -6405,6 +6403,10 @@ var ExportControl = function(arcData, topoData, opts) {
         shp = new Blob([data.shp]),
         shx = new Blob([data.shx]);
 
+    function addReadMe(write) {
+
+    }
+
     function addShp(writer) {
       writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
         addShx(writer);
@@ -6419,6 +6421,7 @@ var ExportControl = function(arcData, topoData, opts) {
         });
       }, null);
     }
+
     try {
       zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
     } catch(e) {
@@ -7048,8 +7051,8 @@ function CanvasLayer() {
 
 
 
-// An iterable collection of paths that can be filtered to exclude points and
-// paths that can't be displayed at a given , for drawing paths on-screen
+// A collection of paths that can be filtered to exclude paths and points
+// that can't be displayed at the current map scale. For drawing paths on-screen.
 // TODO: Look into generalizing from Arc paths to SimpleShape and MultiShape
 //
 function FilteredPathCollection(arr, collBounds) {

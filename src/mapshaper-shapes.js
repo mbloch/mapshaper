@@ -109,9 +109,7 @@ function ArcDataset(coords) {
     return this;
   };
 
-  // Add simplification thresholds and generate a set of thinned paths for faster
-  // rendering when zoomed out.
-  //
+
   this.setThresholdsForGUI = function(thresholds) {
     this.setThresholds(thresholds);
 

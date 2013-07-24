@@ -227,6 +227,10 @@ var ExportControl = function(arcData, topoData, opts) {
         shp = new Blob([data.shp]),
         shx = new Blob([data.shx]);
 
+    function addReadMe(write) {
+
+    }
+
     function addShp(writer) {
       writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
         addShx(writer);
@@ -241,6 +245,7 @@ var ExportControl = function(arcData, topoData, opts) {
         });
       }, null);
     }
+
     try {
       zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
     } catch(e) {

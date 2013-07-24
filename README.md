@@ -10,11 +10,11 @@ The new mapshaper was rewritten from scratch in JavaScript and improves on the o
 
 ###Interactive tool
 
-To set up mapshaper's web interface for online use, copy the files in gui/www/ to a web server. All processing is done in the browser; there is no backend service to run.
+To set up mapshaper's web interface for online use, copy the files in www/ to a web server. All processing is done in the browser; there is no backend service to run.
 
 Browser compatibility: The web interface works well in recent versions of Chrome and Firefox. Chrome seems more likely to run out of memory when loading large .shp files (say, >200MB). Exporting doesn't work in Safari. Opera and Internet Explorer are not supported.
 
-To run the mapshaper gui directly from the filesystem, open gui/www/index.html in a web browser. Firefox works well in this mode; offline exporting is not fully supported in Chrome.
+To run the mapshaper gui directly from the filesystem, open www/index.html in a web browser. Firefox works well in this mode; offline exporting is not fully supported in Chrome.
 
 ###Commandline tool
 
@@ -28,7 +28,7 @@ bin/mapshaper is a [Node.js](http://nodejs.org) script. It was developed on OS X
 
 ###Building and testing
 
-You will need to regenerate mapshaper.js if you edit any of the files in the src/ or lib/ directories. Run `$ build` to update mapshaper.js (used by the commandline tool); run `$ build gui` to update gui/www/mapshaper.js (used by the web interface). The build script requires [Node.js](http://nodejs.org).
+You will need to regenerate mapshaper.js if you edit any of the files in the src/ or lib/ directories. Run `$ build` to update mapshaper.js (used by the commandline tool); run `$ build gui` to update www/mapshaper.js (used by the web interface). The build script requires [Node.js](http://nodejs.org).
 
 `$ build [gui] -f` continuously monitors source files and regenerates  mapshaper.js whenever a source file is modified.
 
