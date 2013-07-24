@@ -2,11 +2,11 @@
 <head>
 	<title>mapshaper</title>
 	<meta charset="UTF-8">
-	<script src="mapshaper.js" type="text/javascript"></script>
-	<script src="zip.js" type="text/javascript"></script>
 	<link rel="stylesheet" type="text/css" href="page.css">
 	<link rel="stylesheet" type="text/css" href="elements.css">
-	<link rel="stylesheet" type="text/css" href="controls.css">
+	<script src="mapshaper.js" type="text/javascript"></script>
+	<script src="zip.js" type="text/javascript"></script>
+	<link href='http://fonts.googleapis.com/css?family=Source+Sans+Pro:400,600' rel='stylesheet' type='text/css'>
 </head>
 <body>
 
@@ -34,37 +34,27 @@
 </div>
 <div id="mshp-intro-screen">
 	<a href="https://github.com/mbloch/mapshaper"><img class="fork-me" src="images/fork-me-right-cerulean@2x.png" alt="Fork me on GitHub"></a>
-
 	<div id="mshp-import">
-		<h4>Drag a GeoJSON file or .shp<br>file from a Shapefile
-		onto this<br>window, or <div class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class="g-label-text">select</span></div>a file.</h4>
 
-		<div class="g-options-block">
-			<h4>Options</h4>
-			<div id="g-import-options">
-				<div>Simplification method</div>
-				<div id="g-simplification-menu">
-					<div><label><input type="radio" name="method" value="dp">Douglas-Peucker</label></div>
-					<div><label><input type="radio" name="method" value="vis">Visvalingam</label></div>
-					<div><label><input type="radio" name="method" value="mod" checked="true">modified Visvalingam</label></div>
-				</div>
-				<div>
-					<input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>
-					<label for="g-import-retain-opt">prevent shape removal</label>
-					<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Prevents small shapes<br /> from disappearing at<br />high simplification.</div></div></div>
-				</div>
-			</div> <!-- g-import-options -->
-		</div>
+		<!--<h4>Simplify your linework</h4>-->
+		<h3>Edit a file</h3>
+		<p>Drag a GeoJSON file or Shapefile .shp file onto this window, or <span class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class="g-label-text">select</span></span> a file from a local folder.</p>
+		<h4>Simplification options</h4>
+		<div id="g-simplification-menu">
+			<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label></div>
+			<div><label><input type="radio" name="method" value="vis" class="g-radio">Visvalingam</label></div>
+			<div><label><input type="radio" name="method" value="mod" checked="true" class="g-radio">modified Visvalingam</label></div>
+			<div><label for="g-import-retain-opt"><input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>prevent shape removal</label>
+			<div class="g-tip-button">?<div class="g-tip-anchor"><div class="g-tip">Prevents small shapes<br /> from disappearing at<br />high simplification.</div></div></div></div>
+		</div>			
+
 
 	</div> <!-- mshp-import -->
 </div> <!-- mshp-intro-screen -->
 
-<div id="mshp-main-page" class="mshp-page">
-<div id="mshp-main-map"></div>
+<div id="mshp-main-page">
+	<div id="mshp-main-map"></div>
 </div>
-
-<div id="export-page" class="mshp-page"></div>
 </div>
-
 </body>
 </html>

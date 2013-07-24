@@ -88,14 +88,16 @@
 .g-tip-button {
 	display:inline-block;
 	position: relative;
+	z-index: 500;
 	cursor: pointer;
 	text-align: center;
 	bottom: 0px;
 	color: #fff;
-	font: 13px/13px Verdana, sans-serif;
+	font: 13px/13px;
 	height: 14px;
-	padding: 1px 0 0 1px;
-	width: 14px;
+	padding: 1px 0 0px 1px;
+	line-height: 1;
+	width: 13px;
 	font-weight: normal;
 	border-radius: 14px;
 	background: #4D839E;
@@ -140,30 +142,14 @@
 
 }
 
-.g-checkbox + label, .g-radio + label {
-	font-size: 13px;
-}
-
-/* input[type="checkbox"] */
-.g-checkbox:checked + label, .g-radio:checked + label {
-	/* font-weight: bold; */
-}
-
 .g-file-control {
 	position: absolute;
 	top: -1000px;
 }
 
-.g-file-btn {
-	/* -webkit-transition: background-color .22s;
- 	 -moz-transition: background-color .22s; */
-}
-
-
 .g-panel-btn.active {
 	cursor: pointer;
 }
-
 
 .g-panel-btn.selected {
 	color: #aaa;
@@ -183,26 +169,6 @@
 	text-align: center;
 	padding: 3px 4px;
 	line-height: 1;
-	margin-right: 4px;
-}
-
-.g-page-header .g-panel-btn {
-	margin-right: 0;
-	color: #fff;
-	background-color: rgba(16, 69, 104, 0.3);
-	border: none;
-	padding: 3px 5px 4px 5px;
-	border-radius: 3px;
-}
-
-.g-page-header .g-panel-btn.active:hover:not(.selected) {
-	background-color: rgba(172, 205, 245, 0.3);
-}
-
-.g-page-header .g-panel-btn:not(.active) {
-	color: #aaa;
-	background: #eaeaea;
-	cursor: default;
 }
 
 .g-panel-btn:not(.active) {
@@ -210,24 +176,3 @@
 	background: #eaeaea;
 	cursor: default;
 }
-
-#g-browser-message {
-	display: none;
-}
-
-.g-home-btn {
-	cursor:pointer;
-	position: absolute;
-	z-index: 50;
-	padding: 9px;
-	margin: 2px;
-}
-
-.g-home-btn:hover {
-	opacity: 0.7 !important;
-}
-
-.g-home-btn:not(.active) {
-	opacity: 0.3;
-}
-
