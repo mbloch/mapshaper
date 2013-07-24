@@ -1,20 +1,17 @@
 
-body {
+html, body {
 	margin: 0;
 	padding: 0;
-	font-size: 13px;
-	font-family: 'Source Sans Pro', Helvetica, sans-serif;
 	height: 100%;
-	background-color: #fff;
 }
 
 #page-wrapper {
 	overflow: hidden;
+	background-color: #fff;
 	height: 100%;
-	line-height: 1.4;
+	font: 14px/1.4 'Source Sans Pro', Helvetica, sans-serif;
 	color: #444;
 }
-
 
 #mshp-not-supported {
 	display: none;
@@ -28,8 +25,7 @@ body {
 	left: 0;
 	z-index: 10;
 	width: 100%;
-	padding-top: 2px;
-	height: 27px;
+	height: 29px;
 	background-color:#6E90BA;
 	background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#6E90BA), color-stop(100%,#85B3DD));		
 }
@@ -44,7 +40,7 @@ body {
 	color: white;
 	font-weight: bold;
 	font-size: 17px;
-	margin: 0 0 0 12px;
+	margin: 2px 0 0 12px;
 }
 
 .g-mapshaper-logo .g-logo-highlight {
@@ -72,16 +68,14 @@ body {
 }
 
 #mshp-import {
-	width: 210px;
+	width: 222px;
 	background-color: #fff;
-	/* box-shadow: 1px 1px 12px #aaa; */
-	padding: 5px 8px 9px 9px;
+	padding: 9px 12px 12px 15px;
 	vertical-align: top;
 	display: inline-block;
 	text-align: left;
 	border: 1px solid #b5b5b5;
-	border-radius: 5px;
-	line-height: 1.5;
+	border-radius: 9px;
 }
 
 #mshp-import h3, h4 {
@@ -90,11 +84,11 @@ body {
 }
 
 #mshp-import p {
-	margin: 0.5em 0 0.5em 0;
+	margin: 0.4em 0 0.5em 0;
 }
 
 #g-simplification-menu {
-	font-size: 12px;
+	font-size: 13px;
 	margin: 2px 0 0 11px;
 }
 
@@ -115,11 +109,10 @@ body {
 
 /* === Editing interface =================== */
 
-@media (max-width: 890px) {
+@media (max-width: 880px) {
 	body.editing  #g-simplify-control-wrapper {
-		top: 23px;
-		margin-left: 12px;
-		left: 0px;
+		top: 21px;
+		left: 12px;
 		width: auto;
 	}
 
@@ -150,7 +143,7 @@ body {
 	right: 0;
 	bottom: 0;
 	left: 0;
-	margin: 30px 0 0px 0;
+	margin: 29px 0 0 0;
 	background-color: #fff;
 }
 
@@ -216,7 +209,7 @@ body {
 #g-simplify-control {
 	text-align: center;
 	display: none;
-	padding-right: 128px;
+	padding-right: 124px;
 }
 
 #g-simplify-control .g-slider {
@@ -236,7 +229,7 @@ body {
 
 #g-simplify-control .g-handle {
 	position: absolute;
-	top: 9px;
+	top: 6px;
 }
 
 #g-simplify-control .g-handle img {
