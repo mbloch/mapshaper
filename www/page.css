@@ -31,7 +31,7 @@ html, body {
 }
 
 .g-page-header .mshp-version {
-	font-size: 10px;
+	font-size: 11px;
 	color: white;
 	font-weight: normal;
 }
@@ -39,8 +39,8 @@ html, body {
 .g-mapshaper-logo {
 	color: white;
 	font-weight: bold;
-	font-size: 17px;
-	margin: 2px 0 0 12px;
+	font-size: 18px;
+	margin: 1px 0 0 12px;
 }
 
 .g-mapshaper-logo .g-logo-highlight {
@@ -68,9 +68,8 @@ html, body {
 }
 
 #mshp-import {
-	width: 222px;
 	background-color: #fff;
-	padding: 9px 12px 12px 15px;
+	padding: 9px 13px 12px 14px;
 	vertical-align: top;
 	display: inline-block;
 	text-align: left;
@@ -84,6 +83,7 @@ html, body {
 }
 
 #mshp-import p {
+	white-space: pre-line;
 	margin: 0.4em 0 0.5em 0;
 }
 
@@ -109,11 +109,9 @@ html, body {
 
 /* === Editing interface =================== */
 
-@media (max-width: 880px) {
+@media (max-width: 876px) {
 	body.editing  #g-simplify-control-wrapper {
 		top: 21px;
-		left: 12px;
-		width: auto;
 	}
 
 	body.editing .g-page-header {
@@ -122,10 +120,6 @@ html, body {
 
 	body.editing #mshp-main-map {
 		margin-top: 51px;
-	}
-
-	body.editing  #g-simplify-control {
-		padding-right: 0;
 	}
 }
 
@@ -209,7 +203,8 @@ html, body {
 #g-simplify-control {
 	text-align: center;
 	display: none;
-	padding-right: 124px;
+	white-space: nowrap;
+	padding: 0 144px 0 12px;
 }
 
 #g-simplify-control .g-slider {
@@ -222,7 +217,7 @@ html, body {
 #g-simplify-control .g-track {   	
 	-webkit-border-radius: 2px;
   	-moz-border-radius: 2px;
-	width: 360px;
+	width: 340px;
 	background-color: #fff;
 	height: 2px;
 }
