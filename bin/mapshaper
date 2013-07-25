@@ -74,6 +74,12 @@ optimist.usage(usage)
     'boolean': true
   })
 
+  .options("v", {
+    alias: "version",
+    describe: "print mapshaper version",
+    'boolean': true
+  })
+
   /*
   // Removing shp-test: not compatible with new topology function
   .options("shp-test", {
@@ -99,12 +105,6 @@ optimist.usage(usage)
     default: false
   })
 
-  .options("v", {
-    alias: "verbose",
-    describe: "show verbose messages",
-    default: false
-  })
-
   .options("", {
     alias: "-",
     describe: "output to /dev/stdout",
@@ -114,6 +114,10 @@ optimist.usage(usage)
   .check(function(argv) {
     if (argv.h) {
       optimist.showHelp();
+      process.exit(0);
+    }
+    if (argv.v) {
+      console.log(getVersion());
       process.exit(0);
     }
     opts = mapshaper.validateArgv(argv);
@@ -214,3 +218,12 @@ else if (opts.output_format == "shapefile") {
 info.processing_time = T.stop("Total time");
 
 // TODO: option to print a report based on data collected in info object.
+
+function getVersion() {
+  try {
+    var packagePath = Node.resolvePathFromScript("../package.json"),
+        obj = JSON.parse(Node.readFile(packagePath, 'utf-8')),
+        v = obj.version;
+  } catch(e) {}
+  return v || "";
+}
