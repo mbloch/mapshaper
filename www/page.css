@@ -1,3 +1,20 @@
+/*
+@import url(http://fonts.googleapis.com/css?family=Source+Sans+Pro:400,600);
+*/
+
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: normal;
+  font-weight: 400;
+  src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url(SourceSansPro-Regular.woff) format('woff');
+}
+
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: bold;
+  font-weight: 600;
+  src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url(SourceSansPro-Semibold.woff) format('woff');
+}
 
 html, body {
 	margin: 0;
@@ -27,7 +44,8 @@ html, body {
 	width: 100%;
 	height: 29px;
 	background-color:#6E90BA;
-	background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#6E90BA), color-stop(100%,#85B3DD));		
+	background: -webkit-linear-gradient(top, #6E90BA, #85B3DD);
+	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
 }
 
 .g-page-header .mshp-version {
@@ -48,9 +66,12 @@ html, body {
 }
 
 
+
 /* --- Import screen -------------- */
 
-.fork-me {
+#fork-me {
+	background-image: url("images/fork-me-right-cerulean.png");
+    background-size: 149px 149px;
 	position: absolute;
 	z-index: 50;
 	top: 0;
@@ -58,6 +79,12 @@ html, body {
 	border: 0;
 	width: 149px;
 	height: 149px;
+}
+
+@media only screen and (-webkit-device-pixel-ratio: 2) {
+	#fork-me {
+		background-image: url("images/fork-me-right-cerulean@2x.png");
+	}
 }
 
 #mshp-intro-screen {
@@ -215,8 +242,7 @@ html, body {
 }
 
 #g-simplify-control .g-track {   	
-	-webkit-border-radius: 2px;
-  	-moz-border-radius: 2px;
+  	border-radius: 2px;
 	width: 340px;
 	background-color: #fff;
 	height: 2px;

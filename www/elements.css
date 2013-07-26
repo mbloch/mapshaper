@@ -21,8 +21,7 @@
 	width: 25px;
 	height: 25px;
 	cursor: pointer;
-   	-webkit-border-radius: 2px;
-  	-moz-border-radius: 2px;
+  	border-radius: 2px;
   	display: inline-block;
   	margin: 0 2px;
 }
@@ -43,7 +42,6 @@
 
 .g-tip {
 	color: #555;
-	font-weight: normal;
 	text-align: left;
 	position: relative;
 	display: inline-block;
@@ -51,7 +49,7 @@
 	line-height: 1.45;
 	background: #fff;
 	border: 1px solid #ccc;
-	-webkit-border-radius: 6px;
+	border-radius: 6px;
 	padding: 5px 6px 6px 6px;
 	bottom: 0px;
 	left: -50%;
@@ -93,7 +91,8 @@
 	text-align: center;
 	bottom: 0px;
 	color: #fff;
-	font: 13px/13px;
+	font-size: 13px;
+	line-height: 1;
 	height: 14px;
 	padding: 1px 1px 0px 1px;
 	line-height: 1;
