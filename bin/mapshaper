@@ -140,29 +140,7 @@ Utils.extend(info, importData.info);
 importData = null; // don't need this anymore, gc can take it.
 
 if (opts.use_simplification) {
-  var simplifyOpts = {
-        spherical: mapshaper.geom.probablyDecimalDegreeBounds(info.input_bounds)
-      },
-      vertexData,
-      calculator;
-
-  if (opts.simplify_method == 'dp') {
-    calculator = mapshaper.DouglasPeucker.calcArcData;
-    vertexData = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
-  }
-  else if (opts.simplify_method == 'vis') {
-    var intervalScale = 0.65; // TODO: tune this constant (linear scale when converting Visv. area metric to distance units);
-    calculator = Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, intervalScale);
-    vertexData = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
-  }
-  else if (opts.simplify_method == 'mod') {
-    intervalScale = 0.65 // TODO: tune this
-    calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale);
-    vertexData = mapshaper.simplifyArcs(arcs, calculator, simplifyOpts);
-  }
-  else {
-    stop("Unknown simplification method:", method);
-  }
+  var vertexData = mapshaper.simplifyPaths(arcs, opts.simplify_method, info.input_bounds);
 
   mapshaper.gc();
 

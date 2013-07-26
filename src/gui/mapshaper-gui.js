@@ -86,45 +86,20 @@ function Editor() {
 
     var topoData = MapShaper.buildTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
     var arcData = new ArcDataset(topoData.arcs),
-        calculator, vertexData, intervalScale;
+        vertexData;
 
     if (!map) {
       init(arcData.getBounds());
     }
 
-    if (importOpts.simplifyMethod == 'dp') {
-      calculator = DouglasPeucker.calcArcData;
-    }
-    else if (importOpts.simplifyMethod == 'vis') {
-      intervalScale = 0.65; // TODO: tune this constant (linear scale when converting Visv. area metric to distance units);
-      calculator = Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, intervalScale);
-    }
-    else if (importOpts.simplifyMethod == 'mod') {
-      intervalScale = 0.65 // TODO: tune this
-      calculator = Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, intervalScale);
-    }
-    else {
-      error("Unknown simplification method:", method);
-    }
-
-    var inputBounds = importData.info.input_bounds,
-        decimalDegrees = probablyDecimalDegreeBounds(inputBounds);
-    var sopts = {
-      spherical: decimalDegrees // TODO: consider option to disable this
-    };
-    vertexData = MapShaper.simplifyArcs(topoData.arcs, calculator, sopts);
-
-    if (decimalDegrees) {
-      MapShaper.protectWorldEdges(topoData.arcs, vertexData, inputBounds);
-    }
+    var inputBounds = importData.info.input_bounds;
+    var vertexData = MapShaper.simplifyPaths(topoData.arcs, importOpts.simplifyMethod, inputBounds);
 
     if (importOpts.preserveShapes) {
       MapShaper.protectRingsFromCollapse(vertexData, topoData.arcMinPointCounts);
     }
 
     arcData.setThresholdsForGUI(vertexData);
-
-
 
     var group = new ArcLayerGroup(arcData);
     map.addLayerGroup(group);
@@ -134,7 +109,6 @@ function Editor() {
       group.refresh();
     });
 
-    // trace(importData.info);
     var exportOpts = {
       bounds: arcData.getBounds(),
       geometry: importData.info.input_geometry_type,

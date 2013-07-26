@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-geom */
+/* @requires mapshaper-visvalingam, mapshaper-dp */
 
 
 
@@ -114,26 +114,40 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
   }
 }
 
-// Apply a simplification function to each arc in an array, return simplified arcs.
+// Apply a simplification function to each path in an array, return simplified path.
 //
-// @simplify: function(xx:array, yy:array, [zz:array], [length:integer]):array
-//
-MapShaper.simplifyArcs = function(arcs, simplify, opts) {
+MapShaper.simplifyPaths = function(paths, method, bounds) {
+  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method),
+      data;
+
   T.start();
-  var arcs;
-  if (opts && opts.spherical) {
-    arcs = MapShaper.simplifyArcsSph(arcs, simplify);
+  if (decimalDegrees) {
+    data = MapShaper.simplifyPathsSph(paths, simplifyPath);
   } else {
-    arcs = Utils.map(arcs, function(arc) {
-      return simplify(arc[0], arc[1]);
+    data = Utils.map(paths, function(path) {
+      return simplifyPath(path[0], path[1]);
     });
   }
+
+  if (decimalDegrees) {
+    MapShaper.protectWorldEdges(paths, data, bounds);
+  }
   T.stop("Calculate simplification data");
-  return arcs
+  return data;
+};
+
+// Path simplification functions
+// Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
+//
+MapShaper.simplifiers = {
+  vis: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
+  mod: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
+  dp: DouglasPeucker.calcArcData
 };
 
 
-MapShaper.simplifyArcsSph = function(arcs, simplify) {
+MapShaper.simplifyPathsSph = function(arcs, simplify) {
   var bufSize = 0,
       xbuf, ybuf, zbuf;
 
