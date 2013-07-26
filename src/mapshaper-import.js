@@ -136,9 +136,8 @@ function PathImporter(pointCount) {
     var skippedPoints = xx.length - pointId;
     if (xx.length > pointId) {
       xx = xx.subarray(0, pointId);
-      yy - yy.subarray(0, pointId);
+      yy = yy.subarray(0, pointId);
     }
-
     var bounds = MapShaper.calcXYBounds(xx, yy);
 
     var info = {
