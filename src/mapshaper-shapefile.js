@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-geom, shp-reader, dbf-reader, mapshaper-import */
+/* @requires mapshaper-common, mapshaper-geom, shp-reader, dbf-reader, mapshaper-path-import */
 
 MapShaper.importDbf = function(src) {
   T.start();
@@ -55,20 +55,39 @@ MapShaper.importShp = function(src) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShp = function(obj) {
-  if (obj.arcs instanceof ArcDataset == false || !Utils.isArray(obj.shapes)) error("Missing exportable data.");
-  if (obj.type != 'polyline' && obj.type != 'polygon') error("Invalid geometry type:", obj.type);
+MapShaper.exportShp = function(layers, arcData) {
+  if (arcData instanceof ArcDataset == false || !Utils.isArray(layers)) error("Missing exportable data.");
 
-  var isPolygonType = obj.type == 'polygon';
+  var files = [];
+  Utils.forEach(layers, function(layer) {
+    var obj = MapShaper.exportShpFile(layer, arcData);
+    files.push({
+        content: obj.shp,
+        name: layer.name,
+        extension: "shp"
+      }, {
+        content: obj.shx,
+        name: layer.name,
+        extension: "shx"
+      });
+  });
+  return files;
+};
+
+MapShaper.exportShpFile = function(layer, arcData) {
+  var geomType = layer.geometry_type;
+  if (geomType != 'polyline' && geomType != 'polygon') error("Invalid geometry type:", geomType);
+
+  var isPolygonType = geomType == 'polygon';
   var shpType = isPolygonType ? 5 : 3;
 
   T.start();
   T.start();
 
-  var exporter = new PathExporter(obj.arcs, isPolygonType)
+  var exporter = new PathExporter(arcData, isPolygonType)
   var fileBytes = 100;
   var bounds = new Bounds();
-  var shapeBuffers = Utils.map(obj.shapes, function(shapeIds, i) {
+  var shapeBuffers = Utils.map(layer.shapes, function(shapeIds, i) {
     var shape = MapShaper.exportShpRecord(shapeIds, exporter, i+1, shpType);
     fileBytes += shape.buffer.byteLength;
     shape.bounds && bounds.mergeBounds(shape.bounds);

@@ -1,15 +1,4 @@
-/* @requires mapshaper-common, mapshaper-import */
-
-MapShaper.importJSON = function(obj) {
-  if (Utils.isString(obj)) {
-    obj = JSON.parse(obj);
-  }
-  if (obj.type == "Topology") {
-    error("TODO: TopoJSON import.")
-    return MapShaper.importTopoJSON(obj);
-  }
-  return MapShaper.importGeoJSON(obj);
-};
+/* @requires mapshaper-common, mapshaper-path-import */
 
 MapShaper.importGeoJSON = function(obj) {
   if (Utils.isString(obj)) {
@@ -121,26 +110,29 @@ GeoJSON.countNestedPoints = function(coords, depth) {
   return tally;
 };
 
-MapShaper.exportGeoJSON = function(obj) {
-  T.start();
-  var json = JSON.stringify(MapShaper.exportGeoJSONObject(obj));
-  T.stop("Export GeoJSON");
-  return json;
-}
+MapShaper.exportGeoJSON = function(layers, arcData) {
+  return Utils.map(layers, function(layer) {
+    var obj = MapShaper.exportGeoJSONObject(layer, arcData);
+    return {
+      content: JSON.stringify(obj),
+      name: layer.name
+    };
+  });
+};
 
-MapShaper.exportGeoJSONObject = function(obj) {
-  if (!obj.shapes || !obj.arcs) error("#exportGeoJSON() Missing a required parameter.");
-  if (obj.type != "polygon" && obj.type != "polyline") error("#exportGeoJSON() Unsupported type:", obj.type);
+MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
+  var type = layerObj.geometry_type;
+  if (type != "polygon" && type != "polyline") error("#exportGeoJSONObject() Unsupported geometry type:", type);
 
-  var geomType = obj.type == 'polygon' ? 'MultiPolygon' : 'MultiLineString',
-      properties = obj.properties,
+  var geomType = type == 'polygon' ? 'MultiPolygon' : 'MultiLineString',
+      properties = layerObj.properties,
       useFeatures = !!properties;
 
-  if (useFeatures && properties.length !== obj.shapes.length) {
+  if (useFeatures && properties.length !== layerObj.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
   }
-  var exporter = new PathExporter(obj.arcs, obj.type == 'polygon');
-  var objects = Utils.map(obj.shapes, function(shapeIds, i) {
+  var exporter = new PathExporter(arcData, type == 'polygon');
+  var objects = Utils.map(layerObj.shapes, function(shapeIds, i) {
     var shape = exporter.exportShapeForGeoJSON(shapeIds);
     if (useFeatures) {
       return MapShaper.exportGeoJSONFeature(shape, geomType, properties[i]);

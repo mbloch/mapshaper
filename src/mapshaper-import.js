@@ -1,160 +1,133 @@
-/* @requires mapshaper-common, mapshaper-geom */
+/* @requires mapshaper-common, mapshaper-geojson, mapshaper-topojson, mapshaper-shapefile */
 
-// Convert path data from a non-topological source (Shapefile, GeoJSON, etc)
-// to the format used for topology processing (see mapshaper-topology.js)
+MapShaper.guessFileType = function(file) {
+  var type = null;
+  if (/json$/i.test(file)) {
+    type = 'json';
+  } else if (/shp$/i.test(file)) {
+    type = 'shp';
+  }
+  return type;
+};
+
+// @content: ArrayBuffer or String
+// @type: 'shapefile'|'json'
 //
-function PathImporter(pointCount) {
-  var xx = new Float64Array(pointCount),
-      yy = new Float64Array(pointCount),
-      buf = new Float64Array(1024);
-
-  var paths = [],
-      pointId = 0,
-      openPaths = 0,
-      shapeId = -1,
-      pathsInShape,
-      primaryPath,
-      primaryPathArea;
-
-  function endPrevShape() {
-    if (primaryPathArea > 0) {
-      primaryPath.isPrimary = true;
+MapShaper.importContent = function(content, fileType) {
+  var data;
+  if (fileType == 'shp') {
+    data = MapShaper.importNonTopoDataset(MapShaper.importShp(content));
+    data.input_format = 'shapefile';
+  } else if (fileType == 'json') {
+    var jsonObj = JSON.parse(content);
+    if (jsonObj.type == 'Topology') {
+      data = MapShaper.importTopoJSON(jsonObj);
+      data.input_format = 'topojson';
+    } else {
+      data = MapShaper.importNonTopoDataset(MapShaper.importGeoJSON(jsonObj));
+      data.input_format = 'geojson';
     }
-  };
+  } else {
+    error("Unsupported file type:", fileType);
+  }
 
-  this.startShape = function() {
-    endPrevShape();
-    shapeId++;
-    primaryPath = null;
-    primaryPathArea = 0;
-    pathsInShape = 0;
-  };
+  MapShaper.validateImportData(data);
 
-  // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
-  // @offs Array index of first coordinate
-  //
-  this.importCoordsFromFlatArray = function(arr, offs, pointCount, isRing, isHole) {
-    var findMaxParts = isRing,
-        detectHoles = isRing && isHole === void 0,
-        startId = pointId,
-        x, y, prevX, prevY;
-
-    for (var i=0; i<pointCount; i++) {
-      x = arr[offs++];
-      y = arr[offs++];
-      if (i == 0 || prevX != x || prevY != y) {
-        xx[pointId] = x;
-        yy[pointId] = y;
-        pointId++;
-      }
-      prevX = x, prevY = y;
+  // Calculate data to use for shape preservation
+  var numArcs = data.arcs.length;
+  var retainedPointCounts = new Uint8Array(numArcs)
+  Utils.forEach(data.layers, function(layer) {
+    if (layer.geometry_type == 'polygon') {
+      var arcCounts = MapShaper.getArcCountsInLayer(layer.shapes, numArcs);
+      layer.arcCounts = arcCounts;
+      MapShaper.calcPointRetentionData(layer.shapes, retainedPointCounts, arcCounts);
     }
+  });
 
-    var validPoints = pointId - startId;
-    var path = {
-      size: validPoints,
-      isHole: false,
-      isPrimary: false,
-      shapeId: shapeId
-    };
+  data.retainedPointCounts = retainedPointCounts;
+  return data;
+};
 
-    if (isRing) {
-      var signedArea = msSignedRingArea(xx, yy, startId, validPoints);
-      var err = null;
-      if (validPoints < 4) {
-        err = "Only " + validPoints + " valid points in ring";
-      } else if (signedArea == 0) {
-        err = "Zero-area ring";
-      } else if (xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
-        err = "Open path";
-      }
+MapShaper.validateImportData = function(obj) {
+  if (!Utils.isArray(obj.arcs)) error ("Missing topological path data");
+  if (!Utils.isArray(obj.layers) || obj.layers.length == 0) error ("Missing layer data");
+};
 
-      if (err != null) {
-        trace("Invalid ring in shape:", shapeId, "--", err);
-        // pathObj.isNull = true;
-        pointId -= validPoints; // backtrack...
-        return false;
-      }
+MapShaper.getArcCountsInLayer = function(shapes, numArcs) {
+  var counts = new Uint8Array(numArcs);
+  Utils.forEach(shapes, function(shape) {
+    if (shape) MapShaper.calcArcCountsInShape(counts, shape);
+  });
+  return counts;
+};
 
-      if (detectHoles) {
-        if (signedArea < 0) {
-          path.isHole = true;
-        }
-      } else {
-        path.isHole = isHole;
-        if (isHole && signedArea > 0 || !isHole && signedArea < 0) {
-          // reverse coords
-          MapShaper.reversePathCoords(xx, startId, validPoints);
-          MapShaper.reversePathCoords(yy, startId, validPoints);
-          signedArea *= -1;
-        }
-      }
+MapShaper.calcArcCountsInShape = function(counts, shape) {
+  var arcId, arcs;
+  for (var j=0, pathCount = shape.length; j<pathCount; j++) {
+    arcs = shape[j];
+    for (var i=0, n=arcs.length; i<n; i++) {
+      arcId = arcs[i];
+      if (arcId < 0) arcId = ~arcId;
+      counts[arcId] += 1;
+    }
+  }
+};
 
-      if (signedArea > primaryPathArea) {
-        primaryPath = path;
-        primaryPathArea = signedArea;
-      }
 
-      // TODO: detect shapes that only contain holes
+MapShaper.importNonTopoDataset = function(importData) {
+  var topoData = MapShaper.buildTopology(importData),
+      info = importData.info,
+      layer = {
+        name: "",
+        properties: importData.properties,
+        shapes: topoData.shapes,
+        geometry_type: info.input_geometry_type
+      };
 
-    } else { // no rings (i.e. polylines)
-      openPaths++;
-      if (validPoints < 2) {
-        trace("Collapsed path in shape:", shapeId, "-- skipping");
-        pointId -= validPoints;
-        return false;
+  return {
+    arcs: topoData.arcs,
+    arcMinPointCounts: topoData.arcMinPointCounts,
+    layers: [layer]
+  };
+};
+
+
+// Calculate number of interior points to preserve in each arc
+// to protect 'primary' rings from collapsing.
+//
+MapShaper.calcPointRetentionData = function(shapes, retainedPointCounts, arcCounts) {
+  Utils.forEach(shapes, function(shape, shapeId) {
+    if (!shape) return;
+    for (var i=0, n=shape.length; i<n; i++) {
+      var arcs = shape[i];
+      // if a part has 3 or more arcs, assume it won't collapse...
+      // TODO: look into edge cases where this isn't true
+      if (arcs.length <= 2) { // && pathData[pathId].isPrimary) {
+        MapShaper.calcRetainedCountsForRing(arcs, retainedPointCounts, arcCounts)
       }
     }
-
-    paths.push(path);
-    pathsInShape++;
-    return true;
-  };
+  });
+  return retainedPointCounts;
+};
 
 
-  // Import an array of [x, y] Points
-  //
-  this.importPoints = function(points, isRing, isHole) {
-    var n = points.length,
-        size = n * 2,
-        p;
-    if (buf.length < size) buf = new Float64Array(Math.ceil(size * 1.3));
-    for (var i=0, j=0; i < n; i++) {
-      p = points[i];
-      buf[j++] = p[0];
-      buf[j++] = p[1];
+// Calculate number of interior points in each arc of a topological ring
+// that should be preserved in order to prevent ring from collapsing
+// @path an array of one or more arc ids making up the ring
+// @sharedArcFlags
+// @minArcPoints array of counts of interior points to retain, indexed by arc id
+// TODO: improve; in some cases, this method could fail to prevent degenerate rings
+//
+MapShaper.calcRetainedCountsForRing = function(path, retainedPointCounts, arcCounts) {
+  var arcId;
+  for (var i=0, arcCount=path.length; i<arcCount; i++) {
+    arcId = path[i];
+    if (arcId < 0) arcId = ~arcId;
+    if (arcCount == 1) { // one-arc polygon (e.g. island) -- save two interior points
+      retainedPointCounts[arcId] = 2;
     }
-    this.importCoordsFromFlatArray(buf, 0, n, isRing, isHole);
-  };
-
-
-  // TODO: detect null shapes, shapes that only have holes (error condition)
-  //
-  this.done = function() {
-    endPrevShape();
-
-    var skippedPoints = xx.length - pointId;
-    if (xx.length > pointId) {
-      xx = xx.subarray(0, pointId);
-      yy = yy.subarray(0, pointId);
+    else if (arcCounts[arcId] < 2) {
+      retainedPointCounts[arcId] = 1; // non-shared member of two-arc polygon: save one point
     }
-    var bounds = MapShaper.calcXYBounds(xx, yy);
-
-    var info = {
-      input_bounds: bounds.toArray(),
-      input_point_count: xx.length,
-      input_part_count: paths.length,
-      input_skipped_points: skippedPoints,
-      input_shape_count: shapeId + 1,
-      input_geometry_type: openPaths > 0 ? 'polyline' : 'polygon'
-    };
-
-    return {
-      pathData: paths,
-      xx: xx,
-      yy: yy,
-      info: info
-    };
-  };
-
-}
+  }
+};

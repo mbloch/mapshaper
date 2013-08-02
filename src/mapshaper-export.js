@@ -1,4 +1,76 @@
-/* @requires mapshaper-geojson, mapshaper-topojson */
+/* @requires mapshaper-geojson, mapshaper-topojson, mapshaper-shapefile */
+
+
+MapShaper.getDefaultFileExtension = function(fileType) {
+  var ext = "";
+  if (fileType == 'shapefile') {
+    ext = 'shp';
+  } else if (fileType == 'geojson' || fileType == 'topojson') {
+    ext = "json";
+  }
+  return ext;
+};
+
+
+// Return an array of objects with "filename" "filebase" "extension" and "content" attributes.
+//
+MapShaper.exportContent = function(layers, arcData, opts) {
+  var exporter = MapShaper.exporters[opts.format];
+  if (!exporter) error("exportContent() Unknown export format:", opts.format);
+  if (!opts.extension) opts.extension = MapShaper.getDefaultFileExtension(opts.format);
+  if (!opts.filebase) opts.filebase = "out"
+
+  validateLayerData(layers);
+  T.start();
+  var files = exporter(layers, arcData);
+  T.stop("Export " + opts.format);
+
+  assignFileNames(files, opts);
+  return files;
+
+  function validateLayerData(layers) {
+    Utils.forEach(layers, function(lyr) {
+      if (Utils.isArray(lyr.shapes) == false) {
+        error ("#exportContent() A layer is missing shape data");
+      }
+      if (lyr.geometry_type != 'polygon' && lyr.geometry_type != 'polyline') {
+        error ("#exportContent() A layer is missing a valid geometry type");
+      }
+    });
+  }
+
+  function assignFileNames(files, opts) {
+    var index = {};
+    Utils.forEach(files, function(file) {
+      file.extension = file.extension || opts.extension;
+      var name = opts.filebase,
+          i = 1,
+          filebase, filename, ext;
+      if (file.name) {
+        name += "-" + file.name;
+      }
+      do {
+        filebase = name;
+        if (i > 1) {
+          filebase = filebase + String(i);
+        }
+        filename = filebase + '.' + file.extension;
+        i++;
+      } while (filename in index);
+
+      index[filename] = true;
+      file.filebase = filebase;
+      file.filename = filename;
+    });
+  }
+};
+
+MapShaper.exporters = {
+  geojson: MapShaper.exportGeoJSON,
+  topojson: MapShaper.exportTopoJSON,
+  shapefile: MapShaper.exportShp
+};
+
 
 MapShaper.PathExporter = PathExporter; // for testing
 

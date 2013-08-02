@@ -1,16 +1,14 @@
 /* @require mapshaper-elements, mapshaper-shapefile, mapshaper-geojson, mapshaper-topojson */
 
 function DropControl(importer) {
-  var el = El('body');
-  el.on('dragenter', ondrag);
-  el.on('dragexit', ondrag);
+  var el = El('#page-wrapper');
+  el.on('dragleave', ondrag);
   el.on('dragover', ondrag);
   el.on('drop', ondrop);
 
   function ondrag(e) {
     // blocking drag events enables drop event
     e.preventDefault();
-    e.stopPropagation();
   }
 
   function ondrop(e) {
@@ -35,7 +33,7 @@ function ImportControl(editor) {
       reader.onload = function(e) {
         inputFileContent(name, type, reader.result);
       }
-      type == 'shapefile' ? reader.readAsArrayBuffer(file) : reader.readAsText(file, 'UTF-8');
+      type == 'shp' ? reader.readAsArrayBuffer(file) : reader.readAsText(file, 'UTF-8');
     }
   };
 
@@ -50,7 +48,7 @@ function ImportControl(editor) {
 
   function guessFileType(name) {
     if (/\.shp$/.test(name)) {
-      return 'shapefile';
+      return 'shp';
     }
     else if (/json$/.test(name)) { // accept .json, .geojson, .topojson
       return 'json';
@@ -61,20 +59,11 @@ function ImportControl(editor) {
   function inputFileContent(path, type, content) {
     var fileInfo = MapShaper.parseLocalPath(path),
         fname = fileInfo.filename,
-        data;
+        data = MapShaper.importContent(content, type);
 
     var opts = {
       input_file: fname
     };
-
-
-    if (type == 'shapefile') {
-      data = MapShaper.importShp(content);
-    } else if (type == 'json') {
-      data = MapShaper.importJSON(JSON.parse(content));
-    } else {
-      error("Unsupported file type:", fname);
-    }
     editor.addData(data, opts);
   }
 }
@@ -155,37 +144,58 @@ var SimplifyControl = function() {
 
 // Export buttons and their behavior
 //
-var ExportControl = function(arcData, topoData, opts) {
+var ExportControl = function(arcData, layers, fileBase) {
 
-  if (opts.geometry != 'polygon' && opts.geometry != 'polyline') {
-    error("ExportControl() unexpected geometry type:", opts.geometry);
-  }
   El('#g-export-control').show();
   if (typeof URL == 'undefined' || !URL.createObjectURL) {
     El('#g-export-control .g-label').text("Exporting is not supported in this browser");
     return;
   }
 
-  var filename = opts && opts.output_name || "out",
-      anchor = El('#g-export-control').newChild('a').attr('href', '#').node(),
+  var anchor = El('#g-export-control').newChild('a').attr('href', '#').node(),
       blobUrl;
 
   El('#g-export-buttons').css('display:inline');
 
-  var geoBtn = new SimpleButton('#g-geojson-btn').active(true).on('click', function() {
-    geoBtn.active(false);
-    setTimeout(exportGeoJSON, 10); // kludgy way to show button response
-  });
-  var shpBtn = new SimpleButton('#g-shapefile-btn').active(true).on('click', function() {
-    shpBtn.active(false);
-    exportZippedShapefile();
-  });
-  var topoBtn = new SimpleButton('#g-topojson-btn').active(true).on('click', function() {
-    topoBtn.active(false);
-    setTimeout(exportTopoJSON, 10);
-    });
+  var geoBtn = exportButton("#g-geojson-btn", "geojson"),
+      shpBtn = exportButton("#g-shapefile-btn", "shapefile"),
+      topoBtn = exportButton("#g-topojson-btn", "topojson");
 
-  function exportBlob(filename, blob) {
+  function exportButton(selector, format) {
+
+    function onClick(e) {
+      btn.active(false);
+      setTimeout(function() {
+        exportAs(format, function() {
+          btn.active(true);
+        });
+      }, 10);
+    }
+
+    var btn = new SimpleButton(selector).active(true).on('click', onClick);
+    return btn;
+  }
+
+  function exportAs(format, done) {
+    var opts = {
+          format: format,
+          filebase: fileBase,
+          extension: MapShaper.getDefaultFileExtension(format)
+        },
+        files = MapShaper.exportContent(layers, arcData, opts),
+        file;
+    if (!Utils.isArray(files) || files.length == 0) {
+      error("exportAs() Export failed.");
+    } else if (files.length == 1) {
+      file = files[0];
+      saveBlob(file.filename, new Blob([file.content]));
+      done();
+    } else {
+      saveZipFile((fileBase  || "out") + ".zip", files, done);
+    }
+  }
+
+  function saveBlob(filename, blob) {
     try {
       // revoke previous download url, if any. TODO: do this when download completes (how?)
       if (blobUrl) URL.revokeObjectURL(blobUrl);
@@ -194,6 +204,7 @@ var ExportControl = function(arcData, topoData, opts) {
       alert("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.")
       return;
     }
+
     anchor.href = blobUrl;
     anchor.download = filename;
     var clickEvent = document.createEvent("MouseEvent");
@@ -201,53 +212,10 @@ var ExportControl = function(arcData, topoData, opts) {
     anchor.dispatchEvent(clickEvent);
   }
 
-  function exportGeoJSON() {
-    var json = MapShaper.exportGeoJSON({shapes: topoData.shapes, arcs:arcData, type: opts.geometry, properties: opts.properties});
-    exportBlob(filename + ".geojson", new Blob([json]));
-    geoBtn.active(true);
-  }
-
-  function exportTopoJSON() {
-    var polygons = {
-      type: opts.geometry,
-      name: opts.output_name || opts.geometry + 's', // 'polygons' or 'polylines'
-      shapes: topoData.shapes
-    };
-    var json = MapShaper.exportTopoJSON({arcs:arcData, objects: [polygons], bounds: opts.bounds});
-    exportBlob(filename + ".topojson", new Blob([json]));
-    topoBtn.active(true);
-  }
-
-  function exportShapefile() {
-    return MapShaper.exportShp({arcs: arcData, shapes: topoData.shapes, type: opts.geometry});
-  }
-
-  function exportZippedShapefile() {
-    var data = exportShapefile(),
-        shp = new Blob([data.shp]),
-        shx = new Blob([data.shx]);
-
-    function addReadMe(write) {
-
-    }
-
-    function addShp(writer) {
-      writer.add(filename + ".shp", new zip.BlobReader(shp), function() {
-        addShx(writer);
-      }, null); // last arg: onprogress
-    }
-
-    function addShx(writer) {
-      writer.add(filename + ".shx", new zip.BlobReader(shx), function() {
-        writer.close(function(blob) {
-          exportBlob(filename + ".zip", blob)
-          shpBtn.active(true);
-        });
-      }, null);
-    }
-
+  function saveZipFile(zipfileName, files, done) {
+    var toAdd = files;
     try {
-      zip.createWriter(new zip.BlobWriter("application/zip"), addShp, error);
+      zip.createWriter(new zip.BlobWriter("application/zip"), addFile, zipError);
     } catch(e) {
       if (Utils.parseUrl(Browser.getPageUrl()).protocol == 'file') {
         alert("This browser doesn't support offline .zip file creation.");
@@ -255,8 +223,34 @@ var ExportControl = function(arcData, topoData, opts) {
         alert("This browser doesn't support .zip file creation.");
       }
     }
+
+    function zipError(msg) {
+      error(msg);
+    }
+
+    function addFile(archive) {
+      if (toAdd.length == 0) {
+        archive.close(function(blob) {
+          saveBlob(zipfileName, blob);
+          done();
+        });
+      } else {
+        var obj = toAdd.pop(),
+            blob = new Blob([obj.content]);
+        archive.add(obj.filename, new zip.BlobReader(blob), function() {addFile(archive)});
+      }
+    }
   }
 
+  /*
+  function blobToDataURL(blob, cb) {
+    var reader = new FileReader();
+    reader.onload = function() {
+      cb(reader.result);
+    };
+    reader.readAsDataURL(blob);
+  }
+  */
 }
 
 

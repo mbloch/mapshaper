@@ -130,22 +130,18 @@ var info = {},
 T.verbose = opts.timing;
 T.start("Start timing");
 
-var importData = mapshaper.importFromFile(opts.input_file, opts.input_format),
-    properties = importData.properties || null,
-    topoData = mapshaper.buildTopology(importData), // obj.xx, obj.yy, obj.partIds, obj.shapeIds
-    arcs = topoData.arcs,
-    arcData = new mapshaper.ArcDataset(arcs);
-
-Utils.extend(info, importData.info);
-importData = null; // don't need this anymore, gc can take it.
+var importData = mapshaper.importFromFile(opts.input_file),
+    outputFormat = opts.output_format || importData.input_format,
+    arcData = new mapshaper.ArcDataset(importData.arcs),
+    bounds = arcData.getBounds();
 
 if (opts.use_simplification) {
-  var vertexData = mapshaper.simplifyPaths(arcs, opts.simplify_method, info.input_bounds);
+  var vertexData = mapshaper.simplifyPaths(importData.arcs, opts.simplify_method, bounds.toArray());
 
   mapshaper.gc();
 
-  if (opts.keep_shapes && topoData.arcMinPointCounts) {
-    mapshaper.protectRingsFromCollapse(vertexData, topoData.arcMinPointCounts);
+  if (opts.keep_shapes && importData.arcMinPointCounts) {
+    mapshaper.protectRingsFromCollapse(vertexData, importData.retainedPointCounts);
   }
   arcData.setThresholds(vertexData);
 }
@@ -158,6 +154,28 @@ if (opts.simplify_pct) {
   // no simplification
 }
 
+var exportOpts = {
+  format: outputFormat,
+  extension: opts.output_extension,
+  filebase: opts.output_file_base
+}
+var exports = mapshaper.exportContent(importData.layers, arcData, exportOpts);
+
+// copy dbf & prj files, if shapefile
+if (outputFormat == 'shapefile') {
+
+
+}
+
+var paths = mapshaper.getOutputPaths(exports, opts.output_directory, opts.output_extension);
+Utils.forEach(exports, function(obj, i) {
+  var path = paths[i];
+  Node.writeFile(path, obj.content);
+  console.log("Wrote " + path);
+});
+
+
+/*
 var exportOpts = {
   arcs: arcData,
   shapes: topoData.shapes,
@@ -192,6 +210,7 @@ else if (opts.output_format == "shapefile") {
   if (Node.fileExists(prjFile)) Node.copyFile(prjFile, obase + ".prj");
   if (Node.fileExists(dbfFile)) Node.copyFile(dbfFile, obase + ".dbf");
 }
+*/
 
 info.processing_time = T.stop("Total time");
 
