@@ -4,15 +4,17 @@
 //
 function Heap() {
   var maxItems,
-      dataOffs, dataArr,
+      dataOffs,
+      dataArr,
       itemsInHeap,
       poppedVal,
-      heapArr, indexArr;
+      heapArr,
+      indexArr;
 
   this.addValues = function(values, start, end) {
     var minId = start | 0,
-        maxItems = (end == null ? values.length : end + 1) - minId;
-    dataOffs = minId,
+        maxItems = (isNaN(end) ? values.length : end + 1) - minId;
+    dataOffs = minId;
     dataArr = values;
     itemsInHeap = 0;
     reserveSpace(maxItems);
@@ -41,7 +43,7 @@ function Heap() {
     }
     dataArr[valId] = val;
     var heapIdx = indexArr[valId - dataOffs];
-    if (heapIdx == null || heapIdx >= itemsInHeap) error("[updateValue()] out-of-range heap index.");
+    if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) error("[updateValue()] out-of-range heap index.");
     reHeap(heapIdx);
   };
 
@@ -72,8 +74,7 @@ function Heap() {
       heapArr = new Int32Array(bufLen);
       indexArr = new Int32Array(bufLen);
     }
-  };
-
+  }
 
   // Associate a heap idx with the id of a value in valuesArr
   //
@@ -81,7 +82,6 @@ function Heap() {
     indexArr[valId - dataOffs] = heapIdx;
     heapArr[heapIdx] = valId;
   }
-
 
   // Check that heap is ordered starting at a given node
   // (traverses heap recursively)

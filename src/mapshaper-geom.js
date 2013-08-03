@@ -2,11 +2,10 @@
 
 function distance3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
+    dy = ay - by,
+    dz = az - bz;
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
-
 
 function distanceSq(ax, ay, bx, by) {
   var dx = ax - bx,
@@ -50,7 +49,7 @@ function innerAngle(ax, ay, bx, by, cx, cy) {
   var ab = distance2D(ax, ay, bx, by),
       bc = distance2D(bx, by, cx, cy),
       theta, dotp;
-  if (ab == 0 || bc == 0) {
+  if (ab === 0 || bc === 0) {
     theta = 0;
   } else {
     dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
@@ -70,7 +69,7 @@ function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab = distance3D(ax, ay, az, bx, by, bz),
       bc = distance3D(bx, by, bz, cx, cy, cz),
       theta, dotp;
-  if (ab == 0 || bc == 0) {
+  if (ab === 0 || bc === 0) {
     theta = 0;
   } else {
     dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
@@ -113,7 +112,7 @@ function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
 //
 function triangleHeightSq(ab2, bc2, ac2) {
   var dist2;
-  if (ac2 == 0.0) {
+  if (ac2 === 0) {
     dist2 = ab2;
   } else if (ab2 >= bc2 + ac2) {
     dist2 = bc2;
@@ -123,8 +122,8 @@ function triangleHeightSq(ab2, bc2, ac2) {
     var dval = (ab2 + ac2 - bc2);
     dist2 = ab2 -  dval * dval / ac2  * 0.25;
   }
-  if (dist2 < 0.0) {
-    dist2 = 0.0;
+  if (dist2 < 0) {
+    dist2 = 0;
   }
   return dist2;
 }
@@ -132,13 +131,13 @@ function triangleHeightSq(ab2, bc2, ac2) {
 
 function msSignedRingArea(xx, yy, start, len) {
   var sum = 0,
-      start = start | 0,
-      end = start + (len == null ? xx.length - start : len | 0) - 1;
+      i = start | 0,
+      end = i + (len ? len | 0 : xx.length - i) - 1;
 
-  if (start < 0 || end >= xx.length) {
+  if (i < 0 || end >= xx.length) {
     error("Out-of-bounds array index");
   }
-  for (var i=start; i < end; i++) {
+  for (; i < end; i++) {
     sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
   }
   return sum / 2;
@@ -152,7 +151,8 @@ MapShaper.reversePathCoords = function(arr, start, len) {
     tmp = arr[i];
     arr[i] = arr[j];
     arr[j] = tmp;
-    i++, j--;
+    i++;
+    j--;
   }
 };
 
