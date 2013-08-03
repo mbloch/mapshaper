@@ -156,7 +156,7 @@ describe("mapshaper-topology.js", function() {
         // [c, a, b] [b, c] [b, d, c]
         [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]]);
       assert.deepEqual(out.paths, [[0, 1], [~1, 2]]);
-      assert.deepEqual(out.sharedArcFlags, [0, 1, 0]);
+      //assert.deepEqual(out.sharedArcFlags, [0, 1, 0]);
     })
 
     it('ring endpoints are misaligned 1', function () {
@@ -170,7 +170,7 @@ describe("mapshaper-topology.js", function() {
         // [c, a, b] [b, c] [b, d, c]
         [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]]);
       assert.deepEqual(out.paths, [[0, 1], [2, ~1]]);
-      assert.deepEqual(out.sharedArcFlags, [0, 1, 0]);
+      //assert.deepEqual(out.sharedArcFlags, [0, 1, 0]);
     })
 
     it('ring endpoints are misaligned 2', function () {
@@ -184,7 +184,7 @@ describe("mapshaper-topology.js", function() {
         // [c, a, b] [b, c] [b, d, c]
         [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]]);
       assert.deepEqual(out.paths, [[0, 1], [~1, 2]]);
-      assert.deepEqual(out.sharedArcFlags, [0, 1, 0]);
+      //assert.deepEqual(out.sharedArcFlags, [0, 1, 0]);
     })
   })
 
@@ -207,7 +207,7 @@ describe("mapshaper-topology.js", function() {
       var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0, 1], [2, ~0]])
       assert.deepEqual(out.arcs, [[[2, 2, 2], [3, 2, 1]], [[2, 1, 2], [1, 1, 3]], [[2, 3, 2], [3, 3, 1]]])
-      assert.deepEqual(out.sharedArcFlags, [1, 0, 0])
+      // assert.deepEqual(out.sharedArcFlags, [1, 0, 0])
     })
 
   })

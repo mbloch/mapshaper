@@ -5,9 +5,8 @@ mapshaper-topology,
 mapshaper-map,
 mapshaper-maplayer,
 mapshaper-simplify,
-mapshaper-visvalingam,
-mapshaper-dp,
-mapshaper-export
+mapshaper-export,
+mapshaper-import
 */
 
 var dropper,
@@ -21,6 +20,7 @@ if (Browser.inBrowser) {
       El("#mshp-not-supported").show();
       return;
     }
+    El('#mshp-import').show();
     editor = new Editor();
     importer = new ImportControl(editor);
     dropper = new DropControl(importer);
@@ -75,28 +75,27 @@ function Editor() {
     importOpts.simplifyMethod = El('#g-simplification-menu input[name=method]:checked').attr('value');
 
     var mapOpts = {
-      bounds: contentBounds, // arcData.getBounds(),
-      padding: 10
+      bounds: contentBounds,
+      padding: 12
     };
     map = new MshpMap("#mshp-main-map", mapOpts);
     slider = new SimplifyControl();
   };
 
-  this.addData = function(importData, opts) {
+  this.addData = function(data, opts) {
 
-    var topoData = MapShaper.buildTopology(importData); // obj.xx, obj.yy, obj.partIds, obj.shapeIds
-    var arcData = new ArcDataset(topoData.arcs),
+    var arcData = new ArcDataset(data.arcs),
+        bounds = arcData.getBounds(),
         vertexData;
 
     if (!map) {
-      init(arcData.getBounds());
+      init(bounds);
     }
 
-    var inputBounds = importData.info.input_bounds;
-    var vertexData = MapShaper.simplifyPaths(topoData.arcs, importOpts.simplifyMethod, inputBounds);
+    var vertexData = MapShaper.simplifyPaths(data.arcs, importOpts.simplifyMethod, bounds.toArray());
 
     if (importOpts.preserveShapes) {
-      MapShaper.protectRingsFromCollapse(vertexData, topoData.arcMinPointCounts);
+      MapShaper.protectRingsFromCollapse(vertexData, data.retainedPointCounts);
     }
 
     arcData.setThresholdsForGUI(vertexData);
@@ -109,18 +108,9 @@ function Editor() {
       group.refresh();
     });
 
-    var exportOpts = {
-      bounds: arcData.getBounds(),
-      geometry: importData.info.input_geometry_type,
-      properties: importData.properties || null
-    };
-    if (opts.input_file) {
-      var parts = MapShaper.parseLocalPath(opts.input_file);
-      exportOpts.output_name = parts.basename;
-    }
 
-    // TODO: figure out exporting with multiple datasets
-    var exporter = new ExportControl(arcData, topoData, exportOpts);
+    var fileBase = MapShaper.parseLocalPath(opts.input_file).basename || "out";
+    var exporter = new ExportControl(arcData, data.layers, fileBase);
   };
 }
 

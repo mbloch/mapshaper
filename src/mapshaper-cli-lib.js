@@ -1,11 +1,9 @@
 /* @requires
 mapshaper-topology,
 mapshaper-simplify,
-mapshaper-shapefile,
-mapshaper-visvalingam,
-mapshaper-dp,
 mapshaper-shapes,
-mapshaper-export
+mapshaper-export,
+mapshaper-import
 */
 
 var cli = MapShaper.cli = {};
@@ -20,57 +18,110 @@ MapShaper.validateArgv = function(argv) {
   return opts;
 };
 
+MapShaper.getOutputPaths = function(files, dir, extension) {
+  if (!files || files.length == 0) {
+    console.log("No files to save");
+    return;
+  }
+  // assign filenames
+  Utils.forEach(files, function(obj) {
+    obj.pathbase = Node.path.join(dir, obj.filebase);
+    obj.extension = obj.extension || extension || "o"; // TODO: validate ext
+  });
+
+  // avoid naming conflicts
+  var i = 0, suffix = "";
+  while (cli.testFileCollision(files, suffix)) {
+    i++;
+    suffix = "-ms"
+    if (i > 1) suffix += String(i);
+  }
+
+  // compose paths
+  return Utils.map(files, function(obj) {
+    return obj.pathbase + suffix + '.' + obj.extension;
+  });
+};
+
+
+cli.testFileCollision = function(files, suff) {
+  return Utils.some(files, function(obj) {
+    var path = obj.pathbase + suff + '.' + obj.extension;
+    return Node.fileExists(path);
+  });
+};
+
+cli.validateFileExtension = function(path) {
+  var type = MapShaper.guessFileType(path);
+  return !!type;
+};
+
+
 cli.validateInputOpts = function(opts, argv) {
   var ifile = argv._[0];
   if (!ifile) error("Missing an input file");
 
-  var ifileInfo = Node.getFileInfo(ifile);
-  if (!ifileInfo.exists) error("File not found (" + ifile + ")");
-  if (ifileInfo.ext == 'shp') {
-    opts.input_format = 'shapefile';
-  } else if (/json$/.test(ifileInfo.ext)) {
-    opts.input_format = 'geojson';
-  } else {
-     error("File has an unknown extension:", ifileInfo.ext);
+  if (!Node.fileExists(ifile)) error("File not found (" + ifile + ")");
+  var ftype = MapShaper.guessFileType(ifile);
+  if (!ftype) {
+     error("File has an unsupported extension:", ifile);
   }
-
   opts.input_file = ifile;
-  opts.input_file_base = ifileInfo.base;
-  opts.input_directory = ifileInfo.relative_dir;
-  opts.input_path_base = Node.path.join(opts.input_directory, opts.input_file_base);
   return opts;
 };
 
 cli.validateOutputOpts = function(opts, argv) {
   var supportedTypes = ["geojson", "topojson", "shapefile"],
-      fmt = argv.f && argv.f.toLowerCase() || null;
-  if (fmt && Utils.contains(supportedTypes, fmt) == false) error("Unsupported output format:", argv.f);
-  opts.output_format = fmt || opts.input_format;
+      odir = ".",
+      ifileInfo = Node.getFileInfo(opts.input_file),
+      obase = ifileInfo.base, // default to input file name
+      oext = ifileInfo.ext,   // default to input file extension
+      ofmt;
 
-  var obase = opts.input_file_base + "-mshp"; // default
+  // process --format option
+  if (argv.f) {
+    ofmt = argv.f.toLowerCase();
+    // use default extension for output format
+    oext = MapShaper.getDefaultFileExtension(ofmt);
+    if (Utils.contains(supportedTypes, ofmt) == false) {
+      error("Unsupported output format:", argv.f);
+    }
+  }
+
+  // process -o option
   if (argv.o) {
     if (!Utils.isString(argv.o)) {
       error("-o option needs a file name");
     }
     var ofileInfo = Node.getFileInfo(argv.o);
+
     if (ofileInfo.is_directory) {
       error("-o should be a file, not a directory");
     }
-    if (ofileInfo.ext && ofileInfo.ext != "shp") {
-      error("Output option looks like an unsupported file type:", ofileInfo.file);
-    }
-    if (!Node.dirExists(ofileInfo.relative_dir)) {
-      error("Output directory not found");
-    }
-    obase = Node.path.join(ofileInfo.relative_dir, ofileInfo.base);
 
-    if (opts.input_format == opts.output_format && obase == Node.path.join(opts.input_directory, opts.input_file_base)) {
-      // TODO: overwriting is possible users types absolute path for input or output path...
-      error("Output file shouldn't overwrite source file");
+    if (ofileInfo.ext) {
+      // use -o extension, if present
+      // allows .topojson or .geojson instead of .json
+      // override extension inferred from --format option
+      oext = ofileInfo.ext;
     }
+
+    if (!Node.dirExists(ofileInfo.relative_dir)) {
+      error("Output directory not found:", ofileInfo.relative_dir);
+    }
+
+    if (oext && !cli.validateFileExtension(oext)) {
+      error("Output file looks like an unsupported file type:", ofileInfo.file);
+    }
+
+    obase = ofileInfo.base;
+    odir = ofileInfo.relative_dir;
   }
 
-  opts.output_path_base = obase;
+  opts.output_extension = oext;
+  if (ofmt) opts.output_format = ofmt; // inferred later if not found above
+  opts.output_directory = odir;
+  opts.output_file_base = obase;
   return opts;
 };
 
@@ -105,20 +156,17 @@ MapShaper.gc = function() {
 };
 
 
-MapShaper.importFromFile = function(fname, format) {
-  var info = Node.getFileInfo(fname),
-      data, content;
-  if (!info.exists) error("File not found.");
-  if (format == 'shapefile') {
+MapShaper.importFromFile = function(fname) {
+  var fileType = MapShaper.guessFileType(fname),
+      content;
+  if (fileType == 'shp') {
     content = Node.readFile(fname);
-    data = MapShaper.importShp(content);
-  } else if (/json$/.test(format)) {
+  } else if (fileType == 'json') {
     content = Node.readFile(fname, 'utf-8');
-    data = MapShaper.importJSON(content);
   } else {
     error("Unexpected input file:", fname);
   }
-  return data;
+  return MapShaper.importContent(content, fileType);
 };
 
 var api = Utils.extend(MapShaper, {

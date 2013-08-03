@@ -28,13 +28,10 @@ MapShaper.buildTopology = function(obj) {
 
   T.start();
   var topoData = buildPathTopology(obj.xx, obj.yy, obj.pathData);
-  var retainedPointCounts = calcPointRetentionData(topoData.paths, obj.pathData, topoData.sharedArcFlags);
   var shapes = groupPathsByShape(topoData.paths, obj.pathData, obj.info.input_shape_count);
   T.stop("Process topology");
   return {
     arcs: topoData.arcs,
-    sharedArcFlags: topoData.sharedArcFlags,
-    arcMinPointCounts: retainedPointCounts,
     shapes: shapes
   };
 };
@@ -66,8 +63,7 @@ function ArcIndex(pointCount, xyToUint) {
         return xyToUint(x, y) % hashTableSize;
       },
       chainIds = [],
-      arcs = [],
-      sharedArcs = [];
+      arcs = [];
 
   Utils.initializeArray(hashTable, -1);
 
@@ -79,7 +75,6 @@ function ArcIndex(pointCount, xyToUint) {
 
     hashTable[key] = arcId;
     arcs.push([xx, yy]);
-    sharedArcs.push(0);
     chainIds.push(chainId);
     return arcId;
   };
@@ -103,7 +98,6 @@ function ArcIndex(pointCount, xyToUint) {
       len = arcX.length;
       if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next]
           && arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
-        sharedArcs[arcId] = 1;
         return arcId;
       }
       arcId = chainIds[arcId];
@@ -114,10 +108,6 @@ function ArcIndex(pointCount, xyToUint) {
   this.getArcs = function() {
     return arcs;
   };
-
-  this.getSharedArcFlags = function() {
-    return sharedArcs;
-  }
 }
 
 
@@ -153,15 +143,9 @@ function buildPathTopology(xx, yy, pathData) {
   });
   T.stop("Find topological boundaries")
 
-  var sharedArcFlags = index.getSharedArcFlags();
-  if (typedArrays) {
-    sharedArcFlags = new Uint8Array(sharedArcFlags)
-  }
-
   return {
     paths: paths,
-    arcs: index.getArcs(),
-    sharedArcFlags: sharedArcFlags
+    arcs: index.getArcs()
   };
 
   function nextPoint(id) {
@@ -408,42 +392,6 @@ function initPointChains(xx, yy, hash, verbose) {
   return chainIds;
 };
 
-
-// Calculate number of interior points to preserve in each arc
-// to protect 'primary' rings from collapsing.
-//
-function calcPointRetentionData(paths, pathData, sharedArcFlags) {
-  var retainedPointCounts = new Uint8Array(sharedArcFlags.length);
-  Utils.forEach(paths, function(path, pathId) {
-    // if a part has 3 or more arcs, assume it won't collapse...
-    // TODO: look into edge cases where this isn't true
-    if (path.length <= 2 && pathData[pathId].isPrimary) {
-      calcRetainedCountsForRing(path, sharedArcFlags, retainedPointCounts)
-    }
-  });
-  return retainedPointCounts;
-}
-
-// Calculate number of interior points in each arc of a topological ring
-// that should be preserved in order to prevent ring from collapsing
-// @path an array of one or more arc ids making up the ring
-// @sharedArcFlags
-// @minArcPoints array of counts of interior points to retain, indexed by arc id
-// TODO: improve; in some cases, this method could fail to prevent degenerate rings
-//
-function calcRetainedCountsForRing(path, sharedArcFlags, minArcPoints) {
-  var arcId;
-  for (var i=0, arcCount=path.length; i<arcCount; i++) {
-    arcId = path[i];
-    if (arcId < 0) arcId = ~arcId;
-    if (arcCount == 1) { // one-arc polygon (e.g. island) -- save two interior points
-      minArcPoints[arcId] = 2;
-    }
-    else if (sharedArcFlags[arcId] != 1) {
-      minArcPoints[arcId] = 1; // non-shared member of two-arc polygon: save one point
-    }
-  }
-}
 
 // Use shapeId property of @pathData objects to group paths by shape
 //
