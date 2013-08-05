@@ -64,7 +64,6 @@ function innerAngle(ax, ay, bx, by, cx, cy) {
   return theta;
 }
 
-
 function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab = distance3D(ax, ay, az, bx, by, bz),
       bc = distance3D(bx, by, bz, cx, cy, cz),
@@ -128,6 +127,25 @@ function triangleHeightSq(ab2, bc2, ac2) {
   return dist2;
 }
 
+MapShaper.calcArcBounds = function(xx, yy, i, n) {
+  var xmin = Infinity,
+      ymin = Infinity,
+      xmax = -Infinity,
+      ymax = -Infinity,
+      start = i | 0,
+      end = isNaN(n) ? xx.length - start : n + start,
+      x, y;
+  for (var i=start; i<end; i++) {
+    x = xx[i];
+    y = yy[i];
+    if (x < xmin) xmin = x;
+    if (x > xmax) xmax = x;
+    if (y < ymin) ymin = y;
+    if (y > ymax) ymax = y;
+  }
+  if (xmin > xmax || ymin > ymax) error("#calcArcBounds() null bounds");
+  return [xmin, ymin, xmax, ymax];
+};
 
 function msSignedRingArea(xx, yy, start, len) {
   var sum = 0,
@@ -155,7 +173,6 @@ MapShaper.reversePathCoords = function(arr, start, len) {
     j--;
   }
 };
-
 
 // merge B into A
 function mergeBounds(a, b) {

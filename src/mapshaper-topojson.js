@@ -1,11 +1,12 @@
 /* @requires mapshaper-common, mapshaper-geojson */
 
+var TopoJSON = MapShaper.topojson = {};
+
 MapShaper.importTopoJSON = function(obj) {
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
   var arcs = TopoJSON.importArcs(obj.arcs, obj.transform);
-
   var layers = Utils.mapObjectToArray(obj.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, arcs)
     lyr.name = name;
@@ -16,8 +17,6 @@ MapShaper.importTopoJSON = function(obj) {
     layers: layers,
   };
 };
-
-var TopoJSON = MapShaper.topojson = {};
 
 // Converts arc coordinates from rounded, delta-encoded values to
 // transposed arrays of geographic coordinates.
@@ -138,47 +137,28 @@ TopoJSON.pathImporters = {
   }
 };
 
-
 // Export a TopoJSON string containing a single object containing a GeometryCollection
 // TODO: Support ids from attribute data
 // TODO: Support properties
 //
 MapShaper.exportTopoJSON = function(layers, arcData) {
 
-  var arcCoords = Utils.map(arcData.getArcs(), function(arc) {
-    return arc.toArray();
-  });
+  var exportArcs = arcData.getFilteredCopy();
+  var transform = TopoJSON.getExportTransform(exportArcs),
+      inv = transform.invert();
 
+  exportArcs.applyTransform(transform, true);
+  var map = TopoJSON.filterExportArcs(exportArcs);
+  var deltaArcs = TopoJSON.getDeltaEncodedArcs(exportArcs);
   var objects = {};
-  Utils.forEach(layers, function(lyr) {
+  Utils.forEach(layers, function(lyr, i) {
     var geomType = lyr.geometry_type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
-    var exporter = new PathExporter(arcData, lyr.geometry_type == 'polygon');
+    var exporter = new PathExporter(exportArcs, lyr.geometry_type == 'polygon');
+    if (map) TopoJSON.remapLayerArcs(lyr.shapes, map);
     var obj = exportTopoJSONObject(exporter, lyr, geomType);
-    if (!obj) error("#exportTopoJSON() Missing data, skipping an object");
+    lyr.name = lyr.name || "layer" + (i + 1);
     objects[lyr.name] = obj;
   });
-
-  var srcBounds = arcData.getBounds(),
-      resXY = findTopoJSONResolution(arcCoords),
-      destBounds = new Bounds(0, 0, srcBounds.width() / resXY[0], srcBounds.height() / resXY[1]),
-      tr = srcBounds.getTransform(destBounds),
-      inv = tr.invert();
-
-  Utils.forEach(arcCoords, function(arc) {
-    var n = arc.length,
-        prevX = 0,
-        prevY = 0,
-        p, x, y;
-    for (var i=0, n=arc.length; i<n; i++) {
-      p = arc[i];
-      x = Math.round(p[0] * tr.mx + tr.bx);
-      y = Math.round(p[1] * tr.my + tr.by);
-      p[0] = x - prevX;
-      p[1] = y - prevY;
-      prevX = x;
-      prevY = y;
-    }
-  })
 
   var obj = {
     type: "Topology",
@@ -186,7 +166,7 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
       scale: [inv.mx, inv.my],
       translate: [inv.bx, inv.by]
     },
-    arcs: arcCoords,
+    arcs: deltaArcs,
     objects: objects
   };
 
@@ -196,26 +176,113 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
   }]
 };
 
+TopoJSON.remapLayerArcs = function(shapes, map) {
+  Utils.forEach(shapes, function(shape) {
+    TopoJSON.remapShapeArcs(shape, map);
+  });
+};
+
+// Re-index the arcs in a shape to account for removal of collapsed arcs.
+//
+TopoJSON.remapShapeArcs = function(shape, map) {
+  var dest = shape,
+      src = shape.splice(0, shape.length),
+      arcIds, path, arcNum, arcId, k, inv;
+  for (var pathId=0, numPaths=src.length; pathId < numPaths; pathId++) {
+    path = src[pathId];
+    arcIds = [];
+    for (var i=0, n=path.length; i<n; i++) {
+      arcNum = path[i];
+      inv = arcNum < 0;
+      arcId = inv ? ~arcNum : arcNum;
+      k = map[arcId];
+      if (k == -1) {
+        //
+      } else if (k <= arcId) {
+        arcIds.push(inv ? ~k : k);
+      } else {
+        error("Arc index problem")
+      }
+    }
+    if (arcIds.length > 0) {
+      dest.push(arcIds);
+    }
+  }
+};
+
+// Remove collapsed arcs from @arcDataset (ArcDataset) and re-index remaining
+// arcs.
+// Return an array mapping original arc ids to new ids (See ArcDataset#filter())
+//
+TopoJSON.filterExportArcs = function(arcData) {
+  var arcMap = arcData.filter(function(iter, i) {
+    var x, y;
+    if (iter.hasNext()) {
+      x = iter.x;
+      y = iter.y;
+      while (iter.hasNext()) {
+        if (iter.x !== x || iter.y !== y) return true;
+      }
+    }
+    return false;
+  });
+  return arcMap;
+};
+
+// Export arcs from @arcData as arrays of [x, y] points.
+// Exported arcs use delta encoding, as per the topojson spec.
+//
+TopoJSON.getDeltaEncodedArcs = function(arcData) {
+  var arcs = [];
+  arcData.forEach(function(iter, i) {
+    var arc = [],
+        x = 0,
+        y = 0;
+    while (iter.hasNext()) {
+      arc.push([iter.x - x, iter.y - y]);
+      x = iter.x;
+      y = iter.y;
+    }
+    arcs.push(arc.length > 1 ? arc : null);
+  });
+  return arcs;
+};
+
+// Return a Transform object for converting geographic coordinates to quantized
+// integer coordinates.
+//
+TopoJSON.getExportTransform = function(arcData) {
+  var srcBounds = arcData.getBounds();
+  var resXY = TopoJSON.calcExportResolution(arcData),
+      destBounds = new Bounds(0, 0, srcBounds.width() / resXY[0], srcBounds.height() / resXY[1]);
+  return srcBounds.getTransform(destBounds);
+};
+
 // Find the x, y values that map to x / y integer unit in topojson output
 // Calculated as 1/50 the size of average x and y offsets
 // (a compromise between compression, precision and simplicity)
 //
-function findTopoJSONResolution(arcs) {
+TopoJSON.calcExportResolution = function(arcData) {
   var dx = 0, dy = 0, n = 0;
-  Utils.forEach(arcs, function(arc) {
-    var a, b;
-    for (var i=1, len = arc.length; i<len; i++, n++) {
-      a = arc[i-1];
-      b = arc[i];
-      dx += Math.abs(b[0] - a[0]);
-      dy += Math.abs(b[1] - a[1]);
+  arcData.forEach(function(iter) {
+    var prevX, prevY;
+    if (iter.hasNext()) {
+      prevX = iter.x;
+      prevY = iter.y;
+    }
+    while (iter.hasNext()) {
+      n++;
+      dx += Math.abs(iter.x - prevX);
+      dy += Math.abs(iter.y - prevY);
+      prevX = iter.x;
+      prevY = iter.y;
     }
   });
   var k = 0.02,
       xres = dx * k / n,
       yres = dy * k / n;
   return [xres, yres];
-}
+};
 
 
 function exportTopoJSONObject(exporter, lyr, type) {
@@ -235,7 +302,6 @@ function exportTopoJSONObject(exporter, lyr, type) {
   });
   return obj;
 }
-
 
 function exportTopoJSONGeometry(paths, type) {
   var obj = {};

@@ -11,7 +11,6 @@ MapShaper.getDefaultFileExtension = function(fileType) {
   return ext;
 };
 
-
 // Return an array of objects with "filename" "filebase" "extension" and "content" attributes.
 //
 MapShaper.exportContent = function(layers, arcData, opts) {
@@ -149,10 +148,10 @@ function PathExporter(arcData, polygonType) {
     var pos = [],
         neg = [];
     Utils.forEach(paths, function(path) {
-      if (path.area < 0) {
-        neg.push(path);
-      } else if (path.area > 0) {
+      if (path.area > 0) {
         pos.push(path);
+      } else if (path.area < 0) {
+        neg.push(path);
       } else {
         // trace("Zero-area ring, skipping")
       }

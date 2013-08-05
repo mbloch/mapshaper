@@ -1323,7 +1323,6 @@ var Node = {
   arguments: inNode ? process.argv.slice(1) : null // remove "node" from head of argv list
 };
 
-
 /**
  * Convenience functions for working with files and loading data.
  */
@@ -1531,8 +1530,6 @@ if (inNode) {
     req.end(data);
   };
 
-
-
   Node.atob = function(b64string) {
     return new Buffer(b64string, 'base64').toString('binary')
   };
@@ -1641,8 +1638,6 @@ if (inNode) {
 Node.loadUrl = function(url) {
   return new NodeUrlLoader(url);
 };
-
-
 
 function NodeUrlLoader(url) {
   var self = this,
@@ -2750,7 +2745,9 @@ Transform.prototype.transform = function(x, y, xy) {
   return xy;
 };
 
-// Transform.prototype.toString = function() {};
+Transform.prototype.toString = function() {
+  return Utils.toString(Utils.extend({}, this));
+};
 
 function Bounds() {
   if (arguments.length > 0) {
@@ -4113,11 +4110,10 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
 
 function distance3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
-      dy = ay - by,
-      dz = az - bz;
+    dy = ay - by,
+    dz = az - bz;
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
-
 
 function distanceSq(ax, ay, bx, by) {
   var dx = ax - bx,
@@ -4161,7 +4157,7 @@ function innerAngle(ax, ay, bx, by, cx, cy) {
   var ab = distance2D(ax, ay, bx, by),
       bc = distance2D(bx, by, cx, cy),
       theta, dotp;
-  if (ab == 0 || bc == 0) {
+  if (ab === 0 || bc === 0) {
     theta = 0;
   } else {
     dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
@@ -4176,12 +4172,11 @@ function innerAngle(ax, ay, bx, by, cx, cy) {
   return theta;
 }
 
-
 function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab = distance3D(ax, ay, az, bx, by, bz),
       bc = distance3D(bx, by, bz, cx, cy, cz),
       theta, dotp;
-  if (ab == 0 || bc == 0) {
+  if (ab === 0 || bc === 0) {
     theta = 0;
   } else {
     dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
@@ -4224,7 +4219,7 @@ function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
 //
 function triangleHeightSq(ab2, bc2, ac2) {
   var dist2;
-  if (ac2 == 0.0) {
+  if (ac2 === 0) {
     dist2 = ab2;
   } else if (ab2 >= bc2 + ac2) {
     dist2 = bc2;
@@ -4234,22 +4229,41 @@ function triangleHeightSq(ab2, bc2, ac2) {
     var dval = (ab2 + ac2 - bc2);
     dist2 = ab2 -  dval * dval / ac2  * 0.25;
   }
-  if (dist2 < 0.0) {
-    dist2 = 0.0;
+  if (dist2 < 0) {
+    dist2 = 0;
   }
   return dist2;
 }
 
+MapShaper.calcArcBounds = function(xx, yy, i, n) {
+  var xmin = Infinity,
+      ymin = Infinity,
+      xmax = -Infinity,
+      ymax = -Infinity,
+      start = i | 0,
+      end = isNaN(n) ? xx.length - start : n + start,
+      x, y;
+  for (var i=start; i<end; i++) {
+    x = xx[i];
+    y = yy[i];
+    if (x < xmin) xmin = x;
+    if (x > xmax) xmax = x;
+    if (y < ymin) ymin = y;
+    if (y > ymax) ymax = y;
+  }
+  if (xmin > xmax || ymin > ymax) error("#calcArcBounds() null bounds");
+  return [xmin, ymin, xmax, ymax];
+};
 
 function msSignedRingArea(xx, yy, start, len) {
   var sum = 0,
-      start = start | 0,
-      end = start + (len == null ? xx.length - start : len | 0) - 1;
+      i = start | 0,
+      end = i + (len ? len | 0 : xx.length - i) - 1;
 
-  if (start < 0 || end >= xx.length) {
+  if (i < 0 || end >= xx.length) {
     error("Out-of-bounds array index");
   }
-  for (var i=start; i < end; i++) {
+  for (; i < end; i++) {
     sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
   }
   return sum / 2;
@@ -4263,10 +4277,10 @@ MapShaper.reversePathCoords = function(arr, start, len) {
     tmp = arr[i];
     arr[i] = arr[j];
     arr[j] = tmp;
-    i++, j--;
+    i++;
+    j--;
   }
 };
-
 
 // merge B into A
 function mergeBounds(a, b) {
@@ -4301,82 +4315,214 @@ MapShaper.geom = {
 
 
 
-MapShaper.calcArcBounds = function(xx, yy) {
-  var xb = Utils.getArrayBounds(xx),
-      yb = Utils.getArrayBounds(yy);
-  return [xb.min, yb.min, xb.max, yb.max];
-};
 
 MapShaper.ArcDataset = ArcDataset;
 
-// An interface for a set of topological arcs and the layers derived from the arcs.
+// An interface for managing a collection of paths.
+//
 // @arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
 //
 function ArcDataset(coords) {
-
-  var _sortedThresholds = null,
-      _zlimit = 0;
+  var _self = this;
+  var _xx, _yy,  // coordinates data
+      _ii, _nn,  // indexes, sizes
+      _zz, _zlimit, _sortedThresholds = null, // simplification
+      _bb, _allBounds, // bounding boxes
+      _arcIter, _shapeIter; // path iterators
 
   // Temporary: Convert input data by concatenating coords into long arrays
   // and generating other data structures in a similar format
   // TODO: input data will eventually be in the same format, so no conversion required
   //
+  init(coords);
 
-  // generate array of arc lengths
-  var _nn = Utils.map(coords, function(arc) {
-    return arc[0].length || 0;
-  });
-  var _numPoints = Utils.sum(_nn),
-      _numArcs = _nn.length;
-  _nn = new Uint32Array(_nn);
-  var _xx = new Float64Array(_numPoints),
-      _yy = new Float64Array(_numPoints),
-      _ii = new Uint32Array(_numArcs), // index of first coord in each arc
-      _zz = new Float64Array(_numPoints); // this will store simplification thresholds
+  function init(coords) {
+    var data = convertArcArrays(coords);
+    var zz = new Float64Array(data.xx.length);
+    _zlimit = 0;
+    updateArcData(data.xx, data.yy, data.ii, data.nn, zz)
+  }
 
-  var k = 0;
-  Utils.forEach(coords, function(arc, i) {
-    var xx = arc[0], yy = arc[1], n = xx.length;
-    _ii[i] = k;
-    for (var j=0; j<n; j++, k++) {
-      _xx[k] = xx[j];
-      _yy[k] = yy[j];
+  function updateArcData(xx, yy, ii, nn, zz) {
+    _xx = xx;
+    _yy = yy;
+    _ii = ii;
+    _nn = nn;
+    _zz = zz;
+
+    initBounds();
+
+    // Pre-allocate some path iterators for repeated use.
+    _arcIter = new ArcIter(_xx, _yy, _zz);
+    _shapeIter = new ShapeIter(_self);
+  }
+
+  function initBounds() {
+    var data = calcArcBounds(_xx, _yy, _ii, _nn);
+    _bb = data.bb;
+    _allBounds = data.bounds;
+  }
+
+  function calcArcBounds(xx, yy, ii, nn) {
+    var numArcs = ii.length,
+        bb = new Float64Array(numArcs * 4),
+        j, b;
+    for (var i=0; i<numArcs; i++) {
+      b = MapShaper.calcArcBounds(xx, yy, ii[i], nn[i]);
+      j = i * 4;
+      bb[j++] = b[0];
+      bb[j++] = b[1];
+      bb[j++] = b[2];
+      bb[j] = b[3];
     }
-  });
-  if (k != _numPoints) error("Counting problem");
-
-
-
-  // calculate bounding boxes for each arc, store in one long array
-  var _bb = new Float64Array(_numArcs * 4),
-      _allBounds = new Bounds();
-  Utils.forEach(_ii, function(start, arcId) {
-    var end = start + _nn[arcId] - 1,
-        xx = _xx, yy = _yy,
-        xmin = Infinity, ymin = Infinity,
-        xmax = -Infinity, ymax = -Infinity,
-        x, y;
-
-    for (var j=start; j<=end; j++) {
-      x = xx[j];
-      y = yy[j];
-      if (x < xmin) xmin = x;
-      if (x > xmax) xmax = x;
-      if (y < ymin) ymin = y;
-      if (y > ymax) ymax = y;
+    var bounds = new Bounds();
+    if (numArcs > 0) bounds.setBounds(MapShaper.calcArcBounds(xx, yy));
+    return {
+      bb: bb,
+      bounds: bounds
     }
-    var i = arcId * 4;
-    _bb[i++] = xmin;
-    _bb[i++] = ymin;
-    _bb[i++] = xmax;
-    _bb[i] = ymax;
-    _allBounds.mergeBounds([xmin, ymin, xmax, ymax]);
-  });
+  }
 
-  // Pre-allocate some path iterators for repeated use.
+  function convertArcArrays(coords) {
+    var numArcs = coords.length;
+
+    // Generate arrays of arc lengths and starting idxs
+    var nn = new Uint32Array(numArcs),
+        ii = new Uint32Array(numArcs),
+        pointCount = 0,
+        arc, arcLen;
+    for (var i=0; i<numArcs; i++) {
+      arc = coords[i];
+      arcLen = arc && arc[0].length || 0;
+      ii[i] = pointCount;
+      nn[i] = arcLen;
+      pointCount += arcLen;
+      if (arcLen == 0) error("#convertArcArrays() Empty arc:", arc);
+    }
+
+    // Copy x, y coordinates into long arrays
+    var xx = new Float64Array(pointCount),
+        yy = new Float64Array(pointCount);
+    Utils.forEach(coords, function(arc, arcId) {
+      var xarr = arc[0],
+          yarr = arc[1],
+          n = nn[arcId],
+          i = ii[arcId];
+      for (var j=0; j<n; j++) {
+        xx[i + j] = xarr[j];
+        yy[i + j] = yarr[j];
+      }
+    });
+
+    return {
+      xx: xx,
+      yy: yy,
+      ii: ii,
+      nn: nn
+    };
+  }
+
+  // Return a copy of this ArcDataset, discarding points that fall below current
+  // simplification threshold.
   //
-  var _arcIter = new ArcIter(_xx, _yy, _zz);
-  var _shapeIter = new ShapeIter(this);
+  this.getFilteredCopy = function() {
+    var arcs = [];
+    this.forEach(function(iter, i) {
+      var xx = [], yy = [];
+      while (iter.hasNext()) {
+        xx.push(iter.x);
+        yy.push(iter.y);
+      }
+      arcs.push([xx, yy]);
+    });
+    return new ArcDataset(arcs);
+  };
+
+  // Apply a linear transform to the data, with or without rounding.
+  //
+  this.applyTransform = function(t, rounding) {
+    var xx = _xx, yy = _yy, x, y;
+    for (var i=0, n=xx.length; i<n; i++) {
+      x = xx[i] * t.mx + t.bx;
+      y = yy[i] * t.my + t.by;
+      if (rounding) {
+        x = Math.round(x);
+        y = Math.round(y);
+      }
+      xx[i] = x;
+      yy[i] = y;
+    }
+    initBounds();
+  };
+
+  this.forEach = function(cb) {
+    for (var i=0, n=this.size(); i<n; i++) {
+      cb(this.getArcIter(i), i);
+    }
+  };
+
+  // Remove arcs that don't pass a filter test and re-index arcs
+  // Return array mapping original arc ids to re-indexed ids. If arr[n] == -1
+  // then arc n was removed. arr[n] == m indicates that the arc at n was
+  // moved to index m.
+  // Return null if no arcs were removed & no arcs were re-indexed.
+  //
+  this.filter = function(cb) {
+    var map = new Int32Array(this.size()),
+        goodArcs = 0,
+        goodPoints = 0,
+        iter;
+    for (var i=0, n=this.size(); i<n; i++) {
+      if (cb(this.getArcIter(i), i)) {
+        map[i] = goodArcs++;
+        goodPoints += _nn[i];
+      } else {
+        map[i] = -1;
+      }
+    }
+    if (goodArcs === this.size()) {
+      return null;
+    } else {
+      condenseArcs(map);
+      if (goodArcs === 0) {
+        trace("ArcDataset.filter() Warning: nothing left; size:", this.size());
+      }
+      return map;
+    }
+  };
+
+  function copyElements(src, i, dest, j, n) {
+    if (src === dest && j > i) error ("copy error")
+    var copied = 0;
+    for (var k=0; k<n; k++) {
+      copied++;
+      dest[k + j] = src[k + i];
+    }
+  }
+
+  function condenseArcs(map) {
+    var goodPoints = 0,
+        goodArcs = 0,
+        k, arcLen;
+    for (var i=0, n=map.length; i<n; i++) {
+      k = map[i];
+      arcLen = _nn[i];
+      if (k > -1) {
+        copyElements(_xx, _ii[i], _xx, goodPoints, arcLen);
+        copyElements(_yy, _ii[i], _yy, goodPoints, arcLen);
+        copyElements(_zz, _ii[i], _zz, goodPoints, arcLen);
+        _nn[k] = arcLen;
+        _ii[k] = goodPoints;
+        goodPoints += arcLen;
+        goodArcs++;
+      }
+    }
+
+    updateArcData(_xx.subarray(0, goodPoints),
+        _yy.subarray(0, goodPoints), _ii.subarray(0, goodArcs),
+        _nn.subarray(0, goodArcs), _zz.subarray(0, goodPoints));
+
+  }
 
   this.getArcIter = function(arcId) {
     var fw = arcId >= 0,
@@ -4398,7 +4544,7 @@ function ArcDataset(coords) {
   // @thresholds is an array of arrays of removal thresholds for each arc-vertex.
   //
   this.setThresholds = function(thresholds) {
-    if (thresholds.length != _numArcs) error("ArcDataset#setThresholds() Mismatched arc/threshold counts.")
+    if (thresholds.length != this.size()) error("ArcDataset#setThresholds() Mismatched arc/threshold counts.")
     var i = 0;
     Utils.forEach(thresholds, function(arr) {
       var zz = _zz;
@@ -4417,11 +4563,12 @@ function ArcDataset(coords) {
     // Sort simplification thresholds for all non-endpoint vertices
     // ... to quickly convert a simplification percentage to a threshold value.
     // ... For large datasets, use every nth point, for faster sorting.
-    var nth = 1;
-    if (_numPoints > 1e7) nth = 16;
-    else if (_numPoints > 5e6) nth = 8;
-    else if (_numPoints > 1e6) nth = 4;
-    else if (_numPoints > 5e5) nth = 2;
+    var nth = 1,
+        size = this.getPointCount();
+    if (size > 1e7) nth = 16;
+    else if (size > 5e6) nth = 8;
+    else if (size > 1e6) nth = 4;
+    else if (size > 5e5) nth = 2;
     _sortedThresholds = getRemovableThresholds(_zz, nth);
     Utils.quicksort(_sortedThresholds, false);
 
@@ -4490,13 +4637,13 @@ function ArcDataset(coords) {
     return this;
   };
 
-  // TODO: test
+  // Return array of z-values that can be removed for simplification
   //
   function getRemovableThresholds(zz, skip) {
     skip = skip | 1;
     var tmp = new Float64Array(Math.ceil(zz.length / skip)),
         z;
-    for (var i=0, j=0, n=_numPoints; i<n; i+=skip) {
+    for (var i=0, j=0, n=_self.getPointCount(); i<n; i+=skip) {
       z = zz[i];
       if (z != Infinity) {
         tmp[j++] = z;
@@ -4525,7 +4672,11 @@ function ArcDataset(coords) {
   };
 
   this.size = function() {
-    return _numArcs;
+    return _ii && _ii.length || 0;
+  };
+
+  this.getPointCount = function() {
+    return _xx && _xx.length || 0;
   };
 
   this.getBounds = function() {
@@ -4685,7 +4836,6 @@ function ArcIter(xx, yy, zz) {
     return true;
   }
 }
-
 
 // Iterate along a path made up of one or more arcs.
 // Similar interface to ArcIter()
@@ -6032,12 +6182,13 @@ function exportCoordsForGeoJSON(paths) {
 
 
 
+var TopoJSON = MapShaper.topojson = {};
+
 MapShaper.importTopoJSON = function(obj) {
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
   var arcs = TopoJSON.importArcs(obj.arcs, obj.transform);
-
   var layers = Utils.mapObjectToArray(obj.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, arcs)
     lyr.name = name;
@@ -6048,8 +6199,6 @@ MapShaper.importTopoJSON = function(obj) {
     layers: layers,
   };
 };
-
-var TopoJSON = MapShaper.topojson = {};
 
 // Converts arc coordinates from rounded, delta-encoded values to
 // transposed arrays of geographic coordinates.
@@ -6170,47 +6319,28 @@ TopoJSON.pathImporters = {
   }
 };
 
-
 // Export a TopoJSON string containing a single object containing a GeometryCollection
 // TODO: Support ids from attribute data
 // TODO: Support properties
 //
 MapShaper.exportTopoJSON = function(layers, arcData) {
 
-  var arcCoords = Utils.map(arcData.getArcs(), function(arc) {
-    return arc.toArray();
-  });
+  var exportArcs = arcData.getFilteredCopy();
+  var transform = TopoJSON.getExportTransform(exportArcs),
+      inv = transform.invert();
 
+  exportArcs.applyTransform(transform, true);
+  var map = TopoJSON.filterExportArcs(exportArcs);
+  var deltaArcs = TopoJSON.getDeltaEncodedArcs(exportArcs);
   var objects = {};
-  Utils.forEach(layers, function(lyr) {
+  Utils.forEach(layers, function(lyr, i) {
     var geomType = lyr.geometry_type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
-    var exporter = new PathExporter(arcData, lyr.geometry_type == 'polygon');
+    var exporter = new PathExporter(exportArcs, lyr.geometry_type == 'polygon');
+    if (map) TopoJSON.remapLayerArcs(lyr.shapes, map);
     var obj = exportTopoJSONObject(exporter, lyr, geomType);
-    if (!obj) error("#exportTopoJSON() Missing data, skipping an object");
+    lyr.name = lyr.name || "layer" + (i + 1);
     objects[lyr.name] = obj;
   });
-
-  var srcBounds = arcData.getBounds(),
-      resXY = findTopoJSONResolution(arcCoords),
-      destBounds = new Bounds(0, 0, srcBounds.width() / resXY[0], srcBounds.height() / resXY[1]),
-      tr = srcBounds.getTransform(destBounds),
-      inv = tr.invert();
-
-  Utils.forEach(arcCoords, function(arc) {
-    var n = arc.length,
-        prevX = 0,
-        prevY = 0,
-        p, x, y;
-    for (var i=0, n=arc.length; i<n; i++) {
-      p = arc[i];
-      x = Math.round(p[0] * tr.mx + tr.bx);
-      y = Math.round(p[1] * tr.my + tr.by);
-      p[0] = x - prevX;
-      p[1] = y - prevY;
-      prevX = x;
-      prevY = y;
-    }
-  })
 
   var obj = {
     type: "Topology",
@@ -6218,7 +6348,7 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
       scale: [inv.mx, inv.my],
       translate: [inv.bx, inv.by]
     },
-    arcs: arcCoords,
+    arcs: deltaArcs,
     objects: objects
   };
 
@@ -6228,26 +6358,113 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
   }]
 };
 
+TopoJSON.remapLayerArcs = function(shapes, map) {
+  Utils.forEach(shapes, function(shape) {
+    TopoJSON.remapShapeArcs(shape, map);
+  });
+};
+
+// Re-index the arcs in a shape to account for removal of collapsed arcs.
+//
+TopoJSON.remapShapeArcs = function(shape, map) {
+  var dest = shape,
+      src = shape.splice(0, shape.length),
+      arcIds, path, arcNum, arcId, k, inv;
+  for (var pathId=0, numPaths=src.length; pathId < numPaths; pathId++) {
+    path = src[pathId];
+    arcIds = [];
+    for (var i=0, n=path.length; i<n; i++) {
+      arcNum = path[i];
+      inv = arcNum < 0;
+      arcId = inv ? ~arcNum : arcNum;
+      k = map[arcId];
+      if (k == -1) {
+        //
+      } else if (k <= arcId) {
+        arcIds.push(inv ? ~k : k);
+      } else {
+        error("Arc index problem")
+      }
+    }
+    if (arcIds.length > 0) {
+      dest.push(arcIds);
+    }
+  }
+};
+
+// Remove collapsed arcs from @arcDataset (ArcDataset) and re-index remaining
+// arcs.
+// Return an array mapping original arc ids to new ids (See ArcDataset#filter())
+//
+TopoJSON.filterExportArcs = function(arcData) {
+  var arcMap = arcData.filter(function(iter, i) {
+    var x, y;
+    if (iter.hasNext()) {
+      x = iter.x;
+      y = iter.y;
+      while (iter.hasNext()) {
+        if (iter.x !== x || iter.y !== y) return true;
+      }
+    }
+    return false;
+  });
+  return arcMap;
+};
+
+// Export arcs from @arcData as arrays of [x, y] points.
+// Exported arcs use delta encoding, as per the topojson spec.
+//
+TopoJSON.getDeltaEncodedArcs = function(arcData) {
+  var arcs = [];
+  arcData.forEach(function(iter, i) {
+    var arc = [],
+        x = 0,
+        y = 0;
+    while (iter.hasNext()) {
+      arc.push([iter.x - x, iter.y - y]);
+      x = iter.x;
+      y = iter.y;
+    }
+    arcs.push(arc.length > 1 ? arc : null);
+  });
+  return arcs;
+};
+
+// Return a Transform object for converting geographic coordinates to quantized
+// integer coordinates.
+//
+TopoJSON.getExportTransform = function(arcData) {
+  var srcBounds = arcData.getBounds();
+  var resXY = TopoJSON.calcExportResolution(arcData),
+      destBounds = new Bounds(0, 0, srcBounds.width() / resXY[0], srcBounds.height() / resXY[1]);
+  return srcBounds.getTransform(destBounds);
+};
+
 // Find the x, y values that map to x / y integer unit in topojson output
 // Calculated as 1/50 the size of average x and y offsets
 // (a compromise between compression, precision and simplicity)
 //
-function findTopoJSONResolution(arcs) {
+TopoJSON.calcExportResolution = function(arcData) {
   var dx = 0, dy = 0, n = 0;
-  Utils.forEach(arcs, function(arc) {
-    var a, b;
-    for (var i=1, len = arc.length; i<len; i++, n++) {
-      a = arc[i-1];
-      b = arc[i];
-      dx += Math.abs(b[0] - a[0]);
-      dy += Math.abs(b[1] - a[1]);
+  arcData.forEach(function(iter) {
+    var prevX, prevY;
+    if (iter.hasNext()) {
+      prevX = iter.x;
+      prevY = iter.y;
+    }
+    while (iter.hasNext()) {
+      n++;
+      dx += Math.abs(iter.x - prevX);
+      dy += Math.abs(iter.y - prevY);
+      prevX = iter.x;
+      prevY = iter.y;
     }
   });
   var k = 0.02,
       xres = dx * k / n,
       yres = dy * k / n;
   return [xres, yres];
-}
+};
 
 
 function exportTopoJSONObject(exporter, lyr, type) {
@@ -6267,7 +6484,6 @@ function exportTopoJSONObject(exporter, lyr, type) {
   });
   return obj;
 }
-
 
 function exportTopoJSONGeometry(paths, type) {
   var obj = {};
@@ -7554,15 +7770,17 @@ Opts.inherit(MapExtent, EventDispatcher);
 //
 function Heap() {
   var maxItems,
-      dataOffs, dataArr,
+      dataOffs,
+      dataArr,
       itemsInHeap,
       poppedVal,
-      heapArr, indexArr;
+      heapArr,
+      indexArr;
 
   this.addValues = function(values, start, end) {
     var minId = start | 0,
-        maxItems = (end == null ? values.length : end + 1) - minId;
-    dataOffs = minId,
+        maxItems = (isNaN(end) ? values.length : end + 1) - minId;
+    dataOffs = minId;
     dataArr = values;
     itemsInHeap = 0;
     reserveSpace(maxItems);
@@ -7591,7 +7809,7 @@ function Heap() {
     }
     dataArr[valId] = val;
     var heapIdx = indexArr[valId - dataOffs];
-    if (heapIdx == null || heapIdx >= itemsInHeap) error("[updateValue()] out-of-range heap index.");
+    if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) error("[updateValue()] out-of-range heap index.");
     reHeap(heapIdx);
   };
 
@@ -7622,8 +7840,7 @@ function Heap() {
       heapArr = new Int32Array(bufLen);
       indexArr = new Int32Array(bufLen);
     }
-  };
-
+  }
 
   // Associate a heap idx with the id of a value in valuesArr
   //
@@ -7631,7 +7848,6 @@ function Heap() {
     indexArr[valId - dataOffs] = heapIdx;
     heapArr[heapIdx] = valId;
   }
-
 
   // Check that heap is ordered starting at a given node
   // (traverses heap recursively)
@@ -8140,7 +8356,6 @@ MapShaper.getDefaultFileExtension = function(fileType) {
   return ext;
 };
 
-
 // Return an array of objects with "filename" "filebase" "extension" and "content" attributes.
 //
 MapShaper.exportContent = function(layers, arcData, opts) {
@@ -8278,10 +8493,10 @@ function PathExporter(arcData, polygonType) {
     var pos = [],
         neg = [];
     Utils.forEach(paths, function(path) {
-      if (path.area < 0) {
-        neg.push(path);
-      } else if (path.area > 0) {
+      if (path.area > 0) {
         pos.push(path);
+      } else if (path.area < 0) {
+        neg.push(path);
       } else {
         // trace("Zero-area ring, skipping")
       }
