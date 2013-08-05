@@ -16,9 +16,9 @@ Browser compatibility: The web interface works well in recent versions of Chrome
 
 To run the mapshaper gui directly from the filesystem, open www/index.html in a web browser. Firefox works well in this mode; offline exporting is not fully supported in Chrome.
 
-### Commandline tool
+### Command line tool
 
-bin/mapshaper is a [Node.js](http://nodejs.org) script. It was developed on OS X and is untested on other platforms.
+bin/mapshaper is a [Node.js](http://nodejs.org) script. It was developed on OS X and has also been used successfully on Ubuntu 13.04 and Windows 8.
  
 `$ mapshaper -p 0.1 counties.shp`  Retain 10% of removable vertices using default simplification.
 
