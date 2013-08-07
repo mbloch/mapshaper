@@ -55,7 +55,7 @@ function ShapeRenderer() {
         }
       }
     });
-  }
+  };
 
 
   this.drawShapes = function(paths, style, ctx) {
@@ -94,7 +94,7 @@ function ShapeRenderer() {
     return {
       paths: pathCount,
       segments: segCount
-    }
+    };
   };
 }
 
@@ -127,5 +127,5 @@ function CanvasLayer() {
 
   this.getElement = function() {
     return El(canvas);
-  }
+  };
 }

@@ -91,7 +91,7 @@ function Slider(ref, opts) {
 
   function updateHandlePos() {
     var x = _handleLeft + Math.round(position());
-    _handle && _handle.css('left', x);
+    if (_handle) _handle.css('left', x);
   }
 }
 
@@ -102,9 +102,9 @@ function ClickText(ref) {
   var _el = El(ref);
   var _max = Infinity,
       _min = -Infinity,
-      _formatter = function(v) {return String(v)},
-      _validator = function(v) {return !isNaN(v)},
-      _parser = function(s) {return parseFloat(s)},
+      _formatter = function(v) {return String(v);},
+      _validator = function(v) {return !isNaN(v);},
+      _parser = function(s) {return parseFloat(s);},
       _value = 0;
 
   _el.on('blur', onblur, this);
@@ -155,7 +155,7 @@ function ClickText(ref) {
   this.parser = function(f) {
     _parser = f;
     return this;
-  }
+  };
 
   this.value = function(arg) {
     if (arg == void 0) {

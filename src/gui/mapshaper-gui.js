@@ -15,16 +15,16 @@ var dropper,
 
 if (Browser.inBrowser) {
   Browser.onload(function() {
-    var testFile;
     if (!browserIsSupported()) {
       El("#mshp-not-supported").show();
       return;
     }
+    var testFile = Browser.getQueryVar('file') || null;
     El('#mshp-import').show();
     editor = new Editor();
     importer = new ImportControl(editor);
     dropper = new DropControl(importer);
-    if (testFile = Browser.getQueryVar('file')) {
+    if (testFile) {
       importer.loadFile(testFile);
     } else {
       introPage();
@@ -80,10 +80,9 @@ function Editor() {
     };
     map = new MshpMap("#mshp-main-map", mapOpts);
     slider = new SimplifyControl();
-  };
+  }
 
   this.addData = function(data, opts) {
-
     var arcData = new ArcDataset(data.arcs),
         bounds = arcData.getBounds(),
         vertexData;
@@ -92,14 +91,13 @@ function Editor() {
       init(bounds);
     }
 
-    var vertexData = MapShaper.simplifyPaths(data.arcs, importOpts.simplifyMethod, bounds.toArray());
+    vertexData = MapShaper.simplifyPaths(data.arcs, importOpts.simplifyMethod, bounds.toArray());
 
     if (importOpts.preserveShapes) {
       MapShaper.protectRingsFromCollapse(vertexData, data.retainedPointCounts);
     }
 
     arcData.setThresholdsForGUI(vertexData);
-
     var group = new ArcLayerGroup(arcData);
     map.addLayerGroup(group);
 
@@ -107,7 +105,6 @@ function Editor() {
       arcData.setRetainedPct(e.value);
       group.refresh();
     });
-
 
     var fileBase = MapShaper.parseLocalPath(opts.input_file).basename || "out";
     var exporter = new ExportControl(arcData, data.layers, fileBase);
@@ -120,6 +117,6 @@ var api = {
   controls: controls,
   trace: trace,
   error: error
-}
+};
 
 Opts.extendNamespace("mapshaper", api);

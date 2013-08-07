@@ -23,7 +23,7 @@ function MshpMap(el, opts_) {
 
   this.getExtent = function() {
     return _ext;
-  }
+  };
 
   this.addLayerGroup = function(group) {
     group.setMap(this);
@@ -50,7 +50,7 @@ function MshpMap(el, opts_) {
         if (!isFull) btn.addClass('active');
         else btn.removeClass('active');
       }
-    })
+    });
 
   }
 
@@ -74,7 +74,8 @@ function MapExtent(el, initialBounds) {
       _cy,
       _scale = 1;
 
-  if (!initialBounds || !initialBounds.hasBounds() || _position.width() > 0 == false || _position.height() > 0 == false) {
+  if (!initialBounds || !initialBounds.hasBounds() ||
+      _position.width() > 0 === false || _position.height() > 0 === false) {
     error("[MapExtent] Usage: new MapExtent(div, bbox:Bounds)");
   }
 
@@ -84,17 +85,19 @@ function MapExtent(el, initialBounds) {
     this.dispatchEvent('resize');
   }, this);
 
-  this.resize = function(w, h) { _position.resize(w, h)};
+  this.resize = function(w, h) { _position.resize(w, h); };
 
   this.reset = function() {
     _fullBounds = getFullBounds();
     this.recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1);
-  }
+  };
 
   this.recenter = function(cx, cy, scale) {
     if (!scale) scale = _scale;
     if (!(cx == _cx && cy == _cy && scale == _scale)) {
-      _cx = cx, _cy = cy, _scale = scale;
+      _cx = cx;
+      _cy = cy;
+      _scale = scale;
       _self.dispatchEvent('change');
     }
   };
@@ -109,7 +112,8 @@ function MapExtent(el, initialBounds) {
   //
   this.rescale = function(scale, xpct, ypct) {
     if (arguments.length < 3) {
-      xpct = 0.5, ypct = 0.5;
+      xpct = 0.5;
+      ypct = 0.5;
     }
     var b = this.getBounds(),
         fx = b.xmin + xpct * b.width(),
@@ -122,12 +126,12 @@ function MapExtent(el, initialBounds) {
         cx = fx + dx2,
         cy = fy + dy2;
     this.recenter(cx, cy, scale);
-  }
+  };
 
   this.width = _position.width;
   this.height = _position.height;
   this.position = _position.position;
-  this.scale = function() { return _scale };
+  this.scale = function() { return _scale; };
 
   function getFullBounds() {
     return centerAlign(initialBounds);

@@ -14,11 +14,11 @@ function ArcLayerGroup(arcData) {
 
   var _visible = true;
   this.visible = function(b) {
-    return arguments.length == 0 ? _visible : _visible = !b, this;
+    return arguments.length === 0 ? _visible : _visible = !b, this;
   };
 
   this.refresh = function() {
-    _map && drawLayers();
+    if (_map) drawLayers();
   };
 
   this.setMap = function(map) {
@@ -50,7 +50,7 @@ function ShapeLayer(shapes, surface) {
   };
 
   this.visible = function(b) {
-    return arguments.length == 0 ? _visible : _visible = !b, this;
+    return arguments.length === 0 ? _visible : _visible = !b, this;
   };
 
   this.draw = function(ext) {
@@ -61,7 +61,7 @@ function ShapeLayer(shapes, surface) {
     // TODO: find a way to enable circles at an appropriate zoom
     // if (ext.scale() > 0) renderer.drawPoints(src.shapes().filterPoints(ext.getBounds()).transform(ext.getTransform()), surface.getContext());
     // T.stop("- paths: " + info.paths + " segs: " + info.segments);
-  }
+  };
 }
 
 Opts.inherit(ShapeLayer, Waiter);

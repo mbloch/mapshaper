@@ -31,7 +31,7 @@ function FilteredPathCollection(arr, collBounds) {
     _filterBounds = b;
     getPathIter = getDrawablePointsIter;
     return this;
-  }
+  };
 
   this.transform = function(tr) {
     _transform = tr;
@@ -102,7 +102,7 @@ function FilteredPathCollection(arr, collBounds) {
             break;
           }
         }
-        if (i == 0) return false;
+        if (i === 0) return false;
         _firstPoint = false;
         this.x = x;
         this.y = y;
@@ -115,7 +115,7 @@ function FilteredPathCollection(arr, collBounds) {
       _firstPoint = true;
       wrapped = s.getPathIter(i, 1/_transform.mx);
       return wrapper;
-    }
+    };
   }
 
   this.forEach = function(cb) {

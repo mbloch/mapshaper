@@ -32,8 +32,12 @@ function ImportControl(editor) {
       reader = new FileReader();
       reader.onload = function(e) {
         inputFileContent(name, type, reader.result);
+      };
+      if (type == 'shp') {
+        reader.readAsArrayBuffer(file);
+      } else {
+        reader.readAsText(file, 'UTF-8');
       }
-      type == 'shp' ? reader.readAsArrayBuffer(file) : reader.readAsText(file, 'UTF-8');
     }
   };
 
@@ -139,7 +143,7 @@ var SimplifyControl = function() {
 
   control.value(_value);
   return control;
-}
+};
 
 
 // Export buttons and their behavior
@@ -184,7 +188,7 @@ var ExportControl = function(arcData, layers, fileBase) {
         },
         files = MapShaper.exportContent(layers, arcData, opts),
         file;
-    if (!Utils.isArray(files) || files.length == 0) {
+    if (!Utils.isArray(files) || files.length === 0) {
       error("exportAs() Export failed.");
     } else if (files.length == 1) {
       file = files[0];
@@ -201,14 +205,15 @@ var ExportControl = function(arcData, layers, fileBase) {
       if (blobUrl) URL.revokeObjectURL(blobUrl);
       blobUrl = URL.createObjectURL(blob);
     } catch(e) {
-      alert("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.")
+      alert("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
       return;
     }
 
     anchor.href = blobUrl;
     anchor.download = filename;
     var clickEvent = document.createEvent("MouseEvent");
-    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+    clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false,
+        false, false, false, 0, null);
     anchor.dispatchEvent(clickEvent);
   }
 
@@ -229,7 +234,7 @@ var ExportControl = function(arcData, layers, fileBase) {
     }
 
     function addFile(archive) {
-      if (toAdd.length == 0) {
+      if (toAdd.length === 0) {
         archive.close(function(blob) {
           saveBlob(zipfileName, blob);
           done();
@@ -237,7 +242,7 @@ var ExportControl = function(arcData, layers, fileBase) {
       } else {
         var obj = toAdd.pop(),
             blob = new Blob([obj.content]);
-        archive.add(obj.filename, new zip.BlobReader(blob), function() {addFile(archive)});
+        archive.add(obj.filename, new zip.BlobReader(blob), function() {addFile(archive);});
       }
     }
   }
@@ -251,7 +256,7 @@ var ExportControl = function(arcData, layers, fileBase) {
     reader.readAsDataURL(blob);
   }
   */
-}
+};
 
 
 var controls = {
