@@ -25,7 +25,7 @@ function ArcDataset(coords) {
     var data = convertArcArrays(coords);
     var zz = new Float64Array(data.xx.length);
     _zlimit = 0;
-    updateArcData(data.xx, data.yy, data.nn, zz)
+    updateArcData(data.xx, data.yy, data.nn, zz);
   }
 
   function updateArcData(xx, yy, nn, zz) {
@@ -72,7 +72,7 @@ function ArcDataset(coords) {
     return {
       bb: bb,
       bounds: bounds
-    }
+    };
   }
 
   function convertArcArrays(coords) {
@@ -87,22 +87,22 @@ function ArcDataset(coords) {
       arcLen = arc && arc[0].length || 0;
       nn[i] = arcLen;
       pointCount += arcLen;
-      if (arcLen == 0) error("#convertArcArrays() Empty arc:", arc);
+      if (arcLen === 0) error("#convertArcArrays() Empty arc:", arc);
     }
 
     // Copy x, y coordinates into long arrays
     var xx = new Float64Array(pointCount),
         yy = new Float64Array(pointCount),
-        i = 0;
+        offs = 0;
     Utils.forEach(coords, function(arc, arcId) {
       var xarr = arc[0],
           yarr = arc[1],
           n = nn[arcId];
       for (var j=0; j<n; j++) {
-        xx[i + j] = xarr[j];
-        yy[i + j] = yarr[j];
+        xx[offs + j] = xarr[j];
+        yy[offs + j] = yarr[j];
       }
-      i += n;
+      offs += n;
     });
 
     return {
@@ -206,7 +206,7 @@ function ArcDataset(coords) {
   };
 
   function copyElements(src, i, dest, j, n) {
-    if (src === dest && j > i) error ("copy error")
+    if (src === dest && j > i) error ("copy error");
     var copied = 0;
     for (var k=0; k<n; k++) {
       copied++;
@@ -256,7 +256,8 @@ function ArcDataset(coords) {
   // @thresholds is an array of arrays of removal thresholds for each arc-vertex.
   //
   this.setThresholds = function(thresholds) {
-    if (thresholds.length != this.size()) error("ArcDataset#setThresholds() Mismatched arc/threshold counts.")
+    if (thresholds.length != this.size())
+      error("ArcDataset#setThresholds() Mismatched arc/threshold counts.");
     var i = 0;
     Utils.forEach(thresholds, function(arr) {
       var zz = _zz;
@@ -344,7 +345,7 @@ function ArcDataset(coords) {
     } else if (_zz) {
       _zlimit = getThresholdByPct(_zz, pct);
     } else {
-      error ("ArcDataset#setRetainedPct() Missing simplification data.")
+      error ("ArcDataset#setRetainedPct() Missing simplification data.");
     }
     return this;
   };
@@ -408,12 +409,12 @@ function ArcDataset(coords) {
   };
 
   this.getMultiPathShape = function(arr) {
-    if (!arr || arr.length == 0) {
-      error("#getMultiPathShape() Missing arc ids")
+    if (!arr || arr.length > 0 === false) {
+      error("#getMultiPathShape() Missing arc ids");
     } else {
       return new MultiShape(this).init(arr);
     }
-  }
+  };
 }
 
 function Arc(src) {
@@ -569,14 +570,14 @@ function ShapeIter(arcs) {
   }
 
   this.hasNext = function() {
-    while (_arc != null) {
+    while (_arc) {
       if (_arc.hasNext()) {
         this.x = _arc.x;
         this.y = _arc.y;
         return true;
       } else {
         _arc = nextArc();
-        _arc && _arc.hasNext(); // skip first point of arc
+        if (_arc) _arc.hasNext(); // skip first point of arc
       }
     }
     return false;

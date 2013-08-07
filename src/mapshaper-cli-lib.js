@@ -19,7 +19,7 @@ MapShaper.validateArgv = function(argv) {
 };
 
 MapShaper.getOutputPaths = function(files, dir, extension) {
-  if (!files || files.length == 0) {
+  if (!files || !files.length) {
     console.log("No files to save");
     return;
   }
@@ -33,7 +33,7 @@ MapShaper.getOutputPaths = function(files, dir, extension) {
   var i = 0, suffix = "";
   while (cli.testFileCollision(files, suffix)) {
     i++;
-    suffix = "-ms"
+    suffix = "-ms";
     if (i > 1) suffix += String(i);
   }
 
@@ -83,7 +83,7 @@ cli.validateOutputOpts = function(opts, argv) {
     ofmt = argv.f.toLowerCase();
     // use default extension for output format
     oext = MapShaper.getDefaultFileExtension(ofmt);
-    if (Utils.contains(supportedTypes, ofmt) == false) {
+    if (!Utils.contains(supportedTypes, ofmt)) {
       error("Unsupported output format:", argv.f);
     }
   }
@@ -126,11 +126,11 @@ cli.validateOutputOpts = function(opts, argv) {
 };
 
 cli.validateSimplifyOpts = function(opts, argv) {
-  if (argv.i != null) {
+  if (argv.i) {
     if (!Utils.isNumber(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
     opts.simplify_interval = argv.i;
   }
-  else if (argv.p != null) {
+  else if (argv.p) {
     if (!Utils.isNumber(argv.p) || argv.p <= 0 || argv.p >= 1) error("-p (--pct) option should be in the range (0,1)");
     opts.simplify_pct = argv.p;
   }

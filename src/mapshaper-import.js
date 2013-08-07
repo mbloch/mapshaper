@@ -35,7 +35,7 @@ MapShaper.importContent = function(content, fileType) {
 
   // Calculate data to use for shape preservation
   var numArcs = data.arcs.length;
-  var retainedPointCounts = new Uint8Array(numArcs)
+  var retainedPointCounts = new Uint8Array(numArcs);
   Utils.forEach(data.layers, function(layer) {
     if (layer.geometry_type == 'polygon') {
       var arcCounts = MapShaper.getArcCountsInLayer(layer.shapes, numArcs);
@@ -50,7 +50,7 @@ MapShaper.importContent = function(content, fileType) {
 
 MapShaper.validateImportData = function(obj) {
   if (!Utils.isArray(obj.arcs)) error ("Missing topological path data");
-  if (!Utils.isArray(obj.layers) || obj.layers.length == 0) error ("Missing layer data");
+  if (!Utils.isArray(obj.layers) || obj.layers.length === 0) error ("Missing layer data");
 };
 
 MapShaper.getArcCountsInLayer = function(shapes, numArcs) {
@@ -103,7 +103,7 @@ MapShaper.calcPointRetentionData = function(shapes, retainedPointCounts, arcCoun
       // if a part has 3 or more arcs, assume it won't collapse...
       // TODO: look into edge cases where this isn't true
       if (arcs.length <= 2) { // && pathData[pathId].isPrimary) {
-        MapShaper.calcRetainedCountsForRing(arcs, retainedPointCounts, arcCounts)
+        MapShaper.calcRetainedCountsForRing(arcs, retainedPointCounts, arcCounts);
       }
     }
   });

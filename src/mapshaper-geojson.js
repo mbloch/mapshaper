@@ -17,12 +17,12 @@ MapShaper.importGeoJSON = function(obj) {
     obj = {
       type: 'FeatureCollection',
       features: [obj]
-    }
+    };
   } else if (Utils.contains(supportedGeometries, obj.type)) {
     obj = {
       type: 'GeometryCollection',
       geometries: [obj]
-    }
+    };
   }
 
   var properties = null, geometries;
@@ -52,12 +52,12 @@ MapShaper.importGeoJSON = function(obj) {
   Utils.forEach(geometries, function(geom) {
     importer.startShape();
     var f = geom && GeoJSON.pathImporters[geom.type];
-    f && f(geom.coordinates, importer);
+    if (f) f(geom.coordinates, importer);
   });
 
   var data = importer.done();
   data.properties = properties;
-  return data
+  return data;
 };
 
 
@@ -67,11 +67,11 @@ var GeoJSON = MapShaper.geojson = {};
 //
 GeoJSON.pathImporters = {
   LineString: function(coords, importer) {
-    importer.importPoints(coords, false, false)
+    importer.importPoints(coords, false, false);
   },
   MultiLineString: function(coords, importer) {
     for (var i=0; i<coords.length; i++) {
-      GeoJSON.pathImporters.LineString(coords[i], importer)
+      GeoJSON.pathImporters.LineString(coords[i], importer);
     }
   },
   Polygon: function(coords, importer) {
@@ -81,7 +81,7 @@ GeoJSON.pathImporters = {
   },
   MultiPolygon: function(coords, importer) {
     for (var i=0; i<coords.length; i++) {
-      GeoJSON.pathImporters.Polygon(coords[i], importer)
+      GeoJSON.pathImporters.Polygon(coords[i], importer);
     }
   }
 };
@@ -149,7 +149,7 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
     output.type = 'GeometryCollection';
     // null geometries not allowed in GeometryCollection
     output.geometries = Utils.filter(objects, function(obj) {
-      return obj != null;
+      return !!obj;
     });
   }
 
@@ -160,7 +160,7 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
 MapShaper.exportGeoJSONGeometry = function(coords, type) {
   var geom = {};
 
-  if (!coords || coords.length == 0) {
+  if (!coords || !coords.length) {
     geom = null; // null geometry
   }
   else if (type == 'MultiPolygon') {
@@ -185,7 +185,7 @@ MapShaper.exportGeoJSONGeometry = function(coords, type) {
     geom = null;
   }
   return geom;
-}
+};
 
 MapShaper.exportGeoJSONFeature = function(coords, type, properties) {
   var feature = {

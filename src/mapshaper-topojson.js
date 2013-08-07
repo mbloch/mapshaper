@@ -8,7 +8,7 @@ MapShaper.importTopoJSON = function(obj) {
   }
   var arcs = TopoJSON.importArcs(obj.arcs, obj.transform);
   var layers = Utils.mapObjectToArray(obj.objects, function(object, name) {
-    var lyr = TopoJSON.importObject(object, arcs)
+    var lyr = TopoJSON.importObject(object, arcs);
     lyr.name = name;
     return lyr;
   });
@@ -44,7 +44,7 @@ TopoJSON.importArcs = function(arcs, transform) {
       prevX = x;
       prevY = y;
     }
-    return [xx, yy]
+    return [xx, yy];
   });
 };
 
@@ -68,7 +68,7 @@ TopoJSON.importGeometryCollection = function(obj, arcs) {
     } else {
       pathImporter(geom.arcs, importer);
     }
-  })
+  });
   return importer.done();
 };
 
@@ -78,14 +78,14 @@ TopoJSON.Importer = function(numArcs) {
       paths = [],
       shapeProperties = [],
       shapeIds = [],
-      currIdx = -1
+      currIdx = -1;
 
   this.startShape = function(properties, id) {
     currIdx++;
-    if (properties != null) {
+    if (properties) {
       shapeProperties[currIdx] = properties;
     }
-    if (id != null) {
+    if (id !== null && id !== undefined) {
       shapeIds[currIdx] = id;
     }
     currGeometry = geometries[currIdx] = [];
@@ -102,7 +102,7 @@ TopoJSON.Importer = function(numArcs) {
 
   this.done = function() {
     var openCount = Utils.reduce(paths, function(path, count) {
-      if (path.isRing == false) count++;
+      if (!path.isRing) count++;
       return count;
     }, 0);
 
@@ -112,17 +112,17 @@ TopoJSON.Importer = function(numArcs) {
       shapes: geometries,
       properties: shapeProperties.length > 0 ? shapeProperties : null,
       ids: shapeIds.length > 0 ? shapeIds : null
-    }
+    };
   };
 };
 
 TopoJSON.pathImporters = {
   LineString: function(arr, importer) {
-    importer.importPath(arr, false, false)
+    importer.importPath(arr, false, false);
   },
   MultiLineString: function(arr, importer) {
     for (var i=0; i<arr.length; i++) {
-      TopoJSON.pathImporters.LineString(arr[i], importer)
+      TopoJSON.pathImporters.LineString(arr[i], importer);
     }
   },
   Polygon: function(arr, importer) {
@@ -132,7 +132,7 @@ TopoJSON.pathImporters = {
   },
   MultiPolygon: function(arr, importer) {
     for (var i=0; i<arr.length; i++) {
-      TopoJSON.pathImporters.Polygon(arr[i], importer)
+      TopoJSON.pathImporters.Polygon(arr[i], importer);
     }
   }
 };
@@ -173,7 +173,7 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
   return [{
     content: JSON.stringify(obj),
     name: ""
-  }]
+  }];
 };
 
 TopoJSON.remapLayerArcs = function(shapes, map) {
@@ -201,7 +201,7 @@ TopoJSON.remapShapeArcs = function(shape, map) {
       } else if (k <= arcId) {
         arcIds.push(inv ? ~k : k);
       } else {
-        error("Arc index problem")
+        error("Arc index problem");
       }
     }
     if (arcIds.length > 0) {
@@ -306,7 +306,7 @@ function exportTopoJSONObject(exporter, lyr, type) {
 function exportTopoJSONGeometry(paths, type) {
   var obj = {};
 
-  if (!paths || paths.length == 0) {
+  if (!paths || paths.length === 0) {
     // null geometry
     obj.type = null;
   }
@@ -329,7 +329,7 @@ function exportTopoJSONGeometry(paths, type) {
     }
   }
   else {
-    error ("#exportTopoJSONGeometry() unsupported type:", type)
+    error ("#exportTopoJSONGeometry() unsupported type:", type);
   }
   return obj;
 }

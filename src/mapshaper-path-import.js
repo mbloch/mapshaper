@@ -20,7 +20,7 @@ function PathImporter(pointCount) {
     if (primaryPathArea > 0) {
       primaryPath.isPrimary = true;
     }
-  };
+  }
 
   this.startShape = function() {
     endPrevShape();
@@ -42,12 +42,13 @@ function PathImporter(pointCount) {
     for (var i=0; i<pointCount; i++) {
       x = arr[offs++];
       y = arr[offs++];
-      if (i == 0 || prevX != x || prevY != y) {
+      if (i === 0 || prevX != x || prevY != y) {
         xx[pointId] = x;
         yy[pointId] = y;
         pointId++;
       }
-      prevX = x, prevY = y;
+      prevX = x;
+      prevY = y;
     }
 
     var validPoints = pointId - startId;
@@ -63,13 +64,13 @@ function PathImporter(pointCount) {
       var err = null;
       if (validPoints < 4) {
         err = "Only " + validPoints + " valid points in ring";
-      } else if (signedArea == 0) {
+      } else if (signedArea === 0) {
         err = "Zero-area ring";
       } else if (xx[startId] != xx[pointId-1] || yy[startId] != yy[pointId-1]) {
         err = "Open path";
       }
 
-      if (err != null) {
+      if (err) {
         trace("Invalid ring in shape:", shapeId, "--", err);
         // pathObj.isNull = true;
         pointId -= validPoints; // backtrack...

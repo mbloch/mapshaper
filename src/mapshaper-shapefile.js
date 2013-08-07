@@ -56,7 +56,7 @@ MapShaper.importShp = function(src) {
 // Convert topological data to buffers containing .shp and .shx file data
 //
 MapShaper.exportShp = function(layers, arcData) {
-  if (arcData instanceof ArcDataset == false || !Utils.isArray(layers)) error("Missing exportable data.");
+  if (arcData instanceof ArcDataset === false || !Utils.isArray(layers)) error("Missing exportable data.");
 
   var files = [];
   Utils.forEach(layers, function(layer) {
@@ -84,13 +84,13 @@ MapShaper.exportShpFile = function(layer, arcData) {
   T.start();
   T.start();
 
-  var exporter = new PathExporter(arcData, isPolygonType)
+  var exporter = new PathExporter(arcData, isPolygonType);
   var fileBytes = 100;
   var bounds = new Bounds();
   var shapeBuffers = Utils.map(layer.shapes, function(shapeIds, i) {
     var shape = MapShaper.exportShpRecord(shapeIds, exporter, i+1, shpType);
     fileBytes += shape.buffer.byteLength;
-    shape.bounds && bounds.mergeBounds(shape.bounds);
+    if (shape.bounds) bounds.mergeBounds(shape.bounds);
     return shape.buffer;
   });
 
@@ -125,7 +125,7 @@ MapShaper.exportShpFile = function(layer, arcData) {
   Utils.forEach(shapeBuffers, function(buf, i) {
     var shpOff = shpBin.position() / 2,
         shpSize = (buf.byteLength - 8) / 2; // alternative: shxBin.writeBuffer(buf, 4, 4);
-    shxBin.writeInt32(shpOff)
+    shxBin.writeInt32(shpOff);
     shxBin.writeInt32(shpSize);
     shpBin.writeBuffer(buf);
   });
@@ -179,8 +179,8 @@ MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
       pointCount += j;
     });
     if (data.pointCount != pointCount)
-      error("Shp record point count mismatch; pointCount:"
-        , pointCount, "data.pointCount:", data.pointCount);
+      error("Shp record point count mismatch; pointCount:",
+          pointCount, "data.pointCount:", data.pointCount);
 
   }
 

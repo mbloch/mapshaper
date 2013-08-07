@@ -127,15 +127,15 @@ function triangleHeightSq(ab2, bc2, ac2) {
   return dist2;
 }
 
-MapShaper.calcArcBounds = function(xx, yy, i, n) {
+MapShaper.calcArcBounds = function(xx, yy, start, len) {
   var xmin = Infinity,
       ymin = Infinity,
       xmax = -Infinity,
       ymax = -Infinity,
-      start = i | 0,
-      end = isNaN(n) ? xx.length - start : n + start,
+      i = start | 0,
+      n = isNaN(len) ? xx.length - i : len + i,
       x, y;
-  for (var i=start; i<end; i++) {
+  for (; i<n; i++) {
     x = xx[i];
     y = yy[i];
     if (x < xmin) xmin = x;

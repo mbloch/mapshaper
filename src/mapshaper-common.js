@@ -2,7 +2,7 @@
 
 // TODO: adapt to run in browser
 function stop(msg) {
-  msg && trace(msg);
+  if (msg) trace(msg);
   process.exit(1);
 }
 
@@ -37,8 +37,8 @@ MapShaper.parseLocalPath = function(path) {
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var srcLen = xsrc.length,
       destLen = xdest.length,
-      prevX = destLen == 0 ? Infinity : xdest[destLen-1],
-      prevY = destLen == 0 ? Infinity : ydest[destLen-1],
+      prevX = destLen === 0 ? Infinity : xdest[destLen-1],
+      prevY = destLen === 0 ? Infinity : ydest[destLen-1],
       x, y, inc, startId, stopId;
 
   if (reversed) {

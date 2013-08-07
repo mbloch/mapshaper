@@ -7,8 +7,7 @@ MapShaper.Heap = Heap; // export Heap for testing
 Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   var bufLen = 0,
       heap = new Heap(),
-      prevArr, nextArr,
-      scale = scale || 1;
+      prevArr, nextArr;
 
   // Calculate Visvalingam simplification data for an arc
   // Receives arrays of x- and y- coordinates, optional array of z- coords
@@ -101,7 +100,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     // convert area metric to a linear equivalent
     //
     for (var j=1; j<arcLen-1; j++) {
-      values[j] = Math.sqrt(values[j]) * scale;
+      values[j] = Math.sqrt(values[j]) * (scale || 1);
     }
     values[0] = values[arcLen-1] = Infinity; // arc endpoints
     return values;

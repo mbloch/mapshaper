@@ -20,8 +20,12 @@ DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
   return triangleHeightSq(ab2, bc2, ac2);
 };
 
-DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
-  var len = len || xx.length, // kludge: 3D data gets passed in buffers, so need len parameter.
+// @xx, @yy arrays of x, y coords of a path
+// @zz (optional) array of z coords for spherical simplification
+// @buflen (optional) (kludge) 3D data gets passed in buffers, need buf len
+//
+DouglasPeucker.calcArcData = function(xx, yy, zz, buflen) {
+  var len = buflen || xx.length,
       useZ = !!zz;
 
   var dpArr = new Array(len); // new Float64Array(len);
@@ -42,11 +46,11 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, len) {
       az, bz, cz;
 
     if (useZ) {
-      az = zz[startIdx]
+      az = zz[startIdx];
       cz = zz[endIdx];
     }
 
-    (startIdx < endIdx) || error("[procSegment()] inverted idx");
+    if (startIdx >= endIdx) error("[procSegment()] inverted idx");
 
     var maxDistance = 0, maxIdx = 0;
 

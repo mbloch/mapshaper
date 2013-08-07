@@ -96,8 +96,8 @@ function ArcIndex(pointCount, xyToUint) {
       arcX = arcs[arcId][0];
       arcY = arcs[arcId][1];
       len = arcX.length;
-      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next]
-          && arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
+      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
+          arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
         return arcId;
       }
       arcId = chainIds[arcId];
@@ -141,7 +141,7 @@ function buildPathTopology(xx, yy, pathData) {
     pointId += pathLen;
     return arcs;
   });
-  T.stop("Find topological boundaries")
+  T.stop("Find topological boundaries");
 
   return {
     paths: paths,
@@ -207,11 +207,11 @@ function buildPathTopology(xx, yy, pathData) {
       arcIds.push(addEdge(arcStartId, i));
     } else {
       // final arc wraps around
-      arcIds.push(addEdge(arcStartId, end, start + 1, firstNodeId))
+      arcIds.push(addEdge(arcStartId, end, start + 1, firstNodeId));
     }
 
     return arcIds;
-  };
+  }
 
   // @a and @b are ids of two points with same x, y coords
   // Return false if adjacent points match, either in fw or rev direction
@@ -271,7 +271,7 @@ function buildPathTopology(xx, yy, pathData) {
   }
 
   function addEdge(startId1, endId1, startId2, endId2) {
-    var splitArc = endId2 != null,
+    var splitArc = arguments.length == 4,
         start = startId1,
         end = splitArc ? endId2 : endId1,
         arcId, xarr, yarr;
@@ -388,9 +388,9 @@ function initPointChains(xx, yy, hash, verbose) {
       key = (key + 1) % hashTableSize;
     }
   }
-  verbose && trace(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
+  if (verbose) trace(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
   return chainIds;
-};
+}
 
 
 // Use shapeId property of @pathData objects to group paths by shape
@@ -399,7 +399,7 @@ function groupPathsByShape(paths, pathData, shapeCount) {
   var shapes = new Array(shapeCount); // Array can be sparse, but should have this length
   Utils.forEach(paths, function(path, pathId) {
     var shapeId = pathData[pathId].shapeId;
-    if (shapeId in shapes == false) {
+    if (shapeId in shapes === false) {
       shapes[shapeId] = [path]; // first part in a new shape
     } else {
       shapes[shapeId].push(path);

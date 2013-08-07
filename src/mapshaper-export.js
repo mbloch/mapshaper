@@ -17,7 +17,7 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   var exporter = MapShaper.exporters[opts.format];
   if (!exporter) error("exportContent() Unknown export format:", opts.format);
   if (!opts.extension) opts.extension = MapShaper.getDefaultFileExtension(opts.format);
-  if (!opts.filebase) opts.filebase = "out"
+  if (!opts.filebase) opts.filebase = "out";
 
   validateLayerData(layers);
   T.start();
@@ -29,7 +29,7 @@ MapShaper.exportContent = function(layers, arcData, opts) {
 
   function validateLayerData(layers) {
     Utils.forEach(layers, function(lyr) {
-      if (Utils.isArray(lyr.shapes) == false) {
+      if (!Utils.isArray(lyr.shapes)) {
         error ("#exportContent() A layer is missing shape data");
       }
       if (lyr.geometry_type != 'polygon' && lyr.geometry_type != 'polyline') {
@@ -77,7 +77,8 @@ MapShaper.PathExporter = PathExporter; // for testing
 // Shapefile, GeoJSON and TopoJSON
 //
 function PathExporter(arcData, polygonType) {
-  if (polygonType == null) error("PathExporter requires @polygonType parameter.");
+  if (polygonType !== true && polygonType !== false)
+    error("PathExporter requires boolean @polygonType parameter.");
 
   // Export data for serializing one Shapefile record
   //
@@ -101,7 +102,7 @@ function PathExporter(arcData, polygonType) {
   //
   this.exportShapeForGeoJSON = function(ids) {
     var obj = exportShapeData(ids);
-    if (obj.pointCount == 0) return null;
+    if (obj.pointCount === 0) return null;
     if (polygonType) {
       var groups = groupMultiPolygonPaths(obj.pathData);
       return Utils.map(groups, function(group) {
@@ -116,7 +117,7 @@ function PathExporter(arcData, polygonType) {
   //
   this.exportShapeForTopoJSON = function(ids) {
     var obj = exportShapeData(ids);
-    if (obj.pointCount == 0) return null;
+    if (obj.pointCount === 0) return null;
     if (polygonType) {
 
       var groups = groupMultiPolygonPaths(obj.pathData);
@@ -167,7 +168,7 @@ function PathExporter(arcData, polygonType) {
       for (var i=0, n=pos.length; i<n; i++) {
         var part = pos[i],
             contained = part.bounds.contains(hole.bounds);
-        if (contained && (containerArea == 0 || part.area < containerArea)) {
+        if (contained && (containerArea === 0 || part.area < containerArea)) {
           containerArea = part.area;
           containerId = i;
         }
@@ -202,8 +203,8 @@ function PathExporter(arcData, polygonType) {
     return {
       pointCount: pointCount,
       pathData: pathData
-    }
-  };
+    };
+  }
 
   // Extract data from a SimpleShape object (see mapshaper-shapes.js)
   // Returns null if shape has collapsed or is otherwise invalid
@@ -218,7 +219,7 @@ function PathExporter(arcData, polygonType) {
       x = iter.x;
       y = iter.y;
 
-      if (i == 0 || prevX != x || prevY != y) {
+      if (i === 0 || prevX != x || prevY != y) {
         xx.push(x);
         yy.push(y);
         i++;
@@ -229,8 +230,8 @@ function PathExporter(arcData, polygonType) {
     }
 
     if (isRing) {
-      area = msSignedRingArea(xx, yy)
-      if (i < 4 || area == 0) return null;
+      area = msSignedRingArea(xx, yy);
+      if (i < 4 || area === 0) return null;
     } else if (i < 2) {
       return null;
     }
@@ -242,6 +243,6 @@ function PathExporter(arcData, polygonType) {
       area: area,
       ids: path.ids,
       bounds: MapShaper.calcXYBounds(xx, yy)
-    }
+    };
   }
 }

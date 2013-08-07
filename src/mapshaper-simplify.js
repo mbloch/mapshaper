@@ -1,7 +1,6 @@
 /* @requires mapshaper-visvalingam, mapshaper-dp */
 
 
-
 MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
   var n;
   for (var i=0, len=thresholds.length; i<len; i++) {
@@ -12,12 +11,13 @@ MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
   }
 };
 
+// TODO: test this function
 // Protect polar coordinates and coordinates at the prime meridian from
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
 //
 MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
-  Utils.forEach(arcs, function(arc, i) {
+  Utils.forEach(arcs, function(arc) {
     var zz = thresholds[i],
         xx = arcs[i][0],
         yy = arcs[i][1],
@@ -30,14 +30,15 @@ MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
         b = -90 + err,
         maxZ, x, y;
 
-    if (containsBounds([l, b, r, t], bounds) == false) return; // content doesn't reach edges
+    // return if content doesn't reach edges
+    if (containsBounds([l, b, r, t], bounds) === false) return;
 
     for (var i=0, n=zz.length; i<n; i++) {
       maxZ = 0;
       x = xx[i];
       y = yy[i];
       if (x > r || x < l || y < b || y > t) {
-        if (maxZ == 0) {
+        if (maxZ === 0) {
           maxZ = MapShaper.findMaxThreshold(zz);
         }
         if (zz[i] !== Infinity) { // don't override lock value
@@ -45,7 +46,7 @@ MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
         }
       }
     }
-  })
+  });
 };
 
 // Return largest value in an array, ignoring Infinity (lock value)
@@ -88,7 +89,7 @@ MapShaper.lockMaxThresholds = function(zz, numberToLock) {
       if (z === lockVal) {
         lockedCount++;
       } else if (z > maxVal) {
-        maxVal = z
+        maxVal = z;
       }
     }
     if (lockedCount >= numberToLock) break;
@@ -112,7 +113,7 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
     ybuf[i] = Math.sin(lng) * cosLat * r;
     zbuf[i] = Math.sin(lat) * r;
   }
-}
+};
 
 // Apply a simplification function to each path in an array, return simplified path.
 //
@@ -145,7 +146,6 @@ MapShaper.simplifiers = {
   mod: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
   dp: DouglasPeucker.calcArcData
 };
-
 
 MapShaper.simplifyPathsSph = function(arcs, simplify) {
   var bufSize = 0,
