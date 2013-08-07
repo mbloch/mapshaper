@@ -25,15 +25,22 @@ function ArcDataset(coords) {
     var data = convertArcArrays(coords);
     var zz = new Float64Array(data.xx.length);
     _zlimit = 0;
-    updateArcData(data.xx, data.yy, data.ii, data.nn, zz)
+    updateArcData(data.xx, data.yy, data.nn, zz)
   }
 
-  function updateArcData(xx, yy, ii, nn, zz) {
+  function updateArcData(xx, yy, nn, zz) {
+    var size = nn.length;
     _xx = xx;
     _yy = yy;
-    _ii = ii;
     _nn = nn;
     _zz = zz;
+
+    // generate array of starting idxs of each arc
+    _ii = new Uint32Array(size);
+    for (var idx = 0, j=0; j<size; j++) {
+      _ii[j] = idx;
+      idx += nn[j];
+    }
 
     initBounds();
 
@@ -73,7 +80,6 @@ function ArcDataset(coords) {
 
     // Generate arrays of arc lengths and starting idxs
     var nn = new Uint32Array(numArcs),
-        ii = new Uint32Array(numArcs),
         pointCount = 0,
         arc, arcLen;
     for (var i=0; i<numArcs; i++) {
@@ -123,6 +129,13 @@ function ArcDataset(coords) {
     return new ArcDataset(arcs);
   };
 
+  // Return arcs as arrays of [x, y] points (intended for testing).
+  this.toArray = function() {
+    return Utils.map(Utils.range(this.size()), function(i) {
+      return _self.getArc(i).toArray();
+    });
+  };
+
   // Apply a linear transform to the data, with or without rounding.
   //
   this.applyTransform = function(t, rounding) {
@@ -150,7 +163,7 @@ function ArcDataset(coords) {
   // Return array mapping original arc ids to re-indexed ids. If arr[n] == -1
   // then arc n was removed. arr[n] == m indicates that the arc at n was
   // moved to index m.
-  // Return null if no arcs were removed & no arcs were re-indexed.
+  // Return null if no arcs were re-indexed (and no arcs were removed)
   //
   this.filter = function(cb) {
     var map = new Int32Array(this.size()),
@@ -170,7 +183,7 @@ function ArcDataset(coords) {
     } else {
       condenseArcs(map);
       if (goodArcs === 0) {
-        trace("ArcDataset.filter() Warning: nothing left; size:", this.size());
+        // no remaining arcs
       }
       return map;
     }
@@ -197,14 +210,12 @@ function ArcDataset(coords) {
         copyElements(_yy, _ii[i], _yy, goodPoints, arcLen);
         copyElements(_zz, _ii[i], _zz, goodPoints, arcLen);
         _nn[k] = arcLen;
-        _ii[k] = goodPoints;
         goodPoints += arcLen;
         goodArcs++;
       }
     }
 
-    updateArcData(_xx.subarray(0, goodPoints),
-        _yy.subarray(0, goodPoints), _ii.subarray(0, goodArcs),
+    updateArcData(_xx.subarray(0, goodPoints), _yy.subarray(0, goodPoints),
         _nn.subarray(0, goodArcs), _zz.subarray(0, goodPoints));
 
   }
@@ -463,8 +474,8 @@ SimpleShape.prototype = {
   }
 };
 
-// Iterate along the points of an arc
-// properties: x, y, node (boolean, true if points is an arc endpoint)
+// Iterate over the points of an arc
+// properties: x, y)
 // method: hasNext()
 // usage:
 //   while (iter.hasNext()) {
