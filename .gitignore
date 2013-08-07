@@ -1,9 +1,8 @@
 *.DS_Store
-*.py[oc]
 __*
 */.git
 */.gitignore
 *.min.js
 
-# leaving out the bundled library until the project is farther along
-# mapshaper.js
+node_modules
+npm-debug.log
