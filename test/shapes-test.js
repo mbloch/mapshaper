@@ -104,6 +104,27 @@ describe('mapshaper-shapes.js', function () {
       assert.deepEqual([], arcs.toArray());
     });
 
+    it('#quantize() works', function() {
+      // points: [1, 1], [2, 3], [3, 1], [1, 1]
+      var arcs = new ArcDataset(arcs4);
+      var bb1 = arcs.getBounds();
+
+      // hi-res
+      arcs.quantize(9999); // multiple of 3, so original coords are preserved
+      assert.deepEqual(bb1, arcs.getBounds());
+      assert.deepEqual([[[1, 1], [2, 3], [3, 1], [1, 1]]], arcs.toArray())
+
+      // low-res
+      arcs.quantize(3);
+      assert.deepEqual(bb1, arcs.getBounds());
+      assert.deepEqual([[[1, 1], [2, 3], [3, 1], [1, 1]]], arcs.toArray());
+
+      // ultra low-res
+      arcs.quantize(2);
+      assert.deepEqual(bb1, arcs.getBounds());
+      assert.deepEqual([[[1, 1], [3, 3], [3, 1], [1, 1]]], arcs.toArray());
+    })
+
     // it('#setRetainedPct() works', function() { });
 
   })

@@ -85,7 +85,6 @@ function ArcDataset(coords) {
     for (var i=0; i<numArcs; i++) {
       arc = coords[i];
       arcLen = arc && arc[0].length || 0;
-      ii[i] = pointCount;
       nn[i] = arcLen;
       pointCount += arcLen;
       if (arcLen == 0) error("#convertArcArrays() Empty arc:", arc);
@@ -93,22 +92,22 @@ function ArcDataset(coords) {
 
     // Copy x, y coordinates into long arrays
     var xx = new Float64Array(pointCount),
-        yy = new Float64Array(pointCount);
+        yy = new Float64Array(pointCount),
+        i = 0;
     Utils.forEach(coords, function(arc, arcId) {
       var xarr = arc[0],
           yarr = arc[1],
-          n = nn[arcId],
-          i = ii[arcId];
+          n = nn[arcId];
       for (var j=0; j<n; j++) {
         xx[i + j] = xarr[j];
         yy[i + j] = yarr[j];
       }
+      i += n;
     });
 
     return {
       xx: xx,
       yy: yy,
-      ii: ii,
       nn: nn
     };
   }
@@ -135,6 +134,23 @@ function ArcDataset(coords) {
       return _self.getArc(i).toArray();
     });
   };
+
+
+  // Snap coordinates to a grid of @quanta locations on both axes
+  // This may snap nearby points to the same coordinates.
+  // Consider a cleanup pass to remove dupes, make sure collapsed arcs are
+  //   removed on export.
+  //
+  this.quantize = function(quanta) {
+    var bb1 = this.getBounds(),
+        bb2 = new Bounds(0, 0, quanta-1, quanta-1),
+        transform = bb1.getTransform(bb2),
+        inverse = transform.invert();
+
+    this.applyTransform(transform, true);
+    this.applyTransform(inverse);
+  };
+
 
   // Apply a linear transform to the data, with or without rounding.
   //
