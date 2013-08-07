@@ -178,13 +178,15 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
 
 TopoJSON.remapLayerArcs = function(shapes, map) {
   Utils.forEach(shapes, function(shape) {
-    TopoJSON.remapShapeArcs(shape, map);
+    if (shape) TopoJSON.remapShapeArcs(shape, map);
   });
 };
 
 // Re-index the arcs in a shape to account for removal of collapsed arcs.
 //
 TopoJSON.remapShapeArcs = function(shape, map) {
+  if (!shape || shape.length === 0) return;
+
   var dest = shape,
       src = shape.splice(0, shape.length),
       arcIds, path, arcNum, arcId, k, inv;
