@@ -11,17 +11,18 @@
 		"url": "https://github.com/mbloch/mapshaper"
 	},
 	"engines": {
-		"node": ">=0.10.0"
+		"node": "0.10.x"
 	},
 	"main": "./mapshaper.js",
 	"dependencies": {
-		"optimist": "0.3.x"
+		"optimist": "0.6.x",
+		"open": "~0.0.3"
 	},
 	"devDependencies": {
-		"mocha": "1.8.x"
+		"mocha": "*"
 	},
-	"bundledDependencies": [
-		"optimist"
-	],
-	"bin": "./bin/mapshaper"
+	"bin": {
+		"mapshaper": "./bin/mapshaper",
+		"mapshaper-gui": "./bin/mapshaper-gui"
+	}
 }

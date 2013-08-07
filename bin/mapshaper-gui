@@ -1,0 +1,79 @@
+#!/usr/bin/env node
+
+var http = require("http"),
+    path = require("path"),
+    url = require("url"),
+    fs = require("fs"),
+    open = require("open"),
+    optimist = require("optimist");
+
+var defaultPort = 5555,
+    usage = "Usage: $ mapshaper-gui [options]",
+    opts = optimist.usage(usage)
+
+  .options("h", {
+    alias: "help",
+    describe: "show this help message",
+    'boolean': true
+  })
+
+  .options("p", {
+    alias: "port",
+    default: defaultPort,
+    describe: "http port of server on localhost"
+  })
+
+  .check(function(argv) {
+    if (argv.h) {
+      optimist.showHelp();
+      process.exit(0);
+    }
+  })
+  .argv;
+
+var webRoot = path.join(__dirname, "../www"),
+    port = opts.port || defaultPort,
+    indexUrl = "http://localhost:" + port + "/index.html";
+
+process.on('uncaughtException', function(err) {
+  if (err.errno === 'EADDRINUSE')
+    console.log("Port " + port + ' is in use (Run mapshaper-gui -h for help).');
+  process.exit(1);
+});
+
+serveOnPort(webRoot, port);
+
+function serveOnPort(www, port) {
+  http.createServer(function(request, response) {
+    var uri = url.parse(request.url).pathname
+      , filename = path.join(www, uri);
+
+    fs.exists(filename, function(exists) {
+      if(!exists) {
+        response.writeHead(404, {"Content-Type": "text/plain"});
+        response.write("404 Not Found\n");
+        response.end();
+        return;
+      }
+
+      if (fs.statSync(filename).isDirectory()) filename += '/index.html';
+
+      fs.readFile(filename, "binary", function(err, file) {
+        if(err) {
+          response.writeHead(500, {"Content-Type": "text/plain"});
+          response.write(err + "\n");
+          response.end();
+          return;
+        }
+
+        response.writeHead(200);
+        response.write(file, "binary");
+        response.end();
+      });
+    });
+  }).listen(parseInt(port, 10), onListening);
+}
+
+function onListening() {
+  open(indexUrl);
+}
