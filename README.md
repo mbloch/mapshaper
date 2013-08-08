@@ -16,7 +16,7 @@ Mapshaper requires [Node.js](http://nodejs.org). With Node installed, you can in
 
 ### Interactive tool
 
-The mapshaper distribution includes the script `mapshaper-gui`, which opens mapshaper's web interface in a browser. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online.
+The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online.
 
 Browser compatibility: mapshaper works well in recent versions of Chrome and Firefox. Large files (say, >200MB) may cause out-of-memory errors in Chrome. Exporting is not supported in Safari. Mapshaper appears to work in Opera 15+ and Internet Explorer 11.
 
