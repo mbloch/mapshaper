@@ -11,27 +11,30 @@ MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
   }
 };
 
-// TODO: test this function
+// TODO: Operate on an ArcDataset object instead of arrays of coordinates.
+//
 // Protect polar coordinates and coordinates at the prime meridian from
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
 //
 MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
-  Utils.forEach(arcs, function(arc) {
-    var zz = thresholds[i],
-        xx = arcs[i][0],
-        yy = arcs[i][1],
-        // -179.99999999999994 rounding error
-        // found in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
-        err = 1e-12,
-        l = -180 + err,
-        r = 180 - err,
-        t = 90 - err,
-        b = -90 + err,
-        maxZ, x, y;
+  // -179.99999999999994 rounding error
+  // found in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
+  // 180.00000000000003 found in ne/ne_50m_admin_0_countries.shp
+  var err = 1e-12,
+      l = -180 + err,
+      r = 180 - err,
+      t = 90 - err,
+      b = -90 + err;
 
-    // return if content doesn't reach edges
-    if (containsBounds([l, b, r, t], bounds) === false) return;
+  // return if content doesn't reach edges
+  if (containsBounds([l, b, r, t], bounds) === true) return;
+
+  Utils.forEach(arcs, function(arc, arcId) {
+    var zz = thresholds[arcId],
+        xx = arcs[arcId][0],
+        yy = arcs[arcId][1],
+        maxZ, x, y;
 
     for (var i=0, n=zz.length; i<n; i++) {
       maxZ = 0;
