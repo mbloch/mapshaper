@@ -207,14 +207,34 @@ describe('mapshaper-cli.js', function() {
       });
     })
 
+    var good8 = "test_data/two_states.shp -o test_data";
+    it(good8, function() {
+      assert.deepEqual(validate(good8), {
+        input_file: "test_data/two_states.shp",
+        output_directory: "test_data",
+        output_extension: "shp",
+        output_file_base: "two_states"
+      });
+    })
+
+    var good9 = "test_data/two_states.shp -o .";
+    it(good9, function() {
+      assert.deepEqual(validate(good9), {
+        input_file: "test_data/two_states.shp",
+        output_directory: ".",
+        output_extension: "shp",
+        output_file_base: "two_states"
+      });
+    })
+
+    var bad1 = "test_data/two_states.shp -o simplified.kml";
+    it(bad1 + " (looks like unsupported file type)", function() {
+      assert.throws(function() {validate(bad1)});
+    })
+
     var bad2 = "test_data/two_states.shp -o missing/simplified.shp";
     it(bad2 + " (-o file in a missing directory)", function() {
       assert.throws(function() {validate(bad2)});
-    })
-
-    var bad3 = "test_data/two_states.shp -o test_data";
-    it(bad3 + " (-o doesn't accept directory name)", function() {
-      assert.throws(function() {validate(bad3)});
     })
 
     var bad4 = "test_data/two_states.shp -o test_data/two_states/../two_states.shp";

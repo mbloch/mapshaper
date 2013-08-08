@@ -94,28 +94,25 @@ cli.validateOutputOpts = function(opts, argv) {
       error("-o option needs a file name");
     }
     var ofileInfo = Node.getFileInfo(argv.o);
-
     if (ofileInfo.is_directory) {
-      error("-o should be a file, not a directory");
-    }
-
-    if (ofileInfo.ext) {
-      // use -o extension, if present
-      // allows .topojson or .geojson instead of .json
-      // override extension inferred from --format option
-      oext = ofileInfo.ext;
-    }
-
-    if (!Node.dirExists(ofileInfo.relative_dir)) {
+      odir = argv.o;
+    } else if (ofileInfo.relative_dir && !Node.dirExists(ofileInfo.relative_dir)) {
       error("Output directory not found:", ofileInfo.relative_dir);
+    } else if (!ofileInfo.base) {
+      error('Invalid output file:', argv.o);
+    } else {
+      if (ofileInfo.ext) {
+        if (!cli.validateFileExtension(ofileInfo.ext)) {
+          error("Output file looks like an unsupported file type:", ofileInfo.file);
+        }
+        // use -o extension, if present
+        // allows .topojson or .geojson instead of .json
+        // override extension inferred from --format option
+        oext = ofileInfo.ext;
+      }
+      obase = ofileInfo.base;
+      odir = ofileInfo.relative_dir || '.';
     }
-
-    if (oext && !cli.validateFileExtension(oext)) {
-      error("Output file looks like an unsupported file type:", ofileInfo.file);
-    }
-
-    obase = ofileInfo.base;
-    odir = ofileInfo.relative_dir;
   }
 
   opts.output_extension = oext;
