@@ -70,15 +70,19 @@ MapShaper.exporters = {
   shapefile: MapShaper.exportShp
 };
 
-
 MapShaper.PathExporter = PathExporter; // for testing
 
 // Convert topological data into formats that are useful for exporting
 // Shapefile, GeoJSON and TopoJSON
 //
 function PathExporter(arcData, polygonType) {
+  var layerBounds = new Bounds();
   if (polygonType !== true && polygonType !== false)
     error("PathExporter requires boolean @polygonType parameter.");
+
+  this.getBounds = function() {
+    return layerBounds;
+  };
 
   // Export data for serializing one Shapefile record
   //
@@ -119,7 +123,6 @@ function PathExporter(arcData, polygonType) {
     var obj = exportShapeData(ids);
     if (obj.pointCount === 0) return null;
     if (polygonType) {
-
       var groups = groupMultiPolygonPaths(obj.pathData);
       return Utils.map(groups, function(group) {
         return convertPathsForTopoJSON(group);
@@ -175,6 +178,7 @@ function PathExporter(arcData, polygonType) {
       }
       if (containerId == -1) {
         trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
+        trace(paths)
       } else {
         output[containerId].push(hole);
       }
@@ -214,7 +218,10 @@ function PathExporter(arcData, polygonType) {
         yy = [],
         iter = path.getPathIter();
 
-    var x, y, prevX, prevY, i = 0, area = 0;
+    var x, y, prevX, prevY,
+        bounds,
+        i = 0,
+        area = 0;
     while (iter.hasNext()) {
       x = iter.x;
       y = iter.y;
@@ -236,13 +243,16 @@ function PathExporter(arcData, polygonType) {
       return null;
     }
 
+    bounds = MapShaper.calcXYBounds(xx, yy);
+    layerBounds.mergeBounds(bounds); // KLUDGE: simpler to accumulate bounds here
+
     return {
       xx: xx,
       yy: yy,
       pointCount: xx.length,
       area: area,
       ids: path.ids,
-      bounds: MapShaper.calcXYBounds(xx, yy)
+      bounds: bounds
     };
   }
 }

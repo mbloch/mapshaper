@@ -141,7 +141,10 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
     }
   });
 
-  var output = {};
+  var output = {
+    bbox: exporter.getBounds().toArray()
+  };
+
   if (useFeatures) {
     output.type = 'FeatureCollection';
     output.features = objects;

@@ -63,10 +63,12 @@ TopoJSON.importGeometryCollection = function(obj, arcs) {
   Utils.forEach(obj.geometries, function(geom) {
     importer.startShape(geom.properties, geom.id);
     var pathImporter = TopoJSON.pathImporters[geom.type];
-    if (!pathImporter) {
-      trace("TopoJSON.importGeometryCollection() Couldn't import geometry:", geom);
-    } else {
+    if (pathImporter) {
       pathImporter(geom.arcs, importer);
+    } else if (geom.type) {
+      trace("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
+    } else {
+      // null geometry -- ok
     }
   });
   return importer.done();
@@ -151,6 +153,7 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
   var map = TopoJSON.filterExportArcs(exportArcs);
   var deltaArcs = TopoJSON.getDeltaEncodedArcs(exportArcs);
   var objects = {};
+  var bounds = new Bounds();
   Utils.forEach(layers, function(lyr, i) {
     var geomType = lyr.geometry_type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
     var exporter = new PathExporter(exportArcs, lyr.geometry_type == 'polygon');
@@ -158,6 +161,7 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
     var obj = exportTopoJSONObject(exporter, lyr, geomType);
     lyr.name = lyr.name || "layer" + (i + 1);
     objects[lyr.name] = obj;
+    bounds.mergeBounds(exporter.getBounds());
   });
 
   var obj = {
@@ -167,7 +171,8 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
       translate: [inv.bx, inv.by]
     },
     arcs: deltaArcs,
-    objects: objects
+    objects: objects,
+    bbox: bounds.transform(inv).toArray()
   };
 
   return [{
@@ -285,7 +290,6 @@ TopoJSON.calcExportResolution = function(arcData) {
       yres = dy * k / n;
   return [xres, yres];
 };
-
 
 function exportTopoJSONObject(exporter, lyr, type) {
   var properties = lyr.properties,
