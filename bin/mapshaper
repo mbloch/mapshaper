@@ -68,6 +68,11 @@ optimist.usage(usage)
     'boolean': true
   })
 
+  .options("q", {
+    alias: "quantize",
+    describe: "set topojson output resolution"
+  })
+
   .options("t", {
     alias: "timing",
     describe: "show execution time of processing steps",
@@ -96,12 +101,6 @@ optimist.usage(usage)
 
   .options("remove-null", {
     describe: "remove null shapes",
-    default: false
-  })
-
-  .options("l", {
-    alias: "log",
-    describe: "write debugging information to <filename>.log",
     default: false
   })
 
@@ -157,8 +156,9 @@ if (opts.simplify_pct) {
 var exportOpts = {
   format: outputFormat,
   extension: opts.output_extension,
-  filebase: opts.output_file_base
-}
+  filebase: opts.output_file_base,
+  topojson_resolution: opts.topojson_resolution
+};
 var exports = mapshaper.exportContent(importData.layers, arcData, exportOpts);
 
 // copy dbf & prj files, if shapefile

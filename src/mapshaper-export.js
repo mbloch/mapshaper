@@ -21,7 +21,7 @@ MapShaper.exportContent = function(layers, arcData, opts) {
 
   validateLayerData(layers);
   T.start();
-  var files = exporter(layers, arcData);
+  var files = exporter(layers, arcData, opts);
   T.stop("Export " + opts.format);
 
   assignFileNames(files, opts);
@@ -178,7 +178,7 @@ function PathExporter(arcData, polygonType) {
       }
       if (containerId == -1) {
         trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
-        trace(paths)
+        // trace(paths)
       } else {
         output[containerId].push(hole);
       }

@@ -25,7 +25,8 @@ describe('mapshaper-cli.js', function() {
 
     var good1 = "-p 0.2",
         good2 = "-i 2000 --dp -k",
-        good3 = "-k --vis -p .9";
+        good3 = "-k --vis -p .9",
+        good4 = "-q 1000";
 
     // var ok1 = "-p 0.4 -i 5000";
 
@@ -34,7 +35,8 @@ describe('mapshaper-cli.js', function() {
         bad3 = "-i 200km",
         bad4 = "-i",
         bad5 = "-p",
-        bad6 = "";
+        bad6 = "-q 0.3",
+        bad7 = "-q";
 
     function validate(str) {
       var argv = parseOpts(str);
@@ -69,6 +71,13 @@ describe('mapshaper-cli.js', function() {
       });
     })
 
+    it(good4, function() {
+      assert.deepEqual(validate(good4), {
+        use_simplification: false,
+        topojson_resolution: 1000
+      });
+    })
+
     it(bad1 + " (invalid)", function() {
       assert.throws(function(){validate(bad1)});
     })
@@ -87,6 +96,14 @@ describe('mapshaper-cli.js', function() {
 
     it(bad5 + " (invalid)", function() {
       assert.throws(function(){validate(bad5)});
+    })
+
+    it(bad6 + " (invalid)", function() {
+      assert.throws(function(){validate(bad6)});
+    })
+
+    it(bad7 + " (invalid)", function() {
+      assert.throws(function(){validate(bad7)});
     })
 
   })

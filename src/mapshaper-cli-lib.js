@@ -128,19 +128,29 @@ cli.validateSimplifyOpts = function(opts, argv) {
     opts.simplify_interval = argv.i;
   }
   else if (argv.p) {
-    if (!Utils.isNumber(argv.p) || argv.p <= 0 || argv.p >= 1) error("-p (--pct) option should be in the range (0,1)");
+    if (!Utils.isNumber(argv.p) || argv.p <= 0 || argv.p >= 1)
+      error("-p (--pct) option should be in the range (0,1)");
     opts.simplify_pct = argv.p;
   }
 
-  opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
-  opts.keep_shapes = !!argv.k;
+  if (argv.q) {
+    if (!Utils.isInteger(argv.q) || argv.q <= 0) {
+      error("-q (--quantize) option should be a nonnegative integer");
+    }
+    opts.topojson_resolution = argv.q;
+  }
 
-  if (argv.dp)
-    opts.simplify_method = "dp";
-  else if (argv.vis)
-    opts.simplify_method = "vis";
-  else
-    opts.simplify_method = "mod";
+  opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
+
+  if (opts.use_simplification) {
+    opts.keep_shapes = !!argv.k;
+    if (argv.dp)
+      opts.simplify_method = "dp";
+    else if (argv.vis)
+      opts.simplify_method = "vis";
+    else
+      opts.simplify_method = "mod";
+  }
 
   return opts;
 };

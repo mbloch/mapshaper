@@ -143,11 +143,10 @@ TopoJSON.pathImporters = {
 // TODO: Support ids from attribute data
 // TODO: Support properties
 //
-MapShaper.exportTopoJSON = function(layers, arcData) {
+MapShaper.exportTopoJSON = function(layers, arcData, opts) {
 
   var exportArcs = arcData.getFilteredCopy();
-  var transform = TopoJSON.getExportTransform(exportArcs),
-      inv = transform.invert();
+  var transform = TopoJSON.getExportTransform(exportArcs, opts.topojson_resolution || null);
 
   exportArcs.applyTransform(transform, true);
   var map = TopoJSON.filterExportArcs(exportArcs);
@@ -164,6 +163,7 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
     bounds.mergeBounds(exporter.getBounds());
   });
 
+  var inv = transform.invert();
   var obj = {
     type: "Topology",
     transform: {
@@ -258,10 +258,21 @@ TopoJSON.getDeltaEncodedArcs = function(arcData) {
 // Return a Transform object for converting geographic coordinates to quantized
 // integer coordinates.
 //
-TopoJSON.getExportTransform = function(arcData) {
-  var srcBounds = arcData.getBounds();
-  var resXY = TopoJSON.calcExportResolution(arcData),
-      destBounds = new Bounds(0, 0, srcBounds.width() / resXY[0], srcBounds.height() / resXY[1]);
+TopoJSON.getExportTransform = function(arcData, quanta) {
+  var srcBounds = arcData.getBounds(),
+      destBounds, xmax, ymax;
+  if (quanta) {
+    xmax = quanta - 1;
+    ymax = quanta - 1;
+  } else {
+    var resXY = TopoJSON.calcExportResolution(arcData);
+    xmax = srcBounds.width() / resXY[0];
+    ymax = srcBounds.height() / resXY[1];
+  }
+  // rounding xmax, ymax ensures original layer bounds don't change after 'quantization'
+  // (this could matter if a layer extends to the poles or the central meridian)
+  // TODO: test this
+  destBounds = new Bounds(0, 0, Math.ceil(xmax), Math.ceil(ymax));
   return srcBounds.getTransform(destBounds);
 };
 
