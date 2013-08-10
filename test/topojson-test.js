@@ -3,11 +3,16 @@ var api = require('../'),
   assert = require('assert'),
   TopoJSON = api.topojson,
   ArcDataset = api.ArcDataset,
-  Utils = api.Utils;
+  Utils = api.Utils,
+  Node = api.Node;
 
 
 function deepCopy(obj) {
   return JSON.parse(JSON.stringify(obj));
+}
+
+function fixPath(p) {
+  return Node.path.join(__dirname, p);
 }
 
 describe('topojson-test.js', function () {
@@ -69,5 +74,37 @@ describe('topojson-test.js', function () {
   })
 
 
+  describe('Export/Import roundtrip tests', function () {
+    it('two states', function () {
+      topoJSONRoundTrip('test_data/two_states.json');
+    })
+
+    it('six counties, two null geometries', function () {
+      topoJSONRoundTrip('test_data/six_counties_three_null.json');
+    })
+
+    it('internal state borders (polyline)', function () {
+      topoJSONRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_lines.json');
+    })
+  })
 
 })
+
+function topoJSONRoundTrip(fname) {
+  // in order for the roundtrip to work, need to use a constant resolution
+  // rather than letting mapshaper automatically pick a suitable resolution
+  var exportOpts = {
+    format:'topojson',
+    topojson_resolution: 10000
+  };
+  var data = api.importFromFile(fixPath(fname));
+  var arcs = new api.ArcDataset(data.arcs);
+
+  var files = api.exportContent(data.layers, arcs, exportOpts);
+
+  var data2 = api.importContent(files[0].content, 'json');
+  var arcs2 = new api.ArcDataset(data2.arcs);
+  var files2 = api.exportContent(data2.layers, arcs2, exportOpts);
+
+  assert.deepEqual(files, files2);
+}

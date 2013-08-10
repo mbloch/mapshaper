@@ -18,14 +18,6 @@ describe('mapshaper-shapefile.js', function () {
       shapefileRoundTrip('test_data/two_states.shp');
     })
 
-    it('Polylines from shplib', function () {
-      shapefileRoundTrip('test_data/shplib/pline.shp');
-    })
-
-    it('Polygons from shplib', function() {
-      shapefileRoundTrip('test_data/shplib/polygon.shp');
-    })
-
     it('World land borders from Natural Earth', function() {
       shapefileRoundTrip('test_data/ne/ne_110m_admin_0_boundary_lines_land.shp');
     })

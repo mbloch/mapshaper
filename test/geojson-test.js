@@ -33,14 +33,13 @@ describe('mapshaper-geojson.js', function () {
       geoJSONRoundTrip('test_data/two_states.json');
     })
 
-    it('Six counties, two null geometries', function () {
-      //geoJSONRoundTrip('test_data/six_counties_three_null.json');
+    it('six counties, two null geometries', function () {
+      geoJSONRoundTrip('test_data/six_counties_three_null.json');
     })
 
     it('Internal state borders (polyline)', function () {
-      //geoJSONRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_lines.json', 'geojson');
+      geoJSONRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_lines.json');
     })
-
 
   })
 })
