@@ -22,7 +22,7 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   validateLayerData(layers);
   T.start();
   var files = exporter(layers, arcData, opts);
-  T.stop("Export " + opts.format);
+  T.stop("Export " + opts.output_format);
 
   assignFileNames(files, opts);
   return files;
