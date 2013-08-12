@@ -120,6 +120,10 @@ var Utils = {
     return obj != null && obj.constructor == Number;
   },
 
+  isInteger: function(obj) {
+    return Utils.isNumber(obj) && (obj | 0 === obj);
+  },
+
   isString: function(obj) {
     return obj != null && obj.toString === String.prototype.toString; // TODO: replace w/ something better.
   },
@@ -3108,7 +3112,7 @@ function Timer() {
         time = now - _prevTime,
         elapsed = now - _startTime;
     _count++;
-    if (_duration > 0 && elapsed > duration || _times > 0 && _count > _times) {
+    if (_duration > 0 && elapsed > _duration || _times > 0 && _count > _times) {
       this.stop();
       return;
     }
@@ -4019,6 +4023,29 @@ MapShaper.parseLocalPath = function(path) {
   }
   obj.filename = name;
   return obj;
+};
+
+MapShaper.guessFileType = function(file) {
+  var type = null;
+  if (/json$/i.test(file)) {
+    type = 'json';
+  } else if (/shp$/i.test(file)) {
+    type = 'shp';
+  }
+  return type;
+};
+
+MapShaper.guessFileFormat = function(str) {
+  var type = null,
+      name = str.toLowerCase();
+  if (/topojson$/.test(name)) {
+    type = 'topojson';
+  } else if (/json$/.test(name)) {
+    type = 'geojson';
+  } else if (/shp$/.test(name)) {
+    type = 'shapefile';
+  }
+  return type;
 };
 
 
@@ -6208,7 +6235,10 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
     }
   });
 
-  var output = {};
+  var output = {
+    bbox: exporter.getBounds().toArray()
+  };
+
   if (useFeatures) {
     output.type = 'FeatureCollection';
     output.features = objects;
@@ -6335,10 +6365,12 @@ TopoJSON.importGeometryCollection = function(obj, arcs) {
   Utils.forEach(obj.geometries, function(geom) {
     importer.startShape(geom.properties, geom.id);
     var pathImporter = TopoJSON.pathImporters[geom.type];
-    if (!pathImporter) {
-      trace("TopoJSON.importGeometryCollection() Couldn't import geometry:", geom);
-    } else {
+    if (pathImporter) {
       pathImporter(geom.arcs, importer);
+    } else if (geom.type) {
+      trace("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
+    } else {
+      // null geometry -- ok
     }
   });
   return importer.done();
@@ -6413,16 +6445,16 @@ TopoJSON.pathImporters = {
 // TODO: Support ids from attribute data
 // TODO: Support properties
 //
-MapShaper.exportTopoJSON = function(layers, arcData) {
+MapShaper.exportTopoJSON = function(layers, arcData, opts) {
 
   var exportArcs = arcData.getFilteredCopy();
-  var transform = TopoJSON.getExportTransform(exportArcs),
-      inv = transform.invert();
+  var transform = TopoJSON.getExportTransform(exportArcs, opts.topojson_resolution || null);
 
   exportArcs.applyTransform(transform, true);
   var map = TopoJSON.filterExportArcs(exportArcs);
   var deltaArcs = TopoJSON.getDeltaEncodedArcs(exportArcs);
   var objects = {};
+  var bounds = new Bounds();
   Utils.forEach(layers, function(lyr, i) {
     var geomType = lyr.geometry_type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
     var exporter = new PathExporter(exportArcs, lyr.geometry_type == 'polygon');
@@ -6430,8 +6462,10 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
     var obj = exportTopoJSONObject(exporter, lyr, geomType);
     lyr.name = lyr.name || "layer" + (i + 1);
     objects[lyr.name] = obj;
+    bounds.mergeBounds(exporter.getBounds());
   });
 
+  var inv = transform.invert();
   var obj = {
     type: "Topology",
     transform: {
@@ -6439,7 +6473,8 @@ MapShaper.exportTopoJSON = function(layers, arcData) {
       translate: [inv.bx, inv.by]
     },
     arcs: deltaArcs,
-    objects: objects
+    objects: objects,
+    bbox: bounds.transform(inv).toArray()
   };
 
   return [{
@@ -6525,10 +6560,21 @@ TopoJSON.getDeltaEncodedArcs = function(arcData) {
 // Return a Transform object for converting geographic coordinates to quantized
 // integer coordinates.
 //
-TopoJSON.getExportTransform = function(arcData) {
-  var srcBounds = arcData.getBounds();
-  var resXY = TopoJSON.calcExportResolution(arcData),
-      destBounds = new Bounds(0, 0, srcBounds.width() / resXY[0], srcBounds.height() / resXY[1]);
+TopoJSON.getExportTransform = function(arcData, quanta) {
+  var srcBounds = arcData.getBounds(),
+      destBounds, xmax, ymax;
+  if (quanta) {
+    xmax = quanta - 1;
+    ymax = quanta - 1;
+  } else {
+    var resXY = TopoJSON.calcExportResolution(arcData);
+    xmax = srcBounds.width() / resXY[0];
+    ymax = srcBounds.height() / resXY[1];
+  }
+  // rounding xmax, ymax ensures original layer bounds don't change after 'quantization'
+  // (this could matter if a layer extends to the poles or the central meridian)
+  // TODO: test this
+  destBounds = new Bounds(0, 0, Math.ceil(xmax), Math.ceil(ymax));
   return srcBounds.getTransform(destBounds);
 };
 
@@ -6557,7 +6603,6 @@ TopoJSON.calcExportResolution = function(arcData) {
       yres = dy * k / n;
   return [xres, yres];
 };
-
 
 function exportTopoJSONObject(exporter, lyr, type) {
   var properties = lyr.properties,
@@ -7178,7 +7223,7 @@ MapShaper.importShp = function(src) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShp = function(layers, arcData) {
+MapShaper.exportShp = function(layers, arcData, opts) {
   if (arcData instanceof ArcDataset === false || !Utils.isArray(layers)) error("Missing exportable data.");
 
   var files = [];
@@ -7335,14 +7380,14 @@ MapShaper.getDefaultFileExtension = function(fileType) {
 // Return an array of objects with "filename" "filebase" "extension" and "content" attributes.
 //
 MapShaper.exportContent = function(layers, arcData, opts) {
-  var exporter = MapShaper.exporters[opts.format];
-  if (!exporter) error("exportContent() Unknown export format:", opts.format);
-  if (!opts.extension) opts.extension = MapShaper.getDefaultFileExtension(opts.format);
-  if (!opts.filebase) opts.filebase = "out";
+  var exporter = MapShaper.exporters[opts.output_format];
+  if (!exporter) error("exportContent() Unknown export format:", opts.output_format);
+  if (!opts.output_extension) opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
+  if (!opts.output_file_base) opts.output_file_base = "out";
 
   validateLayerData(layers);
   T.start();
-  var files = exporter(layers, arcData);
+  var files = exporter(layers, arcData, opts);
   T.stop("Export " + opts.format);
 
   assignFileNames(files, opts);
@@ -7362,8 +7407,8 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   function assignFileNames(files, opts) {
     var index = {};
     Utils.forEach(files, function(file) {
-      file.extension = file.extension || opts.extension;
-      var name = opts.filebase,
+      file.extension = file.extension || opts.output_extension;
+      var name = opts.output_file_base,
           i = 1,
           filebase, filename, ext;
       if (file.name) {
@@ -7391,15 +7436,19 @@ MapShaper.exporters = {
   shapefile: MapShaper.exportShp
 };
 
-
 MapShaper.PathExporter = PathExporter; // for testing
 
 // Convert topological data into formats that are useful for exporting
 // Shapefile, GeoJSON and TopoJSON
 //
 function PathExporter(arcData, polygonType) {
+  var layerBounds = new Bounds();
   if (polygonType !== true && polygonType !== false)
     error("PathExporter requires boolean @polygonType parameter.");
+
+  this.getBounds = function() {
+    return layerBounds;
+  };
 
   // Export data for serializing one Shapefile record
   //
@@ -7440,7 +7489,6 @@ function PathExporter(arcData, polygonType) {
     var obj = exportShapeData(ids);
     if (obj.pointCount === 0) return null;
     if (polygonType) {
-
       var groups = groupMultiPolygonPaths(obj.pathData);
       return Utils.map(groups, function(group) {
         return convertPathsForTopoJSON(group);
@@ -7496,6 +7544,7 @@ function PathExporter(arcData, polygonType) {
       }
       if (containerId == -1) {
         trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
+        // trace(paths)
       } else {
         output[containerId].push(hole);
       }
@@ -7535,7 +7584,10 @@ function PathExporter(arcData, polygonType) {
         yy = [],
         iter = path.getPathIter();
 
-    var x, y, prevX, prevY, i = 0, area = 0;
+    var x, y, prevX, prevY,
+        bounds,
+        i = 0,
+        area = 0;
     while (iter.hasNext()) {
       x = iter.x;
       y = iter.y;
@@ -7557,13 +7609,16 @@ function PathExporter(arcData, polygonType) {
       return null;
     }
 
+    bounds = MapShaper.calcXYBounds(xx, yy);
+    layerBounds.mergeBounds(bounds); // KLUDGE: simpler to accumulate bounds here
+
     return {
       xx: xx,
       yy: yy,
       pointCount: xx.length,
       area: area,
       ids: path.ids,
-      bounds: MapShaper.calcXYBounds(xx, yy)
+      bounds: bounds
     };
   }
 }
@@ -7571,38 +7626,27 @@ function PathExporter(arcData, polygonType) {
 
 
 
-MapShaper.guessFileType = function(file) {
-  var type = null;
-  if (/json$/i.test(file)) {
-    type = 'json';
-  } else if (/shp$/i.test(file)) {
-    type = 'shp';
-  }
-  return type;
-};
-
 // @content: ArrayBuffer or String
 // @type: 'shapefile'|'json'
 //
 MapShaper.importContent = function(content, fileType) {
-  var data;
+  var data,
+      fileFmt;
   if (fileType == 'shp') {
     data = MapShaper.importNonTopoDataset(MapShaper.importShp(content));
-    data.input_format = 'shapefile';
+    fileFmt = 'shapefile';
   } else if (fileType == 'json') {
     var jsonObj = JSON.parse(content);
     if (jsonObj.type == 'Topology') {
       data = MapShaper.importTopoJSON(jsonObj);
-      data.input_format = 'topojson';
+      fileFmt = 'topojson';
     } else {
       data = MapShaper.importNonTopoDataset(MapShaper.importGeoJSON(jsonObj));
-      data.input_format = 'geojson';
+      fileFmt = 'geojson';
     }
   } else {
     error("Unsupported file type:", fileType);
   }
-
-  MapShaper.validateImportData(data);
 
   // Calculate data to use for shape preservation
   var numArcs = data.arcs.length;
@@ -7615,14 +7659,18 @@ MapShaper.importContent = function(content, fileType) {
     }
   });
 
-  data.retainedPointCounts = retainedPointCounts;
-  return data;
+  var info = {
+    input_format: fileFmt
+  };
+
+  return {
+    arcs: data.arcs,
+    layers: data.layers,
+    retainedPointCounts: retainedPointCounts,
+    info: info
+  };
 };
 
-MapShaper.validateImportData = function(obj) {
-  if (!Utils.isArray(obj.arcs)) error ("Missing topological path data");
-  if (!Utils.isArray(obj.layers) || obj.layers.length === 0) error ("Missing layer data");
-};
 
 MapShaper.getArcCountsInLayer = function(shapes, numArcs) {
   var counts = new Uint8Array(numArcs);
@@ -7647,17 +7695,15 @@ MapShaper.calcArcCountsInShape = function(counts, shape) {
 
 MapShaper.importNonTopoDataset = function(importData) {
   var topoData = MapShaper.buildTopology(importData),
-      info = importData.info,
       layer = {
         name: "",
         properties: importData.properties,
         shapes: topoData.shapes,
-        geometry_type: info.input_geometry_type
+        geometry_type: importData.info.input_geometry_type
       };
 
   return {
     arcs: topoData.arcs,
-    arcMinPointCounts: topoData.arcMinPointCounts,
     layers: [layer]
   };
 };
@@ -7709,11 +7755,9 @@ MapShaper.calcRetainedCountsForRing = function(path, retainedPointCounts, arcCou
 var cli = MapShaper.cli = {};
 
 MapShaper.validateArgv = function(argv) {
-  var opts = {};
-  cli.validateInputOpts(opts, argv);
-  cli.validateOutputOpts(opts, argv);
-  cli.validateSimplifyOpts(opts, argv);
-
+  var opts = cli.validateInputOpts(argv);
+  Utils.extend(opts, cli.validateOutputOpts(argv, opts));
+  Utils.extend(opts, cli.validateSimplifyOpts(argv));
   opts.timing = !!argv.t;
   return opts;
 };
@@ -7726,7 +7770,7 @@ MapShaper.getOutputPaths = function(files, dir, extension) {
   // assign filenames
   Utils.forEach(files, function(obj) {
     obj.pathbase = Node.path.join(dir, obj.filebase);
-    obj.extension = obj.extension || extension || "o"; // TODO: validate ext
+    obj.extension = obj.extension || extension || "x"; // TODO: validate ext
   });
 
   // avoid naming conflicts
@@ -7756,9 +7800,16 @@ cli.validateFileExtension = function(path) {
   return !!type;
 };
 
+cli.replaceFileExtension = function(path, ext) {
+  var info = Node.parseFilename(path);
+  return Node.path.join(info.relative_dir, info.base + "." + ext);
+};
 
-cli.validateInputOpts = function(opts, argv) {
-  var ifile = argv._[0];
+
+cli.validateInputOpts = function(argv) {
+  var ifile = argv._[0],
+      opts = {};
+
   if (!ifile) error("Missing an input file");
 
   if (!Node.fileExists(ifile)) error("File not found (" + ifile + ")");
@@ -7770,10 +7821,10 @@ cli.validateInputOpts = function(opts, argv) {
   return opts;
 };
 
-cli.validateOutputOpts = function(opts, argv) {
+cli.validateOutputOpts = function(argv, inputOpts) {
   var supportedTypes = ["geojson", "topojson", "shapefile"],
       odir = ".",
-      ifileInfo = Node.getFileInfo(opts.input_file),
+      ifileInfo = Node.getFileInfo(inputOpts.input_file),
       obase = ifileInfo.base, // default to input file name
       oext = ifileInfo.ext,   // default to input file extension
       ofmt;
@@ -7809,38 +7860,56 @@ cli.validateOutputOpts = function(opts, argv) {
         // allows .topojson or .geojson instead of .json
         // override extension inferred from --format option
         oext = ofileInfo.ext;
+
+        // Infer output format from -o option extension when appropriate
+        if (!ofmt &&
+          MapShaper.guessFileFormat(oext) != MapShaper.guessFileFormat(ifileInfo.ext)) {
+          ofmt =  MapShaper.guessFileFormat(oext);
+        }
       }
       obase = ofileInfo.base;
       odir = ofileInfo.relative_dir || '.';
     }
   }
 
-  opts.output_extension = oext;
-  if (ofmt) opts.output_format = ofmt; // inferred later if not found above
-  opts.output_directory = odir;
-  opts.output_file_base = obase;
-  return opts;
+  return {
+    output_extension: oext,
+    output_directory: odir,
+    output_file_base: obase,
+    output_format: ofmt || null // inferred later if not found above
+  };
 };
 
-cli.validateSimplifyOpts = function(opts, argv) {
+cli.validateSimplifyOpts = function(argv) {
+  var opts = {};
   if (argv.i) {
     if (!Utils.isNumber(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
     opts.simplify_interval = argv.i;
   }
   else if (argv.p) {
-    if (!Utils.isNumber(argv.p) || argv.p <= 0 || argv.p >= 1) error("-p (--pct) option should be in the range (0,1)");
+    if (!Utils.isNumber(argv.p) || argv.p <= 0 || argv.p >= 1)
+      error("-p (--pct) option should be in the range (0,1)");
     opts.simplify_pct = argv.p;
   }
 
-  opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
-  opts.keep_shapes = !!argv.k;
+  if (argv.q) {
+    if (!Utils.isInteger(argv.q) || argv.q <= 0) {
+      error("-q (--quantize) option should be a nonnegative integer");
+    }
+    opts.topojson_resolution = argv.q;
+  }
 
-  if (argv.dp)
-    opts.simplify_method = "dp";
-  else if (argv.vis)
-    opts.simplify_method = "vis";
-  else
-    opts.simplify_method = "mod";
+  opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
+
+  if (opts.use_simplification) {
+    opts.keep_shapes = !!argv.k;
+    if (argv.dp)
+      opts.simplify_method = "dp";
+    else if (argv.vis)
+      opts.simplify_method = "vis";
+    else
+      opts.simplify_method = "mod";
+  }
 
   return opts;
 };
@@ -7851,7 +7920,6 @@ MapShaper.gc = function() {
   Node.gc();
   T.stop("gc()");
 };
-
 
 MapShaper.importFromFile = function(fname) {
   var fileType = MapShaper.guessFileType(fname),
@@ -7865,6 +7933,7 @@ MapShaper.importFromFile = function(fname) {
   }
   return MapShaper.importContent(content, fileType);
 };
+
 
 var api = Utils.extend(MapShaper, {
   Node: Node,
