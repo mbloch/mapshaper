@@ -55,7 +55,7 @@ MapShaper.importShp = function(src) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShp = function(layers, arcData) {
+MapShaper.exportShp = function(layers, arcData, opts) {
   if (arcData instanceof ArcDataset === false || !Utils.isArray(layers)) error("Missing exportable data.");
 
   var files = [];
@@ -81,7 +81,6 @@ MapShaper.exportShpFile = function(layer, arcData) {
   var isPolygonType = geomType == 'polygon';
   var shpType = isPolygonType ? 5 : 3;
 
-  T.start();
   T.start();
 
   var exporter = new PathExporter(arcData, isPolygonType);
@@ -134,7 +133,6 @@ MapShaper.exportShpFile = function(layer, arcData) {
       shpBuf = shpBin.buffer();
 
   T.stop("convert to binary");
-  T.stop("Export Shapefile");
   return {shp: shpBuf, shx: shxBuf};
 };
 
