@@ -182,9 +182,9 @@ var ExportControl = function(arcData, layers, fileBase) {
 
   function exportAs(format, done) {
     var opts = {
-          format: format,
-          filebase: fileBase,
-          extension: MapShaper.getDefaultFileExtension(format)
+          output_format: format,
+          output_file_base: fileBase,
+          output_extension: MapShaper.getDefaultFileExtension(format)
         },
         files = MapShaper.exportContent(layers, arcData, opts),
         file;

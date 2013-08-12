@@ -7,7 +7,6 @@
 //
 
 var mapshaper = require("../"),
-    Visvalingam = mapshaper.Visvalingam,
     Node = mapshaper.Node,
     Utils = mapshaper.Utils,
     T = mapshaper.T;
@@ -86,11 +85,6 @@ optimist.usage(usage)
   })
 
   /*
-  // Removing shp-test: not compatible with new topology function
-  .options("shp-test", {
-    describe: "test if .shp can be regenerated from topology",
-    'boolean': true
-  })
 
   // TODO
   // prevent points along straight lines from being stripped away, to allow reprojection
@@ -123,16 +117,19 @@ optimist.usage(usage)
   })
   .argv;
 
-var info = {},
-    opts;
+var opts;
 
 T.verbose = opts.timing;
 T.start("Start timing");
 
 var importData = mapshaper.importFromFile(opts.input_file),
-    outputFormat = opts.output_format || importData.input_format,
     arcData = new mapshaper.ArcDataset(importData.arcs),
     bounds = arcData.getBounds();
+
+// Update input/output format with information found during importing
+// (command line info is insufficient to distinguish topojson and geojson)
+opts.input_format = opts.input_format || importData.info.input_format || error("Missing input format");
+opts.output_format = opts.output_format || opts.input_format;
 
 if (opts.use_simplification) {
   var vertexData = mapshaper.simplifyPaths(importData.arcs, opts.simplify_method, bounds.toArray());
@@ -153,18 +150,32 @@ if (opts.simplify_pct) {
   // no simplification
 }
 
-var exportOpts = {
-  format: outputFormat,
-  extension: opts.output_extension,
-  filebase: opts.output_file_base,
-  topojson_resolution: opts.topojson_resolution
-};
-var exports = mapshaper.exportContent(importData.layers, arcData, exportOpts);
+var exports = mapshaper.exportContent(importData.layers, arcData, opts);
 
-// copy dbf & prj files, if shapefile
-if (outputFormat == 'shapefile') {
+// Copy prj and dbf file, if both importing and exporting as shapefile
+if (opts.output_format == 'shapefile' && opts.input_format == 'shapefile') {
+  var prjFile = mapshaper.cli.replaceFileExtension(opts.input_file, 'prj'),
+      dbfFile = mapshaper.cli.replaceFileExtension(opts.input_file, 'dbf'),
+      shpFiles = Utils.filter(exports, function(o) {return o.extension == 'shp'});
 
+  if (Node.fileExists(dbfFile) && shpFiles.length > 0) {
+    // KLUDGE: assumes that the first layer contains the same shapes as the input
+    exports.push({
+      content: Node.readFile(dbfFile),
+      extension: 'dbf',
+      filebase: shpFiles[0].filebase
+    });
+  }
 
+  if (Node.fileExists(prjFile)) {
+    Utils.forEach(shpFiles, function(o) {
+      exports.push({
+        content: Node.readFile(prjFile, 'utf-8'),
+        extension: 'prj',
+        filebase: o.filebase
+      });
+    });
+  }
 }
 
 var paths = mapshaper.getOutputPaths(exports, opts.output_directory, opts.output_extension);
@@ -174,47 +185,8 @@ Utils.forEach(exports, function(obj, i) {
   console.log("Wrote " + path);
 });
 
+T.stop("Total time");
 
-/*
-var exportOpts = {
-  arcs: arcData,
-  shapes: topoData.shapes,
-  type: info.input_geometry_type
-}
-if (opts.output_format == "geojson") {
-  exportOpts.properties = properties;
-  var geojson = mapshaper.exportGeoJSON(exportOpts);
-  Node.writeFile(opts.output_path_base + ".json", geojson);
-}
-else if (opts.output_format == 'topojson') {
-  topojsonOpts = {
-    arcs: arcData,
-    bounds: arcData.getBounds(),
-    objects: [{
-      name: exportOpts.type + 's',
-      type: exportOpts.type,
-      shapes: exportOpts.shapes
-    }]
-  };
-  var topojson = mapshaper.exportTopoJSON(topojsonOpts);
-  Node.writeFile(opts.output_path_base + ".topojson", topojson);
-}
-else if (opts.output_format == "shapefile") {
-  var shpData = mapshaper.exportShp(exportOpts);
-
-  var obase = opts.output_path_base,
-      prjFile = opts.input_path_base + ".prj",
-      dbfFile = opts.input_path_base + ".dbf";
-  Node.writeFile(obase + ".shp", shpData.shp);
-  Node.writeFile(obase + ".shx", shpData.shx);
-  if (Node.fileExists(prjFile)) Node.copyFile(prjFile, obase + ".prj");
-  if (Node.fileExists(dbfFile)) Node.copyFile(dbfFile, obase + ".dbf");
-}
-*/
-
-info.processing_time = T.stop("Total time");
-
-// TODO: option to print a report based on data collected in info object.
 
 function getVersion() {
   try {

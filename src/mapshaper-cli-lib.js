@@ -9,11 +9,9 @@ mapshaper-import
 var cli = MapShaper.cli = {};
 
 MapShaper.validateArgv = function(argv) {
-  var opts = {};
-  cli.validateInputOpts(opts, argv);
-  cli.validateOutputOpts(opts, argv);
-  cli.validateSimplifyOpts(opts, argv);
-
+  var opts = cli.validateInputOpts(argv);
+  Utils.extend(opts, cli.validateOutputOpts(argv, opts));
+  Utils.extend(opts, cli.validateSimplifyOpts(argv));
   opts.timing = !!argv.t;
   return opts;
 };
@@ -26,7 +24,7 @@ MapShaper.getOutputPaths = function(files, dir, extension) {
   // assign filenames
   Utils.forEach(files, function(obj) {
     obj.pathbase = Node.path.join(dir, obj.filebase);
-    obj.extension = obj.extension || extension || "o"; // TODO: validate ext
+    obj.extension = obj.extension || extension || "x"; // TODO: validate ext
   });
 
   // avoid naming conflicts
@@ -56,9 +54,16 @@ cli.validateFileExtension = function(path) {
   return !!type;
 };
 
+cli.replaceFileExtension = function(path, ext) {
+  var info = Node.parseFilename(path);
+  return Node.path.join(info.relative_dir, info.base + "." + ext);
+};
 
-cli.validateInputOpts = function(opts, argv) {
-  var ifile = argv._[0];
+
+cli.validateInputOpts = function(argv) {
+  var ifile = argv._[0],
+      opts = {};
+
   if (!ifile) error("Missing an input file");
 
   if (!Node.fileExists(ifile)) error("File not found (" + ifile + ")");
@@ -70,10 +75,10 @@ cli.validateInputOpts = function(opts, argv) {
   return opts;
 };
 
-cli.validateOutputOpts = function(opts, argv) {
+cli.validateOutputOpts = function(argv, inputOpts) {
   var supportedTypes = ["geojson", "topojson", "shapefile"],
       odir = ".",
-      ifileInfo = Node.getFileInfo(opts.input_file),
+      ifileInfo = Node.getFileInfo(inputOpts.input_file),
       obase = ifileInfo.base, // default to input file name
       oext = ifileInfo.ext,   // default to input file extension
       ofmt;
@@ -115,14 +120,16 @@ cli.validateOutputOpts = function(opts, argv) {
     }
   }
 
-  opts.output_extension = oext;
-  if (ofmt) opts.output_format = ofmt; // inferred later if not found above
-  opts.output_directory = odir;
-  opts.output_file_base = obase;
-  return opts;
+  return {
+    output_extension: oext,
+    output_directory: odir,
+    output_file_base: obase,
+    output_format: ofmt || null // inferred later if not found above
+  };
 };
 
-cli.validateSimplifyOpts = function(opts, argv) {
+cli.validateSimplifyOpts = function(argv) {
+  var opts = {};
   if (argv.i) {
     if (!Utils.isNumber(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
     opts.simplify_interval = argv.i;
@@ -162,7 +169,6 @@ MapShaper.gc = function() {
   T.stop("gc()");
 };
 
-
 MapShaper.importFromFile = function(fname) {
   var fileType = MapShaper.guessFileType(fname),
       content;
@@ -175,6 +181,7 @@ MapShaper.importFromFile = function(fname) {
   }
   return MapShaper.importContent(content, fileType);
 };
+
 
 var api = Utils.extend(MapShaper, {
   Node: Node,

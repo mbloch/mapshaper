@@ -94,7 +94,7 @@ function topoJSONRoundTrip(fname) {
   // in order for the roundtrip to work, need to use a constant resolution
   // rather than letting mapshaper automatically pick a suitable resolution
   var exportOpts = {
-    format:'topojson',
+    output_format:'topojson',
     topojson_resolution: 10000
   };
   var data = api.importFromFile(fixPath(fname));

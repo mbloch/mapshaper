@@ -14,10 +14,10 @@ MapShaper.getDefaultFileExtension = function(fileType) {
 // Return an array of objects with "filename" "filebase" "extension" and "content" attributes.
 //
 MapShaper.exportContent = function(layers, arcData, opts) {
-  var exporter = MapShaper.exporters[opts.format];
-  if (!exporter) error("exportContent() Unknown export format:", opts.format);
-  if (!opts.extension) opts.extension = MapShaper.getDefaultFileExtension(opts.format);
-  if (!opts.filebase) opts.filebase = "out";
+  var exporter = MapShaper.exporters[opts.output_format];
+  if (!exporter) error("exportContent() Unknown export format:", opts.output_format);
+  if (!opts.output_extension) opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
+  if (!opts.output_file_base) opts.output_file_base = "out";
 
   validateLayerData(layers);
   T.start();
@@ -41,8 +41,8 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   function assignFileNames(files, opts) {
     var index = {};
     Utils.forEach(files, function(file) {
-      file.extension = file.extension || opts.extension;
-      var name = opts.filebase,
+      file.extension = file.extension || opts.output_extension;
+      var name = opts.output_file_base,
           i = 1,
           filebase, filename, ext;
       if (file.name) {

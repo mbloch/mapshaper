@@ -14,24 +14,23 @@ MapShaper.guessFileType = function(file) {
 // @type: 'shapefile'|'json'
 //
 MapShaper.importContent = function(content, fileType) {
-  var data;
+  var data,
+      fileFmt;
   if (fileType == 'shp') {
     data = MapShaper.importNonTopoDataset(MapShaper.importShp(content));
-    data.input_format = 'shapefile';
+    fileFmt = 'shapefile';
   } else if (fileType == 'json') {
     var jsonObj = JSON.parse(content);
     if (jsonObj.type == 'Topology') {
       data = MapShaper.importTopoJSON(jsonObj);
-      data.input_format = 'topojson';
+      fileFmt = 'topojson';
     } else {
       data = MapShaper.importNonTopoDataset(MapShaper.importGeoJSON(jsonObj));
-      data.input_format = 'geojson';
+      fileFmt = 'geojson';
     }
   } else {
     error("Unsupported file type:", fileType);
   }
-
-  MapShaper.validateImportData(data);
 
   // Calculate data to use for shape preservation
   var numArcs = data.arcs.length;
@@ -44,14 +43,18 @@ MapShaper.importContent = function(content, fileType) {
     }
   });
 
-  data.retainedPointCounts = retainedPointCounts;
-  return data;
+  var info = {
+    input_format: fileFmt
+  };
+
+  return {
+    arcs: data.arcs,
+    layers: data.layers,
+    retainedPointCounts: retainedPointCounts,
+    info: info
+  };
 };
 
-MapShaper.validateImportData = function(obj) {
-  if (!Utils.isArray(obj.arcs)) error ("Missing topological path data");
-  if (!Utils.isArray(obj.layers) || obj.layers.length === 0) error ("Missing layer data");
-};
 
 MapShaper.getArcCountsInLayer = function(shapes, numArcs) {
   var counts = new Uint8Array(numArcs);
@@ -76,17 +79,15 @@ MapShaper.calcArcCountsInShape = function(counts, shape) {
 
 MapShaper.importNonTopoDataset = function(importData) {
   var topoData = MapShaper.buildTopology(importData),
-      info = importData.info,
       layer = {
         name: "",
         properties: importData.properties,
         shapes: topoData.shapes,
-        geometry_type: info.input_geometry_type
+        geometry_type: importData.info.input_geometry_type
       };
 
   return {
     arcs: topoData.arcs,
-    arcMinPointCounts: topoData.arcMinPointCounts,
     layers: [layer]
   };
 };

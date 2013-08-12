@@ -40,8 +40,7 @@ describe('mapshaper-cli.js', function() {
 
     function validate(str) {
       var argv = parseOpts(str);
-      var opts = mapshaper.cli.validateSimplifyOpts({}, argv);
-      return opts;
+      return mapshaper.cli.validateSimplifyOpts(argv);
     }
 
     it(good1, function() {
@@ -105,7 +104,6 @@ describe('mapshaper-cli.js', function() {
     it(bad7 + " (invalid)", function() {
       assert.throws(function(){validate(bad7)});
     })
-
   })
 
 
@@ -113,8 +111,7 @@ describe('mapshaper-cli.js', function() {
 
     function validate(str) {
       var argv = parseOpts(str);
-      var opts = mapshaper.cli.validateInputOpts({}, argv);
-      return opts;
+      return mapshaper.cli.validateInputOpts(argv);
     }
 
     var good1 = "test_data/two_states.shp";
@@ -143,18 +140,15 @@ describe('mapshaper-cli.js', function() {
   describe('validateOutputOpts()', function() {
 
     function validate(str) {
-      var argv = parseOpts(str),
-          opts = {};
-      mapshaper.cli.validateInputOpts(opts, argv);
-      mapshaper.cli.validateOutputOpts(opts, argv);
-      // console.log(opts)
-      return opts;
+      var argv = parseOpts(str);
+      var input = mapshaper.cli.validateInputOpts(argv);
+      return mapshaper.cli.validateOutputOpts(argv, input);
     }
 
     var good1 = "test_data/two_states.shp";
     it(good1, function() {
       assert.deepEqual(validate(good1), {
-        input_file: "test_data/two_states.shp",
+        output_format: null,
         output_directory: ".",
         output_extension: "shp",
         output_file_base: "two_states"
@@ -164,7 +158,7 @@ describe('mapshaper-cli.js', function() {
     var good2 = "test_data/two_states.shp -o simplified";
     it(good2, function() {
       assert.deepEqual(validate(good2), {
-        input_file: "test_data/two_states.shp",
+        output_format: null,
         output_directory: ".",
         output_extension: "shp",
         output_file_base: "simplified"
@@ -174,7 +168,7 @@ describe('mapshaper-cli.js', function() {
     var good3 = "test_data/two_states.shp -o test_data/simplified.shp";
     it(good3, function() {
       assert.deepEqual(validate(good3), {
-        input_file: "test_data/two_states.shp",
+        output_format: null,
         output_extension: "shp",
         output_directory: "test_data",
         output_file_base: "simplified"
@@ -184,7 +178,7 @@ describe('mapshaper-cli.js', function() {
     var good4 = "test_data/two_states.json";
     it(good4, function() {
       assert.deepEqual(validate(good4), {
-        input_file: "test_data/two_states.json",
+        output_format: null,
         output_extension: "json",
         output_directory: ".",
         output_file_base: "two_states"
@@ -194,7 +188,6 @@ describe('mapshaper-cli.js', function() {
     var good5 = "test_data/two_states.json -f shapefile";
     it(good5, function() {
       assert.deepEqual(validate(good5), {
-        input_file: "test_data/two_states.json",
         output_format: 'shapefile',
         output_directory: ".",
         output_extension: "shp",
@@ -205,7 +198,6 @@ describe('mapshaper-cli.js', function() {
     var good6 = "test_data/two_states.shp -f topojson";
     it(good6, function() {
       assert.deepEqual(validate(good6), {
-        input_file: "test_data/two_states.shp",
         output_format: 'topojson',
         output_directory: ".",
         output_extension: "json",
@@ -216,7 +208,6 @@ describe('mapshaper-cli.js', function() {
     var good7 = "test_data/two_states.json -f geojson -o test_data/min";
     it(good7, function() {
       assert.deepEqual(validate(good7), {
-        input_file: "test_data/two_states.json",
         output_format: 'geojson',
         output_directory: "test_data",
         output_extension: "json",
@@ -227,7 +218,7 @@ describe('mapshaper-cli.js', function() {
     var good8 = "test_data/two_states.shp -o test_data";
     it(good8, function() {
       assert.deepEqual(validate(good8), {
-        input_file: "test_data/two_states.shp",
+        output_format: null,
         output_directory: "test_data",
         output_extension: "shp",
         output_file_base: "two_states"
@@ -237,7 +228,7 @@ describe('mapshaper-cli.js', function() {
     var good9 = "test_data/two_states.shp -o .";
     it(good9, function() {
       assert.deepEqual(validate(good9), {
-        input_file: "test_data/two_states.shp",
+        output_format: null,
         output_directory: ".",
         output_extension: "shp",
         output_file_base: "two_states"
@@ -279,6 +270,17 @@ describe('mapshaper-cli.js', function() {
         !cli.testFileCollision([{pathbase: "test_data/two_states", extension: "shp"}], "-ms")
         );
     })
+  })
+
+  describe('replaceFileExtension()', function() {
+    it('counties.shp', function() {
+      assert.equal("counties.prj", cli.replaceFileExtension('counties.shp', 'prj'));
+    });
+
+    it('shapefiles/counties.shp', function() {
+      assert.equal("shapefiles/counties.prj", cli.replaceFileExtension('shapefiles/counties.shp', 'prj'));
+    });
+
   })
 
   describe('getOutputPaths()', function () {

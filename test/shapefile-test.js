@@ -36,11 +36,11 @@ describe('mapshaper-shapefile.js', function () {
 function shapefileRoundTrip(fname) {
   var data = api.importFromFile(fixPath(fname));
   var arcs = new api.ArcDataset(data.arcs);
-  var files = api.exportContent(data.layers, arcs, {format:"shapefile"});
+  var files = api.exportContent(data.layers, arcs, {output_format:"shapefile"});
 
   var data2 = api.importContent(files[0].content, 'shp');
   var arcs2 = new api.ArcDataset(data2.arcs);
-  var files2 = api.exportContent(data2.layers, arcs2, {format:"shapefile"});
+  var files2 = api.exportContent(data2.layers, arcs2, {output_format:"shapefile"});
 
   //assert.deepEqual(data.pathData, data2.pathData);
   //assert.deepEqual(topo.shapes, topo2.shapes);
