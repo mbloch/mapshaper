@@ -33,6 +33,29 @@ MapShaper.parseLocalPath = function(path) {
   return obj;
 };
 
+MapShaper.guessFileType = function(file) {
+  var type = null;
+  if (/json$/i.test(file)) {
+    type = 'json';
+  } else if (/shp$/i.test(file)) {
+    type = 'shp';
+  }
+  return type;
+};
+
+MapShaper.guessFileFormat = function(str) {
+  var type = null,
+      name = str.toLowerCase();
+  if (/topojson$/.test(name)) {
+    type = 'topojson';
+  } else if (/json$/.test(name)) {
+    type = 'geojson';
+  } else if (/shp$/.test(name)) {
+    type = 'shapefile';
+  }
+  return type;
+};
+
 
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var srcLen = xsrc.length,

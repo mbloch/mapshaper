@@ -114,6 +114,12 @@ cli.validateOutputOpts = function(argv, inputOpts) {
         // allows .topojson or .geojson instead of .json
         // override extension inferred from --format option
         oext = ofileInfo.ext;
+
+        // Infer output format from -o option extension when appropriate
+        if (!ofmt &&
+          MapShaper.guessFileFormat(oext) != MapShaper.guessFileFormat(ifileInfo.ext)) {
+          ofmt =  MapShaper.guessFileFormat(oext);
+        }
       }
       obase = ofileInfo.base;
       odir = ofileInfo.relative_dir || '.';

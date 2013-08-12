@@ -1,15 +1,5 @@
 /* @requires mapshaper-common, mapshaper-geojson, mapshaper-topojson, mapshaper-shapefile */
 
-MapShaper.guessFileType = function(file) {
-  var type = null;
-  if (/json$/i.test(file)) {
-    type = 'json';
-  } else if (/shp$/i.test(file)) {
-    type = 'shp';
-  }
-  return type;
-};
-
 // @content: ArrayBuffer or String
 // @type: 'shapefile'|'json'
 //

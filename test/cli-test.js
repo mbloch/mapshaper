@@ -215,6 +215,7 @@ describe('mapshaper-cli.js', function() {
       });
     })
 
+    // -o option takes a directory name
     var good8 = "test_data/two_states.shp -o test_data";
     it(good8, function() {
       assert.deepEqual(validate(good8), {
@@ -234,6 +235,51 @@ describe('mapshaper-cli.js', function() {
         output_file_base: "two_states"
       });
     })
+
+    // infer output type from .json extension
+    var good10 = "test_data/two_states.shp -o two_states.json";
+    it(good10, function() {
+      assert.deepEqual(validate(good10), {
+        output_format: "geojson",
+        output_directory: ".",
+        output_extension: "json",
+        output_file_base: "two_states"
+      });
+    })
+
+    // infer output type from .shp extension
+    var good11 = "test_data/two_states.json -o two_states.shp";
+    it(good11, function() {
+      assert.deepEqual(validate(good11), {
+        output_format: "shapefile",
+        output_directory: ".",
+        output_extension: "shp",
+        output_file_base: "two_states"
+      });
+    })
+
+    // infer output type from .topojson extension
+    var good12 = "test_data/two_states.json -o two_states.topojson";
+    it(good12, function() {
+      assert.deepEqual(validate(good12), {
+        output_format: "topojson",
+        output_directory: ".",
+        output_extension: "topojson",
+        output_file_base: "two_states"
+      });
+    })
+
+    // Don't infer output type from .json input + .json output
+    var good13 = "test_data/two_states.json -o two_states.json";
+    it(good13, function() {
+      assert.deepEqual(validate(good13), {
+        output_format: null,
+        output_directory: ".",
+        output_extension: "json",
+        output_file_base: "two_states"
+      });
+    })
+
 
     var bad1 = "test_data/two_states.shp -o simplified.kml";
     it(bad1 + " (looks like unsupported file type)", function() {
