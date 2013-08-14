@@ -10,9 +10,18 @@ The new mapshaper was rewritten from scratch in JavaScript and improves on the o
 
 ### Installation
 
-Mapshaper requires [Node.js](http://nodejs.org). With Node installed, you can install mapshaper by running:
+Mapshaper requires [Node.js](http://nodejs.org).
+
+With Node installed, you can install the latest release version from the npm registry. Install with the "-g" flag to make the executable scripts available systemwide.
 
 	npm install -g mapshaper
+
+To install and run the latest development code from github:
+
+	git clone git@github.com:mbloch/mapshaper.git
+	cd mapshaper
+	npm install
+	bin/mapshaper-gui # or bin/mapshaper
 
 ### Interactive tool
 
