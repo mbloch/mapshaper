@@ -2,6 +2,7 @@
 var api = require('..'),
   assert = require('assert'),
   ArcDataset = api.ArcDataset,
+  Utils = api.Utils,
   trace = api.trace;
 
 //      b --- d
@@ -16,7 +17,6 @@ var arcs1 = [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]];
 //     / \   / \
 //    /   \ /   \
 //   a --- c --- e
-//
 
 // cabc, cdec
 var arcs2 = [[[3, 1, 2, 3], [1, 1, 3, 1]], [[3, 4, 5, 3], [1, 3, 1, 1]]];
@@ -66,6 +66,7 @@ describe('mapshaper-shapes.js', function () {
       assert.deepEqual([[[3, 1], [1, 1], [3, 1]], [[3, 1], [5, 1], [3, 1]]], arcs.toArray());
     });
 
+
     it('#setThresholds() + #setRetainedInterval() + #getFilteredCopy() works', function() {
       var thresholds = [[Infinity, 5, 4, Infinity], [Infinity, 4, 7, Infinity]];
       var arcs = new ArcDataset(arcs2).setThresholds(thresholds)
@@ -76,6 +77,18 @@ describe('mapshaper-shapes.js', function () {
       arcs.setRetainedInterval(4.5);
       assert.deepEqual([[[3, 1], [1, 1], [3, 1]], [[3, 1], [5, 1], [3, 1]]], arcs.getFilteredCopy().toArray());
     });
+
+
+    it('#getRemovableThresholds works', function() {
+      var thresholds = [[Infinity, 5, 4, Infinity], [Infinity, Infinity, 7, Infinity]];
+      var arcs = new ArcDataset(arcs2).setThresholds(thresholds);
+      var removable = arcs.getRemovableThresholds();
+      assert.deepEqual([5, 4, 7], Utils.toArray(removable));
+
+      var removable2 = arcs.getRemovableThresholds(2);
+      assert.deepEqual([7], Utils.toArray(removable2));
+    });
+
 
     it('#applyTransform() works', function() {
       var arcs = new ArcDataset(arcs4);
@@ -89,6 +102,18 @@ describe('mapshaper-shapes.js', function () {
       assert([[[3, 2], [5, 8], [7, 2], [3, 2]]], arcs.toArray());
       assert({xmin: 3, ymin: 2, xmax: 7, ymax: 8}, arcs.getBounds());
     });
+
+    it('#getAverageSegment() works', function() {
+      var arcs = [[[1, 2, 3, 1], [1, 3, 1, 1]]],
+          dataset = new ArcDataset(arcs),
+          xy = dataset.getAverageSegment();
+      assert.deepEqual([4/3, 4/3], xy);
+
+      var arcs2 = [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]],
+          dataset2 = new ArcDataset(arcs2),
+          xy2 = dataset2.getAverageSegment();
+      assert.deepEqual([7/5, 6/5], xy2);
+    })
 
     it('#filter() works', function() {
       var arcs = new ArcDataset(arcs1);

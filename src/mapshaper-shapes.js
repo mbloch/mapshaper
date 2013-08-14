@@ -1,39 +1,44 @@
 /* @requires mapshaper-common, mapshaper-geom */
 
-
 MapShaper.ArcDataset = ArcDataset;
 
 // An interface for managing a collection of paths.
+// Constructor signatures:
 //
-// @arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
+// ArcDataset(arcs)
+//    arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
 //
-function ArcDataset(coords) {
+// ArcDataset(nn, xx, yy, zz)
+//    nn is an array of arc lengths; xx, yy are arrays of concatenated coords;
+//    zz (optional) is an array of concatenated simplification thresholds
+//
+function ArcDataset() {
   var _self = this;
   var _xx, _yy,  // coordinates data
       _ii, _nn,  // indexes, sizes
-      _zz, _zlimit, _sortedThresholds = null, // simplification
+      _zz, _zlimit = 0, // simplification
       _bb, _allBounds, // bounding boxes
       _arcIter, _shapeIter; // path iterators
 
-  // Temporary: Convert input data by concatenating coords into long arrays
-  // and generating other data structures in a similar format
-  // TODO: input data will eventually be in the same format, so no conversion required
-  //
-  init(coords);
-
-  function init(coords) {
-    var data = convertArcArrays(coords);
-    var zz = new Float64Array(data.xx.length);
-    _zlimit = 0;
-    updateArcData(data.xx, data.yy, data.nn, zz);
+  if (arguments.length == 1) {
+    initLegacyArcs(arguments[0]);  // want to phase this out
+  } else if (arguments.length >= 3) {
+    initPathData.apply(this, arguments);
+  } else {
+    error("ArcDataset() Invalid arguments");
   }
 
-  function updateArcData(xx, yy, nn, zz) {
+  function initLegacyArcs(coords) {
+    var data = convertLegacyArcs(coords);
+    initPathData(data.nn, data.xx, data.yy);
+  }
+
+  function initPathData(nn, xx, yy, zz) {
     var size = nn.length;
     _xx = xx;
     _yy = yy;
     _nn = nn;
-    _zz = zz;
+    _zz = zz || new Float64Array(xx.length);
 
     // generate array of starting idxs of each arc
     _ii = new Uint32Array(size);
@@ -42,11 +47,16 @@ function ArcDataset(coords) {
       idx += nn[j];
     }
 
+    if (idx != _xx.length || _xx.length != _yy.length || _xx.length != _zz.length) {
+      error("ArcDataset#initPathData() Counting error");
+    }
+
     initBounds();
 
     // Pre-allocate some path iterators for repeated use.
     _arcIter = new ArcIter(_xx, _yy, _zz);
     _shapeIter = new ShapeIter(_self);
+    return this;
   }
 
   function initBounds() {
@@ -75,7 +85,7 @@ function ArcDataset(coords) {
     };
   }
 
-  function convertArcArrays(coords) {
+  function convertLegacyArcs(coords) {
     var numArcs = coords.length;
 
     // Generate arrays of arc lengths and starting idxs
@@ -112,20 +122,39 @@ function ArcDataset(coords) {
     };
   }
 
-  // Return a copy of this ArcDataset, discarding points that fall below current
-  // simplification threshold.
-  //
+  this.getCopy = function() {
+    return new ArcDataset(new Int32Array(_nn), new Float64Array(_xx),
+        new Float64Array(_yy), new Float64Array(_zz));
+  };
+
   this.getFilteredCopy = function() {
-    var arcs = [];
-    this.forEach(function(iter, i) {
-      var xx = [], yy = [];
-      while (iter.hasNext()) {
-        xx.push(iter.x);
-        yy.push(iter.y);
+    var len2 = this.getFilteredPointCount();
+    if (len2 == this.getPointCount()) {
+      return this.getCopy();
+    }
+
+    var xx2 = new Float64Array(len2),
+        yy2 = new Float64Array(len2),
+        zz2 = new Float64Array(len2),
+        nn2 = new Int32Array(this.size()),
+        i2 = 0;
+
+    this.forEach2(function(i, n, xx, yy, zz, arcId) {
+      var n2 = 0;
+      for (var end = i+n; i < end; i++) {
+        if (_zz[i] > _zlimit) {
+          xx2[i2] = xx[i];
+          yy2[i2] = yy[i];
+          zz2[i2] = zz[i];
+          i2++;
+          n2++;
+        }
       }
-      arcs.push([xx, yy]);
+      if (n2 < 2) error("Collapsed arc"); // endpoints should be z == Infinity
+      nn2[arcId] = n2;
     });
-    return new ArcDataset(arcs);
+
+    return new ArcDataset(nn2, xx2, yy2, zz2);
   };
 
   // Return arcs as arrays of [x, y] points (intended for testing).
@@ -134,7 +163,6 @@ function ArcDataset(coords) {
       return _self.getArc(i).toArray();
     });
   };
-
 
   // Snap coordinates to a grid of @quanta locations on both axes
   // This may snap nearby points to the same coordinates.
@@ -151,6 +179,21 @@ function ArcDataset(coords) {
     this.applyTransform(inverse);
   };
 
+  // Return average magnitudes of dx, dy
+  //
+  this.getAverageSegment = function() {
+    var count = 0,
+        dx = 0,
+        dy = 0;
+    this.forEach2(function(i, n, xx, yy) {
+      for (var end=i+n-1; i<end; i++) {
+        dx += Math.abs(xx[i+1] - xx[i]);
+        dy += Math.abs(yy[i+1] - yy[i]);
+        count++;
+      }
+    });
+    return [dx / count, dy / count];
+  };
 
   // Apply a linear transform to the data, with or without rounding.
   //
@@ -169,9 +212,19 @@ function ArcDataset(coords) {
     initBounds();
   };
 
+  // Return an ArcIter object for each path in the dataset
+  //
   this.forEach = function(cb) {
     for (var i=0, n=this.size(); i<n; i++) {
       cb(this.getArcIter(i), i);
+    }
+  };
+
+  // Iterate over arcs with access to low-level data
+  //
+  this.forEach2 = function(cb) {
+    for (var arcId=0, n=this.size(); arcId<n; arcId++) {
+      cb(_ii[arcId], _nn[arcId], _xx, _yy, _zz, arcId);
     }
   };
 
@@ -231,9 +284,8 @@ function ArcDataset(coords) {
       }
     }
 
-    updateArcData(_xx.subarray(0, goodPoints), _yy.subarray(0, goodPoints),
-        _nn.subarray(0, goodArcs), _zz.subarray(0, goodPoints));
-
+    initPathData(_nn.subarray(0, goodArcs), _xx.subarray(0, goodPoints),
+        _yy.subarray(0, goodPoints), _zz.subarray(0, goodPoints));
   }
 
   this.getArcIter = function(arcId) {
@@ -269,69 +321,6 @@ function ArcDataset(coords) {
     return this;
   };
 
-
-  this.setThresholdsForGUI = function(thresholds) {
-    this.setThresholds(thresholds);
-
-    // Sort simplification thresholds for all non-endpoint vertices
-    // ... to quickly convert a simplification percentage to a threshold value.
-    // ... For large datasets, use every nth point, for faster sorting.
-    var nth = 1,
-        size = this.getPointCount();
-    if (size > 1e7) nth = 16;
-    else if (size > 5e6) nth = 8;
-    else if (size > 1e6) nth = 4;
-    else if (size > 5e5) nth = 2;
-    _sortedThresholds = getRemovableThresholds(_zz, nth);
-    Utils.quicksort(_sortedThresholds, false);
-
-    /*
-    // TODO: re-implement filtered arcs after ArcDataset input format changes to
-    //    long arrays
-    //
-    // Calculate a filtered version of each arc, for fast rendering when zoomed out
-    var filterPct = 0.08;
-    var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];
-    filteredIds = initFilteredArcs(thresholds, filterZ);
-    filteredSegLen = calcAvgFilteredSegLen(_arcs, filteredIds);
-    */
-  };
-
-  /*
-  function calcAvgFilteredSegLen(arcs, filtered) {
-    var segCount = 0, pathLen = 0;
-    Utils.forEach(filtered, function(ids, arcId) {
-      var xx = arcs[arcId][0],
-          yy = arcs[arcId][1],
-          x, y, prevX, prevY, idx;
-      for (var i=0, n=ids.length; i<n; i++) {
-        idx = ids[i];
-        x = xx[idx];
-        y = yy[idx];
-        if (i > 0) {
-          segCount++;
-          pathLen += Math.sqrt(distanceSq(prevX, prevY, x, y));
-        }
-        prevX = x;
-        prevY = y;
-      }
-    });
-    return pathLen / segCount;
-  }
-
-  // Generate arrays of coordinate ids, representing a simplified view of a collection of arcs
-  //
-  function initFilteredArcs(thresholds, zlim) {
-    return Utils.map(thresholds, function(zz, j) {
-      var ids = [];
-      for (var i=0, n=zz.length; i<n; i++) {
-        if (zz[i] >= zlim) ids.push(i);
-      }
-      return ids;
-    });
-  };
-  */
-
   this.setRetainedInterval = function(z) {
     _zlimit = z;
     return this;
@@ -340,37 +329,34 @@ function ArcDataset(coords) {
   this.setRetainedPct = function(pct) {
     if (pct >= 1) {
       _zlimit = 0;
-    } else if (_sortedThresholds) {
-      _zlimit = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
-    } else if (_zz) {
-      _zlimit = getThresholdByPct(_zz, pct);
     } else {
-      error ("ArcDataset#setRetainedPct() Missing simplification data.");
+      _zlimit = this.getThresholdByPct(pct);
     }
     return this;
   };
 
   // Return array of z-values that can be removed for simplification
   //
-  function getRemovableThresholds(zz, skip) {
-    skip = skip | 1;
-    var tmp = new Float64Array(Math.ceil(zz.length / skip)),
+  this.getRemovableThresholds = function(nth) {
+    if (!_zz) error("Missing simplification data");
+    var skip = nth | 1,
+        arr = new Float64Array(Math.ceil(_zz.length / skip)),
         z;
-    for (var i=0, j=0, n=_self.getPointCount(); i<n; i+=skip) {
-      z = zz[i];
+    for (var i=0, j=0, n=this.getPointCount(); i<n; i+=skip) {
+      z = _zz[i];
       if (z != Infinity) {
-        tmp[j++] = z;
+        arr[j++] = z;
       }
     }
-    return tmp.subarray(0, j);
-  }
+    return arr.subarray(0, j);
+  };
 
-  function getThresholdByPct(zz, pct) {
+  this.getThresholdByPct = function(pct) {
     if (pct <= 0 || pct >= 1) error("Invalid simplification pct:", pct);
-    var tmp = getRemovableThresholds(zz, 1);
+    var tmp = this.getRemovableThresholds();
     var k = Math.floor((1 - pct) * tmp.length);
-    return Utils.findValueByRank(tmp, k + 1); // rank start at 1
-  }
+    return Utils.findValueByRank(tmp, k + 1); // rank starts at 1
+  };
 
   this.arcIntersectsBBox = function(i, b1) {
     var b2 = _bb,
@@ -390,6 +376,15 @@ function ArcDataset(coords) {
 
   this.getPointCount = function() {
     return _xx && _xx.length || 0;
+  };
+
+  this.getFilteredPointCount = function() {
+    if (!_zz || !_zlimit) return this.getPointCount();
+    var count = 0;
+    for (var i=0, n = _zz.length; i<n; i++) {
+      if (_zz[i] > _zlimit) count++;
+    }
+    return count;
   };
 
   this.getBounds = function() {

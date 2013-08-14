@@ -84,6 +84,7 @@ function Editor() {
 
   this.addData = function(data, opts) {
     var arcData = new ArcDataset(data.arcs),
+        filteredArcs = new FilteredPathCollection(arcData),
         bounds = arcData.getBounds(),
         vertexData;
 
@@ -97,12 +98,12 @@ function Editor() {
       MapShaper.protectRingsFromCollapse(vertexData, data.retainedPointCounts);
     }
 
-    arcData.setThresholdsForGUI(vertexData);
-    var group = new ArcLayerGroup(arcData);
+    filteredArcs.setThresholds(vertexData);
+    var group = new ArcLayerGroup(filteredArcs);
     map.addLayerGroup(group);
 
     slider.on('change', function(e) {
-      arcData.setRetainedPct(e.value);
+      filteredArcs.setRetainedPct(e.value);
       group.refresh();
     });
 

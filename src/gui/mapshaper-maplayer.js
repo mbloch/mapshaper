@@ -1,12 +1,11 @@
 /* @requires mapshaper-canvas, mapshaper-gui-shapes */
 
 // Group of one ore more layers sharing the same set of arcs
-// @arcData an ArcDataset
+// @arcs a FilteredPathCollection object (mapshaper-gui-shapes.js)
 //
-function ArcLayerGroup(arcData) {
+function ArcLayerGroup(arcs) {
   var _self = this;
   var _surface = new CanvasLayer();
-  var arcs = new FilteredPathCollection(arcData.getArcs(), arcData.getBounds());
 
   var _arcLyr = new ShapeLayer(arcs, _surface),
       _layers = [_arcLyr],
@@ -39,7 +38,8 @@ function ArcLayerGroup(arcData) {
   }
 }
 
-
+// @shapes a FilteredPathCollection object
+//
 function ShapeLayer(shapes, surface) {
   var renderer = new ShapeRenderer();
   var _visible = true;

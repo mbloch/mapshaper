@@ -1,43 +1,91 @@
 /* @requires mapshaper-shapes */
 
-
 // A collection of paths that can be filtered to exclude paths and points
 // that can't be displayed at the current map scale. For drawing paths on-screen.
 // TODO: Look into generalizing from Arc paths to SimpleShape and MultiShape
 //
-function FilteredPathCollection(arr, collBounds) {
+function FilteredPathCollection(unfilteredArcs) {
   var _filterBounds,
-      _transform;
+      _transform,
+      _sortedThresholds,
+      filteredArcs,
+      filteredSegLen,
+      arcData,
+      getPathWrapper;
 
-  var getPathIter = function() {
-    return function(s, i) {
-      return s.getPathIter(i);
-    };
+  this.setThresholds = function(zz) {
+    unfilteredArcs.setThresholds(zz);
+
+    // Sort simplification thresholds for all non-endpoint vertices
+    // for quick conversion of simplification percentage to threshold value.
+    // For large datasets, use every nth point, for faster sorting.
+    var size = unfilteredArcs.getPointCount(),
+        nth = Math.ceil(size / 5e5);
+    _sortedThresholds = unfilteredArcs.getRemovableThresholds(nth);
+    Utils.quicksort(_sortedThresholds, false);
+
+    // For large datasets, create a filtered copy of the data for faster rendering
+    if (size > 5e5) {
+      initFilteredArcs();
+    }
+  };
+
+  function initFilteredArcs() {
+    var filterPct = 0.08;
+    var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];
+    filteredArcs = unfilteredArcs.setRetainedInterval(filterZ).getFilteredCopy();
+    unfilteredArcs.setRetainedPct(1); // clear simplification
+    var avgXY = filteredArcs.getAverageSegment();
+    filteredSegLen = avgXY[0] + avgXY[1]; // crude approximation of avg. segment length
+  }
+
+  this.setRetainedPct = function(pct) {
+    var z = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
+    this.setRetainedInterval(z);
+  };
+
+  this.setRetainedInterval = function(z) {
+    unfilteredArcs.setRetainedInterval(z);
+    if (filteredArcs) {
+      filteredArcs.setRetainedInterval(z);
+    }
   };
 
   this.reset = function() {
     _filterBounds = null;
     _transform = null;
+    arcData = unfilteredArcs;
+    getPathWrapper = function() {
+      return function(s) {
+        return s;
+      };
+    };
     return this;
   };
 
   this.filterPaths = function(b) {
     _filterBounds = b;
-    getPathIter = getDrawablePathsIter;
+    getPathWrapper = getDrawablePathsIter;
     return this;
   };
 
   this.filterPoints = function(b) {
     _filterBounds = b;
-    getPathIter = getDrawablePointsIter;
+    getPathWrapper = getDrawablePointsIter;
     return this;
   };
 
   this.transform = function(tr) {
+    var unitsPerPixel = 1/tr.mx;
     _transform = tr;
     if (_filterBounds) {
       _filterBounds = _filterBounds.clone().transform(tr);
     }
+    // Use a filtered version of the arcs at small scales
+    if (filteredArcs && unitsPerPixel > filteredSegLen * 1.5) {
+      arcData = filteredArcs;
+    }
+
     return this;
   };
 
@@ -65,8 +113,8 @@ function FilteredPathCollection(arr, collBounds) {
       }
     };
 
-    return function(s, i) {
-      wrapped = src(s, i);
+    return function(iter) {
+      wrapped = iter;
       return wrapper;
     };
   }
@@ -82,7 +130,6 @@ function FilteredPathCollection(arr, collBounds) {
     var wrapper = {
       x: 0,
       y: 0,
-      node: false,
       hasNext: function() {
         var t = transform, mx = t.mx, my = t.my, bx = t.bx, by = t.by;
         var path = wrapped,
@@ -106,39 +153,40 @@ function FilteredPathCollection(arr, collBounds) {
         _firstPoint = false;
         this.x = x;
         this.y = y;
-        this.node = path.node;
         return true;
       }
     };
 
-    return function(s, i) {
+    return function(iter) {
       _firstPoint = true;
-      wrapped = s.getPathIter(i, 1/_transform.mx);
+      wrapped = iter;
       return wrapper;
     };
   }
 
+  // TODO: refactor
+  //
   this.forEach = function(cb) {
+    var src = arcData;
+
     var allIn = true,
         filterOnSize = _transform && _filterBounds,
+        arc = new Arc(src),
+        wrap = getPathWrapper(),
         minPathSize, geoBounds, geoBBox;
 
     if (filterOnSize) {
       minPathSize = 0.9 / _transform.mx;
       geoBounds = _filterBounds.clone().transform(_transform.invert());
       geoBBox = geoBounds.toArray();
-      allIn = geoBounds.contains(collBounds);
+      allIn = geoBounds.contains(src.getBounds());
     }
-    var path = getPathIter();
 
-    for (var i=0, n=arr.length; i<n; i++) {
-      var shp = arr[i];
-      if (filterOnSize && shp.smallerThan(minPathSize)) continue;  // problem: won't filter out multi-part shapes with tiny parts
-      if (!allIn && !shp.inBounds(geoBBox)) continue;
-      for (var j=0; j<shp.pathCount; j++) {
-        cb(path(shp, j));
-      }
+    for (var i=0, n=src.size(); i<n; i++) {
+      arc.init(i);
+      if (filterOnSize && arc.smallerThan(minPathSize)) continue;
+      if (!allIn && !arc.inBounds(geoBBox)) continue;
+      cb(wrap(arc.getPathIter()));
     }
   };
-
 }
