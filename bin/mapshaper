@@ -58,7 +58,7 @@ optimist.usage(usage)
 
   .options("i", {
     alias: "interval",
-    describe: "degree of simplification in units of distance"
+    describe: "amount of simplification in meters (or other projected units)"
   })
 
   .options("k", {
