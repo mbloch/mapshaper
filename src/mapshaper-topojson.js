@@ -281,25 +281,9 @@ TopoJSON.getExportTransform = function(arcData, quanta) {
 // (a compromise between compression, precision and simplicity)
 //
 TopoJSON.calcExportResolution = function(arcData) {
-  var dx = 0, dy = 0, n = 0;
-  arcData.forEach(function(iter) {
-    var prevX, prevY;
-    if (iter.hasNext()) {
-      prevX = iter.x;
-      prevY = iter.y;
-    }
-    while (iter.hasNext()) {
-      n++;
-      dx += Math.abs(iter.x - prevX);
-      dy += Math.abs(iter.y - prevY);
-      prevX = iter.x;
-      prevY = iter.y;
-    }
-  });
-  var k = 0.02,
-      xres = dx * k / n,
-      yres = dy * k / n;
-  return [xres, yres];
+  var xy = arcData.getAverageSegment(),
+      k = 0.02;
+  return [xy[0] * k, xy[1] * k];
 };
 
 function exportTopoJSONObject(exporter, lyr, type) {
