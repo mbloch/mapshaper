@@ -1,8 +1,5 @@
-*.DS_Store
+.DS_Store
 __*
-*/.git
-*/.gitignore
-*.min.js
-
 node_modules
 npm-debug.log
+.npmignore
