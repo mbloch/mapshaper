@@ -1139,6 +1139,9 @@ EventDispatcher.prototype.on = function(type, callback, context, priority) {
   priority = priority || 0;
   var handler = new Handler(type, this, callback, context, priority);
 
+  // experimental: add event
+  if (this.countEventListeners(type) === 0) this.dispatchEvent("add_" + type);
+
   // Special case: 'ready' handler fires immediately if target is already ready.
   // (Applicable to Waiter class objects)
   if (type == 'ready' && this._ready) {
@@ -1175,11 +1178,12 @@ EventDispatcher.prototype.countEventListeners = function(type) {
  * @param {*=} context Execution context of the event handler to match.
  * @return {number} Returns number of handlers removed (expect 0 or 1).
  */
-EventDispatcher.prototype.removeEventListener =
-  function(type, callback, context) {
+EventDispatcher.prototype.removeEventListener = function(type, callback, context) {
   // using "this" if called w/o context (see addEventListener())
   context = context || this;
-  return this.removeEventListeners(type, callback, context);
+  var count = this.removeEventListeners(type, callback, context);
+  if (type && this.countEventListeners(type) === 0) this.dispatchEvent("remove_" + type);
+  return count;
 };
 
 /**
@@ -2775,7 +2779,7 @@ Bounds.prototype.toArray = function() {
 };
 
 Bounds.prototype.hasBounds = function() {
-  return !isNaN(this.ymax);
+  return this.width() > 0 && this.height() > 0;
 };
 
 Bounds.prototype.sameBounds =
@@ -2845,8 +2849,6 @@ Bounds.prototype.containsPoint = function(x, y) {
 };
 
 // intended to speed up slightly bubble symbol detection; could use intersects() instead
-// * FIXED * may give false positives if bubbles are located outside corners of the box
-//
 Bounds.prototype.containsBufferedPoint = function( x, y, buf ) {
   if ( x + buf > this.xmin && x - buf < this.xmax ) {
     if ( y - buf < this.ymax && y + buf > this.ymin ) {
@@ -2884,11 +2886,10 @@ Bounds.prototype.padBounds = function(a, b, c, d) {
   this.ymax += d;
 };
 
-/**
- * Rescale the bounding box by a fraction. TODO: implement focus.
- * @param {number} pct Fraction of original extents
- * @param {number} pctY Optional amount to scale Y
- */
+// Rescale the bounding box by a fraction. TODO: implement focus.
+// @param {number} pct Fraction of original extents
+// @param {number} pctY Optional amount to scale Y
+//
 Bounds.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
   var halfWidth = (this.xmax - this.xmin) * 0.5;
   var halfHeight = (this.ymax - this.ymin) * 0.5;
@@ -2900,9 +2901,7 @@ Bounds.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
   this.ymax += halfHeight * ky;
 };
 
-/**
- * Return a bounding box with the same extent as this one.
- */
+// Return a bounding box with the same extent as this one.
 Bounds.prototype.cloneBounds = // alias so child classes can override clone()
 Bounds.prototype.clone = function() {
   return new Bounds(this.xmin, this.ymin, this.xmax, this.ymax);
@@ -2925,10 +2924,8 @@ Bounds.prototype.mergePoint = function(x, y) {
   }
 };
 
-// TODO: pick a better name
 // expands either x or y dimension to match @aspect (width/height ratio)
 // @focusX, @focusY (optional): expansion focus, as a fraction of width and height
-//
 Bounds.prototype.fillOut = function(aspect, focusX, focusY) {
   if (arguments.length < 3) {
     focusX = 0.5;
@@ -2938,7 +2935,9 @@ Bounds.prototype.fillOut = function(aspect, focusX, focusY) {
       h = this.height(),
       currAspect = w / h,
       pad;
-  if (currAspect < aspect) { // fill out x dimension
+  if (isNaN(aspect) || aspect <= 0) {
+    // error condition; don't pad
+  } else if (currAspect < aspect) { // fill out x dimension
     pad = h * aspect - w;
     this.xmin -= (1 - focusX) * pad;
     this.xmax += focusX * pad;

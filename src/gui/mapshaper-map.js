@@ -5,7 +5,7 @@
 function MshpMap(el, opts_) {
   var defaults = {
     bounds: null,
-    padding: 0 // can be [xmin, ymin, xmax, ymax] array
+    padding: 0 // margin around content at full extent, in pixels
   };
   var opts = Utils.extend(defaults, opts_);
   var missing = Utils.nullKeys(opts);
@@ -51,24 +51,21 @@ function MshpMap(el, opts_) {
         else btn.removeClass('active');
       }
     });
-
   }
-
 }
 
 Opts.inherit(MshpMap, EventDispatcher);
 
+
 function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
       _padPix = 0,
-      _self = this,
       _cx,
       _cy,
       _scale = 1;
 
-  if (!initialBounds || !initialBounds.hasBounds() ||
-      _position.width() > 0 === false || _position.height() > 0 === false) {
-    error("[MapExtent] Usage: new MapExtent(div, bbox:Bounds)");
+  if (!initialBounds || !initialBounds.hasBounds()) {
+    error("[MapExtent] Invalid bounds:", initialBounds);
   }
 
   _position.on('resize', function() {
@@ -76,11 +73,8 @@ function MapExtent(el, initialBounds) {
     this.dispatchEvent('resize');
   }, this);
 
-  this.resize = function(w, h) { _position.resize(w, h); };
-
   this.reset = function() {
-    var bb = getFullBounds();
-    this.recenter(bb.centerX(), bb.centerY(), 1);
+    this.recenter(initialBounds.centerX(), initialBounds.centerY(), 1);
   };
 
   this.recenter = function(cx, cy, scale) {
@@ -89,7 +83,7 @@ function MapExtent(el, initialBounds) {
       _cx = cx;
       _cy = cy;
       _scale = scale;
-      _self.dispatchEvent('change');
+      this.dispatchEvent('change');
     }
   };
 
@@ -119,18 +113,41 @@ function MapExtent(el, initialBounds) {
     this.recenter(cx, cy, scale);
   };
 
+  this.resize = _position.resize;
   this.width = _position.width;
   this.height = _position.height;
   this.position = _position.position;
-  this.scale = function() { return _scale; };
 
-  function getFullBounds() {
-    return centerAlign(initialBounds);
+  this.scale = function() {
+    return _scale;
+  };
+
+  this.setContentPadding = function(pix) {
+    _padPix = pix;
+    this.reset();
+    return this;
+  };
+
+  // Get params for converting geographic coords to pixel coords
+  this.getTransform = function() {
+    // get transform (y-flipped);
+    var viewBounds = new Bounds(0, 0, _position.width(), _position.height());
+    return this.getBounds().getTransform(viewBounds, true);
+  };
+
+  this.getBounds = function() {
+    return centerAlign(calcBounds(_cx, _cy, _scale));
+  };
+
+  function calcBounds(cx, cy, scale) {
+    var w = initialBounds.width() / scale,
+        h = initialBounds.height() / scale;
+    return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
   }
 
-  // Receive: Geographic bounds of content to be centered in the map with padding
-  // Return: Geographic bounds of map window centered on @contentBounds
-  //
+  // Receive: Geographic bounds of content to be centered in the map
+  // Return: Geographic bounds of map window centered on @contentBounds,
+  //    with padding applied
   function centerAlign(contentBounds) {
     var bounds = contentBounds.clone(),
         wpix = _position.width() - 2 * _padPix,
@@ -139,42 +156,13 @@ function MapExtent(el, initialBounds) {
     if (wpix <= 0 || hpix <= 0) {
       return new Bounds(0, 0, 0, 0);
     }
-    // expand bounds to match padded map aspect ratio
     bounds.fillOut(wpix / hpix);
     padGeo = _padPix * bounds.width() / wpix; // per-pixel scale
     bounds.padBounds(padGeo, padGeo, padGeo, padGeo);
     return bounds;
   }
 
-  this.setContentPadding = function(pix) {
-    _padPix = pix;
-    this.reset();
-    return this;
-  };
-
-  function getBounds() {
-    return centerAlign(calcBounds(_cx, _cy, _scale));
-  }
-
-  function calcBounds(cx, cy, scale) {
-    var w = initialBounds.width() / scale,
-        h = initialBounds.height() / scale;
-    return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
-  }
-
-  this.getBounds = function() {
-    return getBounds();
-  };
-
-  // Get params for converting map to pixel coords
-  //
-  this.getTransform = function() {
-    // get transform (y-flipped);
-    var viewBounds = new Bounds(0, 0, _position.width(), _position.height());
-    return getBounds().getTransform(viewBounds, true);
-  };
-
-  this.reset();
+  this.reset(); // initialize map extent
 }
 
 Opts.inherit(MapExtent, EventDispatcher);
