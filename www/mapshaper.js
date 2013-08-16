@@ -7744,13 +7744,6 @@ function MshpMap(el, opts_) {
 
   }
 
-  /*
-  function editLayer(lyr) {
-    if (_activeLyr == lyr) return;
-    if (_activeLyr) error("MshpMap#editLayer() multiple layers not supported");
-    _activeLyr = lyr;
-  }
-  */
 }
 
 Opts.inherit(MshpMap, EventDispatcher);
@@ -7759,7 +7752,6 @@ function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
       _padPix = 0,
       _self = this,
-      _fullBounds,
       _cx,
       _cy,
       _scale = 1;
@@ -7770,7 +7762,6 @@ function MapExtent(el, initialBounds) {
   }
 
   _position.on('resize', function() {
-    _fullBounds = getFullBounds();
     this.dispatchEvent('change');
     this.dispatchEvent('resize');
   }, this);
@@ -7778,8 +7769,8 @@ function MapExtent(el, initialBounds) {
   this.resize = function(w, h) { _position.resize(w, h); };
 
   this.reset = function() {
-    _fullBounds = getFullBounds();
-    this.recenter(_fullBounds.centerX(), _fullBounds.centerY(), 1);
+    var bb = getFullBounds();
+    this.recenter(bb.centerX(), bb.centerY(), 1);
   };
 
   this.recenter = function(cx, cy, scale) {
@@ -7832,13 +7823,15 @@ function MapExtent(el, initialBounds) {
   //
   function centerAlign(contentBounds) {
     var bounds = contentBounds.clone(),
-        wpix = _self.width() - 2 * _padPix,
-        hpix = _self.height() - 2 * _padPix,
-        padGeo = _padPix * bounds.width() / wpix; // per-pixel scale
-
+        wpix = _position.width() - 2 * _padPix,
+        hpix = _position.height() - 2 * _padPix,
+        padGeo;
+    if (wpix <= 0 || hpix <= 0) {
+      return new Bounds(0, 0, 0, 0);
+    }
     // expand bounds to match padded map aspect ratio
     bounds.fillOut(wpix / hpix);
-
+    padGeo = _padPix * bounds.width() / wpix; // per-pixel scale
     bounds.padBounds(padGeo, padGeo, padGeo, padGeo);
     return bounds;
   }
@@ -7850,12 +7843,12 @@ function MapExtent(el, initialBounds) {
   };
 
   function getBounds() {
-    return calcBounds(_cx, _cy, _scale);
+    return centerAlign(calcBounds(_cx, _cy, _scale));
   }
 
   function calcBounds(cx, cy, scale) {
-    var w = _fullBounds.width() / scale,
-        h = _fullBounds.height() / scale;
+    var w = initialBounds.width() / scale,
+        h = initialBounds.height() / scale;
     return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
   }
 
@@ -7867,7 +7860,8 @@ function MapExtent(el, initialBounds) {
   //
   this.getTransform = function() {
     // get transform (y-flipped);
-    return getBounds().getTransform(new Bounds(0, 0, _position.width(), _position.height()), true);
+    var viewBounds = new Bounds(0, 0, _position.width(), _position.height());
+    return getBounds().getTransform(viewBounds, true);
   };
 
   this.reset();
