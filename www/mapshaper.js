@@ -8130,6 +8130,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   return calcArcData;
 };
 
+
 // The original mapshaper "modified Visvalingam" function uses a step function to
 // underweight more acute triangles.
 //
