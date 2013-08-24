@@ -1,6 +1,8 @@
 /* @requires
 mapshaper-shapes,
-mapshaper-controls,
+mapshaper-simplify-control,
+mapshaper-import-control,
+mapshaper-export-control,
 mapshaper-topology,
 mapshaper-map,
 mapshaper-maplayer,
@@ -115,7 +117,6 @@ function Editor() {
 var api = {
   ArcDataset: ArcDataset,
   Utils: Utils,
-  controls: controls,
   trace: trace,
   error: error
 };
