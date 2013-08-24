@@ -47,55 +47,37 @@ var Utils = {
 
   reduce: function(arr, func, val, ctx) {
     for (var i = 0, len = arr.length; i < len; i++) {
-      val = func.call(ctx || null, arr[i], val, i);
+      val = func.call(ctx, val, arr[i]);
     }
     return val;
   },
 
-
-  mapObjectToArray: function(obj, func, ctx) {
-    var i = 0,
-        arr = null,
+  mapFilter: function(obj, func, ctx) {
+    var arr = [],
         retn;
-    if (!Utils.isString(obj) && Utils.isObject(obj)) {
-      arr = [];
-      for (var key in obj) {
-        if (obj.hasOwnProperty(key)) {
-          retn = func.call(ctx, obj[key], key)
-          if (retn !== void 0) arr[i++] = retn;
-        }
-      }
+    for (var i=0, n = obj.length; i < n; i++) {
+      retn = func.call(ctx, obj[i], i);
+      if (retn !== void 0) arr.push(retn);
     }
     return arr;
   },
 
-  mapObjectToObject: function(src, func, ctx) {
-    var dest = {};
-    for (var key in src) {
-      if (src.hasOwnProperty(key)) {
-        dest[key] = func.call(ctx, src[key], key)
-      }
-    }
-    return dest;
-  },
-
   map: function(obj, func, ctx) {
-    if (!Utils.isArrayLike(obj))
-      return Utils.mapObjectToArray(obj, func, ctx);
-
-    var arr = [], retn;
-    for (var i=0, n = obj.length; i < n; i++) {
-      retn = func.call(ctx, obj[i], i);
-      if (retn !== void 0) arr[i] = retn;
-    }
-    return arr.length == obj.length ? arr : null;
+    if (!Utils.isArrayLike(obj)) error("Utils.map() requires an array");
+    var retn = Utils.mapFilter(obj, func, ctx);
+    if (retn.length !== obj.length) error("Utils.map() Sparse array");
+    return retn;
   },
 
   // Array like: has length property, is numerically indexed and mutable.
-  //
   isArrayLike: function(obj) {
-    // approximate test
-    return obj && (Utils.isArray(obj) || (obj.length === 0 || obj.length > 0 && obj[obj.length-1] !== void 0) && !Utils.isString(obj));
+    if (!obj) return false;
+    if (Utils.isArray(obj)) return true;
+    if (Utils.isString(obj)) return false;
+    if (obj.length === 0) return true;
+    if (obj.length > 0) return true;
+    return false;
+    // TODO: eliminate objects with length property that are not numerically indexed.
   },
 
   isFunction: function(obj) {
@@ -112,20 +94,19 @@ var Utils = {
     // return Object.constructor.toString.call(obj) == '[object Array]';
   },
 
-  /**
-   * from underscore.js; NaN -> true
-   */
+   // NaN -> true
   isNumber: function(obj) {
     // return toString.call(obj) == '[object Number]'; // ie8 breaks?
     return obj != null && obj.constructor == Number;
   },
 
   isInteger: function(obj) {
-    return Utils.isNumber(obj) && (obj | 0 === obj);
+    return Utils.isNumber(obj) && ((obj | 0) === obj);
   },
 
   isString: function(obj) {
-    return obj != null && obj.toString === String.prototype.toString; // TODO: replace w/ something better.
+    return obj != null && obj.toString === String.prototype.toString;
+    // TODO: replace w/ something better.
   },
 
   isBoolean: function(obj) {
@@ -140,8 +121,8 @@ var Utils = {
     return val1 * (1-pct) + val2 * pct;
   },
 
-  getConstructorName: function(obj) {
-    var matches = String(obj.constructor).match(/^function ([^(]+)\(/);
+  getFunctionName: function(f) {
+    var matches = String(f).match(/^function ([^(]+)\(/);
     return matches && matches[1] || "";
   },
 
@@ -179,17 +160,13 @@ var Utils = {
 
   // Display string representation of an object, for logging, etc.
   // Functions and some objects are converted into a string label.
-  // @param validJS Strings are quoted and escaped; if false or undefined, quotes are left
-  //   off for cleaner-looking output and long strings are truncated.
   //
-  toString: function(obj, validJS) {
-    validJS = validJS !== false;
+  toString: function(obj, quoteString) {
     var type = typeof obj,
         str;
-
     if (type == 'function') {
-      str = '"[function]"';
-    } else if (obj == null) { // null or undefined
+      str = '"[' + (Utils.getFunctionName(obj) || 'function') + '()]"';
+    } else if (obj == null || Utils.isNumber(obj) || Utils.isBoolean(obj)) {
       str = String(obj);
     } else if (Utils.isArray(obj) || obj.byteLength > 0) { // handle typed arrays (with bytelength property)
       str = '[' + Utils.map(obj, function(o) {return Utils.toString(o, true);}).join(', ') + ']';
@@ -206,50 +183,59 @@ var Utils = {
     // User-defined objects without a toString() method: Try to get function name from constructor function.
     // Can't assume objects have hasOwnProperty() function (e.g. HTML nodes don't in ie <= 8)
     else if (type == 'object' && obj.toString === Object.prototype.toString) {
-      str = '"[' + (Utils.getConstructorName(obj) || "unknown object") + ']"';
+      str = '"[' + (Utils.getFunctionName(obj.constructor) || "unknown object") + ']"';
     } else {
-      // strings, numbers and objects with own "toString" methods.
-      // TODO: make sure that strings made by toString methods are quoted for js.
+      // strings and objects with own "toString" methods.
       str = String(obj);
-      if (Utils.isString(obj)) {
-        if (validJS) {
-          str = '"' + Utils.addslashes(str) + '"';
-        } else if (str.length > 400) {
-          str = str.substr(0, 400) + " ...";
-        }
+      if (quoteString) {
+        str = '"' + Utils.addslashes(str) + '"';
       }
     }
     return str;
   },
 
+  // Convert an object to a string, for logging
   strval: function(o) {
-    return Utils.toString(o, false);
+    var str = Utils.toString(o),
+        max = 800;
+    if (str.length > max) {
+      str = str.substr(0, max - 4) + " ...";
+    }
+    return str;
   },
 
+  // Convert an object to a string that can be parsed as JavaScript
   serialize: function(o) {
     return Utils.toString(o, true);
   },
 
   // See https://raw.github.com/kvz/phpjs/master/functions/strings/addslashes.js
-  //
   addslashes: function(str) {
     return (str + '').replace(/[\\"']/g, '\\$&').replace(/\u0000/g, '\\0');
-  }
-};
+  },
 
-Utils.extend = function(dest, src, noreplace) {
-  var replace = !noreplace;
-  dest = dest || {};
-  if (src) {
-    // Copy everything, including objects from prototypes...
-    // (Adding hasOwnProperty() will break some things in Opts)
-    for (var key in src) {
-      if (replace || dest[key] === void 0) {
-        dest[key] = src[key];
+  /**
+   * Escape a literal string to use in a regexp.
+   * Ref.: http://simonwillison.net/2006/Jan/20/escape/
+   */
+  regexEscape: function(str) {
+    return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+  },
+
+  extend: function(dest, src, noreplace) {
+    var replace = !noreplace;
+    dest = dest || {};
+    if (src) {
+      // Copy everything, including objects from prototypes...
+      // (Adding hasOwnProperty() will break some things in Opts)
+      for (var key in src) {
+        if (replace || dest[key] === void 0) {
+          dest[key] = src[key];
+        }
       }
     }
+    return dest;
   }
-  return dest;
 };
 
 var Opts = {
@@ -299,18 +285,10 @@ var Opts = {
     targ.prototype.__super__ = f;
   },
 
-  subclass : function(parent) {
-    var child = function() {
-      this.__super__.apply(this, arguments);
-    };
-    Opts.inherit(child, parent);
-    return child;
-  },
-
   namespaceExists : function(name) {
     var node = window;
     var parts = name.split('.');
-    var exists = Utils.reduce(parts, function(part, val) {
+    var exists = Utils.reduce(parts, function(val, part) {
       if (val !== false) {
         if (node[part] == null) { // match null or undefined
           val = false;
@@ -374,11 +352,6 @@ var error = function() {
   var msg = Utils.map(arguments, Utils.strval).join(' ');
   throw new Error(msg);
 };
-
-var warn = function() {
-  Utils.log(Utils.map(arguments, Utils.strval).join(' '));
-};
-
 
 /**
  * Support for timing using T.start() and T.stop("message")
@@ -482,12 +455,9 @@ Utils.sortNumbers = function(arr, asc) {
   Array.prototype.sort.call(arr, compare);
 };
 
-// Sort array of values that can be compared with < > operators (strings, numbers)
-// null, undefined and NaN are sorted to the end of the array
-//
-Utils.genericSort = function(arr, asc) {
-  asc = asc !== false;
-  var compare = function(a, b) {
+Utils.getComparator = function(ascending) {
+  var asc = asc !== false;
+  return function(a, b) {
     var retn = 0;
     if (b == null) {
       retn = a == null ? 0 : -1;
@@ -504,6 +474,13 @@ Utils.genericSort = function(arr, asc) {
     }
     return retn;
   };
+};
+
+// Sort array of values that can be compared with < > operators (strings, numbers)
+// null, undefined and NaN are sorted to the end of the array
+//
+Utils.genericSort = function(arr, asc) {
+  var compare = Utils.getComparator(asc);
   Array.prototype.sort.call(arr, compare);
   return arr;
 };
@@ -572,53 +549,16 @@ Utils.contains = function(container, item) {
   error("Expected Array or String argument");
 };
 
-// Transpose an object with (assumed) equal-size column arrays to an array of object-records
-Utils.transposeDataBlock = function(obj) {
-  var data = null;
-  if (Utils.isArray(obj)) {
-
-  } else {
-    var keys = Utils.getKeys(obj),
-        cols = keys.length,
-        rows = obj[keys[0]].length;
-
-    data = [];
-    for (var j=0; j<rows; j++) {
-      data.push({});
-    }
-    for (var i=0; i<cols; i++) {
-      var key = keys[i];
-      var col = obj[key];
-      for (var j=0; j<rows; j++) {
-        data[j][key] = col[j];
-      }
-    }
-  }
-  return data;
-};
-
-// Return array of hash keys with value === null
-Utils.nullKeys = function(obj) {
-  var arr = Utils.filter(Utils.getKeys(obj), function(key) {
-    return obj[key] === null;
-  });
-  return arr.length == 0 ? null : arr;
-};
-
 Utils.some = function(arr, test) {
-  return Utils.reduce(arr, function(item, val) {
+  return Utils.reduce(arr, function(val, item) {
     return val || test(item); // TODO: short-circuit?
   }, false);
 };
 
 Utils.every = function(arr, test) {
-  return Utils.reduce(arr, function(item, val) {
+  return Utils.reduce(arr, function(val, item) {
     return val && test(item);
   }, true);
-};
-
-Utils.findInArray = function(obj, arr, prop) {
-  return Utils.indexOf(arr, obj, prop);
 };
 
 // Convert an array-like object to an Array
@@ -628,6 +568,7 @@ Utils.toArray = function(obj) {
   try {
     arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
   } catch(e) {
+    // support ie8
     arr = [];
     for (var i=0, n=obj.length; i<n; i++) {
       arr[i] = obj[i];
@@ -636,69 +577,19 @@ Utils.toArray = function(obj) {
   return arr;
 };
 
-Utils.find = function(arr, test) {
-  for (var i=0, n=arr.length; i<n; i++) {
-    var o = arr[i];
-    if (test(o)) return o;
-  }
-  return null;
+Utils.find = function(arr, test, ctx) {
+  var matches = Utils.filter(arr, test, ctx);
+  return matches.length === 0 ? null : matches[0];
 };
 
 Utils.indexOf = function(arr, item, prop) {
+  if (prop) error("Utils.indexOf() No longer supports property argument");
+  var nan = !(item === item);
   for (var i = 0, len = arr.length || 0; i < len; i++) {
-    if (!prop) {
-      if (arr[i] === item) {
-        return i;
-      }
-    }
-    else if (arr[i][prop] === item) {
-      return i;
-    }
+    if (arr[i] === item) return i;
+    if (nan && !(arr[i] === arr[i])) return i;
   }
   return -1;
-};
-
-Utils.getClassId = function(val, breaks) {
-  var id = -1;
-  if (!isNaN(val)) {
-    id = 0;
-    for (var j = 0, len=breaks.length; j < len; j++) {
-      var breakVal = breaks[j];
-      if (val < breakVal) {
-        break;
-      }
-      id = j + 1;
-    }
-  }
-  return id;
-};
-
-
-Utils.getInnerBreaks = function(v1, v2, breaks) {
-  var id1 = Utils.getClassId(v1, breaks);
-  var id2 = Utils.getClassId(v2, breaks);
-  var retn = [];
-  if (id1 == id2) {
-    return retn;
-  }
-  else if (id1 < id2) {
-    var start=id1;
-    var end=id2;
-    var inv = false;
-  }
-  else {
-    start = id2
-    end = id1;
-    inv = true;
-  }
-  for (var i=start; i<end; i ++) {
-    retn.push(breaks[i]);
-  }
-
-  if (inv) {
-    retn.reverse();
-  }
-  return retn;
 };
 
 Utils.range = function(len, start, inc) {
@@ -719,7 +610,6 @@ Utils.repeat = function(times, func) {
     func(i++);
   }
 };
-
 
 // Calc sum, skip falsy and NaN values
 // Assumes: no other non-numeric objects in array
@@ -767,7 +657,7 @@ Utils.average = function(arr) {
   return Utils.sum(arr) / arr.length;
 };
 
-Utils.invertIndex = function(obj) {
+Utils.invert = function(obj) {
   var inv = {};
   for (var key in obj) {
     inv[obj[key]] = key;
@@ -775,15 +665,7 @@ Utils.invertIndex = function(obj) {
   return inv;
 };
 
-Utils.invertArray = function(arr) {
-  var index = {};
-  // iterate bw so first occurence gets indexed
-  for (var i=arr.length - 1; i >= 0; i--) {
-    index[arr[i]] = i;
-  }
-  return index;
-};
-
+Utils.keys =
 Utils.getKeys = function(obj) {
   var arr = [];
   for (var key in obj) {
@@ -794,6 +676,7 @@ Utils.getKeys = function(obj) {
   return arr;
 };
 
+Utils.values =
 Utils.getValues = function(obj) {
   var arr = [];
   for (var key in obj) {
@@ -804,16 +687,13 @@ Utils.getValues = function(obj) {
   return arr;
 };
 
-//
 Utils.uniq = function(src) {
   var index = {};
-  return Utils.filter(src, function(el, i) {
-    if (el in index) {
-      return false;
+  return Utils.filterMap(src, function(el) {
+    if (el in index === false) {
+      index[el] = true;
+      return el;
     }
-    index[el] = true;
-    return true;
-    // return i == 0 || el !== copy[i-1] ? true : false;
   });
 };
 
@@ -823,34 +703,22 @@ Utils.pluck = function(arr, key) {
   });
 };
 
-Utils.filter = function(src, func, ctx) {
-  var dest = [];
-  for (var i=0, len=src.length; i<len; i++) {
-    var val = src[i];
-    if (func.call(ctx, val, i)) {
-      dest.push(val);
-    }
-  }
-  return dest;
-};
-
-Utils.assembleObjects = function(keys, vals) {
-  return Utils.map(keys, function(k, i) {
-    var o = {};
-    o[k] = vals[i];
-    return o;
-  })
+Utils.findAll =
+Utils.filter = function(arr, func, ctx) {
+  return Utils.mapFilter(arr, function(obj) {
+    if (func.call(ctx, obj)) return obj;
+  });
 };
 
 Utils.indexOn = function(arr, k) {
-  return Utils.reduce(arr, function(o, index) {
+  return Utils.reduce(arr, function(index, o) {
     index[o[k]] = o;
     return index;
   }, {});
 };
 
-Utils.indexOn2 = function(arr, k) {
-  return Utils.reduce(arr, function(o, index) {
+Utils.groupBy = function(arr, k) {
+  return Utils.reduce(arr, function(index, o) {
     var keyval = o[k];
     if (keyval in index) {
       index[keyval].push(o);
@@ -861,38 +729,25 @@ Utils.indexOn2 = function(arr, k) {
   }, {});
 };
 
-
-Utils.arrayToIndex = function(arr, arg2) {
-  if (Utils.isArray(arg2))
-    return Utils.assembleObjects(arr, arg2);
-  if (Utils.isString(arg2))
-    return Utils.indexOn(arr, arg2);
-
-  return Utils.reduce(arr, function(key, index) {
-    if (key in index) trace("[Utils.arrayToIndex()] Warning: duplicate key:", key);
+Utils.arrayToIndex = function(arr) {
+  if (arguments.length > 1) error("#arrayToIndex() Use #indexOn() instead");
+  return Utils.reduce(arr, function(index, key) {
+    if (key in index) trace("#arrayToIndex() Duplicate key:", key);
     index[key] = true;
     return index;
   }, {});
 };
 
-Utils.groupBy = function(arr, key) {
-  var index = {},
-      groups = [];
-  Utils.forEach(arr, function(obj) {
-    var keyval = obj[key];
-    var group = index[keyval];
-    if (!group) {
-      index[keyval] = group = [];
-      groups.push(group);
+Utils.forEach = function(obj, func, ctx) {
+  if (Utils.isArrayLike(obj)) {
+    Utils.mapFilter(obj, func, ctx);
+  } else {
+    for (var key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        func.call(ctx, obj[key], key);
+      }
     }
-    group.push(obj);
-  });
-  groups.index = index;
-  return groups;
-};
-
-Utils.forEach = function(obj, callback, ctx) {
-  Utils.map(obj, callback, ctx);
+  }
 };
 
 Utils.multiMap = function(callback) {
@@ -925,12 +780,11 @@ Utils.multiMap = function(callback) {
 };
 
 Utils.initializeArray = function(arr, init) {
-  // if (typeof init == "function") error("[initializeArray()] removed function initializers");
   for (var i=0, len=arr.length; i<len; i++) {
     arr[i] = init;
   }
   return arr;
-}
+};
 
 Utils.newArray = function(size, init) {
   return Utils.initializeArray(new Array(size), init);
@@ -939,12 +793,13 @@ Utils.newArray = function(size, init) {
 Utils.replaceArray = function(arr, arr2) {
   arr.splice(0, arr.length);
   arr.push.apply(arr, arr2);
-}
+};
 
 Utils.randomizeArray = function(arr) {
-  var tmp, swap, n=arr.length;
-  while(n) {
-    swap = Math.random() * n | 0; // assumes random() != 1
+  var n=arr.length,
+      swap, tmp;
+  while (n > 0) {
+    swap = Math.random() * n | 0;
     tmp = arr[swap];
     arr[swap] = arr[--n];
     arr[n] = tmp;
@@ -952,31 +807,10 @@ Utils.randomizeArray = function(arr) {
   return arr;
 };
 
-Utils.swap = function(arr, i, j) {
-  var tmp = arr[i];
-  arr[i] = arr[j];
-  arr[j] = tmp;
-}
-
-Utils.getRandomIds = function(len) {
-  var ids = Utils.range(len);
-  Utils.randomizeArray(ids);
-  return ids;
-};
-
-Utils.filterById = function(src, ids) {
-  var arr = [], val;
-  for (var i=0, n=ids.length; i<n; i++) {
-    val = src[ids[i]];
-    if (val !== void 0) arr.push(val);
-  }
-  return arr;
-};
 
 
 
-
-Utils.leftPad = function(str, size, pad) {
+Utils.lpad = function(str, size, pad) {
   pad = pad || ' ';
   str = String(str);
   var chars = size - str.length;
@@ -987,15 +821,22 @@ Utils.leftPad = function(str, size, pad) {
 };
 
 Utils.trim = function(str) {
-  return str.replace(/^\s+|\s+$/g, '');
+  return Utils.ltrim(Utils.rtrim(str));
+};
+
+var ltrimRxp = /^\s+/;
+Utils.ltrim = function(str) {
+  return str.replace(ltrimRxp, '');
+};
+
+var rtrimRxp = /\s+$/;
+Utils.rtrim = function(str) {
+  return str.replace(rtrimRxp, '');
 };
 
 Utils.capitalizeWord = function(w) {
   return w ? w.charAt(0).toUpperCase() + w.substr(1) : '';
 };
-
-
-
 
 Utils.addThousandsSep = function(str) {
   var fmt = '',
@@ -1011,11 +852,9 @@ Utils.addThousandsSep = function(str) {
   return str.substring(0, end) + fmt;
 };
 
-
 Utils.numToStr = function(num, decimals) {
   return decimals >= 0 ? num.toFixed(decimals) : String(num);
 };
-
 
 Utils.formatNumber = function(num, decimals, nullStr, showPos) {
   var fmt;
@@ -1068,9 +907,9 @@ EventData.prototype.stopPropagation = function() {
 EventData.prototype.__stop__ = false;
 
 EventData.prototype.toString = function() {
-  var str = 'type:' + this.type + ', target: ' + Utils.strval(this.target);
+  var str = 'type:' + this.type + ', target: ' + Utils.toString(this.target);
   if (this.data) {
-    str += ', data:' + Utils.strval(this.data);
+    str += ', data:' + Utils.toString(this.data);
   }
   return '[EventData]: {' + str + '}';
 };
@@ -1254,7 +1093,7 @@ Waiter.prototype.callWhenReady = function(func, args, ctx, priority) {
 Waiter.prototype._handleDependentReady = function(evt) {
   if (! this._waitCount) {
     trace('[Waiter.onDependendReady()]',
-    'Counting error. Event: ' + Utils.strval(evt) + '; ready? ' + this._ready);
+    'Counting error. Event: ' + Utils.toString(evt) + '; ready? ' + this._ready);
     return;
   }
   this._waitCount -= 1;
@@ -1595,7 +1434,7 @@ if (inNode) {
         flags = (o.flags || o.binary || '').split(','),
         currOpt;
 
-    var aliases = Utils.reduce((o.aliases || "").split(','), function(item, obj) {
+    var aliases = Utils.reduce((o.aliases || "").split(','), function(obj, item) {
         var parts = item.split(':');
         if (parts.length == 2) {
           obj[parts[0]] = parts[1];
@@ -1846,19 +1685,19 @@ var Browser = {
     return true;
   },
 
-  /*getPageWidth : function() {
+  /*getPageWidth: function() {
    return document.documentElement.clientWidth || document.body.clientWidth;
   },*/
 
-  getViewportWidth : function() {
+  getViewportWidth: function() {
     return document.documentElement.clientWidth;
   },
 
-  getViewportHeight : function() {
+  getViewportHeight: function() {
     return document.documentElement.clientHeight;
   },
 
-  createElement : function(type, css, classes) {
+  createElement: function(type, css, classes) {
     try {
       var el = document.createElement(type);
     }
@@ -1885,7 +1724,7 @@ var Browser = {
    * Return: HTML node reference or null
    * Receive: node reference or id or "#" + id
    */
-  getElement : function(ref) {
+  getElement: function(ref) {
     var el;
     if (typeof ref == 'string') {
       if (ref.charAt(0) == '#') {
@@ -1904,7 +1743,7 @@ var Browser = {
     return el || null;
   },
 
-  removeElement : function(el) {
+  removeElement: function(el) {
     el && el.parentNode && el.parentNode.removeChild(el);
   },
 
@@ -1912,7 +1751,7 @@ var Browser = {
     return el.currentStyle || window.getComputedStyle && window.getComputedStyle(el, '') || {};
   },
 
-  elementIsFixed : function(el) {
+  elementIsFixed: function(el) {
     // get top-level offsetParent that isn't body (cf. Firefox)
     var body = document.body;
     while (el && el != body) {
@@ -1926,13 +1765,21 @@ var Browser = {
     return styleObj['position'] == 'fixed';
   },
 
-  getElementFromPageXY : function(x, y) {
+  getElementFromPageXY: function(x, y) {
     var viewX = this.pageXToViewportX(x);
     var viewY = this.pageYToViewportY(y);
     return document.elementFromPoint(viewX, viewY);
   },
 
-  getPageXY : function(el) {
+  getLocalXY: function(el, pageX, pageY) {
+    var xy = Browser.getPageXY(el);
+    return {
+      x: pageX - xy.x,
+      y: pageY - xy.y
+    };
+  },
+
+  getPageXY: function(el) {
     var x = 0, y = 0;
     if (el.getBoundingClientRect) {
       var box = el.getBoundingClientRect();
@@ -1964,12 +1811,12 @@ var Browser = {
   },
 
   // reference: http://stackoverflow.com/questions/871399/cross-browser-method-for-detecting-the-scrolltop-of-the-browser-window
-  __getIEPageElement : function() {
+  __getIEPageElement: function() {
     var d = document.documentElement;
-    return d.clientHeight ? d : document.body;
+    return d.clientHeight ? d: document.body;
   },
 
-  pageXToViewportX : function(x) {
+  pageXToViewportX: function(x) {
     var xOffs = window.pageXOffset;
     if (xOffs === undefined) {
       xOffs = Browser.__getIEPageElement().scrollLeft;
@@ -1977,7 +1824,7 @@ var Browser = {
     return x - xOffs;
   },
 
-  pageYToViewportY : function(y) {
+  pageYToViewportY: function(y) {
     var yOffs = window.pageYOffset;
     if (yOffs === undefined) {
       yOffs = Browser.__getIEPageElement().scrollTop;
@@ -1996,11 +1843,11 @@ var Browser = {
    */
   removeEventListener: pageEvents.removeEventListener,
 
-  getPageUrl : function() {
-    return Browser.inNode ? "" : window.location.href.toString();
+  getPageUrl: function() {
+    return Browser.inNode ? "": window.location.href.toString();
   },
 
-  getQueryString : function(url) {
+  getQueryString: function(url) {
     var match = /^[^?]+\?([^#]*)/.exec(url);
     return match && match[1] || "";
   },
@@ -2010,7 +1857,7 @@ var Browser = {
    *  Value is calculated from UTC minutes, so the server does not see a large
    *  number of different values.
    */
-  cacheBustUrl : function(url, minutes) {
+  cacheBustUrl: function(url, minutes) {
     minutes = minutes || 1; // default: 60 seconds
     var minPerWeek = 60*24*7;
     var utcMinutes = (+new Date) / 60000;
@@ -2019,8 +1866,8 @@ var Browser = {
     return url;
   },
 
-  extendUrl : function(url, obj) {
-    var extended = url + (url.indexOf("?") == -1 ? "?" : "&");
+  extendUrl: function(url, obj) {
+    var extended = url + (url.indexOf("?") == -1 ? "?": "&");
     if (Utils.isString(obj)) {
       extended += obj;
     } else if (Utils.isObject(obj)) {
@@ -2035,11 +1882,11 @@ var Browser = {
     return extended;
   },
 
-  parseUrl : Utils.parseUrl,
+  parseUrl: Utils.parseUrl,
   /**
    * Return query-string (GET) data as an object.
    */
-  getQueryVars : function() {
+  getQueryVars: function() {
     var matches, rxp = /([^=&]+)=?([^&]*)/g,
       q = this.getQueryString(this.getPageUrl()),
       vars = {};
@@ -2051,7 +1898,7 @@ var Browser = {
     return vars;
   },
 
-  getQueryVar : function(name) {
+  getQueryVar: function(name) {
     return Browser.getQueryVars()[name];
   },
 
@@ -2059,16 +1906,16 @@ var Browser = {
   /**
    * TODO: memoize?
    */
-  getClassNameRxp : function(cname) {
+  getClassNameRxp: function(cname) {
     return new RegExp("(^|\\s)" + cname + "(\\s|$)");
   },
 
-  hasClass : function(el, cname) {
+  hasClass: function(el, cname) {
     var rxp = this.getClassNameRxp(cname);
     return el && rxp.test(el.className);
   },
 
-  addClass : function(el, cname) {
+  addClass: function(el, cname) {
     var classes = el.className;
     if (!classes) {
       classes = cname;
@@ -2079,17 +1926,17 @@ var Browser = {
     el.className = classes;
   },
 
-  removeClass : function(el, cname) {
+  removeClass: function(el, cname) {
     var rxp = this.getClassNameRxp(cname);
     el.className = el.className.replace(rxp, "$2");
   },
 
-  replaceClass : function(el, c1, c2) {
+  replaceClass: function(el, c1, c2) {
     var r1 = this.getClassNameRxp(c1);
     el.className = el.className.replace(r1, '$1' + c2 + '$2');
   },
 
-  mergeCSS : function(s1, s2) {
+  mergeCSS: function(s1, s2) {
     var div = this._cssdiv;
     if (!div) {
       div = this._cssdiv = Browser.createElement('div');
@@ -2098,11 +1945,11 @@ var Browser = {
     return div.style.cssText;
   },
 
-  addCSS : function(el, css) {
+  addCSS: function(el, css) {
     el.style.cssText = Browser.mergeCSS(el.style.cssText, css);
   },
 
-  unselectable : function(el) {
+  unselectable: function(el) {
     var noSel = "-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-moz-user-focus:ignore;-o-user-select:none;user-select: none;";
     noSel += "-webkit-tap-highlight-color: rgba(0,0,0,0);"
     //div.style.cssText = Browser.mergeCSS(div.style.cssText, noSel);
@@ -2113,7 +1960,7 @@ var Browser = {
     };
   },
 
-  undraggable : function(el) {
+  undraggable: function(el) {
     el.ondragstart = function(){return false;};
     el.draggable = false;
   },
@@ -2121,7 +1968,7 @@ var Browser = {
   /**
    *  Loads a css file and applies it to the current page.
    */
-  loadStylesheet : function(cssUrl) {
+  loadStylesheet: function(cssUrl) {
     var link = document.createElement("link");
     link.rel = "stylesheet";
     link.type = "text/css";
@@ -2129,7 +1976,7 @@ var Browser = {
     Browser.appendToHead(link);
   },
 
-  appendToHead : function(el) {
+  appendToHead: function(el) {
     var head = document.getElementsByTagName("head")[0];
     head.appendChild(el);
   },
@@ -2137,8 +1984,8 @@ var Browser = {
   /**
    * TODO: Option to supply a "target" attribute for opening in another window.
    */
-  //navigateToURL : function(url) {
-  navigateTo : function(url) {
+  //navigateToURL: function(url) {
+  navigateTo: function(url) {
     window.location.href = url;
   }
 
@@ -3912,7 +3759,7 @@ Utils.format = (function() {
         isFloat = type == 'f',
         isNumber = !isString;
 
-    var sign = "", 
+    var sign = "",
         padDigits = 0,
         isZero = false,
         isNeg = false;
@@ -3967,7 +3814,7 @@ Utils.format = (function() {
 
   var codeRxp = /%([\'+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
 
-  return function format(s) {
+  var format = function(s) {
     var arr = Array.prototype.slice.call(arguments, 1);
     var ostr = "";
     for (var startIdx=0, i=0, len=arr.length, matches; i<len && (matches=codeRxp.exec(s)); i++) {
@@ -3983,6 +3830,23 @@ Utils.format = (function() {
     ostr += s.substr(startIdx);
     return ostr;
   };
+
+  // Returns a formatter function if called with one argument.
+  // Returns a formatted string if called with two or more arguments.
+  return function(fmt) {
+    if (!Utils.isString(fmt)) {
+      error("#format() Usage: Utils.format(format, [data ...])");
+    } else if (arguments.length == 1) {
+      return function() {
+        var args = Utils.toArray(arguments);
+        args.unshift(fmt);
+        return format.apply(null, args);
+      };
+    } else {
+      return format.apply(null, arguments);
+    }
+  };
+
 }());
 
 
@@ -6065,7 +5929,7 @@ MapShaper.importGeoJSON = function(obj) {
 
   // Count points in dataset (PathImporter needs total points to initialize buffers)
   //
-  var pointCount = Utils.reduce(geometries, function(geom, sum) {
+  var pointCount = Utils.reduce(geometries, function(sum, geom) {
     if (geom) { // geom may be null
       var depth = GeoJSON.geometryDepths[geom.type] || 0;
       sum += GeoJSON.countNestedPoints(geom.coordinates, depth);
@@ -6242,10 +6106,11 @@ MapShaper.importTopoJSON = function(obj) {
     obj = JSON.parse(obj);
   }
   var arcs = TopoJSON.importArcs(obj.arcs, obj.transform);
-  var layers = Utils.mapObjectToArray(obj.objects, function(object, name) {
+  var layers = [];
+  Utils.forEach(obj.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, arcs);
     lyr.name = name;
-    return lyr;
+    layers.push(lyr);
   });
   return {
     arcs: arcs,
@@ -6338,7 +6203,7 @@ TopoJSON.Importer = function(numArcs) {
   };
 
   this.done = function() {
-    var openCount = Utils.reduce(paths, function(path, count) {
+    var openCount = Utils.reduce(paths, function(count, path) {
       if (!path.isRing) count++;
       return count;
     }, 0);
@@ -7697,9 +7562,8 @@ function MshpMap(el, opts_) {
     padding: 0 // margin around content at full extent, in pixels
   };
   var opts = Utils.extend(defaults, opts_);
-  var missing = Utils.nullKeys(opts);
-  if (missing) {
-    error("[MshpMap()] missing required param/s:", missing.join(', '));
+  if (opts.bounds instanceof Bounds === false) {
+    error("[MshpMap()] missing required bounds option");
   }
 
   var _root = El(el);

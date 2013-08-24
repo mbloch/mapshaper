@@ -38,7 +38,7 @@ MapShaper.importGeoJSON = function(obj) {
 
   // Count points in dataset (PathImporter needs total points to initialize buffers)
   //
-  var pointCount = Utils.reduce(geometries, function(geom, sum) {
+  var pointCount = Utils.reduce(geometries, function(sum, geom) {
     if (geom) { // geom may be null
       var depth = GeoJSON.geometryDepths[geom.type] || 0;
       sum += GeoJSON.countNestedPoints(geom.coordinates, depth);

@@ -8,9 +8,8 @@ function MshpMap(el, opts_) {
     padding: 0 // margin around content at full extent, in pixels
   };
   var opts = Utils.extend(defaults, opts_);
-  var missing = Utils.nullKeys(opts);
-  if (missing) {
-    error("[MshpMap()] missing required param/s:", missing.join(', '));
+  if (opts.bounds instanceof Bounds === false) {
+    error("[MshpMap()] missing required bounds option");
   }
 
   var _root = El(el);

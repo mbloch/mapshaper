@@ -7,10 +7,11 @@ MapShaper.importTopoJSON = function(obj) {
     obj = JSON.parse(obj);
   }
   var arcs = TopoJSON.importArcs(obj.arcs, obj.transform);
-  var layers = Utils.mapObjectToArray(obj.objects, function(object, name) {
+  var layers = [];
+  Utils.forEach(obj.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, arcs);
     lyr.name = name;
-    return lyr;
+    layers.push(lyr);
   });
   return {
     arcs: arcs,
@@ -103,7 +104,7 @@ TopoJSON.Importer = function(numArcs) {
   };
 
   this.done = function() {
-    var openCount = Utils.reduce(paths, function(path, count) {
+    var openCount = Utils.reduce(paths, function(count, path) {
       if (!path.isRing) count++;
       return count;
     }, 0);
