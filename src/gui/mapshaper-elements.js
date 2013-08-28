@@ -206,25 +206,32 @@ Opts.inherit(SimpleButton, EventDispatcher);
 
 function FileChooser(el) {
 
-  var input = El('form').addClass('g-file-control').appendTo('body')
-    .newChild('input').attr('type', 'file').on('change', onchange, this);
+  var input = El('form')
+    .addClass('g-file-control').appendTo('body')
+    .newChild('input')
+    .attr('type', 'file')
+    .attr('multiple', 'multiple')
+    .on('change', onchange, this);
   /* input element properties:
     disabled
     name
     value  (path to the file)
     multiple  ('multiple' or '')
   */
-
   var btn = El(el).on('click', function() {
     input.el.click();
   });
 
   function onchange(e) {
     var files = e.target.files;
-    if (files) { // files may be undefined (e.g. if user presses 'cancel' after a file has been selected...)
-      input.attr('disabled', true); // button is disabled after first successful selection
+    // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
+    if (files) {
+      // disable the button while files are being processed
       btn.addClass('selected');
+      input.attr('disabled', true);
       this.dispatchEvent('select', {files:files});
+      btn.removeClass('selected');
+      input.attr('disabled', false);
     }
   }
 }
