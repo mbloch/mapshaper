@@ -13,16 +13,16 @@ describe('mapshaper-geojson.js', function () {
     it('Import FeatureCollection with polygon geometries', function () {
       var data = api.importFromFile(fixPath('test_data/two_states.json'))
       assert.equal(data.layers[0].shapes.length, 2);
-      assert.equal(data.layers[0].properties.length, 2);
+      assert.equal(data.layers[0].data.size(), 2);
     })
 
 
     it('Import FeatureCollection with three null geometries', function () {
       var data = api.importFromFile(fixPath('test_data/six_counties_three_null.json'), 'geojson');
-      assert.equal(data.layers[0].properties.length, 6);
+      assert.equal(data.layers[0].data.size(), 6);
       assert.equal(data.layers[0].shapes.length, 6);
       assert.equal(Utils.filter(data.layers[0].shapes, function(shape) {return shape != null}).length, 3)
-      assert.deepEqual(Utils.pluck(data.layers[0].properties, 'NAME'), ["District of Columbia", "Arlington", "Fairfax County", "Alexandria", "Fairfax City", "Manassas"]);
+      assert.deepEqual(Utils.pluck(data.layers[0].data.getRecords(), 'NAME'), ["District of Columbia", "Arlington", "Fairfax County", "Alexandria", "Fairfax City", "Manassas"]);
     })
 
   })

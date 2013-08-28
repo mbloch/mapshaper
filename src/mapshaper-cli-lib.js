@@ -50,8 +50,9 @@ cli.testFileCollision = function(files, suff) {
 };
 
 cli.validateFileExtension = function(path) {
-  var type = MapShaper.guessFileType(path);
-  return !!type;
+  var type = MapShaper.guessFileType(path),
+      valid = type == 'shp' || type == 'json';
+  return valid;
 };
 
 cli.replaceFileExtension = function(path, ext) {
@@ -59,16 +60,17 @@ cli.replaceFileExtension = function(path, ext) {
   return Node.path.join(info.relative_dir, info.base + "." + ext);
 };
 
-
 cli.validateInputOpts = function(argv) {
   var ifile = argv._[0],
       opts = {};
 
-  if (!ifile) error("Missing an input file");
-
-  if (!Node.fileExists(ifile)) error("File not found (" + ifile + ")");
-  var ftype = MapShaper.guessFileType(ifile);
-  if (!ftype) {
+  if (!ifile) {
+    error("Missing an input file");
+  }
+  if (!Node.fileExists(ifile)) {
+    error("File not found (" + ifile + ")");
+  }
+  if (!cli.validateFileExtension(ifile)) {
      error("File has an unsupported extension:", ifile);
   }
   opts.input_file = ifile;
@@ -107,7 +109,7 @@ cli.validateOutputOpts = function(argv, inputOpts) {
       error('Invalid output file:', argv.o);
     } else {
       if (ofileInfo.ext) {
-        if (!cli.validateFileExtension(ofileInfo.ext)) {
+        if (!cli.validateFileExtension(ofileInfo.file)) {
           error("Output file looks like an unsupported file type:", ofileInfo.file);
         }
         // use -o extension, if present
@@ -200,7 +202,7 @@ var api = Utils.extend(MapShaper, {
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
-  DbfReader: DbfReader,
+  Dbf: Dbf,
   Bounds: Bounds
 });
 

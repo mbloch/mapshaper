@@ -1,5 +1,5 @@
 var api = require('../'),
-  assert = require('assert');
+    assert = require('assert');
 
 var Node = api.Node;
 
@@ -10,5 +10,6 @@ describe('dbf-reader.js', function () {
       assert.equal()
     })
   })
+
 
 })

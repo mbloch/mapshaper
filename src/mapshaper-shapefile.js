@@ -8,11 +8,10 @@ MapShaper.importDbf = function(src) {
 };
 
 // Read Shapefile data from an ArrayBuffer or Buffer
-// Convert to format used for identifying topology
+// Build topology
 //
 MapShaper.importShp = function(src) {
   T.start();
-
   var reader = new ShpReader(src);
   var supportedTypes = [
     ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ,
@@ -47,10 +46,19 @@ MapShaper.importShp = function(src) {
       offs += pointsInPart * 2;
     }
   });
-
-  var data = importer.done();
+  var importData = importer.done();
   T.stop("Import Shapefile");
-  return data;
+  var topoData = MapShaper.buildTopology(importData);
+  var layer = {
+      name: '',
+      shapes: topoData.shapes,
+      geometry_type: importData.info.input_geometry_type
+    };
+
+  return {
+    arcs: topoData.arcs,
+    layers: [layer]
+  };
 };
 
 // Convert topological data to buffers containing .shp and .shx file data
@@ -70,6 +78,13 @@ MapShaper.exportShp = function(layers, arcData, opts) {
         name: layer.name,
         extension: "shx"
       });
+    if (layer.data) {
+      files.push({
+        content: layer.data.exportAsDbf(),
+        name: layer.name,
+        extension: "dbf"
+      });
+    }
   });
   return files;
 };

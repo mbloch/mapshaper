@@ -7,7 +7,7 @@ MapShaper.importContent = function(content, fileType) {
   var data,
       fileFmt;
   if (fileType == 'shp') {
-    data = MapShaper.importNonTopoDataset(MapShaper.importShp(content));
+    data = MapShaper.importShp(content);
     fileFmt = 'shapefile';
   } else if (fileType == 'json') {
     var jsonObj = JSON.parse(content);
@@ -15,7 +15,7 @@ MapShaper.importContent = function(content, fileType) {
       data = MapShaper.importTopoJSON(jsonObj);
       fileFmt = 'topojson';
     } else {
-      data = MapShaper.importNonTopoDataset(MapShaper.importGeoJSON(jsonObj));
+      data = MapShaper.importGeoJSON(jsonObj);
       fileFmt = 'geojson';
     }
   } else {
@@ -33,16 +33,11 @@ MapShaper.importContent = function(content, fileType) {
     }
   });
 
-  var info = {
+  data.info = {
     input_format: fileFmt
   };
-
-  return {
-    arcs: data.arcs,
-    layers: data.layers,
-    retainedPointCounts: retainedPointCounts,
-    info: info
-  };
+  data.retainedPointCounts = retainedPointCounts;
+  return data;
 };
 
 
@@ -65,23 +60,6 @@ MapShaper.calcArcCountsInShape = function(counts, shape) {
     }
   }
 };
-
-
-MapShaper.importNonTopoDataset = function(importData) {
-  var topoData = MapShaper.buildTopology(importData),
-      layer = {
-        name: "",
-        properties: importData.properties,
-        shapes: topoData.shapes,
-        geometry_type: importData.info.input_geometry_type
-      };
-
-  return {
-    arcs: topoData.arcs,
-    layers: [layer]
-  };
-};
-
 
 // Calculate number of interior points to preserve in each arc
 // to protect 'primary' rings from collapsing.

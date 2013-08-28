@@ -26,19 +26,25 @@ MapShaper.parseLocalPath = function(path) {
   }
   i = name.lastIndexOf('.');
   if (i > -1) {
-    obj.ext = name.substr(i);
+    obj.ext = name.substr(i + 1); // omit '.'
     obj.basename = name.substr(0, i);
+    obj.pathbase = path.substr(0, i);
+  } else {
+    obj.basename = name;
+    obj.pathbase = path;
   }
   obj.filename = name;
   return obj;
 };
 
 MapShaper.guessFileType = function(file) {
-  var type = null;
+  var info = MapShaper.parseLocalPath(file),
+      ext = info.ext.toLowerCase(),
+      type = null;
   if (/json$/i.test(file)) {
     type = 'json';
-  } else if (/shp$/i.test(file)) {
-    type = 'shp';
+  } else if (ext == 'shp' || ext == 'dbf' || ext == 'prj') {
+    type = ext;
   }
   return type;
 };

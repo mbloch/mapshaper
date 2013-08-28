@@ -6,16 +6,25 @@ MapShaper.importTopoJSON = function(obj) {
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
-  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform);
-  var layers = [];
+  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform),
+      layers = [];
   Utils.forEach(obj.objects, function(object, name) {
-    var lyr = TopoJSON.importObject(object, arcs);
-    lyr.name = name;
-    layers.push(lyr);
+    var layerData = TopoJSON.importObject(object, arcs);
+    var data;
+    if (layerData.properties) {
+      data = new DataTable(layerData.properties);
+    }
+    layers.push({
+      name: name,
+      data: data,
+      shapes: layerData.shapes,
+      geometry_type: layerData.geometry_type
+    });
   });
+
   return {
     arcs: arcs,
-    layers: layers,
+    layers: layers
   };
 };
 
@@ -104,6 +113,7 @@ TopoJSON.Importer = function(numArcs) {
   };
 
   this.done = function() {
+    var data;
     var openCount = Utils.reduce(paths, function(count, path) {
       if (!path.isRing) count++;
       return count;
@@ -288,7 +298,7 @@ TopoJSON.calcExportResolution = function(arcData) {
 };
 
 function exportTopoJSONObject(exporter, lyr, type) {
-  var properties = lyr.properties,
+  var properties = lyr.data ? lyr.data.getRecords() : null,
       ids = lyr.ids,
       obj = {
         type: "GeometryCollection"

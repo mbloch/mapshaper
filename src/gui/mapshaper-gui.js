@@ -21,16 +21,10 @@ if (Browser.inBrowser) {
       El("#mshp-not-supported").show();
       return;
     }
-    var testFile = Browser.getQueryVar('file') || null;
-    El('#mshp-import').show();
     editor = new Editor();
     importer = new ImportControl(editor);
     dropper = new DropControl(importer);
-    if (testFile) {
-      importer.loadFile(testFile);
-    } else {
-      introPage();
-    }
+    introPage();
   });
 }
 
@@ -38,8 +32,9 @@ function introPage() {
   new FileChooser('#g-shp-import-btn').on('select', function(e) {
     importer.readFiles(e.files);
   });
-  // El("#mshp-import").show();
+  El('#mshp-import').show();
 }
+
 /*
 function ImportPanel(importer) {
   var shpBtn = new FileChooser('#g-shp-import-btn');
@@ -58,7 +53,6 @@ function browserIsSupported() {
     typeof Blob != 'undefined' &&
     typeof File != 'undefined';
 }
-
 
 function Editor() {
   var map, slider;
@@ -109,8 +103,10 @@ function Editor() {
       group.refresh();
     });
 
-    var fileBase = MapShaper.parseLocalPath(opts.input_file).basename || "out";
-    var exporter = new ExportControl(arcData, data.layers, fileBase);
+    var exportOpts = {
+      output_file_base: MapShaper.parseLocalPath(opts.input_file).basename || "out"
+    };
+    var exporter = new ExportControl(arcData, data.layers, exportOpts);
   };
 }
 

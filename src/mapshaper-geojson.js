@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-path-import */
+/* @requires mapshaper-common, mapshaper-path-import, mapshaper-data-table */
 
 MapShaper.importGeoJSON = function(obj) {
   if (Utils.isString(obj)) {
@@ -55,9 +55,21 @@ MapShaper.importGeoJSON = function(obj) {
     if (f) f(geom.coordinates, importer);
   });
 
-  var data = importer.done();
-  data.properties = properties;
-  return data;
+  var importData = importer.done();
+  var topoData = MapShaper.buildTopology(importData);
+  var layer = {
+      name: '',
+      shapes: topoData.shapes,
+      geometry_type: importData.info.input_geometry_type
+    };
+  if (properties) {
+    layer.data = new DataTable(properties);
+  }
+
+  return {
+    arcs: topoData.arcs,
+    layers: [layer]
+  };
 };
 
 
@@ -125,7 +137,7 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
   if (type != "polygon" && type != "polyline") error("#exportGeoJSONObject() Unsupported geometry type:", type);
 
   var geomType = type == 'polygon' ? 'MultiPolygon' : 'MultiLineString',
-      properties = layerObj.properties,
+      properties = layerObj.data && layerObj.data.getRecords() || null,
       useFeatures = !!properties;
 
   if (useFeatures && properties.length !== layerObj.shapes.length) {
