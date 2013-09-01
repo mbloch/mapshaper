@@ -80,17 +80,16 @@ function Editor() {
 
   this.addData = function(data, opts) {
     var arcData = data.arcs;
+    if (!map) init(arcData.getBounds());
 
     MapShaper.simplifyPaths(arcData, importOpts.simplifyMethod);
     if (importOpts.preserveShapes) {
-      error("Oops -- forgot to re-enable shape preservation");
-      // MapShaper.protectRingsFromCollapse(vertexData, data.retainedPointCounts);
+      MapShaper.protectRingsFromCollapse(arcData, data.retainedPointCounts);
     }
 
     var filteredArcs = new FilteredPathCollection(arcData);
     var group = new ArcLayerGroup(filteredArcs);
 
-    if (!map) init(arcData.getBounds());
     map.addLayerGroup(group);
 
     slider.on('change', function(e) {

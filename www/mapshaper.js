@@ -4638,6 +4638,15 @@ function ArcDataset() {
     return arr.subarray(0, j);
   };
 
+  this.getArcThresholds = function(arcId) {
+    if (!(arcId >= 0 && arcId < this.size())) {
+      error("ArcDataset#getArcThresholds() invalid arc id:", arcId);
+    }
+    var start = _ii[arcId],
+        end = start + _nn[arcId];
+    return _zz.subarray(start, end);
+  };
+
   this.getThresholdByPct = function(pct) {
     if (pct <= 0 || pct >= 1) error("Invalid simplification pct:", pct);
     var tmp = this.getRemovableThresholds();
@@ -4676,14 +4685,6 @@ function ArcDataset() {
 
   this.getBounds = function() {
     return _allBounds;
-  };
-
-  this.getArcs = function() {
-    var arcs = [];
-    for (var i=0, n=this.size(); i<n; i++) {
-      arcs.push(new Arc(this).init(i));
-    }
-    return arcs;
   };
 
   this.getArc = function(id) {
@@ -5706,8 +5707,7 @@ function DataTable(arr) {
   var records = arr || [];
 
   this.exportAsDbf = function() {
-    error("DataTable#exportAsDbf() not implemented.");
-    return "";
+    return Dbf.exportRecords(records);
   };
 
   this.getRecords = function() {
@@ -8921,12 +8921,12 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
 
 
-MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
+MapShaper.protectRingsFromCollapse = function(arcData, lockCounts) {
   var n;
-  for (var i=0, len=thresholds.length; i<len; i++) {
+  for (var i=0, len=lockCounts.length; i<len; i++) {
     n = lockCounts[i];
     if (n > 0) {
-      MapShaper.lockMaxThresholds(thresholds[i], n);
+      MapShaper.lockMaxThresholds(arcData.getArcThresholds(i), n);
     }
   }
 };
@@ -9191,17 +9191,16 @@ function Editor() {
 
   this.addData = function(data, opts) {
     var arcData = data.arcs;
+    if (!map) init(arcData.getBounds());
 
     MapShaper.simplifyPaths(arcData, importOpts.simplifyMethod);
     if (importOpts.preserveShapes) {
-      error("Oops -- forgot to re-enable shape preservation");
-      // MapShaper.protectRingsFromCollapse(vertexData, data.retainedPointCounts);
+      MapShaper.protectRingsFromCollapse(arcData, data.retainedPointCounts);
     }
 
     var filteredArcs = new FilteredPathCollection(arcData);
     var group = new ArcLayerGroup(filteredArcs);
 
-    if (!map) init(arcData.getBounds());
     map.addLayerGroup(group);
 
     slider.on('change', function(e) {

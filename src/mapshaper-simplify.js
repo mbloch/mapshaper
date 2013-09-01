@@ -1,11 +1,11 @@
 /* @requires mapshaper-visvalingam, mapshaper-dp */
 
-MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
+MapShaper.protectRingsFromCollapse = function(arcData, lockCounts) {
   var n;
-  for (var i=0, len=thresholds.length; i<len; i++) {
+  for (var i=0, len=lockCounts.length; i<len; i++) {
     n = lockCounts[i];
     if (n > 0) {
-      MapShaper.lockMaxThresholds(thresholds[i], n);
+      MapShaper.lockMaxThresholds(arcData.getArcThresholds(i), n);
     }
   }
 };

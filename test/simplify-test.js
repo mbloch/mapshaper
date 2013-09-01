@@ -18,25 +18,6 @@ function coordBuffersEqual(a, b) {
 }
 
 describe("mapshaper-simplify.js", function() {
-  describe("thinArcByInterval()", function() {
-
-    it("removes interior vertices with threshold <= [u]", function() {
-      var n5 = {
-        xx: [0, 1, 8, 2, 0],
-        yy: [2, 4, 3, 0, 1],
-        uu: [Infinity, 23, 43, 14, Infinity]
-      };
-
-      assert.deepEqual(thinArcByInterval(n5.xx, n5.yy, n5.uu, 0),
-        [[0, 2], [1, 4], [8, 3], [2, 0], [0, 1]]);
-      assert.deepEqual(thinArcByInterval(n5.xx, n5.yy, n5.uu, 14),
-        [[0, 2], [1, 4], [8, 3], [0, 1]]);
-      assert.deepEqual(thinArcByInterval(n5.xx, n5.yy, n5.uu, 25),
-        [[0, 2], [8, 3], [0, 1]]);
-      assert.deepEqual(thinArcByInterval(n5.xx, n5.yy, n5.uu, 45),
-        [[0, 2], [0, 1]]);
-    })
-  })
 
   describe("convLngLatToSph()", function() {
     var xbuf, ybuf, zbuf,
@@ -127,13 +108,3 @@ describe("mapshaper-simplify.js", function() {
     })
   })
 })
-
-
-// Replacement for defunct api function.
-// TODO: rework api to be simpler to use and to test?
-//
-function thinArcByInterval(xx, yy, zz, interval) {
-  var arcs = new api.ArcDataset([[xx, yy]]).setThresholds([zz]).setRetainedInterval(interval);
-  var exporter = new api.PathExporter(arcs, false);
-  return exporter.exportShapeForGeoJSON([[0]])[0];
-}

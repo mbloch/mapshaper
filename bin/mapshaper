@@ -132,14 +132,13 @@ opts.input_format = opts.input_format || importData.info.input_format || error("
 opts.output_format = opts.output_format || opts.input_format;
 
 if (opts.use_simplification) {
-  var vertexData = mapshaper.simplifyPaths(arcData, opts.simplify_method);
+  mapshaper.simplifyPaths(arcData, opts.simplify_method);
 
   mapshaper.gc();
 
   if (opts.keep_shapes && importData.arcMinPointCounts) {
-    // mapshaper.protectRingsFromCollapse(vertexData, importData.retainedPointCounts);
+    mapshaper.protectRingsFromCollapse(arcData, importData.retainedPointCounts);
   }
-  arcData.setThresholds(vertexData);
 }
 
 if (opts.simplify_pct) {
