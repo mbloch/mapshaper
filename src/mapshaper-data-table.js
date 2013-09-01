@@ -4,8 +4,7 @@ function DataTable(arr) {
   var records = arr || [];
 
   this.exportAsDbf = function() {
-    error("DataTable#exportAsDbf() not implemented.");
-    return "";
+    return Dbf.exportRecords(records);
   };
 
   this.getRecords = function() {
