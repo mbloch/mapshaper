@@ -20,18 +20,17 @@ DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
   return triangleHeightSq(ab2, bc2, ac2);
 };
 
+// @dest array to contain calculated data
 // @xx, @yy arrays of x, y coords of a path
 // @zz (optional) array of z coords for spherical simplification
-// @buflen (optional) (kludge) 3D data gets passed in buffers, need buf len
 //
-DouglasPeucker.calcArcData = function(xx, yy, zz, buflen) {
-  var len = buflen || xx.length,
+DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
+  var len = dest.length,
       useZ = !!zz;
 
-  var dpArr = new Array(len); // new Float64Array(len);
-  Utils.initializeArray(dpArr, 0);
+  Utils.initializeArray(dest, 0);
 
-  dpArr[0] = dpArr[len-1] = Infinity;
+  dest[0] = dest[len-1] = Infinity;
 
   if (len > 2) {
     procSegment(0, len-1, 1, Number.MAX_VALUE);
@@ -98,9 +97,7 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, buflen) {
     }
     */
 
-    dpArr[maxIdx] = dist;
+    dest[maxIdx] = dist;
     return maxDistance;
   }
-
-  return dpArr;
 };

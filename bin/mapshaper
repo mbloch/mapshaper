@@ -123,7 +123,7 @@ T.verbose = opts.timing;
 T.start("Start timing");
 
 var importData = mapshaper.importFromFile(opts.input_file),
-    arcData = new mapshaper.ArcDataset(importData.arcs),
+    arcData = importData.arcs,
     bounds = arcData.getBounds();
 
 // Update input/output format with information found during importing
@@ -132,12 +132,12 @@ opts.input_format = opts.input_format || importData.info.input_format || error("
 opts.output_format = opts.output_format || opts.input_format;
 
 if (opts.use_simplification) {
-  var vertexData = mapshaper.simplifyPaths(importData.arcs, opts.simplify_method, bounds.toArray());
+  var vertexData = mapshaper.simplifyPaths(arcData, opts.simplify_method);
 
   mapshaper.gc();
 
   if (opts.keep_shapes && importData.arcMinPointCounts) {
-    mapshaper.protectRingsFromCollapse(vertexData, importData.retainedPointCounts);
+    // mapshaper.protectRingsFromCollapse(vertexData, importData.retainedPointCounts);
   }
   arcData.setThresholds(vertexData);
 }

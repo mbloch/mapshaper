@@ -21,7 +21,10 @@ describe("mapshaper-topology.js", function() {
 
       var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0, 1], [2, -2]]);
-      assert.deepEqual(out.arcs, [[[2, 4, 3], [3, 3, 1]], [[3, 1, 2], [1, 1, 3]], [[3, 2], [1, 3]]]);
+      assert.deepEqual(out.arcs.toArray(),
+        [[[2, 3], [4, 3], [3, 1]],
+        [[3, 1], [1, 1], [2, 3]],
+        [[3, 1], [2, 3]]]);
     })
   })
 
@@ -40,7 +43,9 @@ describe("mapshaper-topology.js", function() {
 
       var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0],[1]]);
-      assert.deepEqual(out.arcs, [[[3, 1, 2, 3], [1, 1, 3, 1]], [[3, 4, 5, 3], [1, 3, 1, 1]]]);
+      assert.deepEqual(out.arcs.toArray(),
+        [[[3, 1], [1, 1], [2, 3], [3, 1]],
+        [[3, 1], [4, 3], [5, 1], [3, 1]]]);
     })
 
     it('shared point is endpoint of neither ring', function () {
@@ -51,7 +56,9 @@ describe("mapshaper-topology.js", function() {
 
       var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0],[1]]);
-      assert.deepEqual(out.arcs, [[[3, 1, 2, 3], [1, 1, 3, 1]],[[3, 4, 5, 3], [1, 3, 1, 1]]]);
+      assert.deepEqual(out.arcs.toArray(),
+        [[[3, 1], [1, 1], [2, 3], [3, 1]],
+        [[3, 1], [4, 3], [5, 1], [3, 1]]]);
     })
 
   })
@@ -71,7 +78,8 @@ describe("mapshaper-topology.js", function() {
 
       var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0],[~0]]);
-      assert.deepEqual(out.arcs, [[[1, 2, 3, 1], [1, 3, 1, 1]]])
+      assert.deepEqual(out.arcs.toArray(),
+        [[[1, 1], [2, 3], [3, 1], [1, 1]]]);
     })
 
     it('hole-around-island, misaligned', function () {
@@ -82,7 +90,8 @@ describe("mapshaper-topology.js", function() {
 
       var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0],[~0]]);
-      assert.deepEqual(out.arcs, [[[1, 2, 3, 1], [1, 3, 1, 1]]])
+      assert.deepEqual(out.arcs.toArray(),
+        [[[1, 1], [2, 3], [3, 1], [1, 1]]]);
     })
 
     it('duplicate islands, aligned', function () {
@@ -152,9 +161,10 @@ describe("mapshaper-topology.js", function() {
           pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}]
 
       var out = buildPathTopology(xx, yy, pathData);
-      assert.deepEqual(out.arcs,
+      assert.deepEqual(out.arcs.toArray(),
         // [c, a, b] [b, c] [b, d, c]
-        [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]]);
+        [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]]);
+
       assert.deepEqual(out.paths, [[0, 1], [~1, 2]]);
       //assert.deepEqual(out.sharedArcFlags, [0, 1, 0]);
     })
@@ -166,9 +176,9 @@ describe("mapshaper-topology.js", function() {
           pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}]
 
       var out = buildPathTopology(xx, yy, pathData);
-      assert.deepEqual(out.arcs,
+      assert.deepEqual(out.arcs.toArray(),
         // [c, a, b] [b, c] [b, d, c]
-        [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]]);
+        [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]]);
       assert.deepEqual(out.paths, [[0, 1], [2, ~1]]);
       //assert.deepEqual(out.sharedArcFlags, [0, 1, 0]);
     })
@@ -180,9 +190,9 @@ describe("mapshaper-topology.js", function() {
           pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}]
 
       var out = buildPathTopology(xx, yy, pathData);
-      assert.deepEqual(out.arcs,
+      assert.deepEqual(out.arcs.toArray(),
         // [c, a, b] [b, c] [b, d, c]
-        [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]]);
+        [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]]);
       assert.deepEqual(out.paths, [[0, 1], [~1, 2]]);
       //assert.deepEqual(out.sharedArcFlags, [0, 1, 0]);
     })
@@ -206,7 +216,8 @@ describe("mapshaper-topology.js", function() {
 
       var out = buildPathTopology(xx, yy, pathData);
       assert.deepEqual(out.paths, [[0, 1], [2, ~0]])
-      assert.deepEqual(out.arcs, [[[2, 2, 2], [3, 2, 1]], [[2, 1, 2], [1, 1, 3]], [[2, 3, 2], [3, 3, 1]]])
+      assert.deepEqual(out.arcs.toArray(),
+        [[[2, 3], [2, 2], [2, 1]], [[2, 1], [1, 1], [2, 3]], [[2, 3], [3, 3], [2, 1]]]);
       // assert.deepEqual(out.sharedArcFlags, [1, 0, 0])
     })
 
@@ -222,7 +233,7 @@ describe("mapshaper-topology.js", function() {
           pathData = [{size: 2}, {size: 2}];
 
       var out = buildPathTopology(xx, yy, pathData);
-      assert.deepEqual(out.arcs, [[[1, 2], [1, 1]]]);
+      assert.deepEqual(out.arcs.toArray(), [[[1, 1], [2, 1]]]);
       assert.deepEqual(out.paths, [[0], [0]]);
     })
 
@@ -232,7 +243,7 @@ describe("mapshaper-topology.js", function() {
           pathData = [{size: 2}, {size: 2}];
 
       var out = buildPathTopology(xx, yy, pathData);
-      assert.deepEqual(out.arcs, [[[1, 2], [1, 1]]]);
+      assert.deepEqual(out.arcs.toArray(), [[[1, 1], [2, 1]]]);
       assert.deepEqual(out.paths, [[0], [~0]]);
     })
   })
@@ -251,7 +262,8 @@ describe("mapshaper-topology.js", function() {
           pathData = [{size: 2}, {size: 2}];
 
       var out = buildPathTopology(xx, yy, pathData);
-      assert.deepEqual(out.arcs, [[[1, 2], [1, 1]], [[2, 2], [2, 1]]]);
+      assert.deepEqual(out.arcs.toArray(),
+        [[[1, 1], [2, 1]], [[2, 2], [2, 1]]]);
       assert.deepEqual(out.paths, [[0], [1]]);
     })
 
@@ -267,7 +279,8 @@ describe("mapshaper-topology.js", function() {
           pathData = [{size: 3}, {size: 2}];
 
       var out = buildPathTopology(xx, yy, pathData);
-      assert.deepEqual(out.arcs, [[[1, 2], [1, 1]], [[2, 3], [1, 1]], [[2, 2], [2, 1]]]);
+      assert.deepEqual(out.arcs.toArray(),
+        [[[1, 1], [2, 1]], [[2, 1], [3, 1]], [[2, 2], [2, 1]]]);
       assert.deepEqual(out.paths, [[0, 1], [2]]);
     })
 
@@ -284,7 +297,8 @@ describe("mapshaper-topology.js", function() {
           pathData = [{size: 3}, {size: 3}];
 
       var out = buildPathTopology(xx, yy, pathData);
-      assert.deepEqual(out.arcs, [[[1, 2], [1, 1]], [[2, 3], [1, 1]], [[2, 2], [1, 2]]]);
+      assert.deepEqual(out.arcs.toArray(),
+        [[[1, 1], [2, 1]], [[2, 1], [3, 1]], [[2, 1], [2, 2]]]);
       assert.deepEqual(out.paths, [[0, 1], [0, 2]]);
     })
 
@@ -295,7 +309,8 @@ describe("mapshaper-topology.js", function() {
           pathData = [{size: 3}, {size: 3}];
 
       var out = buildPathTopology(xx, yy, pathData);
-      assert.deepEqual(out.arcs, [[[1, 2], [1, 1]], [[2, 3], [1, 1]], [[2, 2], [2, 1]]]);
+      assert.deepEqual(out.arcs.toArray(),
+        [[[1, 1], [2, 1]], [[2, 1], [3, 1]], [[2, 2], [2, 1]]]);
       assert.deepEqual(out.paths, [[0, 1], [2, ~0]]);
     })
 

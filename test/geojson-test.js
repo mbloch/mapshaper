@@ -47,12 +47,10 @@ describe('mapshaper-geojson.js', function () {
 
 function geoJSONRoundTrip(fname) {
   var data = api.importFromFile(fixPath(fname));
-  var arcs = new api.ArcDataset(data.arcs);
-  var files = api.exportContent(data.layers, arcs, {output_format:'geojson'})
+  var files = api.exportContent(data.layers, data.arcs, {output_format:'geojson'})
 
   var data2 = api.importContent(files[0].content, 'json');
-  var arcs2 = new api.ArcDataset(data2.arcs);
-  var files2 = api.exportContent(data2.layers, arcs2, {output_format:'geojson'})
+  var files2 = api.exportContent(data2.layers, data2.arcs, {output_format:'geojson'})
 
   //assert.deepEqual(data.layers[0].properties, data2.layers[0].properties);
   //assert.deepEqual(data.layers[0].shapes, data2.layers[0].shapes);

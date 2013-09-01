@@ -4054,425 +4054,6 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
 
 
 
-// buildTopology() converts non-topological polygon data into a topological format
-//
-// Input format:
-// {
-//    xx: [Array|Float64Array],   // x-coords of each point in the dataset
-//    yy: [Array|Float64Array],   // y-coords "  "  "  "
-//    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isPrimary: true}
-// }
-// Note: x- and y-coords of all paths are concatenated into two long arrays, for easy indexing
-// Note: Input coords can use typed arrays (better performance) or regular arrays (for testing)
-//
-// Output format:
-// {
-//    arcs: [Array],   // Arcs are represented as two-element arrays
-//                     //   arc[0] and arc[1] are x- and y-coords in an Array or Float64Array
-//    shapes: [Array]  // Shapes are arrays of one or more path; paths are arrays of one or more arc id.
-// }                   //   Arc ids use the same numbering scheme as TopoJSON (see note).
-// Note: Arc ids in the shapes array are indices of objects in the arcs array.
-//       Negative ids signify that the arc coordinates are in reverse sequence.
-//       Negative ids are converted to array indices with the fornula fwId = ~revId.
-//       -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
-// Note: Arcs use typed arrays or regular arrays for coords, depending on the input array type.
-//
-MapShaper.buildTopology = function(obj) {
-  if (!(obj.xx && obj.yy && obj.pathData)) error("#buildTopology() Missing required param/s");
-
-  T.start();
-  var topoData = buildPathTopology(obj.xx, obj.yy, obj.pathData);
-  var shapes = groupPathsByShape(topoData.paths, obj.pathData, obj.info.input_shape_count);
-  T.stop("Process topology");
-  return {
-    arcs: topoData.arcs,
-    shapes: shapes
-  };
-};
-
-
-// Hash an x, y point to a non-negative integer
-//
-MapShaper.xyToUintHash = (function() {
-  var buf = new ArrayBuffer(16),
-      floats = new Float64Array(buf),
-      uints = new Uint32Array(buf);
-
-  return function(x, y) {
-    var u = uints, h;
-    floats[0] = x;
-    floats[1] = y;
-    h = u[0] ^ u[1];
-    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-    return h & 0x7fffffff;
-  };
-}());
-
-//
-//
-function ArcIndex(pointCount, xyToUint) {
-  var hashTableSize = Math.ceil(pointCount * 0.25);
-  var hashTable = new Int32Array(hashTableSize),
-      hash = function(x, y) {
-        return xyToUint(x, y) % hashTableSize;
-      },
-      chainIds = [],
-      arcs = [];
-
-  Utils.initializeArray(hashTable, -1);
-
-  this.addArc = function(xx, yy) {
-    var end = xx.length - 1,
-        key = hash(xx[end], yy[end]),
-        chainId = hashTable[key],
-        arcId = arcs.length;
-
-    hashTable[key] = arcId;
-    arcs.push([xx, yy]);
-    chainIds.push(chainId);
-    return arcId;
-  };
-
-  // Look for a previously generated arc with the same sequence of coords, but in the
-  // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
-  // so coincident boundaries should contain the same points in reverse sequence).
-  //
-  this.findArcNeighbor = function(xx, yy, start, end, getNext) {
-    var next = getNext(start),
-        key = hash(xx[start], yy[start]),
-        arcId = hashTable[key],
-        arcX, arcY, len;
-
-    while (arcId != -1) {
-      // check endpoints and one segment...
-      // it would be more rigorous but slower to identify a match
-      // by comparing all segments in the coordinate sequence
-      arcX = arcs[arcId][0];
-      arcY = arcs[arcId][1];
-      len = arcX.length;
-      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
-          arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
-        return arcId;
-      }
-      arcId = chainIds[arcId];
-    }
-    return -1;
-  };
-
-  this.getArcs = function() {
-    return arcs;
-  };
-}
-
-
-// Transform spaghetti paths into topological paths
-//
-function buildPathTopology(xx, yy, pathData) {
-  var pointCount = xx.length,
-      index = new ArcIndex(pointCount, MapShaper.xyToUintHash),
-      typedArrays = !!(xx.subarray && yy.subarray),
-      slice, array;
-
-  var pathIds = initPathIds(pointCount, pathData);
-
-  if (typedArrays) {
-    array = Float64Array;
-    slice = xx.subarray;
-  } else {
-    array = Array;
-    slice = Array.prototype.slice;
-  }
-
-  T.start();
-  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
-  T.stop("Find matching vertices");
-
-  T.start();
-  var pointId = 0;
-  var paths = Utils.map(pathData, function(pathObj) {
-    var pathLen = pathObj.size,
-        arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
-    pointId += pathLen;
-    return arcs;
-  });
-  T.stop("Find topological boundaries");
-
-  return {
-    paths: paths,
-    arcs: index.getArcs()
-  };
-
-  function nextPoint(id) {
-    var partId = pathIds[id];
-    if (pathIds[id+1] === partId) {
-      return id + 1;
-    }
-    var len = pathData[partId].size;
-    return sameXY(id, id - len + 1) ? id - len + 2 : -1;
-  }
-
-  function prevPoint(id) {
-    var partId = pathIds[id];
-    if (pathIds[id - 1] === partId) {
-      return id - 1;
-    }
-    var len = pathData[partId].size;
-    return sameXY(id, id + len - 1) ? id + len - 2 : -1;
-  }
-
-  function sameXY(a, b) {
-    return xx[a] == xx[b] && yy[a] == yy[b];
-  }
-
-
-  // Convert a non-topological path to one or more topological arcs
-  // @start, @end are ids of first and last points in the path
-  //
-  function convertPath(start, end) {
-    var arcIds = [],
-        firstNodeId = -1,
-        arcStartId;
-
-    // Visit each point in the path, up to but not including the last point
-    //
-    for (var i = start; i < end; i++) {
-      if (pointIsArcEndpoint(i)) {
-        if (firstNodeId > -1) {
-          arcIds.push(addEdge(arcStartId, i));
-        } else {
-          firstNodeId = i;
-        }
-        arcStartId = i;
-      }
-    }
-
-    // Identify the final arc in the path
-    //
-    if (firstNodeId == -1) {
-      // Not in an arc, i.e. no nodes have been found...
-      // Assuming that path is either an island or is congruent with one or more rings
-      arcIds.push(addRing(start, end));
-    }
-    else if (firstNodeId == start) {
-      // path endpoint is a node;
-      if (!pointIsArcEndpoint(end)) {
-        error("Topology error"); // TODO: better error handling
-      }
-      arcIds.push(addEdge(arcStartId, i));
-    } else {
-      // final arc wraps around
-      arcIds.push(addEdge(arcStartId, end, start + 1, firstNodeId));
-    }
-
-    return arcIds;
-  }
-
-  // @a and @b are ids of two points with same x, y coords
-  // Return false if adjacent points match, either in fw or rev direction
-  //
-  function brokenEdge(a, b) {
-    var xarr = xx, yarr = yy; // local vars: faster
-    var aprev = prevPoint(a),
-        anext = nextPoint(a),
-        bprev = prevPoint(b),
-        bnext = nextPoint(b);
-    if (aprev == -1 || anext == -1 || bprev == -1 || bnext == -1) {
-      return true;
-    }
-    else if (xarr[aprev] == xarr[bnext] && xarr[anext] == xarr[bprev] &&
-      yarr[aprev] == yarr[bnext] && yarr[anext] == yarr[bprev]) {
-      return false;
-    }
-    else if (xarr[aprev] == xarr[bprev] && xarr[anext] == xarr[bnext] &&
-      yarr[aprev] == yarr[bprev] && yarr[anext] == yarr[bnext]) {
-      return false;
-    }
-    return true;
-  }
-
-  // Test if a point @id is an endpoint of a topological path
-  //
-  function pointIsArcEndpoint(id) {
-    var chainId = chainIds[id];
-    if (chainId == id) {
-      // point is unique -- point is arc endpoint iff it is start or end of an open path
-      return nextPoint(id) == -1 || prevPoint(id) == -1;
-    }
-    do {
-      if (brokenEdge(id, chainId)) {
-        // there is a discontinuity at @id -- point is arc endpoint
-        return true;
-      }
-      chainId = chainIds[chainId];
-    } while (id != chainId);
-    // path parallels all adjacent paths at @id -- point is not arc endpoint
-    return false;
-  }
-
-
-  function mergeArcParts(src, startId, endId, startId2, endId2) {
-    var len = endId - startId + endId2 - startId2 + 2,
-        dest = new array(len),
-        j = 0, i;
-    for (i=startId; i <= endId; i++) {
-      dest[j++] = src[i];
-    }
-    for (i=startId2; i <= endId2; i++) {
-      dest[j++] = src[i];
-    }
-    if (j != len) error("mergeArcParts() counting error.");
-    return dest;
-  }
-
-  function addEdge(startId1, endId1, startId2, endId2) {
-    var splitArc = arguments.length == 4,
-        start = startId1,
-        end = splitArc ? endId2 : endId1,
-        arcId, xarr, yarr;
-
-    // Look for previously identified arc, in reverse direction (normal topology)
-    arcId = index.findArcNeighbor(xx, yy, start, end, nextPoint);
-    if (arcId >= 0) return ~arcId;
-
-    // Look for matching arc in same direction
-    // (Abnormal topology, but we're accepting it because real-world Shapefiles
-    //   sometimes have duplicate paths)
-    arcId = index.findArcNeighbor(xx, yy, end, start, prevPoint);
-    if (arcId >= 0) return arcId;
-
-    if (splitArc) {
-      xarr = mergeArcParts(xx, startId1, endId1, startId2, endId2);
-      yarr = mergeArcParts(yy, startId1, endId1, startId2, endId2);
-    } else {
-      xarr = slice.call(xx, startId1, endId1 + 1);
-      yarr = slice.call(yy, startId1, endId1 + 1);
-    }
-    return index.addArc(xarr, yarr);
-  }
-
-  //
-  //
-  function addRing(startId, endId) {
-    var chainId = chainIds[startId],
-        pathId = pathIds[startId],
-        arcId;
-
-    while (chainId != startId) {
-      if (pathIds[chainId] < pathId) {
-        break;
-      }
-      chainId = chainIds[chainId];
-    }
-
-    if (chainId == startId) {
-      return addEdge(startId, endId);
-    }
-
-    for (var i=startId; i<endId; i++) {
-      arcId = index.findArcNeighbor(xx, yy, i, i, nextPoint);
-      if (arcId >= 0) return ~arcId;
-
-      arcId = index.findArcNeighbor(xx, yy, i, i, prevPoint);
-      if (arcId >= 0) return arcId;
-    }
-
-    error("Unmatched ring:", pathData[pathId]);
-  }
-}
-
-
-// Create a lookup table for path ids; path ids are indexed by point id
-//
-function initPathIds(size, pathData) {
-  var pathIds = new Int32Array(size),
-      j = 0;
-  for (var pathId=0, pathCount=pathData.length; pathId < pathCount; pathId++) {
-    for (var i=0, n=pathData[pathId].size; i<n; i++, j++) {
-      pathIds[j] = pathId;
-    }
-  }
-  return pathIds;
-}
-
-
-// Return an array with data for chains of vertices with same x, y coordinates
-// Array ids are same as ids of x- and y-coord arrays.
-// Array values are ids of next point in each chain.
-// Unique (x, y) points link to themselves (i.e. arr[n] == n)
-//
-function initPointChains(xx, yy, hash, verbose) {
-  var pointCount = xx.length,
-      hashTableSize = Math.floor(pointCount * 1.4);
-
-  // A hash table larger than ~1.3 * point count doesn't seem to improve performance much.
-
-  // Hash table is temporary storage for building chains of coincident points.
-  // Hash bins contains the id of the first point in a chain.
-  var hashChainIds = new Int32Array(hashTableSize);
-  Utils.initializeArray(hashChainIds, -1);
-
-  // Array that gets populated with chain data
-  var chainIds = new Int32Array(pointCount);
-  var key, headId, x, y, collisions = 0;
-
-  for (var i=0; i<pointCount; i++) {
-    x = xx[i];
-    y = yy[i];
-    key = hash(x, y) % hashTableSize;
-
-    // Points with different (x, y) coords can hash to the same bin;
-    // ... use linear probing to find a different bin for each (x, y) coord.
-    while (true) {
-      headId = hashChainIds[key];
-      if (headId == -1) {
-        // case -- first coordinate in chain: start new chain, point to self
-        hashChainIds[key] = i;
-        chainIds[i] = i;
-        break;
-      }
-      else if (xx[headId] == x && yy[headId] == y) {
-        // case -- extending a chain: insert new point after head of chain
-        chainIds[i] = chainIds[headId];
-        chainIds[headId] = i;
-        break;
-      }
-
-      // case -- this bin is used by another coord, try the next bin
-      collisions++;
-      key = (key + 1) % hashTableSize;
-    }
-  }
-  if (verbose) trace(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
-  return chainIds;
-}
-
-
-// Use shapeId property of @pathData objects to group paths by shape
-//
-function groupPathsByShape(paths, pathData, shapeCount) {
-  var shapes = new Array(shapeCount); // Array can be sparse, but should have this length
-  Utils.forEach(paths, function(path, pathId) {
-    var shapeId = pathData[pathId].shapeId;
-    if (shapeId in shapes === false) {
-      shapes[shapeId] = [path]; // first part in a new shape
-    } else {
-      shapes[shapeId].push(path);
-    }
-  });
-  return shapes;
-}
-
-// Export functions for testing
-MapShaper.topology = {
-  buildPathTopology: buildPathTopology,
-  ArcIndex: ArcIndex,
-  groupPathsByShape: groupPathsByShape,
-  initPathIds: initPathIds
-};
-
-
-
-
 function distance3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
     dy = ay - by,
@@ -4680,591 +4261,6 @@ MapShaper.geom = {
 
 
 
-// A heap data structure used for computing Visvalingam simplification data.
-//
-function Heap() {
-  var maxItems,
-      dataOffs,
-      dataArr,
-      itemsInHeap,
-      poppedVal,
-      heapArr,
-      indexArr;
-
-  this.addValues = function(values, start, end) {
-    var minId = start | 0,
-        maxItems = (isNaN(end) ? values.length : end + 1) - minId;
-    dataOffs = minId;
-    dataArr = values;
-    itemsInHeap = 0;
-    reserveSpace(maxItems);
-    for (var i=0; i<maxItems; i++) {
-      insert(i, i + dataOffs); // push item onto the heap
-    }
-    itemsInHeap = maxItems;
-    for (var j=(itemsInHeap-2) >> 1; j >= 0; j--) {
-      downHeap(j);
-    }
-    poppedVal = -Infinity;
-  };
-
-  this.heapSize = function() {
-    return itemsInHeap;
-  };
-
-  // Update a single value and re-heap.
-  //
-  this.updateValue = function(valId, val) {
-    // TODO: move this logic out of heap
-    if (val < poppedVal) {
-      // don't give updated values a lesser value than the last popped vertex
-      // (required by visvalingam)
-      val = poppedVal;
-    }
-    dataArr[valId] = val;
-    var heapIdx = indexArr[valId - dataOffs];
-    if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) error("[updateValue()] out-of-range heap index.");
-    reHeap(heapIdx);
-  };
-
-
-  this.testHeapOrder = function() {
-    checkNode(0, -Infinity);
-    return true;
-  };
-
-  // Return the idx of the lowest-value item in the heap
-  //
-  this.pop = function() {
-    if (itemsInHeap <= 0) error("Tried to pop from an empty heap.");
-    var minValId = heapArr[0],
-        lastIdx = --itemsInHeap;
-    if (itemsInHeap > 0) {
-      insert(0, heapArr[lastIdx]);// copy last item in heap into root position
-      downHeap(0);
-    }
-    poppedVal = dataArr[minValId];
-    return minValId;
-  };
-
-
-  function reserveSpace(heapSize) {
-    if (!heapArr || heapSize > heapArr.length) {
-      var bufLen = heapSize * 1.2 | 0;
-      heapArr = new Int32Array(bufLen);
-      indexArr = new Int32Array(bufLen);
-    }
-  }
-
-  // Associate a heap idx with the id of a value in valuesArr
-  //
-  function insert(heapIdx, valId) {
-    indexArr[valId - dataOffs] = heapIdx;
-    heapArr[heapIdx] = valId;
-  }
-
-  // Check that heap is ordered starting at a given node
-  // (traverses heap recursively)
-  //
-  function checkNode(heapIdx, parentVal) {
-    if (heapIdx >= itemsInHeap) {
-      return;
-    }
-    var val = dataArr[heapArr[heapIdx]];
-    if (parentVal > val) error("Heap is out-of-order");
-    var childIdx = heapIdx * 2 + 1;
-    checkNode(childIdx, val);
-    checkNode(childIdx + 1, val);
-  }
-
-  function reHeap(idx) {
-    if (idx < 0 || idx >= itemsInHeap)
-      error("Out-of-bounds heap idx passed to reHeap()");
-    downHeap(upHeap(idx));
-  }
-
-  function upHeap(currIdx) {
-    var valId = heapArr[currIdx],
-        currVal = dataArr[valId],
-        parentIdx, parentValId, parentVal;
-
-    // Move item up in the heap until it's at the top or is heavier than its parent
-    //
-    while (currIdx > 0) {
-      parentIdx = (currIdx - 1) >> 1; // integer division by two gives idx of parent
-      parentValId = heapArr[parentIdx];
-      parentVal = dataArr[parentValId];
-
-      if (parentVal <= currVal) {
-        break;
-      }
-
-      // out-of-order; swap child && parent
-      insert(currIdx, parentValId);
-      insert(parentIdx, valId);
-      currIdx = parentIdx;
-      // if (dataArr[heapArr[currIdx]] !== currVal) error("Lost value association");
-    }
-    return currIdx;
-  }
-
-  function downHeap(currIdx) {
-    // Item gets swapped with any lighter children
-    //
-    var data = dataArr, heap = heapArr, // local vars, faster
-        valId = heap[currIdx],
-        currVal = data[valId],
-        firstChildIdx = 2 * currIdx + 1,
-        secondChildIdx,
-        minChildIdx, childValId, childVal;
-
-    while (firstChildIdx < itemsInHeap) {
-      secondChildIdx = firstChildIdx + 1;
-      minChildIdx = secondChildIdx >= itemsInHeap || data[heap[firstChildIdx]] <= data[heap[secondChildIdx]] ? firstChildIdx : secondChildIdx;
-
-      childValId = heap[minChildIdx];
-      childVal = data[childValId];
-
-      if (currVal <= childVal) {
-        break;
-      }
-
-      insert(currIdx, childValId);
-      insert(minChildIdx, valId);
-
-      // descend in the heap:
-      currIdx = minChildIdx;
-      firstChildIdx = 2 * currIdx + 1;
-    }
-  }
-}
-
-
-
-
-var Visvalingam = {};
-
-MapShaper.Heap = Heap; // export Heap for testing
-
-Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
-  var bufLen = 0,
-      heap = new Heap(),
-      prevArr, nextArr;
-
-  // Calculate Visvalingam simplification data for an arc
-  // Receives arrays of x- and y- coordinates, optional array of z- coords
-  // Returns an array of simplification thresholds, one per arc vertex.
-  //
-  var calcArcData = function(xx, yy, zz, len) {
-    var arcLen = len || xx.length,
-        useZ = !!zz,
-        threshold,
-        ax, ay, bx, by, cx, cy;
-
-    if (arcLen > bufLen) {
-      bufLen = Math.round(arcLen * 1.2);
-      prevArr = new Int32Array(bufLen);
-      nextArr = new Int32Array(bufLen);
-    }
-
-    // Initialize Visvalingam "effective area" values and references to
-    //   prev/next points for each point in arc.
-    //
-    var values = new Float64Array(arcLen);
-
-    for (var i=1; i<arcLen-1; i++) {
-      ax = xx[i-1];
-      ay = yy[i-1];
-      bx = xx[i];
-      by = yy[i];
-      cx = xx[i+1];
-      cy = yy[i+1];
-
-      if (!useZ) {
-        threshold = metric2D(ax, ay, bx, by, cx, cy);
-      } else {
-        threshold = metric3D(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
-      }
-
-      values[i] = threshold;
-      nextArr[i] = i + 1;
-      prevArr[i] = i - 1;
-    }
-    prevArr[arcLen-1] = arcLen - 2;
-    nextArr[0] = 1;
-
-    // Initialize the heap with thresholds; don't add first and last point
-    heap.addValues(values, 1, arcLen-2);
-
-    // Calculate removal thresholds for each internal point in the arc
-    //
-    var idx, nextIdx, prevIdx;
-    while(heap.heapSize() > 0) {
-
-      // Remove the point with the least effective area.
-      idx = heap.pop();
-      if (idx < 1 || idx > arcLen - 2) {
-        error("Popped first or last arc vertex (error condition); idx:", idx, "len:", arcLen);
-      }
-
-      // Recompute effective area of neighbors of the removed point.
-      prevIdx = prevArr[idx];
-      nextIdx = nextArr[idx];
-      ax = xx[prevIdx];
-      ay = yy[prevIdx];
-      bx = xx[nextIdx];
-      by = yy[nextIdx];
-
-      if (prevIdx > 0) {
-        cx = xx[prevArr[prevIdx]];
-        cy = yy[prevArr[prevIdx]];
-        if (!useZ) {
-          threshold = metric2D(bx, by, ax, ay, cx, cy); // next point, prev point, prev-prev point
-        } else {
-          threshold = metric3D(bx, by, zz[nextIdx], ax, ay, zz[prevIdx], cx, cy, zz[prevArr[prevIdx]]);
-        }
-        heap.updateValue(prevIdx, threshold);
-      }
-      if (nextIdx < arcLen-1) {
-        cx = xx[nextArr[nextIdx]];
-        cy = yy[nextArr[nextIdx]];
-        if (!useZ) {
-          threshold = metric2D(ax, ay, bx, by, cx, cy); // prev point, next point, next-next point
-        } else {
-          threshold = metric3D(ax, ay, zz[prevIdx], bx, by, zz[nextIdx], cx, cy, zz[nextArr[nextIdx]]);
-        }
-        heap.updateValue(nextIdx, threshold);
-      }
-      nextArr[prevIdx] = nextIdx;
-      prevArr[nextIdx] = prevIdx;
-    }
-
-    // convert area metric to a linear equivalent
-    //
-    for (var j=1; j<arcLen-1; j++) {
-      values[j] = Math.sqrt(values[j]) * (scale || 1);
-    }
-    values[0] = values[arcLen-1] = Infinity; // arc endpoints
-    return values;
-  };
-
-  return calcArcData;
-};
-
-
-// The original mapshaper "modified Visvalingam" function uses a step function to
-// underweight more acute triangles.
-//
-Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy),
-      angle = innerAngle(ax, ay, bx, by, cx, cy),
-      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
-  return area * weight;
-};
-
-Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      angle = innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
-  return area * weight;
-};
-
-Visvalingam.standardMetric = triangleArea;
-Visvalingam.standardMetric3D = triangleArea3D;
-
-// Experimenting with a replacement for "Modified Visvalingam"
-//
-Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy),
-      standardLen = area * 1.4,
-      hyp = Math.sqrt((ax + cx) * (ax + cx) + (ay + cy) * (ay + cy)),
-      weight = hyp / standardLen;
-  return area * weight;
-};
-
-
-
-
-
-var DouglasPeucker = {};
-
-DouglasPeucker.simplifyArcs = function(arcs, opts) {
-  return MapShaper.simplifyArcs(arcs, DouglasPeucker.calcArcData, opts);
-};
-
-DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
-      ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
-      bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
-  return triangleHeightSq(ab2, bc2, ac2);
-};
-
-DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
-  var ab2 = distanceSq(ax, ay, bx, by),
-      ac2 = distanceSq(ax, ay, cx, cy),
-      bc2 = distanceSq(bx, by, cx, cy);
-  return triangleHeightSq(ab2, bc2, ac2);
-};
-
-// @xx, @yy arrays of x, y coords of a path
-// @zz (optional) array of z coords for spherical simplification
-// @buflen (optional) (kludge) 3D data gets passed in buffers, need buf len
-//
-DouglasPeucker.calcArcData = function(xx, yy, zz, buflen) {
-  var len = buflen || xx.length,
-      useZ = !!zz;
-
-  var dpArr = new Array(len); // new Float64Array(len);
-  Utils.initializeArray(dpArr, 0);
-
-  dpArr[0] = dpArr[len-1] = Infinity;
-
-  if (len > 2) {
-    procSegment(0, len-1, 1, Number.MAX_VALUE);
-  }
-
-  function procSegment(startIdx, endIdx, depth, lastDistance) {
-    var thisDistance;
-    var ax = xx[startIdx],
-      ay = yy[startIdx],
-      cx = xx[endIdx],
-      cy = yy[endIdx],
-      az, bz, cz;
-
-    if (useZ) {
-      az = zz[startIdx];
-      cz = zz[endIdx];
-    }
-
-    if (startIdx >= endIdx) error("[procSegment()] inverted idx");
-
-    var maxDistance = 0, maxIdx = 0;
-
-    for (var i=startIdx+1; i<endIdx; i++) {
-      if (useZ) {
-        thisDistance = DouglasPeucker.metricSq3D(ax, ay, az, xx[i], yy[i], zz[i], cx, cy, cz);
-      } else {
-        thisDistance = DouglasPeucker.metricSq(ax, ay, xx[i], yy[i], cx, cy);
-      }
-
-      if (thisDistance >= maxDistance) {
-        maxDistance = thisDistance;
-        maxIdx = i;
-      }
-    }
-
-    if (lastDistance < maxDistance) {
-      maxDistance = lastDistance;
-    }
-
-    var lval=0, rval=0;
-    if (maxIdx - startIdx > 1) {
-      lval = procSegment(startIdx, maxIdx, depth+1, maxDistance);
-    }
-    if (endIdx - maxIdx > 1) {
-      rval = procSegment(maxIdx, endIdx, depth+1, maxDistance);
-    }
-
-    if (depth == 1) {
-      // case -- arc is an island polygon
-      if (ax == cx && ay == cy) {
-        maxDistance = lval > rval ? lval : rval;
-      }
-    }
-
-    var dist = Math.sqrt(maxDistance);
-
-    /*
-    if ( maxSegmentLen > 0 ) {
-      double maxLen2 = maxSegmentLen * maxSegmentLen;
-      double acLen2 = (ax-cx)*(ax-cx) + (ay-cy)*(ay-cy);
-      if ( maxLen2 < acLen2 ) {
-        thresh = MAX_THRESHOLD - 2;  // mb //
-      }
-    }
-    */
-
-    dpArr[maxIdx] = dist;
-    return maxDistance;
-  }
-
-  return dpArr;
-};
-
-
-
-
-
-MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
-  var n;
-  for (var i=0, len=thresholds.length; i<len; i++) {
-    n = lockCounts[i];
-    if (n > 0) {
-      MapShaper.lockMaxThresholds(thresholds[i], n);
-    }
-  }
-};
-
-// TODO: Operate on an ArcDataset object instead of arrays of coordinates.
-//
-// Protect polar coordinates and coordinates at the prime meridian from
-// being removed before other points in a path.
-// Assume: coordinates are in decimal degrees
-//
-MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
-  // -179.99999999999994 rounding error
-  // found in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
-  // 180.00000000000003 found in ne/ne_50m_admin_0_countries.shp
-  var err = 1e-12,
-      l = -180 + err,
-      r = 180 - err,
-      t = 90 - err,
-      b = -90 + err;
-
-  // return if content doesn't reach edges
-  if (containsBounds([l, b, r, t], bounds) === true) return;
-
-  Utils.forEach(arcs, function(arc, arcId) {
-    var zz = thresholds[arcId],
-        xx = arcs[arcId][0],
-        yy = arcs[arcId][1],
-        maxZ, x, y;
-
-    for (var i=0, n=zz.length; i<n; i++) {
-      maxZ = 0;
-      x = xx[i];
-      y = yy[i];
-      if (x > r || x < l || y < b || y > t) {
-        if (maxZ === 0) {
-          maxZ = MapShaper.findMaxThreshold(zz);
-        }
-        if (zz[i] !== Infinity) { // don't override lock value
-          zz[i] = maxZ;
-        }
-      }
-    }
-  });
-};
-
-// Return largest value in an array, ignoring Infinity (lock value)
-//
-MapShaper.findMaxThreshold = function(zz) {
-  var z, maxZ = 0;
-  for (var i=0, n=zz.length; i<n; i++) {
-    z = zz[i];
-    if (z > maxZ && z < Infinity) {
-      maxZ = z;
-    }
-  }
-  return maxZ;
-};
-
-
-MapShaper.replaceValue = function(arr, value, replacement) {
-  var count = 0, k;
-  for (var i=0, n=arr.length; i<n; i++) {
-    if (arr[i] === value) {
-      arr[i] = replacement;
-      count++;
-    }
-  }
-  return count;
-};
-
-// Protect the highest-threshold interior vertices in an arc from removal by
-// setting their removal thresholds to Infinity
-//
-MapShaper.lockMaxThresholds = function(zz, numberToLock) {
-  var lockVal = Infinity,
-      target = numberToLock | 0,
-      lockedCount, maxVal, replacements, z;
-  do {
-    lockedCount = 0;
-    maxVal = 0;
-    for (var i=1, len = zz.length - 1; i<len; i++) { // skip arc endpoints
-      z = zz[i];
-      if (z === lockVal) {
-        lockedCount++;
-      } else if (z > maxVal) {
-        maxVal = z;
-      }
-    }
-    if (lockedCount >= numberToLock) break;
-    replacements = MapShaper.replaceValue(zz, maxVal, lockVal);
-  } while (lockedCount < numberToLock && replacements > 0);
-};
-
-
-// Convert arrays of lng and lat coords (xsrc, ysrc) into
-// x, y, z coords on the surface of a sphere with radius 6378137
-// (the radius of spherical Earth datum in meters)
-//
-MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
-  var deg2rad = Math.PI / 180,
-      r = 6378137;
-  for (var i=0, len=xsrc.length; i<len; i++) {
-    var lng = xsrc[i] * deg2rad,
-        lat = ysrc[i] * deg2rad,
-        cosLat = Math.cos(lat);
-    xbuf[i] = Math.cos(lng) * cosLat * r;
-    ybuf[i] = Math.sin(lng) * cosLat * r;
-    zbuf[i] = Math.sin(lat) * r;
-  }
-};
-
-// Apply a simplification function to each path in an array, return simplified path.
-//
-MapShaper.simplifyPaths = function(paths, method, bounds) {
-  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
-  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method),
-      data;
-
-  T.start();
-  if (decimalDegrees) {
-    data = MapShaper.simplifyPathsSph(paths, simplifyPath);
-  } else {
-    data = Utils.map(paths, function(path) {
-      return simplifyPath(path[0], path[1]);
-    });
-  }
-
-  if (decimalDegrees) {
-    MapShaper.protectWorldEdges(paths, data, bounds);
-  }
-  T.stop("Calculate simplification data");
-  return data;
-};
-
-// Path simplification functions
-// Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
-//
-MapShaper.simplifiers = {
-  vis: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
-  mod: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
-  dp: DouglasPeucker.calcArcData
-};
-
-MapShaper.simplifyPathsSph = function(arcs, simplify) {
-  var bufSize = 0,
-      xbuf, ybuf, zbuf;
-
-  var data = Utils.map(arcs, function(arc) {
-    var arcLen = arc[0].length;
-    if (bufSize < arcLen) {
-      bufSize = Math.round(arcLen * 1.2);
-      xbuf = new Float64Array(bufSize);
-      ybuf = new Float64Array(bufSize);
-      zbuf = new Float64Array(bufSize);
-    }
-
-    MapShaper.convLngLatToSph(arc[0], arc[1], xbuf, ybuf, zbuf);
-    return simplify(xbuf, ybuf, zbuf, arcLen);
-  });
-  return data;
-};
-
-
-
 MapShaper.ArcDataset = ArcDataset;
 
 // An interface for managing a collection of paths.
@@ -5295,7 +4291,7 @@ function ArcDataset() {
 
   function initLegacyArcs(coords) {
     var data = convertLegacyArcs(coords);
-    initPathData(data.nn, data.xx, data.yy);
+    initPathData(data.nn, data.xx, data.yy, data.zz);
   }
 
   function initPathData(nn, xx, yy, zz) {
@@ -5356,10 +4352,12 @@ function ArcDataset() {
     // Generate arrays of arc lengths and starting idxs
     var nn = new Uint32Array(numArcs),
         pointCount = 0,
+        useZ = false,
         arc, arcLen;
     for (var i=0; i<numArcs; i++) {
       arc = coords[i];
       arcLen = arc && arc[0].length || 0;
+      useZ = useZ || arc.length > 2;
       nn[i] = arcLen;
       pointCount += arcLen;
       if (arcLen === 0) error("#convertArcArrays() Empty arc:", arc);
@@ -5368,21 +4366,24 @@ function ArcDataset() {
     // Copy x, y coordinates into long arrays
     var xx = new Float64Array(pointCount),
         yy = new Float64Array(pointCount),
+        zz = useZ ? new Float64Array(pointCount) : null,
         offs = 0;
     Utils.forEach(coords, function(arc, arcId) {
       var xarr = arc[0],
           yarr = arc[1],
+          zarr = arc[2] || null,
           n = nn[arcId];
       for (var j=0; j<n; j++) {
         xx[offs + j] = xarr[j];
         yy[offs + j] = yarr[j];
+        if (useZ) zz[offs + j] = zarr[j];
       }
       offs += n;
     });
-
     return {
       xx: xx,
       yy: yy,
+      zz: zz,
       nn: nn
     };
   }
@@ -5427,6 +4428,15 @@ function ArcDataset() {
     return Utils.map(Utils.range(this.size()), function(i) {
       return _self.getArc(i).toArray();
     });
+  };
+
+  this.toArray2 = function() {
+    var arr = [];
+    this.forEach3(function(xx, yy, zz) {
+      var path = [Utils.toArray(xx), Utils.toArray(yy), Utils.toArray(zz)];
+      arr.push(path);
+    });
+    return arr;
   };
 
   // Snap coordinates to a grid of @quanta locations on both axes
@@ -5490,6 +4500,18 @@ function ArcDataset() {
   this.forEach2 = function(cb) {
     for (var arcId=0, n=this.size(); arcId<n; arcId++) {
       cb(_ii[arcId], _nn[arcId], _xx, _yy, _zz, arcId);
+    }
+  };
+
+  this.forEach3 = function(cb) {
+    var start, end, xx, yy, zz;
+    for (var arcId=0, n=this.size(); arcId<n; arcId++) {
+      start = _ii[arcId];
+      end = start + _nn[arcId];
+      xx = _xx.subarray(start, end);
+      yy = _yy.subarray(start, end);
+      zz = _zz.subarray(start, end);
+      cb(xx, yy, zz, arcId);
     }
   };
 
@@ -5844,6 +4866,1033 @@ function ShapeIter(arcs) {
   };
 }
 
+
+
+
+// buildTopology() converts non-topological polygon data into a topological format
+//
+// Input format:
+// {
+//    xx: [Array|Float64Array],   // x-coords of each point in the dataset
+//    yy: [Array|Float64Array],   // y-coords "  "  "  "
+//    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isPrimary: true}
+// }
+// Note: x- and y-coords of all paths are concatenated into two long arrays, for easy indexing
+// Note: Input coords can use typed arrays (better performance) or regular arrays (for testing)
+//
+// Output format:
+// {
+//    arcs: [Array],   // Arcs are represented as two-element arrays
+//                     //   arc[0] and arc[1] are x- and y-coords in an Array or Float64Array
+//    shapes: [Array]  // Shapes are arrays of one or more path; paths are arrays of one or more arc id.
+// }                   //   Arc ids use the same numbering scheme as TopoJSON (see note).
+// Note: Arc ids in the shapes array are indices of objects in the arcs array.
+//       Negative ids signify that the arc coordinates are in reverse sequence.
+//       Negative ids are converted to array indices with the fornula fwId = ~revId.
+//       -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
+// Note: Arcs use typed arrays or regular arrays for coords, depending on the input array type.
+//
+MapShaper.buildTopology = function(obj) {
+  if (!(obj.xx && obj.yy && obj.pathData)) error("#buildTopology() Missing required param/s");
+
+  T.start();
+  var topoData = buildPathTopology(obj.xx, obj.yy, obj.pathData);
+  var shapes = groupPathsByShape(topoData.paths, obj.pathData, obj.info.input_shape_count);
+  T.stop("Process topology");
+  return {
+    arcs: topoData.arcs,
+    shapes: shapes
+  };
+};
+
+
+// Hash an x, y point to a non-negative integer
+//
+MapShaper.xyToUintHash = (function() {
+  var buf = new ArrayBuffer(16),
+      floats = new Float64Array(buf),
+      uints = new Uint32Array(buf);
+
+  return function(x, y) {
+    var u = uints, h;
+    floats[0] = x;
+    floats[1] = y;
+    h = u[0] ^ u[1];
+    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+    return h & 0x7fffffff;
+  };
+}());
+
+//
+//
+function ArcIndex(pointCount, xyToUint) {
+  var hashTableSize = Math.ceil(pointCount * 0.25);
+  var hashTable = new Int32Array(hashTableSize),
+      hash = function(x, y) {
+        return xyToUint(x, y) % hashTableSize;
+      },
+      chainIds = [],
+      arcs = [];
+
+  Utils.initializeArray(hashTable, -1);
+
+  this.addArc = function(xx, yy) {
+    var end = xx.length - 1,
+        key = hash(xx[end], yy[end]),
+        chainId = hashTable[key],
+        arcId = arcs.length;
+
+    hashTable[key] = arcId;
+    arcs.push([xx, yy]);
+    chainIds.push(chainId);
+    return arcId;
+  };
+
+  // Look for a previously generated arc with the same sequence of coords, but in the
+  // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
+  // so coincident boundaries should contain the same points in reverse sequence).
+  //
+  this.findArcNeighbor = function(xx, yy, start, end, getNext) {
+    var next = getNext(start),
+        key = hash(xx[start], yy[start]),
+        arcId = hashTable[key],
+        arcX, arcY, len;
+
+    while (arcId != -1) {
+      // check endpoints and one segment...
+      // it would be more rigorous but slower to identify a match
+      // by comparing all segments in the coordinate sequence
+      arcX = arcs[arcId][0];
+      arcY = arcs[arcId][1];
+      len = arcX.length;
+      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
+          arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
+        return arcId;
+      }
+      arcId = chainIds[arcId];
+    }
+    return -1;
+  };
+
+  this.getArcs = function() {
+    return arcs;
+  };
+}
+
+
+// Transform spaghetti paths into topological paths
+//
+function buildPathTopology(xx, yy, pathData) {
+  var pointCount = xx.length,
+      index = new ArcIndex(pointCount, MapShaper.xyToUintHash),
+      typedArrays = !!(xx.subarray && yy.subarray),
+      slice, array;
+
+  var pathIds = initPathIds(pointCount, pathData);
+
+  if (typedArrays) {
+    array = Float64Array;
+    slice = xx.subarray;
+  } else {
+    array = Array;
+    slice = Array.prototype.slice;
+  }
+
+  T.start();
+  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
+  T.stop("Find matching vertices");
+
+  T.start();
+  var pointId = 0;
+  var paths = Utils.map(pathData, function(pathObj) {
+    var pathLen = pathObj.size,
+        arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
+    pointId += pathLen;
+    return arcs;
+  });
+
+  var arcs = new ArcDataset(index.getArcs());
+  T.stop("Find topological boundaries");
+
+  return {
+    paths: paths,
+    arcs: arcs
+  };
+
+  function nextPoint(id) {
+    var partId = pathIds[id];
+    if (pathIds[id+1] === partId) {
+      return id + 1;
+    }
+    var len = pathData[partId].size;
+    return sameXY(id, id - len + 1) ? id - len + 2 : -1;
+  }
+
+  function prevPoint(id) {
+    var partId = pathIds[id];
+    if (pathIds[id - 1] === partId) {
+      return id - 1;
+    }
+    var len = pathData[partId].size;
+    return sameXY(id, id + len - 1) ? id + len - 2 : -1;
+  }
+
+  function sameXY(a, b) {
+    return xx[a] == xx[b] && yy[a] == yy[b];
+  }
+
+
+  // Convert a non-topological path to one or more topological arcs
+  // @start, @end are ids of first and last points in the path
+  //
+  function convertPath(start, end) {
+    var arcIds = [],
+        firstNodeId = -1,
+        arcStartId;
+
+    // Visit each point in the path, up to but not including the last point
+    //
+    for (var i = start; i < end; i++) {
+      if (pointIsArcEndpoint(i)) {
+        if (firstNodeId > -1) {
+          arcIds.push(addEdge(arcStartId, i));
+        } else {
+          firstNodeId = i;
+        }
+        arcStartId = i;
+      }
+    }
+
+    // Identify the final arc in the path
+    //
+    if (firstNodeId == -1) {
+      // Not in an arc, i.e. no nodes have been found...
+      // Assuming that path is either an island or is congruent with one or more rings
+      arcIds.push(addRing(start, end));
+    }
+    else if (firstNodeId == start) {
+      // path endpoint is a node;
+      if (!pointIsArcEndpoint(end)) {
+        error("Topology error"); // TODO: better error handling
+      }
+      arcIds.push(addEdge(arcStartId, i));
+    } else {
+      // final arc wraps around
+      arcIds.push(addEdge(arcStartId, end, start + 1, firstNodeId));
+    }
+
+    return arcIds;
+  }
+
+  // @a and @b are ids of two points with same x, y coords
+  // Return false if adjacent points match, either in fw or rev direction
+  //
+  function brokenEdge(a, b) {
+    var xarr = xx, yarr = yy; // local vars: faster
+    var aprev = prevPoint(a),
+        anext = nextPoint(a),
+        bprev = prevPoint(b),
+        bnext = nextPoint(b);
+    if (aprev == -1 || anext == -1 || bprev == -1 || bnext == -1) {
+      return true;
+    }
+    else if (xarr[aprev] == xarr[bnext] && xarr[anext] == xarr[bprev] &&
+      yarr[aprev] == yarr[bnext] && yarr[anext] == yarr[bprev]) {
+      return false;
+    }
+    else if (xarr[aprev] == xarr[bprev] && xarr[anext] == xarr[bnext] &&
+      yarr[aprev] == yarr[bprev] && yarr[anext] == yarr[bnext]) {
+      return false;
+    }
+    return true;
+  }
+
+  // Test if a point @id is an endpoint of a topological path
+  //
+  function pointIsArcEndpoint(id) {
+    var chainId = chainIds[id];
+    if (chainId == id) {
+      // point is unique -- point is arc endpoint iff it is start or end of an open path
+      return nextPoint(id) == -1 || prevPoint(id) == -1;
+    }
+    do {
+      if (brokenEdge(id, chainId)) {
+        // there is a discontinuity at @id -- point is arc endpoint
+        return true;
+      }
+      chainId = chainIds[chainId];
+    } while (id != chainId);
+    // path parallels all adjacent paths at @id -- point is not arc endpoint
+    return false;
+  }
+
+
+  function mergeArcParts(src, startId, endId, startId2, endId2) {
+    var len = endId - startId + endId2 - startId2 + 2,
+        dest = new array(len),
+        j = 0, i;
+    for (i=startId; i <= endId; i++) {
+      dest[j++] = src[i];
+    }
+    for (i=startId2; i <= endId2; i++) {
+      dest[j++] = src[i];
+    }
+    if (j != len) error("mergeArcParts() counting error.");
+    return dest;
+  }
+
+  function addEdge(startId1, endId1, startId2, endId2) {
+    var splitArc = arguments.length == 4,
+        start = startId1,
+        end = splitArc ? endId2 : endId1,
+        arcId, xarr, yarr;
+
+    // Look for previously identified arc, in reverse direction (normal topology)
+    arcId = index.findArcNeighbor(xx, yy, start, end, nextPoint);
+    if (arcId >= 0) return ~arcId;
+
+    // Look for matching arc in same direction
+    // (Abnormal topology, but we're accepting it because real-world Shapefiles
+    //   sometimes have duplicate paths)
+    arcId = index.findArcNeighbor(xx, yy, end, start, prevPoint);
+    if (arcId >= 0) return arcId;
+
+    if (splitArc) {
+      xarr = mergeArcParts(xx, startId1, endId1, startId2, endId2);
+      yarr = mergeArcParts(yy, startId1, endId1, startId2, endId2);
+    } else {
+      xarr = slice.call(xx, startId1, endId1 + 1);
+      yarr = slice.call(yy, startId1, endId1 + 1);
+    }
+    return index.addArc(xarr, yarr);
+  }
+
+  //
+  //
+  function addRing(startId, endId) {
+    var chainId = chainIds[startId],
+        pathId = pathIds[startId],
+        arcId;
+
+    while (chainId != startId) {
+      if (pathIds[chainId] < pathId) {
+        break;
+      }
+      chainId = chainIds[chainId];
+    }
+
+    if (chainId == startId) {
+      return addEdge(startId, endId);
+    }
+
+    for (var i=startId; i<endId; i++) {
+      arcId = index.findArcNeighbor(xx, yy, i, i, nextPoint);
+      if (arcId >= 0) return ~arcId;
+
+      arcId = index.findArcNeighbor(xx, yy, i, i, prevPoint);
+      if (arcId >= 0) return arcId;
+    }
+
+    error("Unmatched ring:", pathData[pathId]);
+  }
+}
+
+
+// Create a lookup table for path ids; path ids are indexed by point id
+//
+function initPathIds(size, pathData) {
+  var pathIds = new Int32Array(size),
+      j = 0;
+  for (var pathId=0, pathCount=pathData.length; pathId < pathCount; pathId++) {
+    for (var i=0, n=pathData[pathId].size; i<n; i++, j++) {
+      pathIds[j] = pathId;
+    }
+  }
+  return pathIds;
+}
+
+
+// Return an array with data for chains of vertices with same x, y coordinates
+// Array ids are same as ids of x- and y-coord arrays.
+// Array values are ids of next point in each chain.
+// Unique (x, y) points link to themselves (i.e. arr[n] == n)
+//
+function initPointChains(xx, yy, hash, verbose) {
+  var pointCount = xx.length,
+      hashTableSize = Math.floor(pointCount * 1.4);
+
+  // A hash table larger than ~1.3 * point count doesn't seem to improve performance much.
+
+  // Hash table is temporary storage for building chains of coincident points.
+  // Hash bins contains the id of the first point in a chain.
+  var hashChainIds = new Int32Array(hashTableSize);
+  Utils.initializeArray(hashChainIds, -1);
+
+  // Array that gets populated with chain data
+  var chainIds = new Int32Array(pointCount);
+  var key, headId, x, y, collisions = 0;
+
+  for (var i=0; i<pointCount; i++) {
+    x = xx[i];
+    y = yy[i];
+    key = hash(x, y) % hashTableSize;
+
+    // Points with different (x, y) coords can hash to the same bin;
+    // ... use linear probing to find a different bin for each (x, y) coord.
+    while (true) {
+      headId = hashChainIds[key];
+      if (headId == -1) {
+        // case -- first coordinate in chain: start new chain, point to self
+        hashChainIds[key] = i;
+        chainIds[i] = i;
+        break;
+      }
+      else if (xx[headId] == x && yy[headId] == y) {
+        // case -- extending a chain: insert new point after head of chain
+        chainIds[i] = chainIds[headId];
+        chainIds[headId] = i;
+        break;
+      }
+
+      // case -- this bin is used by another coord, try the next bin
+      collisions++;
+      key = (key + 1) % hashTableSize;
+    }
+  }
+  if (verbose) trace(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
+  return chainIds;
+}
+
+
+// Use shapeId property of @pathData objects to group paths by shape
+//
+function groupPathsByShape(paths, pathData, shapeCount) {
+  var shapes = new Array(shapeCount); // Array can be sparse, but should have this length
+  Utils.forEach(paths, function(path, pathId) {
+    var shapeId = pathData[pathId].shapeId;
+    if (shapeId in shapes === false) {
+      shapes[shapeId] = [path]; // first part in a new shape
+    } else {
+      shapes[shapeId].push(path);
+    }
+  });
+  return shapes;
+}
+
+// Export functions for testing
+MapShaper.topology = {
+  buildPathTopology: buildPathTopology,
+  ArcIndex: ArcIndex,
+  groupPathsByShape: groupPathsByShape,
+  initPathIds: initPathIds
+};
+
+
+
+
+// A heap data structure used for computing Visvalingam simplification data.
+//
+function Heap() {
+  var maxItems,
+      dataOffs,
+      dataArr,
+      itemsInHeap,
+      poppedVal,
+      heapArr,
+      indexArr;
+
+  this.addValues = function(values, start, end) {
+    var minId = start | 0,
+        maxItems = (isNaN(end) ? values.length : end + 1) - minId;
+    dataOffs = minId;
+    dataArr = values;
+    itemsInHeap = 0;
+    reserveSpace(maxItems);
+    for (var i=0; i<maxItems; i++) {
+      insert(i, i + dataOffs); // push item onto the heap
+    }
+    itemsInHeap = maxItems;
+    for (var j=(itemsInHeap-2) >> 1; j >= 0; j--) {
+      downHeap(j);
+    }
+    poppedVal = -Infinity;
+  };
+
+  this.heapSize = function() {
+    return itemsInHeap;
+  };
+
+  // Update a single value and re-heap.
+  //
+  this.updateValue = function(valId, val) {
+    // TODO: move this logic out of heap
+    if (val < poppedVal) {
+      // don't give updated values a lesser value than the last popped vertex
+      // (required by visvalingam)
+      val = poppedVal;
+    }
+    dataArr[valId] = val;
+    var heapIdx = indexArr[valId - dataOffs];
+    if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) error("[updateValue()] out-of-range heap index.");
+    reHeap(heapIdx);
+  };
+
+
+  this.testHeapOrder = function() {
+    checkNode(0, -Infinity);
+    return true;
+  };
+
+  // Return the idx of the lowest-value item in the heap
+  //
+  this.pop = function() {
+    if (itemsInHeap <= 0) error("Tried to pop from an empty heap.");
+    var minValId = heapArr[0],
+        lastIdx = --itemsInHeap;
+    if (itemsInHeap > 0) {
+      insert(0, heapArr[lastIdx]);// copy last item in heap into root position
+      downHeap(0);
+    }
+    poppedVal = dataArr[minValId];
+    return minValId;
+  };
+
+
+  function reserveSpace(heapSize) {
+    if (!heapArr || heapSize > heapArr.length) {
+      var bufLen = heapSize * 1.2 | 0;
+      heapArr = new Int32Array(bufLen);
+      indexArr = new Int32Array(bufLen);
+    }
+  }
+
+  // Associate a heap idx with the id of a value in valuesArr
+  //
+  function insert(heapIdx, valId) {
+    indexArr[valId - dataOffs] = heapIdx;
+    heapArr[heapIdx] = valId;
+  }
+
+  // Check that heap is ordered starting at a given node
+  // (traverses heap recursively)
+  //
+  function checkNode(heapIdx, parentVal) {
+    if (heapIdx >= itemsInHeap) {
+      return;
+    }
+    var val = dataArr[heapArr[heapIdx]];
+    if (parentVal > val) error("Heap is out-of-order");
+    var childIdx = heapIdx * 2 + 1;
+    checkNode(childIdx, val);
+    checkNode(childIdx + 1, val);
+  }
+
+  function reHeap(idx) {
+    if (idx < 0 || idx >= itemsInHeap)
+      error("Out-of-bounds heap idx passed to reHeap()");
+    downHeap(upHeap(idx));
+  }
+
+  function upHeap(currIdx) {
+    var valId = heapArr[currIdx],
+        currVal = dataArr[valId],
+        parentIdx, parentValId, parentVal;
+
+    // Move item up in the heap until it's at the top or is heavier than its parent
+    //
+    while (currIdx > 0) {
+      parentIdx = (currIdx - 1) >> 1; // integer division by two gives idx of parent
+      parentValId = heapArr[parentIdx];
+      parentVal = dataArr[parentValId];
+
+      if (parentVal <= currVal) {
+        break;
+      }
+
+      // out-of-order; swap child && parent
+      insert(currIdx, parentValId);
+      insert(parentIdx, valId);
+      currIdx = parentIdx;
+      // if (dataArr[heapArr[currIdx]] !== currVal) error("Lost value association");
+    }
+    return currIdx;
+  }
+
+  function downHeap(currIdx) {
+    // Item gets swapped with any lighter children
+    //
+    var data = dataArr, heap = heapArr, // local vars, faster
+        valId = heap[currIdx],
+        currVal = data[valId],
+        firstChildIdx = 2 * currIdx + 1,
+        secondChildIdx,
+        minChildIdx, childValId, childVal;
+
+    while (firstChildIdx < itemsInHeap) {
+      secondChildIdx = firstChildIdx + 1;
+      minChildIdx = secondChildIdx >= itemsInHeap || data[heap[firstChildIdx]] <= data[heap[secondChildIdx]] ? firstChildIdx : secondChildIdx;
+
+      childValId = heap[minChildIdx];
+      childVal = data[childValId];
+
+      if (currVal <= childVal) {
+        break;
+      }
+
+      insert(currIdx, childValId);
+      insert(minChildIdx, valId);
+
+      // descend in the heap:
+      currIdx = minChildIdx;
+      firstChildIdx = 2 * currIdx + 1;
+    }
+  }
+}
+
+
+
+
+var Visvalingam = {};
+
+MapShaper.Heap = Heap; // export Heap for testing
+
+Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
+  var bufLen = 0,
+      heap = new Heap(),
+      prevArr, nextArr;
+
+  // Calculate Visvalingam simplification data for an arc
+  // Receives arrays of x- and y- coordinates, optional array of z- coords
+  //
+  return function(dest, xx, yy, zz) {
+    var arcLen = dest.length,
+        useZ = !!zz,
+        threshold,
+        ax, ay, bx, by, cx, cy;
+
+    if (arcLen > bufLen) {
+      bufLen = Math.round(arcLen * 1.2);
+      prevArr = new Int32Array(bufLen);
+      nextArr = new Int32Array(bufLen);
+    }
+
+    // Initialize Visvalingam "effective area" values and references to
+    //   prev/next points for each point in arc.
+    //
+    for (var i=1; i<arcLen-1; i++) {
+      ax = xx[i-1];
+      ay = yy[i-1];
+      bx = xx[i];
+      by = yy[i];
+      cx = xx[i+1];
+      cy = yy[i+1];
+
+      if (!useZ) {
+        threshold = metric2D(ax, ay, bx, by, cx, cy);
+      } else {
+        threshold = metric3D(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
+      }
+
+      dest[i] = threshold;
+      nextArr[i] = i + 1;
+      prevArr[i] = i - 1;
+    }
+    prevArr[arcLen-1] = arcLen - 2;
+    nextArr[0] = 1;
+
+    // Initialize the heap with thresholds; don't add first and last point
+    heap.addValues(dest, 1, arcLen-2);
+
+    // Calculate removal thresholds for each internal point in the arc
+    //
+    var idx, nextIdx, prevIdx;
+    while(heap.heapSize() > 0) {
+
+      // Remove the point with the least effective area.
+      idx = heap.pop();
+      if (idx < 1 || idx > arcLen - 2) {
+        error("Popped first or last arc vertex (error condition); idx:", idx, "len:", arcLen);
+      }
+
+      // Recompute effective area of neighbors of the removed point.
+      prevIdx = prevArr[idx];
+      nextIdx = nextArr[idx];
+      ax = xx[prevIdx];
+      ay = yy[prevIdx];
+      bx = xx[nextIdx];
+      by = yy[nextIdx];
+
+      if (prevIdx > 0) {
+        cx = xx[prevArr[prevIdx]];
+        cy = yy[prevArr[prevIdx]];
+        if (!useZ) {
+          threshold = metric2D(bx, by, ax, ay, cx, cy); // next point, prev point, prev-prev point
+        } else {
+          threshold = metric3D(bx, by, zz[nextIdx], ax, ay, zz[prevIdx], cx, cy, zz[prevArr[prevIdx]]);
+        }
+        heap.updateValue(prevIdx, threshold);
+      }
+      if (nextIdx < arcLen-1) {
+        cx = xx[nextArr[nextIdx]];
+        cy = yy[nextArr[nextIdx]];
+        if (!useZ) {
+          threshold = metric2D(ax, ay, bx, by, cx, cy); // prev point, next point, next-next point
+        } else {
+          threshold = metric3D(ax, ay, zz[prevIdx], bx, by, zz[nextIdx], cx, cy, zz[nextArr[nextIdx]]);
+        }
+        heap.updateValue(nextIdx, threshold);
+      }
+      nextArr[prevIdx] = nextIdx;
+      prevArr[nextIdx] = prevIdx;
+    }
+
+    // convert area metric to a linear equivalent
+    //
+    for (var j=1; j<arcLen-1; j++) {
+      dest[j] = Math.sqrt(dest[j]) * (scale || 1);
+    }
+    dest[0] = dest[arcLen-1] = Infinity; // arc endpoints
+  };
+};
+
+
+// The original mapshaper "modified Visvalingam" function uses a step function to
+// underweight more acute triangles.
+//
+Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
+  var area = triangleArea(ax, ay, bx, by, cx, cy),
+      angle = innerAngle(ax, ay, bx, by, cx, cy),
+      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
+  return area * weight;
+};
+
+Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      angle = innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
+  return area * weight;
+};
+
+Visvalingam.standardMetric = triangleArea;
+Visvalingam.standardMetric3D = triangleArea3D;
+
+// Experimenting with a replacement for "Modified Visvalingam"
+//
+Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
+  var area = triangleArea(ax, ay, bx, by, cx, cy),
+      standardLen = area * 1.4,
+      hyp = Math.sqrt((ax + cx) * (ax + cx) + (ay + cy) * (ay + cy)),
+      weight = hyp / standardLen;
+  return area * weight;
+};
+
+
+
+
+
+var DouglasPeucker = {};
+
+DouglasPeucker.simplifyArcs = function(arcs, opts) {
+  return MapShaper.simplifyArcs(arcs, DouglasPeucker.calcArcData, opts);
+};
+
+DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
+      ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
+      bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
+  return triangleHeightSq(ab2, bc2, ac2);
+};
+
+DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
+  var ab2 = distanceSq(ax, ay, bx, by),
+      ac2 = distanceSq(ax, ay, cx, cy),
+      bc2 = distanceSq(bx, by, cx, cy);
+  return triangleHeightSq(ab2, bc2, ac2);
+};
+
+// @dest array to contain calculated data
+// @xx, @yy arrays of x, y coords of a path
+// @zz (optional) array of z coords for spherical simplification
+//
+DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
+  var len = dest.length,
+      useZ = !!zz;
+
+  Utils.initializeArray(dest, 0);
+
+  dest[0] = dest[len-1] = Infinity;
+
+  if (len > 2) {
+    procSegment(0, len-1, 1, Number.MAX_VALUE);
+  }
+
+  function procSegment(startIdx, endIdx, depth, lastDistance) {
+    var thisDistance;
+    var ax = xx[startIdx],
+      ay = yy[startIdx],
+      cx = xx[endIdx],
+      cy = yy[endIdx],
+      az, bz, cz;
+
+    if (useZ) {
+      az = zz[startIdx];
+      cz = zz[endIdx];
+    }
+
+    if (startIdx >= endIdx) error("[procSegment()] inverted idx");
+
+    var maxDistance = 0, maxIdx = 0;
+
+    for (var i=startIdx+1; i<endIdx; i++) {
+      if (useZ) {
+        thisDistance = DouglasPeucker.metricSq3D(ax, ay, az, xx[i], yy[i], zz[i], cx, cy, cz);
+      } else {
+        thisDistance = DouglasPeucker.metricSq(ax, ay, xx[i], yy[i], cx, cy);
+      }
+
+      if (thisDistance >= maxDistance) {
+        maxDistance = thisDistance;
+        maxIdx = i;
+      }
+    }
+
+    if (lastDistance < maxDistance) {
+      maxDistance = lastDistance;
+    }
+
+    var lval=0, rval=0;
+    if (maxIdx - startIdx > 1) {
+      lval = procSegment(startIdx, maxIdx, depth+1, maxDistance);
+    }
+    if (endIdx - maxIdx > 1) {
+      rval = procSegment(maxIdx, endIdx, depth+1, maxDistance);
+    }
+
+    if (depth == 1) {
+      // case -- arc is an island polygon
+      if (ax == cx && ay == cy) {
+        maxDistance = lval > rval ? lval : rval;
+      }
+    }
+
+    var dist = Math.sqrt(maxDistance);
+
+    /*
+    if ( maxSegmentLen > 0 ) {
+      double maxLen2 = maxSegmentLen * maxSegmentLen;
+      double acLen2 = (ax-cx)*(ax-cx) + (ay-cy)*(ay-cy);
+      if ( maxLen2 < acLen2 ) {
+        thresh = MAX_THRESHOLD - 2;  // mb //
+      }
+    }
+    */
+
+    dest[maxIdx] = dist;
+    return maxDistance;
+  }
+};
+
+
+
+
+MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
+  var n;
+  for (var i=0, len=thresholds.length; i<len; i++) {
+    n = lockCounts[i];
+    if (n > 0) {
+      MapShaper.lockMaxThresholds(thresholds[i], n);
+    }
+  }
+};
+
+// Protect polar coordinates and coordinates at the prime meridian from
+// being removed before other points in a path.
+// Assume: coordinates are in decimal degrees
+//
+MapShaper.protectWorldEdges = function(paths) {
+  // Need to handle coords with rounding errors:
+  // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
+  // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
+  var err = 1e-12,
+      l = -180 + err,
+      r = 180 - err,
+      t = 90 - err,
+      b = -90 + err;
+
+  // return if content doesn't reach edges
+  var bounds = paths.getBounds().toArray();
+  if (containsBounds([l, b, r, t], bounds) === true) return;
+
+  paths.forEach3(function(xx, yy, zz) {
+    var maxZ = 0,
+    x, y;
+    for (var i=0, n=zz.length; i<n; i++) {
+      x = xx[i];
+      y = yy[i];
+      if (x > r || x < l || y < b || y > t) {
+        if (maxZ === 0) {
+          maxZ = MapShaper.findMaxThreshold(zz);
+        }
+        if (zz[i] !== Infinity) { // don't override lock value
+          zz[i] = maxZ;
+        }
+      }
+    }
+  });
+};
+
+// Return largest value in an array, ignoring Infinity (lock value)
+//
+MapShaper.findMaxThreshold = function(zz) {
+  var z, maxZ = 0;
+  for (var i=0, n=zz.length; i<n; i++) {
+    z = zz[i];
+    if (z > maxZ && z < Infinity) {
+      maxZ = z;
+    }
+  }
+  return maxZ;
+};
+
+MapShaper.replaceValue = function(arr, value, replacement) {
+  var count = 0, k;
+  for (var i=0, n=arr.length; i<n; i++) {
+    if (arr[i] === value) {
+      arr[i] = replacement;
+      count++;
+    }
+  }
+  return count;
+};
+
+// Protect the highest-threshold interior vertices in an arc from removal by
+// setting their removal thresholds to Infinity
+//
+MapShaper.lockMaxThresholds = function(zz, numberToLock) {
+  var lockVal = Infinity,
+      target = numberToLock | 0,
+      lockedCount, maxVal, replacements, z;
+  do {
+    lockedCount = 0;
+    maxVal = 0;
+    for (var i=1, len = zz.length - 1; i<len; i++) { // skip arc endpoints
+      z = zz[i];
+      if (z === lockVal) {
+        lockedCount++;
+      } else if (z > maxVal) {
+        maxVal = z;
+      }
+    }
+    if (lockedCount >= numberToLock) break;
+    replacements = MapShaper.replaceValue(zz, maxVal, lockVal);
+  } while (lockedCount < numberToLock && replacements > 0);
+};
+
+// Convert arrays of lng and lat coords (xsrc, ysrc) into
+// x, y, z coords on the surface of a sphere with radius 6378137
+// (the radius of spherical Earth datum in meters)
+//
+MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
+  var deg2rad = Math.PI / 180,
+      r = 6378137;
+  for (var i=0, len=xsrc.length; i<len; i++) {
+    var lng = xsrc[i] * deg2rad,
+        lat = ysrc[i] * deg2rad,
+        cosLat = Math.cos(lat);
+    xbuf[i] = Math.cos(lng) * cosLat * r;
+    ybuf[i] = Math.sin(lng) * cosLat * r;
+    zbuf[i] = Math.sin(lat) * r;
+  }
+};
+
+MapShaper.simplifyPaths = function(paths, method) {
+  T.start();
+  var bounds = paths.getBounds().toArray();
+  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method);
+  if (decimalDegrees) {
+    MapShaper.simplifyPaths3D(paths, simplifyPath);
+    MapShaper.protectWorldEdges(paths);
+  } else {
+    MapShaper.simplifyPaths2D(paths, simplifyPath);
+  }
+  T.stop("Calculate simplification data");
+};
+
+MapShaper.simplifyPaths2D = function(paths, simplify) {
+  paths.forEach3(function(xx, yy, kk, i) {
+    simplify(kk, xx, yy);
+  });
+};
+
+MapShaper.simplifyPaths3D = function(paths, simplify) {
+  var bufSize = 0,
+      xbuf, ybuf, zbuf;
+
+  paths.forEach3(function(xx, yy, kk, i) {
+    var arcLen = xx.length;
+    if (bufSize < arcLen) {
+      bufSize = Math.round(arcLen * 1.2);
+      xbuf = new Float64Array(bufSize);
+      ybuf = new Float64Array(bufSize);
+      zbuf = new Float64Array(bufSize);
+    }
+
+    MapShaper.convLngLatToSph(xx, yy, xbuf, ybuf, zbuf);
+    simplify(kk, xbuf, ybuf, zbuf);
+  });
+};
+
+// Apply a simplification function to each path in an array, return simplified path.
+//
+MapShaper.simplifyPaths_old = function(paths, method, bounds) {
+  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method),
+      data;
+
+  T.start();
+  if (decimalDegrees) {
+    data = MapShaper.simplifyPathsSph(paths, simplifyPath);
+  } else {
+    data = Utils.map(paths, function(path) {
+      return simplifyPath(path[0], path[1]);
+    });
+  }
+
+  if (decimalDegrees) {
+    MapShaper.protectWorldEdges(paths, data, bounds);
+  }
+  T.stop("Calculate simplification data");
+  return data;
+};
+
+// Path simplification functions
+// Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
+//
+MapShaper.simplifiers = {
+  vis: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
+  mod: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
+  dp: DouglasPeucker.calcArcData
+};
+
+MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
+  var bufSize = 0,
+      xbuf, ybuf, zbuf;
+
+  var data = Utils.map(arcs, function(arc) {
+    var arcLen = arc[0].length;
+    if (bufSize < arcLen) {
+      bufSize = Math.round(arcLen * 1.2);
+      xbuf = new Float64Array(bufSize);
+      ybuf = new Float64Array(bufSize);
+      zbuf = new Float64Array(bufSize);
+    }
+
+    MapShaper.convLngLatToSph(arc[0], arc[1], xbuf, ybuf, zbuf);
+    return simplify(xbuf, ybuf, zbuf, arcLen);
+  });
+  return data;
+};
 
 
 
@@ -6658,7 +6707,7 @@ MapShaper.importTopoJSON = function(obj) {
   });
 
   return {
-    arcs: arcs,
+    arcs: new ArcDataset(arcs),
     layers: layers
   };
 };
@@ -7840,7 +7889,7 @@ MapShaper.importContent = function(content, fileType) {
   }
 
   // Calculate data to use for shape preservation
-  var numArcs = data.arcs.length;
+  var numArcs = data.arcs.size();
   var retainedPointCounts = new Uint8Array(numArcs);
   Utils.forEach(data.layers, function(layer) {
     if (layer.geometry_type == 'polygon') {

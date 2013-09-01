@@ -13,9 +13,9 @@ function FilteredPathCollection(unfilteredArcs) {
       arcData,
       getPathWrapper;
 
-  this.setThresholds = function(zz) {
-    unfilteredArcs.setThresholds(zz);
+  init();
 
+  function init() {
     // Sort simplification thresholds for all non-endpoint vertices
     // for quick conversion of simplification percentage to threshold value.
     // For large datasets, use every nth point, for faster sorting.
@@ -28,7 +28,7 @@ function FilteredPathCollection(unfilteredArcs) {
     if (size > 5e5) {
       initFilteredArcs();
     }
-  };
+  }
 
   function initFilteredArcs() {
     var filterPct = 0.08;

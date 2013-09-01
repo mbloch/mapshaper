@@ -23,7 +23,7 @@ MapShaper.importTopoJSON = function(obj) {
   });
 
   return {
-    arcs: arcs,
+    arcs: new ArcDataset(arcs),
     layers: layers
   };
 };

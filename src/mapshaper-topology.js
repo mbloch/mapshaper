@@ -1,4 +1,4 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-shapes */
 
 // buildTopology() converts non-topological polygon data into a topological format
 //
@@ -141,11 +141,13 @@ function buildPathTopology(xx, yy, pathData) {
     pointId += pathLen;
     return arcs;
   });
+
+  var arcs = new ArcDataset(index.getArcs());
   T.stop("Find topological boundaries");
 
   return {
     paths: paths,
-    arcs: index.getArcs()
+    arcs: arcs
   };
 
   function nextPoint(id) {

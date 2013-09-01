@@ -101,27 +101,29 @@ describe("mapshaper-simplify.js", function() {
 
   describe('#protectWorldEdges()', function () {
     it('should set world edges equal to highest threshold in each arc', function () {
-      var arcs = [[[178, 179, 180, 180], [30, 31, 32, 33]], [[-170, -180, -160, -160],
-          [1, 2, 2, 1]], [[2, 3, 3, 2], [90, 90, 89, 88]], [[3, 4, 3, 4], [-79, -84, -90, -80]]];
-      var zz = [[Infinity, 6, 4, Infinity], [Infinity, 5, 8, Infinity],
-          [Infinity, 1, 4, Infinity], [Infinity, 5, 8, Infinity]];
-      var bounds = [-180, -90, 180, 90];
-
-      api.protectWorldEdges(arcs, zz, bounds);
-      assert.deepEqual([[Infinity, 6, 6, Infinity], [Infinity, 8, 8, Infinity],
-          [Infinity, 4, 4, Infinity], [Infinity, 5, 8, Infinity]], zz);
+      var arcs = [[[178, 179, 180, 180], [30, 31, 32, 33], [Infinity, 6, 4, Infinity]],
+                  [[-170, -180, -160, -160], [1, 2, 2, 1], [Infinity, 5, 8, Infinity]],
+                  [[2, 3, 3, 2], [90, 90, 89, 88], [Infinity, 1, 4, Infinity]],
+                  [[3, 4, 3, 4], [-79, -84, -90, -80], [Infinity, 5, 8, Infinity]]];
+      var data = new api.ArcDataset(arcs);
+      api.protectWorldEdges(data);
+      var actual = api.Utils.pluck(data.toArray2(), 2);
+      var expected = [[Infinity, 6, 6, Infinity], [Infinity, 8, 8, Infinity],
+          [Infinity, 4, 4, Infinity], [Infinity, 5, 8, Infinity]];
+      assert.deepEqual(actual, expected);
     })
 
     it('should not modify arcs if internal vertices do not reach edge', function() {
-      var arcs = [[[178, 179, 179.9, 180], [30, 31, 32, 33]], [[-180, -179.9, -160, -160],
-          [1, 2, 2, 1]], [[2, 3, 3, 2], [90, 89.9, 89, 88]], [[3, 4, 3, 4], [-79, -84, -89.2, -90]]];
-      var zz = [[Infinity, 6, 4, Infinity], [Infinity, 5, 8, Infinity],
+      var arcs = [[[178, 179, 179.9, 180], [30, 31, 32, 33], [Infinity, 6, 4, Infinity]],
+        [[-180, -179.9, -160, -160], [1, 2, 2, 1], [Infinity, 5, 8, Infinity]],
+        [[2, 3, 3, 2], [90, 89.9, 89, 88], [Infinity, 1, 4, Infinity]],
+        [[3, 4, 3, 4], [-79, -84, -89.2, -90], [Infinity, 5, 8, Infinity]]];
+      var data = new api.ArcDataset(arcs);
+      api.protectWorldEdges(data);
+      var actual = api.Utils.pluck(data.toArray2(), 2);
+      var expected = [[Infinity, 6, 4, Infinity], [Infinity, 5, 8, Infinity],
           [Infinity, 1, 4, Infinity], [Infinity, 5, 8, Infinity]];
-      var bounds = [-180, -90, 180, 90];
-
-      api.protectWorldEdges(arcs, zz, bounds);
-      assert.deepEqual([[Infinity, 6, 4, Infinity], [Infinity, 5, 8, Infinity],
-          [Infinity, 1, 4, Infinity], [Infinity, 5, 8, Infinity]], zz);
+      assert.deepEqual(actual, expected);
     })
   })
 })

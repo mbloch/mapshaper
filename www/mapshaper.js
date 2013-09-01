@@ -4291,7 +4291,7 @@ function ArcDataset() {
 
   function initLegacyArcs(coords) {
     var data = convertLegacyArcs(coords);
-    initPathData(data.nn, data.xx, data.yy);
+    initPathData(data.nn, data.xx, data.yy, data.zz);
   }
 
   function initPathData(nn, xx, yy, zz) {
@@ -4352,10 +4352,12 @@ function ArcDataset() {
     // Generate arrays of arc lengths and starting idxs
     var nn = new Uint32Array(numArcs),
         pointCount = 0,
+        useZ = false,
         arc, arcLen;
     for (var i=0; i<numArcs; i++) {
       arc = coords[i];
       arcLen = arc && arc[0].length || 0;
+      useZ = useZ || arc.length > 2;
       nn[i] = arcLen;
       pointCount += arcLen;
       if (arcLen === 0) error("#convertArcArrays() Empty arc:", arc);
@@ -4364,21 +4366,24 @@ function ArcDataset() {
     // Copy x, y coordinates into long arrays
     var xx = new Float64Array(pointCount),
         yy = new Float64Array(pointCount),
+        zz = useZ ? new Float64Array(pointCount) : null,
         offs = 0;
     Utils.forEach(coords, function(arc, arcId) {
       var xarr = arc[0],
           yarr = arc[1],
+          zarr = arc[2] || null,
           n = nn[arcId];
       for (var j=0; j<n; j++) {
         xx[offs + j] = xarr[j];
         yy[offs + j] = yarr[j];
+        if (useZ) zz[offs + j] = zarr[j];
       }
       offs += n;
     });
-
     return {
       xx: xx,
       yy: yy,
+      zz: zz,
       nn: nn
     };
   }
@@ -4423,6 +4428,15 @@ function ArcDataset() {
     return Utils.map(Utils.range(this.size()), function(i) {
       return _self.getArc(i).toArray();
     });
+  };
+
+  this.toArray2 = function() {
+    var arr = [];
+    this.forEach3(function(xx, yy, zz) {
+      var path = [Utils.toArray(xx), Utils.toArray(yy), Utils.toArray(zz)];
+      arr.push(path);
+    });
+    return arr;
   };
 
   // Snap coordinates to a grid of @quanta locations on both axes
@@ -4486,6 +4500,18 @@ function ArcDataset() {
   this.forEach2 = function(cb) {
     for (var arcId=0, n=this.size(); arcId<n; arcId++) {
       cb(_ii[arcId], _nn[arcId], _xx, _yy, _zz, arcId);
+    }
+  };
+
+  this.forEach3 = function(cb) {
+    var start, end, xx, yy, zz;
+    for (var arcId=0, n=this.size(); arcId<n; arcId++) {
+      start = _ii[arcId];
+      end = start + _nn[arcId];
+      xx = _xx.subarray(start, end);
+      yy = _yy.subarray(start, end);
+      zz = _zz.subarray(start, end);
+      cb(xx, yy, zz, arcId);
     }
   };
 
@@ -5969,7 +5995,7 @@ MapShaper.importTopoJSON = function(obj) {
   });
 
   return {
-    arcs: arcs,
+    arcs: new ArcDataset(arcs),
     layers: layers
   };
 };
@@ -6891,7 +6917,7 @@ MapShaper.importContent = function(content, fileType) {
   }
 
   // Calculate data to use for shape preservation
-  var numArcs = data.arcs.length;
+  var numArcs = data.arcs.size();
   var retainedPointCounts = new Uint8Array(numArcs);
   Utils.forEach(data.layers, function(layer) {
     if (layer.geometry_type == 'polygon') {
@@ -7613,11 +7639,13 @@ function buildPathTopology(xx, yy, pathData) {
     pointId += pathLen;
     return arcs;
   });
+
+  var arcs = new ArcDataset(index.getArcs());
   T.stop("Find topological boundaries");
 
   return {
     paths: paths,
-    arcs: index.getArcs()
+    arcs: arcs
   };
 
   function nextPoint(id) {
@@ -8037,9 +8065,9 @@ function FilteredPathCollection(unfilteredArcs) {
       arcData,
       getPathWrapper;
 
-  this.setThresholds = function(zz) {
-    unfilteredArcs.setThresholds(zz);
+  init();
 
+  function init() {
     // Sort simplification thresholds for all non-endpoint vertices
     // for quick conversion of simplification percentage to threshold value.
     // For large datasets, use every nth point, for faster sorting.
@@ -8052,7 +8080,7 @@ function FilteredPathCollection(unfilteredArcs) {
     if (size > 5e5) {
       initFilteredArcs();
     }
-  };
+  }
 
   function initFilteredArcs() {
     var filterPct = 0.08;
@@ -8661,10 +8689,9 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
 
   // Calculate Visvalingam simplification data for an arc
   // Receives arrays of x- and y- coordinates, optional array of z- coords
-  // Returns an array of simplification thresholds, one per arc vertex.
   //
-  var calcArcData = function(xx, yy, zz, len) {
-    var arcLen = len || xx.length,
+  return function(dest, xx, yy, zz) {
+    var arcLen = dest.length,
         useZ = !!zz,
         threshold,
         ax, ay, bx, by, cx, cy;
@@ -8678,8 +8705,6 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     // Initialize Visvalingam "effective area" values and references to
     //   prev/next points for each point in arc.
     //
-    var values = new Float64Array(arcLen);
-
     for (var i=1; i<arcLen-1; i++) {
       ax = xx[i-1];
       ay = yy[i-1];
@@ -8694,7 +8719,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
         threshold = metric3D(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
       }
 
-      values[i] = threshold;
+      dest[i] = threshold;
       nextArr[i] = i + 1;
       prevArr[i] = i - 1;
     }
@@ -8702,7 +8727,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     nextArr[0] = 1;
 
     // Initialize the heap with thresholds; don't add first and last point
-    heap.addValues(values, 1, arcLen-2);
+    heap.addValues(dest, 1, arcLen-2);
 
     // Calculate removal thresholds for each internal point in the arc
     //
@@ -8750,13 +8775,10 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     // convert area metric to a linear equivalent
     //
     for (var j=1; j<arcLen-1; j++) {
-      values[j] = Math.sqrt(values[j]) * (scale || 1);
+      dest[j] = Math.sqrt(dest[j]) * (scale || 1);
     }
-    values[0] = values[arcLen-1] = Infinity; // arc endpoints
-    return values;
+    dest[0] = dest[arcLen-1] = Infinity; // arc endpoints
   };
-
-  return calcArcData;
 };
 
 
@@ -8814,18 +8836,17 @@ DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
   return triangleHeightSq(ab2, bc2, ac2);
 };
 
+// @dest array to contain calculated data
 // @xx, @yy arrays of x, y coords of a path
 // @zz (optional) array of z coords for spherical simplification
-// @buflen (optional) (kludge) 3D data gets passed in buffers, need buf len
 //
-DouglasPeucker.calcArcData = function(xx, yy, zz, buflen) {
-  var len = buflen || xx.length,
+DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
+  var len = dest.length,
       useZ = !!zz;
 
-  var dpArr = new Array(len); // new Float64Array(len);
-  Utils.initializeArray(dpArr, 0);
+  Utils.initializeArray(dest, 0);
 
-  dpArr[0] = dpArr[len-1] = Infinity;
+  dest[0] = dest[len-1] = Infinity;
 
   if (len > 2) {
     procSegment(0, len-1, 1, Number.MAX_VALUE);
@@ -8892,13 +8913,10 @@ DouglasPeucker.calcArcData = function(xx, yy, zz, buflen) {
     }
     */
 
-    dpArr[maxIdx] = dist;
+    dest[maxIdx] = dist;
     return maxDistance;
   }
-
-  return dpArr;
 };
-
 
 
 
@@ -8913,16 +8931,14 @@ MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
   }
 };
 
-// TODO: Operate on an ArcDataset object instead of arrays of coordinates.
-//
 // Protect polar coordinates and coordinates at the prime meridian from
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
 //
-MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
-  // -179.99999999999994 rounding error
-  // found in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
-  // 180.00000000000003 found in ne/ne_50m_admin_0_countries.shp
+MapShaper.protectWorldEdges = function(paths) {
+  // Need to handle coords with rounding errors:
+  // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
+  // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
   var err = 1e-12,
       l = -180 + err,
       r = 180 - err,
@@ -8930,16 +8946,13 @@ MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
       b = -90 + err;
 
   // return if content doesn't reach edges
+  var bounds = paths.getBounds().toArray();
   if (containsBounds([l, b, r, t], bounds) === true) return;
 
-  Utils.forEach(arcs, function(arc, arcId) {
-    var zz = thresholds[arcId],
-        xx = arcs[arcId][0],
-        yy = arcs[arcId][1],
-        maxZ, x, y;
-
+  paths.forEach3(function(xx, yy, zz) {
+    var maxZ = 0,
+    x, y;
     for (var i=0, n=zz.length; i<n; i++) {
-      maxZ = 0;
       x = xx[i];
       y = yy[i];
       if (x > r || x < l || y < b || y > t) {
@@ -8966,7 +8979,6 @@ MapShaper.findMaxThreshold = function(zz) {
   }
   return maxZ;
 };
-
 
 MapShaper.replaceValue = function(arr, value, replacement) {
   var count = 0, k;
@@ -9002,7 +9014,6 @@ MapShaper.lockMaxThresholds = function(zz, numberToLock) {
   } while (lockedCount < numberToLock && replacements > 0);
 };
 
-
 // Convert arrays of lng and lat coords (xsrc, ysrc) into
 // x, y, z coords on the surface of a sphere with radius 6378137
 // (the radius of spherical Earth datum in meters)
@@ -9020,9 +9031,47 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
   }
 };
 
+MapShaper.simplifyPaths = function(paths, method) {
+  T.start();
+  var bounds = paths.getBounds().toArray();
+  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method);
+  if (decimalDegrees) {
+    MapShaper.simplifyPaths3D(paths, simplifyPath);
+    MapShaper.protectWorldEdges(paths);
+  } else {
+    MapShaper.simplifyPaths2D(paths, simplifyPath);
+  }
+  T.stop("Calculate simplification data");
+};
+
+MapShaper.simplifyPaths2D = function(paths, simplify) {
+  paths.forEach3(function(xx, yy, kk, i) {
+    simplify(kk, xx, yy);
+  });
+};
+
+MapShaper.simplifyPaths3D = function(paths, simplify) {
+  var bufSize = 0,
+      xbuf, ybuf, zbuf;
+
+  paths.forEach3(function(xx, yy, kk, i) {
+    var arcLen = xx.length;
+    if (bufSize < arcLen) {
+      bufSize = Math.round(arcLen * 1.2);
+      xbuf = new Float64Array(bufSize);
+      ybuf = new Float64Array(bufSize);
+      zbuf = new Float64Array(bufSize);
+    }
+
+    MapShaper.convLngLatToSph(xx, yy, xbuf, ybuf, zbuf);
+    simplify(kk, xbuf, ybuf, zbuf);
+  });
+};
+
 // Apply a simplification function to each path in an array, return simplified path.
 //
-MapShaper.simplifyPaths = function(paths, method, bounds) {
+MapShaper.simplifyPaths_old = function(paths, method, bounds) {
   var decimalDegrees = probablyDecimalDegreeBounds(bounds);
   var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method),
       data;
@@ -9052,7 +9101,7 @@ MapShaper.simplifiers = {
   dp: DouglasPeucker.calcArcData
 };
 
-MapShaper.simplifyPathsSph = function(arcs, simplify) {
+MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
   var bufSize = 0,
       xbuf, ybuf, zbuf;
 
@@ -9141,23 +9190,18 @@ function Editor() {
   }
 
   this.addData = function(data, opts) {
-    var arcData = new ArcDataset(data.arcs),
-        filteredArcs = new FilteredPathCollection(arcData),
-        bounds = arcData.getBounds(),
-        vertexData;
+    var arcData = data.arcs;
 
-    if (!map) {
-      init(bounds);
-    }
-
-    vertexData = MapShaper.simplifyPaths(data.arcs, importOpts.simplifyMethod, bounds.toArray());
-
+    MapShaper.simplifyPaths(arcData, importOpts.simplifyMethod);
     if (importOpts.preserveShapes) {
-      MapShaper.protectRingsFromCollapse(vertexData, data.retainedPointCounts);
+      error("Oops -- forgot to re-enable shape preservation");
+      // MapShaper.protectRingsFromCollapse(vertexData, data.retainedPointCounts);
     }
 
-    filteredArcs.setThresholds(vertexData);
+    var filteredArcs = new FilteredPathCollection(arcData);
     var group = new ArcLayerGroup(filteredArcs);
+
+    if (!map) init(arcData.getBounds());
     map.addLayerGroup(group);
 
     slider.on('change', function(e) {

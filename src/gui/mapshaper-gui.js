@@ -79,23 +79,18 @@ function Editor() {
   }
 
   this.addData = function(data, opts) {
-    var arcData = new ArcDataset(data.arcs),
-        filteredArcs = new FilteredPathCollection(arcData),
-        bounds = arcData.getBounds(),
-        vertexData;
+    var arcData = data.arcs;
 
-    if (!map) {
-      init(bounds);
-    }
-
-    vertexData = MapShaper.simplifyPaths(data.arcs, importOpts.simplifyMethod, bounds.toArray());
-
+    MapShaper.simplifyPaths(arcData, importOpts.simplifyMethod);
     if (importOpts.preserveShapes) {
-      MapShaper.protectRingsFromCollapse(vertexData, data.retainedPointCounts);
+      error("Oops -- forgot to re-enable shape preservation");
+      // MapShaper.protectRingsFromCollapse(vertexData, data.retainedPointCounts);
     }
 
-    filteredArcs.setThresholds(vertexData);
+    var filteredArcs = new FilteredPathCollection(arcData);
     var group = new ArcLayerGroup(filteredArcs);
+
+    if (!map) init(arcData.getBounds());
     map.addLayerGroup(group);
 
     slider.on('change', function(e) {

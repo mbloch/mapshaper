@@ -11,10 +11,9 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
 
   // Calculate Visvalingam simplification data for an arc
   // Receives arrays of x- and y- coordinates, optional array of z- coords
-  // Returns an array of simplification thresholds, one per arc vertex.
   //
-  var calcArcData = function(xx, yy, zz, len) {
-    var arcLen = len || xx.length,
+  return function(dest, xx, yy, zz) {
+    var arcLen = dest.length,
         useZ = !!zz,
         threshold,
         ax, ay, bx, by, cx, cy;
@@ -28,8 +27,6 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     // Initialize Visvalingam "effective area" values and references to
     //   prev/next points for each point in arc.
     //
-    var values = new Float64Array(arcLen);
-
     for (var i=1; i<arcLen-1; i++) {
       ax = xx[i-1];
       ay = yy[i-1];
@@ -44,7 +41,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
         threshold = metric3D(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
       }
 
-      values[i] = threshold;
+      dest[i] = threshold;
       nextArr[i] = i + 1;
       prevArr[i] = i - 1;
     }
@@ -52,7 +49,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     nextArr[0] = 1;
 
     // Initialize the heap with thresholds; don't add first and last point
-    heap.addValues(values, 1, arcLen-2);
+    heap.addValues(dest, 1, arcLen-2);
 
     // Calculate removal thresholds for each internal point in the arc
     //
@@ -100,13 +97,10 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     // convert area metric to a linear equivalent
     //
     for (var j=1; j<arcLen-1; j++) {
-      values[j] = Math.sqrt(values[j]) * (scale || 1);
+      dest[j] = Math.sqrt(dest[j]) * (scale || 1);
     }
-    values[0] = values[arcLen-1] = Infinity; // arc endpoints
-    return values;
+    dest[0] = dest[arcLen-1] = Infinity; // arc endpoints
   };
-
-  return calcArcData;
 };
 
 

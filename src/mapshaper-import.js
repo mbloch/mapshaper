@@ -23,7 +23,7 @@ MapShaper.importContent = function(content, fileType) {
   }
 
   // Calculate data to use for shape preservation
-  var numArcs = data.arcs.length;
+  var numArcs = data.arcs.size();
   var retainedPointCounts = new Uint8Array(numArcs);
   Utils.forEach(data.layers, function(layer) {
     if (layer.geometry_type == 'polygon') {

@@ -1,6 +1,5 @@
 /* @requires mapshaper-visvalingam, mapshaper-dp */
 
-
 MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
   var n;
   for (var i=0, len=thresholds.length; i<len; i++) {
@@ -11,16 +10,14 @@ MapShaper.protectRingsFromCollapse = function(thresholds, lockCounts) {
   }
 };
 
-// TODO: Operate on an ArcDataset object instead of arrays of coordinates.
-//
 // Protect polar coordinates and coordinates at the prime meridian from
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
 //
-MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
-  // -179.99999999999994 rounding error
-  // found in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
-  // 180.00000000000003 found in ne/ne_50m_admin_0_countries.shp
+MapShaper.protectWorldEdges = function(paths) {
+  // Need to handle coords with rounding errors:
+  // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
+  // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
   var err = 1e-12,
       l = -180 + err,
       r = 180 - err,
@@ -28,16 +25,13 @@ MapShaper.protectWorldEdges = function(arcs, thresholds, bounds) {
       b = -90 + err;
 
   // return if content doesn't reach edges
+  var bounds = paths.getBounds().toArray();
   if (containsBounds([l, b, r, t], bounds) === true) return;
 
-  Utils.forEach(arcs, function(arc, arcId) {
-    var zz = thresholds[arcId],
-        xx = arcs[arcId][0],
-        yy = arcs[arcId][1],
-        maxZ, x, y;
-
+  paths.forEach3(function(xx, yy, zz) {
+    var maxZ = 0,
+    x, y;
     for (var i=0, n=zz.length; i<n; i++) {
-      maxZ = 0;
       x = xx[i];
       y = yy[i];
       if (x > r || x < l || y < b || y > t) {
@@ -64,7 +58,6 @@ MapShaper.findMaxThreshold = function(zz) {
   }
   return maxZ;
 };
-
 
 MapShaper.replaceValue = function(arr, value, replacement) {
   var count = 0, k;
@@ -100,7 +93,6 @@ MapShaper.lockMaxThresholds = function(zz, numberToLock) {
   } while (lockedCount < numberToLock && replacements > 0);
 };
 
-
 // Convert arrays of lng and lat coords (xsrc, ysrc) into
 // x, y, z coords on the surface of a sphere with radius 6378137
 // (the radius of spherical Earth datum in meters)
@@ -118,9 +110,47 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
   }
 };
 
+MapShaper.simplifyPaths = function(paths, method) {
+  T.start();
+  var bounds = paths.getBounds().toArray();
+  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method);
+  if (decimalDegrees) {
+    MapShaper.simplifyPaths3D(paths, simplifyPath);
+    MapShaper.protectWorldEdges(paths);
+  } else {
+    MapShaper.simplifyPaths2D(paths, simplifyPath);
+  }
+  T.stop("Calculate simplification data");
+};
+
+MapShaper.simplifyPaths2D = function(paths, simplify) {
+  paths.forEach3(function(xx, yy, kk, i) {
+    simplify(kk, xx, yy);
+  });
+};
+
+MapShaper.simplifyPaths3D = function(paths, simplify) {
+  var bufSize = 0,
+      xbuf, ybuf, zbuf;
+
+  paths.forEach3(function(xx, yy, kk, i) {
+    var arcLen = xx.length;
+    if (bufSize < arcLen) {
+      bufSize = Math.round(arcLen * 1.2);
+      xbuf = new Float64Array(bufSize);
+      ybuf = new Float64Array(bufSize);
+      zbuf = new Float64Array(bufSize);
+    }
+
+    MapShaper.convLngLatToSph(xx, yy, xbuf, ybuf, zbuf);
+    simplify(kk, xbuf, ybuf, zbuf);
+  });
+};
+
 // Apply a simplification function to each path in an array, return simplified path.
 //
-MapShaper.simplifyPaths = function(paths, method, bounds) {
+MapShaper.simplifyPaths_old = function(paths, method, bounds) {
   var decimalDegrees = probablyDecimalDegreeBounds(bounds);
   var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method),
       data;
@@ -150,7 +180,7 @@ MapShaper.simplifiers = {
   dp: DouglasPeucker.calcArcData
 };
 
-MapShaper.simplifyPathsSph = function(arcs, simplify) {
+MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
   var bufSize = 0,
       xbuf, ybuf, zbuf;
 

@@ -30,7 +30,7 @@ function ArcDataset() {
 
   function initLegacyArcs(coords) {
     var data = convertLegacyArcs(coords);
-    initPathData(data.nn, data.xx, data.yy);
+    initPathData(data.nn, data.xx, data.yy, data.zz);
   }
 
   function initPathData(nn, xx, yy, zz) {
@@ -91,10 +91,12 @@ function ArcDataset() {
     // Generate arrays of arc lengths and starting idxs
     var nn = new Uint32Array(numArcs),
         pointCount = 0,
+        useZ = false,
         arc, arcLen;
     for (var i=0; i<numArcs; i++) {
       arc = coords[i];
       arcLen = arc && arc[0].length || 0;
+      useZ = useZ || arc.length > 2;
       nn[i] = arcLen;
       pointCount += arcLen;
       if (arcLen === 0) error("#convertArcArrays() Empty arc:", arc);
@@ -103,21 +105,24 @@ function ArcDataset() {
     // Copy x, y coordinates into long arrays
     var xx = new Float64Array(pointCount),
         yy = new Float64Array(pointCount),
+        zz = useZ ? new Float64Array(pointCount) : null,
         offs = 0;
     Utils.forEach(coords, function(arc, arcId) {
       var xarr = arc[0],
           yarr = arc[1],
+          zarr = arc[2] || null,
           n = nn[arcId];
       for (var j=0; j<n; j++) {
         xx[offs + j] = xarr[j];
         yy[offs + j] = yarr[j];
+        if (useZ) zz[offs + j] = zarr[j];
       }
       offs += n;
     });
-
     return {
       xx: xx,
       yy: yy,
+      zz: zz,
       nn: nn
     };
   }
@@ -162,6 +167,15 @@ function ArcDataset() {
     return Utils.map(Utils.range(this.size()), function(i) {
       return _self.getArc(i).toArray();
     });
+  };
+
+  this.toArray2 = function() {
+    var arr = [];
+    this.forEach3(function(xx, yy, zz) {
+      var path = [Utils.toArray(xx), Utils.toArray(yy), Utils.toArray(zz)];
+      arr.push(path);
+    });
+    return arr;
   };
 
   // Snap coordinates to a grid of @quanta locations on both axes
@@ -225,6 +239,18 @@ function ArcDataset() {
   this.forEach2 = function(cb) {
     for (var arcId=0, n=this.size(); arcId<n; arcId++) {
       cb(_ii[arcId], _nn[arcId], _xx, _yy, _zz, arcId);
+    }
+  };
+
+  this.forEach3 = function(cb) {
+    var start, end, xx, yy, zz;
+    for (var arcId=0, n=this.size(); arcId<n; arcId++) {
+      start = _ii[arcId];
+      end = start + _nn[arcId];
+      xx = _xx.subarray(start, end);
+      yy = _yy.subarray(start, end);
+      zz = _zz.subarray(start, end);
+      cb(xx, yy, zz, arcId);
     }
   };
 

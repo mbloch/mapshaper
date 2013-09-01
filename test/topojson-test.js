@@ -98,13 +98,10 @@ function topoJSONRoundTrip(fname) {
     topojson_resolution: 10000
   };
   var data = api.importFromFile(fixPath(fname));
-  var arcs = new api.ArcDataset(data.arcs);
-
-  var files = api.exportContent(data.layers, arcs, exportOpts);
+  var files = api.exportContent(data.layers, data.arcs, exportOpts);
 
   var data2 = api.importContent(files[0].content, 'json');
-  var arcs2 = new api.ArcDataset(data2.arcs);
-  var files2 = api.exportContent(data2.layers, arcs2, exportOpts);
+  var files2 = api.exportContent(data2.layers, data2.arcs, exportOpts);
 
   assert.deepEqual(files, files2);
 }
