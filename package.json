@@ -1,8 +1,8 @@
 {
 	"name": "mapshaper",
 	"version": "0.1.5",
-	"description": "A tool for topologically aware Shapefile simplification.",
-	"keywords": ["shapefile","mapshaper"],
+	"description": "A tool for topologically aware shape simplification.",
+	"keywords": ["shapefile","topojson","geojson","cartography","simplification"],
 	"author": "Matthew Bloch <masiyou@gmail.com>",
 	"contributors":[],
 	"license":"MPL-2.0",
