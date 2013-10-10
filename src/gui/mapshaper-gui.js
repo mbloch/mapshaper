@@ -8,7 +8,8 @@ mapshaper-map,
 mapshaper-maplayer,
 mapshaper-simplify,
 mapshaper-export,
-mapshaper-import
+mapshaper-import,
+mapshaper-segments
 */
 
 var dropper,
@@ -91,6 +92,24 @@ function Editor() {
     var group = new ArcLayerGroup(filteredArcs);
 
     map.addLayerGroup(group);
+
+    // Add layer for intersections
+    if (true) {
+      var collisions = new FilteredPathCollection(MapShaper.getIntersectionPaths(arcData), {
+          min_segment: 0,
+          min_path: 0
+        });
+      var collisionGroup = new ArcLayerGroup(collisions, {
+        strokeWidth: 2,
+        strokeColor: "#FFDB2C",
+        strokeAlpha: 1,
+        dotSize: 5,
+        dotColor: "#c22",
+        nodeColor: "#000",
+        nodeSize: 0
+      });
+      map.addLayerGroup(collisionGroup);
+    }
 
     slider.on('change', function(e) {
       filteredArcs.setRetainedPct(e.value);

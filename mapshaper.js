@@ -53,6 +53,7 @@ var Utils = {
   },
 
   mapFilter: function(obj, func, ctx) {
+    // if (!Utils.isArrayLike(obj)) return [];
     var arr = [],
         retn;
     for (var i=0, n = obj.length; i < n; i++) {
@@ -67,6 +68,22 @@ var Utils = {
     var retn = Utils.mapFilter(obj, func, ctx);
     if (retn.length !== obj.length) error("Utils.map() Sparse array");
     return retn;
+  },
+
+  // Convert an array-like object to an Array
+  toArray: function(obj) {
+    var arr;
+    if (!Utils.isArrayLike(obj)) error("Utils.toArray() requires an array-like object");
+    try {
+      arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
+    } catch(e) {
+      // support ie8
+      arr = [];
+      for (var i=0, n=obj.length; i<n; i++) {
+        arr[i] = obj[i];
+      }
+    }
+    return arr;
   },
 
   // Array like: has length property, is numerically indexed and mutable.
@@ -142,6 +159,12 @@ var Utils = {
       return index[arg] = func.call(ctx, arg);
     };
     return f;
+  },
+
+  bind: function(func, ctx) {
+    return function() {
+      return func.apply(ctx, Utils.toArray(arguments));
+    };
   },
 
   log: function(msg) {
@@ -222,33 +245,47 @@ var Utils = {
     return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
   },
 
-  extend: function(dest, src, noreplace) {
-    var replace = !noreplace;
-    dest = dest || {};
-    if (src) {
-      // Copy everything, including objects from prototypes...
-      // (Adding hasOwnProperty() will break some things in Opts)
-      for (var key in src) {
-        if (replace || dest[key] === void 0) {
-          dest[key] = src[key];
+  flatten: function(src) {
+    var obj = {};
+    for (var k in src) {
+      obj[k] = src[k];
+    }
+    return obj;
+  },
+
+  extend: function() {
+    var dest = arguments[0] || {},
+        src;
+    for (var i=1, n=arguments.length; i<n; i++) {
+      src = arguments[i];
+      if (src) {
+        for (var key in src) {
+          if (src.hasOwnProperty(key)) {
+            dest[key] = src[key];
+          }
         }
       }
     }
     return dest;
-  }
+  },
 };
 
 var Opts = {
   copyAllParams: Utils.extend,
 
   copyNewParams: function(dest, src) {
-    return Utils.extend(dest, src, true);
+    for (var k in src) {
+      if (k in dest == false && src.hasOwnProperty(k)) {
+        dest[k] = src[k];
+      }
+    }
   },
 
   // Copy src functions/params to targ prototype
-  // If there's a collision, retain targ param
+  // changed: overwrite existing properties
+  // TODO: replace calls to this with Utils.extend(dest.prototype, ...);
   extendPrototype : function(targ, src) {
-    Utils.extend(targ.prototype, src.prototype || src);
+    Utils.extend(targ.prototype, Utils.flatten(src.prototype || src));
     targ.prototype.constructor = targ;
   },
 
@@ -262,13 +299,12 @@ var Opts = {
    * Call a parent method (when it has been overriden by a same-named function in Child):
    *    this.__super__.<method_name>.call(this, [args...]);
    */
-  inherit : function(targ, src) {
+  inherit: function(targ, src) {
     var f = function() {
       // replaced: // if (this.constructor === targ) {
       if (this.__super__ == f) {
         // add __super__ of parent to front of lookup chain
         // so parent class constructor can call its parent using this.__super__
-        //
         this.__super__ = src.prototype.__super__;
         // call parent constructor function. this.__super__ now points to parent-of-parent
         src.apply(this, arguments);
@@ -285,8 +321,24 @@ var Opts = {
     targ.prototype.__super__ = f;
   },
 
-  namespaceExists : function(name) {
-    var node = window;
+  // @constructor Optional constructor function for child class
+  //
+  subclass: function(parent) {
+    var child = function() {
+      this.__super__.apply(this, Utils.toArray(arguments));
+    };
+    Opts.inherit(child, parent);
+    var args = arguments;
+    if (args.length > 1) {
+      Utils.forEach(Utils.range(args.length, 1), function(i) {
+        Utils.extend(child.prototype, args[i]);
+      });
+    }
+    return child;
+  },
+
+  namespaceExists: function(name) {
+    var node = Opts.global();
     var parts = name.split('.');
     var exists = Utils.reduce(parts, function(val, part) {
       if (val !== false) {
@@ -306,7 +358,7 @@ var Opts = {
     return (function() {return this})(); // default to window in DOM or global in node
   },
 
-  getNamespace : function(name, root) {
+  getNamespace: function(name, root) {
     var node = root || this.global();
     var parts = name.split('.');
 
@@ -488,31 +540,33 @@ Utils.genericSort = function(arr, asc) {
 // Sorts an array of numbers in-place
 //
 Utils.quicksort = function(arr, asc) {
-  function partition(a, lo, hi) {
-    var i = lo,
-        j = hi,
-        pivot, tmp;
-    while (i < hi) {
-      pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arryays
-      while (i <= j) {
-        while (a[i] < pivot) i++;
-        while (a[j] > pivot) j--;
-        if (i <= j) {
-          tmp = a[i];
-          a[i] = a[j];
-          a[j] = tmp;
-          i++;
-          j--;
-        }
-      }
-      if (lo < j) partition(a, lo, j);
-      lo = i;
-      j = hi;
-    }
-  }
-  partition(arr, 0, arr.length-1);
+
+  Utils.quicksortPartition(arr, 0, arr.length-1);
   if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
   return arr;
+};
+
+Utils.quicksortPartition = function (a, lo, hi) {
+  var i = lo,
+      j = hi,
+      pivot, tmp;
+  while (i < hi) {
+    pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arryays
+    while (i <= j) {
+      while (a[i] < pivot) i++;
+      while (a[j] > pivot) j--;
+      if (i <= j) {
+        tmp = a[i];
+        a[i] = a[j];
+        a[j] = tmp;
+        i++;
+        j--;
+      }
+    }
+    if (lo < j) Utils.quicksortPartition(a, lo, j);
+    lo = i;
+    j = hi;
+  }
 };
 
 /**
@@ -561,22 +615,6 @@ Utils.every = function(arr, test) {
   }, true);
 };
 
-// Convert an array-like object to an Array
-Utils.toArray = function(obj) {
-  var arr;
-  if (!Utils.isArrayLike(obj)) error("Utils.toArray() requires an array-like object");
-  try {
-    arr = Array.prototype.slice.call(obj, 0); // breaks in ie8
-  } catch(e) {
-    // support ie8
-    arr = [];
-    for (var i=0, n=obj.length; i<n; i++) {
-      arr[i] = obj[i];
-    }
-  }
-  return arr;
-};
-
 Utils.find = function(arr, test, ctx) {
   var matches = Utils.filter(arr, test, ctx);
   return matches.length === 0 ? null : matches[0];
@@ -601,6 +639,11 @@ Utils.range = function(len, start, inc) {
     v += i;
   }
   return arr;
+};
+
+Utils.range2 = function(start, end, inc) {
+  var len = Math.floor((end - start) / inc) + 1;
+  return Utils.range(len, start, inc);
 };
 
 Utils.repeat = function(times, func) {
@@ -876,7 +919,7 @@ Utils.formatNumber = function(num, decimals, nullStr, showPos) {
 function Handler(type, target, callback, listener, priority) {
   this.type = type;
   this.callback = callback;
-  this.context = listener || null;
+  this.listener = listener || null;
   this.priority = priority || 0;
   this.target = target;
 }
@@ -888,7 +931,7 @@ Handler.prototype.trigger = function(evt) {
   } else if (evt.target != this.target || evt.type != this.type) {
     error("[Handler] event target/type have changed.");
   }
-  this.callback.call(this.context, evt);
+  this.callback.call(this.listener, evt);
 }
 
 function EventData(type, target, data) {
@@ -927,15 +970,14 @@ function EventDispatcher() {}
  * @param {string} type Name of the event type, e.g. "change".
  * @param {object=} obj Optional data to send with the event.
  */
-EventDispatcher.prototype.dispatchEvent =
-EventDispatcher.prototype.trigger = function(type, obj, ctx) {
+EventDispatcher.prototype.dispatchEvent = function(type, obj, listener) {
   var evt;
   // TODO: check for bugs if handlers are removed elsewhere while firing
   var handlers = this._handlers;
   if (handlers) {
     for (var i = 0, len = handlers.length; i < len; i++) {
       var handler = handlers[i];
-      if (handler.type == type && (!ctx || handler.context == ctx)) {
+      if (handler.type == type && (!listener || listener == handler.listener)) {
         if (!evt) {
           evt = new EventData(type, this, obj);
         }
@@ -945,24 +987,8 @@ EventDispatcher.prototype.trigger = function(type, obj, ctx) {
         handler.trigger(evt);
       }
     }
-
-    if (type == 'ready') {
-      this.removeEventListeners(type, null, ctx);
-    }
   }
 };
-
-
-/**
- * Test whether a type of event has been fired.
- * @param {string} type Event type.
- * @return {boolean} True if event was fired else false.
- */
-/*
-EventDispatcher.prototype.eventHasFired = function(type) {
-  return !!this._firedTypes && this._firedTypes[type] == true;
-};
-*/
 
 /**
  * Register an event handler for a named event.
@@ -978,22 +1004,14 @@ EventDispatcher.prototype.on = function(type, callback, context, priority) {
   priority = priority || 0;
   var handler = new Handler(type, this, callback, context, priority);
 
-  // experimental: add event
+  // experimental: add_eventtype event
   if (this.countEventListeners(type) === 0) this.dispatchEvent("add_" + type);
-
-  // Special case: 'ready' handler fires immediately if target is already ready.
-  // (Applicable to Waiter class objects)
-  if (type == 'ready' && this._ready) {
-    // trace("Warning: Waiter.waitFor() no longer uses this; this:", this, "handler ctx:", context);
-    handler.trigger();
-    return this;
-  }
 
   // Insert the new event in the array of handlers according to its priority.
   //
   var handlers = this._handlers || (this._handlers = []);
   var i = handlers.length;
-  while(--i >= 0 && handlers[i].priority > handler.priority) {}
+  while(--i >= 0 && handlers[i].priority < handler.priority) {}
   handlers.splice(i+1, 0, handler);
   return this;
 };
@@ -1018,7 +1036,6 @@ EventDispatcher.prototype.countEventListeners = function(type) {
  * @return {number} Returns number of handlers removed (expect 0 or 1).
  */
 EventDispatcher.prototype.removeEventListener = function(type, callback, context) {
-  // using "this" if called w/o context (see addEventListener())
   context = context || this;
   var count = this.removeEventListeners(type, callback, context);
   if (type && this.countEventListeners(type) === 0) this.dispatchEvent("remove_" + type);
@@ -1032,6 +1049,7 @@ EventDispatcher.prototype.removeEventListener = function(type, callback, context
  * @param {*=} context Execution context of the event handler to match.
  * @return {number} Number of handlers removed.
  */
+// TODO: remove this: too convoluted. Need other way to remove listeners by type
 EventDispatcher.prototype.removeEventListeners =
   function(type, callback, context) {
   var handlers = this._handlers;
@@ -1041,7 +1059,7 @@ EventDispatcher.prototype.removeEventListeners =
     var evt = handlers[i];
     if ((!type || type == evt.type) &&
       (!callback || callback == evt.callback) &&
-      (!context || context == evt.context)) {
+      (!context || context == evt.listener)) {
       count += 1;
     }
     else {
@@ -1051,115 +1069,6 @@ EventDispatcher.prototype.removeEventListeners =
   this._handlers = newArr;
   return count;
 };
-
-
-/**
- * Support for handling asynchronous dependencies.
- * Waiter becomes READY and fires 'ready' after any/all dependents are READY.
- * Instantiate directly or use as a base class.
- * Public interface:
- *   waitFor()
- *   startWaiting()
- *   isReady()
- *
- */
-function Waiter() {}
-Opts.inherit(Waiter, EventDispatcher);
-
-/**
- * Test whether all dependencies are complete, enter ready state if yes.
- */
-Waiter.prototype._testReady = function() {
-  if (!this._ready && !this._waitCount && this._started) {
-    this._ready = true;
-
-    // Child classes can implement handleReadyState()
-    this.handleReadyState && this.handleReadyState();
-    this.dispatchEvent('ready');
-  }
-};
-
-
-/* */
-Waiter.prototype.callWhenReady = function(func, args, ctx, priority) {
-  this.addEventListener('ready', function(evt) {func.apply(ctx, args);}, ctx, priority);
-};
-
-
-/**
- * Event handler, fired when dependent is ready.
- * @param {BoundEvent} evt Event object.
- */
-Waiter.prototype._handleDependentReady = function(evt) {
-  if (! this._waitCount) {
-    trace('[Waiter.onDependendReady()]',
-    'Counting error. Event: ' + Utils.toString(evt) + '; ready? ' + this._ready);
-    return;
-  }
-  this._waitCount -= 1;
-  this._testReady();
-};
-
-
-/**
- * Checks if Waiter-enabled object is READY.
- * @return {boolean} True if READY event has fired, else false.
- */
-Waiter.prototype.isReady = function() {
-  return this._ready == true;
-};
-
-/**
- * Wait for a dependent object to become READY.
- * @param {*} obj Class object that implements EventDispatcher.
- * @param {string=} type Event to wait for (optional -- default is 'ready').
- */
-Waiter.prototype.waitFor = function(dep, type) {
-  if (!dep) {
-    trace("[Waiter.waitFor()] missing object; this:", this);
-    return this;
-  }
-  else if (!dep.addEventListener) {
-    trace("[Waiter.waitFor()] Need an EventDispatcher; this:", this);
-    return this;
-  }
-
-  if (!type) {
-    type = 'ready';
-  }
-
-  // Case: .waitFor() called after this.isReady() becomes true
-  if (this._ready) {
-    // If object is already READY, ignore....
-    if (type == 'ready' && dep.isReady()) {
-      return;
-    }
-    trace("[Waiter.waitFor()] already READY; resetting to isReady() == false;");
-    this._ready = false;
-    // return this;
-    // TODO: prepare test cases to check for logic errors.
-  }
-
-  if (type != 'ready'  || dep.isReady() == false) {
-    this._waitCount = this._waitCount ? this._waitCount + 1 : 1;
-    dep.addEventListener(type, this._handleDependentReady, this);
-  }
-
-  return this;
-};
-
-/**
- * Start waiting for any dependents to become ready.
- * Should be called after all waitFor() calls.
- */
-Waiter.prototype.startWaiting = function(callback, ctx) {
-  // KLUDGE: callback may be an BoundEvent if startWaiting is used as an event handler.
-  typeof(callback) == 'function' && this.addEventListener('ready', callback, ctx);
-  this._started = true;
-  this._testReady();
-  return this; // for chaining
-};
-
 
 
 
@@ -1191,6 +1100,24 @@ if (inNode) {
     }
     return obj;
   };
+
+
+  Node.walkSync = function(dir, results) {
+    results = results || [];
+    var list = Node.fs.readdirSync(dir);
+    Utils.forEach(list, function(file) {
+      var path = dir + "/" + file;
+      var stat = Node.statSync(path);
+      if (stat && stat.isDirectory()) {
+        Node.walkSync(path, results);
+      }
+      else {
+        results.push(path);
+      }
+    });
+    return results;
+  };
+
 
   Node.toBuffer = function(src) {
     var buf;
@@ -1481,47 +1408,12 @@ if (inNode) {
         opts._.push(arg);
       }
     });
+    opts.argv = opts._;
     return opts;
   };
 }
 
 
-/*
-Node.loadUrl = function(url) {
-  return new NodeUrlLoader(url);
-};
-
-function NodeUrlLoader(url) {
-  var self = this,
-    body = "",
-    output,
-    opts = Utils.parseUrl(url);
-  delete opts.protocol;
-  opts.port = 80;
-
-  require('http').get(opts, function(resp) {
-    if (resp.headers['content-encoding'] == 'gzip') {
-      var gzip = zlib.createGunzip();
-      resp.pipe(gzip);
-      output = gzip;
-    } else {
-      output = resp;
-    }
-    output.on('data', function(chunk) {
-      body += chunk;
-    });
-    output.on('end', function() {
-      self.data = body;
-      self.startWaiting();
-    });
-
-  }).on("error", function(e){
-    trace("[NodeUrlLoader] error: " + e.message);
-  });
-}
-
-Opts.inherit(NodeUrlLoader, Waiter);
-*/
 
 
 
@@ -1561,7 +1453,7 @@ var pageEvents = (new function() {
   function __findNodeListener(listeners, type, func, ctx) {
     for (var i=0, len = listeners.length; i < len; i++) {
       var evt = listeners[i];
-      if (evt.type == type && evt.callback == func && evt.context == ctx) {
+      if (evt.type == type && evt.callback == func && evt.listener == ctx) {
         return i;
       }
     }
@@ -1861,12 +1753,19 @@ var Browser = {
    *  number of different values.
    */
   cacheBustUrl: function(url, minutes) {
+    return Browser.extendUrl(url, "c=" + Browser.getCacheBustString(minutes));
+  },
+
+  getCacheBustString: function(minutes) {
     minutes = minutes || 1; // default: 60 seconds
-    var minPerWeek = 60*24*7;
-    var utcMinutes = (+new Date) / 60000;
-    var code = Math.round((utcMinutes % minPerWeek) / minutes);
-    url = Browser.extendUrl(url, "c=" + code);
-    return url;
+    var k = 1;
+    if (minutes < 1) {
+      k = 60;
+      minutes *= k;
+    }
+    var minPerWeek = 60*24*7 * k,
+        utcMinutes = (+new Date) / 60000;
+    return String(Math.round((utcMinutes % minPerWeek) / minutes));
   },
 
   extendUrl: function(url, obj) {
@@ -2144,20 +2043,25 @@ function El(ref) {
   if (ref instanceof El) {
     return ref;
   }
-  else if (!(this instanceof El)) {
+  else if (this instanceof El === false) {
     return new El(ref);
   }
 
-  // use Elements selector on classes or complex selectors
-  //
-  if (Utils.isString(ref) && !tagOrIdSelectorRE.test(ref)) {
-    //var node = Elements.__super__(ref)[0];
-    var node = Elements.__select(ref)[0];
-    if (!node) error("Unmatched selector:", ref);
-    ref = node;
+  var node;
+  if (Utils.isString(ref)) {
+    if (El.isHTML(ref)) {
+      var parent = El('div').html(ref).node();
+      node = parent.childNodes.length  == 1 ? parent.childNodes[0] : parent;
+    } else if (tagOrIdSelectorRE.test(ref)) {
+      node = Browser.getElement(ref) || Browser.createElement(ref); // TODO: detect type of argument
+    } else {
+      node = Elements.__select(ref)[0];
+    }
+  } else if (ref.tagName) {
+    node = ref;
   }
-
-  this.el = Browser.getElement(ref) || Browser.createElement(ref); // TODO: detect type of argument
+  if (!node) error("Unmatched element selector:", ref);
+  this.el = node;
 }
 
 Opts.inherit(El, EventDispatcher); //
@@ -2167,6 +2071,10 @@ El.removeAll = function(sel) {
   Utils.forEach(arr, function(el) {
     El(el).remove();
   });
+};
+
+El.isHTML = function(str) {
+  return str && str[0] == '<'; // TODO: improve
 };
 
 Utils.extend(El.prototype, {
@@ -2699,7 +2607,9 @@ Bounds.prototype.containsPoint = function(x, y) {
 };
 
 // intended to speed up slightly bubble symbol detection; could use intersects() instead
-Bounds.prototype.containsBufferedPoint = function( x, y, buf ) {
+// TODO: fix false positive where circle is just outside a corner of the box
+Bounds.prototype.containsBufferedPoint =
+Bounds.prototype.containsCircle = function(x, y, buf) {
   if ( x + buf > this.xmin && x - buf < this.xmax ) {
     if ( y - buf < this.ymax && y + buf > this.ymin ) {
       return true;
@@ -2856,6 +2766,105 @@ Bounds.prototype.mergeBounds = function(bb) {
     if (b < this.ymin) this.ymin = b;
     if (c > this.xmax) this.xmax = c;
     if (d > this.ymax) this.ymax = d;
+  }
+  return this;
+};
+
+
+
+
+function Tasks() {
+  if (this instanceof Tasks === false) {
+    return new Tasks();
+  }
+  var _tasks = [];
+
+  // Could call this on a timeout
+  this.cancel = function() {
+    error("Tasks#cancel() stub");
+  }
+
+  this.add = function(task) {
+    _tasks.push(task);
+    return this;
+  };
+
+  // @allDone Called when all tasks complete, with return values of task callbacks:
+  //    allDone(val1, ...)
+  // @error TODO: call optional error handler function if one or more tasks fail to complete
+  //
+  this.run = function(allDone, error) {
+    var tasks = _tasks,
+        values = [],
+        needed = tasks.length;
+    _tasks = []; // reset
+    Utils.forEach(tasks, function(task, i) {
+      function taskDone(data) {
+        values[i] = data;
+        if (--needed === 0) {
+          allDone.apply(null, values);
+        }
+      }
+      task(taskDone);
+    });
+    return this;
+  };
+}
+
+
+
+
+// Support for handling asynchronous dependencies.
+// Waiter#isReady() == true and Waiter fires 'ready' after any/all dependents fire "ready"
+// Instantiate directly or use as a base class.
+// Public interface:
+//   waitFor()
+//   startWaiting()
+//   isReady()
+var Waiter = Opts.subclass(EventDispatcher);
+
+Waiter.prototype.waitFor = function(obj) {
+  if (!obj) error("#waitFor() missing arg; this:", this);
+  if (!this.__tasks) this.__tasks = new Tasks();
+  this.__tasks.add(function(callback) {
+    obj.on('ready', callback);
+  });
+  return this;
+};
+
+Waiter.prototype.isReady = function() {
+  return !!this._ready;
+}
+
+Waiter.prototype.addEventListener =
+Waiter.prototype.on = function(type, callback, ctx, priority) {
+  if (type === 'ready' && this.isReady()) {
+    callback.call(ctx || this, new EventData(type));
+  } else {
+    EventDispatcher.prototype.on.call(this, type, callback, ctx, priority);
+  }
+  return this;
+};
+
+Waiter.prototype.dispatchEvent = function(type, obj, ctx) {
+  EventDispatcher.prototype.dispatchEvent.call(this, type, obj, ctx);
+  if (type == 'ready') {
+    this.removeEventListeners(type, null);
+  }
+};
+
+Waiter.prototype.startWaiting = function() {
+  var self = this;
+  function ready() {
+    self._ready = true;
+    if (self.handleReadyState) self.handleReadyState();
+    self.dispatchEvent('ready');
+  };
+
+  if (!this.__tasks) {
+    ready();
+  } else {
+    this.__tasks.run(ready);
   }
   return this;
 };
@@ -3486,6 +3495,7 @@ function BinArray(buf, le) {
     error("BinArray constructor takes an integer, ArrayBuffer or Buffer argument");
   }
   this._buffer = buf;
+  this._bytes = new Uint8Array(buf);
   this._view = new DataView(buf);
   this._idx = 0;
   this._le = le !== false;
@@ -4080,6 +4090,46 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
   return dx * dx + dy * dy + dz * dz;
 }
 
+function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  // Test collision (c.f. Sedgewick, _Algorithms in C_)
+  // (Tried some other functions that might fail due to rounding errors)
+  var hit = ccw(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y) *
+      ccw(s1p1x, s1p1y, s1p2x, s1p2y, s2p2x, s2p2y) <= 0 &&
+      ccw(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) *
+      ccw(s2p1x, s2p1y, s2p2x, s2p2y, s1p2x, s1p2y) <= 0;
+
+  if (hit) {
+    // Find x, y intersection
+    var s1dx = s1p2x - s1p1x;
+    var s1dy = s1p2y - s1p1y;
+    var s2dx = s2p2x - s2p1x;
+    var s2dy = s2p2y - s2p1y;
+
+    var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / (-s2dx * s1dy + s1dx * s2dy);
+
+    // Collision detected
+    var x = s1p1x + m * s1dx;
+    var y = s1p1y + m * s1dy;
+    return [x, y];
+  }
+
+  return false;
+}
+
+function ccw(x0, y0, x1, y1, x2, y2) {
+  var dx1 = x1 - x0,
+      dy1 = y1 - y0,
+      dx2 = x2 - x0,
+      dy2 = y2 - y0;
+  if (dx1 * dy2 > dy1 * dx2) return 1;
+  if (dx1 * dy2 < dy1 * dx2) return -1;
+  if (dx1 * dx2 < 0 || dy1 * dy2 < 0) return -1;
+  if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) return 1;
+  return 0;
+}
+
+
+
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
@@ -4387,6 +4437,15 @@ function ArcDataset() {
       nn: nn
     };
   }
+
+  // Give access to raw data arrays...
+  this.getVertexData = function() {
+    return {
+      xx: _xx,
+      yy: _yy,
+      zz: _zz
+    };
+  };
 
   this.getCopy = function() {
     return new ArcDataset(new Int32Array(_nn), new Float64Array(_xx),
@@ -4811,6 +4870,7 @@ function ArcIter(xx, yy, zz) {
     _i = i + _inc;
     this.x = _xx[i];
     this.y = _yy[i];
+    this.i = i; // experimental
     return true;
   }
 
@@ -4829,6 +4889,7 @@ function ArcIter(xx, yy, zz) {
     _i = j;
     this.x = _xx[i];
     this.y = _yy[i];
+    this.i = i; // experimental
     return true;
   }
 }
@@ -7606,6 +7667,325 @@ MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
 
 
 
+// Return ids of an array of numbers in sorted order (ascending)
+// @arr Array of numbers to sort (not modified)
+//
+// Uses bucket sort for one pass, then quicksort and insertion sort.
+// (Faster than just quicksort for large inputs with moderate clustering.)
+//
+MapShaper.bucketSortIds = function(arr) {
+  var size = arr.length,
+      buckets = Math.ceil(size *  0.3),
+      arrIds = new Uint32Array(size),
+      counts = new Uint32Array(buckets);
+
+  var count, i,
+      start, end,
+      val, bucketId, offset,
+      min, max;
+
+  var getMinBucketVal = function(i, min, max, buckets) {
+    return min + i / (buckets-1) * (max - min);
+  };
+
+  var getBucketId = function(val, min, max, buckets) {
+    var id = Math.floor((buckets - 1) * (val - min) / (max - min));
+    // if (id < 0 || id >= buckets) error("out-of-range bucket id; id:", id, "buckets:", buckets, "val:", val, "min:", min, "max:", max);
+    return id;
+  };
+
+  // Find min, max data value
+  min = arr[0];
+  max = min;
+  for (i=1; i<size; i++) {
+    val = arr[i];
+    if (val < min) min = val;
+    else if (val > max) max = val;
+  }
+
+  // Assign each item to a bucket
+  for (i=0; i<size; i++) {
+    bucketId = getBucketId(arr[i], min, max, buckets);
+    counts[bucketId]++;
+  }
+
+  // Calc insertion offset of first item in each bucket
+  offset = 0;
+  for (i=0; i<buckets; i++) {
+    count = counts[i];
+    counts[i] = offset;
+    offset += count;
+  }
+
+  // SortIds array ids into buckets
+  for (i=0; i<size; i++) {
+    bucketId = getBucketId(arr[i], min, max, buckets);
+    offset = counts[bucketId]++;
+    arrIds[offset] = i;
+  }
+
+  // Sort numbers in each bucket
+  start = 0;
+  for (i=0; i<buckets; i++) {
+    end = counts[i];
+    count = end - start;
+    if (count > 15) {
+      MapShaper.quicksortIds(arr, arrIds, start, end - 1);
+    } else if (count > 1) {
+      MapShaper.insertionSortIds(arr, arrIds, start, end - 1);
+    }
+    start = end;
+  }
+  return arrIds;
+};
+
+MapShaper.quicksortIds = function (a, ids, lo, hi) {
+  var i = lo,
+      j = hi,
+      pivot = a[ids[lo + hi >> 1]],
+      id, spread;
+  while (i <= j) {
+    while (a[ids[i]] < pivot) i++;
+    while (a[ids[j]] > pivot) j--;
+    if (i <= j) {
+      id = ids[i];
+      ids[i] = ids[j];
+      ids[j] = id;
+      i++;
+      j--;
+    }
+  }
+  spread = j - lo;
+  if (spread > 15) MapShaper.quicksortIds(a, ids, lo, j);
+  else if (spread > 0) MapShaper.insertionSortIds(a, ids, lo, j);
+  spread = hi - i;
+  if (spread > 15) MapShaper.quicksortIds(a, ids, i, hi);
+  else if (spread > 0) MapShaper.insertionSortIds(a, ids, i, hi);
+};
+
+MapShaper.insertionSortIds = function(arr, ids, start, end) {
+  var id;
+  for (var j = start + 1; j <= end; j++) {
+    id = ids[j];
+    for (var i = j - 1; i >= start && arr[id] < arr[ids[i]]; i--) {
+      ids[i+1] = ids[i];
+    }
+    ids[i+1] = id;
+  }
+};
+
+
+
+
+MapShaper.getIntersectionPaths = function(arcs) {
+  var intersections = MapShaper.findSegmentIntersections(arcs),
+      vectors = [];
+  Utils.forEach(intersections, function(obj) {
+    var s1p1 = obj.segments[0][0],
+        s1p2 = obj.segments[0][1],
+        s2p1 = obj.segments[1][0],
+        s2p2 = obj.segments[1][1],
+        pint = obj.intersection;
+    vectors.push([[s1p1.x, s1p2.x], [s1p1.y, s1p2.y]]);
+    vectors.push([[s2p1.x, pint.x, s2p2.x], [s2p1.y, pint.y, s2p2.y]]);
+  });
+  return new ArcDataset(vectors);
+};
+
+MapShaper.findSegmentIntersections = function(arcs) {
+  T.start();
+  var i, j;
+  var segCount = arcs.getFilteredPointCount() - arcs.size();
+  var xminIds = new Uint32Array(segCount),
+      xmaxIds = new Uint32Array(segCount),
+      xxmin = new Float64Array(segCount);
+
+  // Initialize collection of segments
+  j = 0;
+  arcs.forEach(function(path) {
+    path.hasNext();
+    var bi = path.i,
+        bx = path.x,
+        ai, ax;
+    while (path.hasNext()) {
+      ai = bi;
+      ax = bx;
+      bi = path.i;
+      bx = path.x;
+      if (ax < bx) {
+        xminIds[j] = ai;
+        xmaxIds[j] = bi;
+        xxmin[j] = ax;
+      } else {
+        xminIds[j] = bi;
+        xmaxIds[j] = ai;
+        xxmin[j] = bx;
+      }
+      j++;
+    }
+  });
+
+  if (j != segCount) {
+    error("Segment counting problem.");
+  }
+
+  // Get array of segment ids, sorted by xmin coordinate
+  var segIds = MapShaper.bucketSortIds(xxmin),
+      segId;
+  xxmin = null; // done with this
+
+  // Optimization: horizontal binning
+  // Bin segments into horizontal stripes + a bin for segs that span stripes
+  // Two phases can identify all intersections:
+  // 1. Find intersections inside each bin
+  // 2. Find intersections between all segments and segments in spanning bin
+
+  // TODO: Consider alternative:
+  // Segments that span stripes are assigned to each intersecting stripe
+  // (+) no residual group, fewer total comparisons
+  // (-) intersections between two spanning segments will be detected multiple times
+
+  // Init horizontal stripes
+  //
+  var stripeCount = 1000, // TODO: adapt to data; 1000 good for large datasets.
+      stripeSizes = new Uint32Array(stripeCount + 1),
+      stripeOffsets = new Uint32Array(stripeCount + 1), offset,
+      stripeIds = new Uint16Array(segCount), stripeId;
+
+  var raw = arcs.getVertexData(),
+      xx = raw.xx,
+      yy = raw.yy,
+      bounds = arcs.getBounds(),
+      ymin = bounds.ymin,
+      ymax = bounds.ymax,
+      yrange = ymax - ymin;
+
+  var s1, s2, y1, y2;
+  for (i=0; i<segCount; i++) {
+    segId = segIds[i];
+    y1 = yy[xminIds[segId]];
+    y2 = yy[xmaxIds[segId]];
+    s1 = Math.floor((stripeCount-1) * (y1 - ymin) / yrange);
+    s2 = Math.floor((stripeCount-1) * (y2 - ymin) / yrange);
+    stripeId = s1 == s2 ? s1 : stripeCount;
+    stripeSizes[stripeId]++;
+    stripeIds[i] = stripeId;
+  }
+
+  var stripes = Utils.map(stripeSizes, function(stripeSize) {
+    return new Uint32Array(stripeSize);
+  });
+
+  // Assign sorted seg ids to each stripe
+  for (i=0; i<segCount; i++) {
+    stripeId = stripeIds[i];
+    offset = stripeOffsets[stripeId]++;
+    stripes[stripeId][offset] = segIds[i];
+  }
+
+  // Check for intersections within each stripe.
+  //T.start();
+  var intersections = [],
+      arr;
+  for (i = 0; i<stripeCount; i++) {
+    arr = MapShaper.intersectSegments(stripes[i], stripes[i], xminIds, xmaxIds, xx, yy);
+    if (arr.length > 0) intersections = intersections.concat(arr);
+  }
+  //T.stop('In-stripe intersections')
+
+  // Check for intersections between all segments and segments that overlap two or more stripes.
+  //T.start();
+  arr = MapShaper.intersectSegments(segIds, stripes[stripeCount], xminIds, xmaxIds, xx, yy);
+  if (arr.length > 0) intersections = intersections.concat(arr);
+
+  //T.stop('Remaining intersections')
+  T.stop("Find intersections -- " + segCount + " segments, " + intersections.length + " intersections");
+  return intersections;
+};
+
+// Find intersections between segments
+// Segments are pre-sorted by xmin, to allow efficient exclusion of segments with
+// non-overlapping x extents.
+//
+// @ids1, @ids2: arrays of segment ids, sorted by xmin (ascending)
+// @xminIds, @xmaxIds: coordinate ids, indexed by segment id
+// @xx, @yy: arrays of x- and y-coordinates
+//
+MapShaper.intersectSegments = function(ids1, ids2, xminIds, xmaxIds, xx, yy) {
+  var s1, s2, s1p1, s1p2, s2p1, s2p2,
+      s1p1x, s1p2x, s2p1x, s2p2x,
+      s1p1y, s1p2y, s2p1y, s2p2y,
+      hit;
+  var size1 = ids1.length,
+      size2 = ids2.length;
+  var ptr2 = 0,
+      j;
+  var intersections = [];
+
+  // compare only
+  for (var i=0; i<size1; i++) {
+    s1 = ids1[i];
+    s1p1 = xminIds[s1];
+    s1p2 = xmaxIds[s1];
+    s1p1x = xx[s1p1];
+    s1p2x = xx[s1p2];
+    s1p1y = yy[s1p1];
+    s1p2y = yy[s1p2];
+
+    j = ptr2;
+
+    // Test intersection between s1 and segments with overlapping x extents
+    while (j < size2) {
+      s2 = ids2[j++];
+      s2p1 = xminIds[s2];
+      s2p1x = xx[s2p1];
+
+      if (s2p1x < s1p1x) { // x extent of segment 2 is less than segment 1: advance seg. 2 pointer
+        ptr2 = j;
+        continue;
+      }
+
+      if (s1 == s2) continue; // comparing segment to self; skip
+
+      if (s1p2x <= s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
+
+      s2p1y = yy[s2p1];
+      s2p2 = xmaxIds[s2];
+      s2p2x = xx[s2p2];
+      s2p2y = yy[s2p2];
+
+      // skip segments with non-overlapping y ranges
+      if (s1p1y >= s2p1y) {
+        if (s1p1y >= s2p2y && s1p2y >= s2p1y && s1p2y >= s2p2y) continue;
+      } else {
+        if (s1p1y <= s2p2y && s1p2y <= s2p1y && s1p2y <= s2p2y) continue;
+      }
+
+      // skip segments that share an endpoint
+      if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
+          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y)
+        continue;
+
+      // edge case: prevent double-hit if segments have same xmin
+      if (s1p1x == s2p1x && s1p1y < s2p1y) continue;
+
+      // test two candidate segments for intersection
+      hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
+          s2p1x, s2p1y, s2p2x, s2p2y);
+      if (hit) {
+        intersections.push({
+          intersection: {x: hit[0], y: hit[1]},
+          segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}], [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
+        });
+      }
+    }
+  }
+  return intersections;
+};
+
+
+
+
 
 MapShaper.getDefaultFileExtension = function(fileType) {
   var ext = "";
@@ -7620,6 +8000,8 @@ MapShaper.getDefaultFileExtension = function(fileType) {
 // Return an array of objects with "filename" "filebase" "extension" and "content" attributes.
 //
 MapShaper.exportContent = function(layers, arcData, opts) {
+  // TODO: check for collisions
+
   var exporter = MapShaper.exporters[opts.output_format];
   if (!exporter) error("exportContent() Unknown export format:", opts.output_format);
   if (!opts.output_extension) opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
