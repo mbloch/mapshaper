@@ -3,11 +3,11 @@
 // Group of one ore more layers sharing the same set of arcs
 // @arcs a FilteredPathCollection object (mapshaper-gui-shapes.js)
 //
-function ArcLayerGroup(arcs) {
+function ArcLayerGroup(arcs, opts) {
   var _self = this;
   var _surface = new CanvasLayer();
 
-  var _arcLyr = new ShapeLayer(arcs, _surface),
+  var _arcLyr = new ShapeLayer(arcs, _surface, opts),
       _layers = [_arcLyr],
       _map;
 
@@ -40,7 +40,7 @@ function ArcLayerGroup(arcs) {
 
 // @shapes a FilteredPathCollection object
 //
-function ShapeLayer(shapes, surface) {
+function ShapeLayer(shapes, surface, opts) {
   var renderer = new ShapeRenderer();
   var _visible = true;
   var style = {
@@ -48,6 +48,8 @@ function ShapeLayer(shapes, surface) {
     strokeColor: "#335",
     strokeAlpha: 1
   };
+
+  Utils.extend(style, opts);
 
   this.visible = function(b) {
     return arguments.length === 0 ? _visible : _visible = !b, this;
@@ -58,6 +60,11 @@ function ShapeLayer(shapes, surface) {
     //T.start();
     shapes.reset().filterPaths(ext.getBounds()).transform(ext.getTransform());
     var info = renderer.drawShapes(shapes, style, surface.getContext());
+
+    if (style.dotSize) {
+      shapes.reset().filterPaths(ext.getBounds()).transform(ext.getTransform());
+      renderer.drawPoints(shapes, style, surface.getContext());
+    }
     // TODO: find a way to enable circles at an appropriate zoom
     // if (ext.scale() > 0) renderer.drawPoints(src.shapes().filterPoints(ext.getBounds()).transform(ext.getTransform()), surface.getContext());
     // T.stop("- paths: " + info.paths + " segs: " + info.segments);
