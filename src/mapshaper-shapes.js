@@ -127,6 +127,15 @@ function ArcDataset() {
     };
   }
 
+  // Give access to raw data arrays...
+  this.getVertexData = function() {
+    return {
+      xx: _xx,
+      yy: _yy,
+      zz: _zz
+    };
+  };
+
   this.getCopy = function() {
     return new ArcDataset(new Int32Array(_nn), new Float64Array(_xx),
         new Float64Array(_yy), new Float64Array(_zz));
@@ -550,6 +559,7 @@ function ArcIter(xx, yy, zz) {
     _i = i + _inc;
     this.x = _xx[i];
     this.y = _yy[i];
+    this.i = i; // experimental
     return true;
   }
 
@@ -568,6 +578,7 @@ function ArcIter(xx, yy, zz) {
     _i = j;
     this.x = _xx[i];
     this.y = _yy[i];
+    this.i = i; // experimental
     return true;
   }
 }

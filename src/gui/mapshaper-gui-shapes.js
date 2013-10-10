@@ -4,7 +4,12 @@
 // that can't be displayed at the current map scale. For drawing paths on-screen.
 // TODO: Look into generalizing from Arc paths to SimpleShape and MultiShape
 //
-function FilteredPathCollection(unfilteredArcs) {
+function FilteredPathCollection(unfilteredArcs, opts) {
+  var defaults = {
+        min_path: 0.9,   // min pixel size of a drawn path
+        min_segment: 0.6 // min pixel size of a drawn segment
+      };
+
   var _filterBounds,
       _transform,
       _sortedThresholds,
@@ -13,6 +18,7 @@ function FilteredPathCollection(unfilteredArcs) {
       arcData,
       getPathWrapper;
 
+  opts = Utils.extend(defaults, opts);
   init();
 
   function init() {
@@ -55,17 +61,12 @@ function FilteredPathCollection(unfilteredArcs) {
     _filterBounds = null;
     _transform = null;
     arcData = unfilteredArcs;
-    getPathWrapper = function() {
-      return function(s) {
-        return s;
-      };
-    };
+    getPathWrapper = getDrawablePathsIter;
     return this;
   };
 
   this.filterPaths = function(b) {
     _filterBounds = b;
-    getPathWrapper = getDrawablePathsIter;
     return this;
   };
 
@@ -125,7 +126,8 @@ function FilteredPathCollection(unfilteredArcs) {
   function getDrawablePathsIter() {
     var transform = _transform || error("#getDrawablePathsIter() Missing a Transform object; remember to call .transform()");
     var wrapped,
-        _firstPoint;
+        _firstPoint,
+        _minSeg = opts.min_segment;
 
     var wrapper = {
       x: 0,
@@ -135,7 +137,6 @@ function FilteredPathCollection(unfilteredArcs) {
         var path = wrapped,
             isFirst = _firstPoint,
             x, y, prevX, prevY,
-            minSeg = 0.6,
             i = 0;
         if (!isFirst) {
           prevX = this.x;
@@ -145,7 +146,7 @@ function FilteredPathCollection(unfilteredArcs) {
           i++;
           x = path.x * mx + bx;
           y = path.y * my + by;
-          if (isFirst || Math.abs(x - prevX) > minSeg || Math.abs(y - prevY) > minSeg) {
+          if (isFirst || Math.abs(x - prevX) > _minSeg || Math.abs(y - prevY) > _minSeg) {
             break;
           }
         }
@@ -170,13 +171,13 @@ function FilteredPathCollection(unfilteredArcs) {
     var src = arcData;
 
     var allIn = true,
-        filterOnSize = _transform && _filterBounds,
+        filterOnSize = !!(_transform && _filterBounds),
         arc = new Arc(src),
         wrap = getPathWrapper(),
         minPathSize, geoBounds, geoBBox;
 
     if (filterOnSize) {
-      minPathSize = 0.9 / _transform.mx;
+      minPathSize = opts.min_path / _transform.mx;
       geoBounds = _filterBounds.clone().transform(_transform.invert());
       geoBBox = geoBounds.toArray();
       allIn = geoBounds.contains(src.getBounds());

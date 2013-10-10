@@ -26,6 +26,46 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
   return dx * dx + dy * dy + dz * dz;
 }
 
+function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  // Test collision (c.f. Sedgewick, _Algorithms in C_)
+  // (Tried some other functions that might fail due to rounding errors)
+  var hit = ccw(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y) *
+      ccw(s1p1x, s1p1y, s1p2x, s1p2y, s2p2x, s2p2y) <= 0 &&
+      ccw(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) *
+      ccw(s2p1x, s2p1y, s2p2x, s2p2y, s1p2x, s1p2y) <= 0;
+
+  if (hit) {
+    // Find x, y intersection
+    var s1dx = s1p2x - s1p1x;
+    var s1dy = s1p2y - s1p1y;
+    var s2dx = s2p2x - s2p1x;
+    var s2dy = s2p2y - s2p1y;
+
+    var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / (-s2dx * s1dy + s1dx * s2dy);
+
+    // Collision detected
+    var x = s1p1x + m * s1dx;
+    var y = s1p1y + m * s1dy;
+    return [x, y];
+  }
+
+  return false;
+}
+
+function ccw(x0, y0, x1, y1, x2, y2) {
+  var dx1 = x1 - x0,
+      dy1 = y1 - y0,
+      dx2 = x2 - x0,
+      dy2 = y2 - y0;
+  if (dx1 * dy2 > dy1 * dx2) return 1;
+  if (dx1 * dy2 < dy1 * dx2) return -1;
+  if (dx1 * dx2 < 0 || dy1 * dy2 < 0) return -1;
+  if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) return 1;
+  return 0;
+}
+
+
+
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
