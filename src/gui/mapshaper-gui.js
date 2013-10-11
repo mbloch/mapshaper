@@ -97,19 +97,15 @@ function Editor() {
 
     // Add layer for intersections
     if (importOpts.findIntersections) {
-      var initialIntersections = MapShaper.getIntersectionPaths(arcData);
+      var initialIntersections = MapShaper.getIntersectionPoints(arcData);
       var collisions = new FilteredPathCollection(initialIntersections, {
           min_segment: 0,
           min_path: 0
         });
       var collisionGroup = new ArcLayerGroup(collisions, {
-        strokeWidth: 2,
-        strokeColor: "#FFDB2C",
-        strokeAlpha: 1,
+        //strokeColor: "#FFDB2C",
         dotSize: 5,
-        dotColor: "#F24400",
-        nodeColor: "#000",
-        nodeSize: 0
+        dotColor: "#F24400"
       });
       map.addLayerGroup(collisionGroup);
 
@@ -120,7 +116,7 @@ function Editor() {
       slider.on('simplify-end', function() {
         collisionGroup.visible(true);
         var arcs = slider.value() == 1 ? initialIntersections :
-            MapShaper.getIntersectionPaths(arcData);
+            MapShaper.getIntersectionPoints(arcData);
         collisions.update(arcs);
         collisionGroup.refresh();
       });

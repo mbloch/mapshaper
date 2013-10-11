@@ -1,5 +1,14 @@
 /* @requires mapshaper-shapes, mapshaper-sorting */
 
+MapShaper.getIntersectionPoints = function(arcs) {
+  // Kludge: make paths of length 1 to display intersection points
+  var intersections = MapShaper.findSegmentIntersections(arcs),
+      vectors = Utils.map(intersections, function(obj) {
+        return [[obj.intersection.x], [obj.intersection.y]];
+      });
+  return new ArcDataset(vectors);
+};
+
 MapShaper.getIntersectionPaths = function(arcs) {
   var intersections = MapShaper.findSegmentIntersections(arcs),
       vectors = [];

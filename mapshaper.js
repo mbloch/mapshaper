@@ -7673,9 +7673,9 @@ MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
 // Uses bucket sort for one pass, then quicksort and insertion sort.
 // (Faster than just quicksort for large inputs with moderate clustering.)
 //
-MapShaper.bucketSortIds = function(arr) {
+MapShaper.bucketSortIds = function(arr, buckets) {
+  buckets = Utils.isInteger(buckets) && buckets > 0 || Math.ceil(arr.length *  0.3);
   var size = arr.length,
-      buckets = Math.ceil(size *  0.3),
       arrIds = new Uint32Array(size),
       counts = new Uint32Array(buckets);
 
@@ -7717,14 +7717,14 @@ MapShaper.bucketSortIds = function(arr) {
     offset += count;
   }
 
-  // SortIds array ids into buckets
+  // Sort array ids into buckets
   for (i=0; i<size; i++) {
     bucketId = getBucketId(arr[i], min, max, buckets);
     offset = counts[bucketId]++;
     arrIds[offset] = i;
   }
 
-  // Sort numbers in each bucket
+  // Sort each bucket
   start = 0;
   for (i=0; i<buckets; i++) {
     end = counts[i];
@@ -7774,8 +7774,27 @@ MapShaper.insertionSortIds = function(arr, ids, start, end) {
   }
 };
 
+// Slow alternative to bucketSortIds() for testing
+//
+MapShaper.sortIds = function(arr) {
+  var ids = Utils.range(arr.length);
+  ids.sort(function(i, j) {
+    return arr[i] - arr[j];
+  });
+  return ids;
+};
 
 
+
+
+MapShaper.getIntersectionPoints = function(arcs) {
+  // Kludge: make paths of length 1 to display intersection points
+  var intersections = MapShaper.findSegmentIntersections(arcs),
+      vectors = Utils.map(intersections, function(obj) {
+        return [[obj.intersection.x], [obj.intersection.y]];
+      });
+  return new ArcDataset(vectors);
+};
 
 MapShaper.getIntersectionPaths = function(arcs) {
   var intersections = MapShaper.findSegmentIntersections(arcs),
