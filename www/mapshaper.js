@@ -4992,6 +4992,10 @@ function Slider(ref, opts) {
         })
         .on('dragstart', function(e) {
           startX = position();
+          _self.dispatchEvent('start');
+        })
+        .on('dragend', function(e) {
+          _self.dispatchEvent('end');
         });
       updateHandlePos();
     }
@@ -5183,6 +5187,11 @@ var SimplifyControl = function() {
     text.value(pct);
     onchange(pct);
   });
+  slider.on('start', function(e) {
+    control.dispatchEvent('simplify-start');
+  }).on('end', function(e) {
+    control.dispatchEvent('simplify-end');
+  });
 
   var text = new ClickText("#g-simplify-control .g-clicktext");
   text.bounds(0, 1);
@@ -5207,7 +5216,9 @@ var SimplifyControl = function() {
   text.on('change', function(e) {
     var pct = e.value;
     slider.pct(toSliderPct(pct));
+    control.dispatchEvent('simplify-start');
     onchange(pct);
+    control.dispatchEvent('simplify-end');
   });
 
   function toSliderPct(p) {
@@ -8485,6 +8496,11 @@ function FilteredPathCollection(unfilteredArcs, opts) {
     filteredSegLen = avgXY[0] + avgXY[1]; // crude approximation of avg. segment length
   }
 
+  this.update = function(arcs) {
+    unfilteredArcs = arcs;
+    init();
+  };
+
   this.setRetainedPct = function(pct) {
     var z = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
     this.setRetainedInterval(z);
@@ -8647,7 +8663,14 @@ function ArcLayerGroup(arcs, opts) {
 
   var _visible = true;
   this.visible = function(b) {
-    return arguments.length === 0 ? _visible : _visible = !b, this;
+    if (arguments.length === 0 ) return _visible;
+
+    if (b) {
+      _visible = true;
+    } else {
+      _visible = false;
+      _surface.clear();
+    }
   };
 
   this.refresh = function() {
@@ -9566,7 +9589,8 @@ function Editor() {
 
   var importOpts = {
     simplifyMethod: "mod",
-    preserveShapes: false
+    preserveShapes: false,
+    findIntersections: false
   };
 
   function init(contentBounds) {
@@ -9575,6 +9599,7 @@ function Editor() {
     El("body").addClass('editing');
 
     importOpts.preserveShapes = !!El("#g-import-retain-opt").node().checked;
+    importOpts.findIntersections = !!El("#g-import-find-intersections-opt").node().checked;
     importOpts.simplifyMethod = El('#g-simplification-menu input[name=method]:checked').attr('value');
 
     var mapOpts = {
@@ -9600,8 +9625,9 @@ function Editor() {
     map.addLayerGroup(group);
 
     // Add layer for intersections
-    if (true) {
-      var collisions = new FilteredPathCollection(MapShaper.getIntersectionPaths(arcData), {
+    if (importOpts.findIntersections) {
+      var initialIntersections = MapShaper.getIntersectionPaths(arcData);
+      var collisions = new FilteredPathCollection(initialIntersections, {
           min_segment: 0,
           min_path: 0
         });
@@ -9610,11 +9636,23 @@ function Editor() {
         strokeColor: "#FFDB2C",
         strokeAlpha: 1,
         dotSize: 5,
-        dotColor: "#c22",
+        dotColor: "#F24400",
         nodeColor: "#000",
         nodeSize: 0
       });
       map.addLayerGroup(collisionGroup);
+
+      slider.on('simplify-start', function() {
+        collisionGroup.visible(false);
+      });
+
+      slider.on('simplify-end', function() {
+        collisionGroup.visible(true);
+        var arcs = slider.value() == 1 ? initialIntersections :
+            MapShaper.getIntersectionPaths(arcData);
+        collisions.update(arcs);
+        collisionGroup.refresh();
+      });
     }
 
     slider.on('change', function(e) {

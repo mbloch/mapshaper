@@ -60,7 +60,8 @@ function Editor() {
 
   var importOpts = {
     simplifyMethod: "mod",
-    preserveShapes: false
+    preserveShapes: false,
+    findIntersections: false
   };
 
   function init(contentBounds) {
@@ -69,6 +70,7 @@ function Editor() {
     El("body").addClass('editing');
 
     importOpts.preserveShapes = !!El("#g-import-retain-opt").node().checked;
+    importOpts.findIntersections = !!El("#g-import-find-intersections-opt").node().checked;
     importOpts.simplifyMethod = El('#g-simplification-menu input[name=method]:checked').attr('value');
 
     var mapOpts = {
@@ -94,8 +96,9 @@ function Editor() {
     map.addLayerGroup(group);
 
     // Add layer for intersections
-    if (true) {
-      var collisions = new FilteredPathCollection(MapShaper.getIntersectionPaths(arcData), {
+    if (importOpts.findIntersections) {
+      var initialIntersections = MapShaper.getIntersectionPaths(arcData);
+      var collisions = new FilteredPathCollection(initialIntersections, {
           min_segment: 0,
           min_path: 0
         });
@@ -104,11 +107,23 @@ function Editor() {
         strokeColor: "#FFDB2C",
         strokeAlpha: 1,
         dotSize: 5,
-        dotColor: "#c22",
+        dotColor: "#F24400",
         nodeColor: "#000",
         nodeSize: 0
       });
       map.addLayerGroup(collisionGroup);
+
+      slider.on('simplify-start', function() {
+        collisionGroup.visible(false);
+      });
+
+      slider.on('simplify-end', function() {
+        collisionGroup.visible(true);
+        var arcs = slider.value() == 1 ? initialIntersections :
+            MapShaper.getIntersectionPaths(arcData);
+        collisions.update(arcs);
+        collisionGroup.refresh();
+      });
     }
 
     slider.on('change', function(e) {

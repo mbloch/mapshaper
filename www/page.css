@@ -107,14 +107,18 @@ html, body {
 	border-radius: 9px;
 }
 
-#mshp-intro-screen h3, h4 {
+#mshp-intro-screen h3 {
 	padding: 0;
-	margin: 0 0 0.33em 0;
+	margin: 0;
+}
+
+#mshp-intro-screen h4 {
+	margin: 0.4em 0 0 0;
 }
 
 #mshp-intro-screen p {
 	white-space: pre-line;
-	margin: 0 0 0.5em 0;
+	margin: 0.45em 0 0 0;
 }
 
 #g-simplification-menu {

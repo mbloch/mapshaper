@@ -13,7 +13,14 @@ function ArcLayerGroup(arcs, opts) {
 
   var _visible = true;
   this.visible = function(b) {
-    return arguments.length === 0 ? _visible : _visible = !b, this;
+    if (arguments.length === 0 ) return _visible;
+
+    if (b) {
+      _visible = true;
+    } else {
+      _visible = false;
+      _surface.clear();
+    }
   };
 
   this.refresh = function() {

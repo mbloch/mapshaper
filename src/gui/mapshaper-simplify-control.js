@@ -11,6 +11,11 @@ var SimplifyControl = function() {
     text.value(pct);
     onchange(pct);
   });
+  slider.on('start', function(e) {
+    control.dispatchEvent('simplify-start');
+  }).on('end', function(e) {
+    control.dispatchEvent('simplify-end');
+  });
 
   var text = new ClickText("#g-simplify-control .g-clicktext");
   text.bounds(0, 1);
@@ -35,7 +40,9 @@ var SimplifyControl = function() {
   text.on('change', function(e) {
     var pct = e.value;
     slider.pct(toSliderPct(pct));
+    control.dispatchEvent('simplify-start');
     onchange(pct);
+    control.dispatchEvent('simplify-end');
   });
 
   function toSliderPct(p) {

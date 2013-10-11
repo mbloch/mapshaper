@@ -45,6 +45,11 @@ function FilteredPathCollection(unfilteredArcs, opts) {
     filteredSegLen = avgXY[0] + avgXY[1]; // crude approximation of avg. segment length
   }
 
+  this.update = function(arcs) {
+    unfilteredArcs = arcs;
+    init();
+  };
+
   this.setRetainedPct = function(pct) {
     var z = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
     this.setRetainedInterval(z);

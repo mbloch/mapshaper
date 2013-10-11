@@ -61,6 +61,10 @@ function Slider(ref, opts) {
         })
         .on('dragstart', function(e) {
           startX = position();
+          _self.dispatchEvent('start');
+        })
+        .on('dragend', function(e) {
+          _self.dispatchEvent('end');
         });
       updateHandlePos();
     }
