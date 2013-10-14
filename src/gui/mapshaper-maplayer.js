@@ -38,7 +38,6 @@ function ArcLayerGroup(arcs, opts) {
     if (!_self.visible()) return;
     var ext = _map.getExtent();
     _surface.prepare(ext.width(), ext.height());
-
     Utils.forEach(_layers, function(lyr) {
       lyr.draw(ext); // visibility handled by layer
     });

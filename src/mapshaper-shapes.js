@@ -132,7 +132,10 @@ function ArcDataset() {
     return {
       xx: _xx,
       yy: _yy,
-      zz: _zz
+      zz: _zz,
+      bb: _bb,
+      nn: _nn,
+      ii: _ii
     };
   };
 
@@ -234,6 +237,24 @@ function ArcDataset() {
     }
     initBounds();
   };
+
+  this.forEachSegment = function(cb) {
+    var xx = _xx, yy = _yy, zz = _zz, zlim = _zlimit;
+    var filtered = zlim > 0, i, j, k=0, id1, id2,
+        size = this.size();
+    for (i=0; i<size; i++) {
+      for (j=0, n=_nn[i]; j<n; j++, k++) {
+        if (!filtered || zz[k] >= zlim) { // check: > or >=
+          id1 = id2;
+          id2 = k;
+          if (j > 0) {
+            cb(id1, id2, xx, yy);
+          }
+        }
+      }
+    }
+  };
+
 
   // Return an ArcIter object for each path in the dataset
   //

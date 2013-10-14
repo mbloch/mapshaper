@@ -2,7 +2,6 @@
 mapshaper-geojson
 mapshaper-topojson
 mapshaper-shapefile
-mapshaper-segments
 */
 
 

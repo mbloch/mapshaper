@@ -4443,7 +4443,10 @@ function ArcDataset() {
     return {
       xx: _xx,
       yy: _yy,
-      zz: _zz
+      zz: _zz,
+      bb: _bb,
+      nn: _nn,
+      ii: _ii
     };
   };
 
@@ -4545,6 +4548,24 @@ function ArcDataset() {
     }
     initBounds();
   };
+
+  this.forEachSegment = function(cb) {
+    var xx = _xx, yy = _yy, zz = _zz, zlim = _zlimit;
+    var filtered = zlim > 0, i, j, k=0, id1, id2,
+        size = this.size();
+    for (i=0; i<size; i++) {
+      for (j=0, n=_nn[i]; j<n; j++, k++) {
+        if (!filtered || zz[k] >= zlim) { // check: > or >=
+          id1 = id2;
+          id2 = k;
+          if (j > 0) {
+            cb(id1, id2, xx, yy);
+          }
+        }
+      }
+    }
+  };
+
 
   // Return an ArcIter object for each path in the dataset
   //
@@ -7194,344 +7215,6 @@ Opts.inherit(ImportControl, EventDispatcher);
 
 
 
-// Return ids of an array of numbers in sorted order (ascending)
-// @arr Array of numbers to sort (not modified)
-//
-// Uses bucket sort for one pass, then quicksort and insertion sort.
-// (Faster than just quicksort for large inputs with moderate clustering.)
-//
-MapShaper.bucketSortIds = function(arr, buckets) {
-  buckets = Utils.isInteger(buckets) && buckets > 0 || Math.ceil(arr.length *  0.3);
-  var size = arr.length,
-      arrIds = new Uint32Array(size),
-      counts = new Uint32Array(buckets);
-
-  var count, i,
-      start, end,
-      val, bucketId, offset,
-      min, max;
-
-  var getMinBucketVal = function(i, min, max, buckets) {
-    return min + i / (buckets-1) * (max - min);
-  };
-
-  var getBucketId = function(val, min, max, buckets) {
-    var id = Math.floor((buckets - 1) * (val - min) / (max - min));
-    // if (id < 0 || id >= buckets) error("out-of-range bucket id; id:", id, "buckets:", buckets, "val:", val, "min:", min, "max:", max);
-    return id;
-  };
-
-  // Find min, max data value
-  min = arr[0];
-  max = min;
-  for (i=1; i<size; i++) {
-    val = arr[i];
-    if (val < min) min = val;
-    else if (val > max) max = val;
-  }
-
-  // Assign each item to a bucket
-  for (i=0; i<size; i++) {
-    bucketId = getBucketId(arr[i], min, max, buckets);
-    counts[bucketId]++;
-  }
-
-  // Calc insertion offset of first item in each bucket
-  offset = 0;
-  for (i=0; i<buckets; i++) {
-    count = counts[i];
-    counts[i] = offset;
-    offset += count;
-  }
-
-  // Sort array ids into buckets
-  for (i=0; i<size; i++) {
-    bucketId = getBucketId(arr[i], min, max, buckets);
-    offset = counts[bucketId]++;
-    arrIds[offset] = i;
-  }
-
-  // Sort each bucket
-  start = 0;
-  for (i=0; i<buckets; i++) {
-    end = counts[i];
-    count = end - start;
-    if (count > 15) {
-      MapShaper.quicksortIds(arr, arrIds, start, end - 1);
-    } else if (count > 1) {
-      MapShaper.insertionSortIds(arr, arrIds, start, end - 1);
-    }
-    start = end;
-  }
-  return arrIds;
-};
-
-MapShaper.quicksortIds = function (a, ids, lo, hi) {
-  var i = lo,
-      j = hi,
-      pivot = a[ids[lo + hi >> 1]],
-      id, spread;
-  while (i <= j) {
-    while (a[ids[i]] < pivot) i++;
-    while (a[ids[j]] > pivot) j--;
-    if (i <= j) {
-      id = ids[i];
-      ids[i] = ids[j];
-      ids[j] = id;
-      i++;
-      j--;
-    }
-  }
-  spread = j - lo;
-  if (spread > 15) MapShaper.quicksortIds(a, ids, lo, j);
-  else if (spread > 0) MapShaper.insertionSortIds(a, ids, lo, j);
-  spread = hi - i;
-  if (spread > 15) MapShaper.quicksortIds(a, ids, i, hi);
-  else if (spread > 0) MapShaper.insertionSortIds(a, ids, i, hi);
-};
-
-MapShaper.insertionSortIds = function(arr, ids, start, end) {
-  var id;
-  for (var j = start + 1; j <= end; j++) {
-    id = ids[j];
-    for (var i = j - 1; i >= start && arr[id] < arr[ids[i]]; i--) {
-      ids[i+1] = ids[i];
-    }
-    ids[i+1] = id;
-  }
-};
-
-// Slow alternative to bucketSortIds() for testing
-//
-MapShaper.sortIds = function(arr) {
-  var ids = Utils.range(arr.length);
-  ids.sort(function(i, j) {
-    return arr[i] - arr[j];
-  });
-  return ids;
-};
-
-
-
-
-MapShaper.getIntersectionPoints = function(arcs) {
-  // Kludge: make paths of length 1 to display intersection points
-  var intersections = MapShaper.findSegmentIntersections(arcs),
-      vectors = Utils.map(intersections, function(obj) {
-        return [[obj.intersection.x], [obj.intersection.y]];
-      });
-  return new ArcDataset(vectors);
-};
-
-MapShaper.getIntersectionPaths = function(arcs) {
-  var intersections = MapShaper.findSegmentIntersections(arcs),
-      vectors = [];
-  Utils.forEach(intersections, function(obj) {
-    var s1p1 = obj.segments[0][0],
-        s1p2 = obj.segments[0][1],
-        s2p1 = obj.segments[1][0],
-        s2p2 = obj.segments[1][1],
-        pint = obj.intersection;
-    vectors.push([[s1p1.x, s1p2.x], [s1p1.y, s1p2.y]]);
-    vectors.push([[s2p1.x, pint.x, s2p2.x], [s2p1.y, pint.y, s2p2.y]]);
-  });
-  return new ArcDataset(vectors);
-};
-
-MapShaper.findSegmentIntersections = function(arcs) {
-  T.start();
-  var i, j;
-  var segCount = arcs.getFilteredPointCount() - arcs.size();
-  var xminIds = new Uint32Array(segCount),
-      xmaxIds = new Uint32Array(segCount),
-      xxmin = new Float64Array(segCount);
-
-  // Initialize collection of segments
-  j = 0;
-  arcs.forEach(function(path) {
-    path.hasNext();
-    var bi = path.i,
-        bx = path.x,
-        ai, ax;
-    while (path.hasNext()) {
-      ai = bi;
-      ax = bx;
-      bi = path.i;
-      bx = path.x;
-      if (ax < bx) {
-        xminIds[j] = ai;
-        xmaxIds[j] = bi;
-        xxmin[j] = ax;
-      } else {
-        xminIds[j] = bi;
-        xmaxIds[j] = ai;
-        xxmin[j] = bx;
-      }
-      j++;
-    }
-  });
-
-  if (j != segCount) {
-    error("Segment counting problem.");
-  }
-
-  // Get array of segment ids, sorted by xmin coordinate
-  var segIds = MapShaper.bucketSortIds(xxmin),
-      segId;
-  xxmin = null; // done with this
-
-  // Optimization: horizontal binning
-  // Bin segments into horizontal stripes + a bin for segs that span stripes
-  // Two phases can identify all intersections:
-  // 1. Find intersections inside each bin
-  // 2. Find intersections between all segments and segments in spanning bin
-
-  // TODO: Consider alternative:
-  // Segments that span stripes are assigned to each intersecting stripe
-  // (+) no residual group, fewer total comparisons
-  // (-) intersections between two spanning segments will be detected multiple times
-
-  // Init horizontal stripes
-  //
-  var stripeCount = 1000, // TODO: adapt to data; 1000 good for large datasets.
-      stripeSizes = new Uint32Array(stripeCount + 1),
-      stripeOffsets = new Uint32Array(stripeCount + 1), offset,
-      stripeIds = new Uint16Array(segCount), stripeId;
-
-  var raw = arcs.getVertexData(),
-      xx = raw.xx,
-      yy = raw.yy,
-      bounds = arcs.getBounds(),
-      ymin = bounds.ymin,
-      ymax = bounds.ymax,
-      yrange = ymax - ymin;
-
-  var s1, s2, y1, y2;
-  for (i=0; i<segCount; i++) {
-    segId = segIds[i];
-    y1 = yy[xminIds[segId]];
-    y2 = yy[xmaxIds[segId]];
-    s1 = Math.floor((stripeCount-1) * (y1 - ymin) / yrange);
-    s2 = Math.floor((stripeCount-1) * (y2 - ymin) / yrange);
-    stripeId = s1 == s2 ? s1 : stripeCount;
-    stripeSizes[stripeId]++;
-    stripeIds[i] = stripeId;
-  }
-
-  var stripes = Utils.map(stripeSizes, function(stripeSize) {
-    return new Uint32Array(stripeSize);
-  });
-
-  // Assign sorted seg ids to each stripe
-  for (i=0; i<segCount; i++) {
-    stripeId = stripeIds[i];
-    offset = stripeOffsets[stripeId]++;
-    stripes[stripeId][offset] = segIds[i];
-  }
-
-  // Check for intersections within each stripe.
-  //T.start();
-  var intersections = [],
-      arr;
-  for (i = 0; i<stripeCount; i++) {
-    arr = MapShaper.intersectSegments(stripes[i], stripes[i], xminIds, xmaxIds, xx, yy);
-    if (arr.length > 0) intersections = intersections.concat(arr);
-  }
-  //T.stop('In-stripe intersections')
-
-  // Check for intersections between all segments and segments that overlap two or more stripes.
-  //T.start();
-  arr = MapShaper.intersectSegments(segIds, stripes[stripeCount], xminIds, xmaxIds, xx, yy);
-  if (arr.length > 0) intersections = intersections.concat(arr);
-
-  //T.stop('Remaining intersections')
-  T.stop("Find intersections -- " + segCount + " segments, " + intersections.length + " intersections");
-  return intersections;
-};
-
-// Find intersections between segments
-// Segments are pre-sorted by xmin, to allow efficient exclusion of segments with
-// non-overlapping x extents.
-//
-// @ids1, @ids2: arrays of segment ids, sorted by xmin (ascending)
-// @xminIds, @xmaxIds: coordinate ids, indexed by segment id
-// @xx, @yy: arrays of x- and y-coordinates
-//
-MapShaper.intersectSegments = function(ids1, ids2, xminIds, xmaxIds, xx, yy) {
-  var s1, s2, s1p1, s1p2, s2p1, s2p2,
-      s1p1x, s1p2x, s2p1x, s2p2x,
-      s1p1y, s1p2y, s2p1y, s2p2y,
-      hit;
-  var size1 = ids1.length,
-      size2 = ids2.length;
-  var ptr2 = 0,
-      j;
-  var intersections = [];
-
-  // compare only
-  for (var i=0; i<size1; i++) {
-    s1 = ids1[i];
-    s1p1 = xminIds[s1];
-    s1p2 = xmaxIds[s1];
-    s1p1x = xx[s1p1];
-    s1p2x = xx[s1p2];
-    s1p1y = yy[s1p1];
-    s1p2y = yy[s1p2];
-
-    j = ptr2;
-
-    // Test intersection between s1 and segments with overlapping x extents
-    while (j < size2) {
-      s2 = ids2[j++];
-      s2p1 = xminIds[s2];
-      s2p1x = xx[s2p1];
-
-      if (s2p1x < s1p1x) { // x extent of segment 2 is less than segment 1: advance seg. 2 pointer
-        ptr2 = j;
-        continue;
-      }
-
-      if (s1 == s2) continue; // comparing segment to self; skip
-
-      if (s1p2x <= s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
-
-      s2p1y = yy[s2p1];
-      s2p2 = xmaxIds[s2];
-      s2p2x = xx[s2p2];
-      s2p2y = yy[s2p2];
-
-      // skip segments with non-overlapping y ranges
-      if (s1p1y >= s2p1y) {
-        if (s1p1y >= s2p2y && s1p2y >= s2p1y && s1p2y >= s2p2y) continue;
-      } else {
-        if (s1p1y <= s2p2y && s1p2y <= s2p1y && s1p2y <= s2p2y) continue;
-      }
-
-      // skip segments that share an endpoint
-      if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
-          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y)
-        continue;
-
-      // edge case: prevent double-hit if segments have same xmin
-      if (s1p1x == s2p1x && s1p1y < s2p1y) continue;
-
-      // test two candidate segments for intersection
-      hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
-          s2p1x, s2p1y, s2p2x, s2p2y);
-      if (hit) {
-        intersections.push({
-          intersection: {x: hit[0], y: hit[1]},
-          segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}], [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
-        });
-      }
-    }
-  }
-  return intersections;
-};
-
-
-
-
 
 MapShaper.getDefaultFileExtension = function(fileType) {
   var ext = "";
@@ -8707,7 +8390,6 @@ function ArcLayerGroup(arcs, opts) {
     if (!_self.visible()) return;
     var ext = _map.getExtent();
     _surface.prepare(ext.width(), ext.height());
-
     Utils.forEach(_layers, function(lyr) {
       lyr.draw(ext); // visibility handled by layer
     });
@@ -9557,6 +9239,240 @@ MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
   });
   return data;
 };
+
+
+
+MapShaper.insertionSortIds = function(arr, ids, start, end) {
+  var id, id2;
+  for (var j = start + 2; j <= end; j+=2) {
+    id = ids[j];
+    id2 = ids[j+1];
+    for (var i = j - 2; i >= start && arr[id] < arr[ids[i]]; i-=2) {
+      ids[i+2] = ids[i];
+      ids[i+3] = ids[i+1];
+    }
+    ids[i+2] = id;
+    ids[i+3] = id2;
+  }
+};
+
+MapShaper.sortIdsFast = function(arr, ids) {
+  MapShaper.quicksortIds(arr, ids, 0, ids.length-2);
+};
+
+MapShaper.quicksortIds = function (a, ids, lo, hi) {
+  var i = lo,
+      j = hi,
+      pivot, tmp;
+  while (i < hi) {
+    pivot = a[ids[(lo + hi >> 2) << 1]]; // avoid n^2 performance on sorted arrays
+    while (i <= j) {
+      while (a[ids[i]] < pivot) i+=2;
+      while (a[ids[j]] > pivot) j-=2;
+      if (i <= j) {
+        tmp = ids[i];
+        ids[i] = ids[j];
+        ids[j] = tmp;
+        tmp = ids[i+1];
+        ids[i+1] = ids[j+1];
+        ids[j+1] = tmp;
+        i+=2;
+        j-=2;
+      }
+    }
+
+    if (j - lo < 40) MapShaper.insertionSortIds(a, ids, lo, j);
+    else MapShaper.quicksortIds(a, ids, lo, j);
+    if (hi - i < 40) {
+      MapShaper.insertionSortIds(a, ids, i, hi);
+      return;
+    }
+    lo = i;
+    j = hi;
+  }
+};
+
+
+
+
+MapShaper.getIntersectionPoints = function(arcs) {
+  // Kludge: create set of paths of length 1 to display intersection points
+  var intersections = MapShaper.findSegmentIntersections(arcs),
+      vectors = Utils.map(intersections, function(obj) {
+        return [[obj.intersection.x], [obj.intersection.y]];
+      });
+  return new ArcDataset(vectors);
+};
+
+// Method: bin segments into horizontal stripes
+// Segments that span stripes are assigned to all intersecting stripes
+// To find all intersections:
+// 1. Assign each segment to a bin
+// 2. Find intersections inside each bin
+// 3. Remove duplicate intersections
+//
+MapShaper.findSegmentIntersections = (function() {
+
+  // Re-use buffer for temp data -- Chrome's gc starts bogging down
+  // if large buffers are repeatedly created.
+  var buf;
+  function getUint32Array(count) {
+    var bytes = count * 4;
+    if (!buf || buf.length < bytes) {
+      buf = new ArrayBuffer(bytes);
+    }
+    return new Uint32Array(buf, 0, count);
+  }
+
+  return function(arcs) {
+    T.start();
+    var bounds = arcs.getBounds(),
+        ymin = bounds.ymin,
+        yrange = bounds.ymax - ymin,
+        pointCount = arcs.getFilteredPointCount() - arcs.size(),
+        stripeCount = Math.ceil(Math.sqrt(pointCount) * 1.5), // TODO: refine
+        stripeCounts = new Uint32Array(stripeCount),
+        i;
+
+    function stripeId(y) {
+      return Math.floor((stripeCount-1) * (y - ymin) / yrange);
+    }
+
+    // Count segments in each stripe
+    arcs.forEachSegment(function(id1, id2, xx, yy) {
+      var s1 = stripeId(yy[id1]),
+          s2 = stripeId(yy[id2]);
+      while (true) {
+        stripeCounts[s1] = stripeCounts[s1] + 2;
+        if (s1 == s2) break;
+        s1 += s2 > s1 ? 1 : -1;
+      }
+    });
+
+    // Allocate arrays for segments in each stripe
+    var stripeData = getUint32Array(Utils.sum(stripeCounts)),
+        offs = 0;
+    var stripes = Utils.map(stripeCounts, function(stripeSize) {
+      var start = offs;
+      offs += stripeSize;
+      return stripeData.subarray(start, offs);
+    });
+
+    // Assign segment ids to each stripe
+    Utils.initializeArray(stripeCounts, 0);
+    arcs.forEachSegment(function(id1, id2, xx, yy, arcId) {
+      var s1 = stripeId(yy[id1]),
+          s2 = stripeId(yy[id2]),
+          count, stripe, tmp;
+      if (xx[id2] < xx[id1]) {
+        tmp = id1;
+        id1 = id2;
+        id2 = tmp;
+      }
+      while (true) {
+        count = stripeCounts[s1];
+        stripeCounts[s1] = count + 2;
+        stripe = stripes[s1];
+        stripe[count] = id1;
+        stripe[count+1] = id2;
+        if (s1 == s2) break;
+        s1 += s2 > s1 ? 1 : -1;
+      }
+    });
+
+    // Detect intersections among segments in each stripe.
+    var raw = arcs.getVertexData(),
+        intersections = [],
+        index = {},
+        arr;
+    for (i=0; i<stripeCount; i++) {
+      MapShaper.sortIdsFast(raw.xx, stripes[i]);
+      arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
+      if (arr.length > 0) extendIntersections(intersections, arr, i);
+    }
+
+    T.stop("Intersections: " + intersections.length);
+    return intersections;
+
+    // Add intersections from a bin, but avoid duplicates.
+    //
+    function extendIntersections(intersections, arr, stripeId) {
+      Utils.forEach(arr, function(obj, i) {
+        var key = obj.ids.join(',');
+        if (key in index) {
+          // trace("Dupe:", obj);
+          return;
+        }
+        intersections.push(obj);
+        index[key] = true;
+      });
+    }
+  };
+})();
+
+// Find intersections among a group of line segments
+// Segments are pre-sorted by xmin, to allow efficient exclusion of segments with
+// non-overlapping x extents.
+//
+// @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
+// @xx, @yy: Arrays of x- and y-coordinates
+//
+MapShaper.intersectSegments = function(ids, xx, yy) {
+  var lim = ids.length - 2,
+      intersections = [];
+  var s1p1, s1p2, s2p1, s2p2,
+      s1p1x, s1p2x, s2p1x, s2p2x,
+      s1p1y, s1p2y, s2p1y, s2p2y,
+      hit, i, j;
+
+  i = 0;
+  while (i < lim) {
+    s1p1 = ids[i++];
+    s1p2 = ids[i++];
+    s1p1x = xx[s1p1];
+    s1p2x = xx[s1p2];
+    s1p1y = yy[s1p1];
+    s1p2y = yy[s1p2];
+
+    j = i;
+    while (j <= lim) {
+      s2p1 = ids[j++];
+      s2p1x = xx[s2p1];
+
+      if (s1p2x <= s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
+
+      s2p1y = yy[s2p1];
+      s2p2 = ids[j++];
+      s2p2x = xx[s2p2];
+      s2p2y = yy[s2p2];
+
+      // skip segments with non-overlapping y ranges
+      if (s1p1y >= s2p1y) {
+        if (s1p1y >= s2p2y && s1p2y >= s2p1y && s1p2y >= s2p2y) continue;
+      } else {
+        if (s1p1y <= s2p2y && s1p2y <= s2p1y && s1p2y <= s2p2y) continue;
+      }
+
+      // skip segments that share an endpoint
+      if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
+          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y)
+        continue;
+
+      // test two candidate segments for intersection
+      hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
+          s2p1x, s2p1y, s2p2x, s2p2y);
+      if (hit) {
+        intersections.push({
+          intersection: {x: hit[0], y: hit[1]},
+          ids: [s1p1, s1p2, s2p1, s2p2],
+          segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}], [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
+        });
+      }
+    }
+  }
+  return intersections;
+};
+
 
 
 

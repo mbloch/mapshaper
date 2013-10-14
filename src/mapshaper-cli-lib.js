@@ -4,9 +4,9 @@ mapshaper-simplify,
 mapshaper-shapes,
 mapshaper-export,
 mapshaper-import,
-mapshaper-segments,
 mapshaper-sorting
 */
+// mapshaper-segments,
 
 var cli = MapShaper.cli = {};
 
