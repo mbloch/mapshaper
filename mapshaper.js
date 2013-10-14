@@ -4522,12 +4522,10 @@ function ArcDataset() {
     var count = 0,
         dx = 0,
         dy = 0;
-    this.forEach2(function(i, n, xx, yy) {
-      for (var end=i+n-1; i<end; i++) {
-        dx += Math.abs(xx[i+1] - xx[i]);
-        dy += Math.abs(yy[i+1] - yy[i]);
-        count++;
-      }
+    this.forEachSegment(function(i1, i2, xx, yy) {
+      dx += Math.abs(xx[i1] - xx[i2]);
+      dy += Math.abs(yy[i1] - yy[i2]);
+      count++;
     });
     return [dx / count, dy / count];
   };
@@ -4551,10 +4549,12 @@ function ArcDataset() {
 
   this.forEachSegment = function(cb) {
     var xx = _xx, yy = _yy, zz = _zz, zlim = _zlimit;
-    var filtered = zlim > 0, i, j, k=0, id1, id2,
-        size = this.size();
-    for (i=0; i<size; i++) {
-      for (j=0, n=_nn[i]; j<n; j++, k++) {
+    var filtered = zlim > 0,
+        size = this.size(),
+        k = 0,
+        id1, id2;
+    for (var i=0; i<size; i++) {
+      for (var j=0, n=_nn[i]; j<n; j++, k++) {
         if (!filtered || zz[k] >= zlim) { // check: > or >=
           id1 = id2;
           id2 = k;
@@ -4755,10 +4755,11 @@ function ArcDataset() {
   };
 
   this.getFilteredPointCount = function() {
-    if (!_zz || !_zlimit) return this.getPointCount();
+    var zz = _zz, z = _zlimit;
+    if (!zz || !z) return this.getPointCount();
     var count = 0;
-    for (var i=0, n = _zz.length; i<n; i++) {
-      if (_zz[i] > _zlimit) count++;
+    for (var i=0, n = zz.length; i<n; i++) {
+      if (zz[i] > z) count++;
     }
     return count;
   };
@@ -8053,60 +8054,7 @@ MapShaper.calcRetainedCountsForRing = function(path, retainedPointCounts, arcCou
 
 
 
-
-MapShaper.insertionSortIds = function(arr, ids, start, end) {
-  var id, id2;
-  for (var j = start + 2; j <= end; j+=2) {
-    id = ids[j];
-    id2 = ids[j+1];
-    for (var i = j - 2; i >= start && arr[id] < arr[ids[i]]; i-=2) {
-      ids[i+2] = ids[i];
-      ids[i+3] = ids[i+1];
-    }
-    ids[i+2] = id;
-    ids[i+3] = id2;
-  }
-};
-
-MapShaper.sortIdsFast = function(arr, ids) {
-  MapShaper.quicksortIds(arr, ids, 0, ids.length-2);
-};
-
-MapShaper.quicksortIds = function (a, ids, lo, hi) {
-  var i = lo,
-      j = hi,
-      pivot, tmp;
-  while (i < hi) {
-    pivot = a[ids[(lo + hi >> 2) << 1]]; // avoid n^2 performance on sorted arrays
-    while (i <= j) {
-      while (a[ids[i]] < pivot) i+=2;
-      while (a[ids[j]] > pivot) j-=2;
-      if (i <= j) {
-        tmp = ids[i];
-        ids[i] = ids[j];
-        ids[j] = tmp;
-        tmp = ids[i+1];
-        ids[i+1] = ids[j+1];
-        ids[j+1] = tmp;
-        i+=2;
-        j-=2;
-      }
-    }
-
-    if (j - lo < 40) MapShaper.insertionSortIds(a, ids, lo, j);
-    else MapShaper.quicksortIds(a, ids, lo, j);
-    if (hi - i < 40) {
-      MapShaper.insertionSortIds(a, ids, i, hi);
-      return;
-    }
-    lo = i;
-    j = hi;
-  }
-};
-
-
-
-// mapshaper-segments,
+// mapshaper-segments
 
 var cli = MapShaper.cli = {};
 
