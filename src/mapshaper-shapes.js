@@ -207,14 +207,16 @@ function ArcDataset() {
 
   // Return average magnitudes of dx, dy
   //
-  this.getAverageSegment = function() {
+  this.getAverageSegment = function(max) {
     var count = 0,
         dx = 0,
-        dy = 0;
+        dy = 0,
+        lim = max || Infinity;
     this.forEachSegment(function(i1, i2, xx, yy) {
       dx += Math.abs(xx[i1] - xx[i2]);
       dy += Math.abs(yy[i1] - yy[i2]);
       count++;
+      if (count >= lim) return false;
     });
     return [dx / count, dy / count];
   };
@@ -237,19 +239,23 @@ function ArcDataset() {
   };
 
   this.forEachSegment = function(cb) {
-    var xx = _xx, yy = _yy, zz = _zz, zlim = _zlimit;
-    var filtered = zlim > 0,
-        size = this.size(),
-        k = 0,
-        id1, id2;
-    for (var i=0; i<size; i++) {
-      for (var j=0, n=_nn[i]; j<n; j++, k++) {
-        if (!filtered || zz[k] >= zlim) { // check: > or >=
-          id1 = id2;
-          id2 = k;
-          if (j > 0) {
-            cb(id1, id2, xx, yy);
-          }
+    var zlim = _zlimit,
+        filtered = zlim > 0,
+        nextArcStart = 0,
+        arcId = -1,
+        id1, id2, retn;
+    for (var k=0, n=this.getPointCount(); k<n; k++) {
+      if (!filtered || _zz[k] >= zlim) { // check: > or >=
+        id1 = id2;
+        id2 = k;
+        if (k < nextArcStart) {
+          retn = cb(id1, id2, _xx, _yy);
+          if (retn === false) break;
+        } else {
+          do {
+            arcId++;
+            nextArcStart += _nn[arcId];
+          } while (nextArcStart <= k);
         }
       }
     }

@@ -14,7 +14,7 @@ MapShaper.getIntersectionPoints = function(arcs) {
 // To find all intersections:
 // 1. Assign each segment to one or more bins
 // 2. Find intersections inside each bin
-// 3. Remove duplicate intersections
+// 3. Ignore duplicate intersections
 //
 MapShaper.findSegmentIntersections = (function() {
 
@@ -90,7 +90,6 @@ MapShaper.findSegmentIntersections = (function() {
         index = {},
         arr;
     for (i=0; i<stripeCount; i++) {
-      MapShaper.sortSegmentIds(raw.xx, stripes[i]);
       arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
       if (arr.length > 0) extendIntersections(intersections, arr, i);
     }
@@ -102,36 +101,38 @@ MapShaper.findSegmentIntersections = (function() {
     //
     function extendIntersections(intersections, arr, stripeId) {
       Utils.forEach(arr, function(obj, i) {
-        var key = obj.ids.join(',');
-        if (key in index) {
-          // trace("Dupe:", obj);
-          return;
+        var key = getIntersectionKey(obj);
+        if (key in index === false) {
+          intersections.push(obj);
+          index[key] = true;
         }
-        intersections.push(obj);
-        index[key] = true;
       });
+    }
+
+    function getIntersectionKey(obj) {
+      var ids = obj.ids;
+      // Make sure intersecting segments that span multiple stripes
+      //   are always in the same order (order can be inconsistent if
+      //   both segments have same xmin value).
+      if (obj.segments[0][0].x == obj.segments[1][0].x &&
+            ids[0] > ids[2]) {
+        ids = [ids[2], ids[3], ids[0], ids[1]];
+      }
+      return ids.join(',');
     }
   };
 
-  // Magic numbers :(
   function calcStripeCount(arcs) {
-    var segs = arcs.getFilteredPointCount() - arcs.size();
-    return Math.ceil(Math.pow(segs, 0.3) + 0.04 * Math.pow(segs, 0.75));
-  }
-
-  // More consistent than v1 but slower
-  function calcStripeCount2(arcs) {
     var bounds = arcs.getBounds(),
         yrange = bounds.ymax - bounds.ymin,
-        avg = arcs.getAverageSegment();
-    return Math.ceil(yrange / avg[1] / 25);
+        avg = arcs.getAverageSegment(arcs.getPointCount() / 4); // don't bother sampling all segments
+    return Math.ceil(yrange / avg[1] / 20);
   }
 
 })();
 
 // Find intersections among a group of line segments
-// Segments are pre-sorted by xmin, to allow efficient exclusion of segments with
-// non-overlapping x extents.
+
 //
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
@@ -143,6 +144,10 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       s1p1x, s1p2x, s2p1x, s2p2x,
       s1p1y, s1p2y, s2p1y, s2p2y,
       hit, i, j;
+
+  // Sort segments by xmin, to allow efficient exclusion of segments with
+  // non-overlapping x extents.
+  MapShaper.sortSegmentIds(xx, ids);
 
   i = 0;
   while (i < lim) {
@@ -184,12 +189,17 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
         intersections.push({
           intersection: {x: hit[0], y: hit[1]},
           ids: [s1p1, s1p2, s2p1, s2p2],
-          segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}], [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
+          segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}],
+              [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
         });
       }
     }
   }
   return intersections;
+};
+
+MapShaper.sortSegmentIds = function(arr, ids) {
+  MapShaper.quicksortSegmentIds(arr, ids, 0, ids.length-2);
 };
 
 MapShaper.insertionSortSegmentIds = function(arr, ids, start, end) {
@@ -204,10 +214,6 @@ MapShaper.insertionSortSegmentIds = function(arr, ids, start, end) {
     ids[i+2] = id;
     ids[i+3] = id2;
   }
-};
-
-MapShaper.sortSegmentIds = function(arr, ids) {
-  MapShaper.quicksortSegmentIds(arr, ids, 0, ids.length-2);
 };
 
 MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
