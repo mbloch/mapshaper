@@ -3,12 +3,12 @@
 function draggable(ref) {
   var xdown, ydown;
   var el = El(ref),
+      dragging = false,
       obj = new EventDispatcher();
   Browser.undraggable(el.node());
   el.on('mousedown', function(e) {
     xdown = e.pageX;
     ydown = e.pageY;
-    obj.dispatchEvent('dragstart');
     Browser.on(window, 'mousemove', onmove);
     Browser.on(window, 'mouseup', onrelease);
   });
@@ -16,10 +16,17 @@ function draggable(ref) {
   function onrelease(e) {
     Browser.removeEventListener(window, 'mousemove', onmove);
     Browser.removeEventListener(window, 'mouseup', onrelease);
-    obj.dispatchEvent('dragend');
+    if (dragging) {
+      dragging = false;
+      obj.dispatchEvent('dragend');
+    }
   }
 
   function onmove(e) {
+    if (!dragging) {
+      dragging = true;
+      obj.dispatchEvent('dragstart');
+    }
     obj.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
   }
   return obj;
