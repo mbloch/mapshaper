@@ -159,7 +159,7 @@ function ArcDataset() {
     this.forEach2(function(i, n, xx, yy, zz, arcId) {
       var n2 = 0;
       for (var end = i+n; i < end; i++) {
-        if (_zz[i] > _zlimit) {
+        if (_zz[i] >= _zlimit) {
           xx2[i2] = xx[i];
           yy2[i2] = yy[i];
           zz2[i2] = zz[i];
@@ -383,6 +383,10 @@ function ArcDataset() {
     return this;
   };
 
+  this.getRetainedInterval = function() {
+    return _zlimit;
+  };
+
   this.setRetainedInterval = function(z) {
     _zlimit = z;
     return this;
@@ -454,7 +458,7 @@ function ArcDataset() {
     if (!zz || !z) return this.getPointCount();
     var count = 0;
     for (var i=0, n = zz.length; i<n; i++) {
-      if (zz[i] > z) count++;
+      if (zz[i] >= z) count++;
     }
     return count;
   };
@@ -602,7 +606,7 @@ function ArcIter(xx, yy, zz) {
     if (i == stop) return false;
     do {
       j += inc;
-    } while (j != stop && zz[j] <= zlim);
+    } while (j != stop && zz[j] < zlim);
     _i = j;
     this.x = _xx[i];
     this.y = _yy[i];

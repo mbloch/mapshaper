@@ -10,6 +10,7 @@ mapshaper-simplify,
 mapshaper-export,
 mapshaper-import,
 mapshaper-segments
+mapshaper-repair
 */
 
 var dropper,
@@ -70,7 +71,8 @@ function Editor() {
     El("body").addClass('editing');
 
     importOpts.preserveShapes = !!El("#g-import-retain-opt").node().checked;
-    importOpts.findIntersections = !!El("#g-import-find-intersections-opt").node().checked;
+    importOpts.showIntersections = !!El("#g-show-intersections-opt").node().checked;
+    importOpts.removeIntersections = !!El("#g-remove-intersections-opt").node().checked;
     importOpts.simplifyMethod = El('#g-simplification-menu input[name=method]:checked').attr('value');
 
     var mapOpts = {
@@ -95,32 +97,54 @@ function Editor() {
 
     map.addLayerGroup(group);
 
-    // Add layer for intersections
-    if (importOpts.findIntersections) {
-      var initialIntersections = MapShaper.getIntersectionPoints(arcData);
-      var collisions = new FilteredPathCollection(initialIntersections, {
-          min_segment: 0,
-          min_path: 0
-        });
-      var collisionGroup = new ArcLayerGroup(collisions, {
-        //strokeColor: "#FFDB2C",
-        dotSize: 5,
-        dotColor: "#F24400"
-      });
-      map.addLayerGroup(collisionGroup);
+    // Handle intersections
+    //
+    var showXX = importOpts.showIntersections,
+        fixXX = importOpts.removeIntersections,
+        findXX = showXX || fixXX;
 
-      slider.on('simplify-start', function() {
-        collisionGroup.visible(false);
-      });
+    if (findXX) {
+      var initialIntersections = MapShaper.getIntersectionPoints(MapShaper.findSegmentIntersections(arcData));
+
+      if (showXX) {
+        var collisions = new FilteredPathCollection(initialIntersections, {
+            min_segment: 0,
+            min_path: 0
+          });
+        var collisionGroup = new ArcLayerGroup(collisions, {
+          dotSize: 5,
+          dotColor: "#F24400"
+        });
+
+        map.addLayerGroup(collisionGroup);
+
+        slider.on('simplify-start', function() {
+          collisionGroup.visible(false);
+        });
+      }
 
       slider.on('simplify-end', function() {
-        collisionGroup.visible(true);
-        var arcs = slider.value() == 1 ? initialIntersections :
-            MapShaper.getIntersectionPoints(arcData);
-        collisions.update(arcs);
-        collisionGroup.refresh();
+        var arcs;
+        if (slider.value() == 1) {
+          arcs = initialIntersections;
+        } else {
+          var intersections = MapShaper.findSegmentIntersections(arcData);
+          if (fixXX) {
+            T.start();
+            intersections = MapShaper.repairIntersections(arcData, intersections);
+            T.stop('repair');
+          }
+          arcs = MapShaper.getIntersectionPoints(intersections);
+        }
+
+        if (showXX) {
+          collisionGroup.visible(true);
+          collisions.update(arcs);
+          collisionGroup.refresh();
+        }
+        group.refresh();
       });
-    }
+    } // endif findXX
 
     slider.on('change', function(e) {
       filteredArcs.setRetainedPct(e.value);

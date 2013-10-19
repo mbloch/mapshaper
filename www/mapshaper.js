@@ -4104,12 +4104,14 @@ function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2
     var s1dy = s1p2y - s1p1y;
     var s2dx = s2p2x - s2p1x;
     var s2dy = s2p2y - s2p1y;
-
-    var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / (-s2dx * s1dy + s1dx * s2dy);
+    var den = -s2dx * s1dy + s1dx * s2dy;
+    if (den === 0) return false; // colinear -- treating as no intersection
 
     // Collision detected
+    var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / den;
     var x = s1p1x + m * s1dx;
     var y = s1p1y + m * s1dy;
+
     return [x, y];
   }
 
@@ -4470,7 +4472,7 @@ function ArcDataset() {
     this.forEach2(function(i, n, xx, yy, zz, arcId) {
       var n2 = 0;
       for (var end = i+n; i < end; i++) {
-        if (_zz[i] > _zlimit) {
+        if (_zz[i] >= _zlimit) {
           xx2[i2] = xx[i];
           yy2[i2] = yy[i];
           zz2[i2] = zz[i];
@@ -4694,6 +4696,10 @@ function ArcDataset() {
     return this;
   };
 
+  this.getRetainedInterval = function() {
+    return _zlimit;
+  };
+
   this.setRetainedInterval = function(z) {
     _zlimit = z;
     return this;
@@ -4765,7 +4771,7 @@ function ArcDataset() {
     if (!zz || !z) return this.getPointCount();
     var count = 0;
     for (var i=0, n = zz.length; i<n; i++) {
-      if (zz[i] > z) count++;
+      if (zz[i] >= z) count++;
     }
     return count;
   };
@@ -4913,7 +4919,7 @@ function ArcIter(xx, yy, zz) {
     if (i == stop) return false;
     do {
       j += inc;
-    } while (j != stop && zz[j] <= zlim);
+    } while (j != stop && zz[j] < zlim);
     _i = j;
     this.x = _xx[i];
     this.y = _yy[i];
@@ -9256,11 +9262,12 @@ MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
 
 
 
-MapShaper.getIntersectionPoints = function(arcs) {
+MapShaper.getIntersectionPoints = function(intersections) {
   // Kludge: create set of paths of length 1 to display intersection points
-  var intersections = MapShaper.findSegmentIntersections(arcs),
-      vectors = Utils.map(intersections, function(obj) {
-        return [[obj.intersection.x], [obj.intersection.y]];
+  var vectors = Utils.map(intersections, function(obj) {
+        var x = obj.intersection.x,
+            y = obj.intersection.y;
+        return [[x], [y]];
       });
   return new ArcDataset(vectors);
 };
@@ -9358,11 +9365,10 @@ MapShaper.findSegmentIntersections = (function() {
     function extendIntersections(intersections, arr, stripeId) {
       Utils.forEach(arr, function(obj, i) {
         var key = getIntersectionKey(obj);
-        if (key in index) {
-          return;
+        if (key in index === false) {
+          intersections.push(obj);
+          index[key] = true;
         }
-        intersections.push(obj);
-        index[key] = true;
       });
     }
 
@@ -9382,7 +9388,7 @@ MapShaper.findSegmentIntersections = (function() {
   function calcStripeCount(arcs) {
     var bounds = arcs.getBounds(),
         yrange = bounds.ymax - bounds.ymin,
-        avg = arcs.getAverageSegment(arcs.getPointCount() / 4); // sample
+        avg = arcs.getAverageSegment(arcs.getPointCount() / 4); // don't bother sampling all segments
     return Math.ceil(yrange / avg[1] / 20);
   }
 
@@ -9408,22 +9414,23 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
   i = 0;
   while (i < lim) {
-    s1p1 = ids[i++];
-    s1p2 = ids[i++];
+    s1p1 = ids[i];
+    s1p2 = ids[i+1];
     s1p1x = xx[s1p1];
     s1p2x = xx[s1p2];
     s1p1y = yy[s1p1];
     s1p2y = yy[s1p2];
 
     j = i;
-    while (j <= lim) {
-      s2p1 = ids[j++];
+    while (j < lim) {
+      j += 2;
+      s2p1 = ids[j];
       s2p1x = xx[s2p1];
 
       if (s1p2x <= s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
 
       s2p1y = yy[s2p1];
-      s2p2 = ids[j++];
+      s2p2 = ids[j+1];
       s2p2x = xx[s2p2];
       s2p2y = yy[s2p2];
 
@@ -9444,6 +9451,8 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
           s2p1x, s2p1y, s2p2x, s2p2y);
       if (hit) {
         intersections.push({
+          i: i,
+          j: j,
           intersection: {x: hit[0], y: hit[1]},
           ids: [s1p1, s1p2, s2p1, s2p2],
           segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}],
@@ -9451,6 +9460,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
         });
       }
     }
+    i += 2;
   }
   return intersections;
 };
@@ -9503,6 +9513,182 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
     lo = i;
     j = hi;
   }
+};
+
+
+
+
+// Try to resolve a collection of line-segment intersections by rolling
+// back simplification along intersecting segments.
+//
+// Limitation of this method: it can't remove intersections that are present
+// in the original dataset.
+//
+// @arcs ArcDataset object
+// @intersections (Array) Output from MapShaper.findSegmentIntersections()
+// Returns array of unresolved intersections, or empty array if none.
+//
+MapShaper.repairIntersections = function(arcs, intersections) {
+  var raw = arcs.getVertexData(),
+      zz = raw.zz,
+      yy = raw.yy,
+      xx = raw.xx,
+      zlim = arcs.getRetainedInterval();
+
+  // index of segments that have been modified (see addSegmentVertices())
+  var segmentIndex = {};
+
+  while (repairEach(intersections) > 0) {
+    // After each repair pass, check for new intersections that may have been
+    // created as a by-product of repairing one set of intersections.
+    //
+    // Issue: several hit-detection passes through a large dataset may be slow.
+    //
+    // Possible optimization: only check for intersections among segments that
+    // intersect bounding boxes of segments touched during previous repair pass.
+    // Need: efficient way of checking up to thousands of bb... could
+    // index boxes for n * log(k) or better performance....
+    //
+    intersections = MapShaper.findSegmentIntersections(arcs);
+  }
+  return intersections;
+
+  function repairEach(intersections) {
+    var fixes = 0;
+    Utils.forEach(intersections, function(obj) {
+      fixes += repairIntersection(obj);
+    });
+    return fixes;
+  }
+
+  function addSegmentVertices(ids, p1, p2) {
+    // Consider: scan entire section between p1 & p2 for additional vertices
+    // even if segment has not been processed already, and get rid of index.
+    //
+    var k = MapShaper.getSegmentKey(p1, p2),
+        start, end, prev;
+
+    if (k in segmentIndex === false) {
+      ids.push(p1, p2);
+      segmentIndex[k] = true;
+    } else {
+      if (p1 <= p2) {
+        start = p1;
+        end = p2;
+      } else {
+        start = p2;
+        end = p1;
+      }
+      prev = start;
+      for (var i=start+1; i<=end; i++) {
+        if (zz[i] >= zlim) {
+          if (xx[prev] < xx[i]) {
+            ids.push(prev, i);
+          } else {
+            ids.push(i, prev);
+          }
+        }
+      }
+    }
+  }
+
+  /*
+  function getStripeBounds(segments) {
+    var bb = new Bounds();
+    for (var i=0; i<segments.length; i++) {
+      bb.mergePoint(xx[i], yy[i]);
+    }
+    return bb;
+  }
+  */
+
+  function repairIntersection(obj) {
+    var repairs = 0,
+        ids = obj.ids,
+        segments = [];
+    addSegmentVertices(segments, ids[0], ids[1]);
+    addSegmentVertices(segments, ids[2], ids[3]);
+
+    while (true) {
+      var collisions = MapShaper.intersectSegments(segments, raw.xx, raw.yy),
+          collision;
+      if (collisions.length === 0) {
+        // No intersections found... success!
+        break;
+      }
+
+      // Fix first collision; if more than one, fix in subsequent pass.
+      collision = collisions[0];
+      ids = collision.ids;
+      var i = MapShaper.findNextRemovableVertex(zz, zlim, ids[0], ids[1]),
+          j = MapShaper.findNextRemovableVertex(zz, zlim, ids[2], ids[3]),
+          zi = i == -1 ? Infinity : zz[i],
+          zj = j == -1 ? Infinity : zz[j];
+
+      if (zi == Infinity && zj == Infinity) {
+        // No more points available to add; unable to repair.
+        break;
+      }
+
+      // Re-introduce the next-highest vertex to the polyline
+
+      var startId, endId, newId, segId;
+      if (zi < zj) {
+        start = ids[0];
+        end = ids[1];
+        newId = i;
+        segId = collision.i;
+      } else {
+        start = ids[2];
+        end = ids[3];
+        newId = j;
+        segId = collision.j;
+      }
+
+      // if (segments[segId] != start || segments[segId+1] != end) error("id error")
+
+      zz[newId] = zlim; // add segment to line at current z level
+
+      // Split segment containing new point into two
+      segments[segId + 1] = newId;
+      if (xx[newId] < xx[start]) {
+        segments[segId] = newId;
+        segments[segId + 1] = start;
+      } else {
+        segments[segId + 1] = newId;
+      }
+
+      if (xx[newId] < xx[end]) {
+        segments.push(newId, end);
+      } else {
+        segments.push(end, newId);
+      }
+
+      repairs++;
+    }
+    return repairs;
+  }
+};
+
+MapShaper.getSegmentKey = function(id1, id2) {
+  return id1 + "~" + id2;
+};
+
+MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
+  var tmp, jz = 0, j = -1, z;
+  if (start > end) {
+    tmp = start;
+    start = end;
+    end = tmp;
+  }
+  for (var i=start+1; i<end; i++) {
+    z = zz[i];
+    if (z < zlim && z > jz) {
+      j = i;
+      jz = z;
+    }
+  }
+  return j;
 };
 
 
@@ -9566,7 +9752,8 @@ function Editor() {
     El("body").addClass('editing');
 
     importOpts.preserveShapes = !!El("#g-import-retain-opt").node().checked;
-    importOpts.findIntersections = !!El("#g-import-find-intersections-opt").node().checked;
+    importOpts.showIntersections = !!El("#g-show-intersections-opt").node().checked;
+    importOpts.removeIntersections = !!El("#g-remove-intersections-opt").node().checked;
     importOpts.simplifyMethod = El('#g-simplification-menu input[name=method]:checked').attr('value');
 
     var mapOpts = {
@@ -9591,32 +9778,54 @@ function Editor() {
 
     map.addLayerGroup(group);
 
-    // Add layer for intersections
-    if (importOpts.findIntersections) {
-      var initialIntersections = MapShaper.getIntersectionPoints(arcData);
-      var collisions = new FilteredPathCollection(initialIntersections, {
-          min_segment: 0,
-          min_path: 0
-        });
-      var collisionGroup = new ArcLayerGroup(collisions, {
-        //strokeColor: "#FFDB2C",
-        dotSize: 5,
-        dotColor: "#F24400"
-      });
-      map.addLayerGroup(collisionGroup);
+    // Handle intersections
+    //
+    var showXX = importOpts.showIntersections,
+        fixXX = importOpts.removeIntersections,
+        findXX = showXX || fixXX;
 
-      slider.on('simplify-start', function() {
-        collisionGroup.visible(false);
-      });
+    if (findXX) {
+      var initialIntersections = MapShaper.getIntersectionPoints(MapShaper.findSegmentIntersections(arcData));
+
+      if (showXX) {
+        var collisions = new FilteredPathCollection(initialIntersections, {
+            min_segment: 0,
+            min_path: 0
+          });
+        var collisionGroup = new ArcLayerGroup(collisions, {
+          dotSize: 5,
+          dotColor: "#F24400"
+        });
+
+        map.addLayerGroup(collisionGroup);
+
+        slider.on('simplify-start', function() {
+          collisionGroup.visible(false);
+        });
+      }
 
       slider.on('simplify-end', function() {
-        collisionGroup.visible(true);
-        var arcs = slider.value() == 1 ? initialIntersections :
-            MapShaper.getIntersectionPoints(arcData);
-        collisions.update(arcs);
-        collisionGroup.refresh();
+        var arcs;
+        if (slider.value() == 1) {
+          arcs = initialIntersections;
+        } else {
+          var intersections = MapShaper.findSegmentIntersections(arcData);
+          if (fixXX) {
+            T.start();
+            intersections = MapShaper.repairIntersections(arcData, intersections);
+            T.stop('repair');
+          }
+          arcs = MapShaper.getIntersectionPoints(intersections);
+        }
+
+        if (showXX) {
+          collisionGroup.visible(true);
+          collisions.update(arcs);
+          collisionGroup.refresh();
+        }
+        group.refresh();
       });
-    }
+    } // endif findXX
 
     slider.on('change', function(e) {
       filteredArcs.setRetainedPct(e.value);

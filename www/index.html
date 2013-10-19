@@ -59,11 +59,18 @@ high simplification.</div></div></div></div>
 
 			<h4>Topology options</h4>
 			<div id="g-simplification-menu">
-				<div><label for="g-import-find-intersections-opt"><input type="checkbox" class="g-checkbox" id="g-import-find-intersections-opt"/>show intersections</label>
+				<div><label for="g-show-intersections-opt"><input type="checkbox" checked="true" class="g-checkbox" id="g-show-intersections-opt"/>show intersections</label>
 				<div class="g-tip-button">?<div class="g-tip-anchor">
 <div class="g-tip">Display topology errors caused
-by intersecting line segments.
-Repair is not yet implemented.</div></div></div></div>
+by intersecting line segments.</div></div></div></div>
+
+				<div><label for="g-remove-intersections-opt"><input type="checkbox" checked="true" class="g-checkbox" id="g-remove-intersections-opt"/>remove intersections</label>
+				<div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Try to remove intersections by
+rolling back simplification along
+intersecting segments.</div></div></div></div>
+
+				<!--<div><label for="g-import-rounding-opt"><input type="text" value="label" class="g-clicktext g-import-clicktext" id="g-import-rounding-opt" />rounding increment</label></div>-->
 			</div>
 
 		</div>

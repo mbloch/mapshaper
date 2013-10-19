@@ -1,10 +1,11 @@
 /* @requires mapshaper-shapes */
 
-MapShaper.getIntersectionPoints = function(arcs) {
+MapShaper.getIntersectionPoints = function(intersections) {
   // Kludge: create set of paths of length 1 to display intersection points
-  var intersections = MapShaper.findSegmentIntersections(arcs),
-      vectors = Utils.map(intersections, function(obj) {
-        return [[obj.intersection.x], [obj.intersection.y]];
+  var vectors = Utils.map(intersections, function(obj) {
+        var x = obj.intersection.x,
+            y = obj.intersection.y;
+        return [[x], [y]];
       });
   return new ArcDataset(vectors);
 };
@@ -151,22 +152,23 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
   i = 0;
   while (i < lim) {
-    s1p1 = ids[i++];
-    s1p2 = ids[i++];
+    s1p1 = ids[i];
+    s1p2 = ids[i+1];
     s1p1x = xx[s1p1];
     s1p2x = xx[s1p2];
     s1p1y = yy[s1p1];
     s1p2y = yy[s1p2];
 
     j = i;
-    while (j <= lim) {
-      s2p1 = ids[j++];
+    while (j < lim) {
+      j += 2;
+      s2p1 = ids[j];
       s2p1x = xx[s2p1];
 
       if (s1p2x <= s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
 
       s2p1y = yy[s2p1];
-      s2p2 = ids[j++];
+      s2p2 = ids[j+1];
       s2p2x = xx[s2p2];
       s2p2y = yy[s2p2];
 
@@ -187,6 +189,8 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
           s2p1x, s2p1y, s2p2x, s2p2y);
       if (hit) {
         intersections.push({
+          i: i,
+          j: j,
           intersection: {x: hit[0], y: hit[1]},
           ids: [s1p1, s1p2, s2p1, s2p2],
           segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}],
@@ -194,6 +198,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
         });
       }
     }
+    i += 2;
   }
   return intersections;
 };
