@@ -62,7 +62,8 @@ function Editor() {
   var importOpts = {
     simplifyMethod: "mod",
     preserveShapes: false,
-    findIntersections: false
+    showIntersections: false,
+    removeIntersections: false
   };
 
   function init(contentBounds) {

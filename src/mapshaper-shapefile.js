@@ -10,7 +10,7 @@ MapShaper.importDbf = function(src) {
 // Read Shapefile data from an ArrayBuffer or Buffer
 // Build topology
 //
-MapShaper.importShp = function(src) {
+MapShaper.importShp = function(src, opts) {
   T.start();
   var reader = new ShpReader(src);
   var supportedTypes = [
@@ -27,7 +27,7 @@ MapShaper.importShp = function(src) {
   }
 
   var counts = reader.getCounts();
-  var importer = new PathImporter(counts.pointCount);
+  var importer = new PathImporter(counts.pointCount, opts);
   var expectRings = Utils.contains([5,15,25], reader.type());
 
   // TODO: test cases: null shape; non-null shape with no valid parts

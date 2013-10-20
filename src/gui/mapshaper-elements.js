@@ -136,7 +136,7 @@ function ClickText(ref) {
   function onblur() {
     var val = _parser(_el.el.value);
     if (val === _value) {
-      return;
+      // return;
     }
     if (_validator(val)) {
       this.value(val);

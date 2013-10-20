@@ -91,6 +91,17 @@ html, body {
 	text-align: left;
 }
 
+#mshp-import .g-clicktext {
+	width: 40px;
+	background: rgba(255, 255, 255, 0.4);
+	text-align: left;
+	border: 1px solid rgba(0,0,0,0.2);
+	padding: 0 3px;
+	margin: 0 0 0 5px;
+	font-size: 10px;
+
+}
+
 #mshp-intro-screen {
 	text-align: center;
 	padding-top: 50px;
@@ -127,7 +138,6 @@ html, body {
 }
 
 #g-simplification-menu input {
-	margin-right: 5px;
 	width: 12px;
 	height: 12px;
 }
@@ -137,7 +147,11 @@ html, body {
 }
 
 #g-simplification-menu input.g-checkbox {
-	margin-top: 3px;
+	margin: 3px 5px 0 0;
+}
+
+#g-simplification-menu input.g-radio {
+	margin: 0 5px 0 0;
 }
 
 
@@ -268,8 +282,8 @@ html, body {
 }
 
 #g-simplify-control .g-clicktext {
-	width: 56px;	
-	background: rgba(255, 255, 255, 0.4);	
+	width: 56px;
+	background: rgba(255, 255, 255, 0.4);
 	text-align: center;
 	border: 1px solid rgba(0,0,0,0);
 	font-size: 13px;

@@ -50,7 +50,7 @@ div.g-tip {
 	background: #fff;
 	border: 1px solid #ccc;
 	border-radius: 6px;
-	padding: 5px 6px 6px 6px;
+	padding: 4px 6px 6px 6px;
 	bottom: 0px;
 	left: -50%;
 	white-space: pre;
@@ -134,7 +134,6 @@ div.g-tip {
 	/* text-decoration: underline; */
 	text-decoration:none;
 	text-indent: 0px;
-	border: none;
 }
 
 .g-file-control {

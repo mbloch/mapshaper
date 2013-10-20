@@ -18,6 +18,16 @@ function DropControl(importer) {
 }
 
 function ImportControl(editor) {
+  var precisionInput = new ClickText("#g-import-precision-opt")
+    .bounds(0, Infinity)
+    .formatter(function(str) {
+      var val = parseFloat(str);
+      return !val ? '' : String(val);
+    })
+    .validator(function(str) {
+      return str === '' || Utils.isNumber(parseFloat(str));
+    });
+
   // Receive: FileList
   this.readFiles = function(files) {
     Utils.forEach(files, this.readFile, this);
@@ -71,7 +81,8 @@ function ImportControl(editor) {
       return;
     }
     if (type == 'shp' || type == 'json') {
-      data = MapShaper.importContent(content, type);
+      var precision = precisionInput.value();
+      data = MapShaper.importContent(content, type, {precision: precision});
       var opts = {
         input_file: fname
       };

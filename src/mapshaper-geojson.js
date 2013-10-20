@@ -1,6 +1,6 @@
 /* @requires mapshaper-common, mapshaper-path-import, mapshaper-data-table */
 
-MapShaper.importGeoJSON = function(obj) {
+MapShaper.importGeoJSON = function(obj, opts) {
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
@@ -48,7 +48,7 @@ MapShaper.importGeoJSON = function(obj) {
 
   // Import GeoJSON geometries
   //
-  var importer = new PathImporter(pointCount);
+  var importer = new PathImporter(pointCount, opts);
   Utils.forEach(geometries, function(geom) {
     importer.startShape();
     var f = geom && GeoJSON.pathImporters[geom.type];

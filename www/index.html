@@ -64,13 +64,18 @@ high simplification.</div></div></div></div>
 <div class="g-tip">Display topology errors caused
 by intersecting line segments.</div></div></div></div>
 
-				<div><label for="g-remove-intersections-opt"><input type="checkbox" checked="true" class="g-checkbox" id="g-remove-intersections-opt"/>remove intersections</label>
+				<div><label for="g-remove-intersections-opt"><input type="checkbox" class="g-checkbox" id="g-remove-intersections-opt"/>auto-repair intersections</label>
 				<div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Try to remove intersections by
-rolling back simplification along
-intersecting segments.</div></div></div></div>
+<div class="g-tip">Try to automatically remove inter-
+sections by rolling back simplification
+along intersecting segments.</div></div></div></div>
 
-				<!--<div><label for="g-import-rounding-opt"><input type="text" value="label" class="g-clicktext g-import-clicktext" id="g-import-rounding-opt" />rounding increment</label></div>-->
+				<div>coordinate precision<input type="text" placeholder="0.0" class="g-clicktext g-import-clicktext" id="g-import-precision-opt" /><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Rounding coordinates can fix
+topology problems in some files.
+You might use 0.00001 for a file in
+decimal degrees, or 10 for a file
+with coordinates in meters.</div></div></div></div>
 			</div>
 
 		</div>

@@ -3,10 +3,15 @@
 // Convert path data from a non-topological source (Shapefile, GeoJSON, etc)
 // to the format used for topology processing (see mapshaper-topology.js)
 //
-function PathImporter(pointCount) {
+function PathImporter(pointCount, opts) {
   var xx = new Float64Array(pointCount),
       yy = new Float64Array(pointCount),
-      buf = new Float64Array(1024);
+      buf = new Float64Array(1024),
+      round = null;
+
+  if (opts && opts.precision) {
+    round = getRoundingFunction(opts.precision);
+  }
 
   var paths = [],
       pointId = 0,
@@ -42,6 +47,12 @@ function PathImporter(pointCount) {
     for (var i=0; i<pointCount; i++) {
       x = arr[offs++];
       y = arr[offs++];
+
+      if (round !== null) {
+        x = round(x);
+        y = round(y);
+      }
+
       if (i === 0 || prevX != x || prevY != y) {
         xx[pointId] = x;
         yy[pointId] = y;

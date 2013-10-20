@@ -361,7 +361,6 @@ var Opts = {
   getNamespace: function(name, root) {
     var node = root || this.global();
     var parts = name.split('.');
-
     for (var i=0, len=parts.length; i<len; i++) {
       var part = parts[i];
       if (!part) continue;
@@ -386,10 +385,12 @@ var Opts = {
     root = root || this.global();
     var parts = path.split('.'),
         name = parts.pop();
-    if (!name) error("Opts.exportObject() Invalid name:", path);
-    if (name) {
-      var ns = Opts.getNamespace(parts.join('.'), root);
-      ns[name] = obj;
+    if (!name) {
+      error("Opts.exportObject() Invalid name:", path);
+    } else {
+      var exp = {};
+      exp[name] = obj;
+      Opts.extendNamespace(parts.join('.'), exp)
     }
   }
 };
@@ -540,18 +541,18 @@ Utils.genericSort = function(arr, asc) {
 // Sorts an array of numbers in-place
 //
 Utils.quicksort = function(arr, asc) {
-
   Utils.quicksortPartition(arr, 0, arr.length-1);
   if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
   return arr;
 };
 
+// Moved out of Utils.quicksort() (saw >100% speedup in Chrome with deep recursion)
 Utils.quicksortPartition = function (a, lo, hi) {
   var i = lo,
       j = hi,
       pivot, tmp;
   while (i < hi) {
-    pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arryays
+    pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arrays
     while (i <= j) {
       while (a[i] < pivot) i++;
       while (a[j] > pivot) j--;
@@ -589,6 +590,7 @@ Utils.sortOnKeyFunction = function(arr, getter) {
   arr.sort();
   p.toString = tmp;
 };
+
 
 
 
@@ -2190,7 +2192,7 @@ Utils.extend(El.prototype, {
   },
 
   visible: function() {
-    if (this._hidden != null) {
+    if (this._hidden !== undefined) {
       return !this._hidden;
     }
     var style = this.computedStyle();
@@ -3240,6 +3242,7 @@ function MouseWheel(mouse) {
   var self = this,
       prevWheelTime = 0,
       currDirection = 0,
+      firing = false,
       scrolling = false;
   init();
 
@@ -3261,28 +3264,34 @@ function MouseWheel(mouse) {
     if (currDirection == 0 || elapsed > sustainTime + fadeTime || !mouse.isOver()) {
       currDirection = 0;
       scrolling = false;
+      firing = false;
       return;
     }
+    if (firing) {
+      var multiplier = evt.interval / evt.period; // 1;
+      var fadeElapsed = elapsed - sustainTime;
+      if (fadeElapsed > 0) {
+        // Adjust multiplier if the timer fires during 'fade time' (for smoother zooming)
+        multiplier *= Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
+      }
 
-    var multiplier = evt.interval / evt.period; // 1;
-    var fadeElapsed = elapsed - sustainTime;
-    if (fadeElapsed > 0) {
-      // Adjust multiplier if the timer fires during 'fade time' (for smoother zooming)
-      multiplier *= Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
+      var obj = mouse.mouseData();
+      obj.direction = currDirection;
+      obj.multiplier = multiplier;
+      self.dispatchEvent('mousewheel', obj);
     }
-
-    var obj = mouse.mouseData();
-    obj.direction = currDirection;
-    obj.multiplier = multiplier;
-    if (!scrolling) {
-      self.dispatchEvent('mousewheelstart', obj);
-    }
-    scrolling = true;
-    self.dispatchEvent('mousewheel', obj);
   }
 
   function handleWheel(evt) {
-    if (mouse.isOver()) {
+    if (!scrolling) {
+      self.dispatchEvent('mousewheelstart');
+      scrolling = true;
+      if (mouse.isOver()) {
+        firing = true;
+      }
+    }
+    //if (mouse.isOver()) {
+    if (firing) {
       evt.preventDefault();
       var direction = 0; // 1 = zoom in / scroll up, -1 = zoom out / scroll down
       if (evt.wheelDelta) {
@@ -3838,7 +3847,7 @@ Utils.format = (function() {
         str = str.substr(1);
       }
       isZero = parseFloat(str) == 0;
-      if (flags.indexOf("'") != -1) {
+      if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
         str = Utils.addThousandsSep(str);
       }
       if (!isZero) { // BUG: sign is added when num rounds to 0
@@ -3870,7 +3879,7 @@ Utils.format = (function() {
     return str;
   }
 
-  var codeRxp = /%([\'+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+  var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
 
   var format = function(s) {
     var arr = Array.prototype.slice.call(arguments, 1);
@@ -4088,6 +4097,17 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
       dy = ay - by,
       dz = az - bz;
   return dx * dx + dy * dy + dz * dz;
+}
+
+function getRoundingFunction(inc) {
+  if (!Utils.isNumber(inc) || inc === 0) {
+    error("Rounding increment must be a non-zero number.");
+  }
+  var inv = 1 / inc;
+  return function(x) {
+    // This seems to avoid stringify problems of Math.round(x / inc) * inc;
+    return Math.round(x * inv) / inv;
+  };
 }
 
 function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
@@ -5101,7 +5121,7 @@ function ClickText(ref) {
   function onblur() {
     var val = _parser(_el.el.value);
     if (val === _value) {
-      return;
+      // return;
     }
     if (_validator(val)) {
       this.value(val);
@@ -5301,10 +5321,15 @@ var SimplifyControl = function() {
 // Convert path data from a non-topological source (Shapefile, GeoJSON, etc)
 // to the format used for topology processing (see mapshaper-topology.js)
 //
-function PathImporter(pointCount) {
+function PathImporter(pointCount, opts) {
   var xx = new Float64Array(pointCount),
       yy = new Float64Array(pointCount),
-      buf = new Float64Array(1024);
+      buf = new Float64Array(1024),
+      round = null;
+
+  if (opts && opts.precision) {
+    round = getRoundingFunction(opts.precision);
+  }
 
   var paths = [],
       pointId = 0,
@@ -5340,6 +5365,12 @@ function PathImporter(pointCount) {
     for (var i=0; i<pointCount; i++) {
       x = arr[offs++];
       y = arr[offs++];
+
+      if (round !== null) {
+        x = round(x);
+        y = round(y);
+      }
+
       if (i === 0 || prevX != x || prevY != y) {
         xx[pointId] = x;
         yy[pointId] = y;
@@ -5865,7 +5896,7 @@ function ShapefileTable(buf) {
 
 
 
-MapShaper.importGeoJSON = function(obj) {
+MapShaper.importGeoJSON = function(obj, opts) {
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
@@ -5913,7 +5944,7 @@ MapShaper.importGeoJSON = function(obj) {
 
   // Import GeoJSON geometries
   //
-  var importer = new PathImporter(pointCount);
+  var importer = new PathImporter(pointCount, opts);
   Utils.forEach(geometries, function(geom) {
     importer.startShape();
     var f = geom && GeoJSON.pathImporters[geom.type];
@@ -6806,7 +6837,7 @@ MapShaper.importDbf = function(src) {
 // Read Shapefile data from an ArrayBuffer or Buffer
 // Build topology
 //
-MapShaper.importShp = function(src) {
+MapShaper.importShp = function(src, opts) {
   T.start();
   var reader = new ShpReader(src);
   var supportedTypes = [
@@ -6823,7 +6854,7 @@ MapShaper.importShp = function(src) {
   }
 
   var counts = reader.getCounts();
-  var importer = new PathImporter(counts.pointCount);
+  var importer = new PathImporter(counts.pointCount, opts);
   var expectRings = Utils.contains([5,15,25], reader.type());
 
   // TODO: test cases: null shape; non-null shape with no valid parts
@@ -7010,19 +7041,19 @@ MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
 // @content: ArrayBuffer or String
 // @type: 'shapefile'|'json'
 //
-MapShaper.importContent = function(content, fileType) {
+MapShaper.importContent = function(content, fileType, opts) {
   var data,
       fileFmt;
   if (fileType == 'shp') {
-    data = MapShaper.importShp(content);
+    data = MapShaper.importShp(content, opts);
     fileFmt = 'shapefile';
   } else if (fileType == 'json') {
     var jsonObj = JSON.parse(content);
     if (jsonObj.type == 'Topology') {
-      data = MapShaper.importTopoJSON(jsonObj);
+      data = MapShaper.importTopoJSON(jsonObj, opts);
       fileFmt = 'topojson';
     } else {
-      data = MapShaper.importGeoJSON(jsonObj);
+      data = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
     }
   } else {
@@ -7138,6 +7169,16 @@ function DropControl(importer) {
 }
 
 function ImportControl(editor) {
+  var precisionInput = new ClickText("#g-import-precision-opt")
+    .bounds(0, Infinity)
+    .formatter(function(str) {
+      var val = parseFloat(str);
+      return !val ? '' : String(val);
+    })
+    .validator(function(str) {
+      return str === '' || Utils.isNumber(parseFloat(str));
+    });
+
   // Receive: FileList
   this.readFiles = function(files) {
     Utils.forEach(files, this.readFile, this);
@@ -7191,7 +7232,8 @@ function ImportControl(editor) {
       return;
     }
     if (type == 'shp' || type == 'json') {
-      data = MapShaper.importContent(content, type);
+      var precision = precisionInput.value();
+      data = MapShaper.importContent(content, type, {precision: precision});
       var opts = {
         input_file: fname
       };
@@ -9743,7 +9785,8 @@ function Editor() {
   var importOpts = {
     simplifyMethod: "mod",
     preserveShapes: false,
-    findIntersections: false
+    showIntersections: false,
+    removeIntersections: false
   };
 
   function init(contentBounds) {

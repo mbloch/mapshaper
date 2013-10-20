@@ -26,6 +26,17 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
   return dx * dx + dy * dy + dz * dz;
 }
 
+function getRoundingFunction(inc) {
+  if (!Utils.isNumber(inc) || inc === 0) {
+    error("Rounding increment must be a non-zero number.");
+  }
+  var inv = 1 / inc;
+  return function(x) {
+    // This seems to avoid stringify problems of Math.round(x / inc) * inc;
+    return Math.round(x * inv) / inv;
+  };
+}
+
 function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
   // Test collision (c.f. Sedgewick, _Algorithms in C_)
   // (Tried some other functions that might fail due to rounding errors)

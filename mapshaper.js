@@ -4104,12 +4104,14 @@ function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2
     var s1dy = s1p2y - s1p1y;
     var s2dx = s2p2x - s2p1x;
     var s2dy = s2p2y - s2p1y;
-
-    var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / (-s2dx * s1dy + s1dx * s2dy);
+    var den = -s2dx * s1dy + s1dx * s2dy;
+    if (den === 0) return false; // colinear -- treating as no intersection
 
     // Collision detected
+    var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / den;
     var x = s1p1x + m * s1dx;
     var y = s1p1y + m * s1dy;
+
     return [x, y];
   }
 
@@ -4470,7 +4472,7 @@ function ArcDataset() {
     this.forEach2(function(i, n, xx, yy, zz, arcId) {
       var n2 = 0;
       for (var end = i+n; i < end; i++) {
-        if (_zz[i] > _zlimit) {
+        if (_zz[i] >= _zlimit) {
           xx2[i2] = xx[i];
           yy2[i2] = yy[i];
           zz2[i2] = zz[i];
@@ -4694,6 +4696,10 @@ function ArcDataset() {
     return this;
   };
 
+  this.getRetainedInterval = function() {
+    return _zlimit;
+  };
+
   this.setRetainedInterval = function(z) {
     _zlimit = z;
     return this;
@@ -4765,7 +4771,7 @@ function ArcDataset() {
     if (!zz || !z) return this.getPointCount();
     var count = 0;
     for (var i=0, n = zz.length; i<n; i++) {
-      if (zz[i] > z) count++;
+      if (zz[i] >= z) count++;
     }
     return count;
   };
@@ -4913,7 +4919,7 @@ function ArcIter(xx, yy, zz) {
     if (i == stop) return false;
     do {
       j += inc;
-    } while (j != stop && zz[j] <= zlim);
+    } while (j != stop && zz[j] < zlim);
     _i = j;
     this.x = _xx[i];
     this.y = _yy[i];
