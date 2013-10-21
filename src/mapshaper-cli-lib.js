@@ -3,7 +3,9 @@ mapshaper-topology,
 mapshaper-simplify,
 mapshaper-shapes,
 mapshaper-export,
-mapshaper-import
+mapshaper-import,
+mapshaper-repair,
+mapshaper-segments
 */
 // mapshaper-segments
 
@@ -13,6 +15,7 @@ MapShaper.validateArgv = function(argv) {
   var opts = cli.validateInputOpts(argv);
   Utils.extend(opts, cli.validateOutputOpts(argv, opts));
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
+  Utils.extend(opts, cli.validateTopologyOpts(argv));
   opts.timing = !!argv.t;
   return opts;
 };
@@ -137,6 +140,18 @@ cli.validateOutputOpts = function(argv, inputOpts) {
   };
 };
 
+cli.validateTopologyOpts = function(argv) {
+  var opts = {};
+  if (argv.precision) {
+    if (!Utils.isNumber(argv.precision) || argv.precision <= 0) {
+      error("--precision option should be a positive number");
+    }
+    opts.precision = argv.precision;
+  }
+  opts.repair = !!argv.repair;
+  return opts;
+};
+
 cli.validateSimplifyOpts = function(argv) {
   var opts = {};
   if (argv.i) {
@@ -167,7 +182,6 @@ cli.validateSimplifyOpts = function(argv) {
     else
       opts.simplify_method = "mod";
   }
-
   return opts;
 };
 
@@ -178,7 +192,7 @@ MapShaper.gc = function() {
   T.stop("gc()");
 };
 
-MapShaper.importFromFile = function(fname) {
+MapShaper.importFromFile = function(fname, opts) {
   var fileType = MapShaper.guessFileType(fname),
       content;
   if (fileType == 'shp') {
@@ -188,7 +202,7 @@ MapShaper.importFromFile = function(fname) {
   } else {
     error("Unexpected input file:", fname);
   }
-  return MapShaper.importContent(content, fileType);
+  return MapShaper.importContent(content, fileType, opts);
 };
 
 

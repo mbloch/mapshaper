@@ -11,35 +11,6 @@ function ShapeRenderer() {
     }
   }
 
-  /*
-  var index = {};
-  function drawCircle(x, y, size, col, ctx) {
-    var key = String(size) + col;
-    var img = index[key];
-    if (!img) {
-      var pixRadius = Math.ceil(size * 0.5);
-      var dw = pixRadius * 2;
-      var dh = pixRadius * 2;
-
-      img = document.createElement('canvas');
-      img.width = dw;
-      img.height = dh;
-      var ctr = dw / 2;
-      drawVectorCircle(ctr, ctr, size, col, img.getContext('2d'));
-
-      var dx = Math.round(ctr - pixRadius);
-      var dy = Math.round(ctr - pixRadius);
-
-      index[key] = img;
-    }
-
-    var wpix = img.width;
-    var xIns = (x - wpix * 0.5 + 0.5) | 0;
-    var yIns = (y - wpix * 0.5 + 0.5) | 0;
-    ctx.drawImage(img, xIns, yIns);
-  };
-  */
-
   this.drawPoints = function(paths, style, ctx) {
     var midCol = style.dotColor || "rgba(255, 50, 50, 0.5)",
         endCol = style.nodeColor || midCol,

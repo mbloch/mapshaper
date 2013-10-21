@@ -129,11 +129,13 @@ function Editor() {
         if (slider.value() == 1) {
           arcs = initialIntersections;
         } else {
+          T.start();
           var intersections = MapShaper.findSegmentIntersections(arcData);
+          T.stop("Find intersections");
           if (fixXX) {
             T.start();
             intersections = MapShaper.repairIntersections(arcData, intersections);
-            T.stop('repair');
+            T.stop('Fix intersections');
           }
           arcs = MapShaper.getIntersectionPoints(intersections);
         }

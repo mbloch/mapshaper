@@ -267,7 +267,7 @@ var Utils = {
       }
     }
     return dest;
-  },
+  }
 };
 
 var Opts = {
@@ -361,7 +361,6 @@ var Opts = {
   getNamespace: function(name, root) {
     var node = root || this.global();
     var parts = name.split('.');
-
     for (var i=0, len=parts.length; i<len; i++) {
       var part = parts[i];
       if (!part) continue;
@@ -386,10 +385,12 @@ var Opts = {
     root = root || this.global();
     var parts = path.split('.'),
         name = parts.pop();
-    if (!name) error("Opts.exportObject() Invalid name:", path);
-    if (name) {
-      var ns = Opts.getNamespace(parts.join('.'), root);
-      ns[name] = obj;
+    if (!name) {
+      error("Opts.exportObject() Invalid name:", path);
+    } else {
+      var exp = {};
+      exp[name] = obj;
+      Opts.extendNamespace(parts.join('.'), exp)
     }
   }
 };
@@ -540,18 +541,18 @@ Utils.genericSort = function(arr, asc) {
 // Sorts an array of numbers in-place
 //
 Utils.quicksort = function(arr, asc) {
-
   Utils.quicksortPartition(arr, 0, arr.length-1);
   if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
   return arr;
 };
 
+// Moved out of Utils.quicksort() (saw >100% speedup in Chrome with deep recursion)
 Utils.quicksortPartition = function (a, lo, hi) {
   var i = lo,
       j = hi,
       pivot, tmp;
   while (i < hi) {
-    pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arryays
+    pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arrays
     while (i <= j) {
       while (a[i] < pivot) i++;
       while (a[j] > pivot) j--;
@@ -589,6 +590,7 @@ Utils.sortOnKeyFunction = function(arr, getter) {
   arr.sort();
   p.toString = tmp;
 };
+
 
 
 
@@ -775,7 +777,9 @@ Utils.groupBy = function(arr, k) {
 Utils.arrayToIndex = function(arr) {
   if (arguments.length > 1) error("#arrayToIndex() Use #indexOn() instead");
   return Utils.reduce(arr, function(index, key) {
-    if (key in index) trace("#arrayToIndex() Duplicate key:", key);
+    if (key in index) {
+      trace("#arrayToIndex() Duplicate key:", key);
+    }
     index[key] = true;
     return index;
   }, {});
@@ -2190,7 +2194,7 @@ Utils.extend(El.prototype, {
   },
 
   visible: function() {
-    if (this._hidden != null) {
+    if (this._hidden !== undefined) {
       return !this._hidden;
     }
     var style = this.computedStyle();
@@ -3240,6 +3244,7 @@ function MouseWheel(mouse) {
   var self = this,
       prevWheelTime = 0,
       currDirection = 0,
+      firing = false,
       scrolling = false;
   init();
 
@@ -3261,28 +3266,34 @@ function MouseWheel(mouse) {
     if (currDirection == 0 || elapsed > sustainTime + fadeTime || !mouse.isOver()) {
       currDirection = 0;
       scrolling = false;
+      firing = false;
       return;
     }
+    if (firing) {
+      var multiplier = evt.interval / evt.period; // 1;
+      var fadeElapsed = elapsed - sustainTime;
+      if (fadeElapsed > 0) {
+        // Adjust multiplier if the timer fires during 'fade time' (for smoother zooming)
+        multiplier *= Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
+      }
 
-    var multiplier = evt.interval / evt.period; // 1;
-    var fadeElapsed = elapsed - sustainTime;
-    if (fadeElapsed > 0) {
-      // Adjust multiplier if the timer fires during 'fade time' (for smoother zooming)
-      multiplier *= Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
+      var obj = mouse.mouseData();
+      obj.direction = currDirection;
+      obj.multiplier = multiplier;
+      self.dispatchEvent('mousewheel', obj);
     }
-
-    var obj = mouse.mouseData();
-    obj.direction = currDirection;
-    obj.multiplier = multiplier;
-    if (!scrolling) {
-      self.dispatchEvent('mousewheelstart', obj);
-    }
-    scrolling = true;
-    self.dispatchEvent('mousewheel', obj);
   }
 
   function handleWheel(evt) {
-    if (mouse.isOver()) {
+    if (!scrolling) {
+      self.dispatchEvent('mousewheelstart');
+      scrolling = true;
+      if (mouse.isOver()) {
+        firing = true;
+      }
+    }
+    //if (mouse.isOver()) {
+    if (firing) {
       evt.preventDefault();
       var direction = 0; // 1 = zoom in / scroll up, -1 = zoom out / scroll down
       if (evt.wheelDelta) {
@@ -3838,7 +3849,7 @@ Utils.format = (function() {
         str = str.substr(1);
       }
       isZero = parseFloat(str) == 0;
-      if (flags.indexOf("'") != -1) {
+      if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
         str = Utils.addThousandsSep(str);
       }
       if (!isZero) { // BUG: sign is added when num rounds to 0
@@ -3870,7 +3881,7 @@ Utils.format = (function() {
     return str;
   }
 
-  var codeRxp = /%([\'+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+  var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
 
   var format = function(s) {
     var arr = Array.prototype.slice.call(arguments, 1);
@@ -4088,6 +4099,17 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
       dy = ay - by,
       dz = az - bz;
   return dx * dx + dy * dy + dz * dz;
+}
+
+function getRoundingFunction(inc) {
+  if (!Utils.isNumber(inc) || inc === 0) {
+    error("Rounding increment must be a non-zero number.");
+  }
+  var inv = 1 / inc;
+  return function(x) {
+    // This seems to avoid stringify problems of Math.round(x / inc) * inc;
+    return Math.round(x * inv) / inv;
+  };
 }
 
 function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
@@ -5995,10 +6017,15 @@ MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
 // Convert path data from a non-topological source (Shapefile, GeoJSON, etc)
 // to the format used for topology processing (see mapshaper-topology.js)
 //
-function PathImporter(pointCount) {
+function PathImporter(pointCount, opts) {
   var xx = new Float64Array(pointCount),
       yy = new Float64Array(pointCount),
-      buf = new Float64Array(1024);
+      buf = new Float64Array(1024),
+      round = null;
+
+  if (opts && opts.precision) {
+    round = getRoundingFunction(opts.precision);
+  }
 
   var paths = [],
       pointId = 0,
@@ -6034,6 +6061,12 @@ function PathImporter(pointCount) {
     for (var i=0; i<pointCount; i++) {
       x = arr[offs++];
       y = arr[offs++];
+
+      if (round !== null) {
+        x = round(x);
+        y = round(y);
+      }
+
       if (i === 0 || prevX != x || prevY != y) {
         xx[pointId] = x;
         yy[pointId] = y;
@@ -6559,7 +6592,7 @@ function ShapefileTable(buf) {
 
 
 
-MapShaper.importGeoJSON = function(obj) {
+MapShaper.importGeoJSON = function(obj, opts) {
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
@@ -6607,7 +6640,7 @@ MapShaper.importGeoJSON = function(obj) {
 
   // Import GeoJSON geometries
   //
-  var importer = new PathImporter(pointCount);
+  var importer = new PathImporter(pointCount, opts);
   Utils.forEach(geometries, function(geom) {
     importer.startShape();
     var f = geom && GeoJSON.pathImporters[geom.type];
@@ -7500,7 +7533,7 @@ MapShaper.importDbf = function(src) {
 // Read Shapefile data from an ArrayBuffer or Buffer
 // Build topology
 //
-MapShaper.importShp = function(src) {
+MapShaper.importShp = function(src, opts) {
   T.start();
   var reader = new ShpReader(src);
   var supportedTypes = [
@@ -7517,7 +7550,7 @@ MapShaper.importShp = function(src) {
   }
 
   var counts = reader.getCounts();
-  var importer = new PathImporter(counts.pointCount);
+  var importer = new PathImporter(counts.pointCount, opts);
   var expectRings = Utils.contains([5,15,25], reader.type());
 
   // TODO: test cases: null shape; non-null shape with no valid parts
@@ -7966,19 +7999,19 @@ function PathExporter(arcData, polygonType) {
 // @content: ArrayBuffer or String
 // @type: 'shapefile'|'json'
 //
-MapShaper.importContent = function(content, fileType) {
+MapShaper.importContent = function(content, fileType, opts) {
   var data,
       fileFmt;
   if (fileType == 'shp') {
-    data = MapShaper.importShp(content);
+    data = MapShaper.importShp(content, opts);
     fileFmt = 'shapefile';
   } else if (fileType == 'json') {
     var jsonObj = JSON.parse(content);
     if (jsonObj.type == 'Topology') {
-      data = MapShaper.importTopoJSON(jsonObj);
+      data = MapShaper.importTopoJSON(jsonObj, opts);
       fileFmt = 'topojson';
     } else {
-      data = MapShaper.importGeoJSON(jsonObj);
+      data = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
     }
   } else {
@@ -8066,6 +8099,453 @@ MapShaper.calcRetainedCountsForRing = function(path, retainedPointCounts, arcCou
 
 
 
+
+MapShaper.getIntersectionPoints = function(intersections) {
+  // Kludge: create set of paths of length 1 to display intersection points
+  var vectors = Utils.map(intersections, function(obj) {
+        var x = obj.intersection.x,
+            y = obj.intersection.y;
+        return [[x], [y]];
+      });
+  return new ArcDataset(vectors);
+};
+
+// Method: bin segments into horizontal stripes
+// Segments that span stripes are assigned to all intersecting stripes
+// To find all intersections:
+// 1. Assign each segment to one or more bins
+// 2. Find intersections inside each bin
+// 3. Ignore duplicate intersections
+//
+MapShaper.findSegmentIntersections = (function() {
+
+  // Re-use buffer for temp data -- Chrome's gc starts bogging down
+  // if large buffers are repeatedly created.
+  var buf;
+  function getUint32Array(count) {
+    var bytes = count * 4;
+    if (!buf || buf.byteLength < bytes) {
+      buf = new ArrayBuffer(bytes);
+    }
+    return new Uint32Array(buf, 0, count);
+  }
+
+  return function(arcs) {
+    //T.start();
+    var bounds = arcs.getBounds(),
+        ymin = bounds.ymin,
+        yrange = bounds.ymax - ymin,
+        stripeCount = calcStripeCount(arcs),
+        stripeCounts = new Uint32Array(stripeCount),
+        i;
+
+    function stripeId(y) {
+      return Math.floor((stripeCount-1) * (y - ymin) / yrange);
+    }
+
+    // Count segments in each stripe
+    arcs.forEachSegment(function(id1, id2, xx, yy) {
+      var s1 = stripeId(yy[id1]),
+          s2 = stripeId(yy[id2]);
+      while (true) {
+        stripeCounts[s1] = stripeCounts[s1] + 2;
+        if (s1 == s2) break;
+        s1 += s2 > s1 ? 1 : -1;
+      }
+    });
+
+    // Allocate arrays for segments in each stripe
+    var stripeData = getUint32Array(Utils.sum(stripeCounts)),
+        offs = 0;
+    var stripes = Utils.map(stripeCounts, function(stripeSize) {
+      var start = offs;
+      offs += stripeSize;
+      return stripeData.subarray(start, offs);
+    });
+
+    // Assign segment ids to each stripe
+    Utils.initializeArray(stripeCounts, 0);
+    arcs.forEachSegment(function(id1, id2, xx, yy, arcId) {
+      var s1 = stripeId(yy[id1]),
+          s2 = stripeId(yy[id2]),
+          count, stripe, tmp;
+      if (xx[id2] < xx[id1]) {
+        tmp = id1;
+        id1 = id2;
+        id2 = tmp;
+      }
+      while (true) {
+        count = stripeCounts[s1];
+        stripeCounts[s1] = count + 2;
+        stripe = stripes[s1];
+        stripe[count] = id1;
+        stripe[count+1] = id2;
+        if (s1 == s2) break;
+        s1 += s2 > s1 ? 1 : -1;
+      }
+    });
+
+    // Detect intersections among segments in each stripe.
+    var raw = arcs.getVertexData(),
+        intersections = [],
+        index = {},
+        arr;
+    for (i=0; i<stripeCount; i++) {
+      arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
+      if (arr.length > 0) extendIntersections(intersections, arr, i);
+    }
+
+    // T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
+    return intersections;
+
+    // Add intersections from a bin, but avoid duplicates.
+    //
+    function extendIntersections(intersections, arr, stripeId) {
+      Utils.forEach(arr, function(obj, i) {
+        var key = getIntersectionKey(obj);
+        if (key in index === false) {
+          intersections.push(obj);
+          index[key] = true;
+        }
+      });
+    }
+
+    function getIntersectionKey(obj) {
+      var ids = obj.ids;
+      // Make sure intersecting segments that span multiple stripes
+      //   are always in the same order (order can be inconsistent if
+      //   both segments have same xmin value).
+      if (obj.segments[0][0].x == obj.segments[1][0].x &&
+            ids[0] > ids[2]) {
+        ids = [ids[2], ids[3], ids[0], ids[1]];
+      }
+      return ids.join(',');
+    }
+  };
+
+  function calcStripeCount(arcs) {
+    var bounds = arcs.getBounds(),
+        yrange = bounds.ymax - bounds.ymin,
+        avg = arcs.getAverageSegment(arcs.getPointCount() / 4); // don't bother sampling all segments
+    return Math.ceil(yrange / avg[1] / 20);
+  }
+
+})();
+
+// Find intersections among a group of line segments
+
+//
+// @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
+// @xx, @yy: Arrays of x- and y-coordinates
+//
+MapShaper.intersectSegments = function(ids, xx, yy) {
+  var lim = ids.length - 2,
+      intersections = [];
+  var s1p1, s1p2, s2p1, s2p2,
+      s1p1x, s1p2x, s2p1x, s2p2x,
+      s1p1y, s1p2y, s2p1y, s2p2y,
+      hit, i, j;
+
+  // Sort segments by xmin, to allow efficient exclusion of segments with
+  // non-overlapping x extents.
+  MapShaper.sortSegmentIds(xx, ids);
+
+  i = 0;
+  while (i < lim) {
+    s1p1 = ids[i];
+    s1p2 = ids[i+1];
+    s1p1x = xx[s1p1];
+    s1p2x = xx[s1p2];
+    s1p1y = yy[s1p1];
+    s1p2y = yy[s1p2];
+
+    j = i;
+    while (j < lim) {
+      j += 2;
+      s2p1 = ids[j];
+      s2p1x = xx[s2p1];
+
+      if (s1p2x <= s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
+
+      s2p1y = yy[s2p1];
+      s2p2 = ids[j+1];
+      s2p2x = xx[s2p2];
+      s2p2y = yy[s2p2];
+
+      // skip segments with non-overlapping y ranges
+      if (s1p1y >= s2p1y) {
+        if (s1p1y >= s2p2y && s1p2y >= s2p1y && s1p2y >= s2p2y) continue;
+      } else {
+        if (s1p1y <= s2p2y && s1p2y <= s2p1y && s1p2y <= s2p2y) continue;
+      }
+
+      // skip segments that share an endpoint
+      if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
+          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y)
+        continue;
+
+      // test two candidate segments for intersection
+      hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
+          s2p1x, s2p1y, s2p2x, s2p2y);
+      if (hit) {
+        intersections.push({
+          i: i,
+          j: j,
+          intersection: {x: hit[0], y: hit[1]},
+          ids: [s1p1, s1p2, s2p1, s2p2],
+          segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}],
+              [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
+        });
+      }
+    }
+    i += 2;
+  }
+  return intersections;
+};
+
+MapShaper.sortSegmentIds = function(arr, ids) {
+  MapShaper.quicksortSegmentIds(arr, ids, 0, ids.length-2);
+};
+
+MapShaper.insertionSortSegmentIds = function(arr, ids, start, end) {
+  var id, id2;
+  for (var j = start + 2; j <= end; j+=2) {
+    id = ids[j];
+    id2 = ids[j+1];
+    for (var i = j - 2; i >= start && arr[id] < arr[ids[i]]; i-=2) {
+      ids[i+2] = ids[i];
+      ids[i+3] = ids[i+1];
+    }
+    ids[i+2] = id;
+    ids[i+3] = id2;
+  }
+};
+
+MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
+  var i = lo,
+      j = hi,
+      pivot, tmp;
+  while (i < hi) {
+    pivot = a[ids[(lo + hi >> 2) << 1]]; // avoid n^2 performance on sorted arrays
+    while (i <= j) {
+      while (a[ids[i]] < pivot) i+=2;
+      while (a[ids[j]] > pivot) j-=2;
+      if (i <= j) {
+        tmp = ids[i];
+        ids[i] = ids[j];
+        ids[j] = tmp;
+        tmp = ids[i+1];
+        ids[i+1] = ids[j+1];
+        ids[j+1] = tmp;
+        i+=2;
+        j-=2;
+      }
+    }
+
+    if (j - lo < 40) MapShaper.insertionSortSegmentIds(a, ids, lo, j);
+    else MapShaper.quicksortSegmentIds(a, ids, lo, j);
+    if (hi - i < 40) {
+      MapShaper.insertionSortSegmentIds(a, ids, i, hi);
+      return;
+    }
+    lo = i;
+    j = hi;
+  }
+};
+
+
+
+
+// Combine detection and repair for cli
+//
+MapShaper.findAndRepairIntersections = function(arcs) {
+  T.start();
+  var intersections = MapShaper.findSegmentIntersections(arcs),
+      unfixable = MapShaper.repairIntersections(arcs, intersections);
+  T.stop('Find and repair intersections');
+  var info = {
+    pre: intersections.length,
+    post: unfixable.length
+  }
+  info.repaired = info.post < info.pre ? info.pre - info.post : 0;
+  return info;
+};
+
+// Try to resolve a collection of line-segment intersections by rolling
+// back simplification along intersecting segments.
+//
+// Limitation of this method: it can't remove intersections that are present
+// in the original dataset.
+//
+// @arcs ArcDataset object
+// @intersections (Array) Output from MapShaper.findSegmentIntersections()
+// Returns array of unresolved intersections, or empty array if none.
+//
+MapShaper.repairIntersections = function(arcs, intersections) {
+  var raw = arcs.getVertexData(),
+      zz = raw.zz,
+      yy = raw.yy,
+      xx = raw.xx,
+      zlim = arcs.getRetainedInterval();
+
+  // index of segments that have been modified (see addSegmentVertices())
+  var segmentIndex = {};
+
+  while (repairEach(intersections) > 0) {
+    // After each repair pass, check for new intersections that may have been
+    // created as a by-product of repairing one set of intersections.
+    //
+    // Issue: several hit-detection passes through a large dataset may be slow.
+    //
+    // Possible optimization: only check for intersections among segments that
+    // intersect bounding boxes of segments touched during previous repair pass.
+    // Need: efficient way of checking up to thousands of bb... could
+    // index boxes for n * log(k) or better performance....
+    //
+    intersections = MapShaper.findSegmentIntersections(arcs);
+  }
+  return intersections;
+
+  function repairEach(intersections) {
+    var fixes = 0;
+    Utils.forEach(intersections, function(obj) {
+      fixes += repairIntersection(obj);
+    });
+    return fixes;
+  }
+
+  function addSegmentVertices(ids, p1, p2) {
+    // Consider: scan entire section between p1 & p2 for additional vertices
+    // even if segment has not been processed already, and get rid of index.
+    //
+    var k = MapShaper.getSegmentKey(p1, p2),
+        start, end, prev;
+
+    if (k in segmentIndex === false) {
+      ids.push(p1, p2);
+      segmentIndex[k] = true;
+    } else {
+      if (p1 <= p2) {
+        start = p1;
+        end = p2;
+      } else {
+        start = p2;
+        end = p1;
+      }
+      prev = start;
+      for (var i=start+1; i<=end; i++) {
+        if (zz[i] >= zlim) {
+          if (xx[prev] < xx[i]) {
+            ids.push(prev, i);
+          } else {
+            ids.push(i, prev);
+          }
+        }
+      }
+    }
+  }
+
+  /*
+  function getStripeBounds(segments) {
+    var bb = new Bounds();
+    for (var i=0; i<segments.length; i++) {
+      bb.mergePoint(xx[i], yy[i]);
+    }
+    return bb;
+  }
+  */
+
+  function repairIntersection(obj) {
+    var repairs = 0,
+        ids = obj.ids,
+        segments = [];
+    addSegmentVertices(segments, ids[0], ids[1]);
+    addSegmentVertices(segments, ids[2], ids[3]);
+
+    while (true) {
+      var collisions = MapShaper.intersectSegments(segments, raw.xx, raw.yy),
+          collision;
+      if (collisions.length === 0) {
+        // No intersections found... success!
+        break;
+      }
+
+      // Fix first collision; if more than one, fix in subsequent pass.
+      collision = collisions[0];
+      ids = collision.ids;
+      var i = MapShaper.findNextRemovableVertex(zz, zlim, ids[0], ids[1]),
+          j = MapShaper.findNextRemovableVertex(zz, zlim, ids[2], ids[3]),
+          zi = i == -1 ? Infinity : zz[i],
+          zj = j == -1 ? Infinity : zz[j];
+
+      if (zi == Infinity && zj == Infinity) {
+        // No more points available to add; unable to repair.
+        break;
+      }
+
+      // Re-introduce the next-highest vertex to the polyline
+
+      var startId, endId, newId, segId;
+      if (zi < zj) {
+        start = ids[0];
+        end = ids[1];
+        newId = i;
+        segId = collision.i;
+      } else {
+        start = ids[2];
+        end = ids[3];
+        newId = j;
+        segId = collision.j;
+      }
+
+      // if (segments[segId] != start || segments[segId+1] != end) error("id error")
+
+      zz[newId] = zlim; // add segment to line at current z level
+
+      // Split segment containing new point into two
+      segments[segId + 1] = newId;
+      if (xx[newId] < xx[start]) {
+        segments[segId] = newId;
+        segments[segId + 1] = start;
+      } else {
+        segments[segId + 1] = newId;
+      }
+
+      if (xx[newId] < xx[end]) {
+        segments.push(newId, end);
+      } else {
+        segments.push(end, newId);
+      }
+
+      repairs++;
+    }
+    return repairs;
+  }
+};
+
+MapShaper.getSegmentKey = function(id1, id2) {
+  return id1 + "~" + id2;
+};
+
+MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
+  var tmp, jz = 0, j = -1, z;
+  if (start > end) {
+    tmp = start;
+    start = end;
+    end = tmp;
+  }
+  for (var i=start+1; i<end; i++) {
+    z = zz[i];
+    if (z < zlim && z > jz) {
+      j = i;
+      jz = z;
+    }
+  }
+  return j;
+};
+
+
+
 // mapshaper-segments
 
 var cli = MapShaper.cli = {};
@@ -8074,6 +8554,7 @@ MapShaper.validateArgv = function(argv) {
   var opts = cli.validateInputOpts(argv);
   Utils.extend(opts, cli.validateOutputOpts(argv, opts));
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
+  Utils.extend(opts, cli.validateTopologyOpts(argv));
   opts.timing = !!argv.t;
   return opts;
 };
@@ -8198,6 +8679,18 @@ cli.validateOutputOpts = function(argv, inputOpts) {
   };
 };
 
+cli.validateTopologyOpts = function(argv) {
+  var opts = {};
+  if (argv.precision) {
+    if (!Utils.isNumber(argv.precision) || argv.precision <= 0) {
+      error("--precision option should be a positive number");
+    }
+    opts.precision = argv.precision;
+  }
+  opts.repair = !!argv.repair;
+  return opts;
+};
+
 cli.validateSimplifyOpts = function(argv) {
   var opts = {};
   if (argv.i) {
@@ -8228,7 +8721,6 @@ cli.validateSimplifyOpts = function(argv) {
     else
       opts.simplify_method = "mod";
   }
-
   return opts;
 };
 
@@ -8239,7 +8731,7 @@ MapShaper.gc = function() {
   T.stop("gc()");
 };
 
-MapShaper.importFromFile = function(fname) {
+MapShaper.importFromFile = function(fname, opts) {
   var fileType = MapShaper.guessFileType(fname),
       content;
   if (fileType == 'shp') {
@@ -8249,7 +8741,7 @@ MapShaper.importFromFile = function(fname) {
   } else {
     error("Unexpected input file:", fname);
   }
-  return MapShaper.importContent(content, fileType);
+  return MapShaper.importContent(content, fileType, opts);
 };
 
 

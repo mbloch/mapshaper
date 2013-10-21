@@ -1,5 +1,20 @@
 /* @require mapshaper-segments */
 
+// Combine detection and repair for cli
+//
+MapShaper.findAndRepairIntersections = function(arcs) {
+  T.start();
+  var intersections = MapShaper.findSegmentIntersections(arcs),
+      unfixable = MapShaper.repairIntersections(arcs, intersections);
+  T.stop('Find and repair intersections');
+  var info = {
+    pre: intersections.length,
+    post: unfixable.length
+  };
+  info.repaired = info.post < info.pre ? info.pre - info.post : 0;
+  return info;
+};
+
 // Try to resolve a collection of line-segment intersections by rolling
 // back simplification along intersecting segments.
 //

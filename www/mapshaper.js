@@ -267,7 +267,7 @@ var Utils = {
       }
     }
     return dest;
-  },
+  }
 };
 
 var Opts = {
@@ -777,7 +777,9 @@ Utils.groupBy = function(arr, k) {
 Utils.arrayToIndex = function(arr) {
   if (arguments.length > 1) error("#arrayToIndex() Use #indexOn() instead");
   return Utils.reduce(arr, function(index, key) {
-    if (key in index) trace("#arrayToIndex() Duplicate key:", key);
+    if (key in index) {
+      trace("#arrayToIndex() Duplicate key:", key);
+    }
     index[key] = true;
     return index;
   }, {});
@@ -8087,35 +8089,6 @@ function ShapeRenderer() {
     }
   }
 
-  /*
-  var index = {};
-  function drawCircle(x, y, size, col, ctx) {
-    var key = String(size) + col;
-    var img = index[key];
-    if (!img) {
-      var pixRadius = Math.ceil(size * 0.5);
-      var dw = pixRadius * 2;
-      var dh = pixRadius * 2;
-
-      img = document.createElement('canvas');
-      img.width = dw;
-      img.height = dh;
-      var ctr = dw / 2;
-      drawVectorCircle(ctr, ctr, size, col, img.getContext('2d'));
-
-      var dx = Math.round(ctr - pixRadius);
-      var dy = Math.round(ctr - pixRadius);
-
-      index[key] = img;
-    }
-
-    var wpix = img.width;
-    var xIns = (x - wpix * 0.5 + 0.5) | 0;
-    var yIns = (y - wpix * 0.5 + 0.5) | 0;
-    ctx.drawImage(img, xIns, yIns);
-  };
-  */
-
   this.drawPoints = function(paths, style, ctx) {
     var midCol = style.dotColor || "rgba(255, 50, 50, 0.5)",
         endCol = style.nodeColor || midCol,
@@ -9328,14 +9301,14 @@ MapShaper.findSegmentIntersections = (function() {
   var buf;
   function getUint32Array(count) {
     var bytes = count * 4;
-    if (!buf || buf.length < bytes) {
+    if (!buf || buf.byteLength < bytes) {
       buf = new ArrayBuffer(bytes);
     }
     return new Uint32Array(buf, 0, count);
   }
 
   return function(arcs) {
-    T.start();
+    //T.start();
     var bounds = arcs.getBounds(),
         ymin = bounds.ymin,
         yrange = bounds.ymax - ymin,
@@ -9399,7 +9372,7 @@ MapShaper.findSegmentIntersections = (function() {
       if (arr.length > 0) extendIntersections(intersections, arr, i);
     }
 
-    T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
+    // T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
     return intersections;
 
     // Add intersections from a bin, but avoid duplicates.
@@ -9559,6 +9532,21 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
 
 
 
+
+// Combine detection and repair for cli
+//
+MapShaper.findAndRepairIntersections = function(arcs) {
+  T.start();
+  var intersections = MapShaper.findSegmentIntersections(arcs),
+      unfixable = MapShaper.repairIntersections(arcs, intersections);
+  T.stop('Find and repair intersections');
+  var info = {
+    pre: intersections.length,
+    post: unfixable.length
+  }
+  info.repaired = info.post < info.pre ? info.pre - info.post : 0;
+  return info;
+};
 
 // Try to resolve a collection of line-segment intersections by rolling
 // back simplification along intersecting segments.
@@ -9852,11 +9840,13 @@ function Editor() {
         if (slider.value() == 1) {
           arcs = initialIntersections;
         } else {
+          T.start();
           var intersections = MapShaper.findSegmentIntersections(arcData);
+          T.stop("Find intersections");
           if (fixXX) {
             T.start();
             intersections = MapShaper.repairIntersections(arcData, intersections);
-            T.stop('repair');
+            T.stop('Fix intersections');
           }
           arcs = MapShaper.getIntersectionPoints(intersections);
         }

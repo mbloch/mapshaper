@@ -31,7 +31,7 @@ MapShaper.findSegmentIntersections = (function() {
   }
 
   return function(arcs) {
-    T.start();
+    //T.start();
     var bounds = arcs.getBounds(),
         ymin = bounds.ymin,
         yrange = bounds.ymax - ymin,
@@ -95,7 +95,7 @@ MapShaper.findSegmentIntersections = (function() {
       if (arr.length > 0) extendIntersections(intersections, arr, i);
     }
 
-    T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
+    // T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
     return intersections;
 
     // Add intersections from a bin, but avoid duplicates.
