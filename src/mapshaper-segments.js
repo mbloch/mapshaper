@@ -24,7 +24,7 @@ MapShaper.findSegmentIntersections = (function() {
   var buf;
   function getUint32Array(count) {
     var bytes = count * 4;
-    if (!buf || buf.length < bytes) {
+    if (!buf || buf.byteLength < bytes) {
       buf = new ArrayBuffer(bytes);
     }
     return new Uint32Array(buf, 0, count);
