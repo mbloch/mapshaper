@@ -73,7 +73,7 @@ optimist.usage(usage)
   })
 
   .options("precision", {
-    describe: "round coordinates by an interval"
+    describe: "increment for rounding coordinates, in original units"
   })
 
   .options("q", {

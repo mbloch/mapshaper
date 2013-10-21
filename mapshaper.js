@@ -8366,7 +8366,7 @@ MapShaper.findAndRepairIntersections = function(arcs) {
   var info = {
     pre: intersections.length,
     post: unfixable.length
-  }
+  };
   info.repaired = info.post < info.pre ? info.pre - info.post : 0;
   return info;
 };
