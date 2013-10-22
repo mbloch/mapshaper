@@ -2,11 +2,13 @@
 
 var TopoJSON = MapShaper.topojson = {};
 
-MapShaper.importTopoJSON = function(obj) {
+MapShaper.importTopoJSON = function(obj, opts) {
+  var round = opts && opts.precision ? getRoundingFunction(opts.precision) : null;
+
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
-  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform),
+  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform, round),
       layers = [];
   Utils.forEach(obj.objects, function(object, name) {
     var layerData = TopoJSON.importObject(object, arcs);
@@ -31,7 +33,7 @@ MapShaper.importTopoJSON = function(obj) {
 // Converts arc coordinates from rounded, delta-encoded values to
 // transposed arrays of geographic coordinates.
 //
-TopoJSON.importArcs = function(arcs, transform) {
+TopoJSON.importArcs = function(arcs, transform, round) {
   var mx = 1, my = 1, bx = 0, by = 0;
   if (transform) {
     mx = transform.scale[0];
@@ -41,16 +43,22 @@ TopoJSON.importArcs = function(arcs, transform) {
   }
 
   return Utils.map(arcs, function(arc) {
-    var x, y;
     var xx = [],
         yy = [],
         prevX = 0,
-        prevY = 0;
+        prevY = 0,
+        scaledX, scaledY, x, y;
     for (var i=0, len=arc.length; i<len; i++) {
       x = prevX + arc[i][0];
       y = prevY + arc[i][1];
-      xx.push(x * mx + bx);
-      yy.push(y * my + by);
+      scaledX = x * mx + bx;
+      scaledY = y * my + by;
+      if (round) {
+        scaledX = round(scaledX);
+        scaledY = round(scaledY);
+      }
+      xx.push(scaledX);
+      yy.push(scaledY);
       prevX = x;
       prevY = y;
     }
