@@ -32,7 +32,7 @@ function getRoundingFunction(inc) {
   }
   var inv = 1 / inc;
   return function(x) {
-    // This seems to avoid stringify problems of Math.round(x / inc) * inc;
+    // stringify() tends to show rounding artefacts using Math.round(x / inc) * inc;
     return Math.round(x * inv) / inv;
   };
 }
@@ -76,8 +76,6 @@ function ccw(x0, y0, x1, y1, x2, y2) {
   if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) return 1;
   return 0;
 }
-
-
 
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
@@ -249,6 +247,8 @@ function probablyDecimalDegreeBounds(b) {
 
 // export functions so they can be tested
 MapShaper.geom = {
+  getRoundingFunction: getRoundingFunction,
+  segmentIntersection: segmentIntersection,
   distance3D: distance3D,
   innerAngle: innerAngle,
   innerAngle3D: innerAngle3D,
