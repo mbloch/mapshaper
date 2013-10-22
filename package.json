@@ -19,7 +19,7 @@
 		"open": "~0.0.3"
 	},
 	"devDependencies": {
-		"mocha": "*"
+		"mocha": ">= 1.13.0"
 	},
 	"bin": {
 		"mapshaper": "./bin/mapshaper",
