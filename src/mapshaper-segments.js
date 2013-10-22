@@ -1,5 +1,7 @@
 /* @requires mapshaper-shapes */
 
+// Convert an array of intersections into an ArcDataset (for display)
+//
 MapShaper.getIntersectionPoints = function(intersections) {
   // Kludge: create set of paths of length 1 to display intersection points
   var vectors = Utils.map(intersections, function(obj) {
@@ -10,12 +12,13 @@ MapShaper.getIntersectionPoints = function(intersections) {
   return new ArcDataset(vectors);
 };
 
+// Identify intersecting segments in an ArcDataset
+//
 // Method: bin segments into horizontal stripes
 // Segments that span stripes are assigned to all intersecting stripes
 // To find all intersections:
 // 1. Assign each segment to one or more bins
-// 2. Find intersections inside each bin
-// 3. Ignore duplicate intersections
+// 2. Find intersections inside each bin (ignoring duplicate intersections)
 //
 MapShaper.findSegmentIntersections = (function() {
 
@@ -133,7 +136,6 @@ MapShaper.findSegmentIntersections = (function() {
 })();
 
 // Find intersections among a group of line segments
-
 //
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates

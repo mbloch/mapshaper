@@ -50,7 +50,7 @@ div.g-tip {
 	background: #fff;
 	border: 1px solid #ccc;
 	border-radius: 6px;
-	padding: 4px 6px 6px 6px;
+	padding: 5px 6px 6px 6px;
 	bottom: 0px;
 	left: -50%;
 	white-space: pre;
@@ -167,4 +167,15 @@ div.g-tip {
 	color: #aaa;
 	background: #eaeaea;
 	cursor: default;
+}
+
+
+.g-text-btn {
+	color: #1477C1;
+	cursor: pointer;
+}
+
+.g-text-btn.disabled {
+	cursor: auto;
+	color: #999;
 }

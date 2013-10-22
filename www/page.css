@@ -177,6 +177,24 @@ html, body {
 	position: relative;
 }
 
+/* --- Intersection control ----------*/
+
+#g-intersection-display {
+	cursor: default;
+	visibility: visible;
+	display: none;
+	position: absolute;
+	z-index: 2000;
+	top: 7px;
+	right: 10px;
+	text-align: right;
+}
+
+#g-intersection-display .g-text-btn.disabled {
+	visibility: hidden;
+}
+
+
 /* --- Map ---------------------- */
 
 #mshp-main-map {

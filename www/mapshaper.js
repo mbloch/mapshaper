@@ -4107,7 +4107,7 @@ function getRoundingFunction(inc) {
   }
   var inv = 1 / inc;
   return function(x) {
-    // This seems to avoid stringify problems of Math.round(x / inc) * inc;
+    // stringify() tends to show rounding artefacts using Math.round(x / inc) * inc;
     return Math.round(x * inv) / inv;
   };
 }
@@ -4151,8 +4151,6 @@ function ccw(x0, y0, x1, y1, x2, y2) {
   if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) return 1;
   return 0;
 }
-
-
 
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
@@ -4324,6 +4322,8 @@ function probablyDecimalDegreeBounds(b) {
 
 // export functions so they can be tested
 MapShaper.geom = {
+  getRoundingFunction: getRoundingFunction,
+  segmentIntersection: segmentIntersection,
   distance3D: distance3D,
   innerAngle: innerAngle,
   innerAngle3D: innerAngle3D,
@@ -6120,11 +6120,13 @@ function exportCoordsForGeoJSON(paths) {
 
 var TopoJSON = MapShaper.topojson = {};
 
-MapShaper.importTopoJSON = function(obj) {
+MapShaper.importTopoJSON = function(obj, opts) {
+  var round = opts && opts.precision ? getRoundingFunction(opts.precision) : null;
+
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
-  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform),
+  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform, round),
       layers = [];
   Utils.forEach(obj.objects, function(object, name) {
     var layerData = TopoJSON.importObject(object, arcs);
@@ -6149,7 +6151,7 @@ MapShaper.importTopoJSON = function(obj) {
 // Converts arc coordinates from rounded, delta-encoded values to
 // transposed arrays of geographic coordinates.
 //
-TopoJSON.importArcs = function(arcs, transform) {
+TopoJSON.importArcs = function(arcs, transform, round) {
   var mx = 1, my = 1, bx = 0, by = 0;
   if (transform) {
     mx = transform.scale[0];
@@ -6159,16 +6161,22 @@ TopoJSON.importArcs = function(arcs, transform) {
   }
 
   return Utils.map(arcs, function(arc) {
-    var x, y;
     var xx = [],
         yy = [],
         prevX = 0,
-        prevY = 0;
+        prevY = 0,
+        scaledX, scaledY, x, y;
     for (var i=0, len=arc.length; i<len; i++) {
       x = prevX + arc[i][0];
       y = prevY + arc[i][1];
-      xx.push(x * mx + bx);
-      yy.push(y * my + by);
+      scaledX = x * mx + bx;
+      scaledY = y * my + by;
+      if (round) {
+        scaledX = round(scaledX);
+        scaledY = round(scaledY);
+      }
+      xx.push(scaledX);
+      yy.push(scaledY);
       prevX = x;
       prevY = y;
     }
@@ -7467,7 +7475,8 @@ function PathExporter(arcData, polygonType) {
     return output;
   }
 
-  //
+  // TODO: add shape preservation code here.
+  //   re-introduce vertices to ring with largest bounding box
   //
   function exportShapeData(ids) {
     var pointCount = 0,
@@ -9277,6 +9286,8 @@ MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
 
 
 
+// Convert an array of intersections into an ArcDataset (for display)
+//
 MapShaper.getIntersectionPoints = function(intersections) {
   // Kludge: create set of paths of length 1 to display intersection points
   var vectors = Utils.map(intersections, function(obj) {
@@ -9287,12 +9298,13 @@ MapShaper.getIntersectionPoints = function(intersections) {
   return new ArcDataset(vectors);
 };
 
+// Identify intersecting segments in an ArcDataset
+//
 // Method: bin segments into horizontal stripes
 // Segments that span stripes are assigned to all intersecting stripes
 // To find all intersections:
 // 1. Assign each segment to one or more bins
-// 2. Find intersections inside each bin
-// 3. Ignore duplicate intersections
+// 2. Find intersections inside each bin (ignoring duplicate intersections)
 //
 MapShaper.findSegmentIntersections = (function() {
 
@@ -9410,7 +9422,6 @@ MapShaper.findSegmentIntersections = (function() {
 })();
 
 // Find intersections among a group of line segments
-
 //
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
@@ -9724,6 +9735,86 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
 
 
 
+function RepairControl(map, lineLyr, arcData) {
+  var el = El("#g-intersection-display").show(),
+      readout = el.findChild("#g-intersection-count"),
+      btn = el.findChild("#g-repair-btn");
+
+  var _initialXX = MapShaper.findSegmentIntersections(arcData),
+      _enabled = false,
+      _currXX,
+      _pointColl,
+      _pointLyr;
+
+  this.update = function(pct) {
+    var XX;
+    if (pct >= 1) {
+      XX = _initialXX;
+      enabled(false);
+    } else {
+      T.start();
+      XX = MapShaper.findSegmentIntersections(arcData);
+      T.stop("Find intersections");
+      enabled(XX.length > 0);
+    }
+    showIntersections(XX);
+  };
+
+  this.update(1); // initialize at 100%
+
+  btn.on('click', function() {
+    if (!enabled()) return;
+    T.start();
+    var fixed = MapShaper.repairIntersections(arcData, _currXX);
+    T.stop('Fix intersections');
+    enabled(false);
+    showIntersections(fixed);
+    lineLyr.refresh();
+  });
+
+  this.clear = function() {
+    _currXX = null;
+    _pointLyr.visible(false);
+  };
+
+  function showIntersections(XX) {
+    var points = MapShaper.getIntersectionPoints(XX);
+    if (!_pointLyr) {
+      _pointColl = new FilteredPathCollection(points, {
+        min_segment: 0,
+        min_path: 0
+      });
+      _pointLyr = new ArcLayerGroup(_pointColl, {
+        dotSize: 5,
+        dotColor: "#F24400"
+      });
+      map.addLayerGroup(_pointLyr);
+    } else if (XX.length > 0) {
+      _pointColl.update(points);
+      _pointLyr.visible(true);
+      _pointLyr.refresh();
+    } else{
+      _pointLyr.visible(false);
+    }
+    var msg = Utils.format("%s line intersection%s", XX.length, XX.length != 1 ? 's' : '');
+    readout.text(msg);
+    _currXX = XX;
+  }
+
+  function enabled(b) {
+    if (arguments.length === 0) return _enabled;
+    _enabled = !!b;
+    if (b) {
+      btn.removeClass('disabled');
+    } else {
+      btn.addClass('disabled');
+    }
+  }
+}
+
+
+
+
 var dropper,
     importer,
     editor;
@@ -9773,8 +9864,7 @@ function Editor() {
   var importOpts = {
     simplifyMethod: "mod",
     preserveShapes: false,
-    showIntersections: false,
-    removeIntersections: false
+    repairIntersections: false
   };
 
   function init(contentBounds) {
@@ -9783,8 +9873,7 @@ function Editor() {
     El("body").addClass('editing');
 
     importOpts.preserveShapes = !!El("#g-import-retain-opt").node().checked;
-    importOpts.showIntersections = !!El("#g-show-intersections-opt").node().checked;
-    importOpts.removeIntersections = !!El("#g-remove-intersections-opt").node().checked;
+    importOpts.repairIntersections = !!El("#g-repair-intersections-opt").node().checked;
     importOpts.simplifyMethod = El('#g-simplification-menu input[name=method]:checked').attr('value');
 
     var mapOpts = {
@@ -9809,56 +9898,16 @@ function Editor() {
 
     map.addLayerGroup(group);
 
-    // Handle intersections
-    //
-    var showXX = importOpts.showIntersections,
-        fixXX = importOpts.removeIntersections,
-        findXX = showXX || fixXX;
-
-    if (findXX) {
-      var initialIntersections = MapShaper.getIntersectionPoints(MapShaper.findSegmentIntersections(arcData));
-
-      if (showXX) {
-        var collisions = new FilteredPathCollection(initialIntersections, {
-            min_segment: 0,
-            min_path: 0
-          });
-        var collisionGroup = new ArcLayerGroup(collisions, {
-          dotSize: 5,
-          dotColor: "#F24400"
-        });
-
-        map.addLayerGroup(collisionGroup);
-
-        slider.on('simplify-start', function() {
-          collisionGroup.visible(false);
-        });
-      }
-
-      slider.on('simplify-end', function() {
-        var arcs;
-        if (slider.value() == 1) {
-          arcs = initialIntersections;
-        } else {
-          T.start();
-          var intersections = MapShaper.findSegmentIntersections(arcData);
-          T.stop("Find intersections");
-          if (fixXX) {
-            T.start();
-            intersections = MapShaper.repairIntersections(arcData, intersections);
-            T.stop('Fix intersections');
-          }
-          arcs = MapShaper.getIntersectionPoints(intersections);
-        }
-
-        if (showXX) {
-          collisionGroup.visible(true);
-          collisions.update(arcs);
-          collisionGroup.refresh();
-        }
-        group.refresh();
+    // Intersections
+    if (importOpts.repairIntersections) {
+      var repair = new RepairControl(map, group, arcData);
+      slider.on('simplify-start', function() {
+        repair.clear();
       });
-    } // endif findXX
+      slider.on('simplify-end', function() {
+        repair.update(slider.value());
+      });
+    }
 
     slider.on('change', function(e) {
       filteredArcs.setRetainedPct(e.value);

@@ -192,7 +192,8 @@ function PathExporter(arcData, polygonType) {
     return output;
   }
 
-  //
+  // TODO: add shape preservation code here.
+  //   re-introduce vertices to ring with largest bounding box
   //
   function exportShapeData(ids) {
     var pointCount = 0,

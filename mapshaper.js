@@ -4107,7 +4107,7 @@ function getRoundingFunction(inc) {
   }
   var inv = 1 / inc;
   return function(x) {
-    // This seems to avoid stringify problems of Math.round(x / inc) * inc;
+    // stringify() tends to show rounding artefacts using Math.round(x / inc) * inc;
     return Math.round(x * inv) / inv;
   };
 }
@@ -4151,8 +4151,6 @@ function ccw(x0, y0, x1, y1, x2, y2) {
   if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) return 1;
   return 0;
 }
-
-
 
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
@@ -4324,6 +4322,8 @@ function probablyDecimalDegreeBounds(b) {
 
 // export functions so they can be tested
 MapShaper.geom = {
+  getRoundingFunction: getRoundingFunction,
+  segmentIntersection: segmentIntersection,
   distance3D: distance3D,
   innerAngle: innerAngle,
   innerAngle3D: innerAngle3D,
@@ -6814,11 +6814,13 @@ function exportCoordsForGeoJSON(paths) {
 
 var TopoJSON = MapShaper.topojson = {};
 
-MapShaper.importTopoJSON = function(obj) {
+MapShaper.importTopoJSON = function(obj, opts) {
+  var round = opts && opts.precision ? getRoundingFunction(opts.precision) : null;
+
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
-  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform),
+  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform, round),
       layers = [];
   Utils.forEach(obj.objects, function(object, name) {
     var layerData = TopoJSON.importObject(object, arcs);
@@ -6843,7 +6845,7 @@ MapShaper.importTopoJSON = function(obj) {
 // Converts arc coordinates from rounded, delta-encoded values to
 // transposed arrays of geographic coordinates.
 //
-TopoJSON.importArcs = function(arcs, transform) {
+TopoJSON.importArcs = function(arcs, transform, round) {
   var mx = 1, my = 1, bx = 0, by = 0;
   if (transform) {
     mx = transform.scale[0];
@@ -6853,16 +6855,22 @@ TopoJSON.importArcs = function(arcs, transform) {
   }
 
   return Utils.map(arcs, function(arc) {
-    var x, y;
     var xx = [],
         yy = [],
         prevX = 0,
-        prevY = 0;
+        prevY = 0,
+        scaledX, scaledY, x, y;
     for (var i=0, len=arc.length; i<len; i++) {
       x = prevX + arc[i][0];
       y = prevY + arc[i][1];
-      xx.push(x * mx + bx);
-      yy.push(y * my + by);
+      scaledX = x * mx + bx;
+      scaledY = y * my + by;
+      if (round) {
+        scaledX = round(scaledX);
+        scaledY = round(scaledY);
+      }
+      xx.push(scaledX);
+      yy.push(scaledY);
       prevX = x;
       prevY = y;
     }
@@ -7922,7 +7930,8 @@ function PathExporter(arcData, polygonType) {
     return output;
   }
 
-  //
+  // TODO: add shape preservation code here.
+  //   re-introduce vertices to ring with largest bounding box
   //
   function exportShapeData(ids) {
     var pointCount = 0,
@@ -8100,6 +8109,8 @@ MapShaper.calcRetainedCountsForRing = function(path, retainedPointCounts, arcCou
 
 
 
+// Convert an array of intersections into an ArcDataset (for display)
+//
 MapShaper.getIntersectionPoints = function(intersections) {
   // Kludge: create set of paths of length 1 to display intersection points
   var vectors = Utils.map(intersections, function(obj) {
@@ -8110,12 +8121,13 @@ MapShaper.getIntersectionPoints = function(intersections) {
   return new ArcDataset(vectors);
 };
 
+// Identify intersecting segments in an ArcDataset
+//
 // Method: bin segments into horizontal stripes
 // Segments that span stripes are assigned to all intersecting stripes
 // To find all intersections:
 // 1. Assign each segment to one or more bins
-// 2. Find intersections inside each bin
-// 3. Ignore duplicate intersections
+// 2. Find intersections inside each bin (ignoring duplicate intersections)
 //
 MapShaper.findSegmentIntersections = (function() {
 
@@ -8233,7 +8245,6 @@ MapShaper.findSegmentIntersections = (function() {
 })();
 
 // Find intersections among a group of line segments
-
 //
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
