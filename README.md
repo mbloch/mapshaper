@@ -2,11 +2,7 @@
 
 ### Introduction
 
-Mapshaper is a program for simplifying cartographic lines while preserving the topological relationships between adjacent polygons and intersecting polyline paths. It can read and write Shapefile, GeoJSON and [TopoJSON](https://github.com/mbostock/topojson/wiki) files. The current version can be found at [mapshaper.org](http://www.mapshaper.org).
-
-This software is loosely based on the original MapShaper program that I wrote at the University of Wisconsin, Madison in 2006-2007. That version is still available [here](http://mapshaper.com/test/OldMapShaper.swf).
-
-The new mapshaper was rewritten from scratch in JavaScript and improves on the original in a few ways. The earlier program sent data to a server to be processed; the new version does all its processing locally, so the program can be used offline and user data stays private. The new version has a better algorithm for topology processing. There is also a command line tool.
+Mapshaper is a program for simplifying cartographic lines while preserving the topological relationships between adjacent polygons and intersecting polyline paths. It can read and write Shapefile, GeoJSON and [TopoJSON](https://github.com/mbostock/topojson/wiki) files. You can find the current version online at [mapshaper.org](http://www.mapshaper.org).
 
 ### Installation
 
@@ -21,11 +17,12 @@ To install and run the latest development code from github:
 	git clone git@github.com:mbloch/mapshaper.git
 	cd mapshaper
 	npm install
-	bin/mapshaper-gui # or bin/mapshaper
+	bin/mapshaper-gui # use the web interface locally
+	bin/mapshaper     # use the command line tool
 
 ### Interactive tool
 
-The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online.
+The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online. All processing is done in the browser, so the program can be used offline and your data stays private.
 
 Browser compatibility: mapshaper works well in recent versions of Chrome and Firefox. Large files (say, >200MB) may cause out-of-memory errors in Chrome. Exporting is not supported in Safari. Mapshaper appears to work in Opera 15+ and Internet Explorer 11.
 
@@ -33,7 +30,7 @@ Browser compatibility: mapshaper works well in recent versions of Chrome and Fir
 
 The `mapshaper` script runs well in OS X and has also been used successfully on Ubuntu 13.04 and Windows 8.
 
-`$ mapshaper -p 0.1 counties.shp`  Retain 10% of removable vertices using default simplification.
+`$ mapshaper -p 0.1 --repair counties.shp`  Retain 10% of removable vertices using default simplification and remove line intersections.
 
 `$ mapshaper -i 100 states.shp --dp `  Remove features smaller than ~100 meters using Douglas-Peucker simplification.
 
@@ -52,6 +49,12 @@ Run `$ mocha` in the project directory to run mapshaper's tests.
 This software is licensed under the [MPL](http://www.mozilla.org/MPL/2.0/) 2.0
 
 According to Mozilla's [FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html), "The MPL's "file-level" copyleft is designed to encourage contributors to share modifications they make to your code, while still allowing them to combine your code with code under other licenses (open or proprietary) with minimal restrictions."
+
+### Acknowledgements
+
+Thanks to [Shan Carter](https://github.com/shancarter) for help designing mapshaper's web interface :)
+
+And thanks to Mark Harrower for supporting development of the [original MapShaper program](http://mapshaper.com/test/OldMapShaper.swf) at the University of Wisconsin &ndash; Madison.
 
 ### Upcoming features + wish list
 
