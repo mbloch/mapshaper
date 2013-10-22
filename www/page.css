@@ -94,10 +94,10 @@ html, body {
 #mshp-import .g-clicktext {
 	width: 40px;
 	background: rgba(255, 255, 255, 0.4);
-	text-align: left;
+	text-align: right;
 	border: 1px solid rgba(0,0,0,0.2);
 	padding: 0 3px;
-	margin: 0 0 0 5px;
+	margin: 0 5px 0 0px;
 	font-size: 10px;
 
 }
@@ -132,25 +132,25 @@ html, body {
 	margin: 0.45em 0 0 0;
 }
 
-#g-simplification-menu {
+.g-option-menu {
 	font-size: 13px;
 	margin: 2px 0 0 11px;
 }
 
-#g-simplification-menu input {
+.g-option-menu input {
 	width: 12px;
 	height: 12px;
 }
 
-#g-simplification-menu .g-tip-button {
+.g-option-menu .g-tip-button {
 	margin-left: 5px;
 }
 
-#g-simplification-menu input.g-checkbox {
+.g-option-menu input.g-checkbox {
 	margin: 3px 5px 0 0;
 }
 
-#g-simplification-menu input.g-radio {
+.g-option-menu input.g-radio {
 	margin: 0 5px 0 0;
 }
 
