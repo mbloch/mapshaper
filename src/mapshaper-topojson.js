@@ -34,7 +34,8 @@ MapShaper.importTopoJSON = function(obj, opts) {
 // transposed arrays of geographic coordinates.
 //
 TopoJSON.importArcs = function(arcs, transform, round) {
-  var mx = 1, my = 1, bx = 0, by = 0;
+  var mx = 1, my = 1, bx = 0, by = 0,
+      useDelta = !!transform;
   if (transform) {
     mx = transform.scale[0];
     my = transform.scale[1];
@@ -49,8 +50,12 @@ TopoJSON.importArcs = function(arcs, transform, round) {
         prevY = 0,
         scaledX, scaledY, x, y;
     for (var i=0, len=arc.length; i<len; i++) {
-      x = prevX + arc[i][0];
-      y = prevY + arc[i][1];
+      x = arc[i][0];
+      y = arc[i][1];
+      if (useDelta) {
+        x += prevX;
+        y += prevY;
+      }
       scaledX = x * mx + bx;
       scaledY = y * my + by;
       if (round) {
