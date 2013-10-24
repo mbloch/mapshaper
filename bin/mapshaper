@@ -22,34 +22,13 @@ var optimist = require("optimist"),
     opts;
 optimist.usage(usage)
 
-  .options("h", {
-    alias: "help",
-    describe: "show usage and options",
-    'boolean': true
-  })
-
   .options("o", {
-    describe: "name of output file or directory",
+    describe: "specify name of output file or directory",
   })
 
   .options("f", {
     alias: "format",
-    describe: "shapefile|geojson|topojson (defaults to input format)",
-  })
-
-  .options("dp", {
-    describe: "Simplify with Douglas-Peucker",
-    'boolean': true
-  })
-
-  .options("vis", {
-    describe: "Simplify with Visvalingam",
-    'boolean': true
-  })
-
-  .options("mod", {
-    describe: "Simplify with modified Visvalingam (default)",
-    'boolean': true
+    describe: "output to a different format (shapefile|geojson|topojson)",
   })
 
   .options("p", {
@@ -62,8 +41,22 @@ optimist.usage(usage)
     describe: "amount of simplification in meters (or other projected units)"
   })
 
-  .options("k", {
-    alias: "keep-shapes",
+  .options("dp", {
+    describe: "simplify with Douglas-Peucker (aka Ramer–Douglas–Peucker)",
+    'boolean': true
+  })
+
+  .options("vis", {
+    describe: "simplify with Visvalingam",
+    'boolean': true
+  })
+
+  .options("mod", {
+    describe: "simplify with modified Visvalingam (default)",
+    'boolean': true
+  })
+
+  .options("keep-shapes", {
     describe: "prevent small shapes from disappearing",
     'boolean': true
   })
@@ -76,8 +69,7 @@ optimist.usage(usage)
     describe: "increment for rounding coordinates, in original units"
   })
 
-  .options("q", {
-    alias: "quantization",
+  .options("quantization", {
     describe: "set topojson output resolution manually"
   })
 
@@ -85,8 +77,7 @@ optimist.usage(usage)
     describe: "export topojson without quantization"
   })
 
-  .options("t", {
-    alias: "timing",
+  .options("timing", {
     describe: "show execution time of processing steps",
     'boolean': true
   })
@@ -94,6 +85,12 @@ optimist.usage(usage)
   .options("v", {
     alias: "version",
     describe: "print mapshaper version",
+    'boolean': true
+  })
+
+  .options("h", {
+    alias: "help",
+    describe: "print this help message",
     'boolean': true
   })
 
@@ -126,6 +123,18 @@ optimist.usage(usage)
       console.log(getVersion());
       process.exit(0);
     }
+
+    // Don't accept unsupported options
+    var supportedOpts = optimist.help().match(/-([a-z][a-z-]*)/g).reduce(function(acc, opt) {
+        acc[opt.substr(1)] = true;
+        return acc;
+      }, {'_': true, '$0': true});
+    Utils.getKeys(argv).forEach(function(arg) {
+      if (arg in supportedOpts == false) {
+        throw "Unsupported option: " + arg;
+      }
+    });
+
     opts = mapshaper.validateArgv(argv);
   })
   .argv;
