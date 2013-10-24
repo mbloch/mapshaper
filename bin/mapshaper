@@ -29,7 +29,7 @@ optimist.usage(usage)
   })
 
   .options("o", {
-    describe: "name of output file (with or without suffix)",
+    describe: "name of output file or directory",
   })
 
   .options("f", {
@@ -38,17 +38,17 @@ optimist.usage(usage)
   })
 
   .options("dp", {
-    describe: "Use Douglas-Peucker to simplify",
+    describe: "Simplify with Douglas-Peucker",
     'boolean': true
   })
 
   .options("vis", {
-    describe: "Use Visvalingam to simplify",
+    describe: "Simplify with Visvalingam",
     'boolean': true
   })
 
   .options("mod", {
-    describe: "Use modified Visvalingam (default)",
+    describe: "Simplify with modified Visvalingam (default)",
     'boolean': true
   })
 
@@ -77,8 +77,12 @@ optimist.usage(usage)
   })
 
   .options("q", {
-    alias: "quantize",
+    alias: "quantization",
     describe: "set topojson output resolution manually"
+  })
+
+  .options("no-quantization", {
+    describe: "export topojson without quantization"
   })
 
   .options("t", {

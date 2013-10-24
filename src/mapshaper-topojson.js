@@ -169,17 +169,32 @@ TopoJSON.pathImporters = {
 //
 MapShaper.exportTopoJSON = function(layers, arcData, opts) {
 
-  var exportArcs = arcData.getFilteredCopy();
-  var transform = TopoJSON.getExportTransform(exportArcs, opts.topojson_resolution || null);
+  var filteredArcs = arcData.getFilteredCopy();
+  var transform = null;
+  if (opts.topojson_resolution === 0) {
+    // no transform
+  } else if (opts.topojson_resolution > 0) {
+    transform = TopoJSON.getExportTransform(filteredArcs, opts.topojson_resolution);
+  } else if (opts.precision > 0) {
+    transform = TopoJSON.getExportTransformFromPrecision(filteredArcs, opts.precision);
+  } else {
+    transform = TopoJSON.getExportTransform(filteredArcs); // auto quantization
+  }
 
-  exportArcs.applyTransform(transform, true);
-  var map = TopoJSON.filterExportArcs(exportArcs);
-  var deltaArcs = TopoJSON.getDeltaEncodedArcs(exportArcs);
+  var arcs, map;
+  if (transform) {
+    filteredArcs.applyTransform(transform, !!"round");
+    map = TopoJSON.filterExportArcs(filteredArcs);
+    arcs = TopoJSON.exportDeltaEncodedArcs(filteredArcs);
+  } else {
+    map = TopoJSON.filterExportArcs(filteredArcs);
+    arcs = TopoJSON.exportArcs(filteredArcs);
+  }
   var objects = {};
   var bounds = new Bounds();
   Utils.forEach(layers, function(lyr, i) {
     var geomType = lyr.geometry_type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
-    var exporter = new PathExporter(exportArcs, lyr.geometry_type == 'polygon');
+    var exporter = new PathExporter(filteredArcs, lyr.geometry_type == 'polygon');
     if (map) TopoJSON.remapLayerArcs(lyr.shapes, map);
     var obj = exportTopoJSONObject(exporter, lyr, geomType);
     lyr.name = lyr.name || "layer" + (i + 1);
@@ -187,17 +202,22 @@ MapShaper.exportTopoJSON = function(layers, arcData, opts) {
     bounds.mergeBounds(exporter.getBounds());
   });
 
-  var inv = transform.invert();
   var obj = {
     type: "Topology",
-    transform: {
+    arcs: arcs,
+    objects: objects
+  };
+
+  if (transform) {
+    var inv = transform.invert();
+    obj.transform = {
       scale: [inv.mx, inv.my],
       translate: [inv.bx, inv.by]
-    },
-    arcs: deltaArcs,
-    objects: objects,
-    bbox: bounds.transform(inv).toArray()
-  };
+    };
+    obj.bbox = bounds.transform(inv).toArray();
+  } else {
+    obj.bbox = bounds.toArray();
+  }
 
   return [{
     content: JSON.stringify(obj),
@@ -260,10 +280,23 @@ TopoJSON.filterExportArcs = function(arcData) {
   return arcMap;
 };
 
-// Export arcs from @arcData as arrays of [x, y] points.
-// Exported arcs use delta encoding, as per the topojson spec.
+// Export arcs as arrays of [x, y] coords without delta encoding
 //
-TopoJSON.getDeltaEncodedArcs = function(arcData) {
+TopoJSON.exportArcs = function(arcData) {
+  var arcs = [];
+  arcData.forEach(function(iter, i) {
+    var arc = [];
+    while (iter.hasNext()) {
+      arc.push([iter.x, iter.y]);
+    }
+    arcs.push(arc.length > 1 ? arc : null);
+  });
+  return arcs;
+};
+
+// Export arcs with delta encoding, as per the topojson spec.
+//
+TopoJSON.exportDeltaEncodedArcs = function(arcData) {
   var arcs = [];
   arcData.forEach(function(iter, i) {
     var arc = [],
@@ -298,6 +331,13 @@ TopoJSON.getExportTransform = function(arcData, quanta) {
   // TODO: test this
   destBounds = new Bounds(0, 0, Math.ceil(xmax), Math.ceil(ymax));
   return srcBounds.getTransform(destBounds);
+};
+
+TopoJSON.getExportTransformFromPrecision = function(arcData, precision) {
+  var src = arcData.getBounds(),
+      dest = new Bounds(0, 0, src.width() / precision, src.height() / precision),
+      transform = src.getTransform(dest);
+  return transform;
 };
 
 // Find the x, y values that map to x / y integer unit in topojson output

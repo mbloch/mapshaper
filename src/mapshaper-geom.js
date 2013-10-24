@@ -37,9 +37,14 @@ function getRoundingFunction(inc) {
   };
 }
 
+// Detect intersections between two 2D segments.
+// Return [x, y] array of intersection point or false if segments do not cross.
+//
+//
 function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
   // Test collision (c.f. Sedgewick, _Algorithms in C_)
   // (Tried some other functions that might fail due to rounding errors)
+
   var hit = ccw(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y) *
       ccw(s1p1x, s1p1y, s1p2x, s1p2y, s2p2x, s2p2y) <= 0 &&
       ccw(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) *
@@ -58,12 +63,11 @@ function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2
     var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / den;
     var x = s1p1x + m * s1dx;
     var y = s1p1y + m * s1dy;
-
     return [x, y];
   }
-
   return false;
 }
+
 
 function ccw(x0, y0, x1, y1, x2, y2) {
   var dx1 = x1 - x0,

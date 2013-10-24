@@ -18,8 +18,6 @@ MapShaper.getDefaultFileExtension = function(fileType) {
 // Return an array of objects with "filename" "filebase" "extension" and "content" attributes.
 //
 MapShaper.exportContent = function(layers, arcData, opts) {
-  // TODO: check for collisions
-
   var exporter = MapShaper.exporters[opts.output_format];
   if (!exporter) error("exportContent() Unknown export format:", opts.output_format);
   if (!opts.output_extension) opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);

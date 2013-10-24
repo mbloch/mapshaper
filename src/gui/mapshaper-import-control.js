@@ -81,11 +81,11 @@ function ImportControl(editor) {
       return;
     }
     if (type == 'shp' || type == 'json') {
-      var precision = precisionInput.value();
-      data = MapShaper.importContent(content, type, {precision: precision});
       var opts = {
-        input_file: fname
+        input_file: fname,
+        precision: precisionInput.value()
       };
+      data = MapShaper.importContent(content, type, opts);
       editor.addData(data, opts);
     } else if (type == 'dbf') {
       data = new ShapefileTable(content);

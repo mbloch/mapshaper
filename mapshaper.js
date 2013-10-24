@@ -4112,9 +4112,14 @@ function getRoundingFunction(inc) {
   };
 }
 
+// Detect intersections between two 2D segments.
+// Return [x, y] array of intersection point or false if segments do not cross.
+//
+//
 function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
   // Test collision (c.f. Sedgewick, _Algorithms in C_)
   // (Tried some other functions that might fail due to rounding errors)
+
   var hit = ccw(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y) *
       ccw(s1p1x, s1p1y, s1p2x, s1p2y, s2p2x, s2p2y) <= 0 &&
       ccw(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) *
@@ -4133,12 +4138,11 @@ function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2
     var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / den;
     var x = s1p1x + m * s1dx;
     var y = s1p1y + m * s1dy;
-
     return [x, y];
   }
-
   return false;
 }
+
 
 function ccw(x0, y0, x1, y1, x2, y2) {
   var dx1 = x1 - x0,
@@ -6846,7 +6850,8 @@ MapShaper.importTopoJSON = function(obj, opts) {
 // transposed arrays of geographic coordinates.
 //
 TopoJSON.importArcs = function(arcs, transform, round) {
-  var mx = 1, my = 1, bx = 0, by = 0;
+  var mx = 1, my = 1, bx = 0, by = 0,
+      useDelta = !!transform;
   if (transform) {
     mx = transform.scale[0];
     my = transform.scale[1];
@@ -6861,8 +6866,12 @@ TopoJSON.importArcs = function(arcs, transform, round) {
         prevY = 0,
         scaledX, scaledY, x, y;
     for (var i=0, len=arc.length; i<len; i++) {
-      x = prevX + arc[i][0];
-      y = prevY + arc[i][1];
+      x = arc[i][0];
+      y = arc[i][1];
+      if (useDelta) {
+        x += prevX;
+        y += prevY;
+      }
       scaledX = x * mx + bx;
       scaledY = y * my + by;
       if (round) {
@@ -6976,17 +6985,32 @@ TopoJSON.pathImporters = {
 //
 MapShaper.exportTopoJSON = function(layers, arcData, opts) {
 
-  var exportArcs = arcData.getFilteredCopy();
-  var transform = TopoJSON.getExportTransform(exportArcs, opts.topojson_resolution || null);
+  var filteredArcs = arcData.getFilteredCopy();
+  var transform = null;
+  if (opts.topojson_resolution === 0) {
+    // no transform
+  } else if (opts.topojson_resolution > 0) {
+    transform = TopoJSON.getExportTransform(filteredArcs, opts.topojson_resolution);
+  } else if (opts.precision > 0) {
+    transform = TopoJSON.getExportTransformFromPrecision(filteredArcs, opts.precision);
+  } else {
+    transform = TopoJSON.getExportTransform(filteredArcs); // auto quantization
+  }
 
-  exportArcs.applyTransform(transform, true);
-  var map = TopoJSON.filterExportArcs(exportArcs);
-  var deltaArcs = TopoJSON.getDeltaEncodedArcs(exportArcs);
+  var arcs, map;
+  if (transform) {
+    filteredArcs.applyTransform(transform, !!"round");
+    map = TopoJSON.filterExportArcs(filteredArcs);
+    arcs = TopoJSON.exportDeltaEncodedArcs(filteredArcs);
+  } else {
+    map = TopoJSON.filterExportArcs(filteredArcs);
+    arcs = TopoJSON.exportArcs(filteredArcs);
+  }
   var objects = {};
   var bounds = new Bounds();
   Utils.forEach(layers, function(lyr, i) {
     var geomType = lyr.geometry_type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
-    var exporter = new PathExporter(exportArcs, lyr.geometry_type == 'polygon');
+    var exporter = new PathExporter(filteredArcs, lyr.geometry_type == 'polygon');
     if (map) TopoJSON.remapLayerArcs(lyr.shapes, map);
     var obj = exportTopoJSONObject(exporter, lyr, geomType);
     lyr.name = lyr.name || "layer" + (i + 1);
@@ -6994,17 +7018,22 @@ MapShaper.exportTopoJSON = function(layers, arcData, opts) {
     bounds.mergeBounds(exporter.getBounds());
   });
 
-  var inv = transform.invert();
   var obj = {
     type: "Topology",
-    transform: {
+    arcs: arcs,
+    objects: objects
+  };
+
+  if (transform) {
+    var inv = transform.invert();
+    obj.transform = {
       scale: [inv.mx, inv.my],
       translate: [inv.bx, inv.by]
-    },
-    arcs: deltaArcs,
-    objects: objects,
-    bbox: bounds.transform(inv).toArray()
-  };
+    };
+    obj.bbox = bounds.transform(inv).toArray();
+  } else {
+    obj.bbox = bounds.toArray();
+  }
 
   return [{
     content: JSON.stringify(obj),
@@ -7067,10 +7096,23 @@ TopoJSON.filterExportArcs = function(arcData) {
   return arcMap;
 };
 
-// Export arcs from @arcData as arrays of [x, y] points.
-// Exported arcs use delta encoding, as per the topojson spec.
+// Export arcs as arrays of [x, y] coords without delta encoding
 //
-TopoJSON.getDeltaEncodedArcs = function(arcData) {
+TopoJSON.exportArcs = function(arcData) {
+  var arcs = [];
+  arcData.forEach(function(iter, i) {
+    var arc = [];
+    while (iter.hasNext()) {
+      arc.push([iter.x, iter.y]);
+    }
+    arcs.push(arc.length > 1 ? arc : null);
+  });
+  return arcs;
+};
+
+// Export arcs with delta encoding, as per the topojson spec.
+//
+TopoJSON.exportDeltaEncodedArcs = function(arcData) {
   var arcs = [];
   arcData.forEach(function(iter, i) {
     var arc = [],
@@ -7105,6 +7147,13 @@ TopoJSON.getExportTransform = function(arcData, quanta) {
   // TODO: test this
   destBounds = new Bounds(0, 0, Math.ceil(xmax), Math.ceil(ymax));
   return srcBounds.getTransform(destBounds);
+};
+
+TopoJSON.getExportTransformFromPrecision = function(arcData, precision) {
+  var src = arcData.getBounds(),
+      dest = new Bounds(0, 0, src.width() / precision, src.height() / precision),
+      transform = src.getTransform(dest);
+  return transform;
 };
 
 // Find the x, y values that map to x / y integer unit in topojson output
@@ -7756,8 +7805,6 @@ MapShaper.getDefaultFileExtension = function(fileType) {
 // Return an array of objects with "filename" "filebase" "extension" and "content" attributes.
 //
 MapShaper.exportContent = function(layers, arcData, opts) {
-  // TODO: check for collisions
-
   var exporter = MapShaper.exporters[opts.output_format];
   if (!exporter) error("exportContent() Unknown export format:", opts.output_format);
   if (!opts.output_extension) opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
@@ -8298,6 +8345,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       // test two candidate segments for intersection
       hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
           s2p1x, s2p1y, s2p2x, s2p2y);
+
       if (hit) {
         intersections.push({
           i: i,
@@ -8715,10 +8763,12 @@ cli.validateSimplifyOpts = function(argv) {
   }
 
   if (argv.q) {
-    if (!Utils.isInteger(argv.q) || argv.q <= 0) {
-      error("-q (--quantize) option should be a nonnegative integer");
+    if (!Utils.isInteger(argv.q) || argv.q < 0) {
+      error("-q (--quantization) option should be a nonnegative integer");
     }
     opts.topojson_resolution = argv.q;
+  } else if (argv.quantization === false || argv.q === 0) {
+    opts.topojson_resolution = 0; // handle --no-quantization
   }
 
   opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);

@@ -5,6 +5,10 @@
 var ExportControl = function(arcData, layers, options) {
 
   El('#g-export-control').show();
+
+  // TODO: URL.createObjectURL() is available in Safari 7.0 but downloading
+  // fails. Need to handle.
+  //
   if (typeof URL == 'undefined' || !URL.createObjectURL) {
     El('#g-export-control .g-label').text("Exporting is not supported in this browser");
     return;

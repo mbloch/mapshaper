@@ -26,7 +26,9 @@ describe('mapshaper-cli.js', function() {
     var good1 = "-p 0.2",
         good2 = "-i 2000 --dp -k",
         good3 = "-k --vis -p .9",
-        good4 = "-q 1000";
+        good4 = "-q 1000",
+        good5 = "-q 0",
+        good6 = "--no-quantization"
 
     // var ok1 = "-p 0.4 -i 5000";
 
@@ -74,6 +76,20 @@ describe('mapshaper-cli.js', function() {
       assert.deepEqual(validate(good4), {
         use_simplification: false,
         topojson_resolution: 1000
+      });
+    })
+
+    it(good5, function() {
+      assert.deepEqual(validate(good5), {
+        use_simplification: false,
+        topojson_resolution: 0
+      });
+    })
+
+    it(good6, function() {
+      assert.deepEqual(validate(good6), {
+        use_simplification: false,
+        topojson_resolution: 0
       });
     })
 

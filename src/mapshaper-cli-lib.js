@@ -165,10 +165,12 @@ cli.validateSimplifyOpts = function(argv) {
   }
 
   if (argv.q) {
-    if (!Utils.isInteger(argv.q) || argv.q <= 0) {
-      error("-q (--quantize) option should be a nonnegative integer");
+    if (!Utils.isInteger(argv.q) || argv.q < 0) {
+      error("-q (--quantization) option should be a nonnegative integer");
     }
     opts.topojson_resolution = argv.q;
+  } else if (argv.quantization === false || argv.q === 0) {
+    opts.topojson_resolution = 0; // handle --no-quantization
   }
 
   opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
