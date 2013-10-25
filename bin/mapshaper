@@ -2,7 +2,7 @@
 //
 // Running node with --nouse_idle-notification can improve performance significantly
 // with large files. TODO: test that this is still true, since using fewer Arrays
-// The gc() calls below are supposed to collect temp. objects from the previous
+// The gc() calls below are intended to collect temp. objects from the previous
 //   processing stage. Timing gc() gives an indication of overhead from memory management.
 //
 
@@ -11,133 +11,7 @@ var mapshaper = require("../"),
     Utils = mapshaper.Utils,
     T = mapshaper.T;
 
-var usage = ""
-  + "Usage: $ mapshaper [options] file\n\n"
-  + "Example: Use Douglas-Peucker to remove all but 10% of points in a Shapefile.\n"
-  + "$ mapshaper --dp -p 0.1 counties.shp\n\n"
-  + "Example: Use Visvalingam to simplify a Shapefile to 1km resolution.\n"
-  + "$ mapshaper --vis -i 1000 states.shp"
-
-var optimist = require("optimist"),
-    opts;
-optimist.usage(usage)
-
-  .options("o", {
-    describe: "specify name of output file or directory",
-  })
-
-  .options("f", {
-    alias: "format",
-    describe: "output to a different format (shapefile|geojson|topojson)",
-  })
-
-  .options("p", {
-    alias: "pct",
-    describe: "proportion of points to retain (0-1)"
-  })
-
-  .options("i", {
-    alias: "interval",
-    describe: "amount of simplification in meters (or other projected units)"
-  })
-
-  .options("dp", {
-    describe: "simplify with Douglas-Peucker (aka Ramer–Douglas–Peucker)",
-    'boolean': true
-  })
-
-  .options("vis", {
-    describe: "simplify with Visvalingam",
-    'boolean': true
-  })
-
-  .options("mod", {
-    describe: "simplify with modified Visvalingam (default)",
-    'boolean': true
-  })
-
-  .options("keep-shapes", {
-    describe: "prevent small shapes from disappearing",
-    'boolean': true
-  })
-
-  .options("repair", {
-    describe: "remove intersections introduced by simplification"
-  })
-
-  .options("precision", {
-    describe: "increment for rounding coordinates, in original units"
-  })
-
-  .options("quantization", {
-    describe: "set topojson output resolution manually"
-  })
-
-  .options("no-quantization", {
-    describe: "export topojson without quantization"
-  })
-
-  .options("timing", {
-    describe: "show execution time of processing steps",
-    'boolean': true
-  })
-
-  .options("v", {
-    alias: "version",
-    describe: "print mapshaper version",
-    'boolean': true
-  })
-
-  .options("h", {
-    alias: "help",
-    describe: "print this help message",
-    'boolean': true
-  })
-
-  /*
-
-  // TODO
-  // prevent points along straight lines from being stripped away, to allow reprojection
-  .options("min-segment", {
-    describe: "min segment length (no. of segments in largest dimension)",
-    default: 0
-  })
-
-  .options("remove-null", {
-    describe: "remove null shapes",
-    default: false
-  })
-
-  .options("", {
-    alias: "-",
-    describe: "output to /dev/stdout",
-    default: false
-  })*/
-
-  .check(function(argv) {
-    if (argv.h) {
-      optimist.showHelp();
-      process.exit(0);
-    }
-    if (argv.v) {
-      console.log(getVersion());
-      process.exit(0);
-    }
-
-    // Don't accept unsupported options
-    var supportedOpts = optimist.help().match(/-([a-z][a-z-]*)/g).reduce(function(acc, opt) {
-        acc[opt.substr(1)] = true;
-        return acc;
-      }, {'_': true, '$0': true});
-    Utils.getKeys(argv).forEach(function(arg) {
-      if (arg in supportedOpts == false) {
-        throw "Unsupported option: " + arg;
-      }
-    });
-
-    opts = mapshaper.validateArgv(argv);
-  })
-  .argv;
+var opts = mapshaper.getOpts(); // see mapshaper-cli-lib.js
 
 T.verbose = opts.timing;
 T.start("Start timing");
@@ -210,13 +84,3 @@ Utils.forEach(exports, function(obj, i) {
 });
 
 T.stop("Total time");
-
-
-function getVersion() {
-  try {
-    var packagePath = Node.resolvePathFromScript("../package.json"),
-        obj = JSON.parse(Node.readFile(packagePath, 'utf-8')),
-        v = obj.version;
-  } catch(e) {}
-  return v || "";
-}

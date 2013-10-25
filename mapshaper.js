@@ -2493,22 +2493,13 @@ Transform.prototype.invert = function() {
   var inv = new Transform();
   inv.mx = 1 / this.mx;
   inv.my = 1 / this.my;
+  //inv.bx = -this.bx * inv.mx;
+  //inv.by = -this.by * inv.my;
   inv.bx = -this.bx / this.mx;
   inv.by = -this.by / this.my;
   return inv;
 };
 
-
-/*
-Transform.prototype.useTileBounds = function(wPix, hPix, bb) {
-  var ppm = wPix / (bb.right - bb.left);
-  this.mx = ppm;
-  this.my = hPix / (bb.bottom - bb.top);
-  this.bx = -ppm * bb.left;
-  this.by = -this.my * bb.top;
-  return this;
-};
-*/
 
 Transform.prototype.transform = function(x, y, xy) {
   xy = xy || [];
@@ -3523,6 +3514,27 @@ BinArray.maxCopySize = function(len, i) {
   return Math.min(len & 1 || len & 2 || 4, i & 1 || i & 2 || 4);
 };
 
+BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
+  srcId = srcId || 0;
+  bytes = bytes || src.byteLength - srcId;
+  if (dest.byteLength - destId < bytes)
+    error("Buffer overflow; tried to write:", bytes);
+
+  // When possible, copy buffer data in multi-byte chunks... Added this for faster copying of
+  // shapefile data, which is aligned to 32 bits.
+  var wordSize = Math.min(BinArray.maxCopySize(bytes, srcId), BinArray.maxCopySize(bytes, destId)),
+      srcArr = BinArray.bufferToUintArray(src, wordSize),
+      destArr = BinArray.bufferToUintArray(dest, wordSize),
+      count = bytes / wordSize,
+      i = srcId / wordSize,
+      j = destId / wordSize;
+
+  while (count--) {
+    destArr[j++] = srcArr[i++];
+  }
+  return bytes;
+};
+
 BinArray.toArrayBuffer = function(src) {
   var dest = new ArrayBuffer(src.length);
   for (var i = 0, n=src.length; i < n; i++) {
@@ -3649,11 +3661,19 @@ BinArray.prototype = {
   //
   readFloat64Array: function(len) {
     var bytes = len * 8,
-        i = this._idx;
-    var arr = i % 8 === 0 ?
-      // Inconsistent: first is a view, second a copy...
-      new Float64Array(this._buffer, i, len) :
-      new Float64Array(this._buffer.slice(i, i + bytes));
+        i = this._idx,
+        buf = this._buffer,
+        arr;
+    // Inconsistent: first is a view, second a copy...
+    if (i % 8 === 0) {
+      arr = new Float64Array(buf, i, len);
+    } else if (buf.slice) {
+      arr = new Float64Array(buf.slice(i, i + bytes));
+    } else { // ie10, etc
+      var dest = new ArrayBuffer(bytes);
+      BinArray.bufferCopy(dest, 0, buf, i, bytes);
+      arr = new Float64Array(dest);
+    }
     this._idx += bytes;
     return arr;
   },
@@ -3732,27 +3752,9 @@ BinArray.prototype = {
   },
 
   writeBuffer: function(buf, bytes, startIdx) {
-    bytes = bytes || BinArray.bufferSize(buf);
-    startIdx = startIdx | 0;
-    if (this.bytesLeft() < bytes)
-      error("Buffer overflow; available bytes:", this.bytesLeft(), "tried to write:", bytes);
-
-    // When possible, copy buffer data in multi-byte chunks... Added this for faster copying of
-    // shapefile data, which is aligned to 32 bits.
-    var wordSize = Math.min(BinArray.maxCopySize(bytes, startIdx), BinArray.maxCopySize(bytes, this._idx)),
-        src = BinArray.bufferToUintArray(buf, wordSize),
-        dest = BinArray.bufferToUintArray(this._buffer, wordSize),
-        count = bytes / wordSize,
-        i = startIdx / wordSize,
-        j = this._idx / wordSize;
-
-    while (count--) {
-      dest[j++] = src[i++];
-    }
-
-    this._idx += bytes;
+    this._idx += BinArray.bufferCopy(this._buffer, this._idx, buf, startIdx, bytes);
     return this;
-  },
+  }
 
   /*
   // TODO: expand buffer, probably via a public method, not automatically
@@ -4106,15 +4108,18 @@ function getRoundingFunction(inc) {
     error("Rounding increment must be a non-zero number.");
   }
   var inv = 1 / inc;
+  if (inv > 1) inv = Math.round(inv);
   return function(x) {
-    // stringify() tends to show rounding artefacts using Math.round(x / inc) * inc;
-    return Math.round(x * inv) / inv;
+    // Need a rounding functino that doesn't show rounding error after stringify()
+    return Math.round(x * inv) / inv; // candidate
+    //return Math.round(x / inc) / inv; // candidate
+    //return Math.round(x / inc) * inc;
+    //return Math.round(x * inv) * inc;
   };
 }
 
 // Detect intersections between two 2D segments.
 // Return [x, y] array of intersection point or false if segments do not cross.
-//
 //
 function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
   // Test collision (c.f. Sedgewick, _Algorithms in C_)
@@ -4156,7 +4161,6 @@ function ccw(x0, y0, x1, y1, x2, y2) {
   return 0;
 }
 
-
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
 /*
@@ -4171,7 +4175,6 @@ function innerAngle_slow(ax, ay, bx, by, cx, cy) {
   return a3;
 }
 */
-
 
 // TODO: make this safe for small angles
 //
@@ -5027,24 +5030,6 @@ MapShaper.buildTopology = function(obj) {
   };
 };
 
-
-// Hash an x, y point to a non-negative integer
-//
-MapShaper.xyToUintHash = (function() {
-  var buf = new ArrayBuffer(16),
-      floats = new Float64Array(buf),
-      uints = new Uint32Array(buf);
-
-  return function(x, y) {
-    var u = uints, h;
-    floats[0] = x;
-    floats[1] = y;
-    h = u[0] ^ u[1];
-    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-    return h & 0x7fffffff;
-  };
-}());
-
 //
 //
 function ArcIndex(pointCount, xyToUint) {
@@ -5105,8 +5090,25 @@ function ArcIndex(pointCount, xyToUint) {
 // Transform spaghetti paths into topological paths
 //
 function buildPathTopology(xx, yy, pathData) {
+
+  // Hash an x, y point to a non-negative integer
+  var hashXY = (function() {
+    var buf = new ArrayBuffer(16),
+        floats = new Float64Array(buf),
+        uints = new Uint32Array(buf);
+
+    return function(x, y) {
+      var u = uints, h;
+      floats[0] = x;
+      floats[1] = y;
+      h = u[0] ^ u[1];
+      h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+      return h & 0x7fffffff;
+    };
+  }());
+
   var pointCount = xx.length,
-      index = new ArcIndex(pointCount, MapShaper.xyToUintHash),
+      index = new ArcIndex(pointCount, hashXY),
       typedArrays = !!(xx.subarray && yy.subarray),
       slice, array;
 
@@ -5121,7 +5123,7 @@ function buildPathTopology(xx, yy, pathData) {
   }
 
   T.start();
-  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
+  var chainIds = initPointChains(xx, yy, hashXY, !"verbose");
   T.stop("Find matching vertices");
 
   T.start();
@@ -8605,16 +8607,178 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
 
 
 
-// mapshaper-segments
 
 var cli = MapShaper.cli = {};
 
-MapShaper.validateArgv = function(argv) {
+var usage = "" +
+  "Usage: $ mapshaper [options] file\n\n" +
+  "Example: Use Douglas-Peucker to remove all but 10% of points in a Shapefile.\n" +
+  "$ mapshaper --dp -p 0.1 counties.shp\n\n" +
+  "Example: Use Visvalingam to simplify a Shapefile to 1km resolution.\n" +
+  "$ mapshaper --vis -i 1000 states.shp";
+
+MapShaper.getOptionParser = function() {
+  return require('optimist')
+    .usage(usage)
+
+    .options("o", {
+      describe: "specify name of output file or directory",
+    })
+
+    .options("f", {
+      alias: "format",
+      describe: "output to a different format (shapefile|geojson|topojson)",
+    })
+
+    .options("p", {
+      alias: "pct",
+      describe: "proportion of points to retain (0-1)"
+    })
+
+    .options("i", {
+      alias: "interval",
+      describe: "amount of simplification in meters (or other projected units)"
+    })
+
+    .options("dp", {
+      describe: "simplify with Douglas-Peucker (aka Ramer–Douglas–Peucker)",
+      'boolean': true
+    })
+
+    .options("vis", {
+      describe: "simplify with Visvalingam",
+      'boolean': true
+    })
+
+    .options("mod", {
+      describe: "simplify with modified Visvalingam (default)",
+      'boolean': true
+    })
+
+    .options("keep-shapes", {
+      describe: "prevent small shapes from disappearing",
+      'boolean': true
+    })
+
+    .options("repair", {
+      describe: "remove intersections introduced by simplification",
+      'boolean': true
+    })
+
+    .options("precision", {
+      describe: "increment for rounding coordinates, in source units"
+    })
+
+    .options("quantization", {
+      describe: "override topojson resolution calculated by mapshaper"
+    })
+
+    .options("no-quantization", {
+      describe: "export topojson without quantization",
+      'boolean': true
+    })
+
+    .options("timing", {
+      describe: "show execution time of processing steps",
+      'boolean': true
+    })
+
+    .options("v", {
+      alias: "version",
+      describe: "print mapshaper version",
+      'boolean': true
+    })
+
+    .options("h", {
+      alias: "help",
+      describe: "print this help message",
+      'boolean': true
+    });
+  /*
+    // TODO
+    // prevent points along straight lines from being stripped away, to allow reprojection
+    .options("min-segment", {
+      describe: "min segment length (no. of segments in largest dimension)",
+      default: 0
+    })
+
+    .options("remove-null", {
+      describe: "remove null shapes",
+      default: false
+    })
+    */
+};
+
+// Return options object for mapshaper's command line script
+//
+MapShaper.getOpts = function() {
+  var optimist = MapShaper.getOptionParser(),
+      opts, argv;
+
+  argv = optimist.check(function(argv) {
+    if (argv.h) {
+      optimist.showHelp();
+      process.exit(0);
+    }
+    if (argv.v) {
+      console.log(getVersion());
+      process.exit(0);
+    }
+    opts = MapShaper.validateArgs(argv, getSupportedArgs(optimist));
+  }).argv;
+
+  return opts;
+};
+
+MapShaper.checkArgs = function(argv) {
+  var optimist = MapShaper.getOptionParser();
+  return MapShaper.validateArgs(optimist.parse(argv), getSupportedArgs(optimist));
+};
+
+function getSupportedArgs(optimist) {
+  return optimist.help().match(/-([a-z][a-z-]*)/g).map(function(arg) {
+    return arg.replace(/^-/, '');
+  });
+}
+
+function getVersion() {
+  var v;
+  try {
+    var packagePath = Node.resolvePathFromScript("../package.json"),
+        obj = JSON.parse(Node.readFile(packagePath, 'utf-8'));
+    v = obj.version;
+  } catch(e) {}
+  return v || "";
+}
+
+MapShaper.checkArgSupport = function(argv, flags) {
+  var supportedOpts = flags.reduce(function(acc, opt) {
+      acc[opt] = true;
+      return acc;
+    }, {'_': true, '$0': true});
+
+  Utils.forEach(argv, function(val, arg) {
+    if (arg in supportedOpts === false) {
+      throw "Unsupported option: " + arg;
+    }
+  });
+};
+
+MapShaper.validateArgs = function(argv, supported) {
+  MapShaper.checkArgSupport(argv, supported);
+
+  // If an option is given multiple times, throw an error
+  Utils.forEach(argv, function(val, arg) {
+    if (Utils.isArray(val) && arg != '_') {
+      throw new Error((arg.length == 1 ? '-' : '--') + arg + " option is repeated");
+    }
+  });
+
   var opts = cli.validateInputOpts(argv);
   Utils.extend(opts, cli.validateOutputOpts(argv, opts));
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
-  opts.timing = !!argv.t;
+  opts.timing = !!argv.timing;
   return opts;
 };
 
@@ -8762,19 +8926,19 @@ cli.validateSimplifyOpts = function(argv) {
     opts.simplify_pct = argv.p;
   }
 
-  if (argv.q) {
-    if (!Utils.isInteger(argv.q) || argv.q < 0) {
-      error("-q (--quantization) option should be a nonnegative integer");
+  if (argv.quantization) {
+    if (!Utils.isInteger(argv.quantization) || argv.quantization < 0) {
+      error("--quantization option should be a nonnegative integer");
     }
-    opts.topojson_resolution = argv.q;
-  } else if (argv.quantization === false || argv.q === 0) {
+    opts.topojson_resolution = argv.quantization;
+  } else if (argv.quantization === false || argv.quantization === 0) {
     opts.topojson_resolution = 0; // handle --no-quantization
   }
 
   opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
 
   if (opts.use_simplification) {
-    opts.keep_shapes = !!argv.k;
+    opts.keep_shapes = !!argv['keep-shapes'];
     if (argv.dp)
       opts.simplify_method = "dp";
     else if (argv.vis)
@@ -8804,7 +8968,6 @@ MapShaper.importFromFile = function(fname, opts) {
   }
   return MapShaper.importContent(content, fileType, opts);
 };
-
 
 var api = Utils.extend(MapShaper, {
   Node: Node,

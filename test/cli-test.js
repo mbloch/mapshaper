@@ -14,20 +14,62 @@ var dataDir = path.join(__dirname, "test_data"),
 // Convert string of commandline options to optimist argv
 //
 function parseOpts(str) {
-  var parts = str.split(/[\s]+/); // TODO: handle quoted strings
-  return optimist.parse(parts);
+  return optimist.parse(splitOpts(str));
+}
+
+function splitOpts(str) {
+  return str.split(/[\s]+/); // TODO: handle quoted strings
 }
 
 
 describe('mapshaper-cli.js', function() {
 
+  // Check for problems like duplicate args and unsupported args
+  describe('checkArgs()', function() {
+    var bad1 = "test_data/two_states.shp -f shapefile -f topojson",
+        bad2 = "test_data/two_states.shp --quantize 100",
+        bad3 = "test_data/two_states.shp -q 100",
+        bad4 = "test_data/two_states.shp -k",
+        good1 = "test_data/two_states.shp";
+
+    it(bad1 + " (invalid)", function() {
+      assert.throws(function() {
+        mapshaper.checkArgs(splitOpts(bad1));
+      });
+    })
+
+    it(bad2 + " (invalid)", function() {
+      assert.throws(function() {
+        mapshaper.checkArgs(splitOpts(bad2));
+      });
+    })
+
+    it(bad3 + " (invalid)", function() {
+      assert.throws(function() {
+        mapshaper.checkArgs(splitOpts(bad3));
+      });
+    })
+
+    it(bad4 + " (invalid)", function() {
+      assert.throws(function() {
+        mapshaper.checkArgs(splitOpts(bad4));
+      });
+    })
+
+    it(good1, function() {
+       assert.doesNotThrow(function() {
+        mapshaper.checkArgs(splitOpts(good1));
+      });
+    })
+  });
+
   describe('validateSimplifyOpts()', function() {
 
     var good1 = "-p 0.2",
-        good2 = "-i 2000 --dp -k",
-        good3 = "-k --vis -p .9",
-        good4 = "-q 1000",
-        good5 = "-q 0",
+        good2 = "-i 2000 --dp --keep-shapes",
+        good3 = "--keep-shapes --vis -p .9",
+        good4 = "--quantization 1000",
+        good5 = "--quantization 0",
         good6 = "--no-quantization"
 
     // var ok1 = "-p 0.4 -i 5000";
@@ -37,8 +79,8 @@ describe('mapshaper-cli.js', function() {
         bad3 = "-i 200km",
         bad4 = "-i",
         bad5 = "-p",
-        bad6 = "-q 0.3",
-        bad7 = "-q";
+        bad6 = "--quantization 0.3",
+        bad7 = "--quantization";
 
     function validate(str) {
       var argv = parseOpts(str);
@@ -120,6 +162,14 @@ describe('mapshaper-cli.js', function() {
     it(bad7 + " (invalid)", function() {
       assert.throws(function(){validate(bad7)});
     })
+
+    it(bad7 + " (invalid)", function() {
+      assert.throws(function(){validate(bad7)});
+    })
+
+    it(bad7 + " (invalid)", function() {
+      assert.throws(function(){validate(bad7)});
+    })
   })
 
 
@@ -152,6 +202,7 @@ describe('mapshaper-cli.js', function() {
       assert.throws(function(){validate(bad3)});
     })
   })
+
 
   describe('validateOutputOpts()', function() {
 

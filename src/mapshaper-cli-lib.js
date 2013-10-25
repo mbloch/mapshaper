@@ -7,16 +7,178 @@ mapshaper-import,
 mapshaper-repair,
 mapshaper-segments
 */
-// mapshaper-segments
 
 var cli = MapShaper.cli = {};
 
-MapShaper.validateArgv = function(argv) {
+var usage = "" +
+  "Usage: $ mapshaper [options] file\n\n" +
+  "Example: Use Douglas-Peucker to remove all but 10% of points in a Shapefile.\n" +
+  "$ mapshaper --dp -p 0.1 counties.shp\n\n" +
+  "Example: Use Visvalingam to simplify a Shapefile to 1km resolution.\n" +
+  "$ mapshaper --vis -i 1000 states.shp";
+
+MapShaper.getOptionParser = function() {
+  return require('optimist')
+    .usage(usage)
+
+    .options("o", {
+      describe: "specify name of output file or directory",
+    })
+
+    .options("f", {
+      alias: "format",
+      describe: "output to a different format (shapefile|geojson|topojson)",
+    })
+
+    .options("p", {
+      alias: "pct",
+      describe: "proportion of points to retain (0-1)"
+    })
+
+    .options("i", {
+      alias: "interval",
+      describe: "amount of simplification in meters (or other projected units)"
+    })
+
+    .options("dp", {
+      describe: "simplify with Douglas-Peucker (aka Ramer–Douglas–Peucker)",
+      'boolean': true
+    })
+
+    .options("vis", {
+      describe: "simplify with Visvalingam",
+      'boolean': true
+    })
+
+    .options("mod", {
+      describe: "simplify with modified Visvalingam (default)",
+      'boolean': true
+    })
+
+    .options("keep-shapes", {
+      describe: "prevent small shapes from disappearing",
+      'boolean': true
+    })
+
+    .options("repair", {
+      describe: "remove intersections introduced by simplification",
+      'boolean': true
+    })
+
+    .options("precision", {
+      describe: "increment for rounding coordinates, in source units"
+    })
+
+    .options("quantization", {
+      describe: "override topojson resolution calculated by mapshaper"
+    })
+
+    .options("no-quantization", {
+      describe: "export topojson without quantization",
+      'boolean': true
+    })
+
+    .options("timing", {
+      describe: "show execution time of processing steps",
+      'boolean': true
+    })
+
+    .options("v", {
+      alias: "version",
+      describe: "print mapshaper version",
+      'boolean': true
+    })
+
+    .options("h", {
+      alias: "help",
+      describe: "print this help message",
+      'boolean': true
+    });
+  /*
+    // TODO
+    // prevent points along straight lines from being stripped away, to allow reprojection
+    .options("min-segment", {
+      describe: "min segment length (no. of segments in largest dimension)",
+      default: 0
+    })
+
+    .options("remove-null", {
+      describe: "remove null shapes",
+      default: false
+    })
+    */
+};
+
+// Return options object for mapshaper's command line script
+//
+MapShaper.getOpts = function() {
+  var optimist = MapShaper.getOptionParser(),
+      opts, argv;
+
+  argv = optimist.check(function(argv) {
+    if (argv.h) {
+      optimist.showHelp();
+      process.exit(0);
+    }
+    if (argv.v) {
+      console.log(getVersion());
+      process.exit(0);
+    }
+    opts = MapShaper.validateArgs(argv, getSupportedArgs(optimist));
+  }).argv;
+
+  return opts;
+};
+
+MapShaper.checkArgs = function(argv) {
+  var optimist = MapShaper.getOptionParser();
+  return MapShaper.validateArgs(optimist.parse(argv), getSupportedArgs(optimist));
+};
+
+function getSupportedArgs(optimist) {
+  return optimist.help().match(/-([a-z][a-z-]*)/g).map(function(arg) {
+    return arg.replace(/^-/, '');
+  });
+}
+
+function getVersion() {
+  var v;
+  try {
+    var packagePath = Node.resolvePathFromScript("../package.json"),
+        obj = JSON.parse(Node.readFile(packagePath, 'utf-8'));
+    v = obj.version;
+  } catch(e) {}
+  return v || "";
+}
+
+MapShaper.checkArgSupport = function(argv, flags) {
+  var supportedOpts = flags.reduce(function(acc, opt) {
+      acc[opt] = true;
+      return acc;
+    }, {'_': true, '$0': true});
+
+  Utils.forEach(argv, function(val, arg) {
+    if (arg in supportedOpts === false) {
+      throw "Unsupported option: " + arg;
+    }
+  });
+};
+
+MapShaper.validateArgs = function(argv, supported) {
+  MapShaper.checkArgSupport(argv, supported);
+
+  // If an option is given multiple times, throw an error
+  Utils.forEach(argv, function(val, arg) {
+    if (Utils.isArray(val) && arg != '_') {
+      throw new Error((arg.length == 1 ? '-' : '--') + arg + " option is repeated");
+    }
+  });
+
   var opts = cli.validateInputOpts(argv);
   Utils.extend(opts, cli.validateOutputOpts(argv, opts));
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
-  opts.timing = !!argv.t;
+  opts.timing = !!argv.timing;
   return opts;
 };
 
@@ -164,19 +326,19 @@ cli.validateSimplifyOpts = function(argv) {
     opts.simplify_pct = argv.p;
   }
 
-  if (argv.q) {
-    if (!Utils.isInteger(argv.q) || argv.q < 0) {
-      error("-q (--quantization) option should be a nonnegative integer");
+  if (argv.quantization) {
+    if (!Utils.isInteger(argv.quantization) || argv.quantization < 0) {
+      error("--quantization option should be a nonnegative integer");
     }
-    opts.topojson_resolution = argv.q;
-  } else if (argv.quantization === false || argv.q === 0) {
+    opts.topojson_resolution = argv.quantization;
+  } else if (argv.quantization === false || argv.quantization === 0) {
     opts.topojson_resolution = 0; // handle --no-quantization
   }
 
   opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
 
   if (opts.use_simplification) {
-    opts.keep_shapes = !!argv.k;
+    opts.keep_shapes = !!argv['keep-shapes'];
     if (argv.dp)
       opts.simplify_method = "dp";
     else if (argv.vis)
@@ -206,7 +368,6 @@ MapShaper.importFromFile = function(fname, opts) {
   }
   return MapShaper.importContent(content, fileType, opts);
 };
-
 
 var api = Utils.extend(MapShaper, {
   Node: Node,

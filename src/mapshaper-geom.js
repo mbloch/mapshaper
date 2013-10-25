@@ -31,15 +31,18 @@ function getRoundingFunction(inc) {
     error("Rounding increment must be a non-zero number.");
   }
   var inv = 1 / inc;
+  if (inv > 1) inv = Math.round(inv);
   return function(x) {
-    // stringify() tends to show rounding artefacts using Math.round(x / inc) * inc;
-    return Math.round(x * inv) / inv;
+    // Need a rounding functino that doesn't show rounding error after stringify()
+    return Math.round(x * inv) / inv; // candidate
+    //return Math.round(x / inc) / inv; // candidate
+    //return Math.round(x / inc) * inc;
+    //return Math.round(x * inv) * inc;
   };
 }
 
 // Detect intersections between two 2D segments.
 // Return [x, y] array of intersection point or false if segments do not cross.
-//
 //
 function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
   // Test collision (c.f. Sedgewick, _Algorithms in C_)
@@ -81,7 +84,6 @@ function ccw(x0, y0, x1, y1, x2, y2) {
   return 0;
 }
 
-
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
 /*
@@ -96,7 +98,6 @@ function innerAngle_slow(ax, ay, bx, by, cx, cy) {
   return a3;
 }
 */
-
 
 // TODO: make this safe for small angles
 //
