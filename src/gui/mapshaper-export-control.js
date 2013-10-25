@@ -8,6 +8,7 @@ var ExportControl = function(arcData, layers, options) {
 
   // TODO: URL.createObjectURL() is available in Safari 7.0 but downloading
   // fails. Need to handle.
+  // Consider: listening for window.onbeforeunload
   //
   if (typeof URL == 'undefined' || !URL.createObjectURL) {
     El('#g-export-control .g-label').text("Exporting is not supported in this browser");
@@ -58,7 +59,13 @@ var ExportControl = function(arcData, layers, options) {
     }
   }
 
+
   function saveBlob(filename, blob) {
+    if (window.navigator.msSaveBlob) {
+      window.navigator.msSaveBlob(blob, filename);
+      return;
+    }
+
     try {
       // revoke previous download url, if any. TODO: do this when download completes (how?)
       if (blobUrl) URL.revokeObjectURL(blobUrl);

@@ -36,24 +36,6 @@ MapShaper.buildTopology = function(obj) {
   };
 };
 
-
-// Hash an x, y point to a non-negative integer
-//
-MapShaper.xyToUintHash = (function() {
-  var buf = new ArrayBuffer(16),
-      floats = new Float64Array(buf),
-      uints = new Uint32Array(buf);
-
-  return function(x, y) {
-    var u = uints, h;
-    floats[0] = x;
-    floats[1] = y;
-    h = u[0] ^ u[1];
-    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-    return h & 0x7fffffff;
-  };
-}());
-
 //
 //
 function ArcIndex(pointCount, xyToUint) {
@@ -114,8 +96,25 @@ function ArcIndex(pointCount, xyToUint) {
 // Transform spaghetti paths into topological paths
 //
 function buildPathTopology(xx, yy, pathData) {
+
+  // Hash an x, y point to a non-negative integer
+  var hashXY = (function() {
+    var buf = new ArrayBuffer(16),
+        floats = new Float64Array(buf),
+        uints = new Uint32Array(buf);
+
+    return function(x, y) {
+      var u = uints, h;
+      floats[0] = x;
+      floats[1] = y;
+      h = u[0] ^ u[1];
+      h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+      return h & 0x7fffffff;
+    };
+  }());
+
   var pointCount = xx.length,
-      index = new ArcIndex(pointCount, MapShaper.xyToUintHash),
+      index = new ArcIndex(pointCount, hashXY),
       typedArrays = !!(xx.subarray && yy.subarray),
       slice, array;
 
@@ -130,7 +129,7 @@ function buildPathTopology(xx, yy, pathData) {
   }
 
   T.start();
-  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
+  var chainIds = initPointChains(xx, yy, hashXY, !"verbose");
   T.stop("Find matching vertices");
 
   T.start();

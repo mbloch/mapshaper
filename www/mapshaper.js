@@ -2493,22 +2493,13 @@ Transform.prototype.invert = function() {
   var inv = new Transform();
   inv.mx = 1 / this.mx;
   inv.my = 1 / this.my;
+  //inv.bx = -this.bx * inv.mx;
+  //inv.by = -this.by * inv.my;
   inv.bx = -this.bx / this.mx;
   inv.by = -this.by / this.my;
   return inv;
 };
 
-
-/*
-Transform.prototype.useTileBounds = function(wPix, hPix, bb) {
-  var ppm = wPix / (bb.right - bb.left);
-  this.mx = ppm;
-  this.my = hPix / (bb.bottom - bb.top);
-  this.bx = -ppm * bb.left;
-  this.by = -this.my * bb.top;
-  return this;
-};
-*/
 
 Transform.prototype.transform = function(x, y, xy) {
   xy = xy || [];
@@ -3523,6 +3514,27 @@ BinArray.maxCopySize = function(len, i) {
   return Math.min(len & 1 || len & 2 || 4, i & 1 || i & 2 || 4);
 };
 
+BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
+  srcId = srcId || 0;
+  bytes = bytes || src.byteLength - srcId;
+  if (dest.byteLength - destId < bytes)
+    error("Buffer overflow; tried to write:", bytes);
+
+  // When possible, copy buffer data in multi-byte chunks... Added this for faster copying of
+  // shapefile data, which is aligned to 32 bits.
+  var wordSize = Math.min(BinArray.maxCopySize(bytes, srcId), BinArray.maxCopySize(bytes, destId)),
+      srcArr = BinArray.bufferToUintArray(src, wordSize),
+      destArr = BinArray.bufferToUintArray(dest, wordSize),
+      count = bytes / wordSize,
+      i = srcId / wordSize,
+      j = destId / wordSize;
+
+  while (count--) {
+    destArr[j++] = srcArr[i++];
+  }
+  return bytes;
+};
+
 BinArray.toArrayBuffer = function(src) {
   var dest = new ArrayBuffer(src.length);
   for (var i = 0, n=src.length; i < n; i++) {
@@ -3649,11 +3661,19 @@ BinArray.prototype = {
   //
   readFloat64Array: function(len) {
     var bytes = len * 8,
-        i = this._idx;
-    var arr = i % 8 === 0 ?
-      // Inconsistent: first is a view, second a copy...
-      new Float64Array(this._buffer, i, len) :
-      new Float64Array(this._buffer.slice(i, i + bytes));
+        i = this._idx,
+        buf = this._buffer,
+        arr;
+    // Inconsistent: first is a view, second a copy...
+    if (i % 8 === 0) {
+      arr = new Float64Array(buf, i, len);
+    } else if (buf.slice) {
+      arr = new Float64Array(buf.slice(i, i + bytes));
+    } else { // ie10, etc
+      var dest = new ArrayBuffer(bytes);
+      BinArray.bufferCopy(dest, 0, buf, i, bytes);
+      arr = new Float64Array(dest);
+    }
     this._idx += bytes;
     return arr;
   },
@@ -3732,27 +3752,9 @@ BinArray.prototype = {
   },
 
   writeBuffer: function(buf, bytes, startIdx) {
-    bytes = bytes || BinArray.bufferSize(buf);
-    startIdx = startIdx | 0;
-    if (this.bytesLeft() < bytes)
-      error("Buffer overflow; available bytes:", this.bytesLeft(), "tried to write:", bytes);
-
-    // When possible, copy buffer data in multi-byte chunks... Added this for faster copying of
-    // shapefile data, which is aligned to 32 bits.
-    var wordSize = Math.min(BinArray.maxCopySize(bytes, startIdx), BinArray.maxCopySize(bytes, this._idx)),
-        src = BinArray.bufferToUintArray(buf, wordSize),
-        dest = BinArray.bufferToUintArray(this._buffer, wordSize),
-        count = bytes / wordSize,
-        i = startIdx / wordSize,
-        j = this._idx / wordSize;
-
-    while (count--) {
-      dest[j++] = src[i++];
-    }
-
-    this._idx += bytes;
+    this._idx += BinArray.bufferCopy(this._buffer, this._idx, buf, startIdx, bytes);
     return this;
-  },
+  }
 
   /*
   // TODO: expand buffer, probably via a public method, not automatically
@@ -4106,15 +4108,18 @@ function getRoundingFunction(inc) {
     error("Rounding increment must be a non-zero number.");
   }
   var inv = 1 / inc;
+  if (inv > 1) inv = Math.round(inv);
   return function(x) {
-    // stringify() tends to show rounding artefacts using Math.round(x / inc) * inc;
-    return Math.round(x * inv) / inv;
+    // Need a rounding functino that doesn't show rounding error after stringify()
+    return Math.round(x * inv) / inv; // candidate
+    //return Math.round(x / inc) / inv; // candidate
+    //return Math.round(x / inc) * inc;
+    //return Math.round(x * inv) * inc;
   };
 }
 
 // Detect intersections between two 2D segments.
 // Return [x, y] array of intersection point or false if segments do not cross.
-//
 //
 function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
   // Test collision (c.f. Sedgewick, _Algorithms in C_)
@@ -4156,7 +4161,6 @@ function ccw(x0, y0, x1, y1, x2, y2) {
   return 0;
 }
 
-
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
 /*
@@ -4171,7 +4175,6 @@ function innerAngle_slow(ax, ay, bx, by, cx, cy) {
   return a3;
 }
 */
-
 
 // TODO: make this safe for small angles
 //
@@ -7605,6 +7608,7 @@ var ExportControl = function(arcData, layers, options) {
 
   // TODO: URL.createObjectURL() is available in Safari 7.0 but downloading
   // fails. Need to handle.
+  // Consider: listening for window.onbeforeunload
   //
   if (typeof URL == 'undefined' || !URL.createObjectURL) {
     El('#g-export-control .g-label').text("Exporting is not supported in this browser");
@@ -7655,7 +7659,13 @@ var ExportControl = function(arcData, layers, options) {
     }
   }
 
+
   function saveBlob(filename, blob) {
+    if (window.navigator.msSaveBlob) {
+      window.navigator.msSaveBlob(blob, filename);
+      return;
+    }
+
     try {
       // revoke previous download url, if any. TODO: do this when download completes (how?)
       if (blobUrl) URL.revokeObjectURL(blobUrl);
@@ -7753,24 +7763,6 @@ MapShaper.buildTopology = function(obj) {
   };
 };
 
-
-// Hash an x, y point to a non-negative integer
-//
-MapShaper.xyToUintHash = (function() {
-  var buf = new ArrayBuffer(16),
-      floats = new Float64Array(buf),
-      uints = new Uint32Array(buf);
-
-  return function(x, y) {
-    var u = uints, h;
-    floats[0] = x;
-    floats[1] = y;
-    h = u[0] ^ u[1];
-    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-    return h & 0x7fffffff;
-  };
-}());
-
 //
 //
 function ArcIndex(pointCount, xyToUint) {
@@ -7831,8 +7823,25 @@ function ArcIndex(pointCount, xyToUint) {
 // Transform spaghetti paths into topological paths
 //
 function buildPathTopology(xx, yy, pathData) {
+
+  // Hash an x, y point to a non-negative integer
+  var hashXY = (function() {
+    var buf = new ArrayBuffer(16),
+        floats = new Float64Array(buf),
+        uints = new Uint32Array(buf);
+
+    return function(x, y) {
+      var u = uints, h;
+      floats[0] = x;
+      floats[1] = y;
+      h = u[0] ^ u[1];
+      h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+      return h & 0x7fffffff;
+    };
+  }());
+
   var pointCount = xx.length,
-      index = new ArcIndex(pointCount, MapShaper.xyToUintHash),
+      index = new ArcIndex(pointCount, hashXY),
       typedArrays = !!(xx.subarray && yy.subarray),
       slice, array;
 
@@ -7847,7 +7856,7 @@ function buildPathTopology(xx, yy, pathData) {
   }
 
   T.start();
-  var chainIds = initPointChains(xx, yy, MapShaper.xyToUintHash, !"verbose");
+  var chainIds = initPointChains(xx, yy, hashXY, !"verbose");
   T.stop("Find matching vertices");
 
   T.start();
