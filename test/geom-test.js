@@ -43,11 +43,41 @@ describe("mapshaper-geom.js", function() {
    })
   })
 
-  //describe('segmentIntersection', function () {
-    //it('Joined segs are false', function () {
-      // assert.equal(geom.segmentIntersection(0, 0, 0, 1, 0, 1, 1, 1), false)
-    //});
-  //})
+
+  /*
+    {i:4132, j:4134, intersection:{x:-82.14607102566005, y:36.59472405123747}, ids:[6169367, 6169366, 5331227, 5331228],
+    segments:[
+    [{x:-82.14628596493874, y:36.59472405123747}, {x:-82.1460708585222, y:36.59472405123747}],
+    [{x:-82.14607102566005, y:36.59472405123747}, {x:-82.14298499234607, y:36.59484205056154}]]}
+  */
+
+  describe('segmentIntersection', function () {
+    it('Joined segs are hits', function () {
+      assert.equal(!!geom.segmentIntersection(0, 0, 0, 1, 0, 1, 1, 1), true)
+      assert.equal(!!geom.segmentIntersection(0, 0, 0, 1, 1, 0, 0, 0), true)
+      assert.equal(!!geom.segmentIntersection(0, 0, 0, 1, 0, 0, 1, 0), true)
+      assert.equal(!!geom.segmentIntersection(0, 0, 1, 1, 1, 1, 2, 0), true)
+      assert.equal(!!geom.segmentIntersection(0, 0, 1, -1, 1, -1, 2, 0), true)
+    });
+
+    it('Congruent segments are false', function() {
+      assert.equal(geom.segmentIntersection(0, 0, 1, 1, 0, 0, 1, 1), false)
+      assert.equal(geom.segmentIntersection(1, 1, 0, 0, 0, 0, 1, 1), false)
+    })
+
+    it('Partially congruent segments are false', function() {
+      assert.equal(geom.segmentIntersection(0, 0, 1, 1, 0, 0, 2, 2), false)
+      assert.equal(geom.segmentIntersection(2, 2, 0, 0, 0, 0, 1, 1), false)
+    })
+
+    it('Tiny overlaps are detected', function() {
+      var TINY = 0.00000000001;
+      assert.equal(!!geom.segmentIntersection(0, 0, 1, 1, TINY, 0, 1 - TINY, 1), true);
+      assert.equal(!!geom.segmentIntersection(TINY, 0, 1, 1, 0, 0, 1, TINY), true);
+      assert.equal(!!geom.segmentIntersection(0, 0, 1, -1, TINY, 0, 1 - TINY, -1), true);
+      assert.equal(!!geom.segmentIntersection(TINY, 0, 1, -1, 0, 0, 1, -TINY), true);
+    })
+  })
 
   describe("innerAngle()", function() {
 
