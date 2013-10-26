@@ -1,6 +1,5 @@
 (function(){
 
-var C = C || {}; // global constants
 
 var Env = (function() {
   var inNode = typeof module !== 'undefined' && !!module.exports;
@@ -20,6 +19,9 @@ var Env = (function() {
     ie: !isNaN(ieVersion)
   };
 })();
+
+var C = C || {}; // global constants
+C.VERBOSE = true;
 
 var Utils = {
   getUniqueName: function(prefix) {
@@ -396,7 +398,7 @@ var Opts = {
 };
 
 var trace = function() {
-  if (!Env.inBrowser || (typeof Browser) == 'undefined' || Browser.traceEnabled()) {
+  if (C.VERBOSE) {
     Utils.log(Utils.map(arguments, Utils.strval).join(' '));
   }
 };
@@ -1576,14 +1578,6 @@ var Browser = {
     return this.ieVersion;
   },
 
-  traceEnabled: function() {
-    var debug = Browser.getQueryVar('debug');
-    if (Env.inBrowser && (debug == null || debug == "false")) {
-      return false;
-    }
-    return true;
-  },
-
   /*getPageWidth: function() {
    return document.documentElement.clientWidth || document.body.clientWidth;
   },*/
@@ -1900,6 +1894,8 @@ var Browser = {
 Browser.onload = function(handler, ctx) {
   Browser.on(window, 'load', handler, ctx); // handles case when page is already loaded.
 };
+
+C.VERBOSE = !Env.inBrowser || Browser.getQueryVar('debug') != null;
 
 // Add environment information to Browser
 //
