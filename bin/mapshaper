@@ -13,7 +13,7 @@ var mapshaper = require("../"),
 
 var opts = mapshaper.getOpts(); // see mapshaper-cli-lib.js
 
-T.verbose = opts.timing;
+mapshaper.C.VERBOSE = opts.verbose;
 T.start("Start timing");
 
 var importData = mapshaper.importFromFile(opts.input_file, opts),
@@ -39,8 +39,6 @@ if (opts.simplify_pct) {
   arcData.setRetainedPct(opts.simplify_pct);
 } else if (opts.simplify_interval) {
   arcData.setRetainedInterval(opts.simplify_interval);
-} else {
-  // no simplification
 }
 
 if (opts.repair) {

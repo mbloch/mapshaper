@@ -1,6 +1,5 @@
 (function(){
 
-var C = C || {}; // global constants
 
 var Env = (function() {
   var inNode = typeof module !== 'undefined' && !!module.exports;
@@ -20,6 +19,9 @@ var Env = (function() {
     ie: !isNaN(ieVersion)
   };
 })();
+
+var C = C || {}; // global constants
+C.VERBOSE = true;
 
 var Utils = {
   getUniqueName: function(prefix) {
@@ -396,7 +398,7 @@ var Opts = {
 };
 
 var trace = function() {
-  if (!Env.inBrowser || (typeof Browser) == 'undefined' || Browser.traceEnabled()) {
+  if (C.VERBOSE) {
     Utils.log(Utils.map(arguments, Utils.strval).join(' '));
   }
 };
@@ -1576,14 +1578,6 @@ var Browser = {
     return this.ieVersion;
   },
 
-  traceEnabled: function() {
-    var debug = Browser.getQueryVar('debug');
-    if (Env.inBrowser && (debug == null || debug == "false")) {
-      return false;
-    }
-    return true;
-  },
-
   /*getPageWidth: function() {
    return document.documentElement.clientWidth || document.body.clientWidth;
   },*/
@@ -1900,6 +1894,8 @@ var Browser = {
 Browser.onload = function(handler, ctx) {
   Browser.on(window, 'load', handler, ctx); // handles case when page is already loaded.
 };
+
+C.VERBOSE = !Env.inBrowser || Browser.getQueryVar('debug') != null;
 
 // Add environment information to Browser
 //
@@ -8678,8 +8674,8 @@ MapShaper.getOptionParser = function() {
       'boolean': true
     })
 
-    .options("timing", {
-      describe: "show execution time of processing steps",
+    .options("verbose", {
+      describe: "print verbose processing messages",
       'boolean': true
     })
 
@@ -8709,7 +8705,7 @@ MapShaper.getOptionParser = function() {
     */
 };
 
-// Return options object for mapshaper's command line script
+// Parse command line and return options object for bin/mapshaper
 //
 MapShaper.getOpts = function() {
   var optimist = MapShaper.getOptionParser(),
@@ -8730,11 +8726,16 @@ MapShaper.getOpts = function() {
   return opts;
 };
 
+// Test option parsing -- throws an error if a problem is found.
+// @argv array of command line tokens
+//
 MapShaper.checkArgs = function(argv) {
   var optimist = MapShaper.getOptionParser();
   return MapShaper.validateArgs(optimist.parse(argv), getSupportedArgs(optimist));
 };
 
+// Return an array of all recognized cli arguments: ["f", "format", ...]
+//
 function getSupportedArgs(optimist) {
   return optimist.help().match(/-([a-z][a-z-]*)/g).map(function(arg) {
     return arg.replace(/^-/, '');
@@ -8751,6 +8752,9 @@ function getVersion() {
   return v || "";
 }
 
+// Throw an error if @argv array contains an unsupported option
+// @flags array of supported options
+//
 MapShaper.checkArgSupport = function(argv, flags) {
   var supportedOpts = flags.reduce(function(acc, opt) {
       acc[opt] = true;
@@ -8764,6 +8768,8 @@ MapShaper.checkArgSupport = function(argv, flags) {
   });
 };
 
+//
+//
 MapShaper.validateArgs = function(argv, supported) {
   MapShaper.checkArgSupport(argv, supported);
 
@@ -8778,7 +8784,7 @@ MapShaper.validateArgs = function(argv, supported) {
   Utils.extend(opts, cli.validateOutputOpts(argv, opts));
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
-  opts.timing = !!argv.timing;
+  opts.verbose = !!argv.verbose;
   return opts;
 };
 
@@ -8975,6 +8981,7 @@ var api = Utils.extend(MapShaper, {
   Opts: Opts,
   trace: trace,
   error: error,
+  C: C,
   T: T,
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,
@@ -8985,7 +8992,6 @@ var api = Utils.extend(MapShaper, {
 });
 
 module.exports = api;
-
-T.verbose = false; // timing messages off by default (e.g. for testing)
+C.VERBOSE = false;
 
 })();
