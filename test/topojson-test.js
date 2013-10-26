@@ -22,7 +22,7 @@ describe('topojson-test.js', function () {
       var shape = [[0, 1, 2], [~1, 2, 3]],
           map = [0, -1, 1, 2];
 
-      TopoJSON.remapShapeArcs(shape, map);
+      shape = TopoJSON.remapShapeArcs(shape, map);
       assert.deepEqual([[0, 1], [1, 2]], shape);
     })
 
@@ -30,7 +30,7 @@ describe('topojson-test.js', function () {
       var shape = [[0, 1, 2], [1, 2, ~3]],
           map = [0, 1, -1, 2];
 
-      TopoJSON.remapShapeArcs(shape, map);
+      shape = TopoJSON.remapShapeArcs(shape, map);
       assert.deepEqual([[0, 1], [1, ~2]], shape);
     })
 

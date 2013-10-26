@@ -169,6 +169,12 @@ TopoJSON.pathImporters = {
 //
 MapShaper.exportTopoJSON = function(layers, arcData, opts) {
 
+  // KLUDGE: make a copy of layer objects, so layer properties can be replaced
+  // without side-effects outside this function
+  layers = Utils.map(layers, function(lyr) {
+    return Utils.extend({}, lyr);
+  });
+
   var filteredArcs = arcData.getFilteredCopy();
   var transform = null;
   if (opts.topojson_resolution === 0) {
@@ -195,10 +201,10 @@ MapShaper.exportTopoJSON = function(layers, arcData, opts) {
   Utils.forEach(layers, function(lyr, i) {
     var geomType = lyr.geometry_type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
     var exporter = new PathExporter(filteredArcs, lyr.geometry_type == 'polygon');
-    if (map) TopoJSON.remapLayerArcs(lyr.shapes, map);
+    if (map) lyr.shapes = TopoJSON.remapLayerArcs(lyr.shapes, map);
     var obj = exportTopoJSONObject(exporter, lyr, geomType);
-    lyr.name = lyr.name || "layer" + (i + 1);
-    objects[lyr.name] = obj;
+    var name = lyr.name || "layer" + (i + 1);
+    objects[name] = obj;
     bounds.mergeBounds(exporter.getBounds());
   });
 
@@ -226,18 +232,17 @@ MapShaper.exportTopoJSON = function(layers, arcData, opts) {
 };
 
 TopoJSON.remapLayerArcs = function(shapes, map) {
-  Utils.forEach(shapes, function(shape) {
-    if (shape) TopoJSON.remapShapeArcs(shape, map);
+  return Utils.map(shapes, function(shape) {
+    return shape ? TopoJSON.remapShapeArcs(shape, map) : null;
   });
 };
 
 // Re-index the arcs in a shape to account for removal of collapsed arcs.
 //
-TopoJSON.remapShapeArcs = function(shape, map) {
-  if (!shape || shape.length === 0) return;
+TopoJSON.remapShapeArcs = function(src, map) {
+  if (!src || src.length === 0) return [];
 
-  var dest = shape,
-      src = shape.splice(0, shape.length),
+  var dest = [],
       arcIds, path, arcNum, arcId, k, inv;
   for (var pathId=0, numPaths=src.length; pathId < numPaths; pathId++) {
     path = src[pathId];
@@ -259,6 +264,7 @@ TopoJSON.remapShapeArcs = function(shape, map) {
       dest.push(arcIds);
     }
   }
+  return dest;
 };
 
 // Remove collapsed arcs from @arcDataset (ArcDataset) and re-index remaining
