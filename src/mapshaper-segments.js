@@ -105,25 +105,13 @@ MapShaper.findSegmentIntersections = (function() {
     //
     function extendIntersections(intersections, arr, stripeId) {
       Utils.forEach(arr, function(obj, i) {
-        var key = getIntersectionKey(obj);
-        if (key in index === false) {
+        if (obj.key in index === false) {
           intersections.push(obj);
-          index[key] = true;
+          index[obj.key] = true;
         }
       });
     }
 
-    function getIntersectionKey(obj) {
-      var ids = obj.ids;
-      // Make sure intersecting segments that span multiple stripes
-      //   are always in the same order (order can be inconsistent if
-      //   both segments have same xmin value).
-      if (obj.segments[0][0].x == obj.segments[1][0].x &&
-            ids[0] > ids[2]) {
-        ids = [ids[2], ids[3], ids[0], ids[1]];
-      }
-      return ids.join(',');
-    }
   };
 
   function calcStripeCount(arcs) {
@@ -134,6 +122,16 @@ MapShaper.findSegmentIntersections = (function() {
   }
 
 })();
+
+MapShaper.getIntersectionKey = function(a, b, c, d) {
+  var ab = a + ',' + b,
+      cd = c + ',' + d,
+      key = a < c ? ab + ',' + cd : cd + ',' + ab;
+  // Make sure intersecting segments that span multiple stripes
+  //   are always in the same order (order can be inconsistent if
+  //   both segments have same xmin value).
+  return key;
+};
 
 // Find intersections among a group of line segments
 //
@@ -196,6 +194,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
           j: j,
           intersection: {x: hit[0], y: hit[1]},
           ids: [s1p1, s1p2, s2p1, s2p2],
+          key: MapShaper.getIntersectionKey(s1p1, s1p2, s2p1, s2p2),
           segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}],
               [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
         });

@@ -1479,8 +1479,9 @@ var pageEvents = (new function() {
     if (Utils.isString(el)) { // if el is a string, treat as id
       el = Browser.getElement(el);
     }
-    if (el === window && 'mousemove,mousedown,mouseup,mouseover,mouseout'.indexOf(type) != -1) {
-      trace("[Browser.addEventListener()] In ie8-, window doesn't support mouse events");
+    if (useAttachEvent && el === window &&
+        'mousemove,mousedown,mouseup,mouseover,mouseout'.indexOf(type) != -1) {
+      trace("[page-events.js] In ie8-, window doesn't support mouse events");
     }
     var listeners = __getNodeListeners(el);
     if (listeners.length > 0) {
@@ -4106,7 +4107,7 @@ function getRoundingFunction(inc) {
   var inv = 1 / inc;
   if (inv > 1) inv = Math.round(inv);
   return function(x) {
-    // Need a rounding functino that doesn't show rounding error after stringify()
+    // Need a rounding function that doesn't show rounding error after stringify()
     return Math.round(x * inv) / inv; // candidate
     //return Math.round(x / inc) / inv; // candidate
     //return Math.round(x / inc) * inc;
@@ -4115,7 +4116,7 @@ function getRoundingFunction(inc) {
 }
 
 // Detect intersections between two 2D segments.
-// Return [x, y] array of intersection point or false if segments do not cross.
+// Return intersection as [x, y] array or false if segments do not cross or touch.
 //
 function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
   // Test collision (c.f. Sedgewick, _Algorithms in C_)
@@ -4335,6 +4336,7 @@ MapShaper.geom = {
   msSignedRingArea: msSignedRingArea,
   probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
 };
+
 
 
 
@@ -8265,25 +8267,13 @@ MapShaper.findSegmentIntersections = (function() {
     //
     function extendIntersections(intersections, arr, stripeId) {
       Utils.forEach(arr, function(obj, i) {
-        var key = getIntersectionKey(obj);
-        if (key in index === false) {
+        if (obj.key in index === false) {
           intersections.push(obj);
-          index[key] = true;
+          index[obj.key] = true;
         }
       });
     }
 
-    function getIntersectionKey(obj) {
-      var ids = obj.ids;
-      // Make sure intersecting segments that span multiple stripes
-      //   are always in the same order (order can be inconsistent if
-      //   both segments have same xmin value).
-      if (obj.segments[0][0].x == obj.segments[1][0].x &&
-            ids[0] > ids[2]) {
-        ids = [ids[2], ids[3], ids[0], ids[1]];
-      }
-      return ids.join(',');
-    }
   };
 
   function calcStripeCount(arcs) {
@@ -8294,6 +8284,16 @@ MapShaper.findSegmentIntersections = (function() {
   }
 
 })();
+
+MapShaper.getIntersectionKey = function(a, b, c, d) {
+  var ab = a + ',' + b,
+      cd = c + ',' + d,
+      key = a < c ? ab + ',' + cd : cd + ',' + ab;
+  // Make sure intersecting segments that span multiple stripes
+  //   are always in the same order (order can be inconsistent if
+  //   both segments have same xmin value).
+  return key;
+};
 
 // Find intersections among a group of line segments
 //
@@ -8356,6 +8356,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
           j: j,
           intersection: {x: hit[0], y: hit[1]},
           ids: [s1p1, s1p2, s2p1, s2p2],
+          key: MapShaper.getIntersectionKey(s1p1, s1p2, s2p1, s2p2),
           segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}],
               [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
         });
@@ -8434,6 +8435,7 @@ MapShaper.findAndRepairIntersections = function(arcs) {
   return info;
 };
 
+
 // Try to resolve a collection of line-segment intersections by rolling
 // back simplification along intersecting segments.
 //
@@ -8445,16 +8447,14 @@ MapShaper.findAndRepairIntersections = function(arcs) {
 // Returns array of unresolved intersections, or empty array if none.
 //
 MapShaper.repairIntersections = function(arcs, intersections) {
+
   var raw = arcs.getVertexData(),
       zz = raw.zz,
       yy = raw.yy,
       xx = raw.xx,
       zlim = arcs.getRetainedInterval();
 
-  // index of segments that have been modified (see addSegmentVertices())
-  var segmentIndex = {};
-
-  while (repairEach(intersections) > 0) {
+  while (repairAll(intersections) > 0) {
     // After each repair pass, check for new intersections that may have been
     // created as a by-product of repairing one set of intersections.
     //
@@ -8462,132 +8462,157 @@ MapShaper.repairIntersections = function(arcs, intersections) {
     //
     // Possible optimization: only check for intersections among segments that
     // intersect bounding boxes of segments touched during previous repair pass.
-    // Need: efficient way of checking up to thousands of bb... could
-    // index boxes for n * log(k) or better performance....
+    // Need an efficient way of checking up to thousands of bb... could
+    // index boxes for n * log(k) or better performance.
     //
     intersections = MapShaper.findSegmentIntersections(arcs);
   }
   return intersections;
 
-  function repairEach(intersections) {
-    var fixes = 0;
-    Utils.forEach(intersections, function(obj) {
-      fixes += repairIntersection(obj);
+  function setPriority(obj) {
+    ids = obj.ids;
+    var i = MapShaper.findNextRemovableVertex(zz, zlim, ids[0], ids[1]),
+        j = MapShaper.findNextRemovableVertex(zz, zlim, ids[2], ids[3]),
+        zi = i == -1 ? Infinity : zz[i],
+        zj = j == -1 ? Infinity : zz[j];
+
+    if (zi == Infinity && zj == Infinity) {
+      // No more points available to add; unable to repair.
+      return Infinity;
+    }
+
+    if (zi > zj && zi < Infinity || zj == Infinity) {
+      obj.newId = i;
+      obj.z = zi;
+    } else {
+      obj.newId = j;
+      obj.z = zj;
+      obj.ids = [ids[2], ids[3], ids[0], ids[1]];
+    }
+    return obj.z;
+  }
+
+  function repairAll(intersections) {
+    var repairs = 0;
+    var index = {};
+
+    intersections = Utils.mapFilter(intersections, function(obj) {
+      if (setPriority(obj) == Infinity) return void 0;
+      index[obj.key] = true;
+      return obj;
     });
-    return fixes;
+
+    // sort on priority
+    Utils.sortOn(intersections, 'z', !!"ascending");
+
+    var loops = 0;
+    while (intersections.length > 0) {
+      if (loops++ > 100000) return 0; // just in case
+      var len = intersections.length;
+      var obj = intersections.pop();
+      var ids = [];
+      addSegmentVertices(ids, obj.ids[0], obj.ids[1]);
+      addSegmentVertices(ids, obj.ids[2], obj.ids[3]);
+
+      var collisions = MapShaper.intersectSegments(ids, xx, yy),
+          pairs, pair;
+
+      if (collisions.length === 0) continue;
+      if (collisions.length == 1) {
+        pair = collisions[0];
+        if (setPriority(pair) == Infinity) continue;
+        pairs = splitSegmentPair(pair);
+        zz[pair.newId] = zlim;
+        repairs++;
+      } else {
+        pairs = collisions;
+      }
+
+      for (var i=0; i<pairs.length; i++) {
+        pair = pairs[i];
+        if (setPriority(pair) < Infinity) {
+          if (pair.key in index === false) {
+            index[pair.key] = true;
+            intersections.push(pair);
+          }
+        }
+      }
+
+      // TODO: find a way to avoid this indexing kludge
+      delete index[obj.key];
+
+      if (intersections.length >= len) {
+        sortIntersections(intersections, len-1);
+      }
+    }
+
+    trace("repairs:", repairs);
+    return repairs;
+  }
+
+  function getSegmentPair(s1p1, s1p2, s2p1, s2p2) {
+    var obj = {},
+        ids;
+    if (xx[s1p1] > xx[s1p2]) {
+      ids = [s1p2, s1p1, s2p1, s2p2];
+    } else {
+      ids = [s1p1, s1p2, s2p1, s2p2];
+    }
+    obj.ids = ids;
+    obj.key = MapShaper.getIntersectionKey.apply(null, ids);
+    return obj;
+  }
+
+  // Use insertion sort to move newly pushed intersections to their sorted position
+  function sortIntersections(arr, start) {
+    for (var i=start; i<arr.length; i++) {
+      var obj = arr[i];
+      for (var j = i-1; j >= 0; j--) {
+        if (arr[j].z < obj.z) {
+          break;
+        }
+        arr[j+1] = arr[j];
+      }
+      arr[j+1] = obj;
+    }
+  }
+
+  function splitSegmentPair(obj) {
+    var ids = obj.ids,
+        start = ids[0],
+        end = ids[1],
+        middle = obj.newId;
+    if (!(start < middle && middle < end || start > middle && middle > end)) {
+      error("[splitSegment()] Indexing error --", obj);
+    }
+    return [
+      getSegmentPair(start, middle, ids[2], ids[3]),
+      getSegmentPair(middle, end, ids[2], ids[3])
+    ];
   }
 
   function addSegmentVertices(ids, p1, p2) {
-    // Consider: scan entire section between p1 & p2 for additional vertices
-    // even if segment has not been processed already, and get rid of index.
+    // Scan section between p1 & p2 for additional vertices
     //
-    var k = MapShaper.getSegmentKey(p1, p2),
-        start, end, prev;
-
-    if (k in segmentIndex === false) {
-      ids.push(p1, p2);
-      segmentIndex[k] = true;
+    var start, end, prev;
+    if (p1 <= p2) {
+      start = p1;
+      end = p2;
     } else {
-      if (p1 <= p2) {
-        start = p1;
-        end = p2;
-      } else {
-        start = p2;
-        end = p1;
-      }
-      prev = start;
-      for (var i=start+1; i<=end; i++) {
-        if (zz[i] >= zlim) {
-          if (xx[prev] < xx[i]) {
-            ids.push(prev, i);
-          } else {
-            ids.push(i, prev);
-          }
+      start = p2;
+      end = p1;
+    }
+    prev = start;
+    for (var i=start+1; i<=end; i++) {
+      if (zz[i] >= zlim) {
+        if (xx[prev] < xx[i]) {
+          ids.push(prev, i);
+        } else {
+          ids.push(i, prev);
         }
       }
     }
   }
-
-  /*
-  function getStripeBounds(segments) {
-    var bb = new Bounds();
-    for (var i=0; i<segments.length; i++) {
-      bb.mergePoint(xx[i], yy[i]);
-    }
-    return bb;
-  }
-  */
-
-  function repairIntersection(obj) {
-    var repairs = 0,
-        ids = obj.ids,
-        segments = [];
-    addSegmentVertices(segments, ids[0], ids[1]);
-    addSegmentVertices(segments, ids[2], ids[3]);
-
-    while (true) {
-      var collisions = MapShaper.intersectSegments(segments, raw.xx, raw.yy),
-          collision;
-      if (collisions.length === 0) {
-        // No intersections found... success!
-        break;
-      }
-
-      // Fix first collision; if more than one, fix in subsequent pass.
-      collision = collisions[0];
-      ids = collision.ids;
-      var i = MapShaper.findNextRemovableVertex(zz, zlim, ids[0], ids[1]),
-          j = MapShaper.findNextRemovableVertex(zz, zlim, ids[2], ids[3]),
-          zi = i == -1 ? Infinity : zz[i],
-          zj = j == -1 ? Infinity : zz[j];
-
-      if (zi == Infinity && zj == Infinity) {
-        // No more points available to add; unable to repair.
-        break;
-      }
-
-      // Re-introduce the next-highest vertex to the polyline
-
-      var startId, endId, newId, segId;
-      if (zi < zj) {
-        start = ids[0];
-        end = ids[1];
-        newId = i;
-        segId = collision.i;
-      } else {
-        start = ids[2];
-        end = ids[3];
-        newId = j;
-        segId = collision.j;
-      }
-
-      // if (segments[segId] != start || segments[segId+1] != end) error("id error")
-
-      zz[newId] = zlim; // add segment to line at current z level
-
-      // Split segment containing new point into two
-      segments[segId + 1] = newId;
-      if (xx[newId] < xx[start]) {
-        segments[segId] = newId;
-        segments[segId + 1] = start;
-      } else {
-        segments[segId + 1] = newId;
-      }
-
-      if (xx[newId] < xx[end]) {
-        segments.push(newId, end);
-      } else {
-        segments.push(end, newId);
-      }
-
-      repairs++;
-    }
-    return repairs;
-  }
-};
-
-MapShaper.getSegmentKey = function(id1, id2) {
-  return id1 + "~" + id2;
 };
 
 MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {

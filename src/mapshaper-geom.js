@@ -33,7 +33,7 @@ function getRoundingFunction(inc) {
   var inv = 1 / inc;
   if (inv > 1) inv = Math.round(inv);
   return function(x) {
-    // Need a rounding functino that doesn't show rounding error after stringify()
+    // Need a rounding function that doesn't show rounding error after stringify()
     return Math.round(x * inv) / inv; // candidate
     //return Math.round(x / inc) / inv; // candidate
     //return Math.round(x / inc) * inc;
@@ -42,7 +42,7 @@ function getRoundingFunction(inc) {
 }
 
 // Detect intersections between two 2D segments.
-// Return [x, y] array of intersection point or false if segments do not cross.
+// Return intersection as [x, y] array or false if segments do not cross or touch.
 //
 function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
   // Test collision (c.f. Sedgewick, _Algorithms in C_)
