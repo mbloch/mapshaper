@@ -62,8 +62,5 @@ To suggest additions to this list, add an [issue](https://github.com/mbloch/maps
 
 - Import Shapefile attribute table (.dbf file)
 - Selection and aggregation, using attribute queries and mouse selection
-- Ability to heal minor topological problems in source data
-- Ability to prevent or remove polygon overlaps and self-intersections
 - Update the original "modified Visvalingam" method, add control over degree of smoothing.
 - Experiment with new simplification and smoothing methods.
-
