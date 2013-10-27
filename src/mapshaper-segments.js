@@ -123,13 +123,12 @@ MapShaper.findSegmentIntersections = (function() {
 
 })();
 
+// Get an indexable key that is consistent regardless of point sequence
+// @a, @b ids of segment 1, @c, @d ids of segment 2
 MapShaper.getIntersectionKey = function(a, b, c, d) {
-  var ab = a + ',' + b,
-      cd = c + ',' + d,
+  var ab = a < b ? a + ',' + b : b + ',' + a,
+      cd = c < d ? c + ',' + d : d + ',' + c,
       key = a < c ? ab + ',' + cd : cd + ',' + ab;
-  // Make sure intersecting segments that span multiple stripes
-  //   are always in the same order (order can be inconsistent if
-  //   both segments have same xmin value).
   return key;
 };
 

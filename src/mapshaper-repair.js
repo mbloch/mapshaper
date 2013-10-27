@@ -39,16 +39,19 @@ MapShaper.repairIntersections = function(arcs, intersections) {
     // created as a by-product of repairing one set of intersections.
     //
     // Issue: several hit-detection passes through a large dataset may be slow.
-    //
     // Possible optimization: only check for intersections among segments that
     // intersect bounding boxes of segments touched during previous repair pass.
-    // Need an efficient way of checking up to thousands of bb... could
-    // index boxes for n * log(k) or better performance.
+    // Need an efficient way of checking up to thousands of bounding boxes.
+    // Consider indexing boxes for n * log(k) or better performance.
     //
     intersections = MapShaper.findSegmentIntersections(arcs);
   }
   return intersections;
 
+  // Find the z value of the next vertex that should be re-introduced into
+  // a set of two intersecting segments in order to remove the intersection.
+  // Add the z-value and id of this point to the intersection object @obj.
+  //
   function setPriority(obj) {
     ids = obj.ids;
     var i = MapShaper.findNextRemovableVertex(zz, zlim, ids[0], ids[1]),
@@ -73,74 +76,57 @@ MapShaper.repairIntersections = function(arcs, intersections) {
   }
 
   function repairAll(intersections) {
-    var repairs = 0;
-    var index = {};
+    var repairs = 0,
+        loops = 0,
+        intersection, segIds, pairs, pair, len;
 
     intersections = Utils.mapFilter(intersections, function(obj) {
       if (setPriority(obj) == Infinity) return void 0;
-      index[obj.key] = true;
       return obj;
     });
 
-    // sort on priority
     Utils.sortOn(intersections, 'z', !!"ascending");
 
-    var loops = 0;
     while (intersections.length > 0) {
-      if (loops++ > 100000) return 0; // just in case
-      var len = intersections.length;
-      var obj = intersections.pop();
-      var ids = [];
-      addSegmentVertices(ids, obj.ids[0], obj.ids[1]);
-      addSegmentVertices(ids, obj.ids[2], obj.ids[3]);
+      len = intersections.length;
+      intersection = intersections.pop();
+      segIds = getIntersectionCandidates(intersection);
+      pairs = MapShaper.intersectSegments(segIds, xx, yy);
 
-      var collisions = MapShaper.intersectSegments(ids, xx, yy),
-          pairs, pair;
-
-      if (collisions.length === 0) continue;
-      if (collisions.length == 1) {
-        pair = collisions[0];
+      if (pairs.length === 0) continue;
+      if (pairs.length == 1) {
+        // single intersection found: re-introduce a vertex to one of the
+        // intersecting segments.
+        pair = pairs[0];
         if (setPriority(pair) == Infinity) continue;
         pairs = splitSegmentPair(pair);
         zz[pair.newId] = zlim;
         repairs++;
       } else {
-        pairs = collisions;
+        // found multiple intersections along two segments, because
+        // vertices have been re-introduced after intersection was first added.
+        // They get pushed back on the stack below
       }
 
       for (var i=0; i<pairs.length; i++) {
         pair = pairs[i];
         if (setPriority(pair) < Infinity) {
-          if (pair.key in index === false) {
-            index[pair.key] = true;
-            intersections.push(pair);
-          }
+          intersections.push(pair);
         }
       }
-
-      // TODO: find a way to avoid this indexing kludge
-      delete index[obj.key];
 
       if (intersections.length >= len) {
         sortIntersections(intersections, len-1);
       }
+
+      if (++loops > 500000) {
+        trace("Caught an infinite loop at intersection:", intersection);
+        return 0;
+      }
     }
 
-    trace("repairs:", repairs);
+    // trace("repairs:", repairs);
     return repairs;
-  }
-
-  function getSegmentPair(s1p1, s1p2, s2p1, s2p2) {
-    var obj = {},
-        ids;
-    if (xx[s1p1] > xx[s1p2]) {
-      ids = [s1p2, s1p1, s2p1, s2p2];
-    } else {
-      ids = [s1p1, s1p2, s2p1, s2p2];
-    }
-    obj.ids = ids;
-    obj.key = MapShaper.getIntersectionKey.apply(null, ids);
-    return obj;
   }
 
   // Use insertion sort to move newly pushed intersections to their sorted position
@@ -148,7 +134,7 @@ MapShaper.repairIntersections = function(arcs, intersections) {
     for (var i=start; i<arr.length; i++) {
       var obj = arr[i];
       for (var j = i-1; j >= 0; j--) {
-        if (arr[j].z < obj.z) {
+        if (arr[j].z <= obj.z) {
           break;
         }
         arr[j+1] = arr[j];
@@ -171,9 +157,29 @@ MapShaper.repairIntersections = function(arcs, intersections) {
     ];
   }
 
+  function getSegmentPair(s1p1, s1p2, s2p1, s2p2) {
+    var obj = {},
+        ids;
+    if (xx[s1p1] > xx[s1p2]) {
+      ids = [s1p2, s1p1, s2p1, s2p2];
+    } else {
+      ids = [s1p1, s1p2, s2p1, s2p2];
+    }
+    obj.ids = ids;
+    return obj;
+  }
+
+  function getIntersectionCandidates(obj) {
+    var segments = [];
+    addSegmentVertices(segments, obj.ids[0], obj.ids[1]);
+    addSegmentVertices(segments, obj.ids[2], obj.ids[3]);
+    return segments;
+  }
+
+  // Gat all segments defined by two endpoints and the vertices between
+  // them that are at or above the current simplification threshold.
+  // @ids Accumulator array
   function addSegmentVertices(ids, p1, p2) {
-    // Scan section between p1 & p2 for additional vertices
-    //
     var start, end, prev;
     if (p1 <= p2) {
       start = p1;
@@ -190,11 +196,15 @@ MapShaper.repairIntersections = function(arcs, intersections) {
         } else {
           ids.push(i, prev);
         }
+        prev = i;
       }
     }
   }
 };
 
+// Return id of the vertex between @start and @end with the highest
+// threshold that is less than @zlim.
+//
 MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   var tmp, jz = 0, j = -1, z;
   if (start > end) {
