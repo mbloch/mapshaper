@@ -5,24 +5,27 @@ function RepairControl(map, lineLyr, arcData) {
       readout = el.findChild("#g-intersection-count"),
       btn = el.findChild("#g-repair-btn");
 
-  var _initialXX = MapShaper.findSegmentIntersections(arcData),
-      _enabled = false,
+  var _enabled = false,
+      _initialXX,
       _currXX,
       _pointColl,
       _pointLyr;
 
   this.update = function(pct) {
     var XX;
+    T.start();
     if (pct >= 1) {
+      if (!_initialXX) {
+        _initialXX = MapShaper.findSegmentIntersections(arcData);
+      }
       XX = _initialXX;
       enabled(false);
     } else {
-      T.start();
       XX = MapShaper.findSegmentIntersections(arcData);
-      T.stop("Find intersections");
       enabled(XX.length > 0);
     }
     showIntersections(XX);
+    T.stop("Find intersections");
   };
 
   this.update(1); // initialize at 100%
