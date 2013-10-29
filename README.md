@@ -22,9 +22,9 @@ To install and run the latest development code from github:
 
 ### Interactive tool
 
-The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online. All processing is done in the browser, so the program can be used offline and your data stays private.
+The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online. All processing is done in the browser, so user data stays private.
 
-Browser compatibility: mapshaper works well in recent versions of Chrome and Firefox. Large files (say, >200MB) may cause out-of-memory errors in Chrome. Exporting is not supported in Safari. Mapshaper appears to work in Opera 15+ and Internet Explorer 11.
+Browser compatibility: mapshaper works in recent versions of Chrome and Firefox as well as IE 10+. Exporting is not supported in Safari. Firefox seems better able to handle large files (say >200MB) than other browsers without encountering out-of-memory errors.
 
 ### Command line tool
 
@@ -56,11 +56,6 @@ Thanks to [Shan Carter](https://github.com/shancarter) for help designing mapsha
 
 And thanks to Mark Harrower for supporting development of the [original MapShaper program](http://mapshaper.com/test/OldMapShaper.swf) at the University of Wisconsin &ndash; Madison.
 
-### Upcoming features + wish list
+### Future development
 
-To suggest additions to this list, add an [issue](https://github.com/mbloch/mapshaper/issues).
-
-- Import Shapefile attribute table (.dbf file)
-- Selection and aggregation, using attribute queries and mouse selection
-- Update the original "modified Visvalingam" method, add control over degree of smoothing.
-- Experiment with new simplification and smoothing methods.
+To suggest improvements, add an [issue](https://github.com/mbloch/mapshaper/issues).
