@@ -148,35 +148,13 @@ MapShaper.simplifyPaths3D = function(paths, simplify) {
   });
 };
 
-// Apply a simplification function to each path in an array, return simplified path.
-//
-MapShaper.simplifyPaths_old = function(paths, method, bounds) {
-  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
-  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method),
-      data;
-
-  T.start();
-  if (decimalDegrees) {
-    data = MapShaper.simplifyPathsSph(paths, simplifyPath);
-  } else {
-    data = Utils.map(paths, function(path) {
-      return simplifyPath(path[0], path[1]);
-    });
-  }
-
-  if (decimalDegrees) {
-    MapShaper.protectWorldEdges(paths, data, bounds);
-  }
-  T.stop("Calculate simplification data");
-  return data;
-};
-
 // Path simplification functions
 // Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
 //
 MapShaper.simplifiers = {
   vis: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
-  mod: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
+  mod1: Visvalingam.getArcCalculator(Visvalingam.specialMetric_v1, Visvalingam.specialMetric3D_v1, 0.65),
+  mod2: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
   dp: DouglasPeucker.calcArcData
 };
 

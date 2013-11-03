@@ -59,7 +59,7 @@ function Editor() {
   var map, slider;
 
   var importOpts = {
-    simplifyMethod: "mod",
+    simplifyMethod: "mod2",
     preserveShapes: false,
     repairIntersections: false
   };

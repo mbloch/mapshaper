@@ -162,7 +162,6 @@ function FilteredPathCollection(unfilteredArcs, opts) {
         return true;
       }
     };
-
     return function(iter) {
       _firstPoint = true;
       wrapped = iter;

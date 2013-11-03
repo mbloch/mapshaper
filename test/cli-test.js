@@ -70,7 +70,9 @@ describe('mapshaper-cli.js', function() {
         good3 = "--keep-shapes --vis -p .9",
         good4 = "--quantization 1000",
         good5 = "--quantization 0",
-        good6 = "--no-quantization"
+        good6 = "--no-quantization",
+        good7 = "-i 10 --modified-v1",
+        good8 = "-p 0.01 --modified"
 
     // var ok1 = "-p 0.4 -i 5000";
 
@@ -92,7 +94,7 @@ describe('mapshaper-cli.js', function() {
         use_simplification: true,
         simplify_pct: 0.2,
         keep_shapes: false,
-        simplify_method: "mod"
+        simplify_method: "mod2"
       });
     })
 
@@ -134,6 +136,25 @@ describe('mapshaper-cli.js', function() {
         topojson_resolution: 0
       });
     })
+
+    it(good7, function() {
+      assert.deepEqual(validate(good7), {
+        use_simplification: true,
+        simplify_interval: 10,
+        keep_shapes: false,
+        simplify_method: "mod1"
+      });
+    })
+
+    it(good8, function() {
+      assert.deepEqual(validate(good8), {
+        use_simplification: true,
+        simplify_pct: 0.01,
+        keep_shapes: false,
+        simplify_method: "mod2"
+      });
+    })
+
 
     it(bad1 + " (invalid)", function() {
       assert.throws(function(){validate(bad1)});
@@ -346,7 +367,6 @@ describe('mapshaper-cli.js', function() {
         output_file_base: "two_states"
       });
     })
-
 
     var bad1 = "test_data/two_states.shp -o simplified.kml";
     it(bad1 + " (looks like unsupported file type)", function() {

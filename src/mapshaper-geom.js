@@ -151,13 +151,37 @@ function detSq(ax, ay, bx, by, cx, cy) {
   return det * det;
 }
 
+function dotProduct(ax, ay, bx, by, cx, cy) {
+  var ab = distance2D(ax, ay, bx, by),
+      bc = distance2D(bx, by, cx, cy),
+      den = ab * bc,
+      dotp = 0;
+  if (den > 0) {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / den;
+    if (dotp > 1) dotp = 1;
+    else if (dotp < 0) dotp = 0;
+  }
+  return dotp;
+}
+
+function dotProduct3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab = distance3D(ax, ay, az, bx, by, bz),
+      bc = distance3D(bx, by, bz, cx, cy, cz),
+      dotp = 0;
+  if (ab > 0 && bc > 0) {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
+    if (dotp > 1) dotp = 1;
+    else if (dotp < 0) dotp = 0;
+  }
+  return dotp;
+}
+
 
 function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
     detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
   return area;
 }
-
 
 // Given a triangle with vertices abc, return the distSq of the shortest segment
 //   with one endpoint at b and the other on the line intersecting a and c.

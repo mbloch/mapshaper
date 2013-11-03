@@ -4,7 +4,6 @@ mapshaper-topojson
 mapshaper-shapefile
 */
 
-
 MapShaper.getDefaultFileExtension = function(fileType) {
   var ext = "";
   if (fileType == 'shapefile') {

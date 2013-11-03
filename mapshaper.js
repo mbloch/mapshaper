@@ -4225,13 +4225,37 @@ function detSq(ax, ay, bx, by, cx, cy) {
   return det * det;
 }
 
+function dotProduct(ax, ay, bx, by, cx, cy) {
+  var ab = distance2D(ax, ay, bx, by),
+      bc = distance2D(bx, by, cx, cy),
+      den = ab * bc,
+      dotp = 0;
+  if (den > 0) {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / den;
+    if (dotp > 1) dotp = 1;
+    else if (dotp < 0) dotp = 0;
+  }
+  return dotp;
+}
+
+function dotProduct3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab = distance3D(ax, ay, az, bx, by, bz),
+      bc = distance3D(bx, by, bz, cx, cy, cz),
+      dotp = 0;
+  if (ab > 0 && bc > 0) {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
+    if (dotp > 1) dotp = 1;
+    else if (dotp < 0) dotp = 0;
+  }
+  return dotp;
+}
+
 
 function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
     detSq(ax, az, bx, bz, cx, cz) + detSq(ay, az, by, bz, cy, cz));
   return area;
 }
-
 
 // Given a triangle with vertices abc, return the distSq of the shortest segment
 //   with one endpoint at b and the other on the line intersecting a and c.
@@ -5586,7 +5610,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   // Calculate Visvalingam simplification data for an arc
   // Receives arrays of x- and y- coordinates, optional array of z- coords
   //
-  return function(dest, xx, yy, zz) {
+  return function calcVisvalingam(dest, xx, yy, zz) {
     var arcLen = dest.length,
         useZ = !!zz,
         threshold,
@@ -5677,37 +5701,42 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   };
 };
 
+Visvalingam.standardMetric = triangleArea;
+Visvalingam.standardMetric3D = triangleArea3D;
 
-// The original mapshaper "modified Visvalingam" function uses a step function to
-// underweight more acute triangles.
+// Replacement for original "Modified Visvalingam"
+// Underweight polyline vertices with acute angles in proportion to 1 - cosine
 //
 Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
+  var area = triangleArea(ax, ay, bx, by, cx, cy),
+      dotp = dotProduct(ax, ay, bx, by, cx, cy),
+      weight = dotp > 0 ? 1 - dotp : 1;
+  return area * weight;
+};
+
+Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      dotp = dotProduct3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      weight = dotp > 0 ? 1 - dotp : 1;
+  return area * weight;
+};
+
+// The original "modified Visvalingam" function uses a step function to
+// underweight more acute triangles.
+//
+Visvalingam.specialMetric_v1 = function(ax, ay, bx, by, cx, cy) {
   var area = triangleArea(ax, ay, bx, by, cx, cy),
       angle = innerAngle(ax, ay, bx, by, cx, cy),
       weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
   return area * weight;
 };
 
-Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+Visvalingam.specialMetric3D_v1 = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
       angle = innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz),
       weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
   return area * weight;
 };
-
-Visvalingam.standardMetric = triangleArea;
-Visvalingam.standardMetric3D = triangleArea3D;
-
-// Experimenting with a replacement for "Modified Visvalingam"
-//
-Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy),
-      standardLen = area * 1.4,
-      hyp = Math.sqrt((ax + cx) * (ax + cx) + (ay + cy) * (ay + cy)),
-      weight = hyp / standardLen;
-  return area * weight;
-};
-
 
 
 
@@ -5965,35 +5994,13 @@ MapShaper.simplifyPaths3D = function(paths, simplify) {
   });
 };
 
-// Apply a simplification function to each path in an array, return simplified path.
-//
-MapShaper.simplifyPaths_old = function(paths, method, bounds) {
-  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
-  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method),
-      data;
-
-  T.start();
-  if (decimalDegrees) {
-    data = MapShaper.simplifyPathsSph(paths, simplifyPath);
-  } else {
-    data = Utils.map(paths, function(path) {
-      return simplifyPath(path[0], path[1]);
-    });
-  }
-
-  if (decimalDegrees) {
-    MapShaper.protectWorldEdges(paths, data, bounds);
-  }
-  T.stop("Calculate simplification data");
-  return data;
-};
-
 // Path simplification functions
 // Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
 //
 MapShaper.simplifiers = {
   vis: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
-  mod: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
+  mod1: Visvalingam.getArcCalculator(Visvalingam.specialMetric_v1, Visvalingam.specialMetric3D_v1, 0.65),
+  mod2: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
   dp: DouglasPeucker.calcArcData
 };
 
@@ -6015,6 +6022,7 @@ MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
   });
   return data;
 };
+
 
 
 
@@ -7797,7 +7805,6 @@ MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
 
 
 
-
 MapShaper.getDefaultFileExtension = function(fileType) {
   var ext = "";
   if (fileType == 'shapefile') {
@@ -8677,17 +8684,24 @@ MapShaper.getOptionParser = function() {
     })
 
     .options("dp", {
-      describe: "simplify with Douglas-Peucker (aka Ramer–Douglas–Peucker)",
+      alias: "rdp",
+      describe: "use Douglas-Peucker, a.k.a. Ramer–Douglas–Peucker",
       'boolean': true
     })
 
-    .options("vis", {
-      describe: "simplify with Visvalingam",
+    .options("visvalingam", {
+      alias: "vis",
+      describe: "use Visvalingam's method for simplification",
       'boolean': true
     })
 
-    .options("mod", {
-      describe: "simplify with modified Visvalingam (default)",
+    .options("modified", {
+      describe: "use a version of Visvalingam modified for smoothing (default)",
+      'boolean': true
+    })
+
+    .options("modified-v1", {
+      describe: "use the original modified Visvalingam method (deprecated)",
       'boolean': true
     })
 
@@ -8777,7 +8791,7 @@ MapShaper.checkArgs = function(argv) {
 // Return an array of all recognized cli arguments: ["f", "format", ...]
 //
 function getSupportedArgs(optimist) {
-  return optimist.help().match(/-([a-z][a-z-]*)/g).map(function(arg) {
+  return optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
     return arg.replace(/^-/, '');
   });
 }
@@ -8987,14 +9001,15 @@ cli.validateSimplifyOpts = function(argv) {
     opts.keep_shapes = !!argv['keep-shapes'];
     if (argv.dp)
       opts.simplify_method = "dp";
-    else if (argv.vis)
+    else if (argv.visvalingam)
       opts.simplify_method = "vis";
+    else if (argv['modified-v1'])
+      opts.simplify_method = "mod1";
     else
-      opts.simplify_method = "mod";
+      opts.simplify_method = "mod2";
   }
   return opts;
 };
-
 
 MapShaper.gc = function() {
   T.start();

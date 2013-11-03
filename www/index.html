@@ -51,7 +51,11 @@ or <span class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class
 			<div id="g-simplification-menu" class="g-option-menu">
 				<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label></div>
 				<div><label><input type="radio" name="method" value="vis" class="g-radio">Visvalingam</label></div>
-				<div><label><input type="radio" name="method" value="mod" checked="true" class="g-radio">modified Visvalingam</label></div>
+				<div><label><input type="radio" name="method" value="mod2" checked="true" class="g-radio">modified Visvalingam</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">A modified version of Visvalingam
+simplification. Points located at the
+vertex of more acute angles are
+preferentially removed.</div></div></div></div>
 			</div>
 
 			<h4>Other options</h4>
@@ -59,8 +63,8 @@ or <span class="g-file-btn g-panel-btn active" id="g-shp-import-btn"><span class
 
 				<div><label for="g-repair-intersections-opt"><input type="checkbox" checked="true" class="g-checkbox" id="g-repair-intersections-opt"/>repair intersections</label>
 				<div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Turn on option to repair intersecting lines.
-Repair works by rolling back simplification
+<div class="g-tip">Remove line intersections. Works
+by rolling back simplification
 along intersecting segments.</div></div></div></div>
 
 				<div><label for="g-import-retain-opt"><input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>prevent shape removal</label>

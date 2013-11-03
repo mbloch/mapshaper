@@ -12,7 +12,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   // Calculate Visvalingam simplification data for an arc
   // Receives arrays of x- and y- coordinates, optional array of z- coords
   //
-  return function(dest, xx, yy, zz) {
+  return function calcVisvalingam(dest, xx, yy, zz) {
     var arcLen = dest.length,
         useZ = !!zz,
         threshold,
@@ -103,34 +103,39 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   };
 };
 
+Visvalingam.standardMetric = triangleArea;
+Visvalingam.standardMetric3D = triangleArea3D;
 
-// The original mapshaper "modified Visvalingam" function uses a step function to
-// underweight more acute triangles.
+// Replacement for original "Modified Visvalingam"
+// Underweight polyline vertices with acute angles in proportion to 1 - cosine
 //
 Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
+  var area = triangleArea(ax, ay, bx, by, cx, cy),
+      dotp = dotProduct(ax, ay, bx, by, cx, cy),
+      weight = dotp > 0 ? 1 - dotp : 1;
+  return area * weight;
+};
+
+Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      dotp = dotProduct3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      weight = dotp > 0 ? 1 - dotp : 1;
+  return area * weight;
+};
+
+// The original "modified Visvalingam" function uses a step function to
+// underweight more acute triangles.
+//
+Visvalingam.specialMetric_v1 = function(ax, ay, bx, by, cx, cy) {
   var area = triangleArea(ax, ay, bx, by, cx, cy),
       angle = innerAngle(ax, ay, bx, by, cx, cy),
       weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
   return area * weight;
 };
 
-Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+Visvalingam.specialMetric3D_v1 = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
       angle = innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz),
       weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
   return area * weight;
 };
-
-Visvalingam.standardMetric = triangleArea;
-Visvalingam.standardMetric3D = triangleArea3D;
-
-// Experimenting with a replacement for "Modified Visvalingam"
-//
-Visvalingam.specialMetric2 = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy),
-      standardLen = area * 1.4,
-      hyp = Math.sqrt((ax + cx) * (ax + cx) + (ay + cy) * (ay + cy)),
-      weight = hyp / standardLen;
-  return area * weight;
-};
-

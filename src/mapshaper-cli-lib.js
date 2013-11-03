@@ -41,17 +41,24 @@ MapShaper.getOptionParser = function() {
     })
 
     .options("dp", {
-      describe: "simplify with Douglas-Peucker (aka Ramer–Douglas–Peucker)",
+      alias: "rdp",
+      describe: "use Douglas-Peucker, a.k.a. Ramer–Douglas–Peucker",
       'boolean': true
     })
 
-    .options("vis", {
-      describe: "simplify with Visvalingam",
+    .options("visvalingam", {
+      alias: "vis",
+      describe: "use Visvalingam's method for simplification",
       'boolean': true
     })
 
-    .options("mod", {
-      describe: "simplify with modified Visvalingam (default)",
+    .options("modified", {
+      describe: "use a version of Visvalingam modified for smoothing (default)",
+      'boolean': true
+    })
+
+    .options("modified-v1", {
+      describe: "use the original modified Visvalingam method (deprecated)",
       'boolean': true
     })
 
@@ -141,7 +148,7 @@ MapShaper.checkArgs = function(argv) {
 // Return an array of all recognized cli arguments: ["f", "format", ...]
 //
 function getSupportedArgs(optimist) {
-  return optimist.help().match(/-([a-z][a-z-]*)/g).map(function(arg) {
+  return optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
     return arg.replace(/^-/, '');
   });
 }
@@ -351,14 +358,15 @@ cli.validateSimplifyOpts = function(argv) {
     opts.keep_shapes = !!argv['keep-shapes'];
     if (argv.dp)
       opts.simplify_method = "dp";
-    else if (argv.vis)
+    else if (argv.visvalingam)
       opts.simplify_method = "vis";
+    else if (argv['modified-v1'])
+      opts.simplify_method = "mod1";
     else
-      opts.simplify_method = "mod";
+      opts.simplify_method = "mod2";
   }
   return opts;
 };
-
 
 MapShaper.gc = function() {
   T.start();
