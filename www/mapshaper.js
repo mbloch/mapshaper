@@ -7326,8 +7326,10 @@ function ImportControl(editor) {
         input_file: fname,
         precision: precisionInput.value()
       };
+      T.start("Start timing");
       data = MapShaper.importContent(content, type, opts);
       editor.addData(data, opts);
+      T.stop("Done importing");
     } else if (type == 'dbf') {
       data = new ShapefileTable(content);
       // TODO: validate table (check that record count matches, etc)

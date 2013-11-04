@@ -62,6 +62,10 @@ html, body {
 	color: #ffa;
 }
 
+.g-page-header a {
+	text-decoration: none;
+}
+
 
 /* --- Import screen -------------- */
 
