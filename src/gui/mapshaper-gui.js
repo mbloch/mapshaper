@@ -9,7 +9,8 @@ mapshaper-maplayer,
 mapshaper-simplify,
 mapshaper-export,
 mapshaper-import,
-mapshaper-repair-control
+mapshaper-repair-control,
+mapshaper-keep-shapes
 */
 
 var dropper,
