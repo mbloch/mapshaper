@@ -6823,36 +6823,7 @@ function exportCoordsForGeoJSON(paths) {
 
 
 
-
-var TopoJSON = MapShaper.topojson = {};
-
-MapShaper.importTopoJSON = function(obj, opts) {
-  var round = opts && opts.precision ? getRoundingFunction(opts.precision) : null;
-
-  if (Utils.isString(obj)) {
-    obj = JSON.parse(obj);
-  }
-  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform, round),
-      layers = [];
-  Utils.forEach(obj.objects, function(object, name) {
-    var layerData = TopoJSON.importObject(object, arcs);
-    var data;
-    if (layerData.properties) {
-      data = new DataTable(layerData.properties);
-    }
-    layers.push({
-      name: name,
-      data: data,
-      shapes: layerData.shapes,
-      geometry_type: layerData.geometry_type
-    });
-  });
-
-  return {
-    arcs: new ArcDataset(arcs),
-    layers: layers
-  };
-};
+var TopoJSON = {};
 
 // Converts arc coordinates from rounded, delta-encoded values to
 // transposed arrays of geographic coordinates.
@@ -6985,6 +6956,40 @@ TopoJSON.pathImporters = {
       TopoJSON.pathImporters.Polygon(arr[i], importer);
     }
   }
+};
+
+
+
+
+
+MapShaper.topojson = TopoJSON;
+
+MapShaper.importTopoJSON = function(obj, opts) {
+  var round = opts && opts.precision ? getRoundingFunction(opts.precision) : null;
+
+  if (Utils.isString(obj)) {
+    obj = JSON.parse(obj);
+  }
+  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform, round),
+      layers = [];
+  Utils.forEach(obj.objects, function(object, name) {
+    var layerData = TopoJSON.importObject(object, arcs);
+    var data;
+    if (layerData.properties) {
+      data = new DataTable(layerData.properties);
+    }
+    layers.push({
+      name: name,
+      data: data,
+      shapes: layerData.shapes,
+      geometry_type: layerData.geometry_type
+    });
+  });
+
+  return {
+    arcs: new ArcDataset(arcs),
+    layers: layers
+  };
 };
 
 // Export a TopoJSON string containing a single object containing a GeometryCollection
