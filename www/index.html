@@ -69,16 +69,19 @@ along intersecting segments.</div></div></div></div>
 
 				<div><label for="g-import-retain-opt"><input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>prevent shape removal</label>
 								<div class="g-tip-button">?<div class="g-tip-anchor">
-				<div class="g-tip">Prevent small shapes
-from disappearing at
-high simplification.</div></div></div></div>
+				<div class="g-tip">Prevent small polygons from
+disappearing at high simplification.
+Protects the largest ring of multi-
+ring features.
+</div></div></div></div>
 
 				<div><input type="text" placeholder="0.0" class="g-clicktext g-import-clicktext" id="g-import-precision-opt" />coordinate precision<div class="g-tip-button">?<div class="g-tip-anchor">
 <div class="g-tip">Rounding coordinates can fix
-topology problems in some files.
-You could try 0.00001 for a file in
-decimal degrees or 10 for a file
-with coordinates in meters.</div></div></div></div>
+topology problems in some files
+and reduces the size of GeoJSON
+files. Uses same units as the source
+file, e.g. decimal degrees for most
+unprojected files.</div></div></div></div>
 			</div>
 		</div>
 	</div> <!-- mshp-import -->
