@@ -9,7 +9,8 @@ mapshaper-maplayer,
 mapshaper-simplify,
 mapshaper-export,
 mapshaper-import,
-mapshaper-repair-control
+mapshaper-repair-control,
+mapshaper-keep-shapes
 */
 
 var dropper,
@@ -87,7 +88,7 @@ function Editor() {
 
     MapShaper.simplifyPaths(arcData, importOpts.simplifyMethod);
     if (importOpts.preserveShapes) {
-      MapShaper.protectRingsFromCollapse(arcData, data.retainedPointCounts);
+      MapShaper.protectShapes(arcData, data.layers);
     }
 
     var filteredArcs = new FilteredPathCollection(arcData);

@@ -33,18 +33,34 @@ var Utils = {
 
   parseUrl: function parseUrl(url) {
     var obj,
-      matches = /^(http|file|https):\/\/([^\/]+)(.*)/.exec(url); // TODO: improve
+      matches = /^(http|file|https):\/\/([^\/?#]+)([^?#]*)\??([^#?]*)#?(.*)/.exec(url); // TODO: improve
     if (matches) {
       obj = {
         protocol: matches[1],
         host: matches[2],
-        path: matches[3]
+        path: matches[3],
+        query: matches[4],
+        hash: matches[5]
       };
     }
     else {
       trace("[Utils.parseUrl()] unable to parse:", url);
     }
     return obj;
+  },
+
+  buildUrl: function(obj) {
+    var url = "";
+    url += (obj.protocol || 'http') + "://";
+    url += obj.host || error("buildUrl() Missing host name");
+    url += obj.path || "";
+    if (obj.query) {
+      url += '?' + obj.query;
+    }
+    if (obj.hash) {
+      url += "#" + obj.hash;
+    }
+    return url;
   },
 
   reduce: function(arr, func, val, ctx) {
@@ -323,19 +339,22 @@ var Opts = {
     targ.prototype.__super__ = f;
   },
 
-  // @constructor Optional constructor function for child class
+  // @parent Function to use as parent class
+  // ... Additional args extend the child's prototype
   //
   subclass: function(parent) {
     var child = function() {
       this.__super__.apply(this, Utils.toArray(arguments));
     };
     Opts.inherit(child, parent);
-    var args = arguments;
-    if (args.length > 1) {
-      Utils.forEach(Utils.range(args.length, 1), function(i) {
-        Utils.extend(child.prototype, args[i]);
-      });
+    for (var i=1; i<arguments.length; i++) {
+      Opts.extendPrototype(child, arguments[i]);
     }
+    // set a constructor function, instead of calling parent's constructor
+    child.constructor = function(fn) {
+      Opts.inherit(fn, child);
+      return fn;
+    };
     return child;
   },
 
@@ -859,14 +878,18 @@ Utils.randomizeArray = function(arr) {
 
 
 
+
+Utils.repeatString = function(src, n) {
+  var str = "";
+  for (var i=0; i<n; i++)
+    str += src;
+  return str;
+};
+
 Utils.lpad = function(str, size, pad) {
   pad = pad || ' ';
   str = String(str);
-  var chars = size - str.length;
-  while (chars-- > 0) {
-    str = pad + str;
-  }
-  return str;
+  return Utils.repeatString(pad, size - str.length) + str;
 };
 
 Utils.trim = function(str) {
@@ -1256,27 +1279,17 @@ if (inNode) {
 
   // Current signature: function(opts, callback), like Node.js request module
   //    callback: function(err, response, body)
-  // Also supports old signature: function(url, callback, opts)
-  //    callback: function(body)
   //
-  Node.request = function(opts, callback, old_opts) {
-    var url, receive;
+  Node.request = function(opts, callback) {
     if (Utils.isString(opts)) { // @opts is string -> assume url & old interface
-      url = opts;
-      opts = old_opts || {};
-      receive = function(err, resp, data) {
-        if (err) {
-          error(err);
-        } else {
-          callback(data);
-        }
-      };
-    } else {
-      url = opts.url;
-      receive = callback;
+      error("Node.request(opts, callback) No longer accepts a url string. Pass url as a property of opts.");
     }
 
-    var o = require('url').parse(url),
+    if (!opts.url) error("Node.request() Missing url in options:", opts);
+
+    var receive = callback;
+
+    var o = require('url').parse(opts.url),
         data = null,
         // moduleName: http or https
         moduleName = opts.protocol || o.protocol.slice(0, -1); // can override protocol (e.g. request https:// url using http)
@@ -1289,7 +1302,7 @@ if (inNode) {
       //port: o.port || module == 'https' && 443 || 80,
       method: opts.method || 'GET',
       headers: opts.headers || null
-    }
+    };
 
     if (reqOpts.method == 'POST' || reqOpts.method == 'PUT') {
       data = opts.data || opts.body || '';
@@ -1303,9 +1316,10 @@ if (inNode) {
     var req = require(moduleName).request(reqOpts);
     req.on('response', function(res) {
       if (res.statusCode > 201) {
-        receive("Node.request() Unexpected status: " + res.statusCode + " url: " + url, res, null);
+        receive("Node.request() Unexpected status: " + res.statusCode + " url: " + opts.url, res, null);
+      } else {
+        Node.readResponse(res, receive, 'utf8');
       }
-      Node.readResponse(res, receive, 'utf8');
     });
 
     req.on('error', function(e) {
@@ -1320,7 +1334,7 @@ if (inNode) {
   };
 
   Node.readJson = function(url, callback, opts) {
-    //Node.readUrl(url, function(str) {
+    var retn = opts && opts.data || null;
     /*
     opts = {
       headers: {
@@ -1333,34 +1347,31 @@ if (inNode) {
     }*/
 
     Node.request({url: url}, function(err, req, str) {
-      var data;
+      var data = null;
       if (err) {
-        trace("Node.request() error:", err);
-        callback(null);
-        return;
-      }
-      if (!str) {
-        trace("Node.request() empty response()");
-        callback(null);
-        return;
-      }
-      try {
-        // handle JS callback
-        if (match = /^\s*([\w.-]+)\(/.exec(str)) {
-          var ctx = {};
-          Opts.exportObject(match[1], function(o) {return o}, ctx);
-          with (ctx) {
-            data = eval(str);
+        trace("Node.readJson() error:", err);
+      } else if (!str) {
+        trace("Node.readJson() empty response()");
+      } else {
+        try {
+          // handle JS callback
+          if (match = /^\s*([\w.-]+)\(/.exec(str)) {
+            var ctx = {};
+            Opts.exportObject(match[1], function(o) {return o}, ctx);
+            with (ctx) {
+              data = eval(str);
+            }
+          } else {
+            data = JSON.parse(str); // no callback: assume valid JSON
           }
-        } else {
-          data = JSON.parse(str); // no callback: assume valid JSON
+        } catch(e) {
+          trace("Node#readJson() Error reading from url:", url,"response:", str);
+          error(e);
         }
-      } catch(e) {
-        trace("Node#readJson() Error reading from url:", url,"response:", str);
-        error(e);
       }
-      callback(data);
-    }, opts);
+      callback(data, retn);
+    });
+
   };
 
   // super-simple options, if not using optimist
@@ -1803,6 +1814,13 @@ var Browser = {
     return Browser.getQueryVars()[name];
   },
 
+  getHashString: function() {
+
+  },
+
+  setHashString: function(arg) {
+
+  },
 
   /**
    * TODO: memoize?
@@ -2142,10 +2160,6 @@ Utils.extend(El.prototype, {
     return this;
   },
 
-  appendChild: function(el) {
-    this.el.appendChild(el.el || el);
-    return this;
-  },
 
   remove: function(sel) {
     this.el.parentNode && this.el.parentNode.removeChild(this.el);
@@ -2313,12 +2327,13 @@ Utils.extend(El.prototype, {
     return e;
   },
 
+
   /**
    * Called with tagName: Create new El, append as child to current El
    * Called with no arg: Traverse to first child.
    */
   child: function(arg) {
-    trace("Use El.newChild or El.firstChild instead of El.child()");
+    error("Use El.newChild or El.firstChild instead of El.child()");
     return arg ? this.newChild(arg) : this.firstChild();
   },
 
@@ -2328,6 +2343,12 @@ Utils.extend(El.prototype, {
       ch = ch.nextSibling;
     }
     return new El(ch);
+  },
+
+  appendChild: function(ref) {
+    var el = El(ref);
+    this.el.appendChild(el.el);
+    return this;
   },
 
   newChild: function(tagName) {
@@ -2372,6 +2393,7 @@ Utils.extend(El.prototype, {
 //El.prototype.__domevents = Utils.arrayToIndex("click,mousedown,mousemove,mouseup".split(','));
 El.prototype.__on = El.prototype.on;
 El.prototype.on = function(type, func, ctx) {
+  ctx = ctx || this;
   if (this.constructor == El) {
     Browser.on(this.el, type, func, ctx);
   } else {
@@ -2547,7 +2569,12 @@ Bounds.prototype.height = function() {
 };
 
 Bounds.prototype.area = function() {
-  return this.width * this.height() || 0;
+  return this.width() * this.height() || 0;
+};
+
+Bounds.prototype.empty = function() {
+  this.xmin = this.ymin = this.xmax = this.ymax = void 0;
+  return this;
 };
 
 Bounds.prototype.setBounds = function(a, b, c, d) {
@@ -2743,10 +2770,16 @@ Bounds.prototype.getTransform = function(b2, flipY) {
 
 Bounds.prototype.mergeBounds = function(bb) {
   var a, b, c, d;
-  if (bb.xmin !== void 0) {
+  if (bb instanceof Bounds) {
     a = bb.xmin, b = bb.ymin, c = bb.xmax, d = bb.ymax;
+  } else if (arguments.length == 4) {
+    a = arguments[0];
+    b = arguments[1];
+    c = arguments[2];
+    d = arguments[3];
   } else if (bb.length == 4) {
-    a = bb[0], b = bb[1], c = bb[2], d = bb[3]; // expects array: [xmin, ymin, xmax, ymax]
+    // assume array: [xmin, ymin, xmax, ymax]
+    a = bb[0], b = bb[1], c = bb[2], d = bb[3];
   } else {
     error("Bounds#mergeBounds() invalid argument:", bb);
   }
@@ -3804,118 +3837,112 @@ Examples:
   %'f     1000   '1,000'
 */
 
-Utils.format = (function() {
-  function getPadString(len, c) {
-    var str = "";
-    for (var i=0; i<len; i++)
-      str += c;
-    return str;
+// Usage: Utils.format(formatString, [values])
+// Tip: When reusing the same format many times, use Utils.formatter() for 5x - 10x better performance
+//
+Utils.format = function(fmt) {
+  var fn = Utils.formatter(fmt);
+  var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
+  return str;
+};
+
+function formatValue(val, matches) {
+  var flags = matches[1];
+  var padding = matches[2];
+  var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
+  var type = matches[4];
+
+  if (type == '%') {
+    return '%'; // %% = literal '%'
+  }
+  var isString = type == 's',
+      isHex = type == 'x' || type == 'X',
+      isInt = type == 'd' || type == 'i',
+      isFloat = type == 'f',
+      isNumber = !isString;
+
+  var sign = "",
+      padDigits = 0,
+      isZero = false,
+      isNeg = false;
+
+  var str;
+  if (isString) {
+    str = String(val);
+  }
+  else if (isHex) {
+    str = val.toString(16);
+    if (type == 'X')
+      str = str.toUpperCase();
+  }
+  else if (isNumber) {
+    str = Utils.numToStr(val, isInt ? 0 : decimals);
+    if (str[0] == '-') {
+      isNeg = true;
+      str = str.substr(1);
+    }
+    isZero = parseFloat(str) == 0;
+    if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
+      str = Utils.addThousandsSep(str);
+    }
+    if (!isZero) { // BUG: sign is added when num rounds to 0
+      if (isNeg) {
+        sign = "\u2212"; // U+2212
+      } else if (flags.indexOf('+') != -1) {
+        sign = '+';
+      }
+    }
   }
 
-  function formatValue(matches, val) {
-    var flags = matches[1];
-    var padding = matches[2];
-    var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
-    var type = matches[4];
-
-    if (type == '%') {
-      return '%'; // %% = literal '%'
+  if (padding) {
+    var strLen = str.length + sign.length;
+    var minWidth = parseInt(padding, 10);
+    if (strLen < minWidth) {
+      padDigits = minWidth - strLen;
+      var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
+      var padStr = Utils.repeatString(padChar, padDigits);
     }
-    var isString = type == 's',
-        isHex = type == 'x' || type == 'X',
-        isInt = type == 'd' || type == 'i',
-        isFloat = type == 'f',
-        isNumber = !isString;
-
-    var sign = "",
-        padDigits = 0,
-        isZero = false,
-        isNeg = false;
-
-    var str;
-    if (isString) {
-      str = String(val);
-    }
-    else if (isHex) {
-      str = val.toString(16);
-      if (type == 'X')
-        str = str.toUpperCase();
-    }
-    else if (isNumber) {
-      str = Utils.numToStr(val, isInt ? 0 : decimals);
-      if (str[0] == '-') {
-        isNeg = true;
-        str = str.substr(1);
-      }
-      isZero = parseFloat(str) == 0;
-      if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
-        str = Utils.addThousandsSep(str);
-      }
-      if (!isZero) { // BUG: sign is added when num rounds to 0
-        if (isNeg) {
-          sign = "\u2212"; // U+2212
-        } else if (flags.indexOf('+') != -1) {
-          sign = '+';
-        }
-      }
-    }
-
-    if (padding) {
-      var strLen = str.length + sign.length;
-      var minWidth = parseInt(padding, 10);
-      if (strLen < minWidth) {
-        padDigits = minWidth - strLen;
-        var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-        var padStr = getPadString(padDigits, padChar);
-      }
-    }
-
-    if (padDigits == 0) {
-      str = sign + str;
-    } else if (padChar == '0') {
-      str = sign + padStr + str;
-    } else {
-      str = padStr + sign + str;
-    }
-    return str;
   }
 
+  if (padDigits == 0) {
+    str = sign + str;
+  } else if (padChar == '0') {
+    str = sign + padStr + str;
+  } else {
+    str = padStr + sign + str;
+  }
+  return str;
+}
+
+// Get a function for interpolating formatted values into a string.
+//
+Utils.formatter = function(fmt) {
   var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+  var literals = [],
+      formatCodes = [],
+      startIdx = 0,
+      matches;
 
-  var format = function(s) {
-    var arr = Array.prototype.slice.call(arguments, 1);
-    var ostr = "";
-    for (var startIdx=0, i=0, len=arr.length, matches; i<len && (matches=codeRxp.exec(s)); i++) {
-      ostr += s.substring(startIdx, codeRxp.lastIndex - matches[0].length);
-      ostr += formatValue(matches, arr[i]);
-      startIdx = codeRxp.lastIndex;
-    }
-    codeRxp.lastIndex = 0;
+  while(matches=codeRxp.exec(fmt)) {
+    literals.push(fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length));
+    formatCodes.push(matches);
+    startIdx = codeRxp.lastIndex;
+  }
+  literals.push(fmt.substr(startIdx));
 
-    if (i != len) {
-      error("[Utils.format()] formatting codes did not match inputs; string:", s);
+  return function() {
+    var str = literals[0],
+        n = arguments.length;
+    if (n != formatCodes.length) {
+      error("[Utils.format()] Data does not match format string; format:", fmt, "data:", arguments);
     }
-    ostr += s.substr(startIdx);
-    return ostr;
+    for (var i=0; i<n; i++) {
+      str += formatValue(arguments[i], formatCodes[i]);
+      str += literals[i+1];
+    }
+    return str;
   };
-
-  // Returns a formatter function if called with one argument.
-  // Returns a formatted string if called with two or more arguments.
-  return function(fmt) {
-    if (!Utils.isString(fmt)) {
-      error("#format() Usage: Utils.format(format, [data ...])");
-    } else if (arguments.length == 1) {
-      return function() {
-        var args = Utils.toArray(arguments);
-        args.unshift(fmt);
-        return format.apply(null, args);
-      };
-    } else {
-      return format.apply(null, arguments);
-    }
-  };
-
-}());
+};
 
 
 
@@ -4761,6 +4788,7 @@ function ArcDataset() {
       _zlimit = 0;
     } else {
       _zlimit = this.getThresholdByPct(pct);
+      _zlimit = MapShaper.clampIntervalByPct(_zlimit, pct);
     }
     return this;
   };
@@ -4803,6 +4831,7 @@ function ArcDataset() {
     return b2[j] <= b1[2] && b2[j+2] >= b1[0] && b2[j+3] >= b1[1] && b2[j+1] <= b1[3];
   };
 
+
   this.arcIsSmaller = function(i, units) {
     var bb = _bb,
         j = i * 4;
@@ -4829,6 +4858,21 @@ function ArcDataset() {
 
   this.getBounds = function() {
     return _allBounds;
+  };
+
+  this.getSimpleShapeBounds = function(arcIds) {
+    // Consider optional second arg: Bounds to use
+    var bounds = new Bounds();
+    for (var i=0, n=arcIds.length; i<n; i++) {
+      this.mergeArcBounds(arcIds[i], bounds);
+    }
+    return bounds;
+  };
+
+  this.mergeArcBounds = function(arcId, bounds) {
+    if (arcId < 0) arcId = ~arcId;
+    var offs = arcId * 4;
+    bounds.mergeBounds(_bb[offs], _bb[offs+1], _bb[offs+2], _bb[offs+3]);
   };
 
   this.getArc = function(id) {
@@ -4988,15 +5032,19 @@ function ShapeIter(arcs) {
 
   this.init = function(ids) {
     _ids = ids;
-    i = -1;
     n = ids.length;
-    _arc = nextArc();
+    this.reset();
   };
 
   function nextArc() {
     i += 1;
     return (i < n) ? arcs.getArcIter(_ids[i]) : null;
   }
+
+  this.reset = function() {
+    i = -1;
+    _arc = nextArc();
+  };
 
   this.hasNext = function() {
     while (_arc) {
@@ -5012,6 +5060,47 @@ function ShapeIter(arcs) {
     return false;
   };
 }
+
+MapShaper.getPathArea = function(iter) {
+  var sum = 0,
+      x, y;
+  if (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    while (iter.hasNext()) {
+      sum += iter.x * y - x * iter.y;
+      x = iter.x;
+      y = iter.y;
+    }
+  }
+  return Math.abs(sum / 2);
+};
+
+MapShaper.clampIntervalByPct = function(z, pct) {
+  if (pct <= 0) z = Infinity;
+  else if (pct >= 1) z = 0;
+  return z;
+};
+
+// Return id of the vertex between @start and @end with the highest
+// threshold that is less than @zlim.
+//
+MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
+  var tmp, jz = 0, j = -1, z;
+  if (start > end) {
+    tmp = start;
+    start = end;
+    end = tmp;
+  }
+  for (var i=start+1; i<end; i++) {
+    z = zz[i];
+    if (z < zlim && z > jz) {
+      j = i;
+      jz = z;
+    }
+  }
+  return j;
+};
 
 
 
@@ -7154,21 +7243,19 @@ MapShaper.importContent = function(content, fileType, opts) {
     error("Unsupported file type:", fileType);
   }
 
-  // Calculate data to use for shape preservation
+  // Calc arc counts, for identifying shared boundaries, etc.
+  // Consider: Tabulate arc counts later, if/when needed.
   var numArcs = data.arcs.size();
-  var retainedPointCounts = new Uint8Array(numArcs);
   Utils.forEach(data.layers, function(layer) {
     if (layer.geometry_type == 'polygon') {
       var arcCounts = MapShaper.getArcCountsInLayer(layer.shapes, numArcs);
       layer.arcCounts = arcCounts;
-      MapShaper.calcPointRetentionData(layer.shapes, retainedPointCounts, arcCounts);
     }
   });
 
   data.info = {
     input_format: fileFmt
   };
-  data.retainedPointCounts = retainedPointCounts;
   return data;
 };
 
@@ -7189,46 +7276,6 @@ MapShaper.calcArcCountsInShape = function(counts, shape) {
       arcId = arcs[i];
       if (arcId < 0) arcId = ~arcId;
       counts[arcId] += 1;
-    }
-  }
-};
-
-// Calculate number of interior points to preserve in each arc
-// to protect 'primary' rings from collapsing.
-//
-MapShaper.calcPointRetentionData = function(shapes, retainedPointCounts, arcCounts) {
-  Utils.forEach(shapes, function(shape, shapeId) {
-    if (!shape) return;
-    for (var i=0, n=shape.length; i<n; i++) {
-      var arcs = shape[i];
-      // if a part has 3 or more arcs, assume it won't collapse...
-      // TODO: look into edge cases where this isn't true
-      if (arcs.length <= 2) { // && pathData[pathId].isPrimary) {
-        MapShaper.calcRetainedCountsForRing(arcs, retainedPointCounts, arcCounts);
-      }
-    }
-  });
-  return retainedPointCounts;
-};
-
-
-// Calculate number of interior points in each arc of a topological ring
-// that should be preserved in order to prevent ring from collapsing
-// @path an array of one or more arc ids making up the ring
-// @sharedArcFlags
-// @minArcPoints array of counts of interior points to retain, indexed by arc id
-// TODO: improve; in some cases, this method could fail to prevent degenerate rings
-//
-MapShaper.calcRetainedCountsForRing = function(path, retainedPointCounts, arcCounts) {
-  var arcId;
-  for (var i=0, arcCount=path.length; i<arcCount; i++) {
-    arcId = path[i];
-    if (arcId < 0) arcId = ~arcId;
-    if (arcCount == 1) { // one-arc polygon (e.g. island) -- save two interior points
-      retainedPointCounts[arcId] = 2;
-    }
-    else if (arcCounts[arcId] < 2) {
-      retainedPointCounts[arcId] = 1; // non-shared member of two-arc polygon: save one point
     }
   }
 };
@@ -8342,6 +8389,7 @@ function FilteredPathCollection(unfilteredArcs, opts) {
 
   this.setRetainedPct = function(pct) {
     var z = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
+    z = MapShaper.clampIntervalByPct(z, pct);
     this.setRetainedInterval(z);
   };
 
@@ -9182,16 +9230,6 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
 
 
-MapShaper.protectRingsFromCollapse = function(arcData, lockCounts) {
-  var n;
-  for (var i=0, len=lockCounts.length; i<len; i++) {
-    n = lockCounts[i];
-    if (n > 0) {
-      MapShaper.lockMaxThresholds(arcData.getArcThresholds(i), n);
-    }
-  }
-};
-
 // Protect polar coordinates and coordinates at the prime meridian from
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
@@ -9241,39 +9279,6 @@ MapShaper.findMaxThreshold = function(zz) {
   return maxZ;
 };
 
-MapShaper.replaceValue = function(arr, value, replacement) {
-  var count = 0, k;
-  for (var i=0, n=arr.length; i<n; i++) {
-    if (arr[i] === value) {
-      arr[i] = replacement;
-      count++;
-    }
-  }
-  return count;
-};
-
-// Protect the highest-threshold interior vertices in an arc from removal by
-// setting their removal thresholds to Infinity
-//
-MapShaper.lockMaxThresholds = function(zz, numberToLock) {
-  var lockVal = Infinity,
-      target = numberToLock | 0,
-      lockedCount, maxVal, replacements, z;
-  do {
-    lockedCount = 0;
-    maxVal = 0;
-    for (var i=1, len = zz.length - 1; i<len; i++) { // skip arc endpoints
-      z = zz[i];
-      if (z === lockVal) {
-        lockedCount++;
-      } else if (z > maxVal) {
-        maxVal = z;
-      }
-    }
-    if (lockedCount >= numberToLock) break;
-    replacements = MapShaper.replaceValue(zz, maxVal, lockVal);
-  } while (lockedCount < numberToLock && replacements > 0);
-};
 
 // Convert arrays of lng and lat coords (xsrc, ysrc) into
 // x, y, z coords on the surface of a sphere with radius 6378137
@@ -9821,26 +9826,6 @@ MapShaper.repairIntersections = function(arcs, intersections) {
   }
 };
 
-// Return id of the vertex between @start and @end with the highest
-// threshold that is less than @zlim.
-//
-MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
-  var tmp, jz = 0, j = -1, z;
-  if (start > end) {
-    tmp = start;
-    start = end;
-    end = tmp;
-  }
-  for (var i=start+1; i<end; i++) {
-    z = zz[i];
-    if (z < zlim && z > jz) {
-      j = i;
-      jz = z;
-    }
-  }
-  return j;
-};
-
 
 
 
@@ -9927,6 +9912,120 @@ function RepairControl(map, lineLyr, arcData) {
 
 
 
+MapShaper.protectShapes = function(arcData, layers) {
+  T.start();
+  Utils.forEach(layers, function(lyr) {
+    if (lyr.geometry_type == 'polygon') {
+      MapShaper.protectLayerShapes(arcData, lyr.shapes);
+    }
+  });
+  T.stop("Protect shapes");
+};
+
+MapShaper.protectLayerShapes = function(arcData, shapes) {
+  Utils.forEach(shapes, function(shape) {
+    MapShaper.protectShape(arcData, shape);
+  });
+};
+
+MapShaper.protectShape = function(arcData, shape) {
+  var maxArea = 0,
+      maxRing, area;
+  // Find ring with largest bounding box
+  for (var i=0, n=shape.length; i<n; i++) {
+    area = arcData.getSimpleShapeBounds(shape[i]).area();
+    if (area > maxArea) {
+      maxRing = shape[i];
+      maxArea = area;
+    }
+  }
+  if (!maxRing || maxRing.length === 0) {
+    // error condition
+    trace("[protectShape()] Invalid shape; ids:", shape);
+  } else if (maxRing.length == 1) {
+    MapShaper.protectIslandRing(arcData, maxRing);
+  } else {
+    MapShaper.protectMultiRing(arcData, maxRing);
+  }
+};
+
+// Add two vertices to the ring to form a triangle.
+// Assuming that this will inflate the ring.
+// Consider using the function for multi-arc rings, which
+//   calculates ring area...
+MapShaper.protectIslandRing = function(arcData, ring) {
+  var added = MapShaper.lockMaxThreshold(arcData, ring);
+  if (added == 1) {
+    added += MapShaper.lockMaxThreshold(arcData, ring);
+  }
+  if (added < 2) trace("[protectIslandRing()] Failed on ring:", ring);
+};
+
+MapShaper.protectMultiRing = function(arcData, ring) {
+  var zlim = arcData.getRetainedInterval(),
+      minArea = 0, // 0.00000001, // Need to handle rounding error?
+      iter, area, added;
+  arcData.setRetainedInterval(Infinity);
+  iter = arcData.getShapeIter(ring);
+  area = MapShaper.getPathArea(iter);
+  while (area <= minArea) {
+    added = MapShaper.lockMaxThreshold(arcData, ring);
+    if (added === 0) {
+      trace("protectMultiRing() Failed on ring:", ring);
+      break;
+    }
+    iter.reset();
+    area = MapShaper.getPathArea(iter);
+  }
+  arcData.setRetainedInterval(zlim);
+};
+
+// Protect the vertex or vertices with the largest non-infinite
+// removal threshold in a ring.
+//
+MapShaper.lockMaxThreshold = function(arcData, ring) {
+  var targZ = 0,
+      targArcId,
+      raw = arcData.getVertexData(),
+      arcId, id, z,
+      start, end;
+
+  for (var i=0; i<ring.length; i++) {
+    arcId = ring[i];
+    if (arcId < 0) arcId = ~arcId;
+    start = raw.ii[arcId];
+    end = start + raw.nn[arcId] - 1;
+    id = MapShaper.findNextRemovableVertex(raw.zz, Infinity, start, end);
+    if (id == -1) continue;
+    z = raw.zz[id];
+    if (z > targZ) {
+      targZ = z;
+      targArcId = arcId;
+    }
+  }
+  if (targZ > 0) {
+    // There may be more than one vertex with the target Z value; lock them all.
+    start = raw.ii[targArcId];
+    end = start + raw.nn[targArcId] - 1;
+    return MapShaper.replaceValue(raw.zz, targZ, Infinity, start, end);
+  }
+  return 0;
+};
+
+MapShaper.replaceValue = function(zz, value, replacement, start, end) {
+  var count = 0;
+  for (var i=start; i<=end; i++) {
+    if (zz[i] === value) {
+      zz[i] = replacement;
+      count++;
+    }
+  }
+  return count;
+};
+
+
+
+
 var dropper,
     importer,
     editor;
@@ -10002,7 +10101,7 @@ function Editor() {
 
     MapShaper.simplifyPaths(arcData, importOpts.simplifyMethod);
     if (importOpts.preserveShapes) {
-      MapShaper.protectRingsFromCollapse(arcData, data.retainedPointCounts);
+      MapShaper.protectShapes(arcData, data.layers);
     }
 
     var filteredArcs = new FilteredPathCollection(arcData);

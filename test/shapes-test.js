@@ -66,7 +66,6 @@ describe('mapshaper-shapes.js', function () {
       assert.deepEqual([[[3, 1], [1, 1], [3, 1]], [[3, 1], [5, 1], [3, 1]]], arcs.toArray());
     });
 
-
     it('#setThresholds() + #setRetainedInterval() + #getFilteredCopy() works', function() {
       var thresholds = [[Infinity, 5, 4, Infinity], [Infinity, 4, 7, Infinity]];
       var arcs = new ArcDataset(arcs2).setThresholds(thresholds)
@@ -78,7 +77,6 @@ describe('mapshaper-shapes.js', function () {
       assert.deepEqual([[[3, 1], [1, 1], [3, 1]], [[3, 1], [5, 1], [3, 1]]], arcs.getFilteredCopy().toArray());
     });
 
-
     it('#getRemovableThresholds works', function() {
       var thresholds = [[Infinity, 5, 4, Infinity], [Infinity, Infinity, 7, Infinity]];
       var arcs = new ArcDataset(arcs2).setThresholds(thresholds);
@@ -88,7 +86,6 @@ describe('mapshaper-shapes.js', function () {
       var removable2 = arcs.getRemovableThresholds(2);
       assert.deepEqual([7], Utils.toArray(removable2));
     });
-
 
     it('#applyTransform() works', function() {
       var arcs = new ArcDataset(arcs4);
@@ -150,8 +147,29 @@ describe('mapshaper-shapes.js', function () {
       assert.deepEqual([[[1, 1], [3, 3], [3, 1], [1, 1]]], arcs.toArray());
     })
 
-    // it('#setRetainedPct() works', function() { });
-
   })
+
+  describe('#findNextRemovableVertex()', function () {
+    it('Find index of largest non-infinite point', function () {
+      var zz, id;
+      zz = [Infinity, 3, 2, Infinity];
+      id = api.findNextRemovableVertex(zz, Infinity, 0, 3);
+      assert.equal(id, 1);
+      zz = [Infinity, 0, 15, Infinity, Infinity, 5, -8, 2, 4, 5, Infinity];
+      id = api.findNextRemovableVertex(zz, Infinity, 4, 10);
+      assert.equal(id, 5);
+      id = api.findNextRemovableVertex(zz, 4, 4, 10);
+      assert.equal(id, 7);
+    })
+  })
+
+  describe('#clampIntervalByPct()', function () {
+    it('Snap simplification interval at extremes', function () {
+      assert.equal(api.clampIntervalByPct(3, 0), Infinity);
+      assert.equal(api.clampIntervalByPct(3, 1), 0);
+      assert.equal(api.clampIntervalByPct(3, 0.5), 3);
+    })
+  })
+
 })
 

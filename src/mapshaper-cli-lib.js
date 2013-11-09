@@ -5,7 +5,8 @@ mapshaper-shapes,
 mapshaper-export,
 mapshaper-import,
 mapshaper-repair,
-mapshaper-segments
+mapshaper-segments,
+mapshaper-keep-shapes
 */
 
 var cli = MapShaper.cli = {};

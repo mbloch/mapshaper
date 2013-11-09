@@ -397,6 +397,7 @@ function ArcDataset() {
       _zlimit = 0;
     } else {
       _zlimit = this.getThresholdByPct(pct);
+      _zlimit = MapShaper.clampIntervalByPct(_zlimit, pct);
     }
     return this;
   };
@@ -439,6 +440,7 @@ function ArcDataset() {
     return b2[j] <= b1[2] && b2[j+2] >= b1[0] && b2[j+3] >= b1[1] && b2[j+1] <= b1[3];
   };
 
+
   this.arcIsSmaller = function(i, units) {
     var bb = _bb,
         j = i * 4;
@@ -465,6 +467,21 @@ function ArcDataset() {
 
   this.getBounds = function() {
     return _allBounds;
+  };
+
+  this.getSimpleShapeBounds = function(arcIds) {
+    // Consider optional second arg: Bounds to use
+    var bounds = new Bounds();
+    for (var i=0, n=arcIds.length; i<n; i++) {
+      this.mergeArcBounds(arcIds[i], bounds);
+    }
+    return bounds;
+  };
+
+  this.mergeArcBounds = function(arcId, bounds) {
+    if (arcId < 0) arcId = ~arcId;
+    var offs = arcId * 4;
+    bounds.mergeBounds(_bb[offs], _bb[offs+1], _bb[offs+2], _bb[offs+3]);
   };
 
   this.getArc = function(id) {
@@ -624,15 +641,19 @@ function ShapeIter(arcs) {
 
   this.init = function(ids) {
     _ids = ids;
-    i = -1;
     n = ids.length;
-    _arc = nextArc();
+    this.reset();
   };
 
   function nextArc() {
     i += 1;
     return (i < n) ? arcs.getArcIter(_ids[i]) : null;
   }
+
+  this.reset = function() {
+    i = -1;
+    _arc = nextArc();
+  };
 
   this.hasNext = function() {
     while (_arc) {
@@ -648,3 +669,44 @@ function ShapeIter(arcs) {
     return false;
   };
 }
+
+MapShaper.getPathArea = function(iter) {
+  var sum = 0,
+      x, y;
+  if (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    while (iter.hasNext()) {
+      sum += iter.x * y - x * iter.y;
+      x = iter.x;
+      y = iter.y;
+    }
+  }
+  return Math.abs(sum / 2);
+};
+
+MapShaper.clampIntervalByPct = function(z, pct) {
+  if (pct <= 0) z = Infinity;
+  else if (pct >= 1) z = 0;
+  return z;
+};
+
+// Return id of the vertex between @start and @end with the highest
+// threshold that is less than @zlim.
+//
+MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
+  var tmp, jz = 0, j = -1, z;
+  if (start > end) {
+    tmp = start;
+    start = end;
+    end = tmp;
+  }
+  for (var i=start+1; i<end; i++) {
+    z = zz[i];
+    if (z < zlim && z > jz) {
+      j = i;
+      jz = z;
+    }
+  }
+  return j;
+};

@@ -30,8 +30,8 @@ if (opts.use_simplification) {
 
   mapshaper.gc();
 
-  if (opts.keep_shapes && importData.arcMinPointCounts) {
-    mapshaper.protectRingsFromCollapse(arcData, importData.retainedPointCounts);
+  if (opts.keep_shapes) {
+    mapshaper.protectShapes(arcData, importData.layers);
   }
 }
 

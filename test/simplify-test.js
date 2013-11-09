@@ -44,42 +44,6 @@ describe("mapshaper-simplify.js", function() {
     })
   })
 
-  describe("#lockMaxThresholds()", function() {
-    var uu2, uu3, uu5;
-
-    beforeEach(function() {
-      uu2 = [Infinity, Infinity];
-      uu3 = [Infinity, 23, Infinity];
-      uu5 = [Infinity, 23, 43, 14, Infinity];
-    })
-
-
-    it("should not modify an n2 arc", function() {
-      var orig = uu2.concat();
-      api.lockMaxThresholds(uu2, 0)
-      assert.deepEqual(uu2, orig);
-      api.lockMaxThresholds(uu2, 1);
-      assert.deepEqual(uu2, orig);
-      api.lockMaxThresholds(uu2, 2);
-      assert.deepEqual(uu2, orig);
-    })
-
-    it("should lock the max point if n == 1", function() {
-      api.lockMaxThresholds(uu5, 1);
-      assert.deepEqual(uu5, [Infinity, 23, Infinity, 14, Infinity]);
-    })
-
-    it("should lock the max 2 points from an arc if n == 2", function() {
-      api.lockMaxThresholds(uu5, 2);
-      assert.deepEqual(uu5, [Infinity, Infinity, Infinity, 14, Infinity]);
-    })
-
-    it("should lock all points if n >= [no. interior points]", function() {
-      api.lockMaxThresholds(uu5, 3);
-      assert.deepEqual(uu5, [Infinity, Infinity, Infinity, Infinity, Infinity]);
-    })
-  })
-
   describe('#protectWorldEdges()', function () {
     it('should set world edges equal to highest threshold in each arc', function () {
       var arcs = [[[178, 179, 180, 180], [30, 31, 32, 33], [Infinity, 6, 4, Infinity]],
