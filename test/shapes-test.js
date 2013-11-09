@@ -163,5 +163,13 @@ describe('mapshaper-shapes.js', function () {
     })
   })
 
+  describe('#clampIntervalByPct()', function () {
+    it('Snap simplification interval at extremes', function () {
+      assert.equal(api.clampIntervalByPct(3, 0), Infinity);
+      assert.equal(api.clampIntervalByPct(3, 1), 0);
+      assert.equal(api.clampIntervalByPct(3, 0.5), 3);
+    })
+  })
+
 })
 

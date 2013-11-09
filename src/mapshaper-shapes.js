@@ -397,6 +397,7 @@ function ArcDataset() {
       _zlimit = 0;
     } else {
       _zlimit = this.getThresholdByPct(pct);
+      _zlimit = MapShaper.clampIntervalByPct(_zlimit, pct);
     }
     return this;
   };
@@ -682,6 +683,12 @@ MapShaper.getPathArea = function(iter) {
     }
   }
   return Math.abs(sum / 2);
+};
+
+MapShaper.clampIntervalByPct = function(z, pct) {
+  if (pct <= 0) z = Infinity;
+  else if (pct >= 1) z = 0;
+  return z;
 };
 
 // Return id of the vertex between @start and @end with the highest

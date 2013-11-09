@@ -52,6 +52,7 @@ function FilteredPathCollection(unfilteredArcs, opts) {
 
   this.setRetainedPct = function(pct) {
     var z = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
+    z = MapShaper.clampIntervalByPct(z, pct);
     this.setRetainedInterval(z);
   };
 
