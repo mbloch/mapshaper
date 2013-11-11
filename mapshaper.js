@@ -7007,7 +7007,6 @@ TopoJSON.pathImporters = {
 
 
 
-
 MapShaper.topojson = TopoJSON;
 
 MapShaper.importTopoJSON = function(obj, opts) {
