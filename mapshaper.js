@@ -9113,10 +9113,16 @@ cli.validateSimplifyOpts = function(argv) {
   return opts;
 };
 
+// Force v8 to perform a complete gc cycle.
+// To enable, run node with --expose_gc
+// Timing gc() gives a crude indication of number of objects in memory.
+//
 MapShaper.gc = function() {
-  T.start();
-  Node.gc();
-  T.stop("gc()");
+  if (global.gc) {
+    T.start();
+    global.gc();
+    T.stop("gc()");
+  }
 };
 
 MapShaper.importFromFile = function(fname, opts) {

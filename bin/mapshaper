@@ -1,10 +1,4 @@
-#!/usr/bin/env node --nouse_idle_notification --expose_gc
-//
-// Running node with --nouse_idle-notification can improve performance significantly
-// with large files. TODO: test that this is still true, since using fewer Arrays
-// The gc() calls below are intended to collect temp. objects from the previous
-//   processing stage. Timing gc() gives an indication of overhead from memory management.
-//
+#!/usr/bin/env node
 
 var mapshaper = require("../"),
     Node = mapshaper.Node,
@@ -27,8 +21,6 @@ opts.output_format = opts.output_format || opts.input_format;
 
 if (opts.use_simplification) {
   mapshaper.simplifyPaths(arcData, opts.simplify_method);
-
-  mapshaper.gc();
 
   if (opts.keep_shapes) {
     mapshaper.protectShapes(arcData, importData.layers);
