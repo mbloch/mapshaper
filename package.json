@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.1.9",
+	"version": "0.1.10",
 	"description": "A tool for topologically aware shape simplification.",
 	"keywords": ["shapefile","topojson","geojson","cartography","simplification"],
 	"author": "Matthew Bloch <masiyou@gmail.com>",
