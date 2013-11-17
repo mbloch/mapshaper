@@ -60,22 +60,26 @@ function ArcDataset() {
   }
 
   function initBounds() {
-    var data = calcArcBounds(_xx, _yy, _ii, _nn);
+    var data = calcArcBounds(_xx, _yy, _nn);
     _bb = data.bb;
     _allBounds = data.bounds;
   }
 
-  function calcArcBounds(xx, yy, ii, nn) {
-    var numArcs = ii.length,
+  function calcArcBounds(xx, yy, nn) {
+    var numArcs = nn.length,
         bb = new Float64Array(numArcs * 4),
+        arcOffs = 0,
+        arcLen,
         j, b;
     for (var i=0; i<numArcs; i++) {
-      b = MapShaper.calcArcBounds(xx, yy, ii[i], nn[i]);
+      arcLen = nn[i];
+      b = MapShaper.calcArcBounds(xx, yy, arcOffs, arcLen);
       j = i * 4;
       bb[j++] = b[0];
       bb[j++] = b[1];
       bb[j++] = b[2];
       bb[j] = b[3];
+      arcOffs += arcLen;
     }
     var bounds = new Bounds();
     if (numArcs > 0) bounds.setBounds(MapShaper.calcArcBounds(xx, yy));
@@ -205,21 +209,28 @@ function ArcDataset() {
     this.applyTransform(inverse);
   };
 
-  // Return average magnitudes of dx, dy
-  //
-  this.getAverageSegment = function(max) {
-    var count = 0,
-        dx = 0,
-        dy = 0,
-        lim = max || Infinity;
-    this.forEachSegment(function(i1, i2, xx, yy) {
-      dx += Math.abs(xx[i1] - xx[i2]);
-      dy += Math.abs(yy[i1] - yy[i2]);
-      count++;
-      if (count >= lim) return false;
-    });
-    return [dx / count, dy / count];
+  this.getAverageSegment = function(nth) {
+    return MapShaper.getAverageSegment(this.getSegmentIter(nth));
   };
+
+  /*
+  this.getNextId = function(i) {
+    var n = _xx.length,
+        zlim = _zlimit;
+    while (++i < n) {
+      if (zlim === 0 || _zz[i] >= zlim) return i;
+    }
+    return -1;
+  };
+
+  this.getPrevId = function(i) {
+    var zlim = _zlimit;
+    while (--i >= 0) {
+      if (zlim === 0 || _zz[i] >= zlim) return i;
+    }
+    return -1;
+  }; */
+
 
   // Apply a linear transform to the data, with or without rounding.
   //
@@ -238,29 +249,13 @@ function ArcDataset() {
     initBounds();
   };
 
-  this.forEachSegment = function(cb) {
-    var zlim = _zlimit,
-        filtered = zlim > 0,
-        nextArcStart = 0,
-        arcId = -1,
-        id1, id2, retn;
-    for (var k=0, n=this.getPointCount(); k<n; k++) {
-      if (!filtered || _zz[k] >= zlim) { // check: > or >=
-        id1 = id2;
-        id2 = k;
-        if (k < nextArcStart) {
-          retn = cb(id1, id2, _xx, _yy);
-          if (retn === false) break;
-        } else {
-          do {
-            arcId++;
-            nextArcStart += _nn[arcId];
-          } while (nextArcStart <= k);
-        }
-      }
-    }
+  this.getSegmentIter = function(nth) {
+    return MapShaper.getSegmentIter(_xx, _yy, _nn, _zz, _zlimit);
   };
 
+  this.forEachSegment = function(cb, nth) {
+    this.getSegmentIter(nth)(cb);
+  };
 
   // Return an ArcIter object for each path in the dataset
   //
@@ -709,4 +704,47 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
     }
   }
   return j;
+};
+
+// Return average magnitudes of dx, dy
+// @iter Function returned by getSegmentIter()
+//
+MapShaper.getAverageSegment = function(iter) {
+  var count = 0,
+      dx = 0,
+      dy = 0;
+  iter(function(i1, i2, xx, yy) {
+    dx += Math.abs(xx[i1] - xx[i2]);
+    dy += Math.abs(yy[i1] - yy[i2]);
+    count++;
+  });
+  return [dx / count, dy / count];
+};
+
+MapShaper.getSegmentIter = function(xx, yy, nn, zz, zlim) {
+  return function forEachSegment(cb, nth) {
+    var filtered = zlim > 0,
+        nextArcStart = 0,
+        arcId = -1,
+        count = 0,
+        id1, id2, retn;
+    nth = nth > 1 ? Math.floor(nth) : 1;
+    for (var k=0, n=xx.length; k<n; k++) {
+      if (!filtered || zz[k] >= zlim) { // check: > or >=
+        id1 = id2;
+        id2 = k;
+        if (k < nextArcStart) {
+          count++;
+          if (nth == 1 || count % nth === 0) {
+            cb(id1, id2, xx, yy);
+          }
+        } else {
+          do {
+            arcId++;
+            nextArcStart += nn[arcId];
+          } while (nextArcStart <= k); // handle empty paths
+        }
+      }
+    }
+  };
 };

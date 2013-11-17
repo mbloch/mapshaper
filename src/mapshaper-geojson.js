@@ -56,10 +56,10 @@ MapShaper.importGeoJSON = function(obj, opts) {
   });
 
   var importData = importer.done();
-  var topoData = MapShaper.buildTopology(importData);
+  // var topoData = MapShaper.buildTopology(importData);
   var layer = {
       name: '',
-      shapes: topoData.shapes,
+      shapes: importData.shapes,
       geometry_type: importData.info.input_geometry_type
     };
   if (properties) {
@@ -67,7 +67,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
   }
 
   return {
-    arcs: topoData.arcs,
+    arcs: importData.arcs,
     layers: [layer]
   };
 };
@@ -79,7 +79,7 @@ var GeoJSON = MapShaper.geojson = {};
 //
 GeoJSON.pathImporters = {
   LineString: function(coords, importer) {
-    importer.importPoints(coords, false, false);
+    importer.importPoints(coords, false);
   },
   MultiLineString: function(coords, importer) {
     for (var i=0; i<coords.length; i++) {
@@ -88,7 +88,7 @@ GeoJSON.pathImporters = {
   },
   Polygon: function(coords, importer) {
     for (var i=0; i<coords.length; i++) {
-      importer.importPoints(coords[i], true, i > 0);
+      importer.importPoints(coords[i], i > 0);
     }
   },
   MultiPolygon: function(coords, importer) {

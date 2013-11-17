@@ -6,6 +6,7 @@ mapshaper-export,
 mapshaper-import,
 mapshaper-repair,
 mapshaper-segments,
+mapshaper-snapping,
 mapshaper-keep-shapes
 */
 
@@ -54,7 +55,7 @@ MapShaper.getOptionParser = function() {
     })
 
     .options("modified", {
-      describe: "use a version of Visvalingam modified for smoothing (default)",
+      describe: "use a variation of Visvalingam designed for smoothing (default)",
       'boolean': true
     })
 
@@ -70,6 +71,11 @@ MapShaper.getOptionParser = function() {
 
     .options("repair", {
       describe: "remove intersections introduced by simplification",
+      'boolean': true
+    })
+
+    .options("auto-snap", {
+      describe: "snap together nearly identical points to fix topology errors",
       'boolean': true
     })
 
@@ -329,6 +335,7 @@ cli.validateTopologyOpts = function(argv) {
     opts.precision = argv.precision;
   }
   opts.repair = !!argv.repair;
+  opts.snapping = !!argv['auto-snap'];
   return opts;
 };
 

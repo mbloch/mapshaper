@@ -3,9 +3,8 @@
 MapShaper.protectShapes = function(arcData, layers) {
   T.start();
   Utils.forEach(layers, function(lyr) {
-    if (lyr.geometry_type == 'polygon') {
-      MapShaper.protectLayerShapes(arcData, lyr.shapes);
-    }
+    // TODO: test with polyline shapes
+    MapShaper.protectLayerShapes(arcData, lyr.shapes);
   });
   T.stop("Protect shapes");
 };
@@ -16,20 +15,26 @@ MapShaper.protectLayerShapes = function(arcData, shapes) {
   });
 };
 
+// Protect a single shape from complete removal by simplification
+// @arcData an ArcDataset
+// @shape an array containing one or more arrays of arc ids, or null if null shape
+//
 MapShaper.protectShape = function(arcData, shape) {
   var maxArea = 0,
+      arcCount = shape ? shape.length : 0,
       maxRing, area;
   // Find ring with largest bounding box
-  for (var i=0, n=shape.length; i<n; i++) {
+  for (var i=0; i<arcCount; i++) {
     area = arcData.getSimpleShapeBounds(shape[i]).area();
     if (area > maxArea) {
       maxRing = shape[i];
       maxArea = area;
     }
   }
+
   if (!maxRing || maxRing.length === 0) {
-    // error condition
-    trace("[protectShape()] Invalid shape; ids:", shape);
+    // invald shape
+    trace("[protectShape()] Invalid shape:", shape);
   } else if (maxRing.length == 1) {
     MapShaper.protectIslandRing(arcData, maxRing);
   } else {

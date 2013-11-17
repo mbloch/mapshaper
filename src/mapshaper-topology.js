@@ -6,7 +6,7 @@
 // {
 //    xx: [Array|Float64Array],   // x-coords of each point in the dataset
 //    yy: [Array|Float64Array],   // y-coords "  "  "  "
-//    pathData: [Array] // array of path data records, e.g.: {size: 20, shapeId: 3, isHole: false, isPrimary: true}
+//    nn: [Array] // array of path lengths
 // }
 // Note: x- and y-coords of all paths are concatenated into two long arrays, for easy indexing
 // Note: Input coords can use typed arrays (better performance) or regular arrays (for testing)
@@ -15,7 +15,7 @@
 // {
 //    arcs: [Array],   // Arcs are represented as two-element arrays
 //                     //   arc[0] and arc[1] are x- and y-coords in an Array or Float64Array
-//    shapes: [Array]  // Shapes are arrays of one or more path; paths are arrays of one or more arc id.
+//    paths: [Array]   // paths are arrays of one or more arc id.
 // }                   //   Arc ids use the same numbering scheme as TopoJSON (see note).
 // Note: Arc ids in the shapes array are indices of objects in the arcs array.
 //       Negative ids signify that the arc coordinates are in reverse sequence.
@@ -24,15 +24,14 @@
 // Note: Arcs use typed arrays or regular arrays for coords, depending on the input array type.
 //
 MapShaper.buildTopology = function(obj) {
-  if (!(obj.xx && obj.yy && obj.pathData)) error("#buildTopology() Missing required param/s");
+  if (!(obj.xx && obj.yy && obj.nn)) error("#buildTopology() Missing required param/s");
 
   T.start();
-  var topoData = buildPathTopology(obj.xx, obj.yy, obj.pathData);
-  var shapes = groupPathsByShape(topoData.paths, obj.pathData, obj.info.input_shape_count);
+  var topoData = buildPathTopology(obj.xx, obj.yy, obj.nn);
   T.stop("Process topology");
   return {
     arcs: topoData.arcs,
-    shapes: shapes
+    paths: topoData.paths
   };
 };
 
@@ -92,33 +91,32 @@ function ArcIndex(pointCount, xyToUint) {
   };
 }
 
+// Get function to Hash an x, y point to a non-negative integer
+function getXYHash() {
+  var buf = new ArrayBuffer(16),
+      floats = new Float64Array(buf),
+      uints = new Uint32Array(buf);
+
+  return function(x, y) {
+    var u = uints, h;
+    floats[0] = x;
+    floats[1] = y;
+    h = u[0] ^ u[1];
+    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+    return h & 0x7fffffff;
+  };
+}
 
 // Transform spaghetti paths into topological paths
 //
-function buildPathTopology(xx, yy, pathData) {
-
-  // Hash an x, y point to a non-negative integer
-  var hashXY = (function() {
-    var buf = new ArrayBuffer(16),
-        floats = new Float64Array(buf),
-        uints = new Uint32Array(buf);
-
-    return function(x, y) {
-      var u = uints, h;
-      floats[0] = x;
-      floats[1] = y;
-      h = u[0] ^ u[1];
-      h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-      return h & 0x7fffffff;
-    };
-  }());
+function buildPathTopology(xx, yy, nn) {
 
   var pointCount = xx.length,
-      index = new ArcIndex(pointCount, hashXY),
+      index = new ArcIndex(pointCount, getXYHash()),
       typedArrays = !!(xx.subarray && yy.subarray),
       slice, array;
 
-  var pathIds = initPathIds(pointCount, pathData);
+  var pathIds = initPathIds(pointCount, nn);
 
   if (typedArrays) {
     array = Float64Array;
@@ -129,14 +127,13 @@ function buildPathTopology(xx, yy, pathData) {
   }
 
   T.start();
-  var chainIds = initPointChains(xx, yy, hashXY, !"verbose");
+  var chainIds = initPointChains(xx, yy, !"verbose");
   T.stop("Find matching vertices");
 
   T.start();
   var pointId = 0;
-  var paths = Utils.map(pathData, function(pathObj) {
-    var pathLen = pathObj.size,
-        arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
+  var paths = Utils.map(nn, function(pathLen) {
+    var arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
     pointId += pathLen;
     return arcs;
   });
@@ -154,7 +151,7 @@ function buildPathTopology(xx, yy, pathData) {
     if (pathIds[id+1] === partId) {
       return id + 1;
     }
-    var len = pathData[partId].size;
+    var len = nn[partId];
     return sameXY(id, id - len + 1) ? id - len + 2 : -1;
   }
 
@@ -163,7 +160,7 @@ function buildPathTopology(xx, yy, pathData) {
     if (pathIds[id - 1] === partId) {
       return id - 1;
     }
-    var len = pathData[partId].size;
+    var len = nn[partId];
     return sameXY(id, id + len - 1) ? id + len - 2 : -1;
   }
 
@@ -256,7 +253,6 @@ function buildPathTopology(xx, yy, pathData) {
     return false;
   }
 
-
   function mergeArcParts(src, startId, endId, startId2, endId2) {
     var len = endId - startId + endId2 - startId2 + 2,
         dest = new array(len),
@@ -323,18 +319,17 @@ function buildPathTopology(xx, yy, pathData) {
       if (arcId >= 0) return arcId;
     }
 
-    error("Unmatched ring:", pathData[pathId]);
+    error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
   }
 }
 
-
 // Create a lookup table for path ids; path ids are indexed by point id
 //
-function initPathIds(size, pathData) {
+function initPathIds(size, pathSizes) {
   var pathIds = new Int32Array(size),
       j = 0;
-  for (var pathId=0, pathCount=pathData.length; pathId < pathCount; pathId++) {
-    for (var i=0, n=pathData[pathId].size; i<n; i++, j++) {
+  for (var pathId=0, pathCount=pathSizes.length; pathId < pathCount; pathId++) {
+    for (var i=0, n=pathSizes[pathId]; i<n; i++, j++) {
       pathIds[j] = pathId;
     }
   }
@@ -347,8 +342,9 @@ function initPathIds(size, pathData) {
 // Array values are ids of next point in each chain.
 // Unique (x, y) points link to themselves (i.e. arr[n] == n)
 //
-function initPointChains(xx, yy, hash, verbose) {
+function initPointChains(xx, yy, verbose) {
   var pointCount = xx.length,
+      hash = getXYHash(),
       hashTableSize = Math.floor(pointCount * 1.4);
 
   // A hash table larger than ~1.3 * point count doesn't seem to improve performance much.
@@ -394,25 +390,10 @@ function initPointChains(xx, yy, hash, verbose) {
 }
 
 
-// Use shapeId property of @pathData objects to group paths by shape
-//
-function groupPathsByShape(paths, pathData, shapeCount) {
-  var shapes = new Array(shapeCount); // Array can be sparse, but should have this length
-  Utils.forEach(paths, function(path, pathId) {
-    var shapeId = pathData[pathId].shapeId;
-    if (shapeId in shapes === false) {
-      shapes[shapeId] = [path]; // first part in a new shape
-    } else {
-      shapes[shapeId].push(path);
-    }
-  });
-  return shapes;
-}
-
 // Export functions for testing
 MapShaper.topology = {
   buildPathTopology: buildPathTopology,
-  ArcIndex: ArcIndex,
-  groupPathsByShape: groupPathsByShape,
-  initPathIds: initPathIds
+  ArcIndex: ArcIndex
+  // groupPathsByShape: groupPathsByShape,
+  // initPathIds: initPathIds
 };

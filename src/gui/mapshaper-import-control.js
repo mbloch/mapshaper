@@ -82,8 +82,10 @@ function ImportControl(editor) {
     }
     if (type == 'shp' || type == 'json') {
       var opts = {
+        debug_snapping: false,
         input_file: fname,
-        precision: precisionInput.value()
+        precision: precisionInput.value(),
+        snapping: !!El("#g-snap-points-opt").node().checked
       };
       T.start("Start timing");
       data = MapShaper.importContent(content, type, opts);

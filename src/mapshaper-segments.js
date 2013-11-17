@@ -117,7 +117,7 @@ MapShaper.findSegmentIntersections = (function() {
   function calcStripeCount(arcs) {
     var bounds = arcs.getBounds(),
         yrange = bounds.ymax - bounds.ymin,
-        avg = arcs.getAverageSegment(arcs.getPointCount() / 4); // don't bother sampling all segments
+        avg = arcs.getAverageSegment(3); // don't bother sampling all segments
     return Math.ceil(yrange / avg[1] / 20);
   }
 

@@ -28,7 +28,7 @@ MapShaper.importShp = function(src, opts) {
 
   var counts = reader.getCounts();
   var importer = new PathImporter(counts.pointCount, opts);
-  var expectRings = Utils.contains([5,15,25], reader.type());
+  //var expectRings = Utils.contains([5,15,25], reader.type());
 
   // TODO: test cases: null shape; non-null shape with no valid parts
 
@@ -42,22 +42,22 @@ MapShaper.importShp = function(src, opts) {
 
     for (var j=0, n=shp.partCount; j<n; j++) {
       pointsInPart = partSizes[j];
-      importer.importCoordsFromFlatArray(coords, offs, pointsInPart, expectRings);
+      importer.importCoordsFromFlatArray(coords, offs, pointsInPart);
       offs += pointsInPart * 2;
     }
   });
-  var importData = importer.done();
   T.stop("Import Shapefile");
-  var topoData = MapShaper.buildTopology(importData);
-  var layer = {
-      name: '',
-      shapes: topoData.shapes,
-      geometry_type: importData.info.input_geometry_type
-    };
+  var importData = importer.done(),
+      lyr = {
+        info: importData.info,
+        name: '',
+        shapes: importData.shapes,
+        geometry_type: importData.info.input_geometry_type
+      };
 
   return {
-    arcs: topoData.arcs,
-    layers: [layer]
+    arcs: importData.arcs,
+    layers: [lyr]
   };
 };
 

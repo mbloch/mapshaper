@@ -17,9 +17,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, d, a] [a, d, b, a]
       var yy = [1, 3, 3, 1, 1,  1, 1, 3, 1],
           xx = [1, 2, 4, 3, 1,  1, 3, 2, 1],
-          pathData = [{isHole: false, size: 5}, {isHole: true, size: 4}];
+          nn = [5, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0, 1], [2, -2]]);
       assert.deepEqual(out.arcs.toArray(),
         [[[2, 3], [4, 3], [3, 1]],
@@ -39,9 +39,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, a] [c, d, e, c]
       var yy = [1, 3, 1, 1,  1, 3, 1, 1],
           xx = [1, 2, 3, 1,  3, 4, 5, 3],
-          pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}];
+          nn = [4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0],[1]]);
       assert.deepEqual(out.arcs.toArray(),
         [[[3, 1], [1, 1], [2, 3], [3, 1]],
@@ -52,9 +52,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, a] [e, c, d, e]
       var yy = [1, 3, 1, 1,  3, 1, 1, 3],
           xx = [1, 2, 3, 1,  4, 5, 3, 4],
-          pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}];
+          nn = [4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0],[1]]);
       assert.deepEqual(out.arcs.toArray(),
         [[[3, 1], [1, 1], [2, 3], [3, 1]],
@@ -74,9 +74,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, a] [a, c, b, a]
       var yy = [1, 3, 1, 1,  1, 1, 3, 1],
           xx = [1, 2, 3, 1,  1, 3, 2, 1],
-          pathData = [{isHole: false, size: 4}, {isHole: true, size: 4}];
+          nn = [4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0],[~0]]);
       assert.deepEqual(out.arcs.toArray(),
         [[[1, 1], [2, 3], [3, 1], [1, 1]]]);
@@ -86,9 +86,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, a] [c, b, a, c]
       var yy = [1, 3, 1, 1,  1, 3, 1, 1],
           xx = [1, 2, 3, 1,  3, 2, 1, 3],
-          pathData = [{isHole: false, size: 4}, {isHole: true, size: 4}];
+          nn = [4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0],[~0]]);
       assert.deepEqual(out.arcs.toArray(),
         [[[1, 1], [2, 3], [3, 1], [1, 1]]]);
@@ -98,9 +98,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, a] [a, b, c, a]
       var yy = [1, 3, 1, 1,  1, 3, 1, 1],
           xx = [1, 2, 3, 1,  1, 2, 3, 1],
-          pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}];
+          nn = [4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0], [0]]);
     })
 
@@ -108,9 +108,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, a] [c, a, b, c]
       var yy = [1, 3, 1, 1,  1, 1, 3, 1],
           xx = [1, 2, 3, 1,  3, 1, 2, 3],
-          pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}];
+          nn = [4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0], [0]]);
     })
 
@@ -118,9 +118,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, a] [a, b, c, a] [a, b, c, a]
       var yy = [1, 3, 1, 1,  1, 3, 1, 1,  1, 3, 1, 1],
           xx = [1, 2, 3, 1,  1, 2, 3, 1,  1, 2, 3, 1],
-          pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}, {isHole: false, size: 4}];
+          nn = [4, 4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0], [0], [0]]);
     })
 
@@ -128,9 +128,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, a] [c, a, b, c] [b, c, a, b]
       var yy = [1, 3, 1, 1,  1, 1, 3, 1,  3, 1, 1, 3],
           xx = [1, 2, 3, 1,  3, 1, 2, 3,  2, 3, 1, 2],
-          pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}, {isHole: false, size: 4}];
+          nn = [4, 4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0], [0], [0]]);
     })
 
@@ -138,9 +138,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, a] [c, a, b, c] [b, a, c, b]
       var yy = [1, 3, 1, 1,  1, 1, 3, 1,  3, 1, 1, 3],
           xx = [1, 2, 3, 1,  3, 1, 2, 3,  2, 1, 3, 2],
-          pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}, {isHole: true, size: 4}];
+          nn = [4, 4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0], [0], [~0]]);
     })
 
@@ -158,9 +158,9 @@ describe("mapshaper-topology.js", function() {
           //   [c, a, b, c] [c, b, d, c]
       var yy = [1, 1, 3, 1,  1, 3, 3, 1],
           xx = [3, 1, 2, 3,  3, 2, 4, 3],
-          pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}]
+          nn = [4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.arcs.toArray(),
         // [c, a, b] [b, c] [b, d, c]
         [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]]);
@@ -173,9 +173,9 @@ describe("mapshaper-topology.js", function() {
           //   [c, a, b, c] [b, d, c, b]
       var yy = [1, 1, 3, 1,  3, 3, 1, 3],
           xx = [3, 1, 2, 3,  2, 4, 3, 2],
-          pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}]
+          nn = [4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.arcs.toArray(),
         // [c, a, b] [b, c] [b, d, c]
         [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]]);
@@ -187,9 +187,9 @@ describe("mapshaper-topology.js", function() {
           //   [c, a, b, c] [d, c, b, c]
       var yy = [1, 1, 3, 1,  3, 1, 3, 3],
           xx = [3, 1, 2, 3,  4, 3, 2, 4],
-          pathData = [{isHole: false, size: 4}, {isHole: false, size: 4}]
+          nn = [4, 4];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.arcs.toArray(),
         // [c, a, b] [b, c] [b, d, c]
         [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]]);
@@ -212,9 +212,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c, d, a] [c, b, e, d, c]
       var yy = [1, 3, 2, 1, 1,  2, 3, 3, 1, 2],
           xx = [1, 2, 2, 2, 1,  2, 2, 3, 2, 2],
-          pathData = [{isHole: false, size: 5}, {isHole: false, size: 5}]
+          nn = [5, 5];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.paths, [[0, 1], [2, ~0]])
       assert.deepEqual(out.arcs.toArray(),
         [[[2, 3], [2, 2], [2, 1]], [[2, 1], [1, 1], [2, 3]], [[2, 3], [3, 3], [2, 1]]]);
@@ -230,9 +230,9 @@ describe("mapshaper-topology.js", function() {
     it('single-segment lines, same direction', function () {
       var yy = [1, 1,  1, 1],
           xx = [1, 2,  1, 2],
-          pathData = [{size: 2}, {size: 2}];
+          nn = [2, 2];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.arcs.toArray(), [[[1, 1], [2, 1]]]);
       assert.deepEqual(out.paths, [[0], [0]]);
     })
@@ -240,9 +240,9 @@ describe("mapshaper-topology.js", function() {
     it('single-segment lines, opposite direction', function () {
       var yy = [1, 1,  1, 1],
           xx = [1, 2,  2, 1],
-          pathData = [{size: 2}, {size: 2}];
+          nn = [2, 2];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.arcs.toArray(), [[[1, 1], [2, 1]]]);
       assert.deepEqual(out.paths, [[0], [~0]]);
     })
@@ -259,9 +259,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b] [c, b]
       var yy = [1, 1,  2, 1],
           xx = [1, 2,  2, 2],
-          pathData = [{size: 2}, {size: 2}];
+          nn = [2, 2];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.arcs.toArray(),
         [[[1, 1], [2, 1]], [[2, 2], [2, 1]]]);
       assert.deepEqual(out.paths, [[0], [1]]);
@@ -276,9 +276,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c] [d, b]
       var yy = [1, 1, 1,  2, 1],
           xx = [1, 2, 3,  2, 2],
-          pathData = [{size: 3}, {size: 2}];
+          nn = [3, 2];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.arcs.toArray(),
         [[[1, 1], [2, 1]], [[2, 1], [3, 1]], [[2, 2], [2, 1]]]);
       assert.deepEqual(out.paths, [[0, 1], [2]]);
@@ -294,9 +294,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c] [a, b, d]
       var yy = [1, 1, 1,  1, 1, 2],
           xx = [1, 2, 3,  1, 2, 2],
-          pathData = [{size: 3}, {size: 3}];
+          nn = [3, 3];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.arcs.toArray(),
         [[[1, 1], [2, 1]], [[2, 1], [3, 1]], [[2, 1], [2, 2]]]);
       assert.deepEqual(out.paths, [[0, 1], [0, 2]]);
@@ -306,9 +306,9 @@ describe("mapshaper-topology.js", function() {
           //   [a, b, c] [d, b, a]
       var yy = [1, 1, 1,  2, 1, 1],
           xx = [1, 2, 3,  2, 2, 1],
-          pathData = [{size: 3}, {size: 3}];
+          nn = [3, 3];
 
-      var out = buildPathTopology(xx, yy, pathData);
+      var out = buildPathTopology(xx, yy, nn);
       assert.deepEqual(out.arcs.toArray(),
         [[[1, 1], [2, 1]], [[2, 1], [3, 1]], [[2, 2], [2, 1]]]);
       assert.deepEqual(out.paths, [[0, 1], [2, ~0]]);

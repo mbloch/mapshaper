@@ -40,23 +40,30 @@
 	  inset 1px 1px 1px rgba(0,0,0,0.5);
 }
 
+div .g-experimental {
+	color: #F24400;
+}
+
 div.g-tip {
 	color: #555;
+	font-weight: normal;
 	text-align: left;
 	position: relative;
 	display: inline-block;
 	font-size: 13px;
 	line-height: 1.45;
 	background: #fff;
-	border: 1px solid #ccc;
+	border: 1px solid #bbb;
 	border-radius: 6px;
 	padding: 5px 6px 6px 6px;
 	bottom: 0px;
 	left: -50%;
+	margin-right: 9px;
 	white-space: pre;
-	box-shadow: 0 1px 9px rgba(0, 0, 0, 0.3);
+	box-shadow: 0 0px 9px rgba(0, 0, 0, 0.2);
 }
 
+/* tail */
 .g-tip:after, .g-tip:before {
 	top: 100%;
 	border: solid transparent;
@@ -67,43 +74,41 @@ div.g-tip {
 	pointer-events: none;
 }
 
+/* tail fg */
 .g-tip:after {
 	border-color: rgba(136, 183, 213, 0);
-	border-top-color: #eee;
-	border-width: 6px;
+	border-top-color: #fff;
+	border-width: 8px;
 	left: 50%;
-	margin-left: -6px;
+	margin-left: -8px;
 }
 
+/* tail bg */
 .g-tip:before {
 	border-color: rgba(194, 225, 245, 0);
-	border-top-color: #ccc;
-	border-width: 7px;
+	border-top-color: #999;
+	border-width: 9px;
 	left: 50%;
-	margin-left: -7px;
+	margin-left: -9px;
 }
 
+
 .g-tip-button {
+	float: right;
+	margin-top: 2px;
 	display:inline-block;
 	position: relative;
 	z-index: 500;
 	cursor: pointer;
 	text-align: center;
-	bottom: 0px;
-	color: #fff;
 	font-size: 13px;
 	line-height: 1;
-	height: 14px;
-	padding: 1px 1px 0px 1px;
-	line-height: 1;
-	width: 13px;
 	font-weight: normal;
-	border-radius: 14px;
-	background: #4D839E;
+	color: #799FCB;
 }
 
 .g-tip-button .g-tip-anchor {
-	bottom: 21px;
+	bottom: 24px;
 	left: 8px;
 }
 
@@ -115,8 +120,8 @@ div.g-tip {
 }
 
 .g-tip-button:hover {
-	background-color: #ddd;
-	color: #005;
+	font-weight: bold;
+	color: #033D6D;
 }
 
 .g-tip-button:hover * {
@@ -131,7 +136,6 @@ div.g-tip {
 	outline: none;
 	padding: 0;
 	margin: 0;
-	/* text-decoration: underline; */
 	text-decoration:none;
 	text-indent: 0px;
 }
