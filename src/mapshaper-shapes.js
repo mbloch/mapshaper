@@ -210,7 +210,7 @@ function ArcDataset() {
   };
 
   this.getAverageSegment = function(nth) {
-    return MapShaper.getAverageSegment(this.getSegmentIter(nth));
+    return MapShaper.getAverageSegment(this.getSegmentIter(), nth);
   };
 
   /*
@@ -249,12 +249,12 @@ function ArcDataset() {
     initBounds();
   };
 
-  this.getSegmentIter = function(nth) {
+  this.getSegmentIter = function() {
     return MapShaper.getSegmentIter(_xx, _yy, _nn, _zz, _zlimit);
   };
 
   this.forEachSegment = function(cb, nth) {
-    this.getSegmentIter(nth)(cb);
+    this.getSegmentIter()(cb, nth);
   };
 
   // Return an ArcIter object for each path in the dataset
@@ -709,7 +709,7 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
 // Return average magnitudes of dx, dy
 // @iter Function returned by getSegmentIter()
 //
-MapShaper.getAverageSegment = function(iter) {
+MapShaper.getAverageSegment = function(iter, nth) {
   var count = 0,
       dx = 0,
       dy = 0;
@@ -717,7 +717,7 @@ MapShaper.getAverageSegment = function(iter) {
     dx += Math.abs(xx[i1] - xx[i2]);
     dy += Math.abs(yy[i1] - yy[i2]);
     count++;
-  });
+  }, nth);
   return [dx / count, dy / count];
 };
 
