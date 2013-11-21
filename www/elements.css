@@ -173,7 +173,6 @@ div.g-tip {
 	cursor: default;
 }
 
-
 .g-text-btn {
 	color: #1477C1;
 	cursor: pointer;
@@ -182,4 +181,10 @@ div.g-tip {
 .g-text-btn.disabled {
 	cursor: auto;
 	color: #999;
+}
+
+.g-zoom-box {
+	position: absolute;
+	border: 2px solid #c33;
+	z-index: 500;
 }
