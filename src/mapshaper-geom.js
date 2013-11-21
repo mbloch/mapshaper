@@ -183,13 +183,11 @@ function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return area;
 }
 
-// Given a triangle with vertices abc, return the distSq of the shortest segment
-//   with one endpoint at b and the other on the line intersecting a and c.
-//   If a and c are coincident, return the distSq between b and a/c
+// Given point B and segment AC, return the distSq from B to the nearest
+// point on AC
+// Receive the distSq of segments AB, BC, AC
 //
-// Receive the distSq of the triangle's three sides.
-//
-function triangleHeightSq(ab2, bc2, ac2) {
+function pointSegDistSq(ab2, bc2, ac2) {
   var dist2;
   if (ac2 === 0) {
     dist2 = ab2;
