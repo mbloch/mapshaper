@@ -15,7 +15,7 @@ function MshpMouse(ext) {
   });
 
   mouse.on('dblclick', function(e) {
-    zoomTo(ext.scale() * 3, e.x / ext.width(), e.y / ext.height());
+    zoomByPct(3, e.x / ext.width(), e.y / ext.height());
   });
 
   mouse.on('dragstart', function(e) {
@@ -77,15 +77,15 @@ function MshpMouse(ext) {
     if (w < minSide || h < minSide) return;
     var fx = box.centerX() / ext.width() * (1 + pct) - pct / 2,
         fy = box.centerY() / ext.height() * (1 + pct) - pct / 2;
-    zoomTo(1 / pct, fx, fy);
+    zoomByPct(1 / pct, fx, fy);
   }
 
-  // @dk Change in scale (2 = 2x zoom)
+  // @pct Change in scale (2 = 2x zoom)
   // @fx, @fy zoom focus, [0, 1]
   //
-  function zoomTo(dk, fx, fy) {
+  function zoomByPct(pct, fx, fy) {
     _fx = fx;
     _fy = fy;
-    zoomTween.start(ext.scale(), ext.scale() * dk);
+    zoomTween.start(ext.scale(), ext.scale() * pct);
   }
 }
