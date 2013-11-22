@@ -67,7 +67,7 @@ describe('mapshaper-cli.js', function() {
 
     var good1 = "-p 0.2",
         good2 = "-i 2000 --dp --keep-shapes",
-        good3 = "--keep-shapes --vis -p .9",
+        good3 = "--keep-shapes --visvalingam -p .9",
         good4 = "--quantization 1000",
         good5 = "--quantization 0",
         good6 = "--no-quantization",

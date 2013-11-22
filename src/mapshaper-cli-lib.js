@@ -12,12 +12,14 @@ mapshaper-keep-shapes
 
 var cli = MapShaper.cli = {};
 
-var usage = "" +
+var usage =
   "Usage: $ mapshaper [options] file\n\n" +
-  "Example: Use Douglas-Peucker to remove all but 10% of points in a Shapefile.\n" +
-  "$ mapshaper --dp -p 0.1 counties.shp\n\n" +
-  "Example: Use Visvalingam to simplify a Shapefile to 1km resolution.\n" +
-  "$ mapshaper --vis -i 1000 states.shp";
+
+  "Example: clean a file with minor topology errors and simplify to 100m\n" +
+  "$ mapshaper -i 100 --auto-snap states.shp\n\n" +
+
+  "Example: use Douglas-Peucker to remove all but 10% of points in a Shapefile\n" +
+  "$ mapshaper --dp -p 0.1 counties.shp";
 
 MapShaper.getOptionParser = function() {
   return require('optimist')
@@ -34,33 +36,39 @@ MapShaper.getOptionParser = function() {
 
     .options("p", {
       alias: "pct",
-      describe: "proportion of points to retain (0-1)"
+      describe: "proportion of removable points to retain (0-1)"
     })
 
     .options("i", {
       alias: "interval",
-      describe: "amount of simplification in meters (or other projected units)"
+      describe: "simplification resolution in linear units"
     })
+
+/*
+    .options("cartesian", {
+      describe: "simplify decimal degree coords in 2D space (default is 3D)"
+    })
+*/
 
     .options("dp", {
       alias: "rdp",
-      describe: "use Douglas-Peucker, a.k.a. Ramer–Douglas–Peucker",
+      describe: "use Douglas-Peucker simplification",
       'boolean': true
     })
 
     .options("visvalingam", {
-      alias: "vis",
-      describe: "use Visvalingam's method for simplification",
+      // alias: "vis", // makes help message too wide
+      describe: "use Visvalingam simplification",
       'boolean': true
     })
 
     .options("modified", {
-      describe: "use a variation of Visvalingam designed for smoothing (default)",
+      describe: "a version of Visvalingam designed for mapping (default)",
       'boolean': true
     })
 
     .options("modified-v1", {
-      describe: "use the original modified Visvalingam method (deprecated)",
+      describe: "the original modified Visvalingam method (deprecated)",
       'boolean': true
     })
 
@@ -75,20 +83,20 @@ MapShaper.getOptionParser = function() {
     })
 
     .options("auto-snap", {
-      describe: "snap together nearly identical points to fix topology errors",
+      describe: "snap nearly identical points to fix minor topology errors",
       'boolean': true
     })
 
     .options("precision", {
-      describe: "increment for rounding coordinates, in source units"
+      describe: "coordinate precision in source units (applied on import)"
     })
 
     .options("quantization", {
-      describe: "override topojson resolution calculated by mapshaper"
+      describe: "specify TopoJSON quantization (auto-set by default)"
     })
 
     .options("no-quantization", {
-      describe: "export topojson without quantization",
+      describe: "export TopoJSON without quantization",
       'boolean': true
     })
 
@@ -155,9 +163,11 @@ MapShaper.checkArgs = function(argv) {
 // Return an array of all recognized cli arguments: ["f", "format", ...]
 //
 function getSupportedArgs(optimist) {
-  return optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
+  var args = optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
     return arg.replace(/^-/, '');
   });
+  args = args.concat(cli.getHiddenArgs());
+  return args;
 }
 
 function getVersion() {
@@ -198,10 +208,12 @@ MapShaper.validateArgs = function(argv, supported) {
     }
   });
 
-  var opts = cli.validateInputOpts(argv);
+  var opts = {};
+  Utils.extend(opts, cli.validateInputOpts(argv));
   Utils.extend(opts, cli.validateOutputOpts(argv, opts));
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
+  Utils.extend(opts, cli.validateHiddenOpts(argv));
   opts.verbose = !!argv.verbose;
   return opts;
 };
@@ -324,6 +336,22 @@ cli.validateOutputOpts = function(argv, inputOpts) {
     output_file_base: obase,
     output_format: ofmt || null // inferred later if not found above
   };
+};
+
+// Hidden args aren't listed by --help
+cli.getHiddenArgs = function() {
+  return ['split-cols', 'split-rows'];
+};
+
+cli.validateHiddenOpts = function(argv) {
+  var opts = {};
+  var r = parseInt(argv['split-rows'], 10) || 1,
+      c = parseInt(argv['split-cols'], 10) || 1;
+  if (r > 1 || c > 1) {
+    opts.split_rows = r;
+    opts.split_cols = c;
+  }
+  return opts;
 };
 
 cli.validateTopologyOpts = function(argv) {
