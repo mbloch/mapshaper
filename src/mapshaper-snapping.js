@@ -4,21 +4,24 @@ mapshaper-geom,
 mapshaper-shapes
 */
 
+// Snap together points within a small threshold
+// @xx, @yy arrays of x, y coords
+// @nn array of path lengths
+// @points (optional) array, snapped coords are added so they can be displayed
+//
 MapShaper.autoSnapCoords = function(xx, yy, nn, points) {
-  var avgSeg = MapShaper.getAverageSegment(MapShaper.getSegmentIter(xx, yy, nn), 2),
+  var avgSeg = MapShaper.getAverageSegment(MapShaper.getSegmentIter(xx, yy, nn), 3),
       avgDist = (avgSeg[0] + avgSeg[1]), // avg. dx + dy -- crude approximation
-      snapDist = avgDist * 0.005,
-      snapCount = 0,
-      tmp;
+      snapDist = avgDist * 0.0025,
+      snapCount = 0;
 
   // Get sorted coordinate ids
-  // Consider: speed up sorting -- consider bucket sort as first pass.
+  // Consider: speed up sorting -- try bucket sort as first pass.
   //
   var ids = MapShaper.sortCoordinateIds(xx);
 
   for (var i=0, n=ids.length; i<n; i++) {
-    tmp = snapPoint(i, ids, snapDist);
-    snapCount += tmp;
+    snapCount += snapPoint(i, ids, snapDist);
   }
 
   trace(">> snapped points:", snapCount);
