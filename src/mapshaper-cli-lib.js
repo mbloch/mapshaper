@@ -63,12 +63,12 @@ MapShaper.getOptionParser = function() {
     })
 
     .options("modified", {
-      describe: "a version of Visvalingam designed for mapping (default)",
+      describe: "use a version of Visvalingam designed for mapping (default)",
       'boolean': true
     })
 
     .options("modified-v1", {
-      describe: "the original modified Visvalingam method (deprecated)",
+      describe: "use the original modified Visvalingam method (deprecated)",
       'boolean': true
     })
 
@@ -77,13 +77,13 @@ MapShaper.getOptionParser = function() {
       'boolean': true
     })
 
-    .options("repair", {
-      describe: "remove intersections introduced by simplification",
+    .options("auto-snap", {
+      describe: "snap nearly identical points to fix minor topology errors",
       'boolean': true
     })
 
-    .options("auto-snap", {
-      describe: "snap nearly identical points to fix minor topology errors",
+    .options("no-repair", {
+      describe: "don't remove intersections introduced by simplification",
       'boolean': true
     })
 
@@ -190,7 +190,8 @@ MapShaper.checkArgSupport = function(argv, flags) {
     }, {'_': true, '$0': true});
 
   Utils.forEach(argv, function(val, arg) {
-    if (arg in supportedOpts === false) {
+    // If --no-somearg is defined, also accept --somearg (optimist workaround)
+    if (arg in supportedOpts === false && ("no-" + arg in supportedOpts) === false) {
       throw "Unsupported option: " + arg;
     }
   });
@@ -362,7 +363,7 @@ cli.validateTopologyOpts = function(argv) {
     }
     opts.precision = argv.precision;
   }
-  opts.repair = !!argv.repair;
+  opts.repair = argv.repair !== false;
   opts.snapping = !!argv['auto-snap'];
   return opts;
 };

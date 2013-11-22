@@ -382,6 +382,48 @@ describe('mapshaper-cli.js', function() {
     it(bad4 + " (missing directory)", function() {
       assert.throws(function() {validate(bad4)});
     })
+  })
+
+  describe('validateTopologyOpts()', function() {
+
+    function validate(str) {
+      var argv = parseOpts(str);
+      var opts = mapshaper.cli.validateTopologyOpts(argv);
+      return opts;
+    }
+
+    var good1 = "";
+    it(good1, function() {
+      assert.deepEqual(validate(good1), {
+        snapping: false,
+        repair: true
+      });
+    })
+
+    var good2 = "--no-repair --auto-snap";
+    it(good2, function() {
+      assert.deepEqual(validate(good2), {
+        snapping: true,
+        repair: false
+      });
+    })
+
+    var good3 = "--precision 0.001";
+    it(good3, function() {
+      assert.deepEqual(validate(good3), {
+        snapping: false,
+        repair: true,
+        precision: 0.001
+      });
+    })
+
+    var good4 = "--repair";
+    it(good4, function() {
+      assert.deepEqual(validate(good4), {
+        snapping: false,
+        repair: true
+      });
+    })
 
   })
 
