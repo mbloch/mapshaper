@@ -20,7 +20,7 @@ opts.input_format = opts.input_format || importData.info.input_format || error("
 opts.output_format = opts.output_format || opts.input_format;
 
 if (opts.use_simplification) {
-  mapshaper.simplifyPaths(arcData, opts.simplify_method);
+  mapshaper.simplifyPaths(arcData, opts.simplify_method, opts.force2D);
 
   if (opts.keep_shapes) {
     mapshaper.protectShapes(arcData, importData.layers);

@@ -67,12 +67,12 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
   }
 };
 
-MapShaper.simplifyPaths = function(paths, method) {
+MapShaper.simplifyPaths = function(paths, method, force2D) {
   T.start();
   var bounds = paths.getBounds().toArray();
   var decimalDegrees = probablyDecimalDegreeBounds(bounds);
   var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method);
-  if (decimalDegrees) {
+  if (decimalDegrees && !force2D) {
     MapShaper.simplifyPaths3D(paths, simplifyPath);
     MapShaper.protectWorldEdges(paths);
   } else {

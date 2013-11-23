@@ -44,11 +44,9 @@ MapShaper.getOptionParser = function() {
       describe: "simplification resolution in linear units"
     })
 
-/*
     .options("cartesian", {
       describe: "simplify decimal degree coords in 2D space (default is 3D)"
     })
-*/
 
     .options("dp", {
       alias: "rdp",
@@ -378,6 +376,10 @@ cli.validateSimplifyOpts = function(argv) {
     if (!Utils.isNumber(argv.p) || argv.p <= 0 || argv.p >= 1)
       error("-p (--pct) option should be in the range (0,1)");
     opts.simplify_pct = argv.p;
+  }
+
+  if (argv.cartesian) {
+    opts.force2D = true;
   }
 
   if (argv.quantization) {

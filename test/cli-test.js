@@ -72,7 +72,8 @@ describe('mapshaper-cli.js', function() {
         good5 = "--quantization 0",
         good6 = "--no-quantization",
         good7 = "-i 10 --modified-v1",
-        good8 = "-p 0.01 --modified"
+        good8 = "-p 0.01 --modified",
+        good9 = "--cartesian -i 0.0001";
 
     // var ok1 = "-p 0.4 -i 5000";
 
@@ -155,6 +156,15 @@ describe('mapshaper-cli.js', function() {
       });
     })
 
+    it(good9, function() {
+      assert.deepEqual(validate(good9), {
+        force2D: true,
+        use_simplification: true,
+        simplify_interval: 0.0001,
+        keep_shapes: false,
+        simplify_method: "mod2"
+      });
+    })
 
     it(bad1 + " (invalid)", function() {
       assert.throws(function(){validate(bad1)});
