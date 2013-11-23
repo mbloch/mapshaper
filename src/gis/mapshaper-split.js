@@ -1,84 +1,72 @@
 /* @requires mapshaper-shapes */
 
-
-/*
-
-
-*/
+// Split the shapes in a layer according to a grid
+// Return array of layers and an index with the bounding box of each cell
+//
 MapShaper.splitOnGrid = function(lyr, arcs, rows, cols) {
-  // TODO: combine these
-  var shapeIndex = {};
-  var boundsIndex = {};
-  var propertyIndex = {};
-
-  var shapes = lyr.shapes;
-  var bounds = arcs.getBounds(),
+  var shapes = lyr.shapes,
+      bounds = arcs.getBounds(),
       xmin = bounds.xmin,
       ymin = bounds.ymin,
       w = bounds.width(),
-      h = bounds.height();
-  var shp, shpBounds, key;
-  var properties = lyr.data ? lyr.data.getRecords() : lyr.properties || null;
+      h = bounds.height(),
+      properties = lyr.data ? lyr.data.getRecords() : null,
+      groups = [];
 
-  function getShapeKey(shpBounds) {
-    var c = Math.floor((shpBounds.centerX() - xmin) / w * cols) + 1,
-        r = Math.floor((shpBounds.centerY() - ymin) / h * rows) + 1;
-    if (c < 1 || r < 1 || c > cols || r > rows) {
-      trace("   layer bounds:", bounds, "shp:", shpBounds);
-      trace("   centerX:", shpBounds.centerX(), "centerY:", shpBounds.centerY());
-      error("#spliceOnGrid() error; r, c:", r, c, "rows, cols:", rows, cols);
+  function groupId(shpBounds) {
+    var c = Math.floor((shpBounds.centerX() - xmin) / w * cols),
+        r = Math.floor((shpBounds.centerY() - ymin) / h * rows);
+    c = Utils.clamp(c, 0, cols-1);
+    r = Utils.clamp(r, 0, rows-1);
+    return r * cols + c;
+  }
+
+  function groupName(i) {
+    var c = i % cols + 1,
+        r = Math.floor(i / cols) + 1;
+    return "r" + r + "c" + c;
+  }
+
+  Utils.forEach(shapes, function(shp, i) {
+    var bounds = arcs.getMultiShapeBounds(shp),
+        idx = groupId(bounds),
+        group = groups[idx];
+    if (!group) {
+      group = groups[idx] = {
+        shapes: [],
+        properties: properties ? [] : null,
+        bounds: new Bounds(),
+        name: groupName(idx)
+      };
     }
-    return getKey(c, r);
-  }
-
-  function getKey(c, r) {
-    return "c" + c + "r" + r;
-  }
-
-  for (var i=0; i<shapes.length; i++) {
-    shp = shapes[i];
-    shpBounds = arcs.getMultiShapeBounds(shp);
-    key = getShapeKey(shpBounds);
-    if (key in shapeIndex) {
-      shapeIndex[key].push(shp);
-      boundsIndex[key].mergeBounds(shpBounds);
-      if (properties) propertyIndex[key].push(properties[i]);
-    } else {
-      shapeIndex[key] = [shp];
-      boundsIndex[key] = shpBounds;
-      if (properties) propertyIndex[key] = [properties[i]];
+    group.shapes.push(shp);
+    group.bounds.mergeBounds(bounds);
+    if (group.properties) {
+      group.properties.push(properties[i]);
     }
-  }
+  });
 
-  var json = [],
-      layers = [],
-      splitLyr,
-      indexItem;
-  // export layers
-
-  for (var r=1; r<=rows; r++) {
-    for (var c=1; c<=cols; c++) {
-      key = getKey(c, r);
-      splitLyr = Utils.extend({}, lyr);
-      //if (properties) splitLyr.properties = [];
-      splitLyr.shapes = shapeIndex[key] || [];
-      splitLyr.name = key;
-      layers.push(splitLyr);
-      if (key in boundsIndex) {
-        shpBounds = boundsIndex[key];
-        splitLyr.data = new DataTable(propertyIndex[key]);
-        json.push({
-          // properties: propertyIndex[key] || null,
-          name: key,
-          bounds: shpBounds.toArray()
-        });
-      }
+  var index = [],
+      layers = [];
+  Utils.forEach(groups, function(group, i) {
+    if (!group) return; // empty cell
+    var groupLyr = {
+      shapes: group.shapes,
+      name: group.name
+    };
+    Opts.copyNewParams(groupLyr, lyr);
+    if (group.properties) {
+      groupLyr.data = new DataTable(group.properties);
     }
-  }
+    layers.push(groupLyr);
+    index.push({
+      name: group.name,
+      bounds: group.bounds.toArray()
+    });
+  });
 
   return {
-    index: JSON.stringify(json),
+    index: index,
     layers: layers
   };
-
 };

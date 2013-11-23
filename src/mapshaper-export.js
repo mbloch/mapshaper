@@ -34,7 +34,7 @@ MapShaper.exportContent = function(layers, arcData, opts) {
     files.push({
       extension: 'json',
       name: "index",
-      content: tmp.index
+      content: JSON.stringify(tmp.index)
     });
   }
 
