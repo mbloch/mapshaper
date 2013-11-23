@@ -3,11 +3,11 @@ mapshaper-topology,
 mapshaper-simplify,
 mapshaper-shapes,
 mapshaper-export,
-mapshaper-import,
 mapshaper-repair,
 mapshaper-segments,
 mapshaper-snapping,
 mapshaper-keep-shapes
+mapshaper-file-import
 */
 
 var cli = MapShaper.cli = {};
@@ -415,19 +415,6 @@ MapShaper.gc = function() {
     global.gc();
     T.stop("gc()");
   }
-};
-
-MapShaper.importFromFile = function(fname, opts) {
-  var fileType = MapShaper.guessFileType(fname),
-      content;
-  if (fileType == 'shp') {
-    content = Node.readFile(fname);
-  } else if (fileType == 'json') {
-    content = Node.readFile(fname, 'utf-8');
-  } else {
-    error("Unexpected input file:", fname);
-  }
-  return MapShaper.importContent(content, fileType, opts);
 };
 
 var api = Utils.extend(MapShaper, {

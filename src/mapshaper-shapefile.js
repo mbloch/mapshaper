@@ -1,12 +1,5 @@
 /* @requires mapshaper-common, mapshaper-geom, shp-reader, dbf-reader, mapshaper-path-import */
 
-MapShaper.importDbf = function(src) {
-  T.start();
-  var data = new DbfReader(src).read("table");
-  T.stop("[importDbf()]");
-  return data;
-};
-
 // Read Shapefile data from an ArrayBuffer or Buffer
 // Build topology
 //

@@ -40,20 +40,10 @@ if (opts.repair) {
 
 var exports = mapshaper.exportContent(importData.layers, arcData, opts);
 
-// Copy prj and dbf file, if both importing and exporting as shapefile
+// Copy prj file, if both importing and exporting as shapefile
 if (opts.output_format == 'shapefile' && opts.input_format == 'shapefile') {
   var prjFile = mapshaper.cli.replaceFileExtension(opts.input_file, 'prj'),
-      dbfFile = mapshaper.cli.replaceFileExtension(opts.input_file, 'dbf'),
       shpFiles = Utils.filter(exports, function(o) {return o.extension == 'shp'});
-
-  if (Node.fileExists(dbfFile) && shpFiles.length > 0) {
-    // KLUDGE: assumes that the first layer contains the same shapes as the input
-    exports.push({
-      content: Node.readFile(dbfFile),
-      extension: 'dbf',
-      filebase: shpFiles[0].filebase
-    });
-  }
 
   if (Node.fileExists(prjFile)) {
     Utils.forEach(shpFiles, function(o) {

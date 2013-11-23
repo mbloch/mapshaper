@@ -6,16 +6,16 @@ var api = require('../'),
 describe('dbf-writer.js', function () {
 
   describe('Dbf#getFieldInfo()', function () {
-    it('identifies overflowing integers as type "N"', function () {
+    it('integers are identified as type "N"', function () {
       var data = [{a: 2147483648, b: -2147483649, c: 2147483647, d: -2147483648}];
       assert.deepEqual(Dbf.getFieldInfo(data, 'a'),
           {name: 'a', type: 'N', size: 10, decimals: 0});
       assert.deepEqual(Dbf.getFieldInfo(data, 'b'),
           {name: 'b', type: 'N', size: 11, decimals: 0});
       assert.deepEqual(Dbf.getFieldInfo(data, 'c'),
-          {name: 'c', type: 'I', size: 4, decimals: 0});
+          {name: 'c', type: 'N', size: 10, decimals: 0});
       assert.deepEqual(Dbf.getFieldInfo(data, 'd'),
-          {name: 'd', type: 'I', size: 4, decimals: 0});
+          {name: 'd', type: 'N', size: 11, decimals: 0});
     })
 
     it('truncates overflowing strings', function() {
