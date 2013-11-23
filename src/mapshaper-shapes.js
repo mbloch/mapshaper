@@ -464,11 +464,18 @@ function ArcDataset() {
     return _allBounds;
   };
 
-  this.getSimpleShapeBounds = function(arcIds) {
-    // Consider optional second arg: Bounds to use
-    var bounds = new Bounds();
+  this.getSimpleShapeBounds = function(arcIds, bounds) {
+    bounds = bounds || new Bounds();
     for (var i=0, n=arcIds.length; i<n; i++) {
       this.mergeArcBounds(arcIds[i], bounds);
+    }
+    return bounds;
+  };
+
+  this.getMultiShapeBounds = function(shapeIds, bounds) {
+    bounds = bounds || new Bounds();
+    for (var i=0, n=shapeIds.length; i<n; i++) {
+      this.getSimpleShapeBounds(shapeIds[i], bounds);
     }
     return bounds;
   };

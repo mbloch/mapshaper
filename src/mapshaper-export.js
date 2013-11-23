@@ -2,6 +2,7 @@
 mapshaper-geojson
 mapshaper-topojson
 mapshaper-shapefile
+mapshaper-split
 */
 
 MapShaper.getDefaultFileExtension = function(fileType) {
@@ -21,10 +22,25 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   if (!exporter) error("exportContent() Unknown export format:", opts.output_format);
   if (!opts.output_extension) opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
   if (!opts.output_file_base) opts.output_file_base = "out";
-
   validateLayerData(layers);
+
+  var files = [],
+      tmp;
+
+  if (opts.split_rows && opts.split_cols) {
+    if (layers.length != 1) error("#exportContent() splitting expects one layer");
+    tmp = MapShaper.splitOnGrid(layers[0], arcData, opts.split_rows, opts.split_cols);
+    layers = tmp.layers; // replace
+    files.push({
+      extension: 'json',
+      name: "index",
+      content: tmp.index
+    });
+  }
+
   T.start();
-  var files = exporter(layers, arcData, opts);
+  tmp = exporter(layers, arcData, opts);
+  files = files.concat(tmp);
   T.stop("Export " + opts.output_format);
 
   assignFileNames(files, opts);
