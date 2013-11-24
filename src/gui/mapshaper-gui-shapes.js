@@ -6,17 +6,17 @@
 //
 function FilteredPathCollection(unfilteredArcs, opts) {
   var defaults = {
-        min_path: 0.9,   // min pixel size of a drawn path
+        min_path: 0.8,   // min pixel size of a drawn path
         min_segment: 0.6 // min pixel size of a drawn segment
       };
 
-  var _filterBounds,
+  var _displayBounds,
       _transform,
       _sortedThresholds,
+      _displayScale = 1,
       filteredArcs,
       filteredSegLen,
-      arcData,
-      getPathWrapper;
+      getPathWrapper = getDrawablePathsIter;
 
   opts = Utils.extend(defaults, opts);
   init();
@@ -45,6 +45,13 @@ function FilteredPathCollection(unfilteredArcs, opts) {
     filteredSegLen = avgXY[0] + avgXY[1]; // crude approximation of avg. segment length
   }
 
+  function getArcData() {
+    // Use a filtered version of the arcs at small scales
+    var unitsPerPixel = 1/_transform.mx;
+    return filteredArcs && unitsPerPixel > filteredSegLen * 1.5 ?
+      filteredArcs : unfilteredArcs;
+  }
+
   this.update = function(arcs) {
     unfilteredArcs = arcs;
     init();
@@ -63,43 +70,18 @@ function FilteredPathCollection(unfilteredArcs, opts) {
     }
   };
 
-  this.reset = function() {
-    _filterBounds = null;
-    _transform = null;
-    arcData = unfilteredArcs;
-    getPathWrapper = getDrawablePathsIter;
-    return this;
-  };
-
-  this.filterPaths = function(b) {
-    _filterBounds = b;
-    return this;
-  };
-
-  this.filterPoints = function(b) {
-    _filterBounds = b;
-    getPathWrapper = getDrawablePointsIter;
-    return this;
-  };
-
-  this.transform = function(tr) {
-    var unitsPerPixel = 1/tr.mx;
-    _transform = tr;
-    if (_filterBounds) {
-      _filterBounds = _filterBounds.clone().transform(tr);
-    }
-    // Use a filtered version of the arcs at small scales
-    if (filteredArcs && unitsPerPixel > filteredSegLen * 1.5) {
-      arcData = filteredArcs;
-    }
-
-    return this;
+  this.setMapExtent = function(ext) {
+    // TODO: avoid setting all of these object-level variables
+    _transform = ext.getTransform();
+    _displayBounds = ext.getBounds().clone().transform(_transform);
+    _displayScale = ext.scale();
   };
 
   // Wrap path iterator to filter out offscreen points
   //
+  /*
   function getDrawablePointsIter() {
-    var bounds = _filterBounds || error("#getDrawablePointsIter() missing bounds");
+    var bounds = _displayBounds || error("#getDrawablePointsIter() missing bounds");
     var src = getDrawablePathsIter(),
         wrapped;
     var wrapper = {
@@ -125,6 +107,7 @@ function FilteredPathCollection(unfilteredArcs, opts) {
       return wrapper;
     };
   }
+  */
 
   // Wrap vector path iterator to convert geographic coordinates to pixels
   //   and skip over invisible clusters of points (i.e. smaller than a pixel)
@@ -173,17 +156,17 @@ function FilteredPathCollection(unfilteredArcs, opts) {
   // TODO: refactor
   //
   this.forEach = function(cb) {
-    var src = arcData;
-
-    var allIn = true,
-        filterOnSize = !!(_transform && _filterBounds),
+    var src = getArcData(),
         arc = new Arc(src),
+        allIn = true,
+        filterOnSize = !!(_transform && _displayBounds),
         wrap = getPathWrapper(),
         minPathSize, geoBounds, geoBBox;
 
     if (filterOnSize) {
       minPathSize = opts.min_path / _transform.mx;
-      geoBounds = _filterBounds.clone().transform(_transform.invert());
+      if (_displayScale < 1) minPathSize *= _displayScale;
+      geoBounds = _displayBounds.clone().transform(_transform.invert());
       geoBBox = geoBounds.toArray();
       allIn = geoBounds.contains(src.getBounds());
     }

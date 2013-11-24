@@ -63,17 +63,12 @@ function ShapeLayer(shapes, surface, opts) {
 
   this.draw = function(ext) {
     if (!this.visible()) return;
-    //T.start();
-    shapes.reset().filterPaths(ext.getBounds()).transform(ext.getTransform());
+    shapes.setMapExtent(ext);
     var info = renderer.drawShapes(shapes, style, surface.getContext());
-
     if (style.dotSize) {
-      shapes.reset().filterPaths(ext.getBounds()).transform(ext.getTransform());
       renderer.drawPoints(shapes, style, surface.getContext());
     }
     // TODO: find a way to enable circles at an appropriate zoom
-    // if (ext.scale() > 0) renderer.drawPoints(src.shapes().filterPoints(ext.getBounds()).transform(ext.getTransform()), surface.getContext());
-    // T.stop("- paths: " + info.paths + " segs: " + info.segments);
   };
 }
 
