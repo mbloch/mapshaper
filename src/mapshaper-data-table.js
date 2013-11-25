@@ -1,5 +1,6 @@
 /* @require mapshaper-common, dbf-writer */
 
+
 function DataTable(arr) {
   var records = arr || [];
 
@@ -14,10 +15,23 @@ function DataTable(arr) {
   this.size = function() {
     return records.length;
   };
-
 }
 
-// Import, manipulate and export data from a DBF file
+var dataTableProto = {
+  fieldExists: function(name) {
+    if (this.size() === 0) return false;
+    return name in this.getRecords()[0];
+  }
+};
+
+Utils.extend(DataTable.prototype, dataTableProto);
+
+
+// Implements the DataTable api for DBF file data.
+// We avoid touching the raw DBF field data if possible. This way, we don't need
+// to parse the DBF at all in common cases, like importing a Shapefile, editing
+// just the shapes and exporting in Shapefile format.
+//
 function ShapefileTable(buf) {
   var reader = new DbfReader(buf);
   var table;
@@ -45,3 +59,11 @@ function ShapefileTable(buf) {
     return reader ? reader.recordCount : table.size();
   };
 }
+
+Utils.extend(ShapefileTable.prototype, dataTableProto);
+
+// export for testing
+MapShaper.data = {
+  DataTable: DataTable,
+  ShapefileTable: ShapefileTable
+};
