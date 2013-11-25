@@ -62,14 +62,19 @@ function PathImporter(pointCount, opts) {
         if (validPoints < 4) {
           err = "Only " + validPoints + " valid points in ring";
         }
-        // if points have changed or coords were rounded, re-measure area
+        // If number of points in ring have changed (e.g. from snapping) or if
+        // coords were rounded, check for collapsed or inverted rings.
         else if (validPoints < path.size || round) {
           var area = msSignedRingArea(xx, yy, startId, validPoints);
           if (area === 0) {
-            err = "Zero-area ring";
+            err = "Collapsed ring";
           } else if (area < 0 != path.area < 0) {
             err = "Inverted ring";
           }
+        }
+        // Catch rings that were originally empty
+        else if (path.area === 0) {
+          err = "Zero-area ring";
         }
       } else {
         if (validPoints < 2) {

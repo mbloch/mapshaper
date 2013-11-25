@@ -30,12 +30,12 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
   }
 
   function procSegment(startIdx, endIdx, depth, distSqPrev) {
+    // get endpoint coords
     var ax = xx[startIdx],
-      ay = yy[startIdx],
-      cx = xx[endIdx],
-      cy = yy[endIdx],
-      az, cz;
-
+        ay = yy[startIdx],
+        cx = xx[endIdx],
+        cy = yy[endIdx],
+        az, cz;
     if (useZ) {
       az = zz[startIdx];
       cz = zz[endIdx];
