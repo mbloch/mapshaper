@@ -1,6 +1,5 @@
 (function(){
 
-
 var Env = (function() {
   var inNode = typeof module !== 'undefined' && !!module.exports;
   var inPhantom = !inNode && !!(window.phantom && window.phantom.exit);
@@ -25,28 +24,25 @@ C.VERBOSE = true;
 
 var Utils = {
   getUniqueName: function(prefix) {
-    var ns = Opts.getNamespace("nytg.map");
-    var count = ns.__unique || 0;
-    ns.__unique = count + 1;
-    return (prefix || "__id_") + count;
+    var n = Utils.__uniqcount || 0;
+    Utils.__uniqcount = n + 1;
+    return (prefix || "__id_") + n;
   },
 
   parseUrl: function parseUrl(url) {
-    var obj,
-      matches = /^(http|file|https):\/\/([^\/?#]+)([^?#]*)\??([^#?]*)#?(.*)/.exec(url); // TODO: improve
-    if (matches) {
-      obj = {
-        protocol: matches[1],
-        host: matches[2],
-        path: matches[3],
-        query: matches[4],
-        hash: matches[5]
-      };
-    }
-    else {
+    var rxp = /^(http|file|https):\/\/([^\/?#]+)([^?#]*)\??([^#?]*)#?(.*)/,
+        matches = rxp.exec(url);
+    if (!matches) {
       trace("[Utils.parseUrl()] unable to parse:", url);
+      return null;
     }
-    return obj;
+    return {
+      protocol: matches[1],
+      host: matches[2],
+      path: matches[3],
+      query: matches[4],
+      hash: matches[5]
+    };
   },
 
   buildUrl: function(obj) {
@@ -63,6 +59,16 @@ var Utils = {
     return url;
   },
 
+  keys: function(obj) {
+    var arr = [];
+    for (var key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        arr.push(key);
+      }
+    }
+    return arr;
+  },
+
   reduce: function(arr, func, val, ctx) {
     for (var i = 0, len = arr.length; i < len; i++) {
       val = func.call(ctx, val, arr[i]);
@@ -70,22 +76,32 @@ var Utils = {
     return val;
   },
 
-  mapFilter: function(obj, func, ctx) {
-    // if (!Utils.isArrayLike(obj)) return [];
-    var arr = [],
-        retn;
-    for (var i=0, n = obj.length; i < n; i++) {
-      retn = func.call(ctx, obj[i], i);
-      if (retn !== void 0) arr.push(retn);
+  mapFilter: function(src, func, ctx) {
+    var isArray = Utils.isArrayLike(src),
+        dest = [],
+        retn, keys, key, n;
+    if (isArray) {
+      n = src.length;
+    } else {
+      keys = Utils.keys(src);
+      n = keys.length;
     }
-    return arr;
+    for (var i=0; i < n; i++) {
+      key = isArray ? i : keys[i];
+      retn = func.call(ctx, src[key], key);
+      if (retn !== void 0) {
+        dest.push(retn);
+      }
+    }
+    return dest;
   },
 
-  map: function(obj, func, ctx) {
-    if (!Utils.isArrayLike(obj)) error("Utils.map() requires an array");
-    var retn = Utils.mapFilter(obj, func, ctx);
-    if (retn.length !== obj.length) error("Utils.map() Sparse array");
-    return retn;
+  map: function(src, func, ctx) {
+    var dest = Utils.mapFilter(src, func, ctx);
+    if (Utils.isInteger(src.length) && dest.length !== src.length) {
+      error("Utils.map() Sparse array; use Utils.mapFilter()");
+    }
+    return dest;
   },
 
   // Convert an array-like object to an Array
@@ -112,7 +128,7 @@ var Utils = {
     if (obj.length === 0) return true;
     if (obj.length > 0) return true;
     return false;
-    // TODO: eliminate objects with length property that are not numerically indexed.
+    // TODO: exclude objects with length property that are not numerically indexed.
   },
 
   isFunction: function(obj) {
@@ -344,7 +360,8 @@ var Opts = {
   //
   subclass: function(parent) {
     var child = function() {
-      this.__super__.apply(this, Utils.toArray(arguments));
+      var fn = (this.__constructor__ || this.__super__); // constructor function
+      fn.apply(this, Utils.toArray(arguments));
     };
     Opts.inherit(child, parent);
     for (var i=1; i<arguments.length; i++) {
@@ -352,8 +369,8 @@ var Opts = {
     }
     // set a constructor function, instead of automatically calling parent's constructor
     child.constructor = function(fn) {
-      Opts.inherit(fn, child);
-      return fn;
+      child.prototype.__constructor__ = fn;
+      return child;
     };
     return child;
   },
@@ -427,9 +444,9 @@ var error = function() {
   throw new Error(msg);
 };
 
-/**
- * Support for timing using T.start() and T.stop("message")
- */
+
+// Support for timing using T.start() and T.stop("message")
+//
 var T = {
   stack: [],
   verbose: true,
@@ -440,7 +457,6 @@ var T = {
   },
 
   // Stop timing, print a message if T.verbose == true
-  //
   stop: function(note) {
     var startTime = T.stack.pop();
     var elapsed = (+new Date - startTime);
@@ -731,16 +747,7 @@ Utils.invert = function(obj) {
   return inv;
 };
 
-Utils.keys =
-Utils.getKeys = function(obj) {
-  var arr = [];
-  for (var key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      arr.push(key);
-    }
-  }
-  return arr;
-};
+Utils.getKeys = Utils.keys;
 
 Utils.values =
 Utils.getValues = function(obj) {
@@ -771,8 +778,8 @@ Utils.pluck = function(arr, key) {
 
 Utils.findAll =
 Utils.filter = function(arr, func, ctx) {
-  return Utils.mapFilter(arr, function(obj) {
-    if (func.call(ctx, obj)) return obj;
+  return Utils.mapFilter(arr, function(obj, i) {
+    if (func.call(ctx, obj, i)) return obj;
   });
 };
 
@@ -807,15 +814,7 @@ Utils.arrayToIndex = function(arr) {
 };
 
 Utils.forEach = function(obj, func, ctx) {
-  if (Utils.isArrayLike(obj)) {
-    Utils.mapFilter(obj, func, ctx);
-  } else {
-    for (var key in obj) {
-      if (obj.hasOwnProperty(key)) {
-        func.call(ctx, obj[key], key);
-      }
-    }
-  }
+  Utils.mapFilter(obj, func, ctx);
 };
 
 Utils.multiMap = function(callback) {
@@ -2142,7 +2141,7 @@ Utils.extend(El.prototype, {
     else if (Utils.isObject(css)) {
       Utils.forEach(css, function(val, key) {
         El.setStyle(this.el, key, val);
-      })
+      }, this);
     }
     return this;
   },
@@ -2592,11 +2591,13 @@ Bounds.prototype.setBounds = function(a, b, c, d) {
       a = a.xmin;
     }
   }
-  if (a > c || b > d) error("Bounds#setBounds() min/max reversed:", a, b, c, d);
+
   this.xmin = a;
   this.ymin = b;
   this.xmax = c;
   this.ymax = d;
+  if (a > c || b > d) this.update();
+  // error("Bounds#setBounds() min/max reversed:", a, b, c, d);
   return this;
 };
 
@@ -3374,7 +3375,7 @@ function MouseArea(element) {
     _isDown = false;
     if (_dragging) {
       _dragging = false;
-      _self.dispatchEvent('dragend');
+      _self.dispatchEvent('dragend', procMouseEvent(e));
     }
 
     if (_downData) {
@@ -3395,10 +3396,9 @@ function MouseArea(element) {
 
   function onMouseMove(e) {
     _moveData = procMouseEvent(e, _moveData);
-
     if (!_dragging && _isDown && _downData.hover) {
       _dragging = true;
-      _self.dispatchEvent('dragstart');
+      _self.dispatchEvent('dragstart', procMouseEvent(e));
     }
 
     if (_dragging) {
@@ -3419,6 +3419,7 @@ function MouseArea(element) {
         pageY = e.pageY;
 
     return {
+      shiftKey: e.shiftKey,
       time: +new Date,
       pageX: pageX,
       pageY: pageY,
@@ -3937,7 +3938,12 @@ Utils.formatter = function(fmt) {
       error("[Utils.format()] Data does not match format string; format:", fmt, "data:", arguments);
     }
     for (var i=0; i<n; i++) {
-      str += formatValue(arguments[i], formatCodes[i]);
+      // 's?': insert "s" if needed to form plural of previous value.
+      if (i > 0 && arguments[i] == 's?') {
+        str += arguments[i-1] == 1 ? "" : "s";
+      } else {
+        str += formatValue(arguments[i], formatCodes[i]);
+      }
       str += literals[i+1];
     }
     return str;
@@ -4284,13 +4290,11 @@ function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return area;
 }
 
-// Given a triangle with vertices abc, return the distSq of the shortest segment
-//   with one endpoint at b and the other on the line intersecting a and c.
-//   If a and c are coincident, return the distSq between b and a/c
+// Given point B and segment AC, return the distSq from B to the nearest
+// point on AC
+// Receive the distSq of segments AB, BC, AC
 //
-// Receive the distSq of the triangle's three sides.
-//
-function triangleHeightSq(ab2, bc2, ac2) {
+function pointSegDistSq(ab2, bc2, ac2) {
   var dist2;
   if (ac2 === 0) {
     dist2 = ab2;
@@ -4601,7 +4605,7 @@ function ArcDataset() {
   };
 
   this.getAverageSegment = function(nth) {
-    return MapShaper.getAverageSegment(this.getSegmentIter(nth));
+    return MapShaper.getAverageSegment(this.getSegmentIter(), nth);
   };
 
   /*
@@ -4640,12 +4644,12 @@ function ArcDataset() {
     initBounds();
   };
 
-  this.getSegmentIter = function(nth) {
+  this.getSegmentIter = function() {
     return MapShaper.getSegmentIter(_xx, _yy, _nn, _zz, _zlimit);
   };
 
   this.forEachSegment = function(cb, nth) {
-    this.getSegmentIter(nth)(cb);
+    this.getSegmentIter()(cb, nth);
   };
 
   // Return an ArcIter object for each path in the dataset
@@ -4855,11 +4859,18 @@ function ArcDataset() {
     return _allBounds;
   };
 
-  this.getSimpleShapeBounds = function(arcIds) {
-    // Consider optional second arg: Bounds to use
-    var bounds = new Bounds();
+  this.getSimpleShapeBounds = function(arcIds, bounds) {
+    bounds = bounds || new Bounds();
     for (var i=0, n=arcIds.length; i<n; i++) {
       this.mergeArcBounds(arcIds[i], bounds);
+    }
+    return bounds;
+  };
+
+  this.getMultiShapeBounds = function(shapeIds, bounds) {
+    bounds = bounds || new Bounds();
+    for (var i=0, n=shapeIds.length; i<n; i++) {
+      this.getSimpleShapeBounds(shapeIds[i], bounds);
     }
     return bounds;
   };
@@ -5100,7 +5111,7 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
 // Return average magnitudes of dx, dy
 // @iter Function returned by getSegmentIter()
 //
-MapShaper.getAverageSegment = function(iter) {
+MapShaper.getAverageSegment = function(iter, nth) {
   var count = 0,
       dx = 0,
       dy = 0;
@@ -5108,7 +5119,7 @@ MapShaper.getAverageSegment = function(iter) {
     dx += Math.abs(xx[i1] - xx[i2]);
     dy += Math.abs(yy[i1] - yy[i2]);
     count++;
-  });
+  }, nth);
   return [dx / count, dy / count];
 };
 
@@ -5877,21 +5888,24 @@ MapShaper.topology = {
 
 
 
+// Snap together points within a small threshold
+// @xx, @yy arrays of x, y coords
+// @nn array of path lengths
+// @points (optional) array, snapped coords are added so they can be displayed
+//
 MapShaper.autoSnapCoords = function(xx, yy, nn, points) {
-  var avgSeg = MapShaper.getAverageSegment(MapShaper.getSegmentIter(xx, yy, nn), 2),
+  var avgSeg = MapShaper.getAverageSegment(MapShaper.getSegmentIter(xx, yy, nn), 3),
       avgDist = (avgSeg[0] + avgSeg[1]), // avg. dx + dy -- crude approximation
-      snapDist = avgDist * 0.005,
-      snapCount = 0,
-      tmp;
+      snapDist = avgDist * 0.0025,
+      snapCount = 0;
 
   // Get sorted coordinate ids
-  // Consider: speed up sorting -- consider bucket sort as first pass.
+  // Consider: speed up sorting -- try bucket sort as first pass.
   //
   var ids = MapShaper.sortCoordinateIds(xx);
 
   for (var i=0, n=ids.length; i<n; i++) {
-    tmp = snapPoint(i, ids, snapDist);
-    snapCount += tmp;
+    snapCount += snapPoint(i, ids, snapDist);
   }
 
   trace(">> snapped points:", snapCount);
@@ -6026,14 +6040,19 @@ function PathImporter(pointCount, opts) {
         if (validPoints < 4) {
           err = "Only " + validPoints + " valid points in ring";
         }
-        // if points have changed or coords were rounded, re-measure area
+        // If number of points in ring have changed (e.g. from snapping) or if
+        // coords were rounded, check for collapsed or inverted rings.
         else if (validPoints < path.size || round) {
           var area = msSignedRingArea(xx, yy, startId, validPoints);
           if (area === 0) {
-            err = "Zero-area ring";
+            err = "Collapsed ring";
           } else if (area < 0 != path.area < 0) {
             err = "Inverted ring";
           }
+        }
+        // Catch rings that were originally empty
+        else if (path.area === 0) {
+          err = "Zero-area ring";
         }
       } else {
         if (validPoints < 2) {
@@ -6407,13 +6426,14 @@ Dbf.getFieldInfo = function(arr, name) {
       };
 
   if (type == 'number') {
+    var INTEGER_SUPPORT = false; // Arc doesn't support type I data!
     var MAX_INT = Math.pow(2, 31) -1,
         MIN_INT = ~MAX_INT,
         MAX_NUM = 99999999999999999,
         MAX_FIELD_SIZE = 19;
     data = this.getNumericFieldInfo(arr, name);
     info.decimals = data.decimals;
-    if (info.decimals > 0 || data.min < MIN_INT || data.max > MAX_INT) {
+    if (!INTEGER_SUPPORT || info.decimals > 0 || data.min < MIN_INT || data.max > MAX_INT) {
       info.type = 'N';
       var maxSize = data.max.toFixed(info.decimals).length,
           minSize = data.min.toFixed(info.decimals).length;
@@ -6482,33 +6502,34 @@ Dbf.getDecimalFormatter = function(size, decimals) {
 };
 
 Dbf.getNumericFieldInfo = function(arr, name) {
-  var decimals = 0,
+  var maxDecimals = 0,
       limit = 15,
       min = Infinity,
       max = -Infinity,
       validCount = 0,
       k = 1,
-      val;
+      val, decimals;
   for (var i=0, n=arr.length; i<n; i++) {
     val = arr[i][name];
     if (!Number.isFinite(val)) {
       continue;
     }
+    decimals = 0;
     validCount++;
     if (val < min) min = val;
     if (val > max) max = val;
     while (val * k % 1 !== 0) {
       if (decimals == limit) {
-        trace ("#getNumericFieldInfo() exceeded limit")
+        trace ("#getNumericFieldInfo() Number field overflow; value:", val)
         break;
       }
       decimals++;
       k *= 10;
     }
+    if (decimals > maxDecimals) maxDecimals = decimals;
   }
-
   return {
-    decimals: decimals,
+    decimals: maxDecimals,
     min: min,
     max: max
   };
@@ -6530,6 +6551,7 @@ Dbf.discoverStringFieldLength = function(arr, name) {
 
 
 
+
 function DataTable(arr) {
   var records = arr || [];
 
@@ -6544,10 +6566,23 @@ function DataTable(arr) {
   this.size = function() {
     return records.length;
   };
-
 }
 
-// Import, manipulate and export data from a DBF file
+var dataTableProto = {
+  fieldExists: function(name) {
+    if (this.size() === 0) return false;
+    return name in this.getRecords()[0];
+  }
+};
+
+Utils.extend(DataTable.prototype, dataTableProto);
+
+
+// Implements the DataTable api for DBF file data.
+// We avoid touching the raw DBF field data if possible. This way, we don't need
+// to parse the DBF at all in common cases, like importing a Shapefile, editing
+// just the shapes and exporting in Shapefile format.
+//
 function ShapefileTable(buf) {
   var reader = new DbfReader(buf);
   var table;
@@ -6575,6 +6610,14 @@ function ShapefileTable(buf) {
     return reader ? reader.recordCount : table.size();
   };
 }
+
+Utils.extend(ShapefileTable.prototype, dataTableProto);
+
+// export for testing
+MapShaper.data = {
+  DataTable: DataTable,
+  ShapefileTable: ShapefileTable
+};
 
 
 
@@ -6936,6 +6979,98 @@ TopoJSON.pathImporters = {
 
 
 
+// Divide a TopoJSON topology into multiple topologies, one for each
+// named geometry object.
+// Arcs are filtered and arc ids are reindexed as needed.
+//
+TopoJSON.splitTopology = function(topology) {
+  var topologies = {};
+  Utils.forEach(topology.objects, function(obj, name) {
+    var split = {
+      arcs: TopoJSON.extractGeometryObject(obj, topology.arcs),
+      bbox: obj.bbox || null,
+      objects: {}
+    };
+    split.objects[name] = obj;
+    Opts.copyNewParams(split, topology);
+    topologies[name] = split;
+  });
+  return topologies;
+};
+
+// Filter array of arcs to include only arcs referenced by geometry object @obj
+// Returns: Filtered copy of @arcs array
+// Side effect: arc ids in @obj are re-indexed to match filtered arcs.
+//
+TopoJSON.extractGeometryObject = function(obj, arcs) {
+  if (!Utils.isArray(arcs)) {
+    error("Usage: TopoJSON.extractObject(object, arcs)");
+  }
+
+  // Mark arcs that are present in this object
+  var flags = new Uint8Array(arcs.length);
+  TopoJSON.traverseGeometryObject(obj, function(arcId) {
+    if (arcId < 0) arcId = ~arcId;
+    flags[arcId] = 1;
+  });
+
+  // Create array for translating original arc ids to filtered arc arrays
+  var arcMap = new Uint32Array(arcs.length),
+      newId = 0;
+  var filteredArcs = Utils.filter(arcs, function(coords, i) {
+    if (flags[i] === 1) {
+      arcMap[i] = newId++;
+      return true;
+    }
+    return false;
+  });
+
+  // Re-index
+  TopoJSON.reindexArcIds(obj, arcMap);
+  return filteredArcs;
+};
+
+// @map is an array of new arc ids, indexed by original arc ids.
+//
+TopoJSON.reindexArcIds = function(obj, map) {
+  TopoJSON.traverseGeometryObject(obj, function(arcId) {
+    var rev = arcId < 0,
+        idx = rev ? ~arcId : arcId,
+        mappedId = map[idx];
+    return rev ? ~mappedId : mappedId;
+  });
+};
+
+TopoJSON.traverseGeometryObject = function(obj, cb) {
+  if (obj.arcs) {
+    TopoJSON.traverseArcs(obj.arcs, cb);
+  } else if (obj.geometries) {
+    Utils.forEach(obj.geometries, function(geom) {
+      TopoJSON.traverseGeometryObject(geom, cb);
+    });
+  }
+};
+
+// Visit each arc id in the arcs array of a geometry object.
+// Use non-undefined return values of callback @cb as replacements.
+//
+TopoJSON.traverseArcs = function(arr, cb) {
+  Utils.forEach(arr, function(item, i) {
+    var val;
+    if (item instanceof Array) {
+      TopoJSON.traverseArcs(item, cb);
+    } else {
+      val = cb(item);
+      if (val !== void 0) {
+        arr[i] = val;
+      }
+    }
+  });
+};
+
+
+
+
 MapShaper.topojson = TopoJSON;
 
 MapShaper.importTopoJSON = function(obj, opts) {
@@ -6966,20 +7101,36 @@ MapShaper.importTopoJSON = function(obj, opts) {
   };
 };
 
-// Export a TopoJSON string containing a single object containing a GeometryCollection
 // TODO: Support ids from attribute data
-// TODO: Support properties
 //
 MapShaper.exportTopoJSON = function(layers, arcData, opts) {
+  var topology = TopoJSON.exportTopology(layers, arcData, opts),
+      topologies, files;
+  if (opts.topojson_divide) {
+    topologies = TopoJSON.splitTopology(topology);
+    files = Utils.map(topologies, function(topo, name) {
+      return {
+        content: JSON.stringify(topo),
+        name: name
+      };
+    });
+  } else {
+    files = [{
+      content: JSON.stringify(topology),
+      name: ""
+    }];
+  }
+  return files;
+};
 
-  // KLUDGE: make a copy of layer objects, so layer properties can be replaced
-  // without side-effects outside this function
-  layers = Utils.map(layers, function(lyr) {
-    return Utils.extend({}, lyr);
-  });
+TopoJSON.exportTopology = function(layers, arcData, opts) {
+  var topology = {type: "Topology"},
+      objects = {},
+      filteredArcs = arcData.getFilteredCopy(),
+      bounds = new Bounds(),
+      transform, invTransform,
+      arcArr, arcIdMap;
 
-  var filteredArcs = arcData.getFilteredCopy();
-  var transform = null;
   if (opts.topojson_resolution === 0) {
     // no transform
   } else if (opts.topojson_resolution > 0) {
@@ -6990,63 +7141,59 @@ MapShaper.exportTopoJSON = function(layers, arcData, opts) {
     transform = TopoJSON.getExportTransform(filteredArcs); // auto quantization
   }
 
-  var arcs, map;
   if (transform) {
+    invTransform = transform.invert();
+    topology.transform = {
+      scale: [invTransform.mx, invTransform.my],
+      translate: [invTransform.bx, invTransform.by]
+    };
     filteredArcs.applyTransform(transform, !!"round");
-    map = TopoJSON.filterExportArcs(filteredArcs);
-    arcs = TopoJSON.exportDeltaEncodedArcs(filteredArcs);
+    arcIdMap = TopoJSON.filterExportArcs(filteredArcs);
+    arcArr = TopoJSON.exportDeltaEncodedArcs(filteredArcs);
   } else {
-    map = TopoJSON.filterExportArcs(filteredArcs);
-    arcs = TopoJSON.exportArcs(filteredArcs);
+    arcIdMap = TopoJSON.filterExportArcs(filteredArcs);
+    arcArr = TopoJSON.exportArcs(filteredArcs);
   }
-  var objects = {};
-  var bounds = new Bounds();
+
   Utils.forEach(layers, function(lyr, i) {
     var geomType = lyr.geometry_type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
-    var exporter = new PathExporter(filteredArcs, lyr.geometry_type == 'polygon');
-    if (map) lyr.shapes = TopoJSON.remapLayerArcs(lyr.shapes, map);
-    var obj = exportTopoJSONObject(exporter, lyr, geomType);
+    var exporter = new PathExporter(filteredArcs, lyr.geometry_type == 'polygon'),
+        shapes = lyr.shapes;
+    if (arcIdMap) shapes = TopoJSON.remapShapes(shapes, arcIdMap);
     var name = lyr.name || "layer" + (i + 1);
+    var obj = exportTopoJSONObject(exporter, geomType, shapes, lyr.data);
+    var objectBounds = exporter.getBounds();
+    if (invTransform) {
+      objectBounds.transform(invTransform);
+    }
+    obj.bbox = objectBounds.toArray();
     objects[name] = obj;
-    bounds.mergeBounds(exporter.getBounds());
+    bounds.mergeBounds(objectBounds);
   });
 
-  var obj = {
-    type: "Topology",
-    arcs: arcs,
-    objects: objects
-  };
-
-  if (transform) {
-    var inv = transform.invert();
-    obj.transform = {
-      scale: [inv.mx, inv.my],
-      translate: [inv.bx, inv.by]
-    };
-    obj.bbox = bounds.transform(inv).toArray();
-  } else {
-    obj.bbox = bounds.toArray();
-  }
-
-  return [{
-    content: JSON.stringify(obj),
-    name: ""
-  }];
+  topology.objects = objects;
+  topology.arcs = arcArr;
+  topology.bbox = bounds.toArray();
+  return topology;
 };
 
-TopoJSON.remapLayerArcs = function(shapes, map) {
-  return Utils.map(shapes, function(shape) {
-    return shape ? TopoJSON.remapShapeArcs(shape, map) : null;
-  });
-};
-
-// Re-index the arcs in a shape to account for removal of collapsed arcs.
+// TODO: consider refactoring and combining with remapping code from
+// mapshaper-topojson-split.js
 //
-TopoJSON.remapShapeArcs = function(src, map) {
-  if (!src || src.length === 0) return [];
+TopoJSON.remapShapes = function(shapes, map) {
+  return Utils.map(shapes, function(shape) {
+    return shape ? TopoJSON.remapShape(shape, map) : null;
+  });
+};
 
+// Re-index the arcs in a shape to account for removal of collapsed arcs
+// Return arrays of remapped arcs; original arcs are unmodified.
+//
+TopoJSON.remapShape = function(src, map) {
+  if (!src || src.length === 0) return [];
   var dest = [],
       arcIds, path, arcNum, arcId, k, inv;
+
   for (var pathId=0, numPaths=src.length; pathId < numPaths; pathId++) {
     path = src[pathId];
     arcIds = [];
@@ -7154,21 +7301,21 @@ TopoJSON.getExportTransformFromPrecision = function(arcData, precision) {
 // (a compromise between compression, precision and simplicity)
 //
 TopoJSON.calcExportResolution = function(arcData) {
+  // TODO: remove influence of long lines created by polar and antimeridian cuts
   var xy = arcData.getAverageSegment(),
       k = 0.02;
   return [xy[0] * k, xy[1] * k];
 };
 
-function exportTopoJSONObject(exporter, lyr, type) {
-  var properties = lyr.data ? lyr.data.getRecords() : null,
-      ids = lyr.ids,
+function exportTopoJSONObject(exporter, type, shapes, data) {
+  var properties = data ? data.getRecords() : null,
       obj = {
         type: "GeometryCollection"
       };
-  obj.geometries = Utils.map(lyr.shapes, function(shape, i) {
+  obj.geometries = Utils.map(shapes, function(shape, i) {
     var paths = exporter.exportShapeForTopoJSON(shape),
         geom = exportTopoJSONGeometry(paths, type);
-    geom.id = ids ? ids[i] : i;
+    geom.id = i; // ids ? ids[i] : i;
     if (properties) {
       geom.properties = properties[i] || null;
     }
@@ -7573,13 +7720,6 @@ ShpReader.prototype.getRecordClass = function(type) {
 
 
 
-MapShaper.importDbf = function(src) {
-  T.start();
-  var data = new DbfReader(src).read("table");
-  T.stop("[importDbf()]");
-  return data;
-};
-
 // Read Shapefile data from an ArrayBuffer or Buffer
 // Build topology
 //
@@ -7806,41 +7946,10 @@ MapShaper.importContent = function(content, fileType, opts) {
     error("Unsupported file type:", fileType);
   }
 
-  // Calc arc counts, for identifying shared boundaries, etc.
-  // Consider: Tabulate arc counts later, if/when needed.
-  var numArcs = data.arcs.size();
-  Utils.forEach(data.layers, function(layer) {
-    if (layer.geometry_type == 'polygon') {
-      var arcCounts = MapShaper.getArcCountsInLayer(layer.shapes, numArcs);
-      layer.arcCounts = arcCounts;
-    }
-  });
-
   data.info = {
     input_format: fileFmt
   };
   return data;
-};
-
-
-MapShaper.getArcCountsInLayer = function(shapes, numArcs) {
-  var counts = new Uint8Array(numArcs);
-  Utils.forEach(shapes, function(shape) {
-    if (shape) MapShaper.calcArcCountsInShape(counts, shape);
-  });
-  return counts;
-};
-
-MapShaper.calcArcCountsInShape = function(counts, shape) {
-  var arcId, arcs;
-  for (var j=0, pathCount = shape.length; j<pathCount; j++) {
-    arcs = shape[j];
-    for (var i=0, n=arcs.length; i<n; i++) {
-      arcId = arcs[i];
-      if (arcId < 0) arcId = ~arcId;
-      counts[arcId] += 1;
-    }
-  }
 };
 
 
@@ -7985,6 +8094,80 @@ Opts.inherit(ImportControl, EventDispatcher);
 
 
 
+// Split the shapes in a layer according to a grid
+// Return array of layers and an index with the bounding box of each cell
+//
+MapShaper.splitOnGrid = function(lyr, arcs, rows, cols) {
+  var shapes = lyr.shapes,
+      bounds = arcs.getBounds(),
+      xmin = bounds.xmin,
+      ymin = bounds.ymin,
+      w = bounds.width(),
+      h = bounds.height(),
+      properties = lyr.data ? lyr.data.getRecords() : null,
+      groups = [];
+
+  function groupId(shpBounds) {
+    var c = Math.floor((shpBounds.centerX() - xmin) / w * cols),
+        r = Math.floor((shpBounds.centerY() - ymin) / h * rows);
+    c = Utils.clamp(c, 0, cols-1);
+    r = Utils.clamp(r, 0, rows-1);
+    return r * cols + c;
+  }
+
+  function groupName(i) {
+    var c = i % cols + 1,
+        r = Math.floor(i / cols) + 1;
+    return "r" + r + "c" + c;
+  }
+
+  Utils.forEach(shapes, function(shp, i) {
+    var bounds = arcs.getMultiShapeBounds(shp),
+        idx = groupId(bounds),
+        group = groups[idx];
+    if (!group) {
+      group = groups[idx] = {
+        shapes: [],
+        properties: properties ? [] : null,
+        bounds: new Bounds(),
+        name: groupName(idx)
+      };
+    }
+    group.shapes.push(shp);
+    group.bounds.mergeBounds(bounds);
+    if (group.properties) {
+      group.properties.push(properties[i]);
+    }
+  });
+
+  var index = [],
+      layers = [];
+  Utils.forEach(groups, function(group, i) {
+    if (!group) return; // empty cell
+    var groupLyr = {
+      shapes: group.shapes,
+      name: group.name
+    };
+    Opts.copyNewParams(groupLyr, lyr);
+    if (group.properties) {
+      groupLyr.data = new DataTable(group.properties);
+    }
+    layers.push(groupLyr);
+    index.push({
+      name: group.name,
+      bounds: group.bounds.toArray()
+    });
+  });
+
+  return {
+    index: index,
+    layers: layers
+  };
+};
+
+
+
+
 MapShaper.getDefaultFileExtension = function(fileType) {
   var ext = "";
   if (fileType == 'shapefile') {
@@ -8002,10 +8185,26 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   if (!exporter) error("exportContent() Unknown export format:", opts.output_format);
   if (!opts.output_extension) opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
   if (!opts.output_file_base) opts.output_file_base = "out";
-
   validateLayerData(layers);
+
+  var files = [],
+      tmp;
+
+  if (opts.split_rows && opts.split_cols) {
+    if (layers.length != 1) error("#exportContent() splitting expects one layer");
+    tmp = MapShaper.splitOnGrid(layers[0], arcData, opts.split_rows, opts.split_cols);
+    layers = tmp.layers; // replace
+    opts.topojson_divide = true; // kludge: tell topojson to create a file per layer
+    files.push({
+      extension: 'json',
+      name: "index",
+      content: JSON.stringify(tmp.index)
+    });
+  }
+
   T.start();
-  var files = exporter(layers, arcData, opts);
+  tmp = exporter(layers, arcData, opts);
+  files = files.concat(tmp);
   T.stop("Export " + opts.output_format);
 
   assignFileNames(files, opts);
@@ -8488,17 +8687,17 @@ function CanvasLayer() {
 //
 function FilteredPathCollection(unfilteredArcs, opts) {
   var defaults = {
-        min_path: 0.9,   // min pixel size of a drawn path
+        min_path: 0.8,   // min pixel size of a drawn path
         min_segment: 0.6 // min pixel size of a drawn segment
       };
 
-  var _filterBounds,
+  var _displayBounds,
       _transform,
       _sortedThresholds,
+      _displayScale = 1,
       filteredArcs,
       filteredSegLen,
-      arcData,
-      getPathWrapper;
+      getPathWrapper = getDrawablePathsIter;
 
   opts = Utils.extend(defaults, opts);
   init();
@@ -8527,6 +8726,13 @@ function FilteredPathCollection(unfilteredArcs, opts) {
     filteredSegLen = avgXY[0] + avgXY[1]; // crude approximation of avg. segment length
   }
 
+  function getArcData() {
+    // Use a filtered version of the arcs at small scales
+    var unitsPerPixel = 1/_transform.mx;
+    return filteredArcs && unitsPerPixel > filteredSegLen * 1.5 ?
+      filteredArcs : unfilteredArcs;
+  }
+
   this.update = function(arcs) {
     unfilteredArcs = arcs;
     init();
@@ -8545,43 +8751,18 @@ function FilteredPathCollection(unfilteredArcs, opts) {
     }
   };
 
-  this.reset = function() {
-    _filterBounds = null;
-    _transform = null;
-    arcData = unfilteredArcs;
-    getPathWrapper = getDrawablePathsIter;
-    return this;
-  };
-
-  this.filterPaths = function(b) {
-    _filterBounds = b;
-    return this;
-  };
-
-  this.filterPoints = function(b) {
-    _filterBounds = b;
-    getPathWrapper = getDrawablePointsIter;
-    return this;
-  };
-
-  this.transform = function(tr) {
-    var unitsPerPixel = 1/tr.mx;
-    _transform = tr;
-    if (_filterBounds) {
-      _filterBounds = _filterBounds.clone().transform(tr);
-    }
-    // Use a filtered version of the arcs at small scales
-    if (filteredArcs && unitsPerPixel > filteredSegLen * 1.5) {
-      arcData = filteredArcs;
-    }
-
-    return this;
+  this.setMapExtent = function(ext) {
+    // TODO: avoid setting all of these object-level variables
+    _transform = ext.getTransform();
+    _displayBounds = ext.getBounds().clone().transform(_transform);
+    _displayScale = ext.scale();
   };
 
   // Wrap path iterator to filter out offscreen points
   //
+  /*
   function getDrawablePointsIter() {
-    var bounds = _filterBounds || error("#getDrawablePointsIter() missing bounds");
+    var bounds = _displayBounds || error("#getDrawablePointsIter() missing bounds");
     var src = getDrawablePathsIter(),
         wrapped;
     var wrapper = {
@@ -8607,6 +8788,7 @@ function FilteredPathCollection(unfilteredArcs, opts) {
       return wrapper;
     };
   }
+  */
 
   // Wrap vector path iterator to convert geographic coordinates to pixels
   //   and skip over invisible clusters of points (i.e. smaller than a pixel)
@@ -8655,17 +8837,17 @@ function FilteredPathCollection(unfilteredArcs, opts) {
   // TODO: refactor
   //
   this.forEach = function(cb) {
-    var src = arcData;
-
-    var allIn = true,
-        filterOnSize = !!(_transform && _filterBounds),
+    var src = getArcData(),
         arc = new Arc(src),
+        allIn = true,
+        filterOnSize = !!(_transform && _displayBounds),
         wrap = getPathWrapper(),
         minPathSize, geoBounds, geoBBox;
 
     if (filterOnSize) {
       minPathSize = opts.min_path / _transform.mx;
-      geoBounds = _filterBounds.clone().transform(_transform.invert());
+      if (_displayScale < 1) minPathSize *= _displayScale;
+      geoBounds = _displayBounds.clone().transform(_transform.invert());
       geoBBox = geoBounds.toArray();
       allIn = geoBounds.contains(src.getBounds());
     }
@@ -8678,6 +8860,7 @@ function FilteredPathCollection(unfilteredArcs, opts) {
     }
   };
 }
+
 
 
 
@@ -8744,17 +8927,12 @@ function ShapeLayer(shapes, surface, opts) {
 
   this.draw = function(ext) {
     if (!this.visible()) return;
-    //T.start();
-    shapes.reset().filterPaths(ext.getBounds()).transform(ext.getTransform());
+    shapes.setMapExtent(ext);
     var info = renderer.drawShapes(shapes, style, surface.getContext());
-
     if (style.dotSize) {
-      shapes.reset().filterPaths(ext.getBounds()).transform(ext.getTransform());
       renderer.drawPoints(shapes, style, surface.getContext());
     }
     // TODO: find a way to enable circles at an appropriate zoom
-    // if (ext.scale() > 0) renderer.drawPoints(src.shapes().filterPoints(ext.getBounds()).transform(ext.getTransform()), surface.getContext());
-    // T.stop("- paths: " + info.paths + " segs: " + info.segments);
   };
 }
 
@@ -8767,22 +8945,42 @@ Opts.inherit(ShapeLayer, Waiter);
 function MshpMouse(ext) {
   var p = ext.position(),
       mouse = new MouseArea(p.element),
+      shiftDrag = false,
+      dragStartEvt,
+      boxEl = El('div').addClass('g-zoom-box').appendTo('body'),
+      boxStroke = parseInt(boxEl.computedStyle()['border-width'], 10),
       _fx, _fy; // zoom foci, [0,1]
 
+  boxEl.hide();
   var zoomTween = new NumberTween(function(scale, done) {
     ext.rescale(scale, _fx, _fy);
   });
 
   mouse.on('dblclick', function(e) {
-    var from = ext.scale(),
-        to = from * 3;
-    _fx = e.x / ext.width();
-    _fy = e.y / ext.height();
-    zoomTween.start(from, to);
+    zoomByPct(3, e.x / ext.width(), e.y / ext.height());
+  });
+
+  mouse.on('dragstart', function(e) {
+    shiftDrag = !!e.shiftKey;
+    if (shiftDrag) {
+      dragStartEvt = e;
+    }
   });
 
   mouse.on('drag', function(e) {
-    ext.pan(e.dx, e.dy);
+    if (shiftDrag) {
+      showBox(new Bounds(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY));
+    } else {
+      ext.pan(e.dx, e.dy);
+    }
+  });
+
+  mouse.on('dragend', function(e) {
+    if (shiftDrag) {
+      shiftDrag = false;
+      boxEl.hide();
+      zoomToBox(new Bounds(e.x, e.y, dragStartEvt.x, dragStartEvt.y));
+    }
   });
 
   var wheel = new MouseWheel(mouse);
@@ -8791,6 +8989,47 @@ function MshpMouse(ext) {
         delta = e.direction > 0 ? k : 1 / k;
     ext.rescale(ext.scale() * delta, e.x / ext.width(), e.y / ext.height());
   });
+
+  // Display zoom box
+  // @box Bounds object with coords in pixels from t,l corner of document
+  //
+  function showBox(box) {
+    var minSize = boxStroke * 2 + 1;
+    if (box.width() < minSize || box.width() < minSize) {
+      boxEl.css("visibility: hidden;");
+    } else {
+      boxEl.show();
+      boxEl.css({
+        visibility: 'visible',
+        top: box.ymin,
+        left: box.xmin,
+        width: box.width() - boxStroke * 2,
+        height: box.height() - boxStroke * 2
+      });
+    }
+  }
+
+  // @box Bounds with pixels from t,l corner of map area.
+  //
+  function zoomToBox(box) {
+    var minSide = 5,
+        w = box.width() - 2 * boxStroke,
+        h = box.height() - 2 * boxStroke,
+        pct = Math.max(w / ext.width(), h / ext.height());
+    if (w < minSide || h < minSide) return;
+    var fx = box.centerX() / ext.width() * (1 + pct) - pct / 2,
+        fy = box.centerY() / ext.height() * (1 + pct) - pct / 2;
+    zoomByPct(1 / pct, fx, fy);
+  }
+
+  // @pct Change in scale (2 = 2x zoom)
+  // @fx, @fy zoom focus, [0, 1]
+  //
+  function zoomByPct(pct, fx, fy) {
+    _fx = fx;
+    _fy = fy;
+    zoomTween.start(ext.scale(), ext.scale() * pct);
+  }
 }
 
 
@@ -9272,25 +9511,21 @@ Visvalingam.specialMetric3D_v1 = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
 
 var DouglasPeucker = {};
 
-DouglasPeucker.simplifyArcs = function(arcs, opts) {
-  return MapShaper.simplifyArcs(arcs, DouglasPeucker.calcArcData, opts);
-};
-
 DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
       ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
       bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
-  return triangleHeightSq(ab2, bc2, ac2);
+  return pointSegDistSq(ab2, bc2, ac2);
 };
 
 DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
   var ab2 = distanceSq(ax, ay, bx, by),
       ac2 = distanceSq(ax, ay, cx, cy),
       bc2 = distanceSq(bx, by, cx, cy);
-  return triangleHeightSq(ab2, bc2, ac2);
+  return pointSegDistSq(ab2, bc2, ac2);
 };
 
-// @dest array to contain calculated data
+// @dest array to contain point removal thresholds
 // @xx, @yy arrays of x, y coords of a path
 // @zz (optional) array of z coords for spherical simplification
 //
@@ -9298,77 +9533,66 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
   var len = dest.length,
       useZ = !!zz;
 
-  Utils.initializeArray(dest, 0);
-
   dest[0] = dest[len-1] = Infinity;
-
   if (len > 2) {
     procSegment(0, len-1, 1, Number.MAX_VALUE);
   }
 
-  function procSegment(startIdx, endIdx, depth, lastDistance) {
-    var thisDistance;
+  function procSegment(startIdx, endIdx, depth, distSqPrev) {
+    // get endpoint coords
     var ax = xx[startIdx],
-      ay = yy[startIdx],
-      cx = xx[endIdx],
-      cy = yy[endIdx],
-      az, bz, cz;
-
+        ay = yy[startIdx],
+        cx = xx[endIdx],
+        cy = yy[endIdx],
+        az, cz;
     if (useZ) {
       az = zz[startIdx];
       cz = zz[endIdx];
     }
 
-    if (startIdx >= endIdx) error("[procSegment()] inverted idx");
-
-    var maxDistance = 0, maxIdx = 0;
+    var maxDistSq = 0,
+        maxIdx = 0,
+        distSqLeft = 0,
+        distSqRight = 0,
+        distSq;
 
     for (var i=startIdx+1; i<endIdx; i++) {
       if (useZ) {
-        thisDistance = DouglasPeucker.metricSq3D(ax, ay, az, xx[i], yy[i], zz[i], cx, cy, cz);
+        distSq = DouglasPeucker.metricSq3D(ax, ay, az, xx[i], yy[i], zz[i], cx, cy, cz);
       } else {
-        thisDistance = DouglasPeucker.metricSq(ax, ay, xx[i], yy[i], cx, cy);
+        distSq = DouglasPeucker.metricSq(ax, ay, xx[i], yy[i], cx, cy);
       }
 
-      if (thisDistance >= maxDistance) {
-        maxDistance = thisDistance;
+      if (distSq >= maxDistSq) {
+        maxDistSq = distSq;
         maxIdx = i;
       }
     }
 
-    if (lastDistance < maxDistance) {
-      maxDistance = lastDistance;
+    // Case -- threshold of parent segment is less than threshold of curr segment
+    // Curr max point is assigned parent's threshold, so parent is not removed
+    // before child as simplification is increased.
+    //
+    if (distSqPrev < maxDistSq) {
+      maxDistSq = distSqPrev;
     }
 
-    var lval=0, rval=0;
     if (maxIdx - startIdx > 1) {
-      lval = procSegment(startIdx, maxIdx, depth+1, maxDistance);
+      distSqLeft = procSegment(startIdx, maxIdx, depth+1, maxDistSq);
     }
     if (endIdx - maxIdx > 1) {
-      rval = procSegment(maxIdx, endIdx, depth+1, maxDistance);
+      distSqRight = procSegment(maxIdx, endIdx, depth+1, maxDistSq);
     }
 
-    if (depth == 1) {
-      // case -- arc is an island polygon
-      if (ax == cx && ay == cy) {
-        maxDistance = lval > rval ? lval : rval;
-      }
+    // Case -- max point of curr segment is highest-threshold point of an island polygon
+    // Give point the same threshold as the next-highest point, to prevent
+    // a 3-vertex degenerate ring.
+    if (depth == 1 && ax == cx && ay == cy) {
+      maxDistSq = Math.max(distSqLeft, distSqRight);
     }
 
-    var dist = Math.sqrt(maxDistance);
-
-    /*
-    if ( maxSegmentLen > 0 ) {
-      double maxLen2 = maxSegmentLen * maxSegmentLen;
-      double acLen2 = (ax-cx)*(ax-cx) + (ay-cy)*(ay-cy);
-      if ( maxLen2 < acLen2 ) {
-        thresh = MAX_THRESHOLD - 2;  // mb //
-      }
-    }
-    */
-
-    dest[maxIdx] = dist;
-    return maxDistance;
+    dest[maxIdx] =  Math.sqrt(maxDistSq);
+    return maxDistSq;
   }
 };
 
@@ -9442,12 +9666,12 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
   }
 };
 
-MapShaper.simplifyPaths = function(paths, method) {
+MapShaper.simplifyPaths = function(paths, method, force2D) {
   T.start();
   var bounds = paths.getBounds().toArray();
   var decimalDegrees = probablyDecimalDegreeBounds(bounds);
   var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method);
-  if (decimalDegrees) {
+  if (decimalDegrees && !force2D) {
     MapShaper.simplifyPaths3D(paths, simplifyPath);
     MapShaper.protectWorldEdges(paths);
   } else {
