@@ -3,12 +3,9 @@
 var mapshaper = require("../"),
     Node = mapshaper.Node,
     Utils = mapshaper.Utils,
-    T = mapshaper.T;
+    opts = mapshaper.getOpts(); // see mapshaper-cli-lib.js
 
-var opts = mapshaper.getOpts(); // see mapshaper-cli-lib.js
-
-mapshaper.C.VERBOSE = opts.verbose;
-T.start("Start timing");
+mapshaper.T.start("Start timing");
 
 var importData = mapshaper.importFromFile(opts.input_file, opts),
     arcData = importData.arcs,
@@ -16,8 +13,10 @@ var importData = mapshaper.importFromFile(opts.input_file, opts),
 
 // Update input/output format with information found during importing
 // (command line info is insufficient to distinguish topojson and geojson)
-opts.input_format = opts.input_format || importData.info.input_format || error("Missing input format");
+opts.input_format = opts.input_format || importData.info.input_format;
 opts.output_format = opts.output_format || opts.input_format;
+
+if (!opts.input_format) error("Unknown input file format");
 
 if (opts.use_simplification) {
   mapshaper.simplifyPaths(arcData, opts.simplify_method, opts.force2D);
@@ -25,17 +24,17 @@ if (opts.use_simplification) {
   if (opts.keep_shapes) {
     mapshaper.protectShapes(arcData, importData.layers);
   }
-}
 
-if (opts.simplify_pct) {
-  arcData.setRetainedPct(opts.simplify_pct);
-} else if (opts.simplify_interval) {
-  arcData.setRetainedInterval(opts.simplify_interval);
-}
+  if (opts.simplify_pct) {
+    arcData.setRetainedPct(opts.simplify_pct);
+  } else if (opts.simplify_interval) {
+    arcData.setRetainedInterval(opts.simplify_interval);
+  }
 
-if (opts.repair) {
-  var xxInfo = mapshaper.findAndRepairIntersections(arcData);
-  console.log("Repaired " + xxInfo.repaired + " intersections; " + xxInfo.post + " remaining");
+  if (opts.repair) {
+    var xxInfo = mapshaper.findAndRepairIntersections(arcData);
+    mapshaper.cli.printRepairMessage(xxInfo, opts);
+  }
 }
 
 var exports = mapshaper.exportContent(importData.layers, arcData, opts);
@@ -63,4 +62,4 @@ Utils.forEach(exports, function(obj, i) {
   console.log("Wrote " + path);
 });
 
-T.stop("Total time");
+mapshaper.T.stop("Total time");

@@ -147,6 +147,7 @@ MapShaper.getOpts = function() {
     opts = MapShaper.validateArgs(argv, getSupportedArgs(optimist));
   }).argv;
 
+  C.VERBOSE = opts.verbose;
   return opts;
 };
 
@@ -407,6 +408,19 @@ cli.validateSimplifyOpts = function(argv) {
   return opts;
 };
 
+cli.printRepairMessage = function(info, opts) {
+  if (info.pre > 0 || opts.verbose) {
+    console.log(Utils.format(
+        "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
+        info.repaired, "s?", info.post, "s?"));
+    if (info.post > 10) {
+      if (!opts.snapping) {
+        console.log("Tip: use --auto-snap to fix minor topology errors.");
+      }
+    }
+  }
+};
+
 // Force v8 to perform a complete gc cycle.
 // To enable, run node with --expose_gc
 // Timing gc() gives a crude indication of number of objects in memory.
@@ -425,7 +439,6 @@ var api = Utils.extend(MapShaper, {
   Opts: Opts,
   trace: trace,
   error: error,
-  C: C,
   T: T,
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,

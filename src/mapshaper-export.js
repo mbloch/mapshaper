@@ -31,6 +31,7 @@ MapShaper.exportContent = function(layers, arcData, opts) {
     if (layers.length != 1) error("#exportContent() splitting expects one layer");
     tmp = MapShaper.splitOnGrid(layers[0], arcData, opts.split_rows, opts.split_cols);
     layers = tmp.layers; // replace
+    opts.topojson_divide = true; // kludge: tell topojson to create a file per layer
     files.push({
       extension: 'json',
       name: "index",

@@ -1,4 +1,9 @@
-/* @requires mapshaper-common, mapshaper-geojson, mapshaper-topojson-import */
+/* @requires
+mapshaper-common,
+mapshaper-geojson,
+mapshaper-topojson-import,
+mapshaper-topojson-split
+*/
 
 MapShaper.topojson = TopoJSON;
 
@@ -30,20 +35,36 @@ MapShaper.importTopoJSON = function(obj, opts) {
   };
 };
 
-// Export a TopoJSON string containing a single object containing a GeometryCollection
 // TODO: Support ids from attribute data
-// TODO: Support properties
 //
 MapShaper.exportTopoJSON = function(layers, arcData, opts) {
+  var topology = TopoJSON.exportTopology(layers, arcData, opts),
+      topologies, files;
+  if (opts.topojson_divide) {
+    topologies = TopoJSON.splitTopology(topology);
+    files = Utils.map(topologies, function(topo, name) {
+      return {
+        content: JSON.stringify(topo),
+        name: name
+      };
+    });
+  } else {
+    files = [{
+      content: JSON.stringify(topology),
+      name: ""
+    }];
+  }
+  return files;
+};
 
-  // KLUDGE: make a copy of layer objects, so layer properties can be replaced
-  // without side-effects outside this function
-  layers = Utils.map(layers, function(lyr) {
-    return Utils.extend({}, lyr);
-  });
+TopoJSON.exportTopology = function(layers, arcData, opts) {
+  var topology = {type: "Topology"},
+      objects = {},
+      filteredArcs = arcData.getFilteredCopy(),
+      bounds = new Bounds(),
+      transform, invTransform,
+      arcArr, arcIdMap;
 
-  var filteredArcs = arcData.getFilteredCopy();
-  var transform = null;
   if (opts.topojson_resolution === 0) {
     // no transform
   } else if (opts.topojson_resolution > 0) {
@@ -54,63 +75,59 @@ MapShaper.exportTopoJSON = function(layers, arcData, opts) {
     transform = TopoJSON.getExportTransform(filteredArcs); // auto quantization
   }
 
-  var arcs, map;
   if (transform) {
+    invTransform = transform.invert();
+    topology.transform = {
+      scale: [invTransform.mx, invTransform.my],
+      translate: [invTransform.bx, invTransform.by]
+    };
     filteredArcs.applyTransform(transform, !!"round");
-    map = TopoJSON.filterExportArcs(filteredArcs);
-    arcs = TopoJSON.exportDeltaEncodedArcs(filteredArcs);
+    arcIdMap = TopoJSON.filterExportArcs(filteredArcs);
+    arcArr = TopoJSON.exportDeltaEncodedArcs(filteredArcs);
   } else {
-    map = TopoJSON.filterExportArcs(filteredArcs);
-    arcs = TopoJSON.exportArcs(filteredArcs);
+    arcIdMap = TopoJSON.filterExportArcs(filteredArcs);
+    arcArr = TopoJSON.exportArcs(filteredArcs);
   }
-  var objects = {};
-  var bounds = new Bounds();
+
   Utils.forEach(layers, function(lyr, i) {
     var geomType = lyr.geometry_type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
-    var exporter = new PathExporter(filteredArcs, lyr.geometry_type == 'polygon');
-    if (map) lyr.shapes = TopoJSON.remapLayerArcs(lyr.shapes, map);
-    var obj = exportTopoJSONObject(exporter, lyr, geomType);
+    var exporter = new PathExporter(filteredArcs, lyr.geometry_type == 'polygon'),
+        shapes = lyr.shapes;
+    if (arcIdMap) shapes = TopoJSON.remapShapes(shapes, arcIdMap);
     var name = lyr.name || "layer" + (i + 1);
+    var obj = exportTopoJSONObject(exporter, geomType, shapes, lyr.data);
+    var objectBounds = exporter.getBounds();
+    if (invTransform) {
+      objectBounds.transform(invTransform);
+    }
+    obj.bbox = objectBounds.toArray();
     objects[name] = obj;
-    bounds.mergeBounds(exporter.getBounds());
+    bounds.mergeBounds(objectBounds);
   });
 
-  var obj = {
-    type: "Topology",
-    arcs: arcs,
-    objects: objects
-  };
-
-  if (transform) {
-    var inv = transform.invert();
-    obj.transform = {
-      scale: [inv.mx, inv.my],
-      translate: [inv.bx, inv.by]
-    };
-    obj.bbox = bounds.transform(inv).toArray();
-  } else {
-    obj.bbox = bounds.toArray();
-  }
-
-  return [{
-    content: JSON.stringify(obj),
-    name: ""
-  }];
+  topology.objects = objects;
+  topology.arcs = arcArr;
+  topology.bbox = bounds.toArray();
+  return topology;
 };
 
-TopoJSON.remapLayerArcs = function(shapes, map) {
-  return Utils.map(shapes, function(shape) {
-    return shape ? TopoJSON.remapShapeArcs(shape, map) : null;
-  });
-};
-
-// Re-index the arcs in a shape to account for removal of collapsed arcs.
+// TODO: consider refactoring and combining with remapping code from
+// mapshaper-topojson-split.js
 //
-TopoJSON.remapShapeArcs = function(src, map) {
-  if (!src || src.length === 0) return [];
+TopoJSON.remapShapes = function(shapes, map) {
+  return Utils.map(shapes, function(shape) {
+    return shape ? TopoJSON.remapShape(shape, map) : null;
+  });
+};
 
+// Re-index the arcs in a shape to account for removal of collapsed arcs
+// Return arrays of remapped arcs; original arcs are unmodified.
+//
+TopoJSON.remapShape = function(src, map) {
+  if (!src || src.length === 0) return [];
   var dest = [],
       arcIds, path, arcNum, arcId, k, inv;
+
   for (var pathId=0, numPaths=src.length; pathId < numPaths; pathId++) {
     path = src[pathId];
     arcIds = [];
@@ -218,21 +235,21 @@ TopoJSON.getExportTransformFromPrecision = function(arcData, precision) {
 // (a compromise between compression, precision and simplicity)
 //
 TopoJSON.calcExportResolution = function(arcData) {
+  // TODO: remove influence of long lines created by polar and antimeridian cuts
   var xy = arcData.getAverageSegment(),
       k = 0.02;
   return [xy[0] * k, xy[1] * k];
 };
 
-function exportTopoJSONObject(exporter, lyr, type) {
-  var properties = lyr.data ? lyr.data.getRecords() : null,
-      ids = lyr.ids,
+function exportTopoJSONObject(exporter, type, shapes, data) {
+  var properties = data ? data.getRecords() : null,
       obj = {
         type: "GeometryCollection"
       };
-  obj.geometries = Utils.map(lyr.shapes, function(shape, i) {
+  obj.geometries = Utils.map(shapes, function(shape, i) {
     var paths = exporter.exportShapeForTopoJSON(shape),
         geom = exportTopoJSONGeometry(paths, type);
-    geom.id = ids ? ids[i] : i;
+    geom.id = i; // ids ? ids[i] : i;
     if (properties) {
       geom.properties = properties[i] || null;
     }

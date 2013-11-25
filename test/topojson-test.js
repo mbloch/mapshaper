@@ -17,12 +17,12 @@ function fixPath(p) {
 
 describe('topojson-test.js', function () {
 
-  describe('#remapShapeArcs()', function () {
+  describe('#remapShape()', function () {
     it('Remap a shape, removing a reversed arc', function () {
       var shape = [[0, 1, 2], [~1, 2, 3]],
           map = [0, -1, 1, 2];
 
-      shape = TopoJSON.remapShapeArcs(shape, map);
+      shape = TopoJSON.remapShape(shape, map);
       assert.deepEqual([[0, 1], [1, 2]], shape);
     })
 
@@ -30,7 +30,7 @@ describe('topojson-test.js', function () {
       var shape = [[0, 1, 2], [1, 2, ~3]],
           map = [0, 1, -1, 2];
 
-      shape = TopoJSON.remapShapeArcs(shape, map);
+      shape = TopoJSON.remapShape(shape, map);
       assert.deepEqual([[0, 1], [1, ~2]], shape);
     })
 
@@ -38,7 +38,7 @@ describe('topojson-test.js', function () {
       var shape = null,
           map = [0, 1, -1, 2];
 
-      TopoJSON.remapShapeArcs(shape, map);
+      TopoJSON.remapShape(shape, map);
       assert.equal(null, shape);
     })
   })
