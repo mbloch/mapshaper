@@ -11,26 +11,37 @@ function ShapeRenderer() {
     }
   }
 
+  function drawSquare(x, y, size, col, ctx) {
+    if (size > 0) {
+      var offs = size / 2;
+      x = Math.round(x - offs);
+      y = Math.round(y - offs);
+      ctx.fillStyle = col;
+      ctx.fillRect(x, y, size, size);
+    }
+  }
+
   this.drawPoints = function(paths, style, ctx) {
     var midCol = style.dotColor || "rgba(255, 50, 50, 0.5)",
         endCol = style.nodeColor || midCol,
         midSize = style.dotSize || 4,
         endSize = style.nodeSize >= 0 ? style.nodeSize : midSize,
+        drawPoint = style.squareDot ? drawSquare : drawCircle,
         prevX, prevY;
 
     paths.forEach(function(vec) {
       if (vec.hasNext()) {
-        drawCircle(vec.x, vec.y, endSize, endCol, ctx);
+        drawPoint(vec.x, vec.y, endSize, endCol, ctx);
       }
       if (vec.hasNext()) {
         prevX = vec.x;
         prevY = vec.y;
         while (vec.hasNext()) {
-          drawCircle(prevX, prevY, midSize, midCol, ctx);
+          drawPoint(prevX, prevY, midSize, midCol, ctx);
           prevX = vec.x;
           prevY = vec.y;
         }
-        drawCircle(prevX, prevY, endSize, endCol, ctx);
+        drawPoint(prevX, prevY, endSize, endCol, ctx);
       }
     });
   };

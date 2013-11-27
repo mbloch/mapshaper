@@ -23,7 +23,10 @@ function ArcLayerGroup(arcs, opts) {
     }
   };
 
-  this.refresh = function() {
+  this.refresh = function(style) {
+    if (style) { // KLUDGE
+      _arcLyr.updateStyle(style);
+    }
     if (_map) drawLayers();
   };
 
@@ -55,10 +58,12 @@ function ShapeLayer(shapes, surface, opts) {
     strokeAlpha: 1
   };
 
-  Utils.extend(style, opts);
-
   this.visible = function(b) {
     return arguments.length === 0 ? _visible : _visible = !b, this;
+  };
+
+  this.updateStyle = function(obj) {
+    Utils.extend(style, obj);
   };
 
   this.draw = function(ext) {
@@ -70,6 +75,8 @@ function ShapeLayer(shapes, surface, opts) {
     }
     // TODO: find a way to enable circles at an appropriate zoom
   };
+
+  this.updateStyle(opts);
 }
 
 Opts.inherit(ShapeLayer, Waiter);

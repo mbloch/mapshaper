@@ -46,6 +46,7 @@ function RepairControl(map, lineLyr, arcData) {
   };
 
   function showIntersections(XX) {
+    var dotSize = getDotSize(XX.length);
     var points = MapShaper.getIntersectionPoints(XX);
     if (!_pointLyr) {
       _pointColl = new FilteredPathCollection(points, {
@@ -53,20 +54,25 @@ function RepairControl(map, lineLyr, arcData) {
         min_path: 0
       });
       _pointLyr = new ArcLayerGroup(_pointColl, {
-        dotSize: 5,
+        dotSize: dotSize,
+        squareDot: true,
         dotColor: "#F24400"
       });
       map.addLayerGroup(_pointLyr);
     } else if (XX.length > 0) {
       _pointColl.update(points);
       _pointLyr.visible(true);
-      _pointLyr.refresh();
+      _pointLyr.refresh({dotSize: dotSize});
     } else{
       _pointLyr.visible(false);
     }
     var msg = Utils.format("%s line intersection%s", XX.length, XX.length != 1 ? 's' : '');
     readout.text(msg);
     _currXX = XX;
+  }
+
+  function getDotSize(n) {
+    return n < 500 ? 4 : 3;
   }
 
   function enabled(b) {
