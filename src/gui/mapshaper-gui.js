@@ -8,14 +8,9 @@ mapshaper-map,
 mapshaper-maplayer,
 mapshaper-simplify,
 mapshaper-export,
-mapshaper-import,
 mapshaper-repair-control,
 mapshaper-keep-shapes
 */
-
-var dropper,
-    importer,
-    editor;
 
 if (Browser.inBrowser) {
   Browser.onload(function() {
@@ -23,30 +18,11 @@ if (Browser.inBrowser) {
       El("#mshp-not-supported").show();
       return;
     }
-    editor = new Editor();
-    importer = new ImportControl(editor);
-    dropper = new DropControl(importer);
-    introPage();
+    var editor = new Editor(),
+        importer = new ImportControl(editor);
+    El('#mshp-import').show(); // show import screen
   });
 }
-
-function introPage() {
-  new FileChooser('#g-shp-import-btn').on('select', function(e) {
-    importer.readFiles(e.files);
-  });
-  El('#mshp-import').show();
-}
-
-/*
-function ImportPanel(importer) {
-  var shpBtn = new FileChooser('#g-shp-import-btn');
-  shpBtn.on('select', function(e) {
-    importer.readFiles(e.files);
-  });
-}
-
-Opts.inherit(ImportPanel, EventDispatcher);
-*/
 
 function browserIsSupported() {
   return Env.inBrowser &&
@@ -93,7 +69,6 @@ function Editor() {
 
     var filteredArcs = new FilteredPathCollection(arcData);
     var group = new ArcLayerGroup(filteredArcs);
-
     map.addLayerGroup(group);
 
     // visualize point snapping by displaying snapped points on the map

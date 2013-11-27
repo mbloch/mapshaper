@@ -18,6 +18,12 @@ function DropControl(importer) {
 }
 
 function ImportControl(editor) {
+  var self = this,
+      dropper = DropControl(this),
+      chooser = new FileChooser('#g-shp-import-btn').on('select', function(e) {
+        self.readFiles(e.files);
+      });
+
   var precisionInput = new ClickText("#g-import-precision-opt")
     .bounds(0, Infinity)
     .formatter(function(str) {
@@ -28,6 +34,7 @@ function ImportControl(editor) {
       return str === '' || Utils.isNumber(parseFloat(str));
     });
 
+  // TODO: doesn't need to be public
   // Receive: FileList
   this.readFiles = function(files) {
     Utils.forEach(files, this.readFile, this);
