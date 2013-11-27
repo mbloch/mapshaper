@@ -170,7 +170,7 @@ function PathImporter(pointCount, opts) {
       T.start();
       var nn = Utils.pluck(paths, 'size'); // TODO: refactor
       snappedPoints = opts.debug_snapping ? [] : null;
-      MapShaper.autoSnapCoords(xx, yy, nn, snappedPoints);
+      MapShaper.autoSnapCoords(xx, yy, nn, opts.snap_interval, snappedPoints);
       T.stop("Snapping points");
     }
 

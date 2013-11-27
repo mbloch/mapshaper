@@ -9,11 +9,20 @@ mapshaper-shapes
 // @nn array of path lengths
 // @points (optional) array, snapped coords are added so they can be displayed
 //
-MapShaper.autoSnapCoords = function(xx, yy, nn, points) {
+MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
   var avgSeg = MapShaper.getAverageSegment(MapShaper.getSegmentIter(xx, yy, nn), 3),
       avgDist = (avgSeg[0] + avgSeg[1]), // avg. dx + dy -- crude approximation
       snapDist = avgDist * 0.0025,
       snapCount = 0;
+
+  if (threshold) {
+    if (threshold > avgDist) {
+      console.log("Snapping threshold is larger than average segment length -- ignoring");
+    } else if (threshold > 0) {
+      console.log(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
+      snapDist = threshold;
+    }
+  }
 
   // Get sorted coordinate ids
   // Consider: speed up sorting -- try bucket sort as first pass.
@@ -24,7 +33,7 @@ MapShaper.autoSnapCoords = function(xx, yy, nn, points) {
     snapCount += snapPoint(i, ids, snapDist);
   }
 
-  trace(">> snapped points:", snapCount);
+  console.log(Utils.format("Snapped %s point%s", snapCount, "s?"));
 
   function snapPoint(i, ids, limit) {
     var j = i,

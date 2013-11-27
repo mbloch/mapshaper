@@ -6,9 +6,10 @@ mapshaper-export,
 mapshaper-repair,
 mapshaper-segments,
 mapshaper-snapping,
-mapshaper-keep-shapes
+mapshaper-keep-shapes,
 mapshaper-file-import
 */
+// mapshaper-dissolve
 
 var cli = MapShaper.cli = {};
 
@@ -340,7 +341,7 @@ cli.validateOutputOpts = function(argv, inputOpts) {
 
 // Hidden args aren't listed by --help
 cli.getHiddenArgs = function() {
-  return ['split-cols', 'split-rows'];
+  return ['split-cols', 'split-rows', 'dissolve-field', 'snap-interval'];
 };
 
 cli.validateHiddenOpts = function(argv) {
@@ -350,6 +351,11 @@ cli.validateHiddenOpts = function(argv) {
   if (r > 1 || c > 1) {
     opts.split_rows = r;
     opts.split_cols = c;
+  }
+  opts.dissolve_field = argv['dissolve-field'];
+  opts.snap_interval = argv['snap-interval'];
+  if (opts.snap_interval) {
+    opts.snapping = true;
   }
   return opts;
 };
