@@ -9,7 +9,7 @@ mapshaper-snapping,
 mapshaper-keep-shapes,
 mapshaper-file-import
 */
-// mapshaper-dissolve
+//mapshaper-dissolve
 
 var cli = MapShaper.cli = {};
 
@@ -23,7 +23,11 @@ var usage =
   "$ mapshaper --dp -p 0.1 counties.shp";
 
 MapShaper.getOptionParser = function() {
-  return require('optimist')
+  return MapShaper.getExtraOptionParser(MapShaper.getBasicOptionParser());
+};
+
+MapShaper.getBasicOptionParser = function() {
+  return getOptimist()
     .usage(usage)
 
     .options("o", {
@@ -63,11 +67,6 @@ MapShaper.getOptionParser = function() {
 
     .options("modified", {
       describe: "use a version of Visvalingam designed for mapping (default)",
-      'boolean': true
-    })
-
-    .options("modified-v1", {
-      describe: "use the original modified Visvalingam method (deprecated)",
       'boolean': true
     })
 
@@ -114,6 +113,10 @@ MapShaper.getOptionParser = function() {
       alias: "help",
       describe: "print this help message",
       'boolean': true
+    })
+
+    .options("more", {
+      describe: "print less-used + experimental options"
     });
   /*
     // TODO
@@ -130,23 +133,55 @@ MapShaper.getOptionParser = function() {
     */
 };
 
+MapShaper.getExtraOptionParser = function(optimist) {
+  return (optimist || getOptimist())
+
+  //optimist.options("dissolve", {
+  //  describe: "dissolve polygons on an (optional) attribute field"
+  //})
+
+  .options("snap-interval", {
+    describe: "specify snapping distance in source units"
+  })
+
+  .options("split-cols", {
+    describe: "number of columns for splitting on a grid"
+  })
+
+  .options("split-rows", {
+    describe: "number of rows for splitting on a grid"
+  })
+
+  .options("modified-v1", {
+    describe: "use the original modified Visvalingam method (deprecated)",
+    'boolean': true
+  });
+};
+
 // Parse command line and return options object for bin/mapshaper
 //
 MapShaper.getOpts = function() {
   var optimist = MapShaper.getOptionParser(),
-      opts, argv;
+      argv = optimist.argv,
+      opts;
 
-  argv = optimist.check(function(argv) {
-    if (argv.h) {
-      optimist.showHelp();
-      process.exit(0);
-    }
-    if (argv.v) {
-      console.log(getVersion());
-      process.exit(0);
-    }
-    opts = MapShaper.validateArgs(argv, getSupportedArgs(optimist));
-  }).argv;
+  if (argv.h) {
+    MapShaper.getBasicOptionParser().showHelp();
+    process.exit(0);
+  }
+  if (argv.more) {
+    console.log( "More " + MapShaper.getExtraOptionParser().help());
+    process.exit(0);
+  }
+  if (argv.v) {
+    console.log(getVersion());
+    process.exit(0);
+  }
+
+  // validate args against basic option parser so standard help message is shown
+  MapShaper.getBasicOptionParser().check(function() {
+    opts = MapShaper.validateArgs(argv, getSupportedArgs());
+  });
 
   C.VERBOSE = opts.verbose;
   return opts;
@@ -157,16 +192,21 @@ MapShaper.getOpts = function() {
 //
 MapShaper.checkArgs = function(argv) {
   var optimist = MapShaper.getOptionParser();
-  return MapShaper.validateArgs(optimist.parse(argv), getSupportedArgs(optimist));
+  return MapShaper.validateArgs(optimist.parse(argv), getSupportedArgs());
 };
+
+function getOptimist() {
+  delete require.cache[require.resolve('optimist')];
+  return require('optimist');
+}
 
 // Return an array of all recognized cli arguments: ["f", "format", ...]
 //
-function getSupportedArgs(optimist) {
-  var args = optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
-    return arg.replace(/^-/, '');
-  });
-  args = args.concat(cli.getHiddenArgs());
+function getSupportedArgs() {
+  var optimist = MapShaper.getOptionParser(),
+      args = optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
+        return arg.replace(/^-/, '');
+      });
   return args;
 }
 
@@ -214,7 +254,7 @@ MapShaper.validateArgs = function(argv, supported) {
   Utils.extend(opts, cli.validateOutputOpts(argv, opts));
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
-  Utils.extend(opts, cli.validateHiddenOpts(argv));
+  Utils.extend(opts, cli.validateExtraOpts(argv));
   opts.verbose = !!argv.verbose;
   return opts;
 };
@@ -243,7 +283,6 @@ MapShaper.getOutputPaths = function(files, dir, extension) {
     return obj.pathbase + suffix + '.' + obj.extension;
   });
 };
-
 
 cli.testFileCollision = function(files, suff) {
   return Utils.some(files, function(obj) {
@@ -339,12 +378,7 @@ cli.validateOutputOpts = function(argv, inputOpts) {
   };
 };
 
-// Hidden args aren't listed by --help
-cli.getHiddenArgs = function() {
-  return ['split-cols', 'split-rows', 'dissolve-field', 'snap-interval'];
-};
-
-cli.validateHiddenOpts = function(argv) {
+cli.validateExtraOpts = function(argv) {
   var opts = {};
   var r = parseInt(argv['split-rows'], 10) || 1,
       c = parseInt(argv['split-cols'], 10) || 1;
@@ -352,7 +386,7 @@ cli.validateHiddenOpts = function(argv) {
     opts.split_rows = r;
     opts.split_cols = c;
   }
-  opts.dissolve_field = argv['dissolve-field'];
+  opts.dissolve_field = argv.dissolve;
   opts.snap_interval = argv['snap-interval'];
   if (opts.snap_interval) {
     opts.snapping = true;
@@ -451,6 +485,7 @@ var api = Utils.extend(MapShaper, {
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
   Dbf: Dbf,
+  C: C,
   Bounds: Bounds
 });
 
