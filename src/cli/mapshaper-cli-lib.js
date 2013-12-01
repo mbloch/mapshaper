@@ -7,9 +7,9 @@ mapshaper-repair,
 mapshaper-segments,
 mapshaper-snapping,
 mapshaper-keep-shapes,
-mapshaper-file-import
+mapshaper-file-import,
+mapshaper-dissolve
 */
-//mapshaper-dissolve
 
 var cli = MapShaper.cli = {};
 
@@ -80,22 +80,12 @@ MapShaper.getBasicOptionParser = function() {
       'boolean': true
     })
 
-    .options("no-repair", {
-      describe: "don't remove intersections introduced by simplification",
-      'boolean': true
-    })
-
     .options("precision", {
       describe: "coordinate precision in source units (applied on import)"
     })
 
-    .options("quantization", {
-      describe: "specify TopoJSON quantization (auto-set by default)"
-    })
-
-    .options("no-quantization", {
-      describe: "export TopoJSON without quantization",
-      'boolean': true
+    .options("dissolve", {
+      describe: "dissolve polygons; takes optional comma-sep. list of fields"
     })
 
     .options("verbose", {
@@ -136,9 +126,19 @@ MapShaper.getBasicOptionParser = function() {
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
 
-  //optimist.options("dissolve", {
-  //  describe: "dissolve polygons on an (optional) attribute field"
-  //})
+  .options("no-repair", {
+    describe: "don't remove intersections introduced by simplification",
+    'boolean': true
+  })
+
+  .options("quantization", {
+    describe: "specify TopoJSON quantization (auto-set by default)"
+  })
+
+  .options("no-quantization", {
+    describe: "export TopoJSON without quantization",
+    'boolean': true
+  })
 
   .options("snap-interval", {
     describe: "specify snapping distance in source units"
@@ -165,7 +165,7 @@ MapShaper.getOpts = function() {
       argv = optimist.argv,
       opts;
 
-  if (argv.h) {
+  if (argv.help) {
     MapShaper.getBasicOptionParser().showHelp();
     process.exit(0);
   }
@@ -173,15 +173,15 @@ MapShaper.getOpts = function() {
     console.log( "More " + MapShaper.getExtraOptionParser().help());
     process.exit(0);
   }
-  if (argv.v) {
+  if (argv.version) {
     console.log(getVersion());
     process.exit(0);
   }
 
   // validate args against basic option parser so standard help message is shown
-  MapShaper.getBasicOptionParser().check(function() {
+  var dummy = MapShaper.getBasicOptionParser().check(function() {
     opts = MapShaper.validateArgs(argv, getSupportedArgs());
-  });
+  }).argv;
 
   C.VERBOSE = opts.verbose;
   return opts;
@@ -386,7 +386,9 @@ cli.validateExtraOpts = function(argv) {
     opts.split_rows = r;
     opts.split_cols = c;
   }
-  opts.dissolve_field = argv.dissolve;
+  if (Utils.isString(argv.dissolve) || argv.dissolve === true) {
+    opts.dissolve = argv.dissolve || true; // empty string -> true
+  }
   opts.snap_interval = argv['snap-interval'];
   if (opts.snap_interval) {
     opts.snapping = true;

@@ -104,7 +104,7 @@ var Utils = {
     return dest;
   },
 
-  // Convert an array-like object to an Array
+  // Convert an array-like object to an Array, or make a copy if @obj is an Array
   toArray: function(obj) {
     var arr;
     if (!Utils.isArrayLike(obj)) error("Utils.toArray() requires an array-like object");
@@ -121,6 +121,7 @@ var Utils = {
   },
 
   // Array like: has length property, is numerically indexed and mutable.
+  // TODO: try to detect objects with length property but no indexed data elements
   isArrayLike: function(obj) {
     if (!obj) return false;
     if (Utils.isArray(obj)) return true;
@@ -128,7 +129,6 @@ var Utils = {
     if (obj.length === 0) return true;
     if (obj.length > 0) return true;
     return false;
-    // TODO: exclude objects with length property that are not numerically indexed.
   },
 
   isFunction: function(obj) {
@@ -140,12 +140,12 @@ var Utils = {
   },
 
   isArray: function(obj) {
-    return obj instanceof Array; // breaks across frames and windows
+    return obj instanceof Array; // breaks across iframes
     // More robust:
     // return Object.constructor.toString.call(obj) == '[object Array]';
   },
 
-   // NaN -> true
+  // NaN -> true
   isNumber: function(obj) {
     // return toString.call(obj) == '[object Number]'; // ie8 breaks?
     return obj != null && obj.constructor == Number;
@@ -697,6 +697,7 @@ Utils.repeat = function(times, func) {
 // Assumes: no other non-numeric objects in array
 //
 Utils.sum = function(arr, info) {
+  if (!Utils.isArrayLike(arr)) error ("Utils.sum() expects an array, received:", arr);
   var tot = 0,
       nan = 0,
       val;
@@ -2799,47 +2800,6 @@ Bounds.prototype.mergeBounds = function(bb) {
 
 
 
-function Tasks() {
-  if (this instanceof Tasks === false) {
-    return new Tasks();
-  }
-  var _tasks = [];
-
-  // Could call this on a timeout
-  this.cancel = function() {
-    error("Tasks#cancel() stub");
-  }
-
-  this.add = function(task) {
-    _tasks.push(task);
-    return this;
-  };
-
-  // @allDone Called when all tasks complete, with return values of task callbacks:
-  //    allDone(val1, ...)
-  // @error TODO: call optional error handler function if one or more tasks fail to complete
-  //
-  this.run = function(allDone, error) {
-    var tasks = _tasks,
-        values = [],
-        needed = tasks.length;
-    _tasks = []; // reset
-    Utils.forEach(tasks, function(task, i) {
-      function taskDone(data) {
-        values[i] = data;
-        if (--needed === 0) {
-          allDone.apply(null, values);
-        }
-      }
-      task(taskDone);
-    });
-    return this;
-  };
-}
-
-
-
-
 // Support for handling asynchronous dependencies.
 // Waiter#isReady() == true and Waiter fires 'ready' after any/all dependents fire "ready"
 // Instantiate directly or use as a base class.
@@ -2895,6 +2855,55 @@ Waiter.prototype.startWaiting = function() {
   return this;
 };
 
+// Usage: new Tasks().add(task1).add(task2) ... .run(oncomplete, onerror);
+// Tasks are functions that take a single argument -- an ondata callback.
+//
+function Tasks() {
+  if (this instanceof Tasks === false) {
+    return new Tasks();
+  }
+  var _tasks = [];
+
+  // Could call this on a timeout
+  this.cancel = function() {
+    error("Tasks#cancel() stub");
+  }
+
+  this.add = function(task) {
+    _tasks.push(task);
+    return this;
+  };
+
+  // @oncomplete Called when all tasks complete, with return values of task callbacks:
+  //    oncomplete(val1, ...)
+  // @error TODO: call optional onerror handler function if one or more tasks fail to complete
+  //
+  this.run = function(oncomplete, onerror) {
+    var self = this,
+        tasks = _tasks,
+        values = [],
+        needed = tasks.length;
+    _tasks = []; // reset
+    if (tasks.length == 0) {
+      oncomplete();
+      self.startWaiting();
+    } else {
+      Utils.forEach(tasks, function(task, i) {
+        function ondone(data) {
+          values[i] = data;
+          if (--needed === 0) {
+            oncomplete.apply(null, values);
+            self.startWaiting();
+          }
+        }
+        task(ondone);
+      });
+    }
+    return this;
+  };
+}
+
+Opts.inherit(Tasks, Waiter);
 
 
 var TRANSITION_TIME = 500;
@@ -6092,11 +6101,20 @@ MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
 // @nn array of path lengths
 // @points (optional) array, snapped coords are added so they can be displayed
 //
-MapShaper.autoSnapCoords = function(xx, yy, nn, points) {
+MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
   var avgSeg = MapShaper.getAverageSegment(MapShaper.getSegmentIter(xx, yy, nn), 3),
       avgDist = (avgSeg[0] + avgSeg[1]), // avg. dx + dy -- crude approximation
       snapDist = avgDist * 0.0025,
       snapCount = 0;
+
+  if (threshold) {
+    if (threshold > avgDist) {
+      console.log("Snapping threshold is larger than average segment length -- ignoring");
+    } else if (threshold > 0) {
+      console.log(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
+      snapDist = threshold;
+    }
+  }
 
   // Get sorted coordinate ids
   // Consider: speed up sorting -- try bucket sort as first pass.
@@ -6107,7 +6125,7 @@ MapShaper.autoSnapCoords = function(xx, yy, nn, points) {
     snapCount += snapPoint(i, ids, snapDist);
   }
 
-  trace(">> snapped points:", snapCount);
+  console.log(Utils.format("Snapped %s point%s", snapCount, "s?"));
 
   function snapPoint(i, ids, limit) {
     var j = i,
@@ -6347,7 +6365,7 @@ function PathImporter(pointCount, opts) {
       T.start();
       var nn = Utils.pluck(paths, 'size'); // TODO: refactor
       snappedPoints = opts.debug_snapping ? [] : null;
-      MapShaper.autoSnapCoords(xx, yy, nn, snappedPoints);
+      MapShaper.autoSnapCoords(xx, yy, nn, opts.snap_interval, snappedPoints);
       T.stop("Snapping points");
     }
 
@@ -6771,11 +6789,16 @@ var dataTableProto = {
   fieldExists: function(name) {
     if (this.size() === 0) return false;
     return name in this.getRecords()[0];
+  },
+
+  // TODO: improve
+  getFields: function() {
+    if (this.size() === 0) return [];
+    return Utils.keys(this.getRecords()[0]);
   }
 };
 
 Utils.extend(DataTable.prototype, dataTableProto);
-
 
 // Implements the DataTable api for DBF file data.
 // We avoid touching the raw DBF field data if possible. This way, we don't need
@@ -9116,6 +9139,252 @@ MapShaper.importDbfTable = function(shpName) {
 
 
 
+// Dissolve a polygon layer into one or more derived layers
+// @dissolve comma-separated list of fields or true
+//
+MapShaper.dissolveLayer = function(lyr, arcs, dissolve) {
+  if (lyr.geometry_type != 'polygon') {
+    error("[dissolveLayer()] Expected a polygon layer");
+  }
+  if (!Utils.isString(dissolve)) {
+    dissolve = "";
+  }
+  var layers = Utils.map(dissolve.split(','), function(f) {
+    return MapShaper.dissolve(lyr, arcs, f || null);
+  });
+  return layers;
+};
+
+// Generate a dissolved layer
+// @field name of dissolve field or null
+//
+MapShaper.dissolve = function(lyr, arcs, field) {
+  var shapes = lyr.shapes,
+      shapeKey,
+      properties;
+
+  T.start();
+
+  if (field) {
+    if (!lyr.data) {
+      error("[dissolveLayer()] Layer is missing a data table");
+    }
+    if (field && !lyr.data.fieldExists(field)) {
+      error("[dissolveLayer()] Missing field:",
+        field, '\nAvailable fields:', lyr.data.getFields().join(', '));
+    }
+    properties = lyr.data.getRecords();
+    shapeKey = function(shapeId) {
+      var record = properties[shapeId];
+      return record[field];
+    };
+  } else {
+    shapeKey = function(shapeId) {
+      return "";
+    };
+  }
+
+  var first = dissolveFirstPass(shapes, shapeKey);
+  var second = dissolveSecondPass(first.segments);
+  var records = MapShaper.calcDissolveData(first.keys, second.index, properties, field);
+
+  T.stop('dissolve');
+
+  var lyr2 = {
+    shapes: second.shapes,
+    name: field || 'dissolve',
+    data: new DataTable(records)
+  };
+  Opts.copyNewParams(lyr2, lyr);
+  return lyr2;
+};
+
+function dissolveFirstPass(shapes, getKey) {
+  var groups = [],
+      segments = [],
+      keys = [];
+
+  function procShape(obj) {
+    var key = getKey(obj.i);
+    obj.dissolveKey = key;
+    keys[obj.i] = key;
+  }
+
+  function procArc(obj) {
+    var idx = obj.arcIdx,
+        segId = segments.length,
+        group = groups[idx];
+    if (!group) {
+      group = [];
+      groups[idx] = group;
+    }
+    group.push(segId);
+    obj.group = group;
+    segments.push(obj);
+  }
+
+  MapShaper.traverseShapes(shapes, procArc, null, procShape);
+  return {
+    segments: segments,
+    keys: keys
+  };
+}
+
+function dissolveSecondPass(segments) {
+  var dissolveIndex = {};  // new shape ids indexed by dissolveKey
+  var dissolveShapes = []; // dissolved shapes
+
+  function addRing(arcs, key) {
+    var i;
+    if (key in dissolveIndex === false) {
+      i = dissolveShapes.length;
+      dissolveIndex[key] = i;
+      dissolveShapes[i] = [];
+    } else {
+      i = dissolveIndex[key];
+    }
+    dissolveShapes[i].push(arcs);
+  }
+
+  // Generate a dissolved ring
+  // @firstArc the first arc instance in the ring
+  //
+  function buildRing(firstArc) {
+    var newArcs = [firstArc.arcId],
+        nextArc = getNextArc(firstArc);
+
+    while (nextArc && nextArc != firstArc) {
+      newArcs.push(nextArc.arcId);
+      nextArc.used = true;
+      nextArc = getNextArc(nextArc);
+      if (nextArc.used) error("buildRing() topology error");
+    }
+
+    if (!nextArc) error("buildRing() traversal error");
+    firstArc.used = true;
+
+    addRing(newArcs, firstArc.shape.dissolveKey);
+  }
+
+  // Get the next segment in a dissolved polygon ring
+  // @obj an undissolvable arc instance
+  //
+  function getNextArc(obj) {
+    var partLen = obj.part.arcs.length,
+        offs = 1,
+        next, match;
+    if (partLen == 1) {
+      next = obj;
+    } else {
+      if (obj.i + offs == partLen) {
+        offs -= partLen;
+      }
+      next = segments[obj.segId + offs];
+      match = findDissolveArc(next);
+      if (match) {
+        // TODO: detect error condition: adjacent ring is an island (possible?)
+        if (match.part.arcs.length == 1) {
+          next = getNextArc(next);
+        } else {
+          next = getNextArc(match);
+        }
+      } else {
+        // trace("continuing along a ring to:", next.arcId);
+      }
+    }
+    return next;
+  }
+
+  // Look for an arc instance that can be dissolved with segment @obj
+  // (must be going the opposite direction, etc)
+  // Return matching segment or null if no match
+  //
+  function findDissolveArc(obj) {
+    var dissolveKey = obj.shape.dissolveKey;
+    var matchId = Utils.find(obj.group, function(i) {
+      if (i === obj.segId) return false;
+      var other = segments[i];
+      return !other.used && other.shape.dissolveKey === dissolveKey && obj.arcId == ~other.arcId;
+    });
+    if (matchId === null) return null;
+    return segments[matchId];
+  }
+
+  // @obj is an arc instance
+  function procSegment(obj) {
+    if (obj.used) return;
+    var match = findDissolveArc(obj);
+    if (!match) buildRing(obj);
+  }
+
+  Utils.forEach(segments, procSegment);
+  return {
+    index: dissolveIndex,
+    shapes: dissolveShapes
+  };
+}
+
+// TODO: test all output types with empty properties (i.e. no field)
+//
+MapShaper.calcDissolveData = function(keys, index, properties, field) {
+  var arr = [];
+  Utils.forEach(keys, function(key, i) {
+    if (key in index === false) return;
+    var idx = index[key],
+        rec;
+    if (idx in arr) return;
+    rec = {};
+    if (field) {
+      rec[field] = properties[i][field];
+    }
+    arr[idx] = rec;
+  });
+  return arr;
+};
+
+MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
+  var segId = 0,
+      partId = 0;
+
+  Utils.forEach(shapes, function(parts, shapeId) {
+    if (!parts || parts.length === 0) return; // null shape
+    var shapeData = {
+      i: shapeId,
+      parts: parts
+    },
+    arcIds, arcId, partData;
+    if (cbShape) cbShape(shapeData);
+
+    for (var i=0, m=parts.length; i<m; i++, partId++) {
+      arcIds = parts[i];
+      partData = {
+        i: i,
+        partId: partId,
+        shape: shapeData,
+        arcs: arcIds
+      };
+      if (cbPart) cbPart(partData);
+
+      for (var j=0, n=arcIds.length; j<n; j++, segId++) {
+        if (cbArc) {
+          arcId = arcIds[j];
+          cbArc({
+            i: j,
+            arcId: arcId,
+            arcIdx: arcId < 0 ? ~arcId : arcId,
+            segId: segId,
+            part: partData,
+            shape: shapeData
+          });
+        }
+      }
+    }
+  });
+};
+
+
+
+
 var cli = MapShaper.cli = {};
 
 var usage =
@@ -9128,7 +9397,11 @@ var usage =
   "$ mapshaper --dp -p 0.1 counties.shp";
 
 MapShaper.getOptionParser = function() {
-  return require('optimist')
+  return MapShaper.getExtraOptionParser(MapShaper.getBasicOptionParser());
+};
+
+MapShaper.getBasicOptionParser = function() {
+  return getOptimist()
     .usage(usage)
 
     .options("o", {
@@ -9171,11 +9444,6 @@ MapShaper.getOptionParser = function() {
       'boolean': true
     })
 
-    .options("modified-v1", {
-      describe: "use the original modified Visvalingam method (deprecated)",
-      'boolean': true
-    })
-
     .options("keep-shapes", {
       describe: "prevent small shapes from disappearing",
       'boolean': true
@@ -9186,22 +9454,12 @@ MapShaper.getOptionParser = function() {
       'boolean': true
     })
 
-    .options("no-repair", {
-      describe: "don't remove intersections introduced by simplification",
-      'boolean': true
-    })
-
     .options("precision", {
       describe: "coordinate precision in source units (applied on import)"
     })
 
-    .options("quantization", {
-      describe: "specify TopoJSON quantization (auto-set by default)"
-    })
-
-    .options("no-quantization", {
-      describe: "export TopoJSON without quantization",
-      'boolean': true
+    .options("dissolve", {
+      describe: "dissolve polygons; takes optional comma-sep. list of fields"
     })
 
     .options("verbose", {
@@ -9219,6 +9477,10 @@ MapShaper.getOptionParser = function() {
       alias: "help",
       describe: "print this help message",
       'boolean': true
+    })
+
+    .options("more", {
+      describe: "print less-used + experimental options"
     });
   /*
     // TODO
@@ -9235,22 +9497,64 @@ MapShaper.getOptionParser = function() {
     */
 };
 
+MapShaper.getExtraOptionParser = function(optimist) {
+  return (optimist || getOptimist())
+
+  .options("no-repair", {
+    describe: "don't remove intersections introduced by simplification",
+    'boolean': true
+  })
+
+  .options("quantization", {
+    describe: "specify TopoJSON quantization (auto-set by default)"
+  })
+
+  .options("no-quantization", {
+    describe: "export TopoJSON without quantization",
+    'boolean': true
+  })
+
+  .options("snap-interval", {
+    describe: "specify snapping distance in source units"
+  })
+
+  .options("split-cols", {
+    describe: "number of columns for splitting on a grid"
+  })
+
+  .options("split-rows", {
+    describe: "number of rows for splitting on a grid"
+  })
+
+  .options("modified-v1", {
+    describe: "use the original modified Visvalingam method (deprecated)",
+    'boolean': true
+  });
+};
+
 // Parse command line and return options object for bin/mapshaper
 //
 MapShaper.getOpts = function() {
   var optimist = MapShaper.getOptionParser(),
-      opts, argv;
+      argv = optimist.argv,
+      opts;
 
-  argv = optimist.check(function(argv) {
-    if (argv.h) {
-      optimist.showHelp();
-      process.exit(0);
-    }
-    if (argv.v) {
-      console.log(getVersion());
-      process.exit(0);
-    }
-    opts = MapShaper.validateArgs(argv, getSupportedArgs(optimist));
+  if (argv.help) {
+    MapShaper.getBasicOptionParser().showHelp();
+    process.exit(0);
+  }
+  if (argv.more) {
+    console.log( "More " + MapShaper.getExtraOptionParser().help());
+    process.exit(0);
+  }
+  if (argv.version) {
+    console.log(getVersion());
+    process.exit(0);
+  }
+
+  // validate args against basic option parser so standard help message is shown
+  var dummy = MapShaper.getBasicOptionParser().check(function() {
+    opts = MapShaper.validateArgs(argv, getSupportedArgs());
   }).argv;
 
   C.VERBOSE = opts.verbose;
@@ -9262,16 +9566,21 @@ MapShaper.getOpts = function() {
 //
 MapShaper.checkArgs = function(argv) {
   var optimist = MapShaper.getOptionParser();
-  return MapShaper.validateArgs(optimist.parse(argv), getSupportedArgs(optimist));
+  return MapShaper.validateArgs(optimist.parse(argv), getSupportedArgs());
 };
+
+function getOptimist() {
+  delete require.cache[require.resolve('optimist')];
+  return require('optimist');
+}
 
 // Return an array of all recognized cli arguments: ["f", "format", ...]
 //
-function getSupportedArgs(optimist) {
-  var args = optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
-    return arg.replace(/^-/, '');
-  });
-  args = args.concat(cli.getHiddenArgs());
+function getSupportedArgs() {
+  var optimist = MapShaper.getOptionParser(),
+      args = optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
+        return arg.replace(/^-/, '');
+      });
   return args;
 }
 
@@ -9319,7 +9628,7 @@ MapShaper.validateArgs = function(argv, supported) {
   Utils.extend(opts, cli.validateOutputOpts(argv, opts));
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
-  Utils.extend(opts, cli.validateHiddenOpts(argv));
+  Utils.extend(opts, cli.validateExtraOpts(argv));
   opts.verbose = !!argv.verbose;
   return opts;
 };
@@ -9348,7 +9657,6 @@ MapShaper.getOutputPaths = function(files, dir, extension) {
     return obj.pathbase + suffix + '.' + obj.extension;
   });
 };
-
 
 cli.testFileCollision = function(files, suff) {
   return Utils.some(files, function(obj) {
@@ -9444,18 +9752,20 @@ cli.validateOutputOpts = function(argv, inputOpts) {
   };
 };
 
-// Hidden args aren't listed by --help
-cli.getHiddenArgs = function() {
-  return ['split-cols', 'split-rows'];
-};
-
-cli.validateHiddenOpts = function(argv) {
+cli.validateExtraOpts = function(argv) {
   var opts = {};
   var r = parseInt(argv['split-rows'], 10) || 1,
       c = parseInt(argv['split-cols'], 10) || 1;
   if (r > 1 || c > 1) {
     opts.split_rows = r;
     opts.split_cols = c;
+  }
+  if (Utils.isString(argv.dissolve) || argv.dissolve === true) {
+    opts.dissolve = argv.dissolve || true; // empty string -> true
+  }
+  opts.snap_interval = argv['snap-interval'];
+  if (opts.snap_interval) {
+    opts.snapping = true;
   }
   return opts;
 };
@@ -9551,6 +9861,7 @@ var api = Utils.extend(MapShaper, {
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
   Dbf: Dbf,
+  C: C,
   Bounds: Bounds
 });
 

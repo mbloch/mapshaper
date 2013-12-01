@@ -104,7 +104,7 @@ var Utils = {
     return dest;
   },
 
-  // Convert an array-like object to an Array
+  // Convert an array-like object to an Array, or make a copy if @obj is an Array
   toArray: function(obj) {
     var arr;
     if (!Utils.isArrayLike(obj)) error("Utils.toArray() requires an array-like object");
@@ -121,6 +121,7 @@ var Utils = {
   },
 
   // Array like: has length property, is numerically indexed and mutable.
+  // TODO: try to detect objects with length property but no indexed data elements
   isArrayLike: function(obj) {
     if (!obj) return false;
     if (Utils.isArray(obj)) return true;
@@ -128,7 +129,6 @@ var Utils = {
     if (obj.length === 0) return true;
     if (obj.length > 0) return true;
     return false;
-    // TODO: exclude objects with length property that are not numerically indexed.
   },
 
   isFunction: function(obj) {
@@ -140,12 +140,12 @@ var Utils = {
   },
 
   isArray: function(obj) {
-    return obj instanceof Array; // breaks across frames and windows
+    return obj instanceof Array; // breaks across iframes
     // More robust:
     // return Object.constructor.toString.call(obj) == '[object Array]';
   },
 
-   // NaN -> true
+  // NaN -> true
   isNumber: function(obj) {
     // return toString.call(obj) == '[object Number]'; // ie8 breaks?
     return obj != null && obj.constructor == Number;
@@ -697,6 +697,7 @@ Utils.repeat = function(times, func) {
 // Assumes: no other non-numeric objects in array
 //
 Utils.sum = function(arr, info) {
+  if (!Utils.isArrayLike(arr)) error ("Utils.sum() expects an array, received:", arr);
   var tot = 0,
       nan = 0,
       val;
@@ -2799,47 +2800,6 @@ Bounds.prototype.mergeBounds = function(bb) {
 
 
 
-function Tasks() {
-  if (this instanceof Tasks === false) {
-    return new Tasks();
-  }
-  var _tasks = [];
-
-  // Could call this on a timeout
-  this.cancel = function() {
-    error("Tasks#cancel() stub");
-  }
-
-  this.add = function(task) {
-    _tasks.push(task);
-    return this;
-  };
-
-  // @allDone Called when all tasks complete, with return values of task callbacks:
-  //    allDone(val1, ...)
-  // @error TODO: call optional error handler function if one or more tasks fail to complete
-  //
-  this.run = function(allDone, error) {
-    var tasks = _tasks,
-        values = [],
-        needed = tasks.length;
-    _tasks = []; // reset
-    Utils.forEach(tasks, function(task, i) {
-      function taskDone(data) {
-        values[i] = data;
-        if (--needed === 0) {
-          allDone.apply(null, values);
-        }
-      }
-      task(taskDone);
-    });
-    return this;
-  };
-}
-
-
-
-
 // Support for handling asynchronous dependencies.
 // Waiter#isReady() == true and Waiter fires 'ready' after any/all dependents fire "ready"
 // Instantiate directly or use as a base class.
@@ -2895,6 +2855,55 @@ Waiter.prototype.startWaiting = function() {
   return this;
 };
 
+// Usage: new Tasks().add(task1).add(task2) ... .run(oncomplete, onerror);
+// Tasks are functions that take a single argument -- an ondata callback.
+//
+function Tasks() {
+  if (this instanceof Tasks === false) {
+    return new Tasks();
+  }
+  var _tasks = [];
+
+  // Could call this on a timeout
+  this.cancel = function() {
+    error("Tasks#cancel() stub");
+  }
+
+  this.add = function(task) {
+    _tasks.push(task);
+    return this;
+  };
+
+  // @oncomplete Called when all tasks complete, with return values of task callbacks:
+  //    oncomplete(val1, ...)
+  // @error TODO: call optional onerror handler function if one or more tasks fail to complete
+  //
+  this.run = function(oncomplete, onerror) {
+    var self = this,
+        tasks = _tasks,
+        values = [],
+        needed = tasks.length;
+    _tasks = []; // reset
+    if (tasks.length == 0) {
+      oncomplete();
+      self.startWaiting();
+    } else {
+      Utils.forEach(tasks, function(task, i) {
+        function ondone(data) {
+          values[i] = data;
+          if (--needed === 0) {
+            oncomplete.apply(null, values);
+            self.startWaiting();
+          }
+        }
+        task(ondone);
+      });
+    }
+    return this;
+  };
+}
+
+Opts.inherit(Tasks, Waiter);
 
 
 var TRANSITION_TIME = 500;
@@ -5893,11 +5902,20 @@ MapShaper.topology = {
 // @nn array of path lengths
 // @points (optional) array, snapped coords are added so they can be displayed
 //
-MapShaper.autoSnapCoords = function(xx, yy, nn, points) {
+MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
   var avgSeg = MapShaper.getAverageSegment(MapShaper.getSegmentIter(xx, yy, nn), 3),
       avgDist = (avgSeg[0] + avgSeg[1]), // avg. dx + dy -- crude approximation
       snapDist = avgDist * 0.0025,
       snapCount = 0;
+
+  if (threshold) {
+    if (threshold > avgDist) {
+      console.log("Snapping threshold is larger than average segment length -- ignoring");
+    } else if (threshold > 0) {
+      console.log(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
+      snapDist = threshold;
+    }
+  }
 
   // Get sorted coordinate ids
   // Consider: speed up sorting -- try bucket sort as first pass.
@@ -5908,7 +5926,7 @@ MapShaper.autoSnapCoords = function(xx, yy, nn, points) {
     snapCount += snapPoint(i, ids, snapDist);
   }
 
-  trace(">> snapped points:", snapCount);
+  console.log(Utils.format("Snapped %s point%s", snapCount, "s?"));
 
   function snapPoint(i, ids, limit) {
     var j = i,
@@ -6148,7 +6166,7 @@ function PathImporter(pointCount, opts) {
       T.start();
       var nn = Utils.pluck(paths, 'size'); // TODO: refactor
       snappedPoints = opts.debug_snapping ? [] : null;
-      MapShaper.autoSnapCoords(xx, yy, nn, snappedPoints);
+      MapShaper.autoSnapCoords(xx, yy, nn, opts.snap_interval, snappedPoints);
       T.stop("Snapping points");
     }
 
@@ -6572,11 +6590,16 @@ var dataTableProto = {
   fieldExists: function(name) {
     if (this.size() === 0) return false;
     return name in this.getRecords()[0];
+  },
+
+  // TODO: improve
+  getFields: function() {
+    if (this.size() === 0) return [];
+    return Utils.keys(this.getRecords()[0]);
   }
 };
 
 Utils.extend(DataTable.prototype, dataTableProto);
-
 
 // Implements the DataTable api for DBF file data.
 // We avoid touching the raw DBF field data if possible. This way, we don't need
@@ -7982,6 +8005,12 @@ function DropControl(importer) {
 }
 
 function ImportControl(editor) {
+  var self = this,
+      dropper = DropControl(this),
+      chooser = new FileChooser('#g-shp-import-btn').on('select', function(e) {
+        self.readFiles(e.files);
+      });
+
   var precisionInput = new ClickText("#g-import-precision-opt")
     .bounds(0, Infinity)
     .formatter(function(str) {
@@ -7992,6 +8021,7 @@ function ImportControl(editor) {
       return str === '' || Utils.isNumber(parseFloat(str));
     });
 
+  // TODO: doesn't need to be public
   // Receive: FileList
   this.readFiles = function(files) {
     Utils.forEach(files, this.readFile, this);
@@ -8582,26 +8612,37 @@ function ShapeRenderer() {
     }
   }
 
+  function drawSquare(x, y, size, col, ctx) {
+    if (size > 0) {
+      var offs = size / 2;
+      x = Math.round(x - offs);
+      y = Math.round(y - offs);
+      ctx.fillStyle = col;
+      ctx.fillRect(x, y, size, size);
+    }
+  }
+
   this.drawPoints = function(paths, style, ctx) {
     var midCol = style.dotColor || "rgba(255, 50, 50, 0.5)",
         endCol = style.nodeColor || midCol,
         midSize = style.dotSize || 4,
         endSize = style.nodeSize >= 0 ? style.nodeSize : midSize,
+        drawPoint = style.squareDot ? drawSquare : drawCircle,
         prevX, prevY;
 
     paths.forEach(function(vec) {
       if (vec.hasNext()) {
-        drawCircle(vec.x, vec.y, endSize, endCol, ctx);
+        drawPoint(vec.x, vec.y, endSize, endCol, ctx);
       }
       if (vec.hasNext()) {
         prevX = vec.x;
         prevY = vec.y;
         while (vec.hasNext()) {
-          drawCircle(prevX, prevY, midSize, midCol, ctx);
+          drawPoint(prevX, prevY, midSize, midCol, ctx);
           prevX = vec.x;
           prevY = vec.y;
         }
-        drawCircle(prevX, prevY, endSize, endCol, ctx);
+        drawPoint(prevX, prevY, endSize, endCol, ctx);
       }
     });
   };
@@ -8887,7 +8928,10 @@ function ArcLayerGroup(arcs, opts) {
     }
   };
 
-  this.refresh = function() {
+  this.refresh = function(style) {
+    if (style) { // KLUDGE
+      _arcLyr.updateStyle(style);
+    }
     if (_map) drawLayers();
   };
 
@@ -8919,10 +8963,12 @@ function ShapeLayer(shapes, surface, opts) {
     strokeAlpha: 1
   };
 
-  Utils.extend(style, opts);
-
   this.visible = function(b) {
     return arguments.length === 0 ? _visible : _visible = !b, this;
+  };
+
+  this.updateStyle = function(obj) {
+    Utils.extend(style, obj);
   };
 
   this.draw = function(ext) {
@@ -8934,6 +8980,8 @@ function ShapeLayer(shapes, surface, opts) {
     }
     // TODO: find a way to enable circles at an appropriate zoom
   };
+
+  this.updateStyle(opts);
 }
 
 Opts.inherit(ShapeLayer, Waiter);
@@ -10244,6 +10292,7 @@ function RepairControl(map, lineLyr, arcData) {
   };
 
   function showIntersections(XX) {
+    var dotSize = getDotSize(XX.length);
     var points = MapShaper.getIntersectionPoints(XX);
     if (!_pointLyr) {
       _pointColl = new FilteredPathCollection(points, {
@@ -10251,20 +10300,25 @@ function RepairControl(map, lineLyr, arcData) {
         min_path: 0
       });
       _pointLyr = new ArcLayerGroup(_pointColl, {
-        dotSize: 5,
+        dotSize: dotSize,
+        squareDot: true,
         dotColor: "#F24400"
       });
       map.addLayerGroup(_pointLyr);
     } else if (XX.length > 0) {
       _pointColl.update(points);
       _pointLyr.visible(true);
-      _pointLyr.refresh();
+      _pointLyr.refresh({dotSize: dotSize});
     } else{
       _pointLyr.visible(false);
     }
     var msg = Utils.format("%s line intersection%s", XX.length, XX.length != 1 ? 's' : '');
     readout.text(msg);
     _currXX = XX;
+  }
+
+  function getDotSize(n) {
+    return n < 500 ? 4 : 3;
   }
 
   function enabled(b) {
@@ -10400,40 +10454,17 @@ MapShaper.replaceValue = function(zz, value, replacement, start, end) {
 
 
 
-var dropper,
-    importer,
-    editor;
-
 if (Browser.inBrowser) {
   Browser.onload(function() {
     if (!browserIsSupported()) {
       El("#mshp-not-supported").show();
       return;
     }
-    editor = new Editor();
-    importer = new ImportControl(editor);
-    dropper = new DropControl(importer);
-    introPage();
+    var editor = new Editor(),
+        importer = new ImportControl(editor);
+    El('#mshp-import').show(); // show import screen
   });
 }
-
-function introPage() {
-  new FileChooser('#g-shp-import-btn').on('select', function(e) {
-    importer.readFiles(e.files);
-  });
-  El('#mshp-import').show();
-}
-
-/*
-function ImportPanel(importer) {
-  var shpBtn = new FileChooser('#g-shp-import-btn');
-  shpBtn.on('select', function(e) {
-    importer.readFiles(e.files);
-  });
-}
-
-Opts.inherit(ImportPanel, EventDispatcher);
-*/
 
 function browserIsSupported() {
   return Env.inBrowser &&
@@ -10480,7 +10511,6 @@ function Editor() {
 
     var filteredArcs = new FilteredPathCollection(arcData);
     var group = new ArcLayerGroup(filteredArcs);
-
     map.addLayerGroup(group);
 
     // visualize point snapping by displaying snapped points on the map

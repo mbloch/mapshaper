@@ -21,11 +21,16 @@ var dataTableProto = {
   fieldExists: function(name) {
     if (this.size() === 0) return false;
     return name in this.getRecords()[0];
+  },
+
+  // TODO: improve
+  getFields: function() {
+    if (this.size() === 0) return [];
+    return Utils.keys(this.getRecords()[0]);
   }
 };
 
 Utils.extend(DataTable.prototype, dataTableProto);
-
 
 // Implements the DataTable api for DBF file data.
 // We avoid touching the raw DBF field data if possible. This way, we don't need

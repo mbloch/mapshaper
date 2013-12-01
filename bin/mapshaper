@@ -37,6 +37,10 @@ if (opts.use_simplification) {
   }
 }
 
+if (opts.dissolve) {
+  importData.layers = mapshaper.dissolveLayer(importData.layers[0], arcData, opts.dissolve);
+}
+
 var exports = mapshaper.exportContent(importData.layers, arcData, opts);
 
 // Copy prj file, if both importing and exporting as shapefile
