@@ -1,8 +1,21 @@
 /* @require mapshaper-common, dbf-writer */
 
 
-function DataTable(arr) {
-  var records = arr || [];
+function DataTable(obj) {
+  var records;
+  if (Utils.isArray(obj)) {
+    records = obj;
+  } else {
+    records = [];
+    // integer object: create empty records
+    if (Utils.isInteger(obj)) {
+      for (var i=0; i<obj; i++) {
+        records.push({});
+      }
+    } else if (obj) {
+      error("[DataTable] Invalid constructor argument:", obj);
+    }
+  }
 
   this.exportAsDbf = function() {
     return Dbf.exportRecords(records);

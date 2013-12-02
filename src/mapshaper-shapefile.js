@@ -61,7 +61,12 @@ MapShaper.exportShp = function(layers, arcData, opts) {
 
   var files = [];
   Utils.forEach(layers, function(layer) {
-    var obj = MapShaper.exportShpFile(layer, arcData);
+    var obj = MapShaper.exportShpFile(layer, arcData),
+        data = layer.data;
+    // create empty data table if missing a table
+    if (!data) {
+      data = new DataTable(layer.shapes.length);
+    }
     files.push({
         content: obj.shp,
         name: layer.name,
@@ -70,14 +75,11 @@ MapShaper.exportShp = function(layers, arcData, opts) {
         content: obj.shx,
         name: layer.name,
         extension: "shx"
-      });
-    if (layer.data) {
-      files.push({
-        content: layer.data.exportAsDbf(),
+      }, {
+        content: data.exportAsDbf(),
         name: layer.name,
         extension: "dbf"
       });
-    }
   });
   return files;
 };

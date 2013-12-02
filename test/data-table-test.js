@@ -14,6 +14,29 @@ describe('data-table.js', function () {
       data1 = [{'foo': 'goat', 'bar': 22}, {'foo': 'cat', 'bar': 0}];
     })
 
+    describe("constructor", function() {
+      it('initialize empty table', function() {
+        var table = new DataTable();
+        assert.deepEqual(table.getRecords(), []);
+        assert.equal(table.size(), 0);
+      })
+
+      it('initialize n empty records', function() {
+        var table = new DataTable(1);
+        assert.deepEqual(table.getRecords(), [{}]);
+        assert.equal(table.size(), 1);
+        table = new DataTable(4);
+        assert.deepEqual(table.getRecords(), [{}, {}, {}, {}]);
+      })
+
+      it('initialize from array of records', function() {
+        var records = [{foo: 'a', foo: 'b'}];
+        var table = new DataTable(records);
+        assert.deepEqual(table.getRecords(), [{foo: 'a', foo: 'b'}]);
+        assert.equal(table.getRecords(), records); // returns original data, not copy
+      })
+    })
+
     describe('#getRecords()', function() {
       it ("returns array of object records", function() {
         var table = new DataTable(data1);
