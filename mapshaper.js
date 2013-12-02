@@ -9160,43 +9160,45 @@ MapShaper.dissolveLayer = function(lyr, arcs, dissolve) {
 //
 MapShaper.dissolve = function(lyr, arcs, field) {
   var shapes = lyr.shapes,
-      shapeKey,
-      properties;
+      properties = lyr.data ? lyr.data.getRecords() : null,
+      dissolveLyr,
+      dissolveRecords,
+      getDissolveKey;
 
   T.start();
 
   if (field) {
-    if (!lyr.data) {
+    if (!properties) {
       error("[dissolveLayer()] Layer is missing a data table");
     }
     if (field && !lyr.data.fieldExists(field)) {
       error("[dissolveLayer()] Missing field:",
         field, '\nAvailable fields:', lyr.data.getFields().join(', '));
     }
-    properties = lyr.data.getRecords();
-    shapeKey = function(shapeId) {
+    getDissolveKey = function(shapeId) {
       var record = properties[shapeId];
       return record[field];
     };
   } else {
-    shapeKey = function(shapeId) {
+    getDissolveKey = function(shapeId) {
       return "";
     };
   }
 
-  var first = dissolveFirstPass(shapes, shapeKey);
+  var first = dissolveFirstPass(shapes, getDissolveKey);
   var second = dissolveSecondPass(first.segments);
-  var records = MapShaper.calcDissolveData(first.keys, second.index, properties, field);
-
-  T.stop('dissolve');
-
-  var lyr2 = {
+  dissolveLyr = {
     shapes: second.shapes,
     name: field || 'dissolve',
-    data: new DataTable(records)
   };
-  Opts.copyNewParams(lyr2, lyr);
-  return lyr2;
+  if (properties) {
+    dissolveRecords = MapShaper.calcDissolveData(first.keys, second.index, properties, field);
+    dissolveLyr.data = new DataTable(dissolveRecords);
+  }
+  Opts.copyNewParams(dissolveLyr, lyr);
+
+  T.stop('dissolve');
+  return dissolveLyr;
 };
 
 function dissolveFirstPass(shapes, getKey) {
@@ -9231,8 +9233,8 @@ function dissolveFirstPass(shapes, getKey) {
 }
 
 function dissolveSecondPass(segments) {
-  var dissolveIndex = {};  // new shape ids indexed by dissolveKey
-  var dissolveShapes = []; // dissolved shapes
+  var dissolveIndex = {},  // new shape ids indexed by dissolveKey
+      dissolveShapes = []; // dissolved shapes
 
   function addRing(arcs, key) {
     var i;

@@ -21,7 +21,7 @@ describe('mapshaper-dissolve.js', function () {
           [[2, 4, 3], [3, 3, 1]]];
       var arcData = new api.ArcDataset(arcs);
 
-      it('dissolve 1', function() {
+      it('dissolve on "foo" 1', function() {
         var lyr = {
               geometry_type: 'polygon',
               data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
@@ -29,9 +29,10 @@ describe('mapshaper-dissolve.js', function () {
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
         assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
+        assert.deepEqual(lyr2.data.getRecords(), [{foo: 1}])
       })
 
-      it('dissolve 2', function() {
+      it('dissolve on "foo" 2', function() {
         var lyr = {
               geometry_type: 'polygon',
               data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
@@ -41,7 +42,7 @@ describe('mapshaper-dissolve.js', function () {
         assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
       })
 
-      it('dissolve 3', function() {
+      it('dissolve on "foo" 3', function() {
         var lyr = {
               geometry_type: 'polygon',
               data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
@@ -49,6 +50,39 @@ describe('mapshaper-dissolve.js', function () {
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
         assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
+      })
+
+      it('dissolve on null, no data table', function() {
+        var lyr = {
+              geometry_type: 'polygon',
+              shapes: [[[1, 0]], [[2, -2]]]
+            };
+        var lyr2 = api.dissolve(lyr, arcData, null);
+        assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
+        assert.ok(!lyr2.data);
+      })
+
+      it('dissolve on null + data table', function() {
+        var lyr = {
+              geometry_type: 'polygon',
+              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              shapes: [[[1, 0]], [[2, -2]]]
+            };
+        var lyr2 = api.dissolve(lyr, arcData, null);
+        assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
+        assert.deepEqual(lyr2.data.getRecords(), [{}]); // empty table (?)
+      })
+
+      it('dissolve on "foo" with null shapes', function() {
+        var records = [{foo: 2}, {foo: 1}, {foo: 1}, {foo: 1}];
+        var lyr = {
+              geometry_type: 'polygon',
+              data: new api.data.DataTable(records),
+              shapes: [null, [[0, 1]], [[-2, 2]], null]
+            };
+        var lyr2 = api.dissolve(lyr, arcData, 'foo');
+        assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
+        assert.deepEqual(lyr2.data.getRecords(), [{foo: 1}])
       })
 
       it('no dissolve', function() {
@@ -226,6 +260,7 @@ describe('mapshaper-dissolve.js', function () {
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
         assert.deepEqual(lyr2.shapes,
             [[[1, 2, 3, 4]], [[5, -3, -2, -5]]]);
+        assert.deepEqual(lyr2.data.getRecords(), [{foo: 1}, {foo: 2}]);
       })
 
       it('dissolve everything', function () {
@@ -237,7 +272,6 @@ describe('mapshaper-dissolve.js', function () {
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
         assert.deepEqual(lyr2.shapes, [[[3, 5]]]);
       })
-
 
       it('dissolve two shapes around an empty hole', function () {
         var lyr = {
@@ -321,23 +355,9 @@ describe('mapshaper-dissolve.js', function () {
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
         assert.deepEqual(lyr2.shapes, [[[0, 4]]]);
       })
-
-      /*
-      // TODO: test partial dissolves of this figure
-      it('dissolve 2', function () {
-        var lyr = {
-              geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 2}, {foo: 1}]),
-              shapes: [[[0, -4, -2, 4]], [[2, 3]], [[1, -3]]]
-            };
-        var lyr2 = api.dissolve(lyr, arcData, 'foo');
-        assert.deepEqual(lyr2.shapes, [[[]]]);
-      })
-      */
-
     })
 
-
+    /*
     describe('shape 5', function () {
 
       //
@@ -349,8 +369,40 @@ describe('mapshaper-dissolve.js', function () {
       //     \   \ /   /
       //      l - m - n
       //
+      // ab, ae, bc, bf, cdg, df, ef, eh, fg, fi, fj, gk
+      // 0,  1,  2,  3,  4,   5,  6,  7,  8,  9,  10, 11
+      //
+      // hi, hl, ij, im, jm, knm, lm, mn
+      // 12, 13, 14, 15, 16, 17,  18, 19
+      //
+      var arcs = [[[1, 3], [4, 4]],
+          [[1, 2], [4, 3]],
+          [[3, 5], [4, 4]],
+          [[3, 4], [4, 3]],
+          [[5, 7, 6], [4, 4, 3]],
+          [[5, 4], [4, 3]],
+          [[2, 4], [3, 3]],
+          [[2, 1], [3, 2]],
+          [[4, 5], [3, 3]],
+          [[4, 3], [3, 2]],
+          [[4, 5], [3, 2]],
+          [[6, 7], [3, 3]],
+          [[1, 3], [2, 2]], // hi
+          [[1, 2], [2, 1]], // hl
+          [[3, 5], [2, 2]], // ij
+          [[3, 4], [2, 1]], // im
+          [[5, 7], [5, 4]], //
+          [[7, 6, 4], [2, 1, 1]],
+          [[2, 4], [1, 1]],
+          [[4, 6], [1, 1]]];
+      var arcData = new api.ArcDataset(arcs);
 
+      it('patchwork', function() {
+        var shapes = [[[0, 3, ~6, ~1]]]
+
+      })
     })
+    */
 
   })
 

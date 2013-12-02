@@ -21,43 +21,45 @@ MapShaper.dissolveLayer = function(lyr, arcs, dissolve) {
 //
 MapShaper.dissolve = function(lyr, arcs, field) {
   var shapes = lyr.shapes,
-      shapeKey,
-      properties;
+      properties = lyr.data ? lyr.data.getRecords() : null,
+      dissolveLyr,
+      dissolveRecords,
+      getDissolveKey;
 
   T.start();
 
   if (field) {
-    if (!lyr.data) {
+    if (!properties) {
       error("[dissolveLayer()] Layer is missing a data table");
     }
     if (field && !lyr.data.fieldExists(field)) {
       error("[dissolveLayer()] Missing field:",
         field, '\nAvailable fields:', lyr.data.getFields().join(', '));
     }
-    properties = lyr.data.getRecords();
-    shapeKey = function(shapeId) {
+    getDissolveKey = function(shapeId) {
       var record = properties[shapeId];
       return record[field];
     };
   } else {
-    shapeKey = function(shapeId) {
+    getDissolveKey = function(shapeId) {
       return "";
     };
   }
 
-  var first = dissolveFirstPass(shapes, shapeKey);
+  var first = dissolveFirstPass(shapes, getDissolveKey);
   var second = dissolveSecondPass(first.segments);
-  var records = MapShaper.calcDissolveData(first.keys, second.index, properties, field);
-
-  T.stop('dissolve');
-
-  var lyr2 = {
+  dissolveLyr = {
     shapes: second.shapes,
     name: field || 'dissolve',
-    data: new DataTable(records)
   };
-  Opts.copyNewParams(lyr2, lyr);
-  return lyr2;
+  if (properties) {
+    dissolveRecords = MapShaper.calcDissolveData(first.keys, second.index, properties, field);
+    dissolveLyr.data = new DataTable(dissolveRecords);
+  }
+  Opts.copyNewParams(dissolveLyr, lyr);
+
+  T.stop('dissolve');
+  return dissolveLyr;
 };
 
 function dissolveFirstPass(shapes, getKey) {
@@ -92,8 +94,8 @@ function dissolveFirstPass(shapes, getKey) {
 }
 
 function dissolveSecondPass(segments) {
-  var dissolveIndex = {};  // new shape ids indexed by dissolveKey
-  var dissolveShapes = []; // dissolved shapes
+  var dissolveIndex = {},  // new shape ids indexed by dissolveKey
+      dissolveShapes = []; // dissolved shapes
 
   function addRing(arcs, key) {
     var i;
@@ -143,14 +145,11 @@ function dissolveSecondPass(segments) {
       next = segments[obj.segId + offs];
       match = findDissolveArc(next);
       if (match) {
-        // TODO: detect error condition: adjacent ring is an island (possible?)
         if (match.part.arcs.length == 1) {
           next = getNextArc(next);
         } else {
           next = getNextArc(match);
         }
-      } else {
-        // trace("continuing along a ring to:", next.arcId);
       }
     }
     return next;
@@ -185,7 +184,14 @@ function dissolveSecondPass(segments) {
   };
 }
 
-// TODO: test all output types with empty properties (i.e. no field)
+// Return a properties array for a set of dissolved shapes
+// Records contain dissolve field data (or are empty if not dissolving on a field)
+// TODO: copy other user-specified fields
+//
+// @keys array of dissolve keys, indexed on original shape ids
+// @index hash of dissolve shape ids, indexed on dissolve keys
+// @properties original records
+// @field name of dissolve field, or null
 //
 MapShaper.calcDissolveData = function(keys, index, properties, field) {
   var arr = [];
