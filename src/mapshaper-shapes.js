@@ -423,10 +423,22 @@ function ArcDataset() {
   };
 
   this.getThresholdByPct = function(pct) {
-    if (pct <= 0 || pct >= 1) error("Invalid simplification pct:", pct);
-    var tmp = this.getRemovableThresholds();
-    var k = Math.floor((1 - pct) * tmp.length);
-    return Utils.findValueByRank(tmp, k + 1); // rank starts at 1
+    var tmp = this.getRemovableThresholds(),
+        rank, z;
+    if (tmp.length === 0) { // No removable points
+      rank = 0;
+    } else {
+      rank = Math.floor((1 - pct) * (tmp.length + 2));
+    }
+
+    if (rank <= 0) {
+      z = 0;
+    } else if (rank > tmp.length) {
+      z = Infinity;
+    } else {
+      z = Utils.findValueByRank(tmp, rank);
+    }
+    return z;
   };
 
   this.arcIntersectsBBox = function(i, b1) {
@@ -434,7 +446,6 @@ function ArcDataset() {
         j = i * 4;
     return b2[j] <= b1[2] && b2[j+2] >= b1[0] && b2[j+3] >= b1[1] && b2[j+1] <= b1[3];
   };
-
 
   this.arcIsSmaller = function(i, units) {
     var bb = _bb,

@@ -77,7 +77,17 @@ describe('mapshaper-shapes.js', function () {
       assert.deepEqual([[[3, 1], [1, 1], [3, 1]], [[3, 1], [5, 1], [3, 1]]], arcs.getFilteredCopy().toArray());
     });
 
-    it('#getRemovableThresholds works', function() {
+    it('#getRemovableThresholds(), nothing to remove', function() {
+      var thresholds = [[Infinity, Infinity, Infinity], [Infinity, Infinity], [Infinity, Infinity, Infinity]];
+      var arcs = new ArcDataset(arcs1).setThresholds(thresholds);
+      var removable = arcs.getRemovableThresholds();
+      assert.deepEqual([], Utils.toArray(removable));
+
+      var removable2 = arcs.getRemovableThresholds(2);
+      assert.deepEqual([], Utils.toArray(removable2));
+    });
+
+    it('#getRemovableThresholds(), three removable points', function() {
       var thresholds = [[Infinity, 5, 4, Infinity], [Infinity, Infinity, 7, Infinity]];
       var arcs = new ArcDataset(arcs2).setThresholds(thresholds);
       var removable = arcs.getRemovableThresholds();
@@ -85,6 +95,25 @@ describe('mapshaper-shapes.js', function () {
 
       var removable2 = arcs.getRemovableThresholds(2);
       assert.deepEqual([7], Utils.toArray(removable2));
+    });
+
+    it('#getThresholdByPct(), nothing to remove', function() {
+      var thresholds = [[Infinity, Infinity, Infinity], [Infinity, Infinity],
+            [Infinity, Infinity, Infinity]],
+        arcs = new ArcDataset(arcs1).setThresholds(thresholds);
+
+      assert.equal(arcs.getThresholdByPct(0.7), 0);
+      assert.equal(arcs.getThresholdByPct(0.1), 0);
+    });
+
+    it('#getThresholdByPct(), two removable points', function() {
+      var thresholds = [[Infinity, 5, 4, Infinity]];
+      var arcs = new ArcDataset(arcs4).setThresholds(thresholds);
+      assert.equal(arcs.getThresholdByPct(0), Infinity);
+      assert.equal(arcs.getThresholdByPct(0.1), Infinity);
+      assert.equal(arcs.getThresholdByPct(0.4), 5);
+      assert.equal(arcs.getThresholdByPct(0.6), 4);
+      assert.equal(arcs.getThresholdByPct(1), 0);
     });
 
     it('#applyTransform() works', function() {
@@ -170,6 +199,5 @@ describe('mapshaper-shapes.js', function () {
       assert.equal(api.clampIntervalByPct(3, 0.5), 3);
     })
   })
-
 })
 

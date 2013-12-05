@@ -2547,7 +2547,7 @@ Bounds.prototype.toString = function() {
 };
 
 Bounds.prototype.toArray = function() {
-  return [this.xmin, this.ymin, this.xmax, this.ymax];
+  return this.hasBounds() ? [this.xmin, this.ymin, this.xmax, this.ymax] : [];
 };
 
 Bounds.prototype.hasBounds = function() {
@@ -4827,10 +4827,22 @@ function ArcDataset() {
   };
 
   this.getThresholdByPct = function(pct) {
-    if (pct <= 0 || pct >= 1) error("Invalid simplification pct:", pct);
-    var tmp = this.getRemovableThresholds();
-    var k = Math.floor((1 - pct) * tmp.length);
-    return Utils.findValueByRank(tmp, k + 1); // rank starts at 1
+    var tmp = this.getRemovableThresholds(),
+        rank, z;
+    if (tmp.length === 0) { // No removable points
+      rank = 0;
+    } else {
+      rank = Math.floor((1 - pct) * (tmp.length + 2));
+    }
+
+    if (rank <= 0) {
+      z = 0;
+    } else if (rank > tmp.length) {
+      z = Infinity;
+    } else {
+      z = Utils.findValueByRank(tmp, rank);
+    }
+    return z;
   };
 
   this.arcIntersectsBBox = function(i, b1) {
@@ -4838,7 +4850,6 @@ function ArcDataset() {
         j = i * 4;
     return b2[j] <= b1[2] && b2[j+2] >= b1[0] && b2[j+3] >= b1[1] && b2[j+1] <= b1[3];
   };
-
 
   this.arcIsSmaller = function(i, units) {
     var bb = _bb,
@@ -6388,8 +6399,8 @@ function PathImporter(pointCount, opts) {
       info: info
     };
   };
-
 }
+
 
 // Use shapeId property of @pathData objects to group paths by shape
 //
@@ -9218,6 +9229,7 @@ MapShaper.dissolve = function(lyr, arcs, field) {
 
 function dissolveFirstPass(shapes, getKey) {
   var groups = [],
+      largeGroups = [],
       segments = [],
       keys = [];
 
@@ -9238,9 +9250,59 @@ function dissolveFirstPass(shapes, getKey) {
     group.push(segId);
     obj.group = group;
     segments.push(obj);
+    if (group.length == 3) {
+      largeGroups.push(group);
+    }
+  }
+
+  function findMatchingPair(group, cb) {
+    var arc1, arc2;
+    for (var i=0; i<group.length - 1; i++) {
+      arc1 = segments[group[i]];
+      for (var j=i+1; j<group.length; j++) {
+        arc2 = segments[group[j]];
+        if (cb(arc1, arc2)) {
+          return [i, j];
+        }
+      }
+    }
+    return null;
+  }
+
+  function checkPairwiseExtension(arc1, arc2) {
+    return checkPairwiseMatch(arc1, arc2) &&
+        getNextArcInRing(arc1, segments).arcId ===
+        ~getNextArcInRing(arc2, segments).arcId;
+  }
+
+  function checkPairwiseMatch(arc1, arc2) {
+    return arc1.arcId === ~arc2.arcId && arc1.shape.dissolveKey ===
+        arc2.shape.dissolveKey;
+  }
+
+  function updateGroupIds(ids) {
+    Utils.forEach(ids, function(id) {
+      segments[id].group = ids;
+    });
+  }
+
+  function splitGroup(group) {
+    var group2 = findMatchingPair(group, checkPairwiseExtension);
+    if (!group2) {
+      group2 = findMatchingPair(group, checkPairwiseMatch);
+    }
+    if (group2) {
+      group = Utils.filter(group, function(i) {
+        return !Utils.contains(group, i);
+      });
+      updateGroupIds(group);
+      updateGroupIds(group2);
+    }
   }
 
   MapShaper.traverseShapes(shapes, procArc, null, procShape);
+  Utils.forEach(largeGroups, splitGroup);
+
   return {
     segments: segments,
     keys: keys
@@ -9269,12 +9331,13 @@ function dissolveSecondPass(segments) {
   function buildRing(firstArc) {
     var newArcs = [firstArc.arcId],
         nextArc = getNextArc(firstArc);
+        firstArc.used = true;
 
     while (nextArc && nextArc != firstArc) {
       newArcs.push(nextArc.arcId);
       nextArc.used = true;
       nextArc = getNextArc(nextArc);
-      if (nextArc.used) error("buildRing() topology error");
+      if (nextArc && nextArc != firstArc && nextArc.used) error("buildRing() topology error");
     }
 
     if (!nextArc) error("buildRing() traversal error");
@@ -9286,42 +9349,43 @@ function dissolveSecondPass(segments) {
   // Get the next segment in a dissolved polygon ring
   // @obj an undissolvable arc instance
   //
-  function getNextArc(obj) {
-    var partLen = obj.part.arcs.length,
-        offs = 1,
-        next, match;
-    if (partLen == 1) {
-      next = obj;
-    } else {
-      if (obj.i + offs == partLen) {
-        offs -= partLen;
-      }
-      next = segments[obj.segId + offs];
+  function getNextArc(obj, depth) {
+    var next = getNextArcInRing(obj, segments),
+        match;
+    depth = depth || 0;
+    if (next != obj) {
       match = findDissolveArc(next);
       if (match) {
+        if (depth > 1000) {
+          error ('[dissolve] deep recursion -- unhandled topology problem');
+        }
         if (match.part.arcs.length == 1) {
-          next = getNextArc(next);
+          // case: @obj has an island inclusion -- keep traversing @obj
+          // TODO: test case if @next is first arc in the ring
+          next = getNextArc(next, depth + 1);
         } else {
-          next = getNextArc(match);
+          next = getNextArc(match, depth + 1);
         }
       }
     }
     return next;
   }
 
+
   // Look for an arc instance that can be dissolved with segment @obj
   // (must be going the opposite direction, etc)
   // Return matching segment or null if no match
   //
   function findDissolveArc(obj) {
-    var dissolveKey = obj.shape.dissolveKey;
-    var matchId = Utils.find(obj.group, function(i) {
-      if (i === obj.segId) return false;
+    var dissolveKey = obj.shape.dissolveKey,
+        match, matchId;
+    matchId = Utils.find(obj.group, function(i) {
       var other = segments[i];
-      return !other.used && other.shape.dissolveKey === dissolveKey && obj.arcId == ~other.arcId;
+      return other.segId !== obj.segId && !other.used &&
+          other.shape.dissolveKey === dissolveKey && obj.arcId == ~other.arcId;
     });
-    if (matchId === null) return null;
-    return segments[matchId];
+    match = matchId === null ? null : segments[matchId];
+    return match;
   }
 
   // @obj is an arc instance
@@ -9336,6 +9400,19 @@ function dissolveSecondPass(segments) {
     index: dissolveIndex,
     shapes: dissolveShapes
   };
+}
+
+
+// Return next arc object in ring, or return @obj if ring len == 1
+//
+function getNextArcInRing(obj, segments) {
+  var partLen = obj.part.arcs.length,
+      offs = 1;
+  if (partLen == 1) return obj;
+  if (obj.i + offs == partLen) {
+    offs -= partLen;
+  }
+  return segments[obj.segId + offs];
 }
 
 // Return a properties array for a set of dissolved shapes
@@ -9418,7 +9495,10 @@ var usage =
   "$ mapshaper --dp -p 0.1 counties.shp";
 
 MapShaper.getOptionParser = function() {
-  return MapShaper.getExtraOptionParser(MapShaper.getBasicOptionParser());
+  var basic = MapShaper.getBasicOptionParser(),
+      more = MapShaper.getExtraOptionParser(basic),
+      all = MapShaper.getHiddenOptionParser(more);
+  return all;
 };
 
 MapShaper.getBasicOptionParser = function() {
@@ -9516,6 +9596,11 @@ MapShaper.getBasicOptionParser = function() {
       default: false
     })
     */
+};
+
+// TODO: add hidden options here
+MapShaper.getHiddenOptionParser = function(optimist) {
+  return (optimist || getOptimist());
 };
 
 MapShaper.getExtraOptionParser = function(optimist) {
@@ -9650,6 +9735,7 @@ MapShaper.validateArgs = function(argv, supported) {
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
   Utils.extend(opts, cli.validateExtraOpts(argv));
+  Utils.extend(opts, cli.validateHiddenOpts(argv));
   opts.verbose = !!argv.verbose;
   return opts;
 };
@@ -9771,6 +9857,11 @@ cli.validateOutputOpts = function(argv, inputOpts) {
     output_file_base: obase,
     output_format: ofmt || null // inferred later if not found above
   };
+};
+
+cli.validateHiddenOpts = function(argv) {
+  var opts = {};
+  return opts;
 };
 
 cli.validateExtraOpts = function(argv) {
