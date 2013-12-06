@@ -468,6 +468,22 @@ describe('mapshaper-cli.js', function() {
 
   })
 
+  describe('validateCommaSepNames()', function() {
+    var validate = cli.validateCommaSepNames;
+    it('test1', function() {
+      assert.deepEqual(validate('COUNTIES'), ['COUNTIES']);
+    });
+
+    it('test2', function() {
+      assert.deepEqual(validate('COUNTIES,STATES'), ['COUNTIES', 'STATES']);
+    });
+
+    it('test3', function() {
+      assert.deepEqual(validate('COUNTIES , STATES'), ['COUNTIES', 'STATES']);
+    });
+  })
+
+
   describe('getOutputPaths()', function () {
     it('add -ms extension to resolve collision', function () {
       assert.deepEqual(["test_data/two_states-ms.shp"],

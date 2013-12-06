@@ -313,6 +313,7 @@ var Opts = {
         dest[k] = src[k];
       }
     }
+    return dest;
   },
 
   // Copy src functions/params to targ prototype
@@ -803,13 +804,13 @@ Utils.groupBy = function(arr, k) {
   }, {});
 };
 
-Utils.arrayToIndex = function(arr) {
-  if (arguments.length > 1) error("#arrayToIndex() Use #indexOn() instead");
+Utils.arrayToIndex = function(arr, val) {
+  var init = arguments.length > 1;
   return Utils.reduce(arr, function(index, key) {
     if (key in index) {
       trace("#arrayToIndex() Duplicate key:", key);
     }
-    index[key] = true;
+    index[key] = init ? val : true;
     return index;
   }, {});
 };
@@ -3967,7 +3968,7 @@ Utils.formatter = function(fmt) {
 
 // TODO: adapt to run in browser
 function stop(msg) {
-  if (msg) trace(msg);
+  if (msg) console.log(msg);
   process.exit(1);
 }
 
@@ -4954,8 +4955,8 @@ function MultiShape(src) {
 
 MultiShape.prototype = {
   init: function(parts) {
-    this.pathCount = parts.length;
-    this.parts = parts;
+    this.pathCount = parts ? parts.length : 0;
+    this.parts = parts || [];
     return this;
   },
   getPathIter: function(i) {
@@ -8172,6 +8173,56 @@ MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
 
 
 
+MapShaper.splitLayersOnField = function(layers, arcs, field) {
+  var splitLayers = [];
+  Utils.forEach(layers, function(lyr) {
+    splitLayers = splitLayers.concat(MapShaper.splitOnField(lyr, arcs, field));
+  });
+  return splitLayers;
+};
+
+MapShaper.splitOnField = function(lyr0, arcs, field) {
+  var dataTable = lyr0.data;
+  if (!dataTable) error("[splitOnField] Missing a data table");
+  if (!dataTable.fieldExists(field)) error("[splitOnField] Missing field:", field);
+
+  var index = {},
+      properties = dataTable.getRecords(),
+      shapes = lyr0.shapes,
+      splitLayers = [];
+
+  Utils.forEach(shapes, function(shp, i) {
+    var rec = properties[i],
+        key = rec[field],
+        lyr, idx;
+
+    if (key in index === false) {
+      idx = splitLayers.length;
+      index[key] = idx;
+      splitLayers.push({
+        name: key || Utils.getUniqueName("layer"),
+        properties: [],
+        shapes: []
+      });
+    } else {
+      idx = index[key];
+    }
+
+    lyr = splitLayers[idx];
+    lyr.shapes.push(shapes[i]);
+    lyr.properties.push(properties[i]);
+  });
+
+  return Utils.map(splitLayers, function(obj) {
+    return Opts.copyNewParams({
+      name: obj.name,
+      shapes: obj.shapes,
+      data: new DataTable(obj.properties)
+    }, lyr0);
+  });
+};
+
+
 // Split the shapes in a layer according to a grid
 // Return array of layers and an index with the bounding box of each cell
 //
@@ -8268,6 +8319,9 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   var files = [],
       tmp;
 
+  // TODO: move this out of exportContent()
+  // It is here to allow exporting the .json index file
+  //
   if (opts.split_rows && opts.split_cols) {
     if (layers.length != 1) error("#exportContent() splitting expects one layer");
     tmp = MapShaper.splitOnGrid(layers[0], arcData, opts.split_rows, opts.split_cols);
@@ -9165,10 +9219,24 @@ MapShaper.importDbfTable = function(shpName) {
 
 
 
+
+MapShaper.dissolveLayers = function(layers) {
+  if (!Utils.isArray(layers)) error ("[dissolveLayers()] Expected an array of layers");
+  var dissolvedLayers = [],
+      args = Utils.toArray(arguments);
+
+  Utils.forEach(layers, function(lyr) {
+    args[0] = lyr;
+    var layers2 = MapShaper.dissolveLayer.apply(null, args);
+    dissolvedLayers.push.apply(dissolvedLayers, layers2);
+  });
+  return dissolvedLayers;
+};
+
 // Dissolve a polygon layer into one or more derived layers
 // @dissolve comma-separated list of fields or true
 //
-MapShaper.dissolveLayer = function(lyr, arcs, dissolve) {
+MapShaper.dissolveLayer = function(lyr, arcs, dissolve, opts) {
   if (lyr.geometry_type != 'polygon') {
     error("[dissolveLayer()] Expected a polygon layer");
   }
@@ -9176,7 +9244,7 @@ MapShaper.dissolveLayer = function(lyr, arcs, dissolve) {
     dissolve = "";
   }
   var layers = Utils.map(dissolve.split(','), function(f) {
-    return MapShaper.dissolve(lyr, arcs, f || null);
+    return MapShaper.dissolve(lyr, arcs, f || null, opts);
   });
   return layers;
 };
@@ -9184,22 +9252,24 @@ MapShaper.dissolveLayer = function(lyr, arcs, dissolve) {
 // Generate a dissolved layer
 // @field name of dissolve field or null
 //
-MapShaper.dissolve = function(lyr, arcs, field) {
+MapShaper.dissolve = function(lyr, arcs, field, opts) {
   var shapes = lyr.shapes,
-      properties = lyr.data ? lyr.data.getRecords() : null,
+      dataTable = lyr.data || null,
+      properties = dataTable ? dataTable.getRecords() : null,
       dissolveLyr,
       dissolveRecords,
       getDissolveKey;
 
+  opts = opts || {};
   T.start();
 
   if (field) {
-    if (!properties) {
+    if (!dataTable) {
       error("[dissolveLayer()] Layer is missing a data table");
     }
-    if (field && !lyr.data.fieldExists(field)) {
+    if (field && !dataTable.fieldExists(field)) {
       error("[dissolveLayer()] Missing field:",
-        field, '\nAvailable fields:', lyr.data.getFields().join(', '));
+        field, '\nAvailable fields:', dataTable.getFields().join(', '));
     }
     getDissolveKey = function(shapeId) {
       var record = properties[shapeId];
@@ -9218,7 +9288,7 @@ MapShaper.dissolve = function(lyr, arcs, field) {
     name: field || 'dissolve',
   };
   if (properties) {
-    dissolveRecords = MapShaper.calcDissolveData(first.keys, second.index, properties, field);
+    dissolveRecords = MapShaper.calcDissolveData(first.keys, second.index, properties, field, opts);
     dissolveLyr.data = new DataTable(dissolveRecords);
   }
   Opts.copyNewParams(dissolveLyr, lyr);
@@ -9424,18 +9494,35 @@ function getNextArcInRing(obj, segments) {
 // @properties original records
 // @field name of dissolve field, or null
 //
-MapShaper.calcDissolveData = function(keys, index, properties, field) {
+MapShaper.calcDissolveData = function(keys, index, properties, field, opts) {
   var arr = [];
+  var sumFields = opts.sum_fields,
+      copyFields = opts.copy_fields || [];
+
+  if (field) {
+    copyFields.push(field);
+  }
+
   Utils.forEach(keys, function(key, i) {
     if (key in index === false) return;
     var idx = index[key],
-        rec;
-    if (idx in arr) return;
-    rec = {};
-    if (field) {
-      rec[field] = properties[i][field];
+        rec = properties[i],
+        dissolveRec;
+
+    if (!rec) return;
+
+    if (idx in arr) {
+      dissolveRec = arr[idx];
+    } else {
+      arr[idx] = dissolveRec = {};
+      Utils.forEach(copyFields, function(f) {
+        dissolveRec[f] = rec[f];
+      });
     }
-    arr[idx] = rec;
+
+    Utils.forEach(sumFields, function(f) {
+      dissolveRec[f] = (rec[f] || 0) + (dissolveRec[f] || 0);
+    });
   });
   return arr;
 };
@@ -9479,6 +9566,101 @@ MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShap
     }
   });
 };
+
+
+
+
+MapShaper.recombineLayers = function(layers) {
+  if (layers.length <= 1) return layers;
+  var lyr0 = layers[0],
+      mergedProperties = lyr0.data ? [] : null,
+      mergedShapes = [];
+
+  Utils.forEach(layers, function(lyr) {
+    if (mergedProperties) {
+      mergedProperties.push.apply(mergedProperties, lyr.data.getRecords());
+    }
+    mergedShapes.push.apply(mergedShapes, lyr.shapes);
+  });
+
+  return [Opts.copyNewParams({
+    data: new DataTable(mergedProperties),
+    shapes: mergedShapes,
+    name: ""
+  }, lyr0)];
+};
+
+
+
+
+// TODO: 2D and 3D versions of centroid, label anchor, area, etc
+
+
+
+
+MapShaper.evaluateLayers = function(layers, arcs, exp) {
+  for (var i=0; i<layers.length; i++) {
+    MapShaper.evaluate(layers[i], arcs, exp);
+  }
+};
+
+MapShaper.evaluate = function(lyr, arcs, exp) {
+  var newFields = exp.match(/[A-Za-z_][A-Za-z0-9_]* *(?==[^=])/g) || [],
+      dataTable = lyr.data || error("[evaluate()] Missing data table"),
+      records = dataTable.getRecords(),
+      shapes = lyr.shapes,
+      env = new ExpressionContext(arcs),
+      func;
+
+  try {
+    func = new Function("record,env", "with(env){with(record){" + exp + "}}");
+  } catch(e) {
+    console.log('Error compiling expression "' + exp + '"');
+    stop(e);
+  }
+
+  env.$ = env;
+
+  Utils.forEach(records, function(rec, shapeId) {
+    for (var i=0, n=newFields.length; i<n; i++) {
+      rec[newFields[i]] = null;
+    }
+    env.__setShape(shapes[shapeId]);
+    try {
+      func.call(rec, rec, env);
+    } catch(e) {
+      stop(e);
+    }
+  });
+};
+
+function ExpressionContext(arcs) {
+  var _shp = new MultiShape(arcs);
+
+  // TODO: add useful methods like centroidX, centroidY, labelX, labelY
+  var getters = {
+    partCount: function() {
+      return _shp.pathCount;
+    }
+  };
+
+  Utils.forEach(getters, function(f, name) {
+    Object.defineProperty(this, name, {get: f});
+  }, this);
+
+  // Can hide global properties during evaluation this way
+  // (is this worth doing?)
+  Utils.extend(this, {
+    global: null,
+    window: null,
+    setTimeout: null,
+    setInterval: null
+  });
+
+  this.__setShape = function(shp) {
+    _shp.init(shp);
+  };
+}
 
 
 
@@ -9559,10 +9741,6 @@ MapShaper.getBasicOptionParser = function() {
       describe: "coordinate precision in source units (applied on import)"
     })
 
-    .options("dissolve", {
-      describe: "dissolve polygons; takes optional comma-sep. list of fields"
-    })
-
     .options("verbose", {
       describe: "print verbose processing messages",
       'boolean': true
@@ -9598,13 +9776,40 @@ MapShaper.getBasicOptionParser = function() {
     */
 };
 
-// TODO: add hidden options here
 MapShaper.getHiddenOptionParser = function(optimist) {
-  return (optimist || getOptimist());
+  return (optimist || getOptimist())
+    // These option definitions don't get printed by --help and --more
+    // Validate them in validateExtraOpts()
+  ;
 };
 
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
+
+  .options("expression", {
+    describe: "Apply a JavaScript expression to every record in a dataset"
+  })
+
+  .options("split", {
+    describe: "split shapes on a field"
+  })
+
+  .options("dissolve", {
+    describe: "dissolve polygons; takes optional comma-sep. list of fields"
+  })
+
+  .options("sum-fields", {
+    describe: "fields to sum when dissolving  (comma-sep. list)"
+  })
+
+  .options("copy-fields", {
+    describe: "fields to copy when dissolving (comma-sep. list)"
+  })
+
+  .options("recombine", {
+    describe: "merge split-apart layers back into a single layer",
+    'boolean': true
+  })
 
   .options("no-repair", {
     describe: "don't remove intersections introduced by simplification",
@@ -9735,7 +9940,6 @@ MapShaper.validateArgs = function(argv, supported) {
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
   Utils.extend(opts, cli.validateExtraOpts(argv));
-  Utils.extend(opts, cli.validateHiddenOpts(argv));
   opts.verbose = !!argv.verbose;
   return opts;
 };
@@ -9859,9 +10063,12 @@ cli.validateOutputOpts = function(argv, inputOpts) {
   };
 };
 
-cli.validateHiddenOpts = function(argv) {
-  var opts = {};
-  return opts;
+cli.validateCommaSepNames = function(str) {
+  if (!Utils.isString(str)) {
+    error ("Expected comma-separated list; found:", str);
+  }
+  var parts = Utils.map(str.split(','), Utils.trim);
+  return parts;
 };
 
 cli.validateExtraOpts = function(argv) {
@@ -9872,13 +10079,39 @@ cli.validateExtraOpts = function(argv) {
     opts.split_rows = r;
     opts.split_cols = c;
   }
+
   if (Utils.isString(argv.dissolve) || argv.dissolve === true) {
     opts.dissolve = argv.dissolve || true; // empty string -> true
   }
+
   opts.snap_interval = argv['snap-interval'];
   if (opts.snap_interval) {
     opts.snapping = true;
   }
+
+  if (argv['sum-fields']) {
+    opts.sum_fields = cli.validateCommaSepNames(argv['sum-fields']);
+  }
+
+  if (argv['copy-fields']) {
+    opts.copy_fields = cli.validateCommaSepNames(argv['copy-fields']);
+  }
+
+  if (argv.split) {
+    if (!Utils.isString(argv.split)) {
+      error("--split option requires the name of a field to split on");
+    }
+    opts.split = argv.split;
+  }
+
+  if (argv.recombine) {
+    opts.recombine = argv.recombine;
+  }
+
+  if (argv.expression) {
+    opts.expression = argv.expression;
+  }
+
   return opts;
 };
 

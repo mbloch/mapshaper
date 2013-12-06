@@ -2,7 +2,7 @@
 
 // TODO: adapt to run in browser
 function stop(msg) {
-  if (msg) trace(msg);
+  if (msg) console.log(msg);
   process.exit(1);
 }
 

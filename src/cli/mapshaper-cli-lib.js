@@ -8,7 +8,9 @@ mapshaper-segments,
 mapshaper-snapping,
 mapshaper-keep-shapes,
 mapshaper-file-import,
-mapshaper-dissolve
+mapshaper-dissolve,
+mapshaper-recombine,
+mapshaper-field-calculator
 */
 
 var cli = MapShaper.cli = {};
@@ -23,7 +25,10 @@ var usage =
   "$ mapshaper --dp -p 0.1 counties.shp";
 
 MapShaper.getOptionParser = function() {
-  return MapShaper.getExtraOptionParser(MapShaper.getBasicOptionParser());
+  var basic = MapShaper.getBasicOptionParser(),
+      more = MapShaper.getExtraOptionParser(basic),
+      all = MapShaper.getHiddenOptionParser(more);
+  return all;
 };
 
 MapShaper.getBasicOptionParser = function() {
@@ -84,10 +89,6 @@ MapShaper.getBasicOptionParser = function() {
       describe: "coordinate precision in source units (applied on import)"
     })
 
-    .options("dissolve", {
-      describe: "dissolve polygons; takes optional comma-sep. list of fields"
-    })
-
     .options("verbose", {
       describe: "print verbose processing messages",
       'boolean': true
@@ -123,8 +124,40 @@ MapShaper.getBasicOptionParser = function() {
     */
 };
 
+MapShaper.getHiddenOptionParser = function(optimist) {
+  return (optimist || getOptimist())
+    // These option definitions don't get printed by --help and --more
+    // Validate them in validateExtraOpts()
+  ;
+};
+
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
+
+  .options("expression", {
+    describe: "Apply a JavaScript expression to every record in a dataset"
+  })
+
+  .options("split", {
+    describe: "split shapes on a field"
+  })
+
+  .options("dissolve", {
+    describe: "dissolve polygons; takes optional comma-sep. list of fields"
+  })
+
+  .options("sum-fields", {
+    describe: "fields to sum when dissolving  (comma-sep. list)"
+  })
+
+  .options("copy-fields", {
+    describe: "fields to copy when dissolving (comma-sep. list)"
+  })
+
+  .options("recombine", {
+    describe: "merge split-apart layers back into a single layer",
+    'boolean': true
+  })
 
   .options("no-repair", {
     describe: "don't remove intersections introduced by simplification",
@@ -378,6 +411,14 @@ cli.validateOutputOpts = function(argv, inputOpts) {
   };
 };
 
+cli.validateCommaSepNames = function(str) {
+  if (!Utils.isString(str)) {
+    error ("Expected comma-separated list; found:", str);
+  }
+  var parts = Utils.map(str.split(','), Utils.trim);
+  return parts;
+};
+
 cli.validateExtraOpts = function(argv) {
   var opts = {};
   var r = parseInt(argv['split-rows'], 10) || 1,
@@ -386,13 +427,39 @@ cli.validateExtraOpts = function(argv) {
     opts.split_rows = r;
     opts.split_cols = c;
   }
+
   if (Utils.isString(argv.dissolve) || argv.dissolve === true) {
     opts.dissolve = argv.dissolve || true; // empty string -> true
   }
+
   opts.snap_interval = argv['snap-interval'];
   if (opts.snap_interval) {
     opts.snapping = true;
   }
+
+  if (argv['sum-fields']) {
+    opts.sum_fields = cli.validateCommaSepNames(argv['sum-fields']);
+  }
+
+  if (argv['copy-fields']) {
+    opts.copy_fields = cli.validateCommaSepNames(argv['copy-fields']);
+  }
+
+  if (argv.split) {
+    if (!Utils.isString(argv.split)) {
+      error("--split option requires the name of a field to split on");
+    }
+    opts.split = argv.split;
+  }
+
+  if (argv.recombine) {
+    opts.recombine = argv.recombine;
+  }
+
+  if (argv.expression) {
+    opts.expression = argv.expression;
+  }
+
   return opts;
 };
 

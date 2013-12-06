@@ -1,9 +1,23 @@
 /* @requires mapshaper-common, mapshaper-data-table */
 
+
+MapShaper.dissolveLayers = function(layers) {
+  if (!Utils.isArray(layers)) error ("[dissolveLayers()] Expected an array of layers");
+  var dissolvedLayers = [],
+      args = Utils.toArray(arguments);
+
+  Utils.forEach(layers, function(lyr) {
+    args[0] = lyr;
+    var layers2 = MapShaper.dissolveLayer.apply(null, args);
+    dissolvedLayers.push.apply(dissolvedLayers, layers2);
+  });
+  return dissolvedLayers;
+};
+
 // Dissolve a polygon layer into one or more derived layers
 // @dissolve comma-separated list of fields or true
 //
-MapShaper.dissolveLayer = function(lyr, arcs, dissolve) {
+MapShaper.dissolveLayer = function(lyr, arcs, dissolve, opts) {
   if (lyr.geometry_type != 'polygon') {
     error("[dissolveLayer()] Expected a polygon layer");
   }
@@ -11,7 +25,7 @@ MapShaper.dissolveLayer = function(lyr, arcs, dissolve) {
     dissolve = "";
   }
   var layers = Utils.map(dissolve.split(','), function(f) {
-    return MapShaper.dissolve(lyr, arcs, f || null);
+    return MapShaper.dissolve(lyr, arcs, f || null, opts);
   });
   return layers;
 };
@@ -19,22 +33,24 @@ MapShaper.dissolveLayer = function(lyr, arcs, dissolve) {
 // Generate a dissolved layer
 // @field name of dissolve field or null
 //
-MapShaper.dissolve = function(lyr, arcs, field) {
+MapShaper.dissolve = function(lyr, arcs, field, opts) {
   var shapes = lyr.shapes,
-      properties = lyr.data ? lyr.data.getRecords() : null,
+      dataTable = lyr.data || null,
+      properties = dataTable ? dataTable.getRecords() : null,
       dissolveLyr,
       dissolveRecords,
       getDissolveKey;
 
+  opts = opts || {};
   T.start();
 
   if (field) {
-    if (!properties) {
+    if (!dataTable) {
       error("[dissolveLayer()] Layer is missing a data table");
     }
-    if (field && !lyr.data.fieldExists(field)) {
+    if (field && !dataTable.fieldExists(field)) {
       error("[dissolveLayer()] Missing field:",
-        field, '\nAvailable fields:', lyr.data.getFields().join(', '));
+        field, '\nAvailable fields:', dataTable.getFields().join(', '));
     }
     getDissolveKey = function(shapeId) {
       var record = properties[shapeId];
@@ -53,7 +69,7 @@ MapShaper.dissolve = function(lyr, arcs, field) {
     name: field || 'dissolve',
   };
   if (properties) {
-    dissolveRecords = MapShaper.calcDissolveData(first.keys, second.index, properties, field);
+    dissolveRecords = MapShaper.calcDissolveData(first.keys, second.index, properties, field, opts);
     dissolveLyr.data = new DataTable(dissolveRecords);
   }
   Opts.copyNewParams(dissolveLyr, lyr);
@@ -64,6 +80,7 @@ MapShaper.dissolve = function(lyr, arcs, field) {
 
 function dissolveFirstPass(shapes, getKey) {
   var groups = [],
+      largeGroups = [],
       segments = [],
       keys = [];
 
@@ -84,9 +101,59 @@ function dissolveFirstPass(shapes, getKey) {
     group.push(segId);
     obj.group = group;
     segments.push(obj);
+    if (group.length == 3) {
+      largeGroups.push(group);
+    }
+  }
+
+  function findMatchingPair(group, cb) {
+    var arc1, arc2;
+    for (var i=0; i<group.length - 1; i++) {
+      arc1 = segments[group[i]];
+      for (var j=i+1; j<group.length; j++) {
+        arc2 = segments[group[j]];
+        if (cb(arc1, arc2)) {
+          return [i, j];
+        }
+      }
+    }
+    return null;
+  }
+
+  function checkPairwiseExtension(arc1, arc2) {
+    return checkPairwiseMatch(arc1, arc2) &&
+        getNextArcInRing(arc1, segments).arcId ===
+        ~getNextArcInRing(arc2, segments).arcId;
+  }
+
+  function checkPairwiseMatch(arc1, arc2) {
+    return arc1.arcId === ~arc2.arcId && arc1.shape.dissolveKey ===
+        arc2.shape.dissolveKey;
+  }
+
+  function updateGroupIds(ids) {
+    Utils.forEach(ids, function(id) {
+      segments[id].group = ids;
+    });
+  }
+
+  function splitGroup(group) {
+    var group2 = findMatchingPair(group, checkPairwiseExtension);
+    if (!group2) {
+      group2 = findMatchingPair(group, checkPairwiseMatch);
+    }
+    if (group2) {
+      group = Utils.filter(group, function(i) {
+        return !Utils.contains(group, i);
+      });
+      updateGroupIds(group);
+      updateGroupIds(group2);
+    }
   }
 
   MapShaper.traverseShapes(shapes, procArc, null, procShape);
+  Utils.forEach(largeGroups, splitGroup);
+
   return {
     segments: segments,
     keys: keys
@@ -115,12 +182,13 @@ function dissolveSecondPass(segments) {
   function buildRing(firstArc) {
     var newArcs = [firstArc.arcId],
         nextArc = getNextArc(firstArc);
+        firstArc.used = true;
 
     while (nextArc && nextArc != firstArc) {
       newArcs.push(nextArc.arcId);
       nextArc.used = true;
       nextArc = getNextArc(nextArc);
-      if (nextArc.used) error("buildRing() topology error");
+      if (nextArc && nextArc != firstArc && nextArc.used) error("buildRing() topology error");
     }
 
     if (!nextArc) error("buildRing() traversal error");
@@ -132,42 +200,43 @@ function dissolveSecondPass(segments) {
   // Get the next segment in a dissolved polygon ring
   // @obj an undissolvable arc instance
   //
-  function getNextArc(obj) {
-    var partLen = obj.part.arcs.length,
-        offs = 1,
-        next, match;
-    if (partLen == 1) {
-      next = obj;
-    } else {
-      if (obj.i + offs == partLen) {
-        offs -= partLen;
-      }
-      next = segments[obj.segId + offs];
+  function getNextArc(obj, depth) {
+    var next = getNextArcInRing(obj, segments),
+        match;
+    depth = depth || 0;
+    if (next != obj) {
       match = findDissolveArc(next);
       if (match) {
+        if (depth > 1000) {
+          error ('[dissolve] deep recursion -- unhandled topology problem');
+        }
         if (match.part.arcs.length == 1) {
-          next = getNextArc(next);
+          // case: @obj has an island inclusion -- keep traversing @obj
+          // TODO: test case if @next is first arc in the ring
+          next = getNextArc(next, depth + 1);
         } else {
-          next = getNextArc(match);
+          next = getNextArc(match, depth + 1);
         }
       }
     }
     return next;
   }
 
+
   // Look for an arc instance that can be dissolved with segment @obj
   // (must be going the opposite direction, etc)
   // Return matching segment or null if no match
   //
   function findDissolveArc(obj) {
-    var dissolveKey = obj.shape.dissolveKey;
-    var matchId = Utils.find(obj.group, function(i) {
-      if (i === obj.segId) return false;
+    var dissolveKey = obj.shape.dissolveKey,
+        match, matchId;
+    matchId = Utils.find(obj.group, function(i) {
       var other = segments[i];
-      return !other.used && other.shape.dissolveKey === dissolveKey && obj.arcId == ~other.arcId;
+      return other.segId !== obj.segId && !other.used &&
+          other.shape.dissolveKey === dissolveKey && obj.arcId == ~other.arcId;
     });
-    if (matchId === null) return null;
-    return segments[matchId];
+    match = matchId === null ? null : segments[matchId];
+    return match;
   }
 
   // @obj is an arc instance
@@ -184,6 +253,19 @@ function dissolveSecondPass(segments) {
   };
 }
 
+
+// Return next arc object in ring, or return @obj if ring len == 1
+//
+function getNextArcInRing(obj, segments) {
+  var partLen = obj.part.arcs.length,
+      offs = 1;
+  if (partLen == 1) return obj;
+  if (obj.i + offs == partLen) {
+    offs -= partLen;
+  }
+  return segments[obj.segId + offs];
+}
+
 // Return a properties array for a set of dissolved shapes
 // Records contain dissolve field data (or are empty if not dissolving on a field)
 // TODO: copy other user-specified fields
@@ -193,18 +275,35 @@ function dissolveSecondPass(segments) {
 // @properties original records
 // @field name of dissolve field, or null
 //
-MapShaper.calcDissolveData = function(keys, index, properties, field) {
+MapShaper.calcDissolveData = function(keys, index, properties, field, opts) {
   var arr = [];
+  var sumFields = opts.sum_fields,
+      copyFields = opts.copy_fields || [];
+
+  if (field) {
+    copyFields.push(field);
+  }
+
   Utils.forEach(keys, function(key, i) {
     if (key in index === false) return;
     var idx = index[key],
-        rec;
-    if (idx in arr) return;
-    rec = {};
-    if (field) {
-      rec[field] = properties[i][field];
+        rec = properties[i],
+        dissolveRec;
+
+    if (!rec) return;
+
+    if (idx in arr) {
+      dissolveRec = arr[idx];
+    } else {
+      arr[idx] = dissolveRec = {};
+      Utils.forEach(copyFields, function(f) {
+        dissolveRec[f] = rec[f];
+      });
     }
-    arr[idx] = rec;
+
+    Utils.forEach(sumFields, function(f) {
+      dissolveRec[f] = (rec[f] || 0) + (dissolveRec[f] || 0);
+    });
   });
   return arr;
 };

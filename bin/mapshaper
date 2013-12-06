@@ -9,6 +9,7 @@ mapshaper.T.start("Start timing");
 
 var importData = mapshaper.importFromFile(opts.input_file, opts),
     arcData = importData.arcs,
+    layers = importData.layers,
     bounds = arcData.getBounds();
 
 // Update input/output format with information found during importing
@@ -22,7 +23,7 @@ if (opts.use_simplification) {
   mapshaper.simplifyPaths(arcData, opts.simplify_method, opts.force2D);
 
   if (opts.keep_shapes) {
-    mapshaper.protectShapes(arcData, importData.layers);
+    mapshaper.protectShapes(arcData, layers);
   }
 
   if (opts.simplify_pct) {
@@ -37,11 +38,23 @@ if (opts.use_simplification) {
   }
 }
 
-if (opts.dissolve) {
-  importData.layers = mapshaper.dissolveLayer(importData.layers[0], arcData, opts.dissolve);
+if (opts.expression) {
+  mapshaper.evaluateLayers(layers, arcData, opts.expression);
 }
 
-var exports = mapshaper.exportContent(importData.layers, arcData, opts);
+if (opts.split) {
+  layers = mapshaper.splitLayersOnField(layers, arcData, opts.split);
+}
+
+if (opts.dissolve) {
+  layers = mapshaper.dissolveLayers(layers, arcData, opts.dissolve, opts);
+}
+
+if (opts.recombine) {
+  layers = mapshaper.recombineLayers(layers);
+}
+
+var exports = mapshaper.exportContent(layers, arcData, opts);
 
 // Copy prj file, if both importing and exporting as shapefile
 if (opts.output_format == 'shapefile' && opts.input_format == 'shapefile') {

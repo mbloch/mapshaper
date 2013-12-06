@@ -550,8 +550,8 @@ function MultiShape(src) {
 
 MultiShape.prototype = {
   init: function(parts) {
-    this.pathCount = parts.length;
-    this.parts = parts;
+    this.pathCount = parts ? parts.length : 0;
+    this.parts = parts || [];
     return this;
   },
   getPathIter: function(i) {
