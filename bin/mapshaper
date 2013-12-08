@@ -38,12 +38,27 @@ if (opts.use_simplification) {
   }
 }
 
+if (opts.filter) {
+  mapshaper.filterLayers(layers, arcData, opts.select);
+}
+
 if (opts.expression) {
   mapshaper.evaluateLayers(layers, arcData, opts.expression);
 }
 
+/*
+// need to handle holes correctly before enabling this
+if (opts.explode) {
+  mapshaper.explodeLayers(layers, arcData);
+}
+*/
+
 if (opts.split) {
   layers = mapshaper.splitLayersOnField(layers, arcData, opts.split);
+}
+
+if (opts.subdivide) {
+  layers = mapshaper.subdivideLayers(layers, arcData, opts.subdivide);
 }
 
 if (opts.dissolve) {
@@ -53,6 +68,15 @@ if (opts.dissolve) {
 if (opts.recombine) {
   layers = mapshaper.recombineLayers(layers);
 }
+
+if (opts.split_rows && opts.split_cols) {
+  if (layers.length != 1) error("Split-on-grid expects one layer");
+  layers = mapshaper.splitOnGrid(layers[0], arcData, opts.split_rows, opts.split_cols);
+}
+
+// TODO: find sensible way of generating topojson with multiple layer-objects
+// (e.g. --topojson-merge option
+opts.topojson_divide = true;
 
 var exports = mapshaper.exportContent(layers, arcData, opts);
 

@@ -2,7 +2,7 @@
 mapshaper-geojson
 mapshaper-topojson
 mapshaper-shapefile
-mapshaper-split
+mapshaper-layer-math
 */
 
 MapShaper.getDefaultFileExtension = function(fileType) {
@@ -24,27 +24,20 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   if (!opts.output_file_base) opts.output_file_base = "out";
   validateLayerData(layers);
 
-  var files = [],
-      tmp;
+  var files = [];
 
-  if (opts.split_rows && opts.split_cols) {
-    if (layers.length != 1) error("#exportContent() splitting expects one layer");
-    tmp = MapShaper.splitOnGrid(layers[0], arcData, opts.split_rows, opts.split_cols);
-    layers = tmp.layers; // replace
-    opts.topojson_divide = true; // kludge: tell topojson to create a file per layer
-    files.push({
-      extension: 'json',
-      name: "index",
-      content: JSON.stringify(tmp.index)
-    });
+  assignLayerNames(layers);
+
+  if (layers.length >1) {
+    files.push(createIndexFile(layers, arcData));
   }
 
   T.start();
   tmp = exporter(layers, arcData, opts);
   files = files.concat(tmp);
+  assignFileNames(files, opts);
   T.stop("Export " + opts.output_format);
 
-  assignFileNames(files, opts);
   return files;
 
   function validateLayerData(layers) {
@@ -58,27 +51,55 @@ MapShaper.exportContent = function(layers, arcData, opts) {
     });
   }
 
+  // Make sure each layer has a unique name
+  function assignLayerNames(layers, opts) {
+    Utils.forEach(layers, function(lyr) {
+      // Assign "" as name of layers without pre-existing name
+      lyr.name = lyr.name || "";
+    });
+
+    if (layers.length <= 1) return; // name of single layer guaranteed unique
+
+    // get count for each name
+    var counts = Utils.reduce(layers, function(index, lyr) {
+      var name = lyr.name;
+      index[name] = (name in index) ? index[name] + 1 : 1;
+      return index;
+    }, {});
+
+    // assign unique name to each layer
+    var names = {};
+    Utils.forEach(layers, function(lyr) {
+      var name = lyr.name,
+          count = counts[name],
+          i;
+      if (count > 1 || name in names) {
+        // naming conflict, need to find a unique name
+        name = name || 'layer'; // use layer1, layer2, etc as default
+        i = 1;
+        while ((name + i) in names) {
+          i++;
+        }
+        name = name + i;
+      }
+      names[name] = true;
+      lyr.name = name;
+    });
+  }
+
   function assignFileNames(files, opts) {
     var index = {};
     Utils.forEach(files, function(file) {
       file.extension = file.extension || opts.output_extension;
-      var name = opts.output_file_base,
-          i = 1,
-          filebase, filename, ext;
+      var basename = opts.output_file_base,
+          filename;
       if (file.name) {
-        name += "-" + file.name;
+        basename += "-" + file.name;
       }
-      do {
-        filebase = name;
-        if (i > 1) {
-          filebase = filebase + String(i);
-        }
-        filename = filebase + '.' + file.extension;
-        i++;
-      } while (filename in index);
-
+      filename = basename + "." + file.extension;
+      if (filename in index) error("File name conflict:", filename);
       index[filename] = true;
-      file.filebase = filebase;
+      file.filebase = basename;
       file.filename = filename;
     });
   }
@@ -91,6 +112,22 @@ MapShaper.exporters = {
 };
 
 MapShaper.PathExporter = PathExporter; // for testing
+
+function createIndexFile(layers, arcs) {
+  var index = Utils.map(layers, function(lyr) {
+    var bounds = MapShaper.calcLayerBounds(lyr, arcs);
+    return {
+      bounds: bounds.toArray(),
+      name: lyr.name
+    };
+  });
+
+  return {
+    content: JSON.stringify(index),
+    extension: 'json',
+    name: 'index'
+  };
+}
 
 // Convert topological data into formats that are useful for exporting
 // Shapefile, GeoJSON and TopoJSON

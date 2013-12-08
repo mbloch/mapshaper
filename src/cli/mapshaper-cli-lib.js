@@ -9,7 +9,8 @@ mapshaper-snapping,
 mapshaper-keep-shapes,
 mapshaper-file-import,
 mapshaper-dissolve,
-
+mapshaper-split,
+mapshaper-split-on-grid,
 mapshaper-recombine,
 mapshaper-field-calculator
 mapshaper-subdivide
