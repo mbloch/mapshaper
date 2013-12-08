@@ -9,9 +9,13 @@ mapshaper-snapping,
 mapshaper-keep-shapes,
 mapshaper-file-import,
 mapshaper-dissolve,
+
 mapshaper-recombine,
 mapshaper-field-calculator
+mapshaper-subdivide
+mapshaper-filter
 */
+//mapshaper-explode,
 
 var cli = MapShaper.cli = {};
 
@@ -128,6 +132,9 @@ MapShaper.getHiddenOptionParser = function(optimist) {
   return (optimist || getOptimist())
     // These option definitions don't get printed by --help and --more
     // Validate them in validateExtraOpts()
+  .options("subdivide", {
+    describe: "Subdivide the shapes in a shape until expression is false"
+  })
   ;
 };
 
@@ -138,8 +145,25 @@ MapShaper.getExtraOptionParser = function(optimist) {
     describe: "Apply a JavaScript expression to every record in a dataset"
   })
 
+  /*
+  // TODO: enable this when holes are handled correctly
+  .options("explode", {
+    describe: "divide each multi-part shape into several single-part shapes"
+  })
+  */
+
   .options("split", {
     describe: "split shapes on a field"
+  })
+
+  /*
+  .options("select", {
+    describe: "apply an expression to every record, remove if false"
+  })
+  */
+
+  .options('filter ', {
+    describe: "apply an expression to every record, remove if false"
   })
 
   .options("dissolve", {
@@ -458,6 +482,20 @@ cli.validateExtraOpts = function(argv) {
 
   if (argv.expression) {
     opts.expression = argv.expression;
+  }
+
+  if (argv.subdivide) {
+    if (!Utils.isString(argv.subdivide)) {
+      error("--subdivide option requires a JavaScript expression");
+    }
+    opts.subdivide = argv.subdivide;
+  }
+
+  if (argv.filter) {
+    if (!Utils.isString(argv.filter)) {
+      error("--filter option requires a JavaScript expression");
+    }
+    opts.filter = argv.filter;
   }
 
   return opts;

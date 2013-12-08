@@ -145,10 +145,10 @@ function LayerExpressionContext(arcs) {
   hideGlobals(this);
 
   this.sum = function(exp) {
-    var f = MapShaper.compileFieldExpression(exp, arcs),
+    var f = MapShaper.compileFieldExpression(exp, arcs, shapes, properties),
         total = 0;
     for (var i=0; i<shapes.length; i++) {
-      total += f(shapes[i], properties[i]) || 0;
+      total += f(i) || 0;
     }
     return total;
   };

@@ -94,6 +94,19 @@ describe('mapshaper-dissolve.js', function () {
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
         assert.deepEqual(lyr2.shapes, [[[0, 1]], [[-2, 2]]]);
       })
+      /*
+      it('stack oflo 1', function() {
+        var lyr = {
+              geometry_type: 'polygon',
+              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              shapes: [[[0, 1]], [[~1, ~0], [2, 0]]]
+            };
+        var lyr2 = api.dissolve(lyr, arcData, 'foo');
+        assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
+        assert.deepEqual(lyr2.data.getRecords(), [{foo: 1}])
+      })
+    */
+
     })
 
     describe('two islands', function () {
@@ -355,6 +368,7 @@ describe('mapshaper-dissolve.js', function () {
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
         assert.deepEqual(lyr2.shapes, [[[0, 4]]]);
       })
+
     })
 
     /*

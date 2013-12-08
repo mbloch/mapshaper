@@ -632,6 +632,18 @@ Utils.sortOnKeyFunction = function(arr, getter) {
 
 
 
+
+Utils.merge = function(dest, src) {
+  if (!Utils.isArray(dest) || !Utils.isArray(src)) {
+    error("Usage: Utils.merge(destArray, srcArray);")
+  }
+  if (src.length > 0) {
+    dest.push.apply(dest, src);
+  }
+  return dest;
+};
+
+
 // Test a string or array-like object for existence of substring or element
 Utils.contains = function(container, item) {
   if (Utils.isString(container)) {
@@ -6780,7 +6792,6 @@ Dbf.discoverStringFieldLength = function(arr, name) {
 
 
 
-
 function DataTable(obj) {
   var records;
   if (Utils.isArray(obj)) {
@@ -9598,6 +9609,175 @@ MapShaper.recombineLayers = function(layers) {
 
 
 
+MapShaper.compileLayerExpression = function(exp, arcs) {
+  var env = new LayerExpressionContext(arcs),
+      func;
+  try {
+    func = new Function("env", "with(env){return " + exp + ";}");
+  } catch(e) {
+    console.log('Error compiling expression "' + exp + '"');
+    stop(e);
+  }
+
+  return function(lyr) {
+    var value;
+    env.__setLayer(lyr);
+    try {
+      value = func.call(env, env);
+    } catch(e) {
+      stop(e);
+    }
+    return value;
+  };
+};
+
+MapShaper.compileFieldExpression = function(exp, arcs, shapes, records) {
+  if (arcs instanceof ArcDataset === false) error("[compileFieldExpression()] Missing ArcDataset;", arcs);
+  var newFields = exp.match(/[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g) || [],
+      env = new RecordExpressionContext(arcs),
+      func;
+
+  exp = MapShaper.removeExpressionSemicolons(exp);
+
+  try {
+    func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
+  } catch(e) {
+    console.log('Error compiling expression "' + exp + '"');
+    stop(e);
+  }
+
+  return function(shapeId) {
+    var shape = shapes[shapeId],
+        record = records[shapeId],
+        value, f;
+    for (var i=0; i<newFields.length; i++) {
+      f = newFields[i];
+      if (f in record === false) {
+        record[f] = null;
+      }
+    }
+    env.__setShape(shape, shapeId);
+    try {
+      value = func.call(env, record, env);
+    } catch(e) {
+      stop(e);
+    }
+    return value;
+  };
+};
+
+// Semicolons that divide the expression into two or more js statements
+// cause problems when 'return' is added before the expression
+// (only the first statement is evaluated). Replacing with commas fixes this
+//
+MapShaper.removeExpressionSemicolons = function(exp) {
+  if (exp.indexOf(';') != -1) {
+    // remove any ; from end of expression
+    exp = exp.replace(/[; ]+$/, '');
+    // change any other semicolons to commas
+    // (this is not very safe -- what if a string literal contains a semicolon?)
+    exp = exp.replace(';', ',');
+  }
+  return exp;
+};
+
+function hideGlobals(obj) {
+  // Can hide global properties during expression evaluation this way
+  // (is this worth doing?)
+  Utils.extend(obj, {
+    global: null,
+    window: null,
+    setTimeout: null,
+    setInterval: null
+  });
+}
+
+function addGetters(obj, getters) {
+  Utils.forEach(getters, function(f, name) {
+    Object.defineProperty(obj, name, {get: f});
+  });
+}
+
+function RecordExpressionContext(arcs) {
+  var _shp = new MultiShape(arcs),
+      _i, _ids, _bounds;
+
+  this.$ = this;
+  hideGlobals(this);
+
+  // TODO: add useful methods:
+  // isClosed / isOpen
+  // centroidX
+  // centroidY
+  // labelX
+  // labelY
+  //
+  addGetters(this, {
+    id: function() {
+      return _id;
+    },
+    // TODO: count hole/s + containing ring as one part
+    partCount: function() {
+      return _shp.pathCount;
+    },
+    isNull: function() {
+      return _shp.pathCount === 0;
+    },
+    bounds: function() {
+      return shapeBounds().toArray();
+    },
+    width: function() {
+      return shapeBounds().width();
+    },
+    height: function() {
+      return shapeBounds().height();
+    }
+  });
+
+  this.__setShape = function(shp, id) {
+    _bounds = null;
+    _ids = shp;
+    _id = id;
+    _shp.init(shp);
+  };
+
+  function shapeBounds() {
+    if (!_bounds) {
+      _bounds = arcs.getMultiShapeBounds();
+    }
+    return _bounds;
+  }
+}
+
+function LayerExpressionContext(arcs) {
+  var shapes, properties, lyr;
+  hideGlobals(this);
+
+  this.sum = function(exp) {
+    var f = MapShaper.compileFieldExpression(exp, arcs, shapes, properties),
+        total = 0;
+    for (var i=0; i<shapes.length; i++) {
+      total += f(i) || 0;
+    }
+    return total;
+  };
+
+  this.__setLayer = function(layer) {
+    lyr = layer;
+    shapes = layer.shapes;
+    properties = layer.data ? layer.data.getRecords() : [];
+  };
+
+  addGetters({
+    bounds: function() {
+      return MapShaper.calcLayerBounds(lyr, arcs).toArray();
+    }
+  });
+}
+
+
+
+
 MapShaper.evaluateLayers = function(layers, arcs, exp) {
   for (var i=0; i<layers.length; i++) {
     MapShaper.evaluate(layers[i], arcs, exp);
@@ -9605,65 +9785,187 @@ MapShaper.evaluateLayers = function(layers, arcs, exp) {
 };
 
 MapShaper.evaluate = function(lyr, arcs, exp) {
-  var newFields = exp.match(/[A-Za-z_][A-Za-z0-9_]* *(?==[^=])/g) || [],
-      dataTable = lyr.data || error("[evaluate()] Missing data table"),
+  var shapes = lyr.shapes,
+      // create new table if none exists
+      dataTable = lyr.data || (lyr.data = new DataTable(shapes.length)),
       records = dataTable.getRecords(),
-      shapes = lyr.shapes,
-      env = new ExpressionContext(arcs),
-      func;
+      compiled = MapShaper.compileFieldExpression(exp, arcs, shapes, records);
 
-  try {
-    func = new Function("record,env", "with(env){with(record){" + exp + "}}");
-  } catch(e) {
-    console.log('Error compiling expression "' + exp + '"');
-    stop(e);
+  // call compiled expression with id of each record
+  Utils.repeat(records.length, compiled);
+};
+
+
+
+
+MapShaper.calcLayerBounds = function(lyr, arcs) {
+  var bounds = new Bounds();
+  Utils.forEach(lyr.shapes, function(shp) {
+    arcs.getMultiShapeBounds(shp, bounds);
+  });
+  return bounds;
+};
+
+
+
+//
+//
+MapShaper.subdivideLayers = function(layers, arcs, exp) {
+  var compiled = MapShaper.compileLayerExpression(exp, arcs),
+      subdividedLayers = [];
+  Utils.forEach(layers, function(lyr) {
+    Utils.merge(subdividedLayers, MapShaper.subdivide(lyr, arcs, compiled));
+    Utils.forEach(subdividedLayers, function(lyr2) {
+      Opts.copyNewParams(lyr2, lyr);
+    });
+  });
+  return subdividedLayers;
+};
+
+// Recursively divide a layer into two layers until a (compiled) expression
+// no longer returns true. The original layer is split along the long side of
+// its bounding box, so that each split-off layer contains half of the original
+// shapes (+/- 1).
+//
+MapShaper.subdivide = function(lyr, arcs, compiled) {
+  var divide = compiled(lyr),
+      subdividedLayers = [],
+      tmp, bounds, lyr1, lyr2;
+
+  if (!Utils.isBoolean(divide)) {
+    stop("--subdivide expressions must return true or false");
   }
-
-  env.$ = env;
-
-  Utils.forEach(records, function(rec, shapeId) {
-    for (var i=0, n=newFields.length; i<n; i++) {
-      rec[newFields[i]] = null;
+  if (divide) {
+    bounds = MapShaper.calcLayerBounds(lyr, arcs);
+    tmp = MapShaper.divideLayer(lyr, arcs, bounds);
+    lyr1 = tmp[0];
+    if (lyr1.shapes.length > 1 && lyr1.shapes.length < lyr.shapes.length) {
+      Utils.merge(subdividedLayers, MapShaper.subdivide(lyr1, arcs, compiled));
+    } else {
+      subdividedLayers.push(lyr1);
     }
-    env.__setShape(shapes[shapeId]);
-    try {
-      func.call(rec, rec, env);
-    } catch(e) {
-      stop(e);
+
+    lyr2 = tmp[1];
+    if (lyr2.shapes.length > 1 && lyr2.shapes.length < lyr.shapes.length) {
+      Utils.merge(subdividedLayers, MapShaper.subdivide(lyr2, arcs, compiled));
+    } else {
+      subdividedLayers.push(lyr2);
     }
+  } else {
+    subdividedLayers.push(lyr);
+  }
+  return subdividedLayers;
+};
+
+// split one layer into two layers containing the same number of shapes (+-1),
+// either horizontally or vertically
+//
+MapShaper.divideLayer = function(lyr, arcs, bounds) {
+  var properties = lyr.data ? lyr.data.getRecords() : null,
+      shapes = lyr.shapes,
+      lyr1, lyr2;
+  lyr1 = {
+    shapes: [],
+    data: properties ? [] : null
+  };
+  lyr2 = {
+    shapes: [],
+    data: properties ? [] : null
+  };
+
+  var useX = bounds.width() > bounds.height();
+  // TODO: think about case where there are null shapes with NaN centers
+  var centers = Utils.map(shapes, function(shp) {
+    var bounds = arcs.getMultiShapeBounds(shp);
+    return useX ? bounds.centerX() : bounds.centerY();
+  });
+  var ids = Utils.range(centers.length);
+  ids.sort(function(a, b) {
+    return centers[a] - centers[b];
+  });
+  Utils.forEach(ids, function(shapeId, i) {
+    var dest = i < shapes.length / 2 ? lyr1 : lyr2;
+    dest.shapes.push(shapes[shapeId]);
+    if (properties) {
+      dest.data.push(properties[shapeId]);
+    }
+  });
+
+  if (properties) {
+    lyr1.data = new DataTable(lyr1.data);
+    lyr2.data = new DataTable(lyr2.data);
+  }
+  return [lyr1, lyr2];
+};
+
+
+
+
+MapShaper.filterLayers = function(layers, arcs, exp) {
+  Utils.forEach(layers, function(lyr) {
+    MapShaper.filter(lyr, arc, exp);
   });
 };
 
-function ExpressionContext(arcs) {
-  var _shp = new MultiShape(arcs);
-
-  // TODO: add useful methods like centroidX, centroidY, labelX, labelY
-  var getters = {
-    partCount: function() {
-      return _shp.pathCount;
+MapShaper.selectLayers = function(layers, arcs, exp) {
+  var unselected = [], tmp;
+  Utils.forEach(layers, function(lyr) {
+    tmp = MapShaper.filter(lyr, arc, exp);
+    if (tmp && tmp.shapes.length > 0) {
+      unselected.push(tmp);
     }
-  };
+  });
+  return unselected;
+};
 
-  Utils.forEach(getters, function(f, name) {
-    Object.defineProperty(this, name, {get: f});
-  }, this);
+MapShaper.filter = function(lyr, arcs, exp) {
+  MapShaper.select(lyr, arcs, exp, true);
+};
 
-  // Can hide global properties during evaluation this way
-  // (is this worth doing?)
-  Utils.extend(this, {
-    global: null,
-    window: null,
-    setTimeout: null,
-    setInterval: null
+MapShaper.select = function(lyr, arcs, exp, discard) {
+  var records = lyr.data ? lyr.data.getRecords() : null,
+      shapes = lyr.shapes,
+      compiled = MapShaper.compileFieldExpression(exp, arcs, shapes, records);
+
+  var selectedShapes = [],
+      selectedRecords = [],
+      unselectedShapes = [],
+      unselectedRecords = [],
+      unselectedLyr;
+
+  Utils.forEach(shapes, function(shp, shapeId) {
+    var rec = records ? records[shapeId] : null,
+        result = compiled(shapeId);
+
+    if (!Utils.isBoolean(result)) {
+      stop("--filter expressions must return true or false");
+    }
+    if (result) {
+      selectedShapes.push(shp);
+      if (records) selectedRecords.push(rec);
+    } else if (!discard) {
+      unselectedShapes.push(shp);
+      if (records) unselectedRecords.push(rec);
+    }
   });
 
-  this.__setShape = function(shp) {
-    _shp.init(shp);
-  };
-}
+  lyr.shapes = selectedShapes;
+  if (records) {
+    lyr.data = new DataTable(selectedRecords);
+  }
+  if (!discard) {
+    unselectedLyr = {
+      shapes: unselectedShapes,
+      data: records ? new DataTable(unselectedRecords) : null
+    };
+    Opts.copyNewParams(unselectedLyr, lyr);
+  }
+  return unselectedLyr;
+};
 
 
 
+//mapshaper-explode,
 
 var cli = MapShaper.cli = {};
 
@@ -9780,6 +10082,9 @@ MapShaper.getHiddenOptionParser = function(optimist) {
   return (optimist || getOptimist())
     // These option definitions don't get printed by --help and --more
     // Validate them in validateExtraOpts()
+  .options("subdivide", {
+    describe: "Subdivide the shapes in a shape until expression is false"
+  })
   ;
 };
 
@@ -9790,8 +10095,25 @@ MapShaper.getExtraOptionParser = function(optimist) {
     describe: "Apply a JavaScript expression to every record in a dataset"
   })
 
+  /*
+  // TODO: enable this when holes are handled correctly
+  .options("explode", {
+    describe: "divide each multi-part shape into several single-part shapes"
+  })
+  */
+
   .options("split", {
     describe: "split shapes on a field"
+  })
+
+  /*
+  .options("select", {
+    describe: "apply an expression to every record, remove if false"
+  })
+  */
+
+  .options('filter ', {
+    describe: "apply an expression to every record, remove if false"
   })
 
   .options("dissolve", {
@@ -10110,6 +10432,20 @@ cli.validateExtraOpts = function(argv) {
 
   if (argv.expression) {
     opts.expression = argv.expression;
+  }
+
+  if (argv.subdivide) {
+    if (!Utils.isString(argv.subdivide)) {
+      error("--subdivide option requires a JavaScript expression");
+    }
+    opts.subdivide = argv.subdivide;
+  }
+
+  if (argv.filter) {
+    if (!Utils.isString(argv.filter)) {
+      error("--filter option requires a JavaScript expression");
+    }
+    opts.filter = argv.filter;
   }
 
   return opts;
