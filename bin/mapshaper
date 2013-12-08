@@ -26,7 +26,7 @@ if (opts.use_simplification) {
     mapshaper.protectShapes(arcData, layers);
   }
 
-  if (opts.simplify_pct) {
+  if (Utils.isNumber(opts.simplify_pct)) {
     arcData.setRetainedPct(opts.simplify_pct);
   } else if (opts.simplify_interval) {
     arcData.setRetainedInterval(opts.simplify_interval);

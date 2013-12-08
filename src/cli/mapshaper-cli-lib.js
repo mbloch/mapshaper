@@ -521,10 +521,12 @@ cli.validateSimplifyOpts = function(argv) {
     if (!Utils.isNumber(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
     opts.simplify_interval = argv.i;
   }
-  else if (argv.p) {
-    if (!Utils.isNumber(argv.p) || argv.p <= 0 || argv.p >= 1)
-      error("-p (--pct) option should be in the range (0,1)");
-    opts.simplify_pct = argv.p;
+  else if ('p' in argv) {
+    if (!Utils.isNumber(argv.p) || argv.p < 0 || argv.p > 1)
+      error("-p (--pct) expects a number in the range 0-1");
+    if (argv.p < 1) {
+      opts.simplify_pct = argv.p;
+    }
   }
 
   if (argv.cartesian) {
@@ -540,7 +542,7 @@ cli.validateSimplifyOpts = function(argv) {
     opts.topojson_resolution = 0; // handle --no-quantization
   }
 
-  opts.use_simplification = !!(opts.simplify_pct || opts.simplify_interval);
+  opts.use_simplification = Utils.isNumber(opts.simplify_pct) || Utils.isNumber(opts.simplify_interval);
 
   if (opts.use_simplification) {
     opts.keep_shapes = !!argv['keep-shapes'];
