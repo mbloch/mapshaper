@@ -113,7 +113,7 @@ function dissolveFirstPass(shapes, getKey) {
       for (var j=i+1; j<group.length; j++) {
         arc2 = segments[group[j]];
         if (cb(arc1, arc2)) {
-          return [i, j];
+          return [arc1.segId, arc2.segId];
         }
       }
     }
@@ -144,7 +144,7 @@ function dissolveFirstPass(shapes, getKey) {
     }
     if (group2) {
       group = Utils.filter(group, function(i) {
-        return !Utils.contains(group, i);
+        return !Utils.contains(group2, i);
       });
       updateGroupIds(group);
       updateGroupIds(group2);
@@ -207,7 +207,7 @@ function dissolveSecondPass(segments) {
     if (next != obj) {
       match = findDissolveArc(next);
       if (match) {
-        if (depth > 1000) {
+        if (depth > 100) {
           error ('[dissolve] deep recursion -- unhandled topology problem');
         }
         if (match.part.arcs.length == 1) {
