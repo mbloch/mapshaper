@@ -411,6 +411,32 @@ describe('mapshaper-cli.js', function() {
     })
   })
 
+  describe('validateExtraOpts()', function() {
+
+    function validate(str) {
+      var argv = parseOpts(str);
+      var opts = mapshaper.cli.validateExtraOpts(argv);
+      return opts;
+    }
+
+    var good1 = "--split-on-grid 5,3";
+    it(good1, function() {
+      assert.deepEqual(validate(good1), {
+        split_cols: 5,
+        split_rows: 3
+      });
+    })
+
+    var good2 = "--split-on-grid 2";
+    it(good2, function() {
+      assert.deepEqual(validate(good2), {
+        split_cols: 2,
+        split_rows: 2
+      });
+    })
+  })
+
+
   describe('validateTopologyOpts()', function() {
 
     function validate(str) {

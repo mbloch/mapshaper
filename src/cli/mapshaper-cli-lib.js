@@ -21,13 +21,13 @@ mapshaper-filter
 var cli = MapShaper.cli = {};
 
 var usage =
-  "Usage: $ mapshaper [options] file\n\n" +
+  "Usage: mapshaper [options] file\n\n" +
 
-  "Example: clean a file with minor topology errors and simplify to 100m\n" +
-  "$ mapshaper -i 100 --auto-snap states.shp\n\n" +
+  "Example: fix minor topology errors, simplify to 10%, convert to geojson\n" +
+  "$ mapshaper -p 0.1 --auto-snap --format geojson states.shp\n\n" +
 
-  "Example: use Douglas-Peucker to remove all but 10% of points in a Shapefile\n" +
-  "$ mapshaper --dp -p 0.1 counties.shp";
+  "Example: aggregate census tracts to counties\n" +
+  "$ mapshaper -e 'CTY_FIPS=FIPS.substr(0, 5)' --dissolve CTY_FIPS tracts.shp";
 
 MapShaper.getOptionParser = function() {
   var basic = MapShaper.getBasicOptionParser(),
@@ -112,7 +112,7 @@ MapShaper.getBasicOptionParser = function() {
     })
 
     .options("more", {
-      describe: "print less-used + experimental options"
+      describe: "print more options"
     });
   /*
     // TODO
@@ -133,17 +133,22 @@ MapShaper.getHiddenOptionParser = function(optimist) {
   return (optimist || getOptimist())
     // These option definitions don't get printed by --help and --more
     // Validate them in validateExtraOpts()
-  .options("subdivide", {
-    describe: "Subdivide the shapes in a shape until expression is false"
-  })
-  ;
+  .options("modified-v1", {
+    describe: "use the original modified Visvalingam method (deprecated)",
+    'boolean': true
+  });
 };
 
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
 
+  .options('filter ', {
+    describe: "filter shapes with a boolean JavaScript expression"
+  })
+
   .options("expression", {
-    describe: "Apply a JavaScript expression to every record in a dataset"
+    alias: "e",
+    describe: "create/update/delete data fields with a JS expression"
   })
 
   /*
@@ -154,17 +159,11 @@ MapShaper.getExtraOptionParser = function(optimist) {
   */
 
   .options("split", {
-    describe: "split shapes on a field"
+    describe: "split shapes on a data field"
   })
 
-  /*
-  .options("select", {
-    describe: "apply an expression to every record, remove if false"
-  })
-  */
-
-  .options('filter ', {
-    describe: "apply an expression to every record, remove if false"
+  .options("subdivide", {
+    describe: "Recursively divide a layer with a boolean JS expression"
   })
 
   .options("dissolve", {
@@ -184,9 +183,12 @@ MapShaper.getExtraOptionParser = function(optimist) {
     'boolean': true
   })
 
-  .options("no-repair", {
-    describe: "don't remove intersections introduced by simplification",
-    'boolean': true
+  .options("split-on-grid", {
+    describe: "split layer into cols,rows  e.g. --split-on-grid 12,10"
+  })
+
+  .options("snap-interval", {
+    describe: "specify snapping distance in source units"
   })
 
   .options("quantization", {
@@ -198,22 +200,11 @@ MapShaper.getExtraOptionParser = function(optimist) {
     'boolean': true
   })
 
-  .options("snap-interval", {
-    describe: "specify snapping distance in source units"
-  })
-
-  .options("split-cols", {
-    describe: "number of columns for splitting on a grid"
-  })
-
-  .options("split-rows", {
-    describe: "number of rows for splitting on a grid"
-  })
-
-  .options("modified-v1", {
-    describe: "use the original modified Visvalingam method (deprecated)",
+  .options("no-repair", {
+    describe: "don't remove intersections introduced by simplification",
     'boolean': true
-  });
+  })
+  ;
 };
 
 // Parse command line and return options object for bin/mapshaper
@@ -445,21 +436,36 @@ cli.validateCommaSepNames = function(str) {
 };
 
 cli.validateExtraOpts = function(argv) {
-  var opts = {};
-  var r = parseInt(argv['split-rows'], 10) || 1,
-      c = parseInt(argv['split-cols'], 10) || 1;
-  if (r > 1 || c > 1) {
-    opts.split_rows = r;
-    opts.split_cols = c;
+  var opts = {},
+      tmp;
+
+  if ('split-on-grid' in argv) {
+    var rows = 4, cols = 4;
+    tmp = argv['split-on-grid'];
+    if (Utils.isString(tmp)) {
+      tmp = tmp.split(',');
+      cols = parseInt(tmp[0], 10);
+      rows = parseInt(tmp[1], 10);
+      if (rows <= 0 || cols <= 0) {
+        error ("--split-on-grid expects columns,rows");
+      }
+    } else if (Utils.isInteger(tmp) && tmp > 0) {
+      cols = tmp;
+      rows = tmp;
+    }
+    opts.split_rows = rows;
+    opts.split_cols = cols;
   }
 
   if (Utils.isString(argv.dissolve) || argv.dissolve === true) {
     opts.dissolve = argv.dissolve || true; // empty string -> true
   }
 
-  opts.snap_interval = argv['snap-interval'];
-  if (opts.snap_interval) {
-    opts.snapping = true;
+  if ('snap-interval' in argv) {
+    opts.snap_interval = argv['snap-interval'];
+    if (opts.snap_interval > 0) {
+      opts.snapping = true;
+    }
   }
 
   if (argv['sum-fields']) {
