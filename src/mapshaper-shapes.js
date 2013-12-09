@@ -231,7 +231,6 @@ function ArcDataset() {
     return -1;
   }; */
 
-
   // Apply a linear transform to the data, with or without rounding.
   //
   this.applyTransform = function(t, rounding) {

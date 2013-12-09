@@ -193,8 +193,8 @@ function PathImporter(pointCount, opts) {
       info: info
     };
   };
-
 }
+
 
 // Use shapeId property of @pathData objects to group paths by shape
 //

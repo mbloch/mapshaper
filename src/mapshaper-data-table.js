@@ -1,6 +1,5 @@
 /* @require mapshaper-common, dbf-writer */
 
-
 function DataTable(obj) {
   var records;
   if (Utils.isArray(obj)) {

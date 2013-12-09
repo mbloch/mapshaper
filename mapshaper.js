@@ -4648,7 +4648,6 @@ function ArcDataset() {
     return -1;
   }; */
 
-
   // Apply a linear transform to the data, with or without rounding.
   //
   this.applyTransform = function(t, rounding) {
@@ -8184,140 +8183,6 @@ MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
 
 
 
-MapShaper.calcLayerBounds = function(lyr, arcs) {
-  var bounds = new Bounds();
-  Utils.forEach(lyr.shapes, function(shp) {
-    arcs.getMultiShapeBounds(shp, bounds);
-  });
-  return bounds;
-};
-
-
-
-MapShaper.getDefaultFileExtension = function(fileType) {
-  var ext = "";
-  if (fileType == 'shapefile') {
-    ext = 'shp';
-  } else if (fileType == 'geojson' || fileType == 'topojson') {
-    ext = "json";
-  }
-  return ext;
-};
-
-// Return an array of objects with "filename" "filebase" "extension" and "content" attributes.
-//
-MapShaper.exportContent = function(layers, arcData, opts) {
-  var exporter = MapShaper.exporters[opts.output_format];
-  if (!exporter) error("exportContent() Unknown export format:", opts.output_format);
-  if (!opts.output_extension) opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
-  if (!opts.output_file_base) opts.output_file_base = "out";
-  validateLayerData(layers);
-
-  var files = [];
-
-  assignLayerNames(layers);
-
-  if (layers.length >1) {
-    files.push(createIndexFile(layers, arcData));
-  }
-
-  T.start();
-  tmp = exporter(layers, arcData, opts);
-  files = files.concat(tmp);
-  assignFileNames(files, opts);
-  T.stop("Export " + opts.output_format);
-
-  return files;
-
-  function validateLayerData(layers) {
-    Utils.forEach(layers, function(lyr) {
-      if (!Utils.isArray(lyr.shapes)) {
-        error ("#exportContent() A layer is missing shape data");
-      }
-      if (lyr.geometry_type != 'polygon' && lyr.geometry_type != 'polyline') {
-        error ("#exportContent() A layer is missing a valid geometry type");
-      }
-    });
-  }
-
-  // Make sure each layer has a unique name
-  function assignLayerNames(layers, opts) {
-    Utils.forEach(layers, function(lyr) {
-      // Assign "" as name of layers without pre-existing name
-      lyr.name = lyr.name || "";
-    });
-
-    if (layers.length <= 1) return; // name of single layer guaranteed unique
-
-    // get count for each name
-    var counts = Utils.reduce(layers, function(index, lyr) {
-      var name = lyr.name;
-      index[name] = (name in index) ? index[name] + 1 : 1;
-      return index;
-    }, {});
-
-    // assign unique name to each layer
-    var names = {};
-    Utils.forEach(layers, function(lyr) {
-      var name = lyr.name,
-          count = counts[name],
-          i;
-      if (count > 1 || name in names) {
-        // naming conflict, need to find a unique name
-        name = name || 'layer'; // use layer1, layer2, etc as default
-        i = 1;
-        while ((name + i) in names) {
-          i++;
-        }
-        name = name + i;
-      }
-      names[name] = true;
-      lyr.name = name;
-    });
-  }
-
-  function assignFileNames(files, opts) {
-    var index = {};
-    Utils.forEach(files, function(file) {
-      file.extension = file.extension || opts.output_extension;
-      var basename = opts.output_file_base,
-          filename;
-      if (file.name) {
-        basename += "-" + file.name;
-      }
-      filename = basename + "." + file.extension;
-      if (filename in index) error("File name conflict:", filename);
-      index[filename] = true;
-      file.filebase = basename;
-      file.filename = filename;
-    });
-  }
-};
-
-MapShaper.exporters = {
-  geojson: MapShaper.exportGeoJSON,
-  topojson: MapShaper.exportTopoJSON,
-  shapefile: MapShaper.exportShp
-};
-
-MapShaper.PathExporter = PathExporter; // for testing
-
-function createIndexFile(layers, arcs) {
-  var index = Utils.map(layers, function(lyr) {
-    var bounds = MapShaper.calcLayerBounds(lyr, arcs);
-    return {
-      bounds: bounds.toArray(),
-      name: lyr.name
-    };
-  });
-
-  return {
-    content: JSON.stringify(index),
-    extension: 'json',
-    name: 'index'
-  };
-}
-
 // Convert topological data into formats that are useful for exporting
 // Shapefile, GeoJSON and TopoJSON
 //
@@ -8503,6 +8368,147 @@ function PathExporter(arcData, polygonType) {
     };
   }
 }
+
+MapShaper.PathExporter = PathExporter; // for testing
+
+
+
+
+MapShaper.calcLayerBounds = function(lyr, arcs) {
+  var bounds = new Bounds();
+  Utils.forEach(lyr.shapes, function(shp) {
+    arcs.getMultiShapeBounds(shp, bounds);
+  });
+  return bounds;
+};
+
+
+
+// Return an array of objects with "filename" "filebase" "extension" and
+// "content" attributes.
+//
+MapShaper.exportContent = function(layers, arcData, opts) {
+  var exporter = MapShaper.exporters[opts.output_format],
+      files;
+  if (!exporter) {
+    error("exportContent() Unknown export format:", opts.output_format);
+  }
+  if (!opts.output_extension) {
+    opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
+  }
+  if (!opts.output_file_base) {
+    opts.output_file_base = "out";
+  }
+
+  T.start();
+  validateLayerData(layers);
+  assignLayerNames(layers);
+  files = exporter(layers, arcData, opts);
+  if (layers.length >1) {
+    files.push(createIndexFile(layers, arcData));
+  }
+  assignFileNames(files, opts);
+  T.stop("Export " + opts.output_format);
+  return files;
+
+  function validateLayerData(layers) {
+    Utils.forEach(layers, function(lyr) {
+      if (!Utils.isArray(lyr.shapes)) {
+        error ("#exportContent() A layer is missing shape data");
+      }
+      if (lyr.geometry_type != 'polygon' && lyr.geometry_type != 'polyline') {
+        error ("#exportContent() A layer is missing a valid geometry type");
+      }
+    });
+  }
+
+  // Make sure each layer has a unique name
+  function assignLayerNames(layers, opts) {
+    Utils.forEach(layers, function(lyr) {
+      // Assign "" as name of layers without pre-existing name
+      lyr.name = lyr.name || "";
+    });
+
+    if (layers.length <= 1) return; // name of single layer guaranteed unique
+
+    // get count for each name
+    var counts = Utils.reduce(layers, function(index, lyr) {
+      var name = lyr.name;
+      index[name] = (name in index) ? index[name] + 1 : 1;
+      return index;
+    }, {});
+
+    // assign unique name to each layer
+    var names = {};
+    Utils.forEach(layers, function(lyr) {
+      var name = lyr.name,
+          count = counts[name],
+          i;
+      if (count > 1 || name in names) {
+        // naming conflict, need to find a unique name
+        name = name || 'layer'; // use layer1, layer2, etc as default
+        i = 1;
+        while ((name + i) in names) {
+          i++;
+        }
+        name = name + i;
+      }
+      names[name] = true;
+      lyr.name = name;
+    });
+  }
+
+  function assignFileNames(files, opts) {
+    var index = {};
+    Utils.forEach(files, function(file) {
+      file.extension = file.extension || opts.output_extension;
+      var basename = opts.output_file_base,
+          filename;
+      if (file.name) {
+        basename += "-" + file.name;
+      }
+      filename = basename + "." + file.extension;
+      if (filename in index) error("File name conflict:", filename);
+      index[filename] = true;
+      file.filebase = basename;
+      file.filename = filename;
+    });
+  }
+
+  // Generate json file with bounding boxes and names of each export layer
+  //
+  function createIndexFile(layers, arcs) {
+    var index = Utils.map(layers, function(lyr) {
+      var bounds = MapShaper.calcLayerBounds(lyr, arcs);
+      return {
+        bounds: bounds.toArray(),
+        name: lyr.name
+      };
+    });
+
+    return {
+      content: JSON.stringify(index),
+      extension: 'json',
+      name: 'index'
+    };
+  }
+};
+
+MapShaper.exporters = {
+  geojson: MapShaper.exportGeoJSON,
+  topojson: MapShaper.exportTopoJSON,
+  shapefile: MapShaper.exportShp
+};
+
+MapShaper.getDefaultFileExtension = function(fileType) {
+  var ext = "";
+  if (fileType == 'shapefile') {
+    ext = 'shp';
+  } else if (fileType == 'geojson' || fileType == 'topojson') {
+    ext = "json";
+  }
+  return ext;
+};
 
 
 
@@ -9263,7 +9269,7 @@ function dissolveFirstPass(shapes, getKey) {
       for (var j=i+1; j<group.length; j++) {
         arc2 = segments[group[j]];
         if (cb(arc1, arc2)) {
-          return [i, j];
+          return [arc1.segId, arc2.segId];
         }
       }
     }
@@ -9294,7 +9300,7 @@ function dissolveFirstPass(shapes, getKey) {
     }
     if (group2) {
       group = Utils.filter(group, function(i) {
-        return !Utils.contains(group, i);
+        return !Utils.contains(group2, i);
       });
       updateGroupIds(group);
       updateGroupIds(group2);
@@ -9357,7 +9363,7 @@ function dissolveSecondPass(segments) {
     if (next != obj) {
       match = findDissolveArc(next);
       if (match) {
-        if (depth > 1000) {
+        if (depth > 100) {
           error ('[dissolve] deep recursion -- unhandled topology problem');
         }
         if (match.part.arcs.length == 1) {
@@ -9998,13 +10004,13 @@ MapShaper.select = function(lyr, arcs, exp, discard) {
 var cli = MapShaper.cli = {};
 
 var usage =
-  "Usage: $ mapshaper [options] file\n\n" +
+  "Usage: mapshaper [options] file\n\n" +
 
-  "Example: clean a file with minor topology errors and simplify to 100m\n" +
-  "$ mapshaper -i 100 --auto-snap states.shp\n\n" +
+  "Example: fix minor topology errors, simplify to 10%, convert to geojson\n" +
+  "$ mapshaper -p 0.1 --auto-snap --format geojson states.shp\n\n" +
 
-  "Example: use Douglas-Peucker to remove all but 10% of points in a Shapefile\n" +
-  "$ mapshaper --dp -p 0.1 counties.shp";
+  "Example: aggregate census tracts to counties\n" +
+  "$ mapshaper -e 'CTY_FIPS=FIPS.substr(0, 5)' --dissolve CTY_FIPS tracts.shp";
 
 MapShaper.getOptionParser = function() {
   var basic = MapShaper.getBasicOptionParser(),
@@ -10089,7 +10095,7 @@ MapShaper.getBasicOptionParser = function() {
     })
 
     .options("more", {
-      describe: "print less-used + experimental options"
+      describe: "print more options"
     });
   /*
     // TODO
@@ -10110,17 +10116,22 @@ MapShaper.getHiddenOptionParser = function(optimist) {
   return (optimist || getOptimist())
     // These option definitions don't get printed by --help and --more
     // Validate them in validateExtraOpts()
-  .options("subdivide", {
-    describe: "Subdivide the shapes in a shape until expression is false"
-  })
-  ;
+  .options("modified-v1", {
+    describe: "use the original modified Visvalingam method (deprecated)",
+    'boolean': true
+  });
 };
 
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
 
+  .options('filter ', {
+    describe: "filter shapes with a boolean JavaScript expression"
+  })
+
   .options("expression", {
-    describe: "Apply a JavaScript expression to every record in a dataset"
+    alias: "e",
+    describe: "create/update/delete data fields with a JS expression"
   })
 
   /*
@@ -10131,17 +10142,11 @@ MapShaper.getExtraOptionParser = function(optimist) {
   */
 
   .options("split", {
-    describe: "split shapes on a field"
+    describe: "split shapes on a data field"
   })
 
-  /*
-  .options("select", {
-    describe: "apply an expression to every record, remove if false"
-  })
-  */
-
-  .options('filter ', {
-    describe: "apply an expression to every record, remove if false"
+  .options("subdivide", {
+    describe: "Recursively divide a layer with a boolean JS expression"
   })
 
   .options("dissolve", {
@@ -10161,9 +10166,12 @@ MapShaper.getExtraOptionParser = function(optimist) {
     'boolean': true
   })
 
-  .options("no-repair", {
-    describe: "don't remove intersections introduced by simplification",
-    'boolean': true
+  .options("split-on-grid", {
+    describe: "split layer into cols,rows  e.g. --split-on-grid 12,10"
+  })
+
+  .options("snap-interval", {
+    describe: "specify snapping distance in source units"
   })
 
   .options("quantization", {
@@ -10175,22 +10183,11 @@ MapShaper.getExtraOptionParser = function(optimist) {
     'boolean': true
   })
 
-  .options("snap-interval", {
-    describe: "specify snapping distance in source units"
-  })
-
-  .options("split-cols", {
-    describe: "number of columns for splitting on a grid"
-  })
-
-  .options("split-rows", {
-    describe: "number of rows for splitting on a grid"
-  })
-
-  .options("modified-v1", {
-    describe: "use the original modified Visvalingam method (deprecated)",
+  .options("no-repair", {
+    describe: "don't remove intersections introduced by simplification",
     'boolean': true
-  });
+  })
+  ;
 };
 
 // Parse command line and return options object for bin/mapshaper
@@ -10422,21 +10419,36 @@ cli.validateCommaSepNames = function(str) {
 };
 
 cli.validateExtraOpts = function(argv) {
-  var opts = {};
-  var r = parseInt(argv['split-rows'], 10) || 1,
-      c = parseInt(argv['split-cols'], 10) || 1;
-  if (r > 1 || c > 1) {
-    opts.split_rows = r;
-    opts.split_cols = c;
+  var opts = {},
+      tmp;
+
+  if ('split-on-grid' in argv) {
+    var rows = 4, cols = 4;
+    tmp = argv['split-on-grid'];
+    if (Utils.isString(tmp)) {
+      tmp = tmp.split(',');
+      cols = parseInt(tmp[0], 10);
+      rows = parseInt(tmp[1], 10);
+      if (rows <= 0 || cols <= 0) {
+        error ("--split-on-grid expects columns,rows");
+      }
+    } else if (Utils.isInteger(tmp) && tmp > 0) {
+      cols = tmp;
+      rows = tmp;
+    }
+    opts.split_rows = rows;
+    opts.split_cols = cols;
   }
 
   if (Utils.isString(argv.dissolve) || argv.dissolve === true) {
     opts.dissolve = argv.dissolve || true; // empty string -> true
   }
 
-  opts.snap_interval = argv['snap-interval'];
-  if (opts.snap_interval) {
-    opts.snapping = true;
+  if ('snap-interval' in argv) {
+    opts.snap_interval = argv['snap-interval'];
+    if (opts.snap_interval > 0) {
+      opts.snapping = true;
+    }
   }
 
   if (argv['sum-fields']) {
