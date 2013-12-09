@@ -1,43 +1,33 @@
 /* @requires
-mapshaper-geojson
-mapshaper-topojson
-mapshaper-shapefile
+mapshaper-path-export
 mapshaper-layer-math
 */
 
-MapShaper.getDefaultFileExtension = function(fileType) {
-  var ext = "";
-  if (fileType == 'shapefile') {
-    ext = 'shp';
-  } else if (fileType == 'geojson' || fileType == 'topojson') {
-    ext = "json";
-  }
-  return ext;
-};
-
-// Return an array of objects with "filename" "filebase" "extension" and "content" attributes.
+// Return an array of objects with "filename" "filebase" "extension" and
+// "content" attributes.
 //
 MapShaper.exportContent = function(layers, arcData, opts) {
-  var exporter = MapShaper.exporters[opts.output_format];
-  if (!exporter) error("exportContent() Unknown export format:", opts.output_format);
-  if (!opts.output_extension) opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
-  if (!opts.output_file_base) opts.output_file_base = "out";
-  validateLayerData(layers);
-
-  var files = [];
-
-  assignLayerNames(layers);
-
-  if (layers.length >1) {
-    files.push(createIndexFile(layers, arcData));
+  var exporter = MapShaper.exporters[opts.output_format],
+      files;
+  if (!exporter) {
+    error("exportContent() Unknown export format:", opts.output_format);
+  }
+  if (!opts.output_extension) {
+    opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
+  }
+  if (!opts.output_file_base) {
+    opts.output_file_base = "out";
   }
 
   T.start();
-  tmp = exporter(layers, arcData, opts);
-  files = files.concat(tmp);
+  validateLayerData(layers);
+  assignLayerNames(layers);
+  files = exporter(layers, arcData, opts);
+  if (layers.length >1) {
+    files.push(createIndexFile(layers, arcData));
+  }
   assignFileNames(files, opts);
   T.stop("Export " + opts.output_format);
-
   return files;
 
   function validateLayerData(layers) {
@@ -103,6 +93,24 @@ MapShaper.exportContent = function(layers, arcData, opts) {
       file.filename = filename;
     });
   }
+
+  // Generate json file with bounding boxes and names of each export layer
+  //
+  function createIndexFile(layers, arcs) {
+    var index = Utils.map(layers, function(lyr) {
+      var bounds = MapShaper.calcLayerBounds(lyr, arcs);
+      return {
+        bounds: bounds.toArray(),
+        name: lyr.name
+      };
+    });
+
+    return {
+      content: JSON.stringify(index),
+      extension: 'json',
+      name: 'index'
+    };
+  }
 };
 
 MapShaper.exporters = {
@@ -111,206 +119,12 @@ MapShaper.exporters = {
   shapefile: MapShaper.exportShp
 };
 
-MapShaper.PathExporter = PathExporter; // for testing
-
-function createIndexFile(layers, arcs) {
-  var index = Utils.map(layers, function(lyr) {
-    var bounds = MapShaper.calcLayerBounds(lyr, arcs);
-    return {
-      bounds: bounds.toArray(),
-      name: lyr.name
-    };
-  });
-
-  return {
-    content: JSON.stringify(index),
-    extension: 'json',
-    name: 'index'
-  };
-}
-
-// Convert topological data into formats that are useful for exporting
-// Shapefile, GeoJSON and TopoJSON
-//
-function PathExporter(arcData, polygonType) {
-  var layerBounds = new Bounds();
-  if (polygonType !== true && polygonType !== false)
-    error("PathExporter requires boolean @polygonType parameter.");
-
-  this.getBounds = function() {
-    return layerBounds;
-  };
-
-  // Export data for serializing one Shapefile record
-  //
-  this.exportShapeForShapefile = function(ids) {
-    var bounds = new Bounds();
-    var data = exportShapeData(ids);
-    var paths = Utils.map(data.pathData, function(path) {
-      bounds.mergeBounds(path.bounds);
-      return [path.xx, path.yy];
-    });
-    return {
-      bounds: bounds,
-      pointCount: data.pointCount,
-      paths: paths,
-      pathCount: paths.length
-    };
-  };
-
-  // Export path coordinates for one Shape/Feature, either nested like a
-  // GeoJSON MultiPolygon or like a GeoJSON MultiLineString
-  //
-  this.exportShapeForGeoJSON = function(ids) {
-    var obj = exportShapeData(ids);
-    if (obj.pointCount === 0) return null;
-    if (polygonType) {
-      var groups = groupMultiPolygonPaths(obj.pathData);
-      return Utils.map(groups, function(group) {
-        return convertPathsForGeoJSON(group);
-      });
-    } else {
-      return convertPathsForGeoJSON(obj.pathData);
-    }
-  };
-
-  // Export arrays of arc ids for the "arcs" parameter of a TopoJSON "object"
-  //
-  this.exportShapeForTopoJSON = function(ids) {
-    var obj = exportShapeData(ids);
-    if (obj.pointCount === 0) return null;
-    if (polygonType) {
-      var groups = groupMultiPolygonPaths(obj.pathData);
-      return Utils.map(groups, function(group) {
-        return convertPathsForTopoJSON(group);
-      });
-    } else {
-      return convertPathsForTopoJSON(obj.pathData);
-    }
-  };
-
-  function convertPathsForGeoJSON(paths) {
-    return Utils.map(paths, function(path) {
-      return MapShaper.transposeXYCoords(path.xx, path.yy);
-    });
+MapShaper.getDefaultFileExtension = function(fileType) {
+  var ext = "";
+  if (fileType == 'shapefile') {
+    ext = 'shp';
+  } else if (fileType == 'geojson' || fileType == 'topojson') {
+    ext = "json";
   }
-
-  function convertPathsForTopoJSON(paths) {
-    return Utils.map(paths, function(path) {
-      return path.ids;
-    });
-  }
-
-  // Bundle holes with their containing rings, for Topo/GeoJSON export
-  // Assume positive rings are CCW and negative rings are CW, like Shapefile
-  // @paths array of path objects from exportShapeData()
-  //
-  function groupMultiPolygonPaths(paths) {
-    var pos = [],
-        neg = [];
-    Utils.forEach(paths, function(path) {
-      if (path.area > 0) {
-        pos.push(path);
-      } else if (path.area < 0) {
-        neg.push(path);
-      } else {
-        // trace("Zero-area ring, skipping")
-      }
-    });
-
-    var output = Utils.map(pos, function(part) {
-      return [part];
-    });
-
-    Utils.forEach(neg, function(hole) {
-      var containerId = -1,
-          containerArea = 0;
-      for (var i=0, n=pos.length; i<n; i++) {
-        var part = pos[i],
-            contained = part.bounds.contains(hole.bounds);
-        if (contained && (containerArea === 0 || part.area < containerArea)) {
-          containerArea = part.area;
-          containerId = i;
-        }
-      }
-      if (containerId == -1) {
-        trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
-        // trace(paths)
-      } else {
-        output[containerId].push(hole);
-      }
-    });
-    return output;
-  }
-
-  // TODO: add shape preservation code here.
-  //   re-introduce vertices to ring with largest bounding box
-  //
-  function exportShapeData(ids) {
-    var pointCount = 0,
-        pathData = [],
-        path,
-        shp;
-
-    if (ids && ids.length > 0) { // may be null
-      shp = arcData.getMultiPathShape(ids);
-      for (var i=0; i<shp.pathCount; i++) {
-        path = convertPath(shp.getPath(i), polygonType);
-        if (path) {
-          pathData.push(path);
-          pointCount += path.pointCount;
-        }
-      }
-    }
-    return {
-      pointCount: pointCount,
-      pathData: pathData
-    };
-  }
-
-  // Extract data from a SimpleShape object (see mapshaper-shapes.js)
-  // Returns null if shape has collapsed or is otherwise invalid
-  //
-  function convertPath(path, isRing) {
-    var xx = [],
-        yy = [],
-        iter = path.getPathIter();
-
-    var x, y, prevX, prevY,
-        bounds,
-        i = 0,
-        area = 0;
-    while (iter.hasNext()) {
-      x = iter.x;
-      y = iter.y;
-
-      if (i === 0 || prevX != x || prevY != y) {
-        xx.push(x);
-        yy.push(y);
-        i++;
-      }
-
-      prevX = x;
-      prevY = y;
-    }
-
-    if (isRing) {
-      area = msSignedRingArea(xx, yy);
-      if (i < 4 || area === 0) return null;
-    } else if (i < 2) {
-      return null;
-    }
-
-    bounds = MapShaper.calcXYBounds(xx, yy);
-    layerBounds.mergeBounds(bounds); // KLUDGE: simpler to accumulate bounds here
-
-    return {
-      xx: xx,
-      yy: yy,
-      pointCount: xx.length,
-      area: area,
-      ids: path.ids,
-      bounds: bounds
-    };
-  }
-}
+  return ext;
+};
