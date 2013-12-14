@@ -74,7 +74,7 @@ MapShaper.dissolve = function(lyr, arcs, field, opts) {
   }
   Opts.copyNewParams(dissolveLyr, lyr);
 
-  T.stop('dissolve');
+  T.stop('Dissolve polygons');
   return dissolveLyr;
 };
 

@@ -126,11 +126,11 @@ function buildPathTopology(xx, yy, nn) {
     slice = Array.prototype.slice;
   }
 
-  T.start();
+  //T.start();
   var chainIds = initPointChains(xx, yy, !"verbose");
-  T.stop("Find matching vertices");
+  //T.stop("Find matching vertices");
 
-  T.start();
+  //T.start();
   var pointId = 0;
   var paths = Utils.map(nn, function(pathLen) {
     var arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
@@ -139,7 +139,7 @@ function buildPathTopology(xx, yy, nn) {
   });
 
   var arcs = new ArcDataset(index.getArcs());
-  T.stop("Find topological boundaries");
+  //T.stop("Find topological boundaries");
 
   return {
     paths: paths,
