@@ -24,7 +24,7 @@ MapShaper.filter = function(lyr, arcs, exp) {
 MapShaper.select = function(lyr, arcs, exp, discard) {
   var records = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes,
-      compiled = MapShaper.compileFieldExpression(exp, arcs, shapes, records);
+      compiled = MapShaper.compileFeatureExpression(exp, arcs, shapes, records);
 
   var selectedShapes = [],
       selectedRecords = [],

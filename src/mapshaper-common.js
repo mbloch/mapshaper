@@ -8,6 +8,10 @@ function stop(msg) {
 
 var MapShaper = {};
 
+MapShaper.absArcId = function(arcId) {
+  return arcId >= 0 ? arcId : ~arcId;
+};
+
 MapShaper.parseLocalPath = function(path) {
   var obj = {
     ext: '',
@@ -92,6 +96,18 @@ MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   }
 };
 
+MapShaper.copyElements = function(src, i, dest, j, n, rev) {
+  if (src === dest && j > i) error ("copy error");
+  var inc = 1,
+      offs = 0;
+  if (rev) {
+    inc = -1;
+    offs = n - 1;
+  }
+  for (var k=0; k<n; k++, offs += inc) {
+    dest[k + j] = src[i + offs];
+  }
+};
 
 MapShaper.calcXYBounds = function(xx, yy, bb) {
   if (!bb) bb = new Bounds();

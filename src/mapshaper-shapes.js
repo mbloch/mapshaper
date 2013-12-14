@@ -314,18 +314,19 @@ function ArcDataset() {
     }
   };
 
+  /*
   function copyElements(src, i, dest, j, n) {
     if (src === dest && j > i) error ("copy error");
-    var copied = 0;
     for (var k=0; k<n; k++) {
-      copied++;
       dest[k + j] = src[k + i];
     }
   }
+  */
 
   function condenseArcs(map) {
     var goodPoints = 0,
         goodArcs = 0,
+        copyElements = MapShaper.copyElements,
         k, arcLen;
     for (var i=0, n=map.length; i<n; i++) {
       k = map[i];
@@ -681,21 +682,6 @@ function ShapeIter(arcs) {
     return false;
   };
 }
-
-MapShaper.getPathArea = function(iter) {
-  var sum = 0,
-      x, y;
-  if (iter.hasNext()) {
-    x = iter.x;
-    y = iter.y;
-    while (iter.hasNext()) {
-      sum += iter.x * y - x * iter.y;
-      x = iter.x;
-      y = iter.y;
-    }
-  }
-  return Math.abs(sum / 2);
-};
 
 MapShaper.clampIntervalByPct = function(z, pct) {
   if (pct <= 0) z = Infinity;

@@ -11,7 +11,7 @@ MapShaper.evaluate = function(lyr, arcs, exp) {
       // create new table if none exists
       dataTable = lyr.data || (lyr.data = new DataTable(shapes.length)),
       records = dataTable.getRecords(),
-      compiled = MapShaper.compileFieldExpression(exp, arcs, shapes, records);
+      compiled = MapShaper.compileFeatureExpression(exp, arcs, shapes, records);
 
   // call compiled expression with id of each record
   Utils.repeat(records.length, compiled);

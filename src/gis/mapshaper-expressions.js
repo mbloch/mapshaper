@@ -22,14 +22,13 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
   };
 };
 
-MapShaper.compileFieldExpression = function(exp, arcs, shapes, records) {
-  if (arcs instanceof ArcDataset === false) error("[compileFieldExpression()] Missing ArcDataset;", arcs);
+MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
+  if (arcs instanceof ArcDataset === false) error("[compileFeatureExpression()] Missing ArcDataset;", arcs);
   var newFields = exp.match(/[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g) || [],
-      env = new RecordExpressionContext(arcs),
+      env = new FeatureExpressionContext(arcs),
       func;
 
   exp = MapShaper.removeExpressionSemicolons(exp);
-
   try {
     func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
   } catch(e) {
@@ -67,7 +66,7 @@ MapShaper.removeExpressionSemicolons = function(exp) {
     exp = exp.replace(/[; ]+$/, '');
     // change any other semicolons to commas
     // (this is not very safe -- what if a string literal contains a semicolon?)
-    exp = exp.replace(';', ',');
+    exp = exp.replace(/;/g, ',');
   }
   return exp;
 };
@@ -89,19 +88,16 @@ function addGetters(obj, getters) {
   });
 }
 
-function RecordExpressionContext(arcs) {
+function FeatureExpressionContext(arcs) {
   var _shp = new MultiShape(arcs),
+      _centroid, _innerXY,
       _i, _ids, _bounds;
 
   this.$ = this;
   hideGlobals(this);
 
-  // TODO: add useful methods:
+  // TODO: add methods:
   // isClosed / isOpen
-  // centroidX
-  // centroidY
-  // labelX
-  // labelY
   //
   addGetters(this, {
     id: function() {
@@ -122,19 +118,58 @@ function RecordExpressionContext(arcs) {
     },
     height: function() {
       return shapeBounds().height();
+    },
+    area: function() {
+      return MapShaper.getShapeArea(_ids, arcs);
+    },
+    originalArea: function() {
+      var i = arcs.getRetainedInterval(),
+          area;
+      arcs.setRetainedInterval(0);
+      area = this.area();
+      arcs.setRetainedInterval(i);
+      return area;
+    },
+    centroidX: function() {
+      var p = centroid();
+      return p ? p.x : NaN;
+    },
+    centroidY: function() {
+      var p = centroid();
+      return p ? p.y : NaN;
+    },
+    interiorX: function() {
+      var p = innerXY();
+      return p ? p.x : NaN;
+    },
+    interiorY: function() {
+      var p = innerXY();
+      return p ? p.y : NaN;
     }
   });
 
   this.__setShape = function(shp, id) {
     _bounds = null;
+    _centroid = null;
+    _innerXY = null;
     _ids = shp;
     _id = id;
     _shp.init(shp);
   };
 
+  function centroid() {
+    _centroid = _centroid || MapShaper.getShapeCentroid(_ids, arcs);
+    return _centroid;
+  }
+
+  function innerXY() {
+    //_innerXY = centroid(); // TODO: implement
+    return null;
+  }
+
   function shapeBounds() {
     if (!_bounds) {
-      _bounds = arcs.getMultiShapeBounds();
+      _bounds = arcs.getMultiShapeBounds(_ids);
     }
     return _bounds;
   }
@@ -143,14 +178,44 @@ function RecordExpressionContext(arcs) {
 function LayerExpressionContext(arcs) {
   var shapes, properties, lyr;
   hideGlobals(this);
+  this.$ = this;
 
   this.sum = function(exp) {
-    var f = MapShaper.compileFieldExpression(exp, arcs, shapes, properties),
-        total = 0;
-    for (var i=0; i<shapes.length; i++) {
-      total += f(i) || 0;
-    }
-    return total;
+    return reduce(exp, 0, function(accum, val) {
+      return accum + (val || 0);
+    });
+  };
+
+  this.min = function(exp) {
+    var min = reduce(exp, Infinity, function(accum, val) {
+      return Math.min(accum, val);
+    });
+    return min;
+  };
+
+  this.max = function(exp) {
+    var max = reduce(exp, -Infinity, function(accum, val) {
+      return Math.max(accum, val);
+    });
+    return max;
+  };
+
+  this.average = function(exp) {
+    /*
+    var avg = reduce(exp, NaN, function(accum, val, i) {
+      if (i > 0) {
+        val = val / (i+1) + accum * i / (i+1);
+      }
+      return val;
+    });
+    */
+    var sum = this.sum(exp);
+    return sum / shapes.length;
+  };
+
+  this.median = function(exp) {
+    var arr = values(exp);
+    return Utils.findMedian(arr);
   };
 
   this.__setLayer = function(layer) {
@@ -158,6 +223,20 @@ function LayerExpressionContext(arcs) {
     shapes = layer.shapes;
     properties = layer.data ? layer.data.getRecords() : [];
   };
+
+  function values(exp) {
+    var compiled = MapShaper.compileFeatureExpression(exp, arcs, shapes, properties);
+    return Utils.repeat(shapes.length, compiled);
+  }
+
+  function reduce(exp, initial, func) {
+    var val = initial,
+        compiled = MapShaper.compileFeatureExpression(exp, arcs, shapes, properties);
+    for (var i=0, n=shapes.length; i<n; i++) {
+      val = func(val, compiled(i), i);
+    }
+    return val;
+  }
 
   addGetters({
     bounds: function() {

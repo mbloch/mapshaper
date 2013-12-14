@@ -13,8 +13,59 @@ describe('mapshaper-expressions.js', function () {
     it('converts interior semicolons to commas', function () {
       assert.equal(api.removeExpressionSemicolons("NAME = NAME2; console.log(RANK);"), "NAME = NAME2, console.log(RANK)")
       assert.equal(api.removeExpressionSemicolons("NAME = NAME2; console.log(RANK)"), "NAME = NAME2, console.log(RANK)")
+    })
+
+    it('FIX: converts multiple interior semicolons to commas', function () {
+      assert.equal(api.removeExpressionSemicolons("NAME = NAME2; DUMMY='x'; console.log(RANK);"),
+        "NAME = NAME2, DUMMY='x', console.log(RANK)")
+    })
+  })
+
+  describe('compileFeatureExpression()', function() {
+    describe('data tests', function() {
 
     })
+
+    // Geometry is more thoroughly tested in shape-geom-test.js
+    describe('polygon tests', function() {
+
+    })
+  })
+
+
+  describe('compileLayerExpression()', function () {
+    var nullArcs = new api.ArcDataset([]),
+        records = [{foo: 4}, {foo: 0}, {foo: 3.5}, {foo: -0.5}, {foo: 3}];
+    var lyr = {
+      shapes: new Array(5),
+      data: new api.data.DataTable(records)
+    };
+
+    it('sum()', function() {
+      var compiled = new api.compileLayerExpression("sum('foo')", nullArcs)
+      assert.equal(compiled(lyr), 10);
+    })
+
+    it('average()', function() {
+      var compiled = new api.compileLayerExpression("average('foo')", nullArcs)
+      assert.equal(compiled(lyr), 2);
+    })
+
+    it('median()', function() {
+      var compiled = new api.compileLayerExpression("median('foo')", nullArcs)
+      assert.equal(compiled(lyr), 3);
+    })
+
+    it('max()', function() {
+      var compiled = new api.compileLayerExpression("max('foo')", nullArcs)
+      assert.equal(compiled(lyr), 4);
+    })
+
+    it('min()', function() {
+      var compiled = new api.compileLayerExpression("min('foo')", nullArcs)
+      assert.equal(compiled(lyr), -0.5);
+    })
+
   })
 
 })
