@@ -30,7 +30,8 @@ describe('mapshaper-cli.js', function() {
         bad2 = "test_data/two_states.shp --quantize 100",
         bad3 = "test_data/two_states.shp -q 100",
         bad4 = "test_data/two_states.shp -k",
-        good1 = "test_data/two_states.shp";
+        good1 = "test_data/two_states.shp",
+        good2 = "test_data/two_states.shp test_data/six_counties.shp";
 
     it(bad1 + " (invalid)", function() {
       assert.throws(function() {
@@ -61,6 +62,19 @@ describe('mapshaper-cli.js', function() {
         mapshaper.checkArgs(splitOpts(good1));
       });
     })
+
+    // test multiple input files
+    it(good2, function() {
+      var argv = splitOpts(good2);
+      assert.doesNotThrow(function() {
+        mapshaper.checkArgs(argv);
+      });
+      var optsArr = mapshaper.checkArgs(argv);
+      assert.equal(optsArr.length, 2);
+      assert.equal(optsArr[0].input_file, "test_data/two_states.shp");
+      assert.equal(optsArr[1].input_file, "test_data/six_counties.shp");
+    })
+
   });
 
   describe('validateSimplifyOpts()', function() {
@@ -225,7 +239,7 @@ describe('mapshaper-cli.js', function() {
 
     function validate(str) {
       var argv = parseOpts(str);
-      return mapshaper.cli.validateInputOpts(argv);
+      return mapshaper.cli.validateInputOpts(argv._[0], argv);
     }
 
     var good1 = "test_data/two_states.shp";
@@ -256,7 +270,7 @@ describe('mapshaper-cli.js', function() {
 
     function validate(str) {
       var argv = parseOpts(str);
-      var input = mapshaper.cli.validateInputOpts(argv);
+      var input = mapshaper.cli.validateInputOpts(argv._[0], argv);
       return mapshaper.cli.validateOutputOpts(argv, input);
     }
 

@@ -233,7 +233,7 @@ MapShaper.getOpts = function() {
     opts = MapShaper.validateArgs(argv, getSupportedArgs());
   }).argv;
 
-  C.VERBOSE = opts.verbose;
+  C.VERBOSE = argv.verbose;
   return opts;
 };
 
@@ -287,7 +287,7 @@ MapShaper.checkArgSupport = function(argv, flags) {
   });
 };
 
-//
+// Return an array of options objects, one for each input file
 //
 MapShaper.validateArgs = function(argv, supported) {
   MapShaper.checkArgSupport(argv, supported);
@@ -300,13 +300,21 @@ MapShaper.validateArgs = function(argv, supported) {
   });
 
   var opts = {};
-  Utils.extend(opts, cli.validateInputOpts(argv));
-  Utils.extend(opts, cli.validateOutputOpts(argv, opts));
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
   Utils.extend(opts, cli.validateExtraOpts(argv));
-  opts.verbose = !!argv.verbose;
-  return opts;
+
+  var optsArr = Utils.map(argv._, function(ifile) {
+    var fileOpts = {};
+    Utils.extend(fileOpts, cli.validateInputOpts(ifile, argv));
+    Utils.extend(fileOpts, cli.validateOutputOpts(argv, fileOpts));
+    return Utils.extend(fileOpts, opts);
+  });
+
+  if (optsArr.length === 0) {
+    error("Missing an input file");
+  }
+  return optsArr;
 };
 
 MapShaper.getOutputPaths = function(files, dir, extension) {
@@ -352,13 +360,8 @@ cli.replaceFileExtension = function(path, ext) {
   return Node.path.join(info.relative_dir, info.base + "." + ext);
 };
 
-cli.validateInputOpts = function(argv) {
-  var ifile = argv._[0],
-      opts = {};
-
-  if (!ifile) {
-    error("Missing an input file");
-  }
+cli.validateInputOpts = function(ifile, argv) {
+  var opts = {};
   if (!Node.fileExists(ifile)) {
     error("File not found (" + ifile + ")");
   }

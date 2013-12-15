@@ -3,104 +3,110 @@
 var mapshaper = require("../"),
     Node = mapshaper.Node,
     Utils = mapshaper.Utils,
-    opts = mapshaper.getOpts(); // see mapshaper-cli-lib.js
+    optsArr = mapshaper.getOpts(); // see mapshaper-cli-lib.js
 
 mapshaper.T.start("Start timing");
-
-var importData = mapshaper.importFromFile(opts.input_file, opts),
-    arcData = importData.arcs,
-    layers = importData.layers,
-    bounds = arcData.getBounds();
-
-// Update input/output format with information found during importing
-// (command line info is insufficient to distinguish topojson and geojson)
-opts.input_format = opts.input_format || importData.info.input_format;
-opts.output_format = opts.output_format || opts.input_format;
-
-if (!opts.input_format) error("Unknown input file format");
-
-if (opts.use_simplification) {
-  mapshaper.simplifyPaths(arcData, opts.simplify_method, opts.force2D);
-
-  if (opts.keep_shapes) {
-    mapshaper.protectShapes(arcData, layers);
-  }
-
-  if (Utils.isNumber(opts.simplify_pct)) {
-    arcData.setRetainedPct(opts.simplify_pct);
-  } else if (opts.simplify_interval) {
-    arcData.setRetainedInterval(opts.simplify_interval);
-  }
-
-  if (opts.repair) {
-    var xxInfo = mapshaper.findAndRepairIntersections(arcData);
-    mapshaper.cli.printRepairMessage(xxInfo, opts);
-  }
-}
-
-if (opts.filter) {
-  mapshaper.filterLayers(layers, arcData, opts.select);
-}
-
-if (opts.expression) {
-  mapshaper.evaluateLayers(layers, arcData, opts.expression);
-}
-
-/*
-// need to handle holes correctly before enabling this
-if (opts.explode) {
-  mapshaper.explodeLayers(layers, arcData);
-}
-*/
-
-if (opts.split) {
-  layers = mapshaper.splitLayersOnField(layers, arcData, opts.split);
-}
-
-if (opts.subdivide) {
-  layers = mapshaper.subdivideLayers(layers, arcData, opts.subdivide);
-}
-
-if (opts.dissolve) {
-  layers = mapshaper.dissolveLayers(layers, arcData, opts.dissolve, opts);
-}
-
-if (opts.recombine) {
-  layers = mapshaper.recombineLayers(layers);
-}
-
-if (opts.split_rows && opts.split_cols) {
-  if (layers.length != 1) error("Split-on-grid expects one layer");
-  layers = mapshaper.splitOnGrid(layers[0], arcData, opts.split_rows, opts.split_cols);
-}
-
-// TODO: find sensible way of generating topojson with multiple layer-objects
-// (e.g. --topojson-merge option
-opts.topojson_divide = true;
-
-var exports = mapshaper.exportContent(layers, arcData, opts);
-
-// Copy prj file, if both importing and exporting as shapefile
-if (opts.output_format == 'shapefile' && opts.input_format == 'shapefile') {
-  var prjFile = mapshaper.cli.replaceFileExtension(opts.input_file, 'prj'),
-      shpFiles = Utils.filter(exports, function(o) {return o.extension == 'shp'});
-
-  if (Node.fileExists(prjFile)) {
-    Utils.forEach(shpFiles, function(o) {
-      exports.push({
-        content: Node.readFile(prjFile, 'utf-8'),
-        extension: 'prj',
-        filebase: o.filebase
-      });
-    });
-  }
-}
-
-var paths = mapshaper.getOutputPaths(exports, opts.output_directory, opts.output_extension);
-Utils.forEach(exports, function(obj, i) {
-  var path = paths[i];
-  Node.writeFile(path, obj.content);
-  console.log("Wrote " + path);
-});
-
+Utils.forEach(optsArr, procFile);
 mapshaper.T.stop("Total time");
+
+function procFile(opts) {
+  var importData = mapshaper.importFromFile(opts.input_file, opts),
+      arcData = importData.arcs,
+      layers = importData.layers,
+      bounds = arcData.getBounds();
+
+  // Update input/output format with information found during importing
+  // (command line info is insufficient to distinguish topojson and geojson)
+  opts.input_format = opts.input_format || importData.info.input_format;
+  opts.output_format = opts.output_format || opts.input_format;
+
+  if (!opts.input_format) error("Unknown input file format");
+
+  if (opts.use_simplification) {
+    mapshaper.simplifyPaths(arcData, opts.simplify_method, opts.force2D);
+
+    if (opts.keep_shapes) {
+      mapshaper.protectShapes(arcData, layers);
+    }
+
+    if (Utils.isNumber(opts.simplify_pct)) {
+      arcData.setRetainedPct(opts.simplify_pct);
+    } else if (opts.simplify_interval) {
+      arcData.setRetainedInterval(opts.simplify_interval);
+    }
+
+    if (opts.repair) {
+      var xxInfo = mapshaper.findAndRepairIntersections(arcData);
+      mapshaper.cli.printRepairMessage(xxInfo, opts);
+    }
+  }
+
+  if (opts.filter) {
+    mapshaper.filterLayers(layers, arcData, opts.select);
+  }
+
+  if (opts.expression) {
+    mapshaper.evaluateLayers(layers, arcData, opts.expression);
+  }
+
+  /*
+  // need to handle holes correctly before enabling this
+  if (opts.explode) {
+    mapshaper.explodeLayers(layers, arcData);
+  }
+  */
+
+  if (opts.split) {
+    layers = mapshaper.splitLayersOnField(layers, arcData, opts.split);
+  }
+
+  if (opts.subdivide) {
+    layers = mapshaper.subdivideLayers(layers, arcData, opts.subdivide);
+  }
+
+  if (opts.dissolve) {
+    layers = mapshaper.dissolveLayers(layers, arcData, opts.dissolve, opts);
+    if (opts.output_format == 'topojson') {
+      // TODO: decide if this belongs here or in topojson output function
+      arcData = mapshaper.dissolveArcs(layers, arcData);
+    }
+  }
+
+  if (opts.recombine) {
+    layers = mapshaper.recombineLayers(layers);
+  }
+
+  if (opts.split_rows && opts.split_cols) {
+    if (layers.length != 1) error("Split-on-grid expects one layer");
+    layers = mapshaper.splitOnGrid(layers[0], arcData, opts.split_rows, opts.split_cols);
+  }
+
+  // TODO: find sensible way of generating topojson with multiple layer-objects
+  // (e.g. --topojson-merge option
+  opts.topojson_divide = true;
+
+  var exports = mapshaper.exportContent(layers, arcData, opts);
+
+  // Copy prj file, if both importing and exporting as shapefile
+  if (opts.output_format == 'shapefile' && opts.input_format == 'shapefile') {
+    var prjFile = mapshaper.cli.replaceFileExtension(opts.input_file, 'prj'),
+        shpFiles = Utils.filter(exports, function(o) {return o.extension == 'shp'});
+
+    if (Node.fileExists(prjFile)) {
+      Utils.forEach(shpFiles, function(o) {
+        exports.push({
+          content: Node.readFile(prjFile, 'utf-8'),
+          extension: 'prj',
+          filebase: o.filebase
+        });
+      });
+    }
+  }
+
+  var paths = mapshaper.getOutputPaths(exports, opts.output_directory, opts.output_extension);
+  Utils.forEach(exports, function(obj, i) {
+    var path = paths[i];
+    Node.writeFile(path, obj.content);
+    console.log("Wrote " + path);
+  });
+}
