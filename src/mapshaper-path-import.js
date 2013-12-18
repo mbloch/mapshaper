@@ -184,29 +184,9 @@ function PathImporter(pointCount, opts) {
       input_geometry_type: pathData.openPathCount > 0 ? 'polyline' : 'polygon'
     };
 
-    var topoData = MapShaper.buildTopology(pathData);
-    var shapes = groupPathsByShape(topoData.paths, pathData.validPaths, info.input_shape_count);
-
     return {
-      arcs: topoData.arcs,
-      shapes: shapes,
+      geometry: pathData,
       info: info
     };
   };
-}
-
-
-// Use shapeId property of @pathData objects to group paths by shape
-//
-function groupPathsByShape(paths, pathData, shapeCount) {
-  var shapes = new Array(shapeCount); // Array can be sparse, but should have this length
-  Utils.forEach(paths, function(path, pathId) {
-    var shapeId = pathData[pathId].shapeId;
-    if (shapeId in shapes === false) {
-      shapes[shapeId] = [path]; // first part in a new shape
-    } else {
-      shapes[shapeId].push(path);
-    }
-  });
-  return shapes;
 }

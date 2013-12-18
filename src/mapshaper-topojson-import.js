@@ -5,6 +5,19 @@ var TopoJSON = {};
 // transposed arrays of geographic coordinates.
 //
 TopoJSON.importArcs = function(arcs, transform, round) {
+  TopoJSON.decodeArcs(arcs, transform, round);
+  return Utils.map(arcs, function(arc) {
+    var xx = [],
+        yy = [];
+    for (var i=0, len=arc.length; i<len; i++) {
+      xx.push(arc[i][0]);
+      yy.push(arc[i][1]);
+    }
+    return [xx, yy];
+  });
+};
+
+TopoJSON.decodeArcs = function(arcs, transform, round) {
   var mx = 1, my = 1, bx = 0, by = 0,
       useDelta = !!transform;
   if (transform) {
@@ -14,15 +27,14 @@ TopoJSON.importArcs = function(arcs, transform, round) {
     by = transform.translate[1];
   }
 
-  return Utils.map(arcs, function(arc) {
-    var xx = [],
-        yy = [],
-        prevX = 0,
+  Utils.forEach(arcs, function(arc) {
+    var prevX = 0,
         prevY = 0,
-        scaledX, scaledY, x, y;
+        scaledX, scaledY, xy, x, y;
     for (var i=0, len=arc.length; i<len; i++) {
-      x = arc[i][0];
-      y = arc[i][1];
+      xy = arc[i];
+      x = xy[0];
+      y = xy[1];
       if (useDelta) {
         x += prevX;
         y += prevY;
@@ -33,12 +45,11 @@ TopoJSON.importArcs = function(arcs, transform, round) {
         scaledX = round(scaledX);
         scaledY = round(scaledY);
       }
-      xx.push(scaledX);
-      yy.push(scaledY);
+      xy[0] = scaledX;
+      xy[1] = scaledY;
       prevX = x;
       prevY = y;
     }
-    return [xx, yy];
   });
 };
 

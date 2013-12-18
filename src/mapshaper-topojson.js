@@ -31,7 +31,8 @@ MapShaper.importTopoJSON = function(obj, opts) {
 
   return {
     arcs: new ArcDataset(arcs),
-    layers: layers
+    layers: layers,
+    info: {}
   };
 };
 
@@ -65,7 +66,10 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
       transform, invTransform,
       arcArr, arcIdMap;
 
-  if (opts.topojson_resolution === 0) {
+  // TODO: getting messy, refactor
+  if (opts.topojson_precision) {
+    transform = TopoJSON.getExportTransform(filteredArcs, null, opts.topojson_precision);
+  } else if (opts.topojson_resolution === 0) {
     // no transform
   } else if (opts.topojson_resolution > 0) {
     transform = TopoJSON.getExportTransform(filteredArcs, opts.topojson_resolution);
@@ -205,14 +209,14 @@ TopoJSON.exportDeltaEncodedArcs = function(arcData) {
 // Return a Transform object for converting geographic coordinates to quantized
 // integer coordinates.
 //
-TopoJSON.getExportTransform = function(arcData, quanta) {
+TopoJSON.getExportTransform = function(arcData, quanta, precision) {
   var srcBounds = arcData.getBounds(),
       destBounds, xmax, ymax;
   if (quanta) {
     xmax = quanta - 1;
     ymax = quanta - 1;
   } else {
-    var resXY = TopoJSON.calcExportResolution(arcData);
+    var resXY = TopoJSON.calcExportResolution(arcData, precision);
     xmax = srcBounds.width() / resXY[0];
     ymax = srcBounds.height() / resXY[1];
   }
@@ -234,10 +238,10 @@ TopoJSON.getExportTransformFromPrecision = function(arcData, precision) {
 // Calculated as 1/50 the size of average x and y offsets
 // (a compromise between compression, precision and simplicity)
 //
-TopoJSON.calcExportResolution = function(arcData) {
+TopoJSON.calcExportResolution = function(arcData, precision) {
   // TODO: remove influence of long lines created by polar and antimeridian cuts
   var xy = arcData.getAverageSegment(),
-      k = 0.02;
+      k = parseFloat(precision) || 0.02;
   return [xy[0] * k, xy[1] * k];
 };
 

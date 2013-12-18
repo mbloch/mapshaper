@@ -1,7 +1,8 @@
 /* @requires mshp-common-lib */
 
 // TODO: adapt to run in browser
-function stop(msg) {
+function stop() {
+  var msg = Utils.toArray(arguments).join(' ');
   if (msg) console.log(msg);
   process.exit(1);
 }

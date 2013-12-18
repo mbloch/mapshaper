@@ -56,20 +56,11 @@ MapShaper.importGeoJSON = function(obj, opts) {
   });
 
   var importData = importer.done();
-  // var topoData = MapShaper.buildTopology(importData);
-  var layer = {
-      name: '',
-      shapes: importData.shapes,
-      geometry_type: importData.info.input_geometry_type
-    };
   if (properties) {
-    layer.data = new DataTable(properties);
+    importData.data = new DataTable(properties);
   }
 
-  return {
-    arcs: importData.arcs,
-    layers: [layer]
-  };
+  return importData;
 };
 
 

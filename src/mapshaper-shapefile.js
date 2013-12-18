@@ -40,18 +40,8 @@ MapShaper.importShp = function(src, opts) {
     }
   });
   T.stop("Import Shapefile");
-  var importData = importer.done(),
-      lyr = {
-        info: importData.info,
-        name: '',
-        shapes: importData.shapes,
-        geometry_type: importData.info.input_geometry_type
-      };
 
-  return {
-    arcs: importData.arcs,
-    layers: [lyr]
-  };
+  return importer.done();
 };
 
 // Convert topological data to buffers containing .shp and .shx file data
