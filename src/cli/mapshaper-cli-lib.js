@@ -16,6 +16,7 @@ mapshaper-recombine,
 mapshaper-field-calculator
 mapshaper-subdivide
 mapshaper-filter
+mapshaper-merge-files
 */
 //mapshaper-explode,
 
@@ -137,7 +138,21 @@ MapShaper.getHiddenOptionParser = function(optimist) {
   .options("modified-v1", {
     describe: "use the original modified Visvalingam method (deprecated)",
     'boolean': true
-  });
+  })
+
+  .options("topojson-precision", {
+    describe: "pct of avg segment length for rounding (0.02 is default)"
+  })
+
+  .options("join-file", {
+    describe: "join a .dbf, .json, csv or tsv file to the imported shapes"
+  })
+
+  .options("join-keys", {
+    describe: "internal and external field names, e.g. --join-keys FIPS,CNTYFIPS"
+  })
+
+  ;
 };
 
 MapShaper.getExtraOptionParser = function(optimist) {
@@ -205,6 +220,21 @@ MapShaper.getExtraOptionParser = function(optimist) {
     describe: "don't remove intersections introduced by simplification",
     'boolean': true
   })
+
+  .options("merge-files", {
+    describe: "merge input files into a single layer before processing",
+    'boolean': true
+  })
+
+  .options("combine-files", {
+    describe: "import files to separate layers with shared topology",
+    'boolean': true
+  })
+
+  .options("postfilter", {
+    describe: "filter shapes after dissolve"
+  })
+
   ;
 };
 
@@ -507,6 +537,25 @@ cli.validateExtraOpts = function(argv) {
       error("--filter option requires a JavaScript expression");
     }
     opts.filter = argv.filter;
+  }
+
+  if (argv.postfilter) {
+    if (!Utils.isString(argv.postfilter)) {
+      error("--postfilter option requires a JavaScript expression");
+    }
+    opts.postfilter = argv.postfilter;
+  }
+
+  if (argv['merge-files']) {
+    opts.merge_files = true;
+  }
+
+  if (argv['combine-files']) {
+    opts.combine_files = true;
+  }
+
+  if (argv['topojson-precision']) {
+    opts.topojson_precision = argv['topojson-precision'];
   }
 
   return opts;

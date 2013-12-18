@@ -3,15 +3,28 @@
 var mapshaper = require("../"),
     Node = mapshaper.Node,
     Utils = mapshaper.Utils,
-    optsArr = mapshaper.getOpts(); // see mapshaper-cli-lib.js
+    optsArr = mapshaper.getOpts(),
+    first = optsArr[0]; // opts of first file
 
 mapshaper.T.start("Start timing");
-Utils.forEach(optsArr, procFile);
+
+// handle file merge, if relevant
+if (first.merge_files || first.combine_files) {
+  var merged = mapshaper.mergeFiles(optsArr, first.combine_files);
+  first.output_file_base = mapshaper.getMergedFileBase(optsArr);
+  if (first.merge_files) first.output_file_base += "-merged";
+  mapshaperize(merged, first); // TODO: fix input file name
+} else {
+  Utils.forEach(optsArr, function(opts) {
+    var data = mapshaper.importFromFile(opts.input_file, opts);
+    mapshaperize(data, opts);
+  });
+}
+
 mapshaper.T.stop("Total time");
 
-function procFile(opts) {
-  var importData = mapshaper.importFromFile(opts.input_file, opts),
-      arcData = importData.arcs,
+function mapshaperize(importData, opts) {
+  var arcData = importData.arcs,
       layers = importData.layers,
       bounds = arcData.getBounds();
 
@@ -42,7 +55,7 @@ function procFile(opts) {
   }
 
   if (opts.filter) {
-    mapshaper.filterLayers(layers, arcData, opts.select);
+    mapshaper.filterLayers(layers, arcData, opts.filter);
   }
 
   if (opts.expression) {
@@ -72,6 +85,10 @@ function procFile(opts) {
     }
   }
 
+  if (opts.postfilter) {
+    mapshaper.filterLayers(layers, arcData, opts.postfilter);
+  }
+
   if (opts.recombine) {
     layers = mapshaper.recombineLayers(layers);
   }
@@ -79,11 +96,10 @@ function procFile(opts) {
   if (opts.split_rows && opts.split_cols) {
     if (layers.length != 1) error("Split-on-grid expects one layer");
     layers = mapshaper.splitOnGrid(layers[0], arcData, opts.split_rows, opts.split_cols);
+    // TODO: find sensible way of generating topojson with multiple layer-objects
+    // (e.g. --topojson-merge option
+    opts.topojson_divide = true;
   }
-
-  // TODO: find sensible way of generating topojson with multiple layer-objects
-  // (e.g. --topojson-merge option
-  opts.topojson_divide = true;
 
   var exports = mapshaper.exportContent(layers, arcData, opts);
 
