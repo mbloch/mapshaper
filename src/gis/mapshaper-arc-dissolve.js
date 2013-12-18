@@ -6,12 +6,14 @@
 MapShaper.dissolveArcs = function(layers, arcs) {
   T.start();
   // Map old arc ids to new arc ids
-  var map = arcDissolveFirstPass(layers, arcs); // 101 ms
+  var map = arcDissolveFirstPass(layers, arcs);
   // Update layers and return an updated ArcDataset
-  var arcs2 = arcDissolveSecondPass(layers, arcs, map); // 350 ms
+  var arcs2 = arcDissolveSecondPass(layers, arcs, map);
+  // Set simplification threshold of new ArcDataset
   arcs2.setRetainedInterval(arcs.getRetainedInterval());
-  T.stop("Dissolve arcs");
-  //console.log("pre:", arcs.size(), "post:", arcs2.size())
+
+  var msg = Utils.format("Dissolve arcs; before: %d, after: %d", arcs.size(), arcs2.size());
+  T.stop(msg);
   return arcs2;
 };
 
@@ -27,12 +29,13 @@ function convertArcs(groups, arcs) {
 
   Utils.forEach(groups, function(oldIds, newId) {
     Utils.forEach(oldIds, function(oldId) {
-      extendNewArc(newId, oldId);
+      extendDissolvedArc(newId, oldId);
     });
   });
 
   return new ArcDataset(nn2, xx2, yy2, zz2);
 
+  // Count points required by dissolved arcs, so typed arrays can be allocated
   function countPoints(groups, nn) {
     var total = 0,
         subtotal, n, ids;
@@ -49,7 +52,7 @@ function convertArcs(groups, arcs) {
     return total;
   }
 
-  function extendNewArc(newId, oldId) {
+  function extendDissolvedArc(newId, oldId) {
     var absId = abs(oldId),
         rev = oldId < 0,
         n = src.nn[absId],
@@ -71,24 +74,30 @@ function convertArcs(groups, arcs) {
 }
 
 function arcDissolveSecondPass(layers, arcs, map) {
-  var abs = MapShaper.absArcId,
-      convertedIndex = [],
+  var convertedIndex = [],
       groups = [];
 
+  // Traverse shapes, replace old arc ids with new arc ids,
+  // populate @groups array with arrays of old arc ids indexed by
+  // ids of dissolved arcs (inverse of @map)
+  //
   Utils.forEach(layers, function(lyr) {
     MapShaper.traverseShapes(lyr.shapes, null, updatePaths, null);
   });
 
+  // Generate a new ArcDataset containing dissolved arcs
+  //
   return convertArcs(groups, arcs);
 
   function updatePaths(obj) {
     var newPath = [],
+        abs = MapShaper.absArcId,
         ids = obj.arcs,
         mappedId = -1,
         arcCount = 0,
         dissolveGroup,
+        firstDissolveGroupId, firstDissolveGroup,
         oldId, newId,
-        firstGroupId, firstGroup,
         startingNewGroup, converted;
 
     for (var i=0; i<ids.length; i++) {
@@ -108,7 +117,7 @@ function arcDissolveSecondPass(layers, arcs, map) {
           }
         } else {
           if (newId < 0) error("updatePaths() unexpected negative id");
-          if (newId in groups && groups[newId] !== firstGroup) {
+          if (newId in groups && groups[newId] !== firstDissolveGroup) {
             error("[arc dissolve] traversal errro");
           }
           dissolveGroup = [];
@@ -117,13 +126,14 @@ function arcDissolveSecondPass(layers, arcs, map) {
         newPath.push(newId);
 
         if (i === 0) {
-          firstGroupId = newId;
-          if (dissolveGroup) {
-            firstGroup = dissolveGroup;
+          firstDissolveGroupId = newId;
+          if (!converted) {
+            firstDissolveGroup = dissolveGroup;
           }
         }
       }
 
+      //
       if (!converted) {
         dissolveGroup.push(oldId);
         convertedIndex[oldId] = 1;
@@ -131,26 +141,31 @@ function arcDissolveSecondPass(layers, arcs, map) {
       }
     }
 
-    if (arcCount > 1 && newId == firstGroupId) {
-      newPath.pop();
-      if (firstGroup) {
-        dissolveGroup = Utils.merge(dissolveGroup, firstGroup);
+    // handle dissolved arcs that wrap around to include arcs from beginning
+    // and end of original path
+    if (arcCount > 1 && newId == firstDissolveGroupId) {
+      newPath.pop(); // remove duplicate id
+      if (firstDissolveGroup) {
+        // merge arrays of arc ids from beginning and end of path
+        dissolveGroup = Utils.merge(dissolveGroup, firstDissolveGroup);
       }
     }
 
     if (newPath.length === 0) error("updatePaths() empty path");
-    obj.shape.parts[obj.i] = newPath;
+    obj.shape[obj.i] = newPath;
   }
 }
 
 function arcDissolveFirstPass(layers, arcs) {
   var src = arcs.getVertexData(),
+      dummyY = arcs.getBounds().ymin - 1,
       xx2 = [],
       yy2 = [],
       nn2 = [];
 
   // Use mapshaper's topology function to identify dissolvable sequences of
   // arcs across all layers (hackish)
+  //
   Utils.forEach(layers, function(lyr) {
     MapShaper.traverseShapes(lyr.shapes, null, translatePath);
   });
@@ -185,7 +200,7 @@ function arcDissolveFirstPass(layers, arcs) {
     }
     xx2.push(absId);
     xx2.push(src.xx[end]);
-    yy2.push(-1); // TODO: replace with a unique y value
+    yy2.push(dummyY);
     yy2.push(src.yy[end]);
     nn2[pathId] += 2;
   }
