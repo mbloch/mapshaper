@@ -1,9 +1,11 @@
 /* @requires mapshaper-expressions */
 
 MapShaper.filterLayers = function(layers, arcs, exp) {
+  T.start();
   Utils.forEach(layers, function(lyr) {
-    MapShaper.filter(lyr, arc, exp);
+    MapShaper.filter(lyr, arcs, exp);
   });
+  T.stop("Filter");
 };
 
 MapShaper.selectLayers = function(layers, arcs, exp) {
