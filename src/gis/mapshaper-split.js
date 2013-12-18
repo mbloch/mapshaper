@@ -20,7 +20,7 @@ MapShaper.splitOnField = function(lyr0, arcs, field) {
 
   Utils.forEach(shapes, function(shp, i) {
     var rec = properties[i],
-        key = rec[field],
+        key = String(rec[field]), // convert numbers to strings (for layer naming)
         lyr, idx;
 
     if (key in index === false) {
