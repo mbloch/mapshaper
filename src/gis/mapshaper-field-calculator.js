@@ -1,9 +1,11 @@
 /* @requires mapshaper-expressions */
 
 MapShaper.evaluateLayers = function(layers, arcs, exp) {
+  T.start();
   for (var i=0; i<layers.length; i++) {
     MapShaper.evaluate(layers[i], arcs, exp);
   }
+  T.stop("Calculate expression");
 };
 
 MapShaper.evaluate = function(lyr, arcs, exp) {
