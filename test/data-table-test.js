@@ -44,6 +44,25 @@ describe('data-table.js', function () {
       })
     })
 
+    describe('#addField()', function () {
+      it('new fields are initialized to a value', function () {
+        var table = new DataTable([{foo: 1}, {foo: 2}]);
+        table.addField('bar', '');
+        assert.deepEqual(table.getRecords(), [{foo:1, bar: ''}, {foo:2, bar: ''}])
+      })
+
+      it('initialization value is required', function() {
+        var table = new DataTable(3);
+        assert.throws(function() {table.addField('foo')})
+      })
+
+      it('overwriting a field is not allowed', function() {
+        var table = new DataTable([{foo: 'a'}]);
+        assert.throws(function() {table.addField('foo', 0)});
+      })
+
+    })
+
     describe('#fieldExists()', function() {
       it ('identifies existing fields', function() {
         var table = new DataTable(data1);

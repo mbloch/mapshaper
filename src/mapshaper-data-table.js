@@ -1,5 +1,8 @@
 /* @require mapshaper-common, dbf-writer */
 
+
+var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
+
 function DataTable(obj) {
   var records;
   if (Utils.isArray(obj)) {
@@ -33,6 +36,17 @@ var dataTableProto = {
   fieldExists: function(name) {
     if (this.size() === 0) return false;
     return name in this.getRecords()[0];
+  },
+
+  addField: function(name, init) {
+    if (!Utils.isNumber(init) && !Utils.isString(init)) {
+      error("DataTable#addField() requires a string or number for initialization");
+    }
+    if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
+    if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
+    Utils.forEach(this.getRecords(), function(obj) {
+      obj[name] = init;
+    });
   },
 
   // TODO: improve
