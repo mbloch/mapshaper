@@ -485,8 +485,10 @@ function ArcDataset() {
 
   this.getMultiShapeBounds = function(shapeIds, bounds) {
     bounds = bounds || new Bounds();
-    for (var i=0, n=shapeIds.length; i<n; i++) {
-      this.getSimpleShapeBounds(shapeIds[i], bounds);
+    if (shapeIds) { // handle null shapes
+      for (var i=0, n=shapeIds.length; i<n; i++) {
+        this.getSimpleShapeBounds(shapeIds[i], bounds);
+      }
     }
     return bounds;
   };
