@@ -10,6 +10,7 @@ MapShaper.importFromFile = function(fname, opts) {
   if (fileType == 'shp' && data.layers.length == 1) {
     data.layers[0].data = MapShaper.importDbfTable(fname);
   }
+  data.info.input_files = [fname];
   return data;
 };
 

@@ -1,4 +1,4 @@
-/* @require mapshaper-shapes */
+/* @require mapshaper-shapes, mapshaper-shape-geom */
 
 MapShaper.protectShapes = function(arcData, layers) {
   T.start();

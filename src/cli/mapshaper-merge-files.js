@@ -26,7 +26,7 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
     }
 
     if (separateLayers) {
-      var lyrName = MapShaper.getSplitLayerName(opts.output_file_base, filePrefix);
+      var lyrName = MapShaper.getSplitLayerName(opts.output_file_base || '', filePrefix);
       importData.data.addField("__LAYER", lyrName);
     }
 
@@ -55,6 +55,7 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
   }
 
   topology.info = first.info;
+  topology.info.input_files = files;
   return topology;
 };
 
@@ -77,7 +78,7 @@ MapShaper.getFileSuffix = function(filebase, prefix) {
 };
 
 MapShaper.getCommonFilePrefix = function(files) {
-  return Utils.reduce(arr, function(prefix, file) {
+  return Utils.reduce(files, function(prefix, file) {
     var filebase = Node.getFileInfo(file).base;
     if (prefix !== null) {
       filebase = MapShaper.findStringPrefix(prefix, filebase);
@@ -86,9 +87,13 @@ MapShaper.getCommonFilePrefix = function(files) {
   }, null);
 };
 
-MapShaper.getMergedFileBase = function(arr) {
+MapShaper.getMergedFileBase = function(arr, suffix) {
   var basename = MapShaper.getCommonFilePrefix(arr);
-  return basename ? basename.replace(/[-_ ]+$/, '') : "merged";
+  basename = basename.replace(/[-_ ]+$/, '');
+  if (suffix) {
+    basename = basename ? basename + '-' + suffix : suffix;
+  }
+  return basename;
 };
 
 MapShaper.findStringPrefix = function(a, b) {

@@ -3,6 +3,20 @@ var assert = require('assert'),
     Utils = api.Utils;
 
 describe('mapshaper-merge-files.js', function () {
+  describe('getCommonFilePrefix()', function () {
+    it('find common filename stem', function () {
+      var files = ['states-DC.shp', 'states-MD.shp', 'states-NY.shp']
+      assert.equal(api.getCommonFilePrefix(files), 'states-');
+    })
+    it('returns filename w/o extension of single file', function () {
+      var files = ['states-DC.shp']
+      assert.equal(api.getCommonFilePrefix(files), 'states-DC');
+    })
+    it('returns empty string if nothing in common', function () {
+      var files = ['states-DC.shp', 'lakes.shp']
+      assert.equal(api.getCommonFilePrefix(files), '');
+    })
+  })
   describe('extendDataTable()', function () {
     it ('merges two tables', function() {
       var a = new api.data.DataTable([{foo: 'a', bar: 1}]),

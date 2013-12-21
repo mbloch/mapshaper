@@ -117,14 +117,13 @@ MapShaper.getBasicOptionParser = function() {
     .options("more", {
       describe: "print more options"
     });
-  /*
+    /*
     // TODO
     // prevent points along straight lines from being stripped away, to allow reprojection
     .options("min-segment", {
       describe: "min segment length (no. of segments in largest dimension)",
       default: 0
     })
-
     .options("remove-null", {
       describe: "remove null shapes",
       default: false
@@ -276,19 +275,6 @@ MapShaper.getOpts = function() {
   return opts;
 };
 
-// Retuns array of data about files passed to mapshaper script
-//
-MapShaper.getFileList = function() {
-  var files;
-  var dummy = MapShaper.getBasicOptionParser().check(function(argv) {
-    files = cli.validateInputFiles(argv._);
-    if (files.length === 0) {
-      error("Missing an input file");
-    }
-  }).argv;
-  return files;
-};
-
 // Test option parsing -- throws an error if a problem is found.
 // @argv array of command line tokens
 //
@@ -339,8 +325,6 @@ MapShaper.checkArgSupport = function(argv, flags) {
   });
 };
 
-// Return an array of options objects
-//
 MapShaper.validateArgs = function(argv, supported) {
   MapShaper.checkArgSupport(argv, supported);
 
@@ -356,6 +340,8 @@ MapShaper.validateArgs = function(argv, supported) {
   Utils.extend(opts, cli.validateTopologyOpts(argv));
   Utils.extend(opts, cli.validateExtraOpts(argv));
   Utils.extend(opts, cli.validateOutputOpts(argv));
+  opts.input_files = cli.validateInputFiles(argv._);
+
   return opts;
 };
 
@@ -403,7 +389,9 @@ cli.replaceFileExtension = function(path, ext) {
 };
 
 cli.validateInputFiles = function(arr) {
-  return Utils.map(arr, cli.validateInputFile);
+  var files = Utils.map(arr, cli.validateInputFile);
+  if (files.length === 0) error("Missing an input file");
+  return files;
 };
 
 cli.validateInputFile = function(ifile) {
@@ -455,7 +443,6 @@ cli.validateOutputOpts = function(argv) {
         // allows .topojson or .geojson instead of .json
         // override extension inferred from --format option
         oext = ofileInfo.ext;
-
         // Infer output format from -o option extension when appropriate
         /*
         if (!ofmt &&

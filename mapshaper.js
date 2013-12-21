@@ -9550,6 +9550,7 @@ MapShaper.importFromFile = function(fname, opts) {
   if (fileType == 'shp' && data.layers.length == 1) {
     data.layers[0].data = MapShaper.importDbfTable(fname);
   }
+  data.info.input_files = [fname];
   return data;
 };
 
@@ -10738,7 +10739,7 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
     }
 
     if (separateLayers) {
-      var lyrName = MapShaper.getSplitLayerName(opts.output_file_base, filePrefix);
+      var lyrName = MapShaper.getSplitLayerName(opts.output_file_base || '', filePrefix);
       importData.data.addField("__LAYER", lyrName);
     }
 
@@ -10767,6 +10768,7 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
   }
 
   topology.info = first.info;
+  topology.info.input_files = files;
   return topology;
 };
 
@@ -10789,7 +10791,7 @@ MapShaper.getFileSuffix = function(filebase, prefix) {
 };
 
 MapShaper.getCommonFilePrefix = function(files) {
-  return Utils.reduce(arr, function(prefix, file) {
+  return Utils.reduce(files, function(prefix, file) {
     var filebase = Node.getFileInfo(file).base;
     if (prefix !== null) {
       filebase = MapShaper.findStringPrefix(prefix, filebase);
@@ -10798,9 +10800,13 @@ MapShaper.getCommonFilePrefix = function(files) {
   }, null);
 };
 
-MapShaper.getMergedFileBase = function(arr) {
+MapShaper.getMergedFileBase = function(arr, suffix) {
   var basename = MapShaper.getCommonFilePrefix(arr);
-  return basename ? basename.replace(/[-_ ]+$/, '') : "merged";
+  basename = basename.replace(/[-_ ]+$/, '');
+  if (suffix) {
+    basename = basename ? basename + '-' + suffix : suffix;
+  }
+  return basename;
 };
 
 MapShaper.findStringPrefix = function(a, b) {
@@ -11067,14 +11073,13 @@ MapShaper.getBasicOptionParser = function() {
     .options("more", {
       describe: "print more options"
     });
-  /*
+    /*
     // TODO
     // prevent points along straight lines from being stripped away, to allow reprojection
     .options("min-segment", {
       describe: "min segment length (no. of segments in largest dimension)",
       default: 0
     })
-
     .options("remove-null", {
       describe: "remove null shapes",
       default: false
@@ -11226,19 +11231,6 @@ MapShaper.getOpts = function() {
   return opts;
 };
 
-// Retuns array of data about files passed to mapshaper script
-//
-MapShaper.getFileList = function() {
-  var files;
-  var dummy = MapShaper.getBasicOptionParser().check(function(argv) {
-    files = cli.validateInputFiles(argv._);
-    if (files.length === 0) {
-      error("Missing an input file");
-    }
-  }).argv;
-  return files;
-};
-
 // Test option parsing -- throws an error if a problem is found.
 // @argv array of command line tokens
 //
@@ -11289,8 +11281,6 @@ MapShaper.checkArgSupport = function(argv, flags) {
   });
 };
 
-// Return an array of options objects
-//
 MapShaper.validateArgs = function(argv, supported) {
   MapShaper.checkArgSupport(argv, supported);
 
@@ -11306,6 +11296,8 @@ MapShaper.validateArgs = function(argv, supported) {
   Utils.extend(opts, cli.validateTopologyOpts(argv));
   Utils.extend(opts, cli.validateExtraOpts(argv));
   Utils.extend(opts, cli.validateOutputOpts(argv));
+  opts.input_files = cli.validateInputFiles(argv._);
+
   return opts;
 };
 
@@ -11353,7 +11345,9 @@ cli.replaceFileExtension = function(path, ext) {
 };
 
 cli.validateInputFiles = function(arr) {
-  return Utils.map(arr, cli.validateInputFile);
+  var files = Utils.map(arr, cli.validateInputFile);
+  if (files.length === 0) error("Missing an input file");
+  return files;
 };
 
 cli.validateInputFile = function(ifile) {
@@ -11405,7 +11399,6 @@ cli.validateOutputOpts = function(argv) {
         // allows .topojson or .geojson instead of .json
         // override extension inferred from --format option
         oext = ofileInfo.ext;
-
         // Infer output format from -o option extension when appropriate
         /*
         if (!ofmt &&

@@ -4,11 +4,11 @@ var mapshaper = require("../"),
     Node = mapshaper.Node,
     Utils = mapshaper.Utils,
     opts = mapshaper.getOpts(),
-    inputList = mapshaper.getFileList();
+    inputList = opts.input_files;
 
-  mapshaper.T.start("Start timing");
+mapshaper.T.start("Start timing");
 
-// special case if joining a file, because csv parser is asynchronous
+// need to use a callback if joining a file, because csv parser is asynchronous
 if (opts.join_file) {
   mapshaper.importJoinTable(opts.join_file, opts, function(table) {
     opts.join_table = table;
@@ -19,28 +19,33 @@ if (opts.join_file) {
 }
 
 function procFiles(files, opts) {
-  // merge files, if requested
+  var mergedData, mergedName;
   if (opts.merge_files || opts.combine_files) {
-    opts.output_file_base = mapshaper.getMergedFileBase(files);
-    if (opts.merge_files) opts.output_file_base += "-merged";
-    var merged = mapshaper.mergeFiles(files, opts, !!opts.combine_files);
-    mapshaperize(merged, opts); // TODO: fix input file name
-  }
-  else {
+    if (opts.merge_files) {
+      mergedName = mapshaper.getMergedFileBase(files, "merged");
+      mergedData = mapshaper.mergeFiles(files, opts);
+    } else {
+      mergedName = mapshaper.getMergedFileBase(files, "") || "combined";
+      mergedData =  mapshaper.mergeFiles(files, opts, true);
+    }
+    if (!opts.output_file_base) {
+      opts.output_file_base = mergedName;
+    }
+    procLayers(mergedData, opts);
+  } else {
     Utils.forEach(files, function(ifile) {
-      var fileOpts = {input_file: ifile};
-      Utils.extend(fileOpts, opts);
+      var fileOpts = Utils.extend({}, opts); // copy common options
       if (!fileOpts.output_file_base) {
         fileOpts.output_file_base = Node.getFileInfo(ifile).base;
       }
       var data = mapshaper.importFromFile(ifile, fileOpts);
-      mapshaperize(data, fileOpts);
+      procLayers(data, fileOpts);
     });
   }
   mapshaper.T.stop("Total time");
 }
 
-function mapshaperize(importData, opts) {
+function procLayers(importData, opts) {
   var arcData = importData.arcs,
       layers = importData.layers,
       bounds = arcData.getBounds();
@@ -127,8 +132,9 @@ function mapshaperize(importData, opts) {
   var exports = mapshaper.exportContent(layers, arcData, opts);
 
   // Copy prj file, if both importing and exporting as shapefile
+  // TODO: move this elsewhere
   if (opts.output_format == 'shapefile' && opts.input_format == 'shapefile') {
-    var prjFile = mapshaper.cli.replaceFileExtension(opts.input_file, 'prj'),
+    var prjFile = mapshaper.cli.replaceFileExtension(importData.info.input_files[0], 'prj'),
         shpFiles = Utils.filter(exports, function(o) {return o.extension == 'shp'});
 
     if (Node.fileExists(prjFile)) {
