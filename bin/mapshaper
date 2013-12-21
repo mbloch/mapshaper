@@ -3,25 +3,42 @@
 var mapshaper = require("../"),
     Node = mapshaper.Node,
     Utils = mapshaper.Utils,
-    optsArr = mapshaper.getOpts(),
-    first = optsArr[0]; // opts of first file
+    opts = mapshaper.getOpts(),
+    inputList = mapshaper.getFileList();
 
-mapshaper.T.start("Start timing");
+  mapshaper.T.start("Start timing");
 
-// handle file merge, if relevant
-if (first.merge_files || first.combine_files) {
-  var merged = mapshaper.mergeFiles(optsArr, first.combine_files);
-  first.output_file_base = mapshaper.getMergedFileBase(optsArr);
-  if (first.merge_files) first.output_file_base += "-merged";
-  mapshaperize(merged, first); // TODO: fix input file name
-} else {
-  Utils.forEach(optsArr, function(opts) {
-    var data = mapshaper.importFromFile(opts.input_file, opts);
-    mapshaperize(data, opts);
+// special case if joining a file, because csv parser is asynchronous
+if (opts.join_file) {
+  mapshaper.importJoinTable(opts.join_file, opts, function(table) {
+    opts.join_table = table;
+    procFiles(inputList, opts);
   });
+} else {
+  procFiles(inputList, opts);
 }
 
-mapshaper.T.stop("Total time");
+function procFiles(files, opts) {
+  // merge files, if requested
+  if (opts.merge_files || opts.combine_files) {
+    opts.output_file_base = mapshaper.getMergedFileBase(files);
+    if (opts.merge_files) opts.output_file_base += "-merged";
+    var merged = mapshaper.mergeFiles(files, opts, !!opts.combine_files);
+    mapshaperize(merged, opts); // TODO: fix input file name
+  }
+  else {
+    Utils.forEach(files, function(ifile) {
+      var fileOpts = {input_file: ifile};
+      Utils.extend(fileOpts, opts);
+      if (!fileOpts.output_file_base) {
+        fileOpts.output_file_base = Node.getFileInfo(ifile).base;
+      }
+      var data = mapshaper.importFromFile(ifile, fileOpts);
+      mapshaperize(data, fileOpts);
+    });
+  }
+  mapshaper.T.stop("Total time");
+}
 
 function mapshaperize(importData, opts) {
   var arcData = importData.arcs,
@@ -32,6 +49,12 @@ function mapshaperize(importData, opts) {
   // (command line info is insufficient to distinguish topojson and geojson)
   opts.input_format = opts.input_format || importData.info.input_format;
   opts.output_format = opts.output_format || opts.input_format;
+
+  if (opts.join_table) {
+    mapshaper.joinTableToLayers(layers, opts.join_table, opts.join_keys, opts.join_fields);
+    // kludge to let join table be gc'd
+    if (inputList.length == 1) opts.join_table = null;
+  }
 
   if (!opts.input_format) error("Unknown input file format");
 

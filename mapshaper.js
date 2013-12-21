@@ -648,7 +648,7 @@ Utils.merge = function(dest, src) {
 Utils.difference = function(arr, other) {
   var index = Utils.arrayToIndex(other);
   return Utils.mapFilter(arr, function(el) {
-    return el in index ? void 0: other;
+    return el in index ? void 0: el;
   });
 };
 
@@ -910,6 +910,10 @@ Utils.repeatString = function(src, n) {
   for (var i=0; i<n; i++)
     str += src;
   return str;
+};
+
+Utils.endsWith = function(str, ending) {
+    return str.indexOf(ending, str.length - ending.length) !== -1;
 };
 
 Utils.lpad = function(str, size, pad) {
@@ -1513,7 +1517,9 @@ var pageEvents = (new function() {
   }
 
   this.addEventListener = function(el, type, func, ctx) {
-    if (Utils.isString(el)) { // if el is a string, treat as id
+    if (!el) {
+      error("addEventListener() missing element");
+    } else if (Utils.isString(el)) { // if el is a string, treat as id
       el = Browser.getElement(el);
     }
     if (useAttachEvent && el === window &&
@@ -6733,10 +6739,13 @@ Dbf.getFieldWriter = function(obj, bin) {
 }
 
 Dbf.getDecimalFormatter = function(size, decimals) {
+  // TODO: find better way to handle nulls
+  var nullValue = ' '; // ArcGIS may use 0
   return function(val) {
     // TODO: handle invalid values better
-    var val = isFinite(val) ? val.toFixed(decimals) : '';
-    return Utils.lpad(val, size, ' ');
+    var valid = val && isFinite(val) || val === 0,
+        strval = valid ? val.toFixed(decimals) : String(nullValue);
+    return Utils.lpad(strval, size, ' ');
   };
 };
 
@@ -6838,6 +6847,18 @@ var dataTableProto = {
     Utils.forEach(this.getRecords(), function(obj) {
       obj[name] = init;
     });
+  },
+
+  indexOn: function(f) {
+    this._index = Utils.indexOn(this.getRecords(), f);
+  },
+
+  getIndexedRecord: function(val) {
+    return this._index && this._index[val] || null;
+  },
+
+  clearIndex: function() {
+    this._index = null;
   },
 
   // TODO: improve
@@ -9388,6 +9409,140 @@ function groupPathsByShape(paths, pathData, shapeCount) {
 
 
 
+MapShaper.importTableAsync = function(fname, done) {
+  if (Utils.endsWith(fname.toLowerCase(), '.dbf')) {
+    done(MapShaper.importDbfTable(fname));
+  } else {
+    // assume delimited text file
+    // unsupported file types can be detected earlier, during
+    // option validation, using filename extensions
+    MapShaper.importDelimTableAsync(fname, done);
+  }
+};
+
+// Accept a type hint from a header like "FIPS:string"
+// Return standard type name (number|string)
+//
+MapShaper.validateFieldType = function(str) {
+  var type = 'string'; // default type
+  if (str.toLowerCase()[0] == 'n') {
+    type = 'number';
+  }
+  return type;
+};
+
+// Look for type hints in array of field headers
+// return index of field types
+// modify @fields to remove type hints
+//
+MapShaper.parseFieldHeaders = function(fields, index) {
+  var parsed = Utils.map(fields, function(raw) {
+    var parts, name, type;
+    if (raw.indexOf(':') != -1) {
+      parts = raw.split(':');
+      name = parts[0];
+      type = MapShaper.validateFieldType(parts[1]);
+    } else if (raw[0] === '+') {
+      name = raw.substr(1);
+      type = 'number';
+    } else {
+      name = raw;
+    }
+    if (type) {
+      index[name] = type;
+    }
+    // TODO: validate field name
+    return name;
+  });
+  return parsed;
+};
+
+MapShaper.importDbfTable = function(shpName) {
+  var dbfName = cli.replaceFileExtension(shpName, 'dbf');
+  if (!Node.fileExists(dbfName)) return null;
+  return new ShapefileTable(Node.readFile(dbfName));
+};
+
+MapShaper.importDelimTableAsync = function(file, done, typeIndex) {
+  return MapShaper.importDelimStringAsync(Node.readFile(file, 'utf-8'), done);
+};
+
+MapShaper.importDelimStringAsync = function(content, done) {
+  var csv = require("csv"),
+      delim = MapShaper.guessDelimiter(content),
+      opts = {columns: true};
+  if (delim) {
+    opts.delimiter = delim;
+  }
+  csv().from.string(content, opts)
+      .to.array(function(data) {
+        done(new DataTable(data));
+      });
+};
+
+function findNumericFields(obj) {
+  var fields = Utils.keys(obj);
+  return Utils.filter(fields, function(field) {
+    return !isNaN(parseFloat(obj[field]));
+  });
+}
+
+MapShaper.guessDelimiter = function(content) {
+  var delimiters = ['|', '\t', ','];
+  return Utils.find(delimiters, function(delim) {
+    var rxp = MapShaper.getDelimiterRxp(delim);
+    return rxp.test(content);
+  });
+};
+
+MapShaper.getDelimiterRxp = function(delim) {
+  var rxp = "^[^\\n\\r]+" + Utils.regexEscape(delim);
+  return new RegExp(rxp);
+};
+
+MapShaper.adjustRecordTypes = function(records, rawFields) {
+  if (records.length === 0) return;
+  var typeIndex = {},
+      fields = rawFields && MapShaper.parseFieldHeaders(rawFields, typeIndex) || [];
+
+  Utils.forEach(findNumericFields(records[0]), function(f) {
+    if (f in typeIndex === false && Utils.contains(fields, f)) {
+      typeIndex[f] = 'number';
+    }
+  });
+
+  MapShaper.updateRecordTypes(records, typeIndex);
+  return fields;
+};
+
+MapShaper.updateRecordTypes = function(records, typeIndex) {
+  var typedFields = Utils.keys(typeIndex),
+      converters = {
+        'string': String,
+        'number': parseFloat
+      },
+      transforms = Utils.map(typedFields, function(f) {
+        var type = typeIndex[f],
+            converter = converters[type];
+        return converter;
+      });
+  if (typedFields.length === 0) return;
+  Utils.forEach(records, function(rec) {
+    MapShaper.convertRecordTypes(rec, typedFields, transforms);
+  });
+};
+
+MapShaper.convertRecordTypes = function(rec, fields, converters) {
+  var f;
+  for (var i=0; i<fields.length; i++) {
+    f = fields[i];
+    rec[f] = converters[i](rec[f]);
+  }
+};
+
+
+
+
 MapShaper.importFromFile = function(fname, opts) {
   var fileType = MapShaper.guessFileType(fname),
       content = MapShaper.readGeometryFile(fname, fileType),
@@ -9408,12 +9563,6 @@ MapShaper.readGeometryFile = function(fname, fileType) {
     error("Unexpected input file:", fname);
   }
   return content;
-};
-
-MapShaper.importDbfTable = function(shpName) {
-  var dbfName = cli.replaceFileExtension(shpName, 'dbf');
-  if (!Node.fileExists(dbfName)) return null;
-  return new ShapefileTable(Node.readFile(dbfName));
 };
 
 
@@ -10567,13 +10716,12 @@ MapShaper.select = function(lyr, arcs, exp, discard) {
 // return merged file data
 // TODO: remove duplication with single-file import
 //
-MapShaper.mergeFiles = function(optsArr, separateLayers) {
+MapShaper.mergeFiles = function(files, opts, separateLayers) {
   var first, geometries;
-  var filePrefix = MapShaper.getCommonFilePrefix(optsArr);
+  var filePrefix = MapShaper.getCommonFilePrefix(files);
 
-  geometries = Utils.map(optsArr, function(opts) {
-    var fname = opts.input_file,
-        fileType = MapShaper.guessFileType(fname),
+  geometries = Utils.map(files, function(fname) {
+    var fileType = MapShaper.guessFileType(fname),
         content = MapShaper.readGeometryFile(fname, fileType),
         importData = MapShaper.importFileContent(content, fileType, opts),
         fmt = importData.info.input_format;
@@ -10640,9 +10788,9 @@ MapShaper.getFileSuffix = function(filebase, prefix) {
   return filebase;
 };
 
-MapShaper.getCommonFilePrefix = function(arr) {
-  return Utils.reduce(arr, function(prefix, opts) {
-    var filebase = opts.output_file_base;
+MapShaper.getCommonFilePrefix = function(files) {
+  return Utils.reduce(arr, function(prefix, file) {
+    var filebase = Node.getFileInfo(file).base;
     if (prefix !== null) {
       filebase = MapShaper.findStringPrefix(prefix, filebase);
     }
@@ -10719,6 +10867,104 @@ MapShaper.extendDataTable = function(dest, src, validateFields) {
     Utils.merge(dest.getRecords(), src.getRecords());
   }
   return dest;
+};
+
+
+
+
+
+MapShaper.importJoinTable = function(file, opts, done) {
+  MapShaper.importTableAsync(file, function(table) {
+    var fields = opts.join_fields || [];
+    fields.push(opts.join_keys[1]);
+    // convert data types based on type hints and numeric csv fields
+    fields = MapShaper.adjustRecordTypes(table.getRecords(), fields);
+    // SIDE EFFECTS: type hints are removed from field names
+    opts.join_keys[1] = fields.pop();
+    opts.join_fields = fields;
+    done(table);
+  });
+};
+
+MapShaper.joinTableToLayers = function(layers, table, keys, joinFields) {
+  var localKey = keys[0],
+      foreignKey = keys[1],
+      typeIndex = {};
+  T.start();
+  if (table.fieldExists(foreignKey) === false) {
+    stop("[join] External table is missing a field named:", foreignKey);
+  }
+
+  if (!joinFields || joinFields.length === 0) {
+    joinFields = Utils.difference(table.getFields(), [foreignKey]);
+  }
+
+  var joins = 0,
+      index = Utils.indexOn(table.getRecords(), foreignKey);
+
+  Utils.forEach(layers, function(lyr) {
+    if (lyr.data && lyr.data.fieldExists(localKey)) {
+      if (MapShaper.joinTables(lyr.data, localKey, joinFields,
+          table, foreignKey, joinFields)) {
+        joins++;
+      }
+    }
+  });
+
+  if (joins === 0) {
+    // TODO: better handling of failed joins
+    stop("[join] Join failed");
+  }
+  T.stop("Join");
+};
+
+MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcFields) {
+  var hits = 0, misses = 0,
+      records = dest.getRecords(),
+      len = records.length,
+      destField, srcField,
+      unmatched = [],
+      nullRec = Utils.newArray(destFields.length, null),
+      destRec, srcRec, joinVal;
+  src.indexOn(srcKey);
+
+  for (var i=0; i<len; i++) {
+    destRec = records[i];
+    joinVal = destRec[destKey];
+    srcRec = src.getIndexedRecord(joinVal);
+    if (!srcRec) {
+      misses++;
+      if (misses <= 10) unmatched.push(joinVal);
+      srcRec = nullRec;
+    } else {
+      hits++;
+    }
+    for (var j=0, n=srcFields.length; j<n; j++) {
+      destRec[destFields[j]] = srcRec[srcFields[j]] || null;
+    }
+  }
+  if (misses > 0) {
+    var msg;
+    if (misses > 10) {
+      msg = Utils.format("Unable to join %d records", misses);
+    } else {
+      msg = Utils.format("Unjoined values: %s", Utils.uniq(unmatched).join(', '));
+    }
+    console.log(msg);
+  }
+
+  return hits > 0;
+};
+
+
+MapShaper.importDataTable = function(fname) {
+  var table;
+  if (Utils.endsWith(fname).toLowerCase(), '.dbf') {
+    table = MapShaper.importDbfTable(fname); // assume file was found to exist
+  } else {
+    stop("Unsupported data file:", fname);
+  }
+  return table;
 };
 
 
@@ -10849,19 +11095,27 @@ MapShaper.getHiddenOptionParser = function(optimist) {
     describe: "pct of avg segment length for rounding (0.02 is default)"
   })
 
-  .options("join-file", {
-    describe: "join a .dbf, .json, csv or tsv file to the imported shapes"
+  .options("innerlines", {
+    describe: "convert polygon layers to line layers of internal boundaries",
+    'boolean': true
   })
-
-  .options("join-keys", {
-    describe: "internal and external field names, e.g. --join-keys FIPS,CNTYFIPS"
-  })
-
   ;
 };
 
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
+
+  .options("join-file", {
+    describe: "join a dbf or delimited text file to the imported shapes"
+  })
+
+  .options("join-keys", {
+    describe: "local,foreign keys, e.g. --join-keys FIPS,CNTYFIPS:str"
+  })
+
+  .options("join-fields", {
+    describe: "(optional) join fields, e.g. --join-fields FIPS:str,POP"
+  })
 
   .options('filter ', {
     describe: "filter shapes with a boolean JavaScript expression"
@@ -10972,6 +11226,19 @@ MapShaper.getOpts = function() {
   return opts;
 };
 
+// Retuns array of data about files passed to mapshaper script
+//
+MapShaper.getFileList = function() {
+  var files;
+  var dummy = MapShaper.getBasicOptionParser().check(function(argv) {
+    files = cli.validateInputFiles(argv._);
+    if (files.length === 0) {
+      error("Missing an input file");
+    }
+  }).argv;
+  return files;
+};
+
 // Test option parsing -- throws an error if a problem is found.
 // @argv array of command line tokens
 //
@@ -11022,7 +11289,7 @@ MapShaper.checkArgSupport = function(argv, flags) {
   });
 };
 
-// Return an array of options objects, one for each input file
+// Return an array of options objects
 //
 MapShaper.validateArgs = function(argv, supported) {
   MapShaper.checkArgSupport(argv, supported);
@@ -11038,18 +11305,8 @@ MapShaper.validateArgs = function(argv, supported) {
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
   Utils.extend(opts, cli.validateExtraOpts(argv));
-
-  var optsArr = Utils.map(argv._, function(ifile) {
-    var fileOpts = {};
-    Utils.extend(fileOpts, cli.validateInputOpts(ifile, argv));
-    Utils.extend(fileOpts, cli.validateOutputOpts(argv, fileOpts));
-    return Utils.extend(fileOpts, opts);
-  });
-
-  if (optsArr.length === 0) {
-    error("Missing an input file");
-  }
-  return optsArr;
+  Utils.extend(opts, cli.validateOutputOpts(argv));
+  return opts;
 };
 
 MapShaper.getOutputPaths = function(files, dir, extension) {
@@ -11095,7 +11352,11 @@ cli.replaceFileExtension = function(path, ext) {
   return Node.path.join(info.relative_dir, info.base + "." + ext);
 };
 
-cli.validateInputOpts = function(ifile, argv) {
+cli.validateInputFiles = function(arr) {
+  return Utils.map(arr, cli.validateInputFile);
+};
+
+cli.validateInputFile = function(ifile) {
   var opts = {};
   if (!Node.fileExists(ifile)) {
     error("File not found (" + ifile + ")");
@@ -11103,23 +11364,21 @@ cli.validateInputOpts = function(ifile, argv) {
   if (!cli.validateFileExtension(ifile)) {
      error("File has an unsupported extension:", ifile);
   }
-  opts.input_file = ifile;
-  return opts;
+  return ifile;
 };
 
-cli.validateOutputOpts = function(argv, inputOpts) {
+cli.validateOutputOpts = function(argv) {
   var supportedTypes = ["geojson", "topojson", "shapefile"],
       odir = ".",
-      ifileInfo = Node.getFileInfo(inputOpts.input_file),
-      obase = ifileInfo.base, // default to input file name
-      oext = ifileInfo.ext,   // default to input file extension
-      ofmt;
+      //obase = ifileInfo.base, // default to input file name
+      //oext = ifileInfo.ext,   // default to input file extension
+      obase, oext, ofmt;
 
   // process --format option
   if (argv.f) {
     ofmt = argv.f.toLowerCase();
     // use default extension for output format
-    oext = MapShaper.getDefaultFileExtension(ofmt);
+    // oext = MapShaper.getDefaultFileExtension(ofmt); // added during export
     if (!Utils.contains(supportedTypes, ofmt)) {
       error("Unsupported output format:", argv.f);
     }
@@ -11148,10 +11407,12 @@ cli.validateOutputOpts = function(argv, inputOpts) {
         oext = ofileInfo.ext;
 
         // Infer output format from -o option extension when appropriate
+        /*
         if (!ofmt &&
           MapShaper.guessFileFormat(oext) != MapShaper.guessFileFormat(ifileInfo.ext)) {
           ofmt =  MapShaper.guessFileFormat(oext);
         }
+        */
       }
       obase = ofileInfo.base;
       odir = ofileInfo.relative_dir || '.';
@@ -11159,10 +11420,10 @@ cli.validateOutputOpts = function(argv, inputOpts) {
   }
 
   return {
-    output_extension: oext,
     output_directory: odir,
-    output_file_base: obase,
-    output_format: ofmt || null // inferred later if not found above
+    output_extension: oext || null, // inferred later if not found above
+    output_file_base: obase || null,
+    output_format: ofmt || null
   };
 };
 
@@ -11263,6 +11524,12 @@ cli.validateExtraOpts = function(argv) {
     opts.topojson_precision = argv['topojson-precision'];
   }
 
+  if (argv.innerlines) {
+    opts.innerlines = true;
+  }
+
+  validateJoinOpts(argv, opts);
+
   return opts;
 };
 
@@ -11334,6 +11601,44 @@ cli.printRepairMessage = function(info, opts) {
     }
   }
 };
+
+function validateCommaSep(str, count) {
+  var parts = Utils.mapFilter(str.split(','), function(part) {
+    var str = Utils.trim(part);
+    return str === '' ? void 0 : str;
+  });
+  if (parts.length === 0 || count && parts.length !== count) {
+    return null;
+  }
+  return parts;
+}
+
+function validateJoinOpts(argv, opts) {
+  var file = argv['join-file'],
+      fields = argv['join-fields'],
+      keys = argv['join-keys'],
+      includeArr, keyArr;
+
+  if (!file) return;
+
+  if (Utils.some("shp,xls,xlsx".split(','), function(suff) {
+    return Utils.endsWith(file, suff);
+  })) {
+    error("--join-file currently only supports dbf and csv files");
+  }
+
+  if (!Node.fileExists(file)) {
+    error("Missing join file (" + file + ")");
+  }
+  if (!keys) error("Missing required --join-keys argument");
+  keyArr = validateCommaSep(keys, 2);
+  if (!keyArr) error("--join-keys takes two comma-seperated names, e.g.: FIELD1,FIELD2");
+  includeArr = fields && validateCommaSep(fields) || null;
+
+  opts.join_file = file;
+  opts.join_keys = keyArr;
+  opts.join_fields = includeArr;
+}
 
 // Force v8 to perform a complete gc cycle.
 // To enable, run node with --expose_gc
