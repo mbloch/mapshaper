@@ -4,13 +4,12 @@
 // return merged file data
 // TODO: remove duplication with single-file import
 //
-MapShaper.mergeFiles = function(optsArr, separateLayers) {
+MapShaper.mergeFiles = function(files, opts, separateLayers) {
   var first, geometries;
-  var filePrefix = MapShaper.getCommonFilePrefix(optsArr);
+  var filePrefix = MapShaper.getCommonFilePrefix(files);
 
-  geometries = Utils.map(optsArr, function(opts) {
-    var fname = opts.input_file,
-        fileType = MapShaper.guessFileType(fname),
+  geometries = Utils.map(files, function(fname) {
+    var fileType = MapShaper.guessFileType(fname),
         content = MapShaper.readGeometryFile(fname, fileType),
         importData = MapShaper.importFileContent(content, fileType, opts),
         fmt = importData.info.input_format;
@@ -77,9 +76,9 @@ MapShaper.getFileSuffix = function(filebase, prefix) {
   return filebase;
 };
 
-MapShaper.getCommonFilePrefix = function(arr) {
-  return Utils.reduce(arr, function(prefix, opts) {
-    var filebase = opts.output_file_base;
+MapShaper.getCommonFilePrefix = function(files) {
+  return Utils.reduce(arr, function(prefix, file) {
+    var filebase = Node.getFileInfo(file).base;
     if (prefix !== null) {
       filebase = MapShaper.findStringPrefix(prefix, filebase);
     }
