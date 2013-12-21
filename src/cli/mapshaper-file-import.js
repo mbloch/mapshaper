@@ -1,6 +1,6 @@
 /* @requires
-mapshaper-data-table
 mapshaper-import
+mapshaper-table-import
 */
 
 MapShaper.importFromFile = function(fname, opts) {
@@ -23,10 +23,4 @@ MapShaper.readGeometryFile = function(fname, fileType) {
     error("Unexpected input file:", fname);
   }
   return content;
-};
-
-MapShaper.importDbfTable = function(shpName) {
-  var dbfName = cli.replaceFileExtension(shpName, 'dbf');
-  if (!Node.fileExists(dbfName)) return null;
-  return new ShapefileTable(Node.readFile(dbfName));
 };

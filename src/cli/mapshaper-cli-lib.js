@@ -17,6 +17,7 @@ mapshaper-field-calculator
 mapshaper-subdivide
 mapshaper-filter
 mapshaper-merge-files
+mapshaper-join
 */
 //mapshaper-explode,
 
@@ -144,19 +145,27 @@ MapShaper.getHiddenOptionParser = function(optimist) {
     describe: "pct of avg segment length for rounding (0.02 is default)"
   })
 
-  .options("join-file", {
-    describe: "join a .dbf, .json, csv or tsv file to the imported shapes"
+  .options("innerlines", {
+    describe: "convert polygon layers to line layers of internal boundaries",
+    'boolean': true
   })
-
-  .options("join-keys", {
-    describe: "internal and external field names, e.g. --join-keys FIPS,CNTYFIPS"
-  })
-
   ;
 };
 
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
+
+  .options("join-file", {
+    describe: "join a dbf or delimited text file to the imported shapes"
+  })
+
+  .options("join-keys", {
+    describe: "local,foreign keys, e.g. --join-keys FIPS,CNTYFIPS:str"
+  })
+
+  .options("join-fields", {
+    describe: "(optional) join fields, e.g. --join-fields FIPS:str,POP"
+  })
 
   .options('filter ', {
     describe: "filter shapes with a boolean JavaScript expression"
@@ -267,6 +276,19 @@ MapShaper.getOpts = function() {
   return opts;
 };
 
+// Retuns array of data about files passed to mapshaper script
+//
+MapShaper.getFileList = function() {
+  var files;
+  var dummy = MapShaper.getBasicOptionParser().check(function(argv) {
+    files = cli.validateInputFiles(argv._);
+    if (files.length === 0) {
+      error("Missing an input file");
+    }
+  }).argv;
+  return files;
+};
+
 // Test option parsing -- throws an error if a problem is found.
 // @argv array of command line tokens
 //
@@ -317,7 +339,7 @@ MapShaper.checkArgSupport = function(argv, flags) {
   });
 };
 
-// Return an array of options objects, one for each input file
+// Return an array of options objects
 //
 MapShaper.validateArgs = function(argv, supported) {
   MapShaper.checkArgSupport(argv, supported);
@@ -333,18 +355,8 @@ MapShaper.validateArgs = function(argv, supported) {
   Utils.extend(opts, cli.validateSimplifyOpts(argv));
   Utils.extend(opts, cli.validateTopologyOpts(argv));
   Utils.extend(opts, cli.validateExtraOpts(argv));
-
-  var optsArr = Utils.map(argv._, function(ifile) {
-    var fileOpts = {};
-    Utils.extend(fileOpts, cli.validateInputOpts(ifile, argv));
-    Utils.extend(fileOpts, cli.validateOutputOpts(argv, fileOpts));
-    return Utils.extend(fileOpts, opts);
-  });
-
-  if (optsArr.length === 0) {
-    error("Missing an input file");
-  }
-  return optsArr;
+  Utils.extend(opts, cli.validateOutputOpts(argv));
+  return opts;
 };
 
 MapShaper.getOutputPaths = function(files, dir, extension) {
@@ -390,7 +402,11 @@ cli.replaceFileExtension = function(path, ext) {
   return Node.path.join(info.relative_dir, info.base + "." + ext);
 };
 
-cli.validateInputOpts = function(ifile, argv) {
+cli.validateInputFiles = function(arr) {
+  return Utils.map(arr, cli.validateInputFile);
+};
+
+cli.validateInputFile = function(ifile) {
   var opts = {};
   if (!Node.fileExists(ifile)) {
     error("File not found (" + ifile + ")");
@@ -398,23 +414,21 @@ cli.validateInputOpts = function(ifile, argv) {
   if (!cli.validateFileExtension(ifile)) {
      error("File has an unsupported extension:", ifile);
   }
-  opts.input_file = ifile;
-  return opts;
+  return ifile;
 };
 
-cli.validateOutputOpts = function(argv, inputOpts) {
+cli.validateOutputOpts = function(argv) {
   var supportedTypes = ["geojson", "topojson", "shapefile"],
       odir = ".",
-      ifileInfo = Node.getFileInfo(inputOpts.input_file),
-      obase = ifileInfo.base, // default to input file name
-      oext = ifileInfo.ext,   // default to input file extension
-      ofmt;
+      //obase = ifileInfo.base, // default to input file name
+      //oext = ifileInfo.ext,   // default to input file extension
+      obase, oext, ofmt;
 
   // process --format option
   if (argv.f) {
     ofmt = argv.f.toLowerCase();
     // use default extension for output format
-    oext = MapShaper.getDefaultFileExtension(ofmt);
+    // oext = MapShaper.getDefaultFileExtension(ofmt); // added during export
     if (!Utils.contains(supportedTypes, ofmt)) {
       error("Unsupported output format:", argv.f);
     }
@@ -443,10 +457,12 @@ cli.validateOutputOpts = function(argv, inputOpts) {
         oext = ofileInfo.ext;
 
         // Infer output format from -o option extension when appropriate
+        /*
         if (!ofmt &&
           MapShaper.guessFileFormat(oext) != MapShaper.guessFileFormat(ifileInfo.ext)) {
           ofmt =  MapShaper.guessFileFormat(oext);
         }
+        */
       }
       obase = ofileInfo.base;
       odir = ofileInfo.relative_dir || '.';
@@ -454,10 +470,10 @@ cli.validateOutputOpts = function(argv, inputOpts) {
   }
 
   return {
-    output_extension: oext,
     output_directory: odir,
-    output_file_base: obase,
-    output_format: ofmt || null // inferred later if not found above
+    output_extension: oext || null, // inferred later if not found above
+    output_file_base: obase || null,
+    output_format: ofmt || null
   };
 };
 
@@ -558,6 +574,12 @@ cli.validateExtraOpts = function(argv) {
     opts.topojson_precision = argv['topojson-precision'];
   }
 
+  if (argv.innerlines) {
+    opts.innerlines = true;
+  }
+
+  validateJoinOpts(argv, opts);
+
   return opts;
 };
 
@@ -629,6 +651,44 @@ cli.printRepairMessage = function(info, opts) {
     }
   }
 };
+
+function validateCommaSep(str, count) {
+  var parts = Utils.mapFilter(str.split(','), function(part) {
+    var str = Utils.trim(part);
+    return str === '' ? void 0 : str;
+  });
+  if (parts.length === 0 || count && parts.length !== count) {
+    return null;
+  }
+  return parts;
+}
+
+function validateJoinOpts(argv, opts) {
+  var file = argv['join-file'],
+      fields = argv['join-fields'],
+      keys = argv['join-keys'],
+      includeArr, keyArr;
+
+  if (!file) return;
+
+  if (Utils.some("shp,xls,xlsx".split(','), function(suff) {
+    return Utils.endsWith(file, suff);
+  })) {
+    error("--join-file currently only supports dbf and csv files");
+  }
+
+  if (!Node.fileExists(file)) {
+    error("Missing join file (" + file + ")");
+  }
+  if (!keys) error("Missing required --join-keys argument");
+  keyArr = validateCommaSep(keys, 2);
+  if (!keyArr) error("--join-keys takes two comma-seperated names, e.g.: FIELD1,FIELD2");
+  includeArr = fields && validateCommaSep(fields) || null;
+
+  opts.join_file = file;
+  opts.join_keys = keyArr;
+  opts.join_fields = includeArr;
+}
 
 // Force v8 to perform a complete gc cycle.
 // To enable, run node with --expose_gc

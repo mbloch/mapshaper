@@ -69,13 +69,11 @@ describe('mapshaper-cli.js', function() {
       assert.doesNotThrow(function() {
         mapshaper.checkArgs(argv);
       });
-      var optsArr = mapshaper.checkArgs(argv);
-      assert.equal(optsArr.length, 2);
-      assert.equal(optsArr[0].input_file, "test_data/two_states.shp");
-      assert.equal(optsArr[1].input_file, "test_data/six_counties.shp");
     })
 
   });
+
+
 
   describe('validateSimplifyOpts()', function() {
 
@@ -234,19 +232,29 @@ describe('mapshaper-cli.js', function() {
     })
   })
 
+  describe('validateInputFiles()', function () {
+    function validate(str) {
+      var argv = parseOpts(str);
+      return mapshaper.cli.validateInputFiles(argv._);
+    }
 
-  describe('validateInputOpts()', function() {
+    var good1 = "test_data/two_states.shp test_data/six_counties.shp";
+    it(good1, function () {
+      assert.deepEqual(validate(good1), ["test_data/two_states.shp", "test_data/six_counties.shp"])
+    })
+  })
+
+
+  describe('validateInputFile()', function() {
 
     function validate(str) {
       var argv = parseOpts(str);
-      return mapshaper.cli.validateInputOpts(argv._[0], argv);
+      return mapshaper.cli.validateInputFile(argv._[0]);
     }
 
     var good1 = "test_data/two_states.shp";
     it(good1, function() {
-      assert.deepEqual(validate(good1), {
-        input_file: "test_data/two_states.shp"
-      });
+      assert.deepEqual(validate(good1), "test_data/two_states.shp");
     })
 
     var bad1 = "test_data/two_states";
@@ -270,8 +278,7 @@ describe('mapshaper-cli.js', function() {
 
     function validate(str) {
       var argv = parseOpts(str);
-      var input = mapshaper.cli.validateInputOpts(argv._[0], argv);
-      return mapshaper.cli.validateOutputOpts(argv, input);
+      return mapshaper.cli.validateOutputOpts(argv);
     }
 
     var good1 = "test_data/two_states.shp";
@@ -279,8 +286,8 @@ describe('mapshaper-cli.js', function() {
       assert.deepEqual(validate(good1), {
         output_format: null,
         output_directory: ".",
-        output_extension: "shp",
-        output_file_base: "two_states"
+        output_extension: null,
+        output_file_base: null
       });
     })
 
@@ -289,7 +296,7 @@ describe('mapshaper-cli.js', function() {
       assert.deepEqual(validate(good2), {
         output_format: null,
         output_directory: ".",
-        output_extension: "shp",
+        output_extension: null,
         output_file_base: "simplified"
       });
     })
@@ -308,9 +315,9 @@ describe('mapshaper-cli.js', function() {
     it(good4, function() {
       assert.deepEqual(validate(good4), {
         output_format: null,
-        output_extension: "json",
+        output_extension: null,
         output_directory: ".",
-        output_file_base: "two_states"
+        output_file_base: null
       });
     })
 
@@ -319,8 +326,8 @@ describe('mapshaper-cli.js', function() {
       assert.deepEqual(validate(good5), {
         output_format: 'shapefile',
         output_directory: ".",
-        output_extension: "shp",
-        output_file_base: "two_states"
+        output_extension: null,
+        output_file_base: null
       });
     })
 
@@ -329,8 +336,8 @@ describe('mapshaper-cli.js', function() {
       assert.deepEqual(validate(good6), {
         output_format: 'topojson',
         output_directory: ".",
-        output_extension: "json",
-        output_file_base: "two_states"
+        output_extension: null,
+        output_file_base: null
       });
     })
 
@@ -339,7 +346,7 @@ describe('mapshaper-cli.js', function() {
       assert.deepEqual(validate(good7), {
         output_format: 'geojson',
         output_directory: "test_data",
-        output_extension: "json",
+        output_extension: null,
         output_file_base: "min"
       });
     })
@@ -350,8 +357,8 @@ describe('mapshaper-cli.js', function() {
       assert.deepEqual(validate(good8), {
         output_format: null,
         output_directory: "test_data",
-        output_extension: "shp",
-        output_file_base: "two_states"
+        output_extension: null,
+        output_file_base: null
       });
     })
 
@@ -360,8 +367,8 @@ describe('mapshaper-cli.js', function() {
       assert.deepEqual(validate(good9), {
         output_format: null,
         output_directory: ".",
-        output_extension: "shp",
-        output_file_base: "two_states"
+        output_extension: null,
+        output_file_base: null
       });
     })
 
@@ -369,7 +376,7 @@ describe('mapshaper-cli.js', function() {
     var good10 = "test_data/two_states.shp -o two_states.json";
     it(good10, function() {
       assert.deepEqual(validate(good10), {
-        output_format: "geojson",
+        output_format: null,
         output_directory: ".",
         output_extension: "json",
         output_file_base: "two_states"
@@ -380,7 +387,7 @@ describe('mapshaper-cli.js', function() {
     var good11 = "test_data/two_states.json -o two_states.shp";
     it(good11, function() {
       assert.deepEqual(validate(good11), {
-        output_format: "shapefile",
+        output_format: null,
         output_directory: ".",
         output_extension: "shp",
         output_file_base: "two_states"
@@ -391,7 +398,7 @@ describe('mapshaper-cli.js', function() {
     var good12 = "test_data/two_states.json -o two_states.topojson";
     it(good12, function() {
       assert.deepEqual(validate(good12), {
-        output_format: "topojson",
+        output_format: null,
         output_directory: ".",
         output_extension: "topojson",
         output_file_base: "two_states"

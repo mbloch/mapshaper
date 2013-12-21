@@ -49,6 +49,18 @@ var dataTableProto = {
     });
   },
 
+  indexOn: function(f) {
+    this._index = Utils.indexOn(this.getRecords(), f);
+  },
+
+  getIndexedRecord: function(val) {
+    return this._index && this._index[val] || null;
+  },
+
+  clearIndex: function() {
+    this._index = null;
+  },
+
   // TODO: improve
   getFields: function() {
     if (this.size() === 0) return [];

@@ -16,7 +16,8 @@
 	"main": "./mapshaper.js",
 	"dependencies": {
 		"optimist": "0.6.x",
-		"open": "~0.0.3"
+		"open": "~0.0.3",
+		"csv": "~0.3.6"
 	},
 	"devDependencies": {
 		"mocha": ">= 1.13.0"
