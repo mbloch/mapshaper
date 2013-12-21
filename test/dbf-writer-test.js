@@ -91,6 +91,14 @@ describe('dbf-writer.js', function () {
       assert.equal(fmt(0), '   0.000')
       assert.equal(fmt(-123.459), '-123.459')
     })
+    it('handle null', function() {
+      var fmt = Dbf.getDecimalFormatter(3, 0);
+      assert.equal(fmt(null), '   ');
+    })
+    it('handle NaN', function() {
+      var fmt = Dbf.getDecimalFormatter(3, 2);
+      assert.equal(fmt(NaN), '   ');
+    })
   })
 
   describe('roundtrip: records -> export -> import -> records', function() {
