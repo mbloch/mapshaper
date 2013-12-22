@@ -10975,12 +10975,59 @@ MapShaper.importDataTable = function(fname) {
 
 
 
+
+MapShaper.convertLayersToInnerLines = function(layers, arcs) {
+  return Utils.map(layers, function(lyr) {
+    return MapShaper.convertLayerToInnerLines(lyr, arcs);
+  });
+};
+
+MapShaper.convertLayerToInnerLines = function(lyr, arcs) {
+  if (lyr.geometry_type != 'polygon') {
+    stop("[innerlines] Layer not polygon type");
+  }
+
+  var arcCount = arcs.size(),
+      counts = MapShaper.countArcsInShapes(lyr.shapes, arcCount),
+      shapes = [];
+
+  for (var i=0; i<arcCount; i++) {
+    if (counts[i] > 1) {
+      shapes.push([[i]]);
+    }
+  }
+
+  var innerLyr = {
+    geometry_type: 'polyline',
+    name: lyr.name,
+    shapes: shapes
+  };
+
+  return innerLyr;
+};
+
+MapShaper.countArcsInShapes = function(shapes, arcCount) {
+  var counts = new Uint8Array(arcCount);
+  MapShaper.traverseShapes(shapes, null, function(obj) {
+    var arcs = obj.arcs,
+        id;
+    for (var i=0; i<arcs.length; i++) {
+      id = arcs[i];
+      if (id < 0) id = ~id;
+      counts[id]++;
+    }
+  });
+  return counts;
+};
+
+
+
 //mapshaper-explode,
 
 var cli = MapShaper.cli = {};
 
 var usage =
-  "Usage: mapshaper [options] file\n\n" +
+  "Usage: mapshaper [options] [file ...]\n\n" +
 
   "Example: fix minor topology errors, simplify to 10%, convert to geojson\n" +
   "$ mapshaper -p 0.1 --auto-snap --format geojson states.shp\n\n" +
@@ -11100,9 +11147,8 @@ MapShaper.getHiddenOptionParser = function(optimist) {
     describe: "pct of avg segment length for rounding (0.02 is default)"
   })
 
-  .options("innerlines", {
-    describe: "convert polygon layers to line layers of internal boundaries",
-    'boolean': true
+  .options("postfilter", {
+    describe: "filter shapes after dissolve"
   })
   ;
 };
@@ -11158,7 +11204,7 @@ MapShaper.getExtraOptionParser = function(optimist) {
     describe: "fields to copy when dissolving (comma-sep. list)"
   })
 
-  .options("recombine", {
+  .options("merge-layers", {
     describe: "merge split-apart layers back into a single layer",
     'boolean': true
   })
@@ -11195,8 +11241,9 @@ MapShaper.getExtraOptionParser = function(optimist) {
     'boolean': true
   })
 
-  .options("postfilter", {
-    describe: "filter shapes after dissolve"
+  .options("innerlines", {
+    describe: "output polyline layers containing shared polygon boundaries",
+    'boolean': true
   })
 
   ;
@@ -11476,8 +11523,8 @@ cli.validateExtraOpts = function(argv) {
     opts.split = argv.split;
   }
 
-  if (argv.recombine) {
-    opts.recombine = argv.recombine;
+  if (argv['merge-layers']) {
+    opts.recombine = argv['merge-layers'];
   }
 
   if (argv.expression) {

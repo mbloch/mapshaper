@@ -107,14 +107,20 @@ function procLayers(importData, opts) {
 
   if (opts.dissolve) {
     layers = mapshaper.dissolveLayers(layers, arcData, opts.dissolve, opts);
-    if (opts.output_format == 'topojson') {
-      // TODO: decide if this belongs here or in topojson output function
-      arcData = mapshaper.dissolveArcs(layers, arcData);
-    }
   }
 
   if (opts.postfilter) {
     mapshaper.filterLayers(layers, arcData, opts.postfilter);
+  }
+
+  if (opts.innerlines) {
+    layers = mapshaper.convertLayersToInnerLines(layers, arcData);
+  }
+
+  // filter && merge arcs if outputting topojson and arcs may have changed
+  // TODO: decide if this belongs here or in topojson output function
+  if (opts.output_format == 'topojson' && (opts.innerlines || opts.dissolve)) {
+    arcData = mapshaper.dissolveArcs(layers, arcData);
   }
 
   if (opts.recombine) {
