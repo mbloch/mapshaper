@@ -11330,7 +11330,7 @@ MapShaper.getExtraOptionParser = function(optimist) {
   })
 
   .options("lines", {
-    describe: "convert polygons to polylines; takes optional list of fields"
+    describe: "convert polygons to lines; takes optional list of fields"
   })
 
   .options("innerlines", {
