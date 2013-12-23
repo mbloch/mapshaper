@@ -47,8 +47,8 @@ Extract the border between two states.
 Generate two new fields using JavaScript.
 `mapshaper --expression "STATE_FIPS=CNTY_FIPS.substr(0, 5), AREA=$.area" counties.shp`
 
-Join a csv table to a Shapefile.
-`mapshaper --join-file demographics.txt --join-keys STATE_FIPS:FIPS states.shp`
+Join a csv table to a Shapefile (:str suffix prevents FIPS field from being converted to numbers)
+`mapshaper --join-file demographics.txt --join-keys STATE_FIPS,FIPS:str states.shp`
 
 Read a help message.
 `mapshaper -h`
