@@ -115,6 +115,8 @@ function procLayers(importData, opts) {
 
   if (opts.innerlines) {
     layers = mapshaper.convertLayersToInnerLines(layers, arcData);
+  } else if (opts.lines) {
+    layers = mapshaper.convertLayersToTypedLines(layers, arcData, opts.lines);
   }
 
   // filter && merge arcs if outputting topojson and arcs may have changed
@@ -124,7 +126,7 @@ function procLayers(importData, opts) {
   }
 
   if (opts.recombine) {
-    layers = mapshaper.recombineLayers(layers);
+    layers = [mapshaper.recombineLayers(layers)];
   }
 
   if (opts.split_rows && opts.split_cols) {
