@@ -67,45 +67,43 @@ describe('mapshaper-innerlines.js', function () {
   describe('convertLayerToTypedLines()', function() {
     it( 'test with no field', function() {
       var lyr2 = api.convertLayerToTypedLines(lyr, arcs);
-      assert.deepEqual(lyr2.shapes, [[[0]], [[2]], [[1]]]);
+      assert.deepEqual(lyr2.shapes, [[[1]], [[0]], [[2]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.equal(lyr2.name, 'shape'); // same as original name
-      assert.deepEqual(lyr2.data.getRecords(), [{TYPE: 0}, {TYPE: 0}, {TYPE: 1}]);
+      assert.deepEqual(lyr2.data.getRecords(), [{TYPE: 1}, {TYPE: 0}, {TYPE: 0}]);
     })
 
     it('test 2 with no field', function () {
       var lyr2 = api.convertLayerToTypedLines(lyrb, arcsb);
       assert.deepEqual(lyr2.shapes,
-          [[[0]], [[3]], [[6]], [[7]], [[1]], [[2]], [[4]], [[5]]]);
+          [[[1]], [[2]], [[4]], [[5]], [[0]], [[3]], [[6]], [[7]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
     })
 
     it( 'test with one field', function() {
       var lyr2 = api.convertLayerToTypedLines(lyr, arcs, ['foo']);
-      assert.deepEqual(lyr2.shapes, [[[0]], [[2]], [[1]]]);
+      assert.deepEqual(lyr2.shapes, [[[1]], [[0]], [[2]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.equal(lyr2.name, 'shape'); // same as original name
-      assert.deepEqual(lyr2.data.getRecords(), [{TYPE: 0}, {TYPE: 0}, {TYPE: 1}]);
+      assert.deepEqual(lyr2.data.getRecords(), [{TYPE: 1}, {TYPE: 0}, {TYPE: 0}]);
     })
 
     it( 'test 2 with one field', function() {
       var lyr2 = api.convertLayerToTypedLines(lyrb, arcsb, ['foo']);
       assert.deepEqual(lyr2.shapes,
-          [[[0]], [[3]], [[6]], [[7]], [[2]], [[4]], [[1]], [[5]]]);
+          [[[1]], [[5]], [[2]], [[4]], [[0]], [[3]], [[6]], [[7]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.deepEqual(lyr2.data.getRecords(),
-          [{TYPE: 0}, {TYPE: 0}, {TYPE: 0}, {TYPE: 0},
-          {TYPE: 1}, {TYPE: 1}, {TYPE: 2}, {TYPE: 2}]);
+          [{TYPE: 2}, {TYPE: 2}, {TYPE: 1}, {TYPE: 1}, {TYPE: 0}, {TYPE: 0}, {TYPE: 0}, {TYPE: 0}]);
     })
 
     it( 'test with two fields', function() {
       var lyr2 = api.convertLayerToTypedLines(lyrb, arcsb, ['foo', 'bar']);
       assert.deepEqual(lyr2.shapes,
-          [[[0]], [[3]], [[6]], [[7]], [[2]], [[4]], [[5]], [[1]]]);
+          [[[1]], [[5]], [[2]], [[4]], [[0]], [[3]], [[6]], [[7]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.deepEqual(lyr2.data.getRecords(),
-          [{TYPE: 0}, {TYPE: 0}, {TYPE: 0}, {TYPE: 0},
-          {TYPE: 1}, {TYPE: 1}, {TYPE: 2}, {TYPE: 3}]);
+          [{TYPE: 3}, {TYPE: 2}, {TYPE: 1}, {TYPE: 1}, {TYPE: 0}, {TYPE: 0}, {TYPE: 0}, {TYPE: 0}]);
     })
   })
 })

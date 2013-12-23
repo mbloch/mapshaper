@@ -11026,8 +11026,8 @@ MapShaper.convertLayerToTypedLines = function(lyr, arcs, fields) {
     var typeData = Utils.repeat(typeArcs.length, function(i) {
           return {TYPE: typeCode};
         }) || [];
-    Utils.merge(allArcs, typeArcs);
-    Utils.merge(allData, typeData);
+    allArcs = Utils.merge(typeArcs, allArcs);
+    allData = Utils.merge(typeData, allData);
     typeCode++;
   }
 
