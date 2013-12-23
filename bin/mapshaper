@@ -6,6 +6,7 @@ var mapshaper = require("../"),
     opts = mapshaper.getOpts(),
     inputList = opts.input_files;
 
+mapshaper.LOGGING = true;
 mapshaper.T.start("Start timing");
 
 // need to use a callback if joining a file, because csv parser is asynchronous

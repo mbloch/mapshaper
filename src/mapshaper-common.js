@@ -1,13 +1,19 @@
 /* @requires mshp-common-lib */
 
+var MapShaper = {};
+
 // TODO: adapt to run in browser
 function stop() {
-  var msg = Utils.toArray(arguments).join(' ');
-  if (msg) console.log(msg);
+  message.apply(null, Utils.toArray(arguments));
   process.exit(1);
 }
 
-var MapShaper = {};
+function message() {
+  var msg = Utils.toArray(arguments).join(' ');
+  if (MapShaper.LOGGING && msg) {
+    console.log(msg);
+  }
+}
 
 MapShaper.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;

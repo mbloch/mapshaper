@@ -78,7 +78,7 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
     } else {
       msg = Utils.format("Unjoined values: %s", Utils.uniq(unmatched).join(', '));
     }
-    console.log(msg);
+    message(msg);
   }
 
   return hits > 0;

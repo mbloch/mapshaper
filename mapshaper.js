@@ -3997,14 +3997,20 @@ Utils.formatter = function(fmt) {
 
 
 
+var MapShaper = {};
+
 // TODO: adapt to run in browser
 function stop() {
-  var msg = Utils.toArray(arguments).join(' ');
-  if (msg) console.log(msg);
+  message.apply(null, Utils.toArray(arguments));
   process.exit(1);
 }
 
-var MapShaper = {};
+function message() {
+  var msg = Utils.toArray(arguments).join(' ');
+  if (MapShaper.LOGGING && msg) {
+    console.log(msg);
+  }
+}
 
 MapShaper.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
@@ -6156,9 +6162,9 @@ MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
 
   if (threshold) {
     if (threshold > avgDist) {
-      console.log("Snapping threshold is larger than average segment length -- ignoring");
+      message("Snapping threshold is larger than average segment length -- ignoring");
     } else if (threshold > 0) {
-      console.log(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
+      message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
       snapDist = threshold;
     }
   }
@@ -6172,7 +6178,7 @@ MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
     snapCount += snapPoint(i, ids, snapDist);
   }
 
-  console.log(Utils.format("Snapped %s point%s", snapCount, "s?"));
+  message(Utils.format("Snapped %s point%s", snapCount, "s?"));
 
   function snapPoint(i, ids, limit) {
     var j = i,
@@ -10291,7 +10297,7 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
   try {
     func = new Function("env", "with(env){return " + exp + ";}");
   } catch(e) {
-    console.log('Error compiling expression "' + exp + '"');
+    message('Error compiling expression "' + exp + '"');
     stop(e);
   }
 
@@ -10317,7 +10323,7 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
   try {
     func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
   } catch(e) {
-    console.log('Error compiling expression "' + exp + '"');
+    message('Error compiling expression "' + exp + '"');
     stop(e);
   }
 
@@ -10958,7 +10964,7 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
     } else {
       msg = Utils.format("Unjoined values: %s", Utils.uniq(unmatched).join(', '));
     }
-    console.log(msg);
+    message(msg);
   }
 
   return hits > 0;

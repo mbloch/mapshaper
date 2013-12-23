@@ -6,7 +6,7 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
   try {
     func = new Function("env", "with(env){return " + exp + ";}");
   } catch(e) {
-    console.log('Error compiling expression "' + exp + '"');
+    message('Error compiling expression "' + exp + '"');
     stop(e);
   }
 
@@ -32,7 +32,7 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
   try {
     func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
   } catch(e) {
-    console.log('Error compiling expression "' + exp + '"');
+    message('Error compiling expression "' + exp + '"');
     stop(e);
   }
 
