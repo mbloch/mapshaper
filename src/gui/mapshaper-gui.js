@@ -12,6 +12,8 @@ mapshaper-repair-control,
 mapshaper-keep-shapes
 */
 
+MapShaper.LOGGING = true;
+
 if (Browser.inBrowser) {
   Browser.onload(function() {
     if (!browserIsSupported()) {
