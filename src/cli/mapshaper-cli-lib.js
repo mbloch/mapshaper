@@ -20,6 +20,7 @@ mapshaper-merge-files
 mapshaper-join
 mapshaper-innerlines
 */
+//
 //mapshaper-explode,
 
 var cli = MapShaper.cli = {};
@@ -237,6 +238,10 @@ MapShaper.getExtraOptionParser = function(optimist) {
   .options("combine-files", {
     describe: "import files to separate layers with shared topology",
     'boolean': true
+  })
+
+  .options("lines", {
+    describe: "convert polygons to polylines; takes optional list of fields"
   })
 
   .options("innerlines", {
@@ -564,6 +569,14 @@ cli.validateExtraOpts = function(argv) {
 
   if (argv.innerlines) {
     opts.innerlines = true;
+  }
+
+  if (argv.lines) {
+    if (Utils.isString(argv.lines)) {
+      opts.lines = cli.validateCommaSepNames(argv.lines);
+    } else {
+      opts.lines = true;
+    }
   }
 
   validateJoinOpts(argv, opts);

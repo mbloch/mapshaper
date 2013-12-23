@@ -2,6 +2,7 @@
 
 
 MapShaper.dissolveLayers = function(layers) {
+  T.start();
   if (!Utils.isArray(layers)) error ("[dissolveLayers()] Expected an array of layers");
   var dissolvedLayers = [],
       args = Utils.toArray(arguments);
@@ -11,6 +12,7 @@ MapShaper.dissolveLayers = function(layers) {
     var layers2 = MapShaper.dissolveLayer.apply(null, args);
     dissolvedLayers.push.apply(dissolvedLayers, layers2);
   });
+  T.stop('Dissolve polygons');
   return dissolvedLayers;
 };
 
@@ -42,7 +44,7 @@ MapShaper.dissolve = function(lyr, arcs, field, opts) {
       getDissolveKey;
 
   opts = opts || {};
-  T.start();
+  // T.start();
 
   if (field) {
     if (!dataTable) {
@@ -78,7 +80,7 @@ MapShaper.dissolve = function(lyr, arcs, field, opts) {
   }
   Opts.copyNewParams(dissolveLyr, lyr);
 
-  T.stop('Dissolve polygons');
+  // T.stop('Dissolve polygons');
   return dissolveLyr;
 };
 

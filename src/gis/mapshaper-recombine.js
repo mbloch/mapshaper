@@ -13,9 +13,9 @@ MapShaper.recombineLayers = function(layers) {
     mergedShapes.push.apply(mergedShapes, lyr.shapes);
   });
 
-  return [Opts.copyNewParams({
+  return Opts.copyNewParams({
     data: new DataTable(mergedProperties),
     shapes: mergedShapes,
     name: ""
-  }, lyr0)];
+  }, lyr0);
 };

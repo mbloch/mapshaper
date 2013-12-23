@@ -1,33 +1,112 @@
 /* @requires mapshaper-common */
 
 MapShaper.convertLayersToInnerLines = function(layers, arcs) {
-  return Utils.map(layers, function(lyr) {
+  T.start();
+  var converted = Utils.map(layers, function(lyr) {
     return MapShaper.convertLayerToInnerLines(lyr, arcs);
   });
+  T.stop("Inner lines");
+  return converted;
 };
 
 MapShaper.convertLayerToInnerLines = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
     stop("[innerlines] Layer not polygon type");
   }
+  var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
+      lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
+  lyr2.name = lyr.name;
+  return lyr2;
+};
 
+MapShaper.convertLayersToTypedLines = function(layers, arcs, fields) {
+  T.start();
+  var converted = Utils.map(layers, function(lyr) {
+    return MapShaper.convertLayerToTypedLines(lyr, arcs, fields);
+  });
+  T.stop("Lines");
+  return converted;
+};
+
+MapShaper.convertLayerToTypedLines = function(lyr, arcs, fields) {
+  if (lyr.geometry_type != 'polygon') {
+    stop("[lines] Layer not polygon type");
+  }
   var arcCount = arcs.size(),
-      counts = MapShaper.countArcsInShapes(lyr.shapes, arcCount),
-      shapes = [];
+      outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
+      typeCode = 0,
+      allArcs = [],
+      allData = [];
 
-  for (var i=0; i<arcCount; i++) {
-    if (counts[i] > 1) {
-      shapes.push([[i]]);
-    }
+  function addArcs(typeArcs) {
+    var typeData = Utils.repeat(typeArcs.length, function(i) {
+          return {TYPE: typeCode};
+        }) || [];
+    Utils.merge(allArcs, typeArcs);
+    Utils.merge(allData, typeData);
+    typeCode++;
   }
 
-  var innerLyr = {
-    geometry_type: 'polyline',
-    name: lyr.name,
-    shapes: shapes
-  };
+  addArcs(outerArcs);
 
-  return innerLyr;
+  if (Utils.isArray(fields)) {
+    if (!lyr.data) {
+      stop("[lines] missing a data table:");
+    }
+    Utils.forEach(fields, function(field) {
+      if (!lyr.data.fieldExists(field)) {
+        stop("[lines] unknown data field:", field);
+      }
+      var dissolved = MapShaper.dissolve(lyr, arcs, field),
+          dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
+      dissolvedArcs = Utils.difference(dissolvedArcs, allArcs);
+      addArcs(dissolvedArcs);
+    });
+  }
+
+  var innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
+  innerArcs = Utils.difference(innerArcs, allArcs);
+  addArcs(innerArcs);
+
+  var lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
+  lyr2.name = lyr.name;
+  return lyr2;
+};
+
+MapShaper.convertArcsToLineLayer = function(arcs, data) {
+  var shapes = MapShaper.convertArcsToShapes(arcs),
+      lyr = {
+        geometry_type: 'polyline',
+        shapes: shapes
+      };
+  if (data) {
+    lyr.data = new DataTable(data);
+  }
+  return lyr;
+};
+
+MapShaper.convertArcsToShapes = function(arcs) {
+  return Utils.map(arcs, function(id) {
+    return [[id]];
+  });
+};
+
+MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
+  type = type || 'all';
+  var counts = MapShaper.countArcsInShapes(shapes, arcCount),
+      arcs = [],
+      count;
+
+  for (var i=0, n=counts.length; i<n; i++) {
+    count = counts[i];
+    if (count > 0) {
+      if (type == 'all' || type == 'outer' && count == 1 ||
+          type == 'inner' && count > 1) {
+        arcs.push(i);
+      }
+    }
+  }
+  return arcs;
 };
 
 MapShaper.countArcsInShapes = function(shapes, arcCount) {
