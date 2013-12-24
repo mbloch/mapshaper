@@ -90,6 +90,7 @@ function addGetters(obj, getters) {
 
 function FeatureExpressionContext(arcs) {
   var _shp = new MultiShape(arcs),
+      _self = this,
       _centroid, _innerXY,
       _i, _ids, _bounds;
 
@@ -126,25 +127,25 @@ function FeatureExpressionContext(arcs) {
       var i = arcs.getRetainedInterval(),
           area;
       arcs.setRetainedInterval(0);
-      area = this.area();
+      area = _self.area;
       arcs.setRetainedInterval(i);
       return area;
     },
     centroidX: function() {
       var p = centroid();
-      return p ? p.x : NaN;
+      return p ? p.x : null;
     },
     centroidY: function() {
       var p = centroid();
-      return p ? p.y : NaN;
+      return p ? p.y : null;
     },
     interiorX: function() {
       var p = innerXY();
-      return p ? p.x : NaN;
+      return p ? p.x : null;
     },
     interiorY: function() {
       var p = innerXY();
-      return p ? p.y : NaN;
+      return p ? p.y : null;
     }
   });
 
