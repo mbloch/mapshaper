@@ -2,7 +2,11 @@
 
 ### Introduction
 
-Mapshaper is a program for editing polygon and polyline datasets for mapping. There is a command line interface with commands for topologically consistent simplification, polygon aggregation, attribute field calculation, filtering, splitting, table joins and more. There is a web-based gui focused on interactive simplification online at [mapshaper.org](http://www.mapshaper.org). MapShaper can read and write Shapefile, GeoJSON and [TopoJSON](https://github.com/mbostock/topojson/wiki) files.
+Mapshaper is a program for editing polygon and polyline datasets for mapping. The command line interface has commands for line simplification, polygon aggregation, attribute field calculation, filtering, splitting, table joins and more. The [web-based gui](http://www.mapshaper.org) focuses on interactive simplification.
+
+Mapshaper can read and write Shapefile, GeoJSON and [TopoJSON](https://github.com/mbostock/topojson/wiki) files.
+
+See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for more information about using mapshaper.
 
 ### Installation
 
@@ -10,15 +14,19 @@ Mapshaper requires [Node.js](http://nodejs.org).
 
 With Node installed, you can install the latest release version from the npm registry. Install with the "-g" flag to make the executable scripts available systemwide.
 
-	npm install -g mapshaper
+```bash
+npm install -g mapshaper
+```
 
 To install and run the latest development code from github:
 
-	git clone git@github.com:mbloch/mapshaper.git
-	cd mapshaper
-	npm install
-	bin/mapshaper-gui # use the web interface locally
-	bin/mapshaper     # use the command line tool
+```bash
+git clone git@github.com:mbloch/mapshaper.git
+cd mapshaper
+npm install
+bin/mapshaper-gui # use the web interface locally
+bin/mapshaper     # use the command line tool
+```
 
 ### Interactive tool
 
@@ -35,7 +43,7 @@ Examples
 Simplify counties.shp retaining 10% of removable vertices, export as GeoJSON.
 `mapshaper -p 0.1 --repair counties.shp -f geojson -o counties_simple.shp`
 
-Remove features smaller than ~100 meters using Douglas-Peucker simplification.
+Remove details smaller than ~100 meters using Douglas-Peucker simplification.
 `mapshaper --dp -i 100 states.shp`
 
 Convert counties to states.
@@ -69,9 +77,9 @@ According to Mozilla's [FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html), "The MPL'
 
 ### Acknowledgements
 
-Thanks to [Shan Carter](https://github.com/shancarter) for help designing mapshaper's web interface :)
+Thanks to [Shan Carter](https://github.com/shancarter) for help designing mapshaper's web interface.
 
-And thanks to Mark Harrower for collaborating on the [original MapShaper program](http://mapshaper.com/test/OldMapShaper.swf) at the University of Wisconsin &ndash; Madison.
+Thanks to Mark Harrower for collaborating on the [original MapShaper program](http://mapshaper.com/test/OldMapShaper.swf) at the University of Wisconsin &ndash; Madison.
 
 ### Future development
 
