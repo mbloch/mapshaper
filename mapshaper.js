@@ -9487,10 +9487,17 @@ MapShaper.importDelimStringAsync = function(content, done) {
       });
 };
 
+MapShaper.stringIsNumeric = function(str) {
+  // Number() accepts empty strings
+  // parseFloat() accepts a number followed by other content
+  // Using both for stricter check. TODO consider using regex
+  return !isNaN(parseFloat(str)) && !isNaN(Number(str));
+};
+
 function findNumericFields(obj) {
   var fields = Utils.keys(obj);
   return Utils.filter(fields, function(field) {
-    return !isNaN(parseFloat(obj[field]));
+    return MapShaper.stringIsNumeric(obj[field]);
   });
 }
 
@@ -9526,7 +9533,7 @@ MapShaper.updateRecordTypes = function(records, typeIndex) {
   var typedFields = Utils.keys(typeIndex),
       converters = {
         'string': String,
-        'number': parseFloat
+        'number': Number
       },
       transforms = Utils.map(typedFields, function(f) {
         var type = typeIndex[f],

@@ -5,7 +5,45 @@ function stringifyEqual(a, b) {
   assert.equal(JSON.stringify(a), JSON.stringify(b));
 }
 
-describe('mapshaper-table-import.js', function () {
+describe('mapshaper-table-import.js', function() {
+  describe('stringIsNumeric()', function () {
+    it('identifies decimal numbers', function() {
+      assert.ok(api.stringIsNumeric('-43.2'))
+    })
+
+    it('identifies numbers with spaces', function() {
+      assert.ok(api.stringIsNumeric('-2.0  '))
+      assert.ok(api.stringIsNumeric('  0'))
+    })
+
+    it('identifies scientific notation', function() {
+      assert.ok(api.stringIsNumeric('1.3e3'));
+    })
+
+    it('reject alphabetic words', function() {
+      assert.equal(api.stringIsNumeric('Alphabet'), false)
+    })
+
+    it('identifies hex numbers', function() {
+      assert.ok(api.stringIsNumeric('0xcc'));
+    })
+
+    it('reject empty strings', function() {
+      assert.equal(api.stringIsNumeric(''), false)
+      assert.equal(api.stringIsNumeric(' '), false)
+    })
+
+    it('rejects street addresses', function() {
+      assert.equal(api.stringIsNumeric('312 Orchard St'), false);
+    })
+
+    it('reject dates', function() {
+      assert.equal(api.stringIsNumeric('2013-12-03'), false);
+    })
+
+    // TODO: handle hex numbers, comma-separated numbers, European decimals
+  })
+
   describe('guessDelimiter()', function () {
     it('guesses CSV', function () {
       assert.equal(api.guessDelimiter("a,b\n1,2"), ',');
@@ -48,10 +86,10 @@ describe('mapshaper-table-import.js', function () {
 
   describe('adjustRecordTypes()', function () {
     it('convert numbers by default', function () {
-      var records = [{foo:"0", bar:"a"}],
-          fields = ['foo', 'bar']
+      var records = [{foo:"0", bar:"a", baz: "0xcc", goo: '300 E'}],
+          fields = ['foo', 'bar', 'baz', 'goo']
       api.adjustRecordTypes(records, fields);
-      stringifyEqual(records, [{foo:0, bar:"a"}])
+      stringifyEqual(records, [{foo:0, bar:"a", baz: 0xcc, goo: '300 E'}])
     })
 
     it('protect string-format numbers with type hints', function() {
