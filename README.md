@@ -36,15 +36,12 @@ Browser compatibility: mapshaper works in recent versions of Chrome and Firefox 
 
 ### Command line tool
 
-The `mapshaper` script has been used successfully in OS X, Ubuntu Linux and Windows 8.
+The [Command Reference](https://github.com/mbloch/mapshaper/wiki/Command-Reference) had detailed usage information.
 
 Examples
 
 Simplify counties.shp retaining 10% of removable vertices, export as GeoJSON.
-`mapshaper -p 0.1 --repair counties.shp -f geojson -o counties_simple.shp`
-
-Remove details smaller than ~100 meters using Douglas-Peucker simplification.
-`mapshaper --dp -i 100 states.shp`
+`mapshaper -p 0.1 counties.shp -f geojson -o counties_simple.json`
 
 Convert counties to states.
 `mapshaper --dissolve STATE --copy-fields STATE_NAME counties.shp -o states.shp`
@@ -58,8 +55,7 @@ Generate two new fields using JavaScript.
 Join a csv table to a Shapefile (:str suffix prevents FIPS field from being converted to numbers)
 `mapshaper --join-file demographics.txt --join-keys STATE_FIPS,FIPS:str states.shp`
 
-Read a help message.
-`mapshaper -h`
+The `mapshaper` script has been used successfully in OS X, Ubuntu Linux and Windows 8.
 
 ### Building and testing
 
