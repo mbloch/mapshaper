@@ -63,6 +63,14 @@ describe('data-table.js', function () {
 
     })
 
+    describe('#addIdField()', function () {
+      it('adds 0-indexed id field', function () {
+        var table = new DataTable(3);
+        table.addIdField();
+        assert.deepEqual(table.getRecords(), [{FID:0}, {FID:1}, {FID:2}])
+      })
+    })
+
     describe('#fieldExists()', function() {
       it ('identifies existing fields', function() {
         var table = new DataTable(data1);

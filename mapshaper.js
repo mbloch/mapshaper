@@ -6846,13 +6846,21 @@ var dataTableProto = {
   },
 
   addField: function(name, init) {
-    if (!Utils.isNumber(init) && !Utils.isString(init)) {
-      error("DataTable#addField() requires a string or number for initialization");
+    var useFunction = Utils.isFunction(init);
+    if (!Utils.isNumber(init) && !Utils.isString(init) && !useFunction) {
+      error("DataTable#addField() requires a string, number or function for initialization");
     }
     if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
     if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
-    Utils.forEach(this.getRecords(), function(obj) {
-      obj[name] = init;
+
+    Utils.forEach(this.getRecords(), function(obj, i) {
+      obj[name] = useFunction ? init(obj, i) : init;
+    });
+  },
+
+  addIdField: function() {
+    this.addField('FID', function(obj, i) {
+      return i;
     });
   },
 
@@ -8082,6 +8090,11 @@ MapShaper.exportShp = function(layers, arcData, opts) {
     if (!data) {
       data = new DataTable(layer.shapes.length);
     }
+    // dbfs should have at least one column; add id field if none
+    if (data.getFields().length === 0) {
+      data.addIdField();
+    }
+
     files.push({
         content: obj.shp,
         name: layer.name,

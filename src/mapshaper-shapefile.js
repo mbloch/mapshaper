@@ -57,6 +57,11 @@ MapShaper.exportShp = function(layers, arcData, opts) {
     if (!data) {
       data = new DataTable(layer.shapes.length);
     }
+    // dbfs should have at least one column; add id field if none
+    if (data.getFields().length === 0) {
+      data.addIdField();
+    }
+
     files.push({
         content: obj.shp,
         name: layer.name,
