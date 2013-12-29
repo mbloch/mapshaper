@@ -7,21 +7,29 @@ describe('dbf-writer.js', function () {
 
   describe('Dbf#getFieldInfo()', function () {
     it('integers are identified as type "N"', function () {
-      var data = [{a: 2147483648, b: -2147483649, c: 2147483647, d: -2147483648}];
-      assert.deepEqual(Dbf.getFieldInfo(data, 'a'),
-          {name: 'a', type: 'N', size: 10, decimals: 0});
-      assert.deepEqual(Dbf.getFieldInfo(data, 'b'),
-          {name: 'b', type: 'N', size: 11, decimals: 0});
-      assert.deepEqual(Dbf.getFieldInfo(data, 'c'),
-          {name: 'c', type: 'N', size: 10, decimals: 0});
-      assert.deepEqual(Dbf.getFieldInfo(data, 'd'),
-          {name: 'd', type: 'N', size: 11, decimals: 0});
+      var data = [{a: 2147483648, b: -2147483649, c: 2147483647, d: -2147483648}],
+          info;
+      info = Dbf.getFieldInfo(data, 'a');
+      assert.equal(info.size, 10);
+      assert.equal(info.type, 'N');
+
+      info = Dbf.getFieldInfo(data, 'b');
+      assert.deepEqual(info.size, 11);
+
+      info = Dbf.getFieldInfo(data, 'c');
+      assert.equal(info.size, 10);
+
+      info = Dbf.getFieldInfo(data, 'd');
+      assert.deepEqual(info.size, 11);
     })
 
     it('truncates overflowing strings', function() {
-      var data = [{a: api.Utils.lpad('', 300, 'x')}];
-      assert.deepEqual(Dbf.getFieldInfo(data, 'a'),
-          {name: 'a', type: 'C', size: 255, decimals: 0});
+      var data = [{a: api.Utils.lpad('', 300, 'x')}],
+          info = Dbf.getFieldInfo(data, 'a', 'ascii');
+      assert.equal(info.type, 'C');
+      assert.equal(info.size, 254);
+      assert.equal(info.decimals, 0);
+      assert.equal(info.name, 'a');
     })
   })
 
@@ -51,26 +59,6 @@ describe('dbf-writer.js', function () {
     })
   })
 
-  describe('#discoverStringFieldLength()', function () {
-    it('finds length of string field', function () {
-      var data = [
-        {foo: ''},
-        {foo: 'bar'}
-      ]
-      assert.equal(Dbf.discoverStringFieldLength(data, 'foo'), 4)
-    })
-  })
-
-  describe('#exportRecords()', function () {
-    it('should succeed', function () {
-      var records = [
-        {foo: "abc", bar: -Math.PI, baz: 0},
-        {foo: "arbde", bar: 2300, baz: -45}
-      ]
-      var buf = Dbf.exportRecords(records);
-      // Node.writeFile('out.dbf', buf);
-    })
-  })
 
   describe('#getDecimalFormatter()', function () {
     it('x.x', function () {
@@ -119,6 +107,43 @@ describe('dbf-writer.js', function () {
       var records2 = Dbf.importRecords(Dbf.exportRecords(records));
       assert.deepEqual(records2, records);
     })
-  })
 
+    it('ascii w spaces', function() {
+      // whitespace is stripped from l and r -- is this what we want?
+      var records = [{a: " moon\n"},
+          {a:" \tstars "}];
+      var buf = Dbf.exportRecords(records, 'ascii');
+      var records2 = Dbf.importRecords(buf, 'ascii');
+      assert.deepEqual(records2, [{a:"moon"}, {a:"stars"}]);
+    })
+
+    it('latin1', function() {
+      var records = [{a: "Peçeña México"},
+          {a:"Neuchâtel Baden-Württemberg La Gruyère"}];
+      var buf = Dbf.exportRecords(records, 'latin1');
+      var records2 = Dbf.importRecords(buf, 'latin1');
+      // blanks are removed
+      assert.deepEqual(records2, records);
+    })
+
+    it('gbk', function() {
+      var records = [
+        {a: "简体国语", b: ""},
+        {a: "", b: "foo.;\""}
+      ];
+      var buf = Dbf.exportRecords(records, 'gbk');
+      var records2 = Dbf.importRecords(buf, 'gbk');
+      assert.deepEqual(records2, records);
+    })
+
+    it('utf8', function() {
+      var records = [
+        {a: "简", b: "Peçeña México"},
+        {a: "繁體.", b: ""}
+      ];
+      var buf = Dbf.exportRecords(records, 'utf8');
+      var records2 = Dbf.importRecords(buf, 'utf8');
+      assert.deepEqual(records2, records);
+    })
+  })
 })

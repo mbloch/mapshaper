@@ -1,6 +1,5 @@
 /* @require mapshaper-common, dbf-writer */
 
-
 var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
 
 function DataTable(obj) {
@@ -19,23 +18,18 @@ function DataTable(obj) {
     }
   }
 
-  this.exportAsDbf = function() {
-    return Dbf.exportRecords(records);
+  this.exportAsDbf = function(encoding) {
+    return Dbf.exportRecords(records, encoding);
   };
 
   this.getRecords = function() {
     return records;
   };
-
-  this.size = function() {
-    return records.length;
-  };
 }
 
 var dataTableProto = {
   fieldExists: function(name) {
-    if (this.size() === 0) return false;
-    return name in this.getRecords()[0];
+    return Utils.contains(this.getFields(), name);
   },
 
   addField: function(name, init) {
@@ -69,10 +63,13 @@ var dataTableProto = {
     this._index = null;
   },
 
-  // TODO: improve
   getFields: function() {
-    if (this.size() === 0) return [];
-    return Utils.keys(this.getRecords()[0]);
+    var records = this.getRecords();
+    return records.length > 0 ? Utils.keys(records[0]) : [];
+  },
+
+  size: function() {
+    return this.getRecords().length;
   }
 };
 
@@ -83,8 +80,9 @@ Utils.extend(DataTable.prototype, dataTableProto);
 // to parse the DBF at all in common cases, like importing a Shapefile, editing
 // just the shapes and exporting in Shapefile format.
 //
-function ShapefileTable(buf) {
-  var reader = new DbfReader(buf);
+function ShapefileTable(buf, encoding) {
+  encoding = encoding || 'ascii';
+  var reader = new DbfReader(buf, encoding);
   var table;
 
   function getTable() {
@@ -99,11 +97,15 @@ function ShapefileTable(buf) {
 
   this.exportAsDbf = function() {
     // export original dbf string if records haven't been touched.
-    return buf || table.exportAsDbf();
+    return buf || table.exportAsDbf(encoding);
   };
 
   this.getRecords = function() {
     return getTable().getRecords();
+  };
+
+  this.getFields = function() {
+    return reader ? Utils.pluck(reader.header.fields, 'name') : table.getFields();
   };
 
   this.size = function() {

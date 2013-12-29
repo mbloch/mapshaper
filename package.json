@@ -17,6 +17,7 @@
 	"dependencies": {
 		"optimist": "0.6.x",
 		"open": "~0.0.3",
+		"iconv-lite": "~0.2.11",
 		"csv": "~0.3.6"
 	},
 	"devDependencies": {
