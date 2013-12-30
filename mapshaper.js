@@ -3775,13 +3775,16 @@ BinArray.prototype = {
     return this._idx;
   },
 
-  readCString: function(fixedLen) {
+  readCString: function(fixedLen, asciiOnly) {
     var str = "";
     var count = 0;
     while(!fixedLen || count < fixedLen) {
       var byteVal = this.readUint8();
       count ++;
       if (byteVal == 0) {
+        break;
+      } else if (byteVal > 127 && asciiOnly) {
+        str = null;
         break;
       }
       str += String.fromCharCode(byteVal);
@@ -6463,7 +6466,13 @@ Dbf.importRecords = function(src, encoding) {
 
 Dbf.getStringReaderAscii = function(size) {
   return function(bin) {
-    var str = bin.readCString(size);
+    var require7bit = Env.inNode;
+    var str = bin.readCString(size, require7bit);
+    if (str === null) {
+      stop("DBF file contains non-ascii text data.\n" +
+          "Use the --encoding option with one of these encodings:\n" +
+          MapShaper.getFormattedEncodings());
+    }
     return Utils.trim(str);
   };
 };
@@ -6892,6 +6901,8 @@ Dbf.getStringWriter = function(encoding) {
   error("[Dbf.getStringWriter()] Non-ascii encodings only supported in Node.");
 };
 
+// TODO: handle non-ascii chars. Option: switch to
+// utf8 encoding if non-ascii chars are found.
 Dbf.getStringWriterAscii = function() {
   return function(val) {
     var str = String(val),
