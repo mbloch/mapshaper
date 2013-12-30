@@ -11,7 +11,7 @@ MapShaper.importJoinTable = function(file, opts, done) {
     opts.join_keys[1] = fields.pop();
     opts.join_fields = fields;
     done(table);
-  });
+  }, opts);
 };
 
 MapShaper.joinTableToLayers = function(layers, table, keys, joinFields) {
@@ -82,15 +82,4 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
   }
 
   return hits > 0;
-};
-
-
-MapShaper.importDataTable = function(fname) {
-  var table;
-  if (Utils.endsWith(fname).toLowerCase(), '.dbf') {
-    table = MapShaper.importDbfTable(fname); // assume file was found to exist
-  } else {
-    stop("Unsupported data file:", fname);
-  }
-  return table;
 };

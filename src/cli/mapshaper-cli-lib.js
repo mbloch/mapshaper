@@ -19,6 +19,7 @@ mapshaper-filter
 mapshaper-merge-files
 mapshaper-join
 mapshaper-innerlines
+mapshaper-encodings
 */
 //
 //mapshaper-explode,
@@ -97,6 +98,15 @@ MapShaper.getBasicOptionParser = function() {
 
     .options("precision", {
       describe: "coordinate precision in source units (applied on import)"
+    })
+
+    .options("encoding", {
+      describe: "encoding of text data in Shapefile .dbf file"
+    })
+
+    .options("encodings", {
+      describe: "print list of supported text encodings",
+      'boolean': true
     })
 
     .options("verbose", {
@@ -269,6 +279,10 @@ MapShaper.getOpts = function() {
   }
   if (argv.version) {
     console.log(getVersion());
+    process.exit(0);
+  }
+  if (argv.encodings) {
+    MapShaper.printEncodings();
     process.exit(0);
   }
 
@@ -579,6 +593,10 @@ cli.validateExtraOpts = function(argv) {
     }
   }
 
+  if (argv.encoding) {
+    opts.encoding = cli.validateEncoding(argv.encoding);
+  }
+
   validateJoinOpts(argv, opts);
 
   return opts;
@@ -651,6 +669,16 @@ cli.printRepairMessage = function(info, opts) {
       }
     }
   }
+};
+
+cli.validateEncoding = function(raw) {
+  var enc = raw.replace(/-/, '').toLowerCase();
+  if (!Utils.contains(MapShaper.getEncodings(), enc)) {
+    console.log("[Unsupported encoding:", raw + "]");
+    MapShaper.printEncodings();
+    process.exit(0);
+  }
+  return enc;
 };
 
 function validateCommaSep(str, count) {

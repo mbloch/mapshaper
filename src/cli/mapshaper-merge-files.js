@@ -15,7 +15,7 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
         fmt = importData.info.input_format;
 
     if (fileType == 'shp' && !importData.data) {
-      importData.data = MapShaper.importDbfTable(fname);
+      importData.data = MapShaper.importDbfTable(fname, opts.encoding);
     }
 
     if (fmt != 'geojson' && fmt != 'shapefile') {

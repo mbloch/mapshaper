@@ -71,7 +71,7 @@ MapShaper.exportShp = function(layers, arcData, opts) {
         name: layer.name,
         extension: "shx"
       }, {
-        content: data.exportAsDbf(),
+        content: data.exportAsDbf(opts.encoding),
         name: layer.name,
         extension: "dbf"
       });

@@ -8,7 +8,7 @@ MapShaper.importFromFile = function(fname, opts) {
       content = MapShaper.readGeometryFile(fname, fileType),
       data = MapShaper.importContent(content, fileType, opts);
   if (fileType == 'shp' && data.layers.length == 1) {
-    data.layers[0].data = MapShaper.importDbfTable(fname);
+    data.layers[0].data = MapShaper.importDbfTable(fname, opts.encoding);
   }
   data.info.input_files = [fname];
   return data;

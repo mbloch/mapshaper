@@ -95,7 +95,7 @@ function ShapefileTable(buf, encoding) {
     return table;
   }
 
-  this.exportAsDbf = function() {
+  this.exportAsDbf = function(encoding) {
     // export original dbf string if records haven't been touched.
     return buf || table.exportAsDbf(encoding);
   };

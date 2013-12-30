@@ -1,8 +1,8 @@
 /* @requires mapshaper-data-table */
 
-MapShaper.importTableAsync = function(fname, done) {
+MapShaper.importTableAsync = function(fname, done, opts) {
   if (Utils.endsWith(fname.toLowerCase(), '.dbf')) {
-    done(MapShaper.importDbfTable(fname));
+    done(MapShaper.importDbfTable(fname, opts.encoding));
   } else {
     // assume delimited text file
     // unsupported file types can be detected earlier, during
@@ -48,10 +48,10 @@ MapShaper.parseFieldHeaders = function(fields, index) {
   return parsed;
 };
 
-MapShaper.importDbfTable = function(shpName) {
+MapShaper.importDbfTable = function(shpName, encoding) {
   var dbfName = cli.replaceFileExtension(shpName, 'dbf');
   if (!Node.fileExists(dbfName)) return null;
-  return new ShapefileTable(Node.readFile(dbfName));
+  return new ShapefileTable(Node.readFile(dbfName), encoding);
 };
 
 MapShaper.importDelimTableAsync = function(file, done, typeIndex) {

@@ -4,7 +4,7 @@ MapShaper.getEncodings = function() {
   var iconv = require('iconv-lite');
   iconv.encodingExists('ascii'); // make iconv load its encodings
   return Utils.filter(Utils.keys(iconv.encodings), function(name) {
-    return !(name == 'internal' || name == 'singlebyte' || name == 'table');
+    return !/^(internal|singlebyte|table|cp)/.test(name);
   });
 };
 
@@ -20,4 +20,9 @@ MapShaper.getFormattedEncodings = function() {
     if (i > 0 && i % perLine === 0) str += '\n';
     return str + Utils.rpad(name, padding, ' ');
   }, '');
+};
+
+MapShaper.printEncodings = function() {
+  console.log("Supported encodings:");
+  console.log(MapShaper.getFormattedEncodings());
 };

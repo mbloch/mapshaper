@@ -72,7 +72,7 @@ var Utils = {
   reduce: function(arr, func, val, ctx) {
     var len = arr && arr.length || 0;
     for (var i = 0; i < len; i++) {
-      val = func.call(ctx, val, arr[i]);
+      val = func.call(ctx, val, arr[i], i);
     }
     return val;
   },
@@ -923,6 +923,12 @@ Utils.lpad = function(str, size, pad) {
   return Utils.repeatString(pad, size - str.length) + str;
 };
 
+Utils.rpad = function(str, size, pad) {
+  pad = pad || ' ';
+  str = String(str);
+  return str + Utils.repeatString(pad, size - str.length);
+};
+
 Utils.trim = function(str) {
   return Utils.ltrim(Utils.rtrim(str));
 };
@@ -1263,18 +1269,11 @@ if (inNode) {
     return info;
   };
 
-  /**
-   * @param charset (optional) 'utf8' to read a string; if undefined, returns Buffer
-   * @returns String if charset is provided, *** else Buffer object (node-specific object) ****
-   */
+  // @charset (optional) e.g. 'utf8'
+  // returns string or Buffer if no charset is provided.
+  //
   Node.readFile = function(fname, charset) {
-    try {
-      var content = Node.fs.readFileSync(fname, charset || void 0);
-    } catch(e) {
-      content = "";
-      trace("[Node.readFile()] Error reading file:", fname, "\n\t", e);
-    }
-    return content;
+    return Node.fs.readFileSync(fname, charset || void 0);
   };
 
   Node.writeFile = function(path, content) {
@@ -3583,8 +3582,8 @@ BinArray.bufferToUintArray = function(buf, wordLen) {
   error("BinArray.bufferToUintArray() invalid word length:", wordLen)
 };
 
-BinArray.maxCopySize = function(len, i) {
-  return Math.min(len & 1 || len & 2 || 4, i & 1 || i & 2 || 4);
+BinArray.uintSize = function(i) {
+  return i & 1 || i & 2 || 4;
 };
 
 BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
@@ -3595,8 +3594,11 @@ BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
 
   // When possible, copy buffer data in multi-byte chunks... Added this for faster copying of
   // shapefile data, which is aligned to 32 bits.
-  var wordSize = Math.min(BinArray.maxCopySize(bytes, srcId), BinArray.maxCopySize(bytes, destId)),
-      srcArr = BinArray.bufferToUintArray(src, wordSize),
+  var wordSize = Math.min(BinArray.uintSize(bytes), BinArray.uintSize(srcId),
+      BinArray.uintSize(dest.byteLength), BinArray.uintSize(destId),
+      BinArray.uintSize(src.byteLength));
+
+  var srcArr = BinArray.bufferToUintArray(src, wordSize),
       destArr = BinArray.bufferToUintArray(dest, wordSize),
       count = bytes / wordSize,
       i = srcId / wordSize,
@@ -3609,9 +3611,11 @@ BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
 };
 
 BinArray.toArrayBuffer = function(src) {
-  var dest = new ArrayBuffer(src.length);
-  for (var i = 0, n=src.length; i < n; i++) {
-    dest[i] = src[i];
+  var n = src.length,
+      dest = new ArrayBuffer(n),
+      view = new Uint8Array(dest);
+  for (var i=0; i<n; i++) {
+      view[i] = src[i];
   }
   return dest;
 };
@@ -6442,32 +6446,79 @@ function PathImporter(pointCount, opts) {
 
 
 
-
-var Dbf = {};
-
-Dbf.importRecords = function(src) {
-  return new DbfReader(src).readRows();
-};
-
+//
 // DBF format references:
 // http://www.dbf2002.com/dbf-file-format.html
 // http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
-//
-// TODO: handle non-ascii characters, e.g. multibyte encodings
+// http://www.clicketyclick.dk/databases/xbase/format/index.html
+// http://www.clicketyclick.dk/databases/xbase/format/data_types.html
+
+var Dbf = {};
+
+var RE_UTF8 = /^utf-?8$/i;
+
+Dbf.importRecords = function(src, encoding) {
+  return new DbfReader(src, encoding).readRows();
+};
+
+Dbf.getStringReaderAscii = function(size) {
+  return function(bin) {
+    var str = bin.readCString(size);
+    return Utils.trim(str);
+  };
+};
+
+Dbf.getStringReaderEncoded = function(size, encoding) {
+  var iconv = require('iconv-lite'),
+      buf = new Buffer(size),
+      isUtf8 = RE_UTF8.test(encoding);
+  return function(bin) {
+    var i, c, eos = false;
+    for (i=0; i<size; i++) {
+      c = bin.readUint8();
+      if (c === 0) break;
+      buf[i] = c;
+    }
+    if (i === 0) {
+      str = '';
+    } else if (isUtf8) {
+      str = buf.toString('utf8', 0, i);
+    } else {
+      str = iconv.decode(buf.slice(0, i), encoding);
+    }
+    str = Utils.trim(str);
+    return str;
+  };
+};
+
+Dbf.getStringReader = function(size, encoding) {
+  if (encoding === 'ascii') {
+    return Dbf.getStringReaderAscii(size);
+  } else if (Env.inNode) {
+    // console.log(name)
+    return Dbf.getStringReaderEncoded(size, encoding);
+  }
+  // TODO: user browserify or other means of decoding string data in the browser
+  error("[Dbf.getStringReader()] Non-ascii encodings only supported in Node.");
+};
+
+
 // cf. http://code.google.com/p/stringencoding/
 //
 // @src is a Buffer or ArrayBuffer or filename
 //
-function DbfReader(src) {
+function DbfReader(src, encoding) {
   if (Utils.isString(src)) {
     src = Node.readFile(src);
   }
   var bin = new BinArray(src).littleEndian();
-  this.header = this.readHeader(bin);
+  encoding = encoding || 'ascii';
+  this.header = this.readHeader(bin, encoding);
   this.bin = bin;
   this.recordCount = this.header.recordCount;
   this.fieldCount = this.header.fields.length;
 }
+
 
 DbfReader.prototype.readCol = function(c) {
   var rows = this.header.recordCount,
@@ -6510,7 +6561,7 @@ DbfReader.prototype.readRowCol = function(r, c) {
   return field.reader(this.bin.position(offs));
 };
 
-DbfReader.prototype.readHeader = function(bin) {
+DbfReader.prototype.readHeader = function(bin, encoding) {
   var header = {
     version: bin.readInt8(),
     updateYear: bin.readUint8(),
@@ -6529,7 +6580,7 @@ DbfReader.prototype.readHeader = function(bin) {
   header.fields = [];
   var colOffs = 1; // first column starts on second byte of record
   while (bin.peek() != 0x0D) {
-    var field = this.readFieldHeader(bin);
+    var field = this.readFieldHeader(bin, encoding);
     field.columnOffset = colOffs;
     colOffs += field.size;
     header.fields.push(field);
@@ -6540,27 +6591,20 @@ DbfReader.prototype.readHeader = function(bin) {
   return header;
 };
 
-DbfReader.prototype.getNumberReader = function(size, decimals) {
+Dbf.getNumberReader = function(size, decimals) {
   return function(bin) {
     var str = bin.readCString(size);
     return parseFloat(str);
   };
 };
 
-DbfReader.prototype.getIntegerReader = function() {
+Dbf.getIntegerReader = function() {
   return function(bin) {
     return bin.readInt32();
   };
 };
 
-DbfReader.prototype.getStringReader = function(size) {
-  return function(bin) {
-    var str = bin.readCString(size);
-    return Utils.trim(str);
-  };
-};
-
-DbfReader.prototype.readFieldHeader = function(bin) {
+DbfReader.prototype.readFieldHeader = function(bin, encoding) {
   var field = {
     name: bin.readCString(11),
     type: String.fromCharCode(bin.readUint8()),
@@ -6573,25 +6617,48 @@ DbfReader.prototype.readFieldHeader = function(bin) {
   };
 
   if (field.type == 'C') {
-    field.reader = this.getStringReader(field.size);
+    field.reader = Dbf.getStringReader(field.size, encoding);
   } else if (field.type == 'F' || field.type == 'N') {
-    field.reader = this.getNumberReader(field.size, field.decimals);
+    field.reader = Dbf.getNumberReader(field.size, field.decimals);
   } else if (field.type == 'I') {
-    field.reader = this.getIntegerReader();
+    field.reader = Dbf.getIntegerReader();
+  } else if (field.type == 'L') {
+    field.reader = function(bin) {
+      var c = bin.readCString(field.size),
+          val = null;
+      if (/[ty]/i.test(c)) val = true;
+      else if (/[fn]/i.test(c)) val = false;
+      return val;
+    };
+  } else if (field.type == 'D') {
+    field.reader = function(bin) {
+      var str = bin.readCString(field.size),
+          yr = str.substr(0, 4),
+          mo = str.substr(4, 2),
+          day = str.substr(6, 2);
+      return new Date(Date.UTC(+yr, +mo - 1, +day));
+    };
   } else {
     error("Unsupported DBF field type:", field.type);
   }
   return field;
 };
 
+// export for testing
+MapShaper.dbf = {
+  Dbf: Dbf,
+  DbfReader: DbfReader
+};
 
 
 
-Dbf.exportRecords = function(arr) {
+
+Dbf.exportRecords = function(arr, encoding) {
+  encoding = encoding || 'ascii';
   var fields = Utils.keys(arr[0]);
   var rows = arr.length;
   var fieldData = Utils.map(fields, function(name) {
-    return Dbf.getFieldInfo(arr, name);
+    return Dbf.getFieldInfo(arr, name, encoding);
   });
 
   var headerBytes = Dbf.getHeaderSize(fieldData.length),
@@ -6601,9 +6668,6 @@ Dbf.exportRecords = function(arr) {
   var buffer = new ArrayBuffer(fileBytes);
   var bin = new BinArray(buffer).littleEndian();
   var now = new Date();
-  var writers = Utils.map(fieldData, function(obj) {
-    return Dbf.getFieldWriter(obj, bin);
-  });
 
   // write header
   bin.writeUint8(3);
@@ -6635,13 +6699,10 @@ Dbf.exportRecords = function(arr) {
   }
 
   Utils.forEach(arr, function(rec, i) {
-    var start = bin.position(),
-        info, writer;
+    var start = bin.position();
     bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
-    for (var i=0, n=fieldData.length; i<n; i++) {
-      info = fieldData[i];
-      writer = writers[i];
-      writer(rec[info.name]);
+    for (var j=0, n=fieldData.length; j<n; j++) {
+      fieldData[j].write(i, bin);
     }
     if (bin.position() - start != recordBytes) {
       error("#exportRecords() Error exporting record:", rec);
@@ -6669,41 +6730,96 @@ Dbf.getValidFieldName = function(name) {
   return name.substr(0, 10); // max 10 chars
 };
 
-Dbf.getFieldInfo = function(arr, name) {
+Dbf.initNumericField = function(info, arr, name) {
+  var MAX_FIELD_SIZE = 18,
+      size;
+
+  data = this.getNumericFieldInfo(arr, name);
+  info.decimals = data.decimals;
+  size = Math.max(data.max.toFixed(info.decimals).length,
+      data.min.toFixed(info.decimals).length);
+  if (size > MAX_FIELD_SIZE) {
+    size = MAX_FIELD_SIZE;
+    info.decimals -= size - MAX_FIELD_SIZE;
+    if (info.decimals < 0) {
+      error ("Dbf#getFieldInfo() Out-of-range error.");
+    }
+  }
+  info.size = size;
+
+  var formatter = Dbf.getDecimalFormatter(size, info.decimals);
+  info.write = function(i, bin) {
+    var rec = arr[i],
+        str = formatter(rec[name]);
+    if (str.length < size) {
+      str = Utils.lpad(str, size, ' ');
+    }
+    bin.writeString(str, size);
+  };
+};
+
+Dbf.initBooleanField = function(info, arr, name) {
+  info.size = 1;
+  info.write = function(i, bin) {
+    var val = arr[i][name],
+        c;
+    if (val === true) c = 'T';
+    else if (val === false) c = 'F';
+    else c = '?';
+    bin.writeString(c);
+  };
+};
+
+Dbf.initDateField = function(info, arr, name) {
+  info.size = 8;
+  info.write = function(i, bin) {
+    var d = arr[i][name],
+        str;
+    if (d instanceof Date === false) {
+      str = '00000000';
+    } else {
+      str = Utils.lpad(d.getUTCFullYear(), 4, '0') +
+            Utils.lpad(d.getUTCMonth() + 1, 2, '0') +
+            Utils.lpad(d.getUTCDate(), 2, '0');
+    }
+    bin.writeString(str);
+  };
+};
+
+Dbf.initStringField = function(info, arr, name, encoding) {
+  var formatter = Dbf.getStringWriter(encoding);
+  var maxLen = 0;
+  var values = Utils.map(arr, function(rec) {
+    var buf = formatter(rec[name]);
+    maxLen = Math.max(maxLen, buf.byteLength);
+    return buf;
+  });
+  var size = Math.min(maxLen, 254);
+  info.size = size;
+  info.write = function(i, bin) {
+    var buf = values[i],
+        bytes = Math.min(size, buf.byteLength),
+        idx = bin.position();
+    bin.writeBuffer(buf, bytes, 0);
+    bin.position(idx + size);
+  };
+};
+
+Dbf.getFieldInfo = function(arr, name, encoding) {
   var type = this.discoverFieldType(arr, name),
-      data,
       info = {
         name: name,
+        type: type,
         decimals: 0
       };
-
-  if (type == 'number') {
-    var INTEGER_SUPPORT = false; // Arc doesn't support type I data!
-    var MAX_INT = Math.pow(2, 31) -1,
-        MIN_INT = ~MAX_INT,
-        MAX_NUM = 99999999999999999,
-        MAX_FIELD_SIZE = 19;
-    data = this.getNumericFieldInfo(arr, name);
-    info.decimals = data.decimals;
-    if (!INTEGER_SUPPORT || info.decimals > 0 || data.min < MIN_INT || data.max > MAX_INT) {
-      info.type = 'N';
-      var maxSize = data.max.toFixed(info.decimals).length,
-          minSize = data.min.toFixed(info.decimals).length;
-      info.size = Math.max(maxSize, minSize);
-      if (info.size > MAX_FIELD_SIZE) {
-        info.size = MAX_FIELD_SIZE;
-        info.decimals -= info.size - MAX_FIELD_SIZE;
-        if (info.decimals < 0) {
-          error ("Dbf#getFieldInfo() Out-of-range error.");
-        }
-      }
-    } else {
-      info.type = 'I';
-      info.size = 4;
-    }
-  } else if (type == 'string') {
-    info.type = 'C';
-    info.size = this.discoverStringFieldLength(arr, name);
+  if (type == 'N') {
+    Dbf.initNumericField(info, arr, name);
+  } else if (type == 'C') {
+    Dbf.initStringField(info, arr, name, encoding);
+  } else if (type == 'L') {
+    Dbf.initBooleanField(info, arr, name);
+  } else if (type == 'D') {
+    Dbf.initDateField(info, arr, name);
   } else {
     error("[dbf] Type error exporting field:", name);
   }
@@ -6714,36 +6830,13 @@ Dbf.discoverFieldType = function(arr, name) {
   var val;
   for (var i=0, n=arr.length; i<n; i++) {
     val = arr[i][name];
-    if (Utils.isString(val)) return "string";
-    if (Utils.isNumber(val)) return "number";
-    if (Utils.isBoolean(val)) return "boolean";
+    if (Utils.isString(val)) return "C";
+    if (Utils.isNumber(val)) return "N";
+    if (Utils.isBoolean(val)) return "L";
+    if (val instanceof Date) return "D";
   }
   return "null" ;
 };
-
-Dbf.getFieldWriter = function(obj, bin) {
-  var formatter,
-      writer;
-  if (obj.type == 'C') {
-    writer = function(val) {
-      var str = String(val);
-      bin.writeCString(str, obj.size);
-    };
-  } else if (obj.type == 'N') {
-    formatter = Dbf.getDecimalFormatter(obj.size, obj.decimals);
-    writer = function(val) {
-      var str = formatter(val);
-      bin.writeString(str, obj.size);
-    };
-  } else if (obj.type == 'I') {
-    writer = function(val) {
-      bin.writeInt32(val | 0);
-    };
-  } else {
-    error("Dbf#getFieldWriter() Unsupported DBF type:", obj.type);
-  }
-  return writer;
-}
 
 Dbf.getDecimalFormatter = function(size, decimals) {
   // TODO: find better way to handle nulls
@@ -6761,7 +6854,6 @@ Dbf.getNumericFieldInfo = function(arr, name) {
       limit = 15,
       min = Infinity,
       max = -Infinity,
-      validCount = 0,
       k = 1,
       val, decimals;
   for (var i=0, n=arr.length; i<n; i++) {
@@ -6770,7 +6862,6 @@ Dbf.getNumericFieldInfo = function(arr, name) {
       continue;
     }
     decimals = 0;
-    validCount++;
     if (val < min) min = val;
     if (val > max) max = val;
     while (val * k % 1 !== 0) {
@@ -6791,19 +6882,36 @@ Dbf.getNumericFieldInfo = function(arr, name) {
   };
 };
 
-Dbf.discoverStringFieldLength = function(arr, name) {
-  var maxlen = 0,
-      len;
-  for (var i=0, n=arr.length; i<n; i++) {
-    len = String(arr[i][name]).length;
-    if (len > maxlen) {
-      maxlen = len;
-    }
+// Return function to convert a JS str to an ArrayBuffer containing encoded str.
+Dbf.getStringWriter = function(encoding) {
+  if (encoding === 'ascii') {
+    return Dbf.getStringWriterAscii();
+  } else if (Env.inNode) {
+    return Dbf.getStringWriterEncoded(encoding);
   }
-  if (maxlen > 254) maxlen = 254;
-  return maxlen + 1;
+  error("[Dbf.getStringWriter()] Non-ascii encodings only supported in Node.");
 };
 
+Dbf.getStringWriterAscii = function() {
+  return function(val) {
+    var str = String(val),
+        n = str.length,
+        dest = new ArrayBuffer(n),
+        view = new Uint8ClampedArray(dest);
+    for (var i=0; i<n; i++) {
+      view[i] = str.charCodeAt(i);
+    }
+    return dest;
+  };
+};
+
+Dbf.getStringWriterEncoded = function(encoding) {
+  var iconv = require('iconv-lite');
+  return function(val) {
+    var buf = iconv.encode(val, encoding);
+    return BinArray.toArrayBuffer(buf);
+  };
+};
 
 
 
@@ -6826,23 +6934,18 @@ function DataTable(obj) {
     }
   }
 
-  this.exportAsDbf = function() {
-    return Dbf.exportRecords(records);
+  this.exportAsDbf = function(encoding) {
+    return Dbf.exportRecords(records, encoding);
   };
 
   this.getRecords = function() {
     return records;
   };
-
-  this.size = function() {
-    return records.length;
-  };
 }
 
 var dataTableProto = {
   fieldExists: function(name) {
-    if (this.size() === 0) return false;
-    return name in this.getRecords()[0];
+    return Utils.contains(this.getFields(), name);
   },
 
   addField: function(name, init) {
@@ -6876,10 +6979,13 @@ var dataTableProto = {
     this._index = null;
   },
 
-  // TODO: improve
   getFields: function() {
-    if (this.size() === 0) return [];
-    return Utils.keys(this.getRecords()[0]);
+    var records = this.getRecords();
+    return records.length > 0 ? Utils.keys(records[0]) : [];
+  },
+
+  size: function() {
+    return this.getRecords().length;
   }
 };
 
@@ -6890,8 +6996,9 @@ Utils.extend(DataTable.prototype, dataTableProto);
 // to parse the DBF at all in common cases, like importing a Shapefile, editing
 // just the shapes and exporting in Shapefile format.
 //
-function ShapefileTable(buf) {
-  var reader = new DbfReader(buf);
+function ShapefileTable(buf, encoding) {
+  encoding = encoding || 'ascii';
+  var reader = new DbfReader(buf, encoding);
   var table;
 
   function getTable() {
@@ -6904,13 +7011,17 @@ function ShapefileTable(buf) {
     return table;
   }
 
-  this.exportAsDbf = function() {
+  this.exportAsDbf = function(encoding) {
     // export original dbf string if records haven't been touched.
-    return buf || table.exportAsDbf();
+    return buf || table.exportAsDbf(encoding);
   };
 
   this.getRecords = function() {
     return getTable().getRecords();
+  };
+
+  this.getFields = function() {
+    return reader ? Utils.pluck(reader.header.fields, 'name') : table.getFields();
   };
 
   this.size = function() {
@@ -8104,7 +8215,7 @@ MapShaper.exportShp = function(layers, arcData, opts) {
         name: layer.name,
         extension: "shx"
       }, {
-        content: data.exportAsDbf(),
+        content: data.exportAsDbf(opts.encoding),
         name: layer.name,
         extension: "dbf"
       });
@@ -9429,9 +9540,9 @@ function groupPathsByShape(paths, pathData, shapeCount) {
 
 
 
-MapShaper.importTableAsync = function(fname, done) {
+MapShaper.importTableAsync = function(fname, done, opts) {
   if (Utils.endsWith(fname.toLowerCase(), '.dbf')) {
-    done(MapShaper.importDbfTable(fname));
+    done(MapShaper.importDbfTable(fname, opts.encoding));
   } else {
     // assume delimited text file
     // unsupported file types can be detected earlier, during
@@ -9477,10 +9588,10 @@ MapShaper.parseFieldHeaders = function(fields, index) {
   return parsed;
 };
 
-MapShaper.importDbfTable = function(shpName) {
+MapShaper.importDbfTable = function(shpName, encoding) {
   var dbfName = cli.replaceFileExtension(shpName, 'dbf');
   if (!Node.fileExists(dbfName)) return null;
-  return new ShapefileTable(Node.readFile(dbfName));
+  return new ShapefileTable(Node.readFile(dbfName), encoding);
 };
 
 MapShaper.importDelimTableAsync = function(file, done, typeIndex) {
@@ -9575,7 +9686,7 @@ MapShaper.importFromFile = function(fname, opts) {
       content = MapShaper.readGeometryFile(fname, fileType),
       data = MapShaper.importContent(content, fileType, opts);
   if (fileType == 'shp' && data.layers.length == 1) {
-    data.layers[0].data = MapShaper.importDbfTable(fname);
+    data.layers[0].data = MapShaper.importDbfTable(fname, opts.encoding);
   }
   data.info.input_files = [fname];
   return data;
@@ -10758,7 +10869,7 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
         fmt = importData.info.input_format;
 
     if (fileType == 'shp' && !importData.data) {
-      importData.data = MapShaper.importDbfTable(fname);
+      importData.data = MapShaper.importDbfTable(fname, opts.encoding);
     }
 
     if (fmt != 'geojson' && fmt != 'shapefile') {
@@ -10919,7 +11030,7 @@ MapShaper.importJoinTable = function(file, opts, done) {
     opts.join_keys[1] = fields.pop();
     opts.join_fields = fields;
     done(table);
-  });
+  }, opts);
 };
 
 MapShaper.joinTableToLayers = function(layers, table, keys, joinFields) {
@@ -10990,17 +11101,6 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
   }
 
   return hits > 0;
-};
-
-
-MapShaper.importDataTable = function(fname) {
-  var table;
-  if (Utils.endsWith(fname).toLowerCase(), '.dbf') {
-    table = MapShaper.importDbfTable(fname); // assume file was found to exist
-  } else {
-    stop("Unsupported data file:", fname);
-  }
-  return table;
 };
 
 
@@ -11131,6 +11231,36 @@ MapShaper.countArcsInShapes = function(shapes, arcCount) {
 
 
 
+
+MapShaper.getEncodings = function() {
+  var iconv = require('iconv-lite');
+  iconv.encodingExists('ascii'); // make iconv load its encodings
+  return Utils.filter(Utils.keys(iconv.encodings), function(name) {
+    return !/^(internal|singlebyte|table|cp)/.test(name);
+  });
+};
+
+MapShaper.getFormattedEncodings = function() {
+  var encodings = MapShaper.getEncodings(),
+      longest = Utils.reduce(encodings, function(len, str) {
+        return Math.max(len, str.length);
+      }, 0),
+      padding = longest + 2,
+      perLine = Math.floor(80 / padding);
+  encodings.sort();
+  return Utils.reduce(encodings, function(str, name, i) {
+    if (i > 0 && i % perLine === 0) str += '\n';
+    return str + Utils.rpad(name, padding, ' ');
+  }, '');
+};
+
+MapShaper.printEncodings = function() {
+  console.log("Supported encodings:");
+  console.log(MapShaper.getFormattedEncodings());
+};
+
+
+
 //
 //mapshaper-explode,
 
@@ -11208,6 +11338,15 @@ MapShaper.getBasicOptionParser = function() {
 
     .options("precision", {
       describe: "coordinate precision in source units (applied on import)"
+    })
+
+    .options("encoding", {
+      describe: "encoding of text data in Shapefile .dbf file"
+    })
+
+    .options("encodings", {
+      describe: "print list of supported text encodings",
+      'boolean': true
     })
 
     .options("verbose", {
@@ -11380,6 +11519,10 @@ MapShaper.getOpts = function() {
   }
   if (argv.version) {
     console.log(getVersion());
+    process.exit(0);
+  }
+  if (argv.encodings) {
+    MapShaper.printEncodings();
     process.exit(0);
   }
 
@@ -11690,6 +11833,10 @@ cli.validateExtraOpts = function(argv) {
     }
   }
 
+  if (argv.encoding) {
+    opts.encoding = cli.validateEncoding(argv.encoding);
+  }
+
   validateJoinOpts(argv, opts);
 
   return opts;
@@ -11762,6 +11909,16 @@ cli.printRepairMessage = function(info, opts) {
       }
     }
   }
+};
+
+cli.validateEncoding = function(raw) {
+  var enc = raw.replace(/-/, '').toLowerCase();
+  if (!Utils.contains(MapShaper.getEncodings(), enc)) {
+    console.log("[Unsupported encoding:", raw + "]");
+    MapShaper.printEncodings();
+    process.exit(0);
+  }
+  return enc;
 };
 
 function validateCommaSep(str, count) {
