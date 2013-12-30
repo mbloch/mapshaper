@@ -13,6 +13,8 @@ describe('dbf-reader.js', function () {
       s3 = "简体国语",
       s4 = "繁體國語",
       s5 = "Neuchâtel Baden-Württemberg La Gruyère",
+      s6 = "ひたちなか市",
+      s7 = "西蒲原郡弥彦村",
       ascii = Utils.repeat(127, function(i) {return String.fromCharCode(i+1)}).join('');
 
   describe('#readRows', function () {
@@ -37,6 +39,18 @@ describe('dbf-reader.js', function () {
 
     it("gb2312", function() {
       assert.equal(rows("gb2312.dbf", 'gb2312')[0].NAME, s3);
+    })
+
+    it("shiftjis", function() {
+      var records = rows("shiftjis.dbf", 'shiftjis');
+      assert.equal(records[0].NAME, s6);
+      assert.equal(records[1].NAME, s7);
+    })
+
+    it("eucjp", function() {
+      var records = rows("eucjp.dbf", 'eucjp');
+      assert.equal(records[0].NAME, s6);
+      assert.equal(records[1].NAME, s7);
     })
   })
 

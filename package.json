@@ -18,6 +18,7 @@
 		"optimist": "0.6.x",
 		"open": "~0.0.3",
 		"iconv-lite": "~0.2.11",
+		"jconv": "~0.1.4",
 		"csv": "~0.3.6"
 	},
 	"devDependencies": {

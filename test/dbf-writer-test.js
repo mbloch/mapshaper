@@ -179,5 +179,18 @@ describe('dbf-writer.js', function () {
       var records2 = Dbf.importRecords(buf, 'utf8');
       assert.deepEqual(records2, records);
     })
+
+    it('shiftjis', function() {
+      var records = [
+        {a: "うるま市"},
+        {a: "常陸那珂"},
+        {a: "南アルプス市"},
+        {a: "English words and punctuation,;.-'\""}
+      ];
+      var buf = Dbf.exportRecords(records, 'shiftjis');
+      var records2 = Dbf.importRecords(buf, 'shiftjis');
+      assert.deepEqual(records2, records);
+    })
+
   })
 })
