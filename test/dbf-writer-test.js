@@ -47,7 +47,7 @@ describe('dbf-writer.js', function () {
         {foo: ''},
         {foo: 'bar'}
       ]
-      assert.equal(Dbf.discoverFieldType(data, 'foo'), 'string')
+      assert.equal(Dbf.discoverFieldType(data, 'foo'), 'C')
     })
     it('identifies numeric type', function() {
        var data = [
@@ -55,7 +55,19 @@ describe('dbf-writer.js', function () {
         {foo: NaN},
         {foo: 0}
       ]
-      assert.equal(Dbf.discoverFieldType(data, 'foo'), 'number')
+      assert.equal(Dbf.discoverFieldType(data, 'foo'), 'N')
+    })
+    it('identifies Date type', function() {
+      var data = [
+        {foo: new Date()}
+      ];
+      assert.equal(Dbf.discoverFieldType(data, 'foo'), 'D')
+    })
+    it('identifies boolean type', function() {
+      var data = [
+        {foo: false}
+      ];
+      assert.equal(Dbf.discoverFieldType(data, 'foo'), 'L')
     })
   })
 
@@ -90,11 +102,33 @@ describe('dbf-writer.js', function () {
   })
 
   describe('roundtrip: records -> export -> import -> records', function() {
-    it('happy path data', function() {
+    it('numbers and ascii text', function() {
       var records = [
         {a: -1200, b: 0.3, c: 'Mexico City'},
         {a: 0, b: 0, c: 'Jerusalem'},
         {a: 20000, b: -0.00000000001, c: ''}
+      ];
+
+      var buf = Dbf.exportRecords(records);
+      var records2 = Dbf.importRecords(buf);
+      assert.deepEqual(records2, records);
+    })
+
+    it('dates', function() {
+      var records = [
+        {a: new Date(Date.UTC(2013, 0, 1))},
+        {a: new Date(Date.UTC(1900, 11, 31))}
+      ];
+      var buf = Dbf.exportRecords(records);
+      var records2 = Dbf.importRecords(buf);
+      assert.deepEqual(records2, records);
+    })
+
+    it('booleans', function() {
+      var records = [
+        {a: true},
+        {a: false},
+        {a: null}
       ];
 
       var buf = Dbf.exportRecords(records);
