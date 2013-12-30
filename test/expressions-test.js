@@ -21,16 +21,16 @@ describe('mapshaper-expressions.js', function () {
     })
   })
 
+  // Feature expressions are tested in field-calculator-test.js and filter-test.js
+  /*
   describe('compileFeatureExpression()', function() {
     describe('data tests', function() {
-
     })
 
-    // Geometry is more thoroughly tested in shape-geom-test.js
     describe('polygon tests', function() {
-
     })
   })
+  */
 
 
   describe('compileLayerExpression()', function () {

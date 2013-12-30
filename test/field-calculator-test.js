@@ -135,7 +135,6 @@ describe('mapshaper-field-calculator.js', function () {
         assert.deepEqual(lyr.data.getRecords(), [{bb: [1, 2, 2, 3]}, {bb: [1, 1, 3, 3]}, {bb: []}])
       })
 
-
     })
 
   })

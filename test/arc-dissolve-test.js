@@ -2,7 +2,7 @@ var assert = require('assert'),
     api = require("../"),
     utils = api.Utils;
 
-describe('mapshaper-arc-dissolve2.js', function () {
+describe('mapshaper-arc-dissolve.js', function () {
 
   describe('dissolveArcs()', function () {
 
@@ -60,7 +60,7 @@ describe('mapshaper-arc-dissolve2.js', function () {
       })
     })
 
-    describe('shape 2', function () {
+    describe('shape 2 tests', function () {
 
       //       e
       //      /|\
@@ -76,6 +76,7 @@ describe('mapshaper-arc-dissolve2.js', function () {
       //
       //   abc,  cda,  ae,   efg, gc,   ghe
       //   0/-1, 1/-2, 2/-3, 3,   4/-5, 5
+      //
       var arcs = [[[3, 4, 3], [4, 3, 2]],
           [[3, 2, 3], [2, 3, 4]],
           [[3, 3], [4, 5]],
@@ -94,16 +95,14 @@ describe('mapshaper-arc-dissolve2.js', function () {
         assert.deepEqual(lyr2.shapes, [[[0]]]);
       })
 
-      it('dissolve into 2', function() {
+      it('dissolve into two groups', function() {
 
         var lyr = {
               geometry_type: 'polygon',
               data: new api.data.DataTable([{foo: 1}, {foo: 1}, {foo: 2}]),
               shapes: [[[0, 1]], [[2, 3, 4, -1]], [[5, -3, -2, -5]]]
             };
-        // var lyr2 = api.dissolve(lyr, arcData, null);
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
-        //assert.deepEqual(lyr2.shapes, [[[3, 5]]]);
         assert.deepEqual(lyr2.shapes, [[[1, 2, 3, 4]], [[5, -3, -2, -5]]]);
         var arcData2 = api.dissolveArcs([lyr2], arcData);
         assert.equal(arcData2.size(), 3)
