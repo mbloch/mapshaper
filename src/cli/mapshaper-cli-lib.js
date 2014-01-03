@@ -198,7 +198,7 @@ MapShaper.getExtraOptionParser = function(optimist) {
   })
 
   .options("subdivide", {
-    describe: "Recursively divide a layer with a boolean JS expression"
+    describe: "recursively divide a layer with a boolean JS expression"
   })
 
   .options("dissolve", {
@@ -258,7 +258,6 @@ MapShaper.getExtraOptionParser = function(optimist) {
     describe: "output polyline layers containing shared polygon boundaries",
     'boolean': true
   })
-
   ;
 };
 

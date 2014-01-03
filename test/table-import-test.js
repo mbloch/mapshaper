@@ -5,6 +5,10 @@ function stringifyEqual(a, b) {
   assert.equal(JSON.stringify(a), JSON.stringify(b));
 }
 
+function fixPath(p) {
+  return api.Node.path.join(__dirname, p);
+}
+
 describe('mapshaper-table-import.js', function() {
   describe('stringIsNumeric()', function () {
     it('identifies decimal numbers', function() {
@@ -82,6 +86,52 @@ describe('mapshaper-table-import.js', function() {
       assert.deepEqual(fields, ['count', 'other']);
       assert.deepEqual(index, {count: 'number', other: 'number'})
     })
+
+    it('accept inconsistent type hints', function () {
+      var fields = "fips,count,fips:str".split(',');
+      var index = {};
+      fields = api.parseFieldHeaders(fields, index);
+      assert.deepEqual(fields, ['fips', 'count', 'fips']);
+      assert.deepEqual(index, {fips: 'string'})
+    })
+
+    it('accept inconsistent type hints 2', function () {
+      var fields = "fips:str,count,fips".split(',');
+      var index = {};
+      fields = api.parseFieldHeaders(fields, index);
+      assert.deepEqual(fields, ['fips', 'count', 'fips']);
+      assert.deepEqual(index, {fips: 'string'})
+    })
+
+  })
+
+  describe('importJoinTable', function () {
+    it('import csv w/ typed key', function (done) {
+      var opts = {
+        join_keys: ['KEY1', 'FIPS:str'],
+        join_fields: null
+      }
+      api.importJoinTable(fixPath("test_data/two_states.csv"), opts,
+          function(table) {
+            var records = table.getRecords(),
+                fields = table.getFields();
+            fields.sort();
+            assert.deepEqual(fields, ['FIPS', 'LAT', 'LONG', 'STATE', 'STATE_NAME'])
+            assert.deepEqual(records[0], {
+              STATE_NAME: 'Oregon',
+              FIPS: '41',
+              STATE: 'OR',
+              LAT: 43.94,
+              LONG: -120.55
+            })
+            // make sure FIPS is a string
+            // deepEqual() doesn't use strict equality
+            assert.ok(api.Utils.isString(records[0].FIPS))
+            assert.ok(api.Utils.isNumber(records[0].LAT))
+            done();
+          })
+    })
+
   })
 
   describe('adjustRecordTypes()', function () {

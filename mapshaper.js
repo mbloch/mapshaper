@@ -11084,11 +11084,18 @@ MapShaper.extendDataTable = function(dest, src, validateFields) {
 
 MapShaper.importJoinTable = function(file, opts, done) {
   MapShaper.importTableAsync(file, function(table) {
-    var fields = opts.join_fields || [];
+    var fields = opts.join_fields || table.getFields(),
+        keys = opts.join_keys;
+    if (!Utils.isArray(keys) || keys.length != 2) {
+      error("importJointTable() Invalid join keys:", keys);
+    }
+    // this may cause duplicate field name with inconsistent type hints
+    // adjustRecordTypes() should handle this case
     fields.push(opts.join_keys[1]);
     // convert data types based on type hints and numeric csv fields
+    // SIDE EFFECT: type hints are removed from field names
     fields = MapShaper.adjustRecordTypes(table.getRecords(), fields);
-    // SIDE EFFECTS: type hints are removed from field names
+    // replace foreign key in case original contained type hint
     opts.join_keys[1] = fields.pop();
     opts.join_fields = fields;
     done(table);
