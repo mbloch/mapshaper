@@ -165,7 +165,7 @@ MapShaper.getHiddenOptionParser = function(optimist) {
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
 
-  .options("join-file", {
+  .options("join", {
     describe: "join a dbf or delimited text file to the imported shapes"
   })
 
@@ -692,7 +692,7 @@ function validateCommaSep(str, count) {
 }
 
 function validateJoinOpts(argv, opts) {
-  var file = argv['join-file'],
+  var file = argv.join,
       fields = argv['join-fields'],
       keys = argv['join-keys'],
       includeArr, keyArr;
@@ -702,7 +702,7 @@ function validateJoinOpts(argv, opts) {
   if (Utils.some("shp,xls,xlsx".split(','), function(suff) {
     return Utils.endsWith(file, suff);
   })) {
-    error("--join-file currently only supports dbf and csv files");
+    error("--join currently only supports dbf and csv files");
   }
 
   if (!Node.fileExists(file)) {
