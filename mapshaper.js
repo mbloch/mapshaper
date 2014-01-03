@@ -9674,6 +9674,7 @@ MapShaper.importDelimStringAsync = function(content, done) {
 };
 
 MapShaper.stringIsNumeric = function(str) {
+  str = MapShaper.cleanNumber(str);
   // Number() accepts empty strings
   // parseFloat() accepts a number followed by other content
   // Using both for stricter check. TODO consider using regex
@@ -9715,11 +9716,19 @@ MapShaper.adjustRecordTypes = function(records, rawFields) {
   return fields;
 };
 
+MapShaper.cleanNumber = function(str) {
+  return str.replace(/,/g, '');
+};
+
+MapShaper.parseNumber = function(str) {
+  return Number(MapShaper.cleanNumber(str));
+};
+
 MapShaper.updateRecordTypes = function(records, typeIndex) {
   var typedFields = Utils.keys(typeIndex),
       converters = {
         'string': String,
-        'number': Number
+        'number': MapShaper.parseNumber
       },
       transforms = Utils.map(typedFields, function(f) {
         var type = typeIndex[f],
@@ -11444,7 +11453,7 @@ MapShaper.getHiddenOptionParser = function(optimist) {
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
 
-  .options("join-file", {
+  .options("join", {
     describe: "join a dbf or delimited text file to the imported shapes"
   })
 
@@ -11971,7 +11980,7 @@ function validateCommaSep(str, count) {
 }
 
 function validateJoinOpts(argv, opts) {
-  var file = argv['join-file'],
+  var file = argv.join,
       fields = argv['join-fields'],
       keys = argv['join-keys'],
       includeArr, keyArr;
@@ -11981,7 +11990,7 @@ function validateJoinOpts(argv, opts) {
   if (Utils.some("shp,xls,xlsx".split(','), function(suff) {
     return Utils.endsWith(file, suff);
   })) {
-    error("--join-file currently only supports dbf and csv files");
+    error("--join currently only supports dbf and csv files");
   }
 
   if (!Node.fileExists(file)) {

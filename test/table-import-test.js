@@ -20,6 +20,11 @@ describe('mapshaper-table-import.js', function() {
       assert.ok(api.stringIsNumeric('  0'))
     })
 
+    it('identifies numbers with comma delimiters', function() {
+      assert.ok(api.stringIsNumeric('3,211'))
+      assert.ok(api.stringIsNumeric('-2,000,000.0  '))
+    })
+
     it('identifies scientific notation', function() {
       assert.ok(api.stringIsNumeric('1.3e3'));
     })
@@ -136,10 +141,10 @@ describe('mapshaper-table-import.js', function() {
 
   describe('adjustRecordTypes()', function () {
     it('convert numbers by default', function () {
-      var records = [{foo:"0", bar:"a", baz: "0xcc", goo: '300 E'}],
+      var records = [{foo:"0", bar:"4,000,300", baz: "0xcc", goo: '300 E'}],
           fields = ['foo', 'bar', 'baz', 'goo']
       api.adjustRecordTypes(records, fields);
-      stringifyEqual(records, [{foo:0, bar:"a", baz: 0xcc, goo: '300 E'}])
+      stringifyEqual(records, [{foo:0, bar:4000300, baz: 0xcc, goo: '300 E'}])
     })
 
     it('protect string-format numbers with type hints', function() {

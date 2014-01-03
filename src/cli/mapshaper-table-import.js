@@ -72,6 +72,7 @@ MapShaper.importDelimStringAsync = function(content, done) {
 };
 
 MapShaper.stringIsNumeric = function(str) {
+  str = MapShaper.cleanNumber(str);
   // Number() accepts empty strings
   // parseFloat() accepts a number followed by other content
   // Using both for stricter check. TODO consider using regex
@@ -113,11 +114,19 @@ MapShaper.adjustRecordTypes = function(records, rawFields) {
   return fields;
 };
 
+MapShaper.cleanNumber = function(str) {
+  return str.replace(/,/g, '');
+};
+
+MapShaper.parseNumber = function(str) {
+  return Number(MapShaper.cleanNumber(str));
+};
+
 MapShaper.updateRecordTypes = function(records, typeIndex) {
   var typedFields = Utils.keys(typeIndex),
       converters = {
         'string': String,
-        'number': Number
+        'number': MapShaper.parseNumber
       },
       transforms = Utils.map(typedFields, function(f) {
         var type = typeIndex[f],
