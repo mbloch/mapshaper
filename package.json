@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.1.14",
+	"version": "0.1.15",
 	"description": "A tool for editing polygon and polyline datasets for mapping.",
 	"keywords": ["shapefile","topojson","geojson","cartography","simplification","topology"],
 	"author": "Matthew Bloch <masiyou@gmail.com>",

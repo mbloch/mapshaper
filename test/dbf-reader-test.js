@@ -93,7 +93,5 @@ describe('dbf-reader.js', function () {
       assert.equal(test(s4, 'utf8'), s4);
       assert.equal(test(ascii, 'utf8'), ascii);
     })
-
   });
-
 })
