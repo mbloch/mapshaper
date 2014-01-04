@@ -62,6 +62,15 @@ describe('mapshaper-field-calculator.js', function () {
       assert.deepEqual(lyr.data.getRecords(), [{parts: 2}, {parts: 0}]);
     })
 
+    it('handle null properties', function () {
+      var lyr = {
+        shapes: [null, null],
+        data: new api.data.DataTable([null, {'a': 13}])
+      };
+      api.evaluate(lyr, nullArcs, "FID=$.id");
+      assert.deepEqual(lyr.data.getRecords(), [{FID: 0}, {a: 13, FID: 1}]);
+    })
+
     it('rename a field', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
@@ -70,6 +79,16 @@ describe('mapshaper-field-calculator.js', function () {
       };
       api.evaluate(lyr, nullArcs, "bar = foo, delete foo");
       assert.deepEqual(records, [{bar: 'mice'}, {bar: 'beans'}]);
+    })
+
+    it('data record is available as $.properties', function () {
+      var records = [{foo:'mice'}, {foo:'beans'}];
+      var lyr = {
+        shapes: [],
+        data: new api.data.DataTable(records)
+      };
+      api.evaluate(lyr, nullArcs, "valid = $.properties.foo === foo");
+      assert.deepEqual(records, [{foo: 'mice', valid: true}, {foo: 'beans', valid: true}]);
     })
 
     it('use Math.sqrt() to transform a field', function () {

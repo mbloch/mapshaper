@@ -24,10 +24,10 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
 
 MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
   if (arcs instanceof ArcDataset === false) error("[compileFeatureExpression()] Missing ArcDataset;", arcs);
-  var newFields = exp.match(/[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g) || [],
-      env = new FeatureExpressionContext(arcs),
+  var newFields = exp.match(/[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g) || null,
+      env = {$: new FeatureExpressionContext(arcs)},
       func;
-
+  hideGlobals(env);
   exp = MapShaper.removeExpressionSemicolons(exp);
   try {
     func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
@@ -40,15 +40,29 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
     var shape = shapes[shapeId],
         record = records[shapeId],
         value, f;
-    for (var i=0; i<newFields.length; i++) {
-      f = newFields[i];
-      if (f in record === false) {
-        record[f] = null;
+
+    if (!record) {
+      record = {};
+      if (newFields) {
+        // add (empty) record to data table if there's an assignment
+        records[shapeId] = record;
       }
     }
-    env.__setShape(shape, shapeId);
+
+    // initialize new fields to null so assignments work
+    if (newFields) {
+      for (var i=0; i<newFields.length; i++) {
+        f = newFields[i];
+        if (f in record === false) {
+          record[f] = null;
+        }
+      }
+    }
+
+    env.$.properties = record;
+    env.$.__setShape(shape, shapeId);
     try {
-      value = func.call(env, record, env);
+      value = func.call(null, record, env);
     } catch(e) {
       stop(e);
     }
@@ -93,9 +107,6 @@ function FeatureExpressionContext(arcs) {
       _self = this,
       _centroid, _innerXY,
       _i, _ids, _bounds;
-
-  this.$ = this;
-  hideGlobals(this);
 
   // TODO: add methods:
   // isClosed / isOpen

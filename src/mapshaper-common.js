@@ -4,8 +4,13 @@ var MapShaper = {};
 
 // TODO: adapt to run in browser
 function stop() {
-  message.apply(null, Utils.toArray(arguments));
-  process.exit(1);
+  var argArr = Utils.toArray(arguments);
+  if (MapShaper.LOGGING) {
+    message.apply(null, argArr);
+    process.exit(1);
+  } else {
+    error.apply(null, argArr);
+  }
 }
 
 function message() {
