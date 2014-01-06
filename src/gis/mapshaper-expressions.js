@@ -14,7 +14,7 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
     var value;
     env.__setLayer(lyr);
     try {
-      value = func.call(env, env);
+      value = func.call(null, env);
     } catch(e) {
       stop(e);
     }
@@ -24,10 +24,12 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
 
 MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
   if (arcs instanceof ArcDataset === false) error("[compileFeatureExpression()] Missing ArcDataset;", arcs);
-  var newFields = exp.match(/[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g) || null,
-      env = {$: new FeatureExpressionContext(arcs)},
+  var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
+      newFields = exp.match(RE_ASSIGNEE) || null,
+      env = {},
       func;
   hideGlobals(env);
+  env.$ = new FeatureExpressionContext(arcs);
   exp = MapShaper.removeExpressionSemicolons(exp);
   try {
     func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
@@ -88,12 +90,10 @@ MapShaper.removeExpressionSemicolons = function(exp) {
 function hideGlobals(obj) {
   // Can hide global properties during expression evaluation this way
   // (is this worth doing?)
-  Utils.extend(obj, {
-    global: null,
-    window: null,
-    setTimeout: null,
-    setInterval: null
-  });
+  for (var key in this) {
+    obj[key] = null;
+  }
+  obj.console = console;
 }
 
 function addGetters(obj, getters) {
