@@ -9783,7 +9783,6 @@ MapShaper.readGeometryFile = function(fname, fileType) {
 
 
 
-
 MapShaper.dissolveLayers = function(layers) {
   T.start();
   if (!Utils.isArray(layers)) error ("[dissolveLayers()] Expected an array of layers");
@@ -9816,7 +9815,7 @@ MapShaper.dissolveLayer = function(lyr, arcs, dissolve, opts) {
 };
 
 // Generate a dissolved layer
-// @field name of dissolve field or null
+// @field Name of data field to dissolve on or null to dissolve all polygons
 //
 MapShaper.dissolve = function(lyr, arcs, field, opts) {
   var shapes = lyr.shapes,
@@ -9867,6 +9866,8 @@ MapShaper.dissolve = function(lyr, arcs, field, opts) {
   return dissolveLyr;
 };
 
+// First pass -- identify pairs of segments that can be dissolved
+//
 function dissolveFirstPass(shapes, getKey) {
   var groups = [],
       largeGroups = [],
@@ -9891,8 +9892,11 @@ function dissolveFirstPass(shapes, getKey) {
     obj.group = group;
     segments.push(obj);
 
+    // Three or more segments sharing the same arc is abnormal topology...
+    // Need to try to identify pairs of matching segments in each of these
+    // groups.
+    //
     if (group.length == 3) {
-      // console.log("large group");
       largeGroups.push(group);
     }
   }
@@ -9911,10 +9915,26 @@ function dissolveFirstPass(shapes, getKey) {
     return null;
   }
 
-  function checkPairwiseExtension(arc1, arc2) {
+  function checkFwExtension(arc1, arc2) {
+    return getNextSegment(arc1, segments, shapes).arcId ===
+        ~getNextSegment(arc2, segments, shapes).arcId;
+  }
+
+  function checkBwExtension(arc1, arc2) {
+    return getPrevSegment(arc1, segments, shapes).arcId ===
+        ~getPrevSegment(arc2, segments, shapes).arcId;
+  }
+
+  function checkDoubleExtension(arc1, arc2) {
     return checkPairwiseMatch(arc1, arc2) &&
-        getNextArcInRing(arc1, segments, shapes).arcId ===
-        ~getNextArcInRing(arc2, segments, shapes).arcId;
+        checkFwExtension(arc1, arc2) &&
+        checkBwExtension(arc1, arc2);
+  }
+
+  function checkSingleExtension(arc1, arc2) {
+    return checkPairwiseMatch(arc1, arc2) &&
+        (checkFwExtension(arc1, arc2) ||
+        checkBwExtension(arc1, arc2));
   }
 
   function checkPairwiseMatch(arc1, arc2) {
@@ -9928,17 +9948,22 @@ function dissolveFirstPass(shapes, getKey) {
     });
   }
 
+  // split a group of segments into pairs of matching segments + a residual group
+  // @group Array of segment ids
+  //
   function splitGroup(group) {
-    var group2 = findMatchingPair(group, checkPairwiseExtension);
-    if (!group2) {
-      group2 = findMatchingPair(group, checkPairwiseMatch);
-    }
+    // find best-match segment pair
+    var group2 = findMatchingPair(group, checkDoubleExtension) ||
+        findMatchingPair(group, checkSingleExtension) ||
+        findMatchingPair(group, checkPairwiseMatch);
     if (group2) {
       group = Utils.filter(group, function(i) {
         return !Utils.contains(group2, i);
       });
       updateGroupIds(group);
       updateGroupIds(group2);
+      // Split again if reduced group is still large
+      if (group.length > 2) splitGroup(group);
     }
   }
 
@@ -9951,6 +9976,8 @@ function dissolveFirstPass(shapes, getKey) {
   };
 }
 
+// Second pass -- generate dissolved shapes
+//
 function dissolveSecondPass(segments, shapes, keys) {
   var dissolveIndex = {},  // new shape ids indexed by dissolveKey
       dissolveShapes = []; // dissolved shapes
@@ -9987,11 +10014,11 @@ function dissolveSecondPass(segments, shapes, keys) {
     addRing(newArcs, keys[firstArc.shapeId]);
   }
 
-  // Get the next segment in a dissolved polygon ring
+  // Get the next arc in a dissolved polygon ring
   // @obj an undissolvable arc instance
   //
   function getNextArc(obj, depth) {
-    var next = getNextArcInRing(obj, segments, shapes),
+    var next = getNextSegment(obj, segments, shapes),
         match;
     depth = depth || 0;
     if (next != obj) {
@@ -10014,16 +10041,22 @@ function dissolveSecondPass(segments, shapes, keys) {
   }
 
   // Look for an arc instance that can be dissolved with segment @obj
-  // (must be going the opposite direction, etc)
+  // (must be going the opposite direction and have same dissolve key, etc)
   // Return matching segment or null if no match
   //
   function findDissolveArc(obj) {
     var dissolveKey = keys[obj.shapeId], // obj.shape.dissolveKey,
         match, matchId;
     matchId = Utils.find(obj.group, function(i) {
-      var other = segments[i];
-      return other.segId !== obj.segId && !other.used &&
-          keys[other.shapeId] === dissolveKey && obj.arcId == ~other.arcId;
+      var a = obj,
+          b = segments[i];
+      if (a == b ||
+          b.used ||
+          keys[b.shapeId] != dissolveKey ||
+          // don't prevent rings from dissolving with themselves (risky?)
+          // a.shapeId == b.shapeId && a.partId == b.partId ||
+          a.arcId != ~b.arcId) return false;
+      return true;
     });
     match = matchId === null ? null : segments[matchId];
     return match;
@@ -10043,16 +10076,23 @@ function dissolveSecondPass(segments, shapes, keys) {
   };
 }
 
-// Return next arc object in ring, or return @obj if ring len == 1
-//
-function getNextArcInRing(obj, segments, shapes) {
-  var partLen = shapes[obj.shapeId][obj.partId].length,
-      offs = 1;
-  if (partLen == 1) return obj;
-  if (obj.i + offs == partLen) {
-    offs -= partLen;
-  }
-  return segments[obj.segId + offs];
+function getNextSegment(seg, segments, shapes) {
+  return getSegmentByOffs(seg, segments, shapes, 1);
+}
+
+function getPrevSegment(seg, segments, shapes) {
+  return getSegmentByOffs(seg, segments, shapes, -1);
+}
+
+function getSegmentByOffs(seg, segments, shapes, offs) {
+  var arcs = shapes[seg.shapeId][seg.partId],
+      partLen = arcs.length,
+      nextOffs = (seg.i + offs) % partLen,
+      nextSeg;
+  if (nextOffs < 0) nextOffs += partLen;
+  nextSeg = segments[seg.segId - seg.i + nextOffs];
+  if (!nextSeg || nextSeg.shapeId != seg.shapeId) error("index error");
+  return nextSeg;
 }
 
 // Return a properties array for a set of dissolved shapes
@@ -10513,7 +10553,7 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
     var value;
     env.__setLayer(lyr);
     try {
-      value = func.call(env, env);
+      value = func.call(null, env);
     } catch(e) {
       stop(e);
     }
@@ -10523,10 +10563,12 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
 
 MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
   if (arcs instanceof ArcDataset === false) error("[compileFeatureExpression()] Missing ArcDataset;", arcs);
-  var newFields = exp.match(/[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g) || null,
-      env = {$: new FeatureExpressionContext(arcs)},
+  var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
+      newFields = exp.match(RE_ASSIGNEE) || null,
+      env = {},
       func;
   hideGlobals(env);
+  env.$ = new FeatureExpressionContext(arcs);
   exp = MapShaper.removeExpressionSemicolons(exp);
   try {
     func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
@@ -10587,12 +10629,10 @@ MapShaper.removeExpressionSemicolons = function(exp) {
 function hideGlobals(obj) {
   // Can hide global properties during expression evaluation this way
   // (is this worth doing?)
-  Utils.extend(obj, {
-    global: null,
-    window: null,
-    setTimeout: null,
-    setInterval: null
-  });
+  for (var key in this) {
+    obj[key] = null;
+  }
+  obj.console = console;
 }
 
 function addGetters(obj, getters) {

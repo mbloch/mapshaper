@@ -21,6 +21,27 @@ describe('mapshaper-dissolve.js', function () {
           [[2, 4, 3], [3, 3, 1]]];
       var arcData = new api.ArcDataset(arcs);
 
+      // Handle arcs with a kink
+      it('bugfix 2 (abnormal topology) test 1', function() {
+        var lyr = {
+              geometry_type: 'polygon',
+              data: new api.data.DataTable([{foo: 1}, {foo: 2}]),
+              shapes: [[[0, 1, ~1, 1]], [[~1, 1, ~1, 2]]]
+            };
+        var lyr2 = api.dissolve(lyr, arcData, 'foo');
+        assert.deepEqual(lyr2.shapes, [[[0, 1]], [[~1, 2]]]);
+      })
+
+      it('bugfix 2 (abnormal topology) test 2', function() {
+        var lyr = {
+              geometry_type: 'polygon',
+              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              shapes: [[[0, 1, ~1, 1]], [[~1, 1, ~1, 2]]]
+            };
+        var lyr2 = api.dissolve(lyr, arcData, 'foo');
+        assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
+      })
+
       it('dissolve on "foo" 1', function() {
         var lyr = {
               geometry_type: 'polygon',
@@ -95,7 +116,7 @@ describe('mapshaper-dissolve.js', function () {
         assert.deepEqual(lyr2.shapes, [[[0, 1]], [[-2, 2]]]);
       })
 
-      it('stack oflo bugfix test1', function() {
+      it('bugfix 1 test 1', function() {
         var lyr = {
               geometry_type: 'polygon',
               data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
@@ -106,7 +127,7 @@ describe('mapshaper-dissolve.js', function () {
         assert.deepEqual(lyr2.data.getRecords(), [{foo: 1}])
       })
 
-      it('stack oflo bugfix test2', function() {
+      it('bugfix 1 test 2', function() {
         var lyr = {
               geometry_type: 'polygon',
               data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
@@ -117,7 +138,7 @@ describe('mapshaper-dissolve.js', function () {
         assert.deepEqual(lyr2.data.getRecords(), [{foo: 1}])
       })
 
-      it('stack oflo bugfix test3', function() {
+      it('bugfix 1 test 3', function() {
         var lyr = {
               geometry_type: 'polygon',
               data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
