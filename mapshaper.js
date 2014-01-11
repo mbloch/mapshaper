@@ -3982,14 +3982,22 @@ Utils.formatter = function(fmt) {
 
   return function() {
     var str = literals[0],
-        n = arguments.length;
+        n = arguments.length,
+        count;
     if (n != formatCodes.length) {
       error("[Utils.format()] Data does not match format string; format:", fmt, "data:", arguments);
     }
     for (var i=0; i<n; i++) {
       // 's?': insert "s" if needed to form plural of previous value.
-      if (i > 0 && arguments[i] == 's?') {
-        str += arguments[i-1] == 1 ? "" : "s";
+      if (arguments[i] == 's?') {
+        if (Utils.isInteger(arguments[i-1])) {
+          count = arguments[i-1];
+        } else if (Utils.isInteger(arguments[i+1])) {
+          count = arguments[i+1];
+        } else {
+          count = 1;
+        }
+        str += count == 1 ? "" : "s";
       } else {
         str += formatValue(arguments[i], formatCodes[i]);
       }
@@ -5400,6 +5408,7 @@ function buildPathTopology(xx, yy, nn) {
 
   // Convert a non-topological path to one or more topological arcs
   // @start, @end are ids of first and last points in the path
+  // TODO: don't allow id ~id pairs
   //
   function convertPath(start, end) {
     var arcIds = [],
@@ -11365,6 +11374,75 @@ MapShaper.countArcsInShapes = function(shapes, arcCount) {
 
 
 
+
+MapShaper.printInfo = function(layers, arcData, opts) {
+  var str = Utils.format("Input: %s (%s)\n",
+      opts.input_files.join(', '), opts.input_format);
+  str += "Bounds: " + arcData.getBounds().toArray().join(', ') + "\n";
+  if (layers.length > 1) str += '\n';
+  str += Utils.map(layers, MapShaper.getLayerInfo).join('\n');
+  console.log(str);
+};
+
+MapShaper.getLayerInfo = function(lyr) {
+  var obj = {};
+  obj.fields = lyr.data ? lyr.data.getFields() : null;
+  obj.name = lyr.name || null;
+  obj.geometry_type = lyr.geometry_type;
+  obj.record_count = lyr.shapes.length;
+  if (obj.fields) {
+    obj.fields.sort();
+    obj.sample_values = Utils.map(obj.fields, function(fname) {
+      return lyr.data.getRecords()[0][fname];
+    });
+  }
+  return MapShaper.formatLayerInfo(obj);
+};
+
+MapShaper.formatSampleData = function(arr) {
+  var strings = Utils.map(arr, String),
+      digits = Utils.map(strings, function(str, i) {
+        return Utils.isNumber(arr[i]) ? (str + '.').indexOf('.') + 1 :  0;
+      }),
+      maxDigits = Math.max.apply(null, digits),
+      col = Utils.map(strings, function(str, i) {
+        if (Utils.isNumber(arr[i])) {
+          str = Utils.lpad("", 1 + maxDigits - digits[i], ' ') + str;
+        } else {
+          str = "'" + str + "'";
+        }
+        return str;
+      });
+  return col;
+};
+
+MapShaper.formatLayerInfo = function(obj) {
+  var nameStr = obj.name ? "Layer name: " + obj.name : "Unnamed layer",
+      countStr = Utils.format("Records: %'d", obj.record_count),
+      typeStr = "Geometry: " + obj.geometry_type,
+      dataStr;
+  if (obj.fields && obj.fields.length > 0) {
+    var col1 = Utils.merge(['Field'], obj.fields),
+        col2 = Utils.merge(['First value'], MapShaper.formatSampleData(obj.sample_values)),
+        padding = Utils.reduce(obj.fields, function(len, fname) {
+          return Math.max(len, fname.length);
+        }, 5),
+        fieldStr = Utils.repeat(col1.length, function(i) {
+          return '  ' + Utils.rpad(col1[i], padding, ' ') + "  " + String(col2[i]);
+        }).join('\n');
+    dataStr = 'Data table:\n' + fieldStr;
+  } else {
+    dataStr = "Missing attribute data";
+  }
+
+  var formatted = "";
+  if (obj.name) formatted += "Layer name: " + obj.name + "\n";
+  formatted += Utils.format("%s\n%s\n%s\n", typeStr, countStr, dataStr);
+  return formatted;
+};
+
+
+
 //
 //mapshaper-explode,
 
@@ -11450,6 +11528,11 @@ MapShaper.getBasicOptionParser = function() {
 
     .options("encodings", {
       describe: "print list of supported text encodings",
+      'boolean': true
+    })
+
+    .options("info", {
+      describe: "print summary info instead of exporting files",
       'boolean': true
     })
 
@@ -11838,6 +11921,10 @@ cli.validateCommaSepNames = function(str) {
 cli.validateExtraOpts = function(argv) {
   var opts = {},
       tmp;
+
+  if (argv.info) {
+    opts.info = true;
+  }
 
   if ('split-on-grid' in argv) {
     var rows = 4, cols = 4;

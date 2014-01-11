@@ -36,6 +36,7 @@ function procFiles(files, opts) {
   } else {
     Utils.forEach(files, function(ifile) {
       var fileOpts = Utils.extend({}, opts); // copy common options
+      fileOpts.input_files = [ifile];
       if (!fileOpts.output_file_base) {
         fileOpts.output_file_base = Node.getFileInfo(ifile).base;
       }
@@ -128,6 +129,11 @@ function procLayers(importData, opts) {
 
   if (opts.recombine) {
     layers = [mapshaper.recombineLayers(layers)];
+  }
+
+  if (opts.info) {
+    mapshaper.printInfo(layers, arcData, opts);
+    return;
   }
 
   if (opts.split_rows && opts.split_cols) {

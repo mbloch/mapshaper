@@ -20,6 +20,7 @@ mapshaper-merge-files
 mapshaper-join
 mapshaper-innerlines
 mapshaper-encodings
+mapshaper-info
 */
 //
 //mapshaper-explode,
@@ -106,6 +107,11 @@ MapShaper.getBasicOptionParser = function() {
 
     .options("encodings", {
       describe: "print list of supported text encodings",
+      'boolean': true
+    })
+
+    .options("info", {
+      describe: "print summary info instead of exporting files",
       'boolean': true
     })
 
@@ -494,6 +500,10 @@ cli.validateCommaSepNames = function(str) {
 cli.validateExtraOpts = function(argv) {
   var opts = {},
       tmp;
+
+  if (argv.info) {
+    opts.info = true;
+  }
 
   if ('split-on-grid' in argv) {
     var rows = 4, cols = 4;

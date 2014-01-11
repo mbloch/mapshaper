@@ -3982,14 +3982,22 @@ Utils.formatter = function(fmt) {
 
   return function() {
     var str = literals[0],
-        n = arguments.length;
+        n = arguments.length,
+        count;
     if (n != formatCodes.length) {
       error("[Utils.format()] Data does not match format string; format:", fmt, "data:", arguments);
     }
     for (var i=0; i<n; i++) {
       // 's?': insert "s" if needed to form plural of previous value.
-      if (i > 0 && arguments[i] == 's?') {
-        str += arguments[i-1] == 1 ? "" : "s";
+      if (arguments[i] == 's?') {
+        if (Utils.isInteger(arguments[i-1])) {
+          count = arguments[i-1];
+        } else if (Utils.isInteger(arguments[i+1])) {
+          count = arguments[i+1];
+        } else {
+          count = 1;
+        }
+        str += count == 1 ? "" : "s";
       } else {
         str += formatValue(arguments[i], formatCodes[i]);
       }
@@ -5733,6 +5741,7 @@ function buildPathTopology(xx, yy, nn) {
 
   // Convert a non-topological path to one or more topological arcs
   // @start, @end are ids of first and last points in the path
+  // TODO: don't allow id ~id pairs
   //
   function convertPath(start, end) {
     var arcIds = [],

@@ -171,6 +171,7 @@ function buildPathTopology(xx, yy, nn) {
 
   // Convert a non-topological path to one or more topological arcs
   // @start, @end are ids of first and last points in the path
+  // TODO: don't allow id ~id pairs
   //
   function convertPath(start, end) {
     var arcIds = [],
