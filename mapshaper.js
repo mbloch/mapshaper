@@ -10579,7 +10579,7 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
       env = {},
       func;
   hideGlobals(env);
-  env.$ = new FeatureExpressionContext(arcs);
+  env.$ = new FeatureExpressionContext(arcs, shapes, records);
   exp = MapShaper.removeExpressionSemicolons(exp);
   try {
     func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
@@ -10589,8 +10589,7 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
   }
 
   return function(shapeId) {
-    var shape = shapes[shapeId],
-        record = records[shapeId],
+    var record = records[shapeId],
         value, f;
 
     if (!record) {
@@ -10610,7 +10609,7 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
         }
       }
     }
-    env.$.__setShape(shape, shapeId, record);
+    env.$.__setId(shapeId);
     try {
       value = func.call(null, record, env);
     } catch(e) {
@@ -10650,12 +10649,12 @@ function addGetters(obj, getters) {
   });
 }
 
-function FeatureExpressionContext(arcs) {
+function FeatureExpressionContext(arcs, shapes, records) {
   var _shp = new MultiShape(arcs),
       _self = this,
       _centroid, _innerXY,
       _record,
-      _i, _ids, _bounds;
+      _id, _ids, _bounds;
 
   // TODO: add methods:
   // isClosed / isOpen
@@ -10706,26 +10705,32 @@ function FeatureExpressionContext(arcs) {
     interiorY: function() {
       var p = innerXY();
       return p ? p.y : null;
-    },
-    properties: function() {
-      return _record;
     }
   });
 
-  /*
-  Object.defineProperty(this, 'properties', {set: function(obj) {
+  Object.defineProperty(this, 'properties',
+    {set: function(obj) {
+      if (Utils.isObject(obj)) {
+        records[_id] = obj;
+      } else {
+        stop("Can't assign non-object to $.properties");
+      }
+    }, get: function() {
+      var rec = records[_id];
+      if (!rec) {
+        rec = records[_id] = {};
+      }
+      return rec;
+    }});
 
-  }});
-*/
-
-  this.__setShape = function(shp, id, rec) {
+  this.__setId = function(id) {
+    _id = id;
     _bounds = null;
-    _record = rec;
     _centroid = null;
     _innerXY = null;
-    _ids = shp;
-    _id = id;
-    _shp.init(shp);
+    _record = records[id];
+    _ids = shapes[id];
+    _shp.init(_ids);
   };
 
   function centroid() {

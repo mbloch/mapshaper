@@ -91,6 +91,25 @@ describe('mapshaper-field-calculator.js', function () {
       assert.deepEqual(records, [{foo: 'mice', valid: true}, {foo: 'beans', valid: true}]);
     })
 
+    it('Create records by assigning to $.properties', function () {
+      var lyr = {
+        shapes: [null, null],
+        data: null
+      };
+      api.evaluate(lyr, nullArcs, "$.properties = {FID: $.id}");
+      assert.deepEqual(lyr.data.getRecords(), [{FID: 0}, {FID: 1}]);
+    })
+
+    it('Replace records by assigning to $.properties', function () {
+      var records = [{foo:'mice'}, {foo:'beans'}];
+      var lyr = {
+        shapes: [null, null],
+        data: new api.data.DataTable(records)
+      };
+      api.evaluate(lyr, nullArcs, "$.properties = {menu: foo}");
+      assert.deepEqual(lyr.data.getRecords(), [{menu: 'mice'}, {menu: 'beans'}]);
+    })
+
     it('use Math.sqrt() to transform a field', function () {
       var records = [{foo:4}, {foo:0}];
       var lyr = {
@@ -102,6 +121,7 @@ describe('mapshaper-field-calculator.js', function () {
     })
 
     describe('Shape geometry', function() {
+      //
       //  a -- b -- c
       //  |    |    |
       //  d -- e -- f
@@ -124,32 +144,31 @@ describe('mapshaper-field-calculator.js', function () {
           [[3, 3, 1, 1], [2, 1, 1, 2]]];
       arcs = new api.ArcDataset(arcs);
 
-      it ("$.centroidX and $.centroidY", function() {
+      beforeEach(function() {
         lyr.data = null;
+      })
+
+      it ("$.centroidX and $.centroidY", function() {
         api.evaluate(lyr, arcs, "x=$.centroidX, y=$.centroidY");
         assert.deepEqual(lyr.data.getRecords(), [{x: 1.5, y: 2.5}, {x: 2, y: 1.5}, {x: null, y: null}])
       })
 
       it ("$.partCount and $.isNull", function() {
-        lyr.data = null;
         api.evaluate(lyr, arcs, "parts=$.partCount, isNull=$.isNull");
         assert.deepEqual(lyr.data.getRecords(), [{parts: 1, isNull: false}, {parts: 2, isNull: false}, {parts: 0, isNull: true}])
       })
 
       it ("$.area and $.originalArea", function() {
-        lyr.data = null;
         api.evaluate(lyr, arcs, "area=$.area, area2=$.originalArea");
         assert.deepEqual(lyr.data.getRecords(), [{area: 1, area2: 1}, {area: 3, area2: 3}, {area: 0, area2: 0}])
       })
 
       it ("$.height and $.width", function() {
-        lyr.data = null;
         api.evaluate(lyr, arcs, "h=$.height, w=$.width");
         assert.deepEqual(lyr.data.getRecords(), [{w: 1, h: 1}, {w: 2, h: 2}, {w: 0, h: 0}])
       })
 
       it ("$.bounds", function() {
-        lyr.data = null;
         api.evaluate(lyr, arcs, "bb=$.bounds");
         assert.deepEqual(lyr.data.getRecords(), [{bb: [1, 2, 2, 3]}, {bb: [1, 1, 3, 3]}, {bb: []}])
       })
