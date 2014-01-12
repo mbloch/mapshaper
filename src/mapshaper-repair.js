@@ -5,14 +5,16 @@
 MapShaper.findAndRepairIntersections = function(arcs) {
   T.start();
   var intersections = MapShaper.findSegmentIntersections(arcs),
-      unfixable = MapShaper.repairIntersections(arcs, intersections);
+      unfixable = MapShaper.repairIntersections(arcs, intersections),
+      countPre = intersections.length,
+      countPost = unfixable.length,
+      countFixed = countPre > countPost ? countPre - countPost : 0;
   T.stop('Find and repair intersections');
-  var info = {
-    pre: intersections.length,
-    post: unfixable.length
+  return {
+    intersections_initial: countPre,
+    intersections_remaining: countPost,
+    intersections_repaired: countFixed
   };
-  info.repaired = info.post < info.pre ? info.pre - info.post : 0;
-  return info;
 };
 
 

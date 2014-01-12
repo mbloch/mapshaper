@@ -668,11 +668,11 @@ cli.validateSimplifyOpts = function(argv) {
 };
 
 cli.printRepairMessage = function(info, opts) {
-  if (info.pre > 0 || opts.verbose) {
+  if (info.intersections_initial > 0 || opts.verbose) {
     console.log(Utils.format(
         "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
-        info.repaired, "s?", info.post, "s?"));
-    if (info.post > 10) {
+        info.intersections_repaired, "s?", info.intersections_remaining, "s?"));
+    if (info.intersections_remaining > 10) {
       if (!opts.snapping) {
         console.log("Tip: use --auto-snap to fix minor topology errors.");
       }

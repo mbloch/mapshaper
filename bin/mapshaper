@@ -50,7 +50,8 @@ function procFiles(files, opts) {
 function procLayers(importData, opts) {
   var arcData = importData.arcs,
       layers = importData.layers,
-      bounds = arcData.getBounds();
+      bounds = arcData.getBounds(),
+      info = {};
 
   // Update input/output format with information found during importing
   // (command line info is insufficient to distinguish topojson and geojson)
@@ -79,10 +80,11 @@ function procLayers(importData, opts) {
     }
 
     if (opts.repair) {
-      var xxInfo = mapshaper.findAndRepairIntersections(arcData);
-      mapshaper.cli.printRepairMessage(xxInfo, opts);
+      Utils.extend(info, mapshaper.findAndRepairIntersections(arcData));
+      mapshaper.cli.printRepairMessage(info, opts);
     }
   }
+
 
   if (opts.filter) {
     mapshaper.filterLayers(layers, arcData, opts.filter);
@@ -121,7 +123,7 @@ function procLayers(importData, opts) {
     layers = mapshaper.convertLayersToTypedLines(layers, arcData, opts.lines);
   }
 
-  // filter && merge arcs if outputting topojson and arcs may have changed
+  // filter & merge arcs if outputting topojson and arcs may have changed
   // TODO: decide if this belongs here or in topojson output function
   if (opts.output_format == 'topojson' && (opts.innerlines || opts.dissolve)) {
     arcData = mapshaper.dissolveArcs(layers, arcData);
@@ -132,7 +134,7 @@ function procLayers(importData, opts) {
   }
 
   if (opts.info) {
-    mapshaper.printInfo(layers, arcData, opts);
+    mapshaper.printInfo(layers, arcData, opts, info);
     return;
   }
 

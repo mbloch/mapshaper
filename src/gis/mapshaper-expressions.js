@@ -60,9 +60,7 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
         }
       }
     }
-
-    env.$.properties = record;
-    env.$.__setShape(shape, shapeId);
+    env.$.__setShape(shape, shapeId, record);
     try {
       value = func.call(null, record, env);
     } catch(e) {
@@ -106,6 +104,7 @@ function FeatureExpressionContext(arcs) {
   var _shp = new MultiShape(arcs),
       _self = this,
       _centroid, _innerXY,
+      _record,
       _i, _ids, _bounds;
 
   // TODO: add methods:
@@ -157,11 +156,21 @@ function FeatureExpressionContext(arcs) {
     interiorY: function() {
       var p = innerXY();
       return p ? p.y : null;
+    },
+    properties: function() {
+      return _record;
     }
   });
 
-  this.__setShape = function(shp, id) {
+  /*
+  Object.defineProperty(this, 'properties', {set: function(obj) {
+
+  }});
+*/
+
+  this.__setShape = function(shp, id, rec) {
     _bounds = null;
+    _record = rec;
     _centroid = null;
     _innerXY = null;
     _ids = shp;

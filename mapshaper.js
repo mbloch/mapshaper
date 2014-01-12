@@ -9013,14 +9013,16 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
 MapShaper.findAndRepairIntersections = function(arcs) {
   T.start();
   var intersections = MapShaper.findSegmentIntersections(arcs),
-      unfixable = MapShaper.repairIntersections(arcs, intersections);
+      unfixable = MapShaper.repairIntersections(arcs, intersections),
+      countPre = intersections.length,
+      countPost = unfixable.length,
+      countFixed = countPre > countPost ? countPre - countPost : 0;
   T.stop('Find and repair intersections');
-  var info = {
-    pre: intersections.length,
-    post: unfixable.length
+  return {
+    intersections_initial: countPre,
+    intersections_remaining: countPost,
+    intersections_repaired: countFixed
   };
-  info.repaired = info.post < info.pre ? info.pre - info.post : 0;
-  return info;
 };
 
 
@@ -10608,9 +10610,7 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
         }
       }
     }
-
-    env.$.properties = record;
-    env.$.__setShape(shape, shapeId);
+    env.$.__setShape(shape, shapeId, record);
     try {
       value = func.call(null, record, env);
     } catch(e) {
@@ -10654,6 +10654,7 @@ function FeatureExpressionContext(arcs) {
   var _shp = new MultiShape(arcs),
       _self = this,
       _centroid, _innerXY,
+      _record,
       _i, _ids, _bounds;
 
   // TODO: add methods:
@@ -10705,11 +10706,21 @@ function FeatureExpressionContext(arcs) {
     interiorY: function() {
       var p = innerXY();
       return p ? p.y : null;
+    },
+    properties: function() {
+      return _record;
     }
   });
 
-  this.__setShape = function(shp, id) {
+  /*
+  Object.defineProperty(this, 'properties', {set: function(obj) {
+
+  }});
+*/
+
+  this.__setShape = function(shp, id, rec) {
     _bounds = null;
+    _record = rec;
     _centroid = null;
     _innerXY = null;
     _ids = shp;
@@ -11375,13 +11386,29 @@ MapShaper.countArcsInShapes = function(shapes, arcCount) {
 
 
 
-MapShaper.printInfo = function(layers, arcData, opts) {
+MapShaper.printInfo = function(layers, arcData, opts, info) {
   var str = Utils.format("Input: %s (%s)\n",
       opts.input_files.join(', '), opts.input_format);
   str += "Bounds: " + arcData.getBounds().toArray().join(', ') + "\n";
+  str += Utils.format("Topological arcs: %'d\n", arcData.size());
+
+  if (!Utils.isInteger(info.intersections_remaining)) {
+    info.intersections_remaining = MapShaper.findSegmentIntersections(arcData).length;
+  }
+  str += Utils.format("Line intersections: %'d\n", info.intersections_remaining);
   if (layers.length > 1) str += '\n';
   str += Utils.map(layers, MapShaper.getLayerInfo).join('\n');
   console.log(str);
+};
+
+// TODO: consider polygons with zero area or other invalid geometries
+//
+MapShaper.countNullShapes = function(shapes) {
+  var count = 0;
+  for (var i=0; i<shapes.length; i++) {
+    if (!shapes[i] || shapes[i].length === 0) count++;
+  }
+  return count;
 };
 
 MapShaper.getLayerInfo = function(lyr) {
@@ -11390,6 +11417,7 @@ MapShaper.getLayerInfo = function(lyr) {
   obj.name = lyr.name || null;
   obj.geometry_type = lyr.geometry_type;
   obj.record_count = lyr.shapes.length;
+  obj.null_geom_count = MapShaper.countNullShapes(lyr.shapes);
   if (obj.fields) {
     obj.fields.sort();
     obj.sample_values = Utils.map(obj.fields, function(fname) {
@@ -11418,7 +11446,8 @@ MapShaper.formatSampleData = function(arr) {
 
 MapShaper.formatLayerInfo = function(obj) {
   var nameStr = obj.name ? "Layer name: " + obj.name : "Unnamed layer",
-      countStr = Utils.format("Records: %'d", obj.record_count),
+      countStr = Utils.format("Records: %'d (with null geometry: %'d)",
+          obj.record_count, obj.null_geom_count),
       typeStr = "Geometry: " + obj.geometry_type,
       dataStr;
   if (obj.fields && obj.fields.length > 0) {
@@ -12089,11 +12118,11 @@ cli.validateSimplifyOpts = function(argv) {
 };
 
 cli.printRepairMessage = function(info, opts) {
-  if (info.pre > 0 || opts.verbose) {
+  if (info.intersections_initial > 0 || opts.verbose) {
     console.log(Utils.format(
         "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
-        info.repaired, "s?", info.post, "s?"));
-    if (info.post > 10) {
+        info.intersections_repaired, "s?", info.intersections_remaining, "s?"));
+    if (info.intersections_remaining > 10) {
       if (!opts.snapping) {
         console.log("Tip: use --auto-snap to fix minor topology errors.");
       }

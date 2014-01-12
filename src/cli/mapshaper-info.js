@@ -1,12 +1,28 @@
 /* @require mapshaper-common */
 
-MapShaper.printInfo = function(layers, arcData, opts) {
+MapShaper.printInfo = function(layers, arcData, opts, info) {
   var str = Utils.format("Input: %s (%s)\n",
       opts.input_files.join(', '), opts.input_format);
   str += "Bounds: " + arcData.getBounds().toArray().join(', ') + "\n";
+  str += Utils.format("Topological arcs: %'d\n", arcData.size());
+
+  if (!Utils.isInteger(info.intersections_remaining)) {
+    info.intersections_remaining = MapShaper.findSegmentIntersections(arcData).length;
+  }
+  str += Utils.format("Line intersections: %'d\n", info.intersections_remaining);
   if (layers.length > 1) str += '\n';
   str += Utils.map(layers, MapShaper.getLayerInfo).join('\n');
   console.log(str);
+};
+
+// TODO: consider polygons with zero area or other invalid geometries
+//
+MapShaper.countNullShapes = function(shapes) {
+  var count = 0;
+  for (var i=0; i<shapes.length; i++) {
+    if (!shapes[i] || shapes[i].length === 0) count++;
+  }
+  return count;
 };
 
 MapShaper.getLayerInfo = function(lyr) {
@@ -15,6 +31,7 @@ MapShaper.getLayerInfo = function(lyr) {
   obj.name = lyr.name || null;
   obj.geometry_type = lyr.geometry_type;
   obj.record_count = lyr.shapes.length;
+  obj.null_geom_count = MapShaper.countNullShapes(lyr.shapes);
   if (obj.fields) {
     obj.fields.sort();
     obj.sample_values = Utils.map(obj.fields, function(fname) {
@@ -43,7 +60,8 @@ MapShaper.formatSampleData = function(arr) {
 
 MapShaper.formatLayerInfo = function(obj) {
   var nameStr = obj.name ? "Layer name: " + obj.name : "Unnamed layer",
-      countStr = Utils.format("Records: %'d", obj.record_count),
+      countStr = Utils.format("Records: %'d (with null geometry: %'d)",
+          obj.record_count, obj.null_geom_count),
       typeStr = "Geometry: " + obj.geometry_type,
       dataStr;
   if (obj.fields && obj.fields.length > 0) {
