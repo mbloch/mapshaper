@@ -153,6 +153,14 @@ describe('mapshaper-table-import.js', function() {
       api.adjustRecordTypes(records, fields);
       stringifyEqual(records, [{foo:"001", bar:1}])
     })
+
+    it('bugfix 1: handle numeric data (e.g. from dbf)', function() {
+      var records = [{a: 0, b: 23.2, c: -12}],
+          fields = ['a', 'b:number', 'c'];
+      api.adjustRecordTypes(records, fields);
+      stringifyEqual(records, [{a: 0, b: 23.2, c: -12}])
+    })
+
   })
 
   describe('importDelimString()', function () {
