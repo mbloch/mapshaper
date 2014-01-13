@@ -171,7 +171,7 @@ MapShaper.getHiddenOptionParser = function(optimist) {
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
 
-  .options("join", {
+  .options("join ", {
     describe: "join a dbf or delimited text file to the imported shapes"
   })
 

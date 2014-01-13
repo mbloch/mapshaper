@@ -9697,13 +9697,6 @@ MapShaper.stringIsNumeric = function(str) {
   return !isNaN(parseFloat(str)) && !isNaN(Number(str));
 };
 
-function findNumericFields(obj) {
-  var fields = Utils.keys(obj);
-  return Utils.filter(fields, function(field) {
-    return MapShaper.stringIsNumeric(obj[field]);
-  });
-}
-
 MapShaper.guessDelimiter = function(content) {
   var delimiters = ['|', '\t', ','];
   return Utils.find(delimiters, function(delim) {
@@ -9719,16 +9712,23 @@ MapShaper.getDelimiterRxp = function(delim) {
 
 MapShaper.adjustRecordTypes = function(records, rawFields) {
   if (records.length === 0) return;
-  var typeIndex = {},
-      fields = rawFields && MapShaper.parseFieldHeaders(rawFields, typeIndex) || [];
+  var hintIndex = {},
+      fields = rawFields && MapShaper.parseFieldHeaders(rawFields, hintIndex) || [],
+      conversionIndex = {};
 
-  Utils.forEach(findNumericFields(records[0]), function(f) {
-    if (f in typeIndex === false && Utils.contains(fields, f)) {
-      typeIndex[f] = 'number';
+  Utils.forEach(records[0], function(val, key) {
+    if (key in hintIndex === false) {
+      if (Utils.isString(val) && MapShaper.stringIsNumeric(val)) {
+        conversionIndex[key] = 'number';
+      }
+    } else if (hintIndex[key] == 'number' && !Utils.isNumber(val)) {
+      conversionIndex[key] = 'number';
+    } else if (hintIndex[key] == 'string' && !Utils.isString(val)) {
+      conversionIndex[key] = 'string';
     }
   });
 
-  MapShaper.updateRecordTypes(records, typeIndex);
+  MapShaper.convertRecordTypes(records, conversionIndex);
   return fields;
 };
 
@@ -9740,7 +9740,7 @@ MapShaper.parseNumber = function(str) {
   return Number(MapShaper.cleanNumber(str));
 };
 
-MapShaper.updateRecordTypes = function(records, typeIndex) {
+MapShaper.convertRecordTypes = function(records, typeIndex) {
   var typedFields = Utils.keys(typeIndex),
       converters = {
         'string': String,
@@ -9753,11 +9753,11 @@ MapShaper.updateRecordTypes = function(records, typeIndex) {
       });
   if (typedFields.length === 0) return;
   Utils.forEach(records, function(rec) {
-    MapShaper.convertRecordTypes(rec, typedFields, transforms);
+    MapShaper.convertRecordData(rec, typedFields, transforms);
   });
 };
 
-MapShaper.convertRecordTypes = function(rec, fields, converters) {
+MapShaper.convertRecordData = function(rec, fields, converters) {
   var f;
   for (var i=0; i<fields.length; i++) {
     f = fields[i];
@@ -11626,7 +11626,7 @@ MapShaper.getHiddenOptionParser = function(optimist) {
 MapShaper.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
 
-  .options("join", {
+  .options("join ", {
     describe: "join a dbf or delimited text file to the imported shapes"
   })
 
