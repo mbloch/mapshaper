@@ -79,6 +79,12 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     transform = TopoJSON.getExportTransform(filteredArcs); // auto quantization
   }
 
+  // kludge: null transform likely due to collapsed shape(s)
+  // using identity transform as a band-aid, need to rethink this.
+  if (transform.isNull()) {
+    transform = new Transform();
+  }
+
   if (transform) {
     invTransform = transform.invert();
     topology.transform = {
@@ -104,14 +110,18 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     if (invTransform) {
       objectBounds.transform(invTransform);
     }
-    obj.bbox = objectBounds.toArray();
+    if (objectBounds.hasBounds()) {
+      obj.bbox = objectBounds.toArray();
+    }
     objects[name] = obj;
     bounds.mergeBounds(objectBounds);
   });
 
   topology.objects = objects;
   topology.arcs = arcArr;
-  topology.bbox = bounds.toArray();
+  if (bounds.hasBounds()) {
+    topology.bbox = bounds.toArray();
+  }
   return topology;
 };
 

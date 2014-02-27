@@ -350,7 +350,7 @@ var Opts = {
     };
 
     f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
-    // TODO: extend targ prototype instead of wiping it out --
+    // Extend targ prototype instead of wiping it out --
     //   in case inherit() is called after targ.prototype = {stuff}; statement
     targ.prototype = Utils.extend(new f(), targ.prototype); //
     targ.prototype.constructor = targ;
@@ -2540,6 +2540,10 @@ function Transform() {
   this.bx = this.by = 0;
 }
 
+Transform.prototype.isNull = function() {
+  return !this.mx || !this.my || isNaN(this.bx) || isNaN(this.by);
+};
+
 Transform.prototype.invert = function() {
   var inv = new Transform();
   inv.mx = 1 / this.mx;
@@ -2634,12 +2638,6 @@ Bounds.prototype.setBounds = function(a, b, c, d) {
   return this;
 };
 
-/*
-Bounds.prototype.getCenterPoint = function() {
-  if (!this.hasBounds()) error("Missing bounds");
-  return new Point(this.centerX(), this.centerY());
-};
-*/
 
 Bounds.prototype.centerX = function() {
   var x = (this.xmin + this.xmax) * 0.5;
@@ -2800,6 +2798,11 @@ Bounds.prototype.getTransform = function(b2, flipY) {
     t.by = b2.ymin - t.my * this.ymin;
   }
   return t;
+};
+
+Bounds.prototype.mergeCircle = function(x, y, r) {
+  if (r < 0) r = -r;
+  this.mergeBounds([x - r, y - r, x + r, y + r]);
 };
 
 Bounds.prototype.mergeBounds = function(bb) {
@@ -7061,9 +7064,12 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
     }
   });
 
-  var output = {
-    bbox: exporter.getBounds().toArray()
-  };
+  var output = {},
+      bounds = exporter.getBounds();
+
+  if (bounds.hasBounds()) {
+    output.bbox = bounds.toArray();
+  }
 
   if (useFeatures) {
     output.type = 'FeatureCollection';
@@ -7442,6 +7448,12 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     transform = TopoJSON.getExportTransform(filteredArcs); // auto quantization
   }
 
+  // kludge: null transform likely due to collapsed shape(s)
+  // using identity transform as a band-aid, need to rethink this.
+  if (transform.isNull()) {
+    transform = new Transform();
+  }
+
   if (transform) {
     invTransform = transform.invert();
     topology.transform = {
@@ -7467,14 +7479,18 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     if (invTransform) {
       objectBounds.transform(invTransform);
     }
-    obj.bbox = objectBounds.toArray();
+    if (objectBounds.hasBounds()) {
+      obj.bbox = objectBounds.toArray();
+    }
     objects[name] = obj;
     bounds.mergeBounds(objectBounds);
   });
 
   topology.objects = objects;
   topology.arcs = arcArr;
-  topology.bbox = bounds.toArray();
+  if (bounds.hasBounds()) {
+    topology.bbox = bounds.toArray();
+  }
   return topology;
 };
 

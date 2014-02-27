@@ -144,9 +144,12 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
     }
   });
 
-  var output = {
-    bbox: exporter.getBounds().toArray()
-  };
+  var output = {},
+      bounds = exporter.getBounds();
+
+  if (bounds.hasBounds()) {
+    output.bbox = bounds.toArray();
+  }
 
   if (useFeatures) {
     output.type = 'FeatureCollection';
