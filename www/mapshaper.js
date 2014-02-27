@@ -10202,8 +10202,11 @@ MapShaper.findSegmentIntersections = (function() {
   function calcStripeCount(arcs) {
     var bounds = arcs.getBounds(),
         yrange = bounds.ymax - bounds.ymin,
-        avg = arcs.getAverageSegment(3); // don't bother sampling all segments
-    return Math.ceil(yrange / avg[1] / 20);
+        avg = arcs.getAverageSegment(3), // don't bother sampling all segments
+        avgY = avg[1],
+        count = Math.ceil(yrange / avgY / 20) || 1;  // count is positive int
+    if (count > 0 === false) throw "Invalid stripe count";
+    return count;
   }
 
 })();
@@ -10347,14 +10350,16 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
 MapShaper.findAndRepairIntersections = function(arcs) {
   T.start();
   var intersections = MapShaper.findSegmentIntersections(arcs),
-      unfixable = MapShaper.repairIntersections(arcs, intersections);
+      unfixable = MapShaper.repairIntersections(arcs, intersections),
+      countPre = intersections.length,
+      countPost = unfixable.length,
+      countFixed = countPre > countPost ? countPre - countPost : 0;
   T.stop('Find and repair intersections');
-  var info = {
-    pre: intersections.length,
-    post: unfixable.length
+  return {
+    intersections_initial: countPre,
+    intersections_remaining: countPost,
+    intersections_repaired: countFixed
   };
-  info.repaired = info.post < info.pre ? info.pre - info.post : 0;
-  return info;
 };
 
 

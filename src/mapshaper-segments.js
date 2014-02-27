@@ -117,8 +117,11 @@ MapShaper.findSegmentIntersections = (function() {
   function calcStripeCount(arcs) {
     var bounds = arcs.getBounds(),
         yrange = bounds.ymax - bounds.ymin,
-        avg = arcs.getAverageSegment(3); // don't bother sampling all segments
-    return Math.ceil(yrange / avg[1] / 20);
+        avg = arcs.getAverageSegment(3), // don't bother sampling all segments
+        avgY = avg[1],
+        count = Math.ceil(yrange / avgY / 20) || 1;  // count is positive int
+    if (count > 0 === false) throw "Invalid stripe count";
+    return count;
   }
 
 })();
