@@ -113,6 +113,14 @@ describe('mapshaper-geojson.js', function () {
         }]};
       assert.deepEqual(target, output);
     })
+
+    it('reversed ring with duplicate points is not removed (#42)', function() {
+      var geoStr = Node.readFile(fixPath("test_data/ccw_polygon.json"), 'utf8'),
+          outputObj = importExport(geoStr);
+
+      assert.ok(outputObj.features[0].geometry != null);
+    })
+
   })
 
   describe('Export/Import roundtrip tests', function () {
