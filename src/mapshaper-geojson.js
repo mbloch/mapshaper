@@ -115,17 +115,17 @@ GeoJSON.countNestedPoints = function(coords, depth) {
 
 MapShaper.exportGeoJSON = function(layers, arcData) {
   return Utils.map(layers, function(layer) {
-    var obj = MapShaper.exportGeoJSONObject(layer, arcData);
     return {
-      content: JSON.stringify(obj),
+      content: MapShaper.exportGeoJSONString(layer, arcData),
       name: layer.name
     };
   });
 };
 
-MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
+
+MapShaper.exportGeoJSONString = function(layerObj, arcData) {
   var type = layerObj.geometry_type;
-  if (type != "polygon" && type != "polyline") error("#exportGeoJSONObject() Unsupported geometry type:", type);
+  if (type != "polygon" && type != "polyline") error("#exportGeoJSONString() Unsupported geometry type:", type);
 
   var geomType = type == 'polygon' ? 'MultiPolygon' : 'MultiLineString',
       properties = layerObj.data && layerObj.data.getRecords() || null,
@@ -135,14 +135,19 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
   }
   var exporter = new PathExporter(arcData, type == 'polygon');
-  var objects = Utils.map(layerObj.shapes, function(shapeIds, i) {
-    var shape = exporter.exportShapeForGeoJSON(shapeIds);
+  var objects = Utils.reduce(layerObj.shapes, function(memo, shapeIds, i) {
+    var shape = exporter.exportShapeForGeoJSON(shapeIds),
+        obj, str;
     if (useFeatures) {
-      return MapShaper.exportGeoJSONFeature(shape, geomType, properties[i]);
+      obj = MapShaper.exportGeoJSONFeature(shape, geomType, properties[i]);
     } else {
-      return MapShaper.exportGeoJSONGeometry(shape, geomType);
+      obj = MapShaper.exportGeoJSONGeometry(shape, geomType);
+      // null geometries not allowed in GeometryCollection, filter them
+      if (obj === null) return memo;
     }
-  });
+    str = JSON.stringify(obj);
+    return memo === "" ? str : memo + ",\n" + str;
+  }, "");
 
   var output = {},
       bounds = exporter.getBounds();
@@ -153,18 +158,19 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
 
   if (useFeatures) {
     output.type = 'FeatureCollection';
-    output.features = objects;
+    output.features = ["$"];
   } else {
     output.type = 'GeometryCollection';
-    // null geometries not allowed in GeometryCollection
-    output.geometries = Utils.filter(objects, function(obj) {
-      return !!obj;
-    });
+    output.geometries = ["$"];
   }
 
-  return output;
+  var parts = JSON.stringify(output).split('"$"');
+  return parts[0] + objects + parts[1];
 };
 
+MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
+  return JSON.parse(MapShaper.exportGeoJSONString(layerObj, arcData));
+};
 
 MapShaper.exportGeoJSONGeometry = function(coords, type) {
   var geom = {};
