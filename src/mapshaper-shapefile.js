@@ -51,8 +51,13 @@ MapShaper.exportShp = function(layers, arcData, opts) {
 
   var files = [];
   Utils.forEach(layers, function(layer) {
-    var obj = MapShaper.exportShpFile(layer, arcData),
-        data = layer.data;
+    var data = layer.data,
+        obj, dbf;
+    T.start();
+    obj = MapShaper.exportShpFile(layer, arcData);
+    T.stop("Export .shp file");
+    T.start();
+    data = layer.data;
     // create empty data table if missing a table
     if (!data) {
       data = new DataTable(layer.shapes.length);
@@ -61,6 +66,8 @@ MapShaper.exportShp = function(layers, arcData, opts) {
     if (data.getFields().length === 0) {
       data.addIdField();
     }
+    dbf = data.exportAsDbf(opts.encoding);
+    T.stop("Export .dbf file");
 
     files.push({
         content: obj.shp,
@@ -71,7 +78,7 @@ MapShaper.exportShp = function(layers, arcData, opts) {
         name: layer.name,
         extension: "shx"
       }, {
-        content: data.exportAsDbf(opts.encoding),
+        content: dbf,
         name: layer.name,
         extension: "dbf"
       });
@@ -86,8 +93,6 @@ MapShaper.exportShpFile = function(layer, arcData) {
   var isPolygonType = geomType == 'polygon';
   var shpType = isPolygonType ? 5 : 3;
 
-  T.start();
-
   var exporter = new PathExporter(arcData, isPolygonType);
   var fileBytes = 100;
   var bounds = new Bounds();
@@ -97,10 +102,6 @@ MapShaper.exportShpFile = function(layer, arcData) {
     if (shape.bounds) bounds.mergeBounds(shape.bounds);
     return shape.buffer;
   });
-
-
-  T.stop("export shape records");
-  T.start();
 
   // write .shp header section
   var shpBin = new BinArray(fileBytes, false)
@@ -137,7 +138,6 @@ MapShaper.exportShpFile = function(layer, arcData) {
   var shxBuf = shxBin.buffer(),
       shpBuf = shpBin.buffer();
 
-  T.stop("convert to binary");
   return {shp: shpBuf, shx: shxBuf};
 };
 
