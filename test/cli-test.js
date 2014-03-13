@@ -499,6 +499,15 @@ describe('mapshaper-cli.js', function() {
       });
     })
 
+    var good5 = "--no-topology";
+    it(good5, function() {
+      assert.deepEqual(validate(good5), {
+        no_topology: true,
+        snapping: false,
+        repair: false
+      });
+    })
+
   })
 
   describe('testFileCollision()', function () {

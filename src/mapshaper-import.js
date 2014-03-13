@@ -6,10 +6,11 @@
 MapShaper.importContent = function(content, fileType, opts) {
   var src = MapShaper.importFileContent(content, fileType, opts),
       fmt = src.info.input_format,
+      useTopology = !opts || !opts.no_topology,
       imported;
 
   if (fmt == 'shapefile' || fmt == 'geojson') {
-    imported = MapShaper.createTopology(src);
+    imported = MapShaper.importPaths(src, useTopology);
   } else if (fmt == 'topojson') {
     imported = src; // already in topological format
   }
@@ -41,6 +42,43 @@ MapShaper.importFileContent = function(content, fileType, opts) {
   return data;
 };
 
+MapShaper.importPaths = function(src, useTopology) {
+  var importer = useTopology ? MapShaper.importPathsWithTopology : MapShaper.importPathsWithoutTopology,
+      imported = importer(src);
+
+  return {
+    layers: [{
+      name: '',
+      geometry_type: src.info.input_geometry_type,
+      shapes: imported.shapes,
+      data: src.data || null
+    }],
+    arcs: imported.arcs
+  };
+};
+
+MapShaper.importPathsWithTopology = function(src) {
+  var topo = MapShaper.buildTopology(src.geometry);
+  return {
+    shapes: groupPathsByShape(topo.paths, src.geometry.validPaths, src.info.input_shape_count),
+    arcs: topo.arcs
+  };
+};
+
+MapShaper.importPathsWithoutTopology = function(src) {
+  var geom = src.geometry;
+  var arcs = new ArcDataset(geom.nn, geom.xx, geom.yy);
+  var paths = Utils.map(geom.nn, function(n, i) {
+    return [i];
+  });
+  var shapes = groupPathsByShape(paths, src.geometry.validPaths, src.info.input_shape_count);
+  return {
+    shapes: shapes,
+    arcs: arcs
+  };
+};
+
+/*
 MapShaper.createTopology = function(src) {
   var topo = MapShaper.buildTopology(src.geometry),
       shapes, lyr;
@@ -58,6 +96,7 @@ MapShaper.createTopology = function(src) {
     arcs: topo.arcs
   };
 };
+*/
 
 // Use shapeId property of @pathData objects to group paths by shape
 //

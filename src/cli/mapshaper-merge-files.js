@@ -49,7 +49,7 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
   var coords = MapShaper.mergeArcData(geometries);
   Utils.extend(first.geometry, coords); // replace xx, yy, nn
 
-  var topology = MapShaper.createTopology(first);
+  var topology = MapShaper.importPaths(first, true);
   if (separateLayers) {
     topology.layers = MapShaper.splitLayersOnField(topology.layers, topology.arcs, "__LAYER");
   }

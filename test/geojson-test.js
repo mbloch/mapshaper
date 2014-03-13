@@ -148,6 +148,6 @@ function geoJSONRoundTrip(fname) {
 }
 
 function importExport(obj) {
-  var geom = api.createTopology(api.importGeoJSON(obj));
+  var geom = api.importPaths(api.importGeoJSON(obj), true);
   return api.exportGeoJSONObject(geom.layers[0], geom.arcs);
 }

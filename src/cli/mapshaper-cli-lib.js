@@ -246,6 +246,11 @@ MapShaper.getExtraOptionParser = function(optimist) {
     'boolean': true
   })
 
+  .options("no-topology", {
+    describe: "treat each shape as topologically independent",
+    'boolean': true
+  })
+
   .options("merge-files", {
     describe: "merge input files into a single layer before processing",
     'boolean': true
@@ -621,6 +626,14 @@ cli.validateTopologyOpts = function(argv) {
   }
   opts.repair = argv.repair !== false;
   opts.snapping = !!argv['auto-snap'];
+
+  if (argv.topology === false) { // handle --no-topology
+    opts.no_topology = true;
+    // trying to repair simplified polygons without topology is pointless
+    // and is likely to take a long time as many intersections are unrolled
+    // therefore disabling repair option
+    opts.repair = false;
+  }
   return opts;
 };
 
