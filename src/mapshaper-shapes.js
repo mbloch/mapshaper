@@ -111,7 +111,7 @@ function ArcDataset() {
         yy = new Float64Array(pointCount),
         zz = useZ ? new Float64Array(pointCount) : null,
         offs = 0;
-    Utils.forEach(coords, function(arc, arcId) {
+    coords.forEach(function(arc, arcId) {
       var xarr = arc[0],
           yarr = arc[1],
           zarr = arc[2] || null,
@@ -180,7 +180,7 @@ function ArcDataset() {
 
   // Return arcs as arrays of [x, y] points (intended for testing).
   this.toArray = function() {
-    return Utils.map(Utils.range(this.size()), function(i) {
+    return Utils.range(this.size()).map(function(i) {
       return _self.getArc(i).toArray();
     });
   };
@@ -252,7 +252,11 @@ function ArcDataset() {
     return MapShaper.getSegmentIter(_xx, _yy, _nn, _zz, _zlimit);
   };
 
-  this.forEachSegment = function(cb, nth) {
+  this.forEachSegment = function(cb) {
+    this.getSegmentIter()(cb, 1);
+  };
+
+  this.forNthSegment = function(cb, nth) {
     this.getSegmentIter()(cb, nth);
   };
 
@@ -368,7 +372,7 @@ function ArcDataset() {
     if (thresholds.length != this.size())
       error("ArcDataset#setThresholds() Mismatched arc/threshold counts.");
     var i = 0;
-    Utils.forEach(thresholds, function(arr) {
+    thresholds.forEach(function(arr) {
       var zz = _zz;
       for (var j=0, n=arr.length; j<n; i++, j++) {
         zz[i] = arr[j];
@@ -565,7 +569,7 @@ MultiShape.prototype = {
   },
   // Return array of SimpleShape objects, one for each path
   getPaths: function() {
-    return Utils.map(this.parts, function(ids) {
+    return this.parts.map(function(ids) {
       return new SimpleShape(this.src).init(ids);
     }, this);
   }
@@ -600,7 +604,9 @@ function ArcIter(xx, yy, zz) {
       _zz = zz,
       _zlim, _len;
   var _i, _inc, _start, _stop;
-  this.hasNext = null;
+  this.hasNext = nextIdx;
+  this.x = this.y = 0;
+  this.i = -1;
 
   this.init = function(i, len, fw, zlim) {
     _zlim = zlim;
@@ -624,6 +630,7 @@ function ArcIter(xx, yy, zz) {
     this.x = _xx[i];
     this.y = _yy[i];
     this.i = i; // experimental
+    if (isNaN(i) || isNaN(this.x)) throw "not a number";
     return true;
   }
 
@@ -727,7 +734,7 @@ MapShaper.getAverageSegment = function(iter, nth) {
 };
 
 MapShaper.getSegmentIter = function(xx, yy, nn, zz, zlim) {
-  return function forEachSegment(cb, nth) {
+  return function forNthSegment(cb, nth) {
     var filtered = zlim > 0,
         nextArcStart = 0,
         arcId = -1,

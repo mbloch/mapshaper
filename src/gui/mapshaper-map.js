@@ -55,7 +55,6 @@ function MshpMap(el, opts_) {
 
 Opts.inherit(MshpMap, EventDispatcher);
 
-
 function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
       _padPix = 0,

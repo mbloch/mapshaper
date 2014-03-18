@@ -23,6 +23,7 @@ MapShaper.importContent = function(content, fileType, opts) {
 MapShaper.importFileContent = function(content, fileType, opts) {
   var data,
       fileFmt;
+  T.start();
   if (fileType == 'shp') {
     data = MapShaper.importShp(content, opts);
     fileFmt = 'shapefile';
@@ -39,6 +40,7 @@ MapShaper.importFileContent = function(content, fileType, opts) {
     error("Unsupported file type:", fileType);
   }
   data.info.input_format = fileFmt;
+  T.stop("Import " + fileFmt);
   return data;
 };
 

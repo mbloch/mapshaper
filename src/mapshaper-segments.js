@@ -68,7 +68,7 @@ MapShaper.findSegmentIntersections = (function() {
 
     // Assign segment ids to each stripe
     Utils.initializeArray(stripeCounts, 0);
-    arcs.forEachSegment(function(id1, id2, xx, yy, arcId) {
+    arcs.forEachSegment(function(id1, id2, xx, yy) {
       var s1 = stripeId(yy[id1]),
           s2 = stripeId(yy[id2]),
           count, stripe, tmp;

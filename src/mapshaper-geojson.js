@@ -28,7 +28,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
   var properties = null, geometries;
   if (obj.type == 'FeatureCollection') {
     properties = [];
-    geometries = Utils.map(obj.features, function(feat) {
+    geometries = obj.features.map(function(feat) {
       properties.push(feat.properties);
       return feat.geometry;
     });
@@ -49,7 +49,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
   // Import GeoJSON geometries
   //
   var importer = new PathImporter(pointCount, opts);
-  Utils.forEach(geometries, function(geom) {
+  geometries.forEach(function(geom) {
     importer.startShape();
     var f = geom && GeoJSON.pathImporters[geom.type];
     if (f) f(geom.coordinates, importer);
@@ -59,7 +59,6 @@ MapShaper.importGeoJSON = function(obj, opts) {
   if (properties) {
     importData.data = new DataTable(properties);
   }
-
   return importData;
 };
 
@@ -114,7 +113,7 @@ GeoJSON.countNestedPoints = function(coords, depth) {
 };
 
 MapShaper.exportGeoJSON = function(layers, arcData) {
-  return Utils.map(layers, function(layer) {
+  return layers.map(function(layer) {
     return {
       content: MapShaper.exportGeoJSONString(layer, arcData),
       name: layer.name

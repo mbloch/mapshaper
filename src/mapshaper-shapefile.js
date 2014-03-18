@@ -4,7 +4,6 @@
 // Build topology
 //
 MapShaper.importShp = function(src, opts) {
-  T.start();
   var reader = new ShpReader(src);
   var supportedTypes = [
     ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ,
@@ -39,7 +38,6 @@ MapShaper.importShp = function(src, opts) {
       offs += pointsInPart * 2;
     }
   });
-  T.stop("Import Shapefile");
 
   return importer.done();
 };
@@ -50,7 +48,7 @@ MapShaper.exportShp = function(layers, arcData, opts) {
   if (arcData instanceof ArcDataset === false || !Utils.isArray(layers)) error("Missing exportable data.");
 
   var files = [];
-  Utils.forEach(layers, function(layer) {
+  layers.forEach(function(layer) {
     var data = layer.data,
         obj, dbf;
     T.start();
@@ -96,7 +94,7 @@ MapShaper.exportShpFile = function(layer, arcData) {
   var exporter = new PathExporter(arcData, isPolygonType);
   var fileBytes = 100;
   var bounds = new Bounds();
-  var shapeBuffers = Utils.map(layer.shapes, function(shapeIds, i) {
+  var shapeBuffers = layer.shapes.map(function(shapeIds, i) {
     var shape = MapShaper.exportShpRecord(shapeIds, exporter, i+1, shpType);
     fileBytes += shape.buffer.byteLength;
     if (shape.bounds) bounds.mergeBounds(shape.bounds);
@@ -127,7 +125,7 @@ MapShaper.exportShpFile = function(layer, arcData) {
     .position(100);
 
   // write record sections of .shp and .shx
-  Utils.forEach(shapeBuffers, function(buf, i) {
+  shapeBuffers.forEach(function(buf, i) {
     var shpOff = shpBin.position() / 2,
         shpSize = (buf.byteLength - 8) / 2; // alternative: shxBin.writeBuffer(buf, 4, 4);
     shxBin.writeInt32(shpOff);
@@ -169,7 +167,7 @@ MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
       .writeInt32(data.pathCount)
       .writeInt32(data.pointCount);
 
-    Utils.forEach(data.paths, function(part, i) {
+    data.paths.forEach(function(part, i) {
       bin.position(partsIdx + i * 4)
         .writeInt32(pointCount)
         .position(pointsIdx + pointCount * 16);

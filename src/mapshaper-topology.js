@@ -13,10 +13,9 @@
 //
 // Output format:
 // {
-//    arcs: [Array],   // Arcs are represented as two-element arrays
-//                     //   arc[0] and arc[1] are x- and y-coords in an Array or Float64Array
-//    paths: [Array]   // paths are arrays of one or more arc id.
-// }                   //   Arc ids use the same numbering scheme as TopoJSON (see note).
+//    arcs: [ArcDataset],
+//    paths: [Array]   // Paths are arrays of one or more arc id.
+// }                   // Arc ids use the same numbering scheme as TopoJSON (see note).
 // Note: Arc ids in the shapes array are indices of objects in the arcs array.
 //       Negative ids signify that the arc coordinates are in reverse sequence.
 //       Negative ids are converted to array indices with the fornula fwId = ~revId.
