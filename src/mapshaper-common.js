@@ -175,3 +175,26 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
 
   return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
 };
+
+MapShaper.getUniqueLayerNames = function(names) {
+  if (names.length <= 1) return names; // name of single layer guaranteed unique
+  var counts = Utils.countValues(names);
+
+  // assign unique name to each layer
+  var index = {};
+  return names.map(function(name) {
+    var count = counts[name],
+        i;
+    if (count > 1 || name in index) {
+      // naming conflict, need to find a unique name
+      name = name || 'layer'; // use layer1, layer2, etc as default
+      i = 1;
+      while ((name + i) in index) {
+        i++;
+      }
+      name = name + i;
+    }
+    index[name] = true;
+    return name;
+  });
+};

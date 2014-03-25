@@ -5,10 +5,12 @@
 // TODO: remove duplication with single-file import
 //
 MapShaper.mergeFiles = function(files, opts, separateLayers) {
-  var first, geometries;
-  var filePrefix = MapShaper.getCommonFilePrefix(files);
+  var first, geometries, layerNames;
+  if (separateLayers) {
+    layerNames = MapShaper.getLayerNames(files);
+  }
 
-  geometries = Utils.map(files, function(fname) {
+  geometries = Utils.map(files, function(fname, i) {
     var fileType = MapShaper.guessFileType(fname),
         content = MapShaper.readGeometryFile(fname, fileType),
         importData = MapShaper.importFileContent(content, fileType, opts),
@@ -21,13 +23,13 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
     if (fmt != 'geojson' && fmt != 'shapefile') {
       error("[merge files] Incompatible file format:", fmt);
     }
+
     if (first && fmt != first.info.input_format) {
       error("[merge files] Found mixed file formats:", first.info.input_format, "and", fmt);
     }
 
     if (separateLayers) {
-      var lyrName = MapShaper.getSplitLayerName(opts.output_file_base || '', filePrefix);
-      importData.data.addField("__LAYER", lyrName);
+      importData.data.addField("__LAYER", layerNames[i]);
     }
 
     if (!first) {
@@ -52,6 +54,10 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
   var topology = MapShaper.importPaths(first, true);
   if (separateLayers) {
     topology.layers = MapShaper.splitLayersOnField(topology.layers, topology.arcs, "__LAYER");
+    // remove temp property
+    topology.layers.forEach(function(lyr) {
+      lyr.data.deleteField('__LAYER');
+    });
   }
 
   topology.info = first.info;
@@ -59,16 +65,23 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
   return topology;
 };
 
-MapShaper.getSplitLayerName = (function() {
-  var id = 1;
-  return function(filebase, prefix) {
-    var name = MapShaper.getFileSuffix(filebase, prefix);
-    if (!name) {
-      name = "layer" + id++;
-    }
-    return name;
-  };
-})();
+
+MapShaper.getLayerNames = function(paths) {
+  // default names: filenames without the extension
+  var names = paths.map(function(path) {
+    return MapShaper.parseLocalPath(path).basename;
+  });
+
+  // remove common prefix, if any
+  var prefix = MapShaper.getCommonFilePrefix(names);
+  if (prefix && !Utils.contains(names, prefix)) {
+    names = names.map(function(name) {
+      return Utils.lreplace(name, prefix);
+    });
+  }
+
+  return MapShaper.getUniqueLayerNames(names);
+};
 
 MapShaper.getFileSuffix = function(filebase, prefix) {
   if (filebase.indexOf(prefix) === 0) {
@@ -87,6 +100,8 @@ MapShaper.getCommonFilePrefix = function(files) {
   }, null);
 };
 
+// @see mapshaper script
+//
 MapShaper.getMergedFileBase = function(arr, suffix) {
   var basename = MapShaper.getCommonFilePrefix(arr);
   basename = basename.replace(/[-_ ]+$/, '');
@@ -104,6 +119,9 @@ MapShaper.findStringPrefix = function(a, b) {
   return a.substr(0, i);
 };
 
+// Concatenate arc data contained in an
+// array of objects.
+//
 MapShaper.mergeArcData = function(arr) {
   return {
     xx: MapShaper.mergeArrays(Utils.pluck(arr, 'xx'), Float64Array),

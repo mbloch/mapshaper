@@ -653,7 +653,6 @@ Utils.difference = function(arr, other) {
   });
 };
 
-
 // Test a string or array-like object for existence of substring or element
 Utils.contains = function(container, item) {
   if (Utils.isString(container)) {
@@ -811,6 +810,23 @@ Utils.filter = function(arr, func, ctx) {
   });
 };
 
+Utils.filterObject = function(obj, func, ctx) {
+  return Utils.reduce(obj, function(memo, val, key) {
+    if (func.call(ctx, val, key)) {
+      memo[key] = val;
+    }
+    return memo;
+  }, {});
+};
+
+Utils.countValues = function(obj) {
+  return Utils.reduce(obj, function(memo, val, key) {
+    memo[val] = (val in memo) ? memo[val] + 1 : 1;
+    return memo;
+  }, {});
+};
+
+
 Utils.indexOn = function(arr, k) {
   return Utils.reduce(arr, function(index, o) {
     index[o[k]] = o;
@@ -941,6 +957,13 @@ Utils.ltrim = function(str) {
 var rtrimRxp = /\s+$/;
 Utils.rtrim = function(str) {
   return str.replace(rtrimRxp, '');
+};
+
+Utils.lreplace = function(str, word) {
+  if (str.indexOf(word) == 0) {
+    str = str.substr(word.length);
+  }
+  return str;
 };
 
 Utils.capitalizeWord = function(w) {
@@ -3974,14 +3997,30 @@ Utils.formatter = function(fmt) {
   var literals = [],
       formatCodes = [],
       startIdx = 0,
+      escapes = 0,
+      literal,
       matches;
 
   while(matches=codeRxp.exec(fmt)) {
-    literals.push(fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length));
+    literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
+    if (matches[0] == '%%') {
+      matches = "%";
+      escapes++;
+    }
+    literals.push(literal);
     formatCodes.push(matches);
     startIdx = codeRxp.lastIndex;
   }
   literals.push(fmt.substr(startIdx));
+
+  if (escapes > 0) {
+    formatCodes = Utils.filter(formatCodes, function(obj, i) {
+      if (obj !== '%') return true;
+      literals[i] += '%' + literals.splice(i+1, 1)[0];
+      return false;
+    });
+  }
+
 
   return function() {
     var str = literals[0],
@@ -4190,6 +4229,29 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
   }
 
   return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
+};
+
+MapShaper.getUniqueLayerNames = function(names) {
+  if (names.length <= 1) return names; // name of single layer guaranteed unique
+  var counts = Utils.countValues(names);
+
+  // assign unique name to each layer
+  var index = {};
+  return names.map(function(name) {
+    var count = counts[name],
+        i;
+    if (count > 1 || name in index) {
+      // naming conflict, need to find a unique name
+      name = name || 'layer'; // use layer1, layer2, etc as default
+      i = 1;
+      while ((name + i) in index) {
+        i++;
+      }
+      name = name + i;
+    }
+    index[name] = true;
+    return name;
+  });
 };
 
 
@@ -7060,6 +7122,12 @@ var dataTableProto = {
     });
   },
 
+  deleteField: function(f) {
+    this.getRecords().forEach(function(o) {
+      delete o[f];
+    });
+  },
+
   indexOn: function(f) {
     this._index = Utils.indexOn(this.getRecords(), f);
   },
@@ -8675,7 +8743,7 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   validateLayerData(layers);
   assignLayerNames(layers);
   files = exporter(layers, arcData, opts);
-  if (layers.length >1) {
+  if (layers.length > 1) {
     files.push(createIndexFile(layers, arcData));
   }
   assignFileNames(files, opts);
@@ -8695,37 +8763,12 @@ MapShaper.exportContent = function(layers, arcData, opts) {
 
   // Make sure each layer has a unique name
   function assignLayerNames(layers, opts) {
-    Utils.forEach(layers, function(lyr) {
-      // Assign "" as name of layers without pre-existing name
-      lyr.name = lyr.name || "";
+    var names = layers.map(function(lyr) {
+      return lyr.name || "";
     });
-
-    if (layers.length <= 1) return; // name of single layer guaranteed unique
-
-    // get count for each name
-    var counts = Utils.reduce(layers, function(index, lyr) {
-      var name = lyr.name;
-      index[name] = (name in index) ? index[name] + 1 : 1;
-      return index;
-    }, {});
-
-    // assign unique name to each layer
-    var names = {};
-    Utils.forEach(layers, function(lyr) {
-      var name = lyr.name,
-          count = counts[name],
-          i;
-      if (count > 1 || name in names) {
-        // naming conflict, need to find a unique name
-        name = name || 'layer'; // use layer1, layer2, etc as default
-        i = 1;
-        while ((name + i) in names) {
-          i++;
-        }
-        name = name + i;
-      }
-      names[name] = true;
-      lyr.name = name;
+    var uniqueNames = MapShaper.getUniqueLayerNames(names);
+    layers.forEach(function(lyr, i) {
+      lyr.name = uniqueNames[i];
     });
   }
 
@@ -11088,10 +11131,12 @@ MapShaper.select = function(lyr, arcs, exp, discard) {
 // TODO: remove duplication with single-file import
 //
 MapShaper.mergeFiles = function(files, opts, separateLayers) {
-  var first, geometries;
-  var filePrefix = MapShaper.getCommonFilePrefix(files);
+  var first, geometries, layerNames;
+  if (separateLayers) {
+    layerNames = MapShaper.getLayerNames(files);
+  }
 
-  geometries = Utils.map(files, function(fname) {
+  geometries = Utils.map(files, function(fname, i) {
     var fileType = MapShaper.guessFileType(fname),
         content = MapShaper.readGeometryFile(fname, fileType),
         importData = MapShaper.importFileContent(content, fileType, opts),
@@ -11104,13 +11149,13 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
     if (fmt != 'geojson' && fmt != 'shapefile') {
       error("[merge files] Incompatible file format:", fmt);
     }
+
     if (first && fmt != first.info.input_format) {
       error("[merge files] Found mixed file formats:", first.info.input_format, "and", fmt);
     }
 
     if (separateLayers) {
-      var lyrName = MapShaper.getSplitLayerName(opts.output_file_base || '', filePrefix);
-      importData.data.addField("__LAYER", lyrName);
+      importData.data.addField("__LAYER", layerNames[i]);
     }
 
     if (!first) {
@@ -11135,6 +11180,10 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
   var topology = MapShaper.importPaths(first, true);
   if (separateLayers) {
     topology.layers = MapShaper.splitLayersOnField(topology.layers, topology.arcs, "__LAYER");
+    // remove temp property
+    topology.layers.forEach(function(lyr) {
+      lyr.data.deleteField('__LAYER');
+    });
   }
 
   topology.info = first.info;
@@ -11142,16 +11191,23 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
   return topology;
 };
 
-MapShaper.getSplitLayerName = (function() {
-  var id = 1;
-  return function(filebase, prefix) {
-    var name = MapShaper.getFileSuffix(filebase, prefix);
-    if (!name) {
-      name = "layer" + id++;
-    }
-    return name;
-  };
-})();
+
+MapShaper.getLayerNames = function(paths) {
+  // default names: filenames without the extension
+  var names = paths.map(function(path) {
+    return MapShaper.parseLocalPath(path).basename;
+  });
+
+  // remove common prefix, if any
+  var prefix = MapShaper.getCommonFilePrefix(names);
+  if (prefix && !Utils.contains(names, prefix)) {
+    names = names.map(function(name) {
+      return Utils.lreplace(name, prefix);
+    });
+  }
+
+  return MapShaper.getUniqueLayerNames(names);
+};
 
 MapShaper.getFileSuffix = function(filebase, prefix) {
   if (filebase.indexOf(prefix) === 0) {
@@ -11170,6 +11226,8 @@ MapShaper.getCommonFilePrefix = function(files) {
   }, null);
 };
 
+// @see mapshaper script
+//
 MapShaper.getMergedFileBase = function(arr, suffix) {
   var basename = MapShaper.getCommonFilePrefix(arr);
   basename = basename.replace(/[-_ ]+$/, '');
@@ -11187,6 +11245,9 @@ MapShaper.findStringPrefix = function(a, b) {
   return a.substr(0, i);
 };
 
+// Concatenate arc data contained in an
+// array of objects.
+//
 MapShaper.mergeArcData = function(arr) {
   return {
     xx: MapShaper.mergeArrays(Utils.pluck(arr, 'xx'), Float64Array),

@@ -17,6 +17,7 @@ describe('mapshaper-merge-files.js', function () {
       assert.equal(api.getCommonFilePrefix(files), '');
     })
   })
+
   describe('extendDataTable()', function () {
     it ('merges two tables', function() {
       var a = new api.data.DataTable([{foo: 'a', bar: 1}]),
@@ -62,7 +63,28 @@ describe('mapshaper-merge-files.js', function () {
       assert.deepEqual(Utils.toArray(merged), [0, 4.5, -1.5]);
       assert.equal(merged.length, 3);
     })
-  })
+  });
 
+  describe('getLayerNames()', function () {
+    it('dissimilar names', function () {
+      var names = api.getLayerNames(["innerlines.shp", "../states.shp"]);
+      assert.deepEqual(names, ['innerlines', 'states']);
+    })
+
+    it('common prefix', function() {
+      var names = api.getLayerNames(["OR-streets.json", "OR-hwys.json"]);
+      assert.deepEqual(names, ['streets', 'hwys']);
+    })
+
+    it('one name is substring of other', function() {
+      var names = api.getLayerNames(["OR.json", "OR-hwys.json"]);
+      assert.deepEqual(names, ['OR', 'OR-hwys']);
+    })
+
+    it('duplicate filenames', function() {
+      var names = api.getLayerNames(["OR.json", "../OR.json"]);
+      assert.deepEqual(names, ['OR1', 'OR2']);
+    })
+  })
 
 })

@@ -51,6 +51,12 @@ var dataTableProto = {
     });
   },
 
+  deleteField: function(f) {
+    this.getRecords().forEach(function(o) {
+      delete o[f];
+    });
+  },
+
   indexOn: function(f) {
     this._index = Utils.indexOn(this.getRecords(), f);
   },

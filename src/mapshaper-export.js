@@ -23,7 +23,7 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   validateLayerData(layers);
   assignLayerNames(layers);
   files = exporter(layers, arcData, opts);
-  if (layers.length >1) {
+  if (layers.length > 1) {
     files.push(createIndexFile(layers, arcData));
   }
   assignFileNames(files, opts);
@@ -43,37 +43,12 @@ MapShaper.exportContent = function(layers, arcData, opts) {
 
   // Make sure each layer has a unique name
   function assignLayerNames(layers, opts) {
-    Utils.forEach(layers, function(lyr) {
-      // Assign "" as name of layers without pre-existing name
-      lyr.name = lyr.name || "";
+    var names = layers.map(function(lyr) {
+      return lyr.name || "";
     });
-
-    if (layers.length <= 1) return; // name of single layer guaranteed unique
-
-    // get count for each name
-    var counts = Utils.reduce(layers, function(index, lyr) {
-      var name = lyr.name;
-      index[name] = (name in index) ? index[name] + 1 : 1;
-      return index;
-    }, {});
-
-    // assign unique name to each layer
-    var names = {};
-    Utils.forEach(layers, function(lyr) {
-      var name = lyr.name,
-          count = counts[name],
-          i;
-      if (count > 1 || name in names) {
-        // naming conflict, need to find a unique name
-        name = name || 'layer'; // use layer1, layer2, etc as default
-        i = 1;
-        while ((name + i) in names) {
-          i++;
-        }
-        name = name + i;
-      }
-      names[name] = true;
-      lyr.name = name;
+    var uniqueNames = MapShaper.getUniqueLayerNames(names);
+    layers.forEach(function(lyr, i) {
+      lyr.name = uniqueNames[i];
     });
   }
 
