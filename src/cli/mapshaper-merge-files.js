@@ -29,6 +29,10 @@ MapShaper.mergeFiles = function(files, opts, separateLayers) {
     }
 
     if (separateLayers) {
+      // kludge: need a data table in order to add layer name
+      if (!importData.data) {
+        importData.data = new DataTable(importData.info.input_shape_count);
+      }
       importData.data.addField("__LAYER", layerNames[i]);
     }
 
