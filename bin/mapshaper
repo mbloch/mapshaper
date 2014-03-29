@@ -85,7 +85,6 @@ function procLayers(importData, opts) {
     }
   }
 
-
   if (opts.filter) {
     mapshaper.filterLayers(layers, arcData, opts.filter);
   }

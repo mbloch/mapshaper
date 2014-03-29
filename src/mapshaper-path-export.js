@@ -77,7 +77,7 @@ function PathExporter(arcData, polygonType) {
   }
 
   // Bundle holes with their containing rings, for Topo/GeoJSON export
-  // Assume positive rings are CCW and negative rings are CW, like Shapefile
+  // Assume outer rings are CW and inner (hole) rings are CCW, like Shapefile
   // @paths array of path objects from exportShapeData()
   //
   function groupMultiPolygonPaths(paths) {
@@ -89,7 +89,7 @@ function PathExporter(arcData, polygonType) {
       } else if (path.area < 0) {
         neg.push(path);
       } else {
-        // trace("Zero-area ring, skipping")
+        // trace("Zero-area ring, skipping");
       }
     });
 
@@ -110,7 +110,6 @@ function PathExporter(arcData, polygonType) {
       }
       if (containerId == -1) {
         trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
-        // trace(paths)
       } else {
         output[containerId].push(hole);
       }

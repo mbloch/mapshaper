@@ -653,7 +653,6 @@ Utils.difference = function(arr, other) {
   });
 };
 
-
 // Test a string or array-like object for existence of substring or element
 Utils.contains = function(container, item) {
   if (Utils.isString(container)) {
@@ -811,6 +810,23 @@ Utils.filter = function(arr, func, ctx) {
   });
 };
 
+Utils.filterObject = function(obj, func, ctx) {
+  return Utils.reduce(obj, function(memo, val, key) {
+    if (func.call(ctx, val, key)) {
+      memo[key] = val;
+    }
+    return memo;
+  }, {});
+};
+
+Utils.countValues = function(obj) {
+  return Utils.reduce(obj, function(memo, val, key) {
+    memo[val] = (val in memo) ? memo[val] + 1 : 1;
+    return memo;
+  }, {});
+};
+
+
 Utils.indexOn = function(arr, k) {
   return Utils.reduce(arr, function(index, o) {
     index[o[k]] = o;
@@ -941,6 +957,13 @@ Utils.ltrim = function(str) {
 var rtrimRxp = /\s+$/;
 Utils.rtrim = function(str) {
   return str.replace(rtrimRxp, '');
+};
+
+Utils.lreplace = function(str, word) {
+  if (str.indexOf(word) == 0) {
+    str = str.substr(word.length);
+  }
+  return str;
 };
 
 Utils.capitalizeWord = function(w) {
@@ -3974,14 +3997,30 @@ Utils.formatter = function(fmt) {
   var literals = [],
       formatCodes = [],
       startIdx = 0,
+      escapes = 0,
+      literal,
       matches;
 
   while(matches=codeRxp.exec(fmt)) {
-    literals.push(fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length));
+    literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
+    if (matches[0] == '%%') {
+      matches = "%";
+      escapes++;
+    }
+    literals.push(literal);
     formatCodes.push(matches);
     startIdx = codeRxp.lastIndex;
   }
   literals.push(fmt.substr(startIdx));
+
+  if (escapes > 0) {
+    formatCodes = Utils.filter(formatCodes, function(obj, i) {
+      if (obj !== '%') return true;
+      literals[i] += '%' + literals.splice(i+1, 1)[0];
+      return false;
+    });
+  }
+
 
   return function() {
     var str = literals[0],
@@ -4190,6 +4229,29 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
   }
 
   return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
+};
+
+MapShaper.getUniqueLayerNames = function(names) {
+  if (names.length <= 1) return names; // name of single layer guaranteed unique
+  var counts = Utils.countValues(names);
+
+  // assign unique name to each layer
+  var index = {};
+  return names.map(function(name) {
+    var count = counts[name],
+        i;
+    if (count > 1 || name in index) {
+      // naming conflict, need to find a unique name
+      name = name || 'layer'; // use layer1, layer2, etc as default
+      i = 1;
+      while ((name + i) in index) {
+        i++;
+      }
+      name = name + i;
+    }
+    index[name] = true;
+    return name;
+  });
 };
 
 
@@ -6861,6 +6923,12 @@ var dataTableProto = {
     });
   },
 
+  deleteField: function(f) {
+    this.getRecords().forEach(function(o) {
+      delete o[f];
+    });
+  },
+
   indexOn: function(f) {
     this._index = Utils.indexOn(this.getRecords(), f);
   },
@@ -8592,7 +8660,7 @@ function PathExporter(arcData, polygonType) {
   }
 
   // Bundle holes with their containing rings, for Topo/GeoJSON export
-  // Assume positive rings are CCW and negative rings are CW, like Shapefile
+  // Assume outer rings are CW and inner (hole) rings are CCW, like Shapefile
   // @paths array of path objects from exportShapeData()
   //
   function groupMultiPolygonPaths(paths) {
@@ -8604,7 +8672,7 @@ function PathExporter(arcData, polygonType) {
       } else if (path.area < 0) {
         neg.push(path);
       } else {
-        // trace("Zero-area ring, skipping")
+        // trace("Zero-area ring, skipping");
       }
     });
 
@@ -8625,7 +8693,6 @@ function PathExporter(arcData, polygonType) {
       }
       if (containerId == -1) {
         trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
-        // trace(paths)
       } else {
         output[containerId].push(hole);
       }
@@ -8740,7 +8807,7 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   validateLayerData(layers);
   assignLayerNames(layers);
   files = exporter(layers, arcData, opts);
-  if (layers.length >1) {
+  if (layers.length > 1) {
     files.push(createIndexFile(layers, arcData));
   }
   assignFileNames(files, opts);
@@ -8760,37 +8827,12 @@ MapShaper.exportContent = function(layers, arcData, opts) {
 
   // Make sure each layer has a unique name
   function assignLayerNames(layers, opts) {
-    Utils.forEach(layers, function(lyr) {
-      // Assign "" as name of layers without pre-existing name
-      lyr.name = lyr.name || "";
+    var names = layers.map(function(lyr) {
+      return lyr.name || "";
     });
-
-    if (layers.length <= 1) return; // name of single layer guaranteed unique
-
-    // get count for each name
-    var counts = Utils.reduce(layers, function(index, lyr) {
-      var name = lyr.name;
-      index[name] = (name in index) ? index[name] + 1 : 1;
-      return index;
-    }, {});
-
-    // assign unique name to each layer
-    var names = {};
-    Utils.forEach(layers, function(lyr) {
-      var name = lyr.name,
-          count = counts[name],
-          i;
-      if (count > 1 || name in names) {
-        // naming conflict, need to find a unique name
-        name = name || 'layer'; // use layer1, layer2, etc as default
-        i = 1;
-        while ((name + i) in names) {
-          i++;
-        }
-        name = name + i;
-      }
-      names[name] = true;
-      lyr.name = name;
+    var uniqueNames = MapShaper.getUniqueLayerNames(names);
+    layers.forEach(function(lyr, i) {
+      lyr.name = uniqueNames[i];
     });
   }
 
