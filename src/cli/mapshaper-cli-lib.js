@@ -165,6 +165,11 @@ MapShaper.getHiddenOptionParser = function(optimist) {
   .options("postfilter", {
     describe: "filter shapes after dissolve"
   })
+
+  .options("cut-table", {
+    describe: "export attributes separately from shapes",
+    'boolean': true
+  })
   ;
 };
 
@@ -585,6 +590,10 @@ cli.validateExtraOpts = function(argv) {
       error("--postfilter option requires a JavaScript expression");
     }
     opts.postfilter = argv.postfilter;
+  }
+
+  if (argv['cut-table']) {
+    opts.cut_table = true;
   }
 
   if (argv['merge-files']) {

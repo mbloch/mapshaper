@@ -38,8 +38,25 @@ describe('mapshaper-geojson.js', function () {
         {type: 'Feature', properties: {FID: 1}, geometry: null}
       ]};
 
-      assert.deepEqual(target, api.exportGeoJSONObject(lyr, arcs));
+      assert.deepEqual(api.exportGeoJSONObject(lyr, arcs), target);
     })
+
+    it('use cut_table option', function () {
+      var arcs = new api.ArcDataset([[[1, 1, 2, 1], [1, 3, 3, 1]]]),
+          lyr = {
+            geometry_type: "polygon",
+            data: new api.data.DataTable([{FID: 1}]),
+            shapes: [[[0]]]
+          };
+
+      var target = {"type":"GeometryCollection","geometries":[
+        { type: 'Polygon',
+          coordinates: [[[1, 1], [1, 3], [2, 3], [1, 1]]]
+          }
+        ], bbox: [1, 1, 2, 3]};
+      assert.deepEqual(api.exportGeoJSONObject(lyr, arcs, {cut_table: true}), target);
+    })
+
   })
 
   describe('Import/Export roundtrip tests', function () {

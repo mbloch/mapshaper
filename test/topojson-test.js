@@ -18,11 +18,11 @@ function fixPath(p) {
 describe('topojson-test.js', function () {
 
   describe('exportProperties', function () {
-    it('Use id_field', function () {
+    it('use id_field option', function () {
       var geometries = [{type: null}, {type: null}],
           records = [{FID: 0}, {FID: 1}];
 
-      TopoJSON.exportProperties(geometries, records, 'FID');
+      TopoJSON.exportProperties(geometries, records, {id_field:'FID'});
       assert.deepEqual(geometries, [{
         type: null,
         properties: {FID: 0},
@@ -33,6 +33,21 @@ describe('topojson-test.js', function () {
         id: 1
       }])
     });
+
+    it('use cut_table option', function () {
+      var geometries = [{type: null}, {type: null}],
+          records = [{FID: 0}, {FID: 1}];
+
+      TopoJSON.exportProperties(geometries, records, {id_field:'FID', cut_table: true});
+      assert.deepEqual(geometries, [{
+        type: null,
+        id: 0
+      }, {
+        type: null,
+        id: 1
+      }])
+    });
+
   });
 
   describe('remapShape()', function () {

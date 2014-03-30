@@ -32,6 +32,10 @@ var dataTableProto = {
     return Utils.contains(this.getFields(), name);
   },
 
+  exportAsJSON: function() {
+    return JSON.stringify(this.getRecords());
+  },
+
   addField: function(name, init) {
     var useFunction = Utils.isFunction(init);
     if (!Utils.isNumber(init) && !Utils.isString(init) && !useFunction) {

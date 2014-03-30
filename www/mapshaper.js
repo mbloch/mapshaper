@@ -6904,6 +6904,10 @@ var dataTableProto = {
     return Utils.contains(this.getFields(), name);
   },
 
+  exportAsJSON: function() {
+    return JSON.stringify(this.getRecords());
+  },
+
   addField: function(name, init) {
     var useFunction = Utils.isFunction(init);
     if (!Utils.isNumber(init) && !Utils.isString(init) && !useFunction) {
@@ -7114,23 +7118,22 @@ GeoJSON.countNestedPoints = function(coords, depth) {
   return tally;
 };
 
-MapShaper.exportGeoJSON = function(layers, arcData) {
+MapShaper.exportGeoJSON = function(layers, arcData, opts) {
   return layers.map(function(layer) {
     return {
-      content: MapShaper.exportGeoJSONString(layer, arcData),
+      content: MapShaper.exportGeoJSONString(layer, arcData, opts),
       name: layer.name
     };
   });
 };
 
-
-MapShaper.exportGeoJSONString = function(layerObj, arcData) {
+MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
   var type = layerObj.geometry_type;
   if (type != "polygon" && type != "polyline") error("#exportGeoJSONString() Unsupported geometry type:", type);
 
   var geomType = type == 'polygon' ? 'MultiPolygon' : 'MultiLineString',
       properties = layerObj.data && layerObj.data.getRecords() || null,
-      useFeatures = !!properties;
+      useFeatures = !!properties && (!opts || !opts.cut_table);
 
   if (useFeatures && properties.length !== layerObj.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
@@ -7169,8 +7172,8 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData) {
   return parts[0] + objects + parts[1];
 };
 
-MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
-  return JSON.parse(MapShaper.exportGeoJSONString(layerObj, arcData));
+MapShaper.exportGeoJSONObject = function(layerObj, arcData, opts) {
+  return JSON.parse(MapShaper.exportGeoJSONString(layerObj, arcData, opts));
 };
 
 MapShaper.exportGeoJSONGeometry = function(coords, type) {
@@ -7561,7 +7564,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
         shapes = lyr.shapes;
     if (arcIdMap) shapes = TopoJSON.remapShapes(shapes, arcIdMap);
     var name = lyr.name || "layer" + (i + 1);
-    var obj = exportTopoJSONObject(exporter, geomType, shapes, lyr.data);
+    var obj = TopoJSON.exportGeometryCollection(exporter, geomType, shapes);
     var objectBounds = exporter.getBounds();
     if (invTransform) {
       objectBounds.transform(invTransform);
@@ -7571,6 +7574,11 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     }
     objects[name] = obj;
     bounds.mergeBounds(objectBounds);
+
+    // export attribute data, if present
+    if (lyr.data) {
+      TopoJSON.exportProperties(obj.geometries, lyr.data.getRecords(), opts);
+    }
   });
 
   topology.objects = objects;
@@ -7711,26 +7719,33 @@ TopoJSON.calcExportResolution = function(arcData, precision) {
   return [xy[0] * k, xy[1] * k];
 };
 
-function exportTopoJSONObject(exporter, type, shapes, data) {
-  var properties = data ? data.getRecords() : null,
-      obj = {
+TopoJSON.exportProperties = function(geometries, records, opts) {
+  geometries.forEach(function(geom, i) {
+    var properties = records[i];
+    if (properties) {
+      if (!opts.cut_table) {
+        geom.properties = properties;
+      }
+      if (opts.id_field) {
+        geom.id = properties[opts.id_field];
+      }
+    }
+  });
+};
+
+TopoJSON.exportGeometryCollection = function(exporter, type, shapes) {
+  var obj = {
         type: "GeometryCollection"
       };
   obj.geometries = Utils.map(shapes, function(shape, i) {
-    var paths = exporter.exportShapeForTopoJSON(shape),
-        geom = exportTopoJSONGeometry(paths, type);
-    geom.id = i; // ids ? ids[i] : i;
-    if (properties) {
-      geom.properties = properties[i] || null;
-    }
-    return geom;
+    var paths = exporter.exportShapeForTopoJSON(shape);
+    return TopoJSON.exportGeometry(paths, type);
   });
   return obj;
-}
+};
 
-function exportTopoJSONGeometry(paths, type) {
+TopoJSON.exportGeometry = function(paths, type) {
   var obj = {};
-
   if (!paths || paths.length === 0) {
     // null geometry
     obj.type = null;
@@ -7754,10 +7769,10 @@ function exportTopoJSONGeometry(paths, type) {
     }
   }
   else {
-    error ("#exportTopoJSONGeometry() unsupported type:", type);
+    error ("TopoJSON.exportGeometry() unsupported type:", type);
   }
   return obj;
-}
+};
 
 
 
@@ -8180,8 +8195,8 @@ MapShaper.exportShp = function(layers, arcData, opts) {
     T.stop("Export .shp file");
     T.start();
     data = layer.data;
-    // create empty data table if missing a table
-    if (!data) {
+    // create empty data table if missing a table or table is being cut out
+    if (!data || opts.cut_table) {
       data = new DataTable(layer.shapes.length);
     }
     // dbfs should have at least one column; add id field if none
@@ -8807,6 +8822,9 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   validateLayerData(layers);
   assignLayerNames(layers);
   files = exporter(layers, arcData, opts);
+  if (opts.cut_table) {
+    Utils.merge(files, MapShaper.exportDataTables(layers, opts));
+  }
   if (layers.length > 1) {
     files.push(createIndexFile(layers, arcData));
   }
@@ -8886,6 +8904,21 @@ MapShaper.getDefaultFileExtension = function(fileType) {
     ext = "json";
   }
   return ext;
+};
+
+MapShaper.exportDataTables = function(layers, opts) {
+  var tables = [];
+  layers.forEach(function(lyr) {
+    if (lyr.data) {
+      var name = (lyr.name ? lyr.name + '-' : '') + 'table';
+      tables.push({
+        content: lyr.data.exportAsJSON(), // TODO: other formats
+        name: name,
+        extension: "json"
+      });
+    }
+  });
+  return tables;
 };
 
 

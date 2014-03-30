@@ -60,7 +60,14 @@ describe('data-table.js', function () {
         var table = new DataTable([{foo: 'a'}]);
         assert.throws(function() {table.addField('foo', 0)});
       })
+    })
 
+    describe('#exportAsJSON()', function () {
+      it('export records as JSON string', function () {
+        var records = [{'foo': 'goat', 'bar': 22}, {'foo': 'cat', 'bar': 0}],
+            table = new DataTable(records);
+        assert.deepEqual(JSON.parse(table.exportAsJSON()), records);
+      })
     })
 
     describe('#addIdField()', function () {

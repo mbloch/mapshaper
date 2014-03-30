@@ -112,23 +112,22 @@ GeoJSON.countNestedPoints = function(coords, depth) {
   return tally;
 };
 
-MapShaper.exportGeoJSON = function(layers, arcData) {
+MapShaper.exportGeoJSON = function(layers, arcData, opts) {
   return layers.map(function(layer) {
     return {
-      content: MapShaper.exportGeoJSONString(layer, arcData),
+      content: MapShaper.exportGeoJSONString(layer, arcData, opts),
       name: layer.name
     };
   });
 };
 
-
-MapShaper.exportGeoJSONString = function(layerObj, arcData) {
+MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
   var type = layerObj.geometry_type;
   if (type != "polygon" && type != "polyline") error("#exportGeoJSONString() Unsupported geometry type:", type);
 
   var geomType = type == 'polygon' ? 'MultiPolygon' : 'MultiLineString',
       properties = layerObj.data && layerObj.data.getRecords() || null,
-      useFeatures = !!properties;
+      useFeatures = !!properties && (!opts || !opts.cut_table);
 
   if (useFeatures && properties.length !== layerObj.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
@@ -167,8 +166,8 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData) {
   return parts[0] + objects + parts[1];
 };
 
-MapShaper.exportGeoJSONObject = function(layerObj, arcData) {
-  return JSON.parse(MapShaper.exportGeoJSONString(layerObj, arcData));
+MapShaper.exportGeoJSONObject = function(layerObj, arcData, opts) {
+  return JSON.parse(MapShaper.exportGeoJSONString(layerObj, arcData, opts));
 };
 
 MapShaper.exportGeoJSONGeometry = function(coords, type) {

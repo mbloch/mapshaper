@@ -23,6 +23,9 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   validateLayerData(layers);
   assignLayerNames(layers);
   files = exporter(layers, arcData, opts);
+  if (opts.cut_table) {
+    Utils.merge(files, MapShaper.exportDataTables(layers, opts));
+  }
   if (layers.length > 1) {
     files.push(createIndexFile(layers, arcData));
   }
@@ -102,4 +105,19 @@ MapShaper.getDefaultFileExtension = function(fileType) {
     ext = "json";
   }
   return ext;
+};
+
+MapShaper.exportDataTables = function(layers, opts) {
+  var tables = [];
+  layers.forEach(function(lyr) {
+    if (lyr.data) {
+      var name = (lyr.name ? lyr.name + '-' : '') + 'table';
+      tables.push({
+        content: lyr.data.exportAsJSON(), // TODO: other formats
+        name: name,
+        extension: "json"
+      });
+    }
+  });
+  return tables;
 };
