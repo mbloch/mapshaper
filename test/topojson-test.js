@@ -17,7 +17,25 @@ function fixPath(p) {
 
 describe('topojson-test.js', function () {
 
-  describe('#remapShape()', function () {
+  describe('exportProperties', function () {
+    it('Use id_field', function () {
+      var geometries = [{type: null}, {type: null}],
+          records = [{FID: 0}, {FID: 1}];
+
+      TopoJSON.exportProperties(geometries, records, 'FID');
+      assert.deepEqual(geometries, [{
+        type: null,
+        properties: {FID: 0},
+        id: 0
+      }, {
+        type: null,
+        properties: {FID: 1},
+        id: 1
+      }])
+    });
+  });
+
+  describe('remapShape()', function () {
     it('Remap a shape, removing a reversed arc', function () {
       var shape = [[0, 1, 2], [~1, 2, 3]],
           map = [0, -1, 1, 2];
@@ -87,7 +105,6 @@ describe('topojson-test.js', function () {
       topoJSONRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_lines.json');
     })
   })
-
 })
 
 function topoJSONRoundTrip(fname) {

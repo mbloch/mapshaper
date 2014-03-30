@@ -269,6 +269,10 @@ MapShaper.getExtraOptionParser = function(optimist) {
     describe: "output polyline layers containing shared polygon boundaries",
     'boolean': true
   })
+
+  .options("id-field", {
+    describe: "field to use for TopoJSON id property"
+  })
   ;
 };
 
@@ -593,6 +597,10 @@ cli.validateExtraOpts = function(argv) {
 
   if (argv['topojson-precision']) {
     opts.topojson_precision = argv['topojson-precision'];
+  }
+
+  if (argv['id-field']) {
+    opts.id_field = argv['id-field'];
   }
 
   if (argv.innerlines) {

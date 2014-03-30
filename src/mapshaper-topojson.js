@@ -105,7 +105,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
         shapes = lyr.shapes;
     if (arcIdMap) shapes = TopoJSON.remapShapes(shapes, arcIdMap);
     var name = lyr.name || "layer" + (i + 1);
-    var obj = exportTopoJSONObject(exporter, geomType, shapes, lyr.data);
+    var obj = TopoJSON.exportGeometryCollection(exporter, geomType, shapes);
     var objectBounds = exporter.getBounds();
     if (invTransform) {
       objectBounds.transform(invTransform);
@@ -115,6 +115,11 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     }
     objects[name] = obj;
     bounds.mergeBounds(objectBounds);
+
+    // export data, if present
+    if (lyr.data) {
+      TopoJSON.exportProperties(obj.geometries, lyr.data.getRecords(), opts.id_field);
+    }
   });
 
   topology.objects = objects;
@@ -255,26 +260,31 @@ TopoJSON.calcExportResolution = function(arcData, precision) {
   return [xy[0] * k, xy[1] * k];
 };
 
-function exportTopoJSONObject(exporter, type, shapes, data) {
-  var properties = data ? data.getRecords() : null,
-      obj = {
+TopoJSON.exportProperties = function(geometries, records, idField) {
+  geometries.forEach(function(geom, i) {
+    var properties = records[i];
+    if (properties) {
+      geom.properties = properties;
+      if (idField) {
+        geom.id = properties[idField];
+      }
+    }
+  });
+};
+
+TopoJSON.exportGeometryCollection = function(exporter, type, shapes) {
+  var obj = {
         type: "GeometryCollection"
       };
   obj.geometries = Utils.map(shapes, function(shape, i) {
-    var paths = exporter.exportShapeForTopoJSON(shape),
-        geom = exportTopoJSONGeometry(paths, type);
-    geom.id = i; // ids ? ids[i] : i;
-    if (properties) {
-      geom.properties = properties[i] || null;
-    }
-    return geom;
+    var paths = exporter.exportShapeForTopoJSON(shape);
+    return TopoJSON.exportGeometry(paths, type);
   });
   return obj;
-}
+};
 
-function exportTopoJSONGeometry(paths, type) {
+TopoJSON.exportGeometry = function(paths, type) {
   var obj = {};
-
   if (!paths || paths.length === 0) {
     // null geometry
     obj.type = null;
@@ -298,7 +308,7 @@ function exportTopoJSONGeometry(paths, type) {
     }
   }
   else {
-    error ("#exportTopoJSONGeometry() unsupported type:", type);
+    error ("TopoJSON.exportGeometry() unsupported type:", type);
   }
   return obj;
-}
+};
