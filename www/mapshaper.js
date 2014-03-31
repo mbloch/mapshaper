@@ -7540,7 +7540,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
 
   // kludge: null transform likely due to collapsed shape(s)
   // using identity transform as a band-aid, need to rethink this.
-  if (transform.isNull()) {
+  if (transform && transform.isNull()) {
     transform = new Transform();
   }
 
@@ -7669,13 +7669,22 @@ TopoJSON.exportDeltaEncodedArcs = function(arcData) {
   arcData.forEach(function(iter, i) {
     var arc = [],
         x = 0,
-        y = 0;
+        y = 0,
+        dx, dy;
     while (iter.hasNext()) {
-      arc.push([iter.x - x, iter.y - y]);
+      dx = iter.x - x;
+      dy = iter.y - y;
+      if (dx !== 0 || dy !== 0) {
+        arc.push([dx, dy]);
+      }
       x = iter.x;
       y = iter.y;
     }
-    arcs.push(arc.length > 1 ? arc : null);
+    if (arc.length <= 1) {
+      trace("TopoJSON.exportDeltaEncodedArcs() defective arc, length:", arc.length);
+      // defective arcs should have been filtered out earlier with ArcDataset.filter()
+    }
+    arcs.push(arc);
   });
   return arcs;
 };
