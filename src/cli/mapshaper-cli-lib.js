@@ -165,11 +165,6 @@ MapShaper.getHiddenOptionParser = function(optimist) {
   .options("postfilter", {
     describe: "filter shapes after dissolve"
   })
-
-  .options("cut-table", {
-    describe: "export attributes separately from shapes",
-    'boolean': true
-  })
   ;
 };
 
@@ -246,6 +241,10 @@ MapShaper.getExtraOptionParser = function(optimist) {
     'boolean': true
   })
 
+  .options("id-field", {
+    describe: "field to use for TopoJSON id property"
+  })
+
   .options("no-repair", {
     describe: "don't remove intersections introduced by simplification",
     'boolean': true
@@ -253,6 +252,15 @@ MapShaper.getExtraOptionParser = function(optimist) {
 
   .options("no-topology", {
     describe: "treat each shape as topologically independent",
+    'boolean': true
+  })
+
+  .options("lines", {
+    describe: "convert polygons to lines; takes optional list of fields"
+  })
+
+  .options("innerlines", {
+    describe: "output polyline layers containing shared polygon boundaries",
     'boolean': true
   })
 
@@ -266,17 +274,9 @@ MapShaper.getExtraOptionParser = function(optimist) {
     'boolean': true
   })
 
-  .options("lines", {
-    describe: "convert polygons to lines; takes optional list of fields"
-  })
-
-  .options("innerlines", {
-    describe: "output polyline layers containing shared polygon boundaries",
+  .options("cut-table", {
+    describe: "detach attributes from shapes and save as a JSON file",
     'boolean': true
-  })
-
-  .options("id-field", {
-    describe: "field to use for TopoJSON id property"
   })
   ;
 };
