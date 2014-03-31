@@ -81,7 +81,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
 
   // kludge: null transform likely due to collapsed shape(s)
   // using identity transform as a band-aid, need to rethink this.
-  if (transform.isNull()) {
+  if (transform && transform.isNull()) {
     transform = new Transform();
   }
 
