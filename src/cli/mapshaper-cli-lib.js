@@ -15,6 +15,7 @@ mapshaper-split-on-grid,
 mapshaper-recombine,
 mapshaper-field-calculator
 mapshaper-subdivide
+mapshaper-filter-fields
 mapshaper-filter
 mapshaper-merge-files
 mapshaper-join
@@ -277,6 +278,10 @@ MapShaper.getExtraOptionParser = function(optimist) {
   .options("cut-table", {
     describe: "detach attributes from shapes and save as a JSON file",
     'boolean': true
+  })
+
+  .options("fields", {
+    describe: 'filter and rename data fields, e.g. "fips,st=state"'
   })
   ;
 };
@@ -596,6 +601,10 @@ cli.validateExtraOpts = function(argv) {
     opts.cut_table = true;
   }
 
+  if (argv.fields) {
+    opts.field_map = validateFieldsOpt(argv.fields);
+  }
+
   if (argv['merge-files']) {
     opts.merge_files = true;
   }
@@ -729,6 +738,19 @@ function validateCommaSep(str, count) {
     return null;
   }
   return parts;
+}
+
+function validateFieldsOpt(fields) {
+  var parts = validateCommaSep(fields),
+      map = {};
+  if (parts.length === 0) {
+    error("--fields expects a comma-separated list of field names");
+  }
+  parts.forEach(function(str) {
+    var names = str.split('=');
+    map[names[1] || names[0]] = names[0];
+  });
+  return map;
 }
 
 function validateJoinOpts(argv, opts) {

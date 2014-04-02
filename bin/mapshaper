@@ -93,6 +93,10 @@ function procLayers(importData, opts) {
     mapshaper.evaluateLayers(layers, arcData, opts.expression);
   }
 
+  if (opts.field_map) {
+    mapshaper.filterFields(layers, opts);
+  }
+
   /*
   // need to handle holes correctly before enabling this
   if (opts.explode) {

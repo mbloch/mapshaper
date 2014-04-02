@@ -7149,6 +7149,23 @@ var dataTableProto = {
     return records.length > 0 ? Utils.keys(records[0]) : [];
   },
 
+  // TODO: a version of this for DBF so only specified fields are unpacked
+  //
+  filterFields: function(map) {
+    var records = this.getRecords(),
+        fields = Utils.getKeys(map),
+        f = function(rec, name) {
+          rec[map[name]] = src[name];
+          return rec;
+        },
+        src;
+
+    for (var i=0, n=records.length; i<n; i++) {
+      src = records[i];
+      records[i] = Utils.reduce(fields, f, {});
+    }
+  },
+
   size: function() {
     return this.getRecords().length;
   }
@@ -11100,6 +11117,32 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
 
 
 
+// filter and rename data fields; see mapshaper --fields option
+
+MapShaper.filterFields = function(layers, opts) {
+  layers.forEach(function(lyr) {
+    MapShaper.filterFieldsInLayer(lyr, opts);
+  });
+};
+
+MapShaper.filterFieldsInLayer = function(lyr, opts) {
+  if (lyr.data && opts.field_map) {
+    var fields = lyr.data.getFields(),
+        mappedFields = Utils.getKeys(opts.field_map),
+        missingFields = Utils.difference(mappedFields, fields);
+
+    if (missingFields.length > 0) {
+      message("[--fields] Table is missing one or more specified fields:", missingFields);
+      message("Existing fields:", fields);
+      stop();
+    } else {
+      lyr.data.filterFields(opts.field_map);
+    }
+  }
+};
+
+
+
 MapShaper.filterLayers = function(layers, arcs, exp) {
   T.start();
   Utils.forEach(layers, function(lyr) {
@@ -11916,6 +11959,10 @@ MapShaper.getExtraOptionParser = function(optimist) {
     describe: "detach attributes from shapes and save as a JSON file",
     'boolean': true
   })
+
+  .options("fields", {
+    describe: 'filter and rename data fields, e.g. "fips,st=state"'
+  })
   ;
 };
 
@@ -12234,6 +12281,10 @@ cli.validateExtraOpts = function(argv) {
     opts.cut_table = true;
   }
 
+  if (argv.fields) {
+    opts.field_map = validateFieldsOpt(argv.fields);
+  }
+
   if (argv['merge-files']) {
     opts.merge_files = true;
   }
@@ -12367,6 +12418,19 @@ function validateCommaSep(str, count) {
     return null;
   }
   return parts;
+}
+
+function validateFieldsOpt(fields) {
+  var parts = validateCommaSep(fields),
+      map = {};
+  if (parts.length === 0) {
+    error("--fields expects a comma-separated list of field names");
+  }
+  parts.forEach(function(str) {
+    var names = str.split('=');
+    map[names[1] || names[0]] = names[0];
+  });
+  return map;
 }
 
 function validateJoinOpts(argv, opts) {

@@ -91,6 +91,22 @@ describe('data-table.js', function () {
         assert.equal(table.fieldExists(''), false)
       })
     })
+
+    describe('#filterFields()', function () {
+      it('rename a field', function () {
+        var table = new DataTable([{'foo': 'goat', 'bar': 22}, {'foo': 'cat', 'bar': 0}]);
+        table.filterFields({foo:'foo', bar:'baz'});
+        var expected = [{'foo': 'goat', 'baz': 22}, {'foo': 'cat', 'baz': 0}];
+        assert.deepEqual(table.getRecords(), expected);
+      })
+
+      it('remove unmapped fields', function() {
+        var table = new DataTable([{'foo': 'goat', 'bar': 22}, {'foo': 'cat', 'bar': 0}]);
+        table.filterFields({bar:'bar'});
+        var expected = [{'bar': 22}, {'bar': 0}];
+        assert.deepEqual(table.getRecords(), expected);
+      })
+    })
   })
 
   describe('ShapefileTable', function() {
