@@ -4075,6 +4075,12 @@ function message() {
   }
 }
 
+function verbose() {
+  if (C.VERBOSE) {
+    message.apply(null, Utils.toArray(arguments));
+  }
+}
+
 MapShaper.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 };
@@ -5694,7 +5700,7 @@ function initPointChains(xx, yy, verbose) {
       key = (key + 1) % hashTableSize;
     }
   }
-  if (verbose) trace(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
+  if (verbose) message(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
   return chainIds;
 }
 
@@ -6449,7 +6455,7 @@ function PathImporter(pointCount, opts) {
     });
 
     if (dupeCount > 0) {
-      trace(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
+      verbose(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
     }
     if (skippedPathCount > 0) {
       // TODO: consider showing details about type of error
@@ -6513,7 +6519,7 @@ function PathImporter(pointCount, opts) {
     var path = this.importCoordsFromFlatArray(buf, 0, n);
     if (path.isRing) {
       if (isHole && path.area > 0 || !isHole && path.area < 0) {
-        trace("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
+        verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
         MapShaper.reversePathCoords(xx, startId, path.size);
         MapShaper.reversePathCoords(yy, startId, path.size);
         path.area = -path.area;
@@ -7527,7 +7533,7 @@ TopoJSON.importGeometryCollection = function(obj, arcs) {
     if (pathImporter) {
       pathImporter(geom.arcs, importer);
     } else if (geom.type) {
-      trace("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
+      verbose("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
     } else {
       // null geometry -- ok
     }
@@ -7913,7 +7919,7 @@ TopoJSON.exportDeltaEncodedArcs = function(arcData) {
       y = iter.y;
     }
     if (arc.length <= 1) {
-      trace("TopoJSON.exportDeltaEncodedArcs() defective arc, length:", arc.length);
+      verbose("TopoJSON.exportDeltaEncodedArcs() defective arc, length:", arc.length);
       // defective arcs should have been filtered out earlier with ArcDataset.filter()
     }
     arcs.push(arc);
@@ -8393,9 +8399,9 @@ MapShaper.importShp = function(src, opts) {
     stop("Only polygon and polyline Shapefiles are supported.");
   }
   if (reader.hasZ()) {
-    trace("Warning: Z data is being removed.");
+    verbose("Warning: Z data is being removed.");
   } else if (reader.hasM()) {
-    trace("Warning: M data is being removed.");
+    verbose("Warning: M data is being removed.");
   }
 
   var counts = reader.getCounts();
@@ -8664,7 +8670,7 @@ function PathExporter(arcData, polygonType) {
       } else if (path.area < 0) {
         neg.push(path);
       } else {
-        // trace("Zero-area ring, skipping");
+        // verbose("Zero-area ring, skipping");
       }
     });
 
@@ -8684,7 +8690,7 @@ function PathExporter(arcData, polygonType) {
         }
       }
       if (containerId == -1) {
-        trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
+        verbose("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
       } else {
         output[containerId].push(hole);
       }
@@ -9283,12 +9289,11 @@ MapShaper.repairIntersections = function(arcs, intersections) {
       }
 
       if (++loops > 500000) {
-        trace("Caught an infinite loop at intersection:", intersection);
+        verbose("Caught an infinite loop at intersection:", intersection);
         return 0;
       }
     }
 
-    // trace("repairs:", repairs);
     return repairs;
   }
 
@@ -9609,7 +9614,7 @@ MapShaper.protectShape = function(arcData, shape) {
 
   if (!maxRing || maxRing.length === 0) {
     // invald shape
-    trace("[protectShape()] Invalid shape:", shape);
+    verbose("[protectShape()] Invalid shape:", shape);
   } else if (maxRing.length == 1) {
     MapShaper.protectIslandRing(arcData, maxRing);
   } else {
@@ -9626,7 +9631,7 @@ MapShaper.protectIslandRing = function(arcData, ring) {
   if (added == 1) {
     added += MapShaper.lockMaxThreshold(arcData, ring);
   }
-  if (added < 2) trace("[protectIslandRing()] Failed on ring:", ring);
+  if (added < 2) verbose("[protectIslandRing()] Failed on ring:", ring);
 };
 
 MapShaper.protectMultiRing = function(arcData, ring) {
@@ -9639,7 +9644,7 @@ MapShaper.protectMultiRing = function(arcData, ring) {
   while (area <= minArea) {
     added = MapShaper.lockMaxThreshold(arcData, ring);
     if (added === 0) {
-      trace("protectMultiRing() Failed on ring:", ring);
+      verbose("[protectMultiRing()] Failed on ring:", ring);
       break;
     }
     iter.reset();

@@ -20,6 +20,12 @@ function message() {
   }
 }
 
+function verbose() {
+  if (C.VERBOSE) {
+    message.apply(null, Utils.toArray(arguments));
+  }
+}
+
 MapShaper.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 };

@@ -385,7 +385,7 @@ function initPointChains(xx, yy, verbose) {
       key = (key + 1) % hashTableSize;
     }
   }
-  if (verbose) trace(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
+  if (verbose) message(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
   return chainIds;
 }
 

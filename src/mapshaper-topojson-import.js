@@ -71,7 +71,7 @@ TopoJSON.importGeometryCollection = function(obj, arcs) {
     if (pathImporter) {
       pathImporter(geom.arcs, importer);
     } else if (geom.type) {
-      trace("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
+      verbose("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
     } else {
       // null geometry -- ok
     }

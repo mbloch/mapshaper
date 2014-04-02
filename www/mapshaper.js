@@ -6180,13 +6180,18 @@ function PathImporter(pointCount, opts) {
         ins = 0,
         openPathCount = 0,
         dupeCount = 0,
+        zeroAreaCount = 0,
+        defectiveCount = 0,
+        windingErrorCount = 0,
+        skippedPathCount = 0,
         validPaths = [],
         nn = [];
+
     Utils.forEach(paths, function(path, pathId) {
       var validPoints,
           startId = ins,
           n = path.size,
-          err = null,
+          err = false,
           i, x, y, prevX, prevY;
       for (i=0; i<n; i++, offs++) {
         x = xx[offs];
@@ -6205,32 +6210,38 @@ function PathImporter(pointCount, opts) {
 
       if (path.isRing) {
         if (validPoints < 4) {
-          err = "Only " + validPoints + " valid points in ring";
+          err = true;
+          defectiveCount++;
         }
         // If number of points in ring have changed (e.g. from snapping) or if
-        // coords were rounded, check for collapsed or inverted rings.
+        // coords were rounded, recompute area and check for collapsed or
+        // inverted rings.
         else if (validPoints < path.size || round) {
           var area = msSignedRingArea(xx, yy, startId, validPoints);
           if (area === 0) {
-            err = "Collapsed ring";
+            err = true;
+            zeroAreaCount++;
           } else if (area < 0 != path.area < 0) {
-            err = "Inverted ring";
+            err = true;
+            windingOrderCount++;
           }
         }
         // Catch rings that were originally empty
         else if (path.area === 0) {
-          err = "Zero-area ring";
+          err = true;
+          zeroAreaCount++;
         }
       } else {
         if (validPoints < 2) {
-          err = "Collapsed open path";
+          err = true;
+          defectiveCount++;
         } else {
           openPathCount++;
         }
       }
 
       if (err) {
-        trace(err + " -- skipping a path.");
+        skippedPathCount++;
         ins -= validPoints;
       } else {
         nn.push(validPoints);
@@ -6241,12 +6252,17 @@ function PathImporter(pointCount, opts) {
     if (dupeCount > 0) {
       trace(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
     }
+    if (skippedPathCount > 0) {
+      // TODO: consider showing details about type of error
+      message(Utils.format("Removed %,d path%s with defective geometry", skippedPathCount, "s?"));
+    }
 
     return {
       xx: xx.subarray(0, ins),
       yy: yy.subarray(0, ins),
       nn: nn,
       validPaths: validPaths,
+      skippedPathCount: skippedPathCount,
       openPathCount: openPathCount,
       invalidPointCount: offs - ins,
       validPointCount: ins
@@ -6307,8 +6323,8 @@ function PathImporter(pointCount, opts) {
   };
 
   // Return topological shape data
-  // Applies any requested snapping and rounding
-  // Removes duplicate points, checks for ring inversions
+  // Apply any requested snapping and rounding
+  // Remove duplicate points, check for ring inversions
   //
   this.done = function() {
     var snappedPoints;

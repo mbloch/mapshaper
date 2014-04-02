@@ -108,7 +108,7 @@ function PathImporter(pointCount, opts) {
     });
 
     if (dupeCount > 0) {
-      trace(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
+      verbose(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
     }
     if (skippedPathCount > 0) {
       // TODO: consider showing details about type of error
@@ -172,7 +172,7 @@ function PathImporter(pointCount, opts) {
     var path = this.importCoordsFromFlatArray(buf, 0, n);
     if (path.isRing) {
       if (isHole && path.area > 0 || !isHole && path.area < 0) {
-        trace("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
+        verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
         MapShaper.reversePathCoords(xx, startId, path.size);
         MapShaper.reversePathCoords(yy, startId, path.size);
         path.area = -path.area;

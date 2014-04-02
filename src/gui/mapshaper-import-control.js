@@ -84,7 +84,7 @@ function ImportControl(editor) {
     if (type in index) {
       // TODO: improve; this can cause false conflicts,
       // e.g. states.json and states.topojson
-      trace("inputFileContent() File has already been imported; skipping:", fname);
+      verbose("inputFileContent() File has already been imported; skipping:", fname);
       return;
     }
     if (type == 'shp' || type == 'json') {

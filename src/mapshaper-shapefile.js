@@ -13,9 +13,9 @@ MapShaper.importShp = function(src, opts) {
     stop("Only polygon and polyline Shapefiles are supported.");
   }
   if (reader.hasZ()) {
-    trace("Warning: Z data is being removed.");
+    verbose("Warning: Z data is being removed.");
   } else if (reader.hasM()) {
-    trace("Warning: M data is being removed.");
+    verbose("Warning: M data is being removed.");
   }
 
   var counts = reader.getCounts();

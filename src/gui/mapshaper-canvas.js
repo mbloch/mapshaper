@@ -59,7 +59,7 @@ function ShapeRenderer() {
       ctx.fillStyle = style.fillColor;
     }
     if (!stroked && !filled) {
-      trace("#drawLine() Line is missing stroke and fill; style:", style);
+      verbose("#drawLine() Line is missing stroke and fill; style:", style);
       return;
     }
 

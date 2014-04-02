@@ -222,7 +222,7 @@ TopoJSON.exportDeltaEncodedArcs = function(arcData) {
       y = iter.y;
     }
     if (arc.length <= 1) {
-      trace("TopoJSON.exportDeltaEncodedArcs() defective arc, length:", arc.length);
+      verbose("TopoJSON.exportDeltaEncodedArcs() defective arc, length:", arc.length);
       // defective arcs should have been filtered out earlier with ArcDataset.filter()
     }
     arcs.push(arc);

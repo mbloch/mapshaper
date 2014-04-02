@@ -122,12 +122,11 @@ MapShaper.repairIntersections = function(arcs, intersections) {
       }
 
       if (++loops > 500000) {
-        trace("Caught an infinite loop at intersection:", intersection);
+        verbose("Caught an infinite loop at intersection:", intersection);
         return 0;
       }
     }
 
-    // trace("repairs:", repairs);
     return repairs;
   }
 

@@ -34,7 +34,7 @@ MapShaper.protectShape = function(arcData, shape) {
 
   if (!maxRing || maxRing.length === 0) {
     // invald shape
-    trace("[protectShape()] Invalid shape:", shape);
+    verbose("[protectShape()] Invalid shape:", shape);
   } else if (maxRing.length == 1) {
     MapShaper.protectIslandRing(arcData, maxRing);
   } else {
@@ -51,7 +51,7 @@ MapShaper.protectIslandRing = function(arcData, ring) {
   if (added == 1) {
     added += MapShaper.lockMaxThreshold(arcData, ring);
   }
-  if (added < 2) trace("[protectIslandRing()] Failed on ring:", ring);
+  if (added < 2) verbose("[protectIslandRing()] Failed on ring:", ring);
 };
 
 MapShaper.protectMultiRing = function(arcData, ring) {
@@ -64,7 +64,7 @@ MapShaper.protectMultiRing = function(arcData, ring) {
   while (area <= minArea) {
     added = MapShaper.lockMaxThreshold(arcData, ring);
     if (added === 0) {
-      trace("protectMultiRing() Failed on ring:", ring);
+      verbose("[protectMultiRing()] Failed on ring:", ring);
       break;
     }
     iter.reset();
