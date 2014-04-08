@@ -13,32 +13,32 @@ MapShaper.ArcDataset = ArcDataset;
 //    zz (optional) is an array of concatenated simplification thresholds
 //
 function ArcDataset() {
-  var _self = this;
   var _xx, _yy,  // coordinates data
       _ii, _nn,  // indexes, sizes
       _zz, _zlimit = 0, // simplification
       _bb, _allBounds, // bounding boxes
-      _arcIter, _shapeIter; // path iterators
+      _arcIter, _filteredArcIter; // path iterators
 
   if (arguments.length == 1) {
     initLegacyArcs(arguments[0]);  // want to phase this out
-  } else if (arguments.length >= 3) {
-    initPathData.apply(this, arguments);
+  } else if (arguments.length == 3) {
+    initXYData.apply(this, arguments);
   } else {
     error("ArcDataset() Invalid arguments");
   }
 
   function initLegacyArcs(coords) {
     var data = convertLegacyArcs(coords);
-    initPathData(data.nn, data.xx, data.yy, data.zz);
+    initXYData(data.nn, data.xx, data.yy);
   }
 
-  function initPathData(nn, xx, yy, zz) {
+  function initXYData(nn, xx, yy) {
     var size = nn.length;
     _xx = xx;
     _yy = yy;
     _nn = nn;
-    _zz = zz || new Float64Array(xx.length);
+    _zz = null;
+    _filteredArcIter = null;
 
     // generate array of starting idxs of each arc
     _ii = new Uint32Array(size);
@@ -47,16 +47,21 @@ function ArcDataset() {
       idx += nn[j];
     }
 
-    if (idx != _xx.length || _xx.length != _yy.length || _xx.length != _zz.length) {
-      error("ArcDataset#initPathData() Counting error");
+    if (idx != _xx.length || _xx.length != _yy.length) {
+      error("ArcDataset#initXYData() Counting error");
     }
 
     initBounds();
-
     // Pre-allocate some path iterators for repeated use.
-    _arcIter = new ArcIter(_xx, _yy, _zz);
-    _shapeIter = new ShapeIter(_self);
+    _arcIter = new ArcIter(_xx, _yy);
     return this;
+  }
+
+  function initZData(zz) {
+    if (!zz) zz = new Float64Array(_xx.length);
+    if (zz.length != _xx.length) error("ArcDataset#initZData() mismatched arrays");
+    _zz = zz;
+    _filteredArcIter = new FilteredArcIter(_xx, _yy, _zz);
   }
 
   function initBounds() {
@@ -91,16 +96,14 @@ function ArcDataset() {
 
   function convertLegacyArcs(coords) {
     var numArcs = coords.length;
-
     // Generate arrays of arc lengths and starting idxs
     var nn = new Uint32Array(numArcs),
         pointCount = 0,
-        useZ = false,
         arc, arcLen;
     for (var i=0; i<numArcs; i++) {
       arc = coords[i];
+      if (arc.length != 2) error("#convertLegacyArcs() Expected array length == 2");
       arcLen = arc && arc[0].length || 0;
-      useZ = useZ || arc.length > 2;
       nn[i] = arcLen;
       pointCount += arcLen;
       if (arcLen === 0) error("#convertArcArrays() Empty arc:", arc);
@@ -109,24 +112,20 @@ function ArcDataset() {
     // Copy x, y coordinates into long arrays
     var xx = new Float64Array(pointCount),
         yy = new Float64Array(pointCount),
-        zz = useZ ? new Float64Array(pointCount) : null,
         offs = 0;
     coords.forEach(function(arc, arcId) {
       var xarr = arc[0],
           yarr = arc[1],
-          zarr = arc[2] || null,
           n = nn[arcId];
       for (var j=0; j<n; j++) {
         xx[offs + j] = xarr[j];
         yy[offs + j] = yarr[j];
-        if (useZ) zz[offs + j] = zarr[j];
       }
       offs += n;
     });
     return {
       xx: xx,
       yy: yy,
-      zz: zz,
       nn: nn
     };
   }
@@ -144,47 +143,50 @@ function ArcDataset() {
   };
 
   this.getCopy = function() {
-    return new ArcDataset(new Int32Array(_nn), new Float64Array(_xx),
-        new Float64Array(_yy), new Float64Array(_zz));
+    var copy = new ArcDataset(new Int32Array(_nn), new Float64Array(_xx),
+        new Float64Array(_yy));
+    if (_zz) copy.setThresholds(new Float64Array(_zz));
+    return copy;
   };
 
   this.getFilteredCopy = function() {
+    if (!_zz || _zlimit === 0) return this.getCopy();
     var len2 = this.getFilteredPointCount();
-    if (len2 == this.getPointCount()) {
-      return this.getCopy();
-    }
-
     var xx2 = new Float64Array(len2),
         yy2 = new Float64Array(len2),
         zz2 = new Float64Array(len2),
         nn2 = new Int32Array(this.size()),
-        i2 = 0;
+        i=0, i2 = 0,
+        n, n2;
 
-    this.forEach2(function(i, n, xx, yy, zz, arcId) {
-      var n2 = 0;
+    for (var arcId=0, arcCount=this.size(); arcId < arcCount; arcId++) {
+      n2 = 0;
+      n = _nn[arcId];
       for (var end = i+n; i < end; i++) {
         if (_zz[i] >= _zlimit) {
-          xx2[i2] = xx[i];
-          yy2[i2] = yy[i];
-          zz2[i2] = zz[i];
+          xx2[i2] = _xx[i];
+          yy2[i2] = _yy[i];
+          zz2[i2] = _zz[i];
           i2++;
           n2++;
         }
       }
       if (n2 < 2) error("Collapsed arc"); // endpoints should be z == Infinity
       nn2[arcId] = n2;
-    });
-
-    return new ArcDataset(nn2, xx2, yy2, zz2);
+    }
+    var copy = new ArcDataset(nn2, xx2, yy2);
+    copy.setThresholds(zz2);
+    return copy;
   };
 
   // Return arcs as arrays of [x, y] points (intended for testing).
   this.toArray = function() {
     return Utils.range(this.size()).map(function(i) {
-      return _self.getArc(i).toArray();
-    });
+      return this.getArc(i).toArray();
+    }, this);
   };
 
+  /*
   this.toArray2 = function() {
     var arr = [];
     this.forEach3(function(xx, yy, zz) {
@@ -193,6 +195,7 @@ function ArcDataset() {
     });
     return arr;
   };
+  */
 
   // Snap coordinates to a grid of @quanta locations on both axes
   // This may snap nearby points to the same coordinates.
@@ -221,6 +224,10 @@ function ArcDataset() {
       count++;
     }, nth || 1);
     return [dx / count || 0, dy / count || 0];
+  };
+
+  this.forEachSegment = function(cb) {
+    return this.forNthSegment(cb, 1);
   };
 
   this.forNthSegment = function(cb, skip) {
@@ -285,9 +292,9 @@ function ArcDataset() {
     }
   };
 
-
   this.forEach3 = function(cb) {
     var start, end, xx, yy, zz;
+    if (!_zz) initZData();
     for (var arcId=0, n=this.size(); arcId<n; arcId++) {
       start = _ii[arcId];
       end = start + _nn[arcId];
@@ -328,15 +335,6 @@ function ArcDataset() {
     }
   };
 
-  /*
-  function copyElements(src, i, dest, j, n) {
-    if (src === dest && j > i) error ("copy error");
-    for (var k=0; k<n; k++) {
-      dest[k + j] = src[k + i];
-    }
-  }
-  */
-
   function condenseArcs(map) {
     var goodPoints = 0,
         goodArcs = 0,
@@ -348,47 +346,48 @@ function ArcDataset() {
       if (k > -1) {
         copyElements(_xx, _ii[i], _xx, goodPoints, arcLen);
         copyElements(_yy, _ii[i], _yy, goodPoints, arcLen);
-        copyElements(_zz, _ii[i], _zz, goodPoints, arcLen);
+        if (_zz) copyElements(_zz, _ii[i], _zz, goodPoints, arcLen);
         _nn[k] = arcLen;
         goodPoints += arcLen;
         goodArcs++;
       }
     }
 
-    initPathData(_nn.subarray(0, goodArcs), _xx.subarray(0, goodPoints),
-        _yy.subarray(0, goodPoints), _zz.subarray(0, goodPoints));
+    initXYData(_nn.subarray(0, goodArcs), _xx.subarray(0, goodPoints),
+        _yy.subarray(0, goodPoints));
+    if (_zz) initZData(_zz.subarray(0, goodPoints));
   }
 
   this.getArcIter = function(arcId) {
     var fw = arcId >= 0,
         i = fw ? arcId : ~arcId,
-        start = _ii[i],
-        len = _nn[i];
-
-    _arcIter.init(start, len, fw, _zlimit || 0);
-    return _arcIter;
+        iter = _zz && _zlimit ? _filteredArcIter : _arcIter;
+    return iter.init(_ii[i], _nn[i], fw, _zlimit);
   };
 
   this.getShapeIter = function(ids) {
-    var iter = _shapeIter;
-    iter.init(ids);
-    return iter;
+    return new ShapeIter(this).init(ids);
   };
 
   // Add simplification data to the dataset
   // @thresholds is an array of arrays of removal thresholds for each arc-vertex.
   //
   this.setThresholds = function(thresholds) {
-    if (thresholds.length != this.size())
-      error("ArcDataset#setThresholds() Mismatched arc/threshold counts.");
-    var i = 0;
-    thresholds.forEach(function(arr) {
-      var zz = _zz;
-      for (var j=0, n=arr.length; j<n; i++, j++) {
-        zz[i] = arr[j];
-      }
-    });
-
+    var zz;
+    if (thresholds instanceof Float64Array) {
+      zz = thresholds;
+    } else if (thresholds.length == this.size()) {
+      var i = 0;
+      zz = new Float64Array(_xx.length);
+      thresholds.forEach(function(arr) {
+        for (var j=0, n=arr.length; j<n; i++, j++) {
+          zz[i] = arr[j];
+        }
+      });
+    } else {
+      error("ArcDataset#setThresholds() Invalid threshold data.");
+    }
+    initZData(zz);
     return this;
   };
 
@@ -414,7 +413,7 @@ function ArcDataset() {
   // Return array of z-values that can be removed for simplification
   //
   this.getRemovableThresholds = function(nth) {
-    if (!_zz) error("Missing simplification data");
+    if (!_zz) error("ArcDataset#getRemovableThresholds() Missing simplification data.");
     var skip = nth | 1,
         arr = new Float64Array(Math.ceil(_zz.length / skip)),
         z;
@@ -561,7 +560,7 @@ Arc.prototype = {
 
 //
 function MultiShape(src) {
-  this.src = src;
+  this.singleShape = new SimpleShape(src);
 }
 
 MultiShape.prototype = {
@@ -571,82 +570,99 @@ MultiShape.prototype = {
     return this;
   },
   getPathIter: function(i) {
-    return this.src.getShapeIter(this.parts[i]);
+    return this.getPath(i).getPathIter();
   },
   getPath: function(i) {
     if (i < 0 || i >= this.parts.length) error("MultiShape#getPart() invalid part id:", i);
-    return new SimpleShape(this.src).init(this.parts[i]);
+    return this.singleShape.init(this.parts[i]);
   },
   // Return array of SimpleShape objects, one for each path
   getPaths: function() {
     return this.parts.map(function(ids) {
-      return new SimpleShape(this.src).init(ids);
+      return this.singleShape.init(ids);
     }, this);
   }
 };
 
 function SimpleShape(src) {
-  this.src = src;
+  this.pathIter = new ShapeIter(src);
+  this.ids = null;
 }
 
 SimpleShape.prototype = {
   pathCount: 1,
   init: function(ids) {
-    this.ids = ids;
+    this.pathIter.init(ids);
+    this.ids = ids; // kludge for TopoJSON export -- rethink
     return this;
   },
   getPathIter: function() {
-    return this.src.getShapeIter(this.ids);
+    return this.pathIter;
   }
 };
 
+// Constructor takes arrays of coords: xx, yy, zz (optional)
+//
 // Iterate over the points of an arc
-// properties: x, y)
+// properties: x, y
 // method: hasNext()
 // usage:
 //   while (iter.hasNext()) {
 //     iter.x, iter.y; // do something w/ x & y
 //   }
 //
-function ArcIter(xx, yy, zz) {
-  var _xx = xx,
-      _yy = yy,
-      _zz = zz,
-      _zlim, _len;
-  var _i, _inc, _start, _stop;
-  this.hasNext = nextIdx;
-  this.x = this.y = 0;
-  this.i = -1;
+function ArcIter(xx, yy) {
+  var _i = 0,
+      _inc = 1,
+      _stop = 0;
 
-  this.init = function(i, len, fw, zlim) {
-    _zlim = zlim;
-    this.hasNext = zlim ? nextSimpleIdx : nextIdx;
+  this.init = function(i, len, fw) {
     if (fw) {
-      _start = i;
+      _i = i;
       _inc = 1;
       _stop = i + len;
     } else {
-      _start = i + len - 1;
+      _i = i + len - 1;
       _inc = -1;
       _stop = i - 1;
     }
-    _i = _start;
+    return this;
   };
 
-  function nextIdx() {
+  this.hasNext = function() {
     var i = _i;
     if (i == _stop) return false;
     _i = i + _inc;
-    this.x = _xx[i];
-    this.y = _yy[i];
-    this.i = i; // experimental
-    if (isNaN(i) || isNaN(this.x)) throw "not a number";
+    this.x = xx[i];
+    this.y = yy[i];
+    this.i = i;
     return true;
-  }
+  };
+}
 
-  function nextSimpleIdx() {
+function FilteredArcIter(xx, yy, zz) {
+  var _zlim = 0,
+      _i = 0,
+      _inc = 1,
+      _stop = 0;
+
+  this.init = function(i, len, fw, zlim) {
+    _zlim = zlim || 0;
+    if (fw) {
+      _i = i;
+      _inc = 1;
+      _stop = i + len;
+    } else {
+      _i = i + len - 1;
+      _inc = -1;
+      _stop = i - 1;
+    }
+    return this;
+  };
+
+  this.hasNext = function() {
     // using local vars is significantly faster when skipping many points
-    var zz = _zz,
+    var zarr = zz,
         i = _i,
         j = i,
         zlim = _zlim,
@@ -655,13 +671,13 @@ function ArcIter(xx, yy, zz) {
     if (i == stop) return false;
     do {
       j += inc;
-    } while (j != stop && zz[j] < zlim);
+    } while (j != stop && zarr[j] < zlim);
     _i = j;
-    this.x = _xx[i];
-    this.y = _yy[i];
-    this.i = i; // experimental
+    this.x = xx[i];
+    this.y = yy[i];
+    this.i = i;
     return true;
-  }
+  };
 }
 
 // Iterate along a path made up of one or more arcs.
@@ -675,6 +691,7 @@ function ShapeIter(arcs) {
     _ids = ids;
     n = ids.length;
     this.reset();
+    return this;
   };
 
   function nextArc() {

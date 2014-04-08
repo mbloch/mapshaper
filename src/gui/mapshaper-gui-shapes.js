@@ -1,4 +1,4 @@
-/* @requires mapshaper-shapes */
+/* @requires mapshaper-shapes, mapshaper-shape-utils */
 
 // A collection of paths that can be filtered to exclude paths and points
 // that can't be displayed at the current map scale. For drawing paths on-screen.
@@ -22,17 +22,20 @@ function FilteredPathCollection(unfilteredArcs, opts) {
   init();
 
   function init() {
-    // Sort simplification thresholds for all non-endpoint vertices
-    // for quick conversion of simplification percentage to threshold value.
-    // For large datasets, use every nth point, for faster sorting.
-    var size = unfilteredArcs.getPointCount(),
-        nth = Math.ceil(size / 5e5);
-    _sortedThresholds = unfilteredArcs.getRemovableThresholds(nth);
-    Utils.quicksort(_sortedThresholds, false);
+    // If we have simplification data...
+    if (unfilteredArcs.getVertexData().zz) {
+      // Sort simplification thresholds for all non-endpoint vertices
+      // for quick conversion of simplification percentage to threshold value.
+      // For large datasets, use every nth point, for faster sorting.
+      var size = unfilteredArcs.getPointCount(),
+          nth = Math.ceil(size / 5e5);
+      _sortedThresholds = unfilteredArcs.getRemovableThresholds(nth);
+      Utils.quicksort(_sortedThresholds, false);
 
-    // For large datasets, create a filtered copy of the data for faster rendering
-    if (size > 5e5) {
-      initFilteredArcs();
+      // For large datasets, create a filtered copy of the data for faster rendering
+      if (size > 5e5) {
+        initFilteredArcs();
+      }
     }
   }
 
@@ -58,9 +61,13 @@ function FilteredPathCollection(unfilteredArcs, opts) {
   };
 
   this.setRetainedPct = function(pct) {
-    var z = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
-    z = MapShaper.clampIntervalByPct(z, pct);
-    this.setRetainedInterval(z);
+    if (_sortedThresholds) {
+      var z = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
+      z = MapShaper.clampIntervalByPct(z, pct);
+      this.setRetainedInterval(z);
+    } else {
+      unfilteredArcs.setRetainedPct(pct);
+    }
   };
 
   this.setRetainedInterval = function(z) {

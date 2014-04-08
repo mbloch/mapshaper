@@ -6,7 +6,6 @@ var api = require('../'),
   Utils = api.Utils,
   Node = api.Node;
 
-
 function deepCopy(obj) {
   return JSON.parse(JSON.stringify(obj));
 }

@@ -25,7 +25,8 @@ function convertArcs(groups, arcs) {
       nn2 = new Int32Array(groups.length),
       xx2 = new Float64Array(pointCount),
       yy2 = new Float64Array(pointCount),
-      zz2 = new Float64Array(pointCount);
+      zz2;
+  if (src.zz) zz2 = new Float64Array(pointCount);
 
   Utils.forEach(groups, function(oldIds, newId) {
     Utils.forEach(oldIds, function(oldId) {
@@ -33,7 +34,9 @@ function convertArcs(groups, arcs) {
     });
   });
 
-  return new ArcDataset(nn2, xx2, yy2, zz2);
+  var arcs2 = new ArcDataset(nn2, xx2, yy2);
+  if (zz2) arcs2.setThresholds(zz2);
+  return arcs2;
 
   // Count points required by dissolved arcs, so typed arrays can be allocated
   function countPoints(groups, nn) {
@@ -66,7 +69,7 @@ function convertArcs(groups, arcs) {
       }
       MapShaper.copyElements(src.xx, i, xx2, offs, n, rev);
       MapShaper.copyElements(src.yy, i, yy2, offs, n, rev);
-      MapShaper.copyElements(src.zz, i, zz2, offs, n, rev);
+      if (zz2) MapShaper.copyElements(src.zz, i, zz2, offs, n, rev);
       nn2[newId] += n;
       offs += n;
     }
