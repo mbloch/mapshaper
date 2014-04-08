@@ -1,5 +1,4 @@
-
-var TopoJSON = {};
+/* @requires topojson-utils */
 
 // Converts arc coordinates from rounded, delta-encoded values to
 // transposed arrays of geographic coordinates.

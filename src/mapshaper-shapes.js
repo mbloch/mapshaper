@@ -209,27 +209,48 @@ function ArcDataset() {
     this.applyTransform(inverse);
   };
 
+  // Return average magnitudes of dx, dy
+  //
   this.getAverageSegment = function(nth) {
-    return MapShaper.getAverageSegment(this.getSegmentIter(), nth);
+    var count = 0,
+        dx = 0,
+        dy = 0;
+    this.forNthSegment(function(i1, i2, xx, yy) {
+      dx += Math.abs(xx[i1] - xx[i2]);
+      dy += Math.abs(yy[i1] - yy[i2]);
+      count++;
+    }, nth || 1);
+    return [dx / count || 0, dy / count || 0];
   };
 
-  /*
-  this.getNextId = function(i) {
-    var n = _xx.length,
-        zlim = _zlimit;
-    while (++i < n) {
-      if (zlim === 0 || _zz[i] >= zlim) return i;
-    }
-    return -1;
-  };
+  this.forNthSegment = function(cb, skip) {
+    var zlim = this.getRetainedInterval(),
+        filtered = zlim > 0,
+        nextArcStart = 0,
+        arcId = -1,
+        count = 0,
+        xx = _xx, yy = _yy, zz = _zz, nn = _nn,
+        nth = skip > 1 ? Math.floor(skip) : 1,
+        id1, id2, retn;
 
-  this.getPrevId = function(i) {
-    var zlim = _zlimit;
-    while (--i >= 0) {
-      if (zlim === 0 || _zz[i] >= zlim) return i;
+    for (var k=0, n=xx.length; k<n; k++) {
+      if (!filtered || zz[k] >= zlim) { // check: > or >=
+        id1 = id2;
+        id2 = k;
+        if (k < nextArcStart) {
+          count++;
+          if (nth == 1 || count % nth === 0) {
+            cb(id1, id2, xx, yy);
+          }
+        } else {
+          do {
+            arcId++;
+            nextArcStart += nn[arcId];
+          } while (nextArcStart <= k); // handle empty paths
+        }
+      }
     }
-    return -1;
-  }; */
+  };
 
   // Apply a linear transform to the data, with or without rounding.
   //
@@ -248,18 +269,6 @@ function ArcDataset() {
     initBounds();
   };
 
-  this.getSegmentIter = function() {
-    return MapShaper.getSegmentIter(_xx, _yy, _nn, _zz, _zlimit);
-  };
-
-  this.forEachSegment = function(cb) {
-    this.getSegmentIter()(cb, 1);
-  };
-
-  this.forNthSegment = function(cb, nth) {
-    this.getSegmentIter()(cb, nth);
-  };
-
   // Return an ArcIter object for each path in the dataset
   //
   this.forEach = function(cb) {
@@ -275,6 +284,7 @@ function ArcDataset() {
       cb(_ii[arcId], _nn[arcId], _xx, _yy, _zz, arcId);
     }
   };
+
 
   this.forEach3 = function(cb) {
     var start, end, xx, yy, zz;
@@ -691,72 +701,3 @@ function ShapeIter(arcs) {
     return false;
   };
 }
-
-MapShaper.clampIntervalByPct = function(z, pct) {
-  if (pct <= 0) z = Infinity;
-  else if (pct >= 1) z = 0;
-  return z;
-};
-
-// Return id of the vertex between @start and @end with the highest
-// threshold that is less than @zlim.
-//
-MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
-  var tmp, jz = 0, j = -1, z;
-  if (start > end) {
-    tmp = start;
-    start = end;
-    end = tmp;
-  }
-  for (var i=start+1; i<end; i++) {
-    z = zz[i];
-    if (z < zlim && z > jz) {
-      j = i;
-      jz = z;
-    }
-  }
-  return j;
-};
-
-// Return average magnitudes of dx, dy
-// @iter Function returned by getSegmentIter()
-//
-MapShaper.getAverageSegment = function(iter, nth) {
-  var count = 0,
-      dx = 0,
-      dy = 0;
-  iter(function(i1, i2, xx, yy) {
-    dx += Math.abs(xx[i1] - xx[i2]);
-    dy += Math.abs(yy[i1] - yy[i2]);
-    count++;
-  }, nth);
-  return [dx / count, dy / count];
-};
-
-MapShaper.getSegmentIter = function(xx, yy, nn, zz, zlim) {
-  return function forNthSegment(cb, nth) {
-    var filtered = zlim > 0,
-        nextArcStart = 0,
-        arcId = -1,
-        count = 0,
-        id1, id2, retn;
-    nth = nth > 1 ? Math.floor(nth) : 1;
-    for (var k=0, n=xx.length; k<n; k++) {
-      if (!filtered || zz[k] >= zlim) { // check: > or >=
-        id1 = id2;
-        id2 = k;
-        if (k < nextArcStart) {
-          count++;
-          if (nth == 1 || count % nth === 0) {
-            cb(id1, id2, xx, yy);
-          }
-        } else {
-          do {
-            arcId++;
-            nextArcStart += nn[arcId];
-          } while (nextArcStart <= k); // handle empty paths
-        }
-      }
-    }
-  };
-};

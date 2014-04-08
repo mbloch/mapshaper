@@ -9,9 +9,11 @@ mapshaper-shapes
 // @nn array of path lengths
 // @points (optional) array, snapped coords are added so they can be displayed
 //
+//
 MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
-  var avgSeg = MapShaper.getAverageSegment(MapShaper.getSegmentIter(xx, yy, nn), 3),
-      avgDist = (avgSeg[0] + avgSeg[1]), // avg. dx + dy -- crude approximation
+  // TODO: Pass in ArcDataset instead of xx, yy zz
+  var avgSeg = new ArcDataset(nn, xx, yy).getAverageSegment(3),
+      avgDist = avgSeg[0] + avgSeg[1], // avg. dx + dy -- crude approximation
       snapDist = avgDist * 0.0025,
       snapCount = 0;
 

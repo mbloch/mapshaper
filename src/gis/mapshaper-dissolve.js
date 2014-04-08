@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-data-table */
+/* @requires mapshaper-common, mapshaper-data-table, mapshaper-shape-utils */
 
 MapShaper.dissolveLayers = function(layers) {
   T.start();
@@ -352,39 +352,4 @@ MapShaper.calcDissolveData = function(keys, index, properties, field, opts) {
     });
   });
   return arr;
-};
-
-MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
-  var segId = 0;
-  Utils.forEach(shapes, function(parts, shapeId) {
-    if (!parts || parts.length === 0) return; // null shape
-    var arcIds, arcId, partData;
-    if (cbShape) {
-      cbShape(shapeId);
-    }
-    for (var i=0, m=parts.length; i<m; i++) {
-      arcIds = parts[i];
-      if (cbPart) {
-        cbPart({
-          i: i,
-          shapeId: shapeId,
-          shape: parts,
-          arcs: arcIds
-        });
-      }
-
-      for (var j=0, n=arcIds.length; j<n; j++, segId++) {
-        if (cbArc) {
-          arcId = arcIds[j];
-          cbArc({
-            i: j,
-            shapeId: shapeId,
-            partId: i,
-            arcId: arcId,
-            segId: segId
-          });
-        }
-      }
-    }
-  });
 };

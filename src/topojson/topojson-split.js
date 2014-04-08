@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-topojson-import */
+/* @requires mapshaper-common, topojson-import, topojson-utils */
 
 // Divide a TopoJSON topology into multiple topologies, one for each
 // named geometry object.
@@ -49,42 +49,4 @@ TopoJSON.extractGeometryObject = function(obj, arcs) {
   // Re-index
   TopoJSON.reindexArcIds(obj, arcMap);
   return filteredArcs;
-};
-
-// @map is an array of new arc ids, indexed by original arc ids.
-//
-TopoJSON.reindexArcIds = function(obj, map) {
-  TopoJSON.traverseGeometryObject(obj, function(arcId) {
-    var rev = arcId < 0,
-        idx = rev ? ~arcId : arcId,
-        mappedId = map[idx];
-    return rev ? ~mappedId : mappedId;
-  });
-};
-
-TopoJSON.traverseGeometryObject = function(obj, cb) {
-  if (obj.arcs) {
-    TopoJSON.traverseArcs(obj.arcs, cb);
-  } else if (obj.geometries) {
-    Utils.forEach(obj.geometries, function(geom) {
-      TopoJSON.traverseGeometryObject(geom, cb);
-    });
-  }
-};
-
-// Visit each arc id in the arcs array of a geometry object.
-// Use non-undefined return values of callback @cb as replacements.
-//
-TopoJSON.traverseArcs = function(arr, cb) {
-  Utils.forEach(arr, function(item, i) {
-    var val;
-    if (item instanceof Array) {
-      TopoJSON.traverseArcs(item, cb);
-    } else {
-      val = cb(item);
-      if (val !== void 0) {
-        arr[i] = val;
-      }
-    }
-  });
 };
