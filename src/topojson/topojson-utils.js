@@ -42,9 +42,6 @@ TopoJSON.getArcMap = function(mask) {
   return map;
 };
 
-TopoJSON.mapShape = function(shapes, map) {
-
-};
 
 
 

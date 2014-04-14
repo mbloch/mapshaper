@@ -53,7 +53,9 @@ describe('mapshaper-geojson.js', function () {
         { type: 'Polygon',
           coordinates: [[[1, 1], [1, 3], [2, 3], [1, 1]]]
           }
-        ], bbox: [1, 1, 2, 3]};
+        ]
+        // , bbox: [1, 1, 2, 3]
+      };
       assert.deepEqual(api.exportGeoJSONObject(lyr, arcs, {cut_table: true}), target);
     })
 
@@ -75,6 +77,7 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(geom, importExport(geom));
     })
 
+    /*
     it('bbox added to polygon output', function() {
       var onePoly = {"type":"GeometryCollection","geometries":[
         {
@@ -87,7 +90,7 @@ describe('mapshaper-geojson.js', function () {
         bbox: [100, 0, 101, 1]
       });
       assert.deepEqual(target, output);
-    })
+    })*/
 
     it('collapsed polygon converted to null geometry', function() {
       var geom = {"type":"FeatureCollection", "features":[
@@ -121,7 +124,7 @@ describe('mapshaper-geojson.js', function () {
       var output = importExport(onePoly);
       var target = {
         type:"GeometryCollection",
-        bbox: [100, 0, 110, 10],
+        // bbox: [100, 0, 110, 10],
         geometries:[{
           type: "Polygon",
           coordinates: [[[100.0, 0.0], [100.0, 10.0], [110.0, 10.0], [110.0, 0.0], [100.0, 0.0]],
@@ -136,6 +139,50 @@ describe('mapshaper-geojson.js', function () {
           outputObj = importExport(geoStr);
 
       assert.ok(outputObj.features[0].geometry != null);
+    })
+
+    it('GeometryCollection with a Point and a MultiPoint', function() {
+      var json = {
+        type: "GeometryCollection",
+        geometries:[{
+          type: "Point",
+          coordinates: [2, 1]
+        }, {
+          type: "MultiPoint",
+          coordinates: [[1, 0], [1, 0]]
+        }]
+      };
+
+      var target = JSON.parse(JSON.stringify(json));
+      assert.deepEqual(importExport(json, true), target);
+    })
+
+    it('FeatureCollection with two points and a null geometry', function() {
+      var json = {
+        type: "FeatureCollection",
+        features:[{
+          type: "Feature",
+          properties: {id: 'pdx'},
+          geometry: {
+            type: "Point",
+            coordinates: [0, 0]
+          }
+        }, {
+          type: "Feature",
+          properties: {id: 'sfo'},
+          geometry: {
+            type: "Point",
+            coordinates: [-1, 1]
+          }
+        }, {
+          type: "Feature",
+          properties: {id: ''},
+          geometry: null
+        }]
+      };
+
+      var target = JSON.parse(JSON.stringify(json));
+      assert.deepEqual(importExport(json, true), target);
     })
 
   })
@@ -164,7 +211,7 @@ function geoJSONRoundTrip(fname) {
   assert.deepEqual(files, files2);
 }
 
-function importExport(obj) {
-  var geom = api.importPaths(api.importGeoJSON(obj), true);
+function importExport(obj, noTopo) {
+  var geom = api.importPaths(api.importGeoJSON(obj), !noTopo);
   return api.exportGeoJSONObject(geom.layers[0], geom.arcs);
 }

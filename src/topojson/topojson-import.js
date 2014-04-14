@@ -141,5 +141,13 @@ TopoJSON.pathImporters = {
     for (var i=0; i<arr.length; i++) {
       TopoJSON.pathImporters.Polygon(arr[i], importer);
     }
+  },
+  Point: function(coord, importer) {
+    importer.importPoint(coord);
+  },
+  MultiPoint: function(coords, importer) {
+    for (var i=0; i<coords.length; i++) {
+      importer.importPoint(coords[i]);
+    }
   }
 };

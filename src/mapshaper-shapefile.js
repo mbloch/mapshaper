@@ -1,15 +1,21 @@
 /* @requires mapshaper-common, mapshaper-geom, shp-reader, dbf-reader, mapshaper-path-import */
 
+MapShaper.translateShapefileType = function(shpType) {
+  if (Utils.contains([ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ], shpType)) {
+    return 'polygon';
+  } else if (Utils.contains([ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ], shpType)) {
+    return 'polyline';
+  }
+  return null;
+};
+
 // Read Shapefile data from an ArrayBuffer or Buffer
 // Build topology
 //
 MapShaper.importShp = function(src, opts) {
   var reader = new ShpReader(src);
-  var supportedTypes = [
-    ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ,
-    ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ
-  ];
-  if (!Utils.contains(supportedTypes, reader.type())) {
+  var type = MapShaper.translateShapefileType(reader.type());
+  if (!type) {
     stop("Only polygon and polyline Shapefiles are supported.");
   }
   if (reader.hasZ()) {
@@ -34,7 +40,7 @@ MapShaper.importShp = function(src, opts) {
 
     for (var j=0, n=shp.partCount; j<n; j++) {
       pointsInPart = partSizes[j];
-      importer.importCoordsFromFlatArray(coords, offs, pointsInPart);
+      importer.importCoordsFromFlatArray(coords, offs, pointsInPart, type);
       offs += pointsInPart * 2;
     }
   });

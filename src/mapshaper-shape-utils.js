@@ -28,6 +28,15 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   return j;
 };
 
+/*
+// TODO: look into removing redundancy with TopoJSON.traverseArcs() in topojson-utils.js
+MapShaper.traverseArcs = function(shapes, cb) {
+  MapShaper.traverseShapes(shapes, function(obj) {
+    cb(obj.arcId);
+  });
+};
+*/
+
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   Utils.forEach(shapes, function(parts, shapeId) {

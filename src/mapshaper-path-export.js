@@ -36,10 +36,10 @@ function PathExporter(arcData, polygonType) {
   // Export path coordinates for one Shape/Feature, either nested like a
   // GeoJSON MultiPolygon or like a GeoJSON MultiLineString
   //
-  this.exportShapeForGeoJSON = function(ids) {
+  this.exportShapeForGeoJSON = function(ids, type) {
     var obj = exportShapeData(ids);
     if (obj.pointCount === 0) return null;
-    if (polygonType) {
+    if (type == 'polygon') {
       var groups = groupMultiPolygonPaths(obj.pathData);
       return Utils.map(groups, function(group) {
         return convertPathsForGeoJSON(group);

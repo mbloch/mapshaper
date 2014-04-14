@@ -6,7 +6,7 @@
 MapShaper.importContent = function(content, fileType, opts) {
   var src = MapShaper.importFileContent(content, fileType, opts),
       fmt = src.info.input_format,
-      useTopology = !opts || !opts.no_topology,
+      useTopology = (!opts || !opts.no_topology) && src.input_geometry_type != 'point',
       imported;
 
   if (fmt == 'shapefile' || fmt == 'geojson') {
@@ -48,6 +48,7 @@ MapShaper.importPaths = function(src, useTopology) {
   var importer = useTopology ? MapShaper.importPathsWithTopology : MapShaper.importPathsWithoutTopology,
       imported = importer(src);
 
+  // if (src.info.input_geometry_type == 'point') console.log("point geom; data:", imported.arcs.size())
   return {
     layers: [{
       name: '',
