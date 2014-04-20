@@ -167,7 +167,6 @@ function PathExporter(arcData, polygonType) {
       prevX = x;
       prevY = y;
     }
-
     if (isRing) {
       area = msSignedRingArea(xx, yy);
       if (i < 4 || area === 0) return null;

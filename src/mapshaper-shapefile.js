@@ -5,8 +5,18 @@ MapShaper.translateShapefileType = function(shpType) {
     return 'polygon';
   } else if (Utils.contains([ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ], shpType)) {
     return 'polyline';
+  } else if (Utils.contains([ShpType.POINT, ShpType.POINTM, ShpType.POINTZ], shpType)) {
+    return 'point';
   }
   return null;
+};
+
+MapShaper.getShapefileType = function(type) {
+  return {
+    polygon: ShpType.POLYGON,
+    polyline: ShpType.POLYLINE,
+    point: ShpType.POINT
+  }[type] || null;
 };
 
 // Read Shapefile data from an ArrayBuffer or Buffer
@@ -16,7 +26,7 @@ MapShaper.importShp = function(src, opts) {
   var reader = new ShpReader(src);
   var type = MapShaper.translateShapefileType(reader.type());
   if (!type) {
-    stop("Only polygon and polyline Shapefiles are supported.");
+    stop("Unsupported Shapefile type:", reader.type());
   }
   if (reader.hasZ()) {
     verbose("Warning: Z data is being removed.");
@@ -92,10 +102,12 @@ MapShaper.exportShp = function(layers, arcData, opts) {
 
 MapShaper.exportShpFile = function(layer, arcData) {
   var geomType = layer.geometry_type;
-  if (geomType != 'polyline' && geomType != 'polygon') error("Invalid geometry type:", geomType);
+
 
   var isPolygonType = geomType == 'polygon';
-  var shpType = isPolygonType ? 5 : 3;
+  var shpType = MapShaper.getShapefileType(geomType);
+  if (shpType === null)
+    error("[exportShpFile()] Unable to export geometry type:", geomType);
 
   var exporter = new PathExporter(arcData, isPolygonType);
   var fileBytes = 100;

@@ -1,11 +1,10 @@
 /* @requires
 topojson-utils
 topojson-split
+mapshaper-shape-geom
 */
 
 TopoJSON.exportTopology = function(layers, arcData, opts) {
-  // TODO: filter out unused arcs
-  // var flags = TopoJSON.findUnusedArcs(layers, arcData);
   var topology = {type: "Topology"},
       objects = {},
       // get a copy of arc data (coords are modified for topojson export)
@@ -40,18 +39,14 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
       translate: [invTransform.bx, invTransform.by]
     };
     filteredArcs.applyTransform(transform, !!"round");
+    // remove identical points ?
   }
 
-  var arcIdMap = TopoJSON.filterExportArcs(filteredArcs);
-  var arcArr = TopoJSON.exportArcs(filteredArcs, useDelta);
-
   Utils.forEach(layers, function(lyr, i) {
-    var geomType = lyr.geometry_type == 'polygon' ? 'MultiPolygon' : 'MultiLineString';
-    var exporter = new PathExporter(filteredArcs, lyr.geometry_type == 'polygon'),
-        shapes = lyr.shapes;
-    if (arcIdMap) shapes = TopoJSON.remapShapes(shapes, arcIdMap);
-    var name = lyr.name || "layer" + (i + 1);
-    var obj = TopoJSON.exportGeometryCollection(exporter, geomType, shapes);
+    var name = lyr.name || "layer" + (i + 1),
+        geomType = lyr.geometry_type,
+        obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, geomType);
+    /*
     var objectBounds = exporter.getBounds();
     if (invTransform) {
       objectBounds.transform(invTransform);
@@ -59,8 +54,9 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     if (objectBounds.hasBounds()) {
       obj.bbox = objectBounds.toArray();
     }
+    */
     objects[name] = obj;
-    bounds.mergeBounds(objectBounds);
+    // bounds.mergeBounds(objectBounds);
 
     // export attribute data, if present
     if (lyr.data) {
@@ -69,90 +65,24 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
   });
 
   topology.objects = objects;
-  topology.arcs = arcArr;
+  topology.arcs = TopoJSON.exportArcs(filteredArcs);
+
+  // TODO: avoid if not needed
+  TopoJSON.pruneArcs(topology);
+
+  if (useDelta) {
+    TopoJSON.deltaEncodeArcs(topology.arcs);
+  }
+  /*
   if (bounds.hasBounds()) {
     topology.bbox = bounds.toArray();
   }
+  */
   return topology;
 };
 
-// TODO: consider refactoring and combining with remapping code from
-// mapshaper-topojson-split.js
-//
-TopoJSON.remapShapes = function(shapes, map) {
-  return Utils.map(shapes, function(shape) {
-    return shape ? TopoJSON.remapShape(shape, map) : null;
-  });
-};
-
-// Re-index the arcs in a shape to account for removal of collapsed arcs
-// Return arrays of remapped arcs; original arcs are unmodified.
-//
-TopoJSON.remapShape = function(src, map) {
-  if (!src || src.length === 0) return [];
-  var dest = [],
-      arcIds, path, arcNum, arcId, k, inv;
-
-  for (var pathId=0, numPaths=src.length; pathId < numPaths; pathId++) {
-    path = src[pathId];
-    arcIds = [];
-    for (var i=0, n=path.length; i<n; i++) {
-      arcNum = path[i];
-      inv = arcNum < 0;
-      arcId = inv ? ~arcNum : arcNum;
-      k = map[arcId];
-      if (k == -1) {
-        //
-      } else if (k <= arcId) {
-        arcIds.push(inv ? ~k : k);
-      } else {
-        error("Arc index problem");
-      }
-    }
-    if (arcIds.length > 0) {
-      dest.push(arcIds);
-    }
-  }
-  return dest;
-};
-
-TopoJSON.findUsedArcs = function(layers, arcs) {
-  // TODO: consider removing duplication wth mapshaper-topojson.split.js
-  var flags = new Uint8Array(arcs.size());
-  // function markFlags() {}
-  layers.forEach(function(lyr) {
-    TopoJSON.traverseArcs(lyr.shapes, function(id) {
-      // console.log(id);
-    });
-  });
-  return flags;
-};
-
-// Remove unused and collapsed arcs from @arcDataset (ArcDataset) and re-index remaining
-// arcs.
-// Return an array mapping original arc ids to new ids (See ArcDataset#filter())
-//
-TopoJSON.filterExportArcs = function(arcData, flags) {
-  var arcMap = arcData.filter(function(iter, i) {
-    var x, y;
-    if (flags && !flags[i]) return false;
-    if (iter.hasNext()) {
-      x = iter.x;
-      y = iter.y;
-      while (iter.hasNext()) {
-        if (iter.x !== x || iter.y !== y) return true;
-      }
-    }
-    return false;
-  });
-  return arcMap;
-};
-
-
 // Export arcs as arrays of [x, y] coords without delta encoding
-//
-TopoJSON.exportArcs = function(arcData, useDelta) {
-  if (useDelta) return TopoJSON.exportDeltaEncodedArcs(arcData);
+TopoJSON.exportArcs = function(arcData) {
   var arcs = [];
   arcData.forEach(function(iter, i) {
     var arc = [];
@@ -164,31 +94,22 @@ TopoJSON.exportArcs = function(arcData, useDelta) {
   return arcs;
 };
 
-// Export arcs with delta encoding, as per the topojson spec.
-//
-TopoJSON.exportDeltaEncodedArcs = function(arcData) {
-  var arcs = [];
-  arcData.forEach(function(iter, i) {
-    var arc = [],
-        x = 0,
-        y = 0,
-        dx, dy;
-    while (iter.hasNext()) {
-      dx = iter.x - x;
-      dy = iter.y - y;
-      if (dx !== 0 || dy !== 0) {
-        arc.push([dx, dy]);
+// Apply delta encoding in-place to an array of topojson arcs
+TopoJSON.deltaEncodeArcs = function(arcs) {
+  arcs.forEach(function(arr) {
+    var ax, ay, bx, by, p;
+    for (var i=0, n=arr.length; i<n; i++) {
+      p = arr[i];
+      bx = p[0];
+      by = p[1];
+      if (i > 0) {
+        p[0] = bx - ax;
+        p[1] = by - ay;
       }
-      x = iter.x;
-      y = iter.y;
+      ax = bx;
+      ay = by;
     }
-    if (arc.length <= 1) {
-      verbose("TopoJSON.exportDeltaEncodedArcs() defective arc, length:", arc.length);
-      // defective arcs should have been filtered out earlier with ArcDataset.filter()
-    }
-    arcs.push(arc);
   });
-  return arcs;
 };
 
 // Return a Transform object for converting geographic coordinates to quantized
@@ -244,43 +165,129 @@ TopoJSON.exportProperties = function(geometries, records, opts) {
   });
 };
 
-TopoJSON.exportGeometryCollection = function(exporter, type, shapes) {
+TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
+  var exporter = TopoJSON.exporters[type];
   var obj = {
-        type: "GeometryCollection"
-      };
-  obj.geometries = Utils.map(shapes, function(shape, i) {
-    var paths = exporter.exportShapeForTopoJSON(shape);
-    return TopoJSON.exportGeometry(paths, type);
-  });
+      type: "GeometryCollection"
+    };
+  if (exporter) {
+    obj.geometries = Utils.map(shapes, function(shape, i) {
+      if (shape && shape.length > 0) {
+        return exporter(shape, coords);
+      }
+      return {type: null};
+    });
+  } else {
+    obj.geometries = [];
+  }
   return obj;
 };
 
-TopoJSON.exportGeometry = function(paths, type) {
-  var obj = {};
-  if (!paths || paths.length === 0) {
-    // null geometry
-    obj.type = null;
-  }
-  else if (type == 'MultiPolygon') {
-    if (paths.length == 1) {
-      obj.type = "Polygon";
-      obj.arcs = paths[0];
-    } else {
-      obj.type = "MultiPolygon";
-      obj.arcs = paths;
+MapShaper.arcHasLength = function(id, coords) {
+  var iter = coords.getArcIter(id), x, y;
+  if (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    while (iter.hasNext()) {
+      if (iter.x != x || iter.y != y) return true;
     }
   }
-  else if (type == "MultiLineString") {
-    if (paths.length == 1) {
-      obj.arcs = paths[0];
-      obj.type = "LineString";
-    } else {
-      obj.arcs = paths;
-      obj.type = "MultiLineString";
+  return false;
+};
+
+MapShaper.filterEmptyArcs = function(shape, coords) {
+  if (!shape) return null;
+  var shape2 = [];
+  Utils.forEach(shape, function(ids) {
+    var path = [];
+    for (var i=0; i<ids.length; i++) {
+      if (MapShaper.arcHasLength(ids[i], coords)) {
+        path.push(ids[i]);
+      }
     }
+    if (path.length > 0) shape2.push(path);
+  });
+  return shape2.length > 0 ? shape2 : null;
+};
+
+TopoJSON.groupPolygonRings = function(shapes, coords) {
+  var iter = new ShapeIter(coords),
+      pos = [],
+      neg = [],
+      groups = [];
+
+  shapes.forEach(function(ids) {
+    if (!Utils.isArray(ids)) throw new Error("expected array");
+    iter.init(ids);
+    var area = MapShaper.getPathArea(iter),
+        bounds = coords.getSimpleShapeBounds(ids);
+    var path = {
+      ids: ids,
+      area: area,
+      bounds: bounds
+    };
+    if (!path.area) {
+      // skip 0 area rings
+    } else if (path.area > 0) {
+      pos.push(path);
+      groups.push([ids]);
+    } else {
+      neg.push(path);
+    }
+  });
+
+  neg.forEach(function(hole) {
+    var containerId = -1,
+        containerArea = 0;
+    for (var i=0, n=pos.length; i<n; i++) {
+      var part = pos[i],
+          contained = part.bounds.contains(hole.bounds);
+      if (contained && (containerArea === 0 || part.area < containerArea)) {
+        containerArea = part.area;
+        containerId = i;
+      }
+    }
+    if (containerId == -1) {
+      verbose("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
+    } else {
+      groups[containerId].push(hole.ids);
+    }
+  });
+  return groups;
+};
+
+TopoJSON.exportPolygonGeom = function(shape, coords) {
+  var geom = {};
+  shape = MapShaper.filterEmptyArcs(shape, coords);
+  if (!shape || shape.length === 0) {
+    geom.type = null;
+  } else if (shape.length > 1) {
+    geom.arcs = TopoJSON.groupPolygonRings(shape, coords);
+    geom.type = geom.arcs.length > 1 ? "MultiPolygon" : "Polygon";
+  } else if (shape.length == 1) {
+    geom.arcs = shape;
+    geom.type = "Polygon";
   }
-  else {
-    error ("TopoJSON.exportGeometry() unsupported type:", type);
+  return geom;
+};
+
+TopoJSON.exportLineGeom = function(shape, coords) {
+  var geom = {};
+  shape = MapShaper.filterEmptyArcs(shape, coords);
+  if (!shape || shape.length === 0) {
+    geom.type = null;
+  } else if (shape.length == 1) {
+    geom.type = "LineString";
+    geom.arcs = shape[0];
+  } else {
+    geom.type = "MultiLineString";
+    geom.arcs = shape;
   }
-  return obj;
+  return geom;
+};
+
+TopoJSON.exporters = {
+  polygon: TopoJSON.exportPolygonGeom,
+  polyline: TopoJSON.exportLineGeom,
+  point: GeoJSON.exportPointGeom
 };

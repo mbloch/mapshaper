@@ -47,8 +47,9 @@ MapShaper.importGeoJSON = function(obj, opts) {
   var importer = new PathImporter(pointCount, opts);
   geometries.forEach(function(geom) {
     importer.startShape();
-    var f = geom && GeoJSON.pathImporters[geom.type];
-    if (f) f(geom.coordinates, importer);
+    if (geom) {
+      GeoJSON.importGeometry(geom.type, geom.coordinates, importer);
+    }
   });
 
   var importData = importer.done();
@@ -59,6 +60,27 @@ MapShaper.importGeoJSON = function(obj, opts) {
 };
 
 var GeoJSON = MapShaper.geojson = {};
+
+GeoJSON.translateGeoJSONType = function(type) {
+  return GeoJSON.typeLookup[type] || null;
+};
+
+GeoJSON.typeLookup = {
+  LineString: 'polyline',
+  MultiLineString: 'polyline',
+  Polygon: 'polygon',
+  MultiPolygon: 'polygon',
+  Point: 'point',
+  MultiPoint: 'point'
+};
+
+GeoJSON.importGeometry = function(type, coords, importer) {
+  if (type in GeoJSON.pathImporters) {
+    GeoJSON.pathImporters[type](coords, importer);
+  } else {
+    verbose("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
+  }
+};
 
 // Functions for importing geometry coordinates using a PathImporter
 //
@@ -185,16 +207,22 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData, opts) {
   return JSON.parse(MapShaper.exportGeoJSONString(layerObj, arcData, opts));
 };
 
-// export GeoJSON or TopoJSON point geometry
-GeoJSON.exportPointGeom = function(shapeIds, arcs) {
+GeoJSON.exportPoints = function(shapeIds, coords) {
   var points = [],
-      geom = null;
+      iter = new ShapeIter(coords);
   Utils.forEach(shapeIds, function(arcIds) {
-    var iter = arcs.getShapeIter(arcIds);
+    iter.init(arcIds);
     while (iter.hasNext()) {
       points.push([iter.x, iter.y]);
     }
   });
+  return points;
+};
+
+// export GeoJSON or TopoJSON point geometry
+GeoJSON.exportPointGeom = function(shapeIds, arcs) {
+  var points = GeoJSON.exportPoints(shapeIds, arcs),
+      geom = null;
   if (points.length == 1) {
     geom = {
       type: "Point",

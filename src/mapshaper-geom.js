@@ -206,6 +206,7 @@ function pointSegDistSq(ab2, bc2, ac2) {
 }
 
 MapShaper.calcArcBounds = function(xx, yy, start, len) {
+  // console.log('calcArcBounds() xx, yy:', xx.length, yy.length, start, len)
   var xmin = Infinity,
       ymin = Infinity,
       xmax = -Infinity,
@@ -221,7 +222,9 @@ MapShaper.calcArcBounds = function(xx, yy, start, len) {
     if (y < ymin) ymin = y;
     if (y > ymax) ymax = y;
   }
-  if (xmin > xmax || ymin > ymax) error("#calcArcBounds() null bounds");
+  if (xmin > xmax || ymin > ymax) {
+    error("#calcArcBounds() null bounds");
+  }
   return [xmin, ymin, xmax, ymax];
 };
 

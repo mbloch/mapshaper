@@ -1,10 +1,6 @@
 /* @requires topojson-utils */
 
-// Converts arc coordinates from rounded, delta-encoded values to
-// transposed arrays of geographic coordinates.
-//
-TopoJSON.importArcs = function(arcs, transform, round) {
-  TopoJSON.decodeArcs(arcs, transform, round);
+TopoJSON.importArcs = function(arcs) {
   return Utils.map(arcs, function(arc) {
     var xx = [],
         yy = [];
@@ -16,38 +12,37 @@ TopoJSON.importArcs = function(arcs, transform, round) {
   });
 };
 
-TopoJSON.decodeArcs = function(arcs, transform, round) {
-  var mx = 1, my = 1, bx = 0, by = 0,
-      useDelta = !!transform;
-  if (transform) {
-    mx = transform.scale[0];
-    my = transform.scale[1];
-    bx = transform.translate[0];
-    by = transform.translate[1];
-  }
+TopoJSON.decodeArcs = function(arcs, transform) {
+  var mx = transform.scale[0],
+      my = transform.scale[1],
+      bx = transform.translate[0],
+      by = transform.translate[1];
 
   Utils.forEach(arcs, function(arc) {
     var prevX = 0,
         prevY = 0,
-        scaledX, scaledY, xy, x, y;
+        xy, x, y;
     for (var i=0, len=arc.length; i<len; i++) {
       xy = arc[i];
-      x = xy[0];
-      y = xy[1];
-      if (useDelta) {
-        x += prevX;
-        y += prevY;
-      }
-      scaledX = x * mx + bx;
-      scaledY = y * my + by;
-      if (round) {
-        scaledX = round(scaledX);
-        scaledY = round(scaledY);
-      }
-      xy[0] = scaledX;
-      xy[1] = scaledY;
+      x = xy[0] + prevX;
+      y = xy[1] + prevY;
+      xy[0] = x * mx + bx;
+      xy[1] = y * my + by;
       prevX = x;
       prevY = y;
+    }
+  });
+};
+
+// TODO: consider removing dupes...
+TopoJSON.roundCoords = function(arcs, precision) {
+  var round = getRoundingFunction(precision),
+      p;
+  Utils.forEach(arcs, function(arc) {
+    for (var i=0, len=arc.length; i<len; i++) {
+      p = arc[i];
+      p[0] = round(p[0]);
+      p[1] = round(p[1]);
     }
   });
 };
@@ -63,91 +58,96 @@ TopoJSON.importObject = function(obj, arcs) {
 };
 
 TopoJSON.importGeometryCollection = function(obj, arcs) {
-  var importer = new TopoJSON.Importer(arcs.length);
-  Utils.forEach(obj.geometries, function(geom) {
-    importer.startShape(geom.properties, geom.id);
-    var pathImporter = TopoJSON.pathImporters[geom.type];
-    if (pathImporter) {
-      pathImporter(geom.arcs, importer);
-    } else if (geom.type) {
-      verbose("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
-    } else {
-      // null geometry -- ok
-    }
-  });
+  var importer = new TopoJSON.GeometryImporter(arcs);
+  Utils.forEach(obj.geometries, importer.addGeometry, importer);
   return importer.done();
 };
 
-TopoJSON.Importer = function(numArcs) {
-  var geometries = [],
-      currGeometry,
-      paths = [],
-      shapeProperties = [],
-      shapeIds = [],
-      currIdx = -1;
+//
+//
+TopoJSON.GeometryImporter = function(arcs) {
+  var topojsonIds = [], // id properties of each Geometry (consider adding ids to properties)
+      properties = [],
+      shapes = [], // topological ids
+      collectionType = null;
 
-  this.startShape = function(properties, id) {
-    currIdx++;
-    if (properties) {
-      shapeProperties[currIdx] = properties;
+  this.addGeometry = function(geom) {
+    var type = GeoJSON.translateGeoJSONType(geom.type),
+        shapeId = shapes.length;
+    this.updateCollectionType(type);
+
+    if (geom.properties) {
+      properties[shapeId] = geom.properties;
     }
-    if (id !== null && id !== undefined) {
-      shapeIds[currIdx] = id;
+    if (geom.id !== null && geom.id !== undefined) {
+      topojsonIds[shapeId] = geom.id;
     }
-    currGeometry = geometries[currIdx] = [];
+
+    var shape = null;
+    if (type == 'point') {
+      shape = this.importPointGeometry(geom);
+    } else if (geom.type in TopoJSON.pathImporters) {
+      shape = TopoJSON.pathImporters[geom.type](geom.arcs);
+    } else {
+      if (geom.type) {
+        verbose("[TopoJSON] Unknown geometry type:", geom.type);
+      }
+      // null geometry -- ok
+    }
+    shapes.push(shape);
   };
 
-  this.importPath = function(ids, isRing, isHole) {
-    paths.push({
-      isRing: !!isRing,
-      isHole: !!isHole,
-      shapeId: currIdx
-    });
-    currGeometry.push(ids);
+  this.importPointGeometry = function(geom) {
+    var coords, shapes = [];
+    if (geom.type == 'Point') {
+      coords = [geom.coordinates];
+    } else if (geom.type == 'MultiPoint') {
+      coords = geom.coordinates;
+    } else {
+      stop("Invalid TopoJSON point geometry:", geom);
+    }
+
+    for (var i=0; i<coords.length; i++) {
+      shapes.push([arcs.length]);
+      arcs.push([coords[i]]);
+    }
+    return shapes;
+  };
+
+  this.updateCollectionType = function(type) {
+    if (!collectionType) {
+      collectionType = type;
+    } else if (type && collectionType != type) {
+      collectionType = 'mixed';
+    }
   };
 
   this.done = function() {
-    var data;
-    var openCount = Utils.reduce(paths, function(count, path) {
-      if (!path.isRing) count++;
-      return count;
-    }, 0);
-
-    return {
-      paths: paths,
-      geometry_type: openCount > 0 ? 'polyline' : 'polygon',
-      shapes: geometries,
-      properties: shapeProperties.length > 0 ? shapeProperties : null,
-      ids: shapeIds.length > 0 ? shapeIds : null
+    var lyr = {
+      shapes: shapes,
+      geometry_type: collectionType
     };
+    if (properties.length > 0) {
+      lyr.data = new DataTable(properties);
+    }
+    // console.log(lyr.shapes)
+    return lyr;
   };
 };
 
 TopoJSON.pathImporters = {
-  LineString: function(arr, importer) {
-    importer.importPath(arr, false, false);
+  LineString: function(arcs) {
+    return [arcs];
   },
-  MultiLineString: function(arr, importer) {
-    for (var i=0; i<arr.length; i++) {
-      TopoJSON.pathImporters.LineString(arr[i], importer);
-    }
+  MultiLineString: function(arcs) {
+    return arcs;
   },
-  Polygon: function(arr, importer) {
-    for (var i=0; i<arr.length; i++) {
-      importer.importPath(arr[i], true, i > 0);
-    }
+  Polygon: function(arcs) {
+    return arcs;
   },
-  MultiPolygon: function(arr, importer) {
-    for (var i=0; i<arr.length; i++) {
-      TopoJSON.pathImporters.Polygon(arr[i], importer);
-    }
-  },
-  Point: function(coord, importer) {
-    importer.importPoint(coord);
-  },
-  MultiPoint: function(coords, importer) {
-    for (var i=0; i<coords.length; i++) {
-      importer.importPoint(coords[i]);
-    }
+  MultiPolygon: function(arcs) {
+    return Utils.reduce(arcs, function(memo, arr) {
+      return memo ? memo.concat(arr) : arr;
+    }, null);
   }
 };

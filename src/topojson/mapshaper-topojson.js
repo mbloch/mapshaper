@@ -2,30 +2,35 @@
 
 MapShaper.topojson = TopoJSON;
 
-MapShaper.importTopoJSON = function(obj, opts) {
-  var round = opts && opts.precision ? getRoundingFunction(opts.precision) : null;
-
-  if (Utils.isString(obj)) {
-    obj = JSON.parse(obj);
+// Convert a TopoJSON topology into mapshaper's internal format
+// Side-effect: data in topology is modified
+//
+MapShaper.importTopoJSON = function(topology, opts) {
+  if (Utils.isString(topology)) {
+    topology = JSON.parse(topology);
   }
-  var arcs = TopoJSON.importArcs(obj.arcs, obj.transform, round),
-      layers = [];
-  Utils.forEach(obj.objects, function(object, name) {
-    var layerData = TopoJSON.importObject(object, arcs);
-    var data;
-    if (layerData.properties) {
-      data = new DataTable(layerData.properties);
-    }
-    layers.push({
-      name: name,
-      data: data,
-      shapes: layerData.shapes,
-      geometry_type: layerData.geometry_type
-    });
+  // topology with only point objects might lack an arcs array --
+  // add empty array so points can be imported (kludge)
+  if (!topology.arcs) {
+    topology.arcs = [];
+  }
+  var layers = [];
+  Utils.forEach(topology.objects, function(object, name) {
+    var lyr = TopoJSON.importObject(object, topology.arcs);
+    lyr.name = name;
+    layers.push(lyr);
   });
 
+  // TODO: apply transform to ArcDataset, not input arcs
+  if (topology.transform) {
+    TopoJSON.decodeArcs(topology.arcs, topology.transform);
+  }
+  if (opts && opts.precision) {
+    TopoJSON.roundCoords(topology.arcs, opts.precision);
+  }
+
   return {
-    arcs: new ArcDataset(arcs),
+    arcs: new ArcDataset(TopoJSON.importArcs(topology.arcs)),
     layers: layers,
     info: {}
   };

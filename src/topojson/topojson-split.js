@@ -8,17 +8,19 @@ TopoJSON.splitTopology = function(topology) {
   var topologies = {};
   Utils.forEach(topology.objects, function(obj, name) {
     var split = {
-      arcs: TopoJSON.extractGeometryObject(obj, topology.arcs),
-      bbox: obj.bbox || null,
+      arcs: topology.arcs,
+      // bbox: obj.bbox || null,
       objects: {}
     };
     split.objects[name] = obj;
     Opts.copyNewParams(split, topology);
+    TopoJSON.pruneArcs(split);
     topologies[name] = split;
   });
   return topologies;
 };
 
+/*
 // Filter array of arcs to include only arcs referenced by geometry object @obj
 // Returns: Filtered copy of @arcs array
 // Side effect: arc ids in @obj are re-indexed to match filtered arcs.
@@ -50,3 +52,4 @@ TopoJSON.extractGeometryObject = function(obj, arcs) {
   TopoJSON.reindexArcIds(obj, arcMap);
   return filteredArcs;
 };
+*/
