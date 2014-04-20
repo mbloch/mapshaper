@@ -295,6 +295,7 @@ MapShaper.exportPathData = function(ids, arcs, closed) {
   return {
     pointCount: pointCount,
     pathData: paths,
+    pathCount: paths.length,
     bounds: bounds
   };
 };

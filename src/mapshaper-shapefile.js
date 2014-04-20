@@ -36,8 +36,7 @@ MapShaper.importShp = function(src, opts) {
 
   var counts = reader.getCounts();
   var importer = new PathImporter(counts.pointCount, opts);
-  //var expectRings = Utils.contains([5,15,25], reader.type());
-
+  // var expectRings = Utils.contains([5,15,25], reader.type());
   // TODO: test cases: null shape; non-null shape with no valid parts
 
   reader.forEachShape(function(shp) {
@@ -103,17 +102,17 @@ MapShaper.exportShp = function(layers, arcData, opts) {
 MapShaper.exportShpFile = function(layer, arcData) {
   var geomType = layer.geometry_type;
 
-
   var isPolygonType = geomType == 'polygon';
   var shpType = MapShaper.getShapefileType(geomType);
   if (shpType === null)
     error("[exportShpFile()] Unable to export geometry type:", geomType);
 
-  var exporter = new PathExporter(arcData, isPolygonType);
+  // var exporter = new PathExporter(arcData, isPolygonType);
   var fileBytes = 100;
   var bounds = new Bounds();
   var shapeBuffers = layer.shapes.map(function(shapeIds, i) {
-    var shape = MapShaper.exportShpRecord(shapeIds, exporter, i+1, shpType);
+    var pathData = MapShaper.exportPathData(shapeIds, arcData, isPolygonType);
+    var shape = MapShaper.exportShpRecord(pathData, i+1, shpType);
     fileBytes += shape.buffer.byteLength;
     if (shape.bounds) bounds.mergeBounds(shape.bounds);
     return shape.buffer;
@@ -162,10 +161,10 @@ MapShaper.exportShpFile = function(layer, arcData) {
 //   and the bounding box of the shape.
 // TODO: remove collapsed rings, convert to null shape if necessary
 //
-MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
+MapShaper.exportShpRecord = function(data, id, shpType) {
   var bounds = null,
-      bin = null,
-      data = exporter.exportShapeForShapefile(shapeIds);
+      bin = null;
+
   if (data.pointCount > 0) {
     var partsIdx = 52,
         pointsIdx = partsIdx + 4 * data.pathCount,
@@ -185,12 +184,12 @@ MapShaper.exportShpRecord = function(shapeIds, exporter, id, shpType) {
       .writeInt32(data.pathCount)
       .writeInt32(data.pointCount);
 
-    data.paths.forEach(function(part, i) {
+    data.pathData.forEach(function(path, i) {
       bin.position(partsIdx + i * 4)
         .writeInt32(pointCount)
         .position(pointsIdx + pointCount * 16);
-      var xx = part[0],
-          yy = part[1];
+      var xx = path.xx,
+          yy = path.yy;
       for (var j=0, len=xx.length; j<len; j++) {
         bin.writeFloat64(xx[j]);
         bin.writeFloat64(yy[j]);

@@ -1,5 +1,7 @@
 /* @requires
-mapshaper-path-export
+mapshaper-geojson
+mapshaper-topojson
+mapshaper-shapefile
 mapshaper-layer-math
 */
 
