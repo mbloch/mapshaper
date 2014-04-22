@@ -238,7 +238,7 @@ GeoJSON.exportPointGeom = function(shapeIds, arcs) {
 };
 
 GeoJSON.exportLineGeom = function(ids, arcs) {
-  var obj = MapShaper.exportPathData(ids, arcs, false);
+  var obj = MapShaper.exportPathData(ids, arcs, "polyline");
   if (obj.pointCount === 0) return null;
   var coords = obj.pathData.map(function(path) {
     return MapShaper.transposeXYCoords(path.xx, path.yy);
@@ -253,7 +253,7 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
 };
 
 GeoJSON.exportPolygonGeom = function(ids, arcs) {
-  var obj = MapShaper.exportPathData(ids, arcs, true);
+  var obj = MapShaper.exportPathData(ids, arcs, "polygon");
   if (obj.pointCount === 0) return null;
   var groups = MapShaper.groupMultiPolygonPaths(obj.pathData);
   var coords = groups.map(function(paths) {
@@ -270,20 +270,37 @@ GeoJSON.exportPolygonGeom = function(ids, arcs) {
   };
 };
 
-// Used by shapefile export too --
-MapShaper.exportPathData = function(ids, arcs, closed) {
+// Concatenate points from multiple paths into one path (in-place)
+// @data Output from exportPathData() function
+MapShaper.mergeArcIds = function(shape) {
+  var ids = Utils.reduce(shape, function(memo, arcIds) {
+    memo.push.apply(memo, arcIds);
+    return memo;
+  }, []);
+  return ids.length > 0 ? [ids] : null;
+};
+
+
+// Used by shapefile export too -- move to another file
+MapShaper.exportPathData = function(ids, arcs, type) {
   var pointCount = 0,
       bounds = new Bounds(),
       paths = [];
 
+  if (type == 'point') {
+    ids = MapShaper.mergeArcIds(ids);
+  }
+
   Utils.forEach(ids, function(arcIds) {
-    var iter = arcs.getShapeIter(arcIds);
-    var path = MapShaper.exportPathCoords(iter);
-    if (closed) {
+    var iter = arcs.getShapeIter(arcIds),
+        path = MapShaper.exportPathCoords(iter),
+        valid = true;
+    if (type == 'polygon') {
       path.area = msSignedRingArea(path.xx, path.yy);
+      valid = path.pointCount > 3 && path.area !== 0;
+    } else if (type == 'polyline') {
+      valid = path.pointCount > 1;
     }
-    var valid = closed ? path.pointCount > 3 && path.area !== 0 :
-        path.pointCount > 1;
     if (valid) {
       pointCount += path.pointCount;
       path.bounds = MapShaper.calcXYBounds(path.xx, path.yy);

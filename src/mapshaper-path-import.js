@@ -230,7 +230,6 @@ function PathImporter(pointCount, opts) {
       stop("[PathImporter] Mixed feature types are not allowed");
     }
     var pathData = this.cleanPaths(xx, yy, paths);
-    // if (collType == 'point') console.log(pathData)
     var info = {
       snapped_points: snappedPoints,
       input_path_count: pathData.validPaths.length,
@@ -239,7 +238,6 @@ function PathImporter(pointCount, opts) {
       input_shape_count: shapeId + 1,
       input_geometry_type: collType
     };
-
     return {
       geometry: pathData,
       info: info

@@ -8,10 +8,8 @@ MapShaper.ArcDataset = ArcDataset;
 // ArcDataset(arcs)
 //    arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
 //
-// ArcDataset(nn, xx, yy, zz)
+// ArcDataset(nn, xx, yy)
 //    nn is an array of arc lengths; xx, yy are arrays of concatenated coords;
-//    zz (optional) is an array of concatenated simplification thresholds
-//
 function ArcDataset() {
   var _xx, _yy,  // coordinates data
       _ii, _nn,  // indexes, sizes

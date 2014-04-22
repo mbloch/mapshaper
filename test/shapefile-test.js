@@ -10,6 +10,7 @@ function fixPath(p) {
 describe('mapshaper-shapefile.js', function () {
 
   describe('Export/Import roundtrip tests', function () {
+
     it('Six counties', function () {
       shapefileRoundTrip('test_data/six_counties.shp');
     })
@@ -29,6 +30,16 @@ describe('mapshaper-shapefile.js', function () {
     it('Pacific groupings from Natural Earth', function() {
       shapefileRoundTrip('test_data/ne/ne_110m_admin_0_pacific_groupings.shp');
     })
+
+    it('Single multipoint record (shplib)', function() {
+      shapefileRoundTrip('test_data/shplib/multipnt.shp');
+    })
+    /*
+    it('POINTZ layer (shplib)', function() {
+      shapefileRoundTrip('test_data/shplib/masspntz.shp');
+    })
+*/
+
   })
 })
 

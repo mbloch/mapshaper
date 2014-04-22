@@ -38,10 +38,10 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   function validateLayerData(layers) {
     Utils.forEach(layers, function(lyr) {
       if (!Utils.isArray(lyr.shapes)) {
-        error ("#exportContent() A layer is missing shape data");
+        error ("[exportContent()] A layer is missing shape data");
       }
-      if (lyr.geometry_type != 'polygon' && lyr.geometry_type != 'polyline') {
-        error ("#exportContent() A layer is missing a valid geometry type");
+      if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
+        error ("[exportContent()] A layer has an invalid geometry type:", lyr.geometry_type);
       }
     });
   }

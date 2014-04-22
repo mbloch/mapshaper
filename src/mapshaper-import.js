@@ -6,7 +6,8 @@
 MapShaper.importContent = function(content, fileType, opts) {
   var src = MapShaper.importFileContent(content, fileType, opts),
       fmt = src.info.input_format,
-      useTopology = (!opts || !opts.no_topology) && src.input_geometry_type != 'point',
+      useTopology = (!opts || !opts.no_topology) &&
+          src.info.input_geometry_type != 'point',
       imported;
 
   if (fmt == 'shapefile' || fmt == 'geojson') {

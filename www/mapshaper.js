@@ -422,6 +422,9 @@ var Opts = {
   },
 
   exportObject : function(path, obj, root) {
+    if (typeof define === "function" && define.amd) {
+      define(function() { return obj; });
+    }
     root = root || this.global();
     var parts = path.split('.'),
         name = parts.pop();
@@ -1316,8 +1319,9 @@ if (inNode) {
     opts = opts || {};
     opts.method = 'POST';
     opts.data = data;
-    Node.request(url, callback, opts);
-  }
+    opts.url = url;
+    Node.request(opts, callback);
+  };
 
   Node.readResponse = function(res, callback, encoding) {
     res.setEncoding(encoding || 'utf8');
@@ -1326,12 +1330,12 @@ if (inNode) {
       content += chunk;
     });
     res.on('end', function() {
-      callback(null, res, content);
+      callback(null, content, res);
     });
-  }
+  };
 
   // Current signature: function(opts, callback), like Node.js request module
-  //    callback: function(err, response, body)
+  //    callback: function(err, body, response)
   //
   Node.request = function(opts, callback) {
     if (Utils.isString(opts)) { // @opts is string -> assume url & old interface
@@ -1339,8 +1343,6 @@ if (inNode) {
     }
 
     if (!opts.url) error("Node.request() Missing url in options:", opts);
-
-    var receive = callback;
 
     var o = require('url').parse(opts.url),
         data = null,
@@ -1369,15 +1371,15 @@ if (inNode) {
     var req = require(moduleName).request(reqOpts);
     req.on('response', function(res) {
       if (res.statusCode > 201) {
-        receive("Node.request() Unexpected status: " + res.statusCode + " url: " + opts.url, res, null);
+        callback("Node.request() Unexpected status: " + res.statusCode + " url: " + opts.url, null, res);
       } else {
-        Node.readResponse(res, receive, 'utf8');
+        Node.readResponse(res, callback, 'utf8');
       }
     });
 
     req.on('error', function(e) {
       // trace("Node.request() request error:", e.message);
-      receive("Node.request() error: " + e.message, null, null);
+      callback("Node.request() error: " + e.message, null, null);
     });
     req.end(data);
   };
@@ -1399,7 +1401,7 @@ if (inNode) {
       }
     }*/
 
-    Node.request({url: url}, function(err, req, str) {
+    Node.request({url: url}, function(err, str, req) {
       var data = null;
       if (err) {
         trace("Node.readJson() error:", err);
@@ -1422,6 +1424,7 @@ if (inNode) {
           error(e);
         }
       }
+      console.log("data:", data)
       callback(data, retn);
     });
 
@@ -1839,8 +1842,11 @@ var Browser = {
       extended += obj;
     } else if (Utils.isObject(obj)) {
       var parts = [];
-      Utils.forEach(obj, function(val, key) {
-        parts.push(encodeURIComponent(key) + "=" + encodeURIComponent(val));
+      Utils.forEach(obj, function(val, name) {
+        name = encodeURIComponent(name);
+        val = encodeURIComponent(val); //
+        //val = val.replace(/'/g, '%27');
+        parts.push(name + "=" + val);
       });
       extended += parts.join('&');
     } else {
@@ -2610,7 +2616,7 @@ Bounds.prototype.toArray = function() {
 };
 
 Bounds.prototype.hasBounds = function() {
-  return this.width() > 0 && this.height() > 0;
+  return this.xmin <= this.xmax && this.ymin <= this.ymax;
 };
 
 Bounds.prototype.sameBounds =
@@ -4562,10 +4568,8 @@ MapShaper.ArcDataset = ArcDataset;
 // ArcDataset(arcs)
 //    arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
 //
-// ArcDataset(nn, xx, yy, zz)
+// ArcDataset(nn, xx, yy)
 //    nn is an array of arc lengths; xx, yy are arrays of concatenated coords;
-//    zz (optional) is an array of concatenated simplification thresholds
-//
 function ArcDataset() {
   var _xx, _yy,  // coordinates data
       _ii, _nn,  // indexes, sizes
@@ -6341,7 +6345,6 @@ function PathImporter(pointCount, opts) {
       stop("[PathImporter] Mixed feature types are not allowed");
     }
     var pathData = this.cleanPaths(xx, yy, paths);
-    // if (collType == 'point') console.log(pathData)
     var info = {
       snapped_points: snappedPoints,
       input_path_count: pathData.validPaths.length,
@@ -6350,7 +6353,6 @@ function PathImporter(pointCount, opts) {
       input_shape_count: shapeId + 1,
       input_geometry_type: collType
     };
-
     return {
       geometry: pathData,
       info: info
@@ -7278,7 +7280,7 @@ GeoJSON.exportPointGeom = function(shapeIds, arcs) {
 };
 
 GeoJSON.exportLineGeom = function(ids, arcs) {
-  var obj = MapShaper.exportPathData(ids, arcs, false);
+  var obj = MapShaper.exportPathData(ids, arcs, "polyline");
   if (obj.pointCount === 0) return null;
   var coords = obj.pathData.map(function(path) {
     return MapShaper.transposeXYCoords(path.xx, path.yy);
@@ -7293,7 +7295,7 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
 };
 
 GeoJSON.exportPolygonGeom = function(ids, arcs) {
-  var obj = MapShaper.exportPathData(ids, arcs, true);
+  var obj = MapShaper.exportPathData(ids, arcs, "polygon");
   if (obj.pointCount === 0) return null;
   var groups = MapShaper.groupMultiPolygonPaths(obj.pathData);
   var coords = groups.map(function(paths) {
@@ -7310,20 +7312,37 @@ GeoJSON.exportPolygonGeom = function(ids, arcs) {
   };
 };
 
-// Used by shapefile export too --
-MapShaper.exportPathData = function(ids, arcs, closed) {
+// Concatenate points from multiple paths into one path (in-place)
+// @data Output from exportPathData() function
+MapShaper.mergeArcIds = function(shape) {
+  var ids = Utils.reduce(shape, function(memo, arcIds) {
+    memo.push.apply(memo, arcIds);
+    return memo;
+  }, []);
+  return ids.length > 0 ? [ids] : null;
+};
+
+
+// Used by shapefile export too -- move to another file
+MapShaper.exportPathData = function(ids, arcs, type) {
   var pointCount = 0,
       bounds = new Bounds(),
       paths = [];
 
+  if (type == 'point') {
+    ids = MapShaper.mergeArcIds(ids);
+  }
+
   Utils.forEach(ids, function(arcIds) {
-    var iter = arcs.getShapeIter(arcIds);
-    var path = MapShaper.exportPathCoords(iter);
-    if (closed) {
+    var iter = arcs.getShapeIter(arcIds),
+        path = MapShaper.exportPathCoords(iter),
+        valid = true;
+    if (type == 'polygon') {
       path.area = msSignedRingArea(path.xx, path.yy);
+      valid = path.pointCount > 3 && path.area !== 0;
+    } else if (type == 'polyline') {
+      valid = path.pointCount > 1;
     }
-    var valid = closed ? path.pointCount > 3 && path.area !== 0 :
-        path.pointCount > 1;
     if (valid) {
       pointCount += path.pointCount;
       path.bounds = MapShaper.calcXYBounds(path.xx, path.yy);
@@ -8287,9 +8306,30 @@ var ShpType = {
   MULTIPATCH: 31 // not supported
 };
 
-ShpType.polygonType = function(t) {
+ShpType.isPolygonType = function(t) {
   return t == 5 || t == 15 || t == 25;
 };
+
+ShpType.isPolylineType = function(t) {
+  return t == 3 || t == 13 || t == 23;
+};
+
+ShpType.isMultiPartType = function(t) {
+  return ShpType.isPolygonType(t) || ShpType.isPolylineType(t);
+};
+
+ShpType.isMultiPointType = function(t) {
+  return t == 8 || t == 18 || t == 28;
+};
+
+
+/*
+ShpType.isMType = function(t) {
+};
+
+ShpType.isZType = function(t) {
+};
+*/
 
 // Read data from a .shp file
 // @src is an ArrayBuffer, Node.js Buffer or filename
@@ -8487,29 +8527,14 @@ ShpReader.prototype.getRecordClass = function(type) {
     }
   };
 
-  var singlePointProto = {
-    hasM: function() {
-      return this.byteLength == 12 + (hasZ ? 30 : 24); // size with M
-    },
-
-    read: function() {
-      var n = 2;
-      if (hasZ) n++;
-      if (this.hasM()) n++; // checking for M
-      return this._data().skipBytes(12).readFloat64Array(n);
-    }
-  };
-
-  var multiCoordProto = {
+  // functions for all types
+  var proto = {
     _xypos: function() {
-      var offs = 16; // skip header, type, record size & point count
+      var offs = 8; // skip header, type, record size & point count
+      if (!singlePoint) offs += 8;
       if (hasBounds) offs += 32;
       if (hasParts) offs += 4 * this.partCount + 4; // skip part count & index
       return offs;
-    },
-
-    readBounds: function() {
-      return this._data().skipBytes(12).readFloat64Array(4);
     },
 
     readCoords: function() {
@@ -8536,7 +8561,24 @@ ShpReader.prototype.getRecordClass = function(type) {
     }
   };
 
-  // Mixins for various shape types
+  var singlePointProto = {
+    hasM: function() {
+      return this.byteLength == 12 + (hasZ ? 30 : 24); // size with M
+    },
+
+    read: function() {
+      var n = 2;
+      if (hasZ) n++;
+      if (this.hasM()) n++; // checking for M
+      return this._data().skipBytes(12).readFloat64Array(n);
+    }
+  };
+
+  var multiCoordProto = {
+    readBounds: function() {
+      return this._data().skipBytes(12).readFloat64Array(4);
+    }
+  };
 
   var partsProto = {
     readPartSizes: function() {
@@ -8612,18 +8654,15 @@ ShpReader.prototype.getRecordClass = function(type) {
     }
   };
 
-  var proto;
   if (singlePoint) {
-    proto = singlePointProto;
+    Utils.extend(proto, singlePointProto);
   } else {
-    proto = multiCoordProto;
-    if (hasZ)
-      Utils.extend(proto, zProto);
-    if (hasM)
-      Utils.extend(proto, mProto);
-    if (hasParts)
-      Utils.extend(proto, partsProto);
+    Utils.extend(proto, multiCoordProto);
+    if (hasParts) Utils.extend(proto, partsProto);
+    if (hasZ) Utils.extend(proto, zProto);
+    if (hasM) Utils.extend(proto, mProto);
   }
+
   constructor.prototype = proto;
   proto.constructor = constructor;
   return constructor;
@@ -8637,7 +8676,8 @@ MapShaper.translateShapefileType = function(shpType) {
     return 'polygon';
   } else if (Utils.contains([ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ], shpType)) {
     return 'polyline';
-  } else if (Utils.contains([ShpType.POINT, ShpType.POINTM, ShpType.POINTZ], shpType)) {
+  } else if (Utils.contains([ShpType.POINT, ShpType.POINTM, ShpType.POINTZ,
+      ShpType.MULTIPOINT, ShpType.MULTIPOINTM, ShpType.MULTIPOINTZ], shpType)) {
     return 'point';
   }
   return null;
@@ -8647,7 +8687,7 @@ MapShaper.getShapefileType = function(type) {
   return {
     polygon: ShpType.POLYGON,
     polyline: ShpType.POLYLINE,
-    point: ShpType.POINT
+    point: ShpType.MULTIPOINT  // TODO: use POINT when possible
   }[type] || null;
 };
 
@@ -8674,13 +8714,14 @@ MapShaper.importShp = function(src, opts) {
   reader.forEachShape(function(shp) {
     importer.startShape();
     if (shp.isNull) return;
-    var partSizes = shp.readPartSizes(),
+    var partCount = shp.partCount,
+        partSizes = partCount > 1 ? shp.readPartSizes() : null,
         coords = shp.readCoords(),
         offs = 0,
         pointsInPart;
 
-    for (var j=0, n=shp.partCount; j<n; j++) {
-      pointsInPart = partSizes[j];
+    for (var j=0; j<partCount; j++) {
+      pointsInPart = partCount > 1 ? partSizes[j] : shp.pointCount;
       importer.importCoordsFromFlatArray(coords, offs, pointsInPart, type);
       offs += pointsInPart * 2;
     }
@@ -8734,7 +8775,6 @@ MapShaper.exportShp = function(layers, arcData, opts) {
 MapShaper.exportShpFile = function(layer, arcData) {
   var geomType = layer.geometry_type;
 
-  var isPolygonType = geomType == 'polygon';
   var shpType = MapShaper.getShapefileType(geomType);
   if (shpType === null)
     error("[exportShpFile()] Unable to export geometry type:", geomType);
@@ -8743,12 +8783,16 @@ MapShaper.exportShpFile = function(layer, arcData) {
   var fileBytes = 100;
   var bounds = new Bounds();
   var shapeBuffers = layer.shapes.map(function(shapeIds, i) {
-    var pathData = MapShaper.exportPathData(shapeIds, arcData, isPolygonType);
+    var pathData = MapShaper.exportPathData(shapeIds, arcData, geomType);
     var shape = MapShaper.exportShpRecord(pathData, i+1, shpType);
     fileBytes += shape.buffer.byteLength;
     if (shape.bounds) bounds.mergeBounds(shape.bounds);
     return shape.buffer;
   });
+
+  if (!bounds.hasBounds()) {
+    error("[exportShpFile()] Missing bounds", layer);
+  }
 
   // write .shp header section
   var shpBin = new BinArray(fileBytes, false)
@@ -8788,7 +8832,6 @@ MapShaper.exportShpFile = function(layer, arcData) {
   return {shp: shpBuf, shx: shxBuf};
 };
 
-
 // Returns an ArrayBuffer containing a Shapefile record for one shape
 //   and the bounding box of the shape.
 // TODO: remove collapsed rings, convert to null shape if necessary
@@ -8798,8 +8841,9 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
       bin = null;
 
   if (data.pointCount > 0) {
-    var partsIdx = 52,
-        pointsIdx = partsIdx + 4 * data.pathCount,
+    var multiPart = ShpType.isMultiPartType(shpType),
+        partIndexIdx = 52,
+        pointsIdx = multiPart ? partIndexIdx + 4 * data.pathCount : 48,
         recordBytes = pointsIdx + 16 * data.pointCount,
         pointCount = 0;
 
@@ -8812,14 +8856,24 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
       .writeFloat64(bounds.xmin)
       .writeFloat64(bounds.ymin)
       .writeFloat64(bounds.xmax)
-      .writeFloat64(bounds.ymax)
-      .writeInt32(data.pathCount)
-      .writeInt32(data.pointCount);
+      .writeFloat64(bounds.ymax);
+
+    if (multiPart) {
+      bin.writeInt32(data.pathCount);
+    } else {
+      if (data.pathData.length > 1) {
+        error("[exportShpRecord()] Tried to export multiple paths as type:", shpType);
+      }
+    }
+
+    bin.writeInt32(data.pointCount);
 
     data.pathData.forEach(function(path, i) {
-      bin.position(partsIdx + i * 4)
-        .writeInt32(pointCount)
-        .position(pointsIdx + pointCount * 16);
+      if (multiPart) {
+        bin.position(partIndexIdx + i * 4).writeInt32(pointCount);
+      }
+      bin.position(pointsIdx + pointCount * 16);
+
       var xx = path.xx,
           yy = path.yy;
       for (var j=0, len=xx.length; j<len; j++) {
@@ -8832,9 +8886,8 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
       error("Shp record point count mismatch; pointCount:",
           pointCount, "data.pointCount:", data.pointCount);
 
-  }
-
-  if (!bin) {
+  } else {
+    // no data -- export null record
     bin = new BinArray(12, false)
       .writeInt32(id)
       .writeInt32(2)
@@ -8854,7 +8907,8 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 MapShaper.importContent = function(content, fileType, opts) {
   var src = MapShaper.importFileContent(content, fileType, opts),
       fmt = src.info.input_format,
-      useTopology = (!opts || !opts.no_topology) && src.input_geometry_type != 'point',
+      useTopology = (!opts || !opts.no_topology) &&
+          src.info.input_geometry_type != 'point',
       imported;
 
   if (fmt == 'shapefile' || fmt == 'geojson') {
@@ -9156,10 +9210,10 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   function validateLayerData(layers) {
     Utils.forEach(layers, function(lyr) {
       if (!Utils.isArray(lyr.shapes)) {
-        error ("#exportContent() A layer is missing shape data");
+        error ("[exportContent()] A layer is missing shape data");
       }
-      if (lyr.geometry_type != 'polygon' && lyr.geometry_type != 'polyline') {
-        error ("#exportContent() A layer is missing a valid geometry type");
+      if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
+        error ("[exportContent()] A layer has an invalid geometry type:", lyr.geometry_type);
       }
     });
   }

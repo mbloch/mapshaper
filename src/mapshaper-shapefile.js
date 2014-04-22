@@ -5,7 +5,8 @@ MapShaper.translateShapefileType = function(shpType) {
     return 'polygon';
   } else if (Utils.contains([ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ], shpType)) {
     return 'polyline';
-  } else if (Utils.contains([ShpType.POINT, ShpType.POINTM, ShpType.POINTZ], shpType)) {
+  } else if (Utils.contains([ShpType.POINT, ShpType.POINTM, ShpType.POINTZ,
+      ShpType.MULTIPOINT, ShpType.MULTIPOINTM, ShpType.MULTIPOINTZ], shpType)) {
     return 'point';
   }
   return null;
@@ -15,7 +16,7 @@ MapShaper.getShapefileType = function(type) {
   return {
     polygon: ShpType.POLYGON,
     polyline: ShpType.POLYLINE,
-    point: ShpType.POINT
+    point: ShpType.MULTIPOINT  // TODO: use POINT when possible
   }[type] || null;
 };
 
@@ -42,13 +43,14 @@ MapShaper.importShp = function(src, opts) {
   reader.forEachShape(function(shp) {
     importer.startShape();
     if (shp.isNull) return;
-    var partSizes = shp.readPartSizes(),
+    var partCount = shp.partCount,
+        partSizes = partCount > 1 ? shp.readPartSizes() : null,
         coords = shp.readCoords(),
         offs = 0,
         pointsInPart;
 
-    for (var j=0, n=shp.partCount; j<n; j++) {
-      pointsInPart = partSizes[j];
+    for (var j=0; j<partCount; j++) {
+      pointsInPart = partCount > 1 ? partSizes[j] : shp.pointCount;
       importer.importCoordsFromFlatArray(coords, offs, pointsInPart, type);
       offs += pointsInPart * 2;
     }
@@ -102,7 +104,6 @@ MapShaper.exportShp = function(layers, arcData, opts) {
 MapShaper.exportShpFile = function(layer, arcData) {
   var geomType = layer.geometry_type;
 
-  var isPolygonType = geomType == 'polygon';
   var shpType = MapShaper.getShapefileType(geomType);
   if (shpType === null)
     error("[exportShpFile()] Unable to export geometry type:", geomType);
@@ -111,12 +112,16 @@ MapShaper.exportShpFile = function(layer, arcData) {
   var fileBytes = 100;
   var bounds = new Bounds();
   var shapeBuffers = layer.shapes.map(function(shapeIds, i) {
-    var pathData = MapShaper.exportPathData(shapeIds, arcData, isPolygonType);
+    var pathData = MapShaper.exportPathData(shapeIds, arcData, geomType);
     var shape = MapShaper.exportShpRecord(pathData, i+1, shpType);
     fileBytes += shape.buffer.byteLength;
     if (shape.bounds) bounds.mergeBounds(shape.bounds);
     return shape.buffer;
   });
+
+  if (!bounds.hasBounds()) {
+    error("[exportShpFile()] Missing bounds", layer);
+  }
 
   // write .shp header section
   var shpBin = new BinArray(fileBytes, false)
@@ -156,7 +161,6 @@ MapShaper.exportShpFile = function(layer, arcData) {
   return {shp: shpBuf, shx: shxBuf};
 };
 
-
 // Returns an ArrayBuffer containing a Shapefile record for one shape
 //   and the bounding box of the shape.
 // TODO: remove collapsed rings, convert to null shape if necessary
@@ -166,8 +170,9 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
       bin = null;
 
   if (data.pointCount > 0) {
-    var partsIdx = 52,
-        pointsIdx = partsIdx + 4 * data.pathCount,
+    var multiPart = ShpType.isMultiPartType(shpType),
+        partIndexIdx = 52,
+        pointsIdx = multiPart ? partIndexIdx + 4 * data.pathCount : 48,
         recordBytes = pointsIdx + 16 * data.pointCount,
         pointCount = 0;
 
@@ -180,14 +185,24 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
       .writeFloat64(bounds.xmin)
       .writeFloat64(bounds.ymin)
       .writeFloat64(bounds.xmax)
-      .writeFloat64(bounds.ymax)
-      .writeInt32(data.pathCount)
-      .writeInt32(data.pointCount);
+      .writeFloat64(bounds.ymax);
+
+    if (multiPart) {
+      bin.writeInt32(data.pathCount);
+    } else {
+      if (data.pathData.length > 1) {
+        error("[exportShpRecord()] Tried to export multiple paths as type:", shpType);
+      }
+    }
+
+    bin.writeInt32(data.pointCount);
 
     data.pathData.forEach(function(path, i) {
-      bin.position(partsIdx + i * 4)
-        .writeInt32(pointCount)
-        .position(pointsIdx + pointCount * 16);
+      if (multiPart) {
+        bin.position(partIndexIdx + i * 4).writeInt32(pointCount);
+      }
+      bin.position(pointsIdx + pointCount * 16);
+
       var xx = path.xx,
           yy = path.yy;
       for (var j=0, len=xx.length; j<len; j++) {
@@ -200,9 +215,8 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
       error("Shp record point count mismatch; pointCount:",
           pointCount, "data.pointCount:", data.pointCount);
 
-  }
-
-  if (!bin) {
+  } else {
+    // no data -- export null record
     bin = new BinArray(12, false)
       .writeInt32(id)
       .writeInt32(2)
