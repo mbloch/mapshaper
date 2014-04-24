@@ -98,20 +98,15 @@ TopoJSON.GeometryImporter = function(arcs) {
   };
 
   this.importPointGeometry = function(geom) {
-    var coords, shapes = [];
+    var shape = null;
     if (geom.type == 'Point') {
-      coords = [geom.coordinates];
+      shape = [geom.coordinates];
     } else if (geom.type == 'MultiPoint') {
-      coords = geom.coordinates;
+      shape = geom.coordinates;
     } else {
       stop("Invalid TopoJSON point geometry:", geom);
     }
-
-    for (var i=0; i<coords.length; i++) {
-      shapes.push([arcs.length]);
-      arcs.push([coords[i]]);
-    }
-    return shapes;
+    return shape;
   };
 
   this.updateCollectionType = function(type) {

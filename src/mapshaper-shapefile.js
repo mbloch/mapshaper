@@ -111,12 +111,12 @@ MapShaper.exportShpFile = function(layer, arcData) {
   // var exporter = new PathExporter(arcData, isPolygonType);
   var fileBytes = 100;
   var bounds = new Bounds();
-  var shapeBuffers = layer.shapes.map(function(shapeIds, i) {
-    var pathData = MapShaper.exportPathData(shapeIds, arcData, geomType);
-    var shape = MapShaper.exportShpRecord(pathData, i+1, shpType);
-    fileBytes += shape.buffer.byteLength;
-    if (shape.bounds) bounds.mergeBounds(shape.bounds);
-    return shape.buffer;
+  var shapeBuffers = layer.shapes.map(function(shape, i) {
+    var pathData = MapShaper.exportPathData(shape, arcData, geomType);
+    var rec = MapShaper.exportShpRecord(pathData, i+1, shpType);
+    fileBytes += rec.buffer.byteLength;
+    if (rec.bounds) bounds.mergeBounds(rec.bounds);
+    return rec.buffer;
   });
 
   if (!bounds.hasBounds()) {
@@ -168,7 +168,6 @@ MapShaper.exportShpFile = function(layer, arcData) {
 MapShaper.exportShpRecord = function(data, id, shpType) {
   var bounds = null,
       bin = null;
-
   if (data.pointCount > 0) {
     var multiPart = ShpType.isMultiPartType(shpType),
         partIndexIdx = 52,

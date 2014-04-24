@@ -104,12 +104,10 @@ GeoJSON.pathImporters = {
     }
   },
   Point: function(coord, importer) {
-    importer.importPoint(coord);
+    importer.importPoints([coord]);
   },
   MultiPoint: function(coords, importer) {
-    for (var i=0; i<coords.length; i++) {
-      importer.importPoint(coords[i]);
-    }
+    importer.importPoints(coords);
   }
 };
 
@@ -168,8 +166,8 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
   }
 
-  var objects = Utils.reduce(layerObj.shapes, function(memo, shapeIds, i) {
-    var obj = MapShaper.exportGeoJSONGeometry(shapeIds, arcData, type);
+  var objects = Utils.reduce(layerObj.shapes, function(memo, shape, i) {
+    var obj = MapShaper.exportGeoJSONGeometry(shape, arcData, type);
     if (useFeatures) {
       obj = {
         type: "Feature",
@@ -207,6 +205,7 @@ MapShaper.exportGeoJSONObject = function(layerObj, arcData, opts) {
   return JSON.parse(MapShaper.exportGeoJSONString(layerObj, arcData, opts));
 };
 
+/*
 GeoJSON.exportPoints = function(shapeIds, coords) {
   var points = [],
       iter = new ShapeIter(coords);
@@ -218,11 +217,11 @@ GeoJSON.exportPoints = function(shapeIds, coords) {
   });
   return points;
 };
+*/
 
 // export GeoJSON or TopoJSON point geometry
-GeoJSON.exportPointGeom = function(shapeIds, arcs) {
-  var points = GeoJSON.exportPoints(shapeIds, arcs),
-      geom = null;
+GeoJSON.exportPointGeom = function(points, arcs) {
+  var geom = null;
   if (points.length == 1) {
     geom = {
       type: "Point",
@@ -272,26 +271,40 @@ GeoJSON.exportPolygonGeom = function(ids, arcs) {
 
 // Concatenate points from multiple paths into one path (in-place)
 // @data Output from exportPathData() function
+/*
 MapShaper.mergeArcIds = function(shape) {
   var ids = Utils.reduce(shape, function(memo, arcIds) {
     memo.push.apply(memo, arcIds);
     return memo;
   }, []);
   return ids.length > 0 ? [ids] : null;
+};*/
+
+MapShaper.exportPointData = function(shape) {
+  var path = MapShaper.transposePoints(shape);
+  var data = {
+    pathData: [path],
+    pointCount: path.pointCount
+  };
+  if (path.pointCount > 0) {
+    data.partCount = 1;
+    data.bounds = MapShaper.calcXYBounds(path.xx, path.yy);
+  } else {
+    data.partCount = 0;
+  }
+  return data;
 };
 
-
-// Used by shapefile export too -- move to another file
-MapShaper.exportPathData = function(ids, arcs, type) {
+// TODO: used by shapefile export too -- move to another file
+// also: consider splitting into polygon / polyline / point functions
+MapShaper.exportPathData = function(shape, arcs, type) {
+  // kludge until Shapefile refactoring is improved
+  if (type == 'point') return MapShaper.exportPointData(shape);
   var pointCount = 0,
       bounds = new Bounds(),
       paths = [];
 
-  if (type == 'point') {
-    ids = MapShaper.mergeArcIds(ids);
-  }
-
-  Utils.forEach(ids, function(arcIds) {
+  Utils.forEach(shape, function(arcIds) {
     var iter = arcs.getShapeIter(arcIds),
         path = MapShaper.exportPathCoords(iter),
         valid = true;
@@ -358,6 +371,16 @@ MapShaper.groupMultiPolygonPaths = function(paths) {
   return output;
 };
 
+
+MapShaper.transposePoints = function(points) {
+  var xx = [], yy = [], n=points.length;
+  for (var i=0; i<n; i++) {
+    xx.push(points[i][0]);
+    yy.push(points[i][1]);
+  }
+  return {xx: xx, yy: yy, pointCount: n};
+};
+
 MapShaper.exportPathCoords = function(iter) {
   var xx = [], yy = [],
       i = 0,
@@ -373,7 +396,6 @@ MapShaper.exportPathCoords = function(iter) {
     prevX = x;
     prevY = y;
   }
-
   return {
     xx: xx,
     yy: yy,
@@ -381,8 +403,8 @@ MapShaper.exportPathCoords = function(iter) {
   };
 };
 
-MapShaper.exportGeoJSONGeometry = function(ids, arcs, type) {
-  return ids ? GeoJSON.exporters[type](ids, arcs) : null;
+MapShaper.exportGeoJSONGeometry = function(shape, arcs, type) {
+  return shape ? GeoJSON.exporters[type](shape, arcs) : null;
 };
 
 GeoJSON.exporters = {

@@ -137,6 +137,7 @@ MapShaper.calcXYBounds = function(xx, yy, bb) {
   return bb;
 };
 
+
 MapShaper.transposeXYCoords = function(xx, yy) {
   var points = [];
   for (var i=0, len=xx.length; i<len; i++) {

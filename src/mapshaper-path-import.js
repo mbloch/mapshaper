@@ -10,22 +10,45 @@ mapshaper-topology
 //
 function PathImporter(pointCount, opts) {
   opts = opts || {};
-  var xx = new Float64Array(pointCount),
-      yy = new Float64Array(pointCount),
-      buf = new Float64Array(1024),
+  var xx = [],
+      yy = [],
+      nn = [],
+      shapes = [],
+      collectionType = null,
       round = null;
 
   if (opts.precision) {
     round = getRoundingFunction(opts.precision);
   }
 
-  var paths = [],
-      pointId = 0,
+  var pathId = -1,
       shapeId = -1;
 
+  function addShapeType(t) {
+    if (!collectionType) {
+      collectionType = t;
+    } else if (t != collectionType) {
+      collectionType = "mixed";
+    }
+  }
+
   this.startShape = function() {
-    shapeId++;
+    shapes[++shapeId] = null;
   };
+
+  function appendToShape(part) {
+    var currShape = shapes[shapeId] || (shapes[shapeId] = []);
+    currShape.push(part);
+  }
+
+  function applyRounding(points) {
+    if (round) {
+      points.forEach(function(p) {
+        p[0] = round(p[0]);
+        p[1] = round(p[1]);
+      });
+    }
+  }
 
   this.roundCoords = function(arr, round) {
     for (var i=0, n=arr.length; i<n; i++) {
@@ -33,78 +56,80 @@ function PathImporter(pointCount, opts) {
     }
   };
 
-  this.cleanPaths = function(xx, yy, paths) {
-    var offs = 0,
-        ins = 0,
-        dupeCount = 0,
-        zeroAreaCount = 0,
-        defectiveCount = 0,
-        windingErrorCount = 0,
-        skippedPathCount = 0,
-        validPaths = [],
-        nn = [];
+  // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
+  // (for Shapefile import -- consider moving out of here)
+  // @offs Array index of first coordinate
+  //
+  this.importCoordsFromFlatArray = function(arr, offs, pointCount, type) {
+    var points = [];
+    for (var i=0; i<pointCount; i++) {
+      points.push([arr[offs++], arr[offs++]]);
+    }
+    if (type == 'point') this.importPoints(points);
+    else if (type == 'polyline') this.importLine(points);
+    else if (type == 'polygon') this.importPolygon(points);
+    else error("Unsupported type:", type);
+  };
 
-    Utils.forEach(paths, function(path, pathId) {
-      var validPoints,
-          removeDupes = path.type != 'point',
-          startId = ins,
-          n = path.size,
-          err = false,
-          i, x, y, prevX, prevY;
-      for (i=0; i<n; i++, offs++) {
-        x = xx[offs];
-        y = yy[offs];
-        if (i === 0 || prevX != x || prevY != y || !removeDupes) {
-          xx[ins] = x;
-          yy[ins] = y;
-          ins++;
-        } else {
-          dupeCount++;
-        }
-        prevX = x;
-        prevY = y;
-      }
-      validPoints = ins - startId;
+  // Import an array of [x, y] Points
+  //
+  this.importPath = function(points) {
+    var n = points.length, p;
+    for (var i=0; i<n; i++) {
+      p = points[i];
+      xx.push(p[0]);
+      yy.push(p[1]);
+    }
+    pathId++;
+    nn[pathId] = n;
+    appendToShape([pathId]);
+  };
 
-      if (path.type == 'polygon') {
-        if (validPoints < 4) {
-          err = true;
-          defectiveCount++;
-        }
-        // If number of points in ring have changed (e.g. from snapping) or if
-        // coords were rounded, recompute area and check for collapsed or
-        // inverted rings.
-        else if (validPoints < path.size || round) {
-          var area = msSignedRingArea(xx, yy, startId, validPoints);
-          if (area === 0) {
-            err = true;
-            zeroAreaCount++;
-          } else if (area < 0 != path.area < 0) {
-            err = true;
-            windingOrderCount++;
-          }
-        }
-        // Catch rings that were originally empty
-        else if (path.area === 0) {
-          err = true;
-          zeroAreaCount++;
-        }
-      } else if (path.type == 'polyline') {
-        if (validPoints < 2) {
-          err = true;
-          defectiveCount++;
-        }
-      }
+  this.importPoints = function(points) {
+    addShapeType('point');
+    applyRounding(points);
+    points.forEach(appendToShape);
+  };
 
-      if (err) {
-        skippedPathCount++;
-        ins -= validPoints;
-      } else {
-        nn.push(validPoints);
-        validPaths.push(path);
-      }
-    });
+  this.importLine = function(points) {
+    addShapeType('polyline');
+    applyRounding(points);
+    // TODO: check for collapsed line
+    if (points.length > 1) {
+      this.importPath(points);
+    }
+  };
 
+  this.importPolygon = function(points, isHole) {
+    addShapeType('polygon');
+    applyRounding(points);
+    var area = MapShaper.getPathArea2(points);
+    if (isHole === true && area > 0 || isHole === false && area < 0) {
+      verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
+      points.reverse();
+    }
+    if (area !== 0) {
+      this.importPath(points);
+    }
+  };
+
+  // Return topological shape data
+  // Apply any requested snapping and rounding
+  // Remove duplicate points, check for ring inversions
+  //
+  this.done = function() {
+    if (opts.snapping) {
+      T.start();
+      MapShaper.autoSnapCoords(xx, yy, nn, opts.snap_interval);
+      T.stop("Snapping points");
+    }
+
+    // possible values: polygon, polyline, point, mixed, null
+    if (collectionType == 'mixed') {
+      stop("[PathImporter] Mixed feature types are not allowed");
+    }
+
+    /*
     if (dupeCount > 0) {
       verbose(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
     }
@@ -123,123 +148,26 @@ function PathImporter(pointCount, opts) {
       validPointCount: ins
     };
   };
+  */
 
-  // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
-  // @offs Array index of first coordinate
-  //
-  this.importCoordsFromFlatArray = function(arr, offs, pointCount, type) {
-    var startId = pointId,
-        x, y;
-
-    for (var i=0; i<pointCount; i++) {
-      x = arr[offs++];
-      y = arr[offs++];
-      xx[pointId] = x;
-      yy[pointId] = y;
-      pointId++;
-    }
-
-    var path = {
-      type: type,
-      size: pointCount,
-      shapeId: shapeId
+    var geometry = {
+      xx: new Float64Array(xx),
+      yy: new Float64Array(yy),
+      nn: new Float64Array(nn),
+      shapes: shapes
     };
 
-    if (type == 'polygon') {
-      path.area = msSignedRingArea(xx, yy, startId, pointCount);
-    }
-    paths.push(path);
-    return path;
-  };
-
-  // Import an array of [x, y] Points
-  //
-  this.importPoints = function(points, type) {
-    var n = points.length,
-        buf = getPointBuf(n),
-        p;
-    for (var i=0, j=0; i < n; i++) {
-      p = points[i];
-      buf[j++] = p[0];
-      buf[j++] = p[1];
-    }
-    return this.importCoordsFromFlatArray(buf, 0, n, type);
-  };
-
-  this.importPoint = function(point) {
-    this.importPoints([point], 'point');
-  };
-
-  this.importLine = function(points) {
-    this.importPoints(points, 'polyline');
-  };
-
-  this.importPolygon = function(points, isHole) {
-    // TODO: avoid using class variables
-    var startId = pointId;
-    var path = this.importPoints(points, 'polygon');
-    if (isHole && path.area > 0 || !isHole && path.area < 0) {
-      verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
-      MapShaper.reversePathCoords(xx, startId, path.size);
-      MapShaper.reversePathCoords(yy, startId, path.size);
-      path.area = -path.area;
-    }
-    return path;
-  };
-
-  function getCollectionType(paths) {
-    return Utils.reduce(paths, function(memo, path) {
-      if (!memo) {
-        memo = path.type;
-      } else if (path.type != memo) {
-        memo = 'mixed';
-      }
-      return memo;
-    }, null);
-  }
-
-  function getPointBuf(n) {
-    var len = n * 2;
-    if (buf.length < len) {
-      buf = new Float64Array(Math.ceil(len * 1.3));
-    }
-    return buf;
-  }
-
-  // Return topological shape data
-  // Apply any requested snapping and rounding
-  // Remove duplicate points, check for ring inversions
-  //
-  this.done = function() {
-    var snappedPoints = null; // TODO: remove
-    if (round) {
-      this.roundCoords(xx, round);
-      this.roundCoords(yy, round);
-    }
-    if (opts.snapping) {
-      T.start();
-      var nn = Utils.pluck(paths, 'size'); // TODO: refactor
-      snappedPoints = opts.debug_snapping ? [] : null;
-      MapShaper.autoSnapCoords(xx, yy, nn, opts.snap_interval, snappedPoints);
-      T.stop("Snapping points");
-    }
-    // may be: polygon, polyline, point, mixed, null
-    var collType = getCollectionType(paths);
-    // if (!collType) console.log("missing collection type:", paths);
-    if (collType == 'mixed') {
-      stop("[PathImporter] Mixed feature types are not allowed");
-    }
-    var pathData = this.cleanPaths(xx, yy, paths);
     var info = {
-      snapped_points: snappedPoints,
-      input_path_count: pathData.validPaths.length,
-      input_point_count: pathData.validPointCount,
-      input_skipped_points: pathData.invalidPointCount,
-      input_shape_count: shapeId + 1,
-      input_geometry_type: collType
+      //snapped_points: snappedPoints,
+      //input_path_count: pathData.validPaths.length,
+      //input_point_count: pathData.validPointCount,
+      //input_skipped_points: pathData.invalidPointCount,
+      //input_shape_count: shapeId + 1,
+      input_geometry_type: collectionType
     };
+
     return {
-      geometry: pathData,
+      geometry: geometry,
       info: info
     };
   };

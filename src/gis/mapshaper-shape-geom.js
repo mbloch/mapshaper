@@ -26,6 +26,22 @@ MapShaper.getPathArea = function(iter) {
   return sum / 2;
 };
 
+// TODO: remove this
+MapShaper.getPathArea2 = function(points) {
+  var sum = 0,
+      x, y, p;
+  for (var i=0, n=points.length; i<n; i++) {
+    p = points[i];
+    if (i > 0) {
+      sum += p[0] * y - x * p[1];
+    }
+    x = p[0];
+    y = p[1];
+  }
+  return sum / 2;
+};
+
+
 MapShaper.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
   return Utils.reduce(shp, function(maxPath, path) {

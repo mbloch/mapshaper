@@ -55,7 +55,7 @@ describe('mapshaper-import.js', function () {
       var data = api.importContent(geojson, 'json', {no_topology: true});
       var target = [[[3, 1], [1, 1], [2, 3], [3, 1]], [[4, 3], [3, 1], [2, 3], [4, 3]]];
       assert.deepEqual(target, data.arcs.toArray());
-      assert.deepEqual([[[0]],,[[1]]], data.layers[0].shapes);
+      assert.deepEqual([[[0]], null, [[1]]], data.layers[0].shapes);
       assert.deepEqual([{FID: 0}, {FID: 1}, {FID: 2}], data.layers[0].data.getRecords());
     })
   })

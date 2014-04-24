@@ -34,11 +34,11 @@ describe('mapshaper-shapefile.js', function () {
     it('Single multipoint record (shplib)', function() {
       shapefileRoundTrip('test_data/shplib/multipnt.shp');
     })
-    /*
+
     it('POINTZ layer (shplib)', function() {
       shapefileRoundTrip('test_data/shplib/masspntz.shp');
     })
-*/
+
 
   })
 })

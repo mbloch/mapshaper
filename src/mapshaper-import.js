@@ -63,8 +63,10 @@ MapShaper.importPaths = function(src, useTopology) {
 
 MapShaper.importPathsWithTopology = function(src) {
   var topo = MapShaper.buildTopology(src.geometry);
+  var shapes = updateArcIds(src.geometry.shapes, topo.paths);
   return {
-    shapes: groupPathsByShape(topo.paths, src.geometry.validPaths, src.info.input_shape_count),
+    // shapes: groupPathsByShape(topo.paths, src.geometry.validPaths, src.info.input_shape_count),
+    shapes: shapes,
     arcs: topo.arcs
   };
 };
@@ -72,10 +74,7 @@ MapShaper.importPathsWithTopology = function(src) {
 MapShaper.importPathsWithoutTopology = function(src) {
   var geom = src.geometry;
   var arcs = new ArcDataset(geom.nn, geom.xx, geom.yy);
-  var paths = Utils.map(geom.nn, function(n, i) {
-    return [i];
-  });
-  var shapes = groupPathsByShape(paths, src.geometry.validPaths, src.info.input_shape_count);
+  var shapes = src.geometry.shapes || error("[importPathsWithoutTopology()] missing shapes");
   return {
     shapes: shapes,
     arcs: arcs
@@ -101,7 +100,31 @@ MapShaper.createTopology = function(src) {
   };
 };
 */
+function updateArcsInShape(shape, topoPaths) {
+  var shape2 = [];
+  Utils.forEach(shape, function(path) {
+    if (path.length != 1) {
+      error("[updateArcsInShape()] Expected single-part input path, found:", path);
+    }
+    var pathId = path[0],
+        topoPath = topoPaths[pathId];
 
+    if (!topoPath) {
+      error("[updateArcsInShape()] Missing topological path for path num:", pathId);
+    }
+    shape2.push(topoPath);
+  });
+  return shape2.length > 0 ? shape2 : null;
+}
+
+
+function updateArcIds(src, paths) {
+  return src.map(function(shape) {
+    return updateArcsInShape(shape, paths);
+  });
+}
+
+/*
 // Use shapeId property of @pathData objects to group paths by shape
 //
 function groupPathsByShape(paths, pathData, shapeCount) {
@@ -116,3 +139,4 @@ function groupPathsByShape(paths, pathData, shapeCount) {
   });
   return shapes;
 }
+*/
