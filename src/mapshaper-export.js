@@ -38,10 +38,17 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   function validateLayerData(layers) {
     Utils.forEach(layers, function(lyr) {
       if (!Utils.isArray(lyr.shapes)) {
-        error ("[exportContent()] A layer is missing shape data");
+        error ("[validateLayerData()] A layer is missing shape data");
       }
-      if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-        error ("[exportContent()] A layer has an invalid geometry type:", lyr.geometry_type);
+      // allowing null-type layers
+      if (lyr.geometry_type === null) {
+        if (Utils.some(lyr.shapes, function(o) {
+          return !!o;
+        })) {
+          error("[validateLayerData()] A layer contains shape records and a null geometry type");
+        }
+      } else if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
+        error ("[validateLayerData()] A layer has an invalid geometry type:", lyr.geometry_type);
       }
     });
   }

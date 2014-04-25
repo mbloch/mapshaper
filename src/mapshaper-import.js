@@ -6,12 +6,10 @@
 MapShaper.importContent = function(content, fileType, opts) {
   var src = MapShaper.importFileContent(content, fileType, opts),
       fmt = src.info.input_format,
-      useTopology = (!opts || !opts.no_topology) &&
-          src.info.input_geometry_type != 'point',
       imported;
 
   if (fmt == 'shapefile' || fmt == 'geojson') {
-    imported = MapShaper.importPaths(src, useTopology);
+    imported = MapShaper.importPaths(src, opts && opts.no_topology);
   } else if (fmt == 'topojson') {
     imported = src; // already in topological format
   }
@@ -40,12 +38,14 @@ MapShaper.importFileContent = function(content, fileType, opts) {
   } else {
     error("Unsupported file type:", fileType);
   }
+  // console.log(data)
   data.info.input_format = fileFmt;
   T.stop("Import " + fileFmt);
   return data;
 };
 
-MapShaper.importPaths = function(src, useTopology) {
+MapShaper.importPaths = function(src, noTopo) {
+  var useTopology = !noTopo && !!src.geometry.nn; // kludge -- make we have path data (might be points or empty)
   var importer = useTopology ? MapShaper.importPathsWithTopology : MapShaper.importPathsWithoutTopology,
       imported = importer(src);
 
@@ -73,7 +73,7 @@ MapShaper.importPathsWithTopology = function(src) {
 
 MapShaper.importPathsWithoutTopology = function(src) {
   var geom = src.geometry;
-  var arcs = new ArcDataset(geom.nn, geom.xx, geom.yy);
+  var arcs = geom.nn ? new ArcDataset(geom.nn, geom.xx, geom.yy) : null;
   var shapes = src.geometry.shapes || error("[importPathsWithoutTopology()] missing shapes");
   return {
     shapes: shapes,
@@ -100,6 +100,7 @@ MapShaper.createTopology = function(src) {
   };
 };
 */
+
 function updateArcsInShape(shape, topoPaths) {
   var shape2 = [];
   Utils.forEach(shape, function(path) {

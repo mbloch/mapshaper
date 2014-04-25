@@ -6323,21 +6323,29 @@ MapShaper.quicksortIds = function (a, ids, lo, hi) {
 // Import path data from a non-topological source (Shapefile, GeoJSON, etc)
 // in preparation for identifying topology.
 //
-function PathImporter(pointCount, opts) {
+function PathImporter(reservedPoints, opts) {
   opts = opts || {};
-  var xx = [],
-      yy = [],
-      nn = [],
-      shapes = [],
+  var shapes = [],
       collectionType = null,
-      round = null;
+      round = null,
+      xx, yy, nn, buf;
+
+  if (reservedPoints > 0) {
+    nn = [];
+    xx = new Float64Array(reservedPoints);
+    yy = new Float64Array(reservedPoints);
+    buf = new Float64Array(1024);
+  }
 
   if (opts.precision) {
     round = getRoundingFunction(opts.precision);
   }
 
   var pathId = -1,
-      shapeId = -1;
+      shapeId = -1,
+      pointId = 0,
+      dupeCount = 0,
+      skippedPathCount = 0;
 
   function addShapeType(t) {
     if (!collectionType) {
@@ -6345,6 +6353,14 @@ function PathImporter(pointCount, opts) {
     } else if (t != collectionType) {
       collectionType = "mixed";
     }
+  }
+
+  function getPointBuf(n) {
+    var len = n * 2;
+    if (buf.length < len) {
+      buf = new Float64Array(Math.ceil(len * 1.3));
+    }
+    return buf;
   }
 
   this.startShape = function() {
@@ -6356,13 +6372,18 @@ function PathImporter(pointCount, opts) {
     currShape.push(part);
   }
 
-  function applyRounding(points) {
-    if (round) {
-      points.forEach(function(p) {
-        p[0] = round(p[0]);
-        p[1] = round(p[1]);
-      });
-    }
+  function appendPath(n, type) {
+    addShapeType(type);
+    pathId++;
+    nn[pathId] = n;
+    appendToShape([pathId]);
+  }
+
+  function roundPoints(points, round) {
+    points.forEach(function(p) {
+      p[0] = round(p[0]);
+      p[1] = round(p[1]);
+    });
   }
 
   this.roundCoords = function(arr, round) {
@@ -6375,57 +6396,80 @@ function PathImporter(pointCount, opts) {
   // (for Shapefile import -- consider moving out of here)
   // @offs Array index of first coordinate
   //
-  this.importCoordsFromFlatArray = function(arr, offs, pointCount, type) {
-    var points = [];
-    for (var i=0; i<pointCount; i++) {
-      points.push([arr[offs++], arr[offs++]]);
+  this.importPathFromFlatArray = function(arr, type) {
+    var len = arr.length,
+        n = 0, i = 0,
+        x, y, prevX, prevY;
+
+    while (i < len) {
+      x = arr[i++];
+      y = arr[i++];
+      if (round) {
+        x = round(x);
+        y = round(y);
+      }
+      if (i > 0 && x == prevX && y == prevY) {
+        dupeCount++;
+      } else {
+        xx[pointId] = x;
+        yy[pointId] = y;
+        pointId++;
+        n++;
+      }
+      prevY = y;
+      prevX = x;
     }
-    if (type == 'point') this.importPoints(points);
-    else if (type == 'polyline') this.importLine(points);
-    else if (type == 'polygon') this.importPolygon(points);
-    else error("Unsupported type:", type);
+
+    var valid = false;
+    if (type == 'polyline') {
+      valid = n > 1;
+    } else if (type == 'polygon') {
+      valid = n > 3 && msSignedRingArea(xx, yy, pointId-n, n) !== 0;
+    } else {
+      error("[importPathFromFlatArray() Unexpected type:", type);
+    }
+
+    if (valid) {
+      appendPath(n, type);
+    } else {
+      pointId -= n;
+      skippedPathCount++;
+    }
   };
 
   // Import an array of [x, y] Points
   //
-  this.importPath = function(points) {
-    var n = points.length, p;
-    for (var i=0; i<n; i++) {
-      p = points[i];
-      xx.push(p[0]);
-      yy.push(p[1]);
+  this.importPath = function(points, type) {
+    var n = points.length,
+        buf = getPointBuf(n),
+        j = 0;
+    for (var i=0; i < n; i++) {
+      buf[j++] = points[i][0];
+      buf[j++] = points[i][1];
     }
-    pathId++;
-    nn[pathId] = n;
-    appendToShape([pathId]);
+    this.importPathFromFlatArray(buf.subarray(0, j), type);
   };
 
   this.importPoints = function(points) {
     addShapeType('point');
-    applyRounding(points);
+    if (round) {
+      roundPoints(points, round);
+    }
     points.forEach(appendToShape);
   };
 
   this.importLine = function(points) {
-    addShapeType('polyline');
-    applyRounding(points);
-    // TODO: check for collapsed line
-    if (points.length > 1) {
-      this.importPath(points);
-    }
+    this.importPath(points, 'polyline');
   };
 
   this.importPolygon = function(points, isHole) {
-    addShapeType('polygon');
-    applyRounding(points);
     var area = MapShaper.getPathArea2(points);
+
     if (isHole === true && area > 0 || isHole === false && area < 0) {
       verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
       points.reverse();
     }
-    if (area !== 0) {
-      this.importPath(points);
-    }
+    this.importPath(points, 'polygon');
   };
 
   // Return topological shape data
@@ -6433,26 +6477,52 @@ function PathImporter(pointCount, opts) {
   // Remove duplicate points, check for ring inversions
   //
   this.done = function() {
-    if (opts.snapping) {
-      T.start();
-      MapShaper.autoSnapCoords(xx, yy, nn, opts.snap_interval);
-      T.stop("Snapping points");
-    }
+    var geometry = {};
 
     // possible values: polygon, polyline, point, mixed, null
     if (collectionType == 'mixed') {
       stop("[PathImporter] Mixed feature types are not allowed");
+    } else if (collectionType == 'polygon' || collectionType == 'polyline') {
+
+      if (dupeCount > 0) {
+        verbose(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
+      }
+      if (skippedPathCount > 0) {
+        // TODO: consider showing details about type of error
+        message(Utils.format("Removed %,d path%s with defective geometry", skippedPathCount, "s?"));
+      }
+
+      if (pointId > 0) {
+        // TODO: move shape validation after snapping (which may corrupt shapes)
+        if (opts.snapping) {
+          T.start();
+          MapShaper.autoSnapCoords(xx, yy, nn, opts.snap_interval);
+          T.stop("Snapping points");
+        }
+
+        if (pointId < xx.length) {
+          xx = xx.subarray(0, pointId);
+          yy = yy.subarray(0, pointId);
+        }
+
+        geometry.xx = xx;
+        geometry.yy = yy;
+        geometry.nn = new Int32Array(nn);
+        // message("Imported geometries; nn:", Utils.toArray(geometry.nn), 'xx:', xx.length);
+      } else {
+        message("No geometries were imported");
+        collectionType = null;
+      }
+    } else if (collectionType == 'point' || collectionType === null) {
+      // pass
+    } else {
+      error("Unexpected collection type:", collectionType);
     }
+
+    // all geometry types have shapes property
+    geometry.shapes = shapes;
 
     /*
-    if (dupeCount > 0) {
-      verbose(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
-    }
-    if (skippedPathCount > 0) {
-      // TODO: consider showing details about type of error
-      message(Utils.format("Removed %,d path%s with defective geometry", skippedPathCount, "s?"));
-    }
-
     return {
       xx: xx.subarray(0, ins),
       yy: yy.subarray(0, ins),
@@ -6464,13 +6534,6 @@ function PathImporter(pointCount, opts) {
     };
   };
   */
-
-    var geometry = {
-      xx: new Float64Array(xx),
-      yy: new Float64Array(yy),
-      nn: new Float64Array(nn),
-      shapes: shapes
-    };
 
     var info = {
       //snapped_points: snappedPoints,
@@ -7208,13 +7271,16 @@ MapShaper.importGeoJSON = function(obj, opts) {
 
   // Count points in dataset (PathImporter needs total points to initialize buffers)
   //
-  var pointCount = Utils.reduce(geometries, function(sum, geom) {
-    return sum + GeoJSON.countPointsInGeom(geom);
+  var pathPoints = Utils.reduce(geometries, function(sum, geom) {
+    if (geom && geom.type in GeoJSON.geometryDepths) {
+      sum += GeoJSON.countNestedPoints(geom.coordinates, GeoJSON.geometryDepths[geom.type]);
+    }
+    return sum;
   }, 0);
 
   // Import GeoJSON geometries
   //
-  var importer = new PathImporter(pointCount, opts);
+  var importer = new PathImporter(pathPoints, opts);
   geometries.forEach(function(geom) {
     importer.startShape();
     if (geom) {
@@ -7281,22 +7347,11 @@ GeoJSON.pathImporters = {
   }
 };
 
-GeoJSON.countPointsInGeom = function(geom) {
-  var sum = 0;
-  if (geom) { // geometry may be null;
-    if (geom.type in GeoJSON.geometryDepths === false) {
-      error ("GeoJSON.countPoints() Unsupported geometry:", geom.type || geom);
-    }
-    sum = GeoJSON.countNestedPoints(geom.coordinates, GeoJSON.geometryDepths[geom.type]);
-  }
-  return sum;
-};
-
 // Nested depth of GeoJSON Points in coordinates arrays
 //
 GeoJSON.geometryDepths = {
-  Point: 0,
-  MultiPoint: 1,
+  //Point: 0,
+  //MultiPoint: 1,
   LineString: 1,
   MultiLineString: 2,
   Polygon: 2,
@@ -7470,27 +7525,32 @@ MapShaper.exportPointData = function(shape) {
 MapShaper.exportPathData = function(shape, arcs, type) {
   // kludge until Shapefile refactoring is improved
   if (type == 'point') return MapShaper.exportPointData(shape);
+
   var pointCount = 0,
       bounds = new Bounds(),
       paths = [];
 
-  Utils.forEach(shape, function(arcIds) {
-    var iter = arcs.getShapeIter(arcIds),
-        path = MapShaper.exportPathCoords(iter),
-        valid = true;
-    if (type == 'polygon') {
-      path.area = msSignedRingArea(path.xx, path.yy);
-      valid = path.pointCount > 3 && path.area !== 0;
-    } else if (type == 'polyline') {
-      valid = path.pointCount > 1;
-    }
-    if (valid) {
-      pointCount += path.pointCount;
-      path.bounds = MapShaper.calcXYBounds(path.xx, path.yy);
-      bounds.mergeBounds(path.bounds);
-      paths.push(path);
-    }
-  });
+  if (type == 'polyline' || type == 'polygon') {
+    Utils.forEach(shape, function(arcIds) {
+      var iter = arcs.getShapeIter(arcIds),
+          path = MapShaper.exportPathCoords(iter),
+          valid = true;
+      if (type == 'polygon') {
+        path.area = msSignedRingArea(path.xx, path.yy);
+        valid = path.pointCount > 3 && path.area !== 0;
+      } else if (type == 'polyline') {
+        valid = path.pointCount > 1;
+      }
+      if (valid) {
+        pointCount += path.pointCount;
+        path.bounds = MapShaper.calcXYBounds(path.xx, path.yy);
+        bounds.mergeBounds(path.bounds);
+        paths.push(path);
+      } else {
+        message("Skipping a collapsed", type, "path");
+      }
+    });
+  }
 
   return {
     pointCount: pointCount,
@@ -8659,7 +8719,8 @@ ShpReader.prototype.getRecordClass = function(type) {
       hasParts = this.hasParts(),
       hasZ = this.hasZ(),
       hasM = this.hasM(),
-      singlePoint = !hasBounds;
+      singlePoint = !hasBounds,
+      mzRangeBytes = singlePoint ? 0 : 16;
 
   // @bin is a BinArray set to the first byte of a shape record
   //
@@ -8690,26 +8751,37 @@ ShpReader.prototype.getRecordClass = function(type) {
 
   // functions for all types
   var proto = {
+    // return offset of [x, y] point data in the record
     _xypos: function() {
-      var offs = 8; // skip header, type, record size & point count
-      if (!singlePoint) offs += 8;
+      var offs = 12; // skip header & record type
+      if (!singlePoint) offs += 4; // skip point count
       if (hasBounds) offs += 32;
       if (hasParts) offs += 4 * this.partCount + 4; // skip part count & index
       return offs;
     },
 
     readCoords: function() {
+      if (this.pointCount === 0) return null;
+      var partSizes = this.readPartSizes(),
+          xy = this._data().skipBytes(this._xypos());
+      return partSizes.map(function(pointCount) {
+        return xy.readFloat64Array(pointCount * 2);
+      });
+    },
+
+    readXY: function() {
+      if (this.pointCount === 0) return null;
       return this._data().skipBytes(this._xypos()).readFloat64Array(this.pointCount * 2);
     },
 
     readPoints: function() {
-      var coords = this.readCoords(),
+      var xy = this.readXY(),
           zz = hasZ ? this.readZ() : null,
           mm = hasM && this.hasM() ? this.readM() : null,
           points = [], p;
 
-      for (var i=0, n=coords.length / 2; i<n; i++) {
-        p = [coords[i*2], coords[i*2+1]];
+      for (var i=0, n=xy.length / 2; i<n; i++) {
+        p = [xy[i*2], xy[i*2+1]];
         if (zz) p.push(zz[i]);
         if (mm) p.push(mm[i]);
         points.push(p);
@@ -8719,35 +8791,15 @@ ShpReader.prototype.getRecordClass = function(type) {
 
     read: function() {
       return this.readPoints();
-    }
-  };
-
-  var singlePointProto = {
-    hasM: function() {
-      return this.byteLength == 12 + (hasZ ? 30 : 24); // size with M
     },
 
-    read: function() {
-      var n = 2;
-      if (hasZ) n++;
-      if (this.hasM()) n++; // checking for M
-      return this._data().skipBytes(12).readFloat64Array(n);
-    }
-  };
-
-  var multiCoordProto = {
-    readBounds: function() {
-      return this._data().skipBytes(12).readFloat64Array(4);
-    }
-  };
-
-  var partsProto = {
     readPartSizes: function() {
+      if (this.pointCount === 0) return null;
+      if (this.partCount == 1) return [this.pointCount];
       var partLen,
           startId = 0,
           sizes = [],
           bin = this._data().skipBytes(56); // skip to second entry in part index
-
       for (var i=0, n=this.partCount; i<n; i++) {
         if (i < n - 1)
           partLen = bin.readUint32() - startId;
@@ -8759,9 +8811,29 @@ ShpReader.prototype.getRecordClass = function(type) {
         startId += partLen;
       }
       return sizes;
+    }
+  };
+
+  var singlePointProto = {
+    /*
+    hasM: function() {
+      return this.byteLength == 12 + (hasZ ? 30 : 24); // size with M
+    },
+    */
+
+    read: function() {
+      var n = 2;
+      if (hasZ) n++;
+      if (this.hasM()) n++; // checking for M
+      return this._data().skipBytes(12).readFloat64Array(n);
+    }
+  }
+
+  var multiCoordProto = {
+    readBounds: function() {
+      return this._data().skipBytes(12).readFloat64Array(4);
     },
 
-    // overrides read() function from multiCoordProto
     read: function() {
       var points = this.readPoints();
       var parts = Utils.map(this.readPartSizes(), function(size) {
@@ -8774,7 +8846,9 @@ ShpReader.prototype.getRecordClass = function(type) {
   var mProto = {
     _mpos: function() {
       var pos = this._xypos() + this.pointCount * 16;
-      if (hasZ) pos += this.pointCount * 8 + 16;
+      if (hasZ) {
+        pos += this.pointCount * 8 + mzRangeBytes;
+      }
       return pos;
     },
 
@@ -8783,7 +8857,7 @@ ShpReader.prototype.getRecordClass = function(type) {
     },
 
     readM: function() {
-      return this.hasM() ? this._data().skipBytes(this._mpos() + 16).readFloat64Array(this.pointCount) : null;
+      return this.hasM() ? this._data().skipBytes(this._mpos() + mzRangeBytes).readFloat64Array(this.pointCount) : null;
     },
 
     // Test if this record contains M data
@@ -8791,13 +8865,14 @@ ShpReader.prototype.getRecordClass = function(type) {
     //
     hasM: function() {
       var bytesWithoutM = this._mpos(),
-          bytesWithM = bytesWithoutM + this.pointCount * 8 + 16;
-      if (this.byteLength == bytesWithoutM)
+          bytesWithM = bytesWithoutM + this.pointCount * 8 + mzRangeBytes;
+      if (this.byteLength == bytesWithoutM) {
         return false;
-      else if (this.byteLength == bytesWithM)
+      } else if (this.byteLength == bytesWithM) {
         return true;
-      else
+      } else {
         error("#hasM() Counting error");
+      }
     }
   };
 
@@ -8811,7 +8886,7 @@ ShpReader.prototype.getRecordClass = function(type) {
     },
 
     readZ: function() {
-      return this._data().skipBytes(this._zpos() + 16).readFloat64Array(this.pointCount);
+      return this._data().skipBytes(this._zpos() + mzRangeBytes).readFloat64Array(this.pointCount);
     }
   };
 
@@ -8819,10 +8894,9 @@ ShpReader.prototype.getRecordClass = function(type) {
     Utils.extend(proto, singlePointProto);
   } else {
     Utils.extend(proto, multiCoordProto);
-    if (hasParts) Utils.extend(proto, partsProto);
-    if (hasZ) Utils.extend(proto, zProto);
-    if (hasM) Utils.extend(proto, mProto);
   }
+  if (hasZ) Utils.extend(proto, zProto);
+  if (hasM) Utils.extend(proto, mProto);
 
   constructor.prototype = proto;
   proto.constructor = constructor;
@@ -8845,6 +8919,7 @@ MapShaper.translateShapefileType = function(shpType) {
 };
 
 MapShaper.getShapefileType = function(type) {
+  if (type === null) return ShpType.NULL;
   return {
     polygon: ShpType.POLYGON,
     polyline: ShpType.POLYLINE,
@@ -8867,24 +8942,20 @@ MapShaper.importShp = function(src, opts) {
     verbose("Warning: M data is being removed.");
   }
 
-  var counts = reader.getCounts();
-  var importer = new PathImporter(counts.pointCount, opts);
+  var pathPoints = type == 'point' ? 0 : reader.getCounts().pointCount;
+  var importer = new PathImporter(pathPoints, opts);
   // var expectRings = Utils.contains([5,15,25], reader.type());
   // TODO: test cases: null shape; non-null shape with no valid parts
 
   reader.forEachShape(function(shp) {
     importer.startShape();
     if (shp.isNull) return;
-    var partCount = shp.partCount,
-        partSizes = partCount > 1 ? shp.readPartSizes() : null,
-        coords = shp.readCoords(),
-        offs = 0,
-        pointsInPart;
-
-    for (var j=0; j<partCount; j++) {
-      pointsInPart = partCount > 1 ? partSizes[j] : shp.pointCount;
-      importer.importCoordsFromFlatArray(coords, offs, pointsInPart, type);
-      offs += pointsInPart * 2;
+    if (type == 'point') {
+      importer.importPoints(shp.readPoints());
+    } else {
+      shp.readCoords().forEach(function(arr) {
+        importer.importPathFromFlatArray(arr, type);
+      });
     }
   });
 
@@ -8894,8 +8965,6 @@ MapShaper.importShp = function(src, opts) {
 // Convert topological data to buffers containing .shp and .shx file data
 //
 MapShaper.exportShp = function(layers, arcData, opts) {
-  if (arcData instanceof ArcDataset === false || !Utils.isArray(layers)) error("Missing exportable data.");
-
   var files = [];
   layers.forEach(function(layer) {
     var data = layer.data,
@@ -9104,10 +9173,17 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   function validateLayerData(layers) {
     Utils.forEach(layers, function(lyr) {
       if (!Utils.isArray(lyr.shapes)) {
-        error ("[exportContent()] A layer is missing shape data");
+        error ("[validateLayerData()] A layer is missing shape data");
       }
-      if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-        error ("[exportContent()] A layer has an invalid geometry type:", lyr.geometry_type);
+      // allowing null-type layers
+      if (lyr.geometry_type === null) {
+        if (Utils.some(lyr.shapes, function(o) {
+          return !!o;
+        })) {
+          error("[validateLayerData()] A layer contains shape records and a null geometry type");
+        }
+      } else if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
+        error ("[validateLayerData()] A layer has an invalid geometry type:", lyr.geometry_type);
       }
     });
   }
@@ -9784,12 +9860,10 @@ MapShaper.replaceValue = function(zz, value, replacement, start, end) {
 MapShaper.importContent = function(content, fileType, opts) {
   var src = MapShaper.importFileContent(content, fileType, opts),
       fmt = src.info.input_format,
-      useTopology = (!opts || !opts.no_topology) &&
-          src.info.input_geometry_type != 'point',
       imported;
 
   if (fmt == 'shapefile' || fmt == 'geojson') {
-    imported = MapShaper.importPaths(src, useTopology);
+    imported = MapShaper.importPaths(src, opts && opts.no_topology);
   } else if (fmt == 'topojson') {
     imported = src; // already in topological format
   }
@@ -9818,12 +9892,14 @@ MapShaper.importFileContent = function(content, fileType, opts) {
   } else {
     error("Unsupported file type:", fileType);
   }
+  // console.log(data)
   data.info.input_format = fileFmt;
   T.stop("Import " + fileFmt);
   return data;
 };
 
-MapShaper.importPaths = function(src, useTopology) {
+MapShaper.importPaths = function(src, noTopo) {
+  var useTopology = !noTopo && !!src.geometry.nn; // kludge -- make we have path data (might be points or empty)
   var importer = useTopology ? MapShaper.importPathsWithTopology : MapShaper.importPathsWithoutTopology,
       imported = importer(src);
 
@@ -9851,7 +9927,7 @@ MapShaper.importPathsWithTopology = function(src) {
 
 MapShaper.importPathsWithoutTopology = function(src) {
   var geom = src.geometry;
-  var arcs = new ArcDataset(geom.nn, geom.xx, geom.yy);
+  var arcs = geom.nn ? new ArcDataset(geom.nn, geom.xx, geom.yy) : null;
   var shapes = src.geometry.shapes || error("[importPathsWithoutTopology()] missing shapes");
   return {
     shapes: shapes,
@@ -9878,6 +9954,7 @@ MapShaper.createTopology = function(src) {
   };
 };
 */
+
 function updateArcsInShape(shape, topoPaths) {
   var shape2 = [];
   Utils.forEach(shape, function(path) {

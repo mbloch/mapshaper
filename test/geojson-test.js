@@ -9,6 +9,7 @@ function fixPath(p) {
 }
 
 describe('mapshaper-geojson.js', function () {
+
   describe('importGeoJSON', function () {
     it('Import FeatureCollection with polygon geometries', function () {
       var data = api.importFromFile(fixPath('test_data/two_states.json'))
@@ -62,6 +63,23 @@ describe('mapshaper-geojson.js', function () {
   })
 
   describe('Import/Export roundtrip tests', function () {
+    /*
+    it('bbox added to polygon output', function() {
+      var onePoly = {"type":"GeometryCollection","geometries":[
+        {
+          type: "Polygon",
+          coordinates: [[[100.0, 0.0], [100.0, 1.0], [101.0, 1.0], [101.0, 0.0], [100.0, 0.0]]]
+        }
+      ]};
+      var output = importExport(onePoly);
+      var target = Utils.extend(onePoly, {
+        bbox: [100, 0, 101, 1]
+      });
+      assert.deepEqual(target, output);
+    })
+  */
+
+
     it('empty GeometryCollection', function () {
       var empty = {"type":"GeometryCollection","geometries":[]};
       assert.deepEqual(empty, importExport(empty));
@@ -77,20 +95,6 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(geom, importExport(geom));
     })
 
-    /*
-    it('bbox added to polygon output', function() {
-      var onePoly = {"type":"GeometryCollection","geometries":[
-        {
-          type: "Polygon",
-          coordinates: [[[100.0, 0.0], [100.0, 1.0], [101.0, 1.0], [101.0, 0.0], [100.0, 0.0]]]
-        }
-      ]};
-      var output = importExport(onePoly);
-      var target = Utils.extend(onePoly, {
-        bbox: [100, 0, 101, 1]
-      });
-      assert.deepEqual(target, output);
-    })*/
 
     it('collapsed polygon converted to null geometry', function() {
       var geom = {"type":"FeatureCollection", "features":[
@@ -137,9 +141,9 @@ describe('mapshaper-geojson.js', function () {
     it('reversed ring with duplicate points is not removed (#42)', function() {
       var geoStr = Node.readFile(fixPath("test_data/ccw_polygon.json"), 'utf8'),
           outputObj = importExport(geoStr);
-
       assert.ok(outputObj.features[0].geometry != null);
     })
+
 
     it('GeometryCollection with a Point and a MultiPoint', function() {
       var json = {
@@ -154,8 +158,9 @@ describe('mapshaper-geojson.js', function () {
       };
 
       var target = JSON.parse(JSON.stringify(json));
-      assert.deepEqual(importExport(json, true), target);
+      assert.deepEqual(importExport(json), target);
     })
+
 
     it('FeatureCollection with two points and a null geometry', function() {
       var json = {
@@ -188,6 +193,7 @@ describe('mapshaper-geojson.js', function () {
   })
 
   describe('Export/Import roundtrip tests', function () {
+
     it('two states', function () {
       geoJSONRoundTrip('test_data/two_states.json');
     })
@@ -200,6 +206,7 @@ describe('mapshaper-geojson.js', function () {
       geoJSONRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_lines.json');
     })
   })
+
 })
 
 function geoJSONRoundTrip(fname) {
@@ -212,6 +219,7 @@ function geoJSONRoundTrip(fname) {
 }
 
 function importExport(obj, noTopo) {
-  var geom = api.importPaths(api.importGeoJSON(obj), !noTopo);
-  return api.exportGeoJSONObject(geom.layers[0], geom.arcs);
+  var geom = api.importPaths(api.importGeoJSON(obj), noTopo);
+  var json = api.exportGeoJSONObject(geom.layers[0], geom.arcs);
+  return json;
 }

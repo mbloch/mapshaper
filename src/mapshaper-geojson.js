@@ -38,13 +38,16 @@ MapShaper.importGeoJSON = function(obj, opts) {
 
   // Count points in dataset (PathImporter needs total points to initialize buffers)
   //
-  var pointCount = Utils.reduce(geometries, function(sum, geom) {
-    return sum + GeoJSON.countPointsInGeom(geom);
+  var pathPoints = Utils.reduce(geometries, function(sum, geom) {
+    if (geom && geom.type in GeoJSON.geometryDepths) {
+      sum += GeoJSON.countNestedPoints(geom.coordinates, GeoJSON.geometryDepths[geom.type]);
+    }
+    return sum;
   }, 0);
 
   // Import GeoJSON geometries
   //
-  var importer = new PathImporter(pointCount, opts);
+  var importer = new PathImporter(pathPoints, opts);
   geometries.forEach(function(geom) {
     importer.startShape();
     if (geom) {
@@ -111,22 +114,11 @@ GeoJSON.pathImporters = {
   }
 };
 
-GeoJSON.countPointsInGeom = function(geom) {
-  var sum = 0;
-  if (geom) { // geometry may be null;
-    if (geom.type in GeoJSON.geometryDepths === false) {
-      error ("GeoJSON.countPoints() Unsupported geometry:", geom.type || geom);
-    }
-    sum = GeoJSON.countNestedPoints(geom.coordinates, GeoJSON.geometryDepths[geom.type]);
-  }
-  return sum;
-};
-
 // Nested depth of GeoJSON Points in coordinates arrays
 //
 GeoJSON.geometryDepths = {
-  Point: 0,
-  MultiPoint: 1,
+  //Point: 0,
+  //MultiPoint: 1,
   LineString: 1,
   MultiLineString: 2,
   Polygon: 2,
@@ -300,27 +292,32 @@ MapShaper.exportPointData = function(shape) {
 MapShaper.exportPathData = function(shape, arcs, type) {
   // kludge until Shapefile refactoring is improved
   if (type == 'point') return MapShaper.exportPointData(shape);
+
   var pointCount = 0,
       bounds = new Bounds(),
       paths = [];
 
-  Utils.forEach(shape, function(arcIds) {
-    var iter = arcs.getShapeIter(arcIds),
-        path = MapShaper.exportPathCoords(iter),
-        valid = true;
-    if (type == 'polygon') {
-      path.area = msSignedRingArea(path.xx, path.yy);
-      valid = path.pointCount > 3 && path.area !== 0;
-    } else if (type == 'polyline') {
-      valid = path.pointCount > 1;
-    }
-    if (valid) {
-      pointCount += path.pointCount;
-      path.bounds = MapShaper.calcXYBounds(path.xx, path.yy);
-      bounds.mergeBounds(path.bounds);
-      paths.push(path);
-    }
-  });
+  if (type == 'polyline' || type == 'polygon') {
+    Utils.forEach(shape, function(arcIds) {
+      var iter = arcs.getShapeIter(arcIds),
+          path = MapShaper.exportPathCoords(iter),
+          valid = true;
+      if (type == 'polygon') {
+        path.area = msSignedRingArea(path.xx, path.yy);
+        valid = path.pointCount > 3 && path.area !== 0;
+      } else if (type == 'polyline') {
+        valid = path.pointCount > 1;
+      }
+      if (valid) {
+        pointCount += path.pointCount;
+        path.bounds = MapShaper.calcXYBounds(path.xx, path.yy);
+        bounds.mergeBounds(path.bounds);
+        paths.push(path);
+      } else {
+        message("Skipping a collapsed", type, "path");
+      }
+    });
+  }
 
   return {
     pointCount: pointCount,

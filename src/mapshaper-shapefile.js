@@ -13,6 +13,7 @@ MapShaper.translateShapefileType = function(shpType) {
 };
 
 MapShaper.getShapefileType = function(type) {
+  if (type === null) return ShpType.NULL;
   return {
     polygon: ShpType.POLYGON,
     polyline: ShpType.POLYLINE,
@@ -35,24 +36,20 @@ MapShaper.importShp = function(src, opts) {
     verbose("Warning: M data is being removed.");
   }
 
-  var counts = reader.getCounts();
-  var importer = new PathImporter(counts.pointCount, opts);
+  var pathPoints = type == 'point' ? 0 : reader.getCounts().pointCount;
+  var importer = new PathImporter(pathPoints, opts);
   // var expectRings = Utils.contains([5,15,25], reader.type());
   // TODO: test cases: null shape; non-null shape with no valid parts
 
   reader.forEachShape(function(shp) {
     importer.startShape();
     if (shp.isNull) return;
-    var partCount = shp.partCount,
-        partSizes = partCount > 1 ? shp.readPartSizes() : null,
-        coords = shp.readCoords(),
-        offs = 0,
-        pointsInPart;
-
-    for (var j=0; j<partCount; j++) {
-      pointsInPart = partCount > 1 ? partSizes[j] : shp.pointCount;
-      importer.importCoordsFromFlatArray(coords, offs, pointsInPart, type);
-      offs += pointsInPart * 2;
+    if (type == 'point') {
+      importer.importPoints(shp.readPoints());
+    } else {
+      shp.readCoords().forEach(function(arr) {
+        importer.importPathFromFlatArray(arr, type);
+      });
     }
   });
 
@@ -62,8 +59,6 @@ MapShaper.importShp = function(src, opts) {
 // Convert topological data to buffers containing .shp and .shx file data
 //
 MapShaper.exportShp = function(layers, arcData, opts) {
-  if (arcData instanceof ArcDataset === false || !Utils.isArray(layers)) error("Missing exportable data.");
-
   var files = [];
   layers.forEach(function(layer) {
     var data = layer.data,
