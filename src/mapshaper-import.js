@@ -4,102 +4,47 @@
 // @type: 'shapefile'|'json'
 //
 MapShaper.importContent = function(content, fileType, opts) {
-  var src = MapShaper.importFileContent(content, fileType, opts),
-      fmt = src.info.input_format,
-      imported;
-
-  if (fmt == 'shapefile' || fmt == 'geojson') {
-    imported = MapShaper.importPaths(src, opts && opts.no_topology);
-  } else if (fmt == 'topojson') {
-    imported = src; // already in topological format
-  }
-  imported.info = {
-    input_format: fmt
-  };
-  return imported;
-};
-
-MapShaper.importFileContent = function(content, fileType, opts) {
-  var data,
-      fileFmt;
+  var dataset, fileFmt;
   T.start();
   if (fileType == 'shp') {
-    data = MapShaper.importShp(content, opts);
+    dataset = MapShaper.importShp(content, opts);
     fileFmt = 'shapefile';
   } else if (fileType == 'json') {
     var jsonObj = JSON.parse(content);
     if (jsonObj.type == 'Topology') {
-      data = MapShaper.importTopoJSON(jsonObj, opts);
+      dataset = MapShaper.importTopoJSON(jsonObj, opts);
       fileFmt = 'topojson';
     } else {
-      data = MapShaper.importGeoJSON(jsonObj, opts);
+      dataset = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
     }
   } else {
     error("Unsupported file type:", fileType);
   }
-  // console.log(data)
-  data.info.input_format = fileFmt;
   T.stop("Import " + fileFmt);
-  return data;
+  var needTopology = (fileFmt == 'shapefile' || fileFmt == 'geojson') &&
+          !(opts && opts.no_topology) && dataset.arcs;
+  if (needTopology) {
+    T.start();
+    MapShaper.buildTopology(dataset);
+    T.stop("Process topology");
+  }
+
+  dataset.info.input_format = fileFmt;
+  return dataset;
 };
 
-MapShaper.importPaths = function(src, noTopo) {
-  var useTopology = !noTopo && !!src.geometry.nn; // kludge -- make we have path data (might be points or empty)
-  var importer = useTopology ? MapShaper.importPathsWithTopology : MapShaper.importPathsWithoutTopology,
-      imported = importer(src);
-
-  // if (src.info.input_geometry_type == 'point') console.log("point geom; data:", imported.arcs.size())
-  return {
-    layers: [{
-      name: '',
-      geometry_type: src.info.input_geometry_type,
-      shapes: imported.shapes,
-      data: src.data || null
-    }],
-    arcs: imported.arcs
-  };
+MapShaper.buildTopology = function(dataset) {
+  if (!dataset.arcs || !dataset.layers) error("[buildTopology()] Missing required param/s");
+  var raw = dataset.arcs.getVertexData(),
+      topoData = buildPathTopology(raw.xx, raw.yy, raw.nn);
+  dataset.arcs = topoData.arcs;
+  dataset.layers.forEach(function(lyr) {
+    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+      lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
+    }
+  });
 };
-
-MapShaper.importPathsWithTopology = function(src) {
-  var topo = MapShaper.buildTopology(src.geometry);
-  var shapes = updateArcIds(src.geometry.shapes, topo.paths);
-  return {
-    // shapes: groupPathsByShape(topo.paths, src.geometry.validPaths, src.info.input_shape_count),
-    shapes: shapes,
-    arcs: topo.arcs
-  };
-};
-
-MapShaper.importPathsWithoutTopology = function(src) {
-  var geom = src.geometry;
-  var arcs = geom.nn ? new ArcDataset(geom.nn, geom.xx, geom.yy) : null;
-  var shapes = src.geometry.shapes || error("[importPathsWithoutTopology()] missing shapes");
-  return {
-    shapes: shapes,
-    arcs: arcs
-  };
-};
-
-/*
-MapShaper.createTopology = function(src) {
-  var topo = MapShaper.buildTopology(src.geometry),
-      shapes, lyr;
-  shapes = groupPathsByShape(topo.paths, src.geometry.validPaths,
-      src.info.input_shape_count);
-  lyr = {
-    name: '',
-    geometry_type: src.info.input_geometry_type,
-    shapes: shapes,
-    data: src.data || null
-  };
-
-  return {
-    layers: [lyr],
-    arcs: topo.arcs
-  };
-};
-*/
 
 function updateArcsInShape(shape, topoPaths) {
   var shape2 = [];
@@ -118,26 +63,8 @@ function updateArcsInShape(shape, topoPaths) {
   return shape2.length > 0 ? shape2 : null;
 }
 
-
 function updateArcIds(src, paths) {
   return src.map(function(shape) {
     return updateArcsInShape(shape, paths);
   });
 }
-
-/*
-// Use shapeId property of @pathData objects to group paths by shape
-//
-function groupPathsByShape(paths, pathData, shapeCount) {
-  var shapes = new Array(shapeCount); // Array can be sparse, but should have this length
-  Utils.forEach(paths, function(path, pathId) {
-    var shapeId = pathData[pathId].shapeId;
-    if (shapeId in shapes === false) {
-      shapes[shapeId] = [path]; // first part in a new shape
-    } else {
-      shapes[shapeId].push(path);
-    }
-  });
-  return shapes;
-}
-*/

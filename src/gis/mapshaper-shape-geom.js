@@ -41,7 +41,6 @@ MapShaper.getPathArea2 = function(points) {
   return sum / 2;
 };
 
-
 MapShaper.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
   return Utils.reduce(shp, function(maxPath, path) {

@@ -162,7 +162,7 @@ function PathImporter(reservedPoints, opts) {
   // Remove duplicate points, check for ring inversions
   //
   this.done = function() {
-    var geometry = {};
+    var arcs;
 
     // possible values: polygon, polyline, point, mixed, null
     if (collectionType == 'mixed') {
@@ -190,10 +190,7 @@ function PathImporter(reservedPoints, opts) {
           yy = yy.subarray(0, pointId);
         }
 
-        geometry.xx = xx;
-        geometry.yy = yy;
-        geometry.nn = new Int32Array(nn);
-        // message("Imported geometries; nn:", Utils.toArray(geometry.nn), 'xx:', xx.length);
+        arcs = new ArcDataset(new Int32Array(nn), xx, yy);
       } else {
         message("No geometries were imported");
         collectionType = null;
@@ -204,34 +201,14 @@ function PathImporter(reservedPoints, opts) {
       error("Unexpected collection type:", collectionType);
     }
 
-    // all geometry types have shapes property
-    geometry.shapes = shapes;
-
-    /*
     return {
-      xx: xx.subarray(0, ins),
-      yy: yy.subarray(0, ins),
-      nn: nn,
-      validPaths: validPaths,
-      skippedPathCount: skippedPathCount,
-      invalidPointCount: offs - ins,
-      validPointCount: ins
-    };
-  };
-  */
-
-    var info = {
-      //snapped_points: snappedPoints,
-      //input_path_count: pathData.validPaths.length,
-      //input_point_count: pathData.validPointCount,
-      //input_skipped_points: pathData.invalidPointCount,
-      //input_shape_count: shapeId + 1,
-      input_geometry_type: collectionType
-    };
-
-    return {
-      geometry: geometry,
-      info: info
+      arcs: arcs || null,
+      info: {},
+      layers: [{
+        name: '',
+        geometry_type: collectionType,
+        shapes: shapes
+      }]
     };
   };
 }

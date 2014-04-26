@@ -57,7 +57,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
 
   var importData = importer.done();
   if (properties) {
-    importData.data = new DataTable(properties);
+    importData.layers[0].data = new DataTable(properties);
   }
   return importData;
 };

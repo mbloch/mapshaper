@@ -95,7 +95,6 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(geom, importExport(geom));
     })
 
-
     it('collapsed polygon converted to null geometry', function() {
       var geom = {"type":"FeatureCollection", "features":[
         { type: "Feature",
@@ -157,8 +156,7 @@ describe('mapshaper-geojson.js', function () {
         }]
       };
 
-      var target = JSON.parse(JSON.stringify(json));
-      assert.deepEqual(importExport(json), target);
+      assert.deepEqual(importExport(json), json);
     })
 
 
@@ -186,8 +184,7 @@ describe('mapshaper-geojson.js', function () {
         }]
       };
 
-      var target = JSON.parse(JSON.stringify(json));
-      assert.deepEqual(importExport(json, true), target);
+      assert.deepEqual(importExport(json), json);
     })
 
   })
@@ -206,7 +203,6 @@ describe('mapshaper-geojson.js', function () {
       geoJSONRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_lines.json');
     })
   })
-
 })
 
 function geoJSONRoundTrip(fname) {
@@ -219,7 +215,7 @@ function geoJSONRoundTrip(fname) {
 }
 
 function importExport(obj, noTopo) {
-  var geom = api.importPaths(api.importGeoJSON(obj), noTopo);
-  var json = api.exportGeoJSONObject(geom.layers[0], geom.arcs);
-  return json;
+  var json = Utils.isString(obj) ? obj : JSON.stringify(obj);
+  var geom = api.importContent(json, 'json', {no_topology: noTopo});
+  return api.exportGeoJSONObject(geom.layers[0], geom.arcs);
 }
