@@ -7,7 +7,7 @@ TopoJSON.pruneArcs = function(topology) {
   var arcs = topology.arcs;
   var flags = new Uint8Array(arcs.length);
   Utils.forEach(topology.objects, function(obj, name) {
-    TopoJSON.traverseGeometryObject(obj, function(arcId) {
+    TopoJSON.updateArcIds(obj, function(arcId) {
       if (arcId < 0) arcId = ~arcId;
       flags[arcId] = 1;
     });
@@ -24,34 +24,15 @@ TopoJSON.pruneArcs = function(topology) {
   });
 };
 
-TopoJSON.traverseGeometryObject = function(obj, cb) {
+// Update each arc id in a TopoJSON geometry object
+TopoJSON.updateArcIds = function(obj, cb) {
   if (obj.arcs) {
-    TopoJSON.traverseArcs(obj.arcs, cb);
+    MapShaper.updateArcIds(obj.arcs, cb);
   } else if (obj.geometries) {
     Utils.forEach(obj.geometries, function(geom) {
-      TopoJSON.traverseGeometryObject(geom, cb);
+      TopoJSON.updateArcIds(geom, cb);
     });
   }
-};
-
-// Visit each arc id in the arcs array of a geometry object.
-// Use non-undefined return values of callback @cb as replacements.
-//
-TopoJSON.traverseArcs = function(arr, cb) {
-  Utils.forEach(arr, function(item, i) {
-    var val;
-    if (item instanceof Array) {
-      TopoJSON.traverseArcs(item, cb);
-    } else {
-      if (!Utils.isInteger(item)) {
-        throw new Error("Non-integer arc id in:", arr);
-      }
-      val = cb(item);
-      if (val !== void 0) {
-        arr[i] = val;
-      }
-    }
-  });
 };
 
 // Convert an array of flags (0|1) into an array of non-negative arc ids
@@ -68,7 +49,7 @@ TopoJSON.getArcMap = function(mask) {
 // @map is an array of replacement arc ids, indexed by original arc id
 // @obj is any TopoJSON Geometry object (including named objects, GeometryCollections, Polygons, etc)
 TopoJSON.reindexArcIds = function(obj, map) {
-  TopoJSON.traverseGeometryObject(obj, function(arcId) {
+  TopoJSON.updateArcIds(obj, function(arcId) {
     var rev = arcId < 0,
         idx = rev ? ~arcId : arcId,
         mappedId = map[idx];

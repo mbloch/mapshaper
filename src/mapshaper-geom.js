@@ -275,7 +275,7 @@ function probablyDecimalDegreeBounds(b) {
 }
 
 // export functions so they can be tested
-MapShaper.geom = {
+Utils.extend(geom, {
   getRoundingFunction: getRoundingFunction,
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,
@@ -285,4 +285,4 @@ MapShaper.geom = {
   triangleArea3D: triangleArea3D,
   msSignedRingArea: msSignedRingArea,
   probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
-};
+});

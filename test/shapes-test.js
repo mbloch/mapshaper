@@ -37,6 +37,18 @@ var arcs5 = [];
 describe('mapshaper-shapes.js', function () {
   describe('ArcDataset', function () {
 
+
+    it("accepts arcs with length == 0", function() {
+      var arcs = new ArcDataset(
+          new Uint32Array([0, 3]),
+          new Float64Array([1, 2, 3]),
+          new Float64Array([0, 1, 2])
+        );
+
+      assert.equal(arcs.size(), 2);
+      assert.deepEqual(arcs.toArray(), [[], [[1, 0], [2, 1], [3, 2]]]);
+    })
+
     it("#size() returns the correct number of arcs", function() {
       assert.equal(new ArcDataset(arcs3).size(), 3)
       assert.equal(new ArcDataset(arcs4).size(), 1)

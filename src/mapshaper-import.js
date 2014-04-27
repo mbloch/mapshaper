@@ -5,6 +5,7 @@
 //
 MapShaper.importContent = function(content, fileType, opts) {
   var dataset, fileFmt;
+  opts = opts || {};
   T.start();
   if (fileType == 'shp') {
     dataset = MapShaper.importShp(content, opts);
@@ -22,9 +23,9 @@ MapShaper.importContent = function(content, fileType, opts) {
     error("Unsupported file type:", fileType);
   }
   T.stop("Import " + fileFmt);
-  var needTopology = (fileFmt == 'shapefile' || fileFmt == 'geojson') &&
-          !(opts && opts.no_topology) && dataset.arcs;
-  if (needTopology) {
+
+  // topology; TODO -- consider moving this
+  if ((fileFmt == 'shapefile' || fileFmt == 'geojson') && !opts.no_topology) {
     T.start();
     MapShaper.buildTopology(dataset);
     T.stop("Process topology");
@@ -35,7 +36,7 @@ MapShaper.importContent = function(content, fileType, opts) {
 };
 
 MapShaper.buildTopology = function(dataset) {
-  if (!dataset.arcs || !dataset.layers) error("[buildTopology()] Missing required param/s");
+  if (!dataset.arcs) return;
   var raw = dataset.arcs.getVertexData(),
       topoData = buildPathTopology(raw.xx, raw.yy, raw.nn);
   dataset.arcs = topoData.arcs;

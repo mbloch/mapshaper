@@ -1,6 +1,8 @@
 /* @requires mshp-common-lib */
 
 var MapShaper = {};
+var geom = MapShaper.geom = {};
+var utils = MapShaper.utils = Utils.extend({}, Utils);
 
 // TODO: adapt to run in browser
 function stop() {

@@ -37,6 +37,25 @@ MapShaper.traverseArcs = function(shapes, cb) {
 };
 */
 
+// Visit each arc id in an array of ids
+// Use non-undefined return values of callback @cb as replacements.
+MapShaper.updateArcIds = function(arr, cb) {
+  Utils.forEach(arr, function(item, i) {
+    var val;
+    if (item instanceof Array) {
+      MapShaper.updateArcIds(item, cb);
+    } else {
+      if (!Utils.isInteger(item)) {
+        throw new Error("Non-integer arc id in:", arr);
+      }
+      val = cb(item);
+      if (val !== void 0) {
+        arr[i] = val;
+      }
+    }
+  });
+};
+
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   Utils.forEach(shapes, function(parts, shapeId) {

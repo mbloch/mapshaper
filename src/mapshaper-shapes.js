@@ -71,21 +71,23 @@ function ArcDataset() {
   function calcArcBounds(xx, yy, nn) {
     var numArcs = nn.length,
         bb = new Float64Array(numArcs * 4),
+        bounds = new Bounds(),
         arcOffs = 0,
         arcLen,
         j, b;
     for (var i=0; i<numArcs; i++) {
       arcLen = nn[i];
-      b = MapShaper.calcArcBounds(xx, yy, arcOffs, arcLen);
-      j = i * 4;
-      bb[j++] = b[0];
-      bb[j++] = b[1];
-      bb[j++] = b[2];
-      bb[j] = b[3];
-      arcOffs += arcLen;
+      if (arcLen > 0) {
+        j = i * 4;
+        b = MapShaper.calcArcBounds(xx, yy, arcOffs, arcLen);
+        bb[j++] = b[0];
+        bb[j++] = b[1];
+        bb[j++] = b[2];
+        bb[j] = b[3];
+        arcOffs += arcLen;
+        bounds.mergeBounds(b);
+      }
     }
-    var bounds = new Bounds();
-    if (numArcs > 0) bounds.setBounds(MapShaper.calcArcBounds(xx, yy));
     return {
       bb: bb,
       bounds: bounds

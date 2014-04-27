@@ -22,17 +22,14 @@ if (opts.join_file) {
 function procFiles(files, opts) {
   var mergedData, mergedName;
   if (opts.merge_files || opts.combine_files) {
+    mergedData = mapshaper.mergeFiles(files, opts);
     if (opts.merge_files) {
-      mergedName = mapshaper.getMergedFileBase(files, "merged");
-      mergedData = mapshaper.mergeFiles(files, opts);
-    } else {
-      mergedName = mapshaper.getMergedFileBase(files, "") || "combined";
-      mergedData =  mapshaper.mergeFiles(files, opts, true);
+      mergedData.layers = mapshaper.mergeLayers(mergedData.layers);
     }
     if (!opts.output_file_base) {
-      opts.output_file_base = mergedName;
+      opts.output_file_base = mapshaper.utils.getMergedFileBase(files) || "merged";
     }
-    procLayers(mergedData, opts);
+    procDataset(mergedData, opts);
   } else {
     Utils.forEach(files, function(ifile) {
       var fileOpts = Utils.extend({}, opts); // copy common options
@@ -41,16 +38,15 @@ function procFiles(files, opts) {
         fileOpts.output_file_base = Node.getFileInfo(ifile).base;
       }
       var data = mapshaper.importFromFile(ifile, fileOpts);
-      procLayers(data, fileOpts);
+      procDataset(data, fileOpts);
     });
   }
   mapshaper.T.stop("Total time");
 }
 
-function procLayers(importData, opts) {
+function procDataset(importData, opts) {
   var arcData = importData.arcs,
       layers = importData.layers,
-      bounds = arcData.getBounds(),
       info = {};
 
   // Update input/output format with information found during importing
@@ -133,7 +129,8 @@ function procLayers(importData, opts) {
   }
 
   if (opts.recombine) {
-    layers = [mapshaper.recombineLayers(layers)];
+    // layers = [mapshaper.recombineLayers(layers)];
+    layers = mapshaper.mergeLayers(layers);
   }
 
   if (opts.info) {

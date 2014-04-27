@@ -4476,7 +4476,6 @@ function pointSegDistSq(ab2, bc2, ac2) {
 }
 
 MapShaper.calcArcBounds = function(xx, yy, start, len) {
-  // console.log('calcArcBounds() xx, yy:', xx.length, yy.length, start, len)
   var xmin = Infinity,
       ymin = Infinity,
       xmax = -Infinity,
@@ -5614,7 +5613,8 @@ var SimplifyControl = function() {
 
 
 
-// buildTopology() converts non-topological polygon data into a topological format
+// buildPathTopology() converts non-topological paths into
+// a topological format
 //
 // Input format:
 // {
@@ -5629,101 +5629,13 @@ var SimplifyControl = function() {
 // {
 //    arcs: [ArcDataset],
 //    paths: [Array]   // Paths are arrays of one or more arc id.
-// }                   // Arc ids use the same numbering scheme as TopoJSON (see note).
-// Note: Arc ids in the shapes array are indices of objects in the arcs array.
+// }                   // Arc ids use the same numbering scheme as TopoJSON --
+//       Ids in the paths array are indices of paths in the ArcDataset
 //       Negative ids signify that the arc coordinates are in reverse sequence.
 //       Negative ids are converted to array indices with the fornula fwId = ~revId.
-//       -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
-// Note: Arcs use typed arrays or regular arrays for coords, depending on the input array type.
-//
-MapShaper.buildTopology = function(obj) {
-  if (!(obj.xx && obj.yy && obj.nn)) error("#buildTopology() Missing required param/s");
-
-  T.start();
-  var topoData = buildPathTopology(obj.xx, obj.yy, obj.nn);
-  T.stop("Process topology");
-  return {
-    arcs: topoData.arcs,
-    paths: topoData.paths
-  };
-};
-
-//
-//
-function ArcIndex(pointCount, xyToUint) {
-  var hashTableSize = Math.ceil(pointCount * 0.25);
-  var hashTable = new Int32Array(hashTableSize),
-      hash = function(x, y) {
-        return xyToUint(x, y) % hashTableSize;
-      },
-      chainIds = [],
-      arcs = [];
-
-  Utils.initializeArray(hashTable, -1);
-
-  this.addArc = function(xx, yy) {
-    var end = xx.length - 1,
-        key = hash(xx[end], yy[end]),
-        chainId = hashTable[key],
-        arcId = arcs.length;
-
-    hashTable[key] = arcId;
-    arcs.push([xx, yy]);
-    chainIds.push(chainId);
-    return arcId;
-  };
-
-  // Look for a previously generated arc with the same sequence of coords, but in the
-  // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
-  // so coincident boundaries should contain the same points in reverse sequence).
-  //
-  this.findArcNeighbor = function(xx, yy, start, end, getNext) {
-    var next = getNext(start),
-        key = hash(xx[start], yy[start]),
-        arcId = hashTable[key],
-        arcX, arcY, len;
-
-    while (arcId != -1) {
-      // check endpoints and one segment...
-      // it would be more rigorous but slower to identify a match
-      // by comparing all segments in the coordinate sequence
-      arcX = arcs[arcId][0];
-      arcY = arcs[arcId][1];
-      len = arcX.length;
-      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
-          arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
-        return arcId;
-      }
-      arcId = chainIds[arcId];
-    }
-    return -1;
-  };
-
-  this.getArcs = function() {
-    return arcs;
-  };
-}
-
-// Get function to Hash an x, y point to a non-negative integer
-function getXYHash() {
-  var buf = new ArrayBuffer(16),
-      floats = new Float64Array(buf),
-      uints = new Uint32Array(buf);
-
-  return function(x, y) {
-    var u = uints, h;
-    floats[0] = x;
-    floats[1] = y;
-    h = u[0] ^ u[1];
-    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-    return h & 0x7fffffff;
-  };
-}
-
-// Transform spaghetti paths into topological paths
+//       E.g. -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
 //
 function buildPathTopology(xx, yy, nn) {
-
   var pointCount = xx.length,
       index = new ArcIndex(pointCount, getXYHash()),
       typedArrays = !!(xx.subarray && yy.subarray),
@@ -5739,11 +5651,7 @@ function buildPathTopology(xx, yy, nn) {
     slice = Array.prototype.slice;
   }
 
-  //T.start();
   var chainIds = initPointChains(xx, yy, !"verbose");
-  //T.stop("Find matching vertices");
-
-  //T.start();
   var pointId = 0;
   var paths = Utils.map(nn, function(pathLen) {
     var arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
@@ -5752,7 +5660,6 @@ function buildPathTopology(xx, yy, nn) {
   });
 
   var arcs = new ArcDataset(index.getArcs());
-  //T.stop("Find topological boundaries");
 
   return {
     paths: paths,
@@ -6001,6 +5908,78 @@ function initPointChains(xx, yy, verbose) {
   }
   if (verbose) message(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
   return chainIds;
+}
+
+//
+//
+function ArcIndex(pointCount, xyToUint) {
+  var hashTableSize = Math.ceil(pointCount * 0.25);
+  var hashTable = new Int32Array(hashTableSize),
+      hash = function(x, y) {
+        return xyToUint(x, y) % hashTableSize;
+      },
+      chainIds = [],
+      arcs = [];
+
+  Utils.initializeArray(hashTable, -1);
+
+  this.addArc = function(xx, yy) {
+    var end = xx.length - 1,
+        key = hash(xx[end], yy[end]),
+        chainId = hashTable[key],
+        arcId = arcs.length;
+
+    hashTable[key] = arcId;
+    arcs.push([xx, yy]);
+    chainIds.push(chainId);
+    return arcId;
+  };
+
+  // Look for a previously generated arc with the same sequence of coords, but in the
+  // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
+  // so coincident boundaries should contain the same points in reverse sequence).
+  //
+  this.findArcNeighbor = function(xx, yy, start, end, getNext) {
+    var next = getNext(start),
+        key = hash(xx[start], yy[start]),
+        arcId = hashTable[key],
+        arcX, arcY, len;
+
+    while (arcId != -1) {
+      // check endpoints and one segment...
+      // it would be more rigorous but slower to identify a match
+      // by comparing all segments in the coordinate sequence
+      arcX = arcs[arcId][0];
+      arcY = arcs[arcId][1];
+      len = arcX.length;
+      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
+          arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
+        return arcId;
+      }
+      arcId = chainIds[arcId];
+    }
+    return -1;
+  };
+
+  this.getArcs = function() {
+    return arcs;
+  };
+}
+
+// Get function to Hash an x, y point to a non-negative integer
+function getXYHash() {
+  var buf = new ArrayBuffer(16),
+      floats = new Float64Array(buf),
+      uints = new Uint32Array(buf);
+
+  return function(x, y) {
+    var u = uints, h;
+    floats[0] = x;
+    floats[1] = y;
+    h = u[0] ^ u[1];
+    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
+    return h & 0x7fffffff;
+  };
 }
 
 
@@ -6278,7 +6257,7 @@ function PathImporter(reservedPoints, opts) {
   // Remove duplicate points, check for ring inversions
   //
   this.done = function() {
-    var geometry = {};
+    var arcs;
 
     // possible values: polygon, polyline, point, mixed, null
     if (collectionType == 'mixed') {
@@ -6306,10 +6285,7 @@ function PathImporter(reservedPoints, opts) {
           yy = yy.subarray(0, pointId);
         }
 
-        geometry.xx = xx;
-        geometry.yy = yy;
-        geometry.nn = new Int32Array(nn);
-        // message("Imported geometries; nn:", Utils.toArray(geometry.nn), 'xx:', xx.length);
+        arcs = new ArcDataset(new Int32Array(nn), xx, yy);
       } else {
         message("No geometries were imported");
         collectionType = null;
@@ -6320,34 +6296,14 @@ function PathImporter(reservedPoints, opts) {
       error("Unexpected collection type:", collectionType);
     }
 
-    // all geometry types have shapes property
-    geometry.shapes = shapes;
-
-    /*
     return {
-      xx: xx.subarray(0, ins),
-      yy: yy.subarray(0, ins),
-      nn: nn,
-      validPaths: validPaths,
-      skippedPathCount: skippedPathCount,
-      invalidPointCount: offs - ins,
-      validPointCount: ins
-    };
-  };
-  */
-
-    var info = {
-      //snapped_points: snappedPoints,
-      //input_path_count: pathData.validPaths.length,
-      //input_point_count: pathData.validPointCount,
-      //input_skipped_points: pathData.invalidPointCount,
-      //input_shape_count: shapeId + 1,
-      input_geometry_type: collectionType
-    };
-
-    return {
-      geometry: geometry,
-      info: info
+      arcs: arcs || null,
+      info: {},
+      layers: [{
+        name: '',
+        geometry_type: collectionType,
+        shapes: shapes
+      }]
     };
   };
 }
@@ -7091,7 +7047,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
 
   var importData = importer.done();
   if (properties) {
-    importData.data = new DataTable(properties);
+    importData.layers[0].data = new DataTable(properties);
   }
   return importData;
 };
@@ -7777,7 +7733,6 @@ MapShaper.getPathArea2 = function(points) {
   return sum / 2;
 };
 
-
 MapShaper.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
   return Utils.reduce(shp, function(maxPath, path) {
@@ -8343,7 +8298,6 @@ ShpType.isMultiPartType = function(t) {
 ShpType.isMultiPointType = function(t) {
   return t == 8 || t == 18 || t == 28;
 };
-
 
 /*
 ShpType.isMType = function(t) {
@@ -8935,102 +8889,47 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 // @type: 'shapefile'|'json'
 //
 MapShaper.importContent = function(content, fileType, opts) {
-  var src = MapShaper.importFileContent(content, fileType, opts),
-      fmt = src.info.input_format,
-      imported;
-
-  if (fmt == 'shapefile' || fmt == 'geojson') {
-    imported = MapShaper.importPaths(src, opts && opts.no_topology);
-  } else if (fmt == 'topojson') {
-    imported = src; // already in topological format
-  }
-  imported.info = {
-    input_format: fmt
-  };
-  return imported;
-};
-
-MapShaper.importFileContent = function(content, fileType, opts) {
-  var data,
-      fileFmt;
+  var dataset, fileFmt;
   T.start();
   if (fileType == 'shp') {
-    data = MapShaper.importShp(content, opts);
+    dataset = MapShaper.importShp(content, opts);
     fileFmt = 'shapefile';
   } else if (fileType == 'json') {
     var jsonObj = JSON.parse(content);
     if (jsonObj.type == 'Topology') {
-      data = MapShaper.importTopoJSON(jsonObj, opts);
+      dataset = MapShaper.importTopoJSON(jsonObj, opts);
       fileFmt = 'topojson';
     } else {
-      data = MapShaper.importGeoJSON(jsonObj, opts);
+      dataset = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
     }
   } else {
     error("Unsupported file type:", fileType);
   }
-  // console.log(data)
-  data.info.input_format = fileFmt;
   T.stop("Import " + fileFmt);
-  return data;
+  var needTopology = (fileFmt == 'shapefile' || fileFmt == 'geojson') &&
+          !(opts && opts.no_topology) && dataset.arcs;
+  if (needTopology) {
+    T.start();
+    MapShaper.buildTopology(dataset);
+    T.stop("Process topology");
+  }
+
+  dataset.info.input_format = fileFmt;
+  return dataset;
 };
 
-MapShaper.importPaths = function(src, noTopo) {
-  var useTopology = !noTopo && !!src.geometry.nn; // kludge -- make we have path data (might be points or empty)
-  var importer = useTopology ? MapShaper.importPathsWithTopology : MapShaper.importPathsWithoutTopology,
-      imported = importer(src);
-
-  // if (src.info.input_geometry_type == 'point') console.log("point geom; data:", imported.arcs.size())
-  return {
-    layers: [{
-      name: '',
-      geometry_type: src.info.input_geometry_type,
-      shapes: imported.shapes,
-      data: src.data || null
-    }],
-    arcs: imported.arcs
-  };
+MapShaper.buildTopology = function(dataset) {
+  if (!dataset.arcs || !dataset.layers) error("[buildTopology()] Missing required param/s");
+  var raw = dataset.arcs.getVertexData(),
+      topoData = buildPathTopology(raw.xx, raw.yy, raw.nn);
+  dataset.arcs = topoData.arcs;
+  dataset.layers.forEach(function(lyr) {
+    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+      lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
+    }
+  });
 };
-
-MapShaper.importPathsWithTopology = function(src) {
-  var topo = MapShaper.buildTopology(src.geometry);
-  var shapes = updateArcIds(src.geometry.shapes, topo.paths);
-  return {
-    // shapes: groupPathsByShape(topo.paths, src.geometry.validPaths, src.info.input_shape_count),
-    shapes: shapes,
-    arcs: topo.arcs
-  };
-};
-
-MapShaper.importPathsWithoutTopology = function(src) {
-  var geom = src.geometry;
-  var arcs = geom.nn ? new ArcDataset(geom.nn, geom.xx, geom.yy) : null;
-  var shapes = src.geometry.shapes || error("[importPathsWithoutTopology()] missing shapes");
-  return {
-    shapes: shapes,
-    arcs: arcs
-  };
-};
-
-/*
-MapShaper.createTopology = function(src) {
-  var topo = MapShaper.buildTopology(src.geometry),
-      shapes, lyr;
-  shapes = groupPathsByShape(topo.paths, src.geometry.validPaths,
-      src.info.input_shape_count);
-  lyr = {
-    name: '',
-    geometry_type: src.info.input_geometry_type,
-    shapes: shapes,
-    data: src.data || null
-  };
-
-  return {
-    layers: [lyr],
-    arcs: topo.arcs
-  };
-};
-*/
 
 function updateArcsInShape(shape, topoPaths) {
   var shape2 = [];
@@ -9049,29 +8948,11 @@ function updateArcsInShape(shape, topoPaths) {
   return shape2.length > 0 ? shape2 : null;
 }
 
-
 function updateArcIds(src, paths) {
   return src.map(function(shape) {
     return updateArcsInShape(shape, paths);
   });
 }
-
-/*
-// Use shapeId property of @pathData objects to group paths by shape
-//
-function groupPathsByShape(paths, pathData, shapeCount) {
-  var shapes = new Array(shapeCount); // Array can be sparse, but should have this length
-  Utils.forEach(paths, function(path, pathId) {
-    var shapeId = pathData[pathId].shapeId;
-    if (shapeId in shapes === false) {
-      shapes[shapeId] = [path]; // first part in a new shape
-    } else {
-      shapes[shapeId].push(path);
-    }
-  });
-  return shapes;
-}
-*/
 
 
 

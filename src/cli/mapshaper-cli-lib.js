@@ -12,7 +12,6 @@ mapshaper-dissolve,
 mapshaper-arc-dissolve,
 mapshaper-split,
 mapshaper-split-on-grid,
-mapshaper-recombine,
 mapshaper-field-calculator
 mapshaper-subdivide
 mapshaper-filter-fields

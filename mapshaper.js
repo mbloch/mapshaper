@@ -4062,6 +4062,8 @@ Utils.formatter = function(fmt) {
 
 
 var MapShaper = {};
+var geom = MapShaper.geom = {};
+var utils = MapShaper.utils = Utils.extend({}, Utils);
 
 // TODO: adapt to run in browser
 function stop() {
@@ -4545,7 +4547,7 @@ function probablyDecimalDegreeBounds(b) {
 }
 
 // export functions so they can be tested
-MapShaper.geom = {
+Utils.extend(geom, {
   getRoundingFunction: getRoundingFunction,
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,
@@ -4555,7 +4557,7 @@ MapShaper.geom = {
   triangleArea3D: triangleArea3D,
   msSignedRingArea: msSignedRingArea,
   probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
-};
+});
 
 
 
@@ -4631,21 +4633,23 @@ function ArcDataset() {
   function calcArcBounds(xx, yy, nn) {
     var numArcs = nn.length,
         bb = new Float64Array(numArcs * 4),
+        bounds = new Bounds(),
         arcOffs = 0,
         arcLen,
         j, b;
     for (var i=0; i<numArcs; i++) {
       arcLen = nn[i];
-      b = MapShaper.calcArcBounds(xx, yy, arcOffs, arcLen);
-      j = i * 4;
-      bb[j++] = b[0];
-      bb[j++] = b[1];
-      bb[j++] = b[2];
-      bb[j] = b[3];
-      arcOffs += arcLen;
+      if (arcLen > 0) {
+        j = i * 4;
+        b = MapShaper.calcArcBounds(xx, yy, arcOffs, arcLen);
+        bb[j++] = b[0];
+        bb[j++] = b[1];
+        bb[j++] = b[2];
+        bb[j] = b[3];
+        arcOffs += arcLen;
+        bounds.mergeBounds(b);
+      }
     }
-    var bounds = new Bounds();
-    if (numArcs > 0) bounds.setBounds(MapShaper.calcArcBounds(xx, yy));
     return {
       bb: bb,
       bounds: bounds
@@ -7609,7 +7613,7 @@ TopoJSON.pruneArcs = function(topology) {
   var arcs = topology.arcs;
   var flags = new Uint8Array(arcs.length);
   Utils.forEach(topology.objects, function(obj, name) {
-    TopoJSON.traverseGeometryObject(obj, function(arcId) {
+    TopoJSON.updateArcIds(obj, function(arcId) {
       if (arcId < 0) arcId = ~arcId;
       flags[arcId] = 1;
     });
@@ -7626,34 +7630,15 @@ TopoJSON.pruneArcs = function(topology) {
   });
 };
 
-TopoJSON.traverseGeometryObject = function(obj, cb) {
+// Update each arc id in a TopoJSON geometry object
+TopoJSON.updateArcIds = function(obj, cb) {
   if (obj.arcs) {
-    TopoJSON.traverseArcs(obj.arcs, cb);
+    MapShaper.updateArcIds(obj.arcs, cb);
   } else if (obj.geometries) {
     Utils.forEach(obj.geometries, function(geom) {
-      TopoJSON.traverseGeometryObject(geom, cb);
+      TopoJSON.updateArcIds(geom, cb);
     });
   }
-};
-
-// Visit each arc id in the arcs array of a geometry object.
-// Use non-undefined return values of callback @cb as replacements.
-//
-TopoJSON.traverseArcs = function(arr, cb) {
-  Utils.forEach(arr, function(item, i) {
-    var val;
-    if (item instanceof Array) {
-      TopoJSON.traverseArcs(item, cb);
-    } else {
-      if (!Utils.isInteger(item)) {
-        throw new Error("Non-integer arc id in:", arr);
-      }
-      val = cb(item);
-      if (val !== void 0) {
-        arr[i] = val;
-      }
-    }
-  });
 };
 
 // Convert an array of flags (0|1) into an array of non-negative arc ids
@@ -7670,7 +7655,7 @@ TopoJSON.getArcMap = function(mask) {
 // @map is an array of replacement arc ids, indexed by original arc id
 // @obj is any TopoJSON Geometry object (including named objects, GeometryCollections, Polygons, etc)
 TopoJSON.reindexArcIds = function(obj, map) {
-  TopoJSON.traverseGeometryObject(obj, function(arcId) {
+  TopoJSON.updateArcIds(obj, function(arcId) {
     var rev = arcId < 0,
         idx = rev ? ~arcId : arcId,
         mappedId = map[idx];
@@ -9813,6 +9798,7 @@ MapShaper.replaceValue = function(zz, value, replacement, start, end) {
 //
 MapShaper.importContent = function(content, fileType, opts) {
   var dataset, fileFmt;
+  opts = opts || {};
   T.start();
   if (fileType == 'shp') {
     dataset = MapShaper.importShp(content, opts);
@@ -9830,9 +9816,9 @@ MapShaper.importContent = function(content, fileType, opts) {
     error("Unsupported file type:", fileType);
   }
   T.stop("Import " + fileFmt);
-  var needTopology = (fileFmt == 'shapefile' || fileFmt == 'geojson') &&
-          !(opts && opts.no_topology) && dataset.arcs;
-  if (needTopology) {
+
+  // topology; TODO -- consider moving this
+  if ((fileFmt == 'shapefile' || fileFmt == 'geojson') && !opts.no_topology) {
     T.start();
     MapShaper.buildTopology(dataset);
     T.stop("Process topology");
@@ -9843,7 +9829,7 @@ MapShaper.importContent = function(content, fileType, opts) {
 };
 
 MapShaper.buildTopology = function(dataset) {
-  if (!dataset.arcs || !dataset.layers) error("[buildTopology()] Missing required param/s");
+  if (!dataset.arcs) return;
   var raw = dataset.arcs.getVertexData(),
       topoData = buildPathTopology(raw.xx, raw.yy, raw.nn);
   dataset.arcs = topoData.arcs;
@@ -10092,6 +10078,25 @@ MapShaper.traverseArcs = function(shapes, cb) {
   });
 };
 */
+
+// Visit each arc id in an array of ids
+// Use non-undefined return values of callback @cb as replacements.
+MapShaper.updateArcIds = function(arr, cb) {
+  Utils.forEach(arr, function(item, i) {
+    var val;
+    if (item instanceof Array) {
+      MapShaper.updateArcIds(item, cb);
+    } else {
+      if (!Utils.isInteger(item)) {
+        throw new Error("Non-integer arc id in:", arr);
+      }
+      val = cb(item);
+      if (val !== void 0) {
+        arr[i] = val;
+      }
+    }
+  });
+};
 
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
@@ -10832,29 +10837,6 @@ MapShaper.splitOnGrid = function(lyr, arcs, rows, cols) {
 
 
 
-MapShaper.recombineLayers = function(layers) {
-  if (layers.length <= 1) return layers;
-  var lyr0 = layers[0],
-      mergedProperties = lyr0.data ? [] : null,
-      mergedShapes = [];
-
-  Utils.forEach(layers, function(lyr) {
-    if (mergedProperties) {
-      mergedProperties.push.apply(mergedProperties, lyr.data.getRecords());
-    }
-    mergedShapes.push.apply(mergedShapes, lyr.shapes);
-  });
-
-  return Opts.copyNewParams({
-    data: new DataTable(mergedProperties),
-    shapes: mergedShapes,
-    name: ""
-  }, lyr0);
-};
-
-
-
-
 MapShaper.compileLayerExpression = function(exp, arcs) {
   var env = new LayerExpressionContext(arcs),
       func;
@@ -11337,150 +11319,65 @@ MapShaper.select = function(lyr, arcs, exp, discard) {
 
 
 
-// receive array of options for files to import
-// return merged file data
-// TODO: remove duplication with single-file import
-//
-MapShaper.mergeFiles = function(files, opts, separateLayers) {
-  var first, geometries, layerNames;
-  if (separateLayers) {
-    layerNames = MapShaper.getLayerNames(files);
-  }
+MapShaper.mergeDatasets = function(arr) {
+  var arcSources = [],
+      arcCount = 0,
+      mergedLayers = [],
+      mergedArcs;
 
-  geometries = Utils.map(files, function(fname, i) {
-    var fileType = MapShaper.guessFileType(fname),
-        content = MapShaper.readGeometryFile(fname, fileType),
-        importData = MapShaper.importFileContent(content, fileType, opts),
-        fmt = importData.info.input_format;
-
-    if (fileType == 'shp' && !importData.data) {
-      importData.data = MapShaper.importDbfTable(fname, opts.encoding);
+  arr.forEach(function(data) {
+    var n = data.arcs ? data.arcs.size() : 0;
+    if (n > 0) {
+      arcSources.push(data.arcs);
     }
-
-    if (fmt != 'geojson' && fmt != 'shapefile') {
-      error("[merge files] Incompatible file format:", fmt);
-    }
-
-    if (first && fmt != first.info.input_format) {
-      error("[merge files] Found mixed file formats:", first.info.input_format, "and", fmt);
-    }
-
-    if (separateLayers) {
-      // kludge: need a data table in order to add layer name
-      if (!importData.data) {
-        importData.data = new DataTable(importData.info.input_shape_count);
+    data.layers.forEach(function(lyr) {
+      if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
+        // reindex arc ids
+        MapShaper.updateArcIds(lyr.shapes, function(id) {
+          return id < 0 ? id - arcCount : id + arcCount;
+        });
       }
-      importData.data.addField("__LAYER", layerNames[i]);
-    }
-
-    if (!first) {
-      first = importData;
-    } else {
-      if (first.data) {
-        MapShaper.extendDataTable(first.data, importData.data, !separateLayers);
-      }
-      var shapeCount = MapShaper.extendPathData(first.geometry.validPaths,
-          first.info.input_shape_count,
-          importData.geometry.validPaths, importData.info.input_shape_count);
-      first.info.input_shape_count = shapeCount;
-      // TODO: combine other info fields (e.g. input_point_count)
-    }
-
-    return importData.geometry;
+      mergedLayers.push(lyr);
+    });
+    arcCount += n;
   });
 
-  var coords = MapShaper.mergeArcData(geometries);
-  Utils.extend(first.geometry, coords); // replace xx, yy, nn
-
-  var topology = MapShaper.importPaths(first, true);
-  if (separateLayers) {
-    topology.layers = MapShaper.splitLayersOnField(topology.layers, topology.arcs, "__LAYER");
-    // remove temp property
-    topology.layers.forEach(function(lyr) {
-      lyr.data.deleteField('__LAYER');
-    });
+  mergedArcs = MapShaper.mergeArcs(arcSources);
+  if (mergedArcs.size() != arcCount) {
+    error("[mergeDatasets()] Arc indexing error");
   }
 
-  topology.info = first.info;
-  topology.info.input_files = files;
-  return topology;
-};
-
-
-MapShaper.getLayerNames = function(paths) {
-  // default names: filenames without the extension
-  var names = paths.map(function(path) {
-    return MapShaper.parseLocalPath(path).basename;
-  });
-
-  // remove common prefix, if any
-  var prefix = MapShaper.getCommonFilePrefix(names);
-  if (prefix && !Utils.contains(names, prefix)) {
-    names = names.map(function(name) {
-      return Utils.lreplace(name, prefix);
-    });
-  }
-
-  return MapShaper.getUniqueLayerNames(names);
-};
-
-MapShaper.getFileSuffix = function(filebase, prefix) {
-  if (filebase.indexOf(prefix) === 0) {
-    return filebase.substr(prefix.length);
-  }
-  return filebase;
-};
-
-MapShaper.getCommonFilePrefix = function(files) {
-  return Utils.reduce(files, function(prefix, file) {
-    var filebase = Node.getFileInfo(file).base;
-    if (prefix !== null) {
-      filebase = MapShaper.findStringPrefix(prefix, filebase);
-    }
-    return filebase;
-  }, null);
-};
-
-// @see mapshaper script
-//
-MapShaper.getMergedFileBase = function(arr, suffix) {
-  var basename = MapShaper.getCommonFilePrefix(arr);
-  basename = basename.replace(/[-_ ]+$/, '');
-  if (suffix) {
-    basename = basename ? basename + '-' + suffix : suffix;
-  }
-  return basename;
-};
-
-MapShaper.findStringPrefix = function(a, b) {
-  var i = 0;
-  for (var n=a.length; i<n; i++) {
-    if (a[i] !== b[i]) break;
-  }
-  return a.substr(0, i);
-};
-
-// Concatenate arc data contained in an
-// array of objects.
-//
-MapShaper.mergeArcData = function(arr) {
   return {
-    xx: MapShaper.mergeArrays(Utils.pluck(arr, 'xx'), Float64Array),
-    yy: MapShaper.mergeArrays(Utils.pluck(arr, 'yy'), Float64Array),
-    nn: MapShaper.mergeArrays(Utils.pluck(arr, 'nn'), Int32Array)
+    // info: arr[0].info,
+    arcs: mergedArcs,
+    layers: mergedLayers
   };
 };
 
-MapShaper.countElements = function(arrays) {
-  var c = 0;
-  for (var i=0; i<arrays.length; i++) {
-    c += arrays[i].length || 0;
-  }
-  return c;
+MapShaper.mergeArcs = function(arr) {
+  var dataArr = arr.map(function(arcs) {
+    var data = arcs.getVertexData();
+    if (data.zz) {
+      error("[mergeArcs()] Merging arcs with z data is not supported");
+    }
+    return data;
+  });
+
+  var xx = utils.mergeArrays(Utils.pluck(dataArr, 'xx'), Float64Array),
+      yy = utils.mergeArrays(Utils.pluck(dataArr, 'yy'), Float64Array),
+      nn = utils.mergeArrays(Utils.pluck(dataArr, 'nn'), Int32Array);
+
+  return new ArcDataset(nn, xx, yy);
 };
 
-MapShaper.mergeArrays = function(arrays, TypedArr) {
-  var size = MapShaper.countElements(arrays),
+utils.countElements = function(arrays) {
+  return arrays.reduce(function(memo, arr) {
+    return memo + (arr.length || 0);
+  }, 0);
+};
+
+utils.mergeArrays = function(arrays, TypedArr) {
+  var size = utils.countElements(arrays),
       Arr = TypedArr || Array,
       merged = new Arr(size),
       offs = 0;
@@ -11494,31 +11391,88 @@ MapShaper.mergeArrays = function(arrays, TypedArr) {
   return merged;
 };
 
-MapShaper.extendPathData = function(dest, destCount, src, srcCount) {
-  var path;
-  for (var i=0, n=src.length; i<n; i++) {
-    path = src[i];
-    path.shapeId += destCount;
-    dest.push(path);
-  }
-  return destCount + srcCount;
-};
+// Merge similar layers in a dataset, in-place
+MapShaper.mergeLayers = function(layers) {
+  var index = {},
+      merged = [];
 
-MapShaper.extendDataTable = function(dest, src, validateFields) {
-  if (src.size() > 0) {
-    if (dest.size() > 0 && validateFields) {
-      // both tables have records: make sure fields match
-      var destFields = dest.getFields(),
-          srcFields = src.getFields();
-      if (destFields.length != srcFields.length ||
-          Utils.difference(destFields, srcFields).length > 0) {
-        // TODO: stop the program without printing entire call stack
-        error("Merged files have different fields");
+  // layers with same key can be merged
+  function layerKey(lyr) {
+    var key = lyr.type || '';
+    if (lyr.data) {
+      key += '~' + lyr.data.getFields().sort().join(',');
+    }
+    return key;
+  }
+
+  layers.forEach(function(lyr) {
+    var key = layerKey(lyr),
+        indexedLyr,
+        records;
+    if (key in index === false) {
+      index[key] = lyr;
+      merged.push(lyr);
+    } else {
+      indexedLyr = index[key];
+      indexedLyr.shapes = indexedLyr.shapes.concat(lyr.shapes);
+      if (indexedLyr.data) {
+        records = indexedLyr.data.getRecords().concat(lyr.data.getRecords());
+        indexedLyr.data = new DataTable(records);
       }
     }
-    Utils.merge(dest.getRecords(), src.getRecords());
+  });
+
+  return merged;
+};
+
+
+
+
+MapShaper.mergeFiles = function(files, opts) {
+  // import datasets without topology
+  var importOpts = Utils.extend({}, opts, {no_topology: true});
+  var datasets = files.map(function(fname) {
+    return MapShaper.importFromFile(fname, importOpts);
+  });
+
+  // merge datasets
+  var merged = MapShaper.mergeDatasets(datasets);
+  // kludge -- use info property of first dataset
+  merged.info = datasets[0].info;
+
+  if (!opts.no_topology) {
+    MapShaper.buildTopology(merged);
   }
-  return dest;
+  return merged;
+};
+
+// @see mapshaper script
+//
+utils.getMergedFileBase = function(arr, suffix) {
+  var basename = utils.getCommonFilePrefix(arr);
+  basename = basename.replace(/[-_ ]+$/, '');
+  if (suffix) {
+    basename = basename ? basename + '-' + suffix : suffix;
+  }
+  return basename;
+};
+
+utils.getCommonFilePrefix = function(files) {
+  return Utils.reduce(files, function(prefix, file) {
+    var filebase = Node.getFileInfo(file).base;
+    if (prefix !== null) {
+      filebase = utils.findStringPrefix(prefix, filebase);
+    }
+    return filebase;
+  }, null);
+};
+
+utils.findStringPrefix = function(a, b) {
+  var i = 0;
+  for (var n=a.length; i<n; i++) {
+    if (a[i] !== b[i]) break;
+  }
+  return a.substr(0, i);
 };
 
 
