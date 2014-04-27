@@ -314,7 +314,7 @@ MapShaper.exportPathData = function(shape, arcs, type) {
         bounds.mergeBounds(path.bounds);
         paths.push(path);
       } else {
-        message("Skipping a collapsed", type, "path");
+        verbose("Skipping a collapsed", type, "path");
       }
     });
   }

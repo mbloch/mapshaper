@@ -4062,6 +4062,8 @@ Utils.formatter = function(fmt) {
 
 
 var MapShaper = {};
+var geom = MapShaper.geom = {};
+var utils = MapShaper.utils = Utils.extend({}, Utils);
 
 // TODO: adapt to run in browser
 function stop() {
@@ -4545,7 +4547,7 @@ function probablyDecimalDegreeBounds(b) {
 }
 
 // export functions so they can be tested
-MapShaper.geom = {
+Utils.extend(geom, {
   getRoundingFunction: getRoundingFunction,
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,
@@ -4555,7 +4557,7 @@ MapShaper.geom = {
   triangleArea3D: triangleArea3D,
   msSignedRingArea: msSignedRingArea,
   probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
-};
+});
 
 
 
@@ -4631,21 +4633,23 @@ function ArcDataset() {
   function calcArcBounds(xx, yy, nn) {
     var numArcs = nn.length,
         bb = new Float64Array(numArcs * 4),
+        bounds = new Bounds(),
         arcOffs = 0,
         arcLen,
         j, b;
     for (var i=0; i<numArcs; i++) {
       arcLen = nn[i];
-      b = MapShaper.calcArcBounds(xx, yy, arcOffs, arcLen);
-      j = i * 4;
-      bb[j++] = b[0];
-      bb[j++] = b[1];
-      bb[j++] = b[2];
-      bb[j] = b[3];
-      arcOffs += arcLen;
+      if (arcLen > 0) {
+        j = i * 4;
+        b = MapShaper.calcArcBounds(xx, yy, arcOffs, arcLen);
+        bb[j++] = b[0];
+        bb[j++] = b[1];
+        bb[j++] = b[2];
+        bb[j] = b[3];
+        arcOffs += arcLen;
+        bounds.mergeBounds(b);
+      }
     }
-    var bounds = new Bounds();
-    if (numArcs > 0) bounds.setBounds(MapShaper.calcArcBounds(xx, yy));
     return {
       bb: bb,
       bounds: bounds
@@ -7410,7 +7414,7 @@ TopoJSON.pruneArcs = function(topology) {
   var arcs = topology.arcs;
   var flags = new Uint8Array(arcs.length);
   Utils.forEach(topology.objects, function(obj, name) {
-    TopoJSON.traverseGeometryObject(obj, function(arcId) {
+    TopoJSON.updateArcIds(obj, function(arcId) {
       if (arcId < 0) arcId = ~arcId;
       flags[arcId] = 1;
     });
@@ -7427,34 +7431,15 @@ TopoJSON.pruneArcs = function(topology) {
   });
 };
 
-TopoJSON.traverseGeometryObject = function(obj, cb) {
+// Update each arc id in a TopoJSON geometry object
+TopoJSON.updateArcIds = function(obj, cb) {
   if (obj.arcs) {
-    TopoJSON.traverseArcs(obj.arcs, cb);
+    MapShaper.updateArcIds(obj.arcs, cb);
   } else if (obj.geometries) {
     Utils.forEach(obj.geometries, function(geom) {
-      TopoJSON.traverseGeometryObject(geom, cb);
+      TopoJSON.updateArcIds(geom, cb);
     });
   }
-};
-
-// Visit each arc id in the arcs array of a geometry object.
-// Use non-undefined return values of callback @cb as replacements.
-//
-TopoJSON.traverseArcs = function(arr, cb) {
-  Utils.forEach(arr, function(item, i) {
-    var val;
-    if (item instanceof Array) {
-      TopoJSON.traverseArcs(item, cb);
-    } else {
-      if (!Utils.isInteger(item)) {
-        throw new Error("Non-integer arc id in:", arr);
-      }
-      val = cb(item);
-      if (val !== void 0) {
-        arr[i] = val;
-      }
-    }
-  });
 };
 
 // Convert an array of flags (0|1) into an array of non-negative arc ids
@@ -7471,7 +7456,7 @@ TopoJSON.getArcMap = function(mask) {
 // @map is an array of replacement arc ids, indexed by original arc id
 // @obj is any TopoJSON Geometry object (including named objects, GeometryCollections, Polygons, etc)
 TopoJSON.reindexArcIds = function(obj, map) {
-  TopoJSON.traverseGeometryObject(obj, function(arcId) {
+  TopoJSON.updateArcIds(obj, function(arcId) {
     var rev = arcId < 0,
         idx = rev ? ~arcId : arcId,
         mappedId = map[idx];
@@ -8890,6 +8875,7 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 //
 MapShaper.importContent = function(content, fileType, opts) {
   var dataset, fileFmt;
+  opts = opts || {};
   T.start();
   if (fileType == 'shp') {
     dataset = MapShaper.importShp(content, opts);
@@ -8907,9 +8893,9 @@ MapShaper.importContent = function(content, fileType, opts) {
     error("Unsupported file type:", fileType);
   }
   T.stop("Import " + fileFmt);
-  var needTopology = (fileFmt == 'shapefile' || fileFmt == 'geojson') &&
-          !(opts && opts.no_topology) && dataset.arcs;
-  if (needTopology) {
+
+  // topology; TODO -- consider moving this
+  if ((fileFmt == 'shapefile' || fileFmt == 'geojson') && !opts.no_topology) {
     T.start();
     MapShaper.buildTopology(dataset);
     T.stop("Process topology");
@@ -8920,7 +8906,7 @@ MapShaper.importContent = function(content, fileType, opts) {
 };
 
 MapShaper.buildTopology = function(dataset) {
-  if (!dataset.arcs || !dataset.layers) error("[buildTopology()] Missing required param/s");
+  if (!dataset.arcs) return;
   var raw = dataset.arcs.getVertexData(),
       topoData = buildPathTopology(raw.xx, raw.yy, raw.nn);
   dataset.arcs = topoData.arcs;
@@ -9526,6 +9512,25 @@ MapShaper.traverseArcs = function(shapes, cb) {
   });
 };
 */
+
+// Visit each arc id in an array of ids
+// Use non-undefined return values of callback @cb as replacements.
+MapShaper.updateArcIds = function(arr, cb) {
+  Utils.forEach(arr, function(item, i) {
+    var val;
+    if (item instanceof Array) {
+      MapShaper.updateArcIds(item, cb);
+    } else {
+      if (!Utils.isInteger(item)) {
+        throw new Error("Non-integer arc id in:", arr);
+      }
+      val = cb(item);
+      if (val !== void 0) {
+        arr[i] = val;
+      }
+    }
+  });
+};
 
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
