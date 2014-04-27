@@ -1,4 +1,10 @@
-/* @requires mapshaper-common, mapshaper-geom, shp-reader, dbf-reader, mapshaper-path-import */
+/* @requires
+mapshaper-geom,
+shp-reader,
+dbf-reader,
+mapshaper-path-import,
+mapshaper-path-export
+*/
 
 MapShaper.translateShapefileType = function(shpType) {
   if (Utils.contains([ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ], shpType)) {

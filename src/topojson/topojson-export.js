@@ -2,6 +2,7 @@
 topojson-utils
 topojson-split
 mapshaper-shape-geom
+mapshaper-geojson
 */
 
 TopoJSON.exportTopology = function(layers, arcData, opts) {
