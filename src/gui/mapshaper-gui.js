@@ -109,7 +109,7 @@ function Editor() {
 
     var exportOpts = {
       precision: opts.precision || null,
-      output_file_base: MapShaper.parseLocalPath(opts.input_file).basename || "out"
+      output_file_base: utils.parseLocalPath(opts.input_file).basename || "out"
     };
     var exporter = new ExportControl(arcData, data.layers, exportOpts);
   };

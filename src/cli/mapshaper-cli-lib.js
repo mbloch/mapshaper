@@ -426,7 +426,7 @@ cli.testFileCollision = function(files, suff) {
 };
 
 cli.validateFileExtension = function(path) {
-  var type = MapShaper.guessFileType(path),
+  var type = utils.guessFileType(path),
       valid = type == 'shp' || type == 'json';
   return valid;
 };
@@ -494,8 +494,8 @@ cli.validateOutputOpts = function(argv) {
         // Infer output format from -o option extension when appropriate
         /*
         if (!ofmt &&
-          MapShaper.guessFileFormat(oext) != MapShaper.guessFileFormat(ifileInfo.ext)) {
-          ofmt =  MapShaper.guessFileFormat(oext);
+          utils.guessFileFormat(oext) != utils.guessFileFormat(ifileInfo.ext)) {
+          ofmt =  utils.guessFileFormat(oext);
         }
         */
       }

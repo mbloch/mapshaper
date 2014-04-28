@@ -29,11 +29,11 @@ function verbose() {
   }
 }
 
-MapShaper.absArcId = function(arcId) {
+utils.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 };
 
-MapShaper.parseLocalPath = function(path) {
+utils.parseLocalPath = function(path) {
   var obj = {
     ext: '',
     directory: '',
@@ -62,8 +62,8 @@ MapShaper.parseLocalPath = function(path) {
   return obj;
 };
 
-MapShaper.guessFileType = function(file) {
-  var info = MapShaper.parseLocalPath(file),
+utils.guessFileType = function(file) {
+  var info = utils.parseLocalPath(file),
       ext = info.ext.toLowerCase(),
       type = null;
   if (/json$/i.test(file)) {
@@ -74,7 +74,7 @@ MapShaper.guessFileType = function(file) {
   return type;
 };
 
-MapShaper.guessFileFormat = function(str) {
+utils.guessFileFormat = function(str) {
   var type = null,
       name = str.toLowerCase();
   if (/topojson$/.test(name)) {
@@ -86,7 +86,6 @@ MapShaper.guessFileFormat = function(str) {
   }
   return type;
 };
-
 
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var srcLen = xsrc.length,

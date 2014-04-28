@@ -43,8 +43,8 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
-        info = MapShaper.parseLocalPath(name),
-        type = MapShaper.guessFileType(name),
+        info = utils.parseLocalPath(name),
+        type = utils.guessFileType(name),
         reader;
     if (type) {
       reader = new FileReader();
@@ -60,7 +60,7 @@ function ImportControl(editor) {
   };
 
   this.loadFile = function(path) {
-    var type = guessFileType(path);
+    var type = utils.guessFileType(path);
     if (type) {
       Utils.loadBinaryData(path, function(buf) {
         inputFileContent(path, type, buf);
@@ -72,7 +72,7 @@ function ImportControl(editor) {
   // e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
   var fileIndex = {}; //
   function inputFileContent(path, type, content) {
-    var fileInfo = MapShaper.parseLocalPath(path),
+    var fileInfo = utils.parseLocalPath(path),
         pathbase = fileInfo.pathbase,
         fname = fileInfo.filename,
         index = fileIndex[pathbase],

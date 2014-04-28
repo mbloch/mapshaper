@@ -4,7 +4,7 @@ mapshaper-table-import
 */
 
 MapShaper.importFromFile = function(fname, opts) {
-  var fileType = MapShaper.guessFileType(fname),
+  var fileType = utils.guessFileType(fname),
       content = MapShaper.readGeometryFile(fname, fileType),
       data = MapShaper.importFileContent(content, fileType, opts);
   if (fileType == 'shp' && data.layers.length == 1) {

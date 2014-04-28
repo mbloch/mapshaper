@@ -179,19 +179,18 @@ function PathImporter(reservedPoints, opts) {
       }
 
       if (pointId > 0) {
-        // TODO: move shape validation after snapping (which may corrupt shapes)
-        if (opts.snapping) {
-          T.start();
-          MapShaper.autoSnapCoords(xx, yy, nn, opts.snap_interval);
-          T.stop("Snapping points");
-        }
-
-        if (pointId < xx.length) {
+       if (pointId < xx.length) {
           xx = xx.subarray(0, pointId);
           yy = yy.subarray(0, pointId);
         }
+        arcs = new ArcDataset(nn, xx, yy);
 
-        arcs = new ArcDataset(new Int32Array(nn), xx, yy);
+        // TODO: move shape validation after snapping (which may corrupt shapes)
+        if (opts.snapping) {
+          T.start();
+          MapShaper.autoSnapCoords(arcs, opts.snap_interval);
+          T.stop("Snapping points");
+        }
       } else {
         message("No geometries were imported");
         collectionType = null;

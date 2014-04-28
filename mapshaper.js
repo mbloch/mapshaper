@@ -4090,11 +4090,11 @@ function verbose() {
   }
 }
 
-MapShaper.absArcId = function(arcId) {
+utils.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 };
 
-MapShaper.parseLocalPath = function(path) {
+utils.parseLocalPath = function(path) {
   var obj = {
     ext: '',
     directory: '',
@@ -4123,8 +4123,8 @@ MapShaper.parseLocalPath = function(path) {
   return obj;
 };
 
-MapShaper.guessFileType = function(file) {
-  var info = MapShaper.parseLocalPath(file),
+utils.guessFileType = function(file) {
+  var info = utils.parseLocalPath(file),
       ext = info.ext.toLowerCase(),
       type = null;
   if (/json$/i.test(file)) {
@@ -4135,7 +4135,7 @@ MapShaper.guessFileType = function(file) {
   return type;
 };
 
-MapShaper.guessFileFormat = function(str) {
+utils.guessFileFormat = function(str) {
   var type = null,
       name = str.toLowerCase();
   if (/topojson$/.test(name)) {
@@ -4147,7 +4147,6 @@ MapShaper.guessFileFormat = function(str) {
   }
   return type;
 };
-
 
 MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
   var srcLen = xsrc.length,
@@ -6501,12 +6500,14 @@ geom.testPointInRing = function(x, y, ids, arcs) {
 // @points (optional) array, snapped coords are added so they can be displayed
 //
 //
-MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
-  // TODO: Pass in ArcDataset instead of xx, yy zz
-  var avgSeg = new ArcDataset(nn, xx, yy).getAverageSegment(3),
+MapShaper.autoSnapCoords = function(arcs, threshold, points) {
+
+  var avgSec = arcs.getAverageSegment(3),
       avgDist = avgSeg[0] + avgSeg[1], // avg. dx + dy -- crude approximation
       snapDist = avgDist * 0.0025,
-      snapCount = 0;
+      snapCount = 0,
+      xx = arcs.getVertexData().xx,
+      yy = arcs.getVertexData().yy;
 
   if (threshold) {
     if (threshold > avgDist) {
@@ -6520,7 +6521,7 @@ MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
   // Get sorted coordinate ids
   // Consider: speed up sorting -- try bucket sort as first pass.
   //
-  var ids = MapShaper.sortCoordinateIds(xx);
+  var ids = utils.sortCoordinateIds(xx);
 
   for (var i=0, n=ids.length; i<n; i++) {
     snapCount += snapPoint(i, ids, snapDist);
@@ -6565,17 +6566,17 @@ MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
 // Returns array of array ids, in ascending order.
 // @a array of numbers
 //
-MapShaper.sortCoordinateIds = function(a) {
+utils.sortCoordinateIds = function(a) {
   var n = a.length,
       ids = new Uint32Array(n);
   for (var i=0; i<n; i++) {
     ids[i] = i;
   }
-  MapShaper.quicksortIds(a, ids, 0, ids.length-1);
+  utils.quicksortIds(a, ids, 0, ids.length-1);
   return ids;
 };
 
-MapShaper.quicksortIds = function (a, ids, lo, hi) {
+utils.quicksortIds = function (a, ids, lo, hi) {
   var i = lo,
       j = hi,
       pivot, tmp;
@@ -6592,7 +6593,7 @@ MapShaper.quicksortIds = function (a, ids, lo, hi) {
         j--;
       }
     }
-    if (j - lo > 0) MapShaper.quicksortIds(a, ids, lo, j);
+    if (j - lo > 0) utils.quicksortIds(a, ids, lo, j);
     lo = i;
     j = hi;
   }
@@ -6774,19 +6775,18 @@ function PathImporter(reservedPoints, opts) {
       }
 
       if (pointId > 0) {
-        // TODO: move shape validation after snapping (which may corrupt shapes)
-        if (opts.snapping) {
-          T.start();
-          MapShaper.autoSnapCoords(xx, yy, nn, opts.snap_interval);
-          T.stop("Snapping points");
-        }
-
-        if (pointId < xx.length) {
+       if (pointId < xx.length) {
           xx = xx.subarray(0, pointId);
           yy = yy.subarray(0, pointId);
         }
+        arcs = new ArcDataset(nn, xx, yy);
 
-        arcs = new ArcDataset(new Int32Array(nn), xx, yy);
+        // TODO: move shape validation after snapping (which may corrupt shapes)
+        if (opts.snapping) {
+          T.start();
+          MapShaper.autoSnapCoords(arcs, opts.snap_interval);
+          T.stop("Snapping points");
+        }
       } else {
         message("No geometries were imported");
         collectionType = null;
@@ -6943,12 +6943,12 @@ MapShaper.exportPathCoords = function(iter) {
 
 
 MapShaper.getEncodings = function() {
-  var encodings = MapShaper.getIconvLiteEncodings();
-  encodings = encodings.concat(MapShaper.getJapaneseEncodings());
+  var encodings = MapShaper.internal.getIconvLiteEncodings();
+  encodings = encodings.concat(MapShaper.internal.getJapaneseEncodings());
   return Utils.uniq(encodings);
 };
 
-MapShaper.getIconvLiteEncodings = function() {
+MapShaper.internal.getIconvLiteEncodings = function() {
   var iconv = require('iconv-lite');
   iconv.encodingExists('ascii'); // make iconv load its encodings
   return Utils.filter(Utils.keys(iconv.encodings), function(name) {
@@ -6957,13 +6957,13 @@ MapShaper.getIconvLiteEncodings = function() {
 };
 
 // List of encodings from jconv (hard-coded, because not exposed by the library)
-MapShaper.getJapaneseEncodings = function() {
+MapShaper.internal.getJapaneseEncodings = function() {
   return ['jis', 'iso2022jp', 'iso2022jp1', 'shiftjis', 'eucjp'];
 };
 
-MapShaper.requireConversionLib = function(encoding) {
+MapShaper.internal.requireConversionLib = function(encoding) {
   var conv;
-  if (Utils.contains(MapShaper.getJapaneseEncodings(), encoding)) {
+  if (Utils.contains(MapShaper.internal.getJapaneseEncodings(), encoding)) {
     conv = require('jconv');
   } else {
     conv = require('iconv-lite');
@@ -6971,7 +6971,7 @@ MapShaper.requireConversionLib = function(encoding) {
   return conv;
 };
 
-MapShaper.getFormattedEncodings = function() {
+MapShaper.internal.getFormattedEncodings = function() {
   var encodings = MapShaper.getEncodings(),
       longest = Utils.reduce(encodings, function(len, str) {
         return Math.max(len, str.length);
@@ -6987,7 +6987,7 @@ MapShaper.getFormattedEncodings = function() {
 
 MapShaper.printEncodings = function() {
   console.log("Supported encodings:");
-  console.log(MapShaper.getFormattedEncodings());
+  console.log(MapShaper.internal.getFormattedEncodings());
 };
 
 
@@ -7021,7 +7021,7 @@ Dbf.getStringReaderAscii = function(size) {
 };
 
 Dbf.getStringReaderEncoded = function(size, encoding) {
-  var iconv = MapShaper.requireConversionLib(encoding),
+  var iconv = MapShaper.internal.requireConversionLib(encoding),
       buf = new Buffer(size),
       isUtf8 = RE_UTF8.test(encoding);
   return function(bin) {
@@ -7197,10 +7197,8 @@ DbfReader.prototype.readFieldHeader = function(bin, encoding) {
 };
 
 // export for testing
-MapShaper.dbf = {
-  Dbf: Dbf,
-  DbfReader: DbfReader
-};
+MapShaper.internal.Dbf = Dbf;
+MapShaper.internal.DbfReader = DbfReader;
 
 
 
@@ -7460,7 +7458,7 @@ Dbf.getStringWriterAscii = function() {
 };
 
 Dbf.getStringWriterEncoded = function(encoding) {
-  var iconv = MapShaper.requireConversionLib(encoding);
+  var iconv = MapShaper.internal.requireConversionLib(encoding);
   return function(val) {
     var buf = iconv.encode(val, encoding);
     return BinArray.toArrayBuffer(buf);
@@ -10055,7 +10053,7 @@ MapShaper.convertRecordData = function(rec, fields, converters) {
 
 
 MapShaper.importFromFile = function(fname, opts) {
-  var fileType = MapShaper.guessFileType(fname),
+  var fileType = utils.guessFileType(fname),
       content = MapShaper.readGeometryFile(fname, fileType),
       data = MapShaper.importFileContent(content, fileType, opts);
   if (fileType == 'shp' && data.layers.length == 1) {
@@ -10546,7 +10544,7 @@ MapShaper.dissolveArcs = function(layers, arcs) {
 
 function convertArcs(groups, arcs) {
   var src = arcs.getVertexData(),
-      abs = MapShaper.absArcId,
+      abs = utils.absArcId,
       offs = 0,
       pointCount = countPoints(groups, src.nn),
       nn2 = new Int32Array(groups.length),
@@ -10621,7 +10619,7 @@ function arcDissolveSecondPass(layers, arcs, map) {
 
   function updatePaths(obj) {
     var newPath = [],
-        abs = MapShaper.absArcId,
+        abs = utils.absArcId,
         ids = obj.arcs,
         mappedId = -1,
         arcCount = 0,
@@ -10708,7 +10706,7 @@ function arcDissolveFirstPass(layers, arcs) {
   }
 
   function extendPath(arcId) {
-    var absId = MapShaper.absArcId(arcId),
+    var absId = utils.absArcId(arcId),
         pathId = nn2.length - 1,
         first = src.ii[absId],
         last = first + src.nn[absId] - 1,
@@ -12222,7 +12220,7 @@ cli.testFileCollision = function(files, suff) {
 };
 
 cli.validateFileExtension = function(path) {
-  var type = MapShaper.guessFileType(path),
+  var type = utils.guessFileType(path),
       valid = type == 'shp' || type == 'json';
   return valid;
 };
@@ -12290,8 +12288,8 @@ cli.validateOutputOpts = function(argv) {
         // Infer output format from -o option extension when appropriate
         /*
         if (!ofmt &&
-          MapShaper.guessFileFormat(oext) != MapShaper.guessFileFormat(ifileInfo.ext)) {
-          ofmt =  MapShaper.guessFileFormat(oext);
+          utils.guessFileFormat(oext) != utils.guessFileFormat(ifileInfo.ext)) {
+          ofmt =  utils.guessFileFormat(oext);
         }
         */
       }

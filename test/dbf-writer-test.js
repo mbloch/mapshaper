@@ -1,6 +1,6 @@
 var api = require('../'),
     assert = require('assert'),
-    Dbf = api.Dbf,
+    Dbf = api.internal.Dbf,
     Node = api.Node;
 
 describe('dbf-writer.js', function () {

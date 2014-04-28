@@ -19,7 +19,7 @@ MapShaper.dissolveArcs = function(layers, arcs) {
 
 function convertArcs(groups, arcs) {
   var src = arcs.getVertexData(),
-      abs = MapShaper.absArcId,
+      abs = utils.absArcId,
       offs = 0,
       pointCount = countPoints(groups, src.nn),
       nn2 = new Int32Array(groups.length),
@@ -94,7 +94,7 @@ function arcDissolveSecondPass(layers, arcs, map) {
 
   function updatePaths(obj) {
     var newPath = [],
-        abs = MapShaper.absArcId,
+        abs = utils.absArcId,
         ids = obj.arcs,
         mappedId = -1,
         arcCount = 0,
@@ -181,7 +181,7 @@ function arcDissolveFirstPass(layers, arcs) {
   }
 
   function extendPath(arcId) {
-    var absId = MapShaper.absArcId(arcId),
+    var absId = utils.absArcId(arcId),
         pathId = nn2.length - 1,
         first = src.ii[absId],
         last = first + src.nn[absId] - 1,

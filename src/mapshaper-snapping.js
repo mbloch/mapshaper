@@ -10,12 +10,14 @@ mapshaper-shapes
 // @points (optional) array, snapped coords are added so they can be displayed
 //
 //
-MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
-  // TODO: Pass in ArcDataset instead of xx, yy zz
-  var avgSeg = new ArcDataset(nn, xx, yy).getAverageSegment(3),
+MapShaper.autoSnapCoords = function(arcs, threshold, points) {
+
+  var avgSec = arcs.getAverageSegment(3),
       avgDist = avgSeg[0] + avgSeg[1], // avg. dx + dy -- crude approximation
       snapDist = avgDist * 0.0025,
-      snapCount = 0;
+      snapCount = 0,
+      xx = arcs.getVertexData().xx,
+      yy = arcs.getVertexData().yy;
 
   if (threshold) {
     if (threshold > avgDist) {
@@ -29,7 +31,7 @@ MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
   // Get sorted coordinate ids
   // Consider: speed up sorting -- try bucket sort as first pass.
   //
-  var ids = MapShaper.sortCoordinateIds(xx);
+  var ids = utils.sortCoordinateIds(xx);
 
   for (var i=0, n=ids.length; i<n; i++) {
     snapCount += snapPoint(i, ids, snapDist);
@@ -74,17 +76,17 @@ MapShaper.autoSnapCoords = function(xx, yy, nn, threshold, points) {
 // Returns array of array ids, in ascending order.
 // @a array of numbers
 //
-MapShaper.sortCoordinateIds = function(a) {
+utils.sortCoordinateIds = function(a) {
   var n = a.length,
       ids = new Uint32Array(n);
   for (var i=0; i<n; i++) {
     ids[i] = i;
   }
-  MapShaper.quicksortIds(a, ids, 0, ids.length-1);
+  utils.quicksortIds(a, ids, 0, ids.length-1);
   return ids;
 };
 
-MapShaper.quicksortIds = function (a, ids, lo, hi) {
+utils.quicksortIds = function (a, ids, lo, hi) {
   var i = lo,
       j = hi,
       pivot, tmp;
@@ -101,7 +103,7 @@ MapShaper.quicksortIds = function (a, ids, lo, hi) {
         j--;
       }
     }
-    if (j - lo > 0) MapShaper.quicksortIds(a, ids, lo, j);
+    if (j - lo > 0) utils.quicksortIds(a, ids, lo, j);
     lo = i;
     j = hi;
   }

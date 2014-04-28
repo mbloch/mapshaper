@@ -1,7 +1,7 @@
 var api = require('../'),
     assert = require('assert'),
     iconv = require('iconv-lite'),
-    Dbf = api.dbf.Dbf,
+    Dbf = api.internal.Dbf,
     Utils = api.Utils;
 
 function fixPath(p) {
@@ -21,7 +21,7 @@ describe('dbf-reader.js', function () {
 
     function rows(path, encoding) {
       path = "test_data/dbfs/" + path;
-      var reader = new api.dbf.DbfReader(fixPath(path), encoding);
+      var reader = new api.internal.DbfReader(fixPath(path), encoding);
       return reader.readRows();
     }
 
