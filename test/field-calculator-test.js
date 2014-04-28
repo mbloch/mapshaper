@@ -1,14 +1,15 @@
 var assert = require('assert'),
-    api = require("../");
+    api = require("../"),
+    ArcDataset = api.internal.ArcDataset;
 
 describe('mapshaper-field-calculator.js', function () {
   describe('evaluate()', function () {
-    var nullArcs = new api.ArcDataset([]);
+    var nullArcs = new api.internal.ArcDataset([]);
     it('create new numeric field', function () {
       var records = [{}, {}];
       var lyr = {
         shapes: [],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.evaluate(lyr, nullArcs, "FOO=0");
       assert.deepEqual(records, [{FOO:0}, {FOO:0}]);
@@ -18,7 +19,7 @@ describe('mapshaper-field-calculator.js', function () {
       var records = [{}, {}];
       var lyr = {
         shapes: [],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.evaluate(lyr, nullArcs, "FOO=''");
       assert.deepEqual(records, [{FOO:''}, {FOO:''}]);
@@ -28,7 +29,7 @@ describe('mapshaper-field-calculator.js', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
         shapes: [],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.evaluate(lyr, nullArcs, "delete foo");
       assert.deepEqual(records, [{}, {}]);
@@ -38,7 +39,7 @@ describe('mapshaper-field-calculator.js', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
         shapes: [],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.evaluate(lyr, nullArcs, "foo=foo.substr(0, 2)");
       assert.deepEqual(records, [{foo:'mi'}, {foo:'be'}]);
@@ -48,7 +49,7 @@ describe('mapshaper-field-calculator.js', function () {
       var records = [{}, {}];
       var lyr = {
         shapes: [[[0, 2], [-2]], null],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.evaluate(lyr, nullArcs, "parts=$.partCount");
       assert.deepEqual(records, [{parts: 2}, {parts: 0}]);
@@ -65,7 +66,7 @@ describe('mapshaper-field-calculator.js', function () {
     it('handle null properties', function () {
       var lyr = {
         shapes: [null, null],
-        data: new api.data.DataTable([null, {'a': 13}])
+        data: new api.internal.DataTable([null, {'a': 13}])
       };
       api.evaluate(lyr, nullArcs, "FID=$.id");
       assert.deepEqual(lyr.data.getRecords(), [{FID: 0}, {a: 13, FID: 1}]);
@@ -75,7 +76,7 @@ describe('mapshaper-field-calculator.js', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
         shapes: [],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.evaluate(lyr, nullArcs, "bar = foo, delete foo");
       assert.deepEqual(records, [{bar: 'mice'}, {bar: 'beans'}]);
@@ -85,7 +86,7 @@ describe('mapshaper-field-calculator.js', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
         shapes: [],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.evaluate(lyr, nullArcs, "valid = $.properties.foo === foo");
       assert.deepEqual(records, [{foo: 'mice', valid: true}, {foo: 'beans', valid: true}]);
@@ -104,7 +105,7 @@ describe('mapshaper-field-calculator.js', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
         shapes: [null, null],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.evaluate(lyr, nullArcs, "$.properties = {menu: foo}");
       assert.deepEqual(lyr.data.getRecords(), [{menu: 'mice'}, {menu: 'beans'}]);
@@ -114,7 +115,7 @@ describe('mapshaper-field-calculator.js', function () {
       var records = [{foo:4}, {foo:0}];
       var lyr = {
         shapes: [],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.evaluate(lyr, nullArcs, "bar=Math.sqrt(foo); delete foo");
       assert.deepEqual(records, [{bar: 2}, {bar: 0}]);
@@ -142,7 +143,7 @@ describe('mapshaper-field-calculator.js', function () {
           [[2, 3, 3], [3, 3, 2]],
           [[3, 2], [2, 2]],
           [[3, 3, 1, 1], [2, 1, 1, 2]]];
-      arcs = new api.ArcDataset(arcs);
+      arcs = new ArcDataset(arcs);
 
       beforeEach(function() {
         lyr.data = null;

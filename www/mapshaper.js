@@ -4064,6 +4064,7 @@ Utils.formatter = function(fmt) {
 var MapShaper = {};
 var geom = MapShaper.geom = {};
 var utils = MapShaper.utils = Utils.extend({}, Utils);
+var internal = MapShaper.internal = {};
 
 // TODO: adapt to run in browser
 function stop() {
@@ -4562,7 +4563,7 @@ Utils.extend(geom, {
 
 
 
-MapShaper.ArcDataset = ArcDataset;
+MapShaper.internal.ArcDataset = ArcDataset;
 
 // An interface for managing a collection of paths.
 // Constructor signatures:
@@ -7413,10 +7414,8 @@ function ShapefileTable(buf, encoding) {
 Utils.extend(ShapefileTable.prototype, dataTableProto);
 
 // export for testing
-MapShaper.data = {
-  DataTable: DataTable,
-  ShapefileTable: ShapefileTable
-};
+MapShaper.internal.DataTable = DataTable;
+MapShaper.internal.ShapefileTable = ShapefileTable;
 
 
 
@@ -10305,7 +10304,7 @@ function Heap() {
 
 var Visvalingam = {};
 
-MapShaper.Heap = Heap; // export Heap for testing
+MapShaper.internal.Heap = Heap; // export Heap for testing
 
 Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   var bufLen = 0,

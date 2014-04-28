@@ -1,6 +1,6 @@
 /* @requires mapshaper-common, mapshaper-geom */
 
-MapShaper.ArcDataset = ArcDataset;
+MapShaper.internal.ArcDataset = ArcDataset;
 
 // An interface for managing a collection of paths.
 // Constructor signatures:

@@ -21,15 +21,15 @@ describe('mapshaper-shape-geom.js', function () {
 
   var arcs = [[[3, 4, 3, 2, 3], [4, 3, 2, 3, 4]],
       [[3, 5, 3, 1, 3], [5, 3, 1, 3, 5]]];
-  var arcData = new api.ArcDataset(arcs);
+  var arcData = new api.internal.ArcDataset(arcs);
   var lyr1 = {
         geometry_type: 'polygon',
-        data: new api.data.DataTable([{foo: 1}]),
+        data: new api.internal.DataTable([{foo: 1}]),
         shapes: [[[1], [-1]]]
       };
   var lyr2 = {
         geometry_type: 'polygon',
-        data: new api.data.DataTable([{foo: 4}]),
+        data: new api.internal.DataTable([{foo: 4}]),
         shapes: [[[1], [-1], [0]]]
       };
 

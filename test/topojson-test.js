@@ -2,7 +2,7 @@
 var api = require('../'),
   assert = require('assert'),
   TopoJSON = api.topojson,
-  ArcDataset = api.ArcDataset,
+  ArcDataset = api.internal.ArcDataset,
   Utils = api.Utils,
   Node = api.Node;
 

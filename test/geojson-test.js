@@ -28,10 +28,10 @@ describe('mapshaper-geojson.js', function () {
 
   describe('exportGeoJSON()', function () {
     it('collapsed polygon exported as null geometry', function () {
-      var arcs = new api.ArcDataset([[[1, 2, 1], [1, 3, 1]]]),
+      var arcs = new api.internal.ArcDataset([[[1, 2, 1], [1, 3, 1]]]),
           lyr = {
             geometry_type: "polygon",
-            data: new api.data.DataTable([{FID: 1}]),
+            data: new api.internal.DataTable([{FID: 1}]),
             shapes: [[[0]]]
           };
 
@@ -43,10 +43,10 @@ describe('mapshaper-geojson.js', function () {
     })
 
     it('use cut_table option', function () {
-      var arcs = new api.ArcDataset([[[1, 1, 2, 1], [1, 3, 3, 1]]]),
+      var arcs = new api.internal.ArcDataset([[[1, 1, 2, 1], [1, 3, 3, 1]]]),
           lyr = {
             geometry_type: "polygon",
-            data: new api.data.DataTable([{FID: 1}]),
+            data: new api.internal.DataTable([{FID: 1}]),
             shapes: [[[0]]]
           };
 
@@ -83,7 +83,7 @@ describe('mapshaper-geojson.js', function () {
     })
 
     it('export polygons with bbox', function() {
-      var arcs = new api.ArcDataset([[[1, 1, 2, 1], [1, 3, 3, 1]],
+      var arcs = new api.internal.ArcDataset([[[1, 1, 2, 1], [1, 3, 3, 1]],
           [[-1, 0, 0, -1], [1, 0, 1, 1]]]),
           lyr = {
             geometry_type: "polygon",

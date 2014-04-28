@@ -2,8 +2,8 @@ var api = require('../'),
   assert = require('assert'),
   Node = api.Node,
   Utils = api.Utils,
-  DataTable = api.data.DataTable,
-  ShapefileTable = api.data.ShapefileTable;
+  DataTable = api.internal.DataTable,
+  ShapefileTable = api.internal.ShapefileTable;
 
 describe('data-table.js', function () {
 

@@ -1,7 +1,7 @@
 var api = require('../'),
     assert = require('assert'),
     utils = api.utils,
-    ArcDataset = api.ArcDataset;
+    ArcDataset = api.internal.ArcDataset;
 
 var arcs1 = {
   xx: [1, 2, 3, 4],
@@ -29,7 +29,7 @@ var data1 = {
   }, {
     geometry_type: 'polyline',
     shapes: [[[0, 1]]],
-    data: new api.data.DataTable([{id: 1}])
+    data: new api.internal.DataTable([{id: 1}])
   }]
 };
 
@@ -41,7 +41,7 @@ var data2 = {
   }, {
     geometry_type: 'polyline',
     shapes: [[[~1]], [[0]]],
-    data: new api.data.DataTable([{id: 2}, {id: 3}])
+    data: new api.internal.DataTable([{id: 2}, {id: 3}])
   }]
 };
 

@@ -1,6 +1,7 @@
 var assert = require('assert'),
     api = require("../"),
-    utils = api.Utils;
+    utils = api.Utils,
+    ArcDataset = api.internal.ArcDataset;
 
 describe('mapshaper-dissolve.js', function () {
 
@@ -19,13 +20,13 @@ describe('mapshaper-dissolve.js', function () {
       var arcs = [[[3, 1, 2], [1, 1, 3]],
           [[2, 3], [3, 1]],
           [[2, 4, 3], [3, 3, 1]]];
-      var arcData = new api.ArcDataset(arcs);
+      var arcData = new ArcDataset(arcs);
 
       // Handle arcs with a kink
       it('bugfix 2 (abnormal topology) test 1', function() {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 2}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 2}]),
               shapes: [[[0, 1, ~1, 1]], [[~1, 1, ~1, 2]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -35,7 +36,7 @@ describe('mapshaper-dissolve.js', function () {
       it('bugfix 2 (abnormal topology) test 2', function() {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[0, 1, ~1, 1]], [[~1, 1, ~1, 2]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -45,7 +46,7 @@ describe('mapshaper-dissolve.js', function () {
       it('dissolve on "foo" 1', function() {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[0, 1]], [[-2, 2]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -56,7 +57,7 @@ describe('mapshaper-dissolve.js', function () {
       it('dissolve on "foo" 2', function() {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[0, 1]], [[2, -2]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -66,7 +67,7 @@ describe('mapshaper-dissolve.js', function () {
       it('dissolve on "foo" 3', function() {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[1, 0]], [[2, -2]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -86,7 +87,7 @@ describe('mapshaper-dissolve.js', function () {
       it('dissolve on null + data table', function() {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[1, 0]], [[2, -2]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, null);
@@ -98,7 +99,7 @@ describe('mapshaper-dissolve.js', function () {
         var records = [{foo: 2}, {foo: 1}, {foo: 1}, {foo: 1}];
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable(records),
+              data: new api.internal.DataTable(records),
               shapes: [null, [[0, 1]], [[-2, 2]], null]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -109,7 +110,7 @@ describe('mapshaper-dissolve.js', function () {
       it('no dissolve', function() {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 2}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 2}]),
               shapes: [[[0, 1]], [[-2, 2]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -119,7 +120,7 @@ describe('mapshaper-dissolve.js', function () {
       it('bugfix 1 test 1', function() {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[0, 1]], [[~1, ~0], [2, 0]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -130,7 +131,7 @@ describe('mapshaper-dissolve.js', function () {
       it('bugfix 1 test 2', function() {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[0, 1]], [[2, 0], [~1, ~0]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -141,7 +142,7 @@ describe('mapshaper-dissolve.js', function () {
       it('bugfix 1 test 3', function() {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[0, 2], [~1, ~0]], [[1, 0]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -164,12 +165,12 @@ describe('mapshaper-dissolve.js', function () {
 
       var arcs = [[[3, 1, 2, 3], [1, 1, 3, 1]],
           [[4, 6, 5, 4], [3, 3, 1, 3]]];
-      var arcData = new api.ArcDataset(arcs);
+      var arcData = new ArcDataset(arcs);
 
       it('no dissolve', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[0]], [[1]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -179,7 +180,7 @@ describe('mapshaper-dissolve.js', function () {
       it('no dissolve 2', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 2}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 2}]),
               shapes: [[[0]], [[1]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -206,12 +207,12 @@ describe('mapshaper-dissolve.js', function () {
 
       var arcs = [[[3, 4, 3, 2, 3], [4, 3, 2, 3, 4]],
           [[3, 5, 3, 1, 3], [5, 3, 1, 3, 5]]];
-      var arcData = new api.ArcDataset(arcs);
+      var arcData = new ArcDataset(arcs);
 
       it('empty hole', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}]),
               shapes: [[[0], [-2]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -221,7 +222,7 @@ describe('mapshaper-dissolve.js', function () {
       it('dissolve filled hole', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[0], [-2]], [[1]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -231,7 +232,7 @@ describe('mapshaper-dissolve.js', function () {
       it('dissolve filled hole 2', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[1]], [[-2], [0]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -241,7 +242,7 @@ describe('mapshaper-dissolve.js', function () {
       it('no dissolve filled hole', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 2}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 2}]),
               shapes: [[[0], [-2]], [[1]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -269,13 +270,13 @@ describe('mapshaper-dissolve.js', function () {
       var arcs = [[[3, 4, 3, 2, 3], [4, 3, 2, 3, 4]],
           [[3, 3], [4, 5]],
           [[3, 5, 3, 1, 3], [5, 3, 1, 3, 5]]];
-      var arcData = new api.ArcDataset(arcs);
+      var arcData = new ArcDataset(arcs);
 
       // TODO: is this the desired behavior?
       it('dissolve a shape into itself', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}]),
               shapes: [[[1, 2, -2, -1]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -305,12 +306,12 @@ describe('mapshaper-dissolve.js', function () {
           [[3, 5, 3], [5, 3, 1]],
           [[3, 3], [1, 2]],
           [[3, 1, 3], [1, 3, 5]]];
-      var arcData = new api.ArcDataset(arcs);
+      var arcData = new ArcDataset(arcs);
 
       it('dissolve two of three shapes', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}, {foo: 2}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}, {foo: 2}]),
               shapes: [[[0, 1]], [[2, 3, 4, -1]], [[5, -3, -2, -5]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -322,7 +323,7 @@ describe('mapshaper-dissolve.js', function () {
       it('dissolve everything', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}, {foo: 1}]),
               shapes: [[[0, 1]], [[2, 3, 4, -1]], [[5, -3, -2, -5]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -332,7 +333,7 @@ describe('mapshaper-dissolve.js', function () {
       it('dissolve two shapes around an empty hole', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[2, 3, 4, -1]], [[5, -3, -2, -5]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -343,7 +344,7 @@ describe('mapshaper-dissolve.js', function () {
       it('dissolve two shapes around a filled hole', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}, {foo: 2}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}, {foo: 2}]),
               shapes: [[[2, 3, 4, -1]], [[5, -3, -2, -5]], [[0, 1]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -367,12 +368,12 @@ describe('mapshaper-dissolve.js', function () {
       var arcs = [[[5, 5, 1, 1, 3], [3, 1, 1, 3, 3]],
           [[3, 4, 2, 3], [3, 2, 2, 3]],
           [[3, 5], [3, 3]]];
-      var arcData = new api.ArcDataset(arcs);
+      var arcData = new ArcDataset(arcs);
 
       it('odd shape', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
               shapes: [[[0, -2, 3]], [[1]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -400,12 +401,12 @@ describe('mapshaper-dissolve.js', function () {
           [[3, 3], [4, 2]],
           [[3, 2, 3], [2, 3, 4]],
           [[3, 5], [4, 4]]];
-      var arcData = new api.ArcDataset(arcs);
+      var arcData = new ArcDataset(arcs);
 
       it('dissolve all', function () {
         var lyr = {
               geometry_type: 'polygon',
-              data: new api.data.DataTable([{foo: 1}, {foo: 1}, {foo: 1}]),
+              data: new api.internal.DataTable([{foo: 1}, {foo: 1}, {foo: 1}]),
               shapes: [[[0, -4, -2, 4]], [[2, 3]], [[1, -3]]]
             };
         var lyr2 = api.dissolve(lyr, arcData, 'foo');
@@ -452,7 +453,7 @@ describe('mapshaper-dissolve.js', function () {
           [[7, 6, 4], [2, 1, 1]],
           [[2, 4], [1, 1]],
           [[4, 6], [1, 1]]];
-      var arcData = new api.ArcDataset(arcs);
+      var arcData = new ArcDataset(arcs);
 
       it('patchwork', function() {
         var shapes = [[[0, 3, ~6, ~1]]]

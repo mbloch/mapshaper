@@ -5,7 +5,7 @@ describe("mapshaper-heap.js", function() {
 
   describe("Heap", function() {
 
-    var heap = new api.Heap();
+    var heap = new api.internal.Heap();
 
     it("heap pops value ids in sorted order, smallest first", function() {
       heap.addValues([1.1, 3.3, -1.6, 5.1]);

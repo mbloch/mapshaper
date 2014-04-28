@@ -34,11 +34,11 @@ describe('mapshaper-expressions.js', function () {
 
 
   describe('compileLayerExpression()', function () {
-    var nullArcs = new api.ArcDataset([]),
+    var nullArcs = new api.internal.ArcDataset([]),
         records = [{foo: 4}, {foo: 0}, {foo: 3.5}, {foo: -0.5}, {foo: 3}];
     var lyr = {
       shapes: new Array(5),
-      data: new api.data.DataTable(records)
+      data: new api.internal.DataTable(records)
     };
 
     it('sum()', function() {

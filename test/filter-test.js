@@ -3,12 +3,12 @@ var assert = require('assert'),
 
 describe('mapshaper-filter.js', function () {
   describe('filter()', function () {
-    var nullArcs = new api.ArcDataset([]);
+    var nullArcs = new api.internal.ArcDataset([]);
     it('removes records based on attribute value', function () {
       var records = [{foo: 0}, {foo: 2}];
       var lyr = {
         shapes: [[[0]], [[1]]],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.filter(lyr, nullArcs, "foo == 2");
       assert.deepEqual(lyr.data.getRecords(), [{foo: 2}]);
@@ -19,7 +19,7 @@ describe('mapshaper-filter.js', function () {
       var records = [{foo: 0}, {foo: 2}];
       var lyr = {
         shapes: [[[0], [1]], [[1]]],
-        data: new api.data.DataTable(records)
+        data: new api.internal.DataTable(records)
       };
       api.filter(lyr, nullArcs, "$.partCount > 1");
       assert.deepEqual(lyr.data.getRecords(), [{foo: 0}]);

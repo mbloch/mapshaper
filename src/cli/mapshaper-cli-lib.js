@@ -22,8 +22,6 @@ mapshaper-innerlines
 mapshaper-encodings
 mapshaper-info
 */
-//
-//mapshaper-explode,
 
 var cli = MapShaper.cli = {};
 

@@ -3,11 +3,11 @@ var assert = require('assert'),
 
 describe('mapshaper-split.js', function () {
   describe('splitOnField()', function () {
-    var nullArcs = new api.ArcDataset([]);
+    var nullArcs = new api.internal.ArcDataset([]);
     it('divides a layer into multiple named layers', function () {
       var records = [{foo: "spruce"}, {foo: "fir"}, {foo: "apple"}, {foo: "fir"}];
       var lyr = {
-        data: new api.data.DataTable(records),
+        data: new api.internal.DataTable(records),
         shapes: [[[0]], [[1], [2]], null, [[3]]]
       };
       var layers = api.splitOnField(lyr, nullArcs, 'foo');
@@ -26,7 +26,7 @@ describe('mapshaper-split.js', function () {
     it('Fix: numerical values are converted to string names', function () {
       var records = [{foo: 0}, {foo: -1}, {foo: 1}, {foo: 1}];
       var lyr = {
-        data: new api.data.DataTable(records),
+        data: new api.internal.DataTable(records),
         shapes: [[[0, -2]], [[1], [2, 4]], null, [[3, 4]]]
       };
       var layers = api.splitOnField(lyr, nullArcs, 'foo');

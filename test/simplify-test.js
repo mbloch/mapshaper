@@ -52,7 +52,7 @@ describe("mapshaper-simplify.js", function() {
                   [[3, 4, 3, 4], [-79, -84, -90, -80]]];
       var thresholds = [[Infinity, 6, 4, Infinity], [Infinity, 5, 8, Infinity],
         [Infinity, 1, 4, Infinity], [Infinity, 5, 8, Infinity]];
-      var data = new api.ArcDataset(arcs).setThresholds(thresholds);
+      var data = new api.internal.ArcDataset(arcs).setThresholds(thresholds);
       api.protectWorldEdges(data);
 
       var expected = [Infinity, 6, 6, Infinity, Infinity, 8, 8, Infinity, Infinity, 4, 4, Infinity, Infinity, 5, 8, Infinity];
@@ -66,7 +66,7 @@ describe("mapshaper-simplify.js", function() {
         [[3, 4, 3, 4], [-79, -84, -89.2, -90]]];
       var thresholds = [[Infinity, 6, 4, Infinity], [Infinity, 5, 8, Infinity],
         [Infinity, 1, 4, Infinity], [Infinity, 5, 8, Infinity]];
-      var data = new api.ArcDataset(arcs).setThresholds(thresholds);
+      var data = new api.internal.ArcDataset(arcs).setThresholds(thresholds);
       api.protectWorldEdges(data);
       var expected = [Infinity, 6, 4, Infinity, Infinity, 5, 8, Infinity, Infinity, 1, 4, Infinity, Infinity, 5, 8, Infinity];
       assert.deepEqual(api.Utils.toArray(data.getVertexData().zz), expected);

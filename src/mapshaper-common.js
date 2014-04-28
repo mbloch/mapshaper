@@ -3,6 +3,7 @@
 var MapShaper = {};
 var geom = MapShaper.geom = {};
 var utils = MapShaper.utils = Utils.extend({}, Utils);
+var internal = MapShaper.internal = {};
 
 // TODO: adapt to run in browser
 function stop() {

@@ -1,7 +1,7 @@
 
 var api = require('..'),
   assert = require('assert'),
-  ArcDataset = api.ArcDataset,
+  ArcDataset = api.internal.ArcDataset,
   Utils = api.Utils,
   trace = api.trace;
 
