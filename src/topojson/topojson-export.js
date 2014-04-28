@@ -1,8 +1,8 @@
 /* @requires
-topojson-utils
-topojson-split
+mapshaper-geojson,
+topojson-utils,
+topojson-split,
 mapshaper-shape-geom
-mapshaper-geojson
 */
 
 TopoJSON.exportTopology = function(layers, arcData, opts) {
@@ -47,18 +47,11 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     var name = lyr.name || "layer" + (i + 1),
         geomType = lyr.geometry_type,
         obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, geomType);
-    /*
-    var objectBounds = exporter.getBounds();
-    if (invTransform) {
-      objectBounds.transform(invTransform);
-    }
-    if (objectBounds.hasBounds()) {
-      obj.bbox = objectBounds.toArray();
-    }
-    */
-    objects[name] = obj;
-    // bounds.mergeBounds(objectBounds);
 
+    if (opts.bbox) {
+      bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
+    }
+    objects[name] = obj;
     // export attribute data, if present
     if (lyr.data) {
       TopoJSON.exportProperties(obj.geometries, lyr.data.getRecords(), opts);
@@ -74,11 +67,14 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
   if (useDelta) {
     TopoJSON.deltaEncodeArcs(topology.arcs);
   }
-  /*
+
   if (bounds.hasBounds()) {
+    if (invTransform) {
+      bounds.transform(invTransform);
+    }
     topology.bbox = bounds.toArray();
   }
-  */
+
   return topology;
 };
 

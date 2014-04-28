@@ -6197,6 +6197,77 @@ MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
 
 
 
+// utility functions for datasets and layers
+
+MapShaper.getLayerBounds = function(lyr, arcs) {
+  var bounds = new Bounds();
+  if (lyr.geometry_type == 'point') {
+    utils.forEachPoint(lyr, function(p) {
+      bounds.mergePoint(p[0], p[1]);
+    });
+  } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
+    utils.visitArcIds(lyr.shapes, function(id) {
+      arcs.mergeArcBounds(id, bounds);
+    });
+  }
+  return bounds;
+};
+
+utils.forEachPoint = function(lyr, cb) {
+  if (lyr.geometry_type != 'point') {
+    error("[forEachPoint()] Expects a point layer");
+  }
+  lyr.shapes.forEach(function(shape) {
+    var n = shape ? shape.length : 0;
+    for (var i=0; i<n; i++) {
+      cb(shape[i]);
+    }
+  });
+};
+
+
+MapShaper.validateLayer = function(lyr, arcs) {
+  var type = lyr.geometry_type;
+  if (!Utils.isArray(lyr.shapes)) {
+    error("Layer is missing shapes property");
+  }
+  if (lyr.data && lyr.data.size() != lyr.shapes.length) {
+    error("Layer contains mismatched data table and shapes");
+  }
+  if (arcs && arcs instanceof ArcDataset === false) {
+    error("Expected an ArcDataset");
+  }
+  if (type == 'polygon' || type == 'polyline') {
+    if (!arcs) error("Missing ArcDataset for a", type, "layer");
+    // TODO: validate shapes, make sure ids are w/in arc range
+  } else if (type == 'point') {
+    // TODO: validate shapes
+  } else if (type === null) {
+    // TODO: make sure shapes are all null
+  }
+};
+
+// Simple integrity checks
+MapShaper.validateDataset = function(data) {
+  if (!data) invalid("Missing dataset object");
+  if (!Utils.isArray(data.layers) || data.layers.length > 0 === false)
+    invalid("Missing layers");
+  data.layers.forEach(function(lyr) {
+    try {
+      MapShaper.validateLayer(lyr, data.arcs);
+    } catch (e) {
+      invalid(e.message);
+    }
+  });
+
+  function invalid(msg) {
+    error("[validateDataset()] " + msg);
+  }
+};
+
+
+
+
 // Snap together points within a small threshold
 // @xx, @yy arrays of x, y coords
 // @nn array of path lengths
@@ -7473,9 +7544,10 @@ MapShaper.exportGeoJSON = function(layers, arcData, opts) {
 };
 
 MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
+  opts = opts || {};
   var type = layerObj.geometry_type,
       properties = layerObj.data && layerObj.data.getRecords() || null,
-      useFeatures = !!properties && (!opts || !opts.cut_table);
+      useFeatures = !!properties && !opts.cut_table;
 
   if (useFeatures && properties.length !== layerObj.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
@@ -7496,14 +7568,6 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
     return memo === "" ? str : memo + ",\n" + str;
   }, "");
 
-  /*
-  // TODO: re-introduce bounds if requested
-  var output = {},
-      bounds = exporter.getBounds();
-  if (bounds.hasBounds()) {
-    output.bbox = bounds.toArray();
-  } */
-
   var output = useFeatures ? {
     type: "FeatureCollection",
     features: ["$"]
@@ -7511,6 +7575,13 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
     type: "GeometryCollection",
     geometries: ["$"]
   };
+
+  if (opts.bbox) {
+    var bounds = MapShaper.getLayerBounds(layerObj, arcData);
+    if (bounds.hasBounds()) {
+      output.bbox = bounds.toArray();
+    }
+  }
 
   var parts = JSON.stringify(output).split('"$"');
   return parts[0] + objects + parts[1];
@@ -7610,7 +7681,7 @@ TopoJSON.pruneArcs = function(topology) {
 // Update each arc id in a TopoJSON geometry object
 TopoJSON.updateArcIds = function(obj, cb) {
   if (obj.arcs) {
-    MapShaper.updateArcIds(obj.arcs, cb);
+    utils.updateArcIds(obj.arcs, cb);
   } else if (obj.geometries) {
     Utils.forEach(obj.geometries, function(geom) {
       TopoJSON.updateArcIds(geom, cb);
@@ -8117,18 +8188,11 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     var name = lyr.name || "layer" + (i + 1),
         geomType = lyr.geometry_type,
         obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, geomType);
-    /*
-    var objectBounds = exporter.getBounds();
-    if (invTransform) {
-      objectBounds.transform(invTransform);
-    }
-    if (objectBounds.hasBounds()) {
-      obj.bbox = objectBounds.toArray();
-    }
-    */
-    objects[name] = obj;
-    // bounds.mergeBounds(objectBounds);
 
+    if (opts.bbox) {
+      bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
+    }
+    objects[name] = obj;
     // export attribute data, if present
     if (lyr.data) {
       TopoJSON.exportProperties(obj.geometries, lyr.data.getRecords(), opts);
@@ -8144,11 +8208,14 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
   if (useDelta) {
     TopoJSON.deltaEncodeArcs(topology.arcs);
   }
-  /*
+
   if (bounds.hasBounds()) {
+    if (invTransform) {
+      bounds.transform(invTransform);
+    }
     topology.bbox = bounds.toArray();
   }
-  */
+
   return topology;
 };
 
@@ -9834,6 +9901,7 @@ function updateArcsInShape(shape, topoPaths) {
   return shape2.length > 0 ? shape2 : null;
 }
 
+// TODO: find better name, collides with utils.updateArcIds()
 function updateArcIds(src, paths) {
   return src.map(function(shape) {
     return updateArcsInShape(shape, paths);
@@ -10047,35 +10115,31 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   return j;
 };
 
-/*
-// TODO: look into removing redundancy with TopoJSON.traverseArcs() in topojson-utils.js
-MapShaper.traverseArcs = function(shapes, cb) {
-  MapShaper.traverseShapes(shapes, function(obj) {
-    cb(obj.arcId);
+utils.visitArcIds = function(arr, cb) {
+  utils.updateArcIds(arr, function(id) {
+    cb(id);
+    // returns undefined so arc ids are not changed
   });
 };
-*/
 
 // Visit each arc id in an array of ids
 // Use non-undefined return values of callback @cb as replacements.
-MapShaper.updateArcIds = function(arr, cb) {
+utils.updateArcIds = function(arr, cb) {
   Utils.forEach(arr, function(item, i) {
-    var val;
     if (item instanceof Array) {
-      MapShaper.updateArcIds(item, cb);
-    } else {
-      if (!Utils.isInteger(item)) {
-        throw new Error("Non-integer arc id in:", arr);
-      }
-      val = cb(item);
+      utils.updateArcIds(item, cb);
+    } else if (Utils.isInteger(item)) {
+      var val = cb(item);
       if (val !== void 0) {
         arr[i] = val;
       }
+    } else if (item) {
+      error("Non-integer arc id in:", arr);
     }
   });
 };
 
-MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
+utils.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   Utils.forEach(shapes, function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
@@ -10297,7 +10361,7 @@ function dissolveFirstPass(shapes, getKey) {
     }
   }
 
-  MapShaper.traverseShapes(shapes, procArc, null, procShape);
+  utils.traverseShapes(shapes, procArc, null, procShape);
   Utils.forEach(largeGroups, splitGroup);
 
   return {
@@ -10555,7 +10619,7 @@ function arcDissolveSecondPass(layers, arcs, map) {
   // ids of dissolved arcs (inverse of @map)
   //
   Utils.forEach(layers, function(lyr) {
-    MapShaper.traverseShapes(lyr.shapes, null, updatePaths, null);
+    utils.traverseShapes(lyr.shapes, null, updatePaths, null);
   });
 
   // Generate a new ArcDataset containing dissolved arcs
@@ -10640,7 +10704,7 @@ function arcDissolveFirstPass(layers, arcs) {
   // arcs across all layers (hackish)
   //
   Utils.forEach(layers, function(lyr) {
-    MapShaper.traverseShapes(lyr.shapes, null, translatePath);
+    utils.traverseShapes(lyr.shapes, null, translatePath);
   });
   var topo = buildPathTopology(xx2, yy2, nn2);
   return getArcMap(topo.arcs);
@@ -11310,7 +11374,7 @@ MapShaper.mergeDatasets = function(arr) {
     data.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
         // reindex arc ids
-        MapShaper.updateArcIds(lyr.shapes, function(id) {
+        utils.updateArcIds(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
         });
       }
@@ -11660,7 +11724,7 @@ MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
 
 MapShaper.countArcsInShapes = function(shapes, arcCount) {
   var counts = new Uint8Array(arcCount);
-  MapShaper.traverseShapes(shapes, null, function(obj) {
+  utils.traverseShapes(shapes, null, function(obj) {
     var arcs = obj.arcs,
         id;
     for (var i=0; i<arcs.length; i++) {
@@ -11982,6 +12046,11 @@ MapShaper.getExtraOptionParser = function(optimist) {
 
   .options("id-field", {
     describe: "field to use for TopoJSON id property"
+  })
+
+  .options("bbox", {
+    "boolean": true,
+    describe: "add bbox property to TopoJSON or GeoJSON output"
   })
 
   .options("no-repair", {
@@ -12357,6 +12426,10 @@ cli.validateExtraOpts = function(argv) {
 
   if (argv['id-field']) {
     opts.id_field = argv['id-field'];
+  }
+
+  if (argv.bbox) {
+    opts.bbox = true;
   }
 
   if (argv.innerlines) {

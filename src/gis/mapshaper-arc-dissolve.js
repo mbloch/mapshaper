@@ -85,7 +85,7 @@ function arcDissolveSecondPass(layers, arcs, map) {
   // ids of dissolved arcs (inverse of @map)
   //
   Utils.forEach(layers, function(lyr) {
-    MapShaper.traverseShapes(lyr.shapes, null, updatePaths, null);
+    utils.traverseShapes(lyr.shapes, null, updatePaths, null);
   });
 
   // Generate a new ArcDataset containing dissolved arcs
@@ -170,7 +170,7 @@ function arcDissolveFirstPass(layers, arcs) {
   // arcs across all layers (hackish)
   //
   Utils.forEach(layers, function(lyr) {
-    MapShaper.traverseShapes(lyr.shapes, null, translatePath);
+    utils.traverseShapes(lyr.shapes, null, translatePath);
   });
   var topo = buildPathTopology(xx2, yy2, nn2);
   return getArcMap(topo.arcs);

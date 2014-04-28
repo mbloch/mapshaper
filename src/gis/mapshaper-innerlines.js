@@ -111,7 +111,7 @@ MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
 
 MapShaper.countArcsInShapes = function(shapes, arcCount) {
   var counts = new Uint8Array(arcCount);
-  MapShaper.traverseShapes(shapes, null, function(obj) {
+  utils.traverseShapes(shapes, null, function(obj) {
     var arcs = obj.arcs,
         id;
     for (var i=0; i<arcs.length; i++) {

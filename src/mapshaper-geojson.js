@@ -1,8 +1,10 @@
 /* @requires
 mapshaper-common,
+mapshaper-dataset-utils,
 mapshaper-path-import,
 mapshaper-path-export,
-mapshaper-data-table */
+mapshaper-data-table
+*/
 
 MapShaper.importGeoJSON = function(obj, opts) {
   if (Utils.isString(obj)) {
@@ -154,9 +156,10 @@ MapShaper.exportGeoJSON = function(layers, arcData, opts) {
 };
 
 MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
+  opts = opts || {};
   var type = layerObj.geometry_type,
       properties = layerObj.data && layerObj.data.getRecords() || null,
-      useFeatures = !!properties && (!opts || !opts.cut_table);
+      useFeatures = !!properties && !opts.cut_table;
 
   if (useFeatures && properties.length !== layerObj.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
@@ -177,14 +180,6 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
     return memo === "" ? str : memo + ",\n" + str;
   }, "");
 
-  /*
-  // TODO: re-introduce bounds if requested
-  var output = {},
-      bounds = exporter.getBounds();
-  if (bounds.hasBounds()) {
-    output.bbox = bounds.toArray();
-  } */
-
   var output = useFeatures ? {
     type: "FeatureCollection",
     features: ["$"]
@@ -192,6 +187,13 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
     type: "GeometryCollection",
     geometries: ["$"]
   };
+
+  if (opts.bbox) {
+    var bounds = MapShaper.getLayerBounds(layerObj, arcData);
+    if (bounds.hasBounds()) {
+      output.bbox = bounds.toArray();
+    }
+  }
 
   var parts = JSON.stringify(output).split('"$"');
   return parts[0] + objects + parts[1];

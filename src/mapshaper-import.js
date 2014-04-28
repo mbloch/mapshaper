@@ -64,6 +64,7 @@ function updateArcsInShape(shape, topoPaths) {
   return shape2.length > 0 ? shape2 : null;
 }
 
+// TODO: find better name, collides with utils.updateArcIds()
 function updateArcIds(src, paths) {
   return src.map(function(shape) {
     return updateArcsInShape(shape, paths);

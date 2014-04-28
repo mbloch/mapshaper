@@ -14,7 +14,7 @@ MapShaper.mergeDatasets = function(arr) {
     data.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
         // reindex arc ids
-        MapShaper.updateArcIds(lyr.shapes, function(id) {
+        utils.updateArcIds(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
         });
       }

@@ -60,6 +60,49 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(api.exportGeoJSONObject(lyr, arcs, {cut_table: true}), target);
     })
 
+    it('export points with bbox', function() {
+      var lyr = {
+        geometry_type: 'point',
+        shapes: [[[0, 1]], [[2, 3], [1, 4]]]
+      };
+
+      var target = {
+        type: "GeometryCollection",
+        geometries: [{
+          type: "Point",
+          coordinates: [0,1]
+        }, {
+          type: "MultiPoint",
+          coordinates: [[2, 3], [1, 4]]
+        }],
+        bbox: [0, 1, 2, 4]
+      };
+
+      var result = api.exportGeoJSONObject(lyr, null, {bbox: true});
+      assert.deepEqual(result, target);
+    })
+
+    it('export polygons with bbox', function() {
+      var arcs = new api.ArcDataset([[[1, 1, 2, 1], [1, 3, 3, 1]],
+          [[-1, 0, 0, -1], [1, 0, 1, 1]]]),
+          lyr = {
+            geometry_type: "polygon",
+            shapes: [[[0]], [[~1]]]
+          };
+
+      var target = {"type":"GeometryCollection","geometries":[
+        { type: 'Polygon',
+          coordinates: [[[1, 1], [1, 3], [2, 3], [1, 1]]]
+          }, { type: 'Polygon',
+          coordinates: [[[-1, 1], [0, 1], [0, 0], [-1, 1]]]
+          }
+        ]
+        , bbox: [-1, 0, 2, 3]
+      };
+      var result = api.exportGeoJSONObject(lyr, arcs, {bbox: true});
+      assert.deepEqual(result, target);
+    })
+
   })
 
   describe('Import/Export roundtrip tests', function () {

@@ -245,6 +245,11 @@ MapShaper.getExtraOptionParser = function(optimist) {
     describe: "field to use for TopoJSON id property"
   })
 
+  .options("bbox", {
+    "boolean": true,
+    describe: "add bbox property to TopoJSON or GeoJSON output"
+  })
+
   .options("no-repair", {
     describe: "don't remove intersections introduced by simplification",
     'boolean': true
@@ -618,6 +623,10 @@ cli.validateExtraOpts = function(argv) {
 
   if (argv['id-field']) {
     opts.id_field = argv['id-field'];
+  }
+
+  if (argv.bbox) {
+    opts.bbox = true;
   }
 
   if (argv.innerlines) {

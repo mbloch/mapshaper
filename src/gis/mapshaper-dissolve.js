@@ -184,7 +184,7 @@ function dissolveFirstPass(shapes, getKey) {
     }
   }
 
-  MapShaper.traverseShapes(shapes, procArc, null, procShape);
+  utils.traverseShapes(shapes, procArc, null, procShape);
   Utils.forEach(largeGroups, splitGroup);
 
   return {

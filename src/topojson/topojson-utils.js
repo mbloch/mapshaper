@@ -27,7 +27,7 @@ TopoJSON.pruneArcs = function(topology) {
 // Update each arc id in a TopoJSON geometry object
 TopoJSON.updateArcIds = function(obj, cb) {
   if (obj.arcs) {
-    MapShaper.updateArcIds(obj.arcs, cb);
+    utils.updateArcIds(obj.arcs, cb);
   } else if (obj.geometries) {
     Utils.forEach(obj.geometries, function(geom) {
       TopoJSON.updateArcIds(geom, cb);

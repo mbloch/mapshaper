@@ -28,35 +28,31 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   return j;
 };
 
-/*
-// TODO: look into removing redundancy with TopoJSON.traverseArcs() in topojson-utils.js
-MapShaper.traverseArcs = function(shapes, cb) {
-  MapShaper.traverseShapes(shapes, function(obj) {
-    cb(obj.arcId);
+utils.visitArcIds = function(arr, cb) {
+  utils.updateArcIds(arr, function(id) {
+    cb(id);
+    // returns undefined so arc ids are not changed
   });
 };
-*/
 
 // Visit each arc id in an array of ids
 // Use non-undefined return values of callback @cb as replacements.
-MapShaper.updateArcIds = function(arr, cb) {
+utils.updateArcIds = function(arr, cb) {
   Utils.forEach(arr, function(item, i) {
-    var val;
     if (item instanceof Array) {
-      MapShaper.updateArcIds(item, cb);
-    } else {
-      if (!Utils.isInteger(item)) {
-        throw new Error("Non-integer arc id in:", arr);
-      }
-      val = cb(item);
+      utils.updateArcIds(item, cb);
+    } else if (Utils.isInteger(item)) {
+      var val = cb(item);
       if (val !== void 0) {
         arr[i] = val;
       }
+    } else if (item) {
+      error("Non-integer arc id in:", arr);
     }
   });
 };
 
-MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
+utils.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   Utils.forEach(shapes, function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
