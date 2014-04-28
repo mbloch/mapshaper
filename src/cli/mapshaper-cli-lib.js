@@ -27,6 +27,8 @@ mapshaper-info
 
 var cli = MapShaper.cli = {};
 
+// console.log(Utils.keys(MapShaper))
+
 var usage =
   "Usage: mapshaper [options] [file ...]\n\n" +
 

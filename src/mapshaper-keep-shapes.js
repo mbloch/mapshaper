@@ -60,7 +60,7 @@ MapShaper.protectMultiRing = function(arcData, ring) {
       iter, area, added;
   arcData.setRetainedInterval(Infinity);
   iter = arcData.getShapeIter(ring);
-  area = MapShaper.getPathArea(iter);
+  area = geom.getPathArea(iter);
   while (area <= minArea) {
     added = MapShaper.lockMaxThreshold(arcData, ring);
     if (added === 0) {
@@ -68,7 +68,7 @@ MapShaper.protectMultiRing = function(arcData, ring) {
       break;
     }
     iter.reset();
-    area = MapShaper.getPathArea(iter);
+    area = geom.getPathArea(iter);
   }
   arcData.setRetainedInterval(zlim);
 };

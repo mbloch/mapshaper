@@ -216,7 +216,7 @@ TopoJSON.groupPolygonRings = function(shapes, coords) {
   shapes.forEach(function(ids) {
     if (!Utils.isArray(ids)) throw new Error("expected array");
     iter.init(ids);
-    var area = MapShaper.getPathArea(iter),
+    var area = geom.getPathArea(iter),
         bounds = coords.getSimpleShapeBounds(ids);
     var path = {
       ids: ids,

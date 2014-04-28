@@ -3,7 +3,7 @@
 // @content: ArrayBuffer or String
 // @type: 'shapefile'|'json'
 //
-MapShaper.importContent = function(content, fileType, opts) {
+MapShaper.importFileContent = function(content, fileType, opts) {
   var dataset, fileFmt;
   opts = opts || {};
   T.start();

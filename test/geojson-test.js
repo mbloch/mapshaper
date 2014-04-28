@@ -251,7 +251,7 @@ describe('mapshaper-geojson.js', function () {
 function geoJSONRoundTrip(fname) {
   var data = api.importFromFile(fixPath(fname));
   var files = api.exportContent(data.layers, data.arcs, {output_format:'geojson'});
-  var data2 = api.importContent(files[0].content, 'json');
+  var data2 = api.importFileContent(files[0].content, 'json');
   var files2 = api.exportContent(data2.layers, data2.arcs, {output_format:'geojson'});
 
   assert.deepEqual(files, files2);
@@ -259,6 +259,6 @@ function geoJSONRoundTrip(fname) {
 
 function importExport(obj, noTopo) {
   var json = Utils.isString(obj) ? obj : JSON.stringify(obj);
-  var geom = api.importContent(json, 'json', {no_topology: noTopo});
+  var geom = api.importFileContent(json, 'json', {no_topology: noTopo});
   return api.exportGeoJSONObject(geom.layers[0], geom.arcs);
 }

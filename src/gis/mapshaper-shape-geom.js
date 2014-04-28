@@ -3,15 +3,15 @@
 // Calculations for planar geometry of shapes
 // TODO: consider 3D versions of some of these
 
-MapShaper.getShapeArea = function(shp, arcs) {
+geom.getShapeArea = function(shp, arcs) {
   var area = Utils.reduce(shp, function(area, ids) {
     var iter = arcs.getShapeIter(ids);
-    return area + MapShaper.getPathArea(iter);
+    return area + geom.getPathArea(iter);
   }, 0);
   return area;
 };
 
-MapShaper.getPathArea = function(iter) {
+geom.getPathArea = function(iter) {
   var sum = 0,
       x, y;
   if (iter.hasNext()) {
@@ -27,7 +27,7 @@ MapShaper.getPathArea = function(iter) {
 };
 
 // TODO: remove this
-MapShaper.getPathArea2 = function(points) {
+geom.getPathArea2 = function(points) {
   var sum = 0,
       x, y, p;
   for (var i=0, n=points.length; i<n; i++) {
@@ -41,7 +41,7 @@ MapShaper.getPathArea2 = function(points) {
   return sum / 2;
 };
 
-MapShaper.getMaxPath = function(shp, arcs) {
+geom.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
   return Utils.reduce(shp, function(maxPath, path) {
     var bbArea = arcs.getSimpleShapeBounds(path).area();
@@ -53,7 +53,7 @@ MapShaper.getMaxPath = function(shp, arcs) {
   }, null);
 };
 
-MapShaper.getAvgPathXY = function(ids, arcs) {
+geom.getAvgPathXY = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return null;
   var x0 = iter.x,
@@ -77,7 +77,7 @@ MapShaper.getAvgPathXY = function(ids, arcs) {
   };
 };
 
-MapShaper.getPathCentroid = function(ids, arcs) {
+geom.getPathCentroid = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids),
       sum = 0,
       sumX = 0,
@@ -96,24 +96,24 @@ MapShaper.getPathCentroid = function(ids, arcs) {
   }
   area = sum / 2;
   if (area === 0) {
-    return MapShaper.getAvgPathXY(ids, arcs);
+    return geom.getAvgPathXY(ids, arcs);
   } else return {
     x: sumX / (6 * area),
     y: sumY / (6 * area)
   };
 };
 
-MapShaper.getShapeCentroid = function(shp, arcs) {
-  var maxPath = MapShaper.getMaxPath(shp, arcs);
-  return maxPath ? MapShaper.getPathCentroid(maxPath, arcs) : null;
+geom.getShapeCentroid = function(shp, arcs) {
+  var maxPath = geom.getMaxPath(shp, arcs);
+  return maxPath ? geom.getPathCentroid(maxPath, arcs) : null;
 };
 
 // TODO: decide how to handle points on the boundary
-MapShaper.testPointInShape = function(x, y, shp, arcs) {
+geom.testPointInShape = function(x, y, shp, arcs) {
   var intersections = 0;
   Utils.forEach(shp, function(ids) {
     if (arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
-      if (MapShaper.testPointInRing(x, y, ids, arcs)) {
+      if (geom.testPointInRing(x, y, ids, arcs)) {
         intersections++;
       }
     }
@@ -126,12 +126,12 @@ MapShaper.testPointInShape = function(x, y, shp, arcs) {
 // - find centroid
 // - ...
 //
-MapShaper.getInteriorPoint = function(shp, arcs) {
+geom.getInteriorPoint = function(shp, arcs) {
 
 
 };
 
-MapShaper.getPointToPathDistance = function(px, py, ids, arcs) {
+geom.getPointToPathDistance = function(px, py, ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return Infinity;
   var ax = iter.x,
@@ -154,25 +154,25 @@ MapShaper.getPointToPathDistance = function(px, py, ids, arcs) {
   return Math.sqrt(pPathSq);
 };
 
-MapShaper.getYIntercept = function(x, ax, ay, bx, by) {
+geom.getYIntercept = function(x, ax, ay, bx, by) {
   return ay + (x - ax) * (by - ay) / (bx - ax);
 };
 
-MapShaper.getXIntercept = function(y, ax, ay, bx, by) {
+geom.getXIntercept = function(y, ax, ay, bx, by) {
   return ax + (y - ay) * (bx - ax) / (by - ay);
 };
 
 // Return signed distance of a point to a shape
 //
-MapShaper.getPointToShapeDistance = function(x, y, shp, arcs) {
+geom.getPointToShapeDistance = function(x, y, shp, arcs) {
   var minDist = Utils.reduce(shp, function(minDist, ids) {
-    var pathDist = MapShaper.getPointToPathDistance(x, y, ids, arcs);
+    var pathDist = geom.getPointToPathDistance(x, y, ids, arcs);
     return Math.min(minDist, pathDist);
   }, Infinity);
   return minDist;
 };
 
-MapShaper.testPointInRing = function(x, y, ids, arcs) {
+geom.testPointInRing = function(x, y, ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return false;
   var x0 = iter.x,
@@ -207,7 +207,7 @@ MapShaper.testPointInRing = function(x, y, ids, arcs) {
     } else if (y < ay && y < by) {
       intersections++;
     } else {
-      yInt = MapShaper.getYIntercept(x, ax, ay, bx, by);
+      yInt = geom.getYIntercept(x, ax, ay, bx, by);
       if (yInt > y) {
         intersections++;
       }

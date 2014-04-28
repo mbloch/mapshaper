@@ -163,7 +163,7 @@ function topoJSONRoundTrip(fname) {
   };
   var data = api.importFromFile(fixPath(fname));
   var files = api.exportContent(data.layers, data.arcs, opts);
-  var data2 = api.importContent(files[0].content, 'json');
+  var data2 = api.importFileContent(files[0].content, 'json');
   var files2 = api.exportContent(data2.layers, data2.arcs, opts);
 
   assert.deepEqual(files, files2);

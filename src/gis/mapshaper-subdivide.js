@@ -1,4 +1,4 @@
-/* @requires mapshaper-layer-math, mapshaper-expressions */
+/* @requires mapshaper-dataset-utils, mapshaper-expressions */
 
 //
 //
@@ -28,7 +28,7 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
     stop("--subdivide expressions must return true or false");
   }
   if (divide) {
-    bounds = MapShaper.calcLayerBounds(lyr, arcs);
+    bounds = MapShaper.getLayerBounds(lyr, arcs);
     tmp = MapShaper.divideLayer(lyr, arcs, bounds);
     lyr1 = tmp[0];
     if (lyr1.shapes.length > 1 && lyr1.shapes.length < lyr.shapes.length) {

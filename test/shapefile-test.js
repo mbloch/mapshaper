@@ -48,7 +48,7 @@ function shapefileRoundTrip(fname) {
   var data = api.importFromFile(fixPath(fname), {encoding: 'ascii'});
   var files = api.exportContent(data.layers, data.arcs, {encoding: 'ascii', output_format:"shapefile"});
 
-  var data2 = api.importContent(files[0].content, 'shp', {encoding: 'ascii'});
+  var data2 = api.importFileContent(files[0].content, 'shp', {encoding: 'ascii'});
   var files2 = api.exportContent(data2.layers, data2.arcs, {encoding: 'ascii', output_format:"shapefile"});
 
   assert.ok(Utils.buffersAreIdentical(files[0].content, files2[0].content));

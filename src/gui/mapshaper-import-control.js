@@ -95,7 +95,7 @@ function ImportControl(editor) {
         snapping: !!El("#g-snap-points-opt").node().checked
       };
       T.start("Start timing");
-      data = MapShaper.importContent(content, type, opts);
+      data = MapShaper.importFileContent(content, type, opts);
       editor.addData(data, opts);
       T.stop("Done importing");
     } else if (type == 'dbf') {

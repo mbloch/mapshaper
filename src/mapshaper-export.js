@@ -2,7 +2,7 @@
 mapshaper-geojson
 mapshaper-topojson
 mapshaper-shapefile
-mapshaper-layer-math
+mapshaper-dataset-utils
 */
 
 // Return an array of objects with "filename" "filebase" "extension" and
@@ -85,7 +85,7 @@ MapShaper.exportContent = function(layers, arcData, opts) {
   //
   function createIndexFile(layers, arcs) {
     var index = Utils.map(layers, function(lyr) {
-      var bounds = MapShaper.calcLayerBounds(lyr, arcs);
+      var bounds = MapShaper.getLayerBounds(lyr, arcs);
       return {
         bounds: bounds.toArray(),
         name: lyr.name

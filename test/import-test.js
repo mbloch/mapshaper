@@ -45,14 +45,14 @@ describe('mapshaper-import.js', function () {
   describe('import geojson w/out topology', function () {
     it("two triangles as GeometryCollection", function() {
       var geojson = JSON.stringify(geo1);
-      var data = api.importContent(geojson, 'json', {no_topology: true});
+      var data = api.importFileContent(geojson, 'json', {no_topology: true});
       var target = [[[3, 1], [1, 1], [2, 3], [3, 1]], [[4, 3], [3, 1], [2, 3], [4, 3]]];
       assert.deepEqual(target, data.arcs.toArray());
     })
 
     it("two triangles as FeatureCollection with one null-geometry feature", function() {
       var geojson = JSON.stringify(geo2);
-      var data = api.importContent(geojson, 'json', {no_topology: true});
+      var data = api.importFileContent(geojson, 'json', {no_topology: true});
       var target = [[[3, 1], [1, 1], [2, 3], [3, 1]], [[4, 3], [3, 1], [2, 3], [4, 3]]];
       assert.deepEqual(target, data.arcs.toArray());
       assert.deepEqual([[[0]], null, [[1]]], data.layers[0].shapes);
@@ -63,7 +63,7 @@ describe('mapshaper-import.js', function () {
   describe('import geojson with topology', function () {
     it("two triangles as GeometryCollection", function() {
       var geojson = JSON.stringify(geo2);
-      var data = api.importContent(geojson, 'json', {});
+      var data = api.importFileContent(geojson, 'json', {});
       // cab, bc, bdc
       var target = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
       assert.deepEqual(target, data.arcs.toArray());

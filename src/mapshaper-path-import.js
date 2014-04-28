@@ -1,6 +1,7 @@
 /* @requires
 mapshaper-common,
 mapshaper-geom,
+mapshaper-shape-geom,
 mapshaper-snapping,
 mapshaper-topology
 */
@@ -148,7 +149,7 @@ function PathImporter(reservedPoints, opts) {
   };
 
   this.importPolygon = function(points, isHole) {
-    var area = MapShaper.getPathArea2(points);
+    var area = geom.getPathArea2(points);
 
     if (isHole === true && area > 0 || isHole === false && area < 0) {
       verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");

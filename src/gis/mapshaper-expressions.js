@@ -130,7 +130,7 @@ function FeatureExpressionContext(arcs, shapes, records) {
       return shapeBounds().height();
     },
     area: function() {
-      return MapShaper.getShapeArea(_ids, arcs);
+      return geom.getShapeArea(_ids, arcs);
     },
     originalArea: function() {
       var i = arcs.getRetainedInterval(),
@@ -184,7 +184,7 @@ function FeatureExpressionContext(arcs, shapes, records) {
   };
 
   function centroid() {
-    _centroid = _centroid || MapShaper.getShapeCentroid(_ids, arcs);
+    _centroid = _centroid || geom.getShapeCentroid(_ids, arcs);
     return _centroid;
   }
 
