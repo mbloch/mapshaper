@@ -3,6 +3,7 @@
 // @content: ArrayBuffer or String
 // @type: 'shapefile'|'json'
 //
+api.importFileContent =
 MapShaper.importFileContent = function(content, fileType, opts) {
   var dataset, fileFmt;
   opts = opts || {};
@@ -35,6 +36,7 @@ MapShaper.importFileContent = function(content, fileType, opts) {
   return dataset;
 };
 
+api.buildTopology =
 MapShaper.buildTopology = function(dataset) {
   if (!dataset.arcs) return;
   var raw = dataset.arcs.getVertexData(),

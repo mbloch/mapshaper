@@ -43,8 +43,8 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
-        info = utils.parseLocalPath(name),
-        type = utils.guessFileType(name),
+        info = MapShaper.parseLocalPath(name),
+        type = MapShaper.guessFileType(name),
         reader;
     if (type) {
       reader = new FileReader();
@@ -60,7 +60,7 @@ function ImportControl(editor) {
   };
 
   this.loadFile = function(path) {
-    var type = utils.guessFileType(path);
+    var type = MapShaper.guessFileType(path);
     if (type) {
       Utils.loadBinaryData(path, function(buf) {
         inputFileContent(path, type, buf);

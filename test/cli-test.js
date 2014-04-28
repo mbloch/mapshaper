@@ -35,31 +35,31 @@ describe('mapshaper-cli.js', function() {
 
     it(bad1 + " (invalid)", function() {
       assert.throws(function() {
-        mapshaper.checkArgs(splitOpts(bad1));
+        cli.checkArgs(splitOpts(bad1));
       });
     })
 
     it(bad2 + " (invalid)", function() {
       assert.throws(function() {
-        mapshaper.checkArgs(splitOpts(bad2));
+        cli.checkArgs(splitOpts(bad2));
       });
     })
 
     it(bad3 + " (invalid)", function() {
       assert.throws(function() {
-        mapshaper.checkArgs(splitOpts(bad3));
+        cli.checkArgs(splitOpts(bad3));
       });
     })
 
     it(bad4 + " (invalid)", function() {
       assert.throws(function() {
-        mapshaper.checkArgs(splitOpts(bad4));
+        cli.checkArgs(splitOpts(bad4));
       });
     })
 
     it(good1, function() {
        assert.doesNotThrow(function() {
-        mapshaper.checkArgs(splitOpts(good1));
+        cli.checkArgs(splitOpts(good1));
       });
     })
 
@@ -67,7 +67,7 @@ describe('mapshaper-cli.js', function() {
     it(good2, function() {
       var argv = splitOpts(good2);
       assert.doesNotThrow(function() {
-        mapshaper.checkArgs(argv);
+        cli.checkArgs(argv);
       });
     })
 
@@ -560,7 +560,7 @@ describe('mapshaper-cli.js', function() {
   describe('getOutputPaths()', function () {
     it('add -ms extension to resolve collision', function () {
       assert.deepEqual(["test_data/two_states-ms.shp"],
-        mapshaper.getOutputPaths(
+        mapshaper.cli.getOutputPaths(
           [{filebase: "two_states"}], "test_data", "shp"));
     })
   })

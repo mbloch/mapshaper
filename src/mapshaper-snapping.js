@@ -11,8 +11,7 @@ mapshaper-shapes
 //
 //
 MapShaper.autoSnapCoords = function(arcs, threshold, points) {
-
-  var avgSec = arcs.getAverageSegment(3),
+  var avgSeg = arcs.getAverageSegment(3),
       avgDist = avgSeg[0] + avgSeg[1], // avg. dx + dy -- crude approximation
       snapDist = avgDist * 0.0025,
       snapCount = 0,

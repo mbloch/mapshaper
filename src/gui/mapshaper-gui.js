@@ -12,7 +12,7 @@ mapshaper-repair-control,
 mapshaper-keep-shapes
 */
 
-MapShaper.LOGGING = true;
+// MapShaper.LOGGING = true;
 
 if (Browser.inBrowser) {
   Browser.onload(function() {
@@ -115,11 +115,13 @@ function Editor() {
   };
 }
 
+/*
 var api = {
   ArcDataset: ArcDataset,
   Utils: Utils,
   trace: trace,
   error: error
 };
+*/
 
 Opts.extendNamespace("mapshaper", api);

@@ -1,14 +1,14 @@
 /* @requires mapshaper-expressions */
 
-MapShaper.evaluateLayers = function(layers, arcs, exp) {
+api.evaluateLayers = function(layers, arcs, exp) {
   T.start();
   for (var i=0; i<layers.length; i++) {
-    MapShaper.evaluate(layers[i], arcs, exp);
+    api.evaluateLayer(layers[i], arcs, exp);
   }
   T.stop("Calculate expression");
 };
 
-MapShaper.evaluate = function(lyr, arcs, exp) {
+api.evaluateLayer = function(lyr, arcs, exp) {
   var shapes = lyr.shapes,
       // create new table if none exists
       dataTable = lyr.data || (lyr.data = new DataTable(shapes.length)),

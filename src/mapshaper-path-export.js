@@ -15,10 +15,8 @@ MapShaper.exportPointData = function(shape) {
   return data;
 };
 
-// TODO: used by shapefile export too -- move to another file
-// also: consider splitting into polygon / polyline / point functions
 MapShaper.exportPathData = function(shape, arcs, type) {
-  // kludge until Shapefile refactoring is improved
+  // kludge until Shapefile exporting is refactored
   if (type == 'point') return MapShaper.exportPointData(shape);
 
   var pointCount = 0,
@@ -125,4 +123,31 @@ MapShaper.exportPathCoords = function(iter) {
     yy: yy,
     pointCount: xx.length
   };
+};
+
+MapShaper.arcHasLength = function(id, coords) {
+  var iter = coords.getArcIter(id), x, y;
+  if (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    while (iter.hasNext()) {
+      if (iter.x != x || iter.y != y) return true;
+    }
+  }
+  return false;
+};
+
+MapShaper.filterEmptyArcs = function(shape, coords) {
+  if (!shape) return null;
+  var shape2 = [];
+  Utils.forEach(shape, function(ids) {
+    var path = [];
+    for (var i=0; i<ids.length; i++) {
+      if (MapShaper.arcHasLength(ids[i], coords)) {
+        path.push(ids[i]);
+      }
+    }
+    if (path.length > 0) shape2.push(path);
+  });
+  return shape2.length > 0 ? shape2 : null;
 };

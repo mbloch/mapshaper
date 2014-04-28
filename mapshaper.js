@@ -4061,10 +4061,12 @@ Utils.formatter = function(fmt) {
 
 
 
-var MapShaper = {};
-var geom = MapShaper.geom = {};
-var utils = MapShaper.utils = Utils.extend({}, Utils);
-var internal = MapShaper.internal = {};
+var api = {};
+var MapShaper = api.internal = {};
+var geom = api.geom = {};
+var utils = api.utils = Utils.extend({}, Utils);
+
+MapShaper.LOGGING = true; //
 
 // TODO: adapt to run in browser
 function stop() {
@@ -4094,7 +4096,8 @@ utils.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 };
 
-utils.parseLocalPath = function(path) {
+utils.parseLocalPath = // expose for script
+MapShaper.parseLocalPath = function(path) {
   var obj = {
     ext: '',
     directory: '',
@@ -4123,8 +4126,8 @@ utils.parseLocalPath = function(path) {
   return obj;
 };
 
-utils.guessFileType = function(file) {
-  var info = utils.parseLocalPath(file),
+MapShaper.guessFileType = function(file) {
+  var info = MapShaper.parseLocalPath(file),
       ext = info.ext.toLowerCase(),
       type = null;
   if (/json$/i.test(file)) {
@@ -4135,7 +4138,7 @@ utils.guessFileType = function(file) {
   return type;
 };
 
-utils.guessFileFormat = function(str) {
+MapShaper.guessFileFormat = function(str) {
   var type = null,
       name = str.toLowerCase();
   if (/topojson$/.test(name)) {
@@ -4562,7 +4565,7 @@ Utils.extend(geom, {
 
 
 
-MapShaper.internal.ArcDataset = ArcDataset;
+MapShaper.ArcDataset = ArcDataset;
 
 // An interface for managing a collection of paths.
 // Constructor signatures:
@@ -5657,14 +5660,9 @@ function getXYHash() {
   };
 }
 
-
 // Export functions for testing
-MapShaper.topology = {
-  buildPathTopology: buildPathTopology,
-  ArcIndex: ArcIndex
-  // groupPathsByShape: groupPathsByShape,
-  // initPathIds: initPathIds
-};
+MapShaper.buildPathTopology = buildPathTopology;
+MapShaper.ArcIndex = ArcIndex;
 
 
 
@@ -5833,7 +5831,7 @@ function Heap() {
 
 var Visvalingam = {};
 
-MapShaper.internal.Heap = Heap; // export Heap for testing
+MapShaper.Heap = Heap; // export Heap for testing
 
 Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   var bufLen = 0,
@@ -6113,7 +6111,6 @@ MapShaper.findMaxThreshold = function(zz) {
   return maxZ;
 };
 
-
 // Convert arrays of lng and lat coords (xsrc, ysrc) into
 // x, y, z coords on the surface of a sphere with radius 6378137
 // (the radius of spherical Earth datum in meters)
@@ -6131,6 +6128,7 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
   }
 };
 
+api.simplifyPaths = // export for script
 MapShaper.simplifyPaths = function(paths, method, force2D) {
   T.start();
   var bounds = paths.getBounds().toArray();
@@ -6501,8 +6499,7 @@ geom.testPointInRing = function(x, y, ids, arcs) {
 //
 //
 MapShaper.autoSnapCoords = function(arcs, threshold, points) {
-
-  var avgSec = arcs.getAverageSegment(3),
+  var avgSeg = arcs.getAverageSegment(3),
       avgDist = avgSeg[0] + avgSeg[1], // avg. dx + dy -- crude approximation
       snapDist = avgDist * 0.0025,
       snapCount = 0,
@@ -6827,10 +6824,8 @@ MapShaper.exportPointData = function(shape) {
   return data;
 };
 
-// TODO: used by shapefile export too -- move to another file
-// also: consider splitting into polygon / polyline / point functions
 MapShaper.exportPathData = function(shape, arcs, type) {
-  // kludge until Shapefile refactoring is improved
+  // kludge until Shapefile exporting is refactored
   if (type == 'point') return MapShaper.exportPointData(shape);
 
   var pointCount = 0,
@@ -6939,16 +6934,43 @@ MapShaper.exportPathCoords = function(iter) {
   };
 };
 
+MapShaper.arcHasLength = function(id, coords) {
+  var iter = coords.getArcIter(id), x, y;
+  if (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    while (iter.hasNext()) {
+      if (iter.x != x || iter.y != y) return true;
+    }
+  }
+  return false;
+};
+
+MapShaper.filterEmptyArcs = function(shape, coords) {
+  if (!shape) return null;
+  var shape2 = [];
+  Utils.forEach(shape, function(ids) {
+    var path = [];
+    for (var i=0; i<ids.length; i++) {
+      if (MapShaper.arcHasLength(ids[i], coords)) {
+        path.push(ids[i]);
+      }
+    }
+    if (path.length > 0) shape2.push(path);
+  });
+  return shape2.length > 0 ? shape2 : null;
+};
+
 
 
 
 MapShaper.getEncodings = function() {
-  var encodings = MapShaper.internal.getIconvLiteEncodings();
-  encodings = encodings.concat(MapShaper.internal.getJapaneseEncodings());
+  var encodings = MapShaper.getIconvLiteEncodings();
+  encodings = encodings.concat(MapShaper.getJapaneseEncodings());
   return Utils.uniq(encodings);
 };
 
-MapShaper.internal.getIconvLiteEncodings = function() {
+MapShaper.getIconvLiteEncodings = function() {
   var iconv = require('iconv-lite');
   iconv.encodingExists('ascii'); // make iconv load its encodings
   return Utils.filter(Utils.keys(iconv.encodings), function(name) {
@@ -6957,13 +6979,13 @@ MapShaper.internal.getIconvLiteEncodings = function() {
 };
 
 // List of encodings from jconv (hard-coded, because not exposed by the library)
-MapShaper.internal.getJapaneseEncodings = function() {
+MapShaper.getJapaneseEncodings = function() {
   return ['jis', 'iso2022jp', 'iso2022jp1', 'shiftjis', 'eucjp'];
 };
 
-MapShaper.internal.requireConversionLib = function(encoding) {
+MapShaper.requireConversionLib = function(encoding) {
   var conv;
-  if (Utils.contains(MapShaper.internal.getJapaneseEncodings(), encoding)) {
+  if (Utils.contains(MapShaper.getJapaneseEncodings(), encoding)) {
     conv = require('jconv');
   } else {
     conv = require('iconv-lite');
@@ -6971,7 +6993,7 @@ MapShaper.internal.requireConversionLib = function(encoding) {
   return conv;
 };
 
-MapShaper.internal.getFormattedEncodings = function() {
+MapShaper.getFormattedEncodings = function() {
   var encodings = MapShaper.getEncodings(),
       longest = Utils.reduce(encodings, function(len, str) {
         return Math.max(len, str.length);
@@ -6987,7 +7009,7 @@ MapShaper.internal.getFormattedEncodings = function() {
 
 MapShaper.printEncodings = function() {
   console.log("Supported encodings:");
-  console.log(MapShaper.internal.getFormattedEncodings());
+  console.log(MapShaper.getFormattedEncodings());
 };
 
 
@@ -7021,7 +7043,7 @@ Dbf.getStringReaderAscii = function(size) {
 };
 
 Dbf.getStringReaderEncoded = function(size, encoding) {
-  var iconv = MapShaper.internal.requireConversionLib(encoding),
+  var iconv = MapShaper.requireConversionLib(encoding),
       buf = new Buffer(size),
       isUtf8 = RE_UTF8.test(encoding);
   return function(bin) {
@@ -7197,8 +7219,8 @@ DbfReader.prototype.readFieldHeader = function(bin, encoding) {
 };
 
 // export for testing
-MapShaper.internal.Dbf = Dbf;
-MapShaper.internal.DbfReader = DbfReader;
+MapShaper.Dbf = Dbf;
+MapShaper.DbfReader = DbfReader;
 
 
 
@@ -7458,7 +7480,7 @@ Dbf.getStringWriterAscii = function() {
 };
 
 Dbf.getStringWriterEncoded = function(encoding) {
-  var iconv = MapShaper.internal.requireConversionLib(encoding);
+  var iconv = MapShaper.requireConversionLib(encoding);
   return function(val) {
     var buf = iconv.encode(val, encoding);
     return BinArray.toArrayBuffer(buf);
@@ -7611,8 +7633,8 @@ function ShapefileTable(buf, encoding) {
 Utils.extend(ShapefileTable.prototype, dataTableProto);
 
 // export for testing
-MapShaper.internal.DataTable = DataTable;
-MapShaper.internal.ShapefileTable = ShapefileTable;
+MapShaper.DataTable = DataTable;
+MapShaper.ShapefileTable = ShapefileTable;
 
 
 
@@ -8322,33 +8344,6 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
   return obj;
 };
 
-MapShaper.arcHasLength = function(id, coords) {
-  var iter = coords.getArcIter(id), x, y;
-  if (iter.hasNext()) {
-    x = iter.x;
-    y = iter.y;
-    while (iter.hasNext()) {
-      if (iter.x != x || iter.y != y) return true;
-    }
-  }
-  return false;
-};
-
-MapShaper.filterEmptyArcs = function(shape, coords) {
-  if (!shape) return null;
-  var shape2 = [];
-  Utils.forEach(shape, function(ids) {
-    var path = [];
-    for (var i=0; i<ids.length; i++) {
-      if (MapShaper.arcHasLength(ids[i], coords)) {
-        path.push(ids[i]);
-      }
-    }
-    if (path.length > 0) shape2.push(path);
-  });
-  return shape2.length > 0 ? shape2 : null;
-};
-
 TopoJSON.groupPolygonRings = function(shapes, coords) {
   var iter = new ShapeIter(coords),
       pos = [],
@@ -8993,7 +8988,6 @@ MapShaper.exportShpFile = function(layer, arcData) {
   if (shpType === null)
     error("[exportShpFile()] Unable to export geometry type:", geomType);
 
-  // var exporter = new PathExporter(arcData, isPolygonType);
   var fileBytes = 100;
   var bounds = new Bounds();
   var shapeBuffers = layer.shapes.map(function(shape, i) {
@@ -9117,11 +9111,12 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 // Return an array of objects with "filename" "filebase" "extension" and
 // "content" attributes.
 //
-MapShaper.exportContent = function(layers, arcData, opts) {
+api.exportFileContent =
+MapShaper.exportFileContent = function(layers, arcData, opts) {
   var exporter = MapShaper.exporters[opts.output_format],
       files;
   if (!exporter) {
-    error("exportContent() Unknown export format:", opts.output_format);
+    error("exportFileContent() Unknown export format:", opts.output_format);
   }
   if (!opts.output_extension) {
     opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
@@ -9505,7 +9500,7 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
 
 // Combine detection and repair for cli
 //
-MapShaper.findAndRepairIntersections = function(arcs) {
+api.findAndRepairIntersections = function(arcs) {
   T.start();
   var intersections = MapShaper.findSegmentIntersections(arcs),
       unfixable = MapShaper.repairIntersections(arcs, intersections),
@@ -9709,6 +9704,7 @@ MapShaper.repairIntersections = function(arcs, intersections) {
 
 
 
+api.protectShapes =
 MapShaper.protectShapes = function(arcData, layers) {
   T.start();
   Utils.forEach(layers, function(lyr) {
@@ -9809,12 +9805,12 @@ MapShaper.lockMaxThreshold = function(arcData, ring) {
     // There may be more than one vertex with the target Z value; lock them all.
     start = raw.ii[targArcId];
     end = start + raw.nn[targArcId] - 1;
-    return MapShaper.replaceValue(raw.zz, targZ, Infinity, start, end);
+    return MapShaper.replaceInArray(raw.zz, targZ, Infinity, start, end);
   }
   return 0;
 };
 
-MapShaper.replaceValue = function(zz, value, replacement, start, end) {
+MapShaper.replaceInArray = function(zz, value, replacement, start, end) {
   var count = 0;
   for (var i=start; i<=end; i++) {
     if (zz[i] === value) {
@@ -9831,6 +9827,7 @@ MapShaper.replaceValue = function(zz, value, replacement, start, end) {
 // @content: ArrayBuffer or String
 // @type: 'shapefile'|'json'
 //
+api.importFileContent =
 MapShaper.importFileContent = function(content, fileType, opts) {
   var dataset, fileFmt;
   opts = opts || {};
@@ -9863,6 +9860,7 @@ MapShaper.importFileContent = function(content, fileType, opts) {
   return dataset;
 };
 
+api.buildTopology =
 MapShaper.buildTopology = function(dataset) {
   if (!dataset.arcs) return;
   var raw = dataset.arcs.getVertexData(),
@@ -9973,13 +9971,6 @@ MapShaper.importDelimStringAsync = function(content, done) {
       });
 };
 
-MapShaper.stringIsNumeric = function(str) {
-  str = MapShaper.cleanNumber(str);
-  // Number() accepts empty strings
-  // parseFloat() accepts a number followed by other content
-  // Using both for stricter check. TODO consider using regex
-  return !isNaN(parseFloat(str)) && !isNaN(Number(str));
-};
 
 MapShaper.guessDelimiter = function(content) {
   var delimiters = ['|', '\t', ','];
@@ -10002,7 +9993,7 @@ MapShaper.adjustRecordTypes = function(records, rawFields) {
 
   Utils.forEach(records[0], function(val, key) {
     if (key in hintIndex === false) {
-      if (Utils.isString(val) && MapShaper.stringIsNumeric(val)) {
+      if (Utils.isString(val) && utils.stringIsNumeric(val)) {
         conversionIndex[key] = 'number';
       }
     } else if (hintIndex[key] == 'number' && !Utils.isNumber(val)) {
@@ -10016,19 +10007,27 @@ MapShaper.adjustRecordTypes = function(records, rawFields) {
   return fields;
 };
 
-MapShaper.cleanNumber = function(str) {
+utils.stringIsNumeric = function(str) {
+  str = utils.cleanNumber(str);
+  // Number() accepts empty strings
+  // parseFloat() accepts a number followed by other content
+  // Using both for stricter check. TODO consider using regex
+  return !isNaN(parseFloat(str)) && !isNaN(Number(str));
+};
+
+utils.cleanNumber = function(str) {
   return str.replace(/,/g, '');
 };
 
-MapShaper.parseNumber = function(str) {
-  return Number(MapShaper.cleanNumber(str));
+utils.parseNumber = function(str) {
+  return Number(utils.cleanNumber(str));
 };
 
 MapShaper.convertRecordTypes = function(records, typeIndex) {
   var typedFields = Utils.keys(typeIndex),
       converters = {
         'string': String,
-        'number': MapShaper.parseNumber
+        'number': utils.parseNumber
       },
       transforms = Utils.map(typedFields, function(f) {
         var type = typeIndex[f],
@@ -10052,8 +10051,9 @@ MapShaper.convertRecordData = function(rec, fields, converters) {
 
 
 
+api.importFromFile =
 MapShaper.importFromFile = function(fname, opts) {
-  var fileType = utils.guessFileType(fname),
+  var fileType = MapShaper.guessFileType(fname),
       content = MapShaper.readGeometryFile(fname, fileType),
       data = MapShaper.importFileContent(content, fileType, opts);
   if (fileType == 'shp' && data.layers.length == 1) {
@@ -10168,7 +10168,7 @@ utils.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
 
 
 
-MapShaper.dissolveLayers = function(layers) {
+api.dissolveLayers = function(layers) {
   T.start();
   if (!Utils.isArray(layers)) error ("[dissolveLayers()] Expected an array of layers");
   var dissolvedLayers = [],
@@ -10176,7 +10176,7 @@ MapShaper.dissolveLayers = function(layers) {
 
   Utils.forEach(layers, function(lyr) {
     args[0] = lyr;
-    var layers2 = MapShaper.dissolveLayer.apply(null, args);
+    var layers2 = api.dissolveLayer.apply(null, args);
     dissolvedLayers.push.apply(dissolvedLayers, layers2);
   });
   T.stop('Dissolve polygons');
@@ -10184,17 +10184,15 @@ MapShaper.dissolveLayers = function(layers) {
 };
 
 // Dissolve a polygon layer into one or more derived layers
-// @dissolve comma-separated list of fields or true
+// @dissolve (optional) comma-separated list of fields
 //
-MapShaper.dissolveLayer = function(lyr, arcs, dissolve, opts) {
+api.dissolveLayer = function(lyr, arcs, dissolve, opts) {
   if (lyr.geometry_type != 'polygon') {
     error("[dissolveLayer()] Expected a polygon layer");
   }
-  if (!Utils.isString(dissolve)) {
-    dissolve = "";
-  }
-  var layers = Utils.map(dissolve.split(','), function(f) {
-    return MapShaper.dissolve(lyr, arcs, f || null, opts);
+  var dissolveArgs = Utils.isString(dissolve) ? dissolve.split(',') : [null];
+  var layers = Utils.map(dissolveArgs, function(arg) {
+    return MapShaper.dissolveLayerOnField(lyr, arcs, arg, opts);
   });
   return layers;
 };
@@ -10202,7 +10200,7 @@ MapShaper.dissolveLayer = function(lyr, arcs, dissolve, opts) {
 // Generate a dissolved layer
 // @field Name of data field to dissolve on or null to dissolve all polygons
 //
-MapShaper.dissolve = function(lyr, arcs, field, opts) {
+MapShaper.dissolveLayerOnField = function(lyr, arcs, field, opts) {
   var shapes = lyr.shapes,
       dataTable = lyr.data || null,
       properties = dataTable ? dataTable.getRecords() : null,
@@ -10528,7 +10526,7 @@ MapShaper.calcDissolveData = function(keys, index, properties, field, opts) {
 // Remove arc endpoints that are only shared by two arcs
 // (Useful for reducing number of arcs after a polygon dissolve)
 //
-MapShaper.dissolveArcs = function(layers, arcs) {
+api.dissolveArcs = function(layers, arcs) {
   T.start();
   // Map old arc ids to new arc ids
   var map = arcDissolveFirstPass(layers, arcs);
@@ -10751,7 +10749,7 @@ function arcDissolveFirstPass(layers, arcs) {
 
 
 
-MapShaper.splitLayersOnField = function(layers, arcs, field) {
+api.splitLayersOnField = function(layers, arcs, field) {
   var splitLayers = [];
   Utils.forEach(layers, function(lyr) {
     splitLayers = splitLayers.concat(MapShaper.splitOnField(lyr, arcs, field));
@@ -10806,7 +10804,7 @@ MapShaper.splitOnField = function(lyr0, arcs, field) {
 // Split the shapes in a layer according to a grid
 // Return array of layers and an index with the bounding box of each cell
 //
-MapShaper.splitOnGrid = function(lyr, arcs, rows, cols) {
+api.splitOnGrid = function(lyr, arcs, rows, cols) {
   var shapes = lyr.shapes,
       bounds = arcs.getBounds(),
       xmin = bounds.xmin,
@@ -11143,15 +11141,15 @@ function LayerExpressionContext(arcs) {
 
 
 
-MapShaper.evaluateLayers = function(layers, arcs, exp) {
+api.evaluateLayers = function(layers, arcs, exp) {
   T.start();
   for (var i=0; i<layers.length; i++) {
-    MapShaper.evaluate(layers[i], arcs, exp);
+    api.evaluateLayer(layers[i], arcs, exp);
   }
   T.stop("Calculate expression");
 };
 
-MapShaper.evaluate = function(lyr, arcs, exp) {
+api.evaluateLayer = function(lyr, arcs, exp) {
   var shapes = lyr.shapes,
       // create new table if none exists
       dataTable = lyr.data || (lyr.data = new DataTable(shapes.length)),
@@ -11167,7 +11165,7 @@ MapShaper.evaluate = function(lyr, arcs, exp) {
 
 //
 //
-MapShaper.subdivideLayers = function(layers, arcs, exp) {
+api.subdivideLayers = function(layers, arcs, exp) {
   var compiled = MapShaper.compileLayerExpression(exp, arcs),
       subdividedLayers = [];
   Utils.forEach(layers, function(lyr) {
@@ -11260,13 +11258,13 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
 
 // filter and rename data fields; see mapshaper --fields option
 
-MapShaper.filterFields = function(layers, opts) {
+api.filterFields = function(layers, opts) {
   layers.forEach(function(lyr) {
-    MapShaper.filterFieldsInLayer(lyr, opts);
+    api.filterFieldsInLayer(lyr, opts);
   });
 };
 
-MapShaper.filterFieldsInLayer = function(lyr, opts) {
+api.filterFieldsInLayer = function(lyr, opts) {
   if (lyr.data && opts.field_map) {
     var fields = lyr.data.getFields(),
         mappedFields = Utils.getKeys(opts.field_map),
@@ -11284,26 +11282,15 @@ MapShaper.filterFieldsInLayer = function(lyr, opts) {
 
 
 
-MapShaper.filterLayers = function(layers, arcs, exp) {
+api.filterLayers = function(layers, arcs, exp) {
   T.start();
   Utils.forEach(layers, function(lyr) {
-    MapShaper.filter(lyr, arcs, exp);
+    api.filterLayer(lyr, arcs, exp);
   });
   T.stop("Filter");
 };
 
-MapShaper.selectLayers = function(layers, arcs, exp) {
-  var unselected = [], tmp;
-  Utils.forEach(layers, function(lyr) {
-    tmp = MapShaper.filter(lyr, arc, exp);
-    if (tmp && tmp.shapes.length > 0) {
-      unselected.push(tmp);
-    }
-  });
-  return unselected;
-};
-
-MapShaper.filter = function(lyr, arcs, exp) {
+api.filterLayer = function(lyr, arcs, exp) {
   MapShaper.select(lyr, arcs, exp, true);
 };
 
@@ -11424,7 +11411,7 @@ utils.mergeArrays = function(arrays, TypedArr) {
 };
 
 // Merge similar layers in a dataset, in-place
-MapShaper.mergeLayers = function(layers) {
+api.mergeLayers = function(layers) {
   var index = {},
       merged = [];
 
@@ -11460,7 +11447,7 @@ MapShaper.mergeLayers = function(layers) {
 
 
 
-MapShaper.mergeFiles = function(files, opts) {
+api.mergeFiles = function(files, opts) {
   // import datasets without topology
   var importOpts = Utils.extend({}, opts, {no_topology: true});
   var datasets = files.map(function(fname) {
@@ -11510,8 +11497,10 @@ utils.findStringPrefix = function(a, b) {
 
 
 
-
-MapShaper.importJoinTable = function(file, opts, done) {
+// Function uses async callback because csv parser is asynchronous
+// TODO: switch to synchronous
+//
+api.importJoinTableAsync = function(file, opts, done) {
   MapShaper.importTableAsync(file, function(table) {
     var fields = opts.join_fields || table.getFields(),
         keys = opts.join_keys;
@@ -11531,7 +11520,7 @@ MapShaper.importJoinTable = function(file, opts, done) {
   }, opts);
 };
 
-MapShaper.joinTableToLayers = function(layers, table, keys, joinFields) {
+api.joinTableToLayers = function(layers, table, keys, joinFields) {
   var localKey = keys[0],
       foreignKey = keys[1],
       typeIndex = {};
@@ -11604,16 +11593,16 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
 
 
 
-MapShaper.convertLayersToInnerLines = function(layers, arcs) {
+api.convertLayersToInnerLines = function(layers, arcs) {
   T.start();
   var converted = Utils.map(layers, function(lyr) {
-    return MapShaper.convertLayerToInnerLines(lyr, arcs);
+    return api.convertLayerToInnerLines(lyr, arcs);
   });
   T.stop("Inner lines");
   return converted;
 };
 
-MapShaper.convertLayerToInnerLines = function(lyr, arcs) {
+api.convertLayerToInnerLines = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
     stop("[innerlines] Layer not polygon type");
   }
@@ -11623,16 +11612,16 @@ MapShaper.convertLayerToInnerLines = function(lyr, arcs) {
   return lyr2;
 };
 
-MapShaper.convertLayersToTypedLines = function(layers, arcs, fields) {
+api.convertLayersToTypedLines = function(layers, arcs, fields) {
   T.start();
   var converted = Utils.map(layers, function(lyr) {
-    return MapShaper.convertLayerToTypedLines(lyr, arcs, fields);
+    return api.convertLayerToTypedLines(lyr, arcs, fields);
   });
   T.stop("Lines");
   return converted;
 };
 
-MapShaper.convertLayerToTypedLines = function(lyr, arcs, fields) {
+api.convertLayerToTypedLines = function(lyr, arcs, fields) {
   if (lyr.geometry_type != 'polygon') {
     stop("[lines] Layer not polygon type");
   }
@@ -11661,7 +11650,7 @@ MapShaper.convertLayerToTypedLines = function(lyr, arcs, fields) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] unknown data field:", field);
       }
-      var dissolved = MapShaper.dissolve(lyr, arcs, field),
+      var dissolved = MapShaper.dissolveLayerOnField(lyr, arcs, field),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
       dissolvedArcs = Utils.difference(dissolvedArcs, allArcs);
       addArcs(dissolvedArcs);
@@ -11730,7 +11719,7 @@ MapShaper.countArcsInShapes = function(shapes, arcCount) {
 
 
 
-MapShaper.printInfo = function(layers, arcData, opts, info) {
+api.printInfo = function(layers, arcData, opts, info) {
   var str = Utils.format("Input: %s (%s)\n",
       opts.input_files.join(', '), opts.input_format);
   str += "Bounds: " + arcData.getBounds().toArray().join(', ') + "\n";
@@ -11746,7 +11735,6 @@ MapShaper.printInfo = function(layers, arcData, opts, info) {
 };
 
 // TODO: consider polygons with zero area or other invalid geometries
-//
 MapShaper.countNullShapes = function(shapes) {
   var count = 0;
   for (var i=0; i<shapes.length; i++) {
@@ -11817,9 +11805,7 @@ MapShaper.formatLayerInfo = function(obj) {
 
 
 
-var cli = MapShaper.cli = {};
-
-// console.log(Utils.keys(MapShaper))
+var cli = api.cli = {};
 
 var usage =
   "Usage: mapshaper [options] [file ...]\n\n" +
@@ -11830,14 +11816,47 @@ var usage =
   "Example: aggregate census tracts to counties\n" +
   "$ mapshaper -e 'CTY_FIPS=FIPS.substr(0, 5)' --dissolve CTY_FIPS tracts.shp";
 
-MapShaper.getOptionParser = function() {
-  var basic = MapShaper.getBasicOptionParser(),
-      more = MapShaper.getExtraOptionParser(basic),
-      all = MapShaper.getHiddenOptionParser(more);
+// Parse command line and return options object for bin/mapshaper
+//
+cli.getOpts = function() {
+  var optimist = cli.getOptionParser(),
+      argv = optimist.argv,
+      opts;
+
+  if (argv.help) {
+    cli.getBasicOptionParser().showHelp();
+    process.exit(0);
+  }
+  if (argv.more) {
+    console.log( "More " + cli.getExtraOptionParser().help());
+    process.exit(0);
+  }
+  if (argv.version) {
+    console.log(getVersion());
+    process.exit(0);
+  }
+  if (argv.encodings) {
+    MapShaper.printEncodings();
+    process.exit(0);
+  }
+
+  // validate args against basic option parser so standard help message is shown
+  var dummy = cli.getBasicOptionParser().check(function() {
+    opts = cli.validateArgs(argv, getSupportedArgs());
+  }).argv;
+
+  C.VERBOSE = argv.verbose;
+  return opts;
+};
+
+cli.getOptionParser = function() {
+  var basic = cli.getBasicOptionParser(),
+      more = cli.getExtraOptionParser(basic),
+      all = cli.getHiddenOptionParser(more);
   return all;
 };
 
-MapShaper.getBasicOptionParser = function() {
+cli.getBasicOptionParser = function() {
   return getOptimist()
     .usage(usage)
 
@@ -11943,7 +11962,7 @@ MapShaper.getBasicOptionParser = function() {
     */
 };
 
-MapShaper.getHiddenOptionParser = function(optimist) {
+cli.getHiddenOptionParser = function(optimist) {
   return (optimist || getOptimist())
     // These option definitions don't get printed by --help and --more
     // Validate them in validateExtraOpts()
@@ -11962,7 +11981,7 @@ MapShaper.getHiddenOptionParser = function(optimist) {
   ;
 };
 
-MapShaper.getExtraOptionParser = function(optimist) {
+cli.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
 
   .options("join ", {
@@ -12084,45 +12103,13 @@ MapShaper.getExtraOptionParser = function(optimist) {
   ;
 };
 
-// Parse command line and return options object for bin/mapshaper
-//
-MapShaper.getOpts = function() {
-  var optimist = MapShaper.getOptionParser(),
-      argv = optimist.argv,
-      opts;
-
-  if (argv.help) {
-    MapShaper.getBasicOptionParser().showHelp();
-    process.exit(0);
-  }
-  if (argv.more) {
-    console.log( "More " + MapShaper.getExtraOptionParser().help());
-    process.exit(0);
-  }
-  if (argv.version) {
-    console.log(getVersion());
-    process.exit(0);
-  }
-  if (argv.encodings) {
-    MapShaper.printEncodings();
-    process.exit(0);
-  }
-
-  // validate args against basic option parser so standard help message is shown
-  var dummy = MapShaper.getBasicOptionParser().check(function() {
-    opts = MapShaper.validateArgs(argv, getSupportedArgs());
-  }).argv;
-
-  C.VERBOSE = argv.verbose;
-  return opts;
-};
 
 // Test option parsing -- throws an error if a problem is found.
 // @argv array of command line tokens
 //
-MapShaper.checkArgs = function(argv) {
-  var optimist = MapShaper.getOptionParser();
-  return MapShaper.validateArgs(optimist.parse(argv), getSupportedArgs());
+cli.checkArgs = function(argv) {
+  var optimist = cli.getOptionParser();
+  return cli.validateArgs(optimist.parse(argv), getSupportedArgs());
 };
 
 function getOptimist() {
@@ -12133,7 +12120,7 @@ function getOptimist() {
 // Return an array of all recognized cli arguments: ["f", "format", ...]
 //
 function getSupportedArgs() {
-  var optimist = MapShaper.getOptionParser(),
+  var optimist = cli.getOptionParser(),
       args = optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
         return arg.replace(/^-/, '');
       });
@@ -12153,7 +12140,7 @@ function getVersion() {
 // Throw an error if @argv array contains an unsupported option
 // @flags array of supported options
 //
-MapShaper.checkArgSupport = function(argv, flags) {
+cli.checkArgSupport = function(argv, flags) {
   var supportedOpts = flags.reduce(function(acc, opt) {
       acc[opt] = true;
       return acc;
@@ -12167,8 +12154,8 @@ MapShaper.checkArgSupport = function(argv, flags) {
   });
 };
 
-MapShaper.validateArgs = function(argv, supported) {
-  MapShaper.checkArgSupport(argv, supported);
+cli.validateArgs = function(argv, supported) {
+  cli.checkArgSupport(argv, supported);
 
   // If an option is given multiple times, throw an error
   Utils.forEach(argv, function(val, arg) {
@@ -12187,7 +12174,7 @@ MapShaper.validateArgs = function(argv, supported) {
   return opts;
 };
 
-MapShaper.getOutputPaths = function(files, dir, extension) {
+cli.getOutputPaths = function(files, dir, extension) {
   if (!files || !files.length) {
     console.log("No files to save");
     return;
@@ -12220,7 +12207,7 @@ cli.testFileCollision = function(files, suff) {
 };
 
 cli.validateFileExtension = function(path) {
-  var type = utils.guessFileType(path),
+  var type = MapShaper.guessFileType(path),
       valid = type == 'shp' || type == 'json';
   return valid;
 };
@@ -12594,21 +12581,20 @@ MapShaper.gc = function() {
   }
 };
 
-var api = Utils.extend(MapShaper, {
+Utils.extend(api.internal, {
   Node: Node,
-  Utils: Utils,
-  Opts: Opts,
-  trace: trace,
-  error: error,
-  T: T,
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
-  Dbf: Dbf,
   C: C,
   Bounds: Bounds
 });
+
+cli.readFile = Node.readFile;
+cli.writeFile = Node.writeFile;
+cli.fileExists = Node.fileExists;
+api.T = T;
 
 module.exports = api;
 C.VERBOSE = false;

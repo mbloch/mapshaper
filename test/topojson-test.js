@@ -1,10 +1,10 @@
 
 var api = require('../'),
   assert = require('assert'),
-  TopoJSON = api.topojson,
+  TopoJSON = api.internal.topojson,
   ArcDataset = api.internal.ArcDataset,
-  Utils = api.Utils,
-  Node = api.Node;
+  Utils = api.utils,
+  Node = api.internal.Node;
 
 function deepCopy(obj) {
   return JSON.parse(JSON.stringify(obj));
@@ -58,12 +58,12 @@ describe('topojson-test.js', function () {
 
     it('Collapsed arcs are removed', function () {
       var shape = [[0, ~1, 3]],
-          filtered = api.filterEmptyArcs(shape, coords);
+          filtered = api.internal.filterEmptyArcs(shape, coords);
       assert.deepEqual(filtered, [[3]]);
     })
     it('Collapsed paths are removed', function () {
       var shape = [[~0, 1]],
-          filtered = api.filterEmptyArcs(shape, coords);
+          filtered = api.internal.filterEmptyArcs(shape, coords);
       assert.deepEqual(filtered, null);
     })
   })
@@ -162,9 +162,9 @@ function topoJSONRoundTrip(fname) {
     topojson_resolution: 10000
   };
   var data = api.importFromFile(fixPath(fname));
-  var files = api.exportContent(data.layers, data.arcs, opts);
+  var files = api.exportFileContent(data.layers, data.arcs, opts);
   var data2 = api.importFileContent(files[0].content, 'json');
-  var files2 = api.exportContent(data2.layers, data2.arcs, opts);
+  var files2 = api.exportFileContent(data2.layers, data2.arcs, opts);
 
   assert.deepEqual(files, files2);
 }
@@ -175,6 +175,6 @@ function importExport(json, opts) {
     // (need to stop modifying coords in-place);
     json = JSON.stringify(json);
   }
-  var data = api.importTopoJSON(json, opts);
+  var data = api.internal.importTopoJSON(json, opts);
   return TopoJSON.exportTopology(data.layers, data.arcs, opts);
 }

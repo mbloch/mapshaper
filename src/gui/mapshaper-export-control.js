@@ -46,7 +46,7 @@ var ExportControl = function(arcData, layers, options) {
       },
       files, file;
     Utils.extend(opts, options);
-    files = MapShaper.exportContent(layers, arcData, opts);
+    files = MapShaper.exportFileContent(layers, arcData, opts);
 
     if (!Utils.isArray(files) || files.length === 0) {
       error("exportAs() Export failed.");

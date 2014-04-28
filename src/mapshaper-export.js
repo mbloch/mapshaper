@@ -8,11 +8,12 @@ mapshaper-dataset-utils
 // Return an array of objects with "filename" "filebase" "extension" and
 // "content" attributes.
 //
-MapShaper.exportContent = function(layers, arcData, opts) {
+api.exportFileContent =
+MapShaper.exportFileContent = function(layers, arcData, opts) {
   var exporter = MapShaper.exporters[opts.output_format],
       files;
   if (!exporter) {
-    error("exportContent() Unknown export format:", opts.output_format);
+    error("exportFileContent() Unknown export format:", opts.output_format);
   }
   if (!opts.output_extension) {
     opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);

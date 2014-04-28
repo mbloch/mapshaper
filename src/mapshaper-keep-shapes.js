@@ -1,5 +1,6 @@
 /* @require mapshaper-shapes, mapshaper-shape-geom */
 
+api.protectShapes =
 MapShaper.protectShapes = function(arcData, layers) {
   T.start();
   Utils.forEach(layers, function(lyr) {
@@ -100,12 +101,12 @@ MapShaper.lockMaxThreshold = function(arcData, ring) {
     // There may be more than one vertex with the target Z value; lock them all.
     start = raw.ii[targArcId];
     end = start + raw.nn[targArcId] - 1;
-    return MapShaper.replaceValue(raw.zz, targZ, Infinity, start, end);
+    return MapShaper.replaceInArray(raw.zz, targZ, Infinity, start, end);
   }
   return 0;
 };
 
-MapShaper.replaceValue = function(zz, value, replacement, start, end) {
+MapShaper.replaceInArray = function(zz, value, replacement, start, end) {
   var count = 0;
   for (var i=start; i<=end; i++) {
     if (zz[i] === value) {

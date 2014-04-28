@@ -2,7 +2,7 @@
 
 //
 //
-MapShaper.subdivideLayers = function(layers, arcs, exp) {
+api.subdivideLayers = function(layers, arcs, exp) {
   var compiled = MapShaper.compileLayerExpression(exp, arcs),
       subdividedLayers = [];
   Utils.forEach(layers, function(lyr) {

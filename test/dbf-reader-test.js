@@ -2,10 +2,10 @@ var api = require('../'),
     assert = require('assert'),
     iconv = require('iconv-lite'),
     Dbf = api.internal.Dbf,
-    Utils = api.Utils;
+    Utils = api.utils;
 
 function fixPath(p) {
-  return api.Node.path.join(__dirname, p);
+  return api.internal.Node.path.join(__dirname, p);
 }
 
 describe('dbf-reader.js', function () {
@@ -58,7 +58,7 @@ describe('dbf-reader.js', function () {
     function test(str, encoding) {
       // TODO: rethink this... iconv roundtrip not a reliable test
       var buf = iconv.encode(str, encoding),
-          bin = new api.BinArray(buf),
+          bin = new api.internal.BinArray(buf),
           reader = Dbf.getStringReader(buf.length, encoding);
       return reader(bin);
     }

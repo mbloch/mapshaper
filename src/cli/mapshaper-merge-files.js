@@ -1,6 +1,6 @@
 /* @requires mapshaper-file-import, mapshaper-path-import, mapshaper-merging */
 
-MapShaper.mergeFiles = function(files, opts) {
+api.mergeFiles = function(files, opts) {
   // import datasets without topology
   var importOpts = Utils.extend({}, opts, {no_topology: true});
   var datasets = files.map(function(fname) {

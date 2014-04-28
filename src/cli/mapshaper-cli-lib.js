@@ -23,9 +23,7 @@ mapshaper-encodings
 mapshaper-info
 */
 
-var cli = MapShaper.cli = {};
-
-// console.log(Utils.keys(MapShaper))
+var cli = api.cli = {};
 
 var usage =
   "Usage: mapshaper [options] [file ...]\n\n" +
@@ -36,14 +34,47 @@ var usage =
   "Example: aggregate census tracts to counties\n" +
   "$ mapshaper -e 'CTY_FIPS=FIPS.substr(0, 5)' --dissolve CTY_FIPS tracts.shp";
 
-MapShaper.getOptionParser = function() {
-  var basic = MapShaper.getBasicOptionParser(),
-      more = MapShaper.getExtraOptionParser(basic),
-      all = MapShaper.getHiddenOptionParser(more);
+// Parse command line and return options object for bin/mapshaper
+//
+cli.getOpts = function() {
+  var optimist = cli.getOptionParser(),
+      argv = optimist.argv,
+      opts;
+
+  if (argv.help) {
+    cli.getBasicOptionParser().showHelp();
+    process.exit(0);
+  }
+  if (argv.more) {
+    console.log( "More " + cli.getExtraOptionParser().help());
+    process.exit(0);
+  }
+  if (argv.version) {
+    console.log(getVersion());
+    process.exit(0);
+  }
+  if (argv.encodings) {
+    MapShaper.printEncodings();
+    process.exit(0);
+  }
+
+  // validate args against basic option parser so standard help message is shown
+  var dummy = cli.getBasicOptionParser().check(function() {
+    opts = cli.validateArgs(argv, getSupportedArgs());
+  }).argv;
+
+  C.VERBOSE = argv.verbose;
+  return opts;
+};
+
+cli.getOptionParser = function() {
+  var basic = cli.getBasicOptionParser(),
+      more = cli.getExtraOptionParser(basic),
+      all = cli.getHiddenOptionParser(more);
   return all;
 };
 
-MapShaper.getBasicOptionParser = function() {
+cli.getBasicOptionParser = function() {
   return getOptimist()
     .usage(usage)
 
@@ -149,7 +180,7 @@ MapShaper.getBasicOptionParser = function() {
     */
 };
 
-MapShaper.getHiddenOptionParser = function(optimist) {
+cli.getHiddenOptionParser = function(optimist) {
   return (optimist || getOptimist())
     // These option definitions don't get printed by --help and --more
     // Validate them in validateExtraOpts()
@@ -168,7 +199,7 @@ MapShaper.getHiddenOptionParser = function(optimist) {
   ;
 };
 
-MapShaper.getExtraOptionParser = function(optimist) {
+cli.getExtraOptionParser = function(optimist) {
   return (optimist || getOptimist())
 
   .options("join ", {
@@ -290,45 +321,13 @@ MapShaper.getExtraOptionParser = function(optimist) {
   ;
 };
 
-// Parse command line and return options object for bin/mapshaper
-//
-MapShaper.getOpts = function() {
-  var optimist = MapShaper.getOptionParser(),
-      argv = optimist.argv,
-      opts;
-
-  if (argv.help) {
-    MapShaper.getBasicOptionParser().showHelp();
-    process.exit(0);
-  }
-  if (argv.more) {
-    console.log( "More " + MapShaper.getExtraOptionParser().help());
-    process.exit(0);
-  }
-  if (argv.version) {
-    console.log(getVersion());
-    process.exit(0);
-  }
-  if (argv.encodings) {
-    MapShaper.printEncodings();
-    process.exit(0);
-  }
-
-  // validate args against basic option parser so standard help message is shown
-  var dummy = MapShaper.getBasicOptionParser().check(function() {
-    opts = MapShaper.validateArgs(argv, getSupportedArgs());
-  }).argv;
-
-  C.VERBOSE = argv.verbose;
-  return opts;
-};
 
 // Test option parsing -- throws an error if a problem is found.
 // @argv array of command line tokens
 //
-MapShaper.checkArgs = function(argv) {
-  var optimist = MapShaper.getOptionParser();
-  return MapShaper.validateArgs(optimist.parse(argv), getSupportedArgs());
+cli.checkArgs = function(argv) {
+  var optimist = cli.getOptionParser();
+  return cli.validateArgs(optimist.parse(argv), getSupportedArgs());
 };
 
 function getOptimist() {
@@ -339,7 +338,7 @@ function getOptimist() {
 // Return an array of all recognized cli arguments: ["f", "format", ...]
 //
 function getSupportedArgs() {
-  var optimist = MapShaper.getOptionParser(),
+  var optimist = cli.getOptionParser(),
       args = optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
         return arg.replace(/^-/, '');
       });
@@ -359,7 +358,7 @@ function getVersion() {
 // Throw an error if @argv array contains an unsupported option
 // @flags array of supported options
 //
-MapShaper.checkArgSupport = function(argv, flags) {
+cli.checkArgSupport = function(argv, flags) {
   var supportedOpts = flags.reduce(function(acc, opt) {
       acc[opt] = true;
       return acc;
@@ -373,8 +372,8 @@ MapShaper.checkArgSupport = function(argv, flags) {
   });
 };
 
-MapShaper.validateArgs = function(argv, supported) {
-  MapShaper.checkArgSupport(argv, supported);
+cli.validateArgs = function(argv, supported) {
+  cli.checkArgSupport(argv, supported);
 
   // If an option is given multiple times, throw an error
   Utils.forEach(argv, function(val, arg) {
@@ -393,7 +392,7 @@ MapShaper.validateArgs = function(argv, supported) {
   return opts;
 };
 
-MapShaper.getOutputPaths = function(files, dir, extension) {
+cli.getOutputPaths = function(files, dir, extension) {
   if (!files || !files.length) {
     console.log("No files to save");
     return;
@@ -426,7 +425,7 @@ cli.testFileCollision = function(files, suff) {
 };
 
 cli.validateFileExtension = function(path) {
-  var type = utils.guessFileType(path),
+  var type = MapShaper.guessFileType(path),
       valid = type == 'shp' || type == 'json';
   return valid;
 };
@@ -800,21 +799,20 @@ MapShaper.gc = function() {
   }
 };
 
-var api = Utils.extend(MapShaper, {
+Utils.extend(api.internal, {
   Node: Node,
-  Utils: Utils,
-  Opts: Opts,
-  trace: trace,
-  error: error,
-  T: T,
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
-  Dbf: Dbf,
   C: C,
   Bounds: Bounds
 });
+
+cli.readFile = Node.readFile;
+cli.writeFile = Node.writeFile;
+cli.fileExists = Node.fileExists;
+api.T = T;
 
 module.exports = api;
 C.VERBOSE = false;

@@ -73,7 +73,7 @@ utils.mergeArrays = function(arrays, TypedArr) {
 };
 
 // Merge similar layers in a dataset, in-place
-MapShaper.mergeLayers = function(layers) {
+api.mergeLayers = function(layers) {
   var index = {},
       merged = [];
 

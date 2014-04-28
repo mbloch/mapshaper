@@ -48,7 +48,7 @@ var data2 = {
 describe('mapshaper-merging.js', function () {
   describe('mergeArcs()', function () {
     it('merge three sets of arcs', function () {
-      var mergedArcs = api.mergeArcs([
+      var mergedArcs = api.internal.mergeArcs([
           new ArcDataset(arcs1.nn, arcs1.xx, arcs1.yy),
           new ArcDataset(arcs2.nn, arcs2.xx, arcs2.yy),
           new ArcDataset(arcs3.nn, arcs3.xx, arcs3.yy)
@@ -70,7 +70,7 @@ describe('mapshaper-merging.js', function () {
 
   describe('mergeDatasets() + mergeLayers()', function () {
     it('merge two datasets', function () {
-      var merged = api.mergeDatasets([data1, data2]);
+      var merged = api.internal.mergeDatasets([data1, data2]);
       merged.layers = api.mergeLayers(merged.layers);
       assert.deepEqual(merged.layers[0].shapes, [[[0, 1]], null, [[2, 3], [4, 5]]]);
       assert.deepEqual(merged.layers[1].shapes, [[[0, 1]], [[~3]], [[2]]]);

@@ -1,6 +1,6 @@
 /* @require mapshaper-common */
 
-MapShaper.printInfo = function(layers, arcData, opts, info) {
+api.printInfo = function(layers, arcData, opts, info) {
   var str = Utils.format("Input: %s (%s)\n",
       opts.input_files.join(', '), opts.input_format);
   str += "Bounds: " + arcData.getBounds().toArray().join(', ') + "\n";
@@ -16,7 +16,6 @@ MapShaper.printInfo = function(layers, arcData, opts, info) {
 };
 
 // TODO: consider polygons with zero area or other invalid geometries
-//
 MapShaper.countNullShapes = function(shapes) {
   var count = 0;
   for (var i=0; i<shapes.length; i++) {

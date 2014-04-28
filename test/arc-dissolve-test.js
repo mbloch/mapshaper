@@ -28,7 +28,7 @@ describe('mapshaper-arc-dissolve.js', function () {
               shapes: [[[0, 1]], [[-2, 2]]]
             };
 
-        var lyr2 = api.dissolve(lyr, arcData, null);
+        var lyr2 = api.internal.dissolveLayerOnField(lyr, arcData, null);
 
         assert.deepEqual(lyr2.shapes, [[[0, 2]]]); // check that dissolve worked correctly
         var arcData2 = api.dissolveArcs([lyr2], arcData);
@@ -47,13 +47,12 @@ describe('mapshaper-arc-dissolve.js', function () {
         assert.equal(arcData2.size(), 3); // same as original data
       })
 
-
       it('dissolved layer + undissolved layer', function() {
         var lyr = {
               geometry_type: 'polygon',
               shapes: [[[0, 1]], [[-2, 2]]]
             };
-        var lyr2 = api.dissolve(lyr, arcData, null);
+        var lyr2 = api.internal.dissolveLayerOnField(lyr, arcData, null);
         assert.deepEqual(lyr2.shapes, [[[0, 2]]])
         var arcData2 = api.dissolveArcs([lyr, lyr2], arcData);
         assert.equal(arcData2.size(), 3); // same as original data
@@ -91,7 +90,7 @@ describe('mapshaper-arc-dissolve.js', function () {
               data: new api.internal.DataTable([{foo: 1}, {foo: 1}, {foo: 1}]),
               shapes: [[[0, 1]], [[2, 3, 4, -1]], [[5, -3, -2, -5]]]
             };
-        var lyr2 = api.dissolve(lyr, arcData, 'foo');
+        var lyr2 = api.internal.dissolveLayerOnField(lyr, arcData, 'foo');
         var arcData2 = api.dissolveArcs([lyr2], arcData);
         assert.deepEqual(lyr2.shapes, [[[0]]]);
       })
@@ -103,7 +102,7 @@ describe('mapshaper-arc-dissolve.js', function () {
               data: new api.internal.DataTable([{foo: 1}, {foo: 1}, {foo: 2}]),
               shapes: [[[0, 1]], [[2, 3, 4, -1]], [[5, -3, -2, -5]]]
             };
-        var lyr2 = api.dissolve(lyr, arcData, 'foo');
+        var lyr2 = api.internal.dissolveLayerOnField(lyr, arcData, 'foo');
         assert.deepEqual(lyr2.shapes, [[[1, 2, 3, 4]], [[5, -3, -2, -5]]]);
         var arcData2 = api.dissolveArcs([lyr2], arcData);
         assert.equal(arcData2.size(), 3)

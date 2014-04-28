@@ -109,7 +109,6 @@ MapShaper.exportShpFile = function(layer, arcData) {
   if (shpType === null)
     error("[exportShpFile()] Unable to export geometry type:", geomType);
 
-  // var exporter = new PathExporter(arcData, isPolygonType);
   var fileBytes = 100;
   var bounds = new Bounds();
   var shapeBuffers = layer.shapes.map(function(shape, i) {

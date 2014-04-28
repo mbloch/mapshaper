@@ -1,7 +1,8 @@
 var api = require('../'),
     assert = require('assert'),
     Dbf = api.internal.Dbf,
-    Node = api.Node;
+    Node = api.internal.Node,
+    Utils = api.utils;
 
 describe('dbf-writer.js', function () {
 
@@ -24,7 +25,7 @@ describe('dbf-writer.js', function () {
     })
 
     it('truncates overflowing strings', function() {
-      var data = [{a: api.Utils.lpad('', 300, 'x')}],
+      var data = [{a: Utils.lpad('', 300, 'x')}],
           info = Dbf.getFieldInfo(data, 'a', 'ascii');
       assert.equal(info.type, 'C');
       assert.equal(info.size, 254);

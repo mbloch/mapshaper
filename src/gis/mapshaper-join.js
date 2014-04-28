@@ -1,7 +1,9 @@
 /* @require mapshaper-common */
 
-
-MapShaper.importJoinTable = function(file, opts, done) {
+// Function uses async callback because csv parser is asynchronous
+// TODO: switch to synchronous
+//
+api.importJoinTableAsync = function(file, opts, done) {
   MapShaper.importTableAsync(file, function(table) {
     var fields = opts.join_fields || table.getFields(),
         keys = opts.join_keys;
@@ -21,7 +23,7 @@ MapShaper.importJoinTable = function(file, opts, done) {
   }, opts);
 };
 
-MapShaper.joinTableToLayers = function(layers, table, keys, joinFields) {
+api.joinTableToLayers = function(layers, table, keys, joinFields) {
   var localKey = keys[0],
       foreignKey = keys[1],
       typeIndex = {};

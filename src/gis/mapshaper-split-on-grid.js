@@ -3,7 +3,7 @@
 // Split the shapes in a layer according to a grid
 // Return array of layers and an index with the bounding box of each cell
 //
-MapShaper.splitOnGrid = function(lyr, arcs, rows, cols) {
+api.splitOnGrid = function(lyr, arcs, rows, cols) {
   var shapes = lyr.shapes,
       bounds = arcs.getBounds(),
       xmin = bounds.xmin,

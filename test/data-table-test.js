@@ -1,7 +1,7 @@
 var api = require('../'),
   assert = require('assert'),
-  Node = api.Node,
-  Utils = api.Utils,
+  Utils = api.utils,
+  Node = api.internal.Node,
   DataTable = api.internal.DataTable,
   ShapefileTable = api.internal.ShapefileTable;
 

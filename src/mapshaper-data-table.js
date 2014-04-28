@@ -143,5 +143,5 @@ function ShapefileTable(buf, encoding) {
 Utils.extend(ShapefileTable.prototype, dataTableProto);
 
 // export for testing
-MapShaper.internal.DataTable = DataTable;
-MapShaper.internal.ShapefileTable = ShapefileTable;
+MapShaper.DataTable = DataTable;
+MapShaper.ShapefileTable = ShapefileTable;

@@ -2,7 +2,7 @@
 
 var Visvalingam = {};
 
-MapShaper.internal.Heap = Heap; // export Heap for testing
+MapShaper.Heap = Heap; // export Heap for testing
 
 Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   var bufLen = 0,

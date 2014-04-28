@@ -1,7 +1,7 @@
 
 var api = require('../'),
   assert = require('assert'),
-  TopoJSON = api.topojson;
+  TopoJSON = api.internal.topojson;
 
 describe('topojson-split-test.js', function () {
   describe('#reindexArcIds()', function () {

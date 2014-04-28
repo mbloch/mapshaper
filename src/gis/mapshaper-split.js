@@ -1,6 +1,6 @@
 /* @requires mapshaper-common */
 
-MapShaper.splitLayersOnField = function(layers, arcs, field) {
+api.splitLayersOnField = function(layers, arcs, field) {
   var splitLayers = [];
   Utils.forEach(layers, function(lyr) {
     splitLayers = splitLayers.concat(MapShaper.splitOnField(lyr, arcs, field));

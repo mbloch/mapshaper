@@ -1,8 +1,8 @@
 var assert = require('assert'),
     api = require("../"),
-    buildPathTopology = api.topology.buildPathTopology,
-    utils = api.Utils,
-    trace = api.trace;
+    buildPathTopology = api.internal.buildPathTopology,
+    utils = api.utils,
+    trace = api.internal.trace;
 
 describe("mapshaper-topology.js", function() {
 

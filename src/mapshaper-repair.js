@@ -2,7 +2,7 @@
 
 // Combine detection and repair for cli
 //
-MapShaper.findAndRepairIntersections = function(arcs) {
+api.findAndRepairIntersections = function(arcs) {
   T.start();
   var intersections = MapShaper.findSegmentIntersections(arcs),
       unfixable = MapShaper.repairIntersections(arcs, intersections),

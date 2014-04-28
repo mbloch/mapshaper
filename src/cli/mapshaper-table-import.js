@@ -71,13 +71,6 @@ MapShaper.importDelimStringAsync = function(content, done) {
       });
 };
 
-MapShaper.stringIsNumeric = function(str) {
-  str = MapShaper.cleanNumber(str);
-  // Number() accepts empty strings
-  // parseFloat() accepts a number followed by other content
-  // Using both for stricter check. TODO consider using regex
-  return !isNaN(parseFloat(str)) && !isNaN(Number(str));
-};
 
 MapShaper.guessDelimiter = function(content) {
   var delimiters = ['|', '\t', ','];
@@ -100,7 +93,7 @@ MapShaper.adjustRecordTypes = function(records, rawFields) {
 
   Utils.forEach(records[0], function(val, key) {
     if (key in hintIndex === false) {
-      if (Utils.isString(val) && MapShaper.stringIsNumeric(val)) {
+      if (Utils.isString(val) && utils.stringIsNumeric(val)) {
         conversionIndex[key] = 'number';
       }
     } else if (hintIndex[key] == 'number' && !Utils.isNumber(val)) {
@@ -114,19 +107,27 @@ MapShaper.adjustRecordTypes = function(records, rawFields) {
   return fields;
 };
 
-MapShaper.cleanNumber = function(str) {
+utils.stringIsNumeric = function(str) {
+  str = utils.cleanNumber(str);
+  // Number() accepts empty strings
+  // parseFloat() accepts a number followed by other content
+  // Using both for stricter check. TODO consider using regex
+  return !isNaN(parseFloat(str)) && !isNaN(Number(str));
+};
+
+utils.cleanNumber = function(str) {
   return str.replace(/,/g, '');
 };
 
-MapShaper.parseNumber = function(str) {
-  return Number(MapShaper.cleanNumber(str));
+utils.parseNumber = function(str) {
+  return Number(utils.cleanNumber(str));
 };
 
 MapShaper.convertRecordTypes = function(records, typeIndex) {
   var typedFields = Utils.keys(typeIndex),
       converters = {
         'string': String,
-        'number': MapShaper.parseNumber
+        'number': utils.parseNumber
       },
       transforms = Utils.map(typedFields, function(f) {
         var type = typeIndex[f],

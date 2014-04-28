@@ -3,7 +3,7 @@ var assert = require('assert'),
     ArcDataset = api.internal.ArcDataset;
 
 describe('mapshaper-field-calculator.js', function () {
-  describe('evaluate()', function () {
+  describe('evaluateLayer()', function () {
     var nullArcs = new api.internal.ArcDataset([]);
     it('create new numeric field', function () {
       var records = [{}, {}];
@@ -11,7 +11,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluate(lyr, nullArcs, "FOO=0");
+      api.evaluateLayer(lyr, nullArcs, "FOO=0");
       assert.deepEqual(records, [{FOO:0}, {FOO:0}]);
     })
 
@@ -21,7 +21,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluate(lyr, nullArcs, "FOO=''");
+      api.evaluateLayer(lyr, nullArcs, "FOO=''");
       assert.deepEqual(records, [{FOO:''}, {FOO:''}]);
     })
 
@@ -31,7 +31,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluate(lyr, nullArcs, "delete foo");
+      api.evaluateLayer(lyr, nullArcs, "delete foo");
       assert.deepEqual(records, [{}, {}]);
     })
 
@@ -41,7 +41,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluate(lyr, nullArcs, "foo=foo.substr(0, 2)");
+      api.evaluateLayer(lyr, nullArcs, "foo=foo.substr(0, 2)");
       assert.deepEqual(records, [{foo:'mi'}, {foo:'be'}]);
     })
 
@@ -51,7 +51,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [[[0, 2], [-2]], null],
         data: new api.internal.DataTable(records)
       };
-      api.evaluate(lyr, nullArcs, "parts=$.partCount");
+      api.evaluateLayer(lyr, nullArcs, "parts=$.partCount");
       assert.deepEqual(records, [{parts: 2}, {parts: 0}]);
     })
 
@@ -59,7 +59,7 @@ describe('mapshaper-field-calculator.js', function () {
       var lyr = {
         shapes: [[[0, 2], [-2]], null]
       };
-      api.evaluate(lyr, nullArcs, "parts=$.partCount");
+      api.evaluateLayer(lyr, nullArcs, "parts=$.partCount");
       assert.deepEqual(lyr.data.getRecords(), [{parts: 2}, {parts: 0}]);
     })
 
@@ -68,7 +68,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [null, null],
         data: new api.internal.DataTable([null, {'a': 13}])
       };
-      api.evaluate(lyr, nullArcs, "FID=$.id");
+      api.evaluateLayer(lyr, nullArcs, "FID=$.id");
       assert.deepEqual(lyr.data.getRecords(), [{FID: 0}, {a: 13, FID: 1}]);
     })
 
@@ -78,7 +78,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluate(lyr, nullArcs, "bar = foo, delete foo");
+      api.evaluateLayer(lyr, nullArcs, "bar = foo, delete foo");
       assert.deepEqual(records, [{bar: 'mice'}, {bar: 'beans'}]);
     })
 
@@ -88,7 +88,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluate(lyr, nullArcs, "valid = $.properties.foo === foo");
+      api.evaluateLayer(lyr, nullArcs, "valid = $.properties.foo === foo");
       assert.deepEqual(records, [{foo: 'mice', valid: true}, {foo: 'beans', valid: true}]);
     })
 
@@ -97,7 +97,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [null, null],
         data: null
       };
-      api.evaluate(lyr, nullArcs, "$.properties = {FID: $.id}");
+      api.evaluateLayer(lyr, nullArcs, "$.properties = {FID: $.id}");
       assert.deepEqual(lyr.data.getRecords(), [{FID: 0}, {FID: 1}]);
     })
 
@@ -107,7 +107,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [null, null],
         data: new api.internal.DataTable(records)
       };
-      api.evaluate(lyr, nullArcs, "$.properties = {menu: foo}");
+      api.evaluateLayer(lyr, nullArcs, "$.properties = {menu: foo}");
       assert.deepEqual(lyr.data.getRecords(), [{menu: 'mice'}, {menu: 'beans'}]);
     })
 
@@ -117,7 +117,7 @@ describe('mapshaper-field-calculator.js', function () {
         shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluate(lyr, nullArcs, "bar=Math.sqrt(foo); delete foo");
+      api.evaluateLayer(lyr, nullArcs, "bar=Math.sqrt(foo); delete foo");
       assert.deepEqual(records, [{bar: 2}, {bar: 0}]);
     })
 
@@ -150,27 +150,27 @@ describe('mapshaper-field-calculator.js', function () {
       })
 
       it ("$.centroidX and $.centroidY", function() {
-        api.evaluate(lyr, arcs, "x=$.centroidX, y=$.centroidY");
+        api.evaluateLayer(lyr, arcs, "x=$.centroidX, y=$.centroidY");
         assert.deepEqual(lyr.data.getRecords(), [{x: 1.5, y: 2.5}, {x: 2, y: 1.5}, {x: null, y: null}])
       })
 
       it ("$.partCount and $.isNull", function() {
-        api.evaluate(lyr, arcs, "parts=$.partCount, isNull=$.isNull");
+        api.evaluateLayer(lyr, arcs, "parts=$.partCount, isNull=$.isNull");
         assert.deepEqual(lyr.data.getRecords(), [{parts: 1, isNull: false}, {parts: 2, isNull: false}, {parts: 0, isNull: true}])
       })
 
       it ("$.area and $.originalArea", function() {
-        api.evaluate(lyr, arcs, "area=$.area, area2=$.originalArea");
+        api.evaluateLayer(lyr, arcs, "area=$.area, area2=$.originalArea");
         assert.deepEqual(lyr.data.getRecords(), [{area: 1, area2: 1}, {area: 3, area2: 3}, {area: 0, area2: 0}])
       })
 
       it ("$.height and $.width", function() {
-        api.evaluate(lyr, arcs, "h=$.height, w=$.width");
+        api.evaluateLayer(lyr, arcs, "h=$.height, w=$.width");
         assert.deepEqual(lyr.data.getRecords(), [{w: 1, h: 1}, {w: 2, h: 2}, {w: 0, h: 0}])
       })
 
       it ("$.bounds", function() {
-        api.evaluate(lyr, arcs, "bb=$.bounds");
+        api.evaluateLayer(lyr, arcs, "bb=$.bounds");
         assert.deepEqual(lyr.data.getRecords(), [{bb: [1, 2, 2, 3]}, {bb: [1, 1, 3, 3]}, {bb: []}])
       })
 

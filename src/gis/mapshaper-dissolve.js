@@ -1,6 +1,6 @@
 /* @requires mapshaper-common, mapshaper-data-table, mapshaper-shape-utils */
 
-MapShaper.dissolveLayers = function(layers) {
+api.dissolveLayers = function(layers) {
   T.start();
   if (!Utils.isArray(layers)) error ("[dissolveLayers()] Expected an array of layers");
   var dissolvedLayers = [],
@@ -8,7 +8,7 @@ MapShaper.dissolveLayers = function(layers) {
 
   Utils.forEach(layers, function(lyr) {
     args[0] = lyr;
-    var layers2 = MapShaper.dissolveLayer.apply(null, args);
+    var layers2 = api.dissolveLayer.apply(null, args);
     dissolvedLayers.push.apply(dissolvedLayers, layers2);
   });
   T.stop('Dissolve polygons');
@@ -16,17 +16,15 @@ MapShaper.dissolveLayers = function(layers) {
 };
 
 // Dissolve a polygon layer into one or more derived layers
-// @dissolve comma-separated list of fields or true
+// @dissolve (optional) comma-separated list of fields
 //
-MapShaper.dissolveLayer = function(lyr, arcs, dissolve, opts) {
+api.dissolveLayer = function(lyr, arcs, dissolve, opts) {
   if (lyr.geometry_type != 'polygon') {
     error("[dissolveLayer()] Expected a polygon layer");
   }
-  if (!Utils.isString(dissolve)) {
-    dissolve = "";
-  }
-  var layers = Utils.map(dissolve.split(','), function(f) {
-    return MapShaper.dissolve(lyr, arcs, f || null, opts);
+  var dissolveArgs = Utils.isString(dissolve) ? dissolve.split(',') : [null];
+  var layers = Utils.map(dissolveArgs, function(arg) {
+    return MapShaper.dissolveLayerOnField(lyr, arcs, arg, opts);
   });
   return layers;
 };
@@ -34,7 +32,7 @@ MapShaper.dissolveLayer = function(lyr, arcs, dissolve, opts) {
 // Generate a dissolved layer
 // @field Name of data field to dissolve on or null to dissolve all polygons
 //
-MapShaper.dissolve = function(lyr, arcs, field, opts) {
+MapShaper.dissolveLayerOnField = function(lyr, arcs, field, opts) {
   var shapes = lyr.shapes,
       dataTable = lyr.data || null,
       properties = dataTable ? dataTable.getRecords() : null,

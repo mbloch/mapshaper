@@ -180,33 +180,6 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
   return obj;
 };
 
-MapShaper.arcHasLength = function(id, coords) {
-  var iter = coords.getArcIter(id), x, y;
-  if (iter.hasNext()) {
-    x = iter.x;
-    y = iter.y;
-    while (iter.hasNext()) {
-      if (iter.x != x || iter.y != y) return true;
-    }
-  }
-  return false;
-};
-
-MapShaper.filterEmptyArcs = function(shape, coords) {
-  if (!shape) return null;
-  var shape2 = [];
-  Utils.forEach(shape, function(ids) {
-    var path = [];
-    for (var i=0; i<ids.length; i++) {
-      if (MapShaper.arcHasLength(ids[i], coords)) {
-        path.push(ids[i]);
-      }
-    }
-    if (path.length > 0) shape2.push(path);
-  });
-  return shape2.length > 0 ? shape2 : null;
-};
-
 TopoJSON.groupPolygonRings = function(shapes, coords) {
   var iter = new ShapeIter(coords),
       pos = [],

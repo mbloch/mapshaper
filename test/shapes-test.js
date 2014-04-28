@@ -2,8 +2,8 @@
 var api = require('..'),
   assert = require('assert'),
   ArcDataset = api.internal.ArcDataset,
-  Utils = api.Utils,
-  trace = api.trace;
+  Utils = api.utils,
+  trace = Utils.trace;
 
 //      b --- d
 //     / \   /
@@ -194,21 +194,21 @@ describe('mapshaper-shapes.js', function () {
     it('Find index of largest non-infinite point', function () {
       var zz, id;
       zz = [Infinity, 3, 2, Infinity];
-      id = api.findNextRemovableVertex(zz, Infinity, 0, 3);
+      id = api.internal.findNextRemovableVertex(zz, Infinity, 0, 3);
       assert.equal(id, 1);
       zz = [Infinity, 0, 15, Infinity, Infinity, 5, -8, 2, 4, 5, Infinity];
-      id = api.findNextRemovableVertex(zz, Infinity, 4, 10);
+      id = api.internal.findNextRemovableVertex(zz, Infinity, 4, 10);
       assert.equal(id, 5);
-      id = api.findNextRemovableVertex(zz, 4, 4, 10);
+      id = api.internal.findNextRemovableVertex(zz, 4, 4, 10);
       assert.equal(id, 7);
     })
   })
 
   describe('#clampIntervalByPct()', function () {
     it('Snap simplification interval at extremes', function () {
-      assert.equal(api.clampIntervalByPct(3, 0), Infinity);
-      assert.equal(api.clampIntervalByPct(3, 1), 0);
-      assert.equal(api.clampIntervalByPct(3, 0.5), 3);
+      assert.equal(api.internal.clampIntervalByPct(3, 0), Infinity);
+      assert.equal(api.internal.clampIntervalByPct(3, 1), 0);
+      assert.equal(api.internal.clampIntervalByPct(3, 0.5), 3);
     })
   })
 })

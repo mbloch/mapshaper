@@ -1,9 +1,11 @@
 /* @requires mshp-common-lib */
 
-var MapShaper = {};
-var geom = MapShaper.geom = {};
-var utils = MapShaper.utils = Utils.extend({}, Utils);
-var internal = MapShaper.internal = {};
+var api = {};
+var MapShaper = api.internal = {};
+var geom = api.geom = {};
+var utils = api.utils = Utils.extend({}, Utils);
+
+MapShaper.LOGGING = true; //
 
 // TODO: adapt to run in browser
 function stop() {
@@ -33,7 +35,8 @@ utils.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 };
 
-utils.parseLocalPath = function(path) {
+utils.parseLocalPath = // expose for script
+MapShaper.parseLocalPath = function(path) {
   var obj = {
     ext: '',
     directory: '',
@@ -62,8 +65,8 @@ utils.parseLocalPath = function(path) {
   return obj;
 };
 
-utils.guessFileType = function(file) {
-  var info = utils.parseLocalPath(file),
+MapShaper.guessFileType = function(file) {
+  var info = MapShaper.parseLocalPath(file),
       ext = info.ext.toLowerCase(),
       type = null;
   if (/json$/i.test(file)) {
@@ -74,7 +77,7 @@ utils.guessFileType = function(file) {
   return type;
 };
 
-utils.guessFileFormat = function(str) {
+MapShaper.guessFileFormat = function(str) {
   var type = null,
       name = str.toLowerCase();
   if (/topojson$/.test(name)) {

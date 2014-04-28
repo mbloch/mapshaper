@@ -369,11 +369,6 @@ function getXYHash() {
   };
 }
 
-
 // Export functions for testing
-MapShaper.topology = {
-  buildPathTopology: buildPathTopology,
-  ArcIndex: ArcIndex
-  // groupPathsByShape: groupPathsByShape,
-  // initPathIds: initPathIds
-};
+MapShaper.buildPathTopology = buildPathTopology;
+MapShaper.ArcIndex = ArcIndex;

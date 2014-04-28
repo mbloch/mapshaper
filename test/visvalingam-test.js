@@ -1,6 +1,6 @@
 var assert = require('assert'),
     api = require("../"),
-    v = api.Visvalingam;
+    v = api.internal.Visvalingam;
 
 describe("mapshaper-visvalingam.js", function() {
 

@@ -1,7 +1,7 @@
 var assert = require('assert'),
     api = require("../");
 
-describe('mapshaper-split.js', function () {
+describe('mapshaper-subdivide.js', function () {
   describe('subdivideLayers()', function () {
     var nullArcs = new api.internal.ArcDataset([]);
     it('divide a layer into individual shapes', function() {

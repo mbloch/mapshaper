@@ -1,8 +1,8 @@
 var api = require('../'),
     assert = require('assert');
 
-var Utils = api.Utils,
-    Node = api.Node;
+var Utils = api.utils,
+    Node = api.internal.Node;
 
 function fixPath(p) {
   return Node.path.join(__dirname, p);
@@ -39,7 +39,7 @@ describe('mapshaper-geojson.js', function () {
         {type: 'Feature', properties: {FID: 1}, geometry: null}
       ]};
 
-      assert.deepEqual(api.exportGeoJSONObject(lyr, arcs), target);
+      assert.deepEqual(api.internal.exportGeoJSONObject(lyr, arcs), target);
     })
 
     it('use cut_table option', function () {
@@ -57,7 +57,7 @@ describe('mapshaper-geojson.js', function () {
         ]
         // , bbox: [1, 1, 2, 3]
       };
-      assert.deepEqual(api.exportGeoJSONObject(lyr, arcs, {cut_table: true}), target);
+      assert.deepEqual(api.internal.exportGeoJSONObject(lyr, arcs, {cut_table: true}), target);
     })
 
     it('export points with bbox', function() {
@@ -78,7 +78,7 @@ describe('mapshaper-geojson.js', function () {
         bbox: [0, 1, 2, 4]
       };
 
-      var result = api.exportGeoJSONObject(lyr, null, {bbox: true});
+      var result = api.internal.exportGeoJSONObject(lyr, null, {bbox: true});
       assert.deepEqual(result, target);
     })
 
@@ -99,7 +99,7 @@ describe('mapshaper-geojson.js', function () {
         ]
         , bbox: [-1, 0, 2, 3]
       };
-      var result = api.exportGeoJSONObject(lyr, arcs, {bbox: true});
+      var result = api.internal.exportGeoJSONObject(lyr, arcs, {bbox: true});
       assert.deepEqual(result, target);
     })
 
@@ -250,9 +250,9 @@ describe('mapshaper-geojson.js', function () {
 
 function geoJSONRoundTrip(fname) {
   var data = api.importFromFile(fixPath(fname));
-  var files = api.exportContent(data.layers, data.arcs, {output_format:'geojson'});
+  var files = api.exportFileContent(data.layers, data.arcs, {output_format:'geojson'});
   var data2 = api.importFileContent(files[0].content, 'json');
-  var files2 = api.exportContent(data2.layers, data2.arcs, {output_format:'geojson'});
+  var files2 = api.exportFileContent(data2.layers, data2.arcs, {output_format:'geojson'});
 
   assert.deepEqual(files, files2);
 }
@@ -260,5 +260,5 @@ function geoJSONRoundTrip(fname) {
 function importExport(obj, noTopo) {
   var json = Utils.isString(obj) ? obj : JSON.stringify(obj);
   var geom = api.importFileContent(json, 'json', {no_topology: noTopo});
-  return api.exportGeoJSONObject(geom.layers[0], geom.arcs);
+  return api.internal.exportGeoJSONObject(geom.layers[0], geom.arcs);
 }

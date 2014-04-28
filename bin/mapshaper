@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 
 var mapshaper = require("../"),
-    Node = mapshaper.Node,
-    Utils = mapshaper.Utils,
-    opts = mapshaper.getOpts(),
+    utils = mapshaper.utils,
+    opts = mapshaper.cli.getOpts(),
     inputList = opts.input_files;
 
-mapshaper.LOGGING = true;
 mapshaper.T.start("Start timing");
 
 // need to use a callback if joining a file, because csv parser is asynchronous
 if (opts.join_file) {
-  mapshaper.importJoinTable(opts.join_file, opts, function(table) {
+  mapshaper.importJoinTableAsync(opts.join_file, opts, function(table) {
     opts.join_table = table;
     procFiles(inputList, opts);
   });
@@ -27,15 +25,15 @@ function procFiles(files, opts) {
       mergedData.layers = mapshaper.mergeLayers(mergedData.layers);
     }
     if (!opts.output_file_base) {
-      opts.output_file_base = mapshaper.utils.getMergedFileBase(files) || "merged";
+      opts.output_file_base = utils.getMergedFileBase(files) || "merged";
     }
     procDataset(mergedData, opts);
   } else {
-    Utils.forEach(files, function(ifile) {
-      var fileOpts = Utils.extend({}, opts); // copy common options
+    files.forEach(function(ifile) {
+      var fileOpts = utils.extend({}, opts); // copy common options
       fileOpts.input_files = [ifile];
       if (!fileOpts.output_file_base) {
-        fileOpts.output_file_base = Node.getFileInfo(ifile).base;
+        fileOpts.output_file_base = utils.parseLocalPath(ifile).basename;
       }
       var data = mapshaper.importFromFile(ifile, fileOpts);
       procDataset(data, fileOpts);
@@ -69,14 +67,14 @@ function procDataset(importData, opts) {
       mapshaper.protectShapes(arcData, layers);
     }
 
-    if (Utils.isNumber(opts.simplify_pct)) {
+    if (utils.isNumber(opts.simplify_pct)) {
       arcData.setRetainedPct(opts.simplify_pct);
     } else if (opts.simplify_interval) {
       arcData.setRetainedInterval(opts.simplify_interval);
     }
 
     if (opts.repair) {
-      Utils.extend(info, mapshaper.findAndRepairIntersections(arcData));
+      utils.extend(info, mapshaper.findAndRepairIntersections(arcData));
       mapshaper.cli.printRepairMessage(info, opts);
     }
   }
@@ -146,18 +144,18 @@ function procDataset(importData, opts) {
     opts.topojson_divide = true;
   }
 
-  var exports = mapshaper.exportContent(layers, arcData, opts);
+  var exports = mapshaper.exportFileContent(layers, arcData, opts);
 
   // Copy prj file, if both importing and exporting as shapefile
   // TODO: move this elsewhere
   if (opts.output_format == 'shapefile' && opts.input_format == 'shapefile') {
     var prjFile = mapshaper.cli.replaceFileExtension(importData.info.input_files[0], 'prj'),
-        shpFiles = Utils.filter(exports, function(o) {return o.extension == 'shp'});
+        shpFiles = utils.filter(exports, function(o) {return o.extension == 'shp'});
 
-    if (Node.fileExists(prjFile)) {
-      Utils.forEach(shpFiles, function(o) {
+    if (mapshaper.cli.fileExists(prjFile)) {
+      shpFiles.forEach(function(o) {
         exports.push({
-          content: Node.readFile(prjFile, 'utf-8'),
+          content: mapshaper.cli.readFile(prjFile, 'utf-8'),
           extension: 'prj',
           filebase: o.filebase
         });
@@ -165,10 +163,10 @@ function procDataset(importData, opts) {
     }
   }
 
-  var paths = mapshaper.getOutputPaths(exports, opts.output_directory, opts.output_extension);
-  Utils.forEach(exports, function(obj, i) {
+  var paths = mapshaper.cli.getOutputPaths(exports, opts.output_directory, opts.output_extension);
+  exports.forEach(function(obj, i) {
     var path = paths[i];
-    Node.writeFile(path, obj.content);
+    mapshaper.cli.writeFile(path, obj.content);
     console.log("Wrote " + path);
   });
 }

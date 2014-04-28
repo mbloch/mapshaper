@@ -3,7 +3,7 @@
 // Remove arc endpoints that are only shared by two arcs
 // (Useful for reducing number of arcs after a polygon dissolve)
 //
-MapShaper.dissolveArcs = function(layers, arcs) {
+api.dissolveArcs = function(layers, arcs) {
   T.start();
   // Map old arc ids to new arc ids
   var map = arcDissolveFirstPass(layers, arcs);

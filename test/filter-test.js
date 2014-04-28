@@ -10,7 +10,7 @@ describe('mapshaper-filter.js', function () {
         shapes: [[[0]], [[1]]],
         data: new api.internal.DataTable(records)
       };
-      api.filter(lyr, nullArcs, "foo == 2");
+      api.filterLayer(lyr, nullArcs, "foo == 2");
       assert.deepEqual(lyr.data.getRecords(), [{foo: 2}]);
       assert.deepEqual(lyr.shapes, [[[1]]]);
     })
@@ -21,7 +21,7 @@ describe('mapshaper-filter.js', function () {
         shapes: [[[0], [1]], [[1]]],
         data: new api.internal.DataTable(records)
       };
-      api.filter(lyr, nullArcs, "$.partCount > 1");
+      api.filterLayer(lyr, nullArcs, "$.partCount > 1");
       assert.deepEqual(lyr.data.getRecords(), [{foo: 0}]);
       assert.deepEqual(lyr.shapes, [[[0], [1]]]);
     })

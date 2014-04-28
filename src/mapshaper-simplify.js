@@ -49,7 +49,6 @@ MapShaper.findMaxThreshold = function(zz) {
   return maxZ;
 };
 
-
 // Convert arrays of lng and lat coords (xsrc, ysrc) into
 // x, y, z coords on the surface of a sphere with radius 6378137
 // (the radius of spherical Earth datum in meters)
@@ -67,6 +66,7 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
   }
 };
 
+api.simplifyPaths = // export for script
 MapShaper.simplifyPaths = function(paths, method, force2D) {
   T.start();
   var bounds = paths.getBounds().toArray();

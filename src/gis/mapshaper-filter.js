@@ -1,25 +1,14 @@
 /* @requires mapshaper-expressions */
 
-MapShaper.filterLayers = function(layers, arcs, exp) {
+api.filterLayers = function(layers, arcs, exp) {
   T.start();
   Utils.forEach(layers, function(lyr) {
-    MapShaper.filter(lyr, arcs, exp);
+    api.filterLayer(lyr, arcs, exp);
   });
   T.stop("Filter");
 };
 
-MapShaper.selectLayers = function(layers, arcs, exp) {
-  var unselected = [], tmp;
-  Utils.forEach(layers, function(lyr) {
-    tmp = MapShaper.filter(lyr, arc, exp);
-    if (tmp && tmp.shapes.length > 0) {
-      unselected.push(tmp);
-    }
-  });
-  return unselected;
-};
-
-MapShaper.filter = function(lyr, arcs, exp) {
+api.filterLayer = function(lyr, arcs, exp) {
   MapShaper.select(lyr, arcs, exp, true);
 };
 
