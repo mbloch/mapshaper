@@ -4,21 +4,21 @@ var api = require('../'),
     ArcDataset = api.ArcDataset;
 
 var arcs1 = {
-  xx: new Float64Array([1, 2, 3, 4]),
-  yy: new Float64Array([0, 1, 0, 1]),
-  nn: new Uint32Array([2, 2])
+  xx: [1, 2, 3, 4],
+  yy: [0, 1, 0, 1],
+  nn: [2, 2]
 };
 
 var arcs2 = {
-  xx: new Float64Array([5, 6, 7, 8]),
-  yy: new Float64Array([2, 3, 2, 3]),
-  nn: new Uint32Array([0, 4])
+  xx: [5, 6, 7, 8],
+  yy: [2, 3, 2, 3],
+  nn: [0, 4]
 };
 
 var arcs3 = {
-  xx: new Float64Array([9, 10]),
-  yy: new Float64Array([4, 5]),
-  nn: new Uint32Array([2])
+  xx: [9, 10],
+  yy: [4, 5],
+  nn: [2]
 };
 
 var data1 = {

@@ -32,6 +32,9 @@ function ArcDataset() {
 
   function initXYData(nn, xx, yy) {
     var size = nn.length;
+    if (nn instanceof Array) nn = new Uint32Array(nn);
+    if (xx instanceof Array) xx = new Float64Array(xx);
+    if (yy instanceof Array) yy = new Float64Array(yy);
     _xx = xx;
     _yy = yy;
     _nn = nn;
@@ -58,6 +61,7 @@ function ArcDataset() {
   function initZData(zz) {
     if (!zz) zz = new Float64Array(_xx.length);
     if (zz.length != _xx.length) error("ArcDataset#initZData() mismatched arrays");
+    if (zz instanceof Array) zz = new Float64Array(zz);
     _zz = zz;
     _filteredArcIter = new FilteredArcIter(_xx, _yy, _zz);
   }
