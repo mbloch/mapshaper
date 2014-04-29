@@ -102,7 +102,7 @@ DbfReader.prototype.readRows = function() {
   var fields = this.header.fields,
     rows = this.header.recordCount,
     cols = fields.length,
-    names = Utils.map(fields, function(f) {return f.name}),
+    names = Utils.map(fields, function(f) {return f.name;}),
     data = [];
 
   for (var r=0; r<rows; r++) {

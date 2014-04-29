@@ -214,7 +214,7 @@ Dbf.getNumericFieldInfo = function(arr, name) {
     while (val * k % 1 !== 0) {
       if (decimals == limit) {
         // TODO: verify limit, remove oflo message, round overflowing values
-        trace ("#getNumericFieldInfo() Number field overflow; value:", val)
+        // trace ("#getNumericFieldInfo() Number field overflow; value:", val);
         break;
       }
       decimals++;

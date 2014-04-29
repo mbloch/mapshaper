@@ -69,12 +69,12 @@ ShpType.isZType = function(t) {
 //    });
 //
 function ShpReader(src) {
-  if (this instanceof ShpReader == false) {
+  if (this instanceof ShpReader === false) {
     return new ShpReader(src);
   }
 
   if (Utils.isString(src)) {
-    src = Node.readFile(src)
+    src = Node.readFile(src);
   }
 
   var bin = new BinArray(src),
@@ -96,16 +96,17 @@ function ShpReader(src) {
       shapes.push(shp.isNull ? null : shp.read(format));
     });
     return shapes;
-  }
+  };
 
   // Callback interface: for each record in a .shp file, pass a
   //   record object to a callback function
   //
   this.forEachShape = function(callback) {
-    var shape;
     this.reset();
-    while (shape = this.nextShape()) {
+    var shape = this.nextShape();
+    while (shape) {
       callback(shape);
+      shape = this.nextShape();
     }
   };
 
@@ -115,7 +116,7 @@ function ShpReader(src) {
 
   this.nextShape = function() {
     bin.position(readPos);
-    if (bin.bytesLeft() == 0) {
+    if (bin.bytesLeft() === 0) {
       this.reset();
       return null;
     }
@@ -126,7 +127,7 @@ function ShpReader(src) {
 
   this.reset = function() {
     readPos = 100;
-  }
+  };
 
   function readHeader(bin) {
     return {
@@ -155,7 +156,7 @@ function ShpReader(src) {
 
 ShpReader.prototype.type = function() {
   return this.header().type;
-}
+};
 
 ShpReader.prototype.hasZ = function() {
   return Utils.contains([11,13,15,18], this.type());
@@ -218,7 +219,7 @@ ShpReader.prototype.getRecordClass = function(type) {
     this.id = bin.bigEndian().readUint32();
     this.byteLength = bin.readUint32() * 2 + 8; // bytes in content section + 8 header bytes
     this.type = bin.littleEndian().readUint32();
-    this.isNull = this.type == 0;
+    this.isNull = this.type === 0;
     if (this.byteLength <= 0 || this.type !== 0 && this.type != type)
       error("Unable to read a shape -- .shp file may be corrupted");
 
@@ -235,7 +236,7 @@ ShpReader.prototype.getRecordClass = function(type) {
     }
     this._data = function() {
       return this.isNull ? null : bin.position(pos);
-    }
+    };
   };
 
   // functions for all types
@@ -316,7 +317,7 @@ ShpReader.prototype.getRecordClass = function(type) {
       if (this.hasM()) n++; // checking for M
       return this._data().skipBytes(12).readFloat64Array(n);
     }
-  }
+  };
 
   var multiCoordProto = {
     readBounds: function() {

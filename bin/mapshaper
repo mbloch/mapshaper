@@ -127,7 +127,6 @@ function procDataset(importData, opts) {
   }
 
   if (opts.recombine) {
-    // layers = [mapshaper.recombineLayers(layers)];
     layers = mapshaper.mergeLayers(layers);
   }
 
