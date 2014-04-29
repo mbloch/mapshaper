@@ -6747,7 +6747,6 @@ MapShaper.arcHasLength = function(id, coords) {
   return false;
 };
 
-
 MapShaper.filterEmptyArcs = function(shape, coords) {
   if (!shape) return null;
   var shape2 = [];
@@ -6762,9 +6761,6 @@ MapShaper.filterEmptyArcs = function(shape, coords) {
   });
   return shape2.length > 0 ? shape2 : null;
 };
-
-
-
 
 
 

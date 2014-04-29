@@ -7,8 +7,8 @@ var mapshaper = require("../"),
 
 mapshaper.T.start("Start timing");
 
-// need to use a callback if joining a file, because csv parser is asynchronous
 if (opts.join_file) {
+  // need to use a callback if joining a file, because csv parser is asynchronous
   mapshaper.importJoinTableAsync(opts.join_file, opts, function(table) {
     opts.join_table = table;
     procFiles(inputList, opts);
@@ -99,7 +99,7 @@ function procDataset(importData, opts) {
   */
 
   if (opts.split) {
-    layers = mapshaper.splitLayersOnField(layers, arcData, opts.split);
+    layers = mapshaper.splitLayers(layers, arcData, opts.split);
   }
 
   if (opts.subdivide) {

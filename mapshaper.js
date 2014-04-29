@@ -10749,18 +10749,18 @@ function arcDissolveFirstPass(layers, arcs) {
 
 
 
-api.splitLayersOnField = function(layers, arcs, field) {
-  var splitLayers = [];
+api.splitLayers = function(layers, arcs, field) {
+  var result = [];
   Utils.forEach(layers, function(lyr) {
-    splitLayers = splitLayers.concat(MapShaper.splitOnField(lyr, arcs, field));
+    result = result.concat(MapShaper.splitLayer(lyr, arcs, field));
   });
-  return splitLayers;
+  return result;
 };
 
-MapShaper.splitOnField = function(lyr0, arcs, field) {
+MapShaper.splitLayer = function(lyr0, arcs, field) {
   var dataTable = lyr0.data;
-  if (!dataTable) error("[splitOnField] Missing a data table");
-  if (!dataTable.fieldExists(field)) error("[splitOnField] Missing field:", field);
+  if (!dataTable) error("[splitLayer] Missing a data table");
+  if (!dataTable.fieldExists(field)) error("[splitLayer] Missing field:", field);
 
   var index = {},
       properties = dataTable.getRecords(),
