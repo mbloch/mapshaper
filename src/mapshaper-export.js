@@ -11,7 +11,7 @@ mapshaper-dataset-utils
 api.exportFileContent =
 MapShaper.exportFileContent = function(layers, arcData, opts) {
   var exporter = MapShaper.exporters[opts.output_format],
-      files;
+      files = [];
   if (!exporter) {
     error("exportFileContent() Unknown export format:", opts.output_format);
   }
@@ -25,13 +25,20 @@ MapShaper.exportFileContent = function(layers, arcData, opts) {
   T.start();
   validateLayerData(layers);
   assignLayerNames(layers);
-  files = exporter(layers, arcData, opts);
   if (opts.cut_table) {
     Utils.merge(files, MapShaper.exportDataTables(layers, opts));
   }
+
+  files = Utils.merge(exporter(layers, arcData, opts), files);
+  // output index of bounding boxes when multiple layers are being exported
+  // TODO: only do this when it makes sense, e.g. layers are the result of splitting
+  // Also: if rounding or quantization are applied during export, bounds may
+  // change somewhat... consider adding a bounds property to each layer during
+  // export when appropriate.
   if (layers.length > 1) {
     files.push(createIndexFile(layers, arcData));
   }
+
   assignFileNames(files, opts);
   T.stop("Export " + opts.output_format);
   return files;
@@ -104,7 +111,7 @@ MapShaper.exportFileContent = function(layers, arcData, opts) {
 MapShaper.exporters = {
   geojson: MapShaper.exportGeoJSON,
   topojson: MapShaper.exportTopoJSON,
-  shapefile: MapShaper.exportShp
+  shapefile: MapShaper.exportShapefile
 };
 
 MapShaper.getDefaultFileExtension = function(fileType) {

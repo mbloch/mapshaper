@@ -50,14 +50,21 @@ describe('mapshaper-geojson.js', function () {
             shapes: [[[0]]]
           };
 
-      var target = {"type":"GeometryCollection","geometries":[
+      var geojson = {"type":"GeometryCollection","geometries":[
         { type: 'Polygon',
           coordinates: [[[1, 1], [1, 3], [2, 3], [1, 1]]]
           }
-        ]
-        // , bbox: [1, 1, 2, 3]
+        ]};
+      var table = [{
+        FID: 1
+      }];
+      var opts = {
+        cut_table: true,
+        output_format: 'geojson'
       };
-      assert.deepEqual(api.internal.exportGeoJSONObject(lyr, arcs, {cut_table: true}), target);
+      var files = api.exportFileContent([lyr], arcs, opts);
+      assert.deepEqual(JSON.parse(files[0].content), geojson);
+      assert.deepEqual(JSON.parse(files[1].content), table);
     })
 
     it('export points with bbox', function() {

@@ -64,13 +64,13 @@ MapShaper.importShp = function(src, opts) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShp = function(layers, arcData, opts) {
+MapShaper.exportShapefile = function(layers, arcData, opts) {
   var files = [];
   layers.forEach(function(layer) {
     var data = layer.data,
         obj, dbf;
     T.start();
-    obj = MapShaper.exportShpFile(layer, arcData);
+    obj = MapShaper.exportShpAndShx(layer, arcData);
     T.stop("Export .shp file");
     T.start();
     data = layer.data;
@@ -102,12 +102,12 @@ MapShaper.exportShp = function(layers, arcData, opts) {
   return files;
 };
 
-MapShaper.exportShpFile = function(layer, arcData) {
+MapShaper.exportShpAndShx = function(layer, arcData) {
   var geomType = layer.geometry_type;
 
   var shpType = MapShaper.getShapefileType(geomType);
   if (shpType === null)
-    error("[exportShpFile()] Unable to export geometry type:", geomType);
+    error("[exportShpAndShx()] Unable to export geometry type:", geomType);
 
   var fileBytes = 100;
   var bounds = new Bounds();
@@ -120,7 +120,7 @@ MapShaper.exportShpFile = function(layer, arcData) {
   });
 
   if (!bounds.hasBounds()) {
-    error("[exportShpFile()] Missing bounds", layer);
+    error("[exportShpAndShx()] Missing bounds", layer);
   }
 
   // write .shp header section
