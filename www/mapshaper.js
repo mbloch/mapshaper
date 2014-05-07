@@ -4066,7 +4066,11 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.LOGGING = true; //
+MapShaper.LOGGING = false; //
+
+api.enableLogging = function() {
+  MapShaper.LOGGING = true;
+};
 
 // TODO: adapt to run in browser
 function stop() {
@@ -8745,13 +8749,13 @@ MapShaper.importShp = function(src, opts) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShp = function(layers, arcData, opts) {
+MapShaper.exportShapefile = function(layers, arcData, opts) {
   var files = [];
   layers.forEach(function(layer) {
     var data = layer.data,
         obj, dbf;
     T.start();
-    obj = MapShaper.exportShpFile(layer, arcData);
+    obj = MapShaper.exportShpAndShx(layer, arcData);
     T.stop("Export .shp file");
     T.start();
     data = layer.data;
@@ -8783,12 +8787,12 @@ MapShaper.exportShp = function(layers, arcData, opts) {
   return files;
 };
 
-MapShaper.exportShpFile = function(layer, arcData) {
+MapShaper.exportShpAndShx = function(layer, arcData) {
   var geomType = layer.geometry_type;
 
   var shpType = MapShaper.getShapefileType(geomType);
   if (shpType === null)
-    error("[exportShpFile()] Unable to export geometry type:", geomType);
+    error("[exportShpAndShx()] Unable to export geometry type:", geomType);
 
   var fileBytes = 100;
   var bounds = new Bounds();
@@ -8801,7 +8805,7 @@ MapShaper.exportShpFile = function(layer, arcData) {
   });
 
   if (!bounds.hasBounds()) {
-    error("[exportShpFile()] Missing bounds", layer);
+    error("[exportShpAndShx()] Missing bounds", layer);
   }
 
   // write .shp header section
@@ -8926,12 +8930,24 @@ MapShaper.importFileContent = function(content, fileType, opts) {
     if (jsonObj.type == 'Topology') {
       dataset = MapShaper.importTopoJSON(jsonObj, opts);
       fileFmt = 'topojson';
-    } else {
+    } else if ('type' in jsonObj) {
       dataset = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
+    } else if (Utils.isArray(jsonObj)) {
+      dataset = {
+        layers: [{
+          geometry_type: null,
+          data: new DataTable(jsonObj)
+        }]
+      };
+      fileFmt = 'json';
+    } else {
+      stop("Unrecognized JSON format");
     }
+  } else if (fileType == 'text') {
+    dataset = MapShaper.importDelimitedRecords();
   } else {
-    error("Unsupported file type:", fileType);
+    stop("Unsupported file type:", fileType);
   }
   T.stop("Import " + fileFmt);
 
@@ -8957,6 +8973,16 @@ MapShaper.buildTopology = function(dataset) {
       lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
     }
   });
+};
+
+MapShaper.importJSONRecords = function(arr, opts) {
+  return {
+    layers: [{
+      name: "",
+      data: new DataTable(arr),
+      geometry_type: null
+    }]
+  };
 };
 
 function updateArcsInShape(shape, topoPaths) {
@@ -9138,7 +9164,7 @@ Opts.inherit(ImportControl, EventDispatcher);
 api.exportFileContent =
 MapShaper.exportFileContent = function(layers, arcData, opts) {
   var exporter = MapShaper.exporters[opts.output_format],
-      files;
+      files = [];
   if (!exporter) {
     error("exportFileContent() Unknown export format:", opts.output_format);
   }
@@ -9152,13 +9178,20 @@ MapShaper.exportFileContent = function(layers, arcData, opts) {
   T.start();
   validateLayerData(layers);
   assignLayerNames(layers);
-  files = exporter(layers, arcData, opts);
   if (opts.cut_table) {
     Utils.merge(files, MapShaper.exportDataTables(layers, opts));
   }
+
+  files = Utils.merge(exporter(layers, arcData, opts), files);
+  // output index of bounding boxes when multiple layers are being exported
+  // TODO: only do this when it makes sense, e.g. layers are the result of splitting
+  // Also: if rounding or quantization are applied during export, bounds may
+  // change somewhat... consider adding a bounds property to each layer during
+  // export when appropriate.
   if (layers.length > 1) {
     files.push(createIndexFile(layers, arcData));
   }
+
   assignFileNames(files, opts);
   T.stop("Export " + opts.output_format);
   return files;
@@ -9231,7 +9264,7 @@ MapShaper.exportFileContent = function(layers, arcData, opts) {
 MapShaper.exporters = {
   geojson: MapShaper.exportGeoJSON,
   topojson: MapShaper.exportTopoJSON,
-  shapefile: MapShaper.exportShp
+  shapefile: MapShaper.exportShapefile
 };
 
 MapShaper.getDefaultFileExtension = function(fileType) {
@@ -11344,6 +11377,7 @@ MapShaper.replaceInArray = function(zz, value, replacement, start, end) {
 
 
 // MapShaper.LOGGING = true;
+api.enableLogging();
 
 if (Browser.inBrowser) {
   Browser.onload(function() {

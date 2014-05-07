@@ -16,12 +16,24 @@ MapShaper.importFileContent = function(content, fileType, opts) {
     if (jsonObj.type == 'Topology') {
       dataset = MapShaper.importTopoJSON(jsonObj, opts);
       fileFmt = 'topojson';
-    } else {
+    } else if ('type' in jsonObj) {
       dataset = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
+    } else if (Utils.isArray(jsonObj)) {
+      dataset = {
+        layers: [{
+          geometry_type: null,
+          data: new DataTable(jsonObj)
+        }]
+      };
+      fileFmt = 'json';
+    } else {
+      stop("Unrecognized JSON format");
     }
+  } else if (fileType == 'text') {
+    dataset = MapShaper.importDelimitedRecords();
   } else {
-    error("Unsupported file type:", fileType);
+    stop("Unsupported file type:", fileType);
   }
   T.stop("Import " + fileFmt);
 
@@ -47,6 +59,16 @@ MapShaper.buildTopology = function(dataset) {
       lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
     }
   });
+};
+
+MapShaper.importJSONRecords = function(arr, opts) {
+  return {
+    layers: [{
+      name: "",
+      data: new DataTable(arr),
+      geometry_type: null
+    }]
+  };
 };
 
 function updateArcsInShape(shape, topoPaths) {

@@ -5,6 +5,7 @@ var mapshaper = require("../"),
     opts = mapshaper.cli.getOpts(),
     inputList = opts.input_files;
 
+mapshaper.enableLogging();
 mapshaper.T.start("Start timing");
 
 if (opts.join_file) {

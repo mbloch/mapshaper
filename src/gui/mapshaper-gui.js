@@ -13,6 +13,7 @@ mapshaper-keep-shapes
 */
 
 // MapShaper.LOGGING = true;
+api.enableLogging();
 
 if (Browser.inBrowser) {
   Browser.onload(function() {

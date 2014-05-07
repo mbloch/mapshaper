@@ -4066,7 +4066,11 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.LOGGING = true; //
+MapShaper.LOGGING = false; //
+
+api.enableLogging = function() {
+  MapShaper.LOGGING = true;
+};
 
 // TODO: adapt to run in browser
 function stop() {
@@ -4270,6 +4274,627 @@ MapShaper.getUniqueLayerNames = function(names) {
     index[name] = true;
     return name;
   });
+};
+
+
+
+
+
+function CommandParser() {
+  var _usage = "",
+      _commands = [];
+
+  if (this instanceof CommandParser === false) return new CommandParser();
+
+  this.usage = function(str) {
+    _usage = str;
+    return this;
+  };
+
+  this.command = function(name) {
+    var opts = new CommandOptions(name);
+    _commands.push(opts);
+    return opts;
+  };
+
+  this.parseArgv = function(raw) {
+    var commandDefs = getCommands(),
+        commands = [], cmd,
+        argv = raw.concat(), // make copy, so we can consume the array
+        cmdName, cmdDef, optName, optDef, optVal;
+
+    while (argv.length > 0) {
+      cmdName = readCommandName(argv);
+      if (!cmdName) error("Invalid command:", argv[0]);
+      cmdDef = findCommandDefn(cmdName, commandDefs);
+      if (!cmdDef) error("Unknown command:", '-' + cmdName);
+      cmd = {
+        name: cmdDef.name,
+        options: {},
+        _: []
+      };
+      commands.push(cmd);
+
+      optName = readOptionName(argv);
+      while (optName) {
+        optDef = findOptionDefn(optName, cmdDef);
+        if (!optDef) {
+          // not a defined option; add it to _ array for later processing
+          cmd._.push(optName);
+        } else {
+          // found a defined option; get its value
+          optVal = readOptionValue(argv, optDef);
+          if (optVal === null) error("Invalid value for", optName + ":", argv[0]);
+          addOption(optDef, optVal);
+        }
+        optName = readOptionName(argv);
+      }
+    }
+    return commands;
+
+    function addOption(def, value) {
+      var name = def.assign_to || def.name.replace(/-/g, '_');
+      cmd.options[name] = value;
+    }
+
+    function readOptionValue(args, def) {
+      var type = def.type,
+          raw, val;
+      if (type == 'flag') {
+        val = true;
+      } else if (def.assign_to) { // opt is a member of a set, assigned to another name
+        val = def.name;
+      } else {
+        raw = args[0];
+        if (type == 'number') {
+          val = Number(raw);
+        } else if (type == 'integer') {
+          val = Math.round(Number(raw));
+        } else if (type) {
+          val = null; // unknown type
+        } else {
+          val = raw; // string
+        }
+
+        if (val !== val || val === null) {
+          val = null;
+        } else {
+          args.shift(); // good value, remove from argv
+        }
+      }
+
+      return val;
+    }
+
+    function readCommandName(args) {
+      var cmdRxp = /^--?([\w-]+)$/i,
+          match = cmdRxp.exec(args[0]);
+      if (match) {
+        args.shift();
+        return match[1];
+      }
+      return null;
+    }
+
+    function readOptionName(args) {
+      if (args.length === 0) return null;
+      var optValRxp = /^([a-z0-9_+-]+)=(.+)$/i,
+          match = optValRxp.exec(args[0]),
+          name;
+      if (match) {
+        name = match[1];
+        args[0] = match[2];
+      } else if (readCommandName([args[0]])) {
+        name = null;
+      } else {
+        name = args.shift();
+      }
+
+      return name;
+    }
+
+    function findCommandDefn(name, arr) {
+      return Utils.find(arr, function(cmd) {
+        return cmd.name === name || cmd.alias === name;
+      });
+    }
+
+    function findOptionDefn(name, cmd) {
+      return Utils.find(cmd.options, function(o) {
+        return o.name === name || o.alias === name;
+      });
+    }
+  };
+
+  this.getHelpMessage = function() {
+    var commands = getCommands(),
+        colWidth = 0;
+
+    commands.forEach(function(obj) {
+      var help = obj.name ? "-" + obj.name : "";
+      if (obj.alias) help += ", -" + obj.alias;
+      obj.help = help;
+      colWidth = Math.max(colWidth, help.length);
+      obj.options.forEach(formatOption);
+    });
+
+    var helpStr = _usage ? _usage + "\n" : "";
+
+    if (commands.length > 0) {
+      helpStr += "Commands and options:\n";
+      commands.forEach(function(obj, i) {
+        helpStr += formatHelpLine(obj.help, obj.describe);
+        if (obj.options.length > 0) {
+          obj.options.forEach(addOptionHelp);
+          helpStr += '\n';
+        }
+      });
+    }
+
+    return helpStr;
+
+    function formatHelpLine(help, desc) {
+      return ' ' + Utils.rpad(help, colWidth, ' ') + '  ' + (desc || '') + '\n';
+    }
+
+    function formatOption(o) {
+      // console.log("formatOption:", opt)
+      if (o.describe) {
+        o.help = o.name + (o.alias ? ", " + o.alias : "") + (o.type == 'flag' ? "" : "=");
+        colWidth = Math.max(colWidth, o.help.length);
+      }
+    }
+
+    function addOptionHelp(o) {
+      if (o.help) {
+        helpStr += formatHelpLine(' ' + o.help, o.describe);
+      }
+    }
+
+  };
+
+  this.printHelp = function() {
+    console.log(this.getHelpMessage());
+  };
+
+  function getCommands() {
+    return _commands.map(function(cmd) {
+      return cmd.done();
+    });
+  }
+}
+
+function CommandOptions(name) {
+  var _command = {
+    name: name,
+    options: []
+  };
+
+  this.describe = function(str) {
+    _command.describe = str;
+    return this;
+  };
+
+  this.alias = function(name) {
+    _command.alias = name;
+    return this;
+  };
+
+  this.option = function(name, opts) {
+    if (!Utils.isString(name) || !name) error("Missing option name");
+    if (!validateOption(opts)) error("Invalid option definition:", opts);
+    opts.name = name;
+    _command.options.push(opts);
+    return this;
+  };
+
+  this.done = function() {
+    return _command;
+  };
+
+  function validateOption(obj) {
+    return Utils.isObject(obj);
+  }
+}
+
+
+
+
+//
+//
+MapShaper.validateCommands = function(commands) {
+  commands.forEach(function(cmd) {
+    var validator = MapShaper.commandValidators[cmd.name];
+    if (validator) {
+      validator(cmd.options, cmd._);
+    }
+  });
+};
+
+
+function validateInputOpts(o, _) {
+  o.files = cli.validateInputFiles(_);
+
+  if ("precision" in o && o.precision > 0 === false) {
+    error("precision option should be a positive number");
+  }
+
+  if (o.encoding) {
+    o.encoding = cli.validateEncoding(o.encoding);
+  }
+}
+
+function validateSimplifyOpts(o, _) {
+  var methods = ["visvalingam", "dp"];
+  if (o.method) {
+    if (!Utils.contains(methods, o.method)) {
+      error(o.method, "is not a recognized simplification method; choos from:", methods);
+    }
+  }
+
+  var pctStr = Utils.find(_, function(str) {
+    return (/^[0-9.]+%$/.test(str));
+  });
+  if (pctStr) o.pct = parseFloat(pctStr) / 100;
+
+  // if (o.cartesian) o.force2D = true; // TODO: just use cartesian
+
+  if ("pct" in o && !(o.pct >= 0 && o.pct <= 1)) {
+    error("-simplify pct expects a number in the range 0-1");
+  }
+
+  if ("interval" in o && o.interval >= 0 === false) {
+    error("-simplify interval should be a non-negative number");
+  }
+
+  if (!("interval" in o || "pct" in o)) {
+    error("-simplify requires an interval or pct");
+  }
+
+}
+
+function validateJoinOpts(o, _) {
+  if (_.length !== 1) {
+    error("-join requires the name of a file to join");
+  }
+  o.file = _[0];
+
+  if (Utils.some("shp,xls,xlsx".split(','), function(suff) {
+    return Utils.endsWith(o.file, suff);
+  })) {
+    error("-join currently only supports dbf and csv files");
+  }
+
+  if (!o.keys) error("-join missing required keys option");
+  o.keys = validateCommaSep(o.keys, 2);
+  if (!o.keys) error("-join keys takes two comma-separated names, e.g.: FIELD1,FIELD2");
+
+  if (o.fields) {
+    o.fields =  validateCommaSep(fields);
+    if (!o.fields) error("-join fields is a comma-sep. list of fields to join");
+  }
+}
+
+function validateSplitOpts(o, _) {
+
+}
+
+function validateSplitOnGridOpts(o, _) {
+  if (_.length == 1) {
+    var tmp = _[0].split(',');
+    o.cols = parseInt(tmp[0], 10);
+    o.rows = parseInt(tmp[1], 10) || o.cols;
+  }
+
+  if (o.rows > 0 === false || o.cols > 0 === false) {
+    error("-split-on-grids expects cols,rows");
+  }
+}
+
+function validateLinesOpts(o, _) {
+  if (_.length > 0) {
+    error("-lines takes a comma-separated list of fields");
+  } else if (_.length == 1) {
+    o.fields = cli.validateCommaSepNames(_[0]);
+  }
+}
+
+function validateInnerLines(o, _) {
+  if (_.length > 0) {
+    error("-innerlines takes no arguments");
+  }
+}
+
+function validateSubdivideOpts(o, _) {
+  if (_.length !== 1) {
+    error("--subdivide option requires a JavaScript expression");
+  }
+  o.expression = _[0];
+}
+
+function validateFilterOpts(o, _) {  if (_.length !== 1) {
+    error("--filter option requires a JavaScript expression");
+  }
+  o.expression = _[0];
+}
+
+function validateOutputOpts(o, _) {
+  var odir, obase, oext, ofmt;
+  if (_.length > 1) {
+    error("-o takes one file or directory argument, received:", _);
+  } else if (_.length == 1) {
+    var ofileInfo = Node.getFileInfo(_[0]);
+    if (ofileInfo.is_directory) {
+      // odir = argv.o;
+      o.output_dir = _[0];
+    } else if (ofileInfo.relative_dir && !Node.dirExists(ofileInfo.relative_dir)) {
+      error("Output directory not found:", ofileInfo.relative_dir);
+    } else if (!ofileInfo.base) {
+      error('Invalid output file:', _[0]);
+    } else {
+      if (ofileInfo.ext) {
+        if (!cli.validateFileExtension(ofileInfo.file)) {
+          error("Output file looks like an unsupported file type:", ofileInfo.file);
+        }
+        // use -o extension, if present
+        // allows .topojson or .geojson instead of .json
+        // override extension inferred from --format option
+        // oext = ofileInfo.ext;
+      }
+      o.output_file = _[0];
+      //obase = ofileInfo.base;
+      //odir = ofileInfo.relative_dir || '.';
+    }
+  }
+  /*
+  if (odir) o.output_directory = odir;
+  if (oext) o.output_extension = oext;
+  if (obase) o.output_file_base = obase;
+  */
+
+  var supportedTypes = ["geojson", "topojson", "shapefile"];
+  if (o.format) {
+    o.format = o.format.toLowerCase();
+    if (!Utils.contains(supportedTypes, o.format)) {
+      error("Unsupported output format:", o.format);
+    }
+  }
+
+  // topojson-specific
+  if ("quantization" in o && o.quantization > 0 === false) {
+    error("quantization option should be a nonnegative integer");
+  }
+
+  if ("topojson_resolution" in o && o.topojson_resolution > 0 === false) {
+    error("topojson_resolution should be a nonnegative integet");
+  }
+
+}
+
+
+MapShaper.commandValidators = {
+  i: validateInputOpts,
+  o: validateOutputOpts,
+  simplify: validateSimplifyOpts,
+  join: validateJoinOpts,
+  "split-on-grid": validateSplitOnGridOpts,
+  split: validateSplitOpts,
+  subdivide: validateSubdivideOpts
+};
+
+
+
+
+api.getOpts = function() {
+  return MapShaper.parseCommands(process.argv.slice(2));
+};
+
+MapShaper.parseCommands = function(arr) {
+  var parser = MapShaper.getOptionParser(),
+      commands;
+  try {
+    commands = parser.parseArgv(arr);
+    MapShaper.validateCommands(commands);
+  } catch(e) {
+    // parser.printHelp();
+    stop(e.message);
+  }
+
+  // var commands = MapShaper.validateCommands(arr, parser.argv());
+  return commands;
+};
+
+MapShaper.getOptionParser = function() {
+  var parser = new CommandParser(),
+      usage = "Usage: mapshaper [commands]\n" +
+        "\nExample: fix minor topology errors, simplify to 10%, convert to geojson\n" +
+        "$ mapshaper -i states.shp auto-snap -simplify pct=0.1 -o geojson\n" +
+        "\nExample: aggregate census tracts to counties\n" +
+        "$ mapshaper -i tracts.shp -e 'CTY_FIPS=FIPS.substr(0, 5)' -dissolve CTY_FIPS\n";
+
+  parser.usage(usage);
+
+  parser.command('i')
+    .describe("input one or more files")
+    .option("merge-files", {
+      describe: "merge input files into a single layer before processing",
+      type: "flag"
+    })
+    .option("combine-files", {
+      describe: "import files to separate layers with shared topology",
+      type: "flag"
+    })
+    .option("no-topology", {
+      describe: "treat each shape as topologically independent",
+      type: "flag"
+    })
+    .option("precision", {
+      describe: "coordinate precision in source units",
+      type: "number"
+    })
+    .option("auto-snap", {
+      describe: "snap nearly identical points to fix minor topology errors",
+      type: "flag"
+    })
+    .option("snap-interval", {
+      describe: "specify snapping distance in source units",
+      type: "number"
+    })
+    .option("encoding", {
+      describe: "encoding of text data in .dbf file"
+    });
+
+  parser.command('o')
+    .describe("specify name of output file or directory")
+    .option("format", {
+      describe: "set export format (shapefile|geojson|topojson|dbf|csv|tsv)"
+    })
+    .option("quantization", {
+      describe: "specify TopoJSON quantization (auto-set by default)",
+      alias: 'q',
+      type: "integer"
+    })
+    .option("no-quantization", {
+      describe: "export TopoJSON without quantization",
+      type: "flag"
+    })
+    .option("id-field", {
+      describe: "field to use for TopoJSON id property"
+    })
+    .option("bbox", {
+      type: "flag",
+      describe: "add bbox property to TopoJSON or GeoJSON output"
+    })
+    .option("cut-table", {
+      describe: "detach attributes from shapes and save as a JSON file",
+      type: "flag"
+    });
+
+  parser.command('simplify')
+    .describe("simplify the geometry of polygon or polyline features")
+    .option("dp", {
+      alias: "rdp",
+      describe: "use Douglas-Peucker simplification",
+      assign_to: "method"
+    })
+    .option("visvalingam", {
+      describe: "use Visvalingam simplification",
+      assign_to: "method"
+    })
+    .option("method", {
+      // hidden option
+    })
+    .option("interval", {
+      alias: "i",
+      describe: "simplification resolution in linear units",
+      type: "number"
+    })
+    .option("pct", {
+      alias: "p",
+      describe: "proportion of removable points to retain (0-1)"
+    })
+    .option("cartesian", {
+      describe: "simplify decimal degree coords in 2D space (default is 3D)",
+      type: "flag"
+    })
+    .option("keep-shapes", {
+      describe: "prevent small shapes from disappearing",
+      type: "flag"
+    })
+    .option("no-repair", {
+      describe: "don't remove intersections introduced by simplification",
+      type: "flag"
+    });
+
+  parser.command("filter")
+    // .alias("f")
+    .describe("filter features with a boolean JavaScript expression")
+    .option("expression", {})
+    .option("layer", {});
+
+  parser.command("fields")
+    .describe('filter and rename data fields, e.g. "fips,st=state"')
+    .option("layer", {});
+
+  parser.command("expression")
+    .alias("e")
+    .describe("create/update/delete data fields with a JS expression")
+    .option("expression", {})
+    .option("layer", {});
+
+  parser.command("join")
+    .describe("join a dbf or delimited text file to the imported shapes")
+    .option("keys", {
+      describe: "local,foreign keys, e.g. keys=FIPS,CNTYFIPS:str"
+    })
+    .option("fields", {
+      describe: "(optional) join fields, e.g. fields=FIPS:str,POP"
+    });
+
+  parser.command("dissolve")
+    .describe("dissolve polygons; takes optional comma-sep. list of fields")
+    .option("sum-fields", {
+      describe: "fields to sum when dissolving  (comma-sep. list)"
+    })
+    .option("copy-fields", {
+      describe: "fields to copy when dissolving (comma-sep. list)"
+    })
+    .option("field", {})
+    .option("layer", {});
+
+  parser.command("lines")
+    .describe("convert polygons to lines; takes optional list of fields")
+    .option("field", {})
+    .option("layer", {});
+
+  parser.command("innerlines")
+    .describe("output polyline layers containing shared polygon boundaries")
+    .option("layer", {});
+
+  parser.command("split")
+    .describe("split features on a data field")
+    .option("field", {})
+    .option("layer", {});
+
+  parser.command("subdivide")
+    .describe("recursively divide a layer with a boolean JS expression")
+    .option("expression", {})
+    .option("layer", {});
+
+  parser.command("split-on-grid")
+    .describe("split layer into cols,rows  e.g. -split-on-grid 12,10")
+    .option("cols", {
+      type: "integer"
+    })
+    .option("rows", {
+      type: "integer"
+    })
+    .option("layer", {});
+
+  parser.command("*")
+    .describe("these options apply to multiple commands")
+    .option("layer", {
+      describe: "apply the command to a particular layer"
+    })
+    .option("add-layer", {
+      alias: "+",
+      describe: "create new layer(s) instead of replacing the source layer"
+    });
+
+  parser.command('encodings')
+    .describe("print list of supported text encodings");
+
+  parser.command('info')
+    .describe("print summary info instead of exporting files");
+
+  parser.command('verbose')
+    .describe("print verbose processing messages");
+
+  parser.command('version')
+    .alias('v')
+    .describe("print mapshaper version");
+
+  return parser;
 };
 
 
@@ -9848,12 +10473,24 @@ MapShaper.importFileContent = function(content, fileType, opts) {
     if (jsonObj.type == 'Topology') {
       dataset = MapShaper.importTopoJSON(jsonObj, opts);
       fileFmt = 'topojson';
-    } else {
+    } else if ('type' in jsonObj) {
       dataset = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
+    } else if (Utils.isArray(jsonObj)) {
+      dataset = {
+        layers: [{
+          geometry_type: null,
+          data: new DataTable(jsonObj)
+        }]
+      };
+      fileFmt = 'json';
+    } else {
+      stop("Unrecognized JSON format");
     }
+  } else if (fileType == 'text') {
+    dataset = MapShaper.importDelimitedRecords();
   } else {
-    error("Unsupported file type:", fileType);
+    stop("Unsupported file type:", fileType);
   }
   T.stop("Import " + fileFmt);
 
@@ -9879,6 +10516,16 @@ MapShaper.buildTopology = function(dataset) {
       lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
     }
   });
+};
+
+MapShaper.importJSONRecords = function(arr, opts) {
+  return {
+    layers: [{
+      name: "",
+      data: new DataTable(arr),
+      geometry_type: null
+    }]
+  };
 };
 
 function updateArcsInShape(shape, topoPaths) {
@@ -11827,6 +12474,7 @@ var usage =
 // Parse command line and return options object for bin/mapshaper
 //
 cli.getOpts = function() {
+
   var optimist = cli.getOptionParser(),
       argv = optimist.argv,
       opts;

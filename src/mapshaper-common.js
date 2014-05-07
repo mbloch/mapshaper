@@ -5,7 +5,11 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.LOGGING = true; //
+MapShaper.LOGGING = false; //
+
+api.enableLogging = function() {
+  MapShaper.LOGGING = true;
+};
 
 // TODO: adapt to run in browser
 function stop() {

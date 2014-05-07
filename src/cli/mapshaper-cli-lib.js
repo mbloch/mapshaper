@@ -1,4 +1,5 @@
 /* @requires
+mapshaper-options,
 mapshaper-topology,
 mapshaper-simplify,
 mapshaper-shapes,
@@ -37,6 +38,7 @@ var usage =
 // Parse command line and return options object for bin/mapshaper
 //
 cli.getOpts = function() {
+
   var optimist = cli.getOptionParser(),
       argv = optimist.argv,
       opts;

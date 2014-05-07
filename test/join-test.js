@@ -2,8 +2,6 @@ var api = require('../'),
     assert = require('assert'),
     DataTable = api.internal.DataTable;
 
-api.internal.LOGGING = false;
-
 function stringifyEqual(a, b) {
   assert.equal(JSON.stringify(a), JSON.stringify(b));
 }
