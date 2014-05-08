@@ -195,6 +195,7 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
     }
 
     bin.writeInt32(data.pointCount);
+    // console.log("point count:", pointCount);
 
     data.pathData.forEach(function(path, i) {
       if (multiPart) {
@@ -202,11 +203,10 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
       }
       bin.position(pointsIdx + pointCount * 16);
 
-      var xx = path.xx,
-          yy = path.yy;
-      for (var j=0, len=xx.length; j<len; j++) {
-        bin.writeFloat64(xx[j]);
-        bin.writeFloat64(yy[j]);
+      var points = path.points;
+      for (var j=0, len=points.length; j<len; j++) {
+        bin.writeFloat64(points[j][0]);
+        bin.writeFloat64(points[j][1]);
       }
       pointCount += j;
     });

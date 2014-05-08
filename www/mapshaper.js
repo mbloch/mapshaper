@@ -4207,6 +4207,14 @@ MapShaper.calcXYBounds = function(xx, yy, bb) {
   return bb;
 };
 
+MapShaper.calcPathBounds = function(points) {
+  var bounds = new Bounds();
+  for (var i=0, n=points.length; i<n; i++) {
+    bounds.mergePoint(points[i][0], points[i][1]);
+  }
+  return bounds;
+};
+
 
 MapShaper.transposeXYCoords = function(xx, yy) {
   var points = [];
@@ -6614,17 +6622,22 @@ function PathImporter(reservedPoints, opts) {
 
 
 
-MapShaper.exportPointData = function(shape) {
-  var path = MapShaper.transposePoints(shape);
-  var data = {
-    pathData: [path],
-    pointCount: path.pointCount
-  };
-  if (path.pointCount > 0) {
-    data.partCount = 1;
-    data.bounds = MapShaper.calcXYBounds(path.xx, path.yy);
+MapShaper.exportPointData = function(points) {
+  var data, path;
+  if (!points || points.length === 0) {
+    data = {partCount: 0, pointCount: 0};
   } else {
-    data.partCount = 0;
+    path = {
+      points: points,
+      pointCount: points.length,
+      bounds: MapShaper.calcPathBounds(points)
+    };
+    data = {
+      bounds: path.bounds,
+      pathData: [path],
+      partCount: 1,
+      pointCount: path.pointCount
+    };
   }
   return data;
 };
@@ -6643,14 +6656,14 @@ MapShaper.exportPathData = function(shape, arcs, type) {
           path = MapShaper.exportPathCoords(iter),
           valid = true;
       if (type == 'polygon') {
-        path.area = msSignedRingArea(path.xx, path.yy);
+        path.area = geom.getPathArea2(path.points); // msSignedRingArea(path.xx, path.yy);
         valid = path.pointCount > 3 && path.area !== 0;
       } else if (type == 'polyline') {
         valid = path.pointCount > 1;
       }
       if (valid) {
         pointCount += path.pointCount;
-        path.bounds = MapShaper.calcXYBounds(path.xx, path.yy);
+        path.bounds = MapShaper.calcPathBounds(path.points);
         bounds.mergeBounds(path.bounds);
         paths.push(path);
       } else {
@@ -6693,7 +6706,7 @@ MapShaper.groupMultiPolygonPaths = function(paths) {
         containerArea = 0;
     for (var i=0, n=pos.length; i<n; i++) {
       var part = pos[i],
-          contained = part.bounds.contains(hole.bounds);
+          contained = part.bounds.contains(hole.bounds) && part.area > -hole.area;
       if (contained && (containerArea === 0 || part.area < containerArea)) {
         containerArea = part.area;
         containerId = i;
@@ -6718,24 +6731,22 @@ MapShaper.transposePoints = function(points) {
 };
 
 MapShaper.exportPathCoords = function(iter) {
-  var xx = [], yy = [],
+  var points = [],
       i = 0,
       x, y, prevX, prevY;
   while (iter.hasNext()) {
     x = iter.x;
     y = iter.y;
     if (i === 0 || prevX != x || prevY != y) {
-      xx.push(x);
-      yy.push(y);
+      points.push([x, y]);
       i++;
     }
     prevX = x;
     prevY = y;
   }
   return {
-    xx: xx,
-    yy: yy,
-    pointCount: xx.length
+    points: points,
+    pointCount: points.length
   };
 };
 
@@ -7662,7 +7673,7 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
   var obj = MapShaper.exportPathData(ids, arcs, "polyline");
   if (obj.pointCount === 0) return null;
   var coords = obj.pathData.map(function(path) {
-    return MapShaper.transposeXYCoords(path.xx, path.yy);
+    return path.points;
   });
   return coords.length == 1 ? {
     type: "LineString",
@@ -7679,7 +7690,7 @@ GeoJSON.exportPolygonGeom = function(ids, arcs) {
   var groups = MapShaper.groupMultiPolygonPaths(obj.pathData);
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
-      return MapShaper.transposeXYCoords(path.xx, path.yy);
+      return path.points;
     });
   });
   return coords.length == 1 ? {
@@ -7987,7 +7998,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
   if (opts.topojson_precision) {
     transform = TopoJSON.getExportTransform(filteredArcs, null, opts.topojson_precision);
   } else if (opts.topojson_resolution === 0) {
-    useDelta = true;
+    useDelta = false;
   } else if (opts.topojson_resolution > 0) {
     transform = TopoJSON.getExportTransform(filteredArcs, opts.topojson_resolution);
   } else if (opts.precision > 0) {
@@ -8150,49 +8161,22 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
 };
 
 TopoJSON.groupPolygonRings = function(shapes, coords) {
-  var iter = new ShapeIter(coords),
-      pos = [],
-      neg = [],
-      groups = [];
-
-  shapes.forEach(function(ids) {
-    if (!Utils.isArray(ids)) throw new Error("expected array");
-    iter.init(ids);
-    var area = geom.getPathArea(iter),
-        bounds = coords.getSimpleShapeBounds(ids);
-    var path = {
-      ids: ids,
-      area: area,
-      bounds: bounds
+  var iter = new ShapeIter(coords);
+  var paths = Utils.map(shapes, function(shape) {
+    if (!Utils.isArray(shape)) throw new Error("expected array");
+    iter.init(shape);
+    return {
+      ids: shape,
+      area: geom.getPathArea(iter),
+      bounds: coords.getSimpleShapeBounds(shape)
     };
-    if (!path.area) {
-      // skip 0 area rings
-    } else if (path.area > 0) {
-      pos.push(path);
-      groups.push([ids]);
-    } else {
-      neg.push(path);
-    }
   });
-
-  neg.forEach(function(hole) {
-    var containerId = -1,
-        containerArea = 0;
-    for (var i=0, n=pos.length; i<n; i++) {
-      var part = pos[i],
-          contained = part.bounds.contains(hole.bounds);
-      if (contained && (containerArea === 0 || part.area < containerArea)) {
-        containerArea = part.area;
-        containerId = i;
-      }
-    }
-    if (containerId == -1) {
-      verbose("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
-    } else {
-      groups[containerId].push(hole.ids);
-    }
+  var groups = MapShaper.groupMultiPolygonPaths(paths);
+  return groups.map(function(paths) {
+    return paths.map(function(path) {
+      return path.ids;
+    });
   });
-  return groups;
 };
 
 TopoJSON.exportPolygonGeom = function(shape, coords) {
@@ -8202,8 +8186,13 @@ TopoJSON.exportPolygonGeom = function(shape, coords) {
     geom.type = null;
   } else if (shape.length > 1) {
     geom.arcs = TopoJSON.groupPolygonRings(shape, coords);
-    geom.type = geom.arcs.length > 1 ? "MultiPolygon" : "Polygon";
-  } else if (shape.length == 1) {
+    if (geom.arcs.length == 1) {
+      geom.arcs = geom.arcs[0];
+      geom.type = "Polygon";
+    } else {
+      geom.type = "MultiPolygon";
+    }
+  } else {
     geom.arcs = shape;
     geom.type = "Polygon";
   }
@@ -8880,6 +8869,7 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
     }
 
     bin.writeInt32(data.pointCount);
+    // console.log("point count:", pointCount);
 
     data.pathData.forEach(function(path, i) {
       if (multiPart) {
@@ -8887,11 +8877,10 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
       }
       bin.position(pointsIdx + pointCount * 16);
 
-      var xx = path.xx,
-          yy = path.yy;
-      for (var j=0, len=xx.length; j<len; j++) {
-        bin.writeFloat64(xx[j]);
-        bin.writeFloat64(yy[j]);
+      var points = path.points;
+      for (var j=0, len=points.length; j<len; j++) {
+        bin.writeFloat64(points[j][0]);
+        bin.writeFloat64(points[j][1]);
       }
       pointCount += j;
     });

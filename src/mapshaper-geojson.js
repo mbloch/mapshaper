@@ -224,7 +224,7 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
   var obj = MapShaper.exportPathData(ids, arcs, "polyline");
   if (obj.pointCount === 0) return null;
   var coords = obj.pathData.map(function(path) {
-    return MapShaper.transposeXYCoords(path.xx, path.yy);
+    return path.points;
   });
   return coords.length == 1 ? {
     type: "LineString",
@@ -241,7 +241,7 @@ GeoJSON.exportPolygonGeom = function(ids, arcs) {
   var groups = MapShaper.groupMultiPolygonPaths(obj.pathData);
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
-      return MapShaper.transposeXYCoords(path.xx, path.yy);
+      return path.points;
     });
   });
   return coords.length == 1 ? {
