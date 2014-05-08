@@ -110,7 +110,7 @@ function PathImporter(reservedPoints, opts) {
     if (type == 'polyline') {
       valid = n > 1;
     } else if (type == 'polygon') {
-      valid = n > 3 && msSignedRingArea(xx, yy, pointId-n, n) !== 0;
+      valid = n > 3 && geom.getPathArea3(xx, yy, pointId-n, n) !== 0;
     } else {
       error("[importPathFromFlatArray() Unexpected type:", type);
     }

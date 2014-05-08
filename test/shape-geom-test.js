@@ -116,4 +116,27 @@ describe('mapshaper-shape-geom.js', function () {
     })
   })
 
+
+  describe("getSignedArea3()", function() {
+
+    it("returns 0 if shape has collapsed", function() {
+      assert.equal(geom.getPathArea3([0, 1, 0], [0, 1, 0]), 0);
+      assert.equal(geom.getPathArea3([2, 1, 0, 2], [0, 1, 2, 0]), 0);
+      assert.equal(geom.getPathArea3([3, 3, 3, 3], [4, 4, 4, 4]), 0);
+    })
+
+    it("returns negative area if points are counter-clockwise", function() {
+      assert.equal(geom.getPathArea3([1, 2, 2, 1, 1], [1, 1, 2, 2, 1]), -1)
+    })
+
+    it("returns positive area if points are clockwise", function() {
+      assert.equal(geom.getPathArea3([1, 1, 2, 2, 1], [1, 2, 2, 1, 1]), 1)
+    })
+
+    it("accepts start and length parameters", function() {
+      assert.equal(geom.getPathArea3([0, 0, 4, 5, 6, 4], [-1, -4, 0, 1, 0, 0], 2), 1)
+      assert.equal(geom.getPathArea3([0, 0, 4, 5, 6, 4, 3], [-1, -4, 0, 1, 0, 0, 1], 2, 4), 1)
+    })
+  })
+
 })

@@ -11,36 +11,9 @@ geom.getShapeArea = function(shp, arcs) {
   return area;
 };
 
-geom.getPathArea = function(iter) {
-  var sum = 0,
-      x, y;
-  if (iter.hasNext()) {
-    x = iter.x;
-    y = iter.y;
-    while (iter.hasNext()) {
-      sum += iter.x * y - x * iter.y;
-      x = iter.x;
-      y = iter.y;
-    }
-  }
-  return sum / 2;
-};
-
-// TODO: remove this
-geom.getPathArea2 = function(points) {
-  var sum = 0,
-      x, y, p;
-  for (var i=0, n=points.length; i<n; i++) {
-    p = points[i];
-    if (i > 0) {
-      sum += p[0] * y - x * p[1];
-    }
-    x = p[0];
-    y = p[1];
-  }
-  return sum / 2;
-};
-
+// Return path with the largest (area) bounding box
+// @shp array of array of arc ids
+// @arec ArcDataset
 geom.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
   return Utils.reduce(shp, function(maxPath, path) {
@@ -53,6 +26,8 @@ geom.getMaxPath = function(shp, arcs) {
   }, null);
 };
 
+// @ids array of arc ids
+// @arcs ArcDataset
 geom.getAvgPathXY = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return null;
@@ -218,3 +193,80 @@ geom.testPointInRing = function(x, y, ids, arcs) {
 
   return intersections % 2 == 1;
 };
+
+
+// Get path area from a point iterator
+geom.getPathArea = function(iter) {
+  var sum = 0,
+      x, y;
+  if (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    while (iter.hasNext()) {
+      sum += iter.x * y - x * iter.y;
+      x = iter.x;
+      y = iter.y;
+    }
+  }
+  return sum / 2;
+};
+
+// Get path area from an array of [x, y] points
+// TODO: consider removing duplication with getPathArea(), e.g. by
+//   wrapping points in an iterator.
+//
+geom.getPathArea2 = function(points) {
+  var sum = 0,
+      x, y, p;
+  for (var i=0, n=points.length; i<n; i++) {
+    p = points[i];
+    if (i > 0) {
+      sum += p[0] * y - x * p[1];
+    }
+    x = p[0];
+    y = p[1];
+  }
+  return sum / 2;
+};
+
+// TODO: consider removing duplication with above
+geom.getPathArea3 = function(xx, yy, start, len) {
+  var sum = 0,
+      i = start | 0,
+      end = i + (len ? len | 0 : xx.length - i) - 1;
+  if (i < 0 || end >= xx.length) {
+    error("Out-of-bounds array index");
+  }
+  for (; i < end; i++) {
+    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
+  }
+  return sum / 2;
+};
+
+geom.getPathBounds = function(points) {
+  var bounds = new Bounds();
+  for (var i=0, n=points.length; i<n; i++) {
+    bounds.mergePoint(points[i][0], points[i][1]);
+  }
+  return bounds;
+};
+
+/*
+geom.transposeXYCoords = function(xx, yy) {
+  var points = [];
+  for (var i=0, len=xx.length; i<len; i++) {
+    points.push([xx[i], yy[i]]);
+  }
+  return points;
+};
+
+geom.transposePoints = function(points) {
+  var xx = [], yy = [], n=points.length;
+  for (var i=0; i<n; i++) {
+    xx.push(points[i][0]);
+    yy.push(points[i][1]);
+  }
+  return {xx: xx, yy: yy, pointCount: n};
+};
+
+*/

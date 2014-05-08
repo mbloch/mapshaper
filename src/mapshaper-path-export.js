@@ -1,5 +1,6 @@
 /* @requires mapshaper-common */
 
+// TODO: refactor
 MapShaper.exportPointData = function(points) {
   var data, path;
   if (!points || points.length === 0) {
@@ -8,7 +9,7 @@ MapShaper.exportPointData = function(points) {
     path = {
       points: points,
       pointCount: points.length,
-      bounds: MapShaper.calcPathBounds(points)
+      bounds: geom.getPathBounds(points)
     };
     data = {
       bounds: path.bounds,
@@ -20,6 +21,7 @@ MapShaper.exportPointData = function(points) {
   return data;
 };
 
+// TODO: refactor
 MapShaper.exportPathData = function(shape, arcs, type) {
   // kludge until Shapefile exporting is refactored
   if (type == 'point') return MapShaper.exportPointData(shape);
@@ -34,14 +36,14 @@ MapShaper.exportPathData = function(shape, arcs, type) {
           path = MapShaper.exportPathCoords(iter),
           valid = true;
       if (type == 'polygon') {
-        path.area = geom.getPathArea2(path.points); // msSignedRingArea(path.xx, path.yy);
+        path.area = geom.getPathArea2(path.points);
         valid = path.pointCount > 3 && path.area !== 0;
       } else if (type == 'polyline') {
         valid = path.pointCount > 1;
       }
       if (valid) {
         pointCount += path.pointCount;
-        path.bounds = MapShaper.calcPathBounds(path.points);
+        path.bounds = geom.getPathBounds(path.points);
         bounds.mergeBounds(path.bounds);
         paths.push(path);
       } else {
@@ -58,11 +60,15 @@ MapShaper.exportPathData = function(shape, arcs, type) {
   };
 };
 
-// Bundle holes with their containing rings, for Topo/GeoJSON export
-// Assume outer rings are CW and inner (hole) rings are CCW, like Shapefile
-// @paths array of path objects from exportShapeData()
+// Bundle holes with their containing rings for Topo/GeoJSON polygon export.
+// Assumes outer rings are CW and inner (hole) rings are CCW.
+// @paths output from MapShaper.exportPathData() or TopoJSON.groupPolygonRings()
 //
-MapShaper.groupMultiPolygonPaths = function(paths) {
+// TODO: Improve reliability. Currently uses winding order, area and bbox to
+//   identify holes and their enclosures -- could be confused by strange
+//   geometry.
+//
+MapShaper.groupPolygonRings = function(paths) {
   var pos = [],
       neg = [];
   Utils.forEach(paths, function(path) {
@@ -91,21 +97,12 @@ MapShaper.groupMultiPolygonPaths = function(paths) {
       }
     }
     if (containerId == -1) {
-      verbose("[groupMultiShapePaths()] polygon hole is missing a containing ring, dropping.");
+      verbose("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
     } else {
       output[containerId].push(hole);
     }
   });
   return output;
-};
-
-MapShaper.transposePoints = function(points) {
-  var xx = [], yy = [], n=points.length;
-  for (var i=0; i<n; i++) {
-    xx.push(points[i][0]);
-    yy.push(points[i][1]);
-  }
-  return {xx: xx, yy: yy, pointCount: n};
 };
 
 MapShaper.exportPathCoords = function(iter) {

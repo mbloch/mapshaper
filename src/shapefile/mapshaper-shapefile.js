@@ -195,7 +195,6 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
     }
 
     bin.writeInt32(data.pointCount);
-    // console.log("point count:", pointCount);
 
     data.pathData.forEach(function(path, i) {
       if (multiPart) {

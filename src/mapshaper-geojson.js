@@ -238,7 +238,7 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
 GeoJSON.exportPolygonGeom = function(ids, arcs) {
   var obj = MapShaper.exportPathData(ids, arcs, "polygon");
   if (obj.pointCount === 0) return null;
-  var groups = MapShaper.groupMultiPolygonPaths(obj.pathData);
+  var groups = MapShaper.groupPolygonRings(obj.pathData);
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
       return path.points;

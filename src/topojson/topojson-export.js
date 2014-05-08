@@ -191,7 +191,7 @@ TopoJSON.groupPolygonRings = function(shapes, coords) {
       bounds: coords.getSimpleShapeBounds(shape)
     };
   });
-  var groups = MapShaper.groupMultiPolygonPaths(paths);
+  var groups = MapShaper.groupPolygonRings(paths);
   return groups.map(function(paths) {
     return paths.map(function(path) {
       return path.ids;

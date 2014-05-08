@@ -4207,22 +4207,6 @@ MapShaper.calcXYBounds = function(xx, yy, bb) {
   return bb;
 };
 
-MapShaper.calcPathBounds = function(points) {
-  var bounds = new Bounds();
-  for (var i=0, n=points.length; i<n; i++) {
-    bounds.mergePoint(points[i][0], points[i][1]);
-  }
-  return bounds;
-};
-
-
-MapShaper.transposeXYCoords = function(xx, yy) {
-  var points = [];
-  for (var i=0, len=xx.length; i<len; i++) {
-    points.push([xx[i], yy[i]]);
-  }
-  return points;
-};
 
 // Convert a topological shape to a non-topological format
 // (for exporting)
@@ -5135,20 +5119,6 @@ MapShaper.calcArcBounds = function(xx, yy, start, len) {
   return [xmin, ymin, xmax, ymax];
 };
 
-function msSignedRingArea(xx, yy, start, len) {
-  var sum = 0,
-      i = start | 0,
-      end = i + (len ? len | 0 : xx.length - i) - 1;
-
-  if (i < 0 || end >= xx.length) {
-    error("Out-of-bounds array index");
-  }
-  for (; i < end; i++) {
-    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
-  }
-  return sum / 2;
-}
-
 MapShaper.reversePathCoords = function(arr, start, len) {
   var i = start,
       j = start + len - 1,
@@ -5191,7 +5161,6 @@ Utils.extend(geom, {
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,
-  msSignedRingArea: msSignedRingArea,
   probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
 });
 
@@ -6914,36 +6883,9 @@ geom.getShapeArea = function(shp, arcs) {
   return area;
 };
 
-geom.getPathArea = function(iter) {
-  var sum = 0,
-      x, y;
-  if (iter.hasNext()) {
-    x = iter.x;
-    y = iter.y;
-    while (iter.hasNext()) {
-      sum += iter.x * y - x * iter.y;
-      x = iter.x;
-      y = iter.y;
-    }
-  }
-  return sum / 2;
-};
-
-// TODO: remove this
-geom.getPathArea2 = function(points) {
-  var sum = 0,
-      x, y, p;
-  for (var i=0, n=points.length; i<n; i++) {
-    p = points[i];
-    if (i > 0) {
-      sum += p[0] * y - x * p[1];
-    }
-    x = p[0];
-    y = p[1];
-  }
-  return sum / 2;
-};
-
+// Return path with the largest (area) bounding box
+// @shp array of array of arc ids
+// @arec ArcDataset
 geom.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
   return Utils.reduce(shp, function(maxPath, path) {
@@ -6956,6 +6898,8 @@ geom.getMaxPath = function(shp, arcs) {
   }, null);
 };
 
+// @ids array of arc ids
+// @arcs ArcDataset
 geom.getAvgPathXY = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return null;
@@ -7121,6 +7065,83 @@ geom.testPointInRing = function(x, y, ids, arcs) {
 
   return intersections % 2 == 1;
 };
+
+
+// Get path area from a point iterator
+geom.getPathArea = function(iter) {
+  var sum = 0,
+      x, y;
+  if (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    while (iter.hasNext()) {
+      sum += iter.x * y - x * iter.y;
+      x = iter.x;
+      y = iter.y;
+    }
+  }
+  return sum / 2;
+};
+
+// Get path area from an array of [x, y] points
+// TODO: consider removing duplication with getPathArea(), e.g. by
+//   wrapping points in an iterator.
+//
+geom.getPathArea2 = function(points) {
+  var sum = 0,
+      x, y, p;
+  for (var i=0, n=points.length; i<n; i++) {
+    p = points[i];
+    if (i > 0) {
+      sum += p[0] * y - x * p[1];
+    }
+    x = p[0];
+    y = p[1];
+  }
+  return sum / 2;
+};
+
+// TODO: consider removing duplication with above
+geom.getPathArea3 = function(xx, yy, start, len) {
+  var sum = 0,
+      i = start | 0,
+      end = i + (len ? len | 0 : xx.length - i) - 1;
+  if (i < 0 || end >= xx.length) {
+    error("Out-of-bounds array index");
+  }
+  for (; i < end; i++) {
+    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
+  }
+  return sum / 2;
+};
+
+geom.getPathBounds = function(points) {
+  var bounds = new Bounds();
+  for (var i=0, n=points.length; i<n; i++) {
+    bounds.mergePoint(points[i][0], points[i][1]);
+  }
+  return bounds;
+};
+
+/*
+geom.transposeXYCoords = function(xx, yy) {
+  var points = [];
+  for (var i=0, len=xx.length; i<len; i++) {
+    points.push([xx[i], yy[i]]);
+  }
+  return points;
+};
+
+geom.transposePoints = function(points) {
+  var xx = [], yy = [], n=points.length;
+  for (var i=0; i<n; i++) {
+    xx.push(points[i][0]);
+    yy.push(points[i][1]);
+  }
+  return {xx: xx, yy: yy, pointCount: n};
+};
+
+*/
 
 
 
@@ -7336,7 +7357,7 @@ function PathImporter(reservedPoints, opts) {
     if (type == 'polyline') {
       valid = n > 1;
     } else if (type == 'polygon') {
-      valid = n > 3 && msSignedRingArea(xx, yy, pointId-n, n) !== 0;
+      valid = n > 3 && geom.getPathArea3(xx, yy, pointId-n, n) !== 0;
     } else {
       error("[importPathFromFlatArray() Unexpected type:", type);
     }
@@ -7442,6 +7463,7 @@ function PathImporter(reservedPoints, opts) {
 
 
 
+// TODO: refactor
 MapShaper.exportPointData = function(points) {
   var data, path;
   if (!points || points.length === 0) {
@@ -7450,7 +7472,7 @@ MapShaper.exportPointData = function(points) {
     path = {
       points: points,
       pointCount: points.length,
-      bounds: MapShaper.calcPathBounds(points)
+      bounds: geom.getPathBounds(points)
     };
     data = {
       bounds: path.bounds,
@@ -7462,6 +7484,7 @@ MapShaper.exportPointData = function(points) {
   return data;
 };
 
+// TODO: refactor
 MapShaper.exportPathData = function(shape, arcs, type) {
   // kludge until Shapefile exporting is refactored
   if (type == 'point') return MapShaper.exportPointData(shape);
@@ -7476,14 +7499,14 @@ MapShaper.exportPathData = function(shape, arcs, type) {
           path = MapShaper.exportPathCoords(iter),
           valid = true;
       if (type == 'polygon') {
-        path.area = geom.getPathArea2(path.points); // msSignedRingArea(path.xx, path.yy);
+        path.area = geom.getPathArea2(path.points);
         valid = path.pointCount > 3 && path.area !== 0;
       } else if (type == 'polyline') {
         valid = path.pointCount > 1;
       }
       if (valid) {
         pointCount += path.pointCount;
-        path.bounds = MapShaper.calcPathBounds(path.points);
+        path.bounds = geom.getPathBounds(path.points);
         bounds.mergeBounds(path.bounds);
         paths.push(path);
       } else {
@@ -7500,11 +7523,15 @@ MapShaper.exportPathData = function(shape, arcs, type) {
   };
 };
 
-// Bundle holes with their containing rings, for Topo/GeoJSON export
-// Assume outer rings are CW and inner (hole) rings are CCW, like Shapefile
-// @paths array of path objects from exportShapeData()
+// Bundle holes with their containing rings for Topo/GeoJSON polygon export.
+// Assumes outer rings are CW and inner (hole) rings are CCW.
+// @paths output from MapShaper.exportPathData() or TopoJSON.groupPolygonRings()
 //
-MapShaper.groupMultiPolygonPaths = function(paths) {
+// TODO: Improve reliability. Currently uses winding order, area and bbox to
+//   identify holes and their enclosures -- could be confused by strange
+//   geometry.
+//
+MapShaper.groupPolygonRings = function(paths) {
   var pos = [],
       neg = [];
   Utils.forEach(paths, function(path) {
@@ -7533,21 +7560,12 @@ MapShaper.groupMultiPolygonPaths = function(paths) {
       }
     }
     if (containerId == -1) {
-      verbose("[groupMultiShapePaths()] polygon hole is missing a containing ring, dropping.");
+      verbose("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
     } else {
       output[containerId].push(hole);
     }
   });
   return output;
-};
-
-MapShaper.transposePoints = function(points) {
-  var xx = [], yy = [], n=points.length;
-  for (var i=0; i<n; i++) {
-    xx.push(points[i][0]);
-    yy.push(points[i][1]);
-  }
-  return {xx: xx, yy: yy, pointCount: n};
 };
 
 MapShaper.exportPathCoords = function(iter) {
@@ -8507,7 +8525,7 @@ GeoJSON.exportLineGeom = function(ids, arcs) {
 GeoJSON.exportPolygonGeom = function(ids, arcs) {
   var obj = MapShaper.exportPathData(ids, arcs, "polygon");
   if (obj.pointCount === 0) return null;
-  var groups = MapShaper.groupMultiPolygonPaths(obj.pathData);
+  var groups = MapShaper.groupPolygonRings(obj.pathData);
   var coords = groups.map(function(paths) {
     return paths.map(function(path) {
       return path.points;
@@ -8991,7 +9009,7 @@ TopoJSON.groupPolygonRings = function(shapes, coords) {
       bounds: coords.getSimpleShapeBounds(shape)
     };
   });
-  var groups = MapShaper.groupMultiPolygonPaths(paths);
+  var groups = MapShaper.groupPolygonRings(paths);
   return groups.map(function(paths) {
     return paths.map(function(path) {
       return path.ids;
@@ -9689,7 +9707,6 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
     }
 
     bin.writeInt32(data.pointCount);
-    // console.log("point count:", pointCount);
 
     data.pathData.forEach(function(path, i) {
       if (multiPart) {

@@ -227,20 +227,6 @@ MapShaper.calcArcBounds = function(xx, yy, start, len) {
   return [xmin, ymin, xmax, ymax];
 };
 
-function msSignedRingArea(xx, yy, start, len) {
-  var sum = 0,
-      i = start | 0,
-      end = i + (len ? len | 0 : xx.length - i) - 1;
-
-  if (i < 0 || end >= xx.length) {
-    error("Out-of-bounds array index");
-  }
-  for (; i < end; i++) {
-    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
-  }
-  return sum / 2;
-}
-
 MapShaper.reversePathCoords = function(arr, start, len) {
   var i = start,
       j = start + len - 1,
@@ -283,6 +269,5 @@ Utils.extend(geom, {
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,
-  msSignedRingArea: msSignedRingArea,
   probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
 });

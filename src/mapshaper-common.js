@@ -146,22 +146,6 @@ MapShaper.calcXYBounds = function(xx, yy, bb) {
   return bb;
 };
 
-MapShaper.calcPathBounds = function(points) {
-  var bounds = new Bounds();
-  for (var i=0, n=points.length; i<n; i++) {
-    bounds.mergePoint(points[i][0], points[i][1]);
-  }
-  return bounds;
-};
-
-
-MapShaper.transposeXYCoords = function(xx, yy) {
-  var points = [];
-  for (var i=0, len=xx.length; i<len; i++) {
-    points.push([xx[i], yy[i]]);
-  }
-  return points;
-};
 
 // Convert a topological shape to a non-topological format
 // (for exporting)
