@@ -646,7 +646,7 @@ cli.validateExtraOpts = function(argv) {
     opts.encoding = cli.validateEncoding(argv.encoding);
   }
 
-  validateJoinOpts(argv, opts);
+  validateJoin(argv, opts);
 
   return opts;
 };
@@ -762,7 +762,7 @@ function validateFieldsOpt(fields) {
   return map;
 }
 
-function validateJoinOpts(argv, opts) {
+function validateJoin(argv, opts) {
   var file = argv.join,
       fields = argv['join-fields'],
       keys = argv['join-keys'],

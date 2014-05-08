@@ -4342,6 +4342,8 @@ function CommandParser() {
           val = Number(raw);
         } else if (type == 'integer') {
           val = Math.round(Number(raw));
+        } else if (type == 'comma-sep') {
+          val = raw.split(',');
         } else if (type) {
           val = null; // unknown type
         } else {
@@ -4558,17 +4560,40 @@ function validateJoinOpts(o, _) {
   }
 
   if (!o.keys) error("-join missing required keys option");
-  o.keys = validateCommaSep(o.keys, 2);
-  if (!o.keys) error("-join keys takes two comma-separated names, e.g.: FIELD1,FIELD2");
+  if (!isCommaSep(o.keys)) error("-join keys takes two comma-separated names, e.g.: FIELD1,FIELD2");
 
-  if (o.fields) {
-    o.fields =  validateCommaSep(fields);
-    if (!o.fields) error("-join fields is a comma-sep. list of fields to join");
+  if (o.fields && !isCommaSep(o.fields)) {
+    error("-join fields is a comma-sep. list of fields to join");
   }
 }
 
-function validateSplitOpts(o, _) {
+function isCommaSep(arr, count) {
+  var ok = arr && Utils.isArray(arr);
+  if (count) ok = ok && arr.length === count;
+  return ok;
+}
 
+function validateSplitOpts(o, _) {
+  if (_.length == 1) {
+    o.field = _[0];
+  } else if (_.length > 1) {
+    error("-split takes a single field name");
+  }
+}
+
+function validateDissolveOpts(o, _) {
+  if (_.length == 1) {
+    o.field = _[0];
+  } else if (_.length > 1) {
+    error("-dissolve takes a single field name");
+  }
+
+  if (o.sum_fields && !isCommaSep(o.sum_fields)) error("-dissolve sum-fields takes a comma-sep. list");
+  if (o.copy_fields && !isCommaSep(o.copy_fields)) error("-dissolve copy-fields takes a comma-sep. list");
+}
+
+function validateMergeLayersOpts(o, _) {
+  if (_.length > 0) error("-merge-layers unexpected option:", _);
 }
 
 function validateSplitOnGridOpts(o, _) {
@@ -4638,13 +4663,12 @@ function validateOutputOpts(o, _) {
       //odir = ofileInfo.relative_dir || '.';
     }
   }
-  /*
-  if (odir) o.output_directory = odir;
-  if (oext) o.output_extension = oext;
-  if (obase) o.output_file_base = obase;
-  */
 
   var supportedTypes = ["geojson", "topojson", "shapefile"];
+  if (o.output_file && Utils.contains(supportedTypes, o.output_file)) {
+    error("Use format=" + o.output_file + " to set output format");
+  }
+
   if (o.format) {
     o.format = o.format.toLowerCase();
     if (!Utils.contains(supportedTypes, o.format)) {
@@ -4671,7 +4695,9 @@ MapShaper.commandValidators = {
   join: validateJoinOpts,
   "split-on-grid": validateSplitOnGridOpts,
   split: validateSplitOpts,
-  subdivide: validateSubdivideOpts
+  subdivide: validateSubdivideOpts,
+  dissolve: validateDissolveOpts,
+  "merge-layers": validateMergeLayersOpts
 };
 
 
@@ -4817,19 +4843,23 @@ MapShaper.getOptionParser = function() {
   parser.command("join")
     .describe("join a dbf or delimited text file to the imported shapes")
     .option("keys", {
-      describe: "local,foreign keys, e.g. keys=FIPS,CNTYFIPS:str"
+      describe: "local,foreign keys, e.g. keys=FIPS,CNTYFIPS:str",
+      type: "comma-sep"
     })
     .option("fields", {
-      describe: "(optional) join fields, e.g. fields=FIPS:str,POP"
+      describe: "(optional) join fields, e.g. fields=FIPS:str,POP",
+      type: "comma-sep"
     });
 
   parser.command("dissolve")
     .describe("dissolve polygons; takes optional comma-sep. list of fields")
     .option("sum-fields", {
-      describe: "fields to sum when dissolving  (comma-sep. list)"
+      describe: "fields to sum when dissolving  (comma-sep. list)",
+      type: "comma-sep"
     })
     .option("copy-fields", {
-      describe: "fields to copy when dissolving (comma-sep. list)"
+      describe: "fields to copy when dissolving (comma-sep. list)",
+      type: "comma-sep"
     })
     .option("field", {})
     .option("layer", {});
@@ -4863,6 +4893,10 @@ MapShaper.getOptionParser = function() {
     })
     .option("layer", {});
 
+  parser.command("merge-layers")
+    .describe("merge split-apart layers back into a single layer")
+    .option("_dummy_", {}); // kludge to improve help menu formatting
+
   parser.command("*")
     .describe("these options apply to multiple commands")
     .option("layer", {
@@ -4885,6 +4919,10 @@ MapShaper.getOptionParser = function() {
   parser.command('version')
     .alias('v')
     .describe("print mapshaper version");
+
+  parser.command('help')
+    .alias('h')
+    .describe("print this help message");
 
   return parser;
 };
@@ -13088,7 +13126,7 @@ cli.validateExtraOpts = function(argv) {
     opts.encoding = cli.validateEncoding(argv.encoding);
   }
 
-  validateJoinOpts(argv, opts);
+  validateJoin(argv, opts);
 
   return opts;
 };
@@ -13204,7 +13242,7 @@ function validateFieldsOpt(fields) {
   return map;
 }
 
-function validateJoinOpts(argv, opts) {
+function validateJoin(argv, opts) {
   var file = argv.join,
       fields = argv['join-fields'],
       keys = argv['join-keys'],

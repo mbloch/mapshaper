@@ -66,17 +66,40 @@ function validateJoinOpts(o, _) {
   }
 
   if (!o.keys) error("-join missing required keys option");
-  o.keys = validateCommaSep(o.keys, 2);
-  if (!o.keys) error("-join keys takes two comma-separated names, e.g.: FIELD1,FIELD2");
+  if (!isCommaSep(o.keys)) error("-join keys takes two comma-separated names, e.g.: FIELD1,FIELD2");
 
-  if (o.fields) {
-    o.fields =  validateCommaSep(fields);
-    if (!o.fields) error("-join fields is a comma-sep. list of fields to join");
+  if (o.fields && !isCommaSep(o.fields)) {
+    error("-join fields is a comma-sep. list of fields to join");
   }
 }
 
-function validateSplitOpts(o, _) {
+function isCommaSep(arr, count) {
+  var ok = arr && Utils.isArray(arr);
+  if (count) ok = ok && arr.length === count;
+  return ok;
+}
 
+function validateSplitOpts(o, _) {
+  if (_.length == 1) {
+    o.field = _[0];
+  } else if (_.length > 1) {
+    error("-split takes a single field name");
+  }
+}
+
+function validateDissolveOpts(o, _) {
+  if (_.length == 1) {
+    o.field = _[0];
+  } else if (_.length > 1) {
+    error("-dissolve takes a single field name");
+  }
+
+  if (o.sum_fields && !isCommaSep(o.sum_fields)) error("-dissolve sum-fields takes a comma-sep. list");
+  if (o.copy_fields && !isCommaSep(o.copy_fields)) error("-dissolve copy-fields takes a comma-sep. list");
+}
+
+function validateMergeLayersOpts(o, _) {
+  if (_.length > 0) error("-merge-layers unexpected option:", _);
 }
 
 function validateSplitOnGridOpts(o, _) {
@@ -146,13 +169,12 @@ function validateOutputOpts(o, _) {
       //odir = ofileInfo.relative_dir || '.';
     }
   }
-  /*
-  if (odir) o.output_directory = odir;
-  if (oext) o.output_extension = oext;
-  if (obase) o.output_file_base = obase;
-  */
 
   var supportedTypes = ["geojson", "topojson", "shapefile"];
+  if (o.output_file && Utils.contains(supportedTypes, o.output_file)) {
+    error("Use format=" + o.output_file + " to set output format");
+  }
+
   if (o.format) {
     o.format = o.format.toLowerCase();
     if (!Utils.contains(supportedTypes, o.format)) {
@@ -179,5 +201,7 @@ MapShaper.commandValidators = {
   join: validateJoinOpts,
   "split-on-grid": validateSplitOnGridOpts,
   split: validateSplitOpts,
-  subdivide: validateSubdivideOpts
+  subdivide: validateSubdivideOpts,
+  dissolve: validateDissolveOpts,
+  "merge-layers": validateMergeLayersOpts
 };

@@ -141,19 +141,23 @@ MapShaper.getOptionParser = function() {
   parser.command("join")
     .describe("join a dbf or delimited text file to the imported shapes")
     .option("keys", {
-      describe: "local,foreign keys, e.g. keys=FIPS,CNTYFIPS:str"
+      describe: "local,foreign keys, e.g. keys=FIPS,CNTYFIPS:str",
+      type: "comma-sep"
     })
     .option("fields", {
-      describe: "(optional) join fields, e.g. fields=FIPS:str,POP"
+      describe: "(optional) join fields, e.g. fields=FIPS:str,POP",
+      type: "comma-sep"
     });
 
   parser.command("dissolve")
     .describe("dissolve polygons; takes optional comma-sep. list of fields")
     .option("sum-fields", {
-      describe: "fields to sum when dissolving  (comma-sep. list)"
+      describe: "fields to sum when dissolving  (comma-sep. list)",
+      type: "comma-sep"
     })
     .option("copy-fields", {
-      describe: "fields to copy when dissolving (comma-sep. list)"
+      describe: "fields to copy when dissolving (comma-sep. list)",
+      type: "comma-sep"
     })
     .option("field", {})
     .option("layer", {});
@@ -187,6 +191,10 @@ MapShaper.getOptionParser = function() {
     })
     .option("layer", {});
 
+  parser.command("merge-layers")
+    .describe("merge split-apart layers back into a single layer")
+    .option("_dummy_", {}); // kludge to improve help menu formatting
+
   parser.command("*")
     .describe("these options apply to multiple commands")
     .option("layer", {
@@ -209,6 +217,10 @@ MapShaper.getOptionParser = function() {
   parser.command('version')
     .alias('v')
     .describe("print mapshaper version");
+
+  parser.command('help')
+    .alias('h')
+    .describe("print this help message");
 
   return parser;
 };

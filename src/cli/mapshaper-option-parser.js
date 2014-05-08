@@ -71,6 +71,8 @@ function CommandParser() {
           val = Number(raw);
         } else if (type == 'integer') {
           val = Math.round(Number(raw));
+        } else if (type == 'comma-sep') {
+          val = raw.split(',');
         } else if (type) {
           val = null; // unknown type
         } else {
