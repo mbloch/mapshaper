@@ -79,7 +79,7 @@ MapShaper.groupMultiPolygonPaths = function(paths) {
         containerArea = 0;
     for (var i=0, n=pos.length; i<n; i++) {
       var part = pos[i],
-          contained = part.bounds.contains(hole.bounds);
+          contained = part.bounds.contains(hole.bounds) && part.area > -hole.area;
       if (contained && (containerArea === 0 || part.area < containerArea)) {
         containerArea = part.area;
         containerId = i;

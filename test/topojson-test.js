@@ -137,6 +137,107 @@ describe('topojson-test.js', function () {
       TopoJSON.pruneArcs(topology)
       assert.deepEqual(topology, pruned);
     })
+  })
+
+  describe('TopoJSON export', function () {
+
+    it("polygon with hole and null shape", function () {
+      //       e
+      //      / \
+      //     /   \
+      //    /  a  \
+      //   /  / \  \
+      //  h  d   b  f
+      //   \  \ /  /
+      //    \  c  /
+      //     \   /
+      //      \ /
+      //       g
+      //
+      //   abcda, efghe
+      //   0/-1,  1
+
+      var arcs = [[[3, 4, 3, 2, 3], [4, 3, 2, 3, 4]],
+          [[3, 5, 3, 1, 3], [5, 3, 1, 3, 5]]];
+      var data = {
+        arcs: new ArcDataset(arcs),
+        layers: [{
+          name: "polygons",
+          geometry_type: "polygon",
+          shapes: [null, [[1], [~0]], [[0]]]
+        }]
+      };
+
+      var target = {
+        type: "Topology",
+        arcs: [[[3, 4], [4, 3], [3, 2], [2, 3], [3, 4]],
+          [[3, 5], [5, 3], [3, 1], [1, 3],[3, 5]]],
+        objects: {
+          polygons: {
+            type: "GeometryCollection",
+            geometries: [{
+              type: null
+            }, {
+              type: "Polygon",
+              arcs: [[1], [~0]]
+            }, {
+              type: "Polygon",
+              arcs: [[0]]
+            }]
+          }
+        }
+      };
+
+      var result = TopoJSON.exportTopology(data.layers, data.arcs, {topojson_resolution: 0});
+      assert.deepEqual(result, target);
+    })
+
+    it("multipolygon", function () {
+      //       e
+      //      / \
+      //     /   \
+      //    /  a  \
+      //   /  / \  \
+      //  h  d   b  f
+      //   \  \ /  /
+      //    \  c  /
+      //     \   /
+      //      \ /
+      //       g
+      //
+      //   abcda, efghe
+      //   0/-1,  1
+
+      var arcs = [[[3, 4, 3, 2, 3], [4, 3, 2, 3, 4]],
+          [[3, 5, 3, 1, 3], [5, 3, 1, 3, 5]]];
+      var data = {
+        arcs: new ArcDataset(arcs),
+        layers: [{
+          name: "polygons",
+          geometry_type: "polygon",
+          shapes: [[[1], [~0], [0]]]
+        }]
+      };
+
+      var target = {
+        type: "Topology",
+        arcs: [[[3, 4], [4, 3], [3, 2], [2, 3], [3, 4]],
+          [[3, 5], [5, 3], [3, 1], [1, 3],[3, 5]]],
+        objects: {
+          polygons: {
+            type: "GeometryCollection",
+            geometries: [{
+              type: "MultiPolygon",
+              arcs: [[[1], [~0]], [[0]]]
+            }]
+          }
+        }
+      };
+
+      var result = TopoJSON.exportTopology(data.layers, data.arcs, {topojson_resolution: 0});
+      assert.deepEqual(result, target);
+    })
+
 
   })
 
@@ -144,6 +245,7 @@ describe('topojson-test.js', function () {
     it('two states', function () {
       topoJSONRoundTrip('test_data/two_states.json');
     })
+
     it('six counties, two null geometries', function () {
       topoJSONRoundTrip('test_data/six_counties_three_null.json');
     })
