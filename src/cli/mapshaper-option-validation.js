@@ -1,16 +1,33 @@
 /* @requires mapshaper-common */
 
-//
-//
-MapShaper.validateCommands = function(commands) {
-  commands.forEach(function(cmd) {
-    var validator = MapShaper.commandValidators[cmd.name];
-    if (validator) {
-      validator(cmd.options, cmd._);
-    }
-  });
+
+MapShaper.validateCommandSequence = function(commands) {
+  if (commands.length === 0) return commands;
+
+  // if there's no -o command, put a generic one at the end
+  if (!Utils.some(commands, function(cmd) {
+    return cmd.name == 'o';
+  })) {
+    commands.push({name: "o", options: {}});
+  }
+
+  // need exactly one -i command as the first command
+  var imports = Utils.filter(commands, function(cmd) {return cmd.name == 'i';});
+  if (imports.length != 1) error("mapshaper expects one -i command");
+  var idx = commands.indexOf(imports[0]);
+  if (idx > 0) {
+    commands.unshift(commands.splice(idx, 1)[0]);
+  }
+  return commands;
 };
 
+//
+MapShaper.validateCommand = function(cmd) {
+  var validator = MapShaper.commandValidators[cmd.name];
+  if (validator) {
+    validator(cmd.options, cmd._);
+  }
+};
 
 function validateInputOpts(o, _) {
   o.files = cli.validateInputFiles(_);
@@ -50,7 +67,6 @@ function validateSimplifyOpts(o, _) {
   if (!("interval" in o || "pct" in o)) {
     error("-simplify requires an interval or pct");
   }
-
 }
 
 function validateJoinOpts(o, _) {
@@ -190,7 +206,6 @@ function validateOutputOpts(o, _) {
   if ("topojson_resolution" in o && o.topojson_resolution > 0 === false) {
     error("topojson_resolution should be a nonnegative integet");
   }
-
 }
 
 

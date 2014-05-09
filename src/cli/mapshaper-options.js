@@ -2,22 +2,43 @@
 
 
 api.getOpts = function() {
-  return MapShaper.parseCommands(process.argv.slice(2));
+  var commands;
+  try {
+    commands = MapShaper.parseCommands(process.argv.slice(2));
+    // process info commmands like -version and remove from list
+    commands = MapShaper.handleInfoCommands(commands);
+    // reorder some commands, like moving -i to the front
+    commands = MapShaper.validateCommandSequence(commands);
+  } catch(e) {
+    parser.printHelp();
+    stop(e.message);
+  }
+  return commands;
 };
 
 MapShaper.parseCommands = function(arr) {
-  var parser = MapShaper.getOptionParser(),
-      commands;
-  try {
-    commands = parser.parseArgv(arr);
-    MapShaper.validateCommands(commands);
-  } catch(e) {
-    // parser.printHelp();
-    stop(e.message);
-  }
-
-  // var commands = MapShaper.validateCommands(arr, parser.argv());
+  var commands = MapShaper.getOptionParser().parseArgv(arr);
+  commands.forEach(MapShaper.validateCommand);
   return commands;
+};
+
+MapShaper.handleInfoCommands = function(commands) {
+  return Utils.filter(function(cmd) {
+    if (cmd.name == 'version') {
+      message(getVersion());
+      return false;
+    } else if (cmd.name == 'encodings') {
+      MapShaper.printEncodings();
+      return false;
+    } else if (cmd.name == 'help') {
+      MapShaper.getOptionParser().printHelp();
+      return false;
+    } else if (cmd.name == 'verbose') {
+      C.VERBOSE = true;
+      return false;
+    }
+    return true;
+  });
 };
 
 MapShaper.getOptionParser = function() {

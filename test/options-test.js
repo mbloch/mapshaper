@@ -140,6 +140,28 @@ describe('mapshaper-options.js', function () {
     bad("-dummy") // unknown command
   })
 
+
+  describe('validateCommandSequence()', function () {
+    it('-i is required', function () {
+      assert.throws(function() {
+        var commands = [{name: "o"}];
+        var seq = api.internal.validateCommandSequence(commands);
+      })
+    })
+
+    it('-o is appended if missing', function () {
+      var commands = [{name: "i"}];
+      var result = api.internal.validateCommandSequence(commands);
+      assert.deepEqual(result, [{name: "i"}, {name: "o", options: {}}]);
+    })
+
+    it('-i is moved to first position', function () {
+      var commands = [{name: "o"}, {name: "i"}];
+      var result = api.internal.validateCommandSequence(commands);
+      assert.deepEqual(commands, [{name: "i"}, {name: "o"}]);
+    })
+  })
+
 })
 
 function bad(str) {
