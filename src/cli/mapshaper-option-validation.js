@@ -8,10 +8,12 @@ MapShaper.validateCommandSequence = function(arr) {
   // move -i to the front
   MapShaper.promoteCommand('i', commands);
 
-  // if there's no -o command, put a generic one at the end
-  if (!Utils.some(commands, function(cmd) {
+  // if there's no -o command, put a generic one at the end,
+  //    unless last command is -info
+  var hasO = Utils.some(commands, function(cmd) {
     return cmd.name == 'o';
-  })) {
+  });
+  if (!hasO && commands[commands.length-1].name != 'info') {
     commands.push({name: "o", options: {}});
   }
   return commands;

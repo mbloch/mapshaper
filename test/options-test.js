@@ -147,6 +147,12 @@ describe('mapshaper-options.js', function () {
       assert.deepEqual(result, [{name: "i"}, {name: "o", options: {}}]);
     })
 
+    it('-o is not appended if last command is -info', function () {
+      var commands = [{name: "i"}, {name: "info"}];
+      var result = api.internal.validateCommandSequence(commands);
+      assert.deepEqual(result, [{name: "i"}, {name: "info"}]);
+    })
+
     it('-i is moved to first position', function () {
       var commands = [{name: "o"}, {name: "i"}];
       var result = api.internal.validateCommandSequence(commands);
