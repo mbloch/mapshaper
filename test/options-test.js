@@ -38,7 +38,7 @@ describe('mapshaper-options.js', function () {
     // topojson options
     good("-o quantization 10000", {quantization: 10000});
     good("-o no-quantization", {no_quantization: true});
-    good("-o q=10000", {quantization: 10000});
+    good("-o quantization=10000", {quantization: 10000});
     bad("-o quantization");
     bad("-o quantization 0");
     bad("-o quantization -1000");
@@ -140,15 +140,7 @@ describe('mapshaper-options.js', function () {
     bad("-dummy") // unknown command
   })
 
-
   describe('validateCommandSequence()', function () {
-    it('-i is required', function () {
-      assert.throws(function() {
-        var commands = [{name: "o"}];
-        var seq = api.internal.validateCommandSequence(commands);
-      })
-    })
-
     it('-o is appended if missing', function () {
       var commands = [{name: "i"}];
       var result = api.internal.validateCommandSequence(commands);
@@ -158,7 +150,7 @@ describe('mapshaper-options.js', function () {
     it('-i is moved to first position', function () {
       var commands = [{name: "o"}, {name: "i"}];
       var result = api.internal.validateCommandSequence(commands);
-      assert.deepEqual(commands, [{name: "i"}, {name: "o"}]);
+      assert.deepEqual(result, [{name: "i"}, {name: "o"}]);
     })
   })
 
@@ -168,7 +160,7 @@ function bad(str) {
   var args = str.split(/ +/);
   it(str, function() {
     assert.throws(function() {
-      api.internal.parseCommands(args);
+      api.internal.getOptionParser().parseArgv(args);
     });
   })
 }
@@ -176,6 +168,6 @@ function bad(str) {
 function good(str, target) {
   var args = str.split(/ +/);
   it(str, function() {
-    assert.deepEqual(api.internal.parseCommands(args)[0].options, target);
+    assert.deepEqual(api.internal.getOptionParser().parseArgv(args)[0].options, target);
   })
 }

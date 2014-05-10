@@ -1,4 +1,3 @@
-
 /* @requires mapshaper-common */
 
 function CommandParser() {
@@ -28,13 +27,14 @@ function CommandParser() {
       cmdName = readCommandName(argv);
       if (!cmdName) error("Invalid command:", argv[0]);
       cmdDef = findCommandDefn(cmdName, commandDefs);
-      if (!cmdDef) error("Unknown command:", '-' + cmdName);
+      if (!cmdDef) {
+        error("Unknown command:", '-' + cmdName);
+      }
       cmd = {
         name: cmdDef.name,
         options: {},
         _: []
       };
-      commands.push(cmd);
 
       optName = readOptionName(argv);
       while (optName) {
@@ -50,8 +50,15 @@ function CommandParser() {
         }
         optName = readOptionName(argv);
       }
+
+      if (cmdDef.validate) cmdDef.validate(cmd.options, cmd._);
+      commands.push(cmd);
     }
     return commands;
+
+    function invalidCommand(name) {
+
+    }
 
     function addOption(def, value) {
       var name = def.assign_to || def.name.replace(/-/g, '_');
@@ -131,49 +138,52 @@ function CommandParser() {
 
   this.getHelpMessage = function() {
     var commands = getCommands(),
+        cmdPre = ' ',
+        optPre = '  ',
+        gutter = ' ',
         colWidth = 0;
 
     commands.forEach(function(obj) {
-      var help = obj.name ? "-" + obj.name : "";
-      if (obj.alias) help += ", -" + obj.alias;
-      obj.help = help;
-      colWidth = Math.max(colWidth, help.length);
+      if (obj.describe) {
+        var help = cmdPre + (obj.name ? "-" + obj.name : "");
+        if (obj.alias) help += ", -" + obj.alias;
+        obj.help = help;
+        colWidth = Math.max(colWidth, help.length);
+      }
       obj.options.forEach(formatOption);
     });
 
     var helpStr = _usage ? _usage + "\n" : "";
-
-    if (commands.length > 0) {
-      helpStr += "Commands and options:\n";
-      commands.forEach(function(obj, i) {
-        helpStr += formatHelpLine(obj.help, obj.describe);
-        if (obj.options.length > 0) {
-          obj.options.forEach(addOptionHelp);
-          helpStr += '\n';
-        }
-      });
-    }
+    commands.forEach(function(obj, i) {
+      if ('title' in obj) helpStr += obj.title + "\n";
+      if (obj.describe) helpStr += formatHelpLine(obj.help, obj.describe);
+      if (obj.options.length > 0) {
+        obj.options.forEach(addOptionHelp);
+        helpStr += '\n';
+      }
+    });
 
     return helpStr;
 
     function formatHelpLine(help, desc) {
-      return ' ' + Utils.rpad(help, colWidth, ' ') + '  ' + (desc || '') + '\n';
+      return Utils.rpad(help, colWidth, ' ') + gutter + (desc || '') + '\n';
     }
 
     function formatOption(o) {
       // console.log("formatOption:", opt)
       if (o.describe) {
-        o.help = o.name + (o.alias ? ", " + o.alias : "") + (o.type == 'flag' ? "" : "=");
+        o.help = optPre + o.name;
+        if (o.alias) o.help += ", " + o.alias;
+        if (o.type != 'flag' && o.type != 'assign_to') o.help += "=";
         colWidth = Math.max(colWidth, o.help.length);
       }
     }
 
     function addOptionHelp(o) {
       if (o.help) {
-        helpStr += formatHelpLine(' ' + o.help, o.describe);
+        helpStr += formatHelpLine(o.help, o.describe);
       }
     }
-
   };
 
   this.printHelp = function() {
@@ -193,6 +203,11 @@ function CommandOptions(name) {
     options: []
   };
 
+  this.validate = function(f) {
+    _command.validate = f;
+    return this;
+  };
+
   this.describe = function(str) {
     _command.describe = str;
     return this;
@@ -200,6 +215,11 @@ function CommandOptions(name) {
 
   this.alias = function(name) {
     _command.alias = name;
+    return this;
+  };
+
+  this.title = function(str) {
+    _command.title = str;
     return this;
   };
 

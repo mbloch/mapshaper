@@ -1,8 +1,12 @@
 /* @requires mapshaper-common */
 
 
-MapShaper.validateCommandSequence = function(commands) {
-  if (commands.length === 0) return commands;
+MapShaper.validateCommandSequence = function(arr) {
+  var commands = arr.concat();
+  if (commands.length === 0) error("Missing an input file");
+
+  // move -i to the front
+  MapShaper.promoteCommand('i', commands);
 
   // if there's no -o command, put a generic one at the end
   if (!Utils.some(commands, function(cmd) {
@@ -10,22 +14,17 @@ MapShaper.validateCommandSequence = function(commands) {
   })) {
     commands.push({name: "o", options: {}});
   }
-
-  // need exactly one -i command as the first command
-  var imports = Utils.filter(commands, function(cmd) {return cmd.name == 'i';});
-  if (imports.length != 1) error("mapshaper expects one -i command");
-  var idx = commands.indexOf(imports[0]);
-  if (idx > 0) {
-    commands.unshift(commands.splice(idx, 1)[0]);
-  }
   return commands;
 };
 
-//
-MapShaper.validateCommand = function(cmd) {
-  var validator = MapShaper.commandValidators[cmd.name];
-  if (validator) {
-    validator(cmd.options, cmd._);
+// assumes: only one of this kind of command
+MapShaper.promoteCommand = function(name, commands) {
+  var cmd = Utils.find(commands, function(cmd) {
+    return cmd.name == name;
+  });
+  var idx = commands.indexOf(cmd);
+  if (idx > 0) {
+    commands.unshift(commands.splice(idx, 1)[0]);
   }
 };
 
@@ -138,7 +137,7 @@ function validateLinesOpts(o, _) {
   }
 }
 
-function validateInnerLines(o, _) {
+function validateInnerLinesOpts(o, _) {
   if (_.length > 0) {
     error("-innerlines takes no arguments");
   }
@@ -207,16 +206,3 @@ function validateOutputOpts(o, _) {
     error("topojson_resolution should be a nonnegative integet");
   }
 }
-
-
-MapShaper.commandValidators = {
-  i: validateInputOpts,
-  o: validateOutputOpts,
-  simplify: validateSimplifyOpts,
-  join: validateJoinOpts,
-  "split-on-grid": validateSplitOnGridOpts,
-  split: validateSplitOpts,
-  subdivide: validateSubdivideOpts,
-  dissolve: validateDissolveOpts,
-  "merge-layers": validateMergeLayersOpts
-};
