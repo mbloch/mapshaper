@@ -1,5 +1,4 @@
-
-var TopoJSON = {};
+/* @require topojson-common, topojson-arc-dissolve */
 
 // remove arcs that are not referenced or have collapsed
 // update ids of the remaining arcs
@@ -38,7 +37,6 @@ TopoJSON.pruneArcs = function(topology) {
     });
   }
 };
-
 
 // @map is an array of replacement arc ids, indexed by original arc id
 // @geom is a TopoJSON Geometry object (including GeometryCollections, Polygons, etc)

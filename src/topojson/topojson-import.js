@@ -1,4 +1,4 @@
-/* @requires topojson-utils */
+/* @requires topojson-common */
 
 TopoJSON.importArcs = function(arcs) {
   return Utils.map(arcs, function(arc) {

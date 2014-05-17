@@ -8719,58 +8719,51 @@ GeoJSON.exporters = {
 
 var TopoJSON = {};
 
-// remove arcs that are not referenced or have collapsed
-// update ids of the remaining arcs
-TopoJSON.pruneArcs = function(topology) {
-  var arcs = topology.arcs;
-  var retained = new Uint32Array(arcs.length);
+// Iterate over all arrays of arc is in a geometry object
+// @cb callback: function(ids)
+// callback returns undefined or an array of replacement ids
+//
+TopoJSON.forEachPath = function forEachPath(obj, cb) {
+  var iterators = {
+        GeometryCollection: function(o) {o.geometries.forEach(eachGeom);},
+        LineString: function(o) {
+          var retn = cb(o.arcs);
+          if (retn) o.arcs = retn;
+        },
+        MultiLineString: function(o) {eachMultiPath(o.arcs);},
+        Polygon: function(o) {eachMultiPath(o.arcs);},
+        MultiPolygon: function(o) {o.arcs.forEach(eachMultiPath);}
+      };
 
-  Utils.forEach(topology.objects, function(obj, name) {
-    TopoJSON.forEachArc(obj, function(arcId) {
-      if (arcId < 0) arcId = ~arcId;
-      retained[arcId] = 1;
-    });
-  });
+  eachGeom(obj);
 
-  var filterCount = Utils.reduce(retained, function(count, flag) {
-    return count + flag;
-  }, 0);
+  function eachGeom(o) {
+    if (o.type in iterators) {
+      iterators[o.type](o);
+    }
+  }
 
-  if (filterCount < arcs.length) {
-    TopoJSON.dissolveArcs(topology);
-
-    // filter arcs and remap ids
-    topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {
-      if (arc && retained[i] === 1) { // dissolved-away arcs are set to null
-        retained[i] = arcs.length;
-        arcs.push(arc);
-      } else {
-        retained[i] = -1;
-      }
-      return arcs;
-    }, []);
-
-    // Re-index
-    Utils.forEach(topology.objects, function(obj) {
-      TopoJSON.reindexArcIds(obj, retained);
-    });
+  function eachMultiPath(arr) {
+    var retn;
+    for (var i=0; i<arr.length; i++) {
+      retn = cb(arr[i]);
+      if (retn) arr[i] = retn;
+    }
   }
 };
 
-
-// @map is an array of replacement arc ids, indexed by original arc id
-// @geom is a TopoJSON Geometry object (including GeometryCollections, Polygons, etc)
-TopoJSON.reindexArcIds = function(geom, map) {
-  TopoJSON.forEachArc(geom, function(id) {
-    var rev = id < 0,
-        idx = rev ? ~id : id,
-        replacement = map[idx];
-    if (replacement < 0) { // -1 in arc map indicates arc has been removed
-      error("[reindexArcIds()] invalid arc id");
+TopoJSON.forEachArc = function forEachArc(obj, cb) {
+  TopoJSON.forEachPath(obj, function(ids) {
+    var retn;
+    for (var i=0; i<ids.length; i++) {
+      retn = cb(ids[i]);
+      if (Utils.isInteger(retn)) {
+        ids[i] = retn;
+      }
     }
-    return rev ? ~replacement : replacement;
   });
 };
+
 
 
 
@@ -9098,48 +9091,58 @@ TopoJSON.dissolveArcs = function(topology) {
   }
 };
 
-// Iterate over all arrays of arc is in a geometry object
-// @cb callback: function(ids)
-// callback returns undefined or an array of replacement ids
-//
-TopoJSON.forEachPath = function forEachPath(obj, cb) {
-  var iterators = {
-        GeometryCollection: function(o) {o.geometries.forEach(eachGeom);},
-        LineString: function(o) {
-          var retn = cb(o.arcs);
-          if (retn) o.arcs = retn;
-        },
-        MultiLineString: function(o) {eachMultiPath(o.arcs);},
-        Polygon: function(o) {eachMultiPath(o.arcs);},
-        MultiPolygon: function(o) {o.arcs.forEach(eachMultiPath);}
-      };
 
-  eachGeom(obj);
 
-  function eachGeom(o) {
-    if (o.type in iterators) {
-      iterators[o.type](o);
-    }
-  }
 
-  function eachMultiPath(arr) {
-    var retn;
-    for (var i=0; i<arr.length; i++) {
-      retn = cb(arr[i]);
-      if (retn) arr[i] = retn;
-    }
+// remove arcs that are not referenced or have collapsed
+// update ids of the remaining arcs
+TopoJSON.pruneArcs = function(topology) {
+  var arcs = topology.arcs;
+  var retained = new Uint32Array(arcs.length);
+
+  Utils.forEach(topology.objects, function(obj, name) {
+    TopoJSON.forEachArc(obj, function(arcId) {
+      if (arcId < 0) arcId = ~arcId;
+      retained[arcId] = 1;
+    });
+  });
+
+  var filterCount = Utils.reduce(retained, function(count, flag) {
+    return count + flag;
+  }, 0);
+
+  if (filterCount < arcs.length) {
+    TopoJSON.dissolveArcs(topology);
+
+    // filter arcs and remap ids
+    topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {
+      if (arc && retained[i] === 1) { // dissolved-away arcs are set to null
+        retained[i] = arcs.length;
+        arcs.push(arc);
+      } else {
+        retained[i] = -1;
+      }
+      return arcs;
+    }, []);
+
+    // Re-index
+    Utils.forEach(topology.objects, function(obj) {
+      TopoJSON.reindexArcIds(obj, retained);
+    });
   }
 };
 
-TopoJSON.forEachArc = function forEachArc(obj, cb) {
-  TopoJSON.forEachPath(obj, function(ids) {
-    var retn;
-    for (var i=0; i<ids.length; i++) {
-      retn = cb(ids[i]);
-      if (Utils.isInteger(retn)) {
-        ids[i] = retn;
-      }
+// @map is an array of replacement arc ids, indexed by original arc id
+// @geom is a TopoJSON Geometry object (including GeometryCollections, Polygons, etc)
+TopoJSON.reindexArcIds = function(geom, map) {
+  TopoJSON.forEachArc(geom, function(id) {
+    var rev = id < 0,
+        idx = rev ? ~id : id,
+        replacement = map[idx];
+    if (replacement < 0) { // -1 in arc map indicates arc has been removed
+      error("[reindexArcIds()] invalid arc id");
     }
+    return rev ? ~replacement : replacement;
   });
 };
 
@@ -9156,9 +9159,6 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
   if (arcData && arcData.size() > 0) {
     // get a copy of arc data (coords are modified for topojson export)
     filteredArcs = arcData.getFilteredCopy();
-    // this is only needed after commands like innerlines and dissolve
-    // TODO: run only if needed
-    // filteredArcs = api.dissolveArcs(layers, filteredArcs);
 
     if (opts.no_quantization) {
       // no transform
@@ -9206,7 +9206,6 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     return objects;
   }, {});
 
-  // TODO: avoid if not needed (compare with dissolveArcs above)
   if (filteredArcs) {
     TopoJSON.pruneArcs(topology);
   }

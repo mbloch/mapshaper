@@ -1,9 +1,9 @@
 /* @requires
 mapshaper-geojson,
-topojson-utils,
+topojson-common,
 topojson-split,
 mapshaper-shape-geom,
-topojson-arc-dissolve
+topojson-arc-prune
 */
 
 TopoJSON.exportTopology = function(layers, arcData, opts) {
@@ -16,9 +16,6 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
   if (arcData && arcData.size() > 0) {
     // get a copy of arc data (coords are modified for topojson export)
     filteredArcs = arcData.getFilteredCopy();
-    // this is only needed after commands like innerlines and dissolve
-    // TODO: run only if needed
-    // filteredArcs = api.dissolveArcs(layers, filteredArcs);
 
     if (opts.no_quantization) {
       // no transform
@@ -66,7 +63,6 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     return objects;
   }, {});
 
-  // TODO: avoid if not needed (compare with dissolveArcs above)
   if (filteredArcs) {
     TopoJSON.pruneArcs(topology);
   }
