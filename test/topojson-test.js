@@ -188,7 +188,7 @@ describe('topojson-test.js', function () {
         }
       };
 
-      var result = TopoJSON.exportTopology(data.layers, data.arcs, {topojson_resolution: 0});
+      var result = TopoJSON.exportTopology(data.layers, data.arcs, {no_quantization: true});
       assert.deepEqual(result, target);
     })
 
@@ -234,10 +234,9 @@ describe('topojson-test.js', function () {
         }
       };
 
-      var result = TopoJSON.exportTopology(data.layers, data.arcs, {topojson_resolution: 0});
+      var result = TopoJSON.exportTopology(data.layers, data.arcs, {no_quantization: true});
       assert.deepEqual(result, target);
     })
-
 
   })
 
@@ -257,18 +256,15 @@ describe('topojson-test.js', function () {
 })
 
 function topoJSONRoundTrip(fname) {
-  // in order for the roundtrip to work, need to use a constant resolution
-  // rather than letting mapshaper automatically pick a suitable resolution
   var opts = {
-    output_format:'topojson',
-    topojson_resolution: 10000
+    format:'topojson',
+    quantization: 10000
   };
-  var data = api.importFromFile(fixPath(fname));
-  var files = api.exportFileContent(data.layers, data.arcs, opts);
-  var data2 = api.importFileContent(files[0].content, 'json');
-  var files2 = api.exportFileContent(data2.layers, data2.arcs, opts);
-
-  assert.deepEqual(files, files2);
+  var data = api.importFile(fixPath(fname));
+  var files = api.internal.exportFileContent(data, opts);
+  var data2 = api.internal.importFileContent(files[0].content, 'json');
+  var files2 = api.internal.exportFileContent(data2, opts);
+  assert.equal(files[0].content, files2[0].content);
 }
 
 function importExport(json, opts) {

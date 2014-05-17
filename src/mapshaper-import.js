@@ -3,7 +3,6 @@
 // @content: ArrayBuffer or String
 // @type: 'shapefile'|'json'
 //
-api.importFileContent =
 MapShaper.importFileContent = function(content, fileType, opts) {
   var dataset, fileFmt;
   opts = opts || {};
@@ -40,26 +39,18 @@ MapShaper.importFileContent = function(content, fileType, opts) {
   // topology; TODO -- consider moving this
   if ((fileFmt == 'shapefile' || fileFmt == 'geojson') && !opts.no_topology) {
     T.start();
-    MapShaper.buildTopology(dataset);
+    api.buildTopology(dataset);
     T.stop("Process topology");
   }
 
+  if (dataset.layers.length == 1) {
+    MapShaper.setLayerName(dataset.layers[0], opts.files ? opts.files[0] : "layer1");
+  }
+  dataset.info.input_files = opts.files;
   dataset.info.input_format = fileFmt;
   return dataset;
 };
 
-api.buildTopology =
-MapShaper.buildTopology = function(dataset) {
-  if (!dataset.arcs) return;
-  var raw = dataset.arcs.getVertexData(),
-      topoData = buildPathTopology(raw.xx, raw.yy, raw.nn);
-  dataset.arcs = topoData.arcs;
-  dataset.layers.forEach(function(lyr) {
-    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
-      lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
-    }
-  });
-};
 
 MapShaper.importJSONRecords = function(arr, opts) {
   return {
@@ -71,26 +62,10 @@ MapShaper.importJSONRecords = function(arr, opts) {
   };
 };
 
-function updateArcsInShape(shape, topoPaths) {
-  var shape2 = [];
-  Utils.forEach(shape, function(path) {
-    if (path.length != 1) {
-      error("[updateArcsInShape()] Expected single-part input path, found:", path);
-    }
-    var pathId = path[0],
-        topoPath = topoPaths[pathId];
 
-    if (!topoPath) {
-      error("[updateArcsInShape()] Missing topological path for path num:", pathId);
-    }
-    shape2.push(topoPath);
-  });
-  return shape2.length > 0 ? shape2 : null;
-}
-
-// TODO: find better name, collides with utils.updateArcIds()
-function updateArcIds(src, paths) {
-  return src.map(function(shape) {
-    return updateArcsInShape(shape, paths);
-  });
-}
+// initialize layer name using filename
+MapShaper.setLayerName = function(lyr, path) {
+  if (!lyr.name) {
+    lyr.name = utils.getFileBase(path);
+  }
+};

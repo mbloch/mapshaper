@@ -1,14 +1,7 @@
 /* @requires mapshaper-common */
 
-api.splitLayers = function(layers, arcs, field) {
-  var result = [];
-  Utils.forEach(layers, function(lyr) {
-    result = result.concat(MapShaper.splitLayer(lyr, arcs, field));
-  });
-  return result;
-};
 
-MapShaper.splitLayer = function(lyr0, arcs, field) {
+api.splitLayer = function(lyr0, arcs, field) {
   var dataTable = lyr0.data;
   if (!dataTable) error("[splitLayer] Missing a data table");
   if (!dataTable.fieldExists(field)) error("[splitLayer] Missing field:", field);
@@ -27,7 +20,7 @@ MapShaper.splitLayer = function(lyr0, arcs, field) {
       idx = splitLayers.length;
       index[key] = idx;
       splitLayers.push({
-        name: key || Utils.getUniqueName("layer"),
+        name: MapShaper.getSplitLayerName(lyr0.name, key),
         properties: [],
         shapes: []
       });
@@ -47,4 +40,8 @@ MapShaper.splitLayer = function(lyr0, arcs, field) {
       data: new DataTable(obj.properties)
     }, lyr0);
   });
+};
+
+MapShaper.getSplitLayerName = function(base, key) {
+  return (base || 'split') + '-' + (key || '');
 };

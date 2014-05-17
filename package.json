@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.1.18",
+	"version": "0.2.0-pre",
 	"description": "A tool for editing polygon and polyline datasets for mapping.",
 	"keywords": ["shapefile","topojson","geojson","cartography","simplification","topology"],
 	"author": "Matthew Bloch <masiyou@gmail.com>",
@@ -15,7 +15,8 @@
 	},
 	"main": "./mapshaper.js",
 	"dependencies": {
-		"optimist": "0.6.x",
+		"optimist": "~0.6.0",
+		"shell-quote": "~1.4.1",
 		"open": "~0.0.3",
 		"iconv-lite": "~0.2.11",
 		"jconv": "~0.1.4",

@@ -2,6 +2,7 @@
 
 function CommandParser() {
   var _usage = "",
+      _examples = [],
       _commands = [];
 
   if (this instanceof CommandParser === false) return new CommandParser();
@@ -9,6 +10,10 @@ function CommandParser() {
   this.usage = function(str) {
     _usage = str;
     return this;
+  };
+
+  this.example = function(str) {
+    _examples.push(str);
   };
 
   this.command = function(name) {
@@ -19,9 +24,10 @@ function CommandParser() {
 
   this.parseArgv = function(raw) {
     var commandDefs = getCommands(),
+        commandRxp = /^--?([\w-]+)$/i,
         commands = [], cmd,
         argv = raw.concat(), // make copy, so we can consume the array
-        cmdName, cmdDef, optName, optDef, optVal;
+        cmdName, cmdDef, opt;
 
     while (argv.length > 0) {
       cmdName = readCommandName(argv);
@@ -36,19 +42,14 @@ function CommandParser() {
         _: []
       };
 
-      optName = readOptionName(argv);
-      while (optName) {
-        optDef = findOptionDefn(optName, cmdDef);
-        if (!optDef) {
+      while (moreOptions(argv)) {
+        opt = readOption(argv, cmdDef);
+        if (!opt) {
           // not a defined option; add it to _ array for later processing
-          cmd._.push(optName);
+          cmd._.push(argv.shift());
         } else {
-          // found a defined option; get its value
-          optVal = readOptionValue(argv, optDef);
-          if (optVal === null) error("Invalid value for", optName + ":", argv[0]);
-          addOption(optDef, optVal);
+          cmd.options[opt[0]] = opt[1];
         }
-        optName = readOptionName(argv);
       }
 
       if (cmdDef.validate) cmdDef.validate(cmd.options, cmd._);
@@ -56,13 +57,38 @@ function CommandParser() {
     }
     return commands;
 
-    function invalidCommand(name) {
-
+    function moreOptions(argv) {
+      return argv.length > 0 && !commandRxp.test(argv[0]);
     }
 
-    function addOption(def, value) {
-      var name = def.assign_to || def.name.replace(/-/g, '_');
-      cmd.options[name] = value;
+    function readOption(argv, cmdDef) {
+      var token = argv[0],
+          optRxp = /^([a-z0-9_+-]+)=(.+)$/i,
+          match = optRxp.exec(token),
+          name = match ? match[1] : token,
+          optDef = findOptionDefn(name, cmdDef),
+          optName,
+          optVal;
+          // console.log("readO(); name:", name, 'defn', optDef)
+
+      if (!optDef) return null;
+
+      if (match && (optDef.type == 'flag' || optDef.assign_to)) {
+        error("-" + cmdDef.name + " " + name + " doesn't take a value");
+      }
+
+      if (match) {
+        argv[0] = match[2];
+      } else {
+        argv.shift();
+      }
+
+      optName = optDef.assign_to || optDef.name.replace(/-/g, '_');
+      optVal = readOptionValue(argv, optDef);
+      if (optVal === null) {
+        error("Invalid value for -" + cmdDef.name + " " + optName);
+      }
+      return [optName, optVal];
     }
 
     function readOptionValue(args, def) {
@@ -87,7 +113,7 @@ function CommandParser() {
         }
 
         if (val !== val || val === null) {
-          val = null;
+          val = null; // null indicates invalid value
         } else {
           args.shift(); // good value, remove from argv
         }
@@ -97,30 +123,12 @@ function CommandParser() {
     }
 
     function readCommandName(args) {
-      var cmdRxp = /^--?([\w-]+)$/i,
-          match = cmdRxp.exec(args[0]);
+      var match = commandRxp.exec(args[0]);
       if (match) {
         args.shift();
         return match[1];
       }
       return null;
-    }
-
-    function readOptionName(args) {
-      if (args.length === 0) return null;
-      var optValRxp = /^([a-z0-9_+-]+)=(.+)$/i,
-          match = optValRxp.exec(args[0]),
-          name;
-      if (match) {
-        name = match[1];
-        args[0] = match[2];
-      } else if (readCommandName([args[0]])) {
-        name = null;
-      } else {
-        name = args.shift();
-      }
-
-      return name;
     }
 
     function findCommandDefn(name, arr) {
@@ -153,7 +161,7 @@ function CommandParser() {
       obj.options.forEach(formatOption);
     });
 
-    var helpStr = _usage ? _usage + "\n" : "";
+    var helpStr = _usage ? _usage + "\n\n" : "";
     commands.forEach(function(obj, i) {
       if ('title' in obj) helpStr += obj.title + "\n";
       if (obj.describe) helpStr += formatHelpLine(obj.help, obj.describe);
@@ -162,6 +170,13 @@ function CommandParser() {
         helpStr += '\n';
       }
     });
+
+    if (_examples.length > 0) {
+      helpStr += "\nExamples\n";
+      _examples.forEach(function(str) {
+        helpStr += "\n" + str + "\n";
+      });
+    }
 
     return helpStr;
 
@@ -174,7 +189,7 @@ function CommandParser() {
       if (o.describe) {
         o.help = optPre + o.name;
         if (o.alias) o.help += ", " + o.alias;
-        if (o.type != 'flag' && o.type != 'assign_to') o.help += "=";
+        if (o.type != 'flag' && !o.assign_to) o.help += "=";
         colWidth = Math.max(colWidth, o.help.length);
       }
     }
@@ -224,6 +239,7 @@ function CommandOptions(name) {
   };
 
   this.option = function(name, opts) {
+    opts = opts || {}; // accept just a name -- some options don't need properties
     if (!Utils.isString(name) || !name) error("Missing option name");
     if (!validateOption(opts)) error("Invalid option definition:", opts);
     opts.name = name;

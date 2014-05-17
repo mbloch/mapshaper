@@ -1,16 +1,22 @@
 /* @require mapshaper-common */
 
-api.printInfo = function(layers, arcData, opts, info) {
-  var str = Utils.format("Input: %s (%s)\n",
-      opts.input_files.join(', '), opts.input_format);
-  str += "Bounds: " + arcData.getBounds().toArray().join(', ') + "\n";
-  str += Utils.format("Topological arcs: %'d\n", arcData.size());
+api.printInfo = function(dataset, opts) {
+  var str = "",
+      layers = dataset.layers,
+      arcs = dataset.arcs;
+  //var str = Utils.format("Input: %s (%s)\n";
+  // opts.input_files.join(', '), opts.input_format);
+  //str += "Bounds: " + arcs.getBounds().toArray().join(', ') + "\n";
 
+  str += Utils.format("Number of layers: %d\n", layers.length);
+  if (arcs) str += Utils.format("Topological arcs: %'d\n", arcs.size());
+  str += '\n';
+  /*
   if (!Utils.isInteger(info.intersections_remaining)) {
-    info.intersections_remaining = MapShaper.findSegmentIntersections(arcData).length;
+    info.intersections_remaining = MapShaper.findSegmentIntersections(arcs).length;
   }
   str += Utils.format("Line intersections: %'d\n", info.intersections_remaining);
-  if (layers.length > 1) str += '\n';
+  if (layers.length > 1) str += '\n';*/
   str += Utils.map(layers, MapShaper.getLayerInfo).join('\n');
   console.log(str);
 };
@@ -58,11 +64,13 @@ MapShaper.formatSampleData = function(arr) {
 };
 
 MapShaper.formatLayerInfo = function(obj) {
-  var nameStr = obj.name ? "Layer name: " + obj.name : "Unnamed layer",
-      countStr = Utils.format("Records: %'d (with null geometry: %'d)",
-          obj.record_count, obj.null_geom_count),
-      typeStr = "Geometry: " + obj.geometry_type,
-      dataStr;
+  var str = "";
+  str += "Layer name: " + (obj.name || "[none]") + "\n";
+  str += "Geometry type: " + (obj.geometry_type || "[none]") + "\n";
+  str += Utils.format("Records: %'d (with null geometry: %'d)\n",
+          obj.record_count, obj.null_geom_count);
+
+  var dataStr;
   if (obj.fields && obj.fields.length > 0) {
     var col1 = Utils.merge(['Field'], obj.fields),
         col2 = Utils.merge(['First value'], MapShaper.formatSampleData(obj.sample_values)),
@@ -77,8 +85,6 @@ MapShaper.formatLayerInfo = function(obj) {
     dataStr = "Missing attribute data";
   }
 
-  var formatted = "";
-  if (obj.name) formatted += "Layer name: " + obj.name + "\n";
-  formatted += Utils.format("%s\n%s\n%s\n", typeStr, countStr, dataStr);
-  return formatted;
+  str += dataStr;
+  return str;
 };

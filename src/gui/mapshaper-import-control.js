@@ -43,7 +43,7 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
-        info = MapShaper.parseLocalPath(name),
+        // info = utils.parseLocalPath(name),
         type = MapShaper.guessFileType(name),
         reader;
     if (type) {
@@ -89,15 +89,16 @@ function ImportControl(editor) {
     }
     if (type == 'shp' || type == 'json') {
       var opts = {
-        debug_snapping: false,
-        input_file: fname,
+        files: [fname],
         precision: precisionInput.value(),
-        snapping: !!El("#g-snap-points-opt").node().checked
+        auto_snap: !!El("#g-snap-points-opt").node().checked
       };
       T.start("Start timing");
       data = MapShaper.importFileContent(content, type, opts);
+      MapShaper.setLayerName(data.layers[0], fname);
       editor.addData(data, opts);
       T.stop("Done importing");
+
     } else if (type == 'dbf') {
       data = new ShapefileTable(content);
       // TODO: validate table (check that record count matches, etc)
@@ -112,10 +113,6 @@ function ImportControl(editor) {
     // TODO: accept .prj files
     if (type == 'prj') {
       error("inputFileContent() .prj files not supported (yet)");
-      data = new ShapefileCRS(content);
-      if ('shp' in index) {
-        index.shp.crs = data;
-      }
     }
 
     // associate previously imported Shapefile files with a .shp file

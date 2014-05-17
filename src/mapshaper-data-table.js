@@ -83,15 +83,16 @@ var dataTableProto = {
   filterFields: function(map) {
     var records = this.getRecords(),
         fields = Utils.getKeys(map),
-        f = function(rec, name) {
-          rec[map[name]] = src[name];
-          return rec;
-        },
         src;
 
     for (var i=0, n=records.length; i<n; i++) {
       src = records[i];
       records[i] = Utils.reduce(fields, f, {});
+    }
+
+    function f(dest, name) {
+      dest[map[name]] = src[name];
+      return dest;
     }
   },
 

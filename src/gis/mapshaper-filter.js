@@ -1,14 +1,6 @@
 /* @requires mapshaper-expressions */
 
-api.filterLayers = function(layers, arcs, exp) {
-  T.start();
-  Utils.forEach(layers, function(lyr) {
-    api.filterLayer(lyr, arcs, exp);
-  });
-  T.stop("Filter");
-};
-
-api.filterLayer = function(lyr, arcs, exp) {
+api.filterFeatures = function(lyr, arcs, exp) {
   MapShaper.select(lyr, arcs, exp, true);
 };
 

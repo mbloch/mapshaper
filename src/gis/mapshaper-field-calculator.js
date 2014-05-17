@@ -1,13 +1,5 @@
 /* @requires mapshaper-expressions */
 
-api.evaluateLayers = function(layers, arcs, exp) {
-  T.start();
-  for (var i=0; i<layers.length; i++) {
-    api.evaluateLayer(layers[i], arcs, exp);
-  }
-  T.stop("Calculate expression");
-};
-
 api.evaluateLayer = function(lyr, arcs, exp) {
   var shapes = lyr.shapes,
       // create new table if none exists

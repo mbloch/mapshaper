@@ -822,7 +822,11 @@ Utils.filterObject = function(obj, func, ctx) {
   }, {});
 };
 
-Utils.countValues = function(obj) {
+Utils.count = function(arr, func, ctx) {
+  return Utils.filter(arr, func, ctx).length;
+};
+
+Utils.getValueCounts = function(obj) {
   return Utils.reduce(obj, function(memo, val, key) {
     memo[val] = (val in memo) ? memo[val] + 1 : 1;
     return memo;
@@ -4070,16 +4074,21 @@ MapShaper.LOGGING = false; //
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;
+  return api;
 };
+
+api.stop = stop;
 
 // TODO: adapt to run in browser
 function stop() {
-  var argArr = Utils.toArray(arguments);
+  var args = Utils.toArray(arguments);
+  args.unshift('Error:');
   if (MapShaper.LOGGING) {
-    message.apply(null, argArr);
+    message.apply(null, args);
+    message("(Use -h option to view help)");
     process.exit(1);
   } else {
-    error.apply(null, argArr);
+    error.apply(null, args);
   }
 }
 
@@ -4100,39 +4109,47 @@ utils.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 };
 
-utils.parseLocalPath = // expose for script
-MapShaper.parseLocalPath = function(path) {
-  var obj = {
-    ext: '',
-    directory: '',
-    filename: '',
-    basename: ''
-  };
-  var parts = path.split('/'),
-      name, i;
+// Parse the path to a file
+// Assumes: not a directory path
+utils.parseLocalPath = function(path) {
+  var obj = {},
+      parts = path.split('/'), // TODO: fix
+      i;
 
   if (parts.length == 1) {
-    name = parts[0];
+    obj.filename = parts[0];
+    obj.directory = "";
   } else {
-    name = parts.pop();
+    obj.filename = parts.pop();
     obj.directory = parts.join('/');
   }
-  i = name.lastIndexOf('.');
+  i = obj.filename.lastIndexOf('.');
   if (i > -1) {
-    obj.ext = name.substr(i + 1); // omit '.'
-    obj.basename = name.substr(0, i);
-    obj.pathbase = path.substr(0, i);
+    obj.extension = obj.filename.substr(i + 1);
+    obj.basename = obj.filename.substr(0, i);
+    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
   } else {
-    obj.basename = name;
+    obj.extension = "";
+    obj.basename = obj.filename;
     obj.pathbase = path;
   }
-  obj.filename = name;
   return obj;
 };
 
+utils.getFileBase = function(path) {
+  return utils.parseLocalPath(path).basename;
+};
+
+utils.getFileExtension = function(path) {
+  return utils.parseLocalPath(path).extension;
+};
+
+utils.getPathBase = function(path) {
+  return utils.parseLocalPath(path).pathbase;
+};
+
 MapShaper.guessFileType = function(file) {
-  var info = MapShaper.parseLocalPath(file),
-      ext = info.ext.toLowerCase(),
+  var ext = utils.getFileExtension(file).toLowerCase(),
       type = null;
   if (/json$/i.test(file)) {
     type = 'json';
@@ -4245,35 +4262,39 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
   return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
 };
 
-MapShaper.getUniqueLayerNames = function(names) {
-  if (names.length <= 1) return names; // name of single layer guaranteed unique
-  var counts = Utils.countValues(names);
-
-  // assign unique name to each layer
-  var index = {};
-  return names.map(function(name) {
-    var count = counts[name],
-        i;
-    if (count > 1 || name in index) {
-      // naming conflict, need to find a unique name
-      name = name || 'layer'; // use layer1, layer2, etc as default
-      i = 1;
-      while ((name + i) in index) {
-        i++;
-      }
-      name = name + i;
+MapShaper.getCommonFileBase = function(names) {
+  return names.reduce(function(memo, name, i) {
+    if (i === 0) {
+      memo = utils.getFileBase(name);
+    } else {
+      memo = MapShaper.mergeNames(memo, name);
     }
-    index[name] = true;
-    return name;
-  });
+    return memo;
+  }, "");
 };
 
+MapShaper.mergeNames = function(name1, name2) {
+  var merged = "";
+  if (name1 && name2) {
+    merged = utils.findStringPrefix(name1, name2).replace(/[-_]$/, '');
+  }
+  return merged;
+};
+
+utils.findStringPrefix = function(a, b) {
+  var i = 0;
+  for (var n=a.length; i<n; i++) {
+    if (a[i] !== b[i]) break;
+  }
+  return a.substr(0, i);
+};
 
 
 
 
 function CommandParser() {
   var _usage = "",
+      _examples = [],
       _commands = [];
 
   if (this instanceof CommandParser === false) return new CommandParser();
@@ -4281,6 +4302,10 @@ function CommandParser() {
   this.usage = function(str) {
     _usage = str;
     return this;
+  };
+
+  this.example = function(str) {
+    _examples.push(str);
   };
 
   this.command = function(name) {
@@ -4291,42 +4316,71 @@ function CommandParser() {
 
   this.parseArgv = function(raw) {
     var commandDefs = getCommands(),
+        commandRxp = /^--?([\w-]+)$/i,
         commands = [], cmd,
         argv = raw.concat(), // make copy, so we can consume the array
-        cmdName, cmdDef, optName, optDef, optVal;
+        cmdName, cmdDef, opt;
 
     while (argv.length > 0) {
       cmdName = readCommandName(argv);
       if (!cmdName) error("Invalid command:", argv[0]);
       cmdDef = findCommandDefn(cmdName, commandDefs);
-      if (!cmdDef) error("Unknown command:", '-' + cmdName);
+      if (!cmdDef) {
+        error("Unknown command:", '-' + cmdName);
+      }
       cmd = {
         name: cmdDef.name,
         options: {},
         _: []
       };
-      commands.push(cmd);
 
-      optName = readOptionName(argv);
-      while (optName) {
-        optDef = findOptionDefn(optName, cmdDef);
-        if (!optDef) {
+      while (moreOptions(argv)) {
+        opt = readOption(argv, cmdDef);
+        if (!opt) {
           // not a defined option; add it to _ array for later processing
-          cmd._.push(optName);
+          cmd._.push(argv.shift());
         } else {
-          // found a defined option; get its value
-          optVal = readOptionValue(argv, optDef);
-          if (optVal === null) error("Invalid value for", optName + ":", argv[0]);
-          addOption(optDef, optVal);
+          cmd.options[opt[0]] = opt[1];
         }
-        optName = readOptionName(argv);
       }
+
+      if (cmdDef.validate) cmdDef.validate(cmd.options, cmd._);
+      commands.push(cmd);
     }
     return commands;
 
-    function addOption(def, value) {
-      var name = def.assign_to || def.name.replace(/-/g, '_');
-      cmd.options[name] = value;
+    function moreOptions(argv) {
+      return argv.length > 0 && !commandRxp.test(argv[0]);
+    }
+
+    function readOption(argv, cmdDef) {
+      var token = argv[0],
+          optRxp = /^([a-z0-9_+-]+)=(.+)$/i,
+          match = optRxp.exec(token),
+          name = match ? match[1] : token,
+          optDef = findOptionDefn(name, cmdDef),
+          optName,
+          optVal;
+          // console.log("readO(); name:", name, 'defn', optDef)
+
+      if (!optDef) return null;
+
+      if (match && (optDef.type == 'flag' || optDef.assign_to)) {
+        error("-" + cmdDef.name + " " + name + " doesn't take a value");
+      }
+
+      if (match) {
+        argv[0] = match[2];
+      } else {
+        argv.shift();
+      }
+
+      optName = optDef.assign_to || optDef.name.replace(/-/g, '_');
+      optVal = readOptionValue(argv, optDef);
+      if (optVal === null) {
+        error("Invalid value for -" + cmdDef.name + " " + optName);
+      }
+      return [optName, optVal];
     }
 
     function readOptionValue(args, def) {
@@ -4351,7 +4405,7 @@ function CommandParser() {
         }
 
         if (val !== val || val === null) {
-          val = null;
+          val = null; // null indicates invalid value
         } else {
           args.shift(); // good value, remove from argv
         }
@@ -4361,30 +4415,12 @@ function CommandParser() {
     }
 
     function readCommandName(args) {
-      var cmdRxp = /^--?([\w-]+)$/i,
-          match = cmdRxp.exec(args[0]);
+      var match = commandRxp.exec(args[0]);
       if (match) {
         args.shift();
         return match[1];
       }
       return null;
-    }
-
-    function readOptionName(args) {
-      if (args.length === 0) return null;
-      var optValRxp = /^([a-z0-9_+-]+)=(.+)$/i,
-          match = optValRxp.exec(args[0]),
-          name;
-      if (match) {
-        name = match[1];
-        args[0] = match[2];
-      } else if (readCommandName([args[0]])) {
-        name = null;
-      } else {
-        name = args.shift();
-      }
-
-      return name;
     }
 
     function findCommandDefn(name, arr) {
@@ -4402,49 +4438,59 @@ function CommandParser() {
 
   this.getHelpMessage = function() {
     var commands = getCommands(),
+        cmdPre = ' ',
+        optPre = '  ',
+        gutter = ' ',
         colWidth = 0;
 
     commands.forEach(function(obj) {
-      var help = obj.name ? "-" + obj.name : "";
-      if (obj.alias) help += ", -" + obj.alias;
-      obj.help = help;
-      colWidth = Math.max(colWidth, help.length);
+      if (obj.describe) {
+        var help = cmdPre + (obj.name ? "-" + obj.name : "");
+        if (obj.alias) help += ", -" + obj.alias;
+        obj.help = help;
+        colWidth = Math.max(colWidth, help.length);
+      }
       obj.options.forEach(formatOption);
     });
 
-    var helpStr = _usage ? _usage + "\n" : "";
+    var helpStr = _usage ? _usage + "\n\n" : "";
+    commands.forEach(function(obj, i) {
+      if ('title' in obj) helpStr += obj.title + "\n";
+      if (obj.describe) helpStr += formatHelpLine(obj.help, obj.describe);
+      if (obj.options.length > 0) {
+        obj.options.forEach(addOptionHelp);
+        helpStr += '\n';
+      }
+    });
 
-    if (commands.length > 0) {
-      helpStr += "Commands and options:\n";
-      commands.forEach(function(obj, i) {
-        helpStr += formatHelpLine(obj.help, obj.describe);
-        if (obj.options.length > 0) {
-          obj.options.forEach(addOptionHelp);
-          helpStr += '\n';
-        }
+    if (_examples.length > 0) {
+      helpStr += "\nExamples\n";
+      _examples.forEach(function(str) {
+        helpStr += "\n" + str + "\n";
       });
     }
 
     return helpStr;
 
     function formatHelpLine(help, desc) {
-      return ' ' + Utils.rpad(help, colWidth, ' ') + '  ' + (desc || '') + '\n';
+      return Utils.rpad(help, colWidth, ' ') + gutter + (desc || '') + '\n';
     }
 
     function formatOption(o) {
       // console.log("formatOption:", opt)
       if (o.describe) {
-        o.help = o.name + (o.alias ? ", " + o.alias : "") + (o.type == 'flag' ? "" : "=");
+        o.help = optPre + o.name;
+        if (o.alias) o.help += ", " + o.alias;
+        if (o.type != 'flag' && !o.assign_to) o.help += "=";
         colWidth = Math.max(colWidth, o.help.length);
       }
     }
 
     function addOptionHelp(o) {
       if (o.help) {
-        helpStr += formatHelpLine(' ' + o.help, o.describe);
+        helpStr += formatHelpLine(o.help, o.describe);
       }
     }
-
   };
 
   this.printHelp = function() {
@@ -4464,6 +4510,11 @@ function CommandOptions(name) {
     options: []
   };
 
+  this.validate = function(f) {
+    _command.validate = f;
+    return this;
+  };
+
   this.describe = function(str) {
     _command.describe = str;
     return this;
@@ -4474,7 +4525,13 @@ function CommandOptions(name) {
     return this;
   };
 
+  this.title = function(str) {
+    _command.title = str;
+    return this;
+  };
+
   this.option = function(name, opts) {
+    opts = opts || {}; // accept just a name -- some options don't need properties
     if (!Utils.isString(name) || !name) error("Missing option name");
     if (!validateOption(opts)) error("Invalid option definition:", opts);
     opts.name = name;
@@ -4494,34 +4551,6 @@ function CommandOptions(name) {
 
 
 
-
-MapShaper.validateCommandSequence = function(commands) {
-  if (commands.length === 0) return commands;
-
-  // if there's no -o command, put a generic one at the end
-  if (!Utils.some(commands, function(cmd) {
-    return cmd.name == 'o';
-  })) {
-    commands.push({name: "o", options: {}});
-  }
-
-  // need exactly one -i command as the first command
-  var imports = Utils.filter(commands, function(cmd) {return cmd.name == 'i';});
-  if (imports.length != 1) error("mapshaper expects one -i command");
-  var idx = commands.indexOf(imports[0]);
-  if (idx > 0) {
-    commands.unshift(commands.splice(idx, 1)[0]);
-  }
-  return commands;
-};
-
-//
-MapShaper.validateCommand = function(cmd) {
-  var validator = MapShaper.commandValidators[cmd.name];
-  if (validator) {
-    validator(cmd.options, cmd._);
-  }
-};
 
 function validateInputOpts(o, _) {
   o.files = cli.validateInputFiles(_);
@@ -4575,6 +4604,10 @@ function validateJoinOpts(o, _) {
     error("-join currently only supports dbf and csv files");
   }
 
+  if (!Node.fileExists(o.file)) {
+    error("-join missing file to join:", o.file);
+  }
+
   if (!o.keys) error("-join missing required keys option");
   if (!isCommaSep(o.keys)) error("-join keys takes two comma-separated names, e.g.: FIELD1,FIELD2");
 
@@ -4625,14 +4658,16 @@ function validateSplitOnGridOpts(o, _) {
 }
 
 function validateLinesOpts(o, _) {
-  if (_.length > 0) {
-    error("-lines takes a comma-separated list of fields");
-  } else if (_.length == 1) {
+  if (!o.fields && _.length == 1) {
     o.fields = cli.validateCommaSepNames(_[0]);
+  }
+
+  if (o.fields && o.fields.length === 0 || _.length > 1) {
+    error("-lines takes a comma-separated list of fields");
   }
 }
 
-function validateInnerLines(o, _) {
+function validateInnerLinesOpts(o, _) {
   if (_.length > 0) {
     error("-innerlines takes no arguments");
   }
@@ -4640,13 +4675,30 @@ function validateInnerLines(o, _) {
 
 function validateSubdivideOpts(o, _) {
   if (_.length !== 1) {
-    error("--subdivide option requires a JavaScript expression");
+    error("-subdivide option requires a JavaScript expression");
   }
   o.expression = _[0];
 }
 
-function validateFilterOpts(o, _) {  if (_.length !== 1) {
-    error("--filter option requires a JavaScript expression");
+function validateFieldsOpts(o, _) {
+  var fields = validateCommaSep(_[0]);
+  if (!fields || fields.length > 0 === false) {
+    error("-fields option requires a comma-sep. list of fields");
+  }
+  o.fields = fields;
+}
+
+function validateLayersOpts(o, _) {
+  var layers = validateCommaSep(_[0]);
+  if (!layers || layers.length > 0 === false) {
+    error("-layers option requires a comma-sep. list of layer names");
+  }
+  o.layers = layers;
+}
+
+function validateFilterOpts(o, _) {
+  if (_.length !== 1) {
+    error("-filter option requires a JavaScript expression");
   }
   o.expression = _[0];
 }
@@ -4655,7 +4707,8 @@ function validateOutputOpts(o, _) {
   var odir, obase, oext, ofmt;
   if (_.length > 1) {
     error("-o takes one file or directory argument, received:", _);
-  } else if (_.length == 1) {
+  }
+  if (_.length == 1) {
     var ofileInfo = Node.getFileInfo(_[0]);
     if (ofileInfo.is_directory) {
       // odir = argv.o;
@@ -4669,14 +4722,8 @@ function validateOutputOpts(o, _) {
         if (!cli.validateFileExtension(ofileInfo.file)) {
           error("Output file looks like an unsupported file type:", ofileInfo.file);
         }
-        // use -o extension, if present
-        // allows .topojson or .geojson instead of .json
-        // override extension inferred from --format option
-        // oext = ofileInfo.ext;
       }
       o.output_file = _[0];
-      //obase = ofileInfo.base;
-      //odir = ofileInfo.relative_dir || '.';
     }
   }
 
@@ -4692,87 +4739,51 @@ function validateOutputOpts(o, _) {
     }
   }
 
+  if (o.encoding) {
+    o.encoding = cli.validateEncoding(o.encoding);
+  }
+
   // topojson-specific
   if ("quantization" in o && o.quantization > 0 === false) {
     error("quantization option should be a nonnegative integer");
   }
 
-  if ("topojson_resolution" in o && o.topojson_resolution > 0 === false) {
-    error("topojson_resolution should be a nonnegative integet");
+  if ("topojson_precision" in o && o.topojson_precision > 0 === false) {
+    error("topojson-precision should be a positive number");
   }
 }
 
 
-MapShaper.commandValidators = {
-  i: validateInputOpts,
-  o: validateOutputOpts,
-  simplify: validateSimplifyOpts,
-  join: validateJoinOpts,
-  "split-on-grid": validateSplitOnGridOpts,
-  split: validateSplitOpts,
-  subdivide: validateSubdivideOpts,
-  dissolve: validateDissolveOpts,
-  "merge-layers": validateMergeLayersOpts
-};
 
 
-
-
-
-api.getOpts = function() {
+api.parseCommands = function(arr) {
   var commands;
-  try {
-    commands = MapShaper.parseCommands(process.argv.slice(2));
-    // process info commmands like -version and remove from list
-    commands = MapShaper.handleInfoCommands(commands);
-    // reorder some commands, like moving -i to the front
-    commands = MapShaper.validateCommandSequence(commands);
+ try {
+    commands = MapShaper.getOptionParser().parseArgv(arr);
   } catch(e) {
-    parser.printHelp();
     stop(e.message);
   }
   return commands;
 };
 
-MapShaper.parseCommands = function(arr) {
-  var commands = MapShaper.getOptionParser().parseArgv(arr);
-  commands.forEach(MapShaper.validateCommand);
-  return commands;
-};
-
-MapShaper.handleInfoCommands = function(commands) {
-  return Utils.filter(function(cmd) {
-    if (cmd.name == 'version') {
-      message(getVersion());
-      return false;
-    } else if (cmd.name == 'encodings') {
-      MapShaper.printEncodings();
-      return false;
-    } else if (cmd.name == 'help') {
-      MapShaper.getOptionParser().printHelp();
-      return false;
-    } else if (cmd.name == 'verbose') {
-      C.VERBOSE = true;
-      return false;
-    }
-    return true;
-  });
-};
-
 MapShaper.getOptionParser = function() {
   var parser = new CommandParser(),
-      usage = "Usage: mapshaper [commands]\n" +
-        "\nExample: fix minor topology errors, simplify to 10%, convert to geojson\n" +
-        "$ mapshaper -i states.shp auto-snap -simplify pct=0.1 -o geojson\n" +
-        "\nExample: aggregate census tracts to counties\n" +
-        "$ mapshaper -i tracts.shp -e 'CTY_FIPS=FIPS.substr(0, 5)' -dissolve CTY_FIPS\n";
-
+      usage = "Usage: mapshaper -i file(s) [import opts] [-command [command opts]] ...\n" +
+              "       mapshaper -help|-encodings|-version";
   parser.usage(usage);
 
+  parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
+      "$ mapshaper -i states.shp auto-snap -simplify 10% -o format=geojson");
+
+  parser.example("Aggregate census tracts to counties\n" +
+      "$ mapshaper -i tracts.shp -calc \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
+
   parser.command('i')
+    .title("Commands and command options")
     .describe("input one or more files")
+    .validate(validateInputOpts)
     .option("merge-files", {
-      describe: "merge input files into a single layer before processing",
+      describe: "merge similar input layers, like -merge-layers",
       type: "flag"
     })
     .option("combine-files", {
@@ -4796,22 +4807,29 @@ MapShaper.getOptionParser = function() {
       type: "number"
     })
     .option("encoding", {
-      describe: "encoding of text data in .dbf file"
+      describe: "text encoding of .dbf file"
     });
 
   parser.command('o')
     .describe("specify name of output file or directory")
+    .validate(validateOutputOpts)
     .option("format", {
-      describe: "set export format (shapefile|geojson|topojson|dbf|csv|tsv)"
+      describe: "set export format (shapefile|geojson|topojson)"
+    })
+    .option("encoding", {
+      describe: "text encoding of .dbf file"
     })
     .option("quantization", {
       describe: "specify TopoJSON quantization (auto-set by default)",
-      alias: 'q',
       type: "integer"
     })
     .option("no-quantization", {
       describe: "export TopoJSON without quantization",
       type: "flag"
+    })
+    .option("topojson-precision", {
+      // describe: "pct of avg segment length for rounding (0.02 is default)",
+      type: "number"
     })
     .option("id-field", {
       describe: "field to use for TopoJSON id property"
@@ -4823,13 +4841,20 @@ MapShaper.getOptionParser = function() {
     .option("cut-table", {
       describe: "detach attributes from shapes and save as a JSON file",
       type: "flag"
-    });
+    })
+    .option("bbox-index", {
+      describe: "export table of layer bounding boxes",
+      type: 'flag'
+    })
+    .option("target");
+
 
   parser.command('simplify')
+    .validate(validateSimplifyOpts)
     .describe("simplify the geometry of polygon or polyline features")
     .option("dp", {
       alias: "rdp",
-      describe: "use Douglas-Peucker simplification",
+      describe: "use (Ramer-)Douglas-Peucker simplification",
       assign_to: "method"
     })
     .option("visvalingam", {
@@ -4862,23 +4887,36 @@ MapShaper.getOptionParser = function() {
     });
 
   parser.command("filter")
-    // .alias("f")
     .describe("filter features with a boolean JavaScript expression")
-    .option("expression", {})
-    .option("layer", {});
+    .validate(validateFilterOpts)
+    .option("expression")
+    .option("target");
 
   parser.command("fields")
-    .describe('filter and rename data fields, e.g. "fips,st=state"')
-    .option("layer", {});
+    .describe('select and rename data fields, e.g. "fips,st=state"')
+    .validate(validateFieldsOpts)
+    .option("target");
+
+  /*
+  parser.command("layers")
+    .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
+    .validate(validateLayersOpts);
+  */
+
+  parser.command("calc")
+    .describe("create/update/delete data fields with a JS expression")
+    .option("expression")
+    .option("target");
 
   parser.command("expression")
-    .alias("e")
-    .describe("create/update/delete data fields with a JS expression")
-    .option("expression", {})
-    .option("layer", {});
+    .alias('e')
+    .validate(function() {
+      error("-expression has been renamed as -calc");
+    });
 
   parser.command("join")
     .describe("join a dbf or delimited text file to the imported shapes")
+    .validate(validateJoinOpts)
     .option("keys", {
       describe: "local,foreign keys, e.g. keys=FIPS,CNTYFIPS:str",
       type: "comma-sep"
@@ -4886,10 +4924,13 @@ MapShaper.getOptionParser = function() {
     .option("fields", {
       describe: "(optional) join fields, e.g. fields=FIPS:str,POP",
       type: "comma-sep"
-    });
+    })
+    .option("target");
+
 
   parser.command("dissolve")
     .describe("dissolve polygons; takes optional comma-sep. list of fields")
+    .validate(validateDissolveOpts)
     .option("sum-fields", {
       describe: "fields to sum when dissolving  (comma-sep. list)",
       type: "comma-sep"
@@ -4898,57 +4939,79 @@ MapShaper.getOptionParser = function() {
       describe: "fields to copy when dissolving (comma-sep. list)",
       type: "comma-sep"
     })
-    .option("field", {})
-    .option("layer", {});
+    .option("rename")
+    .option("field")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("lines")
     .describe("convert polygons to lines; takes optional list of fields")
-    .option("field", {})
-    .option("layer", {});
+    .validate(validateLinesOpts)
+    .option("rename")
+    .option("fields", {
+      type: "comma-sep"
+    })
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("innerlines")
     .describe("output polyline layers containing shared polygon boundaries")
-    .option("layer", {});
+    .validate(validateInnerLinesOpts)
+    .option("rename")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("split")
     .describe("split features on a data field")
-    .option("field", {})
-    .option("layer", {});
+    .validate(validateSplitOpts)
+    .option("field")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("subdivide")
     .describe("recursively divide a layer with a boolean JS expression")
-    .option("expression", {})
-    .option("layer", {});
+    .validate(validateSubdivideOpts)
+    .option("expression")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("split-on-grid")
     .describe("split layer into cols,rows  e.g. -split-on-grid 12,10")
+    .validate(validateSplitOnGridOpts)
     .option("cols", {
       type: "integer"
     })
     .option("rows", {
       type: "integer"
     })
-    .option("layer", {});
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("merge-layers")
     .describe("merge split-apart layers back into a single layer")
-    .option("_dummy_", {}); // kludge to improve help menu formatting
+    .validate(validateMergeLayersOpts)
+    .option("_dummy_"); // kludge to improve help menu formatting
 
   parser.command("*")
-    .describe("these options apply to multiple commands")
-    .option("layer", {
-      describe: "apply the command to a particular layer"
+    .title("Options for multiple commands")
+    .option("target", {
+      describe: "layer(s) to target (comma-sep., takes * wildcard, default: *)"
     })
-    .option("add-layer", {
+    .option("rename", {
+      describe: "rename the targeted layer(s)"
+    })
+    .option("no-replace", { // or maybe "add-layer",
       alias: "+",
-      describe: "create new layer(s) instead of replacing the source layer"
+      type: 'flag',
+      describe: "retain the original layer(s) instead of replacing"
     });
 
   parser.command('encodings')
-    .describe("print list of supported text encodings");
+    .title("Informational commands")
+    .describe("print list of supported text encodings (for .dbf import)");
 
   parser.command('info')
-    .describe("print summary info instead of exporting files");
+    .describe("print information about current data layers");
 
   parser.command('verbose')
     .describe("print verbose processing messages");
@@ -5968,6 +6031,19 @@ function ShapeIter(arcs) {
 
 
 
+
+api.buildTopology = function(dataset) {
+  if (!dataset.arcs) return;
+  var raw = dataset.arcs.getVertexData(),
+      topoData = MapShaper.buildPathTopology(raw.xx, raw.yy, raw.nn);
+  dataset.arcs = topoData.arcs;
+  dataset.layers.forEach(function(lyr) {
+    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+      lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
+    }
+  });
+};
+
 // buildPathTopology() converts non-topological paths into
 // a topological format
 //
@@ -5990,7 +6066,7 @@ function ShapeIter(arcs) {
 //       Negative ids are converted to array indices with the fornula fwId = ~revId.
 //       E.g. -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
 //
-function buildPathTopology(xx, yy, nn) {
+MapShaper.buildPathTopology = function(xx, yy, nn) {
   var pointCount = xx.length,
       index = new ArcIndex(pointCount, getXYHash()),
       typedArrays = !!(xx.subarray && yy.subarray),
@@ -6197,7 +6273,7 @@ function buildPathTopology(xx, yy, nn) {
 
     error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
   }
-}
+};
 
 // Create a lookup table for path ids; path ids are indexed by point id
 //
@@ -6337,9 +6413,28 @@ function getXYHash() {
   };
 }
 
-// Export functions for testing
-MapShaper.buildPathTopology = buildPathTopology;
-MapShaper.ArcIndex = ArcIndex;
+function updateArcIds(src, paths) {
+  return src.map(function(shape) {
+    return updateArcsInShape(shape, paths);
+  });
+}
+
+function updateArcsInShape(shape, topoPaths) {
+  var shape2 = [];
+  Utils.forEach(shape, function(path) {
+    if (path.length != 1) {
+      error("[updateArcsInShape()] Expected single-part input path, found:", path);
+    }
+    var pathId = path[0],
+        topoPath = topoPaths[pathId];
+
+    if (!topoPath) {
+      error("[updateArcsInShape()] Missing topological path for path num:", pathId);
+    }
+    shape2.push(topoPath);
+  });
+  return shape2.length > 0 ? shape2 : null;
+}
 
 
 
@@ -6739,6 +6834,69 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
 
 
+api.simplify = function(arcs, opts) {
+  MapShaper.simplifyPaths(arcs, opts);
+
+  if (utils.isNumber(opts.pct)) {
+    arcs.setRetainedPct(opts.pct);
+  } else if (opts.interval) {
+    arcs.setRetainedInterval(opts.interval);
+  }
+
+  if (!opts.no_repair) {
+    var info = api.findAndRepairIntersections(arcs);
+    cli.printRepairMessage(info);
+  }
+};
+
+// @paths ArcDataset object
+MapShaper.simplifyPaths = function(paths, opts) {
+  var method = opts.method || 'mapshaper';
+  var bounds = paths.getBounds().toArray();
+  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown simplification method:", method);
+  if (decimalDegrees && !opts.cartesian) {
+    MapShaper.simplifyPaths3D(paths, simplifyPath);
+    MapShaper.protectWorldEdges(paths);
+  } else {
+    MapShaper.simplifyPaths2D(paths, simplifyPath);
+  }
+};
+
+MapShaper.simplifyPaths2D = function(paths, simplify) {
+  paths.forEach3(function(xx, yy, kk, i) {
+    simplify(kk, xx, yy);
+  });
+};
+
+MapShaper.simplifyPaths3D = function(paths, simplify) {
+  var bufSize = 0,
+      xbuf, ybuf, zbuf;
+
+  paths.forEach3(function(xx, yy, kk, i) {
+    var arcLen = xx.length;
+    if (bufSize < arcLen) {
+      bufSize = Math.round(arcLen * 1.2);
+      xbuf = new Float64Array(bufSize);
+      ybuf = new Float64Array(bufSize);
+      zbuf = new Float64Array(bufSize);
+    }
+
+    MapShaper.convLngLatToSph(xx, yy, xbuf, ybuf, zbuf);
+    simplify(kk, xbuf, ybuf, zbuf);
+  });
+};
+
+// Path simplification functions
+// Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
+//
+MapShaper.simplifiers = {
+  visvalingam: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
+  mapshaper_v1: Visvalingam.getArcCalculator(Visvalingam.specialMetric_v1, Visvalingam.specialMetric3D_v1, 0.65),
+  mapshaper: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
+  dp: DouglasPeucker.calcArcData
+};
+
 // Protect polar coordinates and coordinates at the prime meridian from
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
@@ -6805,105 +6963,38 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
   }
 };
 
-api.simplifyPaths = // export for script
-MapShaper.simplifyPaths = function(paths, method, force2D) {
-  T.start();
-  var bounds = paths.getBounds().toArray();
-  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
-  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method);
-  if (decimalDegrees && !force2D) {
-    MapShaper.simplifyPaths3D(paths, simplifyPath);
-    MapShaper.protectWorldEdges(paths);
-  } else {
-    MapShaper.simplifyPaths2D(paths, simplifyPath);
-  }
-  T.stop("Calculate simplification data");
-};
-
-MapShaper.simplifyPaths2D = function(paths, simplify) {
-  paths.forEach3(function(xx, yy, kk, i) {
-    simplify(kk, xx, yy);
-  });
-};
-
-MapShaper.simplifyPaths3D = function(paths, simplify) {
-  var bufSize = 0,
-      xbuf, ybuf, zbuf;
-
-  paths.forEach3(function(xx, yy, kk, i) {
-    var arcLen = xx.length;
-    if (bufSize < arcLen) {
-      bufSize = Math.round(arcLen * 1.2);
-      xbuf = new Float64Array(bufSize);
-      ybuf = new Float64Array(bufSize);
-      zbuf = new Float64Array(bufSize);
-    }
-
-    MapShaper.convLngLatToSph(xx, yy, xbuf, ybuf, zbuf);
-    simplify(kk, xbuf, ybuf, zbuf);
-  });
-};
-
-// Path simplification functions
-// Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
-//
-MapShaper.simplifiers = {
-  vis: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
-  mod1: Visvalingam.getArcCalculator(Visvalingam.specialMetric_v1, Visvalingam.specialMetric3D_v1, 0.65),
-  mod2: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
-  dp: DouglasPeucker.calcArcData
-};
-
-MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
-  var bufSize = 0,
-      xbuf, ybuf, zbuf;
-
-  var data = Utils.map(arcs, function(arc) {
-    var arcLen = arc[0].length;
-    if (bufSize < arcLen) {
-      bufSize = Math.round(arcLen * 1.2);
-      xbuf = new Float64Array(bufSize);
-      ybuf = new Float64Array(bufSize);
-      zbuf = new Float64Array(bufSize);
-    }
-
-    MapShaper.convLngLatToSph(arc[0], arc[1], xbuf, ybuf, zbuf);
-    return simplify(xbuf, ybuf, zbuf, arcLen);
-  });
-  return data;
-};
-
 
 
 
 // utility functions for datasets and layers
 
+MapShaper.getDatasetBounds = function(data) {
+  var bounds = new Bounds();
+  data.layers.forEach(function(lyr) {
+    bounds.mergeBounds(MapShaper.getLayerBounds(lyr, data.arcs));
+  });
+  return bounds;
+};
+
 MapShaper.getLayerBounds = function(lyr, arcs) {
   var bounds = new Bounds();
   if (lyr.geometry_type == 'point') {
-    utils.forEachPoint(lyr, function(p) {
+    MapShaper.forEachPoint(lyr, function(p) {
       bounds.mergePoint(p[0], p[1]);
     });
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-    utils.visitArcIds(lyr.shapes, function(id) {
+    MapShaper.forEachArcId(lyr.shapes, function(id) {
       arcs.mergeArcBounds(id, bounds);
     });
   }
   return bounds;
 };
 
-utils.forEachPoint = function(lyr, cb) {
-  if (lyr.geometry_type != 'point') {
-    error("[forEachPoint()] Expects a point layer");
-  }
-  lyr.shapes.forEach(function(shape) {
-    var n = shape ? shape.length : 0;
-    for (var i=0; i<n; i++) {
-      cb(shape[i]);
-    }
+MapShaper.removeLayers = function(dataset, layers) {
+  dataset.layers = Utils.filter(dataset.layers, function(lyr) {
+    return !Utils.contains(layers, lyr);
   });
 };
-
 
 MapShaper.validateLayer = function(lyr, arcs) {
   var type = lyr.geometry_type;
@@ -7222,8 +7313,6 @@ geom.transposePoints = function(points) {
 
 
 // Snap together points within a small threshold
-// @xx, @yy arrays of x, y coords
-// @nn array of path lengths
 // @points (optional) array, snapped coords are added so they can be displayed
 //
 //
@@ -7508,9 +7597,9 @@ function PathImporter(reservedPoints, opts) {
         arcs = new ArcDataset(nn, xx, yy);
 
         // TODO: move shape validation after snapping (which may corrupt shapes)
-        if (opts.snapping) {
+        if (opts.auto_snap || opts.snap_interval) {
           T.start();
-          MapShaper.autoSnapCoords(arcs, opts.snap_interval);
+          MapShaper.autoSnapCoords(arcs, opts.snap_interval || null);
           T.stop("Snapping points");
         }
       } else {
@@ -8302,15 +8391,16 @@ var dataTableProto = {
   filterFields: function(map) {
     var records = this.getRecords(),
         fields = Utils.getKeys(map),
-        f = function(rec, name) {
-          rec[map[name]] = src[name];
-          return rec;
-        },
         src;
 
     for (var i=0, n=records.length; i<n; i++) {
       src = records[i];
       records[i] = Utils.reduce(fields, f, {});
+    }
+
+    function f(dest, name) {
+      dest[map[name]] = src[name];
+      return dest;
     }
   },
 
@@ -8508,27 +8598,27 @@ GeoJSON.countNestedPoints = function(coords, depth) {
   return tally;
 };
 
-MapShaper.exportGeoJSON = function(layers, arcData, opts) {
-  return layers.map(function(layer) {
+MapShaper.exportGeoJSON = function(dataset, opts) {
+  return dataset.layers.map(function(lyr) {
     return {
-      content: MapShaper.exportGeoJSONString(layer, arcData, opts),
-      name: layer.name
+      content: MapShaper.exportGeoJSONString(lyr, dataset.arcs, opts),
+      filename: opts.output_file || lyr.name + ".json" // assume layer has name
     };
   });
 };
 
-MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
+MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   opts = opts || {};
-  var type = layerObj.geometry_type,
-      properties = layerObj.data && layerObj.data.getRecords() || null,
+  var type = lyr.geometry_type,
+      properties = lyr.data && lyr.data.getRecords() || null,
       useFeatures = !!properties && !opts.cut_table;
 
-  if (useFeatures && properties.length !== layerObj.shapes.length) {
+  if (useFeatures && properties.length !== lyr.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
   }
 
-  var objects = Utils.reduce(layerObj.shapes, function(memo, shape, i) {
-    var obj = MapShaper.exportGeoJSONGeometry(shape, arcData, type);
+  var objects = Utils.reduce(lyr.shapes, function(memo, shape, i) {
+    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type);
     if (useFeatures) {
       obj = {
         type: "Feature",
@@ -8551,7 +8641,7 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
   };
 
   if (opts.bbox) {
-    var bounds = MapShaper.getLayerBounds(layerObj, arcData);
+    var bounds = MapShaper.getLayerBounds(lyr, arcs);
     if (bounds.hasBounds()) {
       output.bbox = bounds.toArray();
     }
@@ -8561,8 +8651,8 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
   return parts[0] + objects + parts[1];
 };
 
-MapShaper.exportGeoJSONObject = function(layerObj, arcData, opts) {
-  return JSON.parse(MapShaper.exportGeoJSONString(layerObj, arcData, opts));
+MapShaper.exportGeoJSONObject = function(lyr, arcs, opts) {
+  return JSON.parse(MapShaper.exportGeoJSONString(lyr, arcs, opts));
 };
 
 // export GeoJSON or TopoJSON point geometry
@@ -8633,58 +8723,52 @@ var TopoJSON = {};
 // update ids of the remaining arcs
 TopoJSON.pruneArcs = function(topology) {
   var arcs = topology.arcs;
-  var flags = new Uint8Array(arcs.length);
+  var retained = new Uint32Array(arcs.length);
+
   Utils.forEach(topology.objects, function(obj, name) {
-    TopoJSON.updateArcIds(obj, function(arcId) {
+    TopoJSON.forEachArc(obj, function(arcId) {
       if (arcId < 0) arcId = ~arcId;
-      flags[arcId] = 1;
+      retained[arcId] = 1;
     });
   });
 
-  topology.arcs = Utils.filter(arcs, function(coords, i) {
-    return flags[i] === 1;
-  });
+  var filterCount = Utils.reduce(retained, function(count, flag) {
+    return count + flag;
+  }, 0);
 
-  // Re-index
-  var arcMap = TopoJSON.getArcMap(flags);
-  Utils.forEach(topology.objects, function(obj) {
-    TopoJSON.reindexArcIds(obj, arcMap);
-  });
-};
+  if (filterCount < arcs.length) {
+    TopoJSON.dissolveArcs(topology);
 
-// Update each arc id in a TopoJSON geometry object
-TopoJSON.updateArcIds = function(obj, cb) {
-  if (obj.arcs) {
-    utils.updateArcIds(obj.arcs, cb);
-  } else if (obj.geometries) {
-    Utils.forEach(obj.geometries, function(geom) {
-      TopoJSON.updateArcIds(geom, cb);
+    // filter arcs and remap ids
+    topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {
+      if (arc && retained[i] === 1) { // dissolved-away arcs are set to null
+        retained[i] = arcs.length;
+        arcs.push(arc);
+      } else {
+        retained[i] = -1;
+      }
+      return arcs;
+    }, []);
+
+    // Re-index
+    Utils.forEach(topology.objects, function(obj) {
+      TopoJSON.reindexArcIds(obj, retained);
     });
   }
 };
 
-// Convert an array of flags (0|1) into an array of non-negative arc ids
-TopoJSON.getArcMap = function(mask) {
-  var n = mask.length,
-      count = 0,
-      map = new Uint32Array(n);
-  for (var i=0; i<n; i++) {
-    map[i] = mask[i] === 0 ? -1 : count++;
-  }
-  return map;
-};
 
 // @map is an array of replacement arc ids, indexed by original arc id
-// @obj is any TopoJSON Geometry object (including named objects, GeometryCollections, Polygons, etc)
-TopoJSON.reindexArcIds = function(obj, map) {
-  TopoJSON.updateArcIds(obj, function(arcId) {
-    var rev = arcId < 0,
-        idx = rev ? ~arcId : arcId,
-        mappedId = map[idx];
-    if (mappedId < 0) { // -1 in arc map indicates arc has been removed
-      error("reindexArcIds() invalid arc id");
+// @geom is a TopoJSON Geometry object (including GeometryCollections, Polygons, etc)
+TopoJSON.reindexArcIds = function(geom, map) {
+  TopoJSON.forEachArc(geom, function(id) {
+    var rev = id < 0,
+        idx = rev ? ~id : id,
+        replacement = map[idx];
+    if (replacement < 0) { // -1 in arc map indicates arc has been removed
+      error("[reindexArcIds()] invalid arc id");
     }
-    return rev ? ~mappedId : mappedId;
+    return rev ? ~replacement : replacement;
   });
 };
 
@@ -8898,66 +8982,236 @@ TopoJSON.extractGeometryObject = function(obj, arcs) {
 
 
 
+TopoJSON.dissolveArcs = function(topology) {
+
+  var arcs = topology.arcs,
+      n = arcs.length,
+      i = 1,
+      stale = n + 3,
+      fresh = n + 4;
+
+  var fw = new Int32Array(n),
+      bw = new Int32Array(n),
+      flags = new Uint8Array(n);
+
+  Utils.initializeArray(fw, fresh);
+  Utils.initializeArray(bw, fresh);
+
+  // pass 1: load data
+  Utils.forEach(topology.objects, function(obj) {
+    TopoJSON.forEachPath(obj, handlePath);
+  });
+
+  // pass2: dissolve
+  Utils.forEach(topology.objects, function(obj) {
+    TopoJSON.forEachPath(obj, dissolveArcs);
+  });
+
+  function absId(id) {
+    return id < 0 ? ~id : id;
+  }
+
+  function dissolveVertex(id1, id2, next, prev) {
+    var abs1 = absId(id1),
+        abs2 = absId(id2),
+        fw1 = id1 >= 0,
+        fw2 = id2 >= 0,
+        arr1 = fw1 ? next : prev,
+        arr2 = fw2 ? prev : next,
+        arc1 = arcs[abs1],
+        arc2 = arcs[abs2];
+
+    if (arr1[abs1] != stale && arr2[abs2] != stale) {
+      if (arc1 && arc2) {
+        // dissolve 1 into 2
+        if (id1 < 0 != id2 < 0) {
+          arc1.reverse();
+        }
+        if (id2 >= 0) {
+          arc1.pop();
+          arcs[abs2] = arc1.concat(arc2);
+        } else {
+          arc2.pop();
+          arcs[abs2] = arc2.concat(arc1);
+        }
+        arcs[abs1] = null;
+      }
+      if (arcs[abs1] === null) flags[abs1] = 1;
+      return true;
+    }
+    return false;
+  }
+
+  function dissolveArcs(arcs) {
+    var id1, id2, handled,
+        filtered, dissolved = false;
+    for (var i=0, n=arcs.length; i<n; i++) {
+      id1 = arcs[i];
+      id2 = arcs[(i+1) % n];
+      dissolved = dissolved || dissolveVertex(id1, id2, fw, bw);
+    }
+    if (dissolved) {
+      filtered = Utils.filter(arcs, function(id) {
+        return !flags[absId(id)];
+      });
+      if (filtered.length === 0) error("Empty path");
+    //console.log(">> dissolved?", dissolved, 'filtered:', filtered, 'flags:', Utils.toArray(flags));
+      return filtered;
+    }
+  }
+
+  function handleVertex(id1, id2, next, prev) {
+    var abs1 = absId(id1),
+        abs2 = absId(id2),
+        fw1 = id1 >= 0,
+        fw2 = id2 >= 0,
+        arr1 = fw1 ? next : prev,
+        arr2 = fw2 ? prev : next,
+        pair1 = fw1 == fw2 ? id2 : ~id2,
+        pair2 = fw1 == fw2 ? ~id1 : id1;
+
+    //console.log("id1:", id1, "id2:", id2, "fw1?", fw1, "fw2?", fw2)
+
+    if (abs1 == abs2) { // island: can't dissolve
+      next[abs1] = stale;
+      prev[abs1] = stale;
+    } if (arr1[abs1] == fresh && arr2[abs2] == fresh) {
+      arr1[abs1] = pair1;
+      arr2[abs2] = pair2;
+    } else if (arr1[abs1] != pair1 || arr2[abs2] != pair2) {
+      //console.log(" ... actual 1:", arr1[abs1], "expected:", pair1);
+      //console.log(" ... actual 2:", arr2[abs2], "expected:", pair2);
+      arr1[abs1] = stale;
+      arr2[abs2] = stale;
+    }
+  }
+
+  function handlePath(arcs) {
+    var id1, id2, handled, p;
+    for (var i=0, n=arcs.length; i<n; i++) {
+      id1 = arcs[i];
+      id2 = arcs[(i+1) % n];
+      handleVertex(id1, id2, fw, bw);
+    }
+    //console.log("fw:", Utils.toArray(fw));
+    //console.log("bw:", Utils.toArray(bw));
+  }
+};
+
+// Iterate over all arrays of arc is in a geometry object
+// @cb callback: function(ids)
+// callback returns undefined or an array of replacement ids
+//
+TopoJSON.forEachPath = function forEachPath(obj, cb) {
+  var iterators = {
+        GeometryCollection: function(o) {o.geometries.forEach(eachGeom);},
+        LineString: function(o) {
+          var retn = cb(o.arcs);
+          if (retn) o.arcs = retn;
+        },
+        MultiLineString: function(o) {eachMultiPath(o.arcs);},
+        Polygon: function(o) {eachMultiPath(o.arcs);},
+        MultiPolygon: function(o) {o.arcs.forEach(eachMultiPath);}
+      };
+
+  eachGeom(obj);
+
+  function eachGeom(o) {
+    if (o.type in iterators) {
+      iterators[o.type](o);
+    }
+  }
+
+  function eachMultiPath(arr) {
+    var retn;
+    for (var i=0; i<arr.length; i++) {
+      retn = cb(arr[i]);
+      if (retn) arr[i] = retn;
+    }
+  }
+};
+
+TopoJSON.forEachArc = function forEachArc(obj, cb) {
+  TopoJSON.forEachPath(obj, function(ids) {
+    var retn;
+    for (var i=0; i<ids.length; i++) {
+      retn = cb(ids[i]);
+      if (Utils.isInteger(retn)) {
+        ids[i] = retn;
+      }
+    }
+  });
+};
+
+
+
+
 TopoJSON.exportTopology = function(layers, arcData, opts) {
   var topology = {type: "Topology"},
-      objects = {},
-      // get a copy of arc data (coords are modified for topojson export)
-      filteredArcs = arcData.getFilteredCopy(),
       bounds = new Bounds(),
-      useDelta = true,
+      filteredArcs,
       transform, invTransform;
 
-  // TODO: getting messy, refactor
-  if (opts.topojson_precision) {
-    transform = TopoJSON.getExportTransform(filteredArcs, null, opts.topojson_precision);
-  } else if (opts.topojson_resolution === 0) {
-    useDelta = false;
-  } else if (opts.topojson_resolution > 0) {
-    transform = TopoJSON.getExportTransform(filteredArcs, opts.topojson_resolution);
-  } else if (opts.precision > 0) {
-    transform = TopoJSON.getExportTransformFromPrecision(filteredArcs, opts.precision);
+  // some datasets may lack arcs -- e.g. only point layers
+  if (arcData && arcData.size() > 0) {
+    // get a copy of arc data (coords are modified for topojson export)
+    filteredArcs = arcData.getFilteredCopy();
+    // this is only needed after commands like innerlines and dissolve
+    // TODO: run only if needed
+    // filteredArcs = api.dissolveArcs(layers, filteredArcs);
+
+    if (opts.no_quantization) {
+      // no transform
+    } else if (opts.topojson_precision) {
+      transform = TopoJSON.getExportTransform(filteredArcs, null, opts.topojson_precision);
+    } else if (opts.quantization > 0) {
+      transform = TopoJSON.getExportTransform(filteredArcs, opts.quantization);
+    } else if (opts.precision > 0) {
+      transform = TopoJSON.getExportTransformFromPrecision(filteredArcs, opts.precision);
+    } else {
+      // default -- auto quantization
+      transform = TopoJSON.getExportTransform(filteredArcs);
+    }
+
+    if (transform) {
+      if (transform.isNull()) {
+        // kludge: null transform likely due to collapsed shape(s)
+        // using identity transform as a band-aid, need to rethink this.
+        transform = new Transform();
+      }
+      invTransform = transform.invert();
+      topology.transform = {
+        scale: [invTransform.mx, invTransform.my],
+        translate: [invTransform.bx, invTransform.by]
+      };
+
+      filteredArcs.applyTransform(transform, !!"round");
+    }
+    topology.arcs = TopoJSON.exportArcs(filteredArcs);
   } else {
-    transform = TopoJSON.getExportTransform(filteredArcs); // auto quantization
+    topology.arcs = []; // spec seems to require an array
   }
 
-  // kludge: null transform likely due to collapsed shape(s)
-  // using identity transform as a band-aid, need to rethink this.
-  if (transform && transform.isNull()) {
-    transform = new Transform();
-  }
-
-  if (transform) {
-    invTransform = transform.invert();
-    topology.transform = {
-      scale: [invTransform.mx, invTransform.my],
-      translate: [invTransform.bx, invTransform.by]
-    };
-    filteredArcs.applyTransform(transform, !!"round");
-    // remove identical points ?
-  }
-
-  Utils.forEach(layers, function(lyr, i) {
+  topology.objects = layers.reduce(function(objects, lyr, i) {
     var name = lyr.name || "layer" + (i + 1),
-        geomType = lyr.geometry_type,
-        obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, geomType);
+        obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, lyr.geometry_type);
 
     if (opts.bbox) {
       bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
     }
-    objects[name] = obj;
-    // export attribute data, if present
     if (lyr.data) {
       TopoJSON.exportProperties(obj.geometries, lyr.data.getRecords(), opts);
     }
-  });
+    objects[name] = obj;
+    return objects;
+  }, {});
 
-  topology.objects = objects;
-  topology.arcs = TopoJSON.exportArcs(filteredArcs);
+  // TODO: avoid if not needed (compare with dissolveArcs above)
+  if (filteredArcs) {
+    TopoJSON.pruneArcs(topology);
+  }
 
-  // TODO: avoid if not needed
-  TopoJSON.pruneArcs(topology);
-
-  if (useDelta) {
+  if (transform) {
     TopoJSON.deltaEncodeArcs(topology.arcs);
   }
 
@@ -9074,6 +9328,7 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
 };
 
 TopoJSON.groupPolygonRings = function(shapes, coords) {
+  // first, get path data for MapShaper.groupPolygonRings()
   var iter = new ShapeIter(coords);
   var paths = Utils.map(shapes, function(shape) {
     if (!Utils.isArray(shape)) throw new Error("expected array");
@@ -9084,7 +9339,10 @@ TopoJSON.groupPolygonRings = function(shapes, coords) {
       bounds: coords.getSimpleShapeBounds(shape)
     };
   });
+
+  // second, group the rings
   var groups = MapShaper.groupPolygonRings(paths);
+
   return groups.map(function(paths) {
     return paths.map(function(path) {
       return path.ids;
@@ -9145,11 +9403,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
   if (Utils.isString(topology)) {
     topology = JSON.parse(topology);
   }
-  // topology with only point objects might lack an arcs array --
-  // add empty array so points can be imported (kludge)
-  if (!topology.arcs) {
-    topology.arcs = [];
-  }
+
   var layers = [];
   Utils.forEach(topology.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, topology.arcs);
@@ -9165,18 +9419,28 @@ MapShaper.importTopoJSON = function(topology, opts) {
     TopoJSON.roundCoords(topology.arcs, opts.precision);
   }
 
-  return {
-    arcs: new ArcDataset(TopoJSON.importArcs(topology.arcs)),
+  var dataset = {
     layers: layers,
     info: {}
   };
+  if (topology.arcs && topology.arcs.length > 0) {
+    dataset.arcs = new ArcDataset(TopoJSON.importArcs(topology.arcs));
+  }
+  return dataset;
 };
 
-// TODO: Support ids from attribute data
-//
-MapShaper.exportTopoJSON = function(layers, arcData, opts) {
-  var topology = TopoJSON.exportTopology(layers, arcData, opts),
-      topologies, files;
+MapShaper.exportTopoJSON = function(dataset, opts) {
+  var topology = TopoJSON.exportTopology(dataset.layers, dataset.arcs, opts);
+  var filename = "output.json", // default
+  name;
+  if (opts.output_file) {
+    filename = opts.output_file;
+  } else if (dataset.info && dataset.info.input_files) {
+    name = MapShaper.getCommonFileBase(dataset.info.input_files);
+    if (name) filename = name + ".json";
+  }
+  // TODO: consider supporting this option again
+  /*
   if (opts.topojson_divide) {
     topologies = TopoJSON.splitTopology(topology);
     files = Utils.map(topologies, function(topo, name) {
@@ -9185,13 +9449,12 @@ MapShaper.exportTopoJSON = function(layers, arcData, opts) {
         name: name
       };
     });
-  } else {
-    files = [{
-      content: JSON.stringify(topology),
-      name: ""
-    }];
   }
-  return files;
+  */
+  return [{
+    content: JSON.stringify(topology),
+    filename: filename
+  }];
 };
 
 
@@ -9651,13 +9914,14 @@ MapShaper.importShp = function(src, opts) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShapefile = function(layers, arcData, opts) {
+MapShaper.exportShapefile = function(dataset, opts) {
   var files = [];
-  layers.forEach(function(layer) {
+  dataset.layers.forEach(function(layer) {
     var data = layer.data,
+        name = opts.output_file ? utils.getFileBase(opts.output_file) : layer.name,
         obj, dbf;
     T.start();
-    obj = MapShaper.exportShpAndShx(layer, arcData);
+    obj = MapShaper.exportShpAndShx(layer, dataset.arcs);
     T.stop("Export .shp file");
     T.start();
     data = layer.data;
@@ -9674,16 +9938,13 @@ MapShaper.exportShapefile = function(layers, arcData, opts) {
 
     files.push({
         content: obj.shp,
-        name: layer.name,
-        extension: "shp"
+        filename: name + ".shp"
       }, {
         content: obj.shx,
-        name: layer.name,
-        extension: "shx"
+        filename: name + ".shx"
       }, {
         content: dbf,
-        name: layer.name,
-        extension: "dbf"
+        filename: name + ".dbf"
       });
   });
   return files;
@@ -9818,110 +10079,97 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 // Return an array of objects with "filename" "filebase" "extension" and
 // "content" attributes.
 //
-api.exportFileContent =
-MapShaper.exportFileContent = function(layers, arcData, opts) {
-  var exporter = MapShaper.exporters[opts.output_format],
-      files = [];
+MapShaper.exportFileContent = function(dataset, opts) {
+  var layers = dataset.layers;
+
+  if (!opts.format) error("[o] Missing output format");
+
+  var files = [],
+      exporter = MapShaper.exporters[opts.format];
   if (!exporter) {
-    error("exportFileContent() Unknown export format:", opts.output_format);
-  }
-  if (!opts.output_extension) {
-    opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
-  }
-  if (!opts.output_file_base) {
-    opts.output_file_base = "out";
+    error("[o] Unknown export format:", opts.format);
   }
 
-  T.start();
-  validateLayerData(layers);
-  assignLayerNames(layers);
+  MapShaper.validateLayerData(layers);
+  MapShaper.assignUniqueLayerNames(layers);
+
   if (opts.cut_table) {
-    Utils.merge(files, MapShaper.exportDataTables(layers, opts));
+    files = MapShaper.exportDataTables(layers, opts).concat(files);
   }
 
-  files = Utils.merge(exporter(layers, arcData, opts), files);
-  // output index of bounding boxes when multiple layers are being exported
-  // TODO: only do this when it makes sense, e.g. layers are the result of splitting
-  // Also: if rounding or quantization are applied during export, bounds may
+  files = exporter(dataset, opts).concat(files);
+
+  // If rounding or quantization are applied during export, bounds may
   // change somewhat... consider adding a bounds property to each layer during
   // export when appropriate.
-  if (layers.length > 1) {
-    files.push(createIndexFile(layers, arcData));
+  if (opts.bbox_index) {
+    files.push(createIndexFile(dataset));
   }
 
-  assignFileNames(files, opts);
-  T.stop("Export " + opts.output_format);
+  MapShaper.validateFileNames(files);
   return files;
-
-  function validateLayerData(layers) {
-    Utils.forEach(layers, function(lyr) {
-      if (!Utils.isArray(lyr.shapes)) {
-        error ("[validateLayerData()] A layer is missing shape data");
-      }
-      // allowing null-type layers
-      if (lyr.geometry_type === null) {
-        if (Utils.some(lyr.shapes, function(o) {
-          return !!o;
-        })) {
-          error("[validateLayerData()] A layer contains shape records and a null geometry type");
-        }
-      } else if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-        error ("[validateLayerData()] A layer has an invalid geometry type:", lyr.geometry_type);
-      }
-    });
-  }
-
-  // Make sure each layer has a unique name
-  function assignLayerNames(layers, opts) {
-    var names = layers.map(function(lyr) {
-      return lyr.name || "";
-    });
-    var uniqueNames = MapShaper.getUniqueLayerNames(names);
-    layers.forEach(function(lyr, i) {
-      lyr.name = uniqueNames[i];
-    });
-  }
-
-  function assignFileNames(files, opts) {
-    var index = {};
-    Utils.forEach(files, function(file) {
-      file.extension = file.extension || opts.output_extension;
-      var basename = opts.output_file_base,
-          filename;
-      if (file.name) {
-        basename += "-" + file.name;
-      }
-      filename = basename + "." + file.extension;
-      if (filename in index) error("File name conflict:", filename);
-      index[filename] = true;
-      file.filebase = basename;
-      file.filename = filename;
-    });
-  }
-
-  // Generate json file with bounding boxes and names of each export layer
-  //
-  function createIndexFile(layers, arcs) {
-    var index = Utils.map(layers, function(lyr) {
-      var bounds = MapShaper.getLayerBounds(lyr, arcs);
-      return {
-        bounds: bounds.toArray(),
-        name: lyr.name
-      };
-    });
-
-    return {
-      content: JSON.stringify(index),
-      extension: 'json',
-      name: 'index'
-    };
-  }
 };
 
 MapShaper.exporters = {
   geojson: MapShaper.exportGeoJSON,
   topojson: MapShaper.exportTopoJSON,
   shapefile: MapShaper.exportShapefile
+};
+
+// Generate json file with bounding boxes and names of each export layer
+// TODO: consider making this a command, or at least make format settable
+//
+MapShaper.createIndexFile = function(dataset) {
+  var index = Utils.map(dataset.layers, function(lyr) {
+    var bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
+    return {
+      bounds: bounds.toArray(),
+      name: lyr.name
+    };
+  });
+
+  return {
+    content: JSON.stringify(index),
+    filename: "bbox-index.json"
+  };
+};
+
+MapShaper.validateLayerData = function(layers) {
+  Utils.forEach(layers, function(lyr) {
+    if (!Utils.isArray(lyr.shapes)) {
+      error ("[validateLayerData()] A layer is missing shape data");
+    }
+    // allowing null-type layers
+    if (lyr.geometry_type === null) {
+      if (Utils.some(lyr.shapes, function(o) {
+        return !!o;
+      })) {
+        error("[validateLayerData()] A layer contains shape records and a null geometry type");
+      }
+    } else if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
+      error ("[validateLayerData()] A layer has an invalid geometry type:", lyr.geometry_type);
+    }
+  });
+};
+
+MapShaper.validateFileNames = function(files) {
+  var index = {};
+  files.forEach(function(file, i) {
+    var filename = file.filename;
+    if (!filename) error("[o] Missing a filename for file" + i);
+    if (filename in index) error("[o] Duplicate filename", filename);
+    index[filename] = true;
+  });
+};
+
+MapShaper.assignUniqueLayerNames = function(layers) {
+  var names = layers.map(function(lyr) {
+    return lyr.name || "layer";
+  });
+  var uniqueNames = MapShaper.uniqifyNames(names);
+  layers.forEach(function(lyr, i) {
+    lyr.name = uniqueNames[i];
+  });
 };
 
 MapShaper.getDefaultFileExtension = function(fileType) {
@@ -9938,15 +10186,30 @@ MapShaper.exportDataTables = function(layers, opts) {
   var tables = [];
   layers.forEach(function(lyr) {
     if (lyr.data) {
-      var name = (lyr.name ? lyr.name + '-' : '') + 'table';
       tables.push({
         content: lyr.data.exportAsJSON(), // TODO: other formats
-        name: name,
-        extension: "json"
+        filename: (lyr.name ? lyr.name + '-' : '') + 'table.json'
       });
     }
   });
   return tables;
+};
+
+MapShaper.uniqifyNames = function(names) {
+  var counts = Utils.getValueCounts(names),
+      index = {};
+  return names.map(function(name) {
+    var count = counts[name],
+        i = 1;
+    if (count > 1 || name in index) {
+      while ((name + i) in index) {
+        i++;
+      }
+      name = name + i;
+    }
+    index[name] = true;
+    return name;
+  });
 };
 
 
@@ -10541,7 +10804,6 @@ MapShaper.replaceInArray = function(zz, value, replacement, start, end) {
 // @content: ArrayBuffer or String
 // @type: 'shapefile'|'json'
 //
-api.importFileContent =
 MapShaper.importFileContent = function(content, fileType, opts) {
   var dataset, fileFmt;
   opts = opts || {};
@@ -10578,26 +10840,18 @@ MapShaper.importFileContent = function(content, fileType, opts) {
   // topology; TODO -- consider moving this
   if ((fileFmt == 'shapefile' || fileFmt == 'geojson') && !opts.no_topology) {
     T.start();
-    MapShaper.buildTopology(dataset);
+    api.buildTopology(dataset);
     T.stop("Process topology");
   }
 
+  if (dataset.layers.length == 1) {
+    MapShaper.setLayerName(dataset.layers[0], opts.files ? opts.files[0] : "layer1");
+  }
+  dataset.info.input_files = opts.files;
   dataset.info.input_format = fileFmt;
   return dataset;
 };
 
-api.buildTopology =
-MapShaper.buildTopology = function(dataset) {
-  if (!dataset.arcs) return;
-  var raw = dataset.arcs.getVertexData(),
-      topoData = buildPathTopology(raw.xx, raw.yy, raw.nn);
-  dataset.arcs = topoData.arcs;
-  dataset.layers.forEach(function(lyr) {
-    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
-      lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
-    }
-  });
-};
 
 MapShaper.importJSONRecords = function(arr, opts) {
   return {
@@ -10609,29 +10863,13 @@ MapShaper.importJSONRecords = function(arr, opts) {
   };
 };
 
-function updateArcsInShape(shape, topoPaths) {
-  var shape2 = [];
-  Utils.forEach(shape, function(path) {
-    if (path.length != 1) {
-      error("[updateArcsInShape()] Expected single-part input path, found:", path);
-    }
-    var pathId = path[0],
-        topoPath = topoPaths[pathId];
 
-    if (!topoPath) {
-      error("[updateArcsInShape()] Missing topological path for path num:", pathId);
-    }
-    shape2.push(topoPath);
-  });
-  return shape2.length > 0 ? shape2 : null;
-}
-
-// TODO: find better name, collides with utils.updateArcIds()
-function updateArcIds(src, paths) {
-  return src.map(function(shape) {
-    return updateArcsInShape(shape, paths);
-  });
-}
+// initialize layer name using filename
+MapShaper.setLayerName = function(lyr, path) {
+  if (!lyr.name) {
+    lyr.name = utils.getFileBase(path);
+  }
+};
 
 
 
@@ -10787,26 +11025,31 @@ MapShaper.convertRecordData = function(rec, fields, converters) {
 
 
 
-api.importFromFile =
-MapShaper.importFromFile = function(fname, opts) {
-  var fileType = MapShaper.guessFileType(fname),
-      content = MapShaper.readGeometryFile(fname, fileType),
-      data = MapShaper.importFileContent(content, fileType, opts);
-  if (fileType == 'shp' && data.layers.length == 1) {
-    data.layers[0].data = MapShaper.importDbfTable(fname, opts.encoding);
+api.importFile = function(path, opts) {
+  var fileType = MapShaper.guessFileType(path),
+      content = MapShaper.readGeometryFile(path, fileType),
+      dataset;
+
+  opts = opts || {};
+  if (!opts.files) {
+    opts.files = [path];
   }
-  data.info.input_files = [fname];
-  return data;
+
+  dataset = MapShaper.importFileContent(content, fileType, opts);
+  if (fileType == 'shp' && dataset.layers.length == 1) {
+    dataset.layers[0].data = MapShaper.importDbfTable(path, opts.encoding);
+  }
+  return dataset;
 };
 
-MapShaper.readGeometryFile = function(fname, fileType) {
+MapShaper.readGeometryFile = function(path, fileType) {
   var content;
   if (fileType == 'shp') {
-    content = Node.readFile(fname);
+    content = Node.readFile(path);
   } else if (fileType == 'json') {
-    content = Node.readFile(fname, 'utf-8');
+    content = Node.readFile(path, 'utf-8');
   } else {
-    error("Unexpected input file:", fname);
+    error("Unexpected input file:", path);
   }
   return content;
 };
@@ -10842,19 +11085,24 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   return j;
 };
 
-utils.visitArcIds = function(arr, cb) {
-  utils.updateArcIds(arr, function(id) {
-    cb(id);
-    // returns undefined so arc ids are not changed
+MapShaper.forEachPoint = function(lyr, cb) {
+  if (lyr.geometry_type != 'point') {
+    error("[forEachPoint()] Expects a point layer");
+  }
+  lyr.shapes.forEach(function(shape) {
+    var n = shape ? shape.length : 0;
+    for (var i=0; i<n; i++) {
+      cb(shape[i]);
+    }
   });
 };
 
 // Visit each arc id in an array of ids
 // Use non-undefined return values of callback @cb as replacements.
-utils.updateArcIds = function(arr, cb) {
+MapShaper.forEachArcId = function(arr, cb) {
   Utils.forEach(arr, function(item, i) {
     if (item instanceof Array) {
-      utils.updateArcIds(item, cb);
+      MapShaper.forEachArcId(item, cb);
     } else if (Utils.isInteger(item)) {
       var val = cb(item);
       if (val !== void 0) {
@@ -10866,7 +11114,7 @@ utils.updateArcIds = function(arr, cb) {
   });
 };
 
-utils.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
+MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   Utils.forEach(shapes, function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
@@ -10904,55 +11152,25 @@ utils.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
 
 
 
-api.dissolveLayers = function(layers) {
-  T.start();
-  if (!Utils.isArray(layers)) error ("[dissolveLayers()] Expected an array of layers");
-  var dissolvedLayers = [],
-      args = Utils.toArray(arguments);
-
-  Utils.forEach(layers, function(lyr) {
-    args[0] = lyr;
-    var layers2 = api.dissolveLayer.apply(null, args);
-    dissolvedLayers.push.apply(dissolvedLayers, layers2);
-  });
-  T.stop('Dissolve polygons');
-  return dissolvedLayers;
-};
-
-// Dissolve a polygon layer into one or more derived layers
-// @dissolve (optional) comma-separated list of fields
-//
-api.dissolveLayer = function(lyr, arcs, dissolve, opts) {
-  if (lyr.geometry_type != 'polygon') {
-    error("[dissolveLayer()] Expected a polygon layer");
-  }
-  var dissolveArgs = Utils.isString(dissolve) ? dissolve.split(',') : [null];
-  var layers = Utils.map(dissolveArgs, function(arg) {
-    return MapShaper.dissolveLayerOnField(lyr, arcs, arg, opts);
-  });
-  return layers;
-};
-
 // Generate a dissolved layer
-// @field Name of data field to dissolve on or null to dissolve all polygons
-//
-MapShaper.dissolveLayerOnField = function(lyr, arcs, field, opts) {
+// @opts.field (optional) name of data field (dissolves all if falsy)
+// @opts.sum-fields (Array) (optional)
+// @opts.copy-fields (Array) (optional)
+api.dissolveLayer = function(lyr, arcs, opts) {
   var shapes = lyr.shapes,
+      field = opts.field,
       dataTable = lyr.data || null,
       properties = dataTable ? dataTable.getRecords() : null,
       dissolveLyr,
       dissolveRecords,
       getDissolveKey;
 
-  opts = opts || {};
-  // T.start();
-
   if (field) {
     if (!dataTable) {
-      error("[dissolveLayer()] Layer is missing a data table");
+      error("[dissolve] Layer is missing a data table");
     }
     if (field && !dataTable.fieldExists(field)) {
-      error("[dissolveLayer()] Missing field:",
+      error("[dissolve] Missing field:",
         field, '\nAvailable fields:', dataTable.getFields().join(', '));
     }
     getDissolveKey = function(shapeId) {
@@ -10965,21 +11183,20 @@ MapShaper.dissolveLayerOnField = function(lyr, arcs, field, opts) {
     };
   }
 
-  //T.start();
   var first = dissolveFirstPass(shapes, getDissolveKey);
-  //T.stop("dissolve first pass");
-  //T.start();
   var second = dissolveSecondPass(first.segments, shapes, first.keys);
-  //T.stop('dissolve second pass');
+
   dissolveLyr = {
     shapes: second.shapes,
-    name: field || 'dissolve',
+    info: lyr.info, // questionable
+    name: lyr.name,
+    geometry_type: lyr.geometry_type
   };
   if (properties) {
     dissolveRecords = MapShaper.calcDissolveData(first.keys, second.index, properties, field, opts);
     dissolveLyr.data = new DataTable(dissolveRecords);
   }
-  Opts.copyNewParams(dissolveLyr, lyr);
+  // Opts.copyNewParams(dissolveLyr, lyr);
 
   // T.stop('Dissolve polygons');
   return dissolveLyr;
@@ -11086,7 +11303,7 @@ function dissolveFirstPass(shapes, getKey) {
     }
   }
 
-  utils.traverseShapes(shapes, procArc, null, procShape);
+  MapShaper.traverseShapes(shapes, procArc, null, procShape);
   Utils.forEach(largeGroups, splitGroup);
 
   return {
@@ -11250,6 +11467,7 @@ MapShaper.calcDissolveData = function(keys, index, properties, field, opts) {
     }
 
     Utils.forEach(sumFields, function(f) {
+      // TODO: handle strings
       dissolveRec[f] = (rec[f] || 0) + (dissolveRec[f] || 0);
     });
   });
@@ -11259,241 +11477,8 @@ MapShaper.calcDissolveData = function(keys, index, properties, field, opts) {
 
 
 
-// Remove arc endpoints that are only shared by two arcs
-// (Useful for reducing number of arcs after a polygon dissolve)
-//
-api.dissolveArcs = function(layers, arcs) {
-  T.start();
-  // Map old arc ids to new arc ids
-  var map = arcDissolveFirstPass(layers, arcs);
-  // Update layers and return an updated ArcDataset
-  var arcs2 = arcDissolveSecondPass(layers, arcs, map);
-  // Set simplification threshold of new ArcDataset
-  arcs2.setRetainedInterval(arcs.getRetainedInterval());
 
-  var msg = Utils.format("Dissolve arcs; before: %d, after: %d", arcs.size(), arcs2.size());
-  T.stop(msg);
-  return arcs2;
-};
-
-function convertArcs(groups, arcs) {
-  var src = arcs.getVertexData(),
-      abs = utils.absArcId,
-      offs = 0,
-      pointCount = countPoints(groups, src.nn),
-      nn2 = new Int32Array(groups.length),
-      xx2 = new Float64Array(pointCount),
-      yy2 = new Float64Array(pointCount),
-      zz2;
-  if (src.zz) zz2 = new Float64Array(pointCount);
-
-  Utils.forEach(groups, function(oldIds, newId) {
-    Utils.forEach(oldIds, function(oldId) {
-      extendDissolvedArc(newId, oldId);
-    });
-  });
-
-  var arcs2 = new ArcDataset(nn2, xx2, yy2);
-  if (zz2) arcs2.setThresholds(zz2);
-  return arcs2;
-
-  // Count points required by dissolved arcs, so typed arrays can be allocated
-  function countPoints(groups, nn) {
-    var total = 0,
-        subtotal, n, ids;
-    for (var i=0; i<groups.length; i++) {
-      ids = groups[i];
-      subtotal = 0;
-      for (var j=0; j<ids.length; j++) {
-        n = nn[abs(ids[j])];
-        if (n > 0) subtotal += n - 1;
-      }
-      if (subtotal > 0) subtotal++;
-      total += subtotal;
-    }
-    return total;
-  }
-
-  function extendDissolvedArc(newId, oldId) {
-    var absId = abs(oldId),
-        rev = oldId < 0,
-        n = src.nn[absId],
-        i = src.ii[absId],
-        n2 = nn2[newId];
-
-    if (n > 0) {
-      if (n2 > 0) {
-        n--;
-        if (!rev) i++;
-      }
-      MapShaper.copyElements(src.xx, i, xx2, offs, n, rev);
-      MapShaper.copyElements(src.yy, i, yy2, offs, n, rev);
-      if (zz2) MapShaper.copyElements(src.zz, i, zz2, offs, n, rev);
-      nn2[newId] += n;
-      offs += n;
-    }
-  }
-}
-
-function arcDissolveSecondPass(layers, arcs, map) {
-  var convertedIndex = [],
-      groups = [];
-
-  // Traverse shapes, replace old arc ids with new arc ids,
-  // populate @groups array with arrays of old arc ids indexed by
-  // ids of dissolved arcs (inverse of @map)
-  //
-  Utils.forEach(layers, function(lyr) {
-    utils.traverseShapes(lyr.shapes, null, updatePaths, null);
-  });
-
-  // Generate a new ArcDataset containing dissolved arcs
-  //
-  return convertArcs(groups, arcs);
-
-  function updatePaths(obj) {
-    var newPath = [],
-        abs = utils.absArcId,
-        ids = obj.arcs,
-        mappedId = -1,
-        arcCount = 0,
-        dissolveGroup,
-        firstDissolveGroupId, firstDissolveGroup,
-        oldId, newId,
-        startingNewGroup, converted;
-
-    for (var i=0; i<ids.length; i++) {
-      oldId = ids[i];
-      newId = map[abs(oldId)];
-      startingNewGroup = newId != mappedId;
-      converted = oldId in convertedIndex;
-
-      if (newId === undefined) error("updatePaths() null arc id");
-      if (startingNewGroup) {
-        mappedId = newId;
-        arcCount++;
-
-        if (converted) {
-          if (convertedIndex[oldId] == -1) {
-            newId = ~newId;
-          }
-        } else {
-          if (newId < 0) error("updatePaths() unexpected negative id");
-          if (newId in groups && groups[newId] !== firstDissolveGroup) {
-            error("[arc dissolve] traversal errro");
-          }
-          dissolveGroup = [];
-          groups[newId] = dissolveGroup;
-        }
-        newPath.push(newId);
-
-        if (i === 0) {
-          firstDissolveGroupId = newId;
-          if (!converted) {
-            firstDissolveGroup = dissolveGroup;
-          }
-        }
-      }
-
-      //
-      if (!converted) {
-        dissolveGroup.push(oldId);
-        convertedIndex[oldId] = 1;
-        convertedIndex[~oldId] = -1;
-      }
-    }
-
-    // handle dissolved arcs that wrap around to include arcs from beginning
-    // and end of original path
-    if (arcCount > 1 && newId == firstDissolveGroupId) {
-      newPath.pop(); // remove duplicate id
-      if (firstDissolveGroup) {
-        // merge arrays of arc ids from beginning and end of path
-        dissolveGroup = Utils.merge(dissolveGroup, firstDissolveGroup);
-      }
-    }
-
-    if (newPath.length === 0) error("updatePaths() empty path");
-    obj.shape[obj.i] = newPath;
-  }
-}
-
-function arcDissolveFirstPass(layers, arcs) {
-  var src = arcs.getVertexData(),
-      dummyY = arcs.getBounds().ymin - 1,
-      xx2 = [],
-      yy2 = [],
-      nn2 = [];
-
-  // Use mapshaper's topology function to identify dissolvable sequences of
-  // arcs across all layers (hackish)
-  //
-  Utils.forEach(layers, function(lyr) {
-    utils.traverseShapes(lyr.shapes, null, translatePath);
-  });
-  var topo = buildPathTopology(xx2, yy2, nn2);
-  return getArcMap(topo.arcs);
-
-  function translatePath(obj) {
-    nn2.push(0);
-    Utils.forEach(obj.arcs, extendPath);
-  }
-
-  function extendPath(arcId) {
-    var absId = utils.absArcId(arcId),
-        pathId = nn2.length - 1,
-        first = src.ii[absId],
-        last = first + src.nn[absId] - 1,
-        start, end;
-
-    if (arcId < 0) {
-      start = last;
-      end = first;
-    } else {
-      start = first;
-      end = last;
-    }
-
-    // TODO: check for empty paths
-    if (nn2[pathId] === 0) {
-      nn2[pathId]++;
-      xx2.push(src.xx[start]);
-      yy2.push(src.yy[start]);
-    }
-    xx2.push(absId);
-    xx2.push(src.xx[end]);
-    yy2.push(dummyY);
-    yy2.push(src.yy[end]);
-    nn2[pathId] += 2;
-  }
-
-  // map old arc ids to new ids
-  function getArcMap(arcs) {
-    var map = [];
-    arcs.forEach3(function(xx, yy, zz, id) {
-      var oldId;
-      for (var i=1, n=xx.length; i<n; i+=2) {
-        oldId = xx[i];
-        if (oldId in map && map[oldId] != id) error("mapping error");
-        map[oldId] = id;
-      }
-    });
-    return map;
-  }
-}
-
-
-
-
-api.splitLayers = function(layers, arcs, field) {
-  var result = [];
-  Utils.forEach(layers, function(lyr) {
-    result = result.concat(MapShaper.splitLayer(lyr, arcs, field));
-  });
-  return result;
-};
-
-MapShaper.splitLayer = function(lyr0, arcs, field) {
+api.splitLayer = function(lyr0, arcs, field) {
   var dataTable = lyr0.data;
   if (!dataTable) error("[splitLayer] Missing a data table");
   if (!dataTable.fieldExists(field)) error("[splitLayer] Missing field:", field);
@@ -11512,7 +11497,7 @@ MapShaper.splitLayer = function(lyr0, arcs, field) {
       idx = splitLayers.length;
       index[key] = idx;
       splitLayers.push({
-        name: key || Utils.getUniqueName("layer"),
+        name: MapShaper.getSplitLayerName(lyr0.name, key),
         properties: [],
         shapes: []
       });
@@ -11532,6 +11517,10 @@ MapShaper.splitLayer = function(lyr0, arcs, field) {
       data: new DataTable(obj.properties)
     }, lyr0);
   });
+};
+
+MapShaper.getSplitLayerName = function(base, key) {
+  return (base || 'split') + '-' + (key || '');
 };
 
 
@@ -11573,7 +11562,7 @@ api.splitOnGrid = function(lyr, arcs, rows, cols) {
         shapes: [],
         properties: properties ? [] : null,
         bounds: new Bounds(),
-        name: groupName(idx)
+        name: Utils.getSplitLayerName(lyr.name, groupName(idx))
       };
     }
     group.shapes.push(shp);
@@ -11877,14 +11866,6 @@ function LayerExpressionContext(arcs) {
 
 
 
-api.evaluateLayers = function(layers, arcs, exp) {
-  T.start();
-  for (var i=0; i<layers.length; i++) {
-    api.evaluateLayer(layers[i], arcs, exp);
-  }
-  T.stop("Calculate expression");
-};
-
 api.evaluateLayer = function(lyr, arcs, exp) {
   var shapes = lyr.shapes,
       // create new table if none exists
@@ -11899,25 +11880,16 @@ api.evaluateLayer = function(lyr, arcs, exp) {
 
 
 
-//
-//
-api.subdivideLayers = function(layers, arcs, exp) {
-  var compiled = MapShaper.compileLayerExpression(exp, arcs),
-      subdividedLayers = [];
-  Utils.forEach(layers, function(lyr) {
-    Utils.merge(subdividedLayers, MapShaper.subdivide(lyr, arcs, compiled));
-    Utils.forEach(subdividedLayers, function(lyr2) {
-      Opts.copyNewParams(lyr2, lyr);
-    });
-  });
-  return subdividedLayers;
-};
 
 // Recursively divide a layer into two layers until a (compiled) expression
 // no longer returns true. The original layer is split along the long side of
 // its bounding box, so that each split-off layer contains half of the original
 // shapes (+/- 1).
 //
+api.subdivideLayer = function(lyr, arcs, exp) {
+  return MapShaper.subdivide(lyr, arcs, MapShaper.compileLayerExpression(exp, arcs));
+};
+
 MapShaper.subdivide = function(lyr, arcs, compiled) {
   var divide = compiled(lyr),
       subdividedLayers = [],
@@ -11945,6 +11917,11 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
   } else {
     subdividedLayers.push(lyr);
   }
+
+  subdividedLayers.forEach(function(lyr2, i) {
+    lyr2.name = MapShaper.getSplitLayerName(lyr.name, i + 1);
+    Opts.copyNewParams(lyr2, lyr);
+  });
   return subdividedLayers;
 };
 
@@ -11992,41 +11969,36 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
 
 
 
-// filter and rename data fields; see mapshaper --fields option
+// filter and rename data fields; see mapshaper -fields option
 
-api.filterFields = function(layers, opts) {
-  layers.forEach(function(lyr) {
-    api.filterFieldsInLayer(lyr, opts);
-  });
-};
+api.filterFields = function(lyr, names) {
+  if (!lyr.data) stop("[fields] Layer is missing a data table");
+  if (!Utils.isArray(names)) stop("[fields] Expected an array of field names; found:", names);
+  var fields = lyr.data.getFields(),
+      fieldMap = utils.reduce(names, function(memo, str) {
+        var parts = str.split('=');
+        var dest = parts[0],
+            src = parts[1] || dest;
+        if (!src || !dest) stop("[fields] Invalid field description:", str);
+        memo[src] = dest;
+        return memo;
+      }, {});
+      missingFields = Utils.difference(Utils.getKeys(fieldMap), fields);
 
-api.filterFieldsInLayer = function(lyr, opts) {
-  if (lyr.data && opts.field_map) {
-    var fields = lyr.data.getFields(),
-        mappedFields = Utils.getKeys(opts.field_map),
-        missingFields = Utils.difference(mappedFields, fields);
-
-    if (missingFields.length > 0) {
-      message("[--fields] Table is missing one or more specified fields:", missingFields);
-      message("Existing fields:", fields);
-      stop();
-    } else {
-      lyr.data.filterFields(opts.field_map);
-    }
+  if (missingFields.length > 0) {
+    message("[fields] Table is missing one or more specified fields:", missingFields);
+    message("Existing fields:", fields);
+    stop();
+  } else {
+    lyr.data.filterFields(fieldMap);
   }
+
 };
 
 
 
-api.filterLayers = function(layers, arcs, exp) {
-  T.start();
-  Utils.forEach(layers, function(lyr) {
-    api.filterLayer(lyr, arcs, exp);
-  });
-  T.stop("Filter");
-};
 
-api.filterLayer = function(lyr, arcs, exp) {
+api.filterFeatures = function(lyr, arcs, exp) {
   MapShaper.select(lyr, arcs, exp, true);
 };
 
@@ -12088,7 +12060,7 @@ MapShaper.mergeDatasets = function(arr) {
     data.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
         // reindex arc ids
-        utils.updateArcIds(lyr.shapes, function(id) {
+        MapShaper.forEachArcId(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
         });
       }
@@ -12169,6 +12141,7 @@ api.mergeLayers = function(layers) {
       merged.push(lyr);
     } else {
       indexedLyr = index[key];
+      indexedLyr.name = MapShaper.mergeNames(indexedLyr.name, lyr.name);
       indexedLyr.shapes = indexedLyr.shapes.concat(lyr.shapes);
       if (indexedLyr.data) {
         records = indexedLyr.data.getRecords().concat(lyr.data.getRecords());
@@ -12184,50 +12157,23 @@ api.mergeLayers = function(layers) {
 
 
 api.mergeFiles = function(files, opts) {
-  // import datasets without topology
-  var importOpts = Utils.extend({}, opts, {no_topology: true});
   var datasets = files.map(function(fname) {
-    return MapShaper.importFromFile(fname, importOpts);
+    var importOpts = Utils.extend({}, opts,
+      {no_topology: true, files: [fname]});  // import without topology
+    return api.importFile(fname, importOpts);
   });
 
-  // merge datasets
   var merged = MapShaper.mergeDatasets(datasets);
   // kludge -- use info property of first dataset
   merged.info = datasets[0].info;
+  merged.info.input_files = files;
 
   if (!opts.no_topology) {
-    MapShaper.buildTopology(merged);
+    api.buildTopology(merged);
   }
+
+  if (opts.merge_files) api.mergeLayers(merged.layers);
   return merged;
-};
-
-// @see mapshaper script
-//
-utils.getMergedFileBase = function(arr, suffix) {
-  var basename = utils.getCommonFilePrefix(arr);
-  basename = basename.replace(/[-_ ]+$/, '');
-  if (suffix) {
-    basename = basename ? basename + '-' + suffix : suffix;
-  }
-  return basename;
-};
-
-utils.getCommonFilePrefix = function(files) {
-  return Utils.reduce(files, function(prefix, file) {
-    var filebase = Node.getFileInfo(file).base;
-    if (prefix !== null) {
-      filebase = utils.findStringPrefix(prefix, filebase);
-    }
-    return filebase;
-  }, null);
-};
-
-utils.findStringPrefix = function(a, b) {
-  var i = 0;
-  for (var n=a.length; i<n; i++) {
-    if (a[i] !== b[i]) break;
-  }
-  return a.substr(0, i);
 };
 
 
@@ -12256,11 +12202,10 @@ api.importJoinTableAsync = function(file, opts, done) {
   }, opts);
 };
 
-api.joinTableToLayers = function(layers, table, keys, joinFields) {
+api.joinTableToLayer = function(lyr, table, keys, joinFields) {
   var localKey = keys[0],
       foreignKey = keys[1],
       typeIndex = {};
-  T.start();
   if (table.fieldExists(foreignKey) === false) {
     stop("[join] External table is missing a field named:", foreignKey);
   }
@@ -12269,23 +12214,15 @@ api.joinTableToLayers = function(layers, table, keys, joinFields) {
     joinFields = Utils.difference(table.getFields(), [foreignKey]);
   }
 
-  var joins = 0,
-      index = Utils.indexOn(table.getRecords(), foreignKey);
+  // var index = Utils.indexOn(table.getRecords(), foreignKey);
 
-  Utils.forEach(layers, function(lyr) {
-    if (lyr.data && lyr.data.fieldExists(localKey)) {
-      if (MapShaper.joinTables(lyr.data, localKey, joinFields,
-          table, foreignKey, joinFields)) {
-        joins++;
-      }
-    }
-  });
-
-  if (joins === 0) {
-    // TODO: better handling of failed joins
-    stop("[join] Join failed");
+  if (!lyr.data || !lyr.data.fieldExists(localKey)) {
+    error("[join] Target layer is missing field:", localKey);
   }
-  T.stop("Join");
+
+  if (!MapShaper.joinTables(lyr.data, localKey, joinFields, table, foreignKey,
+      joinFields)) error("[join] No records could be joined");
+  // TODO: better handling of failed joins
 };
 
 MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcFields) {
@@ -12329,15 +12266,6 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
 
 
 
-api.convertLayersToInnerLines = function(layers, arcs) {
-  T.start();
-  var converted = Utils.map(layers, function(lyr) {
-    return api.convertLayerToInnerLines(lyr, arcs);
-  });
-  T.stop("Inner lines");
-  return converted;
-};
-
 api.convertLayerToInnerLines = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
     stop("[innerlines] Layer not polygon type");
@@ -12346,15 +12274,6 @@ api.convertLayerToInnerLines = function(lyr, arcs) {
       lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
   lyr2.name = lyr.name;
   return lyr2;
-};
-
-api.convertLayersToTypedLines = function(layers, arcs, fields) {
-  T.start();
-  var converted = Utils.map(layers, function(lyr) {
-    return api.convertLayerToTypedLines(lyr, arcs, fields);
-  });
-  T.stop("Lines");
-  return converted;
 };
 
 api.convertLayerToTypedLines = function(lyr, arcs, fields) {
@@ -12386,7 +12305,7 @@ api.convertLayerToTypedLines = function(lyr, arcs, fields) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] unknown data field:", field);
       }
-      var dissolved = MapShaper.dissolveLayerOnField(lyr, arcs, field),
+      var dissolved = api.dissolveLayer(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
       dissolvedArcs = Utils.difference(dissolvedArcs, allArcs);
       addArcs(dissolvedArcs);
@@ -12440,7 +12359,7 @@ MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
 
 MapShaper.countArcsInShapes = function(shapes, arcCount) {
   var counts = new Uint8Array(arcCount);
-  utils.traverseShapes(shapes, null, function(obj) {
+  MapShaper.traverseShapes(shapes, null, function(obj) {
     var arcs = obj.arcs,
         id;
     for (var i=0; i<arcs.length; i++) {
@@ -12455,17 +12374,23 @@ MapShaper.countArcsInShapes = function(shapes, arcCount) {
 
 
 
-api.printInfo = function(layers, arcData, opts, info) {
-  var str = Utils.format("Input: %s (%s)\n",
-      opts.input_files.join(', '), opts.input_format);
-  str += "Bounds: " + arcData.getBounds().toArray().join(', ') + "\n";
-  str += Utils.format("Topological arcs: %'d\n", arcData.size());
+api.printInfo = function(dataset, opts) {
+  var str = "",
+      layers = dataset.layers,
+      arcs = dataset.arcs;
+  //var str = Utils.format("Input: %s (%s)\n";
+  // opts.input_files.join(', '), opts.input_format);
+  //str += "Bounds: " + arcs.getBounds().toArray().join(', ') + "\n";
 
+  str += Utils.format("Number of layers: %d\n", layers.length);
+  if (arcs) str += Utils.format("Topological arcs: %'d\n", arcs.size());
+  str += '\n';
+  /*
   if (!Utils.isInteger(info.intersections_remaining)) {
-    info.intersections_remaining = MapShaper.findSegmentIntersections(arcData).length;
+    info.intersections_remaining = MapShaper.findSegmentIntersections(arcs).length;
   }
   str += Utils.format("Line intersections: %'d\n", info.intersections_remaining);
-  if (layers.length > 1) str += '\n';
+  if (layers.length > 1) str += '\n';*/
   str += Utils.map(layers, MapShaper.getLayerInfo).join('\n');
   console.log(str);
 };
@@ -12513,11 +12438,13 @@ MapShaper.formatSampleData = function(arr) {
 };
 
 MapShaper.formatLayerInfo = function(obj) {
-  var nameStr = obj.name ? "Layer name: " + obj.name : "Unnamed layer",
-      countStr = Utils.format("Records: %'d (with null geometry: %'d)",
-          obj.record_count, obj.null_geom_count),
-      typeStr = "Geometry: " + obj.geometry_type,
-      dataStr;
+  var str = "";
+  str += "Layer name: " + (obj.name || "[none]") + "\n";
+  str += "Geometry type: " + (obj.geometry_type || "[none]") + "\n";
+  str += Utils.format("Records: %'d (with null geometry: %'d)\n",
+          obj.record_count, obj.null_geom_count);
+
+  var dataStr;
   if (obj.fields && obj.fields.length > 0) {
     var col1 = Utils.merge(['Field'], obj.fields),
         col2 = Utils.merge(['First value'], MapShaper.formatSampleData(obj.sample_values)),
@@ -12532,337 +12459,355 @@ MapShaper.formatLayerInfo = function(obj) {
     dataStr = "Missing attribute data";
   }
 
-  var formatted = "";
-  if (obj.name) formatted += "Layer name: " + obj.name + "\n";
-  formatted += Utils.format("%s\n%s\n%s\n", typeStr, countStr, dataStr);
-  return formatted;
+  str += dataStr;
+  return str;
+};
+
+
+
+
+
+api.runCommandLine = function(str, done) {
+  var parse = require('shell-quote').parse,
+      commands = api.parseCommands(parse(str));
+  api.runCommands(commands, done);
+};
+
+api.runCommands = function(commands, done) {
+  if (commands.length === 0) commands.push({name: 'help'}); // print help
+  commands = MapShaper.runAndRemoveInfoCommands(commands);
+  if (commands.length === 0) return done();
+
+  // need exactly one -i command
+  if (utils.filter(commands, function(cmd) {return cmd.name == 'i';}).length != 1) {
+    done("mapshaper expects one -i command");
+  }
+
+  // move -i to the front
+  MapShaper.promoteCommand('i', commands);
+  var imports = MapShaper.divideImportCommand(commands.shift());
+
+  // TODO: if there's no -o command and no -info command,
+  // consider appending a generic -o command.
+  if (!Utils.some(commands, function(cmd) {
+    return cmd.name == 'o' || cmd.name == 'info' ;})) {
+    message("Add a -o command to generate output");
+  }
+
+  T.start("Start timing");
+  utils.reduceAsync(imports, null, function(empty, cmd, cb) {
+    var dataset = api.importFiles(cmd.options);
+    api.processDataset(dataset, commands, cb);
+  }, function(err, data) {
+    T.stop("Total time");
+    done(err, data);
+  });
+};
+
+
+// TODO: consider refactoring to allow modules
+// @cmd  example: {name: "dissolve", options:{field: "STATE"}}
+// @dataset  format: {arcs: <ArcDataset>, layers:[]}
+// @done callback: function(err, dataset)
+//
+api.runCommand = function(cmd, dataset, cb) {
+  var name = cmd.name,
+      opts = cmd.options,
+      srcLayers,
+      newLayers,
+      arcs = dataset.arcs,
+      err = null;
+
+  T.start();
+
+  if (opts.target) {
+    srcLayers = MapShaper.findMatchingLayers(srcLayers, opts.target);
+  } else {
+    srcLayers = dataset.layers; // default: all layers
+  }
+
+  if (srcLayers.length === 0) {
+    message("[" + name + "] Command is missing target layer(s).");
+    MapShaper.printLayerNames(dataset.layers);
+  }
+
+  if (name == 'calc') {
+    //api.evaluateLayers(srcLayers, arcs, opts.expression);
+    MapShaper.applyCommand(api.evaluateLayer, srcLayers, arcs, opts.expression);
+
+  } else if (name == 'dissolve') {
+    //dataset.layers = api.dissolveLayers(srcLayers, arcs, opts);
+    newLayers = MapShaper.applyCommand(api.dissolveLayer, srcLayers, arcs, opts);
+
+  } else if (name == 'fields') {
+    // api.filterFields(srcLayers, opts);
+    MapShaper.applyCommand(api.filterFields, srcLayers, opts.fields);
+
+  } else if (name == 'filter') {
+    MapShaper.applyCommand(api.filterFeatures, srcLayers, arcs, opts.expression);
+
+  } else if (name == 'info') {
+    // TODO: consider applying this to layers instead of entire dataset
+    api.printInfo(dataset);
+
+  } else if (name == 'innerlines') {
+    //newLayers = api.convertLayersToInnerLines(srcLayers, arcData);
+    newLayers = MapShaper.applyCommand(api.convertLayerToInnerLines, srcLayers, arcData);
+
+  } else if (name == 'join') {
+    // async command -- special case
+    api.importJoinTableAsync(opts.file, opts, function(table) {
+      // api.joinTableToLayers(srcLayers, table, opts.keys, opts.fields);
+      MapShaper.applyCommand(api.joinTableToLayer, srcLayers, table, opts.keys, opts.fields);
+      done(err, dataset);
+    });
+    return;
+
+  } else if (name == 'layers') {
+    newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
+
+  } else if (name == 'lines') {
+    //newLayers = api.convertLayersToTypedLines(srcLayers, arcs, opts.fields);
+    MapShaper.applyCommand(api.convertLayerToTypedLines, srcLayers, arcs, opts.fields);
+
+  } else if (name == 'merge-layers') {
+    // TODO: improve this
+    var merged = api.mergeLayers(srcLayers);
+    MapShaper.removeLayers(dataset, srcLayers);
+    dataset.layers = dataset.layers.concat(merged);
+
+  } else if (name == 'simplify') {
+    api.simplify(arcs, opts);
+    if (opts.keep_shapes) {
+      api.protectShapes(arcs, srcLayers);
+    }
+
+  } else if (name == 'split') {
+    //newLayers = api.splitLayers(srcLayers, arcs, opts.field);
+    newLayers = MapShaper.applyCommand(api.splitLayer, srcLayers, arcs, opts.field);
+
+  } else if (name == 'split-on-grid') {
+    //if (srcLayers.length != 1) err = "Split-on-grid expects one layer";
+    //newLayers = api.splitOnGrid(srcLayers[0], arcs, opts.rows, opts.cols);
+    newLayers = MapShaper.applyCommand(api.splitOnGrid, srcLayers, arcs, opts.rows, opts.cols);
+
+  } else if (name == 'subdivide') {
+    //newLayers = api.subdivideLayers(srcLayers, arcs, opts.expression);
+    newLayers = MapShaper.applyCommand(api.subdivideLayer, srcLayers, arcs, opts.expression);
+
+  } else if (name == 'o') {
+    // TODO: handle target option
+    api.exportFiles(dataset, opts);
+
+  } else {
+    err = "Unhandled command: -" + name;
+  }
+
+  if (opts.rename) {
+    (newLayers || srcLayers).forEach(function(lyr) {
+      lyr.name = opts.rename;
+    });
+  }
+
+  if (newLayers) {
+    // if new layers have been generated, either append or replace
+    if (!opts.no_replace) {
+      // TODO: consider replacing old layers as they are generated, for gc
+      MapShaper.removeLayers(dataset, srcLayers);
+    }
+    dataset.layers = dataset.layers.concat(newLayers);
+  }
+  done(err, dataset);
+
+  function done(err, dataset) {
+    T.stop('-' + name);
+    cb(err, dataset);
+  }
+};
+
+// Apply a command to an array of layers
+MapShaper.applyCommand = function(func, srcLayers) {
+  var args = Utils.toArray(arguments).slice(2);
+  return srcLayers.reduce(function(memo, lyr) {
+    var result = func.apply(null, [lyr].concat(args));
+    if (Utils.isArray(result)) { // some commands return an array of layers
+      memo = memo.concat(result);
+    } else if (result) { // assuming result is a layer
+      memo.push(result);
+    }
+    return memo;
+  }, []);
+};
+
+MapShaper.divideImportCommand = function(cmd) {
+  var opts = cmd.options,
+      imports;
+  if (opts.combine_files || opts.merge_files || opts.files.length <= 1) {
+    imports = [cmd];
+  } else {
+    imports = opts.files.map(function(file) {
+      return {
+        name: cmd.name,
+        options: Utils.extend({}, opts, {files:[file]})
+      };
+    });
+  }
+  return imports;
+};
+
+api.exportFiles = function(dataset, opts) {
+  if (!opts.format) {
+    opts.format = dataset.info.input_format || error("[o] Missing export format");
+  }
+
+  var exports = MapShaper.exportFileContent(dataset, opts);
+  // Copy prj file, if both importing and exporting as shapefile
+
+  // TODO: move this elsewhere
+  if (opts.format == 'shapefile' && dataset.info.input_format == 'shapefile') {
+    var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj'),
+        shpFiles = utils.filter(exports, function(o) {
+          return (/\.shp$/).test(o.filename);
+        });
+
+    if (cli.fileExists(prjFile)) {
+      shpFiles.forEach(function(o) {
+        exports.push({
+          content: cli.readFile(prjFile, 'utf-8'),
+          filename: utils.getFileBase(o.filename) + ".prj"
+        });
+      });
+    }
+  }
+
+  var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
+  exports.forEach(function(obj, i) {
+    var path = paths[i];
+    cli.writeFile(path, obj.content);
+    console.log("Wrote " + path);
+  });
+};
+
+api.importFiles = function(opts) {
+  var files = opts.files,
+      dataset;
+  if ((opts.merge_files || opts.combine_files) && files.length > 1) {
+    dataset = api.mergeFiles(files, opts);
+  } else if (files && files.length == 1) {
+    dataset = api.importFile(files[0], opts);
+  } else {
+    // handle error
+  }
+  return dataset;
+};
+
+// Handle informational commands and remove them from the command list
+MapShaper.runAndRemoveInfoCommands = function(commands) {
+  return Utils.filter(commands, function(cmd) {
+    if (cmd.name == 'version') {
+      message(getVersion());
+      return false;
+    } else if (cmd.name == 'encodings') {
+      MapShaper.printEncodings();
+      return false;
+    } else if (cmd.name == 'help') {
+      MapShaper.getOptionParser().printHelp();
+      return false;
+    } else if (cmd.name == 'verbose') {
+      C.VERBOSE = true;
+      return false;
+    }
+    return true;
+  });
+};
+
+// Run a sequence of commands to transform a dataset
+// Assumes that certain commands have already been handled and removed from
+// the list -- e.g. -i and -help
+//
+// @done callback: function(err, dataset)
+//
+api.processDataset = function(dataset, commands, done) {
+  utils.reduceAsync(commands, dataset, function(data, cmd, cb) {
+    api.runCommand(cmd, data, cb);
+  }, done);
+};
+
+utils.reduceAsync = function(arr, memo, iter, done) {
+  var i=0;
+  next(null, memo);
+  function next(err, result) {
+    if (i < arr.length === false || err) {
+      done(err, result);
+    } else {
+      // TODO: consider detaching from stack using setTimeout()
+      iter(result, arr[i++], next);
+    }
+  }
+};
+
+// TODO: handle multiple instances of a command, return number found
+// Assumes only one of this kind of command
+MapShaper.promoteCommand = function(name, commands) {
+  var cmd = Utils.find(commands, function(cmd) {
+    return cmd.name == name;
+  });
+  var idx = commands.indexOf(cmd);
+  if (idx > 0) {
+    commands.unshift(commands.splice(idx, 1)[0]);
+  }
+};
+
+// @target is a layer identifier or a comma-sep. list of identifiers
+// an identifier is a literal name, a name containing "*" wildcard or
+// a 0-based array index
+MapShaper.findMatchingLayers = function(layers, target) {
+  var ii = [];
+  target.split(',').forEach(function(id) {
+    var i = Number(id),
+        rxp = utils.wildcardToRegExp(id);
+    if (Utils.isInteger(i)) {
+      ii.push(i); // TODO: handle out-of-range index
+    } else {
+      layers.forEach(function(lyr, i) {
+        if (rxp.test(lyr.name)) ii.push(i);
+      });
+    }
+  });
+
+  ii = Utils.uniq(ii); // remove dupes
+  return Utils.map(ii, function(i) {
+    return layers[i];
+  });
+};
+
+utils.wildcardToRegExp = function(name) {
+  var rxp = name.split('*').map(function(str) {
+    return utils.regexEscape(str);
+  }).join('.*');
+  return new RegExp(rxp);
+};
+
+MapShaper.printLayerNames = function(layers) {
+  var max = 10;
+  message("Available layers:");
+  if (layers.length === 0) {
+    message("[none]");
+  } else {
+    for (var i=0; i<layers.length; i++) {
+      if (i <= max) {
+        message("... " + (layers.length - max) + " more");
+        break;
+      }
+      message("[" + i + "]  " + (layers[i].name || "[unnamed]"));
+    }
+  }
 };
 
 
 
 
 var cli = api.cli = {};
-
-var usage =
-  "Usage: mapshaper [options] [file ...]\n\n" +
-
-  "Example: fix minor topology errors, simplify to 10%, convert to geojson\n" +
-  "$ mapshaper -p 0.1 --auto-snap --format geojson states.shp\n\n" +
-
-  "Example: aggregate census tracts to counties\n" +
-  "$ mapshaper -e 'CTY_FIPS=FIPS.substr(0, 5)' --dissolve CTY_FIPS tracts.shp";
-
-// Parse command line and return options object for bin/mapshaper
-//
-cli.getOpts = function() {
-
-  var optimist = cli.getOptionParser(),
-      argv = optimist.argv,
-      opts;
-
-  if (argv.help) {
-    cli.getBasicOptionParser().showHelp();
-    process.exit(0);
-  }
-  if (argv.more) {
-    console.log( "More " + cli.getExtraOptionParser().help());
-    process.exit(0);
-  }
-  if (argv.version) {
-    console.log(getVersion());
-    process.exit(0);
-  }
-  if (argv.encodings) {
-    MapShaper.printEncodings();
-    process.exit(0);
-  }
-
-  // validate args against basic option parser so standard help message is shown
-  var dummy = cli.getBasicOptionParser().check(function() {
-    opts = cli.validateArgs(argv, getSupportedArgs());
-  }).argv;
-
-  C.VERBOSE = argv.verbose;
-  return opts;
-};
-
-cli.getOptionParser = function() {
-  var basic = cli.getBasicOptionParser(),
-      more = cli.getExtraOptionParser(basic),
-      all = cli.getHiddenOptionParser(more);
-  return all;
-};
-
-cli.getBasicOptionParser = function() {
-  return getOptimist()
-    .usage(usage)
-
-    .options("o", {
-      describe: "specify name of output file or directory",
-    })
-
-    .options("f", {
-      alias: "format",
-      describe: "output to a different format (shapefile|geojson|topojson)",
-    })
-
-    .options("p", {
-      alias: "pct",
-      describe: "proportion of removable points to retain (0-1)"
-    })
-
-    .options("i", {
-      alias: "interval",
-      describe: "simplification resolution in linear units"
-    })
-
-    .options("cartesian", {
-      describe: "simplify decimal degree coords in 2D space (default is 3D)"
-    })
-
-    .options("dp", {
-      alias: "rdp",
-      describe: "use Douglas-Peucker simplification",
-      'boolean': true
-    })
-
-    .options("visvalingam", {
-      // alias: "vis", // makes help message too wide
-      describe: "use Visvalingam simplification",
-      'boolean': true
-    })
-
-    .options("modified", {
-      describe: "use a version of Visvalingam designed for mapping (default)",
-      'boolean': true
-    })
-
-    .options("keep-shapes", {
-      describe: "prevent small shapes from disappearing",
-      'boolean': true
-    })
-
-    .options("auto-snap", {
-      describe: "snap nearly identical points to fix minor topology errors",
-      'boolean': true
-    })
-
-    .options("precision", {
-      describe: "coordinate precision in source units (applied on import)"
-    })
-
-    .options("encoding", {
-      describe: "encoding of text data in Shapefile .dbf file"
-    })
-
-    .options("encodings", {
-      describe: "print list of supported text encodings",
-      'boolean': true
-    })
-
-    .options("info", {
-      describe: "print summary info instead of exporting files",
-      'boolean': true
-    })
-
-    .options("verbose", {
-      describe: "print verbose processing messages",
-      'boolean': true
-    })
-
-    .options("v", {
-      alias: "version",
-      describe: "print mapshaper version",
-      'boolean': true
-    })
-
-    .options("h", {
-      alias: "help",
-      describe: "print this help message",
-      'boolean': true
-    })
-
-    .options("more", {
-      describe: "print more options"
-    });
-    /*
-    // TODO
-    // prevent points along straight lines from being stripped away, to allow reprojection
-    .options("min-segment", {
-      describe: "min segment length (no. of segments in largest dimension)",
-      default: 0
-    })
-    .options("remove-null", {
-      describe: "remove null shapes",
-      default: false
-    })
-    */
-};
-
-cli.getHiddenOptionParser = function(optimist) {
-  return (optimist || getOptimist())
-    // These option definitions don't get printed by --help and --more
-    // Validate them in validateExtraOpts()
-  .options("modified-v1", {
-    describe: "use the original modified Visvalingam method (deprecated)",
-    'boolean': true
-  })
-
-  .options("topojson-precision", {
-    describe: "pct of avg segment length for rounding (0.02 is default)"
-  })
-
-  .options("postfilter", {
-    describe: "filter shapes after dissolve"
-  })
-  ;
-};
-
-cli.getExtraOptionParser = function(optimist) {
-  return (optimist || getOptimist())
-
-  .options("join ", {
-    describe: "join a dbf or delimited text file to the imported shapes"
-  })
-
-  .options("join-keys", {
-    describe: "local,foreign keys, e.g. --join-keys FIPS,CNTYFIPS:str"
-  })
-
-  .options("join-fields", {
-    describe: "(optional) join fields, e.g. --join-fields FIPS:str,POP"
-  })
-
-  .options('filter ', {
-    describe: "filter shapes with a boolean JavaScript expression"
-  })
-
-  .options("expression", {
-    alias: "e",
-    describe: "create/update/delete data fields with a JS expression"
-  })
-
-  /*
-  // TODO: enable this when holes are handled correctly
-  .options("explode", {
-    describe: "divide each multi-part shape into several single-part shapes"
-  })
-  */
-
-  .options("split", {
-    describe: "split shapes on a data field"
-  })
-
-  .options("subdivide", {
-    describe: "recursively divide a layer with a boolean JS expression"
-  })
-
-  .options("dissolve", {
-    describe: "dissolve polygons; takes optional comma-sep. list of fields"
-  })
-
-  .options("sum-fields", {
-    describe: "fields to sum when dissolving  (comma-sep. list)"
-  })
-
-  .options("copy-fields", {
-    describe: "fields to copy when dissolving (comma-sep. list)"
-  })
-
-  .options("merge-layers", {
-    describe: "merge split-apart layers back into a single layer",
-    'boolean': true
-  })
-
-  .options("split-on-grid", {
-    describe: "split layer into cols,rows  e.g. --split-on-grid 12,10"
-  })
-
-  .options("snap-interval", {
-    describe: "specify snapping distance in source units"
-  })
-
-  .options("quantization", {
-    describe: "specify TopoJSON quantization (auto-set by default)"
-  })
-
-  .options("no-quantization", {
-    describe: "export TopoJSON without quantization",
-    'boolean': true
-  })
-
-  .options("id-field", {
-    describe: "field to use for TopoJSON id property"
-  })
-
-  .options("bbox", {
-    "boolean": true,
-    describe: "add bbox property to TopoJSON or GeoJSON output"
-  })
-
-  .options("no-repair", {
-    describe: "don't remove intersections introduced by simplification",
-    'boolean': true
-  })
-
-  .options("no-topology", {
-    describe: "treat each shape as topologically independent",
-    'boolean': true
-  })
-
-  .options("lines", {
-    describe: "convert polygons to lines; takes optional list of fields"
-  })
-
-  .options("innerlines", {
-    describe: "output polyline layers containing shared polygon boundaries",
-    'boolean': true
-  })
-
-  .options("merge-files", {
-    describe: "merge input files into a single layer before processing",
-    'boolean': true
-  })
-
-  .options("combine-files", {
-    describe: "import files to separate layers with shared topology",
-    'boolean': true
-  })
-
-  .options("cut-table", {
-    describe: "detach attributes from shapes and save as a JSON file",
-    'boolean': true
-  })
-
-  .options("fields", {
-    describe: 'filter and rename data fields, e.g. "fips,st=state"'
-  })
-  ;
-};
-
-
-// Test option parsing -- throws an error if a problem is found.
-// @argv array of command line tokens
-//
-cli.checkArgs = function(argv) {
-  var optimist = cli.getOptionParser();
-  return cli.validateArgs(optimist.parse(argv), getSupportedArgs());
-};
-
-function getOptimist() {
-  delete require.cache[require.resolve('optimist')];
-  return require('optimist');
-}
-
-// Return an array of all recognized cli arguments: ["f", "format", ...]
-//
-function getSupportedArgs() {
-  var optimist = cli.getOptionParser(),
-      args = optimist.help().match(/-([a-z][0-9a-z-]*)/g).map(function(arg) {
-        return arg.replace(/^-/, '');
-      });
-  return args;
-}
 
 function getVersion() {
   var v;
@@ -12874,71 +12819,38 @@ function getVersion() {
   return v || "";
 }
 
-// Throw an error if @argv array contains an unsupported option
-// @flags array of supported options
-//
-cli.checkArgSupport = function(argv, flags) {
-  var supportedOpts = flags.reduce(function(acc, opt) {
-      acc[opt] = true;
-      return acc;
-    }, {'_': true, '$0': true});
-
-  Utils.forEach(argv, function(val, arg) {
-    // If --no-somearg is defined, also accept --somearg (optimist workaround)
-    if (arg in supportedOpts === false && ("no-" + arg in supportedOpts) === false) {
-      throw "Unsupported option: " + arg;
-    }
-  });
-};
-
-cli.validateArgs = function(argv, supported) {
-  cli.checkArgSupport(argv, supported);
-
-  // If an option is given multiple times, throw an error
-  Utils.forEach(argv, function(val, arg) {
-    if (Utils.isArray(val) && arg != '_') {
-      throw new Error((arg.length == 1 ? '-' : '--') + arg + " option is repeated");
-    }
-  });
-
-  var opts = {};
-  Utils.extend(opts, cli.validateSimplifyOpts(argv));
-  Utils.extend(opts, cli.validateTopologyOpts(argv));
-  Utils.extend(opts, cli.validateExtraOpts(argv));
-  Utils.extend(opts, cli.validateOutputOpts(argv));
-  opts.input_files = cli.validateInputFiles(argv._);
-
-  return opts;
-};
-
-cli.getOutputPaths = function(files, dir, extension) {
+cli.getOutputPaths = function(files, dir) {
   if (!files || !files.length) {
-    console.log("No files to save");
+    message("No files to save");
     return;
   }
-  // assign filenames
-  Utils.forEach(files, function(obj) {
-    obj.pathbase = Node.path.join(dir, obj.filebase);
-    obj.extension = obj.extension || extension || "x"; // TODO: validate ext
+
+  var paths = files.map(function(file) {
+    return Node.path.join(dir || '.', file);
   });
 
   // avoid naming conflicts
-  var i = 0, suffix = "";
-  while (cli.testFileCollision(files, suffix)) {
+  var i = 0,
+      suffix = "",
+      candidates = paths.concat();
+
+  while (cli.testFileCollision(candidates)) {
     i++;
     suffix = "-ms";
     if (i > 1) suffix += String(i);
+    candidates = cli.addFileSuffix(paths, suffix);
   }
+  return candidates;
+};
 
-  // compose paths
-  return Utils.map(files, function(obj) {
-    return obj.pathbase + suffix + '.' + obj.extension;
+cli.addFileSuffix = function(paths, suff) {
+  return paths.map(function(path) {
+     return utils.getPathBase(path) + suff + '.' + utils.getFileExtension(path);
   });
 };
 
-cli.testFileCollision = function(files, suff) {
-  return Utils.some(files, function(obj) {
-    var path = obj.pathbase + suff + '.' + obj.extension;
+cli.testFileCollision = function(paths, suff) {
+  return Utils.some(paths, function(path) {
     return Node.fileExists(path);
   });
 };
@@ -12971,65 +12883,6 @@ cli.validateInputFile = function(ifile) {
   return ifile;
 };
 
-cli.validateOutputOpts = function(argv) {
-  var supportedTypes = ["geojson", "topojson", "shapefile"],
-      odir = ".",
-      //obase = ifileInfo.base, // default to input file name
-      //oext = ifileInfo.ext,   // default to input file extension
-      obase, oext, ofmt;
-
-  // process --format option
-  if (argv.f) {
-    ofmt = argv.f.toLowerCase();
-    // use default extension for output format
-    // oext = MapShaper.getDefaultFileExtension(ofmt); // added during export
-    if (!Utils.contains(supportedTypes, ofmt)) {
-      error("Unsupported output format:", argv.f);
-    }
-  }
-
-  // process -o option
-  if (argv.o) {
-    if (!Utils.isString(argv.o)) {
-      error("-o option needs a file name");
-    }
-    var ofileInfo = Node.getFileInfo(argv.o);
-    if (ofileInfo.is_directory) {
-      odir = argv.o;
-    } else if (ofileInfo.relative_dir && !Node.dirExists(ofileInfo.relative_dir)) {
-      error("Output directory not found:", ofileInfo.relative_dir);
-    } else if (!ofileInfo.base) {
-      error('Invalid output file:', argv.o);
-    } else {
-      if (ofileInfo.ext) {
-        if (!cli.validateFileExtension(ofileInfo.file)) {
-          error("Output file looks like an unsupported file type:", ofileInfo.file);
-        }
-        // use -o extension, if present
-        // allows .topojson or .geojson instead of .json
-        // override extension inferred from --format option
-        oext = ofileInfo.ext;
-        // Infer output format from -o option extension when appropriate
-        /*
-        if (!ofmt &&
-          utils.guessFileFormat(oext) != utils.guessFileFormat(ifileInfo.ext)) {
-          ofmt =  utils.guessFileFormat(oext);
-        }
-        */
-      }
-      obase = ofileInfo.base;
-      odir = ofileInfo.relative_dir || '.';
-    }
-  }
-
-  return {
-    output_directory: odir,
-    output_extension: oext || null, // inferred later if not found above
-    output_file_base: obase || null,
-    output_format: ofmt || null
-  };
-};
-
 cli.validateCommaSepNames = function(str) {
   if (!Utils.isString(str)) {
     error ("Expected comma-separated list; found:", str);
@@ -13038,210 +12891,17 @@ cli.validateCommaSepNames = function(str) {
   return parts;
 };
 
-cli.validateExtraOpts = function(argv) {
-  var opts = {},
-      tmp;
-
-  if (argv.info) {
-    opts.info = true;
-  }
-
-  if ('split-on-grid' in argv) {
-    var rows = 4, cols = 4;
-    tmp = argv['split-on-grid'];
-    if (Utils.isString(tmp)) {
-      tmp = tmp.split(',');
-      cols = parseInt(tmp[0], 10);
-      rows = parseInt(tmp[1], 10);
-      if (rows <= 0 || cols <= 0) {
-        error ("--split-on-grid expects columns,rows");
-      }
-    } else if (Utils.isInteger(tmp) && tmp > 0) {
-      cols = tmp;
-      rows = tmp;
-    }
-    opts.split_rows = rows;
-    opts.split_cols = cols;
-  }
-
-  if (Utils.isString(argv.dissolve) || argv.dissolve === true) {
-    opts.dissolve = argv.dissolve || true; // empty string -> true
-  }
-
-  if ('snap-interval' in argv) {
-    opts.snap_interval = argv['snap-interval'];
-    if (opts.snap_interval > 0) {
-      opts.snapping = true;
-    }
-  }
-
-  if (argv['sum-fields']) {
-    opts.sum_fields = cli.validateCommaSepNames(argv['sum-fields']);
-  }
-
-  if (argv['copy-fields']) {
-    opts.copy_fields = cli.validateCommaSepNames(argv['copy-fields']);
-  }
-
-  if (argv.split) {
-    if (!Utils.isString(argv.split)) {
-      error("--split option requires the name of a field to split on");
-    }
-    opts.split = argv.split;
-  }
-
-  if (argv['merge-layers']) {
-    opts.recombine = argv['merge-layers'];
-  }
-
-  if (argv.expression) {
-    opts.expression = argv.expression;
-  }
-
-  if (argv.subdivide) {
-    if (!Utils.isString(argv.subdivide)) {
-      error("--subdivide option requires a JavaScript expression");
-    }
-    opts.subdivide = argv.subdivide;
-  }
-
-  if (argv.filter) {
-    if (!Utils.isString(argv.filter)) {
-      error("--filter option requires a JavaScript expression");
-    }
-    opts.filter = argv.filter;
-  }
-
-  if (argv.postfilter) {
-    if (!Utils.isString(argv.postfilter)) {
-      error("--postfilter option requires a JavaScript expression");
-    }
-    opts.postfilter = argv.postfilter;
-  }
-
-  if (argv['cut-table']) {
-    opts.cut_table = true;
-  }
-
-  if (argv.fields) {
-    opts.field_map = validateFieldsOpt(argv.fields);
-  }
-
-  if (argv['merge-files']) {
-    opts.merge_files = true;
-  }
-
-  if (argv['combine-files']) {
-    opts.combine_files = true;
-  }
-
-  if (argv['topojson-precision']) {
-    opts.topojson_precision = argv['topojson-precision'];
-  }
-
-  if (argv['id-field']) {
-    opts.id_field = argv['id-field'];
-  }
-
-  if (argv.bbox) {
-    opts.bbox = true;
-  }
-
-  if (argv.innerlines) {
-    opts.innerlines = true;
-  }
-
-  if (argv.lines) {
-    if (Utils.isString(argv.lines)) {
-      opts.lines = cli.validateCommaSepNames(argv.lines);
-    } else {
-      opts.lines = true;
-    }
-  }
-
-  if (argv.encoding) {
-    opts.encoding = cli.validateEncoding(argv.encoding);
-  }
-
-  validateJoin(argv, opts);
-
-  return opts;
-};
-
-cli.validateTopologyOpts = function(argv) {
-  var opts = {};
-  if (argv.precision) {
-    if (!Utils.isNumber(argv.precision) || argv.precision <= 0) {
-      error("--precision option should be a positive number");
-    }
-    opts.precision = argv.precision;
-  }
-  opts.repair = argv.repair !== false;
-  opts.snapping = !!argv['auto-snap'];
-
-  if (argv.topology === false) { // handle --no-topology
-    opts.no_topology = true;
-    // trying to repair simplified polygons without topology is pointless
-    // and is likely to take a long time as many intersections are unrolled
-    // therefore disabling repair option
-    opts.repair = false;
-  }
-  return opts;
-};
-
-cli.validateSimplifyOpts = function(argv) {
-  var opts = {};
-  if (argv.i) {
-    if (!Utils.isNumber(argv.i) || argv.i < 0) error("-i (--interval) option should be a non-negative number");
-    opts.simplify_interval = argv.i;
-  }
-  else if ('p' in argv) {
-    if (!Utils.isNumber(argv.p) || argv.p < 0 || argv.p > 1)
-      error("-p (--pct) expects a number in the range 0-1");
-    if (argv.p < 1) {
-      opts.simplify_pct = argv.p;
-    }
-  }
-
-  if (argv.cartesian) {
-    opts.force2D = true;
-  }
-
-  if (argv.quantization) {
-    if (!Utils.isInteger(argv.quantization) || argv.quantization < 0) {
-      error("--quantization option should be a nonnegative integer");
-    }
-    opts.topojson_resolution = argv.quantization;
-  } else if (argv.quantization === false || argv.quantization === 0) {
-    opts.topojson_resolution = 0; // handle --no-quantization
-  }
-
-  opts.use_simplification = Utils.isNumber(opts.simplify_pct) || Utils.isNumber(opts.simplify_interval);
-
-  if (opts.use_simplification) {
-    opts.keep_shapes = !!argv['keep-shapes'];
-    if (argv.dp)
-      opts.simplify_method = "dp";
-    else if (argv.visvalingam)
-      opts.simplify_method = "vis";
-    else if (argv['modified-v1'])
-      opts.simplify_method = "mod1";
-    else
-      opts.simplify_method = "mod2";
-  }
-  return opts;
-};
-
-cli.printRepairMessage = function(info, opts) {
-  if (info.intersections_initial > 0 || opts.verbose) {
+cli.printRepairMessage = function(info) {
+  if (info.intersections_initial > 0) {
     console.log(Utils.format(
         "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
         info.intersections_repaired, "s?", info.intersections_remaining, "s?"));
+    /*
     if (info.intersections_remaining > 10) {
       if (!opts.snapping) {
         console.log("Tip: use --auto-snap to fix minor topology errors.");
       }
-    }
+    }*/
   }
 };
 
@@ -13266,50 +12926,10 @@ function validateCommaSep(str, count) {
   return parts;
 }
 
-function validateFieldsOpt(fields) {
-  var parts = validateCommaSep(fields),
-      map = {};
-  if (parts.length === 0) {
-    error("--fields expects a comma-separated list of field names");
-  }
-  parts.forEach(function(str) {
-    var names = str.split('=');
-    map[names[1] || names[0]] = names[0];
-  });
-  return map;
-}
-
-function validateJoin(argv, opts) {
-  var file = argv.join,
-      fields = argv['join-fields'],
-      keys = argv['join-keys'],
-      includeArr, keyArr;
-
-  if (!file) return;
-
-  if (Utils.some("shp,xls,xlsx".split(','), function(suff) {
-    return Utils.endsWith(file, suff);
-  })) {
-    error("--join currently only supports dbf and csv files");
-  }
-
-  if (!Node.fileExists(file)) {
-    error("Missing join file (" + file + ")");
-  }
-  if (!keys) error("Missing required --join-keys argument");
-  keyArr = validateCommaSep(keys, 2);
-  if (!keyArr) error("--join-keys takes two comma-seperated names, e.g.: FIELD1,FIELD2");
-  includeArr = fields && validateCommaSep(fields) || null;
-
-  opts.join_file = file;
-  opts.join_keys = keyArr;
-  opts.join_fields = includeArr;
-}
-
 // Force v8 to perform a complete gc cycle.
 // To enable, run node with --expose_gc
 // Timing gc() gives a crude indication of number of objects in memory.
-//
+/*
 MapShaper.gc = function() {
   if (global.gc) {
     T.start();
@@ -13317,6 +12937,7 @@ MapShaper.gc = function() {
     T.stop("gc()");
   }
 };
+*/
 
 Utils.extend(api.internal, {
   Node: Node,

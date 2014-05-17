@@ -1,5 +1,18 @@
 /* @requires mapshaper-common, mapshaper-shapes */
 
+
+api.buildTopology = function(dataset) {
+  if (!dataset.arcs) return;
+  var raw = dataset.arcs.getVertexData(),
+      topoData = MapShaper.buildPathTopology(raw.xx, raw.yy, raw.nn);
+  dataset.arcs = topoData.arcs;
+  dataset.layers.forEach(function(lyr) {
+    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+      lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
+    }
+  });
+};
+
 // buildPathTopology() converts non-topological paths into
 // a topological format
 //
@@ -22,7 +35,7 @@
 //       Negative ids are converted to array indices with the fornula fwId = ~revId.
 //       E.g. -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
 //
-function buildPathTopology(xx, yy, nn) {
+MapShaper.buildPathTopology = function(xx, yy, nn) {
   var pointCount = xx.length,
       index = new ArcIndex(pointCount, getXYHash()),
       typedArrays = !!(xx.subarray && yy.subarray),
@@ -229,7 +242,7 @@ function buildPathTopology(xx, yy, nn) {
 
     error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
   }
-}
+};
 
 // Create a lookup table for path ids; path ids are indexed by point id
 //
@@ -369,6 +382,25 @@ function getXYHash() {
   };
 }
 
-// Export functions for testing
-MapShaper.buildPathTopology = buildPathTopology;
-MapShaper.ArcIndex = ArcIndex;
+function updateArcIds(src, paths) {
+  return src.map(function(shape) {
+    return updateArcsInShape(shape, paths);
+  });
+}
+
+function updateArcsInShape(shape, topoPaths) {
+  var shape2 = [];
+  Utils.forEach(shape, function(path) {
+    if (path.length != 1) {
+      error("[updateArcsInShape()] Expected single-part input path, found:", path);
+    }
+    var pathId = path[0],
+        topoPath = topoPaths[pathId];
+
+    if (!topoPath) {
+      error("[updateArcsInShape()] Missing topological path for path num:", pathId);
+    }
+    shape2.push(topoPath);
+  });
+  return shape2.length > 0 ? shape2 : null;
+}

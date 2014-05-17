@@ -5,57 +5,51 @@ var TopoJSON = {};
 // update ids of the remaining arcs
 TopoJSON.pruneArcs = function(topology) {
   var arcs = topology.arcs;
-  var flags = new Uint8Array(arcs.length);
+  var retained = new Uint32Array(arcs.length);
+
   Utils.forEach(topology.objects, function(obj, name) {
-    TopoJSON.updateArcIds(obj, function(arcId) {
+    TopoJSON.forEachArc(obj, function(arcId) {
       if (arcId < 0) arcId = ~arcId;
-      flags[arcId] = 1;
+      retained[arcId] = 1;
     });
   });
 
-  topology.arcs = Utils.filter(arcs, function(coords, i) {
-    return flags[i] === 1;
-  });
+  var filterCount = Utils.reduce(retained, function(count, flag) {
+    return count + flag;
+  }, 0);
 
-  // Re-index
-  var arcMap = TopoJSON.getArcMap(flags);
-  Utils.forEach(topology.objects, function(obj) {
-    TopoJSON.reindexArcIds(obj, arcMap);
-  });
-};
+  if (filterCount < arcs.length) {
+    TopoJSON.dissolveArcs(topology);
 
-// Update each arc id in a TopoJSON geometry object
-TopoJSON.updateArcIds = function(obj, cb) {
-  if (obj.arcs) {
-    utils.updateArcIds(obj.arcs, cb);
-  } else if (obj.geometries) {
-    Utils.forEach(obj.geometries, function(geom) {
-      TopoJSON.updateArcIds(geom, cb);
+    // filter arcs and remap ids
+    topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {
+      if (arc && retained[i] === 1) { // dissolved-away arcs are set to null
+        retained[i] = arcs.length;
+        arcs.push(arc);
+      } else {
+        retained[i] = -1;
+      }
+      return arcs;
+    }, []);
+
+    // Re-index
+    Utils.forEach(topology.objects, function(obj) {
+      TopoJSON.reindexArcIds(obj, retained);
     });
   }
 };
 
-// Convert an array of flags (0|1) into an array of non-negative arc ids
-TopoJSON.getArcMap = function(mask) {
-  var n = mask.length,
-      count = 0,
-      map = new Uint32Array(n);
-  for (var i=0; i<n; i++) {
-    map[i] = mask[i] === 0 ? -1 : count++;
-  }
-  return map;
-};
 
 // @map is an array of replacement arc ids, indexed by original arc id
-// @obj is any TopoJSON Geometry object (including named objects, GeometryCollections, Polygons, etc)
-TopoJSON.reindexArcIds = function(obj, map) {
-  TopoJSON.updateArcIds(obj, function(arcId) {
-    var rev = arcId < 0,
-        idx = rev ? ~arcId : arcId,
-        mappedId = map[idx];
-    if (mappedId < 0) { // -1 in arc map indicates arc has been removed
-      error("reindexArcIds() invalid arc id");
+// @geom is a TopoJSON Geometry object (including GeometryCollections, Polygons, etc)
+TopoJSON.reindexArcIds = function(geom, map) {
+  TopoJSON.forEachArc(geom, function(id) {
+    var rev = id < 0,
+        idx = rev ? ~id : id,
+        replacement = map[idx];
+    if (replacement < 0) { // -1 in arc map indicates arc has been removed
+      error("[reindexArcIds()] invalid arc id");
     }
-    return rev ? ~mappedId : mappedId;
+    return rev ? ~replacement : replacement;
   });
 };

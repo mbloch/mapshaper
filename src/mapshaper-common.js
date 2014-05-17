@@ -9,16 +9,21 @@ MapShaper.LOGGING = false; //
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;
+  return api;
 };
+
+api.stop = stop;
 
 // TODO: adapt to run in browser
 function stop() {
-  var argArr = Utils.toArray(arguments);
+  var args = Utils.toArray(arguments);
+  args.unshift('Error:');
   if (MapShaper.LOGGING) {
-    message.apply(null, argArr);
+    message.apply(null, args);
+    message("(Use -h option to view help)");
     process.exit(1);
   } else {
-    error.apply(null, argArr);
+    error.apply(null, args);
   }
 }
 
@@ -39,39 +44,47 @@ utils.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 };
 
-utils.parseLocalPath = // expose for script
-MapShaper.parseLocalPath = function(path) {
-  var obj = {
-    ext: '',
-    directory: '',
-    filename: '',
-    basename: ''
-  };
-  var parts = path.split('/'),
-      name, i;
+// Parse the path to a file
+// Assumes: not a directory path
+utils.parseLocalPath = function(path) {
+  var obj = {},
+      parts = path.split('/'), // TODO: fix
+      i;
 
   if (parts.length == 1) {
-    name = parts[0];
+    obj.filename = parts[0];
+    obj.directory = "";
   } else {
-    name = parts.pop();
+    obj.filename = parts.pop();
     obj.directory = parts.join('/');
   }
-  i = name.lastIndexOf('.');
+  i = obj.filename.lastIndexOf('.');
   if (i > -1) {
-    obj.ext = name.substr(i + 1); // omit '.'
-    obj.basename = name.substr(0, i);
-    obj.pathbase = path.substr(0, i);
+    obj.extension = obj.filename.substr(i + 1);
+    obj.basename = obj.filename.substr(0, i);
+    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
   } else {
-    obj.basename = name;
+    obj.extension = "";
+    obj.basename = obj.filename;
     obj.pathbase = path;
   }
-  obj.filename = name;
   return obj;
 };
 
+utils.getFileBase = function(path) {
+  return utils.parseLocalPath(path).basename;
+};
+
+utils.getFileExtension = function(path) {
+  return utils.parseLocalPath(path).extension;
+};
+
+utils.getPathBase = function(path) {
+  return utils.parseLocalPath(path).pathbase;
+};
+
 MapShaper.guessFileType = function(file) {
-  var info = MapShaper.parseLocalPath(file),
-      ext = info.ext.toLowerCase(),
+  var ext = utils.getFileExtension(file).toLowerCase(),
       type = null;
   if (/json$/i.test(file)) {
     type = 'json';
@@ -184,25 +197,29 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
   return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
 };
 
-MapShaper.getUniqueLayerNames = function(names) {
-  if (names.length <= 1) return names; // name of single layer guaranteed unique
-  var counts = Utils.countValues(names);
-
-  // assign unique name to each layer
-  var index = {};
-  return names.map(function(name) {
-    var count = counts[name],
-        i;
-    if (count > 1 || name in index) {
-      // naming conflict, need to find a unique name
-      name = name || 'layer'; // use layer1, layer2, etc as default
-      i = 1;
-      while ((name + i) in index) {
-        i++;
-      }
-      name = name + i;
+MapShaper.getCommonFileBase = function(names) {
+  return names.reduce(function(memo, name, i) {
+    if (i === 0) {
+      memo = utils.getFileBase(name);
+    } else {
+      memo = MapShaper.mergeNames(memo, name);
     }
-    index[name] = true;
-    return name;
-  });
+    return memo;
+  }, "");
+};
+
+MapShaper.mergeNames = function(name1, name2) {
+  var merged = "";
+  if (name1 && name2) {
+    merged = utils.findStringPrefix(name1, name2).replace(/[-_]$/, '');
+  }
+  return merged;
+};
+
+utils.findStringPrefix = function(a, b) {
+  var i = 0;
+  for (var n=a.length; i<n; i++) {
+    if (a[i] !== b[i]) break;
+  }
+  return a.substr(0, i);
 };

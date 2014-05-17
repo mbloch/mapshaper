@@ -146,27 +146,27 @@ GeoJSON.countNestedPoints = function(coords, depth) {
   return tally;
 };
 
-MapShaper.exportGeoJSON = function(layers, arcData, opts) {
-  return layers.map(function(layer) {
+MapShaper.exportGeoJSON = function(dataset, opts) {
+  return dataset.layers.map(function(lyr) {
     return {
-      content: MapShaper.exportGeoJSONString(layer, arcData, opts),
-      name: layer.name
+      content: MapShaper.exportGeoJSONString(lyr, dataset.arcs, opts),
+      filename: opts.output_file || lyr.name + ".json" // assume layer has name
     };
   });
 };
 
-MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
+MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   opts = opts || {};
-  var type = layerObj.geometry_type,
-      properties = layerObj.data && layerObj.data.getRecords() || null,
+  var type = lyr.geometry_type,
+      properties = lyr.data && lyr.data.getRecords() || null,
       useFeatures = !!properties && !opts.cut_table;
 
-  if (useFeatures && properties.length !== layerObj.shapes.length) {
+  if (useFeatures && properties.length !== lyr.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
   }
 
-  var objects = Utils.reduce(layerObj.shapes, function(memo, shape, i) {
-    var obj = MapShaper.exportGeoJSONGeometry(shape, arcData, type);
+  var objects = Utils.reduce(lyr.shapes, function(memo, shape, i) {
+    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type);
     if (useFeatures) {
       obj = {
         type: "Feature",
@@ -189,7 +189,7 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
   };
 
   if (opts.bbox) {
-    var bounds = MapShaper.getLayerBounds(layerObj, arcData);
+    var bounds = MapShaper.getLayerBounds(lyr, arcs);
     if (bounds.hasBounds()) {
       output.bbox = bounds.toArray();
     }
@@ -199,8 +199,8 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
   return parts[0] + objects + parts[1];
 };
 
-MapShaper.exportGeoJSONObject = function(layerObj, arcData, opts) {
-  return JSON.parse(MapShaper.exportGeoJSONString(layerObj, arcData, opts));
+MapShaper.exportGeoJSONObject = function(lyr, arcs, opts) {
+  return JSON.parse(MapShaper.exportGeoJSONString(lyr, arcs, opts));
 };
 
 // export GeoJSON or TopoJSON point geometry

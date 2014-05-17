@@ -5,8 +5,6 @@ mapshaper-shapes
 */
 
 // Snap together points within a small threshold
-// @xx, @yy arrays of x, y coords
-// @nn array of path lengths
 // @points (optional) array, snapped coords are added so they can be displayed
 //
 //

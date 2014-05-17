@@ -1,14 +1,5 @@
 /* @requires mapshaper-common */
 
-api.convertLayersToInnerLines = function(layers, arcs) {
-  T.start();
-  var converted = Utils.map(layers, function(lyr) {
-    return api.convertLayerToInnerLines(lyr, arcs);
-  });
-  T.stop("Inner lines");
-  return converted;
-};
-
 api.convertLayerToInnerLines = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
     stop("[innerlines] Layer not polygon type");
@@ -17,15 +8,6 @@ api.convertLayerToInnerLines = function(lyr, arcs) {
       lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
   lyr2.name = lyr.name;
   return lyr2;
-};
-
-api.convertLayersToTypedLines = function(layers, arcs, fields) {
-  T.start();
-  var converted = Utils.map(layers, function(lyr) {
-    return api.convertLayerToTypedLines(lyr, arcs, fields);
-  });
-  T.stop("Lines");
-  return converted;
 };
 
 api.convertLayerToTypedLines = function(lyr, arcs, fields) {
@@ -57,7 +39,7 @@ api.convertLayerToTypedLines = function(lyr, arcs, fields) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] unknown data field:", field);
       }
-      var dissolved = MapShaper.dissolveLayerOnField(lyr, arcs, field),
+      var dissolved = api.dissolveLayer(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
       dissolvedArcs = Utils.difference(dissolvedArcs, allArcs);
       addArcs(dissolvedArcs);
@@ -111,7 +93,7 @@ MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
 
 MapShaper.countArcsInShapes = function(shapes, arcCount) {
   var counts = new Uint8Array(arcCount);
-  utils.traverseShapes(shapes, null, function(obj) {
+  MapShaper.traverseShapes(shapes, null, function(obj) {
     var arcs = obj.arcs,
         id;
     for (var i=0; i<arcs.length; i++) {

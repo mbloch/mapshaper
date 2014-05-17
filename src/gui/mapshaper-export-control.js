@@ -2,7 +2,7 @@
 
 // Export buttons and their behavior
 //
-var ExportControl = function(arcData, layers, options) {
+var ExportControl = function(dataset, options) {
 
   El('#g-export-control').show();
 
@@ -40,25 +40,19 @@ var ExportControl = function(arcData, layers, options) {
   }
 
   function exportAs(format, done) {
-    var opts = {
-        output_format: format,
-        output_extension: MapShaper.getDefaultFileExtension(format)
-      },
-      files, file;
-    Utils.extend(opts, options);
-    files = MapShaper.exportFileContent(layers, arcData, opts);
+    var opts = Utils.extend({format: format}, options),
+        files = MapShaper.exportFileContent(dataset, opts);
 
     if (!Utils.isArray(files) || files.length === 0) {
-      error("exportAs() Export failed.");
+      error("[exportAs()] Nothing to export");
     } else if (files.length == 1) {
-      file = files[0];
-      saveBlob(file.filename, new Blob([file.content]));
+      saveBlob(files[0].filename, new Blob([files[0].content]));
       done();
     } else {
-      saveZipFile((opts.output_file_base || "out") + ".zip", files, done);
+      name = MapShaper.getCommonFileBase(Utils.pluck(files, 'filename')) || "out";
+      saveZipFile(name + ".zip", files, done);
     }
   }
-
 
   function saveBlob(filename, blob) {
     if (window.navigator.msSaveBlob) {

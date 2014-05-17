@@ -12,13 +12,13 @@ describe('mapshaper-geojson.js', function () {
 
   describe('importGeoJSON', function () {
     it('Import FeatureCollection with polygon geometries', function () {
-      var data = api.importFromFile(fixPath('test_data/two_states.json'))
+      var data = api.importFile(fixPath('test_data/two_states.json'))
       assert.equal(data.layers[0].shapes.length, 2);
       assert.equal(data.layers[0].data.size(), 2);
     })
 
     it('Import FeatureCollection with three null geometries', function () {
-      var data = api.importFromFile(fixPath('test_data/six_counties_three_null.json'), 'geojson');
+      var data = api.importFile(fixPath('test_data/six_counties_three_null.json'), 'geojson');
       assert.equal(data.layers[0].data.size(), 6);
       assert.equal(data.layers[0].shapes.length, 6);
       assert.equal(Utils.filter(data.layers[0].shapes, function(shape) {return shape != null}).length, 3)
@@ -60,9 +60,9 @@ describe('mapshaper-geojson.js', function () {
       }];
       var opts = {
         cut_table: true,
-        output_format: 'geojson'
+        format: 'geojson'
       };
-      var files = api.exportFileContent([lyr], arcs, opts);
+      var files = api.internal.exportFileContent({layers:[lyr], arcs:arcs}, opts);
       assert.deepEqual(JSON.parse(files[0].content), geojson);
       assert.deepEqual(JSON.parse(files[1].content), table);
     })
@@ -252,20 +252,22 @@ describe('mapshaper-geojson.js', function () {
     it('Internal state borders (polyline)', function () {
       geoJSONRoundTrip('test_data/ne/ne_110m_admin_1_states_provinces_lines.json');
     })
+    /* */
   })
 })
 
 function geoJSONRoundTrip(fname) {
-  var data = api.importFromFile(fixPath(fname));
-  var files = api.exportFileContent(data.layers, data.arcs, {output_format:'geojson'});
-  var data2 = api.importFileContent(files[0].content, 'json');
-  var files2 = api.exportFileContent(data2.layers, data2.arcs, {output_format:'geojson'});
+  var data = api.importFile(fixPath(fname));
+  var files = api.internal.exportFileContent(data, {format:'geojson'});
+  var data2 = api.internal.importFileContent(files[0].content, 'json');
+  var files2 = api.internal.exportFileContent(data2, {format:'geojson'});
 
-  assert.deepEqual(files, files2);
+  assert.equal(files2[0].content, files[0].content);
+  // assert.equal(files2[0].filename, files[0].filename); // these are different
 }
 
 function importExport(obj, noTopo) {
   var json = Utils.isString(obj) ? obj : JSON.stringify(obj);
-  var geom = api.importFileContent(json, 'json', {no_topology: noTopo});
+  var geom = api.internal.importFileContent(json, 'json', {no_topology: noTopo});
   return api.internal.exportGeoJSONObject(geom.layers[0], geom.arcs);
 }

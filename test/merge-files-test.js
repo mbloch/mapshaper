@@ -2,6 +2,7 @@ var assert = require('assert'),
     api = require("../");
 
 describe('mapshaper-merge-files.js', function () {
+  /*
   describe('getCommonFilePrefix()', function () {
     it('find common filename stem', function () {
       var files = ['states-DC.shp', 'states-MD.shp', 'states-NY.shp']
@@ -16,5 +17,6 @@ describe('mapshaper-merge-files.js', function () {
       assert.equal(api.utils.getCommonFilePrefix(files), '');
     })
   })
+  */
 
 })

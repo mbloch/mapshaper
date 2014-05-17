@@ -31,7 +31,7 @@ describe('mapshaper-options.js', function () {
 
     good("-o", {});
     good("-o " + dir1, {output_dir: dir1});
-    good("-o output.shp", {output_file: "output.shp"});
+    good("-o output.shp target=points", {output_file: "output.shp", target: "points"});
     good("-o cut-table output.json", {cut_table: true, output_file: "output.json"})
     good("-o cut-table", {cut_table: true})
 
@@ -75,6 +75,10 @@ describe('mapshaper-options.js', function () {
     bad("-simplify p 0.1 method=douglas-peucker");
     bad("-simplify p 0.1 method=vis");
 
+    // assigning to a boolean or set variable is wrong
+    bad('-simplify 5% keep-shapes=true');
+    bad('-simplify 5% dp=true');
+
     good("-simplify 4%", {pct: 0.04});
     bad("-simplify 10"); // only pct has this kind of shortcut
     bad("-simplify -5%");
@@ -82,6 +86,11 @@ describe('mapshaper-options.js', function () {
     bad("-simplify interval=10km"); // need integer
     bad("-simplify pct");
     good("-simplify 3% no-repair", {pct: 0.03, no_repair: true});
+  })
+
+  describe('fields', function () {
+    good('-fields STATE,FIPS:STATE_FIPS', {fields:["STATE", "FIPS:STATE_FIPS"]});
+    bad('-fields');
   })
 
   describe('join', function() {
@@ -93,6 +102,12 @@ describe('mapshaper-options.js', function () {
     bad("-join " + file2 + " keys ID,FIPS"); // .shp not joinable
     bad("-join " + file1); // missing keys
     bad("-join " + file1 + "keys ID"); // only one key
+  })
+
+  describe('lines', function () {
+    good("-lines", {});
+    good("-lines STATE", {fields: ['STATE']});
+    good("-lines STATE,COUNTY", {fields: ['STATE', 'COUNTY']});
   })
 
   describe('split-on-grid', function() {
@@ -138,26 +153,6 @@ describe('mapshaper-options.js', function () {
   describe('syntax rules', function () {
     good("--help", {}); // all commands accept -- prefix
     bad("-dummy") // unknown command
-  })
-
-  describe('validateCommandSequence()', function () {
-    it('-o is appended if missing', function () {
-      var commands = [{name: "i"}];
-      var result = api.internal.validateCommandSequence(commands);
-      assert.deepEqual(result, [{name: "i"}, {name: "o", options: {}}]);
-    })
-
-    it('-o is not appended if last command is -info', function () {
-      var commands = [{name: "i"}, {name: "info"}];
-      var result = api.internal.validateCommandSequence(commands);
-      assert.deepEqual(result, [{name: "i"}, {name: "info"}]);
-    })
-
-    it('-i is moved to first position', function () {
-      var commands = [{name: "o"}, {name: "i"}];
-      var result = api.internal.validateCommandSequence(commands);
-      assert.deepEqual(result, [{name: "i"}, {name: "o"}]);
-    })
   })
 
 })

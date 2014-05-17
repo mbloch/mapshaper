@@ -2,69 +2,76 @@
 mapshaper-geojson,
 topojson-utils,
 topojson-split,
-mapshaper-shape-geom
+mapshaper-shape-geom,
+topojson-arc-dissolve
 */
 
 TopoJSON.exportTopology = function(layers, arcData, opts) {
   var topology = {type: "Topology"},
-      objects = {},
-      // get a copy of arc data (coords are modified for topojson export)
-      filteredArcs = arcData.getFilteredCopy(),
       bounds = new Bounds(),
-      useDelta = true,
+      filteredArcs,
       transform, invTransform;
 
-  // TODO: getting messy, refactor
-  if (opts.topojson_precision) {
-    transform = TopoJSON.getExportTransform(filteredArcs, null, opts.topojson_precision);
-  } else if (opts.topojson_resolution === 0) {
-    useDelta = false;
-  } else if (opts.topojson_resolution > 0) {
-    transform = TopoJSON.getExportTransform(filteredArcs, opts.topojson_resolution);
-  } else if (opts.precision > 0) {
-    transform = TopoJSON.getExportTransformFromPrecision(filteredArcs, opts.precision);
+  // some datasets may lack arcs -- e.g. only point layers
+  if (arcData && arcData.size() > 0) {
+    // get a copy of arc data (coords are modified for topojson export)
+    filteredArcs = arcData.getFilteredCopy();
+    // this is only needed after commands like innerlines and dissolve
+    // TODO: run only if needed
+    // filteredArcs = api.dissolveArcs(layers, filteredArcs);
+
+    if (opts.no_quantization) {
+      // no transform
+    } else if (opts.topojson_precision) {
+      transform = TopoJSON.getExportTransform(filteredArcs, null, opts.topojson_precision);
+    } else if (opts.quantization > 0) {
+      transform = TopoJSON.getExportTransform(filteredArcs, opts.quantization);
+    } else if (opts.precision > 0) {
+      transform = TopoJSON.getExportTransformFromPrecision(filteredArcs, opts.precision);
+    } else {
+      // default -- auto quantization
+      transform = TopoJSON.getExportTransform(filteredArcs);
+    }
+
+    if (transform) {
+      if (transform.isNull()) {
+        // kludge: null transform likely due to collapsed shape(s)
+        // using identity transform as a band-aid, need to rethink this.
+        transform = new Transform();
+      }
+      invTransform = transform.invert();
+      topology.transform = {
+        scale: [invTransform.mx, invTransform.my],
+        translate: [invTransform.bx, invTransform.by]
+      };
+
+      filteredArcs.applyTransform(transform, !!"round");
+    }
+    topology.arcs = TopoJSON.exportArcs(filteredArcs);
   } else {
-    transform = TopoJSON.getExportTransform(filteredArcs); // auto quantization
+    topology.arcs = []; // spec seems to require an array
   }
 
-  // kludge: null transform likely due to collapsed shape(s)
-  // using identity transform as a band-aid, need to rethink this.
-  if (transform && transform.isNull()) {
-    transform = new Transform();
-  }
-
-  if (transform) {
-    invTransform = transform.invert();
-    topology.transform = {
-      scale: [invTransform.mx, invTransform.my],
-      translate: [invTransform.bx, invTransform.by]
-    };
-    filteredArcs.applyTransform(transform, !!"round");
-    // remove identical points ?
-  }
-
-  Utils.forEach(layers, function(lyr, i) {
+  topology.objects = layers.reduce(function(objects, lyr, i) {
     var name = lyr.name || "layer" + (i + 1),
-        geomType = lyr.geometry_type,
-        obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, geomType);
+        obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, lyr.geometry_type);
 
     if (opts.bbox) {
       bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
     }
-    objects[name] = obj;
-    // export attribute data, if present
     if (lyr.data) {
       TopoJSON.exportProperties(obj.geometries, lyr.data.getRecords(), opts);
     }
-  });
+    objects[name] = obj;
+    return objects;
+  }, {});
 
-  topology.objects = objects;
-  topology.arcs = TopoJSON.exportArcs(filteredArcs);
+  // TODO: avoid if not needed (compare with dissolveArcs above)
+  if (filteredArcs) {
+    TopoJSON.pruneArcs(topology);
+  }
 
-  // TODO: avoid if not needed
-  TopoJSON.pruneArcs(topology);
-
-  if (useDelta) {
+  if (transform) {
     TopoJSON.deltaEncodeArcs(topology.arcs);
   }
 
@@ -181,6 +188,7 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
 };
 
 TopoJSON.groupPolygonRings = function(shapes, coords) {
+  // first, get path data for MapShaper.groupPolygonRings()
   var iter = new ShapeIter(coords);
   var paths = Utils.map(shapes, function(shape) {
     if (!Utils.isArray(shape)) throw new Error("expected array");
@@ -191,7 +199,10 @@ TopoJSON.groupPolygonRings = function(shapes, coords) {
       bounds: coords.getSimpleShapeBounds(shape)
     };
   });
+
+  // second, group the rings
   var groups = MapShaper.groupPolygonRings(paths);
+
   return groups.map(function(paths) {
     return paths.map(function(path) {
       return path.ids;

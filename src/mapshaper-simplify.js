@@ -1,5 +1,68 @@
 /* @requires mapshaper-visvalingam, mapshaper-dp */
 
+api.simplify = function(arcs, opts) {
+  MapShaper.simplifyPaths(arcs, opts);
+
+  if (utils.isNumber(opts.pct)) {
+    arcs.setRetainedPct(opts.pct);
+  } else if (opts.interval) {
+    arcs.setRetainedInterval(opts.interval);
+  }
+
+  if (!opts.no_repair) {
+    var info = api.findAndRepairIntersections(arcs);
+    cli.printRepairMessage(info);
+  }
+};
+
+// @paths ArcDataset object
+MapShaper.simplifyPaths = function(paths, opts) {
+  var method = opts.method || 'mapshaper';
+  var bounds = paths.getBounds().toArray();
+  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown simplification method:", method);
+  if (decimalDegrees && !opts.cartesian) {
+    MapShaper.simplifyPaths3D(paths, simplifyPath);
+    MapShaper.protectWorldEdges(paths);
+  } else {
+    MapShaper.simplifyPaths2D(paths, simplifyPath);
+  }
+};
+
+MapShaper.simplifyPaths2D = function(paths, simplify) {
+  paths.forEach3(function(xx, yy, kk, i) {
+    simplify(kk, xx, yy);
+  });
+};
+
+MapShaper.simplifyPaths3D = function(paths, simplify) {
+  var bufSize = 0,
+      xbuf, ybuf, zbuf;
+
+  paths.forEach3(function(xx, yy, kk, i) {
+    var arcLen = xx.length;
+    if (bufSize < arcLen) {
+      bufSize = Math.round(arcLen * 1.2);
+      xbuf = new Float64Array(bufSize);
+      ybuf = new Float64Array(bufSize);
+      zbuf = new Float64Array(bufSize);
+    }
+
+    MapShaper.convLngLatToSph(xx, yy, xbuf, ybuf, zbuf);
+    simplify(kk, xbuf, ybuf, zbuf);
+  });
+};
+
+// Path simplification functions
+// Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
+//
+MapShaper.simplifiers = {
+  visvalingam: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
+  mapshaper_v1: Visvalingam.getArcCalculator(Visvalingam.specialMetric_v1, Visvalingam.specialMetric3D_v1, 0.65),
+  mapshaper: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
+  dp: DouglasPeucker.calcArcData
+};
+
 // Protect polar coordinates and coordinates at the prime meridian from
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
@@ -64,72 +127,4 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
     ybuf[i] = Math.sin(lng) * cosLat * r;
     zbuf[i] = Math.sin(lat) * r;
   }
-};
-
-api.simplifyPaths = // export for script
-MapShaper.simplifyPaths = function(paths, method, force2D) {
-  T.start();
-  var bounds = paths.getBounds().toArray();
-  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
-  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method);
-  if (decimalDegrees && !force2D) {
-    MapShaper.simplifyPaths3D(paths, simplifyPath);
-    MapShaper.protectWorldEdges(paths);
-  } else {
-    MapShaper.simplifyPaths2D(paths, simplifyPath);
-  }
-  T.stop("Calculate simplification data");
-};
-
-MapShaper.simplifyPaths2D = function(paths, simplify) {
-  paths.forEach3(function(xx, yy, kk, i) {
-    simplify(kk, xx, yy);
-  });
-};
-
-MapShaper.simplifyPaths3D = function(paths, simplify) {
-  var bufSize = 0,
-      xbuf, ybuf, zbuf;
-
-  paths.forEach3(function(xx, yy, kk, i) {
-    var arcLen = xx.length;
-    if (bufSize < arcLen) {
-      bufSize = Math.round(arcLen * 1.2);
-      xbuf = new Float64Array(bufSize);
-      ybuf = new Float64Array(bufSize);
-      zbuf = new Float64Array(bufSize);
-    }
-
-    MapShaper.convLngLatToSph(xx, yy, xbuf, ybuf, zbuf);
-    simplify(kk, xbuf, ybuf, zbuf);
-  });
-};
-
-// Path simplification functions
-// Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
-//
-MapShaper.simplifiers = {
-  vis: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
-  mod1: Visvalingam.getArcCalculator(Visvalingam.specialMetric_v1, Visvalingam.specialMetric3D_v1, 0.65),
-  mod2: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
-  dp: DouglasPeucker.calcArcData
-};
-
-MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
-  var bufSize = 0,
-      xbuf, ybuf, zbuf;
-
-  var data = Utils.map(arcs, function(arc) {
-    var arcLen = arc[0].length;
-    if (bufSize < arcLen) {
-      bufSize = Math.round(arcLen * 1.2);
-      xbuf = new Float64Array(bufSize);
-      ybuf = new Float64Array(bufSize);
-      zbuf = new Float64Array(bufSize);
-    }
-
-    MapShaper.convLngLatToSph(arc[0], arc[1], xbuf, ybuf, zbuf);
-    return simplify(xbuf, ybuf, zbuf, arcLen);
-  });
-  return data;
 };

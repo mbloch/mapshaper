@@ -14,7 +14,7 @@ MapShaper.mergeDatasets = function(arr) {
     data.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
         // reindex arc ids
-        utils.updateArcIds(lyr.shapes, function(id) {
+        MapShaper.forEachArcId(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
         });
       }
@@ -95,6 +95,7 @@ api.mergeLayers = function(layers) {
       merged.push(lyr);
     } else {
       indexedLyr = index[key];
+      indexedLyr.name = MapShaper.mergeNames(indexedLyr.name, lyr.name);
       indexedLyr.shapes = indexedLyr.shapes.concat(lyr.shapes);
       if (indexedLyr.data) {
         records = indexedLyr.data.getRecords().concat(lyr.data.getRecords());

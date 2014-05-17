@@ -1,34 +1,33 @@
 /* @requires mapshaper-common, mapshaper-option-parser, mapshaper-option-validation */
 
-api.getCommands = function() {
+api.parseCommands = function(arr) {
   var commands;
  try {
-    commands = MapShaper.getOptionParser().parseArgv(process.argv.slice(2));
-    commands = MapShaper.validateCommandSequence(commands);
+    commands = MapShaper.getOptionParser().parseArgv(arr);
   } catch(e) {
-    stop('Error: ' + e.message + '\n(Use -h option to view help)');
+    stop(e.message);
   }
   return commands;
 };
 
 MapShaper.getOptionParser = function() {
   var parser = new CommandParser(),
-      usage = "Usage: mapshaper [commands]\n" +
-        "\n" +
-        "Example: fix minor topology errors, simplify to 10%, convert to geojson\n" +
-        "$ mapshaper -i states.shp auto-snap -simplify pct=0.1 -o geojson\n" +
-        "\n" +
-        "Example: aggregate census tracts to counties\n" +
-        "$ mapshaper -i tracts.shp -calc 'CTY_FIPS=FIPS.substr(0, 5)' -dissolve CTY_FIPS\n";
-
+      usage = "Usage: mapshaper -i file(s) [import opts] [-command [command opts]] ...\n" +
+              "       mapshaper -help|-encodings|-version";
   parser.usage(usage);
 
+  parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
+      "$ mapshaper -i states.shp auto-snap -simplify 10% -o format=geojson");
+
+  parser.example("Aggregate census tracts to counties\n" +
+      "$ mapshaper -i tracts.shp -calc \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
+
   parser.command('i')
-    .title("Commands and options")
+    .title("Commands and command options")
     .describe("input one or more files")
     .validate(validateInputOpts)
     .option("merge-files", {
-      describe: "merge input files into a single layer before processing",
+      describe: "merge similar input layers, like -merge-layers",
       type: "flag"
     })
     .option("combine-files", {
@@ -52,14 +51,17 @@ MapShaper.getOptionParser = function() {
       type: "number"
     })
     .option("encoding", {
-      describe: "encoding of text data in .dbf file"
+      describe: "text encoding of .dbf file"
     });
 
   parser.command('o')
     .describe("specify name of output file or directory")
     .validate(validateOutputOpts)
     .option("format", {
-      describe: "set export format (shapefile|geojson|topojson|dbf|csv|tsv)"
+      describe: "set export format (shapefile|geojson|topojson)"
+    })
+    .option("encoding", {
+      describe: "text encoding of .dbf file"
     })
     .option("quantization", {
       describe: "specify TopoJSON quantization (auto-set by default)",
@@ -68,6 +70,10 @@ MapShaper.getOptionParser = function() {
     .option("no-quantization", {
       describe: "export TopoJSON without quantization",
       type: "flag"
+    })
+    .option("topojson-precision", {
+      // describe: "pct of avg segment length for rounding (0.02 is default)",
+      type: "number"
     })
     .option("id-field", {
       describe: "field to use for TopoJSON id property"
@@ -79,14 +85,20 @@ MapShaper.getOptionParser = function() {
     .option("cut-table", {
       describe: "detach attributes from shapes and save as a JSON file",
       type: "flag"
-    });
+    })
+    .option("bbox-index", {
+      describe: "export table of layer bounding boxes",
+      type: 'flag'
+    })
+    .option("target");
+
 
   parser.command('simplify')
     .validate(validateSimplifyOpts)
     .describe("simplify the geometry of polygon or polyline features")
     .option("dp", {
       alias: "rdp",
-      describe: "use Douglas-Peucker simplification",
+      describe: "use (Ramer-)Douglas-Peucker simplification",
       assign_to: "method"
     })
     .option("visvalingam", {
@@ -119,25 +131,31 @@ MapShaper.getOptionParser = function() {
     });
 
   parser.command("filter")
-    // .alias("f")
     .describe("filter features with a boolean JavaScript expression")
     .validate(validateFilterOpts)
-    .option("expression", {})
-    .option("layer", {});
+    .option("expression")
+    .option("target");
 
   parser.command("fields")
-    .describe('filter and rename data fields, e.g. "fips,st=state"')
-    .option("layer", {});
+    .describe('select and rename data fields, e.g. "fips,st=state"')
+    .validate(validateFieldsOpts)
+    .option("target");
+
+  /*
+  parser.command("layers")
+    .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
+    .validate(validateLayersOpts);
+  */
 
   parser.command("calc")
     .describe("create/update/delete data fields with a JS expression")
-    .option("expression", {})
-    .option("layer", {});
+    .option("expression")
+    .option("target");
 
   parser.command("expression")
     .alias('e')
     .validate(function() {
-      error("-expression has been renamed to -calc");
+      error("-expression has been renamed as -calc");
     });
 
   parser.command("join")
@@ -150,7 +168,9 @@ MapShaper.getOptionParser = function() {
     .option("fields", {
       describe: "(optional) join fields, e.g. fields=FIPS:str,POP",
       type: "comma-sep"
-    });
+    })
+    .option("target");
+
 
   parser.command("dissolve")
     .describe("dissolve polygons; takes optional comma-sep. list of fields")
@@ -163,31 +183,41 @@ MapShaper.getOptionParser = function() {
       describe: "fields to copy when dissolving (comma-sep. list)",
       type: "comma-sep"
     })
-    .option("field", {})
-    .option("layer", {});
+    .option("rename")
+    .option("field")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("lines")
     .describe("convert polygons to lines; takes optional list of fields")
     .validate(validateLinesOpts)
-    .option("field", {})
-    .option("layer", {});
+    .option("rename")
+    .option("fields", {
+      type: "comma-sep"
+    })
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("innerlines")
     .describe("output polyline layers containing shared polygon boundaries")
     .validate(validateInnerLinesOpts)
-    .option("layer", {});
+    .option("rename")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("split")
     .describe("split features on a data field")
     .validate(validateSplitOpts)
-    .option("field", {})
-    .option("layer", {});
+    .option("field")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("subdivide")
     .describe("recursively divide a layer with a boolean JS expression")
     .validate(validateSubdivideOpts)
-    .option("expression", {})
-    .option("layer", {});
+    .option("expression")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("split-on-grid")
     .describe("split layer into cols,rows  e.g. -split-on-grid 12,10")
@@ -198,25 +228,30 @@ MapShaper.getOptionParser = function() {
     .option("rows", {
       type: "integer"
     })
-    .option("layer", {});
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
 
   parser.command("merge-layers")
     .describe("merge split-apart layers back into a single layer")
     .validate(validateMergeLayersOpts)
-    .option("_dummy_", {}); // kludge to improve help menu formatting
+    .option("_dummy_"); // kludge to improve help menu formatting
 
   parser.command("*")
     .title("Options for multiple commands")
-    .option("layer", {
-      describe: "apply the command to a particular layer"
+    .option("target", {
+      describe: "layer(s) to target (comma-sep., takes * wildcard, default: *)"
     })
-    .option("+", {
-      alias: "add-layer",
-      describe: "create new layer(s) instead of replacing the source layer"
+    .option("rename", {
+      describe: "rename the targeted layer(s)"
+    })
+    .option("no-replace", { // or maybe "add-layer",
+      alias: "+",
+      type: 'flag',
+      describe: "retain the original layer(s) instead of replacing"
     });
 
   parser.command('encodings')
-    .title("Information")
+    .title("Informational commands")
     .describe("print list of supported text encodings (for .dbf import)");
 
   parser.command('info')

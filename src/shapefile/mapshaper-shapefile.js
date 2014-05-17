@@ -64,13 +64,14 @@ MapShaper.importShp = function(src, opts) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShapefile = function(layers, arcData, opts) {
+MapShaper.exportShapefile = function(dataset, opts) {
   var files = [];
-  layers.forEach(function(layer) {
+  dataset.layers.forEach(function(layer) {
     var data = layer.data,
+        name = opts.output_file ? utils.getFileBase(opts.output_file) : layer.name,
         obj, dbf;
     T.start();
-    obj = MapShaper.exportShpAndShx(layer, arcData);
+    obj = MapShaper.exportShpAndShx(layer, dataset.arcs);
     T.stop("Export .shp file");
     T.start();
     data = layer.data;
@@ -87,16 +88,13 @@ MapShaper.exportShapefile = function(layers, arcData, opts) {
 
     files.push({
         content: obj.shp,
-        name: layer.name,
-        extension: "shp"
+        filename: name + ".shp"
       }, {
         content: obj.shx,
-        name: layer.name,
-        extension: "shx"
+        filename: name + ".shx"
       }, {
         content: dbf,
-        name: layer.name,
-        extension: "dbf"
+        filename: name + ".dbf"
       });
   });
   return files;

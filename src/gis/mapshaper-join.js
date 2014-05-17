@@ -23,11 +23,10 @@ api.importJoinTableAsync = function(file, opts, done) {
   }, opts);
 };
 
-api.joinTableToLayers = function(layers, table, keys, joinFields) {
+api.joinTableToLayer = function(lyr, table, keys, joinFields) {
   var localKey = keys[0],
       foreignKey = keys[1],
       typeIndex = {};
-  T.start();
   if (table.fieldExists(foreignKey) === false) {
     stop("[join] External table is missing a field named:", foreignKey);
   }
@@ -36,23 +35,15 @@ api.joinTableToLayers = function(layers, table, keys, joinFields) {
     joinFields = Utils.difference(table.getFields(), [foreignKey]);
   }
 
-  var joins = 0,
-      index = Utils.indexOn(table.getRecords(), foreignKey);
+  // var index = Utils.indexOn(table.getRecords(), foreignKey);
 
-  Utils.forEach(layers, function(lyr) {
-    if (lyr.data && lyr.data.fieldExists(localKey)) {
-      if (MapShaper.joinTables(lyr.data, localKey, joinFields,
-          table, foreignKey, joinFields)) {
-        joins++;
-      }
-    }
-  });
-
-  if (joins === 0) {
-    // TODO: better handling of failed joins
-    stop("[join] Join failed");
+  if (!lyr.data || !lyr.data.fieldExists(localKey)) {
+    error("[join] Target layer is missing field:", localKey);
   }
-  T.stop("Join");
+
+  if (!MapShaper.joinTables(lyr.data, localKey, joinFields, table, foreignKey,
+      joinFields)) error("[join] No records could be joined");
+  // TODO: better handling of failed joins
 };
 
 MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcFields) {

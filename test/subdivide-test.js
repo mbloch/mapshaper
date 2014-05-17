@@ -2,14 +2,14 @@ var assert = require('assert'),
     api = require("../");
 
 describe('mapshaper-subdivide.js', function () {
-  describe('subdivideLayers()', function () {
+  describe('subdivideLayer()', function () {
     var nullArcs = new api.internal.ArcDataset([]);
     it('divide a layer into individual shapes', function() {
       var lyr = {
         shapes: [[[0]], [[1]], [[2]], [[3]], [[4]]]
       }
 
-      var layers = api.subdivideLayers([lyr], nullArcs, "true");
+      var layers = api.subdivideLayer(lyr, nullArcs, "true");
       assert.equal(layers.length, 5);
       assert.deepEqual(layers[0].shapes, [[[0]]])
       assert.deepEqual(layers[1].shapes, [[[1]]])
@@ -24,7 +24,7 @@ describe('mapshaper-subdivide.js', function () {
         data: new api.internal.DataTable([{foo: 1}, {foo: 0}, {foo: 39}, {foo: 3}])
       }
 
-      var layers = api.subdivideLayers([lyr], nullArcs, "sum('foo') > 5");
+      var layers = api.subdivideLayer(lyr, nullArcs, "sum('foo') > 5");
       assert.equal(layers.length, 3);
       assert.deepEqual(layers[0].shapes, [[[0]], [[1]]])
       assert.deepEqual(layers[1].shapes, [[[2]]])

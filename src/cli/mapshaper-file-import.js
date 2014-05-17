@@ -3,26 +3,31 @@ mapshaper-import
 mapshaper-table-import
 */
 
-api.importFromFile =
-MapShaper.importFromFile = function(fname, opts) {
-  var fileType = MapShaper.guessFileType(fname),
-      content = MapShaper.readGeometryFile(fname, fileType),
-      data = MapShaper.importFileContent(content, fileType, opts);
-  if (fileType == 'shp' && data.layers.length == 1) {
-    data.layers[0].data = MapShaper.importDbfTable(fname, opts.encoding);
+api.importFile = function(path, opts) {
+  var fileType = MapShaper.guessFileType(path),
+      content = MapShaper.readGeometryFile(path, fileType),
+      dataset;
+
+  opts = opts || {};
+  if (!opts.files) {
+    opts.files = [path];
   }
-  data.info.input_files = [fname];
-  return data;
+
+  dataset = MapShaper.importFileContent(content, fileType, opts);
+  if (fileType == 'shp' && dataset.layers.length == 1) {
+    dataset.layers[0].data = MapShaper.importDbfTable(path, opts.encoding);
+  }
+  return dataset;
 };
 
-MapShaper.readGeometryFile = function(fname, fileType) {
+MapShaper.readGeometryFile = function(path, fileType) {
   var content;
   if (fileType == 'shp') {
-    content = Node.readFile(fname);
+    content = Node.readFile(path);
   } else if (fileType == 'json') {
-    content = Node.readFile(fname, 'utf-8');
+    content = Node.readFile(path, 'utf-8');
   } else {
-    error("Unexpected input file:", fname);
+    error("Unexpected input file:", path);
   }
   return content;
 };

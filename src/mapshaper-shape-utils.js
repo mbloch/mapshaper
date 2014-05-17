@@ -28,19 +28,24 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   return j;
 };
 
-utils.visitArcIds = function(arr, cb) {
-  utils.updateArcIds(arr, function(id) {
-    cb(id);
-    // returns undefined so arc ids are not changed
+MapShaper.forEachPoint = function(lyr, cb) {
+  if (lyr.geometry_type != 'point') {
+    error("[forEachPoint()] Expects a point layer");
+  }
+  lyr.shapes.forEach(function(shape) {
+    var n = shape ? shape.length : 0;
+    for (var i=0; i<n; i++) {
+      cb(shape[i]);
+    }
   });
 };
 
 // Visit each arc id in an array of ids
 // Use non-undefined return values of callback @cb as replacements.
-utils.updateArcIds = function(arr, cb) {
+MapShaper.forEachArcId = function(arr, cb) {
   Utils.forEach(arr, function(item, i) {
     if (item instanceof Array) {
-      utils.updateArcIds(item, cb);
+      MapShaper.forEachArcId(item, cb);
     } else if (Utils.isInteger(item)) {
       var val = cb(item);
       if (val !== void 0) {
@@ -52,7 +57,7 @@ utils.updateArcIds = function(arr, cb) {
   });
 };
 
-utils.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
+MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   Utils.forEach(shapes, function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape

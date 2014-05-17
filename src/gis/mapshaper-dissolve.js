@@ -1,54 +1,24 @@
 /* @requires mapshaper-common, mapshaper-data-table, mapshaper-shape-utils */
 
-api.dissolveLayers = function(layers) {
-  T.start();
-  if (!Utils.isArray(layers)) error ("[dissolveLayers()] Expected an array of layers");
-  var dissolvedLayers = [],
-      args = Utils.toArray(arguments);
-
-  Utils.forEach(layers, function(lyr) {
-    args[0] = lyr;
-    var layers2 = api.dissolveLayer.apply(null, args);
-    dissolvedLayers.push.apply(dissolvedLayers, layers2);
-  });
-  T.stop('Dissolve polygons');
-  return dissolvedLayers;
-};
-
-// Dissolve a polygon layer into one or more derived layers
-// @dissolve (optional) comma-separated list of fields
-//
-api.dissolveLayer = function(lyr, arcs, dissolve, opts) {
-  if (lyr.geometry_type != 'polygon') {
-    error("[dissolveLayer()] Expected a polygon layer");
-  }
-  var dissolveArgs = Utils.isString(dissolve) ? dissolve.split(',') : [null];
-  var layers = Utils.map(dissolveArgs, function(arg) {
-    return MapShaper.dissolveLayerOnField(lyr, arcs, arg, opts);
-  });
-  return layers;
-};
-
 // Generate a dissolved layer
-// @field Name of data field to dissolve on or null to dissolve all polygons
-//
-MapShaper.dissolveLayerOnField = function(lyr, arcs, field, opts) {
+// @opts.field (optional) name of data field (dissolves all if falsy)
+// @opts.sum-fields (Array) (optional)
+// @opts.copy-fields (Array) (optional)
+api.dissolveLayer = function(lyr, arcs, opts) {
   var shapes = lyr.shapes,
+      field = opts.field,
       dataTable = lyr.data || null,
       properties = dataTable ? dataTable.getRecords() : null,
       dissolveLyr,
       dissolveRecords,
       getDissolveKey;
 
-  opts = opts || {};
-  // T.start();
-
   if (field) {
     if (!dataTable) {
-      error("[dissolveLayer()] Layer is missing a data table");
+      error("[dissolve] Layer is missing a data table");
     }
     if (field && !dataTable.fieldExists(field)) {
-      error("[dissolveLayer()] Missing field:",
+      error("[dissolve] Missing field:",
         field, '\nAvailable fields:', dataTable.getFields().join(', '));
     }
     getDissolveKey = function(shapeId) {
@@ -61,21 +31,20 @@ MapShaper.dissolveLayerOnField = function(lyr, arcs, field, opts) {
     };
   }
 
-  //T.start();
   var first = dissolveFirstPass(shapes, getDissolveKey);
-  //T.stop("dissolve first pass");
-  //T.start();
   var second = dissolveSecondPass(first.segments, shapes, first.keys);
-  //T.stop('dissolve second pass');
+
   dissolveLyr = {
     shapes: second.shapes,
-    name: field || 'dissolve',
+    info: lyr.info, // questionable
+    name: lyr.name,
+    geometry_type: lyr.geometry_type
   };
   if (properties) {
     dissolveRecords = MapShaper.calcDissolveData(first.keys, second.index, properties, field, opts);
     dissolveLyr.data = new DataTable(dissolveRecords);
   }
-  Opts.copyNewParams(dissolveLyr, lyr);
+  // Opts.copyNewParams(dissolveLyr, lyr);
 
   // T.stop('Dissolve polygons');
   return dissolveLyr;
@@ -182,7 +151,7 @@ function dissolveFirstPass(shapes, getKey) {
     }
   }
 
-  utils.traverseShapes(shapes, procArc, null, procShape);
+  MapShaper.traverseShapes(shapes, procArc, null, procShape);
   Utils.forEach(largeGroups, splitGroup);
 
   return {
@@ -346,6 +315,7 @@ MapShaper.calcDissolveData = function(keys, index, properties, field, opts) {
     }
 
     Utils.forEach(sumFields, function(f) {
+      // TODO: handle strings
       dissolveRec[f] = (rec[f] || 0) + (dissolveRec[f] || 0);
     });
   });

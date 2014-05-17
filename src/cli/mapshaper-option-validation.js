@@ -1,35 +1,6 @@
 /* @requires mapshaper-common */
 
 
-MapShaper.validateCommandSequence = function(arr) {
-  var commands = arr.concat();
-  if (commands.length === 0) error("Missing an input file");
-
-  // move -i to the front
-  MapShaper.promoteCommand('i', commands);
-
-  // if there's no -o command, put a generic one at the end,
-  //    unless last command is -info
-  var hasO = Utils.some(commands, function(cmd) {
-    return cmd.name == 'o';
-  });
-  if (!hasO && commands[commands.length-1].name != 'info') {
-    commands.push({name: "o", options: {}});
-  }
-  return commands;
-};
-
-// assumes: only one of this kind of command
-MapShaper.promoteCommand = function(name, commands) {
-  var cmd = Utils.find(commands, function(cmd) {
-    return cmd.name == name;
-  });
-  var idx = commands.indexOf(cmd);
-  if (idx > 0) {
-    commands.unshift(commands.splice(idx, 1)[0]);
-  }
-};
-
 function validateInputOpts(o, _) {
   o.files = cli.validateInputFiles(_);
 
@@ -82,6 +53,10 @@ function validateJoinOpts(o, _) {
     error("-join currently only supports dbf and csv files");
   }
 
+  if (!Node.fileExists(o.file)) {
+    error("-join missing file to join:", o.file);
+  }
+
   if (!o.keys) error("-join missing required keys option");
   if (!isCommaSep(o.keys)) error("-join keys takes two comma-separated names, e.g.: FIELD1,FIELD2");
 
@@ -132,10 +107,12 @@ function validateSplitOnGridOpts(o, _) {
 }
 
 function validateLinesOpts(o, _) {
-  if (_.length > 0) {
-    error("-lines takes a comma-separated list of fields");
-  } else if (_.length == 1) {
+  if (!o.fields && _.length == 1) {
     o.fields = cli.validateCommaSepNames(_[0]);
+  }
+
+  if (o.fields && o.fields.length === 0 || _.length > 1) {
+    error("-lines takes a comma-separated list of fields");
   }
 }
 
@@ -147,13 +124,30 @@ function validateInnerLinesOpts(o, _) {
 
 function validateSubdivideOpts(o, _) {
   if (_.length !== 1) {
-    error("--subdivide option requires a JavaScript expression");
+    error("-subdivide option requires a JavaScript expression");
   }
   o.expression = _[0];
 }
 
-function validateFilterOpts(o, _) {  if (_.length !== 1) {
-    error("--filter option requires a JavaScript expression");
+function validateFieldsOpts(o, _) {
+  var fields = validateCommaSep(_[0]);
+  if (!fields || fields.length > 0 === false) {
+    error("-fields option requires a comma-sep. list of fields");
+  }
+  o.fields = fields;
+}
+
+function validateLayersOpts(o, _) {
+  var layers = validateCommaSep(_[0]);
+  if (!layers || layers.length > 0 === false) {
+    error("-layers option requires a comma-sep. list of layer names");
+  }
+  o.layers = layers;
+}
+
+function validateFilterOpts(o, _) {
+  if (_.length !== 1) {
+    error("-filter option requires a JavaScript expression");
   }
   o.expression = _[0];
 }
@@ -162,7 +156,8 @@ function validateOutputOpts(o, _) {
   var odir, obase, oext, ofmt;
   if (_.length > 1) {
     error("-o takes one file or directory argument, received:", _);
-  } else if (_.length == 1) {
+  }
+  if (_.length == 1) {
     var ofileInfo = Node.getFileInfo(_[0]);
     if (ofileInfo.is_directory) {
       // odir = argv.o;
@@ -176,14 +171,8 @@ function validateOutputOpts(o, _) {
         if (!cli.validateFileExtension(ofileInfo.file)) {
           error("Output file looks like an unsupported file type:", ofileInfo.file);
         }
-        // use -o extension, if present
-        // allows .topojson or .geojson instead of .json
-        // override extension inferred from --format option
-        // oext = ofileInfo.ext;
       }
       o.output_file = _[0];
-      //obase = ofileInfo.base;
-      //odir = ofileInfo.relative_dir || '.';
     }
   }
 
@@ -199,12 +188,16 @@ function validateOutputOpts(o, _) {
     }
   }
 
+  if (o.encoding) {
+    o.encoding = cli.validateEncoding(o.encoding);
+  }
+
   // topojson-specific
   if ("quantization" in o && o.quantization > 0 === false) {
     error("quantization option should be a nonnegative integer");
   }
 
-  if ("topojson_resolution" in o && o.topojson_resolution > 0 === false) {
-    error("topojson_resolution should be a nonnegative integet");
+  if ("topojson_precision" in o && o.topojson_precision > 0 === false) {
+    error("topojson-precision should be a positive number");
   }
 }

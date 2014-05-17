@@ -186,9 +186,9 @@ function PathImporter(reservedPoints, opts) {
         arcs = new ArcDataset(nn, xx, yy);
 
         // TODO: move shape validation after snapping (which may corrupt shapes)
-        if (opts.snapping) {
+        if (opts.auto_snap || opts.snap_interval) {
           T.start();
-          MapShaper.autoSnapCoords(arcs, opts.snap_interval);
+          MapShaper.autoSnapCoords(arcs, opts.snap_interval || null);
           T.stop("Snapping points");
         }
       } else {

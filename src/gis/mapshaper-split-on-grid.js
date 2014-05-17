@@ -36,7 +36,7 @@ api.splitOnGrid = function(lyr, arcs, rows, cols) {
         shapes: [],
         properties: properties ? [] : null,
         bounds: new Bounds(),
-        name: groupName(idx)
+        name: Utils.getSplitLayerName(lyr.name, groupName(idx))
       };
     }
     group.shapes.push(shp);

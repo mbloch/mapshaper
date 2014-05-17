@@ -39,7 +39,7 @@ function Editor() {
   var map, slider;
 
   var importOpts = {
-    simplifyMethod: "mod2",
+    simplifyMethod: "mapshaper",
     preserveShapes: false,
     repairIntersections: false
   };
@@ -61,21 +61,22 @@ function Editor() {
     slider = new SimplifyControl();
   }
 
-  this.addData = function(data, opts) {
-    var arcData = data.arcs;
-    if (!map) init(arcData.getBounds());
+  this.addData = function(dataset, opts) {
+    if (!map) init(MapShaper.getDatasetBounds(dataset));
 
-    MapShaper.simplifyPaths(arcData, importOpts.simplifyMethod);
+    MapShaper.simplifyPaths(dataset.arcs, {method:importOpts.simplifyMethod});
+    console.log(importOpts);
     if (importOpts.preserveShapes) {
-      MapShaper.protectShapes(arcData, data.layers);
+      MapShaper.protectShapes(dataset.arcs, dataset.layers);
     }
 
-    var filteredArcs = new FilteredPathCollection(arcData);
+    var filteredArcs = new FilteredPathCollection(dataset.arcs);
     var group = new ArcLayerGroup(filteredArcs);
     map.addLayerGroup(group);
 
     // visualize point snapping by displaying snapped points on the map
     // (see debug_snapping option in mapshaper_import_control.js)
+    /*
     try {
       var snaps = data.layers[0].info.snapped_points;
       if (snaps) {
@@ -90,11 +91,10 @@ function Editor() {
         }));
       }
     } catch (e) {}
+    */
 
-
-    // Intersections
     if (importOpts.repairIntersections) {
-      var repair = new RepairControl(map, group, arcData);
+      var repair = new RepairControl(map, group, dataset.arcs);
       slider.on('simplify-start', function() {
         repair.clear();
       });
@@ -109,10 +109,10 @@ function Editor() {
     });
 
     var exportOpts = {
-      precision: opts.precision || null,
-      output_file_base: utils.parseLocalPath(opts.input_file).basename || "out"
+    //  precision: opts.precision || null,
+    //   output_file_base: utils.parseLocalPath(opts.input_file).basename || "out"
     };
-    var exporter = new ExportControl(arcData, data.layers, exportOpts);
+    var exporter = new ExportControl(dataset, exportOpts);
   };
 }
 

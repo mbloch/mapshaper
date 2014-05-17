@@ -822,7 +822,11 @@ Utils.filterObject = function(obj, func, ctx) {
   }, {});
 };
 
-Utils.countValues = function(obj) {
+Utils.count = function(arr, func, ctx) {
+  return Utils.filter(arr, func, ctx).length;
+};
+
+Utils.getValueCounts = function(obj) {
   return Utils.reduce(obj, function(memo, val, key) {
     memo[val] = (val in memo) ? memo[val] + 1 : 1;
     return memo;
@@ -4070,16 +4074,21 @@ MapShaper.LOGGING = false; //
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;
+  return api;
 };
+
+api.stop = stop;
 
 // TODO: adapt to run in browser
 function stop() {
-  var argArr = Utils.toArray(arguments);
+  var args = Utils.toArray(arguments);
+  args.unshift('Error:');
   if (MapShaper.LOGGING) {
-    message.apply(null, argArr);
+    message.apply(null, args);
+    message("(Use -h option to view help)");
     process.exit(1);
   } else {
-    error.apply(null, argArr);
+    error.apply(null, args);
   }
 }
 
@@ -4100,39 +4109,47 @@ utils.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 };
 
-utils.parseLocalPath = // expose for script
-MapShaper.parseLocalPath = function(path) {
-  var obj = {
-    ext: '',
-    directory: '',
-    filename: '',
-    basename: ''
-  };
-  var parts = path.split('/'),
-      name, i;
+// Parse the path to a file
+// Assumes: not a directory path
+utils.parseLocalPath = function(path) {
+  var obj = {},
+      parts = path.split('/'), // TODO: fix
+      i;
 
   if (parts.length == 1) {
-    name = parts[0];
+    obj.filename = parts[0];
+    obj.directory = "";
   } else {
-    name = parts.pop();
+    obj.filename = parts.pop();
     obj.directory = parts.join('/');
   }
-  i = name.lastIndexOf('.');
+  i = obj.filename.lastIndexOf('.');
   if (i > -1) {
-    obj.ext = name.substr(i + 1); // omit '.'
-    obj.basename = name.substr(0, i);
-    obj.pathbase = path.substr(0, i);
+    obj.extension = obj.filename.substr(i + 1);
+    obj.basename = obj.filename.substr(0, i);
+    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
   } else {
-    obj.basename = name;
+    obj.extension = "";
+    obj.basename = obj.filename;
     obj.pathbase = path;
   }
-  obj.filename = name;
   return obj;
 };
 
+utils.getFileBase = function(path) {
+  return utils.parseLocalPath(path).basename;
+};
+
+utils.getFileExtension = function(path) {
+  return utils.parseLocalPath(path).extension;
+};
+
+utils.getPathBase = function(path) {
+  return utils.parseLocalPath(path).pathbase;
+};
+
 MapShaper.guessFileType = function(file) {
-  var info = MapShaper.parseLocalPath(file),
-      ext = info.ext.toLowerCase(),
+  var ext = utils.getFileExtension(file).toLowerCase(),
       type = null;
   if (/json$/i.test(file)) {
     type = 'json';
@@ -4245,27 +4262,31 @@ MapShaper.convertTopoShape = function(shape, arcs, closed) {
   return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
 };
 
-MapShaper.getUniqueLayerNames = function(names) {
-  if (names.length <= 1) return names; // name of single layer guaranteed unique
-  var counts = Utils.countValues(names);
-
-  // assign unique name to each layer
-  var index = {};
-  return names.map(function(name) {
-    var count = counts[name],
-        i;
-    if (count > 1 || name in index) {
-      // naming conflict, need to find a unique name
-      name = name || 'layer'; // use layer1, layer2, etc as default
-      i = 1;
-      while ((name + i) in index) {
-        i++;
-      }
-      name = name + i;
+MapShaper.getCommonFileBase = function(names) {
+  return names.reduce(function(memo, name, i) {
+    if (i === 0) {
+      memo = utils.getFileBase(name);
+    } else {
+      memo = MapShaper.mergeNames(memo, name);
     }
-    index[name] = true;
-    return name;
-  });
+    return memo;
+  }, "");
+};
+
+MapShaper.mergeNames = function(name1, name2) {
+  var merged = "";
+  if (name1 && name2) {
+    merged = utils.findStringPrefix(name1, name2).replace(/[-_]$/, '');
+  }
+  return merged;
+};
+
+utils.findStringPrefix = function(a, b) {
+  var i = 0;
+  for (var n=a.length; i<n; i++) {
+    if (a[i] !== b[i]) break;
+  }
+  return a.substr(0, i);
 };
 
 
@@ -5607,32 +5628,33 @@ var SimplifyControl = function() {
 
 // utility functions for datasets and layers
 
+MapShaper.getDatasetBounds = function(data) {
+  var bounds = new Bounds();
+  data.layers.forEach(function(lyr) {
+    bounds.mergeBounds(MapShaper.getLayerBounds(lyr, data.arcs));
+  });
+  return bounds;
+};
+
 MapShaper.getLayerBounds = function(lyr, arcs) {
   var bounds = new Bounds();
   if (lyr.geometry_type == 'point') {
-    utils.forEachPoint(lyr, function(p) {
+    MapShaper.forEachPoint(lyr, function(p) {
       bounds.mergePoint(p[0], p[1]);
     });
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-    utils.visitArcIds(lyr.shapes, function(id) {
+    MapShaper.forEachArcId(lyr.shapes, function(id) {
       arcs.mergeArcBounds(id, bounds);
     });
   }
   return bounds;
 };
 
-utils.forEachPoint = function(lyr, cb) {
-  if (lyr.geometry_type != 'point') {
-    error("[forEachPoint()] Expects a point layer");
-  }
-  lyr.shapes.forEach(function(shape) {
-    var n = shape ? shape.length : 0;
-    for (var i=0; i<n; i++) {
-      cb(shape[i]);
-    }
+MapShaper.removeLayers = function(dataset, layers) {
+  dataset.layers = Utils.filter(dataset.layers, function(lyr) {
+    return !Utils.contains(layers, lyr);
   });
 };
-
 
 MapShaper.validateLayer = function(lyr, arcs) {
   var type = lyr.geometry_type;
@@ -5950,6 +5972,19 @@ geom.transposePoints = function(points) {
 
 
 
+
+api.buildTopology = function(dataset) {
+  if (!dataset.arcs) return;
+  var raw = dataset.arcs.getVertexData(),
+      topoData = MapShaper.buildPathTopology(raw.xx, raw.yy, raw.nn);
+  dataset.arcs = topoData.arcs;
+  dataset.layers.forEach(function(lyr) {
+    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+      lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
+    }
+  });
+};
+
 // buildPathTopology() converts non-topological paths into
 // a topological format
 //
@@ -5972,7 +6007,7 @@ geom.transposePoints = function(points) {
 //       Negative ids are converted to array indices with the fornula fwId = ~revId.
 //       E.g. -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
 //
-function buildPathTopology(xx, yy, nn) {
+MapShaper.buildPathTopology = function(xx, yy, nn) {
   var pointCount = xx.length,
       index = new ArcIndex(pointCount, getXYHash()),
       typedArrays = !!(xx.subarray && yy.subarray),
@@ -6179,7 +6214,7 @@ function buildPathTopology(xx, yy, nn) {
 
     error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
   }
-}
+};
 
 // Create a lookup table for path ids; path ids are indexed by point id
 //
@@ -6319,16 +6354,33 @@ function getXYHash() {
   };
 }
 
-// Export functions for testing
-MapShaper.buildPathTopology = buildPathTopology;
-MapShaper.ArcIndex = ArcIndex;
+function updateArcIds(src, paths) {
+  return src.map(function(shape) {
+    return updateArcsInShape(shape, paths);
+  });
+}
+
+function updateArcsInShape(shape, topoPaths) {
+  var shape2 = [];
+  Utils.forEach(shape, function(path) {
+    if (path.length != 1) {
+      error("[updateArcsInShape()] Expected single-part input path, found:", path);
+    }
+    var pathId = path[0],
+        topoPath = topoPaths[pathId];
+
+    if (!topoPath) {
+      error("[updateArcsInShape()] Missing topological path for path num:", pathId);
+    }
+    shape2.push(topoPath);
+  });
+  return shape2.length > 0 ? shape2 : null;
+}
 
 
 
 
 // Snap together points within a small threshold
-// @xx, @yy arrays of x, y coords
-// @nn array of path lengths
 // @points (optional) array, snapped coords are added so they can be displayed
 //
 //
@@ -6613,9 +6665,9 @@ function PathImporter(reservedPoints, opts) {
         arcs = new ArcDataset(nn, xx, yy);
 
         // TODO: move shape validation after snapping (which may corrupt shapes)
-        if (opts.snapping) {
+        if (opts.auto_snap || opts.snap_interval) {
           T.start();
-          MapShaper.autoSnapCoords(arcs, opts.snap_interval);
+          MapShaper.autoSnapCoords(arcs, opts.snap_interval || null);
           T.stop("Snapping points");
         }
       } else {
@@ -7407,15 +7459,16 @@ var dataTableProto = {
   filterFields: function(map) {
     var records = this.getRecords(),
         fields = Utils.getKeys(map),
-        f = function(rec, name) {
-          rec[map[name]] = src[name];
-          return rec;
-        },
         src;
 
     for (var i=0, n=records.length; i<n; i++) {
       src = records[i];
       records[i] = Utils.reduce(fields, f, {});
+    }
+
+    function f(dest, name) {
+      dest[map[name]] = src[name];
+      return dest;
     }
   },
 
@@ -7613,27 +7666,27 @@ GeoJSON.countNestedPoints = function(coords, depth) {
   return tally;
 };
 
-MapShaper.exportGeoJSON = function(layers, arcData, opts) {
-  return layers.map(function(layer) {
+MapShaper.exportGeoJSON = function(dataset, opts) {
+  return dataset.layers.map(function(lyr) {
     return {
-      content: MapShaper.exportGeoJSONString(layer, arcData, opts),
-      name: layer.name
+      content: MapShaper.exportGeoJSONString(lyr, dataset.arcs, opts),
+      filename: opts.output_file || lyr.name + ".json" // assume layer has name
     };
   });
 };
 
-MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
+MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   opts = opts || {};
-  var type = layerObj.geometry_type,
-      properties = layerObj.data && layerObj.data.getRecords() || null,
+  var type = lyr.geometry_type,
+      properties = lyr.data && lyr.data.getRecords() || null,
       useFeatures = !!properties && !opts.cut_table;
 
-  if (useFeatures && properties.length !== layerObj.shapes.length) {
+  if (useFeatures && properties.length !== lyr.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
   }
 
-  var objects = Utils.reduce(layerObj.shapes, function(memo, shape, i) {
-    var obj = MapShaper.exportGeoJSONGeometry(shape, arcData, type);
+  var objects = Utils.reduce(lyr.shapes, function(memo, shape, i) {
+    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type);
     if (useFeatures) {
       obj = {
         type: "Feature",
@@ -7656,7 +7709,7 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
   };
 
   if (opts.bbox) {
-    var bounds = MapShaper.getLayerBounds(layerObj, arcData);
+    var bounds = MapShaper.getLayerBounds(lyr, arcs);
     if (bounds.hasBounds()) {
       output.bbox = bounds.toArray();
     }
@@ -7666,8 +7719,8 @@ MapShaper.exportGeoJSONString = function(layerObj, arcData, opts) {
   return parts[0] + objects + parts[1];
 };
 
-MapShaper.exportGeoJSONObject = function(layerObj, arcData, opts) {
-  return JSON.parse(MapShaper.exportGeoJSONString(layerObj, arcData, opts));
+MapShaper.exportGeoJSONObject = function(lyr, arcs, opts) {
+  return JSON.parse(MapShaper.exportGeoJSONString(lyr, arcs, opts));
 };
 
 // export GeoJSON or TopoJSON point geometry
@@ -7738,58 +7791,52 @@ var TopoJSON = {};
 // update ids of the remaining arcs
 TopoJSON.pruneArcs = function(topology) {
   var arcs = topology.arcs;
-  var flags = new Uint8Array(arcs.length);
+  var retained = new Uint32Array(arcs.length);
+
   Utils.forEach(topology.objects, function(obj, name) {
-    TopoJSON.updateArcIds(obj, function(arcId) {
+    TopoJSON.forEachArc(obj, function(arcId) {
       if (arcId < 0) arcId = ~arcId;
-      flags[arcId] = 1;
+      retained[arcId] = 1;
     });
   });
 
-  topology.arcs = Utils.filter(arcs, function(coords, i) {
-    return flags[i] === 1;
-  });
+  var filterCount = Utils.reduce(retained, function(count, flag) {
+    return count + flag;
+  }, 0);
 
-  // Re-index
-  var arcMap = TopoJSON.getArcMap(flags);
-  Utils.forEach(topology.objects, function(obj) {
-    TopoJSON.reindexArcIds(obj, arcMap);
-  });
-};
+  if (filterCount < arcs.length) {
+    TopoJSON.dissolveArcs(topology);
 
-// Update each arc id in a TopoJSON geometry object
-TopoJSON.updateArcIds = function(obj, cb) {
-  if (obj.arcs) {
-    utils.updateArcIds(obj.arcs, cb);
-  } else if (obj.geometries) {
-    Utils.forEach(obj.geometries, function(geom) {
-      TopoJSON.updateArcIds(geom, cb);
+    // filter arcs and remap ids
+    topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {
+      if (arc && retained[i] === 1) { // dissolved-away arcs are set to null
+        retained[i] = arcs.length;
+        arcs.push(arc);
+      } else {
+        retained[i] = -1;
+      }
+      return arcs;
+    }, []);
+
+    // Re-index
+    Utils.forEach(topology.objects, function(obj) {
+      TopoJSON.reindexArcIds(obj, retained);
     });
   }
 };
 
-// Convert an array of flags (0|1) into an array of non-negative arc ids
-TopoJSON.getArcMap = function(mask) {
-  var n = mask.length,
-      count = 0,
-      map = new Uint32Array(n);
-  for (var i=0; i<n; i++) {
-    map[i] = mask[i] === 0 ? -1 : count++;
-  }
-  return map;
-};
 
 // @map is an array of replacement arc ids, indexed by original arc id
-// @obj is any TopoJSON Geometry object (including named objects, GeometryCollections, Polygons, etc)
-TopoJSON.reindexArcIds = function(obj, map) {
-  TopoJSON.updateArcIds(obj, function(arcId) {
-    var rev = arcId < 0,
-        idx = rev ? ~arcId : arcId,
-        mappedId = map[idx];
-    if (mappedId < 0) { // -1 in arc map indicates arc has been removed
-      error("reindexArcIds() invalid arc id");
+// @geom is a TopoJSON Geometry object (including GeometryCollections, Polygons, etc)
+TopoJSON.reindexArcIds = function(geom, map) {
+  TopoJSON.forEachArc(geom, function(id) {
+    var rev = id < 0,
+        idx = rev ? ~id : id,
+        replacement = map[idx];
+    if (replacement < 0) { // -1 in arc map indicates arc has been removed
+      error("[reindexArcIds()] invalid arc id");
     }
-    return rev ? ~mappedId : mappedId;
+    return rev ? ~replacement : replacement;
   });
 };
 
@@ -8003,66 +8050,236 @@ TopoJSON.extractGeometryObject = function(obj, arcs) {
 
 
 
+TopoJSON.dissolveArcs = function(topology) {
+
+  var arcs = topology.arcs,
+      n = arcs.length,
+      i = 1,
+      stale = n + 3,
+      fresh = n + 4;
+
+  var fw = new Int32Array(n),
+      bw = new Int32Array(n),
+      flags = new Uint8Array(n);
+
+  Utils.initializeArray(fw, fresh);
+  Utils.initializeArray(bw, fresh);
+
+  // pass 1: load data
+  Utils.forEach(topology.objects, function(obj) {
+    TopoJSON.forEachPath(obj, handlePath);
+  });
+
+  // pass2: dissolve
+  Utils.forEach(topology.objects, function(obj) {
+    TopoJSON.forEachPath(obj, dissolveArcs);
+  });
+
+  function absId(id) {
+    return id < 0 ? ~id : id;
+  }
+
+  function dissolveVertex(id1, id2, next, prev) {
+    var abs1 = absId(id1),
+        abs2 = absId(id2),
+        fw1 = id1 >= 0,
+        fw2 = id2 >= 0,
+        arr1 = fw1 ? next : prev,
+        arr2 = fw2 ? prev : next,
+        arc1 = arcs[abs1],
+        arc2 = arcs[abs2];
+
+    if (arr1[abs1] != stale && arr2[abs2] != stale) {
+      if (arc1 && arc2) {
+        // dissolve 1 into 2
+        if (id1 < 0 != id2 < 0) {
+          arc1.reverse();
+        }
+        if (id2 >= 0) {
+          arc1.pop();
+          arcs[abs2] = arc1.concat(arc2);
+        } else {
+          arc2.pop();
+          arcs[abs2] = arc2.concat(arc1);
+        }
+        arcs[abs1] = null;
+      }
+      if (arcs[abs1] === null) flags[abs1] = 1;
+      return true;
+    }
+    return false;
+  }
+
+  function dissolveArcs(arcs) {
+    var id1, id2, handled,
+        filtered, dissolved = false;
+    for (var i=0, n=arcs.length; i<n; i++) {
+      id1 = arcs[i];
+      id2 = arcs[(i+1) % n];
+      dissolved = dissolved || dissolveVertex(id1, id2, fw, bw);
+    }
+    if (dissolved) {
+      filtered = Utils.filter(arcs, function(id) {
+        return !flags[absId(id)];
+      });
+      if (filtered.length === 0) error("Empty path");
+    //console.log(">> dissolved?", dissolved, 'filtered:', filtered, 'flags:', Utils.toArray(flags));
+      return filtered;
+    }
+  }
+
+  function handleVertex(id1, id2, next, prev) {
+    var abs1 = absId(id1),
+        abs2 = absId(id2),
+        fw1 = id1 >= 0,
+        fw2 = id2 >= 0,
+        arr1 = fw1 ? next : prev,
+        arr2 = fw2 ? prev : next,
+        pair1 = fw1 == fw2 ? id2 : ~id2,
+        pair2 = fw1 == fw2 ? ~id1 : id1;
+
+    //console.log("id1:", id1, "id2:", id2, "fw1?", fw1, "fw2?", fw2)
+
+    if (abs1 == abs2) { // island: can't dissolve
+      next[abs1] = stale;
+      prev[abs1] = stale;
+    } if (arr1[abs1] == fresh && arr2[abs2] == fresh) {
+      arr1[abs1] = pair1;
+      arr2[abs2] = pair2;
+    } else if (arr1[abs1] != pair1 || arr2[abs2] != pair2) {
+      //console.log(" ... actual 1:", arr1[abs1], "expected:", pair1);
+      //console.log(" ... actual 2:", arr2[abs2], "expected:", pair2);
+      arr1[abs1] = stale;
+      arr2[abs2] = stale;
+    }
+  }
+
+  function handlePath(arcs) {
+    var id1, id2, handled, p;
+    for (var i=0, n=arcs.length; i<n; i++) {
+      id1 = arcs[i];
+      id2 = arcs[(i+1) % n];
+      handleVertex(id1, id2, fw, bw);
+    }
+    //console.log("fw:", Utils.toArray(fw));
+    //console.log("bw:", Utils.toArray(bw));
+  }
+};
+
+// Iterate over all arrays of arc is in a geometry object
+// @cb callback: function(ids)
+// callback returns undefined or an array of replacement ids
+//
+TopoJSON.forEachPath = function forEachPath(obj, cb) {
+  var iterators = {
+        GeometryCollection: function(o) {o.geometries.forEach(eachGeom);},
+        LineString: function(o) {
+          var retn = cb(o.arcs);
+          if (retn) o.arcs = retn;
+        },
+        MultiLineString: function(o) {eachMultiPath(o.arcs);},
+        Polygon: function(o) {eachMultiPath(o.arcs);},
+        MultiPolygon: function(o) {o.arcs.forEach(eachMultiPath);}
+      };
+
+  eachGeom(obj);
+
+  function eachGeom(o) {
+    if (o.type in iterators) {
+      iterators[o.type](o);
+    }
+  }
+
+  function eachMultiPath(arr) {
+    var retn;
+    for (var i=0; i<arr.length; i++) {
+      retn = cb(arr[i]);
+      if (retn) arr[i] = retn;
+    }
+  }
+};
+
+TopoJSON.forEachArc = function forEachArc(obj, cb) {
+  TopoJSON.forEachPath(obj, function(ids) {
+    var retn;
+    for (var i=0; i<ids.length; i++) {
+      retn = cb(ids[i]);
+      if (Utils.isInteger(retn)) {
+        ids[i] = retn;
+      }
+    }
+  });
+};
+
+
+
+
 TopoJSON.exportTopology = function(layers, arcData, opts) {
   var topology = {type: "Topology"},
-      objects = {},
-      // get a copy of arc data (coords are modified for topojson export)
-      filteredArcs = arcData.getFilteredCopy(),
       bounds = new Bounds(),
-      useDelta = true,
+      filteredArcs,
       transform, invTransform;
 
-  // TODO: getting messy, refactor
-  if (opts.topojson_precision) {
-    transform = TopoJSON.getExportTransform(filteredArcs, null, opts.topojson_precision);
-  } else if (opts.topojson_resolution === 0) {
-    useDelta = false;
-  } else if (opts.topojson_resolution > 0) {
-    transform = TopoJSON.getExportTransform(filteredArcs, opts.topojson_resolution);
-  } else if (opts.precision > 0) {
-    transform = TopoJSON.getExportTransformFromPrecision(filteredArcs, opts.precision);
+  // some datasets may lack arcs -- e.g. only point layers
+  if (arcData && arcData.size() > 0) {
+    // get a copy of arc data (coords are modified for topojson export)
+    filteredArcs = arcData.getFilteredCopy();
+    // this is only needed after commands like innerlines and dissolve
+    // TODO: run only if needed
+    // filteredArcs = api.dissolveArcs(layers, filteredArcs);
+
+    if (opts.no_quantization) {
+      // no transform
+    } else if (opts.topojson_precision) {
+      transform = TopoJSON.getExportTransform(filteredArcs, null, opts.topojson_precision);
+    } else if (opts.quantization > 0) {
+      transform = TopoJSON.getExportTransform(filteredArcs, opts.quantization);
+    } else if (opts.precision > 0) {
+      transform = TopoJSON.getExportTransformFromPrecision(filteredArcs, opts.precision);
+    } else {
+      // default -- auto quantization
+      transform = TopoJSON.getExportTransform(filteredArcs);
+    }
+
+    if (transform) {
+      if (transform.isNull()) {
+        // kludge: null transform likely due to collapsed shape(s)
+        // using identity transform as a band-aid, need to rethink this.
+        transform = new Transform();
+      }
+      invTransform = transform.invert();
+      topology.transform = {
+        scale: [invTransform.mx, invTransform.my],
+        translate: [invTransform.bx, invTransform.by]
+      };
+
+      filteredArcs.applyTransform(transform, !!"round");
+    }
+    topology.arcs = TopoJSON.exportArcs(filteredArcs);
   } else {
-    transform = TopoJSON.getExportTransform(filteredArcs); // auto quantization
+    topology.arcs = []; // spec seems to require an array
   }
 
-  // kludge: null transform likely due to collapsed shape(s)
-  // using identity transform as a band-aid, need to rethink this.
-  if (transform && transform.isNull()) {
-    transform = new Transform();
-  }
-
-  if (transform) {
-    invTransform = transform.invert();
-    topology.transform = {
-      scale: [invTransform.mx, invTransform.my],
-      translate: [invTransform.bx, invTransform.by]
-    };
-    filteredArcs.applyTransform(transform, !!"round");
-    // remove identical points ?
-  }
-
-  Utils.forEach(layers, function(lyr, i) {
+  topology.objects = layers.reduce(function(objects, lyr, i) {
     var name = lyr.name || "layer" + (i + 1),
-        geomType = lyr.geometry_type,
-        obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, geomType);
+        obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, lyr.geometry_type);
 
     if (opts.bbox) {
       bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
     }
-    objects[name] = obj;
-    // export attribute data, if present
     if (lyr.data) {
       TopoJSON.exportProperties(obj.geometries, lyr.data.getRecords(), opts);
     }
-  });
+    objects[name] = obj;
+    return objects;
+  }, {});
 
-  topology.objects = objects;
-  topology.arcs = TopoJSON.exportArcs(filteredArcs);
+  // TODO: avoid if not needed (compare with dissolveArcs above)
+  if (filteredArcs) {
+    TopoJSON.pruneArcs(topology);
+  }
 
-  // TODO: avoid if not needed
-  TopoJSON.pruneArcs(topology);
-
-  if (useDelta) {
+  if (transform) {
     TopoJSON.deltaEncodeArcs(topology.arcs);
   }
 
@@ -8179,6 +8396,7 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
 };
 
 TopoJSON.groupPolygonRings = function(shapes, coords) {
+  // first, get path data for MapShaper.groupPolygonRings()
   var iter = new ShapeIter(coords);
   var paths = Utils.map(shapes, function(shape) {
     if (!Utils.isArray(shape)) throw new Error("expected array");
@@ -8189,7 +8407,10 @@ TopoJSON.groupPolygonRings = function(shapes, coords) {
       bounds: coords.getSimpleShapeBounds(shape)
     };
   });
+
+  // second, group the rings
   var groups = MapShaper.groupPolygonRings(paths);
+
   return groups.map(function(paths) {
     return paths.map(function(path) {
       return path.ids;
@@ -8250,11 +8471,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
   if (Utils.isString(topology)) {
     topology = JSON.parse(topology);
   }
-  // topology with only point objects might lack an arcs array --
-  // add empty array so points can be imported (kludge)
-  if (!topology.arcs) {
-    topology.arcs = [];
-  }
+
   var layers = [];
   Utils.forEach(topology.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, topology.arcs);
@@ -8270,18 +8487,28 @@ MapShaper.importTopoJSON = function(topology, opts) {
     TopoJSON.roundCoords(topology.arcs, opts.precision);
   }
 
-  return {
-    arcs: new ArcDataset(TopoJSON.importArcs(topology.arcs)),
+  var dataset = {
     layers: layers,
     info: {}
   };
+  if (topology.arcs && topology.arcs.length > 0) {
+    dataset.arcs = new ArcDataset(TopoJSON.importArcs(topology.arcs));
+  }
+  return dataset;
 };
 
-// TODO: Support ids from attribute data
-//
-MapShaper.exportTopoJSON = function(layers, arcData, opts) {
-  var topology = TopoJSON.exportTopology(layers, arcData, opts),
-      topologies, files;
+MapShaper.exportTopoJSON = function(dataset, opts) {
+  var topology = TopoJSON.exportTopology(dataset.layers, dataset.arcs, opts);
+  var filename = "output.json", // default
+  name;
+  if (opts.output_file) {
+    filename = opts.output_file;
+  } else if (dataset.info && dataset.info.input_files) {
+    name = MapShaper.getCommonFileBase(dataset.info.input_files);
+    if (name) filename = name + ".json";
+  }
+  // TODO: consider supporting this option again
+  /*
   if (opts.topojson_divide) {
     topologies = TopoJSON.splitTopology(topology);
     files = Utils.map(topologies, function(topo, name) {
@@ -8290,13 +8517,12 @@ MapShaper.exportTopoJSON = function(layers, arcData, opts) {
         name: name
       };
     });
-  } else {
-    files = [{
-      content: JSON.stringify(topology),
-      name: ""
-    }];
   }
-  return files;
+  */
+  return [{
+    content: JSON.stringify(topology),
+    filename: filename
+  }];
 };
 
 
@@ -8756,13 +8982,14 @@ MapShaper.importShp = function(src, opts) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 //
-MapShaper.exportShapefile = function(layers, arcData, opts) {
+MapShaper.exportShapefile = function(dataset, opts) {
   var files = [];
-  layers.forEach(function(layer) {
+  dataset.layers.forEach(function(layer) {
     var data = layer.data,
+        name = opts.output_file ? utils.getFileBase(opts.output_file) : layer.name,
         obj, dbf;
     T.start();
-    obj = MapShaper.exportShpAndShx(layer, arcData);
+    obj = MapShaper.exportShpAndShx(layer, dataset.arcs);
     T.stop("Export .shp file");
     T.start();
     data = layer.data;
@@ -8779,16 +9006,13 @@ MapShaper.exportShapefile = function(layers, arcData, opts) {
 
     files.push({
         content: obj.shp,
-        name: layer.name,
-        extension: "shp"
+        filename: name + ".shp"
       }, {
         content: obj.shx,
-        name: layer.name,
-        extension: "shx"
+        filename: name + ".shx"
       }, {
         content: dbf,
-        name: layer.name,
-        extension: "dbf"
+        filename: name + ".dbf"
       });
   });
   return files;
@@ -8923,7 +9147,6 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 // @content: ArrayBuffer or String
 // @type: 'shapefile'|'json'
 //
-api.importFileContent =
 MapShaper.importFileContent = function(content, fileType, opts) {
   var dataset, fileFmt;
   opts = opts || {};
@@ -8960,26 +9183,18 @@ MapShaper.importFileContent = function(content, fileType, opts) {
   // topology; TODO -- consider moving this
   if ((fileFmt == 'shapefile' || fileFmt == 'geojson') && !opts.no_topology) {
     T.start();
-    MapShaper.buildTopology(dataset);
+    api.buildTopology(dataset);
     T.stop("Process topology");
   }
 
+  if (dataset.layers.length == 1) {
+    MapShaper.setLayerName(dataset.layers[0], opts.files ? opts.files[0] : "layer1");
+  }
+  dataset.info.input_files = opts.files;
   dataset.info.input_format = fileFmt;
   return dataset;
 };
 
-api.buildTopology =
-MapShaper.buildTopology = function(dataset) {
-  if (!dataset.arcs) return;
-  var raw = dataset.arcs.getVertexData(),
-      topoData = buildPathTopology(raw.xx, raw.yy, raw.nn);
-  dataset.arcs = topoData.arcs;
-  dataset.layers.forEach(function(lyr) {
-    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
-      lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
-    }
-  });
-};
 
 MapShaper.importJSONRecords = function(arr, opts) {
   return {
@@ -8991,29 +9206,13 @@ MapShaper.importJSONRecords = function(arr, opts) {
   };
 };
 
-function updateArcsInShape(shape, topoPaths) {
-  var shape2 = [];
-  Utils.forEach(shape, function(path) {
-    if (path.length != 1) {
-      error("[updateArcsInShape()] Expected single-part input path, found:", path);
-    }
-    var pathId = path[0],
-        topoPath = topoPaths[pathId];
 
-    if (!topoPath) {
-      error("[updateArcsInShape()] Missing topological path for path num:", pathId);
-    }
-    shape2.push(topoPath);
-  });
-  return shape2.length > 0 ? shape2 : null;
-}
-
-// TODO: find better name, collides with utils.updateArcIds()
-function updateArcIds(src, paths) {
-  return src.map(function(shape) {
-    return updateArcsInShape(shape, paths);
-  });
-}
+// initialize layer name using filename
+MapShaper.setLayerName = function(lyr, path) {
+  if (!lyr.name) {
+    lyr.name = utils.getFileBase(path);
+  }
+};
 
 
 
@@ -9070,7 +9269,7 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
-        info = MapShaper.parseLocalPath(name),
+        // info = utils.parseLocalPath(name),
         type = MapShaper.guessFileType(name),
         reader;
     if (type) {
@@ -9116,15 +9315,16 @@ function ImportControl(editor) {
     }
     if (type == 'shp' || type == 'json') {
       var opts = {
-        debug_snapping: false,
-        input_file: fname,
+        files: [fname],
         precision: precisionInput.value(),
-        snapping: !!El("#g-snap-points-opt").node().checked
+        auto_snap: !!El("#g-snap-points-opt").node().checked
       };
       T.start("Start timing");
       data = MapShaper.importFileContent(content, type, opts);
+      MapShaper.setLayerName(data.layers[0], fname);
       editor.addData(data, opts);
       T.stop("Done importing");
+
     } else if (type == 'dbf') {
       data = new ShapefileTable(content);
       // TODO: validate table (check that record count matches, etc)
@@ -9139,10 +9339,6 @@ function ImportControl(editor) {
     // TODO: accept .prj files
     if (type == 'prj') {
       error("inputFileContent() .prj files not supported (yet)");
-      data = new ShapefileCRS(content);
-      if ('shp' in index) {
-        index.shp.crs = data;
-      }
     }
 
     // associate previously imported Shapefile files with a .shp file
@@ -9167,110 +9363,97 @@ Opts.inherit(ImportControl, EventDispatcher);
 // Return an array of objects with "filename" "filebase" "extension" and
 // "content" attributes.
 //
-api.exportFileContent =
-MapShaper.exportFileContent = function(layers, arcData, opts) {
-  var exporter = MapShaper.exporters[opts.output_format],
-      files = [];
+MapShaper.exportFileContent = function(dataset, opts) {
+  var layers = dataset.layers;
+
+  if (!opts.format) error("[o] Missing output format");
+
+  var files = [],
+      exporter = MapShaper.exporters[opts.format];
   if (!exporter) {
-    error("exportFileContent() Unknown export format:", opts.output_format);
-  }
-  if (!opts.output_extension) {
-    opts.output_extension = MapShaper.getDefaultFileExtension(opts.output_format);
-  }
-  if (!opts.output_file_base) {
-    opts.output_file_base = "out";
+    error("[o] Unknown export format:", opts.format);
   }
 
-  T.start();
-  validateLayerData(layers);
-  assignLayerNames(layers);
+  MapShaper.validateLayerData(layers);
+  MapShaper.assignUniqueLayerNames(layers);
+
   if (opts.cut_table) {
-    Utils.merge(files, MapShaper.exportDataTables(layers, opts));
+    files = MapShaper.exportDataTables(layers, opts).concat(files);
   }
 
-  files = Utils.merge(exporter(layers, arcData, opts), files);
-  // output index of bounding boxes when multiple layers are being exported
-  // TODO: only do this when it makes sense, e.g. layers are the result of splitting
-  // Also: if rounding or quantization are applied during export, bounds may
+  files = exporter(dataset, opts).concat(files);
+
+  // If rounding or quantization are applied during export, bounds may
   // change somewhat... consider adding a bounds property to each layer during
   // export when appropriate.
-  if (layers.length > 1) {
-    files.push(createIndexFile(layers, arcData));
+  if (opts.bbox_index) {
+    files.push(createIndexFile(dataset));
   }
 
-  assignFileNames(files, opts);
-  T.stop("Export " + opts.output_format);
+  MapShaper.validateFileNames(files);
   return files;
-
-  function validateLayerData(layers) {
-    Utils.forEach(layers, function(lyr) {
-      if (!Utils.isArray(lyr.shapes)) {
-        error ("[validateLayerData()] A layer is missing shape data");
-      }
-      // allowing null-type layers
-      if (lyr.geometry_type === null) {
-        if (Utils.some(lyr.shapes, function(o) {
-          return !!o;
-        })) {
-          error("[validateLayerData()] A layer contains shape records and a null geometry type");
-        }
-      } else if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-        error ("[validateLayerData()] A layer has an invalid geometry type:", lyr.geometry_type);
-      }
-    });
-  }
-
-  // Make sure each layer has a unique name
-  function assignLayerNames(layers, opts) {
-    var names = layers.map(function(lyr) {
-      return lyr.name || "";
-    });
-    var uniqueNames = MapShaper.getUniqueLayerNames(names);
-    layers.forEach(function(lyr, i) {
-      lyr.name = uniqueNames[i];
-    });
-  }
-
-  function assignFileNames(files, opts) {
-    var index = {};
-    Utils.forEach(files, function(file) {
-      file.extension = file.extension || opts.output_extension;
-      var basename = opts.output_file_base,
-          filename;
-      if (file.name) {
-        basename += "-" + file.name;
-      }
-      filename = basename + "." + file.extension;
-      if (filename in index) error("File name conflict:", filename);
-      index[filename] = true;
-      file.filebase = basename;
-      file.filename = filename;
-    });
-  }
-
-  // Generate json file with bounding boxes and names of each export layer
-  //
-  function createIndexFile(layers, arcs) {
-    var index = Utils.map(layers, function(lyr) {
-      var bounds = MapShaper.getLayerBounds(lyr, arcs);
-      return {
-        bounds: bounds.toArray(),
-        name: lyr.name
-      };
-    });
-
-    return {
-      content: JSON.stringify(index),
-      extension: 'json',
-      name: 'index'
-    };
-  }
 };
 
 MapShaper.exporters = {
   geojson: MapShaper.exportGeoJSON,
   topojson: MapShaper.exportTopoJSON,
   shapefile: MapShaper.exportShapefile
+};
+
+// Generate json file with bounding boxes and names of each export layer
+// TODO: consider making this a command, or at least make format settable
+//
+MapShaper.createIndexFile = function(dataset) {
+  var index = Utils.map(dataset.layers, function(lyr) {
+    var bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
+    return {
+      bounds: bounds.toArray(),
+      name: lyr.name
+    };
+  });
+
+  return {
+    content: JSON.stringify(index),
+    filename: "bbox-index.json"
+  };
+};
+
+MapShaper.validateLayerData = function(layers) {
+  Utils.forEach(layers, function(lyr) {
+    if (!Utils.isArray(lyr.shapes)) {
+      error ("[validateLayerData()] A layer is missing shape data");
+    }
+    // allowing null-type layers
+    if (lyr.geometry_type === null) {
+      if (Utils.some(lyr.shapes, function(o) {
+        return !!o;
+      })) {
+        error("[validateLayerData()] A layer contains shape records and a null geometry type");
+      }
+    } else if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
+      error ("[validateLayerData()] A layer has an invalid geometry type:", lyr.geometry_type);
+    }
+  });
+};
+
+MapShaper.validateFileNames = function(files) {
+  var index = {};
+  files.forEach(function(file, i) {
+    var filename = file.filename;
+    if (!filename) error("[o] Missing a filename for file" + i);
+    if (filename in index) error("[o] Duplicate filename", filename);
+    index[filename] = true;
+  });
+};
+
+MapShaper.assignUniqueLayerNames = function(layers) {
+  var names = layers.map(function(lyr) {
+    return lyr.name || "layer";
+  });
+  var uniqueNames = MapShaper.uniqifyNames(names);
+  layers.forEach(function(lyr, i) {
+    lyr.name = uniqueNames[i];
+  });
 };
 
 MapShaper.getDefaultFileExtension = function(fileType) {
@@ -9287,15 +9470,30 @@ MapShaper.exportDataTables = function(layers, opts) {
   var tables = [];
   layers.forEach(function(lyr) {
     if (lyr.data) {
-      var name = (lyr.name ? lyr.name + '-' : '') + 'table';
       tables.push({
         content: lyr.data.exportAsJSON(), // TODO: other formats
-        name: name,
-        extension: "json"
+        filename: (lyr.name ? lyr.name + '-' : '') + 'table.json'
       });
     }
   });
   return tables;
+};
+
+MapShaper.uniqifyNames = function(names) {
+  var counts = Utils.getValueCounts(names),
+      index = {};
+  return names.map(function(name) {
+    var count = counts[name],
+        i = 1;
+    if (count > 1 || name in index) {
+      while ((name + i) in index) {
+        i++;
+      }
+      name = name + i;
+    }
+    index[name] = true;
+    return name;
+  });
 };
 
 
@@ -9303,7 +9501,7 @@ MapShaper.exportDataTables = function(layers, opts) {
 
 // Export buttons and their behavior
 //
-var ExportControl = function(arcData, layers, options) {
+var ExportControl = function(dataset, options) {
 
   El('#g-export-control').show();
 
@@ -9341,25 +9539,19 @@ var ExportControl = function(arcData, layers, options) {
   }
 
   function exportAs(format, done) {
-    var opts = {
-        output_format: format,
-        output_extension: MapShaper.getDefaultFileExtension(format)
-      },
-      files, file;
-    Utils.extend(opts, options);
-    files = MapShaper.exportFileContent(layers, arcData, opts);
+    var opts = Utils.extend({format: format}, options),
+        files = MapShaper.exportFileContent(dataset, opts);
 
     if (!Utils.isArray(files) || files.length === 0) {
-      error("exportAs() Export failed.");
+      error("[exportAs()] Nothing to export");
     } else if (files.length == 1) {
-      file = files[0];
-      saveBlob(file.filename, new Blob([file.content]));
+      saveBlob(files[0].filename, new Blob([files[0].content]));
       done();
     } else {
-      saveZipFile((opts.output_file_base || "out") + ".zip", files, done);
+      name = MapShaper.getCommonFileBase(Utils.pluck(files, 'filename')) || "out";
+      saveZipFile(name + ".zip", files, done);
     }
   }
-
 
   function saveBlob(filename, blob) {
     if (window.navigator.msSaveBlob) {
@@ -9577,19 +9769,24 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   return j;
 };
 
-utils.visitArcIds = function(arr, cb) {
-  utils.updateArcIds(arr, function(id) {
-    cb(id);
-    // returns undefined so arc ids are not changed
+MapShaper.forEachPoint = function(lyr, cb) {
+  if (lyr.geometry_type != 'point') {
+    error("[forEachPoint()] Expects a point layer");
+  }
+  lyr.shapes.forEach(function(shape) {
+    var n = shape ? shape.length : 0;
+    for (var i=0; i<n; i++) {
+      cb(shape[i]);
+    }
   });
 };
 
 // Visit each arc id in an array of ids
 // Use non-undefined return values of callback @cb as replacements.
-utils.updateArcIds = function(arr, cb) {
+MapShaper.forEachArcId = function(arr, cb) {
   Utils.forEach(arr, function(item, i) {
     if (item instanceof Array) {
-      utils.updateArcIds(item, cb);
+      MapShaper.forEachArcId(item, cb);
     } else if (Utils.isInteger(item)) {
       var val = cb(item);
       if (val !== void 0) {
@@ -9601,7 +9798,7 @@ utils.updateArcIds = function(arr, cb) {
   });
 };
 
-utils.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
+MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   Utils.forEach(shapes, function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
@@ -10570,6 +10767,69 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
 
 
+api.simplify = function(arcs, opts) {
+  MapShaper.simplifyPaths(arcs, opts);
+
+  if (utils.isNumber(opts.pct)) {
+    arcs.setRetainedPct(opts.pct);
+  } else if (opts.interval) {
+    arcs.setRetainedInterval(opts.interval);
+  }
+
+  if (!opts.no_repair) {
+    var info = api.findAndRepairIntersections(arcs);
+    cli.printRepairMessage(info);
+  }
+};
+
+// @paths ArcDataset object
+MapShaper.simplifyPaths = function(paths, opts) {
+  var method = opts.method || 'mapshaper';
+  var bounds = paths.getBounds().toArray();
+  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown simplification method:", method);
+  if (decimalDegrees && !opts.cartesian) {
+    MapShaper.simplifyPaths3D(paths, simplifyPath);
+    MapShaper.protectWorldEdges(paths);
+  } else {
+    MapShaper.simplifyPaths2D(paths, simplifyPath);
+  }
+};
+
+MapShaper.simplifyPaths2D = function(paths, simplify) {
+  paths.forEach3(function(xx, yy, kk, i) {
+    simplify(kk, xx, yy);
+  });
+};
+
+MapShaper.simplifyPaths3D = function(paths, simplify) {
+  var bufSize = 0,
+      xbuf, ybuf, zbuf;
+
+  paths.forEach3(function(xx, yy, kk, i) {
+    var arcLen = xx.length;
+    if (bufSize < arcLen) {
+      bufSize = Math.round(arcLen * 1.2);
+      xbuf = new Float64Array(bufSize);
+      ybuf = new Float64Array(bufSize);
+      zbuf = new Float64Array(bufSize);
+    }
+
+    MapShaper.convLngLatToSph(xx, yy, xbuf, ybuf, zbuf);
+    simplify(kk, xbuf, ybuf, zbuf);
+  });
+};
+
+// Path simplification functions
+// Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
+//
+MapShaper.simplifiers = {
+  visvalingam: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
+  mapshaper_v1: Visvalingam.getArcCalculator(Visvalingam.specialMetric_v1, Visvalingam.specialMetric3D_v1, 0.65),
+  mapshaper: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
+  dp: DouglasPeucker.calcArcData
+};
+
 // Protect polar coordinates and coordinates at the prime meridian from
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
@@ -10634,74 +10894,6 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
     ybuf[i] = Math.sin(lng) * cosLat * r;
     zbuf[i] = Math.sin(lat) * r;
   }
-};
-
-api.simplifyPaths = // export for script
-MapShaper.simplifyPaths = function(paths, method, force2D) {
-  T.start();
-  var bounds = paths.getBounds().toArray();
-  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
-  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown method:", method);
-  if (decimalDegrees && !force2D) {
-    MapShaper.simplifyPaths3D(paths, simplifyPath);
-    MapShaper.protectWorldEdges(paths);
-  } else {
-    MapShaper.simplifyPaths2D(paths, simplifyPath);
-  }
-  T.stop("Calculate simplification data");
-};
-
-MapShaper.simplifyPaths2D = function(paths, simplify) {
-  paths.forEach3(function(xx, yy, kk, i) {
-    simplify(kk, xx, yy);
-  });
-};
-
-MapShaper.simplifyPaths3D = function(paths, simplify) {
-  var bufSize = 0,
-      xbuf, ybuf, zbuf;
-
-  paths.forEach3(function(xx, yy, kk, i) {
-    var arcLen = xx.length;
-    if (bufSize < arcLen) {
-      bufSize = Math.round(arcLen * 1.2);
-      xbuf = new Float64Array(bufSize);
-      ybuf = new Float64Array(bufSize);
-      zbuf = new Float64Array(bufSize);
-    }
-
-    MapShaper.convLngLatToSph(xx, yy, xbuf, ybuf, zbuf);
-    simplify(kk, xbuf, ybuf, zbuf);
-  });
-};
-
-// Path simplification functions
-// Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
-//
-MapShaper.simplifiers = {
-  vis: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
-  mod1: Visvalingam.getArcCalculator(Visvalingam.specialMetric_v1, Visvalingam.specialMetric3D_v1, 0.65),
-  mod2: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
-  dp: DouglasPeucker.calcArcData
-};
-
-MapShaper.simplifyPathsSph = function(xx, yy, mm, simplify) {
-  var bufSize = 0,
-      xbuf, ybuf, zbuf;
-
-  var data = Utils.map(arcs, function(arc) {
-    var arcLen = arc[0].length;
-    if (bufSize < arcLen) {
-      bufSize = Math.round(arcLen * 1.2);
-      xbuf = new Float64Array(bufSize);
-      ybuf = new Float64Array(bufSize);
-      zbuf = new Float64Array(bufSize);
-    }
-
-    MapShaper.convLngLatToSph(arc[0], arc[1], xbuf, ybuf, zbuf);
-    return simplify(xbuf, ybuf, zbuf, arcLen);
-  });
-  return data;
 };
 
 
@@ -11409,7 +11601,7 @@ function Editor() {
   var map, slider;
 
   var importOpts = {
-    simplifyMethod: "mod2",
+    simplifyMethod: "mapshaper",
     preserveShapes: false,
     repairIntersections: false
   };
@@ -11431,21 +11623,22 @@ function Editor() {
     slider = new SimplifyControl();
   }
 
-  this.addData = function(data, opts) {
-    var arcData = data.arcs;
-    if (!map) init(arcData.getBounds());
+  this.addData = function(dataset, opts) {
+    if (!map) init(MapShaper.getDatasetBounds(dataset));
 
-    MapShaper.simplifyPaths(arcData, importOpts.simplifyMethod);
+    MapShaper.simplifyPaths(dataset.arcs, {method:importOpts.simplifyMethod});
+    console.log(importOpts);
     if (importOpts.preserveShapes) {
-      MapShaper.protectShapes(arcData, data.layers);
+      MapShaper.protectShapes(dataset.arcs, dataset.layers);
     }
 
-    var filteredArcs = new FilteredPathCollection(arcData);
+    var filteredArcs = new FilteredPathCollection(dataset.arcs);
     var group = new ArcLayerGroup(filteredArcs);
     map.addLayerGroup(group);
 
     // visualize point snapping by displaying snapped points on the map
     // (see debug_snapping option in mapshaper_import_control.js)
+    /*
     try {
       var snaps = data.layers[0].info.snapped_points;
       if (snaps) {
@@ -11460,11 +11653,10 @@ function Editor() {
         }));
       }
     } catch (e) {}
+    */
 
-
-    // Intersections
     if (importOpts.repairIntersections) {
-      var repair = new RepairControl(map, group, arcData);
+      var repair = new RepairControl(map, group, dataset.arcs);
       slider.on('simplify-start', function() {
         repair.clear();
       });
@@ -11479,10 +11671,10 @@ function Editor() {
     });
 
     var exportOpts = {
-      precision: opts.precision || null,
-      output_file_base: utils.parseLocalPath(opts.input_file).basename || "out"
+    //  precision: opts.precision || null,
+    //   output_file_base: utils.parseLocalPath(opts.input_file).basename || "out"
     };
-    var exporter = new ExportControl(arcData, data.layers, exportOpts);
+    var exporter = new ExportControl(dataset, exportOpts);
   };
 }
 
