@@ -66,32 +66,26 @@ api.runCommand = function(cmd, dataset, cb) {
   }
 
   if (name == 'calc') {
-    //api.evaluateLayers(srcLayers, arcs, opts.expression);
     MapShaper.applyCommand(api.evaluateLayer, srcLayers, arcs, opts.expression);
 
   } else if (name == 'dissolve') {
-    //dataset.layers = api.dissolveLayers(srcLayers, arcs, opts);
     newLayers = MapShaper.applyCommand(api.dissolveLayer, srcLayers, arcs, opts);
 
   } else if (name == 'fields') {
-    // api.filterFields(srcLayers, opts);
     MapShaper.applyCommand(api.filterFields, srcLayers, opts.fields);
 
   } else if (name == 'filter') {
     MapShaper.applyCommand(api.filterFeatures, srcLayers, arcs, opts.expression);
 
   } else if (name == 'info') {
-    // TODO: consider applying this to layers instead of entire dataset
     api.printInfo(dataset);
 
   } else if (name == 'innerlines') {
-    //newLayers = api.convertLayersToInnerLines(srcLayers, arcData);
     newLayers = MapShaper.applyCommand(api.convertLayerToInnerLines, srcLayers, arcData);
 
   } else if (name == 'join') {
     // async command -- special case
     api.importJoinTableAsync(opts.file, opts, function(table) {
-      // api.joinTableToLayers(srcLayers, table, opts.keys, opts.fields);
       MapShaper.applyCommand(api.joinTableToLayer, srcLayers, table, opts.keys, opts.fields);
       done(err, dataset);
     });
@@ -101,7 +95,6 @@ api.runCommand = function(cmd, dataset, cb) {
     newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
 
   } else if (name == 'lines') {
-    //newLayers = api.convertLayersToTypedLines(srcLayers, arcs, opts.fields);
     MapShaper.applyCommand(api.convertLayerToTypedLines, srcLayers, arcs, opts.fields);
 
   } else if (name == 'merge-layers') {
@@ -117,20 +110,15 @@ api.runCommand = function(cmd, dataset, cb) {
     }
 
   } else if (name == 'split') {
-    //newLayers = api.splitLayers(srcLayers, arcs, opts.field);
     newLayers = MapShaper.applyCommand(api.splitLayer, srcLayers, arcs, opts.field);
 
   } else if (name == 'split-on-grid') {
-    //if (srcLayers.length != 1) err = "Split-on-grid expects one layer";
-    //newLayers = api.splitOnGrid(srcLayers[0], arcs, opts.rows, opts.cols);
     newLayers = MapShaper.applyCommand(api.splitOnGrid, srcLayers, arcs, opts.rows, opts.cols);
 
   } else if (name == 'subdivide') {
-    //newLayers = api.subdivideLayers(srcLayers, arcs, opts.expression);
     newLayers = MapShaper.applyCommand(api.subdivideLayer, srcLayers, arcs, opts.expression);
 
   } else if (name == 'o') {
-    // TODO: handle target option
     api.exportFiles(dataset, opts);
 
   } else {
@@ -196,7 +184,6 @@ api.exportFiles = function(dataset, opts) {
 
   var exports = MapShaper.exportFileContent(dataset, opts);
   // Copy prj file, if both importing and exporting as shapefile
-
   // TODO: move this elsewhere
   if (opts.format == 'shapefile' && dataset.info.input_format == 'shapefile') {
     var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj'),
