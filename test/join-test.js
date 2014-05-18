@@ -7,6 +7,33 @@ function stringifyEqual(a, b) {
 }
 
 describe('mapshaper-join.js', function () {
+  describe('joinTableToLayer()', function () {
+    it('apply filter expression', function () {
+      var targetRecords = [{STATE: 'CA'}, {STATE: "NV"}];
+      var sourceRecords = [
+        {ST: 'CA', YEAR: '2000', CASES: 32},
+        {ST: 'CA', YEAR: '2005', CASES: 12},
+        {ST: 'CA', YEAR: '2010', CASES: 3},
+        {ST: 'NV', YEAR: '2000', CASES: 2},
+        {ST: 'NV', YEAR: '2005', CASES: 54},
+        {ST: 'NV', YEAR: '2010', CASES: 0}
+      ];
+      var lyr = {
+        geometry_type: null,
+        data: new api.internal.DataTable(targetRecords)
+      };
+      var opts = {
+        where: "YEAR=='2005'",
+        fields: ["CASES"],
+        keys: ["STATE", "ST"]
+      };
+      api.joinTableToLayer(lyr, new api.internal.DataTable(sourceRecords), opts);
+      assert.deepEqual(lyr.data.getRecords(),
+          [{ STATE: "CA", CASES: 12}, {STATE: "NV", CASES: 54}]);
+    })
+  })
+
+
   describe('joinTables()', function () {
     it('one-to-several mapping', function () {
       var table1 = new DataTable([{foo: 5, bar: 'a'}, {foo: 5, bar: 'b'}]),

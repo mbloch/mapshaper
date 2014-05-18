@@ -4915,15 +4915,18 @@ MapShaper.getOptionParser = function() {
     });
 
   parser.command("join")
-    .describe("join a dbf or delimited text file to the imported shapes")
+    .describe("join a dbf or delimited text file to the input features")
     .validate(validateJoinOpts)
     .option("keys", {
       describe: "local,foreign keys, e.g. keys=FIPS,CNTYFIPS:str",
       type: "comma-sep"
     })
     .option("fields", {
-      describe: "(optional) join fields, e.g. fields=FIPS:str,POP",
+      describe: "fields to join, e.g. fields=FIPS:str,POP (default is all)",
       type: "comma-sep"
+    })
+    .option("where", {
+      describe: "use a JS expression to filter records from source table"
     })
     .option("target");
 
@@ -11634,13 +11637,16 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
 };
 
 MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
-  if (arcs instanceof ArcDataset === false) error("[compileFeatureExpression()] Missing ArcDataset;", arcs);
+  //if (arcs instanceof ArcDataset === false) error("[compileFeatureExpression()] Missing ArcDataset;", arcs);
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
       newFields = exp.match(RE_ASSIGNEE) || null,
       env = {},
+      useShapes = !!(arcs && shapes),
       func;
   hideGlobals(env);
-  env.$ = new FeatureExpressionContext(arcs, shapes, records);
+  if (useShapes) {
+    env.$ = new FeatureExpressionContext(arcs, shapes, records);
+  }
   exp = MapShaper.removeExpressionSemicolons(exp);
   try {
     func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
@@ -11649,15 +11655,15 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
     stop(e);
   }
 
-  return function(shapeId) {
-    var record = records[shapeId],
+  return function(recId) {
+    var record = records[recId],
         value, f;
 
     if (!record) {
       record = {};
       if (newFields) {
         // add (empty) record to data table if there's an assignment
-        records[shapeId] = record;
+        records[recId] = record;
       }
     }
 
@@ -11670,7 +11676,7 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
         }
       }
     }
-    env.$.__setId(shapeId);
+    if (useShapes) env.$.__setId(recId);
     try {
       value = func.call(null, record, env);
     } catch(e) {
@@ -12018,40 +12024,38 @@ api.filterFields = function(lyr, names) {
 
 
 api.filterFeatures = function(lyr, arcs, exp) {
-  MapShaper.select(lyr, arcs, exp, true);
-};
-
-MapShaper.select = function(lyr, arcs, exp, discard) {
   var records = lyr.data ? lyr.data.getRecords() : null,
-      shapes = lyr.shapes,
-      compiled = MapShaper.compileFeatureExpression(exp, arcs, shapes, records);
+      // shapes = lyr.shapes,
+      compiled = MapShaper.compileFeatureExpression(exp, arcs, lyr.shapes, records);
 
   var selectedShapes = [],
-      selectedRecords = [],
-      unselectedShapes = [],
-      unselectedRecords = [],
-      unselectedLyr;
+      selectedRecords = [];
+      //unselectedShapes = [],
+      //unselectedRecords = [],
+      //unselectedLyr;
 
-  Utils.forEach(shapes, function(shp, shapeId) {
+  Utils.forEach(lyr.shapes, function(shp, shapeId) {
     var rec = records ? records[shapeId] : null,
         result = compiled(shapeId);
 
     if (!Utils.isBoolean(result)) {
-      stop("--filter expressions must return true or false");
+      stop("[filter] Expressions must return true or false");
     }
     if (result) {
       selectedShapes.push(shp);
       if (records) selectedRecords.push(rec);
-    } else if (!discard) {
+    }
+    /* else if (!discard) {
       unselectedShapes.push(shp);
       if (records) unselectedRecords.push(rec);
-    }
+    }*/
   });
 
   lyr.shapes = selectedShapes;
   if (records) {
     lyr.data = new DataTable(selectedRecords);
   }
+  /*
   if (!discard) {
     unselectedLyr = {
       shapes: unselectedShapes,
@@ -12060,6 +12064,16 @@ MapShaper.select = function(lyr, arcs, exp, discard) {
     Opts.copyNewParams(unselectedLyr, lyr);
   }
   return unselectedLyr;
+  */
+};
+
+MapShaper.filterDataTable = function(data, exp) {
+  var records = data.getRecords(),
+      compiled = MapShaper.compileFeatureExpression(exp, null, null, records),
+      filtered = Utils.filter(records, function(rec, i) {
+        return compiled(i);
+      });
+  return new DataTable(filtered);
 };
 
 
@@ -12221,16 +12235,23 @@ api.importJoinTableAsync = function(file, opts, done) {
     // replace foreign key in case original contained type hint
     opts.keys[1] = fields.pop();
     opts.fields = fields;
+
     done(table);
   }, opts);
 };
 
-api.joinTableToLayer = function(lyr, table, keys, joinFields) {
-  var localKey = keys[0],
-      foreignKey = keys[1],
+api.joinTableToLayer = function(lyr, table, opts) {
+  var localKey = opts.keys[0],
+      foreignKey = opts.keys[1],
+      joinFields = opts.fields,
       typeIndex = {};
+
   if (table.fieldExists(foreignKey) === false) {
     stop("[join] External table is missing a field named:", foreignKey);
+  }
+
+  if (opts.where) {
+    table = MapShaper.filterDataTable(table, opts.where);
   }
 
   if (!joinFields || joinFields.length === 0) {
@@ -12575,7 +12596,7 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'join') {
     // async command -- special case
     api.importJoinTableAsync(opts.file, opts, function(table) {
-      MapShaper.applyCommand(api.joinTableToLayer, srcLayers, table, opts.keys, opts.fields);
+      MapShaper.applyCommand(api.joinTableToLayer, srcLayers, table, opts);
       done(err, dataset);
     });
     return;

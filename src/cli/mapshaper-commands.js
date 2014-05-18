@@ -86,7 +86,7 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'join') {
     // async command -- special case
     api.importJoinTableAsync(opts.file, opts, function(table) {
-      MapShaper.applyCommand(api.joinTableToLayer, srcLayers, table, opts.keys, opts.fields);
+      MapShaper.applyCommand(api.joinTableToLayer, srcLayers, table, opts);
       done(err, dataset);
     });
     return;

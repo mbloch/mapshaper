@@ -20,16 +20,23 @@ api.importJoinTableAsync = function(file, opts, done) {
     // replace foreign key in case original contained type hint
     opts.keys[1] = fields.pop();
     opts.fields = fields;
+
     done(table);
   }, opts);
 };
 
-api.joinTableToLayer = function(lyr, table, keys, joinFields) {
-  var localKey = keys[0],
-      foreignKey = keys[1],
+api.joinTableToLayer = function(lyr, table, opts) {
+  var localKey = opts.keys[0],
+      foreignKey = opts.keys[1],
+      joinFields = opts.fields,
       typeIndex = {};
+
   if (table.fieldExists(foreignKey) === false) {
     stop("[join] External table is missing a field named:", foreignKey);
+  }
+
+  if (opts.where) {
+    table = MapShaper.filterDataTable(table, opts.where);
   }
 
   if (!joinFields || joinFields.length === 0) {

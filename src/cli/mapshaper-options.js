@@ -159,15 +159,18 @@ MapShaper.getOptionParser = function() {
     });
 
   parser.command("join")
-    .describe("join a dbf or delimited text file to the imported shapes")
+    .describe("join a dbf or delimited text file to the input features")
     .validate(validateJoinOpts)
     .option("keys", {
       describe: "local,foreign keys, e.g. keys=FIPS,CNTYFIPS:str",
       type: "comma-sep"
     })
     .option("fields", {
-      describe: "(optional) join fields, e.g. fields=FIPS:str,POP",
+      describe: "fields to join, e.g. fields=FIPS:str,POP (default is all)",
       type: "comma-sep"
+    })
+    .option("where", {
+      describe: "use a JS expression to filter records from source table"
     })
     .option("target");
 

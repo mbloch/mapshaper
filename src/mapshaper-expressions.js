@@ -23,13 +23,16 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
 };
 
 MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
-  if (arcs instanceof ArcDataset === false) error("[compileFeatureExpression()] Missing ArcDataset;", arcs);
+  //if (arcs instanceof ArcDataset === false) error("[compileFeatureExpression()] Missing ArcDataset;", arcs);
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
       newFields = exp.match(RE_ASSIGNEE) || null,
       env = {},
+      useShapes = !!(arcs && shapes),
       func;
   hideGlobals(env);
-  env.$ = new FeatureExpressionContext(arcs, shapes, records);
+  if (useShapes) {
+    env.$ = new FeatureExpressionContext(arcs, shapes, records);
+  }
   exp = MapShaper.removeExpressionSemicolons(exp);
   try {
     func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
@@ -38,15 +41,15 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
     stop(e);
   }
 
-  return function(shapeId) {
-    var record = records[shapeId],
+  return function(recId) {
+    var record = records[recId],
         value, f;
 
     if (!record) {
       record = {};
       if (newFields) {
         // add (empty) record to data table if there's an assignment
-        records[shapeId] = record;
+        records[recId] = record;
       }
     }
 
@@ -59,7 +62,7 @@ MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
         }
       }
     }
-    env.$.__setId(shapeId);
+    if (useShapes) env.$.__setId(recId);
     try {
       value = func.call(null, record, env);
     } catch(e) {
