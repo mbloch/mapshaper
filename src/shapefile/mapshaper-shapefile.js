@@ -96,6 +96,17 @@ MapShaper.exportShapefile = function(dataset, opts) {
         content: dbf,
         filename: name + ".dbf"
       });
+
+    // Copy prj file, if Shapefile import and running in Node.
+    if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
+      var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj');
+      if (cli.fileExists(prjFile)) {
+        files.push({
+          content: cli.readFile(prjFile, 'utf-8'),
+          filename: name + ".prj"
+        });
+      }
+    }
   });
   return files;
 };

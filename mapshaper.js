@@ -9954,6 +9954,17 @@ MapShaper.exportShapefile = function(dataset, opts) {
         content: dbf,
         filename: name + ".dbf"
       });
+
+    // Copy prj file, if Shapefile import and running in Node.
+    if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
+      var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj');
+      if (cli.fileExists(prjFile)) {
+        files.push({
+          content: cli.readFile(prjFile, 'utf-8'),
+          filename: name + ".prj"
+        });
+      }
+    }
   });
   return files;
 };
@@ -12661,23 +12672,6 @@ api.exportFiles = function(dataset, opts) {
   }
 
   var exports = MapShaper.exportFileContent(dataset, opts);
-  // Copy prj file, if both importing and exporting as shapefile
-  // TODO: move this elsewhere
-  if (opts.format == 'shapefile' && dataset.info.input_format == 'shapefile') {
-    var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj'),
-        shpFiles = utils.filter(exports, function(o) {
-          return (/\.shp$/).test(o.filename);
-        });
-
-    if (cli.fileExists(prjFile)) {
-      shpFiles.forEach(function(o) {
-        exports.push({
-          content: cli.readFile(prjFile, 'utf-8'),
-          filename: utils.getFileBase(o.filename) + ".prj"
-        });
-      });
-    }
-  }
 
   var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
   exports.forEach(function(obj, i) {

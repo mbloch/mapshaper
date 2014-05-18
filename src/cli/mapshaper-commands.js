@@ -183,23 +183,6 @@ api.exportFiles = function(dataset, opts) {
   }
 
   var exports = MapShaper.exportFileContent(dataset, opts);
-  // Copy prj file, if both importing and exporting as shapefile
-  // TODO: move this elsewhere
-  if (opts.format == 'shapefile' && dataset.info.input_format == 'shapefile') {
-    var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj'),
-        shpFiles = utils.filter(exports, function(o) {
-          return (/\.shp$/).test(o.filename);
-        });
-
-    if (cli.fileExists(prjFile)) {
-      shpFiles.forEach(function(o) {
-        exports.push({
-          content: cli.readFile(prjFile, 'utf-8'),
-          filename: utils.getFileBase(o.filename) + ".prj"
-        });
-      });
-    }
-  }
 
   var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
   exports.forEach(function(obj, i) {
