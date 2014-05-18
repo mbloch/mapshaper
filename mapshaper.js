@@ -4768,8 +4768,8 @@ api.parseCommands = function(arr) {
 
 MapShaper.getOptionParser = function() {
   var parser = new CommandParser(),
-      usage = "Usage: mapshaper -i file(s) [import opts] [-command [command opts]] ...\n" +
-              "       mapshaper -help|-encodings|-version";
+      usage = "Usage: mapshaper -i input-file(s) [input-options] [command [command-options]] ...\n" +
+              "       mapshaper -help|encodings|version";
   parser.usage(usage);
 
   parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
@@ -4960,6 +4960,16 @@ MapShaper.getOptionParser = function() {
     .option("rename")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
+/*
+  parser.command("points")
+    .option("rename")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target")
+    .option("type", {
+      type: "set",
+      values: ["centroids", "vertices", "intersections", "anchors"]
+    })
+*/
 
   parser.command("split")
     .describe("split features on a data field")
@@ -8767,7 +8777,6 @@ TopoJSON.forEachArc = function forEachArc(obj, cb) {
 
 
 
-
 TopoJSON.importArcs = function(arcs) {
   return Utils.map(arcs, function(arc) {
     var xx = [],
@@ -12045,6 +12054,44 @@ MapShaper.select = function(lyr, arcs, exp, discard) {
 
 
 
+// Merge similar layers in a dataset, in-place
+api.mergeLayers = function(layers) {
+  var index = {},
+      merged = [];
+
+  // layers with same key can be merged
+  function layerKey(lyr) {
+    var key = lyr.type || '';
+    if (lyr.data) {
+      key += '~' + lyr.data.getFields().sort().join(',');
+    }
+    return key;
+  }
+
+  layers.forEach(function(lyr) {
+    var key = layerKey(lyr),
+        indexedLyr,
+        records;
+    if (key in index === false) {
+      index[key] = lyr;
+      merged.push(lyr);
+    } else {
+      indexedLyr = index[key];
+      indexedLyr.name = MapShaper.mergeNames(indexedLyr.name, lyr.name);
+      indexedLyr.shapes = indexedLyr.shapes.concat(lyr.shapes);
+      if (indexedLyr.data) {
+        records = indexedLyr.data.getRecords().concat(lyr.data.getRecords());
+        indexedLyr.data = new DataTable(records);
+      }
+    }
+  });
+
+  return merged;
+};
+
+
+
+
 MapShaper.mergeDatasets = function(arr) {
   var arcSources = [],
       arcCount = 0,
@@ -12114,41 +12161,6 @@ utils.mergeArrays = function(arrays, TypedArr) {
     }
     offs += n;
   });
-  return merged;
-};
-
-// Merge similar layers in a dataset, in-place
-api.mergeLayers = function(layers) {
-  var index = {},
-      merged = [];
-
-  // layers with same key can be merged
-  function layerKey(lyr) {
-    var key = lyr.type || '';
-    if (lyr.data) {
-      key += '~' + lyr.data.getFields().sort().join(',');
-    }
-    return key;
-  }
-
-  layers.forEach(function(lyr) {
-    var key = layerKey(lyr),
-        indexedLyr,
-        records;
-    if (key in index === false) {
-      index[key] = lyr;
-      merged.push(lyr);
-    } else {
-      indexedLyr = index[key];
-      indexedLyr.name = MapShaper.mergeNames(indexedLyr.name, lyr.name);
-      indexedLyr.shapes = indexedLyr.shapes.concat(lyr.shapes);
-      if (indexedLyr.data) {
-        records = indexedLyr.data.getRecords().concat(lyr.data.getRecords());
-        indexedLyr.data = new DataTable(records);
-      }
-    }
-  });
-
   return merged;
 };
 

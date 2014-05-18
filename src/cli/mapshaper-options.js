@@ -12,8 +12,8 @@ api.parseCommands = function(arr) {
 
 MapShaper.getOptionParser = function() {
   var parser = new CommandParser(),
-      usage = "Usage: mapshaper -i file(s) [import opts] [-command [command opts]] ...\n" +
-              "       mapshaper -help|-encodings|-version";
+      usage = "Usage: mapshaper -i input-file(s) [input-options] [command [command-options]] ...\n" +
+              "       mapshaper -help|encodings|version";
   parser.usage(usage);
 
   parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
@@ -204,6 +204,16 @@ MapShaper.getOptionParser = function() {
     .option("rename")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
+/*
+  parser.command("points")
+    .option("rename")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target")
+    .option("type", {
+      type: "set",
+      values: ["centroids", "vertices", "intersections", "anchors"]
+    })
+*/
 
   parser.command("split")
     .describe("split features on a data field")

@@ -7835,7 +7835,6 @@ TopoJSON.forEachArc = function forEachArc(obj, cb) {
 
 
 
-
 TopoJSON.importArcs = function(arcs) {
   return Utils.map(arcs, function(arc) {
     var xx = [],
@@ -9213,15 +9212,6 @@ MapShaper.setLayerName = function(lyr, path) {
   }
 };
 
-
-
-
-function ShapefileCRS(prj) {
-
-  this.exportAsPrj = function() {
-    return prj;
-  };
-}
 
 
 

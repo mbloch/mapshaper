@@ -1,4 +1,4 @@
-/* @requires mapshaper-import, mapshaper-data-table, mapshaper-crs */
+/* @requires mapshaper-import, mapshaper-data-table */
 
 function DropControl(importer) {
   var el = El('#page-wrapper');
