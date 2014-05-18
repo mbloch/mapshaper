@@ -1,0 +1,53 @@
+STATE_NAME,STATE_FIPS,SUB_REGION,STATE_ABBR,POP2010,POP10_SQMI
+Alabama,01,East South Central,AL,4779736,92.50
+Alaska,02,Pacific,AK,710231,1.20
+Arizona,04,Mountain,AZ,6392017,56.10
+Arkansas,05,West South Central,AR,2915918,54.80
+California,06,Pacific,CA,37253956,235.60
+Colorado,08,Mountain,CO,5029196,48.30
+Connecticut,09,New England,CT,3574097,720.20
+Delaware,10,South Atlantic,DE,897934,454.50
+District of Columbia,11,South Atlantic,DC,601723,9675.60
+Florida,12,South Atlantic,FL,18801310,331.60
+Georgia,13,South Atlantic,GA,9687653,164.70
+Hawaii,15,Pacific,HI,1360301,211.60
+Idaho,16,Mountain,ID,1567582,18.80
+Illinois,17,East North Central,IL,12830632,227.70
+Indiana,18,East North Central,IN,6483802,179.20
+Iowa,19,West North Central,IA,3046355,54.10
+Kansas,20,West North Central,KS,2853118,34.70
+Kentucky,21,East South Central,KY,4339367,107.40
+Louisiana,22,West South Central,LA,4533372,96.90
+Maine,23,New England,ME,1328361,40.90
+Maryland,24,South Atlantic,MD,5773552,583.20
+Massachusetts,25,New England,MA,6547629,808.00
+Michigan,26,East North Central,MI,9883640,170.00
+Minnesota,27,West North Central,MN,5303925,62.90
+Mississippi,28,East South Central,MS,2967297,62.20
+Missouri,29,West North Central,MO,5988927,85.90
+Montana,30,Mountain,MT,989415,6.70
+Nebraska,31,West North Central,NE,1826341,23.60
+Nevada,32,Mountain,NV,2700551,24.40
+New Hampshire,33,New England,NH,1316470,142.10
+New Jersey,34,Middle Atlantic,NJ,8791894,1164.00
+New Mexico,35,Mountain,NM,2059179,16.90
+New York,36,Middle Atlantic,NY,19378102,398.90
+North Carolina,37,South Atlantic,NC,9535483,193.30
+North Dakota,38,West North Central,ND,672591,9.50
+Ohio,39,East North Central,OH,11536504,279.60
+Oklahoma,40,West South Central,OK,3751351,53.70
+Oregon,41,Pacific,OR,3831074,39.50
+Pennsylvania,42,Middle Atlantic,PA,12702379,280.40
+Puerto Rico,72,South Atlantic,PR,-99,-99.00
+Rhode Island,44,New England,RI,1052567,968.40
+South Carolina,45,South Atlantic,SC,4625364,149.50
+South Dakota,46,West North Central,SD,814180,10.60
+Tennessee,47,East South Central,TN,6346105,150.60
+Texas,48,West South Central,TX,25145561,95.00
+Utah,49,Mountain,UT,2763885,32.60
+Vermont,50,New England,VT,625741,65.10
+Virginia,51,South Atlantic,VA,8001024,200.00
+Washington,53,Pacific,WA,6724540,99.40
+West Virginia,54,South Atlantic,WV,1852994,76.50
+Wisconsin,55,East North Central,WI,5686986,101.40
+Wyoming,56,Mountain,WY,563626,5.80

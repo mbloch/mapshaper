@@ -114,8 +114,8 @@ describe('mapshaper-table-import.js', function() {
   describe('importJoinTableAsync', function () {
     it('import csv w/ typed key', function (done) {
       var opts = {
-        join_keys: ['KEY1', 'FIPS:str'],
-        join_fields: null
+        keys: ['KEY1', 'FIPS:str'],
+        fields: null
       }
       api.importJoinTableAsync(fixPath("test_data/two_states.csv"), opts,
           function(table) {

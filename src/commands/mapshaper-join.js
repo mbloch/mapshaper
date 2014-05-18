@@ -5,20 +5,21 @@
 //
 api.importJoinTableAsync = function(file, opts, done) {
   MapShaper.importTableAsync(file, function(table) {
-    var fields = opts.join_fields || table.getFields(),
-        keys = opts.join_keys;
+    var fields = opts.fields || table.getFields(),
+        keys = opts.keys;
     if (!Utils.isArray(keys) || keys.length != 2) {
-      error("importJointTable() Invalid join keys:", keys);
+      stop("[join] Invalid join keys:", keys);
     }
     // this may cause duplicate field name with inconsistent type hints
     // adjustRecordTypes() should handle this case
-    fields.push(opts.join_keys[1]);
+    fields.push(opts.keys[1]);
     // convert data types based on type hints and numeric csv fields
-    // SIDE EFFECT: type hints are removed from field names
+    // side effect: type hints are removed from field names
+    // TODO: remove side effect
     fields = MapShaper.adjustRecordTypes(table.getRecords(), fields);
     // replace foreign key in case original contained type hint
-    opts.join_keys[1] = fields.pop();
-    opts.join_fields = fields;
+    opts.keys[1] = fields.pop();
+    opts.fields = fields;
     done(table);
   }, opts);
 };
