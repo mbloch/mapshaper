@@ -4911,7 +4911,7 @@ MapShaper.getOptionParser = function() {
   parser.command("expression")
     .alias('e')
     .validate(function() {
-      error("-expression has been renamed as -calc");
+      error("-expression has been named as -calc");
     });
 
   parser.command("join")
@@ -4942,7 +4942,7 @@ MapShaper.getOptionParser = function() {
       describe: "fields to copy when dissolving (comma-sep. list)",
       type: "comma-sep"
     })
-    .option("rename")
+    .option("name")
     .option("field")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
@@ -4950,7 +4950,7 @@ MapShaper.getOptionParser = function() {
   parser.command("lines")
     .describe("convert polygons to lines; takes optional list of fields")
     .validate(validateLinesOpts)
-    .option("rename")
+    .option("name")
     .option("fields", {
       type: "comma-sep"
     })
@@ -4960,12 +4960,12 @@ MapShaper.getOptionParser = function() {
   parser.command("innerlines")
     .describe("output polyline layers containing shared polygon boundaries")
     .validate(validateInnerLinesOpts)
-    .option("rename")
+    .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 /*
   parser.command("points")
-    .option("rename")
+    .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target")
     .option("type", {
@@ -4985,7 +4985,7 @@ MapShaper.getOptionParser = function() {
     .describe("recursively divide a layer with a boolean JS expression")
     .validate(validateSubdivideOpts)
     .option("expression")
-    .option("no-replace", {alias: "+", type: "flag"})
+    // .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 
   parser.command("split-on-grid")
@@ -4997,7 +4997,7 @@ MapShaper.getOptionParser = function() {
     .option("rows", {
       type: "integer"
     })
-    .option("no-replace", {alias: "+", type: "flag"})
+    // .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 
   parser.command("merge-layers")
@@ -5010,7 +5010,7 @@ MapShaper.getOptionParser = function() {
     .option("target", {
       describe: "layer(s) to target (comma-sep., takes * wildcard, default: *)"
     })
-    .option("rename", {
+    .option("name", {
       describe: "rename the targeted layer(s)"
     })
     .option("no-replace", { // or maybe "add-layer",
@@ -12635,9 +12635,9 @@ api.runCommand = function(cmd, dataset, cb) {
     err = "Unhandled command: -" + name;
   }
 
-  if (opts.rename) {
+  if (opts.name) {
     (newLayers || srcLayers).forEach(function(lyr) {
-      lyr.name = opts.rename;
+      lyr.name = opts.name;
     });
   }
 

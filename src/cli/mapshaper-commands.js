@@ -125,9 +125,9 @@ api.runCommand = function(cmd, dataset, cb) {
     err = "Unhandled command: -" + name;
   }
 
-  if (opts.rename) {
+  if (opts.name) {
     (newLayers || srcLayers).forEach(function(lyr) {
-      lyr.name = opts.rename;
+      lyr.name = opts.name;
     });
   }
 
