@@ -31,7 +31,7 @@ geom.getSphericalShapeArea2 = function(shp, arcs) {
 
 // Return path with the largest (area) bounding box
 // @shp array of array of arc ids
-// @arec ArcDataset
+// @arcs ArcCollection
 geom.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
   return Utils.reduce(shp, function(maxPath, path) {
@@ -45,7 +45,7 @@ geom.getMaxPath = function(shp, arcs) {
 };
 
 // @ids array of arc ids
-// @arcs ArcDataset
+// @arcs ArcCollection
 geom.getAvgPathXY = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return null;
@@ -320,6 +320,7 @@ geom.transposeXYCoords = function(xx, yy) {
   }
   return points;
 };
+*/
 
 geom.transposePoints = function(points) {
   var xx = [], yy = [], n=points.length;
@@ -327,7 +328,5 @@ geom.transposePoints = function(points) {
     xx.push(points[i][0]);
     yy.push(points[i][1]);
   }
-  return {xx: xx, yy: yy, pointCount: n};
+  return [xx, yy];
 };
-
-*/

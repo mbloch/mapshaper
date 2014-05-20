@@ -1,16 +1,17 @@
 /* @requires mapshaper-common, mapshaper-geom */
 
-MapShaper.ArcDataset = ArcDataset;
+MapShaper.ArcCollection = ArcCollection;
+
 
 // An interface for managing a collection of paths.
 // Constructor signatures:
 //
-// ArcDataset(arcs)
-//    arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
+// ArcCollection(arcs)
+//    arcs is an array of polyline arcs; each arc is an array of points: [[x0, y0], [x1, y1], ... ]
 //
-// ArcDataset(nn, xx, yy)
+// ArcCollection(nn, xx, yy)
 //    nn is an array of arc lengths; xx, yy are arrays of concatenated coords;
-function ArcDataset() {
+function ArcCollection() {
   var _xx, _yy,  // coordinates data
       _ii, _nn,  // indexes, sizes
       _zz, _zlimit = 0, // simplification
@@ -22,12 +23,20 @@ function ArcDataset() {
   } else if (arguments.length == 3) {
     initXYData.apply(this, arguments);
   } else {
-    error("ArcDataset() Invalid arguments");
+    error("ArcCollection() Invalid arguments");
   }
 
-  function initLegacyArcs(coords) {
-    var data = convertLegacyArcs(coords);
-    initXYData(data.nn, data.xx, data.yy);
+  function initLegacyArcs(arcs) {
+    var xx = [], yy = [];
+    var nn = arcs.map(function(points) {
+      var n = points ? points.length : 0;
+      for (var i=0; i<n; i++) {
+        xx.push(points[i][0]);
+        yy.push(points[i][1]);
+      }
+      return n;
+    });
+    initXYData(nn, xx, yy);
   }
 
   function initXYData(nn, xx, yy) {
@@ -49,7 +58,7 @@ function ArcDataset() {
     }
 
     if (idx != _xx.length || _xx.length != _yy.length) {
-      error("ArcDataset#initXYData() Counting error");
+      error("ArcCollection#initXYData() Counting error");
     }
 
     initBounds();
@@ -60,7 +69,7 @@ function ArcDataset() {
 
   function initZData(zz) {
     if (!zz) zz = new Float64Array(_xx.length);
-    if (zz.length != _xx.length) error("ArcDataset#initZData() mismatched arrays");
+    if (zz.length != _xx.length) error("ArcCollection#initZData() mismatched arrays");
     if (zz instanceof Array) zz = new Float64Array(zz);
     _zz = zz;
     _filteredArcIter = new FilteredArcIter(_xx, _yy, _zz);
@@ -147,7 +156,7 @@ function ArcDataset() {
   };
 
   this.getCopy = function() {
-    var copy = new ArcDataset(new Int32Array(_nn), new Float64Array(_xx),
+    var copy = new ArcCollection(new Int32Array(_nn), new Float64Array(_xx),
         new Float64Array(_yy));
     if (_zz) copy.setThresholds(new Float64Array(_zz));
     return copy;
@@ -178,7 +187,7 @@ function ArcDataset() {
       if (n2 < 2) error("Collapsed arc"); // endpoints should be z == Infinity
       nn2[arcId] = n2;
     }
-    var copy = new ArcDataset(nn2, xx2, yy2);
+    var copy = new ArcCollection(nn2, xx2, yy2);
     copy.setThresholds(zz2);
     return copy;
   };
@@ -389,7 +398,7 @@ function ArcDataset() {
         }
       });
     } else {
-      error("ArcDataset#setThresholds() Invalid threshold data.");
+      error("ArcCollection#setThresholds() Invalid threshold data.");
     }
     initZData(zz);
     return this;
@@ -417,7 +426,7 @@ function ArcDataset() {
   // Return array of z-values that can be removed for simplification
   //
   this.getRemovableThresholds = function(nth) {
-    if (!_zz) error("ArcDataset#getRemovableThresholds() Missing simplification data.");
+    if (!_zz) error("ArcCollection#getRemovableThresholds() Missing simplification data.");
     var skip = nth | 1,
         arr = new Float64Array(Math.ceil(_zz.length / skip)),
         z;
@@ -432,7 +441,7 @@ function ArcDataset() {
 
   this.getArcThresholds = function(arcId) {
     if (!(arcId >= 0 && arcId < this.size())) {
-      error("ArcDataset#getArcThresholds() invalid arc id:", arcId);
+      error("ArcCollection#getArcThresholds() invalid arc id:", arcId);
     }
     var start = _ii[arcId],
         end = start + _nn[arcId];

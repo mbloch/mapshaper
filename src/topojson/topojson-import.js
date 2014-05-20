@@ -1,16 +1,5 @@
 /* @requires topojson-common */
 
-TopoJSON.importArcs = function(arcs) {
-  return Utils.map(arcs, function(arc) {
-    var xx = [],
-        yy = [];
-    for (var i=0, len=arc.length; i<len; i++) {
-      xx.push(arc[i][0]);
-      yy.push(arc[i][1]);
-    }
-    return [xx, yy];
-  });
-};
 
 TopoJSON.decodeArcs = function(arcs, transform) {
   var mx = transform.scale[0],

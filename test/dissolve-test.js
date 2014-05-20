@@ -2,7 +2,7 @@ var assert = require('assert'),
     api = require("../"),
     utils = api.Utils,
     dissolveLayer = api.dissolveLayer,
-    ArcDataset = api.internal.ArcDataset;
+    ArcCollection = api.internal.ArcCollection;
 
 describe('mapshaper-dissolve.js', function () {
 
@@ -15,13 +15,11 @@ describe('mapshaper-dissolve.js', function () {
       //    /   \ /
       //   a --- c
       //
-      //   cab, bc,   bdc
-      //   0,   1/-2, 2
+      //   cab, bc, bdc
+      //   0,   1,  2
 
-      var arcs = [[[3, 1, 2], [1, 1, 3]],
-          [[2, 3], [3, 1]],
-          [[2, 4, 3], [3, 3, 1]]];
-      var arcData = new ArcDataset(arcs);
+      var arcs = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
+      var arcData = new ArcCollection(arcs);
 
       // Handle arcs with a kink
       it('bugfix 2 (abnormal topology) test 1', function() {
@@ -164,9 +162,9 @@ describe('mapshaper-dissolve.js', function () {
       //   cabc, defd
       //   0,    1
 
-      var arcs = [[[3, 1, 2, 3], [1, 1, 3, 1]],
-          [[4, 6, 5, 4], [3, 3, 1, 3]]];
-      var arcData = new ArcDataset(arcs);
+      var arcs = [[[3, 1], [1, 1], [2, 3], [3, 1]],
+          [[4, 3], [6, 3], [5, 1], [4, 3]]];
+      var arcData = new ArcCollection(arcs);
 
       it('no dissolve', function () {
         var lyr = {
@@ -204,11 +202,11 @@ describe('mapshaper-dissolve.js', function () {
       //       g
       //
       //   abcda, efghe
-      //   0/-1,  1
+      //   0,     1
 
-      var arcs = [[[3, 4, 3, 2, 3], [4, 3, 2, 3, 4]],
-          [[3, 5, 3, 1, 3], [5, 3, 1, 3, 5]]];
-      var arcData = new ArcDataset(arcs);
+      var arcs = [[[3, 4], [4, 3], [3, 2], [2, 3], [3, 4]],
+          [[3, 5], [5, 3], [3, 1], [1, 3], [3, 5]]];
+      var arcData = new ArcCollection(arcs);
 
       it('empty hole', function () {
         var lyr = {
@@ -265,13 +263,13 @@ describe('mapshaper-dissolve.js', function () {
       //      \ /
       //       g
       //
-      //   abcda, ae,   efghe
-      //   0/-1,  1/-2, 2
+      //   abcda, ae, efghe
+      //   0,     1,  2
 
-      var arcs = [[[3, 4, 3, 2, 3], [4, 3, 2, 3, 4]],
-          [[3, 3], [4, 5]],
-          [[3, 5, 3, 1, 3], [5, 3, 1, 3, 5]]];
-      var arcData = new ArcDataset(arcs);
+      var arcs = [[[3, 4], [4, 3], [3, 2], [2, 3], [3, 4]],
+          [[3, 4], [3, 5]],
+          [[3, 5], [5, 3], [3, 1], [1, 3], [3, 5]]];
+      var arcData = new ArcCollection(arcs);
 
       // TODO: is this the desired behavior?
       it('dissolve a shape into itself', function () {
@@ -301,13 +299,14 @@ describe('mapshaper-dissolve.js', function () {
       //
       //   abc,  cda,  ae,   efg, gc,   ghe
       //   0/-1, 1/-2, 2/-3, 3,   4/-5, 5
-      var arcs = [[[3, 4, 3], [4, 3, 2]],
-          [[3, 2, 3], [2, 3, 4]],
-          [[3, 3], [4, 5]],
-          [[3, 5, 3], [5, 3, 1]],
-          [[3, 3], [1, 2]],
-          [[3, 1, 3], [1, 3, 5]]];
-      var arcData = new ArcDataset(arcs);
+
+      var arcs = [[[3, 4], [4, 3], [3, 2]],
+          [[3, 2], [2, 3], [3, 4]],
+          [[3, 4], [3, 5]],
+          [[3, 5], [5, 3], [3, 1]],
+          [[3, 1], [3, 2]],
+          [[3, 1], [1, 3], [3, 5]]];
+      var arcData = new ArcCollection(arcs);
 
       it('dissolve two of three shapes', function () {
         var lyr = {
@@ -363,19 +362,19 @@ describe('mapshaper-dissolve.js', function () {
       //  |         |
       //  c ------- b
       //
-      //   abcde, efge,  ea
-      //   0,     1/-2, 3
+      //   abcde, efge, ea
+      //   0,     1,    3
 
-      var arcs = [[[5, 5, 1, 1, 3], [3, 1, 1, 3, 3]],
-          [[3, 4, 2, 3], [3, 2, 2, 3]],
-          [[3, 5], [3, 3]]];
-      var arcData = new ArcDataset(arcs);
+      var arcs = [[[5, 3], [5, 1], [1, 1], [1, 3], [3, 3]],
+          [[3, 3], [4, 3], [2, 2], [3, 3]],
+          [[3, 3], [5, 3]]];
+      var arcData = new ArcCollection(arcs);
 
       it('odd shape', function () {
         var lyr = {
               geometry_type: 'polygon',
               data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
-              shapes: [[[0, -2, 3]], [[1]]]
+              shapes: [[[0, ~1, 3]], [[1]]]
             };
         var lyr2 = dissolveLayer(lyr, arcData, {field: 'foo'});
         assert.deepEqual(lyr2.shapes, [[[0, 3]]]);
@@ -397,72 +396,23 @@ describe('mapshaper-dissolve.js', function () {
       //   abcde, efg,  eg,   ghe,  ea
       //   0,     1/-2, 2/-3, 3/-4, 4
 
-      var arcs = [[[5, 5, 1, 1, 3], [4, 1, 1, 4, 4]],
-          [[3, 4, 3], [4, 3, 2]],
-          [[3, 3], [4, 2]],
-          [[3, 2, 3], [2, 3, 4]],
-          [[3, 5], [4, 4]]];
-      var arcData = new ArcDataset(arcs);
+      var arcs = [[[5, 4], [5, 1], [1, 1], [1, 4], [3, 4]],
+          [[3, 4], [4, 3], [3, 2]],
+          [[3, 4], [3, 2]],
+          [[3, 2], [2, 3], [3, 4]],
+          [[3, 4], [5, 4]]];
+      var arcData = new ArcCollection(arcs);
 
       it('dissolve all', function () {
         var lyr = {
               geometry_type: 'polygon',
               data: new api.internal.DataTable([{foo: 1}, {foo: 1}, {foo: 1}]),
-              shapes: [[[0, -4, -2, 4]], [[2, 3]], [[1, -3]]]
+              shapes: [[[0, ~3, ~1, 4]], [[2, 3]], [[1, ~2]]]
             };
         var lyr2 = dissolveLayer(lyr, arcData, {field: 'foo'});
         assert.deepEqual(lyr2.shapes, [[[0, 4]]]);
       })
 
     })
-
-    /*
-    describe('shape 5', function () {
-
-      //
-      //    a - b - c - d
-      //     \   \ /   /
-      //      e - f - g
-      //     /   / \   \
-      //    h - i - j - k
-      //     \   \ /   /
-      //      l - m - n
-      //
-      // ab, ae, bc, bf, cdg, df, ef, eh, fg, fi, fj, gk
-      // 0,  1,  2,  3,  4,   5,  6,  7,  8,  9,  10, 11
-      //
-      // hi, hl, ij, im, jm, knm, lm, mn
-      // 12, 13, 14, 15, 16, 17,  18, 19
-      //
-      var arcs = [[[1, 3], [4, 4]],
-          [[1, 2], [4, 3]],
-          [[3, 5], [4, 4]],
-          [[3, 4], [4, 3]],
-          [[5, 7, 6], [4, 4, 3]],
-          [[5, 4], [4, 3]],
-          [[2, 4], [3, 3]],
-          [[2, 1], [3, 2]],
-          [[4, 5], [3, 3]],
-          [[4, 3], [3, 2]],
-          [[4, 5], [3, 2]],
-          [[6, 7], [3, 3]],
-          [[1, 3], [2, 2]], // hi
-          [[1, 2], [2, 1]], // hl
-          [[3, 5], [2, 2]], // ij
-          [[3, 4], [2, 1]], // im
-          [[5, 7], [5, 4]], //
-          [[7, 6, 4], [2, 1, 1]],
-          [[2, 4], [1, 1]],
-          [[4, 6], [1, 1]]];
-      var arcData = new ArcDataset(arcs);
-
-      it('patchwork', function() {
-        var shapes = [[[0, 3, ~6, ~1]]]
-
-      })
-    })
-    */
-
   })
-
 })

@@ -11,10 +11,10 @@ describe('mapshaper-innerlines.js', function () {
   //   cab, bc,   bdc
   //   0,   1/-2, 2
 
-  var arcs = [[[3, 1, 2], [1, 1, 3]],
+  var arcs = [[[3, 1], [1, 1], [2, 3]],
       [[2, 3], [3, 1]],
-      [[2, 4, 3], [3, 3, 1]]];
-  arcs = new api.internal.ArcDataset(arcs);
+      [[2, 3], [4, 3], [3, 1]]];
+  arcs = new api.internal.ArcCollection(arcs);
   var lyr = {
         name: 'shape',
         geometry_type: 'polygon',
@@ -37,15 +37,15 @@ describe('mapshaper-innerlines.js', function () {
         {foo: 'b', bar: 2}, {foo: 'b', bar: 3}]),
     shapes: [[[0, 1, 2]], [[3, 4, ~1]], [[~2, 5, 6]], [[~4, 7, ~5]]]
   }
-  var arcsb = [[[1, 1, 2], [2, 3, 3]],
-      [[2, 2], [3, 2]],
-      [[2, 1], [2, 2]],
-      [[2, 3, 3], [3, 3, 2]],
+  var arcsb = [[[1, 2], [1, 3], [2, 3]],
+      [[2, 3], [2, 2]],
+      [[2, 2], [1, 2]],
+      [[2, 3], [3, 3], [3, 2]],
       [[3, 2], [2, 2]],
       [[2, 2], [2, 1]],
-      [[2, 1, 1], [1, 1, 2]],
-      [[3, 3, 2], [2, 1, 1]]];
-  arcsb = new api.internal.ArcDataset(arcsb);
+      [[2, 1], [1, 1], [1, 2]],
+      [[3, 2], [3, 1], [2, 1]]];
+  arcsb = new api.internal.ArcCollection(arcsb);
 
   describe('convertLayerToInnerLines()', function () {
     it('test 1', function () {

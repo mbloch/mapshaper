@@ -48,7 +48,7 @@ MapShaper.mergeArcs = function(arr) {
       yy = utils.mergeArrays(Utils.pluck(dataArr, 'yy'), Float64Array),
       nn = utils.mergeArrays(Utils.pluck(dataArr, 'nn'), Int32Array);
 
-  return new ArcDataset(nn, xx, yy);
+  return new ArcCollection(nn, xx, yy);
 };
 
 utils.countElements = function(arrays) {

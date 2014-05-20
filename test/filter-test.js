@@ -3,7 +3,7 @@ var assert = require('assert'),
 
 describe('mapshaper-filter.js', function () {
   describe('filter()', function () {
-    var nullArcs = new api.internal.ArcDataset([]);
+    var nullArcs = new api.internal.ArcCollection([]);
     it('removes records based on attribute value', function () {
       var records = [{foo: 0}, {foo: 2}];
       var lyr = {

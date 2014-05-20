@@ -24,7 +24,7 @@ api.findAndRepairIntersections = function(arcs) {
 // Limitation of this method: it can't remove intersections that are present
 // in the original dataset.
 //
-// @arcs ArcDataset object
+// @arcs ArcCollection object
 // @intersections (Array) Output from MapShaper.findSegmentIntersections()
 // Returns array of unresolved intersections, or empty array if none.
 //

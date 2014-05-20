@@ -3,7 +3,7 @@ var assert = require('assert'),
 
 describe('mapshaper-split.js', function () {
   describe('splitLayer()', function () {
-    var nullArcs = new api.internal.ArcDataset([]);
+    var nullArcs = new api.internal.ArcCollection([]);
     it('divides a layer into multiple named layers', function () {
       var records = [{foo: "spruce"}, {foo: "fir"}, {foo: "apple"}, {foo: "fir"}];
       var lyr = {

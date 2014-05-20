@@ -17,7 +17,7 @@ MapShaper.protectLayerShapes = function(arcData, shapes) {
 };
 
 // Protect a single shape from complete removal by simplification
-// @arcData an ArcDataset
+// @arcData an ArcCollection
 // @shape an array containing one or more arrays of arc ids, or null if null shape
 //
 MapShaper.protectShape = function(arcData, shape) {

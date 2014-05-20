@@ -33,7 +33,7 @@ describe('mapshaper-expressions.js', function () {
   */
 
   describe('compileLayerExpression()', function () {
-    var nullArcs = new api.internal.ArcDataset([]),
+    var nullArcs = new api.internal.ArcCollection([]),
         records = [{foo: 4}, {foo: 0}, {foo: 3.5}, {foo: -0.5}, {foo: 3}];
     var lyr = {
       shapes: new Array(5),

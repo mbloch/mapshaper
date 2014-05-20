@@ -1,7 +1,8 @@
 
 var api = require('..'),
   assert = require('assert'),
-  ArcDataset = api.internal.ArcDataset,
+  ArcCollection = api.internal.ArcCollection,
+  ArcCollection = api.internal.ArcCollection,
   Utils = api.utils,
   trace = Utils.trace;
 
@@ -11,7 +12,7 @@ var api = require('..'),
 //   a --- c
 
 // cab, bc, bdc
-var arcs1 = [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]];
+var arcs1 = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
 
 //      b     d
 //     / \   / \
@@ -19,9 +20,9 @@ var arcs1 = [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]];
 //   a --- c --- e
 
 // cabc, cdec
-var arcs2 = [[[3, 1, 2, 3], [1, 1, 3, 1]], [[3, 4, 5, 3], [1, 3, 1, 1]]];
+var arcs2 = [[[3, 1], [1, 1], [2, 3], [3, 1]], [[3, 1], [4, 3], [5, 1], [3, 1]]];
 // cab, cc, cde // (collapsed ring)
-var arcs3 = [[[3, 1, 2, 3], [1, 1, 3, 1]], [[3, 3], [1, 1]], [[3, 4, 5, 3], [1, 3, 1, 1]]];
+var arcs3 = [[[3, 1], [1, 1], [2, 3], [3, 1]], [[3, 1], [3, 1]], [[3, 1], [4, 3], [5, 1], [3, 1]]];
 
 //      b
 //     / \
@@ -29,17 +30,16 @@ var arcs3 = [[[3, 1, 2, 3], [1, 1, 3, 1]], [[3, 3], [1, 1]], [[3, 4, 5, 3], [1, 
 //   a --- c
 
 // abca
-var arcs4 = [[[1, 2, 3, 1], [1, 3, 1, 1]]];
+var arcs4 = [[[1, 1], [2, 3], [3, 1], [1, 1]]];
 
 // null dataset
 var arcs5 = [];
 
 describe('mapshaper-shapes.js', function () {
-  describe('ArcDataset', function () {
-
+  describe('ArcCollection', function () {
 
     it("accepts arcs with length == 0", function() {
-      var arcs = new ArcDataset(
+      var arcs = new api.internal.ArcCollection(
           new Uint32Array([0, 3]),
           new Float64Array([1, 2, 3]),
           new Float64Array([0, 1, 2])
@@ -50,26 +50,26 @@ describe('mapshaper-shapes.js', function () {
     })
 
     it("#size() returns the correct number of arcs", function() {
-      assert.equal(new ArcDataset(arcs3).size(), 3)
-      assert.equal(new ArcDataset(arcs4).size(), 1)
-      assert.equal(new ArcDataset(arcs5).size(), 0)
+      assert.equal(new ArcCollection(arcs3).size(), 3)
+      assert.equal(new ArcCollection(arcs4).size(), 1)
+      assert.equal(new ArcCollection(arcs5).size(), 0)
     })
 
     it('#getBounds() returns the correct bounding box', function () {
-      assert.deepEqual(new ArcDataset(arcs3).getBounds(), {xmin: 1, ymin: 1, xmax: 5, ymax: 3})
-      assert.deepEqual(new ArcDataset(arcs4).getBounds(), {xmin: 1, ymin: 1, xmax: 3, ymax: 3})
-      assert.ok(new ArcDataset(arcs5).getBounds().hasBounds() == false)
+      assert.deepEqual(new ArcCollection(arcs3).getBounds(), {xmin: 1, ymin: 1, xmax: 5, ymax: 3})
+      assert.deepEqual(new ArcCollection(arcs4).getBounds(), {xmin: 1, ymin: 1, xmax: 3, ymax: 3})
+      assert.ok(new ArcCollection(arcs5).getBounds().hasBounds() == false)
     })
 
     it('#getPointCount() returns correct point count', function() {
-      assert.equal(new ArcDataset(arcs3).getPointCount(), 10)
-      assert.equal(new ArcDataset(arcs4).getPointCount(), 4)
-      assert.equal(new ArcDataset(arcs5).getPointCount(), 0)
+      assert.equal(new ArcCollection(arcs3).getPointCount(), 10)
+      assert.equal(new ArcCollection(arcs4).getPointCount(), 4)
+      assert.equal(new ArcCollection(arcs5).getPointCount(), 0)
     })
 
     it('#setThresholds() + #setRetainedInterval() works', function() {
       var thresholds = [[Infinity, 5, 4, Infinity], [Infinity, 4, 7, Infinity]];
-      var arcs = new ArcDataset(arcs2).setThresholds(thresholds)
+      var arcs = new ArcCollection(arcs2).setThresholds(thresholds)
       arcs.setRetainedInterval(10);
       assert.deepEqual([[[3, 1], [3, 1]], [[3, 1], [3, 1]]], arcs.toArray());
 
@@ -80,7 +80,7 @@ describe('mapshaper-shapes.js', function () {
 
     it('#setThresholds() + #setRetainedInterval() + #getFilteredCopy() works', function() {
       var thresholds = [[Infinity, 5, 4, Infinity], [Infinity, 4, 7, Infinity]];
-      var arcs = new ArcDataset(arcs2).setThresholds(thresholds)
+      var arcs = new ArcCollection(arcs2).setThresholds(thresholds)
       arcs.setRetainedInterval(10);
       assert.deepEqual([[[3, 1], [3, 1]], [[3, 1], [3, 1]]], arcs.getFilteredCopy().toArray());
 
@@ -91,7 +91,7 @@ describe('mapshaper-shapes.js', function () {
 
     it('#getRemovableThresholds(), nothing to remove', function() {
       var thresholds = [[Infinity, Infinity, Infinity], [Infinity, Infinity], [Infinity, Infinity, Infinity]];
-      var arcs = new ArcDataset(arcs1).setThresholds(thresholds);
+      var arcs = new ArcCollection(arcs1).setThresholds(thresholds);
       var removable = arcs.getRemovableThresholds();
       assert.deepEqual([], Utils.toArray(removable));
 
@@ -101,7 +101,7 @@ describe('mapshaper-shapes.js', function () {
 
     it('#getRemovableThresholds(), three removable points', function() {
       var thresholds = [[Infinity, 5, 4, Infinity], [Infinity, Infinity, 7, Infinity]];
-      var arcs = new ArcDataset(arcs2).setThresholds(thresholds);
+      var arcs = new ArcCollection(arcs2).setThresholds(thresholds);
       var removable = arcs.getRemovableThresholds();
       assert.deepEqual([5, 4, 7], Utils.toArray(removable));
 
@@ -112,7 +112,7 @@ describe('mapshaper-shapes.js', function () {
     it('#getThresholdByPct(), nothing to remove', function() {
       var thresholds = [[Infinity, Infinity, Infinity], [Infinity, Infinity],
             [Infinity, Infinity, Infinity]],
-        arcs = new ArcDataset(arcs1).setThresholds(thresholds);
+        arcs = new ArcCollection(arcs1).setThresholds(thresholds);
 
       assert.equal(arcs.getThresholdByPct(0.7), 0);
       assert.equal(arcs.getThresholdByPct(0.1), 0);
@@ -120,7 +120,7 @@ describe('mapshaper-shapes.js', function () {
 
     it('#getThresholdByPct(), two removable points', function() {
       var thresholds = [[Infinity, 5, 4, Infinity]];
-      var arcs = new ArcDataset(arcs4).setThresholds(thresholds);
+      var arcs = new ArcCollection(arcs4).setThresholds(thresholds);
       assert.equal(arcs.getThresholdByPct(0), Infinity);
       assert.equal(arcs.getThresholdByPct(0.1), Infinity);
       assert.equal(arcs.getThresholdByPct(0.4), 5);
@@ -129,7 +129,7 @@ describe('mapshaper-shapes.js', function () {
     });
 
     it('#applyTransform() works', function() {
-      var arcs = new ArcDataset(arcs4);
+      var arcs = new ArcCollection(arcs4);
       arcs.applyTransform({
         mx: 2,
         my: 3,
@@ -142,19 +142,19 @@ describe('mapshaper-shapes.js', function () {
     });
 
     it('#getAverageSegment() works', function() {
-      var arcs = [[[1, 2, 3, 1], [1, 3, 1, 1]]],
-          dataset = new ArcDataset(arcs),
+      var arcs = [[[1, 1], [2, 3], [3, 1], [1, 1]]],
+          dataset = new ArcCollection(arcs),
           xy = dataset.getAverageSegment();
       assert.deepEqual([4/3, 4/3], xy);
 
-      var arcs2 = [[[3, 1, 2], [1, 1, 3]], [[2, 3], [3, 1]], [[2, 4, 3], [3, 3, 1]]],
-          dataset2 = new ArcDataset(arcs2),
+      var arcs2 = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]],
+          dataset2 = new ArcCollection(arcs2),
           xy2 = dataset2.getAverageSegment();
       assert.deepEqual([7/5, 6/5], xy2);
     })
 
     it('#filter() works', function() {
-      var arcs = new ArcDataset(arcs1);
+      var arcs = new ArcCollection(arcs1);
 
       // remove all but the third
       arcs.filter(function(iter, i) {
@@ -169,7 +169,7 @@ describe('mapshaper-shapes.js', function () {
 
     it('#quantize() works', function() {
       // points: [1, 1], [2, 3], [3, 1], [1, 1]
-      var arcs = new ArcDataset(arcs4);
+      var arcs = new ArcCollection(arcs4);
       var bb1 = arcs.getBounds();
 
       // hi-res

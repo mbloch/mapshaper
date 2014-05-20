@@ -38,11 +38,11 @@ MapShaper.validateLayer = function(lyr, arcs) {
   if (lyr.data && lyr.data.size() != lyr.shapes.length) {
     error("Layer contains mismatched data table and shapes");
   }
-  if (arcs && arcs instanceof ArcDataset === false) {
-    error("Expected an ArcDataset");
+  if (arcs && arcs instanceof ArcCollection === false) {
+    error("Expected an ArcCollection");
   }
   if (type == 'polygon' || type == 'polyline') {
-    if (!arcs) error("Missing ArcDataset for a", type, "layer");
+    if (!arcs) error("Missing ArcCollection for a", type, "layer");
     // TODO: validate shapes, make sure ids are w/in arc range
   } else if (type == 'point') {
     // TODO: validate shapes

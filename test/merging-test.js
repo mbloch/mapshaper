@@ -1,28 +1,16 @@
 var api = require('../'),
     assert = require('assert'),
     utils = api.utils,
-    ArcDataset = api.internal.ArcDataset;
+    ArcCollection = api.internal.ArcCollection;
 
-var arcs1 = {
-  xx: [1, 2, 3, 4],
-  yy: [0, 1, 0, 1],
-  nn: [2, 2]
-};
+var arcs1 = [[[1, 0], [2, 1]], [[3, 0], [4, 1]]];
 
-var arcs2 = {
-  xx: [5, 6, 7, 8],
-  yy: [2, 3, 2, 3],
-  nn: [0, 4]
-};
+var arcs2 = [[[5, 2], [6, 3], [7, 2], [8, 3]]];
 
-var arcs3 = {
-  xx: [9, 10],
-  yy: [4, 5],
-  nn: [2]
-};
+var arcs3 = [[[9, 4], [10, 5]]];
 
 var data1 = {
-  arcs: new ArcDataset(arcs1.nn, arcs1.xx, arcs1.yy),
+  arcs: new ArcCollection(arcs1),
   layers: [{
     geometry_type: 'point',
     shapes: [[[0, 1]]]
@@ -34,7 +22,7 @@ var data1 = {
 };
 
 var data2 = {
-  arcs: new ArcDataset(arcs2.nn, arcs2.xx, arcs2.yy),
+  arcs: new ArcCollection(arcs2),
   layers: [{
     geometry_type: 'point',
     shapes: [null, [[2, 3], [4, 5]]]
@@ -49,9 +37,9 @@ describe('mapshaper-merging.js', function () {
   describe('mergeArcs()', function () {
     it('merge three sets of arcs', function () {
       var mergedArcs = api.internal.mergeArcs([
-          new ArcDataset(arcs1.nn, arcs1.xx, arcs1.yy),
-          new ArcDataset(arcs2.nn, arcs2.xx, arcs2.yy),
-          new ArcDataset(arcs3.nn, arcs3.xx, arcs3.yy)
+          new ArcCollection(arcs1),
+          new ArcCollection(arcs2),
+          new ArcCollection(arcs3)
       ]);
       var data = mergedArcs.getVertexData();
       var result = {
@@ -62,7 +50,7 @@ describe('mapshaper-merging.js', function () {
       var target = {
         xx: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
         yy: [0, 1, 0, 1, 2, 3, 2, 3, 4, 5],
-        nn: [2, 2, 0, 4, 2]
+        nn: [2, 2, 4, 2]
       }
       assert.deepEqual(result, target);
     })

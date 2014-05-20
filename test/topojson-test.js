@@ -2,7 +2,7 @@
 var api = require('../'),
   assert = require('assert'),
   TopoJSON = api.internal.topojson,
-  ArcDataset = api.internal.ArcDataset,
+  ArcCollection = api.internal.ArcCollection,
   Utils = api.utils,
   Node = api.internal.Node;
 
@@ -54,7 +54,9 @@ describe('topojson-test.js', function () {
     //   a --- c --- e
 
     // cc, ddd, cabc, cdec
-    var coords = new ArcDataset([[[3, 3], [1, 1]], [[4, 4, 4], [3, 3, 3]], [[3, 1, 2, 3], [1, 1, 3, 1]], [[3, 4, 5, 3], [1, 3, 1, 1]]]);
+    var arcs = [[[3, 1], [3, 1]], [[4, 3], [4, 3], [4, 3]], [[3, 1], [1, 1], [2, 3], [3, 1]],
+        [[3, 1], [4, 3], [5, 1], [3, 1]]];
+    var coords = new ArcCollection(arcs);
 
     it('Collapsed arcs are removed', function () {
       var shape = [[0, ~1, 3]],
@@ -157,10 +159,10 @@ describe('topojson-test.js', function () {
       //   abcda, efghe
       //   0/-1,  1
 
-      var arcs = [[[3, 4, 3, 2, 3], [4, 3, 2, 3, 4]],
-          [[3, 5, 3, 1, 3], [5, 3, 1, 3, 5]]];
+      var arcs = [[[3, 4], [4, 3], [3, 2], [2, 3], [3, 4]],
+          [[3, 5], [5, 3], [3, 1], [1, 3], [3, 5]]];
       var data = {
-        arcs: new ArcDataset(arcs),
+        arcs: new ArcCollection(arcs),
         layers: [{
           name: "polygons",
           geometry_type: "polygon",
@@ -208,10 +210,10 @@ describe('topojson-test.js', function () {
       //   abcda, efghe
       //   0/-1,  1
 
-      var arcs = [[[3, 4, 3, 2, 3], [4, 3, 2, 3, 4]],
-          [[3, 5, 3, 1, 3], [5, 3, 1, 3, 5]]];
+      var arcs = [[[3, 4], [4, 3], [3, 2], [2, 3], [3, 4]],
+          [[3, 5], [5, 3], [3, 1], [1, 3], [3, 5]]];
       var data = {
-        arcs: new ArcDataset(arcs),
+        arcs: new ArcCollection(arcs),
         layers: [{
           name: "polygons",
           geometry_type: "polygon",

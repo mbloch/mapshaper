@@ -46,13 +46,13 @@ describe("mapshaper-simplify.js", function() {
 
   describe('#protectWorldEdges()', function () {
     it('should set world edges equal to highest threshold in each arc', function () {
-      var arcs = [[[178, 179, 180, 180], [30, 31, 32, 33]],
-                  [[-170, -180, -160, -160], [1, 2, 2, 1]],
-                  [[2, 3, 3, 2], [90, 90, 89, 88]],
-                  [[3, 4, 3, 4], [-79, -84, -90, -80]]];
+      var arcs = [[[178, 30], [179, 31], [180, 32], [180, 33]],
+          [[-170, 1], [-180, 2], [-160, 2], [-160, 1]],
+          [[2, 90], [3, 90], [3, 89], [2, 88]],
+          [[3, -79], [4, -84], [3, -90], [4, -80]]];
       var thresholds = [[Infinity, 6, 4, Infinity], [Infinity, 5, 8, Infinity],
         [Infinity, 1, 4, Infinity], [Infinity, 5, 8, Infinity]];
-      var data = new api.internal.ArcDataset(arcs).setThresholds(thresholds);
+      var data = new api.internal.ArcCollection(arcs).setThresholds(thresholds);
       api.internal.protectWorldEdges(data);
 
       var expected = [Infinity, 6, 6, Infinity, Infinity, 8, 8, Infinity, Infinity, 4, 4, Infinity, Infinity, 5, 8, Infinity];
@@ -60,13 +60,13 @@ describe("mapshaper-simplify.js", function() {
     })
 
     it('should not modify arcs if internal vertices do not reach edge', function() {
-      var arcs = [[[178, 179, 179.9, 180], [30, 31, 32, 33]],
-        [[-180, -179.9, -160, -160], [1, 2, 2, 1]],
-        [[2, 3, 3, 2], [90, 89.9, 89, 88]],
-        [[3, 4, 3, 4], [-79, -84, -89.2, -90]]];
+      var arcs = [[[178, 30], [179, 31], [179.9, 32], [180, 33]],
+          [[-180, 1], [-179.0, 2], [-160, 2], [-160, 1]],
+          [[2, 90], [3, 89.9], [3, 89], [2, 88]],
+          [[3, -79], [4, -84], [3, -89.2], [4, -90]]];
       var thresholds = [[Infinity, 6, 4, Infinity], [Infinity, 5, 8, Infinity],
         [Infinity, 1, 4, Infinity], [Infinity, 5, 8, Infinity]];
-      var data = new api.internal.ArcDataset(arcs).setThresholds(thresholds);
+      var data = new api.internal.ArcCollection(arcs).setThresholds(thresholds);
       api.internal.protectWorldEdges(data);
       var expected = [Infinity, 6, 4, Infinity, Infinity, 5, 8, Infinity, Infinity, 1, 4, Infinity, Infinity, 5, 8, Infinity];
       assert.deepEqual(utils.toArray(data.getVertexData().zz), expected);

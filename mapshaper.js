@@ -5318,17 +5318,18 @@ Utils.extend(geom, {
 
 
 
-MapShaper.ArcDataset = ArcDataset;
+MapShaper.ArcCollection = ArcCollection;
+
 
 // An interface for managing a collection of paths.
 // Constructor signatures:
 //
-// ArcDataset(arcs)
-//    arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
+// ArcCollection(arcs)
+//    arcs is an array of polyline arcs; each arc is an array of points: [[x0, y0], [x1, y1], ... ]
 //
-// ArcDataset(nn, xx, yy)
+// ArcCollection(nn, xx, yy)
 //    nn is an array of arc lengths; xx, yy are arrays of concatenated coords;
-function ArcDataset() {
+function ArcCollection() {
   var _xx, _yy,  // coordinates data
       _ii, _nn,  // indexes, sizes
       _zz, _zlimit = 0, // simplification
@@ -5340,12 +5341,20 @@ function ArcDataset() {
   } else if (arguments.length == 3) {
     initXYData.apply(this, arguments);
   } else {
-    error("ArcDataset() Invalid arguments");
+    error("ArcCollection() Invalid arguments");
   }
 
-  function initLegacyArcs(coords) {
-    var data = convertLegacyArcs(coords);
-    initXYData(data.nn, data.xx, data.yy);
+  function initLegacyArcs(arcs) {
+    var xx = [], yy = [];
+    var nn = arcs.map(function(points) {
+      var n = points ? points.length : 0;
+      for (var i=0; i<n; i++) {
+        xx.push(points[i][0]);
+        yy.push(points[i][1]);
+      }
+      return n;
+    });
+    initXYData(nn, xx, yy);
   }
 
   function initXYData(nn, xx, yy) {
@@ -5367,7 +5376,7 @@ function ArcDataset() {
     }
 
     if (idx != _xx.length || _xx.length != _yy.length) {
-      error("ArcDataset#initXYData() Counting error");
+      error("ArcCollection#initXYData() Counting error");
     }
 
     initBounds();
@@ -5378,7 +5387,7 @@ function ArcDataset() {
 
   function initZData(zz) {
     if (!zz) zz = new Float64Array(_xx.length);
-    if (zz.length != _xx.length) error("ArcDataset#initZData() mismatched arrays");
+    if (zz.length != _xx.length) error("ArcCollection#initZData() mismatched arrays");
     if (zz instanceof Array) zz = new Float64Array(zz);
     _zz = zz;
     _filteredArcIter = new FilteredArcIter(_xx, _yy, _zz);
@@ -5465,7 +5474,7 @@ function ArcDataset() {
   };
 
   this.getCopy = function() {
-    var copy = new ArcDataset(new Int32Array(_nn), new Float64Array(_xx),
+    var copy = new ArcCollection(new Int32Array(_nn), new Float64Array(_xx),
         new Float64Array(_yy));
     if (_zz) copy.setThresholds(new Float64Array(_zz));
     return copy;
@@ -5496,7 +5505,7 @@ function ArcDataset() {
       if (n2 < 2) error("Collapsed arc"); // endpoints should be z == Infinity
       nn2[arcId] = n2;
     }
-    var copy = new ArcDataset(nn2, xx2, yy2);
+    var copy = new ArcCollection(nn2, xx2, yy2);
     copy.setThresholds(zz2);
     return copy;
   };
@@ -5707,7 +5716,7 @@ function ArcDataset() {
         }
       });
     } else {
-      error("ArcDataset#setThresholds() Invalid threshold data.");
+      error("ArcCollection#setThresholds() Invalid threshold data.");
     }
     initZData(zz);
     return this;
@@ -5735,7 +5744,7 @@ function ArcDataset() {
   // Return array of z-values that can be removed for simplification
   //
   this.getRemovableThresholds = function(nth) {
-    if (!_zz) error("ArcDataset#getRemovableThresholds() Missing simplification data.");
+    if (!_zz) error("ArcCollection#getRemovableThresholds() Missing simplification data.");
     var skip = nth | 1,
         arr = new Float64Array(Math.ceil(_zz.length / skip)),
         z;
@@ -5750,7 +5759,7 @@ function ArcDataset() {
 
   this.getArcThresholds = function(arcId) {
     if (!(arcId >= 0 && arcId < this.size())) {
-      error("ArcDataset#getArcThresholds() invalid arc id:", arcId);
+      error("ArcCollection#getArcThresholds() invalid arc id:", arcId);
     }
     var start = _ii[arcId],
         end = start + _nn[arcId];
@@ -6071,10 +6080,10 @@ api.buildTopology = function(dataset) {
 //
 // Output format:
 // {
-//    arcs: [ArcDataset],
+//    arcs: [ArcCollection],
 //    paths: [Array]   // Paths are arrays of one or more arc id.
 // }                   // Arc ids use the same numbering scheme as TopoJSON --
-//       Ids in the paths array are indices of paths in the ArcDataset
+//       Ids in the paths array are indices of paths in the ArcCollection
 //       Negative ids signify that the arc coordinates are in reverse sequence.
 //       Negative ids are converted to array indices with the fornula fwId = ~revId.
 //       E.g. -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
@@ -6103,11 +6112,9 @@ MapShaper.buildPathTopology = function(xx, yy, nn) {
     return arcs;
   });
 
-  var arcs = new ArcDataset(index.getArcs());
-
   return {
     paths: paths,
-    arcs: arcs
+    arcs: index.getArcs()
   };
 
   function nextPoint(id) {
@@ -6363,7 +6370,8 @@ function ArcIndex(pointCount, xyToUint) {
         return xyToUint(x, y) % hashTableSize;
       },
       chainIds = [],
-      arcs = [];
+      arcs = [],
+      arcPoints = 0;
 
   Utils.initializeArray(hashTable, -1);
 
@@ -6375,6 +6383,7 @@ function ArcIndex(pointCount, xyToUint) {
 
     hashTable[key] = arcId;
     arcs.push([xx, yy]);
+    arcPoints += xx.length;
     chainIds.push(chainId);
     return arcId;
   };
@@ -6406,7 +6415,18 @@ function ArcIndex(pointCount, xyToUint) {
   };
 
   this.getArcs = function() {
-    return arcs;
+    var xx = new Float64Array(arcPoints),
+        yy = new Float64Array(arcPoints),
+        nn = new Uint32Array(arcs.length),
+        copied = 0;
+    arcs.forEach(function(arc, i) {
+      var len = arc[0].length;
+      MapShaper.copyElements(arc[0], 0, xx, copied, len);
+      MapShaper.copyElements(arc[1], 0, yy, copied, len);
+      nn[i] = len;
+      copied += len;
+    });
+    return new ArcCollection(nn, xx, yy);
   };
 }
 
@@ -6862,7 +6882,7 @@ api.simplify = function(arcs, opts) {
   }
 };
 
-// @paths ArcDataset object
+// @paths ArcCollection object
 MapShaper.simplifyPaths = function(paths, opts) {
   var method = opts.method || 'mapshaper';
   var decimalDegrees = MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
@@ -7016,11 +7036,11 @@ MapShaper.validateLayer = function(lyr, arcs) {
   if (lyr.data && lyr.data.size() != lyr.shapes.length) {
     error("Layer contains mismatched data table and shapes");
   }
-  if (arcs && arcs instanceof ArcDataset === false) {
-    error("Expected an ArcDataset");
+  if (arcs && arcs instanceof ArcCollection === false) {
+    error("Expected an ArcCollection");
   }
   if (type == 'polygon' || type == 'polyline') {
-    if (!arcs) error("Missing ArcDataset for a", type, "layer");
+    if (!arcs) error("Missing ArcCollection for a", type, "layer");
     // TODO: validate shapes, make sure ids are w/in arc range
   } else if (type == 'point') {
     // TODO: validate shapes
@@ -7081,7 +7101,7 @@ geom.getSphericalShapeArea2 = function(shp, arcs) {
 
 // Return path with the largest (area) bounding box
 // @shp array of array of arc ids
-// @arec ArcDataset
+// @arcs ArcCollection
 geom.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
   return Utils.reduce(shp, function(maxPath, path) {
@@ -7095,7 +7115,7 @@ geom.getMaxPath = function(shp, arcs) {
 };
 
 // @ids array of arc ids
-// @arcs ArcDataset
+// @arcs ArcCollection
 geom.getAvgPathXY = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return null;
@@ -7370,6 +7390,7 @@ geom.transposeXYCoords = function(xx, yy) {
   }
   return points;
 };
+*/
 
 geom.transposePoints = function(points) {
   var xx = [], yy = [], n=points.length;
@@ -7377,10 +7398,8 @@ geom.transposePoints = function(points) {
     xx.push(points[i][0]);
     yy.push(points[i][1]);
   }
-  return {xx: xx, yy: yy, pointCount: n};
+  return [xx, yy];
 };
-
-*/
 
 
 
@@ -7667,7 +7686,7 @@ function PathImporter(reservedPoints, opts) {
           xx = xx.subarray(0, pointId);
           yy = yy.subarray(0, pointId);
         }
-        arcs = new ArcDataset(nn, xx, yy);
+        arcs = new ArcCollection(nn, xx, yy);
 
         // TODO: move shape validation after snapping (which may corrupt shapes)
         if (opts.auto_snap || opts.snap_interval) {
@@ -8840,17 +8859,6 @@ TopoJSON.forEachArc = function forEachArc(obj, cb) {
 
 
 
-TopoJSON.importArcs = function(arcs) {
-  return Utils.map(arcs, function(arc) {
-    var xx = [],
-        yy = [];
-    for (var i=0, len=arc.length; i<len; i++) {
-      xx.push(arc[i][0]);
-      yy.push(arc[i][1]);
-    }
-    return [xx, yy];
-  });
-};
 
 TopoJSON.decodeArcs = function(arcs, transform) {
   var mx = transform.scale[0],
@@ -9482,7 +9490,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     layers.push(lyr);
   });
 
-  // TODO: apply transform to ArcDataset, not input arcs
+  // TODO: apply transform to ArcCollection, not input arcs
   if (topology.transform) {
     TopoJSON.decodeArcs(topology.arcs, topology.transform);
   }
@@ -9495,7 +9503,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     info: {}
   };
   if (topology.arcs && topology.arcs.length > 0) {
-    dataset.arcs = new ArcDataset(TopoJSON.importArcs(topology.arcs));
+    dataset.arcs = new ArcCollection(topology.arcs);
   }
   return dataset;
 };
@@ -10297,19 +10305,17 @@ MapShaper.uniqifyNames = function(names) {
 
 
 
-// Convert an array of intersections into an ArcDataset (for display)
+// Convert an array of intersections into an ArcCollection (for display)
 //
 MapShaper.getIntersectionPoints = function(intersections) {
   // Kludge: create set of paths of length 1 to display intersection points
   var vectors = Utils.map(intersections, function(obj) {
-        var x = obj.intersection.x,
-            y = obj.intersection.y;
-        return [[x], [y]];
+        return [[obj.intersection.x, obj.intersection.y]];
       });
-  return new ArcDataset(vectors);
+  return new ArcCollection(vectors);
 };
 
-// Identify intersecting segments in an ArcDataset
+// Identify intersecting segments in an ArcCollection
 //
 // Method: bin segments into horizontal stripes
 // Segments that span stripes are assigned to all intersecting stripes
@@ -10581,7 +10587,7 @@ api.findAndRepairIntersections = function(arcs) {
 // Limitation of this method: it can't remove intersections that are present
 // in the original dataset.
 //
-// @arcs ArcDataset object
+// @arcs ArcCollection object
 // @intersections (Array) Output from MapShaper.findSegmentIntersections()
 // Returns array of unresolved intersections, or empty array if none.
 //
@@ -10780,7 +10786,7 @@ MapShaper.protectLayerShapes = function(arcData, shapes) {
 };
 
 // Protect a single shape from complete removal by simplification
-// @arcData an ArcDataset
+// @arcData an ArcCollection
 // @shape an array containing one or more arrays of arc ids, or null if null shape
 //
 MapShaper.protectShape = function(arcData, shape) {
@@ -11139,7 +11145,7 @@ MapShaper.readGeometryFile = function(path, fileType) {
 
 
 
-// Utility functions for working with ArcDatasets and arrays of arc ids.
+// Utility functions for working with ArcCollection and arrays of arc ids.
 
 MapShaper.clampIntervalByPct = function(z, pct) {
   if (pct <= 0) z = Infinity;
@@ -11697,7 +11703,7 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
 };
 
 MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
-  //if (arcs instanceof ArcDataset === false) error("[compileFeatureExpression()] Missing ArcDataset;", arcs);
+  //if (arcs instanceof ArcCollection === false) error("[compileFeatureExpression()] Missing ArcCollection;", arcs);
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
       newFields = exp.match(RE_ASSIGNEE) || null,
       env = {},
@@ -12226,7 +12232,7 @@ MapShaper.mergeArcs = function(arr) {
       yy = utils.mergeArrays(Utils.pluck(dataArr, 'yy'), Float64Array),
       nn = utils.mergeArrays(Utils.pluck(dataArr, 'nn'), Int32Array);
 
-  return new ArcDataset(nn, xx, yy);
+  return new ArcCollection(nn, xx, yy);
 };
 
 utils.countElements = function(arrays) {
@@ -12612,7 +12618,7 @@ api.runCommands = function(commands, done) {
 
 // TODO: consider refactoring to allow modules
 // @cmd  example: {name: "dissolve", options:{field: "STATE"}}
-// @dataset  format: {arcs: <ArcDataset>, layers:[]}
+// @dataset  format: {arcs: <ArcCollection>, layers:[]}
 // @done callback: function(err, dataset)
 //
 api.runCommand = function(cmd, dataset, cb) {

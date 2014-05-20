@@ -19,9 +19,10 @@ describe('mapshaper-shape-geom.js', function () {
   //   abcda, efghe
   //   0/-1,  1/-2
 
-  var arcs = [[[3, 4, 3, 2, 3], [4, 3, 2, 3, 4]],
-      [[3, 5, 3, 1, 3], [5, 3, 1, 3, 5]]];
-  var arcData = new api.internal.ArcDataset(arcs);
+  var arcs = [[[3, 4], [4, 3], [3, 2], [2, 3], [3, 4]],
+      [[3, 5], [5, 3], [3, 1], [1, 3], [3, 5]]];
+
+  var arcData = new api.internal.ArcCollection(arcs);
   var lyr1 = {
         geometry_type: 'polygon',
         data: new api.internal.DataTable([{foo: 1}]),
@@ -38,7 +39,7 @@ describe('mapshaper-shape-geom.js', function () {
     it ("Calculate hemisphere area", function() {
       var R = 6378137;
       var hemisphereArea = 2 * Math.PI * R * R;
-      var arcs = new api.internal.ArcDataset([[[-180, -180, 180, 180, -180], [0, 90, 90, 0, 0]]]);
+      var arcs = new api.internal.ArcCollection([[[-180, 0], [-180, 90], [180, 90], [180, 0], [-180, 0]]]);
       var area = geom.getSphericalShapeArea([[0]], arcs);
       assert.ok(Math.abs(hemisphereArea - area) < 0.01);
     })

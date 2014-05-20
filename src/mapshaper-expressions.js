@@ -23,7 +23,7 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
 };
 
 MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
-  //if (arcs instanceof ArcDataset === false) error("[compileFeatureExpression()] Missing ArcDataset;", arcs);
+  //if (arcs instanceof ArcCollection === false) error("[compileFeatureExpression()] Missing ArcCollection;", arcs);
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
       newFields = exp.match(RE_ASSIGNEE) || null,
       env = {},

@@ -4289,6 +4289,11 @@ utils.findStringPrefix = function(a, b) {
   return a.substr(0, i);
 };
 
+MapShaper.probablyDecimalDegreeBounds = function(b) {
+  if (b instanceof Bounds) b = b.toArray();
+  return containsBounds([-200, -91, 200, 91], b);
+};
+
 
 
 
@@ -4548,10 +4553,6 @@ function boundsArea(b) {
   return (b[2] - b[0]) * (b[3] - b[1]);
 }
 
-function probablyDecimalDegreeBounds(b) {
-  return containsBounds([-200, -91, 200, 90], b);
-}
-
 // export functions so they can be tested
 Utils.extend(geom, {
   getRoundingFunction: getRoundingFunction,
@@ -4560,24 +4561,25 @@ Utils.extend(geom, {
   innerAngle: innerAngle,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
-  triangleArea3D: triangleArea3D,
-  probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
+  triangleArea3D: triangleArea3D
 });
 
 
 
 
-MapShaper.ArcDataset = ArcDataset;
+MapShaper.ArcCollection = ArcCollection;
+var ArcDataset = ArcCollection;
+
 
 // An interface for managing a collection of paths.
 // Constructor signatures:
 //
 // ArcDataset(arcs)
-//    arcs is an array of polyline arcs; each arc is a two-element array: [[x0,x1,...],[y0,y1,...]
+//    arcs is an array of polyline arcs; each arc is an array of points: [[x0, y0], [x1, y1], ... ]
 //
 // ArcDataset(nn, xx, yy)
 //    nn is an array of arc lengths; xx, yy are arrays of concatenated coords;
-function ArcDataset() {
+function ArcCollection() {
   var _xx, _yy,  // coordinates data
       _ii, _nn,  // indexes, sizes
       _zz, _zlimit = 0, // simplification
@@ -4593,8 +4595,16 @@ function ArcDataset() {
   }
 
   function initLegacyArcs(coords) {
-    var data = convertLegacyArcs(coords);
-    initXYData(data.nn, data.xx, data.yy);
+    var xx = [], yy = [];
+    var nn = arcs.map(function(points) {
+      var n = points ? points.length : 0;
+      for (var i=0; i<n; i++) {
+        xx.push(points[i][0]);
+        yy.push(points[i][1]);
+      }
+      return n;
+    });
+    initXYData(nn, xx, yy);
   }
 
   function initXYData(nn, xx, yy) {
@@ -4662,42 +4672,6 @@ function ArcDataset() {
     return {
       bb: bb,
       bounds: bounds
-    };
-  }
-
-  function convertLegacyArcs(coords) {
-    var numArcs = coords.length;
-    // Generate arrays of arc lengths and starting idxs
-    var nn = new Uint32Array(numArcs),
-        pointCount = 0,
-        arc, arcLen;
-    for (var i=0; i<numArcs; i++) {
-      arc = coords[i];
-      if (arc.length != 2) error("#convertLegacyArcs() Expected array length == 2");
-      arcLen = arc && arc[0].length || 0;
-      nn[i] = arcLen;
-      pointCount += arcLen;
-      if (arcLen === 0) error("#convertArcArrays() Empty arc:", arc);
-    }
-
-    // Copy x, y coordinates into long arrays
-    var xx = new Float64Array(pointCount),
-        yy = new Float64Array(pointCount),
-        offs = 0;
-    coords.forEach(function(arc, arcId) {
-      var xarr = arc[0],
-          yarr = arc[1],
-          n = nn[arcId];
-      for (var j=0; j<n; j++) {
-        xx[offs + j] = xarr[j];
-        yy[offs + j] = yarr[j];
-      }
-      offs += n;
-    });
-    return {
-      xx: xx,
-      yy: yy,
-      nn: nn
     };
   }
 
@@ -5702,16 +5676,34 @@ MapShaper.validateDataset = function(data) {
 // TODO: consider 3D versions of some of these
 
 geom.getShapeArea = function(shp, arcs) {
-  var area = Utils.reduce(shp, function(area, ids) {
+  return Utils.reduce(shp, function(area, ids) {
     var iter = arcs.getShapeIter(ids);
     return area + geom.getPathArea(iter);
   }, 0);
-  return area;
+};
+
+geom.getSphericalShapeArea = function(shp, arcs) {
+  if (!MapShaper.probablyDecimalDegreeBounds(arcs.getBounds())) {
+    error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
+  }
+  return Utils.reduce(shp, function(area, ids) {
+    var iter = arcs.getShapeIter(ids);
+    return area + geom.getSphericalPathArea(iter);
+  }, 0);
+};
+
+// alternative using equal-area projection
+geom.getSphericalShapeArea2 = function(shp, arcs) {
+  return Utils.reduce(shp, function(total, ids) {
+    var iter = arcs.getShapeIter(ids);
+    iter = geom.wrapPathIter(iter, geom.projectGall);
+    return total + geom.getPathArea(iter);
+  }, 0);
 };
 
 // Return path with the largest (area) bounding box
 // @shp array of array of arc ids
-// @arec ArcDataset
+// @arcs ArcCollection
 geom.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
   return Utils.reduce(shp, function(maxPath, path) {
@@ -5892,6 +5884,24 @@ geom.testPointInRing = function(x, y, ids, arcs) {
   return intersections % 2 == 1;
 };
 
+geom.getSphericalPathArea = function(iter) {
+  var sum = 0,
+      started = false,
+      deg2rad = Math.PI / 180,
+      x, y, xp, yp;
+  while (iter.hasNext()) {
+    x = iter.x * deg2rad;
+    y = Math.sin(iter.y * deg2rad);
+    if (started) {
+      sum += (x - xp) * (2 + y + yp);
+    } else {
+      started = true;
+    }
+    xp = x;
+    yp = y;
+  }
+  return sum / 2 * 6378137 * 6378137;
+};
 
 // Get path area from a point iterator
 geom.getPathArea = function(iter) {
@@ -5908,6 +5918,31 @@ geom.getPathArea = function(iter) {
   }
   return sum / 2;
 };
+
+geom.wrapPathIter = function(iter, project) {
+  return {
+    hasNext: function() {
+      if (iter.hasNext()) {
+        project(iter.x, iter.y, this);
+        return true;
+      }
+      return false;
+    }
+  };
+};
+
+geom.projectGall = (function() {
+  var R = 6378137;
+  var deg2rad = Math.PI / 180;
+  var kx = R * deg2rad / Math.sqrt(2);
+  var ky = R * Math.sqrt(2);
+  return function(x, y, p) {
+    p = p || {};
+    p.x = x * kx;
+    p.y = ky * Math.sin(deg2rad * y);
+    return p;
+  };
+}());
 
 // Get path area from an array of [x, y] points
 // TODO: consider removing duplication with getPathArea(), e.g. by
@@ -5957,6 +5992,7 @@ geom.transposeXYCoords = function(xx, yy) {
   }
   return points;
 };
+*/
 
 geom.transposePoints = function(points) {
   var xx = [], yy = [], n=points.length;
@@ -5964,10 +6000,10 @@ geom.transposePoints = function(points) {
     xx.push(points[i][0]);
     yy.push(points[i][1]);
   }
-  return {xx: xx, yy: yy, pointCount: n};
+  return [xx, yy];
 };
 
-*/
+
 
 
 
@@ -7835,17 +7871,6 @@ TopoJSON.forEachArc = function forEachArc(obj, cb) {
 
 
 
-TopoJSON.importArcs = function(arcs) {
-  return Utils.map(arcs, function(arc) {
-    var xx = [],
-        yy = [];
-    for (var i=0, len=arc.length; i<len; i++) {
-      xx.push(arc[i][0]);
-      yy.push(arc[i][1]);
-    }
-    return [xx, yy];
-  });
-};
 
 TopoJSON.decodeArcs = function(arcs, transform) {
   var mx = transform.scale[0],
@@ -8490,7 +8515,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     info: {}
   };
   if (topology.arcs && topology.arcs.length > 0) {
-    dataset.arcs = new ArcDataset(TopoJSON.importArcs(topology.arcs));
+    dataset.arcs = new ArcCollection(topology.arcs);
   }
   return dataset;
 };
@@ -9741,7 +9766,7 @@ function CanvasLayer() {
 
 
 
-// Utility functions for working with ArcDatasets and arrays of arc ids.
+// Utility functions for working with ArcCollection and arrays of arc ids.
 
 MapShaper.clampIntervalByPct = function(z, pct) {
   if (pct <= 0) z = Infinity;
@@ -10785,8 +10810,7 @@ api.simplify = function(arcs, opts) {
 // @paths ArcDataset object
 MapShaper.simplifyPaths = function(paths, opts) {
   var method = opts.method || 'mapshaper';
-  var bounds = paths.getBounds().toArray();
-  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var decimalDegrees = MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
   var simplifyPath = MapShaper.simplifiers[method] || error("Unknown simplification method:", method);
   if (decimalDegrees && !opts.cartesian) {
     MapShaper.simplifyPaths3D(paths, simplifyPath);
@@ -10899,19 +10923,17 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
 
 
 
-// Convert an array of intersections into an ArcDataset (for display)
+// Convert an array of intersections into an ArcCollection (for display)
 //
 MapShaper.getIntersectionPoints = function(intersections) {
   // Kludge: create set of paths of length 1 to display intersection points
   var vectors = Utils.map(intersections, function(obj) {
-        var x = obj.intersection.x,
-            y = obj.intersection.y;
-        return [[x], [y]];
+        return [[obj.intersection.x, obj.intersection.y]];
       });
-  return new ArcDataset(vectors);
+  return new ArcCollection(vectors);
 };
 
-// Identify intersecting segments in an ArcDataset
+// Identify intersecting segments in an ArcCollection
 //
 // Method: bin segments into horizontal stripes
 // Segments that span stripes are assigned to all intersecting stripes

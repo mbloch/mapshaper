@@ -41,7 +41,7 @@ api.runCommands = function(commands, done) {
 
 // TODO: consider refactoring to allow modules
 // @cmd  example: {name: "dissolve", options:{field: "STATE"}}
-// @dataset  format: {arcs: <ArcDataset>, layers:[]}
+// @dataset  format: {arcs: <ArcCollection>, layers:[]}
 // @done callback: function(err, dataset)
 //
 api.runCommand = function(cmd, dataset, cb) {

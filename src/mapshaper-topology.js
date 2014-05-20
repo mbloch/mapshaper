@@ -27,10 +27,10 @@ api.buildTopology = function(dataset) {
 //
 // Output format:
 // {
-//    arcs: [ArcDataset],
+//    arcs: [ArcCollection],
 //    paths: [Array]   // Paths are arrays of one or more arc id.
 // }                   // Arc ids use the same numbering scheme as TopoJSON --
-//       Ids in the paths array are indices of paths in the ArcDataset
+//       Ids in the paths array are indices of paths in the ArcCollection
 //       Negative ids signify that the arc coordinates are in reverse sequence.
 //       Negative ids are converted to array indices with the fornula fwId = ~revId.
 //       E.g. -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
@@ -59,11 +59,9 @@ MapShaper.buildPathTopology = function(xx, yy, nn) {
     return arcs;
   });
 
-  var arcs = new ArcDataset(index.getArcs());
-
   return {
     paths: paths,
-    arcs: arcs
+    arcs: index.getArcs()
   };
 
   function nextPoint(id) {
@@ -319,7 +317,8 @@ function ArcIndex(pointCount, xyToUint) {
         return xyToUint(x, y) % hashTableSize;
       },
       chainIds = [],
-      arcs = [];
+      arcs = [],
+      arcPoints = 0;
 
   Utils.initializeArray(hashTable, -1);
 
@@ -331,6 +330,7 @@ function ArcIndex(pointCount, xyToUint) {
 
     hashTable[key] = arcId;
     arcs.push([xx, yy]);
+    arcPoints += xx.length;
     chainIds.push(chainId);
     return arcId;
   };
@@ -362,7 +362,18 @@ function ArcIndex(pointCount, xyToUint) {
   };
 
   this.getArcs = function() {
-    return arcs;
+    var xx = new Float64Array(arcPoints),
+        yy = new Float64Array(arcPoints),
+        nn = new Uint32Array(arcs.length),
+        copied = 0;
+    arcs.forEach(function(arc, i) {
+      var len = arc[0].length;
+      MapShaper.copyElements(arc[0], 0, xx, copied, len);
+      MapShaper.copyElements(arc[1], 0, yy, copied, len);
+      nn[i] = len;
+      copied += len;
+    });
+    return new ArcCollection(nn, xx, yy);
   };
 }
 

@@ -15,7 +15,7 @@ api.simplify = function(arcs, opts) {
   }
 };
 
-// @paths ArcDataset object
+// @paths ArcCollection object
 MapShaper.simplifyPaths = function(paths, opts) {
   var method = opts.method || 'mapshaper';
   var decimalDegrees = MapShaper.probablyDecimalDegreeBounds(paths.getBounds());

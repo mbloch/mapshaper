@@ -183,7 +183,7 @@ function PathImporter(reservedPoints, opts) {
           xx = xx.subarray(0, pointId);
           yy = yy.subarray(0, pointId);
         }
-        arcs = new ArcDataset(nn, xx, yy);
+        arcs = new ArcCollection(nn, xx, yy);
 
         // TODO: move shape validation after snapping (which may corrupt shapes)
         if (opts.auto_snap || opts.snap_interval) {

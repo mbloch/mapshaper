@@ -1,6 +1,6 @@
 /* @requires mapshaper-shapes */
 
-// Utility functions for working with ArcDatasets and arrays of arc ids.
+// Utility functions for working with ArcCollection and arrays of arc ids.
 
 MapShaper.clampIntervalByPct = function(z, pct) {
   if (pct <= 0) z = Infinity;

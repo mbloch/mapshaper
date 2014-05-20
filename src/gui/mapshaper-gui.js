@@ -74,25 +74,6 @@ function Editor() {
     var group = new ArcLayerGroup(filteredArcs);
     map.addLayerGroup(group);
 
-    // visualize point snapping by displaying snapped points on the map
-    // (see debug_snapping option in mapshaper_import_control.js)
-    /*
-    try {
-      var snaps = data.layers[0].info.snapped_points;
-      if (snaps) {
-        var snappedPaths = new ArcDataset(snaps);
-        var snapColl = new FilteredPathCollection(snappedPaths, {
-          min_segment: 0, min_path: 0
-        });
-        map.addLayerGroup(new ArcLayerGroup(snapColl, {
-          dotSize: 4,
-          dotColor: "rgba(0, 200, 0, 0.5)",
-          strokeColor: "rgba(0, 0, 255, 0.2)"
-        }));
-      }
-    } catch (e) {}
-    */
-
     if (importOpts.repairIntersections) {
       var repair = new RepairControl(map, group, dataset.arcs);
       slider.on('simplify-start', function() {
@@ -118,7 +99,7 @@ function Editor() {
 
 /*
 var api = {
-  ArcDataset: ArcDataset,
+  ArcCollection: ArcCollection,
   Utils: Utils,
   trace: trace,
   error: error

@@ -3,7 +3,7 @@ var assert = require('assert'),
 
 describe('mapshaper-subdivide.js', function () {
   describe('subdivideLayer()', function () {
-    var nullArcs = new api.internal.ArcDataset([]);
+    var nullArcs = new api.internal.ArcCollection([]);
     it('divide a layer into individual shapes', function() {
       var lyr = {
         shapes: [[[0]], [[1]], [[2]], [[3]], [[4]]]

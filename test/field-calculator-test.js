@@ -1,10 +1,10 @@
 var assert = require('assert'),
     api = require("../"),
-    ArcDataset = api.internal.ArcDataset;
+    ArcCollection = api.internal.ArcCollection;
 
 describe('mapshaper-field-calculator.js', function () {
   describe('evaluateLayer()', function () {
-    var nullArcs = new api.internal.ArcDataset([]);
+    var nullArcs = new api.internal.ArcCollection([]);
     it('create new numeric field', function () {
       var records = [{}, {}];
       var lyr = {
@@ -137,13 +137,13 @@ describe('mapshaper-field-calculator.js', function () {
         data: null,
         shapes: [[[0, 1, 2]], [[3, 4, ~1], [5, ~2, ~4]], null]
       }
-      var arcs = [[[1, 1, 2], [2, 3, 3]],
-          [[2, 2], [3, 2]],
-          [[2, 1], [2, 2]],
-          [[2, 3, 3], [3, 3, 2]],
+      var arcs = [[[1, 2], [1, 3], [2, 3]],
+          [[2, 3], [2, 2]],
+          [[2, 2], [1, 2]],
+          [[2, 3], [3, 3], [3, 2]],
           [[3, 2], [2, 2]],
-          [[3, 3, 1, 1], [2, 1, 1, 2]]];
-      arcs = new ArcDataset(arcs);
+          [[3, 2], [3, 1], [1, 1], [1, 2]]];
+      arcs = new ArcCollection(arcs);
 
       beforeEach(function() {
         lyr.data = null;

@@ -17,7 +17,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     layers.push(lyr);
   });
 
-  // TODO: apply transform to ArcDataset, not input arcs
+  // TODO: apply transform to ArcCollection, not input arcs
   if (topology.transform) {
     TopoJSON.decodeArcs(topology.arcs, topology.transform);
   }
@@ -30,7 +30,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     info: {}
   };
   if (topology.arcs && topology.arcs.length > 0) {
-    dataset.arcs = new ArcDataset(TopoJSON.importArcs(topology.arcs));
+    dataset.arcs = new ArcCollection(topology.arcs);
   }
   return dataset;
 };
