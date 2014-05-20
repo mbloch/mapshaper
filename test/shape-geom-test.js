@@ -33,6 +33,17 @@ describe('mapshaper-shape-geom.js', function () {
         shapes: [[[1], [-1], [0]]]
       };
 
+  describe('getSphericalShapeArea()', function() {
+
+    it ("Calculate hemisphere area", function() {
+      var R = 6378137;
+      var hemisphereArea = 2 * Math.PI * R * R;
+      var arcs = new api.internal.ArcDataset([[[-180, -180, 180, 180, -180], [0, 90, 90, 0, 0]]]);
+      var area = geom.getSphericalShapeArea([[0]], arcs);
+      assert.ok(Math.abs(hemisphereArea - area) < 0.01);
+    })
+  })
+
   describe('figure 1', function () {
     it('getShapeArea()', function () {
       assert.equal(geom.getShapeArea(lyr1.shapes[0], arcData), 6)

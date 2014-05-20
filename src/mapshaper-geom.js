@@ -256,10 +256,6 @@ function boundsArea(b) {
   return (b[2] - b[0]) * (b[3] - b[1]);
 }
 
-function probablyDecimalDegreeBounds(b) {
-  return containsBounds([-200, -91, 200, 90], b);
-}
-
 // export functions so they can be tested
 Utils.extend(geom, {
   getRoundingFunction: getRoundingFunction,
@@ -268,6 +264,5 @@ Utils.extend(geom, {
   innerAngle: innerAngle,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
-  triangleArea3D: triangleArea3D,
-  probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
+  triangleArea3D: triangleArea3D
 });

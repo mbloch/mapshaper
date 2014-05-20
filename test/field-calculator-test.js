@@ -158,11 +158,12 @@ describe('mapshaper-field-calculator.js', function () {
         api.evaluateLayer(lyr, arcs, "parts=$.partCount, isNull=$.isNull");
         assert.deepEqual(lyr.data.getRecords(), [{parts: 1, isNull: false}, {parts: 2, isNull: false}, {parts: 0, isNull: true}])
       })
-
+      /*
       it ("$.area and $.originalArea", function() {
         api.evaluateLayer(lyr, arcs, "area=$.area, area2=$.originalArea");
         assert.deepEqual(lyr.data.getRecords(), [{area: 1, area2: 1}, {area: 3, area2: 3}, {area: 0, area2: 0}])
       })
+      */
 
       it ("$.height and $.width", function() {
         api.evaluateLayer(lyr, arcs, "h=$.height, w=$.width");

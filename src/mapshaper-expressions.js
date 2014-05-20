@@ -104,6 +104,7 @@ function addGetters(obj, getters) {
 
 function FeatureExpressionContext(arcs, shapes, records) {
   var _shp = new MultiShape(arcs),
+      _isLatLng = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds()),
       _self = this,
       _centroid, _innerXY,
       _record,
@@ -133,7 +134,7 @@ function FeatureExpressionContext(arcs, shapes, records) {
       return shapeBounds().height();
     },
     area: function() {
-      return geom.getShapeArea(_ids, arcs);
+      return _isLatLng ? geom.getSphericalShapeArea(_ids, arcs) : geom.getShapeArea(_ids, arcs);
     },
     originalArea: function() {
       var i = arcs.getRetainedInterval(),

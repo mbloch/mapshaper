@@ -4289,6 +4289,11 @@ utils.findStringPrefix = function(a, b) {
   return a.substr(0, i);
 };
 
+MapShaper.probablyDecimalDegreeBounds = function(b) {
+  if (b instanceof Bounds) b = b.toArray();
+  return containsBounds([-200, -91, 200, 91], b);
+};
+
 
 
 
@@ -5299,10 +5304,6 @@ function boundsArea(b) {
   return (b[2] - b[0]) * (b[3] - b[1]);
 }
 
-function probablyDecimalDegreeBounds(b) {
-  return containsBounds([-200, -91, 200, 90], b);
-}
-
 // export functions so they can be tested
 Utils.extend(geom, {
   getRoundingFunction: getRoundingFunction,
@@ -5311,8 +5312,7 @@ Utils.extend(geom, {
   innerAngle: innerAngle,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
-  triangleArea3D: triangleArea3D,
-  probablyDecimalDegreeBounds: probablyDecimalDegreeBounds
+  triangleArea3D: triangleArea3D
 });
 
 
@@ -6865,8 +6865,7 @@ api.simplify = function(arcs, opts) {
 // @paths ArcDataset object
 MapShaper.simplifyPaths = function(paths, opts) {
   var method = opts.method || 'mapshaper';
-  var bounds = paths.getBounds().toArray();
-  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var decimalDegrees = MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
   var simplifyPath = MapShaper.simplifiers[method] || error("Unknown simplification method:", method);
   if (decimalDegrees && !opts.cartesian) {
     MapShaper.simplifyPaths3D(paths, simplifyPath);
@@ -7055,11 +7054,29 @@ MapShaper.validateDataset = function(data) {
 // TODO: consider 3D versions of some of these
 
 geom.getShapeArea = function(shp, arcs) {
-  var area = Utils.reduce(shp, function(area, ids) {
+  return Utils.reduce(shp, function(area, ids) {
     var iter = arcs.getShapeIter(ids);
     return area + geom.getPathArea(iter);
   }, 0);
-  return area;
+};
+
+geom.getSphericalShapeArea = function(shp, arcs) {
+  if (!MapShaper.probablyDecimalDegreeBounds(arcs.getBounds())) {
+    error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
+  }
+  return Utils.reduce(shp, function(area, ids) {
+    var iter = arcs.getShapeIter(ids);
+    return area + geom.getSphericalPathArea(iter);
+  }, 0);
+};
+
+// alternative using equal-area projection
+geom.getSphericalShapeArea2 = function(shp, arcs) {
+  return Utils.reduce(shp, function(total, ids) {
+    var iter = arcs.getShapeIter(ids);
+    iter = geom.wrapPathIter(iter, geom.projectGall);
+    return total + geom.getPathArea(iter);
+  }, 0);
 };
 
 // Return path with the largest (area) bounding box
@@ -7245,6 +7262,24 @@ geom.testPointInRing = function(x, y, ids, arcs) {
   return intersections % 2 == 1;
 };
 
+geom.getSphericalPathArea = function(iter) {
+  var sum = 0,
+      started = false,
+      deg2rad = Math.PI / 180,
+      x, y, xp, yp;
+  while (iter.hasNext()) {
+    x = iter.x * deg2rad;
+    y = Math.sin(iter.y * deg2rad);
+    if (started) {
+      sum += (x - xp) * (2 + y + yp);
+    } else {
+      started = true;
+    }
+    xp = x;
+    yp = y;
+  }
+  return sum / 2 * 6378137 * 6378137;
+};
 
 // Get path area from a point iterator
 geom.getPathArea = function(iter) {
@@ -7261,6 +7296,31 @@ geom.getPathArea = function(iter) {
   }
   return sum / 2;
 };
+
+geom.wrapPathIter = function(iter, project) {
+  return {
+    hasNext: function() {
+      if (iter.hasNext()) {
+        project(iter.x, iter.y, this);
+        return true;
+      }
+      return false;
+    }
+  };
+};
+
+geom.projectGall = (function() {
+  var R = 6378137;
+  var deg2rad = Math.PI / 180;
+  var kx = R * deg2rad / Math.sqrt(2);
+  var ky = R * Math.sqrt(2);
+  return function(x, y, p) {
+    p = p || {};
+    p.x = x * kx;
+    p.y = ky * Math.sin(deg2rad * y);
+    return p;
+  };
+}());
 
 // Get path area from an array of [x, y] points
 // TODO: consider removing duplication with getPathArea(), e.g. by
@@ -11718,6 +11778,7 @@ function addGetters(obj, getters) {
 
 function FeatureExpressionContext(arcs, shapes, records) {
   var _shp = new MultiShape(arcs),
+      _isLatLng = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds()),
       _self = this,
       _centroid, _innerXY,
       _record,
@@ -11747,7 +11808,7 @@ function FeatureExpressionContext(arcs, shapes, records) {
       return shapeBounds().height();
     },
     area: function() {
-      return geom.getShapeArea(_ids, arcs);
+      return _isLatLng ? geom.getSphericalShapeArea(_ids, arcs) : geom.getShapeArea(_ids, arcs);
     },
     originalArea: function() {
       var i = arcs.getRetainedInterval(),

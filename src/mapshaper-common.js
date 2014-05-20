@@ -223,3 +223,8 @@ utils.findStringPrefix = function(a, b) {
   }
   return a.substr(0, i);
 };
+
+MapShaper.probablyDecimalDegreeBounds = function(b) {
+  if (b instanceof Bounds) b = b.toArray();
+  return containsBounds([-200, -91, 200, 91], b);
+};

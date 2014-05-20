@@ -18,8 +18,7 @@ api.simplify = function(arcs, opts) {
 // @paths ArcDataset object
 MapShaper.simplifyPaths = function(paths, opts) {
   var method = opts.method || 'mapshaper';
-  var bounds = paths.getBounds().toArray();
-  var decimalDegrees = probablyDecimalDegreeBounds(bounds);
+  var decimalDegrees = MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
   var simplifyPath = MapShaper.simplifiers[method] || error("Unknown simplification method:", method);
   if (decimalDegrees && !opts.cartesian) {
     MapShaper.simplifyPaths3D(paths, simplifyPath);
