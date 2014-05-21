@@ -20,7 +20,7 @@ Dbf.getStringReaderAscii = function(size) {
     var str = bin.readCString(size, require7bit);
     if (str === null) {
       stop("DBF file contains non-ascii text data.\n" +
-          "Use the --encoding option with one of these encodings:\n" +
+          "Use the encoding option with one of these encodings:\n" +
           MapShaper.getFormattedEncodings());
     }
     return Utils.trim(str);

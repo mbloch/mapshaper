@@ -60,9 +60,10 @@ MapShaper.getOptionParser = function() {
     .option("format", {
       describe: "set export format (shapefile|geojson|topojson)"
     })
+    /*
     .option("encoding", {
       describe: "text encoding of .dbf file"
-    })
+    })*/
     .option("quantization", {
       describe: "specify TopoJSON quantization (auto-set by default)",
       type: "integer"

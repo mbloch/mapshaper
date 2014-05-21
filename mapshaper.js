@@ -4821,9 +4821,10 @@ MapShaper.getOptionParser = function() {
     .option("format", {
       describe: "set export format (shapefile|geojson|topojson)"
     })
+    /*
     .option("encoding", {
       describe: "text encoding of .dbf file"
-    })
+    })*/
     .option("quantization", {
       describe: "specify TopoJSON quantization (auto-set by default)",
       type: "integer"
@@ -7947,7 +7948,7 @@ Dbf.getStringReaderAscii = function(size) {
     var str = bin.readCString(size, require7bit);
     if (str === null) {
       stop("DBF file contains non-ascii text data.\n" +
-          "Use the --encoding option with one of these encodings:\n" +
+          "Use the encoding option with one of these encodings:\n" +
           MapShaper.getFormattedEncodings());
     }
     return Utils.trim(str);
