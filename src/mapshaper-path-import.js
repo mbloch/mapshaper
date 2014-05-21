@@ -72,11 +72,13 @@ function PathImporter(reservedPoints, opts) {
     });
   }
 
+  /*
   this.roundCoords = function(arr, round) {
     for (var i=0, n=arr.length; i<n; i++) {
       arr[i] = round(arr[i]);
     }
   };
+  */
 
   // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
   // (for Shapefile import -- consider moving out of here)

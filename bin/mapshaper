@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
-var mapshaper = require("../").enableLogging(),
-    commands = mapshaper.parseCommands(process.argv.slice(2));
-
-mapshaper.runCommands(commands, done);
+var mapshaper = require("../");
+mapshaper.enableLogging();
+mapshaper.runShellArgs(process.argv.slice(2), done);
 
 function done(err) {
   if (err) mapshaper.stop(err);

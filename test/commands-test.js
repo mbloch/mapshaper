@@ -8,20 +8,20 @@ function fixPath(p) {
 
 describe('mapshaper-commands.js', function () {
 
-  describe('runCommandLine()', function () {
+  describe('runCommandString()', function () {
     var file1 = fixPath("test_data/two_states.shp"),
         file2 = fixPath("test_data/six_counties.shp");
 
     it("-fields", function () {
       var cmd = "-i " + file1 + " -fields NAME=STATE_NAME,FIPS";
-      api.runCommandLine(cmd, function(err, data) {
+      api.runCommandString(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getFields(), ['NAME', 'FIPS']);
       })
     })
 
     it('-dissolve', function() {
       var cmd = "-i " + file2 + " -dissolve + copy-fields NAME,STATE_FIPS sum-fields POP2000,MULT_RACE";
-        api.runCommandLine(cmd, function(err, data) {
+        api.runCommandString(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
         var lyr1 = data.layers[0]; // original lyr
         assert.equal(lyr1.data.size(), 6); // original data table hasn't been replaced
@@ -34,7 +34,7 @@ describe('mapshaper-commands.js', function () {
 
     it('-split', function() {
       var cmd = "-i " + file1 + " -split STATE";
-      api.runCommandLine(cmd, function(err, data) {
+      api.runCommandString(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
         assert.equal(data.layers[0].shapes.length, 1);
         assert.equal(data.layers[1].shapes.length, 1);
@@ -47,7 +47,7 @@ describe('mapshaper-commands.js', function () {
             " keys=FIPS,STATE_FIPS:str fields=POP2010,SUB_REGION",
           target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
           {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
-      api.runCommandLine(cmd, function(err, data) {
+      api.runCommandString(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getRecords(), target);
       })
 

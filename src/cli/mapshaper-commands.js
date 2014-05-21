@@ -1,32 +1,41 @@
 /* @requires mapshaper-cli-lib */
 
+api.runShellArgs = function(argv, done) {
+  var commands = api.parseCommands(argv);
+  if (commands.length === 0) {
+    MapShaper.printHelp();
+  } else {
+    commands = MapShaper.runAndRemoveInfoCommands(commands);
+  }
 
-api.runCommandLine = function(str, done) {
+  if (commands.length === 0) {
+    done();
+  } else {
+    // if there's no -o command and no -info command,
+    // append a generic -o command.
+    if (!Utils.some(commands, function(cmd) {
+      return cmd.name == 'o' || cmd.name == 'info' ;})) {
+      //message("Add a -o command to generate output");
+      commands.push({name: "o", options: {}});
+    }
+    api.runCommands(commands, done);
+  }
+};
+
+api.runCommandString = function(str, done) {
   var parse = require('shell-quote').parse,
       commands = api.parseCommands(parse(str));
   api.runCommands(commands, done);
 };
 
 api.runCommands = function(commands, done) {
-  if (commands.length === 0) commands.push({name: 'help'}); // print help
-  commands = MapShaper.runAndRemoveInfoCommands(commands);
-  if (commands.length === 0) return done();
-
   // need exactly one -i command
   if (utils.filter(commands, function(cmd) {return cmd.name == 'i';}).length != 1) {
     done("mapshaper expects one -i command");
   }
-
   // move -i to the front
   MapShaper.promoteCommand('i', commands);
   var imports = MapShaper.divideImportCommand(commands.shift());
-
-  // TODO: if there's no -o command and no -info command,
-  // consider appending a generic -o command.
-  if (!Utils.some(commands, function(cmd) {
-    return cmd.name == 'o' || cmd.name == 'info' ;})) {
-    message("Add a -o command to generate output");
-  }
 
   T.start("Start timing");
   utils.reduceAsync(imports, null, function(empty, cmd, cb) {
@@ -205,26 +214,6 @@ api.importFiles = function(opts) {
   return dataset;
 };
 
-// Handle informational commands and remove them from the command list
-MapShaper.runAndRemoveInfoCommands = function(commands) {
-  return Utils.filter(commands, function(cmd) {
-    if (cmd.name == 'version') {
-      message(getVersion());
-      return false;
-    } else if (cmd.name == 'encodings') {
-      MapShaper.printEncodings();
-      return false;
-    } else if (cmd.name == 'help') {
-      MapShaper.getOptionParser().printHelp();
-      return false;
-    } else if (cmd.name == 'verbose') {
-      C.VERBOSE = true;
-      return false;
-    }
-    return true;
-  });
-};
-
 // Run a sequence of commands to transform a dataset
 // Assumes that certain commands have already been handled and removed from
 // the list -- e.g. -i and -help
@@ -248,6 +237,30 @@ utils.reduceAsync = function(arr, memo, iter, done) {
       iter(result, arr[i++], next);
     }
   }
+};
+
+// Handle informational commands and remove them from the command list
+MapShaper.runAndRemoveInfoCommands = function(commands) {
+  return Utils.filter(commands, function(cmd) {
+    if (cmd.name == 'version') {
+      message(getVersion());
+      return false;
+    } else if (cmd.name == 'encodings') {
+      MapShaper.printEncodings();
+      return false;
+    } else if (cmd.name == 'help') {
+      MapShaper.printHelp();
+      return false;
+    } else if (cmd.name == 'verbose') {
+      C.VERBOSE = true;
+      return false;
+    }
+    return true;
+  });
+};
+
+MapShaper.printHelp = function() {
+  MapShaper.getOptionParser().printHelp();
 };
 
 // TODO: handle multiple instances of a command, return number found
