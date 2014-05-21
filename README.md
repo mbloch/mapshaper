@@ -36,24 +36,24 @@ Browser compatibility: mapshaper works in recent versions of Chrome and Firefox 
 
 ### Command line tool
 
-The [Command Reference](https://github.com/mbloch/mapshaper/wiki/Command-Reference) had detailed usage information.
+The [Command Reference](https://github.com/mbloch/mapshaper/wiki/v0.2-Command-Reference) had detailed usage information.
 
 Examples
 
 Simplify counties.shp retaining 10% of removable vertices, export as GeoJSON.
-`mapshaper -p 0.1 counties.shp -f geojson -o counties_simple.json`
+`mapshaper -i counties.shp -simplify 10% -o format=geojson counties_simple.json`
 
 Convert counties to states.
-`mapshaper --dissolve STATE --copy-fields STATE_NAME counties.shp -o states.shp`
+`mapshaper -i counties.shp -dissolve STATE copy-fields=STATE_NAME -o states.shp`
 
 Extract the border between two states.
-`mapshaper --filter "STATE=='OR' || STATE=='WA'" --innerlines states.shp`
+`mapshaper -i states.shp -filter "STATE=='OR' || STATE=='WA'" -innerlines`
 
 Generate two new fields using JavaScript.
-`mapshaper --expression "STATE_FIPS=CNTY_FIPS.substr(0, 5), AREA=$.area" counties.shp`
+`mapshaper -i counties.shp -each "STATE_FIPS=CNTY_FIPS.substr(0, 5), AREA=$.area"`
 
 Join a csv table to a Shapefile (:str suffix prevents FIPS field from being converted to numbers)
-`mapshaper --join demographics.txt --join-keys STATE_FIPS,FIPS:str states.shp`
+`mapshaper -i states.shp -join demographics.txt keys=STATE_FIPS,FIPS:str`
 
 The `mapshaper` script has been used successfully in OS X, Ubuntu Linux and Windows 8.
 
