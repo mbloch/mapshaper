@@ -20,7 +20,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper -i states.shp auto-snap -simplify 10% -o format=geojson");
 
   parser.example("Aggregate census tracts to counties\n" +
-      "$ mapshaper -i tracts.shp -calc \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
+      "$ mapshaper -i tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
 
   parser.command('i')
     .title("Commands and command options")
@@ -147,7 +147,7 @@ MapShaper.getOptionParser = function() {
     .validate(validateLayersOpts);
   */
 
-  parser.command("calc")
+  parser.command("each")
     .describe("create/update/delete data fields with a JS expression")
     .option("expression")
     .option("target");
@@ -155,7 +155,7 @@ MapShaper.getOptionParser = function() {
   parser.command("expression")
     .alias('e')
     .validate(function() {
-      error("-expression has been named as -calc");
+      error("-expression has been named as -each");
     });
 
   parser.command("join")

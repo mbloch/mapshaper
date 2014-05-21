@@ -74,7 +74,7 @@ api.runCommand = function(cmd, dataset, cb) {
     MapShaper.printLayerNames(dataset.layers);
   }
 
-  if (name == 'calc') {
+  if (name == 'each') {
     MapShaper.applyCommand(api.evaluateLayer, srcLayers, arcs, opts.expression);
 
   } else if (name == 'dissolve') {
