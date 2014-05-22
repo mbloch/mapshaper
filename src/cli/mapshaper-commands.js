@@ -1,5 +1,6 @@
 /* @requires mapshaper-cli-lib */
 
+// parse command line args into commands and run them
 api.runShellArgs = function(argv, done) {
   var commands = api.parseCommands(argv);
   if (commands.length === 0) {
@@ -22,12 +23,16 @@ api.runShellArgs = function(argv, done) {
   }
 };
 
+// run a string of command line args
+// (useful for testing -- doesn't append -o like runShellArgs())
 api.runCommandString = function(str, done) {
   var parse = require('shell-quote').parse,
       commands = api.parseCommands(parse(str));
   api.runCommands(commands, done);
 };
 
+// execute a sequence of data processing commands
+// (assumes informational commands like -help have been removed)
 api.runCommands = function(commands, done) {
   // need exactly one -i command
   if (utils.filter(commands, function(cmd) {return cmd.name == 'i';}).length != 1) {
@@ -47,6 +52,17 @@ api.runCommands = function(commands, done) {
   });
 };
 
+// Run a sequence of commands to transform a dataset
+// Assumes that certain commands have already been handled and removed from
+// the list -- e.g. -i and -help
+//
+// @done callback: function(err, dataset)
+//
+api.processDataset = function(dataset, commands, done) {
+  utils.reduceAsync(commands, dataset, function(data, cmd, cb) {
+    api.runCommand(cmd, data, cb);
+  }, done);
+};
 
 // TODO: consider refactoring to allow modules
 // @cmd  example: {name: "dissolve", options:{field: "STATE"}}
@@ -214,18 +230,6 @@ api.importFiles = function(opts) {
   return dataset;
 };
 
-// Run a sequence of commands to transform a dataset
-// Assumes that certain commands have already been handled and removed from
-// the list -- e.g. -i and -help
-//
-// @done callback: function(err, dataset)
-//
-api.processDataset = function(dataset, commands, done) {
-  utils.reduceAsync(commands, dataset, function(data, cmd, cb) {
-    api.runCommand(cmd, data, cb);
-  }, done);
-};
-
 utils.reduceAsync = function(arr, memo, iter, done) {
   var i=0;
   next(null, memo);
@@ -239,23 +243,21 @@ utils.reduceAsync = function(arr, memo, iter, done) {
   }
 };
 
-// Handle informational commands and remove them from the command list
+// Handle information commands and remove them from the list
 MapShaper.runAndRemoveInfoCommands = function(commands) {
   return Utils.filter(commands, function(cmd) {
     if (cmd.name == 'version') {
-      message(getVersion());
-      return false;
+      console.log(getVersion());
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
-      return false;
     } else if (cmd.name == 'help') {
       MapShaper.printHelp();
-      return false;
     } else if (cmd.name == 'verbose') {
       C.VERBOSE = true;
-      return false;
+    } else {
+      return true;
     }
-    return true;
+    return false;
   });
 };
 

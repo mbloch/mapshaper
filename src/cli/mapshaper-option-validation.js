@@ -26,8 +26,6 @@ function validateSimplifyOpts(o, _) {
   });
   if (pctStr) o.pct = parseFloat(pctStr) / 100;
 
-  // if (o.cartesian) o.force2D = true; // TODO: just use cartesian
-
   if ("pct" in o && !(o.pct >= 0 && o.pct <= 1)) {
     error("-simplify pct expects a number in the range 0-1");
   }
