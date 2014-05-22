@@ -71,7 +71,7 @@ MapShaper.dissolve = function(lyr, arcs, field, opts) {
   //T.stop('dissolve second pass');
   dissolveLyr = {
     shapes: second.shapes,
-    name: field || 'dissolve',
+    name: "",
   };
   if (properties) {
     dissolveRecords = MapShaper.calcDissolveData(first.keys, second.index, properties, field, opts);
