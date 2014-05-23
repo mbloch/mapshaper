@@ -1,83 +1,57 @@
 /* @requires mapshaper-canvas, mapshaper-gui-shapes */
 
-// Group of one ore more layers sharing the same set of arcs
-// @arcs a FilteredPathCollection object (mapshaper-gui-shapes.js)
+// Interface for displaying the points and paths in a dataset
 //
-function ArcLayerGroup(arcs, opts) {
-  var _self = this;
-  var _surface = new CanvasLayer();
-
-  var _arcLyr = new ShapeLayer(arcs, _surface, opts),
-      _layers = [_arcLyr],
+function LayerGroup(dataset) {
+  var _surface = new CanvasLayer(),
+      _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
+      _shapes,
+      _style,
       _map;
 
-  var _visible = true;
-  this.visible = function(b) {
-    if (arguments.length === 0 ) return _visible;
-
-    if (b) {
-      _visible = true;
+  this.showLayer = function(i) {
+    var lyr = dataset.layers[i];
+    if (lyr.geometry_type == 'point') {
+      _shapes = new FilteredPointCollection(lyr.shapes);
     } else {
-      _visible = false;
-      _surface.clear();
+      error("TODO: draw non-point layers");
     }
+    return this;
   };
 
-  this.refresh = function(style) {
-    if (style) { // KLUDGE
-      _arcLyr.updateStyle(style);
+  this.showArcs = function() {
+    _shapes = _filteredArcs;
+    return this;
+  };
+
+  this.setStyle = function(style) {
+    _style = style;
+    return this;
+  };
+
+  this.hide = function() {
+    _surface.clear();
+    _shapes = null;
+  };
+
+  this.setRetainedPct = function(pct) {
+    _filteredArcs.setRetainedPct(pct);
+    return this;
+  };
+
+  this.refresh = function() {
+    if (_map && _shapes && _style) {
+      var ext = _map.getExtent();
+      _surface.prepare(ext.width(), ext.height());
+      _shapes.setMapExtent(ext);
+      MapShaper.drawShapes(_shapes, _style, _surface.getContext());
     }
-    if (_map) drawLayers();
   };
 
   this.setMap = function(map) {
     _map = map;
     _surface.getElement().appendTo(map.getElement());
-    map.on('refresh', drawLayers, this);
-    map.getExtent().on('change', drawLayers, this);
+    map.on('refresh', this.refresh, this);
+    map.getExtent().on('change', this.refresh, this);
   };
-
-  function drawLayers() {
-    if (!_self.visible()) return;
-    var ext = _map.getExtent();
-    _surface.prepare(ext.width(), ext.height());
-    Utils.forEach(_layers, function(lyr) {
-      lyr.draw(ext); // visibility handled by layer
-    });
-  }
 }
-
-// @shapes a FilteredPathCollection object
-//
-function ShapeLayer(shapes, surface, opts) {
-  var renderer = new ShapeRenderer();
-  var _visible = true;
-  var style = {
-    strokeWidth: 1,
-    strokeColor: "#335",
-    strokeAlpha: 1
-  };
-
-  this.visible = function(b) {
-    return arguments.length === 0 ? _visible : _visible = !b, this;
-  };
-
-  this.updateStyle = function(obj) {
-    Utils.extend(style, obj);
-  };
-
-  this.draw = function(ext) {
-    if (!this.visible()) return;
-    shapes.setMapExtent(ext);
-    var info = renderer.drawShapes(shapes, style, surface.getContext());
-    if (style.dotSize) {
-      renderer.drawPoints(shapes, style, surface.getContext());
-    }
-    // TODO: find a way to enable circles at an appropriate zoom
-  };
-
-  this.updateStyle(opts);
-}
-
-Opts.inherit(ShapeLayer, Waiter);
-

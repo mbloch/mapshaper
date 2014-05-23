@@ -1,24 +1,14 @@
 /* @requires mapshaper-shapes, mapshaper-shape-utils */
 
-// A collection of paths that can be filtered to exclude paths and points
-// that can't be displayed at the current map scale. For drawing paths on-screen.
-// TODO: Look into generalizing from Arc paths to SimpleShape and MultiShape
+// A wrapper for ArcCollection that converts source coords to screen coords
+// and filters paths to speed up rendering.
 //
-function FilteredPathCollection(unfilteredArcs, opts) {
-  var defaults = {
-        min_path: 0.8,   // min pixel size of a drawn path
-        min_segment: 0.6 // min pixel size of a drawn segment
-      };
-
-  var _displayBounds,
-      _transform,
+function FilteredArcCollection(unfilteredArcs) {
+  var _ext,
       _sortedThresholds,
-      _displayScale = 1,
       filteredArcs,
-      filteredSegLen,
-      getPathWrapper = getDrawablePathsIter;
+      filteredSegLen;
 
-  opts = Utils.extend(defaults, opts);
   init();
 
   function init() {
@@ -49,8 +39,8 @@ function FilteredPathCollection(unfilteredArcs, opts) {
   }
 
   function getArcData() {
-    // Use a filtered version of the arcs at small scales
-    var unitsPerPixel = 1/_transform.mx;
+    // Use a filtered version of arcs at small scales
+    var unitsPerPixel = 1/_ext.getTransform().mx;
     return filteredArcs && unitsPerPixel > filteredSegLen * 1.5 ?
       filteredArcs : unfilteredArcs;
   }
@@ -78,111 +68,123 @@ function FilteredPathCollection(unfilteredArcs, opts) {
   };
 
   this.setMapExtent = function(ext) {
-    // TODO: avoid setting all of these object-level variables
-    _transform = ext.getTransform();
-    _displayBounds = ext.getBounds().clone().transform(_transform);
-    _displayScale = ext.scale();
+    _ext = ext;
   };
 
-  // Wrap path iterator to filter out offscreen points
-  //
-  /*
-  function getDrawablePointsIter() {
-    var bounds = _displayBounds || error("#getDrawablePointsIter() missing bounds");
-    var src = getDrawablePathsIter(),
-        wrapped;
-    var wrapper = {
-      x: 0,
-      y: 0,
-      node: false,
-      hasNext: function() {
-        var path = wrapped;
-        while (path.hasNext()) {
-          if (bounds.containsPoint(path.x, path.y)) {
-            this.x = path.x;
-            this.y = path.y;
-            this.node = path.node;
-            return true;
-          }
-        }
-        return false;
-      }
-    };
-
-    return function(iter) {
-      wrapped = iter;
-      return wrapper;
-    };
-  }
-  */
-
-  // Wrap vector path iterator to convert geographic coordinates to pixels
-  //   and skip over invisible clusters of points (i.e. smaller than a pixel)
-  //
-  function getDrawablePathsIter() {
-    var transform = _transform || error("#getDrawablePathsIter() Missing a Transform object; remember to call .transform()");
-    var wrapped,
-        _firstPoint,
-        _minSeg = opts.min_segment;
-
-    var wrapper = {
-      x: 0,
-      y: 0,
-      hasNext: function() {
-        var t = transform, mx = t.mx, my = t.my, bx = t.bx, by = t.by;
-        var path = wrapped,
-            isFirst = _firstPoint,
-            x, y, prevX, prevY,
-            i = 0;
-        if (!isFirst) {
-          prevX = this.x;
-          prevY = this.y;
-        }
-        while (path.hasNext()) {
-          i++;
-          x = path.x * mx + bx;
-          y = path.y * my + by;
-          if (isFirst || Math.abs(x - prevX) > _minSeg || Math.abs(y - prevY) > _minSeg) {
-            break;
-          }
-        }
-        if (i === 0) return false;
-        _firstPoint = false;
-        this.x = x;
-        this.y = y;
-        return true;
-      }
-    };
-    return function(iter) {
-      _firstPoint = true;
-      wrapped = iter;
-      return wrapper;
-    };
-  }
-
-  // TODO: refactor
-  //
   this.forEach = function(cb) {
+    if (!_ext) error("Missing map extent");
+
     var src = getArcData(),
         arc = new Arc(src),
-        allIn = true,
-        filterOnSize = !!(_transform && _displayBounds),
-        wrap = getPathWrapper(),
-        minPathSize, geoBounds, geoBBox;
+        minPathLen = 0.8 * _ext.getPixelSize(),
+        wrapPath = getPathWrapper(_ext),
+        geoBounds = _ext.getBounds(),
+        geoBBox = geoBounds.toArray(),
+        allIn = geoBounds.contains(src.getBounds());
 
-    if (filterOnSize) {
-      minPathSize = opts.min_path / _transform.mx;
-      if (_displayScale < 1) minPathSize *= _displayScale;
-      geoBounds = _displayBounds.clone().transform(_transform.invert());
-      geoBBox = geoBounds.toArray();
-      allIn = geoBounds.contains(src.getBounds());
-    }
+    // don't drop more paths at less than full extent (i.e. zoomed far out)
+    if (_ext.scale() < 1) minPathLen *= _ext.scale();
 
     for (var i=0, n=src.size(); i<n; i++) {
       arc.init(i);
-      if (filterOnSize && arc.smallerThan(minPathSize)) continue;
+      if (arc.smallerThan(minPathLen)) continue;
       if (!allIn && !arc.inBounds(geoBBox)) continue;
-      cb(wrap(arc.getPathIter()));
+      cb(wrapPath(arc.getPathIter()));
     }
+  };
+}
+
+function FilteredPointCollection(shapes) {
+  var _ext;
+
+  this.forEach = function(cb) {
+    var iter = new PointIter();
+    var wrapped = getPointWrapper(_ext)(iter);
+    for (var i=0, n=shapes.length; i<n; i++) {
+      iter.setPoints(shapes[i]);
+      cb(wrapped);
+    }
+  };
+
+  this.setMapExtent = function(ext) {
+    _ext = ext;
+  };
+}
+
+function getPathWrapper(ext) {
+  return getDisplayWrapper(ext, "path");
+}
+
+function getPointWrapper(ext) {
+  return getDisplayWrapper(ext, "point");
+}
+
+// @ext MapExtent
+// @type 'point'|'path'
+function getDisplayWrapper(ext, type) {
+  // Wrap point iterator to convert geographic coordinates to pixels
+  //   and skip over invisible clusters of points (i.e. smaller than a pixel)
+  var transform = ext.getTransform(),
+      bounds = ext.getBounds(),
+      started = false,
+      wrapped = null;
+
+  var wrapper = {
+    x: 0,
+    y: 0,
+    hasNext: function() {
+      var t = transform, mx = t.mx, my = t.my, bx = t.bx, by = t.by;
+      var minSegLen = 0.6; // min pixel size of a drawn segment
+      var iter = wrapped,
+          isFirst = !started,
+          pointMode = type == 'point',
+          x, y, prevX, prevY,
+          i = 0;
+      if (!isFirst) {
+        prevX = this.x;
+        prevY = this.y;
+      }
+      while (iter.hasNext()) {
+        i++;
+        x = iter.x * mx + bx;
+        y = iter.y * my + by;
+        if (pointMode) {
+           if (bounds.containsPoint(iter.x, iter.y)) break;
+        } else if (isFirst || Math.abs(x - prevX) > minSegLen || Math.abs(y - prevY) > minSegLen) {
+          break;
+        }
+      }
+      if (i === 0) return false;
+      started = true;
+      this.x = x;
+      this.y = y;
+      return true;
+    }
+  };
+  return function(iter) {
+    started = false;
+    wrapped = iter;
+    return wrapper;
+  };
+}
+
+function PointIter() {
+  var _i, _points;
+
+  this.setPoints = function(arr) {
+    _points = arr;
+    _i = 0;
+  };
+
+  this.hasNext = function() {
+    var n = _points ? _points.length : 0,
+        p;
+    if (_i < n) {
+      p = _points[_i++];
+      this.x = p[0];
+      this.y = p[1];
+      return true;
+    }
+    return false;
   };
 }

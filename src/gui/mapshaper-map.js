@@ -27,7 +27,6 @@ function MshpMap(el, opts_) {
   this.addLayerGroup = function(group) {
     group.setMap(this);
     _groups.push(group);
-    this.dispatchEvent('refresh');
   };
 
   this.getElement = function() {
@@ -116,8 +115,13 @@ function MapExtent(el, initialBounds) {
   this.height = _position.height;
   this.position = _position.position;
 
+  // get zoom factor (1 == full extent, 2 == 2x zoom, etc.)
   this.scale = function() {
     return _scale;
+  };
+
+  this.getPixelSize = function() {
+    return 1 / this.getTransform().mx;
   };
 
   this.setContentPadding = function(pix) {
@@ -136,6 +140,14 @@ function MapExtent(el, initialBounds) {
   this.getBounds = function() {
     return centerAlign(calcBounds(_cx, _cy, _scale));
   };
+
+  /*
+  this.getGeoBounds = function() {
+    var bounds = this.getBounds();
+    console.log("bounds:", bounds);
+    return bounds.clone().transform(this.getTransform().invert());
+  };
+  */
 
   function calcBounds(cx, cy, scale) {
     var w = initialBounds.width() / scale,

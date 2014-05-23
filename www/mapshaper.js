@@ -2253,6 +2253,11 @@ Utils.extend(El.prototype, {
     return this;
   },
 
+  classed: function(className, b) {
+    this[b ? 'addClass' : 'removeClass'](className);
+    return this;
+  },
+
   hasClass: function(className) {
     return Browser.hasClass(this.el, className);
   },
@@ -4568,16 +4573,15 @@ Utils.extend(geom, {
 
 
 MapShaper.ArcCollection = ArcCollection;
-var ArcDataset = ArcCollection;
 
 
 // An interface for managing a collection of paths.
 // Constructor signatures:
 //
-// ArcDataset(arcs)
+// ArcCollection(arcs)
 //    arcs is an array of polyline arcs; each arc is an array of points: [[x0, y0], [x1, y1], ... ]
 //
-// ArcDataset(nn, xx, yy)
+// ArcCollection(nn, xx, yy)
 //    nn is an array of arc lengths; xx, yy are arrays of concatenated coords;
 function ArcCollection() {
   var _xx, _yy,  // coordinates data
@@ -4591,10 +4595,10 @@ function ArcCollection() {
   } else if (arguments.length == 3) {
     initXYData.apply(this, arguments);
   } else {
-    error("ArcDataset() Invalid arguments");
+    error("ArcCollection() Invalid arguments");
   }
 
-  function initLegacyArcs(coords) {
+  function initLegacyArcs(arcs) {
     var xx = [], yy = [];
     var nn = arcs.map(function(points) {
       var n = points ? points.length : 0;
@@ -4626,7 +4630,7 @@ function ArcCollection() {
     }
 
     if (idx != _xx.length || _xx.length != _yy.length) {
-      error("ArcDataset#initXYData() Counting error");
+      error("ArcCollection#initXYData() Counting error");
     }
 
     initBounds();
@@ -4637,7 +4641,7 @@ function ArcCollection() {
 
   function initZData(zz) {
     if (!zz) zz = new Float64Array(_xx.length);
-    if (zz.length != _xx.length) error("ArcDataset#initZData() mismatched arrays");
+    if (zz.length != _xx.length) error("ArcCollection#initZData() mismatched arrays");
     if (zz instanceof Array) zz = new Float64Array(zz);
     _zz = zz;
     _filteredArcIter = new FilteredArcIter(_xx, _yy, _zz);
@@ -4675,6 +4679,42 @@ function ArcCollection() {
     };
   }
 
+  function convertLegacyArcs(coords) {
+    var numArcs = coords.length;
+    // Generate arrays of arc lengths and starting idxs
+    var nn = new Uint32Array(numArcs),
+        pointCount = 0,
+        arc, arcLen;
+    for (var i=0; i<numArcs; i++) {
+      arc = coords[i];
+      if (arc.length != 2) error("#convertLegacyArcs() Expected array length == 2");
+      arcLen = arc && arc[0].length || 0;
+      nn[i] = arcLen;
+      pointCount += arcLen;
+      if (arcLen === 0) error("#convertArcArrays() Empty arc:", arc);
+    }
+
+    // Copy x, y coordinates into long arrays
+    var xx = new Float64Array(pointCount),
+        yy = new Float64Array(pointCount),
+        offs = 0;
+    coords.forEach(function(arc, arcId) {
+      var xarr = arc[0],
+          yarr = arc[1],
+          n = nn[arcId];
+      for (var j=0; j<n; j++) {
+        xx[offs + j] = xarr[j];
+        yy[offs + j] = yarr[j];
+      }
+      offs += n;
+    });
+    return {
+      xx: xx,
+      yy: yy,
+      nn: nn
+    };
+  }
+
   // Give access to raw data arrays...
   this.getVertexData = function() {
     return {
@@ -4688,7 +4728,7 @@ function ArcCollection() {
   };
 
   this.getCopy = function() {
-    var copy = new ArcDataset(new Int32Array(_nn), new Float64Array(_xx),
+    var copy = new ArcCollection(new Int32Array(_nn), new Float64Array(_xx),
         new Float64Array(_yy));
     if (_zz) copy.setThresholds(new Float64Array(_zz));
     return copy;
@@ -4719,7 +4759,7 @@ function ArcCollection() {
       if (n2 < 2) error("Collapsed arc"); // endpoints should be z == Infinity
       nn2[arcId] = n2;
     }
-    var copy = new ArcDataset(nn2, xx2, yy2);
+    var copy = new ArcCollection(nn2, xx2, yy2);
     copy.setThresholds(zz2);
     return copy;
   };
@@ -4930,7 +4970,7 @@ function ArcCollection() {
         }
       });
     } else {
-      error("ArcDataset#setThresholds() Invalid threshold data.");
+      error("ArcCollection#setThresholds() Invalid threshold data.");
     }
     initZData(zz);
     return this;
@@ -4958,7 +4998,7 @@ function ArcCollection() {
   // Return array of z-values that can be removed for simplification
   //
   this.getRemovableThresholds = function(nth) {
-    if (!_zz) error("ArcDataset#getRemovableThresholds() Missing simplification data.");
+    if (!_zz) error("ArcCollection#getRemovableThresholds() Missing simplification data.");
     var skip = nth | 1,
         arr = new Float64Array(Math.ceil(_zz.length / skip)),
         z;
@@ -4973,7 +5013,7 @@ function ArcCollection() {
 
   this.getArcThresholds = function(arcId) {
     if (!(arcId >= 0 && arcId < this.size())) {
-      error("ArcDataset#getArcThresholds() invalid arc id:", arcId);
+      error("ArcCollection#getArcThresholds() invalid arc id:", arcId);
     }
     var start = _ii[arcId],
         end = start + _nn[arcId];
@@ -5638,11 +5678,11 @@ MapShaper.validateLayer = function(lyr, arcs) {
   if (lyr.data && lyr.data.size() != lyr.shapes.length) {
     error("Layer contains mismatched data table and shapes");
   }
-  if (arcs && arcs instanceof ArcDataset === false) {
-    error("Expected an ArcDataset");
+  if (arcs && arcs instanceof ArcCollection === false) {
+    error("Expected an ArcCollection");
   }
   if (type == 'polygon' || type == 'polyline') {
-    if (!arcs) error("Missing ArcDataset for a", type, "layer");
+    if (!arcs) error("Missing ArcCollection for a", type, "layer");
     // TODO: validate shapes, make sure ids are w/in arc range
   } else if (type == 'point') {
     // TODO: validate shapes
@@ -5717,7 +5757,7 @@ geom.getMaxPath = function(shp, arcs) {
 };
 
 // @ids array of arc ids
-// @arcs ArcDataset
+// @arcs ArcCollection
 geom.getAvgPathXY = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return null;
@@ -6007,8 +6047,6 @@ geom.transposePoints = function(points) {
 
 
 
-
-
 api.buildTopology = function(dataset) {
   if (!dataset.arcs) return;
   var raw = dataset.arcs.getVertexData(),
@@ -6035,10 +6073,10 @@ api.buildTopology = function(dataset) {
 //
 // Output format:
 // {
-//    arcs: [ArcDataset],
+//    arcs: [ArcCollection],
 //    paths: [Array]   // Paths are arrays of one or more arc id.
 // }                   // Arc ids use the same numbering scheme as TopoJSON --
-//       Ids in the paths array are indices of paths in the ArcDataset
+//       Ids in the paths array are indices of paths in the ArcCollection
 //       Negative ids signify that the arc coordinates are in reverse sequence.
 //       Negative ids are converted to array indices with the fornula fwId = ~revId.
 //       E.g. -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
@@ -6067,11 +6105,9 @@ MapShaper.buildPathTopology = function(xx, yy, nn) {
     return arcs;
   });
 
-  var arcs = new ArcDataset(index.getArcs());
-
   return {
     paths: paths,
-    arcs: arcs
+    arcs: index.getArcs()
   };
 
   function nextPoint(id) {
@@ -6327,7 +6363,8 @@ function ArcIndex(pointCount, xyToUint) {
         return xyToUint(x, y) % hashTableSize;
       },
       chainIds = [],
-      arcs = [];
+      arcs = [],
+      arcPoints = 0;
 
   Utils.initializeArray(hashTable, -1);
 
@@ -6339,6 +6376,7 @@ function ArcIndex(pointCount, xyToUint) {
 
     hashTable[key] = arcId;
     arcs.push([xx, yy]);
+    arcPoints += xx.length;
     chainIds.push(chainId);
     return arcId;
   };
@@ -6370,7 +6408,18 @@ function ArcIndex(pointCount, xyToUint) {
   };
 
   this.getArcs = function() {
-    return arcs;
+    var xx = new Float64Array(arcPoints),
+        yy = new Float64Array(arcPoints),
+        nn = new Uint32Array(arcs.length),
+        copied = 0;
+    arcs.forEach(function(arc, i) {
+      var len = arc[0].length;
+      MapShaper.copyElements(arc[0], 0, xx, copied, len);
+      MapShaper.copyElements(arc[1], 0, yy, copied, len);
+      nn[i] = len;
+      copied += len;
+    });
+    return new ArcCollection(nn, xx, yy);
   };
 }
 
@@ -6587,11 +6636,13 @@ function PathImporter(reservedPoints, opts) {
     });
   }
 
+  /*
   this.roundCoords = function(arr, round) {
     for (var i=0, n=arr.length; i<n; i++) {
       arr[i] = round(arr[i]);
     }
   };
+  */
 
   // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
   // (for Shapefile import -- consider moving out of here)
@@ -6698,7 +6749,7 @@ function PathImporter(reservedPoints, opts) {
           xx = xx.subarray(0, pointId);
           yy = yy.subarray(0, pointId);
         }
-        arcs = new ArcDataset(nn, xx, yy);
+        arcs = new ArcCollection(nn, xx, yy);
 
         // TODO: move shape validation after snapping (which may corrupt shapes)
         if (opts.auto_snap || opts.snap_interval) {
@@ -6957,7 +7008,7 @@ Dbf.getStringReaderAscii = function(size) {
     var str = bin.readCString(size, require7bit);
     if (str === null) {
       stop("DBF file contains non-ascii text data.\n" +
-          "Use the --encoding option with one of these encodings:\n" +
+          "Use the encoding option with one of these encodings:\n" +
           MapShaper.getFormattedEncodings());
     }
     return Utils.trim(str);
@@ -8502,7 +8553,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     layers.push(lyr);
   });
 
-  // TODO: apply transform to ArcDataset, not input arcs
+  // TODO: apply transform to ArcCollection, not input arcs
   if (topology.transform) {
     TopoJSON.decodeArcs(topology.arcs, topology.transform);
   }
@@ -9645,95 +9696,86 @@ var ExportControl = function(dataset, options) {
 
 
 
-function ShapeRenderer() {
-
-  function drawCircle(x, y, size, col, ctx) {
-    if (size > 0) {
-      ctx.beginPath();
-      ctx.fillStyle = col;
-      ctx.arc(x, y, size * 0.5, 0, Math.PI * 2, true);
-      ctx.fill();
-    }
+MapShaper.drawShapes = function(shapes, style, ctx) {
+  if (style.dotColor) {
+    this.drawPoints(shapes, style, ctx);
+  } else {
+    this.drawPaths(shapes, style, ctx);
   }
+};
 
-  function drawSquare(x, y, size, col, ctx) {
-    if (size > 0) {
-      var offs = size / 2;
-      x = Math.round(x - offs);
-      y = Math.round(y - offs);
-      ctx.fillStyle = col;
-      ctx.fillRect(x, y, size, size);
+MapShaper.drawPoints = function(paths, style, ctx) {
+  var midCol = style.dotColor || "rgba(255, 50, 50, 0.5)",
+      endCol = style.nodeColor || midCol,
+      midSize = style.dotSize || 4,
+      endSize = style.nodeSize >= 0 ? style.nodeSize : midSize,
+      drawPoint = style.squareDot ? drawSquare : drawCircle,
+      prevX, prevY;
+
+  paths.forEach(function(vec) {
+    if (vec.hasNext()) {
+      drawPoint(vec.x, vec.y, endSize, endCol, ctx);
     }
-  }
-
-  this.drawPoints = function(paths, style, ctx) {
-    var midCol = style.dotColor || "rgba(255, 50, 50, 0.5)",
-        endCol = style.nodeColor || midCol,
-        midSize = style.dotSize || 4,
-        endSize = style.nodeSize >= 0 ? style.nodeSize : midSize,
-        drawPoint = style.squareDot ? drawSquare : drawCircle,
-        prevX, prevY;
-
-    paths.forEach(function(vec) {
-      if (vec.hasNext()) {
-        drawPoint(vec.x, vec.y, endSize, endCol, ctx);
-      }
-      if (vec.hasNext()) {
+    if (vec.hasNext()) {
+      prevX = vec.x;
+      prevY = vec.y;
+      while (vec.hasNext()) {
+        drawPoint(prevX, prevY, midSize, midCol, ctx);
         prevX = vec.x;
         prevY = vec.y;
-        while (vec.hasNext()) {
-          drawPoint(prevX, prevY, midSize, midCol, ctx);
-          prevX = vec.x;
-          prevY = vec.y;
-        }
-        drawPoint(prevX, prevY, endSize, endCol, ctx);
       }
-    });
-  };
-
-  this.drawShapes = function(paths, style, ctx) {
-    var stroked = !!(style.strokeWidth && style.strokeColor),
-        filled = !!style.fillColor;
-
-    if (stroked) {
-      ctx.lineWidth = style.strokeWidth;
-      ctx.strokeStyle = style.strokeColor;
-      //ctx.lineJoin = 'round';
+      drawPoint(prevX, prevY, endSize, endCol, ctx);
     }
-    if (filled) {
-      ctx.fillStyle = style.fillColor;
-    }
-    if (!stroked && !filled) {
-      verbose("#drawLine() Line is missing stroke and fill; style:", style);
-      return;
-    }
+  });
+};
 
-    var pathCount = 0, segCount = 0;
-    paths.forEach(function(vec) {
-      if (vec.hasNext()) {
-        ctx.beginPath();
-        ctx.moveTo(vec.x, vec.y);
-        pathCount++;
+MapShaper.drawPaths = function(paths, style, ctx) {
+  var stroked = style.strokeColor && style.strokeWidth !== 0,
+      filled = !!style.fillColor;
 
-        while (vec.hasNext()) {
-          ctx.lineTo(vec.x, vec.y);
-          segCount++;
-        }
+  if (stroked) {
+    ctx.lineWidth = style.strokeWidth || 1;
+    ctx.strokeStyle = style.strokeColor;
+    //ctx.lineJoin = 'round';
+  }
+  if (filled) {
+    ctx.fillStyle = style.fillColor;
+  }
 
-        if (filled) ctx.fill();
-        if (stroked) ctx.stroke();
+  paths.forEach(function(vec) {
+    if (vec.hasNext()) {
+      ctx.beginPath();
+      ctx.moveTo(vec.x, vec.y);
+      while (vec.hasNext()) {
+        ctx.lineTo(vec.x, vec.y);
       }
-    });
-    return {
-      paths: pathCount,
-      segments: segCount
-    };
-  };
+      if (filled) ctx.fill();
+      if (stroked) ctx.stroke();
+    }
+  });
+};
+
+function drawCircle(x, y, size, col, ctx) {
+  if (size > 0) {
+    ctx.beginPath();
+    ctx.fillStyle = col;
+    ctx.arc(x, y, size * 0.5, 0, Math.PI * 2, true);
+    ctx.fill();
+  }
+}
+
+function drawSquare(x, y, size, col, ctx) {
+  if (size > 0) {
+    var offs = size / 2;
+    x = Math.round(x - offs);
+    y = Math.round(y - offs);
+    ctx.fillStyle = col;
+    ctx.fillRect(x, y, size, size);
+  }
 }
 
 
 function CanvasLayer() {
-
   var canvas = El('canvas').css('position:absolute;').node(),
       ctx = canvas.getContext('2d');
 
@@ -9861,25 +9903,15 @@ MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShap
 
 
 
-// A collection of paths that can be filtered to exclude paths and points
-// that can't be displayed at the current map scale. For drawing paths on-screen.
-// TODO: Look into generalizing from Arc paths to SimpleShape and MultiShape
+// A wrapper for ArcCollection that converts source coords to screen coords
+// and filters paths to speed up rendering.
 //
-function FilteredPathCollection(unfilteredArcs, opts) {
-  var defaults = {
-        min_path: 0.8,   // min pixel size of a drawn path
-        min_segment: 0.6 // min pixel size of a drawn segment
-      };
-
-  var _displayBounds,
-      _transform,
+function FilteredArcCollection(unfilteredArcs) {
+  var _ext,
       _sortedThresholds,
-      _displayScale = 1,
       filteredArcs,
-      filteredSegLen,
-      getPathWrapper = getDrawablePathsIter;
+      filteredSegLen;
 
-  opts = Utils.extend(defaults, opts);
   init();
 
   function init() {
@@ -9910,8 +9942,8 @@ function FilteredPathCollection(unfilteredArcs, opts) {
   }
 
   function getArcData() {
-    // Use a filtered version of the arcs at small scales
-    var unitsPerPixel = 1/_transform.mx;
+    // Use a filtered version of arcs at small scales
+    var unitsPerPixel = 1/_ext.getTransform().mx;
     return filteredArcs && unitsPerPixel > filteredSegLen * 1.5 ?
       filteredArcs : unfilteredArcs;
   }
@@ -9939,199 +9971,185 @@ function FilteredPathCollection(unfilteredArcs, opts) {
   };
 
   this.setMapExtent = function(ext) {
-    // TODO: avoid setting all of these object-level variables
-    _transform = ext.getTransform();
-    _displayBounds = ext.getBounds().clone().transform(_transform);
-    _displayScale = ext.scale();
+    _ext = ext;
   };
 
-  // Wrap path iterator to filter out offscreen points
-  //
-  /*
-  function getDrawablePointsIter() {
-    var bounds = _displayBounds || error("#getDrawablePointsIter() missing bounds");
-    var src = getDrawablePathsIter(),
-        wrapped;
-    var wrapper = {
-      x: 0,
-      y: 0,
-      node: false,
-      hasNext: function() {
-        var path = wrapped;
-        while (path.hasNext()) {
-          if (bounds.containsPoint(path.x, path.y)) {
-            this.x = path.x;
-            this.y = path.y;
-            this.node = path.node;
-            return true;
-          }
-        }
-        return false;
-      }
-    };
-
-    return function(iter) {
-      wrapped = iter;
-      return wrapper;
-    };
-  }
-  */
-
-  // Wrap vector path iterator to convert geographic coordinates to pixels
-  //   and skip over invisible clusters of points (i.e. smaller than a pixel)
-  //
-  function getDrawablePathsIter() {
-    var transform = _transform || error("#getDrawablePathsIter() Missing a Transform object; remember to call .transform()");
-    var wrapped,
-        _firstPoint,
-        _minSeg = opts.min_segment;
-
-    var wrapper = {
-      x: 0,
-      y: 0,
-      hasNext: function() {
-        var t = transform, mx = t.mx, my = t.my, bx = t.bx, by = t.by;
-        var path = wrapped,
-            isFirst = _firstPoint,
-            x, y, prevX, prevY,
-            i = 0;
-        if (!isFirst) {
-          prevX = this.x;
-          prevY = this.y;
-        }
-        while (path.hasNext()) {
-          i++;
-          x = path.x * mx + bx;
-          y = path.y * my + by;
-          if (isFirst || Math.abs(x - prevX) > _minSeg || Math.abs(y - prevY) > _minSeg) {
-            break;
-          }
-        }
-        if (i === 0) return false;
-        _firstPoint = false;
-        this.x = x;
-        this.y = y;
-        return true;
-      }
-    };
-    return function(iter) {
-      _firstPoint = true;
-      wrapped = iter;
-      return wrapper;
-    };
-  }
-
-  // TODO: refactor
-  //
   this.forEach = function(cb) {
+    if (!_ext) error("Missing map extent");
+
     var src = getArcData(),
         arc = new Arc(src),
-        allIn = true,
-        filterOnSize = !!(_transform && _displayBounds),
-        wrap = getPathWrapper(),
-        minPathSize, geoBounds, geoBBox;
+        minPathLen = 0.8 * _ext.getPixelSize(),
+        wrapPath = getPathWrapper(_ext),
+        geoBounds = _ext.getBounds(),
+        geoBBox = geoBounds.toArray(),
+        allIn = geoBounds.contains(src.getBounds());
 
-    if (filterOnSize) {
-      minPathSize = opts.min_path / _transform.mx;
-      if (_displayScale < 1) minPathSize *= _displayScale;
-      geoBounds = _displayBounds.clone().transform(_transform.invert());
-      geoBBox = geoBounds.toArray();
-      allIn = geoBounds.contains(src.getBounds());
-    }
+    // don't drop more paths at less than full extent (i.e. zoomed far out)
+    if (_ext.scale() < 1) minPathLen *= _ext.scale();
 
     for (var i=0, n=src.size(); i<n; i++) {
       arc.init(i);
-      if (filterOnSize && arc.smallerThan(minPathSize)) continue;
+      if (arc.smallerThan(minPathLen)) continue;
       if (!allIn && !arc.inBounds(geoBBox)) continue;
-      cb(wrap(arc.getPathIter()));
+      cb(wrapPath(arc.getPathIter()));
     }
+  };
+}
+
+function FilteredPointCollection(shapes) {
+  var _ext;
+
+  this.forEach = function(cb) {
+    var iter = new PointIter();
+    var wrapped = getPointWrapper(_ext)(iter);
+    for (var i=0, n=shapes.length; i<n; i++) {
+      iter.setPoints(shapes[i]);
+      cb(wrapped);
+    }
+  };
+
+  this.setMapExtent = function(ext) {
+    _ext = ext;
+  };
+}
+
+function getPathWrapper(ext) {
+  return getDisplayWrapper(ext, "path");
+}
+
+function getPointWrapper(ext) {
+  return getDisplayWrapper(ext, "point");
+}
+
+// @ext MapExtent
+// @type 'point'|'path'
+function getDisplayWrapper(ext, type) {
+  // Wrap point iterator to convert geographic coordinates to pixels
+  //   and skip over invisible clusters of points (i.e. smaller than a pixel)
+  var transform = ext.getTransform(),
+      bounds = ext.getBounds(),
+      started = false,
+      wrapped = null;
+
+  var wrapper = {
+    x: 0,
+    y: 0,
+    hasNext: function() {
+      var t = transform, mx = t.mx, my = t.my, bx = t.bx, by = t.by;
+      var minSegLen = 0.6; // min pixel size of a drawn segment
+      var iter = wrapped,
+          isFirst = !started,
+          pointMode = type == 'point',
+          x, y, prevX, prevY,
+          i = 0;
+      if (!isFirst) {
+        prevX = this.x;
+        prevY = this.y;
+      }
+      while (iter.hasNext()) {
+        i++;
+        x = iter.x * mx + bx;
+        y = iter.y * my + by;
+        if (pointMode) {
+           if (bounds.containsPoint(iter.x, iter.y)) break;
+        } else if (isFirst || Math.abs(x - prevX) > minSegLen || Math.abs(y - prevY) > minSegLen) {
+          break;
+        }
+      }
+      if (i === 0) return false;
+      started = true;
+      this.x = x;
+      this.y = y;
+      return true;
+    }
+  };
+  return function(iter) {
+    started = false;
+    wrapped = iter;
+    return wrapper;
+  };
+}
+
+function PointIter() {
+  var _i, _points;
+
+  this.setPoints = function(arr) {
+    _points = arr;
+    _i = 0;
+  };
+
+  this.hasNext = function() {
+    var n = _points ? _points.length : 0,
+        p;
+    if (_i < n) {
+      p = _points[_i++];
+      this.x = p[0];
+      this.y = p[1];
+      return true;
+    }
+    return false;
   };
 }
 
 
 
 
-// Group of one ore more layers sharing the same set of arcs
-// @arcs a FilteredPathCollection object (mapshaper-gui-shapes.js)
+// Interface for displaying the points and paths in a dataset
 //
-function ArcLayerGroup(arcs, opts) {
-  var _self = this;
-  var _surface = new CanvasLayer();
-
-  var _arcLyr = new ShapeLayer(arcs, _surface, opts),
-      _layers = [_arcLyr],
+function LayerGroup(dataset) {
+  var _surface = new CanvasLayer(),
+      _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
+      _shapes,
+      _style,
       _map;
 
-  var _visible = true;
-  this.visible = function(b) {
-    if (arguments.length === 0 ) return _visible;
-
-    if (b) {
-      _visible = true;
+  this.showLayer = function(i) {
+    var lyr = dataset.layers[i];
+    if (lyr.geometry_type == 'point') {
+      _shapes = new FilteredPointCollection(lyr.shapes);
     } else {
-      _visible = false;
-      _surface.clear();
+      error("TODO: draw non-point layers");
     }
+    return this;
   };
 
-  this.refresh = function(style) {
-    if (style) { // KLUDGE
-      _arcLyr.updateStyle(style);
+  this.showArcs = function() {
+    _shapes = _filteredArcs;
+    return this;
+  };
+
+  this.setStyle = function(style) {
+    _style = style;
+    return this;
+  };
+
+  this.hide = function() {
+    _surface.clear();
+    _shapes = null;
+  };
+
+  this.setRetainedPct = function(pct) {
+    _filteredArcs.setRetainedPct(pct);
+    return this;
+  };
+
+  this.refresh = function() {
+    if (_map && _shapes && _style) {
+      var ext = _map.getExtent();
+      _surface.prepare(ext.width(), ext.height());
+      _shapes.setMapExtent(ext);
+      MapShaper.drawShapes(_shapes, _style, _surface.getContext());
     }
-    if (_map) drawLayers();
   };
 
   this.setMap = function(map) {
     _map = map;
     _surface.getElement().appendTo(map.getElement());
-    map.on('refresh', drawLayers, this);
-    map.getExtent().on('change', drawLayers, this);
+    map.on('refresh', this.refresh, this);
+    map.getExtent().on('change', this.refresh, this);
   };
-
-  function drawLayers() {
-    if (!_self.visible()) return;
-    var ext = _map.getExtent();
-    _surface.prepare(ext.width(), ext.height());
-    Utils.forEach(_layers, function(lyr) {
-      lyr.draw(ext); // visibility handled by layer
-    });
-  }
 }
-
-// @shapes a FilteredPathCollection object
-//
-function ShapeLayer(shapes, surface, opts) {
-  var renderer = new ShapeRenderer();
-  var _visible = true;
-  var style = {
-    strokeWidth: 1,
-    strokeColor: "#335",
-    strokeAlpha: 1
-  };
-
-  this.visible = function(b) {
-    return arguments.length === 0 ? _visible : _visible = !b, this;
-  };
-
-  this.updateStyle = function(obj) {
-    Utils.extend(style, obj);
-  };
-
-  this.draw = function(ext) {
-    if (!this.visible()) return;
-    shapes.setMapExtent(ext);
-    var info = renderer.drawShapes(shapes, style, surface.getContext());
-    if (style.dotSize) {
-      renderer.drawPoints(shapes, style, surface.getContext());
-    }
-    // TODO: find a way to enable circles at an appropriate zoom
-  };
-
-  this.updateStyle(opts);
-}
-
-Opts.inherit(ShapeLayer, Waiter);
-
 
 
 
@@ -10256,7 +10274,6 @@ function MshpMap(el, opts_) {
   this.addLayerGroup = function(group) {
     group.setMap(this);
     _groups.push(group);
-    this.dispatchEvent('refresh');
   };
 
   this.getElement = function() {
@@ -10345,8 +10362,13 @@ function MapExtent(el, initialBounds) {
   this.height = _position.height;
   this.position = _position.position;
 
+  // get zoom factor (1 == full extent, 2 == 2x zoom, etc.)
   this.scale = function() {
     return _scale;
+  };
+
+  this.getPixelSize = function() {
+    return 1 / this.getTransform().mx;
   };
 
   this.setContentPadding = function(pix) {
@@ -10365,6 +10387,14 @@ function MapExtent(el, initialBounds) {
   this.getBounds = function() {
     return centerAlign(calcBounds(_cx, _cy, _scale));
   };
+
+  /*
+  this.getGeoBounds = function() {
+    var bounds = this.getBounds();
+    console.log("bounds:", bounds);
+    return bounds.clone().transform(this.getTransform().invert());
+  };
+  */
 
   function calcBounds(cx, cy, scale) {
     var w = initialBounds.width() / scale,
@@ -10807,7 +10837,7 @@ api.simplify = function(arcs, opts) {
   }
 };
 
-// @paths ArcDataset object
+// @paths ArcCollection object
 MapShaper.simplifyPaths = function(paths, opts) {
   var method = opts.method || 'mapshaper';
   var decimalDegrees = MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
@@ -10926,11 +10956,9 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
 // Convert an array of intersections into an ArcCollection (for display)
 //
 MapShaper.getIntersectionPoints = function(intersections) {
-  // Kludge: create set of paths of length 1 to display intersection points
-  var vectors = Utils.map(intersections, function(obj) {
-        return [[obj.intersection.x, obj.intersection.y]];
+  return Utils.map(intersections, function(obj) {
+        return [obj.intersection.x, obj.intersection.y];
       });
-  return new ArcCollection(vectors);
 };
 
 // Identify intersecting segments in an ArcCollection
@@ -11205,7 +11233,7 @@ api.findAndRepairIntersections = function(arcs) {
 // Limitation of this method: it can't remove intersections that are present
 // in the original dataset.
 //
-// @arcs ArcDataset object
+// @arcs ArcCollection object
 // @intersections (Array) Output from MapShaper.findSegmentIntersections()
 // Returns array of unresolved intersections, or empty array if none.
 //
@@ -11387,91 +11415,75 @@ MapShaper.repairIntersections = function(arcs, intersections) {
 
 
 
-function RepairControl(map, lineLyr, arcData) {
+function RepairControl(map, arcData) {
   var el = El("#g-intersection-display").show(),
       readout = el.findChild("#g-intersection-count"),
       btn = el.findChild("#g-repair-btn");
 
-  var _enabled = false,
-      _initialXX,
+  var _initialXX,
       _currXX,
-      _pointColl,
-      _pointLyr;
+      _pointLyr = {geometry_type: "point", shapes: []},
+      _displayGroup = new LayerGroup({layers:[_pointLyr]});
+
+  map.addLayerGroup(_displayGroup);
 
   this.update = function(pct) {
-    var XX;
     T.start();
+    var XX, showBtn;
     if (pct >= 1) {
       if (!_initialXX) {
         _initialXX = MapShaper.findSegmentIntersections(arcData);
       }
       XX = _initialXX;
-      enabled(false);
+      showBtn = false;
     } else {
       XX = MapShaper.findSegmentIntersections(arcData);
-      enabled(XX.length > 0);
+      showBtn = XX.length > 0;
     }
     showIntersections(XX);
+    btn.classed('disabled', !showBtn);
+
     T.stop("Find intersections");
   };
 
   this.update(1); // initialize at 100%
 
   btn.on('click', function() {
-    if (!enabled()) return;
     T.start();
     var fixed = MapShaper.repairIntersections(arcData, _currXX);
     T.stop('Fix intersections');
-    enabled(false);
+    btn.addClass('disabled');
     showIntersections(fixed);
-    lineLyr.refresh();
-  });
+    this.dispatchEvent('repair');
+  }, this);
 
   this.clear = function() {
     _currXX = null;
-    _pointLyr.visible(false);
+    _displayGroup.hide();
   };
 
   function showIntersections(XX) {
-    var dotSize = getDotSize(XX.length);
-    var points = MapShaper.getIntersectionPoints(XX);
-    if (!_pointLyr) {
-      _pointColl = new FilteredPathCollection(points, {
-        min_segment: 0,
-        min_path: 0
-      });
-      _pointLyr = new ArcLayerGroup(_pointColl, {
-        dotSize: dotSize,
-        squareDot: true,
-        dotColor: "#F24400"
-      });
-      map.addLayerGroup(_pointLyr);
-    } else if (XX.length > 0) {
-      _pointColl.update(points);
-      _pointLyr.visible(true);
-      _pointLyr.refresh({dotSize: dotSize});
-    } else{
-      _pointLyr.visible(false);
+    var n = XX.length;
+    if (n === 0) {
+      _displayGroup.hide();
+    } else {
+      _pointLyr.shapes[0] = MapShaper.getIntersectionPoints(XX);
+      _displayGroup
+        .showLayer(0)
+        .setStyle({
+          dotSize: n < 20 && 5 || n < 500 && 4 || 3,
+          squareDot: true,
+          dotColor: "#F24400"
+        })
+        .refresh();
     }
-    var msg = Utils.format("%s line intersection%s", XX.length, XX.length != 1 ? 's' : '');
+    var msg = Utils.format("%s line intersection%s", n, n != 1 ? 's' : '');
     readout.text(msg);
     _currXX = XX;
   }
-
-  function getDotSize(n) {
-    return n < 500 ? 4 : 3;
-  }
-
-  function enabled(b) {
-    if (arguments.length === 0) return _enabled;
-    _enabled = !!b;
-    if (b) {
-      btn.removeClass('disabled');
-    } else {
-      btn.addClass('disabled');
-    }
-  }
 }
+
+Opts.inherit(RepairControl, EventDispatcher);
 
 
 
@@ -11493,7 +11505,7 @@ MapShaper.protectLayerShapes = function(arcData, shapes) {
 };
 
 // Protect a single shape from complete removal by simplification
-// @arcData an ArcDataset
+// @arcData an ArcCollection
 // @shape an array containing one or more arrays of arc ids, or null if null shape
 //
 MapShaper.protectShape = function(arcData, shape) {
@@ -11654,42 +11666,30 @@ function Editor() {
       MapShaper.protectShapes(dataset.arcs, dataset.layers);
     }
 
-    var filteredArcs = new FilteredPathCollection(dataset.arcs);
-    var group = new ArcLayerGroup(filteredArcs);
+    var group = new LayerGroup(dataset);
     map.addLayerGroup(group);
-
-    // visualize point snapping by displaying snapped points on the map
-    // (see debug_snapping option in mapshaper_import_control.js)
-    /*
-    try {
-      var snaps = data.layers[0].info.snapped_points;
-      if (snaps) {
-        var snappedPaths = new ArcDataset(snaps);
-        var snapColl = new FilteredPathCollection(snappedPaths, {
-          min_segment: 0, min_path: 0
-        });
-        map.addLayerGroup(new ArcLayerGroup(snapColl, {
-          dotSize: 4,
-          dotColor: "rgba(0, 200, 0, 0.5)",
-          strokeColor: "rgba(0, 0, 255, 0.2)"
-        }));
-      }
-    } catch (e) {}
-    */
+    group
+      .showArcs()
+      .setStyle({
+        strokeColor: "#335"
+      })
+      .refresh();
 
     if (importOpts.repairIntersections) {
-      var repair = new RepairControl(map, group, dataset.arcs);
+      var repair = new RepairControl(map, dataset.arcs);
       slider.on('simplify-start', function() {
         repair.clear();
       });
       slider.on('simplify-end', function() {
         repair.update(slider.value());
       });
+      repair.on('repair', function() {
+        group.refresh();
+      });
     }
 
     slider.on('change', function(e) {
-      filteredArcs.setRetainedPct(e.value);
-      group.refresh();
+      group.setRetainedPct(e.value).refresh();
     });
 
     var exportOpts = {
@@ -11699,15 +11699,6 @@ function Editor() {
     var exporter = new ExportControl(dataset, exportOpts);
   };
 }
-
-/*
-var api = {
-  ArcDataset: ArcDataset,
-  Utils: Utils,
-  trace: trace,
-  error: error
-};
-*/
 
 Opts.extendNamespace("mapshaper", api);
 

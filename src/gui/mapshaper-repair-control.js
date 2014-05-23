@@ -1,87 +1,71 @@
 /* @requires mapshaper-common, mapshaper-repair */
 
-function RepairControl(map, lineLyr, arcData) {
+function RepairControl(map, arcData) {
   var el = El("#g-intersection-display").show(),
       readout = el.findChild("#g-intersection-count"),
       btn = el.findChild("#g-repair-btn");
 
-  var _enabled = false,
-      _initialXX,
+  var _initialXX,
       _currXX,
-      _pointColl,
-      _pointLyr;
+      _pointLyr = {geometry_type: "point", shapes: []},
+      _displayGroup = new LayerGroup({layers:[_pointLyr]});
+
+  map.addLayerGroup(_displayGroup);
 
   this.update = function(pct) {
-    var XX;
     T.start();
+    var XX, showBtn;
     if (pct >= 1) {
       if (!_initialXX) {
         _initialXX = MapShaper.findSegmentIntersections(arcData);
       }
       XX = _initialXX;
-      enabled(false);
+      showBtn = false;
     } else {
       XX = MapShaper.findSegmentIntersections(arcData);
-      enabled(XX.length > 0);
+      showBtn = XX.length > 0;
     }
     showIntersections(XX);
+    btn.classed('disabled', !showBtn);
+
     T.stop("Find intersections");
   };
 
   this.update(1); // initialize at 100%
 
   btn.on('click', function() {
-    if (!enabled()) return;
     T.start();
     var fixed = MapShaper.repairIntersections(arcData, _currXX);
     T.stop('Fix intersections');
-    enabled(false);
+    btn.addClass('disabled');
     showIntersections(fixed);
-    lineLyr.refresh();
-  });
+    this.dispatchEvent('repair');
+  }, this);
 
   this.clear = function() {
     _currXX = null;
-    _pointLyr.visible(false);
+    _displayGroup.hide();
   };
 
   function showIntersections(XX) {
-    var dotSize = getDotSize(XX.length);
-    var points = MapShaper.getIntersectionPoints(XX);
-    if (!_pointLyr) {
-      _pointColl = new FilteredPathCollection(points, {
-        min_segment: 0,
-        min_path: 0
-      });
-      _pointLyr = new ArcLayerGroup(_pointColl, {
-        dotSize: dotSize,
-        squareDot: true,
-        dotColor: "#F24400"
-      });
-      map.addLayerGroup(_pointLyr);
-    } else if (XX.length > 0) {
-      _pointColl.update(points);
-      _pointLyr.visible(true);
-      _pointLyr.refresh({dotSize: dotSize});
-    } else{
-      _pointLyr.visible(false);
+    var n = XX.length;
+    if (n === 0) {
+      _displayGroup.hide();
+    } else {
+      _pointLyr.shapes[0] = MapShaper.getIntersectionPoints(XX);
+      _displayGroup
+        .showLayer(0)
+        .setStyle({
+          dotSize: n < 20 && 5 || n < 500 && 4 || 3,
+          squareDot: true,
+          dotColor: "#F24400"
+        })
+        .refresh();
     }
-    var msg = Utils.format("%s line intersection%s", XX.length, XX.length != 1 ? 's' : '');
+    var msg = Utils.format("%s line intersection%s", n, n != 1 ? 's' : '');
     readout.text(msg);
     _currXX = XX;
   }
-
-  function getDotSize(n) {
-    return n < 500 ? 4 : 3;
-  }
-
-  function enabled(b) {
-    if (arguments.length === 0) return _enabled;
-    _enabled = !!b;
-    if (b) {
-      btn.removeClass('disabled');
-    } else {
-      btn.addClass('disabled');
-    }
-  }
 }
+
+Opts.inherit(RepairControl, EventDispatcher);

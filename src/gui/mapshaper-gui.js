@@ -70,23 +70,30 @@ function Editor() {
       MapShaper.protectShapes(dataset.arcs, dataset.layers);
     }
 
-    var filteredArcs = new FilteredPathCollection(dataset.arcs);
-    var group = new ArcLayerGroup(filteredArcs);
+    var group = new LayerGroup(dataset);
     map.addLayerGroup(group);
+    group
+      .showArcs()
+      .setStyle({
+        strokeColor: "#335"
+      })
+      .refresh();
 
     if (importOpts.repairIntersections) {
-      var repair = new RepairControl(map, group, dataset.arcs);
+      var repair = new RepairControl(map, dataset.arcs);
       slider.on('simplify-start', function() {
         repair.clear();
       });
       slider.on('simplify-end', function() {
         repair.update(slider.value());
       });
+      repair.on('repair', function() {
+        group.refresh();
+      });
     }
 
     slider.on('change', function(e) {
-      filteredArcs.setRetainedPct(e.value);
-      group.refresh();
+      group.setRetainedPct(e.value).refresh();
     });
 
     var exportOpts = {
@@ -96,14 +103,5 @@ function Editor() {
     var exporter = new ExportControl(dataset, exportOpts);
   };
 }
-
-/*
-var api = {
-  ArcCollection: ArcCollection,
-  Utils: Utils,
-  trace: trace,
-  error: error
-};
-*/
 
 Opts.extendNamespace("mapshaper", api);

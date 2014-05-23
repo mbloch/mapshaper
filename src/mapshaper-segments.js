@@ -3,11 +3,9 @@
 // Convert an array of intersections into an ArcCollection (for display)
 //
 MapShaper.getIntersectionPoints = function(intersections) {
-  // Kludge: create set of paths of length 1 to display intersection points
-  var vectors = Utils.map(intersections, function(obj) {
-        return [[obj.intersection.x, obj.intersection.y]];
+  return Utils.map(intersections, function(obj) {
+        return [obj.intersection.x, obj.intersection.y];
       });
-  return new ArcCollection(vectors);
 };
 
 // Identify intersecting segments in an ArcCollection
