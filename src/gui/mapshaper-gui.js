@@ -36,71 +36,65 @@ function browserIsSupported() {
 }
 
 function Editor() {
-  var map, slider;
+  var map;
 
-  var importOpts = {
-    simplifyMethod: "mapshaper",
-    preserveShapes: false,
-    repairIntersections: false
-  };
+  var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || "mapshaper";
+  var useRepair = !!El("#g-repair-intersections-opt").node().checked;
+  var keepShapes = !!El("#g-import-retain-opt").node().checked;
 
-  function init(contentBounds) {
+  this.addData = function(dataset) {
+    if (map) return; // one layer at a time, for now
+
     El("#mshp-intro-screen").hide();
     El("#mshp-main-page").show();
     El("body").addClass('editing');
 
-    importOpts.preserveShapes = !!El("#g-import-retain-opt").node().checked;
-    importOpts.repairIntersections = !!El("#g-repair-intersections-opt").node().checked;
-    importOpts.simplifyMethod = El('#g-simplification-menu input[name=method]:checked').attr('value');
-
     var mapOpts = {
-      bounds: contentBounds,
+      bounds: MapShaper.getDatasetBounds(dataset),
       padding: 12
     };
     map = new MshpMap("#mshp-main-map", mapOpts);
-    slider = new SimplifyControl();
-  }
 
-  this.addData = function(dataset, opts) {
-    if (!map) init(MapShaper.getDatasetBounds(dataset));
+    var displayLyr = dataset.layers[0]; // TODO: multi-layer display
+    var type = displayLyr.geometry_type;
+    var group = new LayerGroup(dataset);
+    var exporter = new ExportControl(dataset, {});
+    var slider, repair;
 
-    MapShaper.simplifyPaths(dataset.arcs, {method:importOpts.simplifyMethod});
-    console.log(importOpts);
-    if (importOpts.preserveShapes) {
-      MapShaper.protectShapes(dataset.arcs, dataset.layers);
+    map.addLayerGroup(group);
+
+    if (type == 'polygon' || type == 'polyline') {
+      slider = new SimplifyControl();
+      MapShaper.simplifyPaths(dataset.arcs, {method:method});
+      if (keepShapes) {
+        MapShaper.protectShapes(dataset.arcs, dataset.layers);
+      }
+      if (useRepair) {
+        repair = new RepairControl(map, dataset.arcs);
+        slider.on('simplify-start', function() {
+          repair.clear();
+        });
+        slider.on('simplify-end', function() {
+          repair.update(slider.value());
+        });
+        repair.on('repair', function() {
+          group.refresh();
+        });
+      }
+
+      slider.on('change', function(e) {
+        group.setRetainedPct(e.value).refresh();
+      });
     }
 
-    var group = new LayerGroup(dataset);
-    map.addLayerGroup(group);
     group
-      .showArcs()
+      .showLayer(displayLyr)
       .setStyle({
-        strokeColor: "#335"
+        strokeColor: "#335",
+        dotColor: "#223",
+        squareDot: true
       })
       .refresh();
-
-    if (importOpts.repairIntersections) {
-      var repair = new RepairControl(map, dataset.arcs);
-      slider.on('simplify-start', function() {
-        repair.clear();
-      });
-      slider.on('simplify-end', function() {
-        repair.update(slider.value());
-      });
-      repair.on('repair', function() {
-        group.refresh();
-      });
-    }
-
-    slider.on('change', function(e) {
-      group.setRetainedPct(e.value).refresh();
-    });
-
-    var exportOpts = {
-    //  precision: opts.precision || null,
-    //   output_file_base: utils.parseLocalPath(opts.input_file).basename || "out"
-    };
-    var exporter = new ExportControl(dataset, exportOpts);
   };
 }
 

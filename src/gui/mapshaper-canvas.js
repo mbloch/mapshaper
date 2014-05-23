@@ -11,7 +11,7 @@ MapShaper.drawShapes = function(shapes, style, ctx) {
 MapShaper.drawPoints = function(paths, style, ctx) {
   var midCol = style.dotColor || "rgba(255, 50, 50, 0.5)",
       endCol = style.nodeColor || midCol,
-      midSize = style.dotSize || 4,
+      midSize = style.dotSize || 3,
       endSize = style.nodeSize >= 0 ? style.nodeSize : midSize,
       drawPoint = style.squareDot ? drawSquare : drawCircle,
       prevX, prevY;

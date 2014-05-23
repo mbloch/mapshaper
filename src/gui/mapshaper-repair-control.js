@@ -54,7 +54,7 @@ function RepairControl(map, arcData) {
     } else {
       _pointLyr.shapes[0] = MapShaper.getIntersectionPoints(XX);
       _displayGroup
-        .showLayer(0)
+        .showLayer(_pointLyr)
         .setStyle({
           dotSize: n < 20 && 5 || n < 500 && 4 || 3,
           squareDot: true,

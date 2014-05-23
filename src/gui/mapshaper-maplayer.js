@@ -5,22 +5,21 @@
 function LayerGroup(dataset) {
   var _surface = new CanvasLayer(),
       _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
+      _draw,
       _shapes,
       _style,
       _map;
 
-  this.showLayer = function(i) {
-    var lyr = dataset.layers[i];
+  this.showLayer = function(lyr) {
+    // TODO: make sure lyr is in dataset
     if (lyr.geometry_type == 'point') {
       _shapes = new FilteredPointCollection(lyr.shapes);
+      _draw = MapShaper.drawPoints;
     } else {
-      error("TODO: draw non-point layers");
+      // TODO: show shapes, not arcs
+      _shapes = _filteredArcs;
+      _draw = MapShaper.drawPaths;
     }
-    return this;
-  };
-
-  this.showArcs = function() {
-    _shapes = _filteredArcs;
     return this;
   };
 
@@ -44,7 +43,7 @@ function LayerGroup(dataset) {
       var ext = _map.getExtent();
       _surface.prepare(ext.width(), ext.height());
       _shapes.setMapExtent(ext);
-      MapShaper.drawShapes(_shapes, _style, _surface.getContext());
+      _draw(_shapes, _style, _surface.getContext());
     }
   };
 
