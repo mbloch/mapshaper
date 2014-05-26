@@ -4939,6 +4939,9 @@ MapShaper.getOptionParser = function() {
     })
     .option("target");
 
+  parser.command("explode")
+    .describe("divide multipart features into single-part features")
+    .option("target");
 
   parser.command("dissolve")
     .describe("dissolve polygons; takes optional comma-sep. list of fields")
@@ -5012,7 +5015,8 @@ MapShaper.getOptionParser = function() {
   parser.command("merge-layers")
     .describe("merge split-apart layers back into a single layer")
     .validate(validateMergeLayersOpts)
-    .option("_dummy_"); // kludge to improve help menu formatting
+    .option("name")
+    .option("target");
 
   parser.command("*")
     .title("Options for multiple commands")
@@ -7746,7 +7750,7 @@ MapShaper.exportPointData = function(points) {
   return data;
 };
 
-// TODO: refactor
+// TODO: remove duplication with MapShaper.getPathMetadata()
 MapShaper.exportPathData = function(shape, arcs, type) {
   // kludge until Shapefile exporting is refactored
   if (type == 'point') return MapShaper.exportPointData(shape);
@@ -7787,7 +7791,7 @@ MapShaper.exportPathData = function(shape, arcs, type) {
 
 // Bundle holes with their containing rings for Topo/GeoJSON polygon export.
 // Assumes outer rings are CW and inner (hole) rings are CCW.
-// @paths output from MapShaper.exportPathData() or TopoJSON.groupPolygonRings()
+// @paths array of objects with path metadata -- see MapShaper.exportPathData()
 //
 // TODO: Improve reliability. Currently uses winding order, area and bbox to
 //   identify holes and their enclosures -- could be confused by strange
@@ -9235,6 +9239,184 @@ TopoJSON.reindexArcIds = function(geom, map) {
 
 
 
+// Utility functions for working with ArcCollection and arrays of arc ids.
+
+// @shp An element of the layer.shapes array
+//   (may be null, or, depending on layer type, an array of points or an array of arrays of arc ids)
+MapShaper.cloneShape = function(shp) {
+  if (!shp) return null;
+  return shp.map(function(part) {
+    return part.concat();
+  });
+};
+
+MapShaper.getPathMetadata = function(shape, arcs, type) {
+  var iter = new ShapeIter(arcs);
+  return Utils.map(shape, function(ids) {
+    if (!Utils.isArray(ids)) throw new Error("expected array");
+    iter.init(ids);
+    return {
+      ids: ids,
+      area: type == 'polygon' ? geom.getPathArea(iter) : 0,
+      bounds: arcs.getSimpleShapeBounds(ids)
+    };
+  });
+};
+
+MapShaper.clampIntervalByPct = function(z, pct) {
+  if (pct <= 0) z = Infinity;
+  else if (pct >= 1) z = 0;
+  return z;
+};
+
+// Return id of the vertex between @start and @end with the highest
+// threshold that is less than @zlim.
+//
+MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
+  var tmp, jz = 0, j = -1, z;
+  if (start > end) {
+    tmp = start;
+    start = end;
+    end = tmp;
+  }
+  for (var i=start+1; i<end; i++) {
+    z = zz[i];
+    if (z < zlim && z > jz) {
+      j = i;
+      jz = z;
+    }
+  }
+  return j;
+};
+
+MapShaper.forEachPoint = function(lyr, cb) {
+  if (lyr.geometry_type != 'point') {
+    error("[forEachPoint()] Expects a point layer");
+  }
+  lyr.shapes.forEach(function(shape) {
+    var n = shape ? shape.length : 0;
+    for (var i=0; i<n; i++) {
+      cb(shape[i]);
+    }
+  });
+};
+
+// Visit each arc id in an array of ids
+// Use non-undefined return values of callback @cb as replacements.
+MapShaper.forEachArcId = function(arr, cb) {
+  Utils.forEach(arr, function(item, i) {
+    if (item instanceof Array) {
+      MapShaper.forEachArcId(item, cb);
+    } else if (Utils.isInteger(item)) {
+      var val = cb(item);
+      if (val !== void 0) {
+        arr[i] = val;
+      }
+    } else if (item) {
+      error("Non-integer arc id in:", arr);
+    }
+  });
+};
+
+MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
+  var segId = 0;
+  Utils.forEach(shapes, function(parts, shapeId) {
+    if (!parts || parts.length === 0) return; // null shape
+    var arcIds, arcId, partData;
+    if (cbShape) {
+      cbShape(shapeId);
+    }
+    for (var i=0, m=parts.length; i<m; i++) {
+      arcIds = parts[i];
+      if (cbPart) {
+        cbPart({
+          i: i,
+          shapeId: shapeId,
+          shape: parts,
+          arcs: arcIds
+        });
+      }
+
+      if (cbArc) {
+        for (var j=0, n=arcIds.length; j<n; j++, segId++) {
+          arcId = arcIds[j];
+          cbArc({
+            i: j,
+            shapeId: shapeId,
+            partId: i,
+            arcId: arcId,
+            segId: segId
+          });
+        }
+      }
+    }
+  });
+};
+
+
+
+
+api.explodeLayer = function(lyr, arcs, opts) {
+  var properties = lyr.data ? lyr.data.getRecords() : null,
+      explodedProperties = properties ? [] : null,
+      explodedShapes = [],
+      explodedLyr = Utils.extend({}, lyr);
+
+  lyr.shapes.forEach(function(shp, shpId) {
+    var exploded;
+    if (!shp) {
+      explodedShapes.push(null);
+    } else {
+      if (lyr.geometry_type == 'polygon' && shp.length > 1) {
+        exploded = MapShaper.explodePolygon(shp, arcs);
+      } else {
+        exploded = MapShaper.explodeShape(shp);
+      }
+      Utils.merge(explodedShapes, exploded);
+    }
+
+    explodedLyr.shapes = explodedShapes;
+    if (explodedProperties) {
+      for (var i=0, n=exploded ? exploded.length : 1; i<n; i++) {
+        explodedProperties.push(MapShaper.cloneProperties(properties[shpId]));
+      }
+    }
+  });
+
+  explodedLyr.shapes = explodedShapes;
+  if (explodedProperties) {
+    explodedLyr.data = new DataTable(explodedProperties);
+  }
+  return explodedLyr;
+};
+
+MapShaper.explodeShape = function(shp) {
+  return shp.map(function(part) {
+    return [part.concat()];
+  });
+};
+
+MapShaper.explodePolygon = function(shape, arcs) {
+  var paths = MapShaper.getPathMetadata(shape, arcs, "polygon");
+  var groups = MapShaper.groupPolygonRings(paths);
+  return groups.map(function(shape) {
+    return shape.map(function(path) {
+      return path.ids;
+    });
+  });
+};
+
+MapShaper.cloneProperties = function(obj) {
+  var clone = {};
+  for (var key in obj) {
+    clone[key] = obj[key];
+  }
+  return clone;
+};
+
+
+
+
 TopoJSON.exportTopology = function(layers, arcData, opts) {
   var topology = {type: "Topology"},
       bounds = new Bounds(),
@@ -9412,36 +9594,13 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
   return obj;
 };
 
-TopoJSON.groupPolygonRings = function(shapes, coords) {
-  // first, get path data for MapShaper.groupPolygonRings()
-  var iter = new ShapeIter(coords);
-  var paths = Utils.map(shapes, function(shape) {
-    if (!Utils.isArray(shape)) throw new Error("expected array");
-    iter.init(shape);
-    return {
-      ids: shape,
-      area: geom.getPathArea(iter),
-      bounds: coords.getSimpleShapeBounds(shape)
-    };
-  });
-
-  // second, group the rings
-  var groups = MapShaper.groupPolygonRings(paths);
-
-  return groups.map(function(paths) {
-    return paths.map(function(path) {
-      return path.ids;
-    });
-  });
-};
-
 TopoJSON.exportPolygonGeom = function(shape, coords) {
   var geom = {};
   shape = MapShaper.filterEmptyArcs(shape, coords);
   if (!shape || shape.length === 0) {
     geom.type = null;
   } else if (shape.length > 1) {
-    geom.arcs = TopoJSON.groupPolygonRings(shape, coords);
+    geom.arcs = MapShaper.explodePolygon(shape, coords);
     if (geom.arcs.length == 1) {
       geom.arcs = geom.arcs[0];
       geom.type = "Polygon";
@@ -11149,101 +11308,6 @@ MapShaper.readGeometryFile = function(path, fileType) {
 
 
 
-// Utility functions for working with ArcCollection and arrays of arc ids.
-
-MapShaper.clampIntervalByPct = function(z, pct) {
-  if (pct <= 0) z = Infinity;
-  else if (pct >= 1) z = 0;
-  return z;
-};
-
-// Return id of the vertex between @start and @end with the highest
-// threshold that is less than @zlim.
-//
-MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
-  var tmp, jz = 0, j = -1, z;
-  if (start > end) {
-    tmp = start;
-    start = end;
-    end = tmp;
-  }
-  for (var i=start+1; i<end; i++) {
-    z = zz[i];
-    if (z < zlim && z > jz) {
-      j = i;
-      jz = z;
-    }
-  }
-  return j;
-};
-
-MapShaper.forEachPoint = function(lyr, cb) {
-  if (lyr.geometry_type != 'point') {
-    error("[forEachPoint()] Expects a point layer");
-  }
-  lyr.shapes.forEach(function(shape) {
-    var n = shape ? shape.length : 0;
-    for (var i=0; i<n; i++) {
-      cb(shape[i]);
-    }
-  });
-};
-
-// Visit each arc id in an array of ids
-// Use non-undefined return values of callback @cb as replacements.
-MapShaper.forEachArcId = function(arr, cb) {
-  Utils.forEach(arr, function(item, i) {
-    if (item instanceof Array) {
-      MapShaper.forEachArcId(item, cb);
-    } else if (Utils.isInteger(item)) {
-      var val = cb(item);
-      if (val !== void 0) {
-        arr[i] = val;
-      }
-    } else if (item) {
-      error("Non-integer arc id in:", arr);
-    }
-  });
-};
-
-MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
-  var segId = 0;
-  Utils.forEach(shapes, function(parts, shapeId) {
-    if (!parts || parts.length === 0) return; // null shape
-    var arcIds, arcId, partData;
-    if (cbShape) {
-      cbShape(shapeId);
-    }
-    for (var i=0, m=parts.length; i<m; i++) {
-      arcIds = parts[i];
-      if (cbPart) {
-        cbPart({
-          i: i,
-          shapeId: shapeId,
-          shape: parts,
-          arcs: arcIds
-        });
-      }
-
-      if (cbArc) {
-        for (var j=0, n=arcIds.length; j<n; j++, segId++) {
-          arcId = arcIds[j];
-          cbArc({
-            i: j,
-            shapeId: shapeId,
-            partId: i,
-            arcId: arcId,
-            segId: segId
-          });
-        }
-      }
-    }
-  });
-};
-
-
-
-
 // Generate a dissolved layer
 // @opts.field (optional) name of data field (dissolves all if falsy)
 // @opts.sum-fields (Array) (optional)
@@ -12676,6 +12740,9 @@ api.runCommand = function(cmd, dataset, cb) {
 
   } else if (name == 'dissolve') {
     newLayers = MapShaper.applyCommand(api.dissolveLayer, srcLayers, arcs, opts);
+
+  } else if (name == 'explode') {
+    newLayers = MapShaper.applyCommand(api.explodeLayer, srcLayers, arcs, opts);
 
   } else if (name == 'fields') {
     MapShaper.applyCommand(api.filterFields, srcLayers, opts.fields);

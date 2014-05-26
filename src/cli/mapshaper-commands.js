@@ -96,6 +96,9 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'dissolve') {
     newLayers = MapShaper.applyCommand(api.dissolveLayer, srcLayers, arcs, opts);
 
+  } else if (name == 'explode') {
+    newLayers = MapShaper.applyCommand(api.explodeLayer, srcLayers, arcs, opts);
+
   } else if (name == 'fields') {
     MapShaper.applyCommand(api.filterFields, srcLayers, opts.fields);
 

@@ -3,7 +3,8 @@ mapshaper-geojson,
 topojson-common,
 topojson-split,
 mapshaper-shape-geom,
-topojson-arc-prune
+topojson-arc-prune,
+mapshaper-explode
 */
 
 TopoJSON.exportTopology = function(layers, arcData, opts) {
@@ -183,36 +184,13 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
   return obj;
 };
 
-TopoJSON.groupPolygonRings = function(shapes, coords) {
-  // first, get path data for MapShaper.groupPolygonRings()
-  var iter = new ShapeIter(coords);
-  var paths = Utils.map(shapes, function(shape) {
-    if (!Utils.isArray(shape)) throw new Error("expected array");
-    iter.init(shape);
-    return {
-      ids: shape,
-      area: geom.getPathArea(iter),
-      bounds: coords.getSimpleShapeBounds(shape)
-    };
-  });
-
-  // second, group the rings
-  var groups = MapShaper.groupPolygonRings(paths);
-
-  return groups.map(function(paths) {
-    return paths.map(function(path) {
-      return path.ids;
-    });
-  });
-};
-
 TopoJSON.exportPolygonGeom = function(shape, coords) {
   var geom = {};
   shape = MapShaper.filterEmptyArcs(shape, coords);
   if (!shape || shape.length === 0) {
     geom.type = null;
   } else if (shape.length > 1) {
-    geom.arcs = TopoJSON.groupPolygonRings(shape, coords);
+    geom.arcs = MapShaper.explodePolygon(shape, coords);
     if (geom.arcs.length == 1) {
       geom.arcs = geom.arcs[0];
       geom.type = "Polygon";

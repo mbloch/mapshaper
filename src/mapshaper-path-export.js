@@ -21,7 +21,7 @@ MapShaper.exportPointData = function(points) {
   return data;
 };
 
-// TODO: refactor
+// TODO: remove duplication with MapShaper.getPathMetadata()
 MapShaper.exportPathData = function(shape, arcs, type) {
   // kludge until Shapefile exporting is refactored
   if (type == 'point') return MapShaper.exportPointData(shape);
@@ -62,7 +62,7 @@ MapShaper.exportPathData = function(shape, arcs, type) {
 
 // Bundle holes with their containing rings for Topo/GeoJSON polygon export.
 // Assumes outer rings are CW and inner (hole) rings are CCW.
-// @paths output from MapShaper.exportPathData() or TopoJSON.groupPolygonRings()
+// @paths array of objects with path metadata -- see MapShaper.exportPathData()
 //
 // TODO: Improve reliability. Currently uses winding order, area and bbox to
 //   identify holes and their enclosures -- could be confused by strange

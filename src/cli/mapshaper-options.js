@@ -175,6 +175,9 @@ MapShaper.getOptionParser = function() {
     })
     .option("target");
 
+  parser.command("explode")
+    .describe("divide multipart features into single-part features")
+    .option("target");
 
   parser.command("dissolve")
     .describe("dissolve polygons; takes optional comma-sep. list of fields")
@@ -248,7 +251,8 @@ MapShaper.getOptionParser = function() {
   parser.command("merge-layers")
     .describe("merge split-apart layers back into a single layer")
     .validate(validateMergeLayersOpts)
-    .option("_dummy_"); // kludge to improve help menu formatting
+    .option("name")
+    .option("target");
 
   parser.command("*")
     .title("Options for multiple commands")

@@ -2,6 +2,28 @@
 
 // Utility functions for working with ArcCollection and arrays of arc ids.
 
+// @shp An element of the layer.shapes array
+//   (may be null, or, depending on layer type, an array of points or an array of arrays of arc ids)
+MapShaper.cloneShape = function(shp) {
+  if (!shp) return null;
+  return shp.map(function(part) {
+    return part.concat();
+  });
+};
+
+MapShaper.getPathMetadata = function(shape, arcs, type) {
+  var iter = new ShapeIter(arcs);
+  return Utils.map(shape, function(ids) {
+    if (!Utils.isArray(ids)) throw new Error("expected array");
+    iter.init(ids);
+    return {
+      ids: ids,
+      area: type == 'polygon' ? geom.getPathArea(iter) : 0,
+      bounds: arcs.getSimpleShapeBounds(ids)
+    };
+  });
+};
+
 MapShaper.clampIntervalByPct = function(z, pct) {
   if (pct <= 0) z = Infinity;
   else if (pct >= 1) z = 0;

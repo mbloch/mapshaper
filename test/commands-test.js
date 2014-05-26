@@ -1,7 +1,6 @@
 var api = require('../'),
   assert = require('assert');
 
-
 function fixPath(p) {
   return api.internal.Node.path.join(__dirname, p);
 }
