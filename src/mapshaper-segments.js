@@ -188,13 +188,12 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
       if (hit) {
         intersections.push({
-          i: i,
-          j: j,
+          //i: i,
+          //j: j,
+          //segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}], [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]],
           intersection: {x: hit[0], y: hit[1]},
-          ids: [s1p1, s1p2, s2p1, s2p2],
           key: MapShaper.getIntersectionKey(s1p1, s1p2, s2p1, s2p2),
-          segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}],
-              [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
+          ids: [s1p1, s1p2, s2p1, s2p2],
         });
       }
     }

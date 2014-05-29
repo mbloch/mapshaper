@@ -5394,11 +5394,15 @@ function ArcCollection() {
   }
 
   function initZData(zz) {
-    if (!zz) zz = new Float64Array(_xx.length);
-    if (zz.length != _xx.length) error("ArcCollection#initZData() mismatched arrays");
-    if (zz instanceof Array) zz = new Float64Array(zz);
-    _zz = zz;
-    _filteredArcIter = new FilteredArcIter(_xx, _yy, _zz);
+    if (!zz) {
+      _zz = null;
+      _filteredArcIter = null;
+    } else {
+      if (zz.length != _xx.length) error("ArcCollection#initZData() mismatched arrays");
+      if (zz instanceof Array) zz = new Float64Array(zz);
+      _zz = zz;
+      _filteredArcIter = new FilteredArcIter(_xx, _yy, _zz);
+    }
   }
 
   function initBounds() {
@@ -5468,6 +5472,11 @@ function ArcCollection() {
       nn: nn
     };
   }
+
+  this.updateVertexData = function(nn, xx, yy, zz) {
+    initXYData(nn, xx, yy);
+    initZData(zz || null);
+  };
 
   // Give access to raw data arrays...
   this.getVertexData = function() {
@@ -5633,13 +5642,12 @@ function ArcCollection() {
 
   this.forEach3 = function(cb) {
     var start, end, xx, yy, zz;
-    if (!_zz) initZData();
     for (var arcId=0, n=this.size(); arcId<n; arcId++) {
       start = _ii[arcId];
       end = start + _nn[arcId];
       xx = _xx.subarray(start, end);
       yy = _yy.subarray(start, end);
-      zz = _zz.subarray(start, end);
+      if (_zz) zz = _zz.subarray(start, end);
       cb(xx, yy, zz, arcId);
     }
   };
@@ -5696,6 +5704,35 @@ function ArcCollection() {
         _yy.subarray(0, goodPoints));
     if (_zz) initZData(_zz.subarray(0, goodPoints));
   }
+
+  this.dedupCoords = function() {
+    var n, n2, arcLen,
+        i = 0, i2 = 0,
+        zz = _zz;
+    for (var arcId=0, size = _nn.length; arcId < size; arcId++) {
+      arcLen = _nn[arcId];
+      n = 0;
+      n2 = 0;
+      while (n < arcLen) {
+        if (n === 0 || _xx[i] != _xx[i-1] || _yy[i] != _yy[i-1]) {
+          if (i != i2) {
+            _xx[i2] = _xx[i];
+            _yy[i2] = _yy[i];
+            if (zz) zz[i2] = zz[i];
+          }
+          n2++;
+          i2++;
+        }
+        i++;
+        n++;
+      }
+      _nn[arcId] = n2;
+    }
+    if (i != i2) {
+      initXYData(_nn, _xx.subarray(0, i2), _yy.subarray(0, i2));
+      initZData(zz);
+    }
+  };
 
   this.getArcIter = function(arcId) {
     var fw = arcId >= 0,
@@ -9301,10 +9338,12 @@ MapShaper.forEachPoint = function(lyr, cb) {
   });
 };
 
-// Visit each arc id in an array of ids
+// Visit each arc id in a shape (array of array of arc ids)
 // Use non-undefined return values of callback @cb as replacements.
 MapShaper.forEachArcId = function(arr, cb) {
-  Utils.forEach(arr, function(item, i) {
+  var retn, item;
+  for (var i=0; i<arr.length; i++) {
+    item = arr[i];
     if (item instanceof Array) {
       MapShaper.forEachArcId(item, cb);
     } else if (Utils.isInteger(item)) {
@@ -9315,7 +9354,26 @@ MapShaper.forEachArcId = function(arr, cb) {
     } else if (item) {
       error("Non-integer arc id in:", arr);
     }
-  });
+  }
+};
+
+// TODO: consider removing paths when return value is null
+//
+MapShaper.forEachPath = function(arr, cb) {
+  var arcs, retn;
+  if (!Utils.isArray(arr)) error("[forEachPath()] Expected an array, found:", arr);
+  for (var i=0; i<arr.length; i++) {
+    arcs = arr[i];
+    if (!arcs) continue;
+    retn = cb(arcs, i);
+    if (retn === void 0) {
+      // nop
+    } else if (Utils.isArray(retn)) {
+      arr[i] = retn;
+    } else {
+      error("Expected an array, received:", retn);
+    }
+  }
 };
 
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
@@ -10658,13 +10716,12 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
       if (hit) {
         intersections.push({
-          i: i,
-          j: j,
+          //i: i,
+          //j: j,
+          //segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}], [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]],
           intersection: {x: hit[0], y: hit[1]},
-          ids: [s1p1, s1p2, s2p1, s2p2],
           key: MapShaper.getIntersectionKey(s1p1, s1p2, s2p1, s2p2),
-          segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}],
-              [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
+          ids: [s1p1, s1p2, s2p1, s2p2],
         });
       }
     }
@@ -12548,6 +12605,245 @@ MapShaper.countArcsInShapes = function(shapes, arcCount) {
     }
   });
   return counts;
+};
+
+
+
+
+MapShaper.NodeCollection = NodeCollection;
+
+// @arcs ArcCollection
+function NodeCollection(arcs) {
+
+  var nodeData = MapShaper.findNodeTopology(arcs);
+
+  this.toArray = function() {
+    var flags = new Uint8Array(nodeData.xx.length),
+        nodes = [];
+
+    Utils.forEach(nodeData.chains, function(next, i) {
+      if (flags[i] == 1) return;
+      nodes.push([nodeData.xx[i], nodeData.yy[i]]);
+      while (flags[next] != 1) {
+        flags[next] = 1;
+        next = nodeData.chains[next];
+      }
+    });
+    return nodes;
+  };
+}
+
+MapShaper.findNodeTopology = function(arcs) {
+  var n = arcs.size() * 2,
+      xx2 = new Float64Array(n),
+      yy2 = new Float64Array(n),
+      ids2 = new Int32Array(n);
+
+  arcs.forEach2(function(i, n, xx, yy, zz, arcId) {
+    var start = i,
+        end = i + n - 1,
+        start2 = arcId * 2,
+        end2 = start2 + 1;
+    xx2[start2] = xx[start];
+    yy2[start2] = yy[start];
+    ids2[start2] = arcId;
+    xx2[end2] = xx[end];
+    yy2[end2] = yy[end];
+    ids2[end2] = arcId;
+  });
+
+  var chains = initPointChains(xx2, yy2);
+  return {
+    xx: xx2,
+    yy: yy2,
+    ids: ids2,
+    chains: chains
+  };
+};
+
+
+
+
+MapShaper.intersectDatasets = function(a, b, opts) {
+  if (!a.arcs || !b.arcs) error("[intersectDatasets()] Needs two datasets with arcs");
+  // 1. combine arc datasets
+  var sizeA = a.arcs.size(),
+      sizeB = b.arcs.size(),
+      lyrA = a.layers[0],
+      lyrB = b.layers[0],
+      mergedArcs = MapShaper.mergeArcs([a.arcs, b.arcs]);
+  a.arcs = null; // delete original arcs for gc
+  b.arcs = null;
+
+  // 2. remap arc ids
+  MapShaper.forEachArcId(lyrB.shapes, function(id) {
+    return id >= 0 ? id + sizeA : ~(~id + sizeA);
+  });
+
+  var lyrC = MapShaper.intersectLayers(lyrA, lyrB, mergedArcs, opts);
+  return {
+    layers: [lyrC],
+    arcs: mergedArcs
+  };
+};
+
+MapShaper.clipLayer = function(lyrA, lyrB, arcs, opts) {
+  // slice layers
+  // MapShaper.intersectLayers(lyrA, lyrB, arcs);
+
+};
+
+MapShaper.intersectLayers = function(lyrA, lyrB, arcs) {
+  // 1. divide arcs
+  var map = MapShaper.insertClippingPoints(arcs);
+
+  // 2. update arc ids in layers
+  MapShaper.updateArcIds(lyrA.shapes, map, arcs);
+  MapShaper.updateArcIds(lyrB.shapes, map, arcs);
+};
+
+MapShaper.updateArcIds = function(shapes, map, arcs) {
+  var arcCount = arcs.size(),
+      shape2;
+  for (var i=0; i<shapes.length; i++) {
+    shape2 = [];
+    MapShaper.forEachPath(shapes[i], remapPathIds);
+    shapes[i] = shape2;
+  }
+
+  function remapPathIds(ids) {
+    if (!ids) return; // null shape
+    var ids2 = [];
+    for (var j=0; j<ids.length; j++) {
+      remapArcId(ids[j], ids2);
+    }
+    shape2.push(ids2);
+  }
+
+  function remapArcId(id, ids) {
+    var rev = id < 0,
+        absId = rev ? ~id : id,
+        min = map[absId],
+        max = (absId >= map.length - 1 ? arcCount : map[absId + 1]) - 1;
+    do {
+      if (rev) {
+        ids.push(~max);
+        max--;
+      } else {
+        ids.push(min);
+        min++;
+      }
+    } while (max - min >= 0);
+  }
+};
+
+// divide a collection of arcs at points where line segments cross each other
+// @arcs ArcCollection
+// returns array that maps original arc ids to new arc ids
+MapShaper.insertClippingPoints = function(arcs) {
+  var points = MapShaper.findClippingPoints(arcs),
+      p,
+
+      // original arc data
+      pointTotal0 = arcs.getPointCount(),
+      arcTotal0 = arcs.size(),
+      data = arcs.getVertexData(),
+      xx0 = data.xx,
+      yy0 = data.yy,
+      nn0 = data.nn,
+      i0 = 0,
+      n0, arcLen0,
+
+      // new arc data
+      pointTotal1 = pointTotal0 + points.length * 2,
+      arcTotal1 = arcTotal0 + points.length,
+      xx1 = new Float64Array(pointTotal1),
+      yy1 = new Float64Array(pointTotal1),
+      nn1 = new Uint32Array(arcTotal1),
+      i1 = 0,
+      n1,
+
+      map = new Uint32Array(arcTotal0);
+
+  // sort from last point to first point
+  points.sort(function(a, b) {
+    return b.i - a.i || b.pct - a.pct;
+  });
+  p = points.pop();
+
+  for (var id0=0, id1=0; id0 < arcTotal0; id0++) {
+    arcLen0 = nn0[id0];
+    map[id0] = id1;
+    n0 = 0;
+    n1 = 0;
+    while (n0++ < arcLen0) {
+      n1++;
+      xx1[i1] = xx0[i0];
+      yy1[i1++] = yy0[i0];
+      while (p && p.i === i0) {
+        // end current arc at intersection
+        nn1[id1++] = n1 + 1;
+        xx1[i1] = p.x;
+        yy1[i1++] = p.y;
+        // begin new arc at intersection
+        n1 = 1;
+        xx1[i1] = p.x;
+        yy1[i1++] = p.y;
+        p = points.pop();
+      }
+      i0++;
+    }
+    nn1[id1++] = n1;
+  }
+
+  if (i1 != pointTotal1) error("[insertClippingPoints()] Counting error");
+  arcs.updateVertexData(nn1, xx1, yy1, null);
+
+  // segment-point intersections create duplicate points
+  // (alternative would be to filter out dupes above)
+  arcs.dedupCoords();
+  return map;
+};
+
+MapShaper.findClippingPoints = function(arcs) {
+  var intersections = MapShaper.findSegmentIntersections(arcs),
+      xx = arcs.getVertexData().xx,
+      yy = arcs.getVertexData().yy,
+      points = [];
+
+  intersections.forEach(function(o) {
+    var ids = o.ids,
+        p1 = getSegmentIntersection(o.intersection, ids[0], ids[1]),
+        p2 = getSegmentIntersection(o.intersection, ids[2], ids[3]);
+    points.push(p1);
+    points.push(p2);
+  });
+
+  return points;
+
+  function getSegmentIntersection(p, a, b) {
+    var i = a < b ? a : b,
+        j = i === a ? b : a,
+        xi = xx[i],
+        xj = xx[j],
+        yi = yy[i],
+        yj = yy[j],
+        dx = xj - xi,
+        dy = yj - yi,
+        pct = Math.abs(dy) > Math.abs(dx) ? (p.y - yi) / dy : (p.x - xi) / dx;
+        obj = {
+          pct: pct,
+          i: i,
+          x: p.x,
+          y: p.y
+        };
+
+    // error condition: point does not fall between segment endpoints
+    if (obj.pct < 0 || obj.pct > 1) {
+      error("[findClippingPoints()] Invalid intersection:", obj);
+    }
+    return obj;
+  }
 };
 
 

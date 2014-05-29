@@ -4640,11 +4640,15 @@ function ArcCollection() {
   }
 
   function initZData(zz) {
-    if (!zz) zz = new Float64Array(_xx.length);
-    if (zz.length != _xx.length) error("ArcCollection#initZData() mismatched arrays");
-    if (zz instanceof Array) zz = new Float64Array(zz);
-    _zz = zz;
-    _filteredArcIter = new FilteredArcIter(_xx, _yy, _zz);
+    if (!zz) {
+      _zz = null;
+      _filteredArcIter = null;
+    } else {
+      if (zz.length != _xx.length) error("ArcCollection#initZData() mismatched arrays");
+      if (zz instanceof Array) zz = new Float64Array(zz);
+      _zz = zz;
+      _filteredArcIter = new FilteredArcIter(_xx, _yy, _zz);
+    }
   }
 
   function initBounds() {
@@ -4714,6 +4718,11 @@ function ArcCollection() {
       nn: nn
     };
   }
+
+  this.updateVertexData = function(nn, xx, yy, zz) {
+    initXYData(nn, xx, yy);
+    initZData(zz || null);
+  };
 
   // Give access to raw data arrays...
   this.getVertexData = function() {
@@ -4879,13 +4888,12 @@ function ArcCollection() {
 
   this.forEach3 = function(cb) {
     var start, end, xx, yy, zz;
-    if (!_zz) initZData();
     for (var arcId=0, n=this.size(); arcId<n; arcId++) {
       start = _ii[arcId];
       end = start + _nn[arcId];
       xx = _xx.subarray(start, end);
       yy = _yy.subarray(start, end);
-      zz = _zz.subarray(start, end);
+      if (_zz) zz = _zz.subarray(start, end);
       cb(xx, yy, zz, arcId);
     }
   };
@@ -4942,6 +4950,35 @@ function ArcCollection() {
         _yy.subarray(0, goodPoints));
     if (_zz) initZData(_zz.subarray(0, goodPoints));
   }
+
+  this.dedupCoords = function() {
+    var n, n2, arcLen,
+        i = 0, i2 = 0,
+        zz = _zz;
+    for (var arcId=0, size = _nn.length; arcId < size; arcId++) {
+      arcLen = _nn[arcId];
+      n = 0;
+      n2 = 0;
+      while (n < arcLen) {
+        if (n === 0 || _xx[i] != _xx[i-1] || _yy[i] != _yy[i-1]) {
+          if (i != i2) {
+            _xx[i2] = _xx[i];
+            _yy[i2] = _yy[i];
+            if (zz) zz[i2] = zz[i];
+          }
+          n2++;
+          i2++;
+        }
+        i++;
+        n++;
+      }
+      _nn[arcId] = n2;
+    }
+    if (i != i2) {
+      initXYData(_nn, _xx.subarray(0, i2), _yy.subarray(0, i2));
+      initZData(zz);
+    }
+  };
 
   this.getArcIter = function(arcId) {
     var fw = arcId >= 0,
@@ -8354,10 +8391,12 @@ MapShaper.forEachPoint = function(lyr, cb) {
   });
 };
 
-// Visit each arc id in an array of ids
+// Visit each arc id in a shape (array of array of arc ids)
 // Use non-undefined return values of callback @cb as replacements.
 MapShaper.forEachArcId = function(arr, cb) {
-  Utils.forEach(arr, function(item, i) {
+  var retn, item;
+  for (var i=0; i<arr.length; i++) {
+    item = arr[i];
     if (item instanceof Array) {
       MapShaper.forEachArcId(item, cb);
     } else if (Utils.isInteger(item)) {
@@ -8368,7 +8407,26 @@ MapShaper.forEachArcId = function(arr, cb) {
     } else if (item) {
       error("Non-integer arc id in:", arr);
     }
-  });
+  }
+};
+
+// TODO: consider removing paths when return value is null
+//
+MapShaper.forEachPath = function(arr, cb) {
+  var arcs, retn;
+  if (!Utils.isArray(arr)) error("[forEachPath()] Expected an array, found:", arr);
+  for (var i=0; i<arr.length; i++) {
+    arcs = arr[i];
+    if (!arcs) continue;
+    retn = cb(arcs, i);
+    if (retn === void 0) {
+      // nop
+    } else if (Utils.isArray(retn)) {
+      arr[i] = retn;
+    } else {
+      error("Expected an array, received:", retn);
+    }
+  }
 };
 
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
@@ -11200,13 +11258,12 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
       if (hit) {
         intersections.push({
-          i: i,
-          j: j,
+          //i: i,
+          //j: j,
+          //segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}], [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]],
           intersection: {x: hit[0], y: hit[1]},
-          ids: [s1p1, s1p2, s2p1, s2p2],
           key: MapShaper.getIntersectionKey(s1p1, s1p2, s2p1, s2p2),
-          segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}],
-              [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]]
+          ids: [s1p1, s1p2, s2p1, s2p2],
         });
       }
     }

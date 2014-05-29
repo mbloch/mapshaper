@@ -62,10 +62,12 @@ MapShaper.forEachPoint = function(lyr, cb) {
   });
 };
 
-// Visit each arc id in an array of ids
+// Visit each arc id in a shape (array of array of arc ids)
 // Use non-undefined return values of callback @cb as replacements.
 MapShaper.forEachArcId = function(arr, cb) {
-  Utils.forEach(arr, function(item, i) {
+  var retn, item;
+  for (var i=0; i<arr.length; i++) {
+    item = arr[i];
     if (item instanceof Array) {
       MapShaper.forEachArcId(item, cb);
     } else if (Utils.isInteger(item)) {
@@ -76,7 +78,26 @@ MapShaper.forEachArcId = function(arr, cb) {
     } else if (item) {
       error("Non-integer arc id in:", arr);
     }
-  });
+  }
+};
+
+// TODO: consider removing paths when return value is null
+//
+MapShaper.forEachPath = function(arr, cb) {
+  var arcs, retn;
+  if (!Utils.isArray(arr)) error("[forEachPath()] Expected an array, found:", arr);
+  for (var i=0; i<arr.length; i++) {
+    arcs = arr[i];
+    if (!arcs) continue;
+    retn = cb(arcs, i);
+    if (retn === void 0) {
+      // nop
+    } else if (Utils.isArray(retn)) {
+      arr[i] = retn;
+    } else {
+      error("Expected an array, received:", retn);
+    }
+  }
 };
 
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
