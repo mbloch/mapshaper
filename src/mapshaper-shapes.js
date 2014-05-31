@@ -208,6 +208,10 @@ function ArcCollection() {
     }, this);
   };
 
+  this.toString = function() {
+    return JSON.stringify(this.toArray());
+  };
+
   // Snap coordinates to a grid of @quanta locations on both axes
   // This may snap nearby points to the same coordinates.
   // Consider a cleanup pass to remove dupes, make sure collapsed arcs are
@@ -223,43 +227,42 @@ function ArcCollection() {
     this.applyTransform(inverse);
   };
 
-  // Return average magnitudes of dx, dy
-  //
-  this.getAverageSegment = function(nth) {
-    var count = 0,
-        dx = 0,
-        dy = 0;
-    this.forNthSegment(function(i1, i2, xx, yy) {
-      dx += Math.abs(xx[i1] - xx[i2]);
-      dy += Math.abs(yy[i1] - yy[i2]);
+  // Return average segment length (with simplification)
+  this.getAvgSegment = function() {
+    var sum = 0, count = 0;
+    this.forEachSegment(function(i, j, xx, yy) {
+      var dx = xx[i] - xx[j],
+          dy = yy[i] - yy[j];
+      sum += Math.sqrt(dx * dx + dy * dy);
       count++;
-    }, nth || 1);
+    });
+    return sum / count || 0;
+  };
+
+  // Return average magnitudes of dx, dy (with simplification)
+  this.getAvgSegment2 = function() {
+    var dx = 0, dy = 0, count = 0;
+    this.forEachSegment(function(i, j, xx, yy) {
+      dx += Math.abs(xx[i] - xx[j]);
+      dy += Math.abs(yy[i] - yy[j]);
+      count++;
+    });
     return [dx / count || 0, dy / count || 0];
   };
 
   this.forEachSegment = function(cb) {
-    return this.forNthSegment(cb, 1);
-  };
-
-  this.forNthSegment = function(cb, skip) {
     var zlim = this.getRetainedInterval(),
-        filtered = zlim > 0,
         nextArcStart = 0,
         arcId = -1,
-        count = 0,
         xx = _xx, yy = _yy, zz = _zz, nn = _nn,
-        nth = skip > 1 ? Math.floor(skip) : 1,
-        id1, id2, retn;
+        id1, id2;
 
     for (var k=0, n=xx.length; k<n; k++) {
-      if (!filtered || zz[k] >= zlim) { // check: > or >=
+      if (zlim === 0 || zz[k] >= zlim) { // check: > or >=
         id1 = id2;
         id2 = k;
         if (k < nextArcStart) {
-          count++;
-          if (nth == 1 || count % nth === 0) {
-            cb(id1, id2, xx, yy);
-          }
+          cb(id1, id2, xx, yy);
         } else {
           do {
             arcId++;

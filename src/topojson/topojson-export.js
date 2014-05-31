@@ -147,7 +147,7 @@ TopoJSON.getExportTransformFromPrecision = function(arcData, precision) {
 //
 TopoJSON.calcExportResolution = function(arcData, precision) {
   // TODO: remove influence of long lines created by polar and antimeridian cuts
-  var xy = arcData.getAverageSegment(),
+  var xy = arcData.getAvgSegment2(),
       k = parseFloat(precision) || 0.02;
   return [xy[0] * k, xy[1] * k];
 };

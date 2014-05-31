@@ -141,15 +141,15 @@ describe('mapshaper-shapes.js', function () {
       assert({xmin: 3, ymin: 2, xmax: 7, ymax: 8}, arcs.getBounds());
     });
 
-    it('#getAverageSegment() works', function() {
+    it('#getAvgSegment2() works', function() {
       var arcs = [[[1, 1], [2, 3], [3, 1], [1, 1]]],
           dataset = new ArcCollection(arcs),
-          xy = dataset.getAverageSegment();
+          xy = dataset.getAvgSegment2();
       assert.deepEqual([4/3, 4/3], xy);
 
       var arcs2 = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]],
           dataset2 = new ArcCollection(arcs2),
-          xy2 = dataset2.getAverageSegment();
+          xy2 = dataset2.getAvgSegment2();
       assert.deepEqual([7/5, 6/5], xy2);
     })
 

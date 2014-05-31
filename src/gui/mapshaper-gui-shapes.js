@@ -34,8 +34,7 @@ function FilteredArcCollection(unfilteredArcs) {
     var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];
     filteredArcs = unfilteredArcs.setRetainedInterval(filterZ).getFilteredCopy();
     unfilteredArcs.setRetainedPct(1); // clear simplification
-    var avgXY = filteredArcs.getAverageSegment();
-    filteredSegLen = avgXY[0] + avgXY[1]; // crude approximation of avg. segment length
+    filteredSegLen = filteredArcs.getAvgSegment();
   }
 
   function getArcData() {
