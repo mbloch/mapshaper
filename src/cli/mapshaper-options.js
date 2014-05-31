@@ -179,6 +179,10 @@ MapShaper.getOptionParser = function() {
     .describe("divide multipart features into single-part features")
     .option("target");
 
+  parser.command("divide")
+    // .describe("divide multipart features into single-part features")
+    .option("target");
+
   parser.command("dissolve")
     .describe("dissolve polygons; takes optional comma-sep. list of fields")
     .validate(validateDissolveOpts)

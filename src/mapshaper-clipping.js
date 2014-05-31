@@ -6,6 +6,27 @@ mapshaper-endpoints,
 mapshaper-shape-geom
 */
 
+api.divideArcs = function(layers, arcs, opts) {
+  // divide arcs
+  var map = MapShaper.insertClippingPoints(arcs);
+
+  // update arc ids in arc-based layers
+  layers.forEach(function(lyr) {
+    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
+      MapShaper.updateArcIds(lyr.shapes, map, arcs);
+    }
+  });
+};
+
+// Assumes layer and arcs have been processed with divideArcs()
+api.divideLayer = function(lyr, arcs, opts) {
+  if (lyr.geometry_type != 'polygon') {
+    stop("[divideLayer()] expected polygon layer, received:", lyr.geometry_type);
+  }
+  return MapShaper.dividePolygonLayer(lyr, arcs);
+};
+
+
 MapShaper.intersectDatasets = function(a, b, opts) {
   if (!a.arcs || !b.arcs) error("[intersectDatasets()] Needs two datasets with arcs");
   // 1. combine arc datasets
@@ -29,21 +50,6 @@ MapShaper.intersectDatasets = function(a, b, opts) {
   };
 };
 
-MapShaper.clipLayer = function(lyrA, lyrB, arcs, opts) {
-  // MapShaper.intersectLayers(lyrA, lyrB, arcs);
-};
-
-MapShaper.intersectLayers = function(lyrA, lyrB, arcs) {
-  // 1. divide arcs
-  var map = MapShaper.insertClippingPoints(arcs);
-
-  // 2. update arc ids in layers
-  MapShaper.updateArcIds(lyrA.shapes, map, arcs);
-  MapShaper.updateArcIds(lyrB.shapes, map, arcs);
-
-  // 3. divide polygons
-  return MapShaper.dividePolygonLayer(lyrA, arcs);
-};
 
 MapShaper.updateArcIds = function(shapes, map, arcs) {
   var arcCount = arcs.size(),

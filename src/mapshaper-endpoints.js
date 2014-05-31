@@ -36,13 +36,10 @@ function NodeCollection(arcs) {
         by = yy[bi],
         ci, cx, cy,
         di, dx, dy,
-        // absId = arcId < 0 ? ~arcId : arcId,
         nextId = nextConnectedArc(arcId),
         candId = arcId,
         candAngle,
         angle;
-
-    // console.log("a:", ax, ay, "b:", bx, by, 'arc:', arcId, "nextId:", nextId);
 
     while (nextId != arcId) {
       // get best candidate

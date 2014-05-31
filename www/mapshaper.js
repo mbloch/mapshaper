@@ -4793,6 +4793,10 @@ function ArcCollection() {
     }, this);
   };
 
+  this.toString = function() {
+    return JSON.stringify(this.toArray());
+  };
+
   // Snap coordinates to a grid of @quanta locations on both axes
   // This may snap nearby points to the same coordinates.
   // Consider a cleanup pass to remove dupes, make sure collapsed arcs are
@@ -4808,43 +4812,42 @@ function ArcCollection() {
     this.applyTransform(inverse);
   };
 
-  // Return average magnitudes of dx, dy
-  //
-  this.getAverageSegment = function(nth) {
-    var count = 0,
-        dx = 0,
-        dy = 0;
-    this.forNthSegment(function(i1, i2, xx, yy) {
-      dx += Math.abs(xx[i1] - xx[i2]);
-      dy += Math.abs(yy[i1] - yy[i2]);
+  // Return average segment length (with simplification)
+  this.getAvgSegment = function() {
+    var sum = 0, count = 0;
+    this.forEachSegment(function(i, j, xx, yy) {
+      var dx = xx[i] - xx[j],
+          dy = yy[i] - yy[j];
+      sum += Math.sqrt(dx * dx + dy * dy);
       count++;
-    }, nth || 1);
+    });
+    return sum / count || 0;
+  };
+
+  // Return average magnitudes of dx, dy (with simplification)
+  this.getAvgSegment2 = function() {
+    var dx = 0, dy = 0, count = 0;
+    this.forEachSegment(function(i, j, xx, yy) {
+      dx += Math.abs(xx[i] - xx[j]);
+      dy += Math.abs(yy[i] - yy[j]);
+      count++;
+    });
     return [dx / count || 0, dy / count || 0];
   };
 
   this.forEachSegment = function(cb) {
-    return this.forNthSegment(cb, 1);
-  };
-
-  this.forNthSegment = function(cb, skip) {
     var zlim = this.getRetainedInterval(),
-        filtered = zlim > 0,
         nextArcStart = 0,
         arcId = -1,
-        count = 0,
         xx = _xx, yy = _yy, zz = _zz, nn = _nn,
-        nth = skip > 1 ? Math.floor(skip) : 1,
-        id1, id2, retn;
+        id1, id2;
 
     for (var k=0, n=xx.length; k<n; k++) {
-      if (!filtered || zz[k] >= zlim) { // check: > or >=
+      if (zlim === 0 || zz[k] >= zlim) { // check: > or >=
         id1 = id2;
         id2 = k;
         if (k < nextArcStart) {
-          count++;
-          if (nth == 1 || count % nth === 0) {
-            cb(id1, id2, xx, yy);
-          }
+          cb(id1, id2, xx, yy);
         } else {
           do {
             arcId++;
@@ -6509,8 +6512,7 @@ function updateArcsInShape(shape, topoPaths) {
 //
 //
 MapShaper.autoSnapCoords = function(arcs, threshold, points) {
-  var avgSeg = arcs.getAverageSegment(3),
-      avgDist = avgSeg[0] + avgSeg[1], // avg. dx + dy -- crude approximation
+  var avgDist = arcs.getAvgSegment(),
       snapDist = avgDist * 0.0025,
       snapCount = 0,
       xx = arcs.getVertexData().xx,
@@ -8670,7 +8672,7 @@ TopoJSON.getExportTransformFromPrecision = function(arcData, precision) {
 //
 TopoJSON.calcExportResolution = function(arcData, precision) {
   // TODO: remove influence of long lines created by polar and antimeridian cuts
-  var xy = arcData.getAverageSegment(),
+  var xy = arcData.getAvgSegment2(),
       k = parseFloat(precision) || 0.02;
   return [xy[0] * k, xy[1] * k];
 };
@@ -10057,8 +10059,7 @@ function FilteredArcCollection(unfilteredArcs) {
     var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];
     filteredArcs = unfilteredArcs.setRetainedInterval(filterZ).getFilteredCopy();
     unfilteredArcs.setRetainedPct(1); // clear simplification
-    var avgXY = filteredArcs.getAverageSegment();
-    filteredSegLen = avgXY[0] + avgXY[1]; // crude approximation of avg. segment length
+    filteredSegLen = filteredArcs.getAvgSegment();
   }
 
   function getArcData() {
@@ -11171,7 +11172,6 @@ MapShaper.findSegmentIntersections = (function() {
     return intersections;
 
     // Add intersections from a bin, but avoid duplicates.
-    //
     function extendIntersections(intersections, arr, stripeId) {
       Utils.forEach(arr, function(obj, i) {
         var key = MapShaper.getIntersectionKey(obj.a, obj.b);
@@ -11181,30 +11181,18 @@ MapShaper.findSegmentIntersections = (function() {
         }
       });
     }
-
   };
 
   function calcStripeCount(arcs) {
-    var bounds = arcs.getBounds(),
-        yrange = bounds.ymax - bounds.ymin,
-        avg = arcs.getAverageSegment(3), // don't bother sampling all segments
-        avgY = avg[1],
-        count = Math.ceil(yrange / avgY / 20) || 1;  // count is positive int
+    var yrange = arcs.getBounds().height(),
+        segLen = arcs.getAvgSegment2()[1];
+        count = Math.ceil(yrange / segLen / 20) || 1;  // count is positive int
     if (count > 0 === false) throw "Invalid stripe count";
     return count;
   }
 
 })();
 
-
-/*
-MapShaper.getIntersectionKey = function(a, b, c, d) {
-  var ab = a < b ? a + ',' + b : b + ',' + a,
-      cd = c < d ? c + ',' + d : d + ',' + c,
-      key = a < c ? ab + ',' + cd : cd + ',' + ab;
-  return key;
-};
-*/
 // Get an indexable key that is consistent regardless of point sequence
 // @a, @b endpoint ids in format [i, j]
 MapShaper.getIntersectionKey = function(a, b) {

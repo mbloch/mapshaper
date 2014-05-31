@@ -78,9 +78,8 @@ api.runCommand = function(cmd, dataset, cb) {
       err = null;
 
   T.start();
-
   if (opts.target) {
-    srcLayers = MapShaper.findMatchingLayers(srcLayers, opts.target);
+    srcLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
   } else {
     srcLayers = dataset.layers; // default: all layers
   }
@@ -95,6 +94,10 @@ api.runCommand = function(cmd, dataset, cb) {
 
   } else if (name == 'dissolve') {
     newLayers = MapShaper.applyCommand(api.dissolveLayer, srcLayers, arcs, opts);
+
+  } else if (name == 'divide') {
+    api.divideArcs(dataset.layers, arcs, opts);
+    newLayers = MapShaper.applyCommand(api.divideLayer, srcLayers, arcs, opts);
 
   } else if (name == 'explode') {
     newLayers = MapShaper.applyCommand(api.explodeLayer, srcLayers, arcs, opts);
