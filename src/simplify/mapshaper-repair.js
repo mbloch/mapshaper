@@ -55,11 +55,11 @@ MapShaper.repairIntersections = function(arcs, intersections) {
   // Add the z-value and id of this point to the intersection object @obj.
   //
   function setPriority(obj) {
-    ids = obj.ids;
-    var i = MapShaper.findNextRemovableVertex(zz, zlim, ids[0], ids[1]),
-        j = MapShaper.findNextRemovableVertex(zz, zlim, ids[2], ids[3]),
+    var i = MapShaper.findNextRemovableVertex(zz, zlim, obj.a[0], obj.a[1]),
+        j = MapShaper.findNextRemovableVertex(zz, zlim, obj.b[0], obj.b[1]),
         zi = i == -1 ? Infinity : zz[i],
-        zj = j == -1 ? Infinity : zz[j];
+        zj = j == -1 ? Infinity : zz[j],
+        tmp;
 
     if (zi == Infinity && zj == Infinity) {
       // No more points available to add; unable to repair.
@@ -72,7 +72,10 @@ MapShaper.repairIntersections = function(arcs, intersections) {
     } else {
       obj.newId = j;
       obj.z = zj;
-      obj.ids = [ids[2], ids[3], ids[0], ids[1]];
+      tmp = obj.a;
+      obj.a = obj.b;
+      obj.b = tmp;
+      // obj.ids = [ids[2], ids[3], ids[0], ids[1]];
     }
     return obj.z;
   }
@@ -145,49 +148,43 @@ MapShaper.repairIntersections = function(arcs, intersections) {
   }
 
   function splitSegmentPair(obj) {
-    var ids = obj.ids,
-        start = ids[0],
-        end = ids[1],
+    var start = obj.a[0],
+        end = obj.a[1],
         middle = obj.newId;
     if (!(start < middle && middle < end || start > middle && middle > end)) {
       error("[splitSegment()] Indexing error --", obj);
     }
     return [
-      getSegmentPair(start, middle, ids[2], ids[3]),
-      getSegmentPair(middle, end, ids[2], ids[3])
+      getSegmentPair(start, middle, obj.b[0], obj.b[1]),
+      getSegmentPair(middle, end, obj.b[0], obj.b[1])
     ];
   }
 
   function getSegmentPair(s1p1, s1p2, s2p1, s2p2) {
-    var obj = {},
-        ids;
-    if (xx[s1p1] > xx[s1p2]) {
-      ids = [s1p2, s1p1, s2p1, s2p2];
-    } else {
-      ids = [s1p1, s1p2, s2p1, s2p2];
-    }
-    obj.ids = ids;
-    return obj;
+    return {
+      a: xx[s1p1] > xx[s1p2] ? [s1p2, s1p1] : [s1p1, s1p2],
+      b: [s2p1, s2p2]
+    };
   }
 
   function getIntersectionCandidates(obj) {
     var segments = [];
-    addSegmentVertices(segments, obj.ids[0], obj.ids[1]);
-    addSegmentVertices(segments, obj.ids[2], obj.ids[3]);
+    addSegmentVertices(segments, obj.a);
+    addSegmentVertices(segments, obj.b);
     return segments;
   }
 
   // Gat all segments defined by two endpoints and the vertices between
   // them that are at or above the current simplification threshold.
   // @ids Accumulator array
-  function addSegmentVertices(ids, p1, p2) {
+  function addSegmentVertices(ids, seg) {
     var start, end, prev;
-    if (p1 <= p2) {
-      start = p1;
-      end = p2;
+    if (seg[0] <= seg[1]) {
+      start = seg[0];
+      end = seg[1];
     } else {
-      start = p2;
-      end = p1;
+      start = seg[1];
+      end = seg[0];
     }
     prev = start;
     for (var i=start+1; i<=end; i++) {

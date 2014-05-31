@@ -4110,9 +4110,9 @@ function verbose() {
   }
 }
 
-utils.absArcId = function(arcId) {
+function absArcId(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
-};
+}
 
 // Parse the path to a file
 // Assumes: not a directory path
@@ -4388,21 +4388,32 @@ function ccw(x0, y0, x1, y1, x2, y2) {
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
-/*
-function innerAngle_slow(ax, ay, bx, by, cx, cy) {
+function innerAngle2(ax, ay, bx, by, cx, cy) {
   var a1 = Math.atan2(ay - by, ax - bx),
       a2 = Math.atan2(cy - by, cx - bx),
       a3 = Math.abs(a1 - a2);
-      a3 = a2 - a1
   if (a3 > Math.PI) {
     a3 = 2 * Math.PI - a3;
   }
   return a3;
 }
-*/
+
+function signedAngle(ax, ay, bx, by, cx, cy) {
+  var a1 = Math.atan2(ay - by, ax - bx),
+      a2 = Math.atan2(cy - by, cx - bx),
+      a3 = a2 - a1;
+
+  if (ax == bx && ay == by || bx == cx && by == cy) {
+    a3 = 0;
+  } else if (a3 > Math.PI * 2) {
+    a3 = 2 * Math.PI - a3;
+  } else if (a3 < 0) {
+    a3 = a3 + 2 * Math.PI;
+  }
+  return a3;
+}
 
 // TODO: make this safe for small angles
-//
 function innerAngle(ax, ay, bx, by, cx, cy) {
   var ab = distance2D(ax, ay, bx, by),
       bc = distance2D(bx, by, cx, cy),
@@ -4410,10 +4421,10 @@ function innerAngle(ax, ay, bx, by, cx, cy) {
   if (ab === 0 || bc === 0) {
     theta = 0;
   } else {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
-    if (dotp >= 1) {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / (ab * bc);
+    if (dotp >= 1 - 1e-14) {
       theta = 0;
-    } else if (dotp <= -1) {
+    } else if (dotp <= -1 + 1e-14) {
       theta = Math.PI;
     } else {
       theta = Math.acos(dotp); // consider using other formula at small dp
@@ -4564,6 +4575,8 @@ Utils.extend(geom, {
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,
   innerAngle: innerAngle,
+  innerAngle2: innerAngle2,
+  signedAngle: signedAngle,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D
@@ -4779,17 +4792,6 @@ function ArcCollection() {
       return this.getArc(i).toArray();
     }, this);
   };
-
-  /*
-  this.toArray2 = function() {
-    var arr = [];
-    this.forEach3(function(xx, yy, zz) {
-      var path = [Utils.toArray(xx), Utils.toArray(yy), Utils.toArray(zz)];
-      arr.push(path);
-    });
-    return arr;
-  };
-  */
 
   // Snap coordinates to a grid of @quanta locations on both axes
   // This may snap nearby points to the same coordinates.
@@ -8360,7 +8362,7 @@ MapShaper.clampIntervalByPct = function(z, pct) {
 };
 
 // Return id of the vertex between @start and @end with the highest
-// threshold that is less than @zlim.
+// threshold that is less than @zlim, or -1 if none
 //
 MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   var tmp, jz = 0, j = -1, z;
@@ -10959,6 +10961,7 @@ MapShaper.simplifyPaths = function(paths, opts) {
   var method = opts.method || 'mapshaper';
   var decimalDegrees = MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
   var simplifyPath = MapShaper.simplifiers[method] || error("Unknown simplification method:", method);
+  paths.setThresholds(new Float64Array(paths.getPointCount()));
   if (decimalDegrees && !opts.cartesian) {
     MapShaper.simplifyPaths3D(paths, simplifyPath);
     MapShaper.protectWorldEdges(paths);
@@ -11074,7 +11077,7 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
 //
 MapShaper.getIntersectionPoints = function(intersections) {
   return Utils.map(intersections, function(obj) {
-        return [obj.intersection.x, obj.intersection.y];
+        return [obj.x, obj.y];
       });
 };
 
@@ -11171,9 +11174,10 @@ MapShaper.findSegmentIntersections = (function() {
     //
     function extendIntersections(intersections, arr, stripeId) {
       Utils.forEach(arr, function(obj, i) {
-        if (obj.key in index === false) {
+        var key = MapShaper.getIntersectionKey(obj.a, obj.b);
+        if (key in index === false) {
           intersections.push(obj);
-          index[obj.key] = true;
+          index[key] = true;
         }
       });
     }
@@ -11192,13 +11196,19 @@ MapShaper.findSegmentIntersections = (function() {
 
 })();
 
-// Get an indexable key that is consistent regardless of point sequence
-// @a, @b ids of segment 1, @c, @d ids of segment 2
+
+/*
 MapShaper.getIntersectionKey = function(a, b, c, d) {
   var ab = a < b ? a + ',' + b : b + ',' + a,
       cd = c < d ? c + ',' + d : d + ',' + c,
       key = a < c ? ab + ',' + cd : cd + ',' + ab;
   return key;
+};
+*/
+// Get an indexable key that is consistent regardless of point sequence
+// @a, @b endpoint ids in format [i, j]
+MapShaper.getIntersectionKey = function(a, b) {
+  return a.concat(b).sort().join(',');
 };
 
 // Find intersections among a group of line segments
@@ -11233,7 +11243,8 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       s2p1 = ids[j];
       s2p1x = xx[s2p1];
 
-      if (s1p2x <= s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
+      if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
+      //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
 
       s2p1y = yy[s2p1];
       s2p2 = ids[j+1];
@@ -11242,9 +11253,9 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
       // skip segments with non-overlapping y ranges
       if (s1p1y >= s2p1y) {
-        if (s1p1y >= s2p2y && s1p2y >= s2p1y && s1p2y >= s2p2y) continue;
+        if (s1p1y > s2p2y && s1p2y > s2p1y && s1p2y > s2p2y) continue;
       } else {
-        if (s1p1y <= s2p2y && s1p2y <= s2p1y && s1p2y <= s2p2y) continue;
+        if (s1p1y < s2p2y && s1p2y < s2p1y && s1p2y < s2p2y) continue;
       }
 
       // skip segments that share an endpoint
@@ -11258,18 +11269,30 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
       if (hit) {
         intersections.push({
-          //i: i,
-          //j: j,
-          //segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}], [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]],
-          intersection: {x: hit[0], y: hit[1]},
-          key: MapShaper.getIntersectionKey(s1p1, s1p2, s2p1, s2p2),
-          ids: [s1p1, s1p2, s2p1, s2p2],
+          x: hit[0],
+          y: hit[1],
+          a: getEndpointIds(s1p1, s1p2, hit),
+          b: getEndpointIds(s2p1, s2p2, hit)
         });
       }
     }
     i += 2;
   }
   return intersections;
+
+  // @p is an [x, y] location along a segment defined by ids @id1 and @id2
+  // return array [i, j] where i and j are the same endpoint ids with i <= j
+  // if @p coincides with an endpoint, return the id of that endpoint twice
+  function getEndpointIds(id1, id2, p) {
+    var i = id1 < id2 ? id1 : id2,
+        j = i === id1 ? id2 : id1;
+    if (xx[i] == p[0] && yy[i] == p[1]) {
+      j = i;
+    } else if (xx[j] == p[0] && yy[j] == p[1]) {
+      i = j;
+    }
+    return [i, j];
+  }
 };
 
 MapShaper.sortSegmentIds = function(arr, ids) {
@@ -11380,11 +11403,11 @@ MapShaper.repairIntersections = function(arcs, intersections) {
   // Add the z-value and id of this point to the intersection object @obj.
   //
   function setPriority(obj) {
-    ids = obj.ids;
-    var i = MapShaper.findNextRemovableVertex(zz, zlim, ids[0], ids[1]),
-        j = MapShaper.findNextRemovableVertex(zz, zlim, ids[2], ids[3]),
+    var i = MapShaper.findNextRemovableVertex(zz, zlim, obj.a[0], obj.a[1]),
+        j = MapShaper.findNextRemovableVertex(zz, zlim, obj.b[0], obj.b[1]),
         zi = i == -1 ? Infinity : zz[i],
-        zj = j == -1 ? Infinity : zz[j];
+        zj = j == -1 ? Infinity : zz[j],
+        tmp;
 
     if (zi == Infinity && zj == Infinity) {
       // No more points available to add; unable to repair.
@@ -11397,7 +11420,10 @@ MapShaper.repairIntersections = function(arcs, intersections) {
     } else {
       obj.newId = j;
       obj.z = zj;
-      obj.ids = [ids[2], ids[3], ids[0], ids[1]];
+      tmp = obj.a;
+      obj.a = obj.b;
+      obj.b = tmp;
+      // obj.ids = [ids[2], ids[3], ids[0], ids[1]];
     }
     return obj.z;
   }
@@ -11470,49 +11496,43 @@ MapShaper.repairIntersections = function(arcs, intersections) {
   }
 
   function splitSegmentPair(obj) {
-    var ids = obj.ids,
-        start = ids[0],
-        end = ids[1],
+    var start = obj.a[0],
+        end = obj.a[1],
         middle = obj.newId;
     if (!(start < middle && middle < end || start > middle && middle > end)) {
       error("[splitSegment()] Indexing error --", obj);
     }
     return [
-      getSegmentPair(start, middle, ids[2], ids[3]),
-      getSegmentPair(middle, end, ids[2], ids[3])
+      getSegmentPair(start, middle, obj.b[0], obj.b[1]),
+      getSegmentPair(middle, end, obj.b[0], obj.b[1])
     ];
   }
 
   function getSegmentPair(s1p1, s1p2, s2p1, s2p2) {
-    var obj = {},
-        ids;
-    if (xx[s1p1] > xx[s1p2]) {
-      ids = [s1p2, s1p1, s2p1, s2p2];
-    } else {
-      ids = [s1p1, s1p2, s2p1, s2p2];
-    }
-    obj.ids = ids;
-    return obj;
+    return {
+      a: xx[s1p1] > xx[s1p2] ? [s1p2, s1p1] : [s1p1, s1p2],
+      b: [s2p1, s2p2]
+    };
   }
 
   function getIntersectionCandidates(obj) {
     var segments = [];
-    addSegmentVertices(segments, obj.ids[0], obj.ids[1]);
-    addSegmentVertices(segments, obj.ids[2], obj.ids[3]);
+    addSegmentVertices(segments, obj.a);
+    addSegmentVertices(segments, obj.b);
     return segments;
   }
 
   // Gat all segments defined by two endpoints and the vertices between
   // them that are at or above the current simplification threshold.
   // @ids Accumulator array
-  function addSegmentVertices(ids, p1, p2) {
+  function addSegmentVertices(ids, seg) {
     var start, end, prev;
-    if (p1 <= p2) {
-      start = p1;
-      end = p2;
+    if (seg[0] <= seg[1]) {
+      start = seg[0];
+      end = seg[1];
     } else {
-      start = p2;
-      end = p1;
+      start = seg[1];
+      end = seg[0];
     }
     prev = start;
     for (var i=start+1; i<=end; i++) {

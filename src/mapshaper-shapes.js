@@ -208,17 +208,6 @@ function ArcCollection() {
     }, this);
   };
 
-  /*
-  this.toArray2 = function() {
-    var arr = [];
-    this.forEach3(function(xx, yy, zz) {
-      var path = [Utils.toArray(xx), Utils.toArray(yy), Utils.toArray(zz)];
-      arr.push(path);
-    });
-    return arr;
-  };
-  */
-
   // Snap coordinates to a grid of @quanta locations on both axes
   // This may snap nearby points to the same coordinates.
   // Consider a cleanup pass to remove dupes, make sure collapsed arcs are

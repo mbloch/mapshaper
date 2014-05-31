@@ -28,6 +28,17 @@ MapShaper.mergeDatasets = function(arr) {
     error("[mergeDatasets()] Arc indexing error");
   }
 
+  // remove all layer names if there are any duplicate names
+  // this is to prevent cases like combining multiple TopoJSON files, each with
+  // layers named "layer1", being converted to names like layer11, layer12 on output
+  // TODO: rethink this
+  var names = mergedLayers.map(function(lyr) {return lyr.name || "";});
+  if (names.length != Utils.uniq(names).length) {
+    mergedLayers.forEach(function(lyr) {
+      lyr.name = "";
+    });
+  }
+
   return {
     // info: arr[0].info,
     arcs: mergedArcs,

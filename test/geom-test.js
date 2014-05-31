@@ -43,14 +43,6 @@ describe("mapshaper-geom.js", function() {
    })
   })
 
-
-  /*
-    {i:4132, j:4134, intersection:{x:-82.14607102566005, y:36.59472405123747}, ids:[6169367, 6169366, 5331227, 5331228],
-    segments:[
-    [{x:-82.14628596493874, y:36.59472405123747}, {x:-82.1460708585222, y:36.59472405123747}],
-    [{x:-82.14607102566005, y:36.59472405123747}, {x:-82.14298499234607, y:36.59484205056154}]]}
-  */
-
   describe('segmentIntersection', function () {
     it('Joined segs are hits', function () {
       assert.equal(!!geom.segmentIntersection(0, 0, 0, 1, 0, 1, 1, 1), true)
@@ -77,6 +69,37 @@ describe("mapshaper-geom.js", function() {
       assert.equal(!!geom.segmentIntersection(0, 0, 1, -1, TINY, 0, 1 - TINY, -1), true);
       assert.equal(!!geom.segmentIntersection(TINY, 0, 1, -1, 0, 0, 1, -TINY), true);
     })
+  })
+
+  describe('signedAngle()', function () {
+    it("returns π if points form a line", function() {
+      assert.equal(geom.signedAngle(0, 0, 0, 1, 0, 2), Math.PI);
+      assert.equal(geom.signedAngle(-1, 0, 0, 0, 1, 0), Math.PI);
+      assert.equal(geom.signedAngle(1, 2, 2, 3, 3, 4), Math.PI);
+    })
+
+    it("returns 0 if second segment doubles back", function() {
+      assert.equal(geom.signedAngle(0, 0, 0, 1, 0, -2), 0);
+      assert.equal(geom.signedAngle(1, 0, 0, -1, 2, 1), 0);
+    })
+
+    it("returns π/2 if abc bends right 90deg", function() {
+      assert.equal(geom.signedAngle(-1, 0, -1, 2, 3, 2), Math.PI/2);
+    })
+
+    it("returns 3π/2 if abc bends left 90deg", function() {
+      assert.equal(geom.signedAngle(1, 0, 1, 1, 0, 1), 3 * Math.PI/2);
+    })
+
+    it("returns 0 if two adjacent points are the same", function() {
+      assert.equal(geom.signedAngle(3, 0, 3, 0, 4, 1), 0);
+      assert.equal(geom.signedAngle(3, 1, 2, 0, 2, 0), 0);
+    })
+
+    it("returns 0 if all points are the same", function() {
+      assert.equal(geom.signedAngle(0, -1, 0, -1, 0, -1), 0);
+    })
+
   })
 
   describe("innerAngle()", function() {

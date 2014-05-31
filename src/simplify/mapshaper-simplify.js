@@ -20,6 +20,7 @@ MapShaper.simplifyPaths = function(paths, opts) {
   var method = opts.method || 'mapshaper';
   var decimalDegrees = MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
   var simplifyPath = MapShaper.simplifiers[method] || error("Unknown simplification method:", method);
+  paths.setThresholds(new Float64Array(paths.getPointCount()));
   if (decimalDegrees && !opts.cartesian) {
     MapShaper.simplifyPaths3D(paths, simplifyPath);
     MapShaper.protectWorldEdges(paths);

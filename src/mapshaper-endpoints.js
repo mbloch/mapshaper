@@ -1,9 +1,14 @@
-/* @require mapshaper-common */
+/* @require mapshaper-common, mapshaper-geom */
 
 MapShaper.NodeCollection = NodeCollection;
 
 // @arcs ArcCollection
 function NodeCollection(arcs) {
+  var arcData = arcs.getVertexData(),
+      nn = arcData.nn,
+      ii = arcData.ii,
+      xx = arcData.xx,
+      yy = arcData.yy;
 
   var nodeData = MapShaper.findNodeTopology(arcs);
 
@@ -21,7 +26,72 @@ function NodeCollection(arcs) {
     });
     return nodes;
   };
+
+  this.getNextArc = function(arcId, isCW) {
+    var ai = indexOfVertex(arcId, -2),
+        ax = xx[ai],
+        ay = yy[ai],
+        bi = indexOfVertex(arcId, -1),
+        bx = xx[bi],
+        by = yy[bi],
+        ci, cx, cy,
+        di, dx, dy,
+        // absId = arcId < 0 ? ~arcId : arcId,
+        nextId = nextConnectedArc(arcId),
+        candId = arcId,
+        candAngle,
+        angle;
+
+    // console.log("a:", ax, ay, "b:", bx, by, 'arc:', arcId, "nextId:", nextId);
+
+    while (nextId != arcId) {
+      // get best candidate
+      ci = indexOfVertex(nextId, -2);
+      cx = xx[ci];
+      cy = yy[ci];
+
+      // sanity check: make sure vertex is same (else error);
+      di = indexOfVertex(nextId, -1);
+      dx = xx[di];
+      dy = yy[di];
+      if (dx !== bx || dy !== by) {
+        console.log("cd:", cx, cy, dx, dy, 'arc:', nextId);
+        error("Node error:");
+      }
+
+      angle = signedAngle(ax, ay, bx, by, cx, cy);
+      if (angle > 0 && (candId === arcId || isCW && angle < candAngle ||
+          !isCW && angle > candAngle)) {
+        candId = ~nextId; // reverse arc to point onwards
+        candAngle = angle;
+      }
+      nextId = nextConnectedArc(nextId);
+    }
+
+    return candId;
+  };
+
+  // return arcId of next arc in the chain, pointed towards the shared vertex
+  function nextConnectedArc(arcId) {
+    var absId = arcId < 0 ? ~arcId : arcId,
+        nodeId = absId === arcId ? absId * 2 + 1: absId * 2, // if fw, use end, if rev, use start
+        chainedId = nodeData.chains[nodeId],
+        nextAbsId = chainedId >> 1,
+        nextArcId = chainedId & 1 == 1 ? nextAbsId : ~nextAbsId;
+
+    //console.log(".. nextConnected(); id:", arcId, "nodeId:", nodeId, "chainedId:", chainedId, "nextAbsId:", nextAbsId, "nextId:", nextArcId);
+    return nextArcId;
+  }
+
+  function indexOfVertex(arcId, nth) {
+    var absId = arcId < 0 ? ~arcId : arcId,
+        len = nn[absId];
+    if (nth < 0) nth = len + nth;
+    if (absId != arcId) nth = len - nth - 1;
+    return ii[absId] + nth;
+  }
 }
+
 
 MapShaper.findNodeTopology = function(arcs) {
   var n = arcs.size() * 2,

@@ -31,7 +31,7 @@ MapShaper.clampIntervalByPct = function(z, pct) {
 };
 
 // Return id of the vertex between @start and @end with the highest
-// threshold that is less than @zlim.
+// threshold that is less than @zlim, or -1 if none
 //
 MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   var tmp, jz = 0, j = -1, z;

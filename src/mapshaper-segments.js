@@ -4,7 +4,7 @@
 //
 MapShaper.getIntersectionPoints = function(intersections) {
   return Utils.map(intersections, function(obj) {
-        return [obj.intersection.x, obj.intersection.y];
+        return [obj.x, obj.y];
       });
 };
 
@@ -98,12 +98,12 @@ MapShaper.findSegmentIntersections = (function() {
     return intersections;
 
     // Add intersections from a bin, but avoid duplicates.
-    //
     function extendIntersections(intersections, arr, stripeId) {
       Utils.forEach(arr, function(obj, i) {
-        if (obj.key in index === false) {
+        var key = MapShaper.getIntersectionKey(obj.a, obj.b);
+        if (key in index === false) {
           intersections.push(obj);
-          index[obj.key] = true;
+          index[key] = true;
         }
       });
     }
@@ -123,12 +123,9 @@ MapShaper.findSegmentIntersections = (function() {
 })();
 
 // Get an indexable key that is consistent regardless of point sequence
-// @a, @b ids of segment 1, @c, @d ids of segment 2
-MapShaper.getIntersectionKey = function(a, b, c, d) {
-  var ab = a < b ? a + ',' + b : b + ',' + a,
-      cd = c < d ? c + ',' + d : d + ',' + c,
-      key = a < c ? ab + ',' + cd : cd + ',' + ab;
-  return key;
+// @a, @b endpoint ids in format [i, j]
+MapShaper.getIntersectionKey = function(a, b) {
+  return a.concat(b).sort().join(',');
 };
 
 // Find intersections among a group of line segments
@@ -163,7 +160,8 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       s2p1 = ids[j];
       s2p1x = xx[s2p1];
 
-      if (s1p2x <= s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
+      if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
+      //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
 
       s2p1y = yy[s2p1];
       s2p2 = ids[j+1];
@@ -172,9 +170,9 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
       // skip segments with non-overlapping y ranges
       if (s1p1y >= s2p1y) {
-        if (s1p1y >= s2p2y && s1p2y >= s2p1y && s1p2y >= s2p2y) continue;
+        if (s1p1y > s2p2y && s1p2y > s2p1y && s1p2y > s2p2y) continue;
       } else {
-        if (s1p1y <= s2p2y && s1p2y <= s2p1y && s1p2y <= s2p2y) continue;
+        if (s1p1y < s2p2y && s1p2y < s2p1y && s1p2y < s2p2y) continue;
       }
 
       // skip segments that share an endpoint
@@ -188,18 +186,30 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
       if (hit) {
         intersections.push({
-          //i: i,
-          //j: j,
-          //segments: [[{x: s1p1x, y: s1p1y}, {x: s1p2x, y: s1p2y}], [{x: s2p1x, y: s2p1y}, {x: s2p2x, y: s2p2y}]],
-          intersection: {x: hit[0], y: hit[1]},
-          key: MapShaper.getIntersectionKey(s1p1, s1p2, s2p1, s2p2),
-          ids: [s1p1, s1p2, s2p1, s2p2],
+          x: hit[0],
+          y: hit[1],
+          a: getEndpointIds(s1p1, s1p2, hit),
+          b: getEndpointIds(s2p1, s2p2, hit)
         });
       }
     }
     i += 2;
   }
   return intersections;
+
+  // @p is an [x, y] location along a segment defined by ids @id1 and @id2
+  // return array [i, j] where i and j are the same endpoint ids with i <= j
+  // if @p coincides with an endpoint, return the id of that endpoint twice
+  function getEndpointIds(id1, id2, p) {
+    var i = id1 < id2 ? id1 : id2,
+        j = i === id1 ? id2 : id1;
+    if (xx[i] == p[0] && yy[i] == p[1]) {
+      j = i;
+    } else if (xx[j] == p[0] && yy[j] == p[1]) {
+      i = j;
+    }
+    return [i, j];
+  }
 };
 
 MapShaper.sortSegmentIds = function(arr, ids) {

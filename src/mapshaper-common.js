@@ -40,9 +40,9 @@ function verbose() {
   }
 }
 
-utils.absArcId = function(arcId) {
+function absArcId(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
-};
+}
 
 // Parse the path to a file
 // Assumes: not a directory path

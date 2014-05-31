@@ -86,21 +86,32 @@ function ccw(x0, y0, x1, y1, x2, y2) {
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
-/*
-function innerAngle_slow(ax, ay, bx, by, cx, cy) {
+function innerAngle2(ax, ay, bx, by, cx, cy) {
   var a1 = Math.atan2(ay - by, ax - bx),
       a2 = Math.atan2(cy - by, cx - bx),
       a3 = Math.abs(a1 - a2);
-      a3 = a2 - a1
   if (a3 > Math.PI) {
     a3 = 2 * Math.PI - a3;
   }
   return a3;
 }
-*/
+
+function signedAngle(ax, ay, bx, by, cx, cy) {
+  var a1 = Math.atan2(ay - by, ax - bx),
+      a2 = Math.atan2(cy - by, cx - bx),
+      a3 = a2 - a1;
+
+  if (ax == bx && ay == by || bx == cx && by == cy) {
+    a3 = 0;
+  } else if (a3 > Math.PI * 2) {
+    a3 = 2 * Math.PI - a3;
+  } else if (a3 < 0) {
+    a3 = a3 + 2 * Math.PI;
+  }
+  return a3;
+}
 
 // TODO: make this safe for small angles
-//
 function innerAngle(ax, ay, bx, by, cx, cy) {
   var ab = distance2D(ax, ay, bx, by),
       bc = distance2D(bx, by, cx, cy),
@@ -108,10 +119,10 @@ function innerAngle(ax, ay, bx, by, cx, cy) {
   if (ab === 0 || bc === 0) {
     theta = 0;
   } else {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / ab * bc;
-    if (dotp >= 1) {
+    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / (ab * bc);
+    if (dotp >= 1 - 1e-14) {
       theta = 0;
-    } else if (dotp <= -1) {
+    } else if (dotp <= -1 + 1e-14) {
       theta = Math.PI;
     } else {
       theta = Math.acos(dotp); // consider using other formula at small dp
@@ -262,6 +273,8 @@ Utils.extend(geom, {
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,
   innerAngle: innerAngle,
+  innerAngle2: innerAngle2,
+  signedAngle: signedAngle,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D

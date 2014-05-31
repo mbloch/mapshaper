@@ -2,7 +2,8 @@
 mapshaper-merging,
 mapshaper-segments,
 mapshaper-dataset-utils,
-mapshaper-endpoints
+mapshaper-endpoints,
+mapshaper-shape-geom
 */
 
 MapShaper.intersectDatasets = function(a, b, opts) {
@@ -24,14 +25,12 @@ MapShaper.intersectDatasets = function(a, b, opts) {
   var lyrC = MapShaper.intersectLayers(lyrA, lyrB, mergedArcs, opts);
   return {
     layers: [lyrC],
-    arcs: mergedArcs
+    arcs: mergedArcs,
   };
 };
 
 MapShaper.clipLayer = function(lyrA, lyrB, arcs, opts) {
-  // slice layers
   // MapShaper.intersectLayers(lyrA, lyrB, arcs);
-
 };
 
 MapShaper.intersectLayers = function(lyrA, lyrB, arcs) {
@@ -41,6 +40,9 @@ MapShaper.intersectLayers = function(lyrA, lyrB, arcs) {
   // 2. update arc ids in layers
   MapShaper.updateArcIds(lyrA.shapes, map, arcs);
   MapShaper.updateArcIds(lyrB.shapes, map, arcs);
+
+  // 3. divide polygons
+  return MapShaper.dividePolygonLayer(lyrA, arcs);
 };
 
 MapShaper.updateArcIds = function(shapes, map, arcs) {
@@ -100,7 +102,7 @@ MapShaper.insertClippingPoints = function(arcs) {
       arcTotal1 = arcTotal0 + points.length,
       xx1 = new Float64Array(pointTotal1),
       yy1 = new Float64Array(pointTotal1),
-      nn1 = new Uint32Array(arcTotal1),
+      nn1 = [],  // number of arcs may vary
       i1 = 0,
       n1,
 
@@ -117,21 +119,24 @@ MapShaper.insertClippingPoints = function(arcs) {
     map[id0] = id1;
     n0 = 0;
     n1 = 0;
-    while (n0++ < arcLen0) {
+    while (n0 < arcLen0) {
       n1++;
       xx1[i1] = xx0[i0];
       yy1[i1++] = yy0[i0];
       while (p && p.i === i0) {
-        // end current arc at intersection
-        nn1[id1++] = n1 + 1;
         xx1[i1] = p.x;
         yy1[i1++] = p.y;
-        // begin new arc at intersection
-        n1 = 1;
+        n1++;
+
+        nn1[id1++] = n1; // end current arc at intersection
+        n1 = 0;          // begin new arc
+
         xx1[i1] = p.x;
         yy1[i1++] = p.y;
+        n1++;
         p = points.pop();
       }
+      n0++;
       i0++;
     }
     nn1[id1++] = n1;
@@ -148,41 +153,110 @@ MapShaper.insertClippingPoints = function(arcs) {
 
 MapShaper.findClippingPoints = function(arcs) {
   var intersections = MapShaper.findSegmentIntersections(arcs),
-      xx = arcs.getVertexData().xx,
-      yy = arcs.getVertexData().yy,
+      data = arcs.getVertexData(),
+      xx = data.xx,
+      yy = data.yy,
       points = [];
 
   intersections.forEach(function(o) {
-    var ids = o.ids,
-        p1 = getSegmentIntersection(o.intersection, ids[0], ids[1]),
-        p2 = getSegmentIntersection(o.intersection, ids[2], ids[3]);
-    points.push(p1);
-    points.push(p2);
+    var p1 = getSegmentIntersection(o.x, o.y, o.a),
+        p2 = getSegmentIntersection(o.x, o.y, o.b);
+    if (p1) points.push(p1);
+    if (p2) points.push(p2);
+  });
+
+  // remove 1. points that are at arc endpoints and 2. duplicate points
+  // (kludgy -- look into preventing these cases, which are caused by T intersections)
+  var index = {};
+  points = Utils.filter(points, function(p) {
+    var key = p.i + "," + p.pct;
+    if (key in index) return false;
+    index[key] = true;
+    if (p.pct === 0 && pointIsEndpoint(p.i, data.ii, data.nn)) return false;
+    return true;
   });
 
   return points;
 
-  function getSegmentIntersection(p, a, b) {
-    var i = a < b ? a : b,
-        j = i === a ? b : a,
-        xi = xx[i],
-        xj = xx[j],
-        yi = yy[i],
-        yj = yy[j],
-        dx = xj - xi,
-        dy = yj - yi,
-        pct = Math.abs(dy) > Math.abs(dx) ? (p.y - yi) / dy : (p.x - xi) / dx;
-        obj = {
-          pct: pct,
-          i: i,
-          x: p.x,
-          y: p.y
-        };
-
-    // error condition: point does not fall between segment endpoints
-    if (obj.pct < 0 || obj.pct > 1) {
-      error("[findClippingPoints()] Invalid intersection:", obj);
+  function pointIsEndpoint(idx, ii, nn) {
+    // intersections at endpoints are unlikely, so just scan for them
+    for (var j=0, n=ii.length; j<n; j++) {
+      if (idx === ii[j] || idx === ii[j] + nn[j] - 1) return true;
     }
-    return obj;
+    return false;
+  }
+
+  function getSegmentIntersection(x, y, ids) {
+    var i = ids[0],
+        j = ids[1],
+        dx = xx[j] - xx[i],
+        dy = yy[j] - yy[i],
+        pct;
+    if (i > j) error("[findClippingPoints()] Out-of-sequence arc ids");
+    if (dx === 0 && dy === 0) {
+      pct = 0;
+    } else if (Math.abs(dy) > Math.abs(dx)) {
+      pct = (y - yy[i]) / dy;
+    } else {
+      pct = (x - xx[i]) / dx;
+    }
+
+    if (pct < 0 || pct >= 1) error("[findClippingPoints()] Off-segment intersection");
+    return {
+        pct: pct,
+        i: i,
+        j: j,
+        x: x,
+        y: y
+      };
+  }
+};
+
+MapShaper.dividePolygonLayer = function(lyr, arcs) {
+  var nodes = new NodeCollection(arcs),
+      shapes = lyr.shapes,
+      dividedShapes = [];
+
+  var flags = new Uint8Array(arcs.size()); // 0 = unused, 1 = fw, 2 = rev
+  shapes.forEach(function(shape, i) {
+    if (shape) {
+      Utils.merge(dividedShapes, dividePolygon(shape));
+    }
+  });
+
+  return utils.extend({}, lyr, {shapes: dividedShapes, data: null});
+
+  // TODO: divide according to intersection type: a, b, a+b
+  function dividePolygon(shape) {
+    var dividedPaths = [];
+    MapShaper.forEachPath(shape, function(ids) {
+      var isCW = geom.getPathArea(arcs.getShapeIter(ids)) > 0,
+          path;
+      for (var i=0; i<ids.length; i++) {
+        path = getDividedPath(ids[i], isCW, nodes);
+        if (path) dividedPaths.push([path]);
+      }
+    });
+    return dividedPaths;
+  }
+
+  function tryArc(id) {
+    var abs = id < 0 ? ~id : id,
+        flag = abs == id ? 1 : 2, // 1 -> forward arc, 2 -> rev arc
+        unused = (flags[abs] & flag) === 0;
+    flags[abs] |= flag; // set flag
+    return unused;
+  }
+
+  function getDividedPath(arc0, isCW, nodes) {
+    // console.log("  getDividedPath() arc0:", arc0, "cw?", isCW, "flags:", Utils.toArray(flags));
+    var path = [],
+        nextId = arc0;
+    do {
+      if (!tryArc(nextId)) return null;
+      path.push(nextId);
+      nextId = nodes.getNextArc(nextId, isCW);
+    } while (nextId != arc0);
+    return path;
   }
 };
