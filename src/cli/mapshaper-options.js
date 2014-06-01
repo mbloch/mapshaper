@@ -173,6 +173,7 @@ MapShaper.getOptionParser = function() {
     .option("where", {
       describe: "use a JS expression to filter records from source table"
     })
+    .option("source")
     .option("target");
 
   parser.command("explode")

@@ -40,19 +40,20 @@ function validateSimplifyOpts(o, _) {
 }
 
 function validateJoinOpts(o, _) {
-  if (_.length !== 1) {
+  o.source = o.source || _[0];
+
+  if (!o.source) {
     error("-join requires the name of a file to join");
   }
-  o.file = _[0];
 
   if (Utils.some("shp,xls,xlsx".split(','), function(suff) {
-    return Utils.endsWith(o.file, suff);
+    return Utils.endsWith(o.source, suff);
   })) {
     error("-join currently only supports dbf and csv files");
   }
 
-  if (!Node.fileExists(o.file)) {
-    error("-join missing file to join:", o.file);
+  if (!Node.fileExists(o.source)) {
+    error("-join missing source file:", o.source);
   }
 
   if (!o.keys) error("-join missing required keys option");

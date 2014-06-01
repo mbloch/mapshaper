@@ -97,8 +97,8 @@ describe('mapshaper-options.js', function () {
     var file1 = fixPath("test_data/two_states.dbf"),
         file2 = fixPath("test_data/two_states.shp");
 
-    good("-join " + file1 + " keys ID,FIPS fields FIPS,NAME", {file: file1, keys: ["ID","FIPS"], fields: ["FIPS","NAME"]})
-    good("-join " + file1 + " keys ID,FIPS", {file: file1, keys: ["ID","FIPS"]}) // fields are optional
+    good("-join " + file1 + " keys ID,FIPS fields FIPS,NAME", {source: file1, keys: ["ID","FIPS"], fields: ["FIPS","NAME"]})
+    good("-join " + file1 + " keys ID,FIPS", {source: file1, keys: ["ID","FIPS"]}) // fields are optional
     bad("-join " + file2 + " keys ID,FIPS"); // .shp not joinable
     bad("-join " + file1); // missing keys
     bad("-join " + file1 + "keys ID"); // only one key
