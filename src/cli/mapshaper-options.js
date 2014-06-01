@@ -181,6 +181,8 @@ MapShaper.getOptionParser = function() {
 
   parser.command("divide")
     // .describe("divide multipart features into single-part features")
+    .option("name")
+    .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 
   parser.command("dissolve")
@@ -194,8 +196,8 @@ MapShaper.getOptionParser = function() {
       describe: "fields to copy when dissolving (comma-sep. list)",
       type: "comma-sep"
     })
-    .option("name")
     .option("field")
+    .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 
