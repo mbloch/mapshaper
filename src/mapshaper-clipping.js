@@ -230,7 +230,7 @@ MapShaper.dividePolygonLayer = function(lyr, arcs) {
     }
   });
 
-  return utils.extend({}, lyr, {shapes: dividedShapes, data: null});
+  return utils.defaults({shapes: dividedShapes, data: null}, lyr);
 
   // TODO: divide according to intersection type: a, b, a+b
   function dividePolygon(shape) {

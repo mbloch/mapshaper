@@ -40,7 +40,7 @@ var ExportControl = function(dataset, options) {
   }
 
   function exportAs(format, done) {
-    var opts = Utils.extend({format: format}, options),
+    var opts = Utils.defaults({format: format}, options),
         files = MapShaper.exportFileContent(dataset, opts);
 
     if (!Utils.isArray(files) || files.length === 0) {

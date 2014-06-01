@@ -12410,8 +12410,7 @@ utils.mergeArrays = function(arrays, TypedArr) {
 
 api.mergeFiles = function(files, opts) {
   var datasets = files.map(function(fname) {
-    var importOpts = Utils.extend({}, opts,
-      {no_topology: true, files: [fname]});  // import without topology
+    var importOpts = Utils.defaults({no_topology: true, files: [fname]}, opts);  // import without topology
     return api.importFile(fname, importOpts);
   });
 
@@ -13272,7 +13271,7 @@ api.runCommand = function(cmd, dataset, cb) {
     newLayers = MapShaper.applyCommand(api.subdivideLayer, srcLayers, arcs, opts.expression);
 
   } else if (name == 'o') {
-    api.exportFiles(Utils.extend({}, dataset, {layers: srcLayers}), opts);
+    api.exportFiles(Utils.defaults({layers: srcLayers}, dataset), opts);
 
   } else {
     err = "Unhandled command: -" + name;
@@ -13323,7 +13322,7 @@ MapShaper.divideImportCommand = function(cmd) {
     imports = opts.files.map(function(file) {
       return {
         name: cmd.name,
-        options: Utils.extend({}, opts, {files:[file]})
+        options: Utils.extend({files:[file]}, opts)
       };
     });
   }

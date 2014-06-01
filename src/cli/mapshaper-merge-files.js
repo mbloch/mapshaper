@@ -2,8 +2,7 @@
 
 api.mergeFiles = function(files, opts) {
   var datasets = files.map(function(fname) {
-    var importOpts = Utils.extend({}, opts,
-      {no_topology: true, files: [fname]});  // import without topology
+    var importOpts = Utils.defaults({no_topology: true, files: [fname]}, opts);  // import without topology
     return api.importFile(fname, importOpts);
   });
 

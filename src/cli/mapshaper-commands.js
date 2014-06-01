@@ -150,7 +150,7 @@ api.runCommand = function(cmd, dataset, cb) {
     newLayers = MapShaper.applyCommand(api.subdivideLayer, srcLayers, arcs, opts.expression);
 
   } else if (name == 'o') {
-    api.exportFiles(Utils.extend({}, dataset, {layers: srcLayers}), opts);
+    api.exportFiles(Utils.defaults({layers: srcLayers}, dataset), opts);
 
   } else {
     err = "Unhandled command: -" + name;
@@ -201,7 +201,7 @@ MapShaper.divideImportCommand = function(cmd) {
     imports = opts.files.map(function(file) {
       return {
         name: cmd.name,
-        options: Utils.extend({}, opts, {files:[file]})
+        options: Utils.defaults({files:[file]}, opts)
       };
     });
   }

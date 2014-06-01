@@ -288,16 +288,24 @@ var Utils = {
     return obj;
   },
 
-  extend: function() {
-    var dest = arguments[0] || {},
-        src;
+  defaults: function(dest) {
     for (var i=1, n=arguments.length; i<n; i++) {
-      src = arguments[i];
-      if (src) {
-        for (var key in src) {
-          if (src.hasOwnProperty(key)) {
-            dest[key] = src[key];
-          }
+      var src = arguments[i] || {};
+      for (var key in src) {
+        if (key in dest === false && src.hasOwnProperty(key)) {
+          dest[key] = src[key];
+        }
+      }
+    }
+    return dest;
+  },
+
+  extend: function(dest) {
+    for (var i=1, n=arguments.length; i<n; i++) {
+      var src = arguments[i] || {};
+      for (var key in src) {
+        if (src.hasOwnProperty(key)) {
+          dest[key] = src[key];
         }
       }
     }
@@ -307,15 +315,7 @@ var Utils = {
 
 var Opts = {
   copyAllParams: Utils.extend,
-
-  copyNewParams: function(dest, src) {
-    for (var k in src) {
-      if (k in dest == false && src.hasOwnProperty(k)) {
-        dest[k] = src[k];
-      }
-    }
-    return dest;
-  },
+  copyNewParams: Utils.defaults,
 
   // Copy src functions/params to targ prototype
   // changed: overwrite existing properties
@@ -9832,7 +9832,7 @@ var ExportControl = function(dataset, options) {
   }
 
   function exportAs(format, done) {
-    var opts = Utils.extend({format: format}, options),
+    var opts = Utils.defaults({format: format}, options),
         files = MapShaper.exportFileContent(dataset, opts);
 
     if (!Utils.isArray(files) || files.length === 0) {
