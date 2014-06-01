@@ -13272,7 +13272,7 @@ api.runCommand = function(cmd, dataset, cb) {
     newLayers = MapShaper.applyCommand(api.subdivideLayer, srcLayers, arcs, opts.expression);
 
   } else if (name == 'o') {
-    api.exportFiles(dataset, opts);
+    api.exportFiles(Utils.extend({}, dataset, {layers: srcLayers}), opts);
 
   } else {
     err = "Unhandled command: -" + name;
