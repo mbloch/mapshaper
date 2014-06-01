@@ -7,7 +7,7 @@ api.mergeLayers = function(layers) {
 
   // layers with same key can be merged
   function layerKey(lyr) {
-    var key = lyr.type || '';
+    var key = lyr.geometry_type || '';
     if (lyr.data) {
       key += '~' + lyr.data.getFields().sort().join(',');
     }

@@ -288,16 +288,24 @@ var Utils = {
     return obj;
   },
 
-  extend: function() {
-    var dest = arguments[0] || {},
-        src;
+  defaults: function(dest) {
     for (var i=1, n=arguments.length; i<n; i++) {
-      src = arguments[i];
-      if (src) {
-        for (var key in src) {
-          if (src.hasOwnProperty(key)) {
-            dest[key] = src[key];
-          }
+      var src = arguments[i] || {};
+      for (var key in src) {
+        if (key in dest === false && src.hasOwnProperty(key)) {
+          dest[key] = src[key];
+        }
+      }
+    }
+    return dest;
+  },
+
+  extend: function(dest) {
+    for (var i=1, n=arguments.length; i<n; i++) {
+      var src = arguments[i] || {};
+      for (var key in src) {
+        if (src.hasOwnProperty(key)) {
+          dest[key] = src[key];
         }
       }
     }
@@ -307,15 +315,7 @@ var Utils = {
 
 var Opts = {
   copyAllParams: Utils.extend,
-
-  copyNewParams: function(dest, src) {
-    for (var k in src) {
-      if (k in dest == false && src.hasOwnProperty(k)) {
-        dest[k] = src[k];
-      }
-    }
-    return dest;
-  },
+  copyNewParams: Utils.defaults,
 
   // Copy src functions/params to targ prototype
   // changed: overwrite existing properties
@@ -4945,6 +4945,8 @@ MapShaper.getOptionParser = function() {
 
   parser.command("divide")
     // .describe("divide multipart features into single-part features")
+    .option("name")
+    .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 
   parser.command("dissolve")
@@ -4958,8 +4960,8 @@ MapShaper.getOptionParser = function() {
       describe: "fields to copy when dissolving (comma-sep. list)",
       type: "comma-sep"
     })
-    .option("name")
     .option("field")
+    .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 
@@ -7077,9 +7079,14 @@ MapShaper.getLayerBounds = function(lyr, arcs) {
   return bounds;
 };
 
-MapShaper.removeLayers = function(dataset, layers) {
-  dataset.layers = Utils.filter(dataset.layers, function(lyr) {
-    return !Utils.contains(layers, lyr);
+// replace old layers in-place, append any additional new layers
+MapShaper.replaceLayers = function(dataset, oldLayers, newLayers) {
+  Utils.repeat(Math.max(oldLayers.length, newLayers.length), function(i) {
+    var oldLyr = oldLayers[i],
+        newLyr = newLayers[i],
+        idx = oldLyr ? dataset.layers.indexOf(oldLyr) : dataset.layers.length;
+    if (oldLyr) dataset.layers.splice(idx, 1);
+    if (newLyr) dataset.layers.splice(idx, 0, newLyr);
   });
 };
 
@@ -12291,7 +12298,7 @@ api.mergeLayers = function(layers) {
 
   // layers with same key can be merged
   function layerKey(lyr) {
-    var key = lyr.type || '';
+    var key = lyr.geometry_type || '';
     if (lyr.data) {
       key += '~' + lyr.data.getFields().sort().join(',');
     }
@@ -12989,7 +12996,7 @@ MapShaper.dividePolygonLayer = function(lyr, arcs) {
     }
   });
 
-  return utils.extend({}, lyr, {shapes: dividedShapes, data: null});
+  return utils.defaults({shapes: dividedShapes, data: null}, lyr);
 
   // TODO: divide according to intersection type: a, b, a+b
   function dividePolygon(shape) {
@@ -13201,6 +13208,8 @@ api.runCommand = function(cmd, dataset, cb) {
   T.start();
   if (opts.target) {
     srcLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
+    console.log("layers:", Utils.pluck(dataset.layers, 'name'));
+    console.log("target:", opts.target, "lyr:", Utils.pluck(srcLayers, 'name'));
   } else {
     srcLayers = dataset.layers; // default: all layers
   }
@@ -13250,10 +13259,8 @@ api.runCommand = function(cmd, dataset, cb) {
     MapShaper.applyCommand(api.convertLayerToTypedLines, srcLayers, arcs, opts.fields);
 
   } else if (name == 'merge-layers') {
-    // TODO: improve this
-    var merged = api.mergeLayers(srcLayers);
-    MapShaper.removeLayers(dataset, srcLayers);
-    dataset.layers = dataset.layers.concat(merged);
+    // careful, returned layers are modified input layers
+    newLayers = api.mergeLayers(srcLayers);
 
   } else if (name == 'simplify') {
     api.simplify(arcs, opts);
@@ -13284,12 +13291,12 @@ api.runCommand = function(cmd, dataset, cb) {
   }
 
   if (newLayers) {
-    // if new layers have been generated, either append or replace
-    if (!opts.no_replace) {
+    if (opts.no_replace) {
+      dataset.layers = dataset.layers.concat(newLayers);
+    } else {
       // TODO: consider replacing old layers as they are generated, for gc
-      MapShaper.removeLayers(dataset, srcLayers);
+      MapShaper.replaceLayers(dataset, srcLayers, newLayers);
     }
-    dataset.layers = dataset.layers.concat(newLayers);
   }
   done(err, dataset);
 
@@ -13322,7 +13329,7 @@ MapShaper.divideImportCommand = function(cmd) {
     imports = opts.files.map(function(file) {
       return {
         name: cmd.name,
-        options: Utils.extend({files:[file]}, opts)
+        options: Utils.defaults({files:[file]}, opts)
       };
     });
   }
