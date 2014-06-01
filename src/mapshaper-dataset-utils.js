@@ -24,9 +24,14 @@ MapShaper.getLayerBounds = function(lyr, arcs) {
   return bounds;
 };
 
-MapShaper.removeLayers = function(dataset, layers) {
-  dataset.layers = Utils.filter(dataset.layers, function(lyr) {
-    return !Utils.contains(layers, lyr);
+// replace old layers in-place, append any additional new layers
+MapShaper.replaceLayers = function(dataset, oldLayers, newLayers) {
+  Utils.repeat(Math.max(oldLayers.length, newLayers.length), function(i) {
+    var oldLyr = oldLayers[i],
+        newLyr = newLayers[i],
+        idx = oldLyr ? dataset.layers.indexOf(oldLyr) : dataset.layers.length;
+    if (oldLyr) dataset.layers.splice(idx, 1);
+    if (newLyr) dataset.layers.splice(idx, 0, newLyr);
   });
 };
 

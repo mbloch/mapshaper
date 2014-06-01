@@ -80,6 +80,8 @@ api.runCommand = function(cmd, dataset, cb) {
   T.start();
   if (opts.target) {
     srcLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
+    console.log("layers:", Utils.pluck(dataset.layers, 'name'));
+    console.log("target:", opts.target, "lyr:", Utils.pluck(srcLayers, 'name'));
   } else {
     srcLayers = dataset.layers; // default: all layers
   }
@@ -129,10 +131,8 @@ api.runCommand = function(cmd, dataset, cb) {
     MapShaper.applyCommand(api.convertLayerToTypedLines, srcLayers, arcs, opts.fields);
 
   } else if (name == 'merge-layers') {
-    // TODO: improve this
-    var merged = api.mergeLayers(srcLayers);
-    MapShaper.removeLayers(dataset, srcLayers);
-    dataset.layers = dataset.layers.concat(merged);
+    // careful, returned layers are modified input layers
+    newLayers = api.mergeLayers(srcLayers);
 
   } else if (name == 'simplify') {
     api.simplify(arcs, opts);
@@ -163,12 +163,12 @@ api.runCommand = function(cmd, dataset, cb) {
   }
 
   if (newLayers) {
-    // if new layers have been generated, either append or replace
-    if (!opts.no_replace) {
+    if (opts.no_replace) {
+      dataset.layers = dataset.layers.concat(newLayers);
+    } else {
       // TODO: consider replacing old layers as they are generated, for gc
-      MapShaper.removeLayers(dataset, srcLayers);
+      MapShaper.replaceLayers(dataset, srcLayers, newLayers);
     }
-    dataset.layers = dataset.layers.concat(newLayers);
   }
   done(err, dataset);
 
