@@ -72,54 +72,61 @@ api.processDataset = function(dataset, commands, done) {
 api.runCommand = function(cmd, dataset, cb) {
   var name = cmd.name,
       opts = cmd.options,
-      srcLayers,
+      targetLayers,
       newLayers,
+      sourceLyr,
       arcs = dataset.arcs,
       err = null;
 
   T.start();
   if (opts.target) {
-    srcLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
-    console.log("layers:", Utils.pluck(dataset.layers, 'name'));
-    console.log("target:", opts.target, "lyr:", Utils.pluck(srcLayers, 'name'));
+    targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
   } else {
-    srcLayers = dataset.layers; // default: all layers
+    targetLayers = dataset.layers; // default: all layers
   }
 
-  if (srcLayers.length === 0) {
+  if (targetLayers.length === 0) {
     message("[" + name + "] Command is missing target layer(s).");
     MapShaper.printLayerNames(dataset.layers);
   }
 
-  if (name == 'each') {
-    MapShaper.applyCommand(api.evaluateLayer, srcLayers, arcs, opts.expression);
+  if (name == 'clip') {
+    sourceLyr = MapShaper.prepareClippingLayer(opts.source, dataset);
+    newLayers = MapShaper.applyCommand(api.clipLayer, targetLayers, sourceLyr, dataset.arcs, opts);
+
+  } else if (name == 'each') {
+    MapShaper.applyCommand(api.evaluateLayer, targetLayers, arcs, opts.expression);
 
   } else if (name == 'dissolve') {
-    newLayers = MapShaper.applyCommand(api.dissolveLayer, srcLayers, arcs, opts);
+    newLayers = MapShaper.applyCommand(api.dissolveLayer, targetLayers, arcs, opts);
 
   } else if (name == 'divide') {
-    api.divideArcs(dataset.layers, arcs, opts);
-    newLayers = MapShaper.applyCommand(api.divideLayer, srcLayers, arcs, opts);
+    MapShaper.divideArcs(dataset.layers, arcs);
+    newLayers = MapShaper.applyCommand(api.dividePolygonLayer, targetLayers, arcs, opts);
+
+  } else if (name == 'erase') {
+    sourceLyr = MapShaper.prepareClippingLayer(opts.source, dataset);
+    newLayers = MapShaper.applyCommand(api.eraseLayer, targetLayers, sourceLyr, dataset.arcs, opts);
 
   } else if (name == 'explode') {
-    newLayers = MapShaper.applyCommand(api.explodeLayer, srcLayers, arcs, opts);
+    newLayers = MapShaper.applyCommand(api.explodeLayer, targetLayers, arcs, opts);
 
   } else if (name == 'fields') {
-    MapShaper.applyCommand(api.filterFields, srcLayers, opts.fields);
+    MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
 
   } else if (name == 'filter') {
-    MapShaper.applyCommand(api.filterFeatures, srcLayers, arcs, opts.expression);
+    MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
 
   } else if (name == 'info') {
     api.printInfo(dataset);
 
   } else if (name == 'innerlines') {
-    newLayers = MapShaper.applyCommand(api.convertLayerToInnerLines, srcLayers, arcData);
+    newLayers = MapShaper.applyCommand(api.convertLayerToInnerLines, targetLayers, arcData);
 
   } else if (name == 'join') {
     // async command -- special case
     api.importJoinTableAsync(opts.source, opts, function(table) {
-      MapShaper.applyCommand(api.joinTableToLayer, srcLayers, table, opts);
+      MapShaper.applyCommand(api.joinTableToLayer, targetLayers, table, opts);
       done(err, dataset);
     });
     return;
@@ -128,36 +135,36 @@ api.runCommand = function(cmd, dataset, cb) {
     newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
 
   } else if (name == 'lines') {
-    MapShaper.applyCommand(api.convertLayerToTypedLines, srcLayers, arcs, opts.fields);
+    MapShaper.applyCommand(api.convertLayerToTypedLines, targetLayers, arcs, opts.fields);
 
   } else if (name == 'merge-layers') {
     // careful, returned layers are modified input layers
-    newLayers = api.mergeLayers(srcLayers);
+    newLayers = api.mergeLayers(targetLayers);
 
   } else if (name == 'simplify') {
     api.simplify(arcs, opts);
     if (opts.keep_shapes) {
-      api.protectShapes(arcs, srcLayers);
+      api.protectShapes(arcs, targetLayers);
     }
 
   } else if (name == 'split') {
-    newLayers = MapShaper.applyCommand(api.splitLayer, srcLayers, arcs, opts.field);
+    newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, arcs, opts.field);
 
   } else if (name == 'split-on-grid') {
-    newLayers = MapShaper.applyCommand(api.splitOnGrid, srcLayers, arcs, opts.rows, opts.cols);
+    newLayers = MapShaper.applyCommand(api.splitOnGrid, targetLayers, arcs, opts.rows, opts.cols);
 
   } else if (name == 'subdivide') {
-    newLayers = MapShaper.applyCommand(api.subdivideLayer, srcLayers, arcs, opts.expression);
+    newLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
   } else if (name == 'o') {
-    api.exportFiles(Utils.defaults({layers: srcLayers}, dataset), opts);
+    api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
 
   } else {
     err = "Unhandled command: -" + name;
   }
 
   if (opts.name) {
-    (newLayers || srcLayers).forEach(function(lyr) {
+    (newLayers || targetLayers).forEach(function(lyr) {
       lyr.name = opts.name;
     });
   }
@@ -167,7 +174,7 @@ api.runCommand = function(cmd, dataset, cb) {
       dataset.layers = dataset.layers.concat(newLayers);
     } else {
       // TODO: consider replacing old layers as they are generated, for gc
-      MapShaper.replaceLayers(dataset, srcLayers, newLayers);
+      MapShaper.replaceLayers(dataset, targetLayers, newLayers);
     }
   }
   done(err, dataset);
@@ -178,10 +185,10 @@ api.runCommand = function(cmd, dataset, cb) {
   }
 };
 
-// Apply a command to an array of layers
-MapShaper.applyCommand = function(func, srcLayers) {
+// Apply a command to an array of target layers
+MapShaper.applyCommand = function(func, targetLayers) {
   var args = Utils.toArray(arguments).slice(2);
-  return srcLayers.reduce(function(memo, lyr) {
+  return targetLayers.reduce(function(memo, lyr) {
     var result = func.apply(null, [lyr].concat(args));
     if (Utils.isArray(result)) { // some commands return an array of layers
       memo = memo.concat(result);

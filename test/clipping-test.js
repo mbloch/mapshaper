@@ -78,9 +78,9 @@ describe('mapshaper-clipping.js', function () {
         shapes: [[[0]]]
       };
 
-      var target = [[[0, 5, 3, 2]], [[1, ~3, ~5]]];
+      var target = [[[0, 5, 3, 2], [1, ~3, ~5]]];
       api.internal.updateArcIds(lyrA.shapes, map, coll);
-      var dividedLyr = api.internal.dividePolygonLayer(lyrA, coll);
+      var dividedLyr = api.dividePolygonLayer(lyrA, coll);
       assert.deepEqual(dividedLyr.shapes, target);
     })
 
@@ -208,8 +208,8 @@ describe('mapshaper-clipping.js', function () {
     })
 
     it ("divide layer A", function() {
-      var dividedLyr = api.internal.dividePolygonLayer(lyrA, coll);
-      var target = [[[0, 13, ~8]], [[1, ~3, ~13]], [[2, 8, 3]], [[9, 5, 11]]];
+      var dividedLyr = api.dividePolygonLayer(lyrA, coll);
+      var target = [[[0, 13, ~8], [1, ~3, ~13], [2, 8, 3], [9, 5, 11]]];
       // [9, 5, 11] used instead of [9, 10, 11];
       assert.deepEqual(dividedLyr.shapes, target);
     })

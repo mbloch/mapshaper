@@ -181,7 +181,18 @@ MapShaper.getOptionParser = function() {
     .option("target");
 
   parser.command("divide")
-    // .describe("divide multipart features into single-part features")
+    .option("name")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
+
+  parser.command("clip")
+    .option("source")
+    .option("name")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
+
+  parser.command("erase")
+    .option("source")
     .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");

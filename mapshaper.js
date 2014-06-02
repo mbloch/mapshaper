@@ -4946,7 +4946,18 @@ MapShaper.getOptionParser = function() {
     .option("target");
 
   parser.command("divide")
-    // .describe("divide multipart features into single-part features")
+    .option("name")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
+
+  parser.command("clip")
+    .option("source")
+    .option("name")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
+
+  parser.command("erase")
+    .option("source")
     .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
@@ -8559,6 +8570,13 @@ var dataTableProto = {
       dest[map[name]] = src[name];
       return dest;
     }
+  },
+
+  clone: function() {
+    var records2 = this.getRecords().map(function(rec) {
+      return Utils.extend({}, rec);
+    });
+    return new DataTable(records2);
   },
 
   size: function() {
@@ -12774,7 +12792,38 @@ MapShaper.findNodeTopology = function(arcs) {
 
 
 
-api.divideArcs = function(layers, arcs, opts) {
+
+api.clipLayer = function(targetLyr, clipLyr, arcs, opts) {
+  opts = Utils.defaults({action: 'clip'}, opts);
+  return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, opts);
+};
+
+api.eraseLayer = function(targetLyr, clipLyr, arcs, opts) {
+  opts = Utils.defaults({action: 'erase'}, opts);
+  return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, opts);
+};
+
+MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, opts) {
+  var flags = new Uint8Array(arcs.size()); // 0 = unused, 1 = fw, 2 = rev
+
+  // 1. use clip layer to disable arc pathways in the target layer
+  var erasing = opts.action == 'erase';
+  MapShaper.forEachArcId(clipLyr.shapes, function(id) {
+    var abs = id < 0 ? ~id : id,
+        blockFw = abs != id;
+    if (erasing) blockFw = !blockFw;
+    flags[abs] = blockFw ? 1 : 2;
+  });
+
+  // 2. Divide the clip layer
+  dividedLyr = MapShaper.dividePolygonLayer(targetLyr, arcs, flags);
+  if (targetLyr.data) {
+    dividedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
+  }
+  return dividedLyr;
+};
+
+MapShaper.divideArcs = function(layers, arcs) {
   // divide arcs
   var map = MapShaper.insertClippingPoints(arcs);
 
@@ -12786,15 +12835,27 @@ api.divideArcs = function(layers, arcs, opts) {
   });
 };
 
-// Assumes layer and arcs have been processed with divideArcs()
-api.divideLayer = function(lyr, arcs, opts) {
-  if (lyr.geometry_type != 'polygon') {
-    stop("[divideLayer()] expected polygon layer, received:", lyr.geometry_type);
+// @src either a file containing polygons or the name/id of a polygon layer
+MapShaper.prepareClippingLayer = function(src, dataset) {
+  var match = MapShaper.findMatchingLayers(dataset.layers, src),
+      layers = dataset.layers,
+      clipLyr;
+  if (match.length > 1) {
+    stop("[prepareClippingLayer()] Clipping source must be a single layer");
+  } else if (match.length == 1) {
+    clipLyr = match[0];
+    layers = dataset.layers;
+  } else {
+    var clipData = api.importFile(src);
+    dataset.arcs = MapShaper.mergeDatasets([dataset, clipData]).arcs;
+    clipLyr = clipData.layers[0];
+    layers = layers.concat(clipLyr);
   }
-  return MapShaper.dividePolygonLayer(lyr, arcs);
+  MapShaper.divideArcs(layers, dataset.arcs);
+  return clipLyr;
 };
 
-
+/*
 MapShaper.intersectDatasets = function(a, b, opts) {
   if (!a.arcs || !b.arcs) error("[intersectDatasets()] Needs two datasets with arcs");
   // 1. combine arc datasets
@@ -12817,6 +12878,7 @@ MapShaper.intersectDatasets = function(a, b, opts) {
     arcs: mergedArcs,
   };
 };
+*/
 
 
 MapShaper.updateArcIds = function(shapes, map, arcs) {
@@ -12986,32 +13048,40 @@ MapShaper.findClippingPoints = function(arcs) {
   }
 };
 
-MapShaper.dividePolygonLayer = function(lyr, arcs) {
+// for testing; should be removed
+api.dividePolygonLayer = function (lyr, arcs) {
+  var flags = new Uint8Array(arcs.size());
+  return MapShaper.dividePolygonLayer(lyr, arcs, flags);
+};
+
+// Assumes layer and arcs have been processed with divideArcs()
+MapShaper.dividePolygonLayer = function(lyr, arcs, flags) {
   var nodes = new NodeCollection(arcs),
       shapes = lyr.shapes,
-      dividedShapes = [];
+      dividedShapes;
 
-  var flags = new Uint8Array(arcs.size()); // 0 = unused, 1 = fw, 2 = rev
-  shapes.forEach(function(shape, i) {
-    if (shape) {
-      Utils.merge(dividedShapes, dividePolygon(shape));
-    }
+  if (lyr.geometry_type != 'polygon') {
+    stop("[dividePolygonLayer()] Expected polygon layer, received:", lyr.geometry_type);
+  }
+
+  dividedShapes = shapes.map(function(shape, i) {
+    return dividePolygon(shape) || null;
   });
 
-  return utils.defaults({shapes: dividedShapes, data: null}, lyr);
+  return Utils.defaults({shapes: dividedShapes, data: null}, lyr);
 
   // TODO: divide according to intersection type: a, b, a+b
   function dividePolygon(shape) {
-    var dividedPaths = [];
+    var dividedShape = [];
     MapShaper.forEachPath(shape, function(ids) {
       var isCW = geom.getPathArea(arcs.getShapeIter(ids)) > 0,
           path;
       for (var i=0; i<ids.length; i++) {
         path = getDividedPath(ids[i], isCW, nodes);
-        if (path) dividedPaths.push([path]);
+        if (path) dividedShape.push(path);
       }
     });
-    return dividedPaths;
+    return dividedShape.length === 0 ? null : dividedShape;
   }
 
   function tryArc(id) {
@@ -13031,7 +13101,7 @@ MapShaper.dividePolygonLayer = function(lyr, arcs) {
       path.push(nextId);
       nextId = nodes.getNextArc(nextId, isCW);
     } while (nextId != arc0);
-    return path;
+    return path.length === 0 ? null : path;
   }
 };
 
@@ -13202,54 +13272,61 @@ api.processDataset = function(dataset, commands, done) {
 api.runCommand = function(cmd, dataset, cb) {
   var name = cmd.name,
       opts = cmd.options,
-      srcLayers,
+      targetLayers,
       newLayers,
+      sourceLyr,
       arcs = dataset.arcs,
       err = null;
 
   T.start();
   if (opts.target) {
-    srcLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
-    console.log("layers:", Utils.pluck(dataset.layers, 'name'));
-    console.log("target:", opts.target, "lyr:", Utils.pluck(srcLayers, 'name'));
+    targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
   } else {
-    srcLayers = dataset.layers; // default: all layers
+    targetLayers = dataset.layers; // default: all layers
   }
 
-  if (srcLayers.length === 0) {
+  if (targetLayers.length === 0) {
     message("[" + name + "] Command is missing target layer(s).");
     MapShaper.printLayerNames(dataset.layers);
   }
 
-  if (name == 'each') {
-    MapShaper.applyCommand(api.evaluateLayer, srcLayers, arcs, opts.expression);
+  if (name == 'clip') {
+    sourceLyr = MapShaper.prepareClippingLayer(opts.source, dataset);
+    newLayers = MapShaper.applyCommand(api.clipLayer, targetLayers, sourceLyr, dataset.arcs, opts);
+
+  } else if (name == 'each') {
+    MapShaper.applyCommand(api.evaluateLayer, targetLayers, arcs, opts.expression);
 
   } else if (name == 'dissolve') {
-    newLayers = MapShaper.applyCommand(api.dissolveLayer, srcLayers, arcs, opts);
+    newLayers = MapShaper.applyCommand(api.dissolveLayer, targetLayers, arcs, opts);
 
   } else if (name == 'divide') {
-    api.divideArcs(dataset.layers, arcs, opts);
-    newLayers = MapShaper.applyCommand(api.divideLayer, srcLayers, arcs, opts);
+    MapShaper.divideArcs(dataset.layers, arcs);
+    newLayers = MapShaper.applyCommand(api.dividePolygonLayer, targetLayers, arcs, opts);
+
+  } else if (name == 'erase') {
+    sourceLyr = MapShaper.prepareClippingLayer(opts.source, dataset);
+    newLayers = MapShaper.applyCommand(api.eraseLayer, targetLayers, sourceLyr, dataset.arcs, opts);
 
   } else if (name == 'explode') {
-    newLayers = MapShaper.applyCommand(api.explodeLayer, srcLayers, arcs, opts);
+    newLayers = MapShaper.applyCommand(api.explodeLayer, targetLayers, arcs, opts);
 
   } else if (name == 'fields') {
-    MapShaper.applyCommand(api.filterFields, srcLayers, opts.fields);
+    MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
 
   } else if (name == 'filter') {
-    MapShaper.applyCommand(api.filterFeatures, srcLayers, arcs, opts.expression);
+    MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
 
   } else if (name == 'info') {
     api.printInfo(dataset);
 
   } else if (name == 'innerlines') {
-    newLayers = MapShaper.applyCommand(api.convertLayerToInnerLines, srcLayers, arcData);
+    newLayers = MapShaper.applyCommand(api.convertLayerToInnerLines, targetLayers, arcData);
 
   } else if (name == 'join') {
     // async command -- special case
     api.importJoinTableAsync(opts.source, opts, function(table) {
-      MapShaper.applyCommand(api.joinTableToLayer, srcLayers, table, opts);
+      MapShaper.applyCommand(api.joinTableToLayer, targetLayers, table, opts);
       done(err, dataset);
     });
     return;
@@ -13258,36 +13335,36 @@ api.runCommand = function(cmd, dataset, cb) {
     newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
 
   } else if (name == 'lines') {
-    MapShaper.applyCommand(api.convertLayerToTypedLines, srcLayers, arcs, opts.fields);
+    MapShaper.applyCommand(api.convertLayerToTypedLines, targetLayers, arcs, opts.fields);
 
   } else if (name == 'merge-layers') {
     // careful, returned layers are modified input layers
-    newLayers = api.mergeLayers(srcLayers);
+    newLayers = api.mergeLayers(targetLayers);
 
   } else if (name == 'simplify') {
     api.simplify(arcs, opts);
     if (opts.keep_shapes) {
-      api.protectShapes(arcs, srcLayers);
+      api.protectShapes(arcs, targetLayers);
     }
 
   } else if (name == 'split') {
-    newLayers = MapShaper.applyCommand(api.splitLayer, srcLayers, arcs, opts.field);
+    newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, arcs, opts.field);
 
   } else if (name == 'split-on-grid') {
-    newLayers = MapShaper.applyCommand(api.splitOnGrid, srcLayers, arcs, opts.rows, opts.cols);
+    newLayers = MapShaper.applyCommand(api.splitOnGrid, targetLayers, arcs, opts.rows, opts.cols);
 
   } else if (name == 'subdivide') {
-    newLayers = MapShaper.applyCommand(api.subdivideLayer, srcLayers, arcs, opts.expression);
+    newLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
   } else if (name == 'o') {
-    api.exportFiles(Utils.defaults({layers: srcLayers}, dataset), opts);
+    api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
 
   } else {
     err = "Unhandled command: -" + name;
   }
 
   if (opts.name) {
-    (newLayers || srcLayers).forEach(function(lyr) {
+    (newLayers || targetLayers).forEach(function(lyr) {
       lyr.name = opts.name;
     });
   }
@@ -13297,7 +13374,7 @@ api.runCommand = function(cmd, dataset, cb) {
       dataset.layers = dataset.layers.concat(newLayers);
     } else {
       // TODO: consider replacing old layers as they are generated, for gc
-      MapShaper.replaceLayers(dataset, srcLayers, newLayers);
+      MapShaper.replaceLayers(dataset, targetLayers, newLayers);
     }
   }
   done(err, dataset);
@@ -13308,10 +13385,10 @@ api.runCommand = function(cmd, dataset, cb) {
   }
 };
 
-// Apply a command to an array of layers
-MapShaper.applyCommand = function(func, srcLayers) {
+// Apply a command to an array of target layers
+MapShaper.applyCommand = function(func, targetLayers) {
   var args = Utils.toArray(arguments).slice(2);
-  return srcLayers.reduce(function(memo, lyr) {
+  return targetLayers.reduce(function(memo, lyr) {
     var result = func.apply(null, [lyr].concat(args));
     if (Utils.isArray(result)) { // some commands return an array of layers
       memo = memo.concat(result);
