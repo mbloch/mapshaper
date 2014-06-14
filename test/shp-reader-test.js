@@ -1,13 +1,12 @@
 var api = require('../'),
   assert = require('assert');
 
-var Node = api.internal.Node,
-    ShpReader = api.internal.ShpReader,
+var ShpReader = api.internal.ShpReader,
     Utils = api.utils,
     Bounds = api.internal.Bounds;
 
 function filePath(file) {
-  var path = Node.path.join(__dirname, "test_data", file);
+  var path = require('path').join(__dirname, "test_data", file);
   return path;
 }
 

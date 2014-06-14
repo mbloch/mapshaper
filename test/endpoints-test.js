@@ -46,4 +46,53 @@ describe('mapshaper-endpoints.js', function () {
     })
   })
 
+  describe('Fig. 2', function() {
+    //
+    //  g ----- h
+    //  |       |
+    //  fe---- ai
+    //  ||     ||
+    //  ||     bj
+    //  ||     ||
+    //  nd --- ck
+    //  |       |
+    //  m ----- l
+    //
+    var coords = [[[2, 4], [2, 3], [2, 2]], // 0
+        [[2, 2], [1, 2]],                   // 3
+        [[1, 2], [1, 4]],                   // 5
+        [[1, 4], [2, 4]],                   // 7
+        [[1, 4], [1, 5], [2, 5], [2, 4]],   // 9
+        [[2, 4], [2, 3], [2, 2]],           // 13
+        [[2, 2], [2, 1], [1, 1], [1, 2]],   // 16
+        [[1, 2], [1, 4]]];                  // 20
+
+    var arcs = new ArcCollection(coords),
+        nodes = new NodeCollection(arcs);
+
+    it ("NodeCollection#testArcMatch()", function() {
+      assert.equal(nodes.internal.testArcMatch(0, 5), true)
+      assert.equal(nodes.internal.testArcMatch(~0, ~5), true)
+      assert.equal(nodes.internal.testArcMatch(~2, ~7), true)
+      assert.equal(nodes.internal.testArcMatch(2, 7), true)
+      assert.equal(nodes.internal.testArcMatch(2, 7), true)
+      assert.equal(nodes.internal.testArcMatch(2, 7), true)
+      assert.equal(nodes.internal.testArcMatch(~0, 5), false)
+      assert.equal(nodes.internal.testArcMatch(1, 2), false)
+      assert.equal(nodes.internal.testArcMatch(~1, 2), false)
+    })
+
+    it ("NodeCollection#findMatchingArc()", function() {
+      assert.equal(nodes.findMatchingArc(0), 0);
+      assert.equal(nodes.findMatchingArc(~0), ~0);
+      assert.equal(nodes.findMatchingArc(5), 0);
+      assert.equal(nodes.findMatchingArc(~5), ~0);
+      assert.equal(nodes.findMatchingArc(~7), ~2);
+      assert.equal(nodes.findMatchingArc(7), 2);
+      assert.equal(nodes.findMatchingArc(2), 2);
+    });
+
+
+  });
+
 });

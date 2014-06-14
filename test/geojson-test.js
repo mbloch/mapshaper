@@ -1,11 +1,10 @@
 var api = require('../'),
     assert = require('assert');
 
-var Utils = api.utils,
-    Node = api.internal.Node;
+var Utils = api.utils;
 
 function fixPath(p) {
-  return Node.path.join(__dirname, p);
+  return require('path').join(__dirname, p);
 }
 
 describe('mapshaper-geojson.js', function () {
@@ -189,7 +188,7 @@ describe('mapshaper-geojson.js', function () {
     })
 
     it('reversed ring with duplicate points is not removed (#42)', function() {
-      var geoStr = Node.readFile(fixPath("test_data/ccw_polygon.json"), 'utf8'),
+      var geoStr = api.cli.readFile(fixPath("test_data/ccw_polygon.json"), 'utf8'),
           outputObj = importExport(geoStr);
       assert.ok(outputObj.features[0].geometry != null);
     })

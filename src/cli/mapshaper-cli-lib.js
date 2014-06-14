@@ -37,6 +37,11 @@ function getVersion() {
   return v || "";
 }
 
+cli.isFile = Node.fileExists;
+cli.isDirectory = Node.dirExists;
+cli.readFile = Node.readFile;
+cli.writeFlie = Node.writeFile;
+
 cli.getOutputPaths = function(files, dir) {
   if (!files || !files.length) {
     message("No files to save");
@@ -69,7 +74,7 @@ cli.addFileSuffix = function(paths, suff) {
 
 cli.testFileCollision = function(paths, suff) {
   return Utils.some(paths, function(path) {
-    return Node.fileExists(path);
+    return cli.isFile(path) || cli.isDirectory(path);
   });
 };
 
@@ -80,8 +85,8 @@ cli.validateFileExtension = function(path) {
 };
 
 cli.replaceFileExtension = function(path, ext) {
-  var info = Node.parseFilename(path);
-  return Node.path.join(info.relative_dir, info.base + "." + ext);
+  var info = utils.parseLocalPath(path);
+  return info.pathbase + '.' + ext;
 };
 
 cli.validateInputFiles = function(arr) {
@@ -92,7 +97,7 @@ cli.validateInputFiles = function(arr) {
 
 cli.validateInputFile = function(ifile) {
   var opts = {};
-  if (!Node.fileExists(ifile)) {
+  if (!cli.isFile(ifile)) {
     error("File not found (" + ifile + ")");
   }
   if (!cli.validateFileExtension(ifile)) {
@@ -144,21 +149,8 @@ function validateCommaSep(str, count) {
   return parts;
 }
 
-// Force v8 to perform a complete gc cycle.
-// To enable, run node with --expose_gc
-// Timing gc() gives a crude indication of number of objects in memory.
-/*
-MapShaper.gc = function() {
-  if (global.gc) {
-    T.start();
-    global.gc();
-    T.stop("gc()");
-  }
-};
-*/
 
 Utils.extend(api.internal, {
-  Node: Node,
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam,
@@ -167,9 +159,6 @@ Utils.extend(api.internal, {
   Bounds: Bounds
 });
 
-cli.readFile = Node.readFile;
-cli.writeFile = Node.writeFile;
-cli.fileExists = Node.fileExists;
 api.T = T;
 
 module.exports = api;

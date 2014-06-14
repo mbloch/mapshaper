@@ -211,5 +211,44 @@ describe('mapshaper-shapes.js', function () {
       assert.equal(api.internal.clampIntervalByPct(3, 0.5), 3);
     })
   })
+
+  describe('#indexOfVertex()', function () {
+    it('Fig. 1', function () {
+      //
+      //  g ----- h
+      //  |       |
+      //  fe---- ai
+      //  ||     ||
+      //  ||     bj
+      //  ||     ||
+      //  nd --- ck
+      //  |       |
+      //  m ----- l
+      //
+      var coords = [[[2, 4], [2, 3], [2, 2]],
+          [[2, 2], [1, 2]],
+          [[1, 2], [1, 4]],
+          [[1, 4], [2, 4]],
+          [[1, 4], [1, 5], [2, 5], [2, 4]],
+          [[2, 4], [2, 3], [2, 2]],
+          [[2, 2], [2, 1], [1, 1], [1, 2]],
+          [[1, 2], [1, 4]]];
+
+      var arcs = new ArcCollection(coords);
+
+      assert.equal(arcs.indexOfVertex(0, 0), 0);
+      assert.equal(arcs.indexOfVertex(~0, 0), 2);
+      assert.equal(arcs.indexOfVertex(~0, 2), 0);
+      assert.equal(arcs.indexOfVertex(7, -1), 21);
+      assert.equal(arcs.indexOfVertex(7, -2), 20);
+      assert.throws(function() {
+        assert.equal(arcs.indexOfVertex(0, 2));
+      })
+      assert.throws(function() {
+        assert.equal(arcs.indexOfVertex(0, -3));
+      })
+
+    })
+  })
 })
 

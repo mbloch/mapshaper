@@ -7,7 +7,7 @@ function stringifyEqual(a, b) {
 }
 
 function fixPath(p) {
-  return api.internal.Node.path.join(__dirname, p);
+  return require('path').join(__dirname, p);
 }
 
 describe('mapshaper-table-import.js', function() {

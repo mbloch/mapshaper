@@ -5,7 +5,7 @@ var api = require('../'),
     Utils = api.utils;
 
 function fixPath(p) {
-  return api.internal.Node.path.join(__dirname, p);
+  return require('path').join(__dirname, p);
 }
 
 describe('dbf-reader.js', function () {

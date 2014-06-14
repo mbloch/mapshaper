@@ -3,15 +3,14 @@ var api = require('../'),
   assert = require('assert'),
   TopoJSON = api.internal.topojson,
   ArcCollection = api.internal.ArcCollection,
-  Utils = api.utils,
-  Node = api.internal.Node;
+  Utils = api.utils;
 
 function deepCopy(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
 function fixPath(p) {
-  return Node.path.join(__dirname, p);
+  return require('path').join(__dirname, p);
 }
 
 describe('topojson-test.js', function () {

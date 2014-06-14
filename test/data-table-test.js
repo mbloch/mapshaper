@@ -1,7 +1,6 @@
 var api = require('../'),
   assert = require('assert'),
   Utils = api.utils,
-  Node = api.internal.Node,
   DataTable = api.internal.DataTable,
   ShapefileTable = api.internal.ShapefileTable;
 
@@ -111,8 +110,8 @@ describe('data-table.js', function () {
 
   describe('ShapefileTable', function() {
     function readDBF(relpath) {
-      var path = Node.path.join(__dirname, relpath);
-      return Node.readFile(path);
+      var path = require('path').join(__dirname, relpath);
+      return api.cli.readFile(path);
     }
 
     describe('#getRecords()', function() {

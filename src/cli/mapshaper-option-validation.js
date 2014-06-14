@@ -1,8 +1,9 @@
 /* @requires mapshaper-common */
 
 
-function validateInputOpts(o, _) {
-  o.files = cli.validateInputFiles(_);
+function validateInputOpts(cmd) {
+  var o = cmd.options;
+  o.files = cli.validateInputFiles(cmd._);
 
   if ("precision" in o && o.precision > 0 === false) {
     error("precision option should be a positive number");
@@ -13,7 +14,8 @@ function validateInputOpts(o, _) {
   }
 }
 
-function validateSimplifyOpts(o, _) {
+function validateSimplifyOpts(cmd) {
+  var o = cmd.options;
   var methods = ["visvalingam", "dp"];
   if (o.method) {
     if (!Utils.contains(methods, o.method)) {
@@ -21,7 +23,7 @@ function validateSimplifyOpts(o, _) {
     }
   }
 
-  var pctStr = Utils.find(_, function(str) {
+  var pctStr = Utils.find(cmd._, function(str) {
     return (/^[0-9.]+%$/.test(str));
   });
   if (pctStr) o.pct = parseFloat(pctStr) / 100;
@@ -39,8 +41,9 @@ function validateSimplifyOpts(o, _) {
   }
 }
 
-function validateJoinOpts(o, _) {
-  o.source = o.source || _[0];
+function validateJoinOpts(cmd) {
+  var o = cmd.options;
+  o.source = o.source || cmd._[0];
 
   if (!o.source) {
     error("-join requires the name of a file to join");
@@ -52,7 +55,7 @@ function validateJoinOpts(o, _) {
     error("-join currently only supports dbf and csv files");
   }
 
-  if (!Node.fileExists(o.source)) {
+  if (!cli.isFile(o.source)) {
     error("-join missing source file:", o.source);
   }
 
@@ -70,15 +73,26 @@ function isCommaSep(arr, count) {
   return ok;
 }
 
-function validateSplitOpts(o, _) {
-  if (_.length == 1) {
-    o.field = _[0];
-  } else if (_.length > 1) {
+function validateSplitOpts(cmd) {
+  if (cmd._.length == 1) {
+    cmd.options.field = cmd._[0];
+  } else if (cmd._.length > 1) {
     error("-split takes a single field name");
   }
 }
 
-function validateDissolveOpts(o, _) {
+function validateClip(cmd) {
+  var src = cmd.options.source || cmd._[0];
+  if (src) {
+    cmd.options.source = src;
+  } else {
+    error("-" + cmd.name + " requires a source argument");
+  }
+}
+
+function validateDissolveOpts(cmd) {
+  var _= cmd._,
+      o = cmd.options;
   if (_.length == 1) {
     o.field = _[0];
   } else if (_.length > 1) {
@@ -89,13 +103,14 @@ function validateDissolveOpts(o, _) {
   if (o.copy_fields && !isCommaSep(o.copy_fields)) error("-dissolve copy-fields takes a comma-sep. list");
 }
 
-function validateMergeLayersOpts(o, _) {
-  if (_.length > 0) error("-merge-layers unexpected option:", _);
+function validateMergeLayersOpts(cmd) {
+  if (cmd._.length > 0) error("-merge-layers unexpected option:", cmd._);
 }
 
-function validateSplitOnGridOpts(o, _) {
-  if (_.length == 1) {
-    var tmp = _[0].split(',');
+function validateSplitOnGridOpts(cmd) {
+  var o = cmd.options;
+  if (cmd._.length == 1) {
+    var tmp = cmd._[0].split(',');
     o.cols = parseInt(tmp[0], 10);
     o.rows = parseInt(tmp[1], 10) || o.cols;
   }
@@ -105,80 +120,88 @@ function validateSplitOnGridOpts(o, _) {
   }
 }
 
-function validateLinesOpts(o, _) {
-  if (!o.fields && _.length == 1) {
-    o.fields = cli.validateCommaSepNames(_[0]);
+function validateLinesOpts(cmd) {
+  var o = cmd.options;
+  if (!o.fields && cmd._.length == 1) {
+    o.fields = cli.validateCommaSepNames(cmd._[0]);
   }
 
-  if (o.fields && o.fields.length === 0 || _.length > 1) {
+  if (o.fields && o.fields.length === 0 || cmd._.length > 1) {
     error("-lines takes a comma-separated list of fields");
   }
 }
 
-function validateInnerLinesOpts(o, _) {
-  if (_.length > 0) {
+function validateInnerLinesOpts(cmd) {
+  if (cmd._.length > 0) {
     error("-innerlines takes no arguments");
   }
 }
 
-function validateSubdivideOpts(o, _) {
-  if (_.length !== 1) {
+function validateSubdivideOpts(cmd) {
+  if (cmd._.length !== 1) {
     error("-subdivide option requires a JavaScript expression");
   }
-  o.expression = _[0];
+  cmd.options.expression = cmd._[0];
 }
 
-function validateFieldsOpts(o, _) {
-  var fields = validateCommaSep(_[0]);
+function validateFieldsOpts(cmd) {
+  var fields = validateCommaSep(cmd._[0]);
   if (!fields || fields.length > 0 === false) {
     error("-fields option requires a comma-sep. list of fields");
   }
-  o.fields = fields;
+  cmd.options.fields = fields;
 }
 
-function validateLayersOpts(o, _) {
-  var layers = validateCommaSep(_[0]);
+function validateLayersOpts(cmd) {
+  var layers = validateCommaSep(cmd._[0]);
   if (!layers || layers.length > 0 === false) {
     error("-layers option requires a comma-sep. list of layer names");
   }
-  o.layers = layers;
+  cmd.options.layers = layers;
 }
 
-function validateFilterOpts(o, _) {
-  if (_.length !== 1) {
+function validateFilterOpts(cmd) {
+  if (cmd._.length !== 1) {
     error("-filter option requires a JavaScript expression");
   }
-  o.expression = _[0];
+  cmd.options.expression = cmd._[0];
 }
 
-function validateOutputOpts(o, _) {
-  var odir, obase, oext, ofmt;
+function validateOutputOpts(cmd) {
+  var _ = cmd._,
+      o = cmd.options,
+      path = _[0] || "",
+      pathInfo = utils.parseLocalPath(path),
+      supportedTypes = ["geojson", "topojson", "shapefile"];
+
   if (_.length > 1) {
-    error("-o takes one file or directory argument, received:", _);
+    error("-o takes one file or directory argument");
   }
-  if (_.length == 1) {
-    var ofileInfo = Node.getFileInfo(_[0]);
-    if (ofileInfo.is_directory) {
-      // odir = argv.o;
-      o.output_dir = _[0];
-    } else if (ofileInfo.relative_dir && !Node.dirExists(ofileInfo.relative_dir)) {
-      error("Output directory not found:", ofileInfo.relative_dir);
-    } else if (!ofileInfo.base) {
-      error('Invalid output file:', _[0]);
-    } else {
-      if (ofileInfo.ext) {
-        if (!cli.validateFileExtension(ofileInfo.file)) {
-          error("Output file looks like an unsupported file type:", ofileInfo.file);
-        }
-      }
-      o.output_file = _[0];
+
+  if (!path) {
+    // no output file or dir
+  } else if (!pathInfo.extension) {
+    o.output_dir = path;
+  } else {
+    if (pathInfo.directory) o.output_dir = pathInfo.directory;
+    o.output_file = pathInfo.filename;
+  }
+
+  if (o.output_file && !cli.validateFileExtension(o.output_file)) {
+    error("Output file looks like an unsupported file type:", o.output_file);
+  }
+
+  if (o.output_dir && !cli.isDirectory(o.output_dir)) {
+    if (!cli.isDirectory(o.output_dir)) {
+      error("Output directory not found:", o.output_dir);
     }
   }
 
-  var supportedTypes = ["geojson", "topojson", "shapefile"];
-  if (o.output_file && Utils.contains(supportedTypes, o.output_file)) {
+  /*
+  if (Utils.contains(supportedTypes, o.output_file.toLowerCase())) {
     error("Use format=" + o.output_file + " to set output format");
   }
+  */
 
   if (o.format) {
     o.format = o.format.toLowerCase();
@@ -199,4 +222,5 @@ function validateOutputOpts(o, _) {
   if ("topojson_precision" in o && o.topojson_precision > 0 === false) {
     error("topojson-precision should be a positive number");
   }
+
 }

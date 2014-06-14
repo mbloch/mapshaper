@@ -11,6 +11,24 @@ MapShaper.cloneShape = function(shp) {
   });
 };
 
+// a and b are arrays of arc ids
+MapShaper.pathsAreIdentical = function(a, b) {
+  if (a.length != b.length) return false;
+  for (var i=0, n=a.length; i<n; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+};
+
+/*
+MapShaper.reversePath = function(ids) {
+  ids.reverse();
+  for (var i=0, n=ids.length; i<n; i++) {
+    ids[i] = ~ids[i];
+  }
+};
+*/
+
 MapShaper.getPathMetadata = function(shape, arcs, type) {
   var iter = new ShapeIter(arcs);
   return Utils.map(shape, function(ids) {

@@ -186,12 +186,14 @@ MapShaper.getOptionParser = function() {
     .option("target");
 
   parser.command("clip")
+    .validate(validateClip)
     .option("source")
     .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 
   parser.command("erase")
+    .validate(validateClip)
     .option("source")
     .option("name")
     .option("no-replace", {alias: "+", type: "flag"})

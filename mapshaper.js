@@ -1172,48 +1172,14 @@ EventDispatcher.prototype.removeEventListeners =
 var inNode = typeof module !== 'undefined' && !!module.exports;
 var Node = {
   inNode: inNode,
-  arguments: inNode ? process.argv.slice(1) : null // remove "node" from head of argv list
 };
 
-/**
- * Convenience functions for working with files and loading data.
- */
 if (inNode) {
-  Node.fs = require('fs');
-  Node.path = require('path');
+  Node.arguments = process.argv.slice(1); // remove "node" from head of argv list
 
   Node.gc = function() {
     global.gc && global.gc();
   };
-
-  Node.statSync = function(fpath) {
-    var obj = null;
-    try {
-      obj = Node.fs.statSync(fpath);
-    }
-    catch(e) {
-      //trace(e, fpath);
-    }
-    return obj;
-  };
-
-
-  Node.walkSync = function(dir, results) {
-    results = results || [];
-    var list = Node.fs.readdirSync(dir);
-    Utils.forEach(list, function(file) {
-      var path = dir + "/" + file;
-      var stat = Node.statSync(path);
-      if (stat && stat.isDirectory()) {
-        Node.walkSync(path, results);
-      }
-      else {
-        results.push(path);
-      }
-    });
-    return results;
-  };
-
 
   Node.toBuffer = function(src) {
     var buf;
@@ -1225,271 +1191,131 @@ if (inNode) {
     } else if (src instanceof Buffer) {
       buf = src;
     } else {
-      error ("Node#toBuffer() unsupported input:", src);
+      error ("[Node.toBuffer()] unsupported input:", src);
     }
     return buf;
   };
-
-  Node.shellExec = function(cmd) {
-    var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
-    var spawn = require('child_process').spawn;
-    spawn(parts[0], parts.slice(1), {stdio: "inherit"});
-  };
-
-  // Converts relative path to absolute path relative to the node script;
-  // absolute paths returned unchanged
-  //
-  Node.resolvePathFromScript = function(path) {
-    if (Node.pathIsAbsolute(path))
-      return path;
-    var scriptDir = Node.getFileInfo(require.main.filename).directory;
-    return Node.path.join(scriptDir, path);
-  };
-
-  Node.resolvePathFromShell = function(path) {
-    if (Node.pathIsAbsolute(path))
-      return path;
-    return Node.path.join(process.cwd(), path);
-  };
-
-  Node.pathIsAbsolute = function(path) {
-    return (path[0] == '/' || path[0] == "~");
-  };
-
-  Node.dirExists = function(path) {
-    var ss = Node.statSync(path);
-    return ss && ss.isDirectory() || false;
-  };
-
-  Node.fileExists = function(path) {
-    var ss = Node.statSync(path);
-    return ss && ss.isFile() || false;
-  };
-
-  Node.parseFilename = function(fpath) {
-    // TODO: give better output if fpath is a directory
-    var info = {};
-    var filename = Node.path.basename(fpath);
-    if (/[\\/]$/.test(filename)) {
-      filename = filename.substr(0, filename.length-1);
-    }
-    info.file = filename;
-    info.path = Node.path.resolve(fpath);
-    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
-    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
-    info.directory = Node.path.dirname(info.path);
-    info.relative_dir = Node.path.dirname(fpath);
-    return info;
-  };
-
-  Node.getFileInfo = function(fpath) {
-    var info = Node.parseFilename(fpath),
-        stat;
-    Opts.copyAllParams(info, {exists: true, is_directory: false, is_file: false});
-    if (stat = Node.statSync(fpath)) {
-      if (stat.isFile()) {
-        info.is_file = true;
-      } else if (stat.isDirectory()) {
-        info.is_directory = true;
-      } else {
-        // ighore other filesystem entities, e.g. devices
-        info.exists = false;
-      }
-    }
-    return info;
-  };
-
-  // @charset (optional) e.g. 'utf8'
-  // returns string or Buffer if no charset is provided.
-  //
-  Node.readFile = function(fname, charset) {
-    return Node.fs.readFileSync(fname, charset || void 0);
-  };
-
-  Node.writeFile = function(path, content) {
-    if (content instanceof ArrayBuffer) {
-      content = Node.toBuffer(content);
-    }
-    Node.fs.writeFileSync(path, content, 0, null, 0);
-  };
-
-  Node.copyFile = function(src, dest) {
-    if (!Node.fileExists(src)) error("[copyFile()] File not found:", src);
-    var content = Node.fs.readFileSync(src);
-    Node.fs.writeFileSync(dest, content);
-  };
-
-  Node.post = function(url, data, callback, opts) {
-    opts = opts || {};
-    opts.method = 'POST';
-    opts.data = data;
-    opts.url = url;
-    Node.request(opts, callback);
-  };
-
-  Node.readResponse = function(res, callback, encoding) {
-    res.setEncoding(encoding || 'utf8');
-    var content = '';
-    res.on('data', function(chunk) {
-      content += chunk;
-    });
-    res.on('end', function() {
-      callback(null, content, res);
-    });
-  };
-
-  // Current signature: function(opts, callback), like Node.js request module
-  //    callback: function(err, body, response)
-  //
-  Node.request = function(opts, callback) {
-    if (Utils.isString(opts)) { // @opts is string -> assume url & old interface
-      error("Node.request(opts, callback) No longer accepts a url string. Pass url as a property of opts.");
-    }
-
-    if (!opts.url) error("Node.request() Missing url in options:", opts);
-
-    var o = require('url').parse(opts.url),
-        data = null,
-        // moduleName: http or https
-        moduleName = opts.protocol || o.protocol.slice(0, -1); // can override protocol (e.g. request https:// url using http)
-
-    if (moduleName != 'http' && moduleName != 'https') error("Node.request() Unsupported protocol:", o.protocol);
-    var reqOpts = {
-      host: o.hostname,
-      hostname: o.hostname,
-      path: o.path,
-      //port: o.port || module == 'https' && 443 || 80,
-      method: opts.method || 'GET',
-      headers: opts.headers || null
-    };
-
-    if (reqOpts.method == 'POST' || reqOpts.method == 'PUT') {
-      data = opts.data || opts.body || '';
-      reqOpts.headers = Utils.extend({
-        'Content-Length': data.length,
-        'Connection': 'close',
-        'Accept-Encoding': 'identity'
-      }, reqOpts.headers);
-    }
-
-    var req = require(moduleName).request(reqOpts);
-    req.on('response', function(res) {
-      if (res.statusCode > 201) {
-        callback("Node.request() Unexpected status: " + res.statusCode + " url: " + opts.url, null, res);
-      } else {
-        Node.readResponse(res, callback, 'utf8');
-      }
-    });
-
-    req.on('error', function(e) {
-      // trace("Node.request() request error:", e.message);
-      callback("Node.request() error: " + e.message, null, null);
-    });
-    req.end(data);
-  };
-
-  Node.atob = function(b64string) {
-    return new Buffer(b64string, 'base64').toString('binary')
-  };
-
-  Node.readJson = function(url, callback, opts) {
-    var retn = opts && opts.data || null;
-    /*
-    opts = {
-      headers: {
-        'Accept-Encoding': 'identity',
-        'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
-        'Connection': 'keep-alive',
-        'Cache-control': 'max-age=0',
-        'User-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_3) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.43 Safari/537.31'
-      }
-    }*/
-
-    Node.request({url: url}, function(err, str, req) {
-      var data = null;
-      if (err) {
-        trace("Node.readJson() error:", err);
-      } else if (!str) {
-        trace("Node.readJson() empty response()");
-      } else {
-        try {
-          // handle JS callback
-          if (match = /^\s*([\w.-]+)\(/.exec(str)) {
-            var ctx = {};
-            Opts.exportObject(match[1], function(o) {return o}, ctx);
-            with (ctx) {
-              data = eval(str);
-            }
-          } else {
-            data = JSON.parse(str); // no callback: assume valid JSON
-          }
-        } catch(e) {
-          trace("Node#readJson() Error reading from url:", url,"response:", str);
-          error(e);
-        }
-      }
-      console.log("data:", data)
-      callback(data, retn);
-    });
-
-  };
-
-  // super-simple options, if not using optimist
-  Node.options = function(o) {
-    o = o || {};
-    var opts = {_:[]},
-        flags = (o.flags || o.binary || '').split(','),
-        currOpt;
-
-    var aliases = Utils.reduce((o.aliases || "").split(','), function(obj, item) {
-        var parts = item.split(':');
-        if (parts.length == 2) {
-          obj[parts[0]] = parts[1];
-          obj[parts[1]] = parts[0];
-        }
-        return obj;
-      }, {});
-
-    function setOpt(opt, val) {
-      opts[opt] = val;
-      var alias = aliases[opt];
-      if (alias) {
-        opts[alias] = val;
-      }
-    }
-
-
-    Node.arguments.slice(1).forEach(function(arg) {
-      var match, alias, switches;
-      if (arg[0] == '-') {
-        currOpt = null; // handle this as an error
-        if (match = /^--(.*)/.exec(arg)) {
-          switches = [match[1]];
-        }
-        else if (match = /^-(.+)/.exec(arg)) {
-          switches = match[1].split('');
-        }
-        Utils.forEach(switches, function(opt) {
-          if (Utils.contains(flags, opt)) {
-            setOpt(opt, true);
-          } else {
-            currOpt = opt;
-          }
-        });
-      }
-      else if (currOpt) {
-        setOpt(currOpt, Utils.isNumber(arg) ? parseFloat(arg) : arg);
-        currOpt = null;
-      }
-      else {
-        opts._.push(arg);
-      }
-    });
-    opts.argv = opts._;
-    return opts;
-  };
 }
 
+
+
+
+// Convenience functions for working with the local filesystem
+
+Node.path = require('path');
+
+Node.statSync = function(fpath) {
+  var obj = null;
+  try {
+    obj = require('fs').statSync(fpath);
+  }
+  catch(e) {
+    //trace(e, fpath);
+  }
+  return obj;
+};
+
+Node.walkSync = function(dir, results) {
+  results = results || [];
+  var list = require('fs').readdirSync(dir);
+  Utils.forEach(list, function(file) {
+    var path = dir + "/" + file;
+    var stat = Node.statSync(path);
+    if (stat && stat.isDirectory()) {
+      Node.walkSync(path, results);
+    }
+    else {
+      results.push(path);
+    }
+  });
+  return results;
+};
+
+Node.shellExec = function(cmd) {
+  var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
+  var spawn = require('child_process').spawn;
+  spawn(parts[0], parts.slice(1), {stdio: "inherit"});
+};
+
+// Converts relative path to absolute path relative to the node script;
+// absolute paths returned unchanged
+Node.resolvePathFromScript = function(path) {
+  if (Node.pathIsAbsolute(path))
+    return path;
+  var scriptDir = Node.getFileInfo(require.main.filename).directory;
+  return Node.path.join(scriptDir, path);
+};
+
+Node.resolvePathFromShell = function(path) {
+  return Node.pathIsAbsolute(path) ? path : Node.path.join(process.cwd(), path);
+};
+
+Node.pathIsAbsolute = function(path) {
+  return (path[0] == '/' || path[0] == "~");
+};
+
+Node.dirExists = function(path) {
+  var ss = Node.statSync(path);
+  return ss && ss.isDirectory() || false;
+};
+
+Node.fileExists = function(path) {
+  var ss = Node.statSync(path);
+  return ss && ss.isFile() || false;
+};
+
+Node.parseFilename = function(fpath) {
+  // TODO: give better output if fpath is a directory
+  var info = {};
+  var filename = Node.path.basename(fpath);
+  if (/[\\/]$/.test(filename)) {
+    filename = filename.substr(0, filename.length-1);
+  }
+  info.file = filename;
+  info.path = Node.path.resolve(fpath);
+  info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
+  info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
+  info.directory = Node.path.dirname(info.path);
+  info.relative_dir = Node.path.dirname(fpath);
+  return info;
+};
+
+Node.getFileInfo = function(fpath) {
+  var info = Node.parseFilename(fpath),
+      stat;
+  Opts.copyAllParams(info, {exists: true, is_directory: false, is_file: false});
+  if (stat = Node.statSync(fpath)) {
+    if (stat.isFile()) {
+      info.is_file = true;
+    } else if (stat.isDirectory()) {
+      info.is_directory = true;
+    } else {
+      // ighore other filesystem entities, e.g. devices
+      info.exists = false;
+    }
+  }
+  return info;
+};
+
+// @charset (optional) e.g. 'utf8'
+// returns string or Buffer if no charset is provided.
+Node.readFile = function(fname, charset) {
+  return require('fs').readFileSync(fname, charset || void 0);
+};
+
+Node.writeFile = function(path, content) {
+  if (content instanceof ArrayBuffer) {
+    content = Node.toBuffer(content);
+  }
+  require('fs').writeFileSync(path, content, 0, null, 0);
+};
+
+Node.copyFile = function(src, dest) {
+  var fs = require('fs');
+  if (!Node.fileExists(src)) error("[copyFile()] File not found:", src);
+  var content = fs.readFileSync(src);
+  fs.writeFileSync(dest, content);
+};
 
 
 
@@ -4354,7 +4180,7 @@ function CommandParser() {
         }
       }
 
-      if (cmdDef.validate) cmdDef.validate(cmd.options, cmd._);
+      if (cmdDef.validate) cmdDef.validate(cmd);
       commands.push(cmd);
     }
     return commands;
@@ -4562,8 +4388,9 @@ function CommandOptions(name) {
 
 
 
-function validateInputOpts(o, _) {
-  o.files = cli.validateInputFiles(_);
+function validateInputOpts(cmd) {
+  var o = cmd.options;
+  o.files = cli.validateInputFiles(cmd._);
 
   if ("precision" in o && o.precision > 0 === false) {
     error("precision option should be a positive number");
@@ -4574,7 +4401,8 @@ function validateInputOpts(o, _) {
   }
 }
 
-function validateSimplifyOpts(o, _) {
+function validateSimplifyOpts(cmd) {
+  var o = cmd.options;
   var methods = ["visvalingam", "dp"];
   if (o.method) {
     if (!Utils.contains(methods, o.method)) {
@@ -4582,7 +4410,7 @@ function validateSimplifyOpts(o, _) {
     }
   }
 
-  var pctStr = Utils.find(_, function(str) {
+  var pctStr = Utils.find(cmd._, function(str) {
     return (/^[0-9.]+%$/.test(str));
   });
   if (pctStr) o.pct = parseFloat(pctStr) / 100;
@@ -4600,8 +4428,9 @@ function validateSimplifyOpts(o, _) {
   }
 }
 
-function validateJoinOpts(o, _) {
-  o.source = o.source || _[0];
+function validateJoinOpts(cmd) {
+  var o = cmd.options;
+  o.source = o.source || cmd._[0];
 
   if (!o.source) {
     error("-join requires the name of a file to join");
@@ -4613,7 +4442,7 @@ function validateJoinOpts(o, _) {
     error("-join currently only supports dbf and csv files");
   }
 
-  if (!Node.fileExists(o.source)) {
+  if (!cli.isFile(o.source)) {
     error("-join missing source file:", o.source);
   }
 
@@ -4631,15 +4460,26 @@ function isCommaSep(arr, count) {
   return ok;
 }
 
-function validateSplitOpts(o, _) {
-  if (_.length == 1) {
-    o.field = _[0];
-  } else if (_.length > 1) {
+function validateSplitOpts(cmd) {
+  if (cmd._.length == 1) {
+    cmd.options.field = cmd._[0];
+  } else if (cmd._.length > 1) {
     error("-split takes a single field name");
   }
 }
 
-function validateDissolveOpts(o, _) {
+function validateClip(cmd) {
+  var src = cmd.options.source || cmd._[0];
+  if (src) {
+    cmd.options.source = src;
+  } else {
+    error("-" + cmd.name + " requires a source argument");
+  }
+}
+
+function validateDissolveOpts(cmd) {
+  var _= cmd._,
+      o = cmd.options;
   if (_.length == 1) {
     o.field = _[0];
   } else if (_.length > 1) {
@@ -4650,13 +4490,14 @@ function validateDissolveOpts(o, _) {
   if (o.copy_fields && !isCommaSep(o.copy_fields)) error("-dissolve copy-fields takes a comma-sep. list");
 }
 
-function validateMergeLayersOpts(o, _) {
-  if (_.length > 0) error("-merge-layers unexpected option:", _);
+function validateMergeLayersOpts(cmd) {
+  if (cmd._.length > 0) error("-merge-layers unexpected option:", cmd._);
 }
 
-function validateSplitOnGridOpts(o, _) {
-  if (_.length == 1) {
-    var tmp = _[0].split(',');
+function validateSplitOnGridOpts(cmd) {
+  var o = cmd.options;
+  if (cmd._.length == 1) {
+    var tmp = cmd._[0].split(',');
     o.cols = parseInt(tmp[0], 10);
     o.rows = parseInt(tmp[1], 10) || o.cols;
   }
@@ -4666,80 +4507,88 @@ function validateSplitOnGridOpts(o, _) {
   }
 }
 
-function validateLinesOpts(o, _) {
-  if (!o.fields && _.length == 1) {
-    o.fields = cli.validateCommaSepNames(_[0]);
+function validateLinesOpts(cmd) {
+  var o = cmd.options;
+  if (!o.fields && cmd._.length == 1) {
+    o.fields = cli.validateCommaSepNames(cmd._[0]);
   }
 
-  if (o.fields && o.fields.length === 0 || _.length > 1) {
+  if (o.fields && o.fields.length === 0 || cmd._.length > 1) {
     error("-lines takes a comma-separated list of fields");
   }
 }
 
-function validateInnerLinesOpts(o, _) {
-  if (_.length > 0) {
+function validateInnerLinesOpts(cmd) {
+  if (cmd._.length > 0) {
     error("-innerlines takes no arguments");
   }
 }
 
-function validateSubdivideOpts(o, _) {
-  if (_.length !== 1) {
+function validateSubdivideOpts(cmd) {
+  if (cmd._.length !== 1) {
     error("-subdivide option requires a JavaScript expression");
   }
-  o.expression = _[0];
+  cmd.options.expression = cmd._[0];
 }
 
-function validateFieldsOpts(o, _) {
-  var fields = validateCommaSep(_[0]);
+function validateFieldsOpts(cmd) {
+  var fields = validateCommaSep(cmd._[0]);
   if (!fields || fields.length > 0 === false) {
     error("-fields option requires a comma-sep. list of fields");
   }
-  o.fields = fields;
+  cmd.options.fields = fields;
 }
 
-function validateLayersOpts(o, _) {
-  var layers = validateCommaSep(_[0]);
+function validateLayersOpts(cmd) {
+  var layers = validateCommaSep(cmd._[0]);
   if (!layers || layers.length > 0 === false) {
     error("-layers option requires a comma-sep. list of layer names");
   }
-  o.layers = layers;
+  cmd.options.layers = layers;
 }
 
-function validateFilterOpts(o, _) {
-  if (_.length !== 1) {
+function validateFilterOpts(cmd) {
+  if (cmd._.length !== 1) {
     error("-filter option requires a JavaScript expression");
   }
-  o.expression = _[0];
+  cmd.options.expression = cmd._[0];
 }
 
-function validateOutputOpts(o, _) {
-  var odir, obase, oext, ofmt;
+function validateOutputOpts(cmd) {
+  var _ = cmd._,
+      o = cmd.options,
+      path = _[0] || "",
+      pathInfo = utils.parseLocalPath(path),
+      supportedTypes = ["geojson", "topojson", "shapefile"];
+
   if (_.length > 1) {
-    error("-o takes one file or directory argument, received:", _);
+    error("-o takes one file or directory argument");
   }
-  if (_.length == 1) {
-    var ofileInfo = Node.getFileInfo(_[0]);
-    if (ofileInfo.is_directory) {
-      // odir = argv.o;
-      o.output_dir = _[0];
-    } else if (ofileInfo.relative_dir && !Node.dirExists(ofileInfo.relative_dir)) {
-      error("Output directory not found:", ofileInfo.relative_dir);
-    } else if (!ofileInfo.base) {
-      error('Invalid output file:', _[0]);
-    } else {
-      if (ofileInfo.ext) {
-        if (!cli.validateFileExtension(ofileInfo.file)) {
-          error("Output file looks like an unsupported file type:", ofileInfo.file);
-        }
-      }
-      o.output_file = _[0];
+
+  if (!path) {
+    // no output file or dir
+  } else if (!pathInfo.extension) {
+    o.output_dir = path;
+  } else {
+    if (pathInfo.directory) o.output_dir = pathInfo.directory;
+    o.output_file = pathInfo.filename;
+  }
+
+  if (o.output_file && !cli.validateFileExtension(o.output_file)) {
+    error("Output file looks like an unsupported file type:", o.output_file);
+  }
+
+  if (o.output_dir && !cli.isDirectory(o.output_dir)) {
+    if (!cli.isDirectory(o.output_dir)) {
+      error("Output directory not found:", o.output_dir);
     }
   }
 
-  var supportedTypes = ["geojson", "topojson", "shapefile"];
-  if (o.output_file && Utils.contains(supportedTypes, o.output_file)) {
+  /*
+  if (Utils.contains(supportedTypes, o.output_file.toLowerCase())) {
     error("Use format=" + o.output_file + " to set output format");
   }
+  */
 
   if (o.format) {
     o.format = o.format.toLowerCase();
@@ -4760,6 +4609,7 @@ function validateOutputOpts(o, _) {
   if ("topojson_precision" in o && o.topojson_precision > 0 === false) {
     error("topojson-precision should be a positive number");
   }
+
 }
 
 
@@ -4951,12 +4801,14 @@ MapShaper.getOptionParser = function() {
     .option("target");
 
   parser.command("clip")
+    .validate(validateClip)
     .option("source")
     .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 
   parser.command("erase")
+    .validate(validateClip)
     .option("source")
     .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
@@ -5136,6 +4988,8 @@ function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2
     var s2dy = s2p2y - s2p1y;
     var den = -s2dx * s1dy + s1dx * s2dy;
     if (den === 0) return false; // colinear -- treating as no intersection
+    // TODO: with partially overlapping colinear segments, should return a hit
+    //    might want to return two points if one segment fully contains the other
 
     // Collision detected
     var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / den;
@@ -5158,6 +5012,7 @@ function ccw(x0, y0, x1, y1, x2, y2) {
   if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) return 1;
   return 0;
 }
+
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
@@ -5758,6 +5613,46 @@ function ArcCollection() {
     }
   };
 
+  this.getVertex = function(arcId, nth) {
+    var i = this.indexOfVertex(arcId, nth);
+    return {
+      x: _xx[i],
+      y: _yy[i]
+    };
+  };
+
+  this.indexOfVertex = function(arcId, nth) {
+    var absId = arcId < 0 ? ~arcId : arcId,
+        len = _nn[absId];
+    if (nth < 0) nth = len + nth;
+    if (absId != arcId) nth = len - nth - 1;
+    if (nth < 0 || nth >= len) error("[ArcCollection] out-of-range vertex id");
+    return _ii[absId] + nth;
+  };
+
+  // Tests if arc endpoints have same x, y coords
+  // (arc may still have collapsed);
+  this.arcIsClosed = function(arcId) {
+    var i = this.indexOfVertex(arcId, 0),
+        j = this.indexOfVertex(arcId, -1);
+    return i != j && _xx[i] == _xx[j] && _yy[i] == _yy[j];
+  };
+
+  // Tests if first and last segments mirror each other
+  // A 3-vertex arc with same endpoints tests true
+  this.arcIsLollipop = function(arcId) {
+    var len = this.getArcLength(arcId),
+        i, j;
+    if (len <= 2 || !this.arcIsClosed(arcId)) return false;
+    i = this.indexOfVertex(arcId, 1);
+    j = this.indexOfVertex(arcId, -2);
+    return _xx[i] == _xx[j] && _yy[i] == _yy[j];
+  };
+
+  this.getArcLength = function(arcId) {
+    return _nn[absArcId(arcId)];
+  };
+
   this.getArcIter = function(arcId) {
     var fw = arcId >= 0,
         i = fw ? arcId : ~arcId,
@@ -5951,6 +5846,10 @@ Arc.prototype = {
       coords.push([iter.x, iter.y]);
     }
     return coords;
+  },
+
+  toString: function() {
+    return JSON.stringify(this.toArray());
   },
 
   smallerThan: function(units) {
@@ -9323,6 +9222,24 @@ MapShaper.cloneShape = function(shp) {
   });
 };
 
+// a and b are arrays of arc ids
+MapShaper.pathsAreIdentical = function(a, b) {
+  if (a.length != b.length) return false;
+  for (var i=0, n=a.length; i<n; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+};
+
+/*
+MapShaper.reversePath = function(ids) {
+  ids.reverse();
+  for (var i=0, n=ids.length; i<n; i++) {
+    ids[i] = ~ids[i];
+  }
+};
+*/
+
 MapShaper.getPathMetadata = function(shape, arcs, type) {
   var iter = new ShapeIter(arcs);
   return Utils.map(shape, function(ids) {
@@ -10288,7 +10205,7 @@ MapShaper.exportShapefile = function(dataset, opts) {
     // Copy prj file, if Shapefile import and running in Node.
     if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
       var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj');
-      if (cli.fileExists(prjFile)) {
+      if (cli.isFile(prjFile)) {
         files.push({
           content: cli.readFile(prjFile, 'utf-8'),
           filename: name + ".prj"
@@ -10316,10 +10233,6 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
     return rec.buffer;
   });
 
-  if (!bounds.hasBounds()) {
-    error("[exportShpAndShx()] Missing bounds", layer);
-  }
-
   // write .shp header section
   var shpBin = new BinArray(fileBytes, false)
     .writeInt32(9994)
@@ -10327,12 +10240,19 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
     .writeInt32(fileBytes / 2)
     .littleEndian()
     .writeInt32(1000)
-    .writeInt32(shpType)
-    .writeFloat64(bounds.xmin)
-    .writeFloat64(bounds.ymin)
-    .writeFloat64(bounds.xmax)
-    .writeFloat64(bounds.ymax)
-    .skipBytes(4 * 8); // skip Z & M type bounding boxes;
+    .writeInt32(shpType);
+
+  if (bounds.hasBounds()) {
+    shpBin.writeFloat64(bounds.xmin || 0) // using 0s as empty value
+      .writeFloat64(bounds.ymin || 0)
+      .writeFloat64(bounds.xmax || 0)
+      .writeFloat64(bounds.ymax || 0);
+  } else {
+    // no bounds -- assume no shapes or all null shapes -- using 0s as bbox
+    shpBin.skipBytes(4 * 8);
+  }
+
+  shpBin.skipBytes(4 * 8); // skip Z & M type bounding boxes;
 
   // write .shx header
   var shxBytes = 100 + shapeBuffers.length * 8;
@@ -10700,6 +10620,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
   var s1p1, s1p2, s2p1, s2p2,
       s1p1x, s1p2x, s2p1x, s2p2x,
       s1p1y, s1p2y, s2p1y, s2p2y,
+      m1, m2,
       hit, i, j;
 
   // Sort segments by xmin, to allow efficient exclusion of segments with
@@ -10738,8 +10659,12 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
       // skip segments that share an endpoint
       if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
-          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y)
+          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
+
+        // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
+        //
         continue;
+      }
 
       // test two candidate segments for intersection
       hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
@@ -12677,11 +12602,12 @@ MapShaper.NodeCollection = NodeCollection;
 function NodeCollection(arcs) {
   var arcData = arcs.getVertexData(),
       nn = arcData.nn,
-      ii = arcData.ii,
       xx = arcData.xx,
       yy = arcData.yy;
 
   var nodeData = MapShaper.findNodeTopology(arcs);
+
+  if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
 
   this.toArray = function() {
     var flags = new Uint8Array(nodeData.xx.length),
@@ -12698,66 +12624,139 @@ function NodeCollection(arcs) {
     return nodes;
   };
 
-  this.getNextArc = function(arcId, isCW) {
-    var ai = indexOfVertex(arcId, -2),
+  this.debugNode = function(arcId) {
+    var arcs = [];
+    this.forEachConnectedArc(arcId, function(id) {
+      arcs.push(id);
+    });
+    console.log("node:", arcs);
+  };
+
+  this.forEachConnectedArc = function(arcId, cb) {
+    var nextId = nextConnectedArc(arcId);
+    do {
+      cb(nextId);
+      nextId = nextConnectedArc(nextId);
+    } while (nextId != arcId);
+  };
+
+  // Returns next arc in a path, or ~@prevId if path terminates
+  // @test (optional) filter function
+  this.getNextArc = function(prevId, isCW, test) {
+    var ai = arcs.indexOfVertex(prevId, -2),
         ax = xx[ai],
         ay = yy[ai],
-        bi = indexOfVertex(arcId, -1),
+        bi = arcs.indexOfVertex(prevId, -1),
         bx = xx[bi],
         by = yy[bi],
         ci, cx, cy,
         di, dx, dy,
-        nextId = nextConnectedArc(arcId),
-        candId = arcId,
-        candAngle,
-        angle;
+        nextId = prevId,
+        nextAngle = 0,
+        candId = nextConnectedArc(prevId),
+        candAngle;
 
-    while (nextId != arcId) {
+    while (candId != prevId) {
+      // if (candId < 0) console.log("reversed arc:", candId)
       // get best candidate
-      ci = indexOfVertex(nextId, -2);
+      ci = arcs.indexOfVertex(candId, -2);
       cx = xx[ci];
       cy = yy[ci];
 
       // sanity check: make sure vertex is same (else error);
-      di = indexOfVertex(nextId, -1);
+      di = arcs.indexOfVertex(candId, -1);
       dx = xx[di];
       dy = yy[di];
       if (dx !== bx || dy !== by) {
-        console.log("cd:", cx, cy, dx, dy, 'arc:', nextId);
+        console.log("cd:", cx, cy, dx, dy, 'arc:', candId);
         error("Node error:");
       }
 
-      angle = signedAngle(ax, ay, bx, by, cx, cy);
-      if (angle > 0 && (candId === arcId || isCW && angle < candAngle ||
-          !isCW && angle > candAngle)) {
-        candId = ~nextId; // reverse arc to point onwards
-        candAngle = angle;
+      candAngle = signedAngle(ax, ay, bx, by, cx, cy);
+      // if (candAngle <= 0 || candAngle >= 2 * Math.PI) console.log(candAngle);
+      if (!test || test(~candId)) {
+        if (candAngle > 0 && (nextAngle === 0 || isCW && candAngle < nextAngle ||
+            !isCW && candAngle > nextAngle)) {
+        // if (candAngle > 0 && (nextAngle === 0 || candAngle < nextAngle)) {
+          nextId = candId;
+          nextAngle = candAngle;
+        }
+        else if (candAngle == nextAngle) {
+          /*
+            console.log("duplicate angle:", candAngle);
+            console.log("id1:", nextId, "id2:", candId);
+            console.log("len1:", nn[absArcId(nextId)], "len2:", nn[absArcId(candId)]);
+            console.log("arc1:", arcs.getArc(nextId).toString());
+            console.log("arc2:", arcs.getArc(candId).toString());
+            this.debugNode(candId);
+          */
+        }
+      } else {
+        // console.log("failed test:", candId)
       }
-      nextId = nextConnectedArc(nextId);
+
+      candId = nextConnectedArc(candId);
     }
 
-    return candId;
+    return ~nextId; // reverse arc to point onwards
   };
+
+  // Returns the id of the first identical arc or @arcId if none found
+  this.findMatchingArc = function(arcId) {
+    var nextId = nextConnectedArc(arcId),
+        match = arcId;
+    while (nextId != arcId) {
+      nextId = nextConnectedArc(nextId);
+      if (testArcMatch(arcId, nextId)) {
+        if (absArcId(nextId) < absArcId(match)) match = nextId;
+      }
+      // console.log(" arcs:", arcs.toArray())
+      // break;
+    }
+
+    return match;
+  };
+
+  function testArcMatch(a, b) {
+    var absA = a >= 0 ? a : ~a,
+        absB = b >= 0 ? b : ~b,
+        lenA = nn[absA];
+    if (lenA != nn[absB]) return false;
+    if (lenA < 2) error("[testArcMatch() defective arc");
+    if (testVertexMatch(a, b, -1) &&
+        testVertexMatch(a, b, 1) &&
+        testVertexMatch(a, b, -2)) {
+      return true;
+    }
+    return false;
+  }
+
+  function testVertexMatch(a, b, i) {
+    var ai = arcs.indexOfVertex(a, i),
+        bi = arcs.indexOfVertex(b, i);
+    return xx[ai] == xx[bi] && yy[ai] == yy[bi];
+  }
 
   // return arcId of next arc in the chain, pointed towards the shared vertex
   function nextConnectedArc(arcId) {
-    var absId = arcId < 0 ? ~arcId : arcId,
-        nodeId = absId === arcId ? absId * 2 + 1: absId * 2, // if fw, use end, if rev, use start
+    var fw = arcId >= 0,
+        absId = fw ? arcId : ~arcId,
+        nodeId = fw ? absId * 2 + 1: absId * 2, // if fw, use end, if rev, use start
         chainedId = nodeData.chains[nodeId],
         nextAbsId = chainedId >> 1,
         nextArcId = chainedId & 1 == 1 ? nextAbsId : ~nextAbsId;
 
-    //console.log(".. nextConnected(); id:", arcId, "nodeId:", nodeId, "chainedId:", chainedId, "nextAbsId:", nextAbsId, "nextId:", nextArcId);
+    if (chainedId < 0 || chainedId >= nodeData.chains.length) error("out-of-range chain id");
+    if (absId >= nn.length) error("out-of-range arc id");
+    if (nodeData.chains.length <= nodeId) error("out-of-bounds node id");
     return nextArcId;
   }
 
-  function indexOfVertex(arcId, nth) {
-    var absId = arcId < 0 ? ~arcId : arcId,
-        len = nn[absId];
-    if (nth < 0) nth = len + nth;
-    if (absId != arcId) nth = len - nth - 1;
-    return ii[absId] + nth;
-  }
+  // expose for testing
+  this.internal = {
+    testArcMatch: testArcMatch,
+    testVertexMatch: testVertexMatch
+  };
 }
 
 
@@ -12781,6 +12780,7 @@ MapShaper.findNodeTopology = function(arcs) {
   });
 
   var chains = initPointChains(xx2, yy2);
+  //console.log(">> chains:", Utils.toArray(chains), "arcs:", arcs.size());
   return {
     xx: xx2,
     yy: yy2,
@@ -12792,40 +12792,219 @@ MapShaper.findNodeTopology = function(arcs) {
 
 
 
+MapShaper.PathIndex = PathIndex;
+
+function PathIndex(shapes, arcs) {
+  var _index;
+  init(shapes);
+
+  function init(shapes) {
+    var boxes = [];
+
+    shapes.forEach(function(shp) {
+      if (shp) {
+        MapShaper.forEachPath(shp, addPath);
+      }
+    });
+
+    _index = require('rbush')();
+    _index.load(boxes);
+
+    function addPath(ids) {
+      var bounds = arcs.getSimpleShapeBounds(ids);
+      var bbox = bounds.toArray();
+      bbox.ids = ids;
+      bbox.bounds = bounds;
+      boxes.push(bbox);
+    }
+  }
+
+  // test if path is contained within an indexed path
+  // assumes paths don't intersect (intersections should have been handled previously)
+  this.pathIsEnclosed = function(pathIds) {
+    var pathBounds = arcs.getSimpleShapeBounds(pathIds),
+        cands = _index.search(pathBounds.toArray()),
+        count = 0;
+
+    cands.forEach(function(cand) {
+      if (pathContainsPath(cand.ids, cand.bounds, pathIds, pathBounds)) count++;
+    });
+    return count % 2 == 1;
+  };
+
+  // return array of paths that are contained within a path, or null if none
+  // @pathIds Array of arc ids comprising a closed path
+  this.findEnclosedPaths = function(pathIds) {
+    var pathBounds = arcs.getSimpleShapeBounds(pathIds),
+        cands = _index.search(pathBounds.toArray()),
+        paths = [];
+
+    cands.forEach(function(cand) {
+      if (pathContainsPath(pathIds, pathBounds, cand.ids, cand.bounds)) paths.push(cand.ids);
+    });
+    return paths.length > 0 ? paths : null;
+  };
+
+  // assume polygon paths do not intersect (may be adjacent)
+  function pathContainsPath(idsA, boundsA, idsB, boundsB) {
+    if (boundsA.contains(boundsB) === false) return false;
+
+    // A contains B iff some point on B is inside A
+    // TODO: improve performance with large polygons
+    var p = arcs.getVertex(idsB[0], 0);
+    var inside = geom.testPointInRing(p.x, p.y, idsA, arcs);
+    return inside;
+  }
+}
+
+
+
 
 api.clipLayer = function(targetLyr, clipLyr, arcs, opts) {
-  opts = Utils.defaults({action: 'clip'}, opts);
-  return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, opts);
+  return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, "clip", opts);
 };
 
 api.eraseLayer = function(targetLyr, clipLyr, arcs, opts) {
-  opts = Utils.defaults({action: 'erase'}, opts);
-  return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, opts);
+  return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, "erase", opts);
 };
 
-MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, opts) {
+MapShaper.initClippingFlags = function(clipShapes, arcs, erasing) {
   var flags = new Uint8Array(arcs.size()); // 0 = unused, 1 = fw, 2 = rev
 
-  // 1. use clip layer to disable arc pathways in the target layer
-  var erasing = opts.action == 'erase';
-  MapShaper.forEachArcId(clipLyr.shapes, function(id) {
+  // disable arc pathways in the target layer
+  MapShaper.forEachArcId(clipShapes, function(id) {
+    var fw = id >= 0,
+        absId = fw ? id : ~id,
+        currFlag = flags[absId],
+        blockFw = erasing ? fw : !fw,
+        newFlag = blockFw ? 1 : 2;
+
+    // careful: this might not work right if an arc is shared between target and source polygons,
+    // and in some other situations
+    // option: use 4 to prevent division along shared boundaries in the clip layer
+    // alternative: dissolve clip-layer shapes to remove shared boundaries
+    if (currFlag > 0) {
+      newFlag = 4;
+    }
+    // error condition: lollipop arcs can cause problems; skip these
+    if (arcs.arcIsLollipop(id)) {
+      newFlag = 4;
+    }
+    flags[absId] = newFlag;
+  });
+  return flags;
+};
+
+
+MapShaper.getPathSplitter = function(arcs, flags) {
+  var nodes = new NodeCollection(arcs);
+  flags = flags || new Uint8Array(arcs.size());
+
+  function testArc(id) {
+    var abs = id < 0 ? ~id : id;
+    return (flags[abs] & 4) === 0;
+  }
+
+  function useArc(id) {
     var abs = id < 0 ? ~id : id,
-        blockFw = abs != id;
-    if (erasing) blockFw = !blockFw;
-    flags[abs] = blockFw ? 1 : 2;
+        flag = abs == id ? 1 : 2, // 1 -> forward arc, 2 -> rev arc
+        unused = (flags[abs] & flag) === 0;
+    flags[abs] |= flag; // set flag
+    return unused;
+  }
+
+  return function(startId) {
+    var path = [],
+        nextId, msg,
+        candId = startId,
+        verbose = false;
+
+    do {
+      if (verbose) msg = (nextId === undefined ? " " : nextId) + " -> " + candId;
+      if (useArc(candId)) {
+        path.push(candId);
+        nextId = candId;
+      } else {
+        if (verbose) console.log(msg + " x");
+        return null;
+      }
+      if (verbose) console.log(msg);
+
+      candId = nodes.getNextArc(nextId, true, testArc);
+      if (candId == ~nextId) {
+        console.log("dead-end");
+        return null;
+      }
+    } while (candId != startId);
+    return path.length === 0 ? null : path;
+  };
+};
+
+
+// @type: 'clip' or 'erase'
+MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
+  if (targetLyr.geometry_type != 'polygon' || clipLyr.geometry_type != 'polygon') {
+    stop("[intersectLayers()] Expected two polygon layers, received",
+      targetLyr.geometry_type, "and", clipLyr.geometry_type);
+  }
+
+  var flags = MapShaper.initClippingFlags(clipLyr.shapes, arcs, type == 'erase'),
+      dividePath = MapShaper.getPathSplitter(arcs, flags);
+
+  // Divide the clip layer
+  var index = new PathIndex(clipLyr.shapes, arcs);
+  var dividedShapes = targetLyr.shapes.map(function(shape, i) {
+    return clipPolygon(shape, type) || null;
   });
 
-  // 2. Divide the clip layer
-  dividedLyr = MapShaper.dividePolygonLayer(targetLyr, arcs, flags);
+  var dividedLyr = Utils.defaults({shapes: dividedShapes, data: null}, targetLyr);
+
   if (targetLyr.data) {
     dividedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
   }
   return dividedLyr;
+
+  function clipPolygon(shape, type) {
+    var dividedShape = [],
+        clipping = type == 'clip',
+        erasing = type == 'erase';
+
+    MapShaper.forEachPath(shape, function(ids) {
+      var isCW = geom.getPathArea(arcs.getShapeIter(ids)) > 0,
+          path;
+
+      // console.log(":", ids)
+
+      for (var i=0; i<ids.length; i++) {
+        path = dividePath(ids[i]);
+
+        if (path) {
+          // if path generated at i==0 is identical to original path,
+          // b. need a bounds test to see if path is contained in a clip polygon
+          // a. can break the loop
+          if (MapShaper.pathsAreIdentical(ids, path)) {
+            var contained = index.pathIsEnclosed(path);
+            if (clipping && contained || erasing && !contained) {
+              dividedShape.push(path);
+            }
+            // break;
+          } else {
+            dividedShape.push(path);
+          }
+        }
+      }
+      //
+    });
+    return dividedShape.length === 0 ? null : dividedShape;
+  }
 };
+
 
 MapShaper.divideArcs = function(layers, arcs) {
   // divide arcs
   var map = MapShaper.insertClippingPoints(arcs);
+
+  // TODO: handle duplicate arcs
 
   // update arc ids in arc-based layers
   layers.forEach(function(lyr) {
@@ -12855,32 +13034,6 @@ MapShaper.prepareClippingLayer = function(src, dataset) {
   return clipLyr;
 };
 
-/*
-MapShaper.intersectDatasets = function(a, b, opts) {
-  if (!a.arcs || !b.arcs) error("[intersectDatasets()] Needs two datasets with arcs");
-  // 1. combine arc datasets
-  var sizeA = a.arcs.size(),
-      sizeB = b.arcs.size(),
-      lyrA = a.layers[0],
-      lyrB = b.layers[0],
-      mergedArcs = MapShaper.mergeArcs([a.arcs, b.arcs]);
-  a.arcs = null; // delete original arcs for gc
-  b.arcs = null;
-
-  // 2. remap arc ids
-  MapShaper.forEachArcId(lyrB.shapes, function(id) {
-    return id >= 0 ? id + sizeA : ~(~id + sizeA);
-  });
-
-  var lyrC = MapShaper.intersectLayers(lyrA, lyrB, mergedArcs, opts);
-  return {
-    layers: [lyrC],
-    arcs: mergedArcs,
-  };
-};
-*/
-
-
 MapShaper.updateArcIds = function(shapes, map, arcs) {
   var arcCount = arcs.size(),
       shape2;
@@ -12903,15 +13056,18 @@ MapShaper.updateArcIds = function(shapes, map, arcs) {
     var rev = id < 0,
         absId = rev ? ~id : id,
         min = map[absId],
-        max = (absId >= map.length - 1 ? arcCount : map[absId + 1]) - 1;
+        max = (absId >= map.length - 1 ? arcCount : map[absId + 1]) - 1,
+        id2;
     do {
       if (rev) {
-        ids.push(~max);
+        id2 = ~max;
         max--;
       } else {
-        ids.push(min);
+        id2 = min;
         min++;
       }
+      // id2 = nodes.findMatchingArc(id2); //
+      ids.push(id2);
     } while (max - min >= 0);
   }
 };
@@ -13048,61 +13204,29 @@ MapShaper.findClippingPoints = function(arcs) {
   }
 };
 
-// for testing; should be removed
-api.dividePolygonLayer = function (lyr, arcs) {
-  var flags = new Uint8Array(arcs.size());
-  return MapShaper.dividePolygonLayer(lyr, arcs, flags);
-};
-
 // Assumes layer and arcs have been processed with divideArcs()
-MapShaper.dividePolygonLayer = function(lyr, arcs, flags) {
-  var nodes = new NodeCollection(arcs),
-      shapes = lyr.shapes,
-      dividedShapes;
-
+api.dividePolygonLayer = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
     stop("[dividePolygonLayer()] Expected polygon layer, received:", lyr.geometry_type);
   }
 
-  dividedShapes = shapes.map(function(shape, i) {
-    return dividePolygon(shape) || null;
-  });
-
-  return Utils.defaults({shapes: dividedShapes, data: null}, lyr);
-
-  // TODO: divide according to intersection type: a, b, a+b
-  function dividePolygon(shape) {
+  var divide = MapShaper.getPathSplitter(arcs);
+  var dividedShapes = lyr.shapes.map(function(shape, i) {
     var dividedShape = [];
+
     MapShaper.forEachPath(shape, function(ids) {
-      var isCW = geom.getPathArea(arcs.getShapeIter(ids)) > 0,
-          path;
+      var path;
       for (var i=0; i<ids.length; i++) {
-        path = getDividedPath(ids[i], isCW, nodes);
-        if (path) dividedShape.push(path);
+        path = divide(ids[i]);
+        if (path) {
+          dividedShape.push(path);
+        }
       }
     });
     return dividedShape.length === 0 ? null : dividedShape;
-  }
+  });
 
-  function tryArc(id) {
-    var abs = id < 0 ? ~id : id,
-        flag = abs == id ? 1 : 2, // 1 -> forward arc, 2 -> rev arc
-        unused = (flags[abs] & flag) === 0;
-    flags[abs] |= flag; // set flag
-    return unused;
-  }
-
-  function getDividedPath(arc0, isCW, nodes) {
-    // console.log("  getDividedPath() arc0:", arc0, "cw?", isCW, "flags:", Utils.toArray(flags));
-    var path = [],
-        nextId = arc0;
-    do {
-      if (!tryArc(nextId)) return null;
-      path.push(nextId);
-      nextId = nodes.getNextArc(nextId, isCW);
-    } while (nextId != arc0);
-    return path.length === 0 ? null : path;
-  }
+  return Utils.defaults({shapes: dividedShapes, data: null}, lyr);
 };
 
 
@@ -13425,7 +13549,7 @@ api.exportFiles = function(dataset, opts) {
   var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
   exports.forEach(function(obj, i) {
     var path = paths[i];
-    cli.writeFile(path, obj.content);
+    Node.writeFile(path, obj.content);
     console.log("Wrote " + path);
   });
 };
@@ -13551,6 +13675,11 @@ function getVersion() {
   return v || "";
 }
 
+cli.isFile = Node.fileExists;
+cli.isDirectory = Node.dirExists;
+cli.readFile = Node.readFile;
+cli.writeFlie = Node.writeFile;
+
 cli.getOutputPaths = function(files, dir) {
   if (!files || !files.length) {
     message("No files to save");
@@ -13583,7 +13712,7 @@ cli.addFileSuffix = function(paths, suff) {
 
 cli.testFileCollision = function(paths, suff) {
   return Utils.some(paths, function(path) {
-    return Node.fileExists(path);
+    return cli.isFile(path) || cli.isDirectory(path);
   });
 };
 
@@ -13594,8 +13723,8 @@ cli.validateFileExtension = function(path) {
 };
 
 cli.replaceFileExtension = function(path, ext) {
-  var info = Node.parseFilename(path);
-  return Node.path.join(info.relative_dir, info.base + "." + ext);
+  var info = utils.parseLocalPath(path);
+  return info.pathbase + '.' + ext;
 };
 
 cli.validateInputFiles = function(arr) {
@@ -13606,7 +13735,7 @@ cli.validateInputFiles = function(arr) {
 
 cli.validateInputFile = function(ifile) {
   var opts = {};
-  if (!Node.fileExists(ifile)) {
+  if (!cli.isFile(ifile)) {
     error("File not found (" + ifile + ")");
   }
   if (!cli.validateFileExtension(ifile)) {
@@ -13658,21 +13787,8 @@ function validateCommaSep(str, count) {
   return parts;
 }
 
-// Force v8 to perform a complete gc cycle.
-// To enable, run node with --expose_gc
-// Timing gc() gives a crude indication of number of objects in memory.
-/*
-MapShaper.gc = function() {
-  if (global.gc) {
-    T.start();
-    global.gc();
-    T.stop("gc()");
-  }
-};
-*/
 
 Utils.extend(api.internal, {
-  Node: Node,
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam,
@@ -13681,9 +13797,6 @@ Utils.extend(api.internal, {
   Bounds: Bounds
 });
 
-cli.readFile = Node.readFile;
-cli.writeFile = Node.writeFile;
-cli.fileExists = Node.fileExists;
 api.T = T;
 
 module.exports = api;

@@ -61,6 +61,8 @@ function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2
     var s2dy = s2p2y - s2p1y;
     var den = -s2dx * s1dy + s1dx * s2dy;
     if (den === 0) return false; // colinear -- treating as no intersection
+    // TODO: with partially overlapping colinear segments, should return a hit
+    //    might want to return two points if one segment fully contains the other
 
     // Collision detected
     var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / den;
@@ -83,6 +85,7 @@ function ccw(x0, y0, x1, y1, x2, y2) {
   if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) return 1;
   return 0;
 }
+
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 //

@@ -136,6 +136,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
   var s1p1, s1p2, s2p1, s2p2,
       s1p1x, s1p2x, s2p1x, s2p2x,
       s1p1y, s1p2y, s2p1y, s2p2y,
+      m1, m2,
       hit, i, j;
 
   // Sort segments by xmin, to allow efficient exclusion of segments with
@@ -174,8 +175,12 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
       // skip segments that share an endpoint
       if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
-          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y)
+          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
+
+        // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
+        //
         continue;
+      }
 
       // test two candidate segments for intersection
       hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,

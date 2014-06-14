@@ -3,43 +3,155 @@ mapshaper-merging,
 mapshaper-segments,
 mapshaper-dataset-utils,
 mapshaper-endpoints,
-mapshaper-shape-geom
+mapshaper-shape-geom,
+mapshaper-path-index
 */
 
-
 api.clipLayer = function(targetLyr, clipLyr, arcs, opts) {
-  opts = Utils.defaults({action: 'clip'}, opts);
-  return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, opts);
+  return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, "clip", opts);
 };
 
 api.eraseLayer = function(targetLyr, clipLyr, arcs, opts) {
-  opts = Utils.defaults({action: 'erase'}, opts);
-  return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, opts);
+  return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, "erase", opts);
 };
 
-MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, opts) {
+MapShaper.initClippingFlags = function(clipShapes, arcs, erasing) {
   var flags = new Uint8Array(arcs.size()); // 0 = unused, 1 = fw, 2 = rev
 
-  // 1. use clip layer to disable arc pathways in the target layer
-  var erasing = opts.action == 'erase';
-  MapShaper.forEachArcId(clipLyr.shapes, function(id) {
+  // disable arc pathways in the target layer
+  MapShaper.forEachArcId(clipShapes, function(id) {
+    var fw = id >= 0,
+        absId = fw ? id : ~id,
+        currFlag = flags[absId],
+        blockFw = erasing ? fw : !fw,
+        newFlag = blockFw ? 1 : 2;
+
+    // careful: this might not work right if an arc is shared between target and source polygons,
+    // and in some other situations
+    // option: use 4 to prevent division along shared boundaries in the clip layer
+    // alternative: dissolve clip-layer shapes to remove shared boundaries
+    if (currFlag > 0) {
+      newFlag = 4;
+    }
+    // error condition: lollipop arcs can cause problems; skip these
+    if (arcs.arcIsLollipop(id)) {
+      newFlag = 4;
+    }
+    flags[absId] = newFlag;
+  });
+  return flags;
+};
+
+
+MapShaper.getPathSplitter = function(arcs, flags) {
+  var nodes = new NodeCollection(arcs);
+  flags = flags || new Uint8Array(arcs.size());
+
+  function testArc(id) {
+    var abs = id < 0 ? ~id : id;
+    return (flags[abs] & 4) === 0;
+  }
+
+  function useArc(id) {
     var abs = id < 0 ? ~id : id,
-        blockFw = abs != id;
-    if (erasing) blockFw = !blockFw;
-    flags[abs] = blockFw ? 1 : 2;
+        flag = abs == id ? 1 : 2, // 1 -> forward arc, 2 -> rev arc
+        unused = (flags[abs] & flag) === 0;
+    flags[abs] |= flag; // set flag
+    return unused;
+  }
+
+  return function(startId) {
+    var path = [],
+        nextId, msg,
+        candId = startId,
+        verbose = false;
+
+    do {
+      if (verbose) msg = (nextId === undefined ? " " : nextId) + " -> " + candId;
+      if (useArc(candId)) {
+        path.push(candId);
+        nextId = candId;
+      } else {
+        if (verbose) console.log(msg + " x");
+        return null;
+      }
+      if (verbose) console.log(msg);
+
+      candId = nodes.getNextArc(nextId, true, testArc);
+      if (candId == ~nextId) {
+        console.log("dead-end");
+        return null;
+      }
+    } while (candId != startId);
+    return path.length === 0 ? null : path;
+  };
+};
+
+
+// @type: 'clip' or 'erase'
+MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
+  if (targetLyr.geometry_type != 'polygon' || clipLyr.geometry_type != 'polygon') {
+    stop("[intersectLayers()] Expected two polygon layers, received",
+      targetLyr.geometry_type, "and", clipLyr.geometry_type);
+  }
+
+  var flags = MapShaper.initClippingFlags(clipLyr.shapes, arcs, type == 'erase'),
+      dividePath = MapShaper.getPathSplitter(arcs, flags);
+
+  // Divide the clip layer
+  var index = new PathIndex(clipLyr.shapes, arcs);
+  var dividedShapes = targetLyr.shapes.map(function(shape, i) {
+    return clipPolygon(shape, type) || null;
   });
 
-  // 2. Divide the clip layer
-  dividedLyr = MapShaper.dividePolygonLayer(targetLyr, arcs, flags);
+  var dividedLyr = Utils.defaults({shapes: dividedShapes, data: null}, targetLyr);
+
   if (targetLyr.data) {
     dividedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
   }
   return dividedLyr;
+
+  function clipPolygon(shape, type) {
+    var dividedShape = [],
+        clipping = type == 'clip',
+        erasing = type == 'erase';
+
+    MapShaper.forEachPath(shape, function(ids) {
+      var isCW = geom.getPathArea(arcs.getShapeIter(ids)) > 0,
+          path;
+
+      // console.log(":", ids)
+
+      for (var i=0; i<ids.length; i++) {
+        path = dividePath(ids[i]);
+
+        if (path) {
+          // if path generated at i==0 is identical to original path,
+          // b. need a bounds test to see if path is contained in a clip polygon
+          // a. can break the loop
+          if (MapShaper.pathsAreIdentical(ids, path)) {
+            var contained = index.pathIsEnclosed(path);
+            if (clipping && contained || erasing && !contained) {
+              dividedShape.push(path);
+            }
+            // break;
+          } else {
+            dividedShape.push(path);
+          }
+        }
+      }
+      //
+    });
+    return dividedShape.length === 0 ? null : dividedShape;
+  }
 };
+
 
 MapShaper.divideArcs = function(layers, arcs) {
   // divide arcs
   var map = MapShaper.insertClippingPoints(arcs);
+
+  // TODO: handle duplicate arcs
 
   // update arc ids in arc-based layers
   layers.forEach(function(lyr) {
@@ -69,32 +181,6 @@ MapShaper.prepareClippingLayer = function(src, dataset) {
   return clipLyr;
 };
 
-/*
-MapShaper.intersectDatasets = function(a, b, opts) {
-  if (!a.arcs || !b.arcs) error("[intersectDatasets()] Needs two datasets with arcs");
-  // 1. combine arc datasets
-  var sizeA = a.arcs.size(),
-      sizeB = b.arcs.size(),
-      lyrA = a.layers[0],
-      lyrB = b.layers[0],
-      mergedArcs = MapShaper.mergeArcs([a.arcs, b.arcs]);
-  a.arcs = null; // delete original arcs for gc
-  b.arcs = null;
-
-  // 2. remap arc ids
-  MapShaper.forEachArcId(lyrB.shapes, function(id) {
-    return id >= 0 ? id + sizeA : ~(~id + sizeA);
-  });
-
-  var lyrC = MapShaper.intersectLayers(lyrA, lyrB, mergedArcs, opts);
-  return {
-    layers: [lyrC],
-    arcs: mergedArcs,
-  };
-};
-*/
-
-
 MapShaper.updateArcIds = function(shapes, map, arcs) {
   var arcCount = arcs.size(),
       shape2;
@@ -117,15 +203,18 @@ MapShaper.updateArcIds = function(shapes, map, arcs) {
     var rev = id < 0,
         absId = rev ? ~id : id,
         min = map[absId],
-        max = (absId >= map.length - 1 ? arcCount : map[absId + 1]) - 1;
+        max = (absId >= map.length - 1 ? arcCount : map[absId + 1]) - 1,
+        id2;
     do {
       if (rev) {
-        ids.push(~max);
+        id2 = ~max;
         max--;
       } else {
-        ids.push(min);
+        id2 = min;
         min++;
       }
+      // id2 = nodes.findMatchingArc(id2); //
+      ids.push(id2);
     } while (max - min >= 0);
   }
 };
@@ -262,59 +351,27 @@ MapShaper.findClippingPoints = function(arcs) {
   }
 };
 
-// for testing; should be removed
-api.dividePolygonLayer = function (lyr, arcs) {
-  var flags = new Uint8Array(arcs.size());
-  return MapShaper.dividePolygonLayer(lyr, arcs, flags);
-};
-
 // Assumes layer and arcs have been processed with divideArcs()
-MapShaper.dividePolygonLayer = function(lyr, arcs, flags) {
-  var nodes = new NodeCollection(arcs),
-      shapes = lyr.shapes,
-      dividedShapes;
-
+api.dividePolygonLayer = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
     stop("[dividePolygonLayer()] Expected polygon layer, received:", lyr.geometry_type);
   }
 
-  dividedShapes = shapes.map(function(shape, i) {
-    return dividePolygon(shape) || null;
-  });
-
-  return Utils.defaults({shapes: dividedShapes, data: null}, lyr);
-
-  // TODO: divide according to intersection type: a, b, a+b
-  function dividePolygon(shape) {
+  var divide = MapShaper.getPathSplitter(arcs);
+  var dividedShapes = lyr.shapes.map(function(shape, i) {
     var dividedShape = [];
+
     MapShaper.forEachPath(shape, function(ids) {
-      var isCW = geom.getPathArea(arcs.getShapeIter(ids)) > 0,
-          path;
+      var path;
       for (var i=0; i<ids.length; i++) {
-        path = getDividedPath(ids[i], isCW, nodes);
-        if (path) dividedShape.push(path);
+        path = divide(ids[i]);
+        if (path) {
+          dividedShape.push(path);
+        }
       }
     });
     return dividedShape.length === 0 ? null : dividedShape;
-  }
+  });
 
-  function tryArc(id) {
-    var abs = id < 0 ? ~id : id,
-        flag = abs == id ? 1 : 2, // 1 -> forward arc, 2 -> rev arc
-        unused = (flags[abs] & flag) === 0;
-    flags[abs] |= flag; // set flag
-    return unused;
-  }
-
-  function getDividedPath(arc0, isCW, nodes) {
-    // console.log("  getDividedPath() arc0:", arc0, "cw?", isCW, "flags:", Utils.toArray(flags));
-    var path = [],
-        nextId = arc0;
-    do {
-      if (!tryArc(nextId)) return null;
-      path.push(nextId);
-      nextId = nodes.getNextArc(nextId, isCW);
-    } while (nextId != arc0);
-    return path.length === 0 ? null : path;
-  }
+  return Utils.defaults({shapes: dividedShapes, data: null}, lyr);
 };

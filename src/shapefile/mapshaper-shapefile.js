@@ -100,7 +100,7 @@ MapShaper.exportShapefile = function(dataset, opts) {
     // Copy prj file, if Shapefile import and running in Node.
     if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
       var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj');
-      if (cli.fileExists(prjFile)) {
+      if (cli.isFile(prjFile)) {
         files.push({
           content: cli.readFile(prjFile, 'utf-8'),
           filename: name + ".prj"
@@ -128,10 +128,6 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
     return rec.buffer;
   });
 
-  if (!bounds.hasBounds()) {
-    error("[exportShpAndShx()] Missing bounds", layer);
-  }
-
   // write .shp header section
   var shpBin = new BinArray(fileBytes, false)
     .writeInt32(9994)
@@ -139,12 +135,19 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
     .writeInt32(fileBytes / 2)
     .littleEndian()
     .writeInt32(1000)
-    .writeInt32(shpType)
-    .writeFloat64(bounds.xmin)
-    .writeFloat64(bounds.ymin)
-    .writeFloat64(bounds.xmax)
-    .writeFloat64(bounds.ymax)
-    .skipBytes(4 * 8); // skip Z & M type bounding boxes;
+    .writeInt32(shpType);
+
+  if (bounds.hasBounds()) {
+    shpBin.writeFloat64(bounds.xmin || 0) // using 0s as empty value
+      .writeFloat64(bounds.ymin || 0)
+      .writeFloat64(bounds.xmax || 0)
+      .writeFloat64(bounds.ymax || 0);
+  } else {
+    // no bounds -- assume no shapes or all null shapes -- using 0s as bbox
+    shpBin.skipBytes(4 * 8);
+  }
+
+  shpBin.skipBytes(4 * 8); // skip Z & M type bounding boxes;
 
   // write .shx header
   var shxBytes = 100 + shapeBuffers.length * 8;

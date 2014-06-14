@@ -400,6 +400,46 @@ function ArcCollection() {
     }
   };
 
+  this.getVertex = function(arcId, nth) {
+    var i = this.indexOfVertex(arcId, nth);
+    return {
+      x: _xx[i],
+      y: _yy[i]
+    };
+  };
+
+  this.indexOfVertex = function(arcId, nth) {
+    var absId = arcId < 0 ? ~arcId : arcId,
+        len = _nn[absId];
+    if (nth < 0) nth = len + nth;
+    if (absId != arcId) nth = len - nth - 1;
+    if (nth < 0 || nth >= len) error("[ArcCollection] out-of-range vertex id");
+    return _ii[absId] + nth;
+  };
+
+  // Tests if arc endpoints have same x, y coords
+  // (arc may still have collapsed);
+  this.arcIsClosed = function(arcId) {
+    var i = this.indexOfVertex(arcId, 0),
+        j = this.indexOfVertex(arcId, -1);
+    return i != j && _xx[i] == _xx[j] && _yy[i] == _yy[j];
+  };
+
+  // Tests if first and last segments mirror each other
+  // A 3-vertex arc with same endpoints tests true
+  this.arcIsLollipop = function(arcId) {
+    var len = this.getArcLength(arcId),
+        i, j;
+    if (len <= 2 || !this.arcIsClosed(arcId)) return false;
+    i = this.indexOfVertex(arcId, 1);
+    j = this.indexOfVertex(arcId, -2);
+    return _xx[i] == _xx[j] && _yy[i] == _yy[j];
+  };
+
+  this.getArcLength = function(arcId) {
+    return _nn[absArcId(arcId)];
+  };
+
   this.getArcIter = function(arcId) {
     var fw = arcId >= 0,
         i = fw ? arcId : ~arcId,
@@ -593,6 +633,10 @@ Arc.prototype = {
       coords.push([iter.x, iter.y]);
     }
     return coords;
+  },
+
+  toString: function() {
+    return JSON.stringify(this.toArray());
   },
 
   smallerThan: function(units) {

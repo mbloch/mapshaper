@@ -5,7 +5,7 @@ var api = require('../'),
 
 describe('mapshaper-clipping.js', function () {
 
-  describe('Fig. 1 polygons', function () {
+  describe('Fig. 1 - two simple polygons', function () {
 
     //  Fig. 1
     //
@@ -17,14 +17,25 @@ describe('mapshaper-clipping.js', function () {
     //  |       |
     //  c ----- b
     //
-    var arcs1 = [[[3, 3], [3, 1], [1, 1], [1, 3], [3, 3]],
+    var coords = [[[3, 3], [3, 1], [1, 1], [1, 3], [3, 3]],
         [[2, 2], [2, 4], [4, 4], [4, 2], [2, 2]]];
 
-    var coll = new ArcCollection(arcs1);
-    var map = api.internal.insertClippingPoints(coll);
+    var arcs = new ArcCollection(coords);
+    var map = api.internal.insertClippingPoints(arcs);
 
     it('insert clipping points', function () {
-      var result = coll.toArray();
+
+      //
+      //      f ----- g
+      //      4       |
+      //  d --*-2 a   |
+      //  |   3   0   |
+      //  |   e 5-*-- h
+      //  |       1
+      //  c ----- b
+      //
+
+      var result = arcs.toArray();
       var targetArcs = [[[3, 3], [3, 2]],
           [[3, 2], [3, 1], [1, 1], [1, 3], [2, 3]],
           [[2, 3], [3, 3]],
@@ -48,8 +59,8 @@ describe('mapshaper-clipping.js', function () {
       var targetA = [[[0, 1, 2]]],
           targetB = [[[3, 4, 5]]];
 
-      api.internal.updateArcIds(lyrA.shapes, map, coll);
-      api.internal.updateArcIds(lyrB.shapes, map, coll);
+      api.internal.updateArcIds(lyrA.shapes, map, arcs);
+      api.internal.updateArcIds(lyrB.shapes, map, arcs);
       assert.deepEqual(lyrA.shapes, targetA);
       assert.deepEqual(lyrB.shapes, targetB);
     })
@@ -66,8 +77,8 @@ describe('mapshaper-clipping.js', function () {
       var targetA = [[[~2, ~1, ~0]]],
           targetB = [[[~5, ~4, ~3]]];
 
-      api.internal.updateArcIds(lyrA.shapes, map, coll);
-      api.internal.updateArcIds(lyrB.shapes, map, coll);
+      api.internal.updateArcIds(lyrA.shapes, map, arcs);
+      api.internal.updateArcIds(lyrB.shapes, map, arcs);
       assert.deepEqual(lyrA.shapes, targetA);
       assert.deepEqual(lyrB.shapes, targetB);
     })
@@ -79,14 +90,14 @@ describe('mapshaper-clipping.js', function () {
       };
 
       var target = [[[0, 5, 3, 2], [1, ~3, ~5]]];
-      api.internal.updateArcIds(lyrA.shapes, map, coll);
-      var dividedLyr = api.dividePolygonLayer(lyrA, coll);
+      api.internal.updateArcIds(lyrA.shapes, map, arcs);
+      var dividedLyr = api.dividePolygonLayer(lyrA, arcs);
       assert.deepEqual(dividedLyr.shapes, target);
     })
 
   })
 
-  describe('Fig. 2 polygons', function () {
+  describe('Fig. 2 polygons - point-segment intersections', function () {
 
     //  Fig. 2
     //
@@ -99,12 +110,12 @@ describe('mapshaper-clipping.js', function () {
     //  c ----- b
     //
     // arcs: abcda, efghije (point-segment intersections)
-    var arcs = [[[3, 3], [3, 1], [1, 1], [1, 3], [3, 3]],
+    var coords = [[[3, 3], [3, 1], [1, 1], [1, 3], [3, 3]],
         [[2, 2], [2, 3], [2, 4], [4, 4], [4, 2], [3, 2], [2, 2]]];
 
 
-    var coll = new ArcCollection(arcs);
-    var map = api.internal.insertClippingPoints(coll);
+    var arcs = new ArcCollection(coords);
+    var map = api.internal.insertClippingPoints(arcs);
 
     it('arcs are divided', function () {
       var targetArcs = [
@@ -115,13 +126,11 @@ describe('mapshaper-clipping.js', function () {
           [[2, 3], [2, 4], [4, 4], [4, 2], [3, 2]],
           [[3, 2], [2, 2]]];
 
-      var result = coll.toArray();
+      var result = arcs.toArray();
       assert.deepEqual(result, targetArcs);
       assert.deepEqual(api.utils.toArray(map), [0, 3]);
     })
-
   })
-
 
   describe('Fig. 3 polygons', function () {
     //
@@ -139,14 +148,14 @@ describe('mapshaper-clipping.js', function () {
     //      |       |
     //      n ----- m
 
-    var arcs =
+    var coords =
         [[[3, 3], [3, 2], [1, 2], [1, 4], [3, 4], [3, 3]], // a,b,c,d,e,a
         [[2, 3], [2, 6], [4, 6], [4, 3]],                  // f,g,h,i
         [[4, 3], [2, 3]],                                  // i,f
         [[3, 5], [4, 5], [4, 4], [3, 4], [3, 5]],          // j,k,l,e,j
         [[4, 3], [4, 1], [2, 1], [2, 3]]];                 // i,m,n,f
 
-    var coll = new ArcCollection(arcs);
+    var arcs = new ArcCollection(coords);
 
     var lyrA = {
       geometry_type: "polygon",
@@ -157,13 +166,12 @@ describe('mapshaper-clipping.js', function () {
       shapes: [[[1, 2]], [[4, ~2]]]
     };
 
-    var map = api.internal.insertClippingPoints(coll);
-    api.internal.updateArcIds(lyrA.shapes, map, coll);
-    api.internal.updateArcIds(lyrB.shapes, map, coll);
+    var map = api.internal.insertClippingPoints(arcs);
+    api.internal.updateArcIds(lyrA.shapes, map, arcs);
+    api.internal.updateArcIds(lyrB.shapes, map, arcs);
 
-    it ("clipping points", function() {
+    it ("divide arcs", function() {
 
-      //
       //      g ----- h     // showing arc ids after clipping
       //      |       |
       //      |   j 9 k
@@ -176,7 +184,7 @@ describe('mapshaper-clipping.js', function () {
       //      |       |
       //      n ----- m
       //
-      var arcs = coll.toArray();
+      var coords = arcs.toArray();
       var target = [
         [[3, 3], [3, 2], [2, 2]],         // ab.  (0)
         [[2, 2], [1, 2], [1, 4], [2, 4]], // .cd.
@@ -193,7 +201,7 @@ describe('mapshaper-clipping.js', function () {
         [[4, 3], [4, 1], [2, 1], [2, 2]], // imn. (4)
         [[2, 2], [2, 3]]];                // .f
 
-      assert.deepEqual(arcs, target);
+      assert.deepEqual(coords, target);
       assert.deepEqual(api.utils.toArray(map), [0, 3, 7, 9, 12])
     })
 
@@ -208,12 +216,307 @@ describe('mapshaper-clipping.js', function () {
     })
 
     it ("divide layer A", function() {
-      var dividedLyr = api.dividePolygonLayer(lyrA, coll);
+      var dividedLyr = api.dividePolygonLayer(lyrA, arcs);
       var target = [[[0, 13, ~8], [1, ~3, ~13], [2, 8, 3], [9, 5, 11]]];
       // [9, 5, 11] used instead of [9, 10, 11];
       assert.deepEqual(dividedLyr.shapes, target);
     })
 
   })
+
+  describe('Fig. 4 - Arc with spike', function () {
+
+    // Fig 4 -- edge case
+    //
+    //       a ----- b
+    //       |       |
+    //   j --*-- e --*-- g
+    //   |   |   |   |   |
+    //   |   |   f   |   |
+    //   |   |       |   |
+    //   |   d ----- c   |
+    //   |               |
+    //   i ------------- h
+    //
+    // arc0: abcda
+    // arc1: efeghije
+    //
+    var coords = [[[2, 5], [4, 5], [4, 2], [2, 2], [2, 5]],
+        [[3, 4], [3, 3], [3, 4], [5, 4], [5, 1], [1, 1], [1, 4], [3, 4]]];
+
+
+    it('Divide arcs', function() {
+      var arcs = new ArcCollection(coords);
+      var target = [[[2, 5], [4, 5], [4, 4]],
+          [[4, 4], [4, 2], [2, 2], [2, 4]],
+          [[2, 4], [2, 5]],
+          [[3, 4], [3, 3], [3, 4], [4, 4]],
+          [[4, 4], [5, 4], [5, 1], [1, 1], [1, 4], [2, 4]],
+          [[2, 4], [3, 4]]];
+
+      var map = api.internal.insertClippingPoints(arcs);
+      assert.deepEqual(arcs.toArray(), target);
+      assert.deepEqual(api.utils.toArray(map), [0, 3]);
+    })
+
+    it('Clip', function () {
+      var arcs = new ArcCollection(coords);
+      var lyr1 = {
+        geometry_type: "polygon",
+        shapes: [[[0]]]
+      };
+      var lyr2 = {
+        geometry_type: "polygon",
+        shapes: [[[1]]]
+      };
+      var targetShapes = [[[1, 5, 3]]];
+      var clipLyr = api.internal.prepareClippingLayer("1", {arcs: arcs, layers: [lyr1, lyr2]});
+      var clippedLyr = api.clipLayer(lyr1, clipLyr, arcs);
+      assert.deepEqual(clippedLyr.shapes, targetShapes);
+    })
+  })
+
+
+  describe('Fig. 5 - polygon with hole', function () {
+    //
+    //  a ----------------- b
+    //  |                   |
+    //  |   i ----- j       |
+    //  |   |       |       |
+    //  |   |   e --*-- f   |
+    //  |   |   |   |   |   |
+    //  |   |   h --*-- g   |
+    //  |   |       |       |
+    //  |   l ----- k       |
+    //  |                   |
+    //  d ----------------- c
+    //
+    var coords = [[[1, 6], [6, 6], [6, 1], [1, 1], [1, 6]],
+          [[3, 4], [5, 4], [5, 3], [3, 3], [3, 4]],
+          [[2, 5], [4, 5], [4, 2], [2, 2] ,[2, 5]]];
+
+    it ("Divide arcs", function() {
+      var arcs = new ArcCollection(coords);
+      var target = [[[1, 6], [6, 6], [6, 1], [1, 1], [1, 6]], // 0
+          [[3, 4], [4, 4]],  // 1
+          [[4, 4], [5, 4], [5, 3], [4, 3]],
+          [[4, 3], [3, 3], [3, 4]],
+          [[2, 5], [4, 5], [4, 4]],  // 4
+          [[4, 4], [4, 3]],
+          [[4, 3], [4, 2], [2, 2], [2, 5]]];
+
+      var map = api.internal.insertClippingPoints(arcs);
+
+      assert.deepEqual(arcs.toArray(), target);
+      assert.deepEqual(api.utils.toArray(map), [0, 1, 4])
+    })
+
+    it ("Clip test 1", function() {
+      // use simple polygon to clip layer with filled hole
+      var lyr1 = {
+        geometry_type: "polygon",
+        shapes: [[[0], [~1]], [[1]]]
+      };
+      var lyr2 = {
+        geometry_type: "polygon",
+        shapes: [[[2]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var clipLyr = api.internal.prepareClippingLayer("1", dataset);
+      var clippedLyr = api.clipLayer(lyr1, clipLyr, dataset.arcs);
+      var target = [
+        [[~3, 6, 4, ~1]],
+        [[1, 5, 3]]];
+
+      assert.deepEqual(clippedLyr.shapes, target);
+    })
+
+    it ("Clip test 2", function() {
+      // use layer with hole to clip simple polygon
+      var lyr1 = {
+        geometry_type: "polygon",
+        shapes: [[[0], [~1]]]
+      };
+      var lyr2 = {
+        geometry_type: "polygon",
+        shapes: [[[2]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var clipLyr = api.internal.prepareClippingLayer("0", dataset);
+      var clippedLyr = api.clipLayer(lyr2, clipLyr, dataset.arcs);
+      var target = [[[4, ~1, ~3, 6]]];
+
+      assert.deepEqual(clippedLyr.shapes, target);
+    })
+
+    it ("Erase test 1", function() {
+      // use simple polygon to erase polygon with hole
+      var lyr1 = {
+        geometry_type: "polygon",
+        shapes: [[[0], [~1]]]
+      };
+      var lyr2 = {
+        geometry_type: "polygon",
+        shapes: [[[2]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var eraseLyr = api.internal.prepareClippingLayer("1", dataset);
+      var erasedLyr = api.eraseLayer(lyr1, eraseLyr, dataset.arcs);
+      var target = [[[0], [~2, ~4, ~6]]];
+
+      assert.deepEqual(erasedLyr.shapes, target);
+
+    });
+  })
+
+  describe('Fig. 6 - polygon with hole', function () {
+    //
+    //  a ------------- b
+    //  |               |
+    //  |   e ----- f   |
+    //  |   |       |   |
+    //  |   |   i --*---*-- j
+    //  |   |   |   |   |   |
+    //  |   |   l --*---*-- k
+    //  |   |       |   |
+    //  |   h ----- g   |
+    //  |               |
+    //  d ------------- c
+    //
+    var coords = [[[1, 6], [5, 6], [5, 1], [1, 1], [1, 6]],
+          [[2, 5], [4, 5], [4, 2], [2, 2] ,[2, 5]],
+          [[3, 4], [6, 4], [6, 3], [3, 3], [3, 4]]];
+
+    it ("Divide arcs", function() {
+      var arcs = new ArcCollection(coords);
+
+      var target = [
+          [[1, 6], [5, 6], [5, 4]],         // 0
+          [[5, 4], [5, 3]],
+          [[5, 3], [5, 1], [1, 1], [1, 6]],
+
+          [[2, 5], [4, 5], [4, 4]],         // 3
+          [[4, 4], [4, 3]],
+          [[4, 3], [4, 2], [2, 2], [2, 5]],
+
+          [[3, 4], [4, 4]],                 // 6
+          [[4, 4], [5, 4]],
+          [[5, 4], [6, 4], [6, 3], [5, 3]],
+          [[5, 3], [4, 3]],
+          [[4, 3], [3, 3], [3, 4]]];
+
+      var map = api.internal.insertClippingPoints(arcs);
+      assert.deepEqual(arcs.toArray(), target);
+      assert.deepEqual(api.utils.toArray(map), [0, 3, 6]);
+    })
+
+
+    it ("Clip test 1", function() {
+      // use simple polygon to clip layer with filled hole
+      var lyr1 = {
+        geometry_type: "polygon",
+        shapes: [[[0], [~1]], [[1]]]
+      };
+      var lyr2 = {
+        geometry_type: "polygon",
+        shapes: [[[2]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var clipLyr = api.internal.prepareClippingLayer("1", dataset);
+      var clippedLyr = api.clipLayer(lyr1, clipLyr, dataset.arcs);
+      var target = [
+        [[1, 9, ~4, 7]],
+        [[4, 10, 6]]];
+
+      assert.deepEqual(clippedLyr.shapes, target);
+    })
+
+    it ("Clip test 2", function() {
+      // use layer with hole to clip simple polygon
+      var lyr1 = {
+        geometry_type: "polygon",
+        shapes: [[[0], [~1]]]
+      };
+      var lyr2 = {
+        geometry_type: "polygon",
+        shapes: [[[2]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var clipLyr = api.internal.prepareClippingLayer("0", dataset);
+      var clippedLyr = api.clipLayer(lyr2, clipLyr, dataset.arcs);
+      var target = [[[7, 1, 9, ~4]]];
+
+      assert.deepEqual(clippedLyr.shapes, target);
+    })
+
+
+    it ("Erase test 1", function() {
+      // use polygon with hole to erase simple polygon
+      var lyr1 = {
+        geometry_type: "polygon",
+        shapes: [[[0], [~1]]]
+      };
+      var lyr2 = {
+        geometry_type: "polygon",
+        shapes: [[[2]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var eraseLyr = api.internal.prepareClippingLayer("0", dataset);
+      var erasedLyr = api.eraseLayer(lyr2, eraseLyr, dataset.arcs);
+      var target = [[[6, 4, 10], [8, ~1]]];
+
+      assert.deepEqual(erasedLyr.shapes, target);
+    })
+
+    it ("Erase test 2", function() {
+      // use polygon with hole to erase simple polygon
+      var lyr1 = {
+        geometry_type: "polygon",
+        shapes: [[[0], [~1]], [[1]]]
+      };
+      var lyr2 = {
+        geometry_type: "polygon",
+        shapes: [[[2]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var eraseLyr = api.internal.prepareClippingLayer("1", dataset);
+      var erasedLyr = api.eraseLayer(lyr1, eraseLyr, dataset.arcs);
+      var target = [
+        [[0, ~7, ~3, ~5, ~9, 2]],
+        [[3, ~6, ~10, 5]]];
+
+      assert.deepEqual(erasedLyr.shapes, target);
+    })
+
+  })
+
 
 })

@@ -225,7 +225,7 @@ api.exportFiles = function(dataset, opts) {
   var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
   exports.forEach(function(obj, i) {
     var path = paths[i];
-    cli.writeFile(path, obj.content);
+    Node.writeFile(path, obj.content);
     console.log("Wrote " + path);
   });
 };

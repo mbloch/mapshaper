@@ -7605,6 +7605,13 @@ var dataTableProto = {
     }
   },
 
+  clone: function() {
+    var records2 = this.getRecords().map(function(rec) {
+      return Utils.extend({}, rec);
+    });
+    return new DataTable(records2);
+  },
+
   size: function() {
     return this.getRecords().length;
   }

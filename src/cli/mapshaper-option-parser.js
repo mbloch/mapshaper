@@ -52,7 +52,7 @@ function CommandParser() {
         }
       }
 
-      if (cmdDef.validate) cmdDef.validate(cmd.options, cmd._);
+      if (cmdDef.validate) cmdDef.validate(cmd);
       commands.push(cmd);
     }
     return commands;
