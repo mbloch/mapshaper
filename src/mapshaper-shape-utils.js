@@ -20,14 +20,12 @@ MapShaper.pathsAreIdentical = function(a, b) {
   return true;
 };
 
-/*
 MapShaper.reversePath = function(ids) {
   ids.reverse();
   for (var i=0, n=ids.length; i<n; i++) {
     ids[i] = ~ids[i];
   }
 };
-*/
 
 MapShaper.getPathMetadata = function(shape, arcs, type) {
   var iter = new ShapeIter(arcs);

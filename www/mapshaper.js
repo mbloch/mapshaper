@@ -1172,48 +1172,14 @@ EventDispatcher.prototype.removeEventListeners =
 var inNode = typeof module !== 'undefined' && !!module.exports;
 var Node = {
   inNode: inNode,
-  arguments: inNode ? process.argv.slice(1) : null // remove "node" from head of argv list
 };
 
-/**
- * Convenience functions for working with files and loading data.
- */
 if (inNode) {
-  Node.fs = require('fs');
-  Node.path = require('path');
+  Node.arguments = process.argv.slice(1); // remove "node" from head of argv list
 
   Node.gc = function() {
     global.gc && global.gc();
   };
-
-  Node.statSync = function(fpath) {
-    var obj = null;
-    try {
-      obj = Node.fs.statSync(fpath);
-    }
-    catch(e) {
-      //trace(e, fpath);
-    }
-    return obj;
-  };
-
-
-  Node.walkSync = function(dir, results) {
-    results = results || [];
-    var list = Node.fs.readdirSync(dir);
-    Utils.forEach(list, function(file) {
-      var path = dir + "/" + file;
-      var stat = Node.statSync(path);
-      if (stat && stat.isDirectory()) {
-        Node.walkSync(path, results);
-      }
-      else {
-        results.push(path);
-      }
-    });
-    return results;
-  };
-
 
   Node.toBuffer = function(src) {
     var buf;
@@ -1225,271 +1191,131 @@ if (inNode) {
     } else if (src instanceof Buffer) {
       buf = src;
     } else {
-      error ("Node#toBuffer() unsupported input:", src);
+      error ("[Node.toBuffer()] unsupported input:", src);
     }
     return buf;
   };
-
-  Node.shellExec = function(cmd) {
-    var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
-    var spawn = require('child_process').spawn;
-    spawn(parts[0], parts.slice(1), {stdio: "inherit"});
-  };
-
-  // Converts relative path to absolute path relative to the node script;
-  // absolute paths returned unchanged
-  //
-  Node.resolvePathFromScript = function(path) {
-    if (Node.pathIsAbsolute(path))
-      return path;
-    var scriptDir = Node.getFileInfo(require.main.filename).directory;
-    return Node.path.join(scriptDir, path);
-  };
-
-  Node.resolvePathFromShell = function(path) {
-    if (Node.pathIsAbsolute(path))
-      return path;
-    return Node.path.join(process.cwd(), path);
-  };
-
-  Node.pathIsAbsolute = function(path) {
-    return (path[0] == '/' || path[0] == "~");
-  };
-
-  Node.dirExists = function(path) {
-    var ss = Node.statSync(path);
-    return ss && ss.isDirectory() || false;
-  };
-
-  Node.fileExists = function(path) {
-    var ss = Node.statSync(path);
-    return ss && ss.isFile() || false;
-  };
-
-  Node.parseFilename = function(fpath) {
-    // TODO: give better output if fpath is a directory
-    var info = {};
-    var filename = Node.path.basename(fpath);
-    if (/[\\/]$/.test(filename)) {
-      filename = filename.substr(0, filename.length-1);
-    }
-    info.file = filename;
-    info.path = Node.path.resolve(fpath);
-    info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
-    info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
-    info.directory = Node.path.dirname(info.path);
-    info.relative_dir = Node.path.dirname(fpath);
-    return info;
-  };
-
-  Node.getFileInfo = function(fpath) {
-    var info = Node.parseFilename(fpath),
-        stat;
-    Opts.copyAllParams(info, {exists: true, is_directory: false, is_file: false});
-    if (stat = Node.statSync(fpath)) {
-      if (stat.isFile()) {
-        info.is_file = true;
-      } else if (stat.isDirectory()) {
-        info.is_directory = true;
-      } else {
-        // ighore other filesystem entities, e.g. devices
-        info.exists = false;
-      }
-    }
-    return info;
-  };
-
-  // @charset (optional) e.g. 'utf8'
-  // returns string or Buffer if no charset is provided.
-  //
-  Node.readFile = function(fname, charset) {
-    return Node.fs.readFileSync(fname, charset || void 0);
-  };
-
-  Node.writeFile = function(path, content) {
-    if (content instanceof ArrayBuffer) {
-      content = Node.toBuffer(content);
-    }
-    Node.fs.writeFileSync(path, content, 0, null, 0);
-  };
-
-  Node.copyFile = function(src, dest) {
-    if (!Node.fileExists(src)) error("[copyFile()] File not found:", src);
-    var content = Node.fs.readFileSync(src);
-    Node.fs.writeFileSync(dest, content);
-  };
-
-  Node.post = function(url, data, callback, opts) {
-    opts = opts || {};
-    opts.method = 'POST';
-    opts.data = data;
-    opts.url = url;
-    Node.request(opts, callback);
-  };
-
-  Node.readResponse = function(res, callback, encoding) {
-    res.setEncoding(encoding || 'utf8');
-    var content = '';
-    res.on('data', function(chunk) {
-      content += chunk;
-    });
-    res.on('end', function() {
-      callback(null, content, res);
-    });
-  };
-
-  // Current signature: function(opts, callback), like Node.js request module
-  //    callback: function(err, body, response)
-  //
-  Node.request = function(opts, callback) {
-    if (Utils.isString(opts)) { // @opts is string -> assume url & old interface
-      error("Node.request(opts, callback) No longer accepts a url string. Pass url as a property of opts.");
-    }
-
-    if (!opts.url) error("Node.request() Missing url in options:", opts);
-
-    var o = require('url').parse(opts.url),
-        data = null,
-        // moduleName: http or https
-        moduleName = opts.protocol || o.protocol.slice(0, -1); // can override protocol (e.g. request https:// url using http)
-
-    if (moduleName != 'http' && moduleName != 'https') error("Node.request() Unsupported protocol:", o.protocol);
-    var reqOpts = {
-      host: o.hostname,
-      hostname: o.hostname,
-      path: o.path,
-      //port: o.port || module == 'https' && 443 || 80,
-      method: opts.method || 'GET',
-      headers: opts.headers || null
-    };
-
-    if (reqOpts.method == 'POST' || reqOpts.method == 'PUT') {
-      data = opts.data || opts.body || '';
-      reqOpts.headers = Utils.extend({
-        'Content-Length': data.length,
-        'Connection': 'close',
-        'Accept-Encoding': 'identity'
-      }, reqOpts.headers);
-    }
-
-    var req = require(moduleName).request(reqOpts);
-    req.on('response', function(res) {
-      if (res.statusCode > 201) {
-        callback("Node.request() Unexpected status: " + res.statusCode + " url: " + opts.url, null, res);
-      } else {
-        Node.readResponse(res, callback, 'utf8');
-      }
-    });
-
-    req.on('error', function(e) {
-      // trace("Node.request() request error:", e.message);
-      callback("Node.request() error: " + e.message, null, null);
-    });
-    req.end(data);
-  };
-
-  Node.atob = function(b64string) {
-    return new Buffer(b64string, 'base64').toString('binary')
-  };
-
-  Node.readJson = function(url, callback, opts) {
-    var retn = opts && opts.data || null;
-    /*
-    opts = {
-      headers: {
-        'Accept-Encoding': 'identity',
-        'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
-        'Connection': 'keep-alive',
-        'Cache-control': 'max-age=0',
-        'User-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_3) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.43 Safari/537.31'
-      }
-    }*/
-
-    Node.request({url: url}, function(err, str, req) {
-      var data = null;
-      if (err) {
-        trace("Node.readJson() error:", err);
-      } else if (!str) {
-        trace("Node.readJson() empty response()");
-      } else {
-        try {
-          // handle JS callback
-          if (match = /^\s*([\w.-]+)\(/.exec(str)) {
-            var ctx = {};
-            Opts.exportObject(match[1], function(o) {return o}, ctx);
-            with (ctx) {
-              data = eval(str);
-            }
-          } else {
-            data = JSON.parse(str); // no callback: assume valid JSON
-          }
-        } catch(e) {
-          trace("Node#readJson() Error reading from url:", url,"response:", str);
-          error(e);
-        }
-      }
-      console.log("data:", data)
-      callback(data, retn);
-    });
-
-  };
-
-  // super-simple options, if not using optimist
-  Node.options = function(o) {
-    o = o || {};
-    var opts = {_:[]},
-        flags = (o.flags || o.binary || '').split(','),
-        currOpt;
-
-    var aliases = Utils.reduce((o.aliases || "").split(','), function(obj, item) {
-        var parts = item.split(':');
-        if (parts.length == 2) {
-          obj[parts[0]] = parts[1];
-          obj[parts[1]] = parts[0];
-        }
-        return obj;
-      }, {});
-
-    function setOpt(opt, val) {
-      opts[opt] = val;
-      var alias = aliases[opt];
-      if (alias) {
-        opts[alias] = val;
-      }
-    }
-
-
-    Node.arguments.slice(1).forEach(function(arg) {
-      var match, alias, switches;
-      if (arg[0] == '-') {
-        currOpt = null; // handle this as an error
-        if (match = /^--(.*)/.exec(arg)) {
-          switches = [match[1]];
-        }
-        else if (match = /^-(.+)/.exec(arg)) {
-          switches = match[1].split('');
-        }
-        Utils.forEach(switches, function(opt) {
-          if (Utils.contains(flags, opt)) {
-            setOpt(opt, true);
-          } else {
-            currOpt = opt;
-          }
-        });
-      }
-      else if (currOpt) {
-        setOpt(currOpt, Utils.isNumber(arg) ? parseFloat(arg) : arg);
-        currOpt = null;
-      }
-      else {
-        opts._.push(arg);
-      }
-    });
-    opts.argv = opts._;
-    return opts;
-  };
 }
 
+
+
+
+// Convenience functions for working with the local filesystem
+
+Node.path = require('path');
+
+Node.statSync = function(fpath) {
+  var obj = null;
+  try {
+    obj = require('fs').statSync(fpath);
+  }
+  catch(e) {
+    //trace(e, fpath);
+  }
+  return obj;
+};
+
+Node.walkSync = function(dir, results) {
+  results = results || [];
+  var list = require('fs').readdirSync(dir);
+  Utils.forEach(list, function(file) {
+    var path = dir + "/" + file;
+    var stat = Node.statSync(path);
+    if (stat && stat.isDirectory()) {
+      Node.walkSync(path, results);
+    }
+    else {
+      results.push(path);
+    }
+  });
+  return results;
+};
+
+Node.shellExec = function(cmd) {
+  var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
+  var spawn = require('child_process').spawn;
+  spawn(parts[0], parts.slice(1), {stdio: "inherit"});
+};
+
+// Converts relative path to absolute path relative to the node script;
+// absolute paths returned unchanged
+Node.resolvePathFromScript = function(path) {
+  if (Node.pathIsAbsolute(path))
+    return path;
+  var scriptDir = Node.getFileInfo(require.main.filename).directory;
+  return Node.path.join(scriptDir, path);
+};
+
+Node.resolvePathFromShell = function(path) {
+  return Node.pathIsAbsolute(path) ? path : Node.path.join(process.cwd(), path);
+};
+
+Node.pathIsAbsolute = function(path) {
+  return (path[0] == '/' || path[0] == "~");
+};
+
+Node.dirExists = function(path) {
+  var ss = Node.statSync(path);
+  return ss && ss.isDirectory() || false;
+};
+
+Node.fileExists = function(path) {
+  var ss = Node.statSync(path);
+  return ss && ss.isFile() || false;
+};
+
+Node.parseFilename = function(fpath) {
+  // TODO: give better output if fpath is a directory
+  var info = {};
+  var filename = Node.path.basename(fpath);
+  if (/[\\/]$/.test(filename)) {
+    filename = filename.substr(0, filename.length-1);
+  }
+  info.file = filename;
+  info.path = Node.path.resolve(fpath);
+  info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
+  info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
+  info.directory = Node.path.dirname(info.path);
+  info.relative_dir = Node.path.dirname(fpath);
+  return info;
+};
+
+Node.getFileInfo = function(fpath) {
+  var info = Node.parseFilename(fpath),
+      stat;
+  Opts.copyAllParams(info, {exists: true, is_directory: false, is_file: false});
+  if (stat = Node.statSync(fpath)) {
+    if (stat.isFile()) {
+      info.is_file = true;
+    } else if (stat.isDirectory()) {
+      info.is_directory = true;
+    } else {
+      // ighore other filesystem entities, e.g. devices
+      info.exists = false;
+    }
+  }
+  return info;
+};
+
+// @charset (optional) e.g. 'utf8'
+// returns string or Buffer if no charset is provided.
+Node.readFile = function(fname, charset) {
+  return require('fs').readFileSync(fname, charset || void 0);
+};
+
+Node.writeFile = function(path, content) {
+  if (content instanceof ArrayBuffer) {
+    content = Node.toBuffer(content);
+  }
+  require('fs').writeFileSync(path, content, 0, null, 0);
+};
+
+Node.copyFile = function(src, dest) {
+  var fs = require('fs');
+  if (!Node.fileExists(src)) error("[copyFile()] File not found:", src);
+  var content = fs.readFileSync(src);
+  fs.writeFileSync(dest, content);
+};
 
 
 
@@ -4363,6 +4189,8 @@ function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2
     var s2dy = s2p2y - s2p1y;
     var den = -s2dx * s1dy + s1dx * s2dy;
     if (den === 0) return false; // colinear -- treating as no intersection
+    // TODO: with partially overlapping colinear segments, should return a hit
+    //    might want to return two points if one segment fully contains the other
 
     // Collision detected
     var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / den;
@@ -4385,6 +4213,7 @@ function ccw(x0, y0, x1, y1, x2, y2) {
   if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) return 1;
   return 0;
 }
+
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
 //
@@ -4985,6 +4814,46 @@ function ArcCollection() {
     }
   };
 
+  this.getVertex = function(arcId, nth) {
+    var i = this.indexOfVertex(arcId, nth);
+    return {
+      x: _xx[i],
+      y: _yy[i]
+    };
+  };
+
+  this.indexOfVertex = function(arcId, nth) {
+    var absId = arcId < 0 ? ~arcId : arcId,
+        len = _nn[absId];
+    if (nth < 0) nth = len + nth;
+    if (absId != arcId) nth = len - nth - 1;
+    if (nth < 0 || nth >= len) error("[ArcCollection] out-of-range vertex id");
+    return _ii[absId] + nth;
+  };
+
+  // Tests if arc endpoints have same x, y coords
+  // (arc may still have collapsed);
+  this.arcIsClosed = function(arcId) {
+    var i = this.indexOfVertex(arcId, 0),
+        j = this.indexOfVertex(arcId, -1);
+    return i != j && _xx[i] == _xx[j] && _yy[i] == _yy[j];
+  };
+
+  // Tests if first and last segments mirror each other
+  // A 3-vertex arc with same endpoints tests true
+  this.arcIsLollipop = function(arcId) {
+    var len = this.getArcLength(arcId),
+        i, j;
+    if (len <= 2 || !this.arcIsClosed(arcId)) return false;
+    i = this.indexOfVertex(arcId, 1);
+    j = this.indexOfVertex(arcId, -2);
+    return _xx[i] == _xx[j] && _yy[i] == _yy[j];
+  };
+
+  this.getArcLength = function(arcId) {
+    return _nn[absArcId(arcId)];
+  };
+
   this.getArcIter = function(arcId) {
     var fw = arcId >= 0,
         i = fw ? arcId : ~arcId,
@@ -5178,6 +5047,10 @@ Arc.prototype = {
       coords.push([iter.x, iter.y]);
     }
     return coords;
+  },
+
+  toString: function() {
+    return JSON.stringify(this.toArray());
   },
 
   smallerThan: function(units) {
@@ -8356,6 +8229,22 @@ MapShaper.cloneShape = function(shp) {
   });
 };
 
+// a and b are arrays of arc ids
+MapShaper.pathsAreIdentical = function(a, b) {
+  if (a.length != b.length) return false;
+  for (var i=0, n=a.length; i<n; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+};
+
+MapShaper.reversePath = function(ids) {
+  ids.reverse();
+  for (var i=0, n=ids.length; i<n; i++) {
+    ids[i] = ~ids[i];
+  }
+};
+
 MapShaper.getPathMetadata = function(shape, arcs, type) {
   var iter = new ShapeIter(arcs);
   return Utils.map(shape, function(ids) {
@@ -9321,7 +9210,7 @@ MapShaper.exportShapefile = function(dataset, opts) {
     // Copy prj file, if Shapefile import and running in Node.
     if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
       var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj');
-      if (cli.fileExists(prjFile)) {
+      if (cli.isFile(prjFile)) {
         files.push({
           content: cli.readFile(prjFile, 'utf-8'),
           filename: name + ".prj"
@@ -9349,10 +9238,6 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
     return rec.buffer;
   });
 
-  if (!bounds.hasBounds()) {
-    error("[exportShpAndShx()] Missing bounds", layer);
-  }
-
   // write .shp header section
   var shpBin = new BinArray(fileBytes, false)
     .writeInt32(9994)
@@ -9360,12 +9245,19 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
     .writeInt32(fileBytes / 2)
     .littleEndian()
     .writeInt32(1000)
-    .writeInt32(shpType)
-    .writeFloat64(bounds.xmin)
-    .writeFloat64(bounds.ymin)
-    .writeFloat64(bounds.xmax)
-    .writeFloat64(bounds.ymax)
-    .skipBytes(4 * 8); // skip Z & M type bounding boxes;
+    .writeInt32(shpType);
+
+  if (bounds.hasBounds()) {
+    shpBin.writeFloat64(bounds.xmin || 0) // using 0s as empty value
+      .writeFloat64(bounds.ymin || 0)
+      .writeFloat64(bounds.xmax || 0)
+      .writeFloat64(bounds.ymax || 0);
+  } else {
+    // no bounds -- assume no shapes or all null shapes -- using 0s as bbox
+    shpBin.skipBytes(4 * 8);
+  }
+
+  shpBin.skipBytes(4 * 8); // skip Z & M type bounding boxes;
 
   // write .shx header
   var shxBytes = 100 + shapeBuffers.length * 8;
@@ -11222,6 +11114,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
   var s1p1, s1p2, s2p1, s2p2,
       s1p1x, s1p2x, s2p1x, s2p2x,
       s1p1y, s1p2y, s2p1y, s2p2y,
+      m1, m2,
       hit, i, j;
 
   // Sort segments by xmin, to allow efficient exclusion of segments with
@@ -11260,8 +11153,12 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
 
       // skip segments that share an endpoint
       if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
-          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y)
+          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
+
+        // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
+        //
         continue;
+      }
 
       // test two candidate segments for intersection
       hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
