@@ -5,12 +5,17 @@ mapshaper-table-import
 
 api.importFile = function(path, opts) {
   var fileType = MapShaper.guessFileType(path),
-      content = MapShaper.readGeometryFile(path, fileType),
-      dataset;
+      content, dataset;
 
   opts = opts || {};
   if (!opts.files) {
     opts.files = [path];
+  }
+
+  if (fileType == 'shp') {
+    content = path;
+  } else {
+    content = MapShaper.readGeometryFile(path, fileType);
   }
 
   dataset = MapShaper.importFileContent(content, fileType, opts);

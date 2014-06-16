@@ -1201,8 +1201,9 @@ if (inNode) {
 
 
 // Convenience functions for working with the local filesystem
-
-Node.path = require('path');
+if (Node.inNode) {
+  Node.path = require('path');
+}
 
 Node.statSync = function(fpath) {
   var obj = null;
@@ -1262,6 +1263,11 @@ Node.dirExists = function(path) {
 Node.fileExists = function(path) {
   var ss = Node.statSync(path);
   return ss && ss.isFile() || false;
+};
+
+Node.fileSize = function(path) {
+  var ss = Node.statSync(path);
+  return ss && ss.size || 0;
 };
 
 Node.parseFilename = function(fpath) {
@@ -9767,10 +9773,9 @@ ShpType.isZType = function(t) {
 //    var reader = new ShpReader(buf), s;
 //    while (s = reader.nextShape()) {
 //      // process the raw coordinate data yourself...
-//      var coords = s.readCoords(); // [x,y,x,y,...]
+//      var coords = s.readCoords(); // [[x,y,x,y,...], ...] Array of parts
 //      var zdata = s.readZ();  // [z,z,...]
 //      var mdata = s.readM();  // [m,m,...] or null
-//      var partSizes = s.readPartSizes(); // for types w/ parts
 //      // .. or read the shape into nested arrays
 //      var data = s.read();
 //    }
@@ -9786,12 +9791,8 @@ function ShpReader(src) {
     return new ShpReader(src);
   }
 
-  if (Utils.isString(src)) {
-    src = Node.readFile(src);
-  }
-
-  var bin = new BinArray(src),
-      header = readHeader(bin);
+  var file = Utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
+  var header = parseHeader(file.readBytes(100, 0));
   validateHeader(header);
 
   this.header = function() {
@@ -9801,9 +9802,7 @@ function ShpReader(src) {
   var shapeClass = this.getRecordClass(header.type);
 
   // return data as nested arrays of shapes > parts > points > [x,y(,z,m)]
-  // TODO: implement @format param for extracting coords in different formats
-  //
-  this.read = function(format) {
+  this.read = function() {
     var shapes = [];
     this.forEachShape(function(shp) {
       shapes.push(shp.isNull ? null : shp.read(format));
@@ -9815,7 +9814,6 @@ function ShpReader(src) {
   //   record object to a callback function
   //
   this.forEachShape = function(callback) {
-    this.reset();
     var shape = this.nextShape();
     while (shape) {
       callback(shape);
@@ -9823,26 +9821,28 @@ function ShpReader(src) {
     }
   };
 
-  // Iterator interface for reading shape records
-  //
   var readPos = 100;
 
+  // Iterator interface for reading shape records
   this.nextShape = function() {
-    bin.position(readPos);
-    if (bin.bytesLeft() === 0) {
+    var bin = file.readBytes(8, readPos);
+    if (!bin) {
       this.reset();
       return null;
     }
-    var shape = new shapeClass(bin);
-    readPos += shape.byteLength;
-    return shape;
+    // byteLen is bytes in content section + 8 header bytes
+    var byteLen = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
+    bin = file.readBytes(byteLen, readPos);
+    readPos += byteLen;
+    return new shapeClass(bin);
   };
 
   this.reset = function() {
+    file.close();
     readPos = 100;
   };
 
-  function readHeader(bin) {
+  function parseHeader(bin) {
     return {
       signature: bin.bigEndian().readUint32(),
       byteLength: bin.skipBytes(20).readUint32() * 2,
@@ -9862,7 +9862,7 @@ function ShpReader(src) {
     if (!Utils.contains(supportedTypes, header.type))
       error("Unsupported .shp type:", header.type);
 
-    if (header.byteLength != bin.size())
+    if (header.byteLength != file.size())
       error("File size doesn't match size in header");
   }
 }
@@ -10059,6 +10059,7 @@ ShpReader.prototype.getRecordClass = function(type) {
       return this.hasM() ? this._data().skipBytes(this._mpos()).readFloat64Array(2) : null;
     },
 
+    // TODO: group into parts, like readCoords()
     readM: function() {
       return this.hasM() ? this._data().skipBytes(this._mpos() + mzRangeBytes).readFloat64Array(this.pointCount) : null;
     },
@@ -10088,6 +10089,7 @@ ShpReader.prototype.getRecordClass = function(type) {
       return this._data().skipBytes(this._zpos()).readFloat64Array(2);
     },
 
+    // TODO: group into parts, like readCoords()
     readZ: function() {
       return this._data().skipBytes(this._zpos() + mzRangeBytes).readFloat64Array(this.pointCount);
     }
@@ -10105,6 +10107,61 @@ ShpReader.prototype.getRecordClass = function(type) {
   proto.constructor = constructor;
   return constructor;
 };
+
+function BufferBytes(buf) {
+  var bin = new BinArray(buf),
+      bufSize = bin.size();
+  this.readBytes = function(len, offset) {
+    if (bufSize < offset + len) return null;
+    bin.position(offset);
+    return bin;
+  };
+
+  this.size = function() {
+    return bufSize;
+  };
+
+  this.close = function() {};
+}
+
+function FileBytes(path) {
+  var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
+      fs = require('fs'),
+      fileSize = Node.fileSize(path),
+      bufOffs = 0,
+      bufSize = 0,
+      bufReader, fd;
+
+  this.readBytes = function(len, start) {
+    var headroom = fileSize - start,
+        bytesRead, buf;
+    if (headroom < len) return null;
+    if (start < bufOffs || start + len > bufOffs + bufSize) {
+      bufOffs = start;
+      bufSize = Math.min(headroom, Math.max(DEFAULT_BUF_SIZE, len));
+      buf = new Buffer(bufSize);
+      if (!fd) fd = fs.openSync(path, 'r');
+      bytesRead = fs.readSync(fd, buf, 0, bufSize, bufOffs);
+      if (bytesRead < bufSize) error("[FileBytes] Error reading file");
+      bufReader = new BufferBytes(buf);
+    }
+    return bufReader.readBytes(len, start - bufOffs);
+  };
+
+  this.size = function() {
+    return fileSize;
+  };
+
+  this.close = function() {
+    if (fd) {
+      fs.closeSync(fd);
+      fd = null;
+      bufReader = null;
+      bufSize = 0;
+      bufOffs = 0;
+    }
+  };
+}
 
 
 
@@ -10147,7 +10204,7 @@ MapShaper.importShp = function(src, opts) {
 
   var pathPoints = type == 'point' ? 0 : reader.getCounts().pointCount;
   var importer = new PathImporter(pathPoints, opts);
-  // var expectRings = Utils.contains([5,15,25], reader.type());
+
   // TODO: test cases: null shape; non-null shape with no valid parts
 
   reader.forEachShape(function(shp) {
@@ -10166,7 +10223,6 @@ MapShaper.importShp = function(src, opts) {
 };
 
 // Convert topological data to buffers containing .shp and .shx file data
-//
 MapShaper.exportShapefile = function(dataset, opts) {
   var files = [];
   dataset.layers.forEach(function(layer) {
@@ -11298,12 +11354,17 @@ MapShaper.convertRecordData = function(rec, fields, converters) {
 
 api.importFile = function(path, opts) {
   var fileType = MapShaper.guessFileType(path),
-      content = MapShaper.readGeometryFile(path, fileType),
-      dataset;
+      content, dataset;
 
   opts = opts || {};
   if (!opts.files) {
     opts.files = [path];
+  }
+
+  if (fileType == 'shp') {
+    content = path;
+  } else {
+    content = MapShaper.readGeometryFile(path, fileType);
   }
 
   dataset = MapShaper.importFileContent(content, fileType, opts);

@@ -44,7 +44,7 @@ MapShaper.importShp = function(src, opts) {
 
   var pathPoints = type == 'point' ? 0 : reader.getCounts().pointCount;
   var importer = new PathImporter(pathPoints, opts);
-  // var expectRings = Utils.contains([5,15,25], reader.type());
+
   // TODO: test cases: null shape; non-null shape with no valid parts
 
   reader.forEachShape(function(shp) {
@@ -63,7 +63,6 @@ MapShaper.importShp = function(src, opts) {
 };
 
 // Convert topological data to buffers containing .shp and .shx file data
-//
 MapShaper.exportShapefile = function(dataset, opts) {
   var files = [];
   dataset.layers.forEach(function(layer) {
