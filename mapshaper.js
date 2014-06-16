@@ -9750,13 +9750,18 @@ ShpType.isMultiPointType = function(t) {
   return t == 8 || t == 18 || t == 28;
 };
 
-/*
-ShpType.isMType = function(t) {
+ShpType.isZType = function(t) {
+  return Utils.contains([11,13,15,18], t);
 };
 
-ShpType.isZType = function(t) {
+ShpType.isMType = function(t) {
+  return ShpType.isZType(t) || Utils.contains([21,23,25,28], t);
 };
-*/
+
+ShpType.hasBounds = function(t) {
+  return ShpType.isMultiPartType(t) || ShpType.isMultiPointType(t);
+};
+
 
 // Read data from a .shp file
 // @src is an ArrayBuffer, Node.js Buffer or filename
@@ -9791,13 +9796,16 @@ function ShpReader(src) {
 
   var file = Utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
   var header = parseHeader(file.readBytes(100, 0));
-  validateHeader(header);
+  var RecordClass = ShpReader.getRecordClass(header.type);
+  var recordOffs = 100;
 
   this.header = function() {
     return header;
   };
 
-  var shapeClass = this.getRecordClass(header.type);
+  this.reset = function() {
+    RecordClass = this.getRecordClass();
+  };
 
   // return data as nested arrays of shapes > parts > points > [x,y(,z,m)]
   this.read = function() {
@@ -9819,26 +9827,23 @@ function ShpReader(src) {
     }
   };
 
-  var readPos = 100;
-
   // Iterator interface for reading shape records
-  // TODO: better handling of end-of-file
   this.nextShape = function() {
-    if (readPos >= file.size()) {
+    if (recordOffs >= file.size()) {
       file.close();
-      readPos = 100;
+      recordOffs = 100;
       return null;
     }
-    var bin = file.readBytes(8, readPos);
+    var bin = file.readBytes(8, recordOffs);
     // byteLen is bytes in content section + 8 header bytes
     var byteLen = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
-    bin = file.readBytes(byteLen, readPos);
-    readPos += byteLen;
-    return new shapeClass(bin);
+    bin = file.readBytes(byteLen, recordOffs);
+    recordOffs += byteLen;
+    return new RecordClass(bin);
   };
 
   function parseHeader(bin) {
-    return {
+    var header = {
       signature: bin.bigEndian().readUint32(),
       byteLength: bin.skipBytes(20).readUint32() * 2,
       version: bin.littleEndian().readUint32(),
@@ -9847,9 +9852,7 @@ function ShpReader(src) {
       zbounds: bin.readFloat64Array(2),
       mbounds: bin.readFloat64Array(2)
     };
-  }
 
-  function validateHeader(header) {
     if (header.signature != 9994)
       error("Not a valid .shp file");
 
@@ -9859,28 +9862,13 @@ function ShpReader(src) {
 
     if (header.byteLength != file.size())
       error("File size doesn't match size in header");
+
+    return header;
   }
 }
 
 ShpReader.prototype.type = function() {
   return this.header().type;
-};
-
-ShpReader.prototype.hasZ = function() {
-  return Utils.contains([11,13,15,18], this.type());
-};
-
-ShpReader.prototype.hasM = function() {
-  return this.hasZ() || Utils.contains([21,23,25,28], this.type());
-};
-
-// i.e. non-point type
-ShpReader.prototype.hasParts = function() {
-  return Utils.contains([3,5,13,15,23,25], this.type());
-};
-
-ShpReader.prototype.hasBounds = function() {
-  return this.hasParts() || Utils.contains([8,18,28], this.type());
 };
 
 ShpReader.prototype.getCounts = function() {
@@ -9906,17 +9894,17 @@ ShpReader.prototype.getCounts = function() {
 //   type, isNull, byteLength, pointCount, partCount (all types)
 //
 // Record methods
-//   read() (all types)
+//   read(), readPoints() (all types)
 //   readBounds(), readCoords()  (all but single point types)
 //   readPartSizes() (polygon and polyline types)
 //   readZBounds(), readZ() (Z types except POINTZ)
 //   readMBounds(), readM(), hasM() (M and Z types, except POINT[MZ])
 //
-ShpReader.prototype.getRecordClass = function(type) {
-  var hasBounds = this.hasBounds(),
-      hasParts = this.hasParts(),
-      hasZ = this.hasZ(),
-      hasM = this.hasM(),
+ShpReader.getRecordClass = function(type) {
+  var hasBounds = ShpType.hasBounds(type),
+      hasParts = ShpType.isMultiPartType(type),
+      hasZ = ShpType.isZType(type),
+      hasM = ShpType.isMType(type),
       singlePoint = !hasBounds,
       mzRangeBytes = singlePoint ? 0 : 16;
 
@@ -10190,13 +10178,14 @@ MapShaper.getShapefileType = function(type) {
 //
 MapShaper.importShp = function(src, opts) {
   var reader = new ShpReader(src);
-  var type = MapShaper.translateShapefileType(reader.type());
+  var shpType = reader.type();
+  var type = MapShaper.translateShapefileType(shpType);
   if (!type) {
-    stop("Unsupported Shapefile type:", reader.type());
+    stop("Unsupported Shapefile type:", shpType);
   }
-  if (reader.hasZ()) {
+  if (ShpType.isZType(shpType)) {
     verbose("Warning: Z data is being removed.");
-  } else if (reader.hasM()) {
+  } else if (ShpType.isMType(shpType)) {
     verbose("Warning: M data is being removed.");
   }
 
@@ -13868,6 +13857,7 @@ Utils.extend(api.internal, {
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
+  ShpType: ShpType,
   C: C,
   Bounds: Bounds
 });

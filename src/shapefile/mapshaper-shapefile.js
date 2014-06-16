@@ -32,13 +32,14 @@ MapShaper.getShapefileType = function(type) {
 //
 MapShaper.importShp = function(src, opts) {
   var reader = new ShpReader(src);
-  var type = MapShaper.translateShapefileType(reader.type());
+  var shpType = reader.type();
+  var type = MapShaper.translateShapefileType(shpType);
   if (!type) {
-    stop("Unsupported Shapefile type:", reader.type());
+    stop("Unsupported Shapefile type:", shpType);
   }
-  if (reader.hasZ()) {
+  if (ShpType.isZType(shpType)) {
     verbose("Warning: Z data is being removed.");
-  } else if (reader.hasM()) {
+  } else if (ShpType.isMType(shpType)) {
     verbose("Warning: M data is being removed.");
   }
 

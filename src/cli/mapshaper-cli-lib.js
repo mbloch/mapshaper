@@ -155,6 +155,7 @@ Utils.extend(api.internal, {
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
+  ShpType: ShpType,
   C: C,
   Bounds: Bounds
 });

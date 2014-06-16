@@ -2,6 +2,7 @@ var api = require('../'),
   assert = require('assert');
 
 var ShpReader = api.internal.ShpReader,
+    ShpType = api.internal.ShpType,
     Utils = api.utils,
     Bounds = api.internal.Bounds;
 
@@ -14,18 +15,18 @@ function filePath(file) {
 // with bounds calculated from the points returned by ShapeRecord#read()
 //
 function testBounds(file) {
-  var reader = new ShpReader(filePath(file));
+  var reader = new ShpReader(filePath(file)),
+      shpType = reader.type();
 
   it(file + " (type " + reader.type()+ ")", function() {
-    var hasBounds = reader.hasBounds(),
-        bigBox = new Bounds();
+    var bigBox = new Bounds();
 
     reader.forEachShape(function(shp) {
       if (shp.isNull) return;
       var bounds,
           bbox = new Bounds();
       // check bounds of polygon, polyline and multipoint shapes
-      if (hasBounds) {
+      if (ShpType.hasBounds(shpType)) {
         bounds = shp.readBounds(); // bounds from shape header
         shp.readPoints().forEach(function(p) {
           bbox.mergePoint(p[0], p[1]);
@@ -56,8 +57,7 @@ function testBounds(file) {
 function testCounts(file) {
   var reader = new ShpReader(filePath(file));
   it(file + " (type " + reader.type()+ ")", function() {
-    var hasParts = reader.hasParts(),
-        hasBounds = reader.hasBounds();
+    var shpType = reader.type();
     var counts = reader.getCounts();
     var parts = 0,
         points = 0,
@@ -74,10 +74,10 @@ function testCounts(file) {
       }
       else {
         var shapeData = shp.read();
-        if (!hasBounds) { // i.e. single point
+        if (!ShpType.hasBounds(shpType)) { // i.e. single point
           partsInShape = 1;
           pointsInShape = 1;
-        } else if (hasParts) {
+        } else if (ShpType.isMultiPartType(shpType)) {
           partsInShape = shapeData.length;
           shapeData.forEach(function(part) {
             pointsInShape += part.length;
