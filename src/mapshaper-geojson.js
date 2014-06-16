@@ -11,14 +11,8 @@ MapShaper.importGeoJSON = function(obj, opts) {
     obj = JSON.parse(obj);
   }
   var supportedGeometries = Utils.getKeys(GeoJSON.pathImporters);
-  var supportedTypes = supportedGeometries.concat(['FeatureCollection', 'GeometryCollection']);
-
-  if (!Utils.contains(supportedTypes, obj.type)) {
-    error("#importGeoJSON() Unsupported type:", obj.type);
-  }
 
   // Convert single feature or geometry into a collection with one member
-  //
   if (obj.type == 'Feature') {
     obj = {
       type: 'FeatureCollection',
@@ -29,6 +23,10 @@ MapShaper.importGeoJSON = function(obj, opts) {
       type: 'GeometryCollection',
       geometries: [obj]
     };
+  }
+
+  if (obj.type != 'FeatureCollection' && obj.type != 'GeometryCollection') {
+    error("[importGeoJSON()] Unsupported GeoJSON type:", obj.type);
   }
 
   var properties = null, geometries;
