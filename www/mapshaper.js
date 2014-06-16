@@ -4075,6 +4075,12 @@ function message() {
   }
 }
 
+function verbose() {
+  if (C.VERBOSE) {
+    message.apply(null, Utils.toArray(arguments));
+  }
+}
+
 MapShaper.absArcId = function(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 };
@@ -6027,7 +6033,7 @@ function initPointChains(xx, yy, verbose) {
       key = (key + 1) % hashTableSize;
     }
   }
-  if (verbose) trace(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
+  if (verbose) message(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
   return chainIds;
 }
 
@@ -6250,7 +6256,7 @@ function PathImporter(pointCount, opts) {
     });
 
     if (dupeCount > 0) {
-      trace(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
+      verbose(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
     }
     if (skippedPathCount > 0) {
       // TODO: consider showing details about type of error
@@ -6314,7 +6320,7 @@ function PathImporter(pointCount, opts) {
     var path = this.importCoordsFromFlatArray(buf, 0, n);
     if (path.isRing) {
       if (isHole && path.area > 0 || !isHole && path.area < 0) {
-        trace("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
+        verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
         MapShaper.reversePathCoords(xx, startId, path.size);
         MapShaper.reversePathCoords(yy, startId, path.size);
         path.area = -path.area;
@@ -7328,7 +7334,7 @@ TopoJSON.importGeometryCollection = function(obj, arcs) {
     if (pathImporter) {
       pathImporter(geom.arcs, importer);
     } else if (geom.type) {
-      trace("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
+      verbose("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
     } else {
       // null geometry -- ok
     }
@@ -7714,7 +7720,7 @@ TopoJSON.exportDeltaEncodedArcs = function(arcData) {
       y = iter.y;
     }
     if (arc.length <= 1) {
-      trace("TopoJSON.exportDeltaEncodedArcs() defective arc, length:", arc.length);
+      verbose("TopoJSON.exportDeltaEncodedArcs() defective arc, length:", arc.length);
       // defective arcs should have been filtered out earlier with ArcDataset.filter()
     }
     arcs.push(arc);
@@ -7872,12 +7878,8 @@ function ShpReader(src) {
     return new ShpReader(src);
   }
 
-  if (Utils.isString(src)) {
-    src = Node.readFile(src)
-  }
-
-  var bin = new BinArray(src),
-      header = readHeader(bin);
+  var file = Utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
+  var header = readHeader(file.readBytes(100, 0));
   validateHeader(header);
 
   this.header = function() {
@@ -7912,20 +7914,24 @@ function ShpReader(src) {
   //
   var readPos = 100;
 
+  // Iterator interface for reading shape records
   this.nextShape = function() {
-    bin.position(readPos);
-    if (bin.bytesLeft() == 0) {
+    var bin = file.readBytes(8, readPos);
+    if (!bin) {
       this.reset();
       return null;
     }
-    var shape = new shapeClass(bin);
-    readPos += shape.byteLength;
-    return shape;
+    // byteLen is bytes in content section + 8 header bytes
+    var byteLen = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
+    bin = file.readBytes(byteLen, readPos);
+    readPos += byteLen;
+    return new shapeClass(bin);
   };
 
   this.reset = function() {
+    file.close();
     readPos = 100;
-  }
+  };
 
   function readHeader(bin) {
     return {
@@ -7947,7 +7953,7 @@ function ShpReader(src) {
     if (!Utils.contains(supportedTypes, header.type))
       error("Unsupported .shp type:", header.type);
 
-    if (header.byteLength != bin.size())
+    if (header.byteLength != file.size())
       error("File size doesn't match size in header");
   }
 }
@@ -8178,6 +8184,61 @@ ShpReader.prototype.getRecordClass = function(type) {
   return constructor;
 };
 
+function BufferBytes(buf) {
+  var bin = new BinArray(buf),
+      bufSize = bin.size();
+  this.readBytes = function(len, offset) {
+    if (bufSize < offset + len) return null;
+    bin.position(offset);
+    return bin;
+  };
+
+  this.size = function() {
+    return bufSize;
+  };
+
+  this.close = function() {};
+}
+
+function FileBytes(path) {
+  var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
+      fs = require('fs'),
+      fileSize = Node.statSync(path).size,
+      bufOffs = 0,
+      bufSize = 0,
+      bufReader, fd;
+
+  this.readBytes = function(len, start) {
+    var headroom = fileSize - start,
+        bytesRead, buf;
+    if (headroom < len) return null;
+    if (start < bufOffs || start + len > bufOffs + bufSize) {
+      bufOffs = start;
+      bufSize = Math.min(headroom, Math.max(DEFAULT_BUF_SIZE, len));
+      buf = new Buffer(bufSize);
+      if (!fd) fd = fs.openSync(path, 'r');
+      bytesRead = fs.readSync(fd, buf, 0, bufSize, bufOffs);
+      if (bytesRead < bufSize) error("[FileBytes] Error reading file");
+      bufReader = new BufferBytes(buf);
+    }
+    return bufReader.readBytes(len, start - bufOffs);
+  };
+
+  this.size = function() {
+    return fileSize;
+  };
+
+  this.close = function() {
+    if (fd) {
+      fs.closeSync(fd);
+      fd = null;
+      bufReader = null;
+      bufSize = 0;
+      bufOffs = 0;
+    }
+  };
+}
+
 
 
 
@@ -8194,9 +8255,9 @@ MapShaper.importShp = function(src, opts) {
     stop("Only polygon and polyline Shapefiles are supported.");
   }
   if (reader.hasZ()) {
-    trace("Warning: Z data is being removed.");
+    verbose("Warning: Z data is being removed.");
   } else if (reader.hasM()) {
-    trace("Warning: M data is being removed.");
+    verbose("Warning: M data is being removed.");
   }
 
   var counts = reader.getCounts();
@@ -8591,7 +8652,7 @@ function ImportControl(editor) {
     if (type in index) {
       // TODO: improve; this can cause false conflicts,
       // e.g. states.json and states.topojson
-      trace("inputFileContent() File has already been imported; skipping:", fname);
+      verbose("inputFileContent() File has already been imported; skipping:", fname);
       return;
     }
     if (type == 'shp' || type == 'json') {
@@ -8729,7 +8790,7 @@ function PathExporter(arcData, polygonType) {
       } else if (path.area < 0) {
         neg.push(path);
       } else {
-        // trace("Zero-area ring, skipping");
+        // verbose("Zero-area ring, skipping");
       }
     });
 
@@ -8749,7 +8810,7 @@ function PathExporter(arcData, polygonType) {
         }
       }
       if (containerId == -1) {
-        trace("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
+        verbose("#groupMultiShapePaths() polygon hole is missing a containing ring, dropping.");
       } else {
         output[containerId].push(hole);
       }
@@ -9152,7 +9213,7 @@ function ShapeRenderer() {
       ctx.fillStyle = style.fillColor;
     }
     if (!stroked && !filled) {
-      trace("#drawLine() Line is missing stroke and fill; style:", style);
+      verbose("#drawLine() Line is missing stroke and fill; style:", style);
       return;
     }
 
@@ -10657,12 +10718,11 @@ MapShaper.repairIntersections = function(arcs, intersections) {
       }
 
       if (++loops > 500000) {
-        trace("Caught an infinite loop at intersection:", intersection);
+        verbose("Caught an infinite loop at intersection:", intersection);
         return 0;
       }
     }
 
-    // trace("repairs:", repairs);
     return repairs;
   }
 
@@ -11072,7 +11132,7 @@ MapShaper.protectShape = function(arcData, shape) {
 
   if (!maxRing || maxRing.length === 0) {
     // invald shape
-    trace("[protectShape()] Invalid shape:", shape);
+    verbose("[protectShape()] Invalid shape:", shape);
   } else if (maxRing.length == 1) {
     MapShaper.protectIslandRing(arcData, maxRing);
   } else {
@@ -11089,7 +11149,7 @@ MapShaper.protectIslandRing = function(arcData, ring) {
   if (added == 1) {
     added += MapShaper.lockMaxThreshold(arcData, ring);
   }
-  if (added < 2) trace("[protectIslandRing()] Failed on ring:", ring);
+  if (added < 2) verbose("[protectIslandRing()] Failed on ring:", ring);
 };
 
 MapShaper.protectMultiRing = function(arcData, ring) {
@@ -11102,7 +11162,7 @@ MapShaper.protectMultiRing = function(arcData, ring) {
   while (area <= minArea) {
     added = MapShaper.lockMaxThreshold(arcData, ring);
     if (added === 0) {
-      trace("protectMultiRing() Failed on ring:", ring);
+      verbose("[protectMultiRing()] Failed on ring:", ring);
       break;
     }
     iter.reset();

@@ -5,8 +5,15 @@ mapshaper-table-import
 
 MapShaper.importFromFile = function(fname, opts) {
   var fileType = MapShaper.guessFileType(fname),
-      content = MapShaper.readGeometryFile(fname, fileType),
-      data = MapShaper.importContent(content, fileType, opts);
+      content, data;
+
+  if (fileType == 'shp') {
+    content = fname; // KLUDGE let ShpReader handle file input
+  } else {
+    content = MapShaper.readGeometryFile(fname, fileType);
+  }
+  data = MapShaper.importContent(content, fileType, opts);
+
   if (fileType == 'shp' && data.layers.length == 1) {
     data.layers[0].data = MapShaper.importDbfTable(fname, opts.encoding);
   }

@@ -8077,12 +8077,8 @@ function ShpReader(src) {
     return new ShpReader(src);
   }
 
-  if (Utils.isString(src)) {
-    src = Node.readFile(src)
-  }
-
-  var bin = new BinArray(src),
-      header = readHeader(bin);
+  var file = Utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
+  var header = readHeader(file.readBytes(100, 0));
   validateHeader(header);
 
   this.header = function() {
@@ -8117,20 +8113,24 @@ function ShpReader(src) {
   //
   var readPos = 100;
 
+  // Iterator interface for reading shape records
   this.nextShape = function() {
-    bin.position(readPos);
-    if (bin.bytesLeft() == 0) {
+    var bin = file.readBytes(8, readPos);
+    if (!bin) {
       this.reset();
       return null;
     }
-    var shape = new shapeClass(bin);
-    readPos += shape.byteLength;
-    return shape;
+    // byteLen is bytes in content section + 8 header bytes
+    var byteLen = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
+    bin = file.readBytes(byteLen, readPos);
+    readPos += byteLen;
+    return new shapeClass(bin);
   };
 
   this.reset = function() {
+    file.close();
     readPos = 100;
-  }
+  };
 
   function readHeader(bin) {
     return {
@@ -8152,7 +8152,7 @@ function ShpReader(src) {
     if (!Utils.contains(supportedTypes, header.type))
       error("Unsupported .shp type:", header.type);
 
-    if (header.byteLength != bin.size())
+    if (header.byteLength != file.size())
       error("File size doesn't match size in header");
   }
 }
@@ -8382,6 +8382,61 @@ ShpReader.prototype.getRecordClass = function(type) {
   proto.constructor = constructor;
   return constructor;
 };
+
+function BufferBytes(buf) {
+  var bin = new BinArray(buf),
+      bufSize = bin.size();
+  this.readBytes = function(len, offset) {
+    if (bufSize < offset + len) return null;
+    bin.position(offset);
+    return bin;
+  };
+
+  this.size = function() {
+    return bufSize;
+  };
+
+  this.close = function() {};
+}
+
+function FileBytes(path) {
+  var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
+      fs = require('fs'),
+      fileSize = Node.statSync(path).size,
+      bufOffs = 0,
+      bufSize = 0,
+      bufReader, fd;
+
+  this.readBytes = function(len, start) {
+    var headroom = fileSize - start,
+        bytesRead, buf;
+    if (headroom < len) return null;
+    if (start < bufOffs || start + len > bufOffs + bufSize) {
+      bufOffs = start;
+      bufSize = Math.min(headroom, Math.max(DEFAULT_BUF_SIZE, len));
+      buf = new Buffer(bufSize);
+      if (!fd) fd = fs.openSync(path, 'r');
+      bytesRead = fs.readSync(fd, buf, 0, bufSize, bufOffs);
+      if (bytesRead < bufSize) error("[FileBytes] Error reading file");
+      bufReader = new BufferBytes(buf);
+    }
+    return bufReader.readBytes(len, start - bufOffs);
+  };
+
+  this.size = function() {
+    return fileSize;
+  };
+
+  this.close = function() {
+    if (fd) {
+      fs.closeSync(fd);
+      fd = null;
+      bufReader = null;
+      bufSize = 0;
+      bufOffs = 0;
+    }
+  };
+}
 
 
 
@@ -9969,8 +10024,15 @@ MapShaper.convertRecordData = function(rec, fields, converters) {
 
 MapShaper.importFromFile = function(fname, opts) {
   var fileType = MapShaper.guessFileType(fname),
-      content = MapShaper.readGeometryFile(fname, fileType),
-      data = MapShaper.importContent(content, fileType, opts);
+      content, data;
+
+  if (fileType == 'shp') {
+    content = fname; // KLUDGE let ShpReader handle file input
+  } else {
+    content = MapShaper.readGeometryFile(fname, fileType);
+  }
+  data = MapShaper.importContent(content, fileType, opts);
+
   if (fileType == 'shp' && data.layers.length == 1) {
     data.layers[0].data = MapShaper.importDbfTable(fname, opts.encoding);
   }
