@@ -36,7 +36,7 @@ Browser compatibility: mapshaper works in recent versions of Chrome and Firefox 
 
 ### Command line tool
 
-The [Command Reference](https://github.com/mbloch/mapshaper/wiki/v0.2-Command-Reference) had detailed usage information.
+The [Command Reference](https://github.com/mbloch/mapshaper/wiki/v0.2-Command-Reference) has detailed usage information.
 
 Examples
 
