@@ -7550,14 +7550,8 @@ MapShaper.importGeoJSON = function(obj, opts) {
     obj = JSON.parse(obj);
   }
   var supportedGeometries = Utils.getKeys(GeoJSON.pathImporters);
-  var supportedTypes = supportedGeometries.concat(['FeatureCollection', 'GeometryCollection']);
-
-  if (!Utils.contains(supportedTypes, obj.type)) {
-    error("#importGeoJSON() Unsupported type:", obj.type);
-  }
 
   // Convert single feature or geometry into a collection with one member
-  //
   if (obj.type == 'Feature') {
     obj = {
       type: 'FeatureCollection',
@@ -7568,6 +7562,10 @@ MapShaper.importGeoJSON = function(obj, opts) {
       type: 'GeometryCollection',
       geometries: [obj]
     };
+  }
+
+  if (obj.type != 'FeatureCollection' && obj.type != 'GeometryCollection') {
+    error("[importGeoJSON()] Unsupported GeoJSON type:", obj.type);
   }
 
   var properties = null, geometries;
@@ -8780,10 +8778,9 @@ ShpType.isZType = function(t) {
 //    var reader = new ShpReader(buf), s;
 //    while (s = reader.nextShape()) {
 //      // process the raw coordinate data yourself...
-//      var coords = s.readCoords(); // [x,y,x,y,...]
+//      var coords = s.readCoords(); // [[x,y,x,y,...], ...] Array of parts
 //      var zdata = s.readZ();  // [z,z,...]
 //      var mdata = s.readM();  // [m,m,...] or null
-//      var partSizes = s.readPartSizes(); // for types w/ parts
 //      // .. or read the shape into nested arrays
 //      var data = s.read();
 //    }
@@ -8800,7 +8797,7 @@ function ShpReader(src) {
   }
 
   var file = Utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
-  var header = readHeader(file.readBytes(100, 0));
+  var header = parseHeader(file.readBytes(100, 0));
   validateHeader(header);
 
   this.header = function() {
@@ -8832,12 +8829,14 @@ function ShpReader(src) {
   var readPos = 100;
 
   // Iterator interface for reading shape records
+  // TODO: better handling of end-of-file
   this.nextShape = function() {
-    var bin = file.readBytes(8, readPos);
-    if (!bin) {
-      this.reset();
+    if (readPos >= file.size()) {
+      file.close();
+      readPos = 100;
       return null;
     }
+    var bin = file.readBytes(8, readPos);
     // byteLen is bytes in content section + 8 header bytes
     var byteLen = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
     bin = file.readBytes(byteLen, readPos);
@@ -8845,12 +8844,7 @@ function ShpReader(src) {
     return new shapeClass(bin);
   };
 
-  this.reset = function() {
-    file.close();
-    readPos = 100;
-  };
-
-  function readHeader(bin) {
+  function parseHeader(bin) {
     return {
       signature: bin.bigEndian().readUint32(),
       byteLength: bin.skipBytes(20).readUint32() * 2,
@@ -9067,6 +9061,7 @@ ShpReader.prototype.getRecordClass = function(type) {
       return this.hasM() ? this._data().skipBytes(this._mpos()).readFloat64Array(2) : null;
     },
 
+    // TODO: group into parts, like readCoords()
     readM: function() {
       return this.hasM() ? this._data().skipBytes(this._mpos() + mzRangeBytes).readFloat64Array(this.pointCount) : null;
     },
@@ -9096,6 +9091,7 @@ ShpReader.prototype.getRecordClass = function(type) {
       return this._data().skipBytes(this._zpos()).readFloat64Array(2);
     },
 
+    // TODO: group into parts, like readCoords()
     readZ: function() {
       return this._data().skipBytes(this._zpos() + mzRangeBytes).readFloat64Array(this.pointCount);
     }
@@ -9118,7 +9114,7 @@ function BufferBytes(buf) {
   var bin = new BinArray(buf),
       bufSize = bin.size();
   this.readBytes = function(len, offset) {
-    if (bufSize < offset + len) return null;
+    if (bufSize < offset + len) error("Out-of-range error");
     bin.position(offset);
     return bin;
   };
@@ -9134,24 +9130,16 @@ function FileBytes(path) {
   var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
       fs = require('fs'),
       fileSize = Node.fileSize(path),
-      bufOffs = 0,
-      bufSize = 0,
-      bufReader, fd;
+      cacheOffs = 0,
+      cache, fd;
 
   this.readBytes = function(len, start) {
-    var headroom = fileSize - start,
-        bytesRead, buf;
-    if (headroom < len) return null;
-    if (start < bufOffs || start + len > bufOffs + bufSize) {
-      bufOffs = start;
-      bufSize = Math.min(headroom, Math.max(DEFAULT_BUF_SIZE, len));
-      buf = new Buffer(bufSize);
-      if (!fd) fd = fs.openSync(path, 'r');
-      bytesRead = fs.readSync(fd, buf, 0, bufSize, bufOffs);
-      if (bytesRead < bufSize) error("[FileBytes] Error reading file");
-      bufReader = new BufferBytes(buf);
+    if (fileSize < start + len) error("Out-of-range error");
+    if (!cache || start < cacheOffs || start + len > cacheOffs + cache.size()) {
+      updateCache(len, start);
     }
-    return bufReader.readBytes(len, start - bufOffs);
+    cache.position(start - cacheOffs);
+    return cache;
   };
 
   this.size = function() {
@@ -9162,11 +9150,22 @@ function FileBytes(path) {
     if (fd) {
       fs.closeSync(fd);
       fd = null;
-      bufReader = null;
-      bufSize = 0;
-      bufOffs = 0;
+      cache = null;
+      cacheOffs = 0;
     }
   };
+
+  function updateCache(len, start) {
+    var headroom = fileSize - start,
+        bufSize = Math.min(headroom, Math.max(DEFAULT_BUF_SIZE, len)),
+        buf = new Buffer(bufSize),
+        bytesRead;
+    if (!fd) fd = fs.openSync(path, 'r');
+    bytesRead = fs.readSync(fd, buf, 0, bufSize, start);
+    if (bytesRead < bufSize) error("Error reading file");
+    cacheOffs = start;
+    cache = new BinArray(buf);
+  }
 }
 
 
@@ -9210,7 +9209,7 @@ MapShaper.importShp = function(src, opts) {
 
   var pathPoints = type == 'point' ? 0 : reader.getCounts().pointCount;
   var importer = new PathImporter(pathPoints, opts);
-  // var expectRings = Utils.contains([5,15,25], reader.type());
+
   // TODO: test cases: null shape; non-null shape with no valid parts
 
   reader.forEachShape(function(shp) {
@@ -9229,7 +9228,6 @@ MapShaper.importShp = function(src, opts) {
 };
 
 // Convert topological data to buffers containing .shp and .shx file data
-//
 MapShaper.exportShapefile = function(dataset, opts) {
   var files = [];
   dataset.layers.forEach(function(layer) {

@@ -105,22 +105,19 @@ function ShpReader(src) {
   var readPos = 100;
 
   // Iterator interface for reading shape records
+  // TODO: better handling of end-of-file
   this.nextShape = function() {
-    var bin = file.readBytes(8, readPos);
-    if (!bin) {
-      this.reset();
+    if (readPos >= file.size()) {
+      file.close();
+      readPos = 100;
       return null;
     }
+    var bin = file.readBytes(8, readPos);
     // byteLen is bytes in content section + 8 header bytes
     var byteLen = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
     bin = file.readBytes(byteLen, readPos);
     readPos += byteLen;
     return new shapeClass(bin);
-  };
-
-  this.reset = function() {
-    file.close();
-    readPos = 100;
   };
 
   function parseHeader(bin) {
@@ -393,7 +390,7 @@ function BufferBytes(buf) {
   var bin = new BinArray(buf),
       bufSize = bin.size();
   this.readBytes = function(len, offset) {
-    if (bufSize < offset + len) return null;
+    if (bufSize < offset + len) error("Out-of-range error");
     bin.position(offset);
     return bin;
   };
@@ -409,24 +406,16 @@ function FileBytes(path) {
   var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
       fs = require('fs'),
       fileSize = Node.fileSize(path),
-      bufOffs = 0,
-      bufSize = 0,
-      bufReader, fd;
+      cacheOffs = 0,
+      cache, fd;
 
   this.readBytes = function(len, start) {
-    var headroom = fileSize - start,
-        bytesRead, buf;
-    if (headroom < len) return null;
-    if (start < bufOffs || start + len > bufOffs + bufSize) {
-      bufOffs = start;
-      bufSize = Math.min(headroom, Math.max(DEFAULT_BUF_SIZE, len));
-      buf = new Buffer(bufSize);
-      if (!fd) fd = fs.openSync(path, 'r');
-      bytesRead = fs.readSync(fd, buf, 0, bufSize, bufOffs);
-      if (bytesRead < bufSize) error("[FileBytes] Error reading file");
-      bufReader = new BufferBytes(buf);
+    if (fileSize < start + len) error("Out-of-range error");
+    if (!cache || start < cacheOffs || start + len > cacheOffs + cache.size()) {
+      updateCache(len, start);
     }
-    return bufReader.readBytes(len, start - bufOffs);
+    cache.position(start - cacheOffs);
+    return cache;
   };
 
   this.size = function() {
@@ -437,9 +426,20 @@ function FileBytes(path) {
     if (fd) {
       fs.closeSync(fd);
       fd = null;
-      bufReader = null;
-      bufSize = 0;
-      bufOffs = 0;
+      cache = null;
+      cacheOffs = 0;
     }
   };
+
+  function updateCache(len, start) {
+    var headroom = fileSize - start,
+        bufSize = Math.min(headroom, Math.max(DEFAULT_BUF_SIZE, len)),
+        buf = new Buffer(bufSize),
+        bytesRead;
+    if (!fd) fd = fs.openSync(path, 'r');
+    bytesRead = fs.readSync(fd, buf, 0, bufSize, start);
+    if (bytesRead < bufSize) error("Error reading file");
+    cacheOffs = start;
+    cache = new BinArray(buf);
+  }
 }
