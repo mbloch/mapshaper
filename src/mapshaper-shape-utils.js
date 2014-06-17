@@ -101,6 +101,7 @@ MapShaper.forEachArcId = function(arr, cb) {
 //
 MapShaper.forEachPath = function(arr, cb) {
   var arcs, retn;
+  if (!arr) return; // null shape
   if (!Utils.isArray(arr)) error("[forEachPath()] Expected an array, found:", arr);
   for (var i=0; i<arr.length; i++) {
     arcs = arr[i];

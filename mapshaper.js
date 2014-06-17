@@ -9316,6 +9316,7 @@ MapShaper.forEachArcId = function(arr, cb) {
 //
 MapShaper.forEachPath = function(arr, cb) {
   var arcs, retn;
+  if (!arr) return; // null shape
   if (!Utils.isArray(arr)) error("[forEachPath()] Expected an array, found:", arr);
   for (var i=0; i<arr.length; i++) {
     arcs = arr[i];
@@ -12891,6 +12892,19 @@ function PathIndex(shapes, arcs) {
     return paths.length > 0 ? paths : null;
   };
 
+  this.findPathsInsideShape = function(shape) {
+    var paths = [];
+    shape.forEach(function(ids) {
+      var enclosed = this.findEnclosedPaths(ids);
+      // console.log("enclosed:", enclosed)
+      if (enclosed) {
+        paths = xorArrays(paths, enclosed);
+        // console.log("xor:", paths)
+      }
+    }, this);
+    return paths.length > 0 ? paths : null;
+  };
+
   // assume polygon paths do not intersect (may be adjacent)
   function pathContainsPath(idsA, boundsA, idsB, boundsB) {
     if (boundsA.contains(boundsB) === false) return false;
@@ -12900,6 +12914,17 @@ function PathIndex(shapes, arcs) {
     var p = arcs.getVertex(idsB[0], 0);
     var inside = geom.testPointInRing(p.x, p.y, idsA, arcs);
     return inside;
+  }
+
+  function xorArrays(a, b) {
+    var xor = [];
+    a.forEach(function(el) {
+      if (b.indexOf(el) == -1) xor.push(el);
+    });
+    b.forEach(function(el) {
+      if (xor.indexOf(el) == -1) xor.push(el);
+    });
+    return xor;
   }
 }
 
@@ -12914,9 +12939,10 @@ api.eraseLayer = function(targetLyr, clipLyr, arcs, opts) {
   return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, "erase", opts);
 };
 
-MapShaper.openArcPathways = function(shapes, arcs, flags, fwd, rev, xor) {
-  // enable arc pathways in the target layer
-  MapShaper.forEachArcId(shapes, function(id) {
+// enable arc pathways in a single shape or array of shapes
+// flags: 0 = unset, 1 = fwd open, 2 = rev open, 4 = fwd/rev blocked
+MapShaper.openArcPathways = function(arcIds, arcs, flags, fwd, rev, xor) {
+  MapShaper.forEachArcId(arcIds, function(id) {
     var isInv = id < 0,
         absId = isInv ? ~id : id,
         currFlag = flags[absId],
@@ -12941,13 +12967,16 @@ MapShaper.openArcPathways = function(shapes, arcs, flags, fwd, rev, xor) {
   });
 };
 
-MapShaper.initClippingFlags = function(targetShapes, clipShapes, arcs, type) {
-  var flags = new Uint8Array(arcs.size()); // 0 = unset, 1 = fw, 2 = rev, 4 = blocked
+MapShaper.initClippingFlags = function(clipShapes, arcs, type) {
+  var flags = new Uint8Array(arcs.size());
+  MapShaper.openArcPathways(clipShapes, arcs, flags, type == 'clip', type == 'erase', true);
+  return flags;
+};
+
+MapShaper.initDivideFlags = function(targetShapes, divideShapes, arcs) {
+  var flags = new Uint8Array(arcs.size());
   MapShaper.openArcPathways(targetShapes, arcs, flags, true, false, false);
-  var fwd = type == 'divide' || type == 'clip',
-      bwd = type == 'divide' || type == 'erase',
-      xor = type == 'clip' || type == 'erase';
-  MapShaper.openArcPathways(clipShapes, arcs, flags, fwd, bwd, xor);
+  MapShaper.openArcPathways(divideShapes, arcs, flags, true, true, false);
   return flags;
 };
 
@@ -12970,7 +12999,11 @@ MapShaper.getPathSplitter = function(arcs, flags) {
         flag = flags[abs],
         pathway = abs == id ? 1 : 2, // 1 -> forward arc, 2 -> rev arc
         isOpen = (flag & pathway) > 0;
-    flags[abs] = flag & ~pathway; // close pathway
+    if (isOpen) {
+      flag = flag & ~pathway; // close pathway
+      flag = flag | 8; // add 'used' flag
+    }
+    flags[abs] = flag;
     return isOpen;
   }
 
@@ -12981,7 +13014,7 @@ MapShaper.getPathSplitter = function(arcs, flags) {
         verbose = false;
 
     do {
-      if (verbose) msg = (nextId === undefined ? " " : nextId) + " -> " + candId;
+      if (verbose) msg = (nextId === undefined ? " " : "  " + nextId) + " -> " + candId;
       if (useArc(candId)) {
         path.push(candId);
         nextId = candId;
@@ -13009,23 +13042,84 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
       targetLyr.geometry_type, "and", clipLyr.geometry_type);
   }
 
-  var flags = MapShaper.initClippingFlags(targetLyr.shapes, clipLyr.shapes, arcs, type),
-      dividePath = MapShaper.getPathSplitter(arcs, flags);
-
-  // Divide the clip layer
-  var index = new PathIndex(clipLyr.shapes, arcs);
-  var dividedShapes = targetLyr.shapes.map(function(shape, i) {
-    return clipPolygon(shape, type) || null;
-  });
-
-  var dividedLyr = Utils.defaults({shapes: dividedShapes, data: null}, targetLyr);
+  var flags = MapShaper.initClippingFlags(clipLyr.shapes, arcs, type),
+      dividePath = MapShaper.getPathSplitter(arcs, flags),
+      dividedShapes = clipPolygons(targetLyr.shapes, clipLyr.shapes, arcs, type),
+      dividedLyr = Utils.defaults({shapes: dividedShapes, data: null}, targetLyr);
 
   if (targetLyr.data) {
     dividedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
   }
   return dividedLyr;
 
-  function clipPolygon(shape, type) {
+  function clipPolygons(targetShapes, clipShapes, arcs, type) {
+    var index = new PathIndex(clipShapes, arcs);
+    var clippedShapes = targetShapes.map(function(shape) {
+      var clipped = null;
+      if (shape) {
+        MapShaper.openArcPathways(shape, arcs, flags, true, false, false);
+        clipped = clipPolygon(shape, type, index);
+      }
+      return clipped;
+    });
+
+    // add clip/erase polygons that are fully contained in a target polygon
+    // need to index only non-intersecting clip shapes
+    // (Intersecting shapes have already been processed)
+    var undividedClipShapes = findUndividedShapes(clipShapes, flags);
+    index = new PathIndex(undividedClipShapes, arcs);
+    targetShapes.forEach(function(shape, shapeId) {
+      var paths = findInteriorPaths(shape, type, index);
+      if (paths) {
+        clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
+      }
+    });
+
+    return clippedShapes;
+  }
+
+  // Filter a collection of shapes to exclude paths that were modified by clipping
+  function findUndividedShapes(shapes, flags) {
+    return shapes.map(function(shape) {
+      var parts = [];
+      MapShaper.forEachPath(shape, function(ids) {
+        var undivided = true, id, abs;
+        for (var i=0; i<ids.length; i++) {
+          id = ids[i];
+          abs = (id < 0) ? ~id : id;
+          if ((flags[abs] & 8) > 0) {
+            undivided = false;
+            break;
+          }
+        }
+        if (undivided) parts.push(ids);
+      });
+      return parts.length > 0 ? parts : null;
+    });
+  }
+
+  // search for indexed clipping paths contained in a shape
+  function findInteriorPaths(shape, type, index) {
+    var enclosedPaths = index.findPathsInsideShape(shape);
+    if (!enclosedPaths) return null;
+    var paths = [];
+    enclosedPaths.forEach(function(ids) {
+      var path;
+      if (type == 'erase') {
+        ids = ids.concat();
+        MapShaper.reversePath(ids);
+      }
+      for (var j=0; j<ids.length; j++) {
+        path = dividePath(ids[j]);
+        if (path) {
+          paths.push(path);
+        }
+      }
+    });
+    return paths.length > 0 ? paths : null;
+  }
+
+  function clipPolygon(shape, type, index) {
     var dividedShape = [],
         clipping = type == 'clip',
         erasing = type == 'erase';
@@ -13034,6 +13128,7 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
       var path;
       for (var i=0; i<ids.length; i++) {
         path = dividePath(ids[i]);
+
         if (path) {
           if (MapShaper.pathsAreIdentical(ids, path)) {
             var contained = index.pathIsEnclosed(path);
@@ -13047,20 +13142,6 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
         }
       }
     });
-
-    // check for clipping paths contained in the target shape
-    // use divided shape?
-    /*
-    var enclosedPaths = index.findEnclosedPaths(shape);
-    if (enclosedPaths) {
-      enclosedPaths.forEach(function(path) {
-        var copy = path.concat();
-        if (erasing) MapShaper.reversePath(copy);
-        dividedShape.push(copy);
-      });
-    }
-    */
-
     return dividedShape.length === 0 ? null : dividedShape;
   }
 };
@@ -13273,7 +13354,7 @@ api.dividePolygonLayer = function(lyrA, lyrB, arcs) {
     stop("[dividePolygonLayer()] Expected polygon layer, received:", lyrA.geometry_type);
   }
 
-  var flags = MapShaper.initClippingFlags(lyrA.shapes, lyrB.shapes, arcs, 'divide');
+  var flags = MapShaper.initDivideFlags(lyrA.shapes, lyrB.shapes, arcs);
   var divide = MapShaper.getPathSplitter(arcs, flags);
   var dividedShapes = lyrA.shapes.map(function(shape, i) {
     var dividedShape = [];

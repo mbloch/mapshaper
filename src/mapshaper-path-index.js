@@ -53,6 +53,19 @@ function PathIndex(shapes, arcs) {
     return paths.length > 0 ? paths : null;
   };
 
+  this.findPathsInsideShape = function(shape) {
+    var paths = [];
+    shape.forEach(function(ids) {
+      var enclosed = this.findEnclosedPaths(ids);
+      // console.log("enclosed:", enclosed)
+      if (enclosed) {
+        paths = xorArrays(paths, enclosed);
+        // console.log("xor:", paths)
+      }
+    }, this);
+    return paths.length > 0 ? paths : null;
+  };
+
   // assume polygon paths do not intersect (may be adjacent)
   function pathContainsPath(idsA, boundsA, idsB, boundsB) {
     if (boundsA.contains(boundsB) === false) return false;
@@ -62,5 +75,16 @@ function PathIndex(shapes, arcs) {
     var p = arcs.getVertex(idsB[0], 0);
     var inside = geom.testPointInRing(p.x, p.y, idsA, arcs);
     return inside;
+  }
+
+  function xorArrays(a, b) {
+    var xor = [];
+    a.forEach(function(el) {
+      if (b.indexOf(el) == -1) xor.push(el);
+    });
+    b.forEach(function(el) {
+      if (xor.indexOf(el) == -1) xor.push(el);
+    });
+    return xor;
   }
 }
