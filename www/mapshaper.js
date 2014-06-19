@@ -5770,10 +5770,8 @@ geom.getShapeCentroid = function(shp, arcs) {
 geom.testPointInShape = function(x, y, shp, arcs) {
   var intersections = 0;
   Utils.forEach(shp, function(ids) {
-    if (arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
-      if (geom.testPointInRing(x, y, ids, arcs)) {
-        intersections++;
-      }
+    if (geom.testPointInRing(x, y, ids, arcs)) {
+      intersections++;
     }
   });
   return intersections % 2 == 1;
@@ -5831,6 +5829,21 @@ geom.getPointToShapeDistance = function(x, y, shp, arcs) {
 };
 
 geom.testPointInRing = function(x, y, ids, arcs) {
+  /*
+  // this method doesn't apply simplification, can't use here
+  if (!arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
+    return false;
+  }
+  */
+  var count = 0;
+  MapShaper.forEachPathSegment(ids, arcs, function(a, b, xx, yy) {
+    count += geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+  });
+  return count % 2 == 1;
+};
+
+/*
+geom.testPointInRing = function(x, y, ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return false;
   var x0 = iter.x,
@@ -5850,7 +5863,10 @@ geom.testPointInRing = function(x, y, ids, arcs) {
 
   return intersections % 2 == 1;
 };
+*/
 
+// test if a vertical ray starting at poing (x, y) intersects a segment
+// returns 1 if intersection, 0 if no intersection, NaN if point touches segment
 geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
   var hit = 0, yInt;
   if (x < ax && x < bx || x > ax && x > bx || y >= ay && y >= by) {
@@ -8369,7 +8385,7 @@ MapShaper.forEachPath = function(arr, cb) {
   }
 };
 
-MapShaper.forEachShapeSegment = function(shape, arcs, cb) {
+MapShaper.forEachPathSegment = function(shape, arcs, cb) {
   MapShaper.forEachArcId(shape, function(arcId) {
     arcs.forEachArcSegment(arcId, cb);
   });
