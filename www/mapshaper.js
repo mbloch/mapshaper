@@ -4670,7 +4670,34 @@ function ArcCollection() {
     return [dx / count || 0, dy / count || 0];
   };
 
+  this.forEachArcSegment = function(arcId, cb) {
+    var fw = arcId >= 0,
+        absId = fw ? arcId : ~arcId,
+        zlim = this.getRetainedInterval(),
+        n = _nn[absId],
+        i = fw ? _ii[absId] : _ii[absId] + n - 1,
+        step = fw ? 1 : -1,
+        count = 0,
+        prev;
+
+    for (var j = 0; j < n; j++, i += step) {
+      if (zlim === 0 || _zz[i] >= zlim) {
+        if (count > 0) {
+          cb(prev, i, _xx, _yy);
+        }
+        prev = i;
+        count++;
+      }
+    }
+  };
+
   this.forEachSegment = function(cb) {
+    for (var i=0, n=this.size(); i<n; i++) {
+      this.forEachArcSegment(i, cb);
+    }
+  };
+
+  this.forEachSegment_v1 = function(cb) {
     var zlim = this.getRetainedInterval(),
         nextArcStart = 0,
         arcId = -1,
@@ -5811,43 +5838,46 @@ geom.testPointInRing = function(x, y, ids, arcs) {
       ax = x0,
       ay = y0,
       bx, by,
-      yInt,
       intersections = 0;
 
   while (iter.hasNext()) {
     bx = iter.x;
     by = iter.y;
-    if (x < ax && x < bx || x > ax && x > bx || y >= ay && y >= by) {
-      // no intersection
-    } else if (x === ax) {
-      if (y === ay) {
-        intersections = 0;
-        break;
-      }
-      if (bx < x && y < ay) {
-        intersections++;
-      }
-    } else if (x === bx) {
-      if (y === by) {
-        intersections = 0;
-        break;
-      }
-      if (ax < x && y < by) {
-        intersections++;
-      }
-    } else if (y < ay && y < by) {
-      intersections++;
-    } else {
-      yInt = geom.getYIntercept(x, ax, ay, bx, by);
-      if (yInt > y) {
-        intersections++;
-      }
-    }
+    intersections += geom.testRayIntersection(x, y, ax, ay, bx, by);
     ax = bx;
     ay = by;
   }
 
   return intersections % 2 == 1;
+};
+
+geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
+  var hit = 0, yInt;
+  if (x < ax && x < bx || x > ax && x > bx || y >= ay && y >= by) {
+      // no intersection
+  } else if (x === ax) {
+    if (y === ay) {
+      hit = NaN;
+    } else if (bx < x && y < ay) {
+      hit = 1;
+    }
+  } else if (x === bx) {
+    if (y === by) {
+      hit = NaN;
+    } else if (ax < x && y < by) {
+      hit = 1;
+    }
+  } else if (y < ay && y < by) {
+    hit = 1;
+  } else {
+    yInt = geom.getYIntercept(x, ax, ay, bx, by);
+    if (yInt > y) {
+      hit = 1;
+    } else if (yInt == y) {
+      hit = NaN;
+    }
+  }
+  return hit;
 };
 
 geom.getSphericalPathArea = function(iter) {
@@ -8337,6 +8367,12 @@ MapShaper.forEachPath = function(arr, cb) {
       error("Expected an array, received:", retn);
     }
   }
+};
+
+MapShaper.forEachShapeSegment = function(shape, arcs, cb) {
+  MapShaper.forEachArcId(shape, function(arcId) {
+    arcs.forEachArcSegment(arcId, cb);
+  });
 };
 
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
@@ -11113,7 +11149,9 @@ MapShaper.findSegmentIntersections = (function() {
         arr;
     for (i=0; i<stripeCount; i++) {
       arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
-      if (arr.length > 0) extendIntersections(intersections, arr, i);
+      if (arr.length > 0) {
+        extendIntersections(intersections, arr, i);
+      }
     }
 
     // T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
@@ -11148,6 +11186,7 @@ MapShaper.getIntersectionKey = function(a, b) {
 };
 
 // Find intersections among a group of line segments
+// TODO: handle case where a segment starts and ends at the same point (i.e. duplicate coords);
 //
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
@@ -11198,9 +11237,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       // skip segments that share an endpoint
       if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
           s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
-
         // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
-        //
         continue;
       }
 
@@ -11219,6 +11256,15 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
     }
     i += 2;
   }
+  /*
+  if (intersections.length == 1) {
+    var hit = intersections[0];
+    console.log("hit:", hit);
+    console.log("json:", JSON.stringify(hit));
+    console.log("seg1", xx[hit.a[0]], yy[hit.a[0]], xx[hit.a[1]], yy[hit.a[1]]);
+    console.log("seg2", xx[hit.b[0]], yy[hit.b[0]], xx[hit.b[1]], yy[hit.b[1]]);
+  }
+  */
   return intersections;
 
   // @p is an [x, y] location along a segment defined by ids @id1 and @id2

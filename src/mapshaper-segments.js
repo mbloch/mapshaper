@@ -91,7 +91,9 @@ MapShaper.findSegmentIntersections = (function() {
         arr;
     for (i=0; i<stripeCount; i++) {
       arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
-      if (arr.length > 0) extendIntersections(intersections, arr, i);
+      if (arr.length > 0) {
+        extendIntersections(intersections, arr, i);
+      }
     }
 
     // T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
@@ -126,6 +128,7 @@ MapShaper.getIntersectionKey = function(a, b) {
 };
 
 // Find intersections among a group of line segments
+// TODO: handle case where a segment starts and ends at the same point (i.e. duplicate coords);
 //
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
@@ -176,9 +179,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       // skip segments that share an endpoint
       if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
           s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
-
         // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
-        //
         continue;
       }
 
@@ -197,6 +198,15 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
     }
     i += 2;
   }
+  /*
+  if (intersections.length == 1) {
+    var hit = intersections[0];
+    console.log("hit:", hit);
+    console.log("json:", JSON.stringify(hit));
+    console.log("seg1", xx[hit.a[0]], yy[hit.a[0]], xx[hit.a[1]], yy[hit.a[1]]);
+    console.log("seg2", xx[hit.b[0]], yy[hit.b[0]], xx[hit.b[1]], yy[hit.b[1]]);
+  }
+  */
   return intersections;
 
   // @p is an [x, y] location along a segment defined by ids @id1 and @id2

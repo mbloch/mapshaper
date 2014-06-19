@@ -2,7 +2,6 @@
 var api = require('..'),
   assert = require('assert'),
   ArcCollection = api.internal.ArcCollection,
-  ArcCollection = api.internal.ArcCollection,
   Utils = api.utils,
   trace = Utils.trace;
 
@@ -247,6 +246,41 @@ describe('mapshaper-shapes.js', function () {
       assert.throws(function() {
         assert.equal(arcs.indexOfVertex(0, -3));
       })
+
+    })
+  })
+
+  describe('#forEachSegment()', function () {
+    it('should handle empty arcs', function () {
+      var coords = [[[0, 0], [1, 1], [1, 1]], [], [[2, 2], [3, 3], [4, 4]]];
+      var arcs = new ArcCollection(coords)
+      var ids = [];
+      arcs.forEachSegment(function(a, b, xx, yy) {
+        ids.push([a, b]);
+      });
+      var target = [[0, 1], [1, 2], [3, 4], [4, 5]];
+      assert.deepEqual(ids, target);
+    })
+  })
+
+  describe('#forEachArcSegment()', function () {
+    it('should work with fw and bw arcs', function () {
+
+      var coords = [[[0, 0], [0, 0], [0, 0]], [], [[0, 0], [0, 0]]];
+      var arcs = new ArcCollection(coords)
+
+      assert.deepEqual(getSegIds(0), [[0, 1], [1, 2]]);
+      assert.deepEqual(getSegIds(~0), [[2, 1], [1, 0]]);
+      assert.deepEqual(getSegIds(~1), []);
+      assert.deepEqual(getSegIds(~2), [[4, 3]]);
+
+      function getSegIds(id) {
+        var ids = [];
+        arcs.forEachArcSegment(id, function(a, b) {
+          ids.push([a, b]);
+        });
+        return ids;
+      }
 
     })
   })

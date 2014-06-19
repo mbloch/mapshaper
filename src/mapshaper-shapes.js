@@ -250,7 +250,34 @@ function ArcCollection() {
     return [dx / count || 0, dy / count || 0];
   };
 
+  this.forEachArcSegment = function(arcId, cb) {
+    var fw = arcId >= 0,
+        absId = fw ? arcId : ~arcId,
+        zlim = this.getRetainedInterval(),
+        n = _nn[absId],
+        i = fw ? _ii[absId] : _ii[absId] + n - 1,
+        step = fw ? 1 : -1,
+        count = 0,
+        prev;
+
+    for (var j = 0; j < n; j++, i += step) {
+      if (zlim === 0 || _zz[i] >= zlim) {
+        if (count > 0) {
+          cb(prev, i, _xx, _yy);
+        }
+        prev = i;
+        count++;
+      }
+    }
+  };
+
   this.forEachSegment = function(cb) {
+    for (var i=0, n=this.size(); i<n; i++) {
+      this.forEachArcSegment(i, cb);
+    }
+  };
+
+  this.forEachSegment_v1 = function(cb) {
     var zlim = this.getRetainedInterval(),
         nextArcStart = 0,
         arcId = -1,

@@ -5469,7 +5469,34 @@ function ArcCollection() {
     return [dx / count || 0, dy / count || 0];
   };
 
+  this.forEachArcSegment = function(arcId, cb) {
+    var fw = arcId >= 0,
+        absId = fw ? arcId : ~arcId,
+        zlim = this.getRetainedInterval(),
+        n = _nn[absId],
+        i = fw ? _ii[absId] : _ii[absId] + n - 1,
+        step = fw ? 1 : -1,
+        count = 0,
+        prev;
+
+    for (var j = 0; j < n; j++, i += step) {
+      if (zlim === 0 || _zz[i] >= zlim) {
+        if (count > 0) {
+          cb(prev, i, _xx, _yy);
+        }
+        prev = i;
+        count++;
+      }
+    }
+  };
+
   this.forEachSegment = function(cb) {
+    for (var i=0, n=this.size(); i<n; i++) {
+      this.forEachArcSegment(i, cb);
+    }
+  };
+
+  this.forEachSegment_v1 = function(cb) {
     var zlim = this.getRetainedInterval(),
         nextArcStart = 0,
         arcId = -1,
@@ -7155,10 +7182,8 @@ geom.getShapeCentroid = function(shp, arcs) {
 geom.testPointInShape = function(x, y, shp, arcs) {
   var intersections = 0;
   Utils.forEach(shp, function(ids) {
-    if (arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
-      if (geom.testPointInRing(x, y, ids, arcs)) {
-        intersections++;
-      }
+    if (geom.testPointInRing(x, y, ids, arcs)) {
+      intersections++;
     }
   });
   return intersections % 2 == 1;
@@ -7216,6 +7241,21 @@ geom.getPointToShapeDistance = function(x, y, shp, arcs) {
 };
 
 geom.testPointInRing = function(x, y, ids, arcs) {
+  /*
+  // this method doesn't apply simplification, can't use here
+  if (!arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
+    return false;
+  }
+  */
+  var count = 0;
+  MapShaper.forEachPathSegment(ids, arcs, function(a, b, xx, yy) {
+    count += geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+  });
+  return count % 2 == 1;
+};
+
+/*
+geom.testPointInRing = function(x, y, ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return false;
   var x0 = iter.x,
@@ -7223,43 +7263,49 @@ geom.testPointInRing = function(x, y, ids, arcs) {
       ax = x0,
       ay = y0,
       bx, by,
-      yInt,
       intersections = 0;
 
   while (iter.hasNext()) {
     bx = iter.x;
     by = iter.y;
-    if (x < ax && x < bx || x > ax && x > bx || y >= ay && y >= by) {
-      // no intersection
-    } else if (x === ax) {
-      if (y === ay) {
-        intersections = 0;
-        break;
-      }
-      if (bx < x && y < ay) {
-        intersections++;
-      }
-    } else if (x === bx) {
-      if (y === by) {
-        intersections = 0;
-        break;
-      }
-      if (ax < x && y < by) {
-        intersections++;
-      }
-    } else if (y < ay && y < by) {
-      intersections++;
-    } else {
-      yInt = geom.getYIntercept(x, ax, ay, bx, by);
-      if (yInt > y) {
-        intersections++;
-      }
-    }
+    intersections += geom.testRayIntersection(x, y, ax, ay, bx, by);
     ax = bx;
     ay = by;
   }
 
   return intersections % 2 == 1;
+};
+*/
+
+// test if a vertical ray starting at poing (x, y) intersects a segment
+// returns 1 if intersection, 0 if no intersection, NaN if point touches segment
+geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
+  var hit = 0, yInt;
+  if (x < ax && x < bx || x > ax && x > bx || y >= ay && y >= by) {
+      // no intersection
+  } else if (x === ax) {
+    if (y === ay) {
+      hit = NaN;
+    } else if (bx < x && y < ay) {
+      hit = 1;
+    }
+  } else if (x === bx) {
+    if (y === by) {
+      hit = NaN;
+    } else if (ax < x && y < by) {
+      hit = 1;
+    }
+  } else if (y < ay && y < by) {
+    hit = 1;
+  } else {
+    yInt = geom.getYIntercept(x, ax, ay, bx, by);
+    if (yInt > y) {
+      hit = 1;
+    } else if (yInt == y) {
+      hit = NaN;
+    }
+  }
+  return hit;
 };
 
 geom.getSphericalPathArea = function(iter) {
@@ -9332,6 +9378,12 @@ MapShaper.forEachPath = function(arr, cb) {
   }
 };
 
+MapShaper.forEachPathSegment = function(shape, arcs, cb) {
+  MapShaper.forEachArcId(shape, function(arcId) {
+    arcs.forEachArcSegment(arcId, cb);
+  });
+};
+
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   Utils.forEach(shapes, function(parts, shapeId) {
@@ -10617,7 +10669,9 @@ MapShaper.findSegmentIntersections = (function() {
         arr;
     for (i=0; i<stripeCount; i++) {
       arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
-      if (arr.length > 0) extendIntersections(intersections, arr, i);
+      if (arr.length > 0) {
+        extendIntersections(intersections, arr, i);
+      }
     }
 
     // T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
@@ -10652,6 +10706,7 @@ MapShaper.getIntersectionKey = function(a, b) {
 };
 
 // Find intersections among a group of line segments
+// TODO: handle case where a segment starts and ends at the same point (i.e. duplicate coords);
 //
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
@@ -10702,9 +10757,7 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       // skip segments that share an endpoint
       if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
           s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
-
         // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
-        //
         continue;
       }
 
@@ -10723,6 +10776,15 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
     }
     i += 2;
   }
+  /*
+  if (intersections.length == 1) {
+    var hit = intersections[0];
+    console.log("hit:", hit);
+    console.log("json:", JSON.stringify(hit));
+    console.log("seg1", xx[hit.a[0]], yy[hit.a[0]], xx[hit.a[1]], yy[hit.a[1]]);
+    console.log("seg2", xx[hit.b[0]], yy[hit.b[0]], xx[hit.b[1]], yy[hit.b[1]]);
+  }
+  */
   return intersections;
 
   // @p is an [x, y] location along a segment defined by ids @id1 and @id2
@@ -12839,14 +12901,151 @@ MapShaper.findNodeTopology = function(arcs) {
 
 
 
+// PolygonIndex indexes the coordinates in one polygon feature for efficient
+// point-in-polygon tests
+
+MapShaper.PolygonIndex = PolygonIndex;
+
+function PolygonIndex(shape, arcs) {
+  var data = arcs.getVertexData();
+  var polygonBounds = arcs.getMultiShapeBounds(shape),
+      boundsLeft;
+  var p1Arr, p2Arr,
+      bucketCount,
+      bucketOffsets,
+      indexWidth,
+      // bucketSizes,
+      bucketWidth;
+
+  init();
+
+  this.pointInPolygon = function(x, y) {
+    if (!polygonBounds.containsPoint(x, y)) {
+      return false;
+    }
+    var bucketId = getBucketId(x);
+    var count = countCrosses(x, y, bucketId);
+    if (bucketId > 0) {
+      count += countCrosses(x, y, bucketId - 1);
+    }
+    if (bucketId < bucketCount - 1) {
+      count += countCrosses(x, y, bucketId + 1);
+    }
+    count += countCrosses(x, y, bucketCount); // check oflo bucket
+    return count % 2 == 1;
+  };
+
+  function init() {
+    var xx = data.xx;
+    // get sorted array of segment ids
+    var segCount = 0;
+    MapShaper.forEachPathSegment(shape, arcs, function() {
+      segCount++;
+    });
+    var segments = new Uint32Array(segCount * 2),
+        i = 0;
+    MapShaper.forEachPathSegment(shape, arcs, function(a, b, xx, yy) {
+      if (xx[a] < xx[b]) {
+        segments[i++] = a;
+        segments[i++] = b;
+      } else {
+        segments[i++] = b;
+        segments[i++] = a;
+      }
+    });
+    MapShaper.sortSegmentIds(xx, segments);
+
+    // populate buckets
+    p1Arr = new Uint32Array(segCount);
+    p2Arr = new Uint32Array(segCount);
+    bucketCount = Math.ceil(segCount / 100);
+    bucketOffsets = new Uint32Array(bucketCount + 1);
+    // bucketSizes = new Uint32Array(bucketCount + 1);
+
+
+    boundsLeft = xx[segments[0]]; // xmin of first segment
+    var lastX = xx[segments[segments.length - 2]]; // xmin of last segment
+    var head = 0, tail = segCount - 1;
+    var bucketId = 0,
+        bucketLeft = boundsLeft,
+        segId = 0,
+        a, b, j, xmin, xmax;
+
+    indexWidth = lastX - boundsLeft;
+    bucketWidth = indexWidth / bucketCount;
+
+    while (bucketId < bucketCount && segId < segCount) {
+      j = segId * 2;
+      a = segments[j];
+      b = segments[j+1];
+      xmin = xx[a];
+      xmax = xx[b];
+
+      if (xmin > bucketLeft + bucketWidth && bucketId < bucketCount - 1) {
+        bucketId++;
+        bucketLeft = bucketId * bucketWidth + boundsLeft;
+        bucketOffsets[bucketId] = head;
+      } else {
+        var bucket2 = getBucketId(xmin);
+        if (bucket2 != bucketId) console.log("wrong bucket");
+        if (xmin < bucketLeft) error("out-of-range");
+        if (xmax - xmin >= 0 === false) error("invalid segment");
+        if (xmax > bucketLeft + 2 * bucketWidth) {
+          p1Arr[tail] = a;
+          p2Arr[tail] = b;
+          tail--;
+        } else {
+          p1Arr[head] = a;
+          p2Arr[head] = b;
+          head++;
+        }
+        segId++;
+        // bucketSizes[bucketId]++;
+      }
+    }
+    bucketOffsets[bucketCount] = head;
+    if (head != tail + 1) error("counting error; head:", head, "tail:", tail);
+  }
+
+  function countCrosses(x, y, bucketId) {
+    var offs = bucketOffsets[bucketId],
+        n = (bucketId == bucketCount) ? p1Arr.length - offs : bucketOffsets[bucketId + 1] - offs,
+        count = 0,
+        xx = data.xx,
+        yy = data.yy,
+        a, b;
+
+    // console.log("countCrosses() x, y:", x, y, "bucket:", bucketId, "size:", n)
+    for (var i=0; i<n; i++) {
+      a = p1Arr[i + offs];
+      b = p2Arr[i + offs];
+      count += geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+    }
+    return count;
+  }
+
+  function getBucketId(x) {
+    var i = Math.floor((x - boundsLeft) / bucketWidth);
+    if (i < 0) i = 0;
+    if (i >= bucketCount) i = bucketCount - 1;
+    return i;
+  }
+
+}
+
+
+
+
 MapShaper.PathIndex = PathIndex;
 
 function PathIndex(shapes, arcs) {
   var _index;
+  var pathIndexes = {}; //
   init(shapes);
 
   function init(shapes) {
     var boxes = [];
+    var totalArea = arcs.getBounds().area();
 
     shapes.forEach(function(shp) {
       if (shp) {
@@ -12857,12 +13056,16 @@ function PathIndex(shapes, arcs) {
     _index = require('rbush')();
     _index.load(boxes);
 
-    function addPath(ids) {
+    function addPath(ids, i) {
       var bounds = arcs.getSimpleShapeBounds(ids);
       var bbox = bounds.toArray();
       bbox.ids = ids;
+      bbox.i = i;
       bbox.bounds = bounds;
       boxes.push(bbox);
+      if (bounds.area() > totalArea * 0.02) {
+        // pathIndexes[i] = new PolygonIndex([ids], arcs);
+      }
     }
   }
 
@@ -12874,7 +13077,12 @@ function PathIndex(shapes, arcs) {
         count = 0;
 
     cands.forEach(function(cand) {
-      if (pathContainsPath(cand.ids, cand.bounds, pathIds, pathBounds)) count++;
+      if (cand.i in pathIndexes && false) {
+        var p = arcs.getVertex(pathIds[0], 0);
+        if (pathIndexes[cand.i].pointInPolygon(p.x, p.y)) count++;
+      } else if (pathContainsPath(cand.ids, cand.bounds, pathIds, pathBounds)) {
+        count++;
+      }
     });
     return count % 2 == 1;
   };

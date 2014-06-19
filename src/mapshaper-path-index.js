@@ -1,13 +1,15 @@
-/* @requires mapshaper-shape-utils, mapshaper-shape-geom */
+/* @requires mapshaper-shape-utils, mapshaper-shape-geom, mapshaper-polygon-index */
 
 MapShaper.PathIndex = PathIndex;
 
 function PathIndex(shapes, arcs) {
   var _index;
+  var pathIndexes = {}; //
   init(shapes);
 
   function init(shapes) {
     var boxes = [];
+    var totalArea = arcs.getBounds().area();
 
     shapes.forEach(function(shp) {
       if (shp) {
@@ -18,12 +20,16 @@ function PathIndex(shapes, arcs) {
     _index = require('rbush')();
     _index.load(boxes);
 
-    function addPath(ids) {
+    function addPath(ids, i) {
       var bounds = arcs.getSimpleShapeBounds(ids);
       var bbox = bounds.toArray();
       bbox.ids = ids;
+      bbox.i = i;
       bbox.bounds = bounds;
       boxes.push(bbox);
+      if (bounds.area() > totalArea * 0.02) {
+        // pathIndexes[i] = new PolygonIndex([ids], arcs);
+      }
     }
   }
 
@@ -35,7 +41,12 @@ function PathIndex(shapes, arcs) {
         count = 0;
 
     cands.forEach(function(cand) {
-      if (pathContainsPath(cand.ids, cand.bounds, pathIds, pathBounds)) count++;
+      if (cand.i in pathIndexes && false) {
+        var p = arcs.getVertex(pathIds[0], 0);
+        if (pathIndexes[cand.i].pointInPolygon(p.x, p.y)) count++;
+      } else if (pathContainsPath(cand.ids, cand.bounds, pathIds, pathBounds)) {
+        count++;
+      }
     });
     return count % 2 == 1;
   };

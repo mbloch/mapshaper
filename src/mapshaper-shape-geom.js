@@ -105,10 +105,8 @@ geom.getShapeCentroid = function(shp, arcs) {
 geom.testPointInShape = function(x, y, shp, arcs) {
   var intersections = 0;
   Utils.forEach(shp, function(ids) {
-    if (arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
-      if (geom.testPointInRing(x, y, ids, arcs)) {
-        intersections++;
-      }
+    if (geom.testPointInRing(x, y, ids, arcs)) {
+      intersections++;
     }
   });
   return intersections % 2 == 1;
@@ -166,6 +164,21 @@ geom.getPointToShapeDistance = function(x, y, shp, arcs) {
 };
 
 geom.testPointInRing = function(x, y, ids, arcs) {
+  /*
+  // this method doesn't apply simplification, can't use here
+  if (!arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
+    return false;
+  }
+  */
+  var count = 0;
+  MapShaper.forEachPathSegment(ids, arcs, function(a, b, xx, yy) {
+    count += geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+  });
+  return count % 2 == 1;
+};
+
+/*
+geom.testPointInRing = function(x, y, ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   if (!iter.hasNext()) return false;
   var x0 = iter.x,
@@ -173,43 +186,49 @@ geom.testPointInRing = function(x, y, ids, arcs) {
       ax = x0,
       ay = y0,
       bx, by,
-      yInt,
       intersections = 0;
 
   while (iter.hasNext()) {
     bx = iter.x;
     by = iter.y;
-    if (x < ax && x < bx || x > ax && x > bx || y >= ay && y >= by) {
-      // no intersection
-    } else if (x === ax) {
-      if (y === ay) {
-        intersections = 0;
-        break;
-      }
-      if (bx < x && y < ay) {
-        intersections++;
-      }
-    } else if (x === bx) {
-      if (y === by) {
-        intersections = 0;
-        break;
-      }
-      if (ax < x && y < by) {
-        intersections++;
-      }
-    } else if (y < ay && y < by) {
-      intersections++;
-    } else {
-      yInt = geom.getYIntercept(x, ax, ay, bx, by);
-      if (yInt > y) {
-        intersections++;
-      }
-    }
+    intersections += geom.testRayIntersection(x, y, ax, ay, bx, by);
     ax = bx;
     ay = by;
   }
 
   return intersections % 2 == 1;
+};
+*/
+
+// test if a vertical ray starting at poing (x, y) intersects a segment
+// returns 1 if intersection, 0 if no intersection, NaN if point touches segment
+geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
+  var hit = 0, yInt;
+  if (x < ax && x < bx || x > ax && x > bx || y >= ay && y >= by) {
+      // no intersection
+  } else if (x === ax) {
+    if (y === ay) {
+      hit = NaN;
+    } else if (bx < x && y < ay) {
+      hit = 1;
+    }
+  } else if (x === bx) {
+    if (y === by) {
+      hit = NaN;
+    } else if (ax < x && y < by) {
+      hit = 1;
+    }
+  } else if (y < ay && y < by) {
+    hit = 1;
+  } else {
+    yInt = geom.getYIntercept(x, ax, ay, bx, by);
+    if (yInt > y) {
+      hit = 1;
+    } else if (yInt == y) {
+      hit = NaN;
+    }
+  }
+  return hit;
 };
 
 geom.getSphericalPathArea = function(iter) {

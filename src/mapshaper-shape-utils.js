@@ -117,6 +117,12 @@ MapShaper.forEachPath = function(arr, cb) {
   }
 };
 
+MapShaper.forEachPathSegment = function(shape, arcs, cb) {
+  MapShaper.forEachArcId(shape, function(arcId) {
+    arcs.forEachArcSegment(arcId, cb);
+  });
+};
+
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   Utils.forEach(shapes, function(parts, shapeId) {
