@@ -91,13 +91,20 @@ describe("mapshaper-geom.js", function() {
       assert.equal(geom.signedAngle(1, 0, 1, 1, 0, 1), 3 * Math.PI/2);
     })
 
-    it("returns 0 if two adjacent points are the same", function() {
-      assert.equal(geom.signedAngle(3, 0, 3, 0, 4, 1), 0);
-      assert.equal(geom.signedAngle(3, 1, 2, 0, 2, 0), 0);
+    it("returns NaN if two adjacent points are the same", function() {
+      assert.ok(isNaN(geom.signedAngle(3, 0, 3, 0, 4, 1)));
+      assert.ok(isNaN(geom.signedAngle(3, 1, 2, 0, 2, 0)));
     })
 
-    it("returns 0 if all points are the same", function() {
-      assert.equal(geom.signedAngle(0, -1, 0, -1, 0, -1), 0);
+    it("returns NaN if all points are the same", function() {
+      assert.ok(isNaN(geom.signedAngle(0, -1, 0, -1, 0, -1)));
+    })
+
+    it("returns NaN if one or more args are NaN", function() {
+      assert.ok(isNaN(geom.signedAngle(0, -1, 0, -1, 0)));
+      assert.ok(isNaN(geom.signedAngle()));
+      // null gets coerced to zero... need to check for null if NaN is important here
+      // assert.ok(isNaN(geom.signedAngle(0, -1, null, -1, 0, -1)));
     })
 
   })

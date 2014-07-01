@@ -99,14 +99,16 @@ function innerAngle2(ax, ay, bx, by, cx, cy) {
   return a3;
 }
 
+// Return angle abc in range [0, 2PI) or NaN if angle is invalid
+// (e.g. if length of ab or bc is 0)
 function signedAngle(ax, ay, bx, by, cx, cy) {
   var a1 = Math.atan2(ay - by, ax - bx),
       a2 = Math.atan2(cy - by, cx - bx),
       a3 = a2 - a1;
 
   if (ax == bx && ay == by || bx == cx && by == cy) {
-    a3 = 0;
-  } else if (a3 > Math.PI * 2) {
+    a3 = NaN; // Use NaN for invalid angles
+  } else if (a3 >= Math.PI * 2) {
     a3 = 2 * Math.PI - a3;
   } else if (a3 < 0) {
     a3 = a3 + 2 * Math.PI;

@@ -185,6 +185,10 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 
+  parser.command("fill-holes")
+    .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
+
   parser.command("clip")
     .validate(validateClip)
     .option("source")
@@ -197,6 +201,12 @@ MapShaper.getOptionParser = function() {
     .option("source")
     .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
+    .option("target");
+
+  parser.command("dissolve2")
+    .option("target");
+
+  parser.command("flatten")
     .option("target");
 
   parser.command("dissolve")
@@ -297,6 +307,8 @@ MapShaper.getOptionParser = function() {
 
   parser.command('verbose')
     .describe("print verbose processing messages");
+
+  parser.command('tracing');
 
   parser.command('version')
     .alias('v')

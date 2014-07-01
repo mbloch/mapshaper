@@ -100,6 +100,9 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'dissolve') {
     newLayers = MapShaper.applyCommand(api.dissolveLayer, targetLayers, arcs, opts);
 
+  } else if (name == 'dissolve2') {
+    newLayers = MapShaper.applyCommand(api.dissolveLayer2, targetLayers, arcs, opts);
+
   } else if (name == 'divide') {
     MapShaper.divideArcs(dataset.layers, arcs);
     newLayers = MapShaper.applyCommand(api.dividePolygonLayer, targetLayers, arcs, opts);
@@ -114,8 +117,16 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'fields') {
     MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
 
+  /*
+  } else if (name == 'fill-holes') {
+    MapShaper.applyCommand(api.fillHoles, targetLayers, opts);
+  */
+
   } else if (name == 'filter') {
     MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
+
+  } else if (name == 'flatten') {
+    newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, arcs, opts);
 
   } else if (name == 'info') {
     api.printInfo(dataset);
@@ -266,7 +277,9 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
     } else if (cmd.name == 'help') {
       MapShaper.printHelp();
     } else if (cmd.name == 'verbose') {
-      C.VERBOSE = true;
+      MapShaper.VERBOSE = true;
+    } else if (cmd.name == 'tracing') {
+      MapShaper.TRACING = true;
     } else {
       return true;
     }

@@ -2,8 +2,24 @@ var api = require('../'),
     assert = require('assert'),
     ArcCollection = api.internal.ArcCollection;
 
+describe('mapshaper-clip-erase.js', function () {
 
-describe('mapshaper-clipping.js', function () {
+  describe('setting bits', function() {
+    var setBits = api.internal.setBits,
+        andBits = api.internal.andBits,
+        orBits = api.internal.orBits;
+
+    it('setBits()', function() {
+      assert.equal(setBits(0, 3, 2), 2);
+      assert.equal(setBits(0xff, 0, 3), 0xfc);
+    });
+
+    it('andBits()', function() {
+      assert.equal(andBits(0, 3, 2), 0);
+      assert.equal(andBits(0xff, 2, 3), 254);
+    });
+
+  });
 
   describe('Fig. 1 - two simple polygons', function () {
 

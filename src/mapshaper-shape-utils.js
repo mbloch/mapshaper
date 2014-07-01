@@ -27,6 +27,22 @@ MapShaper.reversePath = function(ids) {
   }
 };
 
+// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
+MapShaper.removeSpikesInPath = function(ids) {
+  var n = ids.length;
+  for (var i=1; i<n; i++) {
+    if (ids[i-1] == ~ids[i]) {
+      ids.splice(i-1, 2);
+      MapShaper.removeSpikesInPath(ids);
+    }
+  }
+  if (n > 2 && ids[0] == ~ids[n-1]) {
+    ids.pop();
+    ids.shift();
+    MapShaper.removeSpikesInPath(ids);
+  }
+};
+
 MapShaper.getPathMetadata = function(shape, arcs, type) {
   var iter = new ShapeIter(arcs);
   return Utils.map(shape, function(ids) {
@@ -110,6 +126,7 @@ MapShaper.forEachPath = function(arr, cb) {
     if (retn === void 0) {
       // nop
     } else if (Utils.isArray(retn)) {
+      trace("[forEachPath()] replacing:", arcs, 'with', retn);
       arr[i] = retn;
     } else {
       error("Expected an array, received:", retn);

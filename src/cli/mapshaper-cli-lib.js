@@ -20,9 +20,12 @@ mapshaper-filter
 mapshaper-merge-files
 mapshaper-join
 mapshaper-innerlines
-mapshaper-clipping
 mapshaper-encodings
 mapshaper-info
+mapshaper-dissolve2
+mapshaper-flatten
+mapshaper-clip-erase
+mapshaper-divide
 */
 
 var cli = api.cli = {};
@@ -156,11 +159,10 @@ Utils.extend(api.internal, {
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
   ShpType: ShpType,
-  C: C,
   Bounds: Bounds
 });
 
 api.T = T;
+C.VERBOSE = false;
 
 module.exports = api;
-C.VERBOSE = false;

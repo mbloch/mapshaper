@@ -29,80 +29,41 @@ function NodeCollection(arcs) {
   };
 
   this.debugNode = function(arcId) {
-    var arcs = [];
+    if (!MapShaper.TRACING) return;
+    var segments = [];
+    var ids = [arcId];
     this.forEachConnectedArc(arcId, function(id) {
-      arcs.push(id);
+      ids.push(id);
+      var str;
+      var len = arcs.getArcLength(id);
+      if (len > 0) {
+        var p1 = arcs.getVertex(arcId, -1);
+        str = Utils.format("[%f, %f]", p1.x, p1.y);
+        if (len > 1) {
+          var p2 = arcs.getVertex(arcId, -2);
+          str += Utils.format(", [%f, %f]", p2.x, p2.y);
+          if (len > 2) {
+            var p3 = arcs.getVertex(arcId, 0);
+            str += Utils.format(", [%f, %f]", p3.x, p3.y);
+          }
+        }
+      } else {
+        str = "[]";
+      }
+      segments.push(str);
     });
-    console.log("node:", arcs);
+    console.log("[node] <-", arcId);
+    console.log("ids:",  ids);
+    console.log(segments.join('\n'));
   };
 
   this.forEachConnectedArc = function(arcId, cb) {
-    var nextId = nextConnectedArc(arcId);
-    do {
-      cb(nextId);
+    var nextId = nextConnectedArc(arcId),
+        i = 0;
+    while (nextId != arcId) {
+      cb(nextId, i++);
       nextId = nextConnectedArc(nextId);
-    } while (nextId != arcId);
-  };
-
-  // Returns next arc in a path, or ~@prevId if path terminates
-  // @test (optional) filter function
-  this.getNextArc = function(prevId, isCW, test) {
-    var ai = arcs.indexOfVertex(prevId, -2),
-        ax = xx[ai],
-        ay = yy[ai],
-        bi = arcs.indexOfVertex(prevId, -1),
-        bx = xx[bi],
-        by = yy[bi],
-        ci, cx, cy,
-        di, dx, dy,
-        nextId = prevId,
-        nextAngle = 0,
-        candId = nextConnectedArc(prevId),
-        candAngle;
-
-    while (candId != prevId) {
-      // if (candId < 0) console.log("reversed arc:", candId)
-      // get best candidate
-      ci = arcs.indexOfVertex(candId, -2);
-      cx = xx[ci];
-      cy = yy[ci];
-
-      // sanity check: make sure vertex is same (else error);
-      di = arcs.indexOfVertex(candId, -1);
-      dx = xx[di];
-      dy = yy[di];
-      if (dx !== bx || dy !== by) {
-        console.log("cd:", cx, cy, dx, dy, 'arc:', candId);
-        error("Node error:");
-      }
-
-      candAngle = signedAngle(ax, ay, bx, by, cx, cy);
-      // if (candAngle <= 0 || candAngle >= 2 * Math.PI) console.log(candAngle);
-      if (!test || test(~candId)) {
-        if (candAngle > 0 && (nextAngle === 0 || isCW && candAngle < nextAngle ||
-            !isCW && candAngle > nextAngle)) {
-        // if (candAngle > 0 && (nextAngle === 0 || candAngle < nextAngle)) {
-          nextId = candId;
-          nextAngle = candAngle;
-        }
-        else if (candAngle == nextAngle) {
-          /*
-            console.log("duplicate angle:", candAngle);
-            console.log("id1:", nextId, "id2:", candId);
-            console.log("len1:", nn[absArcId(nextId)], "len2:", nn[absArcId(candId)]);
-            console.log("arc1:", arcs.getArc(nextId).toString());
-            console.log("arc2:", arcs.getArc(candId).toString());
-            this.debugNode(candId);
-          */
-        }
-      } else {
-        // console.log("failed test:", candId)
-      }
-
-      candId = nextConnectedArc(candId);
     }
-
-    return ~nextId; // reverse arc to point onwards
   };
 
   // Returns the id of the first identical arc or @arcId if none found
@@ -114,10 +75,7 @@ function NodeCollection(arcs) {
       if (testArcMatch(arcId, nextId)) {
         if (absArcId(nextId) < absArcId(match)) match = nextId;
       }
-      // console.log(" arcs:", arcs.toArray())
-      // break;
     }
-
     return match;
   };
 

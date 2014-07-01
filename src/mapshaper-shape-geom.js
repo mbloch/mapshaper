@@ -165,7 +165,7 @@ geom.getPointToShapeDistance = function(x, y, shp, arcs) {
 
 geom.testPointInRing = function(x, y, ids, arcs) {
   /*
-  // this method doesn't apply simplification, can't use here
+  // arcs.getSimpleShapeBounds() doesn't apply simplification, can't use here
   if (!arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
     return false;
   }
@@ -321,6 +321,10 @@ geom.getPathArea3 = function(xx, yy, start, len) {
     sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
   }
   return sum / 2;
+};
+
+geom.getPathArea4 = function() {
+
 };
 
 geom.getPathBounds = function(points) {

@@ -163,11 +163,17 @@ function CommandParser() {
 
     var helpStr = _usage ? _usage + "\n\n" : "";
     commands.forEach(function(obj, i) {
-      if ('title' in obj) helpStr += obj.title + "\n";
-      if (obj.describe) helpStr += formatHelpLine(obj.help, obj.describe);
-      if (obj.options.length > 0) {
-        obj.options.forEach(addOptionHelp);
-        helpStr += '\n';
+      if (obj.title) {
+        helpStr += obj.title + "\n";
+      }
+      if (obj.describe) {
+        helpStr += formatHelpLine(obj.help, obj.describe);
+      }
+      if (obj.title || obj.describe) {
+       if (obj.options.length > 0) {
+          obj.options.forEach(addOptionHelp);
+          helpStr += '\n';
+        }
       }
     });
 

@@ -5,7 +5,9 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.LOGGING = false; //
+MapShaper.LOGGING = false;
+MapShaper.TRACING = false;
+MapShaper.VERBOSE = false;
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;
@@ -27,16 +29,28 @@ function stop() {
   }
 }
 
-function message() {
-  var msg = Utils.toArray(arguments).join(' ');
-  if (MapShaper.LOGGING && msg) {
-    console.log(msg);
+var message = function() {
+  if (MapShaper.LOGGING) {
+    logArgs(arguments);
   }
-}
+};
 
-function verbose() {
-  if (C.VERBOSE) {
-    message.apply(null, Utils.toArray(arguments));
+var verbose = function() {
+  if (MapShaper.VERBOSE && MapShaper.LOGGING) {
+    logArgs(arguments);
+  }
+};
+
+var trace = function() {
+  if (MapShaper.TRACING) {
+    logArgs(arguments);
+  }
+};
+
+function logArgs(args) {
+  if (Utils.isArrayLike(args)) {
+    var arr = Utils.toArray(args);
+    console.log.apply(null, arr);
   }
 }
 

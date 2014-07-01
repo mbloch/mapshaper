@@ -28,7 +28,7 @@ function PathIndex(shapes, arcs) {
       bbox.bounds = bounds;
       boxes.push(bbox);
       if (bounds.area() > totalArea * 0.02) {
-        // pathIndexes[i] = new PolygonIndex([ids], arcs);
+        pathIndexes[i] = new PolygonIndex([ids], arcs);
       }
     }
   }
@@ -41,7 +41,7 @@ function PathIndex(shapes, arcs) {
         count = 0;
 
     cands.forEach(function(cand) {
-      if (cand.i in pathIndexes && false) {
+      if (cand.i in pathIndexes) {
         var p = arcs.getVertex(pathIds[0], 0);
         if (pathIndexes[cand.i].pointInPolygon(p.x, p.y)) count++;
       } else if (pathContainsPath(cand.ids, cand.bounds, pathIds, pathBounds)) {

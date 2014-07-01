@@ -23,6 +23,7 @@ describe('mapshaper-endpoints.js', function () {
     })
   })
 
+  /*
   describe('NodeCollection#getNextArc()', function () {
     it('test 1', function () {
 
@@ -45,6 +46,7 @@ describe('mapshaper-endpoints.js', function () {
       assert.equal(nodes.getNextArc(2, false), 0);
     })
   })
+  */
 
   describe('Fig. 2', function() {
     //

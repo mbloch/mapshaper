@@ -366,7 +366,7 @@ describe('mapshaper-dissolve.js', function () {
       //   0,     1,    3
 
       var arcs = [[[5, 3], [5, 1], [1, 1], [1, 3], [3, 3]],
-          [[3, 3], [4, 3], [2, 2], [3, 3]],
+          [[3, 3], [4, 2], [2, 2], [3, 3]],
           [[3, 3], [5, 3]]];
       var arcData = new ArcCollection(arcs);
 
@@ -374,10 +374,10 @@ describe('mapshaper-dissolve.js', function () {
         var lyr = {
               geometry_type: 'polygon',
               data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
-              shapes: [[[0, ~1, 3]], [[1]]]
+              shapes: [[[0, ~1, 2]], [[1]]]
             };
         var lyr2 = dissolveLayer(lyr, arcData, {field: 'foo'});
-        assert.deepEqual(lyr2.shapes, [[[0, 3]]]);
+        assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
 
       })
     })
