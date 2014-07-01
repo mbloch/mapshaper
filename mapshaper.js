@@ -4416,6 +4416,10 @@ function CommandOptions(name) {
 
 
 
+function trapOldOpt(cmd) {
+  error(Utils.format('The [%s] option was removed in v0.2.0.', cmd.name));
+}
+
 function validateInputOpts(cmd) {
   var o = cmd.options;
   o.files = cli.validateInputFiles(cmd._);
@@ -4960,6 +4964,13 @@ MapShaper.getOptionParser = function() {
   parser.command('help')
     .alias('h')
     .describe("print this help message");
+
+
+  // trap v0.1 options
+  "f,format,p,pct,interval,e,expression,merge-files,combine-files".split(',')
+    .forEach(function(str) {
+      parser.command(str).validate(trapOldOpt);
+    });
 
   return parser;
 };
@@ -14408,6 +14419,5 @@ api.T = T;
 C.VERBOSE = false;
 
 module.exports = api;
-
 
 })();

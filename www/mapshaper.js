@@ -444,6 +444,8 @@ var trace = function() {
   }
 };
 
+var verbose = trace;
+
 var error = function() {
   var msg = Utils.map(arguments, Utils.strval).join(' ');
   throw new Error(msg);
@@ -457,7 +459,7 @@ var T = {
   verbose: true,
 
   start: function(msg) {
-    if (T.verbose && msg) trace(T.prefix() + msg);
+    if (T.verbose && msg) verbose(T.prefix() + msg);
     T.stack.push(+new Date);
   },
 
@@ -470,7 +472,7 @@ var T = {
       if (note) {
         msg += " " + note;
       }
-      trace(msg);
+      verbose(msg);
     }
     return elapsed;
   },
@@ -3907,7 +3909,9 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.LOGGING = false; //
+MapShaper.LOGGING = false;
+MapShaper.TRACING = false;
+MapShaper.VERBOSE = false;
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;
@@ -3929,16 +3933,28 @@ function stop() {
   }
 }
 
-function message() {
-  var msg = Utils.toArray(arguments).join(' ');
-  if (MapShaper.LOGGING && msg) {
-    console.log(msg);
+var message = function() {
+  if (MapShaper.LOGGING) {
+    logArgs(arguments);
   }
-}
+};
 
-function verbose() {
-  if (C.VERBOSE) {
-    message.apply(null, Utils.toArray(arguments));
+var verbose = function() {
+  if (MapShaper.VERBOSE && MapShaper.LOGGING) {
+    logArgs(arguments);
+  }
+};
+
+var trace = function() {
+  if (MapShaper.TRACING) {
+    logArgs(arguments);
+  }
+};
+
+function logArgs(args) {
+  if (Utils.isArrayLike(args)) {
+    var arr = Utils.toArray(args);
+    console.log.apply(null, arr);
   }
 }
 
@@ -4233,14 +4249,16 @@ function innerAngle2(ax, ay, bx, by, cx, cy) {
   return a3;
 }
 
+// Return angle abc in range [0, 2PI) or NaN if angle is invalid
+// (e.g. if length of ab or bc is 0)
 function signedAngle(ax, ay, bx, by, cx, cy) {
   var a1 = Math.atan2(ay - by, ax - bx),
       a2 = Math.atan2(cy - by, cx - bx),
       a3 = a2 - a1;
 
   if (ax == bx && ay == by || bx == cx && by == cy) {
-    a3 = 0;
-  } else if (a3 > Math.PI * 2) {
+    a3 = NaN; // Use NaN for invalid angles
+  } else if (a3 >= Math.PI * 2) {
     a3 = 2 * Math.PI - a3;
   } else if (a3 < 0) {
     a3 = a3 + 2 * Math.PI;
@@ -5830,7 +5848,7 @@ geom.getPointToShapeDistance = function(x, y, shp, arcs) {
 
 geom.testPointInRing = function(x, y, ids, arcs) {
   /*
-  // this method doesn't apply simplification, can't use here
+  // arcs.getSimpleShapeBounds() doesn't apply simplification, can't use here
   if (!arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
     return false;
   }
@@ -5986,6 +6004,10 @@ geom.getPathArea3 = function(xx, yy, start, len) {
     sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
   }
   return sum / 2;
+};
+
+geom.getPathArea4 = function() {
+
 };
 
 geom.getPathBounds = function(points) {
@@ -8295,6 +8317,22 @@ MapShaper.reversePath = function(ids) {
   }
 };
 
+// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
+MapShaper.removeSpikesInPath = function(ids) {
+  var n = ids.length;
+  for (var i=1; i<n; i++) {
+    if (ids[i-1] == ~ids[i]) {
+      ids.splice(i-1, 2);
+      MapShaper.removeSpikesInPath(ids);
+    }
+  }
+  if (n > 2 && ids[0] == ~ids[n-1]) {
+    ids.pop();
+    ids.shift();
+    MapShaper.removeSpikesInPath(ids);
+  }
+};
+
 MapShaper.getPathMetadata = function(shape, arcs, type) {
   var iter = new ShapeIter(arcs);
   return Utils.map(shape, function(ids) {
@@ -8378,6 +8416,7 @@ MapShaper.forEachPath = function(arr, cb) {
     if (retn === void 0) {
       // nop
     } else if (Utils.isArray(retn)) {
+      trace("[forEachPath()] replacing:", arcs, 'with', retn);
       arr[i] = retn;
     } else {
       error("Expected an array, received:", retn);
