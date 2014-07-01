@@ -13703,7 +13703,6 @@ MapShaper.flattenShapes = function(shapes, arcs) {
 
 
 
-
 // Assumes layers and arcs have been processed with divideArcs()
 api.dividePolygonLayer = function(lyrA, lyrB, arcs) {
   if (lyrA.geometry_type != 'polygon') {

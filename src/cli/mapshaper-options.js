@@ -318,5 +318,12 @@ MapShaper.getOptionParser = function() {
     .alias('h')
     .describe("print this help message");
 
+
+  // trap v0.1 options
+  "f,format,p,pct,interval,e,expression,merge-files,combine-files".split(',')
+    .forEach(function(str) {
+      parser.command(str).validate(trapOldOpt);
+    });
+
   return parser;
 };
