@@ -22,6 +22,8 @@ MapShaper.getOptionParser = function() {
   parser.example("Aggregate census tracts to counties\n" +
       "$ mapshaper -i tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
 
+  parser.default('i');
+
   parser.command('i')
     .title("Commands and command options")
     .describe("input one or more files")

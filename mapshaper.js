@@ -4153,13 +4153,20 @@ MapShaper.probablyDecimalDegreeBounds = function(b) {
 function CommandParser() {
   var _usage = "",
       _examples = [],
-      _commands = [];
+      _commands = [],
+      _default = null;
 
   if (this instanceof CommandParser === false) return new CommandParser();
 
   this.usage = function(str) {
     _usage = str;
     return this;
+  };
+
+  // set a default command; applies to command line args preceding the first
+  // explicit command
+  this.default = function(str) {
+    _default = str;
   };
 
   this.example = function(str) {
@@ -4180,7 +4187,12 @@ function CommandParser() {
         cmdName, cmdDef, opt;
 
     while (argv.length > 0) {
-      cmdName = readCommandName(argv);
+      // if there are arguments before the first explicit command, use the default command
+      if (commands.length === 0 && moreOptions(argv)) {
+        cmdName = _default;
+      } else {
+        cmdName = readCommandName(argv);
+      }
       if (!cmdName) error("Invalid command:", argv[0]);
       cmdDef = findCommandDefn(cmdName, commandDefs);
       if (!cmdDef) {
@@ -4668,6 +4680,8 @@ MapShaper.getOptionParser = function() {
 
   parser.example("Aggregate census tracts to counties\n" +
       "$ mapshaper -i tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
+
+  parser.default('i');
 
   parser.command('i')
     .title("Commands and command options")
