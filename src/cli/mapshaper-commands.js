@@ -132,7 +132,7 @@ api.runCommand = function(cmd, dataset, cb) {
     api.printInfo(dataset);
 
   } else if (name == 'innerlines') {
-    newLayers = MapShaper.applyCommand(api.convertLayerToInnerLines, targetLayers, arcData);
+    newLayers = MapShaper.applyCommand(api.convertLayerToInnerLines, targetLayers, arcs);
 
   } else if (name == 'join') {
     // async command -- special case
@@ -146,7 +146,7 @@ api.runCommand = function(cmd, dataset, cb) {
     newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
 
   } else if (name == 'lines') {
-    MapShaper.applyCommand(api.convertLayerToTypedLines, targetLayers, arcs, opts.fields);
+    newLayers = MapShaper.applyCommand(api.convertLayerToTypedLines, targetLayers, arcs, opts.fields);
 
   } else if (name == 'merge-layers') {
     // careful, returned layers are modified input layers
