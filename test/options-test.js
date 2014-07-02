@@ -88,9 +88,9 @@ describe('mapshaper-options.js', function () {
     good("-simplify 3% no-repair", {pct: 0.03, no_repair: true});
   })
 
-  describe('fields', function () {
-    good('-fields STATE,FIPS:STATE_FIPS', {fields:["STATE", "FIPS:STATE_FIPS"]});
-    bad('-fields');
+  describe('filter-fields', function () {
+    good('-filter-fields STATE,FIPS:STATE_FIPS', {fields:["STATE", "FIPS:STATE_FIPS"]});
+    good('-filter-fields', {fields: []});
   })
 
   describe('join', function() {

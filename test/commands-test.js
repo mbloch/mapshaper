@@ -11,10 +11,17 @@ describe('mapshaper-commands.js', function () {
     var file1 = fixPath("test_data/two_states.shp"),
         file2 = fixPath("test_data/six_counties.shp");
 
-    it("-fields", function () {
-      var cmd = "-i " + file1 + " -fields NAME=STATE_NAME,FIPS";
+    it("-filter-fields", function () {
+      var cmd = "-i " + file1 + " -filter-fields NAME=STATE_NAME,FIPS";
       api.runCommandString(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getFields(), ['NAME', 'FIPS']);
+      })
+    })
+
+    it("-filter-fields (drop fields)", function () {
+      var cmd = "-i " + file1 + " -filter-fields";
+      api.runCommandString(cmd, function(err, data) {
+        assert.deepEqual(data.layers[0].data.getFields(), []);
       })
     })
 

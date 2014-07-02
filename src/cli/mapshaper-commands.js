@@ -114,7 +114,7 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'explode') {
     newLayers = MapShaper.applyCommand(api.explodeLayer, targetLayers, arcs, opts);
 
-  } else if (name == 'fields') {
+  } else if (name == 'filter-fields') {
     MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
 
   /*

@@ -129,9 +129,6 @@ function FeatureExpressionContext(lyr, arcs) {
   if (hasPaths) {
     _shp = new MultiShape(arcs);
     _isLatLng = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds());
-    // TODO: add methods:
-    // isClosed / isOpen
-    //
     addGetters(this, {
       // TODO: count hole/s + containing ring as one part
       partCount: function() {
@@ -143,40 +140,46 @@ function FeatureExpressionContext(lyr, arcs) {
       bounds: function() {
         return shapeBounds().toArray();
       },
-      width: function() {
-        return shapeBounds().width();
-      },
       height: function() {
         return shapeBounds().height();
       },
-      area: function() {
-        return _isLatLng ? geom.getSphericalShapeArea(_ids, arcs) : geom.getShapeArea(_ids, arcs);
-      },
-      originalArea: function() {
-        var i = arcs.getRetainedInterval(),
-            area;
-        arcs.setRetainedInterval(0);
-        area = _self.area;
-        arcs.setRetainedInterval(i);
-        return area;
-      },
-      centroidX: function() {
-        var p = centroid();
-        return p ? p.x : null;
-      },
-      centroidY: function() {
-        var p = centroid();
-        return p ? p.y : null;
-      },
-      interiorX: function() {
-        var p = innerXY();
-        return p ? p.x : null;
-      },
-      interiorY: function() {
-        var p = innerXY();
-        return p ? p.y : null;
+      width: function() {
+        return shapeBounds().width();
       }
     });
+
+    if (lyr.geometry_type == 'polygon') {
+      addGetters(this, {
+        area: function() {
+          return _isLatLng ? geom.getSphericalShapeArea(_ids, arcs) : geom.getShapeArea(_ids, arcs);
+        },
+        originalArea: function() {
+          var i = arcs.getRetainedInterval(),
+              area;
+          arcs.setRetainedInterval(0);
+          area = _self.area;
+          arcs.setRetainedInterval(i);
+          return area;
+        },
+        centroidX: function() {
+          var p = centroid();
+          return p ? p.x : null;
+        },
+        centroidY: function() {
+          var p = centroid();
+          return p ? p.y : null;
+        },
+        // not implemented
+        interiorX: function() {
+          var p = innerXY();
+          return p ? p.x : null;
+        },
+        interiorY: function() {
+          var p = innerXY();
+          return p ? p.y : null;
+        }
+      });
+    }
 
   } else if (hasPoints) {
     // TODO: add functions like bounds, isNull, pointCount

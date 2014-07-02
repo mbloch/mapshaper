@@ -4552,12 +4552,10 @@ function validateSplitOnGridOpts(cmd) {
 }
 
 function validateLinesOpts(cmd) {
-  var o = cmd.options;
-  if (!o.fields && cmd._.length == 1) {
-    o.fields = cli.validateCommaSepNames(cmd._[0]);
-  }
-
-  if (o.fields && o.fields.length === 0 || cmd._.length > 1) {
+  try {
+    var fields = validateCommaSepNames(cmd.options.fields || cmd._[0]);
+    if (fields) cmd.options.fields = fields;
+  } catch (e) {
     error("-lines takes a comma-separated list of fields");
   }
 }
@@ -4575,20 +4573,22 @@ function validateSubdivideOpts(cmd) {
   cmd.options.expression = cmd._[0];
 }
 
-function validateFieldsOpts(cmd) {
-  var fields = validateCommaSep(cmd._[0]);
-  if (!fields || fields.length > 0 === false) {
-    error("-fields option requires a comma-sep. list of fields");
+function validateFilterFieldsOpts(cmd) {
+  try {
+    var fields = validateCommaSepNames(cmd._[0]);
+    cmd.options.fields = fields || [];
+  } catch(e) {
+    error("-filter-fields option requires a comma-sep. list of fields");
   }
-  cmd.options.fields = fields;
 }
 
+
 function validateLayersOpts(cmd) {
-  var layers = validateCommaSep(cmd._[0]);
-  if (!layers || layers.length > 0 === false) {
+  try {
+    cmd.options.layers = validateCommaSepNames(cmd._[0], 1);
+  } catch (e) {
     error("-layers option requires a comma-sep. list of layer names");
   }
-  cmd.options.layers = layers;
 }
 
 function validateFilterOpts(cmd) {
@@ -4654,6 +4654,20 @@ function validateOutputOpts(cmd) {
     error("topojson-precision should be a positive number");
   }
 
+}
+
+// Convert a comma-separated string into an array of trimmed strings
+// Return null if list is empty
+function validateCommaSepNames(str, min) {
+  if (!min && !str) return null; // treat
+  if (!Utils.isString(str)) {
+    error ("Expected comma-separated list; found:", str);
+  }
+  var parts = str.split(',').map(Utils.trim).filter(function(s) {return !!s;});
+  if (min && min > parts.length < min) {
+    error(Utils.format("Expected a list of at least %d member%s; found: %s", min, 's?', str));
+  }
+  return parts.length > 0 ? parts : null;
 }
 
 
@@ -4798,13 +4812,13 @@ MapShaper.getOptionParser = function() {
     .option("expression")
     .option("target");
 
-  parser.command("fields")
-    .describe('select and rename data fields, e.g. "fips,st=state"')
-    .validate(validateFieldsOpts)
+  parser.command("filter-fields")
+    .describe('filter and rename data fields, e.g. "fips,st=state"')
+    .validate(validateFilterFieldsOpts)
     .option("target");
 
   /*
-  parser.command("layers")
+  parser.command("filter-layers")
     .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
     .validate(validateLayersOpts);
   */
@@ -4981,7 +4995,7 @@ MapShaper.getOptionParser = function() {
 
 
   // trap v0.1 options
-  "f,format,p,pct,interval,e,expression,merge-files,combine-files".split(',')
+  "f,format,p,pct,interval,e,expression,merge-files,combine-files,fields".split(',')
     .forEach(function(str) {
       parser.command(str).validate(trapOldOpt);
     });
@@ -12108,9 +12122,6 @@ function FeatureExpressionContext(lyr, arcs) {
   if (hasPaths) {
     _shp = new MultiShape(arcs);
     _isLatLng = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds());
-    // TODO: add methods:
-    // isClosed / isOpen
-    //
     addGetters(this, {
       // TODO: count hole/s + containing ring as one part
       partCount: function() {
@@ -12122,43 +12133,50 @@ function FeatureExpressionContext(lyr, arcs) {
       bounds: function() {
         return shapeBounds().toArray();
       },
-      width: function() {
-        return shapeBounds().width();
-      },
       height: function() {
         return shapeBounds().height();
       },
-      area: function() {
-        return _isLatLng ? geom.getSphericalShapeArea(_ids, arcs) : geom.getShapeArea(_ids, arcs);
-      },
-      originalArea: function() {
-        var i = arcs.getRetainedInterval(),
-            area;
-        arcs.setRetainedInterval(0);
-        area = _self.area;
-        arcs.setRetainedInterval(i);
-        return area;
-      },
-      centroidX: function() {
-        var p = centroid();
-        return p ? p.x : null;
-      },
-      centroidY: function() {
-        var p = centroid();
-        return p ? p.y : null;
-      },
-      interiorX: function() {
-        var p = innerXY();
-        return p ? p.x : null;
-      },
-      interiorY: function() {
-        var p = innerXY();
-        return p ? p.y : null;
+      width: function() {
+        return shapeBounds().width();
       }
     });
 
+    if (lyr.geometry_type == 'polygon') {
+      addGetters(this, {
+        area: function() {
+          return _isLatLng ? geom.getSphericalShapeArea(_ids, arcs) : geom.getShapeArea(_ids, arcs);
+        },
+        originalArea: function() {
+          var i = arcs.getRetainedInterval(),
+              area;
+          arcs.setRetainedInterval(0);
+          area = _self.area;
+          arcs.setRetainedInterval(i);
+          return area;
+        },
+        centroidX: function() {
+          var p = centroid();
+          return p ? p.x : null;
+        },
+        centroidY: function() {
+          var p = centroid();
+          return p ? p.y : null;
+        },
+        // not implemented
+        interiorX: function() {
+          var p = innerXY();
+          return p ? p.x : null;
+        },
+        interiorY: function() {
+          var p = innerXY();
+          return p ? p.y : null;
+        }
+      });
+    }
+
   } else if (hasPoints) {
-      Object.defineProperty(this, 'coordinates',
+    // TODO: add functions like bounds, isNull, pointCount
+    Object.defineProperty(this, 'coordinates',
       {set: function(obj) {
         if (!obj || Utils.isArray(obj)) {
           lyr.shapes[_id] = obj || null;
@@ -12376,8 +12394,11 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
 // filter and rename data fields; see mapshaper -fields option
 
 api.filterFields = function(lyr, names) {
-  if (!lyr.data) stop("[fields] Layer is missing a data table");
-  if (!Utils.isArray(names)) stop("[fields] Expected an array of field names; found:", names);
+  if (!lyr.data) {
+    stop("[filter-fields] Layer is missing a data table");
+  } else if (!Utils.isArray(names)) {
+    stop("[filter-fields] Expected an array of field names; found:", names);
+  }
   var fields = lyr.data.getFields(),
       fieldMap = utils.reduce(names, function(memo, str) {
         var parts = str.split('=');
@@ -12390,13 +12411,12 @@ api.filterFields = function(lyr, names) {
       missingFields = Utils.difference(Utils.getKeys(fieldMap), fields);
 
   if (missingFields.length > 0) {
-    message("[fields] Table is missing one or more specified fields:", missingFields);
+    message("[filter-fields] Table is missing one or more specified fields:", missingFields);
     message("Existing fields:", fields);
     stop();
   } else {
     lyr.data.filterFields(fieldMap);
   }
-
 };
 
 
@@ -14062,7 +14082,7 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'explode') {
     newLayers = MapShaper.applyCommand(api.explodeLayer, targetLayers, arcs, opts);
 
-  } else if (name == 'fields') {
+  } else if (name == 'filter-fields') {
     MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
 
   /*
@@ -14381,14 +14401,6 @@ cli.validateInputFile = function(ifile) {
   return ifile;
 };
 
-cli.validateCommaSepNames = function(str) {
-  if (!Utils.isString(str)) {
-    error ("Expected comma-separated list; found:", str);
-  }
-  var parts = Utils.map(str.split(','), Utils.trim);
-  return parts;
-};
-
 cli.printRepairMessage = function(info) {
   if (info.intersections_initial > 0) {
     console.log(Utils.format(
@@ -14412,17 +14424,6 @@ cli.validateEncoding = function(raw) {
   }
   return enc;
 };
-
-function validateCommaSep(str, count) {
-  var parts = Utils.mapFilter(str.split(','), function(part) {
-    var str = Utils.trim(part);
-    return str === '' ? void 0 : str;
-  });
-  if (parts.length === 0 || count && parts.length !== count) {
-    return null;
-  }
-  return parts;
-}
 
 
 Utils.extend(api.internal, {

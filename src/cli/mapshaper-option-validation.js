@@ -125,12 +125,10 @@ function validateSplitOnGridOpts(cmd) {
 }
 
 function validateLinesOpts(cmd) {
-  var o = cmd.options;
-  if (!o.fields && cmd._.length == 1) {
-    o.fields = cli.validateCommaSepNames(cmd._[0]);
-  }
-
-  if (o.fields && o.fields.length === 0 || cmd._.length > 1) {
+  try {
+    var fields = validateCommaSepNames(cmd.options.fields || cmd._[0]);
+    if (fields) cmd.options.fields = fields;
+  } catch (e) {
     error("-lines takes a comma-separated list of fields");
   }
 }
@@ -148,20 +146,22 @@ function validateSubdivideOpts(cmd) {
   cmd.options.expression = cmd._[0];
 }
 
-function validateFieldsOpts(cmd) {
-  var fields = validateCommaSep(cmd._[0]);
-  if (!fields || fields.length > 0 === false) {
-    error("-fields option requires a comma-sep. list of fields");
+function validateFilterFieldsOpts(cmd) {
+  try {
+    var fields = validateCommaSepNames(cmd._[0]);
+    cmd.options.fields = fields || [];
+  } catch(e) {
+    error("-filter-fields option requires a comma-sep. list of fields");
   }
-  cmd.options.fields = fields;
 }
 
+
 function validateLayersOpts(cmd) {
-  var layers = validateCommaSep(cmd._[0]);
-  if (!layers || layers.length > 0 === false) {
+  try {
+    cmd.options.layers = validateCommaSepNames(cmd._[0], 1);
+  } catch (e) {
     error("-layers option requires a comma-sep. list of layer names");
   }
-  cmd.options.layers = layers;
 }
 
 function validateFilterOpts(cmd) {
@@ -227,4 +227,18 @@ function validateOutputOpts(cmd) {
     error("topojson-precision should be a positive number");
   }
 
+}
+
+// Convert a comma-separated string into an array of trimmed strings
+// Return null if list is empty
+function validateCommaSepNames(str, min) {
+  if (!min && !str) return null; // treat
+  if (!Utils.isString(str)) {
+    error ("Expected comma-separated list; found:", str);
+  }
+  var parts = str.split(',').map(Utils.trim).filter(function(s) {return !!s;});
+  if (min && min > parts.length < min) {
+    error(Utils.format("Expected a list of at least %d member%s; found: %s", min, 's?', str));
+  }
+  return parts.length > 0 ? parts : null;
 }

@@ -109,14 +109,6 @@ cli.validateInputFile = function(ifile) {
   return ifile;
 };
 
-cli.validateCommaSepNames = function(str) {
-  if (!Utils.isString(str)) {
-    error ("Expected comma-separated list; found:", str);
-  }
-  var parts = Utils.map(str.split(','), Utils.trim);
-  return parts;
-};
-
 cli.printRepairMessage = function(info) {
   if (info.intersections_initial > 0) {
     console.log(Utils.format(
@@ -140,17 +132,6 @@ cli.validateEncoding = function(raw) {
   }
   return enc;
 };
-
-function validateCommaSep(str, count) {
-  var parts = Utils.mapFilter(str.split(','), function(part) {
-    var str = Utils.trim(part);
-    return str === '' ? void 0 : str;
-  });
-  if (parts.length === 0 || count && parts.length !== count) {
-    return null;
-  }
-  return parts;
-}
 
 
 Utils.extend(api.internal, {

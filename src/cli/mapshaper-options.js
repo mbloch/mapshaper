@@ -139,13 +139,13 @@ MapShaper.getOptionParser = function() {
     .option("expression")
     .option("target");
 
-  parser.command("fields")
-    .describe('select and rename data fields, e.g. "fips,st=state"')
-    .validate(validateFieldsOpts)
+  parser.command("filter-fields")
+    .describe('filter and rename data fields, e.g. "fips,st=state"')
+    .validate(validateFilterFieldsOpts)
     .option("target");
 
   /*
-  parser.command("layers")
+  parser.command("filter-layers")
     .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
     .validate(validateLayersOpts);
   */
@@ -322,7 +322,7 @@ MapShaper.getOptionParser = function() {
 
 
   // trap v0.1 options
-  "f,format,p,pct,interval,e,expression,merge-files,combine-files".split(',')
+  "f,format,p,pct,interval,e,expression,merge-files,combine-files,fields".split(',')
     .forEach(function(str) {
       parser.command(str).validate(trapOldOpt);
     });
