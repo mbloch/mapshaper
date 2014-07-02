@@ -7063,6 +7063,14 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
 
 // utility functions for datasets and layers
 
+MapShaper.layerHasPaths = function(lyr) {
+  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polygon');
+};
+
+MapShaper.layerHasPoints = function(lyr) {
+  return lyr.shapes && lyr.geometry_type == 'point';
+};
+
 MapShaper.getDatasetBounds = function(data) {
   var bounds = new Bounds();
   data.layers.forEach(function(lyr) {
@@ -11994,37 +12002,30 @@ MapShaper.compileLayerExpression = function(exp) {
 };
 
 MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
-  //if (arcs instanceof ArcCollection === false) error("[compileFeatureExpression()] Missing ArcCollection;", arcs);
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
       newFields = exp.match(RE_ASSIGNEE) || null,
       env = {},
-      records = lyr.data ? lyr.data.getRecords() : [],
-      useShapes = !!(arcs && lyr.shapes),
+      records,
       func;
 
-  hideGlobals(env);
-  if (useShapes) {
-    env.$ = new FeatureExpressionContext(lyr.shapes, records, arcs);
+  if (newFields && !lyr.data) {
+    lyr.data = new DataTable(MapShaper.getFeatureCount(lyr));
   }
-  exp = MapShaper.removeExpressionSemicolons(exp);
+  if (lyr.data) records = lyr.data.getRecords();
+
+  hideGlobals(env);
+  env.$ = new FeatureExpressionContext(lyr, arcs);
   try {
-    func = new Function("record,env", "with(env){with(record) { return " + exp + ";}}");
+    func = new Function("record,env", "with(env){with(record) { return " +
+        MapShaper.removeExpressionSemicolons(exp) + ";}}");
   } catch(e) {
     message('Error compiling expression "' + exp + '"');
     stop(e);
   }
 
   return function(recId) {
-    var record = records[recId],
+    var record = records ? records[recId] || (records[recId] = {}) : {},
         value, f;
-
-    if (!record) {
-      record = {};
-      if (newFields) {
-        // add (empty) record to data table if there's an assignment
-        records[recId] = record;
-      }
-    }
 
     // initialize new fields to null so assignments work
     if (newFields) {
@@ -12035,7 +12036,7 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
         }
       }
     }
-    if (useShapes) env.$.__setId(recId);
+    env.$.__setId(recId);
     try {
       value = func.call(null, record, env);
     } catch(e) {
@@ -12075,89 +12076,115 @@ function addGetters(obj, getters) {
   });
 }
 
-function FeatureExpressionContext(shapes, records, arcs) {
-  var _shp = new MultiShape(arcs),
-      _isLatLng = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds()),
+function FeatureExpressionContext(lyr, arcs) {
+  var hasData = !!lyr.data,
+      hasPoints = MapShaper.layerHasPoints(lyr),
+      hasPaths = arcs && MapShaper.layerHasPaths(lyr),
+      _shp,
+      _isLatLng,
       _self = this,
       _centroid, _innerXY,
-      _record,
+      _record, _records,
       _id, _ids, _bounds;
 
-  // TODO: add methods:
-  // isClosed / isOpen
-  //
-  addGetters(this, {
-    id: function() {
-      return _id;
-    },
-    // TODO: count hole/s + containing ring as one part
-    partCount: function() {
-      return _shp.pathCount;
-    },
-    isNull: function() {
-      return _shp.pathCount === 0;
-    },
-    bounds: function() {
-      return shapeBounds().toArray();
-    },
-    width: function() {
-      return shapeBounds().width();
-    },
-    height: function() {
-      return shapeBounds().height();
-    },
-    area: function() {
-      return _isLatLng ? geom.getSphericalShapeArea(_ids, arcs) : geom.getShapeArea(_ids, arcs);
-    },
-    originalArea: function() {
-      var i = arcs.getRetainedInterval(),
-          area;
-      arcs.setRetainedInterval(0);
-      area = _self.area;
-      arcs.setRetainedInterval(i);
-      return area;
-    },
-    centroidX: function() {
-      var p = centroid();
-      return p ? p.x : null;
-    },
-    centroidY: function() {
-      var p = centroid();
-      return p ? p.y : null;
-    },
-    interiorX: function() {
-      var p = innerXY();
-      return p ? p.x : null;
-    },
-    interiorY: function() {
-      var p = innerXY();
-      return p ? p.y : null;
-    }
-  });
+  if (hasData) {
+    _records = lyr.data.getRecords();
+    Object.defineProperty(this, 'properties',
+      {set: function(obj) {
+        if (Utils.isObject(obj)) {
+          _records[_id] = obj;
+        } else {
+          stop("Can't assign non-object to $.properties");
+        }
+      }, get: function() {
+        var rec = _records[_id];
+        if (!rec) {
+          rec = _records[_id] = {};
+        }
+        return rec;
+      }});
+  }
 
-  Object.defineProperty(this, 'properties',
-    {set: function(obj) {
-      if (Utils.isObject(obj)) {
-        records[_id] = obj;
-      } else {
-        stop("Can't assign non-object to $.properties");
+  if (hasPaths) {
+    _shp = new MultiShape(arcs);
+    _isLatLng = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds());
+    // TODO: add methods:
+    // isClosed / isOpen
+    //
+    addGetters(this, {
+      // TODO: count hole/s + containing ring as one part
+      partCount: function() {
+        return _shp.pathCount;
+      },
+      isNull: function() {
+        return _shp.pathCount === 0;
+      },
+      bounds: function() {
+        return shapeBounds().toArray();
+      },
+      width: function() {
+        return shapeBounds().width();
+      },
+      height: function() {
+        return shapeBounds().height();
+      },
+      area: function() {
+        return _isLatLng ? geom.getSphericalShapeArea(_ids, arcs) : geom.getShapeArea(_ids, arcs);
+      },
+      originalArea: function() {
+        var i = arcs.getRetainedInterval(),
+            area;
+        arcs.setRetainedInterval(0);
+        area = _self.area;
+        arcs.setRetainedInterval(i);
+        return area;
+      },
+      centroidX: function() {
+        var p = centroid();
+        return p ? p.x : null;
+      },
+      centroidY: function() {
+        var p = centroid();
+        return p ? p.y : null;
+      },
+      interiorX: function() {
+        var p = innerXY();
+        return p ? p.x : null;
+      },
+      interiorY: function() {
+        var p = innerXY();
+        return p ? p.y : null;
       }
-    }, get: function() {
-      var rec = records[_id];
-      if (!rec) {
-        rec = records[_id] = {};
-      }
-      return rec;
-    }});
+    });
+
+  } else if (hasPoints) {
+      Object.defineProperty(this, 'coordinates',
+      {set: function(obj) {
+        if (!obj || Utils.isArray(obj)) {
+          lyr.shapes[_id] = obj || null;
+        } else {
+          stop("Can't assign non-array to $.coordinates");
+        }
+      }, get: function() {
+        return lyr.shapes[_id] || null;
+      }});
+  }
+
+  // all contexts have $.id
+  addGetters(this, {id: function() { return _id; }});
 
   this.__setId = function(id) {
     _id = id;
-    _bounds = null;
-    _centroid = null;
-    _innerXY = null;
-    _record = records[id];
-    _ids = shapes[id];
-    _shp.init(_ids);
+    if (hasPaths) {
+      _bounds = null;
+      _centroid = null;
+      _innerXY = null;
+      _ids = lyr.shapes[id];
+      _shp.init(_ids);
+    }
+    if (hasData) {
+      _record = _records[id];
+    }
   };
 
   function centroid() {
@@ -13736,13 +13763,7 @@ MapShaper.dividePolygons = function(shapes, arcs, flags) {
 
 
 MapShaper.dissolveShapes = function(shapes, arcs) {
-  // first, divide, so overlapping polygons are handled correctly
-  // TODO: think about how to remove this step
-  // console.log("*  shapes pre:", shapes);
-  // var dividedShapes = MapShaper.divideShapes(shapes, arcs);
-
   var dividedShapes = MapShaper.flattenShapes(shapes, arcs);
-  // return dividedShapes;
 
   var flags = new Uint8Array(arcs.size());
   MapShaper.openArcPathways(dividedShapes, arcs, flags, true, false, true);

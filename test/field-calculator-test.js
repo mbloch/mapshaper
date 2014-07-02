@@ -8,27 +8,24 @@ describe('mapshaper-field-calculator.js', function () {
     it('create new numeric field', function () {
       var records = [{}, {}];
       var lyr = {
-        shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluateLayer(lyr, nullArcs, "FOO=0");
+      api.evaluateLayer(lyr, null, "FOO=0");
       assert.deepEqual(records, [{FOO:0}, {FOO:0}]);
     })
 
     it('create new string field', function () {
       var records = [{}, {}];
       var lyr = {
-        shapes: [],
         data: new api.internal.DataTable(records)
       };
-      api.evaluateLayer(lyr, nullArcs, "FOO=''");
+      api.evaluateLayer(lyr, null, "FOO=''");
       assert.deepEqual(records, [{FOO:''}, {FOO:''}]);
     })
 
     it('delete a field', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
-        shapes: [],
         data: new api.internal.DataTable(records)
       };
       api.evaluateLayer(lyr, nullArcs, "delete foo");
@@ -38,7 +35,6 @@ describe('mapshaper-field-calculator.js', function () {
     it('update a field', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
-        shapes: [],
         data: new api.internal.DataTable(records)
       };
       api.evaluateLayer(lyr, nullArcs, "foo=foo.substr(0, 2)");
@@ -48,6 +44,7 @@ describe('mapshaper-field-calculator.js', function () {
     it('test $.partCount', function () {
       var records = [{}, {}];
       var lyr = {
+        geometry_type: 'polygon',
         shapes: [[[0, 2], [-2]], null],
         data: new api.internal.DataTable(records)
       };
@@ -57,6 +54,7 @@ describe('mapshaper-field-calculator.js', function () {
 
     it('create records if none existed', function () {
       var lyr = {
+        geometry_type: 'polygon',
         shapes: [[[0, 2], [-2]], null]
       };
       api.evaluateLayer(lyr, nullArcs, "parts=$.partCount");
@@ -104,6 +102,7 @@ describe('mapshaper-field-calculator.js', function () {
     it('Replace records by assigning to $.properties', function () {
       var records = [{foo:'mice'}, {foo:'beans'}];
       var lyr = {
+        geometry_type: 'polygon',
         shapes: [null, null],
         data: new api.internal.DataTable(records)
       };
@@ -120,6 +119,17 @@ describe('mapshaper-field-calculator.js', function () {
       api.evaluateLayer(lyr, nullArcs, "bar=Math.sqrt(foo); delete foo");
       assert.deepEqual(records, [{bar: 2}, {bar: 0}]);
     })
+
+    describe('Point geometry', function() {
+      it ('point coords are exposed', function() {
+        var lyr = {
+          geometry_type: 'point',
+          shapes: [[[0, 1]], [[2, 3], [3, 4]]]
+        };
+        api.evaluateLayer(lyr, null, "x=$.coordinates[0][0], y=$.coordinates[0][1]");
+        assert.deepEqual(lyr.data.getRecords(), [{x: 0, y: 1}, {x: 2, y: 3}]);
+      })
+    });
 
     describe('Shape geometry', function() {
       //

@@ -18,6 +18,7 @@ describe('mapshaper-filter.js', function () {
     it('removes records based on shape geometry', function () {
       var records = [{foo: 0}, {foo: 2}];
       var lyr = {
+        geometry_type: 'polygon',
         shapes: [[[0], [1]], [[1]]],
         data: new api.internal.DataTable(records)
       };

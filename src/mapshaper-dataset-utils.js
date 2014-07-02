@@ -2,6 +2,14 @@
 
 // utility functions for datasets and layers
 
+MapShaper.layerHasPaths = function(lyr) {
+  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polygon');
+};
+
+MapShaper.layerHasPoints = function(lyr) {
+  return lyr.shapes && lyr.geometry_type == 'point';
+};
+
 MapShaper.getDatasetBounds = function(data) {
   var bounds = new Bounds();
   data.layers.forEach(function(lyr) {

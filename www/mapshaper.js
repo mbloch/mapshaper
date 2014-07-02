@@ -5608,12 +5608,30 @@ var SimplifyControl = function() {
 
 // utility functions for datasets and layers
 
+MapShaper.layerHasPaths = function(lyr) {
+  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polygon');
+};
+
+MapShaper.layerHasPoints = function(lyr) {
+  return lyr.shapes && lyr.geometry_type == 'point';
+};
+
 MapShaper.getDatasetBounds = function(data) {
   var bounds = new Bounds();
   data.layers.forEach(function(lyr) {
     bounds.mergeBounds(MapShaper.getLayerBounds(lyr, data.arcs));
   });
   return bounds;
+};
+
+MapShaper.getFeatureCount = function(lyr) {
+  var count = 0;
+  if (lyr.data) {
+    count = lyr.data.size();
+  } else if (lyr.shapes) {
+    count = lyr.shapes.length;
+  }
+  return count;
 };
 
 MapShaper.getLayerBounds = function(lyr, arcs) {
