@@ -1,7 +1,7 @@
-/* @requires mapshaper-shape-geom, mapshaper-shapes */
+/* @requires mapshaper-shape-geom, mapshaper-shapes, mapshaper-dataset-utils */
 
-MapShaper.compileLayerExpression = function(exp, arcs) {
-  var env = new LayerExpressionContext(arcs),
+MapShaper.compileLayerExpression = function(exp) {
+  var env = new LayerExpressionContext(),
       func;
   try {
     func = new Function("env", "with(env){return " + exp + ";}");
@@ -10,9 +10,9 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
     stop(e);
   }
 
-  return function(lyr) {
+  return function(lyr, arcs) {
     var value;
-    env.__setLayer(lyr);
+    env.__init(lyr, arcs);
     try {
       value = func.call(null, env);
     } catch(e) {
@@ -22,16 +22,18 @@ MapShaper.compileLayerExpression = function(exp, arcs) {
   };
 };
 
-MapShaper.compileFeatureExpression = function(exp, arcs, shapes, records) {
+MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
   //if (arcs instanceof ArcCollection === false) error("[compileFeatureExpression()] Missing ArcCollection;", arcs);
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
       newFields = exp.match(RE_ASSIGNEE) || null,
       env = {},
-      useShapes = !!(arcs && shapes),
+      records = lyr.data ? lyr.data.getRecords() : [],
+      useShapes = !!(arcs && lyr.shapes),
       func;
+
   hideGlobals(env);
   if (useShapes) {
-    env.$ = new FeatureExpressionContext(arcs, shapes, records);
+    env.$ = new FeatureExpressionContext(lyr.shapes, records, arcs);
   }
   exp = MapShaper.removeExpressionSemicolons(exp);
   try {
@@ -102,7 +104,7 @@ function addGetters(obj, getters) {
   });
 }
 
-function FeatureExpressionContext(arcs, shapes, records) {
+function FeatureExpressionContext(shapes, records, arcs) {
   var _shp = new MultiShape(arcs),
       _isLatLng = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds()),
       _self = this,
@@ -205,8 +207,8 @@ function FeatureExpressionContext(arcs, shapes, records) {
   }
 }
 
-function LayerExpressionContext(arcs) {
-  var shapes, properties, lyr;
+function LayerExpressionContext() {
+  var lyr, arcs;
   hideGlobals(this);
   this.$ = this;
 
@@ -231,16 +233,8 @@ function LayerExpressionContext(arcs) {
   };
 
   this.average = function(exp) {
-    /*
-    var avg = reduce(exp, NaN, function(accum, val, i) {
-      if (i > 0) {
-        val = val / (i+1) + accum * i / (i+1);
-      }
-      return val;
-    });
-    */
     var sum = this.sum(exp);
-    return sum / shapes.length;
+    return sum / MapShaper.getFeatureCount(lyr);
   };
 
   this.median = function(exp) {
@@ -248,21 +242,21 @@ function LayerExpressionContext(arcs) {
     return Utils.findMedian(arr);
   };
 
-  this.__setLayer = function(layer) {
-    lyr = layer;
-    shapes = layer.shapes;
-    properties = layer.data ? layer.data.getRecords() : [];
+  this.__init = function(l, a) {
+    lyr = l;
+    arcs = a;
   };
 
   function values(exp) {
-    var compiled = MapShaper.compileFeatureExpression(exp, arcs, shapes, properties);
-    return Utils.repeat(shapes.length, compiled);
+    var compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
+    return Utils.repeat(MapShaper.getFeatureCount(lyr), compiled);
   }
 
   function reduce(exp, initial, func) {
     var val = initial,
-        compiled = MapShaper.compileFeatureExpression(exp, arcs, shapes, properties);
-    for (var i=0, n=shapes.length; i<n; i++) {
+        compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs),
+        n = MapShaper.getFeatureCount(lyr);
+    for (var i=0; i<n; i++) {
       val = func(val, compiled(i), i);
     }
     return val;

@@ -10,6 +10,16 @@ MapShaper.getDatasetBounds = function(data) {
   return bounds;
 };
 
+MapShaper.getFeatureCount = function(lyr) {
+  var count = 0;
+  if (lyr.data) {
+    count = lyr.data.size();
+  } else if (lyr.shapes) {
+    count = lyr.shapes.length;
+  }
+  return count;
+};
+
 MapShaper.getLayerBounds = function(lyr, arcs) {
   var bounds = new Bounds();
   if (lyr.geometry_type == 'point') {

@@ -7,11 +7,11 @@
 // shapes (+/- 1).
 //
 api.subdivideLayer = function(lyr, arcs, exp) {
-  return MapShaper.subdivide(lyr, arcs, MapShaper.compileLayerExpression(exp, arcs));
+  return MapShaper.subdivide(lyr, arcs, MapShaper.compileLayerExpression(exp));
 };
 
 MapShaper.subdivide = function(lyr, arcs, compiled) {
-  var divide = compiled(lyr),
+  var divide = compiled(lyr, arcs),
       subdividedLayers = [],
       tmp, bounds, lyr1, lyr2;
 

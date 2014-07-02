@@ -1,12 +1,12 @@
-/* @requires mapshaper-expressions */
+/* @requires mapshaper-expressions, mapshaper-dataset-utils */
 
 api.evaluateLayer = function(lyr, arcs, exp) {
-  var shapes = lyr.shapes,
-      // create new table if none exists
-      dataTable = lyr.data || (lyr.data = new DataTable(shapes.length)),
-      records = dataTable.getRecords(),
-      compiled = MapShaper.compileFeatureExpression(exp, arcs, shapes, records);
-
+  var n = MapShaper.getFeatureCount(lyr),
+      compiled;
+  if (n > 0 && !lyr.data) {
+    lyr.data = new DataTable(n);
+  }
+  compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
   // call compiled expression with id of each record
-  Utils.repeat(records.length, compiled);
+  Utils.repeat(n, compiled);
 };

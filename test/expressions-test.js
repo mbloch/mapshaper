@@ -41,28 +41,28 @@ describe('mapshaper-expressions.js', function () {
     };
 
     it('sum()', function() {
-      var compiled = new api.internal.compileLayerExpression("sum('foo')", nullArcs)
-      assert.equal(compiled(lyr), 10);
+      var compiled = new api.internal.compileLayerExpression("sum('foo')")
+      assert.equal(compiled(lyr, nullArcs), 10);
     })
 
     it('average()', function() {
-      var compiled = new api.internal.compileLayerExpression("average('foo')", nullArcs)
-      assert.equal(compiled(lyr), 2);
+      var compiled = new api.internal.compileLayerExpression("average('foo')")
+      assert.equal(compiled(lyr, nullArcs), 2);
     })
 
     it('median()', function() {
-      var compiled = new api.internal.compileLayerExpression("median('foo')", nullArcs)
-      assert.equal(compiled(lyr), 3);
+      var compiled = new api.internal.compileLayerExpression("median('foo')")
+      assert.equal(compiled(lyr, nullArcs), 3);
     })
 
     it('max()', function() {
-      var compiled = new api.internal.compileLayerExpression("max('foo')", nullArcs)
-      assert.equal(compiled(lyr), 4);
+      var compiled = new api.internal.compileLayerExpression("max('foo')")
+      assert.equal(compiled(lyr, nullArcs), 4);
     })
 
     it('min()', function() {
-      var compiled = new api.internal.compileLayerExpression("min('foo')", nullArcs)
-      assert.equal(compiled(lyr), -0.5);
+      var compiled = new api.internal.compileLayerExpression("min('foo')")
+      assert.equal(compiled(lyr, nullArcs), -0.5);
     })
 
   })
