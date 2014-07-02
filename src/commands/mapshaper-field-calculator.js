@@ -3,6 +3,8 @@
 api.evaluateLayer = function(lyr, arcs, exp) {
   var n = MapShaper.getFeatureCount(lyr),
       compiled;
+
+  // TODO: consider not creating a data table -- not needed if expression only references geometry
   if (n > 0 && !lyr.data) {
     lyr.data = new DataTable(n);
   }

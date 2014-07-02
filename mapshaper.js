@@ -11879,45 +11879,36 @@ MapShaper.calcDissolveData = function(keys, index, properties, field, opts) {
 
 
 
-api.splitLayer = function(lyr0, arcs, field) {
+api.splitLayer = function(lyr0, arcs, splitField) {
   var dataTable = lyr0.data;
-  if (!dataTable) error("[splitLayer] Missing a data table");
-  if (!dataTable.fieldExists(field)) error("[splitLayer] Missing field:", field);
+  if (splitField && (!dataTable || !dataTable.fieldExists(splitField))) stop("[split] Missing attribute field:", splitField);
 
   var index = {},
-      properties = dataTable.getRecords(),
+      properties = splitField ? dataTable.getRecords() : null,
       shapes = lyr0.shapes,
       splitLayers = [];
 
-  Utils.forEach(shapes, function(shp, i) {
-    var rec = properties[i],
-        key = String(rec[field]), // convert numbers to strings (for layer naming)
-        lyr, idx;
+  shapes.forEach(function(shp, i) {
+    var key = String(splitField ? properties[i][splitField] : i),
+        lyr;
 
     if (key in index === false) {
-      idx = splitLayers.length;
-      index[key] = idx;
-      splitLayers.push({
+      index[key] = splitLayers.length;
+      lyr = Utils.defaults({
         name: MapShaper.getSplitLayerName(lyr0.name, key),
-        properties: [],
+        data: properties ? new DataTable() : null,
         shapes: []
-      });
+      }, lyr0);
+      splitLayers.push(lyr);
     } else {
-      idx = index[key];
+      lyr = splitLayers[index[key]];
     }
-
-    lyr = splitLayers[idx];
     lyr.shapes.push(shapes[i]);
-    lyr.properties.push(properties[i]);
+    if (properties) {
+      lyr.data.getRecords().push(properties[i]);
+    }
   });
-
-  return Utils.map(splitLayers, function(obj) {
-    return Opts.copyNewParams({
-      name: obj.name,
-      shapes: obj.shapes,
-      data: new DataTable(obj.properties)
-    }, lyr0);
-  });
+  return splitLayers;
 };
 
 MapShaper.getSplitLayerName = function(base, key) {
@@ -12291,6 +12282,8 @@ function LayerExpressionContext() {
 api.evaluateLayer = function(lyr, arcs, exp) {
   var n = MapShaper.getFeatureCount(lyr),
       compiled;
+
+  // TODO: consider not creating a data table -- not needed if expression only references geometry
   if (n > 0 && !lyr.data) {
     lyr.data = new DataTable(n);
   }

@@ -36,5 +36,24 @@ describe('mapshaper-split.js', function () {
       assert.equal(layers[1].name, 'split--1')
       assert.equal(layers[2].name, 'split-1')
     })
+
+    it('Split all features if no field is given', function() {
+      var records = [{foo: 0}, {foo: -1}, {foo: 1}, {foo: 1}];
+      var lyr = {
+        data: new api.internal.DataTable(records),
+        shapes: [[[0, -2]], [[1], [2, 4]], null, [[3, 4]]]
+      };
+      var layers = api.splitLayer(lyr, nullArcs);
+      assert.equal(layers.length, 4)
+      assert.equal(layers[0].name, 'split-0');
+      assert.equal(layers[1].name, 'split-1')
+      assert.equal(layers[2].name, 'split-2')
+      assert.equal(layers[3].name, 'split-3')
+
+      assert.deepEqual(layers[0].shapes, [[[0, -2]]])
+      assert.deepEqual(layers[1].shapes, [[[1], [2, 4]]])
+      assert.deepEqual(layers[2].shapes, [null])
+      assert.deepEqual(layers[3].shapes, [[[3, 4]]])
+    })
   })
 })
