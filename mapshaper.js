@@ -3926,7 +3926,7 @@ function stop() {
   args.unshift('Error:');
   if (MapShaper.LOGGING) {
     message.apply(null, args);
-    message("(Use -h option to view help)");
+    message("(Run mapshaper -h to view help)");
     process.exit(1);
   } else {
     error.apply(null, args);
@@ -4677,6 +4677,7 @@ api.parseCommands = function(arr) {
   var commands;
  try {
     commands = MapShaper.getOptionParser().parseArgv(arr);
+    if (commands.length === 0) error("Missing an input file");
   } catch(e) {
     stop(e.message);
   }

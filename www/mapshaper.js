@@ -9737,7 +9737,7 @@ MapShaper.exportFileContent = function(dataset, opts) {
   // change somewhat... consider adding a bounds property to each layer during
   // export when appropriate.
   if (opts.bbox_index) {
-    files.push(createIndexFile(dataset));
+    files.push(MapShaper.createIndexFile(dataset));
   }
 
   MapShaper.validateFileNames(files);
@@ -9757,7 +9757,7 @@ MapShaper.createIndexFile = function(dataset) {
   var index = Utils.map(dataset.layers, function(lyr) {
     var bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
     return {
-      bounds: bounds.toArray(),
+      bbox: bounds.toArray(),
       name: lyr.name
     };
   });

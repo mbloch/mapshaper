@@ -22,7 +22,7 @@ function stop() {
   args.unshift('Error:');
   if (MapShaper.LOGGING) {
     message.apply(null, args);
-    message("(Use -h option to view help)");
+    message("(Run mapshaper -h to view help)");
     process.exit(1);
   } else {
     error.apply(null, args);
