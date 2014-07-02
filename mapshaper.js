@@ -4763,7 +4763,7 @@ MapShaper.getOptionParser = function() {
       type: "flag"
     })
     .option("bbox-index", {
-      describe: "export table of layer bounding boxes",
+      describe: "export a .json file with bbox of each layer",
       type: 'flag'
     })
     .option("target");
@@ -10580,7 +10580,7 @@ MapShaper.exportFileContent = function(dataset, opts) {
   // change somewhat... consider adding a bounds property to each layer during
   // export when appropriate.
   if (opts.bbox_index) {
-    files.push(createIndexFile(dataset));
+    files.push(MapShaper.createIndexFile(dataset));
   }
 
   MapShaper.validateFileNames(files);
@@ -10600,7 +10600,7 @@ MapShaper.createIndexFile = function(dataset) {
   var index = Utils.map(dataset.layers, function(lyr) {
     var bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
     return {
-      bounds: bounds.toArray(),
+      bbox: bounds.toArray(),
       name: lyr.name
     };
   });

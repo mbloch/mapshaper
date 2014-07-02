@@ -90,7 +90,7 @@ MapShaper.getOptionParser = function() {
       type: "flag"
     })
     .option("bbox-index", {
-      describe: "export table of layer bounding boxes",
+      describe: "export a .json file with bbox of each layer",
       type: 'flag'
     })
     .option("target");
