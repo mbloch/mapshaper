@@ -100,13 +100,17 @@ cli.validateInputFiles = function(arr) {
 
 cli.validateInputFile = function(ifile) {
   var opts = {};
-  if (!cli.isFile(ifile)) {
-    error("File not found (" + ifile + ")");
-  }
+  cli.checkFileExists(ifile);
   if (!cli.validateFileExtension(ifile)) {
      error("File has an unsupported extension:", ifile);
   }
   return ifile;
+};
+
+cli.checkFileExists = function(path) {
+  if (!cli.isFile(path)) {
+    stop("File not found (" + path + ")");
+  }
 };
 
 cli.printRepairMessage = function(info) {

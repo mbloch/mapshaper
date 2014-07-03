@@ -7,6 +7,8 @@ api.importFile = function(path, opts) {
   var fileType = MapShaper.guessFileType(path),
       content, dataset;
 
+  cli.checkFileExists(path);
+
   opts = opts || {};
   if (!opts.files) {
     opts.files = [path];
