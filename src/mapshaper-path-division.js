@@ -157,7 +157,7 @@ MapShaper.findClippingPoints = function(arcs) {
     var key = p.i + "," + p.pct;
     if (key in index) return false;
     index[key] = true;
-    if (p.pct === 0 && pointIsEndpoint(p.i, data.ii, data.nn)) return false;
+    if ((p.pct <= 0 || p.pct >= 1) && pointIsEndpoint(p.i, data.ii, data.nn)) return false;
     return true;
   });
 
@@ -187,7 +187,14 @@ MapShaper.findClippingPoints = function(arcs) {
       pct = (x - xx[i]) / dx;
     }
 
-    if (pct < 0 || pct >= 1) error("[findClippingPoints()] Off-segment intersection");
+    // if (pct < 0 || pct >= 1) {
+    if (pct < 0 || pct > 1) {
+      verbose("[findClippingPoints()] Off-segment intersection (caused by rounding error");
+      trace("pct:", pct, "dx:", dx, "dy:", dy, 'x:', x, 'y:', y, 'xx[i]:', xx[i], 'xx[j]:', xx[j], 'yy[i]:', yy[i], 'yy[j]:', yy[j]);
+      trace("xpct:", (x - xx[i]) / dx, 'ypct:', (y - yy[i]) / dy);
+      if (pct < 0) pct = 0;
+      if (pct > 1) pct = 1;
+    }
     return {
         pct: pct,
         i: i,

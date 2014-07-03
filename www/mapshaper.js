@@ -3926,7 +3926,7 @@ function stop() {
   args.unshift('Error:');
   if (MapShaper.LOGGING) {
     message.apply(null, args);
-    message("(Use -h option to view help)");
+    message("(Run mapshaper -h to view help)");
     process.exit(1);
   } else {
     error.apply(null, args);
@@ -3954,7 +3954,7 @@ var trace = function() {
 function logArgs(args) {
   if (Utils.isArrayLike(args)) {
     var arr = Utils.toArray(args);
-    console.log.apply(null, arr);
+    console.log(arr.join(' '));
   }
 }
 
@@ -4183,62 +4183,84 @@ function getRoundingFunction(inc) {
   var inv = 1 / inc;
   if (inv > 1) inv = Math.round(inv);
   return function(x) {
-    // Need a rounding function that doesn't show rounding error after stringify()
-    return Math.round(x * inv) / inv; // candidate
-    //return Math.round(x / inc) / inv; // candidate
-    //return Math.round(x / inc) * inc;
-    //return Math.round(x * inv) * inc;
+    return Math.round(x * inv) / inv;
+    // these alternatives show rounding error after stringify()
+    // return Math.round(x / inc) / inv;
+    // return Math.round(x / inc) * inc;
+    // return Math.round(x * inv) * inc;
   };
 }
 
-// Detect intersections between two 2D segments.
-// Return intersection as [x, y] array or false if segments do not cross or touch.
-//
-function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
-  // Test collision (c.f. Sedgewick, _Algorithms in C_)
-  // (Tried some other functions that might fail due to rounding errors)
+// Return id of nearest point to x, y, among x0, y0, x1, y1, ...
+function nearestPoint(x, y, x0, y0) {
+  var minIdx = -1,
+      minDist = Infinity,
+      dist;
+  for (var i = 0, j = 2, n = arguments.length; j < n; i++, j += 2) {
+    dist = distanceSq(x, y, arguments[j], arguments[j+1]);
+    if (dist < minDist) {
+      minDist = dist;
+      minIdx = i;
+    }
+  }
+  return minIdx;
+}
 
-  var hit = ccw(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y) *
-      ccw(s1p1x, s1p1y, s1p2x, s1p2y, s2p2x, s2p2y) <= 0 &&
-      ccw(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) *
-      ccw(s2p1x, s2p1y, s2p2x, s2p2y, s1p2x, s1p2y) <= 0;
+function lineIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  var den = determinant2D(s1p2x - s1p1x, s1p2y - s1p1y, s2p2x - s2p1x, s2p2y - s2p1y);
+  if (den === 0) return false;
+  var m = orient2D(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) / den;
+  var x = s1p1x + m * (s1p2x - s1p1x);
+  var y = s1p1y + m * (s1p2y - s1p1y);
+  return [x, y];
+}
+
+// Find intersection between two 2D segments.
+// Return [x, y] point if segments intersect at a single point
+// Return false if segments do not touch or are colinear
+function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  // Source: Sedgewick, _Algorithms in C_
+  // (Tried various other functions that failed owing to floating point errors)
+  var p = false;
+  var hit = orient2D(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y) *
+      orient2D(s1p1x, s1p1y, s1p2x, s1p2y, s2p2x, s2p2y) <= 0 &&
+      orient2D(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) *
+      orient2D(s2p1x, s2p1y, s2p2x, s2p2y, s1p2x, s1p2y) <= 0;
 
   if (hit) {
-    // Find x, y intersection
-    var s1dx = s1p2x - s1p1x;
-    var s1dy = s1p2y - s1p1y;
-    var s2dx = s2p2x - s2p1x;
-    var s2dy = s2p2y - s2p1y;
-    var den = -s2dx * s1dy + s1dx * s2dy;
-    if (den === 0) return false; // colinear -- treating as no intersection
-    // TODO: with partially overlapping colinear segments, should return a hit
-    //    might want to return two points if one segment fully contains the other
-
-    // Collision detected
-    var m = (s2dx * (s1p1y - s2p1y) - s2dy * (s1p1x - s2p1x)) / den;
-    var x = s1p1x + m * s1dx;
-    var y = s1p1y + m * s1dy;
-    return [x, y];
+    p = lineIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
+    if (p) { // colinear if p is false -- treating this as no intersection
+      // Re-order operands so intersection point is closest to s1p1 (better numerical accuracy)
+      // Source: Jonathan Shewchuk http://www.cs.berkeley.edu/~jrs/meshpapers/robnotes.pdf
+      var nearest = nearestPoint(p[0], p[1], s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
+      if (nearest == 1) {
+        // use b a c d
+        p = lineIntersection(s1p2x, s1p2y, s1p1x, s1p1y, s2p1x, s2p1y, s2p2x, s2p2y);
+      } else if (nearest == 2) {
+        // use c d a b
+        p = lineIntersection(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y, s1p2x, s1p2y);
+      } else if (nearest == 3) {
+        // use d c a b
+        p = lineIntersection(s2p2x, s2p2y, s2p1x, s2p1y, s1p1x, s1p1y, s1p2x, s1p2y);
+      }
+    }
   }
-  return false;
+  return p;
 }
 
-
-function ccw(x0, y0, x1, y1, x2, y2) {
-  var dx1 = x1 - x0,
-      dy1 = y1 - y0,
-      dx2 = x2 - x0,
-      dy2 = y2 - y0;
-  if (dx1 * dy2 > dy1 * dx2) return 1;
-  if (dx1 * dy2 < dy1 * dx2) return -1;
-  if (dx1 * dx2 < 0 || dy1 * dy2 < 0) return -1;
-  if (dx1 * dx1 + dy1 * dy1 < dx2 * dx2 + dy2 * dy2) return 1;
-  return 0;
+// Determinant of matrix
+//  | a  b |
+//  | c  d |
+function determinant2D(a, b, c, d) {
+  return a * d - b * c;
 }
 
+// Source: Jonathan Shewchuk http://www.cs.berkeley.edu/~jrs/meshpapers/robnotes.pdf
+function orient2D(x0, y0, x1, y1, x2, y2) {
+  return determinant2D(x0 - x2, y0 - y2, x1 - x2, y1 - y2);
+}
 
 // atan2() makes this function fairly slow, replaced by ~2x faster formula
-//
 function innerAngle2(ax, ay, bx, by, cx, cy) {
   var a1 = Math.atan2(ay - by, ax - bx),
       a2 = Math.atan2(cy - by, cx - bx),
@@ -4305,7 +4327,6 @@ function innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return theta;
 }
 
-
 function triangleArea(ax, ay, bx, by, cx, cy) {
   var area = Math.abs(((ay - cy) * (bx - cx) + (by - cy) * (cx - ax)) / 2);
   return area;
@@ -4341,7 +4362,6 @@ function dotProduct3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   }
   return dotp;
 }
-
 
 function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
