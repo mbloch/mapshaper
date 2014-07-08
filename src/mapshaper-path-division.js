@@ -12,17 +12,14 @@ mapshaper-path-index
 MapShaper.divideArcs = function(layers, arcs) {
   var map = MapShaper.insertClippingPoints(arcs);
   // TODO: handle duplicate arcs
-
   // update arc ids in arc-based layers
   layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
       MapShaper.updateArcIds(lyr.shapes, map, arcs);
-
-      // Arc spikes confuse the clipping function and may cause other problems
-      // ... remove them
-      lyr.shapes.forEach(function(shape) {
-        MapShaper.forEachPath(shape, MapShaper.removeSpikesInPath);
-      });
+      // Addition of clipping points may create degenerate arcs... remove them
+      // TODO: consider alternative -- avoid creating degenerate arcs in
+      //    insertClippingPoints()
+      MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
 };
@@ -112,7 +109,6 @@ MapShaper.insertClippingPoints = function(arcs) {
         xx1[i1] = p.x;
         yy1[i1++] = p.y;
         n1++;
-
         nn1[id1++] = n1; // end current arc at intersection
         n1 = 0;          // begin new arc
 
@@ -130,8 +126,8 @@ MapShaper.insertClippingPoints = function(arcs) {
   if (i1 != pointTotal1) error("[insertClippingPoints()] Counting error");
   arcs.updateVertexData(nn1, xx1, yy1, null);
 
-  // segment-point intersections create duplicate points -- remove the dupes
-  // (alternative would be to filter out dupes above)
+  // segment-point intersections create duplicate points
+  // TODO: consider removing call to dedupCoords() -- empty arcs are removed by cleanShapes()
   arcs.dedupCoords();
   return map;
 };
@@ -153,24 +149,16 @@ MapShaper.findClippingPoints = function(arcs) {
   // remove 1. points that are at arc endpoints and 2. duplicate points
   // (kludgy -- look into preventing these cases, which are caused by T intersections)
   var index = {};
-  points = Utils.filter(points, function(p) {
+  return Utils.filter(points, function(p) {
     var key = p.i + "," + p.pct;
     if (key in index) return false;
     index[key] = true;
-    if ((p.pct <= 0 || p.pct >= 1) && pointIsEndpoint(p.i, data.ii, data.nn)) return false;
+    if (p.pct <= 0 && arcs.pointIsEndpoint(p.i) ||
+        p.pct >= 1 && arcs.pointIsEndpoint(p.j)) {
+      return false;
+    }
     return true;
   });
-
-  return points;
-
-  // Test whether the vertex at index @idx is the endpoint of an arc
-  function pointIsEndpoint(idx, ii, nn) {
-    // intersections at endpoints are unlikely, so just scan for them
-    for (var j=0, n=ii.length; j<n; j++) {
-      if (idx === ii[j] || idx === ii[j] + nn[j] - 1) return true;
-    }
-    return false;
-  }
 
   function getSegmentIntersection(x, y, ids) {
     var i = ids[0],
@@ -187,7 +175,6 @@ MapShaper.findClippingPoints = function(arcs) {
       pct = (x - xx[i]) / dx;
     }
 
-    // if (pct < 0 || pct >= 1) {
     if (pct < 0 || pct > 1) {
       verbose("[findClippingPoints()] Off-segment intersection (caused by rounding error");
       trace("pct:", pct, "dx:", dx, "dy:", dy, 'x:', x, 'y:', y, 'xx[i]:', xx[i], 'xx[j]:', xx[j], 'yy[i]:', yy[i], 'yy[j]:', yy[j]);
@@ -195,6 +182,7 @@ MapShaper.findClippingPoints = function(arcs) {
       if (pct < 0) pct = 0;
       if (pct > 1) pct = 1;
     }
+
     return {
         pct: pct,
         i: i,

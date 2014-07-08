@@ -3,7 +3,8 @@ mapshaper-common,
 mapshaper-geom,
 mapshaper-shape-geom,
 mapshaper-snapping,
-mapshaper-topology
+mapshaper-topology,
+mapshaper-shape-utils
 */
 
 // Import path data from a non-topological source (Shapefile, GeoJSON, etc)
@@ -82,7 +83,6 @@ function PathImporter(reservedPoints, opts) {
 
   // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
   // (for Shapefile import -- consider moving out of here)
-  // @offs Array index of first coordinate
   //
   this.importPathFromFlatArray = function(arr, type) {
     var len = arr.length,
@@ -108,6 +108,7 @@ function PathImporter(reservedPoints, opts) {
       prevX = x;
     }
 
+    /*
     var valid = false;
     if (type == 'polyline') {
       valid = n > 1;
@@ -123,6 +124,9 @@ function PathImporter(reservedPoints, opts) {
       pointId -= n;
       skippedPathCount++;
     }
+    */
+    appendPath(n, type);
+
   };
 
   // Import an array of [x, y] Points
@@ -193,6 +197,8 @@ function PathImporter(reservedPoints, opts) {
           MapShaper.autoSnapCoords(arcs, opts.snap_interval || null);
           T.stop("Snapping points");
         }
+
+        MapShaper.cleanShapes(shapes, arcs, collectionType);
       } else {
         message("No geometries were imported");
         collectionType = null;
@@ -202,6 +208,9 @@ function PathImporter(reservedPoints, opts) {
     } else {
       error("Unexpected collection type:", collectionType);
     }
+
+    // TODO: remove empty arcs, collapsed arcs
+    // ...
 
     return {
       arcs: arcs || null,

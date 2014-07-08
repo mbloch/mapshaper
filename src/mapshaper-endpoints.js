@@ -34,16 +34,16 @@ function NodeCollection(arcs) {
     var ids = [arcId];
     this.forEachConnectedArc(arcId, function(id) {
       ids.push(id);
-      var str;
+      var str = id + ": ";
       var len = arcs.getArcLength(id);
       if (len > 0) {
-        var p1 = arcs.getVertex(arcId, -1);
-        str = Utils.format("[%f, %f]", p1.x, p1.y);
+        var p1 = arcs.getVertex(id, -1);
+        str += Utils.format("[%f, %f]", p1.x, p1.y);
         if (len > 1) {
-          var p2 = arcs.getVertex(arcId, -2);
+          var p2 = arcs.getVertex(id, -2);
           str += Utils.format(", [%f, %f]", p2.x, p2.y);
           if (len > 2) {
-            var p3 = arcs.getVertex(arcId, 0);
+            var p3 = arcs.getVertex(id, 0);
             str += Utils.format(", [%f, %f]", p3.x, p3.y);
           }
         }

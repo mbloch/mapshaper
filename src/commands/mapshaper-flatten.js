@@ -19,12 +19,12 @@ MapShaper.flattenShapes = function(shapes, arcs) {
   var flags = new Uint8Array(arcs.size());
   MapShaper.openArcPathways(shapes, arcs, flags, true, true, false);
 
-  var divide = MapShaper.getPathSplitter(arcs, flags);
+  var divide = MapShaper.getPathFinder(arcs, flags);
   var flattened = shapes.map(function(shape, i) {
     var dividedShape = [];
 
     MapShaper.forEachPath(shape, function(ids) {
-      MapShaper.closeArcPathways(ids, arcs, flags, false, true);
+      MapShaper.closeArcPathways(ids, arcs, flags, true); // close rev.
       // if path doubles back, closing rev. blocks the path... need to keep fwd open
       MapShaper.openArcPathways(ids, arcs, flags, true, false, false);
       var path;

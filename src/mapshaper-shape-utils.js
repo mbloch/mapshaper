@@ -43,18 +43,6 @@ MapShaper.removeSpikesInPath = function(ids) {
   }
 };
 
-MapShaper.getPathMetadata = function(shape, arcs, type) {
-  var iter = new ShapeIter(arcs);
-  return Utils.map(shape, function(ids) {
-    if (!Utils.isArray(ids)) throw new Error("expected array");
-    iter.init(ids);
-    return {
-      ids: ids,
-      area: type == 'polygon' ? geom.getPathArea(iter) : 0,
-      bounds: arcs.getSimpleShapeBounds(ids)
-    };
-  });
-};
 
 MapShaper.clampIntervalByPct = function(z, pct) {
   if (pct <= 0) z = Infinity;
@@ -134,6 +122,28 @@ MapShaper.forEachPath = function(arr, cb) {
   }
 };
 
+MapShaper.forEachPath = function(paths, cb) {
+  MapShaper.editPaths(paths, cb);
+};
+
+MapShaper.editPaths = function(paths, cb) {
+  var nulls = 0,
+      retn;
+  if (!paths) return null; // null shape
+  if (!Utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
+
+  for (var i=0; i<paths.length; i++) {
+    retn = cb(paths[i], i);
+    if (retn === null) {
+      nulls++;
+      paths[i] = null;
+    } else if (Utils.isArray(retn)) {
+      paths[i] = retn;
+    }
+  }
+  return nulls > 0 ? paths.filter(function(ids) {return !!ids;}) : paths;
+};
+
 MapShaper.forEachPathSegment = function(shape, arcs, cb) {
   MapShaper.forEachArcId(shape, function(arcId) {
     arcs.forEachArcSegment(arcId, cb);
@@ -173,4 +183,131 @@ MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShap
       }
     }
   });
+};
+
+
+MapShaper.arcHasLength = function(id, coords) {
+  var iter = coords.getArcIter(id), x, y;
+  if (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    while (iter.hasNext()) {
+      if (iter.x != x || iter.y != y) return true;
+    }
+  }
+  return false;
+};
+
+MapShaper.filterEmptyArcs = function(shape, coords) {
+  if (!shape) return null;
+  var shape2 = [];
+  Utils.forEach(shape, function(ids) {
+    var path = [];
+    for (var i=0; i<ids.length; i++) {
+      if (MapShaper.arcHasLength(ids[i], coords)) {
+        path.push(ids[i]);
+      }
+    }
+    if (path.length > 0) shape2.push(path);
+  });
+  return shape2.length > 0 ? shape2 : null;
+};
+
+// Bundle holes with their containing rings for Topo/GeoJSON polygon export.
+// Assumes outer rings are CW and inner (hole) rings are CCW.
+// @paths array of objects with path metadata -- see MapShaper.exportPathData()
+//
+// TODO: Improve reliability. Currently uses winding order, area and bbox to
+//   identify holes and their enclosures -- could be confused by strange
+//   geometry.
+//
+MapShaper.groupPolygonRings = function(paths) {
+  var pos = [],
+      neg = [];
+  Utils.forEach(paths, function(path) {
+    if (path.area > 0) {
+      pos.push(path);
+    } else if (path.area < 0) {
+      neg.push(path);
+    } else {
+      // verbose("Zero-area ring, skipping");
+    }
+  });
+
+  var output = Utils.map(pos, function(part) {
+    return [part];
+  });
+
+  Utils.forEach(neg, function(hole) {
+    var containerId = -1,
+        containerArea = 0;
+    for (var i=0, n=pos.length; i<n; i++) {
+      var part = pos[i],
+          contained = part.bounds.contains(hole.bounds) && part.area > -hole.area;
+      if (contained && (containerArea === 0 || part.area < containerArea)) {
+        containerArea = part.area;
+        containerId = i;
+      }
+    }
+    if (containerId == -1) {
+      verbose("[groupPolygonRings()] polygon hole is missing a containing ring, dropping.");
+    } else {
+      output[containerId].push(hole);
+    }
+  });
+  return output;
+};
+
+MapShaper.getPathMetadata = function(shape, arcs, type) {
+  var iter = new ShapeIter(arcs);
+  return Utils.map(shape, function(ids) {
+    if (!Utils.isArray(ids)) throw new Error("expected array");
+    iter.init(ids);
+    return {
+      ids: ids,
+      area: type == 'polygon' ? geom.getPathArea(iter) : 0,
+      bounds: arcs.getSimpleShapeBounds(ids)
+    };
+  });
+};
+
+MapShaper.cleanPath = function(path, arcs) {
+  var nulls = 0;
+  for (var i=0; i<path.length; i++) {
+    if (arcs.arcIsDegenerate(path[i])) {
+      nulls++;
+      path[i] = null;
+    }
+  }
+  return nulls > 0 ? path.filter(function(id) {return id !== null;}) : path;
+};
+
+// Remove defective arcs and zero-area polygon rings
+// Don't remove duplicate points
+// Don't remove spikes (between arcs or within arcs)
+// Don't check winding order of polygon rings
+MapShaper.cleanShape = function(shape, arcs, type) {
+  return MapShaper.editPaths(shape, function(path) {
+    var cleaned = MapShaper.cleanPath(path, arcs);
+    if (type == 'polygon' && cleaned) {
+      MapShaper.removeSpikesInPath(cleaned); // assumed by divideArcs()
+      if (geom.getPathArea4(cleaned, arcs) === 0) {
+        cleaned = null;
+      }
+    }
+    return cleaned;
+  });
+};
+
+// clean polygon or polyline shapes, in-place
+MapShaper.cleanShapes = function(shapes, arcs, type) {
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shapes[i] = MapShaper.cleanShape(shapes[i], arcs, type);
+  }
+};
+
+// @paths assume [[outerRingIds], [firstHoleIds], ...] (TopoJSON Polygon format)
+//
+MapShaper.enforcePolygonWindingRule = function(paths, arcs) {
+
 };

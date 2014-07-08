@@ -419,7 +419,13 @@ function ArcCollection() {
         i++;
         n++;
       }
-      _nn[arcId] = n2;
+      if (n2 == 1) {
+        _nn[arcId] = 0;
+        i2--;
+      } else {
+        _nn[arcId] = n2;
+      }
+      // if (n2 == 1) console.log(arcId)
     }
     if (i != i2) {
       initXYData(_nn, _xx.subarray(0, i2), _yy.subarray(0, i2));
@@ -444,6 +450,16 @@ function ArcCollection() {
     return _ii[absId] + nth;
   };
 
+  // Test whether the vertex at index @idx is the endpoint of an arc
+  this.pointIsEndpoint = function(idx) {
+    var ii = _ii,
+        nn = _nn;
+    for (var j=0, n=ii.length; j<n; j++) {
+      if (idx === ii[j] || idx === ii[j] + nn[j] - 1) return true;
+    }
+    return false;
+  };
+
   // Tests if arc endpoints have same x, y coords
   // (arc may still have collapsed);
   this.arcIsClosed = function(arcId) {
@@ -461,6 +477,21 @@ function ArcCollection() {
     i = this.indexOfVertex(arcId, 1);
     j = this.indexOfVertex(arcId, -2);
     return _xx[i] == _xx[j] && _yy[i] == _yy[j];
+  };
+
+  this.arcIsDegenerate = function(arcId) {
+    var iter = this.getArcIter(arcId);
+    var i = 0,
+        x, y;
+    while (iter.hasNext()) {
+      if (i > 0) {
+        if (x != iter.x || y != iter.y) return false;
+      }
+      x = iter.x;
+      y = iter.y;
+      i++;
+    }
+    return true;
   };
 
   this.getArcLength = function(arcId) {

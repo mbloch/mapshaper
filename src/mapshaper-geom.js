@@ -123,7 +123,7 @@ function innerAngle2(ax, ay, bx, by, cx, cy) {
 
 // Return angle abc in range [0, 2PI) or NaN if angle is invalid
 // (e.g. if length of ab or bc is 0)
-function signedAngle(ax, ay, bx, by, cx, cy) {
+function signedAngle2(ax, ay, bx, by, cx, cy) {
   var a1 = Math.atan2(ay - by, ax - bx),
       a2 = Math.atan2(cy - by, cx - bx),
       a3 = a2 - a1;
@@ -136,6 +136,26 @@ function signedAngle(ax, ay, bx, by, cx, cy) {
     a3 = a3 + 2 * Math.PI;
   }
   return a3;
+}
+
+function signedAngle(ax, ay, bx, by, cx, cy) {
+  var abx = ax - bx,
+      aby = ay - by,
+      cbx = cx - bx,
+      cby = cy - by,
+      dotp = abx * cbx + aby * cby,
+      crossp = abx * cby - aby * cbx;
+
+  var a = Math.atan2(crossp, dotp);
+
+  if (ax == bx && ay == by || bx == cx && by == cy) {
+    a = NaN; // Use NaN for invalid angles
+  } else if (a >= Math.PI * 2) {
+    a = 2 * Math.PI - a;
+  } else if (a < 0) {
+    a = a + 2 * Math.PI;
+  }
+  return a;
 }
 
 // TODO: make this safe for small angles
@@ -300,6 +320,7 @@ Utils.extend(geom, {
   innerAngle: innerAngle,
   innerAngle2: innerAngle2,
   signedAngle: signedAngle,
+  signedAngle2: signedAngle2,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D

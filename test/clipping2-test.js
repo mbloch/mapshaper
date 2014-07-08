@@ -6,10 +6,4 @@ var api = require('../'),
 describe('mapshaper-clipping.js', function () {
 
 
-  describe('Fig. 5 - polygon with hole', function () {
-
-
-  })
-
-
 })

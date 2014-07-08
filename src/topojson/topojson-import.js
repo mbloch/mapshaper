@@ -36,25 +36,25 @@ TopoJSON.roundCoords = function(arcs, precision) {
   });
 };
 
-TopoJSON.importObject = function(obj, arcs) {
+TopoJSON.importObject = function(obj) {
   if (obj.type != 'GeometryCollection') {
     obj = {
       type: "GeometryCollection",
       geometries: [obj]
     };
   }
-  return TopoJSON.importGeometryCollection(obj, arcs);
+  return TopoJSON.importGeometryCollection(obj);
 };
 
-TopoJSON.importGeometryCollection = function(obj, arcs) {
-  var importer = new TopoJSON.GeometryImporter(arcs);
+TopoJSON.importGeometryCollection = function(obj) {
+  var importer = new TopoJSON.GeometryImporter();
   Utils.forEach(obj.geometries, importer.addGeometry, importer);
   return importer.done();
 };
 
 //
 //
-TopoJSON.GeometryImporter = function(arcs) {
+TopoJSON.GeometryImporter = function() {
   var topojsonIds = [], // id properties of each Geometry (consider adding ids to properties)
       properties = [],
       shapes = [], // topological ids

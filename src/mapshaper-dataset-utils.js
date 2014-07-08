@@ -3,7 +3,7 @@
 // utility functions for datasets and layers
 
 MapShaper.layerHasPaths = function(lyr) {
-  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polygon');
+  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
 };
 
 MapShaper.layerHasPoints = function(lyr) {

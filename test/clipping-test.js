@@ -2,8 +2,8 @@ var api = require('../'),
     assert = require('assert'),
     ArcCollection = api.internal.ArcCollection;
 
-describe('mapshaper-clip-erase.js', function () {
 
+describe('mapshaper-clip-erase.js', function () {
   describe('setting bits', function() {
     var setBits = api.internal.setBits,
         andBits = api.internal.andBits,
@@ -643,6 +643,144 @@ describe('mapshaper-clip-erase.js', function () {
 
       assert.deepEqual(clippedLyr.shapes, target);
     });
+  })
+
+  describe('Fig 8 - adjacent polygons inside polygon', function () {
+    //
+    //  a ----------- b
+    //  |             |
+    //  |  h - e - i  |
+    //  |  |   |   |  |
+    //  |  g - f - j  |
+    //  |             |
+    //  d ----------- c
+    //
+    var coords = [[[1, 4], [5, 4], [5, 1], [1, 1], [1, 4]], // abcda
+          [[3, 3], [3, 2]],  // ef
+          [[3, 2], [2, 2], [2, 3], [3, 3]],  // fghe
+          [[3, 3], [4, 3], [4, 2], [3, 2]]]; // eijf
+
+    it ("clip inner with outer", function() {
+      var lyr1 = {
+        name: "layer1",
+        geometry_type: "polygon",
+        shapes: [[[0]]]
+      };
+      var lyr2 = {
+        name: "layer2",
+        geometry_type: "polygon",
+        shapes: [[[1, 2]], [[3, ~1]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var clipLyr = api.internal.prepareClippingLayer("layer1", dataset);
+      var clippedLyr = api.clipLayer(lyr2, clipLyr, dataset.arcs);
+      var target = [[[1, 2]], [[3, ~1]]];
+      assert.deepEqual(clippedLyr.shapes, target);
+    })
+
+    it ("clip outer with inner", function() {
+      var lyr1 = {
+        name: "layer1",
+        geometry_type: "polygon",
+        shapes: [[[0]]]
+      };
+      var lyr2 = {
+        name: "layer2",
+        geometry_type: "polygon",
+        shapes: [[[1, 2]], [[3, ~1]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var clipLyr = api.internal.prepareClippingLayer("layer2", dataset);
+      var clippedLyr = api.clipLayer(lyr1, clipLyr, dataset.arcs);
+      var target = [[[2, 3]]];
+      assert.deepEqual(clippedLyr.shapes, target);
+    })
+
+    it ("erase inner with outer", function() {
+      var lyr1 = {
+        name: "layer1",
+        geometry_type: "polygon",
+        shapes: [[[0]]]
+      };
+      var lyr2 = {
+        name: "layer2",
+        geometry_type: "polygon",
+        shapes: [[[1, 2]], [[3, ~1]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var clipLyr = api.internal.prepareClippingLayer("layer1", dataset);
+      var erasedLyr = api.eraseLayer(lyr2, clipLyr, dataset.arcs);
+      var target = [null, null];
+      assert.deepEqual(erasedLyr.shapes, target);
+    })
+
+    it ("erase outer with inner", function() {
+      var lyr1 = {
+        name: "layer1",
+        geometry_type: "polygon",
+        shapes: [[[0]]]
+      };
+      var lyr2 = {
+        name: "layer2",
+        geometry_type: "polygon",
+        shapes: [[[1, 2]], [[3, ~1]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+
+      var clipLyr = api.internal.prepareClippingLayer("layer2", dataset);
+      var erasedLyr = api.eraseLayer(lyr1, clipLyr, dataset.arcs);
+      var target = [[[0], [~2, ~3]]];
+      assert.deepEqual(erasedLyr.shapes, target);
+    })
+  })
+
+  describe('Fig 9 - polygon with self-intersection', function () {
+    //
+    //  Goal: convert the triangle into a separate part ?
+    //        or maybe thread the path through the intersection point
+    //
+    //  a ---- b
+    //  |      |
+    //  |  h --|-- i
+    //  |  |   |   |
+    //  |  g --|---|-- k
+    //  |      |   | /
+    //  d ---- c   j
+    //
+  })
+
+  describe('Fig 10 - polygon with self-intersection', function() {
+    //
+    //  Goal: remove the inner triangle
+    //
+    //  a --------------- b
+    //  |                 |
+    //  |  e --------- f  |
+    //  |  |           |  |
+    //  |  |   i - j   |  |
+    //  |  |   | /     |  |
+    //  |  |   /       |  |
+    //  |  | / |       |  |
+    //  |  k   h ----- g  |
+    //  |                 |
+    //  d --------------- c
+    //
+    //
   })
 
 })

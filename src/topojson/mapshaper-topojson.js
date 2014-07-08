@@ -1,4 +1,4 @@
-/* @requires topojson-import, topojson-export */
+/* @requires topojson-import, topojson-export, mapshaper-dataset-utils */
 
 MapShaper.topojson = TopoJSON;
 
@@ -6,32 +6,43 @@ MapShaper.topojson = TopoJSON;
 // Side-effect: data in topology is modified
 //
 MapShaper.importTopoJSON = function(topology, opts) {
+  var layers = [],
+      arcs;
+
   if (Utils.isString(topology)) {
     topology = JSON.parse(topology);
   }
 
-  var layers = [];
+  if (topology.arcs && topology.arcs.length > 0) {
+    // TODO: apply transform to ArcCollection, not input arcs
+    if (topology.transform) {
+      TopoJSON.decodeArcs(topology.arcs, topology.transform);
+    }
+
+    if (opts && opts.precision) {
+      TopoJSON.roundCoords(topology.arcs, opts.precision);
+    }
+
+    arcs = new ArcCollection(topology.arcs);
+  }
+
   Utils.forEach(topology.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, topology.arcs);
+
+    if (MapShaper.layerHasPaths(lyr)) {
+      MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+    }
+
     lyr.name = name;
     layers.push(lyr);
   });
 
-  // TODO: apply transform to ArcCollection, not input arcs
-  if (topology.transform) {
-    TopoJSON.decodeArcs(topology.arcs, topology.transform);
-  }
-  if (opts && opts.precision) {
-    TopoJSON.roundCoords(topology.arcs, opts.precision);
-  }
-
   var dataset = {
     layers: layers,
+    arcs: arcs,
     info: {}
   };
-  if (topology.arcs && topology.arcs.length > 0) {
-    dataset.arcs = new ArcCollection(topology.arcs);
-  }
+
   return dataset;
 };
 

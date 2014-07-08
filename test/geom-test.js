@@ -72,6 +72,22 @@ describe("mapshaper-geom.js", function() {
   })
 
   describe('signedAngle()', function () {
+    it("45 deg", function() {
+      assert.equal(geom.signedAngle(1, 0, 0, 0, 2, 2), Math.PI / 4);
+    })
+
+    it("135 deg", function() {
+      assert.equal(geom.signedAngle(1, 0, 0, 0, -2, 2), 3 * Math.PI / 4);
+    })
+
+    it("225 deg", function() {
+      assert.equal(geom.signedAngle(1, 0, 0, 0, -2, -2), 5 * Math.PI / 4);
+    })
+
+    it("315 deg", function() {
+      assert.equal(geom.signedAngle(1, 0, 0, 0, 2, -2), 7 * Math.PI / 4);
+    })
+
     it("returns π if points form a line", function() {
       assert.equal(geom.signedAngle(0, 0, 0, 1, 0, 2), Math.PI);
       assert.equal(geom.signedAngle(-1, 0, 0, 0, 1, 0), Math.PI);
@@ -107,6 +123,59 @@ describe("mapshaper-geom.js", function() {
       // assert.ok(isNaN(geom.signedAngle(0, -1, null, -1, 0, -1)));
     })
 
+  })
+
+  describe('signedAngle2()', function () {
+    it("45 deg", function() {
+      assert.equal(geom.signedAngle2(1, 0, 0, 0, 2, 2), Math.PI / 4);
+    })
+
+    it("135 deg", function() {
+      assert.equal(geom.signedAngle2(1, 0, 0, 0, -2, 2), 3 * Math.PI / 4);
+    })
+
+    it("225 deg", function() {
+      assert.equal(geom.signedAngle2(1, 0, 0, 0, -2, -2), 5 * Math.PI / 4);
+    })
+
+    it("315 deg", function() {
+      assert.equal(geom.signedAngle2(1, 0, 0, 0, 2, -2), 7 * Math.PI / 4);
+    })
+
+    it("returns π if points form a line", function() {
+      assert.equal(geom.signedAngle2(0, 0, 0, 1, 0, 2), Math.PI);
+      assert.equal(geom.signedAngle2(-1, 0, 0, 0, 1, 0), Math.PI);
+      assert.equal(geom.signedAngle2(1, 2, 2, 3, 3, 4), Math.PI);
+    })
+
+    it("returns 0 if second segment doubles back", function() {
+      assert.equal(geom.signedAngle2(0, 0, 0, 1, 0, -2), 0);
+      assert.equal(geom.signedAngle2(1, 0, 0, -1, 2, 1), 0);
+    })
+
+    it("returns π/2 if abc bends right 90deg", function() {
+      assert.equal(geom.signedAngle2(-1, 0, -1, 2, 3, 2), Math.PI/2);
+    })
+
+    it("returns 3π/2 if abc bends left 90deg", function() {
+      assert.equal(geom.signedAngle2(1, 0, 1, 1, 0, 1), 3 * Math.PI/2);
+    })
+
+    it("returns NaN if two adjacent points are the same", function() {
+      assert.ok(isNaN(geom.signedAngle2(3, 0, 3, 0, 4, 1)));
+      assert.ok(isNaN(geom.signedAngle2(3, 1, 2, 0, 2, 0)));
+    })
+
+    it("returns NaN if all points are the same", function() {
+      assert.ok(isNaN(geom.signedAngle2(0, -1, 0, -1, 0, -1)));
+    })
+
+    it("returns NaN if one or more args are NaN", function() {
+      assert.ok(isNaN(geom.signedAngle2(0, -1, 0, -1, 0)));
+      assert.ok(isNaN(geom.signedAngle2()));
+      // null gets coerced to zero... need to check for null if NaN is important here
+      // assert.ok(isNaN(geom.signedAngle(0, -1, null, -1, 0, -1)));
+    })
   })
 
   describe("innerAngle()", function() {

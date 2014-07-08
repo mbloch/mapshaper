@@ -5,8 +5,7 @@
 
 geom.getShapeArea = function(shp, arcs) {
   return Utils.reduce(shp, function(area, ids) {
-    var iter = arcs.getShapeIter(ids);
-    return area + geom.getPathArea(iter);
+    return area + geom.getPathArea4(ids, arcs);
   }, 0);
 };
 
@@ -118,7 +117,6 @@ geom.testPointInShape = function(x, y, shp, arcs) {
 // - ...
 //
 geom.getInteriorPoint = function(shp, arcs) {
-
 
 };
 
@@ -323,8 +321,10 @@ geom.getPathArea3 = function(xx, yy, start, len) {
   return sum / 2;
 };
 
-geom.getPathArea4 = function() {
-
+// TODO: consider replacing geom.getPathArea() with algo. using ArcCollection#forEachSegment()
+geom.getPathArea4 = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids);
+  return geom.getPathArea(iter);
 };
 
 geom.getPathBounds = function(points) {
