@@ -17,7 +17,7 @@ MapShaper.autoSnapCoords = function(arcs, threshold, points) {
 
   if (threshold) {
     if (threshold > avgDist) {
-      message("Snapping threshold is larger than average segment length -- ignoring");
+      message(Utils.format("Snapping interval is larger than avg. segment length (%.5f) -- using auto-snap instead", avgDist));
     } else if (threshold > 0) {
       message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
       snapDist = threshold;
