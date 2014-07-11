@@ -67,6 +67,7 @@ function NodeCollection(arcs) {
   };
 
   // Returns the id of the first identical arc or @arcId if none found
+  // TODO: find a better function name
   this.findMatchingArc = function(arcId) {
     var nextId = nextConnectedArc(arcId),
         match = arcId;
@@ -142,7 +143,6 @@ MapShaper.findNodeTopology = function(arcs) {
   });
 
   var chains = initPointChains(xx2, yy2);
-  //console.log(">> chains:", Utils.toArray(chains), "arcs:", arcs.size());
   return {
     xx: xx2,
     yy: yy2,

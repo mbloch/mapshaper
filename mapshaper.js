@@ -7613,7 +7613,7 @@ MapShaper.autoSnapCoords = function(arcs, threshold, points) {
 
   if (threshold) {
     if (threshold > avgDist) {
-      message("Snapping threshold is larger than average segment length -- ignoring");
+      message(Utils.format("Snapping interval is larger than avg. segment length (%.5f) -- using auto-snap instead", avgDist));
     } else if (threshold > 0) {
       message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
       snapDist = threshold;
@@ -13130,6 +13130,7 @@ function NodeCollection(arcs) {
   };
 
   // Returns the id of the first identical arc or @arcId if none found
+  // TODO: find a better function name
   this.findMatchingArc = function(arcId) {
     var nextId = nextConnectedArc(arcId),
         match = arcId;
@@ -13205,7 +13206,6 @@ MapShaper.findNodeTopology = function(arcs) {
   });
 
   var chains = initPointChains(xx2, yy2);
-  //console.log(">> chains:", Utils.toArray(chains), "arcs:", arcs.size());
   return {
     xx: xx2,
     yy: yy2,
@@ -13462,11 +13462,11 @@ function PathIndex(shapes, arcs) {
 // (in-place)
 MapShaper.divideArcs = function(layers, arcs) {
   var map = MapShaper.insertClippingPoints(arcs);
-  // TODO: handle duplicate arcs
-  // update arc ids in arc-based layers
+  var nodes = new NodeCollection(arcs);
+  // update arc ids in arc-based layers after adding clipping points
   layers.forEach(function(lyr) {
-    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
-      MapShaper.updateArcIds(lyr.shapes, map, arcs);
+    if (MapShaper.layerHasPaths(lyr)) {
+      MapShaper.updateArcIds(lyr.shapes, map, arcs, nodes);
       // Addition of clipping points may create degenerate arcs... remove them
       // TODO: consider alternative -- avoid creating degenerate arcs in
       //    insertClippingPoints()
@@ -13475,7 +13475,7 @@ MapShaper.divideArcs = function(layers, arcs) {
   });
 };
 
-MapShaper.updateArcIds = function(shapes, map, arcs) {
+MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {
   var arcCount = arcs.size(),
       shape2;
   for (var i=0; i<shapes.length; i++) {
@@ -13507,7 +13507,8 @@ MapShaper.updateArcIds = function(shapes, map, arcs) {
         id2 = min;
         min++;
       }
-      // id2 = nodes.findMatchingArc(id2); //
+      // If there are duplicate arcs, always use the same one
+      if (nodes) id2 = nodes.findMatchingArc(id2);
       ids.push(id2);
     } while (max - min >= 0);
   }
@@ -13658,12 +13659,11 @@ MapShaper.andBits = function(src, flags, mask) {
 };
 
 // enable arc pathways in a single shape or array of shapes
-// Uses 8 bits to control traversal of each arc
+// Uses 6 bits to control traversal of each arc
 // 0-2: forward arc; 4-6: rev arc
-// 3, 7: marker bits
 // fwd/rev bits: 0/4: path is visible; 1/5 = path is open; 3/6: path was used
 //
-MapShaper.openArcPathways = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits, targetBits) {
+MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits) {
   MapShaper.forEachArcId(arcIds, function(id) {
     var isInv = id < 0,
         absId = isInv ? ~id : id,
@@ -13671,10 +13671,6 @@ MapShaper.openArcPathways = function(arcIds, arcs, flags, fwd, rev, dissolve, or
         openFwd = isInv ? rev : fwd,
         openRev = isInv ? fwd : rev,
         newFlag = currFlag;
-
-    if (targetBits > 0 && (targetBits & currFlag) === 0) {
-      return;
-    }
 
     // error condition: lollipop arcs can cause problems; ignore these
     if (arcs.arcIsLollipop(id)) {
@@ -13704,7 +13700,7 @@ MapShaper.openArcPathways = function(arcIds, arcs, flags, fwd, rev, dissolve, or
   });
 };
 
-MapShaper.closeArcPathways = function(arcIds, arcs, flags, fwd, rev, hide, targetBits) {
+MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
   MapShaper.forEachArcId(arcIds, function(id) {
     var isInv = id < 0,
         absId = isInv ? ~id : id,
@@ -13712,8 +13708,6 @@ MapShaper.closeArcPathways = function(arcIds, arcs, flags, fwd, rev, hide, targe
         mask = 0xff,
         closeFwd = isInv ? rev : fwd,
         closeRev = isInv ? fwd : rev;
-
-    if (targetBits && (currFlag & targetBits) === 0) return;
 
     if (closeFwd) { // fwd and pos or rev and inv
       if (hide) mask &= ~1;
@@ -13728,55 +13722,32 @@ MapShaper.closeArcPathways = function(arcIds, arcs, flags, fwd, rev, hide, targe
   });
 };
 
-/*
+
 function flagsToArray(flags) {
   return Utils.map(flags, function(flag) {
-    return flag.toString(16);
+    return bitsToString(flag);
   });
 }
-*/
+
+function bitsToString(bits) {
+  var str = "";
+  for (var i=0; i<8; i++) {
+    str += (bits & (1 << i)) > 0 ? "1" : "0";
+    if (i < 7) str += ' ';
+    if (i == 3) str += ' ';
+  }
+  return str;
+}
+
 
 // Return a function for generating a path across a field of intersecting arcs
-MapShaper.getPathFinder = function(arcs, flags) {
+MapShaper.getPathFinder = function(arcs, useRoute, routeIsVisible, chooseRoute) {
   var nodes = new NodeCollection(arcs),
       coords = arcs.getVertexData(),
       xx = coords.xx,
       yy = coords.yy,
       nn = coords.nn,
       splitter;
-
-  function testArc(id) {
-    var fw = id >= 0,
-        abs = fw ? id : ~id,
-        visibleBit = fw ? 1 : 0x10,
-        currFlags = flags[abs];
-
-    if ((currFlags & 0x80) > 0) splitter.marked = true; // kludge
-    return (currFlags & visibleBit) > 0;
-  }
-
-  function useArc(id) {
-    var fw = id >= 0,
-        abs = fw ? id : ~id,
-        currFlag = flags[abs];
-
-    var bits = fw ? currFlag & 0xf : currFlag >> 4,
-        isOpen = (bits & 3) == 3; // arc is visible and open
-
-    if (isOpen) {
-      // Need to close all shapes -- or could cause a cycle on layers with strange topology
-      bits &= 8; // retain marker bit
-      bits |= 5; // set to visible / closed / used;
-
-      if (fw) {
-        flags[abs] = MapShaper.setBits(currFlag, bits, 0xf);
-      } else {
-        flags[abs] = MapShaper.setBits(currFlag, bits << 4, 0xf0);
-      }
-
-    }
-    return isOpen;
-  }
 
   function getNextArc(prevId) {
     var ai = arcs.indexOfVertex(prevId, -2),
@@ -13789,7 +13760,7 @@ MapShaper.getPathFinder = function(arcs, flags) {
         nextAngle = 0;
 
     nodes.forEachConnectedArc(prevId, function(candId) {
-      if (!testArc(~candId)) return;
+      if (!routeIsVisible(~candId)) return;
       if (arcs.getArcLength(candId) < 2) error("[clipPolygon()] defective arc");
 
       var ci = arcs.indexOfVertex(candId, -2),
@@ -13816,12 +13787,12 @@ MapShaper.getPathFinder = function(arcs, flags) {
           nextAngle = candAngle;
         }
         else if (candAngle == nextAngle) {
-          // TODO: handle equal angles by prioritizing the pathway with
-          // flag 0x8 set (marker bit for target layer arc)
-          var flag = flags[absArcId(candId)];
-          if ((flag & 0x8) > 0) {
-            nextId = candId;
-          }
+          // Handle equal angles by prioritizing the pathway with
+          // TODO: refactor so pathfinder function doesn't have to mess with traversal flags
+          //   e.g. by passing a comparison function for choosing between routes with
+          //   equal angles.
+          nextId = chooseRoute(nextId, candId);
+
           trace("duplicate angle:", candAngle);
           /*
             console.log("id1:", nextId, "id2:", candId);
@@ -13848,16 +13819,15 @@ MapShaper.getPathFinder = function(arcs, flags) {
     return ~nextId; // reverse arc to point onwards
   }
 
-  splitter = function(startId) {
+  return function(startId) {
     var path = [],
         nextId, msg,
         candId = startId,
         verbose = false; // MapShaper.TRACING;
 
-    splitter.marked = false;
     do {
       if (verbose) msg = (nextId === undefined ? " " : "  " + nextId) + " -> " + candId;
-      if (useArc(candId)) {
+      if (useRoute(candId)) {
         /*
         // debug zambia_congo test
         if (candId == 261) {
@@ -13889,7 +13859,6 @@ MapShaper.getPathFinder = function(arcs, flags) {
     return path.length === 0 ? null : path;
   };
 
-  return splitter;
 };
 
 
@@ -13897,7 +13866,7 @@ MapShaper.getPathFinder = function(arcs, flags) {
 
 // Remove overlapping polygon shapes
 // (Unfinished)
-
+/*
 api.flattenLayer = function(lyr, arcs, opts) {
   // MapShaper.divideArcs([lyr], arcs);
   var shapes = MapShaper.flattenShapes(lyr.shapes, arcs);
@@ -13912,16 +13881,16 @@ MapShaper.flattenShapes = function(shapes, arcs) {
   });
 
   var flags = new Uint8Array(arcs.size());
-  MapShaper.openArcPathways(shapes, arcs, flags, true, true, false);
+  MapShaper.openArcRoutes(shapes, arcs, flags, true, true, false);
 
   var divide = MapShaper.getPathFinder(arcs, flags);
   var flattened = shapes.map(function(shape, i) {
     var dividedShape = [];
 
     MapShaper.forEachPath(shape, function(ids) {
-      MapShaper.closeArcPathways(ids, arcs, flags, true); // close rev.
+      MapShaper.closeArcRoutes(ids, arcs, flags, true); // close rev.
       // if path doubles back, closing rev. blocks the path... need to keep fwd open
-      MapShaper.openArcPathways(ids, arcs, flags, true, false, false);
+      MapShaper.openArcRoutes(ids, arcs, flags, true, false, false);
       var path;
       for (var i=0; i<ids.length; i++) {
         path = divide(ids[i]);
@@ -13929,7 +13898,7 @@ MapShaper.flattenShapes = function(shapes, arcs) {
           dividedShape.push(path);
         }
       }
-      MapShaper.openArcPathways(ids, arcs, flags, false, true, false);
+      MapShaper.openArcRoutes(ids, arcs, flags, false, true, false);
 
     });
     return dividedShape.length === 0 ? null : dividedShape;
@@ -13937,18 +13906,20 @@ MapShaper.flattenShapes = function(shapes, arcs) {
 
   return flattened;
 };
+*/
 
 
 
 
 // Assumes layers and arcs have been processed with divideArcs()
+/*
 api.dividePolygonLayer = function(lyrA, lyrB, arcs) {
   if (lyrA.geometry_type != 'polygon') {
     stop("[dividePolygonLayer()] Expected polygon layer, received:", lyrA.geometry_type);
   }
   var flags = new Uint8Array(arcs.size());
-  MapShaper.openArcPathways(lyrA.shapes, arcs, flags, true, false, false);
-  MapShaper.openArcPathways(lyrB.shapes, arcs, flags, true, true, false);
+  MapShaper.openArcRoutes(lyrA.shapes, arcs, flags, true, false, false);
+  MapShaper.openArcRoutes(lyrB.shapes, arcs, flags, true, true, false);
 
   var dividedShapes = MapShaper.dividePolygons(lyrA.shapes, arcs, flags);
   return Utils.defaults({shapes: dividedShapes, data: null}, lyrA);
@@ -13970,6 +13941,7 @@ MapShaper.dividePolygons = function(shapes, arcs, flags) {
     return dividedShape.length === 0 ? null : dividedShape;
   });
 };
+*/
 
 
 
@@ -13978,7 +13950,7 @@ MapShaper.dissolveShapes = function(shapes, arcs) {
   var dividedShapes = MapShaper.flattenShapes(shapes, arcs);
 
   var flags = new Uint8Array(arcs.size());
-  MapShaper.openArcPathways(dividedShapes, arcs, flags, true, false, true);
+  MapShaper.openArcRoutes(dividedShapes, arcs, flags, true, false, true);
 
   var dissolvedShapes = MapShaper.dividePolygons(dividedShapes, arcs, flags);
   dissolvedShapes = Utils.filter(dissolvedShapes, function(shp) { return !!shp; });
@@ -14005,6 +13977,26 @@ api.eraseLayer = function(targetLyr, clipLyr, arcs, opts) {
   return MapShaper.intersectLayers(targetLyr, clipLyr, arcs, "erase", opts);
 };
 
+// @src either a file containing polygons or the name/id of a polygon layer
+MapShaper.prepareClippingLayer = function(src, dataset) {
+  var match = MapShaper.findMatchingLayers(dataset.layers, src),
+      layers = dataset.layers,
+      clipLyr;
+  if (match.length > 1) {
+    stop("[prepareClippingLayer()] Clipping source must be a single layer");
+  } else if (match.length == 1) {
+    clipLyr = match[0];
+    layers = dataset.layers;
+  } else {
+    var clipData = api.importFile(src);
+    dataset.arcs = MapShaper.mergeDatasets([dataset, clipData]).arcs;
+    clipLyr = clipData.layers[0];
+    layers = layers.concat(clipLyr);
+  }
+  MapShaper.divideArcs(layers, dataset.arcs);
+  return clipLyr;
+};
+
 // @type: 'clip' or 'erase'
 MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
   if (targetLyr.geometry_type != 'polygon' || clipLyr.geometry_type != 'polygon') {
@@ -14017,11 +14009,16 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
   // var clipShapes = MapShaper.dissolveShapes(clipLyr.shapes, arcs);
   var clipShapes = clipLyr.shapes;
 
-  //console.log('### target shapes:', targetLyr.shapes)
-  //console.log('### clip shapes:', clipShapes);
+  var clipFlags = new Uint8Array(arcs.size());
+  // Open pathways in the clip/erase layer
+  // Need to expose clip/erase routes in both directions by setting route
+  // in both directions to visible -- this is how cut-out shapes are detected
+  // Or-ing with 0x11 makes both directions visible
+  MapShaper.openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', !!"dissolve", 0x11);
 
-  var flags = new Uint8Array(arcs.size());
-  var dividePath = MapShaper.getPathFinder(arcs, flags);
+  var routeFlags = new Uint8Array(arcs.size());
+  var clipArcTouches = 0;
+  var dividePath = MapShaper.getPathFinder(arcs, useRoute, routeIsActive, chooseRoute);
   var dividedShapes = clipPolygons(targetLyr.shapes, clipShapes, arcs, type);
   var dividedLyr = Utils.defaults({shapes: dividedShapes, data: null}, targetLyr);
 
@@ -14031,22 +14028,6 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
   return dividedLyr;
 
   function clipPolygons(targetShapes, clipShapes, arcs, type) {
-    // console.log("clip shapes:", clipShapes)
-    /*
-    var arr = arcs.toArray();
-    clipShapes[0][0].forEach(function(id) {
-      console.log(">", id, " n:", arcs.getArcLength(id));
-      console.log("  . ", arr[absArcId(id)]);
-    });
-    */
-
-    // Open pathways in the clip/erase layer
-    // Essential to block clip/erase shapes in both directions by setting both open
-    // and closed sides of each arc to visible -- this is how cut-out shapes are detected
-    // 0x11 bits set both directions to visible
-    // use 0x80 bit to mark these pathways as belonging to the clipping layer
-    //
-    MapShaper.openArcPathways(clipShapes, arcs, flags, type == 'clip', type == 'erase', !!"dissolve", 0x80 | 0x11);
     var index = new PathIndex(clipShapes, arcs);
     var clippedShapes = targetShapes.map(function(shape) {
       return shape ? clipPolygon(shape, type, index) : null;
@@ -14058,8 +14039,10 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
     // TODO; handle topology... need to dissolve?
     // TODO: find undivided paths or shapes?
     //
-    var undividedClipShapes = findUndividedShapes(clipShapes, flags);
-    MapShaper.closeArcPathways(clipShapes, arcs, flags, true, true); // not needed?
+    // var undividedClipShapes = findUndividedShapes(clipShapes, clipFlags);
+    // save used clip arcs to routeFlags also
+    var undividedClipShapes = findUndividedShapes(clipShapes);
+    MapShaper.closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
     index = new PathIndex(undividedClipShapes, arcs);
     targetShapes.forEach(function(shape, shapeId) {
       var paths = findInteriorPaths(shape, type, index);
@@ -14068,6 +14051,15 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
       }
     });
 
+    // Re-open clip pathways along divided path.
+    //   (i.e. re-set any pathways in clipping layer that were just consumed)
+    /*
+    if (usedClipArcs.length > 0) {
+      error("nope")
+      resetClippingFlags(usedClipArcs);
+      usedClipArcs = [];
+    }
+    */
     return clippedShapes;
   }
 
@@ -14076,50 +14068,118 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
         clipping = type == 'clip',
         erasing = type == 'erase';
 
-    // open pathways for entire shape rather than one path at a time --
+    // console.log(flagsToArray(routeFlags), "a. pre-clip");
+
+    // open pathways for entire polygon rather than one ring at a time --
     // need to create polygons that connect positive-space rings and holes
-    MapShaper.openArcPathways(shape, arcs, flags, true, false, false, 0x8);
+    MapShaper.openArcRoutes(shape, arcs, routeFlags, true, false, false);
+
+    // console.log(flagsToArray(routeFlags), "b. target shape opened");
 
     MapShaper.forEachPath(shape, function(ids) {
       var path;
       for (var i=0; i<ids.length; i++) {
+        clipArcTouches = 0;
         path = dividePath(ids[i]);
 
         if (path) {
           // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
-          if (dividePath.marked === false) {
+          if (clipArcTouches === 0) {
             var contained = index.pathIsEnclosed(path);
             if (clipping && contained || erasing && !contained) {
               dividedShape.push(path);
             }
-            // TODO: Consider breaking if polyon is unchanged
+            // TODO: Consider breaking if polygon is unchanged
           } else {
             dividedShape.push(path);
-
-            // TODO: Consider hiding affected clip polygons, so they don't block
-            // MapShaper.closeArcPathways(path, arcs, flags, erasing, true, 0x80);
           }
         }
       }
     });
 
+    // console.log(flagsToArray(routeFlags), "c. post clip");
+
     // Set pathways of current target shape to hidden/closed in fwd direction
-    MapShaper.closeArcPathways(shape, arcs, flags, true, false, true);
+    MapShaper.closeArcRoutes(shape, arcs, routeFlags, true, false, true);
 
-    // Re-open clip pathways along divided path, show both directions
-    //   (i.e. re-set any pathways in clipping layer that were just consumed)
-    // Open forward path (works for -erase too because erase arcs are reversed when merged)
-    MapShaper.openArcPathways(dividedShape, arcs, flags, true, false, !!"dissolve", 0x11, 0x80);
-
-    // WRONG: reversing clip/erase order because arc has been reversed in path
-    // MapShaper.openArcPathways(clipShapes, arcs, flags, type == 'erase', type == 'clip', !!"dissolve", 0x11, 0x80);
+    // console.log(flagsToArray(routeFlags), "d. target shape closed");
 
     return dividedShape.length === 0 ? null : dividedShape;
   }
 
+  function resetClippingFlags(ids) {
+    MapShaper.forEachArcId(ids, function(id) {
+      var abs = absArcId(id);
+      routeFlags[abs] = MapShaper.setBits(routeFlags[abs], clipFlags[abs], 0x33); // retain used bit and marker bit
+    });
+  }
+
+  function routeIsActive(id) {
+    var fw = id >= 0,
+        abs = fw ? id : ~id,
+        visibleBit = fw ? 1 : 0x10,
+        targetBits = routeFlags[abs],
+        clipBits = clipFlags[abs];
+
+    if (clipBits > 0) clipArcTouches++;
+    return (targetBits & visibleBit) > 0 || (clipBits & visibleBit) > 0;
+  }
+
+  function useRoute(id) {
+    var fw = id >= 0,
+        abs = fw ? id : ~id,
+        targetBits = routeFlags[abs],
+        clipBits = clipFlags[abs],
+        targetRoute, clipRoute, updatedRoute;
+
+    if (fw) {
+      targetRoute = targetBits;
+      clipRoute = clipBits;
+    } else {
+      targetRoute = targetBits >> 4;
+      clipRoute = clipBits >> 4;
+    }
+    targetRoute &= 3;
+    clipRoute &= 3;
+
+    var usable = targetRoute === 3 || targetRoute === 0 && clipRoute == 3;
+    if (usable) {
+      // special cases where clip route and target route both follow this arc
+      if (clipRoute == 1) {
+        // 1. clip/erase polygon blocks this route
+        usable = false;
+      } else if (clipRoute == 2 && type == 'erase') {
+        // 2. route is on the boundary between two erase polygons
+        usable = false;
+      }
+
+      // Need to close all arcs after visiting them -- or could cause a cycle
+      //   on layers with strange topology
+      updatedRoute = 5; // set to visible / closed / used;
+      // updatedRoute = 4; // set to invisible / closed / used;
+
+      if (fw) {
+        routeFlags[abs] = MapShaper.setBits(targetBits, updatedRoute, 0x7);
+      } else {
+        routeFlags[abs] = MapShaper.setBits(targetBits, updatedRoute << 4, 0x70);
+      }
+    }
+    return usable;
+  }
+
+  function chooseRoute(a, b) {
+    var route = a,
+        bi = absArcId(b);
+
+    if ((routeFlags[bi] & 3) == 3) { // prefer routes from target layer
+      route = b;
+    }
+    return route;
+  }
+
   // Filter a collection of shapes to exclude paths that were modified by clipping
   // and paths that are hidden (e.g. internal boundaries)
-  function findUndividedShapes(shapes, flags) {
+  function findUndividedShapes(shapes) {
     return shapes.map(function(shape) {
       var usableParts = [];
       MapShaper.forEachPath(shape, function(ids) {
@@ -14127,11 +14187,12 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
             pathIsVisible = false;
         for (var i=0; i<ids.length; i++) {
           // check if arc was used in fw or rev direction
-          if (!arcIsUnused(ids[i], flags)) {
+          if (!arcIsUnused(ids[i], routeFlags)) {
             pathIsClean = false;
             break;
           }
-          if (!pathIsVisible && arcIsVisible(ids[i], flags)) {
+          // check if clip arc is visible
+          if (!pathIsVisible && arcIsVisible(ids[i], clipFlags)) {
             pathIsVisible = true;
           }
         }
@@ -14164,7 +14225,7 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
     if (enclosedPaths.length <= 1) {
       dissolvedPaths = enclosedPaths; // no need to dissolve single-part paths
     } else {
-      MapShaper.openArcPathways(enclosedPaths, arcs, flags, true, false, true);
+      MapShaper.openArcRoutes(enclosedPaths, arcs, routeFlags, true, false, true);
       enclosedPaths.forEach(function(ids) {
         var path;
         for (var j=0; j<ids.length; j++) {
@@ -14178,27 +14239,7 @@ MapShaper.intersectLayers = function(targetLyr, clipLyr, arcs, type, opts) {
 
     return dissolvedPaths.length > 0 ? dissolvedPaths : null;
   }
-};
-
-// @src either a file containing polygons or the name/id of a polygon layer
-MapShaper.prepareClippingLayer = function(src, dataset) {
-  var match = MapShaper.findMatchingLayers(dataset.layers, src),
-      layers = dataset.layers,
-      clipLyr;
-  if (match.length > 1) {
-    stop("[prepareClippingLayer()] Clipping source must be a single layer");
-  } else if (match.length == 1) {
-    clipLyr = match[0];
-    layers = dataset.layers;
-  } else {
-    var clipData = api.importFile(src);
-    dataset.arcs = MapShaper.mergeDatasets([dataset, clipData]).arcs;
-    clipLyr = clipData.layers[0];
-    layers = layers.concat(clipLyr);
-  }
-  MapShaper.divideArcs(layers, dataset.arcs);
-  return clipLyr;
-};
+}; // end intersectLayers()
 
 
 
