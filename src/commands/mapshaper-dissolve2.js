@@ -4,7 +4,7 @@ MapShaper.dissolveShapes = function(shapes, arcs) {
   var dividedShapes = MapShaper.flattenShapes(shapes, arcs);
 
   var flags = new Uint8Array(arcs.size());
-  MapShaper.openArcPathways(dividedShapes, arcs, flags, true, false, true);
+  MapShaper.openArcRoutes(dividedShapes, arcs, flags, true, false, true);
 
   var dissolvedShapes = MapShaper.dividePolygons(dividedShapes, arcs, flags);
   dissolvedShapes = Utils.filter(dissolvedShapes, function(shp) { return !!shp; });

@@ -17,12 +17,11 @@ MapShaper.andBits = function(src, flags, mask) {
 };
 
 // enable arc pathways in a single shape or array of shapes
-// Uses 8 bits to control traversal of each arc
+// Uses 6 bits to control traversal of each arc
 // 0-2: forward arc; 4-6: rev arc
-// 3, 7: marker bits
 // fwd/rev bits: 0/4: path is visible; 1/5 = path is open; 3/6: path was used
 //
-MapShaper.openArcPathways = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits, targetBits) {
+MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits) {
   MapShaper.forEachArcId(arcIds, function(id) {
     var isInv = id < 0,
         absId = isInv ? ~id : id,
@@ -30,10 +29,6 @@ MapShaper.openArcPathways = function(arcIds, arcs, flags, fwd, rev, dissolve, or
         openFwd = isInv ? rev : fwd,
         openRev = isInv ? fwd : rev,
         newFlag = currFlag;
-
-    if (targetBits > 0 && (targetBits & currFlag) === 0) {
-      return;
-    }
 
     // error condition: lollipop arcs can cause problems; ignore these
     if (arcs.arcIsLollipop(id)) {
@@ -63,7 +58,7 @@ MapShaper.openArcPathways = function(arcIds, arcs, flags, fwd, rev, dissolve, or
   });
 };
 
-MapShaper.closeArcPathways = function(arcIds, arcs, flags, fwd, rev, hide, targetBits) {
+MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
   MapShaper.forEachArcId(arcIds, function(id) {
     var isInv = id < 0,
         absId = isInv ? ~id : id,
@@ -71,8 +66,6 @@ MapShaper.closeArcPathways = function(arcIds, arcs, flags, fwd, rev, hide, targe
         mask = 0xff,
         closeFwd = isInv ? rev : fwd,
         closeRev = isInv ? fwd : rev;
-
-    if (targetBits && (currFlag & targetBits) === 0) return;
 
     if (closeFwd) { // fwd and pos or rev and inv
       if (hide) mask &= ~1;
@@ -87,55 +80,32 @@ MapShaper.closeArcPathways = function(arcIds, arcs, flags, fwd, rev, hide, targe
   });
 };
 
-/*
+
 function flagsToArray(flags) {
   return Utils.map(flags, function(flag) {
-    return flag.toString(16);
+    return bitsToString(flag);
   });
 }
-*/
+
+function bitsToString(bits) {
+  var str = "";
+  for (var i=0; i<8; i++) {
+    str += (bits & (1 << i)) > 0 ? "1" : "0";
+    if (i < 7) str += ' ';
+    if (i == 3) str += ' ';
+  }
+  return str;
+}
+
 
 // Return a function for generating a path across a field of intersecting arcs
-MapShaper.getPathFinder = function(arcs, flags) {
+MapShaper.getPathFinder = function(arcs, useRoute, routeIsVisible, chooseRoute) {
   var nodes = new NodeCollection(arcs),
       coords = arcs.getVertexData(),
       xx = coords.xx,
       yy = coords.yy,
       nn = coords.nn,
       splitter;
-
-  function testArc(id) {
-    var fw = id >= 0,
-        abs = fw ? id : ~id,
-        visibleBit = fw ? 1 : 0x10,
-        currFlags = flags[abs];
-
-    if ((currFlags & 0x80) > 0) splitter.marked = true; // kludge
-    return (currFlags & visibleBit) > 0;
-  }
-
-  function useArc(id) {
-    var fw = id >= 0,
-        abs = fw ? id : ~id,
-        currFlag = flags[abs];
-
-    var bits = fw ? currFlag & 0xf : currFlag >> 4,
-        isOpen = (bits & 3) == 3; // arc is visible and open
-
-    if (isOpen) {
-      // Need to close all shapes -- or could cause a cycle on layers with strange topology
-      bits &= 8; // retain marker bit
-      bits |= 5; // set to visible / closed / used;
-
-      if (fw) {
-        flags[abs] = MapShaper.setBits(currFlag, bits, 0xf);
-      } else {
-        flags[abs] = MapShaper.setBits(currFlag, bits << 4, 0xf0);
-      }
-
-    }
-    return isOpen;
-  }
 
   function getNextArc(prevId) {
     var ai = arcs.indexOfVertex(prevId, -2),
@@ -148,7 +118,7 @@ MapShaper.getPathFinder = function(arcs, flags) {
         nextAngle = 0;
 
     nodes.forEachConnectedArc(prevId, function(candId) {
-      if (!testArc(~candId)) return;
+      if (!routeIsVisible(~candId)) return;
       if (arcs.getArcLength(candId) < 2) error("[clipPolygon()] defective arc");
 
       var ci = arcs.indexOfVertex(candId, -2),
@@ -175,12 +145,12 @@ MapShaper.getPathFinder = function(arcs, flags) {
           nextAngle = candAngle;
         }
         else if (candAngle == nextAngle) {
-          // TODO: handle equal angles by prioritizing the pathway with
-          // flag 0x8 set (marker bit for target layer arc)
-          var flag = flags[absArcId(candId)];
-          if ((flag & 0x8) > 0) {
-            nextId = candId;
-          }
+          // Handle equal angles by prioritizing the pathway with
+          // TODO: refactor so pathfinder function doesn't have to mess with traversal flags
+          //   e.g. by passing a comparison function for choosing between routes with
+          //   equal angles.
+          nextId = chooseRoute(nextId, candId);
+
           trace("duplicate angle:", candAngle);
           /*
             console.log("id1:", nextId, "id2:", candId);
@@ -207,16 +177,15 @@ MapShaper.getPathFinder = function(arcs, flags) {
     return ~nextId; // reverse arc to point onwards
   }
 
-  splitter = function(startId) {
+  return function(startId) {
     var path = [],
         nextId, msg,
         candId = startId,
         verbose = false; // MapShaper.TRACING;
 
-    splitter.marked = false;
     do {
       if (verbose) msg = (nextId === undefined ? " " : "  " + nextId) + " -> " + candId;
-      if (useArc(candId)) {
+      if (useRoute(candId)) {
         /*
         // debug zambia_congo test
         if (candId == 261) {
@@ -248,5 +217,4 @@ MapShaper.getPathFinder = function(arcs, flags) {
     return path.length === 0 ? null : path;
   };
 
-  return splitter;
 };

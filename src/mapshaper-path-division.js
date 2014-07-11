@@ -11,11 +11,11 @@ mapshaper-path-index
 // (in-place)
 MapShaper.divideArcs = function(layers, arcs) {
   var map = MapShaper.insertClippingPoints(arcs);
-  // TODO: handle duplicate arcs
-  // update arc ids in arc-based layers
+  var nodes = new NodeCollection(arcs);
+  // update arc ids in arc-based layers after adding clipping points
   layers.forEach(function(lyr) {
-    if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
-      MapShaper.updateArcIds(lyr.shapes, map, arcs);
+    if (MapShaper.layerHasPaths(lyr)) {
+      MapShaper.updateArcIds(lyr.shapes, map, arcs, nodes);
       // Addition of clipping points may create degenerate arcs... remove them
       // TODO: consider alternative -- avoid creating degenerate arcs in
       //    insertClippingPoints()
@@ -24,7 +24,7 @@ MapShaper.divideArcs = function(layers, arcs) {
   });
 };
 
-MapShaper.updateArcIds = function(shapes, map, arcs) {
+MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {
   var arcCount = arcs.size(),
       shape2;
   for (var i=0; i<shapes.length; i++) {
@@ -56,7 +56,8 @@ MapShaper.updateArcIds = function(shapes, map, arcs) {
         id2 = min;
         min++;
       }
-      // id2 = nodes.findMatchingArc(id2); //
+      // If there are duplicate arcs, always use the same one
+      if (nodes) id2 = nodes.findMatchingArc(id2);
       ids.push(id2);
     } while (max - min >= 0);
   }
