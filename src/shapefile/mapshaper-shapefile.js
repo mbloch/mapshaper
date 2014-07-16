@@ -68,7 +68,7 @@ MapShaper.exportShapefile = function(dataset, opts) {
   var files = [];
   dataset.layers.forEach(function(layer) {
     var data = layer.data,
-        name = opts.output_file ? utils.getFileBase(opts.output_file) : layer.name,
+        name = layer.name,
         obj, dbf;
     T.start();
     obj = MapShaper.exportShpAndShx(layer, dataset.arcs);

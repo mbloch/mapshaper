@@ -10,8 +10,14 @@ mapshaper-dataset-utils
 //
 MapShaper.exportFileContent = function(dataset, opts) {
   var layers = dataset.layers;
-
   if (!opts.format) error("[o] Missing output format");
+
+  if (opts.output_file && opts.format != 'topojson') {
+    opts.output_extension = utils.getFileExtension(opts.output_file);
+    layers.forEach(function(lyr) {
+      lyr.name = utils.getFileBase(opts.output_file);
+    });
+  }
 
   var files = [],
       exporter = MapShaper.exporters[opts.format];
@@ -125,16 +131,22 @@ MapShaper.exportDataTables = function(layers, opts) {
 };
 
 MapShaper.uniqifyNames = function(names) {
+
   var counts = Utils.getValueCounts(names),
-      index = {};
+      index = {},
+      suffix;
   return names.map(function(name) {
     var count = counts[name],
         i = 1;
     if (count > 1 || name in index) {
-      while ((name + i) in index) {
+      do {
+        suffix = String(i);
+        if (/[0-9]$/.test(name)) {
+          suffix = '-' + suffix;
+        }
         i++;
-      }
-      name = name + i;
+      } while ((name + suffix) in index);
+      name = name + suffix;
     }
     index[name] = true;
     return name;

@@ -145,10 +145,11 @@ GeoJSON.countNestedPoints = function(coords, depth) {
 };
 
 MapShaper.exportGeoJSON = function(dataset, opts) {
+  var extension = '.' + (opts.output_extension || "json");
   return dataset.layers.map(function(lyr) {
     return {
       content: MapShaper.exportGeoJSONString(lyr, dataset.arcs, opts),
-      filename: opts.output_file || lyr.name + ".json" // assume layer has name
+      filename: lyr.name ? lyr.name + extension : ""
     };
   });
 };

@@ -9126,10 +9126,11 @@ GeoJSON.countNestedPoints = function(coords, depth) {
 };
 
 MapShaper.exportGeoJSON = function(dataset, opts) {
+  var extension = '.' + (opts.output_extension || "json");
   return dataset.layers.map(function(lyr) {
     return {
       content: MapShaper.exportGeoJSONString(lyr, dataset.arcs, opts),
-      filename: opts.output_file || lyr.name + ".json" // assume layer has name
+      filename: lyr.name ? lyr.name + extension : ""
     };
   });
 };
@@ -10520,7 +10521,7 @@ MapShaper.exportShapefile = function(dataset, opts) {
   var files = [];
   dataset.layers.forEach(function(layer) {
     var data = layer.data,
-        name = opts.output_file ? utils.getFileBase(opts.output_file) : layer.name,
+        name = layer.name,
         obj, dbf;
     T.start();
     obj = MapShaper.exportShpAndShx(layer, dataset.arcs);
@@ -10697,8 +10698,14 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 //
 MapShaper.exportFileContent = function(dataset, opts) {
   var layers = dataset.layers;
-
   if (!opts.format) error("[o] Missing output format");
+
+  if (opts.output_file && opts.format != 'topojson') {
+    opts.output_extension = utils.getFileExtension(opts.output_file);
+    layers.forEach(function(lyr) {
+      lyr.name = utils.getFileBase(opts.output_file);
+    });
+  }
 
   var files = [],
       exporter = MapShaper.exporters[opts.format];
@@ -10812,16 +10819,22 @@ MapShaper.exportDataTables = function(layers, opts) {
 };
 
 MapShaper.uniqifyNames = function(names) {
+
   var counts = Utils.getValueCounts(names),
-      index = {};
+      index = {},
+      suffix;
   return names.map(function(name) {
     var count = counts[name],
         i = 1;
     if (count > 1 || name in index) {
-      while ((name + i) in index) {
+      do {
+        suffix = String(i);
+        if (/[0-9]$/.test(name)) {
+          suffix = '-' + suffix;
+        }
         i++;
-      }
-      name = name + i;
+      } while ((name + suffix) in index);
+      name = name + suffix;
     }
     index[name] = true;
     return name;
@@ -12663,12 +12676,14 @@ MapShaper.mergeDatasets = function(arr) {
   // this is to prevent cases like combining multiple TopoJSON files, each with
   // layers named "layer1", being converted to names like layer11, layer12 on output
   // TODO: rethink this
+  /*
   var names = mergedLayers.map(function(lyr) {return lyr.name || "";});
   if (names.length != Utils.uniq(names).length) {
     mergedLayers.forEach(function(lyr) {
       lyr.name = "";
     });
   }
+  */
 
   return {
     // info: arr[0].info,

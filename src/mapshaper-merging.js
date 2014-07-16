@@ -32,12 +32,14 @@ MapShaper.mergeDatasets = function(arr) {
   // this is to prevent cases like combining multiple TopoJSON files, each with
   // layers named "layer1", being converted to names like layer11, layer12 on output
   // TODO: rethink this
+  /*
   var names = mergedLayers.map(function(lyr) {return lyr.name || "";});
   if (names.length != Utils.uniq(names).length) {
     mergedLayers.forEach(function(lyr) {
       lyr.name = "";
     });
   }
+  */
 
   return {
     // info: arr[0].info,
