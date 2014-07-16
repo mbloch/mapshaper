@@ -16,6 +16,14 @@ MapShaper.andBits = function(src, flags, mask) {
   return src & (~mask | flags);
 };
 
+
+function getRouteBits(id, flags) {
+  var abs = absArcId(id),
+      bits = flags[abs];
+  if (abs != id) bits = bits >> 4;
+  return bits & 7;
+}
+
 // enable arc pathways in a single shape or array of shapes
 // Uses 6 bits to control traversal of each arc
 // 0-2: forward arc; 4-6: rev arc
@@ -80,7 +88,6 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
   });
 };
 
-
 function flagsToArray(flags) {
   return Utils.map(flags, function(flag) {
     return bitsToString(flag);
@@ -99,8 +106,8 @@ function bitsToString(bits) {
 
 
 // Return a function for generating a path across a field of intersecting arcs
-MapShaper.getPathFinder = function(arcs, useRoute, routeIsVisible, chooseRoute) {
-  var nodes = new NodeCollection(arcs),
+MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute) {
+  var arcs = nodes.arcs,
       coords = arcs.getVertexData(),
       xx = coords.xx,
       yy = coords.yy,
@@ -140,32 +147,20 @@ MapShaper.getPathFinder = function(arcs, useRoute, routeIsVisible, chooseRoute) 
       // if (prevId == 261) console.log(prevId, "v", candId, "angle:", candAngle)
 
       if (candAngle > 0) {
-        if (nextAngle === 0 || candAngle < nextAngle) {
+        if (nextAngle === 0) {
           nextId = candId;
           nextAngle = candAngle;
-        }
-        else if (candAngle == nextAngle) {
-          // Handle equal angles by prioritizing the pathway with
-          // TODO: refactor so pathfinder function doesn't have to mess with traversal flags
-          //   e.g. by passing a comparison function for choosing between routes with
-          //   equal angles.
-          nextId = chooseRoute(nextId, candId);
-
-          trace("duplicate angle:", candAngle);
-          /*
-            console.log("id1:", nextId, "id2:", candId);
-            console.log("len1:", nn[absArcId(nextId)], "len2:", nn[absArcId(candId)]);
-            console.log("arc1:", arcs.getArc(nextId).toString());
-            console.log("arc2:", arcs.getArc(candId).toString());
-            this.debugNode(candId);
-          */
+        } else {
+          var choice = chooseRoute(~nextId, nextAngle, ~candId, candAngle, prevId);
+          if (choice == 2) {
+            nextId = candId;
+            nextAngle = candAngle;
+          }
         }
       } else {
         // candAngle is NaN or 0
-        if (candAngle === 0) {
-          trace("#getNextArc() cand angle === 0; candId:", candId);
-          nodes.debugNode(prevId);
-        }
+        trace("#getNextArc() Invalid angle; id:", candId, "angle:", candAngle);
+        nodes.debugNode(prevId);
       }
     });
 

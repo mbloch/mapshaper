@@ -90,7 +90,7 @@ function validateClip(cmd) {
   if (src) {
     cmd.options.source = src;
   } else {
-    error("-" + cmd.name + " requires a source argument");
+    error("-" + cmd.name + " requires a source file or layer id");
   }
 }
 

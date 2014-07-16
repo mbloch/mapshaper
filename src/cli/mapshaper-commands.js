@@ -91,8 +91,8 @@ api.runCommand = function(cmd, dataset, cb) {
   }
 
   if (name == 'clip') {
-    sourceLyr = MapShaper.prepareClippingLayer(opts.source, dataset);
-    newLayers = MapShaper.applyCommand(api.clipLayer, targetLayers, sourceLyr, dataset.arcs, opts);
+    sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
+    newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
 
   } else if (name == 'each') {
     MapShaper.applyCommand(api.evaluateLayer, targetLayers, arcs, opts.expression);
@@ -100,16 +100,16 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'dissolve') {
     newLayers = MapShaper.applyCommand(api.dissolveLayer, targetLayers, arcs, opts);
 
-  } else if (name == 'dissolve2') {
-    newLayers = MapShaper.applyCommand(api.dissolveLayer2, targetLayers, arcs, opts);
+  //} else if (name == 'dissolve2') {
+  //  newLayers = MapShaper.applyCommand(api.dissolveLayer2, targetLayers, arcs, opts);
 
-  } else if (name == 'divide') {
-    MapShaper.divideArcs(dataset.layers, arcs);
-    newLayers = MapShaper.applyCommand(api.dividePolygonLayer, targetLayers, arcs, opts);
+  //} else if (name == 'divide') {
+  //  MapShaper.divideArcs(dataset.layers, arcs);
+  //  newLayers = MapShaper.applyCommand(api.dividePolygonLayer, targetLayers, arcs, opts);
 
   } else if (name == 'erase') {
-    sourceLyr = MapShaper.prepareClippingLayer(opts.source, dataset);
-    newLayers = MapShaper.applyCommand(api.eraseLayer, targetLayers, sourceLyr, dataset.arcs, opts);
+    sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
+    newLayers = api.eraseLayers(targetLayers, sourceLyr, dataset, opts);
 
   } else if (name == 'explode') {
     newLayers = MapShaper.applyCommand(api.explodeLayer, targetLayers, arcs, opts);
@@ -125,8 +125,8 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'filter') {
     MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
 
-  } else if (name == 'flatten') {
-    newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, arcs, opts);
+  //} else if (name == 'flatten') {
+  //  newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, arcs, opts);
 
   } else if (name == 'info') {
     api.printInfo(dataset);
@@ -151,6 +151,9 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'merge-layers') {
     // careful, returned layers are modified input layers
     newLayers = api.mergeLayers(targetLayers);
+
+  } else if (name == 'repair') {
+    newLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
 
   } else if (name == 'simplify') {
     api.simplify(arcs, opts);
@@ -301,6 +304,29 @@ MapShaper.promoteCommand = function(name, commands) {
   if (idx > 0) {
     commands.unshift(commands.splice(idx, 1)[0]);
   }
+};
+
+
+// @src: a layer identifier or a filename
+// if file -- import layer(s) from the file, merge arcs into @dataset,
+//   but don't add source layer(s) to the dataset
+//
+MapShaper.getSourceLayer = function(src, dataset, opts) {
+  var match = MapShaper.findMatchingLayers(dataset.layers, src),
+      lyr;
+  if (match.length > 1) {
+    stop("[" + name + "] Command received more than one source layer");
+  } else if (match.length == 1) {
+    lyr = match[0];
+  } else {
+    // assuming src is a filename
+    var clipData = api.importFile(src, opts);
+    // merge arcs from source data, but don't merge layer(s)
+    dataset.arcs = MapShaper.mergeDatasets([dataset, clipData]).arcs;
+    // TODO: handle multi-layer sources, e.g. TopoJSON files
+    lyr = clipData.layers[0];
+  }
+  return lyr || null;
 };
 
 // @target is a layer identifier or a comma-sep. list of identifiers

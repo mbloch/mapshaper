@@ -9,6 +9,7 @@ mapshaper-path-index
 // Divide a collection of arcs at points where segments intersect
 // and re-index the paths of all the layers that reference the arc collection.
 // (in-place)
+// TODO: rename
 MapShaper.divideArcs = function(layers, arcs) {
   var map = MapShaper.insertClippingPoints(arcs);
   var nodes = new NodeCollection(arcs);
@@ -22,6 +23,7 @@ MapShaper.divideArcs = function(layers, arcs) {
       MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
+  return nodes;
 };
 
 MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {

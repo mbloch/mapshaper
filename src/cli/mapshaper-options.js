@@ -13,20 +13,20 @@ api.parseCommands = function(arr) {
 
 MapShaper.getOptionParser = function() {
   var parser = new CommandParser(),
-      usage = "Usage: mapshaper -i input-file(s) [input-options] [command [command-options]] ...\n" +
+      usage = "Usage: mapshaper [-i] input-file(s) [input-options] [command [command-options]] ...\n" +
               "       mapshaper -help|encodings|version";
   parser.usage(usage);
 
   parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
-      "$ mapshaper -i states.shp auto-snap -simplify 10% -o format=geojson");
+      "$ mapshaper states.shp auto-snap -simplify 10% -o format=geojson");
 
   parser.example("Aggregate census tracts to counties\n" +
-      "$ mapshaper -i tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
+      "$ mapshaper tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
 
   parser.default('i');
 
   parser.command('i')
-    .title("Commands and command options")
+    .title("Commands and options")
     .describe("input one or more files")
     .validate(validateInputOpts)
     .option("merge-files", {
@@ -193,14 +193,32 @@ MapShaper.getOptionParser = function() {
     .option("target");
 
   parser.command("clip")
+    .describe("Use polygons in a file or layer to clip a polygon layer")
     .validate(validateClip)
+    .option("auto-snap", {
+      describe: "snap nearly identical points to fix minor topology errors",
+      type: "flag"
+    })
+    .option("snap-interval", {
+      describe: "specify snapping distance in source units",
+      type: "number"
+    })
     .option("source")
     .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
 
   parser.command("erase")
+    .describe("Use polygons in a file or layer to erase a polygon layer")
     .validate(validateClip)
+    .option("auto-snap", {
+      describe: "snap nearly identical points to fix minor topology errors",
+      type: "flag"
+    })
+    .option("snap-interval", {
+      describe: "specify snapping distance in source units",
+      type: "number"
+    })
     .option("source")
     .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
@@ -244,6 +262,10 @@ MapShaper.getOptionParser = function() {
     .option("name")
     .option("no-replace", {alias: "+", type: "flag"})
     .option("target");
+
+  parser.command("repair")
+    .option("target");
+
 /*
   parser.command("points")
     .option("name")

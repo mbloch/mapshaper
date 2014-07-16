@@ -15,7 +15,7 @@ api.dividePolygonLayer = function(lyrA, lyrB, arcs) {
 };
 
 MapShaper.dividePolygons = function(shapes, arcs, flags) {
-  var divide = MapShaper.getPathFinder(arcs, flags);
+  var divide = MapShaper.getPathFinder(nodes, flags);
   return shapes.map(function(shape, i) {
     var dividedShape = [];
     MapShaper.forEachPath(shape, function(ids) {

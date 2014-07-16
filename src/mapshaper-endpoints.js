@@ -13,6 +13,9 @@ function NodeCollection(arcs) {
 
   if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
 
+  // TODO: could check that arc collection hasn't been modified, using accessor function
+  Object.defineProperty(this, 'arcs', {value: arcs});
+
   this.toArray = function() {
     var flags = new Uint8Array(nodeData.xx.length),
         nodes = [];
@@ -84,8 +87,13 @@ function NodeCollection(arcs) {
     var absA = a >= 0 ? a : ~a,
         absB = b >= 0 ? b : ~b,
         lenA = nn[absA];
+    if (lenA < 2) {
+      // Don't throw error on collapsed arcs -- assume they will be handled
+      //   appropriately downstream.
+      // error("[testArcMatch() defective arc; len:", lenA);
+      return false;
+    }
     if (lenA != nn[absB]) return false;
-    if (lenA < 2) error("[testArcMatch() defective arc");
     if (testVertexMatch(a, b, -1) &&
         testVertexMatch(a, b, 1) &&
         testVertexMatch(a, b, -2)) {
