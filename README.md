@@ -2,7 +2,7 @@
 
 ### Introduction
 
-Mapshaper is a program for editing polygon and polyline datasets for mapping. The command line interface has commands for line simplification, polygon aggregation, attribute field calculation, filtering, splitting, table joins and more. The [web-based gui](http://www.mapshaper.org) focuses on interactive simplification.
+Mapshaper is a program for editing polygon and polyline datasets for mapping. The command line interface has commands for line simplification, attribute field calculation, filtering, clipping, splitting, dissolving, table joins and more. The [web-based gui](http://www.mapshaper.org) focuses on interactive simplification.
 
 Mapshaper can read and write Shapefile, GeoJSON and [TopoJSON](https://github.com/mbostock/topojson/wiki) files.
 
@@ -10,7 +10,7 @@ See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for more inform
 
 ### Installation
 
-Mapshaper requires [Node.js](http://nodejs.org).
+Mapshaper requires [Node.js](http://nodejs.org). There are easy [installers](http://nodejs.org/download/) for Microsoft Windows and other platforms.
 
 With Node installed, you can install the latest release version from the npm registry. Install with the "-g" flag to make the executable scripts available systemwide.
 
@@ -28,11 +28,13 @@ bin/mapshaper-gui # use the web interface locally
 bin/mapshaper     # use the command line tool
 ```
 
+The `mapshaper` script has been used successfully under OS X, Ubuntu Linux and Windows 8.
+
 ### Interactive tool
 
-The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online. All processing is done in the browser, so user data stays private.
+The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online. All processing is done in the browser, so your data stays private, even when using the public website.
 
-Browser compatibility: mapshaper works in recent versions of Chrome and Firefox as well as IE 10+. Exporting is not supported in Safari. Firefox seems better able to handle large files (say >200MB) than other browsers without encountering out-of-memory errors.
+Browser compatibility: mapshaper works in recent versions of Chrome and Firefox as well as IE 10+. Exporting is not supported in Safari. If you encounter out-of-memory errors using Chrome, try Firefox, which can handle Shapefiles larger than 1GB.
 
 ### Command line tool
 
@@ -40,22 +42,23 @@ The [Command Reference](https://github.com/mbloch/mapshaper/wiki/v0.2-Command-Re
 
 Examples
 
-Simplify counties.shp retaining 10% of removable vertices, export as GeoJSON.
-`mapshaper -i counties.shp -simplify 10% -o format=geojson counties_simple.json`
+Simplify counties.shp retaining 10% of removable vertices.
+`mapshaper counties.shp -simplify 10% -o output/counties_simple.shp`
 
-Convert counties to states.
-`mapshaper -i counties.shp -dissolve STATE copy-fields=STATE_NAME -o states.shp`
+Convert all the Shapefiles in a directory into GeoJSON.
+`mapshaper *.shp -o format=geojson output/`
+
+Generate state-level polygons by dissolving a layer of counties.
+`mapshaper counties.shp -dissolve STATE copy-fields=STATE_NAME -o states.shp`
 
 Extract the border between two states.
-`mapshaper -i states.shp -filter "STATE=='OR' || STATE=='WA'" -innerlines`
+`mapshaper states.shp -filter "STATE=='OR' || STATE=='WA'" -innerlines`
 
-Generate two new fields using JavaScript.
-`mapshaper -i counties.shp -each "STATE_FIPS=CNTY_FIPS.substr(0, 5), AREA=$.area"`
+Generate two new fields using a JavaScript expression.
+`mapshaper counties.shp -each "STATE_FIPS=CNTY_FIPS.substr(0, 5), AREA=$.area"`
 
-Join a csv table to a Shapefile (:str suffix prevents FIPS field from being converted to numbers)
+Join a csv table to a Shapefile (the :str suffix prevents FIPS field from being converted to numbers)
 `mapshaper -i states.shp -join demographics.txt keys=STATE_FIPS,FIPS:str`
-
-The `mapshaper` script has been used successfully in OS X, Ubuntu Linux and Windows 8.
 
 ### Building and testing
 
