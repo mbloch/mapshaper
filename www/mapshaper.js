@@ -6680,21 +6680,6 @@ MapShaper.reversePath = function(ids) {
   }
 };
 
-// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
-MapShaper.removeSpikesInPath = function(ids) {
-  var n = ids.length;
-  for (var i=1; i<n; i++) {
-    if (ids[i-1] == ~ids[i]) {
-      ids.splice(i-1, 2);
-      MapShaper.removeSpikesInPath(ids);
-    }
-  }
-  if (n > 2 && ids[0] == ~ids[n-1]) {
-    ids.pop();
-    ids.shift();
-    MapShaper.removeSpikesInPath(ids);
-  }
-};
 
 
 MapShaper.clampIntervalByPct = function(z, pct) {
@@ -6756,6 +6741,7 @@ MapShaper.forEachArcId = function(arr, cb) {
 
 // TODO: consider removing paths when return value is null
 //
+/*
 MapShaper.forEachPath = function(arr, cb) {
   var arcs, retn;
   if (!arr) return; // null shape
@@ -6774,7 +6760,7 @@ MapShaper.forEachPath = function(arr, cb) {
     }
   }
 };
-
+*/
 MapShaper.forEachPath = function(paths, cb) {
   MapShaper.editPaths(paths, cb);
 };
@@ -6922,41 +6908,6 @@ MapShaper.getPathMetadata = function(shape, arcs, type) {
       bounds: arcs.getSimpleShapeBounds(ids)
     };
   });
-};
-
-MapShaper.cleanPath = function(path, arcs) {
-  var nulls = 0;
-  for (var i=0; i<path.length; i++) {
-    if (arcs.arcIsDegenerate(path[i])) {
-      nulls++;
-      path[i] = null;
-    }
-  }
-  return nulls > 0 ? path.filter(function(id) {return id !== null;}) : path;
-};
-
-// Remove defective arcs and zero-area polygon rings
-// Don't remove duplicate points
-// Don't remove spikes (between arcs or within arcs)
-// Don't check winding order of polygon rings
-MapShaper.cleanShape = function(shape, arcs, type) {
-  return MapShaper.editPaths(shape, function(path) {
-    var cleaned = MapShaper.cleanPath(path, arcs);
-    if (type == 'polygon' && cleaned) {
-      MapShaper.removeSpikesInPath(cleaned); // assumed by divideArcs()
-      if (geom.getPathArea4(cleaned, arcs) === 0) {
-        cleaned = null;
-      }
-    }
-    return cleaned;
-  });
-};
-
-// clean polygon or polyline shapes, in-place
-MapShaper.cleanShapes = function(shapes, arcs, type) {
-  for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = MapShaper.cleanShape(shapes[i], arcs, type);
-  }
 };
 
 // @paths assume [[outerRingIds], [firstHoleIds], ...] (TopoJSON Polygon format)

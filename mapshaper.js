@@ -13842,7 +13842,6 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
 
 
 
-
 // Remove overlapping polygon shapes
 // (Unfinished)
 /*
