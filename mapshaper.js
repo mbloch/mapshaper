@@ -7212,15 +7212,24 @@ MapShaper.getLayerBounds = function(lyr, arcs) {
   return bounds;
 };
 
-// replace old layers in-place, append any additional new layers
-MapShaper.replaceLayers = function(dataset, oldLayers, newLayers) {
-  Utils.repeat(Math.max(oldLayers.length, newLayers.length), function(i) {
-    var oldLyr = oldLayers[i],
+// replace cut layers in-sequence (to maintain layer indexes)
+// append any additional new layers
+MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
+  // modify a copy in case cutLayers == dataset.layers
+  var currLayers = dataset.layers.concat();
+  Utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
+    var cutLyr = cutLayers[i],
         newLyr = newLayers[i],
-        idx = oldLyr ? dataset.layers.indexOf(oldLyr) : dataset.layers.length;
-    if (oldLyr) dataset.layers.splice(idx, 1);
-    if (newLyr) dataset.layers.splice(idx, 0, newLyr);
+        idx = cutLyr ? currLayers.indexOf(cutLyr) : currLayers.length;
+
+    if (cutLyr) {
+      currLayers.splice(idx, 1);
+    }
+    if (newLyr) {
+      currLayers.splice(idx, 0, newLyr);
+    }
   });
+  dataset.layers = currLayers;
 };
 
 MapShaper.validateLayer = function(lyr, arcs) {
