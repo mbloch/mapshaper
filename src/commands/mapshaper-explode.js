@@ -1,6 +1,6 @@
 /* @requires mapshaper-common, mapshaper-shape-utils */
 
-api.explodeLayer = function(lyr, arcs, opts) {
+api.explodeFeatures = function(lyr, arcs, opts) {
   var properties = lyr.data ? lyr.data.getRecords() : null,
       explodedProperties = properties ? [] : null,
       explodedShapes = [],

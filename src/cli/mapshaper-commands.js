@@ -92,16 +92,16 @@ api.runCommand = function(cmd, dataset, cb) {
 
   if (name == 'clip') {
     sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-    newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
+    newLayers = api.clipPolygonLayers(targetLayers, sourceLyr, dataset, opts);
 
   } else if (name == 'each') {
-    MapShaper.applyCommand(api.evaluateLayer, targetLayers, arcs, opts.expression);
+    MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
   } else if (name == 'dissolve') {
-    newLayers = MapShaper.applyCommand(api.dissolveLayer, targetLayers, arcs, opts);
+    newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
 
   //} else if (name == 'dissolve2') {
-  //  newLayers = MapShaper.applyCommand(api.dissolveLayer2, targetLayers, arcs, opts);
+  //  newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, arcs, opts);
 
   //} else if (name == 'divide') {
   //  MapShaper.divideArcs(dataset.layers, arcs);
@@ -109,10 +109,10 @@ api.runCommand = function(cmd, dataset, cb) {
 
   } else if (name == 'erase') {
     sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-    newLayers = api.eraseLayers(targetLayers, sourceLyr, dataset, opts);
+    newLayers = api.erasePolygonLayers(targetLayers, sourceLyr, dataset, opts);
 
   } else if (name == 'explode') {
-    newLayers = MapShaper.applyCommand(api.explodeLayer, targetLayers, arcs, opts);
+    newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
 
   } else if (name == 'filter-fields') {
     MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
@@ -132,12 +132,12 @@ api.runCommand = function(cmd, dataset, cb) {
     api.printInfo(dataset);
 
   } else if (name == 'innerlines') {
-    newLayers = MapShaper.applyCommand(api.convertLayerToInnerLines, targetLayers, arcs);
+    newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
 
   } else if (name == 'join') {
     // async command -- special case
     api.importJoinTableAsync(opts.source, opts, function(table) {
-      MapShaper.applyCommand(api.joinTableToLayer, targetLayers, table, opts);
+      MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
       done(err, dataset);
     });
     return;
@@ -146,7 +146,7 @@ api.runCommand = function(cmd, dataset, cb) {
     newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
 
   } else if (name == 'lines') {
-    newLayers = MapShaper.applyCommand(api.convertLayerToTypedLines, targetLayers, arcs, opts.fields);
+    newLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
 
   } else if (name == 'merge-layers') {
     // careful, returned layers are modified input layers
@@ -158,14 +158,14 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'simplify') {
     api.simplify(arcs, opts);
     if (opts.keep_shapes) {
-      api.protectShapes(arcs, targetLayers);
+      api.keepEveryPolygon(arcs, targetLayers);
     }
 
   } else if (name == 'split') {
     newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, arcs, opts.field);
 
   } else if (name == 'split-on-grid') {
-    newLayers = MapShaper.applyCommand(api.splitOnGrid, targetLayers, arcs, opts.rows, opts.cols);
+    newLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
 
   } else if (name == 'subdivide') {
     newLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);

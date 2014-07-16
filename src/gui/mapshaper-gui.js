@@ -67,7 +67,7 @@ function Editor() {
       slider = new SimplifyControl();
       MapShaper.simplifyPaths(dataset.arcs, {method:method});
       if (keepShapes) {
-        MapShaper.protectShapes(dataset.arcs, dataset.layers);
+        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
       }
       if (useRepair) {
         repair = new RepairControl(map, dataset.arcs);

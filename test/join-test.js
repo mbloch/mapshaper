@@ -7,7 +7,7 @@ function stringifyEqual(a, b) {
 }
 
 describe('mapshaper-join.js', function () {
-  describe('joinTableToLayer()', function () {
+  describe('joinAttributesToFeatures()', function () {
     it('apply filter expression', function () {
       var targetRecords = [{STATE: 'CA'}, {STATE: "NV"}];
       var sourceRecords = [
@@ -27,7 +27,7 @@ describe('mapshaper-join.js', function () {
         fields: ["CASES"],
         keys: ["STATE", "ST"]
       };
-      api.joinTableToLayer(lyr, new api.internal.DataTable(sourceRecords), opts);
+      api.joinAttributesToFeatures(lyr, new api.internal.DataTable(sourceRecords), opts);
       assert.deepEqual(lyr.data.getRecords(),
           [{ STATE: "CA", CASES: 12}, {STATE: "NV", CASES: 54}]);
     })

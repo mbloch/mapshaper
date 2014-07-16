@@ -3,7 +3,7 @@
 // Split the shapes in a layer according to a grid
 // Return array of layers and an index with the bounding box of each cell
 //
-api.splitOnGrid = function(lyr, arcs, rows, cols) {
+api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
   var shapes = lyr.shapes,
       bounds = arcs.getBounds(),
       xmin = bounds.xmin,

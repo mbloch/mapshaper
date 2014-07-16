@@ -1,7 +1,7 @@
 /* @require mapshaper-shapes, mapshaper-shape-geom */
 
-api.protectShapes =
-MapShaper.protectShapes = function(arcData, layers) {
+api.keepEveryPolygon =
+MapShaper.keepEveryPolygon = function(arcData, layers) {
   T.start();
   Utils.forEach(layers, function(lyr) {
     // TODO: test with polyline shapes

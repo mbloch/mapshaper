@@ -47,16 +47,16 @@ describe('mapshaper-innerlines.js', function () {
       [[3, 2], [3, 1], [2, 1]]];
   arcsb = new api.internal.ArcCollection(arcsb);
 
-  describe('convertLayerToInnerLines()', function () {
+  describe('convertPolygonsToInnerLines()', function () {
     it('test 1', function () {
-      var lyr2 = api.convertLayerToInnerLines(lyr, arcs);
+      var lyr2 = api.convertPolygonsToInnerLines(lyr, arcs);
       assert.deepEqual(lyr2.shapes, [[[1]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.equal(lyr2.name, 'shape'); // same as original name
     })
 
     it('test 2', function () {
-      var lyr2 = api.convertLayerToInnerLines(lyrb, arcsb);
+      var lyr2 = api.convertPolygonsToInnerLines(lyrb, arcsb);
       assert.deepEqual(lyr2.shapes,
           [[[1]], [[2]], [[4]], [[5]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
@@ -64,9 +64,9 @@ describe('mapshaper-innerlines.js', function () {
 
   })
 
-  describe('convertLayerToTypedLines()', function() {
+  describe('convertPolygonsToTypedLines()', function() {
     it( 'test with no field', function() {
-      var lyr2 = api.convertLayerToTypedLines(lyr, arcs);
+      var lyr2 = api.convertPolygonsToTypedLines(lyr, arcs);
       assert.deepEqual(lyr2.shapes, [[[1]], [[0]], [[2]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.equal(lyr2.name, 'shape'); // same as original name
@@ -74,14 +74,14 @@ describe('mapshaper-innerlines.js', function () {
     })
 
     it('test 2 with no field', function () {
-      var lyr2 = api.convertLayerToTypedLines(lyrb, arcsb);
+      var lyr2 = api.convertPolygonsToTypedLines(lyrb, arcsb);
       assert.deepEqual(lyr2.shapes,
           [[[1]], [[2]], [[4]], [[5]], [[0]], [[3]], [[6]], [[7]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
     })
 
     it( 'test with one field', function() {
-      var lyr2 = api.convertLayerToTypedLines(lyr, arcs, ['foo']);
+      var lyr2 = api.convertPolygonsToTypedLines(lyr, arcs, ['foo']);
       assert.deepEqual(lyr2.shapes, [[[1]], [[0]], [[2]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.equal(lyr2.name, 'shape'); // same as original name
@@ -89,7 +89,7 @@ describe('mapshaper-innerlines.js', function () {
     })
 
     it( 'test 2 with one field', function() {
-      var lyr2 = api.convertLayerToTypedLines(lyrb, arcsb, ['foo']);
+      var lyr2 = api.convertPolygonsToTypedLines(lyrb, arcsb, ['foo']);
       assert.deepEqual(lyr2.shapes,
           [[[1]], [[5]], [[2]], [[4]], [[0]], [[3]], [[6]], [[7]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
@@ -98,7 +98,7 @@ describe('mapshaper-innerlines.js', function () {
     })
 
     it( 'test with two fields', function() {
-      var lyr2 = api.convertLayerToTypedLines(lyrb, arcsb, ['foo', 'bar']);
+      var lyr2 = api.convertPolygonsToTypedLines(lyrb, arcsb, ['foo', 'bar']);
       assert.deepEqual(lyr2.shapes,
           [[[1]], [[5]], [[2]], [[4]], [[0]], [[3]], [[6]], [[7]]]);
       assert.equal(lyr2.geometry_type, 'polyline');

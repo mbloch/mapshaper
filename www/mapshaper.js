@@ -8582,7 +8582,7 @@ TopoJSON.reindexArcIds = function(geom, map) {
 
 
 
-api.explodeLayer = function(lyr, arcs, opts) {
+api.explodeFeatures = function(lyr, arcs, opts) {
   var properties = lyr.data ? lyr.data.getRecords() : null,
       explodedProperties = properties ? [] : null,
       explodedShapes = [],
@@ -11791,8 +11791,8 @@ Opts.inherit(RepairControl, EventDispatcher);
 
 
 
-api.protectShapes =
-MapShaper.protectShapes = function(arcData, layers) {
+api.keepEveryPolygon =
+MapShaper.keepEveryPolygon = function(arcData, layers) {
   T.start();
   Utils.forEach(layers, function(lyr) {
     // TODO: test with polyline shapes
@@ -11966,7 +11966,7 @@ function Editor() {
       slider = new SimplifyControl();
       MapShaper.simplifyPaths(dataset.arcs, {method:method});
       if (keepShapes) {
-        MapShaper.protectShapes(dataset.arcs, dataset.layers);
+        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
       }
       if (useRepair) {
         repair = new RepairControl(map, dataset.arcs);

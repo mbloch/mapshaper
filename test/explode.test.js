@@ -2,7 +2,7 @@ var api = require('../'),
   assert = require('assert');
 
 describe('mapshaper-explode.js', function () {
-  describe('explodeLayer()', function () {
+  describe('explodeFeatures()', function () {
     it('point layer', function () {
 
       var lyr = {
@@ -11,7 +11,7 @@ describe('mapshaper-explode.js', function () {
         shapes: [[[2 ,3], [4, 5], [6, 7]]]
       };
 
-      var exploded = api.explodeLayer(lyr);
+      var exploded = api.explodeFeatures(lyr);
 
       assert.deepEqual(exploded.data.getRecords(),
         [{a: "foo", b: "bar"}, {a: "foo", b: "bar"}, {a: "foo", b: "bar"}]);
@@ -40,7 +40,7 @@ describe('mapshaper-explode.js', function () {
         shapes: [[[0, 1], [2, ~1], [0, 2]]]
       };
 
-      var exploded = api.explodeLayer(lyr, arcs);
+      var exploded = api.explodeFeatures(lyr, arcs);
       assert.deepEqual(exploded.shapes,
           [[[0, 1]], [[2, ~1]], [[0, 2]]]);
 
@@ -74,7 +74,7 @@ describe('mapshaper-explode.js', function () {
         data: new api.internal.DataTable([{a: "foo"}, {a: "bar"}])
       };
 
-      var exploded = api.explodeLayer(lyr, arcs);
+      var exploded = api.explodeFeatures(lyr, arcs);
 
       assert.deepEqual(exploded.data.getRecords(), [{a: "foo"}, {a: "bar"}]);
       assert.deepEqual(exploded.shapes, [null, [[1], [~0]]]);

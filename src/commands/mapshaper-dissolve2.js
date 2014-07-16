@@ -12,7 +12,7 @@ MapShaper.dissolveShapes = function(shapes, arcs) {
   return dissolvedShapes;
 };
 
-api.dissolveLayer2 = function(lyr, arcs, opts) {
+api.dissolvePolygons2 = function(lyr, arcs, opts) {
   // add intersection points, to avoid rare topology issues
   // MapShaper.divideArcs([lyr], arcs);
 

@@ -1,6 +1,6 @@
 /* @requires mapshaper-common */
 
-api.convertLayerToInnerLines = function(lyr, arcs) {
+api.convertPolygonsToInnerLines = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
     stop("[innerlines] Layer not polygon type");
   }
@@ -10,7 +10,7 @@ api.convertLayerToInnerLines = function(lyr, arcs) {
   return lyr2;
 };
 
-api.convertLayerToTypedLines = function(lyr, arcs, fields) {
+api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
   if (lyr.geometry_type != 'polygon') {
     stop("[lines] Layer not polygon type");
   }
@@ -39,7 +39,7 @@ api.convertLayerToTypedLines = function(lyr, arcs, fields) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] unknown data field:", field);
       }
-      var dissolved = api.dissolveLayer(lyr, arcs, {field: field}),
+      var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
       dissolvedArcs = Utils.difference(dissolvedArcs, allArcs);
       addArcs(dissolvedArcs);

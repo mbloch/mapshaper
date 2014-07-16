@@ -1,6 +1,6 @@
 /* @requires mapshaper-expressions, mapshaper-dataset-utils */
 
-api.evaluateLayer = function(lyr, arcs, exp) {
+api.evaluateEachFeature = function(lyr, arcs, exp) {
   var n = MapShaper.getFeatureCount(lyr),
       compiled;
 

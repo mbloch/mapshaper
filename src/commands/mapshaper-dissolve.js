@@ -4,7 +4,7 @@
 // @opts.field (optional) name of data field (dissolves all if falsy)
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
-api.dissolveLayer = function(lyr, arcs, opts) {
+api.dissolvePolygons = function(lyr, arcs, opts) {
   var shapes = lyr.shapes,
       field = opts.field,
       dataTable = lyr.data || null,

@@ -5,20 +5,20 @@ mapshaper-polygon-intersection
 mapshaper-polygon-repair
 */
 
-api.clipLayers = function(target, clipLyr, dataset, opts) {
+api.clipPolygonLayers = function(target, clipLyr, dataset, opts) {
   return MapShaper.intersectLayers(target, clipLyr, dataset, "clip", opts);
 };
 
-api.eraseLayers = function(target, clipLyr, dataset, opts) {
+api.erasePolygonLayers = function(target, clipLyr, dataset, opts) {
   return MapShaper.intersectLayers(target, clipLyr, dataset, "erase", opts);
 };
 
-api.clipLayer = function(targetLyr, clipLyr, dataset, opts) {
-  return api.clipLayers([targetLyr], clipLyr, dataset, opts)[0];
+api.clipPolygons = function(targetLyr, clipLyr, dataset, opts) {
+  return api.clipPolygonLayers([targetLyr], clipLyr, dataset, opts)[0];
 };
 
-api.eraseLayer = function(targetLyr, clipLyr, dataset, opts) {
-  return api.eraseLayers([targetLyr], clipLyr, dataset, opts)[0];
+api.erasePolygons = function(targetLyr, clipLyr, dataset, opts) {
+  return api.erasePolygonLayers([targetLyr], clipLyr, dataset, opts)[0];
 };
 
 // @target: a single layer or an array of layers
@@ -27,7 +27,6 @@ MapShaper.intersectLayers = function(targetLayers, clipLyr, dataset, type, opts)
   if (!clipLyr || !targetLayers) {
     stop(Utils.format("Missing %s layer", type));
   }
-
 
   var allLayers = dataset.layers;
   // If clipping layer was imported from a second file, it won't be included in
@@ -226,7 +225,6 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
     }
     return usable;
   }
-
 
 
   function chooseRoute2(id1, angle1, id2, angle2, prevId) {

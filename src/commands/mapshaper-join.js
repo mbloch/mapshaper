@@ -25,7 +25,7 @@ api.importJoinTableAsync = function(file, opts, done) {
   }, opts);
 };
 
-api.joinTableToLayer = function(lyr, table, opts) {
+api.joinAttributesToFeatures = function(lyr, table, opts) {
   var localKey = opts.keys[0],
       foreignKey = opts.keys[1],
       joinFields = opts.fields,
