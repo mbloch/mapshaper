@@ -6,6 +6,30 @@ describe("mapshaper-geom.js", function() {
 
 
   describe('getRoundingFunction', function () {
+
+    function testAtPrecision(precision) {
+      var round = geom.getRoundingFunction(precision),
+          // avoid 0.0000001 -> 1e-7
+          maxDigits = countDigits(precision.toFixed(15).replace(/0*$/, '')),
+          tests = 1000,
+          num, rounded, str;
+
+      while (tests--) {
+        num = Math.random() * 2 - 1;
+        num *= Math.pow(10, Math.floor(Math.random() * 10));// better distribution
+        rounded = round(num);
+        str = JSON.stringify(rounded);
+        assert.ok(countDigits(str) <= maxDigits, num + " -> " + str);
+      }
+
+    }
+
+    function countDigits(str) {
+      var idx = str.indexOf('.');
+      var digits = idx > 0 ? str.length - idx - 1 : 0;
+      return digits;
+    }
+
     it('Rounds to 1s', function () {
       var round = geom.getRoundingFunction(1);
       assert.equal(round(10.2), 10);
@@ -18,15 +42,36 @@ describe("mapshaper-geom.js", function() {
       assert.equal(round(-15.55), -20);
     })
 
-    it('Rounds to 1/100ths', function () {
-      var round = geom.getRoundingFunction(0.01);
-      assert.equal(round(38.55932), 38.56);
-      assert.equal(round(100.07), 100.07);
+    it('Rounds to 0.01', function () {
+      testAtPrecision(0.01)
     })
 
-    it('Rounds to 1/10000ths', function () {
-      var round = geom.getRoundingFunction(0.0001);
-      assert.equal(round(-77.023456), -77.0235);
+    it('Rounds to 0.0001', function () {
+      testAtPrecision(0.0001)
+    })
+
+    it('Rounds to 0.001', function () {
+      testAtPrecision(0.001)
+    })
+
+    it('Rounds to 0.1', function () {
+      testAtPrecision(0.1)
+    })
+
+    it('Rounds to 0.00001', function () {
+      testAtPrecision(0.00001)
+    })
+
+    it('Rounds to 0.000001', function () {
+      testAtPrecision(0.000001)
+    })
+
+    it('Rounds to 0.0000001', function () {
+      testAtPrecision(0.0000001);
+    })
+
+    it('Rounds to 0.00000001', function () {
+      testAtPrecision(0.00000001);
     })
 
     it('JSON.stringify() doesn\'t show rounding artefacts', function () {

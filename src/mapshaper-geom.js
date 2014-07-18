@@ -34,7 +34,7 @@ function getRoundingFunction(inc) {
   if (inv > 1) inv = Math.round(inv);
   return function(x) {
     return Math.round(x * inv) / inv;
-    // these alternatives show rounding error after stringify()
+    // these alternatives show rounding error after JSON.stringify()
     // return Math.round(x / inc) / inv;
     // return Math.round(x / inc) * inc;
     // return Math.round(x * inv) * inc;
