@@ -1,6 +1,8 @@
-/* @requires mapshaper-visvalingam, mapshaper-dp */
+/* @requires mapshaper-visvalingam, mapshaper-dp, mapshaper-dataset-utils */
 
 api.simplify = function(arcs, opts) {
+  if (!arcs) stop("[simplify] Missing path data");
+
   MapShaper.simplifyPaths(arcs, opts);
 
   if (utils.isNumber(opts.pct)) {

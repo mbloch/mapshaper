@@ -11,6 +11,10 @@ MapShaper.cloneShape = function(shp) {
   });
 };
 
+MapShaper.cloneShapes = function(arr) {
+  return arr.map(cloneShape);
+};
+
 // a and b are arrays of arc ids
 MapShaper.pathsAreIdentical = function(a, b) {
   if (a.length != b.length) return false;
@@ -26,8 +30,6 @@ MapShaper.reversePath = function(ids) {
     ids[i] = ~ids[i];
   }
 };
-
-
 
 MapShaper.clampIntervalByPct = function(z, pct) {
   if (pct <= 0) z = Infinity;
@@ -171,7 +173,6 @@ MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShap
   });
 };
 
-
 MapShaper.arcHasLength = function(id, coords) {
   var iter = coords.getArcIter(id), x, y;
   if (iter.hasNext()) {
@@ -259,6 +260,6 @@ MapShaper.getPathMetadata = function(shape, arcs, type) {
 
 // @paths assume [[outerRingIds], [firstHoleIds], ...] (TopoJSON Polygon format)
 //
-MapShaper.enforcePolygonWindingRule = function(paths, arcs) {
+//MapShaper.enforcePolygonWindingRule = function(paths, arcs) {
 
-};
+//};

@@ -1,5 +1,6 @@
 var api = require('../'),
-  assert = require('assert');
+  assert = require('assert'),
+  format = api.utils.format;
 
 function fixPath(p) {
   return require('path').join(__dirname, p);
@@ -7,26 +8,32 @@ function fixPath(p) {
 
 describe('mapshaper-commands.js', function () {
 
-  describe('runCommandString()', function () {
-    var file1 = fixPath("test_data/two_states.shp"),
-        file2 = fixPath("test_data/six_counties.shp");
+  var states_shp = fixPath("test_data/two_states.shp"),
+      counties_shp = fixPath("test_data/six_counties.shp"),
+      states_csv = fixPath("test_data/states.csv");
 
-    it("-filter-fields", function () {
-      var cmd = "-i " + file1 + " -filter-fields NAME=STATE_NAME,FIPS";
+
+  describe('-filter-fields', function () {
+
+    it("test 1", function () {
+      var cmd = format("-i %s -filter-fields NAME=STATE_NAME,FIPS", states_shp);
       api.runCommandString(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getFields(), ['NAME', 'FIPS']);
       })
     })
 
-    it("-filter-fields (drop fields)", function () {
-      var cmd = "-i " + file1 + " -filter-fields";
+    it("test 2 -- drop fields)", function () {
+      var cmd = format("-i %s -filter-fields", states_shp);
       api.runCommandString(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getFields(), []);
       })
     })
+  })
 
-    it('-dissolve', function() {
-      var cmd = "-i " + file2 + " -dissolve + copy-fields NAME,STATE_FIPS sum-fields POP2000,MULT_RACE";
+  describe('-dissolve', function () {
+
+    it('test 1', function() {
+      var cmd = format("-i %s -dissolve + copy-fields NAME,STATE_FIPS sum-fields POP2000,MULT_RACE", counties_shp);
         api.runCommandString(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
         var lyr1 = data.layers[0]; // original lyr
@@ -38,8 +45,12 @@ describe('mapshaper-commands.js', function () {
       })
     })
 
-    it('-split', function() {
-      var cmd = "-i " + file1 + " -split STATE";
+  })
+
+  describe('-split', function () {
+
+    it('test 1', function() {
+      var cmd = format("-i %s -split STATE", states_shp);
       api.runCommandString(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
         assert.equal(data.layers[0].shapes.length, 1);
@@ -47,10 +58,12 @@ describe('mapshaper-commands.js', function () {
       })
     })
 
-    it('-join', function() {
-      var csv = fixPath("test_data/states.csv"),
-          cmd = "-i " + file1 + " -join " + csv +
-            " keys=FIPS,STATE_FIPS:str fields=POP2010,SUB_REGION",
+  })
+
+  describe('-join', function () {
+
+    it('test 1', function() {
+      var cmd = format("-i %s -join %s keys=FIPS,STATE_FIPS:str fields=POP2010,SUB_REGION", states_shp, states_csv),
           target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
           {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
       api.runCommandString(cmd, function(err, data) {
@@ -74,6 +87,7 @@ describe('mapshaper-commands.js', function () {
   })
 
   describe('findMatchingLayers()', function () {
+
     it("simple match", function () {
       var layers = [{name: 'layer1'}, {name: 'layer2'}];
       assert.deepEqual(api.internal.findMatchingLayers(layers, 'layer1'),

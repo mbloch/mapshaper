@@ -4,7 +4,8 @@ mapshaper-geom,
 mapshaper-shape-geom,
 mapshaper-snapping,
 mapshaper-topology,
-mapshaper-shape-utils
+mapshaper-shape-utils,
+mapshaper-polygon-repair
 */
 
 // Import path data from a non-topological source (Shapefile, GeoJSON, etc)

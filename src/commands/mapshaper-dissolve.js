@@ -13,6 +13,8 @@ api.dissolvePolygons = function(lyr, arcs, opts) {
       dissolveRecords,
       getDissolveKey;
 
+  MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
+
   if (field) {
     if (!dataTable) {
       error("[dissolve] Layer is missing a data table");

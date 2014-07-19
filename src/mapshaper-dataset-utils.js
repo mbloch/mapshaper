@@ -2,12 +2,9 @@
 
 // utility functions for datasets and layers
 
-MapShaper.layerHasPaths = function(lyr) {
-  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
-};
-
-MapShaper.layerHasPoints = function(lyr) {
-  return lyr.shapes && lyr.geometry_type == 'point';
+// make a modified copy of a layer
+MapShaper.updateLayer = function(lyr, update, opts) {
+  // var newLyr = Utils.defaults(obj, lyr);
 };
 
 MapShaper.getDatasetBounds = function(data) {
@@ -62,6 +59,7 @@ MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
   dataset.layers = currLayers;
 };
 
+/*
 MapShaper.validateLayer = function(lyr, arcs) {
   var type = lyr.geometry_type;
   if (!Utils.isArray(lyr.shapes)) {
@@ -100,3 +98,4 @@ MapShaper.validateDataset = function(data) {
     error("[validateDataset()] " + msg);
   }
 };
+*/

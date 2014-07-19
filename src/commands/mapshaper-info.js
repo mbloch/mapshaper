@@ -4,6 +4,7 @@ api.printInfo = function(dataset, opts) {
   var str = "",
       layers = dataset.layers,
       arcs = dataset.arcs;
+
   //var str = Utils.format("Input: %s (%s)\n";
   // opts.input_files.join(', '), opts.input_format);
   //str += "Bounds: " + arcs.getBounds().toArray().join(', ') + "\n";

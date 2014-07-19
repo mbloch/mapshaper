@@ -24,9 +24,10 @@ api.erasePolygons = function(targetLyr, clipLyr, dataset, opts) {
 // @target: a single layer or an array of layers
 // @type: 'clip' or 'erase'
 MapShaper.intersectLayers = function(targetLayers, clipLyr, dataset, type, opts) {
-  if (!clipLyr || !targetLayers) {
-    stop(Utils.format("Missing %s layer", type));
-  }
+  MapShaper.requirePolygonLayer(clipLyr, "Expected a polygon type " + type + " layer");
+  targetLayers.forEach(function(lyr) {
+    MapShaper.requirePolygonLayer(lyr, "[" + type + "] only supports polygon type layers");
+  });
 
   var allLayers = dataset.layers;
   // If clipping layer was imported from a second file, it won't be included in
@@ -35,7 +36,6 @@ MapShaper.intersectLayers = function(targetLayers, clipLyr, dataset, type, opts)
   if (Utils.contains(dataset.layers, clipLyr) === false) {
     allLayers = [clipLyr].concat(allLayers);
   }
-
   var nodes = MapShaper.divideArcs(allLayers, dataset.arcs);
 
   // remove any self-intersections in clip and target layers
@@ -237,28 +237,18 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
         targ2 = (bits2 & 1) == 1;
 
     if (angle1 == angle2) {
+      // less likely now that congruent arcs are prevented in updateArcIds()
       if (bits2 == 3) { // route2 follows a target layer arc; prefer it
         selection = 2;
       }
     } else {
-      // if b
-      /*
-      if ((fromTarg && targ1 && targ2) || !(fromTarg || targ1 || targ2)) {
-        console.log("-> inversion; id1:", id1, "id2:", id2, "prevId:", prevId, 'bits1:', bits1, 'bits2', bits2, 'bitsPrev:', bitsPrev);
-
-        if (angle2 > angle1) {
-          selection = 2;
-        }
-      } else {*/
-        if (angle2 < angle1) {
-          selection = 2;
-        }
-      //}
-
+      // prefer right-hand angle
+      if (angle2 < angle1) {
+        selection = 2;
+      }
     }
 
     // console.log("id1:", id1, "id2:", id2, "sel:", selection, "a1:", angle1, "a2", angle2)
-
     return selection;
   }
 

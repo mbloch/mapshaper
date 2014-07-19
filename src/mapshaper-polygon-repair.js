@@ -70,7 +70,7 @@ MapShaper.repairSelfIntersections = function(lyr, nodes) {
   var splitter = MapShaper.getPathSplitter(nodes);
 
   lyr.shapes = lyr.shapes.map(function(shp, i) {
-    return shp ? cleanPolygon(shp) : null;
+    return cleanPolygon(shp);
   });
 
   function cleanPolygon(shp) {
@@ -83,25 +83,35 @@ MapShaper.repairSelfIntersections = function(lyr, nodes) {
       } else if (splitIds.length == 1) {
         cleanedPolygon.push(splitIds[0]);
       } else {
+        // cleanedPolygon = cleanedPolygon.concat(splitIds); return;
         var shapeArea = geom.getPathArea4(ids, nodes.arcs),
             sign = shapeArea > 0 ? 1 : -1,
             mainRing;
-        var maxArea = splitIds.reduce(function(maxArea, ringIds, i) {
+        // console.log("splitting this ring:", ids);
+        var maxArea = splitIds.reduce(function(max, ringIds, i) {
           var pathArea = geom.getPathArea4(ringIds, nodes.arcs) * sign;
-          // console.log("... split area:", pathArea)
-          if (pathArea > maxArea) {
-            mainRing = ringIds;
-            maxArea = pathArea;
+          // console.log("... split area:", pathArea);
+          /*
+          var start = nodes.arcs.getVertex(ringIds[0], 0),
+              end = nodes.arcs.getVertex(ringIds[ringIds.length - 1], -1);
+          if (start.x != end.x || start.y != end.y) {
+            error("##### unterminated ring:", ringIds);
           }
-          return maxArea;
+          */
+          if (pathArea > max) {
+            mainRing = ringIds;
+            max = pathArea;
+          }
+          return max;
         }, 0);
-        // console.log("ringArea:", shapeArea, "maxPart:", maxArea)
+        // console.log("ringArea:", shapeArea, "maxPart:", maxArea, "ring:", mainRing.length);
+        // console.log("main:", mainRing);
         if (mainRing) {
           cleanedPolygon.push(mainRing);
         }
       }
     });
-    return cleanedPolygon;
+    return cleanedPolygon.length > 0 ? cleanedPolygon : null;
   }
 };
 
@@ -126,6 +136,8 @@ MapShaper.getPathSplitter = function(nodes) {
         count++;
       }
     });
+
+
     return routes || null;
   }
 
@@ -183,9 +195,9 @@ MapShaper.getPathSplitter = function(nodes) {
         routes;
     if (!startIds) return null;
     // got two or more branches... extend them
+    // close routes, to avoid cycles...
+    startIds.forEach(closeRoute);
     startIds.forEach(function(startId) {
-      // close this route, to avoid cycles
-      closeRoute(startId);
       var routeIds = extendRoute(startId, ids);
       if (routeIds.length >= ids.length) {
         error("[dividePathAtNode()] Caught in a cycle");

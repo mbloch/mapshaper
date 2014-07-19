@@ -121,35 +121,6 @@ MapShaper.guessFileFormat = function(str) {
   return type;
 };
 
-MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
-  var srcLen = xsrc.length,
-      destLen = xdest.length,
-      prevX = destLen === 0 ? Infinity : xdest[destLen-1],
-      prevY = destLen === 0 ? Infinity : ydest[destLen-1],
-      x, y, inc, startId, stopId;
-
-  if (reversed) {
-    inc = -1;
-    startId = srcLen - 1;
-    stopId = -1;
-  } else {
-    inc = 1;
-    startId = 0;
-    stopId = srcLen;
-  }
-
-  for (var i=startId; i!=stopId; i+=inc) {
-    x = xsrc[i];
-    y = ysrc[i];
-    if (x !== prevX || y !== prevY) {
-      xdest.push(x);
-      ydest.push(y);
-      prevX = x;
-      prevY = y;
-    }
-  }
-};
-
 MapShaper.copyElements = function(src, i, dest, j, n, rev) {
   if (src === dest && j > i) error ("copy error");
   var inc = 1,
@@ -161,54 +132,6 @@ MapShaper.copyElements = function(src, i, dest, j, n, rev) {
   for (var k=0; k<n; k++, offs += inc) {
     dest[k + j] = src[i + offs];
   }
-};
-
-MapShaper.calcXYBounds = function(xx, yy, bb) {
-  if (!bb) bb = new Bounds();
-  var xbounds = Utils.getArrayBounds(xx),
-      ybounds = Utils.getArrayBounds(yy);
-  if (xbounds.nan > 0 || ybounds.nan > 0) error("[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
-  bb.mergePoint(xbounds.min, ybounds.min);
-  bb.mergePoint(xbounds.max, ybounds.max);
-  return bb;
-};
-
-
-// Convert a topological shape to a non-topological format
-// (for exporting)
-//
-MapShaper.convertTopoShape = function(shape, arcs, closed) {
-  var parts = [],
-      pointCount = 0,
-      bounds = new Bounds();
-
-  for (var i=0; i<shape.length; i++) {
-    var topoPart = shape[i],
-        xx = [],
-        yy = [];
-    for (var j=0; j<topoPart.length; j++) {
-      var arcId = topoPart[j],
-          reversed = false;
-      if (arcId < 0) {
-        arcId = -1 - arcId;
-        reversed = true;
-      }
-      var arc = arcs[arcId];
-      MapShaper.extendPartCoordinates(xx, yy, arc[0], arc[1], reversed);
-    }
-    var pointsInPart = xx.length,
-        validPart = !closed && pointsInPart > 0 || pointsInPart > 3;
-    // TODO: other validation:
-    // self-intersection test? test rings have non-zero area? rings follow winding rules?
-
-    if (validPart) {
-      parts.push([xx, yy]);
-      pointCount += xx.length;
-      MapShaper.calcXYBounds(xx, yy, bounds);
-    }
-  }
-
-  return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
 };
 
 MapShaper.getCommonFileBase = function(names) {
@@ -241,4 +164,20 @@ utils.findStringPrefix = function(a, b) {
 MapShaper.probablyDecimalDegreeBounds = function(b) {
   if (b instanceof Bounds) b = b.toArray();
   return containsBounds([-200, -91, 200, 91], b);
+};
+
+MapShaper.layerHasPaths = function(lyr) {
+  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
+};
+
+MapShaper.layerHasPoints = function(lyr) {
+  return lyr.shapes && lyr.geometry_type == 'point';
+};
+
+MapShaper.requirePolygonLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'polygon') stop(msg || "Expected a polygon layer");
+};
+
+MapShaper.requirePathLayer = function(lyr, msg) {
+  if (!lyr || !MapShaper.layerHasPaths(lyr)) stop(msg || "Expected a polygon or polyline layer");
 };

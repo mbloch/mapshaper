@@ -4,8 +4,9 @@ api.keepEveryPolygon =
 MapShaper.keepEveryPolygon = function(arcData, layers) {
   T.start();
   Utils.forEach(layers, function(lyr) {
-    // TODO: test with polyline shapes
-    MapShaper.protectLayerShapes(arcData, lyr.shapes);
+    if (lyr.geometry_type == 'polygon') {
+      MapShaper.protectLayerShapes(arcData, lyr.shapes);
+    }
   });
   T.stop("Protect shapes");
 };
