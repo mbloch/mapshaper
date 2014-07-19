@@ -22,7 +22,15 @@ api.importFile = function(path, opts) {
 
   dataset = MapShaper.importFileContent(content, fileType, opts);
   if (fileType == 'shp' && dataset.layers.length == 1) {
-    dataset.layers[0].data = MapShaper.importDbfTable(path, opts.encoding);
+    var lyr0 = dataset.layers[0],
+        data = MapShaper.importDbfTable(path, opts.encoding);
+    if (data) {
+      if (lyr0.shapes.length != data.size()) {
+        stop(Utils.format("[%s] Different record counts in .shp and .dbf (%d and %d)",
+          path, lyr0.shapes.length, data.size()));
+      }
+      lyr0.data = data;
+    }
   }
   return dataset;
 };
