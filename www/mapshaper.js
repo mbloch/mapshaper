@@ -422,18 +422,24 @@ var Opts = {
   },
 
   exportObject : function(path, obj, root) {
+
     if (typeof define === "function" && define.amd) {
       define(function() { return obj; });
     }
-    root = root || this.global();
-    var parts = path.split('.'),
-        name = parts.pop();
-    if (!name) {
-      error("Opts.exportObject() Invalid name:", path);
+
+    if (Env.inNode) {
+      module.exports = obj;
     } else {
-      var exp = {};
-      exp[name] = obj;
-      Opts.extendNamespace(parts.join('.'), exp)
+      root = root || this.global();
+      var parts = path.split('.'),
+          name = parts.pop();
+      if (!name) {
+        error("Opts.exportObject() Invalid name:", path);
+      } else {
+        var exp = {};
+        exp[name] = obj;
+        Opts.extendNamespace(parts.join('.'), exp)
+      }
     }
   }
 };
@@ -1233,6 +1239,7 @@ Node.walkSync = function(dir, results) {
   });
   return results;
 };
+
 
 Node.shellExec = function(cmd) {
   var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
@@ -3651,11 +3658,11 @@ BinArray.prototype = {
   },
 
   readCString: function(fixedLen, asciiOnly) {
-    var str = "";
-    var count = 0;
-    while(!fixedLen || count < fixedLen) {
+    var str = "",
+        count = fixedLen >= 0 ? fixedLen : this.bytesLeft();
+    while (count > 0) {
       var byteVal = this.readUint8();
-      count ++;
+      count--;
       if (byteVal == 0) {
         break;
       } else if (byteVal > 127 && asciiOnly) {
@@ -3665,8 +3672,8 @@ BinArray.prototype = {
       str += String.fromCharCode(byteVal);
     }
 
-    if (fixedLen && count < fixedLen) {
-      this.skipBytes(fixedLen - count);
+    if (fixedLen > 0 && count > 0) {
+      this.skipBytes(count);
     }
     return str;
   },
@@ -4025,35 +4032,6 @@ MapShaper.guessFileFormat = function(str) {
   return type;
 };
 
-MapShaper.extendPartCoordinates = function(xdest, ydest, xsrc, ysrc, reversed) {
-  var srcLen = xsrc.length,
-      destLen = xdest.length,
-      prevX = destLen === 0 ? Infinity : xdest[destLen-1],
-      prevY = destLen === 0 ? Infinity : ydest[destLen-1],
-      x, y, inc, startId, stopId;
-
-  if (reversed) {
-    inc = -1;
-    startId = srcLen - 1;
-    stopId = -1;
-  } else {
-    inc = 1;
-    startId = 0;
-    stopId = srcLen;
-  }
-
-  for (var i=startId; i!=stopId; i+=inc) {
-    x = xsrc[i];
-    y = ysrc[i];
-    if (x !== prevX || y !== prevY) {
-      xdest.push(x);
-      ydest.push(y);
-      prevX = x;
-      prevY = y;
-    }
-  }
-};
-
 MapShaper.copyElements = function(src, i, dest, j, n, rev) {
   if (src === dest && j > i) error ("copy error");
   var inc = 1,
@@ -4065,54 +4043,6 @@ MapShaper.copyElements = function(src, i, dest, j, n, rev) {
   for (var k=0; k<n; k++, offs += inc) {
     dest[k + j] = src[i + offs];
   }
-};
-
-MapShaper.calcXYBounds = function(xx, yy, bb) {
-  if (!bb) bb = new Bounds();
-  var xbounds = Utils.getArrayBounds(xx),
-      ybounds = Utils.getArrayBounds(yy);
-  if (xbounds.nan > 0 || ybounds.nan > 0) error("[calcXYBounds()] Data contains NaN; xbounds:", xbounds, "ybounds:", ybounds);
-  bb.mergePoint(xbounds.min, ybounds.min);
-  bb.mergePoint(xbounds.max, ybounds.max);
-  return bb;
-};
-
-
-// Convert a topological shape to a non-topological format
-// (for exporting)
-//
-MapShaper.convertTopoShape = function(shape, arcs, closed) {
-  var parts = [],
-      pointCount = 0,
-      bounds = new Bounds();
-
-  for (var i=0; i<shape.length; i++) {
-    var topoPart = shape[i],
-        xx = [],
-        yy = [];
-    for (var j=0; j<topoPart.length; j++) {
-      var arcId = topoPart[j],
-          reversed = false;
-      if (arcId < 0) {
-        arcId = -1 - arcId;
-        reversed = true;
-      }
-      var arc = arcs[arcId];
-      MapShaper.extendPartCoordinates(xx, yy, arc[0], arc[1], reversed);
-    }
-    var pointsInPart = xx.length,
-        validPart = !closed && pointsInPart > 0 || pointsInPart > 3;
-    // TODO: other validation:
-    // self-intersection test? test rings have non-zero area? rings follow winding rules?
-
-    if (validPart) {
-      parts.push([xx, yy]);
-      pointCount += xx.length;
-      MapShaper.calcXYBounds(xx, yy, bounds);
-    }
-  }
-
-  return {parts: parts, bounds: bounds, pointCount: pointCount, partCount: parts.length};
 };
 
 MapShaper.getCommonFileBase = function(names) {
@@ -4145,6 +4075,22 @@ utils.findStringPrefix = function(a, b) {
 MapShaper.probablyDecimalDegreeBounds = function(b) {
   if (b instanceof Bounds) b = b.toArray();
   return containsBounds([-200, -91, 200, 91], b);
+};
+
+MapShaper.layerHasPaths = function(lyr) {
+  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
+};
+
+MapShaper.layerHasPoints = function(lyr) {
+  return lyr.shapes && lyr.geometry_type == 'point';
+};
+
+MapShaper.requirePolygonLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'polygon') stop(msg || "Expected a polygon layer");
+};
+
+MapShaper.requirePathLayer = function(lyr, msg) {
+  if (!lyr || !MapShaper.layerHasPaths(lyr)) stop(msg || "Expected a polygon or polyline layer");
 };
 
 
@@ -4184,7 +4130,7 @@ function getRoundingFunction(inc) {
   if (inv > 1) inv = Math.round(inv);
   return function(x) {
     return Math.round(x * inv) / inv;
-    // these alternatives show rounding error after stringify()
+    // these alternatives show rounding error after JSON.stringify()
     // return Math.round(x / inc) / inv;
     // return Math.round(x / inc) * inc;
     // return Math.round(x * inv) * inc;
@@ -5680,12 +5626,9 @@ var SimplifyControl = function() {
 
 // utility functions for datasets and layers
 
-MapShaper.layerHasPaths = function(lyr) {
-  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
-};
-
-MapShaper.layerHasPoints = function(lyr) {
-  return lyr.shapes && lyr.geometry_type == 'point';
+// make a modified copy of a layer
+MapShaper.updateLayer = function(lyr, update, opts) {
+  // var newLyr = Utils.defaults(obj, lyr);
 };
 
 MapShaper.getDatasetBounds = function(data) {
@@ -5740,6 +5683,7 @@ MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
   dataset.layers = currLayers;
 };
 
+/*
 MapShaper.validateLayer = function(lyr, arcs) {
   var type = lyr.geometry_type;
   if (!Utils.isArray(lyr.shapes)) {
@@ -5778,6 +5722,7 @@ MapShaper.validateDataset = function(data) {
     error("[validateDataset()] " + msg);
   }
 };
+*/
 
 
 
@@ -6673,6 +6618,10 @@ MapShaper.cloneShape = function(shp) {
   });
 };
 
+MapShaper.cloneShapes = function(arr) {
+  return arr.map(cloneShape);
+};
+
 // a and b are arrays of arc ids
 MapShaper.pathsAreIdentical = function(a, b) {
   if (a.length != b.length) return false;
@@ -6688,8 +6637,6 @@ MapShaper.reversePath = function(ids) {
     ids[i] = ~ids[i];
   }
 };
-
-
 
 MapShaper.clampIntervalByPct = function(z, pct) {
   if (pct <= 0) z = Infinity;
@@ -6833,7 +6780,6 @@ MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShap
   });
 };
 
-
 MapShaper.arcHasLength = function(id, coords) {
   var iter = coords.getArcIter(id), x, y;
   if (iter.hasNext()) {
@@ -6921,8 +6867,1320 @@ MapShaper.getPathMetadata = function(shape, arcs, type) {
 
 // @paths assume [[outerRingIds], [firstHoleIds], ...] (TopoJSON Polygon format)
 //
-MapShaper.enforcePolygonWindingRule = function(paths, arcs) {
+//MapShaper.enforcePolygonWindingRule = function(paths, arcs) {
 
+//};
+
+
+
+
+MapShaper.NodeCollection = NodeCollection;
+
+// @arcs ArcCollection
+function NodeCollection(arcs) {
+  var arcData = arcs.getVertexData(),
+      nn = arcData.nn,
+      xx = arcData.xx,
+      yy = arcData.yy;
+
+  var nodeData = MapShaper.findNodeTopology(arcs);
+
+  if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
+
+  // TODO: could check that arc collection hasn't been modified, using accessor function
+  Object.defineProperty(this, 'arcs', {value: arcs});
+
+  this.toArray = function() {
+    var flags = new Uint8Array(nodeData.xx.length),
+        nodes = [];
+
+    Utils.forEach(nodeData.chains, function(next, i) {
+      if (flags[i] == 1) return;
+      nodes.push([nodeData.xx[i], nodeData.yy[i]]);
+      while (flags[next] != 1) {
+        flags[next] = 1;
+        next = nodeData.chains[next];
+      }
+    });
+    return nodes;
+  };
+
+  this.debugNode = function(arcId) {
+    if (!MapShaper.TRACING) return;
+    var segments = [];
+    var ids = [arcId];
+    this.forEachConnectedArc(arcId, function(id) {
+      ids.push(id);
+      var str = id + ": ";
+      var len = arcs.getArcLength(id);
+      if (len > 0) {
+        var p1 = arcs.getVertex(id, -1);
+        str += Utils.format("[%f, %f]", p1.x, p1.y);
+        if (len > 1) {
+          var p2 = arcs.getVertex(id, -2);
+          str += Utils.format(", [%f, %f]", p2.x, p2.y);
+          if (len > 2) {
+            var p3 = arcs.getVertex(id, 0);
+            str += Utils.format(", [%f, %f]", p3.x, p3.y);
+          }
+        }
+      } else {
+        str = "[]";
+      }
+      segments.push(str);
+    });
+    console.log("[node] <-", arcId);
+    console.log("ids:",  ids);
+    console.log(segments.join('\n'));
+  };
+
+  this.forEachConnectedArc = function(arcId, cb) {
+    var nextId = nextConnectedArc(arcId),
+        i = 0;
+    while (nextId != arcId) {
+      cb(nextId, i++);
+      nextId = nextConnectedArc(nextId);
+    }
+  };
+
+  // Returns the id of the first identical arc or @arcId if none found
+  // TODO: find a better function name
+  this.findMatchingArc = function(arcId) {
+    var nextId = nextConnectedArc(arcId),
+        match = arcId;
+    while (nextId != arcId) {
+      nextId = nextConnectedArc(nextId);
+      if (testArcMatch(arcId, nextId)) {
+        if (absArcId(nextId) < absArcId(match)) match = nextId;
+      }
+    }
+    return match;
+  };
+
+  function testArcMatch(a, b) {
+    var absA = a >= 0 ? a : ~a,
+        absB = b >= 0 ? b : ~b,
+        lenA = nn[absA];
+    if (lenA < 2) {
+      // Don't throw error on collapsed arcs -- assume they will be handled
+      //   appropriately downstream.
+      // error("[testArcMatch() defective arc; len:", lenA);
+      return false;
+    }
+    if (lenA != nn[absB]) return false;
+    if (testVertexMatch(a, b, -1) &&
+        testVertexMatch(a, b, 1) &&
+        testVertexMatch(a, b, -2)) {
+      return true;
+    }
+    return false;
+  }
+
+  function testVertexMatch(a, b, i) {
+    var ai = arcs.indexOfVertex(a, i),
+        bi = arcs.indexOfVertex(b, i);
+    return xx[ai] == xx[bi] && yy[ai] == yy[bi];
+  }
+
+  // return arcId of next arc in the chain, pointed towards the shared vertex
+  function nextConnectedArc(arcId) {
+    var fw = arcId >= 0,
+        absId = fw ? arcId : ~arcId,
+        nodeId = fw ? absId * 2 + 1: absId * 2, // if fw, use end, if rev, use start
+        chainedId = nodeData.chains[nodeId],
+        nextAbsId = chainedId >> 1,
+        nextArcId = chainedId & 1 == 1 ? nextAbsId : ~nextAbsId;
+
+    if (chainedId < 0 || chainedId >= nodeData.chains.length) error("out-of-range chain id");
+    if (absId >= nn.length) error("out-of-range arc id");
+    if (nodeData.chains.length <= nodeId) error("out-of-bounds node id");
+    return nextArcId;
+  }
+
+  // expose for testing
+  this.internal = {
+    testArcMatch: testArcMatch,
+    testVertexMatch: testVertexMatch
+  };
+}
+
+
+MapShaper.findNodeTopology = function(arcs) {
+  var n = arcs.size() * 2,
+      xx2 = new Float64Array(n),
+      yy2 = new Float64Array(n),
+      ids2 = new Int32Array(n);
+
+  arcs.forEach2(function(i, n, xx, yy, zz, arcId) {
+    var start = i,
+        end = i + n - 1,
+        start2 = arcId * 2,
+        end2 = start2 + 1;
+    xx2[start2] = xx[start];
+    yy2[start2] = yy[start];
+    ids2[start2] = arcId;
+    xx2[end2] = xx[end];
+    yy2[end2] = yy[end];
+    ids2[end2] = arcId;
+  });
+
+  var chains = initPointChains(xx2, yy2);
+  return {
+    xx: xx2,
+    yy: yy2,
+    ids: ids2,
+    chains: chains
+  };
+};
+
+
+
+
+// PolygonIndex indexes the coordinates in one polygon feature for efficient
+// point-in-polygon tests
+
+MapShaper.PolygonIndex = PolygonIndex;
+
+function PolygonIndex(shape, arcs) {
+  var data = arcs.getVertexData();
+  var polygonBounds = arcs.getMultiShapeBounds(shape),
+      boundsLeft;
+  var p1Arr, p2Arr,
+      bucketCount,
+      bucketOffsets,
+      indexWidth,
+      // bucketSizes,
+      bucketWidth;
+
+  init();
+
+  this.pointInPolygon = function(x, y) {
+    if (!polygonBounds.containsPoint(x, y)) {
+      return false;
+    }
+    var bucketId = getBucketId(x);
+    var count = countCrosses(x, y, bucketId);
+    if (bucketId > 0) {
+      count += countCrosses(x, y, bucketId - 1);
+    }
+    if (bucketId < bucketCount - 1) {
+      count += countCrosses(x, y, bucketId + 1);
+    }
+    count += countCrosses(x, y, bucketCount); // check oflo bucket
+    return count % 2 == 1;
+  };
+
+  function init() {
+    var xx = data.xx;
+    // get sorted array of segment ids
+    var segCount = 0;
+    MapShaper.forEachPathSegment(shape, arcs, function() {
+      segCount++;
+    });
+    var segments = new Uint32Array(segCount * 2),
+        i = 0;
+    MapShaper.forEachPathSegment(shape, arcs, function(a, b, xx, yy) {
+      if (xx[a] < xx[b]) {
+        segments[i++] = a;
+        segments[i++] = b;
+      } else {
+        segments[i++] = b;
+        segments[i++] = a;
+      }
+    });
+    MapShaper.sortSegmentIds(xx, segments);
+
+    // populate buckets
+    p1Arr = new Uint32Array(segCount);
+    p2Arr = new Uint32Array(segCount);
+    bucketCount = Math.ceil(segCount / 100);
+    bucketOffsets = new Uint32Array(bucketCount + 1);
+    // bucketSizes = new Uint32Array(bucketCount + 1);
+
+
+    boundsLeft = xx[segments[0]]; // xmin of first segment
+    var lastX = xx[segments[segments.length - 2]]; // xmin of last segment
+    var head = 0, tail = segCount - 1;
+    var bucketId = 0,
+        bucketLeft = boundsLeft,
+        segId = 0,
+        a, b, j, xmin, xmax;
+
+    indexWidth = lastX - boundsLeft;
+    bucketWidth = indexWidth / bucketCount;
+
+    while (bucketId < bucketCount && segId < segCount) {
+      j = segId * 2;
+      a = segments[j];
+      b = segments[j+1];
+      xmin = xx[a];
+      xmax = xx[b];
+
+      if (xmin > bucketLeft + bucketWidth && bucketId < bucketCount - 1) {
+        bucketId++;
+        bucketLeft = bucketId * bucketWidth + boundsLeft;
+        bucketOffsets[bucketId] = head;
+      } else {
+        var bucket2 = getBucketId(xmin);
+        if (bucket2 != bucketId) console.log("wrong bucket");
+        if (xmin < bucketLeft) error("out-of-range");
+        if (xmax - xmin >= 0 === false) error("invalid segment");
+        if (xmax > bucketLeft + 2 * bucketWidth) {
+          p1Arr[tail] = a;
+          p2Arr[tail] = b;
+          tail--;
+        } else {
+          p1Arr[head] = a;
+          p2Arr[head] = b;
+          head++;
+        }
+        segId++;
+        // bucketSizes[bucketId]++;
+      }
+    }
+    bucketOffsets[bucketCount] = head;
+    if (head != tail + 1) error("counting error; head:", head, "tail:", tail);
+  }
+
+  function countCrosses(x, y, bucketId) {
+    var offs = bucketOffsets[bucketId],
+        n = (bucketId == bucketCount) ? p1Arr.length - offs : bucketOffsets[bucketId + 1] - offs,
+        count = 0,
+        xx = data.xx,
+        yy = data.yy,
+        a, b;
+
+    // console.log("countCrosses() x, y:", x, y, "bucket:", bucketId, "size:", n)
+    for (var i=0; i<n; i++) {
+      a = p1Arr[i + offs];
+      b = p2Arr[i + offs];
+      count += geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+    }
+    return count;
+  }
+
+  function getBucketId(x) {
+    var i = Math.floor((x - boundsLeft) / bucketWidth);
+    if (i < 0) i = 0;
+    if (i >= bucketCount) i = bucketCount - 1;
+    return i;
+  }
+
+}
+
+
+
+
+MapShaper.PathIndex = PathIndex;
+
+function PathIndex(shapes, arcs) {
+  var _index;
+  var pathIndexes = {}; //
+  init(shapes);
+
+  function init(shapes) {
+    var boxes = [];
+    var totalArea = arcs.getBounds().area();
+
+    shapes.forEach(function(shp) {
+      if (shp) {
+        MapShaper.forEachPath(shp, addPath);
+      }
+    });
+
+    _index = require('rbush')();
+    _index.load(boxes);
+
+    function addPath(ids, i) {
+      var bounds = arcs.getSimpleShapeBounds(ids);
+      var bbox = bounds.toArray();
+      bbox.ids = ids;
+      bbox.i = i;
+      bbox.bounds = bounds;
+      boxes.push(bbox);
+      if (bounds.area() > totalArea * 0.02) {
+        pathIndexes[i] = new PolygonIndex([ids], arcs);
+      }
+    }
+  }
+
+  // test if path is contained within an indexed path
+  // assumes paths don't intersect (intersections should have been handled previously)
+  this.pathIsEnclosed = function(pathIds) {
+    var pathBounds = arcs.getSimpleShapeBounds(pathIds),
+        cands = _index.search(pathBounds.toArray()),
+        count = 0;
+
+    cands.forEach(function(cand) {
+      if (cand.i in pathIndexes) {
+        var p = arcs.getVertex(pathIds[0], 0);
+        if (pathIndexes[cand.i].pointInPolygon(p.x, p.y)) count++;
+      } else if (pathContainsPath(cand.ids, cand.bounds, pathIds, pathBounds)) {
+        count++;
+      }
+    });
+    return count % 2 == 1;
+  };
+
+  // return array of paths that are contained within a path, or null if none
+  // @pathIds Array of arc ids comprising a closed path
+  this.findEnclosedPaths = function(pathIds) {
+    var pathBounds = arcs.getSimpleShapeBounds(pathIds),
+        cands = _index.search(pathBounds.toArray()),
+        paths = [];
+
+    cands.forEach(function(cand) {
+      if (pathContainsPath(pathIds, pathBounds, cand.ids, cand.bounds)) paths.push(cand.ids);
+    });
+    return paths.length > 0 ? paths : null;
+  };
+
+  this.findPathsInsideShape = function(shape) {
+    var paths = [];
+    shape.forEach(function(ids) {
+      var enclosed = this.findEnclosedPaths(ids);
+      // console.log("enclosed:", enclosed)
+      if (enclosed) {
+        paths = xorArrays(paths, enclosed);
+        // console.log("xor:", paths)
+      }
+    }, this);
+    return paths.length > 0 ? paths : null;
+  };
+
+  // assume polygon paths do not intersect (may be adjacent)
+  function pathContainsPath(idsA, boundsA, idsB, boundsB) {
+    if (boundsA.contains(boundsB) === false) return false;
+
+    // A contains B iff some point on B is inside A
+    // TODO: improve performance with large polygons
+    var p = arcs.getVertex(idsB[0], 0);
+    var inside = geom.testPointInRing(p.x, p.y, idsA, arcs);
+    return inside;
+  }
+
+  function xorArrays(a, b) {
+    var xor = [];
+    a.forEach(function(el) {
+      if (b.indexOf(el) == -1) xor.push(el);
+    });
+    b.forEach(function(el) {
+      if (xor.indexOf(el) == -1) xor.push(el);
+    });
+    return xor;
+  }
+}
+
+
+
+
+// Convert an array of intersections into an ArcCollection (for display)
+//
+MapShaper.getIntersectionPoints = function(intersections) {
+  return Utils.map(intersections, function(obj) {
+        return [obj.x, obj.y];
+      });
+};
+
+// Identify intersecting segments in an ArcCollection
+//
+// Method: bin segments into horizontal stripes
+// Segments that span stripes are assigned to all intersecting stripes
+// To find all intersections:
+// 1. Assign each segment to one or more bins
+// 2. Find intersections inside each bin (ignoring duplicate intersections)
+//
+MapShaper.findSegmentIntersections = (function() {
+
+  // Re-use buffer for temp data -- Chrome's gc starts bogging down
+  // if large buffers are repeatedly created.
+  var buf;
+  function getUint32Array(count) {
+    var bytes = count * 4;
+    if (!buf || buf.byteLength < bytes) {
+      buf = new ArrayBuffer(bytes);
+    }
+    return new Uint32Array(buf, 0, count);
+  }
+
+  return function(arcs) {
+    //T.start();
+    var bounds = arcs.getBounds(),
+        ymin = bounds.ymin,
+        yrange = bounds.ymax - ymin,
+        stripeCount = calcStripeCount(arcs),
+        stripeCounts = new Uint32Array(stripeCount),
+        i;
+
+    function stripeId(y) {
+      return Math.floor((stripeCount-1) * (y - ymin) / yrange);
+    }
+
+    // Count segments in each stripe
+    arcs.forEachSegment(function(id1, id2, xx, yy) {
+      var s1 = stripeId(yy[id1]),
+          s2 = stripeId(yy[id2]);
+      while (true) {
+        stripeCounts[s1] = stripeCounts[s1] + 2;
+        if (s1 == s2) break;
+        s1 += s2 > s1 ? 1 : -1;
+      }
+    });
+
+    // Allocate arrays for segments in each stripe
+    var stripeData = getUint32Array(Utils.sum(stripeCounts)),
+        offs = 0;
+    var stripes = Utils.map(stripeCounts, function(stripeSize) {
+      var start = offs;
+      offs += stripeSize;
+      return stripeData.subarray(start, offs);
+    });
+
+    // Assign segment ids to each stripe
+    Utils.initializeArray(stripeCounts, 0);
+    arcs.forEachSegment(function(id1, id2, xx, yy) {
+      var s1 = stripeId(yy[id1]),
+          s2 = stripeId(yy[id2]),
+          count, stripe, tmp;
+      if (xx[id2] < xx[id1]) {
+        tmp = id1;
+        id1 = id2;
+        id2 = tmp;
+      }
+      while (true) {
+        count = stripeCounts[s1];
+        stripeCounts[s1] = count + 2;
+        stripe = stripes[s1];
+        stripe[count] = id1;
+        stripe[count+1] = id2;
+        if (s1 == s2) break;
+        s1 += s2 > s1 ? 1 : -1;
+      }
+    });
+
+    // Detect intersections among segments in each stripe.
+    var raw = arcs.getVertexData(),
+        intersections = [],
+        index = {},
+        arr;
+    for (i=0; i<stripeCount; i++) {
+      arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
+      if (arr.length > 0) {
+        extendIntersections(intersections, arr, i);
+      }
+    }
+
+    // T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
+    return intersections;
+
+    // Add intersections from a bin, but avoid duplicates.
+    function extendIntersections(intersections, arr, stripeId) {
+      Utils.forEach(arr, function(obj, i) {
+        var key = MapShaper.getIntersectionKey(obj.a, obj.b);
+        if (key in index === false) {
+          intersections.push(obj);
+          index[key] = true;
+        }
+      });
+    }
+  };
+
+  function calcStripeCount(arcs) {
+    var yrange = arcs.getBounds().height(),
+        segLen = arcs.getAvgSegment2()[1];
+        count = Math.ceil(yrange / segLen / 20) || 1;  // count is positive int
+    if (count > 0 === false) throw "Invalid stripe count";
+    return count;
+  }
+
+})();
+
+// Get an indexable key that is consistent regardless of point sequence
+// @a, @b endpoint ids in format [i, j]
+MapShaper.getIntersectionKey = function(a, b) {
+  return a.concat(b).sort().join(',');
+};
+
+// Find intersections among a group of line segments
+// TODO: handle case where a segment starts and ends at the same point (i.e. duplicate coords);
+//
+// @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
+// @xx, @yy: Arrays of x- and y-coordinates
+//
+MapShaper.intersectSegments = function(ids, xx, yy) {
+  var lim = ids.length - 2,
+      intersections = [];
+  var s1p1, s1p2, s2p1, s2p2,
+      s1p1x, s1p2x, s2p1x, s2p2x,
+      s1p1y, s1p2y, s2p1y, s2p2y,
+      m1, m2,
+      hit, i, j;
+
+  // Sort segments by xmin, to allow efficient exclusion of segments with
+  // non-overlapping x extents.
+  MapShaper.sortSegmentIds(xx, ids);
+
+  i = 0;
+  while (i < lim) {
+    s1p1 = ids[i];
+    s1p2 = ids[i+1];
+    s1p1x = xx[s1p1];
+    s1p2x = xx[s1p2];
+    s1p1y = yy[s1p1];
+    s1p2y = yy[s1p2];
+
+    j = i;
+    while (j < lim) {
+      j += 2;
+      s2p1 = ids[j];
+      s2p1x = xx[s2p1];
+
+      if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
+      //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
+
+      s2p1y = yy[s2p1];
+      s2p2 = ids[j+1];
+      s2p2x = xx[s2p2];
+      s2p2y = yy[s2p2];
+
+      // skip segments with non-overlapping y ranges
+      if (s1p1y >= s2p1y) {
+        if (s1p1y > s2p2y && s1p2y > s2p1y && s1p2y > s2p2y) continue;
+      } else {
+        if (s1p1y < s2p2y && s1p2y < s2p1y && s1p2y < s2p2y) continue;
+      }
+
+      // skip segments that share an endpoint
+      if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
+          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
+        // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
+        continue;
+      }
+
+      // test two candidate segments for intersection
+      hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
+          s2p1x, s2p1y, s2p2x, s2p2y);
+
+      if (hit) {
+        intersections.push({
+          x: hit[0],
+          y: hit[1],
+          a: getEndpointIds(s1p1, s1p2, hit),
+          b: getEndpointIds(s2p1, s2p2, hit)
+        });
+      }
+    }
+    i += 2;
+  }
+  /*
+  if (intersections.length == 1) {
+    var hit = intersections[0];
+    console.log("hit:", hit);
+    console.log("json:", JSON.stringify(hit));
+    console.log("seg1", xx[hit.a[0]], yy[hit.a[0]], xx[hit.a[1]], yy[hit.a[1]]);
+    console.log("seg2", xx[hit.b[0]], yy[hit.b[0]], xx[hit.b[1]], yy[hit.b[1]]);
+  }
+  */
+  return intersections;
+
+  // @p is an [x, y] location along a segment defined by ids @id1 and @id2
+  // return array [i, j] where i and j are the same endpoint ids with i <= j
+  // if @p coincides with an endpoint, return the id of that endpoint twice
+  function getEndpointIds(id1, id2, p) {
+    var i = id1 < id2 ? id1 : id2,
+        j = i === id1 ? id2 : id1;
+    if (xx[i] == p[0] && yy[i] == p[1]) {
+      j = i;
+    } else if (xx[j] == p[0] && yy[j] == p[1]) {
+      i = j;
+    }
+    return [i, j];
+  }
+};
+
+MapShaper.sortSegmentIds = function(arr, ids) {
+  MapShaper.quicksortSegmentIds(arr, ids, 0, ids.length-2);
+};
+
+MapShaper.insertionSortSegmentIds = function(arr, ids, start, end) {
+  var id, id2;
+  for (var j = start + 2; j <= end; j+=2) {
+    id = ids[j];
+    id2 = ids[j+1];
+    for (var i = j - 2; i >= start && arr[id] < arr[ids[i]]; i-=2) {
+      ids[i+2] = ids[i];
+      ids[i+3] = ids[i+1];
+    }
+    ids[i+2] = id;
+    ids[i+3] = id2;
+  }
+};
+
+MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
+  var i = lo,
+      j = hi,
+      pivot, tmp;
+  while (i < hi) {
+    pivot = a[ids[(lo + hi >> 2) << 1]]; // avoid n^2 performance on sorted arrays
+    while (i <= j) {
+      while (a[ids[i]] < pivot) i+=2;
+      while (a[ids[j]] > pivot) j-=2;
+      if (i <= j) {
+        tmp = ids[i];
+        ids[i] = ids[j];
+        ids[j] = tmp;
+        tmp = ids[i+1];
+        ids[i+1] = ids[j+1];
+        ids[j+1] = tmp;
+        i+=2;
+        j-=2;
+      }
+    }
+
+    if (j - lo < 40) MapShaper.insertionSortSegmentIds(a, ids, lo, j);
+    else MapShaper.quicksortSegmentIds(a, ids, lo, j);
+    if (hi - i < 40) {
+      MapShaper.insertionSortSegmentIds(a, ids, i, hi);
+      return;
+    }
+    lo = i;
+    j = hi;
+  }
+};
+
+
+
+
+// Functions for dividing polygons and polygons at points where arc-segments intersect
+
+// Divide a collection of arcs at points where segments intersect
+// and re-index the paths of all the layers that reference the arc collection.
+// (in-place)
+// TODO: rename
+MapShaper.divideArcs = function(layers, arcs) {
+  var map = MapShaper.insertClippingPoints(arcs);
+  var nodes = new NodeCollection(arcs);
+  // update arc ids in arc-based layers after adding clipping points
+  layers.forEach(function(lyr) {
+    if (MapShaper.layerHasPaths(lyr)) {
+      MapShaper.updateArcIds(lyr.shapes, map, arcs, nodes);
+      // Addition of clipping points may create degenerate arcs... remove them
+      // TODO: consider alternative -- avoid creating degenerate arcs in
+      //    insertClippingPoints()
+      MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+    }
+  });
+  return nodes;
+};
+
+MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {
+  var arcCount = arcs.size(),
+      shape2;
+  for (var i=0; i<shapes.length; i++) {
+    shape2 = [];
+    MapShaper.forEachPath(shapes[i], remapPathIds);
+    shapes[i] = shape2;
+  }
+
+  function remapPathIds(ids) {
+    if (!ids) return; // null shape
+    var ids2 = [];
+    for (var j=0; j<ids.length; j++) {
+      remapArcId(ids[j], ids2);
+    }
+    shape2.push(ids2);
+  }
+
+  function remapArcId(id, ids) {
+    var rev = id < 0,
+        absId = rev ? ~id : id,
+        min = map[absId],
+        max = (absId >= map.length - 1 ? arcCount : map[absId + 1]) - 1,
+        id2;
+    do {
+      if (rev) {
+        id2 = ~max;
+        max--;
+      } else {
+        id2 = min;
+        min++;
+      }
+      // If there are duplicate arcs, always use the same one
+      if (nodes) id2 = nodes.findMatchingArc(id2);
+      ids.push(id2);
+    } while (max - min >= 0);
+  }
+};
+
+// divide a collection of arcs at points where line segments cross each other
+// @arcs ArcCollection
+// returns array that maps original arc ids to new arc ids
+MapShaper.insertClippingPoints = function(arcs) {
+  var points = MapShaper.findClippingPoints(arcs),
+      p,
+
+      // original arc data
+      pointTotal0 = arcs.getPointCount(),
+      arcTotal0 = arcs.size(),
+      data = arcs.getVertexData(),
+      xx0 = data.xx,
+      yy0 = data.yy,
+      nn0 = data.nn,
+      i0 = 0,
+      n0, arcLen0,
+
+      // new arc data
+      pointTotal1 = pointTotal0 + points.length * 2,
+      arcTotal1 = arcTotal0 + points.length,
+      xx1 = new Float64Array(pointTotal1),
+      yy1 = new Float64Array(pointTotal1),
+      nn1 = [],  // number of arcs may vary
+      i1 = 0,
+      n1,
+
+      map = new Uint32Array(arcTotal0);
+
+  // sort from last point to first point
+  points.sort(function(a, b) {
+    return b.i - a.i || b.pct - a.pct;
+  });
+  p = points.pop();
+
+  for (var id0=0, id1=0; id0 < arcTotal0; id0++) {
+    arcLen0 = nn0[id0];
+    map[id0] = id1;
+    n0 = 0;
+    n1 = 0;
+    while (n0 < arcLen0) {
+      n1++;
+      xx1[i1] = xx0[i0];
+      yy1[i1++] = yy0[i0];
+      while (p && p.i === i0) {
+        xx1[i1] = p.x;
+        yy1[i1++] = p.y;
+        n1++;
+        nn1[id1++] = n1; // end current arc at intersection
+        n1 = 0;          // begin new arc
+
+        xx1[i1] = p.x;
+        yy1[i1++] = p.y;
+        n1++;
+        p = points.pop();
+      }
+      n0++;
+      i0++;
+    }
+    nn1[id1++] = n1;
+  }
+
+  if (i1 != pointTotal1) error("[insertClippingPoints()] Counting error");
+  arcs.updateVertexData(nn1, xx1, yy1, null);
+
+  // segment-point intersections create duplicate points
+  // TODO: consider removing call to dedupCoords() -- empty arcs are removed by cleanShapes()
+  arcs.dedupCoords();
+  return map;
+};
+
+MapShaper.findClippingPoints = function(arcs) {
+  var intersections = MapShaper.findSegmentIntersections(arcs),
+      data = arcs.getVertexData(),
+      xx = data.xx,
+      yy = data.yy,
+      points = [];
+
+  intersections.forEach(function(o) {
+    var p1 = getSegmentIntersection(o.x, o.y, o.a),
+        p2 = getSegmentIntersection(o.x, o.y, o.b);
+    if (p1) points.push(p1);
+    if (p2) points.push(p2);
+  });
+
+  // remove 1. points that are at arc endpoints and 2. duplicate points
+  // (kludgy -- look into preventing these cases, which are caused by T intersections)
+  var index = {};
+  return Utils.filter(points, function(p) {
+    var key = p.i + "," + p.pct;
+    if (key in index) return false;
+    index[key] = true;
+    if (p.pct <= 0 && arcs.pointIsEndpoint(p.i) ||
+        p.pct >= 1 && arcs.pointIsEndpoint(p.j)) {
+      return false;
+    }
+    return true;
+  });
+
+  function getSegmentIntersection(x, y, ids) {
+    var i = ids[0],
+        j = ids[1],
+        dx = xx[j] - xx[i],
+        dy = yy[j] - yy[i],
+        pct;
+    if (i > j) error("[findClippingPoints()] Out-of-sequence arc ids");
+    if (dx === 0 && dy === 0) {
+      pct = 0;
+    } else if (Math.abs(dy) > Math.abs(dx)) {
+      pct = (y - yy[i]) / dy;
+    } else {
+      pct = (x - xx[i]) / dx;
+    }
+
+    if (pct < 0 || pct > 1) {
+      verbose("[findClippingPoints()] Off-segment intersection (caused by rounding error");
+      trace("pct:", pct, "dx:", dx, "dy:", dy, 'x:', x, 'y:', y, 'xx[i]:', xx[i], 'xx[j]:', xx[j], 'yy[i]:', yy[i], 'yy[j]:', yy[j]);
+      trace("xpct:", (x - xx[i]) / dx, 'ypct:', (y - yy[i]) / dy);
+      if (pct < 0) pct = 0;
+      if (pct > 1) pct = 1;
+    }
+
+    return {
+        pct: pct,
+        i: i,
+        j: j,
+        x: x,
+        y: y
+      };
+  }
+};
+
+
+
+
+// Functions for redrawing polygons for clipping / erasing / flattening / division
+
+MapShaper.setBits = function(src, flags, mask) {
+  return (src & ~mask) | (flags & mask);
+};
+
+MapShaper.andBits = function(src, flags, mask) {
+  return src & (~mask | flags);
+};
+
+
+function getRouteBits(id, flags) {
+  var abs = absArcId(id),
+      bits = flags[abs];
+  if (abs != id) bits = bits >> 4;
+  return bits & 7;
+}
+
+// enable arc pathways in a single shape or array of shapes
+// Uses 6 bits to control traversal of each arc
+// 0-2: forward arc; 4-6: rev arc
+// fwd/rev bits: 0/4: path is visible; 1/5 = path is open; 3/6: path was used
+//
+MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits) {
+  MapShaper.forEachArcId(arcIds, function(id) {
+    var isInv = id < 0,
+        absId = isInv ? ~id : id,
+        currFlag = flags[absId],
+        openFwd = isInv ? rev : fwd,
+        openRev = isInv ? fwd : rev,
+        newFlag = currFlag;
+
+    // error condition: lollipop arcs can cause problems; ignore these
+    if (arcs.arcIsLollipop(id)) {
+      trace('lollipop');
+      newFlag = 0; // unset (i.e. make invisible)
+    } else {
+      if (openFwd) {
+        newFlag |= 3; // visible / open
+      }
+      if (openRev) {
+        newFlag |= 0x30; // visible / open
+      }
+
+      // placing this in front of dissolve - dissolve has to be able to hide
+      // arcs that are set to visible
+      if (orBits > 0) {
+        newFlag |= orBits;
+      }
+
+      // dissolve hides arcs that have both fw and rev pathways open
+      if (dissolve && (newFlag & 0x22) === 0x22) {
+        newFlag &= ~0x11; // make invisible
+      }
+    }
+
+    flags[absId] = newFlag;
+  });
+};
+
+MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
+  MapShaper.forEachArcId(arcIds, function(id) {
+    var isInv = id < 0,
+        absId = isInv ? ~id : id,
+        currFlag = flags[absId],
+        mask = 0xff,
+        closeFwd = isInv ? rev : fwd,
+        closeRev = isInv ? fwd : rev;
+
+    if (closeFwd) { // fwd and pos or rev and inv
+      if (hide) mask &= ~1;
+      mask ^= 0x2;
+    }
+    if (closeRev) {
+      if (hide) mask &= ~0x10;
+      mask ^= 0x20;
+    }
+
+    flags[absId] = currFlag & mask;
+  });
+};
+
+function flagsToArray(flags) {
+  return Utils.map(flags, function(flag) {
+    return bitsToString(flag);
+  });
+}
+
+function bitsToString(bits) {
+  var str = "";
+  for (var i=0; i<8; i++) {
+    str += (bits & (1 << i)) > 0 ? "1" : "0";
+    if (i < 7) str += ' ';
+    if (i == 3) str += ' ';
+  }
+  return str;
+}
+
+
+// Return a function for generating a path across a field of intersecting arcs
+MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute) {
+  var arcs = nodes.arcs,
+      coords = arcs.getVertexData(),
+      xx = coords.xx,
+      yy = coords.yy,
+      nn = coords.nn,
+      splitter;
+
+  function getNextArc(prevId) {
+    var ai = arcs.indexOfVertex(prevId, -2),
+        ax = xx[ai],
+        ay = yy[ai],
+        bi = arcs.indexOfVertex(prevId, -1),
+        bx = xx[bi],
+        by = yy[bi],
+        nextId = NaN,
+        nextAngle = 0;
+
+    nodes.forEachConnectedArc(prevId, function(candId) {
+      if (!routeIsVisible(~candId)) return;
+      if (arcs.getArcLength(candId) < 2) error("[clipPolygon()] defective arc");
+
+      var ci = arcs.indexOfVertex(candId, -2),
+          cx = xx[ci],
+          cy = yy[ci],
+
+          // sanity check: make sure both arcs share the same vertex;
+          di = arcs.indexOfVertex(candId, -1),
+          dx = xx[di],
+          dy = yy[di],
+          candAngle;
+      if (dx !== bx || dy !== by) {
+        console.log("cd:", cx, cy, dx, dy, 'arc:', candId);
+        error("Error in node topology");
+      }
+
+      candAngle = signedAngle(ax, ay, bx, by, cx, cy);
+
+      // if (prevId == 261) console.log(prevId, "v", candId, "angle:", candAngle)
+
+      if (candAngle > 0) {
+        if (nextAngle === 0) {
+          nextId = candId;
+          nextAngle = candAngle;
+        } else {
+          var choice = chooseRoute(~nextId, nextAngle, ~candId, candAngle, prevId);
+          if (choice == 2) {
+            nextId = candId;
+            nextAngle = candAngle;
+          }
+        }
+      } else {
+        // candAngle is NaN or 0
+        trace("#getNextArc() Invalid angle; id:", candId, "angle:", candAngle);
+        nodes.debugNode(prevId);
+      }
+    });
+
+    if (nextId === prevId) {
+      // TODO: confirm that this can't happen
+      nodes.debugNode(prevId);
+      error("#getNextArc() nextId === prevId");
+    }
+    return ~nextId; // reverse arc to point onwards
+  }
+
+  return function(startId) {
+    var path = [],
+        nextId, msg,
+        candId = startId,
+        verbose = false; // MapShaper.TRACING;
+
+    do {
+      if (verbose) msg = (nextId === undefined ? " " : "  " + nextId) + " -> " + candId;
+      if (useRoute(candId)) {
+        /*
+        // debug zambia_congo test
+        if (candId == 261) {
+          // debug zambia_congo.shp
+          nodes.debugNode(candId)
+          console.log("\nLAKE nodes:")
+          nodes.debugNode(267)
+          nodes.debugNode(268)
+          nodes.debugNode(269)
+          nodes.debugNode(270)
+          nodes.debugNode(271)
+        }
+        */
+        path.push(candId);
+        nextId = candId;
+        if (verbose) console.log(msg);
+        candId = getNextArc(nextId);
+        if (verbose && candId == startId ) console.log("  o", geom.getPathArea4(path, arcs));
+      } else {
+        if (verbose) console.log(msg + " x");
+        return null;
+      }
+
+      if (candId == ~nextId) {
+        console.log("dead-end"); // TODO: handle or prevent this error condition
+        return null;
+      }
+    } while (candId != startId);
+    return path.length === 0 ? null : path;
+  };
+
+};
+
+
+
+
+// Currently only removes self-intersections
+//
+MapShaper.repairPolygonGeometry = function(layers, dataset, opts) {
+  var nodes = MapShaper.divideArcs(dataset.layers, dataset.arcs);
+  layers.forEach(function(lyr) {
+    MapShaper.repairSelfIntersections(lyr, nodes);
+  });
+  return layers;
+};
+
+// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
+// (in place)
+MapShaper.removeSpikesInPath = function(ids) {
+  var n = ids.length;
+  for (var i=1; i<n; i++) {
+    if (ids[i-1] == ~ids[i]) {
+      ids.splice(i-1, 2);
+      MapShaper.removeSpikesInPath(ids);
+    }
+  }
+  if (n > 2 && ids[0] == ~ids[n-1]) {
+    ids.pop();
+    ids.shift();
+    MapShaper.removeSpikesInPath(ids);
+  }
+};
+
+MapShaper.cleanPath = function(path, arcs) {
+  var nulls = 0;
+  for (var i=0; i<path.length; i++) {
+    if (arcs.arcIsDegenerate(path[i])) {
+      nulls++;
+      path[i] = null;
+    }
+  }
+  return nulls > 0 ? path.filter(function(id) {return id !== null;}) : path;
+};
+
+// Remove defective arcs and zero-area polygon rings
+// Don't remove duplicate points
+// Don't remove spikes (between arcs or within arcs)
+// Don't check winding order of polygon rings
+MapShaper.cleanShape = function(shape, arcs, type) {
+  return MapShaper.editPaths(shape, function(path) {
+    var cleaned = MapShaper.cleanPath(path, arcs);
+    if (type == 'polygon' && cleaned) {
+      MapShaper.removeSpikesInPath(cleaned); // assumed by divideArcs()
+      if (geom.getPathArea4(cleaned, arcs) === 0) {
+        cleaned = null;
+      }
+    }
+    return cleaned;
+  });
+};
+
+// clean polygon or polyline shapes, in-place
+MapShaper.cleanShapes = function(shapes, arcs, type) {
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shapes[i] = MapShaper.cleanShape(shapes[i], arcs, type);
+  }
+};
+
+// Remove any small shapes formed by twists in each ring
+// Retain only the part with largest area
+// TODO: consider cases where cut-off parts should be retained
+//
+MapShaper.repairSelfIntersections = function(lyr, nodes) {
+  var splitter = MapShaper.getPathSplitter(nodes);
+
+  lyr.shapes = lyr.shapes.map(function(shp, i) {
+    return cleanPolygon(shp);
+  });
+
+  function cleanPolygon(shp) {
+    var cleanedPolygon = [];
+    MapShaper.forEachPath(shp, function(ids) {
+      // TODO: consider returning null if path can't be split
+      var splitIds = splitter(ids);
+      if (splitIds.length === 0) {
+        error("[cleanPolygon()] Defective path:", ids);
+      } else if (splitIds.length == 1) {
+        cleanedPolygon.push(splitIds[0]);
+      } else {
+        // cleanedPolygon = cleanedPolygon.concat(splitIds); return;
+        var shapeArea = geom.getPathArea4(ids, nodes.arcs),
+            sign = shapeArea > 0 ? 1 : -1,
+            mainRing;
+        // console.log("splitting this ring:", ids);
+        var maxArea = splitIds.reduce(function(max, ringIds, i) {
+          var pathArea = geom.getPathArea4(ringIds, nodes.arcs) * sign;
+          // console.log("... split area:", pathArea);
+          /*
+          var start = nodes.arcs.getVertex(ringIds[0], 0),
+              end = nodes.arcs.getVertex(ringIds[ringIds.length - 1], -1);
+          if (start.x != end.x || start.y != end.y) {
+            error("##### unterminated ring:", ringIds);
+          }
+          */
+          if (pathArea > max) {
+            mainRing = ringIds;
+            max = pathArea;
+          }
+          return max;
+        }, 0);
+        // console.log("ringArea:", shapeArea, "maxPart:", maxArea, "ring:", mainRing.length);
+        // console.log("main:", mainRing);
+        if (mainRing) {
+          cleanedPolygon.push(mainRing);
+        }
+      }
+    });
+    return cleanedPolygon.length > 0 ? cleanedPolygon : null;
+  }
+};
+
+
+MapShaper.getPathSplitter = function(nodes) {
+  var arcs = nodes.arcs;
+  var flags = new Uint8Array(arcs.size());
+
+  function findMultipleRoutes(id) {
+    var count = 0,
+        firstRoute,
+        routes;
+    nodes.forEachConnectedArc(id, function(candId) {
+      if (isOpenRoute(~candId)) {
+        if (count === 0) {
+          firstRoute = ~candId;
+        } else if (count === 1) {
+          routes = [firstRoute, ~candId];
+        } else {
+          routes.push(~candId);
+        }
+        count++;
+      }
+    });
+
+
+    return routes || null;
+  }
+
+  function isOpenRoute(id) {
+    var bits = getRouteBits(id, flags);
+    return bits == 3;
+  }
+
+  function closeRoute(id) {
+    var abs = absArcId(id);
+    flags[abs] &= abs == id ? ~3 : ~0x30;
+  }
+
+  function routeIsComplete(arcId, firstId) {
+    var complete = false;
+    nodes.forEachConnectedArc(arcId, function(candId) {
+      if (~candId === firstId) {
+        complete = true;
+      }
+    });
+    return complete;
+  }
+
+  function extendRoute(firstId, ids) {
+    var i = ids.indexOf(firstId),
+        n = ids.length,
+        count = 0,
+        route = [firstId],
+        nextId = firstId;
+    // console.log(" -> extending:", firstId, "ids:", ids, 'i:', i)
+
+    if (i === -1) error("[extendRoute()] Path is missing id:", firstId);
+
+    while (routeIsComplete(nextId, firstId) === false) {
+      if (++count > n) {
+        error("[extendRoute()] Caught in a cycle");
+      }
+      i = (i + 1) % n;
+      nextId = ids[i];
+      route.push(nextId);
+      // edge case: lollipop shape
+      // remove spike and finish route
+      // THIS REMOVES 'NECK' SHAPES -- make sure we really want this
+      if (nextId == ~firstId) {
+        MapShaper.removeSpikesInPath(route);
+        break;
+      }
+    }
+    // console.log(" ... extended route:", route)
+    return route;
+  }
+
+  function dividePathAtNode(arcId, ids) {
+    var startIds = findMultipleRoutes(arcId),
+        routes;
+    if (!startIds) return null;
+    // got two or more branches... extend them
+    // close routes, to avoid cycles...
+    startIds.forEach(closeRoute);
+    startIds.forEach(function(startId) {
+      var routeIds = extendRoute(startId, ids);
+      if (routeIds.length >= ids.length) {
+        error("[dividePathAtNode()] Caught in a cycle");
+      }
+      // subdivide this branch
+      var splits = dividePath(routeIds);
+      routes = routes ? routes.concat(splits) : splits;
+    });
+    return routes;
+  }
+
+  function dividePath(ids) {
+    var splits;
+    for (var i=0, lim = ids.length - 1; i<lim; i++) {
+      splits = dividePathAtNode(ids[i], ids);
+      if (splits) return splits;
+    }
+    return [ids];
+  }
+
+  return function(ids) {
+    MapShaper.openArcRoutes(ids, arcs, flags, true, false, false, 0x11);
+    var paths = dividePath(ids);
+    MapShaper.closeArcRoutes(ids, arcs, flags, true, true, true);
+    return paths;
+  };
 };
 
 
@@ -8053,10 +9311,11 @@ GeoJSON.countNestedPoints = function(coords, depth) {
 };
 
 MapShaper.exportGeoJSON = function(dataset, opts) {
+  var extension = '.' + (opts.output_extension || "json");
   return dataset.layers.map(function(lyr) {
     return {
       content: MapShaper.exportGeoJSONString(lyr, dataset.arcs, opts),
-      filename: opts.output_file || lyr.name + ".json" // assume layer has name
+      filename: lyr.name ? lyr.name + extension : ""
     };
   });
 };
@@ -9062,18 +10321,36 @@ function ShpReader(src) {
 
   // Iterator interface for reading shape records
   this.nextShape = function() {
-    if (recordOffs >= file.size()) {
+    var fileSize = file.size(),
+        recordSize,
+        shape = null,
+        bin;
+
+    if (recordOffs + 8 < fileSize) {
+      bin = file.readBytes(8, recordOffs);
+      // byteLen is bytes in content section + 8 header bytes
+      recordSize = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
+      // todo: what if size is 0
+      if (recordOffs + recordSize <= fileSize && recordSize >= 12) {
+        bin = file.readBytes(recordSize, recordOffs);
+        recordOffs += recordSize;
+        shape = new RecordClass(bin);
+      } else {
+        trace("Unaccounted bytes in .shp file -- possible corruption");
+      }
+    }
+
+    if (shape === null) {
       file.close();
       recordOffs = 100;
-      return null;
     }
-    var bin = file.readBytes(8, recordOffs);
-    // byteLen is bytes in content section + 8 header bytes
-    var byteLen = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
-    bin = file.readBytes(byteLen, recordOffs);
-    recordOffs += byteLen;
-    return new RecordClass(bin);
+
+    return shape;
   };
+
+  function finishReading() {
+
+  }
 
   function parseHeader(bin) {
     var header = {
@@ -9183,6 +10460,7 @@ ShpReader.getRecordClass = function(type) {
       if (this.pointCount === 0) return null;
       var partSizes = this.readPartSizes(),
           xy = this._data().skipBytes(this._xypos());
+
       return partSizes.map(function(pointCount) {
         return xy.readFloat64Array(pointCount * 2);
       });
@@ -9243,7 +10521,7 @@ ShpReader.getRecordClass = function(type) {
     read: function() {
       var n = 2;
       if (hasZ) n++;
-      if (this.hasM()) n++; // checking for M
+      if (this.hasM()) n++;
       return this._data().skipBytes(12).readFloat64Array(n);
     }
   };
@@ -9447,7 +10725,7 @@ MapShaper.exportShapefile = function(dataset, opts) {
   var files = [];
   dataset.layers.forEach(function(layer) {
     var data = layer.data,
-        name = opts.output_file ? utils.getFileBase(opts.output_file) : layer.name,
+        name = layer.name,
         obj, dbf;
     T.start();
     obj = MapShaper.exportShpAndShx(layer, dataset.arcs);
@@ -9831,8 +11109,14 @@ Opts.inherit(ImportControl, EventDispatcher);
 //
 MapShaper.exportFileContent = function(dataset, opts) {
   var layers = dataset.layers;
-
   if (!opts.format) error("[o] Missing output format");
+
+  if (opts.output_file && opts.format != 'topojson') {
+    opts.output_extension = utils.getFileExtension(opts.output_file);
+    layers.forEach(function(lyr) {
+      lyr.name = utils.getFileBase(opts.output_file);
+    });
+  }
 
   var files = [],
       exporter = MapShaper.exporters[opts.format];
@@ -9946,16 +11230,22 @@ MapShaper.exportDataTables = function(layers, opts) {
 };
 
 MapShaper.uniqifyNames = function(names) {
+
   var counts = Utils.getValueCounts(names),
-      index = {};
+      index = {},
+      suffix;
   return names.map(function(name) {
     var count = counts[name],
         i = 1;
     if (count > 1 || name in index) {
-      while ((name + i) in index) {
+      do {
+        suffix = String(i);
+        if (/[0-9]$/.test(name)) {
+          suffix = '-' + suffix;
+        }
         i++;
-      }
-      name = name + i;
+      } while ((name + suffix) in index);
+      name = name + suffix;
     }
     index[name] = true;
     return name;
@@ -11116,6 +12406,8 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
 
 api.simplify = function(arcs, opts) {
+  if (!arcs) stop("[simplify] Missing path data");
+
   MapShaper.simplifyPaths(arcs, opts);
 
   if (utils.isNumber(opts.pct)) {
@@ -11241,283 +12533,6 @@ MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
     xbuf[i] = Math.cos(lng) * cosLat * r;
     ybuf[i] = Math.sin(lng) * cosLat * r;
     zbuf[i] = Math.sin(lat) * r;
-  }
-};
-
-
-
-
-// Convert an array of intersections into an ArcCollection (for display)
-//
-MapShaper.getIntersectionPoints = function(intersections) {
-  return Utils.map(intersections, function(obj) {
-        return [obj.x, obj.y];
-      });
-};
-
-// Identify intersecting segments in an ArcCollection
-//
-// Method: bin segments into horizontal stripes
-// Segments that span stripes are assigned to all intersecting stripes
-// To find all intersections:
-// 1. Assign each segment to one or more bins
-// 2. Find intersections inside each bin (ignoring duplicate intersections)
-//
-MapShaper.findSegmentIntersections = (function() {
-
-  // Re-use buffer for temp data -- Chrome's gc starts bogging down
-  // if large buffers are repeatedly created.
-  var buf;
-  function getUint32Array(count) {
-    var bytes = count * 4;
-    if (!buf || buf.byteLength < bytes) {
-      buf = new ArrayBuffer(bytes);
-    }
-    return new Uint32Array(buf, 0, count);
-  }
-
-  return function(arcs) {
-    //T.start();
-    var bounds = arcs.getBounds(),
-        ymin = bounds.ymin,
-        yrange = bounds.ymax - ymin,
-        stripeCount = calcStripeCount(arcs),
-        stripeCounts = new Uint32Array(stripeCount),
-        i;
-
-    function stripeId(y) {
-      return Math.floor((stripeCount-1) * (y - ymin) / yrange);
-    }
-
-    // Count segments in each stripe
-    arcs.forEachSegment(function(id1, id2, xx, yy) {
-      var s1 = stripeId(yy[id1]),
-          s2 = stripeId(yy[id2]);
-      while (true) {
-        stripeCounts[s1] = stripeCounts[s1] + 2;
-        if (s1 == s2) break;
-        s1 += s2 > s1 ? 1 : -1;
-      }
-    });
-
-    // Allocate arrays for segments in each stripe
-    var stripeData = getUint32Array(Utils.sum(stripeCounts)),
-        offs = 0;
-    var stripes = Utils.map(stripeCounts, function(stripeSize) {
-      var start = offs;
-      offs += stripeSize;
-      return stripeData.subarray(start, offs);
-    });
-
-    // Assign segment ids to each stripe
-    Utils.initializeArray(stripeCounts, 0);
-    arcs.forEachSegment(function(id1, id2, xx, yy) {
-      var s1 = stripeId(yy[id1]),
-          s2 = stripeId(yy[id2]),
-          count, stripe, tmp;
-      if (xx[id2] < xx[id1]) {
-        tmp = id1;
-        id1 = id2;
-        id2 = tmp;
-      }
-      while (true) {
-        count = stripeCounts[s1];
-        stripeCounts[s1] = count + 2;
-        stripe = stripes[s1];
-        stripe[count] = id1;
-        stripe[count+1] = id2;
-        if (s1 == s2) break;
-        s1 += s2 > s1 ? 1 : -1;
-      }
-    });
-
-    // Detect intersections among segments in each stripe.
-    var raw = arcs.getVertexData(),
-        intersections = [],
-        index = {},
-        arr;
-    for (i=0; i<stripeCount; i++) {
-      arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
-      if (arr.length > 0) {
-        extendIntersections(intersections, arr, i);
-      }
-    }
-
-    // T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
-    return intersections;
-
-    // Add intersections from a bin, but avoid duplicates.
-    function extendIntersections(intersections, arr, stripeId) {
-      Utils.forEach(arr, function(obj, i) {
-        var key = MapShaper.getIntersectionKey(obj.a, obj.b);
-        if (key in index === false) {
-          intersections.push(obj);
-          index[key] = true;
-        }
-      });
-    }
-  };
-
-  function calcStripeCount(arcs) {
-    var yrange = arcs.getBounds().height(),
-        segLen = arcs.getAvgSegment2()[1];
-        count = Math.ceil(yrange / segLen / 20) || 1;  // count is positive int
-    if (count > 0 === false) throw "Invalid stripe count";
-    return count;
-  }
-
-})();
-
-// Get an indexable key that is consistent regardless of point sequence
-// @a, @b endpoint ids in format [i, j]
-MapShaper.getIntersectionKey = function(a, b) {
-  return a.concat(b).sort().join(',');
-};
-
-// Find intersections among a group of line segments
-// TODO: handle case where a segment starts and ends at the same point (i.e. duplicate coords);
-//
-// @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
-// @xx, @yy: Arrays of x- and y-coordinates
-//
-MapShaper.intersectSegments = function(ids, xx, yy) {
-  var lim = ids.length - 2,
-      intersections = [];
-  var s1p1, s1p2, s2p1, s2p2,
-      s1p1x, s1p2x, s2p1x, s2p2x,
-      s1p1y, s1p2y, s2p1y, s2p2y,
-      m1, m2,
-      hit, i, j;
-
-  // Sort segments by xmin, to allow efficient exclusion of segments with
-  // non-overlapping x extents.
-  MapShaper.sortSegmentIds(xx, ids);
-
-  i = 0;
-  while (i < lim) {
-    s1p1 = ids[i];
-    s1p2 = ids[i+1];
-    s1p1x = xx[s1p1];
-    s1p2x = xx[s1p2];
-    s1p1y = yy[s1p1];
-    s1p2y = yy[s1p2];
-
-    j = i;
-    while (j < lim) {
-      j += 2;
-      s2p1 = ids[j];
-      s2p1x = xx[s2p1];
-
-      if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
-      //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
-
-      s2p1y = yy[s2p1];
-      s2p2 = ids[j+1];
-      s2p2x = xx[s2p2];
-      s2p2y = yy[s2p2];
-
-      // skip segments with non-overlapping y ranges
-      if (s1p1y >= s2p1y) {
-        if (s1p1y > s2p2y && s1p2y > s2p1y && s1p2y > s2p2y) continue;
-      } else {
-        if (s1p1y < s2p2y && s1p2y < s2p1y && s1p2y < s2p2y) continue;
-      }
-
-      // skip segments that share an endpoint
-      if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
-          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
-        // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
-        continue;
-      }
-
-      // test two candidate segments for intersection
-      hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
-          s2p1x, s2p1y, s2p2x, s2p2y);
-
-      if (hit) {
-        intersections.push({
-          x: hit[0],
-          y: hit[1],
-          a: getEndpointIds(s1p1, s1p2, hit),
-          b: getEndpointIds(s2p1, s2p2, hit)
-        });
-      }
-    }
-    i += 2;
-  }
-  /*
-  if (intersections.length == 1) {
-    var hit = intersections[0];
-    console.log("hit:", hit);
-    console.log("json:", JSON.stringify(hit));
-    console.log("seg1", xx[hit.a[0]], yy[hit.a[0]], xx[hit.a[1]], yy[hit.a[1]]);
-    console.log("seg2", xx[hit.b[0]], yy[hit.b[0]], xx[hit.b[1]], yy[hit.b[1]]);
-  }
-  */
-  return intersections;
-
-  // @p is an [x, y] location along a segment defined by ids @id1 and @id2
-  // return array [i, j] where i and j are the same endpoint ids with i <= j
-  // if @p coincides with an endpoint, return the id of that endpoint twice
-  function getEndpointIds(id1, id2, p) {
-    var i = id1 < id2 ? id1 : id2,
-        j = i === id1 ? id2 : id1;
-    if (xx[i] == p[0] && yy[i] == p[1]) {
-      j = i;
-    } else if (xx[j] == p[0] && yy[j] == p[1]) {
-      i = j;
-    }
-    return [i, j];
-  }
-};
-
-MapShaper.sortSegmentIds = function(arr, ids) {
-  MapShaper.quicksortSegmentIds(arr, ids, 0, ids.length-2);
-};
-
-MapShaper.insertionSortSegmentIds = function(arr, ids, start, end) {
-  var id, id2;
-  for (var j = start + 2; j <= end; j+=2) {
-    id = ids[j];
-    id2 = ids[j+1];
-    for (var i = j - 2; i >= start && arr[id] < arr[ids[i]]; i-=2) {
-      ids[i+2] = ids[i];
-      ids[i+3] = ids[i+1];
-    }
-    ids[i+2] = id;
-    ids[i+3] = id2;
-  }
-};
-
-MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
-  var i = lo,
-      j = hi,
-      pivot, tmp;
-  while (i < hi) {
-    pivot = a[ids[(lo + hi >> 2) << 1]]; // avoid n^2 performance on sorted arrays
-    while (i <= j) {
-      while (a[ids[i]] < pivot) i+=2;
-      while (a[ids[j]] > pivot) j-=2;
-      if (i <= j) {
-        tmp = ids[i];
-        ids[i] = ids[j];
-        ids[j] = tmp;
-        tmp = ids[i+1];
-        ids[i+1] = ids[j+1];
-        ids[j+1] = tmp;
-        i+=2;
-        j-=2;
-      }
-    }
-
-    if (j - lo < 40) MapShaper.insertionSortSegmentIds(a, ids, lo, j);
-    else MapShaper.quicksortSegmentIds(a, ids, lo, j);
-    if (hi - i < 40) {
-      MapShaper.insertionSortSegmentIds(a, ids, i, hi);
-      return;
-    }
-    lo = i;
-    j = hi;
   }
 };
 
@@ -11804,8 +12819,9 @@ api.keepEveryPolygon =
 MapShaper.keepEveryPolygon = function(arcData, layers) {
   T.start();
   Utils.forEach(layers, function(lyr) {
-    // TODO: test with polyline shapes
-    MapShaper.protectLayerShapes(arcData, lyr.shapes);
+    if (lyr.geometry_type == 'polygon') {
+      MapShaper.protectLayerShapes(arcData, lyr.shapes);
+    }
   });
   T.stop("Protect shapes");
 };
@@ -11946,12 +12962,12 @@ function browserIsSupported() {
 function Editor() {
   var map;
 
-  var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || "mapshaper";
-  var useRepair = !!El("#g-repair-intersections-opt").node().checked;
-  var keepShapes = !!El("#g-import-retain-opt").node().checked;
-
   this.addData = function(dataset) {
     if (map) return; // one layer at a time, for now
+
+    var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || "mapshaper";
+    var useRepair = !!El("#g-repair-intersections-opt").node().checked;
+    var keepShapes = !!El("#g-import-retain-opt").node().checked;
 
     El("#mshp-intro-screen").hide();
     El("#mshp-main-page").show();
