@@ -38,12 +38,12 @@ function browserIsSupported() {
 function Editor() {
   var map;
 
-  var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || "mapshaper";
-  var useRepair = !!El("#g-repair-intersections-opt").node().checked;
-  var keepShapes = !!El("#g-import-retain-opt").node().checked;
-
   this.addData = function(dataset) {
     if (map) return; // one layer at a time, for now
+
+    var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || "mapshaper";
+    var useRepair = !!El("#g-repair-intersections-opt").node().checked;
+    var keepShapes = !!El("#g-import-retain-opt").node().checked;
 
     El("#mshp-intro-screen").hide();
     El("#mshp-main-page").show();
