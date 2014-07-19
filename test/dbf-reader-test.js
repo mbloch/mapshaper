@@ -17,38 +17,38 @@ describe('dbf-reader.js', function () {
       s7 = "西蒲原郡弥彦村",
       ascii = Utils.repeat(127, function(i) {return String.fromCharCode(i+1)}).join('');
 
+  function readRows(path, encoding) {
+    path = "test_data/" + path;
+    var reader = new api.internal.DbfReader(fixPath(path), encoding);
+    return reader.readRows();
+  }
+
   describe('#readRows', function () {
 
-    function rows(path, encoding) {
-      path = "test_data/dbfs/" + path;
-      var reader = new api.internal.DbfReader(fixPath(path), encoding);
-      return reader.readRows();
-    }
-
     it("latin1", function() {
-      assert.equal(rows("latin1.dbf", 'latin1')[0].NAME, s2);
+      assert.equal(readRows("dbf/latin1.dbf", 'latin1')[0].NAME, s2);
     })
 
     it("gbk", function() {
-      assert.equal(rows("gbk.dbf", 'gbk')[0].NAME, s3);
+      assert.equal(readRows("dbf/gbk.dbf", 'gbk')[0].NAME, s3);
     })
 
     it("big5", function() {
-      assert.equal(rows("big5.dbf", 'big5')[0].NAME, s4);
+      assert.equal(readRows("dbf/big5.dbf", 'big5')[0].NAME, s4);
     })
 
     it("gb2312", function() {
-      assert.equal(rows("gb2312.dbf", 'gb2312')[0].NAME, s3);
+      assert.equal(readRows("dbf/gb2312.dbf", 'gb2312')[0].NAME, s3);
     })
 
     it("shiftjis", function() {
-      var records = rows("shiftjis.dbf", 'shiftjis');
+      var records = readRows("dbf/shiftjis.dbf", 'shiftjis');
       assert.equal(records[0].NAME, s6);
       assert.equal(records[1].NAME, s7);
     })
 
     it("eucjp", function() {
-      var records = rows("eucjp.dbf", 'eucjp');
+      var records = readRows("dbf/eucjp.dbf", 'eucjp');
       assert.equal(records[0].NAME, s6);
       assert.equal(records[1].NAME, s7);
     })
@@ -94,4 +94,20 @@ describe('dbf-reader.js', function () {
       assert.equal(test(ascii, 'utf8'), ascii);
     })
   });
+
+  describe('Bug## Empty string field hangs', function () {
+    it('Read table with zero-length string fields, ascii', function () {
+      var rows = readRows('three_points.dbf');
+      assert.equal(rows.length, 3);
+      assert.equal(rows[0].comment, '');
+      assert.equal(rows[0].subregion, '');
+    })
+
+    it('Read table with zero-length string fields, latin1', function () {
+      var rows = readRows('three_points.dbf', 'latin1');
+      assert.equal(rows.length, 3);
+      assert.equal(rows[0].comment, '');
+      assert.equal(rows[0].subregion, '');
+    })
+  })
 })
