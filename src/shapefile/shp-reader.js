@@ -112,18 +112,36 @@ function ShpReader(src) {
 
   // Iterator interface for reading shape records
   this.nextShape = function() {
-    if (recordOffs >= file.size()) {
+    var fileSize = file.size(),
+        recordSize,
+        shape = null,
+        bin;
+
+    if (recordOffs + 8 < fileSize) {
+      bin = file.readBytes(8, recordOffs);
+      // byteLen is bytes in content section + 8 header bytes
+      recordSize = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
+      // todo: what if size is 0
+      if (recordOffs + recordSize <= fileSize && recordSize >= 12) {
+        bin = file.readBytes(recordSize, recordOffs);
+        recordOffs += recordSize;
+        shape = new RecordClass(bin);
+      } else {
+        trace("Unaccounted bytes in .shp file -- possible corruption");
+      }
+    }
+
+    if (shape === null) {
       file.close();
       recordOffs = 100;
-      return null;
     }
-    var bin = file.readBytes(8, recordOffs);
-    // byteLen is bytes in content section + 8 header bytes
-    var byteLen = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
-    bin = file.readBytes(byteLen, recordOffs);
-    recordOffs += byteLen;
-    return new RecordClass(bin);
+
+    return shape;
   };
+
+  function finishReading() {
+
+  }
 
   function parseHeader(bin) {
     var header = {
@@ -233,6 +251,7 @@ ShpReader.getRecordClass = function(type) {
       if (this.pointCount === 0) return null;
       var partSizes = this.readPartSizes(),
           xy = this._data().skipBytes(this._xypos());
+
       return partSizes.map(function(pointCount) {
         return xy.readFloat64Array(pointCount * 2);
       });
@@ -293,7 +312,7 @@ ShpReader.getRecordClass = function(type) {
     read: function() {
       var n = 2;
       if (hasZ) n++;
-      if (this.hasM()) n++; // checking for M
+      if (this.hasM()) n++;
       return this._data().skipBytes(12).readFloat64Array(n);
     }
   };
