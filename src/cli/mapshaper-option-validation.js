@@ -164,7 +164,7 @@ function validateLayersOpts(cmd) {
   }
 }
 
-function validateFilterOpts(cmd) {
+function validateExpressionOpts(cmd) {
   if (cmd._.length !== 1) {
     error("-filter option requires a JavaScript expression");
   }

@@ -136,7 +136,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("filter")
     .describe("filter features with a boolean JavaScript expression")
-    .validate(validateFilterOpts)
+    .validate(validateExpressionOpts)
     .option("expression")
     .option("target");
 
@@ -153,6 +153,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("each")
     .describe("create/update/delete data fields with a JS expression")
+    .validate(validateExpressionOpts)
     .option("expression")
     .option("target");
 
