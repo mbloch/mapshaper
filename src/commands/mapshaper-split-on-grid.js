@@ -27,7 +27,7 @@ api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
     return "r" + r + "c" + c;
   }
 
-  Utils.forEach(shapes, function(shp, i) {
+  shapes.forEach(function(shp, i) {
     var bounds = arcs.getMultiShapeBounds(shp),
         idx = groupId(bounds),
         group = groups[idx];
@@ -36,7 +36,7 @@ api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
         shapes: [],
         properties: properties ? [] : null,
         bounds: new Bounds(),
-        name: Utils.getSplitLayerName(lyr.name, groupName(idx))
+        name: MapShaper.getSplitLayerName(lyr.name, groupName(idx))
       };
     }
     group.shapes.push(shp);
