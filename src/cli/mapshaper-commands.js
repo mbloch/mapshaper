@@ -278,7 +278,7 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'help') {
-      MapShaper.printHelp();
+      MapShaper.printHelp(cmd.options.commands);
     } else if (cmd.name == 'verbose') {
       MapShaper.VERBOSE = true;
     } else if (cmd.name == 'tracing') {
@@ -290,8 +290,8 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
   });
 };
 
-MapShaper.printHelp = function() {
-  MapShaper.getOptionParser().printHelp();
+MapShaper.printHelp = function(commands) {
+  MapShaper.getOptionParser().printHelp(commands);
 };
 
 // TODO: handle multiple instances of a command, return number found

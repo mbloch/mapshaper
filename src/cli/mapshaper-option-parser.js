@@ -4,12 +4,18 @@ function CommandParser() {
   var _usage = "",
       _examples = [],
       _commands = [],
-      _default = null;
+      _default = null,
+      _note;
 
   if (this instanceof CommandParser === false) return new CommandParser();
 
   this.usage = function(str) {
     _usage = str;
+    return this;
+  };
+
+  this.note = function(str) {
+    _note = str;
     return this;
   };
 
@@ -156,44 +162,75 @@ function CommandParser() {
     }
   };
 
-  this.getHelpMessage = function() {
-    var commands = getCommands(),
+  this.getHelpMessage = function(commandNames) {
+    var allCommands = getCommands(),
+        helpCommands = allCommands,
+        helpStr = '',
         cmdPre = ' ',
         optPre = '  ',
-        gutter = ' ',
-        colWidth = 0;
+        gutter = '  ',
+        colWidth = 0,
+        detailView = false;
 
-    commands.forEach(function(obj) {
+    if (commandNames) {
+      detailView = true;
+      if (Utils.contains(commandNames, 'all')) {
+        helpCommands = allCommands;
+      } else {
+        helpCommands = allCommands.filter(function(cmd) {
+          return Utils.contains(commandNames, cmd.name);
+        });
+      }
+
+      if (helpCommands.length === 0) {
+        detailView = false;
+        helpCommands = allCommands;
+      }
+    }
+
+    if (detailView) {
+      helpStr += "\n";
+    } else if (_usage) {
+      helpStr +=  _usage + "\n\n";
+    }
+
+    helpCommands.forEach(function(obj) {
       if (obj.describe) {
         var help = cmdPre + (obj.name ? "-" + obj.name : "");
         if (obj.alias) help += ", -" + obj.alias;
         obj.help = help;
         colWidth = Math.max(colWidth, help.length);
       }
-      obj.options.forEach(formatOption);
+      if (detailView) {
+        obj.options.forEach(formatOption);
+      }
     });
 
-    var helpStr = _usage ? _usage + "\n\n" : "";
-    commands.forEach(function(obj, i) {
-      if (obj.title) {
+    helpCommands.forEach(function(obj, i) {
+      if (helpCommands == allCommands && obj.title) {
         helpStr += obj.title + "\n";
       }
       if (obj.describe) {
         helpStr += formatHelpLine(obj.help, obj.describe);
       }
       if (obj.title || obj.describe) {
-       if (obj.options.length > 0) {
+
+       if (detailView && obj.options.length > 0) {
           obj.options.forEach(addOptionHelp);
           helpStr += '\n';
         }
       }
     });
 
-    if (_examples.length > 0) {
+    if (!detailView && _examples.length > 0) {
       helpStr += "\nExamples\n";
       _examples.forEach(function(str) {
         helpStr += "\n" + str + "\n";
       });
+    }
+
+    if (!detailView && _note) {
+      helpStr += '\n' + _note;
     }
 
     return helpStr;
@@ -203,11 +240,15 @@ function CommandParser() {
     }
 
     function formatOption(o) {
-      // console.log("formatOption:", opt)
       if (o.describe) {
-        o.help = optPre + o.name;
-        if (o.alias) o.help += ", " + o.alias;
-        if (o.type != 'flag' && !o.assign_to) o.help += "=";
+        o.help = optPre;
+        if (o.label) {
+          o.help += o.label;
+        } else {
+          o.help += o.name;
+          if (o.alias) o.help += ", " + o.alias;
+          if (o.type != 'flag' && !o.assign_to) o.help += "=";
+        }
         colWidth = Math.max(colWidth, o.help.length);
       }
     }
@@ -219,8 +260,8 @@ function CommandParser() {
     }
   };
 
-  this.printHelp = function() {
-    console.log(this.getHelpMessage());
+  this.printHelp = function(commands) {
+    console.log(this.getHelpMessage(commands));
   };
 
   function getCommands() {

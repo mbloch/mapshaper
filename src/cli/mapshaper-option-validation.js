@@ -5,6 +5,13 @@ function trapOldOpt(cmd) {
   error(Utils.format('The [%s] option was removed in v0.2.0.', cmd.name));
 }
 
+function validateHelpOpts(cmd) {
+  var commands = validateCommaSepNames(cmd._[0]);
+  if (commands) {
+    cmd.options.commands = commands;
+  }
+}
+
 function validateInputOpts(cmd) {
   var o = cmd.options;
   o.files = cli.validateInputFiles(cmd._);

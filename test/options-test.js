@@ -69,11 +69,11 @@ describe('mapshaper-options.js', function () {
   describe('simplify', function() {
     bad("-s") // no alias (add one?)
     good("-simplify cartesian i 0.001", {interval: 0.001, cartesian: true})
-    good("-simplify visvalingam p 0.1", {method: "visvalingam", pct: 0.1})
+    good("-simplify visvalingam 10%", {method: "visvalingam", pct: 0.1})
 
     // invalid method names
-    bad("-simplify p 0.1 method=douglas-peucker");
-    bad("-simplify p 0.1 method=vis");
+    bad("-simplify 4% method=douglas-peucker");
+    bad("-simplify 4% 0.1 method=vis");
 
     // assigning to a boolean or set variable is wrong
     bad('-simplify 5% keep-shapes=true');
