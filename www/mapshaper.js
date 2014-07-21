@@ -3933,7 +3933,7 @@ function stop() {
   args.unshift('Error:');
   if (MapShaper.LOGGING) {
     message.apply(null, args);
-    message("(Run mapshaper -h to view help)");
+    message("Run mapshaper -h to view help");
     process.exit(1);
   } else {
     error.apply(null, args);
@@ -12412,8 +12412,10 @@ api.simplify = function(arcs, opts) {
 
   if (utils.isNumber(opts.pct)) {
     arcs.setRetainedPct(opts.pct);
-  } else if (opts.interval) {
+  } else if (utils.isNumber(opts.interval)) {
     arcs.setRetainedInterval(opts.interval);
+  } else {
+    stop("[simplify] missing pct or interval parameter");
   }
 
   if (!opts.no_repair) {

@@ -183,7 +183,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("each")
-    .describe("create/update/delete data fields using a JavaScript expression")
+    .describe("create/update/delete data fields using a JS expression")
     .validate(validateExpressionOpts)
     .option("expression", {
       label: "<expression>",
@@ -271,7 +271,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("lines")
-    .describe("convert polygons to classified lines")
+    .describe("convert polygons to classified polylines")
     .validate(validateLinesOpts)
     .option("fields", {
       label: "<field(s)>",
@@ -283,7 +283,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("innerlines")
-    .describe("output polyline layers containing shared polygon boundaries")
+    .describe("convert polygons to polylines along shared boundaries")
     .validate(validateInnerLinesOpts)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
@@ -306,7 +306,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("subdivide")
-    .describe("recursively split a layer with a JavaScript expression")
+    .describe("recursively split a layer using a JS expression")
     .validate(validateSubdivideOpts)
     .option("expression", {
       label: "<expression>",
@@ -383,7 +383,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command('tracing');
 
-/*
+  /*
   parser.command("points")
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
@@ -392,14 +392,13 @@ MapShaper.getOptionParser = function() {
       type: "set",
       values: ["centroids", "vertices", "intersections", "anchors"]
     })
-*/
+  */
 
   /*
   parser.command("filter-layers")
     .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
     .validate(validateLayersOpts);
   */
-
 
   return parser;
 };
