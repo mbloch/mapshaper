@@ -68,7 +68,7 @@ describe('mapshaper-options.js', function () {
 
   describe('simplify', function() {
     bad("-s") // no alias (add one?)
-    good("-simplify cartesian i 0.001", {interval: 0.001, cartesian: true})
+    bad("-simplify cartesian i 0.001")
     good("-simplify visvalingam 10%", {method: "visvalingam", pct: 0.1})
 
     // invalid method names
@@ -79,12 +79,21 @@ describe('mapshaper-options.js', function () {
     bad('-simplify 5% keep-shapes=true');
     bad('-simplify 5% dp=true');
 
+    good("-simplify 0%", {pct: 0});
+    good("-simplify 0%", {pct: 0});
     good("-simplify 4%", {pct: 0.04});
-    bad("-simplify 10"); // only pct has this kind of shortcut
+    good("-simplify 0.04", {pct: 0.04});
+    good("-simplify pct=4%", {pct: 0.04});
+    good("-simplify pct=.04", {pct: 0.04});
+    good("-simplify pct 4%", {pct: 0.04});
+    bad("-simplify 10");
     bad("-simplify -5%");
+    bad("-simplify 101%");
+    bad("-simplify pct=101%");
     good("-simplify keep-shapes rdp 10%", {keep_shapes: true, method: "dp", pct: 0.1});
     bad("-simplify interval=10km"); // need integer
     bad("-simplify pct");
+    bad("-simplify 10km");
     good("-simplify 3% no-repair", {pct: 0.03, no_repair: true});
   })
 

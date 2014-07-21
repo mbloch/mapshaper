@@ -1,10 +1,6 @@
 /* @requires mapshaper-common */
 
 
-function trapOldOpt(cmd) {
-  error(Utils.format('The [%s] option was removed in v0.2.0.', cmd.name));
-}
-
 function validateHelpOpts(cmd) {
   var commands = validateCommaSepNames(cmd._[0]);
   if (commands) {
@@ -26,28 +22,47 @@ function validateInputOpts(cmd) {
 }
 
 function validateSimplifyOpts(cmd) {
-  var o = cmd.options;
-  var methods = ["visvalingam", "dp"];
+  var o = cmd.options,
+      _ = cmd._,
+      methods = ["visvalingam", "dp"];
+
   if (o.method) {
     if (!Utils.contains(methods, o.method)) {
       error(o.method, "is not a recognized simplification method; choos from:", methods);
     }
   }
 
-  var pctStr = Utils.find(cmd._, function(str) {
-    return (/^[0-9.]+%$/.test(str));
-  });
-  if (pctStr) o.pct = parseFloat(pctStr) / 100;
-
-  if ("pct" in o && !(o.pct >= 0 && o.pct <= 1)) {
-    error("-simplify pct expects a number in the range 0-1");
+  var pctStr = o.pct || "";
+  if (_.length > 0) {
+    if (/^[0-9.]+%?$/.test(_[0])) {
+      pctStr = _.pop();
+    }
+    if (_.length > 0) {
+      error("[simplify] unparsable option:", _.join(' '));
+    }
   }
 
-  if ("interval" in o && o.interval >= 0 === false) {
-    error("-simplify interval should be a non-negative number");
+  if (pctStr) {
+    var isPct = pctStr.indexOf('%') > 0;
+    if (isPct) {
+      o.pct = Number(pctStr.replace('%', '')) / 100;
+    } else {
+      o.pct = Number(pctStr);
+    }
+    if (!(o.pct >= 0 && o.pct <= 1)) {
+      error(Utils.format("[simplify] out-of-range pct value: %s", pctStr));
+    }
   }
 
-  if (!("interval" in o || "pct" in o)) {
+  var intervalStr = o.interval;
+  if (intervalStr) {
+    o.interval = Number(intervalStr);
+    if (o.interval >= 0 === false) {
+      error(Utils.format("[simplify] out-of-range interval value: %s", intervalStr));
+    }
+  }
+
+  if (isNaN(o.interval) && isNaN(o.pct)) {
     error("-simplify requires an interval or pct");
   }
 }

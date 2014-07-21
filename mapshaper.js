@@ -3933,7 +3933,7 @@ function stop() {
   args.unshift('Error:');
   if (MapShaper.LOGGING) {
     message.apply(null, args);
-    message("(Run mapshaper -h to view help)");
+    message("Run mapshaper -h to view help");
     process.exit(1);
   } else {
     error.apply(null, args);
@@ -4100,12 +4100,18 @@ function CommandParser() {
   var _usage = "",
       _examples = [],
       _commands = [],
-      _default = null;
+      _default = null,
+      _note;
 
   if (this instanceof CommandParser === false) return new CommandParser();
 
   this.usage = function(str) {
     _usage = str;
+    return this;
+  };
+
+  this.note = function(str) {
+    _note = str;
     return this;
   };
 
@@ -4252,44 +4258,75 @@ function CommandParser() {
     }
   };
 
-  this.getHelpMessage = function() {
-    var commands = getCommands(),
+  this.getHelpMessage = function(commandNames) {
+    var allCommands = getCommands(),
+        helpCommands = allCommands,
+        helpStr = '',
         cmdPre = ' ',
         optPre = '  ',
-        gutter = ' ',
-        colWidth = 0;
+        gutter = '  ',
+        colWidth = 0,
+        detailView = false;
 
-    commands.forEach(function(obj) {
+    if (commandNames) {
+      detailView = true;
+      if (Utils.contains(commandNames, 'all')) {
+        helpCommands = allCommands;
+      } else {
+        helpCommands = allCommands.filter(function(cmd) {
+          return Utils.contains(commandNames, cmd.name);
+        });
+      }
+
+      if (helpCommands.length === 0) {
+        detailView = false;
+        helpCommands = allCommands;
+      }
+    }
+
+    if (detailView) {
+      helpStr += "\n";
+    } else if (_usage) {
+      helpStr +=  _usage + "\n\n";
+    }
+
+    helpCommands.forEach(function(obj) {
       if (obj.describe) {
         var help = cmdPre + (obj.name ? "-" + obj.name : "");
         if (obj.alias) help += ", -" + obj.alias;
         obj.help = help;
         colWidth = Math.max(colWidth, help.length);
       }
-      obj.options.forEach(formatOption);
+      if (detailView) {
+        obj.options.forEach(formatOption);
+      }
     });
 
-    var helpStr = _usage ? _usage + "\n\n" : "";
-    commands.forEach(function(obj, i) {
-      if (obj.title) {
+    helpCommands.forEach(function(obj, i) {
+      if (helpCommands == allCommands && obj.title) {
         helpStr += obj.title + "\n";
       }
       if (obj.describe) {
         helpStr += formatHelpLine(obj.help, obj.describe);
       }
       if (obj.title || obj.describe) {
-       if (obj.options.length > 0) {
+
+       if (detailView && obj.options.length > 0) {
           obj.options.forEach(addOptionHelp);
           helpStr += '\n';
         }
       }
     });
 
-    if (_examples.length > 0) {
+    if (!detailView && _examples.length > 0) {
       helpStr += "\nExamples\n";
       _examples.forEach(function(str) {
         helpStr += "\n" + str + "\n";
       });
+    }
+
+    if (!detailView && _note) {
+      helpStr += '\n' + _note;
     }
 
     return helpStr;
@@ -4299,11 +4336,15 @@ function CommandParser() {
     }
 
     function formatOption(o) {
-      // console.log("formatOption:", opt)
       if (o.describe) {
-        o.help = optPre + o.name;
-        if (o.alias) o.help += ", " + o.alias;
-        if (o.type != 'flag' && !o.assign_to) o.help += "=";
+        o.help = optPre;
+        if (o.label) {
+          o.help += o.label;
+        } else {
+          o.help += o.name;
+          if (o.alias) o.help += ", " + o.alias;
+          if (o.type != 'flag' && !o.assign_to) o.help += "=";
+        }
         colWidth = Math.max(colWidth, o.help.length);
       }
     }
@@ -4315,8 +4356,8 @@ function CommandParser() {
     }
   };
 
-  this.printHelp = function() {
-    console.log(this.getHelpMessage());
+  this.printHelp = function(commands) {
+    console.log(this.getHelpMessage(commands));
   };
 
   function getCommands() {
@@ -4374,8 +4415,11 @@ function CommandOptions(name) {
 
 
 
-function trapOldOpt(cmd) {
-  error(Utils.format('The [%s] option was removed in v0.2.0.', cmd.name));
+function validateHelpOpts(cmd) {
+  var commands = validateCommaSepNames(cmd._[0]);
+  if (commands) {
+    cmd.options.commands = commands;
+  }
 }
 
 function validateInputOpts(cmd) {
@@ -4392,28 +4436,47 @@ function validateInputOpts(cmd) {
 }
 
 function validateSimplifyOpts(cmd) {
-  var o = cmd.options;
-  var methods = ["visvalingam", "dp"];
+  var o = cmd.options,
+      _ = cmd._,
+      methods = ["visvalingam", "dp"];
+
   if (o.method) {
     if (!Utils.contains(methods, o.method)) {
       error(o.method, "is not a recognized simplification method; choos from:", methods);
     }
   }
 
-  var pctStr = Utils.find(cmd._, function(str) {
-    return (/^[0-9.]+%$/.test(str));
-  });
-  if (pctStr) o.pct = parseFloat(pctStr) / 100;
-
-  if ("pct" in o && !(o.pct >= 0 && o.pct <= 1)) {
-    error("-simplify pct expects a number in the range 0-1");
+  var pctStr = o.pct || "";
+  if (_.length > 0) {
+    if (/^[0-9.]+%?$/.test(_[0])) {
+      pctStr = _.pop();
+    }
+    if (_.length > 0) {
+      error("[simplify] unparsable option:", _.join(' '));
+    }
   }
 
-  if ("interval" in o && o.interval >= 0 === false) {
-    error("-simplify interval should be a non-negative number");
+  if (pctStr) {
+    var isPct = pctStr.indexOf('%') > 0;
+    if (isPct) {
+      o.pct = Number(pctStr.replace('%', '')) / 100;
+    } else {
+      o.pct = Number(pctStr);
+    }
+    if (!(o.pct >= 0 && o.pct <= 1)) {
+      error(Utils.format("[simplify] out-of-range pct value: %s", pctStr));
+    }
   }
 
-  if (!("interval" in o || "pct" in o)) {
+  var intervalStr = o.interval;
+  if (intervalStr) {
+    o.interval = Number(intervalStr);
+    if (o.interval >= 0 === false) {
+      error(Utils.format("[simplify] out-of-range interval value: %s", intervalStr));
+    }
+  }
+
+  if (isNaN(o.interval) && isNaN(o.pct)) {
     error("-simplify requires an interval or pct");
   }
 }
@@ -4631,9 +4694,27 @@ api.parseCommands = function(arr) {
 };
 
 MapShaper.getOptionParser = function() {
+  // definitions of options shared by more than one command
+  var targetOpt = {
+        describe: "layer(s) to target (comma-sep. list); default is all layers"
+      },
+      nameOpt = {
+        describe: "rename the edited layer(s)"
+      },
+      noReplaceOpt = {
+        alias: "+",
+        type: 'flag',
+        describe: "retain the original layer(s) instead of replacing"
+      },
+      encodingOpt = {
+        describe: "text encoding of .dbf file"
+      };
+
   var parser = new CommandParser(),
-      usage = "Usage: mapshaper [-i] input-file(s) [input-options] [command [command-options]] ...\n" +
-              "       mapshaper -help|encodings|version";
+      usage = "Usage\n" +
+    "  mapshaper [-i] input-file(s) [input-options] [-command [options]] ...\n" +
+    "  mapshaper -h [command(s)]\n" +
+    "  mapshaper -encodings|version";
   parser.usage(usage);
 
   parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
@@ -4642,14 +4723,20 @@ MapShaper.getOptionParser = function() {
   parser.example("Aggregate census tracts to counties\n" +
       "$ mapshaper tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
 
+  parser.example("Use mapshaper -help <command> to view options for a single command");
+
   parser.default('i');
 
   parser.command('i')
-    .title("Commands and options")
+    .title("Editing commands")
     .describe("input one or more files")
     .validate(validateInputOpts)
+    .option("files", {
+      label: "<file(s)>",
+      describe: "file or files to import (separated by spaces)"
+    })
     .option("merge-files", {
-      describe: "merge similar input layers, like -merge-layers",
+      describe: "merge features from compatible files into the same layer",
       type: "flag"
     })
     .option("combine-files", {
@@ -4661,7 +4748,7 @@ MapShaper.getOptionParser = function() {
       type: "flag"
     })
     .option("precision", {
-      describe: "coordinate precision in source units",
+      describe: "coordinate precision in source units, e.g. 0.001",
       type: "number"
     })
     .option("auto-snap", {
@@ -4672,13 +4759,15 @@ MapShaper.getOptionParser = function() {
       describe: "specify snapping distance in source units",
       type: "number"
     })
-    .option("encoding", {
-      describe: "text encoding of .dbf file"
-    });
+    .option("encoding", encodingOpt);
 
   parser.command('o')
-    .describe("specify name of output file or directory")
+    .describe("output edited content")
     .validate(validateOutputOpts)
+    .option('_', {
+      label: "<file|directory>",
+      describe: "(optional) name of output file or directory"
+    })
     .option("format", {
       describe: "set export format (shapefile|geojson|topojson)"
     })
@@ -4686,6 +4775,18 @@ MapShaper.getOptionParser = function() {
     .option("encoding", {
       describe: "text encoding of .dbf file"
     })*/
+    .option("bbox", {
+      type: "flag",
+      describe: "add bbox property to TopoJSON or GeoJSON output"
+    })
+    .option("bbox-index", {
+      describe: "export a .json file with bbox of each layer",
+      type: 'flag'
+    })
+    .option("cut-table", {
+      describe: "detach attributes from shapes and save as a JSON file",
+      type: "flag"
+    })
     .option("quantization", {
       describe: "specify TopoJSON quantization (auto-set by default)",
       type: "integer"
@@ -4701,24 +4802,17 @@ MapShaper.getOptionParser = function() {
     .option("id-field", {
       describe: "field to use for TopoJSON id property"
     })
-    .option("bbox", {
-      type: "flag",
-      describe: "add bbox property to TopoJSON or GeoJSON output"
-    })
-    .option("cut-table", {
-      describe: "detach attributes from shapes and save as a JSON file",
-      type: "flag"
-    })
-    .option("bbox-index", {
-      describe: "export a .json file with bbox of each layer",
-      type: 'flag'
-    })
-    .option("target");
 
+    .option("target", targetOpt);
 
   parser.command('simplify')
     .validate(validateSimplifyOpts)
-    .describe("simplify the geometry of polygon or polyline features")
+    .describe("simplify the geometry of polygon and polyline features")
+    .option('pct', {
+      alias: 'p',
+      label: "<x%>",
+      describe: "percentage of removable points to retain, e.g. 10%"
+    })
     .option("dp", {
       alias: "rdp",
       describe: "use (Ramer-)Douglas-Peucker simplification",
@@ -4732,20 +4826,16 @@ MapShaper.getOptionParser = function() {
       // hidden option
     })
     .option("interval", {
-      alias: "i",
-      describe: "simplification resolution in linear units",
+      // alias: "i",
+      describe: "target resolution in linear units (alternative to %)",
       type: "number"
-    })
-    .option("pct", {
-      alias: "p",
-      describe: "proportion of removable points to retain (0-1)"
     })
     .option("cartesian", {
       describe: "simplify decimal degree coords in 2D space (default is 3D)",
       type: "flag"
     })
     .option("keep-shapes", {
-      describe: "prevent small shapes from disappearing",
+      describe: "prevent small polygon features from disappearing",
       type: "flag"
     })
     .option("no-repair", {
@@ -4753,38 +4843,13 @@ MapShaper.getOptionParser = function() {
       type: "flag"
     });
 
-  parser.command("filter")
-    .describe("filter features with a boolean JavaScript expression")
-    .validate(validateExpressionOpts)
-    .option("expression")
-    .option("target");
-
-  parser.command("filter-fields")
-    .describe('filter and rename data fields, e.g. "fips,st=state"')
-    .validate(validateFilterFieldsOpts)
-    .option("target");
-
-  /*
-  parser.command("filter-layers")
-    .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
-    .validate(validateLayersOpts);
-  */
-
-  parser.command("each")
-    .describe("create/update/delete data fields with a JS expression")
-    .validate(validateExpressionOpts)
-    .option("expression")
-    .option("target");
-
-  parser.command("expression")
-    .alias('e')
-    .validate(function() {
-      error("-expression has been named as -each");
-    });
-
   parser.command("join")
     .describe("join a dbf or delimited text file to the input features")
     .validate(validateJoinOpts)
+    .option("source", {
+      label: "<file>",
+      describe: "file containing data records"
+    })
     .option("keys", {
       describe: "local,foreign keys, e.g. keys=FIPS,CNTYFIPS:str",
       type: "comma-sep"
@@ -4796,26 +4861,43 @@ MapShaper.getOptionParser = function() {
     .option("where", {
       describe: "use a JS expression to filter records from source table"
     })
-    .option("encoding")
-    .option("source")
-    .option("target");
+    .option("encoding", encodingOpt)
+    .option("target", targetOpt);
 
-  parser.command("explode")
-    .describe("divide multipart features into single-part features")
-    .option("target");
+  parser.command("each")
+    .describe("create/update/delete data fields using a JavaScript expression")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "JS expression to apply to each target feature"
+    })
+    .option("target", targetOpt);
 
-  parser.command("divide")
-    .option("name")
-    .option("no-replace", {alias: "+", type: "flag"})
-    .option("target");
+  parser.command("filter")
+    .describe("filter features using a JavaScript expression")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "boolean JS expression applied to each feature"
+    })
+    .option("target", targetOpt);
 
-  parser.command("fill-holes")
-    .option("no-replace", {alias: "+", type: "flag"})
-    .option("target");
+  parser.command("filter-fields")
+    .describe('filter and rename data fields, e.g. "fips,st=state"')
+    .validate(validateFilterFieldsOpts)
+    .option("fields", {
+      label: "<field(s)>",
+      describe: "comma-sep. list of fields to retain"
+    })
+    .option("target", targetOpt);
 
   parser.command("clip")
-    .describe("Use polygons in a file or layer to clip a polygon layer")
+    .describe("use a set of polygons to clip a polygon layer")
     .validate(validateClip)
+    .option("source", {
+      label: "<file|layer>",
+      describe: "file or layer containing clip polygons"
+    })
     .option("auto-snap", {
       describe: "snap nearly identical points to fix minor topology errors",
       type: "flag"
@@ -4824,14 +4906,17 @@ MapShaper.getOptionParser = function() {
       describe: "specify snapping distance in source units",
       type: "number"
     })
-    .option("source")
-    .option("name")
-    .option("no-replace", {alias: "+", type: "flag"})
-    .option("target");
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
 
   parser.command("erase")
-    .describe("Use polygons in a file or layer to erase a polygon layer")
+    .describe("use a set of polygons to erase a polygon layer")
     .validate(validateClip)
+    .option("source", {
+      label: "<file|layer>",
+      describe: "file or layer containing erase polygons"
+    })
     .option("auto-snap", {
       describe: "snap nearly identical points to fix minor topology errors",
       type: "flag"
@@ -4840,20 +4925,17 @@ MapShaper.getOptionParser = function() {
       describe: "specify snapping distance in source units",
       type: "number"
     })
-    .option("source")
-    .option("name")
-    .option("no-replace", {alias: "+", type: "flag"})
-    .option("target");
-
-  parser.command("dissolve2")
-    .option("target");
-
-  parser.command("flatten")
-    .option("target");
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
 
   parser.command("dissolve")
-    .describe("dissolve polygons; takes optional comma-sep. list of fields")
     .validate(validateDissolveOpts)
+    .describe("merge adjacent polygons")
+    .option("field", {
+      label: "<field>",
+      describe: "(optional) name of a data field to dissolve on"
+    })
     .option("sum-fields", {
       describe: "fields to sum when dissolving  (comma-sep. list)",
       type: "comma-sep"
@@ -4862,114 +4944,144 @@ MapShaper.getOptionParser = function() {
       describe: "fields to copy when dissolving (comma-sep. list)",
       type: "comma-sep"
     })
-    .option("field")
-    .option("name")
-    .option("no-replace", {alias: "+", type: "flag"})
-    .option("target");
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("explode")
+    .describe("divide multipart features into single-part features")
+    .option("target", targetOpt);
 
   parser.command("lines")
-    .describe("convert polygons to lines; takes optional list of fields")
+    .describe("convert polygons to classified lines")
     .validate(validateLinesOpts)
-    .option("name")
     .option("fields", {
+      label: "<field(s)>",
+      describe: "optional comma-sep. list of fields to create a hierarchy",
       type: "comma-sep"
     })
-    .option("no-replace", {alias: "+", type: "flag"})
-    .option("target");
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
 
   parser.command("innerlines")
     .describe("output polyline layers containing shared polygon boundaries")
     .validate(validateInnerLinesOpts)
-    .option("name")
-    .option("no-replace", {alias: "+", type: "flag"})
-    .option("target");
-
-  parser.command("repair")
-    .option("target");
-
-/*
-  parser.command("points")
-    .option("name")
-    .option("no-replace", {alias: "+", type: "flag"})
-    .option("target")
-    .option("type", {
-      type: "set",
-      values: ["centroids", "vertices", "intersections", "anchors"]
-    })
-*/
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
 
   parser.command("split")
     .describe("split features on a data field")
     .validate(validateSplitOpts)
-    .option("field")
-    .option("no-replace", {alias: "+", type: "flag"})
-    .option("target");
+    .option("field", {
+      label: '<field>',
+      describe: "name of an attribute field"
+    })
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("merge-layers")
+    .describe("merge split-apart layers back into a single layer")
+    .validate(validateMergeLayersOpts)
+    .option("name", nameOpt)
+    .option("target", targetOpt);
 
   parser.command("subdivide")
-    .describe("recursively divide a layer with a boolean JS expression")
+    .describe("recursively split a layer with a JavaScript expression")
     .validate(validateSubdivideOpts)
-    .option("expression")
-    // .option("no-replace", {alias: "+", type: "flag"})
-    .option("target");
+    .option("expression", {
+      label: "<expression>",
+      describe: "boolean JS expression"
+    })
+    // .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
 
   parser.command("split-on-grid")
-    .describe("split layer into cols,rows  e.g. -split-on-grid 12,10")
+    .describe("split features into separate layers according to a grid")
     .validate(validateSplitOnGridOpts)
+    .option("-", {
+      label: "<cols,rows>",
+      describe: "size of the grid, e.g. -split-on-grid 12,10"
+    })
     .option("cols", {
       type: "integer"
     })
     .option("rows", {
       type: "integer"
     })
-    // .option("no-replace", {alias: "+", type: "flag"})
-    .option("target");
-
-  parser.command("merge-layers")
-    .describe("merge split-apart layers back into a single layer")
-    .validate(validateMergeLayersOpts)
-    .option("name")
-    .option("target");
-
-  parser.command("*")
-    .title("Options for multiple commands")
-    .option("target", {
-      describe: "layer(s) to target (comma-sep., takes * wildcard, default: *)"
-    })
-    .option("name", {
-      describe: "rename the targeted layer(s)"
-    })
-    .option("no-replace", { // or maybe "add-layer",
-      alias: "+",
-      type: 'flag',
-      describe: "retain the original layer(s) instead of replacing"
-    });
+    // .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
 
   parser.command('encodings')
-    .title("Informational commands")
+    .title("\nInformational commands")
     .describe("print list of supported text encodings (for .dbf import)");
-
-  parser.command('info')
-    .describe("print information about current data layers");
-
-  parser.command('verbose')
-    .describe("print verbose processing messages");
-
-  parser.command('tracing');
 
   parser.command('version')
     .alias('v')
     .describe("print mapshaper version");
 
+  parser.command('info')
+    .describe("print information about data layers");
+
+  parser.command('verbose')
+    .describe("print verbose processing messages");
+
+
   parser.command('help')
     .alias('h')
-    .describe("print this help message");
-
+    .validate(validateHelpOpts)
+    .describe("print help; takes optional comma-sep. list of command names")
+    .option("commands");
 
   // trap v0.1 options
-  "f,format,p,pct,interval,e,expression,merge-files,combine-files,fields".split(',')
+  ("f,format,p,e,expression,pct,i,visvalingam,dp,rdp,interval,merge-files,combine-files," +
+  "fields,precision,auto-snap").split(',')
     .forEach(function(str) {
-      parser.command(str).validate(trapOldOpt);
+      parser.command(str).validate(function() {
+        error(Utils.format('[%s] maphshaper syntax has changed since v0.1.x.', str));
+      });
     });
+
+  // Work-in-progress (no .describe(), so hidden from -h)
+
+  parser.command("dissolve2")
+    .option("target", targetOpt);
+
+  parser.command("flatten")
+    .option("target", targetOpt);
+
+  parser.command("divide")
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("fill-holes")
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("repair")
+    .option("target", targetOpt);
+
+  parser.command('tracing');
+
+/*
+  parser.command("points")
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt)
+    .option("type", {
+      type: "set",
+      values: ["centroids", "vertices", "intersections", "anchors"]
+    })
+*/
+
+  /*
+  parser.command("filter-layers")
+    .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
+    .validate(validateLayersOpts);
+  */
+
 
   return parser;
 };
@@ -7096,8 +7208,10 @@ api.simplify = function(arcs, opts) {
 
   if (utils.isNumber(opts.pct)) {
     arcs.setRetainedPct(opts.pct);
-  } else if (opts.interval) {
+  } else if (utils.isNumber(opts.interval)) {
     arcs.setRetainedInterval(opts.interval);
+  } else {
+    stop("[simplify] missing pct or interval parameter");
   }
 
   if (!opts.no_repair) {
@@ -14783,7 +14897,7 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'help') {
-      MapShaper.printHelp();
+      MapShaper.printHelp(cmd.options.commands);
     } else if (cmd.name == 'verbose') {
       MapShaper.VERBOSE = true;
     } else if (cmd.name == 'tracing') {
@@ -14795,8 +14909,8 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
   });
 };
 
-MapShaper.printHelp = function() {
-  MapShaper.getOptionParser().printHelp();
+MapShaper.printHelp = function(commands) {
+  MapShaper.getOptionParser().printHelp(commands);
 };
 
 // TODO: handle multiple instances of a command, return number found

@@ -12,6 +12,7 @@ api.parseCommands = function(arr) {
 };
 
 MapShaper.getOptionParser = function() {
+  // definitions of options shared by more than one command
   var targetOpt = {
         describe: "layer(s) to target (comma-sep. list); default is all layers"
       },
@@ -22,11 +23,14 @@ MapShaper.getOptionParser = function() {
         alias: "+",
         type: 'flag',
         describe: "retain the original layer(s) instead of replacing"
+      },
+      encodingOpt = {
+        describe: "text encoding of .dbf file"
       };
 
   var parser = new CommandParser(),
       usage = "Usage\n" +
-    "  mapshaper [-i] input-file(s) [options] [-command [options]] ...\n" +
+    "  mapshaper [-i] input-file(s) [input-options] [-command [options]] ...\n" +
     "  mapshaper -h [command(s)]\n" +
     "  mapshaper -encodings|version";
   parser.usage(usage);
@@ -62,7 +66,7 @@ MapShaper.getOptionParser = function() {
       type: "flag"
     })
     .option("precision", {
-      describe: "coordinate precision in source units",
+      describe: "coordinate precision in source units, e.g. 0.001",
       type: "number"
     })
     .option("auto-snap", {
@@ -73,9 +77,7 @@ MapShaper.getOptionParser = function() {
       describe: "specify snapping distance in source units",
       type: "number"
     })
-    .option("encoding", {
-      describe: "text encoding of .dbf file"
-    });
+    .option("encoding", encodingOpt);
 
   parser.command('o')
     .describe("output edited content")
@@ -91,6 +93,18 @@ MapShaper.getOptionParser = function() {
     .option("encoding", {
       describe: "text encoding of .dbf file"
     })*/
+    .option("bbox", {
+      type: "flag",
+      describe: "add bbox property to TopoJSON or GeoJSON output"
+    })
+    .option("bbox-index", {
+      describe: "export a .json file with bbox of each layer",
+      type: 'flag'
+    })
+    .option("cut-table", {
+      describe: "detach attributes from shapes and save as a JSON file",
+      type: "flag"
+    })
     .option("quantization", {
       describe: "specify TopoJSON quantization (auto-set by default)",
       type: "integer"
@@ -106,27 +120,16 @@ MapShaper.getOptionParser = function() {
     .option("id-field", {
       describe: "field to use for TopoJSON id property"
     })
-    .option("bbox", {
-      type: "flag",
-      describe: "add bbox property to TopoJSON or GeoJSON output"
-    })
-    .option("cut-table", {
-      describe: "detach attributes from shapes and save as a JSON file",
-      type: "flag"
-    })
-    .option("bbox-index", {
-      describe: "export a .json file with bbox of each layer",
-      type: 'flag'
-    })
-    .option("target", targetOpt);
 
+    .option("target", targetOpt);
 
   parser.command('simplify')
     .validate(validateSimplifyOpts)
-    .describe("simplify the geometry of polygon or polyline features")
-    .option('-', {
+    .describe("simplify the geometry of polygon and polyline features")
+    .option('pct', {
+      alias: 'p',
       label: "<x%>",
-      describe: "percentage of removable points to retain"
+      describe: "percentage of removable points to retain, e.g. 10%"
     })
     .option("dp", {
       alias: "rdp",
@@ -141,65 +144,21 @@ MapShaper.getOptionParser = function() {
       // hidden option
     })
     .option("interval", {
-      alias: "i",
+      // alias: "i",
       describe: "target resolution in linear units (alternative to %)",
       type: "number"
     })
-    /*
-    .option("pct", {
-      alias: "p",
-      describe: "proportion of removable points to retain (0-1)"
-    })*/
     .option("cartesian", {
       describe: "simplify decimal degree coords in 2D space (default is 3D)",
       type: "flag"
     })
     .option("keep-shapes", {
-      describe: "prevent small polygon rings from disappearing",
+      describe: "prevent small polygon features from disappearing",
       type: "flag"
     })
     .option("no-repair", {
       describe: "don't remove intersections introduced by simplification",
       type: "flag"
-    });
-
-  parser.command("filter")
-    .describe("filter features using a JavaScript expression")
-    .validate(validateExpressionOpts)
-    .option("expression", {
-      label: "<expression>",
-      describe: "boolean JS expression applied to each feature"
-    })
-    .option("target", targetOpt);
-
-  parser.command("filter-fields")
-    .describe('filter and rename data fields, e.g. "fips,st=state"')
-    .validate(validateFilterFieldsOpts)
-    .option("fields", {
-      label: "<field(s)>",
-      describe: "comma-sep. list of fields to retain"
-    })
-    .option("target", targetOpt);
-
-  /*
-  parser.command("filter-layers")
-    .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
-    .validate(validateLayersOpts);
-  */
-
-  parser.command("each")
-    .describe("create/update/delete data fields using a JavaScript expression")
-    .validate(validateExpressionOpts)
-    .option("expression", {
-      label: "<expression>",
-      describe: "JS expression to apply to each target feature"
-    })
-    .option("target", targetOpt);
-
-  parser.command("expression")
-    .alias('e')
-    .validate(function() {
-      error("-expression has been renamed to -each");
     });
 
   parser.command("join")
@@ -220,20 +179,34 @@ MapShaper.getOptionParser = function() {
     .option("where", {
       describe: "use a JS expression to filter records from source table"
     })
-    .option("encoding")
+    .option("encoding", encodingOpt)
     .option("target", targetOpt);
 
-  parser.command("explode")
-    .describe("divide multipart features into single-part features")
+  parser.command("each")
+    .describe("create/update/delete data fields using a JavaScript expression")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "JS expression to apply to each target feature"
+    })
     .option("target", targetOpt);
 
-  parser.command("divide")
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
+  parser.command("filter")
+    .describe("filter features using a JavaScript expression")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "boolean JS expression applied to each feature"
+    })
     .option("target", targetOpt);
 
-  parser.command("fill-holes")
-    .option("no-replace", noReplaceOpt)
+  parser.command("filter-fields")
+    .describe('filter and rename data fields, e.g. "fips,st=state"')
+    .validate(validateFilterFieldsOpts)
+    .option("fields", {
+      label: "<field(s)>",
+      describe: "comma-sep. list of fields to retain"
+    })
     .option("target", targetOpt);
 
   parser.command("clip")
@@ -274,12 +247,6 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("dissolve2")
-    .option("target", targetOpt);
-
-  parser.command("flatten")
-    .option("target", targetOpt);
-
   parser.command("dissolve")
     .validate(validateDissolveOpts)
     .describe("merge adjacent polygons")
@@ -299,8 +266,12 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
+  parser.command("explode")
+    .describe("divide multipart features into single-part features")
+    .option("target", targetOpt);
+
   parser.command("lines")
-    .describe("convert polygons to lines")
+    .describe("convert polygons to classified lines")
     .validate(validateLinesOpts)
     .option("fields", {
       label: "<field(s)>",
@@ -318,20 +289,6 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("repair")
-    .option("target", targetOpt);
-
-/*
-  parser.command("points")
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt)
-    .option("type", {
-      type: "set",
-      values: ["centroids", "vertices", "intersections", "anchors"]
-    })
-*/
-
   parser.command("split")
     .describe("split features on a data field")
     .validate(validateSplitOpts)
@@ -342,8 +299,14 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
+  parser.command("merge-layers")
+    .describe("merge split-apart layers back into a single layer")
+    .validate(validateMergeLayersOpts)
+    .option("name", nameOpt)
+    .option("target", targetOpt);
+
   parser.command("subdivide")
-    .describe("recursively divide a layer with a JavaScript expression")
+    .describe("recursively split a layer with a JavaScript expression")
     .validate(validateSubdivideOpts)
     .option("expression", {
       label: "<expression>",
@@ -368,28 +331,20 @@ MapShaper.getOptionParser = function() {
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("merge-layers")
-    .describe("merge split-apart layers back into a single layer")
-    .validate(validateMergeLayersOpts)
-    .option("name", nameOpt)
-    .option("target", targetOpt);
-
-
   parser.command('encodings')
     .title("\nInformational commands")
     .describe("print list of supported text encodings (for .dbf import)");
 
+  parser.command('version')
+    .alias('v')
+    .describe("print mapshaper version");
+
   parser.command('info')
-    .describe("print information about current data layers");
+    .describe("print information about data layers");
 
   parser.command('verbose')
     .describe("print verbose processing messages");
 
-  parser.command('tracing');
-
-  parser.command('version')
-    .alias('v')
-    .describe("print mapshaper version");
 
   parser.command('help')
     .alias('h')
@@ -398,10 +353,53 @@ MapShaper.getOptionParser = function() {
     .option("commands");
 
   // trap v0.1 options
-  "f,format,p,pct,interval,e,expression,merge-files,combine-files,fields".split(',')
+  ("f,format,p,e,expression,pct,i,visvalingam,dp,rdp,interval,merge-files,combine-files," +
+  "fields,precision,auto-snap").split(',')
     .forEach(function(str) {
-      parser.command(str).validate(trapOldOpt);
+      parser.command(str).validate(function() {
+        error(Utils.format('[%s] maphshaper syntax has changed since v0.1.x.', str));
+      });
     });
+
+  // Work-in-progress (no .describe(), so hidden from -h)
+
+  parser.command("dissolve2")
+    .option("target", targetOpt);
+
+  parser.command("flatten")
+    .option("target", targetOpt);
+
+  parser.command("divide")
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("fill-holes")
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("repair")
+    .option("target", targetOpt);
+
+  parser.command('tracing');
+
+/*
+  parser.command("points")
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt)
+    .option("type", {
+      type: "set",
+      values: ["centroids", "vertices", "intersections", "anchors"]
+    })
+*/
+
+  /*
+  parser.command("filter-layers")
+    .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
+    .validate(validateLayersOpts);
+  */
+
 
   return parser;
 };

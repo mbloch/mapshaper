@@ -7,8 +7,10 @@ api.simplify = function(arcs, opts) {
 
   if (utils.isNumber(opts.pct)) {
     arcs.setRetainedPct(opts.pct);
-  } else if (opts.interval) {
+  } else if (utils.isNumber(opts.interval)) {
     arcs.setRetainedInterval(opts.interval);
+  } else {
+    stop("[simplify] missing pct or interval parameter");
   }
 
   if (!opts.no_repair) {
