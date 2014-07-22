@@ -4,7 +4,6 @@ var assert = require('assert'),
 
 describe("mapshaper-geom.js", function() {
 
-
   describe('getRoundingFunction', function () {
 
     function testAtPrecision(precision) {

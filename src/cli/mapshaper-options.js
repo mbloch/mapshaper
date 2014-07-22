@@ -26,6 +26,14 @@ MapShaper.getOptionParser = function() {
       },
       encodingOpt = {
         describe: "text encoding of .dbf file"
+      },
+      autoSnapOpt = {
+        describe: "snap nearly identical points to fix minor topology errors",
+        type: "flag"
+      },
+      snapIntervalOpt = {
+        describe: "specify snapping distance in source units",
+        type: "number"
       };
 
   var parser = new CommandParser(),
@@ -69,14 +77,8 @@ MapShaper.getOptionParser = function() {
       describe: "coordinate precision in source units, e.g. 0.001",
       type: "number"
     })
-    .option("auto-snap", {
-      describe: "snap nearly identical points to fix minor topology errors",
-      type: "flag"
-    })
-    .option("snap-interval", {
-      describe: "specify snapping distance in source units",
-      type: "number"
-    })
+    .option("auto-snap", autoSnapOpt)
+    .option("snap-interval", snapIntervalOpt)
     .option("encoding", encodingOpt);
 
   parser.command('o')
@@ -210,39 +212,27 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("clip")
-    .describe("use a set of polygons to clip a polygon layer")
+    .describe("use a polygon layer to clip another polygon layer")
     .validate(validateClip)
     .option("source", {
       label: "<file|layer>",
       describe: "file or layer containing clip polygons"
     })
-    .option("auto-snap", {
-      describe: "snap nearly identical points to fix minor topology errors",
-      type: "flag"
-    })
-    .option("snap-interval", {
-      describe: "specify snapping distance in source units",
-      type: "number"
-    })
+    .option("auto-snap", autoSnapOpt)
+    .option("snap-interval", snapIntervalOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
   parser.command("erase")
-    .describe("use a set of polygons to erase a polygon layer")
+    .describe("use a polygon layer to erase another polygon layer")
     .validate(validateClip)
     .option("source", {
       label: "<file|layer>",
       describe: "file or layer containing erase polygons"
     })
-    .option("auto-snap", {
-      describe: "snap nearly identical points to fix minor topology errors",
-      type: "flag"
-    })
-    .option("snap-interval", {
-      describe: "specify snapping distance in source units",
-      type: "number"
-    })
+    .option("auto-snap", autoSnapOpt)
+    .option("snap-interval", snapIntervalOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -267,7 +257,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("explode")
-    .describe("divide multipart features into single-part features")
+    .describe("separate multi-part features into single-part features")
     .option("target", targetOpt);
 
   parser.command("lines")
