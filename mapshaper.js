@@ -7997,7 +7997,8 @@ MapShaper.snapCoords = function(arcs, threshold) {
     }
   }
 
-  MapShaper.snapCoordsByInterval(arcs, snapDist);
+  var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
+  message(Utils.format("Snapped %s point%s", snapCount, "s?"));
 };
 
 // Snap together points within a small threshold
@@ -8011,12 +8012,10 @@ MapShaper.snapCoordsByInterval = function(arcs, snapDist) {
   // Consider: speed up sorting -- try bucket sort as first pass.
   //
   var ids = utils.sortCoordinateIds(xx);
-
   for (var i=0, n=ids.length; i<n; i++) {
     snapCount += snapPoint(i, ids, snapDist);
   }
-
-  message(Utils.format("Snapped %s point%s", snapCount, "s?"));
+  return snapCount;
 
   function snapPoint(i, ids, limit) {
     var j = i,
