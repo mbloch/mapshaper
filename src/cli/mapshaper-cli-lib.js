@@ -26,6 +26,7 @@ mapshaper-dissolve2
 mapshaper-flatten
 mapshaper-clip-erase
 mapshaper-divide
+mapshaper-polygon-repair2
 */
 
 var cli = api.cli = {};

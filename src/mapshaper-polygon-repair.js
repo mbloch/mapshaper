@@ -116,9 +116,12 @@ MapShaper.repairSelfIntersections = function(lyr, nodes) {
 };
 
 
-MapShaper.getPathSplitter = function(nodes) {
+// Return function for splitting self-intersecting polygon rings
+// Returned function receives a single path, returns an array of paths
+//
+MapShaper.getPathSplitter = function(nodes, flags) {
   var arcs = nodes.arcs;
-  var flags = new Uint8Array(arcs.size());
+  flags = flags || new Uint8Array(arcs.size());
 
   function findMultipleRoutes(id) {
     var count = 0,
@@ -137,12 +140,13 @@ MapShaper.getPathSplitter = function(nodes) {
       }
     });
 
+    // console.log("findMultipleRoutes() id:", id, "routes:", routes)
 
     return routes || null;
   }
 
   function isOpenRoute(id) {
-    var bits = getRouteBits(id, flags);
+    var bits = MapShaper.getRouteBits(id, flags);
     return bits == 3;
   }
 
@@ -167,7 +171,6 @@ MapShaper.getPathSplitter = function(nodes) {
         count = 0,
         route = [firstId],
         nextId = firstId;
-    // console.log(" -> extending:", firstId, "ids:", ids, 'i:', i)
 
     if (i === -1) error("[extendRoute()] Path is missing id:", firstId);
 
@@ -186,7 +189,6 @@ MapShaper.getPathSplitter = function(nodes) {
         break;
       }
     }
-    // console.log(" ... extended route:", route)
     return route;
   }
 
@@ -200,12 +202,13 @@ MapShaper.getPathSplitter = function(nodes) {
     startIds.forEach(function(startId) {
       var routeIds = extendRoute(startId, ids);
       if (routeIds.length >= ids.length) {
-        error("[dividePathAtNode()] Caught in a cycle");
+        error("[dividePathAtNode()] Caught in a cycle; arc id:", arcId);
       }
       // subdivide this branch
       var splits = dividePath(routeIds);
       routes = routes ? routes.concat(splits) : splits;
     });
+
     return routes;
   }
 

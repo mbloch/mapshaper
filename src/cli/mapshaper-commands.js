@@ -100,8 +100,8 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'dissolve') {
     newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
 
-  //} else if (name == 'dissolve2') {
-  //  newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, arcs, opts);
+  } else if (name == 'dissolve2') {
+    newLayers = api.dissolvePolygonLayers2(targetLayers, dataset, opts);
 
   //} else if (name == 'divide') {
   //  MapShaper.divideArcs(dataset.layers, arcs);

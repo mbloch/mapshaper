@@ -1,14 +1,16 @@
-/* @requires mapshaper-common, mapshaper-shapes */
+/* @requires mapshaper-common, mapshaper-shapes, mapshaper-shape-utils */
 
 
+// Converts all polygon and polyline paths in a dataset to a topological format,
+// (in-place);
 api.buildTopology = function(dataset) {
   if (!dataset.arcs) return;
   var raw = dataset.arcs.getVertexData(),
-      topoData = MapShaper.buildPathTopology(raw.xx, raw.yy, raw.nn);
-  dataset.arcs = topoData.arcs;
+      cooked = MapShaper.buildPathTopology(raw.nn, raw.xx, raw.yy);
+  dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
   dataset.layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
-      lyr.shapes = updateArcIds(lyr.shapes, topoData.paths);
+      lyr.shapes = MapShaper.replaceArcIds(lyr.shapes, cooked.paths);
     }
   });
 };
@@ -27,7 +29,7 @@ api.buildTopology = function(dataset) {
 //
 // Output format:
 // {
-//    arcs: [ArcCollection],
+//    xx, yy, nn:      // coordinate data, same format as input
 //    paths: [Array]   // Paths are arrays of one or more arc id.
 // }                   // Arc ids use the same numbering scheme as TopoJSON --
 //       Ids in the paths array are indices of paths in the ArcCollection
@@ -35,7 +37,7 @@ api.buildTopology = function(dataset) {
 //       Negative ids are converted to array indices with the fornula fwId = ~revId.
 //       E.g. -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
 //
-MapShaper.buildPathTopology = function(xx, yy, nn) {
+MapShaper.buildPathTopology = function(nn, xx, yy) {
   var pointCount = xx.length,
       index = new ArcIndex(pointCount, getXYHash()),
       typedArrays = !!(xx.subarray && yy.subarray),
@@ -58,11 +60,9 @@ MapShaper.buildPathTopology = function(xx, yy, nn) {
     pointId += pathLen;
     return arcs;
   });
-
-  return {
-    paths: paths,
-    arcs: index.getArcs()
-  };
+  var obj = index.getVertexData();
+  obj.paths = paths;
+  return obj;
 
   function nextPoint(id) {
     var partId = pathIds[id];
@@ -361,7 +361,7 @@ function ArcIndex(pointCount, xyToUint) {
     return -1;
   };
 
-  this.getArcs = function() {
+  this.getVertexData = function() {
     var xx = new Float64Array(arcPoints),
         yy = new Float64Array(arcPoints),
         nn = new Uint32Array(arcs.length),
@@ -373,7 +373,11 @@ function ArcIndex(pointCount, xyToUint) {
       nn[i] = len;
       copied += len;
     });
-    return new ArcCollection(nn, xx, yy);
+    return {
+      xx: xx,
+      yy: yy,
+      nn: nn
+    };
   };
 }
 
@@ -393,25 +397,32 @@ function getXYHash() {
   };
 }
 
-function updateArcIds(src, paths) {
+MapShaper.replaceArcIds = function(src, replacements) {
   return src.map(function(shape) {
-    return updateArcsInShape(shape, paths);
+    return replaceArcsInShape(shape, replacements);
   });
-}
 
-function updateArcsInShape(shape, topoPaths) {
-  var shape2 = [];
-  Utils.forEach(shape, function(path) {
-    if (path.length != 1) {
-      error("[updateArcsInShape()] Expected single-part input path, found:", path);
-    }
-    var pathId = path[0],
-        topoPath = topoPaths[pathId];
+  function replaceArcsInShape(shape, replacements) {
+    if (!shape) return null;
+    return shape.map(function(path) {
+      return replaceArcsInPath(path, replacements);
+    });
+  }
 
-    if (!topoPath) {
-      error("[updateArcsInShape()] Missing topological path for path num:", pathId);
-    }
-    shape2.push(topoPath);
-  });
-  return shape2.length > 0 ? shape2 : null;
-}
+  function replaceArcsInPath(path, replacements) {
+    return path.reduce(function(memo, id) {
+      var abs = absArcId(id);
+      var topoPath = replacements[abs];
+      if (topoPath) {
+        if (id < 0) {
+          topoPath = topoPath.concat(); // TODO: need to copy?
+          MapShaper.reversePath(topoPath);
+        }
+        for (var i=0, n=topoPath.length; i<n; i++) {
+          memo.push(topoPath[i]);
+        }
+      }
+      return memo;
+    }, []);
+  }
+};

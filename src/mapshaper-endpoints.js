@@ -4,6 +4,9 @@ MapShaper.NodeCollection = NodeCollection;
 
 // @arcs ArcCollection
 function NodeCollection(arcs) {
+  if (Utils.isArray(arcs)) {
+    arcs = new ArcCollection(arcs);
+  }
   var arcData = arcs.getVertexData(),
       nn = arcData.nn,
       xx = arcData.xx,
@@ -33,10 +36,15 @@ function NodeCollection(arcs) {
 
   this.debugNode = function(arcId) {
     if (!MapShaper.TRACING) return;
-    var segments = [];
     var ids = [arcId];
     this.forEachConnectedArc(arcId, function(id) {
       ids.push(id);
+    });
+
+    console.log("node ids:",  ids);
+    ids.forEach(printArc);
+
+    function printArc(id) {
       var str = id + ": ";
       var len = arcs.getArcLength(id);
       if (len > 0) {
@@ -49,15 +57,13 @@ function NodeCollection(arcs) {
             var p3 = arcs.getVertex(id, 0);
             str += Utils.format(", [%f, %f]", p3.x, p3.y);
           }
+          str += " len: " + distance2D(p1.x, p1.y, p2.x, p2.y);
         }
       } else {
         str = "[]";
       }
-      segments.push(str);
-    });
-    console.log("[node] <-", arcId);
-    console.log("ids:",  ids);
-    console.log(segments.join('\n'));
+      console.log(str);
+    }
   };
 
   this.forEachConnectedArc = function(arcId, cb) {
@@ -72,13 +78,18 @@ function NodeCollection(arcs) {
   // Returns the id of the first identical arc or @arcId if none found
   // TODO: find a better function name
   this.findMatchingArc = function(arcId) {
+    var verbose = arcId ==  -12794 || arcId == 19610;
     var nextId = nextConnectedArc(arcId),
         match = arcId;
     while (nextId != arcId) {
-      nextId = nextConnectedArc(nextId);
       if (testArcMatch(arcId, nextId)) {
         if (absArcId(nextId) < absArcId(match)) match = nextId;
       }
+      nextId = nextConnectedArc(nextId);
+    }
+    if (match != arcId) {
+      trace("found identical arc:", arcId, "->", match);
+      // this.debugNode(arcId);
     }
     return match;
   };

@@ -1,11 +1,11 @@
 var assert = require('assert'),
     api = require("../"),
     ArcCollection = api.internal.ArcCollection,
-    dissolveShapes = api.internal.dissolveShapes;
+    NodeCollection = api.internal.NodeCollection,
+    dissolveLayers = api.dissolvePolygonLayers2,
+    dissolvePolygons = api.internal.dissolvePolygons2;
 
-return; // disable these until clipping is stable
-
-describe('mapshaper-clipping.js dissolve tests', function () {
+describe('mapshaper-dissolve2.js dissolve tests', function () {
   describe('Fig. 1', function () {
     //
     //      b --- d
@@ -19,12 +19,20 @@ describe('mapshaper-clipping.js dissolve tests', function () {
       //   0,   1,  2
       var coords = [[[3, 1], [1, 1], [2, 3]], [[2, 3], [3, 1]], [[2, 3], [4, 3], [3, 1]]];
       var arcs = new api.internal.ArcCollection(coords);
-
       var shapes = [[[1, 0]], [[2, -2]]];
-      var target = [[[0, 2]]];
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
-    })
+      var lyr = {
+        geometry_type: "polygon",
+        shapes: shapes
+      };
+      var dataset = {
+        arcs: arcs,
+        layers: [lyr]
+      };
 
+      var target = [[[0, 2]]];
+      var dissolved = dissolveLayers([lyr], dataset)
+      assert.deepEqual(dissolved[0].shapes, target);
+    })
   })
 
   describe('triangles containing collapsed arcs', function () {
@@ -43,26 +51,89 @@ describe('mapshaper-clipping.js dissolve tests', function () {
         [[2, 3], [2, 3]],
         [[4, 3], [4, 3]], // 6
         [[1, 1]]];
-    var arcs = new api.internal.ArcCollection(coords);
 
     it ('ignores collapsed arcs', function() {
-      var shapes = [[[1, 0]], [[2, 5, 3, -2]]];
+     var arcs = new api.internal.ArcCollection(coords);
+     var lyr = {
+        geometry_type: "polygon",
+        shapes: [[[1, 0]], [[2, 5, 3, -2]]]
+      },
+      dataset = {
+        arcs: arcs,
+        layers: [lyr]
+      };
+
       var target = [[[0, 2, 3]]];
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
-    })
+      var dissolved = dissolveLayers([lyr], dataset);
+      assert.deepEqual(dissolved[0].shapes, target);
+    });
+
 
     it ('ignores collapsed arcs 2', function() {
-      var shapes = [[[4, 1, 0]], [[~4, 2, 3, -2]]];
+      var arcs = new api.internal.ArcCollection(coords);
+      var lyr = {
+        geometry_type: "polygon",
+        shapes: [[[4, 1, 0]], [[~4, 2, 3, -2]]]
+      },
+      dataset = {
+        arcs: arcs,
+        layers: [lyr]
+      };
+
       var target = [[[0, 2, 3]]];
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
+      var dissolved = dissolveLayers([lyr], dataset);
+      assert.deepEqual(dissolved[0].shapes, target);
     })
 
     it ('ignores collapsed arcs 3', function() {
-      var shapes = [[[4, 4, 1, 0, 4]], [[~4, 2, 3, -2, 4]]];
+     var arcs = new api.internal.ArcCollection(coords);
+     var lyr = {
+        geometry_type: "polygon",
+        shapes: [[[4, 4, 1, 0, 4]], [[~4, 2, 3, -2, 4]]]
+      },
+      dataset = {
+        arcs: arcs,
+        layers: [lyr]
+      };
+
       var target = [[[0, 2, 3]]];
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
+      var dissolved = dissolveLayers([lyr], dataset);
+      assert.deepEqual(dissolved[0].shapes, target);
     })
   })
+
+  describe('Fig. 3', function () {
+    //
+    //  d -- e -- a
+    //  |   / \   |
+    //  |  g - f  |
+    //  |         |
+    //  c ------- b
+    //
+    //   abcde, efge, ea
+    //   0,     1,    2
+
+    var coords = [[[5, 3], [5, 1], [1, 1], [1, 3], [3, 3]],
+        [[3, 3], [4, 2], [2, 2], [3, 3]],
+        [[3, 3], [5, 3]]];
+
+    it('filled triangle', function () {
+      var arcs = new ArcCollection(coords);
+      var lyr = {
+        geometry_type: "polygon",
+        shapes: [[[0, ~1, 2]], [[1]]]
+      },
+      dataset = {
+        arcs: arcs,
+        layers: [lyr]
+      };
+
+      var target = [[[2, 0]]];
+      var dissolved = dissolveLayers([lyr], dataset);
+      assert.deepEqual(dissolved[0].shapes, target);
+    })
+  })
+
 
   describe('Fig. 2', function () {
     //       e
@@ -83,37 +154,12 @@ describe('mapshaper-clipping.js dissolve tests', function () {
     var coords = [[[3, 4], [4, 3], [3, 2], [2, 3], [3, 4]],
         [[3, 4], [3, 5]],
         [[3, 5], [5, 3], [3, 1], [1, 3], [3, 5]]];
-    var arcs = new ArcCollection(coords);
+    var nodes = new NodeCollection(coords);
 
     it('dissolve a shape into itself', function () {
       var shapes = [[[1, 2, -2, -1]]];
       var target = [[[2],[-1]]];
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
-
-    })
-  })
-
-  describe('Fig. 3', function () {
-    //
-    //  d -- e -- a
-    //  |   / \   |
-    //  |  g - f  |
-    //  |         |
-    //  c ------- b
-    //
-    //   abcde, efge, ea
-    //   0,     1,    2
-
-    var coords = [[[5, 3], [5, 1], [1, 1], [1, 3], [3, 3]],
-        [[3, 3], [4, 2], [2, 2], [3, 3]],
-        [[3, 3], [5, 3]]];
-    var arcs = new ArcCollection(coords);
-
-    it('odd shape', function () {
-      var shapes = [[[0, ~1, 2]], [[1]]];
-      var target = [[[0, 2]]];
-
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
+      assert.deepEqual(dissolvePolygons(shapes, nodes), target);
     })
   })
 
@@ -135,16 +181,16 @@ describe('mapshaper-clipping.js dissolve tests', function () {
         [[3, 4], [3, 2]],
         [[3, 2], [2, 3], [3, 4]],
         [[3, 4], [5, 4]]];
-    var arcs = new ArcCollection(coords);
+    var nodes = new NodeCollection(coords);
 
     it('dissolve all', function () {
       var shapes = [[[0, ~3, ~1, 4]], [[2, 3]], [[1, ~2]]];
-      var target = [[[0, 4]]]
-      assert.deepEqual(dissolveShapes(shapes, arcs), [[[0, 4]]]);
+      // var target = [[[0, 4]]]
+      var target = [[[4, 0]]]
+      assert.deepEqual(dissolvePolygons(shapes, nodes), target);
     })
 
   })
-
 
   describe('Fig. 5 - hourglass shape', function () {
     //
@@ -163,17 +209,16 @@ describe('mapshaper-clipping.js dissolve tests', function () {
         [[2, 3], [2, 2]],
         [[2, 2], [3, 1]],
         [[3, 1], [1, 1], [2, 2]]];
-    var arcs = new ArcCollection(coords);
+    var nodes = new NodeCollection(coords);
 
     // TODO: removal is a consequence of blocking shared boundaries of
     //   adjacent polygons -- need to reconsider this?
     it('stem of hourglass is removed', function () {
       var shapes = [[[0, 1, 2, 3, ~1]]];
       var target = [[[0], [2, 3]]];
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
+      assert.deepEqual(dissolvePolygons(shapes, nodes), target);
     })
   })
-
 
   describe('Fig. 6', function () {
     //
@@ -189,24 +234,30 @@ describe('mapshaper-clipping.js dissolve tests', function () {
     var coords = [[[1, 3], [2, 3]],
         [[2, 3], [2, 2]],
         [[2, 3], [3, 3], [3, 1], [1, 1], [1, 3]]];
-    var arcs = new ArcCollection(coords);
 
     it ('should skip spike - test 1', function() {
+      var nodes = new NodeCollection(coords);
       var shapes = [[[0, 1, ~1, 2]]];
-      var target = [[[0, 2]]];
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
+      // var target = [[[0, 2]]];
+      var target = [[[2, 0]]];
+      assert.deepEqual(dissolvePolygons(shapes, nodes), target);
     })
 
+    /*
+    // TODO: investigate this
     it ('should skip spike - test 2', function() {
+      var nodes = new NodeCollection(coords);
       var shapes = [[[1, ~1, 2, 0]]];
       var target = [[[2, 0]]];
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
+      assert.deepEqual(dissolvePolygons(shapes, nodes), target);
     })
+    */
 
     it ('should skip spike - test 3', function() {
+      var nodes = new NodeCollection(coords);
       var shapes = [[[~1, 2, 0, 1]]];
       var target = [[[2, 0]]];
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
+      assert.deepEqual(dissolvePolygons(shapes, nodes), target);
     })
   })
 
@@ -227,12 +278,12 @@ describe('mapshaper-clipping.js dissolve tests', function () {
         [[3, 3], [2, 2], [1, 3]],
         [[1, 3], [3, 3]],
         [[3, 3], [3, 1], [1, 1], [1, 3]]];
-    var arcs = new ArcCollection(coords);
+    var nodes = new NodeCollection(coords);
 
     it ('should dissolve overlapping rings', function() {
       var shapes = [[[0, 1]], [[2, 3]]];
       var target = [[[0, 3]]];
-      assert.deepEqual(dissolveShapes(shapes, arcs), target);
+      assert.deepEqual(dissolvePolygons(shapes, nodes), target);
     })
   })
 

@@ -139,7 +139,7 @@ MapShaper.getOptionParser = function() {
       assign_to: "method"
     })
     .option("visvalingam", {
-      describe: "use Visvalingam simplification",
+      describe: "use Visvalingam simplification with \"effective area\" metric",
       assign_to: "method"
     })
     .option("method", {
@@ -171,7 +171,7 @@ MapShaper.getOptionParser = function() {
       describe: "file containing data records"
     })
     .option("keys", {
-      describe: "local,foreign keys, e.g. keys=FIPS,CNTYFIPS:str",
+      describe: "target,source keys, e.g. keys=FIPS,CNTYFIPS:str",
       type: "comma-sep"
     })
     .option("fields", {
@@ -218,8 +218,8 @@ MapShaper.getOptionParser = function() {
       label: "<file|layer>",
       describe: "file or layer containing clip polygons"
     })
-    .option("auto-snap", autoSnapOpt)
-    .option("snap-interval", snapIntervalOpt)
+    //.option("auto-snap", autoSnapOpt)
+    //.option("snap-interval", snapIntervalOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -231,8 +231,8 @@ MapShaper.getOptionParser = function() {
       label: "<file|layer>",
       describe: "file or layer containing erase polygons"
     })
-    .option("auto-snap", autoSnapOpt)
-    .option("snap-interval", snapIntervalOpt)
+    //.option("auto-snap", autoSnapOpt)
+    //.option("snap-interval", snapIntervalOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);

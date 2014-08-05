@@ -16,13 +16,24 @@ MapShaper.andBits = function(src, flags, mask) {
   return src & (~mask | flags);
 };
 
+MapShaper.setRouteBits = function(bits, id, flags) {
+  var abs = absArcId(id),
+      mask;
+  if (abs == id) { // fw
+    mask = ~3;
+  } else {
+    mask = ~0x30;
+    bits = bits << 4;
+  }
+  flags[abs] &= (bits | mask);
+};
 
-function getRouteBits(id, flags) {
+MapShaper.getRouteBits = function(id, flags) {
   var abs = absArcId(id),
       bits = flags[abs];
   if (abs != id) bits = bits >> 4;
   return bits & 7;
-}
+};
 
 // enable arc pathways in a single shape or array of shapes
 // Uses 6 bits to control traversal of each arc
@@ -58,7 +69,12 @@ MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBi
 
       // dissolve hides arcs that have both fw and rev pathways open
       if (dissolve && (newFlag & 0x22) === 0x22) {
+
+        // kludge to allow setting both fw and rev to open
+        // if (!(fwd && rev)) {
+          // console.log("hiding a route; id:", id, "fw:", fwd, "rev:", rev, "flag:", currFlag)
         newFlag &= ~0x11; // make invisible
+        //}
       }
     }
 
@@ -103,7 +119,6 @@ function bitsToString(bits) {
   }
   return str;
 }
-
 
 // Return a function for generating a path across a field of intersecting arcs
 MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute) {

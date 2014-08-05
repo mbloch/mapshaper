@@ -9,17 +9,35 @@ mapshaper-path-index
 // Divide a collection of arcs at points where segments intersect
 // and re-index the paths of all the layers that reference the arc collection.
 // (in-place)
-// TODO: rename
+// TODO: rename this function
 MapShaper.divideArcs = function(layers, arcs) {
+  // experimental: snap coordinates to prevent rounding errors
+  if (true) {
+    var snapDist = MapShaper.getHighPrecisionSnapInterval(arcs);
+    var dataset = {
+      layers: layers,
+      arcs: arcs
+    };
+    MapShaper.snapCoordsByInterval(arcs, snapDist);
+    arcs.dedupCoords();
+    // rebuild topology: snapping may have changed some things
+    // TODO: not needed if no points were snapped
+    api.buildTopology(dataset);
+    arcs = dataset.arcs;
+  }
+
+
+  // clip arcs at points where segments intersect
   var map = MapShaper.insertClippingPoints(arcs);
+
+  // update arc ids in arc-based layers and clean up arc geometry
+  // to remove degenerate arcs and duplicate points
   var nodes = new NodeCollection(arcs);
-  // update arc ids in arc-based layers after adding clipping points
   layers.forEach(function(lyr) {
     if (MapShaper.layerHasPaths(lyr)) {
       MapShaper.updateArcIds(lyr.shapes, map, arcs, nodes);
-      // Addition of clipping points may create degenerate arcs... remove them
-      // TODO: consider alternative -- avoid creating degenerate arcs in
-      //    insertClippingPoints()
+      // TODO: consider alternative -- avoid creating degenerate arcs
+      // in insertClippingPoints()
       MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
@@ -59,7 +77,9 @@ MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {
         min++;
       }
       // If there are duplicate arcs, always use the same one
-      if (nodes) id2 = nodes.findMatchingArc(id2);
+      if (nodes) {
+        id2 = nodes.findMatchingArc(id2);
+      }
       ids.push(id2);
     } while (max - min >= 0);
   }

@@ -2,7 +2,7 @@ var api = require('../'),
     assert = require('assert'),
     ArcCollection = api.internal.ArcCollection;
 
-
+// return;
 describe('mapshaper-clip-erase.js', function () {
   // TODO: move to correct file
   describe('setting bits', function() {
@@ -296,7 +296,8 @@ describe('mapshaper-clip-erase.js', function () {
         arcs: new ArcCollection(coords),
         layers: [lyr1, lyr2]
       };
-      var targetShapes = [[[1, 5, 3]]];
+      // var targetShapes = [[[1, 5, 3]]];
+      var targetShapes = [[[1, 6, 4]]];  // spike is cut off and ignored
       var clippedLyr = api.clipPolygons(lyr1, lyr2, dataset);
       assert.deepEqual(clippedLyr.shapes, targetShapes);
     })
@@ -779,7 +780,8 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var erasedLyr = api.erasePolygons(lyr1, lyr2, dataset);
-      var target = [[[0], [~2, ~3]]];
+      //var target = [[[0], [~2, ~3]]];
+      var target = [[[0], [~3, ~2]]];
       assert.deepEqual(erasedLyr.shapes, target);
     })
   })
@@ -1093,5 +1095,104 @@ describe('mapshaper-clip-erase.js', function () {
     });
 
   })
+
+  describe('Bugfix xx - island clip/erase self', function() {
+    // Source: an island from ne_10m_admin_0_countries.shp that doesn't erase self
+    var coords = [ [ [ -114.31688391799986, 78.01422760600012 ],
+    [ -114.25780188699993, 77.98944733300006 ],
+    [ -114.11461341099997, 78.00043366100012 ],
+    [ -114.06362870999996, 77.97264232000005 ],
+    [ -114.06989498599991, 77.97264232000005 ],
+    [ -113.9874161449999, 77.93744538000009 ],
+    [ -113.97427324099993, 77.92829010600012 ],
+    [ -113.95132402299996, 77.9188500020001 ],
+    [ -113.7372940749999, 77.90167877800006 ],
+    [ -113.70152747299996, 77.89036692900008 ],
+    [ -113.6862686839999, 77.86660390800007 ],
+    [ -113.67149817599991, 77.84593333500008 ],
+    [ -113.60094153599994, 77.8324242210001 ],
+    [ -113.57701575399997, 77.81500885600012 ],
+    [ -113.60423743399988, 77.81085846600008 ],
+    [ -113.72248287699992, 77.76923248900012 ],
+    [ -114.16258704299987, 77.70673248900009 ],
+    [ -114.3006892569999, 77.71328359600007 ],
+    [ -114.4796036449999, 77.75141022300004 ],
+    [ -114.6213272779999, 77.75682200700008 ],
+    [ -114.65269934799994, 77.76788971600011 ],
+    [ -114.62287350199993, 77.77411530200008 ],
+    [ -114.51610266799986, 77.76044342700006 ],
+    [ -114.5379939439999, 77.78302643400012 ],
+    [ -114.58193925699992, 77.79645416900011 ],
+    [ -114.66698157499994, 77.80817291900011 ],
+    [ -114.79824785099996, 77.85032786700005 ],
+    [ -114.85781816299988, 77.85980866100006 ],
+    [ -115.1182348299999, 77.95966217700006 ],
+    [ -115.0970759759999, 77.96613190300015 ],
+    [ -115.06932532499992, 77.96893952000009 ],
+    [ -115.04067949099995, 77.96824778900007 ],
+    [ -114.99071204299992, 77.95799388200005 ],
+    [ -114.9683324859999, 77.95677317900002 ],
+    [ -114.94762122299989, 77.95966217700006 ],
+    [ -114.89891516799986, 77.97357819200003 ],
+    [ -114.7950740229999, 77.98285553600009 ],
+    [ -114.76732337099992, 77.99005768400012 ],
+    [ -114.74111894399988, 77.99994538000003 ],
+    [ -114.6796768869999, 78.03449127800012 ],
+    [ -114.50186113199995, 78.04840729400011 ],
+    [ -114.38882402299991, 78.07660553600009 ],
+    [ -114.32725989499995, 78.08079661700002 ],
+    [ -114.28278561099985, 78.06207916900014 ],
+    [ -114.2938533189999, 78.05231354400011 ],
+    [ -114.35098222599987, 78.03473541900009 ],
+    [ -114.33193925699987, 78.02741120000006 ],
+    [ -114.26911373599991, 78.01422760600012 ],
+    [ -114.31688391799986, 78.01422760600012 ] ] ];
+
+    it ("Island polygon should erase itself", function() {
+
+      var clipLyr = {
+        name: "clip",
+        geometry_type: "polygon",
+        shapes: [[[0]]]
+      };
+      var targetLyr = {
+        name: "target",
+        geometry_type: "polygon",
+        shapes: [[[0]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [clipLyr, targetLyr]
+      };
+
+      var clippedLyr = api.erasePolygons(targetLyr, clipLyr, dataset);
+      var target = [null];
+      assert.deepEqual(clippedLyr.shapes, target);
+    });
+
+    it ("Self-clip retains island", function() {
+
+      var clipLyr = {
+        name: "clip",
+        geometry_type: "polygon",
+        shapes: [[[0]]]
+      };
+      var targetLyr = {
+        name: "target",
+        geometry_type: "polygon",
+        shapes: [[[0]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [clipLyr, targetLyr]
+      };
+
+      var clippedLyr = api.clipPolygons(targetLyr, clipLyr, dataset);
+      var target = [[[0]]];
+      assert.deepEqual(clippedLyr.shapes, target);
+    });
+
+  })
+
 
 })

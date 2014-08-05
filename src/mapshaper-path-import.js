@@ -195,7 +195,7 @@ function PathImporter(reservedPoints, opts) {
         // TODO: move shape validation after snapping (which may corrupt shapes)
         if (opts.auto_snap || opts.snap_interval) {
           T.start();
-          MapShaper.autoSnapCoords(arcs, opts.snap_interval || null);
+          MapShaper.snapCoords(arcs, opts.snap_interval);
           T.stop("Snapping points");
         }
 

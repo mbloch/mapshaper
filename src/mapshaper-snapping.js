@@ -4,25 +4,37 @@ mapshaper-geom,
 mapshaper-shapes
 */
 
-// Snap together points within a small threshold
-// @points (optional) array, snapped coords are added so they can be displayed
-//
-//
-MapShaper.autoSnapCoords = function(arcs, threshold, points) {
-  var avgDist = arcs.getAvgSegment(),
-      snapDist = avgDist * 0.0025,
-      snapCount = 0,
-      xx = arcs.getVertexData().xx,
-      yy = arcs.getVertexData().yy;
+MapShaper.getHighPrecisionSnapInterval = function(arcs) {
+  var bb = arcs.getBounds();
+  if (!bb.hasBounds()) return 0;
+  var maxCoord = Math.max(Math.abs(bb.xmin), Math.abs(bb.ymin),
+      Math.abs(bb.xmax), Math.abs(bb.ymax));
+  return maxCoord * 1e-14;
+};
 
-  if (threshold) {
+MapShaper.snapCoords = function(arcs, threshold) {
+  var avgDist = arcs.getAvgSegment(),
+      autoSnapDist = avgDist * 0.0025,
+      snapDist = autoSnapDist;
+
+  if (threshold > 0) {
     if (threshold > avgDist) {
       message(Utils.format("Snapping interval is larger than avg. segment length (%.5f) -- using auto-snap instead", avgDist));
-    } else if (threshold > 0) {
-      message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
+    } else {
       snapDist = threshold;
+      message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
     }
   }
+
+  MapShaper.snapCoordsByInterval(arcs, snapDist);
+};
+
+// Snap together points within a small threshold
+//
+MapShaper.snapCoordsByInterval = function(arcs, snapDist) {
+  var snapCount = 0,
+      xx = arcs.getVertexData().xx,
+      yy = arcs.getVertexData().yy;
 
   // Get sorted coordinate ids
   // Consider: speed up sorting -- try bucket sort as first pass.
@@ -60,9 +72,9 @@ MapShaper.autoSnapCoords = function(arcs, threshold, points) {
         xx[id2] = x;
         yy[id2] = y;
         snaps++;
-        if (points) {
-          points.push([[x, x2], [y, y2]]);
-        }
+        //if (points) {
+        //  points.push([[x, x2], [y, y2]]);
+        //}
       }
     }
     return snaps;

@@ -5,5 +5,4 @@ var api = require('../'),
 
 describe('mapshaper-clipping.js', function () {
 
-
 })
