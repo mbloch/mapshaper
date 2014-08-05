@@ -70,7 +70,6 @@ MapShaper.dividePolygon = function(shp, nodes, cw, ccw, splitter) {
   });
 };
 
-
 // Returns a function for flattening a collection of polygon rings
 // Rings are assumed to be oriented in the same direction (all CW or all CCW)
 // Rings may overlap each other, but should be free of self-intersections

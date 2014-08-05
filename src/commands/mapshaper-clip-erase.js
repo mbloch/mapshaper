@@ -56,6 +56,7 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
   var routeFlags = new Uint8Array(arcs.size());
 
   var clipArcTouches = 0;
+  var clipArcUses = 0;
   var usedClipArcs = [];
   var dividePath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
   var dividedShapes = clipPolygons(targetLyr.shapes, clipLyr.shapes, arcs, type);
@@ -97,7 +98,7 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
     MapShaper.closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
     index = new PathIndex(undividedClipShapes, arcs);
     targetShapes.forEach(function(shape, shapeId) {
-      var paths = findInteriorPaths(shape, type, index);
+      var paths = shape ? findInteriorPaths(shape, type, index) : null;
       if (paths) {
         clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
       }
@@ -123,11 +124,15 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
       var path;
       for (var i=0, n=ids.length; i<n; i++) {
         clipArcTouches = 0;
+        clipArcUses = 0;
         path = dividePath(ids[i]);
 
         if (path) {
           // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
-          if (clipArcTouches === 0) {
+          // if (clipArcTouches === 0) {
+          // if ring doesn't incorporate an arc from the clip/erase polygon,
+          // check if it is contained (assumes clip shapes are dissolved)
+          if (clipArcTouches === 0 || clipArcUses === 0) { //
             var contained = index.pathIsEnclosed(path);
             if (clipping && contained || erasing && !contained) {
               dividedShape.push(path);
@@ -211,6 +216,7 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
     }
 
     if (usable) {
+      if (clipRoute == 3) clipArcUses++;
       // block route
       if (fw) {
         targetBits = MapShaper.setBits(targetBits, 1, 3);

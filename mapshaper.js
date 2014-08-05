@@ -8418,18 +8418,24 @@ function PathIndex(shapes, arcs) {
     }
   }
 
-  // test if path is contained within an indexed path
-  // assumes paths don't intersect (intersections should have been handled previously)
+  // Test if a polygon ring is contained within an indexed ring
+  // Not a true polygon-in-polygon test
+  // Assumes that the target ring does not cross an indexed ring at any point
+  // or share a segment with an indexed ring. (Intersecting rings should have
+  // been detected previously).
+  //
   this.pathIsEnclosed = function(pathIds) {
     var pathBounds = arcs.getSimpleShapeBounds(pathIds),
         cands = _index.search(pathBounds.toArray()),
+        p = getTestPoint(pathIds),
         count = 0;
 
     cands.forEach(function(cand) {
       if (cand.i in pathIndexes) {
-        var p = arcs.getVertex(pathIds[0], 0);
-        if (pathIndexes[cand.i].pointInPolygon(p.x, p.y)) count++;
-      } else if (pathContainsPath(cand.ids, cand.bounds, pathIds, pathBounds)) {
+        if (pathIndexes[cand.i].pointInPolygon(p.x, p.y)) {
+          count++;
+        }
+      } else if (pathContainsPoint(cand.ids, cand.bounds, p)) {
         count++;
       }
     });
@@ -8444,7 +8450,10 @@ function PathIndex(shapes, arcs) {
         paths = [];
 
     cands.forEach(function(cand) {
-      if (pathContainsPath(pathIds, pathBounds, cand.ids, cand.bounds)) paths.push(cand.ids);
+      var p = getTestPoint(cand.ids);
+      if (pathContainsPoint(pathIds, pathBounds, p)) {
+        paths.push(cand.ids);
+      }
     });
     return paths.length > 0 ? paths : null;
   };
@@ -8462,14 +8471,21 @@ function PathIndex(shapes, arcs) {
     return paths.length > 0 ? paths : null;
   };
 
-  // assume polygon paths do not intersect (may be adjacent)
-  function pathContainsPath(idsA, boundsA, idsB, boundsB) {
-    if (boundsA.contains(boundsB) === false) return false;
+  function getTestPoint(pathIds) {
+    // test point halfway along first segment because ring might still be
+    // enclosed if a segment endpoint touches an indexed ring.
+    var p0 = arcs.getVertex(pathIds[0], 0),
+        p1 = arcs.getVertex(pathIds[0], 1);
+    return {
+      x: (p0.x + p1.x) / 2,
+      y: (p0.y + p1.y) / 2
+    };
+  }
 
+  function pathContainsPoint(pathIds, pathBounds, p) {
+    if (pathBounds.containsPoint(p.x, p.y) === false) return false;
     // A contains B iff some point on B is inside A
-    // TODO: improve performance with large polygons
-    var p = arcs.getVertex(idsB[0], 0);
-    var inside = geom.testPointInRing(p.x, p.y, idsA, arcs);
+    var inside = geom.testPointInRing(p.x, p.y, pathIds, arcs);
     return inside;
   }
 
@@ -14405,7 +14421,6 @@ MapShaper.dividePolygon = function(shp, nodes, cw, ccw, splitter) {
   });
 };
 
-
 // Returns a function for flattening a collection of polygon rings
 // Rings are assumed to be oriented in the same direction (all CW or all CCW)
 // Rings may overlap each other, but should be free of self-intersections
@@ -14631,6 +14646,7 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
   var routeFlags = new Uint8Array(arcs.size());
 
   var clipArcTouches = 0;
+  var clipArcUses = 0;
   var usedClipArcs = [];
   var dividePath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
   var dividedShapes = clipPolygons(targetLyr.shapes, clipLyr.shapes, arcs, type);
@@ -14672,7 +14688,7 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
     MapShaper.closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
     index = new PathIndex(undividedClipShapes, arcs);
     targetShapes.forEach(function(shape, shapeId) {
-      var paths = findInteriorPaths(shape, type, index);
+      var paths = shape ? findInteriorPaths(shape, type, index) : null;
       if (paths) {
         clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
       }
@@ -14698,11 +14714,15 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
       var path;
       for (var i=0, n=ids.length; i<n; i++) {
         clipArcTouches = 0;
+        clipArcUses = 0;
         path = dividePath(ids[i]);
 
         if (path) {
           // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
-          if (clipArcTouches === 0) {
+          // if (clipArcTouches === 0) {
+          // if ring doesn't incorporate an arc from the clip/erase polygon,
+          // check if it is contained (assumes clip shapes are dissolved)
+          if (clipArcTouches === 0 || clipArcUses === 0) { //
             var contained = index.pathIsEnclosed(path);
             if (clipping && contained || erasing && !contained) {
               dividedShape.push(path);
@@ -14786,6 +14806,7 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
     }
 
     if (usable) {
+      if (clipRoute == 3) clipArcUses++;
       // block route
       if (fw) {
         targetBits = MapShaper.setBits(targetBits, 1, 3);

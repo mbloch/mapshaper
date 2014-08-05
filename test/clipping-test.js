@@ -1096,7 +1096,45 @@ describe('mapshaper-clip-erase.js', function () {
 
   })
 
-  describe('Bugfix xx - island clip/erase self', function() {
+
+  describe('Bugfix ## - interior ring touches clip shape at one point', function () {
+    //
+    //  d -- e -- a
+    //  |   / \   |
+    //  |  g - f  |
+    //  |         |
+    //  c ------- b
+    //
+    //   abcde, efge, ea
+    //   0,     1,    2
+
+    var coords = [[[5, 3], [5, 1], [1, 1], [1, 3], [3, 3]],
+        [[3, 3], [4, 2], [2, 2], [3, 3]],
+        [[3, 3], [5, 3]]];
+
+    it('erasing against containing ring should make inner ring disappear', function () {
+      var clipLyr = {
+        name: "clip",
+        geometry_type: "polygon",
+        shapes: [[[0, 2]]]
+      };
+      var targetLyr = {
+        name: "target",
+        geometry_type: "polygon",
+        shapes: [[[1]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [clipLyr, targetLyr]
+      };
+
+      var erasedLyr = api.erasePolygons(targetLyr, clipLyr, dataset);
+      var target = [null];
+      assert.deepEqual(erasedLyr.shapes, target);
+    })
+  })
+
+  describe('Bugfix ## - island clip/erase self', function() {
     // Source: an island from ne_10m_admin_0_countries.shp that doesn't erase self
     var coords = [ [ [ -114.31688391799986, 78.01422760600012 ],
     [ -114.25780188699993, 77.98944733300006 ],

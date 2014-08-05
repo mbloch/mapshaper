@@ -33,18 +33,24 @@ function PathIndex(shapes, arcs) {
     }
   }
 
-  // test if path is contained within an indexed path
-  // assumes paths don't intersect (intersections should have been handled previously)
+  // Test if a polygon ring is contained within an indexed ring
+  // Not a true polygon-in-polygon test
+  // Assumes that the target ring does not cross an indexed ring at any point
+  // or share a segment with an indexed ring. (Intersecting rings should have
+  // been detected previously).
+  //
   this.pathIsEnclosed = function(pathIds) {
     var pathBounds = arcs.getSimpleShapeBounds(pathIds),
         cands = _index.search(pathBounds.toArray()),
+        p = getTestPoint(pathIds),
         count = 0;
 
     cands.forEach(function(cand) {
       if (cand.i in pathIndexes) {
-        var p = arcs.getVertex(pathIds[0], 0);
-        if (pathIndexes[cand.i].pointInPolygon(p.x, p.y)) count++;
-      } else if (pathContainsPath(cand.ids, cand.bounds, pathIds, pathBounds)) {
+        if (pathIndexes[cand.i].pointInPolygon(p.x, p.y)) {
+          count++;
+        }
+      } else if (pathContainsPoint(cand.ids, cand.bounds, p)) {
         count++;
       }
     });
@@ -59,7 +65,10 @@ function PathIndex(shapes, arcs) {
         paths = [];
 
     cands.forEach(function(cand) {
-      if (pathContainsPath(pathIds, pathBounds, cand.ids, cand.bounds)) paths.push(cand.ids);
+      var p = getTestPoint(cand.ids);
+      if (pathContainsPoint(pathIds, pathBounds, p)) {
+        paths.push(cand.ids);
+      }
     });
     return paths.length > 0 ? paths : null;
   };
@@ -77,14 +86,21 @@ function PathIndex(shapes, arcs) {
     return paths.length > 0 ? paths : null;
   };
 
-  // assume polygon paths do not intersect (may be adjacent)
-  function pathContainsPath(idsA, boundsA, idsB, boundsB) {
-    if (boundsA.contains(boundsB) === false) return false;
+  function getTestPoint(pathIds) {
+    // test point halfway along first segment because ring might still be
+    // enclosed if a segment endpoint touches an indexed ring.
+    var p0 = arcs.getVertex(pathIds[0], 0),
+        p1 = arcs.getVertex(pathIds[0], 1);
+    return {
+      x: (p0.x + p1.x) / 2,
+      y: (p0.y + p1.y) / 2
+    };
+  }
 
+  function pathContainsPoint(pathIds, pathBounds, p) {
+    if (pathBounds.containsPoint(p.x, p.y) === false) return false;
     // A contains B iff some point on B is inside A
-    // TODO: improve performance with large polygons
-    var p = arcs.getVertex(idsB[0], 0);
-    var inside = geom.testPointInRing(p.x, p.y, idsA, arcs);
+    var inside = geom.testPointInRing(p.x, p.y, pathIds, arcs);
     return inside;
   }
 
