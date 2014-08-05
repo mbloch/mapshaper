@@ -129,7 +129,7 @@ describe('mapshaper-shape-geom.js', function () {
   })
 
 
-  describe("getSignedArea3()", function() {
+  describe("getPathArea3()", function() {
 
     it("returns 0 if shape has collapsed", function() {
       assert.equal(geom.getPathArea3([0, 1, 0], [0, 1, 0]), 0);
@@ -151,4 +151,47 @@ describe('mapshaper-shape-geom.js', function () {
     })
   })
 
+
+  describe("getPathArea2()", function() {
+
+    it("returns negative area if points are counter-clockwise", function() {
+      assert.equal(geom.getPathArea2([[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]), -1)
+    })
+
+    it("returns positive area if points are clockwise", function() {
+      assert.equal(geom.getPathArea2([[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]), 1)
+    })
+
+    it("Fix: tiny CCW triangle", function() {
+      var coords = [ [ -89.93838884833583, 37.87449410425668 ],
+      [ -89.93838904665556, 37.87449407735467 ],
+      [ -89.9383888795177, 37.87449407735467 ],
+      [ -89.93838884833583, 37.87449410425668 ] ];
+      assert.ok(geom.getPathArea2(coords) < 0);
+    })
+  })
+
+  describe("getPathArea4()", function() {
+
+    it("Fix: tiny CCW triangle", function() {
+      // This tiny triangle tested as CW before area function was rewritten
+      // to reduce fp rounding error.
+      var coords = [ [ [ -89.93838884833583, 37.87449410425668 ],
+      [ -89.93838904665556, 37.87449407735467 ],
+      [ -89.9383888795177, 37.87449407735467 ],
+      [ -89.93838884833583, 37.87449410425668 ] ] ];
+      var arcs = new api.internal.ArcCollection(coords);
+      assert.ok(geom.getPathArea4([0], arcs) < 0);
+    })
+
+    it("Fix: tiny CW triangle", function() {
+      var coords = [ [ [ -89.93838884833583, 37.87449410425668 ],
+      [ -89.93838904665556, 37.87449407735467 ],
+      [ -89.9383888795177, 37.87449407735467 ],
+      [ -89.93838884833583, 37.87449410425668 ] ] ];
+      var arcs = new api.internal.ArcCollection(coords);
+      assert.ok(geom.getPathArea4([~0], arcs) > 0);
+    })
+
+  })
 })

@@ -40,6 +40,7 @@ MapShaper.getPolygonDissolver = function(nodes) {
         ccw = [];
 
     MapShaper.dividePolygon(shp, nodes, cw, ccw, split);
+
     cw = flatten(cw);
     ccw.forEach(MapShaper.reversePath);
     ccw = flatten(ccw);
@@ -104,7 +105,6 @@ MapShaper.getRingFlattener = function(nodes, flags) {
     } else if (angle2 < angle1) {
       route = 2;
     }
-    // console.log("choose() from:", prevId, "a:", id1, angle1, "b:", id2, angle2);
     return route;
   }
 

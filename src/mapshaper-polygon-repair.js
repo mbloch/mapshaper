@@ -83,29 +83,19 @@ MapShaper.repairSelfIntersections = function(lyr, nodes) {
       } else if (splitIds.length == 1) {
         cleanedPolygon.push(splitIds[0]);
       } else {
-        // cleanedPolygon = cleanedPolygon.concat(splitIds); return;
         var shapeArea = geom.getPathArea4(ids, nodes.arcs),
             sign = shapeArea > 0 ? 1 : -1,
             mainRing;
-        // console.log("splitting this ring:", ids);
+
         var maxArea = splitIds.reduce(function(max, ringIds, i) {
           var pathArea = geom.getPathArea4(ringIds, nodes.arcs) * sign;
-          // console.log("... split area:", pathArea);
-          /*
-          var start = nodes.arcs.getVertex(ringIds[0], 0),
-              end = nodes.arcs.getVertex(ringIds[ringIds.length - 1], -1);
-          if (start.x != end.x || start.y != end.y) {
-            error("##### unterminated ring:", ringIds);
-          }
-          */
           if (pathArea > max) {
             mainRing = ringIds;
             max = pathArea;
           }
           return max;
         }, 0);
-        // console.log("ringArea:", shapeArea, "maxPart:", maxArea, "ring:", mainRing.length);
-        // console.log("main:", mainRing);
+
         if (mainRing) {
           cleanedPolygon.push(mainRing);
         }
@@ -139,8 +129,6 @@ MapShaper.getPathSplitter = function(nodes, flags) {
         count++;
       }
     });
-
-    // console.log("findMultipleRoutes() id:", id, "routes:", routes)
 
     return routes || null;
   }

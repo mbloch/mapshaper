@@ -199,25 +199,18 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
         usable = true;
       }
 
-      // Need to close all arcs after visiting them -- or could cause a cycle
-      //   on layers with strange topology
-      // updatedRoute = 5; // set to visible / closed / used;
-      // updatedRoute = 4; // set to invisible / closed / used;
 
-      // routeFlags[abs] ^= (fw ? 2 : 0x20);
-      //if (fw) {
-        // routeFlags[abs] = MapShaper.setBits(targetBits, updatedRoute, 0x7);
-      //} else {
-        // routeFlags[abs] = MapShaper.setBits(targetBits, updatedRoute << 4, 0x70);
-      // }
     } else if (targetRoute === 0 && clipRoute == 3) {
       usedClipArcs.push(id);
       usable = true;
     }
 
     if (usable) {
-      if (clipRoute == 3) clipArcUses++;
-      // block route
+      if (clipRoute == 3) {
+        clipArcUses++;
+      }
+      // Need to close all arcs after visiting them -- or could cause a cycle
+      //   on layers with strange topology
       if (fw) {
         targetBits = MapShaper.setBits(targetBits, 1, 3);
       } else {

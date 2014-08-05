@@ -15,7 +15,6 @@ MapShaper.repairPolygons = function(shapes, nodes) {
   var flags = new Uint8Array(nodes.arcs.size());
   var splitter = MapShaper.getPathSplitter(nodes, flags);
   var dissolver = MapShaper.getRingDissolver(nodes, flags, true);
-  // var dissolveCCW = MapShaper.getRingDissolver(nodes, flags, false);
 
   return shapes.map(function(shp, i) {
     return MapShaper.dissolvePolygon(shp, splitter, dissolver);

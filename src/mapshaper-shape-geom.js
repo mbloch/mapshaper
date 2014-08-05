@@ -248,21 +248,6 @@ geom.getSphericalPathArea = function(iter) {
   return sum / 2 * 6378137 * 6378137;
 };
 
-// Get path area from a point iterator
-geom.getPathArea = function(iter) {
-  var sum = 0,
-      x, y;
-  if (iter.hasNext()) {
-    x = iter.x;
-    y = iter.y;
-    while (iter.hasNext()) {
-      sum += iter.x * y - x * iter.y;
-      x = iter.x;
-      y = iter.y;
-    }
-  }
-  return sum / 2;
-};
 
 geom.wrapPathIter = function(iter, project) {
   return {
@@ -289,25 +274,54 @@ geom.projectGall = (function() {
   };
 }());
 
+// Get path area from a point iterator
+geom.getPathArea = function(iter) {
+  var sum = 0,
+      ax, ay, bx, by, dx, dy;
+  if (iter.hasNext()) {
+    ax = 0;
+    ay = 0;
+    dx = -iter.x;
+    dy = -iter.y;
+    while (iter.hasNext()) {
+      bx = ax;
+      by = ay;
+      ax = iter.x + dx;
+      ay = iter.y + dy;
+      sum += ax * by - bx * ay;
+    }
+  }
+  return sum / 2;
+};
+
+
 // Get path area from an array of [x, y] points
 // TODO: consider removing duplication with getPathArea(), e.g. by
 //   wrapping points in an iterator.
 //
 geom.getPathArea2 = function(points) {
   var sum = 0,
-      x, y, p;
+      ax, ay, bx, by, dx, dy, p;
   for (var i=0, n=points.length; i<n; i++) {
     p = points[i];
-    if (i > 0) {
-      sum += p[0] * y - x * p[1];
+    if (i === 0) {
+      ax = 0;
+      ay = 0;
+      dx = -p[0];
+      dy = -p[1];
+    } else {
+      ax = p[0] + dx;
+      ay = p[1] + dy;
+      sum += ax * by - bx * ay;
     }
-    x = p[0];
-    y = p[1];
+    bx = ax;
+    by = ay;
   }
   return sum / 2;
 };
 
-// TODO: consider removing duplication with above
+// DEPRECATED -- was used for finding path area from raw shapefile input
+// TODO: enhance precision if used again
 geom.getPathArea3 = function(xx, yy, start, len) {
   var sum = 0,
       i = start | 0,

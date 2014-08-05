@@ -7852,21 +7852,6 @@ geom.getSphericalPathArea = function(iter) {
   return sum / 2 * 6378137 * 6378137;
 };
 
-// Get path area from a point iterator
-geom.getPathArea = function(iter) {
-  var sum = 0,
-      x, y;
-  if (iter.hasNext()) {
-    x = iter.x;
-    y = iter.y;
-    while (iter.hasNext()) {
-      sum += iter.x * y - x * iter.y;
-      x = iter.x;
-      y = iter.y;
-    }
-  }
-  return sum / 2;
-};
 
 geom.wrapPathIter = function(iter, project) {
   return {
@@ -7893,25 +7878,54 @@ geom.projectGall = (function() {
   };
 }());
 
+// Get path area from a point iterator
+geom.getPathArea = function(iter) {
+  var sum = 0,
+      ax, ay, bx, by, dx, dy;
+  if (iter.hasNext()) {
+    ax = 0;
+    ay = 0;
+    dx = -iter.x;
+    dy = -iter.y;
+    while (iter.hasNext()) {
+      bx = ax;
+      by = ay;
+      ax = iter.x + dx;
+      ay = iter.y + dy;
+      sum += ax * by - bx * ay;
+    }
+  }
+  return sum / 2;
+};
+
+
 // Get path area from an array of [x, y] points
 // TODO: consider removing duplication with getPathArea(), e.g. by
 //   wrapping points in an iterator.
 //
 geom.getPathArea2 = function(points) {
   var sum = 0,
-      x, y, p;
+      ax, ay, bx, by, dx, dy, p;
   for (var i=0, n=points.length; i<n; i++) {
     p = points[i];
-    if (i > 0) {
-      sum += p[0] * y - x * p[1];
+    if (i === 0) {
+      ax = 0;
+      ay = 0;
+      dx = -p[0];
+      dy = -p[1];
+    } else {
+      ax = p[0] + dx;
+      ay = p[1] + dy;
+      sum += ax * by - bx * ay;
     }
-    x = p[0];
-    y = p[1];
+    bx = ax;
+    by = ay;
   }
   return sum / 2;
 };
 
-// TODO: consider removing duplication with above
+// DEPRECATED -- was used for finding path area from raw shapefile input
+// TODO: enhance precision if used again
 geom.getPathArea3 = function(xx, yy, start, len) {
   var sum = 0,
       i = start | 0,
@@ -9305,29 +9319,19 @@ MapShaper.repairSelfIntersections = function(lyr, nodes) {
       } else if (splitIds.length == 1) {
         cleanedPolygon.push(splitIds[0]);
       } else {
-        // cleanedPolygon = cleanedPolygon.concat(splitIds); return;
         var shapeArea = geom.getPathArea4(ids, nodes.arcs),
             sign = shapeArea > 0 ? 1 : -1,
             mainRing;
-        // console.log("splitting this ring:", ids);
+
         var maxArea = splitIds.reduce(function(max, ringIds, i) {
           var pathArea = geom.getPathArea4(ringIds, nodes.arcs) * sign;
-          // console.log("... split area:", pathArea);
-          /*
-          var start = nodes.arcs.getVertex(ringIds[0], 0),
-              end = nodes.arcs.getVertex(ringIds[ringIds.length - 1], -1);
-          if (start.x != end.x || start.y != end.y) {
-            error("##### unterminated ring:", ringIds);
-          }
-          */
           if (pathArea > max) {
             mainRing = ringIds;
             max = pathArea;
           }
           return max;
         }, 0);
-        // console.log("ringArea:", shapeArea, "maxPart:", maxArea, "ring:", mainRing.length);
-        // console.log("main:", mainRing);
+
         if (mainRing) {
           cleanedPolygon.push(mainRing);
         }
@@ -9361,8 +9365,6 @@ MapShaper.getPathSplitter = function(nodes, flags) {
         count++;
       }
     });
-
-    // console.log("findMultipleRoutes() id:", id, "routes:", routes)
 
     return routes || null;
   }
@@ -14391,6 +14393,7 @@ MapShaper.getPolygonDissolver = function(nodes) {
         ccw = [];
 
     MapShaper.dividePolygon(shp, nodes, cw, ccw, split);
+
     cw = flatten(cw);
     ccw.forEach(MapShaper.reversePath);
     ccw = flatten(ccw);
@@ -14455,7 +14458,6 @@ MapShaper.getRingFlattener = function(nodes, flags) {
     } else if (angle2 < angle1) {
       route = 2;
     }
-    // console.log("choose() from:", prevId, "a:", id1, angle1, "b:", id2, angle2);
     return route;
   }
 
@@ -14789,25 +14791,18 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
         usable = true;
       }
 
-      // Need to close all arcs after visiting them -- or could cause a cycle
-      //   on layers with strange topology
-      // updatedRoute = 5; // set to visible / closed / used;
-      // updatedRoute = 4; // set to invisible / closed / used;
 
-      // routeFlags[abs] ^= (fw ? 2 : 0x20);
-      //if (fw) {
-        // routeFlags[abs] = MapShaper.setBits(targetBits, updatedRoute, 0x7);
-      //} else {
-        // routeFlags[abs] = MapShaper.setBits(targetBits, updatedRoute << 4, 0x70);
-      // }
     } else if (targetRoute === 0 && clipRoute == 3) {
       usedClipArcs.push(id);
       usable = true;
     }
 
     if (usable) {
-      if (clipRoute == 3) clipArcUses++;
-      // block route
+      if (clipRoute == 3) {
+        clipArcUses++;
+      }
+      // Need to close all arcs after visiting them -- or could cause a cycle
+      //   on layers with strange topology
       if (fw) {
         targetBits = MapShaper.setBits(targetBits, 1, 3);
       } else {
@@ -14920,7 +14915,6 @@ MapShaper.repairPolygons = function(shapes, nodes) {
   var flags = new Uint8Array(nodes.arcs.size());
   var splitter = MapShaper.getPathSplitter(nodes, flags);
   var dissolver = MapShaper.getRingDissolver(nodes, flags, true);
-  // var dissolveCCW = MapShaper.getRingDissolver(nodes, flags, false);
 
   return shapes.map(function(shp, i) {
     return MapShaper.dissolvePolygon(shp, splitter, dissolver);
