@@ -2,7 +2,7 @@
 
 ### Introduction
 
-Mapshaper is a program for editing polygon and polyline datasets for mapping. The command line interface has commands for line simplification, attribute field calculation, filtering, clipping, splitting, dissolving, table joins and more. The [web-based gui](http://www.mapshaper.org) focuses on interactive simplification.
+Mapshaper is a program for editing vector datasets for mapping. The `mapshaper` command line program is an alternative to GIS software for performing common map making tasks like simplifying polygons, editing attribute data, joining external data tables, dissolving, clipping and erasing polygon layers, and more. The [web-based gui](http://www.mapshaper.org) focuses on interactive simplification.
 
 Mapshaper can read and write Shapefile, GeoJSON and [TopoJSON](https://github.com/mbostock/topojson/wiki) files.
 
@@ -38,7 +38,7 @@ Browser compatibility: mapshaper works in recent versions of Chrome and Firefox 
 
 ### Command line tool
 
-The [Command Reference](https://github.com/mbloch/mapshaper/wiki/v0.2-Command-Reference) has detailed usage information.
+The [Command Reference](https://github.com/mbloch/mapshaper/wiki/Command-Reference) has detailed usage information.
 
 Examples
 
