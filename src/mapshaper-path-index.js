@@ -4,12 +4,12 @@ MapShaper.PathIndex = PathIndex;
 
 function PathIndex(shapes, arcs) {
   var _index;
-  var pathIndexes = {}; //
+  var pathIndexes = {};
+  var totalArea = arcs.getBounds().area();
   init(shapes);
 
   function init(shapes) {
     var boxes = [];
-    var totalArea = arcs.getBounds().area();
 
     shapes.forEach(function(shp) {
       if (shp) {
@@ -62,11 +62,18 @@ function PathIndex(shapes, arcs) {
   this.findEnclosedPaths = function(pathIds) {
     var pathBounds = arcs.getSimpleShapeBounds(pathIds),
         cands = _index.search(pathBounds.toArray()),
-        paths = [];
+        paths = [],
+        index;
+
+    if (cands.length > 6) {
+      index = new PolygonIndex([pathIds], arcs);
+    }
 
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids);
-      if (pathContainsPoint(pathIds, pathBounds, p)) {
+      var isEnclosed = index ?
+        index.pointInPolygon(p.x, p.y) : pathContainsPoint(pathIds, pathBounds, p);
+      if (isEnclosed) {
         paths.push(cand.ids);
       }
     });
