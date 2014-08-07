@@ -112,13 +112,9 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
         clipping = type == 'clip',
         erasing = type == 'erase';
 
-    // console.log(flagsToArray(routeFlags), "a. pre-clip");
-
     // open pathways for entire polygon rather than one ring at a time --
     // need to create polygons that connect positive-space rings and holes
     MapShaper.openArcRoutes(shape, arcs, routeFlags, true, false, false);
-
-    // console.log(flagsToArray(routeFlags), "b. target shape opened");
 
     MapShaper.forEachPath(shape, function(ids) {
       var path;
@@ -145,8 +141,6 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
       }
     });
 
-    // console.log(flagsToArray(routeFlags), "c. post clip");
-
     // Clear pathways of current target shape to hidden/closed
     MapShaper.closeArcRoutes(shape, arcs, routeFlags, true, true, true);
     // Also clear pathways of any clip arcs that were used
@@ -155,7 +149,6 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
       usedClipArcs = [];
     }
 
-    // console.log(flagsToArray(routeFlags), "d. target shape closed");
     return dividedShape.length === 0 ? null : dividedShape;
   }
 

@@ -4,6 +4,7 @@ mapshaper-endpoints
 mapshaper-shape-geom
 mapshaper-path-index
 mapshaper-path-division
+mapshaper-polygon-repair
 */
 
 // Functions for redrawing polygons for clipping / erasing / flattening / division
@@ -36,9 +37,11 @@ MapShaper.getRouteBits = function(id, flags) {
 };
 
 // enable arc pathways in a single shape or array of shapes
-// Uses 6 bits to control traversal of each arc
-// 0-2: forward arc; 4-6: rev arc
-// fwd/rev bits: 0/4: path is visible; 1/5 = path is open; 3/6: path was used
+// Uses 8 bits to control traversal of each arc
+// 0-3: forward arc; 4-7: rev arc
+// 0: fw path is visible
+// 1: fw path is open for traversal
+// ...
 //
 MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits) {
   MapShaper.forEachArcId(arcIds, function(id) {
@@ -69,12 +72,7 @@ MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBi
 
       // dissolve hides arcs that have both fw and rev pathways open
       if (dissolve && (newFlag & 0x22) === 0x22) {
-
-        // kludge to allow setting both fw and rev to open
-        // if (!(fwd && rev)) {
-          // console.log("hiding a route; id:", id, "fw:", fwd, "rev:", rev, "flag:", currFlag)
         newFlag &= ~0x11; // make invisible
-        //}
       }
     }
 
@@ -91,7 +89,7 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
         closeFwd = isInv ? rev : fwd,
         closeRev = isInv ? fwd : rev;
 
-    if (closeFwd) { // fwd and pos or rev and inv
+    if (closeFwd) {
       if (hide) mask &= ~1;
       mask ^= 0x2;
     }
@@ -104,21 +102,6 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
   });
 };
 
-function flagsToArray(flags) {
-  return Utils.map(flags, function(flag) {
-    return bitsToString(flag);
-  });
-}
-
-function bitsToString(bits) {
-  var str = "";
-  for (var i=0; i<8; i++) {
-    str += (bits & (1 << i)) > 0 ? "1" : "0";
-    if (i < 7) str += ' ';
-    if (i == 3) str += ' ';
-  }
-  return str;
-}
 
 // Return a function for generating a path across a field of intersecting arcs
 MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute) {
@@ -141,7 +124,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
 
     nodes.forEachConnectedArc(prevId, function(candId) {
       if (!routeIsVisible(~candId)) return;
-      if (arcs.getArcLength(candId) < 2) error("[clipPolygon()] defective arc");
+      if (arcs.getArcLength(candId) < 2) error("[pathfinder] defective arc");
 
       var ci = arcs.indexOfVertex(candId, -2),
           cx = xx[ci],
@@ -158,8 +141,6 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
       }
 
       candAngle = signedAngle(ax, ay, bx, by, cx, cy);
-
-      // if (prevId == 261) console.log(prevId, "v", candId, "angle:", candAngle)
 
       if (candAngle > 0) {
         if (nextAngle === 0) {
@@ -191,24 +172,11 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
     var path = [],
         nextId, msg,
         candId = startId,
-        verbose = false; // MapShaper.TRACING;
+        verbose = false;
 
     do {
       if (verbose) msg = (nextId === undefined ? " " : "  " + nextId) + " -> " + candId;
       if (useRoute(candId)) {
-        /*
-        // debug zambia_congo test
-        if (candId == 261) {
-          // debug zambia_congo.shp
-          nodes.debugNode(candId)
-          console.log("\nLAKE nodes:")
-          nodes.debugNode(267)
-          nodes.debugNode(268)
-          nodes.debugNode(269)
-          nodes.debugNode(270)
-          nodes.debugNode(271)
-        }
-        */
         path.push(candId);
         nextId = candId;
         if (verbose) console.log(msg);
@@ -226,5 +194,133 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
     } while (candId != startId);
     return path.length === 0 ? null : path;
   };
-
 };
+
+// types: "dissolve" "flatten"
+// Returns a function for flattening or dissolving a collection of rings
+// Assumes rings are oriented in CW direction
+//
+MapShaper.getRingIntersector = function(nodes, type, flags) {
+  var arcs = nodes.arcs;
+  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
+  flags = flags || new Uint8Array(arcs.size());
+
+  return function(rings) {
+    var dissolve = type == 'dissolve',
+        openFwd = true,
+        openRev = type == 'flatten',
+        output;
+    if (rings.length <= 1) {
+      // wihout multiple rings, nothing to intersect
+      output = rings;
+    } else {
+      output = [];
+      MapShaper.openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
+      MapShaper.forEachPath(rings, function(ids) {
+        var path;
+        for (var i=0, n=ids.length; i<n; i++) {
+          path = findPath(ids[i]);
+          if (path) {
+            output.push(path);
+          }
+        }
+      });
+      MapShaper.closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
+    }
+    return output;
+  };
+
+  function chooseRoute(id1, angle1, id2, angle2, prevId) {
+    var route = 1;
+    if (angle1 == angle2) {
+      trace("[chooseRoute()] parallel routes, unsure which to choose");
+      //MapShaper.debugRoute(id1, id2, nodes.arcs);
+    } else if (angle2 < angle1) {
+      route = 2;
+    }
+    return route;
+  }
+
+  function routeIsActive(arcId) {
+    var bits = MapShaper.getRouteBits(arcId, flags);
+    return (bits & 1) == 1;
+  }
+
+  function useRoute(arcId) {
+    var route = MapShaper.getRouteBits(arcId, flags),
+        isOpen = false;
+
+    if (route == 3) {
+      isOpen = true;
+      MapShaper.setRouteBits(1, arcId, flags); // close the path, leave visible
+    }
+    return isOpen;
+  }
+};
+
+MapShaper.debugFlags = function(flags) {
+  var arr = Utils.map(flags, function(flag) {
+    return bitsToString(flag);
+  });
+  console.log(arr);
+
+  function bitsToString(bits) {
+    var str = "";
+    for (var i=0; i<8; i++) {
+      str += (bits & (1 << i)) > 0 ? "1" : "0";
+      if (i < 7) str += ' ';
+      if (i == 3) str += ' ';
+    }
+    return str;
+  }
+};
+
+/*
+// Given two arcs, where first segments are parallel, choose the one that
+// bends CW
+// return 0 if can't pick
+//
+MapShaper.debugRoute = function(id1, id2, arcs) {
+  var n1 = arcs.getArcLength(id1),
+      n2 = arcs.getArcLength(id2),
+      len1 = 0,
+      len2 = 0,
+      p1, p2, pp1, pp2, ppp1, ppp2,
+      angle1, angle2;
+
+      console.log("chooseRoute() lengths:", n1, n2, 'ids:', id1, id2);
+  for (var i=0; i<n1 && i<n2; i++) {
+    p1 = arcs.getVertex(id1, i);
+    p2 = arcs.getVertex(id2, i);
+    if (i === 0) {
+      if (p1.x != p2.x || p1.y != p2.y) {
+        error("chooseRoute() Routes should originate at the same point)");
+      }
+    }
+
+    if (i > 1) {
+      angle1 = signedAngle(ppp1.x, ppp1.y, pp1.x, pp1.y, p1.x, p1.y);
+      angle2 = signedAngle(ppp2.x, ppp2.y, pp2.x, pp2.y, p2.x, p2.y);
+
+      console.log("angles:", angle1, angle2, 'lens:', len1, len2);
+      // return;
+    }
+
+    if (i >= 1) {
+      len1 += distance2D(p1.x, p1.y, pp1.x, pp1.y);
+      len2 += distance2D(p2.x, p2.y, pp2.x, pp2.y);
+    }
+
+    if (i == 1 && (n1 == 2 || n2 == 2)) {
+      console.log("arc1:", pp1, p1, "len:", len1);
+      console.log("arc2:", pp2, p2, "len:", len2);
+    }
+
+    ppp1 = pp1;
+    ppp2 = pp2;
+    pp1 = p1;
+    pp2 = p2;
+  }
+  return 1;
+};
+*/

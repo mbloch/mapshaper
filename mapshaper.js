@@ -9046,9 +9046,11 @@ MapShaper.getRouteBits = function(id, flags) {
 };
 
 // enable arc pathways in a single shape or array of shapes
-// Uses 6 bits to control traversal of each arc
-// 0-2: forward arc; 4-6: rev arc
-// fwd/rev bits: 0/4: path is visible; 1/5 = path is open; 3/6: path was used
+// Uses 8 bits to control traversal of each arc
+// 0-3: forward arc; 4-7: rev arc
+// 0: fw path is visible
+// 1: fw path is open for traversal
+// ...
 //
 MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits) {
   MapShaper.forEachArcId(arcIds, function(id) {
@@ -9079,12 +9081,7 @@ MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBi
 
       // dissolve hides arcs that have both fw and rev pathways open
       if (dissolve && (newFlag & 0x22) === 0x22) {
-
-        // kludge to allow setting both fw and rev to open
-        // if (!(fwd && rev)) {
-          // console.log("hiding a route; id:", id, "fw:", fwd, "rev:", rev, "flag:", currFlag)
         newFlag &= ~0x11; // make invisible
-        //}
       }
     }
 
@@ -9101,7 +9098,7 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
         closeFwd = isInv ? rev : fwd,
         closeRev = isInv ? fwd : rev;
 
-    if (closeFwd) { // fwd and pos or rev and inv
+    if (closeFwd) {
       if (hide) mask &= ~1;
       mask ^= 0x2;
     }
@@ -9114,21 +9111,6 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
   });
 };
 
-function flagsToArray(flags) {
-  return Utils.map(flags, function(flag) {
-    return bitsToString(flag);
-  });
-}
-
-function bitsToString(bits) {
-  var str = "";
-  for (var i=0; i<8; i++) {
-    str += (bits & (1 << i)) > 0 ? "1" : "0";
-    if (i < 7) str += ' ';
-    if (i == 3) str += ' ';
-  }
-  return str;
-}
 
 // Return a function for generating a path across a field of intersecting arcs
 MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute) {
@@ -9151,7 +9133,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
 
     nodes.forEachConnectedArc(prevId, function(candId) {
       if (!routeIsVisible(~candId)) return;
-      if (arcs.getArcLength(candId) < 2) error("[clipPolygon()] defective arc");
+      if (arcs.getArcLength(candId) < 2) error("[pathfinder] defective arc");
 
       var ci = arcs.indexOfVertex(candId, -2),
           cx = xx[ci],
@@ -9168,8 +9150,6 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
       }
 
       candAngle = signedAngle(ax, ay, bx, by, cx, cy);
-
-      // if (prevId == 261) console.log(prevId, "v", candId, "angle:", candAngle)
 
       if (candAngle > 0) {
         if (nextAngle === 0) {
@@ -9201,24 +9181,11 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
     var path = [],
         nextId, msg,
         candId = startId,
-        verbose = false; // MapShaper.TRACING;
+        verbose = false;
 
     do {
       if (verbose) msg = (nextId === undefined ? " " : "  " + nextId) + " -> " + candId;
       if (useRoute(candId)) {
-        /*
-        // debug zambia_congo test
-        if (candId == 261) {
-          // debug zambia_congo.shp
-          nodes.debugNode(candId)
-          console.log("\nLAKE nodes:")
-          nodes.debugNode(267)
-          nodes.debugNode(268)
-          nodes.debugNode(269)
-          nodes.debugNode(270)
-          nodes.debugNode(271)
-        }
-        */
         path.push(candId);
         nextId = candId;
         if (verbose) console.log(msg);
@@ -9236,122 +9203,168 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
     } while (candId != startId);
     return path.length === 0 ? null : path;
   };
-
 };
 
-
-
-
-// Currently only removes self-intersections
+// types: "dissolve" "flatten"
+// Returns a function for flattening or dissolving a collection of rings
+// Assumes rings are oriented in CW direction
 //
-MapShaper.repairPolygonGeometry = function(layers, dataset, opts) {
-  var nodes = MapShaper.divideArcs(dataset.layers, dataset.arcs);
-  layers.forEach(function(lyr) {
-    MapShaper.repairSelfIntersections(lyr, nodes);
-  });
-  return layers;
-};
+MapShaper.getRingIntersector = function(nodes, type, flags) {
+  var arcs = nodes.arcs;
+  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
+  flags = flags || new Uint8Array(arcs.size());
 
-// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
-// (in place)
-MapShaper.removeSpikesInPath = function(ids) {
-  var n = ids.length;
-  for (var i=1; i<n; i++) {
-    if (ids[i-1] == ~ids[i]) {
-      ids.splice(i-1, 2);
-      MapShaper.removeSpikesInPath(ids);
-    }
-  }
-  if (n > 2 && ids[0] == ~ids[n-1]) {
-    ids.pop();
-    ids.shift();
-    MapShaper.removeSpikesInPath(ids);
-  }
-};
-
-MapShaper.cleanPath = function(path, arcs) {
-  var nulls = 0;
-  for (var i=0; i<path.length; i++) {
-    if (arcs.arcIsDegenerate(path[i])) {
-      nulls++;
-      path[i] = null;
-    }
-  }
-  return nulls > 0 ? path.filter(function(id) {return id !== null;}) : path;
-};
-
-// Remove defective arcs and zero-area polygon rings
-// Don't remove duplicate points
-// Don't remove spikes (between arcs or within arcs)
-// Don't check winding order of polygon rings
-MapShaper.cleanShape = function(shape, arcs, type) {
-  return MapShaper.editPaths(shape, function(path) {
-    var cleaned = MapShaper.cleanPath(path, arcs);
-    if (type == 'polygon' && cleaned) {
-      MapShaper.removeSpikesInPath(cleaned); // assumed by divideArcs()
-      if (geom.getPathArea4(cleaned, arcs) === 0) {
-        cleaned = null;
-      }
-    }
-    return cleaned;
-  });
-};
-
-// clean polygon or polyline shapes, in-place
-MapShaper.cleanShapes = function(shapes, arcs, type) {
-  for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = MapShaper.cleanShape(shapes[i], arcs, type);
-  }
-};
-
-// Remove any small shapes formed by twists in each ring
-// Retain only the part with largest area
-// TODO: consider cases where cut-off parts should be retained
-//
-MapShaper.repairSelfIntersections = function(lyr, nodes) {
-  var splitter = MapShaper.getPathSplitter(nodes);
-
-  lyr.shapes = lyr.shapes.map(function(shp, i) {
-    return cleanPolygon(shp);
-  });
-
-  function cleanPolygon(shp) {
-    var cleanedPolygon = [];
-    MapShaper.forEachPath(shp, function(ids) {
-      // TODO: consider returning null if path can't be split
-      var splitIds = splitter(ids);
-      if (splitIds.length === 0) {
-        error("[cleanPolygon()] Defective path:", ids);
-      } else if (splitIds.length == 1) {
-        cleanedPolygon.push(splitIds[0]);
-      } else {
-        var shapeArea = geom.getPathArea4(ids, nodes.arcs),
-            sign = shapeArea > 0 ? 1 : -1,
-            mainRing;
-
-        var maxArea = splitIds.reduce(function(max, ringIds, i) {
-          var pathArea = geom.getPathArea4(ringIds, nodes.arcs) * sign;
-          if (pathArea > max) {
-            mainRing = ringIds;
-            max = pathArea;
+  return function(rings) {
+    var dissolve = type == 'dissolve',
+        openFwd = true,
+        openRev = type == 'flatten',
+        output;
+    if (rings.length <= 1) {
+      // wihout multiple rings, nothing to intersect
+      output = rings;
+    } else {
+      output = [];
+      MapShaper.openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
+      MapShaper.forEachPath(rings, function(ids) {
+        var path;
+        for (var i=0, n=ids.length; i<n; i++) {
+          path = findPath(ids[i]);
+          if (path) {
+            output.push(path);
           }
-          return max;
-        }, 0);
-
-        if (mainRing) {
-          cleanedPolygon.push(mainRing);
         }
-      }
-    });
-    return cleanedPolygon.length > 0 ? cleanedPolygon : null;
+      });
+      MapShaper.closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
+    }
+    return output;
+  };
+
+  function chooseRoute(id1, angle1, id2, angle2, prevId) {
+    var route = 1;
+    if (angle1 == angle2) {
+      trace("[chooseRoute()] parallel routes, unsure which to choose");
+      //MapShaper.debugRoute(id1, id2, nodes.arcs);
+    } else if (angle2 < angle1) {
+      route = 2;
+    }
+    return route;
+  }
+
+  function routeIsActive(arcId) {
+    var bits = MapShaper.getRouteBits(arcId, flags);
+    return (bits & 1) == 1;
+  }
+
+  function useRoute(arcId) {
+    var route = MapShaper.getRouteBits(arcId, flags),
+        isOpen = false;
+
+    if (route == 3) {
+      isOpen = true;
+      MapShaper.setRouteBits(1, arcId, flags); // close the path, leave visible
+    }
+    return isOpen;
   }
 };
 
+MapShaper.debugFlags = function(flags) {
+  var arr = Utils.map(flags, function(flag) {
+    return bitsToString(flag);
+  });
+  console.log(arr);
+
+  function bitsToString(bits) {
+    var str = "";
+    for (var i=0; i<8; i++) {
+      str += (bits & (1 << i)) > 0 ? "1" : "0";
+      if (i < 7) str += ' ';
+      if (i == 3) str += ' ';
+    }
+    return str;
+  }
+};
+
+/*
+// Given two arcs, where first segments are parallel, choose the one that
+// bends CW
+// return 0 if can't pick
+//
+MapShaper.debugRoute = function(id1, id2, arcs) {
+  var n1 = arcs.getArcLength(id1),
+      n2 = arcs.getArcLength(id2),
+      len1 = 0,
+      len2 = 0,
+      p1, p2, pp1, pp2, ppp1, ppp2,
+      angle1, angle2;
+
+      console.log("chooseRoute() lengths:", n1, n2, 'ids:', id1, id2);
+  for (var i=0; i<n1 && i<n2; i++) {
+    p1 = arcs.getVertex(id1, i);
+    p2 = arcs.getVertex(id2, i);
+    if (i === 0) {
+      if (p1.x != p2.x || p1.y != p2.y) {
+        error("chooseRoute() Routes should originate at the same point)");
+      }
+    }
+
+    if (i > 1) {
+      angle1 = signedAngle(ppp1.x, ppp1.y, pp1.x, pp1.y, p1.x, p1.y);
+      angle2 = signedAngle(ppp2.x, ppp2.y, pp2.x, pp2.y, p2.x, p2.y);
+
+      console.log("angles:", angle1, angle2, 'lens:', len1, len2);
+      // return;
+    }
+
+    if (i >= 1) {
+      len1 += distance2D(p1.x, p1.y, pp1.x, pp1.y);
+      len2 += distance2D(p2.x, p2.y, pp2.x, pp2.y);
+    }
+
+    if (i == 1 && (n1 == 2 || n2 == 2)) {
+      console.log("arc1:", pp1, p1, "len:", len1);
+      console.log("arc2:", pp2, p2, "len:", len2);
+    }
+
+    ppp1 = pp1;
+    ppp2 = pp2;
+    pp1 = p1;
+    pp2 = p2;
+  }
+  return 1;
+};
+*/
+
+
+
+
+// Returns a function that separates rings in a polygon into space-enclosing rings
+// and holes. Also fixes self-intersections.
+//
+MapShaper.getHoleDivider = function(nodes, flags) {
+  var split = MapShaper.getSelfIntersectionSplitter(nodes, flags);
+
+  return function(rings, cw, ccw) {
+    MapShaper.forEachPath(rings, function(ringIds) {
+      var splitRings = split(ringIds);
+      if (splitRings.length === 0) {
+        trace("[getRingDivider()] Defective path:", ringIds);
+      }
+      splitRings.forEach(function(ringIds, i) {
+        var ringArea = geom.getPathArea4(ringIds, nodes.arcs);
+        if (ringArea > 0) {
+          cw.push(ringIds);
+        } else if (ringArea < 0) {
+          ccw.push(ringIds);
+        }
+      });
+    });
+  };
+};
 
 // Return function for splitting self-intersecting polygon rings
 // Returned function receives a single path, returns an array of paths
 //
-MapShaper.getPathSplitter = function(nodes, flags) {
+MapShaper.getSelfIntersectionSplitter = function(nodes, flags) {
   var arcs = nodes.arcs;
   flags = flags || new Uint8Array(arcs.size());
 
@@ -9457,6 +9470,118 @@ MapShaper.getPathSplitter = function(nodes, flags) {
     MapShaper.closeArcRoutes(ids, arcs, flags, true, true, true);
     return paths;
   };
+};
+
+
+
+
+// clean polygon or polyline shapes, in-place
+//
+MapShaper.cleanShapes = function(shapes, arcs, type) {
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shapes[i] = MapShaper.cleanShape(shapes[i], arcs, type);
+  }
+};
+
+// Remove defective arcs and zero-area polygon rings
+// Don't remove duplicate points
+// Don't remove spikes (between arcs or within arcs)
+// Don't check winding order of polygon rings
+MapShaper.cleanShape = function(shape, arcs, type) {
+  return MapShaper.editPaths(shape, function(path) {
+    var cleaned = MapShaper.cleanPath(path, arcs);
+    if (type == 'polygon' && cleaned) {
+      MapShaper.removeSpikesInPath(cleaned); // assumed by divideArcs()
+      if (geom.getPathArea4(cleaned, arcs) === 0) {
+        cleaned = null;
+      }
+    }
+    return cleaned;
+  });
+};
+
+MapShaper.cleanPath = function(path, arcs) {
+  var nulls = 0;
+  for (var i=0; i<path.length; i++) {
+    if (arcs.arcIsDegenerate(path[i])) {
+      nulls++;
+      path[i] = null;
+    }
+  }
+  return nulls > 0 ? path.filter(function(id) {return id !== null;}) : path;
+};
+
+// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
+// (in place)
+MapShaper.removeSpikesInPath = function(ids) {
+  var n = ids.length;
+  for (var i=1; i<n; i++) {
+    if (ids[i-1] == ~ids[i]) {
+      ids.splice(i-1, 2);
+      MapShaper.removeSpikesInPath(ids);
+    }
+  }
+  if (n > 2 && ids[0] == ~ids[n-1]) {
+    ids.pop();
+    ids.shift();
+    MapShaper.removeSpikesInPath(ids);
+  }
+};
+
+
+// TODO: Need to rethink polygon repair: these function can cause problems
+// when part of a self-intersecting polygon is removed
+//
+MapShaper.repairPolygonGeometry = function(layers, dataset, opts) {
+  var nodes = MapShaper.divideArcs(dataset.layers, dataset.arcs);
+  layers.forEach(function(lyr) {
+    MapShaper.repairSelfIntersections(lyr, nodes);
+  });
+  return layers;
+};
+
+// Remove any small shapes formed by twists in each ring
+// // OOPS, NO // Retain only the part with largest area
+// // this causes problems when a cut-off hole has a matching ring in another polygon
+// TODO: consider cases where cut-off parts should be retained
+//
+MapShaper.repairSelfIntersections = function(lyr, nodes) {
+  var splitter = MapShaper.getSelfIntersectionSplitter(nodes);
+
+  lyr.shapes = lyr.shapes.map(function(shp, i) {
+    return cleanPolygon(shp);
+  });
+
+  function cleanPolygon(shp) {
+    var cleanedPolygon = [];
+    MapShaper.forEachPath(shp, function(ids) {
+      // TODO: consider returning null if path can't be split
+      var splitIds = splitter(ids);
+      if (splitIds.length === 0) {
+        error("[cleanPolygon()] Defective path:", ids);
+      } else if (splitIds.length == 1) {
+        cleanedPolygon.push(splitIds[0]);
+      } else {
+        var shapeArea = geom.getPathArea4(ids, nodes.arcs),
+            sign = shapeArea > 0 ? 1 : -1,
+            mainRing;
+
+        var maxArea = splitIds.reduce(function(max, ringIds, i) {
+          var pathArea = geom.getPathArea4(ringIds, nodes.arcs) * sign;
+          if (pathArea > max) {
+            mainRing = ringIds;
+            max = pathArea;
+          }
+          return max;
+        }, 0);
+
+        if (mainRing) {
+          cleanedPolygon.push(mainRing);
+        }
+      }
+    });
+    return cleanedPolygon.length > 0 ? cleanedPolygon : null;
+  }
 };
 
 
@@ -9682,7 +9807,6 @@ function PathImporter(reservedPoints, opts) {
 
 
 
-// TODO: refactor
 MapShaper.exportPointData = function(points) {
   var data, path;
   if (!points || points.length === 0) {
@@ -14247,99 +14371,18 @@ MapShaper.getTableInfo = function(data) {
 
 
 
-// Remove overlapping polygon shapes
-// (Unfinished)
-/*
-api.flattenLayer = function(lyr, arcs, opts) {
-  // MapShaper.divideArcs([lyr], arcs);
-  var shapes = MapShaper.flattenShapes(lyr.shapes, arcs);
-  var lyr2 = Utils.defaults({shapes: shapes, data: null}, lyr);
-  return lyr2;
-};
-
-MapShaper.flattenShapes = function(shapes, arcs) {
-  // remove spikes
-  shapes.forEach(function(shape) {
-    MapShaper.forEachPath(shape, MapShaper.removeSpikesInPath);
-  });
-
-  var flags = new Uint8Array(arcs.size());
-  MapShaper.openArcRoutes(shapes, arcs, flags, true, true, false);
-
-  var divide = MapShaper.getPathFinder(arcs, flags);
-  var flattened = shapes.map(function(shape, i) {
-    var dividedShape = [];
-
-    MapShaper.forEachPath(shape, function(ids) {
-      MapShaper.closeArcRoutes(ids, arcs, flags, true); // close rev.
-      // if path doubles back, closing rev. blocks the path... need to keep fwd open
-      MapShaper.openArcRoutes(ids, arcs, flags, true, false, false);
-      var path;
-      for (var i=0; i<ids.length; i++) {
-        path = divide(ids[i]);
-        if (path) {
-          dividedShape.push(path);
-        }
-      }
-      MapShaper.openArcRoutes(ids, arcs, flags, false, true, false);
-
-    });
-    return dividedShape.length === 0 ? null : dividedShape;
-  });
-
-  return flattened;
-};
-*/
-
-
-
-
-// Assumes layers and arcs have been processed with divideArcs()
-/*
-api.dividePolygonLayer = function(lyrA, lyrB, arcs) {
-  if (lyrA.geometry_type != 'polygon') {
-    stop("[dividePolygonLayer()] Expected polygon layer, received:", lyrA.geometry_type);
-  }
-  var flags = new Uint8Array(arcs.size());
-  MapShaper.openArcRoutes(lyrA.shapes, arcs, flags, true, false, false);
-  MapShaper.openArcRoutes(lyrB.shapes, arcs, flags, true, true, false);
-
-  var dividedShapes = MapShaper.dividePolygons(lyrA.shapes, arcs, flags);
-  return Utils.defaults({shapes: dividedShapes, data: null}, lyrA);
-};
-
-MapShaper.dividePolygons = function(shapes, arcs, flags) {
-  var divide = MapShaper.getPathFinder(nodes, flags);
-  return shapes.map(function(shape, i) {
-    var dividedShape = [];
-    MapShaper.forEachPath(shape, function(ids) {
-      var path;
-      for (var i=0; i<ids.length; i++) {
-        path = divide(ids[i]);
-        if (path) {
-          dividedShape.push(path);
-        }
-      }
-    });
-    return dividedShape.length === 0 ? null : dividedShape;
-  });
-};
-*/
-
-
-
-
 
 api.dissolvePolygonLayers2 = function(layers, dataset, opts) {
   var nodes = MapShaper.divideArcs(dataset.layers, dataset.arcs);
   var dissolvedLayers = layers.map(function(lyr) {
-    var shapes2 = MapShaper.dissolvePolygons2(lyr.shapes, nodes);
+    var shapes2 = MapShaper.dissolveAllPolygons(lyr.shapes, nodes);
     return Utils.defaults({shapes: shapes2, data: null}, lyr);
   });
   return dissolvedLayers;
 };
 
-MapShaper.dissolvePolygons2 = function(shapes, nodes) {
+// TODO: dissolve on attributes, to replace current dissolve command
+MapShaper.dissolveAllPolygons = function(shapes, nodes) {
   var rings = MapShaper.concatShapes(shapes);
   var dissolve = MapShaper.getPolygonDissolver(nodes);
   var dissolved = dissolve(rings);
@@ -14359,17 +14402,16 @@ MapShaper.concatShapes = function(shapes) {
 
 MapShaper.getPolygonDissolver = function(nodes) {
   var flags = new Uint8Array(nodes.arcs.size());
-  var split = MapShaper.getPathSplitter(nodes, flags);
-  var flatten = MapShaper.getRingFlattener(nodes, flags);
-  var dissolve = MapShaper.getCleanPolygonDissolver(nodes, flags);
+  var divide = MapShaper.getHoleDivider(nodes, flags);
+  var flatten = MapShaper.getRingIntersector(nodes, 'flatten', flags);
+  var dissolve = MapShaper.getRingIntersector(nodes, 'dissolve', flags);
 
   return function(shp) {
     if (!shp) return null;
     var cw = [],
         ccw = [];
 
-    MapShaper.dividePolygon(shp, nodes, cw, ccw, split);
-
+    divide(shp, cw, ccw);
     cw = flatten(cw);
     ccw.forEach(MapShaper.reversePath);
     ccw = flatten(ccw);
@@ -14381,189 +14423,9 @@ MapShaper.getPolygonDissolver = function(nodes) {
   };
 };
 
-MapShaper.dividePolygon = function(shp, nodes, cw, ccw, splitter) {
-  var cleanedPolygon = [];
-  MapShaper.forEachPath(shp, function(ids) {
-    var splitIds = splitter(ids);
-    if (splitIds.length === 0) {
-      error("[cleanPolygon()] Defective path:", ids);
-    }
-    // if (splitIds.length > 1) console.log("split one path into", splitIds.length, "paths");
-    splitIds.forEach(function(ringIds, i) {
-      var ringArea = geom.getPathArea4(ringIds, nodes.arcs);
-      if (ringArea > 0) {
-        cw.push(ringIds);
-      } else if (ringArea < 0) {
-        ccw.push(ringIds);
-      }
-    });
-  });
-};
-
-// Returns a function for flattening a collection of polygon rings
-// Rings are assumed to be oriented in the same direction (all CW or all CCW)
-// Rings may overlap each other, but should be free of self-intersections
-//
-MapShaper.getRingFlattener = function(nodes, flags) {
-  var arcs = nodes.arcs;
-  flags = flags || new Uint8Array(arcs.size());
-  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
-
-  function useRoute(arcId) {
-    var route = MapShaper.getRouteBits(arcId, flags),
-        isOpen = false;
-
-    if (route == 3) {
-      isOpen = true;
-      MapShaper.setRouteBits(1, arcId, flags); // close the path, leave visible
-    }
-    return isOpen;
-  }
-
-  function routeIsActive(arcId) {
-    var bits = MapShaper.getRouteBits(arcId, flags);
-    return bits > 0;
-  }
-
-  function chooseRoute(id1, angle1, id2, angle2, prevId) {
-    var route = 1;
-    if (angle1 == angle2) {
-      trace("[getRingFlattener()] parallel routes, unsure which to choose");
-      //MapShaper.debugRoute(id1, id2, nodes.arcs);
-      //nodes.debugNode(~id1);
-    } else if (angle2 < angle1) {
-      route = 2;
-    }
-    return route;
-  }
-
-  return function(rings) {
-    var dissolved;
-    if (rings.length > 1) {
-      dissolved = [];
-      // open in fw direction
-      MapShaper.openArcRoutes(rings, arcs, flags, true, true, false);
-      MapShaper.forEachPath(rings, function(ids) {
-        var path;
-        for (var i=0, n=ids.length; i<n; i++) {
-          path = findPath(ids[i]);
-          if (path) {
-            dissolved.push(path);
-          }
-        }
-      });
-      MapShaper.closeArcRoutes(rings, arcs, flags, true, true, true);
-    }
-    return dissolved || rings;
-  };
-};
-
-MapShaper.getCleanPolygonDissolver = function(nodes, flags) {
-
-  var arcs = nodes.arcs;
-  flags = flags || new Uint8Array(arcs.size());
-  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
-
-  function useRoute(arcId) {
-    var route = MapShaper.getRouteBits(arcId, flags),
-        isOpen = false;
-
-    if (route == 3) {
-      isOpen = true;
-      MapShaper.setRouteBits(1, arcId, flags); // close the path, leave visible
-    }
-    return isOpen;
-  }
-
-  function routeIsActive(arcId) {
-    var bits = MapShaper.getRouteBits(arcId, flags);
-    return (bits & 1) == 1;
-  }
-
-  function chooseRoute(id1, angle1, id2, angle2, prevId) {
-    var route = 1;
-    if (angle1 == angle2) {
-      trace("[getCleanPolygonDissolver()] parallel routes, unsure which to choose");
-      //console.log("  ", prevId, "> a:", ~id1, angle1, "b:", ~id2, angle2);
-      //MapShaper.debugRoute(id1, id2, nodes.arcs);
-    } else if (angle2 < angle1) {
-      route = 2;
-    }
-    return route;
-  }
-
-  return function(rings) {
-    var dissolved;
-    if (rings.length > 1) {
-      dissolved = [];
-      // open in fw direction
-      MapShaper.openArcRoutes(rings, arcs, flags, true, false, true);
-      MapShaper.forEachPath(rings, function(ids) {
-        var path;
-        for (var i=0, n=ids.length; i<n; i++) {
-          path = findPath(ids[i]);
-          if (path) {
-            dissolved.push(path);
-          }
-        }
-      });
-      MapShaper.closeArcRoutes(rings, arcs, flags, true, false, true);
-    }
-    return dissolved || rings;
-  };
-};
-
-// Given two arcs, where first segments are parallel, choose the one that
-// bends CW
-// return 0 if can't pick
-//
-MapShaper.debugRoute = function(id1, id2, arcs) {
-  var n1 = arcs.getArcLength(id1),
-      n2 = arcs.getArcLength(id2),
-      len1 = 0,
-      len2 = 0,
-      p1, p2, pp1, pp2, ppp1, ppp2,
-      angle1, angle2;
-
-      console.log("chooseRoute() lengths:", n1, n2, 'ids:', id1, id2);
-  for (var i=0; i<n1 && i<n2; i++) {
-    p1 = arcs.getVertex(id1, i);
-    p2 = arcs.getVertex(id2, i);
-    if (i === 0) {
-      if (p1.x != p2.x || p1.y != p2.y) {
-        error("chooseRoute() Routes should originate at the same point)");
-      }
-    }
-
-    if (i > 1) {
-      angle1 = signedAngle(ppp1.x, ppp1.y, pp1.x, pp1.y, p1.x, p1.y);
-      angle2 = signedAngle(ppp2.x, ppp2.y, pp2.x, pp2.y, p2.x, p2.y);
-
-      console.log("angles:", angle1, angle2, 'lens:', len1, len2);
-      // return;
-    }
-
-    if (i >= 1) {
-      len1 += distance2D(p1.x, p1.y, pp1.x, pp1.y);
-      len2 += distance2D(p2.x, p2.y, pp2.x, pp2.y);
-    }
-
-    if (i == 1 && (n1 == 2 || n2 == 2)) {
-      console.log("arc1:", pp1, p1, "len:", len1);
-      console.log("arc2:", pp2, p2, "len:", len2);
-    }
-
-    ppp1 = pp1;
-    ppp2 = pp2;
-    pp1 = p1;
-    pp2 = p2;
-  }
-  return 1;
-};
-
 
 // TODO: to prevent invalid holes,
-//   we shoudl erase the holes from the space-enclosing rings.
+// could erase the holes from the space-enclosing rings.
 MapShaper.appendHolestoRings = function(cw, ccw) {
   for (var i=0, n=ccw.length; i<n; i++) {
     cw.push(ccw[i]);
@@ -14571,6 +14433,19 @@ MapShaper.appendHolestoRings = function(cw, ccw) {
   return cw;
 };
 
+
+
+
+// Remove overlapping polygon shapes
+// (Unfinished)
+/*
+api.flattenLayer = function(lyr, arcs, opts) {
+  // MapShaper.divideArcs([lyr], arcs);
+  var shapes = MapShaper.flattenShapes(lyr.shapes, arcs);
+  var lyr2 = Utils.defaults({shapes: shapes, data: null}, lyr);
+  return lyr2;
+};
+*/
 
 
 
@@ -14680,13 +14555,9 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
         clipping = type == 'clip',
         erasing = type == 'erase';
 
-    // console.log(flagsToArray(routeFlags), "a. pre-clip");
-
     // open pathways for entire polygon rather than one ring at a time --
     // need to create polygons that connect positive-space rings and holes
     MapShaper.openArcRoutes(shape, arcs, routeFlags, true, false, false);
-
-    // console.log(flagsToArray(routeFlags), "b. target shape opened");
 
     MapShaper.forEachPath(shape, function(ids) {
       var path;
@@ -14713,8 +14584,6 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
       }
     });
 
-    // console.log(flagsToArray(routeFlags), "c. post clip");
-
     // Clear pathways of current target shape to hidden/closed
     MapShaper.closeArcRoutes(shape, arcs, routeFlags, true, true, true);
     // Also clear pathways of any clip arcs that were used
@@ -14723,7 +14592,6 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
       usedClipArcs = [];
     }
 
-    // console.log(flagsToArray(routeFlags), "d. target shape closed");
     return dividedShape.length === 0 ? null : dividedShape;
   }
 
@@ -14872,6 +14740,41 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
     return dissolvedPaths.length > 0 ? dissolvedPaths : null;
   }
 }; // end intersectLayers()
+
+
+
+
+// Assumes layers and arcs have been processed with divideArcs()
+/*
+api.dividePolygonLayer = function(lyrA, lyrB, arcs) {
+  if (lyrA.geometry_type != 'polygon') {
+    stop("[dividePolygonLayer()] Expected polygon layer, received:", lyrA.geometry_type);
+  }
+  var flags = new Uint8Array(arcs.size());
+  MapShaper.openArcRoutes(lyrA.shapes, arcs, flags, true, false, false);
+  MapShaper.openArcRoutes(lyrB.shapes, arcs, flags, true, true, false);
+
+  var dividedShapes = MapShaper.dividePolygons(lyrA.shapes, arcs, flags);
+  return Utils.defaults({shapes: dividedShapes, data: null}, lyrA);
+};
+
+MapShaper.dividePolygons = function(shapes, arcs, flags) {
+  var divide = MapShaper.getPathFinder(nodes, flags);
+  return shapes.map(function(shape, i) {
+    var dividedShape = [];
+    MapShaper.forEachPath(shape, function(ids) {
+      var path;
+      for (var i=0; i<ids.length; i++) {
+        path = divide(ids[i]);
+        if (path) {
+          dividedShape.push(path);
+        }
+      }
+    });
+    return dividedShape.length === 0 ? null : dividedShape;
+  });
+};
+*/
 
 
 

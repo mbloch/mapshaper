@@ -3,7 +3,7 @@ var assert = require('assert'),
     ArcCollection = api.internal.ArcCollection,
     NodeCollection = api.internal.NodeCollection,
     dissolveLayers = api.dissolvePolygonLayers2,
-    dissolvePolygons = api.internal.dissolvePolygons2;
+    dissolvePolygons = api.internal.dissolveAllPolygons;
 
 describe('mapshaper-dissolve2.js dissolve tests', function () {
   describe('Fig. 1', function () {

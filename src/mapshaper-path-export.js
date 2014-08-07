@@ -1,6 +1,5 @@
 /* @requires mapshaper-shape-utils */
 
-// TODO: refactor
 MapShaper.exportPointData = function(points) {
   var data, path;
   if (!points || points.length === 0) {
