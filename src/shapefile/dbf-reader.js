@@ -1,4 +1,4 @@
-/* @requires mshp-common-lib, mapshaper-encodings */
+/* @requires mapshaper-encodings */
 //
 // DBF format references:
 // http://www.dbf2002.com/dbf-file-format.html

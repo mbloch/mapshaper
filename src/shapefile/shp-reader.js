@@ -1,4 +1,3 @@
-/* @requires mshp-common-lib */
 
 var ShpType = {
   NULL: 0,

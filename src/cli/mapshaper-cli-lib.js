@@ -1,4 +1,5 @@
 /* @requires
+mapshaper-cli-utils
 mapshaper-options
 mapshaper-commands
 mapshaper-topology

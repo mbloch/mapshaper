@@ -1,4 +1,3 @@
-/* @requires mshp-common-lib */
 
 var api = {};
 var MapShaper = api.internal = {};

@@ -1,4 +1,5 @@
 /* @requires
+mapshaper-gui-utils,
 mapshaper-shapes,
 mapshaper-simplify-control,
 mapshaper-import-control,
