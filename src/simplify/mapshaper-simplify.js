@@ -2,7 +2,7 @@
 
 api.simplify = function(arcs, opts) {
   if (!arcs) stop("[simplify] Missing path data");
-
+  T.start();
   MapShaper.simplifyPaths(arcs, opts);
 
   if (utils.isNumber(opts.pct)) {
@@ -12,6 +12,7 @@ api.simplify = function(arcs, opts) {
   } else {
     stop("[simplify] missing pct or interval parameter");
   }
+  T.stop("Calculate simplification");
 
   if (!opts.no_repair) {
     var info = api.findAndRepairIntersections(arcs);
@@ -62,8 +63,8 @@ MapShaper.simplifyPaths3D = function(paths, simplify) {
 //
 MapShaper.simplifiers = {
   visvalingam: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
-  mapshaper_v1: Visvalingam.getArcCalculator(Visvalingam.specialMetric_v1, Visvalingam.specialMetric3D_v1, 0.65),
-  mapshaper: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
+  mapshaper_v1: Visvalingam.getArcCalculator(Visvalingam.weightedMetric_v1, Visvalingam.weightedMetric3D_v1, 0.65),
+  mapshaper: Visvalingam.getArcCalculator(Visvalingam.weightedMetric, Visvalingam.weightedMetric3D, 0.65),
   dp: DouglasPeucker.calcArcData
 };
 

@@ -202,36 +202,33 @@ function triangleArea(ax, ay, bx, by, cx, cy) {
   return area;
 }
 
-
 function detSq(ax, ay, bx, by, cx, cy) {
   var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
   return det * det;
 }
 
-function dotProduct(ax, ay, bx, by, cx, cy) {
-  var ab = distance2D(ax, ay, bx, by),
-      bc = distance2D(bx, by, cx, cy),
-      den = ab * bc,
-      dotp = 0;
+function cosine(ax, ay, bx, by, cx, cy) {
+  var den = distance2D(ax, ay, bx, by) * distance2D(bx, by, cx, cy),
+      cos = 0;
   if (den > 0) {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / den;
-    if (dotp > 1) dotp = 1;
-    else if (dotp < 0) dotp = 0;
+    cos = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / den;
+    if (cos > 1) cos = 1; // handle fp rounding error
+    else if (cos < -1) cos = -1;
   }
-  return dotp;
+  return cos;
 }
 
-function dotProduct3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var ab = distance3D(ax, ay, az, bx, by, bz),
-      bc = distance3D(bx, by, bz, cx, cy, cz),
-      dotp = 0;
-  if (ab > 0 && bc > 0) {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
-    if (dotp > 1) dotp = 1;
-    else if (dotp < 0) dotp = 0;
+function cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var den = distance3D(ax, ay, az, bx, by, bz) * distance3D(bx, by, bz, cx, cy, cz),
+      cos = 0;
+  if (den > 0) {
+    cos = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / den;
+    if (cos > 1) cos = 1; // handle fp rounding error
+    else if (cos < -1) cos = -1;
   }
-  return dotp;
+  return cos;
 }
+
 
 function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
@@ -323,5 +320,7 @@ Utils.extend(geom, {
   signedAngle2: signedAngle2,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
-  triangleArea3D: triangleArea3D
+  triangleArea3D: triangleArea3D,
+  cosine: cosine,
+  cosine3D: cosine3D
 });
