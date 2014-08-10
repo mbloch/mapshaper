@@ -1,6 +1,6 @@
 /* @require mapshaper-polygon-intersection, mapshaper-polygon-repair, mapshaper-dissolve2 */
 
-
+/*
 MapShaper.repairPolygonGeometry2 = function(layers, arcs) {
   var nodes = MapShaper.divideArcs(layers, arcs);
   layers.forEach(function(lyr) {
@@ -21,3 +21,4 @@ MapShaper.repairPolygons = function(shapes, nodes) {
   });
 
 };
+*/

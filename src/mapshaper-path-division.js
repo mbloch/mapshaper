@@ -10,30 +10,22 @@ mapshaper-path-index
 // and re-index the paths of all the layers that reference the arc collection.
 // (in-place)
 // TODO: rename this function
-MapShaper.divideArcs = function(layers, arcs) {
-  // experimental: snap coordinates to prevent rounding errors
-  if (true) {
-    var snapDist = MapShaper.getHighPrecisionSnapInterval(arcs);
-    var dataset = {
-      layers: layers,
-      arcs: arcs
-    };
-    MapShaper.snapCoordsByInterval(arcs, snapDist);
-    arcs.dedupCoords();
-    // rebuild topology: snapping may have changed some things
-    // TODO: not needed if no points were snapped
-    api.buildTopology(dataset);
-    arcs = dataset.arcs;
-  }
-
-
+MapShaper.divideArcs = function(dataset) {
+  var arcs = dataset.arcs;
+  var snapDist = MapShaper.getHighPrecisionSnapInterval(arcs);
+  var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
+  //if (snapCount > 0) {
+  arcs.dedupCoords();
+  // TODO: don't build topology if not necessary
+  api.buildTopology(dataset);
+  //}
   // clip arcs at points where segments intersect
   var map = MapShaper.insertClippingPoints(arcs);
 
   // update arc ids in arc-based layers and clean up arc geometry
   // to remove degenerate arcs and duplicate points
   var nodes = new NodeCollection(arcs);
-  layers.forEach(function(lyr) {
+  dataset.layers.forEach(function(lyr) {
     if (MapShaper.layerHasPaths(lyr)) {
       MapShaper.updateArcIds(lyr.shapes, map, arcs, nodes);
       // TODO: consider alternative -- avoid creating degenerate arcs

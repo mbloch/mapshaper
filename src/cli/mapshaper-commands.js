@@ -101,11 +101,7 @@ api.runCommand = function(cmd, dataset, cb) {
     newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
 
   } else if (name == 'dissolve2') {
-    newLayers = api.dissolvePolygonLayers2(targetLayers, dataset, opts);
-
-  //} else if (name == 'divide') {
-  //  MapShaper.divideArcs(dataset.layers, arcs);
-  //  newLayers = MapShaper.applyCommand(api.dividePolygonLayer, targetLayers, arcs, opts);
+    newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
 
   } else if (name == 'erase') {
     sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);

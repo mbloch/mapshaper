@@ -5,52 +5,54 @@
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
 api.dissolvePolygons = function(lyr, arcs, opts) {
-  var shapes = lyr.shapes,
-      field = opts.field,
-      dataTable = lyr.data || null,
-      properties = dataTable ? dataTable.getRecords() : null,
-      dissolveLyr,
-      dissolveRecords,
-      getDissolveKey;
+  var getKey = MapShaper.getKeyFunction(opts.field, lyr.data),
+      lyr2 = {data: null};
 
   MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
 
-  if (field) {
-    if (!dataTable) {
-      error("[dissolve] Layer is missing a data table");
-    }
-    if (field && !dataTable.fieldExists(field)) {
-      error("[dissolve] Missing field:",
-        field, '\nAvailable fields:', dataTable.getFields().join(', '));
-    }
-    getDissolveKey = function(shapeId) {
-      var record = properties[shapeId];
-      return record[field];
-    };
-  } else {
-    getDissolveKey = function(shapeId) {
-      return "";
-    };
+  var first = dissolveFirstPass(lyr.shapes, getKey);
+  var second = dissolveSecondPass(first.segments, lyr.shapes, first.keys);
+  lyr2.shapes = second.shapes;
+
+  if (lyr.data) {
+    lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getKey, second.index, opts));
   }
-
-  var first = dissolveFirstPass(shapes, getDissolveKey);
-  var second = dissolveSecondPass(first.segments, shapes, first.keys);
-
-  dissolveLyr = {
-    shapes: second.shapes,
-    info: lyr.info, // questionable
-    name: lyr.name,
-    geometry_type: lyr.geometry_type
-  };
-  if (properties) {
-    dissolveRecords = MapShaper.calcDissolveData(first.keys, second.index, properties, field, opts);
-    dissolveLyr.data = new DataTable(dissolveRecords);
-  }
-  // Opts.copyNewParams(dissolveLyr, lyr);
-
-  // T.stop('Dissolve polygons');
-  return dissolveLyr;
+  return Utils.defaults(lyr2, lyr);
 };
+
+MapShaper.getKeyFunction = function(field, data) {
+  var records, f;
+  if (!field) {
+    f = function(i) {return "";};
+  } else if (!data || !data.fieldExists(field)) {
+    stop("[dissolve] Data table is missing field:", field);
+  } else {
+    records = data.getRecords();
+    f = function(i) {
+      return records[i][field];
+    };
+  }
+  return f;
+};
+
+/*
+MapShaper.getKeyFunction2 = function(field, data) {
+  if (!field) return function(i) {return 0;};
+  if (!data || !data.fieldExists(field)) {
+    stop("[dissolve] Data table is missing field:", field);
+  }
+  var index = {},
+      count = 0,
+      records = data.getRecords();
+  return function(i) {
+    var val = records[i][field];
+    if (val in index === false) {
+      index[val] = count++;
+    }
+    return index[val];
+  };
+};
+*/
 
 // First pass -- identify pairs of segments that can be dissolved
 //
@@ -285,38 +287,34 @@ function getSegmentByOffs(seg, segments, shapes, offs) {
 // Records contain dissolve field data (or are empty if not dissolving on a field)
 // TODO: copy other user-specified fields
 //
-// @keys array of dissolve keys, indexed on original shape ids
-// @index hash of dissolve shape ids, indexed on dissolve keys
 // @properties original records
-// @field name of dissolve field, or null
+// @index hash of dissolve shape ids, indexed on dissolve keys
 //
-MapShaper.calcDissolveData = function(keys, index, properties, field, opts) {
+MapShaper.calcDissolveData = function(properties, getKey, index, opts) {
   var arr = [];
-  var sumFields = opts.sum_fields,
+  var sumFields = opts.sum_fields || [],
       copyFields = opts.copy_fields || [];
 
-  if (field) {
-    copyFields.push(field);
+  if (opts.field) {
+    copyFields.push(opts.field);
   }
 
-  Utils.forEach(keys, function(key, i) {
-    if (key in index === false) return;
+  properties.forEach(function(rec, i) {
+    var key = getKey(i);
+    if (key in index === false || !rec) return;
     var idx = index[key],
-        rec = properties[i],
         dissolveRec;
-
-    if (!rec) return;
 
     if (idx in arr) {
       dissolveRec = arr[idx];
     } else {
       arr[idx] = dissolveRec = {};
-      Utils.forEach(copyFields, function(f) {
+      copyFields.forEach(function(f) {
         dissolveRec[f] = rec[f];
       });
     }
 
-    Utils.forEach(sumFields, function(f) {
+    sumFields.forEach(function(f) {
       // TODO: handle strings
       dissolveRec[f] = (rec[f] || 0) + (dissolveRec[f] || 0);
     });

@@ -58,7 +58,7 @@ MapShaper.removeSpikesInPath = function(ids) {
 // when part of a self-intersecting polygon is removed
 //
 MapShaper.repairPolygonGeometry = function(layers, dataset, opts) {
-  var nodes = MapShaper.divideArcs(dataset.layers, dataset.arcs);
+  var nodes = MapShaper.divideArcs(dataset);
   layers.forEach(function(lyr) {
     MapShaper.repairSelfIntersections(lyr, nodes);
   });

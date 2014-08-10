@@ -30,14 +30,17 @@ MapShaper.intersectLayers = function(targetLayers, clipLyr, dataset, type, opts)
     MapShaper.requirePolygonLayer(lyr, "[" + type + "] only supports polygon type layers");
   });
 
-  var allLayers = dataset.layers;
   // If clipping layer was imported from a second file, it won't be included in
-  //  dataset.layers -- assuming that clipLyr arcs have been merged with dataset.arcs
+  // dataset
+  // (assuming that clipLyr arcs have been merged with dataset.arcs)
   //
   if (Utils.contains(dataset.layers, clipLyr) === false) {
-    allLayers = [clipLyr].concat(allLayers);
+    dataset = {
+      layers: [clipLyr].concat(dataset.layers),
+      arcs: dataset.arcs
+    };
   }
-  var nodes = MapShaper.divideArcs(allLayers, dataset.arcs);
+  var nodes = MapShaper.divideArcs(dataset);
   var output = targetLayers.map(function(targetLyr) {
     return MapShaper.intersectTwoLayers(targetLyr, clipLyr, nodes, type, opts);
   });

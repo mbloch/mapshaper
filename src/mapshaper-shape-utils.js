@@ -257,9 +257,3 @@ MapShaper.getPathMetadata = function(shape, arcs, type) {
     };
   });
 };
-
-// @paths assume [[outerRingIds], [firstHoleIds], ...] (TopoJSON Polygon format)
-//
-//MapShaper.enforcePolygonWindingRule = function(paths, arcs) {
-
-//};

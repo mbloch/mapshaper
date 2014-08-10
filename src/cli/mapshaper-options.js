@@ -34,6 +34,18 @@ MapShaper.getOptionParser = function() {
       snapIntervalOpt = {
         describe: "specify snapping distance in source units",
         type: "number"
+      },
+      sumFieldsOpt = {
+        describe: "fields to sum when dissolving  (comma-sep. list)",
+        type: "comma-sep"
+      },
+      copyFieldsOpt = {
+        describe: "fields to copy when dissolving (comma-sep. list)",
+        type: "comma-sep"
+      },
+      dissolveFieldOpt = {
+        label: "<field>",
+        describe: "(optional) name of a data field to dissolve on"
       };
 
   var parser = new CommandParser(),
@@ -218,8 +230,6 @@ MapShaper.getOptionParser = function() {
       label: "<file|layer>",
       describe: "file or layer containing clip polygons"
     })
-    //.option("auto-snap", autoSnapOpt)
-    //.option("snap-interval", snapIntervalOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -231,8 +241,6 @@ MapShaper.getOptionParser = function() {
       label: "<file|layer>",
       describe: "file or layer containing erase polygons"
     })
-    //.option("auto-snap", autoSnapOpt)
-    //.option("snap-interval", snapIntervalOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -240,18 +248,19 @@ MapShaper.getOptionParser = function() {
   parser.command("dissolve")
     .validate(validateDissolveOpts)
     .describe("merge adjacent polygons")
-    .option("field", {
-      label: "<field>",
-      describe: "(optional) name of a data field to dissolve on"
-    })
-    .option("sum-fields", {
-      describe: "fields to sum when dissolving  (comma-sep. list)",
-      type: "comma-sep"
-    })
-    .option("copy-fields", {
-      describe: "fields to copy when dissolving (comma-sep. list)",
-      type: "comma-sep"
-    })
+    .option("field", dissolveFieldOpt)
+    .option("sum-fields", sumFieldsOpt)
+    .option("copy-fields", copyFieldsOpt)
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("dissolve2")
+    .validate(validateDissolveOpts)
+    .describe("merge adjacent polygons")
+    .option("field", dissolveFieldOpt)
+    .option("sum-fields", sumFieldsOpt)
+    .option("copy-fields", copyFieldsOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -335,7 +344,6 @@ MapShaper.getOptionParser = function() {
   parser.command('verbose')
     .describe("print verbose processing messages");
 
-
   parser.command('help')
     .alias('h')
     .validate(validateHelpOpts)
@@ -352,10 +360,7 @@ MapShaper.getOptionParser = function() {
     });
 
   // Work-in-progress (no .describe(), so hidden from -h)
-
-  parser.command("dissolve2")
-    .option("target", targetOpt);
-
+  /*
   parser.command("flatten")
     .option("target", targetOpt);
 
@@ -373,7 +378,6 @@ MapShaper.getOptionParser = function() {
 
   parser.command('tracing');
 
-  /*
   parser.command("points")
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
