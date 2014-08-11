@@ -257,7 +257,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("dissolve2")
     .validate(validateDissolveOpts)
-    .describe("merge adjacent polygons")
+    // .describe("merge adjacent and overlapping polygons")
     .option("field", dissolveFieldOpt)
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
@@ -360,6 +360,7 @@ MapShaper.getOptionParser = function() {
     });
 
   // Work-in-progress (no .describe(), so hidden from -h)
+  parser.command('tracing');
   /*
   parser.command("flatten")
     .option("target", targetOpt);
@@ -376,7 +377,6 @@ MapShaper.getOptionParser = function() {
   parser.command("repair")
     .option("target", targetOpt);
 
-  parser.command('tracing');
 
   parser.command("points")
     .option("name", nameOpt)

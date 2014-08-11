@@ -102,8 +102,20 @@ describe('mapshaper-dissolve.js', function () {
               shapes: [null, [[0, 1]], [[-2, 2]], null]
             };
         var lyr2 = dissolvePolygons(lyr, arcData, {field: 'foo'});
-        assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
-        assert.deepEqual(lyr2.data.getRecords(), [{foo: 1}])
+        assert.deepEqual(lyr2.data.getRecords(), [{foo: 2}, {foo: 1}])
+        assert.deepEqual(lyr2.shapes, [null, [[0, 2]]]);
+      })
+
+      it('dissolve on "foo" with null shapes 2', function() {
+        var records = [{foo: 1}, {foo: 1}, {foo: 1}, {foo: 2}];
+        var lyr = {
+              geometry_type: 'polygon',
+              data: new api.internal.DataTable(records),
+              shapes: [null, [[0, 1]], [[-2, 2]], null]
+            };
+        var lyr2 = dissolvePolygons(lyr, arcData, {field: 'foo'});
+        assert.deepEqual(lyr2.data.getRecords(), [{foo: 1}, {foo: 2}])
+        assert.deepEqual(lyr2.shapes, [[[0, 2]], null]);
       })
 
       it('no dissolve', function() {

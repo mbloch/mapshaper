@@ -5,38 +5,29 @@
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
 api.dissolvePolygons = function(lyr, arcs, opts) {
-  var getKey = MapShaper.getKeyFunction(opts.field, lyr.data),
-      lyr2 = {data: null};
-
   MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
-
-  var first = dissolveFirstPass(lyr.shapes, getKey);
-  var second = dissolveSecondPass(first.segments, lyr.shapes, first.keys);
-  lyr2.shapes = second.shapes;
+  var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data),
+      dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId),
+      dissolveData = null;
 
   if (lyr.data) {
-    lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getKey, second.index, opts));
+    dissolveData = MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts);
+    // replace missing shapes with nulls
+    for (var i=0, n=dissolveData.length; i<n; i++) {
+      if (!dissolveShapes[i]) {
+        dissolveShapes[i] = null;
+      }
+    }
   }
-  return Utils.defaults(lyr2, lyr);
+  return Utils.defaults({
+      shapes: dissolveShapes,
+      data: dissolveData ? new DataTable(dissolveData) : null
+    }, lyr);
 };
 
-MapShaper.getKeyFunction = function(field, data) {
-  var records, f;
-  if (!field) {
-    f = function(i) {return "";};
-  } else if (!data || !data.fieldExists(field)) {
-    stop("[dissolve] Data table is missing field:", field);
-  } else {
-    records = data.getRecords();
-    f = function(i) {
-      return records[i][field];
-    };
-  }
-  return f;
-};
-
-/*
-MapShaper.getKeyFunction2 = function(field, data) {
+// Get a function to convert original feature ids into ids of combined features
+// Use categorical classification (a different id for each unique value)
+MapShaper.getCategoryClassifier = function(field, data) {
   if (!field) return function(i) {return 0;};
   if (!data || !data.fieldExists(field)) {
     stop("[dissolve] Data table is missing field:", field);
@@ -45,27 +36,31 @@ MapShaper.getKeyFunction2 = function(field, data) {
       count = 0,
       records = data.getRecords();
   return function(i) {
-    var val = records[i][field];
+    var val = String(records[i][field]);
     if (val in index === false) {
       index[val] = count++;
     }
     return index[val];
   };
 };
-*/
+
+function dissolvePolygonGeometry(shapes, getGroupId) {
+  var segments = dissolveFirstPass(shapes, getGroupId);
+  return dissolveSecondPass(segments, shapes, getGroupId);
+}
 
 // First pass -- identify pairs of segments that can be dissolved
-//
-function dissolveFirstPass(shapes, getKey) {
+function dissolveFirstPass(shapes, getGroupId) {
   var groups = [],
       largeGroups = [],
       segments = [],
-      keys = [];
+      ids = shapes.map(function(shp, i) {
+        return getGroupId(i);
+      });
 
-  function procShape(shapeId) {
-    var key = getKey(shapeId);
-    keys[shapeId] = key;
-  }
+  MapShaper.traverseShapes(shapes, procArc);
+  Utils.forEach(largeGroups, splitGroup);
+  return segments;
 
   function procArc(obj) {
     var arcId = obj.arcId,
@@ -126,8 +121,8 @@ function dissolveFirstPass(shapes, getKey) {
   }
 
   function checkPairwiseMatch(arc1, arc2) {
-    return arc1.arcId === ~arc2.arcId && keys[arc1.shapeId] ===
-        keys[arc2.shapeId];
+    return arc1.arcId === ~arc2.arcId && ids[arc1.shapeId] ===
+        ids[arc2.shapeId];
   }
 
   function updateGroupIds(ids) {
@@ -154,30 +149,25 @@ function dissolveFirstPass(shapes, getKey) {
       if (group.length > 2) splitGroup(group);
     }
   }
-
-  MapShaper.traverseShapes(shapes, procArc, null, procShape);
-  Utils.forEach(largeGroups, splitGroup);
-
-  return {
-    segments: segments,
-    keys: keys
-  };
 }
 
 // Second pass -- generate dissolved shapes
 //
-function dissolveSecondPass(segments, shapes, keys) {
-  var dissolveIndex = {},  // new shape ids indexed by dissolveKey
-      dissolveShapes = []; // dissolved shapes
+function dissolveSecondPass(segments, shapes, getGroupId) {
+  var dissolveShapes = [];
+  segments.forEach(procSegment);
+  return dissolveShapes;
 
-  function addRing(arcs, key) {
-    var i;
-    if (key in dissolveIndex === false) {
-      i = dissolveShapes.length;
-      dissolveIndex[key] = i;
+  // @obj is an arc instance
+  function procSegment(obj) {
+    if (obj.used) return;
+    var match = findDissolveArc(obj);
+    if (!match) buildRing(obj);
+  }
+
+  function addRing(arcs, i) {
+    if (i in dissolveShapes === false) {
       dissolveShapes[i] = [];
-    } else {
-      i = dissolveIndex[key];
     }
     dissolveShapes[i].push(arcs);
   }
@@ -199,7 +189,7 @@ function dissolveSecondPass(segments, shapes, keys) {
 
     if (!nextArc) error("buildRing() traversal error");
     firstArc.used = true;
-    addRing(newArcs, keys[firstArc.shapeId]);
+    addRing(newArcs, getGroupId(firstArc.shapeId));
   }
 
   // Get the next arc in a dissolved polygon ring
@@ -233,14 +223,14 @@ function dissolveSecondPass(segments, shapes, keys) {
   // Return matching segment or null if no match
   //
   function findDissolveArc(obj) {
-    var dissolveKey = keys[obj.shapeId], // obj.shape.dissolveKey,
+    var dissolveId = getGroupId(obj.shapeId), // obj.shape.dissolveKey,
         match, matchId;
     matchId = Utils.find(obj.group, function(i) {
       var a = obj,
           b = segments[i];
       if (a == b ||
           b.used ||
-          keys[b.shapeId] != dissolveKey ||
+          getGroupId(b.shapeId) !== dissolveId ||
           // don't prevent rings from dissolving with themselves (risky?)
           // a.shapeId == b.shapeId && a.partId == b.partId ||
           a.arcId != ~b.arcId) return false;
@@ -249,19 +239,6 @@ function dissolveSecondPass(segments, shapes, keys) {
     match = matchId === null ? null : segments[matchId];
     return match;
   }
-
-  // @obj is an arc instance
-  function procSegment(obj) {
-    if (obj.used) return;
-    var match = findDissolveArc(obj);
-    if (!match) buildRing(obj);
-  }
-
-  Utils.forEach(segments, procSegment);
-  return {
-    index: dissolveIndex,
-    shapes: dissolveShapes
-  };
 }
 
 function getNextSegment(seg, segments, shapes) {
@@ -290,7 +267,7 @@ function getSegmentByOffs(seg, segments, shapes, offs) {
 // @properties original records
 // @index hash of dissolve shape ids, indexed on dissolve keys
 //
-MapShaper.calcDissolveData = function(properties, getKey, index, opts) {
+MapShaper.calcDissolveData = function(properties, getGroupId, opts) {
   var arr = [];
   var sumFields = opts.sum_fields || [],
       copyFields = opts.copy_fields || [];
@@ -300,9 +277,8 @@ MapShaper.calcDissolveData = function(properties, getKey, index, opts) {
   }
 
   properties.forEach(function(rec, i) {
-    var key = getKey(i);
-    if (key in index === false || !rec) return;
-    var idx = index[key],
+    if (!rec) return;
+    var idx = getGroupId(i),
         dissolveRec;
 
     if (idx in arr) {

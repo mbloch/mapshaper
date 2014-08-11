@@ -12,32 +12,41 @@ mapshaper-path-index
 // TODO: rename this function
 MapShaper.divideArcs = function(dataset) {
   var arcs = dataset.arcs;
+  T.start();
+  T.start();
   var snapDist = MapShaper.getHighPrecisionSnapInterval(arcs);
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
-  //if (snapCount > 0) {
-  arcs.dedupCoords();
-  // TODO: don't build topology if not necessary
-  api.buildTopology(dataset);
-  //}
-  // clip arcs at points where segments intersect
-  var map = MapShaper.insertClippingPoints(arcs);
+  var dupeCount = arcs.dedupCoords();
+  T.stop('snap points');
+  if (snapCount > 0 || dupeCount > 0) {
+    T.start();
+    api.buildTopology(dataset);
+    T.stop('rebuild topology');
+  }
 
+  // clip arcs at points where segments intersect
+  T.start();
+  var map = MapShaper.insertClippingPoints(arcs);
+  T.stop('insert clipping points');
+  T.start();
   // update arc ids in arc-based layers and clean up arc geometry
   // to remove degenerate arcs and duplicate points
   var nodes = new NodeCollection(arcs);
   dataset.layers.forEach(function(lyr) {
     if (MapShaper.layerHasPaths(lyr)) {
-      MapShaper.updateArcIds(lyr.shapes, map, arcs, nodes);
+      MapShaper.updateArcIds(lyr.shapes, map, nodes);
       // TODO: consider alternative -- avoid creating degenerate arcs
       // in insertClippingPoints()
       MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
+  T.stop('update arc ids / clean geometry');
+  T.stop("divide arcs");
   return nodes;
 };
 
-MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {
-  var arcCount = arcs.size(),
+MapShaper.updateArcIds = function(shapes, map, nodes) {
+  var arcCount = nodes.arcs.size(),
       shape2;
   for (var i=0; i<shapes.length; i++) {
     shape2 = [];
@@ -82,28 +91,30 @@ MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {
 // returns array that maps original arc ids to new arc ids
 MapShaper.insertClippingPoints = function(arcs) {
   var points = MapShaper.findClippingPoints(arcs),
-      p,
+      p;
 
-      // original arc data
-      pointTotal0 = arcs.getPointCount(),
+  // TODO: avoid some or all of the following if no points need to be added
+
+  // original arc data
+  var pointTotal0 = arcs.getPointCount(),
       arcTotal0 = arcs.size(),
       data = arcs.getVertexData(),
       xx0 = data.xx,
       yy0 = data.yy,
       nn0 = data.nn,
       i0 = 0,
-      n0, arcLen0,
+      n0, arcLen0;
 
-      // new arc data
-      pointTotal1 = pointTotal0 + points.length * 2,
+  // new arc data
+  var pointTotal1 = pointTotal0 + points.length * 2,
       arcTotal1 = arcTotal0 + points.length,
       xx1 = new Float64Array(pointTotal1),
       yy1 = new Float64Array(pointTotal1),
       nn1 = [],  // number of arcs may vary
       i1 = 0,
-      n1,
+      n1;
 
-      map = new Uint32Array(arcTotal0);
+  var map = new Uint32Array(arcTotal0);
 
   // sort from last point to first point
   points.sort(function(a, b) {

@@ -39,6 +39,7 @@ describe('mapshaper-clip-erase.js', function () {
 
     var arcs = new ArcCollection(coords);
     var map = api.internal.insertClippingPoints(arcs);
+    var nodes = new api.internal.NodeCollection(arcs);
 
     it('insert clipping points', function () {
 
@@ -76,8 +77,8 @@ describe('mapshaper-clip-erase.js', function () {
       var targetA = [[[0, 1, 2]]],
           targetB = [[[3, 4, 5]]];
 
-      api.internal.updateArcIds(lyrA.shapes, map, arcs);
-      api.internal.updateArcIds(lyrB.shapes, map, arcs);
+      api.internal.updateArcIds(lyrA.shapes, map, nodes);
+      api.internal.updateArcIds(lyrB.shapes, map, nodes);
       assert.deepEqual(lyrA.shapes, targetA);
       assert.deepEqual(lyrB.shapes, targetB);
     })
@@ -94,8 +95,8 @@ describe('mapshaper-clip-erase.js', function () {
       var targetA = [[[~2, ~1, ~0]]],
           targetB = [[[~5, ~4, ~3]]];
 
-      api.internal.updateArcIds(lyrA.shapes, map, arcs);
-      api.internal.updateArcIds(lyrB.shapes, map, arcs);
+      api.internal.updateArcIds(lyrA.shapes, map, nodes);
+      api.internal.updateArcIds(lyrB.shapes, map, nodes);
       assert.deepEqual(lyrA.shapes, targetA);
       assert.deepEqual(lyrB.shapes, targetB);
     })
@@ -190,8 +191,9 @@ describe('mapshaper-clip-erase.js', function () {
     };
 
     var map = api.internal.insertClippingPoints(arcs);
-    api.internal.updateArcIds(lyrA.shapes, map, arcs);
-    api.internal.updateArcIds(lyrB.shapes, map, arcs);
+    var nodes = new api.internal.NodeCollection(arcs);
+    api.internal.updateArcIds(lyrA.shapes, map, nodes);
+    api.internal.updateArcIds(lyrB.shapes, map, nodes);
 
     it ("divide arcs", function() {
 
@@ -229,7 +231,7 @@ describe('mapshaper-clip-erase.js', function () {
     })
 
     it ("layer A remapped", function() {
-      var targetA = [[[0, 1, 2], [9, 10, 11]]];
+      var targetA = [[[0, 1, 2], [9, 5, 11]]];
       assert.deepEqual(lyrA.shapes, targetA);
     })
 
@@ -296,8 +298,8 @@ describe('mapshaper-clip-erase.js', function () {
         arcs: new ArcCollection(coords),
         layers: [lyr1, lyr2]
       };
-      // var targetShapes = [[[1, 5, 3]]];
-      var targetShapes = [[[1, 6, 4]]];  // spike is cut off and ignored
+      var targetShapes = [[[1, 5, 3]]];
+      // var targetShapes = [[[1, 6, 4]]];  // spike is cut off and ignored
       var clippedLyr = api.clipPolygons(lyr1, lyr2, dataset);
       assert.deepEqual(clippedLyr.shapes, targetShapes);
     })

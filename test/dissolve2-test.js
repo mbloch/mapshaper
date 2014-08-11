@@ -68,7 +68,6 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
       assert.deepEqual(dissolved.shapes, target);
     });
 
-
     it ('ignores collapsed arcs 2', function() {
       var arcs = new api.internal.ArcCollection(coords);
       var lyr = {
@@ -330,6 +329,52 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
       var lyr2 = dissolvePolygons(lyr, new NodeCollection(coords), {field: 'foo'});
       assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
     })
+
+    it('dissolve on null + data table', function() {
+      var lyr = {
+            geometry_type: 'polygon',
+            data: new api.internal.DataTable([{foo: 1}, {foo: 1}]),
+            shapes: [[[1, 0]], [[2, -2]]]
+          };
+      var lyr2 = dissolvePolygons(lyr, new NodeCollection(coords), {});
+      assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
+      assert.deepEqual(lyr2.data.getRecords(), [{}]); // empty table (?)
+    })
+
+    it('dissolve on "foo" with null shapes', function() {
+      var records = [{foo: 2}, {foo: 1}, {foo: 1}, {foo: 1}];
+      var lyr = {
+            geometry_type: 'polygon',
+            data: new api.internal.DataTable(records),
+            shapes: [null, [[0, 1]], [[-2, 2]], null]
+          };
+      var lyr2 = dissolvePolygons(lyr, new NodeCollection(coords), {field: 'foo'});
+      assert.deepEqual(lyr2.shapes, [null, [[0, 2]]]);
+      assert.deepEqual(lyr2.data.getRecords(), [{foo: 2}, {foo: 1}])
+    })
+
+    it('dissolve on "foo" with null shapes 2', function() {
+      var records = [{foo: 1}, {foo: 1}, {foo: 1}, {foo: 2}];
+      var lyr = {
+            geometry_type: 'polygon',
+            data: new api.internal.DataTable(records),
+            shapes: [null, [[0, 1]], [[-2, 2]], null]
+          };
+      var lyr2 = dissolvePolygons(lyr, new NodeCollection(coords), {field: 'foo'});
+      assert.deepEqual(lyr2.data.getRecords(), [{foo: 1}, {foo: 2}])
+      assert.deepEqual(lyr2.shapes, [[[0, 2]], null]);
+    })
+
+    it('no dissolve', function() {
+      var lyr = {
+            geometry_type: 'polygon',
+            data: new api.internal.DataTable([{foo: 1}, {foo: 2}]),
+            shapes: [[[0, 1]], [[-2, 2]]]
+          };
+      var lyr2 = dissolvePolygons(lyr, new NodeCollection(coords), {field: 'foo'});
+      assert.deepEqual(lyr2.shapes, [[[0, 1]], [[-2, 2]]]);
+    })
+
 
     // Handle arcs with a kink
     it('bugfix 2 (abnormal topology) test 1', function() {

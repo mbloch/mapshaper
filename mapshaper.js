@@ -3199,7 +3199,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("dissolve2")
     .validate(validateDissolveOpts)
-    .describe("merge adjacent polygons")
+    // .describe("merge adjacent and overlapping polygons")
     .option("field", dissolveFieldOpt)
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
@@ -3302,6 +3302,7 @@ MapShaper.getOptionParser = function() {
     });
 
   // Work-in-progress (no .describe(), so hidden from -h)
+  parser.command('tracing');
   /*
   parser.command("flatten")
     .option("target", targetOpt);
@@ -3318,7 +3319,6 @@ MapShaper.getOptionParser = function() {
   parser.command("repair")
     .option("target", targetOpt);
 
-  parser.command('tracing');
 
   parser.command("points")
     .option("name", nameOpt)
@@ -4097,10 +4097,12 @@ function ArcCollection() {
       }
       // if (n2 == 1) console.log(arcId)
     }
-    if (i != i2) {
+    var dupes = i - i2;
+    if (dupes > 0) {
       initXYData(_nn, _xx.subarray(0, i2), _yy.subarray(0, i2));
       initZData(zz);
     }
+    return dupes;
   };
 
   this.getVertex = function(arcId, nth) {
@@ -7128,32 +7130,41 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
 // TODO: rename this function
 MapShaper.divideArcs = function(dataset) {
   var arcs = dataset.arcs;
+  T.start();
+  T.start();
   var snapDist = MapShaper.getHighPrecisionSnapInterval(arcs);
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
-  //if (snapCount > 0) {
-  arcs.dedupCoords();
-  // TODO: don't build topology if not necessary
-  api.buildTopology(dataset);
-  //}
-  // clip arcs at points where segments intersect
-  var map = MapShaper.insertClippingPoints(arcs);
+  var dupeCount = arcs.dedupCoords();
+  T.stop('snap points');
+  if (snapCount > 0 || dupeCount > 0) {
+    T.start();
+    api.buildTopology(dataset);
+    T.stop('rebuild topology');
+  }
 
+  // clip arcs at points where segments intersect
+  T.start();
+  var map = MapShaper.insertClippingPoints(arcs);
+  T.stop('insert clipping points');
+  T.start();
   // update arc ids in arc-based layers and clean up arc geometry
   // to remove degenerate arcs and duplicate points
   var nodes = new NodeCollection(arcs);
   dataset.layers.forEach(function(lyr) {
     if (MapShaper.layerHasPaths(lyr)) {
-      MapShaper.updateArcIds(lyr.shapes, map, arcs, nodes);
+      MapShaper.updateArcIds(lyr.shapes, map, nodes);
       // TODO: consider alternative -- avoid creating degenerate arcs
       // in insertClippingPoints()
       MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
+  T.stop('update arc ids / clean geometry');
+  T.stop("divide arcs");
   return nodes;
 };
 
-MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {
-  var arcCount = arcs.size(),
+MapShaper.updateArcIds = function(shapes, map, nodes) {
+  var arcCount = nodes.arcs.size(),
       shape2;
   for (var i=0; i<shapes.length; i++) {
     shape2 = [];
@@ -7198,28 +7209,30 @@ MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {
 // returns array that maps original arc ids to new arc ids
 MapShaper.insertClippingPoints = function(arcs) {
   var points = MapShaper.findClippingPoints(arcs),
-      p,
+      p;
 
-      // original arc data
-      pointTotal0 = arcs.getPointCount(),
+  // TODO: avoid some or all of the following if no points need to be added
+
+  // original arc data
+  var pointTotal0 = arcs.getPointCount(),
       arcTotal0 = arcs.size(),
       data = arcs.getVertexData(),
       xx0 = data.xx,
       yy0 = data.yy,
       nn0 = data.nn,
       i0 = 0,
-      n0, arcLen0,
+      n0, arcLen0;
 
-      // new arc data
-      pointTotal1 = pointTotal0 + points.length * 2,
+  // new arc data
+  var pointTotal1 = pointTotal0 + points.length * 2,
       arcTotal1 = arcTotal0 + points.length,
       xx1 = new Float64Array(pointTotal1),
       yy1 = new Float64Array(pointTotal1),
       nn1 = [],  // number of arcs may vary
       i1 = 0,
-      n1,
+      n1;
 
-      map = new Uint32Array(arcTotal0);
+  var map = new Uint32Array(arcTotal0);
 
   // sort from last point to first point
   points.sort(function(a, b) {
@@ -11362,38 +11375,29 @@ MapShaper.readGeometryFile = function(path, fileType) {
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
 api.dissolvePolygons = function(lyr, arcs, opts) {
-  var getKey = MapShaper.getKeyFunction(opts.field, lyr.data),
-      lyr2 = {data: null};
-
   MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
-
-  var first = dissolveFirstPass(lyr.shapes, getKey);
-  var second = dissolveSecondPass(first.segments, lyr.shapes, first.keys);
-  lyr2.shapes = second.shapes;
+  var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data),
+      dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId),
+      dissolveData = null;
 
   if (lyr.data) {
-    lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getKey, second.index, opts));
+    dissolveData = MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts);
+    // replace missing shapes with nulls
+    for (var i=0, n=dissolveData.length; i<n; i++) {
+      if (!dissolveShapes[i]) {
+        dissolveShapes[i] = null;
+      }
+    }
   }
-  return Utils.defaults(lyr2, lyr);
+  return Utils.defaults({
+      shapes: dissolveShapes,
+      data: dissolveData ? new DataTable(dissolveData) : null
+    }, lyr);
 };
 
-MapShaper.getKeyFunction = function(field, data) {
-  var records, f;
-  if (!field) {
-    f = function(i) {return "";};
-  } else if (!data || !data.fieldExists(field)) {
-    stop("[dissolve] Data table is missing field:", field);
-  } else {
-    records = data.getRecords();
-    f = function(i) {
-      return records[i][field];
-    };
-  }
-  return f;
-};
-
-/*
-MapShaper.getKeyFunction2 = function(field, data) {
+// Get a function to convert original feature ids into ids of combined features
+// Use categorical classification (a different id for each unique value)
+MapShaper.getCategoryClassifier = function(field, data) {
   if (!field) return function(i) {return 0;};
   if (!data || !data.fieldExists(field)) {
     stop("[dissolve] Data table is missing field:", field);
@@ -11402,27 +11406,31 @@ MapShaper.getKeyFunction2 = function(field, data) {
       count = 0,
       records = data.getRecords();
   return function(i) {
-    var val = records[i][field];
+    var val = String(records[i][field]);
     if (val in index === false) {
       index[val] = count++;
     }
     return index[val];
   };
 };
-*/
+
+function dissolvePolygonGeometry(shapes, getGroupId) {
+  var segments = dissolveFirstPass(shapes, getGroupId);
+  return dissolveSecondPass(segments, shapes, getGroupId);
+}
 
 // First pass -- identify pairs of segments that can be dissolved
-//
-function dissolveFirstPass(shapes, getKey) {
+function dissolveFirstPass(shapes, getGroupId) {
   var groups = [],
       largeGroups = [],
       segments = [],
-      keys = [];
+      ids = shapes.map(function(shp, i) {
+        return getGroupId(i);
+      });
 
-  function procShape(shapeId) {
-    var key = getKey(shapeId);
-    keys[shapeId] = key;
-  }
+  MapShaper.traverseShapes(shapes, procArc);
+  Utils.forEach(largeGroups, splitGroup);
+  return segments;
 
   function procArc(obj) {
     var arcId = obj.arcId,
@@ -11483,8 +11491,8 @@ function dissolveFirstPass(shapes, getKey) {
   }
 
   function checkPairwiseMatch(arc1, arc2) {
-    return arc1.arcId === ~arc2.arcId && keys[arc1.shapeId] ===
-        keys[arc2.shapeId];
+    return arc1.arcId === ~arc2.arcId && ids[arc1.shapeId] ===
+        ids[arc2.shapeId];
   }
 
   function updateGroupIds(ids) {
@@ -11511,30 +11519,25 @@ function dissolveFirstPass(shapes, getKey) {
       if (group.length > 2) splitGroup(group);
     }
   }
-
-  MapShaper.traverseShapes(shapes, procArc, null, procShape);
-  Utils.forEach(largeGroups, splitGroup);
-
-  return {
-    segments: segments,
-    keys: keys
-  };
 }
 
 // Second pass -- generate dissolved shapes
 //
-function dissolveSecondPass(segments, shapes, keys) {
-  var dissolveIndex = {},  // new shape ids indexed by dissolveKey
-      dissolveShapes = []; // dissolved shapes
+function dissolveSecondPass(segments, shapes, getGroupId) {
+  var dissolveShapes = [];
+  segments.forEach(procSegment);
+  return dissolveShapes;
 
-  function addRing(arcs, key) {
-    var i;
-    if (key in dissolveIndex === false) {
-      i = dissolveShapes.length;
-      dissolveIndex[key] = i;
+  // @obj is an arc instance
+  function procSegment(obj) {
+    if (obj.used) return;
+    var match = findDissolveArc(obj);
+    if (!match) buildRing(obj);
+  }
+
+  function addRing(arcs, i) {
+    if (i in dissolveShapes === false) {
       dissolveShapes[i] = [];
-    } else {
-      i = dissolveIndex[key];
     }
     dissolveShapes[i].push(arcs);
   }
@@ -11556,7 +11559,7 @@ function dissolveSecondPass(segments, shapes, keys) {
 
     if (!nextArc) error("buildRing() traversal error");
     firstArc.used = true;
-    addRing(newArcs, keys[firstArc.shapeId]);
+    addRing(newArcs, getGroupId(firstArc.shapeId));
   }
 
   // Get the next arc in a dissolved polygon ring
@@ -11590,14 +11593,14 @@ function dissolveSecondPass(segments, shapes, keys) {
   // Return matching segment or null if no match
   //
   function findDissolveArc(obj) {
-    var dissolveKey = keys[obj.shapeId], // obj.shape.dissolveKey,
+    var dissolveId = getGroupId(obj.shapeId), // obj.shape.dissolveKey,
         match, matchId;
     matchId = Utils.find(obj.group, function(i) {
       var a = obj,
           b = segments[i];
       if (a == b ||
           b.used ||
-          keys[b.shapeId] != dissolveKey ||
+          getGroupId(b.shapeId) !== dissolveId ||
           // don't prevent rings from dissolving with themselves (risky?)
           // a.shapeId == b.shapeId && a.partId == b.partId ||
           a.arcId != ~b.arcId) return false;
@@ -11606,19 +11609,6 @@ function dissolveSecondPass(segments, shapes, keys) {
     match = matchId === null ? null : segments[matchId];
     return match;
   }
-
-  // @obj is an arc instance
-  function procSegment(obj) {
-    if (obj.used) return;
-    var match = findDissolveArc(obj);
-    if (!match) buildRing(obj);
-  }
-
-  Utils.forEach(segments, procSegment);
-  return {
-    index: dissolveIndex,
-    shapes: dissolveShapes
-  };
 }
 
 function getNextSegment(seg, segments, shapes) {
@@ -11647,7 +11637,7 @@ function getSegmentByOffs(seg, segments, shapes, offs) {
 // @properties original records
 // @index hash of dissolve shape ids, indexed on dissolve keys
 //
-MapShaper.calcDissolveData = function(properties, getKey, index, opts) {
+MapShaper.calcDissolveData = function(properties, getGroupId, opts) {
   var arr = [];
   var sumFields = opts.sum_fields || [],
       copyFields = opts.copy_fields || [];
@@ -11657,9 +11647,8 @@ MapShaper.calcDissolveData = function(properties, getKey, index, opts) {
   }
 
   properties.forEach(function(rec, i) {
-    var key = getKey(i);
-    if (key in index === false || !rec) return;
-    var idx = index[key],
+    if (!rec) return;
+    var idx = getGroupId(i),
         dissolveRec;
 
     if (idx in arr) {
@@ -12681,7 +12670,6 @@ MapShaper.getTableInfo = function(data) {
 
 
 
-
 api.dissolvePolygons2 = function(lyr, dataset, opts) {
   MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
   var nodes = MapShaper.divideArcs(dataset);
@@ -12690,26 +12678,26 @@ api.dissolvePolygons2 = function(lyr, dataset, opts) {
 
 MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   opts = opts || {};
-  var getKey = MapShaper.getKeyFunction(opts.field, lyr.data);
+  var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data);
   var lyr2 = {data: null};
-  var index = {};
   var groups = lyr.shapes.reduce(function(groups, shape, i) {
-    var key = getKey(i);
-    if (key in index === false) {
-      index[key] = groups.length;
-      groups.push([]);
+    var i2 = getGroupId(i);
+    if (i2 in groups === false) {
+      groups[i2] = [];
     }
-    MapShaper.extendShape(groups[index[key]], shape);
+    MapShaper.extendShape(groups[i2], shape);
     return groups;
   }, []);
 
+  T.start();
   var dissolve = MapShaper.getPolygonDissolver(nodes);
   lyr2.shapes = groups.map(function(group) {
     return dissolve(group);
   });
+  T.stop('dissolve2');
 
   if (lyr.data) {
-    lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getKey, index, opts));
+    lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts));
   }
   return Utils.defaults(lyr2, lyr);
 };
@@ -12751,7 +12739,6 @@ MapShaper.getPolygonDissolver = function(nodes) {
     return dissolved.length > 0 ? dissolved : null;
   };
 };
-
 
 // TODO: to prevent invalid holes,
 // could erase the holes from the space-enclosing rings.

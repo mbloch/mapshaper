@@ -427,10 +427,12 @@ function ArcCollection() {
       }
       // if (n2 == 1) console.log(arcId)
     }
-    if (i != i2) {
+    var dupes = i - i2;
+    if (dupes > 0) {
       initXYData(_nn, _xx.subarray(0, i2), _yy.subarray(0, i2));
       initZData(zz);
     }
+    return dupes;
   };
 
   this.getVertex = function(arcId, nth) {

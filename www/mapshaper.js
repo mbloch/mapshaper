@@ -1334,6 +1334,843 @@ Node.copyFile = function(src, dest) {
 
 
 
+function Transform() {
+  this.mx = this.my = 1;
+  this.bx = this.by = 0;
+}
+
+Transform.prototype.isNull = function() {
+  return !this.mx || !this.my || isNaN(this.bx) || isNaN(this.by);
+};
+
+Transform.prototype.invert = function() {
+  var inv = new Transform();
+  inv.mx = 1 / this.mx;
+  inv.my = 1 / this.my;
+  //inv.bx = -this.bx * inv.mx;
+  //inv.by = -this.by * inv.my;
+  inv.bx = -this.bx / this.mx;
+  inv.by = -this.by / this.my;
+  return inv;
+};
+
+
+Transform.prototype.transform = function(x, y, xy) {
+  xy = xy || [];
+  xy[0] = x * this.mx + this.bx;
+  xy[1] = y * this.my + this.by;
+  return xy;
+};
+
+Transform.prototype.toString = function() {
+  return Utils.toString(Utils.extend({}, this));
+};
+
+function Bounds() {
+  if (arguments.length > 0) {
+    this.setBounds.apply(this, arguments);
+  }
+}
+
+Bounds.prototype.toString = function() {
+  return JSON.stringify({
+    xmin: this.xmin,
+    xmax: this.xmax,
+    ymin: this.ymin,
+    ymax: this.ymax
+  });
+};
+
+Bounds.prototype.toArray = function() {
+  return this.hasBounds() ? [this.xmin, this.ymin, this.xmax, this.ymax] : [];
+};
+
+Bounds.prototype.hasBounds = function() {
+  return this.xmin <= this.xmax && this.ymin <= this.ymax;
+};
+
+Bounds.prototype.sameBounds =
+Bounds.prototype.equals = function(bb) {
+  return bb && this.xmin === bb.xmin && this.xmax === bb.xmax &&
+    this.ymin === bb.ymin && this.ymax === bb.ymax;
+};
+
+Bounds.prototype.width = function() {
+  return (this.xmax - this.xmin) || 0;
+};
+
+Bounds.prototype.height = function() {
+  return (this.ymax - this.ymin) || 0;
+};
+
+Bounds.prototype.area = function() {
+  return this.width() * this.height() || 0;
+};
+
+Bounds.prototype.empty = function() {
+  this.xmin = this.ymin = this.xmax = this.ymax = void 0;
+  return this;
+};
+
+Bounds.prototype.setBounds = function(a, b, c, d) {
+  if (arguments.length == 1) {
+    // assume first arg is a Bounds or array
+    if (Utils.isArrayLike(a)) {
+      b = a[1];
+      c = a[2];
+      d = a[3];
+      a = a[0];
+    } else {
+      b = a.ymin;
+      c = a.xmax;
+      d = a.ymax;
+      a = a.xmin;
+    }
+  }
+
+  this.xmin = a;
+  this.ymin = b;
+  this.xmax = c;
+  this.ymax = d;
+  if (a > c || b > d) this.update();
+  // error("Bounds#setBounds() min/max reversed:", a, b, c, d);
+  return this;
+};
+
+
+Bounds.prototype.centerX = function() {
+  var x = (this.xmin + this.xmax) * 0.5;
+  return x;
+};
+
+Bounds.prototype.centerY = function() {
+  var y = (this.ymax + this.ymin) * 0.5;
+  return y;
+};
+
+Bounds.prototype.containsPoint = function(x, y) {
+  if (x >= this.xmin && x <= this.xmax &&
+    y <= this.ymax && y >= this.ymin) {
+    return true;
+  }
+  return false;
+};
+
+// intended to speed up slightly bubble symbol detection; could use intersects() instead
+// TODO: fix false positive where circle is just outside a corner of the box
+Bounds.prototype.containsBufferedPoint =
+Bounds.prototype.containsCircle = function(x, y, buf) {
+  if ( x + buf > this.xmin && x - buf < this.xmax ) {
+    if ( y - buf < this.ymax && y + buf > this.ymin ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+Bounds.prototype.intersects = function(bb) {
+  if (bb.xmin <= this.xmax && bb.xmax >= this.xmin &&
+    bb.ymax >= this.ymin && bb.ymin <= this.ymax) {
+    return true;
+  }
+  return false;
+};
+
+Bounds.prototype.contains = function(bb) {
+  if (bb.xmin >= this.xmin && bb.ymax <= this.ymax &&
+    bb.xmax <= this.xmax && bb.ymin >= this.ymin) {
+    return true;
+  }
+  return false;
+};
+
+Bounds.prototype.shift = function(x, y) {
+  this.setBounds(this.xmin + x,
+    this.ymin + y, this.xmax + x, this.ymax + y);
+};
+
+Bounds.prototype.padBounds = function(a, b, c, d) {
+  this.xmin -= a;
+  this.ymin -= b;
+  this.xmax += c;
+  this.ymax += d;
+};
+
+// Rescale the bounding box by a fraction. TODO: implement focus.
+// @param {number} pct Fraction of original extents
+// @param {number} pctY Optional amount to scale Y
+//
+Bounds.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
+  var halfWidth = (this.xmax - this.xmin) * 0.5;
+  var halfHeight = (this.ymax - this.ymin) * 0.5;
+  var kx = pct - 1;
+  var ky = pctY === undefined ? kx : pctY - 1;
+  this.xmin -= halfWidth * kx;
+  this.ymin -= halfHeight * ky;
+  this.xmax += halfWidth * kx;
+  this.ymax += halfHeight * ky;
+};
+
+// Return a bounding box with the same extent as this one.
+Bounds.prototype.cloneBounds = // alias so child classes can override clone()
+Bounds.prototype.clone = function() {
+  return new Bounds(this.xmin, this.ymin, this.xmax, this.ymax);
+};
+
+Bounds.prototype.clearBounds = function() {
+  this.setBounds(new Bounds());
+};
+
+Bounds.prototype.mergePoint = function(x, y) {
+  if (this.xmin === void 0) {
+    this.setBounds(x, y, x, y);
+  } else {
+    // this works even if x,y are NaN
+    if (x < this.xmin)  this.xmin = x;
+    else if (x > this.xmax)  this.xmax = x;
+
+    if (y < this.ymin) this.ymin = y;
+    else if (y > this.ymax) this.ymax = y;
+  }
+};
+
+// expands either x or y dimension to match @aspect (width/height ratio)
+// @focusX, @focusY (optional): expansion focus, as a fraction of width and height
+Bounds.prototype.fillOut = function(aspect, focusX, focusY) {
+  if (arguments.length < 3) {
+    focusX = 0.5;
+    focusY = 0.5;
+  }
+  var w = this.width(),
+      h = this.height(),
+      currAspect = w / h,
+      pad;
+  if (isNaN(aspect) || aspect <= 0) {
+    // error condition; don't pad
+  } else if (currAspect < aspect) { // fill out x dimension
+    pad = h * aspect - w;
+    this.xmin -= (1 - focusX) * pad;
+    this.xmax += focusX * pad;
+  } else {
+    pad = w / aspect - h;
+    this.ymin -= (1 - focusY) * pad;
+    this.ymax += focusY * pad;
+  }
+  return this;
+};
+
+Bounds.prototype.update = function() {
+  var tmp;
+  if (this.xmin > this.xmax) {
+    tmp = this.xmin;
+    this.xmin = this.xmax;
+    this.xmax = tmp;
+  }
+  if (this.ymin > this.ymax) {
+    tmp = this.ymin;
+    this.ymin = this.ymax;
+    this.ymax = tmp;
+  }
+};
+
+Bounds.prototype.transform = function(t) {
+  this.xmin = this.xmin * t.mx + t.bx;
+  this.xmax = this.xmax * t.mx + t.bx;
+  this.ymin = this.ymin * t.my + t.by;
+  this.ymax = this.ymax * t.my + t.by;
+  this.update();
+  return this;
+};
+
+// Returns a Transform object for mapping this onto Bounds @b2
+// @flipY (optional) Flip y-axis coords, for converting to/from pixel coords
+//
+Bounds.prototype.getTransform = function(b2, flipY) {
+  var t = new Transform();
+  t.mx = b2.width() / this.width();
+  t.bx = b2.xmin - t.mx * this.xmin;
+  if (flipY) {
+    t.my = -b2.height() / this.height();
+    t.by = b2.ymax - t.my * this.ymin;
+  } else {
+    t.my = b2.height() / this.height();
+    t.by = b2.ymin - t.my * this.ymin;
+  }
+  return t;
+};
+
+Bounds.prototype.mergeCircle = function(x, y, r) {
+  if (r < 0) r = -r;
+  this.mergeBounds([x - r, y - r, x + r, y + r]);
+};
+
+Bounds.prototype.mergeBounds = function(bb) {
+  var a, b, c, d;
+  if (bb instanceof Bounds) {
+    a = bb.xmin, b = bb.ymin, c = bb.xmax, d = bb.ymax;
+  } else if (arguments.length == 4) {
+    a = arguments[0];
+    b = arguments[1];
+    c = arguments[2];
+    d = arguments[3];
+  } else if (bb.length == 4) {
+    // assume array: [xmin, ymin, xmax, ymax]
+    a = bb[0], b = bb[1], c = bb[2], d = bb[3];
+  } else {
+    error("Bounds#mergeBounds() invalid argument:", bb);
+  }
+
+  if (this.xmin === void 0) {
+    this.setBounds(a, b, c, d);
+  } else {
+    if (a < this.xmin) this.xmin = a;
+    if (b < this.ymin) this.ymin = b;
+    if (c > this.xmax) this.xmax = c;
+    if (d > this.ymax) this.ymax = d;
+  }
+  return this;
+};
+
+
+
+
+Utils.findRankByValue = function(arr, value) {
+  if (isNaN(value)) return arr.length;
+  var rank = 1;
+  for (var i=0, n=arr.length; i<n; i++) {
+    if (value > arr[i]) rank++;
+  }
+  return rank;
+}
+
+Utils.findValueByPct = function(arr, pct) {
+  var rank = Math.ceil((1-pct) * (arr.length));
+  return Utils.findValueByRank(arr, rank);
+};
+
+// See http://ndevilla.free.fr/median/median/src/wirth.c
+// Elements of @arr are reordered
+//
+Utils.findValueByRank = function(arr, rank) {
+  if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
+
+  rank = Utils.clamp(rank | 0, 1, arr.length);
+  var k = rank - 1, // conv. rank to array index
+      n = arr.length,
+      l = 0,
+      m = n - 1,
+      i, j, val, tmp;
+
+  while (l < m) {
+    val = arr[k];
+    i = l;
+    j = m;
+    do {
+      while (arr[i] < val) {i++;}
+      while (val < arr[j]) {j--;}
+      if (i <= j) {
+        tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+        i++;
+        j--;
+      }
+    } while (i <= j);
+    if (j < k) l = i;
+    if (k < i) m = j;
+  }
+  return arr[k];
+};
+
+//
+//
+Utils.findMedian = function(arr) {
+  var n = arr.length,
+      rank = Math.floor(n / 2) + 1,
+      median = Utils.findValueByRank(arr, rank);
+  if ((n & 1) == 0) {
+    median = (median + Utils.findValueByRank(arr, rank - 1)) / 2;
+  }
+  return median;
+};
+
+
+
+
+// Wrapper for DataView class for more convenient reading and writing of
+//   binary data; Remembers endianness and read/write position.
+// Has convenience methods for copying from buffers, etc.
+//
+function BinArray(buf, le) {
+  if (Utils.isNumber(buf)) {
+    buf = new ArrayBuffer(buf);
+  } else if (Env.inNode && buf instanceof Buffer == true) {
+    // Since node 0.10, DataView constructor doesn't accept Buffers,
+    //   so need to copy Buffer to ArrayBuffer
+    buf = BinArray.toArrayBuffer(buf);
+  }
+  if (buf instanceof ArrayBuffer == false) {
+    error("BinArray constructor takes an integer, ArrayBuffer or Buffer argument");
+  }
+  this._buffer = buf;
+  this._bytes = new Uint8Array(buf);
+  this._view = new DataView(buf);
+  this._idx = 0;
+  this._le = le !== false;
+}
+
+BinArray.bufferToUintArray = function(buf, wordLen) {
+  if (wordLen == 4) return new Uint32Array(buf);
+  if (wordLen == 2) return new Uint16Array(buf);
+  if (wordLen == 1) return new Uint8Array(buf);
+  error("BinArray.bufferToUintArray() invalid word length:", wordLen)
+};
+
+BinArray.uintSize = function(i) {
+  return i & 1 || i & 2 || 4;
+};
+
+BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
+  srcId = srcId || 0;
+  bytes = bytes || src.byteLength - srcId;
+  if (dest.byteLength - destId < bytes)
+    error("Buffer overflow; tried to write:", bytes);
+
+  // When possible, copy buffer data in multi-byte chunks... Added this for faster copying of
+  // shapefile data, which is aligned to 32 bits.
+  var wordSize = Math.min(BinArray.uintSize(bytes), BinArray.uintSize(srcId),
+      BinArray.uintSize(dest.byteLength), BinArray.uintSize(destId),
+      BinArray.uintSize(src.byteLength));
+
+  var srcArr = BinArray.bufferToUintArray(src, wordSize),
+      destArr = BinArray.bufferToUintArray(dest, wordSize),
+      count = bytes / wordSize,
+      i = srcId / wordSize,
+      j = destId / wordSize;
+
+  while (count--) {
+    destArr[j++] = srcArr[i++];
+  }
+  return bytes;
+};
+
+BinArray.toArrayBuffer = function(src) {
+  var n = src.length,
+      dest = new ArrayBuffer(n),
+      view = new Uint8Array(dest);
+  for (var i=0; i<n; i++) {
+      view[i] = src[i];
+  }
+  return dest;
+};
+
+// Return length in bytes of an ArrayBuffer or Buffer
+//
+BinArray.bufferSize = function(buf) {
+  return (buf instanceof ArrayBuffer ?  buf.byteLength : buf.length | 0);
+};
+
+Utils.buffersAreIdentical = function(a, b) {
+  var alen = BinArray.bufferSize(a);
+  var blen = BinArray.bufferSize(b);
+  if (alen != blen) {
+    return false;
+  }
+  for (var i=0; i<alen; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+};
+
+BinArray.prototype = {
+  size: function() {
+    return this._buffer.byteLength;
+  },
+
+  littleEndian: function() {
+    this._le = true;
+    return this;
+  },
+
+  bigEndian: function() {
+    this._le = false;
+    return this;
+  },
+
+  buffer: function() {
+    return this._buffer;
+  },
+
+  bytesLeft: function() {
+    return this._buffer.byteLength - this._idx;
+  },
+
+  skipBytes: function(bytes) {
+    this._idx += (bytes + 0);
+    return this;
+  },
+
+  readUint8: function() {
+    return this._bytes[this._idx++];
+  },
+
+  writeUint8: function(val) {
+    this._bytes[this._idx++] = val;
+    return this;
+  },
+
+  readInt8: function() {
+    return this._view.getInt8(this._idx++);
+  },
+
+  writeInt8: function(val) {
+    this._view.setInt8(this._idx++, val);
+    return this;
+  },
+
+  readUint16: function() {
+    var val = this._view.getUint16(this._idx, this._le);
+    this._idx += 2;
+    return val;
+  },
+
+  writeUint16: function(val) {
+    this._view.setUint16(this._idx, val, this._le);
+    this._idx += 2;
+    return this;
+  },
+
+  readUint32: function() {
+    var val = this._view.getUint32(this._idx, this._le);
+    this._idx += 4;
+    return val;
+  },
+
+  writeUint32: function(val) {
+    this._view.setUint32(this._idx, val, this._le);
+    this._idx += 4;
+    return this;
+  },
+
+  readInt32: function() {
+    var val = this._view.getInt32(this._idx, this._le);
+    this._idx += 4;
+    return val;
+  },
+
+  writeInt32: function(val) {
+    this._view.setInt32(this._idx, val, this._le);
+    this._idx += 4;
+    return this;
+  },
+
+  readFloat64: function() {
+    var val = this._view.getFloat64(this._idx, this._le);
+    this._idx += 8;
+    return val;
+  },
+
+  writeFloat64: function(val) {
+    this._view.setFloat64(this._idx, val, this._le);
+    this._idx += 8;
+    return this;
+  },
+
+  // Returns a Float64Array containing @len doubles
+  //
+  readFloat64Array: function(len) {
+    var bytes = len * 8,
+        i = this._idx,
+        buf = this._buffer,
+        arr;
+    // Inconsistent: first is a view, second a copy...
+    if (i % 8 === 0) {
+      arr = new Float64Array(buf, i, len);
+    } else if (buf.slice) {
+      arr = new Float64Array(buf.slice(i, i + bytes));
+    } else { // ie10, etc
+      var dest = new ArrayBuffer(bytes);
+      BinArray.bufferCopy(dest, 0, buf, i, bytes);
+      arr = new Float64Array(dest);
+    }
+    this._idx += bytes;
+    return arr;
+  },
+
+  readUint32Array: function(len) {
+    var arr = [];
+    for (var i=0; i<len; i++) {
+      arr.push(this.readUint32());
+    }
+    return arr;
+  },
+
+  peek: function() {
+    return this._view.getUint8(this._idx);
+  },
+
+  position: function(i) {
+    if (i != null) {
+      this._idx = i;
+      return this;
+    }
+    return this._idx;
+  },
+
+  readCString: function(fixedLen, asciiOnly) {
+    var str = "",
+        count = fixedLen >= 0 ? fixedLen : this.bytesLeft();
+    while (count > 0) {
+      var byteVal = this.readUint8();
+      count--;
+      if (byteVal == 0) {
+        break;
+      } else if (byteVal > 127 && asciiOnly) {
+        str = null;
+        break;
+      }
+      str += String.fromCharCode(byteVal);
+    }
+
+    if (fixedLen > 0 && count > 0) {
+      this.skipBytes(count);
+    }
+    return str;
+  },
+
+  writeString: function(str, maxLen) {
+    var bytesWritten = 0,
+        charsToWrite = str.length,
+        cval;
+    if (maxLen) {
+      charsToWrite = Math.min(charsToWrite, maxLen);
+    }
+    for (var i=0; i<charsToWrite; i++) {
+      cval = str.charCodeAt(i);
+      if (cval > 127) {
+        trace("#writeCString() Unicode value beyond ascii range")
+        cval = '?'.charCodeAt(0);
+      }
+      this.writeUint8(cval);
+      bytesWritten++;
+    }
+    return bytesWritten;
+  },
+
+  writeCString: function(str, fixedLen) {
+    var maxChars = fixedLen ? fixedLen - 1 : null,
+        bytesWritten = this.writeString(str, maxChars);
+
+    this.writeUint8(0); // terminator
+    bytesWritten++;
+
+    if (fixedLen) {
+      while (bytesWritten < fixedLen) {
+        this.writeUint8(0);
+        bytesWritten++;
+      }
+    }
+    return this;
+  },
+
+  writeBuffer: function(buf, bytes, startIdx) {
+    this._idx += BinArray.bufferCopy(this._buffer, this._idx, buf, startIdx, bytes);
+    return this;
+  }
+
+  /*
+  // TODO: expand buffer, probably via a public method, not automatically
+  //
+  _grow: function(k) {
+    var fac = k > 1 && k <= 3 ? k : 1.7,
+        srcLen = this.bufferSize(),
+        destLen = Math.round(srcLen * fac),
+        buf = new ArrayBuffer(destLen);
+
+    var src = new Uint8Array(this._buffer),
+        dest = new Uint8Array(buf);
+
+    for (var i=0; i<srcLen; i++) {
+      dest[i] = src[i];
+    }
+
+    this._buffer = buf;
+    this._view = new DataView(buf);
+  },*/
+};
+
+
+
+
+
+/*
+A simplified version of printf formatting
+Format codes: %[flags][width][.precision]type
+
+supported flags:
+  +   add '+' before positive numbers
+  0   left-pad with '0'
+width: 1 to many
+precision: .(1 to many)
+type:
+  s     string
+  di    integers
+  f     decimal numbers
+  xX    hexidecimal (unsigned)
+  %     literal '%'
+
+Examples:
+  code    val    formatted
+  %+d     1      '+1'
+  %4i     32     '  32'
+  %04i    32     '0032'
+  %x      255    'ff'
+  %.2f    0.125  '0.13'
+  %'f     1000   '1,000'
+*/
+
+// Usage: Utils.format(formatString, [values])
+// Tip: When reusing the same format many times, use Utils.formatter() for 5x - 10x better performance
+//
+Utils.format = function(fmt) {
+  var fn = Utils.formatter(fmt);
+  var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
+  return str;
+};
+
+function formatValue(val, matches) {
+  var flags = matches[1];
+  var padding = matches[2];
+  var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
+  var type = matches[4];
+
+  if (type == '%') {
+    return '%'; // %% = literal '%'
+  }
+  var isString = type == 's',
+      isHex = type == 'x' || type == 'X',
+      isInt = type == 'd' || type == 'i',
+      isFloat = type == 'f',
+      isNumber = !isString;
+
+  var sign = "",
+      padDigits = 0,
+      isZero = false,
+      isNeg = false;
+
+  var str;
+  if (isString) {
+    str = String(val);
+  }
+  else if (isHex) {
+    str = val.toString(16);
+    if (type == 'X')
+      str = str.toUpperCase();
+  }
+  else if (isNumber) {
+    str = Utils.numToStr(val, isInt ? 0 : decimals);
+    if (str[0] == '-') {
+      isNeg = true;
+      str = str.substr(1);
+    }
+    isZero = parseFloat(str) == 0;
+    if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
+      str = Utils.addThousandsSep(str);
+    }
+    if (!isZero) { // BUG: sign is added when num rounds to 0
+      if (isNeg) {
+        sign = "\u2212"; // U+2212
+      } else if (flags.indexOf('+') != -1) {
+        sign = '+';
+      }
+    }
+  }
+
+  if (padding) {
+    var strLen = str.length + sign.length;
+    var minWidth = parseInt(padding, 10);
+    if (strLen < minWidth) {
+      padDigits = minWidth - strLen;
+      var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
+      var padStr = Utils.repeatString(padChar, padDigits);
+    }
+  }
+
+  if (padDigits == 0) {
+    str = sign + str;
+  } else if (padChar == '0') {
+    str = sign + padStr + str;
+  } else {
+    str = padStr + sign + str;
+  }
+  return str;
+}
+
+// Get a function for interpolating formatted values into a string.
+//
+Utils.formatter = function(fmt) {
+  var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
+  var literals = [],
+      formatCodes = [],
+      startIdx = 0,
+      escapes = 0,
+      literal,
+      matches;
+
+  while(matches=codeRxp.exec(fmt)) {
+    literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
+    if (matches[0] == '%%') {
+      matches = "%";
+      escapes++;
+    }
+    literals.push(literal);
+    formatCodes.push(matches);
+    startIdx = codeRxp.lastIndex;
+  }
+  literals.push(fmt.substr(startIdx));
+
+  if (escapes > 0) {
+    formatCodes = Utils.filter(formatCodes, function(obj, i) {
+      if (obj !== '%') return true;
+      literals[i] += '%' + literals.splice(i+1, 1)[0];
+      return false;
+    });
+  }
+
+
+  return function() {
+    var str = literals[0],
+        n = arguments.length,
+        count;
+    if (n != formatCodes.length) {
+      error("[Utils.format()] Data does not match format string; format:", fmt, "data:", arguments);
+    }
+    for (var i=0; i<n; i++) {
+      // 's?': insert "s" if needed to form plural of previous value.
+      if (arguments[i] == 's?') {
+        if (Utils.isInteger(arguments[i-1])) {
+          count = arguments[i-1];
+        } else if (Utils.isInteger(arguments[i+1])) {
+          count = arguments[i+1];
+        } else {
+          count = 1;
+        }
+        str += count == 1 ? "" : "s";
+      } else {
+        str += formatValue(arguments[i], formatCodes[i]);
+      }
+      str += literals[i+1];
+    }
+    return str;
+  };
+};
+
+
+
+
+
 
 Utils.loadBinaryData = function(url, callback) {
   // TODO: throw error if ajax or arraybuffer not available
@@ -2414,305 +3251,6 @@ function ElementPosition(ref) {
 Opts.inherit(ElementPosition, EventDispatcher);
 
 
-function Transform() {
-  this.mx = this.my = 1;
-  this.bx = this.by = 0;
-}
-
-Transform.prototype.isNull = function() {
-  return !this.mx || !this.my || isNaN(this.bx) || isNaN(this.by);
-};
-
-Transform.prototype.invert = function() {
-  var inv = new Transform();
-  inv.mx = 1 / this.mx;
-  inv.my = 1 / this.my;
-  //inv.bx = -this.bx * inv.mx;
-  //inv.by = -this.by * inv.my;
-  inv.bx = -this.bx / this.mx;
-  inv.by = -this.by / this.my;
-  return inv;
-};
-
-
-Transform.prototype.transform = function(x, y, xy) {
-  xy = xy || [];
-  xy[0] = x * this.mx + this.bx;
-  xy[1] = y * this.my + this.by;
-  return xy;
-};
-
-Transform.prototype.toString = function() {
-  return Utils.toString(Utils.extend({}, this));
-};
-
-function Bounds() {
-  if (arguments.length > 0) {
-    this.setBounds.apply(this, arguments);
-  }
-}
-
-Bounds.prototype.toString = function() {
-  return JSON.stringify({
-    xmin: this.xmin,
-    xmax: this.xmax,
-    ymin: this.ymin,
-    ymax: this.ymax
-  });
-};
-
-Bounds.prototype.toArray = function() {
-  return this.hasBounds() ? [this.xmin, this.ymin, this.xmax, this.ymax] : [];
-};
-
-Bounds.prototype.hasBounds = function() {
-  return this.xmin <= this.xmax && this.ymin <= this.ymax;
-};
-
-Bounds.prototype.sameBounds =
-Bounds.prototype.equals = function(bb) {
-  return bb && this.xmin === bb.xmin && this.xmax === bb.xmax &&
-    this.ymin === bb.ymin && this.ymax === bb.ymax;
-};
-
-Bounds.prototype.width = function() {
-  return (this.xmax - this.xmin) || 0;
-};
-
-Bounds.prototype.height = function() {
-  return (this.ymax - this.ymin) || 0;
-};
-
-Bounds.prototype.area = function() {
-  return this.width() * this.height() || 0;
-};
-
-Bounds.prototype.empty = function() {
-  this.xmin = this.ymin = this.xmax = this.ymax = void 0;
-  return this;
-};
-
-Bounds.prototype.setBounds = function(a, b, c, d) {
-  if (arguments.length == 1) {
-    // assume first arg is a Bounds or array
-    if (Utils.isArrayLike(a)) {
-      b = a[1];
-      c = a[2];
-      d = a[3];
-      a = a[0];
-    } else {
-      b = a.ymin;
-      c = a.xmax;
-      d = a.ymax;
-      a = a.xmin;
-    }
-  }
-
-  this.xmin = a;
-  this.ymin = b;
-  this.xmax = c;
-  this.ymax = d;
-  if (a > c || b > d) this.update();
-  // error("Bounds#setBounds() min/max reversed:", a, b, c, d);
-  return this;
-};
-
-
-Bounds.prototype.centerX = function() {
-  var x = (this.xmin + this.xmax) * 0.5;
-  return x;
-};
-
-Bounds.prototype.centerY = function() {
-  var y = (this.ymax + this.ymin) * 0.5;
-  return y;
-};
-
-Bounds.prototype.containsPoint = function(x, y) {
-  if (x >= this.xmin && x <= this.xmax &&
-    y <= this.ymax && y >= this.ymin) {
-    return true;
-  }
-  return false;
-};
-
-// intended to speed up slightly bubble symbol detection; could use intersects() instead
-// TODO: fix false positive where circle is just outside a corner of the box
-Bounds.prototype.containsBufferedPoint =
-Bounds.prototype.containsCircle = function(x, y, buf) {
-  if ( x + buf > this.xmin && x - buf < this.xmax ) {
-    if ( y - buf < this.ymax && y + buf > this.ymin ) {
-      return true;
-    }
-  }
-  return false;
-};
-
-Bounds.prototype.intersects = function(bb) {
-  if (bb.xmin <= this.xmax && bb.xmax >= this.xmin &&
-    bb.ymax >= this.ymin && bb.ymin <= this.ymax) {
-    return true;
-  }
-  return false;
-};
-
-Bounds.prototype.contains = function(bb) {
-  if (bb.xmin >= this.xmin && bb.ymax <= this.ymax &&
-    bb.xmax <= this.xmax && bb.ymin >= this.ymin) {
-    return true;
-  }
-  return false;
-};
-
-Bounds.prototype.shift = function(x, y) {
-  this.setBounds(this.xmin + x,
-    this.ymin + y, this.xmax + x, this.ymax + y);
-};
-
-Bounds.prototype.padBounds = function(a, b, c, d) {
-  this.xmin -= a;
-  this.ymin -= b;
-  this.xmax += c;
-  this.ymax += d;
-};
-
-// Rescale the bounding box by a fraction. TODO: implement focus.
-// @param {number} pct Fraction of original extents
-// @param {number} pctY Optional amount to scale Y
-//
-Bounds.prototype.scale = function(pct, pctY) { /*, focusX, focusY*/
-  var halfWidth = (this.xmax - this.xmin) * 0.5;
-  var halfHeight = (this.ymax - this.ymin) * 0.5;
-  var kx = pct - 1;
-  var ky = pctY === undefined ? kx : pctY - 1;
-  this.xmin -= halfWidth * kx;
-  this.ymin -= halfHeight * ky;
-  this.xmax += halfWidth * kx;
-  this.ymax += halfHeight * ky;
-};
-
-// Return a bounding box with the same extent as this one.
-Bounds.prototype.cloneBounds = // alias so child classes can override clone()
-Bounds.prototype.clone = function() {
-  return new Bounds(this.xmin, this.ymin, this.xmax, this.ymax);
-};
-
-Bounds.prototype.clearBounds = function() {
-  this.setBounds(new Bounds());
-};
-
-Bounds.prototype.mergePoint = function(x, y) {
-  if (this.xmin === void 0) {
-    this.setBounds(x, y, x, y);
-  } else {
-    // this works even if x,y are NaN
-    if (x < this.xmin)  this.xmin = x;
-    else if (x > this.xmax)  this.xmax = x;
-
-    if (y < this.ymin) this.ymin = y;
-    else if (y > this.ymax) this.ymax = y;
-  }
-};
-
-// expands either x or y dimension to match @aspect (width/height ratio)
-// @focusX, @focusY (optional): expansion focus, as a fraction of width and height
-Bounds.prototype.fillOut = function(aspect, focusX, focusY) {
-  if (arguments.length < 3) {
-    focusX = 0.5;
-    focusY = 0.5;
-  }
-  var w = this.width(),
-      h = this.height(),
-      currAspect = w / h,
-      pad;
-  if (isNaN(aspect) || aspect <= 0) {
-    // error condition; don't pad
-  } else if (currAspect < aspect) { // fill out x dimension
-    pad = h * aspect - w;
-    this.xmin -= (1 - focusX) * pad;
-    this.xmax += focusX * pad;
-  } else {
-    pad = w / aspect - h;
-    this.ymin -= (1 - focusY) * pad;
-    this.ymax += focusY * pad;
-  }
-  return this;
-};
-
-Bounds.prototype.update = function() {
-  var tmp;
-  if (this.xmin > this.xmax) {
-    tmp = this.xmin;
-    this.xmin = this.xmax;
-    this.xmax = tmp;
-  }
-  if (this.ymin > this.ymax) {
-    tmp = this.ymin;
-    this.ymin = this.ymax;
-    this.ymax = tmp;
-  }
-};
-
-Bounds.prototype.transform = function(t) {
-  this.xmin = this.xmin * t.mx + t.bx;
-  this.xmax = this.xmax * t.mx + t.bx;
-  this.ymin = this.ymin * t.my + t.by;
-  this.ymax = this.ymax * t.my + t.by;
-  this.update();
-  return this;
-};
-
-// Returns a Transform object for mapping this onto Bounds @b2
-// @flipY (optional) Flip y-axis coords, for converting to/from pixel coords
-//
-Bounds.prototype.getTransform = function(b2, flipY) {
-  var t = new Transform();
-  t.mx = b2.width() / this.width();
-  t.bx = b2.xmin - t.mx * this.xmin;
-  if (flipY) {
-    t.my = -b2.height() / this.height();
-    t.by = b2.ymax - t.my * this.ymin;
-  } else {
-    t.my = b2.height() / this.height();
-    t.by = b2.ymin - t.my * this.ymin;
-  }
-  return t;
-};
-
-Bounds.prototype.mergeCircle = function(x, y, r) {
-  if (r < 0) r = -r;
-  this.mergeBounds([x - r, y - r, x + r, y + r]);
-};
-
-Bounds.prototype.mergeBounds = function(bb) {
-  var a, b, c, d;
-  if (bb instanceof Bounds) {
-    a = bb.xmin, b = bb.ymin, c = bb.xmax, d = bb.ymax;
-  } else if (arguments.length == 4) {
-    a = arguments[0];
-    b = arguments[1];
-    c = arguments[2];
-    d = arguments[3];
-  } else if (bb.length == 4) {
-    // assume array: [xmin, ymin, xmax, ymax]
-    a = bb[0], b = bb[1], c = bb[2], d = bb[3];
-  } else {
-    error("Bounds#mergeBounds() invalid argument:", bb);
-  }
-
-  if (this.xmin === void 0) {
-    this.setBounds(a, b, c, d);
-  } else {
-    if (a < this.xmin) this.xmin = a;
-    if (b < this.ymin) this.ymin = b;
-    if (c > this.xmax) this.xmax = c;
-    if (d > this.ymax) this.ymax = d;
-  }
-  return this;
-};
-
-
-
 
 // Support for handling asynchronous dependencies.
 // Waiter#isReady() == true and Waiter fires 'ready' after any/all dependents fire "ready"
@@ -3372,544 +3910,6 @@ Opts.inherit(MouseArea, EventDispatcher);
 
 
 
-Utils.findRankByValue = function(arr, value) {
-  if (isNaN(value)) return arr.length;
-  var rank = 1;
-  for (var i=0, n=arr.length; i<n; i++) {
-    if (value > arr[i]) rank++;
-  }
-  return rank;
-}
-
-Utils.findValueByPct = function(arr, pct) {
-  var rank = Math.ceil((1-pct) * (arr.length));
-  return Utils.findValueByRank(arr, rank);
-};
-
-// See http://ndevilla.free.fr/median/median/src/wirth.c
-// Elements of @arr are reordered
-//
-Utils.findValueByRank = function(arr, rank) {
-  if (!arr.length || rank < 1 || rank > arr.length) error("[findValueByRank()] invalid input");
-
-  rank = Utils.clamp(rank | 0, 1, arr.length);
-  var k = rank - 1, // conv. rank to array index
-      n = arr.length,
-      l = 0,
-      m = n - 1,
-      i, j, val, tmp;
-
-  while (l < m) {
-    val = arr[k];
-    i = l;
-    j = m;
-    do {
-      while (arr[i] < val) {i++;}
-      while (val < arr[j]) {j--;}
-      if (i <= j) {
-        tmp = arr[i];
-        arr[i] = arr[j];
-        arr[j] = tmp;
-        i++;
-        j--;
-      }
-    } while (i <= j);
-    if (j < k) l = i;
-    if (k < i) m = j;
-  }
-  return arr[k];
-};
-
-//
-//
-Utils.findMedian = function(arr) {
-  var n = arr.length,
-      rank = Math.floor(n / 2) + 1,
-      median = Utils.findValueByRank(arr, rank);
-  if ((n & 1) == 0) {
-    median = (median + Utils.findValueByRank(arr, rank - 1)) / 2;
-  }
-  return median;
-};
-
-
-
-
-// Wrapper for DataView class for more convenient reading and writing of
-//   binary data; Remembers endianness and read/write position.
-// Has convenience methods for copying from buffers, etc.
-//
-function BinArray(buf, le) {
-  if (Utils.isNumber(buf)) {
-    buf = new ArrayBuffer(buf);
-  } else if (Env.inNode && buf instanceof Buffer == true) {
-    // Since node 0.10, DataView constructor doesn't accept Buffers,
-    //   so need to copy Buffer to ArrayBuffer
-    buf = BinArray.toArrayBuffer(buf);
-  }
-  if (buf instanceof ArrayBuffer == false) {
-    error("BinArray constructor takes an integer, ArrayBuffer or Buffer argument");
-  }
-  this._buffer = buf;
-  this._bytes = new Uint8Array(buf);
-  this._view = new DataView(buf);
-  this._idx = 0;
-  this._le = le !== false;
-}
-
-BinArray.bufferToUintArray = function(buf, wordLen) {
-  if (wordLen == 4) return new Uint32Array(buf);
-  if (wordLen == 2) return new Uint16Array(buf);
-  if (wordLen == 1) return new Uint8Array(buf);
-  error("BinArray.bufferToUintArray() invalid word length:", wordLen)
-};
-
-BinArray.uintSize = function(i) {
-  return i & 1 || i & 2 || 4;
-};
-
-BinArray.bufferCopy = function(dest, destId, src, srcId, bytes) {
-  srcId = srcId || 0;
-  bytes = bytes || src.byteLength - srcId;
-  if (dest.byteLength - destId < bytes)
-    error("Buffer overflow; tried to write:", bytes);
-
-  // When possible, copy buffer data in multi-byte chunks... Added this for faster copying of
-  // shapefile data, which is aligned to 32 bits.
-  var wordSize = Math.min(BinArray.uintSize(bytes), BinArray.uintSize(srcId),
-      BinArray.uintSize(dest.byteLength), BinArray.uintSize(destId),
-      BinArray.uintSize(src.byteLength));
-
-  var srcArr = BinArray.bufferToUintArray(src, wordSize),
-      destArr = BinArray.bufferToUintArray(dest, wordSize),
-      count = bytes / wordSize,
-      i = srcId / wordSize,
-      j = destId / wordSize;
-
-  while (count--) {
-    destArr[j++] = srcArr[i++];
-  }
-  return bytes;
-};
-
-BinArray.toArrayBuffer = function(src) {
-  var n = src.length,
-      dest = new ArrayBuffer(n),
-      view = new Uint8Array(dest);
-  for (var i=0; i<n; i++) {
-      view[i] = src[i];
-  }
-  return dest;
-};
-
-// Return length in bytes of an ArrayBuffer or Buffer
-//
-BinArray.bufferSize = function(buf) {
-  return (buf instanceof ArrayBuffer ?  buf.byteLength : buf.length | 0);
-};
-
-Utils.buffersAreIdentical = function(a, b) {
-  var alen = BinArray.bufferSize(a);
-  var blen = BinArray.bufferSize(b);
-  if (alen != blen) {
-    return false;
-  }
-  for (var i=0; i<alen; i++) {
-    if (a[i] !== b[i]) {
-      return false;
-    }
-  }
-  return true;
-};
-
-BinArray.prototype = {
-  size: function() {
-    return this._buffer.byteLength;
-  },
-
-  littleEndian: function() {
-    this._le = true;
-    return this;
-  },
-
-  bigEndian: function() {
-    this._le = false;
-    return this;
-  },
-
-  buffer: function() {
-    return this._buffer;
-  },
-
-  bytesLeft: function() {
-    return this._buffer.byteLength - this._idx;
-  },
-
-  skipBytes: function(bytes) {
-    this._idx += (bytes + 0);
-    return this;
-  },
-
-  readUint8: function() {
-    return this._bytes[this._idx++];
-  },
-
-  writeUint8: function(val) {
-    this._bytes[this._idx++] = val;
-    return this;
-  },
-
-  readInt8: function() {
-    return this._view.getInt8(this._idx++);
-  },
-
-  writeInt8: function(val) {
-    this._view.setInt8(this._idx++, val);
-    return this;
-  },
-
-  readUint16: function() {
-    var val = this._view.getUint16(this._idx, this._le);
-    this._idx += 2;
-    return val;
-  },
-
-  writeUint16: function(val) {
-    this._view.setUint16(this._idx, val, this._le);
-    this._idx += 2;
-    return this;
-  },
-
-  readUint32: function() {
-    var val = this._view.getUint32(this._idx, this._le);
-    this._idx += 4;
-    return val;
-  },
-
-  writeUint32: function(val) {
-    this._view.setUint32(this._idx, val, this._le);
-    this._idx += 4;
-    return this;
-  },
-
-  readInt32: function() {
-    var val = this._view.getInt32(this._idx, this._le);
-    this._idx += 4;
-    return val;
-  },
-
-  writeInt32: function(val) {
-    this._view.setInt32(this._idx, val, this._le);
-    this._idx += 4;
-    return this;
-  },
-
-  readFloat64: function() {
-    var val = this._view.getFloat64(this._idx, this._le);
-    this._idx += 8;
-    return val;
-  },
-
-  writeFloat64: function(val) {
-    this._view.setFloat64(this._idx, val, this._le);
-    this._idx += 8;
-    return this;
-  },
-
-  // Returns a Float64Array containing @len doubles
-  //
-  readFloat64Array: function(len) {
-    var bytes = len * 8,
-        i = this._idx,
-        buf = this._buffer,
-        arr;
-    // Inconsistent: first is a view, second a copy...
-    if (i % 8 === 0) {
-      arr = new Float64Array(buf, i, len);
-    } else if (buf.slice) {
-      arr = new Float64Array(buf.slice(i, i + bytes));
-    } else { // ie10, etc
-      var dest = new ArrayBuffer(bytes);
-      BinArray.bufferCopy(dest, 0, buf, i, bytes);
-      arr = new Float64Array(dest);
-    }
-    this._idx += bytes;
-    return arr;
-  },
-
-  readUint32Array: function(len) {
-    var arr = [];
-    for (var i=0; i<len; i++) {
-      arr.push(this.readUint32());
-    }
-    return arr;
-  },
-
-  peek: function() {
-    return this._view.getUint8(this._idx);
-  },
-
-  position: function(i) {
-    if (i != null) {
-      this._idx = i;
-      return this;
-    }
-    return this._idx;
-  },
-
-  readCString: function(fixedLen, asciiOnly) {
-    var str = "",
-        count = fixedLen >= 0 ? fixedLen : this.bytesLeft();
-    while (count > 0) {
-      var byteVal = this.readUint8();
-      count--;
-      if (byteVal == 0) {
-        break;
-      } else if (byteVal > 127 && asciiOnly) {
-        str = null;
-        break;
-      }
-      str += String.fromCharCode(byteVal);
-    }
-
-    if (fixedLen > 0 && count > 0) {
-      this.skipBytes(count);
-    }
-    return str;
-  },
-
-  writeString: function(str, maxLen) {
-    var bytesWritten = 0,
-        charsToWrite = str.length,
-        cval;
-    if (maxLen) {
-      charsToWrite = Math.min(charsToWrite, maxLen);
-    }
-    for (var i=0; i<charsToWrite; i++) {
-      cval = str.charCodeAt(i);
-      if (cval > 127) {
-        trace("#writeCString() Unicode value beyond ascii range")
-        cval = '?'.charCodeAt(0);
-      }
-      this.writeUint8(cval);
-      bytesWritten++;
-    }
-    return bytesWritten;
-  },
-
-  writeCString: function(str, fixedLen) {
-    var maxChars = fixedLen ? fixedLen - 1 : null,
-        bytesWritten = this.writeString(str, maxChars);
-
-    this.writeUint8(0); // terminator
-    bytesWritten++;
-
-    if (fixedLen) {
-      while (bytesWritten < fixedLen) {
-        this.writeUint8(0);
-        bytesWritten++;
-      }
-    }
-    return this;
-  },
-
-  writeBuffer: function(buf, bytes, startIdx) {
-    this._idx += BinArray.bufferCopy(this._buffer, this._idx, buf, startIdx, bytes);
-    return this;
-  }
-
-  /*
-  // TODO: expand buffer, probably via a public method, not automatically
-  //
-  _grow: function(k) {
-    var fac = k > 1 && k <= 3 ? k : 1.7,
-        srcLen = this.bufferSize(),
-        destLen = Math.round(srcLen * fac),
-        buf = new ArrayBuffer(destLen);
-
-    var src = new Uint8Array(this._buffer),
-        dest = new Uint8Array(buf);
-
-    for (var i=0; i<srcLen; i++) {
-      dest[i] = src[i];
-    }
-
-    this._buffer = buf;
-    this._view = new DataView(buf);
-  },*/
-};
-
-
-
-
-
-/*
-A simplified version of printf formatting
-Format codes: %[flags][width][.precision]type
-
-supported flags:
-  +   add '+' before positive numbers
-  0   left-pad with '0'
-width: 1 to many
-precision: .(1 to many)
-type:
-  s     string
-  di    integers
-  f     decimal numbers
-  xX    hexidecimal (unsigned)
-  %     literal '%'
-
-Examples:
-  code    val    formatted
-  %+d     1      '+1'
-  %4i     32     '  32'
-  %04i    32     '0032'
-  %x      255    'ff'
-  %.2f    0.125  '0.13'
-  %'f     1000   '1,000'
-*/
-
-// Usage: Utils.format(formatString, [values])
-// Tip: When reusing the same format many times, use Utils.formatter() for 5x - 10x better performance
-//
-Utils.format = function(fmt) {
-  var fn = Utils.formatter(fmt);
-  var str = fn.apply(null, Array.prototype.slice.call(arguments, 1));
-  return str;
-};
-
-function formatValue(val, matches) {
-  var flags = matches[1];
-  var padding = matches[2];
-  var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
-  var type = matches[4];
-
-  if (type == '%') {
-    return '%'; // %% = literal '%'
-  }
-  var isString = type == 's',
-      isHex = type == 'x' || type == 'X',
-      isInt = type == 'd' || type == 'i',
-      isFloat = type == 'f',
-      isNumber = !isString;
-
-  var sign = "",
-      padDigits = 0,
-      isZero = false,
-      isNeg = false;
-
-  var str;
-  if (isString) {
-    str = String(val);
-  }
-  else if (isHex) {
-    str = val.toString(16);
-    if (type == 'X')
-      str = str.toUpperCase();
-  }
-  else if (isNumber) {
-    str = Utils.numToStr(val, isInt ? 0 : decimals);
-    if (str[0] == '-') {
-      isNeg = true;
-      str = str.substr(1);
-    }
-    isZero = parseFloat(str) == 0;
-    if (flags.indexOf("'") != -1 || flags.indexOf(',') != -1) {
-      str = Utils.addThousandsSep(str);
-    }
-    if (!isZero) { // BUG: sign is added when num rounds to 0
-      if (isNeg) {
-        sign = "\u2212"; // U+2212
-      } else if (flags.indexOf('+') != -1) {
-        sign = '+';
-      }
-    }
-  }
-
-  if (padding) {
-    var strLen = str.length + sign.length;
-    var minWidth = parseInt(padding, 10);
-    if (strLen < minWidth) {
-      padDigits = minWidth - strLen;
-      var padChar = flags.indexOf('0') == -1 ? ' ' : '0';
-      var padStr = Utils.repeatString(padChar, padDigits);
-    }
-  }
-
-  if (padDigits == 0) {
-    str = sign + str;
-  } else if (padChar == '0') {
-    str = sign + padStr + str;
-  } else {
-    str = padStr + sign + str;
-  }
-  return str;
-}
-
-// Get a function for interpolating formatted values into a string.
-//
-Utils.formatter = function(fmt) {
-  var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
-  var literals = [],
-      formatCodes = [],
-      startIdx = 0,
-      escapes = 0,
-      literal,
-      matches;
-
-  while(matches=codeRxp.exec(fmt)) {
-    literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
-    if (matches[0] == '%%') {
-      matches = "%";
-      escapes++;
-    }
-    literals.push(literal);
-    formatCodes.push(matches);
-    startIdx = codeRxp.lastIndex;
-  }
-  literals.push(fmt.substr(startIdx));
-
-  if (escapes > 0) {
-    formatCodes = Utils.filter(formatCodes, function(obj, i) {
-      if (obj !== '%') return true;
-      literals[i] += '%' + literals.splice(i+1, 1)[0];
-      return false;
-    });
-  }
-
-
-  return function() {
-    var str = literals[0],
-        n = arguments.length,
-        count;
-    if (n != formatCodes.length) {
-      error("[Utils.format()] Data does not match format string; format:", fmt, "data:", arguments);
-    }
-    for (var i=0; i<n; i++) {
-      // 's?': insert "s" if needed to form plural of previous value.
-      if (arguments[i] == 's?') {
-        if (Utils.isInteger(arguments[i-1])) {
-          count = arguments[i-1];
-        } else if (Utils.isInteger(arguments[i+1])) {
-          count = arguments[i+1];
-        } else {
-          count = 1;
-        }
-        str += count == 1 ? "" : "s";
-      } else {
-        str += formatValue(arguments[i], formatCodes[i]);
-      }
-      str += literals[i+1];
-    }
-    return str;
-  };
-};
-
-
-
-
-
-
 
 var api = {};
 var MapShaper = api.internal = {};
@@ -4298,36 +4298,33 @@ function triangleArea(ax, ay, bx, by, cx, cy) {
   return area;
 }
 
-
 function detSq(ax, ay, bx, by, cx, cy) {
   var det = ax * by - ax * cy + bx * cy - bx * ay + cx * ay - cx * by;
   return det * det;
 }
 
-function dotProduct(ax, ay, bx, by, cx, cy) {
-  var ab = distance2D(ax, ay, bx, by),
-      bc = distance2D(bx, by, cx, cy),
-      den = ab * bc,
-      dotp = 0;
+function cosine(ax, ay, bx, by, cx, cy) {
+  var den = distance2D(ax, ay, bx, by) * distance2D(bx, by, cx, cy),
+      cos = 0;
   if (den > 0) {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / den;
-    if (dotp > 1) dotp = 1;
-    else if (dotp < 0) dotp = 0;
+    cos = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by)) / den;
+    if (cos > 1) cos = 1; // handle fp rounding error
+    else if (cos < -1) cos = -1;
   }
-  return dotp;
+  return cos;
 }
 
-function dotProduct3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var ab = distance3D(ax, ay, az, bx, by, bz),
-      bc = distance3D(bx, by, bz, cx, cy, cz),
-      dotp = 0;
-  if (ab > 0 && bc > 0) {
-    dotp = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / (ab * bc);
-    if (dotp > 1) dotp = 1;
-    else if (dotp < 0) dotp = 0;
+function cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var den = distance3D(ax, ay, az, bx, by, bz) * distance3D(bx, by, bz, cx, cy, cz),
+      cos = 0;
+  if (den > 0) {
+    cos = ((ax - bx) * (cx - bx) + (ay - by) * (cy - by) + (az - bz) * (cz - bz)) / den;
+    if (cos > 1) cos = 1; // handle fp rounding error
+    else if (cos < -1) cos = -1;
   }
-  return dotp;
+  return cos;
 }
+
 
 function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
@@ -4419,7 +4416,9 @@ Utils.extend(geom, {
   signedAngle2: signedAngle2,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
-  triangleArea3D: triangleArea3D
+  triangleArea3D: triangleArea3D,
+  cosine: cosine,
+  cosine3D: cosine3D
 });
 
 
@@ -6356,12 +6355,6 @@ MapShaper.getPathMetadata = function(shape, arcs, type) {
   });
 };
 
-// @paths assume [[outerRingIds], [firstHoleIds], ...] (TopoJSON Polygon format)
-//
-//MapShaper.enforcePolygonWindingRule = function(paths, arcs) {
-
-//};
-
 
 
 
@@ -7627,30 +7620,22 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
 // and re-index the paths of all the layers that reference the arc collection.
 // (in-place)
 // TODO: rename this function
-MapShaper.divideArcs = function(layers, arcs) {
-  // experimental: snap coordinates to prevent rounding errors
-  if (true) {
-    var snapDist = MapShaper.getHighPrecisionSnapInterval(arcs);
-    var dataset = {
-      layers: layers,
-      arcs: arcs
-    };
-    MapShaper.snapCoordsByInterval(arcs, snapDist);
-    arcs.dedupCoords();
-    // rebuild topology: snapping may have changed some things
-    // TODO: not needed if no points were snapped
-    api.buildTopology(dataset);
-    arcs = dataset.arcs;
-  }
-
-
+MapShaper.divideArcs = function(dataset) {
+  var arcs = dataset.arcs;
+  var snapDist = MapShaper.getHighPrecisionSnapInterval(arcs);
+  var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
+  //if (snapCount > 0) {
+  arcs.dedupCoords();
+  // TODO: don't build topology if not necessary
+  api.buildTopology(dataset);
+  //}
   // clip arcs at points where segments intersect
   var map = MapShaper.insertClippingPoints(arcs);
 
   // update arc ids in arc-based layers and clean up arc geometry
   // to remove degenerate arcs and duplicate points
   var nodes = new NodeCollection(arcs);
-  layers.forEach(function(lyr) {
+  dataset.layers.forEach(function(lyr) {
     if (MapShaper.layerHasPaths(lyr)) {
       MapShaper.updateArcIds(lyr.shapes, map, arcs, nodes);
       // TODO: consider alternative -- avoid creating degenerate arcs
@@ -7866,9 +7851,11 @@ MapShaper.getRouteBits = function(id, flags) {
 };
 
 // enable arc pathways in a single shape or array of shapes
-// Uses 6 bits to control traversal of each arc
-// 0-2: forward arc; 4-6: rev arc
-// fwd/rev bits: 0/4: path is visible; 1/5 = path is open; 3/6: path was used
+// Uses 8 bits to control traversal of each arc
+// 0-3: forward arc; 4-7: rev arc
+// 0: fw path is visible
+// 1: fw path is open for traversal
+// ...
 //
 MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits) {
   MapShaper.forEachArcId(arcIds, function(id) {
@@ -7899,12 +7886,7 @@ MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBi
 
       // dissolve hides arcs that have both fw and rev pathways open
       if (dissolve && (newFlag & 0x22) === 0x22) {
-
-        // kludge to allow setting both fw and rev to open
-        // if (!(fwd && rev)) {
-          // console.log("hiding a route; id:", id, "fw:", fwd, "rev:", rev, "flag:", currFlag)
         newFlag &= ~0x11; // make invisible
-        //}
       }
     }
 
@@ -7921,7 +7903,7 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
         closeFwd = isInv ? rev : fwd,
         closeRev = isInv ? fwd : rev;
 
-    if (closeFwd) { // fwd and pos or rev and inv
+    if (closeFwd) {
       if (hide) mask &= ~1;
       mask ^= 0x2;
     }
@@ -7934,21 +7916,6 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
   });
 };
 
-function flagsToArray(flags) {
-  return Utils.map(flags, function(flag) {
-    return bitsToString(flag);
-  });
-}
-
-function bitsToString(bits) {
-  var str = "";
-  for (var i=0; i<8; i++) {
-    str += (bits & (1 << i)) > 0 ? "1" : "0";
-    if (i < 7) str += ' ';
-    if (i == 3) str += ' ';
-  }
-  return str;
-}
 
 // Return a function for generating a path across a field of intersecting arcs
 MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute) {
@@ -7971,7 +7938,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
 
     nodes.forEachConnectedArc(prevId, function(candId) {
       if (!routeIsVisible(~candId)) return;
-      if (arcs.getArcLength(candId) < 2) error("[clipPolygon()] defective arc");
+      if (arcs.getArcLength(candId) < 2) error("[pathfinder] defective arc");
 
       var ci = arcs.indexOfVertex(candId, -2),
           cx = xx[ci],
@@ -7988,8 +7955,6 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
       }
 
       candAngle = signedAngle(ax, ay, bx, by, cx, cy);
-
-      // if (prevId == 261) console.log(prevId, "v", candId, "angle:", candAngle)
 
       if (candAngle > 0) {
         if (nextAngle === 0) {
@@ -8021,24 +7986,11 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
     var path = [],
         nextId, msg,
         candId = startId,
-        verbose = false; // MapShaper.TRACING;
+        verbose = false;
 
     do {
       if (verbose) msg = (nextId === undefined ? " " : "  " + nextId) + " -> " + candId;
       if (useRoute(candId)) {
-        /*
-        // debug zambia_congo test
-        if (candId == 261) {
-          // debug zambia_congo.shp
-          nodes.debugNode(candId)
-          console.log("\nLAKE nodes:")
-          nodes.debugNode(267)
-          nodes.debugNode(268)
-          nodes.debugNode(269)
-          nodes.debugNode(270)
-          nodes.debugNode(271)
-        }
-        */
         path.push(candId);
         nextId = candId;
         if (verbose) console.log(msg);
@@ -8056,122 +8008,170 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
     } while (candId != startId);
     return path.length === 0 ? null : path;
   };
-
 };
 
-
-
-
-// Currently only removes self-intersections
+// types: "dissolve" "flatten"
+// Returns a function for flattening or dissolving a collection of rings
+// Assumes rings are oriented in CW direction
 //
-MapShaper.repairPolygonGeometry = function(layers, dataset, opts) {
-  var nodes = MapShaper.divideArcs(dataset.layers, dataset.arcs);
-  layers.forEach(function(lyr) {
-    MapShaper.repairSelfIntersections(lyr, nodes);
-  });
-  return layers;
-};
+MapShaper.getRingIntersector = function(nodes, type, flags) {
+  var arcs = nodes.arcs;
+  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
+  flags = flags || new Uint8Array(arcs.size());
 
-// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
-// (in place)
-MapShaper.removeSpikesInPath = function(ids) {
-  var n = ids.length;
-  for (var i=1; i<n; i++) {
-    if (ids[i-1] == ~ids[i]) {
-      ids.splice(i-1, 2);
-      MapShaper.removeSpikesInPath(ids);
-    }
-  }
-  if (n > 2 && ids[0] == ~ids[n-1]) {
-    ids.pop();
-    ids.shift();
-    MapShaper.removeSpikesInPath(ids);
-  }
-};
-
-MapShaper.cleanPath = function(path, arcs) {
-  var nulls = 0;
-  for (var i=0; i<path.length; i++) {
-    if (arcs.arcIsDegenerate(path[i])) {
-      nulls++;
-      path[i] = null;
-    }
-  }
-  return nulls > 0 ? path.filter(function(id) {return id !== null;}) : path;
-};
-
-// Remove defective arcs and zero-area polygon rings
-// Don't remove duplicate points
-// Don't remove spikes (between arcs or within arcs)
-// Don't check winding order of polygon rings
-MapShaper.cleanShape = function(shape, arcs, type) {
-  return MapShaper.editPaths(shape, function(path) {
-    var cleaned = MapShaper.cleanPath(path, arcs);
-    if (type == 'polygon' && cleaned) {
-      MapShaper.removeSpikesInPath(cleaned); // assumed by divideArcs()
-      if (geom.getPathArea4(cleaned, arcs) === 0) {
-        cleaned = null;
-      }
-    }
-    return cleaned;
-  });
-};
-
-// clean polygon or polyline shapes, in-place
-MapShaper.cleanShapes = function(shapes, arcs, type) {
-  for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = MapShaper.cleanShape(shapes[i], arcs, type);
-  }
-};
-
-// Remove any small shapes formed by twists in each ring
-// Retain only the part with largest area
-// TODO: consider cases where cut-off parts should be retained
-//
-MapShaper.repairSelfIntersections = function(lyr, nodes) {
-  var splitter = MapShaper.getPathSplitter(nodes);
-
-  lyr.shapes = lyr.shapes.map(function(shp, i) {
-    return cleanPolygon(shp);
-  });
-
-  function cleanPolygon(shp) {
-    var cleanedPolygon = [];
-    MapShaper.forEachPath(shp, function(ids) {
-      // TODO: consider returning null if path can't be split
-      var splitIds = splitter(ids);
-      if (splitIds.length === 0) {
-        error("[cleanPolygon()] Defective path:", ids);
-      } else if (splitIds.length == 1) {
-        cleanedPolygon.push(splitIds[0]);
-      } else {
-        var shapeArea = geom.getPathArea4(ids, nodes.arcs),
-            sign = shapeArea > 0 ? 1 : -1,
-            mainRing;
-
-        var maxArea = splitIds.reduce(function(max, ringIds, i) {
-          var pathArea = geom.getPathArea4(ringIds, nodes.arcs) * sign;
-          if (pathArea > max) {
-            mainRing = ringIds;
-            max = pathArea;
+  return function(rings) {
+    var dissolve = type == 'dissolve',
+        openFwd = true,
+        openRev = type == 'flatten',
+        output;
+    if (rings.length <= 1) {
+      // wihout multiple rings, nothing to intersect
+      output = rings;
+    } else {
+      output = [];
+      MapShaper.openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
+      MapShaper.forEachPath(rings, function(ids) {
+        var path;
+        for (var i=0, n=ids.length; i<n; i++) {
+          path = findPath(ids[i]);
+          if (path) {
+            output.push(path);
           }
-          return max;
-        }, 0);
-
-        if (mainRing) {
-          cleanedPolygon.push(mainRing);
         }
-      }
-    });
-    return cleanedPolygon.length > 0 ? cleanedPolygon : null;
+      });
+      MapShaper.closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
+    }
+    return output;
+  };
+
+  function chooseRoute(id1, angle1, id2, angle2, prevId) {
+    var route = 1;
+    if (angle1 == angle2) {
+      trace("[chooseRoute()] parallel routes, unsure which to choose");
+      //MapShaper.debugRoute(id1, id2, nodes.arcs);
+    } else if (angle2 < angle1) {
+      route = 2;
+    }
+    return route;
+  }
+
+  function routeIsActive(arcId) {
+    var bits = MapShaper.getRouteBits(arcId, flags);
+    return (bits & 1) == 1;
+  }
+
+  function useRoute(arcId) {
+    var route = MapShaper.getRouteBits(arcId, flags),
+        isOpen = false;
+
+    if (route == 3) {
+      isOpen = true;
+      MapShaper.setRouteBits(1, arcId, flags); // close the path, leave visible
+    }
+    return isOpen;
   }
 };
 
+MapShaper.debugFlags = function(flags) {
+  var arr = Utils.map(flags, function(flag) {
+    return bitsToString(flag);
+  });
+  console.log(arr);
+
+  function bitsToString(bits) {
+    var str = "";
+    for (var i=0; i<8; i++) {
+      str += (bits & (1 << i)) > 0 ? "1" : "0";
+      if (i < 7) str += ' ';
+      if (i == 3) str += ' ';
+    }
+    return str;
+  }
+};
+
+/*
+// Given two arcs, where first segments are parallel, choose the one that
+// bends CW
+// return 0 if can't pick
+//
+MapShaper.debugRoute = function(id1, id2, arcs) {
+  var n1 = arcs.getArcLength(id1),
+      n2 = arcs.getArcLength(id2),
+      len1 = 0,
+      len2 = 0,
+      p1, p2, pp1, pp2, ppp1, ppp2,
+      angle1, angle2;
+
+      console.log("chooseRoute() lengths:", n1, n2, 'ids:', id1, id2);
+  for (var i=0; i<n1 && i<n2; i++) {
+    p1 = arcs.getVertex(id1, i);
+    p2 = arcs.getVertex(id2, i);
+    if (i === 0) {
+      if (p1.x != p2.x || p1.y != p2.y) {
+        error("chooseRoute() Routes should originate at the same point)");
+      }
+    }
+
+    if (i > 1) {
+      angle1 = signedAngle(ppp1.x, ppp1.y, pp1.x, pp1.y, p1.x, p1.y);
+      angle2 = signedAngle(ppp2.x, ppp2.y, pp2.x, pp2.y, p2.x, p2.y);
+
+      console.log("angles:", angle1, angle2, 'lens:', len1, len2);
+      // return;
+    }
+
+    if (i >= 1) {
+      len1 += distance2D(p1.x, p1.y, pp1.x, pp1.y);
+      len2 += distance2D(p2.x, p2.y, pp2.x, pp2.y);
+    }
+
+    if (i == 1 && (n1 == 2 || n2 == 2)) {
+      console.log("arc1:", pp1, p1, "len:", len1);
+      console.log("arc2:", pp2, p2, "len:", len2);
+    }
+
+    ppp1 = pp1;
+    ppp2 = pp2;
+    pp1 = p1;
+    pp2 = p2;
+  }
+  return 1;
+};
+*/
+
+
+
+
+// Returns a function that separates rings in a polygon into space-enclosing rings
+// and holes. Also fixes self-intersections.
+//
+MapShaper.getHoleDivider = function(nodes, flags) {
+  var split = MapShaper.getSelfIntersectionSplitter(nodes, flags);
+
+  return function(rings, cw, ccw) {
+    MapShaper.forEachPath(rings, function(ringIds) {
+      var splitRings = split(ringIds);
+      if (splitRings.length === 0) {
+        trace("[getRingDivider()] Defective path:", ringIds);
+      }
+      splitRings.forEach(function(ringIds, i) {
+        var ringArea = geom.getPathArea4(ringIds, nodes.arcs);
+        if (ringArea > 0) {
+          cw.push(ringIds);
+        } else if (ringArea < 0) {
+          ccw.push(ringIds);
+        }
+      });
+    });
+  };
+};
 
 // Return function for splitting self-intersecting polygon rings
 // Returned function receives a single path, returns an array of paths
+// Assumes that any intersections occur at vertices, not along segments
+// (requires that MapShaper.divideArcs() has already been run)
 //
-MapShaper.getPathSplitter = function(nodes, flags) {
+MapShaper.getSelfIntersectionSplitter = function(nodes, flags) {
   var arcs = nodes.arcs;
   flags = flags || new Uint8Array(arcs.size());
 
@@ -8277,6 +8277,118 @@ MapShaper.getPathSplitter = function(nodes, flags) {
     MapShaper.closeArcRoutes(ids, arcs, flags, true, true, true);
     return paths;
   };
+};
+
+
+
+
+// clean polygon or polyline shapes, in-place
+//
+MapShaper.cleanShapes = function(shapes, arcs, type) {
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shapes[i] = MapShaper.cleanShape(shapes[i], arcs, type);
+  }
+};
+
+// Remove defective arcs and zero-area polygon rings
+// Don't remove duplicate points
+// Don't remove spikes (between arcs or within arcs)
+// Don't check winding order of polygon rings
+MapShaper.cleanShape = function(shape, arcs, type) {
+  return MapShaper.editPaths(shape, function(path) {
+    var cleaned = MapShaper.cleanPath(path, arcs);
+    if (type == 'polygon' && cleaned) {
+      MapShaper.removeSpikesInPath(cleaned); // assumed by divideArcs()
+      if (geom.getPathArea4(cleaned, arcs) === 0) {
+        cleaned = null;
+      }
+    }
+    return cleaned;
+  });
+};
+
+MapShaper.cleanPath = function(path, arcs) {
+  var nulls = 0;
+  for (var i=0; i<path.length; i++) {
+    if (arcs.arcIsDegenerate(path[i])) {
+      nulls++;
+      path[i] = null;
+    }
+  }
+  return nulls > 0 ? path.filter(function(id) {return id !== null;}) : path;
+};
+
+// Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
+// (in place)
+MapShaper.removeSpikesInPath = function(ids) {
+  var n = ids.length;
+  for (var i=1; i<n; i++) {
+    if (ids[i-1] == ~ids[i]) {
+      ids.splice(i-1, 2);
+      MapShaper.removeSpikesInPath(ids);
+    }
+  }
+  if (n > 2 && ids[0] == ~ids[n-1]) {
+    ids.pop();
+    ids.shift();
+    MapShaper.removeSpikesInPath(ids);
+  }
+};
+
+
+// TODO: Need to rethink polygon repair: these function can cause problems
+// when part of a self-intersecting polygon is removed
+//
+MapShaper.repairPolygonGeometry = function(layers, dataset, opts) {
+  var nodes = MapShaper.divideArcs(dataset);
+  layers.forEach(function(lyr) {
+    MapShaper.repairSelfIntersections(lyr, nodes);
+  });
+  return layers;
+};
+
+// Remove any small shapes formed by twists in each ring
+// // OOPS, NO // Retain only the part with largest area
+// // this causes problems when a cut-off hole has a matching ring in another polygon
+// TODO: consider cases where cut-off parts should be retained
+//
+MapShaper.repairSelfIntersections = function(lyr, nodes) {
+  var splitter = MapShaper.getSelfIntersectionSplitter(nodes);
+
+  lyr.shapes = lyr.shapes.map(function(shp, i) {
+    return cleanPolygon(shp);
+  });
+
+  function cleanPolygon(shp) {
+    var cleanedPolygon = [];
+    MapShaper.forEachPath(shp, function(ids) {
+      // TODO: consider returning null if path can't be split
+      var splitIds = splitter(ids);
+      if (splitIds.length === 0) {
+        error("[cleanPolygon()] Defective path:", ids);
+      } else if (splitIds.length == 1) {
+        cleanedPolygon.push(splitIds[0]);
+      } else {
+        var shapeArea = geom.getPathArea4(ids, nodes.arcs),
+            sign = shapeArea > 0 ? 1 : -1,
+            mainRing;
+
+        var maxArea = splitIds.reduce(function(max, ringIds, i) {
+          var pathArea = geom.getPathArea4(ringIds, nodes.arcs) * sign;
+          if (pathArea > max) {
+            mainRing = ringIds;
+            max = pathArea;
+          }
+          return max;
+        }, 0);
+
+        if (mainRing) {
+          cleanedPolygon.push(mainRing);
+        }
+      }
+    });
+    return cleanedPolygon.length > 0 ? cleanedPolygon : null;
+  }
 };
 
 
@@ -8502,7 +8614,6 @@ function PathImporter(reservedPoints, opts) {
 
 
 
-// TODO: refactor
 MapShaper.exportPointData = function(points) {
   var data, path;
   if (!points || points.length === 0) {
@@ -10301,7 +10412,6 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
     filename: filename
   }];
 };
-
 
 
 
@@ -12379,36 +12489,97 @@ Visvalingam.standardMetric3D = triangleArea3D;
 // Replacement for original "Modified Visvalingam"
 // Underweight polyline vertices with acute angles in proportion to 1 - cosine
 //
-Visvalingam.specialMetric = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy),
-      dotp = dotProduct(ax, ay, bx, by, cx, cy),
-      weight = dotp > 0 ? 1 - dotp : 1;
-  return area * weight;
+Visvalingam.weightedMetric = function(ax, ay, bx, by, cx, cy) {
+  var area = triangleArea(ax, ay, bx, by, cx, cy);
+  return area * Visvalingam.weight(ax, ay, bx, by, cx, cy);
 };
 
-Visvalingam.specialMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+Visvalingam.weightedMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      dotp = dotProduct3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      weight = dotp > 0 ? 1 - dotp : 1;
+      cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      weight = cos > 0 ? 1 - cos : 1;
   return area * weight;
 };
 
-// The original "modified Visvalingam" function uses a step function to
-// underweight more acute triangles.
+// deg.  weight
+// 180   1
+// 90    1
+// 60
+// 45
+// 0     0
 //
-Visvalingam.specialMetric_v1 = function(ax, ay, bx, by, cx, cy) {
+Visvalingam.weightA = function(cos) {
+  return cos > 0 ? 1 - cos : 1;
+};
+
+// deg.  weight
+// 180   1
+// 90    1
+// 60
+// 45
+// 0     0
+//
+Visvalingam.weightB = function(cos) {
+  return cos > 0 ? 1 - cos * cos : 1;
+};
+
+Visvalingam.weightC = function(cos) {
+  return 0.5 - cos * 0.5;
+};
+
+// deg.  weight
+// 180   2
+// 90    1
+// 0     0
+//
+Visvalingam.weightD = function(cos) {
+  return 1 + -cos;
+};
+
+// deg.  weight
+// 180   1.5
+// 90    1
+// 0     0.5
+//
+Visvalingam.weightE = function(cos) {
+  return -cos * 0.5 + 1;
+};
+
+Visvalingam.weightF = function(cos) {
+  return -cos * 0.7 + 1;
+};
+
+Visvalingam.weight = Visvalingam.weightF;
+
+Visvalingam.weightedMetric = function(ax, ay, bx, by, cx, cy) {
+  var area = triangleArea(ax, ay, bx, by, cx, cy),
+      cos = cosine(ax, ay, bx, by, cx, cy);
+  return Visvalingam.weight(cos) * area;
+};
+
+Visvalingam.weightedMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+      cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
+  return Visvalingam.weight(cos) * area;
+};
+
+// The original "modified Visvalingam" function used a step function to
+// underweight more acute triangles.
+/*
+Visvalingam.weightedMetric_v1 = function(ax, ay, bx, by, cx, cy) {
   var area = triangleArea(ax, ay, bx, by, cx, cy),
       angle = innerAngle(ax, ay, bx, by, cx, cy),
       weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
   return area * weight;
 };
 
-Visvalingam.specialMetric3D_v1 = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+Visvalingam.weightedMetric3D_v1 = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
       angle = innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz),
       weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
   return area * weight;
 };
+*/
 
 
 
@@ -12505,7 +12676,7 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
 api.simplify = function(arcs, opts) {
   if (!arcs) stop("[simplify] Missing path data");
-
+  T.start();
   MapShaper.simplifyPaths(arcs, opts);
 
   if (utils.isNumber(opts.pct)) {
@@ -12515,6 +12686,7 @@ api.simplify = function(arcs, opts) {
   } else {
     stop("[simplify] missing pct or interval parameter");
   }
+  T.stop("Calculate simplification");
 
   if (!opts.no_repair) {
     var info = api.findAndRepairIntersections(arcs);
@@ -12565,8 +12737,8 @@ MapShaper.simplifyPaths3D = function(paths, simplify) {
 //
 MapShaper.simplifiers = {
   visvalingam: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
-  mapshaper_v1: Visvalingam.getArcCalculator(Visvalingam.specialMetric_v1, Visvalingam.specialMetric3D_v1, 0.65),
-  mapshaper: Visvalingam.getArcCalculator(Visvalingam.specialMetric, Visvalingam.specialMetric3D, 0.65),
+  mapshaper_v1: Visvalingam.getArcCalculator(Visvalingam.weightedMetric_v1, Visvalingam.weightedMetric3D_v1, 0.65),
+  mapshaper: Visvalingam.getArcCalculator(Visvalingam.weightedMetric, Visvalingam.weightedMetric3D, 0.65),
   dp: DouglasPeucker.calcArcData
 };
 
