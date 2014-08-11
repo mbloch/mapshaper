@@ -12397,7 +12397,9 @@ api.mergeFiles = function(files, opts) {
     api.buildTopology(merged);
   }
 
-  if (opts.merge_files) api.mergeLayers(merged.layers);
+  if (opts.merge_files) {
+    merged.layers = api.mergeLayers(merged.layers);
+  }
   return merged;
 };
 
