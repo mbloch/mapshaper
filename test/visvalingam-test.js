@@ -2,18 +2,6 @@ var assert = require('assert'),
     api = require("../"),
     v = api.internal.Visvalingam;
 
-function testAngle(deg) {
-  var rad = deg / 180 * Math.PI;
-  var ax = 1,
-      ay = bx = by = 0,
-      cx = Math.cos(rad),
-      cy = Math.sin(rad);
-  var a = api.geom.triangleArea(ax, ay, bx, by, cx, cy);
-  var cos = api.geom.cosine(ax, ay, bx, by, cx, cy);
-  var w = v.weight(cos);
-  // console.log(deg + "\t" + a.toFixed(4) + "\t" + w.toFixed(4) + "\t" + (a * w).toFixed(4));
-}
-
 describe("mapshaper-visvalingam.js", function() {
 
   describe("standardMetric()", function() {
@@ -22,12 +10,6 @@ describe("mapshaper-visvalingam.js", function() {
       assert.equal(v.standardMetric.apply(null, coords),
         api.geom.triangleArea.apply(null, coords));
     })
-  })
-
-  describe("Weight tests", function() {
-    for (var a=5; a<180; a+= 5) {
-      testAngle(a);
-    }
   })
 
   describe("standardMetric3D()", function() {
@@ -58,8 +40,12 @@ describe("mapshaper-visvalingam.js", function() {
 
     it ("is less than standard metric for acute-angle triangles", function() {
       function expectLesser(coords) {
-        assert.ok(v.weightedMetric.apply(null, coords) <
-          v.standardMetric.apply(null, coords));
+        var weighted = v.weightedMetric.apply(null, coords);
+        var standard = v.standardMetric.apply(null, coords);
+        var angle = api.geom.innerAngle.apply(null, coords);
+        // console.log("weighted:", weighted, "standard:", standard, 'angle:', angle)
+
+        assert.ok( weighted < standard);
       }
       expectLesser([0, 0, 0, 3, 1, 0]);
       expectLesser([0, 0, 1, Math.sqrt(2), 2, 0]);

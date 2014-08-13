@@ -106,71 +106,6 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
 Visvalingam.standardMetric = triangleArea;
 Visvalingam.standardMetric3D = triangleArea3D;
 
-// Replacement for original "Modified Visvalingam"
-// Underweight polyline vertices with acute angles in proportion to 1 - cosine
-//
-Visvalingam.weightedMetric = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy);
-  return area * Visvalingam.weight(ax, ay, bx, by, cx, cy);
-};
-
-Visvalingam.weightedMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      weight = cos > 0 ? 1 - cos : 1;
-  return area * weight;
-};
-
-// deg.  weight
-// 180   1
-// 90    1
-// 60
-// 45
-// 0     0
-//
-Visvalingam.weightA = function(cos) {
-  return cos > 0 ? 1 - cos : 1;
-};
-
-// deg.  weight
-// 180   1
-// 90    1
-// 60
-// 45
-// 0     0
-//
-Visvalingam.weightB = function(cos) {
-  return cos > 0 ? 1 - cos * cos : 1;
-};
-
-Visvalingam.weightC = function(cos) {
-  return 0.5 - cos * 0.5;
-};
-
-// deg.  weight
-// 180   2
-// 90    1
-// 0     0
-//
-Visvalingam.weightD = function(cos) {
-  return 1 + -cos;
-};
-
-// deg.  weight
-// 180   1.5
-// 90    1
-// 0     0.5
-//
-Visvalingam.weightE = function(cos) {
-  return -cos * 0.5 + 1;
-};
-
-Visvalingam.weightF = function(cos) {
-  return -cos * 0.7 + 1;
-};
-
-Visvalingam.weight = Visvalingam.weightF;
-
 Visvalingam.weightedMetric = function(ax, ay, bx, by, cx, cy) {
   var area = triangleArea(ax, ay, bx, by, cx, cy),
       cos = cosine(ax, ay, bx, by, cx, cy);
@@ -183,20 +118,31 @@ Visvalingam.weightedMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return Visvalingam.weight(cos) * area;
 };
 
-// The original "modified Visvalingam" function used a step function to
+// Functions for weighting triangle area
+
+// The original Flash-based Mapshaper (ca. 2006) used a step function to
 // underweight more acute triangles.
-/*
-Visvalingam.weightedMetric_v1 = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy),
-      angle = innerAngle(ax, ay, bx, by, cx, cy),
-      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
-  return area * weight;
+Visvalingam.weight_v1 = function(cos) {
+  var angle = Math.acos(cos),
+      weight = 1;
+  if (angle < 0.5) {
+    weight = 0.1;
+  } else if (angle < 1) {
+    weight = 0.3;
+  }
+  return weight;
 };
 
-Visvalingam.weightedMetric3D_v1 = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      angle = innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
-  return area * weight;
+// v2 weighting: underweight polyline vertices at acute angles in proportion to 1 - cosine
+Visvalingam.weight_v2 = function(cos) {
+  return cos > 0 ? 1 - cos : 1;
 };
-*/
+
+// v3 weighting: weight by inverse cosine
+// Standard weighting favors 90-deg angles; this curve peaks at 120 deg.
+Visvalingam.weight_v3 = function(cos) {
+  var k = 0.7;
+  return -cos * k + 1;
+};
+
+Visvalingam.weight = Visvalingam.weight_v3;
