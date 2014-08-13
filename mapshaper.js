@@ -6265,6 +6265,7 @@ MapShaper.snapCoords = function(arcs, threshold) {
   }
 
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
+  if (snapCount > 0) arcs.dedupCoords();
   message(Utils.format("Snapped %s point%s", snapCount, "s?"));
 };
 
