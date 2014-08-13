@@ -152,4 +152,9 @@ Utils.extend(api.internal, {
 api.T = T;
 C.VERBOSE = false;
 
-module.exports = api;
+if (typeof define === "function" && define.amd) {
+  define("mapshaper", api);
+} else if (typeof module === "object" && module.exports) {
+  module.exports = api;
+}
+this.mapshaper = api;
