@@ -7936,12 +7936,13 @@ function PathImporter(reservedPoints, opts) {
 
   // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
   //
-  this.importPathFromFlatArray = function(arr, type) {
-    var len = arr.length,
-        n = 0, i = 0,
+  this.importPathFromFlatArray = function(arr, type, len, start) {
+    var i = start || 0,
+        end = i + (len || arr.length),
+        n = 0,
         x, y, prevX, prevY;
 
-    while (i < len) {
+    while (i < end) {
       x = arr[i++];
       y = arr[i++];
       if (round) {
@@ -7991,7 +7992,7 @@ function PathImporter(reservedPoints, opts) {
       buf[j++] = points[i][0];
       buf[j++] = points[i][1];
     }
-    this.importPathFromFlatArray(buf.subarray(0, j), type);
+    this.importPathFromFlatArray(buf, type, j, 0);
   };
 
   this.importPoints = function(points) {
@@ -10381,9 +10382,15 @@ MapShaper.importShp = function(src, opts) {
     if (type == 'point') {
       importer.importPoints(shp.readPoints());
     } else {
-      shp.readCoords().forEach(function(arr) {
-        importer.importPathFromFlatArray(arr, type);
-      });
+      var xy = shp.readXY(),
+          parts = shp.readPartSizes(),
+          start = 0,
+          len;
+      for (var i=0; i<parts.length; i++) {
+        len = parts[i] * 2;
+        importer.importPathFromFlatArray(xy, type, len, start);
+        start += len;
+      }
     }
   });
 

@@ -84,12 +84,13 @@ function PathImporter(reservedPoints, opts) {
 
   // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
   //
-  this.importPathFromFlatArray = function(arr, type) {
-    var len = arr.length,
-        n = 0, i = 0,
+  this.importPathFromFlatArray = function(arr, type, len, start) {
+    var i = start || 0,
+        end = i + (len || arr.length),
+        n = 0,
         x, y, prevX, prevY;
 
-    while (i < len) {
+    while (i < end) {
       x = arr[i++];
       y = arr[i++];
       if (round) {
@@ -139,7 +140,7 @@ function PathImporter(reservedPoints, opts) {
       buf[j++] = points[i][0];
       buf[j++] = points[i][1];
     }
-    this.importPathFromFlatArray(buf.subarray(0, j), type);
+    this.importPathFromFlatArray(buf, type, j, 0);
   };
 
   this.importPoints = function(points) {

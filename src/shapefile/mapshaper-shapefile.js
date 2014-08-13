@@ -53,9 +53,15 @@ MapShaper.importShp = function(src, opts) {
     if (type == 'point') {
       importer.importPoints(shp.readPoints());
     } else {
-      shp.readCoords().forEach(function(arr) {
-        importer.importPathFromFlatArray(arr, type);
-      });
+      var xy = shp.readXY(),
+          parts = shp.readPartSizes(),
+          start = 0,
+          len;
+      for (var i=0; i<parts.length; i++) {
+        len = parts[i] * 2;
+        importer.importPathFromFlatArray(xy, type, len, start);
+        start += len;
+      }
     }
   });
 
