@@ -83,7 +83,6 @@ function PathImporter(reservedPoints, opts) {
   */
 
   // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
-  // (for Shapefile import -- consider moving out of here)
   //
   this.importPathFromFlatArray = function(arr, type) {
     var len = arr.length,

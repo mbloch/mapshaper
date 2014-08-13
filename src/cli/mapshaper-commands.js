@@ -121,8 +121,8 @@ api.runCommand = function(cmd, dataset, cb) {
   } else if (name == 'filter') {
     MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
 
-  //} else if (name == 'flatten') {
-  //  newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, arcs, opts);
+  } else if (name == 'flatten') {
+    newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
 
   } else if (name == 'info') {
     api.printInfo(dataset);

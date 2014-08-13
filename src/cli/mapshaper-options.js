@@ -361,9 +361,9 @@ MapShaper.getOptionParser = function() {
 
   // Work-in-progress (no .describe(), so hidden from -h)
   parser.command('tracing');
-  /*
   parser.command("flatten")
     .option("target", targetOpt);
+  /*
 
   parser.command("divide")
     .option("name", nameOpt)
