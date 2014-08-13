@@ -4851,10 +4851,12 @@ function ArcCollection() {
       }
       // if (n2 == 1) console.log(arcId)
     }
-    if (i != i2) {
+    var dupes = i - i2;
+    if (dupes > 0) {
       initXYData(_nn, _xx.subarray(0, i2), _yy.subarray(0, i2));
       initZData(zz);
     }
+    return dupes;
   };
 
   this.getVertex = function(arcId, nth) {
@@ -7622,32 +7624,41 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
 // TODO: rename this function
 MapShaper.divideArcs = function(dataset) {
   var arcs = dataset.arcs;
+  T.start();
+  T.start();
   var snapDist = MapShaper.getHighPrecisionSnapInterval(arcs);
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
-  //if (snapCount > 0) {
-  arcs.dedupCoords();
-  // TODO: don't build topology if not necessary
-  api.buildTopology(dataset);
-  //}
-  // clip arcs at points where segments intersect
-  var map = MapShaper.insertClippingPoints(arcs);
+  var dupeCount = arcs.dedupCoords();
+  T.stop('snap points');
+  if (snapCount > 0 || dupeCount > 0) {
+    T.start();
+    api.buildTopology(dataset);
+    T.stop('rebuild topology');
+  }
 
+  // clip arcs at points where segments intersect
+  T.start();
+  var map = MapShaper.insertClippingPoints(arcs);
+  T.stop('insert clipping points');
+  T.start();
   // update arc ids in arc-based layers and clean up arc geometry
   // to remove degenerate arcs and duplicate points
   var nodes = new NodeCollection(arcs);
   dataset.layers.forEach(function(lyr) {
     if (MapShaper.layerHasPaths(lyr)) {
-      MapShaper.updateArcIds(lyr.shapes, map, arcs, nodes);
+      MapShaper.updateArcIds(lyr.shapes, map, nodes);
       // TODO: consider alternative -- avoid creating degenerate arcs
       // in insertClippingPoints()
       MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
+  T.stop('update arc ids / clean geometry');
+  T.stop("divide arcs");
   return nodes;
 };
 
-MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {
-  var arcCount = arcs.size(),
+MapShaper.updateArcIds = function(shapes, map, nodes) {
+  var arcCount = nodes.arcs.size(),
       shape2;
   for (var i=0; i<shapes.length; i++) {
     shape2 = [];
@@ -7692,28 +7703,30 @@ MapShaper.updateArcIds = function(shapes, map, arcs, nodes) {
 // returns array that maps original arc ids to new arc ids
 MapShaper.insertClippingPoints = function(arcs) {
   var points = MapShaper.findClippingPoints(arcs),
-      p,
+      p;
 
-      // original arc data
-      pointTotal0 = arcs.getPointCount(),
+  // TODO: avoid some or all of the following if no points need to be added
+
+  // original arc data
+  var pointTotal0 = arcs.getPointCount(),
       arcTotal0 = arcs.size(),
       data = arcs.getVertexData(),
       xx0 = data.xx,
       yy0 = data.yy,
       nn0 = data.nn,
       i0 = 0,
-      n0, arcLen0,
+      n0, arcLen0;
 
-      // new arc data
-      pointTotal1 = pointTotal0 + points.length * 2,
+  // new arc data
+  var pointTotal1 = pointTotal0 + points.length * 2,
       arcTotal1 = arcTotal0 + points.length,
       xx1 = new Float64Array(pointTotal1),
       yy1 = new Float64Array(pointTotal1),
       nn1 = [],  // number of arcs may vary
       i1 = 0,
-      n1,
+      n1;
 
-      map = new Uint32Array(arcTotal0);
+  var map = new Uint32Array(arcTotal0);
 
   // sort from last point to first point
   points.sort(function(a, b) {
@@ -8469,7 +8482,6 @@ function PathImporter(reservedPoints, opts) {
   */
 
   // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
-  // (for Shapefile import -- consider moving out of here)
   //
   this.importPathFromFlatArray = function(arr, type) {
     var len = arr.length,
@@ -10910,7 +10922,6 @@ MapShaper.importShp = function(src, opts) {
   var importer = new PathImporter(pathPoints, opts);
 
   // TODO: test cases: null shape; non-null shape with no valid parts
-
   reader.forEachShape(function(shp) {
     importer.startShape();
     if (shp.isNull) return;
@@ -12486,71 +12497,6 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
 Visvalingam.standardMetric = triangleArea;
 Visvalingam.standardMetric3D = triangleArea3D;
 
-// Replacement for original "Modified Visvalingam"
-// Underweight polyline vertices with acute angles in proportion to 1 - cosine
-//
-Visvalingam.weightedMetric = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy);
-  return area * Visvalingam.weight(ax, ay, bx, by, cx, cy);
-};
-
-Visvalingam.weightedMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      weight = cos > 0 ? 1 - cos : 1;
-  return area * weight;
-};
-
-// deg.  weight
-// 180   1
-// 90    1
-// 60
-// 45
-// 0     0
-//
-Visvalingam.weightA = function(cos) {
-  return cos > 0 ? 1 - cos : 1;
-};
-
-// deg.  weight
-// 180   1
-// 90    1
-// 60
-// 45
-// 0     0
-//
-Visvalingam.weightB = function(cos) {
-  return cos > 0 ? 1 - cos * cos : 1;
-};
-
-Visvalingam.weightC = function(cos) {
-  return 0.5 - cos * 0.5;
-};
-
-// deg.  weight
-// 180   2
-// 90    1
-// 0     0
-//
-Visvalingam.weightD = function(cos) {
-  return 1 + -cos;
-};
-
-// deg.  weight
-// 180   1.5
-// 90    1
-// 0     0.5
-//
-Visvalingam.weightE = function(cos) {
-  return -cos * 0.5 + 1;
-};
-
-Visvalingam.weightF = function(cos) {
-  return -cos * 0.7 + 1;
-};
-
-Visvalingam.weight = Visvalingam.weightF;
-
 Visvalingam.weightedMetric = function(ax, ay, bx, by, cx, cy) {
   var area = triangleArea(ax, ay, bx, by, cx, cy),
       cos = cosine(ax, ay, bx, by, cx, cy);
@@ -12563,23 +12509,34 @@ Visvalingam.weightedMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return Visvalingam.weight(cos) * area;
 };
 
-// The original "modified Visvalingam" function used a step function to
+// Functions for weighting triangle area
+
+// The original Flash-based Mapshaper (ca. 2006) used a step function to
 // underweight more acute triangles.
-/*
-Visvalingam.weightedMetric_v1 = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy),
-      angle = innerAngle(ax, ay, bx, by, cx, cy),
-      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
-  return area * weight;
+Visvalingam.weight_v1 = function(cos) {
+  var angle = Math.acos(cos),
+      weight = 1;
+  if (angle < 0.5) {
+    weight = 0.1;
+  } else if (angle < 1) {
+    weight = 0.3;
+  }
+  return weight;
 };
 
-Visvalingam.weightedMetric3D_v1 = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      angle = innerAngle3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      weight = angle < 0.5 ? 0.1 : angle < 1 ? 0.3 : 1;
-  return area * weight;
+// v2 weighting: underweight polyline vertices at acute angles in proportion to 1 - cosine
+Visvalingam.weight_v2 = function(cos) {
+  return cos > 0 ? 1 - cos : 1;
 };
-*/
+
+// v3 weighting: weight by inverse cosine
+// Standard weighting favors 90-deg angles; this curve peaks at 120 deg.
+Visvalingam.weight_v3 = function(cos) {
+  var k = 0.7;
+  return -cos * k + 1;
+};
+
+Visvalingam.weight = Visvalingam.weight_v3;
 
 
 
