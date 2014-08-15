@@ -145,4 +145,5 @@ Visvalingam.weight_v3 = function(cos) {
   return -cos * k + 1;
 };
 
-Visvalingam.weight = Visvalingam.weight_v3;
+// Using weight_v2 for consistency with a 2014 paper by M. Visvalingam
+Visvalingam.weight = Visvalingam.weight_v2;

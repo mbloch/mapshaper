@@ -5540,7 +5540,8 @@ Visvalingam.weight_v3 = function(cos) {
   return -cos * k + 1;
 };
 
-Visvalingam.weight = Visvalingam.weight_v3;
+// Using weight_v2 for consistency with a 2014 paper by M. Visvalingam
+Visvalingam.weight = Visvalingam.weight_v2;
 
 
 
@@ -9537,7 +9538,6 @@ TopoJSON.reindexArcIds = function(geom, map) {
 
 
 api.explodeFeatures = function(lyr, arcs, opts) {
-  opts = opts || {};
   var properties = lyr.data ? lyr.data.getRecords() : null,
       explodedProperties = properties ? [] : null,
       explodedShapes = [],
@@ -9549,11 +9549,7 @@ api.explodeFeatures = function(lyr, arcs, opts) {
       explodedShapes.push(null);
     } else {
       if (lyr.geometry_type == 'polygon' && shp.length > 1) {
-        if (opts.convert_holes) {
-          exploded = MapShaper.explodePolygon2(shp, arcs);
-        } else {
-          exploded = MapShaper.explodePolygon(shp, arcs);
-        }
+        exploded = MapShaper.explodePolygon(shp, arcs);
       } else {
         exploded = MapShaper.explodeShape(shp);
       }
@@ -9578,17 +9574,6 @@ api.explodeFeatures = function(lyr, arcs, opts) {
 MapShaper.explodeShape = function(shp) {
   return shp.map(function(part) {
     return [part.concat()];
-  });
-};
-
-// flip holes (just for testing)
-MapShaper.explodePolygon2 = function(shp, arcs) {
-  return shp.map(function(part) {
-    if (geom.getPathArea4(part, arcs) < 0) {
-      part = part.concat();
-      MapShaper.reversePath(part.concat());
-    }
-    return part;
   });
 };
 
@@ -12742,8 +12727,7 @@ api.flattenLayer = function(lyr, dataset, opts) {
   var nodes = MapShaper.divideArcs(dataset);
   var flatten = MapShaper.getPolygonFlattener(nodes);
   var lyr2 = {data: null};
-  var mergedShape = MapShaper.concatShapes(lyr.shapes);
-  lyr2.shapes = [flatten(mergedShape)];
+  lyr2.shapes = lyr.shapes.map(flatten);
   // TODO: copy data over
   return Utils.defaults(lyr2, lyr);
 };
