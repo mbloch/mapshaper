@@ -36,40 +36,42 @@ TopoJSON.roundCoords = function(arcs, precision) {
   });
 };
 
-TopoJSON.importObject = function(obj) {
+TopoJSON.importObject = function(obj, opts) {
   if (obj.type != 'GeometryCollection') {
     obj = {
       type: "GeometryCollection",
       geometries: [obj]
     };
   }
-  return TopoJSON.importGeometryCollection(obj);
+  return TopoJSON.importGeometryCollection(obj, opts);
 };
 
-TopoJSON.importGeometryCollection = function(obj) {
-  var importer = new TopoJSON.GeometryImporter();
+TopoJSON.importGeometryCollection = function(obj, opts) {
+  var importer = new TopoJSON.GeometryImporter(opts);
   Utils.forEach(obj.geometries, importer.addGeometry, importer);
   return importer.done();
 };
 
 //
 //
-TopoJSON.GeometryImporter = function() {
-  var topojsonIds = [], // id properties of each Geometry (consider adding ids to properties)
+TopoJSON.GeometryImporter = function(opts) {
+  var idField = opts && opts.id_field || null,
       properties = [],
       shapes = [], // topological ids
       collectionType = null;
 
   this.addGeometry = function(geom) {
     var type = GeoJSON.translateGeoJSONType(geom.type),
-        shapeId = shapes.length;
+        shapeId = shapes.length,
+        rec;
     this.updateCollectionType(type);
 
-    if (geom.properties) {
-      properties[shapeId] = geom.properties;
-    }
-    if (geom.id !== null && geom.id !== undefined) {
-      topojsonIds[shapeId] = geom.id;
+    if (idField || geom.properties) {
+      rec = geom.properties || {};
+      if (idField) {
+        rec[idField] = geom.id || null;
+      }
+      properties[shapeId] = rec;
     }
 
     var shape = null;

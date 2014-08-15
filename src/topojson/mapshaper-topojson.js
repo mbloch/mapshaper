@@ -27,7 +27,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
   }
 
   Utils.forEach(topology.objects, function(object, name) {
-    var lyr = TopoJSON.importObject(object, topology.arcs);
+    var lyr = TopoJSON.importObject(object, opts);
 
     if (MapShaper.layerHasPaths(lyr)) {
       MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);

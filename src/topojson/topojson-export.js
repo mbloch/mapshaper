@@ -153,14 +153,15 @@ TopoJSON.calcExportResolution = function(arcData, precision) {
 };
 
 TopoJSON.exportProperties = function(geometries, records, opts) {
+  var idField = opts.id_field || null;
   geometries.forEach(function(geom, i) {
     var properties = records[i];
     if (properties) {
       if (!opts.cut_table) {
         geom.properties = properties;
       }
-      if (opts.id_field) {
-        geom.id = properties[opts.id_field];
+      if (idField && idField in properties) {
+        geom.id = properties[idField];
       }
     }
   });

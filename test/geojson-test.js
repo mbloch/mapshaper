@@ -1,4 +1,5 @@
 var api = require('../'),
+    DataTable = api.internal.DataTable,
     assert = require('assert');
 
 var Utils = api.utils;
@@ -23,6 +24,21 @@ describe('mapshaper-geojson.js', function () {
       assert.equal(Utils.filter(data.layers[0].shapes, function(shape) {return shape != null}).length, 3)
       assert.deepEqual(Utils.pluck(data.layers[0].data.getRecords(), 'NAME'), ["District of Columbia", "Arlington", "Fairfax County", "Alexandria", "Fairfax City", "Manassas"]);
     })
+
+    it('Import Feature with id field', function () {
+      var obj = {
+        type: 'Feature',
+        id: 'foo',
+        properties: {},
+        geometry: {
+          type: 'Point',
+          coordinates: [2, 1]
+        }
+      };
+      var dataset = api.internal.importGeoJSON(obj, {id_field: 'name'});
+      var records = dataset.layers[0].data.getRecords();
+      assert.deepEqual(records, [{name: 'foo'}]);
+    })
   })
 
   describe('exportGeoJSON()', function () {
@@ -30,7 +46,7 @@ describe('mapshaper-geojson.js', function () {
       var arcs = new api.internal.ArcCollection([[[1, 1], [2, 3], [1, 1]]]);
           lyr = {
             geometry_type: "polygon",
-            data: new api.internal.DataTable([{FID: 1}]),
+            data: new DataTable([{FID: 1}]),
             shapes: [[[0]]]
           };
 
@@ -45,7 +61,7 @@ describe('mapshaper-geojson.js', function () {
       var arcs = new api.internal.ArcCollection([[[1, 1], [1, 3], [2, 3], [1, 1]]]);
           lyr = {
             geometry_type: "polygon",
-            data: new api.internal.DataTable([{FID: 1}]),
+            data: new DataTable([{FID: 1}]),
             shapes: [[[0]]]
           };
 
@@ -107,6 +123,26 @@ describe('mapshaper-geojson.js', function () {
         , bbox: [-1, 0, 2, 3]
       };
       var result = api.internal.exportGeoJSONObject(lyr, arcs, {bbox: true});
+      assert.deepEqual(result, target);
+    })
+
+    it('export feature with id property', function() {
+      var lyr = {
+            geometry_type: "point",
+            shapes: [[[1, 1]]],
+            data: new DataTable([{FID: 1}])
+          };
+
+      var target = {"type":"FeatureCollection","features":[{
+          type: 'Feature',
+          properties: {FID: 1},
+          id: 1,
+          geometry: { type: 'Point',
+            coordinates: [1, 1]
+          }
+        }]
+      };
+      var result = api.internal.exportGeoJSONObject(lyr, null, {id_field: 'FID'});
       assert.deepEqual(result, target);
     })
 

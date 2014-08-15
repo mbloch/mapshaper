@@ -91,7 +91,10 @@ MapShaper.getOptionParser = function() {
     })
     .option("auto-snap", autoSnapOpt)
     .option("snap-interval", snapIntervalOpt)
-    .option("encoding", encodingOpt);
+    .option("encoding", encodingOpt)
+    .option("id-field", {
+      describe: "import Topo/GeoJSON id property to this field"
+    });
 
   parser.command('o')
     .describe("output edited content")
@@ -132,7 +135,7 @@ MapShaper.getOptionParser = function() {
       type: "number"
     })
     .option("id-field", {
-      describe: "field to use for TopoJSON id property"
+      describe: "field to use for Topo/GeoJSON id property"
     })
 
     .option("target", targetOpt);
@@ -267,6 +270,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("explode")
     .describe("separate multi-part features into single-part features")
+    .option("convert-holes", {type: "flag"}) // testing
     .option("target", targetOpt);
 
   parser.command("lines")

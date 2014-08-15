@@ -33,7 +33,11 @@ MapShaper.importGeoJSON = function(obj, opts) {
   if (obj.type == 'FeatureCollection') {
     properties = [];
     geometries = obj.features.map(function(feat) {
-      properties.push(feat.properties);
+      var rec = feat.properties;
+      if (opts.id_field) {
+        rec[opts.id_field] = feat.id || null;
+      }
+      properties.push(rec);
       return feat.geometry;
     });
   } else {
@@ -174,6 +178,9 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
       };
     } else if (obj === null) {
       return memo; // null geometries not allowed in GeometryCollection, skip them
+    }
+    if (properties && opts.id_field) {
+      obj.id = properties[i][opts.id_field] || null;
     }
     str = JSON.stringify(obj);
     return memo === "" ? str : memo + ",\n" + str;

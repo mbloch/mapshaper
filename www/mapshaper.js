@@ -9420,7 +9420,11 @@ MapShaper.importGeoJSON = function(obj, opts) {
   if (obj.type == 'FeatureCollection') {
     properties = [];
     geometries = obj.features.map(function(feat) {
-      properties.push(feat.properties);
+      var rec = feat.properties;
+      if (opts.id_field) {
+        rec[opts.id_field] = feat.id || null;
+      }
+      properties.push(rec);
       return feat.geometry;
     });
   } else {
@@ -9561,6 +9565,9 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
       };
     } else if (obj === null) {
       return memo; // null geometries not allowed in GeometryCollection, skip them
+    }
+    if (properties && opts.id_field) {
+      obj.id = properties[i][opts.id_field] || null;
     }
     str = JSON.stringify(obj);
     return memo === "" ? str : memo + ",\n" + str;
@@ -9737,40 +9744,42 @@ TopoJSON.roundCoords = function(arcs, precision) {
   });
 };
 
-TopoJSON.importObject = function(obj) {
+TopoJSON.importObject = function(obj, opts) {
   if (obj.type != 'GeometryCollection') {
     obj = {
       type: "GeometryCollection",
       geometries: [obj]
     };
   }
-  return TopoJSON.importGeometryCollection(obj);
+  return TopoJSON.importGeometryCollection(obj, opts);
 };
 
-TopoJSON.importGeometryCollection = function(obj) {
-  var importer = new TopoJSON.GeometryImporter();
+TopoJSON.importGeometryCollection = function(obj, opts) {
+  var importer = new TopoJSON.GeometryImporter(opts);
   Utils.forEach(obj.geometries, importer.addGeometry, importer);
   return importer.done();
 };
 
 //
 //
-TopoJSON.GeometryImporter = function() {
-  var topojsonIds = [], // id properties of each Geometry (consider adding ids to properties)
+TopoJSON.GeometryImporter = function(opts) {
+  var idField = opts && opts.id_field || null,
       properties = [],
       shapes = [], // topological ids
       collectionType = null;
 
   this.addGeometry = function(geom) {
     var type = GeoJSON.translateGeoJSONType(geom.type),
-        shapeId = shapes.length;
+        shapeId = shapes.length,
+        rec;
     this.updateCollectionType(type);
 
-    if (geom.properties) {
-      properties[shapeId] = geom.properties;
-    }
-    if (geom.id !== null && geom.id !== undefined) {
-      topojsonIds[shapeId] = geom.id;
+    if (idField || geom.properties) {
+      rec = geom.properties || {};
+      if (idField) {
+        rec[idField] = geom.id || null;
+      }
+      properties[shapeId] = rec;
     }
 
     var shape = null;
@@ -10072,6 +10081,7 @@ TopoJSON.reindexArcIds = function(geom, map) {
 
 
 api.explodeFeatures = function(lyr, arcs, opts) {
+  opts = opts || {};
   var properties = lyr.data ? lyr.data.getRecords() : null,
       explodedProperties = properties ? [] : null,
       explodedShapes = [],
@@ -10083,7 +10093,11 @@ api.explodeFeatures = function(lyr, arcs, opts) {
       explodedShapes.push(null);
     } else {
       if (lyr.geometry_type == 'polygon' && shp.length > 1) {
-        exploded = MapShaper.explodePolygon(shp, arcs);
+        if (opts.convert_holes) {
+          exploded = MapShaper.explodePolygon2(shp, arcs);
+        } else {
+          exploded = MapShaper.explodePolygon(shp, arcs);
+        }
       } else {
         exploded = MapShaper.explodeShape(shp);
       }
@@ -10108,6 +10122,17 @@ api.explodeFeatures = function(lyr, arcs, opts) {
 MapShaper.explodeShape = function(shp) {
   return shp.map(function(part) {
     return [part.concat()];
+  });
+};
+
+// flip holes (just for testing)
+MapShaper.explodePolygon2 = function(shp, arcs) {
+  return shp.map(function(part) {
+    if (geom.getPathArea4(part, arcs) < 0) {
+      part = part.concat();
+      MapShaper.reversePath(part.concat());
+    }
+    return part;
   });
 };
 
@@ -10278,14 +10303,15 @@ TopoJSON.calcExportResolution = function(arcData, precision) {
 };
 
 TopoJSON.exportProperties = function(geometries, records, opts) {
+  var idField = opts.id_field || null;
   geometries.forEach(function(geom, i) {
     var properties = records[i];
     if (properties) {
       if (!opts.cut_table) {
         geom.properties = properties;
       }
-      if (opts.id_field) {
-        geom.id = properties[opts.id_field];
+      if (idField && idField in properties) {
+        geom.id = properties[idField];
       }
     }
   });
@@ -10380,7 +10406,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
   }
 
   Utils.forEach(topology.objects, function(object, name) {
-    var lyr = TopoJSON.importObject(object, topology.arcs);
+    var lyr = TopoJSON.importObject(object, opts);
 
     if (MapShaper.layerHasPaths(lyr)) {
       MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);

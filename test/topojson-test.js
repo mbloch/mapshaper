@@ -140,6 +140,19 @@ describe('topojson-test.js', function () {
     })
   })
 
+  describe('TopoJSON import', function () {
+    it('importObject() with id_field', function () {
+      var obj = {
+        type: "Point",
+        id: 'bar',
+        coordinates: [3, 2]
+      };
+      var lyr = TopoJSON.importObject(obj, {id_field: 'foo'});
+      var records = lyr.data.getRecords();
+      assert.deepEqual(records, [{foo: 'bar'}]);
+    })
+  })
+
   describe('TopoJSON export', function () {
 
     it("polygon with hole and null shape", function () {
