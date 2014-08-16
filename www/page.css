@@ -69,6 +69,13 @@ html, body {
 
 /* --- Import screen -------------- */
 
+.homepage-note {
+	float: left;
+	width: 380px;
+	text-align: left;
+	margin: 0px 0px 0 50px;
+}
+
 #fork-me {
 	background-image: url("images/fork-me-right-cerulean.png");
     background-size: 149px 149px;
@@ -114,6 +121,7 @@ html, body {
 }
 
 .g-info-box {
+	margin-right: 30px;
 	background-color: #fff;
 	padding: 10px 14px 12px 14px;
 	vertical-align: top;
