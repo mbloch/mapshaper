@@ -277,29 +277,6 @@ function ArcCollection() {
     }
   };
 
-  this.forEachSegment_v1 = function(cb) {
-    var zlim = this.getRetainedInterval(),
-        nextArcStart = 0,
-        arcId = -1,
-        xx = _xx, yy = _yy, zz = _zz, nn = _nn,
-        id1, id2;
-
-    for (var k=0, n=xx.length; k<n; k++) {
-      if (zlim === 0 || zz[k] >= zlim) { // check: > or >=
-        id1 = id2;
-        id2 = k;
-        if (k < nextArcStart) {
-          cb(id1, id2, xx, yy);
-        } else {
-          do {
-            arcId++;
-            nextArcStart += nn[arcId];
-          } while (nextArcStart <= k); // handle empty paths
-        }
-      }
-    }
-  };
-
   // Apply a linear transform to the data, with or without rounding.
   //
   this.applyTransform = function(t, rounding) {
