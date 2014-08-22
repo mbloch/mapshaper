@@ -71,7 +71,7 @@ MapShaper.getOptionParser = function() {
     .validate(validateInputOpts)
     .option("files", {
       label: "<file(s)>",
-      describe: "file or files to import (separated by spaces)"
+      describe: "files to import (separated by spaces), or - to use stdin"
     })
     .option("merge-files", {
       describe: "merge features from compatible files into the same layer",
@@ -100,8 +100,8 @@ MapShaper.getOptionParser = function() {
     .describe("output edited content")
     .validate(validateOutputOpts)
     .option('_', {
-      label: "<file|directory>",
-      describe: "(optional) name of output file or directory"
+      label: "<file|dir|->",
+      describe: "(optional) name of output file or directory, or - for stdout"
     })
     .option("format", {
       describe: "set export format (shapefile|geojson|topojson)"

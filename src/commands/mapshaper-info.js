@@ -6,7 +6,7 @@ api.printInfo = function(dataset, opts) {
   var str = dataset.layers.map(function(lyr) {
     return MapShaper.getLayerInfo(lyr, dataset.arcs);
   }).join('\n');
-  console.log(str);
+  message(str);
 };
 
 // TODO: consider polygons with zero area or other invalid geometries

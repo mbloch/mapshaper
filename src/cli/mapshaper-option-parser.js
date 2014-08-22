@@ -87,7 +87,6 @@ function CommandParser() {
           optDef = findOptionDefn(name, cmdDef),
           optName,
           optVal;
-          // console.log("readO(); name:", name, 'defn', optDef)
 
       if (!optDef) return null;
 

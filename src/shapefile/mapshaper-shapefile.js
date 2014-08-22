@@ -126,9 +126,7 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
   var fileBytes = 100;
   var bounds = new Bounds();
   var shapeBuffers = layer.shapes.map(function(shape, i) {
-    // console.log('pre export path data', shape.length);
     var pathData = MapShaper.exportPathData(shape, arcData, geomType);
-    // console.log('post export path data')
     var rec = MapShaper.exportShpRecord(pathData, i+1, shpType);
     fileBytes += rec.buffer.byteLength;
     if (rec.bounds) bounds.mergeBounds(rec.bounds);

@@ -110,20 +110,21 @@ cli.validateInputFile = function(ifile) {
 };
 
 cli.checkFileExists = function(path) {
-  if (!cli.isFile(path)) {
+  var stat = Node.statSync(path);
+  if (!stat || stat.isDirectory()) {
     stop("File not found (" + path + ")");
   }
 };
 
 cli.printRepairMessage = function(info) {
   if (info.intersections_initial > 0) {
-    console.log(Utils.format(
+    message(Utils.format(
         "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
         info.intersections_repaired, "s?", info.intersections_remaining, "s?"));
     /*
     if (info.intersections_remaining > 10) {
       if (!opts.snapping) {
-        console.log("Tip: use --auto-snap to fix minor topology errors.");
+        message("Tip: use --auto-snap to fix minor topology errors.");
       }
     }*/
   }
@@ -132,7 +133,7 @@ cli.printRepairMessage = function(info) {
 cli.validateEncoding = function(raw) {
   var enc = raw.replace(/-/, '').toLowerCase();
   if (!Utils.contains(MapShaper.getEncodings(), enc)) {
-    console.log("[Unsupported encoding:", raw + "]");
+    console.error("[Unsupported encoding:", raw + "]");
     MapShaper.printEncodings();
     process.exit(0);
   }

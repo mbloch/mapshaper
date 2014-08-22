@@ -136,7 +136,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
           dy = yy[di],
           candAngle;
       if (dx !== bx || dy !== by) {
-        console.log("cd:", cx, cy, dx, dy, 'arc:', candId);
+        message("cd:", cx, cy, dx, dy, 'arc:', candId);
         error("Error in node topology");
       }
 
@@ -179,16 +179,16 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
       if (useRoute(candId)) {
         path.push(candId);
         nextId = candId;
-        if (verbose) console.log(msg);
+        if (verbose) message(msg);
         candId = getNextArc(nextId);
-        if (verbose && candId == startId ) console.log("  o", geom.getPathArea4(path, arcs));
+        if (verbose && candId == startId ) message("  o", geom.getPathArea4(path, arcs));
       } else {
-        if (verbose) console.log(msg + " x");
+        if (verbose) message(msg + " x");
         return null;
       }
 
       if (candId == ~nextId) {
-        console.log("dead-end"); // TODO: handle or prevent this error condition
+        trace("dead-end"); // TODO: handle or prevent this error condition
         return null;
       }
     } while (candId != startId);
@@ -262,7 +262,7 @@ MapShaper.debugFlags = function(flags) {
   var arr = Utils.map(flags, function(flag) {
     return bitsToString(flag);
   });
-  console.log(arr);
+  message(arr);
 
   function bitsToString(bits) {
     var str = "";
@@ -276,9 +276,7 @@ MapShaper.debugFlags = function(flags) {
 };
 
 /*
-// Given two arcs, where first segments are parallel, choose the one that
-// bends CW
-// return 0 if can't pick
+// Print info about two arcs whose first segments are parallel
 //
 MapShaper.debugRoute = function(id1, id2, arcs) {
   var n1 = arcs.getArcLength(id1),

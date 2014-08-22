@@ -6,6 +6,54 @@ function fixPath(p) {
   return require('path').join(__dirname, p);
 }
 
+function runFile(cmd, done) {
+  var args = require('shell-quote').parse(cmd);
+  var mapshaper = fixPath("../bin/mapshaper");
+  var execFile = require('child_process').execFile;
+
+  execFile(mapshaper, args, function(err, stdout, stderr) {
+    done(err, stdout && stdout.toString(), stderr && stderr.toString());
+  });
+}
+
+function runCmd(cmd, input, done) {
+  var args = require('shell-quote').parse(cmd);
+  var mapshaper = fixPath("../bin/mapshaper");
+  var str = api.utils.format("echo '%s' | %s %s", input, mapshaper, cmd);
+  var exec = require('child_process').exec;
+
+  exec(str, function(err, stdout, stderr) {
+    done(err, stdout && stdout.toString(), stderr && stderr.toString());
+  });
+}
+
+describe('stdin/stdout tests', function() {
+  it ("pass-through GeoJSON", function(done) {
+    var cmd = "- -o - -verbose"; // -verbose to check that messages aren't sent to stdout
+    var geojson = {"type":"GeometryCollection","geometries":[{"type":"Point","coordinates":[0,0]}]};
+    runCmd(cmd, JSON.stringify(geojson), function(err, stdout, stderr) {
+      assert.deepEqual(JSON.parse(stdout), geojson);
+      done();
+    });
+  })
+
+  it ("pass-through TopoJSON", function(done) {
+    var cmd = "/dev/stdin -info -o /dev/stdout -verbose"; // -info and -verbose to check that messages aren't sent to stdout
+    var json = {type: "Topology",
+      arcs: [],
+      objects: { point: {
+          "type":"GeometryCollection",
+          "geometries":[{"type":"Point","coordinates":[0,0]}]}}
+    };
+
+    runCmd(cmd, JSON.stringify(json), function(err, stdout, stderr) {
+      assert.deepEqual(JSON.parse(stdout), json);
+      done();
+    });
+  })
+
+})
+
 describe('mapshaper-commands.js', function () {
 
   var states_shp = fixPath("test_data/two_states.shp"),

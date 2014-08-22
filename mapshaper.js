@@ -1322,7 +1322,7 @@ Node.writeFile = function(path, content) {
   if (content instanceof ArrayBuffer) {
     content = Node.toBuffer(content);
   }
-  require('fs').writeFileSync(path, content, 0, null, 0);
+  require('rw').writeFileSync(path, content, 0, null, 0);
 };
 
 Node.copyFile = function(src, dest) {
@@ -2221,7 +2221,7 @@ var trace = function() {
 function logArgs(args) {
   if (Utils.isArrayLike(args)) {
     var arr = Utils.toArray(args);
-    console.log(arr.join(' '));
+    (console.error || console.log)(arr.join(' '));
   }
 }
 
@@ -2271,7 +2271,9 @@ utils.getPathBase = function(path) {
 MapShaper.guessFileType = function(file) {
   var ext = utils.getFileExtension(file).toLowerCase(),
       type = null;
-  if (/json$/i.test(file)) {
+  if (file == '/dev/stdin') {
+    type = 'json';
+  } else if (/json$/i.test(file)) {
     type = 'json';
   } else if (ext == 'shp' || ext == 'dbf' || ext == 'prj') {
     type = ext;
@@ -2443,7 +2445,6 @@ function CommandParser() {
           optDef = findOptionDefn(name, cmdDef),
           optName,
           optVal;
-          // console.log("readO(); name:", name, 'defn', optDef)
 
       if (!optDef) return null;
 
@@ -2683,8 +2684,14 @@ function validateHelpOpts(cmd) {
 }
 
 function validateInputOpts(cmd) {
-  var o = cmd.options;
-  o.files = cli.validateInputFiles(cmd._);
+  var o = cmd.options,
+      _ = cmd._;
+
+  if (_[0] == '-' || _[0] == '/dev/stdin') {
+    o.stdin = true;
+  } else {
+    o.files = cli.validateInputFiles(_);
+  }
 
   if ("precision" in o && o.precision > 0 === false) {
     error("precision option should be a positive number");
@@ -2880,6 +2887,8 @@ function validateOutputOpts(cmd) {
 
   if (!path) {
     // no output file or dir
+  } else if (path == '-' || path == '/dev/stdout') {
+    o.stdout = true;
   } else if (!pathInfo.extension) {
     o.output_dir = path;
   } else {
@@ -3013,7 +3022,7 @@ MapShaper.getOptionParser = function() {
     .validate(validateInputOpts)
     .option("files", {
       label: "<file(s)>",
-      describe: "file or files to import (separated by spaces)"
+      describe: "files to import (separated by spaces), or - to use stdin"
     })
     .option("merge-files", {
       describe: "merge features from compatible files into the same layer",
@@ -3042,8 +3051,8 @@ MapShaper.getOptionParser = function() {
     .describe("output edited content")
     .validate(validateOutputOpts)
     .option('_', {
-      label: "<file|directory>",
-      describe: "(optional) name of output file or directory"
+      label: "<file|dir|->",
+      describe: "(optional) name of output file or directory, or - for stdout"
     })
     .option("format", {
       describe: "set export format (shapefile|geojson|topojson)"
@@ -6432,7 +6441,7 @@ function NodeCollection(arcs) {
       ids.push(id);
     });
 
-    console.log("node ids:",  ids);
+    message("node ids:",  ids);
     ids.forEach(printArc);
 
     function printArc(id) {
@@ -6453,7 +6462,7 @@ function NodeCollection(arcs) {
       } else {
         str = "[]";
       }
-      console.log(str);
+      message(str);
     }
   };
 
@@ -6678,7 +6687,6 @@ function PolygonIndex(shape, arcs) {
         yy = data.yy,
         a, b;
 
-    // console.log("countCrosses() x, y:", x, y, "bucket:", bucketId, "size:", n)
     for (var i=0; i<n; i++) {
       a = p1Arr[i + offs];
       b = p2Arr[i + offs];
@@ -7023,15 +7031,6 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
     }
     i += 2;
   }
-  /*
-  if (intersections.length == 1) {
-    var hit = intersections[0];
-    console.log("hit:", hit);
-    console.log("json:", JSON.stringify(hit));
-    console.log("seg1", xx[hit.a[0]], yy[hit.a[0]], xx[hit.a[1]], yy[hit.a[1]]);
-    console.log("seg2", xx[hit.b[0]], yy[hit.b[0]], xx[hit.b[1]], yy[hit.b[1]]);
-  }
-  */
   return intersections;
 
   // @p is an [x, y] location along a segment defined by ids @id1 and @id2
@@ -7449,7 +7448,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
           dy = yy[di],
           candAngle;
       if (dx !== bx || dy !== by) {
-        console.log("cd:", cx, cy, dx, dy, 'arc:', candId);
+        message("cd:", cx, cy, dx, dy, 'arc:', candId);
         error("Error in node topology");
       }
 
@@ -7492,16 +7491,16 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
       if (useRoute(candId)) {
         path.push(candId);
         nextId = candId;
-        if (verbose) console.log(msg);
+        if (verbose) message(msg);
         candId = getNextArc(nextId);
-        if (verbose && candId == startId ) console.log("  o", geom.getPathArea4(path, arcs));
+        if (verbose && candId == startId ) message("  o", geom.getPathArea4(path, arcs));
       } else {
-        if (verbose) console.log(msg + " x");
+        if (verbose) message(msg + " x");
         return null;
       }
 
       if (candId == ~nextId) {
-        console.log("dead-end"); // TODO: handle or prevent this error condition
+        trace("dead-end"); // TODO: handle or prevent this error condition
         return null;
       }
     } while (candId != startId);
@@ -7575,7 +7574,7 @@ MapShaper.debugFlags = function(flags) {
   var arr = Utils.map(flags, function(flag) {
     return bitsToString(flag);
   });
-  console.log(arr);
+  message(arr);
 
   function bitsToString(bits) {
     var str = "";
@@ -7589,9 +7588,7 @@ MapShaper.debugFlags = function(flags) {
 };
 
 /*
-// Given two arcs, where first segments are parallel, choose the one that
-// bends CW
-// return 0 if can't pick
+// Print info about two arcs whose first segments are parallel
 //
 MapShaper.debugRoute = function(id1, id2, arcs) {
   var n1 = arcs.getArcLength(id1),
@@ -8300,7 +8297,6 @@ Dbf.getStringReader = function(size, encoding) {
   if (encoding === 'ascii') {
     return Dbf.getStringReaderAscii(size);
   } else if (Env.inNode) {
-    // console.log(name)
     return Dbf.getStringReaderEncoded(size, encoding);
   }
   // TODO: user browserify or other means of decoding string data in the browser
@@ -9479,8 +9475,6 @@ TopoJSON.dissolveArcs = function(topology) {
         pair1 = fw1 == fw2 ? id2 : ~id2,
         pair2 = fw1 == fw2 ? ~id1 : id1;
 
-    //console.log("id1:", id1, "id2:", id2, "fw1?", fw1, "fw2?", fw2)
-
     if (abs1 == abs2) { // island: can't dissolve
       next[abs1] = stale;
       prev[abs1] = stale;
@@ -9488,8 +9482,6 @@ TopoJSON.dissolveArcs = function(topology) {
       arr1[abs1] = pair1;
       arr2[abs2] = pair2;
     } else if (arr1[abs1] != pair1 || arr2[abs2] != pair2) {
-      //console.log(" ... actual 1:", arr1[abs1], "expected:", pair1);
-      //console.log(" ... actual 2:", arr2[abs2], "expected:", pair2);
       arr1[abs1] = stale;
       arr2[abs2] = stale;
     }
@@ -9502,8 +9494,6 @@ TopoJSON.dissolveArcs = function(topology) {
       id2 = arcs[(i+1) % n];
       handleVertex(id1, id2, fw, bw);
     }
-    //console.log("fw:", Utils.toArray(fw));
-    //console.log("bw:", Utils.toArray(bw));
   }
 };
 
@@ -10498,9 +10488,7 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
   var fileBytes = 100;
   var bounds = new Bounds();
   var shapeBuffers = layer.shapes.map(function(shape, i) {
-    // console.log('pre export path data', shape.length);
     var pathData = MapShaper.exportPathData(shape, arcData, geomType);
-    // console.log('post export path data')
     var rec = MapShaper.exportShpRecord(pathData, i+1, shpType);
     fileBytes += rec.buffer.byteLength;
     if (rec.bounds) bounds.mergeBounds(rec.bounds);
@@ -11325,12 +11313,12 @@ api.importFile = function(path, opts) {
   cli.checkFileExists(path);
 
   opts = opts || {};
-  if (!opts.files) {
+  if (!opts.files && path != "/dev/stdin") {
     opts.files = [path];
   }
 
   if (fileType == 'shp') {
-    content = path;
+    content = path; // pass path to shp reader to read in chunks
   } else {
     content = MapShaper.readGeometryFile(path, fileType);
   }
@@ -11351,11 +11339,12 @@ api.importFile = function(path, opts) {
 };
 
 MapShaper.readGeometryFile = function(path, fileType) {
+  var rw = require('rw');
   var content;
   if (fileType == 'shp') {
-    content = Node.readFile(path);
+    content = rw.readFileSync(path);
   } else if (fileType == 'json') {
-    content = Node.readFile(path, 'utf-8');
+    content = rw.readFileSync(path, 'utf-8');
   } else {
     error("Unexpected input file:", path);
   }
@@ -12610,7 +12599,7 @@ api.printInfo = function(dataset, opts) {
   var str = dataset.layers.map(function(lyr) {
     return MapShaper.getLayerInfo(lyr, dataset.arcs);
   }).join('\n');
-  console.log(str);
+  message(str);
 };
 
 // TODO: consider polygons with zero area or other invalid geometries
@@ -13354,7 +13343,7 @@ MapShaper.applyCommand = function(func, targetLayers) {
 MapShaper.divideImportCommand = function(cmd) {
   var opts = cmd.options,
       imports;
-  if (opts.combine_files || opts.merge_files || opts.files.length <= 1) {
+  if (opts.combine_files || opts.merge_files || opts.stdin || opts.files.length <= 1) {
     imports = [cmd];
   } else {
     imports = opts.files.map(function(file) {
@@ -13371,15 +13360,18 @@ api.exportFiles = function(dataset, opts) {
   if (!opts.format) {
     opts.format = dataset.info.input_format || error("[o] Missing export format");
   }
-
   var exports = MapShaper.exportFileContent(dataset, opts);
+  if (opts.stdout) {
+    Node.writeFile('/dev/stdout', exports[0].content);
+  } else {
+    var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
+    exports.forEach(function(obj, i) {
+      var path = paths[i];
+      Node.writeFile(path, obj.content);
+      console.error("Wrote " + path);
+    });
+  }
 
-  var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
-  exports.forEach(function(obj, i) {
-    var path = paths[i];
-    Node.writeFile(path, obj.content);
-    console.log("Wrote " + path);
-  });
 };
 
 api.importFiles = function(opts) {
@@ -13389,8 +13381,10 @@ api.importFiles = function(opts) {
     dataset = api.mergeFiles(files, opts);
   } else if (files && files.length == 1) {
     dataset = api.importFile(files[0], opts);
+  } else if (opts.stdin) {
+    dataset = api.importFile('/dev/stdin', opts);
   } else {
-    // handle error
+    // err
   }
   return dataset;
 };
@@ -13412,7 +13406,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 MapShaper.runAndRemoveInfoCommands = function(commands) {
   return Utils.filter(commands, function(cmd) {
     if (cmd.name == 'version') {
-      console.log(getVersion());
+      console.error(getVersion());
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'help') {
@@ -13596,20 +13590,21 @@ cli.validateInputFile = function(ifile) {
 };
 
 cli.checkFileExists = function(path) {
-  if (!cli.isFile(path)) {
+  var stat = Node.statSync(path);
+  if (!stat || stat.isDirectory()) {
     stop("File not found (" + path + ")");
   }
 };
 
 cli.printRepairMessage = function(info) {
   if (info.intersections_initial > 0) {
-    console.log(Utils.format(
+    message(Utils.format(
         "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
         info.intersections_repaired, "s?", info.intersections_remaining, "s?"));
     /*
     if (info.intersections_remaining > 10) {
       if (!opts.snapping) {
-        console.log("Tip: use --auto-snap to fix minor topology errors.");
+        message("Tip: use --auto-snap to fix minor topology errors.");
       }
     }*/
   }
@@ -13618,7 +13613,7 @@ cli.printRepairMessage = function(info) {
 cli.validateEncoding = function(raw) {
   var enc = raw.replace(/-/, '').toLowerCase();
   if (!Utils.contains(MapShaper.getEncodings(), enc)) {
-    console.log("[Unsupported encoding:", raw + "]");
+    console.error("[Unsupported encoding:", raw + "]");
     MapShaper.printEncodings();
     process.exit(0);
   }

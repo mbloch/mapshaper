@@ -3961,7 +3961,7 @@ var trace = function() {
 function logArgs(args) {
   if (Utils.isArrayLike(args)) {
     var arr = Utils.toArray(args);
-    console.log(arr.join(' '));
+    (console.error || console.log)(arr.join(' '));
   }
 }
 
@@ -4011,7 +4011,9 @@ utils.getPathBase = function(path) {
 MapShaper.guessFileType = function(file) {
   var ext = utils.getFileExtension(file).toLowerCase(),
       type = null;
-  if (/json$/i.test(file)) {
+  if (file == '/dev/stdin') {
+    type = 'json';
+  } else if (/json$/i.test(file)) {
     type = 'json';
   } else if (ext == 'shp' || ext == 'dbf' || ext == 'prj') {
     type = ext;
@@ -4698,29 +4700,6 @@ function ArcCollection() {
   this.forEachSegment = function(cb) {
     for (var i=0, n=this.size(); i<n; i++) {
       this.forEachArcSegment(i, cb);
-    }
-  };
-
-  this.forEachSegment_v1 = function(cb) {
-    var zlim = this.getRetainedInterval(),
-        nextArcStart = 0,
-        arcId = -1,
-        xx = _xx, yy = _yy, zz = _zz, nn = _nn,
-        id1, id2;
-
-    for (var k=0, n=xx.length; k<n; k++) {
-      if (zlim === 0 || zz[k] >= zlim) { // check: > or >=
-        id1 = id2;
-        id2 = k;
-        if (k < nextArcStart) {
-          cb(id1, id2, xx, yy);
-        } else {
-          do {
-            arcId++;
-            nextArcStart += nn[arcId];
-          } while (nextArcStart <= k); // handle empty paths
-        }
-      }
     }
   };
 
@@ -6799,9 +6778,9 @@ MapShaper.getHighPrecisionSnapInterval = function(arcs) {
 };
 
 MapShaper.snapCoords = function(arcs, threshold) {
-  var avgDist = arcs.getAvgSegment(),
-      autoSnapDist = avgDist * 0.0025,
-      snapDist = autoSnapDist;
+    var avgDist = arcs.getAvgSegment(),
+        autoSnapDist = avgDist * 0.0025,
+        snapDist = autoSnapDist;
 
   if (threshold > 0) {
     if (threshold > avgDist) {
@@ -6821,55 +6800,39 @@ MapShaper.snapCoords = function(arcs, threshold) {
 //
 MapShaper.snapCoordsByInterval = function(arcs, snapDist) {
   var snapCount = 0,
-      xx = arcs.getVertexData().xx,
-      yy = arcs.getVertexData().yy;
+      data = arcs.getVertexData();
 
   // Get sorted coordinate ids
   // Consider: speed up sorting -- try bucket sort as first pass.
   //
-  var ids = utils.sortCoordinateIds(xx);
+  var ids = utils.sortCoordinateIds(data.xx);
   for (var i=0, n=ids.length; i<n; i++) {
-    snapCount += snapPoint(i, ids, snapDist);
+    snapCount += snapPoint(i, snapDist, ids, data.xx, data.yy);
   }
   return snapCount;
 
-  function snapPoint(i, ids, limit) {
+  function snapPoint(i, limit, ids, xx, yy) {
     var j = i,
         n = ids.length,
-        id1 = ids[i],
-        x = xx[id1],
-        y = yy[id1],
+        x = xx[ids[i]],
+        y = yy[ids[i]],
         snaps = 0,
-        dist, id2, x2, y2;
+        id2, dx, dy;
 
     while (++j < n) {
       id2 = ids[j];
-      x2 = xx[id2];
-      if (x2 - x > limit) {
-        break;
-      }
-      y2 = yy[id2];
-      // don't snap identical points
-      if (x === x2 && y === y2) {
-        continue;
-      }
-      dist = distance2D(x, y, x2, y2);
-      if (dist < limit) {
-        xx[id2] = x;
-        yy[id2] = y;
-        snaps++;
-        //if (points) {
-        //  points.push([[x, x2], [y, y2]]);
-        //}
-      }
+      dx = xx[id2] - x;
+      if (dx > limit) break;
+      dy = yy[id2] - y;
+      if (dx === 0 && dy === 0 || dx * dx + dy * dy > limit * limit) continue;
+      xx[id2] = x;
+      yy[id2] = y;
+      snaps++;
     }
     return snaps;
   }
 };
 
-// Returns array of array ids, in ascending order.
-// @a array of numbers
-//
 utils.sortCoordinateIds = function(a) {
   var n = a.length,
       ids = new Uint32Array(n);
@@ -6880,12 +6843,68 @@ utils.sortCoordinateIds = function(a) {
   return ids;
 };
 
+/*
+// Returns array of array ids, in ascending order.
+// @a array of numbers
+//
+utils.sortCoordinateIds = function(a) {
+  return utils.bucketSortIds(a);
+};
+
+// This speeds up sorting of large datasets (~2x faster for 1e7 values)
+// worth the additional code?
+utils.bucketSortIds = function(a, n) {
+  var len = a.length,
+      ids = new Uint32Array(len),
+      bounds = Utils.getArrayBounds(a),
+      buckets = Math.ceil(n > 0 ? n : len / 10),
+      counts = new Uint32Array(buckets),
+      offsets = new Uint32Array(buckets),
+      i, j, offs, count;
+
+  // get bucket sizes
+  for (i=0; i<len; i++) {
+    j = bucketId(a[i], bounds.min, bounds.max, buckets);
+    counts[j]++;
+  }
+
+  // convert counts to offsets
+  offs = 0;
+  for (i=0; i<buckets; i++) {
+    offsets[i] = offs;
+    offs += counts[i];
+  }
+
+  // assign ids to buckets
+  for (i=0; i<len; i++) {
+    j = bucketId(a[i], bounds.min, bounds.max, buckets);
+    offs = offsets[j]++;
+    ids[offs] = i;
+  }
+
+  // sort each bucket with quicksort
+  for (i = 0; i<buckets; i++) {
+    count = counts[i];
+    if (count > 1) {
+      offs = offsets[i] - count;
+      utils.quicksortIds(a, ids, offs, offs + count - 1);
+    }
+  }
+  return ids;
+
+  function bucketId(val, min, max, buckets) {
+    var id = (buckets * (val - min) / (max - min)) | 0;
+    return id < buckets ? id : buckets - 1;
+  }
+};
+*/
+
 utils.quicksortIds = function (a, ids, lo, hi) {
-  var i = lo,
-      j = hi,
-      pivot, tmp;
-  while (i < hi) {
-    pivot = a[ids[lo + hi >> 1]];
+  if (hi - lo > 24) {
+    var pivot = a[ids[lo + hi >> 1]],
+        i = lo,
+        j = hi,
+        tmp;
     while (i <= j) {
       while (a[ids[i]] < pivot) i++;
       while (a[ids[j]] > pivot) j--;
@@ -6897,9 +6916,21 @@ utils.quicksortIds = function (a, ids, lo, hi) {
         j--;
       }
     }
-    if (j - lo > 0) utils.quicksortIds(a, ids, lo, j);
-    lo = i;
-    j = hi;
+    if (j > lo) utils.quicksortIds(a, ids, lo, j);
+    if (i < hi) utils.quicksortIds(a, ids, i, hi);
+  } else {
+    utils.insertionSortIds(a, ids, lo, hi);
+  }
+};
+
+utils.insertionSortIds = function(arr, ids, start, end) {
+  var id, i, j;
+  for (j = start + 1; j <= end; j++) {
+    id = ids[j];
+    for (i = j - 1; i >= start && arr[id] < arr[ids[i]]; i--) {
+      ids[i+1] = ids[i];
+    }
+    ids[i+1] = id;
   }
 };
 
@@ -6947,7 +6978,7 @@ function NodeCollection(arcs) {
       ids.push(id);
     });
 
-    console.log("node ids:",  ids);
+    message("node ids:",  ids);
     ids.forEach(printArc);
 
     function printArc(id) {
@@ -6968,7 +6999,7 @@ function NodeCollection(arcs) {
       } else {
         str = "[]";
       }
-      console.log(str);
+      message(str);
     }
   };
 
@@ -7193,7 +7224,6 @@ function PolygonIndex(shape, arcs) {
         yy = data.yy,
         a, b;
 
-    // console.log("countCrosses() x, y:", x, y, "bucket:", bucketId, "size:", n)
     for (var i=0; i<n; i++) {
       a = p1Arr[i + offs];
       b = p2Arr[i + offs];
@@ -7538,15 +7568,6 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
     }
     i += 2;
   }
-  /*
-  if (intersections.length == 1) {
-    var hit = intersections[0];
-    console.log("hit:", hit);
-    console.log("json:", JSON.stringify(hit));
-    console.log("seg1", xx[hit.a[0]], yy[hit.a[0]], xx[hit.a[1]], yy[hit.a[1]]);
-    console.log("seg2", xx[hit.b[0]], yy[hit.b[0]], xx[hit.b[1]], yy[hit.b[1]]);
-  }
-  */
   return intersections;
 
   // @p is an [x, y] location along a segment defined by ids @id1 and @id2
@@ -7964,7 +7985,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
           dy = yy[di],
           candAngle;
       if (dx !== bx || dy !== by) {
-        console.log("cd:", cx, cy, dx, dy, 'arc:', candId);
+        message("cd:", cx, cy, dx, dy, 'arc:', candId);
         error("Error in node topology");
       }
 
@@ -8007,16 +8028,16 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
       if (useRoute(candId)) {
         path.push(candId);
         nextId = candId;
-        if (verbose) console.log(msg);
+        if (verbose) message(msg);
         candId = getNextArc(nextId);
-        if (verbose && candId == startId ) console.log("  o", geom.getPathArea4(path, arcs));
+        if (verbose && candId == startId ) message("  o", geom.getPathArea4(path, arcs));
       } else {
-        if (verbose) console.log(msg + " x");
+        if (verbose) message(msg + " x");
         return null;
       }
 
       if (candId == ~nextId) {
-        console.log("dead-end"); // TODO: handle or prevent this error condition
+        trace("dead-end"); // TODO: handle or prevent this error condition
         return null;
       }
     } while (candId != startId);
@@ -8090,7 +8111,7 @@ MapShaper.debugFlags = function(flags) {
   var arr = Utils.map(flags, function(flag) {
     return bitsToString(flag);
   });
-  console.log(arr);
+  message(arr);
 
   function bitsToString(bits) {
     var str = "";
@@ -8104,9 +8125,7 @@ MapShaper.debugFlags = function(flags) {
 };
 
 /*
-// Given two arcs, where first segments are parallel, choose the one that
-// bends CW
-// return 0 if can't pick
+// Print info about two arcs whose first segments are parallel
 //
 MapShaper.debugRoute = function(id1, id2, arcs) {
   var n1 = arcs.getArcLength(id1),
@@ -8815,7 +8834,6 @@ Dbf.getStringReader = function(size, encoding) {
   if (encoding === 'ascii') {
     return Dbf.getStringReaderAscii(size);
   } else if (Env.inNode) {
-    // console.log(name)
     return Dbf.getStringReaderEncoded(size, encoding);
   }
   // TODO: user browserify or other means of decoding string data in the browser
@@ -9994,8 +10012,6 @@ TopoJSON.dissolveArcs = function(topology) {
         pair1 = fw1 == fw2 ? id2 : ~id2,
         pair2 = fw1 == fw2 ? ~id1 : id1;
 
-    //console.log("id1:", id1, "id2:", id2, "fw1?", fw1, "fw2?", fw2)
-
     if (abs1 == abs2) { // island: can't dissolve
       next[abs1] = stale;
       prev[abs1] = stale;
@@ -10003,8 +10019,6 @@ TopoJSON.dissolveArcs = function(topology) {
       arr1[abs1] = pair1;
       arr2[abs2] = pair2;
     } else if (arr1[abs1] != pair1 || arr2[abs2] != pair2) {
-      //console.log(" ... actual 1:", arr1[abs1], "expected:", pair1);
-      //console.log(" ... actual 2:", arr2[abs2], "expected:", pair2);
       arr1[abs1] = stale;
       arr2[abs2] = stale;
     }
@@ -10017,8 +10031,6 @@ TopoJSON.dissolveArcs = function(topology) {
       id2 = arcs[(i+1) % n];
       handleVertex(id1, id2, fw, bw);
     }
-    //console.log("fw:", Utils.toArray(fw));
-    //console.log("bw:", Utils.toArray(bw));
   }
 };
 
@@ -10081,7 +10093,6 @@ TopoJSON.reindexArcIds = function(geom, map) {
 
 
 api.explodeFeatures = function(lyr, arcs, opts) {
-  opts = opts || {};
   var properties = lyr.data ? lyr.data.getRecords() : null,
       explodedProperties = properties ? [] : null,
       explodedShapes = [],
@@ -10093,11 +10104,7 @@ api.explodeFeatures = function(lyr, arcs, opts) {
       explodedShapes.push(null);
     } else {
       if (lyr.geometry_type == 'polygon' && shp.length > 1) {
-        if (opts.convert_holes) {
-          exploded = MapShaper.explodePolygon2(shp, arcs);
-        } else {
-          exploded = MapShaper.explodePolygon(shp, arcs);
-        }
+        exploded = MapShaper.explodePolygon(shp, arcs);
       } else {
         exploded = MapShaper.explodeShape(shp);
       }
@@ -10122,17 +10129,6 @@ api.explodeFeatures = function(lyr, arcs, opts) {
 MapShaper.explodeShape = function(shp) {
   return shp.map(function(part) {
     return [part.concat()];
-  });
-};
-
-// flip holes (just for testing)
-MapShaper.explodePolygon2 = function(shp, arcs) {
-  return shp.map(function(part) {
-    if (geom.getPathArea4(part, arcs) < 0) {
-      part = part.concat();
-      MapShaper.reversePath(part.concat());
-    }
-    return part;
   });
 };
 
@@ -11029,9 +11025,7 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
   var fileBytes = 100;
   var bounds = new Bounds();
   var shapeBuffers = layer.shapes.map(function(shape, i) {
-    // console.log('pre export path data', shape.length);
     var pathData = MapShaper.exportPathData(shape, arcData, geomType);
-    // console.log('post export path data')
     var rec = MapShaper.exportShpRecord(pathData, i+1, shpType);
     fileBytes += rec.buffer.byteLength;
     if (rec.bounds) bounds.mergeBounds(rec.bounds);

@@ -114,7 +114,6 @@ function PolygonIndex(shape, arcs) {
         yy = data.yy,
         a, b;
 
-    // console.log("countCrosses() x, y:", x, y, "bucket:", bucketId, "size:", n)
     for (var i=0; i<n; i++) {
       a = p1Arr[i + offs];
       b = p2Arr[i + offs];

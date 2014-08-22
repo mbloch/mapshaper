@@ -10,12 +10,12 @@ api.importFile = function(path, opts) {
   cli.checkFileExists(path);
 
   opts = opts || {};
-  if (!opts.files) {
+  if (!opts.files && path != "/dev/stdin") {
     opts.files = [path];
   }
 
   if (fileType == 'shp') {
-    content = path;
+    content = path; // pass path to shp reader to read in chunks
   } else {
     content = MapShaper.readGeometryFile(path, fileType);
   }
@@ -36,11 +36,12 @@ api.importFile = function(path, opts) {
 };
 
 MapShaper.readGeometryFile = function(path, fileType) {
+  var rw = require('rw');
   var content;
   if (fileType == 'shp') {
-    content = Node.readFile(path);
+    content = rw.readFileSync(path);
   } else if (fileType == 'json') {
-    content = Node.readFile(path, 'utf-8');
+    content = rw.readFileSync(path, 'utf-8');
   } else {
     error("Unexpected input file:", path);
   }

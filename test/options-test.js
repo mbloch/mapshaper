@@ -22,6 +22,8 @@ describe('mapshaper-options.js', function () {
     good("-i " + file1 + " snap-interval 0.001", {snap_interval: 0.001, files: [file1]});
     good("-i merge-files " + file1 + " " + file2, {merge_files: true, files: [file1, file2]});
     good("-i combine-files " + file1 + " " + file2, {combine_files: true, files: [file1, file2]});
+    good("-", {stdin: true});
+    good("/dev/stdin", {stdin: true});
  })
 
   describe('output', function() {
@@ -34,6 +36,8 @@ describe('mapshaper-options.js', function () {
     good("-o output.shp target=points", {output_file: "output.shp", target: "points"});
     good("-o cut-table output.json", {cut_table: true, output_file: "output.json"})
     good("-o cut-table", {cut_table: true})
+    good("-o -", {stdout: true})
+    good("-o /dev/stdout", {stdout: true})
 
     // topojson options
     good("-o quantization 10000", {quantization: 10000});

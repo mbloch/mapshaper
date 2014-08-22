@@ -9,8 +9,14 @@ function validateHelpOpts(cmd) {
 }
 
 function validateInputOpts(cmd) {
-  var o = cmd.options;
-  o.files = cli.validateInputFiles(cmd._);
+  var o = cmd.options,
+      _ = cmd._;
+
+  if (_[0] == '-' || _[0] == '/dev/stdin') {
+    o.stdin = true;
+  } else {
+    o.files = cli.validateInputFiles(_);
+  }
 
   if ("precision" in o && o.precision > 0 === false) {
     error("precision option should be a positive number");
@@ -206,6 +212,8 @@ function validateOutputOpts(cmd) {
 
   if (!path) {
     // no output file or dir
+  } else if (path == '-' || path == '/dev/stdout') {
+    o.stdout = true;
   } else if (!pathInfo.extension) {
     o.output_dir = path;
   } else {

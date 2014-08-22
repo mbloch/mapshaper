@@ -41,7 +41,7 @@ function NodeCollection(arcs) {
       ids.push(id);
     });
 
-    console.log("node ids:",  ids);
+    message("node ids:",  ids);
     ids.forEach(printArc);
 
     function printArc(id) {
@@ -62,7 +62,7 @@ function NodeCollection(arcs) {
       } else {
         str = "[]";
       }
-      console.log(str);
+      message(str);
     }
   };
 

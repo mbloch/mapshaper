@@ -198,15 +198,6 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
     }
     i += 2;
   }
-  /*
-  if (intersections.length == 1) {
-    var hit = intersections[0];
-    console.log("hit:", hit);
-    console.log("json:", JSON.stringify(hit));
-    console.log("seg1", xx[hit.a[0]], yy[hit.a[0]], xx[hit.a[1]], yy[hit.a[1]]);
-    console.log("seg2", xx[hit.b[0]], yy[hit.b[0]], xx[hit.b[1]], yy[hit.b[1]]);
-  }
-  */
   return intersections;
 
   // @p is an [x, y] location along a segment defined by ids @id1 and @id2

@@ -54,7 +54,6 @@ Dbf.getStringReader = function(size, encoding) {
   if (encoding === 'ascii') {
     return Dbf.getStringReaderAscii(size);
   } else if (Env.inNode) {
-    // console.log(name)
     return Dbf.getStringReaderEncoded(size, encoding);
   }
   // TODO: user browserify or other means of decoding string data in the browser

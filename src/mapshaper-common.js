@@ -49,7 +49,7 @@ var trace = function() {
 function logArgs(args) {
   if (Utils.isArrayLike(args)) {
     var arr = Utils.toArray(args);
-    console.log(arr.join(' '));
+    (console.error || console.log)(arr.join(' '));
   }
 }
 
@@ -99,7 +99,9 @@ utils.getPathBase = function(path) {
 MapShaper.guessFileType = function(file) {
   var ext = utils.getFileExtension(file).toLowerCase(),
       type = null;
-  if (/json$/i.test(file)) {
+  if (file == '/dev/stdin') {
+    type = 'json';
+  } else if (/json$/i.test(file)) {
     type = 'json';
   } else if (ext == 'shp' || ext == 'dbf' || ext == 'prj') {
     type = ext;

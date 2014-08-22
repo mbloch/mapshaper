@@ -88,8 +88,6 @@ TopoJSON.dissolveArcs = function(topology) {
         pair1 = fw1 == fw2 ? id2 : ~id2,
         pair2 = fw1 == fw2 ? ~id1 : id1;
 
-    //console.log("id1:", id1, "id2:", id2, "fw1?", fw1, "fw2?", fw2)
-
     if (abs1 == abs2) { // island: can't dissolve
       next[abs1] = stale;
       prev[abs1] = stale;
@@ -97,8 +95,6 @@ TopoJSON.dissolveArcs = function(topology) {
       arr1[abs1] = pair1;
       arr2[abs2] = pair2;
     } else if (arr1[abs1] != pair1 || arr2[abs2] != pair2) {
-      //console.log(" ... actual 1:", arr1[abs1], "expected:", pair1);
-      //console.log(" ... actual 2:", arr2[abs2], "expected:", pair2);
       arr1[abs1] = stale;
       arr2[abs2] = stale;
     }
@@ -111,7 +107,5 @@ TopoJSON.dissolveArcs = function(topology) {
       id2 = arcs[(i+1) % n];
       handleVertex(id1, id2, fw, bw);
     }
-    //console.log("fw:", Utils.toArray(fw));
-    //console.log("bw:", Utils.toArray(bw));
   }
 };

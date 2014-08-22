@@ -212,7 +212,7 @@ MapShaper.applyCommand = function(func, targetLayers) {
 MapShaper.divideImportCommand = function(cmd) {
   var opts = cmd.options,
       imports;
-  if (opts.combine_files || opts.merge_files || opts.files.length <= 1) {
+  if (opts.combine_files || opts.merge_files || opts.stdin || opts.files.length <= 1) {
     imports = [cmd];
   } else {
     imports = opts.files.map(function(file) {
@@ -229,15 +229,18 @@ api.exportFiles = function(dataset, opts) {
   if (!opts.format) {
     opts.format = dataset.info.input_format || error("[o] Missing export format");
   }
-
   var exports = MapShaper.exportFileContent(dataset, opts);
+  if (opts.stdout) {
+    Node.writeFile('/dev/stdout', exports[0].content);
+  } else {
+    var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
+    exports.forEach(function(obj, i) {
+      var path = paths[i];
+      Node.writeFile(path, obj.content);
+      console.error("Wrote " + path);
+    });
+  }
 
-  var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
-  exports.forEach(function(obj, i) {
-    var path = paths[i];
-    Node.writeFile(path, obj.content);
-    console.log("Wrote " + path);
-  });
 };
 
 api.importFiles = function(opts) {
@@ -247,8 +250,10 @@ api.importFiles = function(opts) {
     dataset = api.mergeFiles(files, opts);
   } else if (files && files.length == 1) {
     dataset = api.importFile(files[0], opts);
+  } else if (opts.stdin) {
+    dataset = api.importFile('/dev/stdin', opts);
   } else {
-    // handle error
+    // err
   }
   return dataset;
 };
@@ -270,7 +275,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 MapShaper.runAndRemoveInfoCommands = function(commands) {
   return Utils.filter(commands, function(cmd) {
     if (cmd.name == 'version') {
-      console.log(getVersion());
+      console.error(getVersion());
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'help') {
