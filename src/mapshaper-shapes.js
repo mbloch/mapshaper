@@ -171,17 +171,27 @@ function ArcCollection() {
     return copy;
   };
 
-  this.getFilteredCopy = function() {
-    if (!_zz || _zlimit === 0) return this.getCopy();
-    var len2 = this.getFilteredPointCount();
+  function getFilteredPointCount() {
+    var zz = _zz, z = _zlimit;
+    if (!zz || !z) return this.getPointCount();
+    var count = 0;
+    for (var i=0, n = zz.length; i<n; i++) {
+      if (zz[i] >= z) count++;
+    }
+    return count;
+  }
+
+  function getFilteredVertexData() {
+    var len2 = getFilteredPointCount();
+    var arcCount = _nn.length;
     var xx2 = new Float64Array(len2),
         yy2 = new Float64Array(len2),
         zz2 = new Float64Array(len2),
-        nn2 = new Int32Array(this.size()),
+        nn2 = new Int32Array(arcCount),
         i=0, i2 = 0,
         n, n2;
 
-    for (var arcId=0, arcCount=this.size(); arcId < arcCount; arcId++) {
+    for (var arcId=0; arcId < arcCount; arcId++) {
       n2 = 0;
       n = _nn[arcId];
       for (var end = i+n; i < end; i++) {
@@ -196,8 +206,19 @@ function ArcCollection() {
       if (n2 < 2) error("Collapsed arc"); // endpoints should be z == Infinity
       nn2[arcId] = n2;
     }
-    var copy = new ArcCollection(nn2, xx2, yy2);
-    copy.setThresholds(zz2);
+    return {
+      xx: xx2,
+      yy: yy2,
+      zz: zz2,
+      nn: nn2
+    };
+  }
+
+  this.getFilteredCopy = function() {
+    if (!_zz || _zlimit === 0) return this.getCopy();
+    var data = getFilteredVertexData();
+    var copy = new ArcCollection(data.nn, data.xx, data.yy);
+    copy.setThresholds(data.zz);
     return copy;
   };
 
@@ -510,6 +531,17 @@ function ArcCollection() {
     return this;
   };
 
+  // bake in current simplification level, if any
+  this.flatten = function() {
+    if (_zlimit > 0) {
+      var data = getFilteredVertexData();
+      this.updateVertexData(data.nn, data.xx, data.yy);
+      _zlimit = 0;
+    } else {
+      _zz = null;
+    }
+  };
+
   this.getRetainedInterval = function() {
     return _zlimit;
   };
@@ -591,16 +623,6 @@ function ArcCollection() {
 
   this.getPointCount = function() {
     return _xx && _xx.length || 0;
-  };
-
-  this.getFilteredPointCount = function() {
-    var zz = _zz, z = _zlimit;
-    if (!zz || !z) return this.getPointCount();
-    var count = 0;
-    for (var i=0, n = zz.length; i<n; i++) {
-      if (zz[i] >= z) count++;
-    }
-    return count;
   };
 
   this.getBounds = function() {

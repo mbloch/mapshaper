@@ -210,10 +210,8 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
         openFwd = true,
         openRev = type == 'flatten',
         output;
-    if (rings.length <= 1) {
-      // wihout multiple rings, nothing to intersect
-      output = rings;
-    } else {
+    // even single rings get transformed (e.g. to remove spikes)
+    if (rings.length > 0) {
       output = [];
       MapShaper.openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
       MapShaper.forEachPath(rings, function(ids) {
@@ -226,6 +224,8 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
         }
       });
       MapShaper.closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
+    } else {
+      output = rings;
     }
     return output;
   };
@@ -254,6 +254,7 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
       isOpen = true;
       MapShaper.setRouteBits(1, arcId, flags); // close the path, leave visible
     }
+
     return isOpen;
   }
 };

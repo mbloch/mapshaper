@@ -3,14 +3,22 @@ mapshaper-geojson
 mapshaper-topojson
 mapshaper-shapefile
 mapshaper-dataset-utils
+mapshaper-rounding
 */
 
 // Return an array of objects with "filename" "filebase" "extension" and
 // "content" attributes.
 //
 MapShaper.exportFileContent = function(dataset, opts) {
-  var layers = dataset.layers;
-  if (!opts.format) error("[o] Missing output format");
+  var exporter = MapShaper.exporters[opts.format],
+      layers = dataset.layers,
+      files = [];
+
+  if (!opts.format) {
+    error("[o] Missing output format");
+  } else if (!exporter) {
+    error("[o] Unknown export format:", opts.format);
+  }
 
   if (opts.output_file && opts.format != 'topojson') {
     opts.output_extension = utils.getFileExtension(opts.output_file);
@@ -19,10 +27,8 @@ MapShaper.exportFileContent = function(dataset, opts) {
     });
   }
 
-  var files = [],
-      exporter = MapShaper.exporters[opts.format];
-  if (!exporter) {
-    error("[o] Unknown export format:", opts.format);
+  if (opts.precision) {
+    MapShaper.setCoordinatePrecision(dataset, opts.precision);
   }
 
   MapShaper.validateLayerData(layers);
@@ -72,17 +78,17 @@ MapShaper.createIndexFile = function(dataset) {
 MapShaper.validateLayerData = function(layers) {
   Utils.forEach(layers, function(lyr) {
     if (!Utils.isArray(lyr.shapes)) {
-      error ("[validateLayerData()] A layer is missing shape data");
+      error ("[export] A layer is missing shape data");
     }
     // allowing null-type layers
     if (lyr.geometry_type === null) {
       if (Utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
-        error("[validateLayerData()] A layer contains shape records and a null geometry type");
+        error("[export] A layer contains shape records and a null geometry type");
       }
     } else if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-      error ("[validateLayerData()] A layer has an invalid geometry type:", lyr.geometry_type);
+      error ("[export] A layer has an invalid geometry type:", lyr.geometry_type);
     }
   });
 };

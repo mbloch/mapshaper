@@ -122,6 +122,10 @@ MapShaper.getOptionParser = function() {
       describe: "detach attributes from shapes and save as a JSON file",
       type: "flag"
     })
+    .option("precision", {
+      describe: "coordinate precision in source units, e.g. 0.001",
+      type: "number"
+    })
     .option("quantization", {
       describe: "specify TopoJSON quantization (auto-set by default)",
       type: "integer"

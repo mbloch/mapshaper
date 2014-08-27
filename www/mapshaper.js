@@ -4597,17 +4597,27 @@ function ArcCollection() {
     return copy;
   };
 
-  this.getFilteredCopy = function() {
-    if (!_zz || _zlimit === 0) return this.getCopy();
-    var len2 = this.getFilteredPointCount();
+  function getFilteredPointCount() {
+    var zz = _zz, z = _zlimit;
+    if (!zz || !z) return this.getPointCount();
+    var count = 0;
+    for (var i=0, n = zz.length; i<n; i++) {
+      if (zz[i] >= z) count++;
+    }
+    return count;
+  }
+
+  function getFilteredVertexData() {
+    var len2 = getFilteredPointCount();
+    var arcCount = _nn.length;
     var xx2 = new Float64Array(len2),
         yy2 = new Float64Array(len2),
         zz2 = new Float64Array(len2),
-        nn2 = new Int32Array(this.size()),
+        nn2 = new Int32Array(arcCount),
         i=0, i2 = 0,
         n, n2;
 
-    for (var arcId=0, arcCount=this.size(); arcId < arcCount; arcId++) {
+    for (var arcId=0; arcId < arcCount; arcId++) {
       n2 = 0;
       n = _nn[arcId];
       for (var end = i+n; i < end; i++) {
@@ -4622,8 +4632,19 @@ function ArcCollection() {
       if (n2 < 2) error("Collapsed arc"); // endpoints should be z == Infinity
       nn2[arcId] = n2;
     }
-    var copy = new ArcCollection(nn2, xx2, yy2);
-    copy.setThresholds(zz2);
+    return {
+      xx: xx2,
+      yy: yy2,
+      zz: zz2,
+      nn: nn2
+    };
+  }
+
+  this.getFilteredCopy = function() {
+    if (!_zz || _zlimit === 0) return this.getCopy();
+    var data = getFilteredVertexData();
+    var copy = new ArcCollection(data.nn, data.xx, data.yy);
+    copy.setThresholds(data.zz);
     return copy;
   };
 
@@ -4936,6 +4957,17 @@ function ArcCollection() {
     return this;
   };
 
+  // bake in current simplification level, if any
+  this.flatten = function() {
+    if (_zlimit > 0) {
+      var data = getFilteredVertexData();
+      this.updateVertexData(data.nn, data.xx, data.yy);
+      _zlimit = 0;
+    } else {
+      _zz = null;
+    }
+  };
+
   this.getRetainedInterval = function() {
     return _zlimit;
   };
@@ -5017,16 +5049,6 @@ function ArcCollection() {
 
   this.getPointCount = function() {
     return _xx && _xx.length || 0;
-  };
-
-  this.getFilteredPointCount = function() {
-    var zz = _zz, z = _zlimit;
-    if (!zz || !z) return this.getPointCount();
-    var count = 0;
-    for (var i=0, n = zz.length; i<n; i++) {
-      if (zz[i] >= z) count++;
-    }
-    return count;
   };
 
   this.getBounds = function() {
@@ -7643,7 +7665,6 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
 // Divide a collection of arcs at points where segments intersect
 // and re-index the paths of all the layers that reference the arc collection.
 // (in-place)
-// TODO: rename this function
 MapShaper.divideArcs = function(dataset) {
   var arcs = dataset.arcs;
   T.start();
@@ -8059,10 +8080,8 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
         openFwd = true,
         openRev = type == 'flatten',
         output;
-    if (rings.length <= 1) {
-      // wihout multiple rings, nothing to intersect
-      output = rings;
-    } else {
+    // even single rings get transformed (e.g. to remove spikes)
+    if (rings.length > 0) {
       output = [];
       MapShaper.openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
       MapShaper.forEachPath(rings, function(ids) {
@@ -8075,6 +8094,8 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
         }
       });
       MapShaper.closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
+    } else {
+      output = rings;
     }
     return output;
   };
@@ -8103,6 +8124,7 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
       isOpen = true;
       MapShaper.setRouteBits(1, arcId, flags); // close the path, leave visible
     }
+
     return isOpen;
   }
 };
@@ -11351,12 +11373,142 @@ Opts.inherit(ImportControl, EventDispatcher);
 
 
 
+api.dissolvePolygons2 = function(lyr, dataset, opts) {
+  MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
+  var nodes = MapShaper.divideArcs(dataset);
+  return MapShaper.dissolvePolygonLayer(lyr, nodes, opts);
+};
+
+MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
+  opts = opts || {};
+  var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data);
+  var lyr2 = {data: null};
+  var groups = lyr.shapes.reduce(function(groups, shape, i) {
+    var i2 = getGroupId(i);
+    if (i2 in groups === false) {
+      groups[i2] = [];
+    }
+    MapShaper.extendShape(groups[i2], shape);
+    return groups;
+  }, []);
+
+  T.start();
+  var dissolve = MapShaper.getPolygonDissolver(nodes);
+  lyr2.shapes = groups.map(function(group) {
+    return dissolve(group);
+  });
+  T.stop('dissolve2');
+
+  if (lyr.data) {
+    lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts));
+  }
+  return Utils.defaults(lyr2, lyr);
+};
+
+MapShaper.concatShapes = function(shapes) {
+  return shapes.reduce(function(memo, shape) {
+    MapShaper.extendShape(memo, shape);
+    return memo;
+  }, []);
+};
+
+MapShaper.extendShape = function(dest, src) {
+  if (src) {
+    for (var i=0, n=src.length; i<n; i++) {
+      dest.push(src[i]);
+    }
+  }
+};
+
+MapShaper.getPolygonDissolver = function(nodes) {
+  var flags = new Uint8Array(nodes.arcs.size());
+  var divide = MapShaper.getHoleDivider(nodes, flags);
+  var flatten = MapShaper.getRingIntersector(nodes, 'flatten', flags);
+  var dissolve = MapShaper.getRingIntersector(nodes, 'dissolve', flags);
+
+  return function(shp) {
+    if (!shp) return null;
+    var cw = [],
+        ccw = [];
+
+    divide(shp, cw, ccw);
+    cw = flatten(cw);
+    ccw.forEach(MapShaper.reversePath);
+    ccw = flatten(ccw);
+    ccw.forEach(MapShaper.reversePath);
+
+    var shp2 = MapShaper.appendHolestoRings(cw, ccw);
+    var dissolved = dissolve(shp2);
+    return dissolved.length > 0 ? dissolved : null;
+  };
+};
+
+// TODO: to prevent invalid holes,
+// could erase the holes from the space-enclosing rings.
+MapShaper.appendHolestoRings = function(cw, ccw) {
+  for (var i=0, n=ccw.length; i<n; i++) {
+    cw.push(ccw[i]);
+  }
+  return cw;
+};
+
+
+
+
+MapShaper.setCoordinatePrecision = function(dataset, precision) {
+  var round = geom.getRoundingFunction(precision),
+      dissolvePolygon;
+
+  if (dataset.arcs) {
+    // need to discard z data if present (it doesn't survive cleaning)
+    dataset.arcs.flatten();
+
+    dataset.arcs.forEach2(function(i, n, xx, yy) {
+      var j = i + n;
+      while (i < j) {
+        xx[i] = round(xx[i]);
+        yy[i] = round(yy[i]);
+        i++;
+      }
+    });
+    var nodes = MapShaper.divideArcs(dataset);
+    dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
+  }
+
+  dataset.layers.forEach(function(lyr) {
+    if (MapShaper.layerHasPoints(lyr)) {
+      MapShaper.roundPoints(lyr, round);
+    } else if (lyr.geometry_type == 'polygon' && dissolvePolygon) {
+      // clean each polygon -- use dissolve function remove spikes
+      // TODO implement proper clean/repair function
+      lyr.shapes = lyr.shapes.map(dissolvePolygon);
+    }
+  });
+};
+
+MapShaper.roundPoints = function(lyr, round) {
+  MapShaper.forEachPoint(lyr, function(p) {
+    p[0] = round(p[0]);
+    p[1] = round(p[1]);
+  });
+};
+
+
+
+
 // Return an array of objects with "filename" "filebase" "extension" and
 // "content" attributes.
 //
 MapShaper.exportFileContent = function(dataset, opts) {
-  var layers = dataset.layers;
-  if (!opts.format) error("[o] Missing output format");
+  var exporter = MapShaper.exporters[opts.format],
+      layers = dataset.layers,
+      files = [];
+
+  if (!opts.format) {
+    error("[o] Missing output format");
+  } else if (!exporter) {
+    error("[o] Unknown export format:", opts.format);
+  }
 
   if (opts.output_file && opts.format != 'topojson') {
     opts.output_extension = utils.getFileExtension(opts.output_file);
@@ -11365,10 +11517,8 @@ MapShaper.exportFileContent = function(dataset, opts) {
     });
   }
 
-  var files = [],
-      exporter = MapShaper.exporters[opts.format];
-  if (!exporter) {
-    error("[o] Unknown export format:", opts.format);
+  if (opts.precision) {
+    MapShaper.setCoordinatePrecision(dataset, opts.precision);
   }
 
   MapShaper.validateLayerData(layers);
@@ -11418,17 +11568,17 @@ MapShaper.createIndexFile = function(dataset) {
 MapShaper.validateLayerData = function(layers) {
   Utils.forEach(layers, function(lyr) {
     if (!Utils.isArray(lyr.shapes)) {
-      error ("[validateLayerData()] A layer is missing shape data");
+      error ("[export] A layer is missing shape data");
     }
     // allowing null-type layers
     if (lyr.geometry_type === null) {
       if (Utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
-        error("[validateLayerData()] A layer contains shape records and a null geometry type");
+        error("[export] A layer contains shape records and a null geometry type");
       }
     } else if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-      error ("[validateLayerData()] A layer has an invalid geometry type:", lyr.geometry_type);
+      error ("[export] A layer has an invalid geometry type:", lyr.geometry_type);
     }
   });
 };
