@@ -1,5 +1,5 @@
 language: node_js
 node_js:
-  - '0.10'
+  - '0.10.30'
 before_script:
   - "./build"
