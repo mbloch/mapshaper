@@ -5,7 +5,7 @@ api.printInfo = function(dataset, opts) {
   // if (dataset.arcs) str += Utils.format("Topological arcs: %'d\n", dataset.arcs.size());
   var str = dataset.layers.map(function(lyr) {
     return MapShaper.getLayerInfo(lyr, dataset.arcs);
-  }).join('\n');
+  }).join('\n\n');
   message(str);
 };
 
