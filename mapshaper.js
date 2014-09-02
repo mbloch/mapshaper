@@ -2281,7 +2281,22 @@ MapShaper.guessFileType = function(file) {
   return type;
 };
 
-MapShaper.guessFileFormat = function(str) {
+MapShaper.guessFileFormat = function(file) {
+  var type = MapShaper.guessFileType(file),
+      format = null;
+  if (type) {
+    if (type == 'shp') {
+      format = 'shapefile';
+    } else if (/topojson$/.test(file)) {
+      format = 'topojson';
+    } else if (type == 'json') {
+      format = 'geojson';
+    }
+  }
+  return format;
+};
+
+MapShaper.guessFileFormat_ = function(str) {
   var type = null,
       name = str.toLowerCase();
   if (/topojson$/.test(name)) {
@@ -2911,6 +2926,10 @@ function validateOutputOpts(cmd) {
     error("Use format=" + o.output_file + " to set output format");
   }
   */
+
+  if (!o.format && o.output_file) {
+    o.format = MapShaper.guessFileFormat(o.output_file);
+  }
 
   if (o.format) {
     o.format = o.format.toLowerCase();

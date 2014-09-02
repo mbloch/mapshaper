@@ -237,6 +237,10 @@ function validateOutputOpts(cmd) {
   }
   */
 
+  if (!o.format && o.output_file) {
+    o.format = MapShaper.guessFileFormat(o.output_file);
+  }
+
   if (o.format) {
     o.format = o.format.toLowerCase();
     if (!Utils.contains(supportedTypes, o.format)) {
