@@ -12598,10 +12598,10 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     //
     for (var i=1; i<arcLen-1; i++) {
       ax = xx[i-1];
-      ay = yy[i-1];
       bx = xx[i];
-      by = yy[i];
       cx = xx[i+1];
+      ay = yy[i-1];
+      by = yy[i];
       cy = yy[i+1];
 
       if (!useZ) {
