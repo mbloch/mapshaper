@@ -3057,6 +3057,10 @@ MapShaper.getOptionParser = function() {
     .option("format", {
       describe: "set export format (shapefile|geojson|topojson)"
     })
+    .option("force", {
+      type: "flag",
+      describe: "let output files overwrite existing files"
+    })
     /*
     .option("encoding", {
       describe: "text encoding of .dbf file"
@@ -11508,6 +11512,47 @@ MapShaper.readGeometryFile = function(path, fileType) {
 
 
 
+MapShaper.getOutputPaths = function(files, opts) {
+  var paths =  files.map(function(file) {
+    return Node.path.join(opts.output_dir || '', file);
+  });
+  if (!opts.force) {
+    paths = resolveFileCollisions(paths);
+  }
+  return paths;
+};
+
+// Avoid naming conflicts with existing files
+// by adding file suffixes to output filenames: -ms, -ms2, -ms3 etc.
+function resolveFileCollisions(candidates) {
+  var i = 0,
+      suffix = "",
+      paths = candidates.concat();
+
+  while (testFileCollision(paths)) {
+    i++;
+    suffix = "-ms";
+    if (i > 1) suffix += String(i);
+    paths = addFileSuffix(candidates, suffix);
+  }
+  return paths;
+}
+
+function addFileSuffix(paths, suff) {
+  return paths.map(function(path) {
+     return utils.getPathBase(path) + suff + '.' + utils.getFileExtension(path);
+  });
+}
+
+function testFileCollision(paths, suff) {
+  return utils.some(paths, function(path) {
+    return cli.isFile(path) || cli.isDirectory(path);
+  });
+}
+
+
+
+
 // Generate a dissolved layer
 // @opts.field (optional) name of data field (dissolves all if falsy)
 // @opts.sum-fields (Array) (optional)
@@ -13433,17 +13478,18 @@ api.exportFiles = function(dataset, opts) {
     opts.format = dataset.info.input_format || error("[o] Missing export format");
   }
   var exports = MapShaper.exportFileContent(dataset, opts);
-  if (opts.stdout) {
+  if (exports.length > 0 === false) {
+    message("No files to save");
+  } else if (opts.stdout) {
     Node.writeFile('/dev/stdout', exports[0].content);
   } else {
-    var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
+    var paths = MapShaper.getOutputPaths(Utils.pluck(exports, 'filename'), opts);
     exports.forEach(function(obj, i) {
       var path = paths[i];
       Node.writeFile(path, obj.content);
-      console.error("Wrote " + path);
+      message("Wrote " + path);
     });
   }
-
 };
 
 api.importFiles = function(opts) {
@@ -13597,43 +13643,7 @@ function getVersion() {
 cli.isFile = Node.fileExists;
 cli.isDirectory = Node.dirExists;
 cli.readFile = Node.readFile;
-cli.writeFlie = Node.writeFile;
-
-cli.getOutputPaths = function(files, dir) {
-  if (!files || !files.length) {
-    message("No files to save");
-    return;
-  }
-
-  var paths = files.map(function(file) {
-    return Node.path.join(dir || '.', file);
-  });
-
-  // avoid naming conflicts
-  var i = 0,
-      suffix = "",
-      candidates = paths.concat();
-
-  while (cli.testFileCollision(candidates)) {
-    i++;
-    suffix = "-ms";
-    if (i > 1) suffix += String(i);
-    candidates = cli.addFileSuffix(paths, suffix);
-  }
-  return candidates;
-};
-
-cli.addFileSuffix = function(paths, suff) {
-  return paths.map(function(path) {
-     return utils.getPathBase(path) + suff + '.' + utils.getFileExtension(path);
-  });
-};
-
-cli.testFileCollision = function(paths, suff) {
-  return Utils.some(paths, function(path) {
-    return cli.isFile(path) || cli.isDirectory(path);
-  });
-};
+cli.writeFile = Node.writeFile;
 
 cli.validateFileExtension = function(path) {
   var type = MapShaper.guessFileType(path),

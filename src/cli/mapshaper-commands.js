@@ -230,17 +230,18 @@ api.exportFiles = function(dataset, opts) {
     opts.format = dataset.info.input_format || error("[o] Missing export format");
   }
   var exports = MapShaper.exportFileContent(dataset, opts);
-  if (opts.stdout) {
+  if (exports.length > 0 === false) {
+    message("No files to save");
+  } else if (opts.stdout) {
     Node.writeFile('/dev/stdout', exports[0].content);
   } else {
-    var paths = cli.getOutputPaths(Utils.pluck(exports, 'filename'), opts.output_dir);
+    var paths = MapShaper.getOutputPaths(Utils.pluck(exports, 'filename'), opts);
     exports.forEach(function(obj, i) {
       var path = paths[i];
       Node.writeFile(path, obj.content);
-      console.error("Wrote " + path);
+      message("Wrote " + path);
     });
   }
-
 };
 
 api.importFiles = function(opts) {

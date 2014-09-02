@@ -11,6 +11,7 @@ mapshaper-segments
 mapshaper-snapping
 mapshaper-keep-shapes
 mapshaper-file-import
+mapshaper-file-export
 mapshaper-dissolve
 mapshaper-split
 mapshaper-split-on-grid
@@ -45,43 +46,7 @@ function getVersion() {
 cli.isFile = Node.fileExists;
 cli.isDirectory = Node.dirExists;
 cli.readFile = Node.readFile;
-cli.writeFlie = Node.writeFile;
-
-cli.getOutputPaths = function(files, dir) {
-  if (!files || !files.length) {
-    message("No files to save");
-    return;
-  }
-
-  var paths = files.map(function(file) {
-    return Node.path.join(dir || '.', file);
-  });
-
-  // avoid naming conflicts
-  var i = 0,
-      suffix = "",
-      candidates = paths.concat();
-
-  while (cli.testFileCollision(candidates)) {
-    i++;
-    suffix = "-ms";
-    if (i > 1) suffix += String(i);
-    candidates = cli.addFileSuffix(paths, suffix);
-  }
-  return candidates;
-};
-
-cli.addFileSuffix = function(paths, suff) {
-  return paths.map(function(path) {
-     return utils.getPathBase(path) + suff + '.' + utils.getFileExtension(path);
-  });
-};
-
-cli.testFileCollision = function(paths, suff) {
-  return Utils.some(paths, function(path) {
-    return cli.isFile(path) || cli.isDirectory(path);
-  });
-};
+cli.writeFile = Node.writeFile;
 
 cli.validateFileExtension = function(path) {
   var type = MapShaper.guessFileType(path),

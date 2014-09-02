@@ -106,6 +106,10 @@ MapShaper.getOptionParser = function() {
     .option("format", {
       describe: "set export format (shapefile|geojson|topojson)"
     })
+    .option("force", {
+      type: "flag",
+      describe: "let output files overwrite existing files"
+    })
     /*
     .option("encoding", {
       describe: "text encoding of .dbf file"
