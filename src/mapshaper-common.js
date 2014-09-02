@@ -124,19 +124,6 @@ MapShaper.guessFileFormat = function(file) {
   return format;
 };
 
-MapShaper.guessFileFormat_ = function(str) {
-  var type = null,
-      name = str.toLowerCase();
-  if (/topojson$/.test(name)) {
-    type = 'topojson';
-  } else if (/json$/.test(name)) {
-    type = 'geojson';
-  } else if (/shp$/.test(name)) {
-    type = 'shapefile';
-  }
-  return type;
-};
-
 MapShaper.copyElements = function(src, i, dest, j, n, rev) {
   if (src === dest && j > i) error ("copy error");
   var inc = 1,
