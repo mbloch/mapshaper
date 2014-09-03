@@ -1,5 +1,6 @@
 /* @requires topojson-common */
 
+// TODO: fix this or replace with something better
 TopoJSON.dissolveArcs = function(topology) {
 
   var arcs = topology.arcs,
@@ -22,7 +23,7 @@ TopoJSON.dissolveArcs = function(topology) {
 
   // pass2: dissolve
   Utils.forEach(topology.objects, function(obj) {
-    TopoJSON.forEachPath(obj, dissolveArcs);
+    TopoJSON.forEachPath(obj, dissolvePath);
   });
 
   function absId(id) {
@@ -60,7 +61,7 @@ TopoJSON.dissolveArcs = function(topology) {
     return false;
   }
 
-  function dissolveArcs(arcs) {
+  function dissolvePath(arcs) {
     var id1, id2, handled,
         filtered, dissolved = false;
     for (var i=0, n=arcs.length; i<n; i++) {
@@ -73,7 +74,6 @@ TopoJSON.dissolveArcs = function(topology) {
         return !flags[absId(id)];
       });
       if (filtered.length === 0) error("Empty path");
-    //console.log(">> dissolved?", dissolved, 'filtered:', filtered, 'flags:', Utils.toArray(flags));
       return filtered;
     }
   }

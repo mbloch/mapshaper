@@ -1,6 +1,8 @@
 /* @requires mapshaper-common, mapshaper-geom */
 
+// export for testing
 MapShaper.ArcCollection = ArcCollection;
+MapShaper.ArcIter = ArcIter;
 
 
 // An interface for managing a collection of paths.
@@ -502,6 +504,9 @@ function ArcCollection() {
     var fw = arcId >= 0,
         i = fw ? arcId : ~arcId,
         iter = _zz && _zlimit ? _filteredArcIter : _arcIter;
+    if (i >= _nn.length) {
+      error("[#getArcId() out-of-range arc id:", arcId);
+    }
     return iter.init(_ii[i], _nn[i], fw, _zlimit);
   };
 

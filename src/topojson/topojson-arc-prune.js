@@ -18,7 +18,8 @@ TopoJSON.pruneArcs = function(topology) {
   }, 0);
 
   if (filterCount < arcs.length) {
-    TopoJSON.dissolveArcs(topology);
+    // buggy
+    // TopoJSON.dissolveArcs(topology);
 
     // filter arcs and remap ids
     topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {

@@ -2,6 +2,7 @@
 var api = require('..'),
   assert = require('assert'),
   ArcCollection = api.internal.ArcCollection,
+  ArcIter = api.internal.ArcIter,
   Utils = api.utils,
   trace = Utils.trace;
 
@@ -283,6 +284,12 @@ describe('mapshaper-shapes.js', function () {
       }
 
     })
+  }) // end ArcCollection tests
+
+  describe('ArcIter', function () {
+    it('handle len 0 fw arc', function () {
+      var iter = new ArcIter([], []).init(0, 0, true);
+      assert.equal(iter.hasNext(), false);
+    })
   })
 })
-

@@ -122,6 +122,12 @@ MapShaper.getOptionParser = function() {
       describe: "export a .json file with bbox of each layer",
       type: 'flag'
     })
+    /*
+    .option("drop-table", {
+      describe: "delete data attributes",
+      type: "flag"
+    })
+    */
     .option("cut-table", {
       describe: "detach attributes from shapes and save as a JSON file",
       type: "flag"

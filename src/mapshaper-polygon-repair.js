@@ -27,7 +27,7 @@ MapShaper.cleanShape = function(shape, arcs, type) {
 
 MapShaper.cleanPath = function(path, arcs) {
   var nulls = 0;
-  for (var i=0; i<path.length; i++) {
+  for (var i=0, n=path.length; i<n; i++) {
     if (arcs.arcIsDegenerate(path[i])) {
       nulls++;
       path[i] = null;

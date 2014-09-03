@@ -2296,19 +2296,6 @@ MapShaper.guessFileFormat = function(file) {
   return format;
 };
 
-MapShaper.guessFileFormat_ = function(str) {
-  var type = null,
-      name = str.toLowerCase();
-  if (/topojson$/.test(name)) {
-    type = 'topojson';
-  } else if (/json$/.test(name)) {
-    type = 'geojson';
-  } else if (/shp$/.test(name)) {
-    type = 'shapefile';
-  }
-  return type;
-};
-
 MapShaper.copyElements = function(src, i, dest, j, n, rev) {
   if (src === dest && j > i) error ("copy error");
   var inc = 1,
@@ -3092,6 +3079,12 @@ MapShaper.getOptionParser = function() {
       describe: "export a .json file with bbox of each layer",
       type: 'flag'
     })
+    /*
+    .option("drop-table", {
+      describe: "delete data attributes",
+      type: "flag"
+    })
+    */
     .option("cut-table", {
       describe: "detach attributes from shapes and save as a JSON file",
       type: "flag"
@@ -3710,7 +3703,9 @@ Utils.extend(geom, {
 
 
 
+// export for testing
 MapShaper.ArcCollection = ArcCollection;
+MapShaper.ArcIter = ArcIter;
 
 
 // An interface for managing a collection of paths.
@@ -4212,6 +4207,9 @@ function ArcCollection() {
     var fw = arcId >= 0,
         i = fw ? arcId : ~arcId,
         iter = _zz && _zlimit ? _filteredArcIter : _arcIter;
+    if (i >= _nn.length) {
+      error("[#getArcId() out-of-range arc id:", arcId);
+    }
     return iter.init(_ii[i], _nn[i], fw, _zlimit);
   };
 
@@ -7854,7 +7852,7 @@ MapShaper.cleanShape = function(shape, arcs, type) {
 
 MapShaper.cleanPath = function(path, arcs) {
   var nulls = 0;
-  for (var i=0; i<path.length; i++) {
+  for (var i=0, n=path.length; i<n; i++) {
     if (arcs.arcIsDegenerate(path[i])) {
       nulls++;
       path[i] = null;
@@ -9436,6 +9434,7 @@ TopoJSON.extractGeometryObject = function(obj, arcs) {
 
 
 
+// TODO: fix this or replace with something better
 TopoJSON.dissolveArcs = function(topology) {
 
   var arcs = topology.arcs,
@@ -9458,7 +9457,7 @@ TopoJSON.dissolveArcs = function(topology) {
 
   // pass2: dissolve
   Utils.forEach(topology.objects, function(obj) {
-    TopoJSON.forEachPath(obj, dissolveArcs);
+    TopoJSON.forEachPath(obj, dissolvePath);
   });
 
   function absId(id) {
@@ -9496,7 +9495,7 @@ TopoJSON.dissolveArcs = function(topology) {
     return false;
   }
 
-  function dissolveArcs(arcs) {
+  function dissolvePath(arcs) {
     var id1, id2, handled,
         filtered, dissolved = false;
     for (var i=0, n=arcs.length; i<n; i++) {
@@ -9509,7 +9508,6 @@ TopoJSON.dissolveArcs = function(topology) {
         return !flags[absId(id)];
       });
       if (filtered.length === 0) error("Empty path");
-    //console.log(">> dissolved?", dissolved, 'filtered:', filtered, 'flags:', Utils.toArray(flags));
       return filtered;
     }
   }
@@ -9567,7 +9565,8 @@ TopoJSON.pruneArcs = function(topology) {
   }, 0);
 
   if (filterCount < arcs.length) {
-    TopoJSON.dissolveArcs(topology);
+    // buggy
+    // TopoJSON.dissolveArcs(topology);
 
     // filter arcs and remap ids
     topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {
@@ -12513,21 +12512,7 @@ MapShaper.mergeDatasets = function(arr) {
     error("[mergeDatasets()] Arc indexing error");
   }
 
-  // remove all layer names if there are any duplicate names
-  // this is to prevent cases like combining multiple TopoJSON files, each with
-  // layers named "layer1", being converted to names like layer11, layer12 on output
-  // TODO: rethink this
-  /*
-  var names = mergedLayers.map(function(lyr) {return lyr.name || "";});
-  if (names.length != Utils.uniq(names).length) {
-    mergedLayers.forEach(function(lyr) {
-      lyr.name = "";
-    });
-  }
-  */
-
   return {
-    // info: arr[0].info,
     arcs: mergedArcs,
     layers: mergedLayers
   };
@@ -12816,7 +12801,7 @@ api.printInfo = function(dataset, opts) {
   // if (dataset.arcs) str += Utils.format("Topological arcs: %'d\n", dataset.arcs.size());
   var str = dataset.layers.map(function(lyr) {
     return MapShaper.getLayerInfo(lyr, dataset.arcs);
-  }).join('\n');
+  }).join('\n\n');
   message(str);
 };
 
