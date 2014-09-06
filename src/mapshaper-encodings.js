@@ -10,7 +10,8 @@ MapShaper.getIconvLiteEncodings = function() {
   var iconv = require('iconv-lite');
   iconv.encodingExists('ascii'); // make iconv load its encodings
   return Utils.filter(Utils.keys(iconv.encodings), function(name) {
-    return !/^(internal|singlebyte|table|cp)/.test(name);
+    //return !/^(internal|singlebyte|table|cp)/.test(name);
+    return !/^(internal|singlebyte|table|[0-9]|windows)/.test(name);
   });
 };
 

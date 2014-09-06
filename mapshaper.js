@@ -8270,7 +8270,8 @@ MapShaper.getIconvLiteEncodings = function() {
   var iconv = require('iconv-lite');
   iconv.encodingExists('ascii'); // make iconv load its encodings
   return Utils.filter(Utils.keys(iconv.encodings), function(name) {
-    return !/^(internal|singlebyte|table|cp)/.test(name);
+    //return !/^(internal|singlebyte|table|cp)/.test(name);
+    return !/^(internal|singlebyte|table|[0-9]|windows)/.test(name);
   });
 };
 
@@ -8330,9 +8331,14 @@ Dbf.getStringReaderAscii = function(size) {
     var require7bit = Env.inNode;
     var str = bin.readCString(size, require7bit);
     if (str === null) {
-      stop("DBF file contains non-ascii text data.\n" +
-          "Use the encoding option with one of these encodings:\n" +
-          MapShaper.getFormattedEncodings());
+      stop("DBF file contains non-ascii text data. You need to specify an encoding.\n" +
+          "Some common character encodings:\n" +
+          "  latin1\n  utf8\n" +
+          "  gb2312    (simplified Chinese)\n" +
+          "  big5      (traditional Chinese)\n" +
+          "  shiftjis  (Japanese)\n" +
+          "Run mapshaper -encodings for a list of supported encodings");
+          //MapShaper.getFormattedEncodings());
     }
     return Utils.trim(str);
   };
