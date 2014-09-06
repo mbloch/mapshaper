@@ -82,6 +82,33 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(JSON.parse(files[1].content), table);
     })
 
+    it('use drop_table and id_field options', function () {
+      var arcs = new api.internal.ArcCollection([[[1, 1], [1, 3], [2, 3], [1, 1]]]);
+          lyr = {
+            geometry_type: "polygon",
+            data: new DataTable([{FID: 1}]),
+            shapes: [[[0]]]
+          };
+
+      var geojson = {"type":"FeatureCollection", "features":[{
+            type: "Feature",
+            properties: null,
+            id: 1,
+            geometry: {
+              type: 'Polygon',
+              coordinates: [[[1, 1], [1, 3], [2, 3], [1, 1]]]
+            }
+          }]};
+
+      var opts = {
+        drop_table: true,
+        id_field: 'FID',
+        format: 'geojson'
+      };
+      var files = api.internal.exportFileContent({layers:[lyr], arcs:arcs}, opts);
+      assert.deepEqual(JSON.parse(files[0].content), geojson);
+    })
+
     it('export points with bbox', function() {
       var lyr = {
         geometry_type: 'point',

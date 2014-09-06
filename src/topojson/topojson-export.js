@@ -169,7 +169,7 @@ TopoJSON.exportProperties = function(geometries, records, opts) {
   geometries.forEach(function(geom, i) {
     var properties = records[i];
     if (properties) {
-      if (!opts.cut_table) {
+      if (!(opts.cut_table || opts.drop_table)) {
         geom.properties = properties;
       }
       if (idField && idField in properties) {

@@ -81,7 +81,7 @@ MapShaper.exportShapefile = function(dataset, opts) {
     T.start();
     data = layer.data;
     // create empty data table if missing a table or table is being cut out
-    if (!data || opts.cut_table) {
+    if (!data || opts.cut_table || opts.drop_table) {
       data = new DataTable(layer.shapes.length);
     }
     // dbfs should have at least one column; add id field if none

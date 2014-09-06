@@ -162,9 +162,10 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   opts = opts || {};
   var type = lyr.geometry_type,
       properties = lyr.data && lyr.data.getRecords() || null,
-      useFeatures = !!properties && !opts.cut_table;
+      useProperties = !!properties && !(opts.cut_table || opts.drop_table),
+      useFeatures = useProperties || opts.id_field;
 
-  if (useFeatures && properties.length !== lyr.shapes.length) {
+  if (properties && properties.length !== lyr.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
   }
 
@@ -173,7 +174,7 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
     if (useFeatures) {
       obj = {
         type: "Feature",
-        properties: properties[i] || null,
+        properties: useProperties && properties[i] || null,
         geometry: obj
       };
     } else if (obj === null) {

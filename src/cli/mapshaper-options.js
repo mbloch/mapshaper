@@ -129,7 +129,11 @@ MapShaper.getOptionParser = function() {
     })
     */
     .option("cut-table", {
-      describe: "detach attributes from shapes and save as a JSON file",
+      describe: "detach data attributes from shapes and save as a JSON file",
+      type: "flag"
+    })
+    .option("drop-table", {
+      describe: "remove data attributes from output",
       type: "flag"
     })
     .option("precision", {
