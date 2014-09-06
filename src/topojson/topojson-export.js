@@ -3,7 +3,7 @@ mapshaper-geojson,
 topojson-common,
 topojson-split,
 mapshaper-shape-geom,
-topojson-arc-prune,
+mapshaper-arc-dissolve,
 mapshaper-explode
 */
 
@@ -15,6 +15,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
 
   // some datasets may lack arcs -- e.g. only point layers
   if (arcData && arcData.size() > 0) {
+
     // get a copy of arc data (coords are modified for topojson export)
     filteredArcs = arcData.getFilteredCopy();
 
@@ -45,6 +46,16 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
 
       filteredArcs.applyTransform(transform, !!"round");
     }
+
+    // dissolve arcs for more compact output
+    // make shallow copy of layers, so arc ids of original layer.shapes
+    // don't change
+    layers = layers.map(function(lyr) {
+      var shapes = lyr.shapes ? lyr.shapes.concat() : null;
+      return utils.defaults({shapes: shapes}, lyr);
+    });
+    MapShaper.dissolveArcs(layers, filteredArcs);
+
     topology.arcs = TopoJSON.exportArcs(filteredArcs);
   } else {
     topology.arcs = []; // spec seems to require an array
@@ -64,9 +75,10 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     return objects;
   }, {});
 
-  if (filteredArcs) {
-    TopoJSON.pruneArcs(topology);
-  }
+  // if (filteredArcs) {
+    // replaced by dissolveArcs() above
+    // TopoJSON.pruneArcs(topology);
+  // }
 
   if (transform) {
     TopoJSON.deltaEncodeArcs(topology.arcs);

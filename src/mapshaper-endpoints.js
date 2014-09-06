@@ -3,7 +3,7 @@
 MapShaper.NodeCollection = NodeCollection;
 
 // @arcs ArcCollection
-function NodeCollection(arcs) {
+function NodeCollection(arcs, filter) {
   if (Utils.isArray(arcs)) {
     arcs = new ArcCollection(arcs);
   }
@@ -12,7 +12,7 @@ function NodeCollection(arcs) {
       xx = arcData.xx,
       yy = arcData.yy;
 
-  var nodeData = MapShaper.findNodeTopology(arcs);
+  var nodeData = MapShaper.findNodeTopology(arcs, filter);
 
   if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
 
@@ -142,13 +142,16 @@ function NodeCollection(arcs) {
 }
 
 
-MapShaper.findNodeTopology = function(arcs) {
+MapShaper.findNodeTopology = function(arcs, filter) {
   var n = arcs.size() * 2,
       xx2 = new Float64Array(n),
       yy2 = new Float64Array(n),
       ids2 = new Int32Array(n);
 
   arcs.forEach2(function(i, n, xx, yy, zz, arcId) {
+    if (filter && !filter(arcId)) {
+      return;
+    }
     var start = i,
         end = i + n - 1,
         start2 = arcId * 2,

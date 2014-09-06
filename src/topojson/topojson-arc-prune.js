@@ -1,4 +1,4 @@
-/* @require topojson-common, topojson-arc-dissolve */
+/* @require topojson-common */
 
 // remove arcs that are not referenced or have collapsed
 // update ids of the remaining arcs
@@ -8,6 +8,7 @@ TopoJSON.pruneArcs = function(topology) {
 
   Utils.forEach(topology.objects, function(obj, name) {
     TopoJSON.forEachArc(obj, function(arcId) {
+      // TODO: skip collapsed arcs
       if (arcId < 0) arcId = ~arcId;
       retained[arcId] = 1;
     });
@@ -18,9 +19,6 @@ TopoJSON.pruneArcs = function(topology) {
   }, 0);
 
   if (filterCount < arcs.length) {
-    // buggy
-    // TopoJSON.dissolveArcs(topology);
-
     // filter arcs and remap ids
     topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {
       if (arc && retained[i] === 1) { // dissolved-away arcs are set to null

@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, topojson-import */
+/* @requires mapshaper-common, topojson-import, topojson-arc-prune */
 
 // Divide a TopoJSON topology into multiple topologies, one for each
 // named geometry object.

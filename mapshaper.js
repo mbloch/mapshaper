@@ -4577,6 +4577,20 @@ function ShapeIter(arcs) {
 
 // Utility functions for working with ArcCollection and arrays of arc ids.
 
+// @counts A typed array for accumulating count of each abs arc id
+//   (assume it won't overflow)
+MapShaper.countArcsInShapes = function(shapes, counts) {
+  MapShaper.traverseShapes(shapes, null, function(obj) {
+    var arcs = obj.arcs,
+        id;
+    for (var i=0; i<arcs.length; i++) {
+      id = arcs[i];
+      if (id < 0) id = ~id;
+      counts[id]++;
+    }
+  });
+};
+
 // @shp An element of the layer.shapes array
 //   (may be null, or, depending on layer type, an array of points or an array of arrays of arc ids)
 MapShaper.cloneShape = function(shp) {
@@ -6450,7 +6464,7 @@ utils.insertionSortIds = function(arr, ids, start, end) {
 MapShaper.NodeCollection = NodeCollection;
 
 // @arcs ArcCollection
-function NodeCollection(arcs) {
+function NodeCollection(arcs, filter) {
   if (Utils.isArray(arcs)) {
     arcs = new ArcCollection(arcs);
   }
@@ -6459,7 +6473,7 @@ function NodeCollection(arcs) {
       xx = arcData.xx,
       yy = arcData.yy;
 
-  var nodeData = MapShaper.findNodeTopology(arcs);
+  var nodeData = MapShaper.findNodeTopology(arcs, filter);
 
   if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
 
@@ -6589,13 +6603,16 @@ function NodeCollection(arcs) {
 }
 
 
-MapShaper.findNodeTopology = function(arcs) {
+MapShaper.findNodeTopology = function(arcs, filter) {
   var n = arcs.size() * 2,
       xx2 = new Float64Array(n),
       yy2 = new Float64Array(n),
       ids2 = new Int32Array(n);
 
   arcs.forEach2(function(i, n, xx, yy, zz, arcId) {
+    if (filter && !filter(arcId)) {
+      return;
+    }
     var start = i,
         end = i + n - 1,
         start2 = arcId * 2,
@@ -9377,6 +9394,60 @@ TopoJSON.pathImporters = {
 
 
 
+// remove arcs that are not referenced or have collapsed
+// update ids of the remaining arcs
+TopoJSON.pruneArcs = function(topology) {
+  var arcs = topology.arcs;
+  var retained = new Uint32Array(arcs.length);
+
+  Utils.forEach(topology.objects, function(obj, name) {
+    TopoJSON.forEachArc(obj, function(arcId) {
+      // TODO: skip collapsed arcs
+      if (arcId < 0) arcId = ~arcId;
+      retained[arcId] = 1;
+    });
+  });
+
+  var filterCount = Utils.reduce(retained, function(count, flag) {
+    return count + flag;
+  }, 0);
+
+  if (filterCount < arcs.length) {
+    // filter arcs and remap ids
+    topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {
+      if (arc && retained[i] === 1) { // dissolved-away arcs are set to null
+        retained[i] = arcs.length;
+        arcs.push(arc);
+      } else {
+        retained[i] = -1;
+      }
+      return arcs;
+    }, []);
+
+    // Re-index
+    Utils.forEach(topology.objects, function(obj) {
+      TopoJSON.reindexArcIds(obj, retained);
+    });
+  }
+};
+
+// @map is an array of replacement arc ids, indexed by original arc id
+// @geom is a TopoJSON Geometry object (including GeometryCollections, Polygons, etc)
+TopoJSON.reindexArcIds = function(geom, map) {
+  TopoJSON.forEachArc(geom, function(id) {
+    var rev = id < 0,
+        idx = rev ? ~id : id,
+        replacement = map[idx];
+    if (replacement < 0) { // -1 in arc map indicates arc has been removed
+      error("[reindexArcIds()] invalid arc id");
+    }
+    return rev ? ~replacement : replacement;
+  });
+};
+
+
+
+
 // Divide a TopoJSON topology into multiple topologies, one for each
 // named geometry object.
 // Arcs are filtered and arc ids are reindexed as needed.
@@ -9434,170 +9505,238 @@ TopoJSON.extractGeometryObject = function(obj, arcs) {
 
 
 
-// TODO: fix this or replace with something better
-TopoJSON.dissolveArcs = function(topology) {
+api.convertPolygonsToInnerLines = function(lyr, arcs) {
+  if (lyr.geometry_type != 'polygon') {
+    stop("[innerlines] Layer not polygon type");
+  }
+  var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
+      lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
+  lyr2.name = lyr.name;
+  return lyr2;
+};
 
-  var arcs = topology.arcs,
-      n = arcs.length,
-      i = 1,
-      stale = n + 3,
-      fresh = n + 4;
+api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
+  if (lyr.geometry_type != 'polygon') {
+    stop("[lines] Layer not polygon type");
+  }
+  var arcCount = arcs.size(),
+      outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
+      typeCode = 0,
+      allArcs = [],
+      allData = [];
 
-  var fw = new Int32Array(n),
-      bw = new Int32Array(n),
-      flags = new Uint8Array(n);
-
-  Utils.initializeArray(fw, fresh);
-  Utils.initializeArray(bw, fresh);
-
-  // pass 1: load data
-  Utils.forEach(topology.objects, function(obj) {
-    TopoJSON.forEachPath(obj, handlePath);
-  });
-
-  // pass2: dissolve
-  Utils.forEach(topology.objects, function(obj) {
-    TopoJSON.forEachPath(obj, dissolvePath);
-  });
-
-  function absId(id) {
-    return id < 0 ? ~id : id;
+  function addArcs(typeArcs) {
+    var typeData = Utils.repeat(typeArcs.length, function(i) {
+          return {TYPE: typeCode};
+        }) || [];
+    allArcs = Utils.merge(typeArcs, allArcs);
+    allData = Utils.merge(typeData, allData);
+    typeCode++;
   }
 
-  function dissolveVertex(id1, id2, next, prev) {
-    var abs1 = absId(id1),
-        abs2 = absId(id2),
-        fw1 = id1 >= 0,
-        fw2 = id2 >= 0,
-        arr1 = fw1 ? next : prev,
-        arr2 = fw2 ? prev : next,
-        arc1 = arcs[abs1],
-        arc2 = arcs[abs2];
+  addArcs(outerArcs);
 
-    if (arr1[abs1] != stale && arr2[abs2] != stale) {
-      if (arc1 && arc2) {
-        // dissolve 1 into 2
-        if (id1 < 0 != id2 < 0) {
-          arc1.reverse();
-        }
-        if (id2 >= 0) {
-          arc1.pop();
-          arcs[abs2] = arc1.concat(arc2);
+  if (Utils.isArray(fields)) {
+    if (!lyr.data) {
+      stop("[lines] missing a data table:");
+    }
+    Utils.forEach(fields, function(field) {
+      if (!lyr.data.fieldExists(field)) {
+        stop("[lines] unknown data field:", field);
+      }
+      var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
+          dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
+      dissolvedArcs = Utils.difference(dissolvedArcs, allArcs);
+      addArcs(dissolvedArcs);
+    });
+  }
+
+  var innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
+  innerArcs = Utils.difference(innerArcs, allArcs);
+  addArcs(innerArcs);
+
+  var lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
+  lyr2.name = lyr.name;
+  return lyr2;
+};
+
+MapShaper.convertArcsToLineLayer = function(arcs, data) {
+  var shapes = MapShaper.convertArcsToShapes(arcs),
+      lyr = {
+        geometry_type: 'polyline',
+        shapes: shapes
+      };
+  if (data) {
+    lyr.data = new DataTable(data);
+  }
+  return lyr;
+};
+
+MapShaper.convertArcsToShapes = function(arcs) {
+  return Utils.map(arcs, function(id) {
+    return [[id]];
+  });
+};
+
+MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
+  type = type || 'all';
+  var counts = new Uint8Array(arcCount),
+      arcs = [],
+      count;
+
+  MapShaper.countArcsInShapes(shapes, counts);
+
+  for (var i=0, n=counts.length; i<n; i++) {
+    count = counts[i];
+    if (count > 0) {
+      if (type == 'all' || type == 'outer' && count == 1 ||
+          type == 'inner' && count > 1) {
+        arcs.push(i);
+      }
+    }
+  }
+  return arcs;
+};
+
+
+
+
+// Dissolve arcs that can be merged without affecting topology of @layers
+// (in-place)
+MapShaper.dissolveArcs = function(layers, arcs) {
+  layers = layers.filter(MapShaper.layerHasPaths);
+  var test = MapShaper.getArcDissolveTest(layers, arcs);
+  var groups = [];
+  var totalPoints = 0;
+  var arcIndex = new Int32Array(arcs.size()); // maps old arc ids to new ids
+  var arcStatus = new Uint8Array(arcs.size());
+  // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
+
+  layers.forEach(function(lyr) {
+    // modify copies of the original shapes; original shapes should be unmodified
+    // (need to test this)
+    lyr.shapes = lyr.shapes.map(function(shape) {
+      return MapShaper.editPaths(shape && shape.concat(), translatePath);
+    });
+  });
+  MapShaper.dissolveArcCollection(arcs, groups, totalPoints);
+
+  function translatePath(path) {
+    var pointCount = 0;
+    var path2 = [];
+    var group, arcId, absId, arcLen, fw, arcId2;
+
+    for (var i=0, n=path.length; i<n; i++) {
+      arcId = path[i];
+      absId = absArcId(arcId);
+      fw = arcId === absId;
+
+      if (arcs.arcIsDegenerate(arcId)) {
+        // skip
+      } else if (arcStatus[absId] === 0) {
+        arcLen = arcs.getArcLength(arcId);
+
+        if (group && test(path[i-1], arcId)) {
+          if (arcLen > 0) {
+            arcLen--; // shared endpoint not counted;
+          }
+          group.push(arcId);  // arc data is appended to previous arc
+          arcStatus[absId] = 1; // arc is dropped from output
         } else {
-          arc2.pop();
-          arcs[abs2] = arc2.concat(arc1);
+          // new group (i.e. new dissolved arc)
+          group = [arcId];
+          arcIndex[absId] = groups.length;
+          groups.push(group);
+          arcStatus[absId] = fw ? 2 : 3; // 2: unchanged; 3: reversed
         }
-        arcs[abs1] = null;
-      }
-      if (arcs[abs1] === null) flags[abs1] = 1;
-      return true;
-    }
-    return false;
-  }
-
-  function dissolvePath(arcs) {
-    var id1, id2, handled,
-        filtered, dissolved = false;
-    for (var i=0, n=arcs.length; i<n; i++) {
-      id1 = arcs[i];
-      id2 = arcs[(i+1) % n];
-      dissolved = dissolved || dissolveVertex(id1, id2, fw, bw);
-    }
-    if (dissolved) {
-      filtered = Utils.filter(arcs, function(id) {
-        return !flags[absId(id)];
-      });
-      if (filtered.length === 0) error("Empty path");
-      return filtered;
-    }
-  }
-
-  function handleVertex(id1, id2, next, prev) {
-    var abs1 = absId(id1),
-        abs2 = absId(id2),
-        fw1 = id1 >= 0,
-        fw2 = id2 >= 0,
-        arr1 = fw1 ? next : prev,
-        arr2 = fw2 ? prev : next,
-        pair1 = fw1 == fw2 ? id2 : ~id2,
-        pair2 = fw1 == fw2 ? ~id1 : id1;
-
-    if (abs1 == abs2) { // island: can't dissolve
-      next[abs1] = stale;
-      prev[abs1] = stale;
-    } if (arr1[abs1] == fresh && arr2[abs2] == fresh) {
-      arr1[abs1] = pair1;
-      arr2[abs2] = pair2;
-    } else if (arr1[abs1] != pair1 || arr2[abs2] != pair2) {
-      arr1[abs1] = stale;
-      arr2[abs2] = stale;
-    }
-  }
-
-  function handlePath(arcs) {
-    var id1, id2, handled, p;
-    for (var i=0, n=arcs.length; i<n; i++) {
-      id1 = arcs[i];
-      id2 = arcs[(i+1) % n];
-      handleVertex(id1, id2, fw, bw);
-    }
-  }
-};
-
-
-
-
-// remove arcs that are not referenced or have collapsed
-// update ids of the remaining arcs
-TopoJSON.pruneArcs = function(topology) {
-  var arcs = topology.arcs;
-  var retained = new Uint32Array(arcs.length);
-
-  Utils.forEach(topology.objects, function(obj, name) {
-    TopoJSON.forEachArc(obj, function(arcId) {
-      if (arcId < 0) arcId = ~arcId;
-      retained[arcId] = 1;
-    });
-  });
-
-  var filterCount = Utils.reduce(retained, function(count, flag) {
-    return count + flag;
-  }, 0);
-
-  if (filterCount < arcs.length) {
-    // buggy
-    // TopoJSON.dissolveArcs(topology);
-
-    // filter arcs and remap ids
-    topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {
-      if (arc && retained[i] === 1) { // dissolved-away arcs are set to null
-        retained[i] = arcs.length;
-        arcs.push(arc);
+        pointCount += arcLen;
       } else {
-        retained[i] = -1;
+        group = null;
       }
-      return arcs;
-    }, []);
 
-    // Re-index
-    Utils.forEach(topology.objects, function(obj) {
-      TopoJSON.reindexArcIds(obj, retained);
-    });
+      if (arcStatus[absId] > 1) {
+        // arc is retained (and renumbered) in the dissolved path.
+        arcId2 = arcIndex[absId];
+        if (fw && arcStatus[absId] == 3 || !fw && arcStatus[absId] == 2) {
+          arcId2 = ~arcId2;
+        }
+        path2.push(arcId2);
+      }
+    }
+    totalPoints += pointCount;
+    return path2;
   }
 };
 
-// @map is an array of replacement arc ids, indexed by original arc id
-// @geom is a TopoJSON Geometry object (including GeometryCollections, Polygons, etc)
-TopoJSON.reindexArcIds = function(geom, map) {
-  TopoJSON.forEachArc(geom, function(id) {
-    var rev = id < 0,
-        idx = rev ? ~id : id,
-        replacement = map[idx];
-    if (replacement < 0) { // -1 in arc map indicates arc has been removed
-      error("[reindexArcIds()] invalid arc id");
-    }
-    return rev ? ~replacement : replacement;
+MapShaper.dissolveArcCollection = function(arcs, groups, len2) {
+  var nn2 = new Uint32Array(groups.length),
+      xx2 = new Float64Array(len2),
+      yy2 = new Float64Array(len2),
+      src = arcs.getVertexData(),
+      zz2 = src.zz ? new Float64Array(len2) : null,
+      offs = 0;
+
+  groups.forEach(function(group, newId) {
+    group.forEach(function(oldId, i) {
+      extendDissolvedArc(oldId, newId);
+    });
   });
+
+  arcs.updateVertexData(nn2, xx2, yy2, zz2);
+
+  function extendDissolvedArc(oldId, newId) {
+    var absId = absArcId(oldId),
+        rev = oldId < 0,
+        n = src.nn[absId],
+        i = src.ii[absId],
+        n2 = nn2[newId];
+
+    if (n > 0) {
+      if (n2 > 0) {
+        n--;
+        if (!rev) i++;
+      }
+      MapShaper.copyElements(src.xx, i, xx2, offs, n, rev);
+      MapShaper.copyElements(src.yy, i, yy2, offs, n, rev);
+      if (zz2) MapShaper.copyElements(src.zz, i, zz2, offs, n, rev);
+      nn2[newId] += n;
+      offs += n;
+    }
+  }
+};
+
+MapShaper.getArcDissolveTest = function(layers, arcs) {
+  var nodes = MapShaper.getFilteredNodeCollection(layers, arcs),
+      count = 0,
+      lastId;
+
+  return function(id1, id2) {
+    if (id1 == id2 || id1 == ~id2) return false; // error condition; throw error?
+    count = 0;
+    nodes.forEachConnectedArc(id1, countArc);
+    return count == 1 && lastId == ~id2;
+  };
+
+  function countArc(arcId, i) {
+    count++;
+    lastId = arcId;
+  }
+};
+
+MapShaper.getFilteredNodeCollection = function(layers, arcs) {
+  var counts = MapShaper.countArcReferences(layers, arcs),
+      test = function(arcId) {
+        return counts[absArcId(arcId)] > 0;
+      };
+  return new NodeCollection(arcs, test);
+};
+
+MapShaper.countArcReferences = function(layers, arcs) {
+  var counts = new Uint32Array(arcs.size());
+  layers.forEach(function(lyr) {
+    MapShaper.countArcsInShapes(lyr.shapes, counts);
+  });
+  return counts;
 };
 
 
@@ -9672,6 +9811,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
 
   // some datasets may lack arcs -- e.g. only point layers
   if (arcData && arcData.size() > 0) {
+
     // get a copy of arc data (coords are modified for topojson export)
     filteredArcs = arcData.getFilteredCopy();
 
@@ -9702,6 +9842,16 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
 
       filteredArcs.applyTransform(transform, !!"round");
     }
+
+    // dissolve arcs for more compact output
+    // make shallow copy of layers, so arc ids of original layer.shapes
+    // don't change
+    layers = layers.map(function(lyr) {
+      var shapes = lyr.shapes ? lyr.shapes.concat() : null;
+      return utils.defaults({shapes: shapes}, lyr);
+    });
+    MapShaper.dissolveArcs(layers, filteredArcs);
+
     topology.arcs = TopoJSON.exportArcs(filteredArcs);
   } else {
     topology.arcs = []; // spec seems to require an array
@@ -9721,9 +9871,10 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     return objects;
   }, {});
 
-  if (filteredArcs) {
-    TopoJSON.pruneArcs(topology);
-  }
+  // if (filteredArcs) {
+    // replaced by dissolveArcs() above
+    // TopoJSON.pruneArcs(topology);
+  // }
 
   if (transform) {
     TopoJSON.deltaEncodeArcs(topology.arcs);
@@ -12683,114 +12834,6 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
   }
 
   return hits > 0;
-};
-
-
-
-
-api.convertPolygonsToInnerLines = function(lyr, arcs) {
-  if (lyr.geometry_type != 'polygon') {
-    stop("[innerlines] Layer not polygon type");
-  }
-  var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
-      lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
-  lyr2.name = lyr.name;
-  return lyr2;
-};
-
-api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
-  if (lyr.geometry_type != 'polygon') {
-    stop("[lines] Layer not polygon type");
-  }
-  var arcCount = arcs.size(),
-      outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
-      typeCode = 0,
-      allArcs = [],
-      allData = [];
-
-  function addArcs(typeArcs) {
-    var typeData = Utils.repeat(typeArcs.length, function(i) {
-          return {TYPE: typeCode};
-        }) || [];
-    allArcs = Utils.merge(typeArcs, allArcs);
-    allData = Utils.merge(typeData, allData);
-    typeCode++;
-  }
-
-  addArcs(outerArcs);
-
-  if (Utils.isArray(fields)) {
-    if (!lyr.data) {
-      stop("[lines] missing a data table:");
-    }
-    Utils.forEach(fields, function(field) {
-      if (!lyr.data.fieldExists(field)) {
-        stop("[lines] unknown data field:", field);
-      }
-      var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
-          dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
-      dissolvedArcs = Utils.difference(dissolvedArcs, allArcs);
-      addArcs(dissolvedArcs);
-    });
-  }
-
-  var innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
-  innerArcs = Utils.difference(innerArcs, allArcs);
-  addArcs(innerArcs);
-
-  var lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
-  lyr2.name = lyr.name;
-  return lyr2;
-};
-
-MapShaper.convertArcsToLineLayer = function(arcs, data) {
-  var shapes = MapShaper.convertArcsToShapes(arcs),
-      lyr = {
-        geometry_type: 'polyline',
-        shapes: shapes
-      };
-  if (data) {
-    lyr.data = new DataTable(data);
-  }
-  return lyr;
-};
-
-MapShaper.convertArcsToShapes = function(arcs) {
-  return Utils.map(arcs, function(id) {
-    return [[id]];
-  });
-};
-
-MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
-  type = type || 'all';
-  var counts = MapShaper.countArcsInShapes(shapes, arcCount),
-      arcs = [],
-      count;
-
-  for (var i=0, n=counts.length; i<n; i++) {
-    count = counts[i];
-    if (count > 0) {
-      if (type == 'all' || type == 'outer' && count == 1 ||
-          type == 'inner' && count > 1) {
-        arcs.push(i);
-      }
-    }
-  }
-  return arcs;
-};
-
-MapShaper.countArcsInShapes = function(shapes, arcCount) {
-  var counts = new Uint8Array(arcCount);
-  MapShaper.traverseShapes(shapes, null, function(obj) {
-    var arcs = obj.arcs,
-        id;
-    for (var i=0; i<arcs.length; i++) {
-      id = arcs[i];
-      if (id < 0) id = ~id;
-      counts[id]++;
-    }
-  });
-  return counts;
 };
 
 

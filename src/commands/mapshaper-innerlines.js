@@ -1,4 +1,4 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-shape-utils */
 
 api.convertPolygonsToInnerLines = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
@@ -75,9 +75,11 @@ MapShaper.convertArcsToShapes = function(arcs) {
 
 MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
   type = type || 'all';
-  var counts = MapShaper.countArcsInShapes(shapes, arcCount),
+  var counts = new Uint8Array(arcCount),
       arcs = [],
       count;
+
+  MapShaper.countArcsInShapes(shapes, counts);
 
   for (var i=0, n=counts.length; i<n; i++) {
     count = counts[i];
@@ -89,18 +91,4 @@ MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
     }
   }
   return arcs;
-};
-
-MapShaper.countArcsInShapes = function(shapes, arcCount) {
-  var counts = new Uint8Array(arcCount);
-  MapShaper.traverseShapes(shapes, null, function(obj) {
-    var arcs = obj.arcs,
-        id;
-    for (var i=0; i<arcs.length; i++) {
-      id = arcs[i];
-      if (id < 0) id = ~id;
-      counts[id]++;
-    }
-  });
-  return counts;
 };

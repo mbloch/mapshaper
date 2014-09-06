@@ -178,7 +178,7 @@ describe('topojson-test.js', function () {
         layers: [{
           name: "polygons",
           geometry_type: "polygon",
-          shapes: [null, [[1], [~0]], [[0]]]
+          shapes: [null, [[0]], [[1], [~0]]]
         }]
       };
 
@@ -193,10 +193,10 @@ describe('topojson-test.js', function () {
               type: null
             }, {
               type: "Polygon",
-              arcs: [[1], [~0]]
+              arcs: [[0]]
             }, {
               type: "Polygon",
-              arcs: [[0]]
+              arcs: [[1], [~0]]
             }]
           }
         }
@@ -229,7 +229,7 @@ describe('topojson-test.js', function () {
         layers: [{
           name: "polygons",
           geometry_type: "polygon",
-          shapes: [[[1], [~0], [0]]]
+          shapes: [[[0], [1], [~0]]]
         }]
       };
 
@@ -242,13 +242,14 @@ describe('topojson-test.js', function () {
             type: "GeometryCollection",
             geometries: [{
               type: "MultiPolygon",
-              arcs: [[[1], [~0]], [[0]]]
+              arcs: [[[0]], [[1], [~0]]]
             }]
           }
         }
       };
 
       var result = TopoJSON.exportTopology(data.layers, data.arcs, {no_quantization: true});
+
       assert.deepEqual(result, target);
     })
 

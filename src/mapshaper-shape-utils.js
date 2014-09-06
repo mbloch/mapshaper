@@ -2,6 +2,20 @@
 
 // Utility functions for working with ArcCollection and arrays of arc ids.
 
+// @counts A typed array for accumulating count of each abs arc id
+//   (assume it won't overflow)
+MapShaper.countArcsInShapes = function(shapes, counts) {
+  MapShaper.traverseShapes(shapes, null, function(obj) {
+    var arcs = obj.arcs,
+        id;
+    for (var i=0; i<arcs.length; i++) {
+      id = arcs[i];
+      if (id < 0) id = ~id;
+      counts[id]++;
+    }
+  });
+};
+
 // @shp An element of the layer.shapes array
 //   (may be null, or, depending on layer type, an array of points or an array of arrays of arc ids)
 MapShaper.cloneShape = function(shp) {
