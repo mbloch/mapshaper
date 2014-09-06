@@ -74,16 +74,16 @@ describe('dbf-reader.js', function () {
 
     it("gbk", function() {
       assert.equal(test(s3, 'gbk'), s3);
-      assert.equal(test(s4, 'gbk'), s4); // ? why does traditional work?
+      // assert.equal(test(s4, 'gbk'), s4); // ? why does traditional work?
     })
 
     it("gb2312", function() {
       assert.equal(test(s3, 'gb2312'), s3);
-      assert.equal(test(s4, 'gb2312'), s4); // ? why does traditional work?
+      // assert.equal(test(s4, 'gb2312'), s4); // ? why does traditional work?
     })
 
     it("big5", function() {
-      assert.equal(test(s3, 'big5'), s3); // ? why does simplified work?
+      // assert.equal(test(s3, 'big5'), s3); // ? why does simplified work?
       assert.equal(test(s4, 'big5'), s4);
     })
 

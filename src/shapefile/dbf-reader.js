@@ -26,7 +26,6 @@ Dbf.getStringReaderAscii = function(size) {
           "  big5      (traditional Chinese)\n" +
           "  shiftjis  (Japanese)\n" +
           "Run mapshaper -encodings for a list of supported encodings");
-          //MapShaper.getFormattedEncodings());
     }
     return Utils.trim(str);
   };
