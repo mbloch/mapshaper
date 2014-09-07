@@ -109,15 +109,17 @@ MapShaper.guessFileType = function(file) {
   return type;
 };
 
-MapShaper.guessFileFormat = function(file) {
+MapShaper.guessFileFormat = function(file, inputFormat) {
   var type = MapShaper.guessFileType(file),
       format = null;
-  if (type) {
-    if (type == 'shp') {
-      format = 'shapefile';
-    } else if (/topojson$/.test(file)) {
+  if (type == 'shp') {
+    format = 'shapefile';
+  } else if (type == 'json') {
+    if (/geojson$/.test(file)) {
+      format = 'geojson';
+    } else if (/topojson$/.test(file) || inputFormat == 'topojson') {
       format = 'topojson';
-    } else if (type == 'json') {
+    } else {
       format = 'geojson';
     }
   }

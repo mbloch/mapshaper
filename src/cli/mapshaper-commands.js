@@ -227,7 +227,11 @@ MapShaper.divideImportCommand = function(cmd) {
 
 api.exportFiles = function(dataset, opts) {
   if (!opts.format) {
-    opts.format = dataset.info.input_format || error("[o] Missing export format");
+    if (opts.output_file) {
+      opts.format = MapShaper.guessFileFormat(opts.output_file, dataset.info.input_format);
+    } else {
+      opts.format = dataset.info.input_format;
+    }
   }
   var exports = MapShaper.exportFileContent(dataset, opts);
   if (exports.length > 0 === false) {

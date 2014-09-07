@@ -13,6 +13,10 @@ describe('mapshaper-common.js', function () {
       assert.equal(api.internal.guessFileFormat("file.json"), "geojson");
     })
 
+    it('.json + topojson -> topojson', function () {
+      assert.equal(api.internal.guessFileFormat("file.json", "topojson"), "topojson");
+    })
+
     it('.topojson -> topojson', function () {
       assert.equal(api.internal.guessFileFormat("file.topojson"), "topojson");
     })

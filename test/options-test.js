@@ -33,9 +33,9 @@ describe('mapshaper-options.js', function () {
 
     good("-o", {});
     good("-o " + dir1, {output_dir: dir1});
-    good("-o output.topojson", {output_file: "output.topojson", format: "topojson"});
-    good("-o output.shp target=points", {output_file: "output.shp", target: "points", format: "shapefile"});
-    good("-o cut-table output.json", {cut_table: true, output_file: "output.json", format: "geojson"});
+    good("-o output.topojson", {output_file: "output.topojson"});
+    good("-o output.shp target=points", {output_file: "output.shp", target: "points"});
+    good("-o cut-table output.json", {cut_table: true, output_file: "output.json"});
     good("-o cut-table", {cut_table: true})
     good("-o drop-table", {drop_table: true})
     good("-o -", {stdout: true})

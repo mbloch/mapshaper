@@ -2281,15 +2281,17 @@ MapShaper.guessFileType = function(file) {
   return type;
 };
 
-MapShaper.guessFileFormat = function(file) {
+MapShaper.guessFileFormat = function(file, inputFormat) {
   var type = MapShaper.guessFileType(file),
       format = null;
-  if (type) {
-    if (type == 'shp') {
-      format = 'shapefile';
-    } else if (/topojson$/.test(file)) {
+  if (type == 'shp') {
+    format = 'shapefile';
+  } else if (type == 'json') {
+    if (/geojson$/.test(file)) {
+      format = 'geojson';
+    } else if (/topojson$/.test(file) || inputFormat == 'topojson') {
       format = 'topojson';
-    } else if (type == 'json') {
+    } else {
       format = 'geojson';
     }
   }
@@ -2906,16 +2908,6 @@ function validateOutputOpts(cmd) {
     if (!cli.isDirectory(o.output_dir)) {
       error("Output directory not found:", o.output_dir);
     }
-  }
-
-  /*
-  if (Utils.contains(supportedTypes, o.output_file.toLowerCase())) {
-    error("Use format=" + o.output_file + " to set output format");
-  }
-  */
-
-  if (!o.format && o.output_file) {
-    o.format = MapShaper.guessFileFormat(o.output_file);
   }
 
   if (o.format) {
@@ -13515,7 +13507,11 @@ MapShaper.divideImportCommand = function(cmd) {
 
 api.exportFiles = function(dataset, opts) {
   if (!opts.format) {
-    opts.format = dataset.info.input_format || error("[o] Missing export format");
+    if (opts.output_file) {
+      opts.format = MapShaper.guessFileFormat(opts.output_file, dataset.info.input_format);
+    } else {
+      opts.format = dataset.info.input_format;
+    }
   }
   var exports = MapShaper.exportFileContent(dataset, opts);
   if (exports.length > 0 === false) {
