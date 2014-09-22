@@ -13550,8 +13550,10 @@ utils.reduceAsync = function(arr, memo, iter, done) {
     if (i < arr.length === false || err) {
       done(err, result);
     } else {
-      // TODO: consider detaching from stack using setTimeout()
-      iter(result, arr[i++], next);
+      // Detach from call stack to prevent overflow
+      setTimeout(function() {
+        iter(result, arr[i++], next);
+      }, 0);
     }
   }
 };
