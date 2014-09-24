@@ -4732,14 +4732,20 @@ function ArcCollection() {
 
   // Apply a linear transform to the data, with or without rounding.
   //
-  this.applyTransform = function(t, rounding) {
+  this.applyTransform = function(t, round) {
     var xx = _xx, yy = _yy, x, y;
+    if (round && typeof round != 'function') {
+      round = Math.round;
+    }
+    if (!t) {
+      t = new Transform(); // null transform
+    }
     for (var i=0, n=xx.length; i<n; i++) {
       x = xx[i] * t.mx + t.bx;
       y = yy[i] * t.my + t.by;
-      if (rounding) {
-        x = Math.round(x);
-        y = Math.round(y);
+      if (round) {
+        x = round(x);
+        y = round(y);
       }
       xx[i] = x;
       yy[i] = y;
@@ -5061,6 +5067,7 @@ function ArcCollection() {
   };
 
   this.getBounds = function() {
+
     return _allBounds;
   };
 
@@ -7453,7 +7460,7 @@ MapShaper.findSegmentIntersections = (function() {
         ymin = bounds.ymin,
         yrange = bounds.ymax - ymin,
         stripeCount = calcStripeCount(arcs),
-        stripeCounts = new Uint32Array(stripeCount),
+        stripeSizes = new Uint32Array(stripeCount),
         i;
 
     function stripeId(y) {
@@ -7465,23 +7472,23 @@ MapShaper.findSegmentIntersections = (function() {
       var s1 = stripeId(yy[id1]),
           s2 = stripeId(yy[id2]);
       while (true) {
-        stripeCounts[s1] = stripeCounts[s1] + 2;
+        stripeSizes[s1] = stripeSizes[s1] + 2;
         if (s1 == s2) break;
         s1 += s2 > s1 ? 1 : -1;
       }
     });
 
     // Allocate arrays for segments in each stripe
-    var stripeData = getUint32Array(Utils.sum(stripeCounts)),
+    var stripeData = getUint32Array(Utils.sum(stripeSizes)),
         offs = 0;
-    var stripes = Utils.map(stripeCounts, function(stripeSize) {
+    var stripes = Utils.map(stripeSizes, function(stripeSize) {
       var start = offs;
       offs += stripeSize;
       return stripeData.subarray(start, offs);
     });
-
     // Assign segment ids to each stripe
-    Utils.initializeArray(stripeCounts, 0);
+    Utils.initializeArray(stripeSizes, 0);
+
     arcs.forEachSegment(function(id1, id2, xx, yy) {
       var s1 = stripeId(yy[id1]),
           s2 = stripeId(yy[id2]),
@@ -7492,8 +7499,8 @@ MapShaper.findSegmentIntersections = (function() {
         id2 = tmp;
       }
       while (true) {
-        count = stripeCounts[s1];
-        stripeCounts[s1] = count + 2;
+        count = stripeSizes[s1];
+        stripeSizes[s1] = count + 2;
         stripe = stripes[s1];
         stripe[count] = id1;
         stripe[count+1] = id2;
@@ -11612,15 +11619,9 @@ MapShaper.setCoordinatePrecision = function(dataset, precision) {
   if (dataset.arcs) {
     // need to discard z data if present (it doesn't survive cleaning)
     dataset.arcs.flatten();
+    // round coords
+    dataset.arcs.applyTransform(null, round);
 
-    dataset.arcs.forEach2(function(i, n, xx, yy) {
-      var j = i + n;
-      while (i < j) {
-        xx[i] = round(xx[i]);
-        yy[i] = round(yy[i]);
-        i++;
-      }
-    });
     var nodes = MapShaper.divideArcs(dataset);
     dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
   }

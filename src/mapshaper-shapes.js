@@ -302,14 +302,20 @@ function ArcCollection() {
 
   // Apply a linear transform to the data, with or without rounding.
   //
-  this.applyTransform = function(t, rounding) {
+  this.applyTransform = function(t, round) {
     var xx = _xx, yy = _yy, x, y;
+    if (round && typeof round != 'function') {
+      round = Math.round;
+    }
+    if (!t) {
+      t = new Transform(); // null transform
+    }
     for (var i=0, n=xx.length; i<n; i++) {
       x = xx[i] * t.mx + t.bx;
       y = yy[i] * t.my + t.by;
-      if (rounding) {
-        x = Math.round(x);
-        y = Math.round(y);
+      if (round) {
+        x = round(x);
+        y = round(y);
       }
       xx[i] = x;
       yy[i] = y;
@@ -631,6 +637,7 @@ function ArcCollection() {
   };
 
   this.getBounds = function() {
+
     return _allBounds;
   };
 

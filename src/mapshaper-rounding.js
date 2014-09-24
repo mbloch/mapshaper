@@ -7,15 +7,9 @@ MapShaper.setCoordinatePrecision = function(dataset, precision) {
   if (dataset.arcs) {
     // need to discard z data if present (it doesn't survive cleaning)
     dataset.arcs.flatten();
+    // round coords
+    dataset.arcs.applyTransform(null, round);
 
-    dataset.arcs.forEach2(function(i, n, xx, yy) {
-      var j = i + n;
-      while (i < j) {
-        xx[i] = round(xx[i]);
-        yy[i] = round(yy[i]);
-        i++;
-      }
-    });
     var nodes = MapShaper.divideArcs(dataset);
     dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
   }
