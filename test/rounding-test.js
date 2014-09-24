@@ -93,6 +93,20 @@ describe('mapshaper-rounding.js', function () {
       assert.deepEqual(dataset.layers[0].shapes, [null])
     })
 
+    it('bounding box is updated', function() {
+      var json = {
+        type: "GeometryCollection",
+        geometries: [{
+          type: "Polygon",
+          coordinates: [[[0.8, 1], [1.9, 0.9], [1.1, 2.1], [0.8, 1]]]
+        }]
+      };
+
+      var dataset = api.internal.importGeoJSON(json, {});
+      assert.deepEqual(dataset.arcs.getBounds().toArray(), [0.8, 0.9, 1.9, 2.1]);
+      api.internal.setCoordinatePrecision(dataset, 1);
+      assert.deepEqual(dataset.arcs.getBounds().toArray(), [1, 1, 2, 2]);
+    })
 
   })
 })
