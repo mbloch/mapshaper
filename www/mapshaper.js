@@ -7940,8 +7940,12 @@ MapShaper.getSelfIntersectionSplitter = function(nodes, flags) {
     });
     if (exitIds) {
       subPaths = MapShaper.splitPathByIds(path, exitIds);
+      // recursively divide each sub-path
+      return subPaths.reduce(function(memo, subPath) {
+        return memo.concat(dividePath(subPath));
+      }, []);
     }
-    return subPaths;
+    return null;
   }
 
   function dividePath(path) {
@@ -7949,12 +7953,10 @@ MapShaper.getSelfIntersectionSplitter = function(nodes, flags) {
     for (var i=0; i<path.length - 1; i++) { // don't need to check last arc
       subPaths = dividePathAtNode(path, path[i]);
       if (subPaths) {
-        return subPaths.reduce(function(memo, subPath) {
-          return memo.concat(dividePath(subPath)); // recursively divide sub-path
-        }, []);
+        return subPaths;
       }
     }
-    // remove any spikes
+    // indivisible path -- remove any spikes
     MapShaper.removeSpikesInPath(path);
     return path.length > 0 ? [path] : [];
   }
@@ -7983,8 +7985,8 @@ MapShaper.splitPathByIds = function(path, ids) {
     return split;
   });
 
+  // make sure first sub-path starts with arc at path[0]
   if (ii[0] !== 0) {
-    // rotate sub paths so first subpath starts with path[0]
     subPaths.unshift(subPaths.pop());
   }
   if (subPaths[0][0] !== path[0]) {
