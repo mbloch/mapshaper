@@ -36,6 +36,7 @@ MapShaper.getRouteBits = function(id, flags) {
   return bits & 7;
 };
 
+
 // enable arc pathways in a single shape or array of shapes
 // Uses 8 bits to control traversal of each arc
 // 0-3: forward arc; 4-7: rev arc

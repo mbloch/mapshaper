@@ -6467,6 +6467,8 @@ utils.insertionSortIds = function(arr, ids, start, end) {
 MapShaper.NodeCollection = NodeCollection;
 
 // @arcs ArcCollection
+// @filter Optional filter function, arcIds that return false are excluded
+//
 function NodeCollection(arcs, filter) {
   if (Utils.isArray(arcs)) {
     arcs = new ArcCollection(arcs);
@@ -6604,7 +6606,6 @@ function NodeCollection(arcs, filter) {
     testVertexMatch: testVertexMatch
   };
 }
-
 
 MapShaper.findNodeTopology = function(arcs, filter) {
   var n = arcs.size() * 2,
@@ -7385,6 +7386,93 @@ MapShaper.findClippingPoints = function(arcs) {
 
 
 
+// Return function for splitting self-intersecting polygon rings
+// Returned function receives a single path, returns an array of paths
+// Assumes that any intersections occur at vertices, not along segments
+// (requires that MapShaper.divideArcs() has already been run)
+//
+MapShaper.getSelfIntersectionSplitter = function(nodes, flags) {
+
+  // If arc @enterId enters a node with more than one open routes leading out:
+  //   return array of sub-paths
+  // else return null
+  function dividePathAtNode(path, enterId) {
+    var count = 0,
+        subPaths = null,
+        exitIds, firstExitId;
+    nodes.forEachConnectedArc(enterId, function(arcId) {
+      var exitId = ~arcId;
+      if (path.indexOf(exitId) > -1) { // ignore arcs that are not on this path
+        if (count === 0) {
+          firstExitId = exitId;
+        } else if (count === 1) {
+          exitIds = [firstExitId, exitId];
+        } else {
+          exitIds.push(exitId);
+        }
+        count++;
+      }
+    });
+    if (exitIds) {
+      subPaths = MapShaper.splitPathByIds(path, exitIds);
+      // recursively divide each sub-path
+      return subPaths.reduce(function(memo, subPath) {
+        return memo.concat(dividePath(subPath));
+      }, []);
+    }
+    return null;
+  }
+
+  function dividePath(path) {
+    var subPaths = null;
+    for (var i=0; i<path.length - 1; i++) { // don't need to check last arc
+      subPaths = dividePathAtNode(path, path[i]);
+      if (subPaths) {
+        return subPaths;
+      }
+    }
+    // indivisible path -- remove any spikes
+    MapShaper.removeSpikesInPath(path);
+    return path.length > 0 ? [path] : [];
+  }
+
+  return dividePath;
+};
+
+// @path An array of arc ids
+// @ids An array of two or more start ids
+MapShaper.splitPathByIds = function(path, ids) {
+  var n = ids.length;
+  var ii = ids.map(function(id) {
+    var idx = path.indexOf(id);
+    if (idx == -1) error("[splitPathByIds()] Path is missing id:", id);
+    return idx;
+  });
+  Utils.genericSort(ii, true);
+  var subPaths = ii.map(function(idx, i) {
+    var split;
+    if (i == n-1) {
+      // place first path item first
+      split = path.slice(0, ii[0]).concat(path.slice(idx));
+    } else {
+      split = path.slice(idx, ii[i+1]);
+    }
+    return split;
+  });
+
+  // make sure first sub-path starts with arc at path[0]
+  if (ii[0] !== 0) {
+    subPaths.unshift(subPaths.pop());
+  }
+  if (subPaths[0][0] !== path[0]) {
+    error("[splitPathByIds()] Indexing error");
+  }
+  return subPaths;
+};
+
+
+
+
 // Functions for redrawing polygons for clipping / erasing / flattening / division
 
 MapShaper.setBits = function(src, flags, mask) {
@@ -7413,6 +7501,7 @@ MapShaper.getRouteBits = function(id, flags) {
   if (abs != id) bits = bits >> 4;
   return bits & 7;
 };
+
 
 // enable arc pathways in a single shape or array of shapes
 // Uses 8 bits to control traversal of each arc
@@ -7729,119 +7818,6 @@ MapShaper.getHoleDivider = function(nodes, flags) {
   };
 };
 
-// Return function for splitting self-intersecting polygon rings
-// Returned function receives a single path, returns an array of paths
-// Assumes that any intersections occur at vertices, not along segments
-// (requires that MapShaper.divideArcs() has already been run)
-//
-MapShaper.getSelfIntersectionSplitter = function(nodes, flags) {
-  var arcs = nodes.arcs;
-  flags = flags || new Uint8Array(arcs.size());
-
-  function findMultipleRoutes(id) {
-    var count = 0,
-        firstRoute,
-        routes;
-    nodes.forEachConnectedArc(id, function(candId) {
-      if (isOpenRoute(~candId)) {
-        if (count === 0) {
-          firstRoute = ~candId;
-        } else if (count === 1) {
-          routes = [firstRoute, ~candId];
-        } else {
-          routes.push(~candId);
-        }
-        count++;
-      }
-    });
-
-    return routes || null;
-  }
-
-  function isOpenRoute(id) {
-    var bits = MapShaper.getRouteBits(id, flags);
-    return bits == 3;
-  }
-
-  function closeRoute(id) {
-    var abs = absArcId(id);
-    flags[abs] &= abs == id ? ~3 : ~0x30;
-  }
-
-  function routeIsComplete(arcId, firstId) {
-    var complete = false;
-    nodes.forEachConnectedArc(arcId, function(candId) {
-      if (~candId === firstId) {
-        complete = true;
-      }
-    });
-    return complete;
-  }
-
-  function extendRoute(firstId, ids) {
-    var i = ids.indexOf(firstId),
-        n = ids.length,
-        count = 0,
-        route = [firstId],
-        nextId = firstId;
-
-    if (i === -1) error("[extendRoute()] Path is missing id:", firstId);
-
-    while (routeIsComplete(nextId, firstId) === false) {
-      if (++count > n) {
-        error("[extendRoute()] Caught in a cycle");
-      }
-      i = (i + 1) % n;
-      nextId = ids[i];
-      route.push(nextId);
-      // edge case: lollipop shape
-      // remove spike and finish route
-      // THIS REMOVES 'NECK' SHAPES -- make sure we really want this
-      if (nextId == ~firstId) {
-        MapShaper.removeSpikesInPath(route);
-        break;
-      }
-    }
-    return route;
-  }
-
-  function dividePathAtNode(arcId, ids) {
-    var startIds = findMultipleRoutes(arcId),
-        routes;
-    if (!startIds) return null;
-    // got two or more branches... extend them
-    // close routes, to avoid cycles...
-    startIds.forEach(closeRoute);
-    startIds.forEach(function(startId) {
-      var routeIds = extendRoute(startId, ids);
-      if (routeIds.length >= ids.length) {
-        error("[dividePathAtNode()] Caught in a cycle; arc id:", arcId);
-      }
-      // subdivide this branch
-      var splits = dividePath(routeIds);
-      routes = routes ? routes.concat(splits) : splits;
-    });
-
-    return routes;
-  }
-
-  function dividePath(ids) {
-    var splits;
-    for (var i=0, lim = ids.length - 1; i<lim; i++) {
-      splits = dividePathAtNode(ids[i], ids);
-      if (splits) return splits;
-    }
-    return [ids];
-  }
-
-  return function(ids) {
-    MapShaper.openArcRoutes(ids, arcs, flags, true, false, false, 0x11);
-    var paths = dividePath(ids);
-    MapShaper.closeArcRoutes(ids, arcs, flags, true, true, true);
-    return paths;
-  };
-};
-
 
 
 
@@ -7885,16 +7861,21 @@ MapShaper.cleanPath = function(path, arcs) {
 // (in place)
 MapShaper.removeSpikesInPath = function(ids) {
   var n = ids.length;
-  for (var i=1; i<n; i++) {
-    if (ids[i-1] == ~ids[i]) {
-      ids.splice(i-1, 2);
+  if (n >= 2) {
+    if (ids[0] == ~ids[n-1]) {
+      ids.pop();
+      ids.shift();
+    } else {
+      for (var i=1; i<n; i++) {
+        if (ids[i-1] == ~ids[i]) {
+          ids.splice(i-1, 2);
+          break;
+        }
+      }
+    }
+    if (ids.length < n) {
       MapShaper.removeSpikesInPath(ids);
     }
-  }
-  if (n > 2 && ids[0] == ~ids[n-1]) {
-    ids.pop();
-    ids.shift();
-    MapShaper.removeSpikesInPath(ids);
   }
 };
 
@@ -12740,6 +12721,7 @@ api.importJoinTableAsync = function(file, opts, done) {
     if (!Utils.isArray(keys) || keys.length != 2) {
       stop("[join] Invalid join keys:", keys);
     }
+
     // this may cause duplicate field name with inconsistent type hints
     // adjustRecordTypes() should handle this case
     fields.push(opts.keys[1]);
@@ -12750,7 +12732,6 @@ api.importJoinTableAsync = function(file, opts, done) {
     // replace foreign key in case original contained type hint
     opts.keys[1] = fields.pop();
     opts.fields = fields;
-
     done(table);
   }, opts);
 };

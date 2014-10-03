@@ -3,6 +3,8 @@
 MapShaper.NodeCollection = NodeCollection;
 
 // @arcs ArcCollection
+// @filter Optional filter function, arcIds that return false are excluded
+//
 function NodeCollection(arcs, filter) {
   if (Utils.isArray(arcs)) {
     arcs = new ArcCollection(arcs);
@@ -140,7 +142,6 @@ function NodeCollection(arcs, filter) {
     testVertexMatch: testVertexMatch
   };
 }
-
 
 MapShaper.findNodeTopology = function(arcs, filter) {
   var n = arcs.size() * 2,

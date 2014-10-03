@@ -1,6 +1,7 @@
 var api = require('../'),
     assert = require('assert'),
-    ArcCollection = api.internal.ArcCollection;
+    internal = api.internal,
+    ArcCollection = internal.ArcCollection;
 
 function divideArcs(layers, arcs) {
   var dataset = {
@@ -11,6 +12,20 @@ function divideArcs(layers, arcs) {
 }
 
 describe('mapshaper-polygon-repair.js', function () {
+
+  describe('removeSpikesInPath()', function () {
+    it('test 1', function () {
+      var path = [0, ~0];
+      internal.removeSpikesInPath(path);
+      assert.deepEqual(path, []);
+    })
+
+    it('test 2', function () {
+      var path = [1, ~1, ~0];
+      internal.removeSpikesInPath(path);
+      assert.deepEqual(path, [~0]);
+    })
+  })
 
   describe('repairSelfIntersections()', function () {
 
@@ -36,7 +51,7 @@ describe('mapshaper-polygon-repair.js', function () {
         var arcs = new ArcCollection(coords);
         var nodes = divideArcs([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes)
-        var target = [[[2, 0]]];
+        var target = [[[0, 2]]];
 
         assert.deepEqual(lyr.shapes, target);
       })
@@ -90,7 +105,7 @@ describe('mapshaper-polygon-repair.js', function () {
         var arcs = new ArcCollection(coords);
         var nodes = divideArcs([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes);
-        var target = [[[2, 0]]];
+        var target = [[[0, 2]]];
         assert.deepEqual(lyr.shapes, target);
       })
 
@@ -131,7 +146,7 @@ describe('mapshaper-polygon-repair.js', function () {
         var arcs = new ArcCollection(coords);
         var nodes = divideArcs([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes);
-        var target = [[[2, 4, 0]]];
+        var target = [[[0, 2, 4]]];
         assert.deepEqual(lyr.shapes, target);
 
       })
@@ -158,7 +173,7 @@ describe('mapshaper-polygon-repair.js', function () {
         var arcs = new ArcCollection(coords);
         var nodes = divideArcs([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes);
-        var target = [[[4, 0, 2]]];
+        var target = [[[0, 2, 4]]];
         assert.deepEqual(lyr.shapes, target);
       })
     })

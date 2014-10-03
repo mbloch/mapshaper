@@ -10,6 +10,7 @@ api.importJoinTableAsync = function(file, opts, done) {
     if (!Utils.isArray(keys) || keys.length != 2) {
       stop("[join] Invalid join keys:", keys);
     }
+
     // this may cause duplicate field name with inconsistent type hints
     // adjustRecordTypes() should handle this case
     fields.push(opts.keys[1]);
@@ -20,7 +21,6 @@ api.importJoinTableAsync = function(file, opts, done) {
     // replace foreign key in case original contained type hint
     opts.keys[1] = fields.pop();
     opts.fields = fields;
-
     done(table);
   }, opts);
 };

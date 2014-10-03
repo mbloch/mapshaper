@@ -13,7 +13,6 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
     //    /   \ /
     //   a --- c
     //
-
     it('two adjacent triangles', function () {
       //   cab, bc, bdc
       //   0,   1,  2
@@ -111,7 +110,6 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
     //
     //   abcde, efge, ea
     //   0,     1,    2
-
     var coords = [[[5, 3], [5, 1], [1, 1], [1, 3], [3, 3]],
         [[3, 3], [4, 2], [2, 2], [3, 3]],
         [[3, 3], [5, 3]]];
@@ -127,12 +125,11 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
         layers: [lyr]
       };
 
-      var target = [[[2, 0]]];
+      var target = [[[0, 2]]];
       var dissolved = dissolvePolygons2(lyr, dataset);
       assert.deepEqual(dissolved.shapes, target);
     })
   })
-
 
   describe('Fig. 2', function () {
     //       e
@@ -156,8 +153,8 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
     var nodes = new NodeCollection(coords);
 
     it('dissolve a shape into itself', function () {
-      var shapes = [[[1, 2, -2, -1]]];
-      var target = [[[2],[-1]]];
+      var shapes = [[[1, 2, ~1, ~0]]];
+      var target = [[[2],[~0]]];
       assert.deepEqual(dissolvePolygons({shapes: shapes}, nodes).shapes, target);
     })
   })
@@ -184,8 +181,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
 
     it('dissolve all', function () {
       var shapes = [[[0, ~3, ~1, 4]], [[2, 3]], [[1, ~2]]];
-      // var target = [[[0, 4]]]
-      var target = [[[4, 0]]]
+      var target = [[[0, 4]]]
       assert.deepEqual(dissolvePolygons({shapes: shapes}, nodes).shapes, target);
     })
 
@@ -237,8 +233,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
     it ('should skip spike - test 1', function() {
       var nodes = new NodeCollection(coords);
       var shapes = [[[0, 1, ~1, 2]]];
-      // var target = [[[0, 2]]];
-      var target = [[[2, 0]]];
+      var target = [[[0, 2]]];
       assert.deepEqual(dissolvePolygons({shapes: shapes}, nodes).shapes, target);
     })
 

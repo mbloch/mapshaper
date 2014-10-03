@@ -40,16 +40,21 @@ MapShaper.cleanPath = function(path, arcs) {
 // (in place)
 MapShaper.removeSpikesInPath = function(ids) {
   var n = ids.length;
-  for (var i=1; i<n; i++) {
-    if (ids[i-1] == ~ids[i]) {
-      ids.splice(i-1, 2);
+  if (n >= 2) {
+    if (ids[0] == ~ids[n-1]) {
+      ids.pop();
+      ids.shift();
+    } else {
+      for (var i=1; i<n; i++) {
+        if (ids[i-1] == ~ids[i]) {
+          ids.splice(i-1, 2);
+          break;
+        }
+      }
+    }
+    if (ids.length < n) {
       MapShaper.removeSpikesInPath(ids);
     }
-  }
-  if (n > 2 && ids[0] == ~ids[n-1]) {
-    ids.pop();
-    ids.shift();
-    MapShaper.removeSpikesInPath(ids);
   }
 };
 
