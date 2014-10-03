@@ -13,7 +13,7 @@ api.flattenLayer = function(lyr, dataset, opts) {
 
 MapShaper.getPolygonFlattener = function(nodes) {
   var flags = new Uint8Array(nodes.arcs.size());
-  var divide = MapShaper.getHoleDivider(nodes, flags);
+  var divide = MapShaper.getHoleDivider(nodes);
   var flatten = MapShaper.getRingIntersector(nodes, 'flatten', flags);
 
   return function(shp) {

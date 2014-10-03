@@ -3,8 +3,8 @@
 // Returns a function that separates rings in a polygon into space-enclosing rings
 // and holes. Also fixes self-intersections.
 //
-MapShaper.getHoleDivider = function(nodes, flags) {
-  var split = MapShaper.getSelfIntersectionSplitter(nodes, flags);
+MapShaper.getHoleDivider = function(nodes) {
+  var split = MapShaper.getSelfIntersectionSplitter(nodes);
 
   return function(rings, cw, ccw) {
     MapShaper.forEachPath(rings, function(ringIds) {
