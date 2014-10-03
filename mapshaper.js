@@ -6935,7 +6935,7 @@ MapShaper.findSegmentIntersections = (function() {
     var bounds = arcs.getBounds(),
         ymin = bounds.ymin,
         yrange = bounds.ymax - ymin,
-        stripeCount = calcStripeCount(arcs),
+        stripeCount = MapShaper.calcSegmentIntersectionStripeCount(arcs),
         stripeSizes = new Uint32Array(stripeCount),
         i;
 
@@ -7012,15 +7012,17 @@ MapShaper.findSegmentIntersections = (function() {
     }
   };
 
-  function calcStripeCount(arcs) {
-    var yrange = arcs.getBounds().height(),
-        segLen = arcs.getAvgSegment2()[1];
-        count = Math.ceil(yrange / segLen / 20) || 1;  // count is positive int
-    if (count > 0 === false) throw "Invalid stripe count";
-    return count;
-  }
-
 })();
+
+MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
+  var yrange = arcs.getBounds().height(),
+      segLen = arcs.getAvgSegment2()[1],
+      count = 1;
+  if (segLen > 0 && yrange > 0) {
+    count = Math.ceil(yrange / segLen / 20);
+  }
+  return count || 1;
+};
 
 // Get an indexable key that is consistent regardless of point sequence
 // @a, @b endpoint ids in format [i, j]
@@ -7391,7 +7393,7 @@ MapShaper.findClippingPoints = function(arcs) {
 // Assumes that any intersections occur at vertices, not along segments
 // (requires that MapShaper.divideArcs() has already been run)
 //
-MapShaper.getSelfIntersectionSplitter = function(nodes, flags) {
+MapShaper.getSelfIntersectionSplitter = function(nodes) {
 
   // If arc @enterId enters a node with more than one open routes leading out:
   //   return array of sub-paths
@@ -11081,7 +11083,6 @@ api.findAndRepairIntersections = function(arcs) {
 // Returns array of unresolved intersections, or empty array if none.
 //
 MapShaper.repairIntersections = function(arcs, intersections) {
-
   var raw = arcs.getVertexData(),
       zz = raw.zz,
       yy = raw.yy,
@@ -11100,6 +11101,7 @@ MapShaper.repairIntersections = function(arcs, intersections) {
     //
     intersections = MapShaper.findSegmentIntersections(arcs);
   }
+
   return intersections;
 
   // Find the z value of the next vertex that should be re-introduced into

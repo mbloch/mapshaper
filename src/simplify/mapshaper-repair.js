@@ -29,7 +29,6 @@ api.findAndRepairIntersections = function(arcs) {
 // Returns array of unresolved intersections, or empty array if none.
 //
 MapShaper.repairIntersections = function(arcs, intersections) {
-
   var raw = arcs.getVertexData(),
       zz = raw.zz,
       yy = raw.yy,
@@ -48,6 +47,7 @@ MapShaper.repairIntersections = function(arcs, intersections) {
     //
     intersections = MapShaper.findSegmentIntersections(arcs);
   }
+
   return intersections;
 
   // Find the z value of the next vertex that should be re-introduced into

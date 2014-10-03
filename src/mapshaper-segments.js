@@ -34,7 +34,7 @@ MapShaper.findSegmentIntersections = (function() {
     var bounds = arcs.getBounds(),
         ymin = bounds.ymin,
         yrange = bounds.ymax - ymin,
-        stripeCount = calcStripeCount(arcs),
+        stripeCount = MapShaper.calcSegmentIntersectionStripeCount(arcs),
         stripeSizes = new Uint32Array(stripeCount),
         i;
 
@@ -111,15 +111,17 @@ MapShaper.findSegmentIntersections = (function() {
     }
   };
 
-  function calcStripeCount(arcs) {
-    var yrange = arcs.getBounds().height(),
-        segLen = arcs.getAvgSegment2()[1];
-        count = Math.ceil(yrange / segLen / 20) || 1;  // count is positive int
-    if (count > 0 === false) throw "Invalid stripe count";
-    return count;
-  }
-
 })();
+
+MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
+  var yrange = arcs.getBounds().height(),
+      segLen = arcs.getAvgSegment2()[1],
+      count = 1;
+  if (segLen > 0 && yrange > 0) {
+    count = Math.ceil(yrange / segLen / 20);
+  }
+  return count || 1;
+};
 
 // Get an indexable key that is consistent regardless of point sequence
 // @a, @b endpoint ids in format [i, j]

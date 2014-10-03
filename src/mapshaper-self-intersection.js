@@ -5,7 +5,7 @@
 // Assumes that any intersections occur at vertices, not along segments
 // (requires that MapShaper.divideArcs() has already been run)
 //
-MapShaper.getSelfIntersectionSplitter = function(nodes, flags) {
+MapShaper.getSelfIntersectionSplitter = function(nodes) {
 
   // If arc @enterId enters a node with more than one open routes leading out:
   //   return array of sub-paths
