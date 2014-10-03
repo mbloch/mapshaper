@@ -237,15 +237,12 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
       assert.deepEqual(dissolvePolygons({shapes: shapes}, nodes).shapes, target);
     })
 
-    /*
-    // TODO: investigate this
     it ('should skip spike - test 2', function() {
       var nodes = new NodeCollection(coords);
       var shapes = [[[1, ~1, 2, 0]]];
       var target = [[[2, 0]]];
-      assert.deepEqual(dissolvePolygons(shapes, nodes), target);
+      assert.deepEqual(dissolvePolygons({shapes: shapes}, nodes).shapes, target);
     })
-    */
 
     it ('should skip spike - test 3', function() {
       var nodes = new NodeCollection(coords);
