@@ -28,7 +28,7 @@ bin/mapshaper-gui # use the web interface locally
 bin/mapshaper     # use the command line tool
 ```
 
-The `mapshaper` script has been used successfully under OS X, Ubuntu Linux and Windows 8.
+The `mapshaper` script has been used successfully under OS X, Linux and Windows.
 
 ### Interactive tool
 
