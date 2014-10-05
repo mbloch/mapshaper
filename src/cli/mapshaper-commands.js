@@ -266,15 +266,18 @@ api.importFiles = function(opts) {
 utils.reduceAsync = function(arr, memo, iter, done) {
   var i=0;
   next(null, memo);
+
   function next(err, result) {
-    if (i < arr.length === false || err) {
-      done(err, result);
-    } else {
-      // Detach from call stack to prevent overflow
-      setTimeout(function() {
+    // Detach next operation from call stack to prevent overflow
+    // Don't use setTimeout(, 0) -- this can introduce a long delay if
+    //   previous operation was slow, as of Node 0.10.32
+    setImmediate(function() {
+      if (i < arr.length === false || err) {
+        done(err, result);
+      } else {
         iter(result, arr[i++], next);
-      }, 0);
-    }
+      }
+    });
   }
 };
 
