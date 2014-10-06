@@ -326,6 +326,11 @@ MapShaper.getOptionParser = function() {
     .option("name", nameOpt)
     .option("target", targetOpt);
 
+  parser.command("rename-layers")
+    .describe("assign names to one or more layers (comma-sep. list)")
+    .validate(validateRenameLayersOpts)
+    .option("target", targetOpt);
+
   parser.command("subdivide")
     .describe("recursively split a layer using a JS expression")
     .validate(validateSubdivideOpts)

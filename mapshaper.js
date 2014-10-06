@@ -2818,6 +2818,10 @@ function validateMergeLayersOpts(cmd) {
   if (cmd._.length > 0) error("-merge-layers unexpected option:", cmd._);
 }
 
+function validateRenameLayersOpts(cmd) {
+  cmd.options.names = validateCommaSepNames(cmd._[0]) || null;
+}
+
 function validateSplitOnGridOpts(cmd) {
   var o = cmd.options;
   if (cmd._.length == 1) {
@@ -2861,7 +2865,6 @@ function validateFilterFieldsOpts(cmd) {
     error("-filter-fields option requires a comma-sep. list of fields");
   }
 }
-
 
 function validateLayersOpts(cmd) {
   try {
@@ -3273,6 +3276,11 @@ MapShaper.getOptionParser = function() {
     .describe("merge split-apart layers back into a single layer")
     .validate(validateMergeLayersOpts)
     .option("name", nameOpt)
+    .option("target", targetOpt);
+
+  parser.command("rename-layers")
+    .describe("assign names to one or more layers (comma-sep. list)")
+    .validate(validateRenameLayersOpts)
     .option("target", targetOpt);
 
   parser.command("subdivide")
@@ -13264,6 +13272,25 @@ MapShaper.repairPolygons = function(shapes, nodes) {
 
 
 
+api.renameLayers = function(layers, names) {
+  if (!names || names.length > 0 === false) {
+    names = ['layer'];
+  }
+  var layerCount = layers.length,
+      nameCount = names && names.length;
+
+  layers.forEach(function(lyr, i) {
+    var name = i < nameCount - 1 ? names[i] : names[nameCount - 1];
+    if (nameCount < layerCount && i >= nameCount - 2) {
+      name += i - nameCount + 2;
+    }
+    lyr.name = name;
+  });
+};
+
+
+
+
 // parse command line args into commands and run them
 api.runShellArgs = function(argv, done) {
   var commands = api.parseCommands(argv);
@@ -13412,6 +13439,9 @@ api.runCommand = function(cmd, dataset, cb) {
     // careful, returned layers are modified input layers
     newLayers = api.mergeLayers(targetLayers);
 
+  } else if (name == 'rename-layers') {
+    api.renameLayers(targetLayers, opts.names);
+
   } else if (name == 'repair') {
     newLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
 
@@ -13530,15 +13560,18 @@ api.importFiles = function(opts) {
 utils.reduceAsync = function(arr, memo, iter, done) {
   var i=0;
   next(null, memo);
+
   function next(err, result) {
-    if (i < arr.length === false || err) {
-      done(err, result);
-    } else {
-      // Detach from call stack to prevent overflow
-      setTimeout(function() {
+    // Detach next operation from call stack to prevent overflow
+    // Don't use setTimeout(, 0) -- this can introduce a long delay if
+    //   previous operation was slow, as of Node 0.10.32
+    setImmediate(function() {
+      if (i < arr.length === false || err) {
+        done(err, result);
+      } else {
         iter(result, arr[i++], next);
-      }, 0);
-    }
+      }
+    });
   }
 };
 

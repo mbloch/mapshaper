@@ -139,6 +139,10 @@ function validateMergeLayersOpts(cmd) {
   if (cmd._.length > 0) error("-merge-layers unexpected option:", cmd._);
 }
 
+function validateRenameLayersOpts(cmd) {
+  cmd.options.names = validateCommaSepNames(cmd._[0]) || null;
+}
+
 function validateSplitOnGridOpts(cmd) {
   var o = cmd.options;
   if (cmd._.length == 1) {
@@ -182,7 +186,6 @@ function validateFilterFieldsOpts(cmd) {
     error("-filter-fields option requires a comma-sep. list of fields");
   }
 }
-
 
 function validateLayersOpts(cmd) {
   try {

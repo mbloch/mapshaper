@@ -29,6 +29,7 @@ mapshaper-flatten
 mapshaper-clip-erase
 mapshaper-divide
 mapshaper-polygon-repair2
+mapshaper-rename-layers
 */
 
 var cli = api.cli = {};

@@ -148,6 +148,9 @@ api.runCommand = function(cmd, dataset, cb) {
     // careful, returned layers are modified input layers
     newLayers = api.mergeLayers(targetLayers);
 
+  } else if (name == 'rename-layers') {
+    api.renameLayers(targetLayers, opts.names);
+
   } else if (name == 'repair') {
     newLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
 
