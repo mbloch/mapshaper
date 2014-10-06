@@ -327,7 +327,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("rename-layers")
-    .describe("assign names to one or more layers (comma-sep. list)")
+    .describe("assign new names to layers (comma-sep. list)")
     .validate(validateRenameLayersOpts)
     .option("target", targetOpt);
 
