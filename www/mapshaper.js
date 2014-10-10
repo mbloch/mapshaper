@@ -10303,6 +10303,35 @@ MapShaper.cloneProperties = function(obj) {
 
 
 
+
+TopoJSON.getPresimplifyFunction = function(arcs, displayWidth) {
+  var isLatLng = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds());
+  var width = arcs.getBounds().width();
+  if (isLatLng) {
+    // Convert degrees to meters
+    // TODO: fix
+    width *= 6378137 * Math.PI / 180;
+  }
+  return TopoJSON.getZScaler(width, displayWidth);
+};
+
+TopoJSON.getZScaler = function(sourceWidth, displayWidth) {
+  var k = sourceWidth / displayWidth,
+      round = Math.round; // geom.getRoundingFunction(0.1);
+  return function(z) {
+    var thresh = k / z;
+    if (thresh < 1 || z === 0) {
+      thresh = 1;
+    } else {
+      thresh = round(thresh);
+    }
+    return thresh;
+  };
+};
+
+
+
+
 TopoJSON.exportTopology = function(layers, arcData, opts) {
   var topology = {type: "Topology"},
       bounds = new Bounds(),
@@ -10351,8 +10380,12 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
       return utils.defaults({shapes: shapes}, lyr);
     });
     MapShaper.dissolveArcs(layers, filteredArcs);
-
-    topology.arcs = TopoJSON.exportArcs(filteredArcs);
+    // topology.arcs = TopoJSON.exportArcs(filteredArcs);
+    if (opts.presimplify && !filteredArcs.getVertexData().zz) {
+      // Calculate simplification thresholds if none exist
+      MapShaper.simplifyPaths(filteredArcs, opts);
+    }
+    topology.arcs = TopoJSON.exportArcsWithPresimplify(filteredArcs, opts.presimplify || null);
   } else {
     topology.arcs = []; // spec seems to require an array
   }
@@ -10397,6 +10430,27 @@ TopoJSON.exportArcs = function(arcData) {
     var arc = [];
     while (iter.hasNext()) {
       arc.push([iter.x, iter.y]);
+    }
+    arcs.push(arc.length > 1 ? arc : null);
+  });
+  return arcs;
+};
+
+// Export arcs as arrays of [x, y] coords without delta encoding
+TopoJSON.exportArcsWithPresimplify = function(arcData, width) {
+  var fromZ = width ? TopoJSON.getPresimplifyFunction(arcData, width) : null,
+      arcs = [];
+
+  arcData.forEach2(function(i, n, xx, yy, zz) {
+    var arc = [],
+        useZ = zz && fromZ,
+        p;
+    for (var j=i + n; i<j; i++) {
+      p = [xx[i], yy[i]];
+      if (useZ) {
+        p.push(fromZ(zz[i]));
+      }
+      arc.push(p);
     }
     arcs.push(arc.length > 1 ? arc : null);
   });
