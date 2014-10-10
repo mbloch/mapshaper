@@ -148,6 +148,10 @@ MapShaper.getOptionParser = function() {
       describe: "export TopoJSON without quantization",
       type: "flag"
     })
+    .option('presimplify', {
+      // describe: "generate per-vertex thresholds for dynamic simplification",
+      type: "number"
+    })
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"

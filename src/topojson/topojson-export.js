@@ -4,7 +4,8 @@ topojson-common,
 topojson-split,
 mapshaper-shape-geom,
 mapshaper-arc-dissolve,
-mapshaper-explode
+mapshaper-explode,
+topojson-presimplify
 */
 
 TopoJSON.exportTopology = function(layers, arcData, opts) {
@@ -55,8 +56,12 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
       return utils.defaults({shapes: shapes}, lyr);
     });
     MapShaper.dissolveArcs(layers, filteredArcs);
-
-    topology.arcs = TopoJSON.exportArcs(filteredArcs);
+    // topology.arcs = TopoJSON.exportArcs(filteredArcs);
+    if (opts.presimplify && !filteredArcs.getVertexData().zz) {
+      // Calculate simplification thresholds if none exist
+      MapShaper.simplifyPaths(filteredArcs, opts);
+    }
+    topology.arcs = TopoJSON.exportArcsWithPresimplify(filteredArcs, opts.presimplify || null);
   } else {
     topology.arcs = []; // spec seems to require an array
   }
@@ -101,6 +106,27 @@ TopoJSON.exportArcs = function(arcData) {
     var arc = [];
     while (iter.hasNext()) {
       arc.push([iter.x, iter.y]);
+    }
+    arcs.push(arc.length > 1 ? arc : null);
+  });
+  return arcs;
+};
+
+// Export arcs as arrays of [x, y] coords without delta encoding
+TopoJSON.exportArcsWithPresimplify = function(arcData, width) {
+  var fromZ = width ? TopoJSON.getPresimplifyFunction(arcData, width) : null,
+      arcs = [];
+
+  arcData.forEach2(function(i, n, xx, yy, zz) {
+    var arc = [],
+        useZ = zz && fromZ,
+        p;
+    for (var j=i + n; i<j; i++) {
+      p = [xx[i], yy[i]];
+      if (useZ) {
+        p.push(fromZ(zz[i]));
+      }
+      arc.push(p);
     }
     arcs.push(arc.length > 1 ? arc : null);
   });
