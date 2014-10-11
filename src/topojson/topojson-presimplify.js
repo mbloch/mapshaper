@@ -1,27 +1,18 @@
 /* @requires topojson-common, mapshaper-common, mapshaper-geom */
 
 
-TopoJSON.getPresimplifyFunction = function(arcs, displayWidth) {
-  var isLatLng = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds());
-  var width = arcs.getBounds().width();
-  if (isLatLng) {
-    // Convert degrees to meters
-    // TODO: fix
-    width *= 6378137 * Math.PI / 180;
-  }
-  return TopoJSON.getZScaler(width, displayWidth);
+TopoJSON.getPresimplifyFunction = function(arcs) {
+  var width = arcs.getBounds().width(),
+      quanta = 10000,  // enough for pixel-level detail at 1000px width and 100x zoom
+      k = quanta / width;
+  console.log(">>> width:", width, 'k:', k);
+  return TopoJSON.getZScaler(k);
 };
 
-TopoJSON.getZScaler = function(sourceWidth, displayWidth) {
-  var k = sourceWidth / displayWidth,
-      round = Math.round; // geom.getRoundingFunction(0.1);
+TopoJSON.getZScaler = function(k) {
+  // could substitute a rounding function with decimal precision
   return function(z) {
-    var thresh = k / z;
-    if (thresh < 1 || z === 0) {
-      thresh = 1;
-    } else {
-      thresh = round(thresh);
-    }
+    var thresh = z === Infinity ? 0 : Math.ceil(z * k);
     return thresh;
   };
 };

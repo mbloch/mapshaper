@@ -150,7 +150,7 @@ MapShaper.getOptionParser = function() {
     })
     .option('presimplify', {
       // describe: "generate per-vertex thresholds for dynamic simplification",
-      type: "number"
+      type: "flag"
     })
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
