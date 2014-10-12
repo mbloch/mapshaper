@@ -12913,54 +12913,8 @@ MapShaper.getPolygonFlattener = function(nodes) {
 
 
 
-api.clipPolygonLayers = function(target, clipLyr, dataset, opts) {
-  return MapShaper.intersectLayers(target, clipLyr, dataset, "clip", opts);
-};
-
-api.erasePolygonLayers = function(target, clipLyr, dataset, opts) {
-  return MapShaper.intersectLayers(target, clipLyr, dataset, "erase", opts);
-};
-
-api.clipPolygons = function(targetLyr, clipLyr, dataset, opts) {
-  return api.clipPolygonLayers([targetLyr], clipLyr, dataset, opts)[0];
-};
-
-api.erasePolygons = function(targetLyr, clipLyr, dataset, opts) {
-  return api.erasePolygonLayers([targetLyr], clipLyr, dataset, opts)[0];
-};
-
-// @target: a single layer or an array of layers
-// @type: 'clip' or 'erase'
-MapShaper.intersectLayers = function(targetLayers, clipLyr, dataset, type, opts) {
-  MapShaper.requirePolygonLayer(clipLyr, "Expected a polygon type " + type + " layer");
-  targetLayers.forEach(function(lyr) {
-    MapShaper.requirePolygonLayer(lyr, "[" + type + "] only supports polygon type layers");
-  });
-
-  // If clipping layer was imported from a second file, it won't be included in
-  // dataset
-  // (assuming that clipLyr arcs have been merged with dataset.arcs)
-  //
-  if (Utils.contains(dataset.layers, clipLyr) === false) {
-    dataset = {
-      layers: [clipLyr].concat(dataset.layers),
-      arcs: dataset.arcs
-    };
-  }
-  var nodes = MapShaper.divideArcs(dataset);
-  var output = targetLayers.map(function(targetLyr) {
-    return MapShaper.intersectTwoLayers(targetLyr, clipLyr, nodes, type, opts);
-  });
-  return output;
-};
-
 // assumes layers and arcs have been prepared for clipping
-MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
-  if (targetLyr.geometry_type != 'polygon' || clipLyr.geometry_type != 'polygon') {
-    stop("[intersectLayers()] Expected two polygon layers, received",
-      targetLyr.geometry_type, "and", clipLyr.geometry_type);
-  }
-
+MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type, opts) {
   var arcs = nodes.arcs;
   var clipFlags = new Uint8Array(arcs.size());
   var routeFlags = new Uint8Array(arcs.size());
@@ -12969,13 +12923,7 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
   var clipArcUses = 0;
   var usedClipArcs = [];
   var dividePath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
-  var dividedShapes = clipPolygons(targetLyr.shapes, clipLyr.shapes, arcs, type);
-  var dividedLyr = Utils.defaults({shapes: dividedShapes, data: null}, targetLyr);
-
-  if (targetLyr.data) {
-    dividedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
-  }
-  return dividedLyr;
+  return clipPolygons(targetShapes, clipShapes, arcs, type);
 
   function clipPolygons(targetShapes, clipShapes, arcs, type) {
     var dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
@@ -13206,7 +13154,76 @@ MapShaper.intersectTwoLayers = function(targetLyr, clipLyr, nodes, type, opts) {
 
     return dissolvedPaths.length > 0 ? dissolvedPaths : null;
   }
-}; // end intersectLayers()
+}; // end clipPolygons()
+
+
+
+
+
+
+
+
+
+
+api.clipLayers = function(target, clipLyr, dataset, opts) {
+  return MapShaper.clipLayers(target, clipLyr, dataset, "clip", opts);
+};
+
+api.eraseLayers = function(target, clipLyr, dataset, opts) {
+  return MapShaper.clipLayers(target, clipLyr, dataset, "erase", opts);
+};
+
+api.clipLayer = function(targetLyr, clipLyr, dataset, opts) {
+  return api.clipLayers([targetLyr], clipLyr, dataset, opts)[0];
+};
+
+api.eraseLayer = function(targetLyr, clipLyr, dataset, opts) {
+  return api.eraseLayers([targetLyr], clipLyr, dataset, opts)[0];
+};
+
+// @target: a single layer or an array of layers
+// @type: 'clip' or 'erase'
+MapShaper.clipLayers = function(targetLayers, clipLyr, dataset, type, opts) {
+  MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
+
+  // If clipping layer was imported from a second file, it won't be included in
+  // dataset
+  // (assuming that clipLyr arcs have been merged with dataset.arcs)
+  //
+  if (Utils.contains(dataset.layers, clipLyr) === false) {
+    dataset = {
+      layers: [clipLyr].concat(dataset.layers),
+      arcs: dataset.arcs
+    };
+  }
+  var nodes = MapShaper.divideArcs(dataset);
+  var output = targetLayers.map(function(targetLyr) {
+    return MapShaper.clipLayer(targetLyr, clipLyr, nodes, type, opts);
+  });
+  return output;
+};
+
+// Use a polygon layer to clip or erase a target layer
+// Assumes segment intersections have been removed by division
+// @type 'clip' | 'erase'
+MapShaper.clipLayer = function(targetLyr, clipLyr, nodes, type, opts) {
+  var functions = {
+    polygon: MapShaper.clipPolygons,
+    polyline: MapShaper.clipPolylines,
+    point: MapShaper.clipPoints
+  };
+  var clip = functions[targetLyr.geometry_type],
+      clippedShapes, clippedLyr;
+  if (!clip) {
+    stop('[' + type + '] Invalid layer type:', targetLyr.geometry_type);
+  }
+  clippedShapes = clip(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
+  clippedLyr = Utils.defaults({shapes: clippedShapes, data: null}, targetLyr);
+  if (targetLyr.data) {
+    clippedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
+  }
+  return clippedLyr;
+};
 
 
 
@@ -13383,7 +13400,7 @@ api.runCommand = function(cmd, dataset, cb) {
 
   if (name == 'clip') {
     sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-    newLayers = api.clipPolygonLayers(targetLayers, sourceLyr, dataset, opts);
+    newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
 
   } else if (name == 'each') {
     MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
@@ -13396,7 +13413,7 @@ api.runCommand = function(cmd, dataset, cb) {
 
   } else if (name == 'erase') {
     sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-    newLayers = api.erasePolygonLayers(targetLayers, sourceLyr, dataset, opts);
+    newLayers = api.eraseLayers(targetLayers, sourceLyr, dataset, opts);
 
   } else if (name == 'explode') {
     newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);

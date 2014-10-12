@@ -54,7 +54,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
       var targetShapes = [[[1, 5, 3]]];
       // var targetShapes = [[[1, 6, 4]]];  // spike is cut off and ignored
-      var clippedLyr = api.clipPolygons(lyr1, lyr2, dataset);
+      var clippedLyr = api.clipLayer(lyr1, lyr2, dataset);
       assert.deepEqual(clippedLyr.shapes, targetShapes);
     })
   })
@@ -108,7 +108,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr1, lyr2, dataset);
+      var clippedLyr = api.clipLayer(lyr1, lyr2, dataset);
       var target = [
         [[~3, 6, 4, ~1]],
         [[1, 5, 3]]];
@@ -131,7 +131,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.clipLayer(lyr2, lyr1, dataset);
       var target = [[[4, ~1, ~3, 6]]];
 
       assert.deepEqual(clippedLyr.shapes, target);
@@ -152,7 +152,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var erasedLyr = api.erasePolygons(lyr1, lyr2, dataset);
+      var erasedLyr = api.eraseLayer(lyr1, lyr2, dataset);
       var target = [[[0], [~2, ~4, ~6]]];
 
       assert.deepEqual(erasedLyr.shapes, target);
@@ -217,7 +217,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr1, lyr2, dataset);
+      var clippedLyr = api.clipLayer(lyr1, lyr2, dataset);
       var target = [
         [[1, 9, ~4, 7]],
         [[4, 10, 6]]];
@@ -240,7 +240,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.clipLayer(lyr2, lyr1, dataset);
       var target = [[[7, 1, 9, ~4]]];
 
       assert.deepEqual(clippedLyr.shapes, target);
@@ -262,7 +262,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var erasedLyr = api.erasePolygons(lyr2, lyr1, dataset);
+      var erasedLyr = api.eraseLayer(lyr2, lyr1, dataset);
       var target = [[[6, 4, 10], [8, ~1]]];
 
       assert.deepEqual(erasedLyr.shapes, target);
@@ -283,7 +283,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var erasedLyr = api.erasePolygons(lyr1, lyr2, dataset);
+      var erasedLyr = api.eraseLayer(lyr1, lyr2, dataset);
       var target = [
         [[0, ~7, ~3, ~5, ~9, 2]],
         [[3, ~6, ~10, 5]]];
@@ -329,7 +329,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr1, lyr2, dataset);
+      var clippedLyr = api.clipLayer(lyr1, lyr2, dataset);
       var target = [[[1]]];
 
       assert.deepEqual(clippedLyr.shapes, target);
@@ -349,7 +349,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.clipLayer(lyr2, lyr1, dataset);
       var target = [[[1]]];
 
       assert.deepEqual(clippedLyr.shapes, target);
@@ -369,7 +369,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.erasePolygons(lyr1, lyr2, dataset);
+      var clippedLyr = api.eraseLayer(lyr1, lyr2, dataset);
       var target = [[[0], [~1]]];
 
       assert.deepEqual(clippedLyr.shapes, target);
@@ -389,7 +389,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.erasePolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.eraseLayer(lyr2, lyr1, dataset);
       var target = [null];
 
       assert.deepEqual(clippedLyr.shapes, target);
@@ -411,7 +411,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.erasePolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.eraseLayer(lyr2, lyr1, dataset);
       var target = [null, null];
 
       assert.deepEqual(clippedLyr.shapes, target);
@@ -433,7 +433,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.clipLayer(lyr2, lyr1, dataset);
       var target = [[[0], [~1]], [[1]]];
 
       assert.deepEqual(clippedLyr.shapes, target);
@@ -472,7 +472,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.clipLayer(lyr2, lyr1, dataset);
       var target = [[[1, 2]], [[3, ~1]]];
       assert.deepEqual(clippedLyr.shapes, target);
     })
@@ -493,7 +493,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr1, lyr2, dataset);
+      var clippedLyr = api.clipLayer(lyr1, lyr2, dataset);
       var target = [[[2, 3]]];
       assert.deepEqual(clippedLyr.shapes, target);
     })
@@ -514,7 +514,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var erasedLyr = api.erasePolygons(lyr2, lyr1, dataset);
+      var erasedLyr = api.eraseLayer(lyr2, lyr1, dataset);
       var target = [null, null];
       assert.deepEqual(erasedLyr.shapes, target);
     })
@@ -535,7 +535,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var erasedLyr = api.erasePolygons(lyr1, lyr2, dataset);
+      var erasedLyr = api.eraseLayer(lyr1, lyr2, dataset);
       //var target = [[[0], [~2, ~3]]];
       var target = [[[0], [~3, ~2]]];
       assert.deepEqual(erasedLyr.shapes, target);
@@ -568,7 +568,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.clipLayer(lyr2, lyr1, dataset);
       var target = [[[0]]];
       assert.deepEqual(clippedLyr.shapes, target);
     })
@@ -589,7 +589,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var erasedLyr = api.erasePolygons(lyr2, lyr1, dataset);
+      var erasedLyr = api.eraseLayer(lyr2, lyr1, dataset);
       var target = [null];
       assert.deepEqual(erasedLyr.shapes, target);
     })
@@ -610,7 +610,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var erasedLyr = api.erasePolygons(lyr2, lyr1, dataset);
+      var erasedLyr = api.eraseLayer(lyr2, lyr1, dataset);
       var target = [null];
       assert.deepEqual(erasedLyr.shapes, target);
     })
@@ -644,7 +644,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.clipLayer(lyr2, lyr1, dataset);
       var target = [null];
       assert.deepEqual(clippedLyr.shapes, target);
     })
@@ -666,7 +666,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.erasePolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.eraseLayer(lyr2, lyr1, dataset);
       var target = [[[2, ~0]]];
       assert.deepEqual(clippedLyr.shapes, target);
     })
@@ -687,7 +687,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.clipLayer(lyr2, lyr1, dataset);
       var target = [[[2, ~0]]];
       assert.deepEqual(clippedLyr.shapes, target);
     })
@@ -708,7 +708,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.clipPolygons(lyr1, lyr2, dataset);
+      var clippedLyr = api.clipLayer(lyr1, lyr2, dataset);
       var target = [[[2, ~0]]];
       assert.deepEqual(clippedLyr.shapes, target);
     })
@@ -729,7 +729,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.erasePolygons(lyr1, lyr2, dataset);
+      var clippedLyr = api.eraseLayer(lyr1, lyr2, dataset);
       var target = [[[1, 0]]];
       assert.deepEqual(clippedLyr.shapes, target);
     })
@@ -750,7 +750,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var clippedLyr = api.erasePolygons(lyr2, lyr1, dataset);
+      var clippedLyr = api.eraseLayer(lyr2, lyr1, dataset);
       var target = [null];
       assert.deepEqual(clippedLyr.shapes, target);
     })
@@ -787,7 +787,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [lyr1, lyr2]
       };
 
-      var erasedLyr = api.erasePolygons(lyr1, lyr2, dataset);
+      var erasedLyr = api.eraseLayer(lyr1, lyr2, dataset);
       var target = [[[3, ~1]]];
       assert.deepEqual(erasedLyr.shapes, target);
     })
@@ -843,7 +843,7 @@ describe('mapshaper-clip-erase.js', function () {
         arcs: new ArcCollection(coords),
         layers: [clipLyr, targetLyr]
       };
-      var clippedLyr = api.clipPolygons(targetLyr, clipLyr, dataset);
+      var clippedLyr = api.clipLayer(targetLyr, clipLyr, dataset);
       var target = [[[0, 2]]];
       assert.deepEqual(clippedLyr.shapes, target);
       // check arc division
@@ -888,7 +888,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [clipLyr, targetLyr]
       };
 
-      var erasedLyr = api.erasePolygons(targetLyr, clipLyr, dataset);
+      var erasedLyr = api.eraseLayer(targetLyr, clipLyr, dataset);
       var target = [null];
       assert.deepEqual(erasedLyr.shapes, target);
     })
@@ -963,7 +963,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [clipLyr, targetLyr]
       };
 
-      var clippedLyr = api.erasePolygons(targetLyr, clipLyr, dataset);
+      var clippedLyr = api.eraseLayer(targetLyr, clipLyr, dataset);
       var target = [null];
       assert.deepEqual(clippedLyr.shapes, target);
     });
@@ -985,7 +985,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [clipLyr, targetLyr]
       };
 
-      var clippedLyr = api.clipPolygons(targetLyr, clipLyr, dataset);
+      var clippedLyr = api.clipLayer(targetLyr, clipLyr, dataset);
       var target = [[[0]]];
       assert.deepEqual(clippedLyr.shapes, target);
     });
@@ -1023,7 +1023,7 @@ describe('mapshaper-clip-erase.js', function () {
         layers: [clipLyr, targetLyr]
       };
 
-      var erasedLyr = api.erasePolygons(targetLyr, clipLyr, dataset);
+      var erasedLyr = api.eraseLayer(targetLyr, clipLyr, dataset);
       var target = [null];
       assert.deepEqual(erasedLyr.shapes, target);
     })
