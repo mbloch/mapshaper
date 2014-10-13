@@ -5,7 +5,6 @@ TopoJSON.getPresimplifyFunction = function(arcs) {
   var width = arcs.getBounds().width(),
       quanta = 10000,  // enough for pixel-level detail at 1000px width and 100x zoom
       k = quanta / width;
-  console.log(">>> width:", width, 'k:', k);
   return TopoJSON.getZScaler(k);
 };
 
