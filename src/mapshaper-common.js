@@ -49,7 +49,7 @@ var trace = function() {
 function logArgs(args) {
   if (Utils.isArrayLike(args)) {
     var arr = Utils.toArray(args);
-    (console.error || console.log)(arr.join(' '));
+    (console.error || console.log).apply(console, arr);
   }
 }
 
