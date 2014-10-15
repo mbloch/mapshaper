@@ -18,6 +18,7 @@ function PolygonIndex(shape, arcs) {
 
   init();
 
+  // Return 0 if outside, 1 if inside, -1 if on boundary
   this.pointInPolygon = function(x, y) {
     if (!polygonBounds.containsPoint(x, y)) {
       return false;
@@ -31,7 +32,8 @@ function PolygonIndex(shape, arcs) {
       count += countCrosses(x, y, bucketId + 1);
     }
     count += countCrosses(x, y, bucketCount); // check oflo bucket
-    return count % 2 == 1;
+    if (isNaN(count)) return -1;
+    return count % 2 == 1 ? 1 : 0;
   };
 
   function init() {

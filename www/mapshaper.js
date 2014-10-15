@@ -5845,15 +5845,21 @@ geom.getShapeCentroid = function(shp, arcs) {
   return maxPath ? geom.getPathCentroid(maxPath, arcs) : null;
 };
 
-// TODO: decide how to handle points on the boundary
+// Return true if point is inside or on boundary of a shape
+//
 geom.testPointInShape = function(x, y, shp, arcs) {
-  var intersections = 0;
+  var isIn = false,
+      isOn = false;
+
   Utils.forEach(shp, function(ids) {
-    if (geom.testPointInRing(x, y, ids, arcs)) {
-      intersections++;
+    var inRing = geom.testPointInRing(x, y, ids, arcs);
+    if (inRing == 1) {
+      isIn = !isIn;
+    } else if (inRing == -1) {
+      isOn = true;
     }
   });
-  return intersections % 2 == 1;
+  return isOn || isIn;
 };
 
 // Get a point suitable for anchoring a label
@@ -5906,6 +5912,9 @@ geom.getPointToShapeDistance = function(x, y, shp, arcs) {
   return minDist;
 };
 
+// Test if point (x, y) is inside, outside or on the boundary of a polygon ring
+// Return 0: outside; 1: inside; -1: on boundary
+//
 geom.testPointInRing = function(x, y, ids, arcs) {
   /*
   // arcs.getSimpleShapeBounds() doesn't apply simplification, can't use here
@@ -5913,56 +5922,59 @@ geom.testPointInRing = function(x, y, ids, arcs) {
     return false;
   }
   */
-  var count = 0;
+  var isIn = false,
+      isOn = false;
   MapShaper.forEachPathSegment(ids, arcs, function(a, b, xx, yy) {
-    count += geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+    var result = geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+    if (result == 1) {
+      isIn = !isIn;
+    } else if (isNaN(result)) {
+      isOn = true;
+    }
   });
-  return count % 2 == 1;
+  return isOn ? -1 : (isIn ? 1 : 0)
 };
 
-/*
-geom.testPointInRing = function(x, y, ids, arcs) {
-  var iter = arcs.getShapeIter(ids);
-  if (!iter.hasNext()) return false;
-  var x0 = iter.x,
-      y0 = iter.y,
-      ax = x0,
-      ay = y0,
-      bx, by,
-      intersections = 0;
-
-  while (iter.hasNext()) {
-    bx = iter.x;
-    by = iter.y;
-    intersections += geom.testRayIntersection(x, y, ax, ay, bx, by);
-    ax = bx;
-    ay = by;
-  }
-
-  return intersections % 2 == 1;
-};
-*/
 
 // test if a vertical ray starting at poing (x, y) intersects a segment
 // returns 1 if intersection, 0 if no intersection, NaN if point touches segment
 geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
-  var hit = 0, yInt;
-  if (x < ax && x < bx || x > ax && x > bx || y >= ay && y >= by) {
+  var hit = 0, // default: no hit
+      yInt;
+
+  // case: p is entirely above, left or right of segment
+  if (x < ax && x < bx || x > ax && x > bx || y > ay && y > by) {
       // no intersection
-  } else if (x === ax) {
-    if (y === ay) {
-      hit = NaN;
-    } else if (bx < x && y < ay) {
-      hit = 1;
+  }
+  // case: px aligned with a segment vertex
+  else if (x === ax || x === bx) {
+    // case: vertical segment or collapsed segment
+    if (x === ax && x === bx) {
+      // p is on segment
+      if (y == ay || y == by || y > ay != y > by) {
+        hit = NaN;
+      }
+      // else: no hit
     }
-  } else if (x === bx) {
-    if (y === by) {
-      hit = NaN;
-    } else if (ax < x && y < by) {
-      hit = 1;
+    // case: px equal to ax (only)
+    else if (x === ax) {
+      if (y === ay) {
+        hit = NaN;
+      } else if (bx < ax && y < ay) {
+        // only score hit if px aligned to rightmost endpoint
+        hit = 1;
+      }
     }
-  } else if (y < ay && y < by) {
-    hit = 1;
+    // case: px equal to bx (only)
+    else {
+      if (y === by) {
+        hit = NaN;
+      } else if (ax < bx && y < by) {
+        // only score hit if px aligned to rightmost endpoint
+        hit = 1;
+      }
+    }
+  // case: px is between endpoints
   } else {
     yInt = geom.getYIntercept(x, ax, ay, bx, by);
     if (yInt > y) {
@@ -6218,28 +6230,6 @@ MapShaper.forEachArcId = function(arr, cb) {
   }
 };
 
-// TODO: consider removing paths when return value is null
-//
-/*
-MapShaper.forEachPath = function(arr, cb) {
-  var arcs, retn;
-  if (!arr) return; // null shape
-  if (!Utils.isArray(arr)) error("[forEachPath()] Expected an array, found:", arr);
-  for (var i=0; i<arr.length; i++) {
-    arcs = arr[i];
-    if (!arcs) continue;
-    retn = cb(arcs, i);
-    if (retn === void 0) {
-      // nop
-    } else if (Utils.isArray(retn)) {
-      trace("[forEachPath()] replacing:", arcs, 'with', retn);
-      arr[i] = retn;
-    } else {
-      error("Expected an array, received:", retn);
-    }
-  }
-};
-*/
 MapShaper.forEachPath = function(paths, cb) {
   MapShaper.editPaths(paths, cb);
 };
@@ -7184,6 +7174,7 @@ function PolygonIndex(shape, arcs) {
 
   init();
 
+  // Return 0 if outside, 1 if inside, -1 if on boundary
   this.pointInPolygon = function(x, y) {
     if (!polygonBounds.containsPoint(x, y)) {
       return false;
@@ -7197,7 +7188,8 @@ function PolygonIndex(shape, arcs) {
       count += countCrosses(x, y, bucketId + 1);
     }
     count += countCrosses(x, y, bucketCount); // check oflo bucket
-    return count % 2 == 1;
+    if (isNaN(count)) return -1;
+    return count % 2 == 1 ? 1 : 0;
   };
 
   function init() {
@@ -7304,34 +7296,49 @@ MapShaper.PathIndex = PathIndex;
 
 function PathIndex(shapes, arcs) {
   var _index;
-  var pathIndexes = {};
   var totalArea = arcs.getBounds().area();
   init(shapes);
 
   function init(shapes) {
     var boxes = [];
 
-    shapes.forEach(function(shp) {
-      if (shp) {
-        MapShaper.forEachPath(shp, addPath);
+    shapes.forEach(function(shp, shpId) {
+      var n = shp ? shp.length : 0;
+      for (var i=0; i<n; i++) {
+        addPath(shp[i], shpId);
       }
     });
 
     _index = require('rbush')();
     _index.load(boxes);
 
-    function addPath(ids, i) {
+    function addPath(ids, shpId) {
       var bounds = arcs.getSimpleShapeBounds(ids);
       var bbox = bounds.toArray();
       bbox.ids = ids;
-      bbox.i = i;
       bbox.bounds = bounds;
+      bbox.id = shpId;
       boxes.push(bbox);
       if (bounds.area() > totalArea * 0.02) {
-        pathIndexes[i] = new PolygonIndex([ids], arcs);
+        bbox.index = new PolygonIndex([ids], arcs);
       }
     }
   }
+
+  this.findEnclosingShape = function(p) {
+    var shpId = -1;
+    var shapes = findPointHitShapes(p);
+    shapes.forEach(function(paths) {
+      if (testPointInRings(p, paths)) {
+        shpId = paths[0].id;
+      }
+    });
+    return shpId;
+  };
+
+  this.pointIsEnclosed = function(p) {
+    return testPointInRings(p, findPointHitRings(p));
+  };
 
   // Test if a polygon ring is contained within an indexed ring
   // Not a true polygon-in-polygon test
@@ -7340,21 +7347,8 @@ function PathIndex(shapes, arcs) {
   // been detected previously).
   //
   this.pathIsEnclosed = function(pathIds) {
-    var pathBounds = arcs.getSimpleShapeBounds(pathIds),
-        cands = _index.search(pathBounds.toArray()),
-        p = getTestPoint(pathIds),
-        count = 0;
-
-    cands.forEach(function(cand) {
-      if (cand.i in pathIndexes) {
-        if (pathIndexes[cand.i].pointInPolygon(p.x, p.y)) {
-          count++;
-        }
-      } else if (pathContainsPoint(cand.ids, cand.bounds, p)) {
-        count++;
-      }
-    });
-    return count % 2 == 1;
+    var p = getTestPoint(pathIds);
+    return this.pointIsEnclosed(p);
   };
 
   // return array of paths that are contained within a path, or null if none
@@ -7372,7 +7366,7 @@ function PathIndex(shapes, arcs) {
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids);
       var isEnclosed = index ?
-        index.pointInPolygon(p.x, p.y) : pathContainsPoint(pathIds, pathBounds, p);
+        index.pointInPolygon(p[0], p[1]) : pathContainsPoint(pathIds, pathBounds, p);
       if (isEnclosed) {
         paths.push(cand.ids);
       }
@@ -7384,31 +7378,65 @@ function PathIndex(shapes, arcs) {
     var paths = [];
     shape.forEach(function(ids) {
       var enclosed = this.findEnclosedPaths(ids);
-      // console.log("enclosed:", enclosed)
       if (enclosed) {
         paths = xorArrays(paths, enclosed);
-        // console.log("xor:", paths)
       }
     }, this);
     return paths.length > 0 ? paths : null;
   };
+
+  function testPointInRings(p, cands) {
+    var count = 0,
+        isOn = false,
+        isIn = false;
+    cands.forEach(function(cand) {
+      var inRing = cand.index ?
+        cand.index.pointInPolygon(p[0], p[1]) :
+        pathContainsPoint(cand.ids, cand.bounds, p);
+      if (inRing == -1) {
+        isOn = true;
+      } else if (inRing == 1) {
+        isIn = !isIn;
+      }
+    });
+    return isOn || isIn;
+  }
+
+  function findPointHitShapes(p) {
+    var rings = findPointHitRings(p),
+        shapes = [],
+        shape, bbox;
+    if (rings.length > 0) {
+      rings.sort(function(a, b) {return a.id - b.id;});
+      for (var i=0; i<rings.length; i++) {
+        bbox = rings[i];
+        if (i === 0 || bbox.id != rings[i-1].id) {
+          shapes.push(shape=[]);
+        }
+        shape.push(bbox);
+      }
+    }
+    return shapes;
+  }
+
+  function findPointHitRings(p) {
+    var x = p[0],
+        y = p[1];
+    return _index.search([x, y, x, y]);
+  }
 
   function getTestPoint(pathIds) {
     // test point halfway along first segment because ring might still be
     // enclosed if a segment endpoint touches an indexed ring.
     var p0 = arcs.getVertex(pathIds[0], 0),
         p1 = arcs.getVertex(pathIds[0], 1);
-    return {
-      x: (p0.x + p1.x) / 2,
-      y: (p0.y + p1.y) / 2
-    };
+    return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
   }
 
   function pathContainsPoint(pathIds, pathBounds, p) {
-    if (pathBounds.containsPoint(p.x, p.y) === false) return false;
+    if (pathBounds.containsPoint(p[0], p[1]) === false) return 0;
     // A contains B iff some point on B is inside A
-    var inside = geom.testPointInRing(p.x, p.y, pathIds, arcs);
-    return inside;
+    return geom.testPointInRing(p[0], p[1], pathIds, arcs);
   }
 
   function xorArrays(a, b) {

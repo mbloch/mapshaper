@@ -102,28 +102,6 @@ MapShaper.forEachArcId = function(arr, cb) {
   }
 };
 
-// TODO: consider removing paths when return value is null
-//
-/*
-MapShaper.forEachPath = function(arr, cb) {
-  var arcs, retn;
-  if (!arr) return; // null shape
-  if (!Utils.isArray(arr)) error("[forEachPath()] Expected an array, found:", arr);
-  for (var i=0; i<arr.length; i++) {
-    arcs = arr[i];
-    if (!arcs) continue;
-    retn = cb(arcs, i);
-    if (retn === void 0) {
-      // nop
-    } else if (Utils.isArray(retn)) {
-      trace("[forEachPath()] replacing:", arcs, 'with', retn);
-      arr[i] = retn;
-    } else {
-      error("Expected an array, received:", retn);
-    }
-  }
-};
-*/
 MapShaper.forEachPath = function(paths, cb) {
   MapShaper.editPaths(paths, cb);
 };

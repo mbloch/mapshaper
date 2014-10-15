@@ -92,7 +92,7 @@ api.runCommand = function(cmd, dataset, cb) {
 
   if (name == 'clip') {
     sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-    newLayers = api.clipPolygonLayers(targetLayers, sourceLyr, dataset, opts);
+    newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
 
   } else if (name == 'each') {
     MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
@@ -105,7 +105,7 @@ api.runCommand = function(cmd, dataset, cb) {
 
   } else if (name == 'erase') {
     sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-    newLayers = api.erasePolygonLayers(targetLayers, sourceLyr, dataset, opts);
+    newLayers = api.eraseLayers(targetLayers, sourceLyr, dataset, opts);
 
   } else if (name == 'explode') {
     newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
