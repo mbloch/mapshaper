@@ -191,8 +191,9 @@ geom.testPointInRing = function(x, y, ids, arcs) {
 };
 
 
-// test if a vertical ray starting at poing (x, y) intersects a segment
+// test if a vertical ray originating at (x, y) intersects a segment
 // returns 1 if intersection, 0 if no intersection, NaN if point touches segment
+// (Special rules apply to endpoint intersections, to support point-in-polygon testing.)
 geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
   var hit = 0, // default: no hit
       yInt;
@@ -259,7 +260,6 @@ geom.getSphericalPathArea = function(iter) {
   }
   return sum / 2 * 6378137 * 6378137;
 };
-
 
 geom.wrapPathIter = function(iter, project) {
   return {

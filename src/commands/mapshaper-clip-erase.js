@@ -45,12 +45,12 @@ MapShaper.clipLayers = function(targetLayers, clipLyr, dataset, type, opts) {
       stop('[' + type + '] Can\'t clip a layer with itself');
     } else if (MapShaper.layerHasPoints(targetLyr)) {
       // clip point layer
-      clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, dataset.arcs, type, opts);
+      clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, dataset.arcs, type);
     } else if (MapShaper.layerHasPaths(targetLyr)) {
       // clip polygon or polyline layer
       if (!nodes) nodes = MapShaper.divideArcs(dataset);
       var clip = targetLyr.geometry_type == 'polygon' ? MapShaper.clipPolygons : MapShaper.clipPolylines;
-      clippedShapes = clip(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
+      clippedShapes = clip(targetLyr.shapes, clipLyr.shapes, nodes, type);
     } else {
       // unknown layer type
       stop('[' + type + '] Invalid target layer:', targetLyr.name);

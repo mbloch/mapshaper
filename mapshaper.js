@@ -2221,7 +2221,7 @@ var trace = function() {
 function logArgs(args) {
   if (Utils.isArrayLike(args)) {
     var arr = Utils.toArray(args);
-    (console.error || console.log)(arr.join(' '));
+    (console.error || console.log).apply(console, arr);
   }
 }
 
@@ -6102,12 +6102,13 @@ geom.testPointInRing = function(x, y, ids, arcs) {
       isOn = true;
     }
   });
-  return isOn ? -1 : (isIn ? 1 : 0)
+  return isOn ? -1 : (isIn ? 1 : 0);
 };
 
 
-// test if a vertical ray starting at poing (x, y) intersects a segment
+// test if a vertical ray originating at (x, y) intersects a segment
 // returns 1 if intersection, 0 if no intersection, NaN if point touches segment
+// (Special rules apply to endpoint intersections, to support point-in-polygon testing.)
 geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
   var hit = 0, // default: no hit
       yInt;
@@ -6174,7 +6175,6 @@ geom.getSphericalPathArea = function(iter) {
   }
   return sum / 2 * 6378137 * 6378137;
 };
-
 
 geom.wrapPathIter = function(iter, project) {
   return {
@@ -6827,6 +6827,10 @@ function PathIndex(shapes, arcs) {
     return testPointInRings(p, findPointHitRings(p));
   };
 
+  this.arcIsEnclosed = function(arcId) {
+    return this.pointIsEnclosed(getTestPoint(arcId));
+  };
+
   // Test if a polygon ring is contained within an indexed ring
   // Not a true polygon-in-polygon test
   // Assumes that the target ring does not cross an indexed ring at any point
@@ -6834,7 +6838,8 @@ function PathIndex(shapes, arcs) {
   // been detected previously).
   //
   this.pathIsEnclosed = function(pathIds) {
-    var p = getTestPoint(pathIds);
+    // TODO: handle irregular paths
+    var p = getTestPoint(pathIds[0]);
     return this.pointIsEnclosed(p);
   };
 
@@ -6851,7 +6856,7 @@ function PathIndex(shapes, arcs) {
     }
 
     cands.forEach(function(cand) {
-      var p = getTestPoint(cand.ids);
+      var p = getTestPoint(cand.ids[0]);
       var isEnclosed = index ?
         index.pointInPolygon(p[0], p[1]) : pathContainsPoint(pathIds, pathBounds, p);
       if (isEnclosed) {
@@ -6912,11 +6917,11 @@ function PathIndex(shapes, arcs) {
     return _index.search([x, y, x, y]);
   }
 
-  function getTestPoint(pathIds) {
+  function getTestPoint(arcId) {
     // test point halfway along first segment because ring might still be
     // enclosed if a segment endpoint touches an indexed ring.
-    var p0 = arcs.getVertex(pathIds[0], 0),
-        p1 = arcs.getVertex(pathIds[0], 1);
+    var p0 = arcs.getVertex(arcId, 0),
+        p1 = arcs.getVertex(arcId, 1);
     return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
   }
 
@@ -9823,7 +9828,6 @@ TopoJSON.getPresimplifyFunction = function(arcs) {
   var width = arcs.getBounds().width(),
       quanta = 10000,  // enough for pixel-level detail at 1000px width and 100x zoom
       k = quanta / width;
-  console.log(">>> width:", width, 'k:', k);
   return TopoJSON.getZScaler(k);
 };
 
@@ -12991,55 +12995,51 @@ MapShaper.getPolygonFlattener = function(nodes) {
 
 
 // assumes layers and arcs have been prepared for clipping
-MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type, opts) {
+MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   var arcs = nodes.arcs;
   var clipFlags = new Uint8Array(arcs.size());
   var routeFlags = new Uint8Array(arcs.size());
-
   var clipArcTouches = 0;
   var clipArcUses = 0;
   var usedClipArcs = [];
   var dividePath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
-  return clipPolygons(targetShapes, clipShapes, arcs, type);
+  var dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
 
-  function clipPolygons(targetShapes, clipShapes, arcs, type) {
-    var dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
-    // clean each target polygon by dissolving its rings
-    targetShapes = targetShapes.map(dissolvePolygon);
-    // merge rings of clip/erase polygons and dissolve them all
-    clipShapes = [dissolvePolygon(MapShaper.concatShapes(clipShapes))];
+  // clean each target polygon by dissolving its rings
+  targetShapes = targetShapes.map(dissolvePolygon);
+  // merge rings of clip/erase polygons and dissolve them all
+  clipShapes = [dissolvePolygon(MapShaper.concatShapes(clipShapes))];
 
-    // Open pathways in the clip/erase layer
-    // Need to expose clip/erase routes in both directions by setting route
-    // in both directions to visible -- this is how cut-out shapes are detected
-    // Or-ing with 0x11 makes both directions visible (so reverse paths will block)
-    MapShaper.openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', !!"dissolve", 0x11);
+  // Open pathways in the clip/erase layer
+  // Need to expose clip/erase routes in both directions by setting route
+  // in both directions to visible -- this is how cut-out shapes are detected
+  // Or-ing with 0x11 makes both directions visible (so reverse paths will block)
+  MapShaper.openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', !!"dissolve", 0x11);
 
-    var index = new PathIndex(clipShapes, arcs);
-    var clippedShapes = targetShapes.map(function(shape) {
-      if (shape) {
-        return clipPolygon(shape, type, index);
-      }
-      return null;
-    });
+  var index = new PathIndex(clipShapes, arcs);
+  var clippedShapes = targetShapes.map(function(shape) {
+    if (shape) {
+      return clipPolygon(shape, type, index);
+    }
+    return null;
+  });
 
-    // add clip/erase polygons that are fully contained in a target polygon
-    // need to index only non-intersecting clip shapes
-    // (Intersecting shapes have one or more arcs that have been scanned)
-    //
-    var undividedClipShapes = findUndividedClipShapes(clipShapes);
+  // add clip/erase polygons that are fully contained in a target polygon
+  // need to index only non-intersecting clip shapes
+  // (Intersecting shapes have one or more arcs that have been scanned)
+  //
+  var undividedClipShapes = findUndividedClipShapes(clipShapes);
 
-    MapShaper.closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
-    index = new PathIndex(undividedClipShapes, arcs);
-    targetShapes.forEach(function(shape, shapeId) {
-      var paths = shape ? findInteriorPaths(shape, type, index) : null;
-      if (paths) {
-        clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
-      }
-    });
+  MapShaper.closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
+  index = new PathIndex(undividedClipShapes, arcs);
+  targetShapes.forEach(function(shape, shapeId) {
+    var paths = shape ? findInteriorPaths(shape, type, index) : null;
+    if (paths) {
+      clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
+    }
+  });
 
-    return clippedShapes;
-  }
+  return clippedShapes;
 
   function clipPolygon(shape, type, index) {
     var dividedShape = [],
@@ -13125,7 +13125,6 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type, opts) {
       } else {
         usable = true;
       }
-
 
     } else if (targetRoute === 0 && clipRoute == 3) {
       usedClipArcs.push(id);
@@ -13235,11 +13234,43 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type, opts) {
 
 
 
+// Assumes: Arcs have been divided
+//
+MapShaper.clipPolylines = function(targetShapes, clipShapes, nodes, type) {
+  var index = new PathIndex(clipShapes, nodes.arcs);
+
+  return targetShapes.map(function(shp) {
+    return clipPolyline(shp);
+  });
+
+  function clipPolyline(shp) {
+    var clipped = shp.reduce(clipPath, []);
+    return clipped.length > 0 ? clipped : null;
+  }
+
+  function clipPath(memo, path) {
+    var path2 = [],
+        arcId, enclosed;
+    for (var i=0; i<path.length; i++) {
+      arcId = path[i];
+      enclosed = index.arcIsEnclosed(arcId);
+      if (enclosed && type == 'clip' || !enclosed && type == 'erase') {
+        path2.push(arcId);
+      } else if (path2.length > 0) {
+        memo.push(path2);
+        path2 = [];
+      }
+    }
+    if (path2.length > 0) memo.push(path2);
+    return memo;
+  }
+};
+
 
 
 
 //
-MapShaper.clipPoints = function(points, clipShapes, arcs, type, opts) {
+MapShaper.clipPoints = function(points, clipShapes, arcs, type) {
   var index = new PathIndex(clipShapes, arcs);
 
   var points2 = points.reduce(function(memo, feat) {
@@ -13303,12 +13334,12 @@ MapShaper.clipLayers = function(targetLayers, clipLyr, dataset, type, opts) {
       stop('[' + type + '] Can\'t clip a layer with itself');
     } else if (MapShaper.layerHasPoints(targetLyr)) {
       // clip point layer
-      clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, dataset.arcs, type, opts);
+      clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, dataset.arcs, type);
     } else if (MapShaper.layerHasPaths(targetLyr)) {
       // clip polygon or polyline layer
       if (!nodes) nodes = MapShaper.divideArcs(dataset);
       var clip = targetLyr.geometry_type == 'polygon' ? MapShaper.clipPolygons : MapShaper.clipPolylines;
-      clippedShapes = clip(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
+      clippedShapes = clip(targetLyr.shapes, clipLyr.shapes, nodes, type);
     } else {
       // unknown layer type
       stop('[' + type + '] Invalid target layer:', targetLyr.name);

@@ -4,7 +4,7 @@ mapshaper-shape-utils
 */
 
 //
-MapShaper.clipPoints = function(points, clipShapes, arcs, type, opts) {
+MapShaper.clipPoints = function(points, clipShapes, arcs, type) {
   var index = new PathIndex(clipShapes, arcs);
 
   var points2 = points.reduce(function(memo, feat) {

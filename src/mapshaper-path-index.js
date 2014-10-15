@@ -48,6 +48,10 @@ function PathIndex(shapes, arcs) {
     return testPointInRings(p, findPointHitRings(p));
   };
 
+  this.arcIsEnclosed = function(arcId) {
+    return this.pointIsEnclosed(getTestPoint(arcId));
+  };
+
   // Test if a polygon ring is contained within an indexed ring
   // Not a true polygon-in-polygon test
   // Assumes that the target ring does not cross an indexed ring at any point
@@ -55,7 +59,8 @@ function PathIndex(shapes, arcs) {
   // been detected previously).
   //
   this.pathIsEnclosed = function(pathIds) {
-    var p = getTestPoint(pathIds);
+    // TODO: handle irregular paths
+    var p = getTestPoint(pathIds[0]);
     return this.pointIsEnclosed(p);
   };
 
@@ -72,7 +77,7 @@ function PathIndex(shapes, arcs) {
     }
 
     cands.forEach(function(cand) {
-      var p = getTestPoint(cand.ids);
+      var p = getTestPoint(cand.ids[0]);
       var isEnclosed = index ?
         index.pointInPolygon(p[0], p[1]) : pathContainsPoint(pathIds, pathBounds, p);
       if (isEnclosed) {
@@ -133,11 +138,11 @@ function PathIndex(shapes, arcs) {
     return _index.search([x, y, x, y]);
   }
 
-  function getTestPoint(pathIds) {
+  function getTestPoint(arcId) {
     // test point halfway along first segment because ring might still be
     // enclosed if a segment endpoint touches an indexed ring.
-    var p0 = arcs.getVertex(pathIds[0], 0),
-        p1 = arcs.getVertex(pathIds[0], 1);
+    var p0 = arcs.getVertex(arcId, 0),
+        p1 = arcs.getVertex(arcId, 1);
     return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
   }
 

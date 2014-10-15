@@ -3961,7 +3961,7 @@ var trace = function() {
 function logArgs(args) {
   if (Utils.isArrayLike(args)) {
     var arr = Utils.toArray(args);
-    (console.error || console.log)(arr.join(' '));
+    (console.error || console.log).apply(console, arr);
   }
 }
 
@@ -5932,12 +5932,13 @@ geom.testPointInRing = function(x, y, ids, arcs) {
       isOn = true;
     }
   });
-  return isOn ? -1 : (isIn ? 1 : 0)
+  return isOn ? -1 : (isIn ? 1 : 0);
 };
 
 
-// test if a vertical ray starting at poing (x, y) intersects a segment
+// test if a vertical ray originating at (x, y) intersects a segment
 // returns 1 if intersection, 0 if no intersection, NaN if point touches segment
+// (Special rules apply to endpoint intersections, to support point-in-polygon testing.)
 geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
   var hit = 0, // default: no hit
       yInt;
@@ -6004,7 +6005,6 @@ geom.getSphericalPathArea = function(iter) {
   }
   return sum / 2 * 6378137 * 6378137;
 };
-
 
 geom.wrapPathIter = function(iter, project) {
   return {
@@ -7340,6 +7340,10 @@ function PathIndex(shapes, arcs) {
     return testPointInRings(p, findPointHitRings(p));
   };
 
+  this.arcIsEnclosed = function(arcId) {
+    return this.pointIsEnclosed(getTestPoint(arcId));
+  };
+
   // Test if a polygon ring is contained within an indexed ring
   // Not a true polygon-in-polygon test
   // Assumes that the target ring does not cross an indexed ring at any point
@@ -7347,7 +7351,8 @@ function PathIndex(shapes, arcs) {
   // been detected previously).
   //
   this.pathIsEnclosed = function(pathIds) {
-    var p = getTestPoint(pathIds);
+    // TODO: handle irregular paths
+    var p = getTestPoint(pathIds[0]);
     return this.pointIsEnclosed(p);
   };
 
@@ -7364,7 +7369,7 @@ function PathIndex(shapes, arcs) {
     }
 
     cands.forEach(function(cand) {
-      var p = getTestPoint(cand.ids);
+      var p = getTestPoint(cand.ids[0]);
       var isEnclosed = index ?
         index.pointInPolygon(p[0], p[1]) : pathContainsPoint(pathIds, pathBounds, p);
       if (isEnclosed) {
@@ -7425,11 +7430,11 @@ function PathIndex(shapes, arcs) {
     return _index.search([x, y, x, y]);
   }
 
-  function getTestPoint(pathIds) {
+  function getTestPoint(arcId) {
     // test point halfway along first segment because ring might still be
     // enclosed if a segment endpoint touches an indexed ring.
-    var p0 = arcs.getVertex(pathIds[0], 0),
-        p1 = arcs.getVertex(pathIds[0], 1);
+    var p0 = arcs.getVertex(arcId, 0),
+        p1 = arcs.getVertex(arcId, 1);
     return [(p0.x + p1.x) / 2, (p0.y + p1.y) / 2];
   }
 
@@ -10336,7 +10341,6 @@ TopoJSON.getPresimplifyFunction = function(arcs) {
   var width = arcs.getBounds().width(),
       quanta = 10000,  // enough for pixel-level detail at 1000px width and 100x zoom
       k = quanta / width;
-  console.log(">>> width:", width, 'k:', k);
   return TopoJSON.getZScaler(k);
 };
 

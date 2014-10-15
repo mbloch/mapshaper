@@ -5,55 +5,51 @@ mapshaper-path-index
 */
 
 // assumes layers and arcs have been prepared for clipping
-MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type, opts) {
+MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   var arcs = nodes.arcs;
   var clipFlags = new Uint8Array(arcs.size());
   var routeFlags = new Uint8Array(arcs.size());
-
   var clipArcTouches = 0;
   var clipArcUses = 0;
   var usedClipArcs = [];
   var dividePath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
-  return clipPolygons(targetShapes, clipShapes, arcs, type);
+  var dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
 
-  function clipPolygons(targetShapes, clipShapes, arcs, type) {
-    var dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
-    // clean each target polygon by dissolving its rings
-    targetShapes = targetShapes.map(dissolvePolygon);
-    // merge rings of clip/erase polygons and dissolve them all
-    clipShapes = [dissolvePolygon(MapShaper.concatShapes(clipShapes))];
+  // clean each target polygon by dissolving its rings
+  targetShapes = targetShapes.map(dissolvePolygon);
+  // merge rings of clip/erase polygons and dissolve them all
+  clipShapes = [dissolvePolygon(MapShaper.concatShapes(clipShapes))];
 
-    // Open pathways in the clip/erase layer
-    // Need to expose clip/erase routes in both directions by setting route
-    // in both directions to visible -- this is how cut-out shapes are detected
-    // Or-ing with 0x11 makes both directions visible (so reverse paths will block)
-    MapShaper.openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', !!"dissolve", 0x11);
+  // Open pathways in the clip/erase layer
+  // Need to expose clip/erase routes in both directions by setting route
+  // in both directions to visible -- this is how cut-out shapes are detected
+  // Or-ing with 0x11 makes both directions visible (so reverse paths will block)
+  MapShaper.openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', !!"dissolve", 0x11);
 
-    var index = new PathIndex(clipShapes, arcs);
-    var clippedShapes = targetShapes.map(function(shape) {
-      if (shape) {
-        return clipPolygon(shape, type, index);
-      }
-      return null;
-    });
+  var index = new PathIndex(clipShapes, arcs);
+  var clippedShapes = targetShapes.map(function(shape) {
+    if (shape) {
+      return clipPolygon(shape, type, index);
+    }
+    return null;
+  });
 
-    // add clip/erase polygons that are fully contained in a target polygon
-    // need to index only non-intersecting clip shapes
-    // (Intersecting shapes have one or more arcs that have been scanned)
-    //
-    var undividedClipShapes = findUndividedClipShapes(clipShapes);
+  // add clip/erase polygons that are fully contained in a target polygon
+  // need to index only non-intersecting clip shapes
+  // (Intersecting shapes have one or more arcs that have been scanned)
+  //
+  var undividedClipShapes = findUndividedClipShapes(clipShapes);
 
-    MapShaper.closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
-    index = new PathIndex(undividedClipShapes, arcs);
-    targetShapes.forEach(function(shape, shapeId) {
-      var paths = shape ? findInteriorPaths(shape, type, index) : null;
-      if (paths) {
-        clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
-      }
-    });
+  MapShaper.closeArcRoutes(clipShapes, arcs, routeFlags, true, true); // not needed?
+  index = new PathIndex(undividedClipShapes, arcs);
+  targetShapes.forEach(function(shape, shapeId) {
+    var paths = shape ? findInteriorPaths(shape, type, index) : null;
+    if (paths) {
+      clippedShapes[shapeId] = (clippedShapes[shapeId] || []).concat(paths);
+    }
+  });
 
-    return clippedShapes;
-  }
+  return clippedShapes;
 
   function clipPolygon(shape, type, index) {
     var dividedShape = [],
@@ -139,7 +135,6 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type, opts) {
       } else {
         usable = true;
       }
-
 
     } else if (targetRoute === 0 && clipRoute == 3) {
       usedClipArcs.push(id);
