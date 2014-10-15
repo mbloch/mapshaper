@@ -7440,6 +7440,13 @@ MapShaper.findClippingPoints = function(arcs) {
 //
 MapShaper.getSelfIntersectionSplitter = function(nodes) {
 
+  function contains(arr, el) {
+    for (var i=0, n=arr.length; i<n; i++) {
+      if (arr[i] === el) return true;
+    }
+    return false;
+  }
+
   // If arc @enterId enters a node with more than one open routes leading out:
   //   return array of sub-paths
   // else return null
@@ -7449,7 +7456,10 @@ MapShaper.getSelfIntersectionSplitter = function(nodes) {
         exitIds, firstExitId;
     nodes.forEachConnectedArc(enterId, function(arcId) {
       var exitId = ~arcId;
-      if (path.indexOf(exitId) > -1) { // ignore arcs that are not on this path
+      // TODO: remove performance bottleneck
+      // contains() is faster than native array.indexOf(), could do better.
+      // if (path.indexOf(exitId) > -1) { // ignore arcs that are not on this path
+      if (contains(path, exitId)) { // ignore arcs that are not on this path
         if (count === 0) {
           firstExitId = exitId;
         } else if (count === 1) {
