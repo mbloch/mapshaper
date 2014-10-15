@@ -17,19 +17,20 @@ MapShaper.clipPolylines = function(targetShapes, clipShapes, nodes, type) {
   }
 
   function clipPath(memo, path) {
-    var path2 = [],
+    var clippedPath = null,
         arcId, enclosed;
     for (var i=0; i<path.length; i++) {
       arcId = path[i];
       enclosed = index.arcIsEnclosed(arcId);
       if (enclosed && type == 'clip' || !enclosed && type == 'erase') {
-        path2.push(arcId);
-      } else if (path2.length > 0) {
-        memo.push(path2);
-        path2 = [];
+        if (!clippedPath) {
+          memo.push(clippedPath = []);
+        }
+        clippedPath.push(arcId);
+      } else {
+        clippedPath = null;
       }
     }
-    if (path2.length > 0) memo.push(path2);
     return memo;
   }
 };

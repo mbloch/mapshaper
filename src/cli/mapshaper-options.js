@@ -160,8 +160,6 @@ MapShaper.getOptionParser = function() {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
     })
-
-
     .option("target", targetOpt);
 
   parser.command('simplify')

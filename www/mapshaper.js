@@ -5668,16 +5668,25 @@ MapShaper.getFeatureCount = function(lyr) {
 };
 
 MapShaper.getLayerBounds = function(lyr, arcs) {
-  var bounds = new Bounds();
+  var bounds = null;
   if (lyr.geometry_type == 'point') {
+    bounds = new Bounds();
     MapShaper.forEachPoint(lyr, function(p) {
       bounds.mergePoint(p[0], p[1]);
     });
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-    MapShaper.forEachArcId(lyr.shapes, function(id) {
-      arcs.mergeArcBounds(id, bounds);
-    });
+    bounds = MapShaper.getPathBounds(lyr.shapes, arcs);
+  } else {
+    error("Layer is missing a valid geometry type");
   }
+  return bounds;
+};
+
+MapShaper.getPathBounds = function(shapes, arcs) {
+  var bounds = new Bounds();
+  MapShaper.forEachArcId(shapes, function(id) {
+    arcs.mergeArcBounds(id, bounds);
+  });
   return bounds;
 };
 
@@ -7296,7 +7305,8 @@ MapShaper.PathIndex = PathIndex;
 
 function PathIndex(shapes, arcs) {
   var _index;
-  var totalArea = arcs.getBounds().area();
+  // var totalArea = arcs.getBounds().area();
+  var totalArea = MapShaper.getPathBounds(shapes, arcs).area();
   init(shapes);
 
   function init(shapes) {
@@ -7319,6 +7329,7 @@ function PathIndex(shapes, arcs) {
       bbox.bounds = bounds;
       bbox.id = shpId;
       boxes.push(bbox);
+      // TODO: Better test for whether or not to index a path
       if (bounds.area() > totalArea * 0.02) {
         bbox.index = new PolygonIndex([ids], arcs);
       }

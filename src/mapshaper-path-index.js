@@ -1,10 +1,16 @@
-/* @requires mapshaper-shape-utils, mapshaper-shape-geom, mapshaper-polygon-index */
+/* @requires
+mapshaper-shape-utils
+mapshaper-dataset-utils
+mapshaper-shape-geom
+mapshaper-polygon-index
+*/
 
 MapShaper.PathIndex = PathIndex;
 
 function PathIndex(shapes, arcs) {
   var _index;
-  var totalArea = arcs.getBounds().area();
+  // var totalArea = arcs.getBounds().area();
+  var totalArea = MapShaper.getPathBounds(shapes, arcs).area();
   init(shapes);
 
   function init(shapes) {
@@ -27,6 +33,7 @@ function PathIndex(shapes, arcs) {
       bbox.bounds = bounds;
       bbox.id = shpId;
       boxes.push(bbox);
+      // TODO: Better test for whether or not to index a path
       if (bounds.area() > totalArea * 0.02) {
         bbox.index = new PolygonIndex([ids], arcs);
       }

@@ -6,6 +6,7 @@ describe('mapshaper-subdivide.js', function () {
     var nullArcs = new api.internal.ArcCollection([]);
     it('divide a layer into individual shapes', function() {
       var lyr = {
+        geometry_type: "polygon",
         shapes: [[[0]], [[1]], [[2]], [[3]], [[4]]]
       }
 
@@ -20,6 +21,7 @@ describe('mapshaper-subdivide.js', function () {
 
     it('divide on a sum', function() {
       var lyr = {
+        geometry_type: "polygon",
         shapes: [[[0]], [[1]], [[2]], [[3]]],
         data: new api.internal.DataTable([{foo: 1}, {foo: 0}, {foo: 39}, {foo: 3}])
       }

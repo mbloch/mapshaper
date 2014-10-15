@@ -26,16 +26,25 @@ MapShaper.getFeatureCount = function(lyr) {
 };
 
 MapShaper.getLayerBounds = function(lyr, arcs) {
-  var bounds = new Bounds();
+  var bounds = null;
   if (lyr.geometry_type == 'point') {
+    bounds = new Bounds();
     MapShaper.forEachPoint(lyr, function(p) {
       bounds.mergePoint(p[0], p[1]);
     });
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-    MapShaper.forEachArcId(lyr.shapes, function(id) {
-      arcs.mergeArcBounds(id, bounds);
-    });
+    bounds = MapShaper.getPathBounds(lyr.shapes, arcs);
+  } else {
+    error("Layer is missing a valid geometry type");
   }
+  return bounds;
+};
+
+MapShaper.getPathBounds = function(shapes, arcs) {
+  var bounds = new Bounds();
+  MapShaper.forEachArcId(shapes, function(id) {
+    arcs.mergeArcBounds(id, bounds);
+  });
   return bounds;
 };
 

@@ -3112,8 +3112,6 @@ MapShaper.getOptionParser = function() {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
     })
-
-
     .option("target", targetOpt);
 
   parser.command('simplify')
@@ -5703,16 +5701,25 @@ MapShaper.getFeatureCount = function(lyr) {
 };
 
 MapShaper.getLayerBounds = function(lyr, arcs) {
-  var bounds = new Bounds();
+  var bounds = null;
   if (lyr.geometry_type == 'point') {
+    bounds = new Bounds();
     MapShaper.forEachPoint(lyr, function(p) {
       bounds.mergePoint(p[0], p[1]);
     });
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-    MapShaper.forEachArcId(lyr.shapes, function(id) {
-      arcs.mergeArcBounds(id, bounds);
-    });
+    bounds = MapShaper.getPathBounds(lyr.shapes, arcs);
+  } else {
+    error("Layer is missing a valid geometry type");
   }
+  return bounds;
+};
+
+MapShaper.getPathBounds = function(shapes, arcs) {
+  var bounds = new Bounds();
+  MapShaper.forEachArcId(shapes, function(id) {
+    arcs.mergeArcBounds(id, bounds);
+  });
   return bounds;
 };
 
@@ -6785,7 +6792,8 @@ MapShaper.PathIndex = PathIndex;
 
 function PathIndex(shapes, arcs) {
   var _index;
-  var totalArea = arcs.getBounds().area();
+  // var totalArea = arcs.getBounds().area();
+  var totalArea = MapShaper.getPathBounds(shapes, arcs).area();
   init(shapes);
 
   function init(shapes) {
@@ -6808,6 +6816,7 @@ function PathIndex(shapes, arcs) {
       bbox.bounds = bounds;
       bbox.id = shpId;
       boxes.push(bbox);
+      // TODO: Better test for whether or not to index a path
       if (bounds.area() > totalArea * 0.02) {
         bbox.index = new PolygonIndex([ids], arcs);
       }
@@ -12563,15 +12572,17 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
       shapes = lyr.shapes,
       lyr1, lyr2;
   lyr1 = {
+    geometry_type: lyr.geometry_type,
     shapes: [],
     data: properties ? [] : null
   };
   lyr2 = {
+    geometry_type: lyr.geometry_type,
     shapes: [],
     data: properties ? [] : null
   };
 
-  var useX = bounds.width() > bounds.height();
+  var useX = bounds && bounds.width() > bounds.height();
   // TODO: think about case where there are null shapes with NaN centers
   var centers = Utils.map(shapes, function(shp) {
     var bounds = arcs.getMultiShapeBounds(shp);
@@ -13261,19 +13272,20 @@ MapShaper.clipPolylines = function(targetShapes, clipShapes, nodes, type) {
   }
 
   function clipPath(memo, path) {
-    var path2 = [],
+    var clippedPath = null,
         arcId, enclosed;
     for (var i=0; i<path.length; i++) {
       arcId = path[i];
       enclosed = index.arcIsEnclosed(arcId);
       if (enclosed && type == 'clip' || !enclosed && type == 'erase') {
-        path2.push(arcId);
-      } else if (path2.length > 0) {
-        memo.push(path2);
-        path2 = [];
+        if (!clippedPath) {
+          memo.push(clippedPath = []);
+        }
+        clippedPath.push(arcId);
+      } else {
+        clippedPath = null;
       }
     }
-    if (path2.length > 0) memo.push(path2);
     return memo;
   }
 };

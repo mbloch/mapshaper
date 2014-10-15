@@ -53,15 +53,17 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
       shapes = lyr.shapes,
       lyr1, lyr2;
   lyr1 = {
+    geometry_type: lyr.geometry_type,
     shapes: [],
     data: properties ? [] : null
   };
   lyr2 = {
+    geometry_type: lyr.geometry_type,
     shapes: [],
     data: properties ? [] : null
   };
 
-  var useX = bounds.width() > bounds.height();
+  var useX = bounds && bounds.width() > bounds.height();
   // TODO: think about case where there are null shapes with NaN centers
   var centers = Utils.map(shapes, function(shp) {
     var bounds = arcs.getMultiShapeBounds(shp);
