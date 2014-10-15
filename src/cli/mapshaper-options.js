@@ -114,10 +114,7 @@ MapShaper.getOptionParser = function() {
     .option("encoding", {
       describe: "text encoding of .dbf file"
     })*/
-    .option("bbox", {
-      type: "flag",
-      describe: "add bbox property to TopoJSON or GeoJSON output"
-    })
+
     .option("bbox-index", {
       describe: "export a .json file with bbox of each layer",
       type: 'flag'
@@ -140,25 +137,30 @@ MapShaper.getOptionParser = function() {
       describe: "coordinate precision in source units, e.g. 0.001",
       type: "number"
     })
+    .option("bbox", {
+      type: "flag",
+      describe: "(Topo/GeoJSON) add bbox property"
+    })
+    .option("id-field", {
+      describe: "(Topo/GeoJSON) field to use for id property"
+    })
     .option("quantization", {
-      describe: "specify TopoJSON quantization (auto-set by default)",
+      describe: "(TopoJSON) specify quantization (auto-set by default)",
       type: "integer"
     })
     .option("no-quantization", {
-      describe: "export TopoJSON without quantization",
+      describe: "(TopoJSON) export arc coordinates without quantization",
       type: "flag"
     })
     .option('presimplify', {
-      // describe: "generate per-vertex thresholds for dynamic simplification",
+      describe: "(TopoJSON) add per-vertex data for dynamic simplification",
       type: "flag"
     })
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
     })
-    .option("id-field", {
-      describe: "field to use for Topo/GeoJSON id property"
-    })
+
 
     .option("target", targetOpt);
 
