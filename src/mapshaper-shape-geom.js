@@ -100,15 +100,21 @@ geom.getShapeCentroid = function(shp, arcs) {
   return maxPath ? geom.getPathCentroid(maxPath, arcs) : null;
 };
 
-// TODO: decide how to handle points on the boundary
+// Return true if point is inside or on boundary of a shape
+//
 geom.testPointInShape = function(x, y, shp, arcs) {
-  var intersections = 0;
+  var isIn = false,
+      isOn = false;
+
   Utils.forEach(shp, function(ids) {
-    if (geom.testPointInRing(x, y, ids, arcs)) {
-      intersections++;
+    var inRing = geom.testPointInRing(x, y, ids, arcs);
+    if (inRing == 1) {
+      isIn = !isIn;
+    } else if (inRing == -1) {
+      isOn = true;
     }
   });
-  return intersections % 2 == 1;
+  return isOn || isIn;
 };
 
 // Get a point suitable for anchoring a label
@@ -161,6 +167,9 @@ geom.getPointToShapeDistance = function(x, y, shp, arcs) {
   return minDist;
 };
 
+// Test if point (x, y) is inside, outside or on the boundary of a polygon ring
+// Return 0: outside; 1: inside; -1: on boundary
+//
 geom.testPointInRing = function(x, y, ids, arcs) {
   /*
   // arcs.getSimpleShapeBounds() doesn't apply simplification, can't use here
@@ -168,56 +177,59 @@ geom.testPointInRing = function(x, y, ids, arcs) {
     return false;
   }
   */
-  var count = 0;
+  var isIn = false,
+      isOn = false;
   MapShaper.forEachPathSegment(ids, arcs, function(a, b, xx, yy) {
-    count += geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+    var result = geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+    if (result == 1) {
+      isIn = !isIn;
+    } else if (isNaN(result)) {
+      isOn = true;
+    }
   });
-  return count % 2 == 1;
+  return isOn ? -1 : (isIn ? 1 : 0);
 };
 
-/*
-geom.testPointInRing = function(x, y, ids, arcs) {
-  var iter = arcs.getShapeIter(ids);
-  if (!iter.hasNext()) return false;
-  var x0 = iter.x,
-      y0 = iter.y,
-      ax = x0,
-      ay = y0,
-      bx, by,
-      intersections = 0;
-
-  while (iter.hasNext()) {
-    bx = iter.x;
-    by = iter.y;
-    intersections += geom.testRayIntersection(x, y, ax, ay, bx, by);
-    ax = bx;
-    ay = by;
-  }
-
-  return intersections % 2 == 1;
-};
-*/
 
 // test if a vertical ray starting at poing (x, y) intersects a segment
 // returns 1 if intersection, 0 if no intersection, NaN if point touches segment
 geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
-  var hit = 0, yInt;
-  if (x < ax && x < bx || x > ax && x > bx || y >= ay && y >= by) {
+  var hit = 0, // default: no hit
+      yInt;
+
+  // case: p is entirely above, left or right of segment
+  if (x < ax && x < bx || x > ax && x > bx || y > ay && y > by) {
       // no intersection
-  } else if (x === ax) {
-    if (y === ay) {
-      hit = NaN;
-    } else if (bx < x && y < ay) {
-      hit = 1;
+  }
+  // case: px aligned with a segment vertex
+  else if (x === ax || x === bx) {
+    // case: vertical segment or collapsed segment
+    if (x === ax && x === bx) {
+      // p is on segment
+      if (y == ay || y == by || y > ay != y > by) {
+        hit = NaN;
+      }
+      // else: no hit
     }
-  } else if (x === bx) {
-    if (y === by) {
-      hit = NaN;
-    } else if (ax < x && y < by) {
-      hit = 1;
+    // case: px equal to ax (only)
+    else if (x === ax) {
+      if (y === ay) {
+        hit = NaN;
+      } else if (bx < ax && y < ay) {
+        // only score hit if px aligned to rightmost endpoint
+        hit = 1;
+      }
     }
-  } else if (y < ay && y < by) {
-    hit = 1;
+    // case: px equal to bx (only)
+    else {
+      if (y === by) {
+        hit = NaN;
+      } else if (ax < bx && y < by) {
+        // only score hit if px aligned to rightmost endpoint
+        hit = 1;
+      }
+    }
+  // case: px is between endpoints
   } else {
     yInt = geom.getYIntercept(x, ax, ay, bx, by);
     if (yInt > y) {

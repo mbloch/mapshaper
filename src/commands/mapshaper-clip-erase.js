@@ -37,31 +37,30 @@ MapShaper.clipLayers = function(targetLayers, clipLyr, dataset, type, opts) {
       arcs: dataset.arcs
     };
   }
-  var nodes = MapShaper.divideArcs(dataset);
+
+  var nodes;
   var output = targetLayers.map(function(targetLyr) {
-    return MapShaper.clipLayer(targetLyr, clipLyr, nodes, type, opts);
+    var clippedShapes, clippedLyr;
+    if (targetLyr === clipLyr) {
+      stop('[' + type + '] Can\'t clip a layer with itself');
+    } else if (MapShaper.layerHasPoints(targetLyr)) {
+      // clip point layer
+      clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, dataset.arcs, type, opts);
+    } else if (MapShaper.layerHasPaths(targetLyr)) {
+      // clip polygon or polyline layer
+      if (!nodes) nodes = MapShaper.divideArcs(dataset);
+      var clip = targetLyr.geometry_type == 'polygon' ? MapShaper.clipPolygons : MapShaper.clipPolylines;
+      clippedShapes = clip(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
+    } else {
+      // unknown layer type
+      stop('[' + type + '] Invalid target layer:', targetLyr.name);
+    }
+
+    clippedLyr = Utils.defaults({shapes: clippedShapes, data: null}, targetLyr);
+    if (targetLyr.data) {
+      clippedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
+    }
+    return clippedLyr;
   });
   return output;
-};
-
-// Use a polygon layer to clip or erase a target layer
-// Assumes segment intersections have been removed by division
-// @type 'clip' | 'erase'
-MapShaper.clipLayer = function(targetLyr, clipLyr, nodes, type, opts) {
-  var functions = {
-    polygon: MapShaper.clipPolygons,
-    polyline: MapShaper.clipPolylines,
-    point: MapShaper.clipPoints
-  };
-  var clip = functions[targetLyr.geometry_type],
-      clippedShapes, clippedLyr;
-  if (!clip) {
-    stop('[' + type + '] Invalid layer type:', targetLyr.geometry_type);
-  }
-  clippedShapes = clip(targetLyr.shapes, clipLyr.shapes, nodes, type, opts);
-  clippedLyr = Utils.defaults({shapes: clippedShapes, data: null}, targetLyr);
-  if (targetLyr.data) {
-    clippedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
-  }
-  return clippedLyr;
 };

@@ -4,6 +4,59 @@ var assert = require('assert'),
 
 describe('mapshaper-shape-geom.js', function () {
 
+  describe('testRayIntersection()', function () {
+    it('p on collapsed seg -> NaN', function () {
+      assert.equal(isNaN(geom.testRayIntersection(1, 1, 1, 1, 1, 1)), true);
+      assert.equal(isNaN(geom.testRayIntersection(0, 0, 0, 0, 0, 0)), true);
+    })
+
+    it('p below collapsed seg -> 0', function () {
+      assert.equal(geom.testRayIntersection(1, 0, 1, 1, 1, 1), 0);
+      assert.equal(geom.testRayIntersection(0, -1, 0, 0, 0, 0), 0);
+    })
+
+    it('p on vertical seg -> NaN', function () {
+      assert.equal(isNaN(geom.testRayIntersection(1, 1, 1, 0, 1, 2)), true);
+      assert.equal(isNaN(geom.testRayIntersection(1, 1, 1, 1, 1, 0)), true);
+      assert.equal(isNaN(geom.testRayIntersection(1, 1, 1, 0, 1, 1)), true);
+      assert.equal(isNaN(geom.testRayIntersection(1, 1, 1, 1, 1, 2)), true);
+      assert.equal(isNaN(geom.testRayIntersection(1, 1, 1, 2, 1, 1)), true);
+    })
+
+    it('p below vertical seg -> 0', function () {
+      assert.equal(geom.testRayIntersection(1, 0, 1, 1, 1, 2), 0);
+      assert.equal(geom.testRayIntersection(1, 0, 1, 2, 1, 1), 0);
+    })
+
+    it('p on horizontal seg -> NaN', function () {
+      assert.equal(isNaN(geom.testRayIntersection(1, 1, 0, 1, 2, 1)), true);
+      assert.equal(isNaN(geom.testRayIntersection(1, 1, 1, 1, 2, 1)), true);
+      assert.equal(isNaN(geom.testRayIntersection(1, 1, 2, 1, 1, 1)), true);
+    })
+
+    it('px below leftmost endpoint -> 0', function () {
+      assert.equal(geom.testRayIntersection(1, 0, 1, 1, 2, 2), 0);
+      assert.equal(geom.testRayIntersection(1, 0, 2, 2, 1, 1), 0);
+    })
+
+    it('px below rightmost endpoint -> 1', function () {
+      assert.equal(geom.testRayIntersection(1, 0, 0, 1, 1, 2), 1);
+      assert.equal(geom.testRayIntersection(1, 0, 1, 2, 0, 1), 1);
+    })
+
+    it('p on left or right endpoint -> NaN', function () {
+      assert.equal(isNaN(geom.testRayIntersection(0, 1, 0, 1, 1, 2)), true);
+      assert.equal(isNaN(geom.testRayIntersection(1, 2, 0, 1, 1, 2)), true);
+    })
+
+     it('px below middle of segment -> 1', function () {
+      assert.equal(geom.testRayIntersection(0.4, 0, 0, 1, 1, 2), 1);
+      assert.equal(geom.testRayIntersection(0.4, 0, 1, 2, 0, 1), 1);
+    })
+
+  })
+
+
   //       e
   //      / \
   //     /   \
@@ -67,26 +120,25 @@ describe('mapshaper-shape-geom.js', function () {
 
       it('test inside', function () {
         // vertical ray at x hits a vertex on the path
-        assert.equal(geom.testPointInRing(3, 3, [1], arcData), true);
+        assert.equal(geom.testPointInRing(3, 3, [1], arcData), 1);
         // no ray-vertex intersection
-        assert.equal(geom.testPointInRing(4, 3, [1], arcData), true);
-        assert.equal(geom.testPointInRing(1.3, 3, [1], arcData), true);
+        assert.equal(geom.testPointInRing(4, 3, [1], arcData), 1);
+        assert.equal(geom.testPointInRing(1.3, 3, [1], arcData), 1);
       })
 
       it('test outside', function () {
-        assert.equal(geom.testPointInRing(5, 2, [1], arcData), false);
-        assert.equal(geom.testPointInRing(4, 1, [1], arcData), false);
-        assert.equal(geom.testPointInRing(1, 2, [1], arcData), false);
-        assert.equal(geom.testPointInRing(5, 4, [1], arcData), false);
-        assert.equal(geom.testPointInRing(3, 0.5, [1], arcData), false);
-
+        assert.equal(geom.testPointInRing(5, 2, [1], arcData), 0);
+        assert.equal(geom.testPointInRing(4, 1, [1], arcData), 0);
+        assert.equal(geom.testPointInRing(1, 2, [1], arcData), 0);
+        assert.equal(geom.testPointInRing(5, 4, [1], arcData), 0);
+        assert.equal(geom.testPointInRing(3, 0.5, [1], arcData), 0);
       })
 
-      it('test touching a boundary vertex (false)', function() {
-        assert.equal(geom.testPointInRing(5, 3, [1], arcData), false);
-        assert.equal(geom.testPointInRing(3, 5, [1], arcData), false);
-        assert.equal(geom.testPointInRing(3, 1, [1], arcData), false);
-        assert.equal(geom.testPointInRing(1, 3, [1], arcData), false);
+      it('test touching a boundary vertex (-1)', function() {
+        assert.equal(geom.testPointInRing(5, 3, [1], arcData), -1);
+        assert.equal(geom.testPointInRing(3, 5, [1], arcData), -1);
+        assert.equal(geom.testPointInRing(3, 1, [1], arcData), -1);
+        assert.equal(geom.testPointInRing(1, 3, [1], arcData), -1);
       })
     })
 

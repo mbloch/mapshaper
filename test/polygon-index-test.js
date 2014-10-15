@@ -24,31 +24,30 @@ describe('mapshaper-polygon-index.js', function () {
 
   var arcs = new api.internal.ArcCollection(coords);
 
-  it ("handles simple negative tests", function() {
-    return;
-    var shape = [[1]];
+  it ("simple polygon", function() {
+    var shape = [[1]];  // outer ring
     var index = new PolygonIndex(shape, arcs);
 
-    assert.equal(index.pointInPolygon(1, 1), false);
-    assert.equal(index.pointInPolygon(3, 1), false);
-    assert.equal(index.pointInPolygon(5, 1), false);
-    assert.equal(index.pointInPolygon(5, 5), false);
-    assert.equal(index.pointInPolygon(3, 5), false);
-    assert.equal(index.pointInPolygon(1, 3), false);
-    assert.equal(index.pointInPolygon(3, 3), true);
-    assert.equal(index.pointInPolygon(4, 3), true);
-    assert.equal(index.pointInPolygon(1.5, 1.5), false);
-    assert.equal(index.pointInPolygon(4.5, 1.5), false);
+    assert.equal(index.pointInPolygon(1, 1), 0);
+    assert.equal(index.pointInPolygon(3, 1), -1);  // vertex
+    assert.equal(index.pointInPolygon(5, 1), 0);
+    assert.equal(index.pointInPolygon(5, 5), 0);
+    assert.equal(index.pointInPolygon(3, 5), -1);  // vertex
+    assert.equal(index.pointInPolygon(1, 3), -1);  // vertex
+    assert.equal(index.pointInPolygon(3, 3), 1);
+    assert.equal(index.pointInPolygon(4, 3), 1);
+    assert.equal(index.pointInPolygon(2, 2), -1);  // on boundary
+    assert.equal(index.pointInPolygon(4, 4), -1);  // on boundary
   })
 
-  it ("handles polygon with hole", function() {
+  it ("polygon with hole", function() {
     var shape = [[1], [~0]];
     var index = new PolygonIndex(shape, arcs);
 
-    assert.equal(index.pointInPolygon(3, 3), false);
-    assert.equal(index.pointInPolygon(3, 1.5), true);
-    assert.equal(index.pointInPolygon(3.1, 1.5), true);
-    assert.equal(index.pointInPolygon(2, 3), false);
+    assert.equal(index.pointInPolygon(3, 3), 0); // inside hole
+    assert.equal(index.pointInPolygon(3, 1.5), 1); // inside donut
+    assert.equal(index.pointInPolygon(3.1, 1.5), 1); // inside donut
+    assert.equal(index.pointInPolygon(2, 3), -1);  // on a hole vertex
   })
 
 

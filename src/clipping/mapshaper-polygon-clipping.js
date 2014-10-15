@@ -23,7 +23,6 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type, opts) {
     // merge rings of clip/erase polygons and dissolve them all
     clipShapes = [dissolvePolygon(MapShaper.concatShapes(clipShapes))];
 
-
     // Open pathways in the clip/erase layer
     // Need to expose clip/erase routes in both directions by setting route
     // in both directions to visible -- this is how cut-out shapes are detected
