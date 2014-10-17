@@ -10358,7 +10358,7 @@ MapShaper.cloneProperties = function(obj) {
 
 
 TopoJSON.getPresimplifyFunction = function(width) {
-  var quanta = 10000,  // enough for pixel-level detail at 1000px width and 10x zoom
+  var quanta = 10000,  // enough resolution for pixel-level detail at 1000px width and 10x zoom
       k = quanta / width;
   return function(z) {
     // could substitute a rounding function with decimal precision
