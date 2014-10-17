@@ -22,8 +22,6 @@ describe('mapshaper-polyline-clipping.js', function () {
     var target = [[[1]]];
     var nodes = new NodeCollection(coords);
 
-
-
     it ("clip enclosed polyline", function() {
       var clipped = internal.clipPolylines(target, clip, nodes, 'clip');
       assert.deepEqual(clipped, [[[1]]]);
@@ -58,12 +56,12 @@ describe('mapshaper-polyline-clipping.js', function () {
     var target = [[[4, 5, 2, 6]]];
     var nodes = new NodeCollection(coords);
 
-    it ("clip partly encosed polyline", function() {
+    it ("clip partly enclosed polyline", function() {
       var clipped = internal.clipPolylines(target, clip, nodes, 'clip');
       assert.deepEqual(clipped, [[[5, 2]]]);
     })
 
-    it ("erase enclosed polyline", function() {
+    it ("erase partly enclosed polyline", function() {
       var clipped = internal.clipPolylines(target, clip, nodes, 'erase');
       assert.deepEqual(clipped, [[[4], [6]]]);
     })

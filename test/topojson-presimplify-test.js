@@ -2,10 +2,9 @@ var assert = require('assert'),
     api = require("../"),
     topojson = api.internal.topojson;
 
-
 describe('topojson-presimplify.js', function () {
-  describe('getZScaler(100)', function () {
-    var fromZ = topojson.getZScaler(100);
+  describe('getPresimplifyFunction(100000)', function () {
+    var fromZ = topojson.getPresimplifyFunction(100000);
     it('Infinity -> 0', function () {
       assert.equal(fromZ(Infinity), 0);
     })
@@ -15,11 +14,11 @@ describe('topojson-presimplify.js', function () {
     })
 
     it('1 -> 100', function() {
-      assert.equal(fromZ(1), 100);
+      assert.equal(fromZ(100), 10);
     });
 
     it('5 -> 500', function() {
-      assert.equal(fromZ(5), 500);
+      assert.equal(fromZ(500), 50);
     });
   })
 })

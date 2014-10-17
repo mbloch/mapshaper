@@ -16,9 +16,13 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
 
   // some datasets may lack arcs -- e.g. only point layers
   if (arcData && arcData.size() > 0) {
-
     // get a copy of arc data (coords are modified for topojson export)
     filteredArcs = arcData.getFilteredCopy();
+
+    if (opts.presimplify && !filteredArcs.getVertexData().zz) {
+      // Calculate simplification thresholds if none exist
+      MapShaper.simplifyPaths(filteredArcs, opts);
+    }
 
     if (opts.no_quantization) {
       // no transform
@@ -56,23 +60,13 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
       return utils.defaults({shapes: shapes}, lyr);
     });
     MapShaper.dissolveArcs(layers, filteredArcs);
-    // topology.arcs = TopoJSON.exportArcs(filteredArcs);
-    if (opts.presimplify && !filteredArcs.getVertexData().zz) {
-      // Calculate simplification thresholds if none exist
-      MapShaper.simplifyPaths(filteredArcs, opts);
-    }
-    topology.arcs = TopoJSON.exportArcsWithPresimplify(filteredArcs, opts.presimplify || null);
-  } else {
-    topology.arcs = []; // spec seems to require an array
   }
 
   topology.objects = layers.reduce(function(objects, lyr, i) {
     var name = lyr.name || "layer" + (i + 1),
         obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, lyr.geometry_type);
 
-    if (opts.bbox) {
-      bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
-    }
+    bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
     if (lyr.data) {
       TopoJSON.exportProperties(obj.geometries, lyr.data.getRecords(), opts);
     }
@@ -80,20 +74,26 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     return objects;
   }, {});
 
+  // replaced by dissolveArcs() above
   // if (filteredArcs) {
-    // replaced by dissolveArcs() above
     // TopoJSON.pruneArcs(topology);
   // }
 
-  if (transform) {
-    TopoJSON.deltaEncodeArcs(topology.arcs);
+  if (invTransform) {
+    bounds.transform(invTransform);
   }
 
-  if (bounds.hasBounds()) {
-    if (invTransform) {
-      bounds.transform(invTransform);
-    }
+  if (opts.bbox && bounds.hasBounds()) {
     topology.bbox = bounds.toArray();
+  }
+
+  if (filteredArcs && filteredArcs.size() > 0) {
+    topology.arcs = TopoJSON.exportArcsWithPresimplify(filteredArcs, opts.presimplify && bounds.width());
+    if (transform) {
+      TopoJSON.deltaEncodeArcs(topology.arcs);
+    }
+  } else {
+    topology.arcs = []; // spec seems to require an array
   }
 
   return topology;
@@ -114,7 +114,7 @@ TopoJSON.exportArcs = function(arcData) {
 
 // Export arcs as arrays of [x, y] coords without delta encoding
 TopoJSON.exportArcsWithPresimplify = function(arcData, width) {
-  var fromZ = width ? TopoJSON.getPresimplifyFunction(arcData, width) : null,
+  var fromZ = width ? TopoJSON.getPresimplifyFunction(width) : null,
       arcs = [];
 
   arcData.forEach2(function(i, n, xx, yy, zz) {

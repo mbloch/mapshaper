@@ -58,7 +58,7 @@ describe('mapshaper-point-clipping.js', function () {
       assert.deepEqual(clipped, points);
     })
 
-    it('erase points inside donut', function () {
+    it('erase points inside filled donut', function () {
       var clipShapes = [[[0], [~1]], [[1]]];
       var arcs = new ArcCollection(coords);
       var points = [[[1.5, 1.5]], [[2.5, 2.5]]];
@@ -74,7 +74,6 @@ describe('mapshaper-point-clipping.js', function () {
       assert.deepEqual(clipped, points);
     })
 
-
     it('erase points on boundaries of filled donut', function () {
       var clipShapes = [[[0], [~1]], [[1]]];
       var arcs = new ArcCollection(coords);
@@ -83,7 +82,7 @@ describe('mapshaper-point-clipping.js', function () {
       assert.deepEqual(clipped, [null, null, null, null]);
     })
 
-    it('clip points inside donut', function () {
+    it('clip points inside donut hole', function () {
       var clipShapes = [[[0], [~1]]];
       var arcs = new ArcCollection(coords);
       var points = [[[2.5, 2.5]]];
