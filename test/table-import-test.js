@@ -169,10 +169,28 @@ describe('mapshaper-table-import.js', function() {
       stringifyEqual(records, [{a: "1", b: "2"}]);
     })
 
-    it('test 2', function () {
-      var str = 'a,b\n1,boo'
+    it('parse csv with quoted field including comma', function () {
+      var str = 'a,b\n1,"foo, bar"'
+      var records = api.internal.parseDelimString(str);
+      stringifyEqual(records, [{a: '1', b: 'foo, bar'}]);
+    })
+
+    it('import tab-delim, quoted string', function () {
+      var str = 'a\tb\n1\t"boo ya"'
+      var records = api.internal.parseDelimString(str);
+      stringifyEqual(records, [{a: '1', b: 'boo ya'}]);
+    })
+
+    it('import pipe-delim, trailing newline', function () {
+      var str = 'a|b\n1|"boo"\n'
       var records = api.internal.parseDelimString(str);
       stringifyEqual(records, [{a: '1', b: 'boo'}]);
+    })
+
+    it('import single column of values w/ mixed return types', function () {
+      var str = 'a\n1\r\n0\r30'
+      var records = api.internal.parseDelimString(str);
+      stringifyEqual(records, [{a: '1'}, {a: '0'}, {a: '30'}]);
     })
 
   })
