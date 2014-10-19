@@ -1,14 +1,16 @@
 /* @requires mapshaper-data-table */
 
-MapShaper.importTableAsync = function(fname, done, opts) {
-  if (Utils.endsWith(fname.toLowerCase(), '.dbf')) {
-    done(MapShaper.importDbfTable(fname, opts.encoding));
+MapShaper.importDataTable = function(fname, opts) {
+  var table;
+  if (utils.endsWith(fname.toLowerCase(), '.dbf')) {
+    table = MapShaper.importDbfTable(fname, opts.encoding);
   } else {
     // assume delimited text file
     // unsupported file types can be detected earlier, during
     // option validation, using filename extensions
-    MapShaper.importDelimTableAsync(fname, done);
+    table = MapShaper.importDelimTable(fname);
   }
+  return table;
 };
 
 // Accept a type hint from a header like "FIPS:string"
@@ -50,27 +52,33 @@ MapShaper.parseFieldHeaders = function(fields, index) {
 
 MapShaper.importDbfTable = function(shpName, encoding) {
   var dbfName = cli.replaceFileExtension(shpName, 'dbf');
-  if (!Node.fileExists(dbfName)) return null;
+  if (!Node.fileExists(dbfName)) {
+    stop("File not found:", dbfName);
+  }
   return new ShapefileTable(Node.readFile(dbfName), encoding);
 };
 
-MapShaper.importDelimTableAsync = function(file, done, typeIndex) {
-  return MapShaper.importDelimStringAsync(Node.readFile(file, 'utf-8'), done);
-};
-
-MapShaper.importDelimStringAsync = function(content, done) {
-  var csv = require("csv"),
-      delim = MapShaper.guessDelimiter(content),
-      opts = {columns: true};
-  if (delim) {
-    opts.delimiter = delim;
+MapShaper.importDelimTable = function(file) {
+  var records, str, msg;
+  try {
+    str = Node.readFile(file, 'utf-8');
+    records = MapShaper.parseDelimString(str);
+    if (!records || records.length === 0) {
+      throw new Error();
+    }
+  } catch(e) {
+    msg = "Unable to " + (str ? "read" : "parse") + " file: " + file;
+    throw new APIError("Unable to read file: " + file);
   }
-  csv().from.string(content, opts)
-      .to.array(function(data) {
-        done(new DataTable(data));
-      });
+  return new DataTable(records);
 };
 
+MapShaper.parseDelimString = function(str) {
+  var dsv = require("./lib/d3/d3-dsv.js").dsv,
+      delim = MapShaper.guessDelimiter(str) || ',';
+      records = dsv(delim).parse(str);
+  return records;
+};
 
 MapShaper.guessDelimiter = function(content) {
   var delimiters = ['|', '\t', ','];

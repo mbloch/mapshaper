@@ -1,28 +1,24 @@
 /* @require mapshaper-common */
 
-// Function uses async callback because csv parser is asynchronous
-// TODO: switch to synchronous
-//
-api.importJoinTableAsync = function(file, opts, done) {
-  MapShaper.importTableAsync(file, function(table) {
-    var fields = opts.fields || table.getFields(),
-        keys = opts.keys;
-    if (!Utils.isArray(keys) || keys.length != 2) {
-      stop("[join] Invalid join keys:", keys);
-    }
+api.importJoinTable = function(file, opts) {
+  var table = MapShaper.importDataTable(file, opts),
+      fields = opts.fields || table.getFields(),
+      keys = opts.keys;
 
-    // this may cause duplicate field name with inconsistent type hints
-    // adjustRecordTypes() should handle this case
-    fields.push(opts.keys[1]);
-    // convert data types based on type hints and numeric csv fields
-    // side effect: type hints are removed from field names
-    // TODO: remove side effect
-    fields = MapShaper.adjustRecordTypes(table.getRecords(), fields);
-    // replace foreign key in case original contained type hint
-    opts.keys[1] = fields.pop();
-    opts.fields = fields;
-    done(table);
-  }, opts);
+  if (!utils.isArray(keys) || keys.length != 2) {
+    return done(new APIError("[join] Invalid join keys:", keys));
+  }
+  // this may cause duplicate field name with inconsistent type hints
+  // adjustRecordTypes() should handle this case
+  fields.push(opts.keys[1]);
+  // convert data types based on type hints and numeric csv fields
+  // side effect: type hints are removed from field names
+  // TODO: remove side effect
+  fields = MapShaper.adjustRecordTypes(table.getRecords(), fields);
+  // replace foreign key in case original contained type hint
+  opts.keys[1] = fields.pop();
+  opts.fields = fields;
+  return table;
 };
 
 api.joinAttributesToFeatures = function(lyr, table, opts) {

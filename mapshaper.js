@@ -11551,15 +11551,17 @@ MapShaper.setLayerName = function(lyr, path) {
 
 
 
-MapShaper.importTableAsync = function(fname, done, opts) {
-  if (Utils.endsWith(fname.toLowerCase(), '.dbf')) {
-    done(MapShaper.importDbfTable(fname, opts.encoding));
+MapShaper.importDataTable = function(fname, opts) {
+  var table;
+  if (utils.endsWith(fname.toLowerCase(), '.dbf')) {
+    table = MapShaper.importDbfTable(fname, opts.encoding);
   } else {
     // assume delimited text file
     // unsupported file types can be detected earlier, during
     // option validation, using filename extensions
-    MapShaper.importDelimTableAsync(fname, done);
+    table = MapShaper.importDelimTable(fname);
   }
+  return table;
 };
 
 // Accept a type hint from a header like "FIPS:string"
@@ -11601,27 +11603,33 @@ MapShaper.parseFieldHeaders = function(fields, index) {
 
 MapShaper.importDbfTable = function(shpName, encoding) {
   var dbfName = cli.replaceFileExtension(shpName, 'dbf');
-  if (!Node.fileExists(dbfName)) return null;
+  if (!Node.fileExists(dbfName)) {
+    stop("File not found:", dbfName);
+  }
   return new ShapefileTable(Node.readFile(dbfName), encoding);
 };
 
-MapShaper.importDelimTableAsync = function(file, done, typeIndex) {
-  return MapShaper.importDelimStringAsync(Node.readFile(file, 'utf-8'), done);
-};
-
-MapShaper.importDelimStringAsync = function(content, done) {
-  var csv = require("csv"),
-      delim = MapShaper.guessDelimiter(content),
-      opts = {columns: true};
-  if (delim) {
-    opts.delimiter = delim;
+MapShaper.importDelimTable = function(file) {
+  var records, str, msg;
+  try {
+    str = Node.readFile(file, 'utf-8');
+    records = MapShaper.parseDelimString(str);
+    if (!records || records.length === 0) {
+      throw new Error();
+    }
+  } catch(e) {
+    msg = "Unable to " + (str ? "read" : "parse") + " file: " + file;
+    throw new APIError("Unable to read file: " + file);
   }
-  csv().from.string(content, opts)
-      .to.array(function(data) {
-        done(new DataTable(data));
-      });
+  return new DataTable(records);
 };
 
+MapShaper.parseDelimString = function(str) {
+  var dsv = require("./lib/d3/d3-dsv.js").dsv,
+      delim = MapShaper.guessDelimiter(str) || ',';
+      records = dsv(delim).parse(str);
+  return records;
+};
 
 MapShaper.guessDelimiter = function(content) {
   var delimiters = ['|', '\t', ','];
@@ -12815,29 +12823,25 @@ api.mergeFiles = function(files, opts) {
 
 
 
-// Function uses async callback because csv parser is asynchronous
-// TODO: switch to synchronous
-//
-api.importJoinTableAsync = function(file, opts, done) {
-  MapShaper.importTableAsync(file, function(table) {
-    var fields = opts.fields || table.getFields(),
-        keys = opts.keys;
-    if (!Utils.isArray(keys) || keys.length != 2) {
-      stop("[join] Invalid join keys:", keys);
-    }
+api.importJoinTable = function(file, opts) {
+  var table = MapShaper.importDataTable(file, opts),
+      fields = opts.fields || table.getFields(),
+      keys = opts.keys;
 
-    // this may cause duplicate field name with inconsistent type hints
-    // adjustRecordTypes() should handle this case
-    fields.push(opts.keys[1]);
-    // convert data types based on type hints and numeric csv fields
-    // side effect: type hints are removed from field names
-    // TODO: remove side effect
-    fields = MapShaper.adjustRecordTypes(table.getRecords(), fields);
-    // replace foreign key in case original contained type hint
-    opts.keys[1] = fields.pop();
-    opts.fields = fields;
-    done(table);
-  }, opts);
+  if (!utils.isArray(keys) || keys.length != 2) {
+    return done(new APIError("[join] Invalid join keys:", keys));
+  }
+  // this may cause duplicate field name with inconsistent type hints
+  // adjustRecordTypes() should handle this case
+  fields.push(opts.keys[1]);
+  // convert data types based on type hints and numeric csv fields
+  // side effect: type hints are removed from field names
+  // TODO: remove side effect
+  fields = MapShaper.adjustRecordTypes(table.getRecords(), fields);
+  // replace foreign key in case original contained type hint
+  opts.keys[1] = fields.pop();
+  opts.fields = fields;
+  return table;
 };
 
 api.joinAttributesToFeatures = function(lyr, table, opts) {
@@ -13591,12 +13595,8 @@ api.runCommand = function(cmd, dataset, cb) {
       newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
 
     } else if (name == 'join') {
-      // async command -- special case
-      api.importJoinTableAsync(opts.source, opts, function(table) {
-        MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
-        done(null, dataset);
-      });
-      return;
+      var table = api.importJoinTable(opts.source, opts);
+      MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
 
     } else if (name == 'layers') {
       newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
@@ -13737,7 +13737,7 @@ api.importFiles = function(opts) {
 //    iter: function(memo, item, callback)
 // Call @done when all members have been processed or if an error occurs
 //    done: function(err, memo)
-// @memo: Initial value to be reduced
+// @memo: Initial value
 //
 utils.reduceAsync = function(arr, memo, iter, done) {
   var i=0;

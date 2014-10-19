@@ -140,12 +140,8 @@ api.runCommand = function(cmd, dataset, cb) {
       newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
 
     } else if (name == 'join') {
-      // async command -- special case
-      api.importJoinTableAsync(opts.source, opts, function(table) {
-        MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
-        done(null, dataset);
-      });
-      return;
+      var table = api.importJoinTable(opts.source, opts);
+      MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
 
     } else if (name == 'layers') {
       newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
@@ -286,7 +282,7 @@ api.importFiles = function(opts) {
 //    iter: function(memo, item, callback)
 // Call @done when all members have been processed or if an error occurs
 //    done: function(err, memo)
-// @memo: Initial value to be reduced
+// @memo: Initial value
 //
 utils.reduceAsync = function(arr, memo, iter, done) {
   var i=0;

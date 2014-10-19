@@ -111,31 +111,29 @@ describe('mapshaper-table-import.js', function() {
 
   })
 
-  describe('importJoinTableAsync', function () {
-    it('import csv w/ typed key', function (done) {
+  describe('importJoinTable', function () {
+    it('import csv w/ typed key', function () {
       var opts = {
         keys: ['KEY1', 'FIPS:str'],
         fields: null
       }
-      api.importJoinTableAsync(fixPath("test_data/two_states.csv"), opts,
-          function(table) {
-            var records = table.getRecords(),
-                fields = table.getFields();
-            fields.sort();
-            assert.deepEqual(fields, ['FIPS', 'LAT', 'LONG', 'STATE', 'STATE_NAME'])
-            assert.deepEqual(records[0], {
-              STATE_NAME: 'Oregon',
-              FIPS: '41',
-              STATE: 'OR',
-              LAT: 43.94,
-              LONG: -120.55
-            })
-            // make sure FIPS is a string
-            // deepEqual() doesn't use strict equality
-            assert.ok(utils.isString(records[0].FIPS))
-            assert.ok(utils.isNumber(records[0].LAT))
-            done();
-          })
+      var table = api.importJoinTable(fixPath("test_data/two_states.csv"), opts);
+      var records = table.getRecords(),
+          fields = table.getFields();
+      fields.sort();
+      assert.deepEqual(fields, ['FIPS', 'LAT', 'LONG', 'STATE', 'STATE_NAME'])
+      assert.deepEqual(records[0], {
+        STATE_NAME: 'Oregon',
+        FIPS: '41',
+        STATE: 'OR',
+        LAT: 43.94,
+        LONG: -120.55
+      })
+      // make sure FIPS is a string
+      // deepEqual() doesn't use strict equality
+      assert.ok(utils.isString(records[0].FIPS))
+      assert.ok(utils.isNumber(records[0].LAT))
+
     })
 
   })
@@ -164,21 +162,17 @@ describe('mapshaper-table-import.js', function() {
 
   })
 
-  describe('importDelimString()', function () {
-    it('test 1', function (done) {
+  describe('parseDelimString()', function () {
+    it('test 1', function () {
       var str = 'a,b\n"1","2"'
-      api.internal.importDelimStringAsync(str, function(table) {
-        stringifyEqual(table.getRecords(), [{a: "1", b: "2"}]);
-        done();
-      });
+      var records = api.internal.parseDelimString(str);
+      stringifyEqual(records, [{a: "1", b: "2"}]);
     })
 
-    it('test 1', function (done) {
+    it('test 2', function () {
       var str = 'a,b\n1,boo'
-      api.internal.importDelimStringAsync(str, function(table) {
-        stringifyEqual(table.getRecords(), [{a: '1', b: 'boo'}]);
-        done();
-      });
+      var records = api.internal.parseDelimString(str);
+      stringifyEqual(records, [{a: '1', b: 'boo'}]);
     })
 
   })
