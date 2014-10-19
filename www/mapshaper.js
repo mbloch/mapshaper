@@ -3925,19 +3925,29 @@ api.enableLogging = function() {
   return api;
 };
 
-api.stop = stop;
-
-// TODO: adapt to run in browser
-function stop() {
-  var args = Utils.toArray(arguments);
-  args.unshift('Error:');
-  if (MapShaper.LOGGING) {
-    message.apply(null, args);
-    message("Run mapshaper -h to view help");
-    process.exit(1);
-  } else {
-    error.apply(null, args);
+api.printError = function(err) {
+  if (utils.isString(err)) {
+    err = new APIError(err);
   }
+  if (MapShaper.LOGGING && err.name == 'APIError') {
+    message("Error: " + err.message);
+    message("Run mapshaper -h to view help");
+  } else {
+    throw err;
+  }
+};
+
+// Handle an error caused by invalid input or misuse of API
+function stop() {
+  var message = Utils.toArray(arguments).join(' ');
+  var err = new APIError(message);
+  throw err;
+}
+
+function APIError(msg) {
+  var err = new Error(msg);
+  err.name = 'APIError';
+  return err;
 }
 
 var message = function() {

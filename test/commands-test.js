@@ -62,6 +62,37 @@ describe('mapshaper-commands.js', function () {
       counties_shp = fixPath("test_data/six_counties.shp"),
       states_csv = fixPath("test_data/states.csv");
 
+  describe('runCommands()', function() {
+
+    it('Error: no dataset, no -i command', function(done) {
+      mapshaper.runCommands("-info", function(err) {
+        assert.equal(err.name, 'APIError');
+        done();
+      });
+    });
+
+    it('Error: no callback', function() {
+      assert.throws(function() {
+        mapshaper.runCommands("-v");
+      });
+    });
+
+    it('Error: missing a file', function(done) {
+      mapshaper.runCommands("-i oops.shp", function(err) {
+        assert.equal(err.name, 'APIError');
+        done();
+      });
+    });
+
+    it('Callback returns dataset', function(done) {
+      mapshaper.runCommands("-i " + states_shp, function(err, dataset) {
+        assert.equal(dataset.layers[0].name, 'two_states');
+        done();
+      });
+    });
+
+  });
+
   describe('-filter-fields', function () {
 
     it("test 1", function (done) {

@@ -13460,7 +13460,7 @@ api.runShellArgs = function(argv, done) {
     return done(e);
   }
   if (commands.length === 0) {
-    return done("Missing an input file");
+    return done(new APIError("Missing an input file"));
   }
 
   // if there's a -i command, no -o command and no -info command,
@@ -13510,7 +13510,7 @@ api.runCommands = function(commands) {
   }
   commands = MapShaper.divideImportCommand(commands);
   if (commands[0].name != 'i' && !dataset) {
-    return done("Missing a -i command");
+    return done(new APIError("Missing a -i command"));
   }
 
   utils.reduceAsync(commands, dataset, function(dataset, cmd, nextCmd) {
