@@ -2,65 +2,68 @@
 
 // parse command line args into commands and run them
 api.runShellArgs = function(argv, done) {
-  var commands = api.parseCommands(argv);
+  var commands;
+  try {
+    commands = MapShaper.parseCommands(argv);
+  } catch(e) {
+    return done(e);
+  }
   if (commands.length === 0) {
-    MapShaper.printHelp();
-  } else {
-    commands = MapShaper.runAndRemoveInfoCommands(commands);
+    return done("Missing an input file");
   }
 
-  if (commands.length === 0) {
-    done();
-  } else {
-    // if there's no -o command and no -info command,
-    // append a generic -o command.
-    if (!Utils.some(commands, function(cmd) {
-      return cmd.name == 'o' || cmd.name == 'info' ;})) {
-      //message("Add a -o command to generate output");
-      commands.push({name: "o", options: {}});
-    }
-    api.runCommands(commands, done);
+  // if there's a -i command, no -o command and no -info command,
+  // append a generic -o command.
+  if (!utils.some(commands, function(cmd) { return cmd.name == 'o'; }) &&
+      !utils.some(commands, function(cmd) { return cmd.name == 'info'; }) &&
+      utils.some(commands, function(cmd) {return cmd.name == 'i'; })) {
+    commands.push({name: "o", options: {}});
   }
-};
-
-// run a string of command line args
-// (useful for testing -- doesn't append -o like runShellArgs())
-api.runCommandString = function(str, done) {
-  var parse = require('shell-quote').parse,
-      commands = api.parseCommands(parse(str));
-  api.runCommands(commands, done);
-};
-
-// execute a sequence of data processing commands
-// (assumes informational commands like -help have been removed)
-api.runCommands = function(commands, done) {
-  // need exactly one -i command
-  if (utils.filter(commands, function(cmd) {return cmd.name == 'i';}).length != 1) {
-    done("mapshaper expects one -i command");
-  }
-  // move -i to the front
-  MapShaper.promoteCommand('i', commands);
-  var imports = MapShaper.divideImportCommand(commands.shift());
 
   T.start("Start timing");
-  utils.reduceAsync(imports, null, function(empty, cmd, cb) {
-    var dataset = api.importFiles(cmd.options);
-    api.processDataset(dataset, commands, cb);
-  }, function(err, data) {
+  api.runCommands(commands, function(err, dataset) {
     T.stop("Total time");
-    done(err, data);
+    done(err);
   });
 };
 
-// Run a sequence of commands to transform a dataset
-// Assumes that certain commands have already been handled and removed from
-// the list -- e.g. -i and -help
+// Execute a sequence of commands
+// Signature: function(commands, [dataset,] done)
+// @commands either a string of commands or an array of parsed commands
 //
-// @done callback: function(err, dataset)
-//
-api.processDataset = function(dataset, commands, done) {
-  utils.reduceAsync(commands, dataset, function(data, cmd, cb) {
-    api.runCommand(cmd, data, cb);
+api.runCommands = function(commands) {
+  var dataset = null,
+      done, args;
+
+  if (utils.isFunction(arguments[1])) {
+    done = arguments[1];
+  } else if (utils.isFunction(arguments[2])) {
+    dataset = arguments[1];
+    done = arguments[2];
+  } else {
+    error("Missing callback");
+  }
+
+  if (utils.isString(commands)) {
+    try {
+      args = require('shell-quote').parse(commands);
+      commands = MapShaper.parseCommands(args);
+    } catch(e) {
+      return done(e);
+    }
+  }
+
+  commands = MapShaper.runAndRemoveInfoCommands(commands);
+  if (commands.length === 0) {
+    return done(null, dataset);
+  }
+  commands = MapShaper.divideImportCommand(commands);
+  if (commands[0].name != 'i' && !dataset) {
+    return done("Missing a -i command");
+  }
+
+  utils.reduceAsync(commands, dataset, function(dataset, cmd, nextCmd) {
+    api.runCommand(cmd, dataset, nextCmd);
   }, done);
 };
 
@@ -75,122 +78,132 @@ api.runCommand = function(cmd, dataset, cb) {
       targetLayers,
       newLayers,
       sourceLyr,
-      arcs = dataset.arcs,
-      err = null;
+      arcs;
 
-  T.start();
-  if (opts.target) {
-    targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
-  } else {
-    targetLayers = dataset.layers; // default: all layers
-  }
+  try { // catch errors from synchronous functions
 
-  if (targetLayers.length === 0) {
-    message("[" + name + "] Command is missing target layer(s).");
-    MapShaper.printLayerNames(dataset.layers);
-  }
-
-  if (name == 'clip') {
-    sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-    newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
-
-  } else if (name == 'each') {
-    MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
-
-  } else if (name == 'dissolve') {
-    newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
-
-  } else if (name == 'dissolve2') {
-    newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
-
-  } else if (name == 'erase') {
-    sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-    newLayers = api.eraseLayers(targetLayers, sourceLyr, dataset, opts);
-
-  } else if (name == 'explode') {
-    newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
-
-  } else if (name == 'filter-fields') {
-    MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
-
-  /*
-  } else if (name == 'fill-holes') {
-    MapShaper.applyCommand(api.fillHoles, targetLayers, opts);
-  */
-
-  } else if (name == 'filter') {
-    MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
-
-  } else if (name == 'flatten') {
-    newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
-
-  } else if (name == 'info') {
-    api.printInfo(dataset);
-
-  } else if (name == 'innerlines') {
-    newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
-
-  } else if (name == 'join') {
-    // async command -- special case
-    api.importJoinTableAsync(opts.source, opts, function(table) {
-      MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
-      done(err, dataset);
-    });
-    return;
-
-  } else if (name == 'layers') {
-    newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
-
-  } else if (name == 'lines') {
-    newLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
-
-  } else if (name == 'merge-layers') {
-    // careful, returned layers are modified input layers
-    newLayers = api.mergeLayers(targetLayers);
-
-  } else if (name == 'rename-layers') {
-    api.renameLayers(targetLayers, opts.names);
-
-  } else if (name == 'repair') {
-    newLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
-
-  } else if (name == 'simplify') {
-    api.simplify(arcs, opts);
-    if (opts.keep_shapes) {
-      api.keepEveryPolygon(arcs, targetLayers);
+    T.start();
+    if (dataset) {
+      arcs = dataset.arcs;
+      if (opts.target) {
+        targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
+      } else {
+        targetLayers = dataset.layers; // default: all layers
+      }
+      if (targetLayers.length === 0) {
+        message("[-" + name + "] Command is missing target layer(s).");
+        MapShaper.printLayerNames(dataset.layers);
+      }
     }
 
-  } else if (name == 'split') {
-    newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, arcs, opts.field);
+    if (name == 'clip') {
+      sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
+      newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
 
-  } else if (name == 'split-on-grid') {
-    newLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
+    } else if (name == 'each') {
+      MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
-  } else if (name == 'subdivide') {
-    newLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
+    } else if (name == 'dissolve') {
+      newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
 
-  } else if (name == 'o') {
-    api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
+    } else if (name == 'dissolve2') {
+      newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
 
-  } else {
-    err = "Unhandled command: -" + name;
-  }
+    } else if (name == 'erase') {
+      sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
+      newLayers = api.eraseLayers(targetLayers, sourceLyr, dataset, opts);
 
-  if (opts.name) {
-    (newLayers || targetLayers).forEach(function(lyr) {
-      lyr.name = opts.name;
-    });
-  }
+    } else if (name == 'explode') {
+      newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
 
-  if (newLayers) {
-    if (opts.no_replace) {
-      dataset.layers = dataset.layers.concat(newLayers);
+    } else if (name == 'filter-fields') {
+      MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
+
+    /*
+    } else if (name == 'fill-holes') {
+      MapShaper.applyCommand(api.fillHoles, targetLayers, opts);
+    */
+
+    } else if (name == 'filter') {
+      MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
+
+    } else if (name == 'flatten') {
+      newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
+
+    } else if (name == 'i') {
+      dataset = api.importFiles(cmd.options);
+
+    } else if (name == 'info') {
+      api.printInfo(dataset);
+
+    } else if (name == 'innerlines') {
+      newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
+
+    } else if (name == 'join') {
+      // async command -- special case
+      api.importJoinTableAsync(opts.source, opts, function(table) {
+        MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
+        done(null, dataset);
+      });
+      return;
+
+    } else if (name == 'layers') {
+      newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
+
+    } else if (name == 'lines') {
+      newLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
+
+    } else if (name == 'merge-layers') {
+      // careful, returned layers are modified input layers
+      newLayers = api.mergeLayers(targetLayers);
+
+    } else if (name == 'o') {
+      api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
+
+    } else if (name == 'rename-layers') {
+      api.renameLayers(targetLayers, opts.names);
+
+    } else if (name == 'repair') {
+      newLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
+
+    } else if (name == 'simplify') {
+      api.simplify(arcs, opts);
+      if (opts.keep_shapes) {
+        api.keepEveryPolygon(arcs, targetLayers);
+      }
+
+    } else if (name == 'split') {
+      newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, arcs, opts.field);
+
+    } else if (name == 'split-on-grid') {
+      newLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
+
+    } else if (name == 'subdivide') {
+      newLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
+
     } else {
-      // TODO: consider replacing old layers as they are generated, for gc
-      MapShaper.replaceLayers(dataset, targetLayers, newLayers);
+      error("Unhandled command: [" + name + "]");
     }
+
+    if (opts.name) {
+      (newLayers || targetLayers).forEach(function(lyr) {
+        lyr.name = opts.name;
+      });
+    }
+
+    if (newLayers) {
+      if (opts.no_replace) {
+        dataset.layers = dataset.layers.concat(newLayers);
+      } else {
+        // TODO: consider replacing old layers as they are generated, for gc
+        MapShaper.replaceLayers(dataset, targetLayers, newLayers);
+      }
+    }
+    done(null, dataset);
+
+  } catch(e) {
+    done(e, null);
   }
-  done(err, dataset);
 
   function done(err, dataset) {
     T.stop('-' + name);
@@ -212,20 +225,23 @@ MapShaper.applyCommand = function(func, targetLayers) {
   }, []);
 };
 
-MapShaper.divideImportCommand = function(cmd) {
-  var opts = cmd.options,
-      imports;
-  if (opts.combine_files || opts.merge_files || opts.stdin || opts.files.length <= 1) {
-    imports = [cmd];
-  } else {
-    imports = opts.files.map(function(file) {
-      return {
-        name: cmd.name,
-        options: Utils.defaults({files:[file]}, opts)
-      };
-    });
+MapShaper.divideImportCommand = function(commands) {
+  var firstCmd = commands[0],
+      opts = firstCmd.options,
+      files = opts.files || [];
+
+  if (firstCmd.name != 'i' || files.length <= 1 || opts.stdin || opts.merge_files || opts.combine_files) {
+    return commands;
   }
-  return imports;
+  return files.reduce(function(memo, file) {
+    var importCmd = {
+      name: 'i',
+      options: Utils.defaults({files:[file]}, opts)
+    };
+    memo.push(importCmd);
+    memo.push.apply(memo, commands.slice(1));
+    return memo;
+  }, []);
 };
 
 api.exportFiles = function(dataset, opts) {
@@ -266,21 +282,29 @@ api.importFiles = function(opts) {
   return dataset;
 };
 
+// Call @iter on each member of an array (similar to Array#reduce(iter))
+//    iter: function(memo, item, callback)
+// Call @done when all members have been processed or if an error occurs
+//    done: function(err, memo)
+// @memo: Initial value to be reduced
+//
 utils.reduceAsync = function(arr, memo, iter, done) {
   var i=0;
   next(null, memo);
 
-  function next(err, result) {
+  function next(err, memo) {
     // Detach next operation from call stack to prevent overflow
     // Don't use setTimeout(, 0) -- this can introduce a long delay if
     //   previous operation was slow, as of Node 0.10.32
-    setImmediate(function() {
-      if (i < arr.length === false || err) {
-        done(err, result);
-      } else {
-        iter(result, arr[i++], next);
-      }
-    });
+    if (err) {
+      done(err, null);
+    } else if (i < arr.length === false) {
+      done(null, memo);
+    } else {
+      setImmediate(function() {
+        iter(memo, arr[i++], next);
+      });
+    }
   }
 };
 
@@ -308,19 +332,6 @@ MapShaper.printHelp = function(commands) {
   MapShaper.getOptionParser().printHelp(commands);
 };
 
-// TODO: handle multiple instances of a command, return number found
-// Assumes only one of this kind of command
-MapShaper.promoteCommand = function(name, commands) {
-  var cmd = Utils.find(commands, function(cmd) {
-    return cmd.name == name;
-  });
-  var idx = commands.indexOf(cmd);
-  if (idx > 0) {
-    commands.unshift(commands.splice(idx, 1)[0]);
-  }
-};
-
-
 // @src: a layer identifier or a filename
 // if file -- import layer(s) from the file, merge arcs into @dataset,
 //   but don't add source layer(s) to the dataset
@@ -329,7 +340,7 @@ MapShaper.getSourceLayer = function(src, dataset, opts) {
   var match = MapShaper.findMatchingLayers(dataset.layers, src),
       lyr;
   if (match.length > 1) {
-    stop("[" + name + "] Command received more than one source layer");
+    stop("[-" + name + "] command received more than one source layer");
   } else if (match.length == 1) {
     lyr = match[0];
   } else {
@@ -384,7 +395,7 @@ MapShaper.printLayerNames = function(layers) {
         message("... " + (layers.length - max) + " more");
         break;
       }
-      message("[" + i + "]  " + (layers[i].name || "[unnamed]"));
+      message("[-" + i + "]  " + (layers[i].name || "[unnamed]"));
     }
   }
 };

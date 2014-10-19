@@ -1,14 +1,7 @@
 /* @requires mapshaper-common, mapshaper-option-parser, mapshaper-option-validation */
 
-api.parseCommands = function(arr) {
-  var commands;
- try {
-    commands = MapShaper.getOptionParser().parseArgv(arr);
-    if (commands.length === 0) error("Missing an input file");
-  } catch(e) {
-    stop(e.message);
-  }
-  return commands;
+MapShaper.parseCommands = function(arr) {
+  return MapShaper.getOptionParser().parseArgv(arr);
 };
 
 MapShaper.getOptionParser = function() {

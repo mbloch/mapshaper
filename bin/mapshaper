@@ -5,6 +5,10 @@ mapshaper.enableLogging();
 mapshaper.runShellArgs(process.argv.slice(2), done);
 
 function done(err) {
-  if (err) mapshaper.stop(err);
-  process.exit(0);
+  if (err) {
+    mapshaper.printError(err);
+    process.exit(1);
+  } else {
+    process.exit(0);
+  }
 }

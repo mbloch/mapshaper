@@ -2185,19 +2185,29 @@ api.enableLogging = function() {
   return api;
 };
 
-api.stop = stop;
-
-// TODO: adapt to run in browser
-function stop() {
-  var args = Utils.toArray(arguments);
-  args.unshift('Error:');
-  if (MapShaper.LOGGING) {
-    message.apply(null, args);
-    message("Run mapshaper -h to view help");
-    process.exit(1);
-  } else {
-    error.apply(null, args);
+api.printError = function(err) {
+  if (utils.isString(err)) {
+    err = new APIError(err);
   }
+  if (MapShaper.LOGGING && err.name == 'APIError') {
+    message("Error: " + err.message);
+    message("Run mapshaper -h to view help");
+  } else {
+    throw err;
+  }
+};
+
+// Handle an error caused by invalid input or misuse of API
+function stop() {
+  var message = Utils.toArray(arguments).join(' ');
+  var err = new APIError(message);
+  throw err;
+}
+
+function APIError(msg) {
+  var err = new Error(msg);
+  err.name = 'APIError';
+  return err;
 }
 
 var message = function() {
@@ -2411,10 +2421,10 @@ function CommandParser() {
       } else {
         cmdName = readCommandName(argv);
       }
-      if (!cmdName) error("Invalid command:", argv[0]);
+      if (!cmdName) stop("Invalid command:", argv[0]);
       cmdDef = findCommandDefn(cmdName, commandDefs);
       if (!cmdDef) {
-        error("Unknown command:", '-' + cmdName);
+        stop("Unknown command:", '-' + cmdName);
       }
       cmd = {
         name: cmdDef.name,
@@ -2432,7 +2442,13 @@ function CommandParser() {
         }
       }
 
-      if (cmdDef.validate) cmdDef.validate(cmd);
+      if (cmdDef.validate) {
+        try {
+          cmdDef.validate(cmd);
+        } catch(e) {
+          stop("[-" + cmdName + "] " + e.message);
+        }
+      }
       commands.push(cmd);
     }
     return commands;
@@ -2453,7 +2469,7 @@ function CommandParser() {
       if (!optDef) return null;
 
       if (match && (optDef.type == 'flag' || optDef.assign_to)) {
-        error("-" + cmdDef.name + " " + name + " doesn't take a value");
+        stop("-" + cmdDef.name + " " + name + " doesn't take a value");
       }
 
       if (match) {
@@ -2465,7 +2481,7 @@ function CommandParser() {
       optName = optDef.assign_to || optDef.name.replace(/-/g, '_');
       optVal = readOptionValue(argv, optDef);
       if (optVal === null) {
-        error("Invalid value for -" + cmdDef.name + " " + optName);
+        stop("Invalid value for -" + cmdDef.name + " " + optName);
       }
       return [optName, optVal];
     }
@@ -2661,7 +2677,7 @@ function CommandOptions(name) {
   this.option = function(name, opts) {
     opts = opts || {}; // accept just a name -- some options don't need properties
     if (!Utils.isString(name) || !name) error("Missing option name");
-    if (!validateOption(opts)) error("Invalid option definition:", opts);
+    if (!Utils.isObject(opts)) error("Invalid option definition:", opts);
     opts.name = name;
     _command.options.push(opts);
     return this;
@@ -2670,10 +2686,6 @@ function CommandOptions(name) {
   this.done = function() {
     return _command;
   };
-
-  function validateOption(obj) {
-    return Utils.isObject(obj);
-  }
 }
 
 
@@ -2723,7 +2735,7 @@ function validateSimplifyOpts(cmd) {
       pctStr = _.pop();
     }
     if (_.length > 0) {
-      error("[simplify] unparsable option:", _.join(' '));
+      error("unparsable option:", _.join(' '));
     }
   }
 
@@ -2735,7 +2747,7 @@ function validateSimplifyOpts(cmd) {
       o.pct = Number(pctStr);
     }
     if (!(o.pct >= 0 && o.pct <= 1)) {
-      error(Utils.format("[simplify] out-of-range pct value: %s", pctStr));
+      error(Utils.format("out-of-range pct value: %s", pctStr));
     }
   }
 
@@ -2743,12 +2755,12 @@ function validateSimplifyOpts(cmd) {
   if (intervalStr) {
     o.interval = Number(intervalStr);
     if (o.interval >= 0 === false) {
-      error(Utils.format("[simplify] out-of-range interval value: %s", intervalStr));
+      error(Utils.format("out-of-range interval value: %s", intervalStr));
     }
   }
 
   if (isNaN(o.interval) && isNaN(o.pct)) {
-    error("-simplify requires an interval or pct");
+    error("command requires an interval or pct");
   }
 }
 
@@ -2757,24 +2769,24 @@ function validateJoinOpts(cmd) {
   o.source = o.source || cmd._[0];
 
   if (!o.source) {
-    error("-join requires the name of a file to join");
+    error("command requires the name of a file to join");
   }
 
   if (Utils.some("shp,xls,xlsx".split(','), function(suff) {
     return Utils.endsWith(o.source, suff);
   })) {
-    error("-join currently only supports dbf and csv files");
+    error("currently only dbf and csv files are supported");
   }
 
   if (!cli.isFile(o.source)) {
-    error("-join missing source file:", o.source);
+    error("missing source file:", o.source);
   }
 
-  if (!o.keys) error("-join missing required keys option");
-  if (!isCommaSep(o.keys)) error("-join keys takes two comma-separated names, e.g.: FIELD1,FIELD2");
+  if (!o.keys) error("missing required keys option");
+  if (!isCommaSep(o.keys)) error("keys= option takes two comma-separated names, e.g.: FIELD1,FIELD2");
 
   if (o.fields && !isCommaSep(o.fields)) {
-    error("-join fields is a comma-sep. list of fields to join");
+    error("fields= option is a comma-sep. list of fields to join");
   }
 }
 
@@ -2788,7 +2800,7 @@ function validateSplitOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.field = cmd._[0];
   } else if (cmd._.length > 1) {
-    error("-split takes a single field name");
+    error("command takes a single field name");
   }
 }
 
@@ -2797,7 +2809,7 @@ function validateClip(cmd) {
   if (src) {
     cmd.options.source = src;
   } else {
-    error("-" + cmd.name + " requires a source file or layer id");
+    error("command requires a source file or layer id");
   }
 }
 
@@ -2807,15 +2819,15 @@ function validateDissolveOpts(cmd) {
   if (_.length == 1) {
     o.field = _[0];
   } else if (_.length > 1) {
-    error("-dissolve takes a single field name");
+    error("command takes a single field name");
   }
 
-  if (o.sum_fields && !isCommaSep(o.sum_fields)) error("-dissolve sum-fields takes a comma-sep. list");
-  if (o.copy_fields && !isCommaSep(o.copy_fields)) error("-dissolve copy-fields takes a comma-sep. list");
+  if (o.sum_fields && !isCommaSep(o.sum_fields)) error("sum-fields= option takes a comma-sep. list");
+  if (o.copy_fields && !isCommaSep(o.copy_fields)) error("copy-fields= option takes a comma-sep. list");
 }
 
 function validateMergeLayersOpts(cmd) {
-  if (cmd._.length > 0) error("-merge-layers unexpected option:", cmd._);
+  if (cmd._.length > 0) error("unexpected option:", cmd._);
 }
 
 function validateRenameLayersOpts(cmd) {
@@ -2831,7 +2843,7 @@ function validateSplitOnGridOpts(cmd) {
   }
 
   if (o.rows > 0 === false || o.cols > 0 === false) {
-    error("-split-on-grids expects cols,rows");
+    error("comand expects cols,rows");
   }
 }
 
@@ -2840,19 +2852,19 @@ function validateLinesOpts(cmd) {
     var fields = validateCommaSepNames(cmd.options.fields || cmd._[0]);
     if (fields) cmd.options.fields = fields;
   } catch (e) {
-    error("-lines takes a comma-separated list of fields");
+    error("command takes a comma-separated list of fields");
   }
 }
 
 function validateInnerLinesOpts(cmd) {
   if (cmd._.length > 0) {
-    error("-innerlines takes no arguments");
+    error("command takes no arguments");
   }
 }
 
 function validateSubdivideOpts(cmd) {
   if (cmd._.length !== 1) {
-    error("-subdivide option requires a JavaScript expression");
+    error("command requires a JavaScript expression");
   }
   cmd.options.expression = cmd._[0];
 }
@@ -2862,21 +2874,13 @@ function validateFilterFieldsOpts(cmd) {
     var fields = validateCommaSepNames(cmd._[0]);
     cmd.options.fields = fields || [];
   } catch(e) {
-    error("-filter-fields option requires a comma-sep. list of fields");
-  }
-}
-
-function validateLayersOpts(cmd) {
-  try {
-    cmd.options.layers = validateCommaSepNames(cmd._[0], 1);
-  } catch (e) {
-    error("-layers option requires a comma-sep. list of layer names");
+    error("command requires a comma-sep. list of fields");
   }
 }
 
 function validateExpressionOpts(cmd) {
   if (cmd._.length !== 1) {
-    error("-filter option requires a JavaScript expression");
+    error("command requires a JavaScript expression");
   }
   cmd.options.expression = cmd._[0];
 }
@@ -2889,7 +2893,7 @@ function validateOutputOpts(cmd) {
       supportedTypes = ["geojson", "topojson", "shapefile"];
 
   if (_.length > 1) {
-    error("-o takes one file or directory argument");
+    error("command takes one file or directory argument");
   }
 
   if (!path) {
@@ -2926,11 +2930,11 @@ function validateOutputOpts(cmd) {
 
   // topojson-specific
   if ("quantization" in o && o.quantization > 0 === false) {
-    error("quantization option should be a nonnegative integer");
+    error("quantization= option should be a nonnegative integer");
   }
 
   if ("topojson_precision" in o && o.topojson_precision > 0 === false) {
-    error("topojson-precision should be a positive number");
+    error("topojson-precision= option should be a positive number");
   }
 
 }
@@ -2940,11 +2944,11 @@ function validateOutputOpts(cmd) {
 function validateCommaSepNames(str, min) {
   if (!min && !str) return null; // treat
   if (!Utils.isString(str)) {
-    error ("Expected comma-separated list; found:", str);
+    error ("expected comma-separated list; found:", str);
   }
   var parts = str.split(',').map(Utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
-    error(Utils.format("Expected a list of at least %d member%s; found: %s", min, 's?', str));
+    error(Utils.format("expected a list of at least %d member%s; found: %s", min, 's?', str));
   }
   return parts.length > 0 ? parts : null;
 }
@@ -2952,15 +2956,8 @@ function validateCommaSepNames(str, min) {
 
 
 
-api.parseCommands = function(arr) {
-  var commands;
- try {
-    commands = MapShaper.getOptionParser().parseArgv(arr);
-    if (commands.length === 0) error("Missing an input file");
-  } catch(e) {
-    stop(e.message);
-  }
-  return commands;
+MapShaper.parseCommands = function(arr) {
+  return MapShaper.getOptionParser().parseArgv(arr);
 };
 
 MapShaper.getOptionParser = function() {
@@ -13456,65 +13453,68 @@ api.renameLayers = function(layers, names) {
 
 // parse command line args into commands and run them
 api.runShellArgs = function(argv, done) {
-  var commands = api.parseCommands(argv);
+  var commands;
+  try {
+    commands = MapShaper.parseCommands(argv);
+  } catch(e) {
+    return done(e);
+  }
   if (commands.length === 0) {
-    MapShaper.printHelp();
-  } else {
-    commands = MapShaper.runAndRemoveInfoCommands(commands);
+    return done("Missing an input file");
   }
 
-  if (commands.length === 0) {
-    done();
-  } else {
-    // if there's no -o command and no -info command,
-    // append a generic -o command.
-    if (!Utils.some(commands, function(cmd) {
-      return cmd.name == 'o' || cmd.name == 'info' ;})) {
-      //message("Add a -o command to generate output");
-      commands.push({name: "o", options: {}});
-    }
-    api.runCommands(commands, done);
+  // if there's a -i command, no -o command and no -info command,
+  // append a generic -o command.
+  if (!utils.some(commands, function(cmd) { return cmd.name == 'o'; }) &&
+      !utils.some(commands, function(cmd) { return cmd.name == 'info'; }) &&
+      utils.some(commands, function(cmd) {return cmd.name == 'i'; })) {
+    commands.push({name: "o", options: {}});
   }
-};
-
-// run a string of command line args
-// (useful for testing -- doesn't append -o like runShellArgs())
-api.runCommandString = function(str, done) {
-  var parse = require('shell-quote').parse,
-      commands = api.parseCommands(parse(str));
-  api.runCommands(commands, done);
-};
-
-// execute a sequence of data processing commands
-// (assumes informational commands like -help have been removed)
-api.runCommands = function(commands, done) {
-  // need exactly one -i command
-  if (utils.filter(commands, function(cmd) {return cmd.name == 'i';}).length != 1) {
-    done("mapshaper expects one -i command");
-  }
-  // move -i to the front
-  MapShaper.promoteCommand('i', commands);
-  var imports = MapShaper.divideImportCommand(commands.shift());
 
   T.start("Start timing");
-  utils.reduceAsync(imports, null, function(empty, cmd, cb) {
-    var dataset = api.importFiles(cmd.options);
-    api.processDataset(dataset, commands, cb);
-  }, function(err, data) {
+  api.runCommands(commands, function(err, dataset) {
     T.stop("Total time");
-    done(err, data);
+    done(err);
   });
 };
 
-// Run a sequence of commands to transform a dataset
-// Assumes that certain commands have already been handled and removed from
-// the list -- e.g. -i and -help
+// Execute a sequence of commands
+// Signature: function(commands, [dataset,] done)
+// @commands either a string of commands or an array of parsed commands
 //
-// @done callback: function(err, dataset)
-//
-api.processDataset = function(dataset, commands, done) {
-  utils.reduceAsync(commands, dataset, function(data, cmd, cb) {
-    api.runCommand(cmd, data, cb);
+api.runCommands = function(commands) {
+  var dataset = null,
+      done, args;
+
+  if (utils.isFunction(arguments[1])) {
+    done = arguments[1];
+  } else if (utils.isFunction(arguments[2])) {
+    dataset = arguments[1];
+    done = arguments[2];
+  } else {
+    error("Missing callback");
+  }
+
+  if (utils.isString(commands)) {
+    try {
+      args = require('shell-quote').parse(commands);
+      commands = MapShaper.parseCommands(args);
+    } catch(e) {
+      return done(e);
+    }
+  }
+
+  commands = MapShaper.runAndRemoveInfoCommands(commands);
+  if (commands.length === 0) {
+    return done(null, dataset);
+  }
+  commands = MapShaper.divideImportCommand(commands);
+  if (commands[0].name != 'i' && !dataset) {
+    return done("Missing a -i command");
+  }
+
+  utils.reduceAsync(commands, dataset, function(dataset, cmd, nextCmd) {
+    api.runCommand(cmd, dataset, nextCmd);
   }, done);
 };
 
@@ -13529,122 +13529,132 @@ api.runCommand = function(cmd, dataset, cb) {
       targetLayers,
       newLayers,
       sourceLyr,
-      arcs = dataset.arcs,
-      err = null;
+      arcs;
 
-  T.start();
-  if (opts.target) {
-    targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
-  } else {
-    targetLayers = dataset.layers; // default: all layers
-  }
+  try { // catch errors from synchronous functions
 
-  if (targetLayers.length === 0) {
-    message("[" + name + "] Command is missing target layer(s).");
-    MapShaper.printLayerNames(dataset.layers);
-  }
-
-  if (name == 'clip') {
-    sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-    newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
-
-  } else if (name == 'each') {
-    MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
-
-  } else if (name == 'dissolve') {
-    newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
-
-  } else if (name == 'dissolve2') {
-    newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
-
-  } else if (name == 'erase') {
-    sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-    newLayers = api.eraseLayers(targetLayers, sourceLyr, dataset, opts);
-
-  } else if (name == 'explode') {
-    newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
-
-  } else if (name == 'filter-fields') {
-    MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
-
-  /*
-  } else if (name == 'fill-holes') {
-    MapShaper.applyCommand(api.fillHoles, targetLayers, opts);
-  */
-
-  } else if (name == 'filter') {
-    MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
-
-  } else if (name == 'flatten') {
-    newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
-
-  } else if (name == 'info') {
-    api.printInfo(dataset);
-
-  } else if (name == 'innerlines') {
-    newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
-
-  } else if (name == 'join') {
-    // async command -- special case
-    api.importJoinTableAsync(opts.source, opts, function(table) {
-      MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
-      done(err, dataset);
-    });
-    return;
-
-  } else if (name == 'layers') {
-    newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
-
-  } else if (name == 'lines') {
-    newLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
-
-  } else if (name == 'merge-layers') {
-    // careful, returned layers are modified input layers
-    newLayers = api.mergeLayers(targetLayers);
-
-  } else if (name == 'rename-layers') {
-    api.renameLayers(targetLayers, opts.names);
-
-  } else if (name == 'repair') {
-    newLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
-
-  } else if (name == 'simplify') {
-    api.simplify(arcs, opts);
-    if (opts.keep_shapes) {
-      api.keepEveryPolygon(arcs, targetLayers);
+    T.start();
+    if (dataset) {
+      arcs = dataset.arcs;
+      if (opts.target) {
+        targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
+      } else {
+        targetLayers = dataset.layers; // default: all layers
+      }
+      if (targetLayers.length === 0) {
+        message("[-" + name + "] Command is missing target layer(s).");
+        MapShaper.printLayerNames(dataset.layers);
+      }
     }
 
-  } else if (name == 'split') {
-    newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, arcs, opts.field);
+    if (name == 'clip') {
+      sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
+      newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
 
-  } else if (name == 'split-on-grid') {
-    newLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
+    } else if (name == 'each') {
+      MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
-  } else if (name == 'subdivide') {
-    newLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
+    } else if (name == 'dissolve') {
+      newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
 
-  } else if (name == 'o') {
-    api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
+    } else if (name == 'dissolve2') {
+      newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
 
-  } else {
-    err = "Unhandled command: -" + name;
-  }
+    } else if (name == 'erase') {
+      sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
+      newLayers = api.eraseLayers(targetLayers, sourceLyr, dataset, opts);
 
-  if (opts.name) {
-    (newLayers || targetLayers).forEach(function(lyr) {
-      lyr.name = opts.name;
-    });
-  }
+    } else if (name == 'explode') {
+      newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
 
-  if (newLayers) {
-    if (opts.no_replace) {
-      dataset.layers = dataset.layers.concat(newLayers);
+    } else if (name == 'filter-fields') {
+      MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
+
+    /*
+    } else if (name == 'fill-holes') {
+      MapShaper.applyCommand(api.fillHoles, targetLayers, opts);
+    */
+
+    } else if (name == 'filter') {
+      MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
+
+    } else if (name == 'flatten') {
+      newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
+
+    } else if (name == 'i') {
+      dataset = api.importFiles(cmd.options);
+
+    } else if (name == 'info') {
+      api.printInfo(dataset);
+
+    } else if (name == 'innerlines') {
+      newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
+
+    } else if (name == 'join') {
+      // async command -- special case
+      api.importJoinTableAsync(opts.source, opts, function(table) {
+        MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
+        done(null, dataset);
+      });
+      return;
+
+    } else if (name == 'layers') {
+      newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
+
+    } else if (name == 'lines') {
+      newLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
+
+    } else if (name == 'merge-layers') {
+      // careful, returned layers are modified input layers
+      newLayers = api.mergeLayers(targetLayers);
+
+    } else if (name == 'o') {
+      api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
+
+    } else if (name == 'rename-layers') {
+      api.renameLayers(targetLayers, opts.names);
+
+    } else if (name == 'repair') {
+      newLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
+
+    } else if (name == 'simplify') {
+      api.simplify(arcs, opts);
+      if (opts.keep_shapes) {
+        api.keepEveryPolygon(arcs, targetLayers);
+      }
+
+    } else if (name == 'split') {
+      newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, arcs, opts.field);
+
+    } else if (name == 'split-on-grid') {
+      newLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
+
+    } else if (name == 'subdivide') {
+      newLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
+
     } else {
-      // TODO: consider replacing old layers as they are generated, for gc
-      MapShaper.replaceLayers(dataset, targetLayers, newLayers);
+      error("Unhandled command: [" + name + "]");
     }
+
+    if (opts.name) {
+      (newLayers || targetLayers).forEach(function(lyr) {
+        lyr.name = opts.name;
+      });
+    }
+
+    if (newLayers) {
+      if (opts.no_replace) {
+        dataset.layers = dataset.layers.concat(newLayers);
+      } else {
+        // TODO: consider replacing old layers as they are generated, for gc
+        MapShaper.replaceLayers(dataset, targetLayers, newLayers);
+      }
+    }
+    done(null, dataset);
+
+  } catch(e) {
+    done(e, null);
   }
-  done(err, dataset);
 
   function done(err, dataset) {
     T.stop('-' + name);
@@ -13666,20 +13676,23 @@ MapShaper.applyCommand = function(func, targetLayers) {
   }, []);
 };
 
-MapShaper.divideImportCommand = function(cmd) {
-  var opts = cmd.options,
-      imports;
-  if (opts.combine_files || opts.merge_files || opts.stdin || opts.files.length <= 1) {
-    imports = [cmd];
-  } else {
-    imports = opts.files.map(function(file) {
-      return {
-        name: cmd.name,
-        options: Utils.defaults({files:[file]}, opts)
-      };
-    });
+MapShaper.divideImportCommand = function(commands) {
+  var firstCmd = commands[0],
+      opts = firstCmd.options,
+      files = opts.files || [];
+
+  if (firstCmd.name != 'i' || files.length <= 1 || opts.stdin || opts.merge_files || opts.combine_files) {
+    return commands;
   }
-  return imports;
+  return files.reduce(function(memo, file) {
+    var importCmd = {
+      name: 'i',
+      options: Utils.defaults({files:[file]}, opts)
+    };
+    memo.push(importCmd);
+    memo.push.apply(memo, commands.slice(1));
+    return memo;
+  }, []);
 };
 
 api.exportFiles = function(dataset, opts) {
@@ -13720,21 +13733,29 @@ api.importFiles = function(opts) {
   return dataset;
 };
 
+// Call @iter on each member of an array (similar to Array#reduce(iter))
+//    iter: function(memo, item, callback)
+// Call @done when all members have been processed or if an error occurs
+//    done: function(err, memo)
+// @memo: Initial value to be reduced
+//
 utils.reduceAsync = function(arr, memo, iter, done) {
   var i=0;
   next(null, memo);
 
-  function next(err, result) {
+  function next(err, memo) {
     // Detach next operation from call stack to prevent overflow
     // Don't use setTimeout(, 0) -- this can introduce a long delay if
     //   previous operation was slow, as of Node 0.10.32
-    setImmediate(function() {
-      if (i < arr.length === false || err) {
-        done(err, result);
-      } else {
-        iter(result, arr[i++], next);
-      }
-    });
+    if (err) {
+      done(err, null);
+    } else if (i < arr.length === false) {
+      done(null, memo);
+    } else {
+      setImmediate(function() {
+        iter(memo, arr[i++], next);
+      });
+    }
   }
 };
 
@@ -13762,19 +13783,6 @@ MapShaper.printHelp = function(commands) {
   MapShaper.getOptionParser().printHelp(commands);
 };
 
-// TODO: handle multiple instances of a command, return number found
-// Assumes only one of this kind of command
-MapShaper.promoteCommand = function(name, commands) {
-  var cmd = Utils.find(commands, function(cmd) {
-    return cmd.name == name;
-  });
-  var idx = commands.indexOf(cmd);
-  if (idx > 0) {
-    commands.unshift(commands.splice(idx, 1)[0]);
-  }
-};
-
-
 // @src: a layer identifier or a filename
 // if file -- import layer(s) from the file, merge arcs into @dataset,
 //   but don't add source layer(s) to the dataset
@@ -13783,7 +13791,7 @@ MapShaper.getSourceLayer = function(src, dataset, opts) {
   var match = MapShaper.findMatchingLayers(dataset.layers, src),
       lyr;
   if (match.length > 1) {
-    stop("[" + name + "] Command received more than one source layer");
+    stop("[-" + name + "] command received more than one source layer");
   } else if (match.length == 1) {
     lyr = match[0];
   } else {
@@ -13838,7 +13846,7 @@ MapShaper.printLayerNames = function(layers) {
         message("... " + (layers.length - max) + " more");
         break;
       }
-      message("[" + i + "]  " + (layers[i].name || "[unnamed]"));
+      message("[-" + i + "]  " + (layers[i].name || "[unnamed]"));
     }
   }
 };

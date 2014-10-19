@@ -49,10 +49,10 @@ function CommandParser() {
       } else {
         cmdName = readCommandName(argv);
       }
-      if (!cmdName) error("Invalid command:", argv[0]);
+      if (!cmdName) stop("Invalid command:", argv[0]);
       cmdDef = findCommandDefn(cmdName, commandDefs);
       if (!cmdDef) {
-        error("Unknown command:", '-' + cmdName);
+        stop("Unknown command:", '-' + cmdName);
       }
       cmd = {
         name: cmdDef.name,
@@ -70,7 +70,13 @@ function CommandParser() {
         }
       }
 
-      if (cmdDef.validate) cmdDef.validate(cmd);
+      if (cmdDef.validate) {
+        try {
+          cmdDef.validate(cmd);
+        } catch(e) {
+          stop("[-" + cmdName + "] " + e.message);
+        }
+      }
       commands.push(cmd);
     }
     return commands;
@@ -91,7 +97,7 @@ function CommandParser() {
       if (!optDef) return null;
 
       if (match && (optDef.type == 'flag' || optDef.assign_to)) {
-        error("-" + cmdDef.name + " " + name + " doesn't take a value");
+        stop("-" + cmdDef.name + " " + name + " doesn't take a value");
       }
 
       if (match) {
@@ -103,7 +109,7 @@ function CommandParser() {
       optName = optDef.assign_to || optDef.name.replace(/-/g, '_');
       optVal = readOptionValue(argv, optDef);
       if (optVal === null) {
-        error("Invalid value for -" + cmdDef.name + " " + optName);
+        stop("Invalid value for -" + cmdDef.name + " " + optName);
       }
       return [optName, optVal];
     }
@@ -299,7 +305,7 @@ function CommandOptions(name) {
   this.option = function(name, opts) {
     opts = opts || {}; // accept just a name -- some options don't need properties
     if (!Utils.isString(name) || !name) error("Missing option name");
-    if (!validateOption(opts)) error("Invalid option definition:", opts);
+    if (!Utils.isObject(opts)) error("Invalid option definition:", opts);
     opts.name = name;
     _command.options.push(opts);
     return this;
@@ -308,8 +314,4 @@ function CommandOptions(name) {
   this.done = function() {
     return _command;
   };
-
-  function validateOption(obj) {
-    return Utils.isObject(obj);
-  }
 }

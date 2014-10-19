@@ -62,29 +62,30 @@ describe('mapshaper-commands.js', function () {
       counties_shp = fixPath("test_data/six_counties.shp"),
       states_csv = fixPath("test_data/states.csv");
 
-
   describe('-filter-fields', function () {
 
-    it("test 1", function () {
+    it("test 1", function (done) {
       var cmd = format("-i %s -filter-fields NAME=STATE_NAME,FIPS", states_shp);
-      api.runCommandString(cmd, function(err, data) {
+      api.runCommands(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getFields(), ['NAME', 'FIPS']);
+        done();
       })
     })
 
-    it("test 2 -- drop fields)", function () {
+    it("test 2 -- drop fields)", function (done) {
       var cmd = format("-i %s -filter-fields", states_shp);
-      api.runCommandString(cmd, function(err, data) {
+      api.runCommands(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getFields(), []);
+        done();
       })
     })
   })
 
   describe('-dissolve', function () {
 
-    it('test 1', function() {
+    it('test 1', function(done) {
       var cmd = format("-i %s -dissolve + copy-fields NAME,STATE_FIPS sum-fields POP2000,MULT_RACE", counties_shp);
-        api.runCommandString(cmd, function(err, data) {
+        api.runCommands(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
         var lyr1 = data.layers[0]; // original lyr
         assert.equal(lyr1.data.size(), 6); // original data table hasn't been replaced
@@ -92,6 +93,7 @@ describe('mapshaper-commands.js', function () {
         var lyr2 = data.layers[1]; // dissolved lyr
         assert.deepEqual(lyr2.data.getRecords(),
             [{NAME: 'District of Columbia', STATE_FIPS: '11', POP2000: 1916238, MULT_RACE: 76770}]);
+        done();
       })
     })
 
@@ -99,12 +101,13 @@ describe('mapshaper-commands.js', function () {
 
   describe('-split', function () {
 
-    it('test 1', function() {
+    it('test 1', function(done) {
       var cmd = format("-i %s -split STATE", states_shp);
-      api.runCommandString(cmd, function(err, data) {
+      api.runCommands(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
         assert.equal(data.layers[0].shapes.length, 1);
         assert.equal(data.layers[1].shapes.length, 1);
+        done();
       })
     })
 
@@ -112,12 +115,13 @@ describe('mapshaper-commands.js', function () {
 
   describe('-join', function () {
 
-    it('test 1', function() {
+    it('test 1', function(done) {
       var cmd = format("-i %s -join %s keys=FIPS,STATE_FIPS:str fields=POP2010,SUB_REGION", states_shp, states_csv),
           target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
           {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
-      api.runCommandString(cmd, function(err, data) {
+      api.runCommands(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getRecords(), target);
+        done();
       })
 
     })
