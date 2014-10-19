@@ -68,7 +68,7 @@ MapShaper.importDelimTable = function(file) {
     }
   } catch(e) {
     msg = "Unable to " + (str ? "read" : "parse") + " file: " + file;
-    throw new APIError("Unable to read file: " + file);
+    stop("Unable to read file: " + file);
   }
   return new DataTable(records);
 };

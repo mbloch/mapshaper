@@ -74,7 +74,7 @@ function CommandParser() {
         try {
           cmdDef.validate(cmd);
         } catch(e) {
-          stop("[-" + cmdName + "] " + e.message);
+          stop("[" + cmdName + "] " + e.message);
         }
       }
       commands.push(cmd);

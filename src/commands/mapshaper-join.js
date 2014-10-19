@@ -6,7 +6,7 @@ api.importJoinTable = function(file, opts) {
       keys = opts.keys;
 
   if (!utils.isArray(keys) || keys.length != 2) {
-    return done(new APIError("[join] Invalid join keys:", keys));
+    stop("[join] Invalid join keys:", keys);
   }
   // this may cause duplicate field name with inconsistent type hints
   // adjustRecordTypes() should handle this case
