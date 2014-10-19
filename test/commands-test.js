@@ -77,19 +77,73 @@ describe('mapshaper-commands.js', function () {
       });
     });
 
-    it('Error: missing a file', function(done) {
+    it('Error: -i missing a file', function(done) {
       mapshaper.runCommands("-i oops.shp", function(err) {
         assert.equal(err.name, 'APIError');
         done();
       });
     });
 
-    it('Callback returns dataset', function(done) {
+    it('Error: unknown command', function(done) {
+      mapshaper.runCommands("-i " + states_shp + " -amplify", function(err) {
+        assert.equal(err.name, 'APIError');
+        done();
+      });
+    });
+
+    it('Error: -join missing a file', function(done) {
+      mapshaper.runCommands("-i " + states_shp + " -join oops.json", function(err) {
+        assert.equal(err.name, 'APIError');
+        done();
+      });
+    });
+
+    it('Callback returns dataset for imported file', function(done) {
       mapshaper.runCommands("-i " + states_shp, function(err, dataset) {
         assert.equal(dataset.layers[0].name, 'two_states');
         done();
       });
     });
+
+    it('Callback receives initial dataset', function(done) {
+      var dataset = {
+        layers: [{
+          geometry_type: "point",
+          shapes: [[[0, 0]], [[1, 1]]]
+        }]
+      }
+      mapshaper.runCommands("-info", dataset, function(err, data) {
+        assert.equal(dataset, data);
+        done();
+      });
+    })
+
+    it('Callback receives initial dataset, null command', function(done) {
+      var dataset = {
+        layers: [{
+          geometry_type: "point",
+          shapes: [[[0, 0]], [[1, 1]]]
+        }]
+      }
+      mapshaper.runCommands("", dataset, function(err, data) {
+        assert.equal(dataset, data);
+        done();
+      });
+    })
+
+    it('Initial dataset is replaced by imported dataset', function(done) {
+      var dataset = {
+        layers: [{
+          geometry_type: "point",
+          shapes: [[[0, 0]], [[1, 1]]]
+        }]
+      }
+      mapshaper.runCommands("-i " + states_shp, dataset, function(err, data) {
+        assert.notEqual(data, dataset);
+        assert.equal(data.layers[0].name, 'two_states');
+        done();
+      });
+    })
 
   });
 
