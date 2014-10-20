@@ -6,6 +6,9 @@ api.convertPolygonsToInnerLines = function(lyr, arcs) {
   }
   var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
       lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
+  if (lyr2.shapes.length === 0) {
+    message("[innerlines] No shared boundaries were found in layer: [" + (lyr.name || "unnamed") + "]");
+  }
   lyr2.name = lyr.name;
   return lyr2;
 };
