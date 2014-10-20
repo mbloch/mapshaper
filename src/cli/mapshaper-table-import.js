@@ -59,7 +59,7 @@ MapShaper.importDbfTable = function(shpName, encoding) {
 };
 
 MapShaper.importDelimTable = function(file) {
-  var records, str, msg;
+  var records, str;
   try {
     str = Node.readFile(file, 'utf-8');
     records = MapShaper.parseDelimString(str);
@@ -67,27 +67,29 @@ MapShaper.importDelimTable = function(file) {
       throw new Error();
     }
   } catch(e) {
-    msg = "Unable to " + (str ? "read" : "parse") + " file: " + file;
-    stop("Unable to read file: " + file);
+    stop("Unable to", (str ? "read" : "parse"), "file:", file);
   }
   return new DataTable(records);
 };
 
 MapShaper.parseDelimString = function(str) {
   var dsv = require("./lib/d3/d3-dsv.js").dsv,
-      delim = MapShaper.guessDelimiter(str) || ',';
+      delim = MapShaper.guessDelimiter(str),
       records = dsv(delim).parse(str);
   return records;
 };
 
+//
 MapShaper.guessDelimiter = function(content) {
   var delimiters = ['|', '\t', ','];
   return Utils.find(delimiters, function(delim) {
     var rxp = MapShaper.getDelimiterRxp(delim);
     return rxp.test(content);
-  });
+  }) || ',';
 };
 
+// Get RegExp to test for a delimiter before first line break of a string
+// Assumes that first line contains field headers and that header names do not include delim char
 MapShaper.getDelimiterRxp = function(delim) {
   var rxp = "^[^\\n\\r]+" + Utils.regexEscape(delim);
   return new RegExp(rxp);
