@@ -2,7 +2,8 @@
 
 api.mergeFiles = function(files, opts) {
   var datasets = files.map(function(fname) {
-    var importOpts = Utils.defaults({no_topology: true, files: [fname]}, opts);  // import without topology
+    // import without topology or snapping
+    var importOpts = Utils.defaults({no_topology: true, auto_snap: false, snap_interval: null, files: [fname]}, opts);
     return api.importFile(fname, importOpts);
   });
 
@@ -23,6 +24,14 @@ api.mergeFiles = function(files, opts) {
   // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
   // (but problem of mismatched coordinates due to quantization in input files.)
   if (!opts.no_topology && merged.info.input_format != 'topojson') {
+    // TODO: remove duplication with mapshaper-path-import.js; consider applying
+    //   snapping option inside buildTopology()
+    if (opts.auto_snap || opts.snap_interval) {
+      T.start();
+      MapShaper.snapCoords(merged.arcs, opts.snap_interval);
+      T.stop("Snapping points");
+    }
+
     api.buildTopology(merged);
   }
 
