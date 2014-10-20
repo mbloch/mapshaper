@@ -18,7 +18,7 @@ describe('topojson-split-test.js', function () {
 
     it ("re-indexes geometry collection ids", function() {
       var arcs1 = [[-5, 2]],
-          arcs2 = [[[-2, -3]], [[1]]]
+          arcs2 = [[[-2, -3]], [[1]]],
           index = [0, 0, 1, 0, 2],
           obj = {
             type: "GeometryCollection",

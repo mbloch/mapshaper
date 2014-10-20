@@ -170,7 +170,8 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   }
 
   var objects = Utils.reduce(lyr.shapes, function(memo, shape, i) {
-    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type);
+    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type),
+        str;
     if (useFeatures) {
       obj = {
         type: "Feature",

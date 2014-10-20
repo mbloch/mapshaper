@@ -8902,7 +8902,8 @@ Dbf.getStringReaderEncoded = function(size, encoding) {
       buf = new Buffer(size),
       isUtf8 = RE_UTF8.test(encoding);
   return function(bin) {
-    var i, c, eos = false;
+    var eos = false,
+        i, c, str;
     for (i=0; i<size; i++) {
       c = bin.readUint8();
       if (c === 0) break;
@@ -9665,7 +9666,8 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   }
 
   var objects = Utils.reduce(lyr.shapes, function(memo, shape, i) {
-    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type);
+    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type),
+        str;
     if (useFeatures) {
       obj = {
         type: "Feature",

@@ -14,7 +14,7 @@
 		"node": "0.10.x"
 	},
 	"scripts": {
-		"test": "mocha"
+		"test": "mocha --check-leaks"
 	},
 	"main": "./mapshaper.js",
 	"dependencies": {

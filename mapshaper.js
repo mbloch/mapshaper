@@ -8376,7 +8376,8 @@ Dbf.getStringReaderEncoded = function(size, encoding) {
       buf = new Buffer(size),
       isUtf8 = RE_UTF8.test(encoding);
   return function(bin) {
-    var i, c, eos = false;
+    var eos = false,
+        i, c, str;
     for (i=0; i<size; i++) {
       c = bin.readUint8();
       if (c === 0) break;
@@ -9139,7 +9140,8 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   }
 
   var objects = Utils.reduce(lyr.shapes, function(memo, shape, i) {
-    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type);
+    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type),
+        str;
     if (useFeatures) {
       obj = {
         type: "Feature",
@@ -11610,7 +11612,7 @@ MapShaper.importDbfTable = function(shpName, encoding) {
 };
 
 MapShaper.importDelimTable = function(file) {
-  var records, str, msg;
+  var records, str;
   try {
     str = Node.readFile(file, 'utf-8');
     records = MapShaper.parseDelimString(str);
@@ -11618,27 +11620,29 @@ MapShaper.importDelimTable = function(file) {
       throw new Error();
     }
   } catch(e) {
-    msg = "Unable to " + (str ? "read" : "parse") + " file: " + file;
-    stop("Unable to read file: " + file);
+    stop("Unable to", (str ? "read" : "parse"), "file:", file);
   }
   return new DataTable(records);
 };
 
 MapShaper.parseDelimString = function(str) {
   var dsv = require("./lib/d3/d3-dsv.js").dsv,
-      delim = MapShaper.guessDelimiter(str) || ',';
+      delim = MapShaper.guessDelimiter(str),
       records = dsv(delim).parse(str);
   return records;
 };
 
+//
 MapShaper.guessDelimiter = function(content) {
   var delimiters = ['|', '\t', ','];
   return Utils.find(delimiters, function(delim) {
     var rxp = MapShaper.getDelimiterRxp(delim);
     return rxp.test(content);
-  });
+  }) || ',';
 };
 
+// Get RegExp to test for a delimiter before first line break of a string
+// Assumes that first line contains field headers and that header names do not include delim char
 MapShaper.getDelimiterRxp = function(delim) {
   var rxp = "^[^\\n\\r]+" + Utils.regexEscape(delim);
   return new RegExp(rxp);
@@ -12611,21 +12615,23 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
 // filter and rename data fields; see mapshaper -fields option
 
 api.filterFields = function(lyr, names) {
+  var fields, fieldMap, missingFields;
   if (!lyr.data) {
     stop("[filter-fields] Layer is missing a data table");
   } else if (!Utils.isArray(names)) {
     stop("[filter-fields] Expected an array of field names; found:", names);
   }
-  var fields = lyr.data.getFields(),
-      fieldMap = utils.reduce(names, function(memo, str) {
-        var parts = str.split('=');
-        var dest = parts[0],
-            src = parts[1] || dest;
-        if (!src || !dest) stop("[fields] Invalid field description:", str);
-        memo[src] = dest;
-        return memo;
-      }, {});
-      missingFields = Utils.difference(Utils.getKeys(fieldMap), fields);
+
+  fieldMap = utils.reduce(names, function(memo, str) {
+      var parts = str.split('=');
+      var dest = parts[0],
+          src = parts[1] || dest;
+      if (!src || !dest) stop("[fields] Invalid field description:", str);
+      memo[src] = dest;
+      return memo;
+    }, {});
+  fields = lyr.data.getFields();
+  missingFields = Utils.difference(Utils.getKeys(fieldMap), fields);
 
   if (missingFields.length > 0) {
     message("[filter-fields] Table is missing one or more specified fields:", missingFields);

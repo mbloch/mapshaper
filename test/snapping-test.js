@@ -36,7 +36,7 @@ describe('mapshaper-snapping.js', function () {
         arr.push(Math.random());
       });
 
-      ids = api.utils.sortCoordinateIds(arr);
+      var ids = api.utils.sortCoordinateIds(arr);
       assert(testSortedIds(ids, arr));
     })
 

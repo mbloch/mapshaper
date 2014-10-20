@@ -164,7 +164,7 @@ describe('mapshaper-table-import.js', function() {
 
   describe('parseDelimString()', function () {
     it('test 1', function () {
-      var str = 'a,b\n"1","2"'
+      var str = 'a,b\n"1","2"';
       var records = api.internal.parseDelimString(str);
       stringifyEqual(records, [{a: "1", b: "2"}]);
     })

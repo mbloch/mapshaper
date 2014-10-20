@@ -36,7 +36,8 @@ Dbf.getStringReaderEncoded = function(size, encoding) {
       buf = new Buffer(size),
       isUtf8 = RE_UTF8.test(encoding);
   return function(bin) {
-    var i, c, eos = false;
+    var eos = false,
+        i, c, str;
     for (i=0; i<size; i++) {
       c = bin.readUint8();
       if (c === 0) break;
