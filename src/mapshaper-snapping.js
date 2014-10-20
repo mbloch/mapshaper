@@ -18,12 +18,8 @@ MapShaper.snapCoords = function(arcs, threshold) {
         snapDist = autoSnapDist;
 
   if (threshold > 0) {
-    if (threshold > avgDist) {
-      message(Utils.format("Snapping interval is larger than avg. segment length (%.5f) -- using auto-snap instead", avgDist));
-    } else {
-      snapDist = threshold;
-      message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
-    }
+    snapDist = threshold;
+    message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
   }
 
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
