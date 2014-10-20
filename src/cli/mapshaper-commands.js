@@ -336,7 +336,7 @@ MapShaper.getSourceLayer = function(src, dataset, opts) {
   var match = MapShaper.findMatchingLayers(dataset.layers, src),
       lyr;
   if (match.length > 1) {
-    stop("[-" + name + "] command received more than one source layer");
+    stop("[" + name + "] command received more than one source layer");
   } else if (match.length == 1) {
     lyr = match[0];
   } else {

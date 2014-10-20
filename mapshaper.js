@@ -12865,11 +12865,11 @@ api.joinAttributesToFeatures = function(lyr, table, opts) {
   // var index = Utils.indexOn(table.getRecords(), foreignKey);
 
   if (!lyr.data || !lyr.data.fieldExists(localKey)) {
-    error("[join] Target layer is missing field:", localKey);
+    stop("[join] Target layer is missing field:", localKey);
   }
 
   if (!MapShaper.joinTables(lyr.data, localKey, joinFields, table, foreignKey,
-      joinFields)) error("[join] No records could be joined");
+      joinFields)) stop("[join] No records could be joined");
   // TODO: better handling of failed joins
 };
 
@@ -13791,7 +13791,7 @@ MapShaper.getSourceLayer = function(src, dataset, opts) {
   var match = MapShaper.findMatchingLayers(dataset.layers, src),
       lyr;
   if (match.length > 1) {
-    stop("[-" + name + "] command received more than one source layer");
+    stop("[" + name + "] command received more than one source layer");
   } else if (match.length == 1) {
     lyr = match[0];
   } else {
