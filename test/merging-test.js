@@ -12,9 +12,7 @@ var arcs3 = [[[9, 4], [10, 5]]];
 var data1 = {
   arcs: new ArcCollection(arcs1),
   layers: [{
-    geometry_type: 'point',
-    shapes: [[[0, 1]]]
-  }, {
+    name: "polys",
     geometry_type: 'polyline',
     shapes: [[[0, 1]]],
     data: new api.internal.DataTable([{id: 1}])
@@ -24,12 +22,26 @@ var data1 = {
 var data2 = {
   arcs: new ArcCollection(arcs2),
   layers: [{
-    geometry_type: 'point',
-    shapes: [null, [[2, 3], [4, 5]]]
-  }, {
+    name: "polys",
     geometry_type: 'polyline',
     shapes: [[[~1]], [[0]]],
     data: new api.internal.DataTable([{id: 2}, {id: 3}])
+  }]
+};
+
+var data3 = {
+  layers: [{
+    name: "points",
+    geometry_type: 'point',
+    shapes: [[[0, 1]]]
+  }]
+};
+
+var data4 = {
+  layers: [{
+    name: "points",
+    geometry_type: 'point',
+    shapes: [null, [[2, 3], [4, 5]]]
   }]
 };
 
@@ -59,10 +71,9 @@ describe('mapshaper-merging.js', function () {
   describe('mergeDatasets() + mergeLayers()', function () {
     it('merge two datasets', function () {
       var merged = api.internal.mergeDatasets([data1, data2]);
-      merged.layers = api.mergeLayers(merged.layers);
-      assert.deepEqual(merged.layers[0].shapes, [[[0, 1]], null, [[2, 3], [4, 5]]]);
-      assert.deepEqual(merged.layers[1].shapes, [[[0, 1]], [[~3]], [[2]]]);
-      assert.deepEqual(merged.layers[1].data.getRecords(), [{id: 1}, {id: 2}, {id: 3}]);
+      merged.layers = api.mergeLayers(merged.layers, {});
+      assert.deepEqual(merged.layers[0].shapes, [[[0, 1]], [[~3]], [[2]]]);
+      assert.deepEqual(merged.layers[0].data.getRecords(), [{id: 1}, {id: 2}, {id: 3}]);
     })
   })
 })

@@ -32,5 +32,9 @@ api.mergeLayers = function(layers) {
     }
   });
 
+  if (merged.length >= 2) {
+    stop("[merge-layers] Unable to merge " + (merged.length < layers.length ? "some " : "") + "layers. Geometry and data fields must be compatible.");
+  }
+
   return merged;
 };

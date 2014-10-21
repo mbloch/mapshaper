@@ -6318,12 +6318,8 @@ MapShaper.snapCoords = function(arcs, threshold) {
         snapDist = autoSnapDist;
 
   if (threshold > 0) {
-    if (threshold > avgDist) {
-      message(Utils.format("Snapping interval is larger than avg. segment length (%.5f) -- using auto-snap instead", avgDist));
-    } else {
-      snapDist = threshold;
-      message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
-    }
+    snapDist = threshold;
+    message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
   }
 
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
@@ -9551,6 +9547,9 @@ api.convertPolygonsToInnerLines = function(lyr, arcs) {
   }
   var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
       lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
+  if (lyr2.shapes.length === 0) {
+    message("[innerlines] No shared boundaries were found in layer: [" + (lyr.name || "unnamed") + "]");
+  }
   lyr2.name = lyr.name;
   return lyr2;
 };
@@ -12714,6 +12713,10 @@ api.mergeLayers = function(layers) {
     }
   });
 
+  if (merged.length >= 2) {
+    stop("[merge-layers] Unable to merge " + (merged.length < layers.length ? "some " : "") + "layers. Geometry and data fields must be compatible.");
+  }
+
   return merged;
 };
 
@@ -12796,7 +12799,8 @@ utils.mergeArrays = function(arrays, TypedArr) {
 
 api.mergeFiles = function(files, opts) {
   var datasets = files.map(function(fname) {
-    var importOpts = Utils.defaults({no_topology: true, files: [fname]}, opts);  // import without topology
+    // import without topology or snapping
+    var importOpts = Utils.defaults({no_topology: true, auto_snap: false, snap_interval: null, files: [fname]}, opts);
     return api.importFile(fname, importOpts);
   });
 
@@ -12817,6 +12821,14 @@ api.mergeFiles = function(files, opts) {
   // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
   // (but problem of mismatched coordinates due to quantization in input files.)
   if (!opts.no_topology && merged.info.input_format != 'topojson') {
+    // TODO: remove duplication with mapshaper-path-import.js; consider applying
+    //   snapping option inside buildTopology()
+    if (opts.auto_snap || opts.snap_interval) {
+      T.start();
+      MapShaper.snapCoords(merged.arcs, opts.snap_interval);
+      T.stop("Snapping points");
+    }
+
     api.buildTopology(merged);
   }
 

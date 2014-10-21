@@ -6844,12 +6844,8 @@ MapShaper.snapCoords = function(arcs, threshold) {
         snapDist = autoSnapDist;
 
   if (threshold > 0) {
-    if (threshold > avgDist) {
-      message(Utils.format("Snapping interval is larger than avg. segment length (%.5f) -- using auto-snap instead", avgDist));
-    } else {
-      snapDist = threshold;
-      message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
-    }
+    snapDist = threshold;
+    message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
   }
 
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
@@ -10077,6 +10073,9 @@ api.convertPolygonsToInnerLines = function(lyr, arcs) {
   }
   var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
       lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
+  if (lyr2.shapes.length === 0) {
+    message("[innerlines] No shared boundaries were found in layer: [" + (lyr.name || "unnamed") + "]");
+  }
   lyr2.name = lyr.name;
   return lyr2;
 };
