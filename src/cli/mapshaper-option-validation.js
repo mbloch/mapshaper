@@ -14,8 +14,8 @@ function validateInputOpts(cmd) {
 
   if (_[0] == '-' || _[0] == '/dev/stdin') {
     o.stdin = true;
-  } else {
-    o.files = cli.validateInputFiles(_);
+  } else if (_.length > 0) {
+    o.files = _.map(cli.validateInputFile);
   }
 
   if ("precision" in o && o.precision > 0 === false) {

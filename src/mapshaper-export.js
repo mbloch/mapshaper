@@ -10,17 +10,18 @@ mapshaper-rounding
 // "content" attributes.
 //
 MapShaper.exportFileContent = function(dataset, opts) {
-  var exporter = MapShaper.exporters[opts.format],
+  var outFmt = opts.format = MapShaper.getOutputFormat(dataset, opts),
+      exporter = MapShaper.exporters[outFmt],
       layers = dataset.layers,
       files = [];
 
-  if (!opts.format) {
+  if (!outFmt) {
     error("[o] Missing output format");
   } else if (!exporter) {
-    error("[o] Unknown export format:", opts.format);
+    error("[o] Unknown export format:", outFmt);
   }
 
-  if (opts.output_file && opts.format != 'topojson') {
+  if (opts.output_file && outFmt != 'topojson') {
     opts.output_extension = utils.getFileExtension(opts.output_file);
     layers.forEach(function(lyr) {
       lyr.name = utils.getFileBase(opts.output_file);
@@ -55,6 +56,17 @@ MapShaper.exporters = {
   geojson: MapShaper.exportGeoJSON,
   topojson: MapShaper.exportTopoJSON,
   shapefile: MapShaper.exportShapefile
+};
+
+MapShaper.getOutputFormat = function(dataset, opts) {
+  var outFmt = opts.format,
+      outFile = opts.output_file || null,
+      inFmt = dataset.info && dataset.info.input_format;
+
+  if (!outFmt) {
+    outFmt = outFile ? MapShaper.guessFileFormat(outFile, inFmt) : inFmt;
+  }
+  return outFmt;
 };
 
 // Generate json file with bounding boxes and names of each export layer

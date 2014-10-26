@@ -60,12 +60,6 @@ cli.replaceFileExtension = function(path, ext) {
   return info.pathbase + '.' + ext;
 };
 
-cli.validateInputFiles = function(arr) {
-  var files = Utils.map(arr, cli.validateInputFile);
-  if (files.length === 0) error("Missing an input file");
-  return files;
-};
-
 cli.validateInputFile = function(ifile) {
   var opts = {};
   cli.checkFileExists(ifile);

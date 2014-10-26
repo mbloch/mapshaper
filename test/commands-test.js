@@ -1,5 +1,6 @@
 var api = require('../'),
   assert = require('assert'),
+  fs = require('fs'),
   format = api.utils.format;
 
 function fixPath(p) {
@@ -61,6 +62,81 @@ describe('mapshaper-commands.js', function () {
   var states_shp = fixPath("test_data/two_states.shp"),
       counties_shp = fixPath("test_data/six_counties.shp"),
       states_csv = fixPath("test_data/states.csv");
+
+  describe('applyCommands()', function () {
+    it('import GeoJSON points as string', function (done) {
+      var json = fs.readFileSync(fixPath('test_data/three_points.geojson'), 'utf8');
+      api.applyCommands('', json, function(err, output) {
+        assert.deepEqual(JSON.parse(json), JSON.parse(output[0]));
+        done();
+      });
+    })
+
+    it('import GeoJSON points as object', function (done) {
+      var json = fs.readFileSync(fixPath('test_data/three_points.geojson'), 'utf8');
+      json = JSON.parse(json);
+      api.applyCommands('', json, function(err, output) {
+        assert.deepEqual(output, [json]);
+        done();
+      });
+    })
+
+    it('convert GeoJSON points to TopoJSON', function (done) {
+      var geojson = {
+        type: "GeometryCollection",
+        geometries: [{
+          type: "Point",
+          coordinates: [0.1, 0.1]
+        }]
+      };
+      var topojson = {
+        type: "Topology",
+        arcs: [],
+        objects: {
+          layer1: {
+            type: "GeometryCollection",
+            geometries: [{
+              type: "Point",
+              coordinates: [0, 0]
+            }]
+          }
+        }
+      };
+      api.applyCommands('-o format=topojson precision=1', geojson, function(err, output) {
+        assert.deepEqual(output, [topojson]);
+        done();
+      });
+    })
+
+    it('import GeoJSON points with rounding on import', function (done) {
+     var geojson = {
+        type: "GeometryCollection",
+        geometries: [{
+          type: "Point",
+          coordinates: [0.1, 0.1]
+        }]
+      };
+      var target = {
+        type: "GeometryCollection",
+        geometries: [{
+          type: "Point",
+          coordinates: [0, 0]
+        }]
+      };
+      api.applyCommands('-i precision=1', geojson, function(err, output) {
+        assert.deepEqual(output, [target]);
+        done();
+      });
+    })
+
+    it('invalid dataset gives error', function(done) {
+      api.applyCommands('', {}, function(err, output) {
+        assert.equal(err.name, 'APIError');
+        done();
+      })
+
+    })
+  })
 
   describe('runCommands()', function() {
 
@@ -165,6 +241,7 @@ describe('mapshaper-commands.js', function () {
       })
     })
   })
+
 
   describe('-dissolve', function () {
 

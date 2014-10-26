@@ -9076,6 +9076,11 @@ MapShaper.DbfReader = DbfReader;
 
 
 
+// Similar to isFinite() but returns false for null
+Dbf.isFiniteNumber = function(val) {
+  return isFinite(val) && val !== null;
+};
+
 Dbf.exportRecords = function(arr, encoding) {
   encoding = encoding || 'ascii';
   var fields = Utils.keys(arr[0]);
@@ -9266,7 +9271,7 @@ Dbf.getDecimalFormatter = function(size, decimals) {
   var nullValue = ' '; // ArcGIS may use 0
   return function(val) {
     // TODO: handle invalid values better
-    var valid = val && isFinite(val) || val === 0,
+    var valid = Dbf.isFiniteNumber(val),
         strval = valid ? val.toFixed(decimals) : String(nullValue);
     return Utils.lpad(strval, size, ' ');
   };
@@ -9281,7 +9286,7 @@ Dbf.getNumericFieldInfo = function(arr, name) {
       val, decimals;
   for (var i=0, n=arr.length; i<n; i++) {
     val = arr[i][name];
-    if (!Number.isFinite(val)) {
+    if (!Dbf.isFiniteNumber(val)) {
       continue;
     }
     decimals = 0;
@@ -11419,7 +11424,7 @@ MapShaper.importFileContent = function(content, fileType, opts) {
     dataset = MapShaper.importShp(content, opts);
     fileFmt = 'shapefile';
   } else if (fileType == 'json') {
-    var jsonObj = JSON.parse(content);
+    var jsonObj = utils.isString(content) ? JSON.parse(content) : content;
     if (jsonObj.type == 'Topology') {
       dataset = MapShaper.importTopoJSON(jsonObj, opts);
       fileFmt = 'topojson';
@@ -11736,17 +11741,18 @@ MapShaper.roundPoints = function(lyr, round) {
 // "content" attributes.
 //
 MapShaper.exportFileContent = function(dataset, opts) {
-  var exporter = MapShaper.exporters[opts.format],
+  var outFmt = opts.format = MapShaper.getOutputFormat(dataset, opts),
+      exporter = MapShaper.exporters[outFmt],
       layers = dataset.layers,
       files = [];
 
-  if (!opts.format) {
+  if (!outFmt) {
     error("[o] Missing output format");
   } else if (!exporter) {
-    error("[o] Unknown export format:", opts.format);
+    error("[o] Unknown export format:", outFmt);
   }
 
-  if (opts.output_file && opts.format != 'topojson') {
+  if (opts.output_file && outFmt != 'topojson') {
     opts.output_extension = utils.getFileExtension(opts.output_file);
     layers.forEach(function(lyr) {
       lyr.name = utils.getFileBase(opts.output_file);
@@ -11781,6 +11787,17 @@ MapShaper.exporters = {
   geojson: MapShaper.exportGeoJSON,
   topojson: MapShaper.exportTopoJSON,
   shapefile: MapShaper.exportShapefile
+};
+
+MapShaper.getOutputFormat = function(dataset, opts) {
+  var outFmt = opts.format,
+      outFile = opts.output_file || null,
+      inFmt = dataset.info && dataset.info.input_format;
+
+  if (!outFmt) {
+    outFmt = outFile ? MapShaper.guessFileFormat(outFile, inFmt) : inFmt;
+  }
+  return outFmt;
 };
 
 // Generate json file with bounding boxes and names of each export layer

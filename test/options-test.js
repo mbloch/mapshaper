@@ -11,11 +11,12 @@ describe('mapshaper-options.js', function () {
         file2 = fixPath("test_data/two_states.json"),
         file3 = fixPath("test_data/two_states.shx");
 
-    bad("-i"); // no file
     bad("-i missing.json"); // missing file
     bad("-i precision " + file1);
     bad("-i precision 0 " + file1);
 
+    // bad("-i"); // no file
+    good('-i', {}); // now accepting no files
     good("-i " + file1, {files: [file1]});
     good("-i no-topology " + file1 + " auto-snap precision 0.1",
       {files: [file1], auto_snap: true, no_topology: true, precision: 0.1});

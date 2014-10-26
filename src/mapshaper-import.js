@@ -11,7 +11,7 @@ MapShaper.importFileContent = function(content, fileType, opts) {
     dataset = MapShaper.importShp(content, opts);
     fileFmt = 'shapefile';
   } else if (fileType == 'json') {
-    var jsonObj = JSON.parse(content);
+    var jsonObj = utils.isString(content) ? JSON.parse(content) : content;
     if (jsonObj.type == 'Topology') {
       dataset = MapShaper.importTopoJSON(jsonObj, opts);
       fileFmt = 'topojson';

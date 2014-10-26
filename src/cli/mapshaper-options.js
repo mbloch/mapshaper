@@ -1,7 +1,12 @@
 /* @requires mapshaper-common, mapshaper-option-parser, mapshaper-option-validation */
 
-MapShaper.parseCommands = function(arr) {
-  return MapShaper.getOptionParser().parseArgv(arr);
+// Parse an array or a string of command line tokens into an array of
+// command objects.
+MapShaper.parseCommands = function(tokens) {
+  if (utils.isString(tokens)) {
+    tokens = require('shell-quote').parse(tokens);
+  }
+  return MapShaper.getOptionParser().parseArgv(tokens);
 };
 
 MapShaper.getOptionParser = function() {
