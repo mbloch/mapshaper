@@ -58,7 +58,7 @@ api.runCommand = function(cmd, dataset, cb) {
     */
 
     } else if (name == 'filter') {
-      MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
+      MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'flatten') {
       newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
@@ -128,11 +128,11 @@ api.runCommand = function(cmd, dataset, cb) {
         MapShaper.replaceLayers(dataset, targetLayers, newLayers);
       }
     }
-    done(null, dataset);
-
   } catch(e) {
     done(e, null);
+    return;
   }
+  done(null, dataset);
 
   function done(err, dataset) {
     T.stop('-' + name);

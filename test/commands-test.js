@@ -67,7 +67,7 @@ describe('mapshaper-commands.js', function () {
     it('import GeoJSON points as string', function (done) {
       var json = fs.readFileSync(fixPath('test_data/three_points.geojson'), 'utf8');
       api.applyCommands('', json, function(err, output) {
-        assert.deepEqual(JSON.parse(json), JSON.parse(output[0]));
+        assert.deepEqual(JSON.parse(json), JSON.parse(output));
         done();
       });
     })
@@ -76,7 +76,7 @@ describe('mapshaper-commands.js', function () {
       var json = fs.readFileSync(fixPath('test_data/three_points.geojson'), 'utf8');
       json = JSON.parse(json);
       api.applyCommands('', json, function(err, output) {
-        assert.deepEqual(output, [json]);
+        assert.deepEqual(output, json);
         done();
       });
     })
@@ -103,7 +103,7 @@ describe('mapshaper-commands.js', function () {
         }
       };
       api.applyCommands('-o format=topojson precision=1', geojson, function(err, output) {
-        assert.deepEqual(output, [topojson]);
+        assert.deepEqual(output, topojson);
         done();
       });
     })
@@ -124,7 +124,7 @@ describe('mapshaper-commands.js', function () {
         }]
       };
       api.applyCommands('-i precision=1', geojson, function(err, output) {
-        assert.deepEqual(output, [target]);
+        assert.deepEqual(output, target);
         done();
       });
     })

@@ -64,13 +64,16 @@ api.applyCommands = function(tokens, content, done) {
       if (outFmt != 'geojson' && outFmt != 'topojson') {
         err = new APIError("[applyCommands()] Expected JSON export; received: " + outFmt);
       } else {
-        // return array of output JSON datasets as strings or objects
-        //    (according to input format)
+        // return JSON dataset(s) as strings or objects (according to input format)
         output = exports.map(function(obj) {
           return utils.isString(content) ? obj.content : JSON.parse(obj.content);
         });
+        if (output.length == 1) {
+          output = output[0];
+        }
       }
     }
+
     done(err, output);
   }
 };
@@ -149,15 +152,15 @@ utils.reduceAsync = function(arr, memo, iter, done) {
     // Detach next operation from call stack to prevent overflow
     // Don't use setTimeout(, 0) -- this can introduce a long delay if
     //   previous operation was slow, as of Node 0.10.32
-    if (err) {
-      done(err, null);
-    } else if (i < arr.length === false) {
-      done(null, memo);
-    } else {
-      setImmediate(function() {
+    setImmediate(function() {
+      if (err) {
+        done(err, null);
+      } else if (i < arr.length === false) {
+        done(null, memo);
+      } else {
         iter(memo, arr[i++], next);
-      });
-    }
+      }
+    });
   }
 };
 
@@ -187,7 +190,6 @@ MapShaper.printHelp = function(commands) {
 
 MapShaper.validateJSON = function(json) {
   // TODO: remove duplication with mapshaper-import.js
-
   if (content.type == 'Topology') {
     fmt = 'topojson';
   } else if (content.type) {
