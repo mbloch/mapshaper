@@ -2879,10 +2879,11 @@ function validateFilterFieldsOpts(cmd) {
 }
 
 function validateExpressionOpts(cmd) {
-  if (cmd._.length !== 1) {
-    error("command requires a JavaScript expression");
+  if (cmd._.length == 1) {
+    cmd.options.expression = cmd._[0];
+  } else if (cmd._.length > 1) {
+    error("unparsable filter options:", cmd._);
   }
-  cmd.options.expression = cmd._[0];
 }
 
 function validateOutputOpts(cmd) {
@@ -3185,11 +3186,28 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("filter")
-    .describe("filter features using a JavaScript expression")
+    .describe("delete features or parts of features")
     .validate(validateExpressionOpts)
     .option("expression", {
       label: "<expression>",
-      describe: "boolean JS expression applied to each feature"
+      describe: "delete features that evaluate to false (JS expression)"
+    })
+    .option("empty", {
+      type: "flag",
+      describe: "delete features with null geometry"
+    })
+    .option("min-island-area", {
+      type: "number",
+      describe: "remove small detached rings (sq meters or projected units)"
+    })
+    /*
+    .option("min-area", {
+      describe: "minimum area of polygon features"
+    })
+    */
+    .option("min-island-vertices", {
+      type: "integer",
+      describe: "remove detached rings with low vertex count"
     })
     .option("target", targetOpt);
 
@@ -4699,12 +4717,13 @@ MapShaper.forEachPath = function(paths, cb) {
 };
 
 MapShaper.editPaths = function(paths, cb) {
-  var nulls = 0,
-      retn;
   if (!paths) return null; // null shape
   if (!Utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
+  var nulls = 0,
+      n = paths.length,
+      retn;
 
-  for (var i=0; i<paths.length; i++) {
+  for (var i=0; i<n; i++) {
     retn = cb(paths[i], i);
     if (retn === null) {
       nulls++;
@@ -4713,7 +4732,13 @@ MapShaper.editPaths = function(paths, cb) {
       paths[i] = retn;
     }
   }
-  return nulls > 0 ? paths.filter(function(ids) {return !!ids;}) : paths;
+  if (nulls == n) {
+    return null;
+  } else if (nulls > 0) {
+    return paths.filter(function(ids) {return !!ids;});
+  } else {
+    return paths;
+  }
 };
 
 MapShaper.forEachPathSegment = function(shape, arcs, cb) {
@@ -6277,6 +6302,13 @@ geom.getPathArea3 = function(xx, yy, start, len) {
 geom.getPathArea4 = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids);
   return geom.getPathArea(iter);
+};
+
+geom.countVerticesInPath = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids),
+      count = 0;
+  while (iter.hasNext()) count++;
+  return count;
 };
 
 geom.getPathBounds = function(points) {
@@ -12666,16 +12698,38 @@ api.filterFields = function(lyr, names) {
 
 
 
-api.filterFeatures = function(lyr, arcs, exp) {
+api.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
-      compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
+      filter = null;
+
+  if (lyr.geometry_type == 'polygon') {
+    if (opts.min_island_area) {
+      MapShaper.editShapes(lyr.shapes, MapShaper.getIslandAreaFilter(arcs, opts.min_island_area));
+    }
+    if (opts.min_island_vertices) {
+      MapShaper.editShapes(lyr.shapes, MapShaper.getIslandVertexFilter(arcs, opts.min_island_vertices));
+    }
+  }
+
+  if (opts.expression) {
+    filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
+  }
+
+  if (opts.empty) {
+    filter = MapShaper.combineFilters(filter, MapShaper.getNullGeometryFilter(lyr, arcs));
+  }
+
+  if (!filter) {
+    message("[filter] missing a filter -- retaining all features");
+    return;
+  }
 
   var selectedShapes = [],
       selectedRecords = [];
 
   Utils.forEach(lyr.shapes, function(shp, shapeId) {
     var rec = records ? records[shapeId] : null,
-        result = compiled(shapeId);
+        result = filter(shapeId);
 
     if (!Utils.isBoolean(result)) {
       stop("[filter] Expressions must return true or false");
@@ -12692,12 +12746,69 @@ api.filterFeatures = function(lyr, arcs, exp) {
   }
 };
 
+MapShaper.getNullGeometryFilter = function(lyr, arcs) {
+  var shapes = lyr.shapes;
+  if (lyr.geometry_type == 'polygon') {
+    return MapShaper.getEmptyPolygonFilter(shapes, arcs);
+  }
+  return function(i) {return !!shapes[i];};
+};
+
+MapShaper.getEmptyPolygonFilter = function(shapes, arcs) {
+  return function(i) {
+    var shp = shapes[i];
+    return !!shp && geom.getShapeArea(shapes[i], arcs) > 0;
+  };
+};
+
+MapShaper.combineFilters = function(a, b) {
+  return (a && b && function(id) {
+      return a(id) && b(id);
+    }) || a || b;
+};
+
 MapShaper.filterDataTable = function(data, exp) {
   var compiled = MapShaper.compileFeatureExpression(exp, {data: data}, null),
       filtered = Utils.filter(data.getRecords(), function(rec, i) {
         return compiled(i);
       });
   return new DataTable(filtered);
+};
+
+MapShaper.getIslandVertexFilter = function(arcs, minVertices) {
+  var minCount = minVertices + 1; // first and last vertex in ring count as one
+  return function(paths) {
+    return MapShaper.editPaths(paths, function(path) {
+      if (path.length == 1 && geom.countVerticesInPath(path, arcs) < minCount) {
+        return null;
+      }
+    });
+  };
+};
+
+MapShaper.getPathAreaFunction = function(arcs) {
+  var areaFunction = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds()) ?
+        geom.getSphericalPathArea : geom.getPathArea;
+  return function(path) {
+    return areaFunction(arcs.getShapeIter(path));
+  };
+};
+
+MapShaper.getIslandAreaFilter = function(arcs, minArea) {
+  var pathArea = MapShaper.getPathAreaFunction(arcs);
+  return function(paths) {
+    return MapShaper.editPaths(paths, function(path) {
+      if (path.length == 1 && Math.abs(pathArea(path)) < minArea) {
+        return null;
+      }
+    });
+  };
+};
+
+MapShaper.editShapes = function(shapes, filter) {
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shapes[i] = filter(shapes[i]);
+  }
 };
 
 
@@ -13553,7 +13664,7 @@ api.runCommand = function(cmd, dataset, cb) {
     */
 
     } else if (name == 'filter') {
-      MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts.expression);
+      MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'flatten') {
       newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
@@ -13623,11 +13734,11 @@ api.runCommand = function(cmd, dataset, cb) {
         MapShaper.replaceLayers(dataset, targetLayers, newLayers);
       }
     }
-    done(null, dataset);
-
   } catch(e) {
     done(e, null);
+    return;
   }
+  done(null, dataset);
 
   function done(err, dataset) {
     T.stop('-' + name);
@@ -13816,13 +13927,16 @@ api.applyCommands = function(tokens, content, done) {
       if (outFmt != 'geojson' && outFmt != 'topojson') {
         err = new APIError("[applyCommands()] Expected JSON export; received: " + outFmt);
       } else {
-        // return array of output JSON datasets as strings or objects
-        //    (according to input format)
+        // return JSON dataset(s) as strings or objects (according to input format)
         output = exports.map(function(obj) {
           return utils.isString(content) ? obj.content : JSON.parse(obj.content);
         });
+        if (output.length == 1) {
+          output = output[0];
+        }
       }
     }
+
     done(err, output);
   }
 };
@@ -13901,15 +14015,15 @@ utils.reduceAsync = function(arr, memo, iter, done) {
     // Detach next operation from call stack to prevent overflow
     // Don't use setTimeout(, 0) -- this can introduce a long delay if
     //   previous operation was slow, as of Node 0.10.32
-    if (err) {
-      done(err, null);
-    } else if (i < arr.length === false) {
-      done(null, memo);
-    } else {
-      setImmediate(function() {
+    setImmediate(function() {
+      if (err) {
+        done(err, null);
+      } else if (i < arr.length === false) {
+        done(null, memo);
+      } else {
         iter(memo, arr[i++], next);
-      });
-    }
+      }
+    });
   }
 };
 
@@ -13939,7 +14053,6 @@ MapShaper.printHelp = function(commands) {
 
 MapShaper.validateJSON = function(json) {
   // TODO: remove duplication with mapshaper-import.js
-
   if (content.type == 'Topology') {
     fmt = 'topojson';
   } else if (content.type) {

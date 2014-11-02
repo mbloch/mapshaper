@@ -229,11 +229,28 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("filter")
-    .describe("filter features using a JavaScript expression")
+    .describe("delete features or parts of features")
     .validate(validateExpressionOpts)
     .option("expression", {
       label: "<expression>",
-      describe: "boolean JS expression applied to each feature"
+      describe: "delete features that evaluate to false (JS expression)"
+    })
+    .option("empty", {
+      type: "flag",
+      describe: "delete features with null geometry"
+    })
+    .option("min-island-area", {
+      type: "number",
+      describe: "remove small detached rings (sq meters or projected units)"
+    })
+    /*
+    .option("min-area", {
+      describe: "minimum area of polygon features"
+    })
+    */
+    .option("min-island-vertices", {
+      type: "integer",
+      describe: "remove detached rings with low vertex count"
     })
     .option("target", targetOpt);
 

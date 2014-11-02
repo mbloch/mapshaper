@@ -6117,6 +6117,13 @@ geom.getPathArea4 = function(ids, arcs) {
   return geom.getPathArea(iter);
 };
 
+geom.countVerticesInPath = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids),
+      count = 0;
+  while (iter.hasNext()) count++;
+  return count;
+};
+
 geom.getPathBounds = function(points) {
   var bounds = new Bounds();
   for (var i=0, n=points.length; i<n; i++) {
@@ -6254,12 +6261,13 @@ MapShaper.forEachPath = function(paths, cb) {
 };
 
 MapShaper.editPaths = function(paths, cb) {
-  var nulls = 0,
-      retn;
   if (!paths) return null; // null shape
   if (!Utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
+  var nulls = 0,
+      n = paths.length,
+      retn;
 
-  for (var i=0; i<paths.length; i++) {
+  for (var i=0; i<n; i++) {
     retn = cb(paths[i], i);
     if (retn === null) {
       nulls++;
@@ -6268,7 +6276,13 @@ MapShaper.editPaths = function(paths, cb) {
       paths[i] = retn;
     }
   }
-  return nulls > 0 ? paths.filter(function(ids) {return !!ids;}) : paths;
+  if (nulls == n) {
+    return null;
+  } else if (nulls > 0) {
+    return paths.filter(function(ids) {return !!ids;});
+  } else {
+    return paths;
+  }
 };
 
 MapShaper.forEachPathSegment = function(shape, arcs, cb) {

@@ -353,6 +353,13 @@ geom.getPathArea4 = function(ids, arcs) {
   return geom.getPathArea(iter);
 };
 
+geom.countVerticesInPath = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids),
+      count = 0;
+  while (iter.hasNext()) count++;
+  return count;
+};
+
 geom.getPathBounds = function(points) {
   var bounds = new Bounds();
   for (var i=0, n=points.length; i<n; i++) {
