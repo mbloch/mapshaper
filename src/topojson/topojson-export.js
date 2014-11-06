@@ -11,8 +11,7 @@ topojson-presimplify
 TopoJSON.exportTopology = function(layers, arcData, opts) {
   var topology = {type: "Topology"},
       bounds = new Bounds(),
-      filteredArcs,
-      transform, invTransform;
+      objects, filteredArcs, transform, invTransform;
 
   // some datasets may lack arcs -- e.g. only point layers
   if (arcData && arcData.size() > 0) {
@@ -62,7 +61,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     MapShaper.dissolveArcs(layers, filteredArcs);
   }
 
-  topology.objects = layers.reduce(function(objects, lyr, i) {
+  objects = layers.reduce(function(objects, lyr, i) {
     var name = lyr.name || "layer" + (i + 1),
         obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, lyr.geometry_type);
 
@@ -86,6 +85,8 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
   if (opts.bbox && bounds.hasBounds()) {
     topology.bbox = bounds.toArray();
   }
+
+  topology.objects = objects;
 
   if (filteredArcs && filteredArcs.size() > 0) {
     topology.arcs = TopoJSON.exportArcsWithPresimplify(filteredArcs, opts.presimplify && bounds.width());

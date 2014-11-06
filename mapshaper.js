@@ -3115,6 +3115,9 @@ MapShaper.getOptionParser = function() {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
     })
+    .option("pretty", {
+      type: "flag"
+    })
     .option("target", targetOpt);
 
   parser.command('simplify')
@@ -9014,6 +9017,32 @@ MapShaper.ShapefileTable = ShapefileTable;
 
 
 
+MapShaper.getFormattedStringify = function(numArrayKeys) {
+  var keyIndex = utils.arrayToIndex(numArrayKeys);
+  var quoteStr = '\u1000\u2FD5\u0310'; // TODO: avoid using a string that might be present in the content
+  var stripRxp = new RegExp('"' + quoteStr + '|' + quoteStr + '"', 'g');
+  var indentChars = '\t';
+
+  function replace(key, val) {
+    if (key in keyIndex && utils.isArray(val)) {
+      var str = JSON.stringify(val);
+      // Make sure value array doesn't have any strings, which would get escaped
+      if (str.indexOf('"' == -1)) {
+        return quoteStr + str.replace(/,/g, ', ') + quoteStr;
+      }
+    }
+    return val;
+  }
+
+  return function(str) {
+    var json = JSON.stringify(str, replace, indentChars);
+    return json.replace(stripRxp, '');
+  };
+};
+
+
+
+
 MapShaper.importGeoJSON = function(obj, opts) {
   if (Utils.isString(obj)) {
     obj = JSON.parse(obj);
@@ -9171,12 +9200,30 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   var type = lyr.geometry_type,
       properties = lyr.data && lyr.data.getRecords() || null,
       useProperties = !!properties && !(opts.cut_table || opts.drop_table),
-      useFeatures = useProperties || opts.id_field;
+      useFeatures = useProperties || opts.id_field,
+      stringify = JSON.stringify;
 
+  if (opts.pretty) {
+    stringify = MapShaper.getFormattedStringify(['bbox', 'coordinates']);
+  }
   if (properties && properties.length !== lyr.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
   }
 
+  var output = {
+    type: useFeatures ? 'FeatureCollection' : 'GeometryCollection'
+  };
+
+  if (opts.bbox) {
+    var bounds = MapShaper.getLayerBounds(lyr, arcs);
+    if (bounds.hasBounds()) {
+      output.bbox = bounds.toArray();
+    }
+  }
+
+  output[useFeatures ? 'features' : 'geometries'] = ['$'];
+
+  // serialize features one at a time to avoid allocating lots of arrays
   var objects = Utils.reduce(lyr.shapes, function(memo, shape, i) {
     var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type),
         str;
@@ -9192,27 +9239,11 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
     if (properties && opts.id_field) {
       obj.id = properties[i][opts.id_field] || null;
     }
-    str = JSON.stringify(obj);
+    str = stringify(obj, opts.pretty);
     return memo === "" ? str : memo + ",\n" + str;
   }, "");
 
-  var output = useFeatures ? {
-    type: "FeatureCollection",
-    features: ["$"]
-  } : {
-    type: "GeometryCollection",
-    geometries: ["$"]
-  };
-
-  if (opts.bbox) {
-    var bounds = MapShaper.getLayerBounds(lyr, arcs);
-    if (bounds.hasBounds()) {
-      output.bbox = bounds.toArray();
-    }
-  }
-
-  var parts = JSON.stringify(output).split('"$"');
-  return parts[0] + objects + parts[1];
+  return stringify(output, opts.pretty).replace(/[\t ]*"\$"[\t ]*/, objects);
 };
 
 MapShaper.exportGeoJSONObject = function(lyr, arcs, opts) {
@@ -9899,8 +9930,7 @@ TopoJSON.getPresimplifyFunction = function(width) {
 TopoJSON.exportTopology = function(layers, arcData, opts) {
   var topology = {type: "Topology"},
       bounds = new Bounds(),
-      filteredArcs,
-      transform, invTransform;
+      objects, filteredArcs, transform, invTransform;
 
   // some datasets may lack arcs -- e.g. only point layers
   if (arcData && arcData.size() > 0) {
@@ -9950,7 +9980,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     MapShaper.dissolveArcs(layers, filteredArcs);
   }
 
-  topology.objects = layers.reduce(function(objects, lyr, i) {
+  objects = layers.reduce(function(objects, lyr, i) {
     var name = lyr.name || "layer" + (i + 1),
         obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, lyr.geometry_type);
 
@@ -9974,6 +10004,8 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
   if (opts.bbox && bounds.hasBounds()) {
     topology.bbox = bounds.toArray();
   }
+
+  topology.objects = objects;
 
   if (filteredArcs && filteredArcs.size() > 0) {
     topology.arcs = TopoJSON.exportArcsWithPresimplify(filteredArcs, opts.presimplify && bounds.width());
@@ -10202,14 +10234,20 @@ MapShaper.importTopoJSON = function(topology, opts) {
 };
 
 MapShaper.exportTopoJSON = function(dataset, opts) {
-  var topology = TopoJSON.exportTopology(dataset.layers, dataset.arcs, opts);
-  var filename = "output.json", // default
-  name;
+  var topology = TopoJSON.exportTopology(dataset.layers, dataset.arcs, opts),
+      stringify = JSON.stringify,
+      filename;
+
+  if (opts.pretty) {
+    stringify = MapShaper.getFormattedStringify('coordinates,arcs,bbox,translate,scale'.split(','));
+  }
   if (opts.output_file) {
     filename = opts.output_file;
   } else if (dataset.info && dataset.info.input_files) {
-    name = MapShaper.getCommonFileBase(dataset.info.input_files);
-    if (name) filename = name + ".json";
+    // use base name of input file(s)
+    filename = (MapShaper.getCommonFileBase(dataset.info.input_files) || 'output') + '.json';
+  } else {
+    filename = 'output.json';
   }
   // TODO: consider supporting this option again
   /*
@@ -10224,7 +10262,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
   }
   */
   return [{
-    content: JSON.stringify(topology),
+    content: stringify(topology, opts.pretty),
     filename: filename
   }];
 };

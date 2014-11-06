@@ -3,7 +3,8 @@ mapshaper-common,
 mapshaper-dataset-utils,
 mapshaper-path-import,
 mapshaper-path-export,
-mapshaper-data-table
+mapshaper-data-table,
+mapshaper-stringify
 */
 
 MapShaper.importGeoJSON = function(obj, opts) {
@@ -163,12 +164,30 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   var type = lyr.geometry_type,
       properties = lyr.data && lyr.data.getRecords() || null,
       useProperties = !!properties && !(opts.cut_table || opts.drop_table),
-      useFeatures = useProperties || opts.id_field;
+      useFeatures = useProperties || opts.id_field,
+      stringify = JSON.stringify;
 
+  if (opts.pretty) {
+    stringify = MapShaper.getFormattedStringify(['bbox', 'coordinates']);
+  }
   if (properties && properties.length !== lyr.shapes.length) {
     error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
   }
 
+  var output = {
+    type: useFeatures ? 'FeatureCollection' : 'GeometryCollection'
+  };
+
+  if (opts.bbox) {
+    var bounds = MapShaper.getLayerBounds(lyr, arcs);
+    if (bounds.hasBounds()) {
+      output.bbox = bounds.toArray();
+    }
+  }
+
+  output[useFeatures ? 'features' : 'geometries'] = ['$'];
+
+  // serialize features one at a time to avoid allocating lots of arrays
   var objects = Utils.reduce(lyr.shapes, function(memo, shape, i) {
     var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type),
         str;
@@ -184,27 +203,11 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
     if (properties && opts.id_field) {
       obj.id = properties[i][opts.id_field] || null;
     }
-    str = JSON.stringify(obj);
+    str = stringify(obj, opts.pretty);
     return memo === "" ? str : memo + ",\n" + str;
   }, "");
 
-  var output = useFeatures ? {
-    type: "FeatureCollection",
-    features: ["$"]
-  } : {
-    type: "GeometryCollection",
-    geometries: ["$"]
-  };
-
-  if (opts.bbox) {
-    var bounds = MapShaper.getLayerBounds(lyr, arcs);
-    if (bounds.hasBounds()) {
-      output.bbox = bounds.toArray();
-    }
-  }
-
-  var parts = JSON.stringify(output).split('"$"');
-  return parts[0] + objects + parts[1];
+  return stringify(output, opts.pretty).replace(/[\t ]*"\$"[\t ]*/, objects);
 };
 
 MapShaper.exportGeoJSONObject = function(lyr, arcs, opts) {

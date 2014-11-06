@@ -1,4 +1,4 @@
-/* @requires topojson-import, topojson-export, mapshaper-dataset-utils */
+/* @requires topojson-import, topojson-export, mapshaper-dataset-utils, mapshaper-stringify */
 
 MapShaper.topojson = TopoJSON;
 
@@ -47,14 +47,20 @@ MapShaper.importTopoJSON = function(topology, opts) {
 };
 
 MapShaper.exportTopoJSON = function(dataset, opts) {
-  var topology = TopoJSON.exportTopology(dataset.layers, dataset.arcs, opts);
-  var filename = "output.json", // default
-  name;
+  var topology = TopoJSON.exportTopology(dataset.layers, dataset.arcs, opts),
+      stringify = JSON.stringify,
+      filename;
+
+  if (opts.pretty) {
+    stringify = MapShaper.getFormattedStringify('coordinates,arcs,bbox,translate,scale'.split(','));
+  }
   if (opts.output_file) {
     filename = opts.output_file;
   } else if (dataset.info && dataset.info.input_files) {
-    name = MapShaper.getCommonFileBase(dataset.info.input_files);
-    if (name) filename = name + ".json";
+    // use base name of input file(s)
+    filename = (MapShaper.getCommonFileBase(dataset.info.input_files) || 'output') + '.json';
+  } else {
+    filename = 'output.json';
   }
   // TODO: consider supporting this option again
   /*
@@ -69,7 +75,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
   }
   */
   return [{
-    content: JSON.stringify(topology),
+    content: stringify(topology, opts.pretty),
     filename: filename
   }];
 };
