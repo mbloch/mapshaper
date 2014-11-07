@@ -9,6 +9,10 @@ MapShaper.importDataTable = function(fname, opts) {
     // unsupported file types can be detected earlier, during
     // option validation, using filename extensions
     table = MapShaper.importDelimTable(fname);
+    // convert data types based on type hints and numeric csv fields
+    // opts.fields may contain duplicate field name with inconsistent type hints
+    // adjustRecordTypes() should handle this case
+    MapShaper.adjustRecordTypes(table.getRecords(), opts.fields);
   }
   return table;
 };
@@ -22,6 +26,10 @@ MapShaper.validateFieldType = function(str) {
     type = 'number';
   }
   return type;
+};
+
+MapShaper.removeTypeHints = function(arr, index) {
+  return MapShaper.parseFieldHeaders(arr, {});
 };
 
 // Look for type hints in array of field headers
@@ -114,7 +122,6 @@ MapShaper.adjustRecordTypes = function(records, rawFields) {
   });
 
   MapShaper.convertRecordTypes(records, conversionIndex);
-  return fields;
 };
 
 utils.stringIsNumeric = function(str) {

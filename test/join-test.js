@@ -6,6 +6,10 @@ function stringifyEqual(a, b) {
   assert.equal(JSON.stringify(a), JSON.stringify(b));
 }
 
+function fixPath(p) {
+  return require('path').join(__dirname, p);
+}
+
 describe('mapshaper-join.js', function () {
   describe('joinAttributesToFeatures()', function () {
     it('apply filter expression', function () {
@@ -33,6 +37,34 @@ describe('mapshaper-join.js', function () {
     })
   })
 
+  describe('importJoinTable()', function() {
+    it('should not adjust types of dbf table fields', function() {
+      var opts = {
+        keys: ['STFIPS', 'FIPS']
+      };
+      var table = api.importJoinTable(fixPath("test_data/two_states.dbf"), opts);
+      assert.strictEqual(table.getRecords()[0].FIPS, '41')
+    })
+
+    it('should adjust types of csv table fields', function() {
+      var opts = {
+        keys: ['STFIPS', 'FIPS']
+      };
+      var table = api.importJoinTable(fixPath("test_data/two_states.csv"), opts);
+      assert.strictEqual(table.getRecords()[0].FIPS, 41)
+    })
+
+    it('should accept type hints for csv table fields', function() {
+      var opts = {
+        fields: ['LAT:str'],
+        keys: ['STFIPS', 'FIPS:str']
+      };
+      var table = api.importJoinTable(fixPath("test_data/two_states.csv"), opts);
+      assert.strictEqual(table.getRecords()[0].FIPS, '41')
+      assert.strictEqual(table.getRecords()[0].LAT, '43.94')
+    })
+
+  })
 
   describe('joinTables()', function () {
     it('one-to-several mapping', function () {
