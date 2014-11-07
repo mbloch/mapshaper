@@ -75,7 +75,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
   }
   */
   return [{
-    content: stringify(topology, opts.pretty),
+    content: stringify(topology),
     filename: filename
   }];
 };

@@ -104,6 +104,7 @@ MapShaper.getOptionParser = function() {
     .option("format", {
       describe: "set export format (shapefile|geojson|topojson)"
     })
+    .option("target", targetOpt)
     .option("force", {
       type: "flag",
       describe: "let output files overwrite existing files"
@@ -139,6 +140,10 @@ MapShaper.getOptionParser = function() {
       type: "flag",
       describe: "(Topo/GeoJSON) add bbox property"
     })
+    .option("pretty", {
+      type: "flag",
+      describe: "(Topo/GeoJSON) format output for readability"
+    })
     .option("id-field", {
       describe: "(Topo/GeoJSON) field to use for id property"
     })
@@ -157,11 +162,8 @@ MapShaper.getOptionParser = function() {
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
-    })
-    .option("pretty", {
-      type: "flag"
-    })
-    .option("target", targetOpt);
+    });
+
 
   parser.command('simplify')
     .validate(validateSimplifyOpts)

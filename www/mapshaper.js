@@ -9524,9 +9524,10 @@ MapShaper.getFormattedStringify = function(numArrayKeys) {
   var indentChars = '\t';
 
   function replace(key, val) {
+    // pre-format coordinate arrays
     if (key in keyIndex && utils.isArray(val)) {
       var str = JSON.stringify(val);
-      // Make sure value array doesn't have any strings, which would get escaped
+      // skip arrays containing strings (problem with double-quote escaping)
       if (str.indexOf('"' == -1)) {
         return quoteStr + str.replace(/,/g, ', ') + quoteStr;
       }
@@ -9534,8 +9535,8 @@ MapShaper.getFormattedStringify = function(numArrayKeys) {
     return val;
   }
 
-  return function(str) {
-    var json = JSON.stringify(str, replace, indentChars);
+  return function(obj) {
+    var json = JSON.stringify(obj, replace, indentChars);
     return json.replace(stripRxp, '');
   };
 };
@@ -9739,11 +9740,11 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
     if (properties && opts.id_field) {
       obj.id = properties[i][opts.id_field] || null;
     }
-    str = stringify(obj, opts.pretty);
+    str = stringify(obj);
     return memo === "" ? str : memo + ",\n" + str;
   }, "");
 
-  return stringify(output, opts.pretty).replace(/[\t ]*"\$"[\t ]*/, objects);
+  return stringify(output).replace(/[\t ]*"\$"[\t ]*/, objects);
 };
 
 MapShaper.exportGeoJSONObject = function(lyr, arcs, opts) {
@@ -10762,7 +10763,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
   }
   */
   return [{
-    content: stringify(topology, opts.pretty),
+    content: stringify(topology),
     filename: filename
   }];
 };

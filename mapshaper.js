@@ -3061,6 +3061,7 @@ MapShaper.getOptionParser = function() {
     .option("format", {
       describe: "set export format (shapefile|geojson|topojson)"
     })
+    .option("target", targetOpt)
     .option("force", {
       type: "flag",
       describe: "let output files overwrite existing files"
@@ -3096,6 +3097,10 @@ MapShaper.getOptionParser = function() {
       type: "flag",
       describe: "(Topo/GeoJSON) add bbox property"
     })
+    .option("pretty", {
+      type: "flag",
+      describe: "(Topo/GeoJSON) format output for readability"
+    })
     .option("id-field", {
       describe: "(Topo/GeoJSON) field to use for id property"
     })
@@ -3114,11 +3119,8 @@ MapShaper.getOptionParser = function() {
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
-    })
-    .option("pretty", {
-      type: "flag"
-    })
-    .option("target", targetOpt);
+    });
+
 
   parser.command('simplify')
     .validate(validateSimplifyOpts)
@@ -9024,9 +9026,10 @@ MapShaper.getFormattedStringify = function(numArrayKeys) {
   var indentChars = '\t';
 
   function replace(key, val) {
+    // pre-format coordinate arrays
     if (key in keyIndex && utils.isArray(val)) {
       var str = JSON.stringify(val);
-      // Make sure value array doesn't have any strings, which would get escaped
+      // skip arrays containing strings (problem with double-quote escaping)
       if (str.indexOf('"' == -1)) {
         return quoteStr + str.replace(/,/g, ', ') + quoteStr;
       }
@@ -9034,8 +9037,8 @@ MapShaper.getFormattedStringify = function(numArrayKeys) {
     return val;
   }
 
-  return function(str) {
-    var json = JSON.stringify(str, replace, indentChars);
+  return function(obj) {
+    var json = JSON.stringify(obj, replace, indentChars);
     return json.replace(stripRxp, '');
   };
 };
@@ -9239,11 +9242,11 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
     if (properties && opts.id_field) {
       obj.id = properties[i][opts.id_field] || null;
     }
-    str = stringify(obj, opts.pretty);
+    str = stringify(obj);
     return memo === "" ? str : memo + ",\n" + str;
   }, "");
 
-  return stringify(output, opts.pretty).replace(/[\t ]*"\$"[\t ]*/, objects);
+  return stringify(output).replace(/[\t ]*"\$"[\t ]*/, objects);
 };
 
 MapShaper.exportGeoJSONObject = function(lyr, arcs, opts) {
@@ -10262,7 +10265,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
   }
   */
   return [{
-    content: stringify(topology, opts.pretty),
+    content: stringify(topology),
     filename: filename
   }];
 };
@@ -11653,6 +11656,10 @@ MapShaper.importDataTable = function(fname, opts) {
     // unsupported file types can be detected earlier, during
     // option validation, using filename extensions
     table = MapShaper.importDelimTable(fname);
+    // convert data types based on type hints and numeric csv fields
+    // opts.fields may contain duplicate field name with inconsistent type hints
+    // adjustRecordTypes() should handle this case
+    MapShaper.adjustRecordTypes(table.getRecords(), opts.fields);
   }
   return table;
 };
@@ -11666,6 +11673,10 @@ MapShaper.validateFieldType = function(str) {
     type = 'number';
   }
   return type;
+};
+
+MapShaper.removeTypeHints = function(arr, index) {
+  return MapShaper.parseFieldHeaders(arr, {});
 };
 
 // Look for type hints in array of field headers
@@ -11758,7 +11769,6 @@ MapShaper.adjustRecordTypes = function(records, rawFields) {
   });
 
   MapShaper.convertRecordTypes(records, conversionIndex);
-  return fields;
 };
 
 utils.stringIsNumeric = function(str) {
@@ -13013,53 +13023,42 @@ api.mergeFiles = function(files, opts) {
 
 
 api.importJoinTable = function(file, opts) {
-  var table = MapShaper.importDataTable(file, opts),
-      fields = opts.fields || table.getFields(),
-      keys = opts.keys;
-
-  if (!utils.isArray(keys) || keys.length != 2) {
-    stop("[join] Invalid join keys:", keys);
+  if (!opts.keys || opts.keys.length != 2) {
+    stop("[join] Missing join keys");
   }
-  // this may cause duplicate field name with inconsistent type hints
-  // adjustRecordTypes() should handle this case
-  fields.push(opts.keys[1]);
-  // convert data types based on type hints and numeric csv fields
-  // side effect: type hints are removed from field names
-  // TODO: remove side effect
-  fields = MapShaper.adjustRecordTypes(table.getRecords(), fields);
-  // replace foreign key in case original contained type hint
-  opts.keys[1] = fields.pop();
-  opts.fields = fields;
-  return table;
+  var importOpts = utils.defaults({
+    fields: (opts.fields || []).concat(opts.keys[1])
+  }, opts);
+  return MapShaper.importDataTable(file, importOpts);
 };
 
 api.joinAttributesToFeatures = function(lyr, table, opts) {
-  var localKey = opts.keys[0],
-      foreignKey = opts.keys[1],
-      joinFields = opts.fields,
-      typeIndex = {};
+  var keys = MapShaper.removeTypeHints(opts.keys),
+      joinFields = MapShaper.removeTypeHints(opts.fields || []),
+      destKey = keys[0],
+      srcKey = keys[1];
 
-  if (table.fieldExists(foreignKey) === false) {
-    stop("[join] External table is missing a field named:", foreignKey);
+  if (table.fieldExists(srcKey) === false) {
+    stop("[join] External table is missing a field named:", srcKey);
   }
 
   if (opts.where) {
     table = MapShaper.filterDataTable(table, opts.where);
   }
 
-  if (!joinFields || joinFields.length === 0) {
-    joinFields = Utils.difference(table.getFields(), [foreignKey]);
+  if (joinFields.length > 0 === false) {
+    joinFields = Utils.difference(table.getFields(), [srcKey]);
   }
 
-  // var index = Utils.indexOn(table.getRecords(), foreignKey);
-
-  if (!lyr.data || !lyr.data.fieldExists(localKey)) {
-    stop("[join] Target layer is missing field:", localKey);
+  if (!lyr.data || !lyr.data.fieldExists(destKey)) {
+    stop("[join] Target layer is missing field:", destKey);
   }
 
-  if (!MapShaper.joinTables(lyr.data, localKey, joinFields, table, foreignKey,
-      joinFields)) stop("[join] No records could be joined");
-  // TODO: better handling of failed joins
+  if (!MapShaper.joinTables(lyr.data, destKey, joinFields, table, srcKey,
+      joinFields)) {
+    stop("[join] No records could be joined");
+    // TODO: better handling of failed joins
+  }
 };
 
 MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcFields) {

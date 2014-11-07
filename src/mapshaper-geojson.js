@@ -203,11 +203,11 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
     if (properties && opts.id_field) {
       obj.id = properties[i][opts.id_field] || null;
     }
-    str = stringify(obj, opts.pretty);
+    str = stringify(obj);
     return memo === "" ? str : memo + ",\n" + str;
   }, "");
 
-  return stringify(output, opts.pretty).replace(/[\t ]*"\$"[\t ]*/, objects);
+  return stringify(output).replace(/[\t ]*"\$"[\t ]*/, objects);
 };
 
 MapShaper.exportGeoJSONObject = function(lyr, arcs, opts) {

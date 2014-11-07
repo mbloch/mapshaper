@@ -7,9 +7,10 @@ MapShaper.getFormattedStringify = function(numArrayKeys) {
   var indentChars = '\t';
 
   function replace(key, val) {
+    // pre-format coordinate arrays
     if (key in keyIndex && utils.isArray(val)) {
       var str = JSON.stringify(val);
-      // Make sure value array doesn't have any strings, which would get escaped
+      // skip arrays containing strings (problem with double-quote escaping)
       if (str.indexOf('"' == -1)) {
         return quoteStr + str.replace(/,/g, ', ') + quoteStr;
       }
@@ -17,8 +18,8 @@ MapShaper.getFormattedStringify = function(numArrayKeys) {
     return val;
   }
 
-  return function(str) {
-    var json = JSON.stringify(str, replace, indentChars);
+  return function(obj) {
+    var json = JSON.stringify(obj, replace, indentChars);
     return json.replace(stripRxp, '');
   };
 };
