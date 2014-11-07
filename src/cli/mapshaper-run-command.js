@@ -1,4 +1,25 @@
-/* @requires mapshaper-cli-lib */
+/* @requires
+mapshaper-clip-erase
+mapshaper-dissolve
+mapshaper-dissolve2
+mapshaper-export
+mapshaper-field-calculator
+mapshaper-file-import
+mapshaper-file-export
+mapshaper-filter
+mapshaper-filter-fields
+mapshaper-filter-islands
+mapshaper-info
+mapshaper-innerlines
+mapshaper-join
+mapshaper-keep-shapes
+mapshaper-merge-files
+mapshaper-rename-layers
+mapshaper-simplify
+mapshaper-split
+mapshaper-split-on-grid
+mapshaper-subdivide
+*/
 
 // TODO: consider refactoring to allow modules
 // @cmd  example: {name: "dissolve", options:{field: "STATE"}}
@@ -49,16 +70,14 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'explode') {
       newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
 
+    } else if (name == 'filter') {
+      MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
+
     } else if (name == 'filter-fields') {
       MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
 
-    /*
-    } else if (name == 'fill-holes') {
-      MapShaper.applyCommand(api.fillHoles, targetLayers, opts);
-    */
-
-    } else if (name == 'filter') {
-      MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
+    } else if (name == 'filter-islands') {
+      MapShaper.applyCommand(api.filterIslands, targetLayers, arcs, opts);
 
     } else if (name == 'flatten') {
       newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);

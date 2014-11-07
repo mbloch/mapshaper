@@ -1,4 +1,4 @@
-/* @requires mapshaper-run-command */
+/* @requires mapshaper-run-command, mapshaper-options */
 
 // parse command line args into commands and run them
 api.runShellArgs = function(argv, done) {
@@ -197,5 +197,4 @@ MapShaper.validateJSON = function(json) {
   } else {
     return done(new APIError("[applyCommands()] Content must be TopoJSON or GeoJSON"));
   }
-
 };

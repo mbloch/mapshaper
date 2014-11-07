@@ -4,20 +4,11 @@ api.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
       filter = null;
 
-  if (lyr.geometry_type == 'polygon') {
-    if (opts.min_island_area) {
-      MapShaper.editShapes(lyr.shapes, MapShaper.getIslandAreaFilter(arcs, opts.min_island_area));
-    }
-    if (opts.min_island_vertices) {
-      MapShaper.editShapes(lyr.shapes, MapShaper.getIslandVertexFilter(arcs, opts.min_island_vertices));
-    }
-  }
-
   if (opts.expression) {
     filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
   }
 
-  if (opts.empty) {
+  if (opts.remove_empty) {
     filter = MapShaper.combineFilters(filter, MapShaper.getNullGeometryFilter(lyr, arcs));
   }
 
@@ -67,48 +58,4 @@ MapShaper.combineFilters = function(a, b) {
   return (a && b && function(id) {
       return a(id) && b(id);
     }) || a || b;
-};
-
-MapShaper.filterDataTable = function(data, exp) {
-  var compiled = MapShaper.compileFeatureExpression(exp, {data: data}, null),
-      filtered = Utils.filter(data.getRecords(), function(rec, i) {
-        return compiled(i);
-      });
-  return new DataTable(filtered);
-};
-
-MapShaper.getIslandVertexFilter = function(arcs, minVertices) {
-  var minCount = minVertices + 1; // first and last vertex in ring count as one
-  return function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1 && geom.countVerticesInPath(path, arcs) < minCount) {
-        return null;
-      }
-    });
-  };
-};
-
-MapShaper.getPathAreaFunction = function(arcs) {
-  var areaFunction = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds()) ?
-        geom.getSphericalPathArea : geom.getPathArea;
-  return function(path) {
-    return areaFunction(arcs.getShapeIter(path));
-  };
-};
-
-MapShaper.getIslandAreaFilter = function(arcs, minArea) {
-  var pathArea = MapShaper.getPathAreaFunction(arcs);
-  return function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1 && Math.abs(pathArea(path)) < minArea) {
-        return null;
-      }
-    });
-  };
-};
-
-MapShaper.editShapes = function(shapes, filter) {
-  for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = filter(shapes[i]);
-  }
 };

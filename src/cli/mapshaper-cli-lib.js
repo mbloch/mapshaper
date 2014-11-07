@@ -1,35 +1,6 @@
 /* @requires
 mapshaper-cli-utils
-mapshaper-options
 mapshaper-commands
-mapshaper-topology
-mapshaper-simplify
-mapshaper-shapes
-mapshaper-export
-mapshaper-repair
-mapshaper-segments
-mapshaper-snapping
-mapshaper-keep-shapes
-mapshaper-file-import
-mapshaper-file-export
-mapshaper-dissolve
-mapshaper-split
-mapshaper-split-on-grid
-mapshaper-field-calculator
-mapshaper-subdivide
-mapshaper-filter-fields
-mapshaper-filter
-mapshaper-merge-files
-mapshaper-join
-mapshaper-innerlines
-mapshaper-encodings
-mapshaper-info
-mapshaper-dissolve2
-mapshaper-flatten
-mapshaper-clip-erase
-mapshaper-divide
-mapshaper-polygon-repair2
-mapshaper-rename-layers
 */
 
 var cli = api.cli = {};
@@ -100,7 +71,7 @@ cli.validateEncoding = function(raw) {
   return enc;
 };
 
-
+// Expose internal objects for testing
 Utils.extend(api.internal, {
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,

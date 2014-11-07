@@ -1,9 +1,9 @@
+/*
+
 var assert = require('assert'),
     api = require("../"),
     ArcCollection = api.internal.ArcCollection,
     repairPolygonGeometry2 = api.internal.repairPolygonGeometry2;
-
-
 
 function repairPolygons(shapes, arcs) {
   var lyr = {
@@ -15,8 +15,6 @@ function repairPolygons(shapes, arcs) {
 }
 
 describe('mapshaper-polygon-repair2.js tests', function () {
-
-  return;
 
   describe('Fig. 1', function () {
     //
@@ -150,3 +148,5 @@ describe('mapshaper-polygon-repair2.js tests', function () {
   })
 
 })
+
+*/

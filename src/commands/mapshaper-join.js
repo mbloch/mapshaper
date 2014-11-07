@@ -1,4 +1,4 @@
-/* @require mapshaper-common */
+/* @require mapshaper-common, mapshaper-expressions */
 
 api.importJoinTable = function(file, opts) {
   if (!opts.keys || opts.keys.length != 2) {
@@ -75,4 +75,12 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
   }
 
   return hits > 0;
+};
+
+MapShaper.filterDataTable = function(data, exp) {
+  var compiled = MapShaper.compileFeatureExpression(exp, {data: data}, null),
+      filtered = Utils.filter(data.getRecords(), function(rec, i) {
+        return compiled(i);
+      });
+  return new DataTable(filtered);
 };

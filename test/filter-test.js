@@ -20,45 +20,20 @@ describe('mapshaper-filter.js', function () {
       }]
     };
 
-    it ('-filter empty', function(done) {
-      api.applyCommands('-filter empty', geojson, function(err, output) {
+    it ('-filter remove-empty', function(done) {
+      api.applyCommands('-filter remove-empty', geojson, function(err, output) {
         assert.equal(output.features.length, 1);
         assert.deepEqual(output.features[0], geojson.features[0])
         done();
       });
     })
 
-    it ('-filter min-island-area=', function(done) {
-      var target = {
-        type: 'Polygon',
-        coordinates: [[[1, 100], [1, 200], [2, 200], [2, 100], [1, 100]]]
-      };
-      api.applyCommands('-filter min-island-area=1', geojson, function(err, output) {
-        assert.equal(output.features.length, 2);
-        assert.deepEqual(output.features[0].geometry, target);
-        done();
-      });
-    })
-
-    it ('-filter min-island-vertices=', function(done) {
-      var target = {
-        type: 'Polygon',
-        coordinates: [[[1, 100], [1, 200], [2, 200], [2, 100], [1, 100]]]
-      };
-      api.applyCommands('-filter min-island-vertices=4', geojson, function(err, output) {
-        assert.equal(output.features.length, 2);
-        assert.deepEqual(output.features[0].geometry, target);
-        done();
-      });
-    })
-
     it ('-filter (combined options)', function(done) {
-      api.applyCommands('-filter empty "name != \'a\'"', geojson, function(err, output) {
+      api.applyCommands('-filter remove-empty "name != \'a\'"', geojson, function(err, output) {
         assert.deepEqual(output.features, []);
         done();
       });
     })
-
   })
 
 
