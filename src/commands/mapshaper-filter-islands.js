@@ -2,7 +2,6 @@
 
 api.filterIslands = function(lyr, arcs, opts) {
   var filter = null;
-  console.log(opts);
   if (lyr.geometry_type != 'polygon') {
     message("[filter-islands] skipping a non-polygon layer");
     return;
@@ -44,6 +43,8 @@ MapShaper.getIslandAreaFilter = function(arcs, minArea) {
   return function(paths) {
     return MapShaper.editPaths(paths, function(path) {
       if (path.length == 1 && Math.abs(pathArea(path)) < minArea) {
+        // Found an island to remove
+        // TODO: Remove all enclosed holes, including multi-part holes
         return null;
       }
     });

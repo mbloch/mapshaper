@@ -140,7 +140,7 @@ MapShaper.getOptionParser = function() {
       type: "flag",
       describe: "(Topo/GeoJSON) add bbox property"
     })
-    .option("pretty", {
+    .option("prettify", {
       type: "flag",
       describe: "(Topo/GeoJSON) format output for readability"
     })

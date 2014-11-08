@@ -51,7 +51,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
       stringify = JSON.stringify,
       filename;
 
-  if (opts.pretty) {
+  if (opts.prettify) {
     stringify = MapShaper.getFormattedStringify('coordinates,arcs,bbox,translate,scale'.split(','));
   }
   if (opts.output_file) {

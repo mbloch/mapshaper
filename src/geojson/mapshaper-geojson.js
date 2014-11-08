@@ -167,7 +167,7 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
       useFeatures = useProperties || opts.id_field,
       stringify = JSON.stringify;
 
-  if (opts.pretty) {
+  if (opts.prettify) {
     stringify = MapShaper.getFormattedStringify(['bbox', 'coordinates']);
   }
   if (properties && properties.length !== lyr.shapes.length) {
