@@ -1,4 +1,9 @@
-/* @requires mapshaper-shape-geom, mapshaper-shapes, mapshaper-dataset-utils */
+/* @requires
+mapshaper-shape-geom
+mapshaper-centroid
+mapshaper-shapes
+mapshaper-dataset-utils
+*/
 
 MapShaper.compileLayerExpression = function(exp) {
   var env = new LayerExpressionContext(),

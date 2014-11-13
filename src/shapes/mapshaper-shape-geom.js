@@ -69,37 +69,6 @@ geom.getAvgPathXY = function(ids, arcs) {
   };
 };
 
-geom.getPathCentroid = function(ids, arcs) {
-  var iter = arcs.getShapeIter(ids),
-      sum = 0,
-      sumX = 0,
-      sumY = 0,
-      ax, ay, tmp, area;
-  if (!iter.hasNext()) return null;
-  ax = iter.x;
-  ay = iter.y;
-  while (iter.hasNext()) {
-    tmp = ax * iter.y - ay * iter.x;
-    sum += tmp;
-    sumX += tmp * (iter.x + ax);
-    sumY += tmp * (iter.y + ay);
-    ax = iter.x;
-    ay = iter.y;
-  }
-  area = sum / 2;
-  if (area === 0) {
-    return geom.getAvgPathXY(ids, arcs);
-  } else return {
-    x: sumX / (6 * area),
-    y: sumY / (6 * area)
-  };
-};
-
-geom.getShapeCentroid = function(shp, arcs) {
-  var maxPath = geom.getMaxPath(shp, arcs);
-  return maxPath ? geom.getPathCentroid(maxPath, arcs) : null;
-};
-
 // Return true if point is inside or on boundary of a shape
 //
 geom.testPointInShape = function(x, y, shp, arcs) {
@@ -117,14 +86,6 @@ geom.testPointInShape = function(x, y, shp, arcs) {
   return isOn || isIn;
 };
 
-// Get a point suitable for anchoring a label
-// Method:
-// - find centroid
-// - ...
-//
-geom.getInteriorPoint = function(shp, arcs) {
-
-};
 
 geom.getPointToPathDistance = function(px, py, ids, arcs) {
   var iter = arcs.getShapeIter(ids);

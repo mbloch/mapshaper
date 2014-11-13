@@ -67,7 +67,7 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
   if (misses > 0) {
     var msg;
     if (misses > 10) {
-      msg = Utils.format("Unable to join %d records", misses);
+      msg = Utils.format("Unable to join %d/%d records", misses, len);
     } else {
       msg = Utils.format("Unjoined values: %s", Utils.uniq(unmatched).join(', '));
     }
