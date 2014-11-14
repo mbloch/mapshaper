@@ -11,14 +11,13 @@ api.createPointLayer = function(srcLyr, opts) {
   }
 
   destLyr = {
-    info: srcLyr.info,
     geometry_type: 'point',
     data: opts.no_replace ? data.clone() : data
   };
   destLyr.shapes = data.getRecords().map(function(rec) {
     var x = rec[opts.x],
         y = rec[opts.y];
-    if (isNaN(x) || isNaN(y)) {
+    if (!utils.isFiniteNumber(x) || !utils.isFiniteNumber(y)) {
       nulls++;
       return null;
     }

@@ -176,6 +176,11 @@ utils.findStringPrefix = function(a, b) {
   return a.substr(0, i);
 };
 
+// Similar to isFinite() but returns false for null
+utils.isFiniteNumber = function(val) {
+  return isFinite(val) && val !== null;
+};
+
 MapShaper.probablyDecimalDegreeBounds = function(b) {
   if (b instanceof Bounds) b = b.toArray();
   return containsBounds([-200, -91, 200, 91], b);

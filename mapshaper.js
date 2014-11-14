@@ -2348,6 +2348,11 @@ utils.findStringPrefix = function(a, b) {
   return a.substr(0, i);
 };
 
+// Similar to isFinite() but returns false for null
+utils.isFiniteNumber = function(val) {
+  return isFinite(val) && val !== null;
+};
+
 MapShaper.probablyDecimalDegreeBounds = function(b) {
   if (b instanceof Bounds) b = b.toArray();
   return containsBounds([-200, -91, 200, 91], b);
@@ -6528,11 +6533,6 @@ MapShaper.DbfReader = DbfReader;
 
 
 
-// Similar to isFinite() but returns false for null
-Dbf.isFiniteNumber = function(val) {
-  return isFinite(val) && val !== null;
-};
-
 Dbf.exportRecords = function(arr, encoding) {
   encoding = encoding || 'ascii';
   var fields = Utils.keys(arr[0]);
@@ -6723,7 +6723,7 @@ Dbf.getDecimalFormatter = function(size, decimals) {
   var nullValue = ' '; // ArcGIS may use 0
   return function(val) {
     // TODO: handle invalid values better
-    var valid = Dbf.isFiniteNumber(val),
+    var valid = utils.isFiniteNumber(val),
         strval = valid ? val.toFixed(decimals) : String(nullValue);
     return Utils.lpad(strval, size, ' ');
   };
@@ -6738,7 +6738,7 @@ Dbf.getNumericFieldInfo = function(arr, name) {
       val, decimals;
   for (var i=0, n=arr.length; i<n; i++) {
     val = arr[i][name];
-    if (!Dbf.isFiniteNumber(val)) {
+    if (!utils.isFiniteNumber(val)) {
       continue;
     }
     decimals = 0;
@@ -8331,12 +8331,28 @@ MapShaper.exportGeoJSON = function(dataset, opts) {
   });
 };
 
+// @opt value of id-field option (empty, string or array of strings)
+// @table DataTable
+MapShaper.getIdField = function(opt, table) {
+  var field = null;
+  if (utils.isString(opt)) {
+    opt = [opt];
+  }
+  if (utils.isArray(opt) && table) {
+    field = utils.find(opt, function(name) {
+      return table.fieldExists(name);
+    });
+  }
+  return field;
+};
+
 MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   opts = opts || {};
   var type = lyr.geometry_type,
       properties = lyr.data && lyr.data.getRecords() || null,
       useProperties = !!properties && !(opts.cut_table || opts.drop_table),
-      useFeatures = useProperties || opts.id_field,
+      idField = MapShaper.getIdField(opts.id_field, lyr.data),
+      useFeatures = useProperties || idField,
       stringify = JSON.stringify;
 
   if (opts.prettify) {
@@ -8372,8 +8388,8 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
     } else if (obj === null) {
       return memo; // null geometries not allowed in GeometryCollection, skip them
     }
-    if (properties && opts.id_field) {
-      obj.id = properties[i][opts.id_field] || null;
+    if (properties && idField) {
+      obj.id = properties[i][idField] || null;
     }
     str = stringify(obj);
     return memo === "" ? str : memo + ",\n" + str;
@@ -9122,7 +9138,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
 
     bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
     if (lyr.data) {
-      TopoJSON.exportProperties(obj.geometries, lyr.data.getRecords(), opts);
+      TopoJSON.exportProperties(obj.geometries, lyr.data, opts);
     }
     objects[name] = obj;
     return objects;
@@ -9246,8 +9262,9 @@ TopoJSON.calcExportResolution = function(arcData, precision) {
   return [xy[0] * k, xy[1] * k];
 };
 
-TopoJSON.exportProperties = function(geometries, records, opts) {
-  var idField = opts.id_field || null;
+TopoJSON.exportProperties = function(geometries, table, opts) {
+  var records = table.getRecords(),
+      idField = MapShaper.getIdField(opts.id_field, table);
   geometries.forEach(function(geom, i) {
     var properties = records[i];
     if (properties) {
@@ -11627,14 +11644,13 @@ api.createPointLayer = function(srcLyr, opts) {
   }
 
   destLyr = {
-    info: srcLyr.info,
     geometry_type: 'point',
     data: opts.no_replace ? data.clone() : data
   };
   destLyr.shapes = data.getRecords().map(function(rec) {
     var x = rec[opts.x],
         y = rec[opts.y];
-    if (isNaN(x) || isNaN(y)) {
+    if (!utils.isFiniteNumber(x) || !utils.isFiniteNumber(y)) {
       nulls++;
       return null;
     }
@@ -13604,7 +13620,8 @@ MapShaper.getOptionParser = function() {
       describe: "(Topo/GeoJSON) format output for readability"
     })
     .option("id-field", {
-      describe: "(Topo/GeoJSON) field to use for id property"
+      describe: "(Topo/GeoJSON) field to use for id property",
+      type: "comma-sep"
     })
     .option("quantization", {
       describe: "(TopoJSON) specify quantization (auto-set by default)",
