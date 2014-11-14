@@ -4377,12 +4377,19 @@ geom.testPointInRing = function(x, y, ids, arcs) {
   return isOn ? -1 : (isIn ? 1 : 0);
 };
 
-
 // test if a vertical ray originating at (x, y) intersects a segment
 // returns 1 if intersection, 0 if no intersection, NaN if point touches segment
 // (Special rules apply to endpoint intersections, to support point-in-polygon testing.)
 geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
-  var hit = 0, // default: no hit
+  var val = geom.getRayIntersection(x, y, ax, ay, bx, by);
+  if (val != val) {
+    return NaN;
+  }
+  return val == -Infinity ? 0 : 1;
+};
+
+geom.getRayIntersection = function(x, y, ax, ay, bx, by) {
+  var hit = -Infinity, // default: no hit
       yInt;
 
   // case: p is entirely above, left or right of segment
@@ -4405,7 +4412,7 @@ geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
         hit = NaN;
       } else if (bx < ax && y < ay) {
         // only score hit if px aligned to rightmost endpoint
-        hit = 1;
+        hit = ay;
       }
     }
     // case: px equal to bx (only)
@@ -4414,14 +4421,14 @@ geom.testRayIntersection = function(x, y, ax, ay, bx, by) {
         hit = NaN;
       } else if (ax < bx && y < by) {
         // only score hit if px aligned to rightmost endpoint
-        hit = 1;
+        hit = by;
       }
     }
   // case: px is between endpoints
   } else {
     yInt = geom.getYIntercept(x, ax, ay, bx, by);
     if (yInt > y) {
-      hit = 1;
+      hit = yInt;
     } else if (yInt == y) {
       hit = NaN;
     }
