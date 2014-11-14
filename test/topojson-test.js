@@ -17,9 +17,10 @@ describe('topojson-test.js', function () {
   describe('exportProperties', function () {
     it('use id_field option', function () {
       var geometries = [{type: null}, {type: null}],
-          records = [{FID: 0}, {FID: 1}];
+          records = [{FID: 0}, {FID: 1}],
+          table = new api.internal.DataTable(records);
 
-      TopoJSON.exportProperties(geometries, records, {id_field:'FID'});
+      TopoJSON.exportProperties(geometries, table, {id_field:'FID'});
       assert.deepEqual(geometries, [{
         type: null,
         properties: {FID: 0},
@@ -31,11 +32,31 @@ describe('topojson-test.js', function () {
       }])
     });
 
+    // first matching name in the table is used for id property
+    it('use id_field with list of fields', function () {
+      var geometries = [{type: null}, {type: null}],
+          records = [{FID: 0, NAME: 'a'}, {FID: 1, NAME: 'b'}],
+          table = new api.internal.DataTable(records);
+
+      TopoJSON.exportProperties(geometries, table, {id_field:['COUNTY', 'FID', 'NAME']});
+      assert.deepEqual(geometries, [{
+        type: null,
+        properties: {FID: 0, NAME: 'a'},
+        id: 0
+      }, {
+        type: null,
+        properties: {FID: 1, NAME: 'b'},
+        id: 1
+      }])
+    });
+
+
     it('use cut_table option', function () {
       var geometries = [{type: null}, {type: null}],
-          records = [{FID: 0}, {FID: 1}];
+          records = [{FID: 0}, {FID: 1}],
+          table = new api.internal.DataTable(records);
 
-      TopoJSON.exportProperties(geometries, records, {id_field:'FID', cut_table: true});
+      TopoJSON.exportProperties(geometries, table, {id_field:'FID', cut_table: true});
       assert.deepEqual(geometries, [{
         type: null,
         id: 0

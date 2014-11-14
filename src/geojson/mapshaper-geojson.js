@@ -159,12 +159,28 @@ MapShaper.exportGeoJSON = function(dataset, opts) {
   });
 };
 
+// @opt value of id-field option (empty, string or array of strings)
+// @table DataTable
+MapShaper.getIdField = function(opt, table) {
+  var field = null;
+  if (utils.isString(opt)) {
+    opt = [opt];
+  }
+  if (utils.isArray(opt) && table) {
+    field = utils.find(opt, function(name) {
+      return table.fieldExists(name);
+    });
+  }
+  return field;
+};
+
 MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   opts = opts || {};
   var type = lyr.geometry_type,
       properties = lyr.data && lyr.data.getRecords() || null,
       useProperties = !!properties && !(opts.cut_table || opts.drop_table),
-      useFeatures = useProperties || opts.id_field,
+      idField = MapShaper.getIdField(opts.id_field, lyr.data),
+      useFeatures = useProperties || idField,
       stringify = JSON.stringify;
 
   if (opts.prettify) {
@@ -200,8 +216,8 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
     } else if (obj === null) {
       return memo; // null geometries not allowed in GeometryCollection, skip them
     }
-    if (properties && opts.id_field) {
-      obj.id = properties[i][opts.id_field] || null;
+    if (properties && idField) {
+      obj.id = properties[i][idField] || null;
     }
     str = stringify(obj);
     return memo === "" ? str : memo + ",\n" + str;

@@ -49,7 +49,7 @@ describe('mapshaper-options.js', function () {
     bad("-o quantization");
     bad("-o quantization 0");
     bad("-o quantization -1000");
-    good("-o id-field FID", {id_field: "FID"});
+    good("-o id-field FID", {id_field: ["FID"]});
     good("-o bbox", {bbox: true});
 
     // valid formats

@@ -67,7 +67,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
 
     bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
     if (lyr.data) {
-      TopoJSON.exportProperties(obj.geometries, lyr.data.getRecords(), opts);
+      TopoJSON.exportProperties(obj.geometries, lyr.data, opts);
     }
     objects[name] = obj;
     return objects;
@@ -191,8 +191,9 @@ TopoJSON.calcExportResolution = function(arcData, precision) {
   return [xy[0] * k, xy[1] * k];
 };
 
-TopoJSON.exportProperties = function(geometries, records, opts) {
-  var idField = opts.id_field || null;
+TopoJSON.exportProperties = function(geometries, table, opts) {
+  var records = table.getRecords(),
+      idField = MapShaper.getIdField(opts.id_field, table);
   geometries.forEach(function(geom, i) {
     var properties = records[i];
     if (properties) {

@@ -145,7 +145,8 @@ MapShaper.getOptionParser = function() {
       describe: "(Topo/GeoJSON) format output for readability"
     })
     .option("id-field", {
-      describe: "(Topo/GeoJSON) field to use for id property"
+      describe: "(Topo/GeoJSON) field to use for id property",
+      type: "comma-sep"
     })
     .option("quantization", {
       describe: "(TopoJSON) specify quantization (auto-set by default)",
