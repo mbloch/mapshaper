@@ -11616,6 +11616,41 @@ api.mergeFiles = function(files, opts) {
 
 
 
+api.createPointLayer = function(srcLyr, opts) {
+  var data = srcLyr.data,
+      nulls = 0,
+      destLyr;
+
+  if (!data) stop("[points] layer is missing a data table");
+  if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
+    stop("[points] missing x,y data fields");
+  }
+
+  destLyr = {
+    info: srcLyr.info,
+    geometry_type: 'point',
+    data: opts.no_replace ? data.clone() : data
+  };
+  destLyr.shapes = data.getRecords().map(function(rec) {
+    var x = rec[opts.x],
+        y = rec[opts.y];
+    if (isNaN(x) || isNaN(y)) {
+      nulls++;
+      return null;
+    }
+    return [[x, y]];
+  });
+
+  if (nulls > 0) {
+    message(utils.format('[points] %d/%d points are null', nulls, data.size()));
+  }
+
+  return destLyr;
+};
+
+
+
+
 api.renameLayers = function(layers, names) {
   if (!names || names.length > 0 === false) {
     names = ['layer'];
@@ -12661,6 +12696,9 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'o') {
       api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
 
+    } else if (name == 'points') {
+      newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, opts);
+
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
 
@@ -13313,6 +13351,13 @@ function validateLinesOpts(cmd) {
   }
 }
 
+function validatePointsOpts(cmd) {
+  if (!cmd.options.x || !cmd.options.y) {
+    error("command requires names of x and y fields");
+  }
+}
+
+
 function validateInnerLinesOpts(cmd) {
   if (cmd._.length > 0) {
     error("command takes no arguments");
@@ -13737,6 +13782,13 @@ MapShaper.getOptionParser = function() {
     .option("convert-holes", {type: "flag"}) // testing
     .option("target", targetOpt);
 
+  parser.command("innerlines")
+    .describe("convert polygons to polylines along shared boundaries")
+    .validate(validateInnerLinesOpts)
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
   parser.command("lines")
     .describe("convert polygons to classified polylines")
     .validate(validateLinesOpts)
@@ -13749,9 +13801,15 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("innerlines")
-    .describe("convert polygons to polylines along shared boundaries")
-    .validate(validateInnerLinesOpts)
+  parser.command("points")
+    .describe("create a point layer from data fields")
+    .validate(validatePointsOpts)
+    .option("x", {
+      describe: "field containing x coordinate"
+    })
+    .option("y", {
+      describe: "field containing y coordinate"
+    })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);

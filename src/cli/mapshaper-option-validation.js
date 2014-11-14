@@ -165,6 +165,13 @@ function validateLinesOpts(cmd) {
   }
 }
 
+function validatePointsOpts(cmd) {
+  if (!cmd.options.x || !cmd.options.y) {
+    error("command requires names of x and y fields");
+  }
+}
+
+
 function validateInnerLinesOpts(cmd) {
   if (cmd._.length > 0) {
     error("command takes no arguments");

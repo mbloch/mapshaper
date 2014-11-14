@@ -323,6 +323,13 @@ MapShaper.getOptionParser = function() {
     .option("convert-holes", {type: "flag"}) // testing
     .option("target", targetOpt);
 
+  parser.command("innerlines")
+    .describe("convert polygons to polylines along shared boundaries")
+    .validate(validateInnerLinesOpts)
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
   parser.command("lines")
     .describe("convert polygons to classified polylines")
     .validate(validateLinesOpts)
@@ -335,9 +342,15 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("innerlines")
-    .describe("convert polygons to polylines along shared boundaries")
-    .validate(validateInnerLinesOpts)
+  parser.command("points")
+    .describe("create a point layer from data fields")
+    .validate(validatePointsOpts)
+    .option("x", {
+      describe: "field containing x coordinate"
+    })
+    .option("y", {
+      describe: "field containing y coordinate"
+    })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);

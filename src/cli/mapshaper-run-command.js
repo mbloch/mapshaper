@@ -14,6 +14,7 @@ mapshaper-innerlines
 mapshaper-join
 mapshaper-keep-shapes
 mapshaper-merge-files
+mapshaper-points
 mapshaper-rename-layers
 mapshaper-simplify
 mapshaper-split
@@ -107,6 +108,9 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'o') {
       api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
+
+    } else if (name == 'points') {
+      newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, opts);
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
