@@ -1,4 +1,8 @@
-/* @requires mapshaper-expressions, mapshaper-dataset-utils */
+/* @requires
+mapshaper-expressions
+mapshaper-dataset-utils
+mapshaper-field-calculator
+*/
 
 api.evaluateEachFeature = function(lyr, arcs, exp) {
   var n = MapShaper.getFeatureCount(lyr),
@@ -10,5 +14,13 @@ api.evaluateEachFeature = function(lyr, arcs, exp) {
   }
   compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
   // call compiled expression with id of each record
-  Utils.repeat(n, compiled);
+  utils.repeat(n, compiled);
+};
+
+api.calc = function(lyr, arcs, opts) {
+  var results = MapShaper.getCalcResults(lyr, arcs, opts);
+  utils.forEach(results, function(val, key) {
+    var msg = key + ":\t" + val;
+    message(msg);
+  });
 };

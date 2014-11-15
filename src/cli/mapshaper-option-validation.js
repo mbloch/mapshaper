@@ -198,7 +198,7 @@ function validateExpressionOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.expression = cmd._[0];
   } else if (cmd._.length > 1) {
-    error("unparsable filter options:", cmd._);
+    error("unparsable arguments:", cmd._);
   }
 }
 

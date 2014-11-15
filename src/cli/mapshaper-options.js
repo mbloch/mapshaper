@@ -403,8 +403,20 @@ MapShaper.getOptionParser = function() {
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command('encodings')
+  parser.command("calc")
     .title("\nInformational commands")
+    .describe("perform calculations on a data layer, print the result")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "JS expression to apply to target features"
+    })
+    .option("where", {
+      describe: "use a JS expression to select a subset of features"
+    })
+    .option("target", targetOpt);
+
+  parser.command('encodings')
     .describe("print list of supported text encodings (for .dbf import)");
 
   parser.command('version')
@@ -437,7 +449,6 @@ MapShaper.getOptionParser = function() {
   parser.command("flatten")
     .option("target", targetOpt);
   /*
-
   parser.command("divide")
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
@@ -449,16 +460,6 @@ MapShaper.getOptionParser = function() {
 
   parser.command("repair")
     .option("target", targetOpt);
-
-
-  parser.command("points")
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt)
-    .option("type", {
-      type: "set",
-      values: ["centroids", "vertices", "intersections", "anchors"]
-    })
   */
 
   /*

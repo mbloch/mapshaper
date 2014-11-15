@@ -5,28 +5,6 @@ mapshaper-shapes
 mapshaper-dataset-utils
 */
 
-MapShaper.compileLayerExpression = function(exp) {
-  var env = new LayerExpressionContext(),
-      func;
-  try {
-    func = new Function("env", "with(env){return " + exp + ";}");
-  } catch(e) {
-    message('Error compiling expression "' + exp + '"');
-    stop(e);
-  }
-
-  return function(lyr, arcs) {
-    var value;
-    env.__init(lyr, arcs);
-    try {
-      value = func.call(null, env);
-    } catch(e) {
-      stop(e);
-    }
-    return value;
-  };
-};
-
 MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
       newFields = exp.match(RE_ASSIGNEE) || null,
@@ -41,6 +19,7 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
 
   hideGlobals(env);
   env.$ = new FeatureExpressionContext(lyr, arcs);
+  env._ = new FeatureCalculator();
   try {
     func = new Function("record,env", "with(env){with(record) { return " +
         MapShaper.removeExpressionSemicolons(exp) + ";}}");
@@ -49,7 +28,7 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
     stop(e);
   }
 
-  return function(recId) {
+  var compiled = function(recId) {
     var record = records ? records[recId] || (records[recId] = {}) : {},
         value, f;
 
@@ -70,6 +49,11 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
     }
     return value;
   };
+
+  compiled.done = function() {
+    return env._._done();
+  };
+  return compiled;
 };
 
 // Semicolons that divide the expression into two or more js statements
@@ -233,66 +217,4 @@ function FeatureExpressionContext(lyr, arcs) {
     }
     return _bounds;
   }
-}
-
-function LayerExpressionContext() {
-  var lyr, arcs;
-  hideGlobals(this);
-  this.$ = this;
-
-  this.sum = function(exp) {
-    return reduce(exp, 0, function(accum, val) {
-      return accum + (val || 0);
-    });
-  };
-
-  this.min = function(exp) {
-    var min = reduce(exp, Infinity, function(accum, val) {
-      return Math.min(accum, val);
-    });
-    return min;
-  };
-
-  this.max = function(exp) {
-    var max = reduce(exp, -Infinity, function(accum, val) {
-      return Math.max(accum, val);
-    });
-    return max;
-  };
-
-  this.average = function(exp) {
-    var sum = this.sum(exp);
-    return sum / MapShaper.getFeatureCount(lyr);
-  };
-
-  this.median = function(exp) {
-    var arr = values(exp);
-    return Utils.findMedian(arr);
-  };
-
-  this.__init = function(l, a) {
-    lyr = l;
-    arcs = a;
-  };
-
-  function values(exp) {
-    var compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
-    return Utils.repeat(MapShaper.getFeatureCount(lyr), compiled);
-  }
-
-  function reduce(exp, initial, func) {
-    var val = initial,
-        compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs),
-        n = MapShaper.getFeatureCount(lyr);
-    for (var i=0; i<n; i++) {
-      val = func(val, compiled(i), i);
-    }
-    return val;
-  }
-
-  addGetters({
-    bounds: function() {
-      return MapShaper.calcLayerBounds(lyr, arcs).toArray();
-    }
-  });
 }

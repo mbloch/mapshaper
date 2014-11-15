@@ -33,5 +33,19 @@ describe('mapshaper-subdivide.js', function () {
       assert.deepEqual(layers[2].shapes, [[[3]]])
     })
 
+    it('divide on a sum, field name not quoted', function() {
+      var lyr = {
+        geometry_type: "polygon",
+        shapes: [[[0]], [[1]], [[2]], [[3]]],
+        data: new api.internal.DataTable([{foo: 1}, {foo: 0}, {foo: 39}, {foo: 3}])
+      }
+
+      var layers = api.subdivideLayer(lyr, nullArcs, "sum(foo) > 5");
+      assert.equal(layers.length, 3);
+      assert.deepEqual(layers[0].shapes, [[[0]], [[1]]])
+      assert.deepEqual(layers[1].shapes, [[[2]]])
+      assert.deepEqual(layers[2].shapes, [[[3]]])
+    })
+
   })
 })

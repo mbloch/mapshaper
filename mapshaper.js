@@ -10411,28 +10411,6 @@ utils.getInnerTics = function(min, max, steps) {
 
 
 
-MapShaper.compileLayerExpression = function(exp) {
-  var env = new LayerExpressionContext(),
-      func;
-  try {
-    func = new Function("env", "with(env){return " + exp + ";}");
-  } catch(e) {
-    message('Error compiling expression "' + exp + '"');
-    stop(e);
-  }
-
-  return function(lyr, arcs) {
-    var value;
-    env.__init(lyr, arcs);
-    try {
-      value = func.call(null, env);
-    } catch(e) {
-      stop(e);
-    }
-    return value;
-  };
-};
-
 MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
       newFields = exp.match(RE_ASSIGNEE) || null,
@@ -10447,6 +10425,7 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
 
   hideGlobals(env);
   env.$ = new FeatureExpressionContext(lyr, arcs);
+  env._ = new FeatureCalculator();
   try {
     func = new Function("record,env", "with(env){with(record) { return " +
         MapShaper.removeExpressionSemicolons(exp) + ";}}");
@@ -10455,7 +10434,7 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
     stop(e);
   }
 
-  return function(recId) {
+  var compiled = function(recId) {
     var record = records ? records[recId] || (records[recId] = {}) : {},
         value, f;
 
@@ -10476,6 +10455,11 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
     }
     return value;
   };
+
+  compiled.done = function() {
+    return env._._done();
+  };
+  return compiled;
 };
 
 // Semicolons that divide the expression into two or more js statements
@@ -10641,66 +10625,109 @@ function FeatureExpressionContext(lyr, arcs) {
   }
 }
 
-function LayerExpressionContext() {
-  var lyr, arcs;
-  hideGlobals(this);
-  this.$ = this;
 
-  this.sum = function(exp) {
-    return reduce(exp, 0, function(accum, val) {
-      return accum + (val || 0);
-    });
-  };
 
-  this.min = function(exp) {
-    var min = reduce(exp, Infinity, function(accum, val) {
-      return Math.min(accum, val);
-    });
-    return min;
-  };
 
-  this.max = function(exp) {
-    var max = reduce(exp, -Infinity, function(accum, val) {
-      return Math.max(accum, val);
-    });
-    return max;
-  };
+// Calculate expressions like '_.sum(field)' and return results like: {sum: 14}
+//
+MapShaper.getCalcResults = function(lyr, arcs, opts) {
+  var calcExp = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs),
+      whereExp = opts.where ? MapShaper.compileFeatureExpression(opts.where, lyr, arcs) : null,
+      n = MapShaper.getFeatureCount(lyr),
+      results;
 
-  this.average = function(exp) {
-    var sum = this.sum(exp);
-    return sum / MapShaper.getFeatureCount(lyr);
-  };
-
-  this.median = function(exp) {
-    var arr = values(exp);
-    return Utils.findMedian(arr);
-  };
-
-  this.__init = function(l, a) {
-    lyr = l;
-    arcs = a;
-  };
-
-  function values(exp) {
-    var compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
-    return Utils.repeat(MapShaper.getFeatureCount(lyr), compiled);
-  }
-
-  function reduce(exp, initial, func) {
-    var val = initial,
-        compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs),
-        n = MapShaper.getFeatureCount(lyr);
-    for (var i=0; i<n; i++) {
-      val = func(val, compiled(i), i);
-    }
-    return val;
-  }
-
-  addGetters({
-    bounds: function() {
-      return MapShaper.calcLayerBounds(lyr, arcs).toArray();
+  utils.repeat(n, function(i) {
+    if (!whereExp || whereExp(i)) {
+      calcExp(i);
     }
   });
+  return calcExp.done();
+};
+
+// Return a function to evaluate expressions like 'sum(field) > 100'
+// (used by mapshaper-subdivide)
+MapShaper.compileCalcExpression = function(exp) {
+  var compiled = function(lyr, arcs) {
+    var env = MapShaper.getCalcContext(lyr, arcs);
+    var func, retn;
+    try {
+      func = new Function("env", "with(env){return " + exp + ";}");
+      retn = func.call(null, env);
+    } catch(e) {
+      message('Error ' + (!!func ? 'compiling' : 'running') + ' expression "' + exp + '"');
+      stop(e);
+    }
+    return retn;
+  };
+  return compiled;
+};
+
+MapShaper.getCalcContext = function(lyr, arcs) {
+  var calc = new FeatureCalculator();
+  var fields = lyr.data ? lyr.data.getFields() : [];
+  var env = fields.reduce(function(memo, f) {
+    memo[f] = f;
+    return memo;
+  }, {});
+  utils.forEach(calc, function(val, key) {
+    env[key] = function(fname) {
+      var exp = "_." + key + "(" + fname + ");";
+      var results = MapShaper.getCalcResults(lyr, arcs, {expression: exp});
+      return results[key];
+    };
+  });
+  return env;
+};
+
+function FeatureCalculator() {
+  var api = {},
+      count = 0,
+      sum = 0,
+      sumFlag = false,
+      avgSum = 0,
+      avgCount = 0,
+      min = Infinity,
+      max = -Infinity,
+      medianArr = [];
+
+  api.sum = function(val) {
+    sum += val;
+    sumFlag = true;
+  };
+
+  api.count = function() {
+    count++;
+  };
+
+  api.average = function(val) {
+    avgCount++;
+    avgSum += val;
+  };
+
+  api.median = function(val) {
+    medianArr.push(val);
+  };
+
+  api.max = function(val) {
+    if (val > max) max = val;
+  };
+
+  api.min = function(val) {
+    if (val < min) min = val;
+  };
+
+  api._done = function() {
+    var results = {};
+    if (sumFlag) results.sum = sum;
+    if (avgCount > 0) results.average = avgSum / avgCount;
+    if (medianArr.length > 0) results.median = utils.findMedian(medianArr);
+    if (min < Infinity) results.min = min;
+    if (max > -Infinity) results.max = max;
+    if (count > 0) results.count = count;
+    return results;
+  };
+
+  return api;
 }
 
 
@@ -10716,7 +10743,15 @@ api.evaluateEachFeature = function(lyr, arcs, exp) {
   }
   compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
   // call compiled expression with id of each record
-  Utils.repeat(n, compiled);
+  utils.repeat(n, compiled);
+};
+
+api.calc = function(lyr, arcs, opts) {
+  var results = MapShaper.getCalcResults(lyr, arcs, opts);
+  utils.forEach(results, function(val, key) {
+    var msg = key + ":\t" + val;
+    message(msg);
+  });
 };
 
 
@@ -12541,14 +12576,13 @@ api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
 
 
 
-
 // Recursively divide a layer into two layers until a (compiled) expression
 // no longer returns true. The original layer is split along the long side of
 // its bounding box, so that each split-off layer contains half of the original
 // shapes (+/- 1).
 //
 api.subdivideLayer = function(lyr, arcs, exp) {
-  return MapShaper.subdivide(lyr, arcs, MapShaper.compileLayerExpression(exp));
+  return MapShaper.subdivide(lyr, arcs, MapShaper.compileCalcExpression(exp));
 };
 
 MapShaper.subdivide = function(lyr, arcs, compiled) {
@@ -12661,18 +12695,21 @@ api.runCommand = function(cmd, dataset, cb) {
       }
     }
 
-    if (name == 'clip') {
+    if (name == 'calc') {
+      MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);
+
+    } else if (name == 'clip') {
       sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
       newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
-
-    } else if (name == 'each') {
-      MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
     } else if (name == 'dissolve') {
       newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
 
     } else if (name == 'dissolve2') {
       newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
+
+    } else if (name == 'each') {
+      MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
     } else if (name == 'erase') {
       sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
@@ -13407,7 +13444,7 @@ function validateExpressionOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.expression = cmd._[0];
   } else if (cmd._.length > 1) {
-    error("unparsable filter options:", cmd._);
+    error("unparsable arguments:", cmd._);
   }
 }
 
@@ -13885,8 +13922,20 @@ MapShaper.getOptionParser = function() {
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command('encodings')
+  parser.command("calc")
     .title("\nInformational commands")
+    .describe("perform calculations on a data layer, print the result")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "JS expression to apply to target features"
+    })
+    .option("where", {
+      describe: "use a JS expression to select a subset of features"
+    })
+    .option("target", targetOpt);
+
+  parser.command('encodings')
     .describe("print list of supported text encodings (for .dbf import)");
 
   parser.command('version')
@@ -13919,7 +13968,6 @@ MapShaper.getOptionParser = function() {
   parser.command("flatten")
     .option("target", targetOpt);
   /*
-
   parser.command("divide")
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
@@ -13931,16 +13979,6 @@ MapShaper.getOptionParser = function() {
 
   parser.command("repair")
     .option("target", targetOpt);
-
-
-  parser.command("points")
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt)
-    .option("type", {
-      type: "set",
-      values: ["centroids", "vertices", "intersections", "anchors"]
-    })
   */
 
   /*

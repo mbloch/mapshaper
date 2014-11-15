@@ -3,7 +3,7 @@ mapshaper-clip-erase
 mapshaper-dissolve
 mapshaper-dissolve2
 mapshaper-export
-mapshaper-field-calculator
+mapshaper-each-calc
 mapshaper-file-import
 mapshaper-file-export
 mapshaper-filter
@@ -51,18 +51,21 @@ api.runCommand = function(cmd, dataset, cb) {
       }
     }
 
-    if (name == 'clip') {
+    if (name == 'calc') {
+      MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);
+
+    } else if (name == 'clip') {
       sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
       newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
-
-    } else if (name == 'each') {
-      MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
     } else if (name == 'dissolve') {
       newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
 
     } else if (name == 'dissolve2') {
       newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
+
+    } else if (name == 'each') {
+      MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
     } else if (name == 'erase') {
       sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);

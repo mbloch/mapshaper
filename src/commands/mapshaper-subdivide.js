@@ -1,13 +1,12 @@
 /* @requires mapshaper-dataset-utils, mapshaper-expressions */
 
-
 // Recursively divide a layer into two layers until a (compiled) expression
 // no longer returns true. The original layer is split along the long side of
 // its bounding box, so that each split-off layer contains half of the original
 // shapes (+/- 1).
 //
 api.subdivideLayer = function(lyr, arcs, exp) {
-  return MapShaper.subdivide(lyr, arcs, MapShaper.compileLayerExpression(exp));
+  return MapShaper.subdivide(lyr, arcs, MapShaper.compileCalcExpression(exp));
 };
 
 MapShaper.subdivide = function(lyr, arcs, compiled) {
