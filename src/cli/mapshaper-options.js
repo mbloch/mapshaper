@@ -234,6 +234,23 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
+   parser.command("sort")
+    .describe("sort features using a JS expression")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "JS expression to apply to each target feature"
+    })
+    .option("ascending", {
+      describe: "Sort in ascending order",
+      type: "flag"
+    })
+    .option("descending", {
+      describe: "Sort in descending order",
+      type: "flag"
+    })
+    .option("target", targetOpt);
+
   parser.command("filter")
     .describe("delete features using a JavaScript expression")
     .validate(validateExpressionOpts)

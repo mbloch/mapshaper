@@ -20,6 +20,7 @@ mapshaper-simplify
 mapshaper-split
 mapshaper-split-on-grid
 mapshaper-subdivide
+mapshaper-sort
 */
 
 // TODO: consider refactoring to allow modules
@@ -126,6 +127,9 @@ api.runCommand = function(cmd, dataset, cb) {
       if (opts.keep_shapes) {
         api.keepEveryPolygon(arcs, targetLayers);
       }
+
+    } else if (name == 'sort') {
+      MapShaper.applyCommand(api.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
       newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, arcs, opts.field);

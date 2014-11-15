@@ -12671,6 +12671,28 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
 
 
 
+api.sortFeatures = function(lyr, arcs, opts) {
+  var n = MapShaper.getFeatureCount(lyr),
+      ascending = !opts.descending,
+      compiled = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs),
+      values = [];
+
+  utils.repeat(n, function(i) {
+    values.push(compiled(i));
+  });
+
+  var ids = utils.getSortedIds(values, ascending);
+  if (lyr.shapes) {
+    utils.reorderArray(lyr.shapes, ids);
+  }
+  if (lyr.data) {
+    utils.reorderArray(lyr.data.getRecords(), ids);
+  }
+};
+
+
+
+
 // TODO: consider refactoring to allow modules
 // @cmd  example: {name: "dissolve", options:{field: "STATE"}}
 // @dataset  format: {arcs: <ArcCollection>, layers:[]}
@@ -12775,6 +12797,9 @@ api.runCommand = function(cmd, dataset, cb) {
       if (opts.keep_shapes) {
         api.keepEveryPolygon(arcs, targetLayers);
       }
+
+    } else if (name == 'sort') {
+      MapShaper.applyCommand(api.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
       newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, arcs, opts.field);
@@ -13755,6 +13780,23 @@ MapShaper.getOptionParser = function() {
     .option("expression", {
       label: "<expression>",
       describe: "JS expression to apply to each target feature"
+    })
+    .option("target", targetOpt);
+
+   parser.command("sort")
+    .describe("sort features using a JS expression")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "JS expression to apply to each target feature"
+    })
+    .option("ascending", {
+      describe: "Sort in ascending order",
+      type: "flag"
+    })
+    .option("descending", {
+      describe: "Sort in descending order",
+      type: "flag"
     })
     .option("target", targetOpt);
 
