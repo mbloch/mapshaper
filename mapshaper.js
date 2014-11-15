@@ -10425,7 +10425,6 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
 
   hideGlobals(env);
   env.$ = new FeatureExpressionContext(lyr, arcs);
-  env._ = new FeatureCalculator();
   try {
     func = new Function("record,env", "with(env){with(record) { return " +
         MapShaper.removeExpressionSemicolons(exp) + ";}}");
@@ -10456,9 +10455,7 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
     return value;
   };
 
-  compiled.done = function() {
-    return env._._done();
-  };
+  compiled.context = env;
   return compiled;
 };
 
@@ -10632,16 +10629,21 @@ function FeatureExpressionContext(lyr, arcs) {
 //
 MapShaper.getCalcResults = function(lyr, arcs, opts) {
   var calcExp = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs),
-      whereExp = opts.where ? MapShaper.compileFeatureExpression(opts.where, lyr, arcs) : null,
+      calculator = new FeatureCalculator(),
       n = MapShaper.getFeatureCount(lyr),
+      whereExp = opts.where ? MapShaper.compileFeatureExpression(opts.where, lyr, arcs) : null,
       results;
+
+  // add functions to expression context
+  utils.extend(calcExp.context, calculator.functions);
+  calcExp.context._ = calculator.functions; // add as members of _ object too
 
   utils.repeat(n, function(i) {
     if (!whereExp || whereExp(i)) {
       calcExp(i);
     }
   });
-  return calcExp.done();
+  return calculator.done();
 };
 
 // Return a function to evaluate expressions like 'sum(field) > 100'
@@ -10669,7 +10671,7 @@ MapShaper.getCalcContext = function(lyr, arcs) {
     memo[f] = f;
     return memo;
   }, {});
-  utils.forEach(calc, function(val, key) {
+  utils.forEach(calc.functions, function(val, key) {
     env[key] = function(fname) {
       var exp = "_." + key + "(" + fname + ");";
       var results = MapShaper.getCalcResults(lyr, arcs, {expression: exp});
@@ -10716,7 +10718,7 @@ function FeatureCalculator() {
     if (val < min) min = val;
   };
 
-  api._done = function() {
+  function done() {
     var results = {};
     if (sumFlag) results.sum = sum;
     if (avgCount > 0) results.average = avgSum / avgCount;
@@ -10725,9 +10727,12 @@ function FeatureCalculator() {
     if (max > -Infinity) results.max = max;
     if (count > 0) results.count = count;
     return results;
-  };
+  }
 
-  return api;
+  return {
+    done: done,
+    functions: api
+  };
 }
 
 
@@ -14005,9 +14010,10 @@ api.runShellArgs = function(argv, done) {
     return done(new APIError("Missing an input file"));
   }
 
-  // if there's a -i command, no -o command and no -info command,
+  // if there's a -i command, no -o command and no -info or -calc command,
   // append a generic -o command.
   if (!utils.some(commands, function(cmd) { return cmd.name == 'o'; }) &&
+      !utils.some(commands, function(cmd) { return cmd.name == 'calc'; }) &&
       !utils.some(commands, function(cmd) { return cmd.name == 'info'; }) &&
       utils.some(commands, function(cmd) {return cmd.name == 'i'; })) {
     commands.push({name: "o", options: {}});

@@ -19,7 +19,6 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
 
   hideGlobals(env);
   env.$ = new FeatureExpressionContext(lyr, arcs);
-  env._ = new FeatureCalculator();
   try {
     func = new Function("record,env", "with(env){with(record) { return " +
         MapShaper.removeExpressionSemicolons(exp) + ";}}");
@@ -50,9 +49,7 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
     return value;
   };
 
-  compiled.done = function() {
-    return env._._done();
-  };
+  compiled.context = env;
   return compiled;
 };
 

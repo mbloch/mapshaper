@@ -1,7 +1,6 @@
 var assert = require('assert'),
     api = require("../");
 
-
 describe('mapshaper-expressions.js', function () {
   describe('removeExpressionSemicolons()', function () {
     it('removes semicolons at the end of an expression', function () {

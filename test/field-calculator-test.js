@@ -9,24 +9,33 @@ describe('mapshaper-field-calculator.js', function () {
           data: new api.internal.DataTable(data1)
         };
 
-    it ('_.sum()', function() {
-      var result = getCalcResults(lyr1, null, {expression: '_.sum(foo)'});
+    it ('sum()', function() {
+      var result = getCalcResults(lyr1, null, {expression: 'sum(foo)'});
       assert.deepEqual(result, {sum: 6});
     })
 
-    it ('_.average()', function() {
-      var result = getCalcResults(lyr1, null, {expression: '_.average(foo)'});
+    it ('average()', function() {
+      var result = getCalcResults(lyr1, null, {expression: 'average(foo)'});
       assert.deepEqual(result, {average: 2});
     })
 
-    it ('_.median()', function() {
-      var result = getCalcResults(lyr1, null, {expression: '_.median(foo)'});
+    it ('median()', function() {
+      var result = getCalcResults(lyr1, null, {expression: 'median(foo)'});
       assert.deepEqual(result, {median: 3});
     })
 
-    it ('_.min(), _max(), _.count()', function() {
-      var result = getCalcResults(lyr1, null, {expression: '_.min(foo), _.max(foo), _.count()'});
+    it ('min(), _max(), count()', function() {
+      var result = getCalcResults(lyr1, null, {expression: 'min(foo), max(foo), count()'});
       assert.deepEqual(result, {min: -1, max: 4, count: 3});
+    })
+
+    it ('calc functions also members of _ object', function() {
+      var data = [{count: 4}, {count: 3}],
+          lyr = {
+            data: new api.internal.DataTable(data)
+          };
+      var result = getCalcResults(lyr, null, {expression: '_.count(), _.sum(count)'});
+      assert.deepEqual(result, {count: 2, sum: 7});
     })
 
     it ('where= expression excludes a record', function() {
@@ -41,7 +50,7 @@ describe('mapshaper-field-calculator.js', function () {
           };
 
       var result = getCalcResults(lyr2, null,
-          {expression: '_.average(foo), _.count()', where: 'bar'});
+          {expression: 'average(foo), count()', where: 'bar'});
       assert.deepEqual(result, {average: 1, count: 3});
     })
   })

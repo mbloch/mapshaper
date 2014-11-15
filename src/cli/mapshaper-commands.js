@@ -12,9 +12,10 @@ api.runShellArgs = function(argv, done) {
     return done(new APIError("Missing an input file"));
   }
 
-  // if there's a -i command, no -o command and no -info command,
+  // if there's a -i command, no -o command and no -info or -calc command,
   // append a generic -o command.
   if (!utils.some(commands, function(cmd) { return cmd.name == 'o'; }) &&
+      !utils.some(commands, function(cmd) { return cmd.name == 'calc'; }) &&
       !utils.some(commands, function(cmd) { return cmd.name == 'info'; }) &&
       utils.some(commands, function(cmd) {return cmd.name == 'i'; })) {
     commands.push({name: "o", options: {}});
