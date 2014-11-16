@@ -155,12 +155,11 @@ function FeatureExpressionContext(lyr, arcs) {
           var p = centroid();
           return p ? p.y : null;
         },
-        // not implemented
-        interiorX: function() {
+        innerX: function() {
           var p = innerXY();
           return p ? p.x : null;
         },
-        interiorY: function() {
+        innerY: function() {
           var p = innerXY();
           return p ? p.y : null;
         }
@@ -204,8 +203,8 @@ function FeatureExpressionContext(lyr, arcs) {
   }
 
   function innerXY() {
-    //_innerXY = centroid(); // TODO: implement
-    return null;
+    _innerXY = _innerXY || geom.findInteriorPoint(_ids, arcs);
+    return _innerXY;
   }
 
   function shapeBounds() {
