@@ -165,12 +165,6 @@ function validateLinesOpts(cmd) {
   }
 }
 
-function validatePointsOpts(cmd) {
-  if (cmd._.length > 0) {
-    error("unknown argument:", cmd._[0]);
-  }
-}
-
 
 function validateInnerLinesOpts(cmd) {
   if (cmd._.length > 0) {

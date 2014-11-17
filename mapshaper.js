@@ -13594,12 +13594,6 @@ function validateLinesOpts(cmd) {
   }
 }
 
-function validatePointsOpts(cmd) {
-  if (cmd._.length > 0) {
-    error("unknown argument:", cmd._[0]);
-  }
-}
-
 
 function validateInnerLinesOpts(cmd) {
   if (cmd._.length > 0) {
@@ -14064,7 +14058,11 @@ MapShaper.getOptionParser = function() {
 
   parser.command("points")
     .describe("create a point layer from data fields")
-    .validate(validatePointsOpts)
+    .validate(function (cmd) {
+      if (cmd._.length > 0) {
+        error("unknown argument:", cmd._[0]);
+      }
+    })
     .option("x", {
       describe: "field containing x coordinate"
     })
@@ -14133,10 +14131,15 @@ MapShaper.getOptionParser = function() {
   parser.command("calc")
     .title("\nInformational commands")
     .describe("perform calculations on a data layer, print the result")
-    .validate(validateExpressionOpts)
+    .validate(function(cmd) {
+      if (cmd._.length === 0) {
+        error("missing a JS expression");
+      }
+      validateExpressionOpts(cmd);
+    })
     .option("expression", {
       label: "<expression>",
-      describe: "JS expression to apply to target features"
+      describe: "some functions: sum() average() median() max() min() count()"
     })
     .option("where", {
       describe: "use a JS expression to select a subset of features"
