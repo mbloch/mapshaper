@@ -5840,7 +5840,7 @@ geom.getAvgPathXY = function(ids, arcs) {
 
 // Return true if point is inside or on boundary of a shape
 //
-geom.testPointInShape = function(x, y, shp, arcs) {
+geom.testPointInPolygon = function(x, y, shp, arcs) {
   var isIn = false,
       isOn = false;
 

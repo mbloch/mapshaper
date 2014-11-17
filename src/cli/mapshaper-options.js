@@ -369,6 +369,14 @@ MapShaper.getOptionParser = function() {
     .option("y", {
       describe: "field containing y coordinate"
     })
+    .option("inner", {
+      describe: "create an interior point for each polygon's largest ring",
+      type: "flag"
+    })
+    .option("centroid", {
+      describe: "create a centroid point for each polygon's largest ring",
+      type: "flag"
+    })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);

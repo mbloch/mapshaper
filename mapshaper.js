@@ -10760,7 +10760,7 @@ function FeatureExpressionContext(lyr, arcs) {
 
 
 
-// Calculate expressions like '_.sum(field)' and return results like: {sum: 14}
+// Calculate expressions like 'sum(field)' or '_.sum(field)' and return results like: {sum: 14}
 //
 MapShaper.getCalcResults = function(lyr, arcs, opts) {
   var calcExp = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs),
@@ -11815,21 +11815,45 @@ api.mergeFiles = function(files, opts) {
 
 
 
-api.createPointLayer = function(srcLyr, opts) {
-  var data = srcLyr.data,
-      nulls = 0,
-      destLyr;
+api.createPointLayer = function(srcLyr, arcs, opts) {
+  var destLyr = {geometry_type: 'point'};
 
+  destLyr.shapes = opts.x || opts.y ?
+      MapShaper.pointsFromDataTable(srcLyr.data, opts) :
+      MapShaper.pointsFromPolygons(srcLyr, arcs, opts);
+
+  var nulls = destLyr.shapes.reduce(function(sum, shp) {
+    if (!shp) sum++;
+    return sum;
+  }, 0);
+
+  if (nulls > 0) {
+    message(utils.format('[points] %d/%d points are null', nulls, destLyr.shapes.length));
+  }
+  if (srcLyr.data) {
+    destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
+  }
+  return destLyr;
+};
+
+MapShaper.pointsFromPolygons = function(lyr, arcs, opts) {
+  if (lyr.geometry_type != "polygon") {
+    stop("[points] expected a polygon layer");
+  }
+  var func = opts.inner ? geom.findInteriorPoint : geom.getShapeCentroid;
+  return lyr.shapes.map(function(shp) {
+    var p = func(shp, arcs);
+    return p ? [[p.x, p.y]] : null;
+  });
+};
+
+MapShaper.pointsFromDataTable = function(data, opts) {
   if (!data) stop("[points] layer is missing a data table");
   if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
     stop("[points] missing x,y data fields");
   }
 
-  destLyr = {
-    geometry_type: 'point',
-    data: opts.no_replace ? data.clone() : data
-  };
-  destLyr.shapes = data.getRecords().map(function(rec) {
+  return data.getRecords().map(function(rec) {
     var x = rec[opts.x],
         y = rec[opts.y];
     if (!utils.isFiniteNumber(x) || !utils.isFiniteNumber(y)) {
@@ -11838,12 +11862,6 @@ api.createPointLayer = function(srcLyr, opts) {
     }
     return [[x, y]];
   });
-
-  if (nulls > 0) {
-    message(utils.format('[points] %d/%d points are null', nulls, data.size()));
-  }
-
-  return destLyr;
 };
 
 
@@ -12919,7 +12937,7 @@ api.runCommand = function(cmd, dataset, cb) {
       api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
 
     } else if (name == 'points') {
-      newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, opts);
+      newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
@@ -13577,8 +13595,8 @@ function validateLinesOpts(cmd) {
 }
 
 function validatePointsOpts(cmd) {
-  if (!cmd.options.x || !cmd.options.y) {
-    error("command requires names of x and y fields");
+  if (cmd._.length > 0) {
+    error("unknown argument:", cmd._[0]);
   }
 }
 
@@ -14052,6 +14070,14 @@ MapShaper.getOptionParser = function() {
     })
     .option("y", {
       describe: "field containing y coordinate"
+    })
+    .option("inner", {
+      describe: "create an interior point for each polygon's largest ring",
+      type: "flag"
+    })
+    .option("centroid", {
+      describe: "create a centroid point for each polygon's largest ring",
+      type: "flag"
     })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)

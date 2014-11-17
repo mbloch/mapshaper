@@ -166,8 +166,8 @@ function validateLinesOpts(cmd) {
 }
 
 function validatePointsOpts(cmd) {
-  if (!cmd.options.x || !cmd.options.y) {
-    error("command requires names of x and y fields");
+  if (cmd._.length > 0) {
+    error("unknown argument:", cmd._[0]);
   }
 }
 

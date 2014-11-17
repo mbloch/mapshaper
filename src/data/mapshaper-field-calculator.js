@@ -1,6 +1,6 @@
 /* @requires mapshaper-expressions */
 
-// Calculate expressions like '_.sum(field)' and return results like: {sum: 14}
+// Calculate expressions like 'sum(field)' or '_.sum(field)' and return results like: {sum: 14}
 //
 MapShaper.getCalcResults = function(lyr, arcs, opts) {
   var calcExp = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs),

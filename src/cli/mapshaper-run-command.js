@@ -114,7 +114,7 @@ api.runCommand = function(cmd, dataset, cb) {
       api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
 
     } else if (name == 'points') {
-      newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, opts);
+      newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
