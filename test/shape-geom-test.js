@@ -142,20 +142,20 @@ describe('mapshaper-shape-geom.js', function () {
       })
     })
 
-    describe('testPointInShape()', function () {
+    describe('testPointInPolygon()', function () {
       it('point in a hole', function () {
-        assert.equal(geom.testPointInShape(3, 3, lyr1.shapes[0], arcData), false)
-        assert.equal(geom.testPointInShape(3.1, 3.1, lyr1.shapes[0], arcData), false)
+        assert.equal(geom.testPointInPolygon(3, 3, lyr1.shapes[0], arcData), false)
+        assert.equal(geom.testPointInPolygon(3.1, 3.1, lyr1.shapes[0], arcData), false)
       })
 
       it('point outside hole', function () {
-        assert.equal(geom.testPointInShape(3, 1.2, lyr1.shapes[0], arcData), true)
-        assert.equal(geom.testPointInShape(3.1, 1.3, lyr1.shapes[0], arcData), true)
+        assert.equal(geom.testPointInPolygon(3, 1.2, lyr1.shapes[0], arcData), true)
+        assert.equal(geom.testPointInPolygon(3.1, 1.3, lyr1.shapes[0], arcData), true)
       })
 
       it('point outside shape', function () {
-        assert.equal(geom.testPointInShape(3.1, 1, lyr1.shapes[0], arcData), false)
-        assert.equal(geom.testPointInShape(3, 0.2, lyr1.shapes[0], arcData), false)
+        assert.equal(geom.testPointInPolygon(3.1, 1, lyr1.shapes[0], arcData), false)
+        assert.equal(geom.testPointInPolygon(3, 0.2, lyr1.shapes[0], arcData), false)
       })
     })
 

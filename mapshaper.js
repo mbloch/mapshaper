@@ -4297,7 +4297,7 @@ geom.getAvgPathXY = function(ids, arcs) {
 
 // Return true if point is inside or on boundary of a shape
 //
-geom.testPointInShape = function(x, y, shp, arcs) {
+geom.testPointInPolygon = function(x, y, shp, arcs) {
   var isIn = false,
       isOn = false;
 
@@ -10386,7 +10386,7 @@ geom.findInteriorPoint = function(shp, arcs) {
 
   // Use centroid if shape is simple and squarish
   if (shp.length == 1 && geom.getPathArea4(maxPath, arcs) * 1.3 > pathBounds.area()) {
-    if (geom.testPointInShape(centroid.x, centroid.y, shp, arcs)) {
+    if (geom.testPointInPolygon(centroid.x, centroid.y, shp, arcs)) {
       return centroid;
     }
   }
@@ -10471,7 +10471,7 @@ MapShaper.scanForBetterPoint = function(p, shp, arcs, vstep, weight) {
     y += vstep;
     d = geom.getPointToShapeDistance(x, y, shp, arcs) * weight(x, y);
     // overcome vary small local minima
-    if (d > dmax * 0.98 && geom.testPointInShape(x, y, shp, arcs)) {
+    if (d > dmax * 0.98 && geom.testPointInPolygon(x, y, shp, arcs)) {
       if (d > dmax) {
         p.distance = dmax = d;
         p.y = y;
