@@ -10374,52 +10374,61 @@ geom.getPathCentroid = function(ids, arcs) {
 // Find a point inside a polygon and located away from the polygon edge
 // Method:
 // - get the largest ring of the polygon
-// - get an array of x-values evenly spaced along the horizontal extent of the ring
+// - get an array of x-values distributed along the horizontal extent of the ring
 // - for each x:
 //     intersect a vertical line with the polygon at x
 //     find midpoints of each intersecting segment
 // - for each midpoint:
-//     adjust point vertically to maximize distance from polygon edge
+//     adjust point vertically to maximize weighted distance from polygon edge
 // - return the adjusted point having the maximum weighted distance from the edge
-//     (distance is weighted to slightly favor points near centroid)
+//
+// (distance is weighted to slightly favor points near centroid)
 //
 geom.findInteriorPoint = function(shp, arcs) {
   var maxPath = geom.getMaxPath(shp, arcs),
       pathBounds = arcs.getSimpleShapeBounds(maxPath),
-      HTICS = 20,
-      VTICS = 12,
+      halfWidth = pathBounds.width() / 2,
       maxPathArea = geom.getPathArea4(maxPath, arcs),
-      centroid;
+      centroid, area, focus, lbound, rbound, htics, vtics;
 
   if (!pathBounds.hasBounds() || pathBounds.area() === 0) {
     return null;
   }
 
   centroid = geom.getPathCentroid(maxPath, arcs);
+  area = geom.getPathArea4(maxPath, arcs);
 
-  // Use centroid if shape is simple and squarish
-  if (shp.length == 1 && geom.getPathArea4(maxPath, arcs) * 1.3 > pathBounds.area()) {
-    if (geom.testPointInPolygon(centroid.x, centroid.y, shp, arcs)) {
-      return centroid;
-    }
+  // Faster search if shape is simple and squarish
+  if (shp.length == 1 && area * 1.2 > pathBounds.area()) {
+    htics = 5;
+    focus = 0.2;
+  } else if (shp.length == 1 && area * 1.7 > pathBounds.area()) {
+    htics = 7;
+    focus = 0.4;
+  } else {
+    htics = 11;
+    focus = 0.5;
   }
+  lbound = centroid.x - halfWidth * focus;
+  rbound = centroid.x + halfWidth * focus;
+  vtics = htics;
 
   // Get candidate points, evenly spaced along x-axis
-  var tics = MapShaper.getInnerTics(pathBounds.xmin, pathBounds.xmax, HTICS);
+  var tics = MapShaper.getInnerTics(lbound, rbound, htics);
   var cands = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
 
   // Find a best-fit point
-  var p = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, VTICS);
+  var p = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, vtics);
   if (!p) {
     verbose("[findInteriorPoint()] failed, falling back to centroid");
     return centroid;
   }
 
-  // Second-pass, at higher resolution
+  // Look for even better fit close to best-fit point
   var xres = tics[1] - tics[0];
   tics = [p.x - xres/2, p.x + xres/2];
   cands = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
-  var p2 = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, VTICS * 2);
+  var p2 = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, vtics * 2);
   return p2.distance > p.distance ? p2 : p;
 };
 
@@ -10464,7 +10473,7 @@ MapShaper.findBestInteriorPoint = function(candidates, shp, arcs, pathBounds, ce
   // Points closer to the centroid are slightly preferred
   function getWeight(x, y) {
     var offset = distance2D(centroid.x, centroid.y, x, y);
-    return 1 - Math.min(0.5 * offset / referenceDist, 0.2);
+    return 1 - Math.min(0.6 * offset / referenceDist, 0.25);
   }
 
   return bestP;
