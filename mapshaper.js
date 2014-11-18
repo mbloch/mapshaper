@@ -10504,7 +10504,7 @@ MapShaper.scanForBetterPoint = function(p, shp, arcs, vstep, weight) {
     y += vstep;
     d = geom.getPointToShapeDistance(x, y, shp, arcs) * weight(x, y);
     // overcome vary small local minima
-    if (d > dmax * 0.97 && geom.testPointInPolygon(x, y, shp, arcs)) {
+    if (d > dmax * 0.90 && geom.testPointInPolygon(x, y, shp, arcs)) {
       if (d > dmax) {
         p.distance = dmax = d;
         p.y = y;
