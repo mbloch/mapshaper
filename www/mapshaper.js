@@ -5214,33 +5214,38 @@ SimpleShape.prototype = {
 //   }
 //
 function ArcIter(xx, yy) {
-  var _i = 0,
-      _inc = 1,
-      _stop = 0;
-
-  this.init = function(i, len, fw) {
-    if (fw) {
-      _i = i;
-      _inc = 1;
-      _stop = i + len;
-    } else {
-      _i = i + len - 1;
-      _inc = -1;
-      _stop = i - 1;
-    }
-    return this;
-  };
-
-  this.hasNext = function() {
-    var i = _i;
-    if (i == _stop) return false;
-    _i = i + _inc;
-    this.x = xx[i];
-    this.y = yy[i];
-    this.i = i;
-    return true;
-  };
+  this._i = 0;
+  this._inc = 1;
+  this._stop = 0;
+  this._xx = xx;
+  this._yy = yy;
+  this.i = 0;
+  this.x = 0;
+  this.y = 0;
 }
+
+ArcIter.prototype.init = function(i, len, fw) {
+  if (fw) {
+    this._i = i;
+    this._inc = 1;
+    this._stop = i + len;
+  } else {
+    this._i = i + len - 1;
+    this._inc = -1;
+    this._stop = i - 1;
+  }
+  return this;
+};
+
+ArcIter.prototype.hasNext = function() {
+  var i = this._i;
+  if (i == this._stop) return false;
+  this._i = i + this._inc;
+  this.x = this._xx[i];
+  this.y = this._yy[i];
+  this.i = i;
+  return true;
+};
 
 function FilteredArcIter(xx, yy, zz) {
   var _zlim = 0,
@@ -5286,40 +5291,47 @@ function FilteredArcIter(xx, yy, zz) {
 // Similar interface to ArcIter()
 //
 function ShapeIter(arcs) {
-  var _ids, _arc = null;
-  var i, n;
-
-  this.init = function(ids) {
-    _ids = ids;
-    n = ids.length;
-    this.reset();
-    return this;
-  };
-
-  function nextArc() {
-    i += 1;
-    return (i < n) ? arcs.getArcIter(_ids[i]) : null;
-  }
-
-  this.reset = function() {
-    i = -1;
-    _arc = nextArc();
-  };
+  this._ids = null;
+  this._arc = null;
+  this._arcs = arcs;
+  this._i = 0;
+  this._n = 0;
+  this.x = 0;
+  this.y = 0;
 
   this.hasNext = function() {
-    while (_arc) {
-      if (_arc.hasNext()) {
-        this.x = _arc.x;
-        this.y = _arc.y;
+    var arc = this._arc;
+    while (arc !== null) {
+      if (arc.hasNext()) {
+        this.x = arc.x;
+        this.y = arc.y;
         return true;
       } else {
-        _arc = nextArc();
-        if (_arc) _arc.hasNext(); // skip first point of arc
+        arc = this.nextArc();
+        this._arc = arc;
+        if (arc) arc.hasNext(); // skip first point of arc
       }
     }
     return false;
   };
 }
+
+ShapeIter.prototype.init = function(ids) {
+  this._ids = ids;
+  this._n = ids.length;
+  this.reset();
+  return this;
+};
+
+ShapeIter.prototype.nextArc = function() {
+  this._i += 1;
+  return (this._i < this._n) ? this._arcs.getArcIter(this._ids[this._i]) : null;
+};
+
+ShapeIter.prototype.reset = function() {
+  this._i = -1;
+  this._arc = this.nextArc();
+};
 
 
 

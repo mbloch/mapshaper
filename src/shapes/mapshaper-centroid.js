@@ -49,7 +49,7 @@ geom.getPathCentroid = function(ids, arcs) {
 geom.findInteriorPoint = function(shp, arcs) {
   var maxPath = geom.getMaxPath(shp, arcs),
       pathBounds = arcs.getSimpleShapeBounds(maxPath),
-      NUM_TICS = 25,
+      NUM_TICS = 12,
       maxPathArea = geom.getPathArea4(maxPath, arcs),
       centroid;
 
@@ -68,24 +68,35 @@ geom.findInteriorPoint = function(shp, arcs) {
 
   // Get candidate points, evenly spaced along x-axis
   var tics = MapShaper.getInnerTics(pathBounds.xmin, pathBounds.xmax, NUM_TICS);
-  var allCands = tics.reduce(function(memo, x) {
-    var cands = MapShaper.findHitCandidates(x, pathBounds.ymin - 1, shp, arcs);
-    return memo.concat(cands);
-  }, []);
+  var cands = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
 
   // Find a best-fit point
-  var p = MapShaper.findBestInteriorPoint(allCands, shp, arcs, pathBounds, centroid);
+  var p = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, NUM_TICS);
   if (!p) {
     verbose("[findInteriorPoint()] failed, falling back to centroid");
-    p = centroid;
+    return centroid;
   }
+
+  // Second-pass, at higher resolution
+  var xres = tics[1] - tics[0];
+  tics = MapShaper.getInnerTics(p.x - xres, p.x + xres, 3);
+  cands = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
+  p = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, NUM_TICS * 2);
   return p;
+};
+
+MapShaper.findInteriorPointCandidates = function(shp, arcs, xx) {
+  var ymin = arcs.getBounds().ymin - 1;
+  return xx.reduce(function(memo, x) {
+    var cands = MapShaper.findHitCandidates(x, ymin, shp, arcs);
+    return memo.concat(cands);
+  }, []);
 };
 
 // Receive an array of candidate points
 // Return a best-fit point
-MapShaper.findBestInteriorPoint = function(candidates, shp, arcs, pathBounds, centroid) {
-  var vstep = pathBounds.height() / 25;
+MapShaper.findBestInteriorPoint = function(candidates, shp, arcs, pathBounds, centroid, vtics) {
+  var vstep = pathBounds.height() / vtics;
   var referenceDist = Math.max(pathBounds.width(), pathBounds.height()) / 2;
   var bestP, adjustedP, candP;
 
