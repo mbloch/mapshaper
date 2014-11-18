@@ -10386,7 +10386,7 @@ geom.getPathCentroid = function(ids, arcs) {
 geom.findInteriorPoint = function(shp, arcs) {
   var maxPath = geom.getMaxPath(shp, arcs),
       pathBounds = arcs.getSimpleShapeBounds(maxPath),
-      NUM_TICS = 12,
+      NUM_TICS = 20,
       maxPathArea = geom.getPathArea4(maxPath, arcs),
       centroid;
 
@@ -10418,7 +10418,7 @@ geom.findInteriorPoint = function(shp, arcs) {
   var xres = tics[1] - tics[0];
   tics = MapShaper.getInnerTics(p.x - xres, p.x + xres, 3);
   cands = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
-  p = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, NUM_TICS * 2);
+  p = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, NUM_TICS * 1.5);
   return p;
 };
 
