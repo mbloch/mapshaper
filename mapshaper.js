@@ -10386,7 +10386,8 @@ geom.getPathCentroid = function(ids, arcs) {
 geom.findInteriorPoint = function(shp, arcs) {
   var maxPath = geom.getMaxPath(shp, arcs),
       pathBounds = arcs.getSimpleShapeBounds(maxPath),
-      NUM_TICS = 20,
+      HTICS = 20,
+      VTICS = 12,
       maxPathArea = geom.getPathArea4(maxPath, arcs),
       centroid;
 
@@ -10404,11 +10405,11 @@ geom.findInteriorPoint = function(shp, arcs) {
   }
 
   // Get candidate points, evenly spaced along x-axis
-  var tics = MapShaper.getInnerTics(pathBounds.xmin, pathBounds.xmax, NUM_TICS);
+  var tics = MapShaper.getInnerTics(pathBounds.xmin, pathBounds.xmax, HTICS);
   var cands = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
 
   // Find a best-fit point
-  var p = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, NUM_TICS);
+  var p = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, VTICS);
   if (!p) {
     verbose("[findInteriorPoint()] failed, falling back to centroid");
     return centroid;
@@ -10416,10 +10417,10 @@ geom.findInteriorPoint = function(shp, arcs) {
 
   // Second-pass, at higher resolution
   var xres = tics[1] - tics[0];
-  tics = MapShaper.getInnerTics(p.x - xres, p.x + xres, 3);
+  tics = [p.x - xres/2, p.x + xres/2];
   cands = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
-  p = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, NUM_TICS * 1.5);
-  return p;
+  var p2 = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, VTICS * 2);
+  return p2.distance > p.distance ? p2 : p;
 };
 
 MapShaper.findInteriorPointCandidates = function(shp, arcs, xx) {
@@ -10463,7 +10464,7 @@ MapShaper.findBestInteriorPoint = function(candidates, shp, arcs, pathBounds, ce
   // Points closer to the centroid are slightly preferred
   function getWeight(x, y) {
     var offset = distance2D(centroid.x, centroid.y, x, y);
-    return 1 - Math.min(0.4 * offset / referenceDist, 0.2);
+    return 1 - Math.min(0.5 * offset / referenceDist, 0.2);
   }
 
   return bestP;
@@ -10494,7 +10495,7 @@ MapShaper.scanForBetterPoint = function(p, shp, arcs, vstep, weight) {
     y += vstep;
     d = geom.getPointToShapeDistance(x, y, shp, arcs) * weight(x, y);
     // overcome vary small local minima
-    if (d > dmax * 0.98 && geom.testPointInPolygon(x, y, shp, arcs)) {
+    if (d > dmax * 0.97 && geom.testPointInPolygon(x, y, shp, arcs)) {
       if (d > dmax) {
         p.distance = dmax = d;
         p.y = y;
