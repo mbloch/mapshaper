@@ -5291,8 +5291,6 @@ function FilteredArcIter(xx, yy, zz) {
 // Similar interface to ArcIter()
 //
 function ShapeIter(arcs) {
-  this._ids = null;
-  this._arc = null;
   this._arcs = arcs;
   this._i = 0;
   this._n = 0;
@@ -5301,18 +5299,16 @@ function ShapeIter(arcs) {
 
   this.hasNext = function() {
     var arc = this._arc;
-    while (arc !== null) {
-      if (arc.hasNext()) {
-        this.x = arc.x;
-        this.y = arc.y;
-        return true;
-      } else {
-        arc = this.nextArc();
-        this._arc = arc;
-        if (arc) arc.hasNext(); // skip first point of arc
-      }
+    if (this._i >= this._n) {
+      return false;
+    } else if (arc.hasNext()) {
+      this.x = arc.x;
+      this.y = arc.y;
+      return true;
+    } else {
+      this.nextArc();
+      return this.hasNext();
     }
-    return false;
   };
 }
 
@@ -5324,13 +5320,17 @@ ShapeIter.prototype.init = function(ids) {
 };
 
 ShapeIter.prototype.nextArc = function() {
-  this._i += 1;
-  return (this._i < this._n) ? this._arcs.getArcIter(this._ids[this._i]) : null;
+  var i = this._i + 1;
+  if (i < this._n) {
+    this._arc = this._arcs.getArcIter(this._ids[i]);
+    if (i > 0) this._arc.hasNext(); // skip first point
+  }
+  this._i = i;
 };
 
 ShapeIter.prototype.reset = function() {
   this._i = -1;
-  this._arc = this.nextArc();
+  this.nextArc();
 };
 
 
