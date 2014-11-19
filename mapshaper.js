@@ -10337,6 +10337,57 @@ MapShaper.uniqifyNames = function(names) {
 
 
 
+MapShaper.simplifyShapeFast = function(shp, arcs, dist) {
+  if (!shp || !dist) return null;
+  var xx = [],
+      yy = [],
+      nn = [],
+      shp2 = [];
+
+  shp.forEach(function(path) {
+    var count = MapShaper.simplifyPathFast(path, arcs, dist, xx, yy);
+    if (count > 0) {
+      shp2.push([nn.length]);
+      nn.push(count);
+    }
+  });
+  return {
+    shape: shp2,
+    arcs: new ArcCollection(nn, xx, yy)
+  };
+};
+
+MapShaper.simplifyPathFast = function(path, arcs, dist, xx, yy) {
+  var iter = arcs.getShapeIter(path),
+      count = 0,
+      prevX, prevY, x, y;
+  while (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    if (count === 0 || distance2D(x, y, prevX, prevY) > dist) {
+      xx.push(x);
+      yy.push(y);
+      prevX = x;
+      prevY = y;
+      count++;
+    }
+  }
+  if (count > 2 && (x != prevX || y != prevY)) {
+    xx.push(x);
+    yy.push(y);
+    count++;
+  }
+  while (count < 4 && count > 0) {
+    xx.pop();
+    yy.pop();
+    count--;
+  }
+  return count;
+};
+
+
+
+
 // Get the centroid of the largest ring of a polygon
 // TODO: Include holes in the calculation
 // TODO: Add option to find centroid of all rings, not just the largest
@@ -10384,15 +10435,21 @@ geom.getPathCentroid = function(ids, arcs) {
 //
 // (distance is weighted to slightly favor points near centroid)
 //
-geom.findInteriorPoint = function(shp, arcs) {
+geom.findInteriorPoint = function(shp, arcs, exact) {
   var maxPath = geom.getMaxPath(shp, arcs),
+      maxPathArea = geom.getPathArea4(maxPath, arcs),
       pathBounds = arcs.getSimpleShapeBounds(maxPath),
       halfWidth = pathBounds.width() / 2,
-      maxPathArea = geom.getPathArea4(maxPath, arcs),
       centroid, area, focus, lbound, rbound, htics, vtics;
 
   if (!pathBounds.hasBounds() || pathBounds.area() === 0) {
     return null;
+  }
+
+  if (!exact) {
+    var thresh = Math.sqrt(pathBounds.area()) * 0.01;
+    var simple = MapShaper.simplifyShapeFast(shp, arcs, thresh);
+    return geom.findInteriorPoint(simple.shape, simple.arcs, true);
   }
 
   centroid = geom.getPathCentroid(maxPath, arcs);
@@ -10413,7 +10470,7 @@ geom.findInteriorPoint = function(shp, arcs) {
   rbound = centroid.x + halfWidth * focus;
   vtics = htics;
 
-  // Get candidate points, evenly spaced along x-axis
+  // Get candidate points, distributed along x-axis
   var tics = MapShaper.getInnerTics(lbound, rbound, htics);
   var cands = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
 
