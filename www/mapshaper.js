@@ -3979,11 +3979,17 @@ function absArcId(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 }
 
-// Parse the path to a file
+utils.getPathSep = function(path) {
+  // TODO: improve
+  return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
+};
+
+// Parse the path to a file without using Node
 // Assumes: not a directory path
 utils.parseLocalPath = function(path) {
   var obj = {},
-      parts = path.split('/'), // TODO: fix
+      sep = utils.getPathSep(path),
+      parts = path.split(sep),
       i;
 
   if (parts.length == 1) {
@@ -3991,7 +3997,7 @@ utils.parseLocalPath = function(path) {
     obj.directory = "";
   } else {
     obj.filename = parts.pop();
-    obj.directory = parts.join('/');
+    obj.directory = parts.join(sep);
   }
   i = obj.filename.lastIndexOf('.');
   if (i > -1) {

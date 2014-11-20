@@ -184,7 +184,6 @@ MapShaper.applyCommand = function(func, targetLayers) {
   }, []);
 };
 
-
 api.exportFiles = function(dataset, opts) {
   var exports = MapShaper.exportFileContent(dataset, opts);
   if (exports.length > 0 === false) {
@@ -259,13 +258,6 @@ MapShaper.findMatchingLayers = function(layers, target) {
   return Utils.map(ii, function(i) {
     return layers[i];
   });
-};
-
-utils.wildcardToRegExp = function(name) {
-  var rxp = name.split('*').map(function(str) {
-    return utils.regexEscape(str);
-  }).join('.*');
-  return new RegExp(rxp);
 };
 
 MapShaper.printLayerNames = function(layers) {

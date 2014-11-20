@@ -31,6 +31,33 @@ cli.replaceFileExtension = function(path, ext) {
   return info.pathbase + '.' + ext;
 };
 
+cli.expandFileName = function(name) {
+  if (name.indexOf('*') == -1) return [name];
+  var path = utils.parseLocalPath(name),
+      dir = path.directory || '.',
+      listing = require('fs').readdirSync(dir),
+      rxp = utils.wildcardToRegExp(path.filename),
+      matches;
+  return listing.reduce(function(memo, item) {
+    var path = require('path').join(dir, item);
+    if (rxp.test(item) && cli.isFile(path)) {
+      memo.push(path);
+    }
+    return memo;
+  }, []);
+};
+
+cli.validateInputFiles = function(files) {
+  // wildcard expansion (usually already handled by shell)
+  var expanded = files.reduce(function(memo, name) {
+    return memo.concat(cli.expandFileName(name));
+  }, []);
+  return expanded.reduce(function(memo, path) {
+    cli.validateInputFile(path);
+    return memo.concat(path);
+  }, []);
+};
+
 cli.validateInputFile = function(ifile) {
   var opts = {};
   cli.checkFileExists(ifile);

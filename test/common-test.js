@@ -34,6 +34,17 @@ describe('mapshaper-common.js', function () {
     })
   })
 
+  describe('wildcardToRxp()', function () {
+    var ex1 = "layer1"
+    it(ex1, function () {
+      assert.equal(api.utils.wildcardToRegExp(ex1).source, 'layer1');
+    })
+
+    var ex2 = "layer*";
+    it(ex2, function() {
+      assert.equal(api.utils.wildcardToRegExp(ex2).source, 'layer.*');
+    })
+  })
 
   describe('parseLocalPath()', function () {
     var path1 = "shapefiles/usa.shp";
@@ -43,6 +54,26 @@ describe('mapshaper-common.js', function () {
         pathbase: "shapefiles/usa",
         basename: "usa",
         filename: "usa.shp",
+        directory: "shapefiles"
+      })
+    })
+
+    it("handle wildcard", function () {
+      assert.deepEqual(api.utils.parseLocalPath("shapefiles/*.shp"), {
+        extension: "shp",
+        pathbase: "shapefiles/*",
+        basename: "*",
+        filename: "*.shp",
+        directory: "shapefiles"
+      })
+    })
+
+    it("handle Windows paths", function () {
+      assert.deepEqual(api.utils.parseLocalPath("shapefiles\\*.shp"), {
+        extension: "shp",
+        pathbase: "shapefiles\\*",
+        basename: "*",
+        filename: "*.shp",
         directory: "shapefiles"
       })
     })
@@ -57,7 +88,6 @@ describe('mapshaper-common.js', function () {
         directory: ""
       })
     })
-
 
     var path3 = "../usa.shp";
     it(path3, function () {

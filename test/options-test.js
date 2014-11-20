@@ -14,8 +14,9 @@ describe('mapshaper-options.js', function () {
     bad("-i missing.json"); // missing file
     bad("-i precision " + file1);
     bad("-i precision 0 " + file1);
-
-    // bad("-i"); // no file
+    // filename expansion
+    good('-i ' + fixPath('test_data/centroids/*.shp'),
+        {files: [fixPath('test_data/centroids/a.shp'), fixPath('test_data/centroids/b.shp')]});
     good('-i', {}); // now accepting no files
     good("-i " + file1, {files: [file1]});
     good("-i no-topology " + file1 + " auto-snap precision 0.1",
