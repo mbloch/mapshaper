@@ -168,74 +168,80 @@ function CommandParser() {
   };
 
   this.getHelpMessage = function(commandNames) {
-    var allCommands = getCommands(),
-        helpCommands = allCommands,
-        helpStr = '',
-        cmdPre = ' ',
+    var helpStr = '',
+        cmdPre = '  ',
         optPre = '  ',
         gutter = '  ',
         colWidth = 0,
-        detailView = false;
+        detailView = false,
+        helpCommands, allCommands;
+
+    allCommands = getCommands().filter(function(cmd) {
+      // hide commands without a description
+      return !!cmd.describe;
+    });
 
     if (commandNames) {
       detailView = true;
-      if (Utils.contains(commandNames, 'all')) {
-        helpCommands = allCommands;
-      } else {
-        helpCommands = allCommands.filter(function(cmd) {
-          return Utils.contains(commandNames, cmd.name);
-        });
-      }
-
+      helpCommands = allCommands.filter(function(cmd) {
+        return Utils.contains(commandNames, cmd.name);
+      });
       if (helpCommands.length === 0) {
         detailView = false;
-        helpCommands = allCommands;
       }
     }
 
-    if (detailView) {
-      helpStr += "\n";
-    } else if (_usage) {
-      helpStr +=  _usage + "\n\n";
+    if (!detailView) {
+      if (_usage) {
+        helpStr +=  "\n" + _usage + "\n\n";
+      }
+      helpCommands = allCommands;
     }
 
-    helpCommands.forEach(function(obj) {
-      if (obj.describe) {
-        var help = cmdPre + (obj.name ? "-" + obj.name : "");
-        if (obj.alias) help += ", -" + obj.alias;
-        obj.help = help;
-        colWidth = Math.max(colWidth, help.length);
+    // Format help strings, calc width of left column.
+    colWidth = helpCommands.reduce(function(w, obj) {
+      var help = cmdPre + (obj.name ? "-" + obj.name : "");
+      if (obj.alias) help += ", -" + obj.alias;
+      obj.help = help;
+      if (detailView) {
+        w = obj.options.reduce(function(w, opt) {
+          obj.options.forEach(formatOption);
+          return Math.max(formatOption(opt), w);
+        }, w);
+      }
+      return Math.max(w, help.length);
+    }, 0);
+
+    // Layout help display
+    helpCommands.forEach(function(cmd, i) {
+      if (!detailView && cmd.title) {
+        helpStr += cmd.title + "\n";
       }
       if (detailView) {
-        obj.options.forEach(formatOption);
+        helpStr += '\nCommand\n';
+      }
+      helpStr += formatHelpLine(cmd.help, cmd.describe);
+      if (detailView && cmd.options.length > 0) {
+        helpStr += '\nOptions\n';
+        cmd.options.forEach(function(opt) {
+          if (opt.help && opt.describe) {
+            helpStr += formatHelpLine(opt.help, opt.describe);
+          }
+        });
       }
     });
 
-    helpCommands.forEach(function(obj, i) {
-      if (helpCommands == allCommands && obj.title) {
-        helpStr += obj.title + "\n";
+    // additional notes for non-detail view
+    if (!detailView) {
+      if (_examples.length > 0) {
+        helpStr += "\nExamples\n";
+        _examples.forEach(function(str) {
+          helpStr += "\n" + str + "\n";
+        });
       }
-      if (obj.describe) {
-        helpStr += formatHelpLine(obj.help, obj.describe);
+      if (_note) {
+        helpStr += '\n' + _note;
       }
-      if (obj.title || obj.describe) {
-
-       if (detailView && obj.options.length > 0) {
-          obj.options.forEach(addOptionHelp);
-          helpStr += '\n';
-        }
-      }
-    });
-
-    if (!detailView && _examples.length > 0) {
-      helpStr += "\nExamples\n";
-      _examples.forEach(function(str) {
-        helpStr += "\n" + str + "\n";
-      });
-    }
-
-    if (!detailView && _note) {
-      helpStr += '\n' + _note;
     }
 
     return helpStr;
@@ -245,24 +251,17 @@ function CommandParser() {
     }
 
     function formatOption(o) {
-      if (o.describe) {
-        o.help = optPre;
-        if (o.label) {
-          o.help += o.label;
-        } else {
-          o.help += o.name;
-          if (o.alias) o.help += ", " + o.alias;
-          if (o.type != 'flag' && !o.assign_to) o.help += "=";
-        }
-        colWidth = Math.max(colWidth, o.help.length);
+      o.help = optPre;
+      if (o.label) {
+        o.help += o.label;
+      } else {
+        o.help += o.name;
+        if (o.alias) o.help += ", " + o.alias;
+        if (o.type != 'flag' && !o.assign_to) o.help += "=";
       }
+      return o.help.length;
     }
 
-    function addOptionHelp(o) {
-      if (o.help) {
-        helpStr += formatHelpLine(o.help, o.describe);
-      }
-    }
   };
 
   this.printHelp = function(commands) {

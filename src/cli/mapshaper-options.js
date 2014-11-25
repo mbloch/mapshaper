@@ -48,9 +48,8 @@ MapShaper.getOptionParser = function() {
 
   var parser = new CommandParser(),
       usage = "Usage\n" +
-    "  mapshaper [-i] input-file(s) [input-options] [-command [options]] ...\n" +
-    "  mapshaper -h [command(s)]\n" +
-    "  mapshaper -encodings|version";
+    "  mapshaper -<command> [options] ...\n" +
+    "  mapshaper -help [command(s)]";
   parser.usage(usage);
 
   parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
