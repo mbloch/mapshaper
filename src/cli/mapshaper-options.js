@@ -259,7 +259,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("filter")
-    .describe("delete features using a JavaScript expression")
+    .describe("delete features using a JS expression")
     .validate(validateExpressionOpts)
     .option("expression", {
       label: "<expression>",
@@ -293,16 +293,16 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("filter-fields")
-    .describe('filter and rename data fields, e.g. "fips,st=state"')
+    .describe('filter and optionally rename data fields')
     .validate(validateFilterFieldsOpts)
     .option("fields", {
       label: "<field(s)>",
-      describe: "comma-sep. list of fields to retain"
+      describe: "fields to retain/rename (comma-sep.), e.g. 'fips,st-state'"
     })
     .option("target", targetOpt);
 
   parser.command("clip")
-    .describe("use a polygon layer to clip another polygon layer")
+    .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClip)
     .option("source", {
@@ -314,7 +314,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("erase")
-    .describe("use a polygon layer to erase another polygon layer")
+    .describe("use a polygon layer to erase another layer")
     .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
     .validate(validateClip)
     .option("source", {
@@ -342,7 +342,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("dissolve2")
     .validate(validateDissolveOpts)
-    // .describe("merge adjacent and overlapping polygons")
+    .describe("merge adjacent and overlapping polygons")
     .option("field", dissolveFieldOpt)
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
@@ -351,19 +351,19 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("explode")
-    .describe("separate multi-part features into single-part features")
+    .describe("divide multi-part features into single-part features")
     .option("convert-holes", {type: "flag"}) // testing
     .option("target", targetOpt);
 
   parser.command("innerlines")
-    .describe("convert polygons to polylines along shared boundaries")
+    .describe("convert polygons to polylines along shared edges")
     .validate(validateInnerLinesOpts)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
   parser.command("lines")
-    .describe("convert polygons to classified polylines")
+    .describe("convert polygons to polylines, classified by edge type")
     .validate(validateLinesOpts)
     .option("fields", {
       label: "<field(s)>",
@@ -375,7 +375,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("points")
-    .describe("create a point layer from data fields")
+    .describe("create a point layer from polygons or attribute data")
     .validate(function (cmd) {
       if (cmd._.length > 0) {
         error("unknown argument:", cmd._[0]);
@@ -400,24 +400,29 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("split")
-    .describe("split features on a data field")
+    .describe("split features into separate layers using a data field")
     .validate(validateSplitOpts)
     .option("field", {
       label: '<field>',
-      describe: "name of an attribute field"
+      describe: "name of an attribute field (omit to split all features)"
     })
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
   parser.command("merge-layers")
-    .describe("merge split-apart layers back into a single layer")
+    .describe("merge multiple layers into as few layers as possible")
     .validate(validateMergeLayersOpts)
     .option("name", nameOpt)
     .option("target", targetOpt);
 
   parser.command("rename-layers")
-    .describe("assign new names to layers (comma-sep. list)")
+    .describe("assign new names to layers")
     .validate(validateRenameLayersOpts)
+    .option("names", {
+      label: "<name(s)>",
+      type: "comma-sep",
+      describe: "new layer name(s) (comma-sep. list)"
+    })
     .option("target", targetOpt);
 
   parser.command("subdivide")
@@ -431,7 +436,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("split-on-grid")
-    .describe("split features into separate layers according to a grid")
+    .describe("split features into separate layers using a grid")
     .validate(validateSplitOnGridOpts)
     .option("-", {
       label: "<cols,rows>",
@@ -448,7 +453,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("calc")
     .title("\nInformational commands")
-    .describe("perform calculations on a data layer, print the result")
+    .describe("Calculate statistics about the features in a layer")
     .example("Calculate the total area of a polygon layer\n" +
       "$ mapshaper polygons.shp -calc 'sum($.area)'")
     .example("Count census blocks in NY with zero population\n" +
@@ -461,7 +466,7 @@ MapShaper.getOptionParser = function() {
     })
     .option("expression", {
       label: "<expression>",
-      describe: "Functions: sum() average() median() max() min() count()"
+      describe: "functions: sum() average() median() max() min() count()"
     })
     .option("where", {
       describe: "use a JS expression to select a subset of features"
@@ -484,8 +489,12 @@ MapShaper.getOptionParser = function() {
   parser.command('help')
     .alias('h')
     .validate(validateHelpOpts)
-    .describe("print help; takes optional comma-sep. list of command names")
-    .option("commands");
+    .describe("print help; takes optional command name")
+    .option("commands", {
+      label: "<command>",
+      type: "comma-sep",
+      describe: "view detailed information about a command"
+    });
 
   // trap v0.1 options
   ("f,format,p,e,expression,pct,i,visvalingam,dp,rdp,interval,merge-files,combine-files," +
