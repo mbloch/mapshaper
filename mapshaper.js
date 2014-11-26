@@ -11075,6 +11075,9 @@ MapShaper.setLayerName = function(lyr, path) {
 
 MapShaper.importDataTable = function(fname, opts) {
   var table;
+  if (!cli.isFile(fname)) {
+    stop("File not found:", fname);
+  }
   if (utils.endsWith(fname.toLowerCase(), '.dbf')) {
     table = MapShaper.importDbfTable(fname, opts.encoding);
   } else {
@@ -11131,12 +11134,11 @@ MapShaper.parseFieldHeaders = function(fields, index) {
   return parsed;
 };
 
-MapShaper.importDbfTable = function(shpName, encoding) {
-  var dbfName = cli.replaceFileExtension(shpName, 'dbf');
-  if (!Node.fileExists(dbfName)) {
-    stop("File not found:", dbfName);
+MapShaper.importDbfTable = function(path, encoding) {
+  if (!Node.fileExists(path)) {
+    stop("File not found:", path);
   }
-  return new ShapefileTable(Node.readFile(dbfName), encoding);
+  return new ShapefileTable(Node.readFile(path), encoding);
 };
 
 MapShaper.importDelimTable = function(file) {
@@ -11243,47 +11245,42 @@ MapShaper.convertRecordData = function(rec, fields, converters) {
 
 api.importFile = function(path, opts) {
   var fileType = MapShaper.guessFileType(path),
-      content, dataset;
-
+      dataset;
   cli.checkFileExists(path);
-
   opts = opts || {};
   if (!opts.files && path != "/dev/stdin") {
     opts.files = [path];
   }
-
   if (fileType == 'shp') {
-    content = path; // pass path to shp reader to read in chunks
+    dataset = MapShaper.importShapefile(path, opts);
+  } else if (fileType == 'json') {
+    dataset = MapShaper.importJsonFile(path, opts);
   } else {
-    content = MapShaper.readGeometryFile(path, fileType);
-  }
-
-  dataset = MapShaper.importFileContent(content, fileType, opts);
-  if (fileType == 'shp' && dataset.layers.length == 1) {
-    var lyr0 = dataset.layers[0],
-        data = MapShaper.importDbfTable(path, opts.encoding);
-    if (data) {
-      if (lyr0.shapes.length != data.size()) {
-        stop(Utils.format("[%s] Different record counts in .shp and .dbf (%d and %d)",
-          path, lyr0.shapes.length, data.size()));
-      }
-      lyr0.data = data;
-    }
+    stop("Unexpected input file:", path);
   }
   return dataset;
 };
 
-MapShaper.readGeometryFile = function(path, fileType) {
-  var rw = require('rw');
-  var content;
-  if (fileType == 'shp') {
-    content = rw.readFileSync(path);
-  } else if (fileType == 'json') {
-    content = rw.readFileSync(path, 'utf-8');
+MapShaper.importShapefile = function(path, opts) {
+  var dataset = MapShaper.importFileContent(path, 'shp', opts), // pass path to shp reader to read in chunks
+      fileName = utils.parseLocalPath(path).filename,
+      dbfPath = cli.replaceFileExtension(path, 'dbf'),
+      lyr = dataset.layers[0];
+  if (cli.isFile(dbfPath)) {
+    lyr.data = MapShaper.importDbfTable(dbfPath, opts.encoding);
+    if (lyr.shapes.length != lyr.data.size()) {
+      stop(utils.format("[%s] Different record counts in .shp and .dbf (%d and %d).",
+        fileName, lyr.shapes.length, lyr.data.size()));
+    }
   } else {
-    error("Unexpected input file:", path);
+    message(utils.format("[%s] .dbf file is missing -- shapes imported without attribute data.", fileName));
   }
-  return content;
+  return dataset;
+};
+
+MapShaper.importJsonFile = function(path, opts) {
+  var content = require('rw').readFileSync(path, 'utf-8');
+  return MapShaper.importFileContent(content, 'json', opts);
 };
 
 
@@ -11971,16 +11968,16 @@ MapShaper.pointsFromDataTable = function(data, opts) {
 
 
 api.renameLayers = function(layers, names) {
-  if (!names || names.length > 0 === false) {
-    names = ['layer'];
-  }
-  var layerCount = layers.length,
-      nameCount = names && names.length;
-
+  var nameCount = names && names.length || 0;
   layers.forEach(function(lyr, i) {
-    var name = i < nameCount - 1 ? names[i] : names[nameCount - 1];
-    if (nameCount < layerCount && i >= nameCount - 2) {
-      name += i - nameCount + 2;
+    var name;
+    if (nameCount === 0) {
+      name = "layer" + (i + 1);
+    } else {
+      name = i < nameCount - 1 ? names[i] : names[nameCount - 1];
+      if (nameCount < layers.length && i >= nameCount - 2) {
+        name += i - nameCount + 2;
+      }
     }
     lyr.name = name;
   });
@@ -13376,6 +13373,7 @@ function CommandParser() {
     var helpStr = '',
         cmdPre = '  ',
         optPre = '  ',
+        exPre = '  ',
         gutter = '  ',
         colWidth = 0,
         detailView = false,
@@ -13388,7 +13386,13 @@ function CommandParser() {
 
     if (commandNames) {
       detailView = true;
-      helpCommands = allCommands.filter(function(cmd) {
+      helpCommands = commandNames.reduce(function(memo, name) {
+        var cmd = utils.find(allCommands, function(cmd) {return cmd.name == name;});
+        if (cmd) memo.push(cmd);
+        return memo;
+      }, []);
+
+      allCommands.filter(function(cmd) {
         return Utils.contains(commandNames, cmd.name);
       });
       if (helpCommands.length === 0) {
@@ -13432,6 +13436,15 @@ function CommandParser() {
           if (opt.help && opt.describe) {
             helpStr += formatHelpLine(opt.help, opt.describe);
           }
+        });
+      }
+      if (detailView && cmd.examples) {
+        helpStr += '\nExample' + (cmd.examples.length > 1 ? 's' : ''); //  + '\n';
+        cmd.examples.forEach(function(ex) {
+          ex.split('\n').forEach(function(line) {
+            helpStr += '\n' + exPre + line;
+          });
+          helpStr += '\n';
         });
       }
     });
@@ -13493,6 +13506,14 @@ function CommandOptions(name) {
 
   this.describe = function(str) {
     _command.describe = str;
+    return this;
+  };
+
+  this.example = function(str) {
+    if (!_command.examples) {
+      _command.examples = [];
+    }
+    _command.examples.push(str);
     return this;
   };
 
@@ -13842,13 +13863,15 @@ MapShaper.getOptionParser = function() {
     "  mapshaper -help [command(s)]";
   parser.usage(usage);
 
+  /*
   parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
       "$ mapshaper states.shp auto-snap -simplify 10% -o format=geojson");
 
   parser.example("Aggregate census tracts to counties\n" +
       "$ mapshaper tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
+  */
 
-  parser.example("Use mapshaper -help <command> to view options for a single command");
+  parser.note("Use mapshaper -help <command> to view options for a single command");
 
   parser.default('i');
 
@@ -13957,6 +13980,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command('simplify')
     .validate(validateSimplifyOpts)
+    .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
     .describe("simplify the geometry of polygon and polyline features")
     .option('pct', {
       alias: 'p',
@@ -13995,6 +14019,9 @@ MapShaper.getOptionParser = function() {
 
   parser.command("join")
     .describe("join a dbf or delimited text file to the input features")
+    .example("Join a csv table to a Shapefile\n" +
+      "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
+      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS:str -o joined.shp")
     .validate(validateJoinOpts)
     .option("source", {
       label: "<file>",
@@ -14016,6 +14043,8 @@ MapShaper.getOptionParser = function() {
 
   parser.command("each")
     .describe("create/update/delete data fields using a JS expression")
+    .example("Add two calculated data fields to a layer of U.S. counties\n" +
+        "$ mapshaper counties.shp -each 'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=$.area'")
     .validate(validateExpressionOpts)
     .option("expression", {
       label: "<expression>",
@@ -14028,10 +14057,10 @@ MapShaper.getOptionParser = function() {
     .validate(validateExpressionOpts)
     .option("expression", {
       label: "<expression>",
-      describe: "JS expression to apply to each target feature"
+      describe: "JS expression to generate a sort key for each feature"
     })
     .option("ascending", {
-      describe: "Sort in ascending order",
+      describe: "Sort in ascending order (default)",
       type: "flag"
     })
     .option("descending", {
@@ -14041,7 +14070,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("filter")
-    .describe("delete features using a JavaScript expression")
+    .describe("delete features using a JS expression")
     .validate(validateExpressionOpts)
     .option("expression", {
       label: "<expression>",
@@ -14075,16 +14104,17 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("filter-fields")
-    .describe('filter and rename data fields, e.g. "fips,st=state"')
+    .describe('filter and optionally rename data fields')
     .validate(validateFilterFieldsOpts)
     .option("fields", {
       label: "<field(s)>",
-      describe: "comma-sep. list of fields to retain"
+      describe: "fields to retain/rename (comma-sep.), e.g. 'fips,st-state'"
     })
     .option("target", targetOpt);
 
   parser.command("clip")
-    .describe("use a polygon layer to clip another polygon layer")
+    .describe("use a polygon layer to clip another layer")
+    .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClip)
     .option("source", {
       label: "<file|layer>",
@@ -14095,7 +14125,8 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("erase")
-    .describe("use a polygon layer to erase another polygon layer")
+    .describe("use a polygon layer to erase another layer")
+    .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
     .validate(validateClip)
     .option("source", {
       label: "<file|layer>",
@@ -14108,6 +14139,11 @@ MapShaper.getOptionParser = function() {
   parser.command("dissolve")
     .validate(validateDissolveOpts)
     .describe("merge adjacent polygons")
+    .example("Dissolve all polygons in a feature layer into a single polygon\n" +
+      "$ mapshaper states.shp -dissolve -o country.shp")
+    .example("Generate state-level polygons by dissolving a layer of counties\n" +
+      "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
+      "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
     .option("field", dissolveFieldOpt)
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
@@ -14117,7 +14153,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("dissolve2")
     .validate(validateDissolveOpts)
-    // .describe("merge adjacent and overlapping polygons")
+    .describe("merge adjacent and overlapping polygons")
     .option("field", dissolveFieldOpt)
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
@@ -14126,19 +14162,19 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("explode")
-    .describe("separate multi-part features into single-part features")
+    .describe("divide multi-part features into single-part features")
     .option("convert-holes", {type: "flag"}) // testing
     .option("target", targetOpt);
 
   parser.command("innerlines")
-    .describe("convert polygons to polylines along shared boundaries")
+    .describe("convert polygons to polylines along shared edges")
     .validate(validateInnerLinesOpts)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
   parser.command("lines")
-    .describe("convert polygons to classified polylines")
+    .describe("convert polygons to polylines, classified by edge type")
     .validate(validateLinesOpts)
     .option("fields", {
       label: "<field(s)>",
@@ -14150,7 +14186,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("points")
-    .describe("create a point layer from data fields")
+    .describe("create a point layer from polygons or attribute data")
     .validate(function (cmd) {
       if (cmd._.length > 0) {
         error("unknown argument:", cmd._[0]);
@@ -14175,24 +14211,29 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("split")
-    .describe("split features on a data field")
+    .describe("split features into separate layers using a data field")
     .validate(validateSplitOpts)
     .option("field", {
       label: '<field>',
-      describe: "name of an attribute field"
+      describe: "name of an attribute field (omit to split all features)"
     })
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
   parser.command("merge-layers")
-    .describe("merge split-apart layers back into a single layer")
+    .describe("merge multiple layers into as few layers as possible")
     .validate(validateMergeLayersOpts)
     .option("name", nameOpt)
     .option("target", targetOpt);
 
   parser.command("rename-layers")
-    .describe("assign new names to layers (comma-sep. list)")
+    .describe("assign new names to layers")
     .validate(validateRenameLayersOpts)
+    .option("names", {
+      label: "<name(s)>",
+      type: "comma-sep",
+      describe: "new layer name(s) (comma-sep. list)"
+    })
     .option("target", targetOpt);
 
   parser.command("subdivide")
@@ -14206,7 +14247,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("split-on-grid")
-    .describe("split features into separate layers according to a grid")
+    .describe("split features into separate layers using a grid")
     .validate(validateSplitOnGridOpts)
     .option("-", {
       label: "<cols,rows>",
@@ -14223,7 +14264,11 @@ MapShaper.getOptionParser = function() {
 
   parser.command("calc")
     .title("\nInformational commands")
-    .describe("perform calculations on a data layer, print the result")
+    .describe("Calculate statistics about the features in a layer")
+    .example("Calculate the total area of a polygon layer\n" +
+      "$ mapshaper polygons.shp -calc 'sum($.area)'")
+    .example("Count census blocks in NY with zero population\n" +
+      "$ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'")
     .validate(function(cmd) {
       if (cmd._.length === 0) {
         error("missing a JS expression");
@@ -14232,7 +14277,7 @@ MapShaper.getOptionParser = function() {
     })
     .option("expression", {
       label: "<expression>",
-      describe: "some functions: sum() average() median() max() min() count()"
+      describe: "functions: sum() average() median() max() min() count()"
     })
     .option("where", {
       describe: "use a JS expression to select a subset of features"
@@ -14255,8 +14300,12 @@ MapShaper.getOptionParser = function() {
   parser.command('help')
     .alias('h')
     .validate(validateHelpOpts)
-    .describe("print help; takes optional comma-sep. list of command names")
-    .option("commands");
+    .describe("print help; takes optional command name")
+    .option("commands", {
+      label: "<command>",
+      type: "comma-sep",
+      describe: "view detailed information about a command"
+    });
 
   // trap v0.1 options
   ("f,format,p,e,expression,pct,i,visvalingam,dp,rdp,interval,merge-files,combine-files," +

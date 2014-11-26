@@ -3979,6 +3979,13 @@ function absArcId(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
 }
 
+utils.wildcardToRegExp = function(name) {
+  var rxp = name.split('*').map(function(str) {
+    return utils.regexEscape(str);
+  }).join('.*');
+  return new RegExp(rxp);
+};
+
 utils.getPathSep = function(path) {
   // TODO: improve
   return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
