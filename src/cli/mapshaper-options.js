@@ -52,13 +52,15 @@ MapShaper.getOptionParser = function() {
     "  mapshaper -help [command(s)]";
   parser.usage(usage);
 
+  /*
   parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
       "$ mapshaper states.shp auto-snap -simplify 10% -o format=geojson");
 
   parser.example("Aggregate census tracts to counties\n" +
       "$ mapshaper tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
+  */
 
-  parser.example("Use mapshaper -help <command> to view options for a single command");
+  parser.note("Use mapshaper -help <command> to view options for a single command");
 
   parser.default('i');
 
@@ -167,6 +169,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command('simplify')
     .validate(validateSimplifyOpts)
+    .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
     .describe("simplify the geometry of polygon and polyline features")
     .option('pct', {
       alias: 'p',
@@ -205,6 +208,9 @@ MapShaper.getOptionParser = function() {
 
   parser.command("join")
     .describe("join a dbf or delimited text file to the input features")
+    .example("Join a csv table to a Shapefile\n" +
+      "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
+      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS:str -o joined.shp")
     .validate(validateJoinOpts)
     .option("source", {
       label: "<file>",
@@ -226,6 +232,8 @@ MapShaper.getOptionParser = function() {
 
   parser.command("each")
     .describe("create/update/delete data fields using a JS expression")
+    .example("Add two calculated data fields to a layer of U.S. counties\n" +
+        "$ mapshaper counties.shp -each 'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=$.area'")
     .validate(validateExpressionOpts)
     .option("expression", {
       label: "<expression>",
@@ -295,6 +303,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("clip")
     .describe("use a polygon layer to clip another polygon layer")
+    .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClip)
     .option("source", {
       label: "<file|layer>",
@@ -306,6 +315,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("erase")
     .describe("use a polygon layer to erase another polygon layer")
+    .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
     .validate(validateClip)
     .option("source", {
       label: "<file|layer>",
@@ -318,6 +328,11 @@ MapShaper.getOptionParser = function() {
   parser.command("dissolve")
     .validate(validateDissolveOpts)
     .describe("merge adjacent polygons")
+    .example("Dissolve all polygons in a feature layer into a single polygon\n" +
+      "$ mapshaper states.shp -dissolve -o country.shp")
+    .example("Generate state-level polygons by dissolving a layer of counties\n" +
+      "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
+      "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
     .option("field", dissolveFieldOpt)
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
@@ -434,6 +449,10 @@ MapShaper.getOptionParser = function() {
   parser.command("calc")
     .title("\nInformational commands")
     .describe("perform calculations on a data layer, print the result")
+    .example("Calculate the total area of a polygon layer\n" +
+      "$ mapshaper polygons.shp -calc 'sum($.area)'")
+    .example("Count census blocks in NY with zero population\n" +
+      "$ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'")
     .validate(function(cmd) {
       if (cmd._.length === 0) {
         error("missing a JS expression");
@@ -442,7 +461,7 @@ MapShaper.getOptionParser = function() {
     })
     .option("expression", {
       label: "<expression>",
-      describe: "some functions: sum() average() median() max() min() count()"
+      describe: "Functions: sum() average() median() max() min() count()"
     })
     .option("where", {
       describe: "use a JS expression to select a subset of features"

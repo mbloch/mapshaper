@@ -171,6 +171,7 @@ function CommandParser() {
     var helpStr = '',
         cmdPre = '  ',
         optPre = '  ',
+        exPre = '  ',
         gutter = '  ',
         colWidth = 0,
         detailView = false,
@@ -183,7 +184,13 @@ function CommandParser() {
 
     if (commandNames) {
       detailView = true;
-      helpCommands = allCommands.filter(function(cmd) {
+      helpCommands = commandNames.reduce(function(memo, name) {
+        var cmd = utils.find(allCommands, function(cmd) {return cmd.name == name;});
+        if (cmd) memo.push(cmd);
+        return memo;
+      }, []);
+
+      allCommands.filter(function(cmd) {
         return Utils.contains(commandNames, cmd.name);
       });
       if (helpCommands.length === 0) {
@@ -227,6 +234,15 @@ function CommandParser() {
           if (opt.help && opt.describe) {
             helpStr += formatHelpLine(opt.help, opt.describe);
           }
+        });
+      }
+      if (detailView && cmd.examples) {
+        helpStr += '\nExample' + (cmd.examples.length > 1 ? 's' : ''); //  + '\n';
+        cmd.examples.forEach(function(ex) {
+          ex.split('\n').forEach(function(line) {
+            helpStr += '\n' + exPre + line;
+          });
+          helpStr += '\n';
         });
       }
     });
@@ -288,6 +304,14 @@ function CommandOptions(name) {
 
   this.describe = function(str) {
     _command.describe = str;
+    return this;
+  };
+
+  this.example = function(str) {
+    if (!_command.examples) {
+      _command.examples = [];
+    }
+    _command.examples.push(str);
     return this;
   };
 
