@@ -246,10 +246,10 @@ MapShaper.getOptionParser = function() {
     .validate(validateExpressionOpts)
     .option("expression", {
       label: "<expression>",
-      describe: "JS expression to apply to each target feature"
+      describe: "JS expression to generate a sort key for each feature"
     })
     .option("ascending", {
-      describe: "Sort in ascending order",
+      describe: "Sort in ascending order (default)",
       type: "flag"
     })
     .option("descending", {
