@@ -5,45 +5,40 @@ mapshaper-table-import
 
 api.importFile = function(path, opts) {
   var fileType = MapShaper.guessFileType(path),
-      content, dataset;
-
+      dataset;
   cli.checkFileExists(path);
-
   opts = opts || {};
   if (!opts.files && path != "/dev/stdin") {
     opts.files = [path];
   }
-
   if (fileType == 'shp') {
-    content = path; // pass path to shp reader to read in chunks
+    dataset = MapShaper.importShapefile(path, opts);
+  } else if (fileType == 'json') {
+    dataset = MapShaper.importJsonFile(path, opts);
   } else {
-    content = MapShaper.readGeometryFile(path, fileType);
-  }
-
-  dataset = MapShaper.importFileContent(content, fileType, opts);
-  if (fileType == 'shp' && dataset.layers.length == 1) {
-    var lyr0 = dataset.layers[0],
-        data = MapShaper.importDbfTable(path, opts.encoding);
-    if (data) {
-      if (lyr0.shapes.length != data.size()) {
-        stop(Utils.format("[%s] Different record counts in .shp and .dbf (%d and %d)",
-          path, lyr0.shapes.length, data.size()));
-      }
-      lyr0.data = data;
-    }
+    stop("Unexpected input file:", path);
   }
   return dataset;
 };
 
-MapShaper.readGeometryFile = function(path, fileType) {
-  var rw = require('rw');
-  var content;
-  if (fileType == 'shp') {
-    content = rw.readFileSync(path);
-  } else if (fileType == 'json') {
-    content = rw.readFileSync(path, 'utf-8');
+MapShaper.importShapefile = function(path, opts) {
+  var dataset = MapShaper.importFileContent(path, 'shp', opts), // pass path to shp reader to read in chunks
+      fileName = utils.parseLocalPath(path).filename,
+      dbfPath = cli.replaceFileExtension(path, 'dbf'),
+      lyr = dataset.layers[0];
+  if (cli.isFile(dbfPath)) {
+    lyr.data = MapShaper.importDbfTable(dbfPath, opts.encoding);
+    if (lyr.shapes.length != lyr.data.size()) {
+      stop(utils.format("[%s] Different record counts in .shp and .dbf (%d and %d).",
+        fileName, lyr.shapes.length, lyr.data.size()));
+    }
   } else {
-    error("Unexpected input file:", path);
+    message(utils.format("[%s] .dbf file is missing -- shapes imported without attribute data.", fileName));
   }
-  return content;
+  return dataset;
+};
+
+MapShaper.importJsonFile = function(path, opts) {
+  var content = require('rw').readFileSync(path, 'utf-8');
+  return MapShaper.importFileContent(content, 'json', opts);
 };

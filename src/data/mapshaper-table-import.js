@@ -2,6 +2,9 @@
 
 MapShaper.importDataTable = function(fname, opts) {
   var table;
+  if (!cli.isFile(fname)) {
+    stop("File not found:", fname);
+  }
   if (utils.endsWith(fname.toLowerCase(), '.dbf')) {
     table = MapShaper.importDbfTable(fname, opts.encoding);
   } else {
@@ -58,12 +61,11 @@ MapShaper.parseFieldHeaders = function(fields, index) {
   return parsed;
 };
 
-MapShaper.importDbfTable = function(shpName, encoding) {
-  var dbfName = cli.replaceFileExtension(shpName, 'dbf');
-  if (!Node.fileExists(dbfName)) {
-    stop("File not found:", dbfName);
+MapShaper.importDbfTable = function(path, encoding) {
+  if (!Node.fileExists(path)) {
+    stop("File not found:", path);
   }
-  return new ShapefileTable(Node.readFile(dbfName), encoding);
+  return new ShapefileTable(Node.readFile(path), encoding);
 };
 
 MapShaper.importDelimTable = function(file) {
