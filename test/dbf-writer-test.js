@@ -103,6 +103,52 @@ describe('dbf-writer.js', function () {
   })
 
   describe('roundtrip: records -> export -> import -> records', function() {
+
+    it('10-letter field names are preserved', function() {
+      var records = [{abcdefghij: 'foo'}];
+      var buf = Dbf.exportRecords(records);
+      var records2 = Dbf.importRecords(buf);
+      assert.deepEqual(records2, records);
+    })
+
+    it('11-letter field names are truncated', function() {
+      var records = [{abcdefghijk: 'foo'}];
+      var buf = Dbf.exportRecords(records);
+      var records2 = Dbf.importRecords(buf);
+      assert.deepEqual(records2, [{abcdefghij: 'foo'}]);
+    })
+
+    it('field name conflicts caused by truncation are resolved', function() {
+      var records = [{abcdefghijk: 'foo', abcdefghij: 'bar'}];
+      var buf = Dbf.exportRecords(records);
+      var records2 = Dbf.importRecords(buf);
+      assert.deepEqual(records2, [{abcdefgh_1: 'foo', abcdefghij: 'bar'}]);
+    })
+
+    it('field name conflicts caused by truncation are resolved 2', function() {
+      var records = [{abcdefghij: 'bar', abcdefghijk: 'foo'}];
+      var buf = Dbf.exportRecords(records);
+      var records2 = Dbf.importRecords(buf);
+      assert.deepEqual(records2, [{abcdefgh_1: 'foo', abcdefghij: 'bar'}]);
+    })
+
+    it('field name conflicts caused by truncation are resolved 3', function() {
+      var records = [{
+        abcdefghijk: 'a',
+        abcdefghijkl: 'b',
+        abcdefghijklm: 'c',
+        abcdefgh_2: 'd'
+      }];
+      var buf = Dbf.exportRecords(records);
+      var records2 = Dbf.importRecords(buf);
+      assert.deepEqual(records2, [{
+        abcdefghij: 'a',
+        abcdefgh_1: 'b',
+        abcdefgh_3: 'c',
+        abcdefgh_2: 'd'
+      }]);
+    })
+
     it('numbers and ascii text', function() {
       var records = [
         {a: -1200, b: 0.3, c: 'Mexico City'},

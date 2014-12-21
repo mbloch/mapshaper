@@ -65,6 +65,39 @@ Dbf.getStringReader = function(size, encoding) {
   error("[Dbf.getStringReader()] Non-ascii encodings only supported in Node.");
 };
 
+// Truncate and/or uniqify a name (if relevant params are present)
+Dbf.adjustFieldName = function(name, maxLen, i) {
+  var name2, suff;
+  maxLen = maxLen || 256;
+  if (!i) {
+    name2 = name.substr(0, maxLen);
+  } else {
+    suff = String(i);
+    if (suff.length == 1) {
+      suff = '_' + suff;
+    }
+    name2 = name.substr(0, maxLen - suff.length) + suff;
+  }
+  return name2;
+};
+
+// Resolve name conflicts in field names by appending numbers
+// @fields Array of field names
+// @maxLen (optional) Maximum chars in name
+//
+Dbf.getUniqFieldNames = function(fields, maxLen) {
+  var used = {};
+  return fields.map(function(name) {
+    var i = 0,
+        validName;
+    do {
+      validName = Dbf.adjustFieldName(name, maxLen, i);
+      i++;
+    } while (validName in used);
+    used[validName] = true;
+    return validName;
+  });
+};
 
 // cf. http://code.google.com/p/stringencoding/
 //
@@ -81,7 +114,6 @@ function DbfReader(src, encoding) {
   this.recordCount = this.header.recordCount;
   this.fieldCount = this.header.fields.length;
 }
-
 
 DbfReader.prototype.readCol = function(c) {
   var rows = this.header.recordCount,
@@ -103,16 +135,16 @@ DbfReader.prototype.readCols = function() {
 };
 
 DbfReader.prototype.readRows = function() {
-  var fields = this.header.fields,
+  var names = Utils.pluck(this.header.fields, 'name'),
+    uniqNames = Dbf.getUniqFieldNames(names),
     rows = this.header.recordCount,
-    cols = fields.length,
-    names = Utils.map(fields, function(f) {return f.name;}),
+    cols = names.length,
     data = [];
 
   for (var r=0; r<rows; r++) {
     var rec = data[r] = {};
     for (var c=0; c < cols; c++) {
-      rec[names[c]] = this.readRowCol(r, c);
+      rec[uniqNames[c]] = this.readRowCol(r, c);
     }
   }
   return data;

@@ -1,4 +1,5 @@
 var api = require('../'),
+    deepStrictEqual = require('deep-eql'),
     assert = require('assert'),
     iconv = require('iconv-lite'),
     Dbf = api.internal.Dbf,
@@ -22,6 +23,48 @@ describe('dbf-reader.js', function () {
     var reader = new api.internal.DbfReader(fixPath(path), encoding);
     return reader.readRows();
   }
+
+  describe('Duplicate fields', function() {
+
+    it ('Rename fields to avoid duplicate names', function() {
+      // renamed fields may exceed 10 characters; truncated if exported as Shapefile
+      var rows = readRows('dbf/duplicate_fields.dbf');
+      var rec1 = {
+        SP_ID: '2',
+        geoid: '15003009703',
+        rate: 0.3079,
+        employed: 780,
+        unemployed: 123,
+        not_in_lab: 224,
+        error: 0.082941522262937,
+        rate_women: 0.29776,
+        employed_w: 783,
+        unemployed_1: 21,
+        not_in_lab_1: 311,
+        error_wome: 0.076490098765061
+      };
+      assert(deepStrictEqual(rows[1], rec1));
+    })
+
+    it ('Rename fields; asterisks in num field converted to NaN', function() {
+      var rows = readRows('dbf/duplicate_fields.dbf');
+      var rec0 = {
+        SP_ID: '1',
+        geoid: '15003980600',
+        rate: NaN,
+        employed: 0,
+        unemployed: 0,
+        not_in_lab: 0,
+        error: NaN,
+        rate_women: NaN,
+        employed_w: 0,
+        unemployed_1: 0,
+        not_in_lab_1: 0,
+        error_wome: NaN
+      };
+      assert(deepStrictEqual(rows[0], rec0));
+    })
+  })
 
   describe('#readRows', function () {
 
@@ -110,4 +153,5 @@ describe('dbf-reader.js', function () {
       assert.equal(rows[0].subregion, '');
     })
   })
+
 })

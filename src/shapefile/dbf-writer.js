@@ -2,7 +2,8 @@
 
 Dbf.exportRecords = function(arr, encoding) {
   encoding = encoding || 'ascii';
-  var fields = Utils.keys(arr[0]);
+  var fields = Dbf.getFieldNames(arr);
+  var uniqFields = Dbf.getUniqFieldNames(fields, 10);
   var rows = arr.length;
   var fieldData = Utils.map(fields, function(name) {
     return Dbf.getFieldInfo(arr, name, encoding);
@@ -29,8 +30,8 @@ Dbf.exportRecords = function(arr, encoding) {
   bin.skipBytes(2);
 
   // field subrecords
-  Utils.reduce(fieldData, function(recordOffset, obj) {
-    var fieldName = Dbf.getValidFieldName(obj.name);
+  Utils.reduce(fieldData, function(recordOffset, obj, i) {
+    var fieldName = uniqFields[i];
     bin.writeCString(fieldName, 11);
     bin.writeUint8(obj.type.charCodeAt(0));
     bin.writeUint32(recordOffset);
@@ -64,6 +65,17 @@ Dbf.exportRecords = function(arr, encoding) {
   return buffer;
 };
 
+
+Dbf.getFieldNames = function(records) {
+  if (!records || !records.length) {
+    return [];
+  }
+  var names = Object.keys(records[0]);
+  names.sort(); // kludge: sorting gives correct order when truncating fields
+  return names;
+};
+
+
 Dbf.getHeaderSize = function(numFields) {
   return 33 + numFields * 32;
 };
@@ -72,10 +84,12 @@ Dbf.getRecordSize = function(fieldSizes) {
   return Utils.sum(fieldSizes) + 1; // delete byte plus data bytes
 };
 
+/*
 Dbf.getValidFieldName = function(name) {
   // TODO: handle non-ascii chars in name
   return name.substr(0, 10); // max 10 chars
 };
+*/
 
 Dbf.initNumericField = function(info, arr, name) {
   var MAX_FIELD_SIZE = 18,
