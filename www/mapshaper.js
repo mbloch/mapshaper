@@ -8939,7 +8939,8 @@ Dbf.getStringReader = function(size, encoding) {
   error("[Dbf.getStringReader()] Non-ascii encodings only supported in Node.");
 };
 
-Dbf.adjustName = function(name, maxLen, i) {
+// Truncate and/or uniqify a name (if relevant params are present)
+Dbf.adjustFieldName = function(name, maxLen, i) {
   var name2, suff;
   maxLen = maxLen || 256;
   if (!i) {
@@ -8954,7 +8955,7 @@ Dbf.adjustName = function(name, maxLen, i) {
   return name2;
 };
 
-
+// Resolve name conflicts in field names by appending numbers
 // @fields Array of field names
 // @maxLen (optional) Maximum chars in name
 //
@@ -8964,7 +8965,7 @@ Dbf.getUniqFieldNames = function(fields, maxLen) {
     var i = 0,
         validName;
     do {
-      validName = Dbf.adjustName(name, maxLen, i);
+      validName = Dbf.adjustFieldName(name, maxLen, i);
       i++;
     } while (validName in used);
     used[validName] = true;

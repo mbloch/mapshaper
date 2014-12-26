@@ -11566,6 +11566,16 @@ MapShaper.getLayerInfo = function(lyr, arcs) {
 
 MapShaper.getTableInfo = function(data) {
   var fields = data.getFields().sort();
+  var replacements = {
+    '\n': '\\n',
+    '\r': '\\r',
+    '\t': '\\t'
+  };
+  var cleanChar = function(c) {
+    // convert newlines and carriage returns
+    // TODO: better handling of non-printing chars
+    return c in replacements ? replacements[c] : '';
+  };
   var col1Chars = fields.reduce(function(memo, name) {
     return Math.max(memo, name.length);
   }, 5) + 2;
@@ -11580,8 +11590,11 @@ MapShaper.getTableInfo = function(data) {
     var str = '  ' + Utils.rpad(fields[i], col1Chars, ' ');
     if (Utils.isNumber(val)) {
       str += Utils.lpad("", maxDigits - digits[i], ' ') + val;
-    } else {
+    } else if (Utils.isString(val)) {
+      val = val.replace(/[\r\t\n]/g, cleanChar);
       str += "'" + val + "'";
+    } else {
+      str += String(val);
     }
     return str;
   }).join('\n');
