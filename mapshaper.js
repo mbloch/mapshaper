@@ -14723,4 +14723,4 @@ if (typeof define === "function" && define.amd) {
 }
 this.mapshaper = api;
 
-})();
+}());

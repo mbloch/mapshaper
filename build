@@ -1,14 +1,8 @@
 #!/usr/bin/env node
 
-var catty = require("./lib/catty.js")
-catty.addLibrary("src")
-catty.addLibrary("lib")
-catty.addKeyCommand('t', 'run tests', "mocha");
-
-var argv = catty.options()._;
-
-if (argv[0] == 'gui') {
-  catty.bundleFile("src/gui/mapshaper-gui.js", "./www/mapshaper.js")
-} else {
-  catty.bundleFile("src/cli/mapshaper-cli-lib.js", "./mapshaper.js")
-}
+var follow = process.argv.indexOf('-f') > -1;
+require("catty")({follow: follow})
+	.addLibrary("lib")
+	.addLibrary("src")
+	.cat("src/gui/mapshaper-gui.js", "./www/mapshaper.js")
+	.cat("src/cli/mapshaper-cli-lib.js", "./mapshaper.js");
