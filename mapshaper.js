@@ -11506,6 +11506,8 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
     }
     for (var j=0, n=srcFields.length; j<n; j++) {
       srcField = srcFields[j];
+      // Use null when the source record is missing an expected value
+      // TODO: decide if this is desirable
       destRec[destFields[j]] = srcField in srcRec ? srcRec[srcField] : null;
     }
   });
