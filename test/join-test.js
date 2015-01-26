@@ -35,6 +35,37 @@ describe('mapshaper-join.js', function () {
       assert.deepEqual(lyr.data.getRecords(),
           [{ STATE: "CA", CASES: 12}, {STATE: "NV", CASES: 54}]);
     })
+
+    it('Issue #67 -- join shouldn\'t convert 0 values to null', function () {
+      var targetRecords = [{key1: 1}, {key1: 0}];
+      var sourceRecords = [{key2: 1, foo: 0}, {key2: 0, foo: 1}];
+      var lyr = {
+        geometry_type: null,
+        data: new api.internal.DataTable(targetRecords)
+      };
+      var opts = {
+        keys: ["key1", "key2"]
+      };
+      api.joinAttributesToFeatures(lyr, new api.internal.DataTable(sourceRecords), opts);
+      assert.deepEqual(lyr.data.getRecords(),
+          [{ key1: 1, foo: 0}, { key1: 0, foo: 1 }]);
+    })
+
+    it('Missing values in source table are converted to null', function () {
+      var targetRecords = [{key1: 1}, {key1: 0}];
+      var sourceRecords = [{key2: 1, foo: 0}, {key2: 0}];
+      var lyr = {
+        geometry_type: null,
+        data: new api.internal.DataTable(targetRecords)
+      };
+      var opts = {
+        keys: ["key1", "key2"]
+      };
+      api.joinAttributesToFeatures(lyr, new api.internal.DataTable(sourceRecords), opts);
+      assert.deepEqual(lyr.data.getRecords(),
+          [{ key1: 1, foo: 0}, { key1: 0, foo: null }]);
+    })
+
   })
 
   describe('importJoinTable()', function() {

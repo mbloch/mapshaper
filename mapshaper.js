@@ -11487,38 +11487,35 @@ api.joinAttributesToFeatures = function(lyr, table, opts) {
 };
 
 MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcFields) {
-  var hits = 0, misses = 0,
+  var hits = 0,
+      misses = 0,
       records = dest.getRecords(),
-      len = records.length,
-      destField, srcField,
-      unmatched = [],
-      nullRec = Utils.newArray(destFields.length, null),
-      destRec, srcRec, joinVal;
+      unmatched = [];
   src.indexOn(srcKey);
 
-  for (var i=0; i<len; i++) {
-    destRec = records[i];
-    joinVal = destRec[destKey];
-    srcRec = src.getIndexedRecord(joinVal);
+  records.forEach(function(destRec, i) {
+    var joinVal = destRec[destKey],
+        srcRec = src.getIndexedRecord(joinVal) || {},
+        srcField;
+
     if (!srcRec) {
       misses++;
       if (misses <= 10) unmatched.push(joinVal);
-      srcRec = nullRec;
     } else {
       hits++;
     }
     for (var j=0, n=srcFields.length; j<n; j++) {
-      destRec[destFields[j]] = srcRec[srcFields[j]] || null;
+      srcField = srcFields[j];
+      destRec[destFields[j]] = srcField in srcRec ? srcRec[srcField] : null;
     }
-  }
+  });
+
   if (misses > 0) {
-    var msg;
     if (misses > 10) {
-      msg = Utils.format("Unable to join %d/%d records", misses, len);
+      message(Utils.format("Unable to join %d/%d records", misses, len));
     } else {
-      msg = Utils.format("Unjoined values: %s", Utils.uniq(unmatched).join(', '));
+      message("Unjoined values:", Utils.uniq(unmatched).join(', '));
     }
-    message(msg);
   }
 
   return hits > 0;
