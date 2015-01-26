@@ -50,7 +50,7 @@ bin/mapshaper     # use the command line tool
 
 ### Building and testing
 
-You will need to regenerate mapshaper.js if you edit any of the files in the src/ or lib/ directories. Run `build` to update mapshaper.js (used by the command line tool) and www/mapshaper.js (used by the web interface).
+Run the `build` script after editing any of the files in the src/ or lib/ directories.
 
 Run `npm test` in the project directory to run mapshaper's tests.
 
