@@ -300,10 +300,13 @@ var Utils = {
     return dest;
   },
 
-  extend: function(dest) {
-    for (var i=1, n=arguments.length; i<n; i++) {
-      var src = arguments[i] || {};
-      for (var key in src) {
+  extend: function(o) {
+    var dest = o || {},
+        n = arguments.length,
+        key, i, src;
+    for (i=1; i<n; i++) {
+      src = arguments[i] || {};
+      for (key in src) {
         if (src.hasOwnProperty(key)) {
           dest[key] = src[key];
         }
@@ -457,7 +460,6 @@ var error = function() {
   throw new Error(msg);
 };
 
-
 // Support for timing using T.start() and T.stop("message")
 //
 var T = {
@@ -494,6 +496,49 @@ var T = {
 
 
 
+// Sort an array of objects based on one or more properties.
+// Usage: Utils.sortOn(array, key1, asc?[, key2, asc? ...])
+//
+Utils.sortOn = function(arr) {
+  var comparators = [];
+  for (var i=1; i<arguments.length; i+=2) {
+    comparators.push(Utils.getKeyComparator(arguments[i], arguments[i+1]));
+  }
+  arr.sort(function(a, b) {
+    var cmp = 0,
+        i = 0,
+        n = comparators.length;
+    while (i < n && cmp === 0) {
+      cmp = comparators[i](a, b);
+      i++;
+    }
+    return cmp;
+  });
+  return arr;
+};
+
+// Sort array of values that can be compared with < > operators (strings, numbers)
+// null, undefined and NaN are sorted to the end of the array
+//
+Utils.sortNumbers = // removed original function, now alias of genericSort
+Utils.genericSort = function(arr, asc) {
+  var compare = Utils.getGenericComparator(asc);
+  Array.prototype.sort.call(arr, compare);
+  return arr;
+};
+
+Utils.sortOnKey = function(arr, getter, asc) {
+  var compare = Utils.getGenericComparator(asc !== false) // asc is default
+  arr.sort(function(a, b) {
+    return compare(getter(a), getter(b));
+  });
+};
+
+// Stashes keys in a temp array (better if calculating key is expensive).
+Utils.sortOnKey2 = function(arr, getKey, asc) {
+  Utils.sortArrayByKeys(arr, arr.map(getKey), asc);
+};
+
 Utils.sortArrayByKeys = function(arr, keys, asc) {
   var ids = Utils.getSortedIds(keys, asc);
   Utils.reorderArray(arr, ids);
@@ -506,14 +551,11 @@ Utils.getSortedIds = function(arr, asc) {
 };
 
 Utils.sortArrayIndex = function(ids, arr, asc) {
-  var asc = asc !== false;
+  var compare = Utils.getGenericComparator(asc);
   ids.sort(function(i, j) {
-    var a = arr[i], b = arr[j];
     // added i, j comparison to guarantee that sort is stable
-    if (asc && a > b || !asc && a < b || a === b && i < j)
-      return 1;
-    else
-      return -1;
+    var cmp = compare(arr[i], arr[j]);
+    return cmp > 0 || cmp === 0 && i < j ? 1 : -1;
   });
 };
 
@@ -528,38 +570,15 @@ Utils.reorderArray = function(arr, idxs) {
   Utils.replaceArray(arr, arr2);
 };
 
-// Sort an array of objects based on one or more properties.
-// Usage: Utils.sortOn(array, key1, asc?[, key2, asc? ...])
-//
-Utils.sortOn = function(arr) {
-  var params = Array.prototype.slice.call(arguments, 1)
-  var compare = function(objA, objB) {
-    for (var i=0, n = params.length; i < n;) {
-      var key = params[i++],
-          asc = params[i++] !== false,
-          a = objA[key],
-          b = objB[key];
-      if (a === void 0 || b === void 0) {
-        error("#sortOn() Missing key:", key);
-      }
-      if (a !== b) {
-        return asc && a > b || !asc && b > a ? 1 : -1;
-      }
-    }
-    return 0;
+Utils.getKeyComparator = function(key, asc) {
+  var compare = Utils.getGenericComparator(asc);
+  return function(a, b) {
+    return compare(a[key], b[key]);
   };
-  arr.sort(compare);
-  return arr;
 };
 
-Utils.sortNumbers = function(arr, asc) {
-  var compare = asc !== false ?
-    function(a, b) {return a - b} : function(a, b) {return b - a};
-  Array.prototype.sort.call(arr, compare);
-};
-
-Utils.getComparator = function(ascending) {
-  var asc = asc !== false;
+Utils.getGenericComparator = function(asc) {
+  asc = asc !== false;
   return function(a, b) {
     var retn = 0;
     if (b == null) {
@@ -579,54 +598,12 @@ Utils.getComparator = function(ascending) {
   };
 };
 
-// Sort array of values that can be compared with < > operators (strings, numbers)
-// null, undefined and NaN are sorted to the end of the array
+// This is faster than Array.prototype.sort(<callback>) when "getter" returns a
+// precalculated sort string. (Removing -- kludgy, not very useful)
 //
-Utils.genericSort = function(arr, asc) {
-  var compare = Utils.getComparator(asc);
-  Array.prototype.sort.call(arr, compare);
-  return arr;
-};
-
-// Sorts an array of numbers in-place
-//
-Utils.quicksort = function(arr, asc) {
-  Utils.quicksortPartition(arr, 0, arr.length-1);
-  if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
-  return arr;
-};
-
-// Moved out of Utils.quicksort() (saw >100% speedup in Chrome with deep recursion)
-Utils.quicksortPartition = function (a, lo, hi) {
-  var i = lo,
-      j = hi,
-      pivot, tmp;
-  while (i < hi) {
-    pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arrays
-    while (i <= j) {
-      while (a[i] < pivot) i++;
-      while (a[j] > pivot) j--;
-      if (i <= j) {
-        tmp = a[i];
-        a[i] = a[j];
-        a[j] = tmp;
-        i++;
-        j--;
-      }
-    }
-    if (lo < j) Utils.quicksortPartition(a, lo, j);
-    lo = i;
-    j = hi;
-  }
-};
-
-/**
- * This is much faster than Array.prototype.sort(<callback>) when "getter" returns a
- * precalculated sort string. Unpredictable if number is returned.
- *
- * @param {Array} arr Array of objects to sort.
- * @param {function} getter Function that returns a sort key (string) for each object.
- */
+// @arr Array of objects to sort.
+// @getter Function that returns a sort key (string) for each object.
+/*
 Utils.sortOnKeyFunction = function(arr, getter) {
   if (!arr || arr.length == 0) {
     return;
@@ -640,6 +617,7 @@ Utils.sortOnKeyFunction = function(arr, getter) {
   arr.sort();
   p.toString = tmp;
 };
+*/
 
 
 
@@ -1018,165 +996,6 @@ Utils.formatNumber = function(num, decimals, nullStr, showPos) {
 };
 
 
-
-
-function Handler(type, target, callback, listener, priority) {
-  this.type = type;
-  this.callback = callback;
-  this.listener = listener || null;
-  this.priority = priority || 0;
-  this.target = target;
-}
-
-Handler.prototype.trigger = function(evt) {
-  if (!evt) {
-    evt = new EventData(this.type);
-    evt.target = this.target;
-  } else if (evt.target != this.target || evt.type != this.type) {
-    error("[Handler] event target/type have changed.");
-  }
-  this.callback.call(this.listener, evt);
-}
-
-function EventData(type, target, data) {
-  this.type = type;
-  this.target = target;
-  if (data) {
-    Opts.copyNewParams(this, data);
-    this.data = data;
-  }
-}
-
-EventData.prototype.stopPropagation = function() {
-  this.__stop__ = true;
-};
-
-EventData.prototype.__stop__ = false;
-
-EventData.prototype.toString = function() {
-  var str = 'type:' + this.type + ', target: ' + Utils.toString(this.target);
-  if (this.data) {
-    str += ', data:' + Utils.toString(this.data);
-  }
-  return '[EventData]: {' + str + '}';
-};
-
-/**
- * Base class for objects that dispatch events; public methods:
- *   addEventListener() / on()
- *   removeEventListener()
- *   dispatchEvent() / trigger()
- */
-function EventDispatcher() {}
-
-/**
- * Dispatch an event (i.e. all registered event handlers are called).
- * @param {string} type Name of the event type, e.g. "change".
- * @param {object=} obj Optional data to send with the event.
- */
-EventDispatcher.prototype.dispatchEvent = function(type, obj, listener) {
-  var evt;
-  // TODO: check for bugs if handlers are removed elsewhere while firing
-  var handlers = this._handlers;
-  if (handlers) {
-    for (var i = 0, len = handlers.length; i < len; i++) {
-      var handler = handlers[i];
-      if (handler.type == type && (!listener || listener == handler.listener)) {
-        if (!evt) {
-          evt = new EventData(type, this, obj);
-        }
-        else if (evt.__stop__) {
-            break;
-        }
-        handler.trigger(evt);
-      }
-    }
-  }
-};
-
-/**
- * Register an event handler for a named event.
- * @param {string} type Name of the event.
- * @param {function} callback Event handler, called with BoundEvent argument.
- * @param {*} context Execution context of the event handler.
- * @param {number} priority Priority of the event; defaults to 0.
- * removed * @return True if handler added, else false.
- */
-EventDispatcher.prototype.addEventListener =
-EventDispatcher.prototype.on = function(type, callback, context, priority) {
-  context = context || this;
-  priority = priority || 0;
-  var handler = new Handler(type, this, callback, context, priority);
-
-  // experimental: add_eventtype event
-  if (this.countEventListeners(type) === 0) this.dispatchEvent("add_" + type);
-
-  // Insert the new event in the array of handlers according to its priority.
-  //
-  var handlers = this._handlers || (this._handlers = []);
-  var i = handlers.length;
-  while(--i >= 0 && handlers[i].priority < handler.priority) {}
-  handlers.splice(i+1, 0, handler);
-  return this;
-};
-
-
-EventDispatcher.prototype.countEventListeners = function(type) {
-  var handlers = this._handlers,
-    len = handlers && handlers.length || 0,
-    count = 0;
-  if (!type) return len;
-  for (var i = 0; i < len; i++) {
-    if (handlers[i].type === type) count++;
-  }
-  return count;
-};
-
-/**
- * Remove an event handler.
- * @param {string} type Event type to match.
- * @param {function(BoundEvent)} callback Event handler function to match.
- * @param {*=} context Execution context of the event handler to match.
- * @return {number} Returns number of handlers removed (expect 0 or 1).
- */
-EventDispatcher.prototype.removeEventListener = function(type, callback, context) {
-  context = context || this;
-  var count = this.removeEventListeners(type, callback, context);
-  if (type && this.countEventListeners(type) === 0) this.dispatchEvent("remove_" + type);
-  return count;
-};
-
-/**
- * Remove event handlers that match function arguments.
- * @param {string=} type Event type to match.
- * @param {function(BoundEvent)=} callback Event handler function to match.
- * @param {*=} context Execution context of the event handler to match.
- * @return {number} Number of handlers removed.
- */
-// TODO: remove this: too convoluted. Need other way to remove listeners by type
-EventDispatcher.prototype.removeEventListeners =
-  function(type, callback, context) {
-  var handlers = this._handlers;
-  var newArr = [];
-  var count = 0;
-  for (var i = 0; handlers && i < handlers.length; i++) {
-    var evt = handlers[i];
-    if ((!type || type == evt.type) &&
-      (!callback || callback == evt.callback) &&
-      (!context || context == evt.listener)) {
-      count += 1;
-    }
-    else {
-      newArr.push(evt);
-    }
-  }
-  this._handlers = newArr;
-  return count;
-};
-
-
-
-
 var inNode = typeof module !== 'undefined' && !!module.exports;
 var Node = {
   inNode: inNode,
@@ -1199,7 +1018,7 @@ if (inNode) {
     } else if (src instanceof Buffer) {
       buf = src;
     } else {
-      error ("[Node.toBuffer()] unsupported input:", src);
+      throw "[Node.toBuffer()] unsupported input: " + src;
     }
     return buf;
   };
@@ -1217,17 +1036,14 @@ Node.statSync = function(fpath) {
   var obj = null;
   try {
     obj = require('fs').statSync(fpath);
-  }
-  catch(e) {
-    //trace(e, fpath);
-  }
+  } catch(e) {}
   return obj;
 };
 
 Node.walkSync = function(dir, results) {
   results = results || [];
   var list = require('fs').readdirSync(dir);
-  Utils.forEach(list, function(file) {
+  list.forEach(function(file) {
     var path = dir + "/" + file;
     var stat = Node.statSync(path);
     if (stat && stat.isDirectory()) {
@@ -1239,7 +1055,6 @@ Node.walkSync = function(dir, results) {
   });
   return results;
 };
-
 
 Node.shellExec = function(cmd) {
   var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
@@ -1297,18 +1112,12 @@ Node.parseFilename = function(fpath) {
 
 Node.getFileInfo = function(fpath) {
   var info = Node.parseFilename(fpath),
-      stat;
-  Opts.copyAllParams(info, {exists: true, is_directory: false, is_file: false});
-  if (stat = Node.statSync(fpath)) {
-    if (stat.isFile()) {
-      info.is_file = true;
-    } else if (stat.isDirectory()) {
-      info.is_directory = true;
-    } else {
-      // ighore other filesystem entities, e.g. devices
-      info.exists = false;
-    }
+      stat = Node.statSync(fpath);
+  if (stat) {
+    info.is_file = stat.isFile();
+    info.is_directory = stat.isDirectory();
   }
+  info.exists = !!stat;
   return info;
 };
 
@@ -1322,7 +1131,7 @@ Node.writeFile = function(path, content) {
   if (content instanceof ArrayBuffer) {
     content = Node.toBuffer(content);
   }
-  require('rw').writeFileSync(path, content, 0, null, 0);
+  require('fs').writeFileSync(path, content, 0, null, 0);
 };
 
 Node.copyFile = function(src, dest) {
@@ -1629,6 +1438,40 @@ Bounds.prototype.mergeBounds = function(bb) {
     if (d > this.ymax) this.ymax = d;
   }
   return this;
+};
+
+
+
+
+// Generic in-place sort (null, NaN, undefined not handled)
+Utils.quicksort = function(arr, asc) {
+  Utils.quicksortPartition(arr, 0, arr.length-1);
+  if (asc === false) Array.prototype.reverse.call(arr); // Works with typed arrays
+  return arr;
+};
+
+// Moved out of Utils.quicksort() (saw >100% speedup in Chrome with deep recursion)
+Utils.quicksortPartition = function (a, lo, hi) {
+  var i = lo,
+      j = hi,
+      pivot, tmp;
+  while (i < hi) {
+    pivot = a[lo + hi >> 1]; // avoid n^2 performance on sorted arrays
+    while (i <= j) {
+      while (a[i] < pivot) i++;
+      while (a[j] > pivot) j--;
+      if (i <= j) {
+        tmp = a[i];
+        a[i] = a[j];
+        a[j] = tmp;
+        i++;
+        j--;
+      }
+    }
+    if (lo < j) Utils.quicksortPartition(a, lo, j);
+    lo = i;
+    j = hi;
+  }
 };
 
 
@@ -2138,7 +1981,6 @@ Utils.formatter = function(fmt) {
       return false;
     });
   }
-
 
   return function() {
     var str = literals[0],
