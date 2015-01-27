@@ -66,4 +66,4 @@ According to Mozilla's [FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html), "The MPL'
 
 [Shan Carter](https://github.com/shancarter), for help designing mapshaper's web interface.
 
-Mark Harrower, for collaborating on the [original MapShaper program](http://mapshaper.com/test/OldMapShaper.swf) at the University of Wisconsin&ndash;Madison.
+Mark Harrower, for collaborating on the original MapShaper program at the University of Wisconsin&ndash;Madison.
