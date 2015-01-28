@@ -275,21 +275,6 @@ describe('mapshaper-commands.js', function () {
 
   })
 
-  describe('-join', function () {
-
-    it('test 1', function(done) {
-      var cmd = format("-i %s -join %s keys=FIPS,STATE_FIPS:str fields=POP2010,SUB_REGION", states_shp, states_csv),
-          target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
-          {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
-      api.runCommands(cmd, function(err, data) {
-        assert.deepEqual(data.layers[0].data.getRecords(), target);
-        done();
-      })
-
-    })
-
-  })
-
   describe('findMatchingLayers()', function () {
 
     it("simple match", function () {

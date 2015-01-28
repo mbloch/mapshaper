@@ -460,6 +460,7 @@ var error = function() {
   throw new Error(msg);
 };
 
+
 // Support for timing using T.start() and T.stop("message")
 //
 var T = {
@@ -638,7 +639,7 @@ Utils.merge = function(dest, src) {
 Utils.difference = function(arr, other) {
   var index = Utils.arrayToIndex(other);
   return Utils.mapFilter(arr, function(el) {
-    return el in index ? void 0: el;
+    return index.hasOwnProperty(el) ? void 0: el;
   });
 };
 
@@ -6793,14 +6794,14 @@ var dataTableProto = {
 
   getFields: function() {
     var records = this.getRecords();
-    return records.length > 0 ? Utils.keys(records[0]) : [];
+    return records.length > 0 ? Object.keys(records[0]) : [];
   },
 
   // TODO: a version of this for DBF so only specified fields are unpacked
   //
   filterFields: function(map) {
     var records = this.getRecords(),
-        fields = Utils.getKeys(map),
+        fields = Object.keys(map),
         src;
 
     for (var i=0, n=records.length; i<n; i++) {
@@ -11457,70 +11458,62 @@ api.importJoinTable = function(file, opts) {
   return MapShaper.importDataTable(file, importOpts);
 };
 
-api.joinAttributesToFeatures = function(lyr, table, opts) {
+api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
   var keys = MapShaper.removeTypeHints(opts.keys),
       joinFields = MapShaper.removeTypeHints(opts.fields || []),
       destKey = keys[0],
-      srcKey = keys[1];
+      srcKey = keys[1],
+      matches;
 
-  if (table.fieldExists(srcKey) === false) {
+  if (srcTable.fieldExists(srcKey) === false) {
     stop("[join] External table is missing a field named:", srcKey);
   }
-
   if (opts.where) {
-    table = MapShaper.filterDataTable(table, opts.where);
+    srcTable = MapShaper.filterDataTable(srcTable, opts.where);
   }
-
   if (joinFields.length > 0 === false) {
-    joinFields = Utils.difference(table.getFields(), [srcKey]);
+    joinFields = Utils.difference(srcTable.getFields(), [srcKey]);
   }
-
   if (!lyr.data || !lyr.data.fieldExists(destKey)) {
     stop("[join] Target layer is missing field:", destKey);
   }
-
-  if (!MapShaper.joinTables(lyr.data, destKey, joinFields, table, srcKey,
-      joinFields)) {
-    stop("[join] No records could be joined");
-    // TODO: better handling of failed joins
-  }
+  MapShaper.joinTables(lyr.data, destKey, joinFields, srcTable, srcKey,
+      joinFields);
 };
 
+// Join fields from src table to dest table, using values in src and dest key fields
+// Returns number of records in dest that receive data from src
+// TODO: consider using functions to access or generate key values, for greater flexibility
 MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcFields) {
-  var hits = 0,
-      misses = 0,
-      records = dest.getRecords(),
-      unmatched = [];
-  src.indexOn(srcKey);
+  var records = dest.getRecords(),
+      unmatchedKeys = [];
 
+  src.indexOn(srcKey);
   records.forEach(function(destRec, i) {
     var joinVal = destRec[destKey],
-        srcRec = src.getIndexedRecord(joinVal) || {},
+        srcRec = src.getIndexedRecord(joinVal),
         srcField;
 
     if (!srcRec) {
-      misses++;
-      if (misses <= 10) unmatched.push(joinVal);
-    } else {
-      hits++;
+      srcRec = {}; // null record
+      unmatchedKeys.push(joinVal);
     }
     for (var j=0, n=srcFields.length; j<n; j++) {
       srcField = srcFields[j];
       // Use null when the source record is missing an expected value
       // TODO: decide if this is desirable
-      destRec[destFields[j]] = srcField in srcRec ? srcRec[srcField] : null;
+      destRec[destFields[j]] = Object.prototype.hasOwnProperty.call(srcRec, srcField) ? srcRec[srcField] : null;
     }
   });
 
-  if (misses > 0) {
-    if (misses > 10) {
-      message(Utils.format("Unable to join %d/%d records", misses, len));
+  if (unmatchedKeys.length > 0) {
+    if (unmatchedKeys.length == records.length) {
+      stop("[join] No records could be joined");
     } else {
-      message("Unjoined values:", Utils.uniq(unmatched).join(', '));
+      message(utils.format("[join] Unable to join %d/%d records; unmatched key values: %s",
+          unmatchedKeys.length, records.length, unmatchedKeys.join(', ')));
     }
   }
-
-  return hits > 0;
 };
 
 MapShaper.filterDataTable = function(data, exp) {
