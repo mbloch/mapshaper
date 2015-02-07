@@ -11394,15 +11394,20 @@ MapShaper.countNullShapes = function(shapes) {
 };
 
 MapShaper.getLayerInfo = function(lyr, arcs) {
-  var str = "Layer: " + (lyr.name || "[unnamed]") + "\n";
+  var shapeCount = lyr.shapes ? lyr.shapes.length : 0,
+      nullCount = shapeCount > 0 ? MapShaper.countNullShapes(lyr.shapes) : 0,
+      tableSize = lyr.data ? lyr.data.size() : 0,
+      str;
+  str = "Layer: " + (lyr.name || "[unnamed]") + "\n";
   str += "Geometry: " + (lyr.geometry_type || "[none]") + "\n";
-  if (lyr.shapes) {
-    str += Utils.format("Records: %'d (null shapes: %'d)\n",
-        lyr.shapes.length, MapShaper.countNullShapes(lyr.shapes));
-
+  str += utils.format("Records: %,d\n", Math.max(shapeCount, tableSize));
+  if (nullCount > 0) {
+    str += Utils.format("Null shapes: %'d\n", nullCount);
+  }
+  if (shapeCount > nullCount) {
     str += "Bounds: " + MapShaper.getLayerBounds(lyr, arcs).toArray().join(' ') + "\n";
   }
-  if (lyr.data && lyr.data.size() > 0 && lyr.data.getFields().length > 0) {
+  if (tableSize > 0 && lyr.data.getFields().length > 0) {
     str += MapShaper.getTableInfo(lyr.data);
   } else {
     str += "Missing attribute data";
