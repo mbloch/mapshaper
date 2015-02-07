@@ -6372,7 +6372,9 @@ DbfReader.prototype.readHeader = function(bin, encoding) {
     var field = this.readFieldHeader(bin, encoding);
     field.columnOffset = colOffs;
     colOffs += field.size;
-    header.fields.push(field);
+    if (!field.invalid) {
+      header.fields.push(field);
+    }
   }
 
   if (colOffs != header.recordSize)
@@ -6428,7 +6430,8 @@ DbfReader.prototype.readFieldHeader = function(bin, encoding) {
       return new Date(Date.UTC(+yr, +mo - 1, +day));
     };
   } else {
-    error("Unsupported DBF field type:", field.type);
+    message("[dbf] Ignoring field \"" + field.name + "\" (field type " + field.type + " is not supported)");
+    field.invalid = true;
   }
   return field;
 };
