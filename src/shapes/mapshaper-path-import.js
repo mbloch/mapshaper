@@ -83,7 +83,6 @@ function PathImporter(opts) {
     });
   }
 
-
   /*
   this.roundCoords = function(arr, round) {
     for (var i=0, n=arr.length; i<n; i++) {

@@ -678,6 +678,16 @@ function ArcCollection() {
   };
 }
 
+ArcCollection.prototype.inspect = function() {
+  var n = this.getPointCount(), str;
+  if (n < 50) {
+    str = JSON.stringify(this.toArray());
+  } else {
+    str = '[ArcCollection (' + this.size() + ')]';
+  }
+  return str;
+};
+
 function Arc(src) {
   this.src = src;
 }
@@ -704,10 +714,6 @@ Arc.prototype = {
       coords.push([iter.x, iter.y]);
     }
     return coords;
-  },
-
-  toString: function() {
-    return JSON.stringify(this.toArray());
   },
 
   smallerThan: function(units) {

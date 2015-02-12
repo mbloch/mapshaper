@@ -5146,6 +5146,16 @@ function ArcCollection() {
   };
 }
 
+ArcCollection.prototype.inspect = function() {
+  var n = this.getPointCount(), str;
+  if (n < 50) {
+    str = JSON.stringify(this.toArray());
+  } else {
+    str = '[ArcCollection (' + this.size() + ')]';
+  }
+  return str;
+};
+
 function Arc(src) {
   this.src = src;
 }
@@ -5172,10 +5182,6 @@ Arc.prototype = {
       coords.push([iter.x, iter.y]);
     }
     return coords;
-  },
-
-  toString: function() {
-    return JSON.stringify(this.toArray());
   },
 
   smallerThan: function(units) {
@@ -8622,7 +8628,6 @@ function PathImporter(opts) {
     });
   }
 
-
   /*
   this.roundCoords = function(arr, round) {
     for (var i=0, n=arr.length; i<n; i++) {
@@ -9652,7 +9657,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
   geometries.forEach(function(geom) {
     importer.startShape();
     if (geom) {
-      GeoJSON.importGeometry(geom.type, geom.coordinates, importer);
+      GeoJSON.importGeometry(geom, importer);
     }
   });
 
@@ -9678,9 +9683,14 @@ GeoJSON.typeLookup = {
   MultiPoint: 'point'
 };
 
-GeoJSON.importGeometry = function(type, coords, importer) {
+GeoJSON.importGeometry = function(geom, importer) {
+  var type = geom.type;
   if (type in GeoJSON.pathImporters) {
-    GeoJSON.pathImporters[type](coords, importer);
+    GeoJSON.pathImporters[type](geom.coordinates, importer);
+  } else if (type == 'GeometryCollection') {
+    geom.geometries.forEach(function(geom) {
+      GeoJSON.importGeometry(geom, importer);
+    });
   } else {
     verbose("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
   }
@@ -9713,32 +9723,6 @@ GeoJSON.pathImporters = {
   MultiPoint: function(coords, importer) {
     importer.importPoints(coords);
   }
-};
-
-// Nested depth of GeoJSON Points in coordinates arrays
-//
-GeoJSON.geometryDepths = {
-  //Point: 0,
-  //MultiPoint: 1,
-  LineString: 1,
-  MultiLineString: 2,
-  Polygon: 2,
-  MultiPolygon: 3
-};
-
-// Sum points in a GeoJSON coordinates array
-GeoJSON.countNestedPoints = function(coords, depth) {
-  var tally = 0;
-  if (depth == 1) {
-    tally = coords.length;
-  } else if (depth > 1) {
-    for (var i=0, n=coords.length; i<n; i++) {
-      tally += GeoJSON.countNestedPoints(coords[i], depth-1);
-    }
-  } else if (depth === 0 && coords) {
-    tally = 1;
-  }
-  return tally;
 };
 
 MapShaper.exportGeoJSON = function(dataset, opts) {

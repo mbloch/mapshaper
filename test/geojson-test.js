@@ -39,6 +39,35 @@ describe('mapshaper-geojson.js', function () {
       var records = dataset.layers[0].data.getRecords();
       assert.deepEqual(records, [{name: 'foo'}]);
     })
+
+    it('Import GeometryCollection inside a feature', function() {
+      var src = {
+        type: 'Feature',
+        properties: {id: 0},
+        geometry: {
+          type: 'GeometryCollection',
+          geometries: [{
+            type: "Polygon",
+            coordinates: [[[3, 1], [1, 1], [2, 3], [3, 1]]]
+           }, {
+            type: "Polygon",
+            coordinates: [[[5, 3], [4, 1], [3, 3], [5, 3]]]
+          }]
+        }
+      }
+      // Separate Polygons are convered into a MultiPolygon
+      var target = {
+        type: 'Feature',
+        properties: {id: 0},
+        geometry: {
+          type: 'MultiPolygon',
+          coordinates: [[[[3, 1], [1, 1], [2, 3], [3, 1]]], [[[5, 3], [4, 1], [3, 3], [5, 3]]]]
+        }
+      };
+      var dataset = api.internal.importGeoJSON(src, {});
+      var output = api.internal.exportGeoJSONObject(dataset.layers[0], dataset.arcs);
+      assert.deepEqual(output.features[0], target);
+    })
   })
 
   describe('exportGeoJSON()', function () {
