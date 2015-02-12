@@ -43,8 +43,7 @@ MapShaper.importShp = function(src, opts) {
     verbose("Warning: M data is being removed.");
   }
 
-  var pathPoints = type == 'point' ? 0 : reader.getCounts().pointCount;
-  var importer = new PathImporter(pathPoints, opts);
+  var importer = new PathImporter(opts);
 
   // TODO: test cases: null shape; non-null shape with no valid parts
   reader.forEachShape(function(shp) {

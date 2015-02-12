@@ -162,6 +162,16 @@ MapShaper.copyElements = function(src, i, dest, j, n, rev) {
   }
 };
 
+MapShaper.extendBuffer = function(src, newLen, n) {
+  if (newLen > src.length === false) {
+    error("[extendBuffer()] invalid length:", newLen);
+  }
+  var dest = new src.constructor(newLen);
+  n = n || newLen;
+  MapShaper.copyElements(src, 0, dest, 0, n);
+  return dest;
+};
+
 MapShaper.getCommonFileBase = function(names) {
   return names.reduce(function(memo, name, i) {
     if (i === 0) {

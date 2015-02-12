@@ -2177,6 +2177,16 @@ MapShaper.copyElements = function(src, i, dest, j, n, rev) {
   }
 };
 
+MapShaper.extendBuffer = function(src, newLen, n) {
+  if (newLen > src.length === false) {
+    error("[extendBuffer()] invalid length:", newLen);
+  }
+  var dest = new src.constructor(newLen);
+  n = n || newLen;
+  MapShaper.copyElements(src, 0, dest, 0, n);
+  return dest;
+};
+
 MapShaper.getCommonFileBase = function(names) {
   return names.reduce(function(memo, name, i) {
     if (i === 0) {
@@ -7777,9 +7787,10 @@ utils.insertionSortIds = function(arr, ids, start, end) {
 // Import path data from a non-topological source (Shapefile, GeoJSON, etc)
 // in preparation for identifying topology.
 //
-function PathImporter(reservedPoints, opts) {
+function PathImporter(opts) {
   opts = opts || {};
   var shapes = [],
+      reservedPoints = 20000,
       collectionType = null,
       round = null,
       xx, yy, nn, buf;
@@ -7806,6 +7817,14 @@ function PathImporter(reservedPoints, opts) {
       collectionType = t;
     } else if (t != collectionType) {
       collectionType = "mixed";
+    }
+  }
+
+  function checkBuffers(needed) {
+    if (needed > xx.length) {
+      var newLen = Math.max(needed, Math.ceil(xx.length * 1.5));
+      xx = MapShaper.extendBuffer(xx, newLen, pointId);
+      yy = MapShaper.extendBuffer(yy, newLen, pointId);
     }
   }
 
@@ -7840,6 +7859,7 @@ function PathImporter(reservedPoints, opts) {
     });
   }
 
+
   /*
   this.roundCoords = function(arr, round) {
     for (var i=0, n=arr.length; i<n; i++) {
@@ -7852,9 +7872,11 @@ function PathImporter(reservedPoints, opts) {
   //
   this.importPathFromFlatArray = function(arr, type, len, start) {
     var i = start || 0,
-        end = i + (len || arr.length),
+        end = i + len,
         n = 0,
         x, y, prevX, prevY;
+
+    checkBuffers(pointId + len);
 
     while (i < end) {
       x = arr[i++];
@@ -8141,18 +8163,9 @@ MapShaper.importGeoJSON = function(obj, opts) {
     geometries = obj.geometries;
   }
 
-  // Count points in dataset (PathImporter needs total points to initialize buffers)
-  //
-  var pathPoints = Utils.reduce(geometries, function(sum, geom) {
-    if (geom && geom.type in GeoJSON.geometryDepths) {
-      sum += GeoJSON.countNestedPoints(geom.coordinates, GeoJSON.geometryDepths[geom.type]);
-    }
-    return sum;
-  }, 0);
-
   // Import GeoJSON geometries
   //
-  var importer = new PathImporter(pathPoints, opts);
+  var importer = new PathImporter(opts);
   geometries.forEach(function(geom) {
     importer.startShape();
     if (geom) {
@@ -9837,8 +9850,7 @@ MapShaper.importShp = function(src, opts) {
     verbose("Warning: M data is being removed.");
   }
 
-  var pathPoints = type == 'point' ? 0 : reader.getCounts().pointCount;
-  var importer = new PathImporter(pathPoints, opts);
+  var importer = new PathImporter(opts);
 
   // TODO: test cases: null shape; non-null shape with no valid parts
   reader.forEachShape(function(shp) {

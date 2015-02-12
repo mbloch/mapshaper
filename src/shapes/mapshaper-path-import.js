@@ -11,9 +11,10 @@ mapshaper-polygon-repair
 // Import path data from a non-topological source (Shapefile, GeoJSON, etc)
 // in preparation for identifying topology.
 //
-function PathImporter(reservedPoints, opts) {
+function PathImporter(opts) {
   opts = opts || {};
   var shapes = [],
+      reservedPoints = 20000,
       collectionType = null,
       round = null,
       xx, yy, nn, buf;
@@ -40,6 +41,14 @@ function PathImporter(reservedPoints, opts) {
       collectionType = t;
     } else if (t != collectionType) {
       collectionType = "mixed";
+    }
+  }
+
+  function checkBuffers(needed) {
+    if (needed > xx.length) {
+      var newLen = Math.max(needed, Math.ceil(xx.length * 1.5));
+      xx = MapShaper.extendBuffer(xx, newLen, pointId);
+      yy = MapShaper.extendBuffer(yy, newLen, pointId);
     }
   }
 
@@ -74,6 +83,7 @@ function PathImporter(reservedPoints, opts) {
     });
   }
 
+
   /*
   this.roundCoords = function(arr, round) {
     for (var i=0, n=arr.length; i<n; i++) {
@@ -86,9 +96,11 @@ function PathImporter(reservedPoints, opts) {
   //
   this.importPathFromFlatArray = function(arr, type, len, start) {
     var i = start || 0,
-        end = i + (len || arr.length),
+        end = i + len,
         n = 0,
         x, y, prevX, prevY;
+
+    checkBuffers(pointId + len);
 
     while (i < end) {
       x = arr[i++];

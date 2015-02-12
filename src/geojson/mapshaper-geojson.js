@@ -45,18 +45,9 @@ MapShaper.importGeoJSON = function(obj, opts) {
     geometries = obj.geometries;
   }
 
-  // Count points in dataset (PathImporter needs total points to initialize buffers)
-  //
-  var pathPoints = Utils.reduce(geometries, function(sum, geom) {
-    if (geom && geom.type in GeoJSON.geometryDepths) {
-      sum += GeoJSON.countNestedPoints(geom.coordinates, GeoJSON.geometryDepths[geom.type]);
-    }
-    return sum;
-  }, 0);
-
   // Import GeoJSON geometries
   //
-  var importer = new PathImporter(pathPoints, opts);
+  var importer = new PathImporter(opts);
   geometries.forEach(function(geom) {
     importer.startShape();
     if (geom) {
