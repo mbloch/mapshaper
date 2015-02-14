@@ -2309,6 +2309,29 @@ MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
   dataset.layers = currLayers;
 };
 
+// @target is a layer identifier or a comma-sep. list of identifiers
+// an identifier is a literal name, a name containing "*" wildcard or
+// a 0-based array index
+MapShaper.findMatchingLayers = function(layers, target) {
+  var ii = [];
+  target.split(',').forEach(function(id) {
+    var i = Number(id),
+        rxp = utils.wildcardToRegExp(id);
+    if (Utils.isInteger(i)) {
+      ii.push(i); // TODO: handle out-of-range index
+    } else {
+      layers.forEach(function(lyr, i) {
+        if (rxp.test(lyr.name)) ii.push(i);
+      });
+    }
+  });
+
+  ii = Utils.uniq(ii); // remove dupes
+  return Utils.map(ii, function(i) {
+    return layers[i];
+  });
+};
+
 /*
 MapShaper.validateLayer = function(lyr, arcs) {
   var type = lyr.geometry_type;
@@ -4663,8 +4686,8 @@ function PathIndex(shapes, arcs) {
   // been detected previously).
   //
   this.pathIsEnclosed = function(pathIds) {
-    // TODO: handle irregular paths
-    var p = getTestPoint(pathIds[0]);
+    var arcId = pathIds[0];
+    var p = getTestPoint(arcId);
     return this.pointIsEnclosed(p);
   };
 
@@ -4679,6 +4702,7 @@ function PathIndex(shapes, arcs) {
     if (cands.length > 6) {
       index = new PolygonIndex([pathIds], arcs);
     }
+
 
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids[0]);
@@ -4786,6 +4810,7 @@ MapShaper.divideArcs = function(dataset) {
   T.stop('snap points');
   if (snapCount > 0 || dupeCount > 0) {
     T.start();
+    // Detect topology again if coordinates have changed
     api.buildTopology(dataset);
     T.stop('rebuild topology');
   }
@@ -5872,6 +5897,7 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
         clipArcUses = 0;
         path = dividePath(ids[i]);
 
+
         if (path) {
           // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
           // if (clipArcTouches === 0) {
@@ -6111,25 +6137,27 @@ MapShaper.clipPoints = function(points, clipShapes, arcs, type) {
 
 
 
-api.clipLayers = function(target, clipLyr, dataset, opts) {
-  return MapShaper.clipLayers(target, clipLyr, dataset, "clip", opts);
+api.clipLayers = function(target, src, dataset, opts) {
+  return MapShaper.clipLayers(target, src, dataset, "clip", opts);
 };
 
-api.eraseLayers = function(target, clipLyr, dataset, opts) {
-  return MapShaper.clipLayers(target, clipLyr, dataset, "erase", opts);
+api.eraseLayers = function(target, src, dataset, opts) {
+  return MapShaper.clipLayers(target, src, dataset, "erase", opts);
 };
 
-api.clipLayer = function(targetLyr, clipLyr, dataset, opts) {
-  return api.clipLayers([targetLyr], clipLyr, dataset, opts)[0];
+api.clipLayer = function(targetLyr, src, dataset, opts) {
+  return api.clipLayers([targetLyr], src, dataset, opts)[0];
 };
 
-api.eraseLayer = function(targetLyr, clipLyr, dataset, opts) {
-  return api.eraseLayers([targetLyr], clipLyr, dataset, opts)[0];
+api.eraseLayer = function(targetLyr, src, dataset, opts) {
+  return api.eraseLayers([targetLyr], src, dataset, opts)[0];
 };
 
 // @target: a single layer or an array of layers
 // @type: 'clip' or 'erase'
-MapShaper.clipLayers = function(targetLayers, clipLyr, dataset, type, opts) {
+MapShaper.clipLayers = function(targetLayers, src, dataset, type, opts) {
+  var clipLyr =  MapShaper.getClipLayer(src, dataset, opts),
+      nodes, output;
   MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
 
   // If clipping layer was imported from a second file, it won't be included in
@@ -6143,8 +6171,7 @@ MapShaper.clipLayers = function(targetLayers, clipLyr, dataset, type, opts) {
     };
   }
 
-  var nodes;
-  var output = targetLayers.map(function(targetLyr) {
+  output = targetLayers.map(function(targetLyr) {
     var clippedShapes, clippedLyr;
     if (targetLyr === clipLyr) {
       stop('[' + type + '] Can\'t clip a layer with itself');
@@ -6168,6 +6195,39 @@ MapShaper.clipLayers = function(targetLayers, clipLyr, dataset, type, opts) {
     return clippedLyr;
   });
   return output;
+};
+
+// @src: a layer object, layer identifier or filename
+//
+MapShaper.getClipLayer = function(src, dataset, opts) {
+  if (utils.isObject(src)) {
+    return src;
+  }
+  var match = MapShaper.findMatchingLayers(dataset.layers, src),
+      lyr;
+  if (match.length > 1) {
+    stop("[" + name + "] command received more than one source layer");
+  } else if (match.length == 1) {
+    lyr = match[0];
+  } else {
+    // Assuming src is a filename
+    // Load clip file without topology; then merge clipping data with target
+    //   dataset and build topology.
+    opts = utils.extend(opts, {no_topology: true});
+    var clipData = api.importFile(src, opts);
+    var merged = MapShaper.mergeDatasets([dataset, clipData]);
+    api.buildTopology(merged);
+
+    // use arcs from merged dataset, but don't add clip layer to target dataset
+    dataset.arcs = merged.arcs;
+
+    // TODO: handle multi-layer sources, e.g. TopoJSON files
+    if (clipData.layers.length != 1) {
+      stop("Clip/erase only supports clipping with single-layer datasets");
+    }
+    lyr = clipData.layers[0];
+  }
+  return lyr || null;
 };
 
 
@@ -12851,7 +12911,6 @@ api.runCommand = function(cmd, dataset, cb) {
       opts = cmd.options,
       targetLayers,
       newLayers,
-      sourceLyr,
       arcs;
 
   try { // catch errors from synchronous functions
@@ -12874,8 +12933,7 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clip') {
-      sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-      newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
+      newLayers = api.clipLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'dissolve') {
       newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
@@ -12887,8 +12945,7 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
     } else if (name == 'erase') {
-      sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-      newLayers = api.eraseLayers(targetLayers, sourceLyr, dataset, opts);
+      newLayers = api.eraseLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'explode') {
       newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
@@ -13033,50 +13090,6 @@ api.importFiles = function(opts) {
   return dataset;
 };
 
-// @src: a layer identifier or a filename
-// if file -- import layer(s) from the file, merge arcs into @dataset,
-//   but don't add source layer(s) to the dataset
-//
-MapShaper.getSourceLayer = function(src, dataset, opts) {
-  var match = MapShaper.findMatchingLayers(dataset.layers, src),
-      lyr;
-  if (match.length > 1) {
-    stop("[" + name + "] command received more than one source layer");
-  } else if (match.length == 1) {
-    lyr = match[0];
-  } else {
-    // assuming src is a filename
-    var clipData = api.importFile(src, opts);
-    // merge arcs from source data, but don't merge layer(s)
-    dataset.arcs = MapShaper.mergeDatasets([dataset, clipData]).arcs;
-    // TODO: handle multi-layer sources, e.g. TopoJSON files
-    lyr = clipData.layers[0];
-  }
-  return lyr || null;
-};
-
-// @target is a layer identifier or a comma-sep. list of identifiers
-// an identifier is a literal name, a name containing "*" wildcard or
-// a 0-based array index
-MapShaper.findMatchingLayers = function(layers, target) {
-  var ii = [];
-  target.split(',').forEach(function(id) {
-    var i = Number(id),
-        rxp = utils.wildcardToRegExp(id);
-    if (Utils.isInteger(i)) {
-      ii.push(i); // TODO: handle out-of-range index
-    } else {
-      layers.forEach(function(lyr, i) {
-        if (rxp.test(lyr.name)) ii.push(i);
-      });
-    }
-  });
-
-  ii = Utils.uniq(ii); // remove dupes
-  return Utils.map(ii, function(i) {
-    return layers[i];
-  });
-};
 
 MapShaper.printLayerNames = function(layers) {
   var max = 10;

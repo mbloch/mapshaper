@@ -33,7 +33,6 @@ api.runCommand = function(cmd, dataset, cb) {
       opts = cmd.options,
       targetLayers,
       newLayers,
-      sourceLyr,
       arcs;
 
   try { // catch errors from synchronous functions
@@ -56,8 +55,7 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clip') {
-      sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-      newLayers = api.clipLayers(targetLayers, sourceLyr, dataset, opts);
+      newLayers = api.clipLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'dissolve') {
       newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
@@ -69,8 +67,7 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
     } else if (name == 'erase') {
-      sourceLyr = MapShaper.getSourceLayer(opts.source, dataset, opts);
-      newLayers = api.eraseLayers(targetLayers, sourceLyr, dataset, opts);
+      newLayers = api.eraseLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'explode') {
       newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
@@ -215,50 +212,6 @@ api.importFiles = function(opts) {
   return dataset;
 };
 
-// @src: a layer identifier or a filename
-// if file -- import layer(s) from the file, merge arcs into @dataset,
-//   but don't add source layer(s) to the dataset
-//
-MapShaper.getSourceLayer = function(src, dataset, opts) {
-  var match = MapShaper.findMatchingLayers(dataset.layers, src),
-      lyr;
-  if (match.length > 1) {
-    stop("[" + name + "] command received more than one source layer");
-  } else if (match.length == 1) {
-    lyr = match[0];
-  } else {
-    // assuming src is a filename
-    var clipData = api.importFile(src, opts);
-    // merge arcs from source data, but don't merge layer(s)
-    dataset.arcs = MapShaper.mergeDatasets([dataset, clipData]).arcs;
-    // TODO: handle multi-layer sources, e.g. TopoJSON files
-    lyr = clipData.layers[0];
-  }
-  return lyr || null;
-};
-
-// @target is a layer identifier or a comma-sep. list of identifiers
-// an identifier is a literal name, a name containing "*" wildcard or
-// a 0-based array index
-MapShaper.findMatchingLayers = function(layers, target) {
-  var ii = [];
-  target.split(',').forEach(function(id) {
-    var i = Number(id),
-        rxp = utils.wildcardToRegExp(id);
-    if (Utils.isInteger(i)) {
-      ii.push(i); // TODO: handle out-of-range index
-    } else {
-      layers.forEach(function(lyr, i) {
-        if (rxp.test(lyr.name)) ii.push(i);
-      });
-    }
-  });
-
-  ii = Utils.uniq(ii); // remove dupes
-  return Utils.map(ii, function(i) {
-    return layers[i];
-  });
-};
 
 MapShaper.printLayerNames = function(layers) {
   var max = 10;

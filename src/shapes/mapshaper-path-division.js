@@ -19,6 +19,7 @@ MapShaper.divideArcs = function(dataset) {
   T.stop('snap points');
   if (snapCount > 0 || dupeCount > 0) {
     T.start();
+    // Detect topology again if coordinates have changed
     api.buildTopology(dataset);
     T.stop('rebuild topology');
   }

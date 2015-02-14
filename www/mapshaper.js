@@ -5764,6 +5764,29 @@ MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
   dataset.layers = currLayers;
 };
 
+// @target is a layer identifier or a comma-sep. list of identifiers
+// an identifier is a literal name, a name containing "*" wildcard or
+// a 0-based array index
+MapShaper.findMatchingLayers = function(layers, target) {
+  var ii = [];
+  target.split(',').forEach(function(id) {
+    var i = Number(id),
+        rxp = utils.wildcardToRegExp(id);
+    if (Utils.isInteger(i)) {
+      ii.push(i); // TODO: handle out-of-range index
+    } else {
+      layers.forEach(function(lyr, i) {
+        if (rxp.test(lyr.name)) ii.push(i);
+      });
+    }
+  });
+
+  ii = Utils.uniq(ii); // remove dupes
+  return Utils.map(ii, function(i) {
+    return layers[i];
+  });
+};
+
 /*
 MapShaper.validateLayer = function(lyr, arcs) {
   var type = lyr.geometry_type;
@@ -7394,8 +7417,8 @@ function PathIndex(shapes, arcs) {
   // been detected previously).
   //
   this.pathIsEnclosed = function(pathIds) {
-    // TODO: handle irregular paths
-    var p = getTestPoint(pathIds[0]);
+    var arcId = pathIds[0];
+    var p = getTestPoint(arcId);
     return this.pointIsEnclosed(p);
   };
 
@@ -7410,6 +7433,7 @@ function PathIndex(shapes, arcs) {
     if (cands.length > 6) {
       index = new PolygonIndex([pathIds], arcs);
     }
+
 
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids[0]);
@@ -7787,6 +7811,7 @@ MapShaper.divideArcs = function(dataset) {
   T.stop('snap points');
   if (snapCount > 0 || dupeCount > 0) {
     T.start();
+    // Detect topology again if coordinates have changed
     api.buildTopology(dataset);
     T.stop('rebuild topology');
   }

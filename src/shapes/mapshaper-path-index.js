@@ -66,8 +66,8 @@ function PathIndex(shapes, arcs) {
   // been detected previously).
   //
   this.pathIsEnclosed = function(pathIds) {
-    // TODO: handle irregular paths
-    var p = getTestPoint(pathIds[0]);
+    var arcId = pathIds[0];
+    var p = getTestPoint(arcId);
     return this.pointIsEnclosed(p);
   };
 
@@ -82,6 +82,7 @@ function PathIndex(shapes, arcs) {
     if (cands.length > 6) {
       index = new PolygonIndex([pathIds], arcs);
     }
+
 
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids[0]);

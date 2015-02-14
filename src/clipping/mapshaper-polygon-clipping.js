@@ -67,6 +67,7 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
         clipArcUses = 0;
         path = dividePath(ids[i]);
 
+
         if (path) {
           // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
           // if (clipArcTouches === 0) {

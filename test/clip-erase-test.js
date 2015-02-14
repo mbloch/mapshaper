@@ -4,6 +4,19 @@ var api = require('../'),
 
 describe('mapshaper-clip-erase.js', function () {
 
+  describe('Issue #68', function () {
+    it('Cell along inside edge of clip shape is retained', function (done) {
+      var cmd = '-i test/test_data/bugfix/68/cell1.shp -clip test/test_data/bugfix/68/clipper.shp';
+      api.runCommands(cmd, function(err, data) {
+        assert.equal(err, null);
+        var shapes = data.layers[0].shapes;
+        var area = api.geom.getShapeArea(shapes[0], data.arcs);
+        assert.ok(area > 0); // got a polygon
+        done();
+      });
+    });
+  });
+
   describe('Fig. 4 - Arc with spike', function () {
 
     // Fig 4 -- edge case
@@ -109,6 +122,29 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var clippedLyr = api.clipLayer(lyr1, lyr2, dataset);
+      var target = [
+        [[~3, 6, 4, ~1]],
+        [[1, 5, 3]]];
+
+      assert.deepEqual(clippedLyr.shapes, target);
+    })
+
+    it ("Clip test 1 - variation", function() {
+      var lyr1 = {
+        geometry_type: "polygon",
+        shapes: [[[0], [~1]], [[1]]]
+      };
+      var lyr2 = {
+        name: 'clipper',
+        geometry_type: "polygon",
+        shapes: [[[2]]]
+      };
+      var dataset = {
+        arcs: new ArcCollection(coords),
+        layers: [lyr1, lyr2]
+      };
+      // Variation - reference clip layer by name
+      var clippedLyr = api.clipLayer(lyr1, 'clipper', dataset);
       var target = [
         [[~3, 6, 4, ~1]],
         [[1, 5, 3]]];
