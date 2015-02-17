@@ -639,7 +639,7 @@ Utils.merge = function(dest, src) {
 Utils.difference = function(arr, other) {
   var index = Utils.arrayToIndex(other);
   return Utils.mapFilter(arr, function(el) {
-    return index.hasOwnProperty(el) ? void 0: el;
+    return Object.prototype.hasOwnProperty.call(index, el) ? void 0: el;
   });
 };
 
@@ -1004,24 +1004,8 @@ var Node = {
 
 if (inNode) {
   Node.arguments = process.argv.slice(1); // remove "node" from head of argv list
-
   Node.gc = function() {
     global.gc && global.gc();
-  };
-
-  Node.toBuffer = function(src) {
-    var buf;
-    if (src instanceof ArrayBuffer) {
-      buf = new Buffer(src.byteLength);
-      for (var i = 0, n=buf.length; i < n; i++) {
-        buf[i] = src[i]; // in Node, ArrayBuffers can be read like this
-      }
-    } else if (src instanceof Buffer) {
-      buf = src;
-    } else {
-      throw "[Node.toBuffer()] unsupported input: " + src;
-    }
-    return buf;
   };
 }
 
@@ -1129,9 +1113,6 @@ Node.readFile = function(fname, charset) {
 };
 
 Node.writeFile = function(path, content) {
-  if (content instanceof ArrayBuffer) {
-    content = Node.toBuffer(content);
-  }
   require('fs').writeFileSync(path, content, 0, null, 0);
 };
 
@@ -9555,8 +9536,9 @@ function ShpReader(src) {
       mbounds: bin.readFloat64Array(2)
     };
 
-    if (header.signature != 9994)
+    if (header.signature != 9994) {
       error("Not a valid .shp file");
+    }
 
     var supportedTypes = [1,3,5,8,11,13,15,18,21,23,25,28];
     if (!Utils.contains(supportedTypes, header.type))
@@ -9938,7 +9920,6 @@ MapShaper.exportShapefile = function(dataset, opts) {
     }
     dbf = data.exportAsDbf(opts.encoding);
     T.stop("Export .dbf file");
-
     files.push({
         content: obj.shp,
         filename: name + ".shp"
@@ -9968,8 +9949,9 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
   var geomType = layer.geometry_type;
 
   var shpType = MapShaper.getShapefileType(geomType);
-  if (shpType === null)
+  if (shpType === null) {
     error("[exportShpAndShx()] Unable to export geometry type:", geomType);
+  }
 
   var fileBytes = 100;
   var bounds = new Bounds();
@@ -10022,7 +10004,6 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
 
   var shxBuf = shxBin.buffer(),
       shpBuf = shpBin.buffer();
-
   return {shp: shpBuf, shx: shxBuf};
 };
 
@@ -13064,12 +13045,12 @@ api.exportFiles = function(dataset, opts) {
   if (exports.length > 0 === false) {
     message("No files to save");
   } else if (opts.stdout) {
-    Node.writeFile('/dev/stdout', exports[0].content);
+    cli.writeFile('/dev/stdout', exports[0].content);
   } else {
     var paths = MapShaper.getOutputPaths(Utils.pluck(exports, 'filename'), opts);
     exports.forEach(function(obj, i) {
       var path = paths[i];
-      Node.writeFile(path, obj.content);
+      cli.writeFile(path, obj.content);
       message("Wrote " + path);
     });
   }
@@ -14471,8 +14452,29 @@ function getVersion() {
 
 cli.isFile = Node.fileExists;
 cli.isDirectory = Node.dirExists;
-cli.readFile = Node.readFile;
-cli.writeFile = Node.writeFile;
+
+// @charset (optional) e.g. 'utf8'
+cli.readFile = function(fname, charset) {
+  return require('fs').readFileSync(fname, charset || void 0);
+};
+
+// @content Buffer, ArrayBuffer or string
+cli.writeFile = function(path, content) {
+  if (content instanceof ArrayBuffer) {
+    content = cli.convertArrayBuffer(content);
+  }
+  require('fs').writeFileSync(path, content, 0, null, 0);
+};
+
+// Returns Node Buffer
+cli.convertArrayBuffer = function(buf) {
+  var src = new Uint8Array(buf),
+      dest = new Buffer(src.length);
+  for (var i = 0, n=src.length; i < n; i++) {
+    dest[i] = src[i];
+  }
+  return dest;
+};
 
 cli.validateFileExtension = function(path) {
   var type = MapShaper.guessFileType(path),

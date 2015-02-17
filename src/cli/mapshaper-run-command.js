@@ -186,12 +186,12 @@ api.exportFiles = function(dataset, opts) {
   if (exports.length > 0 === false) {
     message("No files to save");
   } else if (opts.stdout) {
-    Node.writeFile('/dev/stdout', exports[0].content);
+    cli.writeFile('/dev/stdout', exports[0].content);
   } else {
     var paths = MapShaper.getOutputPaths(Utils.pluck(exports, 'filename'), opts);
     exports.forEach(function(obj, i) {
       var path = paths[i];
-      Node.writeFile(path, obj.content);
+      cli.writeFile(path, obj.content);
       message("Wrote " + path);
     });
   }

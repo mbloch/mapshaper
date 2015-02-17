@@ -153,8 +153,9 @@ function ShpReader(src) {
       mbounds: bin.readFloat64Array(2)
     };
 
-    if (header.signature != 9994)
+    if (header.signature != 9994) {
       error("Not a valid .shp file");
+    }
 
     var supportedTypes = [1,3,5,8,11,13,15,18,21,23,25,28];
     if (!Utils.contains(supportedTypes, header.type))
@@ -411,7 +412,7 @@ function BufferBytes(buf) {
 function FileBytes(path) {
   var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
       fs = require('fs'),
-      fileSize = Node.fileSize(path),
+      fileSize = cli.fileSize(path),
       cacheOffs = 0,
       cache, fd;
 

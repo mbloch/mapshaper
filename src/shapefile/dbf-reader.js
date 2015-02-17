@@ -105,7 +105,7 @@ Dbf.getUniqFieldNames = function(fields, maxLen) {
 //
 function DbfReader(src, encoding) {
   if (Utils.isString(src)) {
-    src = Node.readFile(src);
+    src = cli.readFile(src);
   }
   var bin = new BinArray(src).littleEndian();
   encoding = encoding || 'ascii';

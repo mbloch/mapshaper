@@ -89,7 +89,6 @@ MapShaper.exportShapefile = function(dataset, opts) {
     }
     dbf = data.exportAsDbf(opts.encoding);
     T.stop("Export .dbf file");
-
     files.push({
         content: obj.shp,
         filename: name + ".shp"
@@ -119,8 +118,9 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
   var geomType = layer.geometry_type;
 
   var shpType = MapShaper.getShapefileType(geomType);
-  if (shpType === null)
+  if (shpType === null) {
     error("[exportShpAndShx()] Unable to export geometry type:", geomType);
+  }
 
   var fileBytes = 100;
   var bounds = new Bounds();
@@ -173,7 +173,6 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
 
   var shxBuf = shxBin.buffer(),
       shpBuf = shpBin.buffer();
-
   return {shp: shpBuf, shx: shxBuf};
 };
 

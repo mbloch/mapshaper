@@ -2,7 +2,7 @@
 
 MapShaper.getOutputPaths = function(files, opts) {
   var paths =  files.map(function(file) {
-    return Node.path.join(opts.output_dir || '', file);
+    return require('path').join(opts.output_dir || '', file);
   });
   if (!opts.force) {
     paths = resolveFileCollisions(paths);

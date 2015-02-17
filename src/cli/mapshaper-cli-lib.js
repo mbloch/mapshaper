@@ -8,17 +8,51 @@ var cli = api.cli = {};
 function getVersion() {
   var v;
   try {
-    var packagePath = Node.resolvePathFromScript("../package.json"),
-        obj = JSON.parse(Node.readFile(packagePath, 'utf-8'));
+    var scriptDir = utils.parseLocalPath(require.main.filename).directory,
+        packagePath = require('path').join(scriptDir, "..", "package.json"),
+        obj = JSON.parse(cli.readFile(packagePath, 'utf-8'));
     v = obj.version;
   } catch(e) {}
   return v || "";
 }
 
-cli.isFile = Node.fileExists;
-cli.isDirectory = Node.dirExists;
-cli.readFile = Node.readFile;
-cli.writeFile = Node.writeFile;
+cli.isFile = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.isFile() || false;
+};
+
+cli.fileSize = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.size || 0;
+};
+
+cli.isDirectory = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.isDirectory() || false;
+};
+
+// @charset (optional) e.g. 'utf8'
+cli.readFile = function(fname, charset) {
+  return require('fs').readFileSync(fname, charset || void 0);
+};
+
+// @content Buffer, ArrayBuffer or string
+cli.writeFile = function(path, content) {
+  if (content instanceof ArrayBuffer) {
+    content = cli.convertArrayBuffer(content);
+  }
+  require('fs').writeFileSync(path, content, 0, null, 0);
+};
+
+// Returns Node Buffer
+cli.convertArrayBuffer = function(buf) {
+  var src = new Uint8Array(buf),
+      dest = new Buffer(src.length);
+  for (var i = 0, n=src.length; i < n; i++) {
+    dest[i] = src[i];
+  }
+  return dest;
+};
 
 cli.validateFileExtension = function(path) {
   var type = MapShaper.guessFileType(path),
@@ -68,10 +102,17 @@ cli.validateInputFile = function(ifile) {
 };
 
 cli.checkFileExists = function(path) {
-  var stat = Node.statSync(path);
-  if (!stat || stat.isDirectory()) {
+  if (!cli.isFile(path)) {
     stop("File not found (" + path + ")");
   }
+};
+
+cli.statSync = function(fpath) {
+  var obj = null;
+  try {
+    obj = require('fs').statSync(fpath);
+  } catch(e) {}
+  return obj;
 };
 
 cli.printRepairMessage = function(info) {

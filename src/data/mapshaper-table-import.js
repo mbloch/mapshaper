@@ -62,16 +62,16 @@ MapShaper.parseFieldHeaders = function(fields, index) {
 };
 
 MapShaper.importDbfTable = function(path, encoding) {
-  if (!Node.fileExists(path)) {
+  if (!cli.isFile(path)) {
     stop("File not found:", path);
   }
-  return new ShapefileTable(Node.readFile(path), encoding);
+  return new ShapefileTable(cli.readFile(path), encoding);
 };
 
 MapShaper.importDelimTable = function(file) {
   var records, str;
   try {
-    str = Node.readFile(file, 'utf-8');
+    str = cli.readFile(file, 'utf-8');
     records = MapShaper.parseDelimString(str);
     if (!records || records.length === 0) {
       throw new Error();
