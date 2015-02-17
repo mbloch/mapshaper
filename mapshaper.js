@@ -997,133 +997,6 @@ Utils.formatNumber = function(num, decimals, nullStr, showPos) {
 };
 
 
-var inNode = typeof module !== 'undefined' && !!module.exports;
-var Node = {
-  inNode: inNode,
-};
-
-if (inNode) {
-  Node.arguments = process.argv.slice(1); // remove "node" from head of argv list
-  Node.gc = function() {
-    global.gc && global.gc();
-  };
-}
-
-
-
-
-// Convenience functions for working with the local filesystem
-if (Node.inNode) {
-  Node.path = require('path');
-}
-
-Node.statSync = function(fpath) {
-  var obj = null;
-  try {
-    obj = require('fs').statSync(fpath);
-  } catch(e) {}
-  return obj;
-};
-
-Node.walkSync = function(dir, results) {
-  results = results || [];
-  var list = require('fs').readdirSync(dir);
-  list.forEach(function(file) {
-    var path = dir + "/" + file;
-    var stat = Node.statSync(path);
-    if (stat && stat.isDirectory()) {
-      Node.walkSync(path, results);
-    }
-    else {
-      results.push(path);
-    }
-  });
-  return results;
-};
-
-Node.shellExec = function(cmd) {
-  var parts = cmd.split(/[\s]+/); // TODO: improve, e.g. handle quoted strings w/ spaces
-  var spawn = require('child_process').spawn;
-  spawn(parts[0], parts.slice(1), {stdio: "inherit"});
-};
-
-// Converts relative path to absolute path relative to the node script;
-// absolute paths returned unchanged
-Node.resolvePathFromScript = function(path) {
-  if (Node.pathIsAbsolute(path))
-    return path;
-  var scriptDir = Node.getFileInfo(require.main.filename).directory;
-  return Node.path.join(scriptDir, path);
-};
-
-Node.resolvePathFromShell = function(path) {
-  return Node.pathIsAbsolute(path) ? path : Node.path.join(process.cwd(), path);
-};
-
-Node.pathIsAbsolute = function(path) {
-  return (path[0] == '/' || path[0] == "~");
-};
-
-Node.dirExists = function(path) {
-  var ss = Node.statSync(path);
-  return ss && ss.isDirectory() || false;
-};
-
-Node.fileExists = function(path) {
-  var ss = Node.statSync(path);
-  return ss && ss.isFile() || false;
-};
-
-Node.fileSize = function(path) {
-  var ss = Node.statSync(path);
-  return ss && ss.size || 0;
-};
-
-Node.parseFilename = function(fpath) {
-  // TODO: give better output if fpath is a directory
-  var info = {};
-  var filename = Node.path.basename(fpath);
-  if (/[\\/]$/.test(filename)) {
-    filename = filename.substr(0, filename.length-1);
-  }
-  info.file = filename;
-  info.path = Node.path.resolve(fpath);
-  info.ext = Node.path.extname(fpath).toLowerCase().slice(1);
-  info.base = info.ext.length > 0 ? info.file.slice(0, -info.ext.length - 1) : info.file;
-  info.directory = Node.path.dirname(info.path);
-  info.relative_dir = Node.path.dirname(fpath);
-  return info;
-};
-
-Node.getFileInfo = function(fpath) {
-  var info = Node.parseFilename(fpath),
-      stat = Node.statSync(fpath);
-  if (stat) {
-    info.is_file = stat.isFile();
-    info.is_directory = stat.isDirectory();
-  }
-  info.exists = !!stat;
-  return info;
-};
-
-// @charset (optional) e.g. 'utf8'
-// returns string or Buffer if no charset is provided.
-Node.readFile = function(fname, charset) {
-  return require('fs').readFileSync(fname, charset || void 0);
-};
-
-Node.writeFile = function(path, content) {
-  require('fs').writeFileSync(path, content, 0, null, 0);
-};
-
-Node.copyFile = function(src, dest) {
-  var fs = require('fs');
-  if (!Node.fileExists(src)) error("[copyFile()] File not found:", src);
-  var content = fs.readFileSync(src);
-  fs.writeFileSync(dest, content);
-};
-
-
 
 function Transform() {
   this.mx = this.my = 1;
@@ -6354,7 +6227,7 @@ Dbf.getUniqFieldNames = function(fields, maxLen) {
 //
 function DbfReader(src, encoding) {
   if (Utils.isString(src)) {
-    src = Node.readFile(src);
+    src = cli.readFile(src);
   }
   var bin = new BinArray(src).littleEndian();
   encoding = encoding || 'ascii';
@@ -9795,7 +9668,7 @@ function BufferBytes(buf) {
 function FileBytes(path) {
   var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
       fs = require('fs'),
-      fileSize = Node.fileSize(path),
+      fileSize = cli.fileSize(path),
       cacheOffs = 0,
       cache, fd;
 
@@ -11062,16 +10935,16 @@ MapShaper.parseFieldHeaders = function(fields, index) {
 };
 
 MapShaper.importDbfTable = function(path, encoding) {
-  if (!Node.fileExists(path)) {
+  if (!cli.isFile(path)) {
     stop("File not found:", path);
   }
-  return new ShapefileTable(Node.readFile(path), encoding);
+  return new ShapefileTable(cli.readFile(path), encoding);
 };
 
 MapShaper.importDelimTable = function(file) {
   var records, str;
   try {
-    str = Node.readFile(file, 'utf-8');
+    str = cli.readFile(file, 'utf-8');
     records = MapShaper.parseDelimString(str);
     if (!records || records.length === 0) {
       throw new Error();
@@ -11215,7 +11088,7 @@ MapShaper.importJsonFile = function(path, opts) {
 
 MapShaper.getOutputPaths = function(files, opts) {
   var paths =  files.map(function(file) {
-    return Node.path.join(opts.output_dir || '', file);
+    return require('path').join(opts.output_dir || '', file);
   });
   if (!opts.force) {
     paths = resolveFileCollisions(paths);
@@ -14443,15 +14316,28 @@ var cli = api.cli = {};
 function getVersion() {
   var v;
   try {
-    var packagePath = Node.resolvePathFromScript("../package.json"),
-        obj = JSON.parse(Node.readFile(packagePath, 'utf-8'));
+    var scriptDir = utils.parseLocalPath(require.main.filename).directory,
+        packagePath = require('path').join(scriptDir, "..", "package.json"),
+        obj = JSON.parse(cli.readFile(packagePath, 'utf-8'));
     v = obj.version;
   } catch(e) {}
   return v || "";
 }
 
-cli.isFile = Node.fileExists;
-cli.isDirectory = Node.dirExists;
+cli.isFile = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.isFile() || false;
+};
+
+cli.fileSize = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.size || 0;
+};
+
+cli.isDirectory = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.isDirectory() || false;
+};
 
 // @charset (optional) e.g. 'utf8'
 cli.readFile = function(fname, charset) {
@@ -14524,10 +14410,17 @@ cli.validateInputFile = function(ifile) {
 };
 
 cli.checkFileExists = function(path) {
-  var stat = Node.statSync(path);
-  if (!stat || stat.isDirectory()) {
+  if (!cli.isFile(path)) {
     stop("File not found (" + path + ")");
   }
+};
+
+cli.statSync = function(fpath) {
+  var obj = null;
+  try {
+    obj = require('fs').statSync(fpath);
+  } catch(e) {}
+  return obj;
 };
 
 cli.printRepairMessage = function(info) {
