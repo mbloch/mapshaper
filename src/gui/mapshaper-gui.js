@@ -1,5 +1,6 @@
 /* @requires
 mapshaper-gui-utils,
+mapshaper-file-types,
 mapshaper-shapes,
 mapshaper-simplify-control,
 mapshaper-import-control,

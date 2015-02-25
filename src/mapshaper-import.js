@@ -1,10 +1,12 @@
 /* @requires mapshaper-common, mapshaper-geojson, mapshaper-topojson, mapshaper-shapefile */
 
+// Parse content of an input file and return a dataset
 // @content: ArrayBuffer or String
-// @type: 'shapefile'|'json'
+// @name: path or filename
 //
-MapShaper.importFileContent = function(content, fileType, opts) {
-  var dataset, fileFmt;
+MapShaper.importFileContent = function(content, name, opts) {
+  var fileType = MapShaper.guessFileType(name),
+      dataset, lyr, fileFmt;
   opts = opts || {};
   T.start();
   if (fileType == 'shp') {
@@ -18,50 +20,65 @@ MapShaper.importFileContent = function(content, fileType, opts) {
     } else if ('type' in jsonObj) {
       dataset = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
-    } else if (Utils.isArray(jsonObj)) {
-      dataset = {
-        layers: [{
-          geometry_type: null,
-          data: new DataTable(jsonObj)
-        }]
-      };
-      fileFmt = 'json';
+
     } else {
       stop("Unrecognized JSON format");
     }
-  } else if (fileType == 'text') {
-    dataset = MapShaper.importDelimitedRecords();
+  } else if (fileType == 'txt') {
+    // Assuming text files are in delimited format
+    lyr = MapShaper.importDelimTable(content, opts);
+    fileFmt = 'dsv';
+    dataset = {
+      layers: [{data: lyr.data}],
+      info: {input_delimiter: lyr.info.delimiter} // kludge
+    };
+
+  } else if (fileType == 'dbf') {
+    lyr = MapShaper.importDbfTable(content, opts);
+    fileFmt = 'dbf';
+    dataset = {
+      layers: [{data: lyr.data}],
+      info: {}
+    };
   } else {
     stop("Unsupported file type:", fileType);
   }
   T.stop("Import " + fileFmt);
 
-  // topology; TODO -- consider moving this
   if ((fileFmt == 'shapefile' || fileFmt == 'geojson') && !opts.no_topology) {
     T.start();
     api.buildTopology(dataset);
     T.stop("Process topology");
   }
 
-  if (dataset.layers.length == 1) {
-    MapShaper.setLayerName(dataset.layers[0], opts.files ? opts.files[0] : "layer1");
+  if (fileFmt != 'topojson') {
+    MapShaper.setLayerName(dataset.layers[0], MapShaper.filenameToLayerName(name));
   }
-  dataset.info.input_files = opts.files;
   dataset.info.input_format = fileFmt;
+  dataset.info.input_files = [name];
   return dataset;
 };
 
+MapShaper.filenameToLayerName = function(path) {
+  var name = 'layer1';
+  var obj = utils.parseLocalPath(path);
+  if (obj.basename && obj.extension) { // exclude paths like '/dev/stdin'
+    name = obj.basename;
+  }
+  return name;
+};
 
-MapShaper.importJSONRecords = function(arr, opts) {
+
+MapShaper.importDataTable = function(table) {
   return {
+    info: {},
     layers: [{
       name: "",
-      data: new DataTable(arr),
+      data: table,
       geometry_type: null
     }]
   };
 };
-
 
 // initialize layer name using filename
 MapShaper.setLayerName = function(lyr, path) {

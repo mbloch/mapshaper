@@ -1,23 +1,55 @@
 /* @requires mapshaper-data-table */
 
-MapShaper.importDataTable = function(fname, opts) {
-  var table;
-  if (!cli.isFile(fname)) {
-    stop("File not found:", fname);
-  }
+// Import a dbf file or a delimited text file
+//
+MapShaper.importDataFile = function(fname, opts) {
+  var lyr;
   if (utils.endsWith(fname.toLowerCase(), '.dbf')) {
-    table = MapShaper.importDbfTable(fname, opts.encoding);
+    lyr = MapShaper.importDbfFile(fname, opts);
   } else {
     // assume delimited text file
-    // unsupported file types can be detected earlier, during
-    // option validation, using filename extensions
-    table = MapShaper.importDelimTable(fname);
-    // convert data types based on type hints and numeric csv fields
-    // opts.fields may contain duplicate field name with inconsistent type hints
-    // adjustRecordTypes() should handle this case
-    MapShaper.adjustRecordTypes(table.getRecords(), opts.fields);
+    // some unsupported file types can be caught earlier, e.g. by checking
+    // filename extension during option validation.
+    lyr = MapShaper.importDelimFile(fname, opts);
   }
-  return table;
+  return lyr;
+};
+
+MapShaper.importDbfFile = function(path, opts) {
+  cli.checkFileExists(path);
+  return MapShaper.importDbfTable(cli.readFile(path), opts);
+};
+
+MapShaper.importDbfTable = function(buf, opts) {
+  return {
+    data: new ShapefileTable(buf, opts && opts.encoding)
+  };
+};
+
+MapShaper.importDelimFile = function(path, opts) {
+  cli.checkFileExists(path);
+  return MapShaper.importDelimTable(cli.readFile(path, 'utf-8'), opts);
+};
+
+MapShaper.importDelimTable = function(str, opts) {
+  var delim, records;
+  try {
+    delim = MapShaper.guessDelimiter(str);
+    records = require("./lib/d3/d3-dsv.js").dsv(delim).parse(str);
+    if (records.length === 0) {
+      throw new Error();
+    }
+  } catch(e) {
+    stop("Unable to", (str ? "read" : "parse"), "file:", file);
+  }
+
+  MapShaper.adjustRecordTypes(records, opts && opts.fields);
+  return {
+    data: new DataTable(records),
+    info: {
+      delimiter: delim
+    }
+  };
 };
 
 // Accept a type hint from a header like "FIPS:string"
@@ -61,34 +93,6 @@ MapShaper.parseFieldHeaders = function(fields, index) {
   return parsed;
 };
 
-MapShaper.importDbfTable = function(path, encoding) {
-  if (!cli.isFile(path)) {
-    stop("File not found:", path);
-  }
-  return new ShapefileTable(cli.readFile(path), encoding);
-};
-
-MapShaper.importDelimTable = function(file) {
-  var records, str;
-  try {
-    str = cli.readFile(file, 'utf-8');
-    records = MapShaper.parseDelimString(str);
-    if (!records || records.length === 0) {
-      throw new Error();
-    }
-  } catch(e) {
-    stop("Unable to", (str ? "read" : "parse"), "file:", file);
-  }
-  return new DataTable(records);
-};
-
-MapShaper.parseDelimString = function(str) {
-  var dsv = require("./lib/d3/d3-dsv.js").dsv,
-      delim = MapShaper.guessDelimiter(str),
-      records = dsv(delim).parse(str);
-  return records;
-};
-
 //
 MapShaper.guessDelimiter = function(content) {
   var delimiters = ['|', '\t', ','];
@@ -105,13 +109,22 @@ MapShaper.getDelimiterRxp = function(delim) {
   return new RegExp(rxp);
 };
 
-MapShaper.adjustRecordTypes = function(records, rawFields) {
-  if (records.length === 0) return;
+// Detect and convert data types, with optional type hints
+// @fieldList (optional) array of field names with type hints; may contain
+//    duplicate names with inconsistent type hints.
+MapShaper.adjustRecordTypes = function(records, fieldList) {
   var hintIndex = {},
-      fields = rawFields && MapShaper.parseFieldHeaders(rawFields, hintIndex) || [],
-      conversionIndex = {};
+      conversionIndex = {},
+      firstRecord = records[0],
+      fields = Object.keys(firstRecord);
 
-  Utils.forEach(records[0], function(val, key) {
+  // parse type hints
+  if (fieldList) {
+    MapShaper.parseFieldHeaders(fieldList, hintIndex);
+  }
+
+  fields.forEach(function(key) {
+    var val = firstRecord[key];
     if (key in hintIndex === false) {
       if (Utils.isString(val) && utils.stringIsNumeric(val)) {
         conversionIndex[key] = 'number';
@@ -122,7 +135,6 @@ MapShaper.adjustRecordTypes = function(records, rawFields) {
       conversionIndex[key] = 'string';
     }
   });
-
   MapShaper.convertRecordTypes(records, conversionIndex);
 };
 

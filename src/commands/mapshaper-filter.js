@@ -2,6 +2,8 @@
 
 api.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
+      shapes = lyr.shapes || null,
+      size = MapShaper.getFeatureCount(lyr),
       filter = null;
 
   if (opts.expression) {
@@ -19,21 +21,19 @@ api.filterFeatures = function(lyr, arcs, opts) {
 
   var selectedShapes = [],
       selectedRecords = [];
-
-  Utils.forEach(lyr.shapes, function(shp, shapeId) {
-    var rec = records ? records[shapeId] : null,
-        result = filter(shapeId);
-
-    if (!Utils.isBoolean(result)) {
+  utils.repeat(size, function(shapeId) {
+    var result = filter(shapeId);
+    if (result === true) {
+      if (shapes) selectedShapes.push(shapes[shapeId] || null);
+      if (records) selectedRecords.push(records[shapeId] || null);
+    } else if (result !== false) {
       stop("[filter] Expressions must return true or false");
-    }
-    if (result) {
-      selectedShapes.push(shp);
-      if (records) selectedRecords.push(rec);
     }
   });
 
-  lyr.shapes = selectedShapes;
+  if (shapes) {
+    lyr.shapes = selectedShapes;
+  }
   if (records) {
     lyr.data = new DataTable(selectedRecords);
   }

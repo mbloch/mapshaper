@@ -102,7 +102,7 @@ MapShaper.exportShapefile = function(dataset, opts) {
 
     // Copy prj file, if Shapefile import and running in Node.
     if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
-      var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj');
+      var prjFile = utils.replaceFileExtension(dataset.info.input_files[0], 'prj');
       if (cli.isFile(prjFile)) {
         files.push({
           content: cli.readFile(prjFile, 'utf-8'),

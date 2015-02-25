@@ -43,7 +43,6 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
-        // info = utils.parseLocalPath(name),
         type = MapShaper.guessFileType(name),
         reader;
     if (type) {
@@ -94,7 +93,7 @@ function ImportControl(editor) {
         auto_snap: !!El("#g-snap-points-opt").node().checked
       };
       T.start("Start timing");
-      data = MapShaper.importFileContent(content, type, opts);
+      data = MapShaper.importFileContent(content, path, opts);
       MapShaper.setLayerName(data.layers[0], fname);
       editor.addData(data, opts);
       T.stop("Done importing");
@@ -110,18 +109,11 @@ function ImportControl(editor) {
       // error("inputFileContent() Unexpected file type:", path);
     }
 
-    // TODO: accept .prj files
-    if (type == 'prj') {
-      error("inputFileContent() .prj files not supported (yet)");
-    }
-
     // associate previously imported Shapefile files with a .shp file
+    // TODO: accept .prj files and other Shapefile files
     if (type == 'shp') {
       if ('dbf' in index) {
         data.layers[0].data = index.dbf;
-      }
-      if ('prj' in index) {
-        data.crs = index.prj;
       }
     }
 

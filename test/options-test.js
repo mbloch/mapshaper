@@ -60,14 +60,14 @@ describe('mapshaper-options.js', function () {
     good("-o format=TopoJSON", {format: "topojson"});
     good("-o format=Shapefile", {format: "shapefile"});
     good("-o format=GeoJSON", {format: "geojson"});
+    good("-o format=csv", {format: "dsv", delimiter: ","});
+    good("-o format=tsv", {format: "dsv", delimiter: "\t"});
+    good("-o format=dbf", {format: "dbf"});
 
     // invalid formats
     bad("-o topojson");
     bad("-o shapefile");
     bad("-o geojson");
-    bad("-o format=csv");
-    bad("-o format=tsv");
-    bad("-o format=dbf");
     bad("-o format=shp");
     bad("-o format=json");
     bad("-o format \"ESRI Shapefile\"");

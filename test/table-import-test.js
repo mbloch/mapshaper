@@ -162,35 +162,36 @@ describe('mapshaper-table-import.js', function() {
 
   })
 
-  describe('parseDelimString()', function () {
+  describe('importDelimTable()', function () {
     it('test 1', function () {
       var str = 'a,b\n"1","2"';
-      var records = api.internal.parseDelimString(str);
-      stringifyEqual(records, [{a: "1", b: "2"}]);
+      var lyr = api.internal.importDelimTable(str);
+      stringifyEqual(lyr.data.getRecords(), [{a: 1, b: 2}]);
     })
 
     it('parse csv with quoted field including comma', function () {
       var str = 'a,b\n1,"foo, bar"'
-      var records = api.internal.parseDelimString(str);
-      stringifyEqual(records, [{a: '1', b: 'foo, bar'}]);
+      var lyr = api.internal.importDelimTable(str);
+      stringifyEqual(lyr.data.getRecords(), [{a: 1, b: 'foo, bar'}]);
+      assert.equal(lyr.info.delimiter, ',')
     })
 
     it('import tab-delim, quoted string', function () {
       var str = 'a\tb\n1\t"boo ya"'
-      var records = api.internal.parseDelimString(str);
-      stringifyEqual(records, [{a: '1', b: 'boo ya'}]);
+      var lyr = api.internal.importDelimTable(str);
+      stringifyEqual(lyr.data.getRecords(), [{a: 1, b: 'boo ya'}]);
     })
 
     it('import pipe-delim, trailing newline', function () {
       var str = 'a|b\n1|"boo"\n'
-      var records = api.internal.parseDelimString(str);
-      stringifyEqual(records, [{a: '1', b: 'boo'}]);
+      var lyr = api.internal.importDelimTable(str);
+      stringifyEqual(lyr.data.getRecords(), [{a: 1, b: 'boo'}]);
     })
 
     it('import single column of values w/ mixed return types', function () {
       var str = 'a\n1\r\n0\r30'
-      var records = api.internal.parseDelimString(str);
-      stringifyEqual(records, [{a: '1'}, {a: '0'}, {a: '30'}]);
+      var lyr = api.internal.importDelimTable(str);
+      stringifyEqual(lyr.data.getRecords(), [{a: 1}, {a: 0}, {a: 30}]);
     })
 
   })

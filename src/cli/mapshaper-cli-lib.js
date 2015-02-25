@@ -1,5 +1,6 @@
 /* @requires
 mapshaper-cli-utils
+mapshaper-file-types
 mapshaper-commands
 */
 
@@ -33,7 +34,7 @@ cli.isDirectory = function(path) {
 
 // @charset (optional) e.g. 'utf8'
 cli.readFile = function(fname, charset) {
-  return require('fs').readFileSync(fname, charset || void 0);
+  return require('rw').readFileSync(fname, charset || void 0);
 };
 
 // @content Buffer, ArrayBuffer or string
@@ -52,17 +53,6 @@ cli.convertArrayBuffer = function(buf) {
     dest[i] = src[i];
   }
   return dest;
-};
-
-cli.validateFileExtension = function(path) {
-  var type = MapShaper.guessFileType(path),
-      valid = type == 'shp' || type == 'json';
-  return valid;
-};
-
-cli.replaceFileExtension = function(path, ext) {
-  var info = utils.parseLocalPath(path);
-  return info.pathbase + '.' + ext;
 };
 
 cli.expandFileName = function(name) {
@@ -95,9 +85,9 @@ cli.validateInputFiles = function(files) {
 cli.validateInputFile = function(ifile) {
   var opts = {};
   cli.checkFileExists(ifile);
-  if (!cli.validateFileExtension(ifile)) {
-     error("File has an unsupported extension:", ifile);
-  }
+  //if (!cli.validateFileExtension(ifile)) {
+  //   error("File has an unsupported extension:", ifile);
+  //}
   return ifile;
 };
 

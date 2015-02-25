@@ -3840,6 +3840,77 @@ utils.wildcardToRegExp = function(name) {
   return new RegExp(rxp);
 };
 
+MapShaper.copyElements = function(src, i, dest, j, n, rev) {
+  if (src === dest && j > i) error ("copy error");
+  var inc = 1,
+      offs = 0;
+  if (rev) {
+    inc = -1;
+    offs = n - 1;
+  }
+  for (var k=0; k<n; k++, offs += inc) {
+    dest[k + j] = src[i + offs];
+  }
+};
+
+MapShaper.extendBuffer = function(src, newLen, copyLen) {
+  var len = Math.max(src.length, newLen);
+  var n = copyLen || src.length;
+  var dest = new src.constructor(len);
+  MapShaper.copyElements(src, 0, dest, 0, n);
+  return dest;
+};
+
+MapShaper.mergeNames = function(name1, name2) {
+  var merged = "";
+  if (name1 && name2) {
+    merged = utils.findStringPrefix(name1, name2).replace(/[-_]$/, '');
+  }
+  return merged;
+};
+
+utils.findStringPrefix = function(a, b) {
+  var i = 0;
+  for (var n=a.length; i<n; i++) {
+    if (a[i] !== b[i]) break;
+  }
+  return a.substr(0, i);
+};
+
+// Similar to isFinite() but returns false for null
+utils.isFiniteNumber = function(val) {
+  return isFinite(val) && val !== null;
+};
+
+MapShaper.probablyDecimalDegreeBounds = function(b) {
+  if (b instanceof Bounds) b = b.toArray();
+  return containsBounds([-200, -91, 200, 91], b);
+};
+
+MapShaper.layerHasPaths = function(lyr) {
+  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
+};
+
+MapShaper.layerHasPoints = function(lyr) {
+  return lyr.shapes && lyr.geometry_type == 'point';
+};
+
+MapShaper.requirePolygonLayer = function(lyr, msg) {
+  if (!lyr || lyr.geometry_type !== 'polygon') stop(msg || "Expected a polygon layer");
+};
+
+MapShaper.requirePathLayer = function(lyr, msg) {
+  if (!lyr || !MapShaper.layerHasPaths(lyr)) stop(msg || "Expected a polygon or polyline layer");
+};
+
+
+
+
+utils.replaceFileExtension = function(path, ext) {
+  var info = utils.parseLocalPath(path);
+  return info.pathbase + '.' + ext;
+};
+
 utils.getPathSep = function(path) {
   // TODO: improve
   return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
@@ -3885,57 +3956,6 @@ utils.getPathBase = function(path) {
   return utils.parseLocalPath(path).pathbase;
 };
 
-MapShaper.guessFileType = function(file) {
-  var ext = utils.getFileExtension(file).toLowerCase(),
-      type = null;
-  if (file == '/dev/stdin') {
-    type = 'json';
-  } else if (/json$/i.test(file)) {
-    type = 'json';
-  } else if (ext == 'shp' || ext == 'dbf' || ext == 'prj') {
-    type = ext;
-  }
-  return type;
-};
-
-MapShaper.guessFileFormat = function(file, inputFormat) {
-  var type = MapShaper.guessFileType(file),
-      format = null;
-  if (type == 'shp') {
-    format = 'shapefile';
-  } else if (type == 'json') {
-    if (/geojson$/.test(file)) {
-      format = 'geojson';
-    } else if (/topojson$/.test(file) || inputFormat == 'topojson') {
-      format = 'topojson';
-    } else {
-      format = 'geojson';
-    }
-  }
-  return format;
-};
-
-MapShaper.copyElements = function(src, i, dest, j, n, rev) {
-  if (src === dest && j > i) error ("copy error");
-  var inc = 1,
-      offs = 0;
-  if (rev) {
-    inc = -1;
-    offs = n - 1;
-  }
-  for (var k=0; k<n; k++, offs += inc) {
-    dest[k + j] = src[i + offs];
-  }
-};
-
-MapShaper.extendBuffer = function(src, newLen, copyLen) {
-  var len = Math.max(src.length, newLen);
-  var n = copyLen || src.length;
-  var dest = new src.constructor(len);
-  MapShaper.copyElements(src, 0, dest, 0, n);
-  return dest;
-};
-
 MapShaper.getCommonFileBase = function(names) {
   return names.reduce(function(memo, name, i) {
     if (i === 0) {
@@ -3947,46 +3967,82 @@ MapShaper.getCommonFileBase = function(names) {
   }, "");
 };
 
-MapShaper.mergeNames = function(name1, name2) {
-  var merged = "";
-  if (name1 && name2) {
-    merged = utils.findStringPrefix(name1, name2).replace(/[-_]$/, '');
+
+
+
+
+
+/*
+// file "formats" mapped to file "types" (types can be inferred from filename,
+// some formats require parsing to identify)
+{
+  shapefile: shp,
+  geojson: json,
+  topojson: json,
+  dbf: dbf,
+  dsv: txt
+}
+// TODO: Consider alternative to these "types": determine if file is binary
+//   or text from filename, identify binary formats from extension, identify text
+//   formats using regex on string.
+*/
+
+// Guess the type of a data file from filename or a type name (e.g. 'json')
+// Defined types: shp, dbf, json, txt
+MapShaper.guessFileType = function(file) {
+  var rxp = /[a-z0-9]*$/i,
+      suff = rxp.exec(file)[0].toLowerCase(),
+      type;
+  if (file == '/dev/stdin' || /json$/.test(suff)) {
+    type = 'json';
+  } else if (suff == 'shp' || suff == 'dbf') {
+    type = suff;
+  } else {
+    type = 'txt'; // assume text file if none of above
   }
-  return merged;
+  return type;
 };
 
-utils.findStringPrefix = function(a, b) {
-  var i = 0;
-  for (var n=a.length; i<n; i++) {
-    if (a[i] !== b[i]) break;
+// Infer output format by considering file name and (optional) input format
+MapShaper.inferOutputFormat = function(file, inputFormat) {
+  var type = MapShaper.guessFileType(file),
+      ext = utils.getFileExtension(file).toLowerCase(),
+      format = null;
+  if (type == 'shp') {
+    format = 'shapefile';
+  } else if (type == 'dbf') {
+    format = 'dbf';
+  } else if (type == 'json') {
+    format = 'geojson';
+    if (ext == 'geojson') {
+      format = 'geojson';
+    } else if (ext == 'topojson' || inputFormat == 'topojson') {
+      format = 'topojson';
+    } else {
+      format = 'geojson';
+    }
+  } else if (/csv|tsv|txt$/.test(ext)) {
+    format = 'dsv';
+  } else if (inputFormat) {
+    format = inputFormat;
   }
-  return a.substr(0, i);
+  return format;
 };
 
-// Similar to isFinite() but returns false for null
-utils.isFiniteNumber = function(val) {
-  return isFinite(val) && val !== null;
+MapShaper.isSupportedOutputFormat = function(fmt) {
+  var types = ['geojson', 'topojson', 'dsv', 'dbf', 'shapefile'];
+  return types.indexOf(fmt) > -1;
 };
 
-MapShaper.probablyDecimalDegreeBounds = function(b) {
-  if (b instanceof Bounds) b = b.toArray();
-  return containsBounds([-200, -91, 200, 91], b);
+
+MapShaper.isBinaryFileType = function(type) {
+  return type == 'shp' || type == 'dbf';
 };
 
-MapShaper.layerHasPaths = function(lyr) {
-  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
-};
-
-MapShaper.layerHasPoints = function(lyr) {
-  return lyr.shapes && lyr.geometry_type == 'point';
-};
-
-MapShaper.requirePolygonLayer = function(lyr, msg) {
-  if (!lyr || lyr.geometry_type !== 'polygon') stop(msg || "Expected a polygon layer");
-};
-
-MapShaper.requirePathLayer = function(lyr, msg) {
-  if (!lyr || !MapShaper.layerHasPaths(lyr)) stop(msg || "Expected a polygon or polyline layer");
+// Detect extensions of some unsupported file types, for cmd line validation
+MapShaper.filenameIsUnsupportedOutputType = function(file) {
+  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
+  return rxp.test(file);
 };
 
 
@@ -10671,7 +10727,6 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
   var topology = TopoJSON.exportTopology(dataset.layers, dataset.arcs, opts),
       stringify = JSON.stringify,
       filename;
-
   if (opts.prettify) {
     stringify = MapShaper.getFormattedStringify('coordinates,arcs,bbox,translate,scale'.split(','));
   }
@@ -11254,7 +11309,7 @@ MapShaper.exportShapefile = function(dataset, opts) {
 
     // Copy prj file, if Shapefile import and running in Node.
     if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
-      var prjFile = cli.replaceFileExtension(dataset.info.input_files[0], 'prj');
+      var prjFile = utils.replaceFileExtension(dataset.info.input_files[0], 'prj');
       if (cli.isFile(prjFile)) {
         files.push({
           content: cli.readFile(prjFile, 'utf-8'),
@@ -11395,11 +11450,13 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 
 
 
+// Parse content of an input file and return a dataset
 // @content: ArrayBuffer or String
-// @type: 'shapefile'|'json'
+// @name: path or filename
 //
-MapShaper.importFileContent = function(content, fileType, opts) {
-  var dataset, fileFmt;
+MapShaper.importFileContent = function(content, name, opts) {
+  var fileType = MapShaper.guessFileType(name),
+      dataset, lyr, fileFmt;
   opts = opts || {};
   T.start();
   if (fileType == 'shp') {
@@ -11413,50 +11470,65 @@ MapShaper.importFileContent = function(content, fileType, opts) {
     } else if ('type' in jsonObj) {
       dataset = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
-    } else if (Utils.isArray(jsonObj)) {
-      dataset = {
-        layers: [{
-          geometry_type: null,
-          data: new DataTable(jsonObj)
-        }]
-      };
-      fileFmt = 'json';
+
     } else {
       stop("Unrecognized JSON format");
     }
-  } else if (fileType == 'text') {
-    dataset = MapShaper.importDelimitedRecords();
+  } else if (fileType == 'txt') {
+    // Assuming text files are in delimited format
+    lyr = MapShaper.importDelimTable(content, opts);
+    fileFmt = 'dsv';
+    dataset = {
+      layers: [{data: lyr.data}],
+      info: {input_delimiter: lyr.info.delimiter} // kludge
+    };
+
+  } else if (fileType == 'dbf') {
+    lyr = MapShaper.importDbfTable(content, opts);
+    fileFmt = 'dbf';
+    dataset = {
+      layers: [{data: lyr.data}],
+      info: {}
+    };
   } else {
     stop("Unsupported file type:", fileType);
   }
   T.stop("Import " + fileFmt);
 
-  // topology; TODO -- consider moving this
   if ((fileFmt == 'shapefile' || fileFmt == 'geojson') && !opts.no_topology) {
     T.start();
     api.buildTopology(dataset);
     T.stop("Process topology");
   }
 
-  if (dataset.layers.length == 1) {
-    MapShaper.setLayerName(dataset.layers[0], opts.files ? opts.files[0] : "layer1");
+  if (fileFmt != 'topojson') {
+    MapShaper.setLayerName(dataset.layers[0], MapShaper.filenameToLayerName(name));
   }
-  dataset.info.input_files = opts.files;
   dataset.info.input_format = fileFmt;
+  dataset.info.input_files = [name];
   return dataset;
 };
 
+MapShaper.filenameToLayerName = function(path) {
+  var name = 'layer1';
+  var obj = utils.parseLocalPath(path);
+  if (obj.basename && obj.extension) { // exclude paths like '/dev/stdin'
+    name = obj.basename;
+  }
+  return name;
+};
 
-MapShaper.importJSONRecords = function(arr, opts) {
+
+MapShaper.importDataTable = function(table) {
   return {
+    info: {},
     layers: [{
       name: "",
-      data: new DataTable(arr),
+      data: table,
       geometry_type: null
     }]
   };
 };
-
 
 // initialize layer name using filename
 MapShaper.setLayerName = function(lyr, path) {
@@ -11511,7 +11583,6 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
-        // info = utils.parseLocalPath(name),
         type = MapShaper.guessFileType(name),
         reader;
     if (type) {
@@ -11562,7 +11633,7 @@ function ImportControl(editor) {
         auto_snap: !!El("#g-snap-points-opt").node().checked
       };
       T.start("Start timing");
-      data = MapShaper.importFileContent(content, type, opts);
+      data = MapShaper.importFileContent(content, path, opts);
       MapShaper.setLayerName(data.layers[0], fname);
       editor.addData(data, opts);
       T.stop("Done importing");
@@ -11578,18 +11649,11 @@ function ImportControl(editor) {
       // error("inputFileContent() Unexpected file type:", path);
     }
 
-    // TODO: accept .prj files
-    if (type == 'prj') {
-      error("inputFileContent() .prj files not supported (yet)");
-    }
-
     // associate previously imported Shapefile files with a .shp file
+    // TODO: accept .prj files and other Shapefile files
     if (type == 'shp') {
       if ('dbf' in index) {
         data.layers[0].data = index.dbf;
-      }
-      if ('prj' in index) {
-        data.crs = index.prj;
       }
     }
 
@@ -11719,6 +11783,44 @@ MapShaper.roundPoints = function(lyr, round) {
 
 
 
+MapShaper.exportAsDelim = function(dataset, opts) {
+  var delim = opts.delimiter || dataset.info.input_delimiter || ',',
+      ext = MapShaper.getDelimFileExtension(delim);
+  return dataset.layers.map(function(lyr) {
+    return {
+      content: MapShaper.exportDelimTable(lyr.data, delim),
+      filename: (lyr.name || 'output') + '.' + ext
+    };
+  });
+};
+
+MapShaper.exportDelimTable = function(lyr, delim) {
+  var dsv = require("./lib/d3/d3-dsv.js").dsv(delim);
+  return dsv.format(lyr.data.getRecords());
+};
+
+MapShaper.getDelimFileExtension = function(delim) {
+  var ext = 'txt';
+  if (delim == '\t') {
+    ext = 'tsv';
+  } else if (delim == ',') {
+    ext = 'csv';
+  }
+  return ext;
+};
+
+MapShaper.exportAsDbf = function(dataset, opts) {
+  return dataset.layers.map(function(lyr) {
+    return {
+      content: lyr.data.exportAsDbf(opts.encoding),
+      filename: (lyr.name || 'output') + '.dbf'
+    };
+  });
+};
+
+
+
+
 // Return an array of objects with "filename" "filebase" "extension" and
 // "content" attributes.
 //
@@ -11753,7 +11855,6 @@ MapShaper.exportFileContent = function(dataset, opts) {
   }
 
   files = exporter(dataset, opts).concat(files);
-
   // If rounding or quantization are applied during export, bounds may
   // change somewhat... consider adding a bounds property to each layer during
   // export when appropriate.
@@ -11768,16 +11869,22 @@ MapShaper.exportFileContent = function(dataset, opts) {
 MapShaper.exporters = {
   geojson: MapShaper.exportGeoJSON,
   topojson: MapShaper.exportTopoJSON,
-  shapefile: MapShaper.exportShapefile
+  shapefile: MapShaper.exportShapefile,
+  dsv: MapShaper.exportAsDelim,
+  dbf: MapShaper.exportAsDbf
 };
 
 MapShaper.getOutputFormat = function(dataset, opts) {
-  var outFmt = opts.format,
-      outFile = opts.output_file || null,
-      inFmt = dataset.info && dataset.info.input_format;
+  var outFile = opts.output_file || null,
+      inFmt = dataset.info && dataset.info.input_format,
+      outFmt = null;
 
-  if (!outFmt) {
-    outFmt = outFile ? MapShaper.guessFileFormat(outFile, inFmt) : inFmt;
+  if (opts.format) {
+    outFmt = opts.format;
+  } else if (outFile) {
+    outFmt = MapShaper.inferOutputFormat(outFile, inFmt);
+  } else if (inFmt) {
+    outFmt = inFmt;
   }
   return outFmt;
 };
@@ -11802,18 +11909,20 @@ MapShaper.createIndexFile = function(dataset) {
 
 MapShaper.validateLayerData = function(layers) {
   Utils.forEach(layers, function(lyr) {
-    if (!Utils.isArray(lyr.shapes)) {
-      error ("[export] A layer is missing shape data");
-    }
-    // allowing null-type layers
-    if (lyr.geometry_type === null) {
+    if (!lyr.geometry_type) {
+      // allowing data-only layers
       if (Utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
         error("[export] A layer contains shape records and a null geometry type");
       }
-    } else if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-      error ("[export] A layer has an invalid geometry type:", lyr.geometry_type);
+    } else {
+      if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
+        error ("[export] A layer has an invalid geometry type:", lyr.geometry_type);
+      }
+      if (!lyr.shapes) {
+        error ("[export] A layer is missing shape data");
+      }
     }
   });
 };
@@ -11838,6 +11947,7 @@ MapShaper.assignUniqueLayerNames = function(layers) {
   });
 };
 
+/*
 MapShaper.getDefaultFileExtension = function(fileType) {
   var ext = "";
   if (fileType == 'shapefile') {
@@ -11847,6 +11957,7 @@ MapShaper.getDefaultFileExtension = function(fileType) {
   }
   return ext;
 };
+*/
 
 MapShaper.exportDataTables = function(layers, opts) {
   var tables = [];

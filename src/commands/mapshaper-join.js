@@ -7,7 +7,8 @@ api.importJoinTable = function(file, opts) {
   var importOpts = utils.defaults({
     fields: (opts.fields || []).concat(opts.keys[1])
   }, opts);
-  return MapShaper.importDataTable(file, importOpts);
+  var lyr = MapShaper.importDataFile(file, importOpts);
+  return lyr.data;
 };
 
 api.joinAttributesToFeatures = function(lyr, srcTable, opts) {

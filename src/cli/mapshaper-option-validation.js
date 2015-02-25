@@ -1,4 +1,4 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-file-types */
 
 
 function validateHelpOpts(cmd) {
@@ -200,8 +200,7 @@ function validateOutputOpts(cmd) {
   var _ = cmd._,
       o = cmd.options,
       path = _[0] || "",
-      pathInfo = utils.parseLocalPath(path),
-      supportedTypes = ["geojson", "topojson", "shapefile"];
+      pathInfo = utils.parseLocalPath(path);
 
   if (_.length > 1) {
     error("command takes one file or directory argument");
@@ -218,7 +217,7 @@ function validateOutputOpts(cmd) {
     o.output_file = pathInfo.filename;
   }
 
-  if (o.output_file && !cli.validateFileExtension(o.output_file)) {
+  if (o.output_file && MapShaper.filenameIsUnsupportedOutputType(o.output_file)) {
     error("Output file looks like an unsupported file type:", o.output_file);
   }
 
@@ -230,7 +229,14 @@ function validateOutputOpts(cmd) {
 
   if (o.format) {
     o.format = o.format.toLowerCase();
-    if (!Utils.contains(supportedTypes, o.format)) {
+    if (o.format == 'csv') {
+      o.format = 'dsv';
+      o.delimiter = o.delimiter || ',';
+    } else if (o.format == 'tsv') {
+      o.format = 'dsv';
+      o.delimiter = o.delimiter || '\t';
+    }
+    if (!MapShaper.isSupportedOutputFormat(o.format)) {
       error("Unsupported output format:", o.format);
     }
   }

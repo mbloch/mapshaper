@@ -4,6 +4,7 @@ mapshaper-topojson
 mapshaper-shapefile
 mapshaper-dataset-utils
 mapshaper-rounding
+mapshaper-table-export
 */
 
 // Return an array of objects with "filename" "filebase" "extension" and
@@ -40,7 +41,6 @@ MapShaper.exportFileContent = function(dataset, opts) {
   }
 
   files = exporter(dataset, opts).concat(files);
-
   // If rounding or quantization are applied during export, bounds may
   // change somewhat... consider adding a bounds property to each layer during
   // export when appropriate.
@@ -55,16 +55,22 @@ MapShaper.exportFileContent = function(dataset, opts) {
 MapShaper.exporters = {
   geojson: MapShaper.exportGeoJSON,
   topojson: MapShaper.exportTopoJSON,
-  shapefile: MapShaper.exportShapefile
+  shapefile: MapShaper.exportShapefile,
+  dsv: MapShaper.exportAsDelim,
+  dbf: MapShaper.exportAsDbf
 };
 
 MapShaper.getOutputFormat = function(dataset, opts) {
-  var outFmt = opts.format,
-      outFile = opts.output_file || null,
-      inFmt = dataset.info && dataset.info.input_format;
+  var outFile = opts.output_file || null,
+      inFmt = dataset.info && dataset.info.input_format,
+      outFmt = null;
 
-  if (!outFmt) {
-    outFmt = outFile ? MapShaper.guessFileFormat(outFile, inFmt) : inFmt;
+  if (opts.format) {
+    outFmt = opts.format;
+  } else if (outFile) {
+    outFmt = MapShaper.inferOutputFormat(outFile, inFmt);
+  } else if (inFmt) {
+    outFmt = inFmt;
   }
   return outFmt;
 };
@@ -89,18 +95,20 @@ MapShaper.createIndexFile = function(dataset) {
 
 MapShaper.validateLayerData = function(layers) {
   Utils.forEach(layers, function(lyr) {
-    if (!Utils.isArray(lyr.shapes)) {
-      error ("[export] A layer is missing shape data");
-    }
-    // allowing null-type layers
-    if (lyr.geometry_type === null) {
+    if (!lyr.geometry_type) {
+      // allowing data-only layers
       if (Utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
         error("[export] A layer contains shape records and a null geometry type");
       }
-    } else if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-      error ("[export] A layer has an invalid geometry type:", lyr.geometry_type);
+    } else {
+      if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
+        error ("[export] A layer has an invalid geometry type:", lyr.geometry_type);
+      }
+      if (!lyr.shapes) {
+        error ("[export] A layer is missing shape data");
+      }
     }
   });
 };
@@ -125,6 +133,7 @@ MapShaper.assignUniqueLayerNames = function(layers) {
   });
 };
 
+/*
 MapShaper.getDefaultFileExtension = function(fileType) {
   var ext = "";
   if (fileType == 'shapefile') {
@@ -134,6 +143,7 @@ MapShaper.getDefaultFileExtension = function(fileType) {
   }
   return ext;
 };
+*/
 
 MapShaper.exportDataTables = function(layers, opts) {
   var tables = [];

@@ -51,7 +51,7 @@ api.applyCommands = function(tokens, content, done) {
       outOpts = {};
     }
 
-    dataset = MapShaper.importFileContent(content, 'json', inOpts);
+    dataset = MapShaper.importFileContent(content, 'layer1.json', inOpts);
   } catch(e) {
     return done(e);
   }
@@ -74,7 +74,6 @@ api.applyCommands = function(tokens, content, done) {
         }
       }
     }
-
     done(err, output);
   }
 };

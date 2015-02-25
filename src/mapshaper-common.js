@@ -74,81 +74,6 @@ utils.wildcardToRegExp = function(name) {
   return new RegExp(rxp);
 };
 
-utils.getPathSep = function(path) {
-  // TODO: improve
-  return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
-};
-
-// Parse the path to a file without using Node
-// Assumes: not a directory path
-utils.parseLocalPath = function(path) {
-  var obj = {},
-      sep = utils.getPathSep(path),
-      parts = path.split(sep),
-      i;
-
-  if (parts.length == 1) {
-    obj.filename = parts[0];
-    obj.directory = "";
-  } else {
-    obj.filename = parts.pop();
-    obj.directory = parts.join(sep);
-  }
-  i = obj.filename.lastIndexOf('.');
-  if (i > -1) {
-    obj.extension = obj.filename.substr(i + 1);
-    obj.basename = obj.filename.substr(0, i);
-    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
-  } else {
-    obj.extension = "";
-    obj.basename = obj.filename;
-    obj.pathbase = path;
-  }
-  return obj;
-};
-
-utils.getFileBase = function(path) {
-  return utils.parseLocalPath(path).basename;
-};
-
-utils.getFileExtension = function(path) {
-  return utils.parseLocalPath(path).extension;
-};
-
-utils.getPathBase = function(path) {
-  return utils.parseLocalPath(path).pathbase;
-};
-
-MapShaper.guessFileType = function(file) {
-  var ext = utils.getFileExtension(file).toLowerCase(),
-      type = null;
-  if (file == '/dev/stdin') {
-    type = 'json';
-  } else if (/json$/i.test(file)) {
-    type = 'json';
-  } else if (ext == 'shp' || ext == 'dbf' || ext == 'prj') {
-    type = ext;
-  }
-  return type;
-};
-
-MapShaper.guessFileFormat = function(file, inputFormat) {
-  var type = MapShaper.guessFileType(file),
-      format = null;
-  if (type == 'shp') {
-    format = 'shapefile';
-  } else if (type == 'json') {
-    if (/geojson$/.test(file)) {
-      format = 'geojson';
-    } else if (/topojson$/.test(file) || inputFormat == 'topojson') {
-      format = 'topojson';
-    } else {
-      format = 'geojson';
-    }
-  }
-  return format;
-};
-
 MapShaper.copyElements = function(src, i, dest, j, n, rev) {
   if (src === dest && j > i) error ("copy error");
   var inc = 1,
@@ -168,17 +93,6 @@ MapShaper.extendBuffer = function(src, newLen, copyLen) {
   var dest = new src.constructor(len);
   MapShaper.copyElements(src, 0, dest, 0, n);
   return dest;
-};
-
-MapShaper.getCommonFileBase = function(names) {
-  return names.reduce(function(memo, name, i) {
-    if (i === 0) {
-      memo = utils.getFileBase(name);
-    } else {
-      memo = MapShaper.mergeNames(memo, name);
-    }
-    return memo;
-  }, "");
 };
 
 MapShaper.mergeNames = function(name1, name2) {
