@@ -63,8 +63,11 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
     if (unmatchedKeys.length == records.length) {
       stop("[join] No records could be joined");
     } else {
-      message(utils.format("[join] Unable to join %d/%d records; unmatched key values: %s",
-          unmatchedKeys.length, records.length, unmatchedKeys.join(', ')));
+      message(utils.format("[join] Unable to join %d/%d records (use -verbose to see unmatched values)",
+          unmatchedKeys.length, records.length));
+      if (MapShaper.VERBOSE) {
+        verbose(utils.format("Unmatched key values: %s", unmatchedKeys.join(', ')));
+      }
     }
   }
 };
