@@ -92,17 +92,6 @@ function validateJoinOpts(cmd) {
   }
 
   if (!o.keys) error("missing required keys option");
-  if (!isCommaSep(o.keys)) error("keys= option takes two comma-separated names, e.g.: FIELD1,FIELD2");
-
-  if (o.fields && !isCommaSep(o.fields)) {
-    error("fields= option is a comma-sep. list of fields to join");
-  }
-}
-
-function isCommaSep(arr, count) {
-  var ok = arr && Utils.isArray(arr);
-  if (count) ok = ok && arr.length === count;
-  return ok;
 }
 
 function validateSplitOpts(cmd) {
@@ -130,9 +119,6 @@ function validateDissolveOpts(cmd) {
   } else if (_.length > 1) {
     error("command takes a single field name");
   }
-
-  if (o.sum_fields && !isCommaSep(o.sum_fields)) error("sum-fields= option takes a comma-sep. list");
-  if (o.copy_fields && !isCommaSep(o.copy_fields)) error("copy-fields= option takes a comma-sep. list");
 }
 
 function validateMergeLayersOpts(cmd) {
