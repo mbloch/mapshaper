@@ -44,7 +44,8 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
     try {
       value = func.call(null, record, env);
     } catch(e) {
-      stop(e);
+      message(e.stack);
+      stop("An error occurred while running expression:", exp);
     }
     return value;
   };
