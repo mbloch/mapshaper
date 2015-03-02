@@ -41,7 +41,7 @@ function validateSimplifyOpts(cmd) {
   var pctStr = o.pct || "";
   if (_.length > 0) {
     if (/^[0-9.]+%?$/.test(_[0])) {
-      pctStr = _.pop();
+      pctStr = _.shift();
     }
     if (_.length > 0) {
       error("unparsable option:", _.join(' '));
