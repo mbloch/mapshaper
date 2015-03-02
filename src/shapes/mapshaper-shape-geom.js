@@ -33,7 +33,7 @@ geom.getSphericalShapeArea2 = function(shp, arcs) {
 // @arcs ArcCollection
 geom.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
-  return Utils.reduce(shp, function(maxPath, path) {
+  return (shp || []).reduce(function(maxPath, path) {
     var bbArea = arcs.getSimpleShapeBounds(path).area();
     if (bbArea > maxArea) {
       maxArea = bbArea;

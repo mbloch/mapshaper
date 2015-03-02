@@ -106,6 +106,7 @@ describe('mapshaper-shape-geom.js', function () {
 
     it('getShapeCentroid()', function () {
       assert.deepEqual(geom.getShapeCentroid(lyr1.shapes[0], arcData), {x: 3, y: 3})
+      assert.equal(geom.getShapeCentroid(null, arcData), null);
     })
 
     it('getAvgPathXY()', function () {
@@ -114,6 +115,7 @@ describe('mapshaper-shape-geom.js', function () {
 
     it('getMaxPath()', function () {
       assert.deepEqual(geom.getMaxPath(lyr2.shapes[0], arcData), [1])
+      assert.equal(geom.getMaxPath(null, arcData), null);
     })
 
     describe('testPointInRing()', function () {

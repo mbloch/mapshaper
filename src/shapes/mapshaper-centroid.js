@@ -48,6 +48,9 @@ geom.getPathCentroid = function(ids, arcs) {
 // (distance is weighted to slightly favor points near centroid)
 //
 geom.findInteriorPoint = function(shp, arcs, exact) {
+  if (!shp) {
+    return null;
+  }
   var maxPath = geom.getMaxPath(shp, arcs),
       maxPathArea = geom.getPathArea4(maxPath, arcs),
       pathBounds = arcs.getSimpleShapeBounds(maxPath),
