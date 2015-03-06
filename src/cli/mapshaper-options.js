@@ -93,6 +93,10 @@ MapShaper.getOptionParser = function() {
     .option("encoding", encodingOpt)
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
+    })
+    .option("fields", {
+      describe: "comma-sep. list of data fields to import",
+      type: "comma-sep"
     });
 
   parser.command('o')
@@ -165,7 +169,6 @@ MapShaper.getOptionParser = function() {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
     });
-
 
   parser.command('simplify')
     .validate(validateSimplifyOpts)
