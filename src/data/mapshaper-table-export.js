@@ -5,7 +5,7 @@ MapShaper.exportAsDelim = function(dataset, opts) {
       ext = MapShaper.getDelimFileExtension(delim);
   return dataset.layers.map(function(lyr) {
     return {
-      content: MapShaper.exportDelimTable(lyr.data, delim),
+      content: MapShaper.exportDelimTable(lyr, delim),
       filename: (lyr.name || 'output') + '.' + ext
     };
   });

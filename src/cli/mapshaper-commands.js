@@ -2,27 +2,9 @@
 
 // parse command line args into commands and run them
 api.runShellArgs = function(argv, done) {
-  var commands;
-  try {
-    commands = MapShaper.parseCommands(argv);
-  } catch(e) {
-    return done(e);
-  }
-  if (commands.length === 0) {
-    return done(new APIError("Missing an input file"));
-  }
-
-  // if there's a -i command, no -o command and no -info or -calc command,
-  // append a generic -o command.
-  if (!utils.some(commands, function(cmd) { return cmd.name == 'o'; }) &&
-      !utils.some(commands, function(cmd) { return cmd.name == 'calc'; }) &&
-      !utils.some(commands, function(cmd) { return cmd.name == 'info'; }) &&
-      utils.some(commands, function(cmd) {return cmd.name == 'i'; })) {
-    commands.push({name: "o", options: {}});
-  }
 
   T.start("Start timing");
-  api.runCommands(commands, function(err, dataset) {
+  api.runCommands(argv, function(err, output) {
     T.stop("Total time");
     done(err);
   });
@@ -81,6 +63,7 @@ api.applyCommands = function(tokens, content, done) {
 // Execute a sequence of commands
 // Signature: function(commands, [dataset,] done)
 // @commands either a string of commands or an array of parsed commands
+// @done Signature: function(<error>, <dataset>)
 //
 api.runCommands = function(commands) {
   var dataset = null,
@@ -105,6 +88,11 @@ api.runCommands = function(commands) {
     }
   }
 
+  // TODO: remove !dataset condition
+  if (commands.length === 0 && !dataset) {
+    return done(new APIError("No commands to run"));
+  }
+
   commands = MapShaper.runAndRemoveInfoCommands(commands);
   if (commands.length === 0) {
     return done(null, dataset);
@@ -119,18 +107,25 @@ api.runCommands = function(commands) {
   }, done);
 };
 
+// If an initial import command indicates that several input files should be
+//   processed separately, then duplicate the sequence of commands to run
+//   once for each input file
+// @commands Array of parsed commands
+// Returns: either original command array or array of duplicated commands.
+//
 MapShaper.divideImportCommand = function(commands) {
   var firstCmd = commands[0],
-      opts = firstCmd.options,
-      files = opts.files || [];
+      firstOpts = firstCmd.options,
+      files = firstOpts.files || [];
 
-  if (firstCmd.name != 'i' || files.length <= 1 || opts.stdin || opts.merge_files || opts.combine_files) {
+  if (firstCmd.name != 'i' || files.length <= 1 || firstOpts.stdin ||
+      firstOpts.merge_files || firstOpts.combine_files) {
     return commands;
   }
   return files.reduce(function(memo, file) {
     var importCmd = {
       name: 'i',
-      options: Utils.defaults({files:[file]}, opts)
+      options: Utils.defaults({files:[file]}, firstOpts)
     };
     memo.push(importCmd);
     memo.push.apply(memo, commands.slice(1));
@@ -172,7 +167,7 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'help') {
-      MapShaper.printHelp(cmd.options.commands);
+      MapShaper.getOptionParser().printHelp(cmd.options.commands);
     } else if (cmd.name == 'verbose') {
       MapShaper.VERBOSE = true;
     } else if (cmd.name == 'tracing') {
@@ -182,19 +177,4 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
     }
     return false;
   });
-};
-
-MapShaper.printHelp = function(commands) {
-  MapShaper.getOptionParser().printHelp(commands);
-};
-
-MapShaper.validateJSON = function(json) {
-  // TODO: remove duplication with mapshaper-import.js
-  if (content.type == 'Topology') {
-    fmt = 'topojson';
-  } else if (content.type) {
-    fmt = 'geojson';
-  } else {
-    return done(new APIError("[applyCommands()] Content must be TopoJSON or GeoJSON"));
-  }
 };

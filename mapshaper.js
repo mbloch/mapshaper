@@ -4074,7 +4074,7 @@ geom.getSphericalShapeArea2 = function(shp, arcs) {
 // @arcs ArcCollection
 geom.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
-  return Utils.reduce(shp, function(maxPath, path) {
+  return (shp || []).reduce(function(maxPath, path) {
     var bbArea = arcs.getSimpleShapeBounds(path).area();
     if (bbArea > maxArea) {
       maxArea = bbArea;
@@ -10042,7 +10042,7 @@ MapShaper.exportAsDelim = function(dataset, opts) {
       ext = MapShaper.getDelimFileExtension(delim);
   return dataset.layers.map(function(lyr) {
     return {
-      content: MapShaper.exportDelimTable(lyr.data, delim),
+      content: MapShaper.exportDelimTable(lyr, delim),
       filename: (lyr.name || 'output') + '.' + ext
     };
   });
@@ -10351,6 +10351,9 @@ geom.getPathCentroid = function(ids, arcs) {
 // (distance is weighted to slightly favor points near centroid)
 //
 geom.findInteriorPoint = function(shp, arcs, exact) {
+  if (!shp) {
+    return null;
+  }
   var maxPath = geom.getMaxPath(shp, arcs),
       maxPathArea = geom.getPathArea4(maxPath, arcs),
       pathBounds = arcs.getSimpleShapeBounds(maxPath),
@@ -10591,7 +10594,8 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
     try {
       value = func.call(null, record, env);
     } catch(e) {
-      stop(e);
+      message(e.stack);
+      stop("An error occurred while running expression:", exp);
     }
     return value;
   };
@@ -10922,7 +10926,6 @@ MapShaper.importFileContent = function(content, name, opts) {
     } else if ('type' in jsonObj) {
       dataset = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
-
     } else {
       stop("Unrecognized JSON format");
     }
@@ -11541,8 +11544,11 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
     if (unmatchedKeys.length == records.length) {
       stop("[join] No records could be joined");
     } else {
-      message(utils.format("[join] Unable to join %d/%d records; unmatched key values: %s",
-          unmatchedKeys.length, records.length, unmatchedKeys.join(', ')));
+      message(utils.format("[join] Unable to join %d/%d records (use -verbose to see unmatched values)",
+          unmatchedKeys.length, records.length));
+      if (MapShaper.VERBOSE) {
+        verbose(utils.format("Unmatched key values: %s", unmatchedKeys.join(', ')));
+      }
     }
   }
 };
@@ -13462,7 +13468,7 @@ function validateSimplifyOpts(cmd) {
   var pctStr = o.pct || "";
   if (_.length > 0) {
     if (/^[0-9.]+%?$/.test(_[0])) {
-      pctStr = _.pop();
+      pctStr = _.shift();
     }
     if (_.length > 0) {
       error("unparsable option:", _.join(' '));
@@ -13513,17 +13519,6 @@ function validateJoinOpts(cmd) {
   }
 
   if (!o.keys) error("missing required keys option");
-  if (!isCommaSep(o.keys)) error("keys= option takes two comma-separated names, e.g.: FIELD1,FIELD2");
-
-  if (o.fields && !isCommaSep(o.fields)) {
-    error("fields= option is a comma-sep. list of fields to join");
-  }
-}
-
-function isCommaSep(arr, count) {
-  var ok = arr && Utils.isArray(arr);
-  if (count) ok = ok && arr.length === count;
-  return ok;
 }
 
 function validateSplitOpts(cmd) {
@@ -13551,9 +13546,6 @@ function validateDissolveOpts(cmd) {
   } else if (_.length > 1) {
     error("command takes a single field name");
   }
-
-  if (o.sum_fields && !isCommaSep(o.sum_fields)) error("sum-fields= option takes a comma-sep. list");
-  if (o.copy_fields && !isCommaSep(o.copy_fields)) error("copy-fields= option takes a comma-sep. list");
 }
 
 function validateMergeLayersOpts(cmd) {
@@ -13787,6 +13779,10 @@ MapShaper.getOptionParser = function() {
     .option("encoding", encodingOpt)
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
+    })
+    .option("fields", {
+      describe: "comma-sep. list of data fields to import",
+      type: "comma-sep"
     });
 
   parser.command('o')
@@ -13859,7 +13855,6 @@ MapShaper.getOptionParser = function() {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
     });
-
 
   parser.command('simplify')
     .validate(validateSimplifyOpts)
@@ -14231,27 +14226,9 @@ MapShaper.getOptionParser = function() {
 
 // parse command line args into commands and run them
 api.runShellArgs = function(argv, done) {
-  var commands;
-  try {
-    commands = MapShaper.parseCommands(argv);
-  } catch(e) {
-    return done(e);
-  }
-  if (commands.length === 0) {
-    return done(new APIError("Missing an input file"));
-  }
-
-  // if there's a -i command, no -o command and no -info or -calc command,
-  // append a generic -o command.
-  if (!utils.some(commands, function(cmd) { return cmd.name == 'o'; }) &&
-      !utils.some(commands, function(cmd) { return cmd.name == 'calc'; }) &&
-      !utils.some(commands, function(cmd) { return cmd.name == 'info'; }) &&
-      utils.some(commands, function(cmd) {return cmd.name == 'i'; })) {
-    commands.push({name: "o", options: {}});
-  }
 
   T.start("Start timing");
-  api.runCommands(commands, function(err, dataset) {
+  api.runCommands(argv, function(err, output) {
     T.stop("Total time");
     done(err);
   });
@@ -14310,6 +14287,7 @@ api.applyCommands = function(tokens, content, done) {
 // Execute a sequence of commands
 // Signature: function(commands, [dataset,] done)
 // @commands either a string of commands or an array of parsed commands
+// @done Signature: function(<error>, <dataset>)
 //
 api.runCommands = function(commands) {
   var dataset = null,
@@ -14334,6 +14312,11 @@ api.runCommands = function(commands) {
     }
   }
 
+  // TODO: remove !dataset condition
+  if (commands.length === 0 && !dataset) {
+    return done(new APIError("No commands to run"));
+  }
+
   commands = MapShaper.runAndRemoveInfoCommands(commands);
   if (commands.length === 0) {
     return done(null, dataset);
@@ -14348,18 +14331,25 @@ api.runCommands = function(commands) {
   }, done);
 };
 
+// If an initial import command indicates that several input files should be
+//   processed separately, then duplicate the sequence of commands to run
+//   once for each input file
+// @commands Array of parsed commands
+// Returns: either original command array or array of duplicated commands.
+//
 MapShaper.divideImportCommand = function(commands) {
   var firstCmd = commands[0],
-      opts = firstCmd.options,
-      files = opts.files || [];
+      firstOpts = firstCmd.options,
+      files = firstOpts.files || [];
 
-  if (firstCmd.name != 'i' || files.length <= 1 || opts.stdin || opts.merge_files || opts.combine_files) {
+  if (firstCmd.name != 'i' || files.length <= 1 || firstOpts.stdin ||
+      firstOpts.merge_files || firstOpts.combine_files) {
     return commands;
   }
   return files.reduce(function(memo, file) {
     var importCmd = {
       name: 'i',
-      options: Utils.defaults({files:[file]}, opts)
+      options: Utils.defaults({files:[file]}, firstOpts)
     };
     memo.push(importCmd);
     memo.push.apply(memo, commands.slice(1));
@@ -14401,7 +14391,7 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'help') {
-      MapShaper.printHelp(cmd.options.commands);
+      MapShaper.getOptionParser().printHelp(cmd.options.commands);
     } else if (cmd.name == 'verbose') {
       MapShaper.VERBOSE = true;
     } else if (cmd.name == 'tracing') {
@@ -14411,21 +14401,6 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
     }
     return false;
   });
-};
-
-MapShaper.printHelp = function(commands) {
-  MapShaper.getOptionParser().printHelp(commands);
-};
-
-MapShaper.validateJSON = function(json) {
-  // TODO: remove duplication with mapshaper-import.js
-  if (content.type == 'Topology') {
-    fmt = 'topojson';
-  } else if (content.type) {
-    fmt = 'geojson';
-  } else {
-    return done(new APIError("[applyCommands()] Content must be TopoJSON or GeoJSON"));
-  }
 };
 
 

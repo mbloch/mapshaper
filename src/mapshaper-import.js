@@ -20,7 +20,6 @@ MapShaper.importFileContent = function(content, name, opts) {
     } else if ('type' in jsonObj) {
       dataset = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
-
     } else {
       stop("Unrecognized JSON format");
     }

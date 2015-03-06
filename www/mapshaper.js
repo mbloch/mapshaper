@@ -5774,7 +5774,7 @@ geom.getSphericalShapeArea2 = function(shp, arcs) {
 // @arcs ArcCollection
 geom.getMaxPath = function(shp, arcs) {
   var maxArea = 0;
-  return Utils.reduce(shp, function(maxPath, path) {
+  return (shp || []).reduce(function(maxPath, path) {
     var bbArea = arcs.getSimpleShapeBounds(path).area();
     if (bbArea > maxArea) {
       maxArea = bbArea;
@@ -11470,7 +11470,6 @@ MapShaper.importFileContent = function(content, name, opts) {
     } else if ('type' in jsonObj) {
       dataset = MapShaper.importGeoJSON(jsonObj, opts);
       fileFmt = 'geojson';
-
     } else {
       stop("Unrecognized JSON format");
     }
@@ -11788,7 +11787,7 @@ MapShaper.exportAsDelim = function(dataset, opts) {
       ext = MapShaper.getDelimFileExtension(delim);
   return dataset.layers.map(function(lyr) {
     return {
-      content: MapShaper.exportDelimTable(lyr.data, delim),
+      content: MapShaper.exportDelimTable(lyr, delim),
       filename: (lyr.name || 'output') + '.' + ext
     };
   });
