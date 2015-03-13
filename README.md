@@ -2,7 +2,7 @@
 
 ### Introduction
 
-Mapshaper is software for editing Shapefile, GeoJSON and [TopoJSON](https://github.com/mbostock/topojson/wiki) files, written in JavaScript.
+Mapshaper is software for editing Shapefile, GeoJSON, [TopoJSON](https://github.com/mbostock/topojson/wiki) and several other data formats, written in JavaScript.
 
 The `mapshaper` command line program supports common map making tasks like simplifying shapes, editing attribute data, clipping, erasing, dissolving, filtering and more.
 

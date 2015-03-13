@@ -213,7 +213,7 @@ MapShaper.getOptionParser = function() {
     .describe("join a dbf or delimited text file to the input features")
     .example("Join a csv table to a Shapefile\n" +
       "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
-      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS:str -o joined.shp")
+      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
     .validate(validateJoinOpts)
     .option("source", {
       label: "<file>",
