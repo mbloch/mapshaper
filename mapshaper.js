@@ -2075,54 +2075,37 @@ MapShaper.getCommonFileBase = function(names) {
 
 
 
-/*
-// file "formats" mapped to file "types" (types can be inferred from filename,
-// some formats require parsing to identify)
-{
-  shapefile: shp,
-  geojson: json,
-  topojson: json,
-  dbf: dbf,
-  dsv: txt
-}
-// TODO: Consider alternative to these "types": determine if file is binary
-//   or text from filename, identify binary formats from extension, identify text
-//   formats using regex on string.
-*/
+// Guess the type of a data file from file extension, or return null if not sure
+MapShaper.guessInputFileFormat = function(file) {
+  var types = {
+    shp: 'shapefile',
+    dbf: 'dbf',
+    geojson: 'geojson',
+    topojson: 'topojson',
+    csv: 'dsv',
+    tsv: 'dsv',
+    prj: 'prj'
+  };
+  var ext = utils.getFileExtension(file || '').toLowerCase();
+  return types[ext] || null;
+};
 
-// Guess the type of a data file from filename or a type name (e.g. 'json')
-// Defined types: shp, dbf, json, txt
-MapShaper.guessFileType = function(file) {
-  var rxp = /[a-z0-9]*$/i,
-      suff = rxp.exec(file)[0].toLowerCase(),
-      type;
-  if (file == '/dev/stdin' || /json$/.test(suff)) {
-    type = 'json';
-  } else if (suff == 'shp' || suff == 'dbf') {
-    type = suff;
-  } else {
-    type = 'txt'; // assume text file if none of above
-  }
-  return type;
+MapShaper.stringIsJsonObject = function(str) {
+  return /^\s*\{/.test(String(str));
 };
 
 // Infer output format by considering file name and (optional) input format
 MapShaper.inferOutputFormat = function(file, inputFormat) {
-  var type = MapShaper.guessFileType(file),
-      ext = utils.getFileExtension(file).toLowerCase(),
+  var ext = utils.getFileExtension(file).toLowerCase(),
       format = null;
-  if (type == 'shp') {
+  if (ext == 'shp') {
     format = 'shapefile';
-  } else if (type == 'dbf') {
+  } else if (ext == 'dbf') {
     format = 'dbf';
-  } else if (type == 'json') {
+  } else if (/json$/.test(ext)) {
     format = 'geojson';
-    if (ext == 'geojson') {
-      format = 'geojson';
-    } else if (ext == 'topojson' || inputFormat == 'topojson') {
+    if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
       format = 'topojson';
-    } else {
-      format = 'geojson';
     }
   } else if (/csv|tsv|txt$/.test(ext)) {
     format = 'dsv';
@@ -2137,9 +2120,10 @@ MapShaper.isSupportedOutputFormat = function(fmt) {
   return types.indexOf(fmt) > -1;
 };
 
-
-MapShaper.isBinaryFileType = function(type) {
-  return type == 'shp' || type == 'dbf';
+// TODO: improve
+MapShaper.isBinaryFile = function(path) {
+  var ext = utils.getFileExtension(path).toLowerCase();
+  return ext == 'shp' || ext == 'dbf';
 };
 
 // Detect extensions of some unsupported file types, for cmd line validation
@@ -6784,21 +6768,10 @@ var dataTableProto = {
     return records.length > 0 ? Object.keys(records[0]) : [];
   },
 
-  // TODO: a version of this for DBF so only specified fields are unpacked
-  //
-  filterFields: function(map) {
-    var records = this.getRecords(),
-        fields = Object.keys(map),
-        src;
-
+  update: function(f) {
+    var records = this.getRecords();
     for (var i=0, n=records.length; i<n; i++) {
-      src = records[i];
-      records[i] = Utils.reduce(fields, f, {});
-    }
-
-    function f(dest, name) {
-      dest[map[name]] = src[name];
-      return dest;
+      records[i] = f(records[i], i);
     }
   },
 
@@ -10907,60 +10880,80 @@ api.calc = function(lyr, arcs, opts) {
 
 
 // Parse content of an input file and return a dataset
-// @content: ArrayBuffer or String
-// @name: path or filename
+// @content: Buffer, ArrayBuffer, String or Object
+// @filename: path or filename (optional)
 //
-MapShaper.importFileContent = function(content, name, opts) {
-  var fileType = MapShaper.guessFileType(name),
-      dataset, lyr, fileFmt;
-  opts = opts || {};
+MapShaper.importFileContent = function(content, filename, opts) {
+  var fileFmt, dataset, lyr;
   T.start();
-  if (fileType == 'shp') {
-    dataset = MapShaper.importShp(content, opts);
-    fileFmt = 'shapefile';
-  } else if (fileType == 'json') {
-    var jsonObj = utils.isString(content) ? JSON.parse(content) : content;
-    if (jsonObj.type == 'Topology') {
-      dataset = MapShaper.importTopoJSON(jsonObj, opts);
-      fileFmt = 'topojson';
-    } else if ('type' in jsonObj) {
-      dataset = MapShaper.importGeoJSON(jsonObj, opts);
-      fileFmt = 'geojson';
+  opts = opts || {};
+
+  // Identify file format
+  fileFmt = opts.format || null;
+  if (!fileFmt && filename) {
+    fileFmt = MapShaper.guessInputFileFormat(filename);
+  }
+  if (!fileFmt && utils.isString(content)) {
+    if (MapShaper.stringIsJsonObject(content)) {
+      content = JSON.parse(content);
     } else {
-      stop("Unrecognized JSON format");
+      // Assuming strings that aren't JSON objects are delimited text
+      fileFmt = 'dsv';
     }
-  } else if (fileType == 'txt') {
-    // Assuming text files are in delimited format
+  }
+  if (!fileFmt && utils.isObject(content)) {
+    // Assuming json content... but what kind?
+    if (content.type == 'Topology') {
+      fileFmt = 'topojson';
+    } else if (content.type) {
+      fileFmt = 'geojson';
+    }
+  }
+
+  // Input content to a dataset
+  if (fileFmt == 'shapefile') {
+    dataset = MapShaper.importShp(content, opts);
+  } else if (fileFmt == 'topojson') {
+    dataset = MapShaper.importTopoJSON(content, opts);
+  } else if (fileFmt == 'geojson') {
+    dataset = MapShaper.importGeoJSON(content, opts);
+  } else if (fileFmt == 'dsv') {
     lyr = MapShaper.importDelimTable(content, opts);
-    fileFmt = 'dsv';
     dataset = {
       layers: [{data: lyr.data}],
       info: {input_delimiter: lyr.info.delimiter} // kludge
     };
-
-  } else if (fileType == 'dbf') {
+  } else if (fileFmt == 'dbf') {
     lyr = MapShaper.importDbfTable(content, opts);
-    fileFmt = 'dbf';
     dataset = {
       layers: [{data: lyr.data}],
       info: {}
     };
+  } else if (fileFmt) {
+    stop("Unsupported file format:", fileFmt);
   } else {
-    stop("Unsupported file type:", fileType);
+    stop("Unable to determine format of input file" + (filename ? " [" + filename + "]" : ""));
   }
   T.stop("Import " + fileFmt);
 
-  if ((fileFmt == 'shapefile' || fileFmt == 'geojson') && !opts.no_topology) {
+  // Convert to topological format, if needed
+  if (fileFmt != 'topojson' && !opts.no_topology) {
     T.start();
     api.buildTopology(dataset);
     T.stop("Process topology");
   }
 
+  // Use file basename for layer name, except TopoJSON, which uses object names
   if (fileFmt != 'topojson') {
-    MapShaper.setLayerName(dataset.layers[0], MapShaper.filenameToLayerName(name));
+    MapShaper.setLayerName(dataset.layers[0], MapShaper.filenameToLayerName(filename || ''));
+  }
+
+  // Add info on input filename and format to the dataset -- useful when exporting
+  //   if format or name has not been specified
+  if (filename) {
+    dataset.info.input_files = [filename];
   }
   dataset.info.input_format = fileFmt;
-  dataset.info.input_files = [name];
   return dataset;
 };
 
@@ -11022,23 +11015,24 @@ MapShaper.importDbfTable = function(buf, opts) {
 };
 
 MapShaper.importDelimFile = function(path, opts) {
+  var data;
   cli.checkFileExists(path);
-  return MapShaper.importDelimTable(cli.readFile(path, 'utf-8'), opts);
+  try {
+    data = MapShaper.importDelimTable(cli.readFile(path, 'utf-8'), opts);
+  } catch(e) {
+    stop("Unable to import file:", path);
+  }
+  return data;
 };
 
 MapShaper.importDelimTable = function(str, opts) {
-  var delim, records;
-  try {
-    delim = MapShaper.guessDelimiter(str);
-    records = require("./lib/d3/d3-dsv.js").dsv(delim).parse(str);
-    if (records.length === 0) {
-      throw new Error();
-    }
-  } catch(e) {
-    stop("Unable to", (str ? "read" : "parse"), "file:", file);
+  var delim = MapShaper.guessDelimiter(str),
+      records = require("./lib/d3/d3-dsv.js").dsv(delim).parse(str);
+  if (records.length === 0) {
+    throw new Error();
   }
 
-  MapShaper.adjustRecordTypes(records, opts && opts.fields);
+  MapShaper.adjustRecordTypes(records, opts && opts.field_types);
   return {
     data: new DataTable(records),
     info: {
@@ -11047,18 +11041,20 @@ MapShaper.importDelimTable = function(str, opts) {
   };
 };
 
-// Accept a type hint from a header like "FIPS:string"
-// Return standard type name (number|string)
-//
-MapShaper.validateFieldType = function(str) {
-  var type = 'string'; // default type
-  if (str.toLowerCase()[0] == 'n') {
+// Accept a type hint from a header like "FIPS:str"
+// Return standard type name (number|string) or null if hint is not recognized
+MapShaper.validateFieldType = function(hint) {
+  var str = hint.toLowerCase(),
+      type = null;
+  if (str[0] == 'n') {
     type = 'number';
+  } else if (str[0] == 's') {
+    type = 'string';
   }
   return type;
 };
 
-MapShaper.removeTypeHints = function(arr, index) {
+MapShaper.removeTypeHints = function(arr) {
   return MapShaper.parseFieldHeaders(arr, {});
 };
 
@@ -11073,7 +11069,10 @@ MapShaper.parseFieldHeaders = function(fields, index) {
       parts = raw.split(':');
       name = parts[0];
       type = MapShaper.validateFieldType(parts[1]);
-    } else if (raw[0] === '+') {
+      if (!type) {
+        message("Invalid type hint (expected :str or :num) [" + raw + "]");
+      }
+    } else if (raw[0] === '+') { // d3-style type hint: unary plus
       name = raw.substr(1);
       type = 'number';
     } else {
@@ -11178,11 +11177,11 @@ MapShaper.convertRecordData = function(rec, fields, converters) {
 
 
 api.importFile = function(path, opts) {
+  var content, dataset;
   cli.checkFileExists(path);
   opts = opts || {};
-  var fileType = MapShaper.guessFileType(path),
-      content = cli.readFile(path, MapShaper.isBinaryFileType(fileType) ? null : 'utf-8'),
-      dataset = MapShaper.importFileContent(content, path, opts);
+  content = cli.readFile(path, MapShaper.isBinaryFile(path) ? null : 'utf-8');
+  dataset = MapShaper.importFileContent(content, path, opts);
   if (dataset.info.input_format == 'shapefile') {
     dataset.layers[0].data = MapShaper.importShapefileDataTable(path, opts);
   }
@@ -11307,34 +11306,49 @@ MapShaper.combineFilters = function(a, b) {
 
 
 
-// filter and rename data fields; see mapshaper -fields option
+// Filter and rename data fields
 
 api.filterFields = function(lyr, names) {
-  var fields, fieldMap, missingFields;
   if (!lyr.data) {
     stop("[filter-fields] Layer is missing a data table");
   } else if (!Utils.isArray(names)) {
     stop("[filter-fields] Expected an array of field names; found:", names);
   }
 
-  fieldMap = utils.reduce(names, function(memo, str) {
-      var parts = str.split('=');
-      var dest = parts[0],
-          src = parts[1] || dest;
-      if (!src || !dest) stop("[fields] Invalid field description:", str);
-      memo[src] = dest;
-      return memo;
-    }, {});
-  fields = lyr.data.getFields();
-  missingFields = Utils.difference(Utils.getKeys(fieldMap), fields);
+  var fieldMap = MapShaper.getFieldFilterMap(names),
+      dataFields = lyr.data.getFields(),
+      missingFields = Utils.difference(Object.keys(fieldMap), dataFields);
 
   if (missingFields.length > 0) {
     message("[filter-fields] Table is missing one or more specified fields:", missingFields);
-    message("Existing fields:", fields);
+    message("Existing fields:", dataFields);
     stop();
   } else {
-    lyr.data.filterFields(fieldMap);
+    lyr.data.update(MapShaper.getRecordMapper(fieldMap));
   }
+};
+
+MapShaper.getFieldFilterMap = function(names) {
+  return utils.reduce(names, function(memo, str) {
+    var parts = str.split('=');
+    var dest = parts[0],
+        src = parts[1] || dest;
+    if (!src || !dest) stop("[fields] Invalid field description:", str);
+    memo[src] = dest;
+    return memo;
+  }, {});
+};
+
+MapShaper.getRecordMapper = function(map) {
+  var fields = Object.keys(map);
+  return function(src) {
+    var dest = {}, key;
+    for (var i=0, n=fields.length; i<n; i++) {
+      key = fields[i];
+      dest[map[key]] = src[key];
+    }
+    return dest;
+  };
 };
 
 
@@ -11485,9 +11499,14 @@ api.importJoinTable = function(file, opts) {
   if (!opts.keys || opts.keys.length != 2) {
     stop("[join] Missing join keys");
   }
-  var importOpts = utils.defaults({
-    fields: (opts.fields || []).concat(opts.keys[1])
-  }, opts);
+  var fieldsWithTypeHints = [opts.keys[1]];
+  if (opts.fields) {
+    fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.fields);
+  }
+  if (opts.field_types) {
+    fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.field_types);
+  }
+  var importOpts = utils.defaults({field_types: fieldsWithTypeHints}, opts);
   var lyr = MapShaper.importDataFile(file, importOpts);
   return lyr.data;
 };
@@ -13065,7 +13084,6 @@ api.importFiles = function(opts) {
   return dataset;
 };
 
-
 MapShaper.printLayerNames = function(layers) {
   var max = 10;
   message("Available layers:");
@@ -13780,8 +13798,8 @@ MapShaper.getOptionParser = function() {
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
     })
-    .option("fields", {
-      describe: "comma-sep. list of data fields to import",
+    .option("field-types", {
+      describe: "Type hints for csv files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
     });
 
@@ -13906,11 +13924,15 @@ MapShaper.getOptionParser = function() {
       describe: "file containing data records"
     })
     .option("keys", {
-      describe: "target,source keys, e.g. keys=FIPS,CNTYFIPS:str",
+      describe: "target,source keys, e.g. keys=FIPS,CNTYFIPS",
       type: "comma-sep"
     })
     .option("fields", {
-      describe: "fields to join, e.g. fields=FIPS:str,POP (default is all)",
+      describe: "fields to join, e.g. fields=FIPS,POP (default is all)",
+      type: "comma-sep"
+    })
+    .option("field-types", {
+      describe: "Type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
     })
     .option("where", {
@@ -14224,19 +14246,46 @@ MapShaper.getOptionParser = function() {
 
 
 
-// parse command line args into commands and run them
-api.runShellArgs = function(argv, done) {
-
+// Parse command line args into commands and run them
+// @argv Array of command line tokens or single string of commands
+api.runShellArgs = // deprecated name
+api.runCommands = function(argv, done) {
+  var commands;
+  try {
+    commands = MapShaper.parseCommands(argv);
+  } catch(e) {
+    return done(e);
+  }
   T.start("Start timing");
-  api.runCommands(argv, function(err, output) {
+  MapShaper.runParsedCommands(commands, function(err, output) {
     T.stop("Total time");
-    done(err);
+    done(err, output);
   });
 };
 
-// @tokens Command line arguments
-// @content GeoJSON or TopoJSON as string or object
-api.applyCommands = function(tokens, content, done) {
+// Apply a set of processing commands to the contents of an input file
+// @argv Command line arguments, as string or array
+// @done Callback: function(<error>, <output>)
+api.applyCommands = function(argv, content, done) {
+  MapShaper.processFileContent(argv, content, function(err, exports) {
+    var output = null;
+    if (!err) {
+      output = exports.map(function(obj) {
+        return obj.content;
+      });
+      if (output.length == 1) {
+        output = output[0];
+      }
+    }
+    done(err, output);
+  });
+};
+
+// @tokens Command line arguments, as string or array
+// @content Contents of input data file
+// @done: Callback function(<error>, <output>); <output> is an array of objects
+//        with properties "content" and "filename"
+MapShaper.processFileContent = function(tokens, content, done) {
   var dataset, commands, cmd, inOpts, outOpts;
   try {
     commands = MapShaper.parseCommands(tokens);
@@ -14244,7 +14293,7 @@ api.applyCommands = function(tokens, content, done) {
     // ensure that first command is -i
     cmd = commands[0];
     if (cmd && cmd.name == 'i') {
-      inOpts = commands.pop().options;
+      inOpts = commands.shift().options;
     } else {
       inOpts = {};
     }
@@ -14256,40 +14305,30 @@ api.applyCommands = function(tokens, content, done) {
     } else {
       outOpts = {};
     }
-
-    dataset = MapShaper.importFileContent(content, 'layer1.json', inOpts);
+    dataset = MapShaper.importFileContent(content, null, inOpts);
   } catch(e) {
     return done(e);
   }
-  api.runCommands(commands, dataset, exportDataset);
 
-  function exportDataset(err, dataset) {
-    var output = null;
+  MapShaper.runParsedCommands(commands, dataset, function(err, dataset) {
+    var exports = null;
     if (!err) {
-      var exports = MapShaper.exportFileContent(dataset, outOpts),
-          outFmt = outOpts.format;
-      if (outFmt != 'geojson' && outFmt != 'topojson') {
-        err = new APIError("[applyCommands()] Expected JSON export; received: " + outFmt);
-      } else {
-        // return JSON dataset(s) as strings or objects (according to input format)
-        output = exports.map(function(obj) {
-          return utils.isString(content) ? obj.content : JSON.parse(obj.content);
-        });
-        if (output.length == 1) {
-          output = output[0];
-        }
+      try {
+        exports = MapShaper.exportFileContent(dataset, outOpts);
+      } catch(e) {
+        err = e;
       }
     }
-    done(err, output);
-  }
+    done(err, exports);
+  });
 };
 
 // Execute a sequence of commands
 // Signature: function(commands, [dataset,] done)
-// @commands either a string of commands or an array of parsed commands
-// @done Signature: function(<error>, <dataset>)
+// @commands Array of parsed commands
+// @done: function(<error>, <dataset>)
 //
-api.runCommands = function(commands) {
+MapShaper.runParsedCommands = function(commands) {
   var dataset = null,
       done, args;
 
@@ -14304,12 +14343,8 @@ api.runCommands = function(commands) {
     stop("[runCommands()] Missing a callback function");
   }
 
-  if (utils.isString(commands)) {
-    try {
-      commands = MapShaper.parseCommands(commands);
-    } catch(e) {
-      return done(e);
-    }
+  if (!utils.isArray(commands)) {
+    stop("[runCommands()] Expected an array of parsed commands");
   }
 
   // TODO: remove !dataset condition
@@ -14387,7 +14422,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 MapShaper.runAndRemoveInfoCommands = function(commands) {
   return Utils.filter(commands, function(cmd) {
     if (cmd.name == 'version') {
-      console.error(getVersion());
+      message(getVersion());
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'help') {

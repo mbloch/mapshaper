@@ -4,9 +4,14 @@ api.importJoinTable = function(file, opts) {
   if (!opts.keys || opts.keys.length != 2) {
     stop("[join] Missing join keys");
   }
-  var importOpts = utils.defaults({
-    fields: (opts.fields || []).concat(opts.keys[1])
-  }, opts);
+  var fieldsWithTypeHints = [opts.keys[1]];
+  if (opts.fields) {
+    fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.fields);
+  }
+  if (opts.field_types) {
+    fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.field_types);
+  }
+  var importOpts = utils.defaults({field_types: fieldsWithTypeHints}, opts);
   var lyr = MapShaper.importDataFile(file, importOpts);
   return lyr.data;
 };

@@ -1,18 +1,45 @@
 /* @requires mapshaper-run-command, mapshaper-options */
 
-// parse command line args into commands and run them
-api.runShellArgs = function(argv, done) {
-
+// Parse command line args into commands and run them
+// @argv Array of command line tokens or single string of commands
+api.runShellArgs = // deprecated name
+api.runCommands = function(argv, done) {
+  var commands;
+  try {
+    commands = MapShaper.parseCommands(argv);
+  } catch(e) {
+    return done(e);
+  }
   T.start("Start timing");
-  api.runCommands(argv, function(err, output) {
+  MapShaper.runParsedCommands(commands, function(err, output) {
     T.stop("Total time");
-    done(err);
+    done(err, output);
   });
 };
 
-// @tokens Command line arguments
-// @content GeoJSON or TopoJSON as string or object
-api.applyCommands = function(tokens, content, done) {
+// Apply a set of processing commands to the contents of an input file
+// @argv Command line arguments, as string or array
+// @done Callback: function(<error>, <output>)
+api.applyCommands = function(argv, content, done) {
+  MapShaper.processFileContent(argv, content, function(err, exports) {
+    var output = null;
+    if (!err) {
+      output = exports.map(function(obj) {
+        return obj.content;
+      });
+      if (output.length == 1) {
+        output = output[0];
+      }
+    }
+    done(err, output);
+  });
+};
+
+// @tokens Command line arguments, as string or array
+// @content Contents of input data file
+// @done: Callback function(<error>, <output>); <output> is an array of objects
+//        with properties "content" and "filename"
+MapShaper.processFileContent = function(tokens, content, done) {
   var dataset, commands, cmd, inOpts, outOpts;
   try {
     commands = MapShaper.parseCommands(tokens);
@@ -20,7 +47,7 @@ api.applyCommands = function(tokens, content, done) {
     // ensure that first command is -i
     cmd = commands[0];
     if (cmd && cmd.name == 'i') {
-      inOpts = commands.pop().options;
+      inOpts = commands.shift().options;
     } else {
       inOpts = {};
     }
@@ -32,40 +59,30 @@ api.applyCommands = function(tokens, content, done) {
     } else {
       outOpts = {};
     }
-
-    dataset = MapShaper.importFileContent(content, 'layer1.json', inOpts);
+    dataset = MapShaper.importFileContent(content, null, inOpts);
   } catch(e) {
     return done(e);
   }
-  api.runCommands(commands, dataset, exportDataset);
 
-  function exportDataset(err, dataset) {
-    var output = null;
+  MapShaper.runParsedCommands(commands, dataset, function(err, dataset) {
+    var exports = null;
     if (!err) {
-      var exports = MapShaper.exportFileContent(dataset, outOpts),
-          outFmt = outOpts.format;
-      if (outFmt != 'geojson' && outFmt != 'topojson') {
-        err = new APIError("[applyCommands()] Expected JSON export; received: " + outFmt);
-      } else {
-        // return JSON dataset(s) as strings or objects (according to input format)
-        output = exports.map(function(obj) {
-          return utils.isString(content) ? obj.content : JSON.parse(obj.content);
-        });
-        if (output.length == 1) {
-          output = output[0];
-        }
+      try {
+        exports = MapShaper.exportFileContent(dataset, outOpts);
+      } catch(e) {
+        err = e;
       }
     }
-    done(err, output);
-  }
+    done(err, exports);
+  });
 };
 
 // Execute a sequence of commands
 // Signature: function(commands, [dataset,] done)
-// @commands either a string of commands or an array of parsed commands
-// @done Signature: function(<error>, <dataset>)
+// @commands Array of parsed commands
+// @done: function(<error>, <dataset>)
 //
-api.runCommands = function(commands) {
+MapShaper.runParsedCommands = function(commands) {
   var dataset = null,
       done, args;
 
@@ -80,12 +97,8 @@ api.runCommands = function(commands) {
     stop("[runCommands()] Missing a callback function");
   }
 
-  if (utils.isString(commands)) {
-    try {
-      commands = MapShaper.parseCommands(commands);
-    } catch(e) {
-      return done(e);
-    }
+  if (!utils.isArray(commands)) {
+    stop("[runCommands()] Expected an array of parsed commands");
   }
 
   // TODO: remove !dataset condition
@@ -163,7 +176,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 MapShaper.runAndRemoveInfoCommands = function(commands) {
   return Utils.filter(commands, function(cmd) {
     if (cmd.name == 'version') {
-      console.error(getVersion());
+      message(getVersion());
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'help') {

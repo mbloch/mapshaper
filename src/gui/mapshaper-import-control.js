@@ -43,36 +43,25 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
-        type = MapShaper.guessFileType(name),
-        reader;
-    if (type) {
-      reader = new FileReader();
-      reader.onload = function(e) {
-        inputFileContent(name, type, reader.result);
-      };
-      if (type == 'shp' || type == 'dbf') {
-        reader.readAsArrayBuffer(file);
-      } else {
-        reader.readAsText(file, 'UTF-8');
-      }
-    }
-  };
-
-  this.loadFile = function(path) {
-    var type = MapShaper.guessFileType(path);
-    if (type) {
-      Utils.loadBinaryData(path, function(buf) {
-        inputFileContent(path, type, buf);
-      });
+        fmt = MapShaper.guessInputFileFormat(name),
+        reader = new FileReader();
+    reader.onload = function(e) {
+      inputFileContent(name, reader.result);
+    };
+    if (MapShaper.isBinaryFile(name)) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.readAsText(file, 'UTF-8');
     }
   };
 
   // Index of imported objects, indexed by path base and then file type
   // e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
   var fileIndex = {}; //
-  function inputFileContent(path, type, content) {
+  function inputFileContent(path, content) {
     var fileInfo = utils.parseLocalPath(path),
         pathbase = fileInfo.pathbase,
+        ext = fileInfo.extension.toLowerCase(),
         fname = fileInfo.filename,
         index = fileIndex[pathbase],
         data;
@@ -80,13 +69,11 @@ function ImportControl(editor) {
     if (!index) {
       index = fileIndex[pathbase] = {};
     }
-    if (type in index) {
-      // TODO: improve; this can cause false conflicts,
-      // e.g. states.json and states.topojson
+    if (ext in index) {
       verbose("inputFileContent() File has already been imported; skipping:", fname);
       return;
     }
-    if (type == 'shp' || type == 'json') {
+    if (ext == 'shp' || /json$/.test(ext)) {
       var opts = {
         files: [fname],
         precision: precisionInput.value(),
@@ -98,7 +85,7 @@ function ImportControl(editor) {
       editor.addData(data, opts);
       T.stop("Done importing");
 
-    } else if (type == 'dbf') {
+    } else if (ext == 'dbf') {
       data = new ShapefileTable(content);
       // TODO: validate table (check that record count matches, etc)
       if ('shp' in index) {
@@ -111,13 +98,13 @@ function ImportControl(editor) {
 
     // associate previously imported Shapefile files with a .shp file
     // TODO: accept .prj files and other Shapefile files
-    if (type == 'shp') {
+    if (ext == 'shp') {
       if ('dbf' in index) {
         data.layers[0].data = index.dbf;
       }
     }
 
-    index[type] = data;
+    index[ext] = data;
   }
 }
 

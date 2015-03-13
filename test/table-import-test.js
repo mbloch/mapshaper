@@ -11,6 +11,18 @@ function fixPath(p) {
 }
 
 describe('mapshaper-table-import.js', function() {
+
+  // TODO: that that fields= also filters fields
+  describe('Importing dsv with -i command', function () {
+    it('-i field-types= works with :str type hint', function (done) {
+      var input = "fips\n00001";
+      api.applyCommands('-i field-types=fips:str', input, function(err, output) {
+        assert.equal(output, "fips\n00001");
+        done();
+      });
+    })
+  })
+
   describe('stringIsNumeric()', function () {
     it('identifies decimal numbers', function() {
       assert.ok(utils.stringIsNumeric('-43.2'))
@@ -111,32 +123,6 @@ describe('mapshaper-table-import.js', function() {
 
   })
 
-  describe('importJoinTable', function () {
-    it('import csv w/ typed key', function () {
-      var opts = {
-        keys: ['KEY1', 'FIPS:str'],
-        fields: null
-      }
-      var table = api.importJoinTable(fixPath("test_data/two_states.csv"), opts);
-      var records = table.getRecords(),
-          fields = table.getFields();
-      fields.sort();
-      assert.deepEqual(fields, ['FIPS', 'LAT', 'LONG', 'STATE', 'STATE_NAME'])
-      assert.deepEqual(records[0], {
-        STATE_NAME: 'Oregon',
-        FIPS: '41',
-        STATE: 'OR',
-        LAT: 43.94,
-        LONG: -120.55
-      })
-      // make sure FIPS is a string
-      // deepEqual() doesn't use strict equality
-      assert.ok(utils.isString(records[0].FIPS))
-      assert.ok(utils.isNumber(records[0].LAT))
-
-    })
-
-  })
 
   describe('adjustRecordTypes()', function () {
     it('convert numbers by default', function () {

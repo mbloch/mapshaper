@@ -21,7 +21,8 @@ describe('mapshaper-filter.js', function () {
     };
 
     it ('-filter remove-empty', function(done) {
-      api.applyCommands('-filter remove-empty', geojson, function(err, output) {
+      api.applyCommands('-filter remove-empty', geojson, function(err, json) {
+        var output = JSON.parse(json);
         assert.equal(output.features.length, 1);
         assert.deepEqual(output.features[0], geojson.features[0])
         done();
@@ -29,7 +30,8 @@ describe('mapshaper-filter.js', function () {
     })
 
     it ('-filter (combined options)', function(done) {
-      api.applyCommands('-filter remove-empty "name != \'a\'"', geojson, function(err, output) {
+      api.applyCommands('-filter remove-empty "name != \'a\'"', geojson, function(err, json) {
+        var output = JSON.parse(json);
         assert.deepEqual(output.features, []);
         done();
       });

@@ -27,23 +27,24 @@ MapShaper.importDbfTable = function(buf, opts) {
 };
 
 MapShaper.importDelimFile = function(path, opts) {
+  var data;
   cli.checkFileExists(path);
-  return MapShaper.importDelimTable(cli.readFile(path, 'utf-8'), opts);
+  try {
+    data = MapShaper.importDelimTable(cli.readFile(path, 'utf-8'), opts);
+  } catch(e) {
+    stop("Unable to import file:", path);
+  }
+  return data;
 };
 
 MapShaper.importDelimTable = function(str, opts) {
-  var delim, records;
-  try {
-    delim = MapShaper.guessDelimiter(str);
-    records = require("./lib/d3/d3-dsv.js").dsv(delim).parse(str);
-    if (records.length === 0) {
-      throw new Error();
-    }
-  } catch(e) {
-    stop("Unable to", (str ? "read" : "parse"), "file:", file);
+  var delim = MapShaper.guessDelimiter(str),
+      records = require("./lib/d3/d3-dsv.js").dsv(delim).parse(str);
+  if (records.length === 0) {
+    throw new Error();
   }
 
-  MapShaper.adjustRecordTypes(records, opts && opts.fields);
+  MapShaper.adjustRecordTypes(records, opts && opts.field_types);
   return {
     data: new DataTable(records),
     info: {
@@ -52,18 +53,20 @@ MapShaper.importDelimTable = function(str, opts) {
   };
 };
 
-// Accept a type hint from a header like "FIPS:string"
-// Return standard type name (number|string)
-//
-MapShaper.validateFieldType = function(str) {
-  var type = 'string'; // default type
-  if (str.toLowerCase()[0] == 'n') {
+// Accept a type hint from a header like "FIPS:str"
+// Return standard type name (number|string) or null if hint is not recognized
+MapShaper.validateFieldType = function(hint) {
+  var str = hint.toLowerCase(),
+      type = null;
+  if (str[0] == 'n') {
     type = 'number';
+  } else if (str[0] == 's') {
+    type = 'string';
   }
   return type;
 };
 
-MapShaper.removeTypeHints = function(arr, index) {
+MapShaper.removeTypeHints = function(arr) {
   return MapShaper.parseFieldHeaders(arr, {});
 };
 
@@ -78,7 +81,10 @@ MapShaper.parseFieldHeaders = function(fields, index) {
       parts = raw.split(':');
       name = parts[0];
       type = MapShaper.validateFieldType(parts[1]);
-    } else if (raw[0] === '+') {
+      if (!type) {
+        message("Invalid type hint (expected :str or :num) [" + raw + "]");
+      }
+    } else if (raw[0] === '+') { // d3-style type hint: unary plus
       name = raw.substr(1);
       type = 'number';
     } else {

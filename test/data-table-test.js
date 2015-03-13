@@ -91,17 +91,25 @@ describe('data-table.js', function () {
       })
     })
 
-    describe('#filterFields()', function () {
+    describe('#update()', function () {
       it('rename a field', function () {
         var table = new DataTable([{'foo': 'goat', 'bar': 22}, {'foo': 'cat', 'bar': 0}]);
-        table.filterFields({foo:'foo', bar:'baz'});
+        var updater = function(o) {
+          return {
+            foo: o.foo,
+            baz: o.bar
+          };
+        };
+        table.update(updater);
         var expected = [{'foo': 'goat', 'baz': 22}, {'foo': 'cat', 'baz': 0}];
         assert.deepEqual(table.getRecords(), expected);
       })
 
-      it('remove unmapped fields', function() {
+      it('remove a field', function() {
         var table = new DataTable([{'foo': 'goat', 'bar': 22}, {'foo': 'cat', 'bar': 0}]);
-        table.filterFields({bar:'bar'});
+        table.update(function(o) {
+          return {bar: o.bar};
+        });
         var expected = [{'bar': 22}, {'bar': 0}];
         assert.deepEqual(table.getRecords(), expected);
       })

@@ -98,7 +98,6 @@ describe('mapshaper-join.js', function () {
       assert.deepEqual(lyr.data.getRecords(),
           [{ key1: 'a', 'constructor': 'c', 'hasOwnProperty': 'd'}, { key1: 'b', 'constructor': null, 'hasOwnProperty': null }]);
     })
-
   })
 
   describe('importJoinTable()', function() {
@@ -127,6 +126,18 @@ describe('mapshaper-join.js', function () {
       assert.strictEqual(table.getRecords()[0].FIPS, '41')
       assert.strictEqual(table.getRecords()[0].LAT, '43.94')
     })
+
+    it('should accept type hints for csv table fields (2)', function() {
+      var opts = {
+        fields: ['LAT'],
+        keys: ['STFIPS', 'FIPS'],
+        field_types: ['LAT:str', 'FIPS:str']
+      };
+      var table = api.importJoinTable(fixPath("test_data/two_states.csv"), opts);
+      assert.strictEqual(table.getRecords()[0].FIPS, '41')
+      assert.strictEqual(table.getRecords()[0].LAT, '43.94')
+    })
+
 
   })
 

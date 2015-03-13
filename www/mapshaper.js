@@ -3972,54 +3972,37 @@ MapShaper.getCommonFileBase = function(names) {
 
 
 
-/*
-// file "formats" mapped to file "types" (types can be inferred from filename,
-// some formats require parsing to identify)
-{
-  shapefile: shp,
-  geojson: json,
-  topojson: json,
-  dbf: dbf,
-  dsv: txt
-}
-// TODO: Consider alternative to these "types": determine if file is binary
-//   or text from filename, identify binary formats from extension, identify text
-//   formats using regex on string.
-*/
+// Guess the type of a data file from file extension, or return null if not sure
+MapShaper.guessInputFileFormat = function(file) {
+  var types = {
+    shp: 'shapefile',
+    dbf: 'dbf',
+    geojson: 'geojson',
+    topojson: 'topojson',
+    csv: 'dsv',
+    tsv: 'dsv',
+    prj: 'prj'
+  };
+  var ext = utils.getFileExtension(file || '').toLowerCase();
+  return types[ext] || null;
+};
 
-// Guess the type of a data file from filename or a type name (e.g. 'json')
-// Defined types: shp, dbf, json, txt
-MapShaper.guessFileType = function(file) {
-  var rxp = /[a-z0-9]*$/i,
-      suff = rxp.exec(file)[0].toLowerCase(),
-      type;
-  if (file == '/dev/stdin' || /json$/.test(suff)) {
-    type = 'json';
-  } else if (suff == 'shp' || suff == 'dbf') {
-    type = suff;
-  } else {
-    type = 'txt'; // assume text file if none of above
-  }
-  return type;
+MapShaper.stringIsJsonObject = function(str) {
+  return /^\s*\{/.test(String(str));
 };
 
 // Infer output format by considering file name and (optional) input format
 MapShaper.inferOutputFormat = function(file, inputFormat) {
-  var type = MapShaper.guessFileType(file),
-      ext = utils.getFileExtension(file).toLowerCase(),
+  var ext = utils.getFileExtension(file).toLowerCase(),
       format = null;
-  if (type == 'shp') {
+  if (ext == 'shp') {
     format = 'shapefile';
-  } else if (type == 'dbf') {
+  } else if (ext == 'dbf') {
     format = 'dbf';
-  } else if (type == 'json') {
+  } else if (/json$/.test(ext)) {
     format = 'geojson';
-    if (ext == 'geojson') {
-      format = 'geojson';
-    } else if (ext == 'topojson' || inputFormat == 'topojson') {
+    if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
       format = 'topojson';
-    } else {
-      format = 'geojson';
     }
   } else if (/csv|tsv|txt$/.test(ext)) {
     format = 'dsv';
@@ -4034,9 +4017,10 @@ MapShaper.isSupportedOutputFormat = function(fmt) {
   return types.indexOf(fmt) > -1;
 };
 
-
-MapShaper.isBinaryFileType = function(type) {
-  return type == 'shp' || type == 'dbf';
+// TODO: improve
+MapShaper.isBinaryFile = function(path) {
+  var ext = utils.getFileExtension(path).toLowerCase();
+  return ext == 'shp' || ext == 'dbf';
 };
 
 // Detect extensions of some unsupported file types, for cmd line validation
@@ -9440,21 +9424,10 @@ var dataTableProto = {
     return records.length > 0 ? Object.keys(records[0]) : [];
   },
 
-  // TODO: a version of this for DBF so only specified fields are unpacked
-  //
-  filterFields: function(map) {
-    var records = this.getRecords(),
-        fields = Object.keys(map),
-        src;
-
+  update: function(f) {
+    var records = this.getRecords();
     for (var i=0, n=records.length; i<n; i++) {
-      src = records[i];
-      records[i] = Utils.reduce(fields, f, {});
-    }
-
-    function f(dest, name) {
-      dest[map[name]] = src[name];
-      return dest;
+      records[i] = f(records[i], i);
     }
   },
 
@@ -11451,60 +11424,80 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 
 
 // Parse content of an input file and return a dataset
-// @content: ArrayBuffer or String
-// @name: path or filename
+// @content: Buffer, ArrayBuffer, String or Object
+// @filename: path or filename (optional)
 //
-MapShaper.importFileContent = function(content, name, opts) {
-  var fileType = MapShaper.guessFileType(name),
-      dataset, lyr, fileFmt;
-  opts = opts || {};
+MapShaper.importFileContent = function(content, filename, opts) {
+  var fileFmt, dataset, lyr;
   T.start();
-  if (fileType == 'shp') {
-    dataset = MapShaper.importShp(content, opts);
-    fileFmt = 'shapefile';
-  } else if (fileType == 'json') {
-    var jsonObj = utils.isString(content) ? JSON.parse(content) : content;
-    if (jsonObj.type == 'Topology') {
-      dataset = MapShaper.importTopoJSON(jsonObj, opts);
-      fileFmt = 'topojson';
-    } else if ('type' in jsonObj) {
-      dataset = MapShaper.importGeoJSON(jsonObj, opts);
-      fileFmt = 'geojson';
+  opts = opts || {};
+
+  // Identify file format
+  fileFmt = opts.format || null;
+  if (!fileFmt && filename) {
+    fileFmt = MapShaper.guessInputFileFormat(filename);
+  }
+  if (!fileFmt && utils.isString(content)) {
+    if (MapShaper.stringIsJsonObject(content)) {
+      content = JSON.parse(content);
     } else {
-      stop("Unrecognized JSON format");
+      // Assuming strings that aren't JSON objects are delimited text
+      fileFmt = 'dsv';
     }
-  } else if (fileType == 'txt') {
-    // Assuming text files are in delimited format
+  }
+  if (!fileFmt && utils.isObject(content)) {
+    // Assuming json content... but what kind?
+    if (content.type == 'Topology') {
+      fileFmt = 'topojson';
+    } else if (content.type) {
+      fileFmt = 'geojson';
+    }
+  }
+
+  // Input content to a dataset
+  if (fileFmt == 'shapefile') {
+    dataset = MapShaper.importShp(content, opts);
+  } else if (fileFmt == 'topojson') {
+    dataset = MapShaper.importTopoJSON(content, opts);
+  } else if (fileFmt == 'geojson') {
+    dataset = MapShaper.importGeoJSON(content, opts);
+  } else if (fileFmt == 'dsv') {
     lyr = MapShaper.importDelimTable(content, opts);
-    fileFmt = 'dsv';
     dataset = {
       layers: [{data: lyr.data}],
       info: {input_delimiter: lyr.info.delimiter} // kludge
     };
-
-  } else if (fileType == 'dbf') {
+  } else if (fileFmt == 'dbf') {
     lyr = MapShaper.importDbfTable(content, opts);
-    fileFmt = 'dbf';
     dataset = {
       layers: [{data: lyr.data}],
       info: {}
     };
+  } else if (fileFmt) {
+    stop("Unsupported file format:", fileFmt);
   } else {
-    stop("Unsupported file type:", fileType);
+    stop("Unable to determine format of input file" + (filename ? " [" + filename + "]" : ""));
   }
   T.stop("Import " + fileFmt);
 
-  if ((fileFmt == 'shapefile' || fileFmt == 'geojson') && !opts.no_topology) {
+  // Convert to topological format, if needed
+  if (fileFmt != 'topojson' && !opts.no_topology) {
     T.start();
     api.buildTopology(dataset);
     T.stop("Process topology");
   }
 
+  // Use file basename for layer name, except TopoJSON, which uses object names
   if (fileFmt != 'topojson') {
-    MapShaper.setLayerName(dataset.layers[0], MapShaper.filenameToLayerName(name));
+    MapShaper.setLayerName(dataset.layers[0], MapShaper.filenameToLayerName(filename || ''));
+  }
+
+  // Add info on input filename and format to the dataset -- useful when exporting
+  //   if format or name has not been specified
+  if (filename) {
+    dataset.info.input_files = [filename];
   }
   dataset.info.input_format = fileFmt;
-  dataset.info.input_files = [name];
   return dataset;
 };
 
@@ -11582,36 +11575,25 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
-        type = MapShaper.guessFileType(name),
-        reader;
-    if (type) {
-      reader = new FileReader();
-      reader.onload = function(e) {
-        inputFileContent(name, type, reader.result);
-      };
-      if (type == 'shp' || type == 'dbf') {
-        reader.readAsArrayBuffer(file);
-      } else {
-        reader.readAsText(file, 'UTF-8');
-      }
-    }
-  };
-
-  this.loadFile = function(path) {
-    var type = MapShaper.guessFileType(path);
-    if (type) {
-      Utils.loadBinaryData(path, function(buf) {
-        inputFileContent(path, type, buf);
-      });
+        fmt = MapShaper.guessInputFileFormat(name),
+        reader = new FileReader();
+    reader.onload = function(e) {
+      inputFileContent(name, reader.result);
+    };
+    if (MapShaper.isBinaryFile(name)) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.readAsText(file, 'UTF-8');
     }
   };
 
   // Index of imported objects, indexed by path base and then file type
   // e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
   var fileIndex = {}; //
-  function inputFileContent(path, type, content) {
+  function inputFileContent(path, content) {
     var fileInfo = utils.parseLocalPath(path),
         pathbase = fileInfo.pathbase,
+        ext = fileInfo.extension.toLowerCase(),
         fname = fileInfo.filename,
         index = fileIndex[pathbase],
         data;
@@ -11619,13 +11601,11 @@ function ImportControl(editor) {
     if (!index) {
       index = fileIndex[pathbase] = {};
     }
-    if (type in index) {
-      // TODO: improve; this can cause false conflicts,
-      // e.g. states.json and states.topojson
+    if (ext in index) {
       verbose("inputFileContent() File has already been imported; skipping:", fname);
       return;
     }
-    if (type == 'shp' || type == 'json') {
+    if (ext == 'shp' || /json$/.test(ext)) {
       var opts = {
         files: [fname],
         precision: precisionInput.value(),
@@ -11637,7 +11617,7 @@ function ImportControl(editor) {
       editor.addData(data, opts);
       T.stop("Done importing");
 
-    } else if (type == 'dbf') {
+    } else if (ext == 'dbf') {
       data = new ShapefileTable(content);
       // TODO: validate table (check that record count matches, etc)
       if ('shp' in index) {
@@ -11650,13 +11630,13 @@ function ImportControl(editor) {
 
     // associate previously imported Shapefile files with a .shp file
     // TODO: accept .prj files and other Shapefile files
-    if (type == 'shp') {
+    if (ext == 'shp') {
       if ('dbf' in index) {
         data.layers[0].data = index.dbf;
       }
     }
 
-    index[type] = data;
+    index[ext] = data;
   }
 }
 

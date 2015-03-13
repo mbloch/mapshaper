@@ -212,7 +212,6 @@ api.importFiles = function(opts) {
   return dataset;
 };
 
-
 MapShaper.printLayerNames = function(layers) {
   var max = 10;
   message("Available layers:");

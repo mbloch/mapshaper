@@ -4,11 +4,11 @@ mapshaper-table-import
 */
 
 api.importFile = function(path, opts) {
+  var content, dataset;
   cli.checkFileExists(path);
   opts = opts || {};
-  var fileType = MapShaper.guessFileType(path),
-      content = cli.readFile(path, MapShaper.isBinaryFileType(fileType) ? null : 'utf-8'),
-      dataset = MapShaper.importFileContent(content, path, opts);
+  content = cli.readFile(path, MapShaper.isBinaryFile(path) ? null : 'utf-8');
+  dataset = MapShaper.importFileContent(content, path, opts);
   if (dataset.info.input_format == 'shapefile') {
     dataset.layers[0].data = MapShaper.importShapefileDataTable(path, opts);
   }

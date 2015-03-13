@@ -57,11 +57,96 @@ describe('stdin/stdout tests', function() {
 
 })
 
+
+
 describe('mapshaper-commands.js', function () {
 
   var states_shp = fixPath("test_data/two_states.shp"),
       counties_shp = fixPath("test_data/six_counties.shp"),
       states_csv = fixPath("test_data/states.csv");
+
+  describe('processFileContent()', function () {
+    it('imports & exports csv file', function (done) {
+      var input = "id,name\n0,foo";
+      api.internal.processFileContent("-i", input, function(err, data) {
+        assert.deepEqual(data, [{
+          content: input,
+          filename: 'layer1.csv'
+        }]);
+        done();
+      })
+    })
+
+    it('imports & exports tsv file', function (done) {
+      var input = "id\tname\n0\tfoo";
+      api.internal.processFileContent("-i", input, function(err, data) {
+        assert.deepEqual(data, [{
+          content: input,
+          filename: 'layer1.tsv'
+        }]);
+        done();
+      })
+    })
+
+    it('converts csv to tsv', function (done) {
+      var input = "id,name\n0,foo";
+      api.internal.processFileContent("-o format=tsv", input, function(err, data) {
+        assert.deepEqual(data, [{
+          content: "id\tname\n0\tfoo",
+          filename: 'layer1.tsv'
+        }]);
+        done();
+      })
+    })
+
+    it('converts geojson to tsv', function (done) {
+      var input = {
+        type: "FeatureCollection",
+        features: [{
+          type: "Point",
+          geometry: null,
+          properties: {
+            id: 0,
+            name: 'foo'
+          }
+        }]
+      };
+      api.internal.processFileContent("-o format=tsv", input, function(err, data) {
+        assert.deepEqual(data, [{
+          content: "id\tname\n0\tfoo",
+          filename: 'layer1.tsv'
+        }]);
+        done();
+      })
+    })
+
+    it('converts csv to geojson points', function(done) {
+      var input = "lat,lng,name\n40.724,-73.925,New York City";
+      var target = {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          properties: {
+            lat: 40.724,
+            lng: -73.925,
+            name: "New York City"
+          },
+          geometry: {
+            type: "Point",
+            coordinates: [-73.925, 40.724]
+          }
+        }]
+      };
+      api.internal.processFileContent("-points x=lng y=lat -o format=geojson", input, function(err, data) {
+        var output = JSON.parse(data[0].content);
+        assert.deepEqual(output, target);
+        // TODO: figure out naming
+        // assert.equal(data[0].filename, 'layer1.json');
+        done();
+      })
+    })
+
+  })
 
   describe('applyCommands()', function () {
     it('import GeoJSON points as string', function (done) {
@@ -76,7 +161,7 @@ describe('mapshaper-commands.js', function () {
       var json = fs.readFileSync(fixPath('test_data/three_points.geojson'), 'utf8');
       json = JSON.parse(json);
       api.applyCommands('', json, function(err, output) {
-        assert.deepEqual(output, json);
+        assert.deepEqual(JSON.parse(output), json);
         done();
       });
     })
@@ -103,7 +188,7 @@ describe('mapshaper-commands.js', function () {
         }
       };
       api.applyCommands('-o format=topojson precision=1', geojson, function(err, output) {
-        assert.deepEqual(output, topojson);
+        assert.deepEqual(JSON.parse(output), topojson);
         done();
       });
     })
@@ -124,7 +209,7 @@ describe('mapshaper-commands.js', function () {
         }]
       };
       api.applyCommands('-i precision=1', geojson, function(err, output) {
-        assert.deepEqual(output, target);
+        assert.deepEqual(JSON.parse(output), target);
         done();
       });
     })
@@ -139,6 +224,13 @@ describe('mapshaper-commands.js', function () {
   })
 
   describe('runCommands()', function() {
+
+    it('No error: -v command', function(done) {
+      mapshaper.runCommands("-v", function(err) {
+        assert(!err);
+        done();
+      });
+    });
 
     it('Error: no dataset, no -i command', function(done) {
       mapshaper.runCommands("-info", function(err) {
@@ -180,46 +272,6 @@ describe('mapshaper-commands.js', function () {
         done();
       });
     });
-
-    it('Callback receives initial dataset', function(done) {
-      var dataset = {
-        layers: [{
-          geometry_type: "point",
-          shapes: [[[0, 0]], [[1, 1]]]
-        }]
-      }
-      mapshaper.runCommands("-info", dataset, function(err, data) {
-        assert.equal(dataset, data);
-        done();
-      });
-    })
-
-    it('Callback receives initial dataset, null command', function(done) {
-      var dataset = {
-        layers: [{
-          geometry_type: "point",
-          shapes: [[[0, 0]], [[1, 1]]]
-        }]
-      }
-      mapshaper.runCommands("", dataset, function(err, data) {
-        assert.equal(dataset, data);
-        done();
-      });
-    })
-
-    it('Initial dataset is replaced by imported dataset', function(done) {
-      var dataset = {
-        layers: [{
-          geometry_type: "point",
-          shapes: [[[0, 0]], [[1, 1]]]
-        }]
-      }
-      mapshaper.runCommands("-i " + states_shp, dataset, function(err, data) {
-        assert.notEqual(data, dataset);
-        assert.equal(data.layers[0].name, 'two_states');
-        done();
-      });
-    })
 
   });
 

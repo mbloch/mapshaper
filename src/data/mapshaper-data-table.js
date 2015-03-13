@@ -78,21 +78,10 @@ var dataTableProto = {
     return records.length > 0 ? Object.keys(records[0]) : [];
   },
 
-  // TODO: a version of this for DBF so only specified fields are unpacked
-  //
-  filterFields: function(map) {
-    var records = this.getRecords(),
-        fields = Object.keys(map),
-        src;
-
+  update: function(f) {
+    var records = this.getRecords();
     for (var i=0, n=records.length; i<n; i++) {
-      src = records[i];
-      records[i] = Utils.reduce(fields, f, {});
-    }
-
-    function f(dest, name) {
-      dest[map[name]] = src[name];
-      return dest;
+      records[i] = f(records[i], i);
     }
   },
 

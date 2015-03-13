@@ -94,8 +94,8 @@ MapShaper.getOptionParser = function() {
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
     })
-    .option("fields", {
-      describe: "comma-sep. list of data fields to import",
+    .option("field-types", {
+      describe: "Type hints for csv files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
     });
 
@@ -220,11 +220,15 @@ MapShaper.getOptionParser = function() {
       describe: "file containing data records"
     })
     .option("keys", {
-      describe: "target,source keys, e.g. keys=FIPS,CNTYFIPS:str",
+      describe: "target,source keys, e.g. keys=FIPS,CNTYFIPS",
       type: "comma-sep"
     })
     .option("fields", {
-      describe: "fields to join, e.g. fields=FIPS:str,POP (default is all)",
+      describe: "fields to join, e.g. fields=FIPS,POP (default is all)",
+      type: "comma-sep"
+    })
+    .option("field-types", {
+      describe: "Type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
     })
     .option("where", {
