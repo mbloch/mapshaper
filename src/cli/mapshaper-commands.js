@@ -2,7 +2,6 @@
 
 // Parse command line args into commands and run them
 // @argv Array of command line tokens or single string of commands
-api.runShellArgs = // deprecated name
 api.runCommands = function(argv, done) {
   var commands;
   try {

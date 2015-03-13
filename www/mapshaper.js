@@ -4017,7 +4017,7 @@ MapShaper.isSupportedOutputFormat = function(fmt) {
   return types.indexOf(fmt) > -1;
 };
 
-// TODO: improve
+// Assumes file at @path is one of Mapshaper's supported file types
 MapShaper.isBinaryFile = function(path) {
   var ext = utils.getFileExtension(path).toLowerCase();
   return ext == 'shp' || ext == 'dbf';

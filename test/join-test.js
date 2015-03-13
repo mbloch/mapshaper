@@ -23,7 +23,6 @@ describe('mapshaper-join.js', function () {
         assert.deepEqual(data.layers[0].data.getRecords(), target);
         done();
       })
-
     })
   })
 

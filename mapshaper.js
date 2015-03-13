@@ -2120,7 +2120,7 @@ MapShaper.isSupportedOutputFormat = function(fmt) {
   return types.indexOf(fmt) > -1;
 };
 
-// TODO: improve
+// Assumes file at @path is one of Mapshaper's supported file types
 MapShaper.isBinaryFile = function(path) {
   var ext = utils.getFileExtension(path).toLowerCase();
   return ext == 'shp' || ext == 'dbf';
@@ -13917,7 +13917,7 @@ MapShaper.getOptionParser = function() {
     .describe("join a dbf or delimited text file to the input features")
     .example("Join a csv table to a Shapefile\n" +
       "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
-      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS:str -o joined.shp")
+      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
     .validate(validateJoinOpts)
     .option("source", {
       label: "<file>",
@@ -14248,7 +14248,6 @@ MapShaper.getOptionParser = function() {
 
 // Parse command line args into commands and run them
 // @argv Array of command line tokens or single string of commands
-api.runShellArgs = // deprecated name
 api.runCommands = function(argv, done) {
   var commands;
   try {

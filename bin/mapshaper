@@ -2,7 +2,7 @@
 
 var mapshaper = require("../");
 mapshaper.enableLogging();
-mapshaper.runShellArgs(process.argv.slice(2), done);
+mapshaper.runCommands(process.argv.slice(2), done);
 
 function done(err) {
   if (err) {
