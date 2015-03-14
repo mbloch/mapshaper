@@ -12,6 +12,8 @@ See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for documentati
 
 To suggest improvements, add an [issue](https://github.com/mbloch/mapshaper/issues).
 
+To catch up on the latest changes, read the [changelog](https://github.com/mbloch/mapshaper/releases).
+
 ### Command line tool
 
 The `mapshaper` command line program has been used successfully under Mac OS X, Linux and Windows.
