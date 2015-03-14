@@ -225,6 +225,14 @@ describe('mapshaper-commands.js', function () {
 
   describe('runCommands()', function() {
 
+    it('Error: empty command string', function(done) {
+      mapshaper.runCommands("", function(err) {
+        assert(!!err);
+        assert.equal(err.name, 'APIError')
+        done();
+      });
+    })
+
     it('No error: -v command', function(done) {
       mapshaper.runCommands("-v", function(err) {
         assert(!err);

@@ -14255,6 +14255,11 @@ api.runCommands = function(argv, done) {
   } catch(e) {
     return done(e);
   }
+
+  if (commands.length === 0) {
+    return done(new APIError("No commands to run"));
+  }
+
   T.start("Start timing");
   MapShaper.runParsedCommands(commands, function(err, output) {
     T.stop("Total time");
@@ -14329,7 +14334,7 @@ MapShaper.processFileContent = function(tokens, content, done) {
 //
 MapShaper.runParsedCommands = function(commands) {
   var dataset = null,
-      done, args;
+      done;
 
   if (arguments.length == 2) {
     done = arguments[1];
@@ -14339,16 +14344,11 @@ MapShaper.runParsedCommands = function(commands) {
   }
 
   if (!utils.isFunction(done)) {
-    stop("[runCommands()] Missing a callback function");
+    error("[runParsedCommands()] Missing a callback function");
   }
 
   if (!utils.isArray(commands)) {
-    stop("[runCommands()] Expected an array of parsed commands");
-  }
-
-  // TODO: remove !dataset condition
-  if (commands.length === 0 && !dataset) {
-    return done(new APIError("No commands to run"));
+    error("[runParsedCommands()] Expected an array of parsed commands");
   }
 
   commands = MapShaper.runAndRemoveInfoCommands(commands);
