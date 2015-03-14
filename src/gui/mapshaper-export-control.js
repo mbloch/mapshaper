@@ -40,16 +40,16 @@ var ExportControl = function(dataset, options) {
   }
 
   function exportAs(format, done) {
-    var opts = Utils.defaults({format: format}, options),
+    var opts = utils.defaults({format: format}, options),
         files = MapShaper.exportFileContent(dataset, opts);
 
-    if (!Utils.isArray(files) || files.length === 0) {
+    if (!utils.isArray(files) || files.length === 0) {
       error("[exportAs()] Nothing to export");
     } else if (files.length == 1) {
       saveBlob(files[0].filename, new Blob([files[0].content]));
       done();
     } else {
-      name = MapShaper.getCommonFileBase(Utils.pluck(files, 'filename')) || "out";
+      name = MapShaper.getCommonFileBase(utils.pluck(files, 'filename')) || "out";
       saveZipFile(name + ".zip", files, done);
     }
   }
@@ -82,7 +82,7 @@ var ExportControl = function(dataset, options) {
     try {
       zip.createWriter(new zip.BlobWriter("application/zip"), addFile, zipError);
     } catch(e) {
-      if (Utils.parseUrl(Browser.getPageUrl()).protocol == 'file') {
+      if (utils.parseUrl(Browser.getPageUrl()).protocol == 'file') {
         alert("This browser doesn't support offline .zip file creation.");
       } else {
         alert("This browser doesn't support .zip file creation.");

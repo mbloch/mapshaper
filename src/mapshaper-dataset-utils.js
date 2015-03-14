@@ -4,7 +4,7 @@
 
 // make a modified copy of a layer
 MapShaper.updateLayer = function(lyr, update, opts) {
-  // var newLyr = Utils.defaults(obj, lyr);
+  // var newLyr = utils.defaults(obj, lyr);
 };
 
 MapShaper.getDatasetBounds = function(data) {
@@ -53,7 +53,7 @@ MapShaper.getPathBounds = function(shapes, arcs) {
 MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
   // modify a copy in case cutLayers == dataset.layers
   var currLayers = dataset.layers.concat();
-  Utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
+  utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
     var cutLyr = cutLayers[i],
         newLyr = newLayers[i],
         idx = cutLyr ? currLayers.indexOf(cutLyr) : currLayers.length;
@@ -76,7 +76,7 @@ MapShaper.findMatchingLayers = function(layers, target) {
   target.split(',').forEach(function(id) {
     var i = Number(id),
         rxp = utils.wildcardToRegExp(id);
-    if (Utils.isInteger(i)) {
+    if (utils.isInteger(i)) {
       ii.push(i); // TODO: handle out-of-range index
     } else {
       layers.forEach(function(lyr, i) {
@@ -85,8 +85,8 @@ MapShaper.findMatchingLayers = function(layers, target) {
     }
   });
 
-  ii = Utils.uniq(ii); // remove dupes
-  return Utils.map(ii, function(i) {
+  ii = utils.uniq(ii); // remove dupes
+  return utils.map(ii, function(i) {
     return layers[i];
   });
 };
@@ -94,7 +94,7 @@ MapShaper.findMatchingLayers = function(layers, target) {
 /*
 MapShaper.validateLayer = function(lyr, arcs) {
   var type = lyr.geometry_type;
-  if (!Utils.isArray(lyr.shapes)) {
+  if (!utils.isArray(lyr.shapes)) {
     error("Layer is missing shapes property");
   }
   if (lyr.data && lyr.data.size() != lyr.shapes.length) {
@@ -116,7 +116,7 @@ MapShaper.validateLayer = function(lyr, arcs) {
 // Simple integrity checks
 MapShaper.validateDataset = function(data) {
   if (!data) invalid("Missing dataset object");
-  if (!Utils.isArray(data.layers) || data.layers.length > 0 === false)
+  if (!utils.isArray(data.layers) || data.layers.length > 0 === false)
     invalid("Missing layers");
   data.layers.forEach(function(lyr) {
     try {

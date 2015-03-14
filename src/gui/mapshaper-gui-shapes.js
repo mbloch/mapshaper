@@ -20,7 +20,7 @@ function FilteredArcCollection(unfilteredArcs) {
       var size = unfilteredArcs.getPointCount(),
           nth = Math.ceil(size / 5e5);
       _sortedThresholds = unfilteredArcs.getRemovableThresholds(nth);
-      Utils.quicksort(_sortedThresholds, false);
+      utils.quicksort(_sortedThresholds, false);
 
       // For large datasets, create a filtered copy of the data for faster rendering
       if (size > 5e5) {

@@ -79,7 +79,7 @@ MapShaper.getOutputFormat = function(dataset, opts) {
 // TODO: consider making this a command, or at least make format settable
 //
 MapShaper.createIndexFile = function(dataset) {
-  var index = Utils.map(dataset.layers, function(lyr) {
+  var index = utils.map(dataset.layers, function(lyr) {
     var bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
     return {
       bbox: bounds.toArray(),
@@ -94,16 +94,16 @@ MapShaper.createIndexFile = function(dataset) {
 };
 
 MapShaper.validateLayerData = function(layers) {
-  Utils.forEach(layers, function(lyr) {
+  utils.forEach(layers, function(lyr) {
     if (!lyr.geometry_type) {
       // allowing data-only layers
-      if (Utils.some(lyr.shapes, function(o) {
+      if (utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
         error("[export] A layer contains shape records and a null geometry type");
       }
     } else {
-      if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
+      if (!utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
         error ("[export] A layer has an invalid geometry type:", lyr.geometry_type);
       }
       if (!lyr.shapes) {
@@ -160,7 +160,7 @@ MapShaper.exportDataTables = function(layers, opts) {
 
 MapShaper.uniqifyNames = function(names) {
 
-  var counts = Utils.getValueCounts(names),
+  var counts = utils.getValueCounts(names),
       index = {},
       suffix;
   return names.map(function(name) {

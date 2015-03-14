@@ -27,7 +27,7 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
 }
 
 function getRoundingFunction(inc) {
-  if (!Utils.isNumber(inc) || inc === 0) {
+  if (!utils.isNumber(inc) || inc === 0) {
     error("Rounding increment must be a non-zero number.");
   }
   var inv = 1 / inc;
@@ -310,7 +310,7 @@ function boundsArea(b) {
 }
 
 // export functions so they can be tested
-Utils.extend(geom, {
+utils.extend(geom, {
   getRoundingFunction: getRoundingFunction,
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,

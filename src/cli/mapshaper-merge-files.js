@@ -3,7 +3,7 @@
 api.mergeFiles = function(files, opts) {
   var datasets = files.map(function(fname) {
     // import without topology or snapping
-    var importOpts = Utils.defaults({no_topology: true, auto_snap: false, snap_interval: null, files: [fname]}, opts);
+    var importOpts = utils.defaults({no_topology: true, auto_snap: false, snap_interval: null, files: [fname]}, opts);
     return api.importFile(fname, importOpts);
   });
 
@@ -11,7 +11,7 @@ api.mergeFiles = function(files, opts) {
   var formats = datasets.map(function(d) {
     return d.info.input_format;
   });
-  if (Utils.uniq(formats).length != 1) {
+  if (utils.uniq(formats).length != 1) {
     stop("[mergeFiles()] Importing files with different formats is not supported");
   }
 

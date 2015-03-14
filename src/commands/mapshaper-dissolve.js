@@ -19,7 +19,7 @@ api.dissolvePolygons = function(lyr, arcs, opts) {
       }
     }
   }
-  return Utils.defaults({
+  return utils.defaults({
       shapes: dissolveShapes,
       data: dissolveData ? new DataTable(dissolveData) : null
     }, lyr);
@@ -59,7 +59,7 @@ function dissolveFirstPass(shapes, getGroupId) {
       });
 
   MapShaper.traverseShapes(shapes, procArc);
-  Utils.forEach(largeGroups, splitGroup);
+  utils.forEach(largeGroups, splitGroup);
   return segments;
 
   function procArc(obj) {
@@ -126,7 +126,7 @@ function dissolveFirstPass(shapes, getGroupId) {
   }
 
   function updateGroupIds(ids) {
-    Utils.forEach(ids, function(id) {
+    utils.forEach(ids, function(id) {
       segments[id].group = ids;
     });
   }
@@ -140,8 +140,8 @@ function dissolveFirstPass(shapes, getGroupId) {
         findMatchingPair(group, checkSingleExtension) ||
         findMatchingPair(group, checkPairwiseMatch);
     if (group2) {
-      group = Utils.filter(group, function(i) {
-        return !Utils.contains(group2, i);
+      group = utils.filter(group, function(i) {
+        return !utils.contains(group2, i);
       });
       updateGroupIds(group);
       updateGroupIds(group2);
@@ -225,7 +225,7 @@ function dissolveSecondPass(segments, shapes, getGroupId) {
   function findDissolveArc(obj) {
     var dissolveId = getGroupId(obj.shapeId), // obj.shape.dissolveKey,
         match, matchId;
-    matchId = Utils.find(obj.group, function(i) {
+    matchId = utils.find(obj.group, function(i) {
       var a = obj,
           b = segments[i];
       if (a == b ||

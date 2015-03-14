@@ -27,7 +27,7 @@ api.printError = function(err) {
 
 // Handle an error caused by invalid input or misuse of API
 function stop() {
-  var message = Utils.toArray(arguments).join(' ');
+  var message = utils.toArray(arguments).join(' ');
   var err = new APIError(message);
   throw err;
 }
@@ -57,8 +57,8 @@ var trace = function() {
 };
 
 function logArgs(args) {
-  if (Utils.isArrayLike(args)) {
-    var arr = Utils.toArray(args);
+  if (utils.isArrayLike(args)) {
+    var arr = utils.toArray(args);
     (console.error || console.log).apply(console, arr);
   }
 }

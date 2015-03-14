@@ -39,7 +39,7 @@ TopoJSON.forEachArc = function forEachArc(obj, cb) {
     var retn;
     for (var i=0; i<ids.length; i++) {
       retn = cb(ids[i]);
-      if (Utils.isInteger(retn)) {
+      if (utils.isInteger(retn)) {
         ids[i] = retn;
       }
     }

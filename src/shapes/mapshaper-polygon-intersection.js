@@ -261,7 +261,7 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
 };
 
 MapShaper.debugFlags = function(flags) {
-  var arr = Utils.map(flags, function(flag) {
+  var arr = utils.map(flags, function(flag) {
     return bitsToString(flag);
   });
   message(arr);

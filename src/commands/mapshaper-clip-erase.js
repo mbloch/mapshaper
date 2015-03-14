@@ -33,7 +33,7 @@ MapShaper.clipLayers = function(targetLayers, src, dataset, type, opts) {
   // dataset
   // (assuming that clipLyr arcs have been merged with dataset.arcs)
   //
-  if (Utils.contains(dataset.layers, clipLyr) === false) {
+  if (utils.contains(dataset.layers, clipLyr) === false) {
     dataset = {
       layers: [clipLyr].concat(dataset.layers),
       arcs: dataset.arcs
@@ -57,7 +57,7 @@ MapShaper.clipLayers = function(targetLayers, src, dataset, type, opts) {
       stop('[' + type + '] Invalid target layer:', targetLyr.name);
     }
 
-    clippedLyr = Utils.defaults({shapes: clippedShapes, data: null}, targetLyr);
+    clippedLyr = utils.defaults({shapes: clippedShapes, data: null}, targetLyr);
     if (targetLyr.data) {
       clippedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
     }

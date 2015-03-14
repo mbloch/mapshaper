@@ -62,7 +62,7 @@ function RepairControl(map, arcData) {
         })
         .refresh();
     }
-    var msg = Utils.format("%s line intersection%s", n, n != 1 ? 's' : '');
+    var msg = utils.format("%s line intersection%s", n, n != 1 ? 's' : '');
     readout.text(msg);
     _currXX = XX;
   }

@@ -29,7 +29,7 @@ MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   if (lyr.data) {
     lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts));
   }
-  return Utils.defaults(lyr2, lyr);
+  return utils.defaults(lyr2, lyr);
 };
 
 MapShaper.concatShapes = function(shapes) {

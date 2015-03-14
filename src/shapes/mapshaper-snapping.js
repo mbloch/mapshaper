@@ -19,12 +19,12 @@ MapShaper.snapCoords = function(arcs, threshold) {
 
   if (threshold > 0) {
     snapDist = threshold;
-    message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
+    message(utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
   }
 
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
   if (snapCount > 0) arcs.dedupCoords();
-  message(Utils.format("Snapped %s point%s", snapCount, "s?"));
+  message(utils.format("Snapped %s point%s", snapCount, "s?"));
 };
 
 // Snap together points within a small threshold
@@ -87,7 +87,7 @@ utils.sortCoordinateIds = function(a) {
 utils.bucketSortIds = function(a, n) {
   var len = a.length,
       ids = new Uint32Array(len),
-      bounds = Utils.getArrayBounds(a),
+      bounds = utils.getArrayBounds(a),
       buckets = Math.ceil(n > 0 ? n : len / 10),
       counts = new Uint32Array(buckets),
       offsets = new Uint32Array(buckets),

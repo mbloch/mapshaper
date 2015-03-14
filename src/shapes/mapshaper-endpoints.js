@@ -6,7 +6,7 @@ MapShaper.NodeCollection = NodeCollection;
 // @filter Optional filter function, arcIds that return false are excluded
 //
 function NodeCollection(arcs, filter) {
-  if (Utils.isArray(arcs)) {
+  if (utils.isArray(arcs)) {
     arcs = new ArcCollection(arcs);
   }
   var arcData = arcs.getVertexData(),
@@ -25,7 +25,7 @@ function NodeCollection(arcs, filter) {
     var flags = new Uint8Array(nodeData.xx.length),
         nodes = [];
 
-    Utils.forEach(nodeData.chains, function(next, i) {
+    utils.forEach(nodeData.chains, function(next, i) {
       if (flags[i] == 1) return;
       nodes.push([nodeData.xx[i], nodeData.yy[i]]);
       while (flags[next] != 1) {
@@ -51,13 +51,13 @@ function NodeCollection(arcs, filter) {
       var len = arcs.getArcLength(id);
       if (len > 0) {
         var p1 = arcs.getVertex(id, -1);
-        str += Utils.format("[%f, %f]", p1.x, p1.y);
+        str += utils.format("[%f, %f]", p1.x, p1.y);
         if (len > 1) {
           var p2 = arcs.getVertex(id, -2);
-          str += Utils.format(", [%f, %f]", p2.x, p2.y);
+          str += utils.format(", [%f, %f]", p2.x, p2.y);
           if (len > 2) {
             var p3 = arcs.getVertex(id, 0);
-            str += Utils.format(", [%f, %f]", p3.x, p3.y);
+            str += utils.format(", [%f, %f]", p3.x, p3.y);
           }
           str += " len: " + distance2D(p1.x, p1.y, p2.x, p2.y);
         }

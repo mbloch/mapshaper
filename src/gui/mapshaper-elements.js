@@ -91,7 +91,7 @@ function Slider(ref, opts) {
   };
 
   function setHandlePos(x, fire) {
-    x = Utils.clamp(x, 0, size());
+    x = utils.clamp(x, 0, size());
     var pct = x / size();
     if (pct != _pct) {
       _pct = pct;
@@ -174,7 +174,7 @@ function ClickText(ref) {
       // return _parser ? _parser(valStr) : parseFloat(valStr);
       return _value;
     }
-    var val = Utils.clamp(arg, _min, _max);
+    var val = utils.clamp(arg, _min, _max);
     if (!_validator(val)) {
       error("ClickText#value() invalid value:", arg);
     } else {

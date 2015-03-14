@@ -79,7 +79,7 @@ function hideGlobals(obj) {
 }
 
 function addGetters(obj, getters) {
-  Utils.forEach(getters, function(f, name) {
+  utils.forEach(getters, function(f, name) {
     Object.defineProperty(obj, name, {get: f});
   });
 }
@@ -99,7 +99,7 @@ function FeatureExpressionContext(lyr, arcs) {
     _records = lyr.data.getRecords();
     Object.defineProperty(this, 'properties',
       {set: function(obj) {
-        if (Utils.isObject(obj)) {
+        if (utils.isObject(obj)) {
           _records[_id] = obj;
         } else {
           stop("Can't assign non-object to $.properties");
@@ -171,7 +171,7 @@ function FeatureExpressionContext(lyr, arcs) {
     // TODO: add functions like bounds, isNull, pointCount
     Object.defineProperty(this, 'coordinates',
       {set: function(obj) {
-        if (!obj || Utils.isArray(obj)) {
+        if (!obj || utils.isArray(obj)) {
           lyr.shapes[_id] = obj || null;
         } else {
           stop("Can't assign non-array to $.coordinates");

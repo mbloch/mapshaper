@@ -189,11 +189,11 @@ function PathImporter(opts) {
     } else if (collectionType == 'polygon' || collectionType == 'polyline') {
 
       if (dupeCount > 0) {
-        verbose(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
+        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
       }
       if (skippedPathCount > 0) {
         // TODO: consider showing details about type of error
-        message(Utils.format("Removed %,d path%s with defective geometry", skippedPathCount, "s?"));
+        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, "s?"));
       }
 
       if (pointId > 0) {

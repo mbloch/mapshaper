@@ -1,8 +1,8 @@
 /* @require mapshaper-common, mapshaper-dataset-utils */
 
 api.printInfo = function(dataset, opts) {
-  // str += Utils.format("Number of layers: %d\n", dataset.layers.length);
-  // if (dataset.arcs) str += Utils.format("Topological arcs: %'d\n", dataset.arcs.size());
+  // str += utils.format("Number of layers: %d\n", dataset.layers.length);
+  // if (dataset.arcs) str += utils.format("Topological arcs: %'d\n", dataset.arcs.size());
   var str = dataset.layers.map(function(lyr) {
     return MapShaper.getLayerInfo(lyr, dataset.arcs);
   }).join('\n\n');
@@ -27,7 +27,7 @@ MapShaper.getLayerInfo = function(lyr, arcs) {
   str += "Geometry: " + (lyr.geometry_type || "[none]") + "\n";
   str += utils.format("Records: %,d\n", Math.max(shapeCount, tableSize));
   if (nullCount > 0) {
-    str += Utils.format("Null shapes: %'d\n", nullCount);
+    str += utils.format("Null shapes: %'d\n", nullCount);
   }
   if (shapeCount > nullCount) {
     str += "Bounds: " + MapShaper.getLayerBounds(lyr, arcs).toArray().join(' ') + "\n";
@@ -59,14 +59,14 @@ MapShaper.getTableInfo = function(data) {
     return data.getRecords()[0][fname];
   });
   var digits = vals.map(function(val, i) {
-    return Utils.isNumber(vals[i]) ? (val + '.').indexOf('.') + 1 :  0;
+    return utils.isNumber(vals[i]) ? (val + '.').indexOf('.') + 1 :  0;
   });
   var maxDigits = Math.max.apply(null, digits);
   var table = vals.map(function(val, i) {
-    var str = '  ' + Utils.rpad(fields[i], col1Chars, ' ');
-    if (Utils.isNumber(val)) {
-      str += Utils.lpad("", maxDigits - digits[i], ' ') + val;
-    } else if (Utils.isString(val)) {
+    var str = '  ' + utils.rpad(fields[i], col1Chars, ' ');
+    if (utils.isNumber(val)) {
+      str += utils.lpad("", maxDigits - digits[i], ' ') + val;
+    } else if (utils.isString(val)) {
       val = val.replace(/[\r\t\n]/g, cleanChar);
       str += "'" + val + "'";
     } else {
@@ -75,5 +75,5 @@ MapShaper.getTableInfo = function(data) {
     return str;
   }).join('\n');
   return "Data table\n  " +
-      Utils.rpad('Field', col1Chars, ' ') + "First value\n" + table;
+      utils.rpad('Field', col1Chars, ' ') + "First value\n" + table;
 };

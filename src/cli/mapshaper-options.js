@@ -508,7 +508,7 @@ MapShaper.getOptionParser = function() {
   "fields,precision,auto-snap").split(',')
     .forEach(function(str) {
       parser.command(str).validate(function() {
-        error(Utils.format('[%s] maphshaper syntax has changed since v0.1.x.', str));
+        error(utils.format('[%s] maphshaper syntax has changed since v0.1.x.', str));
       });
     });
 

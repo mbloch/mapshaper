@@ -1896,7 +1896,7 @@ api.printError = function(err) {
 
 // Handle an error caused by invalid input or misuse of API
 function stop() {
-  var message = Utils.toArray(arguments).join(' ');
+  var message = utils.toArray(arguments).join(' ');
   var err = new APIError(message);
   throw err;
 }
@@ -1926,8 +1926,8 @@ var trace = function() {
 };
 
 function logArgs(args) {
-  if (Utils.isArrayLike(args)) {
-    var arr = Utils.toArray(args);
+  if (utils.isArrayLike(args)) {
+    var arr = utils.toArray(args);
     (console.error || console.log).apply(console, arr);
   }
 }
@@ -2139,7 +2139,7 @@ MapShaper.filenameIsUnsupportedOutputType = function(file) {
 
 // make a modified copy of a layer
 MapShaper.updateLayer = function(lyr, update, opts) {
-  // var newLyr = Utils.defaults(obj, lyr);
+  // var newLyr = utils.defaults(obj, lyr);
 };
 
 MapShaper.getDatasetBounds = function(data) {
@@ -2188,7 +2188,7 @@ MapShaper.getPathBounds = function(shapes, arcs) {
 MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
   // modify a copy in case cutLayers == dataset.layers
   var currLayers = dataset.layers.concat();
-  Utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
+  utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
     var cutLyr = cutLayers[i],
         newLyr = newLayers[i],
         idx = cutLyr ? currLayers.indexOf(cutLyr) : currLayers.length;
@@ -2211,7 +2211,7 @@ MapShaper.findMatchingLayers = function(layers, target) {
   target.split(',').forEach(function(id) {
     var i = Number(id),
         rxp = utils.wildcardToRegExp(id);
-    if (Utils.isInteger(i)) {
+    if (utils.isInteger(i)) {
       ii.push(i); // TODO: handle out-of-range index
     } else {
       layers.forEach(function(lyr, i) {
@@ -2220,8 +2220,8 @@ MapShaper.findMatchingLayers = function(layers, target) {
     }
   });
 
-  ii = Utils.uniq(ii); // remove dupes
-  return Utils.map(ii, function(i) {
+  ii = utils.uniq(ii); // remove dupes
+  return utils.map(ii, function(i) {
     return layers[i];
   });
 };
@@ -2229,7 +2229,7 @@ MapShaper.findMatchingLayers = function(layers, target) {
 /*
 MapShaper.validateLayer = function(lyr, arcs) {
   var type = lyr.geometry_type;
-  if (!Utils.isArray(lyr.shapes)) {
+  if (!utils.isArray(lyr.shapes)) {
     error("Layer is missing shapes property");
   }
   if (lyr.data && lyr.data.size() != lyr.shapes.length) {
@@ -2251,7 +2251,7 @@ MapShaper.validateLayer = function(lyr, arcs) {
 // Simple integrity checks
 MapShaper.validateDataset = function(data) {
   if (!data) invalid("Missing dataset object");
-  if (!Utils.isArray(data.layers) || data.layers.length > 0 === false)
+  if (!utils.isArray(data.layers) || data.layers.length > 0 === false)
     invalid("Missing layers");
   data.layers.forEach(function(lyr) {
     try {
@@ -2297,7 +2297,7 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
 }
 
 function getRoundingFunction(inc) {
-  if (!Utils.isNumber(inc) || inc === 0) {
+  if (!utils.isNumber(inc) || inc === 0) {
     error("Rounding increment must be a non-zero number.");
   }
   var inv = 1 / inc;
@@ -2580,7 +2580,7 @@ function boundsArea(b) {
 }
 
 // export functions so they can be tested
-Utils.extend(geom, {
+utils.extend(geom, {
   getRoundingFunction: getRoundingFunction,
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,
@@ -2824,7 +2824,7 @@ function ArcCollection() {
 
   // Return arcs as arrays of [x, y] points (intended for testing).
   this.toArray = function() {
-    return Utils.range(this.size()).map(function(i) {
+    return utils.range(this.size()).map(function(i) {
       return this.getArc(i).toArray();
     }, this);
   };
@@ -3209,7 +3209,7 @@ function ArcCollection() {
     } else if (rank > tmp.length) {
       z = Infinity;
     } else {
-      z = Utils.findValueByRank(tmp, rank);
+      z = utils.findValueByRank(tmp, rank);
     }
     return z;
   };
@@ -3498,7 +3498,7 @@ ShapeIter.prototype.reset = function() {
 // Convert an array of intersections into an ArcCollection (for display)
 //
 MapShaper.getIntersectionPoints = function(intersections) {
-  return Utils.map(intersections, function(obj) {
+  return utils.map(intersections, function(obj) {
         return [obj.x, obj.y];
       });
 };
@@ -3549,15 +3549,15 @@ MapShaper.findSegmentIntersections = (function() {
     });
 
     // Allocate arrays for segments in each stripe
-    var stripeData = getUint32Array(Utils.sum(stripeSizes)),
+    var stripeData = getUint32Array(utils.sum(stripeSizes)),
         offs = 0;
-    var stripes = Utils.map(stripeSizes, function(stripeSize) {
+    var stripes = utils.map(stripeSizes, function(stripeSize) {
       var start = offs;
       offs += stripeSize;
       return stripeData.subarray(start, offs);
     });
     // Assign segment ids to each stripe
-    Utils.initializeArray(stripeSizes, 0);
+    utils.initializeArray(stripeSizes, 0);
 
     arcs.forEachSegment(function(id1, id2, xx, yy) {
       var s1 = stripeId(yy[id1]),
@@ -3596,7 +3596,7 @@ MapShaper.findSegmentIntersections = (function() {
 
     // Add intersections from a bin, but avoid duplicates.
     function extendIntersections(intersections, arr, stripeId) {
-      Utils.forEach(arr, function(obj, i) {
+      utils.forEach(arr, function(obj, i) {
         var key = MapShaper.getIntersectionKey(obj.a, obj.b);
         if (key in index === false) {
           intersections.push(obj);
@@ -3856,7 +3856,7 @@ MapShaper.forEachArcId = function(arr, cb) {
     item = arr[i];
     if (item instanceof Array) {
       MapShaper.forEachArcId(item, cb);
-    } else if (Utils.isInteger(item)) {
+    } else if (utils.isInteger(item)) {
       var val = cb(item);
       if (val !== void 0) {
         arr[i] = val;
@@ -3873,7 +3873,7 @@ MapShaper.forEachPath = function(paths, cb) {
 
 MapShaper.editPaths = function(paths, cb) {
   if (!paths) return null; // null shape
-  if (!Utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
+  if (!utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
   var nulls = 0,
       n = paths.length,
       retn;
@@ -3883,7 +3883,7 @@ MapShaper.editPaths = function(paths, cb) {
     if (retn === null) {
       nulls++;
       paths[i] = null;
-    } else if (Utils.isArray(retn)) {
+    } else if (utils.isArray(retn)) {
       paths[i] = retn;
     }
   }
@@ -3904,7 +3904,7 @@ MapShaper.forEachPathSegment = function(shape, arcs, cb) {
 
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
-  Utils.forEach(shapes, function(parts, shapeId) {
+  utils.forEach(shapes, function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
     var arcIds, arcId, partData;
     if (cbShape) {
@@ -3952,7 +3952,7 @@ MapShaper.arcHasLength = function(id, coords) {
 MapShaper.filterEmptyArcs = function(shape, coords) {
   if (!shape) return null;
   var shape2 = [];
-  Utils.forEach(shape, function(ids) {
+  utils.forEach(shape, function(ids) {
     var path = [];
     for (var i=0; i<ids.length; i++) {
       if (MapShaper.arcHasLength(ids[i], coords)) {
@@ -3975,7 +3975,7 @@ MapShaper.filterEmptyArcs = function(shape, coords) {
 MapShaper.groupPolygonRings = function(paths) {
   var pos = [],
       neg = [];
-  Utils.forEach(paths, function(path) {
+  utils.forEach(paths, function(path) {
     if (path.area > 0) {
       pos.push(path);
     } else if (path.area < 0) {
@@ -3985,11 +3985,11 @@ MapShaper.groupPolygonRings = function(paths) {
     }
   });
 
-  var output = Utils.map(pos, function(part) {
+  var output = utils.map(pos, function(part) {
     return [part];
   });
 
-  Utils.forEach(neg, function(hole) {
+  utils.forEach(neg, function(hole) {
     var containerId = -1,
         containerArea = 0;
     for (var i=0, n=pos.length; i<n; i++) {
@@ -4011,8 +4011,8 @@ MapShaper.groupPolygonRings = function(paths) {
 
 MapShaper.getPathMetadata = function(shape, arcs, type) {
   var iter = new ShapeIter(arcs);
-  return Utils.map(shape, function(ids) {
-    if (!Utils.isArray(ids)) throw new Error("expected array");
+  return utils.map(shape, function(ids) {
+    if (!utils.isArray(ids)) throw new Error("expected array");
     iter.init(ids);
     return {
       ids: ids,
@@ -4029,7 +4029,7 @@ MapShaper.getPathMetadata = function(shape, arcs, type) {
 // TODO: consider 3D versions of some of these
 
 geom.getShapeArea = function(shp, arcs) {
-  return Utils.reduce(shp, function(area, ids) {
+  return utils.reduce(shp, function(area, ids) {
     return area + geom.getPathArea4(ids, arcs);
   }, 0);
 };
@@ -4038,7 +4038,7 @@ geom.getSphericalShapeArea = function(shp, arcs) {
   if (!MapShaper.probablyDecimalDegreeBounds(arcs.getBounds())) {
     error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
   }
-  return Utils.reduce(shp, function(area, ids) {
+  return utils.reduce(shp, function(area, ids) {
     var iter = arcs.getShapeIter(ids);
     return area + geom.getSphericalPathArea(iter);
   }, 0);
@@ -4046,7 +4046,7 @@ geom.getSphericalShapeArea = function(shp, arcs) {
 
 // alternative using equal-area projection
 geom.getSphericalShapeArea2 = function(shp, arcs) {
-  return Utils.reduce(shp, function(total, ids) {
+  return utils.reduce(shp, function(total, ids) {
     var iter = arcs.getShapeIter(ids);
     iter = geom.wrapPathIter(iter, geom.projectGall);
     return total + geom.getPathArea(iter);
@@ -4100,7 +4100,7 @@ geom.testPointInPolygon = function(x, y, shp, arcs) {
   var isIn = false,
       isOn = false;
 
-  Utils.forEach(shp, function(ids) {
+  utils.forEach(shp, function(ids) {
     var inRing = geom.testPointInRing(x, y, ids, arcs);
     if (inRing == 1) {
       isIn = !isIn;
@@ -4146,7 +4146,7 @@ geom.getXIntercept = function(y, ax, ay, bx, by) {
 // Return unsigned distance of a point to a shape
 //
 geom.getPointToShapeDistance = function(x, y, shp, arcs) {
-  var minDist = Utils.reduce(shp, function(minDist, ids) {
+  var minDist = utils.reduce(shp, function(minDist, ids) {
     var pathDist = geom.getPointToPathDistance(x, y, ids, arcs);
     return Math.min(minDist, pathDist);
   }, Infinity);
@@ -4860,7 +4860,7 @@ MapShaper.findClippingPoints = function(arcs) {
   // remove 1. points that are at arc endpoints and 2. duplicate points
   // (kludgy -- look into preventing these cases, which are caused by T intersections)
   var index = {};
-  return Utils.filter(points, function(p) {
+  return utils.filter(points, function(p) {
     var key = p.i + "," + p.pct;
     if (key in index) return false;
     index[key] = true;
@@ -4913,7 +4913,7 @@ MapShaper.NodeCollection = NodeCollection;
 // @filter Optional filter function, arcIds that return false are excluded
 //
 function NodeCollection(arcs, filter) {
-  if (Utils.isArray(arcs)) {
+  if (utils.isArray(arcs)) {
     arcs = new ArcCollection(arcs);
   }
   var arcData = arcs.getVertexData(),
@@ -4932,7 +4932,7 @@ function NodeCollection(arcs, filter) {
     var flags = new Uint8Array(nodeData.xx.length),
         nodes = [];
 
-    Utils.forEach(nodeData.chains, function(next, i) {
+    utils.forEach(nodeData.chains, function(next, i) {
       if (flags[i] == 1) return;
       nodes.push([nodeData.xx[i], nodeData.yy[i]]);
       while (flags[next] != 1) {
@@ -4958,13 +4958,13 @@ function NodeCollection(arcs, filter) {
       var len = arcs.getArcLength(id);
       if (len > 0) {
         var p1 = arcs.getVertex(id, -1);
-        str += Utils.format("[%f, %f]", p1.x, p1.y);
+        str += utils.format("[%f, %f]", p1.x, p1.y);
         if (len > 1) {
           var p2 = arcs.getVertex(id, -2);
-          str += Utils.format(", [%f, %f]", p2.x, p2.y);
+          str += utils.format(", [%f, %f]", p2.x, p2.y);
           if (len > 2) {
             var p3 = arcs.getVertex(id, 0);
-            str += Utils.format(", [%f, %f]", p3.x, p3.y);
+            str += utils.format(", [%f, %f]", p3.x, p3.y);
           }
           str += " len: " + distance2D(p1.x, p1.y, p2.x, p2.y);
         }
@@ -5156,7 +5156,7 @@ MapShaper.splitPathByIds = function(path, ids) {
     if (idx == -1) error("[splitPathByIds()] Path is missing id:", id);
     return idx;
   });
-  Utils.genericSort(ii, true);
+  utils.genericSort(ii, true);
   var subPaths = ii.map(function(idx, i) {
     var split;
     if (i == n-1) {
@@ -5579,7 +5579,7 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
 };
 
 MapShaper.debugFlags = function(flags) {
-  var arr = Utils.map(flags, function(flag) {
+  var arr = utils.map(flags, function(flag) {
     return bitsToString(flag);
   });
   message(arr);
@@ -5675,7 +5675,7 @@ MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   if (lyr.data) {
     lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts));
   }
-  return Utils.defaults(lyr2, lyr);
+  return utils.defaults(lyr2, lyr);
 };
 
 MapShaper.concatShapes = function(shapes) {
@@ -6058,7 +6058,7 @@ MapShaper.clipLayers = function(targetLayers, src, dataset, type, opts) {
   // dataset
   // (assuming that clipLyr arcs have been merged with dataset.arcs)
   //
-  if (Utils.contains(dataset.layers, clipLyr) === false) {
+  if (utils.contains(dataset.layers, clipLyr) === false) {
     dataset = {
       layers: [clipLyr].concat(dataset.layers),
       arcs: dataset.arcs
@@ -6082,7 +6082,7 @@ MapShaper.clipLayers = function(targetLayers, src, dataset, type, opts) {
       stop('[' + type + '] Invalid target layer:', targetLyr.name);
     }
 
-    clippedLyr = Utils.defaults({shapes: clippedShapes, data: null}, targetLyr);
+    clippedLyr = utils.defaults({shapes: clippedShapes, data: null}, targetLyr);
     if (targetLyr.data) {
       clippedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
     }
@@ -6130,7 +6130,7 @@ MapShaper.getClipLayer = function(src, dataset, opts) {
 MapShaper.getEncodings = function() {
   var iconv = require('iconv-lite');
   iconv.encodingExists('ascii'); // make iconv load its encodings
-  return Utils.filter(Utils.keys(iconv.encodings), function(name) {
+  return utils.filter(utils.keys(iconv.encodings), function(name) {
     //return !/^(internal|singlebyte|table|cp)/.test(name);
     return !/^(_|cs|internal|singlebyte|table|[0-9]|windows)/.test(name);
   });
@@ -6142,15 +6142,15 @@ MapShaper.requireConversionLib = function(encoding) {
 
 MapShaper.getFormattedEncodings = function() {
   var encodings = MapShaper.getEncodings(),
-      longest = Utils.reduce(encodings, function(len, str) {
+      longest = utils.reduce(encodings, function(len, str) {
         return Math.max(len, str.length);
       }, 0),
       padding = longest + 2,
       perLine = Math.floor(80 / padding);
   encodings.sort();
-  return Utils.reduce(encodings, function(str, name, i) {
+  return utils.reduce(encodings, function(str, name, i) {
     if (i > 0 && i % perLine === 0) str += '\n';
-    return str + Utils.rpad(name, padding, ' ');
+    return str + utils.rpad(name, padding, ' ');
   }, '');
 };
 
@@ -6189,7 +6189,7 @@ Dbf.getStringReaderAscii = function(size) {
           "  shiftjis  (Japanese)\n" +
           "Run mapshaper -encodings for a list of supported encodings");
     }
-    return Utils.trim(str);
+    return utils.trim(str);
   };
 };
 
@@ -6212,7 +6212,7 @@ Dbf.getStringReaderEncoded = function(size, encoding) {
     } else {
       str = iconv.decode(buf.slice(0, i), encoding);
     }
-    str = Utils.trim(str);
+    str = utils.trim(str);
     return str;
   };
 };
@@ -6266,7 +6266,7 @@ Dbf.getUniqFieldNames = function(fields, maxLen) {
 // @src is a Buffer or ArrayBuffer or filename
 //
 function DbfReader(src, encoding) {
-  if (Utils.isString(src)) {
+  if (utils.isString(src)) {
     src = cli.readFile(src);
   }
   var bin = new BinArray(src).littleEndian();
@@ -6290,14 +6290,14 @@ DbfReader.prototype.readCol = function(c) {
 //
 DbfReader.prototype.readCols = function() {
   var data = {};
-  Utils.forEach(this.header.fields, function(field, col) {
+  utils.forEach(this.header.fields, function(field, col) {
     data[field.name] = this.readCol(col);
   }, this);
   return data;
 };
 
 DbfReader.prototype.readRows = function() {
-  var names = Utils.pluck(this.header.fields, 'name'),
+  var names = utils.pluck(this.header.fields, 'name'),
     uniqNames = Dbf.getUniqFieldNames(names),
     rows = this.header.recordCount,
     cols = names.length,
@@ -6416,12 +6416,12 @@ Dbf.exportRecords = function(arr, encoding) {
   var fields = Dbf.getFieldNames(arr);
   var uniqFields = Dbf.getUniqFieldNames(fields, 10);
   var rows = arr.length;
-  var fieldData = Utils.map(fields, function(name) {
+  var fieldData = utils.map(fields, function(name) {
     return Dbf.getFieldInfo(arr, name, encoding);
   });
 
   var headerBytes = Dbf.getHeaderSize(fieldData.length),
-      recordBytes = Dbf.getRecordSize(Utils.pluck(fieldData, 'size')),
+      recordBytes = Dbf.getRecordSize(utils.pluck(fieldData, 'size')),
       fileBytes = headerBytes + rows * recordBytes + 1;
 
   var buffer = new ArrayBuffer(fileBytes);
@@ -6441,7 +6441,7 @@ Dbf.exportRecords = function(arr, encoding) {
   bin.skipBytes(2);
 
   // field subrecords
-  Utils.reduce(fieldData, function(recordOffset, obj, i) {
+  utils.reduce(fieldData, function(recordOffset, obj, i) {
     var fieldName = uniqFields[i];
     bin.writeCString(fieldName, 11);
     bin.writeUint8(obj.type.charCodeAt(0));
@@ -6457,7 +6457,7 @@ Dbf.exportRecords = function(arr, encoding) {
     error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
   }
 
-  Utils.forEach(arr, function(rec, i) {
+  utils.forEach(arr, function(rec, i) {
     var start = bin.position();
     bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
     for (var j=0, n=fieldData.length; j<n; j++) {
@@ -6492,7 +6492,7 @@ Dbf.getHeaderSize = function(numFields) {
 };
 
 Dbf.getRecordSize = function(fieldSizes) {
-  return Utils.sum(fieldSizes) + 1; // delete byte plus data bytes
+  return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
 };
 
 /*
@@ -6524,7 +6524,7 @@ Dbf.initNumericField = function(info, arr, name) {
     var rec = arr[i],
         str = formatter(rec[name]);
     if (str.length < size) {
-      str = Utils.lpad(str, size, ' ');
+      str = utils.lpad(str, size, ' ');
     }
     bin.writeString(str, size);
   };
@@ -6550,9 +6550,9 @@ Dbf.initDateField = function(info, arr, name) {
     if (d instanceof Date === false) {
       str = '00000000';
     } else {
-      str = Utils.lpad(d.getUTCFullYear(), 4, '0') +
-            Utils.lpad(d.getUTCMonth() + 1, 2, '0') +
-            Utils.lpad(d.getUTCDate(), 2, '0');
+      str = utils.lpad(d.getUTCFullYear(), 4, '0') +
+            utils.lpad(d.getUTCMonth() + 1, 2, '0') +
+            utils.lpad(d.getUTCDate(), 2, '0');
     }
     bin.writeString(str);
   };
@@ -6561,7 +6561,7 @@ Dbf.initDateField = function(info, arr, name) {
 Dbf.initStringField = function(info, arr, name, encoding) {
   var formatter = Dbf.getStringWriter(encoding);
   var maxLen = 0;
-  var values = Utils.map(arr, function(rec) {
+  var values = utils.map(arr, function(rec) {
     var buf = formatter(rec[name]);
     maxLen = Math.max(maxLen, buf.byteLength);
     return buf;
@@ -6602,9 +6602,9 @@ Dbf.discoverFieldType = function(arr, name) {
   var val;
   for (var i=0, n=arr.length; i<n; i++) {
     val = arr[i][name];
-    if (Utils.isString(val)) return "C";
-    if (Utils.isNumber(val)) return "N";
-    if (Utils.isBoolean(val)) return "L";
+    if (utils.isString(val)) return "C";
+    if (utils.isNumber(val)) return "N";
+    if (utils.isBoolean(val)) return "L";
     if (val instanceof Date) return "D";
   }
   return "null" ;
@@ -6617,7 +6617,7 @@ Dbf.getDecimalFormatter = function(size, decimals) {
     // TODO: handle invalid values better
     var valid = utils.isFiniteNumber(val),
         strval = valid ? val.toFixed(decimals) : String(nullValue);
-    return Utils.lpad(strval, size, ' ');
+    return utils.lpad(strval, size, ' ');
   };
 };
 
@@ -6694,12 +6694,12 @@ var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
 
 function DataTable(obj) {
   var records;
-  if (Utils.isArray(obj)) {
+  if (utils.isArray(obj)) {
     records = obj;
   } else {
     records = [];
     // integer object: create empty records
-    if (Utils.isInteger(obj)) {
+    if (utils.isInteger(obj)) {
       for (var i=0; i<obj; i++) {
         records.push({});
       }
@@ -6719,7 +6719,7 @@ function DataTable(obj) {
 
 var dataTableProto = {
   fieldExists: function(name) {
-    return Utils.contains(this.getFields(), name);
+    return utils.contains(this.getFields(), name);
   },
 
   exportAsJSON: function() {
@@ -6727,14 +6727,14 @@ var dataTableProto = {
   },
 
   addField: function(name, init) {
-    var useFunction = Utils.isFunction(init);
-    if (!Utils.isNumber(init) && !Utils.isString(init) && !useFunction) {
+    var useFunction = utils.isFunction(init);
+    if (!utils.isNumber(init) && !utils.isString(init) && !useFunction) {
       error("DataTable#addField() requires a string, number or function for initialization");
     }
     if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
     if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
 
-    Utils.forEach(this.getRecords(), function(obj, i) {
+    utils.forEach(this.getRecords(), function(obj, i) {
       obj[name] = useFunction ? init(obj, i) : init;
     });
   },
@@ -6752,7 +6752,7 @@ var dataTableProto = {
   },
 
   indexOn: function(f) {
-    this._index = Utils.indexOn(this.getRecords(), f);
+    this._index = utils.indexOn(this.getRecords(), f);
   },
 
   getIndexedRecord: function(val) {
@@ -6777,7 +6777,7 @@ var dataTableProto = {
 
   clone: function() {
     var records2 = this.getRecords().map(function(rec) {
-      return Utils.extend({}, rec);
+      return utils.extend({}, rec);
     });
     return new DataTable(records2);
   },
@@ -6787,7 +6787,7 @@ var dataTableProto = {
   }
 };
 
-Utils.extend(DataTable.prototype, dataTableProto);
+utils.extend(DataTable.prototype, dataTableProto);
 
 // Implements the DataTable api for DBF file data.
 // We avoid touching the raw DBF field data if possible. This way, we don't need
@@ -6819,7 +6819,7 @@ function ShapefileTable(buf, encoding) {
   };
 
   this.getFields = function() {
-    return reader ? Utils.pluck(reader.header.fields, 'name') : table.getFields();
+    return reader ? utils.pluck(reader.header.fields, 'name') : table.getFields();
   };
 
   this.size = function() {
@@ -6827,7 +6827,7 @@ function ShapefileTable(buf, encoding) {
   };
 }
 
-Utils.extend(ShapefileTable.prototype, dataTableProto);
+utils.extend(ShapefileTable.prototype, dataTableProto);
 
 // export for testing
 MapShaper.DataTable = DataTable;
@@ -6855,7 +6855,7 @@ api.dissolvePolygons = function(lyr, arcs, opts) {
       }
     }
   }
-  return Utils.defaults({
+  return utils.defaults({
       shapes: dissolveShapes,
       data: dissolveData ? new DataTable(dissolveData) : null
     }, lyr);
@@ -6895,7 +6895,7 @@ function dissolveFirstPass(shapes, getGroupId) {
       });
 
   MapShaper.traverseShapes(shapes, procArc);
-  Utils.forEach(largeGroups, splitGroup);
+  utils.forEach(largeGroups, splitGroup);
   return segments;
 
   function procArc(obj) {
@@ -6962,7 +6962,7 @@ function dissolveFirstPass(shapes, getGroupId) {
   }
 
   function updateGroupIds(ids) {
-    Utils.forEach(ids, function(id) {
+    utils.forEach(ids, function(id) {
       segments[id].group = ids;
     });
   }
@@ -6976,8 +6976,8 @@ function dissolveFirstPass(shapes, getGroupId) {
         findMatchingPair(group, checkSingleExtension) ||
         findMatchingPair(group, checkPairwiseMatch);
     if (group2) {
-      group = Utils.filter(group, function(i) {
-        return !Utils.contains(group2, i);
+      group = utils.filter(group, function(i) {
+        return !utils.contains(group2, i);
       });
       updateGroupIds(group);
       updateGroupIds(group2);
@@ -7061,7 +7061,7 @@ function dissolveSecondPass(segments, shapes, getGroupId) {
   function findDissolveArc(obj) {
     var dissolveId = getGroupId(obj.shapeId), // obj.shape.dissolveKey,
         match, matchId;
-    matchId = Utils.find(obj.group, function(i) {
+    matchId = utils.find(obj.group, function(i) {
       var a = obj,
           b = segments[i];
       if (a == b ||
@@ -7192,7 +7192,7 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
 
   var chainIds = initPointChains(xx, yy, !"verbose");
   var pointId = 0;
-  var paths = Utils.map(nn, function(pathLen) {
+  var paths = utils.map(nn, function(pathLen) {
     var arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
     pointId += pathLen;
     return arcs;
@@ -7408,7 +7408,7 @@ function initPointChains(xx, yy, verbose) {
   // Hash table is temporary storage for building chains of coincident points.
   // Hash bins contains the id of the first point in a chain.
   var hashChainIds = new Int32Array(hashTableSize);
-  Utils.initializeArray(hashChainIds, -1);
+  utils.initializeArray(hashChainIds, -1);
 
   // Array that gets populated with chain data
   var chainIds = new Int32Array(pointCount);
@@ -7441,7 +7441,7 @@ function initPointChains(xx, yy, verbose) {
       key = (key + 1) % hashTableSize;
     }
   }
-  if (verbose) message(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
+  if (verbose) message(utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
   return chainIds;
 }
 
@@ -7457,7 +7457,7 @@ function ArcIndex(pointCount, xyToUint) {
       arcs = [],
       arcPoints = 0;
 
-  Utils.initializeArray(hashTable, -1);
+  utils.initializeArray(hashTable, -1);
 
   this.addArc = function(xx, yy) {
     var end = xx.length - 1,
@@ -7582,12 +7582,12 @@ MapShaper.snapCoords = function(arcs, threshold) {
 
   if (threshold > 0) {
     snapDist = threshold;
-    message(Utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
+    message(utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
   }
 
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
   if (snapCount > 0) arcs.dedupCoords();
-  message(Utils.format("Snapped %s point%s", snapCount, "s?"));
+  message(utils.format("Snapped %s point%s", snapCount, "s?"));
 };
 
 // Snap together points within a small threshold
@@ -7650,7 +7650,7 @@ utils.sortCoordinateIds = function(a) {
 utils.bucketSortIds = function(a, n) {
   var len = a.length,
       ids = new Uint32Array(len),
-      bounds = Utils.getArrayBounds(a),
+      bounds = utils.getArrayBounds(a),
       buckets = Math.ceil(n > 0 ? n : len / 10),
       counts = new Uint32Array(buckets),
       offsets = new Uint32Array(buckets),
@@ -7912,11 +7912,11 @@ function PathImporter(opts) {
     } else if (collectionType == 'polygon' || collectionType == 'polyline') {
 
       if (dupeCount > 0) {
-        verbose(Utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
+        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
       }
       if (skippedPathCount > 0) {
         // TODO: consider showing details about type of error
-        message(Utils.format("Removed %,d path%s with defective geometry", skippedPathCount, "s?"));
+        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, "s?"));
       }
 
       if (pointId > 0) {
@@ -7992,7 +7992,7 @@ MapShaper.exportPathData = function(shape, arcs, type) {
       paths = [];
 
   if (type == 'polyline' || type == 'polygon') {
-    Utils.forEach(shape, function(arcIds, i) {
+    utils.forEach(shape, function(arcIds, i) {
       var iter = arcs.getShapeIter(arcIds),
           path = MapShaper.exportPathCoords(iter),
           valid = true;
@@ -8072,10 +8072,10 @@ MapShaper.getFormattedStringify = function(numArrayKeys) {
 
 
 MapShaper.importGeoJSON = function(obj, opts) {
-  if (Utils.isString(obj)) {
+  if (utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
-  var supportedGeometries = Utils.getKeys(GeoJSON.pathImporters);
+  var supportedGeometries = utils.getKeys(GeoJSON.pathImporters);
 
   // Convert single feature or geometry into a collection with one member
   if (obj.type == 'Feature') {
@@ -8083,7 +8083,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
       type: 'FeatureCollection',
       features: [obj]
     };
-  } else if (Utils.contains(supportedGeometries, obj.type)) {
+  } else if (utils.contains(supportedGeometries, obj.type)) {
     obj = {
       type: 'GeometryCollection',
       geometries: [obj]
@@ -8238,7 +8238,7 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   output[useFeatures ? 'features' : 'geometries'] = ['$'];
 
   // serialize features one at a time to avoid allocating lots of arrays
-  var objects = Utils.reduce(lyr.shapes, function(memo, shape, i) {
+  var objects = utils.reduce(lyr.shapes, function(memo, shape, i) {
     var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type),
         str;
     if (useFeatures) {
@@ -8366,7 +8366,7 @@ TopoJSON.forEachArc = function forEachArc(obj, cb) {
     var retn;
     for (var i=0; i<ids.length; i++) {
       retn = cb(ids[i]);
-      if (Utils.isInteger(retn)) {
+      if (utils.isInteger(retn)) {
         ids[i] = retn;
       }
     }
@@ -8383,7 +8383,7 @@ TopoJSON.decodeArcs = function(arcs, transform) {
       bx = transform.translate[0],
       by = transform.translate[1];
 
-  Utils.forEach(arcs, function(arc) {
+  utils.forEach(arcs, function(arc) {
     var prevX = 0,
         prevY = 0,
         xy, x, y;
@@ -8403,7 +8403,7 @@ TopoJSON.decodeArcs = function(arcs, transform) {
 TopoJSON.roundCoords = function(arcs, precision) {
   var round = getRoundingFunction(precision),
       p;
-  Utils.forEach(arcs, function(arc) {
+  utils.forEach(arcs, function(arc) {
     for (var i=0, len=arc.length; i<len; i++) {
       p = arc[i];
       p[0] = round(p[0]);
@@ -8424,7 +8424,7 @@ TopoJSON.importObject = function(obj, opts) {
 
 TopoJSON.importGeometryCollection = function(obj, opts) {
   var importer = new TopoJSON.GeometryImporter(opts);
-  Utils.forEach(obj.geometries, importer.addGeometry, importer);
+  utils.forEach(obj.geometries, importer.addGeometry, importer);
   return importer.done();
 };
 
@@ -8508,7 +8508,7 @@ TopoJSON.pathImporters = {
     return arcs;
   },
   MultiPolygon: function(arcs) {
-    return Utils.reduce(arcs, function(memo, arr) {
+    return utils.reduce(arcs, function(memo, arr) {
       return memo ? memo.concat(arr) : arr;
     }, null);
   }
@@ -8523,7 +8523,7 @@ TopoJSON.pruneArcs = function(topology) {
   var arcs = topology.arcs;
   var retained = new Uint32Array(arcs.length);
 
-  Utils.forEach(topology.objects, function(obj, name) {
+  utils.forEach(topology.objects, function(obj, name) {
     TopoJSON.forEachArc(obj, function(arcId) {
       // TODO: skip collapsed arcs
       if (arcId < 0) arcId = ~arcId;
@@ -8531,13 +8531,13 @@ TopoJSON.pruneArcs = function(topology) {
     });
   });
 
-  var filterCount = Utils.reduce(retained, function(count, flag) {
+  var filterCount = utils.reduce(retained, function(count, flag) {
     return count + flag;
   }, 0);
 
   if (filterCount < arcs.length) {
     // filter arcs and remap ids
-    topology.arcs = Utils.reduce(arcs, function(arcs, arc, i) {
+    topology.arcs = utils.reduce(arcs, function(arcs, arc, i) {
       if (arc && retained[i] === 1) { // dissolved-away arcs are set to null
         retained[i] = arcs.length;
         arcs.push(arc);
@@ -8548,7 +8548,7 @@ TopoJSON.pruneArcs = function(topology) {
     }, []);
 
     // Re-index
-    Utils.forEach(topology.objects, function(obj) {
+    utils.forEach(topology.objects, function(obj) {
       TopoJSON.reindexArcIds(obj, retained);
     });
   }
@@ -8577,7 +8577,7 @@ TopoJSON.reindexArcIds = function(geom, map) {
 //
 TopoJSON.splitTopology = function(topology) {
   var topologies = {};
-  Utils.forEach(topology.objects, function(obj, name) {
+  utils.forEach(topology.objects, function(obj, name) {
     var split = {
       arcs: topology.arcs,
       // bbox: obj.bbox || null,
@@ -8597,7 +8597,7 @@ TopoJSON.splitTopology = function(topology) {
 // Side effect: arc ids in @obj are re-indexed to match filtered arcs.
 //
 TopoJSON.extractGeometryObject = function(obj, arcs) {
-  if (!Utils.isArray(arcs)) {
+  if (!utils.isArray(arcs)) {
     error("Usage: TopoJSON.extractObject(object, arcs)");
   }
 
@@ -8611,7 +8611,7 @@ TopoJSON.extractGeometryObject = function(obj, arcs) {
   // Create array for translating original arc ids to filtered arc arrays
   var arcMap = new Uint32Array(arcs.length),
       newId = 0;
-  var filteredArcs = Utils.filter(arcs, function(coords, i) {
+  var filteredArcs = utils.filter(arcs, function(coords, i) {
     if (flags[i] === 1) {
       arcMap[i] = newId++;
       return true;
@@ -8652,33 +8652,33 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
       allData = [];
 
   function addArcs(typeArcs) {
-    var typeData = Utils.repeat(typeArcs.length, function(i) {
+    var typeData = utils.repeat(typeArcs.length, function(i) {
           return {TYPE: typeCode};
         }) || [];
-    allArcs = Utils.merge(typeArcs, allArcs);
-    allData = Utils.merge(typeData, allData);
+    allArcs = utils.merge(typeArcs, allArcs);
+    allData = utils.merge(typeData, allData);
     typeCode++;
   }
 
   addArcs(outerArcs);
 
-  if (Utils.isArray(fields)) {
+  if (utils.isArray(fields)) {
     if (!lyr.data) {
       stop("[lines] missing a data table:");
     }
-    Utils.forEach(fields, function(field) {
+    utils.forEach(fields, function(field) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] unknown data field:", field);
       }
       var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
-      dissolvedArcs = Utils.difference(dissolvedArcs, allArcs);
+      dissolvedArcs = utils.difference(dissolvedArcs, allArcs);
       addArcs(dissolvedArcs);
     });
   }
 
   var innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
-  innerArcs = Utils.difference(innerArcs, allArcs);
+  innerArcs = utils.difference(innerArcs, allArcs);
   addArcs(innerArcs);
 
   var lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
@@ -8699,7 +8699,7 @@ MapShaper.convertArcsToLineLayer = function(arcs, data) {
 };
 
 MapShaper.convertArcsToShapes = function(arcs) {
-  return Utils.map(arcs, function(id) {
+  return utils.map(arcs, function(id) {
     return [[id]];
   });
 };
@@ -8872,7 +8872,7 @@ api.explodeFeatures = function(lyr, arcs, opts) {
   var properties = lyr.data ? lyr.data.getRecords() : null,
       explodedProperties = properties ? [] : null,
       explodedShapes = [],
-      explodedLyr = Utils.extend({}, lyr);
+      explodedLyr = utils.extend({}, lyr);
 
   lyr.shapes.forEach(function(shp, shpId) {
     var exploded;
@@ -8884,7 +8884,7 @@ api.explodeFeatures = function(lyr, arcs, opts) {
       } else {
         exploded = MapShaper.explodeShape(shp);
       }
-      Utils.merge(explodedShapes, exploded);
+      utils.merge(explodedShapes, exploded);
     }
 
     explodedLyr.shapes = explodedShapes;
@@ -9146,7 +9146,7 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
       type: "GeometryCollection"
     };
   if (exporter) {
-    obj.geometries = Utils.map(shapes, function(shape, i) {
+    obj.geometries = utils.map(shapes, function(shape, i) {
       if (shape && shape.length > 0) {
         return exporter(shape, coords);
       }
@@ -9211,7 +9211,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
   var layers = [],
       arcs;
 
-  if (Utils.isString(topology)) {
+  if (utils.isString(topology)) {
     topology = JSON.parse(topology);
   }
 
@@ -9228,7 +9228,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     arcs = new ArcCollection(topology.arcs);
   }
 
-  Utils.forEach(topology.objects, function(object, name) {
+  utils.forEach(topology.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, opts);
 
     if (MapShaper.layerHasPaths(lyr)) {
@@ -9267,7 +9267,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
   /*
   if (opts.topojson_divide) {
     topologies = TopoJSON.splitTopology(topology);
-    files = Utils.map(topologies, function(topo, name) {
+    files = utils.map(topologies, function(topo, name) {
       return {
         content: JSON.stringify(topo),
         name: name
@@ -9317,11 +9317,11 @@ ShpType.isMultiPointType = function(t) {
 };
 
 ShpType.isZType = function(t) {
-  return Utils.contains([11,13,15,18], t);
+  return utils.contains([11,13,15,18], t);
 };
 
 ShpType.isMType = function(t) {
-  return ShpType.isZType(t) || Utils.contains([21,23,25,28], t);
+  return ShpType.isZType(t) || utils.contains([21,23,25,28], t);
 };
 
 ShpType.hasBounds = function(t) {
@@ -9360,7 +9360,7 @@ function ShpReader(src) {
     return new ShpReader(src);
   }
 
-  var file = Utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
+  var file = utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
   var header = parseHeader(file.readBytes(100, 0));
   var RecordClass = ShpReader.getRecordClass(header.type);
   var recordOffs = 100;
@@ -9442,7 +9442,7 @@ function ShpReader(src) {
     }
 
     var supportedTypes = [1,3,5,8,11,13,15,18,21,23,25,28];
-    if (!Utils.contains(supportedTypes, header.type))
+    if (!utils.contains(supportedTypes, header.type))
       error("Unsupported .shp type:", header.type);
 
     if (header.byteLength != file.size())
@@ -9608,7 +9608,7 @@ ShpReader.getRecordClass = function(type) {
 
     read: function() {
       var points = this.readPoints();
-      var parts = Utils.map(this.readPartSizes(), function(size) {
+      var parts = utils.map(this.readPartSizes(), function(size) {
           return points.splice(0, size);
         });
       return parts;
@@ -9665,12 +9665,12 @@ ShpReader.getRecordClass = function(type) {
   };
 
   if (singlePoint) {
-    Utils.extend(proto, singlePointProto);
+    utils.extend(proto, singlePointProto);
   } else {
-    Utils.extend(proto, multiCoordProto);
+    utils.extend(proto, multiCoordProto);
   }
-  if (hasZ) Utils.extend(proto, zProto);
-  if (hasM) Utils.extend(proto, mProto);
+  if (hasZ) utils.extend(proto, zProto);
+  if (hasM) utils.extend(proto, mProto);
 
   constructor.prototype = proto;
   proto.constructor = constructor;
@@ -9739,11 +9739,11 @@ function FileBytes(path) {
 
 
 MapShaper.translateShapefileType = function(shpType) {
-  if (Utils.contains([ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ], shpType)) {
+  if (utils.contains([ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ], shpType)) {
     return 'polygon';
-  } else if (Utils.contains([ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ], shpType)) {
+  } else if (utils.contains([ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ], shpType)) {
     return 'polyline';
-  } else if (Utils.contains([ShpType.POINT, ShpType.POINTM, ShpType.POINTZ,
+  } else if (utils.contains([ShpType.POINT, ShpType.POINTM, ShpType.POINTZ,
       ShpType.MULTIPOINT, ShpType.MULTIPOINTM, ShpType.MULTIPOINTZ], shpType)) {
     return 'point';
   }
@@ -10120,7 +10120,7 @@ MapShaper.getOutputFormat = function(dataset, opts) {
 // TODO: consider making this a command, or at least make format settable
 //
 MapShaper.createIndexFile = function(dataset) {
-  var index = Utils.map(dataset.layers, function(lyr) {
+  var index = utils.map(dataset.layers, function(lyr) {
     var bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
     return {
       bbox: bounds.toArray(),
@@ -10135,16 +10135,16 @@ MapShaper.createIndexFile = function(dataset) {
 };
 
 MapShaper.validateLayerData = function(layers) {
-  Utils.forEach(layers, function(lyr) {
+  utils.forEach(layers, function(lyr) {
     if (!lyr.geometry_type) {
       // allowing data-only layers
-      if (Utils.some(lyr.shapes, function(o) {
+      if (utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
         error("[export] A layer contains shape records and a null geometry type");
       }
     } else {
-      if (!Utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
+      if (!utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
         error ("[export] A layer has an invalid geometry type:", lyr.geometry_type);
       }
       if (!lyr.shapes) {
@@ -10201,7 +10201,7 @@ MapShaper.exportDataTables = function(layers, opts) {
 
 MapShaper.uniqifyNames = function(names) {
 
-  var counts = Utils.getValueCounts(names),
+  var counts = utils.getValueCounts(names),
       index = {},
       suffix;
   return names.map(function(name) {
@@ -10602,7 +10602,7 @@ function hideGlobals(obj) {
 }
 
 function addGetters(obj, getters) {
-  Utils.forEach(getters, function(f, name) {
+  utils.forEach(getters, function(f, name) {
     Object.defineProperty(obj, name, {get: f});
   });
 }
@@ -10622,7 +10622,7 @@ function FeatureExpressionContext(lyr, arcs) {
     _records = lyr.data.getRecords();
     Object.defineProperty(this, 'properties',
       {set: function(obj) {
-        if (Utils.isObject(obj)) {
+        if (utils.isObject(obj)) {
           _records[_id] = obj;
         } else {
           stop("Can't assign non-object to $.properties");
@@ -10694,7 +10694,7 @@ function FeatureExpressionContext(lyr, arcs) {
     // TODO: add functions like bounds, isNull, pointCount
     Object.defineProperty(this, 'coordinates',
       {set: function(obj) {
-        if (!obj || Utils.isArray(obj)) {
+        if (!obj || utils.isArray(obj)) {
           lyr.shapes[_id] = obj || null;
         } else {
           stop("Can't assign non-array to $.coordinates");
@@ -11063,7 +11063,7 @@ MapShaper.removeTypeHints = function(arr) {
 // modify @fields to remove type hints
 //
 MapShaper.parseFieldHeaders = function(fields, index) {
-  var parsed = Utils.map(fields, function(raw) {
+  var parsed = utils.map(fields, function(raw) {
     var parts, name, type;
     if (raw.indexOf(':') != -1) {
       parts = raw.split(':');
@@ -11090,7 +11090,7 @@ MapShaper.parseFieldHeaders = function(fields, index) {
 //
 MapShaper.guessDelimiter = function(content) {
   var delimiters = ['|', '\t', ','];
-  return Utils.find(delimiters, function(delim) {
+  return utils.find(delimiters, function(delim) {
     var rxp = MapShaper.getDelimiterRxp(delim);
     return rxp.test(content);
   }) || ',';
@@ -11099,7 +11099,7 @@ MapShaper.guessDelimiter = function(content) {
 // Get RegExp to test for a delimiter before first line break of a string
 // Assumes that first line contains field headers and that header names do not include delim char
 MapShaper.getDelimiterRxp = function(delim) {
-  var rxp = "^[^\\n\\r]+" + Utils.regexEscape(delim);
+  var rxp = "^[^\\n\\r]+" + utils.regexEscape(delim);
   return new RegExp(rxp);
 };
 
@@ -11120,12 +11120,12 @@ MapShaper.adjustRecordTypes = function(records, fieldList) {
   fields.forEach(function(key) {
     var val = firstRecord[key];
     if (key in hintIndex === false) {
-      if (Utils.isString(val) && utils.stringIsNumeric(val)) {
+      if (utils.isString(val) && utils.stringIsNumeric(val)) {
         conversionIndex[key] = 'number';
       }
-    } else if (hintIndex[key] == 'number' && !Utils.isNumber(val)) {
+    } else if (hintIndex[key] == 'number' && !utils.isNumber(val)) {
       conversionIndex[key] = 'number';
-    } else if (hintIndex[key] == 'string' && !Utils.isString(val)) {
+    } else if (hintIndex[key] == 'string' && !utils.isString(val)) {
       conversionIndex[key] = 'string';
     }
   });
@@ -11149,18 +11149,18 @@ utils.parseNumber = function(str) {
 };
 
 MapShaper.convertRecordTypes = function(records, typeIndex) {
-  var typedFields = Utils.keys(typeIndex),
+  var typedFields = utils.keys(typeIndex),
       converters = {
         'string': String,
         'number': utils.parseNumber
       },
-      transforms = Utils.map(typedFields, function(f) {
+      transforms = utils.map(typedFields, function(f) {
         var type = typeIndex[f],
             converter = converters[type];
         return converter;
       });
   if (typedFields.length === 0) return;
-  Utils.forEach(records, function(rec) {
+  utils.forEach(records, function(rec) {
     MapShaper.convertRecordData(rec, typedFields, transforms);
   });
 };
@@ -11311,13 +11311,13 @@ MapShaper.combineFilters = function(a, b) {
 api.filterFields = function(lyr, names) {
   if (!lyr.data) {
     stop("[filter-fields] Layer is missing a data table");
-  } else if (!Utils.isArray(names)) {
+  } else if (!utils.isArray(names)) {
     stop("[filter-fields] Expected an array of field names; found:", names);
   }
 
   var fieldMap = MapShaper.getFieldFilterMap(names),
       dataFields = lyr.data.getFields(),
-      missingFields = Utils.difference(Object.keys(fieldMap), dataFields);
+      missingFields = utils.difference(Object.keys(fieldMap), dataFields);
 
   if (missingFields.length > 0) {
     message("[filter-fields] Table is missing one or more specified fields:", missingFields);
@@ -11415,8 +11415,8 @@ MapShaper.editShapes = function(shapes, filter) {
 
 
 api.printInfo = function(dataset, opts) {
-  // str += Utils.format("Number of layers: %d\n", dataset.layers.length);
-  // if (dataset.arcs) str += Utils.format("Topological arcs: %'d\n", dataset.arcs.size());
+  // str += utils.format("Number of layers: %d\n", dataset.layers.length);
+  // if (dataset.arcs) str += utils.format("Topological arcs: %'d\n", dataset.arcs.size());
   var str = dataset.layers.map(function(lyr) {
     return MapShaper.getLayerInfo(lyr, dataset.arcs);
   }).join('\n\n');
@@ -11441,7 +11441,7 @@ MapShaper.getLayerInfo = function(lyr, arcs) {
   str += "Geometry: " + (lyr.geometry_type || "[none]") + "\n";
   str += utils.format("Records: %,d\n", Math.max(shapeCount, tableSize));
   if (nullCount > 0) {
-    str += Utils.format("Null shapes: %'d\n", nullCount);
+    str += utils.format("Null shapes: %'d\n", nullCount);
   }
   if (shapeCount > nullCount) {
     str += "Bounds: " + MapShaper.getLayerBounds(lyr, arcs).toArray().join(' ') + "\n";
@@ -11473,14 +11473,14 @@ MapShaper.getTableInfo = function(data) {
     return data.getRecords()[0][fname];
   });
   var digits = vals.map(function(val, i) {
-    return Utils.isNumber(vals[i]) ? (val + '.').indexOf('.') + 1 :  0;
+    return utils.isNumber(vals[i]) ? (val + '.').indexOf('.') + 1 :  0;
   });
   var maxDigits = Math.max.apply(null, digits);
   var table = vals.map(function(val, i) {
-    var str = '  ' + Utils.rpad(fields[i], col1Chars, ' ');
-    if (Utils.isNumber(val)) {
-      str += Utils.lpad("", maxDigits - digits[i], ' ') + val;
-    } else if (Utils.isString(val)) {
+    var str = '  ' + utils.rpad(fields[i], col1Chars, ' ');
+    if (utils.isNumber(val)) {
+      str += utils.lpad("", maxDigits - digits[i], ' ') + val;
+    } else if (utils.isString(val)) {
       val = val.replace(/[\r\t\n]/g, cleanChar);
       str += "'" + val + "'";
     } else {
@@ -11489,7 +11489,7 @@ MapShaper.getTableInfo = function(data) {
     return str;
   }).join('\n');
   return "Data table\n  " +
-      Utils.rpad('Field', col1Chars, ' ') + "First value\n" + table;
+      utils.rpad('Field', col1Chars, ' ') + "First value\n" + table;
 };
 
 
@@ -11525,7 +11525,7 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
     srcTable = MapShaper.filterDataTable(srcTable, opts.where);
   }
   if (joinFields.length > 0 === false) {
-    joinFields = Utils.difference(srcTable.getFields(), [srcKey]);
+    joinFields = utils.difference(srcTable.getFields(), [srcKey]);
   }
   if (!lyr.data || !lyr.data.fieldExists(destKey)) {
     stop("[join] Target layer is missing field:", destKey);
@@ -11574,7 +11574,7 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
 
 MapShaper.filterDataTable = function(data, exp) {
   var compiled = MapShaper.compileFeatureExpression(exp, {data: data}, null),
-      filtered = Utils.filter(data.getRecords(), function(rec, i) {
+      filtered = utils.filter(data.getRecords(), function(rec, i) {
         return compiled(i);
       });
   return new DataTable(filtered);
@@ -11586,7 +11586,7 @@ MapShaper.filterDataTable = function(data, exp) {
 api.keepEveryPolygon =
 MapShaper.keepEveryPolygon = function(arcData, layers) {
   T.start();
-  Utils.forEach(layers, function(lyr) {
+  utils.forEach(layers, function(lyr) {
     if (lyr.geometry_type == 'polygon') {
       MapShaper.protectLayerShapes(arcData, lyr.shapes);
     }
@@ -11595,7 +11595,7 @@ MapShaper.keepEveryPolygon = function(arcData, layers) {
 };
 
 MapShaper.protectLayerShapes = function(arcData, shapes) {
-  Utils.forEach(shapes, function(shape) {
+  utils.forEach(shapes, function(shape) {
     MapShaper.protectShape(arcData, shape);
   });
 };
@@ -11789,9 +11789,9 @@ MapShaper.mergeArcs = function(arr) {
     return data;
   });
 
-  var xx = utils.mergeArrays(Utils.pluck(dataArr, 'xx'), Float64Array),
-      yy = utils.mergeArrays(Utils.pluck(dataArr, 'yy'), Float64Array),
-      nn = utils.mergeArrays(Utils.pluck(dataArr, 'nn'), Int32Array);
+  var xx = utils.mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
+      yy = utils.mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
+      nn = utils.mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
 
   return new ArcCollection(nn, xx, yy);
 };
@@ -11807,7 +11807,7 @@ utils.mergeArrays = function(arrays, TypedArr) {
       Arr = TypedArr || Array,
       merged = new Arr(size),
       offs = 0;
-  Utils.forEach(arrays, function(src) {
+  utils.forEach(arrays, function(src) {
     var n = src.length;
     for (var i = 0; i<n; i++) {
       merged[i + offs] = src[i];
@@ -11823,7 +11823,7 @@ utils.mergeArrays = function(arrays, TypedArr) {
 api.mergeFiles = function(files, opts) {
   var datasets = files.map(function(fname) {
     // import without topology or snapping
-    var importOpts = Utils.defaults({no_topology: true, auto_snap: false, snap_interval: null, files: [fname]}, opts);
+    var importOpts = utils.defaults({no_topology: true, auto_snap: false, snap_interval: null, files: [fname]}, opts);
     return api.importFile(fname, importOpts);
   });
 
@@ -11831,7 +11831,7 @@ api.mergeFiles = function(files, opts) {
   var formats = datasets.map(function(d) {
     return d.info.input_format;
   });
-  if (Utils.uniq(formats).length != 1) {
+  if (utils.uniq(formats).length != 1) {
     stop("[mergeFiles()] Importing files with different formats is not supported");
   }
 
@@ -12422,12 +12422,12 @@ MapShaper.repairIntersections = function(arcs, intersections) {
         loops = 0,
         intersection, segIds, pairs, pair, len;
 
-    intersections = Utils.mapFilter(intersections, function(obj) {
+    intersections = utils.mapFilter(intersections, function(obj) {
       if (setPriority(obj) == Infinity) return void 0;
       return obj;
     });
 
-    Utils.sortOn(intersections, 'z', !!"ascending");
+    utils.sortOn(intersections, 'z', !!"ascending");
 
     while (intersections.length > 0) {
       len = intersections.length;
@@ -12693,7 +12693,7 @@ api.splitLayer = function(lyr0, arcs, splitField) {
 
     if (key in index === false) {
       index[key] = splitLayers.length;
-      lyr = Utils.defaults({
+      lyr = utils.defaults({
         name: MapShaper.getSplitLayerName(lyr0.name, key),
         data: properties ? new DataTable() : null,
         shapes: []
@@ -12733,8 +12733,8 @@ api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
   function groupId(shpBounds) {
     var c = Math.floor((shpBounds.centerX() - xmin) / w * cols),
         r = Math.floor((shpBounds.centerY() - ymin) / h * rows);
-    c = Utils.clamp(c, 0, cols-1);
-    r = Utils.clamp(r, 0, rows-1);
+    c = utils.clamp(c, 0, cols-1);
+    r = utils.clamp(r, 0, rows-1);
     return r * cols + c;
   }
 
@@ -12764,7 +12764,7 @@ api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
   });
 
   var layers = [];
-  Utils.forEach(groups, function(group, i) {
+  utils.forEach(groups, function(group, i) {
     if (!group) return; // empty cell
     var groupLyr = {
       shapes: group.shapes,
@@ -12797,7 +12797,7 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
       subdividedLayers = [],
       tmp, bounds, lyr1, lyr2;
 
-  if (!Utils.isBoolean(divide)) {
+  if (!utils.isBoolean(divide)) {
     stop("--subdivide expressions must return true or false");
   }
   if (divide) {
@@ -12805,14 +12805,14 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
     tmp = MapShaper.divideLayer(lyr, arcs, bounds);
     lyr1 = tmp[0];
     if (lyr1.shapes.length > 1 && lyr1.shapes.length < lyr.shapes.length) {
-      Utils.merge(subdividedLayers, MapShaper.subdivide(lyr1, arcs, compiled));
+      utils.merge(subdividedLayers, MapShaper.subdivide(lyr1, arcs, compiled));
     } else {
       subdividedLayers.push(lyr1);
     }
 
     lyr2 = tmp[1];
     if (lyr2.shapes.length > 1 && lyr2.shapes.length < lyr.shapes.length) {
-      Utils.merge(subdividedLayers, MapShaper.subdivide(lyr2, arcs, compiled));
+      utils.merge(subdividedLayers, MapShaper.subdivide(lyr2, arcs, compiled));
     } else {
       subdividedLayers.push(lyr2);
     }
@@ -12847,15 +12847,15 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
 
   var useX = bounds && bounds.width() > bounds.height();
   // TODO: think about case where there are null shapes with NaN centers
-  var centers = Utils.map(shapes, function(shp) {
+  var centers = utils.map(shapes, function(shp) {
     var bounds = arcs.getMultiShapeBounds(shp);
     return useX ? bounds.centerX() : bounds.centerY();
   });
-  var ids = Utils.range(centers.length);
+  var ids = utils.range(centers.length);
   ids.sort(function(a, b) {
     return centers[a] - centers[b];
   });
-  Utils.forEach(ids, function(shapeId, i) {
+  utils.forEach(ids, function(shapeId, i) {
     var dest = i < shapes.length / 2 ? lyr1 : lyr2;
     dest.shapes.push(shapes[shapeId]);
     if (properties) {
@@ -12980,7 +12980,7 @@ api.runCommand = function(cmd, dataset, cb) {
       newLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'o') {
-      api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
+      api.exportFiles(utils.defaults({layers: targetLayers}, dataset), opts);
 
     } else if (name == 'points') {
       newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
@@ -13041,10 +13041,10 @@ api.runCommand = function(cmd, dataset, cb) {
 
 // Apply a command to an array of target layers
 MapShaper.applyCommand = function(func, targetLayers) {
-  var args = Utils.toArray(arguments).slice(2);
+  var args = utils.toArray(arguments).slice(2);
   return targetLayers.reduce(function(memo, lyr) {
     var result = func.apply(null, [lyr].concat(args));
-    if (Utils.isArray(result)) { // some commands return an array of layers
+    if (utils.isArray(result)) { // some commands return an array of layers
       memo = memo.concat(result);
     } else if (result) { // assuming result is a layer
       memo.push(result);
@@ -13060,7 +13060,7 @@ api.exportFiles = function(dataset, opts) {
   } else if (opts.stdout) {
     cli.writeFile('/dev/stdout', exports[0].content);
   } else {
-    var paths = MapShaper.getOutputPaths(Utils.pluck(exports, 'filename'), opts);
+    var paths = MapShaper.getOutputPaths(utils.pluck(exports, 'filename'), opts);
     exports.forEach(function(obj, i) {
       var path = paths[i];
       cli.writeFile(path, obj.content);
@@ -13258,13 +13258,13 @@ function CommandParser() {
     }
 
     function findCommandDefn(name, arr) {
-      return Utils.find(arr, function(cmd) {
+      return utils.find(arr, function(cmd) {
         return cmd.name === name || cmd.alias === name;
       });
     }
 
     function findOptionDefn(name, cmd) {
-      return Utils.find(cmd.options, function(o) {
+      return utils.find(cmd.options, function(o) {
         return o.name === name || o.alias === name;
       });
     }
@@ -13294,7 +13294,7 @@ function CommandParser() {
       }, []);
 
       allCommands.filter(function(cmd) {
-        return Utils.contains(commandNames, cmd.name);
+        return utils.contains(commandNames, cmd.name);
       });
       if (helpCommands.length === 0) {
         detailView = false;
@@ -13366,7 +13366,7 @@ function CommandParser() {
     return helpStr;
 
     function formatHelpLine(help, desc) {
-      return Utils.rpad(help, colWidth, ' ') + gutter + (desc || '') + '\n';
+      return utils.rpad(help, colWidth, ' ') + gutter + (desc || '') + '\n';
     }
 
     function formatOption(o) {
@@ -13430,8 +13430,8 @@ function CommandOptions(name) {
 
   this.option = function(name, opts) {
     opts = opts || {}; // accept just a name -- some options don't need properties
-    if (!Utils.isString(name) || !name) error("Missing option name");
-    if (!Utils.isObject(opts)) error("Invalid option definition:", opts);
+    if (!utils.isString(name) || !name) error("Missing option name");
+    if (!utils.isObject(opts)) error("Invalid option definition:", opts);
     opts.name = name;
     _command.options.push(opts);
     return this;
@@ -13478,7 +13478,7 @@ function validateSimplifyOpts(cmd) {
       methods = ["visvalingam", "dp"];
 
   if (o.method) {
-    if (!Utils.contains(methods, o.method)) {
+    if (!utils.contains(methods, o.method)) {
       error(o.method, "is not a recognized simplification method; choos from:", methods);
     }
   }
@@ -13501,7 +13501,7 @@ function validateSimplifyOpts(cmd) {
       o.pct = Number(pctStr);
     }
     if (!(o.pct >= 0 && o.pct <= 1)) {
-      error(Utils.format("out-of-range pct value: %s", pctStr));
+      error(utils.format("out-of-range pct value: %s", pctStr));
     }
   }
 
@@ -13509,7 +13509,7 @@ function validateSimplifyOpts(cmd) {
   if (intervalStr) {
     o.interval = Number(intervalStr);
     if (o.interval >= 0 === false) {
-      error(Utils.format("out-of-range interval value: %s", intervalStr));
+      error(utils.format("out-of-range interval value: %s", intervalStr));
     }
   }
 
@@ -13526,8 +13526,8 @@ function validateJoinOpts(cmd) {
     error("command requires the name of a file to join");
   }
 
-  if (Utils.some("shp,xls,xlsx".split(','), function(suff) {
-    return Utils.endsWith(o.source, suff);
+  if (utils.some("shp,xls,xlsx".split(','), function(suff) {
+    return utils.endsWith(o.source, suff);
   })) {
     error("currently only dbf and csv files are supported");
   }
@@ -13691,12 +13691,12 @@ function validateOutputOpts(cmd) {
 // Return null if list is empty
 function validateCommaSepNames(str, min) {
   if (!min && !str) return null; // treat
-  if (!Utils.isString(str)) {
+  if (!utils.isString(str)) {
     error ("expected comma-separated list; found:", str);
   }
-  var parts = str.split(',').map(Utils.trim).filter(function(s) {return !!s;});
+  var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
-    error(Utils.format("expected a list of at least %d member%s; found: %s", min, 's?', str));
+    error(utils.format("expected a list of at least %d member%s; found: %s", min, 's?', str));
   }
   return parts.length > 0 ? parts : null;
 }
@@ -14212,7 +14212,7 @@ MapShaper.getOptionParser = function() {
   "fields,precision,auto-snap").split(',')
     .forEach(function(str) {
       parser.command(str).validate(function() {
-        error(Utils.format('[%s] maphshaper syntax has changed since v0.1.x.', str));
+        error(utils.format('[%s] maphshaper syntax has changed since v0.1.x.', str));
       });
     });
 
@@ -14383,7 +14383,7 @@ MapShaper.divideImportCommand = function(commands) {
   return files.reduce(function(memo, file) {
     var importCmd = {
       name: 'i',
-      options: Utils.defaults({files:[file]}, firstOpts)
+      options: utils.defaults({files:[file]}, firstOpts)
     };
     memo.push(importCmd);
     memo.push.apply(memo, commands.slice(1));
@@ -14419,7 +14419,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 
 // Handle information commands and remove them from the list
 MapShaper.runAndRemoveInfoCommands = function(commands) {
-  return Utils.filter(commands, function(cmd) {
+  return utils.filter(commands, function(cmd) {
     if (cmd.name == 'version') {
       message(getVersion());
     } else if (cmd.name == 'encodings') {
@@ -14543,7 +14543,7 @@ cli.statSync = function(fpath) {
 
 cli.printRepairMessage = function(info) {
   if (info.intersections_initial > 0) {
-    message(Utils.format(
+    message(utils.format(
         "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
         info.intersections_repaired, "s?", info.intersections_remaining, "s?"));
     /*
@@ -14557,7 +14557,7 @@ cli.printRepairMessage = function(info) {
 
 cli.validateEncoding = function(raw) {
   var enc = raw.replace(/-/, '').toLowerCase();
-  if (!Utils.contains(MapShaper.getEncodings(), enc)) {
+  if (!utils.contains(MapShaper.getEncodings(), enc)) {
     console.error("[Unsupported encoding:", raw + "]");
     MapShaper.printEncodings();
     process.exit(0);
@@ -14566,7 +14566,7 @@ cli.validateEncoding = function(raw) {
 };
 
 // Expose internal objects for testing
-Utils.extend(api.internal, {
+utils.extend(api.internal, {
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam,

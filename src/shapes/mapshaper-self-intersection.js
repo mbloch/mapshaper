@@ -72,7 +72,7 @@ MapShaper.splitPathByIds = function(path, ids) {
     if (idx == -1) error("[splitPathByIds()] Path is missing id:", id);
     return idx;
   });
-  Utils.genericSort(ii, true);
+  utils.genericSort(ii, true);
   var subPaths = ii.map(function(idx, i) {
     var split;
     if (i == n-1) {

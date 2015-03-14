@@ -33,7 +33,7 @@ function validateSimplifyOpts(cmd) {
       methods = ["visvalingam", "dp"];
 
   if (o.method) {
-    if (!Utils.contains(methods, o.method)) {
+    if (!utils.contains(methods, o.method)) {
       error(o.method, "is not a recognized simplification method; choos from:", methods);
     }
   }
@@ -56,7 +56,7 @@ function validateSimplifyOpts(cmd) {
       o.pct = Number(pctStr);
     }
     if (!(o.pct >= 0 && o.pct <= 1)) {
-      error(Utils.format("out-of-range pct value: %s", pctStr));
+      error(utils.format("out-of-range pct value: %s", pctStr));
     }
   }
 
@@ -64,7 +64,7 @@ function validateSimplifyOpts(cmd) {
   if (intervalStr) {
     o.interval = Number(intervalStr);
     if (o.interval >= 0 === false) {
-      error(Utils.format("out-of-range interval value: %s", intervalStr));
+      error(utils.format("out-of-range interval value: %s", intervalStr));
     }
   }
 
@@ -81,8 +81,8 @@ function validateJoinOpts(cmd) {
     error("command requires the name of a file to join");
   }
 
-  if (Utils.some("shp,xls,xlsx".split(','), function(suff) {
-    return Utils.endsWith(o.source, suff);
+  if (utils.some("shp,xls,xlsx".split(','), function(suff) {
+    return utils.endsWith(o.source, suff);
   })) {
     error("currently only dbf and csv files are supported");
   }
@@ -246,12 +246,12 @@ function validateOutputOpts(cmd) {
 // Return null if list is empty
 function validateCommaSepNames(str, min) {
   if (!min && !str) return null; // treat
-  if (!Utils.isString(str)) {
+  if (!utils.isString(str)) {
     error ("expected comma-separated list; found:", str);
   }
-  var parts = str.split(',').map(Utils.trim).filter(function(s) {return !!s;});
+  var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
-    error(Utils.format("expected a list of at least %d member%s; found: %s", min, 's?', str));
+    error(utils.format("expected a list of at least %d member%s; found: %s", min, 's?', str));
   }
   return parts.length > 0 ? parts : null;
 }

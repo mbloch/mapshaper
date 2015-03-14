@@ -4,7 +4,7 @@
 // TODO: consider 3D versions of some of these
 
 geom.getShapeArea = function(shp, arcs) {
-  return Utils.reduce(shp, function(area, ids) {
+  return utils.reduce(shp, function(area, ids) {
     return area + geom.getPathArea4(ids, arcs);
   }, 0);
 };
@@ -13,7 +13,7 @@ geom.getSphericalShapeArea = function(shp, arcs) {
   if (!MapShaper.probablyDecimalDegreeBounds(arcs.getBounds())) {
     error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
   }
-  return Utils.reduce(shp, function(area, ids) {
+  return utils.reduce(shp, function(area, ids) {
     var iter = arcs.getShapeIter(ids);
     return area + geom.getSphericalPathArea(iter);
   }, 0);
@@ -21,7 +21,7 @@ geom.getSphericalShapeArea = function(shp, arcs) {
 
 // alternative using equal-area projection
 geom.getSphericalShapeArea2 = function(shp, arcs) {
-  return Utils.reduce(shp, function(total, ids) {
+  return utils.reduce(shp, function(total, ids) {
     var iter = arcs.getShapeIter(ids);
     iter = geom.wrapPathIter(iter, geom.projectGall);
     return total + geom.getPathArea(iter);
@@ -75,7 +75,7 @@ geom.testPointInPolygon = function(x, y, shp, arcs) {
   var isIn = false,
       isOn = false;
 
-  Utils.forEach(shp, function(ids) {
+  utils.forEach(shp, function(ids) {
     var inRing = geom.testPointInRing(x, y, ids, arcs);
     if (inRing == 1) {
       isIn = !isIn;
@@ -121,7 +121,7 @@ geom.getXIntercept = function(y, ax, ay, bx, by) {
 // Return unsigned distance of a point to a shape
 //
 geom.getPointToShapeDistance = function(x, y, shp, arcs) {
-  var minDist = Utils.reduce(shp, function(minDist, ids) {
+  var minDist = utils.reduce(shp, function(minDist, ids) {
     var pathDist = geom.getPointToPathDistance(x, y, ids, arcs);
     return Math.min(minDist, pathDist);
   }, Infinity);

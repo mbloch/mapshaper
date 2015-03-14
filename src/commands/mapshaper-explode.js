@@ -4,7 +4,7 @@ api.explodeFeatures = function(lyr, arcs, opts) {
   var properties = lyr.data ? lyr.data.getRecords() : null,
       explodedProperties = properties ? [] : null,
       explodedShapes = [],
-      explodedLyr = Utils.extend({}, lyr);
+      explodedLyr = utils.extend({}, lyr);
 
   lyr.shapes.forEach(function(shp, shpId) {
     var exploded;
@@ -16,7 +16,7 @@ api.explodeFeatures = function(lyr, arcs, opts) {
       } else {
         exploded = MapShaper.explodeShape(shp);
       }
-      Utils.merge(explodedShapes, exploded);
+      utils.merge(explodedShapes, exploded);
     }
 
     explodedLyr.shapes = explodedShapes;

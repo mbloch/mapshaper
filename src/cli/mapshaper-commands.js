@@ -137,7 +137,7 @@ MapShaper.divideImportCommand = function(commands) {
   return files.reduce(function(memo, file) {
     var importCmd = {
       name: 'i',
-      options: Utils.defaults({files:[file]}, firstOpts)
+      options: utils.defaults({files:[file]}, firstOpts)
     };
     memo.push(importCmd);
     memo.push.apply(memo, commands.slice(1));
@@ -173,7 +173,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 
 // Handle information commands and remove them from the list
 MapShaper.runAndRemoveInfoCommands = function(commands) {
-  return Utils.filter(commands, function(cmd) {
+  return utils.filter(commands, function(cmd) {
     if (cmd.name == 'version') {
       message(getVersion());
     } else if (cmd.name == 'encodings') {

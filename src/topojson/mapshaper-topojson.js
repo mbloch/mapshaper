@@ -9,7 +9,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
   var layers = [],
       arcs;
 
-  if (Utils.isString(topology)) {
+  if (utils.isString(topology)) {
     topology = JSON.parse(topology);
   }
 
@@ -26,7 +26,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     arcs = new ArcCollection(topology.arcs);
   }
 
-  Utils.forEach(topology.objects, function(object, name) {
+  utils.forEach(topology.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, opts);
 
     if (MapShaper.layerHasPaths(lyr)) {
@@ -65,7 +65,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
   /*
   if (opts.topojson_divide) {
     topologies = TopoJSON.splitTopology(topology);
-    files = Utils.map(topologies, function(topo, name) {
+    files = utils.map(topologies, function(topo, name) {
       return {
         content: JSON.stringify(topo),
         name: name

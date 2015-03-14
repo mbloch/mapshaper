@@ -55,7 +55,7 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
 
   var chainIds = initPointChains(xx, yy, !"verbose");
   var pointId = 0;
-  var paths = Utils.map(nn, function(pathLen) {
+  var paths = utils.map(nn, function(pathLen) {
     var arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
     pointId += pathLen;
     return arcs;
@@ -271,7 +271,7 @@ function initPointChains(xx, yy, verbose) {
   // Hash table is temporary storage for building chains of coincident points.
   // Hash bins contains the id of the first point in a chain.
   var hashChainIds = new Int32Array(hashTableSize);
-  Utils.initializeArray(hashChainIds, -1);
+  utils.initializeArray(hashChainIds, -1);
 
   // Array that gets populated with chain data
   var chainIds = new Int32Array(pointCount);
@@ -304,7 +304,7 @@ function initPointChains(xx, yy, verbose) {
       key = (key + 1) % hashTableSize;
     }
   }
-  if (verbose) message(Utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
+  if (verbose) message(utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
   return chainIds;
 }
 
@@ -320,7 +320,7 @@ function ArcIndex(pointCount, xyToUint) {
       arcs = [],
       arcPoints = 0;
 
-  Utils.initializeArray(hashTable, -1);
+  utils.initializeArray(hashTable, -1);
 
   this.addArc = function(xx, yy) {
     var end = xx.length - 1,

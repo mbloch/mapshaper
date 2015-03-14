@@ -8,7 +8,7 @@ api.flattenLayer = function(lyr, dataset, opts) {
   var lyr2 = {data: null};
   lyr2.shapes = lyr.shapes.map(flatten);
   // TODO: copy data over
-  return Utils.defaults(lyr2, lyr);
+  return utils.defaults(lyr2, lyr);
 };
 
 MapShaper.getPolygonFlattener = function(nodes) {

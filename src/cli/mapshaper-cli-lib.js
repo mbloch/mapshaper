@@ -107,7 +107,7 @@ cli.statSync = function(fpath) {
 
 cli.printRepairMessage = function(info) {
   if (info.intersections_initial > 0) {
-    message(Utils.format(
+    message(utils.format(
         "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
         info.intersections_repaired, "s?", info.intersections_remaining, "s?"));
     /*
@@ -121,7 +121,7 @@ cli.printRepairMessage = function(info) {
 
 cli.validateEncoding = function(raw) {
   var enc = raw.replace(/-/, '').toLowerCase();
-  if (!Utils.contains(MapShaper.getEncodings(), enc)) {
+  if (!utils.contains(MapShaper.getEncodings(), enc)) {
     console.error("[Unsupported encoding:", raw + "]");
     MapShaper.printEncodings();
     process.exit(0);
@@ -130,7 +130,7 @@ cli.validateEncoding = function(raw) {
 };
 
 // Expose internal objects for testing
-Utils.extend(api.internal, {
+utils.extend(api.internal, {
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,
   Visvalingam: Visvalingam,

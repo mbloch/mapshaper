@@ -7,11 +7,11 @@ mapshaper-path-export
 */
 
 MapShaper.translateShapefileType = function(shpType) {
-  if (Utils.contains([ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ], shpType)) {
+  if (utils.contains([ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ], shpType)) {
     return 'polygon';
-  } else if (Utils.contains([ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ], shpType)) {
+  } else if (utils.contains([ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ], shpType)) {
     return 'polyline';
-  } else if (Utils.contains([ShpType.POINT, ShpType.POINTM, ShpType.POINTZ,
+  } else if (utils.contains([ShpType.POINT, ShpType.POINTM, ShpType.POINTZ,
       ShpType.MULTIPOINT, ShpType.MULTIPOINTM, ShpType.MULTIPOINTZ], shpType)) {
     return 'point';
   }

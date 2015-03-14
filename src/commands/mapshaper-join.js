@@ -30,7 +30,7 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
     srcTable = MapShaper.filterDataTable(srcTable, opts.where);
   }
   if (joinFields.length > 0 === false) {
-    joinFields = Utils.difference(srcTable.getFields(), [srcKey]);
+    joinFields = utils.difference(srcTable.getFields(), [srcKey]);
   }
   if (!lyr.data || !lyr.data.fieldExists(destKey)) {
     stop("[join] Target layer is missing field:", destKey);
@@ -79,7 +79,7 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
 
 MapShaper.filterDataTable = function(data, exp) {
   var compiled = MapShaper.compileFeatureExpression(exp, {data: data}, null),
-      filtered = Utils.filter(data.getRecords(), function(rec, i) {
+      filtered = utils.filter(data.getRecords(), function(rec, i) {
         return compiled(i);
       });
   return new DataTable(filtered);

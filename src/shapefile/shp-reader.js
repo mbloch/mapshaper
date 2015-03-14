@@ -33,11 +33,11 @@ ShpType.isMultiPointType = function(t) {
 };
 
 ShpType.isZType = function(t) {
-  return Utils.contains([11,13,15,18], t);
+  return utils.contains([11,13,15,18], t);
 };
 
 ShpType.isMType = function(t) {
-  return ShpType.isZType(t) || Utils.contains([21,23,25,28], t);
+  return ShpType.isZType(t) || utils.contains([21,23,25,28], t);
 };
 
 ShpType.hasBounds = function(t) {
@@ -76,7 +76,7 @@ function ShpReader(src) {
     return new ShpReader(src);
   }
 
-  var file = Utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
+  var file = utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
   var header = parseHeader(file.readBytes(100, 0));
   var RecordClass = ShpReader.getRecordClass(header.type);
   var recordOffs = 100;
@@ -158,7 +158,7 @@ function ShpReader(src) {
     }
 
     var supportedTypes = [1,3,5,8,11,13,15,18,21,23,25,28];
-    if (!Utils.contains(supportedTypes, header.type))
+    if (!utils.contains(supportedTypes, header.type))
       error("Unsupported .shp type:", header.type);
 
     if (header.byteLength != file.size())
@@ -324,7 +324,7 @@ ShpReader.getRecordClass = function(type) {
 
     read: function() {
       var points = this.readPoints();
-      var parts = Utils.map(this.readPartSizes(), function(size) {
+      var parts = utils.map(this.readPartSizes(), function(size) {
           return points.splice(0, size);
         });
       return parts;
@@ -381,12 +381,12 @@ ShpReader.getRecordClass = function(type) {
   };
 
   if (singlePoint) {
-    Utils.extend(proto, singlePointProto);
+    utils.extend(proto, singlePointProto);
   } else {
-    Utils.extend(proto, multiCoordProto);
+    utils.extend(proto, multiCoordProto);
   }
-  if (hasZ) Utils.extend(proto, zProto);
-  if (hasM) Utils.extend(proto, mProto);
+  if (hasZ) utils.extend(proto, zProto);
+  if (hasM) utils.extend(proto, mProto);
 
   constructor.prototype = proto;
   proto.constructor = constructor;

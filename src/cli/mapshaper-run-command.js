@@ -108,7 +108,7 @@ api.runCommand = function(cmd, dataset, cb) {
       newLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'o') {
-      api.exportFiles(Utils.defaults({layers: targetLayers}, dataset), opts);
+      api.exportFiles(utils.defaults({layers: targetLayers}, dataset), opts);
 
     } else if (name == 'points') {
       newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
@@ -169,10 +169,10 @@ api.runCommand = function(cmd, dataset, cb) {
 
 // Apply a command to an array of target layers
 MapShaper.applyCommand = function(func, targetLayers) {
-  var args = Utils.toArray(arguments).slice(2);
+  var args = utils.toArray(arguments).slice(2);
   return targetLayers.reduce(function(memo, lyr) {
     var result = func.apply(null, [lyr].concat(args));
-    if (Utils.isArray(result)) { // some commands return an array of layers
+    if (utils.isArray(result)) { // some commands return an array of layers
       memo = memo.concat(result);
     } else if (result) { // assuming result is a layer
       memo.push(result);
@@ -188,7 +188,7 @@ api.exportFiles = function(dataset, opts) {
   } else if (opts.stdout) {
     cli.writeFile('/dev/stdout', exports[0].content);
   } else {
-    var paths = MapShaper.getOutputPaths(Utils.pluck(exports, 'filename'), opts);
+    var paths = MapShaper.getOutputPaths(utils.pluck(exports, 'filename'), opts);
     exports.forEach(function(obj, i) {
       var path = paths[i];
       cli.writeFile(path, obj.content);

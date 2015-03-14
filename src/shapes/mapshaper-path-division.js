@@ -175,7 +175,7 @@ MapShaper.findClippingPoints = function(arcs) {
   // remove 1. points that are at arc endpoints and 2. duplicate points
   // (kludgy -- look into preventing these cases, which are caused by T intersections)
   var index = {};
-  return Utils.filter(points, function(p) {
+  return utils.filter(points, function(p) {
     var key = p.i + "," + p.pct;
     if (key in index) return false;
     index[key] = true;

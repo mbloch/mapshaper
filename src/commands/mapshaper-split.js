@@ -16,7 +16,7 @@ api.splitLayer = function(lyr0, arcs, splitField) {
 
     if (key in index === false) {
       index[key] = splitLayers.length;
-      lyr = Utils.defaults({
+      lyr = utils.defaults({
         name: MapShaper.getSplitLayerName(lyr0.name, key),
         data: properties ? new DataTable() : null,
         shapes: []

@@ -16,8 +16,8 @@ api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
   function groupId(shpBounds) {
     var c = Math.floor((shpBounds.centerX() - xmin) / w * cols),
         r = Math.floor((shpBounds.centerY() - ymin) / h * rows);
-    c = Utils.clamp(c, 0, cols-1);
-    r = Utils.clamp(r, 0, rows-1);
+    c = utils.clamp(c, 0, cols-1);
+    r = utils.clamp(r, 0, rows-1);
     return r * cols + c;
   }
 
@@ -47,7 +47,7 @@ api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
   });
 
   var layers = [];
-  Utils.forEach(groups, function(group, i) {
+  utils.forEach(groups, function(group, i) {
     if (!group) return; // empty cell
     var groupLyr = {
       shapes: group.shapes,

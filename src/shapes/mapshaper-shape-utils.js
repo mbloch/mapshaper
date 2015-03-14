@@ -91,7 +91,7 @@ MapShaper.forEachArcId = function(arr, cb) {
     item = arr[i];
     if (item instanceof Array) {
       MapShaper.forEachArcId(item, cb);
-    } else if (Utils.isInteger(item)) {
+    } else if (utils.isInteger(item)) {
       var val = cb(item);
       if (val !== void 0) {
         arr[i] = val;
@@ -108,7 +108,7 @@ MapShaper.forEachPath = function(paths, cb) {
 
 MapShaper.editPaths = function(paths, cb) {
   if (!paths) return null; // null shape
-  if (!Utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
+  if (!utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
   var nulls = 0,
       n = paths.length,
       retn;
@@ -118,7 +118,7 @@ MapShaper.editPaths = function(paths, cb) {
     if (retn === null) {
       nulls++;
       paths[i] = null;
-    } else if (Utils.isArray(retn)) {
+    } else if (utils.isArray(retn)) {
       paths[i] = retn;
     }
   }
@@ -139,7 +139,7 @@ MapShaper.forEachPathSegment = function(shape, arcs, cb) {
 
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
-  Utils.forEach(shapes, function(parts, shapeId) {
+  utils.forEach(shapes, function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
     var arcIds, arcId, partData;
     if (cbShape) {
@@ -187,7 +187,7 @@ MapShaper.arcHasLength = function(id, coords) {
 MapShaper.filterEmptyArcs = function(shape, coords) {
   if (!shape) return null;
   var shape2 = [];
-  Utils.forEach(shape, function(ids) {
+  utils.forEach(shape, function(ids) {
     var path = [];
     for (var i=0; i<ids.length; i++) {
       if (MapShaper.arcHasLength(ids[i], coords)) {
@@ -210,7 +210,7 @@ MapShaper.filterEmptyArcs = function(shape, coords) {
 MapShaper.groupPolygonRings = function(paths) {
   var pos = [],
       neg = [];
-  Utils.forEach(paths, function(path) {
+  utils.forEach(paths, function(path) {
     if (path.area > 0) {
       pos.push(path);
     } else if (path.area < 0) {
@@ -220,11 +220,11 @@ MapShaper.groupPolygonRings = function(paths) {
     }
   });
 
-  var output = Utils.map(pos, function(part) {
+  var output = utils.map(pos, function(part) {
     return [part];
   });
 
-  Utils.forEach(neg, function(hole) {
+  utils.forEach(neg, function(hole) {
     var containerId = -1,
         containerArea = 0;
     for (var i=0, n=pos.length; i<n; i++) {
@@ -246,8 +246,8 @@ MapShaper.groupPolygonRings = function(paths) {
 
 MapShaper.getPathMetadata = function(shape, arcs, type) {
   var iter = new ShapeIter(arcs);
-  return Utils.map(shape, function(ids) {
-    if (!Utils.isArray(ids)) throw new Error("expected array");
+  return utils.map(shape, function(ids) {
+    if (!utils.isArray(ids)) throw new Error("expected array");
     iter.init(ids);
     return {
       ids: ids,

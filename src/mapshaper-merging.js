@@ -43,9 +43,9 @@ MapShaper.mergeArcs = function(arr) {
     return data;
   });
 
-  var xx = utils.mergeArrays(Utils.pluck(dataArr, 'xx'), Float64Array),
-      yy = utils.mergeArrays(Utils.pluck(dataArr, 'yy'), Float64Array),
-      nn = utils.mergeArrays(Utils.pluck(dataArr, 'nn'), Int32Array);
+  var xx = utils.mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
+      yy = utils.mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
+      nn = utils.mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
 
   return new ArcCollection(nn, xx, yy);
 };
@@ -61,7 +61,7 @@ utils.mergeArrays = function(arrays, TypedArr) {
       Arr = TypedArr || Array,
       merged = new Arr(size),
       offs = 0;
-  Utils.forEach(arrays, function(src) {
+  utils.forEach(arrays, function(src) {
     var n = src.length;
     for (var i = 0; i<n; i++) {
       merged[i + offs] = src[i];

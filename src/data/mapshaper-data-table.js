@@ -4,12 +4,12 @@ var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
 
 function DataTable(obj) {
   var records;
-  if (Utils.isArray(obj)) {
+  if (utils.isArray(obj)) {
     records = obj;
   } else {
     records = [];
     // integer object: create empty records
-    if (Utils.isInteger(obj)) {
+    if (utils.isInteger(obj)) {
       for (var i=0; i<obj; i++) {
         records.push({});
       }
@@ -29,7 +29,7 @@ function DataTable(obj) {
 
 var dataTableProto = {
   fieldExists: function(name) {
-    return Utils.contains(this.getFields(), name);
+    return utils.contains(this.getFields(), name);
   },
 
   exportAsJSON: function() {
@@ -37,14 +37,14 @@ var dataTableProto = {
   },
 
   addField: function(name, init) {
-    var useFunction = Utils.isFunction(init);
-    if (!Utils.isNumber(init) && !Utils.isString(init) && !useFunction) {
+    var useFunction = utils.isFunction(init);
+    if (!utils.isNumber(init) && !utils.isString(init) && !useFunction) {
       error("DataTable#addField() requires a string, number or function for initialization");
     }
     if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
     if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
 
-    Utils.forEach(this.getRecords(), function(obj, i) {
+    utils.forEach(this.getRecords(), function(obj, i) {
       obj[name] = useFunction ? init(obj, i) : init;
     });
   },
@@ -62,7 +62,7 @@ var dataTableProto = {
   },
 
   indexOn: function(f) {
-    this._index = Utils.indexOn(this.getRecords(), f);
+    this._index = utils.indexOn(this.getRecords(), f);
   },
 
   getIndexedRecord: function(val) {
@@ -87,7 +87,7 @@ var dataTableProto = {
 
   clone: function() {
     var records2 = this.getRecords().map(function(rec) {
-      return Utils.extend({}, rec);
+      return utils.extend({}, rec);
     });
     return new DataTable(records2);
   },
@@ -97,7 +97,7 @@ var dataTableProto = {
   }
 };
 
-Utils.extend(DataTable.prototype, dataTableProto);
+utils.extend(DataTable.prototype, dataTableProto);
 
 // Implements the DataTable api for DBF file data.
 // We avoid touching the raw DBF field data if possible. This way, we don't need
@@ -129,7 +129,7 @@ function ShapefileTable(buf, encoding) {
   };
 
   this.getFields = function() {
-    return reader ? Utils.pluck(reader.header.fields, 'name') : table.getFields();
+    return reader ? utils.pluck(reader.header.fields, 'name') : table.getFields();
   };
 
   this.size = function() {
@@ -137,7 +137,7 @@ function ShapefileTable(buf, encoding) {
   };
 }
 
-Utils.extend(ShapefileTable.prototype, dataTableProto);
+utils.extend(ShapefileTable.prototype, dataTableProto);
 
 // export for testing
 MapShaper.DataTable = DataTable;

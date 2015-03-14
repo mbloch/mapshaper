@@ -11,7 +11,7 @@ api.dividePolygonLayer = function(lyrA, lyrB, arcs) {
   MapShaper.openArcRoutes(lyrB.shapes, arcs, flags, true, true, false);
 
   var dividedShapes = MapShaper.dividePolygons(lyrA.shapes, arcs, flags);
-  return Utils.defaults({shapes: dividedShapes, data: null}, lyrA);
+  return utils.defaults({shapes: dividedShapes, data: null}, lyrA);
 };
 
 MapShaper.dividePolygons = function(shapes, arcs, flags) {

@@ -155,13 +155,13 @@ function CommandParser() {
     }
 
     function findCommandDefn(name, arr) {
-      return Utils.find(arr, function(cmd) {
+      return utils.find(arr, function(cmd) {
         return cmd.name === name || cmd.alias === name;
       });
     }
 
     function findOptionDefn(name, cmd) {
-      return Utils.find(cmd.options, function(o) {
+      return utils.find(cmd.options, function(o) {
         return o.name === name || o.alias === name;
       });
     }
@@ -191,7 +191,7 @@ function CommandParser() {
       }, []);
 
       allCommands.filter(function(cmd) {
-        return Utils.contains(commandNames, cmd.name);
+        return utils.contains(commandNames, cmd.name);
       });
       if (helpCommands.length === 0) {
         detailView = false;
@@ -263,7 +263,7 @@ function CommandParser() {
     return helpStr;
 
     function formatHelpLine(help, desc) {
-      return Utils.rpad(help, colWidth, ' ') + gutter + (desc || '') + '\n';
+      return utils.rpad(help, colWidth, ' ') + gutter + (desc || '') + '\n';
     }
 
     function formatOption(o) {
@@ -327,8 +327,8 @@ function CommandOptions(name) {
 
   this.option = function(name, opts) {
     opts = opts || {}; // accept just a name -- some options don't need properties
-    if (!Utils.isString(name) || !name) error("Missing option name");
-    if (!Utils.isObject(opts)) error("Invalid option definition:", opts);
+    if (!utils.isString(name) || !name) error("Missing option name");
+    if (!utils.isObject(opts)) error("Invalid option definition:", opts);
     opts.name = name;
     _command.options.push(opts);
     return this;

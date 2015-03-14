@@ -5,13 +5,13 @@
 api.filterFields = function(lyr, names) {
   if (!lyr.data) {
     stop("[filter-fields] Layer is missing a data table");
-  } else if (!Utils.isArray(names)) {
+  } else if (!utils.isArray(names)) {
     stop("[filter-fields] Expected an array of field names; found:", names);
   }
 
   var fieldMap = MapShaper.getFieldFilterMap(names),
       dataFields = lyr.data.getFields(),
-      missingFields = Utils.difference(Object.keys(fieldMap), dataFields);
+      missingFields = utils.difference(Object.keys(fieldMap), dataFields);
 
   if (missingFields.length > 0) {
     message("[filter-fields] Table is missing one or more specified fields:", missingFields);

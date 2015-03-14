@@ -6,7 +6,7 @@
 //
 TopoJSON.splitTopology = function(topology) {
   var topologies = {};
-  Utils.forEach(topology.objects, function(obj, name) {
+  utils.forEach(topology.objects, function(obj, name) {
     var split = {
       arcs: topology.arcs,
       // bbox: obj.bbox || null,
@@ -26,7 +26,7 @@ TopoJSON.splitTopology = function(topology) {
 // Side effect: arc ids in @obj are re-indexed to match filtered arcs.
 //
 TopoJSON.extractGeometryObject = function(obj, arcs) {
-  if (!Utils.isArray(arcs)) {
+  if (!utils.isArray(arcs)) {
     error("Usage: TopoJSON.extractObject(object, arcs)");
   }
 
@@ -40,7 +40,7 @@ TopoJSON.extractGeometryObject = function(obj, arcs) {
   // Create array for translating original arc ids to filtered arc arrays
   var arcMap = new Uint32Array(arcs.length),
       newId = 0;
-  var filteredArcs = Utils.filter(arcs, function(coords, i) {
+  var filteredArcs = utils.filter(arcs, function(coords, i) {
     if (flags[i] === 1) {
       arcMap[i] = newId++;
       return true;

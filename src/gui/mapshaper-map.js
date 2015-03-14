@@ -7,7 +7,7 @@ function MshpMap(el, opts_) {
     bounds: null,
     padding: 0 // margin around content at full extent, in pixels
   };
-  var opts = Utils.extend(defaults, opts_);
+  var opts = utils.extend(defaults, opts_);
   if (opts.bounds instanceof Bounds === false) {
     error("[MshpMap()] missing required bounds option");
   }

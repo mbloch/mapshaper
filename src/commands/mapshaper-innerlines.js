@@ -24,33 +24,33 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
       allData = [];
 
   function addArcs(typeArcs) {
-    var typeData = Utils.repeat(typeArcs.length, function(i) {
+    var typeData = utils.repeat(typeArcs.length, function(i) {
           return {TYPE: typeCode};
         }) || [];
-    allArcs = Utils.merge(typeArcs, allArcs);
-    allData = Utils.merge(typeData, allData);
+    allArcs = utils.merge(typeArcs, allArcs);
+    allData = utils.merge(typeData, allData);
     typeCode++;
   }
 
   addArcs(outerArcs);
 
-  if (Utils.isArray(fields)) {
+  if (utils.isArray(fields)) {
     if (!lyr.data) {
       stop("[lines] missing a data table:");
     }
-    Utils.forEach(fields, function(field) {
+    utils.forEach(fields, function(field) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] unknown data field:", field);
       }
       var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
-      dissolvedArcs = Utils.difference(dissolvedArcs, allArcs);
+      dissolvedArcs = utils.difference(dissolvedArcs, allArcs);
       addArcs(dissolvedArcs);
     });
   }
 
   var innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
-  innerArcs = Utils.difference(innerArcs, allArcs);
+  innerArcs = utils.difference(innerArcs, allArcs);
   addArcs(innerArcs);
 
   var lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
@@ -71,7 +71,7 @@ MapShaper.convertArcsToLineLayer = function(arcs, data) {
 };
 
 MapShaper.convertArcsToShapes = function(arcs) {
-  return Utils.map(arcs, function(id) {
+  return utils.map(arcs, function(id) {
     return [[id]];
   });
 };

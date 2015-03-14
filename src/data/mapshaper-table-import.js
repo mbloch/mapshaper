@@ -75,7 +75,7 @@ MapShaper.removeTypeHints = function(arr) {
 // modify @fields to remove type hints
 //
 MapShaper.parseFieldHeaders = function(fields, index) {
-  var parsed = Utils.map(fields, function(raw) {
+  var parsed = utils.map(fields, function(raw) {
     var parts, name, type;
     if (raw.indexOf(':') != -1) {
       parts = raw.split(':');
@@ -102,7 +102,7 @@ MapShaper.parseFieldHeaders = function(fields, index) {
 //
 MapShaper.guessDelimiter = function(content) {
   var delimiters = ['|', '\t', ','];
-  return Utils.find(delimiters, function(delim) {
+  return utils.find(delimiters, function(delim) {
     var rxp = MapShaper.getDelimiterRxp(delim);
     return rxp.test(content);
   }) || ',';
@@ -111,7 +111,7 @@ MapShaper.guessDelimiter = function(content) {
 // Get RegExp to test for a delimiter before first line break of a string
 // Assumes that first line contains field headers and that header names do not include delim char
 MapShaper.getDelimiterRxp = function(delim) {
-  var rxp = "^[^\\n\\r]+" + Utils.regexEscape(delim);
+  var rxp = "^[^\\n\\r]+" + utils.regexEscape(delim);
   return new RegExp(rxp);
 };
 
@@ -132,12 +132,12 @@ MapShaper.adjustRecordTypes = function(records, fieldList) {
   fields.forEach(function(key) {
     var val = firstRecord[key];
     if (key in hintIndex === false) {
-      if (Utils.isString(val) && utils.stringIsNumeric(val)) {
+      if (utils.isString(val) && utils.stringIsNumeric(val)) {
         conversionIndex[key] = 'number';
       }
-    } else if (hintIndex[key] == 'number' && !Utils.isNumber(val)) {
+    } else if (hintIndex[key] == 'number' && !utils.isNumber(val)) {
       conversionIndex[key] = 'number';
-    } else if (hintIndex[key] == 'string' && !Utils.isString(val)) {
+    } else if (hintIndex[key] == 'string' && !utils.isString(val)) {
       conversionIndex[key] = 'string';
     }
   });
@@ -161,18 +161,18 @@ utils.parseNumber = function(str) {
 };
 
 MapShaper.convertRecordTypes = function(records, typeIndex) {
-  var typedFields = Utils.keys(typeIndex),
+  var typedFields = utils.keys(typeIndex),
       converters = {
         'string': String,
         'number': utils.parseNumber
       },
-      transforms = Utils.map(typedFields, function(f) {
+      transforms = utils.map(typedFields, function(f) {
         var type = typeIndex[f],
             converter = converters[type];
         return converter;
       });
   if (typedFields.length === 0) return;
-  Utils.forEach(records, function(rec) {
+  utils.forEach(records, function(rec) {
     MapShaper.convertRecordData(rec, typedFields, transforms);
   });
 };

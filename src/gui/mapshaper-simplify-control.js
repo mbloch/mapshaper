@@ -29,7 +29,7 @@ var SimplifyControl = function() {
     else if (pct < 0.01) decimals = 3;
     else if (pct < 1) decimals = 2;
     else if (pct < 100) decimals = 1;
-    return Utils.formatNumber(pct, decimals) + "%";
+    return utils.formatNumber(pct, decimals) + "%";
   });
 
   text.parser(function(s) {

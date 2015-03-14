@@ -27,7 +27,7 @@ Dbf.getStringReaderAscii = function(size) {
           "  shiftjis  (Japanese)\n" +
           "Run mapshaper -encodings for a list of supported encodings");
     }
-    return Utils.trim(str);
+    return utils.trim(str);
   };
 };
 
@@ -50,7 +50,7 @@ Dbf.getStringReaderEncoded = function(size, encoding) {
     } else {
       str = iconv.decode(buf.slice(0, i), encoding);
     }
-    str = Utils.trim(str);
+    str = utils.trim(str);
     return str;
   };
 };
@@ -104,7 +104,7 @@ Dbf.getUniqFieldNames = function(fields, maxLen) {
 // @src is a Buffer or ArrayBuffer or filename
 //
 function DbfReader(src, encoding) {
-  if (Utils.isString(src)) {
+  if (utils.isString(src)) {
     src = cli.readFile(src);
   }
   var bin = new BinArray(src).littleEndian();
@@ -128,14 +128,14 @@ DbfReader.prototype.readCol = function(c) {
 //
 DbfReader.prototype.readCols = function() {
   var data = {};
-  Utils.forEach(this.header.fields, function(field, col) {
+  utils.forEach(this.header.fields, function(field, col) {
     data[field.name] = this.readCol(col);
   }, this);
   return data;
 };
 
 DbfReader.prototype.readRows = function() {
-  var names = Utils.pluck(this.header.fields, 'name'),
+  var names = utils.pluck(this.header.fields, 'name'),
     uniqNames = Dbf.getUniqFieldNames(names),
     rows = this.header.recordCount,
     cols = names.length,

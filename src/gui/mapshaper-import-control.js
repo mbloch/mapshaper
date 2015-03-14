@@ -31,13 +31,13 @@ function ImportControl(editor) {
       return !val ? '' : String(val);
     })
     .validator(function(str) {
-      return str === '' || Utils.isNumber(parseFloat(str));
+      return str === '' || utils.isNumber(parseFloat(str));
     });
 
   // TODO: doesn't need to be public
   // Receive: FileList
   this.readFiles = function(files) {
-    Utils.forEach(files, this.readFile, this);
+    utils.forEach(files, this.readFile, this);
   };
 
   // Receive: File object

@@ -226,7 +226,7 @@ function ArcCollection() {
 
   // Return arcs as arrays of [x, y] points (intended for testing).
   this.toArray = function() {
-    return Utils.range(this.size()).map(function(i) {
+    return utils.range(this.size()).map(function(i) {
       return this.getArc(i).toArray();
     }, this);
   };
@@ -611,7 +611,7 @@ function ArcCollection() {
     } else if (rank > tmp.length) {
       z = Infinity;
     } else {
-      z = Utils.findValueByRank(tmp, rank);
+      z = utils.findValueByRank(tmp, rank);
     }
     return z;
   };

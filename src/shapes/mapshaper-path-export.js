@@ -30,7 +30,7 @@ MapShaper.exportPathData = function(shape, arcs, type) {
       paths = [];
 
   if (type == 'polyline' || type == 'polygon') {
-    Utils.forEach(shape, function(arcIds, i) {
+    utils.forEach(shape, function(arcIds, i) {
       var iter = arcs.getShapeIter(arcIds),
           path = MapShaper.exportPathCoords(iter),
           valid = true;

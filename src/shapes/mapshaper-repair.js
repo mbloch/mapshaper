@@ -85,12 +85,12 @@ MapShaper.repairIntersections = function(arcs, intersections) {
         loops = 0,
         intersection, segIds, pairs, pair, len;
 
-    intersections = Utils.mapFilter(intersections, function(obj) {
+    intersections = utils.mapFilter(intersections, function(obj) {
       if (setPriority(obj) == Infinity) return void 0;
       return obj;
     });
 
-    Utils.sortOn(intersections, 'z', !!"ascending");
+    utils.sortOn(intersections, 'z', !!"ascending");
 
     while (intersections.length > 0) {
       len = intersections.length;

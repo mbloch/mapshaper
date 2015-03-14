@@ -5,12 +5,12 @@ Dbf.exportRecords = function(arr, encoding) {
   var fields = Dbf.getFieldNames(arr);
   var uniqFields = Dbf.getUniqFieldNames(fields, 10);
   var rows = arr.length;
-  var fieldData = Utils.map(fields, function(name) {
+  var fieldData = utils.map(fields, function(name) {
     return Dbf.getFieldInfo(arr, name, encoding);
   });
 
   var headerBytes = Dbf.getHeaderSize(fieldData.length),
-      recordBytes = Dbf.getRecordSize(Utils.pluck(fieldData, 'size')),
+      recordBytes = Dbf.getRecordSize(utils.pluck(fieldData, 'size')),
       fileBytes = headerBytes + rows * recordBytes + 1;
 
   var buffer = new ArrayBuffer(fileBytes);
@@ -30,7 +30,7 @@ Dbf.exportRecords = function(arr, encoding) {
   bin.skipBytes(2);
 
   // field subrecords
-  Utils.reduce(fieldData, function(recordOffset, obj, i) {
+  utils.reduce(fieldData, function(recordOffset, obj, i) {
     var fieldName = uniqFields[i];
     bin.writeCString(fieldName, 11);
     bin.writeUint8(obj.type.charCodeAt(0));
@@ -46,7 +46,7 @@ Dbf.exportRecords = function(arr, encoding) {
     error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
   }
 
-  Utils.forEach(arr, function(rec, i) {
+  utils.forEach(arr, function(rec, i) {
     var start = bin.position();
     bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
     for (var j=0, n=fieldData.length; j<n; j++) {
@@ -81,7 +81,7 @@ Dbf.getHeaderSize = function(numFields) {
 };
 
 Dbf.getRecordSize = function(fieldSizes) {
-  return Utils.sum(fieldSizes) + 1; // delete byte plus data bytes
+  return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
 };
 
 /*
@@ -113,7 +113,7 @@ Dbf.initNumericField = function(info, arr, name) {
     var rec = arr[i],
         str = formatter(rec[name]);
     if (str.length < size) {
-      str = Utils.lpad(str, size, ' ');
+      str = utils.lpad(str, size, ' ');
     }
     bin.writeString(str, size);
   };
@@ -139,9 +139,9 @@ Dbf.initDateField = function(info, arr, name) {
     if (d instanceof Date === false) {
       str = '00000000';
     } else {
-      str = Utils.lpad(d.getUTCFullYear(), 4, '0') +
-            Utils.lpad(d.getUTCMonth() + 1, 2, '0') +
-            Utils.lpad(d.getUTCDate(), 2, '0');
+      str = utils.lpad(d.getUTCFullYear(), 4, '0') +
+            utils.lpad(d.getUTCMonth() + 1, 2, '0') +
+            utils.lpad(d.getUTCDate(), 2, '0');
     }
     bin.writeString(str);
   };
@@ -150,7 +150,7 @@ Dbf.initDateField = function(info, arr, name) {
 Dbf.initStringField = function(info, arr, name, encoding) {
   var formatter = Dbf.getStringWriter(encoding);
   var maxLen = 0;
-  var values = Utils.map(arr, function(rec) {
+  var values = utils.map(arr, function(rec) {
     var buf = formatter(rec[name]);
     maxLen = Math.max(maxLen, buf.byteLength);
     return buf;
@@ -191,9 +191,9 @@ Dbf.discoverFieldType = function(arr, name) {
   var val;
   for (var i=0, n=arr.length; i<n; i++) {
     val = arr[i][name];
-    if (Utils.isString(val)) return "C";
-    if (Utils.isNumber(val)) return "N";
-    if (Utils.isBoolean(val)) return "L";
+    if (utils.isString(val)) return "C";
+    if (utils.isNumber(val)) return "N";
+    if (utils.isBoolean(val)) return "L";
     if (val instanceof Date) return "D";
   }
   return "null" ;
@@ -206,7 +206,7 @@ Dbf.getDecimalFormatter = function(size, decimals) {
     // TODO: handle invalid values better
     var valid = utils.isFiniteNumber(val),
         strval = valid ? val.toFixed(decimals) : String(nullValue);
-    return Utils.lpad(strval, size, ' ');
+    return utils.lpad(strval, size, ' ');
   };
 };
 

@@ -8,10 +8,10 @@ mapshaper-stringify
 */
 
 MapShaper.importGeoJSON = function(obj, opts) {
-  if (Utils.isString(obj)) {
+  if (utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
-  var supportedGeometries = Utils.getKeys(GeoJSON.pathImporters);
+  var supportedGeometries = utils.getKeys(GeoJSON.pathImporters);
 
   // Convert single feature or geometry into a collection with one member
   if (obj.type == 'Feature') {
@@ -19,7 +19,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
       type: 'FeatureCollection',
       features: [obj]
     };
-  } else if (Utils.contains(supportedGeometries, obj.type)) {
+  } else if (utils.contains(supportedGeometries, obj.type)) {
     obj = {
       type: 'GeometryCollection',
       geometries: [obj]
@@ -174,7 +174,7 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   output[useFeatures ? 'features' : 'geometries'] = ['$'];
 
   // serialize features one at a time to avoid allocating lots of arrays
-  var objects = Utils.reduce(lyr.shapes, function(memo, shape, i) {
+  var objects = utils.reduce(lyr.shapes, function(memo, shape, i) {
     var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type),
         str;
     if (useFeatures) {
