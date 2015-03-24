@@ -10,53 +10,46 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       nextBuf = MapShaper.expandoBuffer(Int32Array);
 
   // Calculate Visvalingam simplification data for an arc
-  // Receives arrays of x- and y- coordinates, optional array of z- coords
-  //
+  // @kk (Float64Array|Array) Receives calculated thresholds
+  // @xx, @yy, (@zz) Buffers containing vertex coordinates
   return function calcVisvalingam(kk, xx, yy, zz) {
     var arcLen = kk.length,
         prevArr = prevBuf(arcLen),
         nextArr = nextBuf(arcLen),
         threshold = -Infinity,
-        tmp,
-        ax, ay, bx, by, cx, cy,
-        idx, nextIdx, prevIdx;
+        tmp, a, b, c, d, e;
 
     if (zz && !is3D) {
-      error("[calcVisvalingam()] Received z-axis data for 2D simplification");
+      error("[visvalingam] Received z-axis data for 2D simplification");
     } else if (!zz && is3D) {
-      error("[calcVisvalingam()] Missing z-axis data for 3D simplification");
+      error("[visvalingam] Missing z-axis data for 3D simplification");
+    } else if (kk.length > xx.length) {
+      error("[visvalingam] Incompatible data arrays:", kk.length, xx.length);
     }
 
     // Initialize Visvalingam "effective area" values and references to
     //   prev/next points for each point in arc.
-    //
-    kk[0] = kk[arcLen-1] = Infinity; // arc endpoints
-    for (var i=1; i<arcLen-1; i++) {
-      ax = xx[i-1];
-      bx = xx[i];
-      cx = xx[i+1];
-      ay = yy[i-1];
-      by = yy[i];
-      cy = yy[i+1];
-
-      if (!is3D) {
-        tmp = metric(ax, ay, bx, by, cx, cy);
+    for (c=0; c<arcLen; c++) {
+      b = c-1;
+      d = c+1;
+      if (b < 0 || d >= arcLen) {
+        tmp = Infinity; // endpoint thresholds
+      } else if (!is3D) {
+        tmp = metric(xx[b], yy[b], xx[c], yy[c], xx[d], yy[d]);
       } else {
-        tmp = metric(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
+        tmp = metric(xx[b], yy[b], zz[b], xx[c], yy[c], zz[c], xx[d], yy[d], zz[d]);
       }
-      kk[i] = tmp;
-      nextArr[i] = i + 1;
-      prevArr[i] = i - 1;
+      kk[c] = tmp;
+      nextArr[c] = d;
+      prevArr[c] = b;
     }
-    prevArr[arcLen-1] = arcLen - 2;
-    nextArr[0] = 1;
     heap.init(kk);
 
     // Calculate removal thresholds for each internal point in the arc
     //
     while (heap.heapSize() > 0) {
-      idx = heap.pop(); // Remove the point with the least effective area.
-      tmp = kk[idx];
+      c = heap.pop(); // Remove the point with the least effective area.
+      tmp = kk[c];
       if (tmp === Infinity) {
         break;
       }
@@ -66,38 +59,32 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       threshold = tmp;
 
       // Recompute effective area of neighbors of the removed point.
-      prevIdx = prevArr[idx];
-      nextIdx = nextArr[idx];
-      ax = xx[prevIdx];
-      ay = yy[prevIdx];
-      bx = xx[nextIdx];
-      by = yy[nextIdx];
+      b = prevArr[c];
+      d = nextArr[c];
 
-      if (prevIdx > 0) {
-        cx = xx[prevArr[prevIdx]];
-        cy = yy[prevArr[prevIdx]];
+      if (b > 0) {
+        a = prevArr[b];
         if (!is3D) {
-          tmp = metric(bx, by, ax, ay, cx, cy); // next point, prev point, prev-prev point
+          tmp = metric(xx[a], yy[a], xx[b], yy[b], xx[d], yy[d]); // next point, prev point, prev-prev point
         } else {
-          tmp = metric(bx, by, zz[nextIdx], ax, ay, zz[prevIdx], cx, cy, zz[prevArr[prevIdx]]);
+          tmp = metric(xx[a], yy[a], zz[a], xx[b], yy[b], zz[b], xx[d], yy[d], zz[d]);
         }
         // don't give updated values a lesser value than the last popped vertex
         tmp =  Math.max(threshold, tmp);
-        heap.updateValue(prevIdx, tmp);
+        heap.updateValue(b, tmp);
       }
-      if (nextIdx < arcLen-1) {
-        cx = xx[nextArr[nextIdx]];
-        cy = yy[nextArr[nextIdx]];
+      if (d < arcLen-1) {
+        e = nextArr[d];
         if (!is3D) {
-          tmp = metric(ax, ay, bx, by, cx, cy); // prev point, next point, next-next point
+          tmp = metric(xx[b], yy[b], xx[d], yy[d], xx[e], yy[e]); // prev point, next point, next-next point
         } else {
-          tmp = metric(ax, ay, zz[prevIdx], bx, by, zz[nextIdx], cx, cy, zz[nextArr[nextIdx]]);
+          tmp = metric(xx[b], yy[b], zz[b], xx[d], yy[d], zz[d], xx[e], yy[e], zz[e]);
         }
         tmp = Math.max(threshold, tmp);
-        heap.updateValue(nextIdx, tmp);
+        heap.updateValue(d, tmp);
       }
-      nextArr[prevIdx] = nextIdx;
-      prevArr[nextIdx] = prevIdx;
+      nextArr[b] = d;
+      prevArr[d] = b;
     }
 
     // convert area metric to a linear equivalent

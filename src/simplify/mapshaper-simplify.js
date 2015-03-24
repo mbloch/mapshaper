@@ -45,20 +45,16 @@ MapShaper.simplifyPaths2D = function(paths, simplify) {
 };
 
 MapShaper.simplifyPaths3D = function(paths, simplify) {
-  var bufSize = 0,
-      xbuf, ybuf, zbuf;
-
+  var xbuf = MapShaper.expandoBuffer(Float64Array),
+      ybuf = MapShaper.expandoBuffer(Float64Array),
+      zbuf = MapShaper.expandoBuffer(Float64Array);
   paths.forEach3(function(xx, yy, kk, i) {
-    var arcLen = xx.length;
-    if (bufSize < arcLen) {
-      bufSize = Math.round(arcLen * 1.2);
-      xbuf = new Float64Array(bufSize);
-      ybuf = new Float64Array(bufSize);
-      zbuf = new Float64Array(bufSize);
-    }
-
-    MapShaper.convLngLatToSph(xx, yy, xbuf, ybuf, zbuf);
-    simplify(kk, xbuf, ybuf, zbuf);
+    var n = xx.length,
+        xx2 = xbuf(n),
+        yy2 = ybuf(n),
+        zz2 = zbuf(n);
+    MapShaper.convLngLatToSph(xx, yy, xx2, yy2, zz2);
+    simplify(kk, xx2, yy2, zz2);
   });
 };
 
