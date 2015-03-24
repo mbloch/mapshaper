@@ -7,8 +7,7 @@ function Heap() {
       dataArr,
       heapArr,
       indexArr,
-      itemsInHeap,
-      poppedVal;
+      itemsInHeap;
 
   this.init = function(values) {
     var i;
@@ -21,14 +20,13 @@ function Heap() {
     for (i=(itemsInHeap-2) >> 1; i >= 0; i--) {
       downHeap(i);
     }
-    poppedVal = -Infinity;
   };
 
   function prepareHeap(size) {
     if (size > capacity) {
-      heapArr = new Int32Array(size);
-      indexArr = new Int32Array(size);
-      capacity = size;
+      capacity = Math.ceil(size * 1.2);
+      heapArr = new Int32Array(capacity);
+      indexArr = new Int32Array(capacity);
     }
   }
 
@@ -39,12 +37,6 @@ function Heap() {
   // Update a single value and re-heap.
   //
   this.updateValue = function(valId, val) {
-    // TODO: move this logic out of heap
-    if (val < poppedVal) {
-      // don't give updated values a lesser value than the last popped vertex
-      // (required by visvalingam)
-      val = poppedVal;
-    }
     dataArr[valId] = val;
     var heapIdx = indexArr[valId];
     if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) error("[updateValue()] out-of-range heap index.");
@@ -63,10 +55,9 @@ function Heap() {
     var minValId = heapArr[0],
         lastIdx = --itemsInHeap;
     if (itemsInHeap > 0) {
-      insert(0, heapArr[lastIdx]);// copy last item in heap into root position
+      insert(0, heapArr[lastIdx]); // copy last item in heap into root position
       downHeap(0);
     }
-    poppedVal = dataArr[minValId];
     return minValId;
   };
 
