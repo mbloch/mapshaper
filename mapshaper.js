@@ -11938,24 +11938,34 @@ api.renameLayers = function(layers, names) {
 // A heap data structure used for computing Visvalingam simplification data.
 //
 function Heap() {
-  var dataArr,
+  var capacity = 0,
+      dataArr,
       heapArr,
       indexArr,
       itemsInHeap,
       poppedVal;
 
-  this.addValues = function(values, start, end) {
-    itemsInHeap = values.length;
+  this.init = function(values) {
+    var i;
     dataArr = values;
-    reserveSpace(itemsInHeap);
-    for (var i=0; i<itemsInHeap; i++) {
+    itemsInHeap = values.length;
+    prepareHeap(itemsInHeap);
+    for (i=0; i<itemsInHeap; i++) {
       insert(i, i);
     }
-    for (var j=(itemsInHeap-2) >> 1; j >= 0; j--) {
-      downHeap(j);
+    for (i=(itemsInHeap-2) >> 1; i >= 0; i--) {
+      downHeap(i);
     }
     poppedVal = -Infinity;
   };
+
+  function prepareHeap(size) {
+    if (size > capacity) {
+      heapArr = new Int32Array(size);
+      indexArr = new Int32Array(size);
+      capacity = size;
+    }
+  }
 
   this.heapSize = function() {
     return itemsInHeap;
@@ -11976,7 +11986,6 @@ function Heap() {
     reHeap(heapIdx);
   };
 
-
   this.testHeapOrder = function() {
     checkNode(0, -Infinity);
     return true;
@@ -11995,14 +12004,6 @@ function Heap() {
     poppedVal = dataArr[minValId];
     return minValId;
   };
-
-  function reserveSpace(heapSize) {
-    if (!heapArr || heapSize > heapArr.length) {
-      var bufLen = heapSize * 1.2 | 0;
-      heapArr = new Int32Array(bufLen);
-      indexArr = new Int32Array(bufLen);
-    }
-  }
 
   // Associate a heap idx with the id of a value in valuesArr
   //
@@ -12104,9 +12105,9 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
   //
   return function calcVisvalingam(kk, xx, yy, zz) {
     var arcLen = kk.length,
+        prev = -Infinity,
         threshold,
         ax, ay, bx, by, cx, cy;
-
 
     if (zz && !is3D) {
       error("[calcVisvalingam()] Received z-axis data for 2D simplification");
@@ -12144,20 +12145,26 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
     }
     prevArr[arcLen-1] = arcLen - 2;
     nextArr[0] = 1;
-
-    // Initialize the heap with thresholds
-    heap.addValues(kk);
+    heap.init(kk);
 
     // Calculate removal thresholds for each internal point in the arc
     //
     var idx, nextIdx, prevIdx;
-    while(heap.heapSize() > 2) {
+    while (heap.heapSize() > 0) {
 
       // Remove the point with the least effective area.
       idx = heap.pop();
-      if (idx <= 0 || idx > arcLen - 1) {
-        error("[visvalingam] Out-of-range idx:", idx, "len:", arcLen);
+      threshold = kk[idx];
+      if (threshold >= prev === false) {
+        error("[visvalingam] Values should increase, but:", prev, threshold);
       }
+      if (threshold === Infinity) {
+        if (heap.heapSize() < 2) {
+          error("[visvalingam] Too few vertices remaining:", heap.heapSize());
+        }
+        break;
+      }
+      prev = threshold;
 
       // Recompute effective area of neighbors of the removed point.
       prevIdx = prevArr[idx];

@@ -3,24 +3,34 @@
 // A heap data structure used for computing Visvalingam simplification data.
 //
 function Heap() {
-  var dataArr,
+  var capacity = 0,
+      dataArr,
       heapArr,
       indexArr,
       itemsInHeap,
       poppedVal;
 
-  this.addValues = function(values, start, end) {
-    itemsInHeap = values.length;
+  this.init = function(values) {
+    var i;
     dataArr = values;
-    reserveSpace(itemsInHeap);
-    for (var i=0; i<itemsInHeap; i++) {
+    itemsInHeap = values.length;
+    prepareHeap(itemsInHeap);
+    for (i=0; i<itemsInHeap; i++) {
       insert(i, i);
     }
-    for (var j=(itemsInHeap-2) >> 1; j >= 0; j--) {
-      downHeap(j);
+    for (i=(itemsInHeap-2) >> 1; i >= 0; i--) {
+      downHeap(i);
     }
     poppedVal = -Infinity;
   };
+
+  function prepareHeap(size) {
+    if (size > capacity) {
+      heapArr = new Int32Array(size);
+      indexArr = new Int32Array(size);
+      capacity = size;
+    }
+  }
 
   this.heapSize = function() {
     return itemsInHeap;
@@ -41,7 +51,6 @@ function Heap() {
     reHeap(heapIdx);
   };
 
-
   this.testHeapOrder = function() {
     checkNode(0, -Infinity);
     return true;
@@ -60,14 +69,6 @@ function Heap() {
     poppedVal = dataArr[minValId];
     return minValId;
   };
-
-  function reserveSpace(heapSize) {
-    if (!heapArr || heapSize > heapArr.length) {
-      var bufLen = heapSize * 1.2 | 0;
-      heapArr = new Int32Array(bufLen);
-      indexArr = new Int32Array(bufLen);
-    }
-  }
 
   // Associate a heap idx with the id of a value in valuesArr
   //
