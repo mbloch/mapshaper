@@ -3,25 +3,19 @@
 // A heap data structure used for computing Visvalingam simplification data.
 //
 function Heap() {
-  var maxItems,
-      dataOffs,
-      dataArr,
-      itemsInHeap,
-      poppedVal,
+  var dataArr,
       heapArr,
-      indexArr;
+      indexArr,
+      itemsInHeap,
+      poppedVal;
 
   this.addValues = function(values, start, end) {
-    var minId = start | 0,
-        maxItems = (isNaN(end) ? values.length : end + 1) - minId;
-    dataOffs = minId;
+    itemsInHeap = values.length;
     dataArr = values;
-    itemsInHeap = 0;
-    reserveSpace(maxItems);
-    for (var i=0; i<maxItems; i++) {
-      insert(i, i + dataOffs); // push item onto the heap
+    reserveSpace(itemsInHeap);
+    for (var i=0; i<itemsInHeap; i++) {
+      insert(i, i);
     }
-    itemsInHeap = maxItems;
     for (var j=(itemsInHeap-2) >> 1; j >= 0; j--) {
       downHeap(j);
     }
@@ -42,7 +36,7 @@ function Heap() {
       val = poppedVal;
     }
     dataArr[valId] = val;
-    var heapIdx = indexArr[valId - dataOffs];
+    var heapIdx = indexArr[valId];
     if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) error("[updateValue()] out-of-range heap index.");
     reHeap(heapIdx);
   };
@@ -67,7 +61,6 @@ function Heap() {
     return minValId;
   };
 
-
   function reserveSpace(heapSize) {
     if (!heapArr || heapSize > heapArr.length) {
       var bufLen = heapSize * 1.2 | 0;
@@ -79,7 +72,7 @@ function Heap() {
   // Associate a heap idx with the id of a value in valuesArr
   //
   function insert(heapIdx, valId) {
-    indexArr[valId - dataOffs] = heapIdx;
+    indexArr[valId] = heapIdx;
     heapArr[heapIdx] = valId;
   }
 

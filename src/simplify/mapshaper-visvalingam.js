@@ -12,10 +12,13 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
   // Calculate Visvalingam simplification data for an arc
   // Receives arrays of x- and y- coordinates, optional array of z- coords
   //
-  return function calcVisvalingam(dest, xx, yy, zz) {
-    var arcLen = dest.length,
+  return function calcVisvalingam(kk, xx, yy, zz) {
+    var arcLen = kk.length,
+        dest = kk.subarray(1, arcLen - 1),
         threshold,
         ax, ay, bx, by, cx, cy;
+
+    kk[0] = kk[arcLen-1] = Infinity; // arc endpoints
 
     if (zz && !is3D) {
       error("[calcVisvalingam()] Received z-axis data for 2D simplification");
@@ -46,15 +49,15 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
         threshold = metric(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
       }
 
-      dest[i] = threshold;
+      dest[i-1] = threshold;
       nextArr[i] = i + 1;
       prevArr[i] = i - 1;
     }
     prevArr[arcLen-1] = arcLen - 2;
     nextArr[0] = 1;
 
-    // Initialize the heap with thresholds; don't add first and last point
-    heap.addValues(dest, 1, arcLen-2);
+    // Initialize the heap with thresholds
+    heap.addValues(dest);
 
     // Calculate removal thresholds for each internal point in the arc
     //
@@ -62,7 +65,7 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
     while(heap.heapSize() > 0) {
 
       // Remove the point with the least effective area.
-      idx = heap.pop();
+      idx = heap.pop() + 1;
       if (idx < 1 || idx > arcLen - 2) {
         error("Popped first or last arc vertex (error condition); idx:", idx, "len:", arcLen);
       }
@@ -83,7 +86,7 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
         } else {
           threshold = metric(bx, by, zz[nextIdx], ax, ay, zz[prevIdx], cx, cy, zz[prevArr[prevIdx]]);
         }
-        heap.updateValue(prevIdx, threshold);
+        heap.updateValue(prevIdx-1, threshold);
       }
       if (nextIdx < arcLen-1) {
         cx = xx[nextArr[nextIdx]];
@@ -93,7 +96,7 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
         } else {
           threshold = metric(ax, ay, zz[prevIdx], bx, by, zz[nextIdx], cx, cy, zz[nextArr[nextIdx]]);
         }
-        heap.updateValue(nextIdx, threshold);
+        heap.updateValue(nextIdx-1, threshold);
       }
       nextArr[prevIdx] = nextIdx;
       prevArr[nextIdx] = prevIdx;
@@ -101,10 +104,9 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
 
     // convert area metric to a linear equivalent
     //
-    for (var j=1; j<arcLen-1; j++) {
+    for (var j=0; j<arcLen-2; j++) {
       dest[j] = Math.sqrt(dest[j]) * 0.65;
     }
-    dest[0] = dest[arcLen-1] = Infinity; // arc endpoints
   };
 };
 

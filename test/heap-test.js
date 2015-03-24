@@ -28,7 +28,7 @@ describe("mapshaper-heap.js", function() {
       assert.equal(heap.pop(), 0);
       assert.equal(heap.heapSize(), 0);
     });
-
+    /*
     it("heap accepts params for min and max value id", function() {
       heap.addValues([1.1, 3.8, -1.1, 5.2], 1, 2);
       assert.equal(heap.heapSize(), 2);
@@ -41,6 +41,7 @@ describe("mapshaper-heap.js", function() {
       heap.addValues([1.1, 3.3], 1, 0);
       assert.equal(heap.heapSize(), 0);
     })
+    */
 
   })
 })
