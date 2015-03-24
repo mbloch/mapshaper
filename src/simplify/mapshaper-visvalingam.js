@@ -4,7 +4,7 @@ var Visvalingam = {};
 
 MapShaper.Heap = Heap; // export Heap for testing
 
-Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
+Visvalingam.getArcCalculator = function(metric, is3D) {
   var bufLen = 0,
       heap = new Heap(),
       prevArr, nextArr;
@@ -14,9 +14,14 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
   //
   return function calcVisvalingam(dest, xx, yy, zz) {
     var arcLen = dest.length,
-        useZ = !!zz,
         threshold,
         ax, ay, bx, by, cx, cy;
+
+    if (zz && !is3D) {
+      error("[calcVisvalingam()] Received z-axis data for 2D simplification");
+    } else if (!zz && is3D) {
+      error("[calcVisvalingam()] Missing z-axis data for 3D simplification");
+    }
 
     if (arcLen > bufLen) {
       bufLen = Math.round(arcLen * 1.2);
@@ -35,10 +40,10 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
       by = yy[i];
       cy = yy[i+1];
 
-      if (!useZ) {
-        threshold = metric2D(ax, ay, bx, by, cx, cy);
+      if (!is3D) {
+        threshold = metric(ax, ay, bx, by, cx, cy);
       } else {
-        threshold = metric3D(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
+        threshold = metric(ax, ay, zz[i-1], bx, by, zz[i], cx, cy, zz[i+1]);
       }
 
       dest[i] = threshold;
@@ -73,20 +78,20 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
       if (prevIdx > 0) {
         cx = xx[prevArr[prevIdx]];
         cy = yy[prevArr[prevIdx]];
-        if (!useZ) {
-          threshold = metric2D(bx, by, ax, ay, cx, cy); // next point, prev point, prev-prev point
+        if (!is3D) {
+          threshold = metric(bx, by, ax, ay, cx, cy); // next point, prev point, prev-prev point
         } else {
-          threshold = metric3D(bx, by, zz[nextIdx], ax, ay, zz[prevIdx], cx, cy, zz[prevArr[prevIdx]]);
+          threshold = metric(bx, by, zz[nextIdx], ax, ay, zz[prevIdx], cx, cy, zz[prevArr[prevIdx]]);
         }
         heap.updateValue(prevIdx, threshold);
       }
       if (nextIdx < arcLen-1) {
         cx = xx[nextArr[nextIdx]];
         cy = yy[nextArr[nextIdx]];
-        if (!useZ) {
-          threshold = metric2D(ax, ay, bx, by, cx, cy); // prev point, next point, next-next point
+        if (!is3D) {
+          threshold = metric(ax, ay, bx, by, cx, cy); // prev point, next point, next-next point
         } else {
-          threshold = metric3D(ax, ay, zz[prevIdx], bx, by, zz[nextIdx], cx, cy, zz[nextArr[nextIdx]]);
+          threshold = metric(ax, ay, zz[prevIdx], bx, by, zz[nextIdx], cx, cy, zz[nextArr[nextIdx]]);
         }
         heap.updateValue(nextIdx, threshold);
       }
@@ -97,7 +102,7 @@ Visvalingam.getArcCalculator = function(metric2D, metric3D, scale) {
     // convert area metric to a linear equivalent
     //
     for (var j=1; j<arcLen-1; j++) {
-      dest[j] = Math.sqrt(dest[j]) * (scale || 1);
+      dest[j] = Math.sqrt(dest[j]) * 0.65;
     }
     dest[0] = dest[arcLen-1] = Infinity; // arc endpoints
   };
@@ -146,3 +151,23 @@ Visvalingam.weight_v3 = function(cos) {
 };
 
 Visvalingam.weight = Visvalingam.weight_v3;
+
+Visvalingam.getPathSimplifier = function(name, use3D) {
+  var metric = (use3D ? Visvalingam.metrics3D : Visvalingam.metrics2D)[name];
+  if (!metric) {
+    error("[visvalingam] Unknown metric:", name);
+  }
+  return Visvalingam.getArcCalculator(metric, use3D);
+};
+
+Visvalingam.metrics2D = {
+  visvalingam: Visvalingam.standardMetric,
+  mapshaper_v1: Visvalingam.weightedMetric_v1,
+  mapshaper: Visvalingam.weightedMetric
+};
+
+Visvalingam.metrics3D = {
+  visvalingam: Visvalingam.standardMetric3D,
+  mapshaper_v1: Visvalingam.weightedMetric3D_v1,
+  mapshaper: Visvalingam.weightedMetric3D
+};

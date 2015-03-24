@@ -27,11 +27,10 @@ api.simplify = function(arcs, opts) {
 
 // @paths ArcCollection object
 MapShaper.simplifyPaths = function(paths, opts) {
-  var method = opts.method || 'mapshaper';
-  var decimalDegrees = MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
-  var simplifyPath = MapShaper.simplifiers[method] || error("Unknown simplification method:", method);
-  paths.setThresholds(new Float64Array(paths.getPointCount()));
-  if (decimalDegrees && !opts.cartesian) {
+  var use3D = !opts.cartesian && MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
+  var simplifyPath = MapShaper.getSimplifyFunction(opts.method || 'mapshaper', use3D);
+  paths.setThresholds(new Float64Array(paths.getPointCount())); // Create array to hold simplification data
+  if (use3D) {
     MapShaper.simplifyPaths3D(paths, simplifyPath);
     MapShaper.protectWorldEdges(paths);
   } else {
@@ -63,14 +62,12 @@ MapShaper.simplifyPaths3D = function(paths, simplify) {
   });
 };
 
-// Path simplification functions
-// Signature: function(xx:array, yy:array, [zz:array], [length:integer]):array
-//
-MapShaper.simplifiers = {
-  visvalingam: Visvalingam.getArcCalculator(Visvalingam.standardMetric, Visvalingam.standardMetric3D, 0.65),
-  mapshaper_v1: Visvalingam.getArcCalculator(Visvalingam.weightedMetric_v1, Visvalingam.weightedMetric3D_v1, 0.65),
-  mapshaper: Visvalingam.getArcCalculator(Visvalingam.weightedMetric, Visvalingam.weightedMetric3D, 0.65),
-  dp: DouglasPeucker.calcArcData
+MapShaper.getSimplifyFunction = function(method, use3D) {
+  if (method == 'dp') {
+    return DouglasPeucker.calcArcData;
+  } else { // assuming Visvalingam simplification
+    return Visvalingam.getPathSimplifier(method, use3D);
+  }
 };
 
 // Protect polar coordinates and coordinates at the prime meridian from
