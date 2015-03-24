@@ -11948,7 +11948,7 @@ api.renameLayers = function(layers, names) {
 
 
 
-// A heap data structure used for computing Visvalingam simplification data.
+// A minheap data structure used for computing Visvalingam simplification data.
 //
 function Heap() {
   var capacity = 0,
@@ -11983,7 +11983,6 @@ function Heap() {
   };
 
   // Update a single value and re-heap.
-  //
   this.updateValue = function(valId, val) {
     dataArr[valId] = val;
     var heapIdx = indexArr[valId];
@@ -12060,29 +12059,27 @@ function Heap() {
     return currIdx;
   }
 
-  function downHeap(currIdx, heap, data) {
-    // Item gets swapped with any lighter children
-    //
-    var data = dataArr, heap = heapArr, ins = insert, // local vars, faster
+  // Swap item at @idx with any lighter children
+  function downHeap(startIdx) {
+    var data = dataArr, heap = heapArr, // local vars, faster
+        currIdx = startIdx,
         valId = heap[currIdx],
         currVal = data[valId],
         firstChildIdx = 2 * currIdx + 1,
-        secondChildIdx,
-        minChildIdx, childValId, childVal;
+        secondChildIdx, minChildIdx, childValId;
 
     while (firstChildIdx < itemsInHeap) {
+      minChildIdx = firstChildIdx;
       secondChildIdx = firstChildIdx + 1;
-      minChildIdx = secondChildIdx >= itemsInHeap || data[heap[firstChildIdx]] <= data[heap[secondChildIdx]] ? firstChildIdx : secondChildIdx;
-
+      if (secondChildIdx < itemsInHeap && data[heap[firstChildIdx]] > data[heap[secondChildIdx]]) {
+        minChildIdx = secondChildIdx;
+      }
       childValId = heap[minChildIdx];
-      childVal = data[childValId];
-
-      if (currVal <= childVal) {
+      if (currVal <= data[childValId]) {
         break;
       }
-
-      ins(currIdx, childValId);
-      ins(minChildIdx, valId);
+      insert(currIdx, childValId);
+      insert(minChildIdx, valId);
 
       // descend in the heap:
       currIdx = minChildIdx;
