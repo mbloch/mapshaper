@@ -11952,10 +11952,10 @@ api.renameLayers = function(layers, names) {
 //
 function Heap() {
   var capacity = 0,
+      itemsInHeap = 0,
       dataArr,
       heapArr,
-      indexArr,
-      itemsInHeap;
+      indexArr;
 
   this.init = function(values) {
     var i;
@@ -12056,15 +12056,14 @@ function Heap() {
       insert(currIdx, parentValId);
       insert(parentIdx, valId);
       currIdx = parentIdx;
-      // if (dataArr[heapArr[currIdx]] !== currVal) error("Lost value association");
     }
     return currIdx;
   }
 
-  function downHeap(currIdx) {
+  function downHeap(currIdx, heap, data) {
     // Item gets swapped with any lighter children
     //
-    var data = dataArr, heap = heapArr, // local vars, faster
+    var data = dataArr, heap = heapArr, ins = insert, // local vars, faster
         valId = heap[currIdx],
         currVal = data[valId],
         firstChildIdx = 2 * currIdx + 1,
@@ -12082,8 +12081,8 @@ function Heap() {
         break;
       }
 
-      insert(currIdx, childValId);
-      insert(minChildIdx, valId);
+      ins(currIdx, childValId);
+      ins(minChildIdx, valId);
 
       // descend in the heap:
       currIdx = minChildIdx;
@@ -12100,8 +12099,7 @@ var Visvalingam = {};
 MapShaper.Heap = Heap; // export Heap for testing
 
 Visvalingam.getArcCalculator = function(metric, is3D) {
-  var bufLen = 0,
-      heap = new Heap(),
+  var heap = new Heap(),
       prevBuf = MapShaper.expandoBuffer(Int32Array),
       nextBuf = MapShaper.expandoBuffer(Int32Array);
 

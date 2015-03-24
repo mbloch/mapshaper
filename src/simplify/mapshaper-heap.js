@@ -1,13 +1,13 @@
 /* @requires mapshaper-common */
 
-// A heap data structure used for computing Visvalingam simplification data.
+// A minheap data structure used for computing Visvalingam simplification data.
 //
 function Heap() {
   var capacity = 0,
+      itemsInHeap = 0,
       dataArr,
       heapArr,
-      indexArr,
-      itemsInHeap;
+      indexArr;
 
   this.init = function(values) {
     var i;
@@ -35,7 +35,6 @@ function Heap() {
   };
 
   // Update a single value and re-heap.
-  //
   this.updateValue = function(valId, val) {
     dataArr[valId] = val;
     var heapIdx = indexArr[valId];
@@ -108,32 +107,29 @@ function Heap() {
       insert(currIdx, parentValId);
       insert(parentIdx, valId);
       currIdx = parentIdx;
-      // if (dataArr[heapArr[currIdx]] !== currVal) error("Lost value association");
     }
     return currIdx;
   }
 
-  function downHeap(currIdx) {
-    // Item gets swapped with any lighter children
-    //
+  // Swap item at @idx with any lighter children
+  function downHeap(startIdx) {
     var data = dataArr, heap = heapArr, // local vars, faster
+        currIdx = startIdx,
         valId = heap[currIdx],
         currVal = data[valId],
         firstChildIdx = 2 * currIdx + 1,
-        secondChildIdx,
-        minChildIdx, childValId, childVal;
+        secondChildIdx, minChildIdx, childValId;
 
     while (firstChildIdx < itemsInHeap) {
+      minChildIdx = firstChildIdx;
       secondChildIdx = firstChildIdx + 1;
-      minChildIdx = secondChildIdx >= itemsInHeap || data[heap[firstChildIdx]] <= data[heap[secondChildIdx]] ? firstChildIdx : secondChildIdx;
-
+      if (secondChildIdx < itemsInHeap && data[heap[firstChildIdx]] > data[heap[secondChildIdx]]) {
+        minChildIdx = secondChildIdx;
+      }
       childValId = heap[minChildIdx];
-      childVal = data[childValId];
-
-      if (currVal <= childVal) {
+      if (currVal <= data[childValId]) {
         break;
       }
-
       insert(currIdx, childValId);
       insert(minChildIdx, valId);
 

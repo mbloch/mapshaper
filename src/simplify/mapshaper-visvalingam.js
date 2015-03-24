@@ -5,8 +5,7 @@ var Visvalingam = {};
 MapShaper.Heap = Heap; // export Heap for testing
 
 Visvalingam.getArcCalculator = function(metric, is3D) {
-  var bufLen = 0,
-      heap = new Heap(),
+  var heap = new Heap(),
       prevBuf = MapShaper.expandoBuffer(Int32Array),
       nextBuf = MapShaper.expandoBuffer(Int32Array);
 
