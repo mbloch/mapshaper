@@ -2,8 +2,6 @@
 
 var Visvalingam = {};
 
-MapShaper.Heap = Heap; // export Heap for testing
-
 Visvalingam.getArcCalculator = function(metric, is3D) {
   var heap = new Heap(),
       prevBuf = MapShaper.expandoBuffer(Int32Array),
@@ -109,34 +107,12 @@ Visvalingam.weightedMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return Visvalingam.weight(cos) * area;
 };
 
-// Functions for weighting triangle area
-
-// The original Flash-based Mapshaper (ca. 2006) used a step function to
-// underweight more acute triangles.
-Visvalingam.weight_v1 = function(cos) {
-  var angle = Math.acos(cos),
-      weight = 1;
-  if (angle < 0.5) {
-    weight = 0.1;
-  } else if (angle < 1) {
-    weight = 0.3;
-  }
-  return weight;
-};
-
-// v2 weighting: underweight polyline vertices at acute angles in proportion to 1 - cosine
-Visvalingam.weight_v2 = function(cos) {
-  return cos > 0 ? 1 - cos : 1;
-};
-
-// v3 weighting: weight by inverse cosine
+// Weight triangle area by inverse cosine
 // Standard weighting favors 90-deg angles; this curve peaks at 120 deg.
-Visvalingam.weight_v3 = function(cos) {
+Visvalingam.weight = function(cos) {
   var k = 0.7;
   return -cos * k + 1;
 };
-
-Visvalingam.weight = Visvalingam.weight_v3;
 
 Visvalingam.getPathSimplifier = function(name, use3D) {
   var metric = (use3D ? Visvalingam.metrics3D : Visvalingam.metrics2D)[name];
@@ -148,12 +124,10 @@ Visvalingam.getPathSimplifier = function(name, use3D) {
 
 Visvalingam.metrics2D = {
   visvalingam: Visvalingam.standardMetric,
-  mapshaper_v1: Visvalingam.weightedMetric_v1,
   mapshaper: Visvalingam.weightedMetric
 };
 
 Visvalingam.metrics3D = {
   visvalingam: Visvalingam.standardMetric3D,
-  mapshaper_v1: Visvalingam.weightedMetric3D_v1,
   mapshaper: Visvalingam.weightedMetric3D
 };

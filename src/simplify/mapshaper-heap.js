@@ -1,5 +1,7 @@
 /* @requires mapshaper-common */
 
+MapShaper.Heap = Heap; // export for testing
+
 // A minheap data structure used for computing Visvalingam simplification data.
 //
 function Heap() {
