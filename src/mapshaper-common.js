@@ -74,6 +74,19 @@ utils.wildcardToRegExp = function(name) {
   return new RegExp(rxp);
 };
 
+MapShaper.expandoBuffer = function(constructor, rate) {
+  var capacity = 0,
+      k = rate >= 1 ? rate : 1.2,
+      buf;
+  return function(size) {
+    if (size > capacity) {
+      capacity = Math.ceil(size * k);
+      buf = new constructor(capacity);
+    }
+    return buf;
+  };
+};
+
 MapShaper.copyElements = function(src, i, dest, j, n, rev) {
   if (src === dest && j > i) error ("copy error");
   var inc = 1,

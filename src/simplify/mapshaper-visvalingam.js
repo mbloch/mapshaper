@@ -7,14 +7,17 @@ MapShaper.Heap = Heap; // export Heap for testing
 Visvalingam.getArcCalculator = function(metric, is3D) {
   var bufLen = 0,
       heap = new Heap(),
-      prevArr, nextArr;
+      prevBuf = MapShaper.expandoBuffer(Int32Array),
+      nextBuf = MapShaper.expandoBuffer(Int32Array);
 
   // Calculate Visvalingam simplification data for an arc
   // Receives arrays of x- and y- coordinates, optional array of z- coords
   //
   return function calcVisvalingam(kk, xx, yy, zz) {
     var arcLen = kk.length,
-        prev = -Infinity,
+        prevArr = prevBuf(arcLen),
+        nextArr = nextBuf(arcLen),
+        threshold = -Infinity,
         tmp,
         ax, ay, bx, by, cx, cy,
         idx, nextIdx, prevIdx;
@@ -23,12 +26,6 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       error("[calcVisvalingam()] Received z-axis data for 2D simplification");
     } else if (!zz && is3D) {
       error("[calcVisvalingam()] Missing z-axis data for 3D simplification");
-    }
-
-    if (arcLen > bufLen) {
-      bufLen = Math.round(arcLen * 1.2);
-      prevArr = new Int32Array(bufLen);
-      nextArr = new Int32Array(bufLen);
     }
 
     // Initialize Visvalingam "effective area" values and references to
@@ -64,10 +61,10 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       if (tmp === Infinity) {
         break;
       }
-      if (tmp >= prev === false) {
-        error("[visvalingam] Values should increase, but:", prev, tmp);
+      if (tmp >= threshold === false) {
+        error("[visvalingam] Values should increase, but:", threshold, tmp);
       }
-      prev = tmp;
+      threshold = tmp;
 
       // Recompute effective area of neighbors of the removed point.
       prevIdx = prevArr[idx];
@@ -86,7 +83,7 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
           tmp = metric(bx, by, zz[nextIdx], ax, ay, zz[prevIdx], cx, cy, zz[prevArr[prevIdx]]);
         }
         // don't give updated values a lesser value than the last popped vertex
-        tmp =  Math.max(prev, tmp);
+        tmp =  Math.max(threshold, tmp);
         heap.updateValue(prevIdx, tmp);
       }
       if (nextIdx < arcLen-1) {
@@ -97,7 +94,7 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
         } else {
           tmp = metric(ax, ay, zz[prevIdx], bx, by, zz[nextIdx], cx, cy, zz[nextArr[nextIdx]]);
         }
-        tmp = Math.max(prev, tmp);
+        tmp = Math.max(threshold, tmp);
         heap.updateValue(nextIdx, tmp);
       }
       nextArr[prevIdx] = nextIdx;
