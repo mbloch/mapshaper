@@ -4,6 +4,27 @@ var assert = require('assert'),
 
 describe("mapshaper-visvalingam.js", function() {
 
+  describe("getPathSimplifier()", function() {
+    it("three-vertex path", function() {
+      var calc = v.getPathSimplifier("visvalingam");
+      var xx = [0, 1, 2],
+          yy = [0, 1, 0],
+          kk = [0, 0, 0];
+      calc(kk, xx, yy);
+      assert.deepEqual(kk, [Infinity, 0.65, Infinity]);
+    })
+
+    it("four-vertex path w/ threshold update", function() {
+      var calc = v.getPathSimplifier("visvalingam");
+      var xx = [0, 0, 1, 3],
+          yy = [0, 1, 0, 0],
+          kk = [0, 0, 0, 0];
+      var k = 0.65 * Math.sqrt(0.5);
+      calc(kk, xx, yy);
+      assert.deepEqual(kk, [Infinity, k, k, Infinity]);
+    })
+  });
+
   describe("standardMetric()", function() {
     it ("uses 2D triangle area", function() {
       var coords = [0, 0, 1, 2, 4, 1];
