@@ -84,11 +84,6 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       nextArr[b] = d;
       prevArr[d] = b;
     }
-
-    // convert area metric to a linear equivalent
-    for (var j=1; j<arcLen-1; j++) {
-      kk[j] = Math.sqrt(kk[j]) * 0.65;
-    }
   };
 };
 
@@ -119,8 +114,19 @@ Visvalingam.getPathSimplifier = function(name, use3D) {
   if (!metric) {
     error("[visvalingam] Unknown metric:", name);
   }
-  return Visvalingam.getArcCalculator(metric, use3D);
+  return Visvalingam.scaledSimplify(Visvalingam.getArcCalculator(metric, use3D));
 };
+
+Visvalingam.scaledSimplify = function(f) {
+  return function(kk, xx, yy, zz) {
+    f(kk, xx, yy, zz);
+    for (var i=1, n=kk.length - 1; i<n; i++) {
+      // convert area metric to a linear equivalent
+      kk[i] = Math.sqrt(kk[i]) * 0.65;
+    }
+  };
+};
+
 
 Visvalingam.metrics2D = {
   visvalingam: Visvalingam.standardMetric,
