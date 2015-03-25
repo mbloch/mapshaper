@@ -8,14 +8,14 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       nextBuf = MapShaper.expandoBuffer(Int32Array);
 
   // Calculate Visvalingam simplification data for an arc
-  // @kk (Float64Array|Array) Receives calculated thresholds
+  // @kk (Float64Array|Array) Receives calculated maxVals
   // @xx, @yy, (@zz) Buffers containing vertex coordinates
   return function calcVisvalingam(kk, xx, yy, zz) {
     var arcLen = kk.length,
         prevArr = prevBuf(arcLen),
         nextArr = nextBuf(arcLen),
-        threshold = -Infinity,
-        tmp, a, b, c, d, e;
+        val, maxVal = -Infinity,
+        a, b, c, d, e; // indexes of points along arc
 
     if (zz && !is3D) {
       error("[visvalingam] Received z-axis data for 2D simplification");
@@ -31,13 +31,13 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       b = c-1;
       d = c+1;
       if (b < 0 || d >= arcLen) {
-        tmp = Infinity; // endpoint thresholds
+        val = Infinity; // endpoint maxVals
       } else if (!is3D) {
-        tmp = metric(xx[b], yy[b], xx[c], yy[c], xx[d], yy[d]);
+        val = metric(xx[b], yy[b], xx[c], yy[c], xx[d], yy[d]);
       } else {
-        tmp = metric(xx[b], yy[b], zz[b], xx[c], yy[c], zz[c], xx[d], yy[d], zz[d]);
+        val = metric(xx[b], yy[b], zz[b], xx[c], yy[c], zz[c], xx[d], yy[d], zz[d]);
       }
-      kk[c] = tmp;
+      kk[c] = val;
       nextArr[c] = d;
       prevArr[c] = b;
     }
@@ -47,14 +47,14 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
     //
     while (heap.heapSize() > 0) {
       c = heap.pop(); // Remove the point with the least effective area.
-      tmp = kk[c];
-      if (tmp === Infinity) {
+      val = kk[c];
+      if (val === Infinity) {
         break;
       }
-      if (tmp >= threshold === false) {
-        error("[visvalingam] Values should increase, but:", threshold, tmp);
+      if (val >= maxVal === false) {
+        error("[visvalingam] Values should increase, but:", maxVal, val);
       }
-      threshold = tmp;
+      maxVal = val;
 
       // Recompute effective area of neighbors of the removed point.
       b = prevArr[c];
@@ -63,23 +63,25 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       if (b > 0) {
         a = prevArr[b];
         if (!is3D) {
-          tmp = metric(xx[a], yy[a], xx[b], yy[b], xx[d], yy[d]); // next point, prev point, prev-prev point
+          // prev-prev point, prev point, next point
+          val = metric(xx[a], yy[a], xx[b], yy[b], xx[d], yy[d]);
         } else {
-          tmp = metric(xx[a], yy[a], zz[a], xx[b], yy[b], zz[b], xx[d], yy[d], zz[d]);
+          val = metric(xx[a], yy[a], zz[a], xx[b], yy[b], zz[b], xx[d], yy[d], zz[d]);
         }
         // don't give updated values a lesser value than the last popped vertex
-        tmp =  Math.max(threshold, tmp);
-        heap.updateValue(b, tmp);
+        val =  Math.max(maxVal, val);
+        heap.updateValue(b, val);
       }
       if (d < arcLen-1) {
         e = nextArr[d];
         if (!is3D) {
-          tmp = metric(xx[b], yy[b], xx[d], yy[d], xx[e], yy[e]); // prev point, next point, next-next point
+          // prev point, next point, next-next point
+          val = metric(xx[b], yy[b], xx[d], yy[d], xx[e], yy[e]);
         } else {
-          tmp = metric(xx[b], yy[b], zz[b], xx[d], yy[d], zz[d], xx[e], yy[e], zz[e]);
+          val = metric(xx[b], yy[b], zz[b], xx[d], yy[d], zz[d], xx[e], yy[e], zz[e]);
         }
-        tmp = Math.max(threshold, tmp);
-        heap.updateValue(d, tmp);
+        val = Math.max(maxVal, val);
+        heap.updateValue(d, val);
       }
       nextArr[b] = d;
       prevArr[d] = b;
