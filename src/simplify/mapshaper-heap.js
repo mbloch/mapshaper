@@ -92,19 +92,16 @@ function Heap() {
   function upHeap(currIdx) {
     var valId = heapArr[currIdx],
         currVal = dataArr[valId],
-        parentIdx, parentValId, parentVal;
+        parentIdx, parentValId;
 
     // Move item up in the heap until it's at the top or is heavier than its parent
     //
     while (currIdx > 0) {
       parentIdx = (currIdx - 1) >> 1; // integer division by two gives idx of parent
       parentValId = heapArr[parentIdx];
-      parentVal = dataArr[parentValId];
-
-      if (parentVal <= currVal) {
+      if (dataArr[parentValId] <= currVal) {
         break;
       }
-
       // out-of-order; swap child && parent
       insert(currIdx, parentValId);
       insert(parentIdx, valId);
@@ -115,17 +112,17 @@ function Heap() {
 
   // Swap item at @idx with any lighter children
   function downHeap(startIdx) {
-    var data = dataArr, heap = heapArr, // local vars, faster
+    var data = dataArr, heap = heapArr, n = itemsInHeap, // local vars, faster
         currIdx = startIdx,
         valId = heap[currIdx],
         currVal = data[valId],
         firstChildIdx = 2 * currIdx + 1,
         secondChildIdx, minChildIdx, childValId;
 
-    while (firstChildIdx < itemsInHeap) {
+    while (firstChildIdx < n) {
       minChildIdx = firstChildIdx;
       secondChildIdx = firstChildIdx + 1;
-      if (secondChildIdx < itemsInHeap && data[heap[firstChildIdx]] > data[heap[secondChildIdx]]) {
+      if (secondChildIdx < n && data[heap[firstChildIdx]] > data[heap[secondChildIdx]]) {
         minChildIdx = secondChildIdx;
       }
       childValId = heap[minChildIdx];

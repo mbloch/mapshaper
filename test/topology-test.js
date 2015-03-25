@@ -290,7 +290,6 @@ describe("mapshaper-topology.js", function() {
       assert.deepEqual(out.paths, [[0, 1], [2]]);
     })
 
-
     //         d
     //         |
     //         |

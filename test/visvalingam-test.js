@@ -5,6 +5,14 @@ var assert = require('assert'),
 describe("mapshaper-visvalingam.js", function() {
 
   describe("getPathSimplifier()", function() {
+
+    it ("two-vertex path", function() {
+      var calc = v.getArcCalculator(v.standardMetric);
+      var kk = [0, 0];
+      calc(kk, [0, 1], [0, 0]);
+      assert.deepEqual(kk, [Infinity, Infinity]);
+    });
+
     it("three-vertex path", function() {
       var calc = v.getArcCalculator(v.standardMetric);
       var xx = [0, 1, 2],
@@ -15,6 +23,12 @@ describe("mapshaper-visvalingam.js", function() {
     })
 
     it("four-vertex path w/ threshold update", function() {
+
+      //   b
+      //   | \
+      //   |  \
+      //   a    b ----- c
+
       var calc = v.getArcCalculator(v.standardMetric);
       var xx = [0, 0, 1, 3],
           yy = [0, 1, 0, 0],
@@ -22,6 +36,22 @@ describe("mapshaper-visvalingam.js", function() {
       calc(kk, xx, yy);
       assert.deepEqual(kk, [Infinity, 0.5, 0.5, Infinity]);
     })
+
+    it("five-vertex path w/ spike", function() {
+
+      //         c
+      //         |
+      //         |
+      //   a --- b --- d
+
+      var calc = v.getArcCalculator(v.standardMetric);
+      var xx = [0, 1, 1, 1, 2],
+          yy = [0, 0, 1, 0, 0],
+          kk = new Array(5);
+      calc(kk, xx, yy);
+      assert.deepEqual(kk, [Infinity, 0, 0, 0, Infinity]);
+    })
+
   });
 
   describe("standardMetric()", function() {
