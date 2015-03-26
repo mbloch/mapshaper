@@ -12892,17 +12892,24 @@ var Visvalingam = {};
 Visvalingam.getArcCalculator = function(metric, is3D) {
   var heap = new Heap(),
       prevBuf = MapShaper.expandoBuffer(Int32Array),
-      nextBuf = MapShaper.expandoBuffer(Int32Array);
+      nextBuf = MapShaper.expandoBuffer(Int32Array),
+      calc = is3D ?
+        function(b, c, d, xx, yy, zz) {
+          return metric(xx[b], yy[b], zz[b], xx[c], yy[c], zz[c], xx[d], yy[d], zz[d]);
+        } :
+        function(b, c, d, xx, yy) {
+          return metric(xx[b], yy[b], xx[c], yy[c], xx[d], yy[d]);
+        };
 
   // Calculate Visvalingam simplification data for an arc
-  // @kk (Float64Array|Array) Receives calculated maxVals
+  // @kk (Float64Array|Array) Receives calculated simplification thresholds
   // @xx, @yy, (@zz) Buffers containing vertex coordinates
   return function calcVisvalingam(kk, xx, yy, zz) {
     var arcLen = kk.length,
         prevArr = prevBuf(arcLen),
         nextArr = nextBuf(arcLen),
         val, maxVal = -Infinity,
-        a, b, c, d, e; // indexes of points along arc
+        b, c, d; // indexes of points along arc
 
     if (zz && !is3D) {
       error("[visvalingam] Received z-axis data for 2D simplification");
@@ -12919,10 +12926,8 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       d = c+1;
       if (b < 0 || d >= arcLen) {
         val = Infinity; // endpoint maxVals
-      } else if (!is3D) {
-        val = metric(xx[b], yy[b], xx[c], yy[c], xx[d], yy[d]);
       } else {
-        val = metric(xx[b], yy[b], zz[b], xx[c], yy[c], zz[c], xx[d], yy[d], zz[d]);
+        val = calc(b, c, d, xx, yy, zz);
       }
       kk[c] = val;
       nextArr[c] = d;
@@ -12946,29 +12951,14 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       // Recompute effective area of neighbors of the removed point.
       b = prevArr[c];
       d = nextArr[c];
-
       if (b > 0) {
-        a = prevArr[b];
-        if (!is3D) {
-          // prev-prev point, prev point, next point
-          val = metric(xx[a], yy[a], xx[b], yy[b], xx[d], yy[d]);
-        } else {
-          val = metric(xx[a], yy[a], zz[a], xx[b], yy[b], zz[b], xx[d], yy[d], zz[d]);
-        }
+        val = calc(prevArr[b], b, d, xx, yy, zz);
         // don't give updated values a lesser value than the last popped vertex
-        val =  Math.max(maxVal, val);
-        heap.updateValue(b, val);
+        heap.updateValue(b, Math.max(maxVal, val));
       }
       if (d < arcLen-1) {
-        e = nextArr[d];
-        if (!is3D) {
-          // prev point, next point, next-next point
-          val = metric(xx[b], yy[b], xx[d], yy[d], xx[e], yy[e]);
-        } else {
-          val = metric(xx[b], yy[b], zz[b], xx[d], yy[d], zz[d], xx[e], yy[e], zz[e]);
-        }
-        val = Math.max(maxVal, val);
-        heap.updateValue(d, val);
+        val = calc(b, d, nextArr[d], xx, yy, zz);
+        heap.updateValue(d, Math.max(maxVal, val));
       }
       nextArr[b] = d;
       prevArr[d] = b;
@@ -13015,7 +13005,6 @@ Visvalingam.scaledSimplify = function(f) {
     }
   };
 };
-
 
 Visvalingam.metrics2D = {
   visvalingam: Visvalingam.standardMetric,
