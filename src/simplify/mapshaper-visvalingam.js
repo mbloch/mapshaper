@@ -8,7 +8,7 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       nextBuf = MapShaper.expandoBuffer(Int32Array);
 
   // Calculate Visvalingam simplification data for an arc
-  // @kk (Float64Array|Array) Receives calculated maxVals
+  // @kk (Float64Array|Array) Receives calculated simplification thresholds
   // @xx, @yy, (@zz) Buffers containing vertex coordinates
   return function calcVisvalingam(kk, xx, yy, zz) {
     var arcLen = kk.length,
