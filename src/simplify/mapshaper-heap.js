@@ -38,10 +38,12 @@ function Heap() {
 
   // Update a single value and re-heap.
   this.updateValue = function(valId, val) {
-    dataArr[valId] = val;
     var heapIdx = indexArr[valId];
-    if (!(heapIdx >= 0 && heapIdx < itemsInHeap)) error("[updateValue()] out-of-range heap index.");
-    reHeap(heapIdx);
+    dataArr[valId] = val;
+    if (heapIdx < 0 || heapIdx >= itemsInHeap) {
+      error("[heap] Out-of-range heap index.");
+    }
+    downHeap(upHeap(heapIdx));
   };
 
   this.testHeapOrder = function() {
@@ -81,12 +83,6 @@ function Heap() {
     var childIdx = heapIdx * 2 + 1;
     checkNode(childIdx, val);
     checkNode(childIdx + 1, val);
-  }
-
-  function reHeap(idx) {
-    if (idx < 0 || idx >= itemsInHeap)
-      error("Out-of-bounds heap idx passed to reHeap()");
-    downHeap(upHeap(idx));
   }
 
   function upHeap(currIdx) {
