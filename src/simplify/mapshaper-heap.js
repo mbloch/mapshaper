@@ -32,7 +32,7 @@ function Heap() {
     }
   }
 
-  this.heapSize = function() {
+  this.size = function() {
     return itemsInHeap;
   };
 
