@@ -27,8 +27,7 @@ MapShaper.projectionIndex = {
   albers: AlbersEqualAreaConic,
   albersusa: AlbersNYT,
   albersnyt: AlbersNYT,
-  lambert: LambertConformalConic,
-  lambertusa: LambertUSA,
+  lambertcc: LambertConformalConic,
   transversemercator: TransverseMercator,
   utm: UTM,
   winkeltripel: WinkelTripel

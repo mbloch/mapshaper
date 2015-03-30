@@ -20,16 +20,16 @@ describe('mapshaper-projections.js', function() {
     });
   })
 
-  describe('LambertUSA', function () {
+  describe('LambertCC', function () {
     it ('spherical formula projects/unprojects', function() {
-      var proj = getProjection('lambertusa');
+      var proj = getProjection('lambertcc', {lng0:-96, lat1:33, lat2:45, lat0:39, spherical: true});
       proj.spherical = true;
       roundtripTest(proj, -96, 40);
       roundtripTest(proj, -70, 20);
     });
 
     it ('ellipsoidal formula projects/unprojects', function() {
-      var proj = getProjection('lambertusa');
+      var proj = getProjection('lambertcc', {lng0:-96, lat1:33, lat2:45, lat0:39});
       roundtripTest(proj, -96, 40);
       roundtripTest(proj, -70, 20);
     });
