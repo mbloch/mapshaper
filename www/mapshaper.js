@@ -12777,7 +12777,7 @@ function Heap() {
     }
   }
 
-  this.heapSize = function() {
+  this.size = function() {
     return itemsInHeap;
   };
 
@@ -12933,7 +12933,7 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
 
     // Calculate removal thresholds for each internal point in the arc
     //
-    while (heap.heapSize() > 0) {
+    while (heap.size() > 0) {
       c = heap.pop(); // Remove the point with the least effective area.
       val = kk[c];
       if (val === Infinity) {

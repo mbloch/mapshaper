@@ -458,6 +458,23 @@ MapShaper.getOptionParser = function() {
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
+  parser.command("proj")
+    // .describe("project the coordinates in a dataset")
+    .option("spherical", {type: "flag"})
+    .option("lng0", {type: "number"})
+    .option("lat0", {type: "number"})
+    .option("lat1", {type: "number"})
+    .option("lat2", {type: "number"})
+    //.option("k0", {type: "number"})
+    //.option("x0", {type: "number"})
+    //.option("y0", {type: "number"})
+    .validate(function(cmd) {
+      if (cmd._.length != 1) {
+        error("command requires a projection name");
+      }
+      cmd.options.name = cmd._[0];
+    });
+
   parser.command("calc")
     .title("\nInformational commands")
     .describe("Calculate statistics about the features in a layer")
@@ -508,7 +525,7 @@ MapShaper.getOptionParser = function() {
   "fields,precision,auto-snap").split(',')
     .forEach(function(str) {
       parser.command(str).validate(function() {
-        error(utils.format('[%s] maphshaper syntax has changed since v0.1.x.', str));
+        error('mapshaper syntax has changed since v0.1.x.');
       });
     });
 

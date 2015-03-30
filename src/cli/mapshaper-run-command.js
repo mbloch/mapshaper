@@ -15,6 +15,7 @@ mapshaper-join
 mapshaper-keep-shapes
 mapshaper-merge-files
 mapshaper-points
+mapshaper-proj
 mapshaper-rename-layers
 mapshaper-simplify
 mapshaper-split
@@ -112,6 +113,9 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'points') {
       newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
+
+    } else if (name == 'proj') {
+      api.proj(dataset, opts);
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
