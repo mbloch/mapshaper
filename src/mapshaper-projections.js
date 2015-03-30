@@ -55,6 +55,7 @@ function WebMercator() {
   return new Mercator({spherical: true});
 }
 
+// Optional params: lat0, lng0 (in decimal degrees)
 function Mercator(opts) {
   initProj(this, opts);
   var lat0 = (this.lat0 || 0) * DEG2RAD;
@@ -96,10 +97,11 @@ function LambertUSA() {
   return new LambertConformalConic({lng0:-96, lat1:33, lat2:45, lat0:39});
 }
 
-// lng0D Longitude origin
-// lat1D First parallel
-// lat2D Second parallel
-// lat0D Latitude origin
+// Parameters (in decimal degrees):
+//   lng0  Reference longitude
+//   lat0  Reference latitude
+//   lat1  First standard parallel
+//   lat2  Second standard parallel
 function AlbersEqualAreaConic(opts) {
   initProj(this, opts);
   var A = this.A, R = this.R, E = this.E;
@@ -181,11 +183,11 @@ function calcAlbersMell(e, lat) {
   return Math.cos(lat) / Math.sqrt(1 - e * e * sinLat * sinLat);
 }
 
-// Lambert Conformal Conic projection.
-// @lng0D Central meridian, in decimal degrees.
-// @lat1D First parallel, in decimal degrees.
-// @lat2D Second parallel, in decimal degrees.
-// @lat0D Latitude of origin, in decimal degrees.
+// Parameters (in decimal degrees):
+//   lng0  Reference longitude
+//   lat0  Reference latitude
+//   lat1  First standard parallel
+//   lat2  Second standard parallel
 function LambertConformalConic(opts) {
   initProj(this, opts);
   var A = this.A, R = this.R, E = this.E;

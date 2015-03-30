@@ -11984,6 +11984,7 @@ function WebMercator() {
   return new Mercator({spherical: true});
 }
 
+// Optional params: lat0, lng0 (in decimal degrees)
 function Mercator(opts) {
   initProj(this, opts);
   var lat0 = (this.lat0 || 0) * DEG2RAD;
@@ -12025,10 +12026,11 @@ function LambertUSA() {
   return new LambertConformalConic({lng0:-96, lat1:33, lat2:45, lat0:39});
 }
 
-// lng0D Longitude origin
-// lat1D First parallel
-// lat2D Second parallel
-// lat0D Latitude origin
+// Parameters (in decimal degrees):
+//   lng0  Reference longitude
+//   lat0  Reference latitude
+//   lat1  First standard parallel
+//   lat2  Second standard parallel
 function AlbersEqualAreaConic(opts) {
   initProj(this, opts);
   var A = this.A, R = this.R, E = this.E;
@@ -12110,11 +12112,11 @@ function calcAlbersMell(e, lat) {
   return Math.cos(lat) / Math.sqrt(1 - e * e * sinLat * sinLat);
 }
 
-// Lambert Conformal Conic projection.
-// @lng0D Central meridian, in decimal degrees.
-// @lat1D First parallel, in decimal degrees.
-// @lat2D Second parallel, in decimal degrees.
-// @lat0D Latitude of origin, in decimal degrees.
+// Parameters (in decimal degrees):
+//   lng0  Reference longitude
+//   lat0  Reference latitude
+//   lat1  First standard parallel
+//   lat2  Second standard parallel
 function LambertConformalConic(opts) {
   initProj(this, opts);
   var A = this.A, R = this.R, E = this.E;
@@ -12286,25 +12288,34 @@ Matrix2D.prototype.scale = function(sx, sy) {
 
 
 api.proj = function(dataset, opts) {
-  var proj = MapShaper.getProjection(opts.name, opts);
+  var proj = MapShaper.getProjection(opts.projection, opts);
   if (!proj) {
-    stop("[proj] Unknown projection:", opts.name);
+    stop("[proj] Unknown projection:", opts.projection);
   }
   MapShaper.projectDataset(dataset, proj);
 };
 
 MapShaper.getProjection = function(name, opts) {
-  var names = {
-    webmercator: WebMercator,
-    mercator: Mercator,
-    albers: AlbersEqualAreaConic,
-    albersusa: AlbersNYT,
-    albersnyt: AlbersNYT,
-    lambert: LambertConformalConic,
-    lambertusa: LambertUSA
-  };
-  var f = names[name.toLowerCase().replace(/-_/g, '')];
+  var f = MapShaper.projectionIndex[name.toLowerCase().replace(/-_ /g, '')];
   return f ? new f(opts) : null;
+};
+
+MapShaper.printProjections = function() {
+  var names = Object.keys(MapShaper.projectionIndex);
+  names.sort();
+  names.forEach(function(n) {
+    message(n);
+  });
+};
+
+MapShaper.projectionIndex = {
+  webmercator: WebMercator,
+  mercator: Mercator,
+  albers: AlbersEqualAreaConic,
+  albersusa: AlbersNYT,
+  albersnyt: AlbersNYT,
+  lambert: LambertConformalConic,
+  lambertusa: LambertUSA
 };
 
 MapShaper.projectDataset = function(dataset, proj) {
@@ -14560,7 +14571,7 @@ MapShaper.getOptionParser = function() {
       if (cmd._.length != 1) {
         error("command requires a projection name");
       }
-      cmd.options.name = cmd._[0];
+      cmd.options.projection = cmd._[0];
     });
 
   parser.command("calc")
@@ -14587,6 +14598,9 @@ MapShaper.getOptionParser = function() {
 
   parser.command('encodings')
     .describe("print list of supported text encodings (for .dbf import)");
+
+  parser.command('projections');
+    // .describe("print names of supported projections");
 
   parser.command('version')
     .alias('v')
@@ -14825,6 +14839,8 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
       message(getVersion());
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
+    } else if (cmd.name == 'projections') {
+      MapShaper.printProjections();
     } else if (cmd.name == 'help') {
       MapShaper.getOptionParser().printHelp(cmd.options.commands);
     } else if (cmd.name == 'verbose') {

@@ -472,7 +472,7 @@ MapShaper.getOptionParser = function() {
       if (cmd._.length != 1) {
         error("command requires a projection name");
       }
-      cmd.options.name = cmd._[0];
+      cmd.options.projection = cmd._[0];
     });
 
   parser.command("calc")
@@ -499,6 +499,9 @@ MapShaper.getOptionParser = function() {
 
   parser.command('encodings')
     .describe("print list of supported text encodings (for .dbf import)");
+
+  parser.command('projections');
+    // .describe("print names of supported projections");
 
   parser.command('version')
     .alias('v')

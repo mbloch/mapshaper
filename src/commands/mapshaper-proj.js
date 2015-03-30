@@ -1,25 +1,34 @@
 /* @requires mapshaper-common, mapshaper-projections */
 
 api.proj = function(dataset, opts) {
-  var proj = MapShaper.getProjection(opts.name, opts);
+  var proj = MapShaper.getProjection(opts.projection, opts);
   if (!proj) {
-    stop("[proj] Unknown projection:", opts.name);
+    stop("[proj] Unknown projection:", opts.projection);
   }
   MapShaper.projectDataset(dataset, proj);
 };
 
 MapShaper.getProjection = function(name, opts) {
-  var names = {
-    webmercator: WebMercator,
-    mercator: Mercator,
-    albers: AlbersEqualAreaConic,
-    albersusa: AlbersNYT,
-    albersnyt: AlbersNYT,
-    lambert: LambertConformalConic,
-    lambertusa: LambertUSA
-  };
-  var f = names[name.toLowerCase().replace(/-_/g, '')];
+  var f = MapShaper.projectionIndex[name.toLowerCase().replace(/-_ /g, '')];
   return f ? new f(opts) : null;
+};
+
+MapShaper.printProjections = function() {
+  var names = Object.keys(MapShaper.projectionIndex);
+  names.sort();
+  names.forEach(function(n) {
+    message(n);
+  });
+};
+
+MapShaper.projectionIndex = {
+  webmercator: WebMercator,
+  mercator: Mercator,
+  albers: AlbersEqualAreaConic,
+  albersusa: AlbersNYT,
+  albersnyt: AlbersNYT,
+  lambert: LambertConformalConic,
+  lambertusa: LambertUSA
 };
 
 MapShaper.projectDataset = function(dataset, proj) {

@@ -178,6 +178,8 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
       message(getVersion());
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
+    } else if (cmd.name == 'projections') {
+      MapShaper.printProjections();
     } else if (cmd.name == 'help') {
       MapShaper.getOptionParser().printHelp(cmd.options.commands);
     } else if (cmd.name == 'verbose') {
