@@ -7,21 +7,20 @@ function initProj(proj, opts) {
     x0: 0,   // false easting (used by UTM and some other projections)
     y0: 0,   // false northing
     k0: 1,   // scale factor
-    R: 6378137,
-    // E & A: parameters for GRS80 ellipsoid (other ellipsoids not supported)
+    R: 6378137, // Earth radius / semi-major axis (spherical / ellipsoidal formulas)
+    // E: flattening parameter for GRS80 ellipsoid (others not supported)
     E: 0.0818191908426214943348,
-    A: 6378137,
 
     forward: function(lng, lat, xy) {
       xy = xy || {};
       this.projectLatLng(lat * DEG2RAD, lng * DEG2RAD, xy);
-      xy.x += this.x0;
-      xy.y += this.y0;
+      xy.x = this.R * xy.x + this.x0;
+      xy.y = this.R * xy.y + this.y0;
       return xy;
     },
     inverse: function(x, y, ll) {
-      x -= this.x0;
-      y -= this.y0;
+      x = (x - this.x0) / this.R;
+      y = (y - this.y0) / this.R;
       ll = ll || {};
       this.unprojectXY(x, y, ll);
       ll.lat /= DEG2RAD;
@@ -60,25 +59,99 @@ function Mercator(opts) {
   initProj(this, opts);
   var lat0 = (this.lat0 || 0) * DEG2RAD;
   var lng0 = (this.lng0 || 0) * DEG2RAD;
-  var A = this.A, R = this.R, E = this.E;
   this.projectLatLng = function(lat, lng, xy) {
+    xy.x = lng - lng0;
     if (!this.spherical) {
-      xy.x = A * (lng - lng0);
-      xy.y = A * Math.log(Math.tan(Math.PI * 0.25 + lat * 0.5) *
-        Math.pow((1 - E * Math.sin(lat)) / (1 + E * Math.sin(lat)), E * 0.5));
+      xy.y = Math.log(Math.tan(Math.PI * 0.25 + lat * 0.5) *
+        Math.pow((1 - this.E * Math.sin(lat)) / (1 + this.E * Math.sin(lat)), this.E * 0.5));
     } else {
-      xy.x = R * (lng - lng0);
-      xy.y = R * Math.log(Math.tan(Math.PI * 0.25 + lat * 0.5));
+      xy.y = Math.log(Math.tan(Math.PI * 0.25 + lat * 0.5));
     }
   };
   this.unprojectXY = function(x, y, ll) {
     if (!this.spherical) {
       this.inverseEllApprox(x, y, ll);
     } else {
-      ll.lng = x / R + lng0;
-      ll.lat = Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y / R));
+      ll.lng = x + lng0;
+      ll.lat = Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y));
     }
   };
+}
+
+function UTM(opts) {
+  var m = /^([\d]+)([NS])$/i.exec(opts.zone || "");
+  if (!m) {
+    throw new Error("[UTM] Expected a UTM zone parameter of the form: 17N");
+  }
+  var z = parseFloat(m[1]);
+  var proj = new TransverseMercator({
+    k0: 0.9996,
+    lng0: z * 6 - 183,
+    lat0: 0,
+    x0: 500000,
+    y0: m[2].toUpperCase() == 'S' ? 1e7 : 0
+  });
+  return proj;
+}
+
+function TransverseMercator(opts) {
+  initProj(this, opts);
+  var lat0 = this.lat0 * DEG2RAD;
+  var lng0 = this.lng0 * DEG2RAD;
+  var _m0 = calcTransMercM(lat0, this.E);
+  this.projectLatLng = function(lat, lng, xy) {
+    if (this.spherical) {
+      var B = Math.cos(lat) * Math.sin(lng - lng0);
+      xy.x = 0.5 * this.k0 * Math.log((1 + B) / (1 - B));
+      xy.y = this.k0 * (Math.atan(Math.tan(lat) / Math.cos(lng - lng0)) - lat0);
+    } else {
+      var e2 = this.E * this.E,
+          ep2 = e2 / (1 - e2),
+          sinLat = Math.sin(lat),
+          cosLat = Math.cos(lat),
+          tanLat = Math.tan(lat),
+          n = 1 / Math.sqrt(1 - e2 * sinLat * sinLat),
+          t = tanLat * tanLat,
+          c = ep2 * cosLat * cosLat,
+          a = cosLat * (lng - lng0),
+          a2 = a * a,
+          m = calcTransMercM(lat, this.E);
+      xy.x = this.k0 * n * (a + a * a2 / 6 * (1 - t + c) +
+        a2 * a2 * a / 120 * (5 - 18 * t + t * t + 72 * c - 58 * ep2));
+      xy.y = this.k0 * (m - _m0 + n * tanLat *
+        (a2 / 2 + a2 * a2 / 24 * (5 - t + 9 * c + 4 * c * c)));
+    }
+  };
+  this.unprojectXY = function(x, y, ll) {
+    if (this.spherical) {
+      var D = y / this.k0 + lat0;
+      ll.lat = Math.asin(Math.sin(D) / cosh(x / this.k0));
+      ll.lng = lng0 +
+        Math.atan(sinh(x / this.k0) / Math.cos(D));
+    } else {
+      this.inverseEllApprox(x, y, ll);
+    }
+  };
+}
+
+// Authalic sin
+function sinh(x) {
+  return (Math.exp(x) - Math.exp(-x)) * 0.5;
+}
+
+// Authalic cosine
+function cosh(x) {
+  return (Math.exp(x) + Math.exp(-x)) * 0.5;
+}
+
+function calcTransMercM(lat, e) {
+  var e2 = e * e,
+      e4 = e2 * e2,
+      e6 = e4 * e2;
+  return (lat * (1 - e2 / 4.0 - 3 * e4 / 64 - 5 * e6 / 256) -
+    Math.sin(2 * lat) * (3 * e2 / 8 + 3 * e4 / 32 + 45 * e6 / 1024) +
+    Math.sin(4 * lat) * (15 * e4 / 256 + 45 * e6 / 1024) -
+    Math.sin(6 * lat) * (35 * e6 / 3072));
 }
 
 function AlbersNYT() {
@@ -104,20 +177,18 @@ function LambertUSA() {
 //   lat2  Second standard parallel
 function AlbersEqualAreaConic(opts) {
   initProj(this, opts);
-  var A = this.A, R = this.R, E = this.E;
+  var E = this.E;
   var lat0 = this.lat0 * DEG2RAD,
       lat1 = this.lat1 * DEG2RAD,
       lat2 = this.lat2 * DEG2RAD,
       lng0 = this.lng0 * DEG2RAD;
 
-  // Calculate spherical parameters.
   var cosLat1 = Math.cos(lat1),
       sinLat1 = Math.sin(lat1),
       _sphN = 0.5 * (sinLat1 + Math.sin(lat2)),
       _sphC = cosLat1 * cosLat1 + 2.0 * _sphN * sinLat1,
       _sphRho0 = Math.sqrt(_sphC - 2.0 * _sphN * Math.sin(lat0)) / _sphN;
 
-  // Calculate ellipsoidal parameters.
   var m1 = calcAlbersMell(E, lat1),
       m2 = calcAlbersMell(E, lat2),
       q0 = calcAlbersQell(E, lat0),
@@ -125,14 +196,14 @@ function AlbersEqualAreaConic(opts) {
       q2 = calcAlbersQell(E, lat2),
       _ellN = (m1 * m1 - m2 * m2) / (q2 - q1),
       _ellC = m1 * m1 + _ellN * q1,
-      _ellRho0 = A * Math.sqrt(_ellC - _ellN * q0) / _ellN,
+      _ellRho0 = Math.sqrt(_ellC - _ellN * q0) / _ellN,
       _ellAuthConst = 1 - (1 - E * E) / (2 * E) * Math.log((1 - E) / (1 + E));
 
   this.projectLatLng = function(lat, lng, xy) {
     var rho, theta;
     if (!this.spherical) {
       var q = calcAlbersQell(E, lat);
-      rho = A * Math.sqrt(_ellC - _ellN * q) / _ellN;
+      rho = Math.sqrt(_ellC - _ellN * q) / _ellN;
       theta = _ellN * (lng - lng0);
       xy.x = rho * Math.sin(theta);
       xy.y = _ellRho0 - rho * Math.cos(theta);
@@ -140,8 +211,8 @@ function AlbersEqualAreaConic(opts) {
       rho = Math.sqrt(_sphC - 2 * _sphN * Math.sin(lat)) /
         _sphN;
       theta = _sphN * (lng - lng0);
-      xy.x = rho * Math.sin(theta) * R;
-      xy.y = (_sphRho0 - rho * Math.cos(theta)) * R;
+      xy.x = rho * Math.sin(theta);
+      xy.y = _sphRho0 - rho * Math.cos(theta);
     }
   };
 
@@ -153,16 +224,13 @@ function AlbersEqualAreaConic(opts) {
       e2 = E * E;
       e4 = e2 * e2;
       rho = Math.sqrt(x * x + (_ellRho0 - y) * (_ellRho0 - y));
-      q = (_ellC - rho * rho * _ellN * _ellN /
-        (A * A)) / _ellN;
+      q = (_ellC - rho * rho * _ellN * _ellN) / _ellN;
       beta = Math.asin(q / _ellAuthConst);
       ll.lat = beta + Math.sin(2 * beta) *
         (e2 / 3 + 31 * e4 / 180 + 517 * e4 * e2 / 5040) +
         Math.sin(4 * beta) * (23 * e4 / 360 + 251 * e4 * e2 / 3780) +
         Math.sin(6 * beta) * 761 * e4 * e2 / 45360;
     } else {
-      x /= R;
-      y /= R;
       rho = Math.sqrt(x * x + (_sphRho0 - y) * (_sphRho0 - y));
       theta = Math.atan(x / (_sphRho0 - y));
       ll.lat = Math.asin((_sphC - rho * rho * _sphN * _sphN) *
@@ -190,7 +258,7 @@ function calcAlbersMell(e, lat) {
 //   lat2  Second standard parallel
 function LambertConformalConic(opts) {
   initProj(this, opts);
-  var A = this.A, R = this.R, E = this.E;
+  var E = this.E;
   var lat0 = this.lat0 * DEG2RAD,
       lat1 = this.lat1 * DEG2RAD,
       lat2 = this.lat2 * DEG2RAD,
@@ -199,9 +267,8 @@ function LambertConformalConic(opts) {
     Math.log(Math.tan(Math.PI / 4.0 + lat2 / 2.0) /
     Math.tan(Math.PI / 4.0 + lat1 / 2.0));
   var _sphF = Math.cos(lat1) *
-    Math.pow(Math.tan(Math.PI / 4.0 + lat1 / 2.0), _sphN) /
-    _sphN;
-  var _sphRho0 = R * _sphF /
+    Math.pow(Math.tan(Math.PI / 4.0 + lat1 / 2.0), _sphN) / _sphN;
+  var _sphRho0 = _sphF /
     Math.pow(Math.tan(Math.PI / 4.0 + lat0 / 2.0), _sphN);
   var _ellN = (Math.log(calcLambertM(lat1, E)) -
     Math.log(calcLambertM(lat2, E))) /
@@ -209,19 +276,19 @@ function LambertConformalConic(opts) {
     Math.log(calcLambertT(lat2, E)));
   var _ellF = calcLambertM(lat1, E) / (_ellN *
     Math.pow(calcLambertT(lat1, E), _ellN));
-  var _ellRho0 = A * _ellF *
+  var _ellRho0 = _ellF *
     Math.pow(calcLambertT(lat0, E), _ellN);
 
   this.projectLatLng = function(lat, lng, xy) {
     var rho, theta;
     if (!this.spherical) {
       var t = calcLambertT(lat, E);
-      rho = A * _ellF * Math.pow(t, _ellN);
+      rho = _ellF * Math.pow(t, _ellN);
       theta = _ellN * (lng - lng0);
       xy.x = rho * Math.sin(theta);
       xy.y = _ellRho0 - rho * Math.cos(theta);
     } else {
-      rho = R * _sphF /
+      rho = _sphF /
         Math.pow(Math.tan(Math.PI / 4 + lat / 2.0), _sphN);
       theta = _sphN * (lng - lng0);
       xy.x = rho * Math.sin(theta);
@@ -239,7 +306,7 @@ function LambertConformalConic(opts) {
         rho = -rho;
       }
       var theta = Math.atan(x / (rho0 - y));
-      ll.lat = 2 * Math.atan(Math.pow(R * _sphF /
+      ll.lat = 2 * Math.atan(Math.pow(_sphF /
         rho, 1 / _sphN)) - 0.5 * Math.PI;
       ll.lng = theta / _sphN + lng0;
     }
@@ -255,6 +322,17 @@ function calcLambertT(lat, e) {
 function calcLambertM(lat, e) {
   var sinLat = Math.sin(lat);
   return Math.cos(lat) / Math.sqrt(1 - e * e * sinLat * sinLat);
+}
+
+function WinkelTripel() {
+  initProj(this);
+  this.projectLatLng = function(lat, lng, xy) {
+    var lat0 = 50.4670 * DEG2RAD;
+    var a = Math.acos( Math.cos(lat) * Math.cos(lng * 0.5));
+    var sincAlpha = a === 0 ? 1 : Math.sin( a ) / a;
+    xy.x = 0.5 * (lng * Math.cos(lat0) + 2 * Math.cos(lat) * Math.sin(0.5 * lng) / sincAlpha);
+    xy.y = 0.5 * (lat + Math.sin(lat) / sincAlpha);
+  };
 }
 
 // A compound projection, consisting of a default projection and one or more rectangular frames

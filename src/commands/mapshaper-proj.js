@@ -28,7 +28,10 @@ MapShaper.projectionIndex = {
   albersusa: AlbersNYT,
   albersnyt: AlbersNYT,
   lambert: LambertConformalConic,
-  lambertusa: LambertUSA
+  lambertusa: LambertUSA,
+  transversemercator: TransverseMercator,
+  utm: UTM,
+  winkeltripel: WinkelTripel
 };
 
 MapShaper.projectDataset = function(dataset, proj) {

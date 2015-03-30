@@ -465,6 +465,7 @@ MapShaper.getOptionParser = function() {
     .option("lat0", {type: "number"})
     .option("lat1", {type: "number"})
     .option("lat2", {type: "number"})
+    .option("zone") // for UTM
     //.option("k0", {type: "number"})
     //.option("x0", {type: "number"})
     //.option("y0", {type: "number"})
