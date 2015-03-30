@@ -19,7 +19,7 @@ MapShaper.importShapefileDataTable = function(shpPath, opts) {
   var dbfPath = utils.replaceFileExtension(shpPath, 'dbf');
   var table = null;
   if (cli.isFile(dbfPath)) {
-    table = MapShaper.importDbfFile(dbfPath, opts.encoding).data;
+    table = MapShaper.importDbfFile(dbfPath, opts).data;
   } else {
     message(utils.format("[%s] .dbf file is missing -- shapes imported without attribute data.", shpPath));
   }
