@@ -5803,8 +5803,6 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
         clipArcTouches = 0;
         clipArcUses = 0;
         path = dividePath(ids[i]);
-
-
         if (path) {
           // if ring doesn't touch/intersect a clip/erase polygon, check if it is contained
           // if (clipArcTouches === 0) {
@@ -6099,42 +6097,71 @@ MapShaper.clipLayers = function(targetLayers, src, dataset, type, opts) {
     if (targetLyr.data) {
       clippedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
     }
+    // Remove null shapes (likely removed by clipping/erasing)
+    api.filterFeatures(clippedLyr, dataset.arcs, {remove_empty: true});
     return clippedLyr;
   });
   return output;
 };
 
 // @src: a layer object, layer identifier or filename
-//
 MapShaper.getClipLayer = function(src, dataset, opts) {
+  var clipLayers, clipDataset, mergedDataset;
   if (utils.isObject(src)) {
+    // src is layer object
     return src;
   }
-  var match = MapShaper.findMatchingLayers(dataset.layers, src),
-      lyr;
-  if (match.length > 1) {
-    stop("Clip/erase command received more than one source layer");
-  } else if (match.length == 1) {
-    lyr = match[0];
-  } else {
-    // Assuming src is a filename
-    // Load clip file without topology; then merge clipping data with target
-    //   dataset and build topology.
-    opts = utils.extend(opts, {no_topology: true});
-    var clipData = api.importFile(src, opts);
-    var merged = MapShaper.mergeDatasets([dataset, clipData]);
-    api.buildTopology(merged);
-
-    // use arcs from merged dataset, but don't add clip layer to target dataset
-    dataset.arcs = merged.arcs;
-
+  // check if src is the name of an existing layer
+  if (src) {
+    clipLayers = MapShaper.findMatchingLayers(dataset.layers, src);
+    if (clipLayers.length > 1) {
+      stop("[clip/erase] Received more than one source layer");
+    } else if (clipLayers.length == 1) {
+      return clipLayers[0];
+    }
+  }
+  if (src) {
+    // assuming src is a filename
+    clipDataset = MapShaper.readClipFile(src, opts);
     // TODO: handle multi-layer sources, e.g. TopoJSON files
-    if (clipData.layers.length != 1) {
+    if (clipDataset.layers.length != 1) {
       stop("Clip/erase only supports clipping with single-layer datasets");
     }
-    lyr = clipData.layers[0];
+  } else if (opts.bbox) {
+    clipDataset = MapShaper.convertClipBounds(opts.bbox);
+  } else {
+    stop("[clip/erase] Missing clipping data");
   }
-  return lyr || null;
+  mergedDataset = MapShaper.mergeDatasets([dataset, clipDataset]);
+  api.buildTopology(mergedDataset);
+
+  // use arcs from merged dataset, but don't add clip layer to target dataset
+  dataset.arcs = mergedDataset.arcs;
+  return clipDataset.layers[0];
+};
+
+// @src Filename
+MapShaper.readClipFile = function(src, opts) {
+  // Load clip file without topology; later merge clipping data with target
+  //   dataset and build topology.
+  opts = utils.extend(opts, {no_topology: true});
+  return api.importFile(src, opts);
+};
+
+MapShaper.convertClipBounds = function(bb) {
+  var x0 = bb[0], y0 = bb[1], x1 = bb[2], y1 = bb[3],
+      arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];
+
+  if (!(y1 > y0 && x1 > x0)) {
+    stop("[clip/erase] Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
+  }
+  return {
+    arcs: new ArcCollection([arc]),
+    layers: [{
+      shapes: [[[0]]],
+      geometry_type: 'polygon'
+    }]
+  };
 };
 
 
@@ -14023,12 +14050,17 @@ function validateSplitOpts(cmd) {
   }
 }
 
-function validateClip(cmd) {
-  var src = cmd.options.source || cmd._[0];
-  if (src) {
-    cmd.options.source = src;
-  } else {
-    error("command requires a source file or layer id");
+function validateClipOpts(cmd) {
+  var opts = cmd.options;
+  if (cmd._[0]) {
+    opts.source = cmd._[0];
+  }
+  if (opts.bbox) {
+    // assume comma-sep bbox has been parsed into array of strings
+    opts.bbox = opts.bbox.map(parseFloat);
+  }
+  if (!opts.source && !opts.bbox) {
+    error("command requires a source file, layer id or bbox");
   }
 }
 
@@ -14491,11 +14523,12 @@ MapShaper.getOptionParser = function() {
   parser.command("clip")
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
-    .validate(validateClip)
+    .validate(validateClipOpts)
     .option("source", {
       label: "<file|layer>",
       describe: "file or layer containing clip polygons"
     })
+    .option("bbox", {type: "comma-sep"})
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -14503,7 +14536,7 @@ MapShaper.getOptionParser = function() {
   parser.command("erase")
     .describe("use a polygon layer to erase another layer")
     .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
-    .validate(validateClip)
+    .validate(validateClipOpts)
     .option("source", {
       label: "<file|layer>",
       describe: "file or layer containing erase polygons"

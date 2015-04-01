@@ -311,11 +311,12 @@ MapShaper.getOptionParser = function() {
   parser.command("clip")
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
-    .validate(validateClip)
+    .validate(validateClipOpts)
     .option("source", {
       label: "<file|layer>",
       describe: "file or layer containing clip polygons"
     })
+    .option("bbox", {type: "comma-sep"})
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -323,7 +324,7 @@ MapShaper.getOptionParser = function() {
   parser.command("erase")
     .describe("use a polygon layer to erase another layer")
     .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
-    .validate(validateClip)
+    .validate(validateClipOpts)
     .option("source", {
       label: "<file|layer>",
       describe: "file or layer containing erase polygons"

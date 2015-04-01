@@ -121,6 +121,11 @@ describe('mapshaper-options.js', function () {
     bad("-join " + file1 + "keys ID"); // only one key
   })
 
+  describe('clip', function () {
+    good("-clip bbox=0,-23.1,1,1.2e6)", {bbox: [0, -23.1, 1, 1.2e6]});
+    bad("-clip");
+  })
+
   describe('lines', function () {
     good("-lines", {});
     good("-lines STATE", {fields: ['STATE']});

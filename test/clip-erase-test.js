@@ -3,6 +3,63 @@ var api = require('../'),
     ArcCollection = api.internal.ArcCollection;
 
 describe('mapshaper-clip-erase.js', function () {
+  describe('bbox option', function() {
+    it('Clip a point layer with a bbox', function() {
+      var points = [[[0, 0]],
+        null,
+        [[0, 2]],
+        [[2, 2]],
+        [[1, 1]],
+        [[2, 0]]];
+      var data = [{id: 1}, {id: 2}, {id: 3}, {id: 4}, {id: 5}, {id: 6}];
+      var dataset = {
+        layers: [{
+          geometry_type: 'point',
+          shapes: points,
+          data: new api.internal.DataTable(data)
+        }]
+      };
+      var bbox = [0.5, 0.5, 1.5, 1.5];
+      var output = api.clipLayers(dataset.layers, null, dataset, {bbox: bbox});
+      assert.deepEqual(output[0].shapes, [[[1, 1]]]);
+      assert.deepEqual(output[0].data.getRecords(), [{id: 5}])
+    });
+
+    it('Clip a polyline layer with a bbox', function(done) {
+      var input = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'LineString',
+          coordinates: [[0, 1], [5, 1]]
+        }]
+      }
+      var output = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'LineString',
+          coordinates: [[1, 1], [2, 1]]
+        }]
+      }
+      api.applyCommands('-clip bbox=1,0,2,2', input, function(err, data) {
+        assert.deepEqual(JSON.parse(data), output);
+        done();
+      });
+    })
+
+    it('Throws APIError on invalid bbox', function(done) {
+      var input = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'LineString',
+          coordinates: [[0, 1], [5, 1]]
+        }]
+      }
+      api.applyCommands('-clip bbox=1,0,1,2', input, function(err, data) {
+        assert.equal(err.name, 'APIError');
+        done();
+      });
+    })
+  });
 
   describe('Issue #68', function () {
     it('Cell along inside edge of clip shape is retained', function (done) {
@@ -426,7 +483,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var clippedLyr = api.eraseLayer(lyr2, lyr1, dataset);
-      var target = [null];
+      var target = [];
 
       assert.deepEqual(clippedLyr.shapes, target);
     });
@@ -448,7 +505,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var clippedLyr = api.eraseLayer(lyr2, lyr1, dataset);
-      var target = [null, null];
+      var target = [];
 
       assert.deepEqual(clippedLyr.shapes, target);
     });
@@ -551,7 +608,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var erasedLyr = api.eraseLayer(lyr2, lyr1, dataset);
-      var target = [null, null];
+      var target = [];
       assert.deepEqual(erasedLyr.shapes, target);
     })
 
@@ -626,7 +683,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var erasedLyr = api.eraseLayer(lyr2, lyr1, dataset);
-      var target = [null];
+      var target = [];
       assert.deepEqual(erasedLyr.shapes, target);
     })
 
@@ -647,7 +704,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var erasedLyr = api.eraseLayer(lyr2, lyr1, dataset);
-      var target = [null];
+      var target = [];
       assert.deepEqual(erasedLyr.shapes, target);
     })
   })
@@ -681,7 +738,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var clippedLyr = api.clipLayer(lyr2, lyr1, dataset);
-      var target = [null];
+      var target = [];
       assert.deepEqual(clippedLyr.shapes, target);
     })
 
@@ -787,7 +844,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var clippedLyr = api.eraseLayer(lyr2, lyr1, dataset);
-      var target = [null];
+      var target = [];
       assert.deepEqual(clippedLyr.shapes, target);
     })
   })
@@ -925,7 +982,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var erasedLyr = api.eraseLayer(targetLyr, clipLyr, dataset);
-      var target = [null];
+      var target = [];
       assert.deepEqual(erasedLyr.shapes, target);
     })
   })
@@ -1000,7 +1057,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var clippedLyr = api.eraseLayer(targetLyr, clipLyr, dataset);
-      var target = [null];
+      var target = [];
       assert.deepEqual(clippedLyr.shapes, target);
     });
 
@@ -1060,7 +1117,7 @@ describe('mapshaper-clip-erase.js', function () {
       };
 
       var erasedLyr = api.eraseLayer(targetLyr, clipLyr, dataset);
-      var target = [null];
+      var target = [];
       assert.deepEqual(erasedLyr.shapes, target);
     })
   })

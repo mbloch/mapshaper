@@ -102,12 +102,17 @@ function validateSplitOpts(cmd) {
   }
 }
 
-function validateClip(cmd) {
-  var src = cmd.options.source || cmd._[0];
-  if (src) {
-    cmd.options.source = src;
-  } else {
-    error("command requires a source file or layer id");
+function validateClipOpts(cmd) {
+  var opts = cmd.options;
+  if (cmd._[0]) {
+    opts.source = cmd._[0];
+  }
+  if (opts.bbox) {
+    // assume comma-sep bbox has been parsed into array of strings
+    opts.bbox = opts.bbox.map(parseFloat);
+  }
+  if (!opts.source && !opts.bbox) {
+    error("command requires a source file, layer id or bbox");
   }
 }
 
