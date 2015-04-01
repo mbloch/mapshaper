@@ -14256,6 +14256,10 @@ MapShaper.getOptionParser = function() {
       dissolveFieldOpt = {
         label: "<field>",
         describe: "(optional) name of a data field to dissolve on"
+      },
+      bboxOpt = {
+        type: "comma-sep",
+        describe: "comma-sep. bounding box: xmin,ymin,xmax,ymax"
       };
 
   var parser = new CommandParser(),
@@ -14528,7 +14532,7 @@ MapShaper.getOptionParser = function() {
       label: "<file|layer>",
       describe: "file or layer containing clip polygons"
     })
-    .option("bbox", {type: "comma-sep"})
+    .option("bbox", bboxOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -14541,6 +14545,7 @@ MapShaper.getOptionParser = function() {
       label: "<file|layer>",
       describe: "file or layer containing erase polygons"
     })
+    .option("bbox", bboxOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
