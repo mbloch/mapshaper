@@ -1,8 +1,10 @@
 /* @requires mapshaper-common */
 var DEG2RAD = Math.PI / 180.0;
 
-function initProj(proj, opts) {
+// @params (optional) array of decimal-degree params that should be in opts
+function initProj(proj, name, opts, params) {
   var base = {
+    name: name,
     spherical: false, // Toggle for spherical / ellipsoidal formulas
     x0: 0,   // false easting (used by UTM and some other projections)
     y0: 0,   // false northing
@@ -11,18 +13,18 @@ function initProj(proj, opts) {
     // E: flattening parameter for GRS80 ellipsoid (others not supported)
     E: 0.0818191908426214943348,
 
-    forward: function(lng, lat, xy) {
+    projectLatLng: function(lat, lng, xy) {
       xy = xy || {};
-      this.projectLatLng(lat * DEG2RAD, lng * DEG2RAD, xy);
+      this.forward(lng * DEG2RAD, lat * DEG2RAD, xy);
       xy.x = this.R * xy.x + this.x0;
       xy.y = this.R * xy.y + this.y0;
       return xy;
     },
-    inverse: function(x, y, ll) {
+    unprojectXY: function(x, y, ll) {
       x = (x - this.x0) / this.R;
       y = (y - this.y0) / this.R;
       ll = ll || {};
-      this.unprojectXY(x, y, ll);
+      this.inverse(x, y, ll);
       ll.lat /= DEG2RAD;
       ll.lng /= DEG2RAD;
       return ll;
@@ -38,15 +40,24 @@ function initProj(proj, opts) {
       var n = 4;
       while (true) {
         this.spherical = true;
-        this.unprojectXY(x + dx, y + dy, ll);
+        this.inverse(x + dx, y + dy, ll);
         this.spherical = false;
         if (!--n) break;
-        this.projectLatLng(ll.lat, ll.lng, xy);
+        this.forward(ll.lng, ll.lat, xy);
         dx += x - xy.x;
         dy += y - xy.y;
       }
     }
   };
+  if (params) {
+    // check for required decimal degree parameters and convert to radians
+    params.forEach(function(param) {
+      if (param in opts === false) {
+        throw new Error('[' + name + '] Missing required parameter:', param);
+      }
+      opts[param] = opts[param] * DEG2RAD;
+    });
+  }
   utils.extend(proj, base, opts);
 }
 
@@ -54,13 +65,12 @@ function WebMercator() {
   return new Mercator({spherical: true});
 }
 
-// Optional params: lat0, lng0 (in decimal degrees)
+// Optional param: lng0 (in decimal degrees)
 function Mercator(opts) {
-  initProj(this, opts);
-  var lat0 = (this.lat0 || 0) * DEG2RAD;
-  var lng0 = (this.lng0 || 0) * DEG2RAD;
-  this.projectLatLng = function(lat, lng, xy) {
-    xy.x = lng - lng0;
+  opts = utils.extend({lng0: 0}, opts);
+  initProj(this, 'mercator', opts, ['lng0']);
+  this.forward = function(lng, lat, xy) {
+    xy.x = lng - this.lng0;
     if (!this.spherical) {
       xy.y = Math.log(Math.tan(Math.PI * 0.25 + lat * 0.5) *
         Math.pow((1 - this.E * Math.sin(lat)) / (1 + this.E * Math.sin(lat)), this.E * 0.5));
@@ -68,11 +78,11 @@ function Mercator(opts) {
       xy.y = Math.log(Math.tan(Math.PI * 0.25 + lat * 0.5));
     }
   };
-  this.unprojectXY = function(x, y, ll) {
+  this.inverse = function(x, y, ll) {
     if (!this.spherical) {
       this.inverseEllApprox(x, y, ll);
     } else {
-      ll.lng = x + lng0;
+      ll.lng = x + this.lng0;
       ll.lat = Math.PI * 0.5 - 2 * Math.atan(Math.exp(-y));
     }
   };
@@ -95,15 +105,13 @@ function UTM(opts) {
 }
 
 function TransverseMercator(opts) {
-  initProj(this, opts);
-  var lat0 = this.lat0 * DEG2RAD;
-  var lng0 = this.lng0 * DEG2RAD;
-  var _m0 = calcTransMercM(lat0, this.E);
-  this.projectLatLng = function(lat, lng, xy) {
+  initProj(this, 'transverse_mercator', opts, ['lat0', 'lng0']);
+  var _m0 = calcTransMercM(this.lat0, this.E);
+  this.forward = function(lng, lat, xy) {
     if (this.spherical) {
-      var B = Math.cos(lat) * Math.sin(lng - lng0);
+      var B = Math.cos(lat) * Math.sin(lng - this.lng0);
       xy.x = 0.5 * this.k0 * Math.log((1 + B) / (1 - B));
-      xy.y = this.k0 * (Math.atan(Math.tan(lat) / Math.cos(lng - lng0)) - lat0);
+      xy.y = this.k0 * (Math.atan(Math.tan(lat) / Math.cos(lng - this.lng0)) - this.lat0);
     } else {
       var e2 = this.E * this.E,
           ep2 = e2 / (1 - e2),
@@ -113,7 +121,7 @@ function TransverseMercator(opts) {
           n = 1 / Math.sqrt(1 - e2 * sinLat * sinLat),
           t = tanLat * tanLat,
           c = ep2 * cosLat * cosLat,
-          a = cosLat * (lng - lng0),
+          a = cosLat * (lng - this.lng0),
           a2 = a * a,
           m = calcTransMercM(lat, this.E);
       xy.x = this.k0 * n * (a + a * a2 / 6 * (1 - t + c) +
@@ -122,11 +130,11 @@ function TransverseMercator(opts) {
         (a2 / 2 + a2 * a2 / 24 * (5 - t + 9 * c + 4 * c * c)));
     }
   };
-  this.unprojectXY = function(x, y, ll) {
+  this.inverse = function(x, y, ll) {
     if (this.spherical) {
-      var D = y / this.k0 + lat0;
+      var D = y / this.k0 + this.lat0;
       ll.lat = Math.asin(Math.sin(D) / cosh(x / this.k0));
-      ll.lng = lng0 +
+      ll.lng = this.lng0 +
         Math.atan(sinh(x / this.k0) / Math.cos(D));
     } else {
       this.inverseEllApprox(x, y, ll);
@@ -177,51 +185,46 @@ function LambertUSA() {
 //   lat1  First standard parallel
 //   lat2  Second standard parallel
 function AlbersEqualAreaConic(opts) {
-  initProj(this, opts);
+  initProj(this, 'albers', opts, ['lat0', 'lat1', 'lat2', 'lng0']);
   var E = this.E;
-  var lat0 = this.lat0 * DEG2RAD,
-      lat1 = this.lat1 * DEG2RAD,
-      lat2 = this.lat2 * DEG2RAD,
-      lng0 = this.lng0 * DEG2RAD;
-
-  var cosLat1 = Math.cos(lat1),
-      sinLat1 = Math.sin(lat1),
-      _sphN = 0.5 * (sinLat1 + Math.sin(lat2)),
+  var cosLat1 = Math.cos(this.lat1),
+      sinLat1 = Math.sin(this.lat1),
+      _sphN = 0.5 * (sinLat1 + Math.sin(this.lat2)),
       _sphC = cosLat1 * cosLat1 + 2.0 * _sphN * sinLat1,
-      _sphRho0 = Math.sqrt(_sphC - 2.0 * _sphN * Math.sin(lat0)) / _sphN;
+      _sphRho0 = Math.sqrt(_sphC - 2.0 * _sphN * Math.sin(this.lat0)) / _sphN;
 
-  var m1 = calcAlbersMell(E, lat1),
-      m2 = calcAlbersMell(E, lat2),
-      q0 = calcAlbersQell(E, lat0),
-      q1 = calcAlbersQell(E, lat1),
-      q2 = calcAlbersQell(E, lat2),
+  var m1 = calcAlbersMell(E, this.lat1),
+      m2 = calcAlbersMell(E, this.lat2),
+      q0 = calcAlbersQell(E, this.lat0),
+      q1 = calcAlbersQell(E, this.lat1),
+      q2 = calcAlbersQell(E, this.lat2),
       _ellN = (m1 * m1 - m2 * m2) / (q2 - q1),
       _ellC = m1 * m1 + _ellN * q1,
       _ellRho0 = Math.sqrt(_ellC - _ellN * q0) / _ellN,
       _ellAuthConst = 1 - (1 - E * E) / (2 * E) * Math.log((1 - E) / (1 + E));
 
-  this.projectLatLng = function(lat, lng, xy) {
+  this.forward = function(lng, lat, xy) {
     var rho, theta;
     if (!this.spherical) {
       var q = calcAlbersQell(E, lat);
       rho = Math.sqrt(_ellC - _ellN * q) / _ellN;
-      theta = _ellN * (lng - lng0);
+      theta = _ellN * (lng - this.lng0);
       xy.x = rho * Math.sin(theta);
       xy.y = _ellRho0 - rho * Math.cos(theta);
     } else {
       rho = Math.sqrt(_sphC - 2 * _sphN * Math.sin(lat)) /
         _sphN;
-      theta = _sphN * (lng - lng0);
+      theta = _sphN * (lng - this.lng0);
       xy.x = rho * Math.sin(theta);
       xy.y = _sphRho0 - rho * Math.cos(theta);
     }
   };
 
-  this.unprojectXY = function(x, y, ll) {
+  this.inverse = function(x, y, ll) {
     var rho, theta, e2, e4, q, beta;
     if (!this.spherical) {
       theta = Math.atan(x / (_ellRho0 - y));
-      ll.lng = lng0 + theta / _ellN;
+      ll.lng = this.lng0 + theta / _ellN;
       e2 = E * E;
       e4 = e2 * e2;
       rho = Math.sqrt(x * x + (_ellRho0 - y) * (_ellRho0 - y));
@@ -236,7 +239,7 @@ function AlbersEqualAreaConic(opts) {
       theta = Math.atan(x / (_sphRho0 - y));
       ll.lat = Math.asin((_sphC - rho * rho * _sphN * _sphN) *
         0.5 / _sphN);
-      ll.lng = theta / _sphN + lng0;
+      ll.lng = theta / _sphN + this.lng0;
     }
   };
 }
@@ -258,46 +261,42 @@ function calcAlbersMell(e, lat) {
 //   lat1  First standard parallel
 //   lat2  Second standard parallel
 function LambertConformalConic(opts) {
-  initProj(this, opts);
+  initProj(this, 'lambertcc', opts, ['lat0', 'lat1', 'lat2', 'lng0']);
   var E = this.E;
-  var lat0 = this.lat0 * DEG2RAD,
-      lat1 = this.lat1 * DEG2RAD,
-      lat2 = this.lat2 * DEG2RAD,
-      lng0 = this.lng0 * DEG2RAD;
-  var _sphN = Math.log(Math.cos(lat1) / Math.cos(lat2)) /
-    Math.log(Math.tan(Math.PI / 4.0 + lat2 / 2.0) /
-    Math.tan(Math.PI / 4.0 + lat1 / 2.0));
-  var _sphF = Math.cos(lat1) *
-    Math.pow(Math.tan(Math.PI / 4.0 + lat1 / 2.0), _sphN) / _sphN;
+  var _sphN = Math.log(Math.cos(this.lat1) / Math.cos(this.lat2)) /
+    Math.log(Math.tan(Math.PI / 4.0 + this.lat2 / 2.0) /
+    Math.tan(Math.PI / 4.0 + this.lat1 / 2.0));
+  var _sphF = Math.cos(this.lat1) *
+    Math.pow(Math.tan(Math.PI / 4.0 + this.lat1 / 2.0), _sphN) / _sphN;
   var _sphRho0 = _sphF /
-    Math.pow(Math.tan(Math.PI / 4.0 + lat0 / 2.0), _sphN);
-  var _ellN = (Math.log(calcLambertM(lat1, E)) -
-    Math.log(calcLambertM(lat2, E))) /
-    (Math.log(calcLambertT(lat1, E)) -
-    Math.log(calcLambertT(lat2, E)));
-  var _ellF = calcLambertM(lat1, E) / (_ellN *
-    Math.pow(calcLambertT(lat1, E), _ellN));
+    Math.pow(Math.tan(Math.PI / 4.0 + this.lat0 / 2.0), _sphN);
+  var _ellN = (Math.log(calcLambertM(this.lat1, E)) -
+    Math.log(calcLambertM(this.lat2, E))) /
+    (Math.log(calcLambertT(this.lat1, E)) -
+    Math.log(calcLambertT(this.lat2, E)));
+  var _ellF = calcLambertM(this.lat1, E) / (_ellN *
+    Math.pow(calcLambertT(this.lat1, E), _ellN));
   var _ellRho0 = _ellF *
-    Math.pow(calcLambertT(lat0, E), _ellN);
+    Math.pow(calcLambertT(this.lat0, E), _ellN);
 
-  this.projectLatLng = function(lat, lng, xy) {
+  this.forward = function(lng, lat, xy) {
     var rho, theta;
     if (!this.spherical) {
       var t = calcLambertT(lat, E);
       rho = _ellF * Math.pow(t, _ellN);
-      theta = _ellN * (lng - lng0);
+      theta = _ellN * (lng - this.lng0);
       xy.x = rho * Math.sin(theta);
       xy.y = _ellRho0 - rho * Math.cos(theta);
     } else {
       rho = _sphF /
         Math.pow(Math.tan(Math.PI / 4 + lat / 2.0), _sphN);
-      theta = _sphN * (lng - lng0);
+      theta = _sphN * (lng - this.lng0);
       xy.x = rho * Math.sin(theta);
       xy.y = _sphRho0 - rho * Math.cos(theta);
     }
   };
 
-  this.unprojectXY = function(x, y, ll) {
+  this.inverse = function(x, y, ll) {
     if (!this.spherical) {
       this.inverseEllApprox(x, y, ll);
     } else {
@@ -309,7 +308,7 @@ function LambertConformalConic(opts) {
       var theta = Math.atan(x / (rho0 - y));
       ll.lat = 2 * Math.atan(Math.pow(_sphF /
         rho, 1 / _sphN)) - 0.5 * Math.PI;
-      ll.lng = theta / _sphN + lng0;
+      ll.lng = theta / _sphN + this.lng0;
     }
   };
 }
@@ -326,8 +325,8 @@ function calcLambertM(lat, e) {
 }
 
 function WinkelTripel() {
-  initProj(this);
-  this.projectLatLng = function(lat, lng, xy) {
+  initProj(this, 'winkel_tripel');
+  this.forward = function(lng, lat, xy) {
     var lat0 = 50.4670 * DEG2RAD;
     var a = Math.acos( Math.cos(lat) * Math.cos(lng * 0.5));
     var sincAlpha = a === 0 ? 1 : Math.sin( a ) / a;
@@ -350,8 +349,8 @@ function MixedProjection(proj) {
   // @scale Scale factor; 1 = no scaling.
   // @rotation Rotation in degrees; 0 = no rotation.
   this.addFrame = function(proj2, ctr1, ctr2, frameWidth, frameHeight, scale, rotation) {
-    var xy1 = proj.forward(ctr1.lng, ctr1.lat);
-    var xy2 = proj.forward(ctr2.lng, ctr2.lat);
+    var xy1 = proj.projectLatLng(ctr1.lat, ctr1.lng);
+    var xy2 = proj.projectLatLng(ctr2.lat, ctr2.lng);
     var bbox = [xy1.x - frameWidth * 0.5, xy1.y - frameHeight * 0.5, xy1.x + frameWidth * 0.5, xy1.y + frameHeight * 0.5];
     var m = new Matrix2D();
     m.rotate(rotation * DEG2RAD, xy1.x, xy1.y );
@@ -366,14 +365,14 @@ function MixedProjection(proj) {
     return this;
   };
 
-  this.forward = function(lng, lat, xy) {
+  this.projectLatLng = function(lat, lng, xy) {
     var frame, bbox;
-    xy = proj.forward(lng, lat, xy);
+    xy = proj.projectLatLng(lat, lng, xy);
     for (var i=0, n=frames.length; i<n; i++) {
       frame = frames[i];
       bbox = frame.bbox;
       if (xy.x >= bbox[0] && xy.x <= bbox[2] && xy.y >= bbox[1] && xy.y <= bbox[3]) {
-        frame.projection.forward(lng, lat, xy);
+        frame.projection.projectLatLng(lat, lng, xy);
         frame.matrix.transformXY(xy.x, xy.y, xy);
         break;
       }
@@ -382,8 +381,8 @@ function MixedProjection(proj) {
   };
 
   // TODO: implement inverse projection for frames
-  this.inverse = function(x, y, ll) {
-    return proj.inverse.call(proj, x, y, ll);
+  this.unprojectXY = function(x, y, ll) {
+    return proj.unprojectXY.call(proj, x, y, ll);
   };
 }
 

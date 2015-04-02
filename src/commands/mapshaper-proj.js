@@ -47,7 +47,7 @@ MapShaper.projectDataset = function(dataset, proj) {
 MapShaper.projectPointLayer = function(lyr, proj) {
   var xy = {x: 0, y: 0};
   MapShaper.forEachPoint(lyr, function(p) {
-    proj.forward(p[0], p[1], xy);
+    proj.projectLatLng(p[1], p[0], xy);
     p[0] = xy.x;
     p[1] = xy.y;
   });
@@ -62,7 +62,7 @@ MapShaper.projectArcs = function(arcs, proj) {
     stop("[proj] Only projection from lat-lng coordinates is supported");
   }
   for (var i=0, n=xx.length; i<n; i++) {
-    proj.forward(xx[i], yy[i], p);
+    proj.projectLatLng(yy[i], xx[i], p);
     xx[i] = p.x;
     yy[i] = p.y;
   }

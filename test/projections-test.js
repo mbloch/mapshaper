@@ -3,8 +3,8 @@ var assert = require('assert');
 var getProjection = require("..").internal.getProjection;
 
 function roundtripTest(proj, lng, lat) {
-  var xy = proj.forward(lng, lat);
-  var ll = proj.inverse(xy.x, xy.y);
+  var xy = proj.projectLatLng(lat, lng);
+  var ll = proj.unprojectXY(xy.x, xy.y);
   var e = 1e-7; // some inverse formulas not very accurate
   // console.log(lng, lat, ll, xy);
   assert(Math.abs(ll.lat - lat) < e);
