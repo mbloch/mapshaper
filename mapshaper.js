@@ -11346,29 +11346,42 @@ MapShaper.combineFilters = function(a, b) {
 
 
 
-// Filter and rename data fields
-
 api.filterFields = function(lyr, names) {
+  MapShaper.updateFields(lyr, names, "filter-fields");
+};
+
+api.renameFields = function(lyr, names) {
+  MapShaper.updateFields(lyr, names, "rename-fields");
+};
+
+MapShaper.updateFields = function(lyr, names, cmd) {
   if (!lyr.data) {
     stop("[filter-fields] Layer is missing a data table");
   } else if (!utils.isArray(names)) {
     stop("[filter-fields] Expected an array of field names; found:", names);
   }
 
-  var fieldMap = MapShaper.getFieldFilterMap(names),
-      dataFields = lyr.data.getFields(),
-      missingFields = utils.difference(Object.keys(fieldMap), dataFields);
+  var dataFields = lyr.data.getFields(),
+      fieldMap = MapShaper.mapFieldNames(names, {}),
+      mappedFields = Object.keys(fieldMap),
+      unmappedFields = utils.difference(dataFields, mappedFields),
+      missingFields = utils.difference(mappedFields, dataFields);
 
   if (missingFields.length > 0) {
-    message("[filter-fields] Table is missing one or more specified fields:", missingFields);
+    message("[" + cmd + "] Table is missing one or more specified fields:", missingFields);
     message("Existing fields:", dataFields);
     stop();
-  } else {
-    lyr.data.update(MapShaper.getRecordMapper(fieldMap));
   }
+
+  if (cmd == "rename-fields" && unmappedFields.length > 0) {
+    // add unmapped fields to the map, so all fields are retained
+    MapShaper.mapFieldNames(unmappedFields, fieldMap);
+  }
+
+  lyr.data.update(MapShaper.getRecordMapper(fieldMap));
 };
 
-MapShaper.getFieldFilterMap = function(names) {
+MapShaper.mapFieldNames = function(names, fieldMap) {
   return utils.reduce(names, function(memo, str) {
     var parts = str.split('=');
     var dest = parts[0],
@@ -11376,7 +11389,7 @@ MapShaper.getFieldFilterMap = function(names) {
     if (!src || !dest) stop("[fields] Invalid field description:", str);
     memo[src] = dest;
     return memo;
-  }, {});
+  }, fieldMap || {});
 };
 
 MapShaper.getRecordMapper = function(map) {
@@ -13487,6 +13500,9 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'proj') {
       api.proj(dataset, opts);
 
+    } else if (name == 'rename-fields') {
+      MapShaper.applyCommand(api.renameFields, targetLayers, opts.fields);
+
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
 
@@ -14519,7 +14535,16 @@ MapShaper.getOptionParser = function() {
     .validate(validateFilterFieldsOpts)
     .option("fields", {
       label: "<field(s)>",
-      describe: "fields to retain/rename (comma-sep.), e.g. 'fips,st-state'"
+      describe: "fields to retain/rename (comma-sep.), e.g. 'fips,st=state'"
+    })
+    .option("target", targetOpt);
+
+  parser.command("rename-fields")
+    .describe('rename data fields')
+    .validate(validateFilterFieldsOpts)
+    .option("fields", {
+      label: "<field(s)>",
+      describe: "fields to rename (comma-sep.), e.g. 'fips=STATE_FIPS,st=state'"
     })
     .option("target", targetOpt);
 

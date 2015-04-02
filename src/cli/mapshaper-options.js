@@ -308,7 +308,16 @@ MapShaper.getOptionParser = function() {
     .validate(validateFilterFieldsOpts)
     .option("fields", {
       label: "<field(s)>",
-      describe: "fields to retain/rename (comma-sep.), e.g. 'fips,st-state'"
+      describe: "fields to retain/rename (comma-sep.), e.g. 'fips,st=state'"
+    })
+    .option("target", targetOpt);
+
+  parser.command("rename-fields")
+    .describe('rename data fields')
+    .validate(validateFilterFieldsOpts)
+    .option("fields", {
+      label: "<field(s)>",
+      describe: "fields to rename (comma-sep.), e.g. 'fips=STATE_FIPS,st=state'"
     })
     .option("target", targetOpt);
 

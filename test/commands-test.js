@@ -283,25 +283,6 @@ describe('mapshaper-commands.js', function () {
 
   });
 
-  describe('-filter-fields', function () {
-
-    it("test 1", function (done) {
-      var cmd = format("-i %s -filter-fields NAME=STATE_NAME,FIPS", states_shp);
-      api.runCommands(cmd, function(err, data) {
-        assert.deepEqual(data.layers[0].data.getFields(), ['NAME', 'FIPS']);
-        done();
-      })
-    })
-
-    it("test 2 -- drop fields)", function (done) {
-      var cmd = format("-i %s -filter-fields", states_shp);
-      api.runCommands(cmd, function(err, data) {
-        assert.deepEqual(data.layers[0].data.getFields(), []);
-        done();
-      })
-    })
-  })
-
 
   describe('-dissolve', function () {
 

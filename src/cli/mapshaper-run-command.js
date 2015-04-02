@@ -7,7 +7,7 @@ mapshaper-each-calc
 mapshaper-file-import
 mapshaper-file-export
 mapshaper-filter
-mapshaper-filter-fields
+mapshaper-filter-rename-fields
 mapshaper-filter-islands
 mapshaper-info
 mapshaper-innerlines
@@ -116,6 +116,9 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'proj') {
       api.proj(dataset, opts);
+
+    } else if (name == 'rename-fields') {
+      MapShaper.applyCommand(api.renameFields, targetLayers, opts.fields);
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
