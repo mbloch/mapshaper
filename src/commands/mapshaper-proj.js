@@ -30,7 +30,8 @@ MapShaper.projectionIndex = {
   lambertcc: LambertConformalConic,
   transversemercator: TransverseMercator,
   utm: UTM,
-  winkeltripel: WinkelTripel
+  winkeltripel: WinkelTripel,
+  robinson: Robinson
 };
 
 MapShaper.projectDataset = function(dataset, proj) {
