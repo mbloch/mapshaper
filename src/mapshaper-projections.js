@@ -1,14 +1,28 @@
 /* @requires mapshaper-common */
+
+MapShaper.projectionIndex = {
+  webmercator: WebMercator,
+  mercator: Mercator,
+  albers: AlbersEqualAreaConic,
+  albersusa: AlbersNYT,
+  albersnyt: AlbersNYT,
+  lambertcc: LambertConformalConic,
+  transversemercator: TransverseMercator,
+  utm: UTM,
+  winkeltripel: WinkelTripel,
+  robinson: Robinson
+};
+
 var DEG2RAD = Math.PI / 180.0;
 
-// @params (optional) array of decimal-degree params that should be in opts
+// @params (optional) array of decimal-degree params that should be present in opts
 function initProj(proj, name, opts, params) {
   var base = {
-    name: name,
     spherical: false, // Toggle for spherical / ellipsoidal formulas
     x0: 0,   // false easting (used by UTM and some other projections)
     y0: 0,   // false northing
     k0: 1,   // scale factor
+    to_meter: 1,
     R: 6378137, // Earth radius / semi-major axis (spherical / ellipsoidal formulas)
     // E: flattening parameter for GRS80 ellipsoid (others not supported)
     E: 0.0818191908426214943348,
@@ -16,15 +30,15 @@ function initProj(proj, name, opts, params) {
     projectLatLng: function(lat, lng, xy) {
       xy = xy || {};
       this.forward(lng * DEG2RAD, lat * DEG2RAD, xy);
-      xy.x = this.R * xy.x + this.x0;
-      xy.y = this.R * xy.y + this.y0;
+      xy.x = (this.R * xy.x + this.x0) / this.to_meter;
+      xy.y = (this.R * xy.y + this.y0) / this.to_meter;
       return xy;
     },
     unprojectXY: function(x, y, ll) {
-      x = (x - this.x0) / this.R;
-      y = (y - this.y0) / this.R;
+      x = (x * this.to_meter - this.x0) / this.R;
+      y = (y * this.to_meter - this.y0) / this.R;
       ll = ll || {};
-      this.inverse(x, y, ll);
+      this.inverse(x , y, ll);
       ll.lat /= DEG2RAD;
       ll.lng /= DEG2RAD;
       return ll;
@@ -59,6 +73,23 @@ function initProj(proj, name, opts, params) {
     });
   }
   utils.extend(proj, base, opts);
+  proj.name = name;
+  if (opts.units) {
+    proj.to_meter = initProjUnits(opts.units);
+  }
+}
+
+// Return multiplier for converting to meters
+function initProjUnits(units) {
+  units = units.toLowerCase().replace(/-_/g, '');
+  var k = {
+      meters: 1,
+      feet: 0.3048,
+      usfeet: 0.304800609601219 }[units];
+  if (!k) {
+    throw new Error("[proj] Unsupported units, use to_meter param:", units);
+  }
+  return 1 / k;
 }
 
 function WebMercator() {
@@ -89,7 +120,7 @@ function Mercator(opts) {
 }
 
 function UTM(opts) {
-  var m = /^([\d]+)([NS])$/i.exec(opts.zone || "");
+  var m = /^([\d]+)([NS])$/.exec(opts.zone || "");
   if (!m) {
     throw new Error("[UTM] Expected a UTM zone parameter of the form: 17N");
   }
@@ -99,7 +130,7 @@ function UTM(opts) {
     lng0: z * 6 - 183,
     lat0: 0,
     x0: 500000,
-    y0: m[2].toUpperCase() == 'S' ? 1e7 : 0
+    y0: m[2] == 'S' ? 1e7 : 0
   });
   return proj;
 }
@@ -134,8 +165,7 @@ function TransverseMercator(opts) {
     if (this.spherical) {
       var D = y / this.k0 + this.lat0;
       ll.lat = Math.asin(Math.sin(D) / cosh(x / this.k0));
-      ll.lng = this.lng0 +
-        Math.atan(sinh(x / this.k0) / Math.cos(D));
+      ll.lng = this.lng0 + Math.atan(sinh(x / this.k0) / Math.cos(D));
     } else {
       this.inverseEllApprox(x, y, ll);
     }
@@ -162,15 +192,15 @@ function calcTransMercM(lat, e) {
     Math.sin(6 * lat) * (35 * e6 / 3072));
 }
 
-function AlbersNYT() {
+function AlbersNYT(opts) {
   var lambert = new LambertConformalConic({lng0:-96, lat1:33, lat2:45, lat0:39, spherical: true});
-  return new MixedProjection(new AlbersUSA())
+  return new MixedProjection(new AlbersUSA(opts))
     .addFrame(lambert, {lat:63, lng:-152}, {lat:27, lng:-115}, 6000000, 3000000, 0.31, 29.2)  // AK
     .addFrame(lambert, {lat:20.9, lng:-157}, {lat:28.2, lng:-106.6}, 2000000, 4000000, 0.9, 40); // HI
 }
 
-function AlbersUSA() {
-  return new AlbersEqualAreaConic({lng0:-96, lat1:29.5, lat2:45.5, lat0:37.5});
+function AlbersUSA(opts) {
+  return new AlbersEqualAreaConic(utils.extend({lng0:-96, lat1:29.5, lat2:45.5, lat0:37.5}, opts));
 }
 
 /*
@@ -204,16 +234,15 @@ function AlbersEqualAreaConic(opts) {
       _ellAuthConst = 1 - (1 - E * E) / (2 * E) * Math.log((1 - E) / (1 + E));
 
   this.forward = function(lng, lat, xy) {
-    var rho, theta;
+    var rho, theta, q;
     if (!this.spherical) {
-      var q = calcAlbersQell(E, lat);
+      q = calcAlbersQell(E, lat);
       rho = Math.sqrt(_ellC - _ellN * q) / _ellN;
       theta = _ellN * (lng - this.lng0);
       xy.x = rho * Math.sin(theta);
       xy.y = _ellRho0 - rho * Math.cos(theta);
     } else {
-      rho = Math.sqrt(_sphC - 2 * _sphN * Math.sin(lat)) /
-        _sphN;
+      rho = Math.sqrt(_sphC - 2 * _sphN * Math.sin(lat)) / _sphN;
       theta = _sphN * (lng - this.lng0);
       xy.x = rho * Math.sin(theta);
       xy.y = _sphRho0 - rho * Math.cos(theta);
@@ -237,8 +266,7 @@ function AlbersEqualAreaConic(opts) {
     } else {
       rho = Math.sqrt(x * x + (_sphRho0 - y) * (_sphRho0 - y));
       theta = Math.atan(x / (_sphRho0 - y));
-      ll.lat = Math.asin((_sphC - rho * rho * _sphN * _sphN) *
-        0.5 / _sphN);
+      ll.lat = Math.asin((_sphC - rho * rho * _sphN * _sphN) * 0.5 / _sphN);
       ll.lng = theta / _sphN + this.lng0;
     }
   };
@@ -397,7 +425,6 @@ function Robinson() {
 // @proj Default projection.
 function MixedProjection(proj) {
   var frames = [];
-
   // @proj2 projection to use.
   // @ctr1 {lat, lng} center of the frame contents.
   // @ctr2 {lat, lng} geo location to move the frame center

@@ -20,7 +20,7 @@ describe('mapshaper-projections.js', function() {
     });
   })
 
-  describe('LambertCC', function () {
+  describe('lambertcc', function () {
     it ('spherical formula projects/unprojects', function() {
       var proj = getProjection('lambertcc', {lng0:-96, lat1:33, lat2:45, lat0:39, spherical: true});
       proj.spherical = true;
@@ -35,7 +35,7 @@ describe('mapshaper-projections.js', function() {
     });
   })
 
-  describe('Mercator', function () {
+  describe('mercator', function () {
     it ('spherical formula projects/unprojects', function() {
       var proj = getProjection('webmercator');
       roundtripTest(proj, -96, 40);
@@ -49,7 +49,7 @@ describe('mapshaper-projections.js', function() {
     });
   })
 
-  describe('TransverseMercator', function () {
+  describe('transversemercator', function () {
     it ('spherical formula projects/unprojects', function() {
       var proj = getProjection('transversemercator', {lat0: 0, lng0: 0, spherical: true});
       roundtripTest(proj, -10, 10);
@@ -61,6 +61,22 @@ describe('mapshaper-projections.js', function() {
       roundtripTest(proj, -10, 10);
       roundtripTest(proj, 10, -80);
     });
+
+    it ('accepts units of feet', function() {
+      var proj = getProjection('transversemercator', {lat0: 0, lng0: 0}),
+          projFeet = getProjection('transversemercator', {lat0: 0, lng0: 0, units: 'feet'}),
+          xy = proj.projectLatLng(10, 10),
+          xyFeet = projFeet.projectLatLng(10, 10);
+      assert.equal(xy.x * 0.3048, xyFeet.x);
+    })
+
+    it ('accepts to_meter param', function() {
+      var proj = getProjection('transversemercator', {lat0: 0, lng0: 0}),
+          projKm = getProjection('transversemercator', {lat0: 0, lng0: 0, to_meter: 1000}),
+          xy = proj.projectLatLng(10, 10),
+          xyKm = projKm.projectLatLng(10, 10);
+      assert.equal(xy.x, xyKm.x * 1000);
+    })
   })
 
   describe('UTM', function () {
@@ -73,6 +89,5 @@ describe('mapshaper-projections.js', function() {
       roundtripTest(proj, 139.68, 35.68);
     });
   })
-
 
 });

@@ -21,19 +21,6 @@ MapShaper.printProjections = function() {
   });
 };
 
-MapShaper.projectionIndex = {
-  webmercator: WebMercator,
-  mercator: Mercator,
-  albers: AlbersEqualAreaConic,
-  albersusa: AlbersNYT,
-  albersnyt: AlbersNYT,
-  lambertcc: LambertConformalConic,
-  transversemercator: TransverseMercator,
-  utm: UTM,
-  winkeltripel: WinkelTripel,
-  robinson: Robinson
-};
-
 MapShaper.projectDataset = function(dataset, proj) {
   dataset.layers.forEach(function(lyr) {
     if (MapShaper.layerHasPoints(lyr)) {
