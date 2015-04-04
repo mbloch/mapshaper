@@ -7,8 +7,17 @@ function roundtripTest(proj, lng, lat) {
   var ll = proj.unprojectXY(xy.x, xy.y);
   var e = 1e-7; // some inverse formulas not very accurate
   // console.log(lng, lat, ll, xy);
-  assert(Math.abs(ll.lat - lat) < e);
-  assert(Math.abs(ll.lng - lng) < e);
+  almostEqual(ll.lat, lat, e);
+  almostEqual(ll.lng, lng, e);
+}
+
+function almostEqual(a, b, e) {
+  e = e || 1e-10;
+  if (Math.abs(a - b) < e) {
+    assert(true);
+  } else {
+    assert.equal(a, b)
+  }
 }
 
 describe('mapshaper-projections.js', function() {
@@ -67,7 +76,8 @@ describe('mapshaper-projections.js', function() {
           projFeet = getProjection('transversemercator', {lat0: 0, lng0: 0, units: 'feet'}),
           xy = proj.projectLatLng(10, 10),
           xyFeet = projFeet.projectLatLng(10, 10);
-      assert.equal(xy.x * 0.3048, xyFeet.x);
+      almostEqual(xy.x * 0.3048, xyFeet.x);
+      almostEqual(xy.y * 0.3048, xyFeet.y);
     })
 
     it ('accepts to_meter param', function() {
@@ -75,7 +85,8 @@ describe('mapshaper-projections.js', function() {
           projKm = getProjection('transversemercator', {lat0: 0, lng0: 0, to_meter: 1000}),
           xy = proj.projectLatLng(10, 10),
           xyKm = projKm.projectLatLng(10, 10);
-      assert.equal(xy.x, xyKm.x * 1000);
+      almostEqual(xy.x, xyKm.x * 1000);
+      almostEqual(xy.y, xyKm.y * 1000);
     })
   })
 
