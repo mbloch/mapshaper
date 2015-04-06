@@ -5032,8 +5032,9 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
   });
 };
 
-
 // Return a function for generating a path across a field of intersecting arcs
+// TODO: add option to calculate angle on sphere for lat-lng coords
+//
 MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute) {
   var arcs = nodes.arcs,
       coords = arcs.getVertexData(),
@@ -11692,6 +11693,10 @@ MapShaper.replaceInArray = function(zz, value, replacement, start, end) {
 
 
 
+// WORK IN PROJGRESS
+// Remove 'cuts' in an unprojected dataset at the antemeridian and poles.
+// This will be useful when generating rotated projections.
+//
 api.mend = function(dataset) {
   var arcs = dataset.arcs,
       edgeArcs, dissolver;

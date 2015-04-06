@@ -103,8 +103,9 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
   });
 };
 
-
 // Return a function for generating a path across a field of intersecting arcs
+// TODO: add option to calculate angle on sphere for lat-lng coords
+//
 MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute) {
   var arcs = nodes.arcs,
       coords = arcs.getVertexData(),
