@@ -61,7 +61,7 @@ function CommandParser() {
       };
 
       while (moreOptions(argv)) {
-        opt = readOption(argv, cmdDef);
+        opt = readNamedOption(argv, cmdDef);
         if (!opt) {
           // not a defined option; add it to _ array for later processing
           cmd._.push(argv.shift());
@@ -85,7 +85,7 @@ function CommandParser() {
       return argv.length > 0 && !commandRxp.test(argv[0]);
     }
 
-    function readOption(argv, cmdDef) {
+    function readNamedOption(argv, cmdDef) {
       var token = argv[0],
           optRxp = /^([a-z0-9_+-]+)=(.+)$/i,
           match = optRxp.exec(token),
@@ -109,7 +109,7 @@ function CommandParser() {
       optName = optDef.assign_to || optDef.name.replace(/-/g, '_');
       optVal = readOptionValue(argv, optDef);
       if (optVal === null) {
-        stop("Invalid value for -" + cmdDef.name + " " + optName);
+        stop("Invalid value for -" + cmdDef.name + " " + optName + "=<value>");
       }
       return [optName, optVal];
     }
@@ -121,6 +121,8 @@ function CommandParser() {
         val = true;
       } else if (def.assign_to) { // opt is a member of a set, assigned to another name
         val = def.name;
+      } else if (args.length === 0 || commandRxp.test(args[0])) {
+        val = null;
       } else {
         raw = args[0];
         if (type == 'number') {
@@ -145,6 +147,8 @@ function CommandParser() {
       return val;
     }
 
+    // Check first element of an array of tokens; remove and return if it looks
+    // like a command name, else return null;
     function readCommandName(args) {
       var match = commandRxp.exec(args[0]);
       if (match) {

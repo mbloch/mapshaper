@@ -347,6 +347,8 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
+  parser.command("mend");
+
   parser.command("dissolve")
     .validate(validateDissolveOpts)
     .describe("merge adjacent polygons")

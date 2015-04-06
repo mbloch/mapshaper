@@ -1,5 +1,6 @@
 var api = require('../'),
-  assert = require('assert');
+  assert = require('assert'),
+  _ = require('underscore');
 
 function fixPath(p) {
   return require('path').join(__dirname, p);
@@ -143,6 +144,7 @@ describe('mapshaper-options.js', function () {
     good("-dissolve STATE", {field: 'STATE'});
     good("-dissolve FIPS sum-fields POP copy-fields NAME,FIPS", {field: "FIPS", copy_fields: ["NAME", "FIPS"], sum_fields: ["POP"]});
     bad("-dissolve STATE COUNTY");
+    bad("-dissolve name -o"); // expects name=<lyr name>
   })
 
   describe('split', function () {
@@ -169,7 +171,6 @@ describe('mapshaper-options.js', function () {
     good("-verbose", {});
     good("-help", {});
     good("-h", {});
-
   })
 
   describe('syntax rules', function () {
@@ -188,9 +189,11 @@ function bad(str) {
   })
 }
 
-function good(str, target) {
+function good(str, reference) {
   var args = str.split(/ +/);
   it(str, function() {
-    assert.deepEqual(api.internal.getOptionParser().parseArgv(args)[0].options, target);
+    var parsed = api.internal.getOptionParser().parseArgv(args);
+    var target = _.isArray(reference) ? parsed : parsed[0].options;
+    assert.deepEqual(target, reference);
   })
 }
