@@ -183,37 +183,14 @@ describe('mapshaper-shape-geom.js', function () {
   })
 
 
-  describe("getPathArea3()", function() {
-
-    it("returns 0 if shape has collapsed", function() {
-      assert.equal(geom.getPathArea3([0, 1, 0], [0, 1, 0]), 0);
-      assert.equal(geom.getPathArea3([2, 1, 0, 2], [0, 1, 2, 0]), 0);
-      assert.equal(geom.getPathArea3([3, 3, 3, 3], [4, 4, 4, 4]), 0);
-    })
+  describe("getPlanarPathArea2()", function() {
 
     it("returns negative area if points are counter-clockwise", function() {
-      assert.equal(geom.getPathArea3([1, 2, 2, 1, 1], [1, 1, 2, 2, 1]), -1)
+      assert.equal(geom.getPlanarPathArea2([[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]), -1)
     })
 
     it("returns positive area if points are clockwise", function() {
-      assert.equal(geom.getPathArea3([1, 1, 2, 2, 1], [1, 2, 2, 1, 1]), 1)
-    })
-
-    it("accepts start and length parameters", function() {
-      assert.equal(geom.getPathArea3([0, 0, 4, 5, 6, 4], [-1, -4, 0, 1, 0, 0], 2), 1)
-      assert.equal(geom.getPathArea3([0, 0, 4, 5, 6, 4, 3], [-1, -4, 0, 1, 0, 0, 1], 2, 4), 1)
-    })
-  })
-
-
-  describe("getPathArea2()", function() {
-
-    it("returns negative area if points are counter-clockwise", function() {
-      assert.equal(geom.getPathArea2([[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]), -1)
-    })
-
-    it("returns positive area if points are clockwise", function() {
-      assert.equal(geom.getPathArea2([[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]), 1)
+      assert.equal(geom.getPlanarPathArea2([[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]), 1)
     })
 
     it("Fix: tiny CCW triangle", function() {
@@ -221,11 +198,29 @@ describe('mapshaper-shape-geom.js', function () {
       [ -89.93838904665556, 37.87449407735467 ],
       [ -89.9383888795177, 37.87449407735467 ],
       [ -89.93838884833583, 37.87449410425668 ] ];
-      assert.ok(geom.getPathArea2(coords) < 0);
+      assert.ok(geom.getPlanarPathArea2(coords) < 0);
     })
   })
 
-  describe("getPathArea4()", function() {
+  describe("getPlanarPathArea()", function() {
+
+    it("returns positive area if points are clockwise", function() {
+      var arcs = new api.internal.ArcCollection([[[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]]);
+      assert.equal(geom.getPlanarPathArea([0], arcs), 1)
+    })
+
+    it("returns negative area if points are counter-clockwise", function() {
+      var arcs = new api.internal.ArcCollection([[[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]]);
+      assert.equal(geom.getPlanarPathArea([0], arcs), -1)
+    })
+
+    it("returns 0 if shape has collapsed", function() {
+      var ids = [[[0, 0], [1, 1], [0, 0]], [[2, 0], [1, 1], [0, 2], [2, 0]], [[3, 4], [3, 4], [3, 4], [3, 4]]],
+          arcs = new api.internal.ArcCollection(ids);
+      assert.equal(geom.getPlanarPathArea([0], arcs), 0);
+      assert.equal(geom.getPlanarPathArea([1], arcs), 0);
+      assert.equal(geom.getPlanarPathArea([2], arcs), 0);
+    })
 
     it("Fix: tiny CCW triangle", function() {
       // This tiny triangle tested as CW before area function was rewritten
@@ -235,7 +230,7 @@ describe('mapshaper-shape-geom.js', function () {
       [ -89.9383888795177, 37.87449407735467 ],
       [ -89.93838884833583, 37.87449410425668 ] ] ];
       var arcs = new api.internal.ArcCollection(coords);
-      assert.ok(geom.getPathArea4([0], arcs) < 0);
+      assert.ok(geom.getPlanarPathArea([0], arcs) < 0);
     })
 
     it("Fix: tiny CW triangle", function() {
@@ -244,7 +239,7 @@ describe('mapshaper-shape-geom.js', function () {
       [ -89.9383888795177, 37.87449407735467 ],
       [ -89.93838884833583, 37.87449410425668 ] ] ];
       var arcs = new api.internal.ArcCollection(coords);
-      assert.ok(geom.getPathArea4([~0], arcs) > 0);
+      assert.ok(geom.getPlanarPathArea([~0], arcs) > 0);
     })
 
   })

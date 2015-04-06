@@ -120,23 +120,6 @@ function PathImporter(opts) {
       prevX = x;
     }
 
-    /*
-    var valid = false;
-    if (type == 'polyline') {
-      valid = n > 1;
-    } else if (type == 'polygon') {
-      valid = n > 3 && geom.getPathArea3(xx, yy, pointId-n, n) !== 0;
-    } else {
-      error("[importPathFromFlatArray() Unexpected type:", type);
-    }
-
-    if (valid) {
-      appendPath(n, type);
-    } else {
-      pointId -= n;
-      skippedPathCount++;
-    }
-    */
     appendPath(n, type);
 
   };
@@ -167,7 +150,7 @@ function PathImporter(opts) {
   };
 
   this.importPolygon = function(points, isHole) {
-    var area = geom.getPathArea2(points);
+    var area = geom.getPlanarPathArea2(points);
 
     if (isHole === true && area > 0 || isHole === false && area < 0) {
       verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");

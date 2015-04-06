@@ -5,7 +5,7 @@
 
 geom.getShapeArea = function(shp, arcs) {
   return utils.reduce(shp, function(area, ids) {
-    return area + geom.getPathArea4(ids, arcs);
+    return area + geom.getPlanarPathArea(ids, arcs);
   }, 0);
 };
 
@@ -14,17 +14,7 @@ geom.getSphericalShapeArea = function(shp, arcs) {
     error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
   }
   return utils.reduce(shp, function(area, ids) {
-    var iter = arcs.getShapeIter(ids);
-    return area + geom.getSphericalPathArea(iter);
-  }, 0);
-};
-
-// alternative using equal-area projection
-geom.getSphericalShapeArea2 = function(shp, arcs) {
-  return utils.reduce(shp, function(total, ids) {
-    var iter = arcs.getShapeIter(ids);
-    iter = geom.wrapPathIter(iter, geom.projectGall);
-    return total + geom.getPathArea(iter);
+    return area + geom.getSphericalPathArea(ids, arcs);
   }, 0);
 };
 
@@ -210,8 +200,9 @@ geom.getRayIntersection = function(x, y, ax, ay, bx, by) {
   return hit;
 };
 
-geom.getSphericalPathArea = function(iter) {
-  var sum = 0,
+geom.getSphericalPathArea = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids),
+      sum = 0,
       started = false,
       deg2rad = Math.PI / 180,
       x, y, xp, yp;
@@ -229,57 +220,11 @@ geom.getSphericalPathArea = function(iter) {
   return sum / 2 * 6378137 * 6378137;
 };
 
-geom.wrapPathIter = function(iter, project) {
-  return {
-    hasNext: function() {
-      if (iter.hasNext()) {
-        project(iter.x, iter.y, this);
-        return true;
-      }
-      return false;
-    }
-  };
-};
-
-geom.projectGall = (function() {
-  var R = 6378137;
-  var deg2rad = Math.PI / 180;
-  var kx = R * deg2rad / Math.sqrt(2);
-  var ky = R * Math.sqrt(2);
-  return function(x, y, p) {
-    p = p || {};
-    p.x = x * kx;
-    p.y = ky * Math.sin(deg2rad * y);
-    return p;
-  };
-}());
-
-// Get path area from a point iterator
-geom.getPathArea = function(iter) {
-  var sum = 0,
-      ax, ay, bx, by, dx, dy;
-  if (iter.hasNext()) {
-    ax = 0;
-    ay = 0;
-    dx = -iter.x;
-    dy = -iter.y;
-    while (iter.hasNext()) {
-      bx = ax;
-      by = ay;
-      ax = iter.x + dx;
-      ay = iter.y + dy;
-      sum += ax * by - bx * ay;
-    }
-  }
-  return sum / 2;
-};
-
-
 // Get path area from an array of [x, y] points
 // TODO: consider removing duplication with getPathArea(), e.g. by
 //   wrapping points in an iterator.
 //
-geom.getPathArea2 = function(points) {
+geom.getPlanarPathArea2 = function(points) {
   var sum = 0,
       ax, ay, bx, by, dx, dy, p;
   for (var i=0, n=points.length; i<n; i++) {
@@ -300,25 +245,25 @@ geom.getPathArea2 = function(points) {
   return sum / 2;
 };
 
-// DEPRECATED -- was used for finding path area from raw shapefile input
-// TODO: enhance precision if used again
-geom.getPathArea3 = function(xx, yy, start, len) {
-  var sum = 0,
-      i = start | 0,
-      end = i + (len ? len | 0 : xx.length - i) - 1;
-  if (i < 0 || end >= xx.length) {
-    error("Out-of-bounds array index");
-  }
-  for (; i < end; i++) {
-    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
+// TODO: consider replacing iterator with algo. using ArcCollection#forEachSegment()
+geom.getPlanarPathArea = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids),
+      sum = 0,
+      ax, ay, bx, by, dx, dy;
+  if (iter.hasNext()) {
+    ax = 0;
+    ay = 0;
+    dx = -iter.x;
+    dy = -iter.y;
+    while (iter.hasNext()) {
+      bx = ax;
+      by = ay;
+      ax = iter.x + dx;
+      ay = iter.y + dy;
+      sum += ax * by - bx * ay;
+    }
   }
   return sum / 2;
-};
-
-// TODO: consider replacing geom.getPathArea() with algo. using ArcCollection#forEachSegment()
-geom.getPathArea4 = function(ids, arcs) {
-  var iter = arcs.getShapeIter(ids);
-  return geom.getPathArea(iter);
 };
 
 geom.countVerticesInPath = function(ids, arcs) {

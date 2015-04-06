@@ -30,19 +30,12 @@ MapShaper.getIslandVertexFilter = function(arcs, minVertices) {
   };
 };
 
-MapShaper.getPathAreaFunction = function(arcs) {
-  var areaFunction = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds()) ?
-        geom.getSphericalPathArea : geom.getPathArea;
-  return function(path) {
-    return areaFunction(arcs.getShapeIter(path));
-  };
-};
-
 MapShaper.getIslandAreaFilter = function(arcs, minArea) {
-  var pathArea = MapShaper.getPathAreaFunction(arcs);
+  var pathArea = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds()) ?
+        geom.getSphericalPathArea : geom.getPlanarPathArea;
   return function(paths) {
     return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1 && Math.abs(pathArea(path)) < minArea) {
+      if (path.length == 1 && Math.abs(pathArea(path, arcs)) < minArea) {
         // Found an island to remove
         // TODO: Remove all enclosed holes, including multi-part holes
         return null;

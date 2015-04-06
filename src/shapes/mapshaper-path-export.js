@@ -35,7 +35,7 @@ MapShaper.exportPathData = function(shape, arcs, type) {
           path = MapShaper.exportPathCoords(iter),
           valid = true;
       if (type == 'polygon') {
-        path.area = geom.getPathArea2(path.points);
+        path.area = geom.getPlanarPathArea2(path.points);
         valid = path.pointCount > 3 && path.area !== 0;
       } else if (type == 'polyline') {
         valid = path.pointCount > 1;

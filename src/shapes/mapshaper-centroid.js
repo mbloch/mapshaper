@@ -52,7 +52,7 @@ geom.findInteriorPoint = function(shp, arcs, exact) {
     return null;
   }
   var maxPath = geom.getMaxPath(shp, arcs),
-      maxPathArea = geom.getPathArea4(maxPath, arcs),
+      maxPathArea = geom.getPlanarPathArea(maxPath, arcs),
       pathBounds = arcs.getSimpleShapeBounds(maxPath),
       halfWidth = pathBounds.width() / 2,
       centroid, area, focus, lbound, rbound, htics, vtics;
@@ -68,7 +68,7 @@ geom.findInteriorPoint = function(shp, arcs, exact) {
   }
 
   centroid = geom.getPathCentroid(maxPath, arcs);
-  area = geom.getPathArea4(maxPath, arcs);
+  area = geom.getPlanarPathArea(maxPath, arcs);
 
   // Faster search if shape is simple and squarish
   if (shp.length == 1 && area * 1.2 > pathBounds.area()) {

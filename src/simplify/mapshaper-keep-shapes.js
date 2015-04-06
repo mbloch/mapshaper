@@ -59,18 +59,16 @@ MapShaper.protectIslandRing = function(arcData, ring) {
 MapShaper.protectMultiRing = function(arcData, ring) {
   var zlim = arcData.getRetainedInterval(),
       minArea = 0, // 0.00000001, // Need to handle rounding error?
-      iter, area, added;
+      area, added;
   arcData.setRetainedInterval(Infinity);
-  iter = arcData.getShapeIter(ring);
-  area = geom.getPathArea(iter);
+  area = geom.getPlanarPathArea(ring, arcData);
   while (area <= minArea) {
     added = MapShaper.lockMaxThreshold(arcData, ring);
     if (added === 0) {
       verbose("[protectMultiRing()] Failed on ring:", ring);
       break;
     }
-    iter.reset();
-    area = geom.getPathArea(iter);
+    area = geom.getPlanarPathArea(ring, arcData);
   }
   arcData.setRetainedInterval(zlim);
 };

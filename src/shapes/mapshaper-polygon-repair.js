@@ -17,7 +17,7 @@ MapShaper.cleanShape = function(shape, arcs, type) {
     var cleaned = MapShaper.cleanPath(path, arcs);
     if (type == 'polygon' && cleaned) {
       MapShaper.removeSpikesInPath(cleaned); // assumed by divideArcs()
-      if (geom.getPathArea4(cleaned, arcs) === 0) {
+      if (geom.getPlanarPathArea(cleaned, arcs) === 0) {
         cleaned = null;
       }
     }
@@ -92,12 +92,12 @@ MapShaper.repairSelfIntersections = function(lyr, nodes) {
       } else if (splitIds.length == 1) {
         cleanedPolygon.push(splitIds[0]);
       } else {
-        var shapeArea = geom.getPathArea4(ids, nodes.arcs),
+        var shapeArea = geom.getPlanarPathArea(ids, nodes.arcs),
             sign = shapeArea > 0 ? 1 : -1,
             mainRing;
 
         var maxArea = splitIds.reduce(function(max, ringIds, i) {
-          var pathArea = geom.getPathArea4(ringIds, nodes.arcs) * sign;
+          var pathArea = geom.getPlanarPathArea(ringIds, nodes.arcs) * sign;
           if (pathArea > max) {
             mainRing = ringIds;
             max = pathArea;

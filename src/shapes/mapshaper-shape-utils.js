@@ -16,6 +16,23 @@ MapShaper.countArcsInShapes = function(shapes, counts) {
   });
 };
 
+// Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
+MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
+  var index = numArcs ? new Uint8Array(numArcs) : [],
+      found = [];
+  arcIds.forEach(function(id) {
+    index[absArcId(id)] = 1;
+  });
+  shapes.forEach(function(shp, shpId) {
+    var isHit = false;
+    MapShaper.forEachArcId(shp || [], function(id) {
+      isHit = index[absArcId(id)] == 1;
+    });
+    if (isHit) found.push(shpId);
+  });
+  return found;
+};
+
 // @shp An element of the layer.shapes array
 //   (may be null, or, depending on layer type, an array of points or an array of arrays of arc ids)
 MapShaper.cloneShape = function(shp) {
@@ -245,13 +262,11 @@ MapShaper.groupPolygonRings = function(paths) {
 };
 
 MapShaper.getPathMetadata = function(shape, arcs, type) {
-  var iter = new ShapeIter(arcs);
   return utils.map(shape, function(ids) {
     if (!utils.isArray(ids)) throw new Error("expected array");
-    iter.init(ids);
     return {
       ids: ids,
-      area: type == 'polygon' ? geom.getPathArea(iter) : 0,
+      area: type == 'polygon' ? geom.getPlanarPathArea(ids, arcs) : 0,
       bounds: arcs.getSimpleShapeBounds(ids)
     };
   });

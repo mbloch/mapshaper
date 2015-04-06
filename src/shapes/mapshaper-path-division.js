@@ -2,6 +2,7 @@
 mapshaper-segments,
 mapshaper-dataset-utils,
 mapshaper-path-index
+mapshaper-polygon-repair
 */
 
 // Functions for dividing polygons and polygons at points where arc-segments intersect

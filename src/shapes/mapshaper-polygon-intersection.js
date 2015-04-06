@@ -182,7 +182,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
         nextId = candId;
         if (verbose) message(msg);
         candId = getNextArc(nextId);
-        if (verbose && candId == startId ) message("  o", geom.getPathArea4(path, arcs));
+        if (verbose && candId == startId ) message("  o", geom.getPlanarPathArea(path, arcs));
       } else {
         if (verbose) message(msg + " x");
         return null;

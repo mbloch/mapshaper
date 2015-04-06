@@ -47,9 +47,9 @@ MapShaper.extendShape = function(dest, src) {
   }
 };
 
-MapShaper.getPolygonDissolver = function(nodes) {
+MapShaper.getPolygonDissolver = function(nodes, opts) {
   var flags = new Uint8Array(nodes.arcs.size());
-  var divide = MapShaper.getHoleDivider(nodes);
+  var divide = MapShaper.getHoleDivider(nodes, opts && opts.spherical);
   var flatten = MapShaper.getRingIntersector(nodes, 'flatten', flags);
   var dissolve = MapShaper.getRingIntersector(nodes, 'dissolve', flags);
 

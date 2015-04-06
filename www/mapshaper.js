@@ -5743,7 +5743,7 @@ MapShaper.validateDataset = function(data) {
 
 geom.getShapeArea = function(shp, arcs) {
   return utils.reduce(shp, function(area, ids) {
-    return area + geom.getPathArea4(ids, arcs);
+    return area + geom.getPlanarPathArea(ids, arcs);
   }, 0);
 };
 
@@ -5752,17 +5752,7 @@ geom.getSphericalShapeArea = function(shp, arcs) {
     error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
   }
   return utils.reduce(shp, function(area, ids) {
-    var iter = arcs.getShapeIter(ids);
-    return area + geom.getSphericalPathArea(iter);
-  }, 0);
-};
-
-// alternative using equal-area projection
-geom.getSphericalShapeArea2 = function(shp, arcs) {
-  return utils.reduce(shp, function(total, ids) {
-    var iter = arcs.getShapeIter(ids);
-    iter = geom.wrapPathIter(iter, geom.projectGall);
-    return total + geom.getPathArea(iter);
+    return area + geom.getSphericalPathArea(ids, arcs);
   }, 0);
 };
 
@@ -5948,8 +5938,9 @@ geom.getRayIntersection = function(x, y, ax, ay, bx, by) {
   return hit;
 };
 
-geom.getSphericalPathArea = function(iter) {
-  var sum = 0,
+geom.getSphericalPathArea = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids),
+      sum = 0,
       started = false,
       deg2rad = Math.PI / 180,
       x, y, xp, yp;
@@ -5967,57 +5958,11 @@ geom.getSphericalPathArea = function(iter) {
   return sum / 2 * 6378137 * 6378137;
 };
 
-geom.wrapPathIter = function(iter, project) {
-  return {
-    hasNext: function() {
-      if (iter.hasNext()) {
-        project(iter.x, iter.y, this);
-        return true;
-      }
-      return false;
-    }
-  };
-};
-
-geom.projectGall = (function() {
-  var R = 6378137;
-  var deg2rad = Math.PI / 180;
-  var kx = R * deg2rad / Math.sqrt(2);
-  var ky = R * Math.sqrt(2);
-  return function(x, y, p) {
-    p = p || {};
-    p.x = x * kx;
-    p.y = ky * Math.sin(deg2rad * y);
-    return p;
-  };
-}());
-
-// Get path area from a point iterator
-geom.getPathArea = function(iter) {
-  var sum = 0,
-      ax, ay, bx, by, dx, dy;
-  if (iter.hasNext()) {
-    ax = 0;
-    ay = 0;
-    dx = -iter.x;
-    dy = -iter.y;
-    while (iter.hasNext()) {
-      bx = ax;
-      by = ay;
-      ax = iter.x + dx;
-      ay = iter.y + dy;
-      sum += ax * by - bx * ay;
-    }
-  }
-  return sum / 2;
-};
-
-
 // Get path area from an array of [x, y] points
 // TODO: consider removing duplication with getPathArea(), e.g. by
 //   wrapping points in an iterator.
 //
-geom.getPathArea2 = function(points) {
+geom.getPlanarPathArea2 = function(points) {
   var sum = 0,
       ax, ay, bx, by, dx, dy, p;
   for (var i=0, n=points.length; i<n; i++) {
@@ -6038,25 +5983,25 @@ geom.getPathArea2 = function(points) {
   return sum / 2;
 };
 
-// DEPRECATED -- was used for finding path area from raw shapefile input
-// TODO: enhance precision if used again
-geom.getPathArea3 = function(xx, yy, start, len) {
-  var sum = 0,
-      i = start | 0,
-      end = i + (len ? len | 0 : xx.length - i) - 1;
-  if (i < 0 || end >= xx.length) {
-    error("Out-of-bounds array index");
-  }
-  for (; i < end; i++) {
-    sum += xx[i+1] * yy[i] - xx[i] * yy[i+1];
+// TODO: consider replacing iterator with algo. using ArcCollection#forEachSegment()
+geom.getPlanarPathArea = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids),
+      sum = 0,
+      ax, ay, bx, by, dx, dy;
+  if (iter.hasNext()) {
+    ax = 0;
+    ay = 0;
+    dx = -iter.x;
+    dy = -iter.y;
+    while (iter.hasNext()) {
+      bx = ax;
+      by = ay;
+      ax = iter.x + dx;
+      ay = iter.y + dy;
+      sum += ax * by - bx * ay;
+    }
   }
   return sum / 2;
-};
-
-// TODO: consider replacing geom.getPathArea() with algo. using ArcCollection#forEachSegment()
-geom.getPathArea4 = function(ids, arcs) {
-  var iter = arcs.getShapeIter(ids);
-  return geom.getPathArea(iter);
 };
 
 geom.countVerticesInPath = function(ids, arcs) {
@@ -6110,6 +6055,23 @@ MapShaper.countArcsInShapes = function(shapes, counts) {
       counts[id]++;
     }
   });
+};
+
+// Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
+MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
+  var index = numArcs ? new Uint8Array(numArcs) : [],
+      found = [];
+  arcIds.forEach(function(id) {
+    index[absArcId(id)] = 1;
+  });
+  shapes.forEach(function(shp, shpId) {
+    var isHit = false;
+    MapShaper.forEachArcId(shp || [], function(id) {
+      isHit = index[absArcId(id)] == 1;
+    });
+    if (isHit) found.push(shpId);
+  });
+  return found;
 };
 
 // @shp An element of the layer.shapes array
@@ -6341,13 +6303,11 @@ MapShaper.groupPolygonRings = function(paths) {
 };
 
 MapShaper.getPathMetadata = function(shape, arcs, type) {
-  var iter = new ShapeIter(arcs);
   return utils.map(shape, function(ids) {
     if (!utils.isArray(ids)) throw new Error("expected array");
-    iter.init(ids);
     return {
       ids: ids,
-      area: type == 'polygon' ? geom.getPathArea(iter) : 0,
+      area: type == 'polygon' ? geom.getPlanarPathArea(ids, arcs) : 0,
       bounds: arcs.getSimpleShapeBounds(ids)
     };
   });
@@ -7703,6 +7663,103 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
 
 
 
+// Return function for splitting self-intersecting polygon rings
+// Returned function receives a single path, returns an array of paths
+// Assumes that any intersections occur at vertices, not along segments
+// (requires that MapShaper.divideArcs() has already been run)
+//
+MapShaper.getSelfIntersectionSplitter = function(nodes) {
+
+  function contains(arr, el) {
+    for (var i=0, n=arr.length; i<n; i++) {
+      if (arr[i] === el) return true;
+    }
+    return false;
+  }
+
+  // If arc @enterId enters a node with more than one open routes leading out:
+  //   return array of sub-paths
+  // else return null
+  function dividePathAtNode(path, enterId) {
+    var count = 0,
+        subPaths = null,
+        exitIds, firstExitId;
+    nodes.forEachConnectedArc(enterId, function(arcId) {
+      var exitId = ~arcId;
+      // TODO: remove performance bottleneck
+      // contains() is faster than native array.indexOf(), could do better.
+      // if (path.indexOf(exitId) > -1) { // ignore arcs that are not on this path
+      if (contains(path, exitId)) { // ignore arcs that are not on this path
+        if (count === 0) {
+          firstExitId = exitId;
+        } else if (count === 1) {
+          exitIds = [firstExitId, exitId];
+        } else {
+          exitIds.push(exitId);
+        }
+        count++;
+      }
+    });
+    if (exitIds) {
+      subPaths = MapShaper.splitPathByIds(path, exitIds);
+      // recursively divide each sub-path
+      return subPaths.reduce(function(memo, subPath) {
+        return memo.concat(dividePath(subPath));
+      }, []);
+    }
+    return null;
+  }
+
+  function dividePath(path) {
+    var subPaths = null;
+    for (var i=0; i<path.length - 1; i++) { // don't need to check last arc
+      subPaths = dividePathAtNode(path, path[i]);
+      if (subPaths) {
+        return subPaths;
+      }
+    }
+    // indivisible path -- remove any spikes
+    MapShaper.removeSpikesInPath(path);
+    return path.length > 0 ? [path] : [];
+  }
+
+  return dividePath;
+};
+
+// @path An array of arc ids
+// @ids An array of two or more start ids
+MapShaper.splitPathByIds = function(path, ids) {
+  var n = ids.length;
+  var ii = ids.map(function(id) {
+    var idx = path.indexOf(id);
+    if (idx == -1) error("[splitPathByIds()] Path is missing id:", id);
+    return idx;
+  });
+  utils.genericSort(ii, true);
+  var subPaths = ii.map(function(idx, i) {
+    var split;
+    if (i == n-1) {
+      // place first path item first
+      split = path.slice(0, ii[0]).concat(path.slice(idx));
+    } else {
+      split = path.slice(idx, ii[i+1]);
+    }
+    return split;
+  });
+
+  // make sure first sub-path starts with arc at path[0]
+  if (ii[0] !== 0) {
+    subPaths.unshift(subPaths.pop());
+  }
+  if (subPaths[0][0] !== path[0]) {
+    error("[splitPathByIds()] Indexing error");
+  }
+  return subPaths;
+};
+
+
+
+
 // Functions for dividing polygons and polygons at points where arc-segments intersect
 
 // Divide a collection of arcs at points where segments intersect
@@ -7921,103 +7978,6 @@ MapShaper.findClippingPoints = function(arcs) {
 
 
 
-// Return function for splitting self-intersecting polygon rings
-// Returned function receives a single path, returns an array of paths
-// Assumes that any intersections occur at vertices, not along segments
-// (requires that MapShaper.divideArcs() has already been run)
-//
-MapShaper.getSelfIntersectionSplitter = function(nodes) {
-
-  function contains(arr, el) {
-    for (var i=0, n=arr.length; i<n; i++) {
-      if (arr[i] === el) return true;
-    }
-    return false;
-  }
-
-  // If arc @enterId enters a node with more than one open routes leading out:
-  //   return array of sub-paths
-  // else return null
-  function dividePathAtNode(path, enterId) {
-    var count = 0,
-        subPaths = null,
-        exitIds, firstExitId;
-    nodes.forEachConnectedArc(enterId, function(arcId) {
-      var exitId = ~arcId;
-      // TODO: remove performance bottleneck
-      // contains() is faster than native array.indexOf(), could do better.
-      // if (path.indexOf(exitId) > -1) { // ignore arcs that are not on this path
-      if (contains(path, exitId)) { // ignore arcs that are not on this path
-        if (count === 0) {
-          firstExitId = exitId;
-        } else if (count === 1) {
-          exitIds = [firstExitId, exitId];
-        } else {
-          exitIds.push(exitId);
-        }
-        count++;
-      }
-    });
-    if (exitIds) {
-      subPaths = MapShaper.splitPathByIds(path, exitIds);
-      // recursively divide each sub-path
-      return subPaths.reduce(function(memo, subPath) {
-        return memo.concat(dividePath(subPath));
-      }, []);
-    }
-    return null;
-  }
-
-  function dividePath(path) {
-    var subPaths = null;
-    for (var i=0; i<path.length - 1; i++) { // don't need to check last arc
-      subPaths = dividePathAtNode(path, path[i]);
-      if (subPaths) {
-        return subPaths;
-      }
-    }
-    // indivisible path -- remove any spikes
-    MapShaper.removeSpikesInPath(path);
-    return path.length > 0 ? [path] : [];
-  }
-
-  return dividePath;
-};
-
-// @path An array of arc ids
-// @ids An array of two or more start ids
-MapShaper.splitPathByIds = function(path, ids) {
-  var n = ids.length;
-  var ii = ids.map(function(id) {
-    var idx = path.indexOf(id);
-    if (idx == -1) error("[splitPathByIds()] Path is missing id:", id);
-    return idx;
-  });
-  utils.genericSort(ii, true);
-  var subPaths = ii.map(function(idx, i) {
-    var split;
-    if (i == n-1) {
-      // place first path item first
-      split = path.slice(0, ii[0]).concat(path.slice(idx));
-    } else {
-      split = path.slice(idx, ii[i+1]);
-    }
-    return split;
-  });
-
-  // make sure first sub-path starts with arc at path[0]
-  if (ii[0] !== 0) {
-    subPaths.unshift(subPaths.pop());
-  }
-  if (subPaths[0][0] !== path[0]) {
-    error("[splitPathByIds()] Indexing error");
-  }
-  return subPaths;
-};
-
-
-
-
 // Functions for redrawing polygons for clipping / erasing / flattening / division
 
 MapShaper.setBits = function(src, flags, mask) {
@@ -8193,7 +8153,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
         nextId = candId;
         if (verbose) message(msg);
         candId = getNextArc(nextId);
-        if (verbose && candId == startId ) message("  o", geom.getPathArea4(path, arcs));
+        if (verbose && candId == startId ) message("  o", geom.getPlanarPathArea(path, arcs));
       } else {
         if (verbose) message(msg + " x");
         return null;
@@ -8342,17 +8302,18 @@ MapShaper.debugRoute = function(id1, id2, arcs) {
 // Returns a function that separates rings in a polygon into space-enclosing rings
 // and holes. Also fixes self-intersections.
 //
-MapShaper.getHoleDivider = function(nodes) {
+MapShaper.getHoleDivider = function(nodes, spherical) {
   var split = MapShaper.getSelfIntersectionSplitter(nodes);
 
   return function(rings, cw, ccw) {
+    var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
     MapShaper.forEachPath(rings, function(ringIds) {
       var splitRings = split(ringIds);
       if (splitRings.length === 0) {
         trace("[getRingDivider()] Defective path:", ringIds);
       }
       splitRings.forEach(function(ringIds, i) {
-        var ringArea = geom.getPathArea4(ringIds, nodes.arcs);
+        var ringArea = pathArea(ringIds, nodes.arcs);
         if (ringArea > 0) {
           cw.push(ringIds);
         } else if (ringArea < 0) {
@@ -8383,7 +8344,7 @@ MapShaper.cleanShape = function(shape, arcs, type) {
     var cleaned = MapShaper.cleanPath(path, arcs);
     if (type == 'polygon' && cleaned) {
       MapShaper.removeSpikesInPath(cleaned); // assumed by divideArcs()
-      if (geom.getPathArea4(cleaned, arcs) === 0) {
+      if (geom.getPlanarPathArea(cleaned, arcs) === 0) {
         cleaned = null;
       }
     }
@@ -8458,12 +8419,12 @@ MapShaper.repairSelfIntersections = function(lyr, nodes) {
       } else if (splitIds.length == 1) {
         cleanedPolygon.push(splitIds[0]);
       } else {
-        var shapeArea = geom.getPathArea4(ids, nodes.arcs),
+        var shapeArea = geom.getPlanarPathArea(ids, nodes.arcs),
             sign = shapeArea > 0 ? 1 : -1,
             mainRing;
 
         var maxArea = splitIds.reduce(function(max, ringIds, i) {
-          var pathArea = geom.getPathArea4(ringIds, nodes.arcs) * sign;
+          var pathArea = geom.getPlanarPathArea(ringIds, nodes.arcs) * sign;
           if (pathArea > max) {
             mainRing = ringIds;
             max = pathArea;
@@ -8595,23 +8556,6 @@ function PathImporter(opts) {
       prevX = x;
     }
 
-    /*
-    var valid = false;
-    if (type == 'polyline') {
-      valid = n > 1;
-    } else if (type == 'polygon') {
-      valid = n > 3 && geom.getPathArea3(xx, yy, pointId-n, n) !== 0;
-    } else {
-      error("[importPathFromFlatArray() Unexpected type:", type);
-    }
-
-    if (valid) {
-      appendPath(n, type);
-    } else {
-      pointId -= n;
-      skippedPathCount++;
-    }
-    */
     appendPath(n, type);
 
   };
@@ -8642,7 +8586,7 @@ function PathImporter(opts) {
   };
 
   this.importPolygon = function(points, isHole) {
-    var area = geom.getPathArea2(points);
+    var area = geom.getPlanarPathArea2(points);
 
     if (isHole === true && area > 0 || isHole === false && area < 0) {
       verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
@@ -8749,7 +8693,7 @@ MapShaper.exportPathData = function(shape, arcs, type) {
           path = MapShaper.exportPathCoords(iter),
           valid = true;
       if (type == 'polygon') {
-        path.area = geom.getPathArea2(path.points);
+        path.area = geom.getPlanarPathArea2(path.points);
         valid = path.pointCount > 3 && path.area !== 0;
       } else if (type == 'polyline') {
         valid = path.pointCount > 1;
@@ -11705,9 +11649,9 @@ MapShaper.extendShape = function(dest, src) {
   }
 };
 
-MapShaper.getPolygonDissolver = function(nodes) {
+MapShaper.getPolygonDissolver = function(nodes, opts) {
   var flags = new Uint8Array(nodes.arcs.size());
-  var divide = MapShaper.getHoleDivider(nodes);
+  var divide = MapShaper.getHoleDivider(nodes, opts && opts.spherical);
   var flatten = MapShaper.getRingIntersector(nodes, 'flatten', flags);
   var dissolve = MapShaper.getRingIntersector(nodes, 'dissolve', flags);
 
@@ -13570,18 +13514,16 @@ MapShaper.protectIslandRing = function(arcData, ring) {
 MapShaper.protectMultiRing = function(arcData, ring) {
   var zlim = arcData.getRetainedInterval(),
       minArea = 0, // 0.00000001, // Need to handle rounding error?
-      iter, area, added;
+      area, added;
   arcData.setRetainedInterval(Infinity);
-  iter = arcData.getShapeIter(ring);
-  area = geom.getPathArea(iter);
+  area = geom.getPlanarPathArea(ring, arcData);
   while (area <= minArea) {
     added = MapShaper.lockMaxThreshold(arcData, ring);
     if (added === 0) {
       verbose("[protectMultiRing()] Failed on ring:", ring);
       break;
     }
-    iter.reset();
-    area = geom.getPathArea(iter);
+    area = geom.getPlanarPathArea(ring, arcData);
   }
   arcData.setRetainedInterval(zlim);
 };
