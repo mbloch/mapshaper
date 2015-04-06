@@ -1,6 +1,5 @@
 var api = require('../'),
-  assert = require('assert'),
-  _ = require('underscore');
+  assert = require('assert');
 
 function fixPath(p) {
   return require('path').join(__dirname, p);
@@ -193,7 +192,7 @@ function good(str, reference) {
   var args = str.split(/ +/);
   it(str, function() {
     var parsed = api.internal.getOptionParser().parseArgv(args);
-    var target = _.isArray(reference) ? parsed : parsed[0].options;
+    var target = parsed[0].options;
     assert.deepEqual(target, reference);
   })
 }
