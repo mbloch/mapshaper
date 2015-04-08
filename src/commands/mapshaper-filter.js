@@ -50,7 +50,7 @@ MapShaper.getNullGeometryFilter = function(lyr, arcs) {
 MapShaper.getEmptyPolygonFilter = function(shapes, arcs) {
   return function(i) {
     var shp = shapes[i];
-    return !!shp && geom.getShapeArea(shapes[i], arcs) > 0;
+    return !!shp && geom.getPlanarShapeArea(shapes[i], arcs) > 0;
   };
 };
 

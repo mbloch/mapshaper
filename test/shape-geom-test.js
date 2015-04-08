@@ -99,9 +99,9 @@ describe('mapshaper-shape-geom.js', function () {
   })
 
   describe('figure 1', function () {
-    it('getShapeArea()', function () {
-      assert.equal(geom.getShapeArea(lyr1.shapes[0], arcData), 6)
-      assert.equal(geom.getShapeArea(lyr2.shapes[0], arcData), 8)
+    it('getPlanarShapeArea()', function () {
+      assert.equal(geom.getPlanarShapeArea(lyr1.shapes[0], arcData), 6)
+      assert.equal(geom.getPlanarShapeArea(lyr2.shapes[0], arcData), 8)
     })
 
     it('getShapeCentroid()', function () {

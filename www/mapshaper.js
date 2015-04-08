@@ -5797,7 +5797,7 @@ MapShaper.validateDataset = function(data) {
 // Calculations for planar geometry of shapes
 // TODO: consider 3D versions of some of these
 
-geom.getShapeArea = function(shp, arcs) {
+geom.getPlanarShapeArea = function(shp, arcs) {
   return utils.reduce(shp, function(area, ids) {
     return area + geom.getPlanarPathArea(ids, arcs);
   }, 0);
@@ -6039,7 +6039,6 @@ geom.getPlanarPathArea2 = function(points) {
   return sum / 2;
 };
 
-// TODO: consider replacing iterator with algo. using ArcCollection#forEachSegment()
 geom.getPlanarPathArea = function(ids, arcs) {
   var iter = arcs.getShapeIter(ids),
       sum = 0,
@@ -6074,16 +6073,6 @@ geom.getPathBounds = function(points) {
   }
   return bounds;
 };
-
-/*
-geom.transposeXYCoords = function(xx, yy) {
-  var points = [];
-  for (var i=0, len=xx.length; i<len; i++) {
-    points.push([xx[i], yy[i]]);
-  }
-  return points;
-};
-*/
 
 geom.transposePoints = function(points) {
   var xx = [], yy = [], n=points.length;

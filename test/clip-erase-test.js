@@ -67,7 +67,7 @@ describe('mapshaper-clip-erase.js', function () {
       api.runCommands(cmd, function(err, data) {
         assert.equal(err, null);
         var shapes = data.layers[0].shapes;
-        var area = api.geom.getShapeArea(shapes[0], data.arcs);
+        var area = api.geom.getPlanarShapeArea(shapes[0], data.arcs);
         assert.ok(area > 0); // got a polygon
         done();
       });
