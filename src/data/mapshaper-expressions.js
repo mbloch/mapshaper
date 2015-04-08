@@ -89,7 +89,7 @@ function FeatureExpressionContext(lyr, arcs) {
       hasPoints = MapShaper.layerHasPoints(lyr),
       hasPaths = arcs && MapShaper.layerHasPaths(lyr),
       _shp,
-      _isLatLng,
+      _isPlanar,
       _self = this,
       _centroid, _innerXY,
       _record, _records,
@@ -115,7 +115,7 @@ function FeatureExpressionContext(lyr, arcs) {
 
   if (hasPaths) {
     _shp = new MultiShape(arcs);
-    _isLatLng = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds());
+    _isPlanar = arcs.isPlanar();
     addGetters(this, {
       // TODO: count hole/s + containing ring as one part
       partCount: function() {
@@ -138,7 +138,7 @@ function FeatureExpressionContext(lyr, arcs) {
     if (lyr.geometry_type == 'polygon') {
       addGetters(this, {
         area: function() {
-          return _isLatLng ? geom.getSphericalShapeArea(_ids, arcs) : geom.getShapeArea(_ids, arcs);
+          return _isPlanar ? geom.getPlanarShapeArea(_ids, arcs) : geom.getSphericalShapeArea(_ids, arcs);
         },
         originalArea: function() {
           var i = arcs.getRetainedInterval(),

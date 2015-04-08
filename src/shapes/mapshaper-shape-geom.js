@@ -10,7 +10,7 @@ geom.getShapeArea = function(shp, arcs) {
 };
 
 geom.getSphericalShapeArea = function(shp, arcs) {
-  if (!MapShaper.probablyDecimalDegreeBounds(arcs.getBounds())) {
+  if (arcs.isPlanar()) {
     error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
   }
   return utils.reduce(shp, function(area, ids) {

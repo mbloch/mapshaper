@@ -46,7 +46,7 @@ MapShaper.projectArcs = function(arcs, proj) {
       xx = data.xx,
       yy = data.yy,
       p = {x: 0, y: 0};
-  if (!MapShaper.probablyDecimalDegreeBounds(arcs.getBounds())) {
+  if (arcs.isPlanar()) {
     stop("[proj] Only projection from lat-lng coordinates is supported");
   }
   for (var i=0, n=xx.length; i<n; i++) {

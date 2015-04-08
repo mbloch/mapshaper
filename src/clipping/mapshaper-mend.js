@@ -4,25 +4,28 @@ mapshaper-shape-utils
 mapshaper-path-division
 */
 
-// WORK IN PROJGRESS
+// WORK IN PROGRESS
 // Remove 'cuts' in an unprojected dataset at the antemeridian and poles.
 // This will be useful when generating rotated projections.
 //
 api.mend = function(dataset) {
   var arcs = dataset.arcs,
-      edgeArcs, dissolver;
-  if (!arcs || !MapShaper.probablyDecimalDegreeBounds(arcs.getBounds())) {
+      edgeArcs, dissolver, nodes;
+  if (!arcs || arcs.isPlanar()) {
     error("[mend] Requires lat-lng dataset");
   }
-  MapShaper.snapEdgeArcs(arcs);
   if (!MapShaper.snapEdgeArcs(arcs)) {
     return;
   }
-  dissolver = MapShaper.getPolygonDissolver(MapShaper.divideArcs(dataset), {spherical: true});
+  nodes = MapShaper.divideArcs(dataset);
+  // console.log(arcs.toArray())
+
+  dissolver = MapShaper.getPolygonDissolver(nodes, {spherical: false});
   dataset.layers.forEach(function(lyr) {
     if (lyr.geometry_type != 'polygon') return;
     var shapes = lyr.shapes,
         edgeShapeIds = MapShaper.findEdgeShapes(shapes, arcs);
+    // console.log(">>> edgeShapes:", edgeShapeIds);
     edgeShapeIds.forEach(function(i) {
       shapes[i] = dissolver(shapes[i]);
     });

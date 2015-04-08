@@ -3,6 +3,7 @@ mapshaper-visvalingam
 mapshaper-dp
 mapshaper-dataset-utils
 mapshaper-repair
+mapshaper-geom
 */
 
 api.simplify = function(arcs, opts) {
@@ -25,35 +26,35 @@ api.simplify = function(arcs, opts) {
   }
 };
 
-// @paths ArcCollection object
-MapShaper.simplifyPaths = function(paths, opts) {
-  var use3D = !opts.cartesian && MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
+// @arcs ArcCollection object
+MapShaper.simplifyPaths = function(arcs, opts) {
+  var use3D = !opts.cartesian && !arcs.isPlanar();
   var simplifyPath = MapShaper.getSimplifyFunction(opts.method || 'mapshaper', use3D);
-  paths.setThresholds(new Float64Array(paths.getPointCount())); // Create array to hold simplification data
+  arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
   if (use3D) {
-    MapShaper.simplifyPaths3D(paths, simplifyPath);
-    MapShaper.protectWorldEdges(paths);
+    MapShaper.simplifyPaths3D(arcs, simplifyPath);
+    MapShaper.protectWorldEdges(arcs);
   } else {
-    MapShaper.simplifyPaths2D(paths, simplifyPath);
+    MapShaper.simplifyPaths2D(arcs, simplifyPath);
   }
 };
 
-MapShaper.simplifyPaths2D = function(paths, simplify) {
-  paths.forEach3(function(xx, yy, kk, i) {
+MapShaper.simplifyPaths2D = function(arcs, simplify) {
+  arcs.forEach3(function(xx, yy, kk, i) {
     simplify(kk, xx, yy);
   });
 };
 
-MapShaper.simplifyPaths3D = function(paths, simplify) {
+MapShaper.simplifyPaths3D = function(arcs, simplify) {
   var xbuf = MapShaper.expandoBuffer(Float64Array),
       ybuf = MapShaper.expandoBuffer(Float64Array),
       zbuf = MapShaper.expandoBuffer(Float64Array);
-  paths.forEach3(function(xx, yy, kk, i) {
+  arcs.forEach3(function(xx, yy, kk, i) {
     var n = xx.length,
         xx2 = xbuf(n),
         yy2 = ybuf(n),
         zz2 = zbuf(n);
-    MapShaper.convLngLatToSph(xx, yy, xx2, yy2, zz2);
+    geom.convLngLatToSph(xx, yy, xx2, yy2, zz2);
     simplify(kk, xx2, yy2, zz2);
   });
 };
@@ -70,7 +71,7 @@ MapShaper.getSimplifyFunction = function(method, use3D) {
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
 //
-MapShaper.protectWorldEdges = function(paths) {
+MapShaper.protectWorldEdges = function(arcs) {
   // Need to handle coords with rounding errors:
   // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
   // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
@@ -81,10 +82,10 @@ MapShaper.protectWorldEdges = function(paths) {
       b = -90 + err;
 
   // return if content doesn't reach edges
-  var bounds = paths.getBounds().toArray();
+  var bounds = arcs.getBounds().toArray();
   if (containsBounds([l, b, r, t], bounds) === true) return;
 
-  paths.forEach3(function(xx, yy, zz) {
+  arcs.forEach3(function(xx, yy, zz) {
     var maxZ = 0,
     x, y;
     for (var i=0, n=zz.length; i<n; i++) {
@@ -113,21 +114,4 @@ MapShaper.findMaxThreshold = function(zz) {
     }
   }
   return maxZ;
-};
-
-// Convert arrays of lng and lat coords (xsrc, ysrc) into
-// x, y, z coords on the surface of a sphere with radius 6378137
-// (the radius of spherical Earth datum in meters)
-//
-MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
-  var deg2rad = Math.PI / 180,
-      r = 6378137;
-  for (var i=0, len=xsrc.length; i<len; i++) {
-    var lng = xsrc[i] * deg2rad,
-        lat = ysrc[i] * deg2rad,
-        cosLat = Math.cos(lat);
-    xbuf[i] = Math.cos(lng) * cosLat * r;
-    ybuf[i] = Math.sin(lng) * cosLat * r;
-    zbuf[i] = Math.sin(lat) * r;
-  }
 };

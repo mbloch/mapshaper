@@ -628,6 +628,11 @@ function ArcCollection() {
     return bb[j+2] - bb[j] < units && bb[j+3] - bb[j+1] < units;
   };
 
+  // TODO: allow datasets in lat-lng coord range to be flagged as planar
+  this.isPlanar = function() {
+    return !MapShaper.probablyDecimalDegreeBounds(this.getBounds());
+  };
+
   this.size = function() {
     return _ii && _ii.length || 0;
   };

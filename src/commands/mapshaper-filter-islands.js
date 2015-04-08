@@ -31,8 +31,7 @@ MapShaper.getIslandVertexFilter = function(arcs, minVertices) {
 };
 
 MapShaper.getIslandAreaFilter = function(arcs, minArea) {
-  var pathArea = MapShaper.probablyDecimalDegreeBounds(arcs.getBounds()) ?
-        geom.getSphericalPathArea : geom.getPlanarPathArea;
+  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
   return function(paths) {
     return MapShaper.editPaths(paths, function(path) {
       if (path.length == 1 && Math.abs(pathArea(path, arcs)) < minArea) {

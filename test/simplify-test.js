@@ -30,14 +30,14 @@ describe("mapshaper-simplify.js", function() {
     });
 
     it("correctly handles coordinates at the poles", function() {
-      api.internal.convLngLatToSph([0, 90, 180, -180], [90, 90, -90, -90], xbuf, ybuf, zbuf);
+      api.geom.convLngLatToSph([0, 90, 180, -180], [90, 90, -90, -90], xbuf, ybuf, zbuf);
       coordBuffersEqual(xbuf, [0, 0, 0, 0]);
       coordBuffersEqual(ybuf, [0, 0, 0, 0]);
       coordBuffersEqual(zbuf, [R, R, -R, -R]);
     })
 
     it("correctly handles coordinates at the equator", function() {
-      api.internal.convLngLatToSph([0, 90, 180, -90, -180], [0, 0, 0, 0], xbuf, ybuf, zbuf);
+      api.geom.convLngLatToSph([0, 90, 180, -90, -180], [0, 0, 0, 0], xbuf, ybuf, zbuf);
       coordBuffersEqual(xbuf, [R, 0, -R, 0, R]);
       coordBuffersEqual(ybuf, [0, R, 0, -R, 0]);
       coordBuffersEqual(zbuf, [0, 0, 0, 0, 0]);

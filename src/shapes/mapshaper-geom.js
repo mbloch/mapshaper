@@ -123,6 +123,7 @@ function innerAngle2(ax, ay, bx, by, cx, cy) {
 
 // Return angle abc in range [0, 2PI) or NaN if angle is invalid
 // (e.g. if length of ab or bc is 0)
+/*
 function signedAngle2(ax, ay, bx, by, cx, cy) {
   var a1 = Math.atan2(ay - by, ax - bx),
       a2 = Math.atan2(cy - by, cx - bx),
@@ -137,25 +138,73 @@ function signedAngle2(ax, ay, bx, by, cx, cy) {
   }
   return a3;
 }
+*/
+
+function standardAngle(a) {
+  var twoPI = Math.PI * 2;
+  while (a < 0) {
+    a += twoPI;
+  }
+  while (a >= twoPI) {
+    a -= twoPI;
+  }
+  return a;
+}
 
 function signedAngle(ax, ay, bx, by, cx, cy) {
+  if (ax == bx && ay == by || bx == cx && by == cy) {
+    return NaN; // Use NaN for invalid angles
+  }
   var abx = ax - bx,
       aby = ay - by,
       cbx = cx - bx,
       cby = cy - by,
       dotp = abx * cbx + aby * cby,
-      crossp = abx * cby - aby * cbx;
+      crossp = abx * cby - aby * cbx,
+      a = Math.atan2(crossp, dotp);
+  return standardAngle(a);
+}
 
-  var a = Math.atan2(crossp, dotp);
+// Calc bearing in radians at lng1, lat1
+function bearing(lng1, lat1, lng2, lat2) {
+  var D2R = Math.PI / 180;
+  lng1 *= D2R;
+  lng2 *= D2R;
+  lat1 *= D2R;
+  lat2 *= D2R;
+  var y = Math.sin(lng2-lng1) * Math.cos(lat2),
+      x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(lng2-lng1);
+  return Math.atan2(y, x);
+}
 
-  if (ax == bx && ay == by || bx == cx && by == cy) {
-    a = NaN; // Use NaN for invalid angles
-  } else if (a >= Math.PI * 2) {
-    a = 2 * Math.PI - a;
-  } else if (a < 0) {
-    a = a + 2 * Math.PI;
+// Calc angle of turn from ab to bc, in range [0, 2PI)
+// Receive lat-lng values in degrees
+function signedAngleSph(alng, alat, blng, blat, clng, clat) {
+  if (alng == blng && alat == blat || blng == clng && blat == clat) {
+    return NaN;
   }
-  return a;
+  var b1 = bearing(blng, blat, alng, alat) + Math.PI, // calc bearing at b
+      b2 = bearing(blng, blat, clng, clat),
+      a = -b2 - b1;
+      // console.log('>', b1, b2)
+  return standardAngle(a);
+}
+
+// Convert arrays of lng and lat coords (xsrc, ysrc) into
+// x, y, z coords on the surface of a sphere with radius 6378137
+// (the radius of spherical Earth datum in meters)
+//
+function convLngLatToSph(xsrc, ysrc, xbuf, ybuf, zbuf) {
+  var deg2rad = Math.PI / 180,
+      r = 6378137;
+  for (var i=0, len=xsrc.length; i<len; i++) {
+    var lng = xsrc[i] * deg2rad,
+        lat = ysrc[i] * deg2rad,
+        cosLat = Math.cos(lat);
+    xbuf[i] = Math.cos(lng) * cosLat * r;
+    ybuf[i] = Math.sin(lng) * cosLat * r;
+    zbuf[i] = Math.sin(lat) * r;
+  }
 }
 
 // TODO: make this safe for small angles
@@ -228,7 +277,6 @@ function cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   }
   return cos;
 }
-
 
 function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
@@ -317,7 +365,10 @@ utils.extend(geom, {
   innerAngle: innerAngle,
   innerAngle2: innerAngle2,
   signedAngle: signedAngle,
-  signedAngle2: signedAngle2,
+  bearing: bearing,
+  signedAngleSph: signedAngleSph,
+  standardAngle: standardAngle,
+  convLngLatToSph: convLngLatToSph,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,

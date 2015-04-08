@@ -4168,6 +4168,7 @@ function innerAngle2(ax, ay, bx, by, cx, cy) {
 
 // Return angle abc in range [0, 2PI) or NaN if angle is invalid
 // (e.g. if length of ab or bc is 0)
+/*
 function signedAngle2(ax, ay, bx, by, cx, cy) {
   var a1 = Math.atan2(ay - by, ax - bx),
       a2 = Math.atan2(cy - by, cx - bx),
@@ -4182,25 +4183,73 @@ function signedAngle2(ax, ay, bx, by, cx, cy) {
   }
   return a3;
 }
+*/
+
+function standardAngle(a) {
+  var twoPI = Math.PI * 2;
+  while (a < 0) {
+    a += twoPI;
+  }
+  while (a >= twoPI) {
+    a -= twoPI;
+  }
+  return a;
+}
 
 function signedAngle(ax, ay, bx, by, cx, cy) {
+  if (ax == bx && ay == by || bx == cx && by == cy) {
+    return NaN; // Use NaN for invalid angles
+  }
   var abx = ax - bx,
       aby = ay - by,
       cbx = cx - bx,
       cby = cy - by,
       dotp = abx * cbx + aby * cby,
-      crossp = abx * cby - aby * cbx;
+      crossp = abx * cby - aby * cbx,
+      a = Math.atan2(crossp, dotp);
+  return standardAngle(a);
+}
 
-  var a = Math.atan2(crossp, dotp);
+// Calc bearing in radians at lng1, lat1
+function bearing(lng1, lat1, lng2, lat2) {
+  var D2R = Math.PI / 180;
+  lng1 *= D2R;
+  lng2 *= D2R;
+  lat1 *= D2R;
+  lat2 *= D2R;
+  var y = Math.sin(lng2-lng1) * Math.cos(lat2),
+      x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(lng2-lng1);
+  return Math.atan2(y, x);
+}
 
-  if (ax == bx && ay == by || bx == cx && by == cy) {
-    a = NaN; // Use NaN for invalid angles
-  } else if (a >= Math.PI * 2) {
-    a = 2 * Math.PI - a;
-  } else if (a < 0) {
-    a = a + 2 * Math.PI;
+// Calc angle of turn from ab to bc, in range [0, 2PI)
+// Receive lat-lng values in degrees
+function signedAngleSph(alng, alat, blng, blat, clng, clat) {
+  if (alng == blng && alat == blat || blng == clng && blat == clat) {
+    return NaN;
   }
-  return a;
+  var b1 = bearing(blng, blat, alng, alat) + Math.PI, // calc bearing at b
+      b2 = bearing(blng, blat, clng, clat),
+      a = -b2 - b1;
+      // console.log('>', b1, b2)
+  return standardAngle(a);
+}
+
+// Convert arrays of lng and lat coords (xsrc, ysrc) into
+// x, y, z coords on the surface of a sphere with radius 6378137
+// (the radius of spherical Earth datum in meters)
+//
+function convLngLatToSph(xsrc, ysrc, xbuf, ybuf, zbuf) {
+  var deg2rad = Math.PI / 180,
+      r = 6378137;
+  for (var i=0, len=xsrc.length; i<len; i++) {
+    var lng = xsrc[i] * deg2rad,
+        lat = ysrc[i] * deg2rad,
+        cosLat = Math.cos(lat);
+    xbuf[i] = Math.cos(lng) * cosLat * r;
+    ybuf[i] = Math.sin(lng) * cosLat * r;
+    zbuf[i] = Math.sin(lat) * r;
+  }
 }
 
 // TODO: make this safe for small angles
@@ -4273,7 +4322,6 @@ function cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   }
   return cos;
 }
-
 
 function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var area = 0.5 * Math.sqrt(detSq(ax, ay, bx, by, cx, cy) +
@@ -4362,7 +4410,10 @@ utils.extend(geom, {
   innerAngle: innerAngle,
   innerAngle2: innerAngle2,
   signedAngle: signedAngle,
-  signedAngle2: signedAngle2,
+  bearing: bearing,
+  signedAngleSph: signedAngleSph,
+  standardAngle: standardAngle,
+  convLngLatToSph: convLngLatToSph,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,
@@ -4999,6 +5050,11 @@ function ArcCollection() {
     var bb = _bb,
         j = i * 4;
     return bb[j+2] - bb[j] < units && bb[j+3] - bb[j+1] < units;
+  };
+
+  // TODO: allow datasets in lat-lng coord range to be flagged as planar
+  this.isPlanar = function() {
+    return !MapShaper.probablyDecimalDegreeBounds(this.getBounds());
   };
 
   this.size = function() {
@@ -5748,7 +5804,7 @@ geom.getShapeArea = function(shp, arcs) {
 };
 
 geom.getSphericalShapeArea = function(shp, arcs) {
-  if (!MapShaper.probablyDecimalDegreeBounds(arcs.getBounds())) {
+  if (arcs.isPlanar()) {
     error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
   }
   return utils.reduce(shp, function(area, ids) {
@@ -8077,12 +8133,13 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
 // Return a function for generating a path across a field of intersecting arcs
 // TODO: add option to calculate angle on sphere for lat-lng coords
 //
-MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute) {
+MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute, spherical) {
   var arcs = nodes.arcs,
       coords = arcs.getVertexData(),
       xx = coords.xx,
       yy = coords.yy,
       nn = coords.nn,
+      calcAngle = spherical ? geom.signedAngleSph : geom.signedAngle,
       splitter;
 
   function getNextArc(prevId) {
@@ -8113,7 +8170,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
         error("Error in node topology");
       }
 
-      candAngle = signedAngle(ax, ay, bx, by, cx, cy);
+      candAngle = calcAngle(ax, ay, bx, by, cx, cy);
 
       if (candAngle > 0) {
         if (nextAngle === 0) {
@@ -8173,9 +8230,9 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
 // Returns a function for flattening or dissolving a collection of rings
 // Assumes rings are oriented in CW direction
 //
-MapShaper.getRingIntersector = function(nodes, type, flags) {
+MapShaper.getRingIntersector = function(nodes, type, flags, spherical) {
   var arcs = nodes.arcs;
-  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
+  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute, spherical);
   flags = flags || new Uint8Array(arcs.size());
 
   return function(rings) {
@@ -11652,9 +11709,10 @@ MapShaper.extendShape = function(dest, src) {
 
 MapShaper.getPolygonDissolver = function(nodes, opts) {
   var flags = new Uint8Array(nodes.arcs.size());
-  var divide = MapShaper.getHoleDivider(nodes, opts && opts.spherical);
-  var flatten = MapShaper.getRingIntersector(nodes, 'flatten', flags);
-  var dissolve = MapShaper.getRingIntersector(nodes, 'dissolve', flags);
+  var spherical = opts && opts.spherical;
+  var divide = MapShaper.getHoleDivider(nodes, spherical);
+  var flatten = MapShaper.getRingIntersector(nodes, 'flatten', flags, spherical);
+  var dissolve = MapShaper.getRingIntersector(nodes, 'dissolve', flags, spherical);
 
   return function(shp) {
     if (!shp) return null;
@@ -13273,35 +13331,35 @@ api.simplify = function(arcs, opts) {
   }
 };
 
-// @paths ArcCollection object
-MapShaper.simplifyPaths = function(paths, opts) {
-  var use3D = !opts.cartesian && MapShaper.probablyDecimalDegreeBounds(paths.getBounds());
+// @arcs ArcCollection object
+MapShaper.simplifyPaths = function(arcs, opts) {
+  var use3D = !opts.cartesian && !arcs.isPlanar();
   var simplifyPath = MapShaper.getSimplifyFunction(opts.method || 'mapshaper', use3D);
-  paths.setThresholds(new Float64Array(paths.getPointCount())); // Create array to hold simplification data
+  arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
   if (use3D) {
-    MapShaper.simplifyPaths3D(paths, simplifyPath);
-    MapShaper.protectWorldEdges(paths);
+    MapShaper.simplifyPaths3D(arcs, simplifyPath);
+    MapShaper.protectWorldEdges(arcs);
   } else {
-    MapShaper.simplifyPaths2D(paths, simplifyPath);
+    MapShaper.simplifyPaths2D(arcs, simplifyPath);
   }
 };
 
-MapShaper.simplifyPaths2D = function(paths, simplify) {
-  paths.forEach3(function(xx, yy, kk, i) {
+MapShaper.simplifyPaths2D = function(arcs, simplify) {
+  arcs.forEach3(function(xx, yy, kk, i) {
     simplify(kk, xx, yy);
   });
 };
 
-MapShaper.simplifyPaths3D = function(paths, simplify) {
+MapShaper.simplifyPaths3D = function(arcs, simplify) {
   var xbuf = MapShaper.expandoBuffer(Float64Array),
       ybuf = MapShaper.expandoBuffer(Float64Array),
       zbuf = MapShaper.expandoBuffer(Float64Array);
-  paths.forEach3(function(xx, yy, kk, i) {
+  arcs.forEach3(function(xx, yy, kk, i) {
     var n = xx.length,
         xx2 = xbuf(n),
         yy2 = ybuf(n),
         zz2 = zbuf(n);
-    MapShaper.convLngLatToSph(xx, yy, xx2, yy2, zz2);
+    geom.convLngLatToSph(xx, yy, xx2, yy2, zz2);
     simplify(kk, xx2, yy2, zz2);
   });
 };
@@ -13318,7 +13376,7 @@ MapShaper.getSimplifyFunction = function(method, use3D) {
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
 //
-MapShaper.protectWorldEdges = function(paths) {
+MapShaper.protectWorldEdges = function(arcs) {
   // Need to handle coords with rounding errors:
   // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
   // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
@@ -13329,10 +13387,10 @@ MapShaper.protectWorldEdges = function(paths) {
       b = -90 + err;
 
   // return if content doesn't reach edges
-  var bounds = paths.getBounds().toArray();
+  var bounds = arcs.getBounds().toArray();
   if (containsBounds([l, b, r, t], bounds) === true) return;
 
-  paths.forEach3(function(xx, yy, zz) {
+  arcs.forEach3(function(xx, yy, zz) {
     var maxZ = 0,
     x, y;
     for (var i=0, n=zz.length; i<n; i++) {
@@ -13361,23 +13419,6 @@ MapShaper.findMaxThreshold = function(zz) {
     }
   }
   return maxZ;
-};
-
-// Convert arrays of lng and lat coords (xsrc, ysrc) into
-// x, y, z coords on the surface of a sphere with radius 6378137
-// (the radius of spherical Earth datum in meters)
-//
-MapShaper.convLngLatToSph = function(xsrc, ysrc, xbuf, ybuf, zbuf) {
-  var deg2rad = Math.PI / 180,
-      r = 6378137;
-  for (var i=0, len=xsrc.length; i<len; i++) {
-    var lng = xsrc[i] * deg2rad,
-        lat = ysrc[i] * deg2rad,
-        cosLat = Math.cos(lat);
-    xbuf[i] = Math.cos(lng) * cosLat * r;
-    ybuf[i] = Math.sin(lng) * cosLat * r;
-    zbuf[i] = Math.sin(lat) * r;
-  }
 };
 
 

@@ -106,12 +106,13 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
 // Return a function for generating a path across a field of intersecting arcs
 // TODO: add option to calculate angle on sphere for lat-lng coords
 //
-MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute) {
+MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute, spherical) {
   var arcs = nodes.arcs,
       coords = arcs.getVertexData(),
       xx = coords.xx,
       yy = coords.yy,
       nn = coords.nn,
+      calcAngle = spherical ? geom.signedAngleSph : geom.signedAngle,
       splitter;
 
   function getNextArc(prevId) {
@@ -142,7 +143,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
         error("Error in node topology");
       }
 
-      candAngle = signedAngle(ax, ay, bx, by, cx, cy);
+      candAngle = calcAngle(ax, ay, bx, by, cx, cy);
 
       if (candAngle > 0) {
         if (nextAngle === 0) {
@@ -202,9 +203,9 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute)
 // Returns a function for flattening or dissolving a collection of rings
 // Assumes rings are oriented in CW direction
 //
-MapShaper.getRingIntersector = function(nodes, type, flags) {
+MapShaper.getRingIntersector = function(nodes, type, flags, spherical) {
   var arcs = nodes.arcs;
-  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
+  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute, spherical);
   flags = flags || new Uint8Array(arcs.size());
 
   return function(rings) {
