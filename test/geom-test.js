@@ -2,7 +2,61 @@ var assert = require('assert'),
     mapshaper = require("../"),
     geom = mapshaper.geom;
 
+function equalAngles(a, b) {
+  if (Math.abs(a - b) < 1e-10) {
+    assert(true);
+  } else {
+    assert.equal(a, b);
+  }
+}
+
+function equalBearings(a, b) {
+  equalAngles(geom.standardAngle(a), geom.standardAngle(b));
+}
+
 describe("mapshaper-geom.js", function() {
+
+  describe('standardAngle()', function() {
+    it('wraps', function() {
+      equalAngles(geom.standardAngle(-Math.PI), Math.PI);
+      equalAngles(geom.standardAngle(-3 * Math.PI), Math.PI);
+      equalAngles(geom.standardAngle(3 * Math.PI), Math.PI);
+      equalAngles(geom.standardAngle(2 * Math.PI), 0);
+      equalAngles(geom.standardAngle(4 * Math.PI), 0);
+    })
+  })
+
+  describe('bearing()', function () {
+    it('bearing to north pole is 0', function () {
+      equalBearings(geom.bearing(90, 0, 90, 90), 0)
+      equalBearings(geom.bearing(90, 70, 20, 90), 0)
+    })
+
+    it('bearing to s pole is PI', function () {
+      equalBearings(geom.bearing(90, 0, 90, -90), Math.PI)
+      equalBearings(geom.bearing(90, 70, 20, -90), Math.PI)
+    })
+  })
+
+  describe('signedAngleSph()', function () {
+    it('bend at equator', function () {
+      equalAngles(geom.signedAngleSph(0, 0, 90, 0, 180, 0), Math.PI);
+      equalAngles(geom.signedAngleSph(0, 0, -90, 0, -180, 0), Math.PI);
+      equalAngles(geom.signedAngleSph(0, 0, 90, 0, 90, 90), 1.5 * Math.PI);
+      equalAngles(geom.signedAngleSph(0, 0, 90, 0, 90, -90), 0.5 * Math.PI);
+    });
+
+    it('bend at north pole', function() {
+      equalAngles(geom.signedAngleSph(0, 0, 0, 90, 90, 0), 1.5 * Math.PI);
+      equalAngles(geom.signedAngleSph(-180, 0, -180, 90, 90, 0), 0.5 * Math.PI);
+      equalAngles(geom.signedAngleSph(180, 0, 180, 90, 90, 0), 0.5 * Math.PI);
+      equalAngles(geom.signedAngleSph(180, 0, -180, 90, 90, 0), 0.5 * Math.PI);
+      equalAngles(geom.signedAngleSph(180, 0, -180, 90, 180, 0), Math.PI);
+      equalAngles(geom.signedAngleSph(180, 0, 0, 90, 180, 0), Math.PI);
+    })
+
+  });
+
 
   describe('getRoundingFunction', function () {
 
