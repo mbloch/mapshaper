@@ -183,10 +183,9 @@ function signedAngleSph(alng, alat, blng, blat, clng, clat) {
   if (alng == blng && alat == blat || blng == clng && blat == clat) {
     return NaN;
   }
-  var b1 = bearing(blng, blat, alng, alat) + Math.PI, // calc bearing at b
+  var b1 = bearing(blng, blat, alng, alat), // calc bearing at b
       b2 = bearing(blng, blat, clng, clat),
-      a = -b2 - b1;
-      // console.log('>', b1, b2)
+      a = Math.PI * 2 + b1 - b2;
   return standardAngle(a);
 }
 

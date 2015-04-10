@@ -2466,10 +2466,9 @@ function signedAngleSph(alng, alat, blng, blat, clng, clat) {
   if (alng == blng && alat == blat || blng == clng && blat == clat) {
     return NaN;
   }
-  var b1 = bearing(blng, blat, alng, alat) + Math.PI, // calc bearing at b
+  var b1 = bearing(blng, blat, alng, alat), // calc bearing at b
       b2 = bearing(blng, blat, clng, clat),
-      a = -b2 - b1;
-      // console.log('>', b1, b2)
+      a = Math.PI * 2 + b1 - b2;
   return standardAngle(a);
 }
 
@@ -5714,9 +5713,9 @@ MapShaper.extendShape = function(dest, src) {
   }
 };
 
-MapShaper.getPolygonDissolver = function(nodes, opts) {
+MapShaper.getPolygonDissolver = function(nodes, spherical) {
+  spherical = spherical && !nodes.arcs.isPlanar();
   var flags = new Uint8Array(nodes.arcs.size());
-  var spherical = opts && opts.spherical;
   var divide = MapShaper.getHoleDivider(nodes, spherical);
   var flatten = MapShaper.getRingIntersector(nodes, 'flatten', flags, spherical);
   var dissolve = MapShaper.getRingIntersector(nodes, 'dissolve', flags, spherical);
@@ -11755,7 +11754,7 @@ api.mend = function(dataset) {
   nodes = MapShaper.divideArcs(dataset);
   // console.log(arcs.toArray())
 
-  dissolver = MapShaper.getPolygonDissolver(nodes, {spherical: false});
+  dissolver = MapShaper.getPolygonDissolver(nodes, !!'spherical');
   dataset.layers.forEach(function(lyr) {
     if (lyr.geometry_type != 'polygon') return;
     var shapes = lyr.shapes,

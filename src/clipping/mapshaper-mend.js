@@ -20,7 +20,7 @@ api.mend = function(dataset) {
   nodes = MapShaper.divideArcs(dataset);
   // console.log(arcs.toArray())
 
-  dissolver = MapShaper.getPolygonDissolver(nodes, {spherical: false});
+  dissolver = MapShaper.getPolygonDissolver(nodes, !!'spherical');
   dataset.layers.forEach(function(lyr) {
     if (lyr.geometry_type != 'polygon') return;
     var shapes = lyr.shapes,

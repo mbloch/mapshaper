@@ -40,20 +40,18 @@ describe("mapshaper-geom.js", function() {
 
   describe('signedAngleSph()', function () {
     it('bend at equator', function () {
-      equalAngles(geom.signedAngleSph(0, 0, 90, 0, 180, 0), Math.PI);
-      equalAngles(geom.signedAngleSph(0, 0, -90, 0, -180, 0), Math.PI);
-      equalAngles(geom.signedAngleSph(0, 0, 90, 0, 90, 90), 1.5 * Math.PI);
-      equalAngles(geom.signedAngleSph(0, 0, 90, 0, 90, -90), 0.5 * Math.PI);
+      equalAngles(geom.signedAngleSph(0, 0, 90, 0, 180, 0), geom.signedAngle(0, 0, 90, 0, 180, 0));
+      equalAngles(geom.signedAngleSph(0, 0, -90, 0, -180, 0), geom.signedAngle(0, 0, -90, 0, -180, 0));
+      equalAngles(geom.signedAngleSph(10, 0, 90, 0, 90, 10), geom.signedAngle(10, 0, 90, 0, 90, 10));
+      equalAngles(geom.signedAngleSph(90, -10, 90, 0, 10, 0), geom.signedAngle(90, -10, 90, 0, 10, 0));
+      equalAngles(geom.signedAngleSph(10, 0, 90, 0, 90, -10), geom.signedAngle(10, 0, 90, 0, 90, -10));
+      equalAngles(geom.signedAngleSph(90, -10, 90, 0, 110, 0), geom.signedAngle(90, -10, 90, 0, 110, 0));
     });
 
     it('bend at north pole', function() {
-      equalAngles(geom.signedAngleSph(0, 0, 0, 90, 90, 0), 1.5 * Math.PI);
-      equalAngles(geom.signedAngleSph(-180, 0, -180, 90, 90, 0), 0.5 * Math.PI);
-      equalAngles(geom.signedAngleSph(180, 0, 180, 90, 90, 0), 0.5 * Math.PI);
-      equalAngles(geom.signedAngleSph(180, 0, -180, 90, 90, 0), 0.5 * Math.PI);
-      equalAngles(geom.signedAngleSph(180, 0, -180, 90, 180, 0), Math.PI);
-      equalAngles(geom.signedAngleSph(180, 0, 0, 90, 180, 0), Math.PI);
-    })
+      equalAngles(geom.signedAngleSph(0, 0, 0, 90, 90, 0), Math.PI/2); // right bend
+      equalAngles(geom.signedAngleSph(0, 0, 0, 90, -90, 0), 1.5 * Math.PI); // left bend
+    });
 
   });
 
