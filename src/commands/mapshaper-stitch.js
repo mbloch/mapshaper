@@ -8,11 +8,11 @@ mapshaper-path-division
 // Remove 'cuts' in an unprojected dataset at the antemeridian and poles.
 // This will be useful when generating rotated projections.
 //
-api.mend = function(dataset) {
+api.stitch = function(dataset) {
   var arcs = dataset.arcs,
       edgeArcs, dissolver, nodes;
   if (!arcs || arcs.isPlanar()) {
-    error("[mend] Requires lat-lng dataset");
+    error("[stitch] Requires lat-lng dataset");
   }
   if (!MapShaper.snapEdgeArcs(arcs)) {
     return;

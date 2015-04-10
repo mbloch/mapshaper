@@ -11742,11 +11742,11 @@ MapShaper.replaceInArray = function(zz, value, replacement, start, end) {
 // Remove 'cuts' in an unprojected dataset at the antemeridian and poles.
 // This will be useful when generating rotated projections.
 //
-api.mend = function(dataset) {
+api.stitch = function(dataset) {
   var arcs = dataset.arcs,
       edgeArcs, dissolver, nodes;
   if (!arcs || arcs.isPlanar()) {
-    error("[mend] Requires lat-lng dataset");
+    error("[stitch] Requires lat-lng dataset");
   }
   if (!MapShaper.snapEdgeArcs(arcs)) {
     return;
@@ -13605,8 +13605,8 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'lines') {
       newLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
 
-    } else if (name == 'mend') {
-      api.mend(dataset);
+    } else if (name == 'stitch') {
+      api.stitch(dataset);
 
     } else if (name == 'merge-layers') {
       // careful, returned layers are modified input layers
@@ -14699,7 +14699,7 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("mend");
+  parser.command("stitch");
 
   parser.command("dissolve")
     .validate(validateDissolveOpts)

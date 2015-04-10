@@ -13,7 +13,7 @@ mapshaper-info
 mapshaper-innerlines
 mapshaper-join
 mapshaper-keep-shapes
-mapshaper-mend
+mapshaper-stitch
 mapshaper-merge-files
 mapshaper-points
 mapshaper-proj
@@ -105,8 +105,8 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'lines') {
       newLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
 
-    } else if (name == 'mend') {
-      api.mend(dataset);
+    } else if (name == 'stitch') {
+      api.stitch(dataset);
 
     } else if (name == 'merge-layers') {
       // careful, returned layers are modified input layers
