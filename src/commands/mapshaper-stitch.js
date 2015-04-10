@@ -25,7 +25,6 @@ api.stitch = function(dataset) {
     if (lyr.geometry_type != 'polygon') return;
     var shapes = lyr.shapes,
         edgeShapeIds = MapShaper.findEdgeShapes(shapes, arcs);
-    // console.log(">>> edgeShapes:", edgeShapeIds);
     edgeShapeIds.forEach(function(i) {
       shapes[i] = dissolver(shapes[i]);
     });
@@ -37,7 +36,7 @@ MapShaper.findEdgeArcs = function(arcs) {
   var bbox = [-180+e, -90+e, 180-e, 90-e],
       ids = [];
   for (var i=0, n=arcs.size(); i<n; i++) {
-    if (arcs.arcIntersectsBBox(i, bbox)) {
+    if (!arcs.arcIsContained(i, bbox)) {
       ids.push(i);
     }
   }

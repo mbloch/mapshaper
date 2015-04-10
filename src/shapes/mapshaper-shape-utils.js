@@ -26,9 +26,11 @@ MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
   shapes.forEach(function(shp, shpId) {
     var isHit = false;
     MapShaper.forEachArcId(shp || [], function(id) {
-      isHit = index[absArcId(id)] == 1;
+      isHit = isHit || index[absArcId(id)] == 1;
     });
-    if (isHit) found.push(shpId);
+    if (isHit) {
+      found.push(shpId);
+    }
   });
   return found;
 };

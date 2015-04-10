@@ -5045,6 +5045,12 @@ function ArcCollection() {
     return b2[j] <= b1[2] && b2[j+2] >= b1[0] && b2[j+3] >= b1[1] && b2[j+1] <= b1[3];
   };
 
+  this.arcIsContained = function(i, b1) {
+    var b2 = _bb,
+        j = i * 4;
+    return b2[j] >= b1[0] && b2[j+2] <= b1[2] && b2[j+1] >= b1[1] && b2[j+3] <= b1[3];
+  };
+
   this.arcIsSmaller = function(i, units) {
     var bb = _bb,
         j = i * 4;
@@ -6111,9 +6117,11 @@ MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
   shapes.forEach(function(shp, shpId) {
     var isHit = false;
     MapShaper.forEachArcId(shp || [], function(id) {
-      isHit = index[absArcId(id)] == 1;
+      isHit = isHit || index[absArcId(id)] == 1;
     });
-    if (isHit) found.push(shpId);
+    if (isHit) {
+      found.push(shpId);
+    }
   });
   return found;
 };
