@@ -30,8 +30,10 @@ MapShaper.findSegmentIntersections = (function() {
   }
 
   return function(arcs) {
-    //T.start();
     var bounds = arcs.getBounds(),
+        // TODO: handle spherical bounds
+        spherical = !arcs.isPlanar() &&
+            containsBounds(MapShaper.getWorldBounds(), bounds.toArray()),
         ymin = bounds.ymin,
         yrange = bounds.ymax - ymin,
         stripeCount = MapShaper.calcSegmentIntersectionStripeCount(arcs),
@@ -67,12 +69,7 @@ MapShaper.findSegmentIntersections = (function() {
     arcs.forEachSegment(function(id1, id2, xx, yy) {
       var s1 = stripeId(yy[id1]),
           s2 = stripeId(yy[id2]),
-          count, stripe, tmp;
-      if (xx[id2] < xx[id1]) {
-        tmp = id1;
-        id1 = id2;
-        id2 = tmp;
-      }
+          count, stripe;
       while (true) {
         count = stripeSizes[s1];
         stripeSizes[s1] = count + 2;
@@ -90,13 +87,11 @@ MapShaper.findSegmentIntersections = (function() {
         index = {},
         arr;
     for (i=0; i<stripeCount; i++) {
-      arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
+      arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy, spherical);
       if (arr.length > 0) {
         extendIntersections(intersections, arr, i);
       }
     }
-
-    // T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
     return intersections;
 
     // Add intersections from a bin, but avoid duplicates.
@@ -110,7 +105,6 @@ MapShaper.findSegmentIntersections = (function() {
       });
     }
   };
-
 })();
 
 MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
@@ -135,7 +129,7 @@ MapShaper.getIntersectionKey = function(a, b) {
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
 //
-MapShaper.intersectSegments = function(ids, xx, yy) {
+MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
   var lim = ids.length - 2,
       intersections = [];
   var s1p1, s1p2, s2p1, s2p2,
@@ -144,9 +138,11 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       m1, m2,
       hit, i, j;
 
+
   // Sort segments by xmin, to allow efficient exclusion of segments with
   // non-overlapping x extents.
-  MapShaper.sortSegmentIds(xx, ids);
+  MapShaper.orderSegmentIds(xx, ids);
+  MapShaper.sortSegmentIds(xx, ids); // sort by ascending xmin
 
   i = 0;
   while (i < lim) {
@@ -214,6 +210,34 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       i = j;
     }
     return [i, j];
+  }
+};
+
+MapShaper.orderSegmentIds = function(xx, ids, spherical) {
+  var e = 1e-10,
+      xmin = -180 + e,
+      xmax = 180 - e,
+      swap = function(i, j) {
+        var tmp = ids[i];
+        ids[i] = ids[j];
+        ids[j] = tmp;
+      };
+  for (var i=0, n=ids.length; i<n; i+=2) {
+    if (xx[ids[i]] > xx[ids[i+1]]) {
+      swap(i, i+1);
+    }
+    /*
+    if (spherical) {
+      if (xx[ids[i]] <= xmin && xx[ids[i+1]] > 0) {
+        ids[i] = ~ids[i];
+        swap(i, i+1);
+      }
+      if (xx[ids[i+1]] >= xmax && xx[ids[i]]] < 0) {
+        swap(i, i+1);
+        ids[i] = ~ids[i];
+      }
+    }
+    */
   }
 };
 

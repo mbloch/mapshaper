@@ -3895,9 +3895,15 @@ utils.isFiniteNumber = function(val) {
   return isFinite(val) && val !== null;
 };
 
+MapShaper.getWorldBounds = function(e) {
+  e = utils.isFiniteNumber(e) ? e : 1e-10;
+  return [-180 + e, -90 + e, 180 - e, 90 - e];
+};
+
 MapShaper.probablyDecimalDegreeBounds = function(b) {
-  if (b instanceof Bounds) b = b.toArray();
-  return containsBounds([-200, -91, 200, 91], b);
+  var world = MapShaper.getWorldBounds(-1), // add a bit of excess
+      bbox = (b instanceof Bounds) ? b.toArray() : b;
+  return containsBounds(world, bbox);
 };
 
 MapShaper.layerHasPaths = function(lyr) {
@@ -7475,8 +7481,10 @@ MapShaper.findSegmentIntersections = (function() {
   }
 
   return function(arcs) {
-    //T.start();
     var bounds = arcs.getBounds(),
+        // TODO: handle spherical bounds
+        spherical = !arcs.isPlanar() &&
+            containsBounds(MapShaper.getWorldBounds(), bounds.toArray()),
         ymin = bounds.ymin,
         yrange = bounds.ymax - ymin,
         stripeCount = MapShaper.calcSegmentIntersectionStripeCount(arcs),
@@ -7512,12 +7520,7 @@ MapShaper.findSegmentIntersections = (function() {
     arcs.forEachSegment(function(id1, id2, xx, yy) {
       var s1 = stripeId(yy[id1]),
           s2 = stripeId(yy[id2]),
-          count, stripe, tmp;
-      if (xx[id2] < xx[id1]) {
-        tmp = id1;
-        id1 = id2;
-        id2 = tmp;
-      }
+          count, stripe;
       while (true) {
         count = stripeSizes[s1];
         stripeSizes[s1] = count + 2;
@@ -7535,13 +7538,11 @@ MapShaper.findSegmentIntersections = (function() {
         index = {},
         arr;
     for (i=0; i<stripeCount; i++) {
-      arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
+      arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy, spherical);
       if (arr.length > 0) {
         extendIntersections(intersections, arr, i);
       }
     }
-
-    // T.stop("Intersections: " + intersections.length + " stripes: " + stripeCount);
     return intersections;
 
     // Add intersections from a bin, but avoid duplicates.
@@ -7555,7 +7556,6 @@ MapShaper.findSegmentIntersections = (function() {
       });
     }
   };
-
 })();
 
 MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
@@ -7580,7 +7580,7 @@ MapShaper.getIntersectionKey = function(a, b) {
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
 //
-MapShaper.intersectSegments = function(ids, xx, yy) {
+MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
   var lim = ids.length - 2,
       intersections = [];
   var s1p1, s1p2, s2p1, s2p2,
@@ -7589,9 +7589,11 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       m1, m2,
       hit, i, j;
 
+
   // Sort segments by xmin, to allow efficient exclusion of segments with
   // non-overlapping x extents.
-  MapShaper.sortSegmentIds(xx, ids);
+  MapShaper.orderSegmentIds(xx, ids);
+  MapShaper.sortSegmentIds(xx, ids); // sort by ascending xmin
 
   i = 0;
   while (i < lim) {
@@ -7659,6 +7661,34 @@ MapShaper.intersectSegments = function(ids, xx, yy) {
       i = j;
     }
     return [i, j];
+  }
+};
+
+MapShaper.orderSegmentIds = function(xx, ids, spherical) {
+  var e = 1e-10,
+      xmin = -180 + e,
+      xmax = 180 - e,
+      swap = function(i, j) {
+        var tmp = ids[i];
+        ids[i] = ids[j];
+        ids[j] = tmp;
+      };
+  for (var i=0, n=ids.length; i<n; i+=2) {
+    if (xx[ids[i]] > xx[ids[i+1]]) {
+      swap(i, i+1);
+    }
+    /*
+    if (spherical) {
+      if (xx[ids[i]] <= xmin && xx[ids[i+1]] > 0) {
+        ids[i] = ~ids[i];
+        swap(i, i+1);
+      }
+      if (xx[ids[i+1]] >= xmax && xx[ids[i]]] < 0) {
+        swap(i, i+1);
+        ids[i] = ~ids[i];
+      }
+    }
+    */
   }
 };
 
@@ -13376,23 +13406,16 @@ MapShaper.protectWorldEdges = function(arcs) {
   // Need to handle coords with rounding errors:
   // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
   // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
-  var err = 1e-12,
-      l = -180 + err,
-      r = 180 - err,
-      t = 90 - err,
-      b = -90 + err;
-
-  // return if content doesn't reach edges
-  var bounds = arcs.getBounds().toArray();
-  if (containsBounds([l, b, r, t], bounds) === true) return;
-
+  var bb1 = MapShaper.getWorldBounds(1e-12),
+      bb2 = arcs.getBounds().toArray();
+  if (containsBounds(bb1, bb2) === true) return; // return if content doesn't reach edges
   arcs.forEach3(function(xx, yy, zz) {
     var maxZ = 0,
     x, y;
     for (var i=0, n=zz.length; i<n; i++) {
       x = xx[i];
       y = yy[i];
-      if (x > r || x < l || y < b || y > t) {
+      if (x > bb1[2] || x < bb1[0] || y < bb1[1] || y > bb1[3]) {
         if (maxZ === 0) {
           maxZ = MapShaper.findMaxThreshold(zz);
         }

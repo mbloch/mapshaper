@@ -129,9 +129,15 @@ utils.isFiniteNumber = function(val) {
   return isFinite(val) && val !== null;
 };
 
+MapShaper.getWorldBounds = function(e) {
+  e = utils.isFiniteNumber(e) ? e : 1e-10;
+  return [-180 + e, -90 + e, 180 - e, 90 - e];
+};
+
 MapShaper.probablyDecimalDegreeBounds = function(b) {
-  if (b instanceof Bounds) b = b.toArray();
-  return containsBounds([-200, -91, 200, 91], b);
+  var world = MapShaper.getWorldBounds(-1), // add a bit of excess
+      bbox = (b instanceof Bounds) ? b.toArray() : b;
+  return containsBounds(world, bbox);
 };
 
 MapShaper.layerHasPaths = function(lyr) {

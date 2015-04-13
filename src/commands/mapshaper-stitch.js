@@ -32,8 +32,7 @@ api.stitch = function(dataset) {
 };
 
 MapShaper.findEdgeArcs = function(arcs) {
-  var e = 1e-10;
-  var bbox = [-180+e, -90+e, 180-e, 90-e],
+  var bbox = MapShaper.getWorldBounds(),
       ids = [];
   for (var i=0, n=arcs.size(); i<n; i++) {
     if (!arcs.arcIsContained(i, bbox)) {

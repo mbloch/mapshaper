@@ -75,23 +75,16 @@ MapShaper.protectWorldEdges = function(arcs) {
   // Need to handle coords with rounding errors:
   // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
   // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
-  var err = 1e-12,
-      l = -180 + err,
-      r = 180 - err,
-      t = 90 - err,
-      b = -90 + err;
-
-  // return if content doesn't reach edges
-  var bounds = arcs.getBounds().toArray();
-  if (containsBounds([l, b, r, t], bounds) === true) return;
-
+  var bb1 = MapShaper.getWorldBounds(1e-12),
+      bb2 = arcs.getBounds().toArray();
+  if (containsBounds(bb1, bb2) === true) return; // return if content doesn't reach edges
   arcs.forEach3(function(xx, yy, zz) {
     var maxZ = 0,
     x, y;
     for (var i=0, n=zz.length; i<n; i++) {
       x = xx[i];
       y = yy[i];
-      if (x > r || x < l || y < b || y > t) {
+      if (x > bb1[2] || x < bb1[0] || y < bb1[1] || y > bb1[3]) {
         if (maxZ === 0) {
           maxZ = MapShaper.findMaxThreshold(zz);
         }
