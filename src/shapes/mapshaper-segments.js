@@ -141,7 +141,6 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
 
   // Sort segments by xmin, to allow efficient exclusion of segments with
   // non-overlapping x extents.
-  MapShaper.orderSegmentIds(xx, ids);
   MapShaper.sortSegmentIds(xx, ids); // sort by ascending xmin
 
   i = 0;
@@ -214,35 +213,21 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
 };
 
 MapShaper.orderSegmentIds = function(xx, ids, spherical) {
-  var e = 1e-10,
-      xmin = -180 + e,
-      xmax = 180 - e,
-      swap = function(i, j) {
-        var tmp = ids[i];
-        ids[i] = ids[j];
-        ids[j] = tmp;
-      };
+  function swap(i, j) {
+    var tmp = ids[i];
+    ids[i] = ids[j];
+    ids[j] = tmp;
+  }
   for (var i=0, n=ids.length; i<n; i+=2) {
     if (xx[ids[i]] > xx[ids[i+1]]) {
       swap(i, i+1);
     }
-    /*
-    if (spherical) {
-      if (xx[ids[i]] <= xmin && xx[ids[i+1]] > 0) {
-        ids[i] = ~ids[i];
-        swap(i, i+1);
-      }
-      if (xx[ids[i+1]] >= xmax && xx[ids[i]]] < 0) {
-        swap(i, i+1);
-        ids[i] = ~ids[i];
-      }
-    }
-    */
   }
 };
 
-MapShaper.sortSegmentIds = function(arr, ids) {
-  MapShaper.quicksortSegmentIds(arr, ids, 0, ids.length-2);
+MapShaper.sortSegmentIds = function(xx, ids) {
+  MapShaper.orderSegmentIds(xx, ids);
+  MapShaper.quicksortSegmentIds(xx, ids, 0, ids.length-2);
 };
 
 MapShaper.insertionSortSegmentIds = function(arr, ids, start, end) {

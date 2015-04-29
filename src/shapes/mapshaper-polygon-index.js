@@ -6,14 +6,12 @@
 MapShaper.PolygonIndex = PolygonIndex;
 
 function PolygonIndex(shape, arcs) {
-  var data = arcs.getVertexData();
-  var polygonBounds = arcs.getMultiShapeBounds(shape),
-      boundsLeft;
-  var p1Arr, p2Arr,
+  var data = arcs.getVertexData(),
+      polygonBounds = arcs.getMultiShapeBounds(shape),
+      boundsLeft,
+      p1Arr, p2Arr,
       bucketCount,
       bucketOffsets,
-      indexWidth,
-      // bucketSizes,
       bucketWidth;
 
   init();
@@ -37,22 +35,25 @@ function PolygonIndex(shape, arcs) {
   };
 
   function init() {
-    var xx = data.xx;
+    var xx = data.xx,
+        segCount = 0,
+        bucketId = 0,
+        bucketLeft = boundsLeft,
+        segId = 0,
+        segments,
+        lastX,
+        head, tail,
+        a, b, i, j, xmin, xmax;
+
     // get sorted array of segment ids
-    var segCount = 0;
     MapShaper.forEachPathSegment(shape, arcs, function() {
       segCount++;
     });
-    var segments = new Uint32Array(segCount * 2),
-        i = 0;
+    segments = new Uint32Array(segCount * 2);
+    i = 0;
     MapShaper.forEachPathSegment(shape, arcs, function(a, b, xx, yy) {
-      if (xx[a] < xx[b]) {
-        segments[i++] = a;
-        segments[i++] = b;
-      } else {
-        segments[i++] = b;
-        segments[i++] = a;
-      }
+      segments[i++] = a;
+      segments[i++] = b;
     });
     MapShaper.sortSegmentIds(xx, segments);
 
@@ -61,19 +62,11 @@ function PolygonIndex(shape, arcs) {
     p2Arr = new Uint32Array(segCount);
     bucketCount = Math.ceil(segCount / 100);
     bucketOffsets = new Uint32Array(bucketCount + 1);
-    // bucketSizes = new Uint32Array(bucketCount + 1);
-
-
-    boundsLeft = xx[segments[0]]; // xmin of first segment
-    var lastX = xx[segments[segments.length - 2]]; // xmin of last segment
-    var head = 0, tail = segCount - 1;
-    var bucketId = 0,
-        bucketLeft = boundsLeft,
-        segId = 0,
-        a, b, j, xmin, xmax;
-
-    indexWidth = lastX - boundsLeft;
-    bucketWidth = indexWidth / bucketCount;
+    lastX = xx[segments[segments.length - 2]]; // xmin of last segment
+    bucketLeft = boundsLeft = xx[segments[0]]; // xmin of first segment
+    bucketWidth = (lastX - boundsLeft) / bucketCount;
+    head = 0;
+    tail = segCount - 1;
 
     while (bucketId < bucketCount && segId < segCount) {
       j = segId * 2;
@@ -87,8 +80,7 @@ function PolygonIndex(shape, arcs) {
         bucketLeft = bucketId * bucketWidth + boundsLeft;
         bucketOffsets[bucketId] = head;
       } else {
-        var bucket2 = getBucketId(xmin);
-        if (bucket2 != bucketId) console.log("wrong bucket");
+        if (getBucketId(xmin) != bucketId) console.log("wrong bucket");
         if (xmin < bucketLeft) error("out-of-range");
         if (xmax - xmin >= 0 === false) error("invalid segment");
         if (xmax > bucketLeft + 2 * bucketWidth) {
@@ -101,7 +93,6 @@ function PolygonIndex(shape, arcs) {
           head++;
         }
         segId++;
-        // bucketSizes[bucketId]++;
       }
     }
     bucketOffsets[bucketCount] = head;
