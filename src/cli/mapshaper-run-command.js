@@ -3,7 +3,8 @@ mapshaper-clip-erase
 mapshaper-dissolve
 mapshaper-dissolve2
 mapshaper-export
-mapshaper-each-calc
+mapshaper-each
+mapshaper-calc
 mapshaper-file-import
 mapshaper-file-export
 mapshaper-filter

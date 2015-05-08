@@ -10573,8 +10573,9 @@ MapShaper.getInnerTics = function(min, max, steps) {
 
 
 
-MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
+MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
+      exp = MapShaper.validateExpression(rawExp),
       newFields = exp.match(RE_ASSIGNEE) || null,
       env = {},
       records,
@@ -10620,6 +10621,11 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
 
   compiled.context = env;
   return compiled;
+};
+
+MapShaper.validateExpression = function(exp) {
+  exp = exp || '';
+  return MapShaper.removeExpressionSemicolons(exp);
 };
 
 // Semicolons that divide the expression into two or more js statements
@@ -10787,60 +10793,157 @@ function FeatureExpressionContext(lyr, arcs) {
 
 
 
-// Calculate expressions like 'sum(field)' or '_.sum(field)' and return results like: {sum: 14}
-//
-MapShaper.getCalcResults = function(lyr, arcs, opts) {
-  var calcExp = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs),
-      calculator = new FeatureCalculator(),
-      n = MapShaper.getFeatureCount(lyr),
-      whereExp = opts.where ? MapShaper.compileFeatureExpression(opts.where, lyr, arcs) : null,
-      results;
+api.evaluateEachFeature = function(lyr, arcs, exp) {
+  var n = MapShaper.getFeatureCount(lyr),
+      compiled;
 
-  // add functions to expression context
-  utils.extend(calcExp.context, calculator.functions);
-  calcExp.context._ = calculator.functions; // add as members of _ object too
+  // TODO: consider not creating a data table -- not needed if expression only references geometry
+  if (n > 0 && !lyr.data) {
+    lyr.data = new DataTable(n);
+  }
+  compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
+  // call compiled expression with id of each record
+  utils.repeat(n, compiled);
+};
 
-  utils.repeat(n, function(i) {
-    if (!whereExp || whereExp(i)) {
-      calcExp(i);
+
+
+
+api.filterFeatures = function(lyr, arcs, opts) {
+  var records = lyr.data ? lyr.data.getRecords() : null,
+      shapes = lyr.shapes || null,
+      size = MapShaper.getFeatureCount(lyr),
+      filter = null;
+
+  if (opts.expression) {
+    filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
+  }
+
+  if (opts.remove_empty) {
+    filter = MapShaper.combineFilters(filter, MapShaper.getNullGeometryFilter(lyr, arcs));
+  }
+
+  if (!filter) {
+    message("[filter] missing a filter -- retaining all features");
+    return;
+  }
+
+  var selectedShapes = [],
+      selectedRecords = [];
+  utils.repeat(size, function(shapeId) {
+    var result = filter(shapeId);
+    if (result === true) {
+      if (shapes) selectedShapes.push(shapes[shapeId] || null);
+      if (records) selectedRecords.push(records[shapeId] || null);
+    } else if (result !== false) {
+      stop("[filter] Expressions must return true or false");
     }
   });
-  return calculator.done();
+
+  if (shapes) {
+    lyr.shapes = selectedShapes;
+  }
+  if (records) {
+    lyr.data = new DataTable(selectedRecords);
+  }
+};
+
+MapShaper.getNullGeometryFilter = function(lyr, arcs) {
+  var shapes = lyr.shapes;
+  if (lyr.geometry_type == 'polygon') {
+    return MapShaper.getEmptyPolygonFilter(shapes, arcs);
+  }
+  return function(i) {return !!shapes[i];};
+};
+
+MapShaper.getEmptyPolygonFilter = function(shapes, arcs) {
+  return function(i) {
+    var shp = shapes[i];
+    return !!shp && geom.getPlanarShapeArea(shapes[i], arcs) > 0;
+  };
+};
+
+MapShaper.combineFilters = function(a, b) {
+  return (a && b && function(id) {
+      return a(id) && b(id);
+    }) || a || b;
+};
+
+
+
+
+api.calc = function(lyr, arcs, opts) {
+  var result,
+      msg = 'calc ' + opts.expression;
+  if (opts.where) {
+    // TODO: implement no_replace option for filter(), instead of this
+    lyr = {
+      shapes: lyr.shapes,
+      data: lyr.data
+    };
+    api.filterFeatures(lyr, arcs, {expression: opts.where});
+    msg += ' where ' + opts.where;
+  }
+  result = MapShaper.evalCalcExpression(lyr, arcs, opts.expression);
+  message(msg + ":  " + result);
+  return result;
+};
+
+// Calculate expressions like 'sum(field)' or '_.sum(field)' and return results like: {sum: 14}
+//
+MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
+  var calc = MapShaper.compileCalcExpression(exp);
+  return calc(lyr, arcs);
 };
 
 // Return a function to evaluate expressions like 'sum(field) > 100'
-// (used by mapshaper-subdivide)
+// (used by mapshaper-subdivide and mapshaper-calc)
 MapShaper.compileCalcExpression = function(exp) {
-  var compiled = function(lyr, arcs) {
-    var env = MapShaper.getCalcContext(lyr, arcs);
-    var func, retn;
+  return function(lyr, arcs) {
+    var env = MapShaper.getCalcExpressionContext(lyr, arcs),
+        calc, retn;
     try {
-      func = new Function("env", "with(env){return " + exp + ";}");
-      retn = func.call(null, env);
+      calc = new Function("env", "with(env){return " + exp + ";}");
+      retn = calc.call(null, env);
     } catch(e) {
-      message('Error ' + (!!func ? 'compiling' : 'running') + ' expression "' + exp + '"');
+      message('Error ' + (calc ? 'compiling' : 'running') + ' expression: "' + exp + '"');
       stop(e);
     }
     return retn;
   };
-  return compiled;
 };
 
-MapShaper.getCalcContext = function(lyr, arcs) {
-  var calc = new FeatureCalculator();
-  var fields = lyr.data ? lyr.data.getFields() : [];
-  var env = fields.reduce(function(memo, f) {
-    memo[f] = f;
+MapShaper.getCalcExpressionContext = function(lyr, arcs) {
+  var o = MapShaper.initCalcFunctions(lyr, arcs);
+  var env = utils.extend({}, o);
+  if (lyr.data) {
+    lyr.data.getFields().forEach(function(f) {
+      env[f] = f;
+    });
+  }
+  env._ = o;
+  return env;
+};
+
+MapShaper.initCalcFunctions = function(lyr, arcs) {
+  var functions = Object.keys(new FeatureCalculator().functions);
+  return functions.reduce(function(memo, fname) {
+    memo[fname] = MapShaper.getCalcFunction(fname, lyr, arcs);
     return memo;
   }, {});
-  utils.forEach(calc.functions, function(val, key) {
-    env[key] = function(fname) {
-      var exp = "_." + key + "(" + fname + ");";
-      var results = MapShaper.getCalcResults(lyr, arcs, {expression: exp});
-      return results[key];
-    };
-  });
-  return env;
+};
+
+MapShaper.getCalcFunction = function(fname, lyr, arcs) {
+  return function(rawExp) {
+    var exp = MapShaper.validateExpression(rawExp);
+    var calculator = new FeatureCalculator();
+    var func = calculator.functions[fname];
+    var compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
+    utils.repeat(MapShaper.getFeatureCount(lyr), function(i) {
+      func(compiled(i));
+    });
+    return calculator.done()[fname];
+  };
 };
 
 function FeatureCalculator() {
@@ -10896,30 +10999,6 @@ function FeatureCalculator() {
     functions: api
   };
 }
-
-
-
-
-api.evaluateEachFeature = function(lyr, arcs, exp) {
-  var n = MapShaper.getFeatureCount(lyr),
-      compiled;
-
-  // TODO: consider not creating a data table -- not needed if expression only references geometry
-  if (n > 0 && !lyr.data) {
-    lyr.data = new DataTable(n);
-  }
-  compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
-  // call compiled expression with id of each record
-  utils.repeat(n, compiled);
-};
-
-api.calc = function(lyr, arcs, opts) {
-  var results = MapShaper.getCalcResults(lyr, arcs, opts);
-  utils.forEach(results, function(val, key) {
-    var msg = key + ":\t" + val;
-    message(msg);
-  });
-};
 
 
 
@@ -11284,69 +11363,6 @@ function testFileCollision(paths, suff) {
     return cli.isFile(path) || cli.isDirectory(path);
   });
 }
-
-
-
-
-api.filterFeatures = function(lyr, arcs, opts) {
-  var records = lyr.data ? lyr.data.getRecords() : null,
-      shapes = lyr.shapes || null,
-      size = MapShaper.getFeatureCount(lyr),
-      filter = null;
-
-  if (opts.expression) {
-    filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
-  }
-
-  if (opts.remove_empty) {
-    filter = MapShaper.combineFilters(filter, MapShaper.getNullGeometryFilter(lyr, arcs));
-  }
-
-  if (!filter) {
-    message("[filter] missing a filter -- retaining all features");
-    return;
-  }
-
-  var selectedShapes = [],
-      selectedRecords = [];
-  utils.repeat(size, function(shapeId) {
-    var result = filter(shapeId);
-    if (result === true) {
-      if (shapes) selectedShapes.push(shapes[shapeId] || null);
-      if (records) selectedRecords.push(records[shapeId] || null);
-    } else if (result !== false) {
-      stop("[filter] Expressions must return true or false");
-    }
-  });
-
-  if (shapes) {
-    lyr.shapes = selectedShapes;
-  }
-  if (records) {
-    lyr.data = new DataTable(selectedRecords);
-  }
-};
-
-MapShaper.getNullGeometryFilter = function(lyr, arcs) {
-  var shapes = lyr.shapes;
-  if (lyr.geometry_type == 'polygon') {
-    return MapShaper.getEmptyPolygonFilter(shapes, arcs);
-  }
-  return function(i) {return !!shapes[i];};
-};
-
-MapShaper.getEmptyPolygonFilter = function(shapes, arcs) {
-  return function(i) {
-    var shp = shapes[i];
-    return !!shp && geom.getPlanarShapeArea(shapes[i], arcs) > 0;
-  };
-};
-
-MapShaper.combineFilters = function(a, b) {
-  return (a && b && function(id) {
-      return a(id) && b(id);
-    }) || a || b;
-};
 
 
 

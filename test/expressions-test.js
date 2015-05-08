@@ -22,7 +22,7 @@ describe('mapshaper-expressions.js', function () {
 
   // Feature expressions are tested in field-calculator-test.js and filter-test.js
   /*
-  describe('compileFeatureExpression()', function() {
+  describe('compileCalcExpression()', function() {
     describe('data tests', function() {
     })
 

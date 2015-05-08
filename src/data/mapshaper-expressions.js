@@ -5,8 +5,9 @@ mapshaper-shapes
 mapshaper-dataset-utils
 */
 
-MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
+MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
+      exp = MapShaper.validateExpression(rawExp),
       newFields = exp.match(RE_ASSIGNEE) || null,
       env = {},
       records,
@@ -52,6 +53,11 @@ MapShaper.compileFeatureExpression = function(exp, lyr, arcs) {
 
   compiled.context = env;
   return compiled;
+};
+
+MapShaper.validateExpression = function(exp) {
+  exp = exp || '';
+  return MapShaper.removeExpressionSemicolons(exp);
 };
 
 // Semicolons that divide the expression into two or more js statements
