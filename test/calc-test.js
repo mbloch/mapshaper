@@ -49,15 +49,6 @@ describe('mapshaper-calc.js', function () {
       assert.equal(result, 2);
     })
 
-    it ('calc functions are also members of _ object', function() {
-      var data = [{count: 4}, {count: 3}],
-          lyr = {
-            data: new api.internal.DataTable(data)
-          };
-      var result = evalCalcExpression(lyr, null, '_.count()');
-      assert.equal(result, 2);
-    })
-
     it ('where= expression excludes a record', function() {
       var data2 = [
           {foo: -1, bar: true},
@@ -72,6 +63,42 @@ describe('mapshaper-calc.js', function () {
           {expression: 'average(foo)', where: '!!bar'});
       assert.equal(result, 1);
     })
+  })
+
+
+  describe('compileCalcExpression()', function () {
+    var nullArcs = new api.internal.ArcCollection([]),
+        records = [{foo: 4}, {foo: 0}, {foo: 3.5}, {foo: -0.5}, {foo: 3}];
+    var lyr = {
+      shapes: new Array(5),
+      data: new api.internal.DataTable(records)
+    };
+
+    it('sum()', function() {
+      var compiled = new api.internal.compileCalcExpression("sum('foo')")
+      assert.equal(compiled(lyr, nullArcs), 10);
+    })
+
+    it('average()', function() {
+      var compiled = new api.internal.compileCalcExpression("average('foo')")
+      assert.equal(compiled(lyr, nullArcs), 2);
+    })
+
+    it('median()', function() {
+      var compiled = new api.internal.compileCalcExpression("median('foo')")
+      assert.equal(compiled(lyr, nullArcs), 3);
+    })
+
+    it('max()', function() {
+      var compiled = new api.internal.compileCalcExpression("max('foo')")
+      assert.equal(compiled(lyr, nullArcs), 4);
+    })
+
+    it('min()', function() {
+      var compiled = new api.internal.compileCalcExpression("min('foo')")
+      assert.equal(compiled(lyr, nullArcs), -0.5);
+    })
+
   })
 
 })

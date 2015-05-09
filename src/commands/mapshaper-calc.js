@@ -51,23 +51,21 @@ MapShaper.compileCalcExpression = function(exp) {
 };
 
 MapShaper.getCalcExpressionContext = function(lyr, arcs) {
-  var o = MapShaper.initCalcFunctions(lyr, arcs);
-  var env = utils.extend({}, o);
+  var env = MapShaper.getBaseContext();
   if (lyr.data) {
     lyr.data.getFields().forEach(function(f) {
       env[f] = f;
     });
   }
-  env._ = o;
+  MapShaper.initCalcFunctions(env, lyr, arcs);
   return env;
 };
 
-MapShaper.initCalcFunctions = function(lyr, arcs) {
+MapShaper.initCalcFunctions = function(env, lyr, arcs) {
   var functions = Object.keys(new FeatureCalculator().functions);
-  return functions.reduce(function(memo, fname) {
-    memo[fname] = MapShaper.getCalcFunction(fname, lyr, arcs);
-    return memo;
-  }, {});
+  functions.forEach(function(fname) {
+    env[fname] = MapShaper.getCalcFunction(fname, lyr, arcs);
+  });
 };
 
 MapShaper.getCalcFunction = function(fname, lyr, arcs) {

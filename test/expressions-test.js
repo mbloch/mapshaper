@@ -20,50 +20,25 @@ describe('mapshaper-expressions.js', function () {
     })
   })
 
-  // Feature expressions are tested in field-calculator-test.js and filter-test.js
-  /*
-  describe('compileCalcExpression()', function() {
-    describe('data tests', function() {
+  describe('getBaseContext()', function () {
+    it('console is exposed', function () {
+      var env = api.internal.getBaseContext();
+      assert.strictEqual(env.console, console);
     })
 
-    describe('polygon tests', function() {
+    it('global properties are masked', function () {
+      var env = api.internal.getBaseContext();
+      assert.strictEqual(env.mapshaper, null);
+      assert.strictEqual(env.global, null);
+    })
+
+    it('build-in functions and libraries are not masked', function () {
+      var env = api.internal.getBaseContext();
+      assert.strictEqual(env.Math, undefined);
+      assert.strictEqual(env.parseInt, undefined);
+      assert.strictEqual(env.String, undefined);
     })
   })
-  */
 
-  describe('compileCalcExpression()', function () {
-    var nullArcs = new api.internal.ArcCollection([]),
-        records = [{foo: 4}, {foo: 0}, {foo: 3.5}, {foo: -0.5}, {foo: 3}];
-    var lyr = {
-      shapes: new Array(5),
-      data: new api.internal.DataTable(records)
-    };
-
-    it('sum()', function() {
-      var compiled = new api.internal.compileCalcExpression("sum('foo')")
-      assert.equal(compiled(lyr, nullArcs), 10);
-    })
-
-    it('average()', function() {
-      var compiled = new api.internal.compileCalcExpression("average('foo')")
-      assert.equal(compiled(lyr, nullArcs), 2);
-    })
-
-    it('median()', function() {
-      var compiled = new api.internal.compileCalcExpression("median('foo')")
-      assert.equal(compiled(lyr, nullArcs), 3);
-    })
-
-    it('max()', function() {
-      var compiled = new api.internal.compileCalcExpression("max('foo')")
-      assert.equal(compiled(lyr, nullArcs), 4);
-    })
-
-    it('min()', function() {
-      var compiled = new api.internal.compileCalcExpression("min('foo')")
-      assert.equal(compiled(lyr, nullArcs), -0.5);
-    })
-
-  })
 
 })

@@ -9,7 +9,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
   var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
       exp = MapShaper.validateExpression(rawExp),
       newFields = exp.match(RE_ASSIGNEE) || null,
-      env = {},
+      env = MapShaper.getBaseContext(),
       records,
       func;
 
@@ -18,7 +18,6 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
   }
   if (lyr.data) records = lyr.data.getRecords();
 
-  hideGlobals(env);
   env.$ = new FeatureExpressionContext(lyr, arcs);
   try {
     func = new Function("record,env", "with(env){with(record) { return " +
@@ -55,6 +54,18 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
   return compiled;
 };
 
+MapShaper.getBaseContext = function() {
+  var obj = {};
+  // Mask global properties (is this effective/worth doing?)
+  (function() {
+    for (var key in this) {
+      obj[key] = null;
+    }
+  }());
+  obj.console = console;
+  return obj;
+};
+
 MapShaper.validateExpression = function(exp) {
   exp = exp || '';
   return MapShaper.removeExpressionSemicolons(exp);
@@ -75,14 +86,6 @@ MapShaper.removeExpressionSemicolons = function(exp) {
   return exp;
 };
 
-function hideGlobals(obj) {
-  // Can hide global properties during expression evaluation this way
-  // (is this worth doing?)
-  for (var key in this) {
-    obj[key] = null;
-  }
-  obj.console = console;
-}
 
 function addGetters(obj, getters) {
   utils.forEach(getters, function(f, name) {
