@@ -4,11 +4,18 @@ mapshaper-dataset-utils
 mapshaper-filter
 */
 
+// Calculate an expression across a group of features, print and return the result
+// Supported functions include sum(), average(), max(), min(), median(), count()
+// Functions receive a field name or a feature expression (like the -each command)
+// Examples: 'sum("$.area")' 'min(income)'
+// opts.expression  Expression to evaluate
+// opts.where  Optional filter expression (like -filter command)
+//
 api.calc = function(lyr, arcs, opts) {
-  var result,
-      msg = 'calc ' + opts.expression;
+  var msg = 'calc ' + opts.expression,
+      result;
   if (opts.where) {
-    // TODO: implement no_replace option for filter(), instead of this
+    // TODO: implement no_replace option for filter() instead of this
     lyr = {
       shapes: lyr.shapes,
       data: lyr.data
@@ -21,15 +28,13 @@ api.calc = function(lyr, arcs, opts) {
   return result;
 };
 
-// Calculate expressions like 'sum(field)' or '_.sum(field)' and return results like: {sum: 14}
-//
 MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
   var calc = MapShaper.compileCalcExpression(exp);
   return calc(lyr, arcs);
 };
 
-// Return a function to evaluate expressions like 'sum(field) > 100'
-// (used by mapshaper-subdivide and mapshaper-calc)
+// Return a function to evaluate a calc expression
+// (also used by mapshaper-subdivide.js)
 MapShaper.compileCalcExpression = function(exp) {
   return function(lyr, arcs) {
     var env = MapShaper.getCalcExpressionContext(lyr, arcs),
