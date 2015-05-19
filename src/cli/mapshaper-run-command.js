@@ -193,37 +193,6 @@ MapShaper.applyCommand = function(func, targetLayers) {
   }, []);
 };
 
-api.exportFiles = function(dataset, opts) {
-  var exports = MapShaper.exportFileContent(dataset, opts);
-  if (exports.length > 0 === false) {
-    message("No files to save");
-  } else if (opts.stdout) {
-    cli.writeFile('/dev/stdout', exports[0].content);
-  } else {
-    var paths = MapShaper.getOutputPaths(utils.pluck(exports, 'filename'), opts);
-    exports.forEach(function(obj, i) {
-      var path = paths[i];
-      cli.writeFile(path, obj.content);
-      message("Wrote " + path);
-    });
-  }
-};
-
-api.importFiles = function(opts) {
-  var files = opts.files,
-      dataset;
-  if ((opts.merge_files || opts.combine_files) && files.length > 1) {
-    dataset = api.mergeFiles(files, opts);
-  } else if (files && files.length == 1) {
-    dataset = api.importFile(files[0], opts);
-  } else if (opts.stdin) {
-    dataset = api.importFile('/dev/stdin', opts);
-  } else {
-    error('[i] Missing content');
-  }
-  return dataset;
-};
-
 MapShaper.printLayerNames = function(layers) {
   var max = 10;
   message("Available layers:");

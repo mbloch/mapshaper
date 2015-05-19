@@ -269,7 +269,7 @@ Dbf.getStringWriterAscii = function() {
 };
 
 Dbf.getStringWriterEncoded = function(encoding) {
-  var iconv = MapShaper.requireConversionLib(encoding);
+  var iconv = require('iconv-lite');
   return function(val) {
     var buf = iconv.encode(val, encoding);
     return BinArray.toArrayBuffer(buf);

@@ -1,56 +1,50 @@
 /* @requires mapshaper-data-table */
 
-// Import a dbf file or a delimited text file
-//
-MapShaper.importDataFile = function(fname, opts) {
-  var lyr;
-  if (utils.endsWith(fname.toLowerCase(), '.dbf')) {
-    lyr = MapShaper.importDbfFile(fname, opts);
-  } else {
-    // assume delimited text file
-    // some unsupported file types can be caught earlier, e.g. by checking
-    // filename extension during option validation.
-    lyr = MapShaper.importDelimFile(fname, opts);
-  }
-  return lyr;
-};
-
-MapShaper.importDbfFile = function(path, opts) {
-  cli.checkFileExists(path);
-  return MapShaper.importDbfTable(cli.readFile(path), opts);
-};
-
-MapShaper.importDbfTable = function(buf, opts) {
+MapShaper.importDelim = function(str, opts) {
+  var delim = MapShaper.guessDelimiter(str);
   return {
-    data: new ShapefileTable(buf, opts && opts.encoding)
-  };
-};
-
-MapShaper.importDelimFile = function(path, opts) {
-  var data;
-  cli.checkFileExists(path);
-  try {
-    data = MapShaper.importDelimTable(cli.readFile(path, 'utf-8'), opts);
-  } catch(e) {
-    stop("Unable to import file:", path);
-  }
-  return data;
-};
-
-MapShaper.importDelimTable = function(str, opts) {
-  var delim = MapShaper.guessDelimiter(str),
-      records = require("./lib/d3/d3-dsv.js").dsv(delim).parse(str);
-  if (records.length === 0) {
-    throw new Error();
-  }
-
-  MapShaper.adjustRecordTypes(records, opts && opts.field_types);
-  return {
-    data: new DataTable(records),
+    layers: [{
+      data: MapShaper.importDelimTable(str, delim, opts)
+    }],
     info: {
-      delimiter: delim
+      input_delimiter: delim
     }
   };
+};
+
+MapShaper.importDelimTable = function(str, delim, opts) {
+  var records = require("./lib/d3/d3-dsv.js").dsv(delim).parse(str);
+  if (records.length === 0) {
+    stop("[dsv] Unable to read any records");
+  }
+  MapShaper.adjustRecordTypes(records, opts && opts.field_types);
+  return new DataTable(records);
+};
+
+MapShaper.exportDelim = function(dataset, opts) {
+  var delim = opts.delimiter || dataset.info.input_delimiter || ',',
+      ext = MapShaper.getDelimFileExtension(delim);
+  return dataset.layers.map(function(lyr) {
+    return {
+      content: MapShaper.exportDelimTable(lyr, delim),
+      filename: (lyr.name || 'output') + '.' + ext
+    };
+  });
+};
+
+MapShaper.exportDelimTable = function(lyr, delim) {
+  var dsv = require("./lib/d3/d3-dsv.js").dsv(delim);
+  return dsv.format(lyr.data.getRecords());
+};
+
+MapShaper.getDelimFileExtension = function(delim) {
+  var ext = 'txt';
+  if (delim == '\t') {
+    ext = 'tsv';
+  } else if (delim == ',') {
+    ext = 'csv';
+  }
+  return ext;
 };
 
 // Accept a type hint from a header like "FIPS:str"

@@ -3,7 +3,8 @@ mapshaper-geom,
 shp-reader,
 dbf-reader,
 mapshaper-path-import,
-mapshaper-path-export
+mapshaper-path-export,
+mapshaper-dbf-table
 */
 
 MapShaper.translateShapefileType = function(shpType) {
@@ -69,36 +70,9 @@ MapShaper.importShp = function(src, opts) {
 
 // Convert topological data to buffers containing .shp and .shx file data
 MapShaper.exportShapefile = function(dataset, opts) {
-  var files = [];
-  dataset.layers.forEach(function(layer) {
-    var data = layer.data,
-        name = layer.name,
-        obj, dbf;
-    T.start();
-    obj = MapShaper.exportShpAndShx(layer, dataset.arcs);
-    T.stop("Export .shp file");
-    T.start();
-    data = layer.data;
-    // create empty data table if missing a table or table is being cut out
-    if (!data || opts.cut_table || opts.drop_table) {
-      data = new DataTable(layer.shapes.length);
-    }
-    // dbfs should have at least one column; add id field if none
-    if (data.getFields().length === 0) {
-      data.addIdField();
-    }
-    dbf = data.exportAsDbf(opts.encoding);
-    T.stop("Export .dbf file");
-    files.push({
-        content: obj.shp,
-        filename: name + ".shp"
-      }, {
-        content: obj.shx,
-        filename: name + ".shx"
-      }, {
-        content: dbf,
-        filename: name + ".dbf"
-      });
+  return dataset.layers.reduce(function(files, lyr) {
+    files = files.concat(MapShaper.exportShpAndShxFiles(lyr, dataset, opts));
+    files = files.concat(MapShaper.exportDbfFile(lyr, dataset, opts));
 
     // Copy prj file, if Shapefile import and running in Node.
     if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
@@ -106,17 +80,16 @@ MapShaper.exportShapefile = function(dataset, opts) {
       if (cli.isFile(prjFile)) {
         files.push({
           content: cli.readFile(prjFile, 'utf-8'),
-          filename: name + ".prj"
+          filename: lyr.name + ".prj"
         });
       }
     }
-  });
-  return files;
+    return files;
+  }, []);
 };
 
-MapShaper.exportShpAndShx = function(layer, arcData) {
+MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {
   var geomType = layer.geometry_type;
-
   var shpType = MapShaper.getShapefileType(geomType);
   if (shpType === null) {
     error("[exportShpAndShx()] Unable to export geometry type:", geomType);
@@ -125,7 +98,7 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
   var fileBytes = 100;
   var bounds = new Bounds();
   var shapeBuffers = layer.shapes.map(function(shape, i) {
-    var pathData = MapShaper.exportPathData(shape, arcData, geomType);
+    var pathData = MapShaper.exportPathData(shape, dataset.arcs, geomType);
     var rec = MapShaper.exportShpRecord(pathData, i+1, shpType);
     fileBytes += rec.buffer.byteLength;
     if (rec.bounds) bounds.mergeBounds(rec.bounds);
@@ -171,9 +144,13 @@ MapShaper.exportShpAndShx = function(layer, arcData) {
     shpBin.writeBuffer(buf);
   });
 
-  var shxBuf = shxBin.buffer(),
-      shpBuf = shpBin.buffer();
-  return {shp: shpBuf, shx: shxBuf};
+  return [{
+      content: shpBin.buffer(),
+      filename: layer.name + ".shp"
+    }, {
+      content: shxBin.buffer(),
+      filename: layer.name + ".shx"
+    }];
 };
 
 // Returns an ArrayBuffer containing a Shapefile record for one shape

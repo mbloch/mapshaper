@@ -1,64 +1,47 @@
 /* @requires mapshaper-common, mapshaper-geojson, mapshaper-topojson, mapshaper-shapefile */
 
-// Parse content of an input file and return a dataset
-// @content: Buffer, ArrayBuffer, String or Object
-// @filename: path or filename (optional)
+// Parse content of one or more input files and return a dataset
+// @obj: file data, indexed by file type
+// File data objects have two properties:
+//    content: Buffer, ArrayBuffer, String or Object
+//    filename: String or null
 //
-MapShaper.importFileContent = function(content, filename, opts) {
-  var fileFmt, dataset, lyr;
-  T.start();
+MapShaper.importContent = function(obj, opts) {
+  var dataset, content, fileFmt, data;
   opts = opts || {};
-
-  // Identify file format
-  fileFmt = opts.format || null;
-  if (!fileFmt && filename) {
-    fileFmt = MapShaper.guessInputFileFormat(filename);
-  }
-  if (!fileFmt && utils.isString(content)) {
-    if (MapShaper.stringIsJsonObject(content)) {
+  if (obj.json) {
+    data = obj.json;
+    content = data.content;
+    if (utils.isString(content)) {
       content = JSON.parse(content);
-    } else {
-      // Assuming strings that aren't JSON objects are delimited text
-      fileFmt = 'dsv';
     }
-  }
-  if (!fileFmt && utils.isObject(content)) {
-    // Assuming json content... but what kind?
     if (content.type == 'Topology') {
       fileFmt = 'topojson';
+      dataset = MapShaper.importTopoJSON(content, opts);
     } else if (content.type) {
       fileFmt = 'geojson';
+      dataset = MapShaper.importGeoJSON(content, opts);
     }
+  } else if (obj.text) {
+    fileFmt = 'dsv';
+    data = obj.text;
+    dataset = MapShaper.importDelim(data.content, opts);
+  } else if (obj.shp) {
+    fileFmt = 'shapefile';
+    data = obj.shp;
+    dataset = MapShaper.importShapefile(obj, opts);
+  } else if (obj.dbf) {
+    fileFmt = 'dbf';
+    data = obj.dbf;
+    dataset = MapShaper.importDbf(obj, opts);
   }
 
-  // Input content to a dataset
-  if (fileFmt == 'shapefile') {
-    dataset = MapShaper.importShp(content, opts);
-  } else if (fileFmt == 'topojson') {
-    dataset = MapShaper.importTopoJSON(content, opts);
-  } else if (fileFmt == 'geojson') {
-    dataset = MapShaper.importGeoJSON(content, opts);
-  } else if (fileFmt == 'dsv') {
-    lyr = MapShaper.importDelimTable(content, opts);
-    dataset = {
-      layers: [{data: lyr.data}],
-      info: {input_delimiter: lyr.info.delimiter} // kludge
-    };
-  } else if (fileFmt == 'dbf') {
-    lyr = MapShaper.importDbfTable(content, opts);
-    dataset = {
-      layers: [{data: lyr.data}],
-      info: {}
-    };
-  } else if (fileFmt) {
-    stop("Unsupported file format:", fileFmt);
-  } else {
-    stop("Unable to determine format of input file" + (filename ? " [" + filename + "]" : ""));
+  if (!dataset) {
+    stop("Missing an expected input type");
   }
-  T.stop("Import " + fileFmt);
 
   // Convert to topological format, if needed
-  if (fileFmt != 'topojson' && !opts.no_topology) {
+  if (dataset.arcs && !opts.no_topology && fileFmt != 'topojson') {
     T.start();
     api.buildTopology(dataset);
     T.stop("Process topology");
@@ -66,16 +49,49 @@ MapShaper.importFileContent = function(content, filename, opts) {
 
   // Use file basename for layer name, except TopoJSON, which uses object names
   if (fileFmt != 'topojson') {
-    MapShaper.setLayerName(dataset.layers[0], MapShaper.filenameToLayerName(filename || ''));
+    MapShaper.setLayerName(dataset.layers[0], MapShaper.filenameToLayerName(data.filename || ''));
   }
 
-  // Add info on input filename and format to the dataset -- useful when exporting
-  //   if format or name has not been specified
-  if (filename) {
-    dataset.info.input_files = [filename];
+  // Add input filename and format to the dataset's 'info' object
+  // (this is useful when exporting if format or name has not been specified.)
+  if (data.filename) {
+    dataset.info.input_files = [data.filename];
   }
   dataset.info.input_format = fileFmt;
+
   return dataset;
+};
+
+// Deprecated (included for compatibility with older tests)
+MapShaper.importFileContent = function(content, filename, opts) {
+  var type = MapShaper.guessInputFileType(filename, content),
+      input = {};
+  input[type] = {filename: filename, content: content};
+  return MapShaper.importContent(input, opts);
+};
+
+MapShaper.importShapefile = function(obj, opts) {
+  var dataset = MapShaper.importShp(obj.shp.content, opts);
+  var dbf;
+  if (obj.dbf) {
+    dbf = MapShaper.importDbf(obj, opts);
+    utils.extend(dataset.info, dbf.info);
+    dataset.layers[0].data = dbf.layers[0].data;
+  }
+  return dataset;
+};
+
+MapShaper.importDbf = function(obj, opts) {
+  var table;
+  opts = utils.extend({}, opts);
+  if (obj.cpg && !opts.encoding) {
+    opts.encoding = obj.cpg.content;
+  }
+  table = MapShaper.importDbfTable(obj.dbf.content, opts);
+  return {
+    info: {dbf_encoding: table.encoding},
+    layers: [{data: table}]
+  };
 };
 
 MapShaper.filenameToLayerName = function(path) {
@@ -85,18 +101,6 @@ MapShaper.filenameToLayerName = function(path) {
     name = obj.basename;
   }
   return name;
-};
-
-
-MapShaper.importDataTable = function(table) {
-  return {
-    info: {},
-    layers: [{
-      name: "",
-      data: table,
-      geometry_type: null
-    }]
-  };
 };
 
 // initialize layer name using filename

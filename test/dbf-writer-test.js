@@ -4,6 +4,10 @@ var api = require('../'),
     Node = api.internal.Node,
     Utils = api.utils;
 
+function importRecords(buf, encoding) {
+  return api.internal.importDbfTable(buf, {encoding: encoding}).getRecords();
+}
+
 describe('dbf-writer.js', function () {
 
   describe('Dbf#getFieldInfo()', function () {
@@ -107,28 +111,28 @@ describe('dbf-writer.js', function () {
     it('10-letter field names are preserved', function() {
       var records = [{abcdefghij: 'foo'}];
       var buf = Dbf.exportRecords(records);
-      var records2 = Dbf.importRecords(buf);
+      var records2 = importRecords(buf);
       assert.deepEqual(records2, records);
     })
 
     it('11-letter field names are truncated', function() {
       var records = [{abcdefghijk: 'foo'}];
       var buf = Dbf.exportRecords(records);
-      var records2 = Dbf.importRecords(buf);
+      var records2 = importRecords(buf);
       assert.deepEqual(records2, [{abcdefghij: 'foo'}]);
     })
 
     it('field name conflicts caused by truncation are resolved', function() {
       var records = [{abcdefghijk: 'foo', abcdefghij: 'bar'}];
       var buf = Dbf.exportRecords(records);
-      var records2 = Dbf.importRecords(buf);
+      var records2 = importRecords(buf);
       assert.deepEqual(records2, [{abcdefgh_1: 'foo', abcdefghij: 'bar'}]);
     })
 
     it('field name conflicts caused by truncation are resolved 2', function() {
       var records = [{abcdefghij: 'bar', abcdefghijk: 'foo'}];
       var buf = Dbf.exportRecords(records);
-      var records2 = Dbf.importRecords(buf);
+      var records2 = importRecords(buf);
       assert.deepEqual(records2, [{abcdefgh_1: 'foo', abcdefghij: 'bar'}]);
     })
 
@@ -140,7 +144,7 @@ describe('dbf-writer.js', function () {
         abcdefgh_2: 'd'
       }];
       var buf = Dbf.exportRecords(records);
-      var records2 = Dbf.importRecords(buf);
+      var records2 = importRecords(buf);
       assert.deepEqual(records2, [{
         abcdefghij: 'a',
         abcdefgh_1: 'b',
@@ -157,7 +161,7 @@ describe('dbf-writer.js', function () {
       ];
 
       var buf = Dbf.exportRecords(records);
-      var records2 = Dbf.importRecords(buf);
+      var records2 = importRecords(buf);
       assert.deepEqual(records2, records);
     })
 
@@ -167,7 +171,7 @@ describe('dbf-writer.js', function () {
         {a: new Date(Date.UTC(1900, 11, 31))}
       ];
       var buf = Dbf.exportRecords(records);
-      var records2 = Dbf.importRecords(buf);
+      var records2 = importRecords(buf);
       assert.deepEqual(records2, records);
     })
 
@@ -179,13 +183,13 @@ describe('dbf-writer.js', function () {
       ];
 
       var buf = Dbf.exportRecords(records);
-      var records2 = Dbf.importRecords(buf);
+      var records2 = importRecords(buf);
       assert.deepEqual(records2, records);
     })
 
     it('empty table', function() {
       var records = [];
-      var records2 = Dbf.importRecords(Dbf.exportRecords(records));
+      var records2 = importRecords(Dbf.exportRecords(records));
       assert.deepEqual(records2, records);
     })
 
@@ -194,7 +198,7 @@ describe('dbf-writer.js', function () {
       var records = [{a: " moon\n"},
           {a:" \tstars "}];
       var buf = Dbf.exportRecords(records, 'ascii');
-      var records2 = Dbf.importRecords(buf, 'ascii');
+      var records2 = importRecords(buf, 'ascii');
       assert.deepEqual(records2, [{a:"moon"}, {a:"stars"}]);
     })
 
@@ -202,7 +206,7 @@ describe('dbf-writer.js', function () {
       var records = [{a: "Peçeña México"},
           {a:"Neuchâtel Baden-Württemberg La Gruyère"}];
       var buf = Dbf.exportRecords(records, 'latin1');
-      var records2 = Dbf.importRecords(buf, 'latin1');
+      var records2 = importRecords(buf, 'latin1');
       // blanks are removed
       assert.deepEqual(records2, records);
     })
@@ -213,7 +217,7 @@ describe('dbf-writer.js', function () {
         {a: "", b: "foo.;\""}
       ];
       var buf = Dbf.exportRecords(records, 'gbk');
-      var records2 = Dbf.importRecords(buf, 'gbk');
+      var records2 = importRecords(buf, 'gbk');
       assert.deepEqual(records2, records);
     })
 
@@ -223,7 +227,7 @@ describe('dbf-writer.js', function () {
         {a: "繁體.", b: ""}
       ];
       var buf = Dbf.exportRecords(records, 'utf8');
-      var records2 = Dbf.importRecords(buf, 'utf8');
+      var records2 = importRecords(buf, 'utf8');
       assert.deepEqual(records2, records);
     })
 
@@ -235,7 +239,7 @@ describe('dbf-writer.js', function () {
         {a: "English words and punctuation,;.-'\""}
       ];
       var buf = Dbf.exportRecords(records, 'shiftjis');
-      var records2 = Dbf.importRecords(buf, 'shiftjis');
+      var records2 = importRecords(buf, 'shiftjis');
       assert.deepEqual(records2, records);
     })
 

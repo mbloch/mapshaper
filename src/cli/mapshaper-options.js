@@ -118,11 +118,13 @@ MapShaper.getOptionParser = function() {
       type: "flag",
       describe: "let output files overwrite existing files"
     })
-    /*
     .option("encoding", {
-      describe: "text encoding of .dbf file"
-    })*/
-
+      describe: "text encoding of output dbf file"
+    })
+    .option("ldid", {
+      // describe: "language driver id of dbf file",
+      type: "number"
+    })
     .option("bbox-index", {
       describe: "export a .json file with bbox of each layer",
       type: 'flag'

@@ -27,7 +27,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
   }
 
   if (obj.type != 'FeatureCollection' && obj.type != 'GeometryCollection') {
-    error("[importGeoJSON()] Unsupported GeoJSON type:", obj.type);
+    stop("[importGeoJSON()] Unsupported GeoJSON type:", obj.type);
   }
 
   var properties = null, geometries;

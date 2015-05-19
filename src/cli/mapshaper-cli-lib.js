@@ -2,6 +2,7 @@
 mapshaper-cli-utils
 mapshaper-file-types
 mapshaper-commands
+mapshaper-encodings
 */
 
 var cli = api.cli = {};
@@ -32,9 +33,18 @@ cli.isDirectory = function(path) {
   return ss && ss.isDirectory() || false;
 };
 
-// @charset (optional) e.g. 'utf8'
-cli.readFile = function(fname, charset) {
-  return require('rw').readFileSync(fname, charset || void 0);
+// @encoding (optional) e.g. 'utf8'
+cli.readFile = function(fname, encoding) {
+  var rw = require('rw'),
+      content;
+  if (!encoding) {
+    content = rw.readFileSync(fname);
+  } else if (MapShaper.standardizeEncodingName(encoding) == 'utf8') {
+    content = rw.readFileSync(fname, 'utf-8');
+  } else {
+    content = MapShaper.decodeString(rw.readFileSync(fname), encoding);
+  }
+  return content;
 };
 
 // @content Buffer, ArrayBuffer or string
@@ -91,8 +101,10 @@ cli.validateInputFile = function(ifile) {
   return ifile;
 };
 
+// TODO: rename and improve
+// Want to test if a path is something readable (e.g. file or stdin)
 cli.checkFileExists = function(path) {
-  if (!cli.isFile(path)) {
+  if (!cli.isFile(path) && path != '/dev/stdin') {
     stop("File not found (" + path + ")");
   }
 };

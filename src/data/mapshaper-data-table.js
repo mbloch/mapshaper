@@ -99,46 +99,5 @@ var dataTableProto = {
 
 utils.extend(DataTable.prototype, dataTableProto);
 
-// Implements the DataTable api for DBF file data.
-// We avoid touching the raw DBF field data if possible. This way, we don't need
-// to parse the DBF at all in common cases, like importing a Shapefile, editing
-// just the shapes and exporting in Shapefile format.
-//
-function ShapefileTable(buf, encoding) {
-  encoding = encoding || 'ascii';
-  var reader = new DbfReader(buf, encoding);
-  var table;
-
-  function getTable() {
-    if (!table) {
-      // export DBF records on first table access
-      table = new DataTable(reader.readRows());
-      reader = null;
-      buf = null; // null out references to DBF data for g.c.
-    }
-    return table;
-  }
-
-  this.exportAsDbf = function(encoding) {
-    // export original dbf string if records haven't been touched.
-    return buf || table.exportAsDbf(encoding);
-  };
-
-  this.getRecords = function() {
-    return getTable().getRecords();
-  };
-
-  this.getFields = function() {
-    return reader ? utils.pluck(reader.header.fields, 'name') : table.getFields();
-  };
-
-  this.size = function() {
-    return reader ? reader.recordCount : table.size();
-  };
-}
-
-utils.extend(ShapefileTable.prototype, dataTableProto);
-
 // export for testing
 MapShaper.DataTable = DataTable;
-MapShaper.ShapefileTable = ShapefileTable;

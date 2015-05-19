@@ -1,27 +1,47 @@
 /* @requires
 mapshaper-import
-mapshaper-table-import
+mapshaper-dbf-table
 */
 
-api.importFile = function(path, opts) {
-  var content, dataset;
-  cli.checkFileExists(path);
-  opts = opts || {};
-  content = cli.readFile(path, MapShaper.isBinaryFile(path) ? null : 'utf-8');
-  dataset = MapShaper.importFileContent(content, path, opts);
-  if (dataset.info.input_format == 'shapefile') {
-    dataset.layers[0].data = MapShaper.importShapefileDataTable(path, opts);
+api.importFiles = function(opts) {
+  var files = opts.files,
+      dataset;
+  if ((opts.merge_files || opts.combine_files) && files.length > 1) {
+    dataset = api.mergeFiles(files, opts);
+  } else if (files && files.length == 1) {
+    dataset = api.importFile(files[0], opts);
+  } else if (opts.stdin) {
+    dataset = api.importFile('/dev/stdin', opts);
+  } else {
+    error('[i] Missing content');
   }
   return dataset;
 };
 
-MapShaper.importShapefileDataTable = function(shpPath, opts) {
-  var dbfPath = utils.replaceFileExtension(shpPath, 'dbf');
-  var table = null;
-  if (cli.isFile(dbfPath)) {
-    table = MapShaper.importDbfFile(dbfPath, opts).data;
-  } else {
-    message(utils.format("[%s] .dbf file is missing -- shapes imported without attribute data.", shpPath));
+api.importFile = function(path, opts) {
+  cli.checkFileExists(path);
+  var isBinary = MapShaper.isBinaryFile(path),
+      textEncoding = isBinary ? null : opts && opts.encoding || 'utf-8',
+      content = cli.readFile(path, textEncoding),
+      type = MapShaper.guessInputFileType(path, content),
+      obj = {};
+  obj[type] = {filename: path, content: content};
+  if (type == 'shp' || type == 'dbf') {
+    MapShaper.readShapefileAuxFiles(path, obj);
   }
-  return table;
+  if (type == 'shp' && !obj.dbf) {
+    message(utils.format("[%s] .dbf file is missing -- shapes imported without attribute data.", path));
+  }
+  return MapShaper.importContent(obj, opts);
+};
+
+MapShaper.readShapefileAuxFiles = function(path, obj) {
+  var dbfPath = utils.replaceFileExtension(path, 'dbf');
+  var cpgPath = utils.replaceFileExtension(path, 'cpg');
+  if (!obj.dbf && cli.isFile(dbfPath)) {
+    obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath)};
+  }
+  if (obj.dbf && cli.isFile(cpgPath)) {
+    obj.cpg = {filename: cpgPath, content: cli.readFile(cpgPath, 'utf-8').trim()};
+  }
 };

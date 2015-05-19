@@ -43,12 +43,12 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
-        fmt = MapShaper.guessInputFileFormat(name),
+        isBinary = MapShaper.isBinaryFile(name),
         reader = new FileReader();
     reader.onload = function(e) {
       inputFileContent(name, reader.result);
     };
-    if (MapShaper.isBinaryFile(name)) {
+    if (isBinary) {
       reader.readAsArrayBuffer(file);
     } else {
       reader.readAsText(file, 'UTF-8');
@@ -59,52 +59,49 @@ function ImportControl(editor) {
   // e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
   var fileIndex = {}; //
   function inputFileContent(path, content) {
-    var fileInfo = utils.parseLocalPath(path),
-        pathbase = fileInfo.pathbase,
-        ext = fileInfo.extension.toLowerCase(),
-        fname = fileInfo.filename,
-        index = fileIndex[pathbase],
-        data;
+    var basename = utils.getFileBase(path),
+        index = fileIndex[basename] || (fileIndex[basename] = {}),
+        type = MapShaper.guessInputFileType(path),
+        inputOpts, input, data;
 
-    if (!index) {
-      index = fileIndex[pathbase] = {};
-    }
-    if (ext in index) {
-      verbose("inputFileContent() File has already been imported; skipping:", fname);
+    if (index[type]) {
+      verbose("File has already been imported; skipping:", path);
       return;
     }
-    if (ext == 'shp' || /json$/.test(ext)) {
-      var opts = {
-        files: [fname],
+    if (type == 'shp' || type == 'json') {
+      T.start("Start timing");
+      inputOpts = {
+        files: [path],
         precision: precisionInput.value(),
         auto_snap: !!El("#g-snap-points-opt").node().checked
       };
-      T.start("Start timing");
-      data = MapShaper.importFileContent(content, path, opts);
-      MapShaper.setLayerName(data.layers[0], fname);
-      editor.addData(data, opts);
+      input = {};
+      input[type] = {
+        content: content,
+        filename: path
+      };
+      data = MapShaper.importContent(input, inputOpts);
+      editor.addData(data, inputOpts);
       T.stop("Done importing");
-
-    } else if (ext == 'dbf') {
-      data = new ShapefileTable(content);
+    } else if (type == 'dbf') {
+      // TODO: detect dbf encoding instead of using ascii
+      // (Currently, records are read if Shapefile is converted to *JSON).
+      data = new ShapefileTable(content, 'ascii');
       // TODO: validate table (check that record count matches, etc)
-      if ('shp' in index) {
+      if (index.shp) {
         index.shp.layers[0].data = data;
       }
     } else {
-      return; // ignore unsupported files
-      // error("inputFileContent() Unexpected file type:", path);
+      verbose("Unexpected file type: " + path + '; ignoring');
+      return;
     }
 
     // associate previously imported Shapefile files with a .shp file
     // TODO: accept .prj files and other Shapefile files
-    if (ext == 'shp') {
-      if ('dbf' in index) {
-        data.layers[0].data = index.dbf;
-      }
+    if (type == 'shp' && index.dbf) {
+      data.layers[0].data = index.dbf;
     }
-
-    index[ext] = data;
+    index[type] = data;
   }
 }
 

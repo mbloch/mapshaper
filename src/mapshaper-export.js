@@ -4,7 +4,8 @@ mapshaper-topojson
 mapshaper-shapefile
 mapshaper-dataset-utils
 mapshaper-rounding
-mapshaper-table-export
+mapshaper-delim-table
+mapshaper-dbf-table
 */
 
 // Return an array of objects with "filename" "filebase" "extension" and
@@ -56,8 +57,8 @@ MapShaper.exporters = {
   geojson: MapShaper.exportGeoJSON,
   topojson: MapShaper.exportTopoJSON,
   shapefile: MapShaper.exportShapefile,
-  dsv: MapShaper.exportAsDelim,
-  dbf: MapShaper.exportAsDbf
+  dsv: MapShaper.exportDelim,
+  dbf: MapShaper.exportDbf
 };
 
 MapShaper.getOutputFormat = function(dataset, opts) {

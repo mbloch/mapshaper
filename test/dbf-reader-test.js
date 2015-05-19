@@ -10,25 +10,20 @@ function fixPath(p) {
 }
 
 describe('dbf-reader.js', function () {
-  var s2 = "Peçeña México",
-      s3 = "简体国语",
-      s4 = "繁體國語",
-      s5 = "Neuchâtel Baden-Württemberg La Gruyère",
-      s6 = "ひたちなか市",
-      s7 = "西蒲原郡弥彦村",
-      ascii = Utils.repeat(127, function(i) {return String.fromCharCode(i+1)}).join('');
+  // "Neuchâtel Baden-Württemberg La Gruyère"
 
-  function readRows(path, encoding) {
-    path = "test_data/" + path;
-    var reader = new api.internal.DbfReader(fixPath(path), encoding);
-    return reader.readRows();
+  function importRecords(path, encoding) {
+    path = fixPath("test_data/" + path);
+    var opts = encoding ? {encoding: encoding} : undefined;
+    var dataset = api.importFile(path, opts);
+    return dataset.layers[0].data.getRecords();
   }
 
   describe('Duplicate fields', function() {
 
     it ('Rename fields to avoid duplicate names', function() {
       // renamed fields may exceed 10 characters; truncated if exported as Shapefile
-      var rows = readRows('dbf/duplicate_fields.dbf');
+      var rows = importRecords('dbf/duplicate_fields.dbf');
       var rec1 = {
         SP_ID: '2',
         geoid: '15003009703',
@@ -47,7 +42,7 @@ describe('dbf-reader.js', function () {
     })
 
     it ('Rename fields; asterisks in num field converted to NaN', function() {
-      var rows = readRows('dbf/duplicate_fields.dbf');
+      var rows = importRecords('dbf/duplicate_fields.dbf');
       var rec0 = {
         SP_ID: '1',
         geoid: '15003980600',
@@ -66,88 +61,115 @@ describe('dbf-reader.js', function () {
     })
   })
 
-  describe('#readRows', function () {
+  describe('#importRecords() w/ encoding', function () {
 
     it("latin1", function() {
-      assert.equal(readRows("dbf/latin1.dbf", 'latin1')[0].NAME, s2);
+      assert.equal(importRecords("dbf/latin1.dbf", 'latin1')[0].NAME, "Peçeña México");
     })
 
     it("gbk", function() {
-      assert.equal(readRows("dbf/gbk.dbf", 'gbk')[0].NAME, s3);
+      assert.equal(importRecords("dbf/gbk.dbf", 'gbk')[0].NAME, "简体国语");
     })
 
     it("big5", function() {
-      assert.equal(readRows("dbf/big5.dbf", 'big5')[0].NAME, s4);
+      assert.equal(importRecords("dbf/big5.dbf", 'big5')[0].NAME, "繁體國語");
     })
 
     it("gb2312", function() {
-      assert.equal(readRows("dbf/gb2312.dbf", 'gb2312')[0].NAME, s3);
+      assert.equal(importRecords("dbf/gb2312.dbf", 'gb2312')[0].NAME, "简体国语");
     })
 
     it("shiftjis", function() {
-      var records = readRows("dbf/shiftjis.dbf", 'shiftjis');
-      assert.equal(records[0].NAME, s6);
-      assert.equal(records[1].NAME, s7);
+      var records = importRecords("dbf/shiftjis.dbf", 'shiftjis');
+      assert.equal(records[0].NAME, "ひたちなか市");
+      assert.equal(records[1].NAME, "西蒲原郡弥彦村");
     })
 
     it("eucjp", function() {
-      var records = readRows("dbf/eucjp.dbf", 'eucjp');
-      assert.equal(records[0].NAME, s6);
-      assert.equal(records[1].NAME, s7);
+      var records = importRecords("dbf/eucjp.dbf", 'eucjp');
+      assert.equal(records[0].NAME, "ひたちなか市");
+      assert.equal(records[1].NAME, "西蒲原郡弥彦村");
     })
   })
 
-  describe("#getStringReader", function() {
-    function test(str, encoding) {
-      // TODO: rethink this... iconv roundtrip not a reliable test
-      var buf = iconv.encode(str, encoding),
-          bin = new api.internal.BinArray(buf),
-          reader = Dbf.getStringReader(buf.length, encoding);
-      return reader(bin);
-    }
-
-    it("ascii", function() {
-      assert.equal(test(ascii, 'ascii'), ascii);
+  describe('#importRecords() with .cpg file', function () {
+    it("big5", function() {
+      var records = importRecords("dbf/encodings/big5.dbf");
+      assert.equal(records[0].NAME, '國語')
     })
+
+    it("latin2", function() {
+      var records = importRecords("dbf/encodings/latin2.dbf");
+      assert.equal(records[0].NAME, 'čeština')
+    })
+
+    it("win874", function() {
+      var records = importRecords("dbf/encodings/win874.dbf");
+      assert.equal(records[0].NAME, 'ภาษาไทย')
+    })
+
+    it("win1251", function() {
+      var records = importRecords("dbf/encodings/win1251.dbf");
+      assert.equal(records[0].NAME, 'РУССКИЙ')
+    })
+
+    it("koi8r", function() {
+      var records = importRecords("dbf/encodings/koi8r.dbf");
+      assert.equal(records[0].NAME, 'русский')
+    })
+
+    it("shiftjis", function() {
+      var records = importRecords("dbf/encodings/shiftjis.dbf");
+      assert.equal(records[0].NAME, 'カタカナひらがな')
+    })
+
+    it("euckr", function() {
+      var records = importRecords("dbf/encodings/euckr.dbf");
+      assert.equal(records[0].NAME, '한국말')
+    })
+
+  })
+
+  describe('#importRecords(), detect encoding', function () {
 
     it("latin1", function() {
-      assert.equal(test(s2, 'latin1'), s2);
-      assert.equal(test(ascii, 'latin1'), ascii);
-    })
-
-    it("gbk", function() {
-      assert.equal(test(s3, 'gbk'), s3);
-      // assert.equal(test(s4, 'gbk'), s4); // ? why does traditional work?
-    })
-
-    it("gb2312", function() {
-      assert.equal(test(s3, 'gb2312'), s3);
-      // assert.equal(test(s4, 'gb2312'), s4); // ? why does traditional work?
-    })
-
-    it("big5", function() {
-      // assert.equal(test(s3, 'big5'), s3); // ? why does simplified work?
-      assert.equal(test(s4, 'big5'), s4);
+      assert.equal(importRecords("dbf/latin1.dbf")[0].NAME, "Peçeña México");
     })
 
     it("utf8", function() {
-      assert.equal(test(s2, 'utf8'), s2);
-      assert.equal(test(s3, 'utf8'), s3);
-      assert.equal(test(s4, 'utf8'), s4);
-      assert.equal(test(ascii, 'utf8'), ascii);
+      assert.equal(importRecords("dbf/utf8.dbf")[0].NAME, "国语國語");
     })
-  });
+
+    it("gbk not detected", function() {
+      assert.throws(function() {
+        importRecords("dbf/gbk.dbf");
+      })
+    })
+
+    it("big5 not detected", function() {
+      assert.throws(function() {
+        importRecords("dbf/big5.dbf");
+      })
+    })
+
+    it("shiftjis not detected", function() {
+      assert.throws(function() {
+        importRecords("dbf/shiftjis.dbf");
+      })
+    })
+  })
+
 
   describe('Bug## Empty string field hangs', function () {
     it('Read table with zero-length string fields, ascii', function () {
-      var rows = readRows('three_points.dbf');
+      var rows = importRecords('three_points.dbf');
       assert.equal(rows.length, 3);
       assert.equal(rows[0].comment, '');
       assert.equal(rows[0].subregion, '');
     })
 
     it('Read table with zero-length string fields, latin1', function () {
-      var rows = readRows('three_points.dbf', 'latin1');
+      var rows = importRecords('three_points.dbf', 'latin1');
       assert.equal(rows.length, 3);
       assert.equal(rows[0].comment, '');
       assert.equal(rows[0].subregion, '');

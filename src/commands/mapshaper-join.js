@@ -1,4 +1,4 @@
-/* @require mapshaper-common, mapshaper-expressions */
+/* @require mapshaper-common, mapshaper-expressions, mapshaper-dbf-table, mapshaper-delim-table */
 
 api.importJoinTable = function(file, opts) {
   if (!opts.keys || opts.keys.length != 2) {
@@ -12,8 +12,8 @@ api.importJoinTable = function(file, opts) {
     fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.field_types);
   }
   var importOpts = utils.defaults({field_types: fieldsWithTypeHints}, opts);
-  var lyr = MapShaper.importDataFile(file, importOpts);
-  return lyr.data;
+  var dataset = api.importFile(file, importOpts);
+  return dataset.layers[0].data;
 };
 
 api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
@@ -38,6 +38,7 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
   MapShaper.joinTables(lyr.data, destKey, joinFields, srcTable, srcKey,
       joinFields);
 };
+
 
 // Join fields from src table to dest table, using values in src and dest key fields
 // Returns number of records in dest that receive data from src
