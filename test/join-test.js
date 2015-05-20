@@ -15,7 +15,7 @@ describe('mapshaper-join.js', function () {
   describe('-join command', function () {
     it('test1', function (done) {
       var shp = "test/test_data/two_states.shp";
-      var csv = "test/test_data/states.csv";
+      var csv = "test/test_data/text/states.csv";
       var cmd = api.utils.format("-i %s -join %s keys=FIPS,STATE_FIPS:str fields=POP2010,SUB_REGION", shp, csv),
           target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
           {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
@@ -112,7 +112,7 @@ describe('mapshaper-join.js', function () {
       var opts = {
         keys: ['STFIPS', 'FIPS']
       };
-      var table = api.importJoinTable(fixPath("test_data/two_states.csv"), opts);
+      var table = api.importJoinTable(fixPath("test_data/text/two_states.csv"), opts);
       assert.strictEqual(table.getRecords()[0].FIPS, 41)
     })
 
@@ -121,7 +121,7 @@ describe('mapshaper-join.js', function () {
         fields: ['LAT:str'],
         keys: ['STFIPS', 'FIPS:str']
       };
-      var table = api.importJoinTable(fixPath("test_data/two_states.csv"), opts);
+      var table = api.importJoinTable(fixPath("test_data/text/two_states.csv"), opts);
       assert.strictEqual(table.getRecords()[0].FIPS, '41')
       assert.strictEqual(table.getRecords()[0].LAT, '43.94')
     })
@@ -132,12 +132,10 @@ describe('mapshaper-join.js', function () {
         keys: ['STFIPS', 'FIPS'],
         field_types: ['LAT:str', 'FIPS:str']
       };
-      var table = api.importJoinTable(fixPath("test_data/two_states.csv"), opts);
+      var table = api.importJoinTable(fixPath("test_data/text/two_states.csv"), opts);
       assert.strictEqual(table.getRecords()[0].FIPS, '41')
       assert.strictEqual(table.getRecords()[0].LAT, '43.94')
     })
-
-
   })
 
   describe('joinTables()', function () {
@@ -157,6 +155,5 @@ describe('mapshaper-join.js', function () {
       assert.deepEqual(table1.getRecords(), [{foo: 5, bar: 'a', baz: 'pumpkin'},
             {foo: 3, bar: 'b', baz: null}]);
     })
-
   })
 })

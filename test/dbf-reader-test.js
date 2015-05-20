@@ -61,7 +61,7 @@ describe('dbf-reader.js', function () {
     })
   })
 
-  describe('#importRecords() w/ encoding', function () {
+  describe('#importRecords() w/ user-specified encoding', function () {
 
     it("latin1", function() {
       assert.equal(importRecords("dbf/latin1.dbf", 'latin1')[0].NAME, "Peçeña México");
@@ -94,37 +94,37 @@ describe('dbf-reader.js', function () {
 
   describe('#importRecords() with .cpg file', function () {
     it("big5", function() {
-      var records = importRecords("dbf/encodings/big5.dbf");
+      var records = importRecords("dbf/cpg/big5.dbf");
       assert.equal(records[0].NAME, '國語')
     })
 
     it("latin2", function() {
-      var records = importRecords("dbf/encodings/latin2.dbf");
+      var records = importRecords("dbf/cpg/latin2.dbf");
       assert.equal(records[0].NAME, 'čeština')
     })
 
     it("win874", function() {
-      var records = importRecords("dbf/encodings/win874.dbf");
+      var records = importRecords("dbf/cpg/win874.dbf");
       assert.equal(records[0].NAME, 'ภาษาไทย')
     })
 
     it("win1251", function() {
-      var records = importRecords("dbf/encodings/win1251.dbf");
+      var records = importRecords("dbf/cpg/win1251.dbf");
       assert.equal(records[0].NAME, 'РУССКИЙ')
     })
 
     it("koi8r", function() {
-      var records = importRecords("dbf/encodings/koi8r.dbf");
+      var records = importRecords("dbf/cpg/koi8r.dbf");
       assert.equal(records[0].NAME, 'русский')
     })
 
     it("shiftjis", function() {
-      var records = importRecords("dbf/encodings/shiftjis.dbf");
+      var records = importRecords("dbf/cpg/shiftjis.dbf");
       assert.equal(records[0].NAME, 'カタカナひらがな')
     })
 
     it("euckr", function() {
-      var records = importRecords("dbf/encodings/euckr.dbf");
+      var records = importRecords("dbf/cpg/euckr.dbf");
       assert.equal(records[0].NAME, '한국말')
     })
 

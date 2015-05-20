@@ -58,7 +58,6 @@ describe('stdin/stdout tests', function() {
 })
 
 
-
 describe('mapshaper-commands.js', function () {
 
   var states_shp = fixPath("test_data/two_states.shp"),
