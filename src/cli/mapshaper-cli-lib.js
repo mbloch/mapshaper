@@ -36,13 +36,9 @@ cli.isDirectory = function(path) {
 // @encoding (optional) e.g. 'utf8'
 cli.readFile = function(fname, encoding) {
   var rw = require('rw'),
-      content;
-  if (!encoding) {
-    content = rw.readFileSync(fname);
-  } else if (MapShaper.standardizeEncodingName(encoding) == 'utf8') {
-    content = rw.readFileSync(fname, 'utf-8');
-  } else {
-    content = MapShaper.decodeString(rw.readFileSync(fname), encoding);
+      content = rw.readFileSync(fname);
+  if (encoding) {
+    content = MapShaper.decodeString(content, encoding);
   }
   return content;
 };

@@ -1896,9 +1896,7 @@ api.printError = function(err) {
 
 // Handle an error caused by invalid input or misuse of API
 function stop() {
-  var message = utils.toArray(arguments).join(' ');
-  var err = new APIError(message);
-  throw err;
+  throw new APIError(MapShaper.formatArgs(arguments));
 }
 
 function APIError(msg) {
@@ -1907,30 +1905,37 @@ function APIError(msg) {
   return err;
 }
 
+var warning = function() {
+  message("Warning: " + MapShaper.formatArgs(arguments));
+};
+
 var message = function() {
   if (MapShaper.LOGGING) {
-    logArgs(arguments);
+    MapShaper.logArgs(arguments);
   }
 };
 
 var verbose = function() {
   if (MapShaper.VERBOSE && MapShaper.LOGGING) {
-    logArgs(arguments);
+    MapShaper.logArgs(arguments);
   }
 };
 
 var trace = function() {
   if (MapShaper.TRACING) {
-    logArgs(arguments);
+    MapShaper.logArgs(arguments);
   }
 };
 
-function logArgs(args) {
+MapShaper.formatArgs = function(args) {
+  return utils.toArray(args).join(' ');
+};
+
+MapShaper.logArgs = function(args) {
   if (utils.isArrayLike(args)) {
-    var arr = utils.toArray(args);
-    (console.error || console.log).apply(console, arr);
+    (console.error || console.log).call(console, MapShaper.formatArgs(args));
   }
-}
+};
 
 function absArcId(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
@@ -6201,8 +6206,13 @@ MapShaper.getEncodings = function() {
 };
 
 MapShaper.decodeString = function(buf, encoding) {
-  var iconv = require('iconv-lite');
-  return iconv.decode(buf, encoding);
+  var iconv = require('iconv-lite'),
+      str = iconv.decode(buf, encoding);
+  // remove BOM if present
+  if (str.charCodeAt(0) == 0xfeff) {
+    str = str.substr(1);
+  }
+  return str;
 };
 
 // Ex. convert UTF-8 to utf8
@@ -15329,13 +15339,9 @@ cli.isDirectory = function(path) {
 // @encoding (optional) e.g. 'utf8'
 cli.readFile = function(fname, encoding) {
   var rw = require('rw'),
-      content;
-  if (!encoding) {
-    content = rw.readFileSync(fname);
-  } else if (MapShaper.standardizeEncodingName(encoding) == 'utf8') {
-    content = rw.readFileSync(fname, 'utf-8');
-  } else {
-    content = MapShaper.decodeString(rw.readFileSync(fname), encoding);
+      content = rw.readFileSync(fname);
+  if (encoding) {
+    content = MapShaper.decodeString(content, encoding);
   }
   return content;
 };

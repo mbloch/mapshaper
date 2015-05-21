@@ -11,8 +11,13 @@ MapShaper.getEncodings = function() {
 };
 
 MapShaper.decodeString = function(buf, encoding) {
-  var iconv = require('iconv-lite');
-  return iconv.decode(buf, encoding);
+  var iconv = require('iconv-lite'),
+      str = iconv.decode(buf, encoding);
+  // remove BOM if present
+  if (str.charCodeAt(0) == 0xfeff) {
+    str = str.substr(1);
+  }
+  return str;
 };
 
 // Ex. convert UTF-8 to utf8

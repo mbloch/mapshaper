@@ -12,6 +12,53 @@ function fixPath(p) {
 
 describe('mapshaper-delim-table.js', function() {
 
+  describe('Importing dsv with encoding= option', function() {
+    it ('utf16 (be)', function(done) {
+      var cmd = '-i test/test_data/text/utf16.txt encoding=utf16';
+      api.runCommands(cmd, function(err, data) {
+        assert.deepEqual(data.layers[0].data.getRecords(), [{NAME: '国语國語'}])
+        done();
+      });
+    })
+
+    it ('utf16 (be) with BOM', function(done) {
+      var cmd = '-i test/test_data/text/utf16bom.txt encoding=utf16';
+      api.runCommands(cmd, function(err, data) {
+        var rec = data.layers[0].data.getRecords()[0];
+        assert.deepEqual(rec, {NAME: '国语國語'})
+        done();
+      });
+    })
+
+    it ('utf16be with BOM', function(done) {
+      var cmd = '-i test/test_data/text/utf16bom.txt encoding=utf-16be';
+      api.runCommands(cmd, function(err, data) {
+        var rec = data.layers[0].data.getRecords()[0];
+        assert.deepEqual(rec, {NAME: '国语國語'})
+        done();
+      });
+    })
+
+    it ('utf16le with BOM', function(done) {
+      var cmd = '-i test/test_data/text/utf16le_bom.txt encoding=utf16le';
+      api.runCommands(cmd, function(err, data) {
+        var rec = data.layers[0].data.getRecords()[0];
+        assert.deepEqual(rec, {NAME: '国语國語'})
+        done();
+      });
+    })
+
+    it ('utf8 with BOM', function(done) {
+      var cmd = '-i test/test_data/text/utf8bom.txt';
+      api.runCommands(cmd, function(err, data) {
+        var rec = data.layers[0].data.getRecords()[0];
+        assert.deepEqual(rec, {NAME: '国语國語'})
+        done();
+      });
+    })
+
+  })
+
   // TODO: that that fields= also filters fields
   describe('Importing dsv with -i command', function () {
     it('-i field-types= works with :str type hint', function (done) {
@@ -23,6 +70,7 @@ describe('mapshaper-delim-table.js', function() {
       });
     })
   })
+
 
   describe('stringIsNumeric()', function () {
     it('identifies decimal numbers', function() {
