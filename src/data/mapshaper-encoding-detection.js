@@ -1,8 +1,9 @@
 ﻿/* @requires mapshaper-encodings */
 
-// Try to detect the encoding of some sample text
+// Try to detect the encoding of some sample text.
+// Returns an encoding name or null.
 // @samples Array of buffers containing sample text fields
-// TODO: improve
+// TODO: Improve reliability and number of detectable encodings.
 MapShaper.detectEncoding = function(samples) {
   var encoding = null;
   if (MapShaper.looksLikeUtf8(samples)) {
@@ -37,14 +38,16 @@ MapShaper.looksLikeUtf8 = function(samples) {
   return MapShaper.testMultiByteSample(str);
 };
 
-// Accept string if it doesn't contain the encoding error char
-// TODO: improve
+// Accept string if it doesn't contain the "replacement character"
+// TODO: Improve; with some multibyte encodings, you are more likely
+//   to get gibberish than the replacement character.
 MapShaper.testMultiByteSample = function(str) {
   return str.indexOf('\ufffd') == -1;
 };
 
 // Accept string if almost all of its chars are whitelisted
-// TODO: improve
+// @chars A string of whitelisted characters
+// TODO: Consider generating a score based on frequency data
 MapShaper.testSingleByteSample = function(str, chars) {
   var index = {}, count = 0;
   str = str.toLowerCase(); //

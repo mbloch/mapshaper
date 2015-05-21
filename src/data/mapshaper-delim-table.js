@@ -26,6 +26,7 @@ MapShaper.exportDelim = function(dataset, opts) {
       ext = MapShaper.getDelimFileExtension(delim);
   return dataset.layers.map(function(lyr) {
     return {
+      // TODO: consider supporting encoding= option
       content: MapShaper.exportDelimTable(lyr, delim),
       filename: (lyr.name || 'output') + '.' + ext
     };

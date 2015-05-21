@@ -59,7 +59,6 @@ describe('mapshaper-delim-table.js', function() {
 
   })
 
-  // TODO: that that fields= also filters fields
   describe('Importing dsv with -i command', function () {
     it('-i field-types= works with :str type hint', function (done) {
       var input = "fips\n00001";
@@ -70,7 +69,6 @@ describe('mapshaper-delim-table.js', function() {
       });
     })
   })
-
 
   describe('stringIsNumeric()', function () {
     it('identifies decimal numbers', function() {
