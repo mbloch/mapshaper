@@ -12,4 +12,14 @@ describe('mapshaper-encodings.js', function () {
     })
   })
 
+  describe('standardizeEncodingName()', function () {
+    it('UTF-8 -> utf8', function () {
+      assert.equal(api.internal.standardizeEncodingName('UTF-8'), 'utf8');
+    })
+
+    it('UTF-16BE -> utf16be', function () {
+      assert.equal(api.internal.standardizeEncodingName('UTF-16BE'), 'utf16be');
+    })
+  })
+
 })

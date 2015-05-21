@@ -6217,7 +6217,7 @@ MapShaper.decodeString = function(buf, encoding) {
 
 // Ex. convert UTF-8 to utf8
 MapShaper.standardizeEncodingName = function(enc) {
-  return enc.toLowerCase().replace(/_-/g, '');
+  return enc.toLowerCase().replace(/[_-]/g, '');
 };
 
 MapShaper.formatStringsAsGrid = function(arr) {
