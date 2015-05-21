@@ -1,6 +1,6 @@
 {
 	"name": "mapshaper",
-	"version": "0.2.19",
+	"version": "0.2.20",
 	"description": "A tool for editing vector datasets for mapping and GIS.",
 	"keywords": ["shapefile","topojson","geojson","cartography","simplification","topology","gis"],
 	"author": "Matthew Bloch <masiyou@gmail.com>",
@@ -21,7 +21,7 @@
 		"optimist": "~0.6.0",
 		"shell-quote": "~1.4.1",
 		"open": "~0.0.3",
-		"iconv-lite": "~0.4.6",
+		"iconv-lite": "~0.4.8",
 		"rbush": "~1.3.4",
 		"rw": "~0.1.4"
 	},

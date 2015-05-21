@@ -6220,6 +6220,7 @@ MapShaper.standardizeEncodingName = function(enc) {
   return enc.toLowerCase().replace(/[_-]/g, '');
 };
 
+// Format an array of (preferably short) strings in columns for console logging.
 MapShaper.formatStringsAsGrid = function(arr) {
   // TODO: variable column width
   var longest = arr.reduce(function(len, str) {
