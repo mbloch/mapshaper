@@ -23,7 +23,7 @@ MapShaper.getOptionParser = function() {
         describe: "retain the original layer(s) instead of replacing"
       },
       encodingOpt = {
-        describe: "text encoding of .dbf file"
+        describe: "text encoding (applies to .dbf and delimited text files)"
       },
       autoSnapOpt = {
         describe: "snap nearly identical points to fix minor topology errors",
@@ -111,7 +111,7 @@ MapShaper.getOptionParser = function() {
       describe: "(optional) name of output file or directory, or - for stdout"
     })
     .option("format", {
-      describe: "set export format (shapefile|geojson|topojson)"
+      describe: "set export format (shapefile|geojson|topojson|dbf|csv|tsv)"
     })
     .option("target", targetOpt)
     .option("force", {
