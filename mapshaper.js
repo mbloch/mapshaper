@@ -11465,7 +11465,7 @@ api.importFiles = function(opts) {
   } else if (opts.stdin) {
     dataset = api.importFile('/dev/stdin', opts);
   } else {
-    error('[i] Missing content');
+    stop('[i] Missing input file(s)');
   }
   return dataset;
 };
