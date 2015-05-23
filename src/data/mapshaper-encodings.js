@@ -10,6 +10,11 @@ MapShaper.getEncodings = function() {
   return Object.keys(iconv.encodings);
 };
 
+MapShaper.encodingIsSupported = function(raw) {
+  var enc = MapShaper.standardizeEncodingName(raw);
+  return utils.contains(MapShaper.getEncodings(), enc);
+};
+
 MapShaper.decodeString = function(buf, encoding) {
   var iconv = require('iconv-lite'),
       str = iconv.decode(buf, encoding);

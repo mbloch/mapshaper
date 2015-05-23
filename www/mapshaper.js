@@ -8816,6 +8816,11 @@ MapShaper.getEncodings = function() {
   return Object.keys(iconv.encodings);
 };
 
+MapShaper.encodingIsSupported = function(raw) {
+  var enc = MapShaper.standardizeEncodingName(raw);
+  return utils.contains(MapShaper.getEncodings(), enc);
+};
+
 MapShaper.decodeString = function(buf, encoding) {
   var iconv = require('iconv-lite'),
       str = iconv.decode(buf, encoding);
@@ -8831,6 +8836,7 @@ MapShaper.standardizeEncodingName = function(enc) {
   return enc.toLowerCase().replace(/[_-]/g, '');
 };
 
+// Format an array of (preferably short) strings in columns for console logging.
 MapShaper.formatStringsAsGrid = function(arr) {
   // TODO: variable column width
   var longest = arr.reduce(function(len, str) {
@@ -8882,30 +8888,29 @@ MapShaper.formatSamples = function(str) {
   return MapShaper.formatStringsAsGrid(str.split('\n'));
 };
 
+// Quick-and-dirty latin1 detection: decoded string contains mostly common ascii
+// chars and almost no chars other than word chars + punctuation.
+// This excludes encodings like Greek, Cyrillic or Thai, but
+// is susceptible to false positives with encodings like codepage 1250 ("Eastern
+// European").
 MapShaper.looksLikeLatin1 = function(samples) {
-  var likelyChars = 'abcdefghijklmnopqrstuvwxyz0123456789' +
-      'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ' + // accented letters
-      '-,;/.\'" \n'; // punctuation, etc.
+  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?-\n,;/ ', // common ascii
+      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ';
   var str = MapShaper.decodeSamples('latin1', samples);
-  return MapShaper.testSingleByteSample(str, likelyChars);
-};
-
-MapShaper.looksLikeUtf8 = function(samples) {
-  var str = MapShaper.decodeSamples('utf8', samples);
-  return MapShaper.testMultiByteSample(str);
+  var asciiScore = MapShaper.getCharScore(str, ascii);
+  var totalScore = asciiScore + MapShaper.getCharScore(str, extended);
+  return totalScore > 0.98 && asciiScore > 0.7;
 };
 
 // Accept string if it doesn't contain the "replacement character"
-// TODO: Improve; with some multibyte encodings, you are more likely
-//   to get gibberish than the replacement character.
-MapShaper.testMultiByteSample = function(str) {
+MapShaper.looksLikeUtf8 = function(samples) {
+  var str = MapShaper.decodeSamples('utf8', samples);
   return str.indexOf('\ufffd') == -1;
 };
 
-// Accept string if almost all of its chars are whitelisted
-// @chars A string of whitelisted characters
-// TODO: Consider generating a score based on frequency data
-MapShaper.testSingleByteSample = function(str, chars) {
+// Calc percentage of chars in a string that are present in a second string
+// @chars String of chars to look for in @str
+MapShaper.getCharScore = function(str, chars) {
   var index = {}, count = 0;
   str = str.toLowerCase(); //
   for (var i=0, n=chars.length; i<n; i++) {
@@ -8914,7 +8919,7 @@ MapShaper.testSingleByteSample = function(str, chars) {
   for (i=0, n=str.length; i<n; i++) {
     count += index[str[i]] || 0;
   }
-  return count / str.length > 0.98;
+  return count / str.length;
 };
 
 
@@ -9116,14 +9121,21 @@ DbfReader.prototype.findStringEncoding = function() {
         "Run mapshaper -encodings for a list of supported encodings");
   }
 
-  // Show a sample of decoded text, if non-ascii-range text has been found
+  // Show a sample of decoded text if non-ascii-range text has been found
   if (samples.length > 0) {
-    message(utils.format("[dbf] Detected encoding: %s%s; sample text:", encoding,
-      (encoding in Dbf.encodingNames) ? " (" + Dbf.encodingNames[encoding] + ")" : ''));
-    message(MapShaper.decodeSamples(encoding, samples.slice(0, 20)));
+    msg = "[dbf] Detected encoding: " + encoding;
+    if (encoding in Dbf.encodingNames) {
+      msg += " (" + Dbf.encodingNames[encoding] + ")";
+    }
+    message(msg);
+    msg = MapShaper.decodeSamples(encoding, samples);
+    msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
+    message("[dbf] Sample text:" + (msg.length > 60 ? '\n' : '') + msg);
   }
   return encoding;
 };
+
+
 
 // Return up to @size buffers containing text samples
 // with at least one byte outside the 7-bit ascii range.

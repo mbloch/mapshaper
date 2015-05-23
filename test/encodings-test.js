@@ -12,6 +12,12 @@ describe('mapshaper-encodings.js', function () {
     })
   })
 
+  describe('encodingIsSupported()', function () {
+    it('ISO-8859-7', function () {
+      assert.ok(api.internal.encodingIsSupported('ISO-8859-7'));
+    })
+  })
+
   describe('standardizeEncodingName()', function () {
     it('UTF-8 -> utf8', function () {
       assert.equal(api.internal.standardizeEncodingName('UTF-8'), 'utf8');

@@ -127,9 +127,8 @@ cli.printRepairMessage = function(info) {
   }
 };
 
-cli.validateEncoding = function(raw) {
-  var enc = raw.replace(/-/, '').toLowerCase();
-  if (!utils.contains(MapShaper.getEncodings(), enc)) {
+cli.validateEncoding = function(enc) {
+  if (!MapShaper.encodingIsSupported(enc)) {
     console.error("[Unsupported encoding:", raw + "]");
     MapShaper.printEncodings();
     process.exit(0);

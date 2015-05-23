@@ -157,6 +157,13 @@ describe('dbf-reader.js', function () {
         importRecords("dbf/shiftjis.dbf");
       })
     })
+
+    it("Greek not detected", function() {
+      assert.throws(function() {
+         // this was wrongly detected as latin1 before
+        importRecords("dbf/periphereies.dbf");
+      })
+    })
   })
 
 

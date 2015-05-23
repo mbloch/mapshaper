@@ -196,14 +196,21 @@ DbfReader.prototype.findStringEncoding = function() {
         "Run mapshaper -encodings for a list of supported encodings");
   }
 
-  // Show a sample of decoded text, if non-ascii-range text has been found
+  // Show a sample of decoded text if non-ascii-range text has been found
   if (samples.length > 0) {
-    message(utils.format("[dbf] Detected encoding: %s%s; sample text:", encoding,
-      (encoding in Dbf.encodingNames) ? " (" + Dbf.encodingNames[encoding] + ")" : ''));
-    message(MapShaper.decodeSamples(encoding, samples.slice(0, 20)));
+    msg = "[dbf] Detected encoding: " + encoding;
+    if (encoding in Dbf.encodingNames) {
+      msg += " (" + Dbf.encodingNames[encoding] + ")";
+    }
+    message(msg);
+    msg = MapShaper.decodeSamples(encoding, samples);
+    msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
+    message("[dbf] Sample text:" + (msg.length > 60 ? '\n' : '') + msg);
   }
   return encoding;
 };
+
+
 
 // Return up to @size buffers containing text samples
 // with at least one byte outside the 7-bit ascii range.

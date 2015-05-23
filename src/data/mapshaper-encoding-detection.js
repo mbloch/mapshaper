@@ -25,30 +25,29 @@ MapShaper.formatSamples = function(str) {
   return MapShaper.formatStringsAsGrid(str.split('\n'));
 };
 
+// Quick-and-dirty latin1 detection: decoded string contains mostly common ascii
+// chars and almost no chars other than word chars + punctuation.
+// This excludes encodings like Greek, Cyrillic or Thai, but
+// is susceptible to false positives with encodings like codepage 1250 ("Eastern
+// European").
 MapShaper.looksLikeLatin1 = function(samples) {
-  var likelyChars = 'abcdefghijklmnopqrstuvwxyz0123456789' +
-      'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ' + // accented letters
-      '-,;/.\'" \n'; // punctuation, etc.
+  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?-\n,;/ ', // common ascii
+      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ';
   var str = MapShaper.decodeSamples('latin1', samples);
-  return MapShaper.testSingleByteSample(str, likelyChars);
-};
-
-MapShaper.looksLikeUtf8 = function(samples) {
-  var str = MapShaper.decodeSamples('utf8', samples);
-  return MapShaper.testMultiByteSample(str);
+  var asciiScore = MapShaper.getCharScore(str, ascii);
+  var totalScore = asciiScore + MapShaper.getCharScore(str, extended);
+  return totalScore > 0.98 && asciiScore > 0.7;
 };
 
 // Accept string if it doesn't contain the "replacement character"
-// TODO: Improve; with some multibyte encodings, you are more likely
-//   to get gibberish than the replacement character.
-MapShaper.testMultiByteSample = function(str) {
+MapShaper.looksLikeUtf8 = function(samples) {
+  var str = MapShaper.decodeSamples('utf8', samples);
   return str.indexOf('\ufffd') == -1;
 };
 
-// Accept string if almost all of its chars are whitelisted
-// @chars A string of whitelisted characters
-// TODO: Consider generating a score based on frequency data
-MapShaper.testSingleByteSample = function(str, chars) {
+// Calc percentage of chars in a string that are present in a second string
+// @chars String of chars to look for in @str
+MapShaper.getCharScore = function(str, chars) {
   var index = {}, count = 0;
   str = str.toLowerCase(); //
   for (var i=0, n=chars.length; i<n; i++) {
@@ -57,5 +56,5 @@ MapShaper.testSingleByteSample = function(str, chars) {
   for (i=0, n=str.length; i<n; i++) {
     count += index[str[i]] || 0;
   }
-  return count / str.length > 0.98;
+  return count / str.length;
 };
