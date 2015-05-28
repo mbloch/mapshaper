@@ -55,7 +55,7 @@ TopoJSON.importGeometryCollection = function(obj, opts) {
 //
 //
 TopoJSON.GeometryImporter = function(opts) {
-  var idField = opts && opts.id_field || null,
+  var idField = opts && opts.id_field || GeoJSON.ID_FIELD,
       properties = [],
       shapes = [], // topological ids
       collectionType = null;
@@ -63,18 +63,16 @@ TopoJSON.GeometryImporter = function(opts) {
   this.addGeometry = function(geom) {
     var type = GeoJSON.translateGeoJSONType(geom.type),
         shapeId = shapes.length,
-        rec;
-    this.updateCollectionType(type);
+        rec = geom.properties,
+        shape = null;
 
-    if (idField || geom.properties) {
-      rec = geom.properties || {};
-      if (idField) {
-        rec[idField] = geom.id || null;
-      }
+    if ('id' in geom) {
+      rec = rec || {};
+      rec[idField] = geom.id;
+    }
+    if (rec) {
       properties[shapeId] = rec;
     }
-
-    var shape = null;
     if (type == 'point') {
       shape = this.importPointGeometry(geom);
     } else if (geom.type in TopoJSON.pathImporters) {
@@ -86,6 +84,7 @@ TopoJSON.GeometryImporter = function(opts) {
       // null geometry -- ok
     }
     shapes.push(shape);
+    this.updateCollectionType(type);
   };
 
   this.importPointGeometry = function(geom) {

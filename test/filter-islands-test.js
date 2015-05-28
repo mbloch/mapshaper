@@ -3,7 +3,7 @@ var assert = require('assert'),
 
 describe('mapshaper-filter-islands.js', function () {
   describe('Command line tests', function() {
-    var geojson = {
+    var geojson = JSON.stringify({
       type:"FeatureCollection",
       features: [{
         type: 'Feature',
@@ -18,13 +18,14 @@ describe('mapshaper-filter-islands.js', function () {
         properties: {name: 'b'},
         geometry: null
       }]
-    };
+    });
 
     it ('-filter-islands remove-empty', function(done) {
       api.applyCommands('-filter-islands remove-empty', geojson, function(err, json) {
         var output = JSON.parse(json);
         assert.equal(output.features.length, 1);
-        assert.deepEqual(output.features[0], geojson.features[0])
+        assert.deepEqual(output.features[0],
+          JSON.parse(geojson).features[0])
         done();
       });
     })
@@ -58,7 +59,8 @@ describe('mapshaper-filter-islands.js', function () {
     it ('-filter-islands (combined options)', function(done) {
       api.applyCommands('-filter-islands remove-empty min-vertices=8', geojson, function(err, json) {
         var output = JSON.parse(json);
-        assert.deepEqual(output.features, []);
+        var target = {type: 'GeometryCollection', geometries: []}; // empty output
+        assert.deepEqual(output, target);
         done();
       });
     })

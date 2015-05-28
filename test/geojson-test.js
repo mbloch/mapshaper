@@ -40,6 +40,8 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(records, [{name: 'foo'}]);
     })
 
+
+
     it('Import GeometryCollection inside a feature', function() {
       var src = {
         type: 'Feature',
@@ -70,17 +72,18 @@ describe('mapshaper-geojson.js', function () {
     })
   })
 
+
   describe('exportGeoJSON()', function () {
     it('collapsed polygon exported as null geometry', function () {
       var arcs = new api.internal.ArcCollection([[[1, 1], [2, 3], [1, 1]]]);
       var lyr = {
             geometry_type: "polygon",
-            data: new DataTable([{FID: 1}]),
+            data: new DataTable([{ID: 1}]),
             shapes: [[[0]]]
           };
 
       var target = {"type":"FeatureCollection","features":[
-        {type: 'Feature', properties: {FID: 1}, geometry: null}
+        {type: 'Feature', properties: {ID: 1}, geometry: null}
       ]};
 
       assert.deepEqual(api.internal.exportGeoJSONObject(lyr, arcs), target);
@@ -90,7 +93,7 @@ describe('mapshaper-geojson.js', function () {
       var arcs = new api.internal.ArcCollection([[[1, 1], [1, 3], [2, 3], [1, 1]]]);
       var lyr = {
             geometry_type: "polygon",
-            data: new DataTable([{FID: 1}]),
+            data: new DataTable([{ID: 1}]),
             shapes: [[[0]]]
           };
 
@@ -100,7 +103,7 @@ describe('mapshaper-geojson.js', function () {
           }
         ]};
       var table = [{
-        FID: 1
+        ID: 1
       }];
       var opts = {
         cut_table: true,
@@ -191,7 +194,7 @@ describe('mapshaper-geojson.js', function () {
 
       var target = {"type":"FeatureCollection","features":[{
           type: 'Feature',
-          properties: {FID: 1},
+          properties: null,
           id: 1,
           geometry: { type: 'Point',
             coordinates: [1, 1]
@@ -205,22 +208,38 @@ describe('mapshaper-geojson.js', function () {
   })
 
   describe('Import/Export roundtrip tests', function () {
-    /*
-    it('bbox added to polygon output', function() {
-      var onePoly = {"type":"GeometryCollection","geometries":[
-        {
-          type: "Polygon",
-          coordinates: [[[100.0, 0.0], [100.0, 1.0], [101.0, 1.0], [101.0, 0.0], [100.0, 0.0]]]
-        }
-      ]};
-      var output = importExport(onePoly);
-      var target = Utils.extend(onePoly, {
-        bbox: [100, 0, 101, 1]
-      });
-      assert.deepEqual(target, output);
-    })
-  */
 
+    it('preserve ids with no properties', function() {
+      var input = {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          properties: null,
+          id: 'A',
+          geometry: {
+            type: "Point",
+            coordinates: [1, 1]
+          }
+        }]
+      };
+      assert.deepEqual(input, importExport(input));
+    })
+
+    it('preserve ids with properties', function() {
+      var input = {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          properties: {foo: 'B', bar: 'C'},
+          id: 'A',
+          geometry: {
+            type: "Point",
+            coordinates: [1, 1]
+          }
+        }]
+      };
+      assert.deepEqual(input, importExport(input));
+    })
 
     it('empty GeometryCollection', function () {
       var empty = {"type":"GeometryCollection","geometries":[]};
@@ -231,7 +250,7 @@ describe('mapshaper-geojson.js', function () {
       var geom = {"type":"FeatureCollection", "features":[
         { type: "Feature",
           geometry: null,
-          properties: {FID: 0}
+          properties: {ID: 0}
         }
       ]};
       assert.deepEqual(geom, importExport(geom));
@@ -244,14 +263,14 @@ describe('mapshaper-geojson.js', function () {
             type: "Polygon",
             coordinates: [[[100.0, 0.0], [100.0, 1.0], [100.0, 0.0]]]
           },
-          properties: {FID: 0}
+          properties: {ID: 0}
         }
       ]};
 
       var target = {"type":"FeatureCollection", "features":[
         { type: "Feature",
           geometry: null,
-          properties: {FID: 0}
+          properties: {ID: 0}
         }
       ]};
 

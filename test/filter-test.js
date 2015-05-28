@@ -32,7 +32,8 @@ describe('mapshaper-filter.js', function () {
     it ('-filter (combined options)', function(done) {
       api.applyCommands('-filter remove-empty "name != \'a\'"', geojson, function(err, json) {
         var output = JSON.parse(json);
-        assert.deepEqual(output.features, []);
+        var target = {type: "GeometryCollection", geometries: []}; // empty
+        assert.deepEqual(output, target);
         done();
       });
     })

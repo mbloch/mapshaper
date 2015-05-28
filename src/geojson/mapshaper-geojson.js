@@ -30,13 +30,14 @@ MapShaper.importGeoJSON = function(obj, opts) {
     stop("[importGeoJSON()] Unsupported GeoJSON type:", obj.type);
   }
 
+  var idField = opts.id_field || GeoJSON.ID_FIELD;
   var properties = null, geometries;
   if (obj.type == 'FeatureCollection') {
     properties = [];
     geometries = obj.features.map(function(feat) {
-      var rec = feat.properties;
-      if (opts.id_field) {
-        rec[opts.id_field] = feat.id || null;
+      var rec = feat.properties || {};
+      if ('id' in feat) {
+        rec[idField] = feat.id;
       }
       properties.push(rec);
       return feat.geometry;
@@ -63,6 +64,8 @@ MapShaper.importGeoJSON = function(obj, opts) {
 };
 
 var GeoJSON = MapShaper.geojson = {};
+
+GeoJSON.ID_FIELD = "FID";
 
 GeoJSON.translateGeoJSONType = function(type) {
   return GeoJSON.typeLookup[type] || null;
@@ -130,27 +133,56 @@ MapShaper.exportGeoJSON = function(dataset, opts) {
 };
 
 // @opt value of id-field option (empty, string or array of strings)
-// @table DataTable
-MapShaper.getIdField = function(opt, table) {
-  var field = null;
+// @fields array
+MapShaper.getIdField = function(fields, opt) {
+  var ids = [];
   if (utils.isString(opt)) {
-    opt = [opt];
+    ids.push(opt);
+  } else if (utils.isArray(opt)) {
+    ids = opt;
   }
-  if (utils.isArray(opt) && table) {
-    field = utils.find(opt, function(name) {
-      return table.fieldExists(name);
-    });
-  }
-  return field;
+  ids.push(GeoJSON.ID_FIELD); // default id field
+  return utils.find(ids, function(name) {
+    return utils.contains(fields, name);
+  });
 };
+
+MapShaper.exportProperties = function(table, opts) {
+  var fields = table ? table.getFields() : [],
+      idField = MapShaper.getIdField(fields, opts.id_field),
+      deleteId = idField == GeoJSON.ID_FIELD, // delete default field, not user-set fields
+      properties, records;
+  if (opts.drop_table || opts.cut_table || fields.length === 0 || deleteId && fields.length == 1) {
+    return null;
+  }
+  records = table.getRecords();
+  if (deleteId) {
+    properties = records.map(function(rec) {
+      rec = utils.extend({}, rec); // copy rec;
+      delete rec[idField];
+      return rec;
+    });
+  } else {
+    properties = records;
+  }
+  return properties;
+};
+
+MapShaper.exportIds = function(table, opts) {
+  var fields = table ? table.getFields() : [],
+      idField = MapShaper.getIdField(fields, opts.id_field);
+  if (!idField) return null;
+  return table.getRecords().map(function(rec) {
+    return idField in rec ? rec[idField] : null;
+  });
+};
+
 
 MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   opts = opts || {};
-  var type = lyr.geometry_type,
-      properties = lyr.data && lyr.data.getRecords() || null,
-      useProperties = !!properties && !(opts.cut_table || opts.drop_table),
-      idField = MapShaper.getIdField(opts.id_field, lyr.data),
-      useFeatures = useProperties || idField,
+  var properties = MapShaper.exportProperties(lyr.data, opts),
+      ids = MapShaper.exportIds(lyr.data, opts),
+      useFeatures = !!(properties || ids),
       stringify = JSON.stringify;
 
   if (opts.prettify) {
@@ -174,20 +206,21 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   output[useFeatures ? 'features' : 'geometries'] = ['$'];
 
   // serialize features one at a time to avoid allocating lots of arrays
+  // TODO: consider serializing once at the end, for clarity
   var objects = utils.reduce(lyr.shapes, function(memo, shape, i) {
-    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, type),
+    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, lyr.geometry_type),
         str;
     if (useFeatures) {
       obj = {
         type: "Feature",
-        properties: useProperties && properties[i] || null,
+        properties: properties && properties[i] || null,
         geometry: obj
       };
     } else if (obj === null) {
       return memo; // null geometries not allowed in GeometryCollection, skip them
     }
-    if (properties && idField) {
-      obj.id = properties[i][idField] || null;
+    if (ids) {
+      obj.id = ids[i];
     }
     str = stringify(obj);
     return memo === "" ? str : memo + ",\n" + str;

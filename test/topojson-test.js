@@ -17,35 +17,51 @@ describe('topojson-test.js', function () {
   describe('exportProperties', function () {
     it('use id_field option', function () {
       var geometries = [{type: null}, {type: null}],
-          records = [{FID: 0}, {FID: 1}],
+          records = [{idx: 0}, {idx: 1}],
           table = new api.internal.DataTable(records);
 
-      TopoJSON.exportProperties(geometries, table, {id_field:'FID'});
+      TopoJSON.exportProperties(geometries, table, {id_field:'idx'});
       assert.deepEqual(geometries, [{
         type: null,
-        properties: {FID: 0},
+        properties: {idx: 0},
         id: 0
       }, {
         type: null,
-        properties: {FID: 1},
+        properties: {idx: 1},
         id: 1
       }])
     });
 
-    // first matching name in the table is used for id property
-    it('use id_field with list of fields', function () {
+    it('default id field gets moved from table to id property', function () {
       var geometries = [{type: null}, {type: null}],
-          records = [{FID: 0, NAME: 'a'}, {FID: 1, NAME: 'b'}],
+          records = [{FID: 0}, {FID: 1}],
           table = new api.internal.DataTable(records);
 
-      TopoJSON.exportProperties(geometries, table, {id_field:['COUNTY', 'FID', 'NAME']});
+      TopoJSON.exportProperties(geometries, table, {});
       assert.deepEqual(geometries, [{
         type: null,
-        properties: {FID: 0, NAME: 'a'},
         id: 0
       }, {
         type: null,
-        properties: {FID: 1, NAME: 'b'},
+        id: 1
+      }])
+    });
+
+
+    // first matching name in the table is used for id property
+    it('use id_field with list of fields', function () {
+      var geometries = [{type: null}, {type: null}],
+          records = [{ID: 0, NAME: 'a'}, {ID: 1, NAME: 'b'}],
+          table = new api.internal.DataTable(records);
+
+      TopoJSON.exportProperties(geometries, table, {id_field:['COUNTY', 'ID', 'NAME']});
+      assert.deepEqual(geometries, [{
+        type: null,
+        properties: {ID: 0, NAME: 'a'},
+        id: 0
+      }, {
+        type: null,
+        properties: {ID: 1, NAME: 'b'},
         id: 1
       }])
     });
@@ -91,6 +107,25 @@ describe('topojson-test.js', function () {
   })
 
   describe('Import/export tests', function() {
+    it('id property is retained', function() {
+      var topology = {
+        type: "Topology",
+        arcs: [],
+        objects: {
+          points: {
+            type: "GeometryCollection",
+            geometries: [{
+              type: "Point",
+              coordinates: [0, 0],
+              id: 0,
+              properties: {foo: 'A'}
+            }]
+          }
+        }
+      };
+      var out = importExport(topology, {});
+    })
+
     it("topology contains only points", function() {
       var topology = {
         type: "Topology",

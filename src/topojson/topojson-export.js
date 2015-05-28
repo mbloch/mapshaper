@@ -192,17 +192,14 @@ TopoJSON.calcExportResolution = function(arcData, precision) {
 };
 
 TopoJSON.exportProperties = function(geometries, table, opts) {
-  var records = table.getRecords(),
-      idField = MapShaper.getIdField(opts.id_field, table);
+  var properties = MapShaper.exportProperties(table, opts),
+      ids = MapShaper.exportIds(table, opts);
   geometries.forEach(function(geom, i) {
-    var properties = records[i];
     if (properties) {
-      if (!(opts.cut_table || opts.drop_table)) {
-        geom.properties = properties;
-      }
-      if (idField && idField in properties) {
-        geom.id = properties[idField];
-      }
+      geom.properties = properties[i];
+    }
+    if (ids) {
+      geom.id = ids[i];
     }
   });
 };
