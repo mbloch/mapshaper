@@ -14943,7 +14943,7 @@ cli.writeFile = function(path, content) {
   if (content instanceof ArrayBuffer) {
     content = cli.convertArrayBuffer(content);
   }
-  require('fs').writeFileSync(path, content, 0, null, 0);
+  require('rw').writeFileSync(path, content);
 };
 
 // Returns Node Buffer
