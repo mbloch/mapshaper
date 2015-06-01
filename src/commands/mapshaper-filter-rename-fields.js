@@ -22,9 +22,8 @@ MapShaper.updateFields = function(lyr, names, cmd) {
       missingFields = utils.difference(mappedFields, dataFields);
 
   if (missingFields.length > 0) {
-    message("[" + cmd + "] Table is missing one or more specified fields:", missingFields);
-    message("Existing fields:", dataFields);
-    stop();
+    stop("[" + cmd + "] Table is missing one or more specified fields:\n",
+        missingFields, "\nExisting fields:", '\n' + MapShaper.formatStringsAsGrid(dataFields));
   }
 
   if (cmd == "rename-fields" && unmappedFields.length > 0) {

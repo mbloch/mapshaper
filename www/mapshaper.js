@@ -3771,11 +3771,13 @@ api.enableLogging = function() {
 };
 
 api.printError = function(err) {
+  var msg;
   if (utils.isString(err)) {
     err = new APIError(err);
   }
   if (MapShaper.LOGGING && err.name == 'APIError') {
-    message("Error: " + err.message);
+    msg = err.message ? "Error: " + err.message : "Processing failed";
+    message(msg);
     message("Run mapshaper -h to view help");
   } else {
     throw err;
@@ -3817,6 +3819,20 @@ var trace = function() {
 
 MapShaper.formatArgs = function(args) {
   return utils.toArray(args).join(' ');
+};
+
+// Format an array of (preferably short) strings in columns for console logging.
+MapShaper.formatStringsAsGrid = function(arr) {
+  // TODO: variable column width
+  var longest = arr.reduce(function(len, str) {
+        return Math.max(len, str.length);
+      }, 0),
+      colWidth = longest + 1,
+      perLine = Math.floor(80 / colWidth) || 1;
+  return arr.reduce(function(str, name, i) {
+    if (i > 0 && i % perLine === 0) str += '\n';
+    return str + ' ' + utils.rpad(name, colWidth-1, ' ');
+  }, '');
 };
 
 MapShaper.logArgs = function(args) {
@@ -8825,20 +8841,6 @@ MapShaper.decodeString = function(buf, encoding) {
 // Ex. convert UTF-8 to utf8
 MapShaper.standardizeEncodingName = function(enc) {
   return enc.toLowerCase().replace(/[_-]/g, '');
-};
-
-// Format an array of (preferably short) strings in columns for console logging.
-MapShaper.formatStringsAsGrid = function(arr) {
-  // TODO: variable column width
-  var longest = arr.reduce(function(len, str) {
-        return Math.max(len, str.length);
-      }, 0),
-      colWidth = longest + 1,
-      perLine = Math.floor(80 / colWidth) || 1;
-  return arr.reduce(function(str, name, i) {
-    if (i > 0 && i % perLine === 0) str += '\n';
-    return str + ' ' + utils.rpad(name, colWidth-1, ' ');
-  }, '');
 };
 
 MapShaper.printEncodings = function() {
