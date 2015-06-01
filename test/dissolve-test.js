@@ -6,6 +6,17 @@ var assert = require('assert'),
 
 describe('mapshaper-dissolve.js', function () {
 
+  describe('dissolve()', function() {
+    it('dissolves a layer with no geometry', function() {
+      var lyr = {
+        data: new api.internal.DataTable([{foo: 1, bar: 2}, {foo: 2, bar: 3}, {foo: 2, bar: 4}])
+      };
+      var lyr2 = api.dissolve(lyr, null, {field: 'foo', sum_fields: ['bar']})
+      assert.deepEqual(lyr2.data.getRecords(), [{foo: 1, bar: 2}, {foo: 2, bar: 7}]);
+    })
+
+  })
+
   describe('dissolvePolygons()', function () {
 
     describe('two adjacent triangles', function () {

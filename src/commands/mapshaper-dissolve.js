@@ -4,21 +4,27 @@
 // @opts.field (optional) name of data field (dissolves all if falsy)
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
-api.dissolvePolygons = function(lyr, arcs, opts) {
-  MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
+api.dissolvePolygons = // TODO: remove deprecated name
+api.dissolve = function(lyr, arcs, opts) {
   var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data),
-      dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId),
+      dissolveShapes = null,
       dissolveData = null;
+
+  if (lyr.geometry_type) {
+    MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
+    dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
+  }
 
   if (lyr.data) {
     dissolveData = MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts);
     // replace missing shapes with nulls
     for (var i=0, n=dissolveData.length; i<n; i++) {
-      if (!dissolveShapes[i]) {
+      if (dissolveShapes && !dissolveShapes[i]) {
         dissolveShapes[i] = null;
       }
     }
   }
+
   return utils.defaults({
       shapes: dissolveShapes,
       data: dissolveData ? new DataTable(dissolveData) : null

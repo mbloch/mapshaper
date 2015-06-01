@@ -61,7 +61,7 @@ api.runCommand = function(cmd, dataset, cb) {
       newLayers = api.clipLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'dissolve') {
-      newLayers = MapShaper.applyCommand(api.dissolvePolygons, targetLayers, arcs, opts);
+      newLayers = MapShaper.applyCommand(api.dissolve, targetLayers, arcs, opts);
 
     } else if (name == 'dissolve2') {
       newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
