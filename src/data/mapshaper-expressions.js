@@ -86,10 +86,9 @@ MapShaper.removeExpressionSemicolons = function(exp) {
   return exp;
 };
 
-
 function addGetters(obj, getters) {
-  utils.forEach(getters, function(f, name) {
-    Object.defineProperty(obj, name, {get: f});
+  Object.keys(getters).forEach(function(name) {
+    Object.defineProperty(obj, name, {get: getters[name]});
   });
 }
 

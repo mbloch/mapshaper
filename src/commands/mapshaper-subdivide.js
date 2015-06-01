@@ -39,7 +39,7 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
 
   subdividedLayers.forEach(function(lyr2, i) {
     lyr2.name = MapShaper.getSplitLayerName(lyr.name, i + 1);
-    Opts.copyNewParams(lyr2, lyr);
+    utils.defaults(lyr2, lyr);
   });
   return subdividedLayers;
 };
@@ -64,7 +64,7 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
 
   var useX = bounds && bounds.width() > bounds.height();
   // TODO: think about case where there are null shapes with NaN centers
-  var centers = utils.map(shapes, function(shp) {
+  var centers = shapes.map(function(shp) {
     var bounds = arcs.getMultiShapeBounds(shp);
     return useX ? bounds.centerX() : bounds.centerY();
   });
@@ -72,7 +72,7 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
   ids.sort(function(a, b) {
     return centers[a] - centers[b];
   });
-  utils.forEach(ids, function(shapeId, i) {
+  ids.forEach(function(shapeId, i) {
     var dest = i < shapes.length / 2 ? lyr1 : lyr2;
     dest.shapes.push(shapes[shapeId]);
     if (properties) {

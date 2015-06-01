@@ -37,7 +37,7 @@ function ImportControl(editor) {
   // TODO: doesn't need to be public
   // Receive: FileList
   this.readFiles = function(files) {
-    utils.forEach(files, this.readFile, this);
+    (files || []).forEach(this.readFile, this);
   };
 
   // Receive: File object

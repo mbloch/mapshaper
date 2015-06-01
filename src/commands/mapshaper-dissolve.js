@@ -59,7 +59,7 @@ function dissolveFirstPass(shapes, getGroupId) {
       });
 
   MapShaper.traverseShapes(shapes, procArc);
-  utils.forEach(largeGroups, splitGroup);
+  largeGroups.forEach(splitGroup);
   return segments;
 
   function procArc(obj) {
@@ -126,7 +126,7 @@ function dissolveFirstPass(shapes, getGroupId) {
   }
 
   function updateGroupIds(ids) {
-    utils.forEach(ids, function(id) {
+    ids.forEach(function(id) {
       segments[id].group = ids;
     });
   }
@@ -140,7 +140,7 @@ function dissolveFirstPass(shapes, getGroupId) {
         findMatchingPair(group, checkSingleExtension) ||
         findMatchingPair(group, checkPairwiseMatch);
     if (group2) {
-      group = utils.filter(group, function(i) {
+      group = group.filter(function(i) {
         return !utils.contains(group2, i);
       });
       updateGroupIds(group);

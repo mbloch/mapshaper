@@ -1,26 +1,9 @@
 (function(){
 
-var Env = (function() {
-  var inNode = typeof module !== 'undefined' && !!module.exports;
-  var inPhantom = !inNode && !!(window.phantom && window.phantom.exit);
-  var inBrowser = !inNode; // phantom?
-  var ieVersion = inBrowser && /MSIE ([0-9]+)/.exec(navigator.appVersion) && parseInt(RegExp.$1) || NaN;
-
-  return {
-    iPhone : inBrowser && !!(navigator.userAgent.match(/iPhone/i)),
-    iPad : inBrowser && !!(navigator.userAgent.match(/iPad/i)),
-    touchEnabled : inBrowser && ("ontouchstart" in window),
-    canvas: inBrowser && !!document.createElement('canvas').getContext,
-    inNode : inNode,
-    inPhantom : inPhantom,
-    inBrowser: inBrowser,
-    ieVersion: ieVersion,
-    ie: !isNaN(ieVersion)
-  };
-})();
-
-var C = C || {}; // global constants
-C.VERBOSE = true;
+var error = function() {
+  var msg = Utils.toArray(arguments).join(' ');
+  throw new Error(msg);
+};
 
 var Utils = {
   getUniqueName: function(prefix) {
@@ -29,80 +12,43 @@ var Utils = {
     return (prefix || "__id_") + n;
   },
 
-  parseUrl: function parseUrl(url) {
-    var rxp = /^(http|file|https):\/\/([^\/?#]+)([^?#]*)\??([^#?]*)#?(.*)/,
-        matches = rxp.exec(url);
-    if (!matches) {
-      trace("[Utils.parseUrl()] unable to parse:", url);
-      return null;
-    }
-    return {
-      protocol: matches[1],
-      host: matches[2],
-      path: matches[3],
-      query: matches[4],
-      hash: matches[5]
-    };
+  isFunction: function(obj) {
+    return typeof obj == 'function';
   },
 
-  buildUrl: function(obj) {
-    var url = "";
-    url += (obj.protocol || 'http') + "://";
-    url += obj.host || error("buildUrl() Missing host name");
-    url += obj.path || "";
-    if (obj.query) {
-      url += '?' + obj.query;
-    }
-    if (obj.hash) {
-      url += "#" + obj.hash;
-    }
-    return url;
+  isObject: function(obj) {
+    return obj === Object(obj); // via underscore
   },
 
-  keys: function(obj) {
-    var arr = [];
-    for (var key in obj) {
-      if (obj.hasOwnProperty(key)) {
-        arr.push(key);
-      }
-    }
-    return arr;
+  clamp: function(val, min, max) {
+    return val < min ? min : (val > max ? max : val);
   },
 
-  reduce: function(arr, func, val, ctx) {
-    var len = arr && arr.length || 0;
-    for (var i = 0; i < len; i++) {
-      val = func.call(ctx, val, arr[i], i);
-    }
-    return val;
+  interpolate: function(val1, val2, pct) {
+    return val1 * (1-pct) + val2 * pct;
   },
 
-  mapFilter: function(src, func, ctx) {
-    var isArray = Utils.isArrayLike(src),
-        dest = [],
-        retn, keys, key, n;
-    if (isArray) {
-      n = src.length;
-    } else {
-      keys = Utils.keys(src);
-      n = keys.length;
-    }
-    for (var i=0; i < n; i++) {
-      key = isArray ? i : keys[i];
-      retn = func.call(ctx, src[key], key);
-      if (retn !== void 0) {
-        dest.push(retn);
-      }
-    }
-    return dest;
+  isArray: function(obj) {
+    return Array.isArray(obj);
   },
 
-  map: function(src, func, ctx) {
-    var dest = Utils.mapFilter(src, func, ctx);
-    if (Utils.isInteger(src.length) && dest.length !== src.length) {
-      error("Utils.map() Sparse array; use Utils.mapFilter()");
-    }
-    return dest;
+  // NaN -> true
+  isNumber: function(obj) {
+    // return toString.call(obj) == '[object Number]'; // ie8 breaks?
+    return obj != null && obj.constructor == Number;
+  },
+
+  isInteger: function(obj) {
+    return Utils.isNumber(obj) && ((obj | 0) === obj);
+  },
+
+  isString: function(obj) {
+    return obj != null && obj.toString === String.prototype.toString;
+    // TODO: replace w/ something better.
+  },
+
+  isBoolean: function(obj) {
+    return obj === true || obj === false;
   },
 
   // Convert an array-like object to an Array, or make a copy if @obj is an Array
@@ -132,160 +78,15 @@ var Utils = {
     return false;
   },
 
-  isFunction: function(obj) {
-    return typeof obj == 'function';
-  },
-
-  isObject: function(obj) {
-    return obj === Object(obj); // via underscore
-  },
-
-  isArray: function(obj) {
-    return obj instanceof Array; // breaks across iframes
-    // More robust:
-    // return Object.constructor.toString.call(obj) == '[object Array]';
-  },
-
-  // NaN -> true
-  isNumber: function(obj) {
-    // return toString.call(obj) == '[object Number]'; // ie8 breaks?
-    return obj != null && obj.constructor == Number;
-  },
-
-  isInteger: function(obj) {
-    return Utils.isNumber(obj) && ((obj | 0) === obj);
-  },
-
-  isString: function(obj) {
-    return obj != null && obj.toString === String.prototype.toString;
-    // TODO: replace w/ something better.
-  },
-
-  isBoolean: function(obj) {
-    return obj === true || obj === false;
-  },
-
-  clamp: function(val, min, max) {
-    return val < min ? min : (val > max ? max : val);
-  },
-
-  interpolate: function(val1, val2, pct) {
-    return val1 * (1-pct) + val2 * pct;
-  },
-
-  getFunctionName: function(f) {
-    var matches = String(f).match(/^function ([^(]+)\(/);
-    return matches && matches[1] || "";
-  },
-
-  // TODO: handle array output and/or multiple arguments
-  //
-  memoize: function(func, ctx) {
-    var index = {},
-        memos = 0;
-    var f = function(arg) {
-      if (arguments.length != 1 || (typeof arg == 'object')) error("[memoize] only works with one-arg functions that take strings or numbers");
-      if (arg in index) {
-        return index[arg];
-      }
-      if (memos++ > 1000) { // tweening groups of things might generate lots of values
-        index = {};
-      }
-      return index[arg] = func.call(ctx, arg);
-    };
-    return f;
-  },
-
-  bind: function(func, ctx) {
-    return function() {
-      return func.apply(ctx, Utils.toArray(arguments));
-    };
-  },
-
-  log: function(msg) {
-    if (Env.inNode) {
-      process.stderr.write(msg + '\n'); // node messages to stdout
-    }
-    else if (typeof console != "undefined" && console.log) {
-      if (console.log.call) {
-        console.log.call(console, msg); // Required by ____.
-      }
-      else {
-        console.log(msg);
-      }
-    }
-  },
-
-  // Display string representation of an object, for logging, etc.
-  // Functions and some objects are converted into a string label.
-  //
-  toString: function(obj, quoteString) {
-    var type = typeof obj,
-        str;
-    if (type == 'function') {
-      str = '"[' + (Utils.getFunctionName(obj) || 'function') + '()]"';
-    } else if (obj == null || Utils.isNumber(obj) || Utils.isBoolean(obj)) {
-      str = String(obj);
-    } else if (Utils.isArray(obj) || obj.byteLength > 0) { // handle typed arrays (with bytelength property)
-      str = '[' + Utils.map(obj, function(o) {return Utils.toString(o, true);}).join(', ') + ']';
-    } else if (obj.constructor == Object) { // Show properties of Object instances.
-      var parts = [];
-      for (var key in obj) {
-        var keyStr = /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? key : '"' + Utils.addslashes(key) + '"';
-        parts.push( keyStr + ':' + Utils.toString(obj[key], true));
-      }
-      str = '{' + parts.join(', ') + '}';
-    } else if (obj.nodeName) { //
-      str = '"[' + obj.nodeName + (obj.id ? " id=" + obj.id : "") + ']"';
-    }
-    // User-defined objects without a toString() method: Try to get function name from constructor function.
-    // Can't assume objects have hasOwnProperty() function (e.g. HTML nodes don't in ie <= 8)
-    else if (type == 'object' && obj.toString === Object.prototype.toString) {
-      str = '"[' + (Utils.getFunctionName(obj.constructor) || "unknown object") + ']"';
-    } else {
-      // strings and objects with own "toString" methods.
-      str = String(obj);
-      if (quoteString) {
-        str = '"' + Utils.addslashes(str) + '"';
-      }
-    }
-    return str;
-  },
-
-  // Convert an object to a string, for logging
-  strval: function(o) {
-    var str = Utils.toString(o),
-        max = 800;
-    if (str.length > max) {
-      str = str.substr(0, max - 4) + " ...";
-    }
-    return str;
-  },
-
-  // Convert an object to a string that can be parsed as JavaScript
-  serialize: function(o) {
-    return Utils.toString(o, true);
-  },
-
   // See https://raw.github.com/kvz/phpjs/master/functions/strings/addslashes.js
   addslashes: function(str) {
     return (str + '').replace(/[\\"']/g, '\\$&').replace(/\u0000/g, '\\0');
   },
 
-  /**
-   * Escape a literal string to use in a regexp.
-   * Ref.: http://simonwillison.net/2006/Jan/20/escape/
-   */
+  // Escape a literal string to use in a regexp.
+  // Ref.: http://simonwillison.net/2006/Jan/20/escape/
   regexEscape: function(str) {
     return str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-  },
-
-  flatten: function(src) {
-    var obj = {};
-    for (var k in src) {
-      obj[k] = src[k];
-    }
-    return obj;
   },
 
   defaults: function(dest) {
@@ -316,149 +117,26 @@ var Utils = {
   }
 };
 
-var Opts = {
-  copyAllParams: Utils.extend,
-  copyNewParams: Utils.defaults,
 
-  // Copy src functions/params to targ prototype
-  // changed: overwrite existing properties
-  // TODO: replace calls to this with Utils.extend(dest.prototype, ...);
-  extendPrototype : function(targ, src) {
-    Utils.extend(targ.prototype, Utils.flatten(src.prototype || src));
-    targ.prototype.constructor = targ;
-  },
 
-  /**
-   * Pseudoclassical inheritance
-   *
-   * Inherit from a Parent function:
-   *    Opts.inherit(Child, Parent);
-   * Call parent's constructor (inside child constructor):
-   *    this.__super__([args...]);
-   * Call a parent method (when it has been overriden by a same-named function in Child):
-   *    this.__super__.<method_name>.call(this, [args...]);
-   */
-  inherit: function(targ, src) {
-    var f = function() {
-      // replaced: // if (this.constructor === targ) {
-      if (this.__super__ == f) {
-        // add __super__ of parent to front of lookup chain
-        // so parent class constructor can call its parent using this.__super__
-        this.__super__ = src.prototype.__super__;
-        // call parent constructor function. this.__super__ now points to parent-of-parent
-        src.apply(this, arguments);
-        // remove temp __super__, expose targ.prototype.__super__ again
-        delete this.__super__;
-      }
-    };
+var Env = (function() {
+  var inNode = typeof module !== 'undefined' && !!module.exports;
+  var inBrowser = typeof window !== 'undefined' && !inNode;
+  var inPhantom = inBrowser && !!(window.phantom && window.phantom.exit);
+  var ieVersion = inBrowser && /MSIE ([0-9]+)/.exec(navigator.appVersion) && parseInt(RegExp.$1) || NaN;
 
-    f.prototype = src.prototype || src; // added || src to allow inheriting from objects as well as functions
-    // Extend targ prototype instead of wiping it out --
-    //   in case inherit() is called after targ.prototype = {stuff}; statement
-    targ.prototype = Utils.extend(new f(), targ.prototype); //
-    targ.prototype.constructor = targ;
-    targ.prototype.__super__ = f;
-  },
-
-  // @parent Function to use as parent class
-  // ... Additional args extend the child's prototype
-  //
-  subclass: function(parent) {
-    var child = function() {
-      var fn = (this.__constructor__ || this.__super__); // constructor function
-      fn.apply(this, Utils.toArray(arguments));
-    };
-    Opts.inherit(child, parent);
-    for (var i=1; i<arguments.length; i++) {
-      Opts.extendPrototype(child, arguments[i]);
-    }
-    // set a constructor function, instead of automatically calling parent's constructor
-    child.constructor = function(fn) {
-      child.prototype.__constructor__ = fn;
-      return child;
-    };
-    return child;
-  },
-
-  namespaceExists: function(name) {
-    var node = Opts.global();
-    var parts = name.split('.');
-    var exists = Utils.reduce(parts, function(val, part) {
-      if (val !== false) {
-        if (node[part] == null) { // match null or undefined
-          val = false;
-        }
-        else {
-          node = node[part];
-        }
-      }
-      return val;
-    }, true);
-    return exists;
-  },
-
-  global: function() {
-    return (function() {return this})(); // default to window in DOM or global in node
-  },
-
-  getNamespace: function(name, root) {
-    var node = root || this.global();
-    var parts = name.split('.');
-    for (var i=0, len=parts.length; i<len; i++) {
-      var part = parts[i];
-      if (!part) continue;
-      if (!node[part]) {
-        node[part] = {};
-      }
-      node = node[part];
-    }
-    return node;
-  },
-
-  readParam : function(param, defaultVal) {
-    return param === undefined ? defaultVal : param;
-  },
-
-  extendNamespace : function(ns, obj) {
-    var nsObj = typeof ns == 'string' ? Opts.getNamespace(ns) : ns;
-    Opts.copyAllParams(nsObj, obj);
-  },
-
-  exportObject : function(path, obj, root) {
-
-    if (typeof define === "function" && define.amd) {
-      define(function() { return obj; });
-    }
-
-    if (Env.inNode) {
-      module.exports = obj;
-    } else {
-      root = root || this.global();
-      var parts = path.split('.'),
-          name = parts.pop();
-      if (!name) {
-        error("Opts.exportObject() Invalid name:", path);
-      } else {
-        var exp = {};
-        exp[name] = obj;
-        Opts.extendNamespace(parts.join('.'), exp)
-      }
-    }
-  }
-};
-
-var trace = function() {
-  if (C.VERBOSE) {
-    Utils.log(Utils.map(arguments, Utils.strval).join(' '));
-  }
-};
-
-var verbose = trace;
-
-var error = function() {
-  var msg = Utils.map(arguments, Utils.strval).join(' ');
-  throw new Error(msg);
-};
+  return {
+    iPhone : inBrowser && !!(navigator.userAgent.match(/iPhone/i)),
+    iPad : inBrowser && !!(navigator.userAgent.match(/iPad/i)),
+    touchEnabled : inBrowser && ("ontouchstart" in window),
+    canvas: inBrowser && !!document.createElement('canvas').getContext,
+    inNode : inNode,
+    inPhantom : inPhantom,
+    inBrowser: inBrowser,
+    ieVersion: ieVersion,
+    ie: !isNaN(ieVersion)
+  };
+})();
 
 
 // Support for timing using T.start() and T.stop("message")
@@ -497,133 +175,7 @@ var T = {
 
 
 
-// Sort an array of objects based on one or more properties.
-// Usage: Utils.sortOn(array, key1, asc?[, key2, asc? ...])
-//
-Utils.sortOn = function(arr) {
-  var comparators = [];
-  for (var i=1; i<arguments.length; i+=2) {
-    comparators.push(Utils.getKeyComparator(arguments[i], arguments[i+1]));
-  }
-  arr.sort(function(a, b) {
-    var cmp = 0,
-        i = 0,
-        n = comparators.length;
-    while (i < n && cmp === 0) {
-      cmp = comparators[i](a, b);
-      i++;
-    }
-    return cmp;
-  });
-  return arr;
-};
-
-// Sort array of values that can be compared with < > operators (strings, numbers)
-// null, undefined and NaN are sorted to the end of the array
-//
-Utils.sortNumbers = // removed original function, now alias of genericSort
-Utils.genericSort = function(arr, asc) {
-  var compare = Utils.getGenericComparator(asc);
-  Array.prototype.sort.call(arr, compare);
-  return arr;
-};
-
-Utils.sortOnKey = function(arr, getter, asc) {
-  var compare = Utils.getGenericComparator(asc !== false) // asc is default
-  arr.sort(function(a, b) {
-    return compare(getter(a), getter(b));
-  });
-};
-
-// Stashes keys in a temp array (better if calculating key is expensive).
-Utils.sortOnKey2 = function(arr, getKey, asc) {
-  Utils.sortArrayByKeys(arr, arr.map(getKey), asc);
-};
-
-Utils.sortArrayByKeys = function(arr, keys, asc) {
-  var ids = Utils.getSortedIds(keys, asc);
-  Utils.reorderArray(arr, ids);
-};
-
-Utils.getSortedIds = function(arr, asc) {
-  var ids = Utils.range(arr.length);
-  Utils.sortArrayIndex(ids, arr, asc);
-  return ids;
-};
-
-Utils.sortArrayIndex = function(ids, arr, asc) {
-  var compare = Utils.getGenericComparator(asc);
-  ids.sort(function(i, j) {
-    // added i, j comparison to guarantee that sort is stable
-    var cmp = compare(arr[i], arr[j]);
-    return cmp > 0 || cmp === 0 && i < j ? 1 : -1;
-  });
-};
-
-Utils.reorderArray = function(arr, idxs) {
-  var len = idxs.length;
-  var arr2 = [];
-  for (var i=0; i<len; i++) {
-    var idx = idxs[i];
-    if (idx < 0 || idx >= len) error("Out-of-bounds array idx");
-    arr2[i] = arr[idx];
-  }
-  Utils.replaceArray(arr, arr2);
-};
-
-Utils.getKeyComparator = function(key, asc) {
-  var compare = Utils.getGenericComparator(asc);
-  return function(a, b) {
-    return compare(a[key], b[key]);
-  };
-};
-
-Utils.getGenericComparator = function(asc) {
-  asc = asc !== false;
-  return function(a, b) {
-    var retn = 0;
-    if (b == null) {
-      retn = a == null ? 0 : -1;
-    } else if (a == null) {
-      retn = 1;
-    } else if (a < b) {
-      retn = asc ? -1 : 1;
-    } else if (a > b) {
-      retn = asc ? 1 : -1;
-    } else if (a !== a) {
-      retn = 1;
-    } else if (b !== b) {
-      retn = -1;
-    }
-    return retn;
-  };
-};
-
-// This is faster than Array.prototype.sort(<callback>) when "getter" returns a
-// precalculated sort string. (Removing -- kludgy, not very useful)
-//
-// @arr Array of objects to sort.
-// @getter Function that returns a sort key (string) for each object.
-/*
-Utils.sortOnKeyFunction = function(arr, getter) {
-  if (!arr || arr.length == 0) {
-    return;
-  }
-  // Temporarily patch toString() method w/ sort key function.
-  // Assumes array contains objects of the same type
-  // and their "constructor" property is properly set.
-  var p = arr[0].constructor.prototype;
-  var tmp = p.toString;
-  p.toString = getter;
-  arr.sort();
-  p.toString = tmp;
-};
-*/
-
-
-
-
-
+// Append elements of @src array to @dest array
 Utils.merge = function(dest, src) {
   if (!Utils.isArray(dest) || !Utils.isArray(src)) {
     error("Usage: Utils.merge(destArray, srcArray);")
@@ -638,8 +190,8 @@ Utils.merge = function(dest, src) {
 // (similar to underscore diff)
 Utils.difference = function(arr, other) {
   var index = Utils.arrayToIndex(other);
-  return Utils.mapFilter(arr, function(el) {
-    return Object.prototype.hasOwnProperty.call(index, el) ? void 0: el;
+  return arr.filter(function(el) {
+    return !Object.prototype.hasOwnProperty.call(index, el);
   });
 };
 
@@ -655,19 +207,19 @@ Utils.contains = function(container, item) {
 };
 
 Utils.some = function(arr, test) {
-  return Utils.reduce(arr, function(val, item) {
+  return arr.reduce(function(val, item) {
     return val || test(item); // TODO: short-circuit?
   }, false);
 };
 
 Utils.every = function(arr, test) {
-  return Utils.reduce(arr, function(val, item) {
+  return arr.reduce(function(val, item) {
     return val && test(item);
   }, true);
 };
 
 Utils.find = function(arr, test, ctx) {
-  var matches = Utils.filter(arr, test, ctx);
+  var matches = arr.filter(test, ctx);
   return matches.length === 0 ? null : matches[0];
 };
 
@@ -690,11 +242,6 @@ Utils.range = function(len, start, inc) {
     v += i;
   }
   return arr;
-};
-
-Utils.range2 = function(start, end, inc) {
-  var len = Math.floor((end - start) / inc) + 1;
-  return Utils.range(len, start, inc);
 };
 
 Utils.repeat = function(times, func) {
@@ -731,9 +278,7 @@ Utils.sum = function(arr, info) {
   return tot;
 };
 
-/**
- * Calculate min and max values of an array, ignoring NaN values
- */
+// Calculate min and max values of an array, ignoring NaN values
 Utils.getArrayBounds = function(arr) {
   var min = Infinity,
     max = -Infinity,
@@ -751,85 +296,39 @@ Utils.getArrayBounds = function(arr) {
   };
 };
 
-Utils.average = function(arr) {
-  if (!arr.length) error("Tried to find average of empty array");
-  return Utils.sum(arr) / arr.length;
-};
-
-Utils.invert = function(obj) {
-  var inv = {};
-  for (var key in obj) {
-    inv[obj[key]] = key;
-  }
-  return inv;
-};
-
-Utils.getKeys = Utils.keys;
-
-Utils.values =
-Utils.getValues = function(obj) {
-  var arr = [];
-  for (var key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      arr.push(obj[key]);
-    }
-  }
-  return arr;
-};
-
 Utils.uniq = function(src) {
   var index = {};
-  return Utils.mapFilter(src, function(el) {
+  return src.reduce(function(memo, el) {
     if (el in index === false) {
       index[el] = true;
-      return el;
+      memo.push(el);
     }
-  });
+    return memo;
+  }, []);
 };
 
 Utils.pluck = function(arr, key) {
-  return Utils.map(arr, function(obj) {
+  return arr.map(function(obj) {
     return obj[key];
   });
 };
 
-Utils.findAll =
-Utils.filter = function(arr, func, ctx) {
-  return Utils.mapFilter(arr, function(obj, i) {
-    if (func.call(ctx, obj, i)) return obj;
-  });
-};
-
-Utils.filterObject = function(obj, func, ctx) {
-  return Utils.reduce(obj, function(memo, val, key) {
-    if (func.call(ctx, val, key)) {
-      memo[key] = val;
-    }
-    return memo;
-  }, {});
-};
-
-Utils.count = function(arr, func, ctx) {
-  return Utils.filter(arr, func, ctx).length;
-};
-
-Utils.getValueCounts = function(obj) {
-  return Utils.reduce(obj, function(memo, val, key) {
+Utils.countValues = function(arr) {
+  return arr.reduce(function(memo, val) {
     memo[val] = (val in memo) ? memo[val] + 1 : 1;
     return memo;
   }, {});
 };
 
-
 Utils.indexOn = function(arr, k) {
-  return Utils.reduce(arr, function(index, o) {
+  return arr.reduce(function(index, o) {
     index[o[k]] = o;
     return index;
   }, {});
 };
 
 Utils.groupBy = function(arr, k) {
-  return Utils.reduce(arr, function(index, o) {
+  return arr.reduce(function(index, o) {
     var keyval = o[k];
     if (keyval in index) {
       index[keyval].push(o);
@@ -842,46 +341,26 @@ Utils.groupBy = function(arr, k) {
 
 Utils.arrayToIndex = function(arr, val) {
   var init = arguments.length > 1;
-  return Utils.reduce(arr, function(index, key) {
-    if (key in index) {
-      trace("#arrayToIndex() Duplicate key:", key);
-    }
+  return arr.reduce(function(index, key) {
     index[key] = init ? val : true;
     return index;
   }, {});
 };
 
-Utils.forEach = function(obj, func, ctx) {
-  Utils.mapFilter(obj, func, ctx);
+// Support for iterating over array-like objects, like typed arrays
+Utils.forEach = function(arr, func, ctx) {
+  if (!Utils.isArrayLike(arr)) {
+    throw new Error("#forEach() takes an array-like argument");
+  }
+  for (var i=0, n=arr.length; i < n; i++) {
+    func.call(ctx, arr[i], i);
+  }
 };
 
-Utils.multiMap = function(callback) {
-  var usage = "Usage: Utils.multiMap(callback, arr1, [arr2, ...])";
-  if (!Utils.isFunction(callback)) error(usage)
-  var args = [],
-      sources = args.slice.call(arguments, 1),
-      arrLen = 0;
-  Utils.forEach(sources, function(src, i) {
-    if (Utils.isArrayLike(src)) {
-      if (arrLen == 0) {
-        arrLen = src.length;
-      } else if (src.length != arrLen) {
-        error("#multiMap() mismatched source arrays");
-      }
-    } else {
-      args[i] = src;
-      sources[i] = null;
-    }
+Utils.forEachProperty = function(o, func, ctx) {
+  Object.keys(o).forEach(function(key) {
+    func.call(ctx, o[key], key);
   });
-
-  var retn = [];
-  for (var i=0; i<arrLen; i++) {
-    for (var j=0, n=sources.length; j<n; j++) {
-      if (sources[j]) args[j] = sources[j][i];
-    }
-    retn[i] = callback.apply(null, args);
-  }
-  return retn;
 };
 
 Utils.initializeArray = function(arr, init) {
@@ -891,27 +370,10 @@ Utils.initializeArray = function(arr, init) {
   return arr;
 };
 
-Utils.newArray = function(size, init) {
-  return Utils.initializeArray(new Array(size), init);
-};
-
 Utils.replaceArray = function(arr, arr2) {
   arr.splice(0, arr.length);
   arr.push.apply(arr, arr2);
 };
-
-Utils.randomizeArray = function(arr) {
-  var n=arr.length,
-      swap, tmp;
-  while (n > 0) {
-    swap = Math.random() * n | 0;
-    tmp = arr[swap];
-    arr[swap] = arr[--n];
-    arr[n] = tmp;
-  }
-  return arr;
-};
-
 
 
 
@@ -960,9 +422,6 @@ Utils.lreplace = function(str, word) {
   return str;
 };
 
-Utils.capitalizeWord = function(w) {
-  return w ? w.charAt(0).toUpperCase() + w.substr(1) : '';
-};
 
 Utils.addThousandsSep = function(str) {
   var fmt = '',
@@ -1029,6 +488,9 @@ Transform.prototype.transform = function(x, y, xy) {
 Transform.prototype.toString = function() {
   return Utils.toString(Utils.extend({}, this));
 };
+
+
+
 
 function Bounds() {
   if (arguments.length > 0) {
@@ -1294,6 +756,131 @@ Bounds.prototype.mergeBounds = function(bb) {
   }
   return this;
 };
+
+
+
+
+// Sort an array of objects based on one or more properties.
+// Usage: Utils.sortOn(array, key1, asc?[, key2, asc? ...])
+//
+Utils.sortOn = function(arr) {
+  var comparators = [];
+  for (var i=1; i<arguments.length; i+=2) {
+    comparators.push(Utils.getKeyComparator(arguments[i], arguments[i+1]));
+  }
+  arr.sort(function(a, b) {
+    var cmp = 0,
+        i = 0,
+        n = comparators.length;
+    while (i < n && cmp === 0) {
+      cmp = comparators[i](a, b);
+      i++;
+    }
+    return cmp;
+  });
+  return arr;
+};
+
+// Sort array of values that can be compared with < > operators (strings, numbers)
+// null, undefined and NaN are sorted to the end of the array
+//
+Utils.genericSort = function(arr, asc) {
+  var compare = Utils.getGenericComparator(asc);
+  Array.prototype.sort.call(arr, compare);
+  return arr;
+};
+
+Utils.sortOnKey = function(arr, getter, asc) {
+  var compare = Utils.getGenericComparator(asc !== false) // asc is default
+  arr.sort(function(a, b) {
+    return compare(getter(a), getter(b));
+  });
+};
+
+// Stashes keys in a temp array (better if calculating key is expensive).
+Utils.sortOnKey2 = function(arr, getKey, asc) {
+  Utils.sortArrayByKeys(arr, arr.map(getKey), asc);
+};
+
+Utils.sortArrayByKeys = function(arr, keys, asc) {
+  var ids = Utils.getSortedIds(keys, asc);
+  Utils.reorderArray(arr, ids);
+};
+
+Utils.getSortedIds = function(arr, asc) {
+  var ids = Utils.range(arr.length);
+  Utils.sortArrayIndex(ids, arr, asc);
+  return ids;
+};
+
+Utils.sortArrayIndex = function(ids, arr, asc) {
+  var compare = Utils.getGenericComparator(asc);
+  ids.sort(function(i, j) {
+    // added i, j comparison to guarantee that sort is stable
+    var cmp = compare(arr[i], arr[j]);
+    return cmp > 0 || cmp === 0 && i < j ? 1 : -1;
+  });
+};
+
+Utils.reorderArray = function(arr, idxs) {
+  var len = idxs.length;
+  var arr2 = [];
+  for (var i=0; i<len; i++) {
+    var idx = idxs[i];
+    if (idx < 0 || idx >= len) error("Out-of-bounds array idx");
+    arr2[i] = arr[idx];
+  }
+  Utils.replaceArray(arr, arr2);
+};
+
+Utils.getKeyComparator = function(key, asc) {
+  var compare = Utils.getGenericComparator(asc);
+  return function(a, b) {
+    return compare(a[key], b[key]);
+  };
+};
+
+Utils.getGenericComparator = function(asc) {
+  asc = asc !== false;
+  return function(a, b) {
+    var retn = 0;
+    if (b == null) {
+      retn = a == null ? 0 : -1;
+    } else if (a == null) {
+      retn = 1;
+    } else if (a < b) {
+      retn = asc ? -1 : 1;
+    } else if (a > b) {
+      retn = asc ? 1 : -1;
+    } else if (a !== a) {
+      retn = 1;
+    } else if (b !== b) {
+      retn = -1;
+    }
+    return retn;
+  };
+};
+
+// This is faster than Array.prototype.sort(<callback>) when "getter" returns a
+// precalculated sort string. (Removing -- kludgy, not very useful)
+//
+// @arr Array of objects to sort.
+// @getter Function that returns a sort key (string) for each object.
+/*
+Utils.sortOnKeyFunction = function(arr, getter) {
+  if (!arr || arr.length == 0) {
+    return;
+  }
+  // Temporarily patch toString() method w/ sort key function.
+  // Assumes array contains objects of the same type
+  // and their "constructor" property is properly set.
+  var p = arr[0].constructor.prototype;
+  var tmp = p.toString;
+  p.toString = getter;
+  arr.sort();
+  p.toString = tmp;
+};
+*/
 
 
 
@@ -1677,28 +1264,7 @@ BinArray.prototype = {
     this._idx += BinArray.bufferCopy(this._buffer, this._idx, buf, startIdx, bytes);
     return this;
   }
-
-  /*
-  // TODO: expand buffer, probably via a public method, not automatically
-  //
-  _grow: function(k) {
-    var fac = k > 1 && k <= 3 ? k : 1.7,
-        srcLen = this.bufferSize(),
-        destLen = Math.round(srcLen * fac),
-        buf = new ArrayBuffer(destLen);
-
-    var src = new Uint8Array(this._buffer),
-        dest = new Uint8Array(buf);
-
-    for (var i=0; i<srcLen; i++) {
-      dest[i] = src[i];
-    }
-
-    this._buffer = buf;
-    this._view = new DataView(buf);
-  },*/
 };
-
 
 
 
@@ -1830,7 +1396,7 @@ Utils.formatter = function(fmt) {
   literals.push(fmt.substr(startIdx));
 
   if (escapes > 0) {
-    formatCodes = Utils.filter(formatCodes, function(obj, i) {
+    formatCodes = formatCodes.filter(function(obj, i) {
       if (obj !== '%') return true;
       literals[i] += '%' + literals.splice(i+1, 1)[0];
       return false;
@@ -2162,11 +1728,6 @@ MapShaper.filenameIsUnsupportedOutputType = function(file) {
 
 // utility functions for datasets and layers
 
-// make a modified copy of a layer
-MapShaper.updateLayer = function(lyr, update, opts) {
-  // var newLyr = utils.defaults(obj, lyr);
-};
-
 MapShaper.getDatasetBounds = function(data) {
   var bounds = new Bounds();
   data.layers.forEach(function(lyr) {
@@ -2246,7 +1807,7 @@ MapShaper.findMatchingLayers = function(layers, target) {
   });
 
   ii = utils.uniq(ii); // remove dupes
-  return utils.map(ii, function(i) {
+  return ii.map(function(i) {
     return layers[i];
   });
 };
@@ -3584,7 +3145,7 @@ ShapeIter.prototype.reset = function() {
 // Convert an array of intersections into an ArcCollection (for display)
 //
 MapShaper.getIntersectionPoints = function(intersections) {
-  return utils.map(intersections, function(obj) {
+  return intersections.map(function(obj) {
         return [obj.x, obj.y];
       });
 };
@@ -3639,10 +3200,11 @@ MapShaper.findSegmentIntersections = (function() {
     // Allocate arrays for segments in each stripe
     var stripeData = getUint32Array(utils.sum(stripeSizes)),
         offs = 0;
-    var stripes = utils.map(stripeSizes, function(stripeSize) {
+    var stripes = [];
+    utils.forEach(stripeSizes, function(stripeSize) {
       var start = offs;
       offs += stripeSize;
-      return stripeData.subarray(start, offs);
+      stripes.push(stripeData.subarray(start, offs));
     });
     // Assign segment ids to each stripe
     utils.initializeArray(stripeSizes, 0);
@@ -3677,7 +3239,7 @@ MapShaper.findSegmentIntersections = (function() {
 
     // Add intersections from a bin, but avoid duplicates.
     function extendIntersections(intersections, arr, stripeId) {
-      utils.forEach(arr, function(obj, i) {
+      arr.forEach(function(obj, i) {
         var key = MapShaper.getIntersectionKey(obj.a, obj.b);
         if (key in index === false) {
           intersections.push(obj);
@@ -4018,7 +3580,7 @@ MapShaper.forEachPathSegment = function(shape, arcs, cb) {
 
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
-  utils.forEach(shapes, function(parts, shapeId) {
+  shapes.forEach(function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
     var arcIds, arcId, partData;
     if (cbShape) {
@@ -4066,7 +3628,7 @@ MapShaper.arcHasLength = function(id, coords) {
 MapShaper.filterEmptyArcs = function(shape, coords) {
   if (!shape) return null;
   var shape2 = [];
-  utils.forEach(shape, function(ids) {
+  shape.forEach(function(ids) {
     var path = [];
     for (var i=0; i<ids.length; i++) {
       if (MapShaper.arcHasLength(ids[i], coords)) {
@@ -4089,21 +3651,23 @@ MapShaper.filterEmptyArcs = function(shape, coords) {
 MapShaper.groupPolygonRings = function(paths) {
   var pos = [],
       neg = [];
-  utils.forEach(paths, function(path) {
-    if (path.area > 0) {
-      pos.push(path);
-    } else if (path.area < 0) {
-      neg.push(path);
-    } else {
-      // verbose("Zero-area ring, skipping");
-    }
-  });
+  if (paths) {
+    paths.forEach(function(path) {
+      if (path.area > 0) {
+        pos.push(path);
+      } else if (path.area < 0) {
+        neg.push(path);
+      } else {
+        // verbose("Zero-area ring, skipping");
+      }
+    });
+  }
 
-  var output = utils.map(pos, function(part) {
+  var output = pos.map(function(part) {
     return [part];
   });
 
-  utils.forEach(neg, function(hole) {
+  neg.forEach(function(hole) {
     var containerId = -1,
         containerArea = 0;
     for (var i=0, n=pos.length; i<n; i++) {
@@ -4124,7 +3688,7 @@ MapShaper.groupPolygonRings = function(paths) {
 };
 
 MapShaper.getPathMetadata = function(shape, arcs, type) {
-  return utils.map(shape, function(ids) {
+  return (shape || []).map(function(ids) {
     if (!utils.isArray(ids)) throw new Error("expected array");
     return {
       ids: ids,
@@ -4141,7 +3705,7 @@ MapShaper.getPathMetadata = function(shape, arcs, type) {
 // TODO: consider 3D versions of some of these
 
 geom.getPlanarShapeArea = function(shp, arcs) {
-  return utils.reduce(shp, function(area, ids) {
+  return (shp || []).reduce(function(area, ids) {
     return area + geom.getPlanarPathArea(ids, arcs);
   }, 0);
 };
@@ -4150,7 +3714,7 @@ geom.getSphericalShapeArea = function(shp, arcs) {
   if (arcs.isPlanar()) {
     error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
   }
-  return utils.reduce(shp, function(area, ids) {
+  return (shp || []).reduce(function(area, ids) {
     return area + geom.getSphericalPathArea(ids, arcs);
   }, 0);
 };
@@ -4201,15 +3765,16 @@ geom.getAvgPathXY = function(ids, arcs) {
 geom.testPointInPolygon = function(x, y, shp, arcs) {
   var isIn = false,
       isOn = false;
-
-  utils.forEach(shp, function(ids) {
-    var inRing = geom.testPointInRing(x, y, ids, arcs);
-    if (inRing == 1) {
-      isIn = !isIn;
-    } else if (inRing == -1) {
-      isOn = true;
-    }
-  });
+  if (shp) {
+    shp.forEach(function(ids) {
+      var inRing = geom.testPointInRing(x, y, ids, arcs);
+      if (inRing == 1) {
+        isIn = !isIn;
+      } else if (inRing == -1) {
+        isOn = true;
+      }
+    });
+  }
   return isOn || isIn;
 };
 
@@ -4248,7 +3813,7 @@ geom.getXIntercept = function(y, ax, ay, bx, by) {
 // Return unsigned distance of a point to a shape
 //
 geom.getPointToShapeDistance = function(x, y, shp, arcs) {
-  var minDist = utils.reduce(shp, function(minDist, ids) {
+  var minDist = (shp || []).reduce(function(minDist, ids) {
     var pathDist = geom.getPointToPathDistance(x, y, ids, arcs);
     return Math.min(minDist, pathDist);
   }, Infinity);
@@ -4750,7 +4315,6 @@ function NodeCollection(arcs, filter) {
   this.toArray = function() {
     var flags = new Uint8Array(nodeData.xx.length),
         nodes = [];
-
     utils.forEach(nodeData.chains, function(next, i) {
       if (flags[i] == 1) return;
       nodes.push([nodeData.xx[i], nodeData.yy[i]]);
@@ -5256,8 +4820,9 @@ MapShaper.getRingIntersector = function(nodes, type, flags, spherical) {
 };
 
 MapShaper.debugFlags = function(flags) {
-  var arr = utils.map(flags, function(flag) {
-    return bitsToString(flag);
+  var arr = [];
+  utils.forEach(flags, function(flag) {
+    arr.push(bitsToString(flag));
   });
   message(arr);
 
@@ -5639,7 +5204,7 @@ MapShaper.findClippingPoints = function(arcs) {
   // remove 1. points that are at arc endpoints and 2. duplicate points
   // (kludgy -- look into preventing these cases, which are caused by T intersections)
   var index = {};
-  return utils.filter(points, function(p) {
+  return points.filter(function(p) {
     var key = p.i + "," + p.pct;
     if (key in index) return false;
     index[key] = true;
@@ -6662,7 +6227,7 @@ Dbf.exportRecords = function(arr, encoding) {
   var fields = Dbf.getFieldNames(arr);
   var uniqFields = Dbf.getUniqFieldNames(fields, 10);
   var rows = arr.length;
-  var fieldData = utils.map(fields, function(name) {
+  var fieldData = fields.map(function(name) {
     return Dbf.getFieldInfo(arr, name, encoding);
   });
 
@@ -6687,7 +6252,7 @@ Dbf.exportRecords = function(arr, encoding) {
   bin.skipBytes(2);
 
   // field subrecords
-  utils.reduce(fieldData, function(recordOffset, obj, i) {
+  fieldData.reduce(function(recordOffset, obj, i) {
     var fieldName = uniqFields[i];
     bin.writeCString(fieldName, 11);
     bin.writeUint8(obj.type.charCodeAt(0));
@@ -6703,7 +6268,7 @@ Dbf.exportRecords = function(arr, encoding) {
     error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
   }
 
-  utils.forEach(arr, function(rec, i) {
+  arr.forEach(function(rec, i) {
     var start = bin.position();
     bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
     for (var j=0, n=fieldData.length; j<n; j++) {
@@ -6807,7 +6372,7 @@ Dbf.initDateField = function(info, arr, name) {
 Dbf.initStringField = function(info, arr, name, encoding) {
   var formatter = Dbf.getStringWriter(encoding);
   var maxLen = 0;
-  var values = utils.map(arr, function(rec) {
+  var values = arr.map(function(rec) {
     var buf = formatter(rec[name]);
     maxLen = Math.max(maxLen, buf.byteLength);
     return buf;
@@ -6980,7 +6545,7 @@ var dataTableProto = {
     if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
     if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
 
-    utils.forEach(this.getRecords(), function(obj, i) {
+    this.getRecords().forEach(function(obj, i) {
       obj[name] = useFunction ? init(obj, i) : init;
     });
   },
@@ -7100,7 +6665,7 @@ function dissolveFirstPass(shapes, getGroupId) {
       });
 
   MapShaper.traverseShapes(shapes, procArc);
-  utils.forEach(largeGroups, splitGroup);
+  largeGroups.forEach(splitGroup);
   return segments;
 
   function procArc(obj) {
@@ -7167,7 +6732,7 @@ function dissolveFirstPass(shapes, getGroupId) {
   }
 
   function updateGroupIds(ids) {
-    utils.forEach(ids, function(id) {
+    ids.forEach(function(id) {
       segments[id].group = ids;
     });
   }
@@ -7181,7 +6746,7 @@ function dissolveFirstPass(shapes, getGroupId) {
         findMatchingPair(group, checkSingleExtension) ||
         findMatchingPair(group, checkPairwiseMatch);
     if (group2) {
-      group = utils.filter(group, function(i) {
+      group = group.filter(function(i) {
         return !utils.contains(group2, i);
       });
       updateGroupIds(group);
@@ -7397,10 +6962,11 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
 
   var chainIds = initPointChains(xx, yy, !"verbose");
   var pointId = 0;
-  var paths = utils.map(nn, function(pathLen) {
+  var paths = [];
+  utils.forEach(nn, function(pathLen) {
     var arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
     pointId += pathLen;
-    return arcs;
+    paths.push(arcs);
   });
   var obj = index.getVertexData();
   obj.paths = paths;
@@ -8179,8 +7745,8 @@ MapShaper.exportPathData = function(shape, arcs, type) {
       bounds = new Bounds(),
       paths = [];
 
-  if (type == 'polyline' || type == 'polygon') {
-    utils.forEach(shape, function(arcIds, i) {
+  if (shape && (type == 'polyline' || type == 'polygon')) {
+    shape.forEach(function(arcIds, i) {
       var iter = arcs.getShapeIter(arcIds),
           path = MapShaper.exportPathCoords(iter),
           valid = true;
@@ -8263,7 +7829,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
   if (utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
-  var supportedGeometries = utils.getKeys(GeoJSON.pathImporters);
+  var supportedGeometries = Object.keys(GeoJSON.pathImporters);
 
   // Convert single feature or geometry into a collection with one member
   if (obj.type == 'Feature') {
@@ -8459,7 +8025,7 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
 
   // serialize features one at a time to avoid allocating lots of arrays
   // TODO: consider serializing once at the end, for clarity
-  var objects = utils.reduce(lyr.shapes, function(memo, shape, i) {
+  var objects = lyr.shapes.reduce(function(memo, shape, i) {
     var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, lyr.geometry_type),
         str;
     if (useFeatures) {
@@ -8597,14 +8163,13 @@ TopoJSON.forEachArc = function forEachArc(obj, cb) {
 
 
 
-
 TopoJSON.decodeArcs = function(arcs, transform) {
   var mx = transform.scale[0],
       my = transform.scale[1],
       bx = transform.translate[0],
       by = transform.translate[1];
 
-  utils.forEach(arcs, function(arc) {
+  arcs.forEach(function(arc) {
     var prevX = 0,
         prevY = 0,
         xy, x, y;
@@ -8624,7 +8189,7 @@ TopoJSON.decodeArcs = function(arcs, transform) {
 TopoJSON.roundCoords = function(arcs, precision) {
   var round = getRoundingFunction(precision),
       p;
-  utils.forEach(arcs, function(arc) {
+  arcs.forEach(function(arc) {
     for (var i=0, len=arc.length; i<len; i++) {
       p = arc[i];
       p[0] = round(p[0]);
@@ -8645,7 +8210,7 @@ TopoJSON.importObject = function(obj, opts) {
 
 TopoJSON.importGeometryCollection = function(obj, opts) {
   var importer = new TopoJSON.GeometryImporter(opts);
-  utils.forEach(obj.geometries, importer.addGeometry, importer);
+  obj.geometries.forEach(importer.addGeometry, importer);
   return importer.done();
 };
 
@@ -8728,7 +8293,7 @@ TopoJSON.pathImporters = {
     return arcs;
   },
   MultiPolygon: function(arcs) {
-    return utils.reduce(arcs, function(memo, arr) {
+    return arcs.reduce(function(memo, arr) {
       return memo ? memo.concat(arr) : arr;
     }, null);
   }
@@ -8743,7 +8308,7 @@ TopoJSON.pruneArcs = function(topology) {
   var arcs = topology.arcs;
   var retained = new Uint32Array(arcs.length);
 
-  utils.forEach(topology.objects, function(obj, name) {
+  utils.forEachProperty(topology.objects, function(obj, name) {
     TopoJSON.forEachArc(obj, function(arcId) {
       // TODO: skip collapsed arcs
       if (arcId < 0) arcId = ~arcId;
@@ -8751,13 +8316,9 @@ TopoJSON.pruneArcs = function(topology) {
     });
   });
 
-  var filterCount = utils.reduce(retained, function(count, flag) {
-    return count + flag;
-  }, 0);
-
-  if (filterCount < arcs.length) {
+  if (utils.sum(retained) < arcs.length) {
     // filter arcs and remap ids
-    topology.arcs = utils.reduce(arcs, function(arcs, arc, i) {
+    topology.arcs = arcs.reduce(function(arcs, arc, i) {
       if (arc && retained[i] === 1) { // dissolved-away arcs are set to null
         retained[i] = arcs.length;
         arcs.push(arc);
@@ -8768,7 +8329,7 @@ TopoJSON.pruneArcs = function(topology) {
     }, []);
 
     // Re-index
-    utils.forEach(topology.objects, function(obj) {
+    utils.forEachProperty(topology.objects, function(obj) {
       TopoJSON.reindexArcIds(obj, retained);
     });
   }
@@ -8797,14 +8358,14 @@ TopoJSON.reindexArcIds = function(geom, map) {
 //
 TopoJSON.splitTopology = function(topology) {
   var topologies = {};
-  utils.forEach(topology.objects, function(obj, name) {
+  Object.keys(topology.objects).forEach(function(name) {
     var split = {
       arcs: topology.arcs,
       // bbox: obj.bbox || null,
       objects: {}
     };
-    split.objects[name] = obj;
-    Opts.copyNewParams(split, topology);
+    split.objects[name] = topology.objects[name];
+    utils.defaults(split, topology);
     TopoJSON.pruneArcs(split);
     topologies[name] = split;
   });
@@ -8886,7 +8447,7 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
     if (!lyr.data) {
       stop("[lines] missing a data table:");
     }
-    utils.forEach(fields, function(field) {
+    fields.forEach(function(field) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] unknown data field:", field);
       }
@@ -8919,7 +8480,7 @@ MapShaper.convertArcsToLineLayer = function(arcs, data) {
 };
 
 MapShaper.convertArcsToShapes = function(arcs) {
-  return utils.map(arcs, function(id) {
+  return arcs.map(function(id) {
     return [[id]];
   });
 };
@@ -9362,8 +8923,8 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
   var obj = {
       type: "GeometryCollection"
     };
-  if (exporter) {
-    obj.geometries = utils.map(shapes, function(shape, i) {
+  if (exporter && shapes) {
+    obj.geometries = shapes.map(function(shape, i) {
       if (shape && shape.length > 0) {
         return exporter(shape, coords);
       }
@@ -9445,7 +9006,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     arcs = new ArcCollection(topology.arcs);
   }
 
-  utils.forEach(topology.objects, function(object, name) {
+  utils.forEachProperty(topology.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, opts);
 
     if (MapShaper.layerHasPaths(lyr)) {
@@ -9480,18 +9041,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
   } else {
     filename = 'output.json';
   }
-  // TODO: consider supporting this option again
-  /*
-  if (opts.topojson_divide) {
-    topologies = TopoJSON.splitTopology(topology);
-    files = utils.map(topologies, function(topo, name) {
-      return {
-        content: JSON.stringify(topo),
-        name: name
-      };
-    });
-  }
-  */
+
   return [{
     content: stringify(topology),
     filename: filename
@@ -9677,7 +9227,7 @@ function ShpRecordClass(type) {
 
     read: function() {
       var points = this.readPoints();
-      var parts = utils.map(this.readPartSizes(), function(size) {
+      var parts = this.readPartSizes().map(function(size) {
           return points.splice(0, size);
         });
       return parts;
@@ -9789,10 +9339,6 @@ function ShpReader(src) {
     return header;
   };
 
-  this.reset = function() {
-    RecordClass = this.getRecordClass();
-  };
-
   // return data as nested arrays of shapes > parts > points > [x,y(,z,m)]
   this.read = function() {
     var shapes = [];
@@ -9888,6 +9434,7 @@ ShpReader.prototype.getCounts = function() {
   return counts;
 };
 
+// Same interface as FileBytes, for reading from a buffer instead of a file.
 function BufferBytes(buf) {
   var bin = new BinArray(buf),
       bufSize = bin.size();
@@ -9904,6 +9451,7 @@ function BufferBytes(buf) {
   this.close = function() {};
 }
 
+// Read a binary file in chunks, to support files > 1GB in Node
 function FileBytes(path) {
   var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
       fs = require('fs'),
@@ -10348,7 +9896,7 @@ MapShaper.removeTypeHints = function(arr) {
 // modify @fields to remove type hints
 //
 MapShaper.parseFieldHeaders = function(fields, index) {
-  var parsed = utils.map(fields, function(raw) {
+  var parsed = fields.map(function(raw) {
     var parts, name, type;
     if (raw.indexOf(':') != -1) {
       parts = raw.split(':');
@@ -10434,18 +9982,18 @@ utils.parseNumber = function(str) {
 };
 
 MapShaper.convertRecordTypes = function(records, typeIndex) {
-  var typedFields = utils.keys(typeIndex),
+  var typedFields = Object.keys(typeIndex),
       converters = {
         'string': String,
         'number': utils.parseNumber
       },
-      transforms = utils.map(typedFields, function(f) {
+      transforms = typedFields.map(function(f) {
         var type = typeIndex[f],
             converter = converters[type];
         return converter;
       });
   if (typedFields.length === 0) return;
-  utils.forEach(records, function(rec) {
+  records.forEach(function(rec) {
     MapShaper.convertRecordData(rec, typedFields, transforms);
   });
 };
@@ -10533,7 +10081,7 @@ MapShaper.getOutputFormat = function(dataset, opts) {
 // TODO: consider making this a command, or at least make format settable
 //
 MapShaper.createIndexFile = function(dataset) {
-  var index = utils.map(dataset.layers, function(lyr) {
+  var index = dataset.layers.map(function(lyr) {
     var bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
     return {
       bbox: bounds.toArray(),
@@ -10548,10 +10096,10 @@ MapShaper.createIndexFile = function(dataset) {
 };
 
 MapShaper.validateLayerData = function(layers) {
-  utils.forEach(layers, function(lyr) {
+  layers.forEach(function(lyr) {
     if (!lyr.geometry_type) {
       // allowing data-only layers
-      if (utils.some(lyr.shapes, function(o) {
+      if (lyr.shapes && utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
         error("[export] A layer contains shape records and a null geometry type");
@@ -10614,7 +10162,7 @@ MapShaper.exportDataTables = function(layers, opts) {
 
 MapShaper.uniqifyNames = function(names) {
 
-  var counts = utils.getValueCounts(names),
+  var counts = utils.countValues(names),
       index = {},
       suffix;
   return names.map(function(name) {
@@ -11022,10 +10570,9 @@ MapShaper.removeExpressionSemicolons = function(exp) {
   return exp;
 };
 
-
 function addGetters(obj, getters) {
-  utils.forEach(getters, function(f, name) {
-    Object.defineProperty(obj, name, {get: f});
+  Object.keys(getters).forEach(function(name) {
+    Object.defineProperty(obj, name, {get: getters[name]});
   });
 }
 
@@ -11629,7 +11176,7 @@ MapShaper.updateFields = function(lyr, names, cmd) {
 };
 
 MapShaper.mapFieldNames = function(names, fieldMap) {
-  return utils.reduce(names, function(memo, str) {
+  return names.reduce(function(memo, str) {
     var parts = str.split('=');
     var dest = parts[0],
         src = parts[1] || dest;
@@ -11867,7 +11414,7 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
 
 MapShaper.filterDataTable = function(data, exp) {
   var compiled = MapShaper.compileFeatureExpression(exp, {data: data}, null),
-      filtered = utils.filter(data.getRecords(), function(rec, i) {
+      filtered = data.getRecords().filter(function(rec, i) {
         return compiled(i);
       });
   return new DataTable(filtered);
@@ -11879,7 +11426,7 @@ MapShaper.filterDataTable = function(data, exp) {
 api.keepEveryPolygon =
 MapShaper.keepEveryPolygon = function(arcData, layers) {
   T.start();
-  utils.forEach(layers, function(lyr) {
+  layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polygon') {
       MapShaper.protectLayerShapes(arcData, lyr.shapes);
     }
@@ -11888,7 +11435,7 @@ MapShaper.keepEveryPolygon = function(arcData, layers) {
 };
 
 MapShaper.protectLayerShapes = function(arcData, shapes) {
-  utils.forEach(shapes, function(shape) {
+  shapes.forEach(function(shape) {
     MapShaper.protectShape(arcData, shape);
   });
 };
@@ -12178,7 +11725,7 @@ utils.mergeArrays = function(arrays, TypedArr) {
       Arr = TypedArr || Array,
       merged = new Arr(size),
       offs = 0;
-  utils.forEach(arrays, function(src) {
+  arrays.forEach(function(src) {
     var n = src.length;
     for (var i = 0; i<n; i++) {
       merged[i + offs] = src[i];
@@ -13331,9 +12878,8 @@ MapShaper.repairIntersections = function(arcs, intersections) {
         loops = 0,
         intersection, segIds, pairs, pair, len;
 
-    intersections = utils.mapFilter(intersections, function(obj) {
-      if (setPriority(obj) == Infinity) return void 0;
-      return obj;
+    intersections = intersections.filter(function(obj) {
+      return setPriority(obj) != Infinity;
     });
 
     utils.sortOn(intersections, 'z', !!"ascending");
@@ -13642,13 +13188,13 @@ api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
   });
 
   var layers = [];
-  utils.forEach(groups, function(group, i) {
+  groups.forEach(function(group, i) {
     if (!group) return; // empty cell
     var groupLyr = {
       shapes: group.shapes,
       name: group.name
     };
-    Opts.copyNewParams(groupLyr, lyr);
+    utils.defaults(groupLyr, lyr);
     if (group.properties) {
       groupLyr.data = new DataTable(group.properties);
     }
@@ -13700,7 +13246,7 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
 
   subdividedLayers.forEach(function(lyr2, i) {
     lyr2.name = MapShaper.getSplitLayerName(lyr.name, i + 1);
-    Opts.copyNewParams(lyr2, lyr);
+    utils.defaults(lyr2, lyr);
   });
   return subdividedLayers;
 };
@@ -13725,7 +13271,7 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
 
   var useX = bounds && bounds.width() > bounds.height();
   // TODO: think about case where there are null shapes with NaN centers
-  var centers = utils.map(shapes, function(shp) {
+  var centers = shapes.map(function(shp) {
     var bounds = arcs.getMultiShapeBounds(shp);
     return useX ? bounds.centerX() : bounds.centerY();
   });
@@ -13733,7 +13279,7 @@ MapShaper.divideLayer = function(lyr, arcs, bounds) {
   ids.sort(function(a, b) {
     return centers[a] - centers[b];
   });
-  utils.forEach(ids, function(shapeId, i) {
+  ids.forEach(function(shapeId, i) {
     var dest = i < shapes.length / 2 ? lyr1 : lyr2;
     dest.shapes.push(shapes[shapeId]);
     if (properties) {
@@ -15324,7 +14870,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 
 // Handle information commands and remove them from the list
 MapShaper.runAndRemoveInfoCommands = function(commands) {
-  return utils.filter(commands, function(cmd) {
+  return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
       message(getVersion());
     } else if (cmd.name == 'encodings') {
@@ -15489,7 +15035,6 @@ utils.extend(api.internal, {
 });
 
 api.T = T;
-C.VERBOSE = false;
 
 if (typeof define === "function" && define.amd) {
   define("mapshaper", api);

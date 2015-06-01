@@ -80,7 +80,7 @@ MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcField
 
 MapShaper.filterDataTable = function(data, exp) {
   var compiled = MapShaper.compileFeatureExpression(exp, {data: data}, null),
-      filtered = utils.filter(data.getRecords(), function(rec, i) {
+      filtered = data.getRecords().filter(function(rec, i) {
         return compiled(i);
       });
   return new DataTable(filtered);

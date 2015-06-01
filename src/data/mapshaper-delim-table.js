@@ -70,7 +70,7 @@ MapShaper.removeTypeHints = function(arr) {
 // modify @fields to remove type hints
 //
 MapShaper.parseFieldHeaders = function(fields, index) {
-  var parsed = utils.map(fields, function(raw) {
+  var parsed = fields.map(function(raw) {
     var parts, name, type;
     if (raw.indexOf(':') != -1) {
       parts = raw.split(':');
@@ -156,18 +156,18 @@ utils.parseNumber = function(str) {
 };
 
 MapShaper.convertRecordTypes = function(records, typeIndex) {
-  var typedFields = utils.keys(typeIndex),
+  var typedFields = Object.keys(typeIndex),
       converters = {
         'string': String,
         'number': utils.parseNumber
       },
-      transforms = utils.map(typedFields, function(f) {
+      transforms = typedFields.map(function(f) {
         var type = typeIndex[f],
             converter = converters[type];
         return converter;
       });
   if (typedFields.length === 0) return;
-  utils.forEach(records, function(rec) {
+  records.forEach(function(rec) {
     MapShaper.convertRecordData(rec, typedFields, transforms);
   });
 };

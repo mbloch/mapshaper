@@ -40,10 +40,6 @@ function ShpReader(src) {
     return header;
   };
 
-  this.reset = function() {
-    RecordClass = this.getRecordClass();
-  };
-
   // return data as nested arrays of shapes > parts > points > [x,y(,z,m)]
   this.read = function() {
     var shapes = [];
@@ -139,6 +135,7 @@ ShpReader.prototype.getCounts = function() {
   return counts;
 };
 
+// Same interface as FileBytes, for reading from a buffer instead of a file.
 function BufferBytes(buf) {
   var bin = new BinArray(buf),
       bufSize = bin.size();
@@ -155,6 +152,7 @@ function BufferBytes(buf) {
   this.close = function() {};
 }
 
+// Read a binary file in chunks, to support files > 1GB in Node
 function FileBytes(path) {
   var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
       fs = require('fs'),

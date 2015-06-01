@@ -1,13 +1,12 @@
 /* @requires topojson-common */
 
-
 TopoJSON.decodeArcs = function(arcs, transform) {
   var mx = transform.scale[0],
       my = transform.scale[1],
       bx = transform.translate[0],
       by = transform.translate[1];
 
-  utils.forEach(arcs, function(arc) {
+  arcs.forEach(function(arc) {
     var prevX = 0,
         prevY = 0,
         xy, x, y;
@@ -27,7 +26,7 @@ TopoJSON.decodeArcs = function(arcs, transform) {
 TopoJSON.roundCoords = function(arcs, precision) {
   var round = getRoundingFunction(precision),
       p;
-  utils.forEach(arcs, function(arc) {
+  arcs.forEach(function(arc) {
     for (var i=0, len=arc.length; i<len; i++) {
       p = arc[i];
       p[0] = round(p[0]);
@@ -48,7 +47,7 @@ TopoJSON.importObject = function(obj, opts) {
 
 TopoJSON.importGeometryCollection = function(obj, opts) {
   var importer = new TopoJSON.GeometryImporter(opts);
-  utils.forEach(obj.geometries, importer.addGeometry, importer);
+  obj.geometries.forEach(importer.addGeometry, importer);
   return importer.done();
 };
 
@@ -131,7 +130,7 @@ TopoJSON.pathImporters = {
     return arcs;
   },
   MultiPolygon: function(arcs) {
-    return utils.reduce(arcs, function(memo, arr) {
+    return arcs.reduce(function(memo, arr) {
       return memo ? memo.concat(arr) : arr;
     }, null);
   }

@@ -3,7 +3,7 @@
 // Convert an array of intersections into an ArcCollection (for display)
 //
 MapShaper.getIntersectionPoints = function(intersections) {
-  return utils.map(intersections, function(obj) {
+  return intersections.map(function(obj) {
         return [obj.x, obj.y];
       });
 };
@@ -58,10 +58,11 @@ MapShaper.findSegmentIntersections = (function() {
     // Allocate arrays for segments in each stripe
     var stripeData = getUint32Array(utils.sum(stripeSizes)),
         offs = 0;
-    var stripes = utils.map(stripeSizes, function(stripeSize) {
+    var stripes = [];
+    utils.forEach(stripeSizes, function(stripeSize) {
       var start = offs;
       offs += stripeSize;
-      return stripeData.subarray(start, offs);
+      stripes.push(stripeData.subarray(start, offs));
     });
     // Assign segment ids to each stripe
     utils.initializeArray(stripeSizes, 0);
@@ -96,7 +97,7 @@ MapShaper.findSegmentIntersections = (function() {
 
     // Add intersections from a bin, but avoid duplicates.
     function extendIntersections(intersections, arr, stripeId) {
-      utils.forEach(arr, function(obj, i) {
+      arr.forEach(function(obj, i) {
         var key = MapShaper.getIntersectionKey(obj.a, obj.b);
         if (key in index === false) {
           intersections.push(obj);

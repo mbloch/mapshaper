@@ -63,6 +63,7 @@ describe('mapshaper-delim-table.js', function() {
     it('-i field-types= works with :str type hint', function (done) {
       var input = "fips\n00001";
       api.applyCommands('-i field-types=fips:str', input, function(err, output) {
+        if (err) throw err;
         assert.equal(err, null);
         assert.equal(output, "fips\n00001");
         done();

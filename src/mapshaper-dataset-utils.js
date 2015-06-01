@@ -2,11 +2,6 @@
 
 // utility functions for datasets and layers
 
-// make a modified copy of a layer
-MapShaper.updateLayer = function(lyr, update, opts) {
-  // var newLyr = utils.defaults(obj, lyr);
-};
-
 MapShaper.getDatasetBounds = function(data) {
   var bounds = new Bounds();
   data.layers.forEach(function(lyr) {
@@ -86,7 +81,7 @@ MapShaper.findMatchingLayers = function(layers, target) {
   });
 
   ii = utils.uniq(ii); // remove dupes
-  return utils.map(ii, function(i) {
+  return ii.map(function(i) {
     return layers[i];
   });
 };

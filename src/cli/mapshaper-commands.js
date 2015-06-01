@@ -173,7 +173,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 
 // Handle information commands and remove them from the list
 MapShaper.runAndRemoveInfoCommands = function(commands) {
-  return utils.filter(commands, function(cmd) {
+  return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
       message(getVersion());
     } else if (cmd.name == 'encodings') {

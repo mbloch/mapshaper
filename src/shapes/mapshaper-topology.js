@@ -55,10 +55,11 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
 
   var chainIds = initPointChains(xx, yy, !"verbose");
   var pointId = 0;
-  var paths = utils.map(nn, function(pathLen) {
+  var paths = [];
+  utils.forEach(nn, function(pathLen) {
     var arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
     pointId += pathLen;
-    return arcs;
+    paths.push(arcs);
   });
   var obj = index.getVertexData();
   obj.paths = paths;

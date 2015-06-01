@@ -61,7 +61,7 @@ utils.mergeArrays = function(arrays, TypedArr) {
       Arr = TypedArr || Array,
       merged = new Arr(size),
       offs = 0;
-  utils.forEach(arrays, function(src) {
+  arrays.forEach(function(src) {
     var n = src.length;
     for (var i = 0; i<n; i++) {
       merged[i + offs] = src[i];

@@ -38,7 +38,7 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
     if (!lyr.data) {
       stop("[lines] missing a data table:");
     }
-    utils.forEach(fields, function(field) {
+    fields.forEach(function(field) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] unknown data field:", field);
       }
@@ -71,7 +71,7 @@ MapShaper.convertArcsToLineLayer = function(arcs, data) {
 };
 
 MapShaper.convertArcsToShapes = function(arcs) {
-  return utils.map(arcs, function(id) {
+  return arcs.map(function(id) {
     return [[id]];
   });
 };

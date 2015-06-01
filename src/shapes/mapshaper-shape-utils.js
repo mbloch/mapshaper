@@ -158,7 +158,7 @@ MapShaper.forEachPathSegment = function(shape, arcs, cb) {
 
 MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
-  utils.forEach(shapes, function(parts, shapeId) {
+  shapes.forEach(function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
     var arcIds, arcId, partData;
     if (cbShape) {
@@ -206,7 +206,7 @@ MapShaper.arcHasLength = function(id, coords) {
 MapShaper.filterEmptyArcs = function(shape, coords) {
   if (!shape) return null;
   var shape2 = [];
-  utils.forEach(shape, function(ids) {
+  shape.forEach(function(ids) {
     var path = [];
     for (var i=0; i<ids.length; i++) {
       if (MapShaper.arcHasLength(ids[i], coords)) {
@@ -229,21 +229,23 @@ MapShaper.filterEmptyArcs = function(shape, coords) {
 MapShaper.groupPolygonRings = function(paths) {
   var pos = [],
       neg = [];
-  utils.forEach(paths, function(path) {
-    if (path.area > 0) {
-      pos.push(path);
-    } else if (path.area < 0) {
-      neg.push(path);
-    } else {
-      // verbose("Zero-area ring, skipping");
-    }
-  });
+  if (paths) {
+    paths.forEach(function(path) {
+      if (path.area > 0) {
+        pos.push(path);
+      } else if (path.area < 0) {
+        neg.push(path);
+      } else {
+        // verbose("Zero-area ring, skipping");
+      }
+    });
+  }
 
-  var output = utils.map(pos, function(part) {
+  var output = pos.map(function(part) {
     return [part];
   });
 
-  utils.forEach(neg, function(hole) {
+  neg.forEach(function(hole) {
     var containerId = -1,
         containerArea = 0;
     for (var i=0, n=pos.length; i<n; i++) {
@@ -264,7 +266,7 @@ MapShaper.groupPolygonRings = function(paths) {
 };
 
 MapShaper.getPathMetadata = function(shape, arcs, type) {
-  return utils.map(shape, function(ids) {
+  return (shape || []).map(function(ids) {
     if (!utils.isArray(ids)) throw new Error("expected array");
     return {
       ids: ids,

@@ -47,13 +47,13 @@ api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
   });
 
   var layers = [];
-  utils.forEach(groups, function(group, i) {
+  groups.forEach(function(group, i) {
     if (!group) return; // empty cell
     var groupLyr = {
       shapes: group.shapes,
       name: group.name
     };
-    Opts.copyNewParams(groupLyr, lyr);
+    utils.defaults(groupLyr, lyr);
     if (group.properties) {
       groupLyr.data = new DataTable(group.properties);
     }

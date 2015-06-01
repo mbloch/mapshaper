@@ -44,7 +44,7 @@ var dataTableProto = {
     if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
     if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
 
-    utils.forEach(this.getRecords(), function(obj, i) {
+    this.getRecords().forEach(function(obj, i) {
       obj[name] = useFunction ? init(obj, i) : init;
     });
   },

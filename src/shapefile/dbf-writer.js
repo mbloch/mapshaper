@@ -5,7 +5,7 @@ Dbf.exportRecords = function(arr, encoding) {
   var fields = Dbf.getFieldNames(arr);
   var uniqFields = Dbf.getUniqFieldNames(fields, 10);
   var rows = arr.length;
-  var fieldData = utils.map(fields, function(name) {
+  var fieldData = fields.map(function(name) {
     return Dbf.getFieldInfo(arr, name, encoding);
   });
 
@@ -30,7 +30,7 @@ Dbf.exportRecords = function(arr, encoding) {
   bin.skipBytes(2);
 
   // field subrecords
-  utils.reduce(fieldData, function(recordOffset, obj, i) {
+  fieldData.reduce(function(recordOffset, obj, i) {
     var fieldName = uniqFields[i];
     bin.writeCString(fieldName, 11);
     bin.writeUint8(obj.type.charCodeAt(0));
@@ -46,7 +46,7 @@ Dbf.exportRecords = function(arr, encoding) {
     error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
   }
 
-  utils.forEach(arr, function(rec, i) {
+  arr.forEach(function(rec, i) {
     var start = bin.position();
     bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
     for (var j=0, n=fieldData.length; j<n; j++) {
@@ -150,7 +150,7 @@ Dbf.initDateField = function(info, arr, name) {
 Dbf.initStringField = function(info, arr, name, encoding) {
   var formatter = Dbf.getStringWriter(encoding);
   var maxLen = 0;
-  var values = utils.map(arr, function(rec) {
+  var values = arr.map(function(rec) {
     var buf = formatter(rec[name]);
     maxLen = Math.max(maxLen, buf.byteLength);
     return buf;

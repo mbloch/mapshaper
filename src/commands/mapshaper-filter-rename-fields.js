@@ -36,7 +36,7 @@ MapShaper.updateFields = function(lyr, names, cmd) {
 };
 
 MapShaper.mapFieldNames = function(names, fieldMap) {
-  return utils.reduce(names, function(memo, str) {
+  return names.reduce(function(memo, str) {
     var parts = str.split('=');
     var dest = parts[0],
         src = parts[1] || dest;

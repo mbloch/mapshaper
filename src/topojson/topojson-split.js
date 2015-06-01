@@ -6,14 +6,14 @@
 //
 TopoJSON.splitTopology = function(topology) {
   var topologies = {};
-  utils.forEach(topology.objects, function(obj, name) {
+  Object.keys(topology.objects).forEach(function(name) {
     var split = {
       arcs: topology.arcs,
       // bbox: obj.bbox || null,
       objects: {}
     };
-    split.objects[name] = obj;
-    Opts.copyNewParams(split, topology);
+    split.objects[name] = topology.objects[name];
+    utils.defaults(split, topology);
     TopoJSON.pruneArcs(split);
     topologies[name] = split;
   });

@@ -38,7 +38,7 @@ function Slider(ref, opts) {
   var defaults = {
     space: 7
   };
-  opts = Opts.copyAllParams(defaults, opts);
+  opts = utils.extend(defaults, opts);
 
   var _pct = 0;
   var _track,

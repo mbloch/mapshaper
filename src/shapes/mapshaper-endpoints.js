@@ -24,7 +24,6 @@ function NodeCollection(arcs, filter) {
   this.toArray = function() {
     var flags = new Uint8Array(nodeData.xx.length),
         nodes = [];
-
     utils.forEach(nodeData.chains, function(next, i) {
       if (flags[i] == 1) return;
       nodes.push([nodeData.xx[i], nodeData.yy[i]]);

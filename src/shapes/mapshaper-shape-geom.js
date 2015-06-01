@@ -4,7 +4,7 @@
 // TODO: consider 3D versions of some of these
 
 geom.getPlanarShapeArea = function(shp, arcs) {
-  return utils.reduce(shp, function(area, ids) {
+  return (shp || []).reduce(function(area, ids) {
     return area + geom.getPlanarPathArea(ids, arcs);
   }, 0);
 };
@@ -13,7 +13,7 @@ geom.getSphericalShapeArea = function(shp, arcs) {
   if (arcs.isPlanar()) {
     error("[getSphericalShapeArea()] Function requires decimal degree coordinates");
   }
-  return utils.reduce(shp, function(area, ids) {
+  return (shp || []).reduce(function(area, ids) {
     return area + geom.getSphericalPathArea(ids, arcs);
   }, 0);
 };
@@ -64,15 +64,16 @@ geom.getAvgPathXY = function(ids, arcs) {
 geom.testPointInPolygon = function(x, y, shp, arcs) {
   var isIn = false,
       isOn = false;
-
-  utils.forEach(shp, function(ids) {
-    var inRing = geom.testPointInRing(x, y, ids, arcs);
-    if (inRing == 1) {
-      isIn = !isIn;
-    } else if (inRing == -1) {
-      isOn = true;
-    }
-  });
+  if (shp) {
+    shp.forEach(function(ids) {
+      var inRing = geom.testPointInRing(x, y, ids, arcs);
+      if (inRing == 1) {
+        isIn = !isIn;
+      } else if (inRing == -1) {
+        isOn = true;
+      }
+    });
+  }
   return isOn || isIn;
 };
 
@@ -111,7 +112,7 @@ geom.getXIntercept = function(y, ax, ay, bx, by) {
 // Return unsigned distance of a point to a shape
 //
 geom.getPointToShapeDistance = function(x, y, shp, arcs) {
-  var minDist = utils.reduce(shp, function(minDist, ids) {
+  var minDist = (shp || []).reduce(function(minDist, ids) {
     var pathDist = geom.getPointToPathDistance(x, y, ids, arcs);
     return Math.min(minDist, pathDist);
   }, Infinity);

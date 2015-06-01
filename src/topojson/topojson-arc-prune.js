@@ -6,7 +6,7 @@ TopoJSON.pruneArcs = function(topology) {
   var arcs = topology.arcs;
   var retained = new Uint32Array(arcs.length);
 
-  utils.forEach(topology.objects, function(obj, name) {
+  utils.forEachProperty(topology.objects, function(obj, name) {
     TopoJSON.forEachArc(obj, function(arcId) {
       // TODO: skip collapsed arcs
       if (arcId < 0) arcId = ~arcId;
@@ -14,13 +14,9 @@ TopoJSON.pruneArcs = function(topology) {
     });
   });
 
-  var filterCount = utils.reduce(retained, function(count, flag) {
-    return count + flag;
-  }, 0);
-
-  if (filterCount < arcs.length) {
+  if (utils.sum(retained) < arcs.length) {
     // filter arcs and remap ids
-    topology.arcs = utils.reduce(arcs, function(arcs, arc, i) {
+    topology.arcs = arcs.reduce(function(arcs, arc, i) {
       if (arc && retained[i] === 1) { // dissolved-away arcs are set to null
         retained[i] = arcs.length;
         arcs.push(arc);
@@ -31,7 +27,7 @@ TopoJSON.pruneArcs = function(topology) {
     }, []);
 
     // Re-index
-    utils.forEach(topology.objects, function(obj) {
+    utils.forEachProperty(topology.objects, function(obj) {
       TopoJSON.reindexArcIds(obj, retained);
     });
   }

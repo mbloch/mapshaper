@@ -209,8 +209,8 @@ TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
   var obj = {
       type: "GeometryCollection"
     };
-  if (exporter) {
-    obj.geometries = utils.map(shapes, function(shape, i) {
+  if (exporter && shapes) {
+    obj.geometries = shapes.map(function(shape, i) {
       if (shape && shape.length > 0) {
         return exporter(shape, coords);
       }

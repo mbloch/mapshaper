@@ -26,7 +26,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     arcs = new ArcCollection(topology.arcs);
   }
 
-  utils.forEach(topology.objects, function(object, name) {
+  utils.forEachProperty(topology.objects, function(object, name) {
     var lyr = TopoJSON.importObject(object, opts);
 
     if (MapShaper.layerHasPaths(lyr)) {
@@ -61,18 +61,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
   } else {
     filename = 'output.json';
   }
-  // TODO: consider supporting this option again
-  /*
-  if (opts.topojson_divide) {
-    topologies = TopoJSON.splitTopology(topology);
-    files = utils.map(topologies, function(topo, name) {
-      return {
-        content: JSON.stringify(topo),
-        name: name
-      };
-    });
-  }
-  */
+
   return [{
     content: stringify(topology),
     filename: filename

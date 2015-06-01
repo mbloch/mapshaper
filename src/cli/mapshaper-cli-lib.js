@@ -147,7 +147,6 @@ utils.extend(api.internal, {
 });
 
 api.T = T;
-C.VERBOSE = false;
 
 if (typeof define === "function" && define.amd) {
   define("mapshaper", api);

@@ -80,7 +80,7 @@ MapShaper.getOutputFormat = function(dataset, opts) {
 // TODO: consider making this a command, or at least make format settable
 //
 MapShaper.createIndexFile = function(dataset) {
-  var index = utils.map(dataset.layers, function(lyr) {
+  var index = dataset.layers.map(function(lyr) {
     var bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
     return {
       bbox: bounds.toArray(),
@@ -95,10 +95,10 @@ MapShaper.createIndexFile = function(dataset) {
 };
 
 MapShaper.validateLayerData = function(layers) {
-  utils.forEach(layers, function(lyr) {
+  layers.forEach(function(lyr) {
     if (!lyr.geometry_type) {
       // allowing data-only layers
-      if (utils.some(lyr.shapes, function(o) {
+      if (lyr.shapes && utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
         error("[export] A layer contains shape records and a null geometry type");
@@ -161,7 +161,7 @@ MapShaper.exportDataTables = function(layers, opts) {
 
 MapShaper.uniqifyNames = function(names) {
 
-  var counts = utils.getValueCounts(names),
+  var counts = utils.countValues(names),
       index = {},
       suffix;
   return names.map(function(name) {

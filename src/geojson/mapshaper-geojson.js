@@ -11,7 +11,7 @@ MapShaper.importGeoJSON = function(obj, opts) {
   if (utils.isString(obj)) {
     obj = JSON.parse(obj);
   }
-  var supportedGeometries = utils.getKeys(GeoJSON.pathImporters);
+  var supportedGeometries = Object.keys(GeoJSON.pathImporters);
 
   // Convert single feature or geometry into a collection with one member
   if (obj.type == 'Feature') {
@@ -207,7 +207,7 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
 
   // serialize features one at a time to avoid allocating lots of arrays
   // TODO: consider serializing once at the end, for clarity
-  var objects = utils.reduce(lyr.shapes, function(memo, shape, i) {
+  var objects = lyr.shapes.reduce(function(memo, shape, i) {
     var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, lyr.geometry_type),
         str;
     if (useFeatures) {

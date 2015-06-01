@@ -130,7 +130,7 @@ function ShpRecordClass(type) {
 
     read: function() {
       var points = this.readPoints();
-      var parts = utils.map(this.readPartSizes(), function(size) {
+      var parts = this.readPartSizes().map(function(size) {
           return points.splice(0, size);
         });
       return parts;
