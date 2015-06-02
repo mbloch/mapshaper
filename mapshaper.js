@@ -7949,11 +7949,15 @@ GeoJSON.pathImporters = {
 };
 
 MapShaper.exportGeoJSON = function(dataset, opts) {
-  var extension = '.' + (opts.output_extension || "json");
+  var extension = "json";
+  if (opts.output_file) {
+    // override default output extension if output filename is given
+    extension = utils.getFileExtension(opts.output_file);
+  }
   return dataset.layers.map(function(lyr) {
     return {
       content: MapShaper.exportGeoJSONString(lyr, dataset.arcs, opts),
-      filename: lyr.name ? lyr.name + extension : ""
+      filename: lyr.name ? lyr.name + '.' + extension : ""
     };
   });
 };
@@ -9856,8 +9860,8 @@ MapShaper.importDelimTable = function(str, delim, opts) {
 };
 
 MapShaper.exportDelim = function(dataset, opts) {
-  var delim = opts.delimiter || dataset.info.input_delimiter || ',',
-      ext = MapShaper.getDelimFileExtension(delim);
+  var delim = MapShaper.getExportDelimiter(dataset.info, opts),
+      ext = MapShaper.getDelimFileExtension(delim, opts);
   return dataset.layers.map(function(lyr) {
     return {
       // TODO: consider supporting encoding= option
@@ -9872,9 +9876,26 @@ MapShaper.exportDelimTable = function(lyr, delim) {
   return dsv.format(lyr.data.getRecords());
 };
 
-MapShaper.getDelimFileExtension = function(delim) {
-  var ext = 'txt';
-  if (delim == '\t') {
+MapShaper.getExportDelimiter = function(info, opts) {
+  var delim = ','; // default
+  var outputExt = opts.output_file ? utils.getFileExtension(opts.output_file) : '';
+  if (opts.delimiter) {
+    delim = opts.delimiter;
+  } else if (outputExt == 'tsv') {
+    delim = '\t';
+  } else if (outputExt == 'csv') {
+    delim = ',';
+  } else if (info.input_delimiter) {
+    delim = info.input_delimiter;
+  }
+  return delim;
+};
+
+MapShaper.getDelimFileExtension = function(delim, opts) {
+  var ext = 'txt'; // default
+  if (opts.output_file) {
+    ext = utils.getFileExtension(opts.output_file);
+  } else if (delim == '\t') {
     ext = 'tsv';
   } else if (delim == ',') {
     ext = 'csv';
@@ -10033,7 +10054,6 @@ MapShaper.exportFileContent = function(dataset, opts) {
   }
 
   if (opts.output_file && outFmt != 'topojson') {
-    opts.output_extension = utils.getFileExtension(opts.output_file);
     layers.forEach(function(lyr) {
       lyr.name = utils.getFileBase(opts.output_file);
     });
@@ -14743,31 +14763,35 @@ api.applyCommands = function(argv, content, done) {
   });
 };
 
+// Capture output data instead of writing files (useful for testing)
 // @tokens Command line arguments, as string or array
-// @content Contents of input data file
+// @content (may be null) Contents of input data file
 // @done: Callback function(<error>, <output>); <output> is an array of objects
 //        with properties "content" and "filename"
 MapShaper.processFileContent = function(tokens, content, done) {
-  var dataset, commands, cmd, inOpts, outOpts;
+  var dataset, commands, outCmd, inOpts, outOpts;
   try {
     commands = MapShaper.parseCommands(tokens);
+    commands = MapShaper.runAndRemoveInfoCommands(commands);
 
-    // ensure that first command is -i
-    cmd = commands[0];
-    if (cmd && cmd.name == 'i') {
-      inOpts = commands.shift().options;
-    } else {
-      inOpts = {};
+    // if we're processing raw content, import it to a dataset object
+    if (content) {
+      // if first command is -i, use -i options for importing
+      if (commands[0] && commands[0].name == 'i') {
+        inOpts = commands.shift().options;
+      } else {
+        inOpts = {};
+      }
+      dataset = MapShaper.importFileContent(content, null, inOpts);
     }
 
-    // get an output command
-    cmd = commands[commands.length-1];
-    if (cmd && cmd.name == 'o') {
+    // if last command is -o, use -o options for exporting
+    outCmd = commands[commands.length-1];
+    if (outCmd && outCmd.name == 'o') {
       outOpts = commands.pop().options;
     } else {
       outOpts = {};
     }
-    dataset = MapShaper.importFileContent(content, null, inOpts);
   } catch(e) {
     return done(e);
   }
@@ -14956,6 +14980,8 @@ cli.convertArrayBuffer = function(buf) {
   return dest;
 };
 
+// Expand any "*" wild cards in file name
+// (For the Windows command line; unix shells do this automatically)
 cli.expandFileName = function(name) {
   if (name.indexOf('*') == -1) return [name];
   var path = utils.parseLocalPath(name),
@@ -14972,24 +14998,13 @@ cli.expandFileName = function(name) {
   }, []);
 };
 
+// Expand any wildcards and check that files exist.
 cli.validateInputFiles = function(files) {
-  // wildcard expansion (usually already handled by shell)
-  var expanded = files.reduce(function(memo, name) {
+  files = files.reduce(function(memo, name) {
     return memo.concat(cli.expandFileName(name));
   }, []);
-  return expanded.reduce(function(memo, path) {
-    cli.validateInputFile(path);
-    return memo.concat(path);
-  }, []);
-};
-
-cli.validateInputFile = function(ifile) {
-  var opts = {};
-  cli.checkFileExists(ifile);
-  //if (!cli.validateFileExtension(ifile)) {
-  //   error("File has an unsupported extension:", ifile);
-  //}
-  return ifile;
+  files.forEach(cli.checkFileExists);
+  return files;
 };
 
 // TODO: rename and improve

@@ -11,7 +11,7 @@ describe('mapshaper-options.js', function () {
         file2 = fixPath("test_data/two_states.json"),
         file3 = fixPath("test_data/two_states.shx");
 
-    bad("-i missing.json"); // missing file
+    bad("-i missing.json");
     bad("-i precision " + file1);
     bad("-i precision 0 " + file1);
     // filename expansion

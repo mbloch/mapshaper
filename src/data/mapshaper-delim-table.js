@@ -22,8 +22,8 @@ MapShaper.importDelimTable = function(str, delim, opts) {
 };
 
 MapShaper.exportDelim = function(dataset, opts) {
-  var delim = opts.delimiter || dataset.info.input_delimiter || ',',
-      ext = MapShaper.getDelimFileExtension(delim);
+  var delim = MapShaper.getExportDelimiter(dataset.info, opts),
+      ext = MapShaper.getDelimFileExtension(delim, opts);
   return dataset.layers.map(function(lyr) {
     return {
       // TODO: consider supporting encoding= option
@@ -38,9 +38,26 @@ MapShaper.exportDelimTable = function(lyr, delim) {
   return dsv.format(lyr.data.getRecords());
 };
 
-MapShaper.getDelimFileExtension = function(delim) {
-  var ext = 'txt';
-  if (delim == '\t') {
+MapShaper.getExportDelimiter = function(info, opts) {
+  var delim = ','; // default
+  var outputExt = opts.output_file ? utils.getFileExtension(opts.output_file) : '';
+  if (opts.delimiter) {
+    delim = opts.delimiter;
+  } else if (outputExt == 'tsv') {
+    delim = '\t';
+  } else if (outputExt == 'csv') {
+    delim = ',';
+  } else if (info.input_delimiter) {
+    delim = info.input_delimiter;
+  }
+  return delim;
+};
+
+MapShaper.getDelimFileExtension = function(delim, opts) {
+  var ext = 'txt'; // default
+  if (opts.output_file) {
+    ext = utils.getFileExtension(opts.output_file);
+  } else if (delim == '\t') {
     ext = 'tsv';
   } else if (delim == ',') {
     ext = 'csv';

@@ -39,31 +39,35 @@ api.applyCommands = function(argv, content, done) {
   });
 };
 
+// Capture output data instead of writing files (useful for testing)
 // @tokens Command line arguments, as string or array
-// @content Contents of input data file
+// @content (may be null) Contents of input data file
 // @done: Callback function(<error>, <output>); <output> is an array of objects
 //        with properties "content" and "filename"
 MapShaper.processFileContent = function(tokens, content, done) {
-  var dataset, commands, cmd, inOpts, outOpts;
+  var dataset, commands, outCmd, inOpts, outOpts;
   try {
     commands = MapShaper.parseCommands(tokens);
+    commands = MapShaper.runAndRemoveInfoCommands(commands);
 
-    // ensure that first command is -i
-    cmd = commands[0];
-    if (cmd && cmd.name == 'i') {
-      inOpts = commands.shift().options;
-    } else {
-      inOpts = {};
+    // if we're processing raw content, import it to a dataset object
+    if (content) {
+      // if first command is -i, use -i options for importing
+      if (commands[0] && commands[0].name == 'i') {
+        inOpts = commands.shift().options;
+      } else {
+        inOpts = {};
+      }
+      dataset = MapShaper.importFileContent(content, null, inOpts);
     }
 
-    // get an output command
-    cmd = commands[commands.length-1];
-    if (cmd && cmd.name == 'o') {
+    // if last command is -o, use -o options for exporting
+    outCmd = commands[commands.length-1];
+    if (outCmd && outCmd.name == 'o') {
       outOpts = commands.pop().options;
     } else {
       outOpts = {};
     }
-    dataset = MapShaper.importFileContent(content, null, inOpts);
   } catch(e) {
     return done(e);
   }

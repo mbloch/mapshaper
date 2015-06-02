@@ -9788,11 +9788,15 @@ GeoJSON.pathImporters = {
 };
 
 MapShaper.exportGeoJSON = function(dataset, opts) {
-  var extension = '.' + (opts.output_extension || "json");
+  var extension = "json";
+  if (opts.output_file) {
+    // override default output extension if output filename is given
+    extension = utils.getFileExtension(opts.output_file);
+  }
   return dataset.layers.map(function(lyr) {
     return {
       content: MapShaper.exportGeoJSONString(lyr, dataset.arcs, opts),
-      filename: lyr.name ? lyr.name + extension : ""
+      filename: lyr.name ? lyr.name + '.' + extension : ""
     };
   });
 };
@@ -12001,8 +12005,8 @@ MapShaper.importDelimTable = function(str, delim, opts) {
 };
 
 MapShaper.exportDelim = function(dataset, opts) {
-  var delim = opts.delimiter || dataset.info.input_delimiter || ',',
-      ext = MapShaper.getDelimFileExtension(delim);
+  var delim = MapShaper.getExportDelimiter(dataset.info, opts),
+      ext = MapShaper.getDelimFileExtension(delim, opts);
   return dataset.layers.map(function(lyr) {
     return {
       // TODO: consider supporting encoding= option
@@ -12017,9 +12021,26 @@ MapShaper.exportDelimTable = function(lyr, delim) {
   return dsv.format(lyr.data.getRecords());
 };
 
-MapShaper.getDelimFileExtension = function(delim) {
-  var ext = 'txt';
-  if (delim == '\t') {
+MapShaper.getExportDelimiter = function(info, opts) {
+  var delim = ','; // default
+  var outputExt = opts.output_file ? utils.getFileExtension(opts.output_file) : '';
+  if (opts.delimiter) {
+    delim = opts.delimiter;
+  } else if (outputExt == 'tsv') {
+    delim = '\t';
+  } else if (outputExt == 'csv') {
+    delim = ',';
+  } else if (info.input_delimiter) {
+    delim = info.input_delimiter;
+  }
+  return delim;
+};
+
+MapShaper.getDelimFileExtension = function(delim, opts) {
+  var ext = 'txt'; // default
+  if (opts.output_file) {
+    ext = utils.getFileExtension(opts.output_file);
+  } else if (delim == '\t') {
     ext = 'tsv';
   } else if (delim == ',') {
     ext = 'csv';
@@ -12178,7 +12199,6 @@ MapShaper.exportFileContent = function(dataset, opts) {
   }
 
   if (opts.output_file && outFmt != 'topojson') {
-    opts.output_extension = utils.getFileExtension(opts.output_file);
     layers.forEach(function(lyr) {
       lyr.name = utils.getFileBase(opts.output_file);
     });

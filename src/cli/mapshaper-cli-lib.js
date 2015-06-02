@@ -61,6 +61,8 @@ cli.convertArrayBuffer = function(buf) {
   return dest;
 };
 
+// Expand any "*" wild cards in file name
+// (For the Windows command line; unix shells do this automatically)
 cli.expandFileName = function(name) {
   if (name.indexOf('*') == -1) return [name];
   var path = utils.parseLocalPath(name),
@@ -77,24 +79,13 @@ cli.expandFileName = function(name) {
   }, []);
 };
 
+// Expand any wildcards and check that files exist.
 cli.validateInputFiles = function(files) {
-  // wildcard expansion (usually already handled by shell)
-  var expanded = files.reduce(function(memo, name) {
+  files = files.reduce(function(memo, name) {
     return memo.concat(cli.expandFileName(name));
   }, []);
-  return expanded.reduce(function(memo, path) {
-    cli.validateInputFile(path);
-    return memo.concat(path);
-  }, []);
-};
-
-cli.validateInputFile = function(ifile) {
-  var opts = {};
-  cli.checkFileExists(ifile);
-  //if (!cli.validateFileExtension(ifile)) {
-  //   error("File has an unsupported extension:", ifile);
-  //}
-  return ifile;
+  files.forEach(cli.checkFileExists);
+  return files;
 };
 
 // TODO: rename and improve

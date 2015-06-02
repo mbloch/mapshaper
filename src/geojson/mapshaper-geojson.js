@@ -123,11 +123,15 @@ GeoJSON.pathImporters = {
 };
 
 MapShaper.exportGeoJSON = function(dataset, opts) {
-  var extension = '.' + (opts.output_extension || "json");
+  var extension = "json";
+  if (opts.output_file) {
+    // override default output extension if output filename is given
+    extension = utils.getFileExtension(opts.output_file);
+  }
   return dataset.layers.map(function(lyr) {
     return {
       content: MapShaper.exportGeoJSONString(lyr, dataset.arcs, opts),
-      filename: lyr.name ? lyr.name + extension : ""
+      filename: lyr.name ? lyr.name + '.' + extension : ""
     };
   });
 };

@@ -24,7 +24,6 @@ MapShaper.exportFileContent = function(dataset, opts) {
   }
 
   if (opts.output_file && outFmt != 'topojson') {
-    opts.output_extension = utils.getFileExtension(opts.output_file);
     layers.forEach(function(lyr) {
       lyr.name = utils.getFileBase(opts.output_file);
     });

@@ -12,6 +12,48 @@ function fixPath(p) {
 
 describe('mapshaper-delim-table.js', function() {
 
+  describe('infer export delimiter from filename, if possible', function () {
+    it('.tsv implies tab-delimited text', function (done) {
+      var cmd = '-i test/test_data/text/two_states.csv -o output.tsv';
+      api.internal.processFileContent(cmd, null, function(err, output) {
+        var o = output[0];
+        assert.equal(o.filename, 'output.tsv'); // filename is correct
+        assert.ok(o.content.indexOf('\t') > -1); // got tabs
+        done();
+      })
+    })
+
+    it('use input delimiter if export filename is ambiguous', function (done) {
+      var cmd = '-i test/test_data/text/two_states.csv -o output.txt';
+      api.internal.processFileContent(cmd, null, function(err, output) {
+        var o = output[0];
+        assert.equal(o.filename, 'output.txt'); // filename is correct
+        assert.ok(o.content.indexOf(',') > -1); // got commas
+        done();
+      })
+    })
+
+    it('use comma as default delimiter if other methods fail', function (done) {
+      var cmd = '-i test/test_data/two_states.shp -o output.txt';
+      api.internal.processFileContent(cmd, null, function(err, output) {
+        var o = output[0];
+        assert.equal(o.filename, 'output.txt'); // filename is correct
+        assert.ok(o.content.indexOf(',') > -1); // got commas
+        done();
+      })
+    })
+
+    it('.csv in output filename implies comma-delimited text', function (done) {
+      var cmd = '-i test/test_data/text/two_states.tsv -o output.csv';
+      api.internal.processFileContent(cmd, null, function(err, output) {
+        var o = output[0];
+        assert.equal(o.filename, 'output.csv'); // filename is correct
+        assert.ok(o.content.indexOf(',') > -1); // got commas
+        done();
+      })
+    })
+  })
+
   describe('Importing dsv with encoding= option', function() {
     it ('utf16 (be)', function(done) {
       var cmd = '-i test/test_data/text/utf16.txt encoding=utf16';
