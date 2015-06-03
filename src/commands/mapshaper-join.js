@@ -1,4 +1,4 @@
-/* @require mapshaper-common, mapshaper-expressions, mapshaper-dbf-table, mapshaper-delim-table */
+/* @require mapshaper-common, mapshaper-expressions, mapshaper-dbf-table, mapshaper-delim-import */
 
 api.importJoinTable = function(file, opts) {
   if (!opts.keys || opts.keys.length != 2) {
@@ -16,9 +16,11 @@ api.importJoinTable = function(file, opts) {
   return dataset.layers[0].data;
 };
 
+// TODO: think through how best to deal with identical field names
 api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
   var keys = MapShaper.removeTypeHints(opts.keys),
       joinFields = MapShaper.removeTypeHints(opts.fields || []),
+      destTable = lyr.data,
       destKey = keys[0],
       srcKey = keys[1],
       matches;
@@ -30,12 +32,13 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
     srcTable = MapShaper.filterDataTable(srcTable, opts.where);
   }
   if (joinFields.length > 0 === false) {
-    joinFields = utils.difference(srcTable.getFields(), [srcKey]);
+    // don't copy source key or overwrite existing fields
+    joinFields = utils.difference(srcTable.getFields(), [srcKey].concat(destTable.getFields()));
   }
-  if (!lyr.data || !lyr.data.fieldExists(destKey)) {
+  if (!destTable || !destTable.fieldExists(destKey)) {
     stop("[join] Target layer is missing field:", destKey);
   }
-  MapShaper.joinTables(lyr.data, destKey, joinFields, srcTable, srcKey,
+  MapShaper.joinTables(destTable, destKey, joinFields, srcTable, srcKey,
       joinFields);
 };
 

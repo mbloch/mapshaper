@@ -1,4 +1,5 @@
 var api = require('../'),
+    deepStrictEqual = require('deep-eql'),
     utils = api.utils,
     assert = require('assert');
 
@@ -10,7 +11,17 @@ function fixPath(p) {
   return require('path').join(__dirname, p);
 }
 
-describe('mapshaper-delim-table.js', function() {
+describe('mapshaper-delim-import.js', function() {
+
+  describe('handle empty fields in tab-delim files', function() {
+    it('test1', function() {
+      var csv = "number,name\n3,foo\n,\n";
+      var dataset = api.internal.importDelim(csv);
+      var records = dataset.layers[0].data.getRecords();
+      var target = [{number: 3, name: 'foo'}, {number: null, name: ''}];
+      assert(deepStrictEqual(records, target));
+    })
+  })
 
   describe('infer export delimiter from filename, if possible', function () {
     it('.tsv implies tab-delimited text', function (done) {
@@ -113,6 +124,21 @@ describe('mapshaper-delim-table.js', function() {
     })
   })
 
+  describe('parseNumber()', function() {
+    it('undefined -> null', function() {
+      assert.strictEqual(utils.parseNumber(undefined), null);
+    })
+
+    it ('"" -> null', function() {
+      assert.strictEqual(utils.parseNumber(""), null);
+    })
+
+    it ('"1e3" -> 1000', function() {
+      assert.equal(utils.parseNumber('1e3'), 1000);
+    })
+
+  })
+
   describe('stringIsNumeric()', function () {
     it('identifies decimal numbers', function() {
       assert.ok(utils.stringIsNumeric('-43.2'))
@@ -136,8 +162,8 @@ describe('mapshaper-delim-table.js', function() {
       assert.equal(utils.stringIsNumeric('Alphabet'), false)
     })
 
-    it('identifies hex numbers', function() {
-      assert.ok(utils.stringIsNumeric('0xcc'));
+    it('rejects hex numbers', function() {
+      assert.ok(!utils.stringIsNumeric('0xcc'));
     })
 
     it('reject empty strings', function() {
@@ -217,7 +243,7 @@ describe('mapshaper-delim-table.js', function() {
       var records = [{foo:"0", bar:"4,000,300", baz: "0xcc", goo: '300 E'}],
           fields = ['foo', 'bar', 'baz', 'goo']
       api.internal.adjustRecordTypes(records, fields);
-      stringifyEqual(records, [{foo:0, bar:4000300, baz: 0xcc, goo: '300 E'}])
+      stringifyEqual(records, [{foo:0, bar:4000300, baz: "0xcc", goo: '300 E'}])
     })
 
     it('protect string-format numbers with type hints', function() {
@@ -277,4 +303,5 @@ describe('mapshaper-delim-table.js', function() {
     })
 
   })
-})
+
+});

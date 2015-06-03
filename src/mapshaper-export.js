@@ -4,7 +4,7 @@ mapshaper-topojson
 mapshaper-shapefile
 mapshaper-dataset-utils
 mapshaper-rounding
-mapshaper-delim-table
+mapshaper-delim-export
 mapshaper-dbf-table
 */
 
