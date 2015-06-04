@@ -9673,7 +9673,7 @@ MapShaper.getFormattedStringify = function(numArrayKeys) {
 
 
 var GeoJSON = MapShaper.geojson = {};
-GeoJSON.ID_FIELD = "FID";
+GeoJSON.ID_FIELD = "FID"; // default field name of imported *JSON feature ids
 
 MapShaper.importGeoJSON = function(src, opts) {
   var srcObj = utils.isString(src) ? JSON.parse(src) : src,
