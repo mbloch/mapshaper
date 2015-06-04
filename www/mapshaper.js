@@ -11820,7 +11820,7 @@ function ImportControl(editor) {
   // TODO: doesn't need to be public
   // Receive: FileList
   this.readFiles = function(files) {
-    (files || []).forEach(this.readFile, this);
+    utils.forEach((files || []), this.readFile, this);
   };
 
   // Receive: File object
