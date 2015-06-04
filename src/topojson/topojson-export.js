@@ -8,12 +8,15 @@ mapshaper-explode,
 topojson-presimplify
 */
 
-TopoJSON.exportTopology = function(layers, arcData, opts) {
+// Convert a dataset object to a TopoJSON topology object
+TopoJSON.exportTopology = function(dataset, opts) {
   var topology = {type: "Topology"},
       bounds = new Bounds(),
+      layers = dataset.layers,
+      arcData = dataset.arcs,
       objects, filteredArcs, transform, invTransform;
 
-  // some datasets may lack arcs -- e.g. only point layers
+  // some datasets may lack arcs, e.g. a dataset containing only a point layer
   if (arcData && arcData.size() > 0) {
     // get a copy of arc data (coords are modified for topojson export)
     filteredArcs = arcData.getFilteredCopy();
@@ -97,6 +100,7 @@ TopoJSON.exportTopology = function(layers, arcData, opts) {
     topology.arcs = []; // spec seems to require an array
   }
 
+  MapShaper.exportCRS(dataset, topology);
   return topology;
 };
 

@@ -67,7 +67,7 @@ describe('mapshaper-geojson.js', function () {
         }
       };
       var dataset = api.internal.importGeoJSON(src, {});
-      var output = api.internal.exportGeoJSONObject(dataset.layers[0], dataset.arcs);
+      var output = api.internal.exportGeoJSONObject(dataset.layers[0], dataset);
       assert.deepEqual(output.features[0], target);
     })
   })
@@ -81,12 +81,16 @@ describe('mapshaper-geojson.js', function () {
             data: new DataTable([{ID: 1}]),
             shapes: [[[0]]]
           };
+      var dataset = {
+        arcs: arcs,
+        layers: [lyr]
+      };
 
       var target = {"type":"FeatureCollection","features":[
         {type: 'Feature', properties: {ID: 1}, geometry: null}
       ]};
 
-      assert.deepEqual(api.internal.exportGeoJSONObject(lyr, arcs), target);
+      assert.deepEqual(api.internal.exportGeoJSONObject(lyr, dataset), target);
     })
 
     it('use cut_table option', function () {
@@ -145,6 +149,9 @@ describe('mapshaper-geojson.js', function () {
       var lyr = {
         geometry_type: 'point',
         shapes: [[[0, 1]], [[2, 3], [1, 4]]]
+      },
+      dataset = {
+        layers: [lyr]
       };
 
       var target = {
@@ -159,7 +166,7 @@ describe('mapshaper-geojson.js', function () {
         bbox: [0, 1, 2, 4]
       };
 
-      var result = api.internal.exportGeoJSONObject(lyr, null, {bbox: true});
+      var result = api.internal.exportGeoJSONObject(lyr, dataset, {bbox: true});
       assert.deepEqual(result, target);
     })
 
@@ -170,6 +177,10 @@ describe('mapshaper-geojson.js', function () {
           lyr = {
             geometry_type: "polygon",
             shapes: [[[0]], [[~1]]]
+          },
+          dataset = {
+            arcs: arcs,
+            layers: [lyr]
           };
 
       var target = {"type":"GeometryCollection","geometries":[
@@ -181,7 +192,7 @@ describe('mapshaper-geojson.js', function () {
         ]
         , bbox: [-1, 0, 2, 3]
       };
-      var result = api.internal.exportGeoJSONObject(lyr, arcs, {bbox: true});
+      var result = api.internal.exportGeoJSONObject(lyr, dataset, {bbox: true});
       assert.deepEqual(result, target);
     })
 
@@ -190,6 +201,9 @@ describe('mapshaper-geojson.js', function () {
             geometry_type: "point",
             shapes: [[[1, 1]]],
             data: new DataTable([{FID: 1}])
+          },
+          dataset = {
+            layers: [lyr]
           };
 
       var target = {"type":"FeatureCollection","features":[{
@@ -201,13 +215,60 @@ describe('mapshaper-geojson.js', function () {
           }
         }]
       };
-      var result = api.internal.exportGeoJSONObject(lyr, null, {id_field: 'FID'});
+      var result = api.internal.exportGeoJSONObject(lyr, dataset, {id_field: 'FID'});
       assert.deepEqual(result, target);
     })
 
   })
 
   describe('Import/Export roundtrip tests', function () {
+
+    it('preserve top-level crs', function(done) {
+      var crs = {
+        "type": "name",
+        "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}
+      };
+      var input = {
+        crs: crs,
+        type: 'Point',
+        coordinates: [0, 0]
+      };
+      api.applyCommands('', input, function(err, data) {
+        var output = JSON.parse(data);
+        assert.deepEqual(output.crs, crs);
+        done();
+      })
+    });
+
+    it('preserve null crs', function(done) {
+      var input = {
+        crs: null,
+        type: 'Point',
+        coordinates: [0, 0]
+      };
+      api.applyCommands('', input, function(err, data) {
+        var output = JSON.parse(data);
+        assert.strictEqual(output.crs, null);
+        done();
+      })
+    });
+
+    it('set crs to null if data is projected', function(done) {
+      var crs = {
+        "type": "name",
+        "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}
+      };
+      var input = {
+        crs: crs,
+        type: 'Point',
+        coordinates: [0, 0]
+      };
+      api.applyCommands('-proj mercator', input, function(err, data) {
+        var output = JSON.parse(data);
+        assert.strictEqual(output.crs, null);
+        done();
+      })
+    });
 
     it('preserve ids with no properties', function() {
       var input = {
@@ -380,5 +441,5 @@ function geoJSONRoundTrip(fname) {
 function importExport(obj, noTopo) {
   var json = Utils.isString(obj) ? obj : JSON.stringify(obj);
   var geom = api.internal.importFileContent(json, 'json', {no_topology: noTopo});
-  return api.internal.exportGeoJSONObject(geom.layers[0], geom.arcs);
+  return api.internal.exportGeoJSONObject(geom.layers[0], geom);
 }

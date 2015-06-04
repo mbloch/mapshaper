@@ -14,6 +14,30 @@ function fixPath(p) {
 }
 
 describe('topojson-test.js', function () {
+
+  it('preserve top-level crs', function(done) {
+    var crs = {
+      "type": "name",
+      "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}
+    };
+    var input = {
+      crs: crs,
+      type: 'Topology',
+      objects: {
+        point: {
+          type: 'Point',
+          coordinates: [0, 0]
+        }
+      }
+    };
+    api.applyCommands('', input, function(err, data) {
+      var output = JSON.parse(data);
+      assert.deepEqual(output.crs, crs);
+      done();
+    })
+  });
+
+
   describe('exportProperties', function () {
     it('use id_field option', function () {
       var geometries = [{type: null}, {type: null}],
@@ -258,7 +282,7 @@ describe('topojson-test.js', function () {
         }
       };
 
-      var result = TopoJSON.exportTopology(data.layers, data.arcs, {no_quantization: true});
+      var result = TopoJSON.exportTopology(data, {no_quantization: true});
       assert.deepEqual(result, target);
     })
 
@@ -304,7 +328,7 @@ describe('topojson-test.js', function () {
         }
       };
 
-      var result = TopoJSON.exportTopology(data.layers, data.arcs, {no_quantization: true});
+      var result = TopoJSON.exportTopology(data, {no_quantization: true});
 
       assert.deepEqual(result, target);
     })
@@ -345,5 +369,5 @@ function importExport(json, opts) {
     json = JSON.stringify(json);
   }
   var data = api.internal.importTopoJSON(json, opts);
-  return TopoJSON.exportTopology(data.layers, data.arcs, opts);
+  return TopoJSON.exportTopology(data, opts);
 }

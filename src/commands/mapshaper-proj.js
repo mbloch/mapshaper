@@ -30,6 +30,13 @@ MapShaper.projectDataset = function(dataset, proj) {
   if (dataset.arcs) {
     MapShaper.projectArcs(dataset.arcs, proj);
   }
+  if (dataset.info) {
+    // Setting output crs to null: "If the value of CRS is null, no CRS can be assumed"
+    // (by default, GeoJSON assumes WGS84)
+    // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
+    // TODO: create a valid GeoJSON crs object after projecting
+    dataset.info.output_crs = null;
+  }
 };
 
 MapShaper.projectPointLayer = function(lyr, proj) {

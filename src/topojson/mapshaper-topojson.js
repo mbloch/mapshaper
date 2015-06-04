@@ -7,7 +7,7 @@ MapShaper.topojson = TopoJSON;
 //
 MapShaper.importTopoJSON = function(topology, opts) {
   var layers = [],
-      arcs;
+      dataset, arcs;
 
   if (utils.isString(topology)) {
     topology = JSON.parse(topology);
@@ -37,17 +37,19 @@ MapShaper.importTopoJSON = function(topology, opts) {
     layers.push(lyr);
   });
 
-  var dataset = {
+  dataset = {
     layers: layers,
     arcs: arcs,
     info: {}
   };
 
+  MapShaper.importCRS(dataset, topology);
+
   return dataset;
 };
 
 MapShaper.exportTopoJSON = function(dataset, opts) {
-  var topology = TopoJSON.exportTopology(dataset.layers, dataset.arcs, opts),
+  var topology = TopoJSON.exportTopology(dataset, opts),
       stringify = JSON.stringify,
       filename;
   if (opts.prettify) {

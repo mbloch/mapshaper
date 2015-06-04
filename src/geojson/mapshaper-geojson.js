@@ -7,34 +7,34 @@ mapshaper-data-table,
 mapshaper-stringify
 */
 
-MapShaper.importGeoJSON = function(obj, opts) {
-  if (utils.isString(obj)) {
-    obj = JSON.parse(obj);
-  }
-  var supportedGeometries = Object.keys(GeoJSON.pathImporters);
+var GeoJSON = MapShaper.geojson = {};
+GeoJSON.ID_FIELD = "FID";
+
+MapShaper.importGeoJSON = function(src, opts) {
+  var srcObj = utils.isString(src) ? JSON.parse(src) : src,
+      supportedGeometries = Object.keys(GeoJSON.pathImporters),
+      idField = opts.id_field || GeoJSON.ID_FIELD,
+      properties = null,
+      geometries, srcCollection, importer, dataset;
 
   // Convert single feature or geometry into a collection with one member
-  if (obj.type == 'Feature') {
-    obj = {
+  if (srcObj.type == 'Feature') {
+    srcCollection = {
       type: 'FeatureCollection',
-      features: [obj]
+      features: [srcObj]
     };
-  } else if (utils.contains(supportedGeometries, obj.type)) {
-    obj = {
+  } else if (utils.contains(supportedGeometries, srcObj.type)) {
+    srcCollection = {
       type: 'GeometryCollection',
-      geometries: [obj]
+      geometries: [srcObj]
     };
+  } else {
+    srcCollection = srcObj;
   }
 
-  if (obj.type != 'FeatureCollection' && obj.type != 'GeometryCollection') {
-    stop("[importGeoJSON()] Unsupported GeoJSON type:", obj.type);
-  }
-
-  var idField = opts.id_field || GeoJSON.ID_FIELD;
-  var properties = null, geometries;
-  if (obj.type == 'FeatureCollection') {
+  if (srcCollection.type == 'FeatureCollection') {
     properties = [];
-    geometries = obj.features.map(function(feat) {
+    geometries = srcCollection.features.map(function(feat) {
       var rec = feat.properties || {};
       if ('id' in feat) {
         rec[idField] = feat.id;
@@ -42,30 +42,33 @@ MapShaper.importGeoJSON = function(obj, opts) {
       properties.push(rec);
       return feat.geometry;
     });
+  } else if (srcCollection.type == 'GeometryCollection') {
+    geometries = srcCollection.geometries;
   } else {
-    geometries = obj.geometries;
+    stop("[GeoJSON] Unsupported GeoJSON type:", srcCollection.type);
+  }
+
+  if (!geometries) {
+    stop("[GeoJSON] Missing geometry data");
   }
 
   // Import GeoJSON geometries
-  //
-  var importer = new PathImporter(opts);
+  importer = new PathImporter(opts);
   geometries.forEach(function(geom) {
     importer.startShape();
     if (geom) {
       GeoJSON.importGeometry(geom, importer);
     }
   });
+  dataset = importer.done();
 
-  var importData = importer.done();
   if (properties) {
-    importData.layers[0].data = new DataTable(properties);
+    dataset.layers[0].data = new DataTable(properties);
   }
-  return importData;
+  MapShaper.importCRS(dataset, srcObj);
+
+  return dataset;
 };
-
-var GeoJSON = MapShaper.geojson = {};
-
-GeoJSON.ID_FIELD = "FID";
 
 GeoJSON.translateGeoJSONType = function(type) {
   return GeoJSON.typeLookup[type] || null;
@@ -130,7 +133,7 @@ MapShaper.exportGeoJSON = function(dataset, opts) {
   }
   return dataset.layers.map(function(lyr) {
     return {
-      content: MapShaper.exportGeoJSONString(lyr, dataset.arcs, opts),
+      content: MapShaper.exportGeoJSONString(lyr, dataset, opts),
       filename: lyr.name ? lyr.name + '.' + extension : ""
     };
   });
@@ -181,10 +184,27 @@ MapShaper.exportIds = function(table, opts) {
   });
 };
 
+MapShaper.importCRS = function(dataset, jsonObj) {
+  if ('crs' in jsonObj) {
+    dataset.info.input_crs = jsonObj.crs;
+  }
+};
 
-MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
+// @jsonObj is a top-level GeoJSON or TopoJSON object
+MapShaper.exportCRS = function(dataset, jsonObj) {
+  var info = dataset.info || {};
+  if ('output_crs' in info) {
+    jsonObj.crs = info.output_crs;
+  } else if ('input_crs' in info) {
+    jsonObj.crs = info.input_crs;
+  }
+};
+
+
+MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
   opts = opts || {};
   var properties = MapShaper.exportProperties(lyr.data, opts),
+      arcs = dataset.arcs,
       ids = MapShaper.exportIds(lyr.data, opts),
       useFeatures = !!(properties || ids),
       stringify = JSON.stringify;
@@ -199,6 +219,8 @@ MapShaper.exportGeoJSONString = function(lyr, arcs, opts) {
   var output = {
     type: useFeatures ? 'FeatureCollection' : 'GeometryCollection'
   };
+
+  MapShaper.exportCRS(dataset, output);
 
   if (opts.bbox) {
     var bounds = MapShaper.getLayerBounds(lyr, arcs);
