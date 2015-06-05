@@ -8,6 +8,8 @@ MapShaper.getIntersectionPoints = function(intersections) {
       });
 };
 
+var count = 0;
+
 // Identify intersecting segments in an ArcCollection
 //
 // Method: bin segments into horizontal stripes
@@ -93,6 +95,7 @@ MapShaper.findSegmentIntersections = (function() {
         extendIntersections(intersections, arr, i);
       }
     }
+    console.log('xx', count);
     return intersections;
 
     // Add intersections from a bin, but avoid duplicates.
@@ -152,12 +155,14 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
     s1p2x = xx[s1p2];
     s1p1y = yy[s1p1];
     s1p2y = yy[s1p2];
+    count++;
 
     j = i;
     while (j < lim) {
       j += 2;
       s2p1 = ids[j];
       s2p1x = xx[s2p1];
+      count++;
 
       if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
       //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical

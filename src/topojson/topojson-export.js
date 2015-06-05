@@ -68,7 +68,7 @@ TopoJSON.exportTopology = function(dataset, opts) {
     var name = lyr.name || "layer" + (i + 1),
         bbox = MapShaper.getLayerBounds(lyr, filteredArcs);
     if (bbox) bounds.mergeBounds(bbox);
-    objects[name] = TopoJSON.exportLayer(lyr, filteredArcs, lyr);
+    objects[name] = TopoJSON.exportLayer(lyr, filteredArcs, opts);
     return objects;
   }, {});
 

@@ -344,13 +344,27 @@ describe('topojson-test.js', function () {
       };
 
       var result = TopoJSON.exportTopology(data, {no_quantization: true});
-
       assert.deepEqual(result, target);
     })
-
   })
 
   describe('Export/Import roundtrip tests', function () {
+    it ('preserve feature ids', function(done) {
+      var src = {
+        type: 'Topology',
+        arcs: [],
+        objects: {
+          a: {type: 'GeometryCollection', geometries: [
+            {type: null, id: 0}, {type: null, id: 1}
+          ]}
+        }
+      };
+      api.applyCommands('', JSON.stringify(src), function(err, data) {
+        assert.deepEqual(src, JSON.parse(data));
+        done();
+      });
+    });
+
     it('two states', function () {
       topoJSONRoundTrip('test_data/two_states.json');
     })

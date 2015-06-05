@@ -1596,10 +1596,6 @@ MapShaper.probablyDecimalDegreeBounds = function(b) {
   return containsBounds(world, bbox);
 };
 
-MapShaper.layerHasGeometry = function(lyr) {
-  return MapShaper.layerHasPaths(lyr) || MapShaper.layerHasPoints(lyr);
-};
-
 MapShaper.layerHasPaths = function(lyr) {
   return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
 };
@@ -1776,8 +1772,7 @@ MapShaper.getLayerBounds = function(lyr, arcs) {
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
     bounds = MapShaper.getPathBounds(lyr.shapes, arcs);
   } else {
-    // just return null if layer has no bounds
-    // error("Layer is missing a valid geometry type");
+    error("Layer is missing a valid geometry type");
   }
   return bounds;
 };
@@ -3171,6 +3166,8 @@ MapShaper.getIntersectionPoints = function(intersections) {
       });
 };
 
+var count = 0;
+
 // Identify intersecting segments in an ArcCollection
 //
 // Method: bin segments into horizontal stripes
@@ -3256,6 +3253,7 @@ MapShaper.findSegmentIntersections = (function() {
         extendIntersections(intersections, arr, i);
       }
     }
+    console.log('xx', count);
     return intersections;
 
     // Add intersections from a bin, but avoid duplicates.
@@ -3315,12 +3313,14 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
     s1p2x = xx[s1p2];
     s1p1y = yy[s1p1];
     s1p2y = yy[s1p2];
+    count++;
 
     j = i;
     while (j < lim) {
       j += 2;
       s2p1 = ids[j];
       s2p1x = xx[s2p1];
+      count++;
 
       if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
       //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
@@ -8819,9 +8819,13 @@ TopoJSON.exportTopology = function(dataset, opts) {
 
   objects = layers.reduce(function(objects, lyr, i) {
     var name = lyr.name || "layer" + (i + 1),
-        bbox = MapShaper.getLayerBounds(lyr, filteredArcs);
-    if (bbox) bounds.mergeBounds(bbox);
-    objects[name] = TopoJSON.exportLayer(lyr, filteredArcs, lyr);
+        obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, lyr.geometry_type);
+
+    bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
+    if (lyr.data) {
+      TopoJSON.exportProperties(obj.geometries, lyr.data, opts);
+    }
+    objects[name] = obj;
     return objects;
   }, {});
 
@@ -8957,35 +8961,22 @@ TopoJSON.exportProperties = function(geometries, table, opts) {
   });
 };
 
-// Export a mapshaper layer as a GeometryCollection
-TopoJSON.exportLayer = function(lyr, arcs, opts) {
-  var n = MapShaper.getFeatureCount(lyr),
-      geometries = [];
-  // initialize to null geometries
-  for (var i=0; i<n; i++) {
-    geometries[i] = {type: null};
-  }
-  if (MapShaper.layerHasGeometry(lyr)) {
-    TopoJSON.exportGeometries(geometries, lyr.shapes, arcs, lyr.geometry_type);
-  }
-  if (lyr.data) {
-    TopoJSON.exportProperties(geometries, lyr.data, opts);
-  }
-  return {
-    type: "GeometryCollection",
-    geometries: geometries
-  };
-};
-
-TopoJSON.exportGeometries = function(geometries, shapes, coords, type) {
+TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
   var exporter = TopoJSON.exporters[type];
+  var obj = {
+      type: "GeometryCollection"
+    };
   if (exporter && shapes) {
-    shapes.forEach(function(shape, i) {
+    obj.geometries = shapes.map(function(shape, i) {
       if (shape && shape.length > 0) {
-        geometries[i] = exporter(shape, coords);
+        return exporter(shape, coords);
       }
+      return {type: null};
     });
+  } else {
+    obj.geometries = [];
   }
+  return obj;
 };
 
 TopoJSON.exportPolygonGeom = function(shape, coords) {
@@ -11424,28 +11415,11 @@ MapShaper.convertRecordData = function(rec, fields, converters) {
 
 
 
-api.join = function(targetLyr, dataset, opts) {
-  var srcTable = MapShaper.getJoinSource(dataset, opts);
-  api.joinAttributesToFeatures(targetLyr, srcTable, opts);
-};
-
-// Get a DataTable to join, either from a current layer or from a file.
-MapShaper.getJoinSource = function(dataset, opts) {
-  var layers = MapShaper.findMatchingLayers(dataset.layers, opts.source),
-      table;
-  if (layers.length > 0) {
-    table = layers[0].data;
-  } else {
-    table = api.importJoinTable(opts.source, opts);
-  }
-  return table;
-};
-
 api.importJoinTable = function(file, opts) {
-  var fieldsWithTypeHints = [];
-  if (opts.keys) {
-    fieldsWithTypeHints.push(opts.keys[1]);
+  if (!opts.keys || opts.keys.length != 2) {
+    stop("[join] Missing join keys");
   }
+  var fieldsWithTypeHints = [opts.keys[1]];
   if (opts.fields) {
     fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.fields);
   }
@@ -11459,9 +11433,6 @@ api.importJoinTable = function(file, opts) {
 
 // TODO: think through how best to deal with identical field names
 api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
-  if (!opts.keys || opts.keys.length != 2) {
-    stop("[join] Missing join keys");
-  }
   var keys = MapShaper.removeTypeHints(opts.keys),
       joinFields = MapShaper.removeTypeHints(opts.fields || []),
       destTable = lyr.data,
@@ -11476,16 +11447,11 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
     srcTable = MapShaper.filterDataTable(srcTable, opts.where);
   }
   if (joinFields.length > 0 === false) {
-    // If a list of join fields is not available, try to join all the
-    // source fields except the key field.
-    joinFields = utils.difference(srcTable.getFields(), [srcKey]);
-    // ... but only overwrite existing fields if the "force" option is set.
-    if (!opts.force) {
-      joinFields = utils.difference(joinFields, destTable.getFields());
-    }
+    // don't copy source key or overwrite existing fields
+    joinFields = utils.difference(srcTable.getFields(), [srcKey].concat(destTable.getFields()));
   }
   if (!destTable || !destTable.fieldExists(destKey)) {
-    stop("[join] Target layer is missing key field:", destKey);
+    stop("[join] Target layer is missing field:", destKey);
   }
   MapShaper.joinTables(destTable, destKey, joinFields, srcTable, srcKey,
       joinFields);
@@ -11498,6 +11464,7 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
 MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcFields) {
   var records = dest.getRecords(),
       unmatchedKeys = [];
+
   src.indexOn(srcKey);
   records.forEach(function(destRec, i) {
     var joinVal = destRec[destKey],
@@ -13453,7 +13420,7 @@ api.runCommand = function(cmd, dataset, cb) {
       opts = cmd.options,
       targetLayers,
       newLayers,
-      arcs, tmp;
+      arcs;
 
   try { // catch errors from synchronous functions
 
@@ -13514,7 +13481,8 @@ api.runCommand = function(cmd, dataset, cb) {
       newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
 
     } else if (name == 'join') {
-      MapShaper.applyCommand(api.join, targetLayers, dataset, opts);
+      var table = api.importJoinTable(opts.source, opts);
+      MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
 
     } else if (name == 'layers') {
       newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
@@ -14061,6 +14029,10 @@ function validateJoinOpts(cmd) {
     error("currently only dbf and csv files are supported");
   }
 
+  if (!cli.isFile(o.source)) {
+    error("missing source file:", o.source);
+  }
+
   if (!o.keys) error("missing required keys option");
 }
 
@@ -14468,15 +14440,11 @@ MapShaper.getOptionParser = function() {
       type: "comma-sep"
     })
     .option("field-types", {
-      describe: "type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
+      describe: "Type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
     })
     .option("where", {
       describe: "use a JS expression to filter records from source table"
-    })
-    .option("force", {
-      describe: "replace values from same-named fields",
-      type: "flag"
     })
     .option("encoding", encodingOpt)
     .option("target", targetOpt);

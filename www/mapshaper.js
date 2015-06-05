@@ -3918,10 +3918,6 @@ MapShaper.probablyDecimalDegreeBounds = function(b) {
   return containsBounds(world, bbox);
 };
 
-MapShaper.layerHasGeometry = function(lyr) {
-  return MapShaper.layerHasPaths(lyr) || MapShaper.layerHasPoints(lyr);
-};
-
 MapShaper.layerHasPaths = function(lyr) {
   return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
 };
@@ -5717,8 +5713,7 @@ MapShaper.getLayerBounds = function(lyr, arcs) {
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
     bounds = MapShaper.getPathBounds(lyr.shapes, arcs);
   } else {
-    // just return null if layer has no bounds
-    // error("Layer is missing a valid geometry type");
+    error("Layer is missing a valid geometry type");
   }
   return bounds;
 };
@@ -7466,6 +7461,8 @@ MapShaper.getIntersectionPoints = function(intersections) {
       });
 };
 
+var count = 0;
+
 // Identify intersecting segments in an ArcCollection
 //
 // Method: bin segments into horizontal stripes
@@ -7551,6 +7548,7 @@ MapShaper.findSegmentIntersections = (function() {
         extendIntersections(intersections, arr, i);
       }
     }
+    console.log('xx', count);
     return intersections;
 
     // Add intersections from a bin, but avoid duplicates.
@@ -7610,12 +7608,14 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
     s1p2x = xx[s1p2];
     s1p1y = yy[s1p1];
     s1p2y = yy[s1p2];
+    count++;
 
     j = i;
     while (j < lim) {
       j += 2;
       s2p1 = ids[j];
       s2p1x = xx[s2p1];
+      count++;
 
       if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
       //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
@@ -10658,9 +10658,13 @@ TopoJSON.exportTopology = function(dataset, opts) {
 
   objects = layers.reduce(function(objects, lyr, i) {
     var name = lyr.name || "layer" + (i + 1),
-        bbox = MapShaper.getLayerBounds(lyr, filteredArcs);
-    if (bbox) bounds.mergeBounds(bbox);
-    objects[name] = TopoJSON.exportLayer(lyr, filteredArcs, lyr);
+        obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, lyr.geometry_type);
+
+    bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
+    if (lyr.data) {
+      TopoJSON.exportProperties(obj.geometries, lyr.data, opts);
+    }
+    objects[name] = obj;
     return objects;
   }, {});
 
@@ -10796,35 +10800,22 @@ TopoJSON.exportProperties = function(geometries, table, opts) {
   });
 };
 
-// Export a mapshaper layer as a GeometryCollection
-TopoJSON.exportLayer = function(lyr, arcs, opts) {
-  var n = MapShaper.getFeatureCount(lyr),
-      geometries = [];
-  // initialize to null geometries
-  for (var i=0; i<n; i++) {
-    geometries[i] = {type: null};
-  }
-  if (MapShaper.layerHasGeometry(lyr)) {
-    TopoJSON.exportGeometries(geometries, lyr.shapes, arcs, lyr.geometry_type);
-  }
-  if (lyr.data) {
-    TopoJSON.exportProperties(geometries, lyr.data, opts);
-  }
-  return {
-    type: "GeometryCollection",
-    geometries: geometries
-  };
-};
-
-TopoJSON.exportGeometries = function(geometries, shapes, coords, type) {
+TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
   var exporter = TopoJSON.exporters[type];
+  var obj = {
+      type: "GeometryCollection"
+    };
   if (exporter && shapes) {
-    shapes.forEach(function(shape, i) {
+    obj.geometries = shapes.map(function(shape, i) {
       if (shape && shape.length > 0) {
-        geometries[i] = exporter(shape, coords);
+        return exporter(shape, coords);
       }
+      return {type: null};
     });
+  } else {
+    obj.geometries = [];
   }
+  return obj;
 };
 
 TopoJSON.exportPolygonGeom = function(shape, coords) {
