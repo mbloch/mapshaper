@@ -36,7 +36,7 @@ api.runCommand = function(cmd, dataset, cb) {
       opts = cmd.options,
       targetLayers,
       newLayers,
-      arcs;
+      arcs, tmp;
 
   try { // catch errors from synchronous functions
 
@@ -97,8 +97,7 @@ api.runCommand = function(cmd, dataset, cb) {
       newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
 
     } else if (name == 'join') {
-      var table = api.importJoinTable(opts.source, opts);
-      MapShaper.applyCommand(api.joinAttributesToFeatures, targetLayers, table, opts);
+      MapShaper.applyCommand(api.join, targetLayers, dataset, opts);
 
     } else if (name == 'layers') {
       newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);

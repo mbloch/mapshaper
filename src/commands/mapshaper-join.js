@@ -1,10 +1,27 @@
 /* @require mapshaper-common, mapshaper-expressions, mapshaper-dbf-table, mapshaper-delim-import */
 
-api.importJoinTable = function(file, opts) {
-  if (!opts.keys || opts.keys.length != 2) {
-    stop("[join] Missing join keys");
+api.join = function(targetLyr, dataset, opts) {
+  var srcTable = MapShaper.getJoinSource(dataset, opts);
+  api.joinAttributesToFeatures(targetLyr, srcTable, opts);
+};
+
+// Get a DataTable to join, either from a current layer or from a file.
+MapShaper.getJoinSource = function(dataset, opts) {
+  var layers = MapShaper.findMatchingLayers(dataset.layers, opts.source),
+      table;
+  if (layers.length > 0) {
+    table = layers[0].data;
+  } else {
+    table = api.importJoinTable(opts.source, opts);
   }
-  var fieldsWithTypeHints = [opts.keys[1]];
+  return table;
+};
+
+api.importJoinTable = function(file, opts) {
+  var fieldsWithTypeHints = [];
+  if (opts.keys) {
+    fieldsWithTypeHints.push(opts.keys[1]);
+  }
   if (opts.fields) {
     fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.fields);
   }
@@ -18,6 +35,9 @@ api.importJoinTable = function(file, opts) {
 
 // TODO: think through how best to deal with identical field names
 api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
+  if (!opts.keys || opts.keys.length != 2) {
+    stop("[join] Missing join keys");
+  }
   var keys = MapShaper.removeTypeHints(opts.keys),
       joinFields = MapShaper.removeTypeHints(opts.fields || []),
       destTable = lyr.data,
@@ -32,11 +52,16 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
     srcTable = MapShaper.filterDataTable(srcTable, opts.where);
   }
   if (joinFields.length > 0 === false) {
-    // don't copy source key or overwrite existing fields
-    joinFields = utils.difference(srcTable.getFields(), [srcKey].concat(destTable.getFields()));
+    // If a list of join fields is not available, try to join all the
+    // source fields except the key field.
+    joinFields = utils.difference(srcTable.getFields(), [srcKey]);
+    // ... but only overwrite existing fields if the "force" option is set.
+    if (!opts.force) {
+      joinFields = utils.difference(joinFields, destTable.getFields());
+    }
   }
   if (!destTable || !destTable.fieldExists(destKey)) {
-    stop("[join] Target layer is missing field:", destKey);
+    stop("[join] Target layer is missing key field:", destKey);
   }
   MapShaper.joinTables(destTable, destKey, joinFields, srcTable, srcKey,
       joinFields);
@@ -49,7 +74,6 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
 MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcFields) {
   var records = dest.getRecords(),
       unmatchedKeys = [];
-
   src.indexOn(srcKey);
   records.forEach(function(destRec, i) {
     var joinVal = destRec[destKey],

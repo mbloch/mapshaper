@@ -234,11 +234,15 @@ MapShaper.getOptionParser = function() {
       type: "comma-sep"
     })
     .option("field-types", {
-      describe: "Type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
+      describe: "type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
     })
     .option("where", {
       describe: "use a JS expression to filter records from source table"
+    })
+    .option("force", {
+      describe: "replace values from same-named fields",
+      type: "flag"
     })
     .option("encoding", encodingOpt)
     .option("target", targetOpt);

@@ -87,10 +87,6 @@ function validateJoinOpts(cmd) {
     error("currently only dbf and csv files are supported");
   }
 
-  if (!cli.isFile(o.source)) {
-    error("missing source file:", o.source);
-  }
-
   if (!o.keys) error("missing required keys option");
 }
 

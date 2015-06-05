@@ -24,6 +24,32 @@ describe('mapshaper-join.js', function () {
         done();
       })
     })
+
+    it('test "-join force" option, topojson input', function(done) {
+      var src = {
+        type: "Topology",
+        objects: {
+          a: {
+            type: "GeometryCollection",
+            geometries: [{type: null, properties: {foo: 'a', bar: "old"}}]
+          },
+          b: {
+            type: "GeometryCollection",
+            geometries: [{type: null, properties: {fooz: 'a', bar: "new"}}]
+          }
+        }
+      };
+      var cmd = "-join b key=foo:fooz target=a keys=foo,fooz force";
+      api.applyCommands(cmd, src, function(err, data) {
+        var output = JSON.parse(data);
+        // source hasn't changed
+        assert.deepEqual(output.objects.b, src.objects.b);
+        // dest value has been overwritten
+        assert.deepEqual(output.objects.a.geometries,
+          [{type: null, properties: {foo: 'a', bar: "new"}}]);
+        done();
+      });
+    })
   })
 
   describe('joinAttributesToFeatures()', function () {
