@@ -30,7 +30,8 @@ MapShaper.getLayerBounds = function(lyr, arcs) {
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
     bounds = MapShaper.getPathBounds(lyr.shapes, arcs);
   } else {
-    error("Layer is missing a valid geometry type");
+    // just return null if layer has no bounds
+    // error("Layer is missing a valid geometry type");
   }
   return bounds;
 };

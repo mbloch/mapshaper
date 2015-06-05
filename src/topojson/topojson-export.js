@@ -66,13 +66,9 @@ TopoJSON.exportTopology = function(dataset, opts) {
 
   objects = layers.reduce(function(objects, lyr, i) {
     var name = lyr.name || "layer" + (i + 1),
-        obj = TopoJSON.exportGeometryCollection(lyr.shapes, filteredArcs, lyr.geometry_type);
-
-    bounds.mergeBounds(MapShaper.getLayerBounds(lyr, filteredArcs));
-    if (lyr.data) {
-      TopoJSON.exportProperties(obj.geometries, lyr.data, opts);
-    }
-    objects[name] = obj;
+        bbox = MapShaper.getLayerBounds(lyr, filteredArcs);
+    if (bbox) bounds.mergeBounds(bbox);
+    objects[name] = TopoJSON.exportLayer(lyr, filteredArcs, lyr);
     return objects;
   }, {});
 
@@ -208,22 +204,35 @@ TopoJSON.exportProperties = function(geometries, table, opts) {
   });
 };
 
-TopoJSON.exportGeometryCollection = function(shapes, coords, type) {
-  var exporter = TopoJSON.exporters[type];
-  var obj = {
-      type: "GeometryCollection"
-    };
-  if (exporter && shapes) {
-    obj.geometries = shapes.map(function(shape, i) {
-      if (shape && shape.length > 0) {
-        return exporter(shape, coords);
-      }
-      return {type: null};
-    });
-  } else {
-    obj.geometries = [];
+// Export a mapshaper layer as a GeometryCollection
+TopoJSON.exportLayer = function(lyr, arcs, opts) {
+  var n = MapShaper.getFeatureCount(lyr),
+      geometries = [];
+  // initialize to null geometries
+  for (var i=0; i<n; i++) {
+    geometries[i] = {type: null};
   }
-  return obj;
+  if (MapShaper.layerHasGeometry(lyr)) {
+    TopoJSON.exportGeometries(geometries, lyr.shapes, arcs, lyr.geometry_type);
+  }
+  if (lyr.data) {
+    TopoJSON.exportProperties(geometries, lyr.data, opts);
+  }
+  return {
+    type: "GeometryCollection",
+    geometries: geometries
+  };
+};
+
+TopoJSON.exportGeometries = function(geometries, shapes, coords, type) {
+  var exporter = TopoJSON.exporters[type];
+  if (exporter && shapes) {
+    shapes.forEach(function(shape, i) {
+      if (shape && shape.length > 0) {
+        geometries[i] = exporter(shape, coords);
+      }
+    });
+  }
 };
 
 TopoJSON.exportPolygonGeom = function(shape, coords) {

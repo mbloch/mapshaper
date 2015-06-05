@@ -161,6 +161,10 @@ MapShaper.probablyDecimalDegreeBounds = function(b) {
   return containsBounds(world, bbox);
 };
 
+MapShaper.layerHasGeometry = function(lyr) {
+  return MapShaper.layerHasPaths(lyr) || MapShaper.layerHasPoints(lyr);
+};
+
 MapShaper.layerHasPaths = function(lyr) {
   return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
 };

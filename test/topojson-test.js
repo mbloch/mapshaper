@@ -235,6 +235,21 @@ describe('topojson-test.js', function () {
 
   describe('TopoJSON export', function () {
 
+    it("dataset with no geometry", function() {
+      var dataset = {
+        layers: [{
+          name: 'a',
+          data: new api.internal.DataTable([{foo:'a'}, {foo:'b'}])
+        }]
+      };
+      var output = TopoJSON.exportTopology(dataset, {});
+      assert.deepEqual(output.objects, {a:{
+        type: "GeometryCollection",
+        geometries: [{type: null, properties: {foo:'a'}},
+            {type: null, properties: {foo: 'b'}}]
+      }});
+    })
+
     it("polygon with hole and null shape", function () {
       //       e
       //      / \
