@@ -3,6 +3,8 @@ var api = require('../'),
   assert = require('assert'),
   TopoJSON = api.internal.topojson;
 
+// removed these functions from mapshaper.js build
+/*
 describe('topojson-split-test.js', function () {
   describe('#reindexArcIds()', function () {
     it ("re-indexes polygon ids", function() {
@@ -38,3 +40,4 @@ describe('topojson-split-test.js', function () {
     })
   })
 })
+*/

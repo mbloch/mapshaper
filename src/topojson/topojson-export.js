@@ -1,7 +1,6 @@
 /* @requires
 mapshaper-geojson,
 topojson-common,
-topojson-split,
 mapshaper-shape-geom,
 mapshaper-arc-dissolve,
 mapshaper-explode,
@@ -9,115 +8,85 @@ topojson-presimplify
 */
 
 // Convert a dataset object to a TopoJSON topology object
-TopoJSON.exportTopology = function(dataset, opts) {
-  var topology = {type: "Topology"},
-      bounds = new Bounds(),
-      layers = dataset.layers,
-      arcData = dataset.arcs,
-      objects, filteredArcs, transform, invTransform;
+TopoJSON.exportTopology = function(src, opts) {
+  var dataset = TopoJSON.copyDatasetForExport(src),
+      arcs = dataset.arcs,
+      topology = {type: "Topology"},
+      bounds;
 
-  // some datasets may lack arcs, e.g. a dataset containing only a point layer
-  if (arcData && arcData.size() > 0) {
-    // get a copy of arc data (coords are modified for topojson export)
-    filteredArcs = arcData.getFilteredCopy();
-
-    if (opts.presimplify && !filteredArcs.getVertexData().zz) {
-      // Calculate simplification thresholds if none exist
-      MapShaper.simplifyPaths(filteredArcs, opts);
+  // generate arcs and transform
+  if (arcs && arcs.size() > 0) {
+    bounds = MapShaper.getDatasetBounds(dataset);
+    if (opts.bbox && bounds.hasBounds()) {
+      topology.bbox = bounds.toArray();
     }
-
-    if (opts.no_quantization) {
-      // no transform
-    } else if (opts.topojson_precision) {
-      transform = TopoJSON.getExportTransform(filteredArcs, null, opts.topojson_precision);
-    } else if (opts.quantization > 0) {
-      transform = TopoJSON.getExportTransform(filteredArcs, opts.quantization);
-    } else if (opts.precision > 0) {
-      transform = TopoJSON.getExportTransformFromPrecision(filteredArcs, opts.precision);
-    } else {
-      // default -- auto quantization
-      transform = TopoJSON.getExportTransform(filteredArcs);
+    if (!opts.no_quantization) {
+      topology.transform = TopoJSON.transformDataset(dataset, bounds, opts);
     }
-
-    if (transform) {
-      if (transform.isNull()) {
-        // kludge: null transform likely due to collapsed shape(s)
-        // using identity transform as a band-aid, need to rethink this.
-        transform = new Transform();
-      }
-      invTransform = transform.invert();
-      topology.transform = {
-        scale: [invTransform.mx, invTransform.my],
-        translate: [invTransform.bx, invTransform.by]
-      };
-
-      filteredArcs.applyTransform(transform, !!"round");
-    }
-
-    // dissolve arcs for more compact output
-    // make shallow copy of layers, so arc ids of original layer.shapes
-    // don't change
-    layers = layers.map(function(lyr) {
-      var shapes = lyr.shapes ? lyr.shapes.concat() : null;
-      return utils.defaults({shapes: shapes}, lyr);
-    });
-    MapShaper.dissolveArcs(layers, filteredArcs);
-  }
-
-  objects = layers.reduce(function(objects, lyr, i) {
-    var name = lyr.name || "layer" + (i + 1),
-        bbox = MapShaper.getLayerBounds(lyr, filteredArcs);
-    if (bbox) bounds.mergeBounds(bbox);
-    objects[name] = TopoJSON.exportLayer(lyr, filteredArcs, opts);
-    return objects;
-  }, {});
-
-  // replaced by dissolveArcs() above
-  // if (filteredArcs) {
-    // TopoJSON.pruneArcs(topology);
-  // }
-
-  if (invTransform) {
-    bounds.transform(invTransform);
-  }
-
-  if (opts.bbox && bounds.hasBounds()) {
-    topology.bbox = bounds.toArray();
-  }
-
-  topology.objects = objects;
-
-  if (filteredArcs && filteredArcs.size() > 0) {
-    topology.arcs = TopoJSON.exportArcsWithPresimplify(filteredArcs, opts.presimplify && bounds.width());
-    if (transform) {
+    topology.arcs = TopoJSON.exportArcs(arcs, bounds, opts);
+    if (topology.transform) {
       TopoJSON.deltaEncodeArcs(topology.arcs);
     }
   } else {
-    topology.arcs = []; // spec seems to require an array
+    // some datasets may lack arcs; spec seems to require an array anyway
+    topology.arcs = [];
   }
 
+  // export layers as TopoJSON named objects
+  topology.objects = dataset.layers.reduce(function(objects, lyr, i) {
+    var name = lyr.name || "layer" + (i + 1);
+    objects[name] = TopoJSON.exportLayer(lyr, arcs, opts);
+    return objects;
+  }, {});
+
+  // retain crs data if relevant
   MapShaper.exportCRS(dataset, topology);
   return topology;
 };
 
-// Export arcs as arrays of [x, y] coords without delta encoding
-TopoJSON.exportArcs = function(arcData) {
-  var arcs = [];
-  arcData.forEach(function(iter, i) {
-    var arc = [];
-    while (iter.hasNext()) {
-      arc.push([iter.x, iter.y]);
-    }
-    arcs.push(arc.length > 1 ? arc : null);
+// Clone arc data (this gets modified in place during TopoJSON export)
+// Shallow-copy shape data in each layer (gets replaced with remapped shapes)
+TopoJSON.copyDatasetForExport = function(dataset) {
+  var copy = {info: dataset.info};
+  copy.layers = dataset.layers.map(function(lyr) {
+    var shapes = lyr.shapes ? lyr.shapes.concat() : null;
+    return utils.defaults({shapes: shapes}, lyr);
   });
-  return arcs;
+  if (dataset.arcs) {
+    copy.arcs = dataset.arcs.getFilteredCopy();
+  }
+  return copy;
 };
 
-// Export arcs as arrays of [x, y] coords without delta encoding
-TopoJSON.exportArcsWithPresimplify = function(arcData, width) {
-  var fromZ = width ? TopoJSON.getPresimplifyFunction(width) : null,
-      arcs = [];
+TopoJSON.transformDataset = function(dataset, bounds, opts) {
+  var bounds2 = TopoJSON.calcExportBounds(bounds, dataset.arcs, opts),
+      transform = bounds.getTransform(bounds2),
+      inv = transform.invert();
+  dataset.arcs.applyTransform(transform, true); // flag -> round coords
+  MapShaper.dissolveArcs(dataset); // dissolve/prune arcs for more compact output
+  // TODO: think about handling geometrical errors introduced by quantization,
+  // e.g. segment intersections and collapsed polygon rings.
+  return {
+    scale: [inv.mx, inv.my],
+    translate: [inv.bx, inv.by]
+  };
+};
 
+TopoJSON.exportArcs = function(arcs, bounds, opts) {
+  var fromZ = null;
+  if (opts.presimplify) {
+    if (!arcs.getVertexData().zz) {
+      // Calculate simplification thresholds if none exist
+      MapShaper.simplifyPaths(arcs, opts);
+    }
+    fromZ = TopoJSON.getPresimplifyFunction(bounds.width());
+  }
+  return TopoJSON.exportArcsWithPresimplify(arcs, fromZ);
+};
+
+// Export arcs as arrays of [x, y] and possibly [z] coordinates
+TopoJSON.exportArcsWithPresimplify = function(arcData, fromZ) {
+  var arcs = [];
   arcData.forEach2(function(i, n, xx, yy, zz) {
     var arc = [],
         useZ = zz && fromZ,
@@ -180,15 +149,31 @@ TopoJSON.getExportTransformFromPrecision = function(arcData, precision) {
   return transform;
 };
 
-// Find the x, y values that map to x / y integer unit in topojson output
-// Calculated as 1/50 the size of average x and y offsets
-// (a compromise between compression, precision and simplicity)
-//
-TopoJSON.calcExportResolution = function(arcData, precision) {
-  // TODO: remove influence of long lines created by polar and antimeridian cuts
-  var xy = arcData.getAvgSegment2(),
-      k = parseFloat(precision) || 0.02;
+// Calculate the x, y extents that map to an integer unit in topojson output
+// as a fraction of the x- and y- extents of the average segment.
+TopoJSON.calcExportResolution = function(arcs, k) {
+  // TODO: think about the affect of long lines, e.g. from polar cuts.
+  var xy = arcs.getAvgSegment2();
   return [xy[0] * k, xy[1] * k];
+};
+
+// Calculate the bounding box of quantized topojson coordinates using one
+// of several methods.
+TopoJSON.calcExportBounds = function(bounds, arcs, opts) {
+  var unitXY, xmax, ymax;
+  if (opts.topojson_precision > 0) {
+    unitXY = TopoJSON.calcExportResolution(arcs, opts.topojson_precision);
+  } else if (opts.quantization > 0) {
+    unitXY = [opts.quantization / bounds.width(), opts.quantization / bounds.height()];
+  } else if (opts.precision > 0) {
+    unitXY = [1 / opts.precision, 1 / opts.precision];
+  } else {
+    // default -- auto quantization at 0.02 of avg. segment len
+    unitXY = TopoJSON.calcExportResolution(arcs, 0.02);
+  }
+  xmax = Math.ceil(bounds.width() * unitXY[0]);
+  ymax = Math.ceil(bounds.height() * unitXY[1]);
+  return new Bounds(0, 0, xmax, ymax);
 };
 
 TopoJSON.exportProperties = function(geometries, table, opts) {

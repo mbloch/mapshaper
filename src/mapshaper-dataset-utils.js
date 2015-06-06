@@ -5,7 +5,8 @@
 MapShaper.getDatasetBounds = function(data) {
   var bounds = new Bounds();
   data.layers.forEach(function(lyr) {
-    bounds.mergeBounds(MapShaper.getLayerBounds(lyr, data.arcs));
+    var lyrbb = MapShaper.getLayerBounds(lyr, data.arcs);
+    if (lyrbb) bounds.mergeBounds(lyrbb);
   });
   return bounds;
 };

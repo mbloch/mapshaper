@@ -26,7 +26,8 @@ api.simplify = function(arcs, opts) {
   }
 };
 
-// @arcs ArcCollection object
+// Calculate simplification thresholds for each vertex of an arc collection
+// (modifies @arcs ArcCollection in-place)
 MapShaper.simplifyPaths = function(arcs, opts) {
   var use3D = !opts.cartesian && !arcs.isPlanar();
   var simplifyPath = MapShaper.getSimplifyFunction(opts.method || 'mapshaper', use3D);

@@ -28,7 +28,7 @@ describe('mapshaper-arc-dissolve.js', function () {
       var targetArcs = [[[1, 1], [2, 2], [4, 2], [3, 1], [1, 1]], [[6, 2], [7, 1], [5, 1], [6, 2]]];
       var targetShapes = [[[0], [1]]];
 
-      api.internal.dissolveArcs(layers, arcs);
+      api.internal.dissolveArcs({layers: layers, arcs: arcs});
       assert.deepEqual(arcs.toArray(), targetArcs);
       assert.deepEqual(layers[0].shapes, targetShapes)
     })
@@ -43,7 +43,7 @@ describe('mapshaper-arc-dissolve.js', function () {
       var targetArcs = [[[3, 1], [4, 2], [2, 2], [1, 1], [3, 1]]];
       var targetShapes = [[[0]]];
 
-      api.internal.dissolveArcs(layers, arcs);
+      api.internal.dissolveArcs({layers: layers, arcs: arcs});
       assert.deepEqual(arcs.toArray(), targetArcs);
       assert.deepEqual(layers[0].shapes, targetShapes)
     })
@@ -58,7 +58,7 @@ describe('mapshaper-arc-dissolve.js', function () {
       var targetArcs = [[[3, 1], [4, 2], [2, 2], [1, 1], [3, 1]], [[6, 2], [7, 1], [5, 1], [6, 2]]];
       var targetShapes = [[[0]], [[~0], [1]]];
 
-      api.internal.dissolveArcs(layers, arcs);
+      api.internal.dissolveArcs({layers: layers, arcs: arcs});
       assert.deepEqual(arcs.toArray(), targetArcs);
       assert.deepEqual(layers[0].shapes, targetShapes)
     })

@@ -4,17 +4,18 @@ mapshaper-endpoints
 mapshaper-dataset-utils
 */
 
-// Dissolve arcs that can be merged without affecting topology of @layers
-// (in-place)
-MapShaper.dissolveArcs = function(layers, arcs) {
-  layers = layers.filter(MapShaper.layerHasPaths);
-  var test = MapShaper.getArcDissolveTest(layers, arcs);
-  var groups = [];
-  var totalPoints = 0;
-  var arcIndex = new Int32Array(arcs.size()); // maps old arc ids to new ids
-  var arcStatus = new Uint8Array(arcs.size());
-  // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
-
+// Dissolve arcs that can be merged without affecting topology of @layers;
+// remove arcs that are not referenced by any layer; remap arc ids
+// in layers. (In-place).
+MapShaper.dissolveArcs = function(dataset) {
+  var arcs = dataset.arcs,
+      layers = dataset.layers.filter(MapShaper.layerHasPaths),
+      test = MapShaper.getArcDissolveTest(layers, arcs),
+      groups = [],
+      totalPoints = 0,
+      arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
+      arcStatus = new Uint8Array(arcs.size());
+      // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
   layers.forEach(function(lyr) {
     // modify copies of the original shapes; original shapes should be unmodified
     // (need to test this)
