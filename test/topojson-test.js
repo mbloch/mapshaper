@@ -13,7 +13,37 @@ function fixPath(p) {
   return require('path').join(__dirname, p);
 }
 
-describe('topojson-test.js', function () {
+describe('topojson-export.js and topojson-import.js', function () {
+
+  describe('calcExportBounds()', function () {
+    it('default uses 0.02 of avg. segment', function () {
+      var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]]]);
+      var bounds = new api.internal.Bounds(0, 0, 2, 1);
+      var bounds2 = TopoJSON.calcExportBounds(bounds, arcs, {});
+      assert.deepEqual(bounds2.toArray(), [0, 0, 50, 50]);
+    })
+
+    it('user-defined precision', function () {
+      var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]]]);
+      var bounds = new api.internal.Bounds(0, 0, 2, 1);
+      var bounds2 = TopoJSON.calcExportBounds(bounds, arcs, {topojson_precision: 0.1});
+      assert.deepEqual(bounds2.toArray(), [0, 0, 10, 10]);
+    })
+
+    it('quantization option', function () {
+      var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]]]);
+      var bounds = new api.internal.Bounds(0, 0, 2, 1);
+      var bounds2 = TopoJSON.calcExportBounds(bounds, arcs, {quantization: 1000});
+      assert.deepEqual(bounds2.toArray(), [0, 0, 999, 999]);
+    })
+
+    it('precision option', function () {
+      var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]]]);
+      var bounds = new api.internal.Bounds(0, 0, 2, 1);
+      var bounds2 = TopoJSON.calcExportBounds(bounds, arcs, {precision: 0.1});
+      assert.deepEqual(bounds2.toArray(), [0, 0, 20, 10]);
+    })
+  })
 
   it('preserve top-level crs', function(done) {
     var crs = {

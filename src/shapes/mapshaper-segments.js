@@ -95,7 +95,6 @@ MapShaper.findSegmentIntersections = (function() {
         extendIntersections(intersections, arr, i);
       }
     }
-    console.log('xx', count);
     return intersections;
 
     // Add intersections from a bin, but avoid duplicates.

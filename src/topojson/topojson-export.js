@@ -72,35 +72,29 @@ TopoJSON.transformDataset = function(dataset, bounds, opts) {
   };
 };
 
+// Export arcs as arrays of [x, y] and possibly [z] coordinates
 TopoJSON.exportArcs = function(arcs, bounds, opts) {
-  var fromZ = null;
+  var fromZ = null,
+      output = [];
   if (opts.presimplify) {
+    // Calculate simplification thresholds if none exist
     if (!arcs.getVertexData().zz) {
-      // Calculate simplification thresholds if none exist
       MapShaper.simplifyPaths(arcs, opts);
     }
     fromZ = TopoJSON.getPresimplifyFunction(bounds.width());
   }
-  return TopoJSON.exportArcsWithPresimplify(arcs, fromZ);
-};
-
-// Export arcs as arrays of [x, y] and possibly [z] coordinates
-TopoJSON.exportArcsWithPresimplify = function(arcData, fromZ) {
-  var arcs = [];
-  arcData.forEach2(function(i, n, xx, yy, zz) {
-    var arc = [],
-        useZ = zz && fromZ,
-        p;
+  arcs.forEach2(function(i, n, xx, yy, zz) {
+    var arc = [], p;
     for (var j=i + n; i<j; i++) {
       p = [xx[i], yy[i]];
-      if (useZ) {
+      if (fromZ) {
         p.push(fromZ(zz[i]));
       }
       arc.push(p);
     }
-    arcs.push(arc.length > 1 ? arc : null);
+    output.push(arc.length > 1 ? arc : null);
   });
-  return arcs;
+  return output;
 };
 
 // Apply delta encoding in-place to an array of topojson arcs
@@ -121,38 +115,10 @@ TopoJSON.deltaEncodeArcs = function(arcs) {
   });
 };
 
-// Return a Transform object for converting geographic coordinates to quantized
-// integer coordinates.
-//
-TopoJSON.getExportTransform = function(arcData, quanta, precision) {
-  var srcBounds = arcData.getBounds(),
-      destBounds, xmax, ymax;
-  if (quanta) {
-    xmax = quanta - 1;
-    ymax = quanta - 1;
-  } else {
-    var resXY = TopoJSON.calcExportResolution(arcData, precision);
-    xmax = srcBounds.width() / resXY[0];
-    ymax = srcBounds.height() / resXY[1];
-  }
-  // rounding xmax, ymax ensures original layer bounds don't change after 'quantization'
-  // (this could matter if a layer extends to the poles or the central meridian)
-  // TODO: test this
-  destBounds = new Bounds(0, 0, Math.ceil(xmax), Math.ceil(ymax));
-  return srcBounds.getTransform(destBounds);
-};
-
-TopoJSON.getExportTransformFromPrecision = function(arcData, precision) {
-  var src = arcData.getBounds(),
-      dest = new Bounds(0, 0, src.width() / precision, src.height() / precision),
-      transform = src.getTransform(dest);
-  return transform;
-};
-
 // Calculate the x, y extents that map to an integer unit in topojson output
 // as a fraction of the x- and y- extents of the average segment.
 TopoJSON.calcExportResolution = function(arcs, k) {
-  // TODO: think about the affect of long lines, e.g. from polar cuts.
+  // TODO: think about the effect of long lines, e.g. from polar cuts.
   var xy = arcs.getAvgSegment2();
   return [xy[0] * k, xy[1] * k];
 };
@@ -164,15 +130,15 @@ TopoJSON.calcExportBounds = function(bounds, arcs, opts) {
   if (opts.topojson_precision > 0) {
     unitXY = TopoJSON.calcExportResolution(arcs, opts.topojson_precision);
   } else if (opts.quantization > 0) {
-    unitXY = [opts.quantization / bounds.width(), opts.quantization / bounds.height()];
+    unitXY = [bounds.width() / (opts.quantization-1), bounds.height() / (opts.quantization-1)];
   } else if (opts.precision > 0) {
-    unitXY = [1 / opts.precision, 1 / opts.precision];
+    unitXY = [opts.precision, opts.precision];
   } else {
     // default -- auto quantization at 0.02 of avg. segment len
     unitXY = TopoJSON.calcExportResolution(arcs, 0.02);
   }
-  xmax = Math.ceil(bounds.width() * unitXY[0]);
-  ymax = Math.ceil(bounds.height() * unitXY[1]);
+  xmax = Math.ceil(bounds.width() / unitXY[0]);
+  ymax = Math.ceil(bounds.height() / unitXY[1]);
   return new Bounds(0, 0, xmax, ymax);
 };
 
