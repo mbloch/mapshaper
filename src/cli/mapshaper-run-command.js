@@ -36,7 +36,7 @@ api.runCommand = function(cmd, dataset, cb) {
       opts = cmd.options,
       targetLayers,
       newLayers,
-      arcs, tmp;
+      arcs;
 
   try { // catch errors from synchronous functions
 

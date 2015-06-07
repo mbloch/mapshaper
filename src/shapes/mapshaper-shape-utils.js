@@ -105,7 +105,7 @@ MapShaper.forEachPoint = function(lyr, cb) {
 // Visit each arc id in a shape (array of array of arc ids)
 // Use non-undefined return values of callback @cb as replacements.
 MapShaper.forEachArcId = function(arr, cb) {
-  var retn, item;
+  var item;
   for (var i=0; i<arr.length; i++) {
     item = arr[i];
     if (item instanceof Array) {
@@ -160,7 +160,7 @@ MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShap
   var segId = 0;
   shapes.forEach(function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
-    var arcIds, arcId, partData;
+    var arcIds, arcId;
     if (cbShape) {
       cbShape(shapeId);
     }

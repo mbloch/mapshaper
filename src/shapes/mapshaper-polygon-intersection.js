@@ -111,9 +111,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute,
       coords = arcs.getVertexData(),
       xx = coords.xx,
       yy = coords.yy,
-      nn = coords.nn,
-      calcAngle = spherical ? geom.signedAngleSph : geom.signedAngle,
-      splitter;
+      calcAngle = spherical ? geom.signedAngleSph : geom.signedAngle;
 
   function getNextArc(prevId) {
     var ai = arcs.indexOfVertex(prevId, -2),

@@ -42,8 +42,7 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
       joinFields = MapShaper.removeTypeHints(opts.fields || []),
       destTable = lyr.data,
       destKey = keys[0],
-      srcKey = keys[1],
-      matches;
+      srcKey = keys[1];
 
   if (srcTable.fieldExists(srcKey) === false) {
     stop("[join] External table is missing a field named:", srcKey);

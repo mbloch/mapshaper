@@ -17,7 +17,7 @@ describe('topojson-export.js and topojson-import.js', function () {
 
   describe('calcExportBounds()', function () {
     it('default uses 0.02 of avg. segment', function () {
-      var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]]]);
+      var arcs = new api.internal.ArcCollection([[[0, 0], [2, 1]], [[0, 1], [2, 0]]]);
       var bounds = new api.internal.Bounds(0, 0, 2, 1);
       var bounds2 = TopoJSON.calcExportBounds(bounds, arcs, {});
       assert.deepEqual(bounds2.toArray(), [0, 0, 50, 50]);

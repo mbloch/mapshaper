@@ -108,7 +108,6 @@ MapShaper.insertClippingPoints = function(arcs) {
 
   // new arc data
   var pointTotal1 = pointTotal0 + points.length * 2,
-      arcTotal1 = arcTotal0 + points.length,
       xx1 = new Float64Array(pointTotal1),
       yy1 = new Float64Array(pointTotal1),
       nn1 = [],  // number of arcs may vary

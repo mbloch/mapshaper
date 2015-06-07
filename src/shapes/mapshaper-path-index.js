@@ -107,8 +107,7 @@ function PathIndex(shapes, arcs) {
   };
 
   function testPointInRings(p, cands) {
-    var count = 0,
-        isOn = false,
+    var isOn = false,
         isIn = false;
     cands.forEach(function(cand) {
       var inRing = cand.index ?

@@ -2368,42 +2368,6 @@ function ArcCollection() {
     };
   }
 
-  function convertLegacyArcs(coords) {
-    var numArcs = coords.length;
-    // Generate arrays of arc lengths and starting idxs
-    var nn = new Uint32Array(numArcs),
-        pointCount = 0,
-        arc, arcLen;
-    for (var i=0; i<numArcs; i++) {
-      arc = coords[i];
-      if (arc.length != 2) error("#convertLegacyArcs() Expected array length == 2");
-      arcLen = arc && arc[0].length || 0;
-      nn[i] = arcLen;
-      pointCount += arcLen;
-      if (arcLen === 0) error("#convertArcArrays() Empty arc:", arc);
-    }
-
-    // Copy x, y coordinates into long arrays
-    var xx = new Float64Array(pointCount),
-        yy = new Float64Array(pointCount),
-        offs = 0;
-    coords.forEach(function(arc, arcId) {
-      var xarr = arc[0],
-          yarr = arc[1],
-          n = nn[arcId];
-      for (var j=0; j<n; j++) {
-        xx[offs + j] = xarr[j];
-        yy[offs + j] = yarr[j];
-      }
-      offs += n;
-    });
-    return {
-      xx: xx,
-      yy: yy,
-      nn: nn
-    };
-  }
-
   this.updateVertexData = function(nn, xx, yy, zz) {
     initXYData(nn, xx, yy);
     initZData(zz || null);
@@ -2615,8 +2579,7 @@ function ArcCollection() {
   this.filter = function(cb) {
     var map = new Int32Array(this.size()),
         goodArcs = 0,
-        goodPoints = 0,
-        iter;
+        goodPoints = 0;
     for (var i=0, n=this.size(); i<n; i++) {
       if (cb(this.getArcIter(i), i)) {
         map[i] = goodArcs++;
@@ -3301,7 +3264,6 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
   var s1p1, s1p2, s2p1, s2p2,
       s1p1x, s1p2x, s2p1x, s2p2x,
       s1p1y, s1p2y, s2p1y, s2p2y,
-      m1, m2,
       hit, i, j;
 
 
@@ -3552,7 +3514,7 @@ MapShaper.forEachPoint = function(lyr, cb) {
 // Visit each arc id in a shape (array of array of arc ids)
 // Use non-undefined return values of callback @cb as replacements.
 MapShaper.forEachArcId = function(arr, cb) {
-  var retn, item;
+  var item;
   for (var i=0; i<arr.length; i++) {
     item = arr[i];
     if (item instanceof Array) {
@@ -3607,7 +3569,7 @@ MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShap
   var segId = 0;
   shapes.forEach(function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
-    var arcIds, arcId, partData;
+    var arcIds, arcId;
     if (cbShape) {
       cbShape(shapeId);
     }
@@ -4248,8 +4210,7 @@ function PathIndex(shapes, arcs) {
   };
 
   function testPointInRings(p, cands) {
-    var count = 0,
-        isOn = false,
+    var isOn = false,
         isIn = false;
     cands.forEach(function(cand) {
       var inRing = cand.index ?
@@ -4693,9 +4654,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute,
       coords = arcs.getVertexData(),
       xx = coords.xx,
       yy = coords.yy,
-      nn = coords.nn,
-      calcAngle = spherical ? geom.signedAngleSph : geom.signedAngle,
-      splitter;
+      calcAngle = spherical ? geom.signedAngleSph : geom.signedAngle;
 
   function getNextArc(prevId) {
     var ai = arcs.indexOfVertex(prevId, -2),
@@ -5161,7 +5120,6 @@ MapShaper.insertClippingPoints = function(arcs) {
 
   // new arc data
   var pointTotal1 = pointTotal0 + points.length * 2,
-      arcTotal1 = arcTotal0 + points.length,
       xx1 = new Float64Array(pointTotal1),
       yy1 = new Float64Array(pointTotal1),
       nn1 = [],  // number of arcs may vary
@@ -9243,14 +9201,17 @@ function ShpReader(src) {
     return header;
   };
 
+  // unused and untested
   // return data as nested arrays of shapes > parts > points > [x,y(,z,m)]
+  /*
   this.read = function() {
     var shapes = [];
     this.forEachShape(function(shp) {
-      shapes.push(shp.isNull ? null : shp.read(format));
+      shapes.push(shp.isNull ? null : shp.read());
     });
     return shapes;
   };
+  */
 
   // Callback interface: for each record in a .shp file, pass a
   //   record object to a callback function
@@ -10059,7 +10020,6 @@ geom.findInteriorPoint = function(shp, arcs, exact) {
     return null;
   }
   var maxPath = geom.getMaxPath(shp, arcs),
-      maxPathArea = geom.getPlanarPathArea(maxPath, arcs),
       pathBounds = arcs.getSimpleShapeBounds(maxPath),
       halfWidth = pathBounds.width() / 2,
       centroid, area, focus, lbound, rbound, htics, vtics;
@@ -10901,7 +10861,7 @@ function addFileSuffix(paths, suff) {
   });
 }
 
-function testFileCollision(paths, suff) {
+function testFileCollision(paths) {
   return utils.some(paths, function(path) {
     return cli.isFile(path) || cli.isDirectory(path);
   });
@@ -10971,7 +10931,6 @@ MapShaper.getRecordMapper = function(map) {
 
 
 api.filterIslands = function(lyr, arcs, opts) {
-  var filter = null;
   if (lyr.geometry_type != 'polygon') {
     message("[filter-islands] skipping a non-polygon layer");
     return;
@@ -11316,8 +11275,7 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
       joinFields = MapShaper.removeTypeHints(opts.fields || []),
       destTable = lyr.data,
       destKey = keys[0],
-      srcKey = keys[1],
-      matches;
+      srcKey = keys[1];
 
   if (srcTable.fieldExists(srcKey) === false) {
     stop("[join] External table is missing a field named:", srcKey);
@@ -13304,7 +13262,7 @@ api.runCommand = function(cmd, dataset, cb) {
       opts = cmd.options,
       targetLayers,
       newLayers,
-      arcs, tmp;
+      arcs;
 
   try { // catch errors from synchronous functions
 
@@ -13703,7 +13661,7 @@ function CommandParser() {
     }, 0);
 
     // Layout help display
-    helpCommands.forEach(function(cmd, i) {
+    helpCommands.forEach(function(cmd) {
       if (!detailView && cmd.title) {
         helpStr += cmd.title + "\n";
       }
@@ -14934,8 +14892,7 @@ cli.expandFileName = function(name) {
   var path = utils.parseLocalPath(name),
       dir = path.directory || '.',
       listing = require('fs').readdirSync(dir),
-      rxp = utils.wildcardToRegExp(path.filename),
-      matches;
+      rxp = utils.wildcardToRegExp(path.filename);
   return listing.reduce(function(memo, item) {
     var path = require('path').join(dir, item);
     if (rxp.test(item) && cli.isFile(path)) {
@@ -14986,7 +14943,7 @@ cli.printRepairMessage = function(info) {
 
 cli.validateEncoding = function(enc) {
   if (!MapShaper.encodingIsSupported(enc)) {
-    console.error("[Unsupported encoding:", raw + "]");
+    console.error("[Unsupported encoding:", enc + "]");
     MapShaper.printEncodings();
     process.exit(0);
   }

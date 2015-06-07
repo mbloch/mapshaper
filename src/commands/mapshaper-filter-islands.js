@@ -1,7 +1,6 @@
 /* @requires mapshaper-shape-geom, mapshaper-filter */
 
 api.filterIslands = function(lyr, arcs, opts) {
-  var filter = null;
   if (lyr.geometry_type != 'polygon') {
     message("[filter-islands] skipping a non-polygon layer");
     return;

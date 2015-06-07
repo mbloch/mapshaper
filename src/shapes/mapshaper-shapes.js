@@ -112,42 +112,6 @@ function ArcCollection() {
     };
   }
 
-  function convertLegacyArcs(coords) {
-    var numArcs = coords.length;
-    // Generate arrays of arc lengths and starting idxs
-    var nn = new Uint32Array(numArcs),
-        pointCount = 0,
-        arc, arcLen;
-    for (var i=0; i<numArcs; i++) {
-      arc = coords[i];
-      if (arc.length != 2) error("#convertLegacyArcs() Expected array length == 2");
-      arcLen = arc && arc[0].length || 0;
-      nn[i] = arcLen;
-      pointCount += arcLen;
-      if (arcLen === 0) error("#convertArcArrays() Empty arc:", arc);
-    }
-
-    // Copy x, y coordinates into long arrays
-    var xx = new Float64Array(pointCount),
-        yy = new Float64Array(pointCount),
-        offs = 0;
-    coords.forEach(function(arc, arcId) {
-      var xarr = arc[0],
-          yarr = arc[1],
-          n = nn[arcId];
-      for (var j=0; j<n; j++) {
-        xx[offs + j] = xarr[j];
-        yy[offs + j] = yarr[j];
-      }
-      offs += n;
-    });
-    return {
-      xx: xx,
-      yy: yy,
-      nn: nn
-    };
-  }
-
   this.updateVertexData = function(nn, xx, yy, zz) {
     initXYData(nn, xx, yy);
     initZData(zz || null);
@@ -359,8 +323,7 @@ function ArcCollection() {
   this.filter = function(cb) {
     var map = new Int32Array(this.size()),
         goodArcs = 0,
-        goodPoints = 0,
-        iter;
+        goodPoints = 0;
     for (var i=0, n=this.size(); i<n; i++) {
       if (cb(this.getArcIter(i), i)) {
         map[i] = goodArcs++;

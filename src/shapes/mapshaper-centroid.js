@@ -52,7 +52,6 @@ geom.findInteriorPoint = function(shp, arcs, exact) {
     return null;
   }
   var maxPath = geom.getMaxPath(shp, arcs),
-      maxPathArea = geom.getPlanarPathArea(maxPath, arcs),
       pathBounds = arcs.getSimpleShapeBounds(maxPath),
       halfWidth = pathBounds.width() / 2,
       centroid, area, focus, lbound, rbound, htics, vtics;

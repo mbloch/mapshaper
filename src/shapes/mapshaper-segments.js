@@ -138,7 +138,6 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
   var s1p1, s1p2, s2p1, s2p2,
       s1p1x, s1p2x, s2p1x, s2p2x,
       s1p1y, s1p2y, s2p1y, s2p2y,
-      m1, m2,
       hit, i, j;
 
 

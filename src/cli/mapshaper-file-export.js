@@ -48,7 +48,7 @@ function addFileSuffix(paths, suff) {
   });
 }
 
-function testFileCollision(paths, suff) {
+function testFileCollision(paths) {
   return utils.some(paths, function(path) {
     return cli.isFile(path) || cli.isDirectory(path);
   });

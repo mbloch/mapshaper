@@ -40,14 +40,17 @@ function ShpReader(src) {
     return header;
   };
 
+  // unused and untested
   // return data as nested arrays of shapes > parts > points > [x,y(,z,m)]
+  /*
   this.read = function() {
     var shapes = [];
     this.forEachShape(function(shp) {
-      shapes.push(shp.isNull ? null : shp.read(format));
+      shapes.push(shp.isNull ? null : shp.read());
     });
     return shapes;
   };
+  */
 
   // Callback interface: for each record in a .shp file, pass a
   //   record object to a callback function

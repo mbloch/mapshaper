@@ -224,7 +224,7 @@ function CommandParser() {
     }, 0);
 
     // Layout help display
-    helpCommands.forEach(function(cmd, i) {
+    helpCommands.forEach(function(cmd) {
       if (!detailView && cmd.title) {
         helpStr += cmd.title + "\n";
       }

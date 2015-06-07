@@ -68,8 +68,7 @@ cli.expandFileName = function(name) {
   var path = utils.parseLocalPath(name),
       dir = path.directory || '.',
       listing = require('fs').readdirSync(dir),
-      rxp = utils.wildcardToRegExp(path.filename),
-      matches;
+      rxp = utils.wildcardToRegExp(path.filename);
   return listing.reduce(function(memo, item) {
     var path = require('path').join(dir, item);
     if (rxp.test(item) && cli.isFile(path)) {
@@ -120,7 +119,7 @@ cli.printRepairMessage = function(info) {
 
 cli.validateEncoding = function(enc) {
   if (!MapShaper.encodingIsSupported(enc)) {
-    console.error("[Unsupported encoding:", raw + "]");
+    console.error("[Unsupported encoding:", enc + "]");
     MapShaper.printEncodings();
     process.exit(0);
   }
