@@ -11103,34 +11103,44 @@ MapShaper.getDelimiterRxp = function(delim) {
 // Detect and convert data types of data from csv files.
 // TODO: decide how to handle records with inconstent properties. Mapshaper
 //    currently assumes tabular data
-// TODO: improve type detection. Mapshaper currently only checks the first
-//    record, but this is obviously unreliable.
 // @fieldList (optional) array of field names with type hints; may contain
 //    duplicate names with inconsistent type hints.
 MapShaper.adjustRecordTypes = function(records, fieldList) {
   var hintIndex = {},
-      conversionIndex = {},
-      firstRecord = records[0],
-      fields = Object.keys(firstRecord);
-
+      fields = Object.keys(records[0] || []),
+      type;
   if (fieldList) {
     // parse optional type hints
     MapShaper.parseFieldHeaders(fieldList, hintIndex);
   }
-
   fields.forEach(function(key) {
-    var val = firstRecord[key];
-    if (hintIndex[key] == 'number' && !utils.isNumber(val)) {
-      conversionIndex[key] = 'number';
-    } else if (hintIndex[key] == 'string') {
-      conversionIndex[key] = 'string';
-    } else if (utils.isString(val)) {
-      conversionIndex[key] = utils.stringIsNumeric(val) ? 'number' : 'string';
-    } else {
-      // value is not a string -- no conversion (consider making this an error)
+    type = hintIndex[key] || MapShaper.detectConversionType(key, records);
+    if (type == 'number') {
+      MapShaper.convertDataField(records, key, utils.parseNumber);
+    } else if (type == 'string') {
+      MapShaper.convertDataField(records, key, utils.parseString);
     }
   });
-  MapShaper.convertRecordTypes(records, conversionIndex);
+};
+
+MapShaper.convertDataField = function(records, name, f) {
+  for (var i=0, n=records.length; i<n; i++) {
+    records[i][name] = f(records[i][name]);
+  }
+};
+
+// Returns 'string', 'number' or null
+// Detection is based on value of first non-empty record
+MapShaper.detectConversionType = function(name, records) {
+  var type = null, val;
+  for (var i=0, n=records.length; i<n; i++) {
+    val = records[i][name];
+    if (!!val && utils.isString(val)) {
+      type = utils.stringIsNumeric(val) ? 'number' : 'string';
+      break;
+    }
+  }
+  return type;
 };
 
 // Accept a type hint from a header like "FIPS:str"
@@ -11173,7 +11183,6 @@ MapShaper.parseFieldHeaders = function(fields, index) {
     if (type) {
       index[name] = type;
     }
-    // TODO: validate field name
     return name;
   });
   return parsed;
@@ -11185,10 +11194,10 @@ utils.stringIsNumeric = function(str) {
   return !isNaN(parsed) && parsed == Number(utils.cleanNumericString(str));
 };
 
-// Remove comma separators
+// Remove comma separators from strings
 // TODO: accept European-style numbers?
-utils.cleanNumericString = function(str) {
-  return str.replace(/,/g, '');
+utils.cleanNumericString = function(raw) {
+  return String(raw).replace(/,/g, '');
 };
 
 // Assume: @raw is string, undefined or null
@@ -11203,31 +11212,6 @@ utils.parseString = function(raw) {
 utils.parseNumber = function(raw) {
   var parsed = raw ? parseFloat(utils.cleanNumericString(raw)) : NaN;
   return isNaN(parsed) ? null : parsed;
-};
-
-MapShaper.convertRecordTypes = function(records, typeIndex) {
-  var typedFields = Object.keys(typeIndex),
-      converters = {
-        'string': utils.parseString,
-        'number': utils.parseNumber
-      },
-      transforms = typedFields.map(function(f) {
-        var type = typeIndex[f],
-            converter = converters[type];
-        return converter;
-      });
-  if (typedFields.length === 0) return;
-  records.forEach(function(rec) {
-    MapShaper.convertRecordData(rec, typedFields, transforms);
-  });
-};
-
-MapShaper.convertRecordData = function(rec, fields, converters) {
-  var f;
-  for (var i=0; i<fields.length; i++) {
-    f = fields[i];
-    rec[f] = converters[i](rec[f]);
-  }
 };
 
 

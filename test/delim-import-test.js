@@ -13,15 +13,28 @@ function fixPath(p) {
 
 describe('mapshaper-delim-import.js', function() {
 
-  describe('handle empty fields in tab-delim files', function() {
-    it('test1', function() {
+  function importRecords(str, opts) {
+      var dataset = api.internal.importDelim(str, opts);
+      return dataset.layers[0].data.getRecords();
+  }
+
+  describe('importDelim()', function() {
+    it('handle empty  fields', function() {
       var csv = "number,name\n3,foo\n,\n";
-      var dataset = api.internal.importDelim(csv);
-      var records = dataset.layers[0].data.getRecords();
+      var records = importRecords(csv);
       var target = [{number: 3, name: 'foo'}, {number: null, name: ''}];
       assert(deepStrictEqual(records, target));
     })
+
+    it('detect numeric field when first record is empty', function() {
+      var str = 'a,b,c\n,"",0\n3,4,5';
+      var records = importRecords(str);
+      var target = [{a:null, b:null, c:0}, {a:3, b:4, c:5}];
+      assert.deepStrictEqual(records, target);
+    })
+
   })
+
 
   describe('infer export delimiter from filename, if possible', function () {
     it('.tsv implies tab-delimited text', function (done) {
