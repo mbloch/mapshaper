@@ -30,7 +30,7 @@ describe('mapshaper-delim-import.js', function() {
       var str = 'a,b,c\n,"",0\n3,4,5';
       var records = importRecords(str);
       var target = [{a:null, b:null, c:0}, {a:3, b:4, c:5}];
-      assert.deepStrictEqual(records, target);
+      assert(deepStrictEqual(records, target));
     })
 
   })
