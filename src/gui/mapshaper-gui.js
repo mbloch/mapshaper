@@ -16,6 +16,11 @@ mapshaper-keep-shapes
 // MapShaper.LOGGING = true;
 api.enableLogging();
 
+zip.workerScripts = {
+  deflater: ['z-worker.js', 'pako/pako.min.js', 'pako/codecs.js'],
+  inflater: ['z-worker.js', 'pako/pako.min.js', 'pako/codecs.js']
+};
+
 if (Browser.inBrowser) {
   Browser.onload(function() {
     if (!browserIsSupported()) {
