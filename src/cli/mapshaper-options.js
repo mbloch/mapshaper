@@ -289,6 +289,8 @@ MapShaper.getOptionParser = function() {
     .option("keep-shapes", {
       type: "flag"
     })
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
   parser.command("filter-islands")

@@ -20,6 +20,19 @@ describe('mapshaper-filter.js', function () {
       }]
     };
 
+    it ('-filter + ...', function(done) {
+      // filter a layer with no-replace; check that modifying data in the filtered layer does not change the source layer.
+      api.applyCommands('-filter \'name == "b"\' + name=filtered -each target=filtered \'name="foo"\'', geojson, function(err, data) {
+        assert.equal(data.length, 2);
+        var output1 = JSON.parse(data[0]);
+        var output2 = JSON.parse(data[1]);
+        assert.deepEqual(geojson, output1);
+        assert.deepEqual(output2.features[0].properties, {name: 'foo'})
+        assert.equal(output2.features.length, 1);
+        done();
+      });
+    })
+
     it ('-filter remove-empty', function(done) {
       api.applyCommands('-filter remove-empty', geojson, function(err, json) {
         var output = JSON.parse(json);

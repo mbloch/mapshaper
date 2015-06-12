@@ -76,7 +76,7 @@ api.runCommand = function(cmd, dataset, cb) {
       newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter') {
-      MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
+      newLayers = MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter-fields') {
       MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);

@@ -1,10 +1,11 @@
-/* @requires mapshaper-expressions, mapshaper-shape-geom */
+/* @requires mapshaper-expressions, mapshaper-shape-geom, mapshaper-shape-utils */
 
 api.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes || null,
-      size = MapShaper.getFeatureCount(lyr),
-      filter = null;
+      filteredShapes = shapes ? [] : null,
+      filteredRecords = records ? [] : null,
+      filteredLyr, filter;
 
   if (opts.expression) {
     filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
@@ -19,24 +20,28 @@ api.filterFeatures = function(lyr, arcs, opts) {
     return;
   }
 
-  var selectedShapes = [],
-      selectedRecords = [];
-  utils.repeat(size, function(shapeId) {
+  utils.repeat(MapShaper.getFeatureCount(lyr), function(shapeId) {
     var result = filter(shapeId);
     if (result === true) {
-      if (shapes) selectedShapes.push(shapes[shapeId] || null);
-      if (records) selectedRecords.push(records[shapeId] || null);
+      if (shapes) filteredShapes.push(shapes[shapeId] || null);
+      if (records) filteredRecords.push(records[shapeId] || null);
     } else if (result !== false) {
       stop("[filter] Expressions must return true or false");
     }
   });
 
-  if (shapes) {
-    lyr.shapes = selectedShapes;
+  filteredLyr = {
+    data: filteredRecords ? new DataTable(filteredRecords) : null,
+    shapes: filteredShapes
+  };
+  if (opts.no_replace) {
+    // if adding a layer, don't share objects between source and filtered layer
+    filteredLyr = MapShaper.copyLayer(filteredLyr);
+    filteredLyr.geometry_type = lyr.geometry_type;
+  } else {
+    filteredLyr = utils.extend(lyr, filteredLyr); // modify in-place
   }
-  if (records) {
-    lyr.data = new DataTable(selectedRecords);
-  }
+  return filteredLyr;
 };
 
 MapShaper.getNullGeometryFilter = function(lyr, arcs) {

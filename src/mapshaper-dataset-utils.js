@@ -1,6 +1,18 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-shape-utils */
 
 // utility functions for datasets and layers
+
+// Copy layer data, but leave new layer unnamed
+MapShaper.copyLayer = function(lyr) {
+  var copy = utils.extend({}, lyr);
+  if (lyr.data) {
+    copy.data = lyr.data.clone();
+  }
+  if (lyr.shapes) {
+    copy.shapes = MapShaper.cloneShapes(lyr.shapes);
+  }
+  return copy;
+};
 
 MapShaper.getDatasetBounds = function(data) {
   var bounds = new Bounds();

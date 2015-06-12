@@ -45,7 +45,7 @@ MapShaper.cloneShape = function(shp) {
 };
 
 MapShaper.cloneShapes = function(arr) {
-  return arr.map(cloneShape);
+  return utils.isArray(arr) ? arr.map(MapShaper.cloneShape) : null;
 };
 
 // a and b are arrays of arc ids
