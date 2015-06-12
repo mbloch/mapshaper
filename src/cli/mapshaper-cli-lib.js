@@ -1,5 +1,6 @@
 /* @requires
 mapshaper-cli-utils
+mapshaper-common
 mapshaper-file-types
 mapshaper-commands
 mapshaper-encodings

@@ -1,4 +1,4 @@
-/* @requires mapshaper-import, mapshaper-data-table */
+/* @requires mapshaper-import, mapshaper-data-table, mapshaper-gui-lib */
 
 function DropControl(importer) {
   var el = El('#page-wrapper');
@@ -43,33 +43,111 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
+        ext = utils.getFileExtension(name).toLowerCase(),
         isBinary = MapShaper.isBinaryFile(name),
-        reader = new FileReader();
-    reader.onload = function(e) {
-      inputFileContent(name, reader.result);
-    };
-    if (isBinary) {
-      reader.readAsArrayBuffer(file);
+        reader;
+
+    if (ext == 'zip') {
+      readZipFile(file);
+    } else if (gui.isReadableFileType(name)) {
+      reader = new FileReader();
+      reader.onload = function(e) {
+        inputFileContent(name, reader.result);
+      };
+      // TODO: improve to handle encodings, etc.
+      if (isBinary) {
+        reader.readAsArrayBuffer(file);
+      } else {
+        reader.readAsText(file, 'UTF-8');
+      }
     } else {
-      reader.readAsText(file, 'UTF-8');
+      console.log("File can't be imported:", name, "-- skipping.");
     }
   };
 
+  function importZipContent(reader) {
+    var _entries;
+    reader.getEntries(readEntries);
+
+    function readEntries(entries) {
+      _entries = entries;
+      readNext();
+    }
+
+    function readNext() {
+      if (_entries.length > 0) {
+        readEntry(_entries.pop());
+      } else {
+        reader.close();
+      }
+    }
+
+    function readEntry(entry) {
+      var filename = entry.filename;
+      if (!entry.directory && gui.isReadableFileType(filename)) {
+        entry.getData(new zip.BlobWriter(), function(data) {
+          data.name = filename;
+          self.readFile(data);
+          readNext();
+        });
+      } else {
+        readNext();
+      }
+    }
+  }
+
+  function readZipFile(file) {
+    zip.createReader(new zip.BlobReader(file), importZipContent, onError);
+    function onError(err) {
+      throw err;
+    }
+  }
+
+  var getImportDataset = (function() {
+    var fileIndex = {}; //
+    return function(basename) {
+      var dataset = fileIndex[basename];
+      if (!dataset) {
+        dataset = fileIndex[basename] = {
+          info: {}
+        };
+      }
+      return dataset;
+    };
+  }());
+
+  function mergeImportDataset(dest, src) {
+    if (!dest.layers) {
+      dest.layers = src.layers;
+    } else if (dest.layers.length == 1 && src.layers.length == 1) {
+      utils.extend(dest.layers[0], src.layers[0]);
+      // TODO: check that attributes and shapes are compatible
+    } else {
+      error("Import files contain incompatible data layers");
+    }
+
+    if (!dest.arcs) {
+      dest.arcs = src.arcs;
+    } else if (src.arcs) {
+      error("Import files contain incompatible arc data");
+    }
+    utils.extend(dest.info, src.info);
+  }
+
+
   // Index of imported objects, indexed by path base and then file type
   // e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
-  var fileIndex = {}; //
   function inputFileContent(path, content) {
-    var basename = utils.getFileBase(path),
-        index = fileIndex[basename] || (fileIndex[basename] = {}),
+    var dataset = getImportDataset(utils.getFileBase(path)),
         type = MapShaper.guessInputFileType(path),
-        inputOpts, input, data;
+        inputOpts, input;
 
-    if (index[type]) {
-      verbose("File has already been imported; skipping:", path);
-      return;
-    }
     if (type == 'shp' || type == 'json') {
-      T.start("Start timing");
+      if (dataset.info.editing) {
+        console.log("Editing has started; ignoring file:", path);
+        return;
+      }
+      dataset.info.editing = true;
       inputOpts = {
         files: [path],
         precision: precisionInput.value(),
@@ -80,28 +158,23 @@ function ImportControl(editor) {
         content: content,
         filename: path
       };
-      data = MapShaper.importContent(input, inputOpts);
-      editor.addData(data, inputOpts);
-      T.stop("Done importing");
+      mergeImportDataset(dataset, MapShaper.importContent(input, inputOpts));
+      editor.addData(dataset, inputOpts);
+
     } else if (type == 'dbf') {
       // TODO: detect dbf encoding instead of using ascii
       // (Currently, records are read if Shapefile is converted to *JSON).
-      data = new ShapefileTable(content, 'ascii');
       // TODO: validate table (check that record count matches, etc)
-      if (index.shp) {
-        index.shp.layers[0].data = data;
-      }
-    } else {
-      verbose("Unexpected file type: " + path + '; ignoring');
-      return;
-    }
+      mergeImportDataset(dataset, {
+        layers: [{data: new ShapefileTable(content, 'ascii')}]
+      });
 
-    // associate previously imported Shapefile files with a .shp file
-    // TODO: accept .prj files and other Shapefile files
-    if (type == 'shp' && index.dbf) {
-      data.layers[0].data = index.dbf;
+    } else if (type == 'prj') {
+      dataset.info.output_prj = content;
+
+    } else {
+      console.log("Unexpected file type: " + path + '; ignoring');
     }
-    index[type] = data;
   }
 }
 

@@ -1734,7 +1734,7 @@ MapShaper.isSupportedOutputFormat = function(fmt) {
 // Assumes file at @path is one of Mapshaper's supported file types
 MapShaper.isBinaryFile = function(path) {
   var ext = utils.getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'dbf';
+  return ext == 'shp' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
 };
 
 // Detect extensions of some unsupported file types, for cmd line validation
@@ -9516,24 +9516,34 @@ MapShaper.importShp = function(src, opts) {
   return importer.done();
 };
 
-// Convert topological data to buffers containing .shp and .shx file data
+// Convert a dataset to Shapefile files
 MapShaper.exportShapefile = function(dataset, opts) {
   return dataset.layers.reduce(function(files, lyr) {
+    var prj = MapShaper.exportPrjFile(lyr, dataset);
     files = files.concat(MapShaper.exportShpAndShxFiles(lyr, dataset, opts));
     files = files.concat(MapShaper.exportDbfFile(lyr, dataset, opts));
-
-    // Copy prj file, if Shapefile import and running in Node.
-    if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
-      var prjFile = utils.replaceFileExtension(dataset.info.input_files[0], 'prj');
-      if (cli.isFile(prjFile)) {
-        files.push({
-          content: cli.readFile(prjFile, 'utf-8'),
-          filename: lyr.name + ".prj"
-        });
-      }
-    }
+    if (prj) files.push(prj);
     return files;
   }, []);
+};
+
+MapShaper.exportPrjFile = function(lyr, dataset) {
+  var content, prj, path;
+  if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
+    path = utils.replaceFileExtension(dataset.info.input_files[0], 'prj');
+    if (cli.isFile(path)) {
+      content = cli.readFile(path, 'utf-8');
+    }
+  } else if (dataset.info.output_prj) {
+    content = dataset.info.output_prj;
+  }
+  if (content) {
+    prj = {
+      content: content,
+      filename: lyr.name + '.prj'
+    };
+  }
+  return prj;
 };
 
 MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {

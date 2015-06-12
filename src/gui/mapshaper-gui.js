@@ -1,16 +1,15 @@
 /* @requires
-mapshaper-gui-utils,
-mapshaper-file-types,
-mapshaper-shapes,
-mapshaper-simplify-control,
-mapshaper-import-control,
-mapshaper-export-control,
-mapshaper-topology,
-mapshaper-map,
-mapshaper-maplayer,
-mapshaper-simplify,
-mapshaper-export,
-mapshaper-repair-control,
+mapshaper-gui-lib
+mapshaper-simplify-control
+mapshaper-import-control
+mapshaper-export-control
+mapshaper-repair-control
+mapshaper-map
+mapshaper-maplayer
+mapshaper-simplify
+mapshaper-export
+mapshaper-shapes
+mapshaper-topology
 mapshaper-keep-shapes
 */
 

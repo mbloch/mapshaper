@@ -4056,13 +4056,354 @@ MapShaper.isSupportedOutputFormat = function(fmt) {
 // Assumes file at @path is one of Mapshaper's supported file types
 MapShaper.isBinaryFile = function(path) {
   var ext = utils.getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'dbf';
+  return ext == 'shp' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
 };
 
 // Detect extensions of some unsupported file types, for cmd line validation
 MapShaper.filenameIsUnsupportedOutputType = function(file) {
   var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
   return rxp.test(file);
+};
+
+
+
+
+var gui = api.gui = {};
+
+gui.isReadableFileType = function(filename) {
+  return !!MapShaper.guessInputFileType(filename);
+};
+
+
+
+function draggable(ref) {
+  var xdown, ydown;
+  var el = El(ref),
+      dragging = false,
+      obj = new EventDispatcher();
+  Browser.undraggable(el.node());
+  el.on('mousedown', function(e) {
+    xdown = e.pageX;
+    ydown = e.pageY;
+    Browser.on(window, 'mousemove', onmove);
+    Browser.on(window, 'mouseup', onrelease);
+  });
+
+  function onrelease(e) {
+    Browser.removeEventListener(window, 'mousemove', onmove);
+    Browser.removeEventListener(window, 'mouseup', onrelease);
+    if (dragging) {
+      dragging = false;
+      obj.dispatchEvent('dragend');
+    }
+  }
+
+  function onmove(e) {
+    if (!dragging) {
+      dragging = true;
+      obj.dispatchEvent('dragstart');
+    }
+    obj.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
+  }
+  return obj;
+}
+
+function Slider(ref, opts) {
+  var _el = El(ref);
+  var _self = this;
+  var defaults = {
+    space: 7
+  };
+  opts = utils.extend(defaults, opts);
+
+  var _pct = 0;
+  var _track,
+      _handle,
+      _handleLeft = opts.space;
+
+  function size() {
+    return _track ? _track.width() - opts.space * 2 : 0;
+  }
+
+  this.track = function(ref) {
+    if (ref && !_track) {
+      _track = El(ref);
+      _handleLeft = _track.el.offsetLeft + opts.space;
+      updateHandlePos();
+    }
+    return _track;
+  };
+
+  this.handle = function(ref) {
+    var startX;
+    if (ref && !_handle) {
+      _handle = El(ref);
+      draggable(_handle)
+        .on('drag', function(e) {
+          setHandlePos(startX + e.dx, true);
+        })
+        .on('dragstart', function(e) {
+          startX = position();
+          _self.dispatchEvent('start');
+        })
+        .on('dragend', function(e) {
+          _self.dispatchEvent('end');
+        });
+      updateHandlePos();
+    }
+    return _handle;
+  };
+
+  function position() {
+    return Math.round(_pct * size());
+  }
+
+  this.pct = function(pct) {
+    if (pct >= 0 && pct <= 1) {
+      _pct = pct;
+      updateHandlePos();
+    }
+    return _pct;
+  };
+
+  function setHandlePos(x, fire) {
+    x = utils.clamp(x, 0, size());
+    var pct = x / size();
+    if (pct != _pct) {
+      _pct = pct;
+      _handle.css('left', _handleLeft + x);
+      _self.dispatchEvent('change', {pct: _pct});
+    }
+  }
+
+  function updateHandlePos() {
+    var x = _handleLeft + Math.round(position());
+    if (_handle) _handle.css('left', x);
+  }
+}
+
+Opts.inherit(Slider, EventDispatcher);
+
+
+function ClickText(ref) {
+  var _el = El(ref);
+  var _max = Infinity,
+      _min = -Infinity,
+      _formatter = function(v) {return String(v);},
+      _validator = function(v) {return !isNaN(v);},
+      _parser = function(s) {return parseFloat(s);},
+      _value = 0;
+
+  _el.on('blur', onblur, this);
+  _el.on('keydown', onpress, this);
+
+  function onpress(e) {
+    if (e.keyCode == 27) { // esc
+      this.value(_value); // reset input field to current value
+      _el.el.blur();
+    } else if (e.keyCode == 13) { // enter
+      _el.el.blur();
+    }
+  }
+
+  // Validate input contents.
+  // Update internal value and fire 'change' if valid
+  //
+  function onblur() {
+    var val = _parser(_el.el.value);
+    if (val === _value) {
+      // return;
+    }
+    if (_validator(val)) {
+      this.value(val);
+      this.dispatchEvent('change', {value:this.value()});
+    } else {
+      this.value(_value);
+      this.dispatchEvent('error'); // TODO: improve
+    }
+  }
+
+  this.bounds = function(min, max) {
+    _min = min;
+    _max = max;
+    return this;
+  };
+
+  this.validator = function(f) {
+    _validator = f;
+    return this;
+  };
+
+  this.formatter = function(f) {
+    _formatter = f;
+    return this;
+  };
+
+  this.parser = function(f) {
+    _parser = f;
+    return this;
+  };
+
+  this.value = function(arg) {
+    if (arg == void 0) {
+      // var valStr = this.el.value;
+      // return _parser ? _parser(valStr) : parseFloat(valStr);
+      return _value;
+    }
+    var val = utils.clamp(arg, _min, _max);
+    if (!_validator(val)) {
+      error("ClickText#value() invalid value:", arg);
+    } else {
+      _value = val;
+    }
+    _el.el.value = _formatter(val);
+    return this;
+  };
+}
+
+Opts.inherit(ClickText, EventDispatcher);
+
+
+function Checkbox(ref) {
+  var _el = El(ref);
+}
+
+Opts.inherit(Checkbox, EventDispatcher);
+
+function SimpleButton(ref) {
+  var _el = El(ref),
+      _active = _el.hasClass('active');
+
+  _el.on('click', function(e) {
+    if (_active) this.dispatchEvent('click');
+    return false;
+  }, this);
+
+  this.active = function(a) {
+    if (a === void 0) return _active;
+    if (a !== _active) {
+      _active = a;
+      _el.toggleClass('active');
+    }
+    return this;
+  };
+}
+
+Opts.inherit(SimpleButton, EventDispatcher);
+
+function FileChooser(el) {
+
+  var input = El('form')
+    .addClass('g-file-control').appendTo('body')
+    .newChild('input')
+    .attr('type', 'file')
+    .attr('multiple', 'multiple')
+    .on('change', onchange, this);
+  /* input element properties:
+    disabled
+    name
+    value  (path to the file)
+    multiple  ('multiple' or '')
+  */
+  var btn = El(el).on('click', function() {
+    input.el.click();
+  });
+
+  function onchange(e) {
+    var files = e.target.files;
+    // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
+    if (files) {
+      // disable the button while files are being processed
+      btn.addClass('selected');
+      input.attr('disabled', true);
+      this.dispatchEvent('select', {files:files});
+      btn.removeClass('selected');
+      input.attr('disabled', false);
+    }
+  }
+}
+
+Opts.inherit(FileChooser, EventDispatcher);
+
+
+
+
+var SimplifyControl = function() {
+  var _value = 1;
+  El('#g-simplify-control').show();
+  var slider = new Slider("#g-simplify-control .g-slider");
+  slider.handle("#g-simplify-control .g-handle");
+  slider.track("#g-simplify-control .g-track");
+  slider.on('change', function(e) {
+    var pct = fromSliderPct(e.pct);
+    text.value(pct);
+    onchange(pct);
+  });
+  slider.on('start', function(e) {
+    control.dispatchEvent('simplify-start');
+  }).on('end', function(e) {
+    control.dispatchEvent('simplify-end');
+  });
+
+  var text = new ClickText("#g-simplify-control .g-clicktext");
+  text.bounds(0, 1);
+  text.formatter(function(val) {
+    if (isNaN(val)) return '-';
+
+    var pct = val * 100;
+    var decimals = 0;
+    if (pct <= 0) decimals = 1;
+    else if (pct < 0.001) decimals = 4;
+    else if (pct < 0.01) decimals = 3;
+    else if (pct < 1) decimals = 2;
+    else if (pct < 100) decimals = 1;
+    return utils.formatNumber(pct, decimals) + "%";
+  });
+
+  text.parser(function(s) {
+    return parseFloat(s) / 100;
+  });
+
+  text.value(0);
+  text.on('change', function(e) {
+    var pct = e.value;
+    slider.pct(toSliderPct(pct));
+    control.dispatchEvent('simplify-start');
+    onchange(pct);
+    control.dispatchEvent('simplify-end');
+  });
+
+  function toSliderPct(p) {
+    p = Math.sqrt(p);
+    var pct = 1 - p;
+    return pct;
+  }
+
+  function fromSliderPct(p) {
+    var pct = 1 - p;
+    return pct * pct;
+  }
+
+  function onchange(val) {
+    if (_value != val) {
+      _value = val;
+      control.dispatchEvent('change', {value:val});
+    }
+  }
+
+  var control = new EventDispatcher();
+  control.value = function(val) {
+    if (!isNaN(val)) {
+      // TODO: validate
+      _value = val;
+      slider.pct(toSliderPct(val));
+      text.value(val);
+    }
+    return _value;
+  };
+
+  control.value(_value);
+  return control;
 };
 
 
@@ -5311,339 +5652,6 @@ ShapeIter.prototype.nextArc = function() {
 ShapeIter.prototype.reset = function() {
   this._i = -1;
   this.nextArc();
-};
-
-
-
-
-function draggable(ref) {
-  var xdown, ydown;
-  var el = El(ref),
-      dragging = false,
-      obj = new EventDispatcher();
-  Browser.undraggable(el.node());
-  el.on('mousedown', function(e) {
-    xdown = e.pageX;
-    ydown = e.pageY;
-    Browser.on(window, 'mousemove', onmove);
-    Browser.on(window, 'mouseup', onrelease);
-  });
-
-  function onrelease(e) {
-    Browser.removeEventListener(window, 'mousemove', onmove);
-    Browser.removeEventListener(window, 'mouseup', onrelease);
-    if (dragging) {
-      dragging = false;
-      obj.dispatchEvent('dragend');
-    }
-  }
-
-  function onmove(e) {
-    if (!dragging) {
-      dragging = true;
-      obj.dispatchEvent('dragstart');
-    }
-    obj.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
-  }
-  return obj;
-}
-
-function Slider(ref, opts) {
-  var _el = El(ref);
-  var _self = this;
-  var defaults = {
-    space: 7
-  };
-  opts = utils.extend(defaults, opts);
-
-  var _pct = 0;
-  var _track,
-      _handle,
-      _handleLeft = opts.space;
-
-  function size() {
-    return _track ? _track.width() - opts.space * 2 : 0;
-  }
-
-  this.track = function(ref) {
-    if (ref && !_track) {
-      _track = El(ref);
-      _handleLeft = _track.el.offsetLeft + opts.space;
-      updateHandlePos();
-    }
-    return _track;
-  };
-
-  this.handle = function(ref) {
-    var startX;
-    if (ref && !_handle) {
-      _handle = El(ref);
-      draggable(_handle)
-        .on('drag', function(e) {
-          setHandlePos(startX + e.dx, true);
-        })
-        .on('dragstart', function(e) {
-          startX = position();
-          _self.dispatchEvent('start');
-        })
-        .on('dragend', function(e) {
-          _self.dispatchEvent('end');
-        });
-      updateHandlePos();
-    }
-    return _handle;
-  };
-
-  function position() {
-    return Math.round(_pct * size());
-  }
-
-  this.pct = function(pct) {
-    if (pct >= 0 && pct <= 1) {
-      _pct = pct;
-      updateHandlePos();
-    }
-    return _pct;
-  };
-
-  function setHandlePos(x, fire) {
-    x = utils.clamp(x, 0, size());
-    var pct = x / size();
-    if (pct != _pct) {
-      _pct = pct;
-      _handle.css('left', _handleLeft + x);
-      _self.dispatchEvent('change', {pct: _pct});
-    }
-  }
-
-  function updateHandlePos() {
-    var x = _handleLeft + Math.round(position());
-    if (_handle) _handle.css('left', x);
-  }
-}
-
-Opts.inherit(Slider, EventDispatcher);
-
-
-function ClickText(ref) {
-  var _el = El(ref);
-  var _max = Infinity,
-      _min = -Infinity,
-      _formatter = function(v) {return String(v);},
-      _validator = function(v) {return !isNaN(v);},
-      _parser = function(s) {return parseFloat(s);},
-      _value = 0;
-
-  _el.on('blur', onblur, this);
-  _el.on('keydown', onpress, this);
-
-  function onpress(e) {
-    if (e.keyCode == 27) { // esc
-      this.value(_value); // reset input field to current value
-      _el.el.blur();
-    } else if (e.keyCode == 13) { // enter
-      _el.el.blur();
-    }
-  }
-
-  // Validate input contents.
-  // Update internal value and fire 'change' if valid
-  //
-  function onblur() {
-    var val = _parser(_el.el.value);
-    if (val === _value) {
-      // return;
-    }
-    if (_validator(val)) {
-      this.value(val);
-      this.dispatchEvent('change', {value:this.value()});
-    } else {
-      this.value(_value);
-      this.dispatchEvent('error'); // TODO: improve
-    }
-  }
-
-  this.bounds = function(min, max) {
-    _min = min;
-    _max = max;
-    return this;
-  };
-
-  this.validator = function(f) {
-    _validator = f;
-    return this;
-  };
-
-  this.formatter = function(f) {
-    _formatter = f;
-    return this;
-  };
-
-  this.parser = function(f) {
-    _parser = f;
-    return this;
-  };
-
-  this.value = function(arg) {
-    if (arg == void 0) {
-      // var valStr = this.el.value;
-      // return _parser ? _parser(valStr) : parseFloat(valStr);
-      return _value;
-    }
-    var val = utils.clamp(arg, _min, _max);
-    if (!_validator(val)) {
-      error("ClickText#value() invalid value:", arg);
-    } else {
-      _value = val;
-    }
-    _el.el.value = _formatter(val);
-    return this;
-  };
-}
-
-Opts.inherit(ClickText, EventDispatcher);
-
-
-function Checkbox(ref) {
-  var _el = El(ref);
-}
-
-Opts.inherit(Checkbox, EventDispatcher);
-
-function SimpleButton(ref) {
-  var _el = El(ref),
-      _active = _el.hasClass('active');
-
-  _el.on('click', function(e) {
-    if (_active) this.dispatchEvent('click');
-    return false;
-  }, this);
-
-  this.active = function(a) {
-    if (a === void 0) return _active;
-    if (a !== _active) {
-      _active = a;
-      _el.toggleClass('active');
-    }
-    return this;
-  };
-}
-
-Opts.inherit(SimpleButton, EventDispatcher);
-
-function FileChooser(el) {
-
-  var input = El('form')
-    .addClass('g-file-control').appendTo('body')
-    .newChild('input')
-    .attr('type', 'file')
-    .attr('multiple', 'multiple')
-    .on('change', onchange, this);
-  /* input element properties:
-    disabled
-    name
-    value  (path to the file)
-    multiple  ('multiple' or '')
-  */
-  var btn = El(el).on('click', function() {
-    input.el.click();
-  });
-
-  function onchange(e) {
-    var files = e.target.files;
-    // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
-    if (files) {
-      // disable the button while files are being processed
-      btn.addClass('selected');
-      input.attr('disabled', true);
-      this.dispatchEvent('select', {files:files});
-      btn.removeClass('selected');
-      input.attr('disabled', false);
-    }
-  }
-}
-
-Opts.inherit(FileChooser, EventDispatcher);
-
-
-
-
-var SimplifyControl = function() {
-  var _value = 1;
-  El('#g-simplify-control').show();
-  var slider = new Slider("#g-simplify-control .g-slider");
-  slider.handle("#g-simplify-control .g-handle");
-  slider.track("#g-simplify-control .g-track");
-  slider.on('change', function(e) {
-    var pct = fromSliderPct(e.pct);
-    text.value(pct);
-    onchange(pct);
-  });
-  slider.on('start', function(e) {
-    control.dispatchEvent('simplify-start');
-  }).on('end', function(e) {
-    control.dispatchEvent('simplify-end');
-  });
-
-  var text = new ClickText("#g-simplify-control .g-clicktext");
-  text.bounds(0, 1);
-  text.formatter(function(val) {
-    if (isNaN(val)) return '-';
-
-    var pct = val * 100;
-    var decimals = 0;
-    if (pct <= 0) decimals = 1;
-    else if (pct < 0.001) decimals = 4;
-    else if (pct < 0.01) decimals = 3;
-    else if (pct < 1) decimals = 2;
-    else if (pct < 100) decimals = 1;
-    return utils.formatNumber(pct, decimals) + "%";
-  });
-
-  text.parser(function(s) {
-    return parseFloat(s) / 100;
-  });
-
-  text.value(0);
-  text.on('change', function(e) {
-    var pct = e.value;
-    slider.pct(toSliderPct(pct));
-    control.dispatchEvent('simplify-start');
-    onchange(pct);
-    control.dispatchEvent('simplify-end');
-  });
-
-  function toSliderPct(p) {
-    p = Math.sqrt(p);
-    var pct = 1 - p;
-    return pct;
-  }
-
-  function fromSliderPct(p) {
-    var pct = 1 - p;
-    return pct * pct;
-  }
-
-  function onchange(val) {
-    if (_value != val) {
-      _value = val;
-      control.dispatchEvent('change', {value:val});
-    }
-  }
-
-  var control = new EventDispatcher();
-  control.value = function(val) {
-    if (!isNaN(val)) {
-      // TODO: validate
-      _value = val;
-      slider.pct(toSliderPct(val));
-      text.value(val);
-    }
-    return _value;
-  };
-
-  control.value(_value);
-  return control;
 };
 
 
@@ -11355,24 +11363,34 @@ MapShaper.importShp = function(src, opts) {
   return importer.done();
 };
 
-// Convert topological data to buffers containing .shp and .shx file data
+// Convert a dataset to Shapefile files
 MapShaper.exportShapefile = function(dataset, opts) {
   return dataset.layers.reduce(function(files, lyr) {
+    var prj = MapShaper.exportPrjFile(lyr, dataset);
     files = files.concat(MapShaper.exportShpAndShxFiles(lyr, dataset, opts));
     files = files.concat(MapShaper.exportDbfFile(lyr, dataset, opts));
-
-    // Copy prj file, if Shapefile import and running in Node.
-    if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
-      var prjFile = utils.replaceFileExtension(dataset.info.input_files[0], 'prj');
-      if (cli.isFile(prjFile)) {
-        files.push({
-          content: cli.readFile(prjFile, 'utf-8'),
-          filename: lyr.name + ".prj"
-        });
-      }
-    }
+    if (prj) files.push(prj);
     return files;
   }, []);
+};
+
+MapShaper.exportPrjFile = function(lyr, dataset) {
+  var content, prj, path;
+  if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
+    path = utils.replaceFileExtension(dataset.info.input_files[0], 'prj');
+    if (cli.isFile(path)) {
+      content = cli.readFile(path, 'utf-8');
+    }
+  } else if (dataset.info.output_prj) {
+    content = dataset.info.output_prj;
+  }
+  if (content) {
+    prj = {
+      content: content,
+      filename: lyr.name + '.prj'
+    };
+  }
+  return prj;
 };
 
 MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {
@@ -11663,33 +11681,111 @@ function ImportControl(editor) {
   // Receive: File object
   this.readFile = function(file) {
     var name = file.name,
+        ext = utils.getFileExtension(name).toLowerCase(),
         isBinary = MapShaper.isBinaryFile(name),
-        reader = new FileReader();
-    reader.onload = function(e) {
-      inputFileContent(name, reader.result);
-    };
-    if (isBinary) {
-      reader.readAsArrayBuffer(file);
+        reader;
+
+    if (ext == 'zip') {
+      readZipFile(file);
+    } else if (gui.isReadableFileType(name)) {
+      reader = new FileReader();
+      reader.onload = function(e) {
+        inputFileContent(name, reader.result);
+      };
+      // TODO: improve to handle encodings, etc.
+      if (isBinary) {
+        reader.readAsArrayBuffer(file);
+      } else {
+        reader.readAsText(file, 'UTF-8');
+      }
     } else {
-      reader.readAsText(file, 'UTF-8');
+      console.log("File can't be imported:", name, "-- skipping.");
     }
   };
 
+  function importZipContent(reader) {
+    var _entries;
+    reader.getEntries(readEntries);
+
+    function readEntries(entries) {
+      _entries = entries;
+      readNext();
+    }
+
+    function readNext() {
+      if (_entries.length > 0) {
+        readEntry(_entries.pop());
+      } else {
+        reader.close();
+      }
+    }
+
+    function readEntry(entry) {
+      var filename = entry.filename;
+      if (!entry.directory && gui.isReadableFileType(filename)) {
+        entry.getData(new zip.BlobWriter(), function(data) {
+          data.name = filename;
+          self.readFile(data);
+          readNext();
+        });
+      } else {
+        readNext();
+      }
+    }
+  }
+
+  function readZipFile(file) {
+    zip.createReader(new zip.BlobReader(file), importZipContent, onError);
+    function onError(err) {
+      throw err;
+    }
+  }
+
+  var getImportDataset = (function() {
+    var fileIndex = {}; //
+    return function(basename) {
+      var dataset = fileIndex[basename];
+      if (!dataset) {
+        dataset = fileIndex[basename] = {
+          info: {}
+        };
+      }
+      return dataset;
+    };
+  }());
+
+  function mergeImportDataset(dest, src) {
+    if (!dest.layers) {
+      dest.layers = src.layers;
+    } else if (dest.layers.length == 1 && src.layers.length == 1) {
+      utils.extend(dest.layers[0], src.layers[0]);
+      // TODO: check that attributes and shapes are compatible
+    } else {
+      error("Import files contain incompatible data layers");
+    }
+
+    if (!dest.arcs) {
+      dest.arcs = src.arcs;
+    } else if (src.arcs) {
+      error("Import files contain incompatible arc data");
+    }
+    utils.extend(dest.info, src.info);
+  }
+
+
   // Index of imported objects, indexed by path base and then file type
   // e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
-  var fileIndex = {}; //
   function inputFileContent(path, content) {
-    var basename = utils.getFileBase(path),
-        index = fileIndex[basename] || (fileIndex[basename] = {}),
+    var dataset = getImportDataset(utils.getFileBase(path)),
         type = MapShaper.guessInputFileType(path),
-        inputOpts, input, data;
+        inputOpts, input;
 
-    if (index[type]) {
-      verbose("File has already been imported; skipping:", path);
-      return;
-    }
     if (type == 'shp' || type == 'json') {
-      T.start("Start timing");
+      if (dataset.info.editing) {
+        console.log("Editing has started; ignoring file:", path);
+        return;
+      }
+      dataset.info.editing = true;
       inputOpts = {
         files: [path],
         precision: precisionInput.value(),
@@ -11700,28 +11796,23 @@ function ImportControl(editor) {
         content: content,
         filename: path
       };
-      data = MapShaper.importContent(input, inputOpts);
-      editor.addData(data, inputOpts);
-      T.stop("Done importing");
+      mergeImportDataset(dataset, MapShaper.importContent(input, inputOpts));
+      editor.addData(dataset, inputOpts);
+
     } else if (type == 'dbf') {
       // TODO: detect dbf encoding instead of using ascii
       // (Currently, records are read if Shapefile is converted to *JSON).
-      data = new ShapefileTable(content, 'ascii');
       // TODO: validate table (check that record count matches, etc)
-      if (index.shp) {
-        index.shp.layers[0].data = data;
-      }
-    } else {
-      verbose("Unexpected file type: " + path + '; ignoring');
-      return;
-    }
+      mergeImportDataset(dataset, {
+        layers: [{data: new ShapefileTable(content, 'ascii')}]
+      });
 
-    // associate previously imported Shapefile files with a .shp file
-    // TODO: accept .prj files and other Shapefile files
-    if (type == 'shp' && index.dbf) {
-      data.layers[0].data = index.dbf;
+    } else if (type == 'prj') {
+      dataset.info.output_prj = content;
+
+    } else {
+      console.log("Unexpected file type: " + path + '; ignoring');
     }
-    index[type] = data;
   }
 }
 
@@ -12191,6 +12282,281 @@ var ExportControl = function(dataset, options) {
   }
   */
 };
+
+
+
+
+// Combine detection and repair for cli
+//
+api.findAndRepairIntersections = function(arcs) {
+  T.start();
+  var intersections = MapShaper.findSegmentIntersections(arcs),
+      unfixable = MapShaper.repairIntersections(arcs, intersections),
+      countPre = intersections.length,
+      countPost = unfixable.length,
+      countFixed = countPre > countPost ? countPre - countPost : 0;
+  T.stop('Find and repair intersections');
+  return {
+    intersections_initial: countPre,
+    intersections_remaining: countPost,
+    intersections_repaired: countFixed
+  };
+};
+
+
+// Try to resolve a collection of line-segment intersections by rolling
+// back simplification along intersecting segments.
+//
+// Limitation of this method: it can't remove intersections that are present
+// in the original dataset.
+//
+// @arcs ArcCollection object
+// @intersections (Array) Output from MapShaper.findSegmentIntersections()
+// Returns array of unresolved intersections, or empty array if none.
+//
+MapShaper.repairIntersections = function(arcs, intersections) {
+  var raw = arcs.getVertexData(),
+      zz = raw.zz,
+      yy = raw.yy,
+      xx = raw.xx,
+      zlim = arcs.getRetainedInterval();
+
+  while (repairAll(intersections) > 0) {
+    // After each repair pass, check for new intersections that may have been
+    // created as a by-product of repairing one set of intersections.
+    //
+    // Issue: several hit-detection passes through a large dataset may be slow.
+    // Possible optimization: only check for intersections among segments that
+    // intersect bounding boxes of segments touched during previous repair pass.
+    // Need an efficient way of checking up to thousands of bounding boxes.
+    // Consider indexing boxes for n * log(k) or better performance.
+    //
+    intersections = MapShaper.findSegmentIntersections(arcs);
+  }
+
+  return intersections;
+
+  // Find the z value of the next vertex that should be re-introduced into
+  // a set of two intersecting segments in order to remove the intersection.
+  // Add the z-value and id of this point to the intersection object @obj.
+  //
+  function setPriority(obj) {
+    var i = MapShaper.findNextRemovableVertex(zz, zlim, obj.a[0], obj.a[1]),
+        j = MapShaper.findNextRemovableVertex(zz, zlim, obj.b[0], obj.b[1]),
+        zi = i == -1 ? Infinity : zz[i],
+        zj = j == -1 ? Infinity : zz[j],
+        tmp;
+
+    if (zi == Infinity && zj == Infinity) {
+      // No more points available to add; unable to repair.
+      return Infinity;
+    }
+
+    if (zi > zj && zi < Infinity || zj == Infinity) {
+      obj.newId = i;
+      obj.z = zi;
+    } else {
+      obj.newId = j;
+      obj.z = zj;
+      tmp = obj.a;
+      obj.a = obj.b;
+      obj.b = tmp;
+      // obj.ids = [ids[2], ids[3], ids[0], ids[1]];
+    }
+    return obj.z;
+  }
+
+  function repairAll(intersections) {
+    var repairs = 0,
+        loops = 0,
+        intersection, segIds, pairs, pair, len;
+
+    intersections = intersections.filter(function(obj) {
+      return setPriority(obj) != Infinity;
+    });
+
+    utils.sortOn(intersections, 'z', !!"ascending");
+
+    while (intersections.length > 0) {
+      len = intersections.length;
+      intersection = intersections.pop();
+      segIds = getIntersectionCandidates(intersection);
+      pairs = MapShaper.intersectSegments(segIds, xx, yy);
+
+      if (pairs.length === 0) continue;
+      if (pairs.length == 1) {
+        // single intersection found: re-introduce a vertex to one of the
+        // intersecting segments.
+        pair = pairs[0];
+        if (setPriority(pair) == Infinity) continue;
+        pairs = splitSegmentPair(pair);
+        zz[pair.newId] = zlim;
+        repairs++;
+      } else {
+        // found multiple intersections along two segments, because
+        // vertices have been re-introduced after intersection was first added.
+        // They get pushed back on the stack below
+      }
+
+      for (var i=0; i<pairs.length; i++) {
+        pair = pairs[i];
+        if (setPriority(pair) < Infinity) {
+          intersections.push(pair);
+        }
+      }
+
+      if (intersections.length >= len) {
+        sortIntersections(intersections, len-1);
+      }
+
+      if (++loops > 500000) {
+        verbose("Caught an infinite loop at intersection:", intersection);
+        return 0;
+      }
+    }
+
+    return repairs;
+  }
+
+  // Use insertion sort to move newly pushed intersections to their sorted position
+  function sortIntersections(arr, start) {
+    for (var i=start; i<arr.length; i++) {
+      var obj = arr[i];
+      for (var j = i-1; j >= 0; j--) {
+        if (arr[j].z <= obj.z) {
+          break;
+        }
+        arr[j+1] = arr[j];
+      }
+      arr[j+1] = obj;
+    }
+  }
+
+  function splitSegmentPair(obj) {
+    var start = obj.a[0],
+        end = obj.a[1],
+        middle = obj.newId;
+    if (!(start < middle && middle < end || start > middle && middle > end)) {
+      error("[splitSegment()] Indexing error --", obj);
+    }
+    return [
+      getSegmentPair(start, middle, obj.b[0], obj.b[1]),
+      getSegmentPair(middle, end, obj.b[0], obj.b[1])
+    ];
+  }
+
+  function getSegmentPair(s1p1, s1p2, s2p1, s2p2) {
+    return {
+      a: xx[s1p1] > xx[s1p2] ? [s1p2, s1p1] : [s1p1, s1p2],
+      b: [s2p1, s2p2]
+    };
+  }
+
+  function getIntersectionCandidates(obj) {
+    var segments = [];
+    addSegmentVertices(segments, obj.a);
+    addSegmentVertices(segments, obj.b);
+    return segments;
+  }
+
+  // Gat all segments defined by two endpoints and the vertices between
+  // them that are at or above the current simplification threshold.
+  // @ids Accumulator array
+  function addSegmentVertices(ids, seg) {
+    var start, end, prev;
+    if (seg[0] <= seg[1]) {
+      start = seg[0];
+      end = seg[1];
+    } else {
+      start = seg[1];
+      end = seg[0];
+    }
+    prev = start;
+    for (var i=start+1; i<=end; i++) {
+      if (zz[i] >= zlim) {
+        if (xx[prev] < xx[i]) {
+          ids.push(prev, i);
+        } else {
+          ids.push(i, prev);
+        }
+        prev = i;
+      }
+    }
+  }
+};
+
+
+
+
+function RepairControl(map, arcData) {
+  var el = El("#g-intersection-display").show(),
+      readout = el.findChild("#g-intersection-count"),
+      btn = el.findChild("#g-repair-btn");
+
+  var _initialXX,
+      _currXX,
+      _pointLyr = {geometry_type: "point", shapes: []},
+      _displayGroup = new LayerGroup({layers:[_pointLyr]});
+
+  map.addLayerGroup(_displayGroup);
+
+  this.update = function(pct) {
+    T.start();
+    var XX, showBtn;
+    if (pct >= 1) {
+      if (!_initialXX) {
+        _initialXX = MapShaper.findSegmentIntersections(arcData);
+      }
+      XX = _initialXX;
+      showBtn = false;
+    } else {
+      XX = MapShaper.findSegmentIntersections(arcData);
+      showBtn = XX.length > 0;
+    }
+    showIntersections(XX);
+    btn.classed('disabled', !showBtn);
+
+    T.stop("Find intersections");
+  };
+
+  this.update(1); // initialize at 100%
+
+  btn.on('click', function() {
+    T.start();
+    var fixed = MapShaper.repairIntersections(arcData, _currXX);
+    T.stop('Fix intersections');
+    btn.addClass('disabled');
+    showIntersections(fixed);
+    this.dispatchEvent('repair');
+  }, this);
+
+  this.clear = function() {
+    _currXX = null;
+    _displayGroup.hide();
+  };
+
+  function showIntersections(XX) {
+    var n = XX.length;
+    if (n === 0) {
+      _displayGroup.hide();
+    } else {
+      _pointLyr.shapes[0] = MapShaper.getIntersectionPoints(XX);
+      _displayGroup
+        .showLayer(_pointLyr)
+        .setStyle({
+          dotSize: n < 20 && 5 || n < 500 && 4 || 3,
+          squareDot: true,
+          dotColor: "#F24400"
+        })
+        .refresh();
+    }
+    var msg = utils.format("%s line intersection%s", n, n != 1 ? 's' : '');
+    readout.text(msg);
+    _currXX = XX;
+  }
+}
+
+Opts.inherit(RepairControl, EventDispatcher);
 
 
 
@@ -13189,208 +13555,6 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
 
 
-// Combine detection and repair for cli
-//
-api.findAndRepairIntersections = function(arcs) {
-  T.start();
-  var intersections = MapShaper.findSegmentIntersections(arcs),
-      unfixable = MapShaper.repairIntersections(arcs, intersections),
-      countPre = intersections.length,
-      countPost = unfixable.length,
-      countFixed = countPre > countPost ? countPre - countPost : 0;
-  T.stop('Find and repair intersections');
-  return {
-    intersections_initial: countPre,
-    intersections_remaining: countPost,
-    intersections_repaired: countFixed
-  };
-};
-
-
-// Try to resolve a collection of line-segment intersections by rolling
-// back simplification along intersecting segments.
-//
-// Limitation of this method: it can't remove intersections that are present
-// in the original dataset.
-//
-// @arcs ArcCollection object
-// @intersections (Array) Output from MapShaper.findSegmentIntersections()
-// Returns array of unresolved intersections, or empty array if none.
-//
-MapShaper.repairIntersections = function(arcs, intersections) {
-  var raw = arcs.getVertexData(),
-      zz = raw.zz,
-      yy = raw.yy,
-      xx = raw.xx,
-      zlim = arcs.getRetainedInterval();
-
-  while (repairAll(intersections) > 0) {
-    // After each repair pass, check for new intersections that may have been
-    // created as a by-product of repairing one set of intersections.
-    //
-    // Issue: several hit-detection passes through a large dataset may be slow.
-    // Possible optimization: only check for intersections among segments that
-    // intersect bounding boxes of segments touched during previous repair pass.
-    // Need an efficient way of checking up to thousands of bounding boxes.
-    // Consider indexing boxes for n * log(k) or better performance.
-    //
-    intersections = MapShaper.findSegmentIntersections(arcs);
-  }
-
-  return intersections;
-
-  // Find the z value of the next vertex that should be re-introduced into
-  // a set of two intersecting segments in order to remove the intersection.
-  // Add the z-value and id of this point to the intersection object @obj.
-  //
-  function setPriority(obj) {
-    var i = MapShaper.findNextRemovableVertex(zz, zlim, obj.a[0], obj.a[1]),
-        j = MapShaper.findNextRemovableVertex(zz, zlim, obj.b[0], obj.b[1]),
-        zi = i == -1 ? Infinity : zz[i],
-        zj = j == -1 ? Infinity : zz[j],
-        tmp;
-
-    if (zi == Infinity && zj == Infinity) {
-      // No more points available to add; unable to repair.
-      return Infinity;
-    }
-
-    if (zi > zj && zi < Infinity || zj == Infinity) {
-      obj.newId = i;
-      obj.z = zi;
-    } else {
-      obj.newId = j;
-      obj.z = zj;
-      tmp = obj.a;
-      obj.a = obj.b;
-      obj.b = tmp;
-      // obj.ids = [ids[2], ids[3], ids[0], ids[1]];
-    }
-    return obj.z;
-  }
-
-  function repairAll(intersections) {
-    var repairs = 0,
-        loops = 0,
-        intersection, segIds, pairs, pair, len;
-
-    intersections = intersections.filter(function(obj) {
-      return setPriority(obj) != Infinity;
-    });
-
-    utils.sortOn(intersections, 'z', !!"ascending");
-
-    while (intersections.length > 0) {
-      len = intersections.length;
-      intersection = intersections.pop();
-      segIds = getIntersectionCandidates(intersection);
-      pairs = MapShaper.intersectSegments(segIds, xx, yy);
-
-      if (pairs.length === 0) continue;
-      if (pairs.length == 1) {
-        // single intersection found: re-introduce a vertex to one of the
-        // intersecting segments.
-        pair = pairs[0];
-        if (setPriority(pair) == Infinity) continue;
-        pairs = splitSegmentPair(pair);
-        zz[pair.newId] = zlim;
-        repairs++;
-      } else {
-        // found multiple intersections along two segments, because
-        // vertices have been re-introduced after intersection was first added.
-        // They get pushed back on the stack below
-      }
-
-      for (var i=0; i<pairs.length; i++) {
-        pair = pairs[i];
-        if (setPriority(pair) < Infinity) {
-          intersections.push(pair);
-        }
-      }
-
-      if (intersections.length >= len) {
-        sortIntersections(intersections, len-1);
-      }
-
-      if (++loops > 500000) {
-        verbose("Caught an infinite loop at intersection:", intersection);
-        return 0;
-      }
-    }
-
-    return repairs;
-  }
-
-  // Use insertion sort to move newly pushed intersections to their sorted position
-  function sortIntersections(arr, start) {
-    for (var i=start; i<arr.length; i++) {
-      var obj = arr[i];
-      for (var j = i-1; j >= 0; j--) {
-        if (arr[j].z <= obj.z) {
-          break;
-        }
-        arr[j+1] = arr[j];
-      }
-      arr[j+1] = obj;
-    }
-  }
-
-  function splitSegmentPair(obj) {
-    var start = obj.a[0],
-        end = obj.a[1],
-        middle = obj.newId;
-    if (!(start < middle && middle < end || start > middle && middle > end)) {
-      error("[splitSegment()] Indexing error --", obj);
-    }
-    return [
-      getSegmentPair(start, middle, obj.b[0], obj.b[1]),
-      getSegmentPair(middle, end, obj.b[0], obj.b[1])
-    ];
-  }
-
-  function getSegmentPair(s1p1, s1p2, s2p1, s2p2) {
-    return {
-      a: xx[s1p1] > xx[s1p2] ? [s1p2, s1p1] : [s1p1, s1p2],
-      b: [s2p1, s2p2]
-    };
-  }
-
-  function getIntersectionCandidates(obj) {
-    var segments = [];
-    addSegmentVertices(segments, obj.a);
-    addSegmentVertices(segments, obj.b);
-    return segments;
-  }
-
-  // Gat all segments defined by two endpoints and the vertices between
-  // them that are at or above the current simplification threshold.
-  // @ids Accumulator array
-  function addSegmentVertices(ids, seg) {
-    var start, end, prev;
-    if (seg[0] <= seg[1]) {
-      start = seg[0];
-      end = seg[1];
-    } else {
-      start = seg[1];
-      end = seg[0];
-    }
-    prev = start;
-    for (var i=start+1; i<=end; i++) {
-      if (zz[i] >= zlim) {
-        if (xx[prev] < xx[i]) {
-          ids.push(prev, i);
-        } else {
-          ids.push(i, prev);
-        }
-        prev = i;
-      }
-    }
-  }
-};
-
-
-
-
 api.simplify = function(arcs, opts) {
   if (!arcs) stop("[simplify] Missing path data");
   T.start();
@@ -13494,79 +13658,6 @@ MapShaper.findMaxThreshold = function(zz) {
   }
   return maxZ;
 };
-
-
-
-
-function RepairControl(map, arcData) {
-  var el = El("#g-intersection-display").show(),
-      readout = el.findChild("#g-intersection-count"),
-      btn = el.findChild("#g-repair-btn");
-
-  var _initialXX,
-      _currXX,
-      _pointLyr = {geometry_type: "point", shapes: []},
-      _displayGroup = new LayerGroup({layers:[_pointLyr]});
-
-  map.addLayerGroup(_displayGroup);
-
-  this.update = function(pct) {
-    T.start();
-    var XX, showBtn;
-    if (pct >= 1) {
-      if (!_initialXX) {
-        _initialXX = MapShaper.findSegmentIntersections(arcData);
-      }
-      XX = _initialXX;
-      showBtn = false;
-    } else {
-      XX = MapShaper.findSegmentIntersections(arcData);
-      showBtn = XX.length > 0;
-    }
-    showIntersections(XX);
-    btn.classed('disabled', !showBtn);
-
-    T.stop("Find intersections");
-  };
-
-  this.update(1); // initialize at 100%
-
-  btn.on('click', function() {
-    T.start();
-    var fixed = MapShaper.repairIntersections(arcData, _currXX);
-    T.stop('Fix intersections');
-    btn.addClass('disabled');
-    showIntersections(fixed);
-    this.dispatchEvent('repair');
-  }, this);
-
-  this.clear = function() {
-    _currXX = null;
-    _displayGroup.hide();
-  };
-
-  function showIntersections(XX) {
-    var n = XX.length;
-    if (n === 0) {
-      _displayGroup.hide();
-    } else {
-      _pointLyr.shapes[0] = MapShaper.getIntersectionPoints(XX);
-      _displayGroup
-        .showLayer(_pointLyr)
-        .setStyle({
-          dotSize: n < 20 && 5 || n < 500 && 4 || 3,
-          squareDot: true,
-          dotColor: "#F24400"
-        })
-        .refresh();
-    }
-    var msg = utils.format("%s line intersection%s", n, n != 1 ? 's' : '');
-    readout.text(msg);
-    _currXX = XX;
-  }
-}
-
-Opts.inherit(RepairControl, EventDispatcher);
 
 
 
