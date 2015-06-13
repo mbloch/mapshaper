@@ -17,8 +17,8 @@ api.enableLogging();
 
 zip.workerScripts = {
   // deflater: ['z-worker.js', 'deflate.js'], // use zip.js deflater
-  deflater: ['z-worker.js', 'pako/pako.deflate.js', 'pako/codecs.js'],
-  inflater: ['z-worker.js', 'pako/pako.inflate.js', 'pako/codecs.js']
+  deflater: ['z-worker.js', 'pako/pako_deflate.min.js', 'pako/codecs.js'],
+  inflater: ['z-worker.js', 'pako/pako_inflate.min.js', 'pako/codecs.js']
 };
 
 if (Browser.inBrowser) {
