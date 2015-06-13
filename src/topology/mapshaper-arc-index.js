@@ -1,13 +1,11 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-hash-function */
 
 // Used for building topology
 //
-function ArcIndex(pointCount, xyToUint) {
-  var hashTableSize = Math.ceil(pointCount * 0.25);
-  var hashTable = new Int32Array(hashTableSize),
-      hash = function(x, y) {
-        return xyToUint(x, y) % hashTableSize;
-      },
+function ArcIndex(pointCount) {
+  var hashTableSize = Math.ceil(pointCount * 0.25),
+      hash = getXYHash(hashTableSize),
+      hashTable = new Int32Array(hashTableSize),
       chainIds = [],
       arcs = [],
       arcPoints = 0;

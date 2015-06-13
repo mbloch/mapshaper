@@ -134,7 +134,6 @@ function ImportControl(editor) {
     utils.extend(dest.info, src.info);
   }
 
-
   // Index of imported objects, indexed by path base and then file type
   // e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
   function inputFileContent(path, content) {

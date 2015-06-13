@@ -1,5 +1,10 @@
-/* @requires mapshaper-common, mapshaper-shapes, mapshaper-shape-utils, mapshaper-arc-index */
-
+/* @requires
+mapshaper-common
+mapshaper-shapes
+mapshaper-shape-utils
+mapshaper-arc-index
+mapshaper-hash-function
+*/
 
 // Converts all polygon and polyline paths in a dataset to a topological format,
 // (in-place);
@@ -18,28 +23,25 @@ api.buildTopology = function(dataset) {
 // buildPathTopology() converts non-topological paths into
 // a topological format
 //
-// Input format:
-// {
-//    xx: [Array|Float64Array],   // x-coords of each point in the dataset
-//    yy: [Array|Float64Array],   // y-coords "  "  "  "
-//    nn: [Array] // array of path lengths
-// }
-// Note: x- and y-coords of all paths are concatenated into two long arrays, for easy indexing
-// Note: Input coords can use typed arrays (better performance) or regular arrays (for testing)
+// Arguments:
+//    xx: [Array|Float64Array],   // x coords of each point in the dataset
+//    yy: [Array|Float64Array],   // y coords ...
+//    nn: [Array]  // length of each path
 //
-// Output format:
+// (x- and y-coords of all paths are concatenated into two arrays)
+//
+// Returns:
 // {
-//    xx, yy, nn:      // coordinate data, same format as input
-//    paths: [Array]   // Paths are arrays of one or more arc id.
-// }                   // Arc ids use the same numbering scheme as TopoJSON --
-//       Ids in the paths array are indices of paths in the ArcCollection
-//       Negative ids signify that the arc coordinates are in reverse sequence.
-//       Negative ids are converted to array indices with the fornula fwId = ~revId.
-//       E.g. -1 is arc 0 reversed, -2 is arc 1 reversed, etc.
+//    xx, yy (array)   // coordinate data
+//    nn: (array)      // points in each arc
+//    paths: (array)   // Paths are arrays of one or more arc id.
+// }
+//
+// Negative arc ids in the paths array indicate a reversal of arc -(id + 1)
 //
 MapShaper.buildPathTopology = function(nn, xx, yy) {
   var pointCount = xx.length,
-      index = new ArcIndex(pointCount, getXYHash()),
+      index = new ArcIndex(pointCount),
       typedArrays = !!(xx.subarray && yy.subarray),
       slice, array;
 
@@ -53,7 +55,7 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
     slice = Array.prototype.slice;
   }
 
-  var chainIds = initPointChains(xx, yy, !"verbose");
+  var chainIds = initPointChains(xx, yy);
   var pointId = 0;
   var paths = [];
   utils.forEach(nn, function(pathLen) {
@@ -86,7 +88,6 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
   function sameXY(a, b) {
     return xx[a] == xx[b] && yy[a] == yy[b];
   }
-
 
   // Convert a non-topological path to one or more topological arcs
   // @start, @end are ids of first and last points in the path
@@ -256,73 +257,48 @@ function initPathIds(size, pathSizes) {
   return pathIds;
 }
 
-
 // Return an array with data for chains of vertices with same x, y coordinates
-// Array ids are same as ids of x- and y-coord arrays.
-// Array values are ids of next point in each chain.
-// Unique (x, y) points link to themselves (i.e. arr[n] == n)
+// Array contains ids of next point in each chain.
+// Unique vertices link to themselves (i.e. arr[n] == n)
 //
-function initPointChains(xx, yy, verbose) {
+function initPointChains(xx, yy) {
   var pointCount = xx.length,
-      hash = getXYHash(),
-      hashTableSize = Math.floor(pointCount * 1.4);
+      // Performance doesn't improve much above ~1.3 * point count
+      hashTableSize = Math.floor(pointCount * 1.4),
+      hash = getXYHash(hashTableSize),
+      // Hash table is temporary storage for building chains of coincident points.
+      // Hash bins contain the id of the first point in a chain.
+      hashTable = new Int32Array(hashTableSize),
+      chainIds = new Int32Array(pointCount), // Array to be filled with chain data
+      key, headId, x, y;
 
-  // A hash table larger than ~1.3 * point count doesn't seem to improve performance much.
-
-  // Hash table is temporary storage for building chains of coincident points.
-  // Hash bins contains the id of the first point in a chain.
-  var hashChainIds = new Int32Array(hashTableSize);
-  utils.initializeArray(hashChainIds, -1);
-
-  // Array that gets populated with chain data
-  var chainIds = new Int32Array(pointCount);
-  var key, headId, x, y, collisions = 0;
+  utils.initializeArray(hashTable, -1);
 
   for (var i=0; i<pointCount; i++) {
     x = xx[i];
     y = yy[i];
-    key = hash(x, y) % hashTableSize;
+    key = hash(x, y);
 
-    // Points with different (x, y) coords can hash to the same bin;
-    // ... use linear probing to find a different bin for each (x, y) coord.
     while (true) {
-      headId = hashChainIds[key];
+      headId = hashTable[key];
       if (headId == -1) {
         // case -- first coordinate in chain: start new chain, point to self
-        hashChainIds[key] = i;
+        hashTable[key] = i;
         chainIds[i] = i;
         break;
       }
-      else if (xx[headId] == x && yy[headId] == y) {
+      if (xx[headId] == x && yy[headId] == y) {
         // case -- extending a chain: insert new point after head of chain
         chainIds[i] = chainIds[headId];
         chainIds[headId] = i;
         break;
       }
-
-      // case -- this bin is used by another coord, try the next bin
-      collisions++;
+      // Current hash location is taken by a different point;
+      // try the next location (linear probing).
       key = (key + 1) % hashTableSize;
     }
   }
-  if (verbose) message(utils.format("#initPointChains() collision rate: %.3f", collisions / pointCount));
   return chainIds;
-}
-
-// Get function to Hash an x, y point to a non-negative integer
-function getXYHash() {
-  var buf = new ArrayBuffer(16),
-      floats = new Float64Array(buf),
-      uints = new Uint32Array(buf);
-
-  return function(x, y) {
-    var u = uints, h;
-    floats[0] = x;
-    floats[1] = y;
-    h = u[0] ^ u[1];
-    h = h << 5 ^ h >> 7 ^ u[2] ^ u[3];
-    return h & 0x7fffffff;
-  };
 }
 
 MapShaper.replaceArcIds = function(src, replacements) {
