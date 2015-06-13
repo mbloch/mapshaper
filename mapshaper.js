@@ -6894,6 +6894,82 @@ MapShaper.calcDissolveData = function(properties, getGroupId, opts) {
 
 
 
+// Used for building topology
+//
+function ArcIndex(pointCount, xyToUint) {
+  var hashTableSize = Math.ceil(pointCount * 0.25);
+  var hashTable = new Int32Array(hashTableSize),
+      hash = function(x, y) {
+        return xyToUint(x, y) % hashTableSize;
+      },
+      chainIds = [],
+      arcs = [],
+      arcPoints = 0;
+
+  utils.initializeArray(hashTable, -1);
+
+  this.addArc = function(xx, yy) {
+    var end = xx.length - 1,
+        key = hash(xx[end], yy[end]),
+        chainId = hashTable[key],
+        arcId = arcs.length;
+
+    hashTable[key] = arcId;
+    arcs.push([xx, yy]);
+    arcPoints += xx.length;
+    chainIds.push(chainId);
+    return arcId;
+  };
+
+  // Look for a previously generated arc with the same sequence of coords, but in the
+  // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
+  // so coincident boundaries should contain the same points in reverse sequence).
+  //
+  this.findArcNeighbor = function(xx, yy, start, end, getNext) {
+    var next = getNext(start),
+        key = hash(xx[start], yy[start]),
+        arcId = hashTable[key],
+        arcX, arcY, len;
+
+    while (arcId != -1) {
+      // check endpoints and one segment...
+      // it would be more rigorous but slower to identify a match
+      // by comparing all segments in the coordinate sequence
+      arcX = arcs[arcId][0];
+      arcY = arcs[arcId][1];
+      len = arcX.length;
+      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
+          arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
+        return arcId;
+      }
+      arcId = chainIds[arcId];
+    }
+    return -1;
+  };
+
+  this.getVertexData = function() {
+    var xx = new Float64Array(arcPoints),
+        yy = new Float64Array(arcPoints),
+        nn = new Uint32Array(arcs.length),
+        copied = 0;
+    arcs.forEach(function(arc, i) {
+      var len = arc[0].length;
+      MapShaper.copyElements(arc[0], 0, xx, copied, len);
+      MapShaper.copyElements(arc[1], 0, yy, copied, len);
+      nn[i] = len;
+      copied += len;
+    });
+    return {
+      xx: xx,
+      yy: yy,
+      nn: nn
+    };
+  };
+}
+
+
+
+
 
 // Converts all polygon and polyline paths in a dataset to a topological format,
 // (in-place);
@@ -7203,79 +7279,6 @@ function initPointChains(xx, yy, verbose) {
   return chainIds;
 }
 
-//
-//
-function ArcIndex(pointCount, xyToUint) {
-  var hashTableSize = Math.ceil(pointCount * 0.25);
-  var hashTable = new Int32Array(hashTableSize),
-      hash = function(x, y) {
-        return xyToUint(x, y) % hashTableSize;
-      },
-      chainIds = [],
-      arcs = [],
-      arcPoints = 0;
-
-  utils.initializeArray(hashTable, -1);
-
-  this.addArc = function(xx, yy) {
-    var end = xx.length - 1,
-        key = hash(xx[end], yy[end]),
-        chainId = hashTable[key],
-        arcId = arcs.length;
-
-    hashTable[key] = arcId;
-    arcs.push([xx, yy]);
-    arcPoints += xx.length;
-    chainIds.push(chainId);
-    return arcId;
-  };
-
-  // Look for a previously generated arc with the same sequence of coords, but in the
-  // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
-  // so coincident boundaries should contain the same points in reverse sequence).
-  //
-  this.findArcNeighbor = function(xx, yy, start, end, getNext) {
-    var next = getNext(start),
-        key = hash(xx[start], yy[start]),
-        arcId = hashTable[key],
-        arcX, arcY, len;
-
-    while (arcId != -1) {
-      // check endpoints and one segment...
-      // it would be more rigorous but slower to identify a match
-      // by comparing all segments in the coordinate sequence
-      arcX = arcs[arcId][0];
-      arcY = arcs[arcId][1];
-      len = arcX.length;
-      if (arcX[0] === xx[end] && arcX[len-1] === xx[start] && arcX[len-2] === xx[next] &&
-          arcY[0] === yy[end] && arcY[len-1] === yy[start] && arcY[len-2] === yy[next]) {
-        return arcId;
-      }
-      arcId = chainIds[arcId];
-    }
-    return -1;
-  };
-
-  this.getVertexData = function() {
-    var xx = new Float64Array(arcPoints),
-        yy = new Float64Array(arcPoints),
-        nn = new Uint32Array(arcs.length),
-        copied = 0;
-    arcs.forEach(function(arc, i) {
-      var len = arc[0].length;
-      MapShaper.copyElements(arc[0], 0, xx, copied, len);
-      MapShaper.copyElements(arc[1], 0, yy, copied, len);
-      nn[i] = len;
-      copied += len;
-    });
-    return {
-      xx: xx,
-      yy: yy,
-      nn: nn
-    };
-  };
-}
-
 // Get function to Hash an x, y point to a non-negative integer
 function getXYHash() {
   var buf = new ArrayBuffer(16),
@@ -7491,31 +7494,28 @@ utils.insertionSortIds = function(arr, ids, start, end) {
 
 // Import path data from a non-topological source (Shapefile, GeoJSON, etc)
 // in preparation for identifying topology.
+// @reservedPoints (optional) estimate of points in dataset, for allocating buffers
 //
-function PathImporter(opts) {
+function PathImporter(opts, reservedPoints) {
   opts = opts || {};
-  var shapes = [],
-      reservedPoints = 20000,
+
+  var bufSize = reservedPoints > 0 ? reservedPoints : 20000,
+      xx = new Float64Array(bufSize),
+      yy = new Float64Array(bufSize),
+      buf = new Float64Array(1024),
+      shapes = [],
+      nn = [],
       collectionType = null,
       round = null,
-      xx, yy, nn, buf;
-
-  if (reservedPoints > 0) {
-    nn = [];
-    xx = new Float64Array(reservedPoints);
-    yy = new Float64Array(reservedPoints);
-    buf = new Float64Array(1024);
-  }
-
-  if (opts.precision) {
-    round = getRoundingFunction(opts.precision);
-  }
-
-  var pathId = -1,
+      pathId = -1,
       shapeId = -1,
       pointId = 0,
       dupeCount = 0,
       skippedPathCount = 0;
+
+  if (opts.precision) {
+    round = getRoundingFunction(opts.precision);
+  }
 
   function addShapeType(t) {
     if (!collectionType) {
@@ -7563,14 +7563,6 @@ function PathImporter(opts) {
       p[1] = round(p[1]);
     });
   }
-
-  /*
-  this.roundCoords = function(arr, round) {
-    for (var i=0, n=arr.length; i<n; i++) {
-      arr[i] = round(arr[i]);
-    }
-  };
-  */
 
   // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
   //
@@ -9480,19 +9472,20 @@ MapShaper.getShapefileType = function(type) {
 // Build topology
 //
 MapShaper.importShp = function(src, opts) {
-  var reader = new ShpReader(src);
-  var shpType = reader.type();
-  var type = MapShaper.translateShapefileType(shpType);
+  var reader = new ShpReader(src),
+      shpType = reader.type(),
+      type = MapShaper.translateShapefileType(shpType),
+      maxPoints = Math.round(reader.header().byteLength / 16), // for reserving buffer space
+      importer = new PathImporter(opts, maxPoints);
+
   if (!type) {
     stop("Unsupported Shapefile type:", shpType);
   }
   if (ShpType.isZType(shpType)) {
-    verbose("Warning: Z data is being removed.");
+    message("Warning: Shapefile Z data will be lost.");
   } else if (ShpType.isMType(shpType)) {
-    verbose("Warning: M data is being removed.");
+    message("Warning: Shapefile M data will be lost.");
   }
-
-  var importer = new PathImporter(opts);
 
   // TODO: test cases: null shape; non-null shape with no valid parts
   reader.forEachShape(function(shp) {

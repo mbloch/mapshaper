@@ -10,31 +10,28 @@ mapshaper-polygon-repair
 
 // Import path data from a non-topological source (Shapefile, GeoJSON, etc)
 // in preparation for identifying topology.
+// @reservedPoints (optional) estimate of points in dataset, for allocating buffers
 //
-function PathImporter(opts) {
+function PathImporter(opts, reservedPoints) {
   opts = opts || {};
-  var shapes = [],
-      reservedPoints = 20000,
+
+  var bufSize = reservedPoints > 0 ? reservedPoints : 20000,
+      xx = new Float64Array(bufSize),
+      yy = new Float64Array(bufSize),
+      buf = new Float64Array(1024),
+      shapes = [],
+      nn = [],
       collectionType = null,
       round = null,
-      xx, yy, nn, buf;
-
-  if (reservedPoints > 0) {
-    nn = [];
-    xx = new Float64Array(reservedPoints);
-    yy = new Float64Array(reservedPoints);
-    buf = new Float64Array(1024);
-  }
-
-  if (opts.precision) {
-    round = getRoundingFunction(opts.precision);
-  }
-
-  var pathId = -1,
+      pathId = -1,
       shapeId = -1,
       pointId = 0,
       dupeCount = 0,
       skippedPathCount = 0;
+
+  if (opts.precision) {
+    round = getRoundingFunction(opts.precision);
+  }
 
   function addShapeType(t) {
     if (!collectionType) {
@@ -82,14 +79,6 @@ function PathImporter(opts) {
       p[1] = round(p[1]);
     });
   }
-
-  /*
-  this.roundCoords = function(arr, round) {
-    for (var i=0, n=arr.length; i<n; i++) {
-      arr[i] = round(arr[i]);
-    }
-  };
-  */
 
   // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
   //

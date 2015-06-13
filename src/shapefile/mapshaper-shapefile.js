@@ -32,19 +32,20 @@ MapShaper.getShapefileType = function(type) {
 // Build topology
 //
 MapShaper.importShp = function(src, opts) {
-  var reader = new ShpReader(src);
-  var shpType = reader.type();
-  var type = MapShaper.translateShapefileType(shpType);
+  var reader = new ShpReader(src),
+      shpType = reader.type(),
+      type = MapShaper.translateShapefileType(shpType),
+      maxPoints = Math.round(reader.header().byteLength / 16), // for reserving buffer space
+      importer = new PathImporter(opts, maxPoints);
+
   if (!type) {
     stop("Unsupported Shapefile type:", shpType);
   }
   if (ShpType.isZType(shpType)) {
-    verbose("Warning: Z data is being removed.");
+    message("Warning: Shapefile Z data will be lost.");
   } else if (ShpType.isMType(shpType)) {
-    verbose("Warning: M data is being removed.");
+    message("Warning: Shapefile M data will be lost.");
   }
-
-  var importer = new PathImporter(opts);
 
   // TODO: test cases: null shape; non-null shape with no valid parts
   reader.forEachShape(function(shp) {
