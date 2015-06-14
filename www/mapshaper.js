@@ -4291,40 +4291,6 @@ function SimpleButton(ref) {
 
 Opts.inherit(SimpleButton, EventDispatcher);
 
-function FileChooser(el) {
-
-  var input = El('form')
-    .addClass('g-file-control').appendTo('body')
-    .newChild('input')
-    .attr('type', 'file')
-    .attr('multiple', 'multiple')
-    .on('change', onchange, this);
-  /* input element properties:
-    disabled
-    name
-    value  (path to the file)
-    multiple  ('multiple' or '')
-  */
-  var btn = El(el).on('click', function() {
-    input.el.click();
-  });
-
-  function onchange(e) {
-    var files = e.target.files;
-    // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
-    if (files) {
-      // disable the button while files are being processed
-      btn.addClass('selected');
-      input.attr('disabled', true);
-      this.dispatchEvent('select', {files:files});
-      btn.removeClass('selected');
-      input.attr('disabled', false);
-    }
-  }
-}
-
-Opts.inherit(FileChooser, EventDispatcher);
-
 
 
 
@@ -4405,6 +4371,838 @@ var SimplifyControl = function() {
   control.value(_value);
   return control;
 };
+
+
+
+
+// List of encodings supported by iconv-lite:
+// https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
+
+// Return list of supported encodings
+MapShaper.getEncodings = function() {
+  var iconv = require('iconv-lite');
+  iconv.encodingExists('ascii'); // make iconv load its encodings
+  return Object.keys(iconv.encodings);
+};
+
+MapShaper.encodingIsSupported = function(raw) {
+  var enc = MapShaper.standardizeEncodingName(raw);
+  return utils.contains(MapShaper.getEncodings(), enc);
+};
+
+MapShaper.decodeString = function(buf, encoding) {
+  var iconv = require('iconv-lite'),
+      str = iconv.decode(buf, encoding);
+  // remove BOM if present
+  if (str.charCodeAt(0) == 0xfeff) {
+    str = str.substr(1);
+  }
+  return str;
+};
+
+// Ex. convert UTF-8 to utf8
+MapShaper.standardizeEncodingName = function(enc) {
+  return enc.toLowerCase().replace(/[_-]/g, '');
+};
+
+MapShaper.printEncodings = function() {
+  var encodings = MapShaper.getEncodings().filter(function(name) {
+    // filter out some aliases and non-applicable encodings
+    return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
+  });
+  encodings.sort();
+  console.log("Supported encodings:");
+  console.log(MapShaper.formatStringsAsGrid(encodings));
+};
+
+
+﻿
+
+// Try to detect the encoding of some sample text.
+// Returns an encoding name or null.
+// @samples Array of buffers containing sample text fields
+// TODO: Improve reliability and number of detectable encodings.
+MapShaper.detectEncoding = function(samples) {
+  var encoding = null;
+  if (MapShaper.looksLikeUtf8(samples)) {
+    encoding = 'utf8';
+  } else if (MapShaper.looksLikeLatin1(samples)) {
+    encoding = 'latin1';
+  }
+  return encoding;
+};
+
+// Convert an array of text samples to a single string using a given encoding
+MapShaper.decodeSamples = function(enc, samples) {
+  return samples.map(function(buf) {
+    return MapShaper.decodeString(buf, enc).trim();
+  }).join('\n');
+};
+
+MapShaper.formatSamples = function(str) {
+  return MapShaper.formatStringsAsGrid(str.split('\n'));
+};
+
+// Quick-and-dirty latin1 detection: decoded string contains mostly common ascii
+// chars and almost no chars other than word chars + punctuation.
+// This excludes encodings like Greek, Cyrillic or Thai, but
+// is susceptible to false positives with encodings like codepage 1250 ("Eastern
+// European").
+MapShaper.looksLikeLatin1 = function(samples) {
+  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?-\n,;/ ', // common ascii
+      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ';
+  var str = MapShaper.decodeSamples('latin1', samples);
+  var asciiScore = MapShaper.getCharScore(str, ascii);
+  var totalScore = asciiScore + MapShaper.getCharScore(str, extended);
+  return totalScore > 0.98 && asciiScore > 0.7;
+};
+
+// Accept string if it doesn't contain the "replacement character"
+MapShaper.looksLikeUtf8 = function(samples) {
+  var str = MapShaper.decodeSamples('utf8', samples);
+  return str.indexOf('\ufffd') == -1;
+};
+
+// Calc percentage of chars in a string that are present in a second string
+// @chars String of chars to look for in @str
+MapShaper.getCharScore = function(str, chars) {
+  var index = {}, count = 0;
+  str = str.toLowerCase(); //
+  for (var i=0, n=chars.length; i<n; i++) {
+    index[chars[i]] = 1;
+  }
+  for (i=0, n=str.length; i<n; i++) {
+    count += index[str[i]] || 0;
+  }
+  return count / str.length;
+};
+
+
+
+//
+// DBF format references:
+// http://www.dbf2002.com/dbf-file-format.html
+// http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
+// http://www.clicketyclick.dk/databases/xbase/format/index.html
+// http://www.clicketyclick.dk/databases/xbase/format/data_types.html
+
+var Dbf = {};
+
+// source: http://webhelp.esri.com/arcpad/8.0/referenceguide/index.htm#locales/task_code.htm
+Dbf.languageIds = [0x01,'437',0x02,'850',0x03,'1252',0x08,'865',0x09,'437',0x0A,'850',0x0B,'437',0x0D,'437',0x0E,'850',0x0F,'437',0x10,'850',0x11,'437',0x12,'850',0x13,'932',0x14,'850',0x15,'437',0x16,'850',0x17,'865',0x18,'437',0x19,'437',0x1A,'850',0x1B,'437',0x1C,'863',0x1D,'850',0x1F,'852',0x22,'852',0x23,'852',0x24,'860',0x25,'850',0x26,'866',0x37,'850',0x40,'852',0x4D,'936',0x4E,'949',0x4F,'950',0x50,'874',0x57,'1252',0x58,'1252',0x59,'1252',0x64,'852',0x65,'866',0x66,'865',0x67,'861',0x6A,'737',0x6B,'857',0x6C,'863',0x78,'950',0x79,'949',0x7A,'936',0x7B,'932',0x7C,'874',0x86,'737',0x87,'852',0x88,'857',0xC8,'1250',0xC9,'1251',0xCA,'1254',0xCB,'1253',0xCC,'1257'];
+
+// Language & Language family names for some code pages
+Dbf.encodingNames = {
+  '932': "Japanese",
+  '936': "Simplified Chinese",
+  '950': "Traditional Chinese",
+  '1252': "Western European",
+  '949': "Korean",
+  '874': "Thai",
+  '1250': "Eastern European",
+  '1251': "Russian",
+  '1254': "Turkish",
+  '1253': "Greek",
+  '1257': "Baltic"
+};
+
+Dbf.lookupCodePage = function(lid) {
+  var i = Dbf.languageIds.indexOf(lid);
+  return i == -1 ? null : Dbf.languageIds[i+1];
+};
+
+Dbf.readAsciiString = function(bin, field) {
+  var require7bit = Env.inNode;
+  var str = bin.readCString(field.size, require7bit);
+  if (str === null) {
+    stop("DBF file contains non-ascii text data. You need to specify an encoding.\n" +
+        "Run mapshaper -encodings for a list of supported encodings");
+  }
+  return utils.trim(str);
+};
+
+Dbf.readStringBytes = function(bin, size, buf) {
+  var c;
+  for (var i=0; i<size; i++) {
+    c = bin.readUint8();
+    if (c === 0) break;
+    buf[i] = c;
+  }
+  return i;
+};
+
+Dbf.getEncodedStringReader = function(encoding) {
+  var buf = new Buffer(256),
+      isUtf8 = MapShaper.standardizeEncodingName(encoding) == 'utf8';
+  return function(bin, field) {
+    var eos = false,
+        i = Dbf.readStringBytes(bin, field.size, buf),
+        str;
+    if (i === 0) {
+      str = '';
+    } else if (isUtf8) {
+      str = buf.toString('utf8', 0, i);
+    } else {
+      str = MapShaper.decodeString(buf.slice(0, i), encoding); // slice references same memory
+    }
+    str = utils.trim(str);
+    return str;
+  };
+};
+
+Dbf.getStringReader = function(encoding) {
+  if (!encoding || encoding === 'ascii') {
+    return Dbf.readAsciiString;
+  } else if (Env.inNode) {
+    return Dbf.getEncodedStringReader(encoding);
+  } else {
+    // TODO: user browserify or other means of decoding string data in the browser
+    error("[Dbf.getStringReader()] Non-ascii encodings only supported in Node.");
+  }
+};
+
+Dbf.bufferContainsHighBit = function(buf, n) {
+  for (var i=0; i<n; i++) {
+    if (buf[i] >= 128) return true;
+  }
+  return false;
+};
+
+Dbf.readNumber = function(bin, field) {
+  var str = bin.readCString(field.size);
+  return parseFloat(str);
+};
+
+Dbf.readInt = function(bin, field) {
+  return bin.readInt32();
+};
+
+Dbf.readBool = function(bin, field) {
+  var c = bin.readCString(field.size),
+      val = null;
+  if (/[ty]/i.test(c)) val = true;
+  else if (/[fn]/i.test(c)) val = false;
+  return val;
+};
+
+Dbf.readDate = function(bin, field) {
+  var str = bin.readCString(field.size),
+      yr = str.substr(0, 4),
+      mo = str.substr(4, 2),
+      day = str.substr(6, 2);
+  return new Date(Date.UTC(+yr, +mo - 1, +day));
+};
+
+// Truncate and/or uniqify a name (if relevant params are present)
+Dbf.adjustFieldName = function(name, maxLen, i) {
+  var name2, suff;
+  maxLen = maxLen || 256;
+  if (!i) {
+    name2 = name.substr(0, maxLen);
+  } else {
+    suff = String(i);
+    if (suff.length == 1) {
+      suff = '_' + suff;
+    }
+    name2 = name.substr(0, maxLen - suff.length) + suff;
+  }
+  return name2;
+};
+
+// Resolve name conflicts in field names by appending numbers
+// @fields Array of field names
+// @maxLen (optional) Maximum chars in name
+//
+Dbf.getUniqFieldNames = function(fields, maxLen) {
+  var used = {};
+  return fields.map(function(name) {
+    var i = 0,
+        validName;
+    do {
+      validName = Dbf.adjustFieldName(name, maxLen, i);
+      i++;
+    } while (validName in used);
+    used[validName] = true;
+    return validName;
+  });
+};
+
+// cf. http://code.google.com/p/stringencoding/
+//
+// @src is a Buffer or ArrayBuffer or filename
+//
+function DbfReader(src, encoding) {
+  if (utils.isString(src)) {
+    error("[DbfReader] Expected a buffer, not a string");
+  }
+  this.bin = new BinArray(src);
+  this.header = this.readHeader(this.bin);
+  this.encoding = encoding ? encoding : this.findStringEncoding();
+  // console.log("encoding:", this.encoding, "id:", this.header.ldid)
+}
+
+DbfReader.prototype.rows = function() {
+  return this.header.recordCount;
+};
+
+DbfReader.prototype.findStringEncoding = function() {
+  // check the ldid (language driver id) (an obsolete way to specify which
+  // codepage to use for text encoding.)
+  // ArcGIS up to v.10.1 sets ldid and encoding based on the 'locale' of the
+  // user's Windows system :P
+  //
+  var ldid = this.header.ldid,
+      codepage = Dbf.lookupCodePage(ldid),
+      samples = this.getNonAsciiSamples(50),
+      only7bit = samples.length === 0,
+      encoding, msg;
+
+  if (codepage && ldid != 87) {
+    // if 8-bit data is found and codepage is detected, use the codepage,
+    // except ldid 87, which some GIS software uses regardless of encoding.
+    encoding = codepage;
+  } else if (only7bit) {
+    // Text with no 8-bit chars should be compatible with 7-bit ascii
+    // (Most encodings are supersets of ascii)
+    encoding = 'ascii';
+  }
+
+  // As a last resort, try to guess the encoding:
+  if (!encoding) {
+    encoding = MapShaper.detectEncoding(samples);
+  }
+  if (!encoding) {
+    stop("[dbf] You need to specify the text encoding of this dbf file.\n" +
+        "Run mapshaper -encodings for a list of supported encodings");
+  }
+
+  // Show a sample of decoded text if non-ascii-range text has been found
+  if (samples.length > 0) {
+    msg = "[dbf] Detected encoding: " + encoding;
+    if (encoding in Dbf.encodingNames) {
+      msg += " (" + Dbf.encodingNames[encoding] + ")";
+    }
+    message(msg);
+    msg = MapShaper.decodeSamples(encoding, samples);
+    msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
+    message("[dbf] Sample text:" + (msg.length > 60 ? '\n' : '') + msg);
+  }
+  return encoding;
+};
+
+
+
+// Return up to @size buffers containing text samples
+// with at least one byte outside the 7-bit ascii range.
+// TODO: remove duplication with readRows()
+DbfReader.prototype.getNonAsciiSamples = function(size) {
+  var samples = [];
+  var stringFields = this.header.fields.filter(function(f) {
+    return f.type == 'C';
+  });
+  var rowOffs = this.getRowOffset();
+  var buf = new Buffer(256);
+  var f, chars;
+  for (var r=0, rows=this.rows(); r<rows; r++) {
+    for (var c=0, cols=stringFields.length; c<cols; c++) {
+      if (samples.length >= size) break;
+      f = stringFields[c];
+      this.bin.position(rowOffs(r) + f.columnOffset);
+      chars = Dbf.readStringBytes(this.bin, f.size, buf);
+      if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
+        samples.push(new Buffer(buf.slice(0, chars))); // make a copy
+      }
+    }
+  }
+  return samples;
+};
+
+DbfReader.prototype.getRowOffset = function() {
+  var start = this.header.headerSize,
+      recLen = this.header.recordSize;
+  return function(r) {
+    return start + recLen * r;
+  };
+};
+
+DbfReader.prototype.getRecordReader = function(header, encoding) {
+  var fields = header.fields,
+      readers = fields.map(this.getFieldReader, this),
+      uniqNames = Dbf.getUniqFieldNames(utils.pluck(fields, 'name')),
+      rowOffs = this.getRowOffset(),
+      bin = this.bin;
+  return function(r) {
+    var rec = {},
+        offs = rowOffs(r);
+    for (var c=0, cols=fields.length; c<cols; c++) {
+      bin.position(offs + fields[c].columnOffset);
+      rec[uniqNames[c]] = readers[c](bin, fields[c]);
+    }
+    return rec;
+  };
+};
+
+// @f Field metadata from dbf header
+DbfReader.prototype.getFieldReader = function(f) {
+  var type = f.type,
+      r = null;
+  if (type == 'I') {
+    r = Dbf.readInt;
+  } else if (type == 'F' || type == 'N') {
+    r = Dbf.readNumber;
+  } else if (type == 'L') {
+    r = Dbf.readBool;
+  } else if (type == 'D') {
+    r = Dbf.readDate;
+  } else if (type == 'C') {
+    r = Dbf.getStringReader(this.encoding);
+  } else {
+    message("[dbf] Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
+    r = function() {return null;};
+  }
+  return r;
+};
+
+DbfReader.prototype.readRows = function() {
+  var data = [],
+      reader = this.getRecordReader(this.header, this.encoding);
+  for (var r=0, rows=this.rows(); r<rows; r++) {
+    data.push(reader(r));
+  }
+  return data;
+};
+
+DbfReader.prototype.readHeader = function(bin, encoding) {
+  bin.position(0).littleEndian();
+  var header = {
+    version: bin.readInt8(),
+    updateYear: bin.readUint8(),
+    updateMonth: bin.readUint8(),
+    updateDay: bin.readUint8(),
+    recordCount: bin.readUint32(),
+    headerSize: bin.readUint16(),
+    recordSize: bin.readUint16(),
+    incompleteTransaction: bin.skipBytes(2).readUint8(),
+    encrypted: bin.readUint8(),
+    mdx: bin.skipBytes(12).readUint8(),
+    ldid: bin.readUint8()
+  };
+  var colOffs = 1; // first column starts on second byte of record
+  var field;
+  bin.skipBytes(2);
+  header.fields = [];
+  // stop at ascii newline or carriage return (LF is standard, CR has been used)
+  while (bin.peek() != 0x0D && bin.peek() != 0x0A) {
+    field = this.readFieldHeader(bin, encoding);
+    field.columnOffset = colOffs;
+    header.fields.push(field);
+    colOffs += field.size;
+  }
+  if (colOffs != header.recordSize)
+    error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
+  return header;
+};
+
+DbfReader.prototype.readFieldHeader = function(bin, encoding) {
+  return {
+    name: bin.readCString(11),
+    type: String.fromCharCode(bin.readUint8()),
+    address: bin.readUint32(),
+    size: bin.readUint8(),
+    decimals: bin.readUint8(),
+    id: bin.skipBytes(2).readUint8(),
+    position: bin.skipBytes(2).readUint8(),
+    indexFlag: bin.skipBytes(7).readUint8()
+  };
+};
+
+// export for testing
+MapShaper.Dbf = Dbf;
+MapShaper.DbfReader = DbfReader;
+
+
+
+
+Dbf.exportRecords = function(arr, encoding) {
+  encoding = encoding || 'ascii';
+  var fields = Dbf.getFieldNames(arr);
+  var uniqFields = Dbf.getUniqFieldNames(fields, 10);
+  var rows = arr.length;
+  var fieldData = fields.map(function(name) {
+    return Dbf.getFieldInfo(arr, name, encoding);
+  });
+
+  var headerBytes = Dbf.getHeaderSize(fieldData.length),
+      recordBytes = Dbf.getRecordSize(utils.pluck(fieldData, 'size')),
+      fileBytes = headerBytes + rows * recordBytes + 1;
+
+  var buffer = new ArrayBuffer(fileBytes);
+  var bin = new BinArray(buffer).littleEndian();
+  var now = new Date();
+
+  // write header
+  bin.writeUint8(3);
+  bin.writeUint8(now.getFullYear() - 1900);
+  bin.writeUint8(now.getMonth() + 1);
+  bin.writeUint8(now.getDate());
+  bin.writeUint32(rows);
+  bin.writeUint16(headerBytes);
+  bin.writeUint16(recordBytes);
+  bin.skipBytes(17);
+  bin.writeUint8(0); // language flag; TODO: improve this
+  bin.skipBytes(2);
+
+  // field subrecords
+  fieldData.reduce(function(recordOffset, obj, i) {
+    var fieldName = uniqFields[i];
+    bin.writeCString(fieldName, 11);
+    bin.writeUint8(obj.type.charCodeAt(0));
+    bin.writeUint32(recordOffset);
+    bin.writeUint8(obj.size);
+    bin.writeUint8(obj.decimals);
+    bin.skipBytes(14);
+    return recordOffset + obj.size;
+  }, 1);
+
+  bin.writeUint8(0x0d); // "field descriptor terminator"
+  if (bin.position() != headerBytes) {
+    error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
+  }
+
+  arr.forEach(function(rec, i) {
+    var start = bin.position();
+    bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
+    for (var j=0, n=fieldData.length; j<n; j++) {
+      fieldData[j].write(i, bin);
+    }
+    if (bin.position() - start != recordBytes) {
+      error("#exportRecords() Error exporting record:", rec);
+    }
+  });
+
+  bin.writeUint8(0x1a); // end-of-file
+
+  if (bin.position() != fileBytes) {
+    error("Dbf#exportRecords() file size mismatch; expected:", fileBytes, "written:", bin.position());
+  }
+  return buffer;
+};
+
+
+Dbf.getFieldNames = function(records) {
+  if (!records || !records.length) {
+    return [];
+  }
+  var names = Object.keys(records[0]);
+  names.sort(); // kludge: sorting gives correct order when truncating fields
+  return names;
+};
+
+
+Dbf.getHeaderSize = function(numFields) {
+  return 33 + numFields * 32;
+};
+
+Dbf.getRecordSize = function(fieldSizes) {
+  return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
+};
+
+/*
+Dbf.getValidFieldName = function(name) {
+  // TODO: handle non-ascii chars in name
+  return name.substr(0, 10); // max 10 chars
+};
+*/
+
+Dbf.initNumericField = function(info, arr, name) {
+  var MAX_FIELD_SIZE = 18,
+      size;
+
+  data = this.getNumericFieldInfo(arr, name);
+  info.decimals = data.decimals;
+  size = Math.max(data.max.toFixed(info.decimals).length,
+      data.min.toFixed(info.decimals).length);
+  if (size > MAX_FIELD_SIZE) {
+    size = MAX_FIELD_SIZE;
+    info.decimals -= size - MAX_FIELD_SIZE;
+    if (info.decimals < 0) {
+      error ("Dbf#getFieldInfo() Out-of-range error.");
+    }
+  }
+  info.size = size;
+
+  var formatter = Dbf.getDecimalFormatter(size, info.decimals);
+  info.write = function(i, bin) {
+    var rec = arr[i],
+        str = formatter(rec[name]);
+    if (str.length < size) {
+      str = utils.lpad(str, size, ' ');
+    }
+    bin.writeString(str, size);
+  };
+};
+
+Dbf.initBooleanField = function(info, arr, name) {
+  info.size = 1;
+  info.write = function(i, bin) {
+    var val = arr[i][name],
+        c;
+    if (val === true) c = 'T';
+    else if (val === false) c = 'F';
+    else c = '?';
+    bin.writeString(c);
+  };
+};
+
+Dbf.initDateField = function(info, arr, name) {
+  info.size = 8;
+  info.write = function(i, bin) {
+    var d = arr[i][name],
+        str;
+    if (d instanceof Date === false) {
+      str = '00000000';
+    } else {
+      str = utils.lpad(d.getUTCFullYear(), 4, '0') +
+            utils.lpad(d.getUTCMonth() + 1, 2, '0') +
+            utils.lpad(d.getUTCDate(), 2, '0');
+    }
+    bin.writeString(str);
+  };
+};
+
+Dbf.initStringField = function(info, arr, name, encoding) {
+  var formatter = Dbf.getStringWriter(encoding);
+  var maxLen = 0;
+  var values = arr.map(function(rec) {
+    var buf = formatter(rec[name]);
+    maxLen = Math.max(maxLen, buf.byteLength);
+    return buf;
+  });
+  var size = Math.min(maxLen, 254);
+  info.size = size;
+  info.write = function(i, bin) {
+    var buf = values[i],
+        bytes = Math.min(size, buf.byteLength),
+        idx = bin.position();
+    bin.writeBuffer(buf, bytes, 0);
+    bin.position(idx + size);
+  };
+};
+
+Dbf.getFieldInfo = function(arr, name, encoding) {
+  var type = this.discoverFieldType(arr, name),
+      info = {
+        name: name,
+        type: type,
+        decimals: 0
+      };
+  if (type == 'N') {
+    Dbf.initNumericField(info, arr, name);
+  } else if (type == 'C') {
+    Dbf.initStringField(info, arr, name, encoding);
+  } else if (type == 'L') {
+    Dbf.initBooleanField(info, arr, name);
+  } else if (type == 'D') {
+    Dbf.initDateField(info, arr, name);
+  } else {
+    error("[dbf] Type error exporting field:", name);
+  }
+  return info;
+};
+
+Dbf.discoverFieldType = function(arr, name) {
+  var val;
+  for (var i=0, n=arr.length; i<n; i++) {
+    val = arr[i][name];
+    if (utils.isString(val)) return "C";
+    if (utils.isNumber(val)) return "N";
+    if (utils.isBoolean(val)) return "L";
+    if (val instanceof Date) return "D";
+  }
+  return "null" ;
+};
+
+Dbf.getDecimalFormatter = function(size, decimals) {
+  // TODO: find better way to handle nulls
+  var nullValue = ' '; // ArcGIS may use 0
+  return function(val) {
+    // TODO: handle invalid values better
+    var valid = utils.isFiniteNumber(val),
+        strval = valid ? val.toFixed(decimals) : String(nullValue);
+    return utils.lpad(strval, size, ' ');
+  };
+};
+
+Dbf.getNumericFieldInfo = function(arr, name) {
+  var maxDecimals = 0,
+      limit = 15,
+      min = Infinity,
+      max = -Infinity,
+      k = 1,
+      val, decimals;
+  for (var i=0, n=arr.length; i<n; i++) {
+    val = arr[i][name];
+    if (!utils.isFiniteNumber(val)) {
+      continue;
+    }
+    decimals = 0;
+    if (val < min) min = val;
+    if (val > max) max = val;
+    while (val * k % 1 !== 0) {
+      if (decimals == limit) {
+        // TODO: verify limit, remove oflo message, round overflowing values
+        // trace ("#getNumericFieldInfo() Number field overflow; value:", val);
+        break;
+      }
+      decimals++;
+      k *= 10;
+    }
+    if (decimals > maxDecimals) maxDecimals = decimals;
+  }
+  return {
+    decimals: maxDecimals,
+    min: min,
+    max: max
+  };
+};
+
+// Return function to convert a JS str to an ArrayBuffer containing encoded str.
+Dbf.getStringWriter = function(encoding) {
+  if (encoding === 'ascii') {
+    return Dbf.getStringWriterAscii();
+  } else if (Env.inNode) {
+    return Dbf.getStringWriterEncoded(encoding);
+  }
+  error("[Dbf.getStringWriter()] Non-ascii encodings only supported in Node.");
+};
+
+// TODO: handle non-ascii chars. Option: switch to
+// utf8 encoding if non-ascii chars are found.
+Dbf.getStringWriterAscii = function() {
+  return function(val) {
+    var str = String(val),
+        n = str.length,
+        dest = new ArrayBuffer(n),
+        view = new Uint8ClampedArray(dest);
+    for (var i=0; i<n; i++) {
+      view[i] = str.charCodeAt(i);
+    }
+    return dest;
+  };
+};
+
+Dbf.getStringWriterEncoded = function(encoding) {
+  var iconv = require('iconv-lite');
+  return function(val) {
+    var buf = iconv.encode(val, encoding);
+    return BinArray.toArrayBuffer(buf);
+  };
+};
+
+
+
+
+var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
+
+function DataTable(obj) {
+  var records;
+  if (utils.isArray(obj)) {
+    records = obj;
+  } else {
+    records = [];
+    // integer object: create empty records
+    if (utils.isInteger(obj)) {
+      for (var i=0; i<obj; i++) {
+        records.push({});
+      }
+    } else if (obj) {
+      error("[DataTable] Invalid constructor argument:", obj);
+    }
+  }
+
+  this.exportAsDbf = function(encoding) {
+    return Dbf.exportRecords(records, encoding);
+  };
+
+  this.getRecords = function() {
+    return records;
+  };
+}
+
+var dataTableProto = {
+  fieldExists: function(name) {
+    return utils.contains(this.getFields(), name);
+  },
+
+  exportAsJSON: function() {
+    return JSON.stringify(this.getRecords());
+  },
+
+  addField: function(name, init) {
+    var useFunction = utils.isFunction(init);
+    if (!utils.isNumber(init) && !utils.isString(init) && !useFunction) {
+      error("DataTable#addField() requires a string, number or function for initialization");
+    }
+    if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
+    if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
+
+    this.getRecords().forEach(function(obj, i) {
+      obj[name] = useFunction ? init(obj, i) : init;
+    });
+  },
+
+  addIdField: function() {
+    this.addField('FID', function(obj, i) {
+      return i;
+    });
+  },
+
+  deleteField: function(f) {
+    this.getRecords().forEach(function(o) {
+      delete o[f];
+    });
+  },
+
+  indexOn: function(f) {
+    this._index = utils.indexOn(this.getRecords(), f);
+  },
+
+  getIndexedRecord: function(val) {
+    return this._index && this._index[val] || null;
+  },
+
+  clearIndex: function() {
+    this._index = null;
+  },
+
+  getFields: function() {
+    var records = this.getRecords();
+    return records.length > 0 ? Object.keys(records[0]) : [];
+  },
+
+  update: function(f) {
+    var records = this.getRecords();
+    for (var i=0, n=records.length; i<n; i++) {
+      records[i] = f(records[i], i);
+    }
+  },
+
+  clone: function() {
+    var records2 = this.getRecords().map(function(rec) {
+      return utils.extend({}, rec);
+    });
+    return new DataTable(records2);
+  },
+
+  size: function() {
+    return this.getRecords().length;
+  }
+};
+
+utils.extend(DataTable.prototype, dataTableProto);
+
+// export for testing
+MapShaper.DataTable = DataTable;
 
 
 
@@ -8782,838 +9580,6 @@ MapShaper.exportPathCoords = function(iter) {
 
 
 
-// List of encodings supported by iconv-lite:
-// https://github.com/ashtuchkin/iconv-lite/wiki/Supported-Encodings
-
-// Return list of supported encodings
-MapShaper.getEncodings = function() {
-  var iconv = require('iconv-lite');
-  iconv.encodingExists('ascii'); // make iconv load its encodings
-  return Object.keys(iconv.encodings);
-};
-
-MapShaper.encodingIsSupported = function(raw) {
-  var enc = MapShaper.standardizeEncodingName(raw);
-  return utils.contains(MapShaper.getEncodings(), enc);
-};
-
-MapShaper.decodeString = function(buf, encoding) {
-  var iconv = require('iconv-lite'),
-      str = iconv.decode(buf, encoding);
-  // remove BOM if present
-  if (str.charCodeAt(0) == 0xfeff) {
-    str = str.substr(1);
-  }
-  return str;
-};
-
-// Ex. convert UTF-8 to utf8
-MapShaper.standardizeEncodingName = function(enc) {
-  return enc.toLowerCase().replace(/[_-]/g, '');
-};
-
-MapShaper.printEncodings = function() {
-  var encodings = MapShaper.getEncodings().filter(function(name) {
-    // filter out some aliases and non-applicable encodings
-    return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
-  });
-  encodings.sort();
-  console.log("Supported encodings:");
-  console.log(MapShaper.formatStringsAsGrid(encodings));
-};
-
-
-﻿
-
-// Try to detect the encoding of some sample text.
-// Returns an encoding name or null.
-// @samples Array of buffers containing sample text fields
-// TODO: Improve reliability and number of detectable encodings.
-MapShaper.detectEncoding = function(samples) {
-  var encoding = null;
-  if (MapShaper.looksLikeUtf8(samples)) {
-    encoding = 'utf8';
-  } else if (MapShaper.looksLikeLatin1(samples)) {
-    encoding = 'latin1';
-  }
-  return encoding;
-};
-
-// Convert an array of text samples to a single string using a given encoding
-MapShaper.decodeSamples = function(enc, samples) {
-  return samples.map(function(buf) {
-    return MapShaper.decodeString(buf, enc).trim();
-  }).join('\n');
-};
-
-MapShaper.formatSamples = function(str) {
-  return MapShaper.formatStringsAsGrid(str.split('\n'));
-};
-
-// Quick-and-dirty latin1 detection: decoded string contains mostly common ascii
-// chars and almost no chars other than word chars + punctuation.
-// This excludes encodings like Greek, Cyrillic or Thai, but
-// is susceptible to false positives with encodings like codepage 1250 ("Eastern
-// European").
-MapShaper.looksLikeLatin1 = function(samples) {
-  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?-\n,;/ ', // common ascii
-      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ';
-  var str = MapShaper.decodeSamples('latin1', samples);
-  var asciiScore = MapShaper.getCharScore(str, ascii);
-  var totalScore = asciiScore + MapShaper.getCharScore(str, extended);
-  return totalScore > 0.98 && asciiScore > 0.7;
-};
-
-// Accept string if it doesn't contain the "replacement character"
-MapShaper.looksLikeUtf8 = function(samples) {
-  var str = MapShaper.decodeSamples('utf8', samples);
-  return str.indexOf('\ufffd') == -1;
-};
-
-// Calc percentage of chars in a string that are present in a second string
-// @chars String of chars to look for in @str
-MapShaper.getCharScore = function(str, chars) {
-  var index = {}, count = 0;
-  str = str.toLowerCase(); //
-  for (var i=0, n=chars.length; i<n; i++) {
-    index[chars[i]] = 1;
-  }
-  for (i=0, n=str.length; i<n; i++) {
-    count += index[str[i]] || 0;
-  }
-  return count / str.length;
-};
-
-
-
-//
-// DBF format references:
-// http://www.dbf2002.com/dbf-file-format.html
-// http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
-// http://www.clicketyclick.dk/databases/xbase/format/index.html
-// http://www.clicketyclick.dk/databases/xbase/format/data_types.html
-
-var Dbf = {};
-
-// source: http://webhelp.esri.com/arcpad/8.0/referenceguide/index.htm#locales/task_code.htm
-Dbf.languageIds = [0x01,'437',0x02,'850',0x03,'1252',0x08,'865',0x09,'437',0x0A,'850',0x0B,'437',0x0D,'437',0x0E,'850',0x0F,'437',0x10,'850',0x11,'437',0x12,'850',0x13,'932',0x14,'850',0x15,'437',0x16,'850',0x17,'865',0x18,'437',0x19,'437',0x1A,'850',0x1B,'437',0x1C,'863',0x1D,'850',0x1F,'852',0x22,'852',0x23,'852',0x24,'860',0x25,'850',0x26,'866',0x37,'850',0x40,'852',0x4D,'936',0x4E,'949',0x4F,'950',0x50,'874',0x57,'1252',0x58,'1252',0x59,'1252',0x64,'852',0x65,'866',0x66,'865',0x67,'861',0x6A,'737',0x6B,'857',0x6C,'863',0x78,'950',0x79,'949',0x7A,'936',0x7B,'932',0x7C,'874',0x86,'737',0x87,'852',0x88,'857',0xC8,'1250',0xC9,'1251',0xCA,'1254',0xCB,'1253',0xCC,'1257'];
-
-// Language & Language family names for some code pages
-Dbf.encodingNames = {
-  '932': "Japanese",
-  '936': "Simplified Chinese",
-  '950': "Traditional Chinese",
-  '1252': "Western European",
-  '949': "Korean",
-  '874': "Thai",
-  '1250': "Eastern European",
-  '1251': "Russian",
-  '1254': "Turkish",
-  '1253': "Greek",
-  '1257': "Baltic"
-};
-
-Dbf.lookupCodePage = function(lid) {
-  var i = Dbf.languageIds.indexOf(lid);
-  return i == -1 ? null : Dbf.languageIds[i+1];
-};
-
-Dbf.readAsciiString = function(bin, field) {
-  var require7bit = Env.inNode;
-  var str = bin.readCString(field.size, require7bit);
-  if (str === null) {
-    stop("DBF file contains non-ascii text data. You need to specify an encoding.\n" +
-        "Run mapshaper -encodings for a list of supported encodings");
-  }
-  return utils.trim(str);
-};
-
-Dbf.readStringBytes = function(bin, size, buf) {
-  var c;
-  for (var i=0; i<size; i++) {
-    c = bin.readUint8();
-    if (c === 0) break;
-    buf[i] = c;
-  }
-  return i;
-};
-
-Dbf.getEncodedStringReader = function(encoding) {
-  var buf = new Buffer(256),
-      isUtf8 = MapShaper.standardizeEncodingName(encoding) == 'utf8';
-  return function(bin, field) {
-    var eos = false,
-        i = Dbf.readStringBytes(bin, field.size, buf),
-        str;
-    if (i === 0) {
-      str = '';
-    } else if (isUtf8) {
-      str = buf.toString('utf8', 0, i);
-    } else {
-      str = MapShaper.decodeString(buf.slice(0, i), encoding); // slice references same memory
-    }
-    str = utils.trim(str);
-    return str;
-  };
-};
-
-Dbf.getStringReader = function(encoding) {
-  if (!encoding || encoding === 'ascii') {
-    return Dbf.readAsciiString;
-  } else if (Env.inNode) {
-    return Dbf.getEncodedStringReader(encoding);
-  } else {
-    // TODO: user browserify or other means of decoding string data in the browser
-    error("[Dbf.getStringReader()] Non-ascii encodings only supported in Node.");
-  }
-};
-
-Dbf.bufferContainsHighBit = function(buf, n) {
-  for (var i=0; i<n; i++) {
-    if (buf[i] >= 128) return true;
-  }
-  return false;
-};
-
-Dbf.readNumber = function(bin, field) {
-  var str = bin.readCString(field.size);
-  return parseFloat(str);
-};
-
-Dbf.readInt = function(bin, field) {
-  return bin.readInt32();
-};
-
-Dbf.readBool = function(bin, field) {
-  var c = bin.readCString(field.size),
-      val = null;
-  if (/[ty]/i.test(c)) val = true;
-  else if (/[fn]/i.test(c)) val = false;
-  return val;
-};
-
-Dbf.readDate = function(bin, field) {
-  var str = bin.readCString(field.size),
-      yr = str.substr(0, 4),
-      mo = str.substr(4, 2),
-      day = str.substr(6, 2);
-  return new Date(Date.UTC(+yr, +mo - 1, +day));
-};
-
-// Truncate and/or uniqify a name (if relevant params are present)
-Dbf.adjustFieldName = function(name, maxLen, i) {
-  var name2, suff;
-  maxLen = maxLen || 256;
-  if (!i) {
-    name2 = name.substr(0, maxLen);
-  } else {
-    suff = String(i);
-    if (suff.length == 1) {
-      suff = '_' + suff;
-    }
-    name2 = name.substr(0, maxLen - suff.length) + suff;
-  }
-  return name2;
-};
-
-// Resolve name conflicts in field names by appending numbers
-// @fields Array of field names
-// @maxLen (optional) Maximum chars in name
-//
-Dbf.getUniqFieldNames = function(fields, maxLen) {
-  var used = {};
-  return fields.map(function(name) {
-    var i = 0,
-        validName;
-    do {
-      validName = Dbf.adjustFieldName(name, maxLen, i);
-      i++;
-    } while (validName in used);
-    used[validName] = true;
-    return validName;
-  });
-};
-
-// cf. http://code.google.com/p/stringencoding/
-//
-// @src is a Buffer or ArrayBuffer or filename
-//
-function DbfReader(src, encoding) {
-  if (utils.isString(src)) {
-    error("[DbfReader] Expected a buffer, not a string");
-  }
-  this.bin = new BinArray(src);
-  this.header = this.readHeader(this.bin);
-  this.encoding = encoding ? encoding : this.findStringEncoding();
-  // console.log("encoding:", this.encoding, "id:", this.header.ldid)
-}
-
-DbfReader.prototype.rows = function() {
-  return this.header.recordCount;
-};
-
-DbfReader.prototype.findStringEncoding = function() {
-  // check the ldid (language driver id) (an obsolete way to specify which
-  // codepage to use for text encoding.)
-  // ArcGIS up to v.10.1 sets ldid and encoding based on the 'locale' of the
-  // user's Windows system :P
-  //
-  var ldid = this.header.ldid,
-      codepage = Dbf.lookupCodePage(ldid),
-      samples = this.getNonAsciiSamples(50),
-      only7bit = samples.length === 0,
-      encoding, msg;
-
-  if (codepage && ldid != 87) {
-    // if 8-bit data is found and codepage is detected, use the codepage,
-    // except ldid 87, which some GIS software uses regardless of encoding.
-    encoding = codepage;
-  } else if (only7bit) {
-    // Text with no 8-bit chars should be compatible with 7-bit ascii
-    // (Most encodings are supersets of ascii)
-    encoding = 'ascii';
-  }
-
-  // As a last resort, try to guess the encoding:
-  if (!encoding) {
-    encoding = MapShaper.detectEncoding(samples);
-  }
-  if (!encoding) {
-    stop("[dbf] You need to specify the text encoding of this dbf file.\n" +
-        "Run mapshaper -encodings for a list of supported encodings");
-  }
-
-  // Show a sample of decoded text if non-ascii-range text has been found
-  if (samples.length > 0) {
-    msg = "[dbf] Detected encoding: " + encoding;
-    if (encoding in Dbf.encodingNames) {
-      msg += " (" + Dbf.encodingNames[encoding] + ")";
-    }
-    message(msg);
-    msg = MapShaper.decodeSamples(encoding, samples);
-    msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
-    message("[dbf] Sample text:" + (msg.length > 60 ? '\n' : '') + msg);
-  }
-  return encoding;
-};
-
-
-
-// Return up to @size buffers containing text samples
-// with at least one byte outside the 7-bit ascii range.
-// TODO: remove duplication with readRows()
-DbfReader.prototype.getNonAsciiSamples = function(size) {
-  var samples = [];
-  var stringFields = this.header.fields.filter(function(f) {
-    return f.type == 'C';
-  });
-  var rowOffs = this.getRowOffset();
-  var buf = new Buffer(256);
-  var f, chars;
-  for (var r=0, rows=this.rows(); r<rows; r++) {
-    for (var c=0, cols=stringFields.length; c<cols; c++) {
-      if (samples.length >= size) break;
-      f = stringFields[c];
-      this.bin.position(rowOffs(r) + f.columnOffset);
-      chars = Dbf.readStringBytes(this.bin, f.size, buf);
-      if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
-        samples.push(new Buffer(buf.slice(0, chars))); // make a copy
-      }
-    }
-  }
-  return samples;
-};
-
-DbfReader.prototype.getRowOffset = function() {
-  var start = this.header.headerSize,
-      recLen = this.header.recordSize;
-  return function(r) {
-    return start + recLen * r;
-  };
-};
-
-DbfReader.prototype.getRecordReader = function(header, encoding) {
-  var fields = header.fields,
-      readers = fields.map(this.getFieldReader, this),
-      uniqNames = Dbf.getUniqFieldNames(utils.pluck(fields, 'name')),
-      rowOffs = this.getRowOffset(),
-      bin = this.bin;
-  return function(r) {
-    var rec = {},
-        offs = rowOffs(r);
-    for (var c=0, cols=fields.length; c<cols; c++) {
-      bin.position(offs + fields[c].columnOffset);
-      rec[uniqNames[c]] = readers[c](bin, fields[c]);
-    }
-    return rec;
-  };
-};
-
-// @f Field metadata from dbf header
-DbfReader.prototype.getFieldReader = function(f) {
-  var type = f.type,
-      r = null;
-  if (type == 'I') {
-    r = Dbf.readInt;
-  } else if (type == 'F' || type == 'N') {
-    r = Dbf.readNumber;
-  } else if (type == 'L') {
-    r = Dbf.readBool;
-  } else if (type == 'D') {
-    r = Dbf.readDate;
-  } else if (type == 'C') {
-    r = Dbf.getStringReader(this.encoding);
-  } else {
-    message("[dbf] Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
-    r = function() {return null;};
-  }
-  return r;
-};
-
-DbfReader.prototype.readRows = function() {
-  var data = [],
-      reader = this.getRecordReader(this.header, this.encoding);
-  for (var r=0, rows=this.rows(); r<rows; r++) {
-    data.push(reader(r));
-  }
-  return data;
-};
-
-DbfReader.prototype.readHeader = function(bin, encoding) {
-  bin.position(0).littleEndian();
-  var header = {
-    version: bin.readInt8(),
-    updateYear: bin.readUint8(),
-    updateMonth: bin.readUint8(),
-    updateDay: bin.readUint8(),
-    recordCount: bin.readUint32(),
-    headerSize: bin.readUint16(),
-    recordSize: bin.readUint16(),
-    incompleteTransaction: bin.skipBytes(2).readUint8(),
-    encrypted: bin.readUint8(),
-    mdx: bin.skipBytes(12).readUint8(),
-    ldid: bin.readUint8()
-  };
-  var colOffs = 1; // first column starts on second byte of record
-  var field;
-  bin.skipBytes(2);
-  header.fields = [];
-  // stop at ascii newline or carriage return (LF is standard, CR has been used)
-  while (bin.peek() != 0x0D && bin.peek() != 0x0A) {
-    field = this.readFieldHeader(bin, encoding);
-    field.columnOffset = colOffs;
-    header.fields.push(field);
-    colOffs += field.size;
-  }
-  if (colOffs != header.recordSize)
-    error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
-  return header;
-};
-
-DbfReader.prototype.readFieldHeader = function(bin, encoding) {
-  return {
-    name: bin.readCString(11),
-    type: String.fromCharCode(bin.readUint8()),
-    address: bin.readUint32(),
-    size: bin.readUint8(),
-    decimals: bin.readUint8(),
-    id: bin.skipBytes(2).readUint8(),
-    position: bin.skipBytes(2).readUint8(),
-    indexFlag: bin.skipBytes(7).readUint8()
-  };
-};
-
-// export for testing
-MapShaper.Dbf = Dbf;
-MapShaper.DbfReader = DbfReader;
-
-
-
-
-Dbf.exportRecords = function(arr, encoding) {
-  encoding = encoding || 'ascii';
-  var fields = Dbf.getFieldNames(arr);
-  var uniqFields = Dbf.getUniqFieldNames(fields, 10);
-  var rows = arr.length;
-  var fieldData = fields.map(function(name) {
-    return Dbf.getFieldInfo(arr, name, encoding);
-  });
-
-  var headerBytes = Dbf.getHeaderSize(fieldData.length),
-      recordBytes = Dbf.getRecordSize(utils.pluck(fieldData, 'size')),
-      fileBytes = headerBytes + rows * recordBytes + 1;
-
-  var buffer = new ArrayBuffer(fileBytes);
-  var bin = new BinArray(buffer).littleEndian();
-  var now = new Date();
-
-  // write header
-  bin.writeUint8(3);
-  bin.writeUint8(now.getFullYear() - 1900);
-  bin.writeUint8(now.getMonth() + 1);
-  bin.writeUint8(now.getDate());
-  bin.writeUint32(rows);
-  bin.writeUint16(headerBytes);
-  bin.writeUint16(recordBytes);
-  bin.skipBytes(17);
-  bin.writeUint8(0); // language flag; TODO: improve this
-  bin.skipBytes(2);
-
-  // field subrecords
-  fieldData.reduce(function(recordOffset, obj, i) {
-    var fieldName = uniqFields[i];
-    bin.writeCString(fieldName, 11);
-    bin.writeUint8(obj.type.charCodeAt(0));
-    bin.writeUint32(recordOffset);
-    bin.writeUint8(obj.size);
-    bin.writeUint8(obj.decimals);
-    bin.skipBytes(14);
-    return recordOffset + obj.size;
-  }, 1);
-
-  bin.writeUint8(0x0d); // "field descriptor terminator"
-  if (bin.position() != headerBytes) {
-    error("Dbf#exportRecords() header size mismatch; expected:", headerBytes, "written:", bin.position());
-  }
-
-  arr.forEach(function(rec, i) {
-    var start = bin.position();
-    bin.writeUint8(0x20); // delete flag; 0x20 valid 0x2a deleted
-    for (var j=0, n=fieldData.length; j<n; j++) {
-      fieldData[j].write(i, bin);
-    }
-    if (bin.position() - start != recordBytes) {
-      error("#exportRecords() Error exporting record:", rec);
-    }
-  });
-
-  bin.writeUint8(0x1a); // end-of-file
-
-  if (bin.position() != fileBytes) {
-    error("Dbf#exportRecords() file size mismatch; expected:", fileBytes, "written:", bin.position());
-  }
-  return buffer;
-};
-
-
-Dbf.getFieldNames = function(records) {
-  if (!records || !records.length) {
-    return [];
-  }
-  var names = Object.keys(records[0]);
-  names.sort(); // kludge: sorting gives correct order when truncating fields
-  return names;
-};
-
-
-Dbf.getHeaderSize = function(numFields) {
-  return 33 + numFields * 32;
-};
-
-Dbf.getRecordSize = function(fieldSizes) {
-  return utils.sum(fieldSizes) + 1; // delete byte plus data bytes
-};
-
-/*
-Dbf.getValidFieldName = function(name) {
-  // TODO: handle non-ascii chars in name
-  return name.substr(0, 10); // max 10 chars
-};
-*/
-
-Dbf.initNumericField = function(info, arr, name) {
-  var MAX_FIELD_SIZE = 18,
-      size;
-
-  data = this.getNumericFieldInfo(arr, name);
-  info.decimals = data.decimals;
-  size = Math.max(data.max.toFixed(info.decimals).length,
-      data.min.toFixed(info.decimals).length);
-  if (size > MAX_FIELD_SIZE) {
-    size = MAX_FIELD_SIZE;
-    info.decimals -= size - MAX_FIELD_SIZE;
-    if (info.decimals < 0) {
-      error ("Dbf#getFieldInfo() Out-of-range error.");
-    }
-  }
-  info.size = size;
-
-  var formatter = Dbf.getDecimalFormatter(size, info.decimals);
-  info.write = function(i, bin) {
-    var rec = arr[i],
-        str = formatter(rec[name]);
-    if (str.length < size) {
-      str = utils.lpad(str, size, ' ');
-    }
-    bin.writeString(str, size);
-  };
-};
-
-Dbf.initBooleanField = function(info, arr, name) {
-  info.size = 1;
-  info.write = function(i, bin) {
-    var val = arr[i][name],
-        c;
-    if (val === true) c = 'T';
-    else if (val === false) c = 'F';
-    else c = '?';
-    bin.writeString(c);
-  };
-};
-
-Dbf.initDateField = function(info, arr, name) {
-  info.size = 8;
-  info.write = function(i, bin) {
-    var d = arr[i][name],
-        str;
-    if (d instanceof Date === false) {
-      str = '00000000';
-    } else {
-      str = utils.lpad(d.getUTCFullYear(), 4, '0') +
-            utils.lpad(d.getUTCMonth() + 1, 2, '0') +
-            utils.lpad(d.getUTCDate(), 2, '0');
-    }
-    bin.writeString(str);
-  };
-};
-
-Dbf.initStringField = function(info, arr, name, encoding) {
-  var formatter = Dbf.getStringWriter(encoding);
-  var maxLen = 0;
-  var values = arr.map(function(rec) {
-    var buf = formatter(rec[name]);
-    maxLen = Math.max(maxLen, buf.byteLength);
-    return buf;
-  });
-  var size = Math.min(maxLen, 254);
-  info.size = size;
-  info.write = function(i, bin) {
-    var buf = values[i],
-        bytes = Math.min(size, buf.byteLength),
-        idx = bin.position();
-    bin.writeBuffer(buf, bytes, 0);
-    bin.position(idx + size);
-  };
-};
-
-Dbf.getFieldInfo = function(arr, name, encoding) {
-  var type = this.discoverFieldType(arr, name),
-      info = {
-        name: name,
-        type: type,
-        decimals: 0
-      };
-  if (type == 'N') {
-    Dbf.initNumericField(info, arr, name);
-  } else if (type == 'C') {
-    Dbf.initStringField(info, arr, name, encoding);
-  } else if (type == 'L') {
-    Dbf.initBooleanField(info, arr, name);
-  } else if (type == 'D') {
-    Dbf.initDateField(info, arr, name);
-  } else {
-    error("[dbf] Type error exporting field:", name);
-  }
-  return info;
-};
-
-Dbf.discoverFieldType = function(arr, name) {
-  var val;
-  for (var i=0, n=arr.length; i<n; i++) {
-    val = arr[i][name];
-    if (utils.isString(val)) return "C";
-    if (utils.isNumber(val)) return "N";
-    if (utils.isBoolean(val)) return "L";
-    if (val instanceof Date) return "D";
-  }
-  return "null" ;
-};
-
-Dbf.getDecimalFormatter = function(size, decimals) {
-  // TODO: find better way to handle nulls
-  var nullValue = ' '; // ArcGIS may use 0
-  return function(val) {
-    // TODO: handle invalid values better
-    var valid = utils.isFiniteNumber(val),
-        strval = valid ? val.toFixed(decimals) : String(nullValue);
-    return utils.lpad(strval, size, ' ');
-  };
-};
-
-Dbf.getNumericFieldInfo = function(arr, name) {
-  var maxDecimals = 0,
-      limit = 15,
-      min = Infinity,
-      max = -Infinity,
-      k = 1,
-      val, decimals;
-  for (var i=0, n=arr.length; i<n; i++) {
-    val = arr[i][name];
-    if (!utils.isFiniteNumber(val)) {
-      continue;
-    }
-    decimals = 0;
-    if (val < min) min = val;
-    if (val > max) max = val;
-    while (val * k % 1 !== 0) {
-      if (decimals == limit) {
-        // TODO: verify limit, remove oflo message, round overflowing values
-        // trace ("#getNumericFieldInfo() Number field overflow; value:", val);
-        break;
-      }
-      decimals++;
-      k *= 10;
-    }
-    if (decimals > maxDecimals) maxDecimals = decimals;
-  }
-  return {
-    decimals: maxDecimals,
-    min: min,
-    max: max
-  };
-};
-
-// Return function to convert a JS str to an ArrayBuffer containing encoded str.
-Dbf.getStringWriter = function(encoding) {
-  if (encoding === 'ascii') {
-    return Dbf.getStringWriterAscii();
-  } else if (Env.inNode) {
-    return Dbf.getStringWriterEncoded(encoding);
-  }
-  error("[Dbf.getStringWriter()] Non-ascii encodings only supported in Node.");
-};
-
-// TODO: handle non-ascii chars. Option: switch to
-// utf8 encoding if non-ascii chars are found.
-Dbf.getStringWriterAscii = function() {
-  return function(val) {
-    var str = String(val),
-        n = str.length,
-        dest = new ArrayBuffer(n),
-        view = new Uint8ClampedArray(dest);
-    for (var i=0; i<n; i++) {
-      view[i] = str.charCodeAt(i);
-    }
-    return dest;
-  };
-};
-
-Dbf.getStringWriterEncoded = function(encoding) {
-  var iconv = require('iconv-lite');
-  return function(val) {
-    var buf = iconv.encode(val, encoding);
-    return BinArray.toArrayBuffer(buf);
-  };
-};
-
-
-
-
-var dataFieldRxp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
-
-function DataTable(obj) {
-  var records;
-  if (utils.isArray(obj)) {
-    records = obj;
-  } else {
-    records = [];
-    // integer object: create empty records
-    if (utils.isInteger(obj)) {
-      for (var i=0; i<obj; i++) {
-        records.push({});
-      }
-    } else if (obj) {
-      error("[DataTable] Invalid constructor argument:", obj);
-    }
-  }
-
-  this.exportAsDbf = function(encoding) {
-    return Dbf.exportRecords(records, encoding);
-  };
-
-  this.getRecords = function() {
-    return records;
-  };
-}
-
-var dataTableProto = {
-  fieldExists: function(name) {
-    return utils.contains(this.getFields(), name);
-  },
-
-  exportAsJSON: function() {
-    return JSON.stringify(this.getRecords());
-  },
-
-  addField: function(name, init) {
-    var useFunction = utils.isFunction(init);
-    if (!utils.isNumber(init) && !utils.isString(init) && !useFunction) {
-      error("DataTable#addField() requires a string, number or function for initialization");
-    }
-    if (this.fieldExists(name)) error("DataTable#addField() tried to add a field that already exists:", name);
-    if (!dataFieldRxp.test(name)) error("DataTable#addField() invalid field name:", name);
-
-    this.getRecords().forEach(function(obj, i) {
-      obj[name] = useFunction ? init(obj, i) : init;
-    });
-  },
-
-  addIdField: function() {
-    this.addField('FID', function(obj, i) {
-      return i;
-    });
-  },
-
-  deleteField: function(f) {
-    this.getRecords().forEach(function(o) {
-      delete o[f];
-    });
-  },
-
-  indexOn: function(f) {
-    this._index = utils.indexOn(this.getRecords(), f);
-  },
-
-  getIndexedRecord: function(val) {
-    return this._index && this._index[val] || null;
-  },
-
-  clearIndex: function() {
-    this._index = null;
-  },
-
-  getFields: function() {
-    var records = this.getRecords();
-    return records.length > 0 ? Object.keys(records[0]) : [];
-  },
-
-  update: function(f) {
-    var records = this.getRecords();
-    for (var i=0, n=records.length; i<n; i++) {
-      records[i] = f(records[i], i);
-    }
-  },
-
-  clone: function() {
-    var records2 = this.getRecords().map(function(rec) {
-      return utils.extend({}, rec);
-    });
-    return new DataTable(records2);
-  },
-
-  size: function() {
-    return this.getRecords().length;
-  }
-};
-
-utils.extend(DataTable.prototype, dataTableProto);
-
-// export for testing
-MapShaper.DataTable = DataTable;
-
-
-
-
 MapShaper.getFormattedStringify = function(numArrayKeys) {
   var keyIndex = utils.arrayToIndex(numArrayKeys);
   var quoteStr = '\u1000\u2FD5\u0310'; // TODO: avoid using a string that might be present in the content
@@ -11621,29 +11587,203 @@ MapShaper.setLayerName = function(lyr, path) {
 
 
 
-function DropControl(importer) {
+gui.getImportDataset = (function() {
+  var fileIndex = {}; //
+  return function(basename) {
+    var dataset = fileIndex[basename];
+    if (!dataset) {
+      dataset = fileIndex[basename] = {
+        info: {}
+      };
+    }
+    return dataset;
+  };
+}());
+
+gui.mergeImportDataset = function(dest, src) {
+  if (!dest.layers) {
+    dest.layers = src.layers;
+  } else if (dest.layers.length == 1 && src.layers.length == 1) {
+    utils.extend(dest.layers[0], src.layers[0]);
+    // TODO: check that attributes and shapes are compatible
+  } else {
+    error("Import files contain incompatible data layers");
+  }
+
+  if (!dest.arcs) {
+    dest.arcs = src.arcs;
+  } else if (src.arcs) {
+    error("Import files contain incompatible arc data");
+  }
+  utils.extend(dest.info, src.info);
+};
+
+gui.importFile = function(file, opts, cb) {
+  var reader = new FileReader(),
+      isBinary = MapShaper.isBinaryFile(file.name);
+  reader.onload = function(e) {
+    gui.inputFileContent(file.name, reader.result, opts, cb);
+  };
+  // TODO: improve to handle encodings, etc.
+  if (isBinary) {
+    reader.readAsArrayBuffer(file);
+  } else {
+    reader.readAsText(file, 'UTF-8');
+  }
+};
+
+// Index of imported objects, indexed by path base and then file type
+// e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
+gui.inputFileContent = function(path, content, importOpts, cb) {
+  var dataset = gui.getImportDataset(utils.getFileBase(path)),
+      type = MapShaper.guessInputFileType(path),
+      input;
+
+  if (type == 'shp' || type == 'json') {
+    if (dataset.info.editing) {
+      console.log("Editing has started; ignoring file:", path);
+      return;
+    }
+    // TODO: remove this
+    importOpts.files = [path];
+
+    El("#mshp-intro-screen").hide();
+    dataset.info.editing = true;
+    input = {};
+    input[type] = {
+      content: content,
+      filename: path
+    };
+    // kludge so the intro screen is hidden before importing freezes the UI.
+    setTimeout(function() {
+      var importData = MapShaper.importContent(input, importOpts);
+      if (importData.arcs) {
+        MapShaper.simplifyPaths(importData.arcs, importOpts);
+        if (importOpts.keep_shapes) {
+          MapShaper.keepEveryPolygon(importData.arcs, importData.layers);
+        }
+      }
+      gui.mergeImportDataset(dataset, importData);
+      cb(null, dataset);
+    }, 10);
+
+  } else if (type == 'dbf') {
+    // TODO: detect dbf encoding instead of using ascii
+    // (Currently, records are read if Shapefile is converted to *JSON).
+    // TODO: validate table (check that record count matches, etc)
+    gui.mergeImportDataset(dataset, {
+      layers: [{data: new ShapefileTable(content, 'ascii')}]
+    });
+
+  } else if (type == 'prj') {
+    dataset.info.output_prj = content;
+
+  } else {
+    console.log("Unexpected file type: " + path + '; ignoring');
+  }
+};
+
+
+
+// @file: Zip file
+// @cb: function(err, <files>)
+//
+gui.readZipFile = function(file, cb) {
+  var _files = [];
+  zip.createReader(new zip.BlobReader(file), importZipContent, onError);
+
+  function onError(err) {
+    cb(err);
+  }
+
+  function onDone() {
+    cb(null, _files);
+  }
+
+  function importZipContent(reader) {
+    var _entries;
+    reader.getEntries(readEntries);
+
+    function readEntries(entries) {
+      _entries = entries || [];
+      readNext();
+    }
+
+    function readNext() {
+      if (_entries.length > 0) {
+        readEntry(_entries.pop());
+      } else {
+        reader.close();
+        onDone();
+      }
+    }
+
+    function readEntry(entry) {
+      var filename = entry.filename;
+      if (!entry.directory && gui.isReadableFileType(filename)) {
+        entry.getData(new zip.BlobWriter(), function(file) {
+          file.name = filename; // Give the Blob a name, like a File object
+          _files.push(file);
+          readNext();
+        });
+      } else {
+        readNext();
+      }
+    }
+  }
+};
+
+
+
+
+// @cb function(<FileList>)
+//
+function DropControl(cb) {
   var el = El('#page-wrapper');
   el.on('dragleave', ondrag);
   el.on('dragover', ondrag);
   el.on('drop', ondrop);
-
   function ondrag(e) {
     // blocking drag events enables drop event
     e.preventDefault();
   }
-
   function ondrop(e) {
     e.preventDefault();
-    importer.readFiles(e.dataTransfer.files);
+    cb(e.dataTransfer.files);
+  }
+}
+
+// @el DOM element for select button
+// @cb function(<FileList>)
+//
+function FileChooser(el, cb) {
+  var btn = El(el).on('click', function() {
+    input.el.click();
+  });
+  var input = El('form')
+    .addClass('g-file-control').appendTo('body')
+    .newChild('input')
+    .attr('type', 'file')
+    .attr('multiple', 'multiple')
+    .on('change', onchange, this);
+
+  function onchange(e) {
+    var files = e.target.files;
+    // files may be undefined (e.g. if user presses 'cancel' after a file has been selected)
+    if (files) {
+      // disable the button while files are being processed
+      btn.addClass('selected');
+      input.attr('disabled', true);
+      cb(files);
+      btn.removeClass('selected');
+      input.attr('disabled', false);
+    }
   }
 }
 
 function ImportControl(editor) {
-  var self = this,
-      dropper = DropControl(this),
-      chooser = new FileChooser('#g-shp-import-btn').on('select', function(e) {
-        self.readFiles(e.files);
-      });
+  new DropControl(readFiles);
+  new FileChooser('#g-shp-import-btn', readFiles);
 
   var precisionInput = new ClickText("#g-import-precision-opt")
     .bounds(0, Infinity)
@@ -11655,150 +11795,49 @@ function ImportControl(editor) {
       return str === '' || utils.isNumber(parseFloat(str));
     });
 
-  // TODO: doesn't need to be public
-  // Receive: FileList
-  this.readFiles = function(files) {
-    utils.forEach((files || []), this.readFile, this);
-  };
+  function readFiles(files) {
+    utils.forEach((files || []), readFile);
+  }
 
-  // Receive: File object
-  this.readFile = function(file) {
-    var name = file.name,
-        ext = utils.getFileExtension(name).toLowerCase(),
-        isBinary = MapShaper.isBinaryFile(name),
-        reader;
+  function getImportOpts() {
+    var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || "mapshaper";
+    return {
+      method: method,
+      no_repair: !El("#g-repair-intersections-opt").node().checked,
+      keep_shapes: !!El("#g-import-retain-opt").node().checked,
+      auto_snap: !!El("#g-snap-points-opt").node().checked,
+      precision: precisionInput.value()
+    };
+  }
 
-    if (ext == 'zip') {
-      readZipFile(file);
-    } else if (gui.isReadableFileType(name)) {
-      reader = new FileReader();
-      reader.onload = function(e) {
-        inputFileContent(name, reader.result);
-      };
-      // TODO: improve to handle encodings, etc.
-      if (isBinary) {
-        reader.readAsArrayBuffer(file);
-      } else {
-        reader.readAsText(file, 'UTF-8');
+  function importFile(file) {
+    var opts = getImportOpts();
+    gui.importFile(file, opts, function(err, dataset) {
+      if (dataset) {
+        editor.editDataset(dataset, opts);
       }
+    });
+  }
+
+  // @file a File object
+  function readFile(file) {
+    var name = file.name,
+        ext = utils.getFileExtension(name).toLowerCase();
+    if (ext == 'zip') {
+      gui.readZipFile(file, function(err, files) {
+        if (err) {
+          console.log("Zip file loading failed:");
+          throw err;
+        }
+        readFiles(files);
+      });
+    } else if (gui.isReadableFileType(name)) {
+      importFile(file);
     } else {
       console.log("File can't be imported:", name, "-- skipping.");
     }
-  };
-
-  function importZipContent(reader) {
-    var _entries;
-    reader.getEntries(readEntries);
-
-    function readEntries(entries) {
-      _entries = entries;
-      readNext();
-    }
-
-    function readNext() {
-      if (_entries.length > 0) {
-        readEntry(_entries.pop());
-      } else {
-        reader.close();
-      }
-    }
-
-    function readEntry(entry) {
-      var filename = entry.filename;
-      if (!entry.directory && gui.isReadableFileType(filename)) {
-        entry.getData(new zip.BlobWriter(), function(data) {
-          data.name = filename;
-          self.readFile(data);
-          readNext();
-        });
-      } else {
-        readNext();
-      }
-    }
-  }
-
-  function readZipFile(file) {
-    zip.createReader(new zip.BlobReader(file), importZipContent, onError);
-    function onError(err) {
-      throw err;
-    }
-  }
-
-  var getImportDataset = (function() {
-    var fileIndex = {}; //
-    return function(basename) {
-      var dataset = fileIndex[basename];
-      if (!dataset) {
-        dataset = fileIndex[basename] = {
-          info: {}
-        };
-      }
-      return dataset;
-    };
-  }());
-
-  function mergeImportDataset(dest, src) {
-    if (!dest.layers) {
-      dest.layers = src.layers;
-    } else if (dest.layers.length == 1 && src.layers.length == 1) {
-      utils.extend(dest.layers[0], src.layers[0]);
-      // TODO: check that attributes and shapes are compatible
-    } else {
-      error("Import files contain incompatible data layers");
-    }
-
-    if (!dest.arcs) {
-      dest.arcs = src.arcs;
-    } else if (src.arcs) {
-      error("Import files contain incompatible arc data");
-    }
-    utils.extend(dest.info, src.info);
-  }
-
-  // Index of imported objects, indexed by path base and then file type
-  // e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
-  function inputFileContent(path, content) {
-    var dataset = getImportDataset(utils.getFileBase(path)),
-        type = MapShaper.guessInputFileType(path),
-        inputOpts, input;
-
-    if (type == 'shp' || type == 'json') {
-      if (dataset.info.editing) {
-        console.log("Editing has started; ignoring file:", path);
-        return;
-      }
-      dataset.info.editing = true;
-      inputOpts = {
-        files: [path],
-        precision: precisionInput.value(),
-        auto_snap: !!El("#g-snap-points-opt").node().checked
-      };
-      input = {};
-      input[type] = {
-        content: content,
-        filename: path
-      };
-      mergeImportDataset(dataset, MapShaper.importContent(input, inputOpts));
-      editor.addData(dataset, inputOpts);
-
-    } else if (type == 'dbf') {
-      // TODO: detect dbf encoding instead of using ascii
-      // (Currently, records are read if Shapefile is converted to *JSON).
-      // TODO: validate table (check that record count matches, etc)
-      mergeImportDataset(dataset, {
-        layers: [{data: new ShapefileTable(content, 'ascii')}]
-      });
-
-    } else if (type == 'prj') {
-      dataset.info.output_prj = content;
-
-    } else {
-      console.log("Unexpected file type: " + path + '; ignoring');
-    }
   }
 }
-
-Opts.inherit(ImportControl, EventDispatcher);
 
 
 
@@ -12851,6 +12890,7 @@ function PointIter() {
 function LayerGroup(dataset) {
   var _surface = new CanvasLayer(),
       _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
+      _bounds = MapShaper.getDatasetBounds(dataset),
       _draw,
       _shapes,
       _style,
@@ -12867,6 +12907,10 @@ function LayerGroup(dataset) {
       _draw = MapShaper.drawPaths;
     }
     return this;
+  };
+
+  this.getBounds = function() {
+    return _bounds;
   };
 
   this.setStyle = function(style) {
@@ -12999,29 +13043,33 @@ function MshpMouse(ext) {
 
 //
 //
-function MshpMap(el, opts_) {
-  var defaults = {
-    bounds: null,
-    padding: 0 // margin around content at full extent, in pixels
-  };
-  var opts = utils.extend(defaults, opts_);
-  if (opts.bounds instanceof Bounds === false) {
-    error("[MshpMap()] missing required bounds option");
+function MshpMap(el, opts) {
+  var _groups = [],
+      _slider, _root, _bounds, _ext, _mouse,
+      defaults = {
+        padding: 12 // margin around content at full extent, in pixels
+      };
+  opts = utils.extend(defaults, opts);
+
+  function initMap(bounds) {
+    _bounds = bounds;
+    _root = El(el);
+    _ext = new MapExtent(_root, _bounds).setContentPadding(opts.padding);
+    _mouse = new MshpMouse(_ext);
+    _root.appendChild(initHomeButton(_ext));
   }
-
-  var _root = El(el);
-  var _slider,
-      _groups = [];
-
-  var _ext = new MapExtent(_root, opts.bounds).setContentPadding(opts.padding);
-  var _mouse = new MshpMouse(_ext);
-  initHomeButton();
 
   this.getExtent = function() {
     return _ext;
   };
 
   this.addLayerGroup = function(group) {
+    if (!_bounds) {
+      initMap(group.getBounds());
+    } else {
+      // TODO: support updating map extent
+      //  _bounds.mergeBounds(bounds);
+    }
     group.setMap(this);
     _groups.push(group);
   };
@@ -13029,27 +13077,28 @@ function MshpMap(el, opts_) {
   this.getElement = function() {
     return _root;
   };
-
-  function initHomeButton() {
-    var _full = null;
-    var btn = El('div').addClass('g-home-btn').appendTo(_root)
-      .on('click', function(e) {
-        _ext.reset();
-      })
-      .newChild('img').attr('src', "images/home.png").parent();
-
-    _ext.on('change', function() {
-      var isFull = _ext.scale() === 1;
-      if (isFull !== _full) {
-        _full = isFull;
-        if (!isFull) btn.addClass('active');
-        else btn.removeClass('active');
-      }
-    });
-  }
 }
 
 Opts.inherit(MshpMap, EventDispatcher);
+
+function initHomeButton(ext) {
+  var _full = null;
+  var btn = El('div').addClass('g-home-btn')
+    .on('click', function(e) {
+      ext.reset();
+    })
+    .newChild('img').attr('src', "images/home.png").parent();
+
+  ext.on('change', function() {
+    var isFull = ext.scale() === 1;
+    if (isFull !== _full) {
+      _full = isFull;
+      if (!isFull) btn.addClass('active');
+      else btn.removeClass('active');
+    }
+  });
+  return btn;
+}
 
 function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
@@ -13137,14 +13186,6 @@ function MapExtent(el, initialBounds) {
   this.getBounds = function() {
     return centerAlign(calcBounds(_cx, _cy, _scale));
   };
-
-  /*
-  this.getGeoBounds = function() {
-    var bounds = this.getBounds();
-    console.log("bounds:", bounds);
-    return bounds.clone().transform(this.getTransform().invert());
-  };
-  */
 
   function calcBounds(cx, cy, scale) {
     var w = initialBounds.width() / scale,
@@ -13767,8 +13808,9 @@ api.enableLogging();
 
 zip.workerScripts = {
   // deflater: ['z-worker.js', 'deflate.js'], // use zip.js deflater
-  deflater: ['z-worker.js', 'pako/pako_deflate.min.js', 'pako/codecs.js'],
-  inflater: ['z-worker.js', 'pako/pako_inflate.min.js', 'pako/codecs.js']
+  // TODO: find out why it was necessary to rename pako_deflate.min.js
+  deflater: ['z-worker.js', 'pako/pako.deflate.js', 'pako/codecs.js'],
+  inflater: ['z-worker.js', 'pako/pako.inflate.js', 'pako/codecs.js']
 };
 
 if (Browser.inBrowser) {
@@ -13794,23 +13836,17 @@ function browserIsSupported() {
 function Editor() {
   var map;
 
-  this.addData = function(dataset) {
+  this.editDataset = function(dataset, opts) {
     if (map) return; // one layer at a time, for now
+    if (!map) {
+      El("#mshp-main-page").show();
+      El("body").addClass('editing');
+      map = new MshpMap("#mshp-main-map");
+    }
+    editDataset(dataset, opts);
+  };
 
-    var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || "mapshaper";
-    var useRepair = !!El("#g-repair-intersections-opt").node().checked;
-    var keepShapes = !!El("#g-import-retain-opt").node().checked;
-
-    El("#mshp-intro-screen").hide();
-    El("#mshp-main-page").show();
-    El("body").addClass('editing');
-
-    var mapOpts = {
-      bounds: MapShaper.getDatasetBounds(dataset),
-      padding: 12
-    };
-    map = new MshpMap("#mshp-main-map", mapOpts);
-
+  function editDataset(dataset, opts) {
     var displayLyr = dataset.layers[0]; // TODO: multi-layer display
     var type = displayLyr.geometry_type;
     var group = new LayerGroup(dataset);
@@ -13821,11 +13857,7 @@ function Editor() {
 
     if (type == 'polygon' || type == 'polyline') {
       slider = new SimplifyControl();
-      MapShaper.simplifyPaths(dataset.arcs, {method:method});
-      if (keepShapes) {
-        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
-      }
-      if (useRepair) {
+      if (!opts.no_repair) {
         repair = new RepairControl(map, dataset.arcs);
         slider.on('simplify-start', function() {
           repair.clear();
@@ -13851,7 +13883,7 @@ function Editor() {
         squareDot: true
       })
       .refresh();
-  };
+  }
 }
 
 Opts.extendNamespace("mapshaper", api);

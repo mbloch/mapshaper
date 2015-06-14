@@ -2,29 +2,33 @@
 
 //
 //
-function MshpMap(el, opts_) {
-  var defaults = {
-    bounds: null,
-    padding: 0 // margin around content at full extent, in pixels
-  };
-  var opts = utils.extend(defaults, opts_);
-  if (opts.bounds instanceof Bounds === false) {
-    error("[MshpMap()] missing required bounds option");
+function MshpMap(el, opts) {
+  var _groups = [],
+      _slider, _root, _bounds, _ext, _mouse,
+      defaults = {
+        padding: 12 // margin around content at full extent, in pixels
+      };
+  opts = utils.extend(defaults, opts);
+
+  function initMap(bounds) {
+    _bounds = bounds;
+    _root = El(el);
+    _ext = new MapExtent(_root, _bounds).setContentPadding(opts.padding);
+    _mouse = new MshpMouse(_ext);
+    _root.appendChild(initHomeButton(_ext));
   }
-
-  var _root = El(el);
-  var _slider,
-      _groups = [];
-
-  var _ext = new MapExtent(_root, opts.bounds).setContentPadding(opts.padding);
-  var _mouse = new MshpMouse(_ext);
-  initHomeButton();
 
   this.getExtent = function() {
     return _ext;
   };
 
   this.addLayerGroup = function(group) {
+    if (!_bounds) {
+      initMap(group.getBounds());
+    } else {
+      // TODO: support updating map extent
+      //  _bounds.mergeBounds(bounds);
+    }
     group.setMap(this);
     _groups.push(group);
   };
@@ -32,27 +36,28 @@ function MshpMap(el, opts_) {
   this.getElement = function() {
     return _root;
   };
-
-  function initHomeButton() {
-    var _full = null;
-    var btn = El('div').addClass('g-home-btn').appendTo(_root)
-      .on('click', function(e) {
-        _ext.reset();
-      })
-      .newChild('img').attr('src', "images/home.png").parent();
-
-    _ext.on('change', function() {
-      var isFull = _ext.scale() === 1;
-      if (isFull !== _full) {
-        _full = isFull;
-        if (!isFull) btn.addClass('active');
-        else btn.removeClass('active');
-      }
-    });
-  }
 }
 
 Opts.inherit(MshpMap, EventDispatcher);
+
+function initHomeButton(ext) {
+  var _full = null;
+  var btn = El('div').addClass('g-home-btn')
+    .on('click', function(e) {
+      ext.reset();
+    })
+    .newChild('img').attr('src', "images/home.png").parent();
+
+  ext.on('change', function() {
+    var isFull = ext.scale() === 1;
+    if (isFull !== _full) {
+      _full = isFull;
+      if (!isFull) btn.addClass('active');
+      else btn.removeClass('active');
+    }
+  });
+  return btn;
+}
 
 function MapExtent(el, initialBounds) {
   var _position = new ElementPosition(el),
@@ -140,14 +145,6 @@ function MapExtent(el, initialBounds) {
   this.getBounds = function() {
     return centerAlign(calcBounds(_cx, _cy, _scale));
   };
-
-  /*
-  this.getGeoBounds = function() {
-    var bounds = this.getBounds();
-    console.log("bounds:", bounds);
-    return bounds.clone().transform(this.getTransform().invert());
-  };
-  */
 
   function calcBounds(cx, cy, scale) {
     var w = initialBounds.width() / scale,

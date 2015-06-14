@@ -17,8 +17,9 @@ api.enableLogging();
 
 zip.workerScripts = {
   // deflater: ['z-worker.js', 'deflate.js'], // use zip.js deflater
-  deflater: ['z-worker.js', 'pako/pako_deflate.min.js', 'pako/codecs.js'],
-  inflater: ['z-worker.js', 'pako/pako_inflate.min.js', 'pako/codecs.js']
+  // TODO: find out why it was necessary to rename pako_deflate.min.js
+  deflater: ['z-worker.js', 'pako/pako.deflate.js', 'pako/codecs.js'],
+  inflater: ['z-worker.js', 'pako/pako.inflate.js', 'pako/codecs.js']
 };
 
 if (Browser.inBrowser) {
@@ -44,23 +45,17 @@ function browserIsSupported() {
 function Editor() {
   var map;
 
-  this.addData = function(dataset) {
+  this.editDataset = function(dataset, opts) {
     if (map) return; // one layer at a time, for now
+    if (!map) {
+      El("#mshp-main-page").show();
+      El("body").addClass('editing');
+      map = new MshpMap("#mshp-main-map");
+    }
+    editDataset(dataset, opts);
+  };
 
-    var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || "mapshaper";
-    var useRepair = !!El("#g-repair-intersections-opt").node().checked;
-    var keepShapes = !!El("#g-import-retain-opt").node().checked;
-
-    El("#mshp-intro-screen").hide();
-    El("#mshp-main-page").show();
-    El("body").addClass('editing');
-
-    var mapOpts = {
-      bounds: MapShaper.getDatasetBounds(dataset),
-      padding: 12
-    };
-    map = new MshpMap("#mshp-main-map", mapOpts);
-
+  function editDataset(dataset, opts) {
     var displayLyr = dataset.layers[0]; // TODO: multi-layer display
     var type = displayLyr.geometry_type;
     var group = new LayerGroup(dataset);
@@ -71,11 +66,7 @@ function Editor() {
 
     if (type == 'polygon' || type == 'polyline') {
       slider = new SimplifyControl();
-      MapShaper.simplifyPaths(dataset.arcs, {method:method});
-      if (keepShapes) {
-        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
-      }
-      if (useRepair) {
+      if (!opts.no_repair) {
         repair = new RepairControl(map, dataset.arcs);
         slider.on('simplify-start', function() {
           repair.clear();
@@ -101,7 +92,7 @@ function Editor() {
         squareDot: true
       })
       .refresh();
-  };
+  }
 }
 
 Opts.extendNamespace("mapshaper", api);

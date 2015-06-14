@@ -5,6 +5,7 @@
 function LayerGroup(dataset) {
   var _surface = new CanvasLayer(),
       _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
+      _bounds = MapShaper.getDatasetBounds(dataset),
       _draw,
       _shapes,
       _style,
@@ -21,6 +22,10 @@ function LayerGroup(dataset) {
       _draw = MapShaper.drawPaths;
     }
     return this;
+  };
+
+  this.getBounds = function() {
+    return _bounds;
   };
 
   this.setStyle = function(style) {
