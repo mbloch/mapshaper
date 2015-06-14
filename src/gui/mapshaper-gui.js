@@ -43,55 +43,66 @@ function browserIsSupported() {
 }
 
 function Editor() {
-  var map;
+  var datasets = [];
+  var map, exporter, slider;
 
   this.editDataset = function(dataset, opts) {
-    if (map) return; // one layer at a time, for now
-    if (!map) {
-      El("#mshp-main-page").show();
-      El("body").addClass('editing');
-      map = new MshpMap("#mshp-main-map");
+    if (datasets.length > 0) {
+      return; // kludge; only edit first dataset
+    } else {
+      startEditing();
     }
+    datasets.push(dataset);
     editDataset(dataset, opts);
   };
+
+  function startEditing() {
+    map = new MshpMap("#mshp-main-map");
+    exporter = new ExportControl();
+    El("#mshp-main-page").show();
+    El("body").addClass('editing');
+  }
 
   function editDataset(dataset, opts) {
     var displayLyr = dataset.layers[0]; // TODO: multi-layer display
     var type = displayLyr.geometry_type;
     var group = new LayerGroup(dataset);
-    var exporter = new ExportControl(dataset, {});
-    var slider, repair;
+    var repair;
 
+    exporter.setDataset(dataset);
     map.addLayerGroup(group);
-
-    if (type == 'polygon' || type == 'polyline') {
-      slider = new SimplifyControl();
-      if (!opts.no_repair) {
-        repair = new RepairControl(map, dataset.arcs);
-        slider.on('simplify-start', function() {
-          repair.clear();
-        });
-        slider.on('simplify-end', function() {
-          repair.update(slider.value());
-        });
-        repair.on('repair', function() {
-          group.refresh();
-        });
-      }
-
-      slider.on('change', function(e) {
-        group.setRetainedPct(e.value).refresh();
-      });
-    }
-
-    group
-      .showLayer(displayLyr)
+    group.showLayer(displayLyr)
       .setStyle({
         strokeColor: "#335",
         dotColor: "#223",
         squareDot: true
       })
       .refresh();
+
+    if (type == 'polygon' || type == 'polyline') {
+      slider = new SimplifyControl();
+      slider.on('change', function(e) {
+        group.setRetainedPct(e.value).refresh();
+      });
+      if (!opts.no_repair) {
+        // use timeout so map appears before the repair control calculates
+        // intersection data, which can take a little while
+        setTimeout(initRepair, 10);
+      }
+    }
+
+    function initRepair() {
+      repair = new RepairControl(map, dataset.arcs);
+      slider.on('simplify-start', function() {
+        repair.clear();
+      });
+      slider.on('simplify-end', function() {
+        repair.update(slider.value());
+      });
+      repair.on('repair', function() {
+        group.refresh();
+      });
+    }
   }
 }
 

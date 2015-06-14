@@ -11632,8 +11632,8 @@ gui.importFile = function(file, opts, cb) {
   }
 };
 
-// Index of imported objects, indexed by path base and then file type
-// e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
+
+
 gui.inputFileContent = function(path, content, importOpts, cb) {
   var dataset = gui.getImportDataset(utils.getFileBase(path)),
       type = MapShaper.guessInputFileType(path),
@@ -12188,7 +12188,8 @@ MapShaper.uniqifyNames = function(names) {
 
 // Export buttons and their behavior
 //
-var ExportControl = function(dataset, options) {
+var ExportControl = function() {
+  var dataset;
 
   El('#g-export-control').show();
 
@@ -12210,6 +12211,11 @@ var ExportControl = function(dataset, options) {
       shpBtn = exportButton("#g-shapefile-btn", "shapefile"),
       topoBtn = exportButton("#g-topojson-btn", "topojson");
 
+  this.setDataset = function(d) {
+    dataset = d;
+    return this;
+  };
+
   function exportButton(selector, format) {
 
     function onClick(e) {
@@ -12226,7 +12232,7 @@ var ExportControl = function(dataset, options) {
   }
 
   function exportAs(format, done) {
-    var opts = utils.defaults({format: format}, options),
+    var opts = {format: format}, // TODO: implement other export opts
         files = MapShaper.exportFileContent(dataset, opts);
 
     if (!utils.isArray(files) || files.length === 0) {
@@ -12292,16 +12298,6 @@ var ExportControl = function(dataset, options) {
       }
     }
   }
-
-  /*
-  function blobToDataURL(blob, cb) {
-    var reader = new FileReader();
-    reader.onload = function() {
-      cb(reader.result);
-    };
-    reader.readAsDataURL(blob);
-  }
-  */
 };
 
 
@@ -13044,19 +13040,24 @@ function MshpMouse(ext) {
 //
 //
 function MshpMap(el, opts) {
-  var _groups = [],
-      _slider, _root, _bounds, _ext, _mouse,
+  var _root = El(el),
+      _groups = [],
+      _bounds, _ext, _mouse,
       defaults = {
         padding: 12 // margin around content at full extent, in pixels
-      };
+      },
+      _btn = El('div')
+        .addClass('g-home-btn')
+        .appendTo(_root)
+        .newChild('img')
+        .attr('src', "images/home.png").parent();
   opts = utils.extend(defaults, opts);
 
   function initMap(bounds) {
     _bounds = bounds;
-    _root = El(el);
     _ext = new MapExtent(_root, _bounds).setContentPadding(opts.padding);
     _mouse = new MshpMouse(_ext);
-    _root.appendChild(initHomeButton(_ext));
+    initHomeButton(_btn, _ext);
   }
 
   this.getExtent = function() {
@@ -13081,13 +13082,12 @@ function MshpMap(el, opts) {
 
 Opts.inherit(MshpMap, EventDispatcher);
 
-function initHomeButton(ext) {
+function initHomeButton(btn, ext) {
   var _full = null;
-  var btn = El('div').addClass('g-home-btn')
-    .on('click', function(e) {
-      ext.reset();
-    })
-    .newChild('img').attr('src', "images/home.png").parent();
+
+  btn.on('click', function(e) {
+    ext.reset();
+  });
 
   ext.on('change', function() {
     var isFull = ext.scale() === 1;
@@ -13097,7 +13097,6 @@ function initHomeButton(ext) {
       else btn.removeClass('active');
     }
   });
-  return btn;
 }
 
 function MapExtent(el, initialBounds) {
@@ -13834,55 +13833,66 @@ function browserIsSupported() {
 }
 
 function Editor() {
-  var map;
+  var datasets = [];
+  var map, exporter, slider;
 
   this.editDataset = function(dataset, opts) {
-    if (map) return; // one layer at a time, for now
-    if (!map) {
-      El("#mshp-main-page").show();
-      El("body").addClass('editing');
-      map = new MshpMap("#mshp-main-map");
+    if (datasets.length > 0) {
+      return; // kludge; only edit first dataset
+    } else {
+      startEditing();
     }
+    datasets.push(dataset);
     editDataset(dataset, opts);
   };
+
+  function startEditing() {
+    map = new MshpMap("#mshp-main-map");
+    exporter = new ExportControl();
+    El("#mshp-main-page").show();
+    El("body").addClass('editing');
+  }
 
   function editDataset(dataset, opts) {
     var displayLyr = dataset.layers[0]; // TODO: multi-layer display
     var type = displayLyr.geometry_type;
     var group = new LayerGroup(dataset);
-    var exporter = new ExportControl(dataset, {});
-    var slider, repair;
+    var repair;
 
+    exporter.setDataset(dataset);
     map.addLayerGroup(group);
-
-    if (type == 'polygon' || type == 'polyline') {
-      slider = new SimplifyControl();
-      if (!opts.no_repair) {
-        repair = new RepairControl(map, dataset.arcs);
-        slider.on('simplify-start', function() {
-          repair.clear();
-        });
-        slider.on('simplify-end', function() {
-          repair.update(slider.value());
-        });
-        repair.on('repair', function() {
-          group.refresh();
-        });
-      }
-
-      slider.on('change', function(e) {
-        group.setRetainedPct(e.value).refresh();
-      });
-    }
-
-    group
-      .showLayer(displayLyr)
+    group.showLayer(displayLyr)
       .setStyle({
         strokeColor: "#335",
         dotColor: "#223",
         squareDot: true
       })
       .refresh();
+
+    if (type == 'polygon' || type == 'polyline') {
+      slider = new SimplifyControl();
+      slider.on('change', function(e) {
+        group.setRetainedPct(e.value).refresh();
+      });
+      if (!opts.no_repair) {
+        // use timeout so map appears before the repair control calculates
+        // intersection data, which can take a little while
+        setTimeout(initRepair, 10);
+      }
+    }
+
+    function initRepair() {
+      repair = new RepairControl(map, dataset.arcs);
+      slider.on('simplify-start', function() {
+        repair.clear();
+      });
+      slider.on('simplify-end', function() {
+        repair.update(slider.value());
+      });
+      repair.on('repair', function() {
+        group.refresh();
+      });
+    }
   }
 }
 

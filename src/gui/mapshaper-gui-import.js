@@ -45,8 +45,8 @@ gui.importFile = function(file, opts, cb) {
   }
 };
 
-// Index of imported objects, indexed by path base and then file type
-// e.g. {"shapefiles/states": {"dbf": [obj], "shp": [obj]}}
+
+
 gui.inputFileContent = function(path, content, importOpts, cb) {
   var dataset = gui.getImportDataset(utils.getFileBase(path)),
       type = MapShaper.guessInputFileType(path),

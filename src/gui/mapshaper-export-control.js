@@ -2,7 +2,8 @@
 
 // Export buttons and their behavior
 //
-var ExportControl = function(dataset, options) {
+var ExportControl = function() {
+  var dataset;
 
   El('#g-export-control').show();
 
@@ -24,6 +25,11 @@ var ExportControl = function(dataset, options) {
       shpBtn = exportButton("#g-shapefile-btn", "shapefile"),
       topoBtn = exportButton("#g-topojson-btn", "topojson");
 
+  this.setDataset = function(d) {
+    dataset = d;
+    return this;
+  };
+
   function exportButton(selector, format) {
 
     function onClick(e) {
@@ -40,7 +46,7 @@ var ExportControl = function(dataset, options) {
   }
 
   function exportAs(format, done) {
-    var opts = utils.defaults({format: format}, options),
+    var opts = {format: format}, // TODO: implement other export opts
         files = MapShaper.exportFileContent(dataset, opts);
 
     if (!utils.isArray(files) || files.length === 0) {
@@ -106,14 +112,4 @@ var ExportControl = function(dataset, options) {
       }
     }
   }
-
-  /*
-  function blobToDataURL(blob, cb) {
-    var reader = new FileReader();
-    reader.onload = function() {
-      cb(reader.result);
-    };
-    reader.readAsDataURL(blob);
-  }
-  */
 };

@@ -3,19 +3,24 @@
 //
 //
 function MshpMap(el, opts) {
-  var _groups = [],
-      _slider, _root, _bounds, _ext, _mouse,
+  var _root = El(el),
+      _groups = [],
+      _bounds, _ext, _mouse,
       defaults = {
         padding: 12 // margin around content at full extent, in pixels
-      };
+      },
+      _btn = El('div')
+        .addClass('g-home-btn')
+        .appendTo(_root)
+        .newChild('img')
+        .attr('src', "images/home.png").parent();
   opts = utils.extend(defaults, opts);
 
   function initMap(bounds) {
     _bounds = bounds;
-    _root = El(el);
     _ext = new MapExtent(_root, _bounds).setContentPadding(opts.padding);
     _mouse = new MshpMouse(_ext);
-    _root.appendChild(initHomeButton(_ext));
+    initHomeButton(_btn, _ext);
   }
 
   this.getExtent = function() {
@@ -40,13 +45,12 @@ function MshpMap(el, opts) {
 
 Opts.inherit(MshpMap, EventDispatcher);
 
-function initHomeButton(ext) {
+function initHomeButton(btn, ext) {
   var _full = null;
-  var btn = El('div').addClass('g-home-btn')
-    .on('click', function(e) {
-      ext.reset();
-    })
-    .newChild('img').attr('src', "images/home.png").parent();
+
+  btn.on('click', function(e) {
+    ext.reset();
+  });
 
   ext.on('change', function() {
     var isFull = ext.scale() === 1;
@@ -56,7 +60,6 @@ function initHomeButton(ext) {
       else btn.removeClass('active');
     }
   });
-  return btn;
 }
 
 function MapExtent(el, initialBounds) {
