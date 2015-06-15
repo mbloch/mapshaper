@@ -1,4 +1,9 @@
 
+/* Hide Firefox's indicator when images are loading */
+img:-moz-loading {
+    visibility: hidden;
+}
+
 .g-menu-link {
 	color: white;
 	font-size: 14px;

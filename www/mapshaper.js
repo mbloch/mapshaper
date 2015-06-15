@@ -4076,7 +4076,7 @@ gui.isReadableFileType = function(filename) {
 
 // Run a series of tasks in sequence
 // Each task is run after a short timeout, so browser can update the DOM.
-gui.queueSync = function() {
+gui.queueSync = function(delay) {
   var tasks = [];
   function runTasks(done) {
     runNext();
@@ -4086,7 +4086,7 @@ gui.queueSync = function() {
         setTimeout(function() {
           task();
           runNext();
-        }, 10);
+        }, delay | 0);
       } else {
         done();
       }
@@ -11722,8 +11722,9 @@ gui.inputFileContent = function(path, content, importOpts, cb) {
     if (size < 4e7) progressBar.remove(); // don't show for small datasets
     progressBar.update(0.2, "Importing");
 
-    // Import data in steps, so browser can refresh the progress bar
-    gui.queueSync()
+    // Import data in steps, so browser can refresh the progress bar; add enough
+    //   timeout delay for Firefox to refresh (may not work everywhere).
+    gui.queueSync(25)
       .defer(function() {
         importOpts.files = [path]; // TODO: remove this
         var dataset2 = MapShaper.importFileContent(content, path, importOpts);
@@ -11760,6 +11761,14 @@ gui.inputFileContent = function(path, content, importOpts, cb) {
 };
 
 
+
+// init zip.js
+zip.workerScripts = {
+  // deflater: ['z-worker.js', 'deflate.js'], // use zip.js deflater
+  // TODO: find out why it was necessary to rename pako_deflate.min.js
+  deflater: ['z-worker.js', 'pako.deflate.js', 'codecs.js'],
+  inflater: ['z-worker.js', 'pako.inflate.js', 'codecs.js']
+};
 
 // @file: Zip file
 // @cb: function(err, <files>)
@@ -13877,13 +13886,6 @@ MapShaper.replaceInArray = function(zz, value, replacement, start, end) {
 
 
 api.enableLogging();
-
-zip.workerScripts = {
-  // deflater: ['z-worker.js', 'deflate.js'], // use zip.js deflater
-  // TODO: find out why it was necessary to rename pako_deflate.min.js
-  deflater: ['z-worker.js', 'pako/pako.deflate.js', 'pako/codecs.js'],
-  inflater: ['z-worker.js', 'pako/pako.inflate.js', 'pako/codecs.js']
-};
 
 if (Browser.inBrowser) {
   Browser.onload(function() {
