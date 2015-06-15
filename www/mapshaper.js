@@ -11719,7 +11719,7 @@ gui.inputFileContent = function(path, content, importOpts, cb) {
     El("#mshp-intro-screen").hide();
 
     progressBar = new ProgressBar('#page-wrapper');
-    if (size < 1e8) progressBar.remove(); // don't show for small datasets
+    if (size < 6e7) progressBar.remove(); // don't show for small datasets
     progressBar.update(0.2, "Importing");
 
     // Import data in steps, so browser can refresh the progress bar
