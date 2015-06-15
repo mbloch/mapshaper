@@ -12,7 +12,7 @@ gui.isReadableFileType = function(filename) {
 
 // Run a series of tasks in sequence
 // Each task is run after a short timeout, so browser can update the DOM.
-gui.queueSync = function() {
+gui.queueSync = function(delay) {
   var tasks = [];
   function runTasks(done) {
     runNext();
@@ -22,7 +22,7 @@ gui.queueSync = function() {
         setTimeout(function() {
           task();
           runNext();
-        }, 10);
+        }, delay | 0);
       } else {
         done();
       }

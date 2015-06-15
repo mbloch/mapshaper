@@ -63,8 +63,9 @@ gui.inputFileContent = function(path, content, importOpts, cb) {
     if (size < 4e7) progressBar.remove(); // don't show for small datasets
     progressBar.update(0.2, "Importing");
 
-    // Import data in steps, so browser can refresh the progress bar
-    gui.queueSync()
+    // Import data in steps, so browser can refresh the progress bar; add enough
+    //   timeout delay for Firefox to refresh (may not work everywhere).
+    gui.queueSync(25)
       .defer(function() {
         importOpts.files = [path]; // TODO: remove this
         var dataset2 = MapShaper.importFileContent(content, path, importOpts);
