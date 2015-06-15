@@ -13,7 +13,6 @@ function RepairControl(map, arcData) {
   map.addLayerGroup(_displayGroup);
 
   this.update = function(pct) {
-    T.start();
     var XX, showBtn;
     if (pct >= 1) {
       if (!_initialXX) {
@@ -27,8 +26,6 @@ function RepairControl(map, arcData) {
     }
     showIntersections(XX);
     btn.classed('disabled', !showBtn);
-
-    T.stop("Find intersections");
   };
 
   this.update(1); // initialize at 100%

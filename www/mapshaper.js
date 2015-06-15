@@ -4074,6 +4074,31 @@ gui.isReadableFileType = function(filename) {
   return !!MapShaper.guessInputFileType(filename);
 };
 
+// Run a series of tasks in sequence
+// Each task is run after a short timeout, so browser can update the DOM.
+gui.queueSync = function() {
+  var tasks = [];
+  function runTasks(done) {
+    runNext();
+    function runNext() {
+      var task = tasks.shift();
+      if (task) {
+        setTimeout(function() {
+          task();
+          runNext();
+        }, 10);
+      } else {
+        done();
+      }
+    }
+  }
+  return {
+    defer: function(task) {tasks.push(task); return this;},
+    await: runTasks
+  };
+};
+
+
 
 
 function draggable(ref) {
@@ -11587,6 +11612,53 @@ MapShaper.setLayerName = function(lyr, path) {
 
 
 
+function ProgressBar(el) {
+  var size = 80,
+      posCol = '#285d7e',
+      negCol = '#bdced6',
+      outerRadius = size / 2,
+      innerRadius = outerRadius / 2,
+      cx = outerRadius,
+      cy = outerRadius,
+      bar = El('div').appendTo(el).addClass('progress-bar'),
+      canv = El('canvas').appendTo(bar).node(),
+      ctx = canv.getContext('2d'),
+      msg = El('div').appendTo(bar);
+
+  canv.width = size;
+  canv.height = size;
+
+  this.update = function(pct, str) {
+    var twoPI = Math.PI * 2;
+    ctx.clearRect(0, 0, size, size);
+    if (pct > 0) {
+      drawCircle(negCol, outerRadius, twoPI);
+      drawCircle(posCol, outerRadius, twoPI * pct);
+      drawCircle(null, innerRadius, twoPI);
+    }
+    msg.html(str || '');
+  };
+
+  this.remove = function() {
+    bar.remove();
+  };
+
+  function drawCircle(color, radius, radians) {
+    var halfPI = Math.PI / 2;
+    if (!color) ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = color || '#000';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, -halfPI, radians - halfPI, false);
+    ctx.closePath();
+    ctx.fill();
+    if (!color) ctx.globalCompositeOperation = 'source-over';
+  }
+}
+
+
+
+
 gui.getImportDataset = (function() {
   var fileIndex = {}; //
   return function(basename) {
@@ -11632,40 +11704,44 @@ gui.importFile = function(file, opts, cb) {
   }
 };
 
-
-
 gui.inputFileContent = function(path, content, importOpts, cb) {
   var dataset = gui.getImportDataset(utils.getFileBase(path)),
       type = MapShaper.guessInputFileType(path),
-      input;
+      size = content.byteLength || content.length, // ArrayBuffer or string
+      progressBar;
 
   if (type == 'shp' || type == 'json') {
-    if (dataset.info.editing) {
+    if (gui.state == 'editing') { // TODO: remove this kludge
       console.log("Editing has started; ignoring file:", path);
       return;
     }
-    // TODO: remove this
-    importOpts.files = [path];
-
+    gui.state = 'editing';
     El("#mshp-intro-screen").hide();
-    dataset.info.editing = true;
-    input = {};
-    input[type] = {
-      content: content,
-      filename: path
-    };
-    // kludge so the intro screen is hidden before importing freezes the UI.
-    setTimeout(function() {
-      var importData = MapShaper.importContent(input, importOpts);
-      if (importData.arcs) {
-        MapShaper.simplifyPaths(importData.arcs, importOpts);
-        if (importOpts.keep_shapes) {
-          MapShaper.keepEveryPolygon(importData.arcs, importData.layers);
+
+    progressBar = new ProgressBar('#page-wrapper');
+    if (size < 1e8) progressBar.remove(); // don't show for small datasets
+    progressBar.update(0.2, "Importing");
+
+    // Import data in steps, so browser can refresh the progress bar
+    gui.queueSync()
+      .defer(function() {
+        importOpts.files = [path]; // TODO: remove this
+        var dataset2 = MapShaper.importFileContent(content, path, importOpts);
+        gui.mergeImportDataset(dataset, dataset2);
+        progressBar.update(0.6, "Presimplifying");
+      })
+      .defer(function() {
+        if (dataset.arcs) {
+          MapShaper.simplifyPaths(dataset.arcs, importOpts);
+          if (importOpts.keep_shapes) {
+            MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
+          }
         }
-      }
-      gui.mergeImportDataset(dataset, importData);
-      cb(null, dataset);
-    }, 10);
+      })
+      .await(function() {
+        progressBar.remove();
+        cb(null, dataset);
+      });
 
   } else if (type == 'dbf') {
     // TODO: detect dbf encoding instead of using ascii
@@ -12518,7 +12594,6 @@ function RepairControl(map, arcData) {
   map.addLayerGroup(_displayGroup);
 
   this.update = function(pct) {
-    T.start();
     var XX, showBtn;
     if (pct >= 1) {
       if (!_initialXX) {
@@ -12532,8 +12607,6 @@ function RepairControl(map, arcData) {
     }
     showIntersections(XX);
     btn.classed('disabled', !showBtn);
-
-    T.stop("Find intersections");
   };
 
   this.update(1); // initialize at 100%

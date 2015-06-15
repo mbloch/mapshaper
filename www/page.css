@@ -158,8 +158,24 @@ html, body {
 	margin: 0 5px 0 0;
 }
 
+/* --- Progress bar --------------- */
 
-/* === Editing interface =================== */
+.progress-bar {
+	position: absolute;
+	width: 100%;
+	z-index: 2000;
+	text-align: center;
+	top: 85px;
+	font-size: 16px;
+}
+
+.progress-bar canvas {
+	width: 40px;
+	height: 40px;
+}
+
+
+/* === Editing interface ========== */
 
 @media (max-width: 876px) {
 	body.editing  #g-simplify-control-wrapper {

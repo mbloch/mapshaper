@@ -1,4 +1,4 @@
-/* @requires mapshaper-gui-lib, mapshaper-import */
+/* @requires mapshaper-gui-lib, mapshaper-import, mapshaper-progress-bar */
 
 gui.getImportDataset = (function() {
   var fileIndex = {}; //
@@ -45,40 +45,44 @@ gui.importFile = function(file, opts, cb) {
   }
 };
 
-
-
 gui.inputFileContent = function(path, content, importOpts, cb) {
   var dataset = gui.getImportDataset(utils.getFileBase(path)),
       type = MapShaper.guessInputFileType(path),
-      input;
+      size = content.byteLength || content.length, // ArrayBuffer or string
+      progressBar;
 
   if (type == 'shp' || type == 'json') {
-    if (dataset.info.editing) {
+    if (gui.state == 'editing') { // TODO: remove this kludge
       console.log("Editing has started; ignoring file:", path);
       return;
     }
-    // TODO: remove this
-    importOpts.files = [path];
-
+    gui.state = 'editing';
     El("#mshp-intro-screen").hide();
-    dataset.info.editing = true;
-    input = {};
-    input[type] = {
-      content: content,
-      filename: path
-    };
-    // kludge so the intro screen is hidden before importing freezes the UI.
-    setTimeout(function() {
-      var importData = MapShaper.importContent(input, importOpts);
-      if (importData.arcs) {
-        MapShaper.simplifyPaths(importData.arcs, importOpts);
-        if (importOpts.keep_shapes) {
-          MapShaper.keepEveryPolygon(importData.arcs, importData.layers);
+
+    progressBar = new ProgressBar('#page-wrapper');
+    if (size < 1e8) progressBar.remove(); // don't show for small datasets
+    progressBar.update(0.2, "Importing");
+
+    // Import data in steps, so browser can refresh the progress bar
+    gui.queueSync()
+      .defer(function() {
+        importOpts.files = [path]; // TODO: remove this
+        var dataset2 = MapShaper.importFileContent(content, path, importOpts);
+        gui.mergeImportDataset(dataset, dataset2);
+        progressBar.update(0.6, "Presimplifying");
+      })
+      .defer(function() {
+        if (dataset.arcs) {
+          MapShaper.simplifyPaths(dataset.arcs, importOpts);
+          if (importOpts.keep_shapes) {
+            MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
+          }
         }
-      }
-      gui.mergeImportDataset(dataset, importData);
-      cb(null, dataset);
-    }, 10);
+      })
+      .await(function() {
+        progressBar.remove();
+        cb(null, dataset);
+      });
 
   } else if (type == 'dbf') {
     // TODO: detect dbf encoding instead of using ascii
