@@ -128,6 +128,21 @@ describe('mapshaper-shapes.js', function () {
       assert.equal(arcs.getThresholdByPct(1), 0);
     });
 
+    it("#getPctByThreshold(), nothing to remove", function() {
+      var thresholds = [[Infinity, Infinity, Infinity], [Infinity, Infinity],
+            [Infinity, Infinity, Infinity]];
+      var arcs = new ArcCollection(arcs1).setThresholds(thresholds);
+      assert.equal(arcs.getPctByThreshold(0.3), 1);
+    });
+
+    it("#getPctByThreshold(), two removable points", function() {
+      var thresholds = [[Infinity, 5, 4, Infinity]];
+      var arcs = new ArcCollection(arcs4).setThresholds(thresholds);
+      assert.equal(arcs.getPctByThreshold(0.3), 1);
+      assert.equal(arcs.getPctByThreshold(4.5), 0.5);
+      assert.equal(arcs.getPctByThreshold(6), 0);
+    });
+
     it('#applyTransform() works', function() {
       var arcs = new ArcCollection(arcs4);
       arcs.applyTransform({

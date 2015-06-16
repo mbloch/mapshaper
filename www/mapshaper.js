@@ -4076,25 +4076,29 @@ gui.isReadableFileType = function(filename) {
 
 // Run a series of tasks in sequence
 // Each task is run after a short timeout, so browser can update the DOM.
+// TODO: add node-style error handling
 gui.queueSync = function(delay) {
   var tasks = [];
-  function runTasks(done) {
-    runNext();
-    function runNext() {
-      var task = tasks.shift();
-      if (task) {
-        setTimeout(function() {
-          task();
-          runNext();
-        }, delay | 0);
-      } else {
-        done();
-      }
-    }
-  }
   return {
-    defer: function(task) {tasks.push(task); return this;},
-    await: runTasks
+    defer: function(task) {
+      tasks.push(task);
+      return this;
+    },
+    await: function(done) {
+      var retn;
+      runNext();
+      function runNext() {
+        var task = tasks.shift();
+        if (task) {
+          setTimeout(function() {
+            retn = task(retn);
+            runNext();
+          }, delay | 0);
+        } else {
+          done(retn);
+        }
+      }
+    } // await()
   };
 };
 
@@ -4321,7 +4325,7 @@ Opts.inherit(SimpleButton, EventDispatcher);
 
 var SimplifyControl = function() {
   var _value = 1;
-  El('#g-simplify-control').show();
+  var el = El('#g-simplify-control');
   var slider = new Slider("#g-simplify-control .g-slider");
   slider.handle("#g-simplify-control .g-handle");
   slider.track("#g-simplify-control .g-track");
@@ -4383,6 +4387,18 @@ var SimplifyControl = function() {
   }
 
   var control = new EventDispatcher();
+  control.show = function() {
+    el.show();
+    El('body').addClass('simplify');
+  };
+  control.hide = function() {
+    el.hide();
+    El('body').removeClass('simplify');
+  };
+  control.reset = function() {
+    control.hide();
+    control.removeEventListeners();
+  };
   control.value = function(val) {
     if (!isNaN(val)) {
       // TODO: validate
@@ -6134,6 +6150,10 @@ function ArcCollection() {
     return this;
   };
 
+  this.getRetainedPct = function() {
+    return this.getPctByThreshold(_zlimit);
+  };
+
   this.setRetainedPct = function(pct) {
     if (pct >= 1) {
       _zlimit = 0;
@@ -6167,6 +6187,18 @@ function ArcCollection() {
     var start = _ii[arcId],
         end = start + _nn[arcId];
     return _zz.subarray(start, end);
+  };
+
+  this.getPctByThreshold = function(val) {
+    var arr, rank, pct;
+    if (val > 0) {
+      arr = this.getRemovableThresholds();
+      rank = utils.findRankByValue(arr, val);
+      pct = arr.length > 0 ? 1 - (rank - 1) / arr.length : 1;
+    } else {
+      pct = 1;
+    }
+    return pct;
   };
 
   this.getThresholdByPct = function(pct) {
@@ -11659,36 +11691,45 @@ function ProgressBar(el) {
 
 
 
-gui.getImportDataset = (function() {
-  var fileIndex = {}; //
-  return function(basename) {
-    var dataset = fileIndex[basename];
-    if (!dataset) {
-      dataset = fileIndex[basename] = {
-        info: {}
-      };
+
+// Cache and merge data from Shapefile component files (.prj, .dbf, shp) in
+// whatever order they are received in.
+//
+gui.receiveShapefileComponent = (function() {
+  var cache = {};
+
+  function merge() {
+    var dataset = cache.shp,
+        lyr, info;
+    if (dataset) {
+      lyr = dataset.layers[0];
+      info = dataset.info;
+      // only use prj or dbf if the dataset lacks this info
+      // (the files could be intended for a future re-import of .shp content)
+      if (cache.prj && !info.output_prj) {
+        info.output_prj = cache.prj;
+      }
+      if (cache.dbf && !lyr.data) {
+        // TODO: detect dbf encoding instead of using ascii
+        // (Currently, records are read if Shapefile is converted to *JSON).
+        // TODO: validate table (check that record count matches, etc)
+        lyr.data = new ShapefileTable(cache.dbf, 'ascii');
+        delete cache.dbf;
+      }
     }
-    return dataset;
+  }
+
+  // @content: imported dataset if .shp, raw file content if other file type
+  return function(path, content) {
+    var name = utils.getFileBase(path),
+        ext = utils.getFileExtension(path).toLowerCase();
+    if (name != cache.name) {
+      cache = {name: name};
+    }
+    cache[ext] = content;
+    merge();
   };
 }());
-
-gui.mergeImportDataset = function(dest, src) {
-  if (!dest.layers) {
-    dest.layers = src.layers;
-  } else if (dest.layers.length == 1 && src.layers.length == 1) {
-    utils.extend(dest.layers[0], src.layers[0]);
-    // TODO: check that attributes and shapes are compatible
-  } else {
-    error("Import files contain incompatible data layers");
-  }
-
-  if (!dest.arcs) {
-    dest.arcs = src.arcs;
-  } else if (src.arcs) {
-    error("Import files contain incompatible arc data");
-  }
-  utils.extend(dest.info, src.info);
-};
 
 gui.importFile = function(file, opts, cb) {
   var reader = new FileReader(),
@@ -11705,19 +11746,13 @@ gui.importFile = function(file, opts, cb) {
 };
 
 gui.inputFileContent = function(path, content, importOpts, cb) {
-  var dataset = gui.getImportDataset(utils.getFileBase(path)),
-      type = MapShaper.guessInputFileType(path),
+  var type = MapShaper.guessInputFileType(path),
       size = content.byteLength || content.length, // ArrayBuffer or string
       progressBar;
 
+  // these file types can be imported and edited right away
   if (type == 'shp' || type == 'json') {
-    if (gui.state == 'editing') { // TODO: remove this kludge
-      console.log("Editing has started; ignoring file:", path);
-      return;
-    }
-    gui.state = 'editing';
     El("#mshp-intro-screen").hide();
-
     progressBar = new ProgressBar('#page-wrapper');
     if (size < 4e7) progressBar.remove(); // don't show for small datasets
     progressBar.update(0.2, "Importing");
@@ -11726,34 +11761,31 @@ gui.inputFileContent = function(path, content, importOpts, cb) {
     //   timeout delay for Firefox to refresh (may not work everywhere).
     gui.queueSync(25)
       .defer(function() {
-        importOpts.files = [path]; // TODO: remove this
-        var dataset2 = MapShaper.importFileContent(content, path, importOpts);
-        gui.mergeImportDataset(dataset, dataset2);
+        importOpts.files = [path]; // TODO: try to remove this
+        var dataset = MapShaper.importFileContent(content, path, importOpts);
         progressBar.update(0.6, "Presimplifying");
+        return dataset;
       })
-      .defer(function() {
+      .defer(function(dataset) {
         if (dataset.arcs) {
           MapShaper.simplifyPaths(dataset.arcs, importOpts);
           if (importOpts.keep_shapes) {
             MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
           }
         }
+        return dataset;
       })
-      .await(function() {
+      .await(function(dataset) {
+        if (type == 'shp') {
+          gui.receiveShapefileComponent(path, dataset);
+        }
         progressBar.remove();
         cb(null, dataset);
       });
 
-  } else if (type == 'dbf') {
-    // TODO: detect dbf encoding instead of using ascii
-    // (Currently, records are read if Shapefile is converted to *JSON).
-    // TODO: validate table (check that record count matches, etc)
-    gui.mergeImportDataset(dataset, {
-      layers: [{data: new ShapefileTable(content, 'ascii')}]
-    });
-
-  } else if (type == 'prj') {
-    dataset.info.output_prj = content;
+  // merge auxiliary Shapefile files with .shp content
+  } else if (type == 'dbf' || type == 'prj') {
+    gui.receiveShapefileComponent(path, content);
 
   } else {
     console.log("Unexpected file type: " + path + '; ignoring');
@@ -12590,39 +12622,59 @@ MapShaper.repairIntersections = function(arcs, intersections) {
 
 
 
-function RepairControl(map, arcData) {
-  var el = El("#g-intersection-display").show(),
+function RepairControl(map) {
+  var el = El("#g-intersection-display"),
       readout = el.findChild("#g-intersection-count"),
-      btn = el.findChild("#g-repair-btn");
-
-  var _initialXX,
-      _currXX,
+      btn = el.findChild("#g-repair-btn"),
       _pointLyr = {geometry_type: "point", shapes: []},
-      _displayGroup = new LayerGroup({layers:[_pointLyr]});
+      _dataset, _currXX, _displayGroup;
 
-  map.addLayerGroup(_displayGroup);
+  this.setDataset = function(dataset) {
+    _dataset = dataset.arcs ? dataset : null;
+    this.clear();
+  };
 
-  this.update = function(pct) {
-    var XX, showBtn;
-    if (pct >= 1) {
-      if (!_initialXX) {
-        _initialXX = MapShaper.findSegmentIntersections(arcData);
-      }
-      XX = _initialXX;
-      showBtn = false;
-    } else {
-      XX = MapShaper.findSegmentIntersections(arcData);
+  this.show = function() {
+    el.show();
+  };
+
+  this.hide = function() {
+    this.clear();
+    el.hide();
+  };
+
+  this.reset = function() {
+    this.hide();
+    this.removeEventListeners();
+  };
+
+  // Display intersections for dataset's current level of arc simplification
+  this.update = function() {
+    var XX, showBtn, pct;
+    if (!_dataset) return;
+    if (!_displayGroup) {
+      _displayGroup = map.addLayer({layers:[_pointLyr]});
+    }
+
+    if (_dataset.arcs.getRetainedInterval() > 0) {
+      XX = MapShaper.findSegmentIntersections(_dataset.arcs);
       showBtn = XX.length > 0;
+    } else { // no simplification
+      if (!_dataset.info.repair) {
+        _dataset.info.repair = {
+          initialXX: MapShaper.findSegmentIntersections(_dataset.arcs)
+        };
+      }
+      XX = _dataset.info.repair.initialXX;
+      showBtn = false;
     }
     showIntersections(XX);
     btn.classed('disabled', !showBtn);
   };
 
-  this.update(1); // initialize at 100%
-
   btn.on('click', function() {
     T.start();
-    var fixed = MapShaper.repairIntersections(arcData, _currXX);
+    var fixed = MapShaper.repairIntersections(_dataset.arcs, _currXX);
     T.stop('Fix intersections');
     btn.addClass('disabled');
     showIntersections(fixed);
@@ -12631,7 +12683,7 @@ function RepairControl(map, arcData) {
 
   this.clear = function() {
     _currXX = null;
-    _displayGroup.hide();
+    if (_displayGroup) _displayGroup.hide();
   };
 
   function showIntersections(XX) {
@@ -12991,6 +13043,10 @@ function LayerGroup(dataset) {
     return _bounds;
   };
 
+  this.getDataset = function() {
+    return dataset;
+  };
+
   this.setStyle = function(style) {
     _style = style;
     return this;
@@ -13015,11 +13071,15 @@ function LayerGroup(dataset) {
     }
   };
 
+  this.remove = function() {
+    if (_surface) {
+      _surface.getElement().remove();
+    }
+  };
+
   this.setMap = function(map) {
     _map = map;
     _surface.getElement().appendTo(map.getElement());
-    map.on('refresh', this.refresh, this);
-    map.getExtent().on('change', this.refresh, this);
   };
 }
 
@@ -13124,7 +13184,7 @@ function MshpMouse(ext) {
 function MshpMap(el, opts) {
   var _root = El(el),
       _groups = [],
-      _bounds, _ext, _mouse,
+      _ext, _mouse,
       defaults = {
         padding: 12 // margin around content at full extent, in pixels
       },
@@ -13136,25 +13196,63 @@ function MshpMap(el, opts) {
   opts = utils.extend(defaults, opts);
 
   function initMap(bounds) {
-    _bounds = bounds;
-    _ext = new MapExtent(_root, _bounds).setContentPadding(opts.padding);
+    _ext = new MapExtent(_root, bounds).setContentPadding(opts.padding);
+    _ext.on('navigate', refreshLayers);
     _mouse = new MshpMouse(_ext);
     initHomeButton(_btn, _ext);
+  }
+
+  function refreshLayers() {
+    _groups.forEach(function(lyr) {
+      lyr.refresh();
+    });
+  }
+
+  function getContentBounds() {
+    return _groups.reduce(function(memo, lyr) {
+      memo.mergeBounds(lyr.getBounds());
+      return memo;
+    }, new Bounds());
   }
 
   this.getExtent = function() {
     return _ext;
   };
 
-  this.addLayerGroup = function(group) {
-    if (!_bounds) {
-      initMap(group.getBounds());
+  this.refresh = function() {
+    refreshLayers();
+    // this.dispatchEvent('refresh'); // signal visible layers to refresh
+  };
+
+  this.addLayer = function(dataset) {
+    var lyr = new LayerGroup(dataset),
+        bounds;
+    lyr.setMap(this);
+    _groups.push(lyr);
+    bounds = getContentBounds();
+    if (!_ext) {
+      initMap(bounds);
     } else {
-      // TODO: support updating map extent
-      //  _bounds.mergeBounds(bounds);
+      _ext.updateBounds(bounds);
     }
-    group.setMap(this);
-    _groups.push(group);
+    return lyr;
+  };
+
+  this.findLayer = function(dataset) {
+    return utils.find(_groups, function(lyr) {
+      return lyr.getDataset() == dataset;
+    });
+  };
+
+  this.removeLayer = function(targetLyr) {
+    _groups = _groups.reduce(function(memo, lyr) {
+      if (lyr == targetLyr) {
+        lyr.remove();
+      } else {
+        memo.push(lyr);
+      }
+      return memo;
+    }, []);
   };
 
   this.getElement = function() {
@@ -13194,6 +13292,7 @@ function MapExtent(el, initialBounds) {
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
+    this.dispatchEvent('navigate');
     this.dispatchEvent('resize');
   }, this);
 
@@ -13208,6 +13307,7 @@ function MapExtent(el, initialBounds) {
       _cy = cy;
       _scale = scale;
       this.dispatchEvent('change');
+      this.dispatchEvent('navigate');
     }
   };
 
@@ -13266,6 +13366,15 @@ function MapExtent(el, initialBounds) {
 
   this.getBounds = function() {
     return centerAlign(calcBounds(_cx, _cy, _scale));
+  };
+
+  // Update the extent of 'full' zoom without navigating the current view
+  this.updateBounds = function(b) {
+    var full1 = centerAlign(initialBounds);
+    var full2 = centerAlign(b);
+    _scale = _scale * full2.width() / full1.width();
+    initialBounds = b;
+    this.dispatchEvent('change');
   };
 
   function calcBounds(cx, cy, scale) {
@@ -13909,47 +14018,63 @@ function browserIsSupported() {
 
 function Editor() {
   var datasets = [];
-  var map, exporter, slider;
+  var foregroundStyle = {
+        strokeColor: "#335",
+        dotColor: "#223",
+        squareDot: true
+      };
+  var bgStyle = {
+        strokeColor: "#aaa",
+        dotColor: "#aaa",
+        squareDot: true
+      };
+  var map, exporter, slider, repair;
 
   this.editDataset = function(dataset, opts) {
-    if (datasets.length > 0) {
-      return; // kludge; only edit first dataset
+    datasets.push(dataset);
+    if (datasets.length > 2) {
+      map.findLayer(datasets.shift()).remove();
+    }
+    if (datasets.length > 1) {
+      map.findLayer(datasets[0]).setStyle(bgStyle);
     } else {
       startEditing();
     }
-    datasets.push(dataset);
+
     editDataset(dataset, opts);
   };
 
   function startEditing() {
     map = new MshpMap("#mshp-main-map");
     exporter = new ExportControl();
+    repair = new RepairControl(map);
+    slider = new SimplifyControl();
     El("#mshp-main-page").show();
-    El("body").addClass('editing');
   }
 
   function editDataset(dataset, opts) {
-    var displayLyr = dataset.layers[0]; // TODO: multi-layer display
+    var displayLyr = dataset.layers[0];
     var type = displayLyr.geometry_type;
-    var group = new LayerGroup(dataset);
-    var repair;
+    var group = map.addLayer(dataset);
 
     exporter.setDataset(dataset);
-    map.addLayerGroup(group);
     group.showLayer(displayLyr)
-      .setStyle({
-        strokeColor: "#335",
-        dotColor: "#223",
-        squareDot: true
-      })
-      .refresh();
+      .setStyle(foregroundStyle);
+
+    // hide widgets if visible and remove any old event handlers
+    slider.reset();
+    repair.reset();
+
+    map.refresh(); // redraw all map layers
 
     if (type == 'polygon' || type == 'polyline') {
-      slider = new SimplifyControl();
+      slider.show();
+      slider.value(dataset.arcs.getRetainedPct());
       slider.on('change', function(e) {
         group.setRetainedPct(e.value).refresh();
       });
       if (!opts.no_repair) {
+        repair.setDataset(dataset);
         // use timeout so map appears before the repair control calculates
         // intersection data, which can take a little while
         setTimeout(initRepair, 10);
@@ -13957,12 +14082,13 @@ function Editor() {
     }
 
     function initRepair() {
-      repair = new RepairControl(map, dataset.arcs);
+      repair.show();
+      repair.update();
       slider.on('simplify-start', function() {
         repair.clear();
       });
       slider.on('simplify-end', function() {
-        repair.update(slider.value());
+        repair.update();
       });
       repair.on('repair', function() {
         group.refresh();

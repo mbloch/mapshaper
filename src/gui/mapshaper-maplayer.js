@@ -28,6 +28,10 @@ function LayerGroup(dataset) {
     return _bounds;
   };
 
+  this.getDataset = function() {
+    return dataset;
+  };
+
   this.setStyle = function(style) {
     _style = style;
     return this;
@@ -52,10 +56,14 @@ function LayerGroup(dataset) {
     }
   };
 
+  this.remove = function() {
+    if (_surface) {
+      _surface.getElement().remove();
+    }
+  };
+
   this.setMap = function(map) {
     _map = map;
     _surface.getElement().appendTo(map.getElement());
-    map.on('refresh', this.refresh, this);
-    map.getExtent().on('change', this.refresh, this);
   };
 }

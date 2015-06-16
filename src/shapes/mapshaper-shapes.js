@@ -524,6 +524,10 @@ function ArcCollection() {
     return this;
   };
 
+  this.getRetainedPct = function() {
+    return this.getPctByThreshold(_zlimit);
+  };
+
   this.setRetainedPct = function(pct) {
     if (pct >= 1) {
       _zlimit = 0;
@@ -557,6 +561,18 @@ function ArcCollection() {
     var start = _ii[arcId],
         end = start + _nn[arcId];
     return _zz.subarray(start, end);
+  };
+
+  this.getPctByThreshold = function(val) {
+    var arr, rank, pct;
+    if (val > 0) {
+      arr = this.getRemovableThresholds();
+      rank = utils.findRankByValue(arr, val);
+      pct = arr.length > 0 ? 1 - (rank - 1) / arr.length : 1;
+    } else {
+      pct = 1;
+    }
+    return pct;
   };
 
   this.getThresholdByPct = function(pct) {

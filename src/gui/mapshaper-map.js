@@ -5,7 +5,7 @@
 function MshpMap(el, opts) {
   var _root = El(el),
       _groups = [],
-      _bounds, _ext, _mouse,
+      _ext, _mouse,
       defaults = {
         padding: 12 // margin around content at full extent, in pixels
       },
@@ -17,25 +17,63 @@ function MshpMap(el, opts) {
   opts = utils.extend(defaults, opts);
 
   function initMap(bounds) {
-    _bounds = bounds;
-    _ext = new MapExtent(_root, _bounds).setContentPadding(opts.padding);
+    _ext = new MapExtent(_root, bounds).setContentPadding(opts.padding);
+    _ext.on('navigate', refreshLayers);
     _mouse = new MshpMouse(_ext);
     initHomeButton(_btn, _ext);
+  }
+
+  function refreshLayers() {
+    _groups.forEach(function(lyr) {
+      lyr.refresh();
+    });
+  }
+
+  function getContentBounds() {
+    return _groups.reduce(function(memo, lyr) {
+      memo.mergeBounds(lyr.getBounds());
+      return memo;
+    }, new Bounds());
   }
 
   this.getExtent = function() {
     return _ext;
   };
 
-  this.addLayerGroup = function(group) {
-    if (!_bounds) {
-      initMap(group.getBounds());
+  this.refresh = function() {
+    refreshLayers();
+    // this.dispatchEvent('refresh'); // signal visible layers to refresh
+  };
+
+  this.addLayer = function(dataset) {
+    var lyr = new LayerGroup(dataset),
+        bounds;
+    lyr.setMap(this);
+    _groups.push(lyr);
+    bounds = getContentBounds();
+    if (!_ext) {
+      initMap(bounds);
     } else {
-      // TODO: support updating map extent
-      //  _bounds.mergeBounds(bounds);
+      _ext.updateBounds(bounds);
     }
-    group.setMap(this);
-    _groups.push(group);
+    return lyr;
+  };
+
+  this.findLayer = function(dataset) {
+    return utils.find(_groups, function(lyr) {
+      return lyr.getDataset() == dataset;
+    });
+  };
+
+  this.removeLayer = function(targetLyr) {
+    _groups = _groups.reduce(function(memo, lyr) {
+      if (lyr == targetLyr) {
+        lyr.remove();
+      } else {
+        memo.push(lyr);
+      }
+      return memo;
+    }, []);
   };
 
   this.getElement = function() {
@@ -75,6 +113,7 @@ function MapExtent(el, initialBounds) {
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
+    this.dispatchEvent('navigate');
     this.dispatchEvent('resize');
   }, this);
 
@@ -89,6 +128,7 @@ function MapExtent(el, initialBounds) {
       _cy = cy;
       _scale = scale;
       this.dispatchEvent('change');
+      this.dispatchEvent('navigate');
     }
   };
 
@@ -147,6 +187,15 @@ function MapExtent(el, initialBounds) {
 
   this.getBounds = function() {
     return centerAlign(calcBounds(_cx, _cy, _scale));
+  };
+
+  // Update the extent of 'full' zoom without navigating the current view
+  this.updateBounds = function(b) {
+    var full1 = centerAlign(initialBounds);
+    var full2 = centerAlign(b);
+    _scale = _scale * full2.width() / full1.width();
+    initialBounds = b;
+    this.dispatchEvent('change');
   };
 
   function calcBounds(cx, cy, scale) {

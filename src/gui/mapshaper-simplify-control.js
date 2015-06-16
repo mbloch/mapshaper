@@ -2,7 +2,7 @@
 
 var SimplifyControl = function() {
   var _value = 1;
-  El('#g-simplify-control').show();
+  var el = El('#g-simplify-control');
   var slider = new Slider("#g-simplify-control .g-slider");
   slider.handle("#g-simplify-control .g-handle");
   slider.track("#g-simplify-control .g-track");
@@ -64,6 +64,18 @@ var SimplifyControl = function() {
   }
 
   var control = new EventDispatcher();
+  control.show = function() {
+    el.show();
+    El('body').addClass('simplify');
+  };
+  control.hide = function() {
+    el.hide();
+    El('body').removeClass('simplify');
+  };
+  control.reset = function() {
+    control.hide();
+    control.removeEventListeners();
+  };
   control.value = function(val) {
     if (!isNaN(val)) {
       // TODO: validate

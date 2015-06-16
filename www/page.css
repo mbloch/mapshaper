@@ -177,15 +177,15 @@ html, body {
 /* === Editing interface ========== */
 
 @media (max-width: 876px) {
-	body.editing  #g-simplify-control-wrapper {
+	body.simplify  #g-simplify-control-wrapper {
 		top: 21px;
 	}
 
-	body.editing .g-page-header {
+	body.simplify .g-page-header {
 		height: 48px;
 	}
 
-	body.editing #mshp-main-map {
+	body.simplify #mshp-main-map {
 		margin-top: 51px;
 	}
 }

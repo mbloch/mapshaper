@@ -1,38 +1,58 @@
 /* @requires mapshaper-common, mapshaper-repair */
 
-function RepairControl(map, arcData) {
-  var el = El("#g-intersection-display").show(),
+function RepairControl(map) {
+  var el = El("#g-intersection-display"),
       readout = el.findChild("#g-intersection-count"),
-      btn = el.findChild("#g-repair-btn");
-
-  var _initialXX,
-      _currXX,
+      btn = el.findChild("#g-repair-btn"),
       _pointLyr = {geometry_type: "point", shapes: []},
-      _displayGroup = new LayerGroup({layers:[_pointLyr]});
+      _dataset, _currXX, _displayGroup;
 
-  map.addLayerGroup(_displayGroup);
+  this.setDataset = function(dataset) {
+    _dataset = dataset.arcs ? dataset : null;
+    this.clear();
+  };
 
-  this.update = function(pct) {
-    var XX, showBtn;
-    if (pct >= 1) {
-      if (!_initialXX) {
-        _initialXX = MapShaper.findSegmentIntersections(arcData);
-      }
-      XX = _initialXX;
-      showBtn = false;
-    } else {
-      XX = MapShaper.findSegmentIntersections(arcData);
+  this.show = function() {
+    el.show();
+  };
+
+  this.hide = function() {
+    this.clear();
+    el.hide();
+  };
+
+  this.reset = function() {
+    this.hide();
+    this.removeEventListeners();
+  };
+
+  // Display intersections for dataset's current level of arc simplification
+  this.update = function() {
+    var XX, showBtn, pct;
+    if (!_dataset) return;
+    if (!_displayGroup) {
+      _displayGroup = map.addLayer({layers:[_pointLyr]});
+    }
+
+    if (_dataset.arcs.getRetainedInterval() > 0) {
+      XX = MapShaper.findSegmentIntersections(_dataset.arcs);
       showBtn = XX.length > 0;
+    } else { // no simplification
+      if (!_dataset.info.repair) {
+        _dataset.info.repair = {
+          initialXX: MapShaper.findSegmentIntersections(_dataset.arcs)
+        };
+      }
+      XX = _dataset.info.repair.initialXX;
+      showBtn = false;
     }
     showIntersections(XX);
     btn.classed('disabled', !showBtn);
   };
 
-  this.update(1); // initialize at 100%
-
   btn.on('click', function() {
     T.start();
-    var fixed = MapShaper.repairIntersections(arcData, _currXX);
+    var fixed = MapShaper.repairIntersections(_dataset.arcs, _currXX);
     T.stop('Fix intersections');
     btn.addClass('disabled');
     showIntersections(fixed);
@@ -41,7 +61,7 @@ function RepairControl(map, arcData) {
 
   this.clear = function() {
     _currXX = null;
-    _displayGroup.hide();
+    if (_displayGroup) _displayGroup.hide();
   };
 
   function showIntersections(XX) {
