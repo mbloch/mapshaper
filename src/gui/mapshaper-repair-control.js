@@ -2,6 +2,7 @@
 
 function RepairControl(map) {
   var el = El("#g-intersection-display"),
+      _self = this,
       readout = el.findChild("#g-intersection-count"),
       btn = el.findChild("#g-repair-btn"),
       _pointLyr = {geometry_type: "point", shapes: []},
@@ -56,8 +57,8 @@ function RepairControl(map) {
     T.stop('Fix intersections');
     btn.addClass('disabled');
     showIntersections(fixed);
-    this.dispatchEvent('repair');
-  }, this);
+    _self.dispatchEvent('repair');
+  });
 
   this.clear = function() {
     _currXX = null;

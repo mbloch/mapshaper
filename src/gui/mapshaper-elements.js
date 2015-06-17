@@ -9,13 +9,13 @@ function draggable(ref) {
   el.on('mousedown', function(e) {
     xdown = e.pageX;
     ydown = e.pageY;
-    Browser.on(window, 'mousemove', onmove);
-    Browser.on(window, 'mouseup', onrelease);
+    window.addEventListener('mousemove', onmove);
+    window.addEventListener('mouseup', onrelease);
   });
 
   function onrelease(e) {
-    Browser.removeEventListener(window, 'mousemove', onmove);
-    Browser.removeEventListener(window, 'mouseup', onrelease);
+    window.removeEventListener('mousemove', onmove);
+    window.removeEventListener('mouseup', onrelease);
     if (dragging) {
       dragging = false;
       obj.dispatchEvent('dragend');
@@ -111,6 +111,7 @@ utils.inherit(Slider, EventDispatcher);
 
 function ClickText(ref) {
   var _el = El(ref);
+  var _self = this;
   var _max = Infinity,
       _min = -Infinity,
       _formatter = function(v) {return String(v);},
@@ -118,12 +119,12 @@ function ClickText(ref) {
       _parser = function(s) {return parseFloat(s);},
       _value = 0;
 
-  _el.on('blur', onblur, this);
-  _el.on('keydown', onpress, this);
+  _el.on('blur', onblur);
+  _el.on('keydown', onpress);
 
   function onpress(e) {
     if (e.keyCode == 27) { // esc
-      this.value(_value); // reset input field to current value
+      _self.value(_value); // reset input field to current value
       _el.el.blur();
     } else if (e.keyCode == 13) { // enter
       _el.el.blur();
@@ -139,11 +140,11 @@ function ClickText(ref) {
       // return;
     }
     if (_validator(val)) {
-      this.value(val);
-      this.dispatchEvent('change', {value:this.value()});
+      _self.value(val);
+      _self.dispatchEvent('change', {value:_self.value()});
     } else {
-      this.value(_value);
-      this.dispatchEvent('error'); // TODO: improve
+      _self.value(_value);
+      _self.dispatchEvent('error'); // TODO: improve
     }
   }
 
@@ -196,12 +197,13 @@ utils.inherit(Checkbox, EventDispatcher);
 
 function SimpleButton(ref) {
   var _el = El(ref),
+      _self = this,
       _active = _el.hasClass('active');
 
   _el.on('click', function(e) {
-    if (_active) this.dispatchEvent('click');
+    if (_active) _self.dispatchEvent('click');
     return false;
-  }, this);
+  });
 
   this.active = function(a) {
     if (a === void 0) return _active;

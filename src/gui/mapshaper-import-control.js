@@ -33,7 +33,7 @@ function FileChooser(el, cb) {
     .newChild('input')
     .attr('type', 'file')
     .attr('multiple', 'multiple')
-    .on('change', onchange, this);
+    .on('change', onchange);
 
   function onchange(e) {
     var files = e.target.files;

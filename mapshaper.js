@@ -9211,12 +9211,6 @@ function ShpRecordClass(type) {
 // Read data from a .shp file
 // @src is an ArrayBuffer, Node.js Buffer or filename
 //
-//    // Example: read everthing into nested arrays
-//    // coordinates are read as 2-4 element arrays [x,y(,z,m)]
-//    // nested in arrays for shapes, parts and line-strings depending on the type
-//    var reader = new ShpReader("file.shp");
-//    var data = reader.read();
-//
 //    // Example: iterating using #nextShape()
 //    var reader = new ShpReader(buf), s;
 //    while (s = reader.nextShape()) {

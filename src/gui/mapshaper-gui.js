@@ -15,7 +15,7 @@ mapshaper-keep-shapes
 
 api.enableLogging();
 
-if (Browser.inBrowser) {
+if (Env.inBrowser) {
   Browser.onload(function() {
     if (!browserIsSupported()) {
       El("#mshp-not-supported").show();

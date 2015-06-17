@@ -29,6 +29,14 @@ function FilteredArcCollection(unfilteredArcs) {
     }
   }
 
+  // generate filtered arcs when no simplification data is present
+  function initFilteredArcs2() {
+    // simplify at <filterPct> level
+    // remove simplification data from both datasets
+  }
+
+  // Use simplification data to create a low-detail copy of arcs, for faster
+  // rendering when zoomed-out.
   function initFilteredArcs() {
     var filterPct = 0.08;
     var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];

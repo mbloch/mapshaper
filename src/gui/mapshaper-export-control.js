@@ -80,11 +80,8 @@ var ExportControl = function() {
     try {
       zip.createWriter(new zip.BlobWriter("application/zip"), addFile, zipError);
     } catch(e) {
-      if (utils.parseUrl(Browser.getPageUrl()).protocol == 'file') {
-        alert("This browser doesn't support offline .zip file creation.");
-      } else {
-        alert("This browser doesn't support .zip file creation.");
-      }
+      // TODO: show proper error message, not alert
+      alert("This browser doesn't support .zip file creation.");
     }
 
     function zipError(msg) {
