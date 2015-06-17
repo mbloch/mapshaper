@@ -3,27 +3,22 @@
 // Export buttons and their behavior
 //
 var ExportControl = function() {
-  var dataset;
+  var downloadSupport = typeof URL != 'undefined' && URL.createObjectURL &&
+    typeof document.createElement("a").download != "undefined" ||
+    !!window.navigator.msSaveBlob;
+  var dataset, anchor, blobUrl;
 
   El('#g-export-control').show();
 
-  // TODO: URL.createObjectURL() is available in Safari 7.0 but downloading
-  // fails. Need to handle.
-  // Consider: listening for window.onbeforeunload
-  //
-  if (typeof URL == 'undefined' || !URL.createObjectURL) {
+  if (!downloadSupport) {
     El('#g-export-control .g-label').text("Exporting is not supported in this browser");
-    return;
+  } else {
+    anchor = El('#g-export-control').newChild('a').attr('href', '#').node();
+    El('#g-export-buttons').css('display:inline');
+    exportButton("#g-geojson-btn", "geojson");
+    shpBtn = exportButton("#g-shapefile-btn", "shapefile");
+    topoBtn = exportButton("#g-topojson-btn", "topojson");
   }
-
-  var anchor = El('#g-export-control').newChild('a').attr('href', '#').node(),
-      blobUrl;
-
-  El('#g-export-buttons').css('display:inline');
-
-  var geoBtn = exportButton("#g-geojson-btn", "geojson"),
-      shpBtn = exportButton("#g-shapefile-btn", "shapefile"),
-      topoBtn = exportButton("#g-topojson-btn", "topojson");
 
   this.setDataset = function(d) {
     dataset = d;
@@ -31,7 +26,7 @@ var ExportControl = function() {
   };
 
   function exportButton(selector, format) {
-
+    var btn = new SimpleButton(selector).active(true).on('click', onClick);
     function onClick(e) {
       btn.active(false);
       setTimeout(function() {
@@ -40,9 +35,6 @@ var ExportControl = function() {
         });
       }, 10);
     }
-
-    var btn = new SimpleButton(selector).active(true).on('click', onClick);
-    return btn;
   }
 
   function exportAs(format, done) {
