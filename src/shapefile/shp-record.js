@@ -108,8 +108,8 @@ function ShpRecordClass(type) {
     },
 
     readPartSizes: function() {
-      if (this.pointCount === 0) return null;
       if (this.partCount == 1) return [this.pointCount];
+      if (this.partCount === 0) return [];
       var partLen,
           startId = 0,
           sizes = [],
