@@ -415,14 +415,6 @@ Utils.rtrim = function(str) {
   return str.replace(rtrimRxp, '');
 };
 
-Utils.lreplace = function(str, word) {
-  if (str.indexOf(word) == 0) {
-    str = str.substr(word.length);
-  }
-  return str;
-};
-
-
 Utils.addThousandsSep = function(str) {
   var fmt = '',
       start = str[0] == '-' ? 1 : 0,
@@ -3657,7 +3649,8 @@ function MouseArea(element) {
     Browser.on(document, 'mousemove', onMouseMove);
     Browser.on(document, 'mousedown', onMouseDown);
     Browser.on(document, 'mouseup', onMouseUp);
-    Browser.on(element, 'mouseover', onAreaOver);
+    Browser.on(element, 'mouseover', onAreaEnter);
+    Browser.on(element, 'mousemove', onAreaEnter);
     Browser.on(element, 'mouseout', onAreaOut);
     Browser.on(element, 'mousedown', onAreaDown);
     Browser.on(element, 'dblclick', onAreaDblClick);
@@ -3667,9 +3660,11 @@ function MouseArea(element) {
     e.preventDefault(); // prevent text selection cursor on drag
   }
 
-  function onAreaOver(e) {
-    _isOver = true;
-    _self.dispatchEvent('enter');
+  function onAreaEnter() {
+    if (!_isOver) {
+     _isOver = true;
+      _self.dispatchEvent('enter');
+    }
   }
 
   function onAreaOut(e) {
