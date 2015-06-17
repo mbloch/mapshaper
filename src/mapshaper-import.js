@@ -71,12 +71,16 @@ MapShaper.importFileContent = function(content, filename, opts) {
 };
 
 MapShaper.importShapefile = function(obj, opts) {
-  var dataset = MapShaper.importShp(obj.shp.content, opts);
-  var dbf;
+  var dataset = MapShaper.importShp(obj.shp.content, opts),
+      lyr = dataset.layers[0],
+      dbf;
   if (obj.dbf) {
     dbf = MapShaper.importDbf(obj, opts);
     utils.extend(dataset.info, dbf.info);
-    dataset.layers[0].data = dbf.layers[0].data;
+    lyr.data = dbf.layers[0].data;
+    if (lyr.data.size() != lyr.shapes.length) {
+      message("[shp] Mismatched .dbf and .shp record count -- possible data loss.");
+    }
   }
   return dataset;
 };

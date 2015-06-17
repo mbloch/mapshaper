@@ -1,5 +1,15 @@
 /* @requires shp-type */
 
+
+var NullRecord = function() {
+  return {
+    isNull: true,
+    pointCount: 0,
+    partCount: 0,
+    byteLength: 12
+  };
+};
+
 // Returns a constructor function for a shape record class with
 //   properties and methods for reading coordinate data.
 //
@@ -19,22 +29,26 @@ function ShpRecordClass(type) {
       hasZ = ShpType.isZType(type),
       hasM = ShpType.isMType(type),
       singlePoint = !hasBounds,
-      mzRangeBytes = singlePoint ? 0 : 16;
+      mzRangeBytes = singlePoint ? 0 : 16,
+      constructor;
 
-  // @bin is a BinArray set to the first byte of a shape record
-  var constructor = function ShapeRecord(bin) {
+  if (type === 0) {
+    return NullRecord;
+  }
+
+  // @bin is a BinArray set to the first data byte of a shape record
+  constructor = function ShapeRecord(bin, bytes) {
     var pos = bin.position();
     this.id = bin.bigEndian().readUint32();
-    this.byteLength = bin.readUint32() * 2 + 8; // bytes in content section + 8 header bytes
-    this.type = bin.littleEndian().readUint32();
-    this.isNull = this.type === 0;
-    if (this.byteLength <= 0 || this.type !== 0 && this.type != type)
+    this.type = bin.littleEndian().skipBytes(4).readUint32();
+    if (this.type === 0) {
+      return new NullRecord();
+    }
+    if (bytes > 0 !== true || (this.type != type && this.type !== 0)) {
       error("Unable to read a shape -- .shp file may be corrupted");
-
-    if (this.isNull) {
-      this.pointCount = 0;
-      this.partCount = 0;
-    } else if (singlePoint) {
+    }
+    this.byteLength = bytes; // bin.readUint32() * 2 + 8; // bytes in content section + 8 header bytes
+    if (singlePoint) {
       this.pointCount = 1;
       this.partCount = 1;
     } else {
@@ -43,7 +57,7 @@ function ShpRecordClass(type) {
       this.pointCount = bin.readUint32();
     }
     this._data = function() {
-      return this.isNull ? null : bin.position(pos);
+      return bin.position(pos);
     };
   };
 

@@ -9433,7 +9433,6 @@ function PathImporter(opts, reservedPoints) {
         x, y, prevX, prevY;
 
     checkBuffers(pointId + len);
-
     while (i < end) {
       x = arr[i++];
       y = arr[i++];
@@ -9513,7 +9512,7 @@ function PathImporter(opts, reservedPoints) {
       }
 
       if (pointId > 0) {
-       if (pointId < xx.length) {
+        if (pointId < xx.length) {
           xx = xx.subarray(0, pointId);
           yy = yy.subarray(0, pointId);
         }
@@ -10823,6 +10822,16 @@ ShpType.hasBounds = function(t) {
 
 
 
+
+var NullRecord = function() {
+  return {
+    isNull: true,
+    pointCount: 0,
+    partCount: 0,
+    byteLength: 12
+  };
+};
+
 // Returns a constructor function for a shape record class with
 //   properties and methods for reading coordinate data.
 //
@@ -10842,22 +10851,26 @@ function ShpRecordClass(type) {
       hasZ = ShpType.isZType(type),
       hasM = ShpType.isMType(type),
       singlePoint = !hasBounds,
-      mzRangeBytes = singlePoint ? 0 : 16;
+      mzRangeBytes = singlePoint ? 0 : 16,
+      constructor;
 
-  // @bin is a BinArray set to the first byte of a shape record
-  var constructor = function ShapeRecord(bin) {
+  if (type === 0) {
+    return NullRecord;
+  }
+
+  // @bin is a BinArray set to the first data byte of a shape record
+  constructor = function ShapeRecord(bin, bytes) {
     var pos = bin.position();
     this.id = bin.bigEndian().readUint32();
-    this.byteLength = bin.readUint32() * 2 + 8; // bytes in content section + 8 header bytes
-    this.type = bin.littleEndian().readUint32();
-    this.isNull = this.type === 0;
-    if (this.byteLength <= 0 || this.type !== 0 && this.type != type)
+    this.type = bin.littleEndian().skipBytes(4).readUint32();
+    if (this.type === 0) {
+      return new NullRecord();
+    }
+    if (bytes > 0 !== true || (this.type != type && this.type !== 0)) {
       error("Unable to read a shape -- .shp file may be corrupted");
-
-    if (this.isNull) {
-      this.pointCount = 0;
-      this.partCount = 0;
-    } else if (singlePoint) {
+    }
+    this.byteLength = bytes; // bin.readUint32() * 2 + 8; // bytes in content section + 8 header bytes
+    if (singlePoint) {
       this.pointCount = 1;
       this.partCount = 1;
     } else {
@@ -10866,7 +10879,7 @@ function ShpRecordClass(type) {
       this.pointCount = bin.readUint32();
     }
     this._data = function() {
-      return this.isNull ? null : bin.position(pos);
+      return bin.position(pos);
     };
   };
 
@@ -11058,24 +11071,15 @@ function ShpReader(src) {
 
   var file = utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
   var header = parseHeader(file.readBytes(100, 0));
+  var fileSize = file.size();
   var RecordClass = new ShpRecordClass(header.type);
-  var recordOffs = 100;
+  var recordOffs, i, skippedBytes;
+
+  reset();
 
   this.header = function() {
     return header;
   };
-
-  // unused and untested
-  // return data as nested arrays of shapes > parts > points > [x,y(,z,m)]
-  /*
-  this.read = function() {
-    var shapes = [];
-    this.forEachShape(function(shp) {
-      shapes.push(shp.isNull ? null : shp.read());
-    });
-    return shapes;
-  };
-  */
 
   // Callback interface: for each record in a .shp file, pass a
   //   record object to a callback function
@@ -11090,32 +11094,37 @@ function ShpReader(src) {
 
   // Iterator interface for reading shape records
   this.nextShape = function() {
-    var fileSize = file.size(),
-        recordSize,
-        shape = null,
-        bin;
-
-    if (recordOffs + 8 < fileSize) {
-      bin = file.readBytes(8, recordOffs);
-      // byteLen is bytes in content section + 8 header bytes
-      recordSize = bin.bigEndian().skipBytes(4).readUint32() * 2 + 8;
-      // todo: what if size is 0
-      if (recordOffs + recordSize <= fileSize && recordSize >= 12) {
-        bin = file.readBytes(recordSize, recordOffs);
-        recordOffs += recordSize;
-        shape = new RecordClass(bin);
-      } else {
-        trace("Unaccounted bytes in .shp file -- possible corruption");
+    var shape = readShapeAtOffset(recordOffs, i),
+        offs2, skipped;
+    if (!shape && recordOffs + 12 <= fileSize) {
+      // Very rarely, in-the-wild .shp files may contain junk bytes between
+      // records; it may be possible to scan past the junk to find the next record.
+      shape = huntForNextShape(recordOffs + 4, i);
+    }
+    if (shape) {
+      recordOffs += shape.byteLength;
+      if (shape.id < i) {
+        // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
+        message("[shp] Record " + shape.id + " appears more than once -- possible file corruption.");
+        return this.nextShape();
       }
-    }
-
-    if (shape === null) {
+      i++;
+    } else {
+      if (skippedBytes > 0) {
+        // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
+        message("[shp] Skipped " + skippedBytes + " bytes in .shp file -- possible data loss.");
+      }
       file.close();
-      recordOffs = 100;
+      reset();
     }
-
     return shape;
   };
+
+  function reset() {
+    recordOffs = 100;
+    skippedBytes = 0;
+    i = 1; // Shapefile id of first record
+  }
 
   function parseHeader(bin) {
     var header = {
@@ -11140,6 +11149,48 @@ function ShpReader(src) {
       error("File size doesn't match size in header");
 
     return header;
+  }
+
+  function readShapeAtOffset(recordOffs, i) {
+    var shape = null,
+        recordSize, recordType, recordId, goodId, goodSize, goodType, bin;
+
+    if (recordOffs + 12 <= fileSize) {
+      bin = file.readBytes(12, recordOffs);
+      recordId = bin.bigEndian().readUint32();
+      // record size is bytes in content section + 8 header bytes
+      recordSize = bin.readUint32() * 2 + 8;
+      recordType = bin.littleEndian().readUint32();
+      goodId = recordId == i; // not checking id ...
+      goodSize = recordOffs + recordSize <= fileSize && recordSize >= 12;
+      goodType = recordType === 0 || recordType == header.type;
+      if (goodSize && goodType) {
+        bin = file.readBytes(recordSize, recordOffs);
+        shape = new RecordClass(bin, recordSize);
+      }
+    }
+    return shape;
+  }
+
+  // TODO: add tests
+  // Try to scan past unreadable content to find next record
+  function huntForNextShape(start, id) {
+    var offset = start,
+        shape = null,
+        bin, recordId, recordType;
+    while (offset + 12 <= fileSize) {
+      bin = file.readBytes(12, offset);
+      recordId = bin.bigEndian().readUint32();
+      recordType = bin.littleEndian().skipBytes(4).readUint32();
+      if (recordId == id && (recordType == header.type || recordType === 0)) {
+        // we have a likely position, but may still be unparsable
+        shape = readShapeAtOffset(offset, id);
+        break;
+      }
+      offset += 4; // try next integer position
+    }
+    skippedBytes += shape ? offset - start : fileSize - start;
+    return shape;
   }
 }
 
@@ -11358,6 +11409,7 @@ MapShaper.importShp = function(src, opts) {
           parts = shp.readPartSizes(),
           start = 0,
           len;
+
       for (var i=0; i<parts.length; i++) {
         len = parts[i] * 2;
         importer.importPathFromFlatArray(xy, type, len, start);
@@ -11368,6 +11420,7 @@ MapShaper.importShp = function(src, opts) {
 
   return importer.done();
 };
+
 
 // Convert a dataset to Shapefile files
 MapShaper.exportShapefile = function(dataset, opts) {
@@ -11602,12 +11655,16 @@ MapShaper.importFileContent = function(content, filename, opts) {
 };
 
 MapShaper.importShapefile = function(obj, opts) {
-  var dataset = MapShaper.importShp(obj.shp.content, opts);
-  var dbf;
+  var dataset = MapShaper.importShp(obj.shp.content, opts),
+      lyr = dataset.layers[0],
+      dbf;
   if (obj.dbf) {
     dbf = MapShaper.importDbf(obj, opts);
     utils.extend(dataset.info, dbf.info);
-    dataset.layers[0].data = dbf.layers[0].data;
+    lyr.data = dbf.layers[0].data;
+    if (lyr.data.size() != lyr.shapes.length) {
+      message("[shp] Mismatched .dbf and .shp record count -- possible data loss.");
+    }
   }
   return dataset;
 };

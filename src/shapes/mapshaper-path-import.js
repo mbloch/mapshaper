@@ -89,7 +89,6 @@ function PathImporter(opts, reservedPoints) {
         x, y, prevX, prevY;
 
     checkBuffers(pointId + len);
-
     while (i < end) {
       x = arr[i++];
       y = arr[i++];
@@ -169,7 +168,7 @@ function PathImporter(opts, reservedPoints) {
       }
 
       if (pointId > 0) {
-       if (pointId < xx.length) {
+        if (pointId < xx.length) {
           xx = xx.subarray(0, pointId);
           yy = yy.subarray(0, pointId);
         }

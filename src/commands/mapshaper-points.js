@@ -42,9 +42,9 @@ MapShaper.pointsFromDataTable = function(data, opts) {
     var x = rec[opts.x],
         y = rec[opts.y];
     if (!utils.isFiniteNumber(x) || !utils.isFiniteNumber(y)) {
-      nulls++;
       return null;
     }
     return [[x, y]];
   });
+
 };

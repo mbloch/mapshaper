@@ -61,6 +61,14 @@ describe('mapshaper-shapes.js', function () {
       assert.ok(new ArcCollection(arcs5).getBounds().hasBounds() == false)
     })
 
+    it('#getBounds() test 2', function() {
+      var coords = [[[69.41179916666665, 30.197322777777778], [69.45055555555555, 30.73027527777777]],
+          [[140.70805638888888, 41.2486984752703], [140.35247047496802, 40.825000277777775]]];
+      var arcs = new ArcCollection(coords);
+      var target = [69.41179916666665, 30.197322777777778, 140.70805638888888, 41.2486984752703];
+      assert.deepEqual(arcs.getBounds().toArray(), target);
+    });
+
     it('#getPointCount() returns correct point count', function() {
       assert.equal(new ArcCollection(arcs3).getPointCount(), 10)
       assert.equal(new ArcCollection(arcs4).getPointCount(), 4)

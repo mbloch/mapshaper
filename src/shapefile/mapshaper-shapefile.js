@@ -58,6 +58,7 @@ MapShaper.importShp = function(src, opts) {
           parts = shp.readPartSizes(),
           start = 0,
           len;
+
       for (var i=0; i<parts.length; i++) {
         len = parts[i] * 2;
         importer.importPathFromFlatArray(xy, type, len, start);
@@ -68,6 +69,7 @@ MapShaper.importShp = function(src, opts) {
 
   return importer.done();
 };
+
 
 // Convert a dataset to Shapefile files
 MapShaper.exportShapefile = function(dataset, opts) {
