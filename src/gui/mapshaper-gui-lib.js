@@ -5,6 +5,7 @@ mapshaper-file-types
 */
 
 var gui = api.gui = {};
+window.mapshaper = api;
 
 gui.isReadableFileType = function(filename) {
   return !!MapShaper.guessInputFileType(filename);

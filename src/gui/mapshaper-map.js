@@ -81,7 +81,7 @@ function MshpMap(el, opts) {
   };
 }
 
-Opts.inherit(MshpMap, EventDispatcher);
+utils.inherit(MshpMap, EventDispatcher);
 
 function initHomeButton(btn, ext) {
   var _full = null;
@@ -224,4 +224,4 @@ function MapExtent(el, initialBounds) {
   this.reset(); // initialize map extent
 }
 
-Opts.inherit(MapExtent, EventDispatcher);
+utils.inherit(MapExtent, EventDispatcher);

@@ -115,5 +115,3 @@ function Editor() {
     }
   }
 }
-
-Opts.extendNamespace("mapshaper", api);

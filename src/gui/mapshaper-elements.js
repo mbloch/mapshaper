@@ -106,7 +106,7 @@ function Slider(ref, opts) {
   }
 }
 
-Opts.inherit(Slider, EventDispatcher);
+utils.inherit(Slider, EventDispatcher);
 
 
 function ClickText(ref) {
@@ -185,14 +185,14 @@ function ClickText(ref) {
   };
 }
 
-Opts.inherit(ClickText, EventDispatcher);
+utils.inherit(ClickText, EventDispatcher);
 
 
 function Checkbox(ref) {
   var _el = El(ref);
 }
 
-Opts.inherit(Checkbox, EventDispatcher);
+utils.inherit(Checkbox, EventDispatcher);
 
 function SimpleButton(ref) {
   var _el = El(ref),
@@ -213,4 +213,4 @@ function SimpleButton(ref) {
   };
 }
 
-Opts.inherit(SimpleButton, EventDispatcher);
+utils.inherit(SimpleButton, EventDispatcher);

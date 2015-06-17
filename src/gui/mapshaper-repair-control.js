@@ -85,4 +85,4 @@ function RepairControl(map) {
   }
 }
 
-Opts.inherit(RepairControl, EventDispatcher);
+utils.inherit(RepairControl, EventDispatcher);
