@@ -68,7 +68,7 @@ function ImportControl(editor) {
   }
 
   function getImportOpts() {
-    var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || "mapshaper";
+    var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || null;
     return {
       method: method,
       no_repair: !El("#g-repair-intersections-opt").node().checked,
