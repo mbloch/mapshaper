@@ -1,6 +1,5 @@
 /* @requires mapshaper-gui-lib, mapshaper-import, mapshaper-progress-bar */
 
-
 // Cache and merge data from Shapefile component files (.prj, .dbf, shp) in
 // whatever order they are received in.
 //
@@ -57,43 +56,43 @@ gui.importFile = function(file, opts, cb) {
 gui.inputFileContent = function(path, content, importOpts, cb) {
   var type = MapShaper.guessInputFileType(path),
       size = content.byteLength || content.length, // ArrayBuffer or string
-      progressBar;
+      delay = 25, // timeout in ms; should be long enough for Firefox to refresh.
+      progressBar, dataset, queue;
 
   // these file types can be imported and edited right away
   if (type == 'shp' || type == 'json') {
     El("#mshp-intro-screen").hide();
     progressBar = new ProgressBar('#page-wrapper');
-    if (size < 4e7) progressBar.remove(); // don't show for small datasets
     progressBar.update(0.2, "Importing");
-
-    // Import data in steps, so browser can refresh the progress bar; add enough
-    //   timeout delay for Firefox to refresh (may not work everywhere).
-    gui.queueSync(25)
+    if (size < 4e7) progressBar.remove(); // don't show for small datasets
+    // Import data with a delay before each step, so browser can refresh the progress bar
+    queue = gui.queueSync()
       .defer(function() {
         importOpts.files = [path]; // TODO: try to remove this
-        var dataset = MapShaper.importFileContent(content, path, importOpts);
+        dataset = MapShaper.importFileContent(content, path, importOpts);
+      }, delay);
+    if (importOpts.method) {
+      queue.defer(function() {
         progressBar.update(0.6, "Presimplifying");
-        return dataset;
       })
-      .defer(function(dataset) {
+      .defer(function() {
         if (dataset.arcs) {
           MapShaper.simplifyPaths(dataset.arcs, importOpts);
           if (importOpts.keep_shapes) {
             MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
           }
         }
-        return dataset;
-      })
-      .await(function(dataset) {
-        if (type == 'shp') {
-          gui.receiveShapefileComponent(path, dataset);
-        }
-        progressBar.remove();
-        cb(null, dataset);
-      });
-
-  // merge auxiliary Shapefile files with .shp content
+      }, delay);
+    }
+    queue.await(function() {
+      if (type == 'shp') {
+        gui.receiveShapefileComponent(path, dataset);
+      }
+      progressBar.remove();
+      cb(null, dataset);
+    });
   } else if (type == 'dbf' || type == 'prj') {
+    // merge auxiliary Shapefile files with .shp content
     gui.receiveShapefileComponent(path, content);
 
   } else {

@@ -42,7 +42,6 @@ function MshpMap(el, opts) {
 
   this.refresh = function() {
     refreshLayers();
-    // this.dispatchEvent('refresh'); // signal visible layers to refresh
   };
 
   this.addLayer = function(dataset) {

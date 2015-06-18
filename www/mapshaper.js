@@ -1300,6 +1300,7 @@ Format codes: %[flags][width][.precision]type
 supported flags:
   +   add '+' before positive numbers
   0   left-pad with '0'
+  '   Add thousands separator
 width: 1 to many
 precision: .(1 to many)
 type:
@@ -1333,10 +1334,6 @@ function formatValue(val, matches) {
   var padding = matches[2];
   var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
   var type = matches[4];
-
-  if (type == '%') {
-    return '%'; // %% = literal '%'
-  }
   var isString = type == 's',
       isHex = type == 'x' || type == 'X',
       isInt = type == 'd' || type == 'i',
@@ -1397,58 +1394,36 @@ function formatValue(val, matches) {
 }
 
 // Get a function for interpolating formatted values into a string.
-//
 Utils.formatter = function(fmt) {
   var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
   var literals = [],
       formatCodes = [],
       startIdx = 0,
-      escapes = 0,
+      prefix = "",
       literal,
       matches;
 
-  while(matches=codeRxp.exec(fmt)) {
+  while (matches=codeRxp.exec(fmt)) {
     literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
     if (matches[0] == '%%') {
-      matches = "%";
-      escapes++;
+      prefix += literal + '%';
+    } else {
+      literals.push(prefix + literal);
+      prefix = '';
+      formatCodes.push(matches);
     }
-    literals.push(literal);
-    formatCodes.push(matches);
     startIdx = codeRxp.lastIndex;
   }
-  literals.push(fmt.substr(startIdx));
-
-  if (escapes > 0) {
-    formatCodes = formatCodes.filter(function(obj, i) {
-      if (obj !== '%') return true;
-      literals[i] += '%' + literals.splice(i+1, 1)[0];
-      return false;
-    });
-  }
+  literals.push(prefix + fmt.substr(startIdx));
 
   return function() {
     var str = literals[0],
-        n = arguments.length,
-        count;
+        n = arguments.length;
     if (n != formatCodes.length) {
-      error("[Utils.format()] Data does not match format string; format:", fmt, "data:", arguments);
+      error("[format()] Data does not match format string; format:", fmt, "data:", arguments);
     }
     for (var i=0; i<n; i++) {
-      // 's?': insert "s" if needed to form plural of previous value.
-      if (arguments[i] == 's?') {
-        if (Utils.isInteger(arguments[i-1])) {
-          count = arguments[i-1];
-        } else if (Utils.isInteger(arguments[i+1])) {
-          count = arguments[i+1];
-        } else {
-          count = 1;
-        }
-        str += count == 1 ? "" : "s";
-      } else {
-        str += formatValue(arguments[i], formatCodes[i]);
-      }
-      str += literals[i+1];
+      str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
     }
     return str;
   };
@@ -1490,19 +1465,12 @@ EventData.prototype.stopPropagation = function() {
   this.__stop__ = true;
 };
 
-/**
- * Base class for objects that dispatch events; public methods:
- *   addEventListener() / on()
- *   removeEventListener()
- *   dispatchEvent() / trigger()
- */
+//  Base class for objects that dispatch events
 function EventDispatcher() {}
 
-/**
- * Dispatch an event (i.e. all registered event handlers are called).
- * @param {string} type Name of the event type, e.g. "change".
- * @param {object=} obj Optional data to send with the event.
- */
+
+// @obj (optional) data object, gets mixed into event
+// @listener (optional) dispatch event only to this object
 EventDispatcher.prototype.dispatchEvent = function(type, obj, listener) {
   var evt;
   // TODO: check for bugs if handlers are removed elsewhere while firing
@@ -1523,52 +1491,33 @@ EventDispatcher.prototype.dispatchEvent = function(type, obj, listener) {
   }
 };
 
-/**
- * Register an event handler for a named event.
- * @param {string} type Name of the event.
- * @param {function} callback Event handler, called with BoundEvent argument.
- * @param {*} context Execution context of the event handler.
- * @param {number} priority Priority of the event; defaults to 0.
- * removed * @return True if handler added, else false.
- */
 EventDispatcher.prototype.addEventListener =
 EventDispatcher.prototype.on = function(type, callback, context, priority) {
   context = context || this;
   priority = priority || 0;
   var handler = new Handler(type, this, callback, context, priority);
-
   // Insert the new event in the array of handlers according to its priority.
-  //
   var handlers = this._handlers || (this._handlers = []);
   var i = handlers.length;
-  while(--i >= 0 && handlers[i].priority < handler.priority) {}
+  while (--i >= 0 && handlers[i].priority < handler.priority) {}
   handlers.splice(i+1, 0, handler);
   return this;
 };
 
-/**
- * Remove an event handler.
- * @param {string} type Event type to match.
- * @param {function(BoundEvent)} callback Event handler function to match.
- * @param {*=} context Execution context of the event handler to match.
- * @return {number} Returns number of handlers removed (expect 0 or 1).
- */
+// Remove an event handler.
+// @param {string} type Event type to match.
+// @param {function(BoundEvent)} callback Event handler function to match.
+// @param {*=} context Execution context of the event handler to match.
+// @return {number} Returns number of handlers removed (expect 0 or 1).
 EventDispatcher.prototype.removeEventListener = function(type, callback, context) {
   context = context || this;
   var count = this.removeEventListeners(type, callback, context);
   return count;
 };
 
-/**
- * Remove event handlers that match function arguments.
- * @param {string=} type Event type to match.
- * @param {function(BoundEvent)=} callback Event handler function to match.
- * @param {*=} context Execution context of the event handler to match.
- * @return {number} Number of handlers removed.
- */
-// TODO: remove this: too convoluted. Need other way to remove listeners by type
-EventDispatcher.prototype.removeEventListeners =
-  function(type, callback, context) {
+// Remove event handlers; passing arguments can limit which listeners to remove
+// Returns nmber of handlers removed.
+EventDispatcher.prototype.removeEventListeners = function(type, callback, context) {
   var handlers = this._handlers;
   var newArr = [];
   var count = 0;
@@ -3099,26 +3048,28 @@ gui.isReadableFileType = function(filename) {
   return !!MapShaper.guessInputFileType(filename);
 };
 
-// Run a series of tasks in sequence
-// Each task is run after a short timeout, so browser can update the DOM.
+// Run a series of tasks in sequence. Each task can be run after a timeout.
 // TODO: add node-style error handling
-gui.queueSync = function(delay) {
-  var tasks = [];
+gui.queueSync = function() {
+  var tasks = [],
+      timeouts = [];
   return {
-    defer: function(task) {
+    defer: function(task, timeout) {
       tasks.push(task);
+      timeouts.push(timeout | 0);
       return this;
     },
     await: function(done) {
       var retn;
       runNext();
       function runNext() {
-        var task = tasks.shift();
+        var task = tasks.shift(),
+            ms = timeouts.shift();
         if (task) {
           setTimeout(function() {
             retn = task(retn);
             runNext();
-          }, delay | 0);
+          }, ms);
         } else {
           done(retn);
         }
@@ -5136,26 +5087,35 @@ function ArcCollection() {
   };
 
   // Add simplification data to the dataset
-  // @thresholds is an array of arrays of removal thresholds for each arc-vertex.
+  // @thresholds is either a single typed array or an array of arrays of removal thresholds for each arc;
   //
   this.setThresholds = function(thresholds) {
-    var zz;
-    if (thresholds instanceof Float64Array) {
+    var n = this.getPointCount(),
+        zz = null;
+    if (!thresholds) {
+      // nop
+    } else if (thresholds.length == n) {
       zz = thresholds;
     } else if (thresholds.length == this.size()) {
-      var i = 0;
-      zz = new Float64Array(_xx.length);
-      thresholds.forEach(function(arr) {
-        for (var j=0, n=arr.length; j<n; i++, j++) {
-          zz[i] = arr[j];
-        }
-      });
+      zz = flattenThresholds(thresholds, n);
     } else {
-      error("ArcCollection#setThresholds() Invalid threshold data.");
+      error("Invalid threshold data");
     }
     initZData(zz);
     return this;
   };
+
+  function flattenThresholds(arr, n) {
+    var zz = new Float64Array(n),
+        i = 0;
+    arr.forEach(function(arr) {
+      for (var j=0, n=arr.length; j<n; i++, j++) {
+        zz[i] = arr[j];
+      }
+    });
+    if (i != n) error("Mismatched thresholds");
+    return zz;
+  }
 
   // bake in current simplification level, if any
   this.flatten = function() {
@@ -10769,7 +10729,6 @@ function ProgressBar(el) {
 
 
 
-
 // Cache and merge data from Shapefile component files (.prj, .dbf, shp) in
 // whatever order they are received in.
 //
@@ -10826,43 +10785,43 @@ gui.importFile = function(file, opts, cb) {
 gui.inputFileContent = function(path, content, importOpts, cb) {
   var type = MapShaper.guessInputFileType(path),
       size = content.byteLength || content.length, // ArrayBuffer or string
-      progressBar;
+      delay = 25, // timeout in ms; should be long enough for Firefox to refresh.
+      progressBar, dataset, queue;
 
   // these file types can be imported and edited right away
   if (type == 'shp' || type == 'json') {
     El("#mshp-intro-screen").hide();
     progressBar = new ProgressBar('#page-wrapper');
-    if (size < 4e7) progressBar.remove(); // don't show for small datasets
     progressBar.update(0.2, "Importing");
-
-    // Import data in steps, so browser can refresh the progress bar; add enough
-    //   timeout delay for Firefox to refresh (may not work everywhere).
-    gui.queueSync(25)
+    if (size < 4e7) progressBar.remove(); // don't show for small datasets
+    // Import data with a delay before each step, so browser can refresh the progress bar
+    queue = gui.queueSync()
       .defer(function() {
         importOpts.files = [path]; // TODO: try to remove this
-        var dataset = MapShaper.importFileContent(content, path, importOpts);
+        dataset = MapShaper.importFileContent(content, path, importOpts);
+      }, delay);
+    if (importOpts.method) {
+      queue.defer(function() {
         progressBar.update(0.6, "Presimplifying");
-        return dataset;
       })
-      .defer(function(dataset) {
+      .defer(function() {
         if (dataset.arcs) {
           MapShaper.simplifyPaths(dataset.arcs, importOpts);
           if (importOpts.keep_shapes) {
             MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
           }
         }
-        return dataset;
-      })
-      .await(function(dataset) {
-        if (type == 'shp') {
-          gui.receiveShapefileComponent(path, dataset);
-        }
-        progressBar.remove();
-        cb(null, dataset);
-      });
-
-  // merge auxiliary Shapefile files with .shp content
+      }, delay);
+    }
+    queue.await(function() {
+      if (type == 'shp') {
+        gui.receiveShapefileComponent(path, dataset);
+      }
+      progressBar.remove();
+      cb(null, dataset);
+    });
   } else if (type == 'dbf' || type == 'prj') {
+    // merge auxiliary Shapefile files with .shp content
     gui.receiveShapefileComponent(path, content);
 
   } else {
@@ -11892,6 +11851,69 @@ function CanvasLayer() {
 
 
 
+MapShaper.simplifyArcsFast = function(arcs, dist) {
+  var xx = [],
+      yy = [],
+      nn = [],
+      count;
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    count = MapShaper.simplifyPathFast([i], arcs, dist, xx, yy);
+    nn.push(count);
+  }
+  return new ArcCollection(nn, xx, yy);
+};
+
+MapShaper.simplifyShapeFast = function(shp, arcs, dist) {
+  if (!shp || !dist) return null;
+  var xx = [],
+      yy = [],
+      nn = [],
+      shp2 = [];
+
+  shp.forEach(function(path) {
+    var count = MapShaper.simplifyPathFast(path, arcs, dist, xx, yy);
+    if (count > 0) {
+      shp2.push([nn.length]);
+      nn.push(count);
+    }
+  });
+  return {
+    shape: shp2,
+    arcs: new ArcCollection(nn, xx, yy)
+  };
+};
+
+MapShaper.simplifyPathFast = function(path, arcs, dist, xx, yy) {
+  var iter = arcs.getShapeIter(path),
+      count = 0,
+      prevX, prevY, x, y;
+  while (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    if (count === 0 || distance2D(x, y, prevX, prevY) > dist) {
+      xx.push(x);
+      yy.push(y);
+      prevX = x;
+      prevY = y;
+      count++;
+    }
+  }
+  if (count > 2 && (x != prevX || y != prevY)) {
+    xx.push(x);
+    yy.push(y);
+    count++;
+  }
+  while (count < 4 && count > 0) {
+    xx.pop();
+    yy.pop();
+    count--;
+  }
+  return count;
+};
+
+
+
+
 // A wrapper for ArcCollection that converts source coords to screen coords
 // and filters paths to speed up rendering.
 //
@@ -11904,44 +11926,46 @@ function FilteredArcCollection(unfilteredArcs) {
   init();
 
   function init() {
-    // If we have simplification data...
-    if (unfilteredArcs.getVertexData().zz) {
+    var size = unfilteredArcs.getPointCount(),
+        cutoff = 5e5,
+        nth;
+    if (!!unfilteredArcs.getVertexData().zz) {
+      // If we have simplification data...
       // Sort simplification thresholds for all non-endpoint vertices
       // for quick conversion of simplification percentage to threshold value.
       // For large datasets, use every nth point, for faster sorting.
-      var size = unfilteredArcs.getPointCount(),
-          nth = Math.ceil(size / 5e5);
+      nth = Math.ceil(size / cutoff);
       _sortedThresholds = unfilteredArcs.getRemovableThresholds(nth);
       utils.quicksort(_sortedThresholds, false);
-
       // For large datasets, create a filtered copy of the data for faster rendering
-      if (size > 5e5) {
-        initFilteredArcs();
+      if (size > cutoff) {
+        filteredArcs = initFilteredArcs(unfilteredArcs, _sortedThresholds);
+        filteredSegLen = filteredArcs.getAvgSegment();
+      }
+    } else {
+      if (size > cutoff) {
+        // generate filtered arcs when no simplification data is present
+        filteredSegLen = unfilteredArcs.getAvgSegment() * 4;
+        filteredArcs = MapShaper.simplifyArcsFast(unfilteredArcs, filteredSegLen);
       }
     }
   }
 
-  // generate filtered arcs when no simplification data is present
-  function initFilteredArcs2() {
-    // simplify at <filterPct> level
-    // remove simplification data from both datasets
-  }
-
   // Use simplification data to create a low-detail copy of arcs, for faster
   // rendering when zoomed-out.
-  function initFilteredArcs() {
+  function initFilteredArcs(arcs, sortedThresholds) {
     var filterPct = 0.08;
-    var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];
-    filteredArcs = unfilteredArcs.setRetainedInterval(filterZ).getFilteredCopy();
-    unfilteredArcs.setRetainedPct(1); // clear simplification
-    filteredSegLen = filteredArcs.getAvgSegment();
+    var filterZ = sortedThresholds[Math.floor(filterPct * sortedThresholds.length)];
+    var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
+    arcs.setRetainedPct(1); // clear simplification
+    return filteredArcs;
   }
 
   function getArcData() {
     // Use a filtered version of arcs at small scales
-    var unitsPerPixel = 1/_ext.getTransform().mx;
-    return filteredArcs && unitsPerPixel > filteredSegLen * 1.5 ?
-      filteredArcs : unfilteredArcs;
+    var unitsPerPixel = 1/_ext.getTransform().mx,
+        useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
+    return useFiltering ? filteredArcs : unfilteredArcs;
   }
 
   this.update = function(arcs) {
@@ -11971,8 +11995,6 @@ function FilteredArcCollection(unfilteredArcs) {
   };
 
   this.forEach = function(cb) {
-    if (!_ext) error("Missing map extent");
-
     var src = getArcData(),
         arc = new Arc(src),
         minPathLen = 0.8 * _ext.getPixelSize(),
@@ -12297,7 +12319,6 @@ function MshpMap(el, opts) {
 
   this.refresh = function() {
     refreshLayers();
-    // this.dispatchEvent('refresh'); // signal visible layers to refresh
   };
 
   this.addLayer = function(dataset) {
@@ -13130,7 +13151,6 @@ function Editor() {
 
   function editDataset(dataset, opts) {
     var displayLyr = dataset.layers[0];
-    var type = displayLyr.geometry_type;
     var group = map.addLayer(dataset);
 
     exporter.setDataset(dataset);
@@ -13143,7 +13163,7 @@ function Editor() {
 
     map.refresh(); // redraw all map layers
 
-    if (type == 'polygon' || type == 'polyline') {
+    if (opts.method && dataset.arcs) {
       slider.show();
       slider.value(dataset.arcs.getRetainedPct());
       slider.on('change', function(e) {

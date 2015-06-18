@@ -1300,6 +1300,7 @@ Format codes: %[flags][width][.precision]type
 supported flags:
   +   add '+' before positive numbers
   0   left-pad with '0'
+  '   Add thousands separator
 width: 1 to many
 precision: .(1 to many)
 type:
@@ -1333,10 +1334,6 @@ function formatValue(val, matches) {
   var padding = matches[2];
   var decimals = matches[3] ? parseInt(matches[3].substr(1)) : void 0;
   var type = matches[4];
-
-  if (type == '%') {
-    return '%'; // %% = literal '%'
-  }
   var isString = type == 's',
       isHex = type == 'x' || type == 'X',
       isInt = type == 'd' || type == 'i',
@@ -1397,58 +1394,36 @@ function formatValue(val, matches) {
 }
 
 // Get a function for interpolating formatted values into a string.
-//
 Utils.formatter = function(fmt) {
   var codeRxp = /%([\',+0]*)([1-9]?)((?:\.[1-9])?)([sdifxX%])/g;
   var literals = [],
       formatCodes = [],
       startIdx = 0,
-      escapes = 0,
+      prefix = "",
       literal,
       matches;
 
-  while(matches=codeRxp.exec(fmt)) {
+  while (matches=codeRxp.exec(fmt)) {
     literal = fmt.substring(startIdx, codeRxp.lastIndex - matches[0].length);
     if (matches[0] == '%%') {
-      matches = "%";
-      escapes++;
+      prefix += literal + '%';
+    } else {
+      literals.push(prefix + literal);
+      prefix = '';
+      formatCodes.push(matches);
     }
-    literals.push(literal);
-    formatCodes.push(matches);
     startIdx = codeRxp.lastIndex;
   }
-  literals.push(fmt.substr(startIdx));
-
-  if (escapes > 0) {
-    formatCodes = formatCodes.filter(function(obj, i) {
-      if (obj !== '%') return true;
-      literals[i] += '%' + literals.splice(i+1, 1)[0];
-      return false;
-    });
-  }
+  literals.push(prefix + fmt.substr(startIdx));
 
   return function() {
     var str = literals[0],
-        n = arguments.length,
-        count;
+        n = arguments.length;
     if (n != formatCodes.length) {
-      error("[Utils.format()] Data does not match format string; format:", fmt, "data:", arguments);
+      error("[format()] Data does not match format string; format:", fmt, "data:", arguments);
     }
     for (var i=0; i<n; i++) {
-      // 's?': insert "s" if needed to form plural of previous value.
-      if (arguments[i] == 's?') {
-        if (Utils.isInteger(arguments[i-1])) {
-          count = arguments[i-1];
-        } else if (Utils.isInteger(arguments[i+1])) {
-          count = arguments[i+1];
-        } else {
-          count = 1;
-        }
-        str += count == 1 ? "" : "s";
-      } else {
-        str += formatValue(arguments[i], formatCodes[i]);
-      }
-      str += literals[i+1];
+      str += formatValue(arguments[i], formatCodes[i]) + literals[i+1];
     }
     return str;
   };
@@ -2631,26 +2606,35 @@ function ArcCollection() {
   };
 
   // Add simplification data to the dataset
-  // @thresholds is an array of arrays of removal thresholds for each arc-vertex.
+  // @thresholds is either a single typed array or an array of arrays of removal thresholds for each arc;
   //
   this.setThresholds = function(thresholds) {
-    var zz;
-    if (thresholds instanceof Float64Array) {
+    var n = this.getPointCount(),
+        zz = null;
+    if (!thresholds) {
+      // nop
+    } else if (thresholds.length == n) {
       zz = thresholds;
     } else if (thresholds.length == this.size()) {
-      var i = 0;
-      zz = new Float64Array(_xx.length);
-      thresholds.forEach(function(arr) {
-        for (var j=0, n=arr.length; j<n; i++, j++) {
-          zz[i] = arr[j];
-        }
-      });
+      zz = flattenThresholds(thresholds, n);
     } else {
-      error("ArcCollection#setThresholds() Invalid threshold data.");
+      error("Invalid threshold data");
     }
     initZData(zz);
     return this;
   };
+
+  function flattenThresholds(arr, n) {
+    var zz = new Float64Array(n),
+        i = 0;
+    arr.forEach(function(arr) {
+      for (var j=0, n=arr.length; j<n; i++, j++) {
+        zz[i] = arr[j];
+      }
+    });
+    if (i != n) error("Mismatched thresholds");
+    return zz;
+  }
 
   // bake in current simplification level, if any
   this.flatten = function() {
@@ -10008,6 +9992,18 @@ MapShaper.uniqifyNames = function(names) {
 
 
 
+
+MapShaper.simplifyArcsFast = function(arcs, dist) {
+  var xx = [],
+      yy = [],
+      nn = [],
+      count;
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    count = MapShaper.simplifyPathFast([i], arcs, dist, xx, yy);
+    nn.push(count);
+  }
+  return new ArcCollection(nn, xx, yy);
+};
 
 MapShaper.simplifyShapeFast = function(shp, arcs, dist) {
   if (!shp || !dist) return null;

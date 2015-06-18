@@ -483,26 +483,35 @@ function ArcCollection() {
   };
 
   // Add simplification data to the dataset
-  // @thresholds is an array of arrays of removal thresholds for each arc-vertex.
+  // @thresholds is either a single typed array or an array of arrays of removal thresholds for each arc;
   //
   this.setThresholds = function(thresholds) {
-    var zz;
-    if (thresholds instanceof Float64Array) {
+    var n = this.getPointCount(),
+        zz = null;
+    if (!thresholds) {
+      // nop
+    } else if (thresholds.length == n) {
       zz = thresholds;
     } else if (thresholds.length == this.size()) {
-      var i = 0;
-      zz = new Float64Array(_xx.length);
-      thresholds.forEach(function(arr) {
-        for (var j=0, n=arr.length; j<n; i++, j++) {
-          zz[i] = arr[j];
-        }
-      });
+      zz = flattenThresholds(thresholds, n);
     } else {
-      error("ArcCollection#setThresholds() Invalid threshold data.");
+      error("Invalid threshold data");
     }
     initZData(zz);
     return this;
   };
+
+  function flattenThresholds(arr, n) {
+    var zz = new Float64Array(n),
+        i = 0;
+    arr.forEach(function(arr) {
+      for (var j=0, n=arr.length; j<n; i++, j++) {
+        zz[i] = arr[j];
+      }
+    });
+    if (i != n) error("Mismatched thresholds");
+    return zz;
+  }
 
   // bake in current simplification level, if any
   this.flatten = function() {

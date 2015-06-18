@@ -11,26 +11,28 @@ gui.isReadableFileType = function(filename) {
   return !!MapShaper.guessInputFileType(filename);
 };
 
-// Run a series of tasks in sequence
-// Each task is run after a short timeout, so browser can update the DOM.
+// Run a series of tasks in sequence. Each task can be run after a timeout.
 // TODO: add node-style error handling
-gui.queueSync = function(delay) {
-  var tasks = [];
+gui.queueSync = function() {
+  var tasks = [],
+      timeouts = [];
   return {
-    defer: function(task) {
+    defer: function(task, timeout) {
       tasks.push(task);
+      timeouts.push(timeout | 0);
       return this;
     },
     await: function(done) {
       var retn;
       runNext();
       function runNext() {
-        var task = tasks.shift();
+        var task = tasks.shift(),
+            ms = timeouts.shift();
         if (task) {
           setTimeout(function() {
             retn = task(retn);
             runNext();
-          }, delay | 0);
+          }, ms);
         } else {
           done(retn);
         }

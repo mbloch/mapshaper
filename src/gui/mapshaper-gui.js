@@ -73,7 +73,6 @@ function Editor() {
 
   function editDataset(dataset, opts) {
     var displayLyr = dataset.layers[0];
-    var type = displayLyr.geometry_type;
     var group = map.addLayer(dataset);
 
     exporter.setDataset(dataset);
@@ -86,7 +85,7 @@ function Editor() {
 
     map.refresh(); // redraw all map layers
 
-    if (type == 'polygon' || type == 'polyline') {
+    if (opts.method && dataset.arcs) {
       slider.show();
       slider.value(dataset.arcs.getRetainedPct());
       slider.on('change', function(e) {

@@ -1,4 +1,8 @@
-/* @requires mapshaper-shapes, mapshaper-shape-utils */
+/* @requires
+mapshaper-shapes
+mapshaper-shape-utils
+mapshaper-simplify-fast
+*/
 
 // A wrapper for ArcCollection that converts source coords to screen coords
 // and filters paths to speed up rendering.
@@ -12,44 +16,46 @@ function FilteredArcCollection(unfilteredArcs) {
   init();
 
   function init() {
-    // If we have simplification data...
-    if (unfilteredArcs.getVertexData().zz) {
+    var size = unfilteredArcs.getPointCount(),
+        cutoff = 5e5,
+        nth;
+    if (!!unfilteredArcs.getVertexData().zz) {
+      // If we have simplification data...
       // Sort simplification thresholds for all non-endpoint vertices
       // for quick conversion of simplification percentage to threshold value.
       // For large datasets, use every nth point, for faster sorting.
-      var size = unfilteredArcs.getPointCount(),
-          nth = Math.ceil(size / 5e5);
+      nth = Math.ceil(size / cutoff);
       _sortedThresholds = unfilteredArcs.getRemovableThresholds(nth);
       utils.quicksort(_sortedThresholds, false);
-
       // For large datasets, create a filtered copy of the data for faster rendering
-      if (size > 5e5) {
-        initFilteredArcs();
+      if (size > cutoff) {
+        filteredArcs = initFilteredArcs(unfilteredArcs, _sortedThresholds);
+        filteredSegLen = filteredArcs.getAvgSegment();
+      }
+    } else {
+      if (size > cutoff) {
+        // generate filtered arcs when no simplification data is present
+        filteredSegLen = unfilteredArcs.getAvgSegment() * 4;
+        filteredArcs = MapShaper.simplifyArcsFast(unfilteredArcs, filteredSegLen);
       }
     }
   }
 
-  // generate filtered arcs when no simplification data is present
-  function initFilteredArcs2() {
-    // simplify at <filterPct> level
-    // remove simplification data from both datasets
-  }
-
   // Use simplification data to create a low-detail copy of arcs, for faster
   // rendering when zoomed-out.
-  function initFilteredArcs() {
+  function initFilteredArcs(arcs, sortedThresholds) {
     var filterPct = 0.08;
-    var filterZ = _sortedThresholds[Math.floor(filterPct * _sortedThresholds.length)];
-    filteredArcs = unfilteredArcs.setRetainedInterval(filterZ).getFilteredCopy();
-    unfilteredArcs.setRetainedPct(1); // clear simplification
-    filteredSegLen = filteredArcs.getAvgSegment();
+    var filterZ = sortedThresholds[Math.floor(filterPct * sortedThresholds.length)];
+    var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
+    arcs.setRetainedPct(1); // clear simplification
+    return filteredArcs;
   }
 
   function getArcData() {
     // Use a filtered version of arcs at small scales
-    var unitsPerPixel = 1/_ext.getTransform().mx;
-    return filteredArcs && unitsPerPixel > filteredSegLen * 1.5 ?
-      filteredArcs : unfilteredArcs;
+    var unitsPerPixel = 1/_ext.getTransform().mx,
+        useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
+    return useFiltering ? filteredArcs : unfilteredArcs;
   }
 
   this.update = function(arcs) {
@@ -79,8 +85,6 @@ function FilteredArcCollection(unfilteredArcs) {
   };
 
   this.forEach = function(cb) {
-    if (!_ext) error("Missing map extent");
-
     var src = getArcData(),
         arc = new Arc(src),
         minPathLen = 0.8 * _ext.getPixelSize(),

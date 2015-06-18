@@ -1,5 +1,17 @@
 /* @requires mapshaper-shapes, mapshaper-geom */
 
+MapShaper.simplifyArcsFast = function(arcs, dist) {
+  var xx = [],
+      yy = [],
+      nn = [],
+      count;
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    count = MapShaper.simplifyPathFast([i], arcs, dist, xx, yy);
+    nn.push(count);
+  }
+  return new ArcCollection(nn, xx, yy);
+};
+
 MapShaper.simplifyShapeFast = function(shp, arcs, dist) {
   if (!shp || !dist) return null;
   var xx = [],
