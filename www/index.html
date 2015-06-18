@@ -49,13 +49,12 @@ and Zip archives are supported.
 </p>
 			<h4>Simplification method</h4>
 			<div id="g-simplification-menu" class="g-option-menu">
-				<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Simplified lines remain within a
-given distance of original lines.
-Good for thinning dense points
-but tends to form spikes at high
-simplification.</div></div></div>
-				</div>
+
+				<div><label><input type="radio" name="method" value="mapshaper" checked class="g-radio">Visvalingam / weighted area</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Points located at the vertex
+of more acute angles are
+preferentially removed, for
+a smoother appearance.</div></div></div></div>
 
 				<div><label><input type="radio" name="method" value="visvalingam" class="g-radio">Visvalingam / effective area</label><div class="g-tip-button">?<div class="g-tip-anchor">
 <div class="g-tip">Lines are simplified by iteratively
@@ -64,11 +63,13 @@ the least-area triangle with two
 adjacent points.</div></div></div>
 				</div>
 
-				<div><label><input type="radio" name="method" value="mapshaper" checked class="g-radio">Visvalingam / weighted area</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Points located at the vertex
-of more acute angles are
-preferentially removed, for
-a smoother appearance.</div></div></div></div>
+				<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Simplified lines remain within a
+given distance of original lines.
+Good for thinning dense points
+but tends to form spikes at high
+simplification.</div></div></div>
+				</div>
 
 	<div><label><input type="radio" name="method" value="" class="g-radio">No simplification</label></div>
 
