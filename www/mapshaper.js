@@ -2749,8 +2749,9 @@ api.printError = function(err) {
     err = new APIError(err);
   }
   if (MapShaper.LOGGING && err.name == 'APIError') {
-    msg = err.message ? "Error: " + err.message : "Processing failed";
-    message(msg);
+    if (err.message) {
+      message("Error:", err.message);
+    }
     message("Run mapshaper -h to view help");
   } else {
     throw err;

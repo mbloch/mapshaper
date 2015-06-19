@@ -21,10 +21,10 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
   env.$ = new FeatureExpressionContext(lyr, arcs);
   try {
     func = new Function("record,env", "with(env){with(record) { return " +
-        MapShaper.removeExpressionSemicolons(exp) + ";}}");
+        MapShaper.removeExpressionSemicolons(exp) + "}}");
   } catch(e) {
-    message('Error compiling expression "' + exp + '"');
-    stop(e);
+    message(e.name, "in expression [" + exp + "]");
+    stop();
   }
 
   var compiled = function(recId) {
@@ -44,8 +44,8 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
     try {
       value = func.call(null, record, env);
     } catch(e) {
-      message(e.stack);
-      stop("An error occurred while running expression:", exp);
+      message(e.name, "in [" + exp + "]:", e.message);
+      stop();
     }
     return value;
   };
