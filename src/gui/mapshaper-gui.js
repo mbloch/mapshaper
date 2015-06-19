@@ -68,7 +68,7 @@ function Editor() {
     exporter = new ExportControl();
     repair = new RepairControl(map);
     slider = new SimplifyControl();
-    El("#mshp-main-page").show();
+    El("#mshp-main-map").show();
   }
 
   function editDataset(dataset, opts) {

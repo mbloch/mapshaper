@@ -28,11 +28,6 @@ api.printError = function(err) {
   }
 };
 
-// Handle an error caused by invalid input or misuse of API
-function stop() {
-  throw new APIError(MapShaper.formatArgs(arguments));
-}
-
 function APIError(msg) {
   var err = new Error(msg);
   err.name = 'APIError';

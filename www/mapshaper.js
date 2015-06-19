@@ -2758,11 +2758,6 @@ api.printError = function(err) {
   }
 };
 
-// Handle an error caused by invalid input or misuse of API
-function stop() {
-  throw new APIError(MapShaper.formatArgs(arguments));
-}
-
 function APIError(msg) {
   var err = new Error(msg);
   err.name = 'APIError';
@@ -3042,8 +3037,37 @@ MapShaper.filenameIsUnsupportedOutputType = function(file) {
 
 
 
+function Message(str) {
+  var wrapper = El('div').appendTo('#page-wrapper').addClass('error-wrapper');
+  var box = El('div').appendTo(wrapper).addClass('error-box g-info-box');
+  var msg = El('div').addClass('error-message').appendTo(box);
+  var close = El('div').addClass("g-panel-btn error-btn active").appendTo(box).html('close');
+
+  new SimpleButton(close).on('click', remove);
+
+  message(str);
+
+  function message(str) {
+    msg.html(str);
+  }
+
+  function remove() {
+    wrapper.remove();
+  }
+}
+
+
+
 var gui = api.gui = {};
 window.mapshaper = api;
+
+function stop() {
+  var msg = MapShaper.formatArgs(arguments);
+  new Message(msg);
+  throw new APIError(msg);
+}
+
+var error = stop; // replace error()
 
 gui.isReadableFileType = function(filename) {
   return !!MapShaper.guessInputFileType(filename);
@@ -10128,7 +10152,7 @@ function ShpReader(src) {
       error("Unsupported .shp type:", header.type);
 
     if (header.byteLength != file.size())
-      error("File size doesn't match size in header");
+      error("File size of .shp doesn't match size in header");
 
     return header;
   }
@@ -11371,8 +11395,9 @@ var ExportControl = function() {
     function onClick(e) {
       btn.active(false);
       setTimeout(function() {
-        exportAs(format, function() {
+        exportAs(format, function(err) {
           btn.active(true);
+          if (err) error(err);
         });
       }, 10);
     }
@@ -11385,35 +11410,35 @@ var ExportControl = function() {
     if (!utils.isArray(files) || files.length === 0) {
       error("[exportAs()] Nothing to export");
     } else if (files.length == 1) {
-      saveBlob(files[0].filename, new Blob([files[0].content]));
-      done();
+      saveBlob(files[0].filename, new Blob([files[0].content]), done);
     } else {
       name = MapShaper.getCommonFileBase(utils.pluck(files, 'filename')) || "out";
       saveZipFile(name + ".zip", files, done);
     }
   }
 
-  function saveBlob(filename, blob) {
+  function saveBlob(filename, blob, done) {
     if (window.navigator.msSaveBlob) {
       window.navigator.msSaveBlob(blob, filename);
-      return;
+      done();
     }
-
     try {
       // revoke previous download url, if any. TODO: do this when download completes (how?)
       if (blobUrl) URL.revokeObjectURL(blobUrl);
       blobUrl = URL.createObjectURL(blob);
     } catch(e) {
-      alert("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
+      done("Mapshaper can't export files from this browser. Try switching to Chrome or Firefox.");
       return;
     }
 
+    // TODO: handle errors
     anchor.href = blobUrl;
     anchor.download = filename;
     var clickEvent = document.createEvent("MouseEvent");
     clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false,
         false, false, false, 0, null);
     anchor.dispatchEvent(clickEvent);
+    done();
   }
 
   function saveZipFile(zipfileName, files, done) {
@@ -11422,18 +11447,21 @@ var ExportControl = function() {
       zip.createWriter(new zip.BlobWriter("application/zip"), addFile, zipError);
     } catch(e) {
       // TODO: show proper error message, not alert
-      alert("This browser doesn't support .zip file creation.");
+      done("This browser doesn't support Zip file creation.");
     }
 
     function zipError(msg) {
-      error(msg);
+      var str = "Error creating Zip file";
+      if (msg) {
+        str += ": " + msg;
+      }
+      done(str);
     }
 
     function addFile(archive) {
       if (toAdd.length === 0) {
         archive.close(function(blob) {
-          saveBlob(zipfileName, blob);
-          done();
+          saveBlob(zipfileName, blob, done);
         });
       } else {
         var obj = toAdd.pop(),
@@ -13147,7 +13175,7 @@ function Editor() {
     exporter = new ExportControl();
     repair = new RepairControl(map);
     slider = new SimplifyControl();
-    El("#mshp-main-page").show();
+    El("#mshp-main-map").show();
   }
 
   function editDataset(dataset, opts) {

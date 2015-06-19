@@ -102,7 +102,7 @@ function ShpReader(src) {
       error("Unsupported .shp type:", header.type);
 
     if (header.byteLength != file.size())
-      error("File size doesn't match size in header");
+      error("File size of .shp doesn't match size in header");
 
     return header;
   }

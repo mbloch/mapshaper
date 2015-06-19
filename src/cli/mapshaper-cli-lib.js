@@ -8,6 +8,11 @@ mapshaper-encodings
 
 var cli = api.cli = {};
 
+// Handle an error caused by invalid input or misuse of API
+function stop() {
+  throw new APIError(MapShaper.formatArgs(arguments));
+}
+
 function getVersion() {
   var v;
   try {

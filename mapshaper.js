@@ -1462,11 +1462,6 @@ api.printError = function(err) {
   }
 };
 
-// Handle an error caused by invalid input or misuse of API
-function stop() {
-  throw new APIError(MapShaper.formatArgs(arguments));
-}
-
 function APIError(msg) {
   var err = new Error(msg);
   err.name = 'APIError';
@@ -9295,7 +9290,7 @@ function ShpReader(src) {
       error("Unsupported .shp type:", header.type);
 
     if (header.byteLength != file.size())
-      error("File size doesn't match size in header");
+      error("File size of .shp doesn't match size in header");
 
     return header;
   }
@@ -14914,6 +14909,11 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
 
 
 var cli = api.cli = {};
+
+// Handle an error caused by invalid input or misuse of API
+function stop() {
+  throw new APIError(MapShaper.formatArgs(arguments));
+}
 
 function getVersion() {
   var v;
