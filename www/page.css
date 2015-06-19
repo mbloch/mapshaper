@@ -40,7 +40,7 @@ html, body {
 	left: 0;
 	z-index: 10;
 	width: 100%;
-	height: 30px;
+	height: 32px;
 	background-color:#6E90BA;
 	background: -webkit-linear-gradient(top, #6E90BA, #85B3DD);
 	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
@@ -56,7 +56,7 @@ html, body {
 	color: white;
 	font-weight: bold;
 	font-size: 18px;
-	margin: 1px 0 0 12px;
+	margin: 2px 0 0 12px;
 }
 
 .g-mapshaper-logo .g-logo-highlight {
@@ -75,7 +75,7 @@ html, body {
 	right: 0;
 	bottom: 0;
 	left: 0;
-	margin: 30px 0 0 0;	
+	margin: 32px 0 0 0;	
 }
 
 
@@ -155,7 +155,7 @@ div.error-btn.active:hover:not(.selected) {
 
 #mshp-intro-screen {
 	text-align: center;
-	padding-top: 50px;
+	padding-top: 52px;
 	height: 100%;
 	color: #555;
 }
@@ -232,15 +232,15 @@ div.error-btn.active:hover:not(.selected) {
 
 @media (max-width: 876px) {
 	body.simplify  #g-simplify-control-wrapper {
-		top: 21px;
+		top: 22px;
 	}
 
 	body.simplify .g-page-header {
-		height: 48px;
+		height: 52px;
 	}
 
 	body.simplify .main-area {
-		margin-top: 51px;
+		margin-top: 52px;
 	}
 }
 
@@ -291,7 +291,7 @@ div.error-btn.active:hover:not(.selected) {
 	top: 0px;
 	right: 0px;
 	display: none;
-	margin: 5px 9px 0 0;
+	margin: 6px 9px 0 0;
 }
 
 #g-export-buttons {
@@ -323,7 +323,7 @@ div.error-btn.active:hover:not(.selected) {
 	position: absolute;
 	width: 100%;
 	overflow: hidden;
-	margin: 6px auto 0 auto;
+	margin: 7px auto 0 auto;
 	top: 0px;
 }
 
