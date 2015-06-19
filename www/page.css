@@ -78,6 +78,7 @@ html, body {
 	margin: 30px 0 0 0;	
 }
 
+
 /* --- Error message ---------- */
 
 .error-wrapper {
@@ -222,6 +223,13 @@ div.error-btn.active:hover:not(.selected) {
 
 /* === Editing interface ========== */
 
+#mshp-main-page {
+	display: none;
+	position: relative;
+	height: 100%;
+	width: 100%;
+}
+
 @media (max-width: 876px) {
 	body.simplify  #g-simplify-control-wrapper {
 		top: 21px;
@@ -256,7 +264,6 @@ div.error-btn.active:hover:not(.selected) {
 /* --- Map ---------------------- */
 
 #mshp-main-map {
-	display: none;
 	background-color: #fff;
 }
 
