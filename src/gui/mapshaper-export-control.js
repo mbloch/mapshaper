@@ -88,7 +88,7 @@ var ExportControl = function() {
     function zipError(msg) {
       var str = "Error creating Zip file";
       if (msg) {
-        str += ": " + msg;
+        str += ": " + (msg.message || msg);
       }
       done(str);
     }
