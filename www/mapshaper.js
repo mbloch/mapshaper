@@ -10779,12 +10779,12 @@ gui.receiveShapefileComponent = (function() {
       if (cache.dbf && !lyr.data) {
         // TODO: detect dbf encoding instead of using ascii
         // (Currently, records are read if Shapefile is converted to *JSON).
-        // TODO: validate table (check that record count matches, etc)
         lyr.data = new ShapefileTable(cache.dbf, 'ascii');
+        delete cache.dbf;
         if (lyr.data.size() != lyr.shapes.length) {
+          lyr.data = null;
           stop("Different number of records in .shp and .dbf files");
         }
-        delete cache.dbf;
       }
     }
   }
