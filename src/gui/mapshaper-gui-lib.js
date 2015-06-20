@@ -11,11 +11,15 @@ window.mapshaper = api;
 
 // Show a popup error message, then throw an error
 function stop() {
-  var msg = MapShaper.formatArgs(arguments);
-  msg = msg.replace(/^\[[^\]]+\] ?/, ''); // remove cli cmd name
+  var msg = gui.formatMessageArgs(arguments);
   new Message(msg);
   throw new APIError(msg);
 }
+
+gui.formatMessageArgs = function(args) {
+  // remove cli annotation (if present)
+  return MapShaper.formatLogArgs(args).replace(/^\[[^\]]+\] ?/, '');
+};
 
 gui.isReadableFileType = function(filename) {
   return !!MapShaper.guessInputFileType(filename);

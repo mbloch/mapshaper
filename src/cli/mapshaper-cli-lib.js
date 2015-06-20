@@ -10,7 +10,7 @@ var cli = api.cli = {};
 
 // Handle an error caused by invalid input or misuse of API
 function stop() {
-  throw new APIError(MapShaper.formatArgs(arguments));
+  throw new APIError(MapShaper.formatLogArgs(arguments));
 }
 
 function getVersion() {

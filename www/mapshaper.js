@@ -2765,7 +2765,7 @@ function APIError(msg) {
 }
 
 var warning = function() {
-  message("Warning: " + MapShaper.formatArgs(arguments));
+  message("Warning: " + MapShaper.formatLogArgs(arguments));
 };
 
 var message = function() {
@@ -2786,7 +2786,7 @@ var trace = function() {
   }
 };
 
-MapShaper.formatArgs = function(args) {
+MapShaper.formatLogArgs = function(args) {
   return utils.toArray(args).join(' ');
 };
 
@@ -2806,7 +2806,7 @@ MapShaper.formatStringsAsGrid = function(arr) {
 
 MapShaper.logArgs = function(args) {
   if (utils.isArrayLike(args)) {
-    (console.error || console.log).call(console, MapShaper.formatArgs(args));
+    (console.error || console.log).call(console, MapShaper.formatLogArgs(args));
   }
 };
 
@@ -3064,11 +3064,15 @@ window.mapshaper = api;
 
 // Show a popup error message, then throw an error
 function stop() {
-  var msg = MapShaper.formatArgs(arguments);
-  msg = msg.replace(/^\[[^\]]+\] ?/, ''); // remove cli cmd name
+  var msg = gui.formatMessageArgs(arguments);
   new Message(msg);
   throw new APIError(msg);
 }
+
+gui.formatMessageArgs = function(args) {
+  // remove cli annotation (if present)
+  return MapShaper.formatLogArgs(args).replace(/^\[[^\]]+\] ?/, '');
+};
 
 gui.isReadableFileType = function(filename) {
   return !!MapShaper.guessInputFileType(filename);
@@ -10777,6 +10781,9 @@ gui.receiveShapefileComponent = (function() {
         // (Currently, records are read if Shapefile is converted to *JSON).
         // TODO: validate table (check that record count matches, etc)
         lyr.data = new ShapefileTable(cache.dbf, 'ascii');
+        if (lyr.data.size() != lyr.shapes.length) {
+          stop("Different number of records in .shp and .dbf files");
+        }
         delete cache.dbf;
       }
     }

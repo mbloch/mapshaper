@@ -22,6 +22,9 @@ gui.receiveShapefileComponent = (function() {
         // (Currently, records are read if Shapefile is converted to *JSON).
         // TODO: validate table (check that record count matches, etc)
         lyr.data = new ShapefileTable(cache.dbf, 'ascii');
+        if (lyr.data.size() != lyr.shapes.length) {
+          stop("Different number of records in .shp and .dbf files");
+        }
         delete cache.dbf;
       }
     }

@@ -1469,7 +1469,7 @@ function APIError(msg) {
 }
 
 var warning = function() {
-  message("Warning: " + MapShaper.formatArgs(arguments));
+  message("Warning: " + MapShaper.formatLogArgs(arguments));
 };
 
 var message = function() {
@@ -1490,7 +1490,7 @@ var trace = function() {
   }
 };
 
-MapShaper.formatArgs = function(args) {
+MapShaper.formatLogArgs = function(args) {
   return utils.toArray(args).join(' ');
 };
 
@@ -1510,7 +1510,7 @@ MapShaper.formatStringsAsGrid = function(arr) {
 
 MapShaper.logArgs = function(args) {
   if (utils.isArrayLike(args)) {
-    (console.error || console.log).call(console, MapShaper.formatArgs(args));
+    (console.error || console.log).call(console, MapShaper.formatLogArgs(args));
   }
 };
 
@@ -14912,7 +14912,7 @@ var cli = api.cli = {};
 
 // Handle an error caused by invalid input or misuse of API
 function stop() {
-  throw new APIError(MapShaper.formatArgs(arguments));
+  throw new APIError(MapShaper.formatLogArgs(arguments));
 }
 
 function getVersion() {
