@@ -6,15 +6,16 @@ mapshaper-gui-error
 */
 
 var gui = api.gui = {};
+var error = stop; // replace default error() function
 window.mapshaper = api;
 
+// Show a popup error message, then throw an error
 function stop() {
   var msg = MapShaper.formatArgs(arguments);
+  msg = msg.replace(/^\[[^\]]+\] ?/, ''); // remove cli cmd name
   new Message(msg);
   throw new APIError(msg);
 }
-
-var error = stop; // replace error()
 
 gui.isReadableFileType = function(filename) {
   return !!MapShaper.guessInputFileType(filename);

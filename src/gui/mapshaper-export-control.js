@@ -40,10 +40,16 @@ var ExportControl = function() {
 
   function exportAs(format, done) {
     var opts = {format: format}, // TODO: implement other export opts
-        files = MapShaper.exportFileContent(dataset, opts);
+        files;
+
+    try {
+      files = MapShaper.exportFileContent(dataset, opts);
+    } catch(e) {
+      return done(e.message);
+    }
 
     if (!utils.isArray(files) || files.length === 0) {
-      error("[exportAs()] Nothing to export");
+      done("Nothing to export");
     } else if (files.length == 1) {
       saveBlob(files[0].filename, new Blob([files[0].content]), done);
     } else {

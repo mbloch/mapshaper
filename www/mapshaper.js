@@ -3059,15 +3059,16 @@ function Message(str) {
 
 
 var gui = api.gui = {};
+var error = stop; // replace default error() function
 window.mapshaper = api;
 
+// Show a popup error message, then throw an error
 function stop() {
   var msg = MapShaper.formatArgs(arguments);
+  msg = msg.replace(/^\[[^\]]+\] ?/, ''); // remove cli cmd name
   new Message(msg);
   throw new APIError(msg);
 }
-
-var error = stop; // replace error()
 
 gui.isReadableFileType = function(filename) {
   return !!MapShaper.guessInputFileType(filename);
@@ -8713,11 +8714,11 @@ MapShaper.importGeoJSON = function(src, opts) {
   } else if (srcCollection.type == 'GeometryCollection') {
     geometries = srcCollection.geometries;
   } else {
-    stop("[GeoJSON] Unsupported GeoJSON type:", srcCollection.type);
+    stop("[-i] Unsupported GeoJSON type:", srcCollection.type);
   }
 
   if (!geometries) {
-    stop("[GeoJSON] Missing geometry data");
+    stop("[-i] Missing geometry data");
   }
 
   // Import GeoJSON geometries
@@ -8881,7 +8882,7 @@ MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
     stringify = MapShaper.getFormattedStringify(['bbox', 'coordinates']);
   }
   if (properties && properties.length !== lyr.shapes.length) {
-    error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
+    error("[-o] Mismatch between number of properties and number of shapes");
   }
 
   var output = {
@@ -10898,8 +10899,10 @@ gui.readZipFile = function(file, cb) {
     }
 
     function readEntry(entry) {
-      var filename = entry.filename;
-      if (!entry.directory && gui.isReadableFileType(filename)) {
+      var filename = entry.filename,
+          isValid = !entry.directory && gui.isReadableFileType(filename) &&
+              !/^__MACOSX/.test(filename); // ignore "resource-force" files
+      if (isValid) {
         entry.getData(new zip.BlobWriter(), function(file) {
           file.name = filename; // Give the Blob a name, like a File object
           _files.push(file);
@@ -11405,10 +11408,16 @@ var ExportControl = function() {
 
   function exportAs(format, done) {
     var opts = {format: format}, // TODO: implement other export opts
-        files = MapShaper.exportFileContent(dataset, opts);
+        files;
+
+    try {
+      files = MapShaper.exportFileContent(dataset, opts);
+    } catch(e) {
+      return done(e.message);
+    }
 
     if (!utils.isArray(files) || files.length === 0) {
-      error("[exportAs()] Nothing to export");
+      done("Nothing to export");
     } else if (files.length == 1) {
       saveBlob(files[0].filename, new Blob([files[0].content]), done);
     } else {

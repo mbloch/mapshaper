@@ -7851,11 +7851,11 @@ MapShaper.importGeoJSON = function(src, opts) {
   } else if (srcCollection.type == 'GeometryCollection') {
     geometries = srcCollection.geometries;
   } else {
-    stop("[GeoJSON] Unsupported GeoJSON type:", srcCollection.type);
+    stop("[-i] Unsupported GeoJSON type:", srcCollection.type);
   }
 
   if (!geometries) {
-    stop("[GeoJSON] Missing geometry data");
+    stop("[-i] Missing geometry data");
   }
 
   // Import GeoJSON geometries
@@ -8019,7 +8019,7 @@ MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
     stringify = MapShaper.getFormattedStringify(['bbox', 'coordinates']);
   }
   if (properties && properties.length !== lyr.shapes.length) {
-    error("#exportGeoJSON() Mismatch between number of properties and number of shapes");
+    error("[-o] Mismatch between number of properties and number of shapes");
   }
 
   var output = {
