@@ -22,29 +22,6 @@ img:-moz-loading {
 	cursor: pointer;
 }
 
-.g-square-button {
-	width: 25px;
-	height: 25px;
-	cursor: pointer;
-  	border-radius: 2px;
-  	display: inline-block;
-  	margin: 0 2px;
-}
-
-.g-square-button.inactive {
-	opacity: 0.5;
-}
-
-
-.g-square-button:hover:not(.inactive), .g-square-button.down {
-	background-color: #AAC2E3;
-	/* top internal shadow
-	   bottom internal highlight*/
-	box-shadow: 
-	  inset -1px -1px 1px rgba(255,255,255,0.8),
-	  inset 1px 1px 1px rgba(0,0,0,0.5);
-}
-
 div .g-experimental {
 	color: #F24400;
 }
@@ -187,4 +164,3 @@ div.g-tip {
 	cursor: auto;
 	color: #999;
 }
-
