@@ -188,8 +188,3 @@ div.g-tip {
 	color: #999;
 }
 
-.g-zoom-box {
-	position: absolute;
-	border: 2px solid #c33;
-	z-index: 500;
-}

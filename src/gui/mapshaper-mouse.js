@@ -5,7 +5,7 @@ function MshpMouse(ext) {
       mouse = new MouseArea(p.element),
       shiftDrag = false,
       boxEl = El('div').addClass('zoom-box').appendTo('body'),
-      boxStroke = parseInt(boxEl.computedStyle()['border-width']),
+      boxStroke = 2, // set via css
       zoomScale = 3,
       dragStartEvt,
       zoomTween,
@@ -62,7 +62,6 @@ function MshpMouse(ext) {
 
   // Display zoom box
   // @box Bounds object with coords in pixels from t,l corner of document
-  //
   function showBox(box) {
     var minSize = boxStroke * 2 + 1;
     if (box.width() < minSize || box.width() < minSize) {

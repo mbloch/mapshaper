@@ -224,7 +224,6 @@ div.error-btn.active:hover:not(.selected) {
 /* === Editing interface ========== */
 
 #mshp-main-page {
-	display: hidden;
 	position: relative;
 	height: 100%;
 	width: 100%;
@@ -288,7 +287,8 @@ div.error-btn.active:hover:not(.selected) {
 
 .zoom-box {
 	position: absolute;
-	border: 2px solid #c00;
+	border: 2px solid #c33;
+	z-index: 500;
 }
 
 
