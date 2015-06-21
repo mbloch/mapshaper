@@ -12229,29 +12229,46 @@ function LayerGroup(dataset) {
 
 
 
-function MshpMouse(ext) {
+function HighlightBox(el) {
+  var stroke = 2,
+      box = El('div').addClass('zoom-box').appendTo(el).hide();
+  this.show = function(x1, y1, x2, y2) {
+    var w = Math.abs(x1 - x2),
+        h = Math.abs(y1 - y2);
+    box.show();
+    box.css({
+      top: Math.min(y1, y2),
+      left: Math.min(x1, x2),
+      width: w - stroke * 2,
+      height: h - stroke * 2
+    });
+  };
+  this.hide = function() {
+    box.hide();
+  };
+}
+
+
+
+
+function MapNav(ext, root) {
   var p = ext.position(),
       mouse = new MouseArea(p.element),
+      wheel = new MouseWheel(mouse),
+      zoomBox = new HighlightBox('body'),
+      buttons = El('div').addClass('nav-buttons').appendTo(root),
       shiftDrag = false,
-      boxEl = El('div').addClass('zoom-box').appendTo('body'),
-      boxStroke = 2, // set via css
       zoomScale = 3,
-      dragStartEvt,
-      zoomTween,
+      dragStartEvt, zoomTween,
       _fx, _fy; // zoom foci, [0,1]
 
-  boxEl.hide();
+  navBtn("images/home.png").appendTo(buttons).on('click', function() {ext.reset();});
+  navBtn("images/zoomin.png").appendTo(buttons).on('click', zoomIn);
+  navBtn("images/zoomout.png").appendTo(buttons).on('click', zoomOut);
+
   zoomTween = new NumberTween(function(scale, done) {
     ext.rescale(scale, _fx, _fy);
   });
-
-  this.zoomIn = function() {
-    zoomByPct(zoomScale, 0.5, 0.5);
-  };
-
-  this.zoomOut = function() {
-    zoomByPct(1/zoomScale, 0.5, 0.5);
-  };
 
   mouse.on('dblclick', function(e) {
     if (!zoomTween.busy()) {
@@ -12268,54 +12285,42 @@ function MshpMouse(ext) {
 
   mouse.on('drag', function(e) {
     if (shiftDrag) {
-      showBox(new Bounds(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY));
+      zoomBox.show(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY);
     } else {
       ext.pan(e.dx, e.dy);
     }
   });
 
   mouse.on('dragend', function(e) {
+    var bounds;
     if (shiftDrag) {
       shiftDrag = false;
-      boxEl.hide();
-      zoomToBox(new Bounds(e.x, e.y, dragStartEvt.x, dragStartEvt.y));
+      bounds = new Bounds(e.x, e.y, dragStartEvt.x, dragStartEvt.y);
+      zoomBox.hide();
+      if (bounds.width() > 5 && bounds.height() > 5) {
+        zoomToBox(bounds);
+      }
     }
   });
 
-  var wheel = new MouseWheel(mouse);
   wheel.on('mousewheel', function(e) {
     var k = 1 + (0.11 * e.multiplier),
         delta = e.direction > 0 ? k : 1 / k;
     ext.rescale(ext.scale() * delta, e.x / ext.width(), e.y / ext.height());
   });
 
-  // Display zoom box
-  // @box Bounds object with coords in pixels from t,l corner of document
-  function showBox(box) {
-    var minSize = boxStroke * 2 + 1;
-    if (box.width() < minSize || box.width() < minSize) {
-      boxEl.css("visibility: hidden;");
-    } else {
-      boxEl.show();
-      boxEl.css({
-        visibility: 'visible',
-        top: box.ymin,
-        left: box.xmin,
-        width: box.width() - boxStroke * 2,
-        height: box.height() - boxStroke * 2
-      });
-    }
+  function zoomIn() {
+    zoomByPct(zoomScale, 0.5, 0.5);
+  }
+
+  function zoomOut() {
+    zoomByPct(1/zoomScale, 0.5, 0.5);
   }
 
   // @box Bounds with pixels from t,l corner of map area.
-  //
   function zoomToBox(box) {
-    var minSide = 5,
-        w = box.width() - 2 * boxStroke,
-        h = box.height() - 2 * boxStroke,
-        pct = Math.max(w / ext.width(), h / ext.height());
-    if (w < minSide || h < minSide) return;
-    var fx = box.centerX() / ext.width() * (1 + pct) - pct / 2,
+    var pct = Math.max(box.width() / ext.width(), box.height() / ext.height()),
+        fx = box.centerX() / ext.width() * (1 + pct) - pct / 2,
         fy = box.centerY() / ext.height() * (1 + pct) - pct / 2;
     zoomByPct(1 / pct, fx, fy);
   }
@@ -12327,22 +12332,6 @@ function MshpMouse(ext) {
     _fy = fy;
     zoomTween.start(ext.scale(), ext.scale() * pct);
   }
-}
-
-
-
-
-function MshpMap(el) {
-  var _root = El(el),
-      _ext = new MapExtent(_root, {padding: 12}),
-      _nav  = new MshpMouse(_ext),
-      _btns = El('div').addClass('nav-buttons').appendTo(_root),
-      _groups = [];
-
-  _ext.on('change', refreshLayers);
-  navBtn("images/home.png").appendTo(_btns).on('click', function() {_ext.reset();});
-  navBtn("images/zoomin.png").appendTo(_btns).on('click', function() {_nav.zoomIn();});
-  navBtn("images/zoomout.png").appendTo(_btns).on('click', function() {_nav.zoomOut();});
 
   function navBtn(url) {
     return El('div').addClass('nav-btn')
@@ -12350,59 +12339,10 @@ function MshpMap(el) {
       .newChild('img')
       .attr('src', url).parent();
   }
-
-  function refreshLayers() {
-    _groups.forEach(function(lyr) {
-      lyr.refresh();
-    });
-  }
-
-  function getContentBounds() {
-    return _groups.reduce(function(memo, lyr) {
-      memo.mergeBounds(lyr.getBounds());
-      return memo;
-    }, new Bounds());
-  }
-
-  this.getExtent = function() {
-    return _ext;
-  };
-
-  this.refresh = function() {
-    refreshLayers();
-  };
-
-  this.addLayer = function(dataset) {
-    var lyr = new LayerGroup(dataset);
-    lyr.setMap(this);
-    _groups.push(lyr);
-    _ext.setBounds(getContentBounds());
-    return lyr;
-  };
-
-  this.findLayer = function(dataset) {
-    return utils.find(_groups, function(lyr) {
-      return lyr.getDataset() == dataset;
-    });
-  };
-
-  this.removeLayer = function(targetLyr) {
-    _groups = _groups.reduce(function(memo, lyr) {
-      if (lyr == targetLyr) {
-        lyr.remove();
-      } else {
-        memo.push(lyr);
-      }
-      return memo;
-    }, []);
-  };
-
-  this.getElement = function() {
-    return _root;
-  };
 }
 
-utils.inherit(MshpMap, EventDispatcher);
+
+
 
 function MapExtent(el, opts) {
   var _position = new ElementPosition(el),
@@ -12440,7 +12380,6 @@ function MapExtent(el, opts) {
 
   // Zoom to @scale (a multiple of the map's full scale)
   // @xpct, @ypct: optional focus, [0-1]...
-  //
   this.rescale = function(scale, xpct, ypct) {
     if (arguments.length < 3) {
       xpct = 0.5;
@@ -12521,6 +12460,70 @@ function MapExtent(el, opts) {
 }
 
 utils.inherit(MapExtent, EventDispatcher);
+
+
+
+
+function MshpMap(el) {
+  var _root = El(el),
+      _ext = new MapExtent(_root, {padding: 12}),
+      _nav = new MapNav(_ext, _root),
+      _groups = [];
+
+  _ext.on('change', refreshLayers);
+
+  function refreshLayers() {
+    _groups.forEach(function(lyr) {
+      lyr.refresh();
+    });
+  }
+
+  function getContentBounds() {
+    return _groups.reduce(function(memo, lyr) {
+      memo.mergeBounds(lyr.getBounds());
+      return memo;
+    }, new Bounds());
+  }
+
+  this.getExtent = function() {
+    return _ext;
+  };
+
+  this.refresh = function() {
+    refreshLayers();
+  };
+
+  this.addLayer = function(dataset) {
+    var lyr = new LayerGroup(dataset);
+    lyr.setMap(this);
+    _groups.push(lyr);
+    _ext.setBounds(getContentBounds());
+    return lyr;
+  };
+
+  this.findLayer = function(dataset) {
+    return utils.find(_groups, function(lyr) {
+      return lyr.getDataset() == dataset;
+    });
+  };
+
+  this.removeLayer = function(targetLyr) {
+    _groups = _groups.reduce(function(memo, lyr) {
+      if (lyr == targetLyr) {
+        lyr.remove();
+      } else {
+        memo.push(lyr);
+      }
+      return memo;
+    }, []);
+  };
+
+  this.getElement = function() {
+    return _root;
+  };
+}
+
+utils.inherit(MshpMap, EventDispatcher);
 
 
 

@@ -1,28 +1,18 @@
-/** @requires mapshaper-common */
+/** @requires mapshaper-gui-lib, mapshaper-highlight-box */
 
-function MshpMouse(ext) {
+function MapControl(ext) {
   var p = ext.position(),
       mouse = new MouseArea(p.element),
+      wheel = new MouseWheel(mouse),
+      zoomBox = new HighlightBox('body'),
       shiftDrag = false,
-      boxEl = El('div').addClass('zoom-box').appendTo('body'),
-      boxStroke = 2, // set via css
       zoomScale = 3,
-      dragStartEvt,
-      zoomTween,
+      dragStartEvt, zoomTween,
       _fx, _fy; // zoom foci, [0,1]
 
-  boxEl.hide();
   zoomTween = new NumberTween(function(scale, done) {
     ext.rescale(scale, _fx, _fy);
   });
-
-  this.zoomIn = function() {
-    zoomByPct(zoomScale, 0.5, 0.5);
-  };
-
-  this.zoomOut = function() {
-    zoomByPct(1/zoomScale, 0.5, 0.5);
-  };
 
   mouse.on('dblclick', function(e) {
     if (!zoomTween.busy()) {
@@ -39,54 +29,42 @@ function MshpMouse(ext) {
 
   mouse.on('drag', function(e) {
     if (shiftDrag) {
-      showBox(new Bounds(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY));
+      zoomBox.show(e.pageX, e.pageY, dragStartEvt.pageX, dragStartEvt.pageY);
     } else {
       ext.pan(e.dx, e.dy);
     }
   });
 
   mouse.on('dragend', function(e) {
+    var bounds;
     if (shiftDrag) {
       shiftDrag = false;
-      boxEl.hide();
-      zoomToBox(new Bounds(e.x, e.y, dragStartEvt.x, dragStartEvt.y));
+      bounds = new Bounds(e.x, e.y, dragStartEvt.x, dragStartEvt.y);
+      zoomBox.hide();
+      if (bounds.width() > 5 && bounds.height() > 5) {
+        zoomToBox(bounds);
+      }
     }
   });
 
-  var wheel = new MouseWheel(mouse);
   wheel.on('mousewheel', function(e) {
     var k = 1 + (0.11 * e.multiplier),
         delta = e.direction > 0 ? k : 1 / k;
     ext.rescale(ext.scale() * delta, e.x / ext.width(), e.y / ext.height());
   });
 
-  // Display zoom box
-  // @box Bounds object with coords in pixels from t,l corner of document
-  function showBox(box) {
-    var minSize = boxStroke * 2 + 1;
-    if (box.width() < minSize || box.width() < minSize) {
-      boxEl.css("visibility: hidden;");
-    } else {
-      boxEl.show();
-      boxEl.css({
-        visibility: 'visible',
-        top: box.ymin,
-        left: box.xmin,
-        width: box.width() - boxStroke * 2,
-        height: box.height() - boxStroke * 2
-      });
-    }
-  }
+  this.zoomIn = function() {
+    zoomByPct(zoomScale, 0.5, 0.5);
+  };
+
+  this.zoomOut = function() {
+    zoomByPct(1/zoomScale, 0.5, 0.5);
+  };
 
   // @box Bounds with pixels from t,l corner of map area.
-  //
   function zoomToBox(box) {
-    var minSide = 5,
-        w = box.width() - 2 * boxStroke,
-        h = box.height() - 2 * boxStroke,
-        pct = Math.max(w / ext.width(), h / ext.height());
-    if (w < minSide || h < minSide) return;
-    var fx = box.centerX() / ext.width() * (1 + pct) - pct / 2,
+    var pct = Math.max(box.width() / ext.width(), box.height() / ext.height()),
+        fx = box.centerX() / ext.width() * (1 + pct) - pct / 2,
         fy = box.centerY() / ext.height() * (1 + pct) - pct / 2;
     zoomByPct(1 / pct, fx, fy);
   }
