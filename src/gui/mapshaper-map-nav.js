@@ -1,23 +1,29 @@
-/** @requires mapshaper-gui-lib, mapshaper-highlight-box */
+/* @requires
+mapshaper-gui-lib
+mapshaper-highlight-box
+*/
 
-function MapControl(ext) {
+function MapNav(ext, root) {
   var p = ext.position(),
       mouse = new MouseArea(p.element),
       wheel = new MouseWheel(mouse),
       zoomBox = new HighlightBox('body'),
+      buttons = El('div').addClass('nav-buttons').appendTo(root),
+      zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
-      zoomScale = 3,
-      dragStartEvt, zoomTween,
-      _fx, _fy; // zoom foci, [0,1]
+      zoomScale = 2.5,
+      dragStartEvt, _fx, _fy; // zoom foci, [0,1]
 
-  zoomTween = new NumberTween(function(scale, done) {
-    ext.rescale(scale, _fx, _fy);
+  navBtn("images/home.png").appendTo(buttons).on('click', function() {ext.reset();});
+  navBtn("images/zoomin.png").appendTo(buttons).on('click', zoomIn);
+  navBtn("images/zoomout.png").appendTo(buttons).on('click', zoomOut);
+
+  zoomTween.on('change', function(e) {
+    ext.rescale(e.value, _fx, _fy);
   });
 
   mouse.on('dblclick', function(e) {
-    if (!zoomTween.busy()) {
-      zoomByPct(zoomScale, e.x / ext.width(), e.y / ext.height());
-    }
+    zoomByPct(zoomScale, e.x / ext.width(), e.y / ext.height());
   });
 
   mouse.on('dragstart', function(e) {
@@ -53,13 +59,13 @@ function MapControl(ext) {
     ext.rescale(ext.scale() * delta, e.x / ext.width(), e.y / ext.height());
   });
 
-  this.zoomIn = function() {
+  function zoomIn() {
     zoomByPct(zoomScale, 0.5, 0.5);
-  };
+  }
 
-  this.zoomOut = function() {
+  function zoomOut() {
     zoomByPct(1/zoomScale, 0.5, 0.5);
-  };
+  }
 
   // @box Bounds with pixels from t,l corner of map area.
   function zoomToBox(box) {
@@ -74,6 +80,13 @@ function MapControl(ext) {
   function zoomByPct(pct, fx, fy) {
     _fx = fx;
     _fy = fy;
-    zoomTween.start(ext.scale(), ext.scale() * pct);
+    zoomTween.start(ext.scale(), ext.scale() * pct, 400);
+  }
+
+  function navBtn(url) {
+    return El('div').addClass('nav-btn')
+      .on('dblclick', function(e) {e.stopPropagation();}) // block dblclick zoom
+      .newChild('img')
+      .attr('src', url).parent();
   }
 }
