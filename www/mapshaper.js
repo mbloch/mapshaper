@@ -1872,7 +1872,7 @@ Utils.extend(El.prototype, {
       Browser.addCSS(this.el, css);
     }
     else if (Utils.isObject(css)) {
-      Utils.forEach(css, function(val, key) {
+      Utils.forEachProperty(css, function(val, key) {
         El.setStyle(this.el, key, val);
       }, this);
     }
@@ -2143,9 +2143,9 @@ El.prototype.removeEventListener = function(type, func) {
 
 
 function ElementPosition(ref) {
-  var self = this;
-  var el = El(ref);
-  var pageX = 0,
+  var self = this,
+      el = El(ref),
+      pageX = 0,
       pageY = 0,
       width = 0,
       height = 0;
@@ -2175,30 +2175,30 @@ function ElementPosition(ref) {
       width: width,
       height: height
     };
-  }
+  };
 
   function update() {
-    var div = el.node();
-    var xy = Browser.getPageXY(div);
-    var w = div.clientWidth,
+    var div = el.node(),
+        xy = Browser.getPageXY(div),
+        w = div.clientWidth,
         h = div.clientHeight,
         x = xy.x,
-        y = xy.y;
-
-    var resized = w != width || h != height,
+        y = xy.y,
+        resized = w != width || h != height,
         moved = x != pageX || y != pageY;
     if (resized || moved) {
       pageX = x, pageY = y, width = w, height = h;
-      var pos = self.position();
-      self.dispatchEvent('change', pos);
-      resized && self.dispatchEvent('resize', pos);
+      self.dispatchEvent('change', self.position());
+      if (resized) {
+        self.dispatchEvent('resize', self.position());
+      }
     }
   }
-
   update();
 }
 
 Utils.inherit(ElementPosition, EventDispatcher);
+
 
 
 var TRANSITION_TIME = 500;
@@ -12233,18 +12233,30 @@ function MshpMouse(ext) {
   var p = ext.position(),
       mouse = new MouseArea(p.element),
       shiftDrag = false,
+      boxEl = El('div').addClass('zoom-box').appendTo('body'),
+      boxStroke = parseInt(boxEl.computedStyle()['border-width']),
+      zoomScale = 3,
       dragStartEvt,
-      boxEl = El('div').addClass('g-zoom-box').appendTo('body'),
-      boxStroke = parseInt(boxEl.computedStyle()['border-width'], 10),
+      zoomTween,
       _fx, _fy; // zoom foci, [0,1]
 
   boxEl.hide();
-  var zoomTween = new NumberTween(function(scale, done) {
+  zoomTween = new NumberTween(function(scale, done) {
     ext.rescale(scale, _fx, _fy);
   });
 
+  this.zoomIn = function() {
+    zoomByPct(zoomScale, 0.5, 0.5);
+  };
+
+  this.zoomOut = function() {
+    zoomByPct(1/zoomScale, 0.5, 0.5);
+  };
+
   mouse.on('dblclick', function(e) {
-    zoomByPct(3, e.x / ext.width(), e.y / ext.height());
+    if (!zoomTween.busy()) {
+      zoomByPct(zoomScale, e.x / ext.width(), e.y / ext.height());
+    }
   });
 
   mouse.on('dragstart', function(e) {
@@ -12311,7 +12323,6 @@ function MshpMouse(ext) {
 
   // @pct Change in scale (2 = 2x zoom)
   // @fx, @fy zoom focus, [0, 1]
-  //
   function zoomByPct(pct, fx, fy) {
     _fx = fx;
     _fy = fy;
@@ -12322,27 +12333,23 @@ function MshpMouse(ext) {
 
 
 
-//
-//
-function MshpMap(el, opts) {
+function MshpMap(el) {
   var _root = El(el),
-      _groups = [],
-      _ext, _mouse,
-      defaults = {
-        padding: 12 // margin around content at full extent, in pixels
-      },
-      _btn = El('div')
-        .addClass('g-home-btn')
-        .appendTo(_root)
-        .newChild('img')
-        .attr('src', "images/home.png").parent();
-  opts = utils.extend(defaults, opts);
+      _ext = new MapExtent(_root, {padding: 12}),
+      _nav  = new MshpMouse(_ext),
+      _btns = El('div').addClass('nav-buttons').appendTo(_root),
+      _groups = [];
 
-  function initMap(bounds) {
-    _ext = new MapExtent(_root, bounds).setContentPadding(opts.padding);
-    _ext.on('navigate', refreshLayers);
-    _mouse = new MshpMouse(_ext);
-    initHomeButton(_btn, _ext);
+  _ext.on('change', refreshLayers);
+  navBtn("images/home.png").appendTo(_btns).on('click', function() {_ext.reset();});
+  navBtn("images/zoomin.png").appendTo(_btns).on('click', function() {_nav.zoomIn();});
+  navBtn("images/zoomout.png").appendTo(_btns).on('click', function() {_nav.zoomOut();});
+
+  function navBtn(url) {
+    return El('div').addClass('nav-btn')
+      .on('dblclick', function(e) {e.stopPropagation();}) // block dblclick zoom
+      .newChild('img')
+      .attr('src', url).parent();
   }
 
   function refreshLayers() {
@@ -12367,16 +12374,10 @@ function MshpMap(el, opts) {
   };
 
   this.addLayer = function(dataset) {
-    var lyr = new LayerGroup(dataset),
-        bounds;
+    var lyr = new LayerGroup(dataset);
     lyr.setMap(this);
     _groups.push(lyr);
-    bounds = getContentBounds();
-    if (!_ext) {
-      initMap(bounds);
-    } else {
-      _ext.updateBounds(bounds);
-    }
+    _ext.setBounds(getContentBounds());
     return lyr;
   };
 
@@ -12404,33 +12405,13 @@ function MshpMap(el, opts) {
 
 utils.inherit(MshpMap, EventDispatcher);
 
-function initHomeButton(btn, ext) {
-  var _full = null;
-
-  btn.on('click', function(e) {
-    ext.reset();
-  });
-
-  ext.on('change', function() {
-    var isFull = ext.scale() === 1;
-    if (isFull !== _full) {
-      _full = isFull;
-      if (!isFull) btn.addClass('active');
-      else btn.removeClass('active');
-    }
-  });
-}
-
-function MapExtent(el, initialBounds) {
+function MapExtent(el, opts) {
   var _position = new ElementPosition(el),
-      _padPix = 0,
+      _padPix = opts.padding,
+      _scale = 1,
       _cx,
       _cy,
-      _scale = 1;
-
-  if (!initialBounds || !initialBounds.hasBounds()) {
-    error("[MapExtent] Invalid bounds:", initialBounds);
-  }
+      _contentBounds;
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
@@ -12439,7 +12420,7 @@ function MapExtent(el, initialBounds) {
   }, this);
 
   this.reset = function() {
-    this.recenter(initialBounds.centerX(), initialBounds.centerY(), 1);
+    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1);
   };
 
   this.recenter = function(cx, cy, scale) {
@@ -12493,12 +12474,6 @@ function MapExtent(el, initialBounds) {
     return 1 / this.getTransform().mx;
   };
 
-  this.setContentPadding = function(pix) {
-    _padPix = pix;
-    this.reset();
-    return this;
-  };
-
   // Get params for converting geographic coords to pixel coords
   this.getTransform = function() {
     // get transform (y-flipped);
@@ -12511,25 +12486,28 @@ function MapExtent(el, initialBounds) {
   };
 
   // Update the extent of 'full' zoom without navigating the current view
-  this.updateBounds = function(b) {
-    var full1 = centerAlign(initialBounds);
-    var full2 = centerAlign(b);
-    _scale = _scale * full2.width() / full1.width();
-    initialBounds = b;
-    this.dispatchEvent('change');
+  this.setBounds = function(b) {
+    var prev = _contentBounds;
+    _contentBounds = b;
+    if (prev) {
+      _scale = _scale * centerAlign(b).width() / centerAlign(prev).width();
+    } else {
+      _cx = b.centerX();
+      _cy = b.centerY();
+    }
   };
 
   function calcBounds(cx, cy, scale) {
-    var w = initialBounds.width() / scale,
-        h = initialBounds.height() / scale;
+    var w = _contentBounds.width() / scale,
+        h = _contentBounds.height() / scale;
     return new Bounds(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
   }
 
   // Receive: Geographic bounds of content to be centered in the map
-  // Return: Geographic bounds of map window centered on @contentBounds,
+  // Return: Geographic bounds of map window centered on @_contentBounds,
   //    with padding applied
-  function centerAlign(contentBounds) {
-    var bounds = contentBounds.clone(),
+  function centerAlign(_contentBounds) {
+    var bounds = _contentBounds.clone(),
         wpix = _position.width() - 2 * _padPix,
         hpix = _position.height() - 2 * _padPix,
         padGeo;
@@ -12541,8 +12519,6 @@ function MapExtent(el, initialBounds) {
     bounds.padBounds(padGeo, padGeo, padGeo, padGeo);
     return bounds;
   }
-
-  this.reset(); // initialize map extent
 }
 
 utils.inherit(MapExtent, EventDispatcher);
@@ -13195,17 +13171,13 @@ function Editor() {
   }
 
   function editDataset(dataset, opts) {
-    var displayLyr = dataset.layers[0];
     var group = map.addLayer(dataset);
-
+    group.showLayer(dataset.layers[0]).setStyle(foregroundStyle);
     exporter.setDataset(dataset);
-    group.showLayer(displayLyr)
-      .setStyle(foregroundStyle);
 
     // hide widgets if visible and remove any old event handlers
     slider.reset();
     repair.reset();
-
     map.refresh(); // redraw all map layers
 
     if (opts.method && dataset.arcs) {

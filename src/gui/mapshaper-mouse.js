@@ -4,18 +4,30 @@ function MshpMouse(ext) {
   var p = ext.position(),
       mouse = new MouseArea(p.element),
       shiftDrag = false,
+      boxEl = El('div').addClass('zoom-box').appendTo('body'),
+      boxStroke = parseInt(boxEl.computedStyle()['border-width']),
+      zoomScale = 3,
       dragStartEvt,
-      boxEl = El('div').addClass('g-zoom-box').appendTo('body'),
-      boxStroke = parseInt(boxEl.computedStyle()['border-width'], 10),
+      zoomTween,
       _fx, _fy; // zoom foci, [0,1]
 
   boxEl.hide();
-  var zoomTween = new NumberTween(function(scale, done) {
+  zoomTween = new NumberTween(function(scale, done) {
     ext.rescale(scale, _fx, _fy);
   });
 
+  this.zoomIn = function() {
+    zoomByPct(zoomScale, 0.5, 0.5);
+  };
+
+  this.zoomOut = function() {
+    zoomByPct(1/zoomScale, 0.5, 0.5);
+  };
+
   mouse.on('dblclick', function(e) {
-    zoomByPct(3, e.x / ext.width(), e.y / ext.height());
+    if (!zoomTween.busy()) {
+      zoomByPct(zoomScale, e.x / ext.width(), e.y / ext.height());
+    }
   });
 
   mouse.on('dragstart', function(e) {
@@ -82,7 +94,6 @@ function MshpMouse(ext) {
 
   // @pct Change in scale (2 = 2x zoom)
   // @fx, @fy zoom focus, [0, 1]
-  //
   function zoomByPct(pct, fx, fy) {
     _fx = fx;
     _fy = fy;

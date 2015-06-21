@@ -72,17 +72,13 @@ function Editor() {
   }
 
   function editDataset(dataset, opts) {
-    var displayLyr = dataset.layers[0];
     var group = map.addLayer(dataset);
-
+    group.showLayer(dataset.layers[0]).setStyle(foregroundStyle);
     exporter.setDataset(dataset);
-    group.showLayer(displayLyr)
-      .setStyle(foregroundStyle);
 
     // hide widgets if visible and remove any old event handlers
     slider.reset();
     repair.reset();
-
     map.refresh(); // redraw all map layers
 
     if (opts.method && dataset.arcs) {
