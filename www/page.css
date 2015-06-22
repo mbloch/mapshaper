@@ -266,6 +266,10 @@ div.error-btn.active:hover:not(.selected) {
 	background-color: #fff;
 }
 
+#mshp-main-map canvas {
+	pointer-events: none;
+}
+
 .nav-buttons {
 	z-index: 50;
 	position: absolute;

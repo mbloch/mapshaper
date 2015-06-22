@@ -13,11 +13,9 @@ mapshaper-topology
 mapshaper-keep-shapes
 */
 
-api.enableLogging();
-
 if (Env.inBrowser) {
   Browser.onload(function() {
-    if (!browserIsSupported()) {
+    if (!gui.browserIsSupported()) {
       El("#mshp-not-supported").show();
       return;
     }
@@ -25,14 +23,6 @@ if (Env.inBrowser) {
         importer = new ImportControl(editor);
     El('#mshp-import').show(); // show import screen
   });
-}
-
-function browserIsSupported() {
-  return Env.inBrowser &&
-    Env.canvas &&
-    typeof ArrayBuffer != 'undefined' &&
-    typeof Blob != 'undefined' &&
-    typeof File != 'undefined';
 }
 
 function Editor() {

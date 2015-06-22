@@ -9,12 +9,19 @@ var gui = api.gui = {};
 var error = stop; // replace default error() function
 window.mapshaper = api;
 
+api.enableLogging();
+
 // Show a popup error message, then throw an error
 function stop() {
   var msg = gui.formatMessageArgs(arguments);
   new Message(msg);
   throw new APIError(msg);
 }
+
+gui.browserIsSupported = function() {
+  return Env.inBrowser && Env.canvas && typeof ArrayBuffer != 'undefined' &&
+    typeof Blob != 'undefined' && typeof File != 'undefined';
+};
 
 gui.formatMessageArgs = function(args) {
   // remove cli annotation (if present)

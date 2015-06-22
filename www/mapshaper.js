@@ -2341,9 +2341,8 @@ function MouseArea(element) {
       _self = this,
       _dragging = false,
       _isOver = false,
-      _isDown = false,
-      _moveData,
-      _downData;
+      _moveEvt,
+      _downEvt;
 
   pos.on('change', function() {_areaPos = pos.position()});
 
@@ -2363,7 +2362,7 @@ function MouseArea(element) {
 
   function onAreaEnter() {
     if (!_isOver) {
-     _isOver = true;
+      _isOver = true;
       _self.dispatchEvent('enter');
     }
   }
@@ -2374,41 +2373,42 @@ function MouseArea(element) {
   }
 
   function onMouseUp(e) {
-    _isDown = false;
+    var evt = procMouseEvent(e),
+        elapsed, dx, dy;
     if (_dragging) {
       _dragging = false;
-      _self.dispatchEvent('dragend', procMouseEvent(e));
+      _self.dispatchEvent('dragend', evt);
     }
-
-    if (_downData) {
-      var obj = procMouseEvent(e),
-          elapsed = obj.time - _downData.time,
-          dx = obj.pageX - _downData.pageX,
-          dy = obj.pageY - _downData.pageY;
+    if (_downEvt) {
+      elapsed = evt.time - _downEvt.time;
+      dx = evt.pageX - _downEvt.pageX;
+      dy = evt.pageY - _downEvt.pageY;
       if (elapsed < 500 && Math.sqrt(dx * dx + dy * dy) < 6) {
-        _self.dispatchEvent('click', obj);
+        _self.dispatchEvent('click', evt);
       }
+      _downEvt = null;
     }
   }
 
   function onMouseDown(e) {
-    _isDown = true;
-    _downData = _moveData
+    if (e.button != 2 && e.which != 3) { // ignore right-click
+      _downEvt = _moveEvt;
+    }
   }
 
   function onMouseMove(e) {
-    _moveData = procMouseEvent(e, _moveData);
-    if (!_dragging && _isDown && _downData.hover) {
+    _moveEvt = procMouseEvent(e, _moveEvt);
+    if (!_dragging && _downEvt && _downEvt.hover) {
       _dragging = true;
       _self.dispatchEvent('dragstart', procMouseEvent(e));
     }
 
     if (_dragging) {
       var obj = {
-        dragX: _moveData.pageX - _downData.pageX,
-        dragY: _moveData.pageY - _downData.pageY
+        dragX: _moveEvt.pageX - _downEvt.pageX,
+        dragY: _moveEvt.pageY - _downEvt.pageY
       };
-      _self.dispatchEvent('drag', Utils.extend(obj, _moveData));
+      _self.dispatchEvent('drag', Utils.extend(obj, _moveEvt));
     }
   }
 
@@ -2438,11 +2438,11 @@ function MouseArea(element) {
   }
 
   this.isDown = function() {
-    return _isDown;
+    return !!_downEvt;
   }
 
   this.mouseData = function() {
-    return Utils.extend({}, _moveData);
+    return Utils.extend({}, _moveEvt);
   }
 }
 
@@ -2785,12 +2785,19 @@ var gui = api.gui = {};
 var error = stop; // replace default error() function
 window.mapshaper = api;
 
+api.enableLogging();
+
 // Show a popup error message, then throw an error
 function stop() {
   var msg = gui.formatMessageArgs(arguments);
   new Message(msg);
   throw new APIError(msg);
 }
+
+gui.browserIsSupported = function() {
+  return Env.inBrowser && Env.canvas && typeof ArrayBuffer != 'undefined' &&
+    typeof Blob != 'undefined' && typeof File != 'undefined';
+};
 
 gui.formatMessageArgs = function(args) {
   // remove cli annotation (if present)
@@ -12835,11 +12842,9 @@ MapShaper.replaceInArray = function(zz, value, replacement, start, end) {
 
 
 
-api.enableLogging();
-
 if (Env.inBrowser) {
   Browser.onload(function() {
-    if (!browserIsSupported()) {
+    if (!gui.browserIsSupported()) {
       El("#mshp-not-supported").show();
       return;
     }
@@ -12847,14 +12852,6 @@ if (Env.inBrowser) {
         importer = new ImportControl(editor);
     El('#mshp-import').show(); // show import screen
   });
-}
-
-function browserIsSupported() {
-  return Env.inBrowser &&
-    Env.canvas &&
-    typeof ArrayBuffer != 'undefined' &&
-    typeof Blob != 'undefined' &&
-    typeof File != 'undefined';
 }
 
 function Editor() {
