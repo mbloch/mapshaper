@@ -28,9 +28,8 @@ MapShaper.getShapefileType = function(type) {
   }[type] || null;
 };
 
-// Read Shapefile data from an ArrayBuffer or Buffer
-// Build topology
-//
+// Read Shapefile data from a file, ArrayBuffer or Buffer
+// @src filename or buffer
 MapShaper.importShp = function(src, opts) {
   var reader = new ShpReader(src),
       shpType = reader.type(),

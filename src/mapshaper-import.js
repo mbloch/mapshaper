@@ -64,14 +64,15 @@ MapShaper.importContent = function(obj, opts) {
 
 // Deprecated (included for compatibility with older tests)
 MapShaper.importFileContent = function(content, filename, opts) {
-  var type = MapShaper.guessInputFileType(filename, content),
+  var type = MapShaper.guessInputType(filename, content),
       input = {};
   input[type] = {filename: filename, content: content};
   return MapShaper.importContent(input, opts);
 };
 
 MapShaper.importShapefile = function(obj, opts) {
-  var dataset = MapShaper.importShp(obj.shp.content, opts),
+  var shpSrc = obj.shp.content || obj.shp.filename, // content may be missing
+      dataset = MapShaper.importShp(shpSrc, opts),
       lyr = dataset.layers[0],
       dbf;
   if (obj.dbf) {
@@ -85,13 +86,13 @@ MapShaper.importShapefile = function(obj, opts) {
   return dataset;
 };
 
-MapShaper.importDbf = function(obj, opts) {
+MapShaper.importDbf = function(input, opts) {
   var table;
   opts = utils.extend({}, opts);
-  if (obj.cpg && !opts.encoding) {
-    opts.encoding = obj.cpg.content;
+  if (input.cpg && !opts.encoding) {
+    opts.encoding = input.cpg.content;
   }
-  table = MapShaper.importDbfTable(obj.dbf.content, opts);
+  table = MapShaper.importDbfTable(input.dbf.content, opts);
   return {
     info: {dbf_encoding: table.encoding},
     layers: [{data: table}]

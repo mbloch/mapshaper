@@ -1,19 +1,29 @@
 /* @require mapshaper-path-utils */
 
 // Guess the type of a data file from file extension, or return null if not sure
-MapShaper.guessInputFileType = function(file, content) {
+MapShaper.guessInputFileType = function(file) {
   var ext = utils.getFileExtension(file || '').toLowerCase(),
-      isText = utils.isString(content),
       type = null;
   if (ext == 'dbf' || ext == 'shp' || ext == 'prj') {
     type = ext;
-  } else if (/json$/.test(ext) || utils.isObject(content) ||
-       isText && MapShaper.stringIsJsonObject(content)) {
+  } else if (/json$/.test(ext)) {
     type = 'json';
-  } else if (isText) {
-    type = 'text';
   }
   return type;
+};
+
+MapShaper.guessInputContentType = function(content) {
+  var type = null;
+  if (utils.isString(content)) {
+    type = MapShaper.stringIsJsonObject(content) ? 'json' : 'text';
+  } else if (utils.isObject(content) && content.type) {
+    type = 'json';
+  }
+  return type;
+};
+
+MapShaper.guessInputType = function(file, content) {
+  return MapShaper.guessInputFileType(file) || MapShaper.guessInputContentType(content);
 };
 
 MapShaper.stringIsJsonObject = function(str) {

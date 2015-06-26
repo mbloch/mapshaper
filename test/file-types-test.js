@@ -3,6 +3,21 @@ var api = require('../'),
 
 describe('mapshaper-file-types.js', function () {
 
+  describe('guessInputType()', function() {
+    var guess = api.internal.guessInputType;
+    it('identifies known file types', function() {
+      assert.equal(guess(null, {type: 'FeatureCollection'}), 'json');
+      assert.equal(guess('input.txt', 'NAME,FOO'), 'text');
+      assert.equal(guess('/dev/stdin', '{type:FeatureCollection,features:[]}'), 'json');
+      assert.equal(guess('/dev/stdin', 'NAME,FOO'), 'text');
+      assert.equal(guess('/dev/stdin', null), null);
+      assert.equal(guess('input.shp', null), 'shp');
+      assert.equal(guess('input.dbf', null), 'dbf');
+      assert.equal(guess('input.prj', null), 'prj');
+    })
+  })
+
+
   describe('inferOutputFormat()', function () {
     it('.json -> geojson', function () {
       assert.equal(api.internal.inferOutputFormat("file.json"), "geojson");
