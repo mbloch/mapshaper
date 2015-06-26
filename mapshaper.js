@@ -1681,19 +1681,29 @@ MapShaper.getCommonFileBase = function(names) {
 
 
 // Guess the type of a data file from file extension, or return null if not sure
-MapShaper.guessInputFileType = function(file, content) {
+MapShaper.guessInputFileType = function(file) {
   var ext = utils.getFileExtension(file || '').toLowerCase(),
-      isText = utils.isString(content),
       type = null;
   if (ext == 'dbf' || ext == 'shp' || ext == 'prj') {
     type = ext;
-  } else if (/json$/.test(ext) || utils.isObject(content) ||
-       isText && MapShaper.stringIsJsonObject(content)) {
+  } else if (/json$/.test(ext)) {
     type = 'json';
-  } else if (isText) {
-    type = 'text';
   }
   return type;
+};
+
+MapShaper.guessInputContentType = function(content) {
+  var type = null;
+  if (utils.isString(content)) {
+    type = MapShaper.stringIsJsonObject(content) ? 'json' : 'text';
+  } else if (utils.isObject(content) && content.type) {
+    type = 'json';
+  }
+  return type;
+};
+
+MapShaper.guessInputType = function(file, content) {
+  return MapShaper.guessInputFileType(file) || MapShaper.guessInputContentType(content);
 };
 
 MapShaper.stringIsJsonObject = function(str) {
@@ -9523,9 +9533,8 @@ MapShaper.getShapefileType = function(type) {
   }[type] || null;
 };
 
-// Read Shapefile data from an ArrayBuffer or Buffer
-// Build topology
-//
+// Read Shapefile data from a file, ArrayBuffer or Buffer
+// @src filename or buffer
 MapShaper.importShp = function(src, opts) {
   var reader = new ShpReader(src),
       shpType = reader.type(),
@@ -10807,14 +10816,15 @@ MapShaper.importContent = function(obj, opts) {
 
 // Deprecated (included for compatibility with older tests)
 MapShaper.importFileContent = function(content, filename, opts) {
-  var type = MapShaper.guessInputFileType(filename, content),
+  var type = MapShaper.guessInputType(filename, content),
       input = {};
   input[type] = {filename: filename, content: content};
   return MapShaper.importContent(input, opts);
 };
 
 MapShaper.importShapefile = function(obj, opts) {
-  var dataset = MapShaper.importShp(obj.shp.content, opts),
+  var shpSrc = obj.shp.content || obj.shp.filename, // content may be missing
+      dataset = MapShaper.importShp(shpSrc, opts),
       lyr = dataset.layers[0],
       dbf;
   if (obj.dbf) {
@@ -10828,13 +10838,13 @@ MapShaper.importShapefile = function(obj, opts) {
   return dataset;
 };
 
-MapShaper.importDbf = function(obj, opts) {
+MapShaper.importDbf = function(input, opts) {
   var table;
   opts = utils.extend({}, opts);
-  if (obj.cpg && !opts.encoding) {
-    opts.encoding = obj.cpg.content;
+  if (input.cpg && !opts.encoding) {
+    opts.encoding = input.cpg.content;
   }
-  table = MapShaper.importDbfTable(obj.dbf.content, opts);
+  table = MapShaper.importDbfTable(input.dbf.content, opts);
   return {
     info: {dbf_encoding: table.encoding},
     layers: [{data: table}]
@@ -10878,18 +10888,27 @@ api.importFiles = function(opts) {
 api.importFile = function(path, opts) {
   cli.checkFileExists(path);
   var isBinary = MapShaper.isBinaryFile(path),
-      textEncoding = isBinary ? null : opts && opts.encoding || 'utf-8',
-      content = cli.readFile(path, textEncoding),
-      type = MapShaper.guessInputFileType(path, content),
-      obj = {};
-  obj[type] = {filename: path, content: content};
-  if (type == 'shp' || type == 'dbf') {
-    MapShaper.readShapefileAuxFiles(path, obj);
+      isShp = MapShaper.guessInputFileType(path) == 'shp',
+      input = {},
+      type, content;
+
+  if (isShp) {
+    content = null; // let ShpReader read the file (supports larger files)
+  } else if (isBinary) {
+    content = cli.readFile(path);
+  } else {
+    content = cli.readFile(path, opts && opts.encoding || 'utf-8');
   }
-  if (type == 'shp' && !obj.dbf) {
+
+  type = MapShaper.guessInputType(path, content) || error("Unkown file type:", path);
+  input[type] = {filename: path, content: content};
+  if (type == 'shp' || type == 'dbf') {
+    MapShaper.readShapefileAuxFiles(path, input);
+  }
+  if (type == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing -- shapes imported without attribute data.", path));
   }
-  return MapShaper.importContent(obj, opts);
+  return MapShaper.importContent(input, opts);
 };
 
 MapShaper.readShapefileAuxFiles = function(path, obj) {
