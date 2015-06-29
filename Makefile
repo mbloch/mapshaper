@@ -1,4 +1,5 @@
 
 all:
 	./build
-	catty -d lib,src src/gui/mapshaper-gui.js | browserify - -o www/mapshaper.js
+	./node_modules/.bin/catty -d src,lib src/gui/mapshaper-gui.js | \
+	./node_modules/.bin/browserify - -o www/mapshaper.js
