@@ -10,6 +10,15 @@ MapShaper.getEncodings = function() {
   return Object.keys(iconv.encodings);
 };
 
+MapShaper.validateEncoding = function(enc) {
+  if (!MapShaper.encodingIsSupported(enc)) {
+    message("[Unsupported encoding:", enc + "]");
+    MapShaper.printEncodings();
+    stop();
+  }
+  return enc;
+};
+
 MapShaper.encodingIsSupported = function(raw) {
   var enc = MapShaper.standardizeEncodingName(raw);
   return utils.contains(MapShaper.getEncodings(), enc);

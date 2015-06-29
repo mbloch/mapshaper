@@ -15,7 +15,7 @@ function validateInputOpts(cmd) {
   if (_[0] == '-' || _[0] == '/dev/stdin') {
     o.stdin = true;
   } else if (_.length > 0) {
-    o.files = cli.validateInputFiles(_);
+    o.files = _;
   }
 
   if ("precision" in o && o.precision > 0 === false) {
@@ -23,7 +23,7 @@ function validateInputOpts(cmd) {
   }
 
   if (o.encoding) {
-    o.encoding = cli.validateEncoding(o.encoding);
+    o.encoding = MapShaper.validateEncoding(o.encoding);
   }
 }
 
@@ -229,7 +229,7 @@ function validateOutputOpts(cmd) {
   }
 
   if (o.encoding) {
-    o.encoding = cli.validateEncoding(o.encoding);
+    o.encoding = MapShaper.validateEncoding(o.encoding);
   }
 
   // topojson-specific

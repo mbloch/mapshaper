@@ -8,6 +8,7 @@ function LayerGroup(dataset) {
       _bounds = MapShaper.getDatasetBounds(dataset),
       _draw,
       _shapes,
+      _lyr,
       _style,
       _map;
 

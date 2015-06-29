@@ -57,7 +57,7 @@ gui.importFile = function(file, opts, cb) {
 };
 
 gui.inputFileContent = function(path, content, importOpts, cb) {
-  var type = MapShaper.guessInputFileType(path),
+  var type = MapShaper.guessInputType(path, content),
       size = content.byteLength || content.length, // ArrayBuffer or string
       delay = 25, // timeout in ms; should be long enough for Firefox to refresh.
       progressBar, dataset, queue;

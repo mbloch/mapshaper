@@ -179,7 +179,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 MapShaper.runAndRemoveInfoCommands = function(commands) {
   return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
-      message(getVersion());
+      message(MapShaper.VERSION);
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'projections') {

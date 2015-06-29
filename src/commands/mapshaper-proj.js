@@ -36,6 +36,7 @@ MapShaper.projectDataset = function(dataset, proj) {
     // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
     // TODO: create a valid GeoJSON crs object after projecting
     dataset.info.output_crs = null;
+    dataset.info.output_prj = null;
   }
 };
 

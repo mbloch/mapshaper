@@ -32,12 +32,13 @@ var ExportControl = function() {
       setTimeout(function() {
         exportAs(format, function(err) {
           btn.active(true);
-          if (err) error(err);
+          if (err) throw err; // error(err);
         });
       }, 10);
     }
   }
 
+  // @done function(string|Error|null)
   function exportAs(format, done) {
     var opts = {format: format}, // TODO: implement other export opts
         files;
@@ -45,7 +46,7 @@ var ExportControl = function() {
     try {
       files = MapShaper.exportFileContent(dataset, opts);
     } catch(e) {
-      return done(e.message);
+      return done(e);
     }
 
     if (!utils.isArray(files) || files.length === 0) {

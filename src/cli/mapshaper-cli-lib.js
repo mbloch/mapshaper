@@ -13,17 +13,6 @@ function stop() {
   throw new APIError(MapShaper.formatLogArgs(arguments));
 }
 
-function getVersion() {
-  var v;
-  try {
-    var scriptDir = utils.parseLocalPath(require.main.filename).directory,
-        packagePath = require('path').join(scriptDir, "..", "package.json"),
-        obj = JSON.parse(cli.readFile(packagePath, 'utf-8'));
-    v = obj.version;
-  } catch(e) {}
-  return v || "";
-}
-
 cli.isFile = function(path) {
   var ss = cli.statSync(path);
   return ss && ss.isFile() || false;
@@ -109,28 +98,6 @@ cli.statSync = function(fpath) {
   return obj;
 };
 
-cli.printRepairMessage = function(info) {
-  if (info.intersections_initial > 0) {
-    message(utils.format(
-        "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
-        info.intersections_repaired, "s?", info.intersections_remaining, "s?"));
-    /*
-    if (info.intersections_remaining > 10) {
-      if (!opts.snapping) {
-        message("Tip: use --auto-snap to fix minor topology errors.");
-      }
-    }*/
-  }
-};
-
-cli.validateEncoding = function(enc) {
-  if (!MapShaper.encodingIsSupported(enc)) {
-    console.error("[Unsupported encoding:", enc + "]");
-    MapShaper.printEncodings();
-    process.exit(0);
-  }
-  return enc;
-};
 
 // Expose internal objects for testing
 utils.extend(api.internal, {

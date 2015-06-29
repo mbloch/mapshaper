@@ -83,6 +83,9 @@ MapShaper.importShapefile = function(obj, opts) {
       message("[shp] Mismatched .dbf and .shp record count -- possible data loss.");
     }
   }
+  if (obj.prj) {
+    dataset.info.input_prj = obj.prj.content;
+  }
   return dataset;
 };
 

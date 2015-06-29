@@ -4,5 +4,4 @@ var follow = process.argv.indexOf('-f') > -1;
 require("catty")({follow: follow})
 	.addLibrary("lib")
 	.addLibrary("src")
-	.cat("src/gui/mapshaper-gui.js", "./www/mapshaper.js")
 	.cat("src/cli/mapshaper-cli-lib.js", "./mapshaper.js");

@@ -11,19 +11,19 @@ mapshaper-export
 mapshaper-shapes
 mapshaper-topology
 mapshaper-keep-shapes
+mapshaper-console
 */
 
-if (Env.inBrowser) {
-  Browser.onload(function() {
-    if (!gui.browserIsSupported()) {
-      El("#mshp-not-supported").show();
-      return;
-    }
-    var editor = new Editor(),
-        importer = new ImportControl(editor);
-    El('#mshp-import').show(); // show import screen
-  });
-}
+Browser.onload(function() {
+  El('.mshp-version').text(MapShaper.VERSION);
+  if (!gui.browserIsSupported()) {
+    El("#mshp-not-supported").show();
+    return;
+  }
+  var editor = new Editor(),
+      importer = new ImportControl(editor);
+  El('#mshp-import').show(); // show import screen
+});
 
 function Editor() {
   var datasets = [];
@@ -37,7 +37,7 @@ function Editor() {
         dotColor: "#aaa",
         squareDot: true
       };
-  var map, exporter, slider, repair;
+  var map, exporter, slider, repair, cons;
 
   this.editDataset = function(dataset, opts) {
     datasets.push(dataset);
@@ -55,6 +55,7 @@ function Editor() {
 
   function startEditing() {
     map = new MshpMap("#mshp-main-map");
+    cons = new Console('#mshp-main-map', map);
     exporter = new ExportControl();
     repair = new RepairControl(map);
     slider = new SimplifyControl();

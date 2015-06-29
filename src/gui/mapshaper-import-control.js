@@ -5,7 +5,6 @@ mapshaper-zip-reader
 */
 
 // @cb function(<FileList>)
-//
 function DropControl(cb) {
   var el = El('#page-wrapper');
   el.on('dragleave', ondrag);
@@ -23,7 +22,6 @@ function DropControl(cb) {
 
 // @el DOM element for select button
 // @cb function(<FileList>)
-//
 function FileChooser(el, cb) {
   var btn = El(el).on('click', function() {
     input.el.click();

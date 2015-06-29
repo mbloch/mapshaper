@@ -6,10 +6,17 @@ mapshaper-gui-error
 */
 
 var gui = api.gui = {};
-var error = stop; // replace default error() function
 window.mapshaper = api;
 
 api.enableLogging();
+
+error = function() { // replace default error() function
+  var msg = gui.formatMessageArgs(arguments);
+  try {
+    stop(msg);
+  } catch(e) {}
+  throw new Error(msg);
+};
 
 // Show a popup error message, then throw an error
 function stop() {
@@ -19,8 +26,8 @@ function stop() {
 }
 
 gui.browserIsSupported = function() {
-  return Env.inBrowser && Env.canvas && typeof ArrayBuffer != 'undefined' &&
-    typeof Blob != 'undefined' && typeof File != 'undefined';
+  return typeof ArrayBuffer != 'undefined' &&
+      typeof Blob != 'undefined' && typeof File != 'undefined';
 };
 
 gui.formatMessageArgs = function(args) {

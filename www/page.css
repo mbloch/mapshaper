@@ -82,7 +82,7 @@ html, body {
 /* --- Error message ---------- */
 
 .error-wrapper {
-	z-index: 6000;
+	z-index: 100;
 	text-align: center;
 	position: absolute;
 	top: 0;
@@ -210,7 +210,7 @@ div.error-btn.active:hover:not(.selected) {
 .progress-bar {
 	position: absolute;
 	width: 100%;
-	z-index: 2000;
+	z-index: 90;
 	text-align: center;
 	top: 75px;
 	font-size: 16px;
@@ -243,6 +243,80 @@ div.error-btn.active:hover:not(.selected) {
 	}
 }
 
+/* --- Console control ------------ */
+
+#console {
+	z-index: 50;
+	background-color: rgba(0,0,0,0.25);
+}
+
+#console-window {
+	position: absolute;
+	width: 100%;
+	background-color: rgba(0,0,0,1);
+	text-align: center;
+	overflow: auto;
+	max-height: 350px;
+}
+
+
+
+#console-buffer {
+	width: 100%;
+	position: relative;
+	/* bottom: 12px; */
+}
+
+#console-buffer > div {
+	color: white;
+	white-space: pre;
+	/* display: inline-block; */
+	text-align: left;
+	width: 520px;
+	margin: 0 auto;
+}
+
+#console-buffer * {
+	font: 14px/1.2 monospace;
+}
+
+.console-error {
+	color: #c00;
+}
+
+.console-message {
+
+}
+
+#console-history {
+	padding-top: 6px;
+}
+
+#console-history > div {
+	padding-top: 2px;
+}
+
+#command-line {
+	/* border-bottom: 1px solid #ccc; */
+	padding-bottom: 10px;
+}
+
+#command-line > * {
+	display: inline-block;
+	vertical-align: middle;
+}
+
+#command-line > input {
+	color: #fff;
+	background-color: transparent;
+	border: none;
+	padding: 0;
+	margin: 0;
+	outline: none;
+	width: 500px;
+}
+
+
 /* --- Intersection control ----------*/
 
 #g-intersection-display {
@@ -250,7 +324,7 @@ div.error-btn.active:hover:not(.selected) {
 	visibility: visible;
 	display: none;
 	position: absolute;
-	z-index: 2000;
+	z-index: 20;
 	top: 7px;
 	right: 10px;
 	text-align: right;
@@ -271,7 +345,7 @@ div.error-btn.active:hover:not(.selected) {
 }
 
 .nav-buttons {
-	z-index: 50;
+	z-index: 20;
 	position: absolute;
 	top: 6px;
 	left: 6px;
@@ -292,7 +366,7 @@ div.error-btn.active:hover:not(.selected) {
 .zoom-box {
 	position: absolute;
 	border: 2px solid #c33;
-	z-index: 500;
+	z-index: 10;
 }
 
 

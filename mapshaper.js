@@ -1438,9 +1438,11 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
+MapShaper.VERSION = '0.2.28';
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
+MapShaper.CLI = typeof cli != 'undefined';
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;
@@ -1681,19 +1683,29 @@ MapShaper.getCommonFileBase = function(names) {
 
 
 // Guess the type of a data file from file extension, or return null if not sure
-MapShaper.guessInputFileType = function(file, content) {
+MapShaper.guessInputFileType = function(file) {
   var ext = utils.getFileExtension(file || '').toLowerCase(),
-      isText = utils.isString(content),
       type = null;
   if (ext == 'dbf' || ext == 'shp' || ext == 'prj') {
     type = ext;
-  } else if (/json$/.test(ext) || utils.isObject(content) ||
-       isText && MapShaper.stringIsJsonObject(content)) {
+  } else if (/json$/.test(ext)) {
     type = 'json';
-  } else if (isText) {
-    type = 'text';
   }
   return type;
+};
+
+MapShaper.guessInputContentType = function(content) {
+  var type = null;
+  if (utils.isString(content)) {
+    type = MapShaper.stringIsJsonObject(content) ? 'json' : 'text';
+  } else if (utils.isObject(content) && content.type) {
+    type = 'json';
+  }
+  return type;
+};
+
+MapShaper.guessInputType = function(file, content) {
+  return MapShaper.guessInputFileType(file) || MapShaper.guessInputContentType(content);
 };
 
 MapShaper.stringIsJsonObject = function(str) {
@@ -5785,6 +5797,15 @@ MapShaper.getEncodings = function() {
   return Object.keys(iconv.encodings);
 };
 
+MapShaper.validateEncoding = function(enc) {
+  if (!MapShaper.encodingIsSupported(enc)) {
+    message("[Unsupported encoding:", enc + "]");
+    MapShaper.printEncodings();
+    stop();
+  }
+  return enc;
+};
+
 MapShaper.encodingIsSupported = function(raw) {
   var enc = MapShaper.standardizeEncodingName(raw);
   return utils.contains(MapShaper.getEncodings(), enc);
@@ -9523,9 +9544,8 @@ MapShaper.getShapefileType = function(type) {
   }[type] || null;
 };
 
-// Read Shapefile data from an ArrayBuffer or Buffer
-// Build topology
-//
+// Read Shapefile data from a file, ArrayBuffer or Buffer
+// @src filename or buffer
 MapShaper.importShp = function(src, opts) {
   var reader = new ShpReader(src),
       shpType = reader.type(),
@@ -9565,7 +9585,6 @@ MapShaper.importShp = function(src, opts) {
   return importer.done();
 };
 
-
 // Convert a dataset to Shapefile files
 MapShaper.exportShapefile = function(dataset, opts) {
   return dataset.layers.reduce(function(files, lyr) {
@@ -9578,22 +9597,14 @@ MapShaper.exportShapefile = function(dataset, opts) {
 };
 
 MapShaper.exportPrjFile = function(lyr, dataset) {
-  var content, prj, path;
-  if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
-    path = utils.replaceFileExtension(dataset.info.input_files[0], 'prj');
-    if (cli.isFile(path)) {
-      content = cli.readFile(path, 'utf-8');
-    }
-  } else if (dataset.info.output_prj) {
-    content = dataset.info.output_prj;
+  var prj = dataset.info.output_prj;
+  if (!prj && prj !== null) { // null means unknown prj
+    prj = dataset.info.output_prj;
   }
-  if (content) {
-    prj = {
-      content: content,
-      filename: lyr.name + '.prj'
-    };
-  }
-  return prj;
+  return prj && {
+    content: prj,
+    filename: lyr.name + '.prj'
+  };
 };
 
 MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {
@@ -10807,14 +10818,15 @@ MapShaper.importContent = function(obj, opts) {
 
 // Deprecated (included for compatibility with older tests)
 MapShaper.importFileContent = function(content, filename, opts) {
-  var type = MapShaper.guessInputFileType(filename, content),
+  var type = MapShaper.guessInputType(filename, content),
       input = {};
   input[type] = {filename: filename, content: content};
   return MapShaper.importContent(input, opts);
 };
 
 MapShaper.importShapefile = function(obj, opts) {
-  var dataset = MapShaper.importShp(obj.shp.content, opts),
+  var shpSrc = obj.shp.content || obj.shp.filename, // content may be missing
+      dataset = MapShaper.importShp(shpSrc, opts),
       lyr = dataset.layers[0],
       dbf;
   if (obj.dbf) {
@@ -10825,16 +10837,19 @@ MapShaper.importShapefile = function(obj, opts) {
       message("[shp] Mismatched .dbf and .shp record count -- possible data loss.");
     }
   }
+  if (obj.prj) {
+    dataset.info.input_prj = obj.prj.content;
+  }
   return dataset;
 };
 
-MapShaper.importDbf = function(obj, opts) {
+MapShaper.importDbf = function(input, opts) {
   var table;
   opts = utils.extend({}, opts);
-  if (obj.cpg && !opts.encoding) {
-    opts.encoding = obj.cpg.content;
+  if (input.cpg && !opts.encoding) {
+    opts.encoding = input.cpg.content;
   }
-  table = MapShaper.importDbfTable(obj.dbf.content, opts);
+  table = MapShaper.importDbfTable(input.dbf.content, opts);
   return {
     info: {dbf_encoding: table.encoding},
     layers: [{data: table}]
@@ -10861,16 +10876,16 @@ MapShaper.setLayerName = function(lyr, path) {
 
 
 api.importFiles = function(opts) {
-  var files = opts.files,
+  var files = opts.files ? cli.validateInputFiles(opts.files) : [],
       dataset;
   if ((opts.merge_files || opts.combine_files) && files.length > 1) {
     dataset = api.mergeFiles(files, opts);
-  } else if (files && files.length == 1) {
+  } else if (files.length == 1) {
     dataset = api.importFile(files[0], opts);
   } else if (opts.stdin) {
     dataset = api.importFile('/dev/stdin', opts);
   } else {
-    stop('[i] Missing input file(s)');
+    stop('Missing input file(s)');
   }
   return dataset;
 };
@@ -10878,23 +10893,36 @@ api.importFiles = function(opts) {
 api.importFile = function(path, opts) {
   cli.checkFileExists(path);
   var isBinary = MapShaper.isBinaryFile(path),
-      textEncoding = isBinary ? null : opts && opts.encoding || 'utf-8',
-      content = cli.readFile(path, textEncoding),
-      type = MapShaper.guessInputFileType(path, content),
-      obj = {};
-  obj[type] = {filename: path, content: content};
-  if (type == 'shp' || type == 'dbf') {
-    MapShaper.readShapefileAuxFiles(path, obj);
+      isShp = MapShaper.guessInputFileType(path) == 'shp',
+      input = {},
+      type, content;
+
+  if (isShp) {
+    content = null; // let ShpReader read the file (supports larger files)
+  } else if (isBinary) {
+    content = cli.readFile(path);
+  } else {
+    content = cli.readFile(path, opts && opts.encoding || 'utf-8');
   }
-  if (type == 'shp' && !obj.dbf) {
+
+  type = MapShaper.guessInputType(path, content) || error("Unkown file type:", path);
+  input[type] = {filename: path, content: content};
+  if (type == 'shp' || type == 'dbf') {
+    MapShaper.readShapefileAuxFiles(path, input);
+  }
+  if (type == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing -- shapes imported without attribute data.", path));
   }
-  return MapShaper.importContent(obj, opts);
+  return MapShaper.importContent(input, opts);
 };
 
 MapShaper.readShapefileAuxFiles = function(path, obj) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
   var cpgPath = utils.replaceFileExtension(path, 'cpg');
+  var prjPath = utils.replaceFileExtension(path, 'prj');
+  if (cli.isFile(prjPath)) {
+    obj.prj = {filename: prjPath, content: cli.readFile(prjPath, 'utf-8')};
+  }
   if (!obj.dbf && cli.isFile(dbfPath)) {
     obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath)};
   }
@@ -10923,13 +10951,16 @@ api.exportFiles = function(dataset, opts) {
 };
 
 MapShaper.getOutputPaths = function(files, opts) {
-  var paths =  files.map(function(file) {
-    return require('path').join(opts.output_dir || '', file);
-  });
-  if (!opts.force) {
-    paths = resolveFileCollisions(paths);
+  var odir = opts.output_dir;
+  if (odir) {
+    files = files.map(function(file) {
+      return require('path').join(odir, file);
+    });
   }
-  return paths;
+  if (!opts.force) {
+    files = resolveFileCollisions(files);
+  }
+  return files;
 };
 
 // Avoid naming conflicts with existing files
@@ -12392,6 +12423,7 @@ MapShaper.projectDataset = function(dataset, proj) {
     // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
     // TODO: create a valid GeoJSON crs object after projecting
     dataset.info.output_crs = null;
+    dataset.info.output_prj = null;
   }
 };
 
@@ -12812,13 +12844,12 @@ api.findAndRepairIntersections = function(arcs) {
       countPost = unfixable.length,
       countFixed = countPre > countPost ? countPre - countPost : 0;
   T.stop('Find and repair intersections');
-  return {
-    intersections_initial: countPre,
-    intersections_remaining: countPost,
-    intersections_repaired: countFixed
-  };
+  if (countPre > 0) {
+    message(utils.format(
+      "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
+      countFixed, countFixed == 1 ? '' : 's', countPost, countPost == 1 ? '' : 's'));
+  }
 };
-
 
 // Try to resolve a collection of line-segment intersections by rolling
 // back simplification along intersecting segments.
@@ -13019,8 +13050,7 @@ api.simplify = function(arcs, opts) {
   T.stop("Calculate simplification");
 
   if (!opts.no_repair) {
-    var info = api.findAndRepairIntersections(arcs);
-    cli.printRepairMessage(info);
+    api.findAndRepairIntersections(arcs);
   }
 };
 
@@ -13875,7 +13905,7 @@ function validateInputOpts(cmd) {
   if (_[0] == '-' || _[0] == '/dev/stdin') {
     o.stdin = true;
   } else if (_.length > 0) {
-    o.files = cli.validateInputFiles(_);
+    o.files = _;
   }
 
   if ("precision" in o && o.precision > 0 === false) {
@@ -13883,7 +13913,7 @@ function validateInputOpts(cmd) {
   }
 
   if (o.encoding) {
-    o.encoding = cli.validateEncoding(o.encoding);
+    o.encoding = MapShaper.validateEncoding(o.encoding);
   }
 }
 
@@ -14089,7 +14119,7 @@ function validateOutputOpts(cmd) {
   }
 
   if (o.encoding) {
-    o.encoding = cli.validateEncoding(o.encoding);
+    o.encoding = MapShaper.validateEncoding(o.encoding);
   }
 
   // topojson-specific
@@ -14887,7 +14917,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 MapShaper.runAndRemoveInfoCommands = function(commands) {
   return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
-      message(getVersion());
+      message(MapShaper.VERSION);
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'projections') {
@@ -14913,17 +14943,6 @@ var cli = api.cli = {};
 // Handle an error caused by invalid input or misuse of API
 function stop() {
   throw new APIError(MapShaper.formatLogArgs(arguments));
-}
-
-function getVersion() {
-  var v;
-  try {
-    var scriptDir = utils.parseLocalPath(require.main.filename).directory,
-        packagePath = require('path').join(scriptDir, "..", "package.json"),
-        obj = JSON.parse(cli.readFile(packagePath, 'utf-8'));
-    v = obj.version;
-  } catch(e) {}
-  return v || "";
 }
 
 cli.isFile = function(path) {
@@ -15011,28 +15030,6 @@ cli.statSync = function(fpath) {
   return obj;
 };
 
-cli.printRepairMessage = function(info) {
-  if (info.intersections_initial > 0) {
-    message(utils.format(
-        "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
-        info.intersections_repaired, "s?", info.intersections_remaining, "s?"));
-    /*
-    if (info.intersections_remaining > 10) {
-      if (!opts.snapping) {
-        message("Tip: use --auto-snap to fix minor topology errors.");
-      }
-    }*/
-  }
-};
-
-cli.validateEncoding = function(enc) {
-  if (!MapShaper.encodingIsSupported(enc)) {
-    console.error("[Unsupported encoding:", enc + "]");
-    MapShaper.printEncodings();
-    process.exit(0);
-  }
-  return enc;
-};
 
 // Expose internal objects for testing
 utils.extend(api.internal, {
