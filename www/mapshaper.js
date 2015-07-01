@@ -12233,18 +12233,6 @@ function MshpMap(el, model) {
     deleteGroup(e.dataset);
   });
 
-  //model.on('add', function(e) {
-  //  addGroup(e.dataset);
-  //});
-
-  function addGroup(dataset) {
-    var group = new LayerGroup(dataset);
-    group.getElement().appendTo(_root);
-    _groups.push(group);
-    _ext.setBounds(getContentBounds());
-    return group;
-  }
-
   model.on('select', function(e) {
     var group = findGroup(e.dataset);
     if (!group) group = addGroup(e.dataset);
@@ -12312,6 +12300,14 @@ function MshpMap(el, model) {
       memo.mergeBounds(group.getBounds());
       return memo;
     }, new Bounds());
+  }
+
+  function addGroup(dataset) {
+    var group = new LayerGroup(dataset);
+    group.getElement().appendTo(_root);
+    _groups.push(group);
+    _ext.setBounds(getContentBounds());
+    return group;
   }
 
   function deleteGroup(dataset) {
@@ -16514,7 +16510,7 @@ function CommandParser() {
   };
 
   this.printHelp = function(commands) {
-    console.log(this.getHelpMessage(commands));
+    message(this.getHelpMessage(commands));
   };
 
   function getCommands() {
@@ -17579,14 +17575,16 @@ MapShaper.divideImportCommand = function(commands) {
 // @memo: Initial value
 //
 utils.reduceAsync = function(arr, memo, iter, done) {
+  var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
   var i=0;
   next(null, memo);
 
   function next(err, memo) {
     // Detach next operation from call stack to prevent overflow
-    // Don't use setTimeout(, 0) -- this can introduce a long delay if
-    //   previous operation was slow, as of Node 0.10.32
-    setImmediate(function() {
+    // Don't use setTimeout(, 0) if setImmediate is available
+    // (setTimeout() can introduce a long delay if previous operation was slow,
+    //    as of Node 0.10.32 -- a bug?)
+    call(function() {
       if (err) {
         done(err, null);
       } else if (i < arr.length === false) {
@@ -17594,7 +17592,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
       } else {
         iter(memo, arr[i++], next);
       }
-    });
+    }, 0);
   }
 };
 
@@ -17747,10 +17745,11 @@ function Console(parent, model) {
     var cmd = readCommandLine();
     toHistory(CURSOR + cmd);
     reset();
-    run(cmd);
     // TODO:
-    // add to history
-    // run command
+    // disable console until run is completed
+    run(cmd, function(err) {
+      // done
+    });
   }
 
   function err(e) {
@@ -17758,13 +17757,12 @@ function Console(parent, model) {
   }
 
   function filterCommands(arr) {
-    var names = 'o,i'.split(','),
-        found = [],
+    var names = 'o,i,simplify'.split(','),
         filtered = arr.filter(function(cmd) {
           return !utils.contains(names, cmd.name);
         });
-    if (found.length > 0) {
-      message("These commands can not be run in the browser:", names.join(', '));
+    if (filtered.length < arr.length) {
+      message("These commands can not be run in the console:", names.join(', '));
     }
     return filtered;
   }
@@ -17779,16 +17777,29 @@ function Console(parent, model) {
       // apply commands
       // refresh map
     } catch(e) {
-      return error(e);
+      message(e.message);
+    }
+    return commands;
+  }
+
+  function run(str, done) {
+    var commands = parseCommands(str);
+    var editing = model.getEditingLayer();
+    var opts;
+    if (editing && commands && commands.length > 0) {
+      opts = commands[0].options;
+      if (!opts.target) {
+        opts.target = editing.layer.name;
+      }
+      MapShaper.runParsedCommands(commands, editing.dataset, function(err, dataset) {
+        // TODO: handle error
+        model.updated();
+        done();
+      });
+    } else {
+      done();
     }
   }
-
-  function run(str) {
-    var commands = parseCommands(str);
-
-
-  }
-
 }
 
 
@@ -17829,6 +17840,10 @@ function Model() {
       editing.simplify_pct = pct;
       this.updated();
     }
+  };
+
+  this.getEditingLayer = function() {
+    return editing;
   };
 
   this.setEditingLayer = function(lyr, dataset, opts) {

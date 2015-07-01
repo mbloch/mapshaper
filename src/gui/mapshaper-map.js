@@ -28,18 +28,6 @@ function MshpMap(el, model) {
     deleteGroup(e.dataset);
   });
 
-  //model.on('add', function(e) {
-  //  addGroup(e.dataset);
-  //});
-
-  function addGroup(dataset) {
-    var group = new LayerGroup(dataset);
-    group.getElement().appendTo(_root);
-    _groups.push(group);
-    _ext.setBounds(getContentBounds());
-    return group;
-  }
-
   model.on('select', function(e) {
     var group = findGroup(e.dataset);
     if (!group) group = addGroup(e.dataset);
@@ -107,6 +95,14 @@ function MshpMap(el, model) {
       memo.mergeBounds(group.getBounds());
       return memo;
     }, new Bounds());
+  }
+
+  function addGroup(dataset) {
+    var group = new LayerGroup(dataset);
+    group.getElement().appendTo(_root);
+    _groups.push(group);
+    _ext.setBounds(getContentBounds());
+    return group;
   }
 
   function deleteGroup(dataset) {

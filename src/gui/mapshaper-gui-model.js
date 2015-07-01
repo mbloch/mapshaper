@@ -38,6 +38,10 @@ function Model() {
     }
   };
 
+  this.getEditingLayer = function() {
+    return editing;
+  };
+
   this.setEditingLayer = function(lyr, dataset, opts) {
     // TODO: how to handle repeat selection
     if (dataset.layers.indexOf(lyr) == -1) {

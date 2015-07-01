@@ -285,7 +285,7 @@ function CommandParser() {
   };
 
   this.printHelp = function(commands) {
-    console.log(this.getHelpMessage(commands));
+    message(this.getHelpMessage(commands));
   };
 
   function getCommands() {

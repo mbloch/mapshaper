@@ -257,7 +257,7 @@ div.error-btn.active:hover:not(.selected) {
 	background-color: rgba(0,0,0,1);
 	text-align: center;
 	overflow: auto;
-	max-height: 350px;
+	max-height: 450px;
 }
 
 

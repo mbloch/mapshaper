@@ -124,10 +124,11 @@ function Console(parent, model) {
     var cmd = readCommandLine();
     toHistory(CURSOR + cmd);
     reset();
-    run(cmd);
     // TODO:
-    // add to history
-    // run command
+    // disable console until run is completed
+    run(cmd, function(err) {
+      // done
+    });
   }
 
   function err(e) {
@@ -135,13 +136,12 @@ function Console(parent, model) {
   }
 
   function filterCommands(arr) {
-    var names = 'o,i'.split(','),
-        found = [],
+    var names = 'o,i,simplify'.split(','),
         filtered = arr.filter(function(cmd) {
           return !utils.contains(names, cmd.name);
         });
-    if (found.length > 0) {
-      message("These commands can not be run in the browser:", names.join(', '));
+    if (filtered.length < arr.length) {
+      message("These commands can not be run in the console:", names.join(', '));
     }
     return filtered;
   }
@@ -156,14 +156,27 @@ function Console(parent, model) {
       // apply commands
       // refresh map
     } catch(e) {
-      return error(e);
+      message(e.message);
+    }
+    return commands;
+  }
+
+  function run(str, done) {
+    var commands = parseCommands(str);
+    var editing = model.getEditingLayer();
+    var opts;
+    if (editing && commands && commands.length > 0) {
+      opts = commands[0].options;
+      if (!opts.target) {
+        opts.target = editing.layer.name;
+      }
+      MapShaper.runParsedCommands(commands, editing.dataset, function(err, dataset) {
+        // TODO: handle error
+        model.updated();
+        done();
+      });
+    } else {
+      done();
     }
   }
-
-  function run(str) {
-    var commands = parseCommands(str);
-
-
-  }
-
 }
