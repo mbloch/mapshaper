@@ -136,7 +136,7 @@ function Console(parent, model) {
   }
 
   function filterCommands(arr) {
-    var names = 'o,i,simplify'.split(','),
+    var names = 'o,i'.split(','),
         filtered = arr.filter(function(cmd) {
           return !utils.contains(names, cmd.name);
         });

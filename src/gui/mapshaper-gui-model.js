@@ -28,13 +28,8 @@ function Model() {
   };
 
   this.updated = function() {
-    this.dispatchEvent('update', editing);
-  };
-
-  this.setSimplifyPct = function(pct) {
     if (editing) {
-      editing.simplify_pct = pct;
-      this.updated();
+      this.dispatchEvent('update', editing);
     }
   };
 
@@ -53,8 +48,7 @@ function Model() {
     editing = {
       layer: lyr,
       dataset: dataset,
-      opts: opts,
-      simplify_pct: dataset.arcs ? dataset.arcs.getRetainedPct() : 1
+      opts: opts
     };
     this.dispatchEvent('select', editing);
   };

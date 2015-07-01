@@ -55,7 +55,7 @@ function Editor() {
       repair.update();
     });
     simplify.on('change', function(e) {
-      model.setSimplifyPct(e.value);
+      map.setSimplifyPct(e.value);
     });
     repair.on('repair', function() {
       model.updated();

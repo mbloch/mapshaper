@@ -11948,6 +11948,12 @@ function LayerGroup(dataset) {
     _shapes = null;
   };
 
+  this.updated = function() {
+    if (_filteredArcs) {
+      _filteredArcs.setRetainedInterval(dataset.arcs.getRetainedInterval());
+    }
+  };
+
   this.setRetainedPct = function(pct) {
     _filteredArcs.setRetainedPct(pct);
     return this;
@@ -12244,7 +12250,7 @@ function MshpMap(el, model) {
 
   model.on('update', function(e) {
     var group = findGroup(e.dataset);
-    group.setRetainedPct(e.simplify_pct);
+    group.updated();
     refreshLayer(group);
   });
 
@@ -12259,6 +12265,11 @@ function MshpMap(el, model) {
       highStyle.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
       refreshLayer(_highGroup);
     }
+  };
+
+  this.setSimplifyPct = function(pct) {
+    _activeGroup.setRetainedPct(pct);
+    refreshLayers(_activeGroup);
   };
 
   this.refreshLayer = function(dataset) {
@@ -17757,7 +17768,7 @@ function Console(parent, model) {
   }
 
   function filterCommands(arr) {
-    var names = 'o,i,simplify'.split(','),
+    var names = 'o,i'.split(','),
         filtered = arr.filter(function(cmd) {
           return !utils.contains(names, cmd.name);
         });
@@ -17832,13 +17843,8 @@ function Model() {
   };
 
   this.updated = function() {
-    this.dispatchEvent('update', editing);
-  };
-
-  this.setSimplifyPct = function(pct) {
     if (editing) {
-      editing.simplify_pct = pct;
-      this.updated();
+      this.dispatchEvent('update', editing);
     }
   };
 
@@ -17857,8 +17863,7 @@ function Model() {
     editing = {
       layer: lyr,
       dataset: dataset,
-      opts: opts,
-      simplify_pct: dataset.arcs ? dataset.arcs.getRetainedPct() : 1
+      opts: opts
     };
     this.dispatchEvent('select', editing);
   };
@@ -17910,7 +17915,7 @@ function Editor() {
       repair.update();
     });
     simplify.on('change', function(e) {
-      model.setSimplifyPct(e.value);
+      map.setSimplifyPct(e.value);
     });
     repair.on('repair', function() {
       model.updated();

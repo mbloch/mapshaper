@@ -45,6 +45,12 @@ function LayerGroup(dataset) {
     _shapes = null;
   };
 
+  this.updated = function() {
+    if (_filteredArcs) {
+      _filteredArcs.setRetainedInterval(dataset.arcs.getRetainedInterval());
+    }
+  };
+
   this.setRetainedPct = function(pct) {
     _filteredArcs.setRetainedPct(pct);
     return this;

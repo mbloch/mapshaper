@@ -39,7 +39,7 @@ function MshpMap(el, model) {
 
   model.on('update', function(e) {
     var group = findGroup(e.dataset);
-    group.setRetainedPct(e.simplify_pct);
+    group.updated();
     refreshLayer(group);
   });
 
@@ -54,6 +54,11 @@ function MshpMap(el, model) {
       highStyle.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
       refreshLayer(_highGroup);
     }
+  };
+
+  this.setSimplifyPct = function(pct) {
+    _activeGroup.setRetainedPct(pct);
+    refreshLayers(_activeGroup);
   };
 
   this.refreshLayer = function(dataset) {
