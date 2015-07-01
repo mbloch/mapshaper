@@ -118,16 +118,12 @@ var Utils = {
     return dest;
   },
 
-  /**
-   * Pseudoclassical inheritance
-   *
-   * Inherit from a Parent function:
-   *    Utils.inherit(Child, Parent);
-   * Call parent's constructor (inside child constructor):
-   *    this.__super__([args...]);
-   * Call a parent method (when it has been overriden by a same-named function in Child):
-   *    this.__super__.<method_name>.call(this, [args...]);
-   */
+  // Pseudoclassical inheritance
+  //
+  // Inherit from a Parent function:
+  //    Utils.inherit(Child, Parent);
+  // Call parent's constructor (inside child constructor):
+  //    this.__super__([args...]);
   inherit: function(targ, src) {
     var f = function() {
       if (this.__super__ == f) {
@@ -147,6 +143,19 @@ var Utils = {
     targ.prototype = Utils.extend(new f(), targ.prototype); //
     targ.prototype.constructor = targ;
     targ.prototype.__super__ = f;
+  },
+
+  // Inherit from a parent, call the parent's constructor, optionally extend
+  // prototype with optional additional arguments
+  subclass: function(parent) {
+    var child = function() {
+      this.__super__.apply(this, Utils.toArray(arguments));
+    };
+    Utils.inherit(child, parent);
+    for (var i=1; i<arguments.length; i++) {
+      Utils.extend(child.prototype, arguments[i]);
+    }
+    return child;
   }
 
 };
@@ -162,7 +171,6 @@ var Env = (function() {
   return {
     iPhone : inBrowser && !!(navigator.userAgent.match(/iPhone/i)),
     iPad : inBrowser && !!(navigator.userAgent.match(/iPad/i)),
-    touchEnabled : inBrowser && ("ontouchstart" in window),
     canvas: inBrowser && !!document.createElement('canvas').getContext,
     inNode : inNode,
     inPhantom : inPhantom,
@@ -417,6 +425,10 @@ Utils.repeatString = function(src, n) {
   for (var i=0; i<n; i++)
     str += src;
   return str;
+};
+
+Utils.pluralSuffix = function(count) {
+  return count != 1 ? 's' : '';
 };
 
 Utils.endsWith = function(str, ending) {
@@ -1992,6 +2004,7 @@ Utils.extend(El.prototype, {
 
   text: function(obj) {
     if (Utils.isArray(obj)) {
+      // TODO: remove
       for (var i=0, el = this; i<obj.length && el; el=el.sibling(), i++) {
         el.text(obj[i]);
       }
@@ -3083,6 +3096,7 @@ utils.inherit(SimpleButton, EventDispatcher);
 
 
 var SimplifyControl = function() {
+  var control = new EventDispatcher();
   var _value = 1;
   var el = El('#g-simplify-control');
   var slider = new Slider("#g-simplify-control .g-slider");
@@ -3145,19 +3159,16 @@ var SimplifyControl = function() {
     }
   }
 
-  var control = new EventDispatcher();
   control.show = function() {
     el.show();
     El('body').addClass('simplify');
   };
-  control.hide = function() {
+
+  control.reset = function() {
     el.hide();
     El('body').removeClass('simplify');
   };
-  control.reset = function() {
-    control.hide();
-    control.removeEventListeners();
-  };
+
   control.value = function(val) {
     if (!isNaN(val)) {
       // TODO: validate
@@ -5305,6 +5316,14 @@ MapShaper.countArcsInShapes = function(shapes, counts) {
   });
 };
 
+MapShaper.countPointsInLayer = function(lyr) {
+  var count = 0;
+  if (MapShaper.layerHasPoints(lyr)) {
+    MapShaper.forEachPoint(lyr, function() {count++;});
+  }
+  return count;
+};
+
 // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
 MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
   var index = numArcs ? new Uint8Array(numArcs) : [],
@@ -6449,7 +6468,7 @@ MapShaper.snapCoords = function(arcs, threshold) {
 
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
   if (snapCount > 0) arcs.dedupCoords();
-  message(utils.format("Snapped %s point%s", snapCount, "s?"));
+  message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
 };
 
 // Snap together points within a small threshold
@@ -8281,11 +8300,11 @@ function PathImporter(opts, reservedPoints) {
     } else if (collectionType == 'polygon' || collectionType == 'polyline') {
 
       if (dupeCount > 0) {
-        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
+        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
       }
       if (skippedPathCount > 0) {
         // TODO: consider showing details about type of error
-        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, "s?"));
+        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, utils.pluralSuffix(skippedPathCount)));
       }
 
       if (pointId > 0) {
@@ -11447,51 +11466,38 @@ MapShaper.repairIntersections = function(arcs, intersections) {
 
 function RepairControl(map) {
   var el = El("#g-intersection-display"),
-      _self = this,
       readout = el.findChild("#g-intersection-count"),
       btn = el.findChild("#g-repair-btn"),
-      _pointLyr = {geometry_type: "point", shapes: []},
-      _dataset, _currXX, _displayGroup;
+      _self = this,
+      _dataset, _currXX, _initialXX;
 
   this.setDataset = function(dataset) {
     _dataset = dataset.arcs ? dataset : null;
-    this.clear();
-  };
-
-  this.show = function() {
-    el.show();
-  };
-
-  this.hide = function() {
-    this.clear();
-    el.hide();
   };
 
   this.reset = function() {
-    this.hide();
-    this.removeEventListeners();
+    _currXX = null;
+    _initialXX = null;
+    el.hide();
   };
 
-  // Display intersections for dataset's current level of arc simplification
+  // Detect and display intersections for current level of arc simplification
   this.update = function() {
     var XX, showBtn, pct;
     if (!_dataset) return;
-    if (!_displayGroup) {
-      _displayGroup = map.addLayer({layers:[_pointLyr]});
-    }
-
     if (_dataset.arcs.getRetainedInterval() > 0) {
       XX = MapShaper.findSegmentIntersections(_dataset.arcs);
       showBtn = XX.length > 0;
     } else { // no simplification
-      if (!_dataset.info.repair) {
-        _dataset.info.repair = {
-          initialXX: MapShaper.findSegmentIntersections(_dataset.arcs)
-        };
+      if (!_initialXX) {
+        // cache intersections for no simplification, to avoid recalculating
+        // every time the simplification slider is set to 100%
+        _initialXX = MapShaper.findSegmentIntersections(_dataset.arcs);
       }
-      XX = _dataset.info.repair.initialXX;
+      XX = _initialXX;
       showBtn = false;
     }
+    el.show();
     showIntersections(XX);
     btn.classed('disabled', !showBtn);
   };
@@ -11505,29 +11511,16 @@ function RepairControl(map) {
     _self.dispatchEvent('repair');
   });
 
-  this.clear = function() {
-    _currXX = null;
-    if (_displayGroup) _displayGroup.hide();
-  };
-
   function showIntersections(XX) {
-    var n = XX.length;
-    if (n === 0) {
-      _displayGroup.hide();
-    } else {
-      _pointLyr.shapes[0] = MapShaper.getIntersectionPoints(XX);
-      _displayGroup
-        .showLayer(_pointLyr)
-        .setStyle({
-          dotSize: n < 20 && 5 || n < 500 && 4 || 3,
-          squareDot: true,
-          dotColor: "#F24400"
-        })
-        .refresh();
-    }
-    var msg = utils.format("%s line intersection%s", n, n != 1 ? 's' : '');
-    readout.text(msg);
+    var n = XX.length, pointLyr;
     _currXX = XX;
+    if (n > 0) {
+      pointLyr = {geometry_type: 'point', shapes: [MapShaper.getIntersectionPoints(XX)]};
+      map.setHighlightLayer(pointLyr, {layers:[pointLyr]});
+    } else {
+      map.setHighlightLayer(null);
+    }
+    readout.text(utils.format("%s line intersection%s", n, utils.pluralSuffix(n)));
   }
 }
 
@@ -11917,10 +11910,8 @@ function LayerGroup(dataset) {
       _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
       _bounds = MapShaper.getDatasetBounds(dataset),
       _draw,
-      _shapes,
       _lyr,
-      _style,
-      _map;
+      _shapes;
 
   this.showLayer = function(lyr) {
     // TODO: make sure lyr is in dataset
@@ -11932,7 +11923,12 @@ function LayerGroup(dataset) {
       _shapes = _filteredArcs;
       _draw = MapShaper.drawPaths;
     }
+    _lyr = lyr;
     return this;
+  };
+
+  this.getElement = function() {
+    return _surface.getElement();
   };
 
   this.getBounds = function() {
@@ -11943,9 +11939,8 @@ function LayerGroup(dataset) {
     return dataset;
   };
 
-  this.setStyle = function(style) {
-    _style = style;
-    return this;
+  this.getLayer = function() {
+    return _lyr;
   };
 
   this.hide = function() {
@@ -11958,12 +11953,11 @@ function LayerGroup(dataset) {
     return this;
   };
 
-  this.refresh = function() {
-    if (_map && _shapes && _style) {
-      var ext = _map.getExtent();
+  this.draw = function(style, ext) {
+    if (_shapes) {
       _surface.prepare(ext.width(), ext.height());
       _shapes.setMapExtent(ext);
-      _draw(_shapes, _style, _surface.getContext());
+      _draw(_shapes, style, _surface.getContext());
     }
   };
 
@@ -11973,10 +11967,6 @@ function LayerGroup(dataset) {
     }
   };
 
-  this.setMap = function(map) {
-    _map = map;
-    _surface.getElement().appendTo(map.getElement());
-  };
 }
 
 
@@ -12215,26 +12205,85 @@ utils.inherit(MapExtent, EventDispatcher);
 
 
 
-function MshpMap(el) {
+function MshpMap(el, model) {
   var _root = El(el),
       _ext = new MapExtent(_root, {padding: 12}),
       _nav = new MapNav(_ext, _root),
-      _groups = [];
+      _groups = [],
+      _highGroup,
+      _activeGroup;
+
+  var foregroundStyle = {
+        strokeColor: "#335",
+        dotColor: "#223",
+        squareDot: true
+      };
+
+  var bgStyle = {
+        strokeColor: "#aaa",
+        dotColor: "#aaa",
+        squareDot: true
+      };
+
+  var highStyle = {
+      squareDot: true,
+      dotColor: "#F24400",
+      dotSize: 6
+  };
 
   _ext.on('change', refreshLayers);
 
-  function refreshLayers() {
-    _groups.forEach(function(lyr) {
-      lyr.refresh();
-    });
+  model.on('delete', function(e) {
+    deleteGroup(e.dataset);
+  });
+
+  //model.on('add', function(e) {
+  //  addGroup(e.dataset);
+  //});
+
+  function addGroup(dataset) {
+    var group = new LayerGroup(dataset);
+    group.getElement().appendTo(_root);
+    _groups.push(group);
+    _ext.setBounds(getContentBounds());
+    return group;
   }
 
-  function getContentBounds() {
-    return _groups.reduce(function(memo, lyr) {
-      memo.mergeBounds(lyr.getBounds());
-      return memo;
-    }, new Bounds());
-  }
+  model.on('select', function(e) {
+    var group = findGroup(e.dataset);
+    if (!group) group = addGroup(e.dataset);
+    group.showLayer(e.layer);
+    group.setRetainedPct(e.simplify_pct);
+    _activeGroup = group;
+    refreshLayers();
+  });
+
+  model.on('update', function(e) {
+    var group = findGroup(e.dataset);
+    group.setRetainedPct(e.simplify_pct);
+    refreshLayer(group);
+  });
+
+  this.setHighlightLayer = function(lyr, dataset) {
+    if (_highGroup) {
+      deleteGroup(_highGroup.getDataset());
+      _highGroup = null;
+    }
+    if (lyr) {
+      _highGroup = addGroup(dataset);
+      _highGroup.showLayer(lyr);
+      highStyle.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
+      refreshLayer(_highGroup);
+    }
+  };
+
+  this.refreshLayer = function(dataset) {
+    refreshLayer(findGroup(dataset));
+  };
+
+  this.getElement = function() {
+    return _root;
+  };
 
   this.getExtent = function() {
     return _ext;
@@ -12244,34 +12293,47 @@ function MshpMap(el) {
     refreshLayers();
   };
 
-  this.addLayer = function(dataset) {
-    var lyr = new LayerGroup(dataset);
-    lyr.setMap(this);
-    _groups.push(lyr);
-    _ext.setBounds(getContentBounds());
-    return lyr;
-  };
+  function calcDotSize(n) {
+    return n < 20 && 5 || n < 500 && 4 || 3;
+  }
 
-  this.findLayer = function(dataset) {
-    return utils.find(_groups, function(lyr) {
-      return lyr.getDataset() == dataset;
-    });
-  };
+  function refreshLayers() {
+    _groups.forEach(refreshLayer);
+  }
 
-  this.removeLayer = function(targetLyr) {
-    _groups = _groups.reduce(function(memo, lyr) {
-      if (lyr == targetLyr) {
-        lyr.remove();
+  function refreshLayer(group) {
+    var style = bgStyle;
+    if (group == _activeGroup) {
+      style = foregroundStyle;
+    } else if (group == _highGroup) {
+      style = highStyle;
+    }
+    group.draw(style, _ext);
+  }
+
+  function getContentBounds() {
+    return _groups.reduce(function(memo, group) {
+      memo.mergeBounds(group.getBounds());
+      return memo;
+    }, new Bounds());
+  }
+
+  function deleteGroup(dataset) {
+    _groups = _groups.reduce(function(memo, g) {
+      if (g.getDataset() == dataset) {
+        g.remove();
       } else {
-        memo.push(lyr);
+        memo.push(g);
       }
       return memo;
     }, []);
-  };
+  }
 
-  this.getElement = function() {
-    return _root;
-  };
+  function findGroup(dataset) {
+    return utils.find(_groups, function(group) {
+      return group.getDataset() == dataset;
+    });
+  }
 }
 
 utils.inherit(MshpMap, EventDispatcher);
@@ -16769,7 +16831,7 @@ function validateCommaSepNames(str, min) {
   }
   var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
-    error(utils.format("expected a list of at least %d member%s; found: %s", min, 's?', str));
+    error(utils.format("expected a list of at least %d member%s; found: %s", min, utils.pluralSuffix(min), str));
   }
   return parts.length > 0 ? parts : null;
 }
@@ -17565,7 +17627,7 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
 
 
 
-function Console(parent) {
+function Console(parent, model) {
   var CURSOR = '$ ';
   var el = El('#console').hide();
   var buffer = El('#console-buffer');
@@ -17699,12 +17761,24 @@ function Console(parent) {
     toHistory(e.stack, 'console-error');
   }
 
+  function filterCommands(arr) {
+    var names = 'o,i'.split(','),
+        found = [],
+        filtered = arr.filter(function(cmd) {
+          return !utils.contains(names, cmd.name);
+        });
+    if (found.length > 0) {
+      message("These commands can not be run in the browser:", names.join(', '));
+    }
+    return filtered;
+  }
+
   function parseCommands(str) {
     var commands;
     try {
       commands = MapShaper.parseCommands(str);
+      commands = filterCommands(commands);
       // TODO:
-      // filter out any commands that can't be run in the browser
       // get dataset and target layer
       // apply commands
       // refresh map
@@ -17723,6 +17797,68 @@ function Console(parent) {
 
 
 
+function Model() {
+  var datasets = [],
+      editing;
+
+  this.size = function() {
+    return datasets.length;
+  };
+
+  this.addDataset = function(d) {
+    datasets.push(d);
+    this.dispatchEvent('add', {dataset: d});
+  };
+
+  this.removeDataset = function(target) {
+    if (target == (editing && editing.dataset)) {
+      error("Can't remove dataset while editing");
+    }
+    datasets = datasets.filter(function(d) {
+      return d != target;
+    });
+    this.dispatchEvent('delete', {dataset: target});
+  };
+
+  this.getDatasets = function() {
+    return datasets;
+  };
+
+  this.updated = function() {
+    this.dispatchEvent('update', editing);
+  };
+
+  this.setSimplifyPct = function(pct) {
+    if (editing) {
+      editing.simplify_pct = pct;
+      this.updated();
+    }
+  };
+
+  this.setEditingLayer = function(lyr, dataset, opts) {
+    // TODO: how to handle repeat selection
+    if (dataset.layers.indexOf(lyr) == -1) {
+      error("Selected layer not found");
+    }
+    if (datasets.indexOf(dataset) == -1) {
+      this.addDataset(dataset);
+    }
+    editing = {
+      layer: lyr,
+      dataset: dataset,
+      opts: opts,
+      simplify_pct: dataset.arcs ? dataset.arcs.getRetainedPct() : 1
+    };
+    this.dispatchEvent('select', editing);
+  };
+
+}
+
+utils.inherit(Model, EventDispatcher);
+
+
+
+
 Browser.onload(function() {
   El('.mshp-version').text(MapShaper.VERSION);
   if (!gui.browserIsSupported()) {
@@ -17735,84 +17871,67 @@ Browser.onload(function() {
 });
 
 function Editor() {
-  var datasets = [];
-  var foregroundStyle = {
-        strokeColor: "#335",
-        dotColor: "#223",
-        squareDot: true
-      };
-  var bgStyle = {
-        strokeColor: "#aaa",
-        dotColor: "#aaa",
-        squareDot: true
-      };
-  var map, exporter, slider, repair, cons;
+  var model = new Model().on('select', onSelect),
+      map, exporter, simplify, repair, cons;
 
   this.editDataset = function(dataset, opts) {
-    datasets.push(dataset);
-    if (datasets.length > 2) {
-      map.findLayer(datasets.shift()).remove();
-    }
-    if (datasets.length > 1) {
-      map.findLayer(datasets[0]).setStyle(bgStyle);
-    } else {
+    if (model.size() === 0) {
       startEditing();
     }
-
-    editDataset(dataset, opts);
+    if (model.size() > 1) {
+      model.removeDataset(model.getDatasets().shift());
+    }
+    model.setEditingLayer(dataset.layers[0], dataset, opts);
   };
 
   function startEditing() {
-    map = new MshpMap("#mshp-main-map");
-    cons = new Console('#mshp-main-map', map);
+    map = new MshpMap("#mshp-main-map", model);
+    cons = new Console('#mshp-main-map', model);
     exporter = new ExportControl();
     repair = new RepairControl(map);
-    slider = new SimplifyControl();
+    simplify = new SimplifyControl();
     El("#mshp-main-page").show();
+
+    simplify.on('simplify-start', function() {
+      // repair.clear();
+    });
+    simplify.on('simplify-end', function() {
+      repair.update();
+    });
+    simplify.on('change', function(e) {
+      model.setSimplifyPct(e.value);
+    });
+    repair.on('repair', function() {
+      model.updated();
+    });
   }
 
-  function editDataset(dataset, opts) {
-    var group = map.addLayer(dataset);
-    group.showLayer(dataset.layers[0]).setStyle(foregroundStyle);
-    exporter.setDataset(dataset);
-
+  function onSelect(e) {
+    var dataset = e.dataset;
     // hide widgets if visible and remove any old event handlers
-    slider.reset();
+    exporter.setDataset(dataset);
+    simplify.reset();
     repair.reset();
-    map.refresh(); // redraw all map layers
+    // map.refresh(); // redraw all map layers
 
-    if (opts.method && dataset.arcs) {
-      slider.show();
-      slider.value(dataset.arcs.getRetainedPct());
-      slider.on('change', function(e) {
-        group.setRetainedPct(e.value).refresh();
-      });
-      if (!opts.no_repair) {
+    if (MapShaper.layerHasPaths(e.layer)) {
+      simplify.show();
+      simplify.value(dataset.arcs.getRetainedPct());
+
+      if (!e.opts.no_repair) {
         repair.setDataset(dataset);
         // use timeout so map appears before the repair control calculates
         // intersection data, which can take a little while
-        setTimeout(initRepair, 10);
+        setTimeout(function() {
+          // repair.show();
+          repair.update();
+        }, 10);
       }
-    }
-
-    function initRepair() {
-      repair.show();
-      repair.update();
-      slider.on('simplify-start', function() {
-        repair.clear();
-      });
-      slider.on('simplify-end', function() {
-        repair.update();
-      });
-      repair.on('repair', function() {
-        group.refresh();
-      });
     }
   }
 }
 
 }());
-
 
 }).call(this,require("buffer").Buffer)
 },{"./lib/d3/d3-dsv.js":2,"buffer":5,"fs":3,"iconv-lite":29,"path":9,"rbush":30,"shell-quote":31}],2:[function(require,module,exports){

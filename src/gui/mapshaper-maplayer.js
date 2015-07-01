@@ -7,10 +7,8 @@ function LayerGroup(dataset) {
       _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
       _bounds = MapShaper.getDatasetBounds(dataset),
       _draw,
-      _shapes,
       _lyr,
-      _style,
-      _map;
+      _shapes;
 
   this.showLayer = function(lyr) {
     // TODO: make sure lyr is in dataset
@@ -22,7 +20,12 @@ function LayerGroup(dataset) {
       _shapes = _filteredArcs;
       _draw = MapShaper.drawPaths;
     }
+    _lyr = lyr;
     return this;
+  };
+
+  this.getElement = function() {
+    return _surface.getElement();
   };
 
   this.getBounds = function() {
@@ -33,9 +36,8 @@ function LayerGroup(dataset) {
     return dataset;
   };
 
-  this.setStyle = function(style) {
-    _style = style;
-    return this;
+  this.getLayer = function() {
+    return _lyr;
   };
 
   this.hide = function() {
@@ -48,12 +50,11 @@ function LayerGroup(dataset) {
     return this;
   };
 
-  this.refresh = function() {
-    if (_map && _shapes && _style) {
-      var ext = _map.getExtent();
+  this.draw = function(style, ext) {
+    if (_shapes) {
       _surface.prepare(ext.width(), ext.height());
       _shapes.setMapExtent(ext);
-      _draw(_shapes, _style, _surface.getContext());
+      _draw(_shapes, style, _surface.getContext());
     }
   };
 
@@ -63,8 +64,4 @@ function LayerGroup(dataset) {
     }
   };
 
-  this.setMap = function(map) {
-    _map = map;
-    _surface.getElement().appendTo(map.getElement());
-  };
 }

@@ -1,6 +1,6 @@
 /* @requires mapshaper-gui-lib mapshaper-commands */
 
-function Console(parent) {
+function Console(parent, model) {
   var CURSOR = '$ ';
   var el = El('#console').hide();
   var buffer = El('#console-buffer');
@@ -134,12 +134,24 @@ function Console(parent) {
     toHistory(e.stack, 'console-error');
   }
 
+  function filterCommands(arr) {
+    var names = 'o,i'.split(','),
+        found = [],
+        filtered = arr.filter(function(cmd) {
+          return !utils.contains(names, cmd.name);
+        });
+    if (found.length > 0) {
+      message("These commands can not be run in the browser:", names.join(', '));
+    }
+    return filtered;
+  }
+
   function parseCommands(str) {
     var commands;
     try {
       commands = MapShaper.parseCommands(str);
+      commands = filterCommands(commands);
       // TODO:
-      // filter out any commands that can't be run in the browser
       // get dataset and target layer
       // apply commands
       // refresh map

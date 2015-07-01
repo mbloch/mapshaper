@@ -1,25 +1,84 @@
 /* @requires mapshaper-common, mapshaper-maplayer, mapshaper-map-nav, mapshaper-map-extent */
 
-function MshpMap(el) {
+function MshpMap(el, model) {
   var _root = El(el),
       _ext = new MapExtent(_root, {padding: 12}),
       _nav = new MapNav(_ext, _root),
-      _groups = [];
+      _groups = [],
+      _highGroup,
+      _activeGroup;
+
+  var foregroundStyle = {
+        strokeColor: "#335",
+        dotColor: "#223",
+        squareDot: true
+      };
+
+  var bgStyle = {
+        strokeColor: "#aaa",
+        dotColor: "#aaa",
+        squareDot: true
+      };
+
+  var highStyle = {
+      squareDot: true,
+      dotColor: "#F24400",
+      dotSize: 6
+  };
 
   _ext.on('change', refreshLayers);
 
-  function refreshLayers() {
-    _groups.forEach(function(lyr) {
-      lyr.refresh();
-    });
+  model.on('delete', function(e) {
+    deleteGroup(e.dataset);
+  });
+
+  //model.on('add', function(e) {
+  //  addGroup(e.dataset);
+  //});
+
+  function addGroup(dataset) {
+    var group = new LayerGroup(dataset);
+    group.getElement().appendTo(_root);
+    _groups.push(group);
+    _ext.setBounds(getContentBounds());
+    return group;
   }
 
-  function getContentBounds() {
-    return _groups.reduce(function(memo, lyr) {
-      memo.mergeBounds(lyr.getBounds());
-      return memo;
-    }, new Bounds());
-  }
+  model.on('select', function(e) {
+    var group = findGroup(e.dataset);
+    if (!group) group = addGroup(e.dataset);
+    group.showLayer(e.layer);
+    group.setRetainedPct(e.simplify_pct);
+    _activeGroup = group;
+    refreshLayers();
+  });
+
+  model.on('update', function(e) {
+    var group = findGroup(e.dataset);
+    group.setRetainedPct(e.simplify_pct);
+    refreshLayer(group);
+  });
+
+  this.setHighlightLayer = function(lyr, dataset) {
+    if (_highGroup) {
+      deleteGroup(_highGroup.getDataset());
+      _highGroup = null;
+    }
+    if (lyr) {
+      _highGroup = addGroup(dataset);
+      _highGroup.showLayer(lyr);
+      highStyle.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
+      refreshLayer(_highGroup);
+    }
+  };
+
+  this.refreshLayer = function(dataset) {
+    refreshLayer(findGroup(dataset));
+  };
+
+  this.getElement = function() {
+    return _root;
+  };
 
   this.getExtent = function() {
     return _ext;
@@ -29,34 +88,47 @@ function MshpMap(el) {
     refreshLayers();
   };
 
-  this.addLayer = function(dataset) {
-    var lyr = new LayerGroup(dataset);
-    lyr.setMap(this);
-    _groups.push(lyr);
-    _ext.setBounds(getContentBounds());
-    return lyr;
-  };
+  function calcDotSize(n) {
+    return n < 20 && 5 || n < 500 && 4 || 3;
+  }
 
-  this.findLayer = function(dataset) {
-    return utils.find(_groups, function(lyr) {
-      return lyr.getDataset() == dataset;
-    });
-  };
+  function refreshLayers() {
+    _groups.forEach(refreshLayer);
+  }
 
-  this.removeLayer = function(targetLyr) {
-    _groups = _groups.reduce(function(memo, lyr) {
-      if (lyr == targetLyr) {
-        lyr.remove();
+  function refreshLayer(group) {
+    var style = bgStyle;
+    if (group == _activeGroup) {
+      style = foregroundStyle;
+    } else if (group == _highGroup) {
+      style = highStyle;
+    }
+    group.draw(style, _ext);
+  }
+
+  function getContentBounds() {
+    return _groups.reduce(function(memo, group) {
+      memo.mergeBounds(group.getBounds());
+      return memo;
+    }, new Bounds());
+  }
+
+  function deleteGroup(dataset) {
+    _groups = _groups.reduce(function(memo, g) {
+      if (g.getDataset() == dataset) {
+        g.remove();
       } else {
-        memo.push(lyr);
+        memo.push(g);
       }
       return memo;
     }, []);
-  };
+  }
 
-  this.getElement = function() {
-    return _root;
-  };
+  function findGroup(dataset) {
+    return utils.find(_groups, function(group) {
+      return group.getDataset() == dataset;
+    });
+  }
 }
 
 utils.inherit(MshpMap, EventDispatcher);

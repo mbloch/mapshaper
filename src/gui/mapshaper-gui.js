@@ -12,6 +12,7 @@ mapshaper-shapes
 mapshaper-topology
 mapshaper-keep-shapes
 mapshaper-console
+mapshaper-gui-model
 */
 
 Browser.onload(function() {
@@ -26,78 +27,62 @@ Browser.onload(function() {
 });
 
 function Editor() {
-  var datasets = [];
-  var foregroundStyle = {
-        strokeColor: "#335",
-        dotColor: "#223",
-        squareDot: true
-      };
-  var bgStyle = {
-        strokeColor: "#aaa",
-        dotColor: "#aaa",
-        squareDot: true
-      };
-  var map, exporter, slider, repair, cons;
+  var model = new Model().on('select', onSelect),
+      map, exporter, simplify, repair, cons;
 
   this.editDataset = function(dataset, opts) {
-    datasets.push(dataset);
-    if (datasets.length > 2) {
-      map.findLayer(datasets.shift()).remove();
-    }
-    if (datasets.length > 1) {
-      map.findLayer(datasets[0]).setStyle(bgStyle);
-    } else {
+    if (model.size() === 0) {
       startEditing();
     }
-
-    editDataset(dataset, opts);
+    if (model.size() > 1) {
+      model.removeDataset(model.getDatasets().shift());
+    }
+    model.setEditingLayer(dataset.layers[0], dataset, opts);
   };
 
   function startEditing() {
-    map = new MshpMap("#mshp-main-map");
-    cons = new Console('#mshp-main-map', map);
+    map = new MshpMap("#mshp-main-map", model);
+    cons = new Console('#mshp-main-map', model);
     exporter = new ExportControl();
     repair = new RepairControl(map);
-    slider = new SimplifyControl();
+    simplify = new SimplifyControl();
     El("#mshp-main-page").show();
+
+    simplify.on('simplify-start', function() {
+      // repair.clear();
+    });
+    simplify.on('simplify-end', function() {
+      repair.update();
+    });
+    simplify.on('change', function(e) {
+      model.setSimplifyPct(e.value);
+    });
+    repair.on('repair', function() {
+      model.updated();
+    });
   }
 
-  function editDataset(dataset, opts) {
-    var group = map.addLayer(dataset);
-    group.showLayer(dataset.layers[0]).setStyle(foregroundStyle);
-    exporter.setDataset(dataset);
-
+  function onSelect(e) {
+    var dataset = e.dataset;
     // hide widgets if visible and remove any old event handlers
-    slider.reset();
+    exporter.setDataset(dataset);
+    simplify.reset();
     repair.reset();
-    map.refresh(); // redraw all map layers
+    // map.refresh(); // redraw all map layers
 
-    if (opts.method && dataset.arcs) {
-      slider.show();
-      slider.value(dataset.arcs.getRetainedPct());
-      slider.on('change', function(e) {
-        group.setRetainedPct(e.value).refresh();
-      });
-      if (!opts.no_repair) {
+    if (MapShaper.layerHasPaths(e.layer)) {
+      simplify.show();
+      simplify.value(dataset.arcs.getRetainedPct());
+
+      if (!e.opts.no_repair) {
         repair.setDataset(dataset);
         // use timeout so map appears before the repair control calculates
         // intersection data, which can take a little while
-        setTimeout(initRepair, 10);
+        setTimeout(function() {
+          // repair.show();
+          repair.update();
+        }, 10);
       }
-    }
-
-    function initRepair() {
-      repair.show();
-      repair.update();
-      slider.on('simplify-start', function() {
-        repair.clear();
-      });
-      slider.on('simplify-end', function() {
-        repair.update();
-      });
-      repair.on('repair', function() {
-        group.refresh();
-      });
     }
   }
 }

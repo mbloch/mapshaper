@@ -1,6 +1,7 @@
 /* @requires mapshaper-elements */
 
 var SimplifyControl = function() {
+  var control = new EventDispatcher();
   var _value = 1;
   var el = El('#g-simplify-control');
   var slider = new Slider("#g-simplify-control .g-slider");
@@ -63,19 +64,16 @@ var SimplifyControl = function() {
     }
   }
 
-  var control = new EventDispatcher();
   control.show = function() {
     el.show();
     El('body').addClass('simplify');
   };
-  control.hide = function() {
+
+  control.reset = function() {
     el.hide();
     El('body').removeClass('simplify');
   };
-  control.reset = function() {
-    control.hide();
-    control.removeEventListeners();
-  };
+
   control.value = function(val) {
     if (!isNaN(val)) {
       // TODO: validate

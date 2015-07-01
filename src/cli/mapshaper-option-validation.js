@@ -252,7 +252,7 @@ function validateCommaSepNames(str, min) {
   }
   var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
-    error(utils.format("expected a list of at least %d member%s; found: %s", min, 's?', str));
+    error(utils.format("expected a list of at least %d member%s; found: %s", min, utils.pluralSuffix(min), str));
   }
   return parts.length > 0 ? parts : null;
 }

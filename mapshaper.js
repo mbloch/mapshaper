@@ -116,16 +116,12 @@ var Utils = {
     return dest;
   },
 
-  /**
-   * Pseudoclassical inheritance
-   *
-   * Inherit from a Parent function:
-   *    Utils.inherit(Child, Parent);
-   * Call parent's constructor (inside child constructor):
-   *    this.__super__([args...]);
-   * Call a parent method (when it has been overriden by a same-named function in Child):
-   *    this.__super__.<method_name>.call(this, [args...]);
-   */
+  // Pseudoclassical inheritance
+  //
+  // Inherit from a Parent function:
+  //    Utils.inherit(Child, Parent);
+  // Call parent's constructor (inside child constructor):
+  //    this.__super__([args...]);
   inherit: function(targ, src) {
     var f = function() {
       if (this.__super__ == f) {
@@ -145,6 +141,19 @@ var Utils = {
     targ.prototype = Utils.extend(new f(), targ.prototype); //
     targ.prototype.constructor = targ;
     targ.prototype.__super__ = f;
+  },
+
+  // Inherit from a parent, call the parent's constructor, optionally extend
+  // prototype with optional additional arguments
+  subclass: function(parent) {
+    var child = function() {
+      this.__super__.apply(this, Utils.toArray(arguments));
+    };
+    Utils.inherit(child, parent);
+    for (var i=1; i<arguments.length; i++) {
+      Utils.extend(child.prototype, arguments[i]);
+    }
+    return child;
   }
 
 };
@@ -160,7 +169,6 @@ var Env = (function() {
   return {
     iPhone : inBrowser && !!(navigator.userAgent.match(/iPhone/i)),
     iPad : inBrowser && !!(navigator.userAgent.match(/iPad/i)),
-    touchEnabled : inBrowser && ("ontouchstart" in window),
     canvas: inBrowser && !!document.createElement('canvas').getContext,
     inNode : inNode,
     inPhantom : inPhantom,
@@ -415,6 +423,10 @@ Utils.repeatString = function(src, n) {
   for (var i=0; i<n; i++)
     str += src;
   return str;
+};
+
+Utils.pluralSuffix = function(count) {
+  return count != 1 ? 's' : '';
 };
 
 Utils.endsWith = function(str, ending) {
@@ -3040,6 +3052,14 @@ MapShaper.countArcsInShapes = function(shapes, counts) {
       counts[id]++;
     }
   });
+};
+
+MapShaper.countPointsInLayer = function(lyr) {
+  var count = 0;
+  if (MapShaper.layerHasPoints(lyr)) {
+    MapShaper.forEachPoint(lyr, function() {count++;});
+  }
+  return count;
 };
 
 // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
@@ -7379,7 +7399,7 @@ MapShaper.snapCoords = function(arcs, threshold) {
 
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
   if (snapCount > 0) arcs.dedupCoords();
-  message(utils.format("Snapped %s point%s", snapCount, "s?"));
+  message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
 };
 
 // Snap together points within a small threshold
@@ -7675,11 +7695,11 @@ function PathImporter(opts, reservedPoints) {
     } else if (collectionType == 'polygon' || collectionType == 'polyline') {
 
       if (dupeCount > 0) {
-        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
+        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
       }
       if (skippedPathCount > 0) {
         // TODO: consider showing details about type of error
-        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, "s?"));
+        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, utils.pluralSuffix(skippedPathCount)));
       }
 
       if (pointId > 0) {
@@ -14142,7 +14162,7 @@ function validateCommaSepNames(str, min) {
   }
   var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
-    error(utils.format("expected a list of at least %d member%s; found: %s", min, 's?', str));
+    error(utils.format("expected a list of at least %d member%s; found: %s", min, utils.pluralSuffix(min), str));
   }
   return parts.length > 0 ? parts : null;
 }
