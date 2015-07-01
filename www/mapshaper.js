@@ -11542,7 +11542,7 @@ MapShaper.drawPoints = function(paths, style, ctx) {
       endCol = style.nodeColor || midCol,
       midSize = style.dotSize || 3,
       endSize = style.nodeSize >= 0 ? style.nodeSize : midSize,
-      drawPoint = style.squareDot ? drawSquare : drawCircle,
+      drawPoint = style.roundDot ? drawCircle : drawSquare,
       prevX, prevY;
 
   paths.forEach(function(vec) {
@@ -12215,20 +12215,16 @@ function MshpMap(el, model) {
 
   var foregroundStyle = {
         strokeColor: "#335",
-        dotColor: "#223",
-        squareDot: true
+        dotColor: "#223"
       };
 
   var bgStyle = {
         strokeColor: "#aaa",
-        dotColor: "#aaa",
-        squareDot: true
+        dotColor: "#aaa"
       };
 
   var highStyle = {
-      squareDot: true,
-      dotColor: "#F24400",
-      dotSize: 6
+      dotColor: "#F24400"
   };
 
   _ext.on('change', refreshLayers);

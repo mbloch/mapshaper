@@ -13,7 +13,7 @@ MapShaper.drawPoints = function(paths, style, ctx) {
       endCol = style.nodeColor || midCol,
       midSize = style.dotSize || 3,
       endSize = style.nodeSize >= 0 ? style.nodeSize : midSize,
-      drawPoint = style.squareDot ? drawSquare : drawCircle,
+      drawPoint = style.roundDot ? drawCircle : drawSquare,
       prevX, prevY;
 
   paths.forEach(function(vec) {

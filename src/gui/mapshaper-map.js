@@ -10,20 +10,16 @@ function MshpMap(el, model) {
 
   var foregroundStyle = {
         strokeColor: "#335",
-        dotColor: "#223",
-        squareDot: true
+        dotColor: "#223"
       };
 
   var bgStyle = {
         strokeColor: "#aaa",
-        dotColor: "#aaa",
-        squareDot: true
+        dotColor: "#aaa"
       };
 
   var highStyle = {
-      squareDot: true,
-      dotColor: "#F24400",
-      dotSize: 6
+      dotColor: "#F24400"
   };
 
   _ext.on('change', refreshLayers);
