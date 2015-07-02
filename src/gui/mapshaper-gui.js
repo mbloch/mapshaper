@@ -29,11 +29,12 @@ gui.startEditing = function() {
       importer = new ImportControl(model),
       map = new MshpMap("#mshp-main-map", model),
       cons = new Console('#mshp-main-map', model),
-      exporter = new ExportControl(),
+      exporter = new ExportControl(model),
       repair = new RepairControl(map),
       simplify = new SimplifyControl();
   gui.startEditing = function() {};
 
+  // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
   simplify.on('simplify-start', function() {
     repair.hide();
   });
@@ -41,7 +42,6 @@ gui.startEditing = function() {
     repair.update();
   });
   simplify.on('change', function(e) {
-    // TODO: apply changes to the model, not directly to the map object.
     map.setSimplifyPct(e.value);
   });
   repair.on('repair', function() {
@@ -49,7 +49,6 @@ gui.startEditing = function() {
   });
 
   function onSelect(e) {
-    exporter.setDataset(e.dataset);
     simplify.reset();
     repair.reset();
 

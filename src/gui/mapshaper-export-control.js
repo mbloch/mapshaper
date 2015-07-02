@@ -1,29 +1,28 @@
 /* @requires mapshaper-export */
 
 // Export buttons and their behavior
-//
-var ExportControl = function() {
+var ExportControl = function(model) {
   var downloadSupport = typeof URL != 'undefined' && URL.createObjectURL &&
     typeof document.createElement("a").download != "undefined" ||
     !!window.navigator.msSaveBlob;
+  var el = El('#g-export-control');
   var dataset, anchor, blobUrl;
-
-  El('#g-export-control').show();
 
   if (!downloadSupport) {
     El('#g-export-control .g-label').text("Exporting is not supported in this browser");
   } else {
-    anchor = El('#g-export-control').newChild('a').attr('href', '#').node();
+    anchor = el.newChild('a').attr('href', '#').node();
     El('#g-export-buttons').css('display:inline');
     exportButton("#g-geojson-btn", "geojson");
-    shpBtn = exportButton("#g-shapefile-btn", "shapefile");
-    topoBtn = exportButton("#g-topojson-btn", "topojson");
+    exportButton("#g-shapefile-btn", "shapefile");
+    exportButton("#g-topojson-btn", "topojson");
+    model.on('select', onSelect);
   }
 
-  this.setDataset = function(d) {
-    dataset = d;
-    return this;
-  };
+  function onSelect(e) {
+    dataset = e.dataset;
+    el.show();
+  }
 
   function exportButton(selector, format) {
     var btn = new SimpleButton(selector).active(true).on('click', onClick);
