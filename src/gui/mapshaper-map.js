@@ -29,8 +29,14 @@ function MshpMap(el, model) {
   });
 
   model.on('select', function(e) {
-    var group = findGroup(e.dataset);
-    if (!group) group = addGroup(e.dataset);
+    var group;
+    if (model.size() > 2) {
+      model.removeDataset(model.getDatasets().shift());
+    }
+    group = findGroup(e.dataset);
+    if (!group) {
+      group = addGroup(e.dataset);
+    }
     group.showLayer(e.layer);
     group.setRetainedPct(e.simplify_pct);
     _activeGroup = group;

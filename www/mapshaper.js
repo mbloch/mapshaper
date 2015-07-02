@@ -10741,11 +10741,12 @@ function FileChooser(el, cb) {
   }
 }
 
-function ImportControl(editor) {
+function ImportControl(model) {
+  var precisionInput;
+  El('#mshp-import').show(); // show import screen
   new DropControl(readFiles);
   new FileChooser('#g-shp-import-btn', readFiles);
-
-  var precisionInput = new ClickText("#g-import-precision-opt")
+  precisionInput = new ClickText("#g-import-precision-opt")
     .bounds(0, Infinity)
     .formatter(function(str) {
       var val = parseFloat(str);
@@ -10774,7 +10775,7 @@ function ImportControl(editor) {
     var opts = getImportOpts();
     gui.importFile(file, opts, function(err, dataset) {
       if (dataset) {
-        editor.editDataset(dataset, opts);
+        model.setEditingLayer(dataset.layers[0], dataset, opts);
       }
     });
   }
@@ -11478,7 +11479,12 @@ function RepairControl(map) {
   this.reset = function() {
     _currXX = null;
     _initialXX = null;
+    this.hide();
+  };
+
+  this.hide = function() {
     el.hide();
+    map.setHighlightLayer(null);
   };
 
   // Detect and display intersections for current level of arc simplification
@@ -12240,8 +12246,14 @@ function MshpMap(el, model) {
   });
 
   model.on('select', function(e) {
-    var group = findGroup(e.dataset);
-    if (!group) group = addGroup(e.dataset);
+    var group;
+    if (model.size() > 2) {
+      model.removeDataset(model.getDatasets().shift());
+    }
+    group = findGroup(e.dataset);
+    if (!group) {
+      group = addGroup(e.dataset);
+    }
     group.showLayer(e.layer);
     group.setRetainedPct(e.simplify_pct);
     _activeGroup = group;
@@ -17881,71 +17893,52 @@ Browser.onload(function() {
     El("#mshp-not-supported").show();
     return;
   }
-  var editor = new Editor(),
-      importer = new ImportControl(editor);
-  El('#mshp-import').show(); // show import screen
+  gui.startEditing();
 });
 
-function Editor() {
+gui.startEditing = function() {
   var model = new Model().on('select', onSelect),
-      map, exporter, simplify, repair, cons;
+      importer = new ImportControl(model),
+      map = new MshpMap("#mshp-main-map", model),
+      cons = new Console('#mshp-main-map', model),
+      exporter = new ExportControl(),
+      repair = new RepairControl(map),
+      simplify = new SimplifyControl();
+  gui.startEditing = function() {};
 
-  this.editDataset = function(dataset, opts) {
-    if (model.size() === 0) {
-      startEditing();
-    }
-    if (model.size() > 1) {
-      model.removeDataset(model.getDatasets().shift());
-    }
-    model.setEditingLayer(dataset.layers[0], dataset, opts);
-  };
-
-  function startEditing() {
-    map = new MshpMap("#mshp-main-map", model);
-    cons = new Console('#mshp-main-map', model);
-    exporter = new ExportControl();
-    repair = new RepairControl(map);
-    simplify = new SimplifyControl();
-    El("#mshp-main-page").show();
-
-    simplify.on('simplify-start', function() {
-      // repair.clear();
-    });
-    simplify.on('simplify-end', function() {
-      repair.update();
-    });
-    simplify.on('change', function(e) {
-      map.setSimplifyPct(e.value);
-    });
-    repair.on('repair', function() {
-      model.updated();
-    });
-  }
+  simplify.on('simplify-start', function() {
+    repair.hide();
+  });
+  simplify.on('simplify-end', function() {
+    repair.update();
+  });
+  simplify.on('change', function(e) {
+    // TODO: apply changes to the model, not directly to the map object.
+    map.setSimplifyPct(e.value);
+  });
+  repair.on('repair', function() {
+    model.updated();
+  });
 
   function onSelect(e) {
-    var dataset = e.dataset;
-    // hide widgets if visible and remove any old event handlers
-    exporter.setDataset(dataset);
+    exporter.setDataset(e.dataset);
     simplify.reset();
     repair.reset();
-    // map.refresh(); // redraw all map layers
 
     if (MapShaper.layerHasPaths(e.layer)) {
       simplify.show();
-      simplify.value(dataset.arcs.getRetainedPct());
-
+      simplify.value(e.dataset.arcs.getRetainedPct());
       if (!e.opts.no_repair) {
-        repair.setDataset(dataset);
+        repair.setDataset(e.dataset);
         // use timeout so map appears before the repair control calculates
         // intersection data, which can take a little while
         setTimeout(function() {
-          // repair.show();
           repair.update();
         }, 10);
       }
     }
   }
-}
+};
 
 }());
 

@@ -14,7 +14,12 @@ function RepairControl(map) {
   this.reset = function() {
     _currXX = null;
     _initialXX = null;
+    this.hide();
+  };
+
+  this.hide = function() {
     el.hide();
+    map.setHighlightLayer(null);
   };
 
   // Detect and display intersections for current level of arc simplification

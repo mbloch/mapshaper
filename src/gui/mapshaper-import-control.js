@@ -47,11 +47,12 @@ function FileChooser(el, cb) {
   }
 }
 
-function ImportControl(editor) {
+function ImportControl(model) {
+  var precisionInput;
+  El('#mshp-import').show(); // show import screen
   new DropControl(readFiles);
   new FileChooser('#g-shp-import-btn', readFiles);
-
-  var precisionInput = new ClickText("#g-import-precision-opt")
+  precisionInput = new ClickText("#g-import-precision-opt")
     .bounds(0, Infinity)
     .formatter(function(str) {
       var val = parseFloat(str);
@@ -80,7 +81,7 @@ function ImportControl(editor) {
     var opts = getImportOpts();
     gui.importFile(file, opts, function(err, dataset) {
       if (dataset) {
-        editor.editDataset(dataset, opts);
+        model.setEditingLayer(dataset.layers[0], dataset, opts);
       }
     });
   }
