@@ -10591,15 +10591,16 @@ gui.importFile = function(file, opts, cb) {
 gui.inputFileContent = function(path, content, importOpts, cb) {
   var type = MapShaper.guessInputType(path, content),
       size = content.byteLength || content.length, // ArrayBuffer or string
-      delay = 25, // timeout in ms; should be long enough for Firefox to refresh.
+      showProgress = size > 4e7, // don't show progress bar for small datasets
+      delay = showProgress ? 25 : 0, // timeout in ms; should be long enough for Firefox to refresh.
       progressBar, dataset, queue;
 
   // these file types can be imported and edited right away
   if (type == 'shp' || type == 'json') {
     El("#mshp-intro-screen").hide();
     progressBar = new ProgressBar('#page-wrapper');
+    if (!showProgress) progressBar.remove();
     progressBar.update(0.2, "Importing");
-    if (size < 4e7) progressBar.remove(); // don't show for small datasets
     // Import data with a delay before each step, so browser can refresh the progress bar
     queue = gui.queueSync()
       .defer(function() {
