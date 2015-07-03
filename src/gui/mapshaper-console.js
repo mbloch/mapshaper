@@ -12,12 +12,10 @@ function Console(model) {
   var _error = error; // save default error functions...
   var _stop = stop;
 
-  message = consoleMessage; // capture all messages to this console
-  input.on('keydown', onDown);
-  input.on('blur', turnOff);
-  monitor();
-
+  // capture all messages to this console, whether open or closed
+  message = consoleMessage;
   message('Type mapshaper commands at the prompt');
+  document.addEventListener('keydown', onKeyDown);
 
   this.hide = function() {
     turnOff();
@@ -35,23 +33,6 @@ function Console(model) {
     scrollDown();
   }
 
-  function monitor() {
-    document.addEventListener('keydown', onKeyDown);
-  }
-
-  function unmonitor() {
-    document.removeEventListener('keydown', onKeyDown);
-  }
-
-  function onKeyDown(e) {
-    if (e.keyCode == 32) { // space
-      e.stopPropagation();
-      e.preventDefault();
-      turnOn();
-    }
-  }
-
-  // TODO: capture stop
   function turnOn() {
     if (!_active) {
       _active = true;
@@ -59,8 +40,6 @@ function Console(model) {
       error = consoleError;
       el.show();
       input.node().focus();
-      document.addEventListener('mousedown', block);
-      unmonitor();
     }
   }
 
@@ -69,9 +48,7 @@ function Console(model) {
       _active = false;
       stop = _stop; // restore original error functions
       error = _error;
-      document.removeEventListener('mousedown', block);
       el.hide();
-      monitor();
     }
   }
 
@@ -80,19 +57,26 @@ function Console(model) {
     el.scrollTop = el.scrollHeight;
   }
 
-  function block(e) {
-    if (e.target != input.node()) {
-      e.preventDefault();
-    }
+  function metaKey(e) {
+    return e.metaKey || e.ctrlKey || e.altKey;
   }
 
-  function onDown(e) {
+  function onKeyDown(e) {
     var kc = e.keyCode;
-    if (kc == 13) { // enter
-      submit();
-    } else if (kc == 27) { // escape
-      turnOff();
+    if (_active) {
+      if (kc == 13) { // enter
+        submit();
+      } else if (kc == 27) { // escape
+        turnOff();
+        e.preventDefault();
+      } else if (e.target != input.node() && !metaKey(e)) {
+        input.node().focus();
+      }
+
+    } else {
+      e.stopPropagation();
       e.preventDefault();
+      turnOn();
     }
   }
 
@@ -110,7 +94,7 @@ function Console(model) {
     toHistory(CURSOR + cmd);
     input.node().value = '';
     // TODO: disable UI until run is completed
-    cmd = cmd.replace(/^mapshaper */, '');
+    cmd = cmd.replace(/^mapshaper\b/, '').trim();
     if (cmd == 'clear') {
       clear();
     } else if (cmd) {
@@ -120,7 +104,8 @@ function Console(model) {
 
   function runMapshaperCommands(str) {
     var commands, editing, opts;
-    if (str[0] != '-') {
+    if (/^[^\-]/) {
+      // add hyphen prefix to bare commands
       str = '-' + str;
     }
     try {
@@ -150,7 +135,7 @@ function Console(model) {
           return !utils.contains(names, cmd.name);
         });
     if (filtered.length < arr.length) {
-      onError("These commands can not be run in the console:", names.join(', '));
+      warning("These commands can not be run in the console:", names.join(', '));
     }
     return filtered;
   }
@@ -161,19 +146,22 @@ function Console(model) {
     } else if (err.name == 'APIError') {
       // stop() has already been called, don't need to log
     } else if (err.name) {
-      // console.log("onError() logging err:", err.name);
       // log to browser console, with stack trace
       console.error(err);
       // log to console window
-      toHistory(err.message, 'console-error');
+      warning(err.message);
     }
   }
 
   function consoleStop() {
     var msg = gui.formatMessageArgs(arguments);
-    // console.log("consoleStop():", msg);
-    toHistory(msg, 'console-error');
+    warning(msg);
     throw new APIError(msg);
+  }
+
+  function warning() {
+    var msg = gui.formatMessageArgs(arguments);
+    toHistory(msg, 'console-error');
   }
 
   function consoleMessage() {
