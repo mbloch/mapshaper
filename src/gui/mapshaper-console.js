@@ -34,7 +34,7 @@ function Console(model) {
   }
 
   function turnOn() {
-    if (!_active) {
+    if (!_active && !!model.getEditingLayer()) {
       _active = true;
       stop = consoleStop;
       error = consoleError;
