@@ -10573,6 +10573,7 @@ api.evaluateEachFeature = function(lyr, arcs, exp) {
 api.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes || null,
+      n = MapShaper.getFeatureCount(lyr),
       filteredShapes = shapes ? [] : null,
       filteredRecords = records ? [] : null,
       filteredLyr, filter;
@@ -10589,7 +10590,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
     stop("[filter] Missing a filter expression");
   }
 
-  utils.repeat(MapShaper.getFeatureCount(lyr), function(shapeId) {
+  utils.repeat(n, function(shapeId) {
     var result = filter(shapeId);
     if (result === true) {
       if (shapes) filteredShapes.push(shapes[shapeId] || null);
@@ -10610,6 +10611,9 @@ api.filterFeatures = function(lyr, arcs, opts) {
   } else {
     filteredLyr = utils.extend(lyr, filteredLyr); // modify in-place
   }
+
+  message(utils.format('[filter] Retained %,d of %,d features', MapShaper.getFeatureCount(filteredLyr), n));
+
   return filteredLyr;
 };
 
@@ -13926,7 +13930,7 @@ function validateInputOpts(cmd) {
   }
 
   if ("precision" in o && o.precision > 0 === false) {
-    error("precision option should be a positive number");
+    error("precision= option should be a positive number");
   }
 
   if (o.encoding) {
@@ -13951,7 +13955,7 @@ function validateSimplifyOpts(cmd) {
       pctStr = _.shift();
     }
     if (_.length > 0) {
-      error("unparsable option:", _.join(' '));
+      error("Unparsable option:", _.join(' '));
     }
   }
 
@@ -13963,7 +13967,7 @@ function validateSimplifyOpts(cmd) {
       o.pct = Number(pctStr);
     }
     if (!(o.pct >= 0 && o.pct <= 1)) {
-      error(utils.format("out-of-range pct value: %s", pctStr));
+      error(utils.format("Out-of-range pct value: %s", pctStr));
     }
   }
 
@@ -13971,12 +13975,12 @@ function validateSimplifyOpts(cmd) {
   if (intervalStr) {
     o.interval = Number(intervalStr);
     if (o.interval >= 0 === false) {
-      error(utils.format("out-of-range interval value: %s", intervalStr));
+      error(utils.format("Out-of-range interval value: %s", intervalStr));
     }
   }
 
   if (isNaN(o.interval) && isNaN(o.pct)) {
-    error("command requires an interval or pct");
+    error("Command requires an interval or pct");
   }
 }
 
@@ -13985,16 +13989,16 @@ function validateJoinOpts(cmd) {
   o.source = o.source || cmd._[0];
 
   if (!o.source) {
-    error("command requires the name of a file to join");
+    error("Command requires the name of a file to join");
   }
 
   if (utils.some("shp,xls,xlsx".split(','), function(suff) {
     return utils.endsWith(o.source, suff);
   })) {
-    error("currently only dbf and csv files are supported");
+    error("Currently only dbf and csv files are supported");
   }
 
-  if (!o.keys) error("missing required keys option");
+  if (!o.keys) error("Missing required keys option");
 }
 
 function validateSplitOpts(cmd) {
@@ -14062,13 +14066,13 @@ function validateLinesOpts(cmd) {
 
 function validateInnerLinesOpts(cmd) {
   if (cmd._.length > 0) {
-    error("command takes no arguments");
+    error("Command takes no arguments");
   }
 }
 
 function validateSubdivideOpts(cmd) {
   if (cmd._.length !== 1) {
-    error("command requires a JavaScript expression");
+    error("Command requires a JavaScript expression");
   }
   cmd.options.expression = cmd._[0];
 }
@@ -14078,7 +14082,7 @@ function validateFilterFieldsOpts(cmd) {
     var fields = validateCommaSepNames(cmd._[0]);
     cmd.options.fields = fields || [];
   } catch(e) {
-    error("command requires a comma-sep. list of fields");
+    error("Command requires a comma-sep. list of fields");
   }
 }
 
@@ -14086,7 +14090,7 @@ function validateExpressionOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.expression = cmd._[0];
   } else if (cmd._.length > 1) {
-    error("unparsable arguments:", cmd._);
+    error("Unparsable arguments:", cmd._);
   }
 }
 
@@ -14097,7 +14101,7 @@ function validateOutputOpts(cmd) {
       pathInfo = utils.parseLocalPath(path);
 
   if (_.length > 1) {
-    error("command takes one file or directory argument");
+    error("Command takes one file or directory argument");
   }
 
   if (!path) {
@@ -14159,7 +14163,7 @@ function validateCommaSepNames(str, min) {
   }
   var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
-    error(utils.format("expected a list of at least %d member%s; found: %s", min, utils.pluralSuffix(min), str));
+    error(utils.format("Expected a list of at least %d member%s; found: %s", min, utils.pluralSuffix(min), str));
   }
   return parts.length > 0 ? parts : null;
 }
@@ -14577,7 +14581,7 @@ MapShaper.getOptionParser = function() {
     .describe("create a point layer from polygons or attribute data")
     .validate(function (cmd) {
       if (cmd._.length > 0) {
-        error("unknown argument:", cmd._[0]);
+        error("Unknown argument:", cmd._[0]);
       }
     })
     .option("x", {
@@ -14663,7 +14667,7 @@ MapShaper.getOptionParser = function() {
     //.option("y0", {type: "number"})
     .validate(function(cmd) {
       if (cmd._.length != 1) {
-        error("command requires a projection name");
+        error("Command requires a projection name");
       }
       cmd.options.projection = cmd._[0];
     });
@@ -14677,7 +14681,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'")
     .validate(function(cmd) {
       if (cmd._.length === 0) {
-        error("missing a JS expression");
+        error("Missing a JS expression");
       }
       validateExpressionOpts(cmd);
     })
@@ -14721,7 +14725,7 @@ MapShaper.getOptionParser = function() {
   "fields,precision,auto-snap").split(',')
     .forEach(function(str) {
       parser.command(str).validate(function() {
-        error('mapshaper syntax has changed since v0.1.x.');
+        error('Mapshaper syntax has changed since v0.1.x.');
       });
     });
 

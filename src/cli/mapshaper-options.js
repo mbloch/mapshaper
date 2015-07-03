@@ -410,7 +410,7 @@ MapShaper.getOptionParser = function() {
     .describe("create a point layer from polygons or attribute data")
     .validate(function (cmd) {
       if (cmd._.length > 0) {
-        error("unknown argument:", cmd._[0]);
+        error("Unknown argument:", cmd._[0]);
       }
     })
     .option("x", {
@@ -496,7 +496,7 @@ MapShaper.getOptionParser = function() {
     //.option("y0", {type: "number"})
     .validate(function(cmd) {
       if (cmd._.length != 1) {
-        error("command requires a projection name");
+        error("Command requires a projection name");
       }
       cmd.options.projection = cmd._[0];
     });
@@ -510,7 +510,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'")
     .validate(function(cmd) {
       if (cmd._.length === 0) {
-        error("missing a JS expression");
+        error("Missing a JS expression");
       }
       validateExpressionOpts(cmd);
     })
@@ -554,7 +554,7 @@ MapShaper.getOptionParser = function() {
   "fields,precision,auto-snap").split(',')
     .forEach(function(str) {
       parser.command(str).validate(function() {
-        error('mapshaper syntax has changed since v0.1.x.');
+        error('Mapshaper syntax has changed since v0.1.x.');
       });
     });
 
