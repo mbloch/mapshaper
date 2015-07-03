@@ -12,9 +12,7 @@ MapShaper.getEncodings = function() {
 
 MapShaper.validateEncoding = function(enc) {
   if (!MapShaper.encodingIsSupported(enc)) {
-    message("[Unsupported encoding:", enc + "]");
-    MapShaper.printEncodings();
-    stop();
+    stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
   }
   return enc;
 };
@@ -45,6 +43,6 @@ MapShaper.printEncodings = function() {
     return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
   });
   encodings.sort();
-  console.log("Supported encodings:");
-  console.log(MapShaper.formatStringsAsGrid(encodings));
+  message("Supported encodings:");
+  message(MapShaper.formatStringsAsGrid(encodings));
 };

@@ -278,15 +278,15 @@ div.error-btn.active:hover:not(.selected) {
 }
 
 #console-buffer * {
-	font: 14px/1.2 monospace;
+	font: 13px/1.2 monospace;
 }
 
 .console-error {
-	color: #c00;
+	color: #f93b00;
 }
 
 .console-message {
-
+	color: #eddd98;
 }
 
 #console-history {

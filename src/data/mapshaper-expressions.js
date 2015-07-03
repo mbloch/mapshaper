@@ -23,8 +23,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
     func = new Function("record,env", "with(env){with(record) { return " +
         MapShaper.removeExpressionSemicolons(exp) + "}}");
   } catch(e) {
-    message(e.name, "in expression [" + exp + "]");
-    stop();
+    stop(e.name, "in expression [" + exp + "]");
   }
 
   var compiled = function(recId) {
@@ -44,8 +43,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
     try {
       value = func.call(null, record, env);
     } catch(e) {
-      message(e.name, "in [" + exp + "]:", e.message);
-      stop();
+      stop(e.name, "in expression [" + exp + "]:", e.message);
     }
     return value;
   };

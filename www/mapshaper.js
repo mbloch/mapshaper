@@ -2489,9 +2489,11 @@ api.printError = function(err) {
     err = new APIError(err);
   }
   if (MapShaper.LOGGING && err.name == 'APIError') {
-    if (err.message) {
-      message("Error:", err.message);
+    msg = err.message;
+    if (!/Error/.test(msg)) {
+      msg = "Error: " + msg;
     }
+    message(msg);
     message("Run mapshaper -h to view help");
   } else {
     throw err;
@@ -2814,18 +2816,14 @@ window.mapshaper = api;
 api.enableLogging();
 
 error = function() { // replace default error() function
-  var msg = gui.formatMessageArgs(arguments);
-  try {
-    stop(msg);
-  } catch(e) {}
-  throw new Error(msg);
+  stop.apply(null, utils.toArray(arguments));
 };
 
 // Show a popup error message, then throw an error
 function stop() {
   var msg = gui.formatMessageArgs(arguments);
   new Message(msg);
-  throw new APIError(msg);
+  throw new Error(msg);
 }
 
 gui.browserIsSupported = function() {
@@ -3198,9 +3196,7 @@ MapShaper.getEncodings = function() {
 
 MapShaper.validateEncoding = function(enc) {
   if (!MapShaper.encodingIsSupported(enc)) {
-    message("[Unsupported encoding:", enc + "]");
-    MapShaper.printEncodings();
-    stop();
+    stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
   }
   return enc;
 };
@@ -3231,8 +3227,8 @@ MapShaper.printEncodings = function() {
     return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
   });
   encodings.sort();
-  console.log("Supported encodings:");
-  console.log(MapShaper.formatStringsAsGrid(encodings));
+  message("Supported encodings:");
+  message(MapShaper.formatStringsAsGrid(encodings));
 };
 
 
@@ -12217,8 +12213,8 @@ utils.inherit(MapExtent, EventDispatcher);
 
 
 
-function MshpMap(el, model) {
-  var _root = El(el),
+function MshpMap(model) {
+  var _root = El("#mshp-main-map"),
       _ext = new MapExtent(_root, {padding: 12}),
       _nav = new MapNav(_ext, _root),
       _groups = [],
@@ -13943,8 +13939,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
     func = new Function("record,env", "with(env){with(record) { return " +
         MapShaper.removeExpressionSemicolons(exp) + "}}");
   } catch(e) {
-    message(e.name, "in expression [" + exp + "]");
-    stop();
+    stop(e.name, "in expression [" + exp + "]");
   }
 
   var compiled = function(recId) {
@@ -13964,8 +13959,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
     try {
       value = func.call(null, record, env);
     } catch(e) {
-      message(e.name, "in [" + exp + "]:", e.message);
-      stop();
+      stop(e.name, "in expression [" + exp + "]:", e.message);
     }
     return value;
   };
@@ -16300,7 +16294,7 @@ function CommandParser() {
       if (!cmdName) stop("Invalid command:", argv[0]);
       cmdDef = findCommandDefn(cmdName, commandDefs);
       if (!cmdDef) {
-        stop("Unknown command:", '-' + cmdName);
+        stop("Unknown command:", cmdName);
       }
       cmd = {
         name: cmdDef.name,
@@ -17644,7 +17638,7 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
 
 
 
-function Console(parent, model) {
+function Console(model) {
   var CURSOR = '$ ';
   var el = El('#console').hide();
   var buffer = El('#console-buffer');
@@ -17653,15 +17647,15 @@ function Console(parent, model) {
   var prompt = El('div').text(CURSOR).appendTo(line);
   var input = El('input').appendTo(line).attr('spellcheck', false).attr('autocorrect', false);
   var _active = false;
-  var _stop = stop; // save default stop() function
+  var _error = error; // save default error functions...
+  var _stop = stop;
 
   message = consoleMessage; // capture all messages to this console
-  input.on('input', onInput);
   input.on('keydown', onDown);
   input.on('blur', turnOff);
   monitor();
 
-  toHistory('Type mapshaper commands at the prompt');
+  message('Type mapshaper commands at the prompt');
 
   this.hide = function() {
     turnOff();
@@ -17676,41 +17670,31 @@ function Console(parent, model) {
     if (cname) {
       msg.addClass(cname);
     }
-    down();
+    scrollDown();
   }
 
   function monitor() {
-    document.addEventListener('keydown', onSpacebar);
+    document.addEventListener('keydown', onKeyDown);
   }
 
   function unmonitor() {
-    document.removeEventListener('keydown', onSpacebar);
+    document.removeEventListener('keydown', onKeyDown);
   }
 
-  function onSpacebar(e) {
-    if (e.keyCode == 32) {
+  function onKeyDown(e) {
+    if (e.keyCode == 32) { // space
       e.stopPropagation();
       e.preventDefault();
       turnOn();
     }
   }
 
-  function consoleStop() {
-    var msg = gui.formatMessageArgs(arguments);
-    toHistory(msg, 'console-error');
-  }
-
-  function consoleMessage() {
-    var msg = gui.formatMessageArgs(arguments);
-    toHistory(msg, 'console-message');
-  }
-
   // TODO: capture stop
   function turnOn() {
     if (!_active) {
       _active = true;
-      stop = consoleStop();
-      // reset(); // allow showing/hiding to look at map w/o erasing cmd line
+      stop = consoleStop;
+      error = consoleError;
       el.show();
       input.node().focus();
       document.addEventListener('mousedown', block);
@@ -17721,22 +17705,17 @@ function Console(parent, model) {
   function turnOff() {
     if (_active) {
       _active = false;
-      stop = _stop; // restore original stop() function
+      stop = _stop; // restore original error functions
+      error = _error;
       document.removeEventListener('mousedown', block);
       el.hide();
       monitor();
     }
   }
 
-  function down() {
+  function scrollDown() {
     var el = buffer.parent().node();
     el.scrollTop = el.scrollHeight;
-  }
-
-
-  function reset() {
-    input.node().value = '';
-    onInput();
   }
 
   function block(e) {
@@ -17746,7 +17725,6 @@ function Console(parent, model) {
   }
 
   function onDown(e) {
-    // console.log(e);
     var kc = e.keyCode;
     if (kc == 13) { // enter
       submit();
@@ -17757,26 +17735,51 @@ function Console(parent, model) {
   }
 
   function readCommandLine() {
-    return input.node().value;
+    return input.node().value.trim();
   }
 
-  function onInput() {
-    // var str = CURSOR + readCommandLine();
+  function clear() {
+    history.empty();
+    scrollDown();
   }
 
   function submit() {
     var cmd = readCommandLine();
     toHistory(CURSOR + cmd);
-    reset();
-    // TODO:
-    // disable console until run is completed
-    run(cmd, function(err) {
-      // done
-    });
+    input.node().value = '';
+    // TODO: disable UI until run is completed
+    cmd = cmd.replace(/^mapshaper */, '');
+    if (cmd == 'clear') {
+      clear();
+    } else if (cmd) {
+      runMapshaperCommands(cmd);
+    }
   }
 
-  function err(e) {
-    toHistory(e.stack, 'console-error');
+  function runMapshaperCommands(str) {
+    var commands, editing, opts;
+    if (str[0] != '-') {
+      str = '-' + str;
+    }
+    try {
+      commands = MapShaper.parseCommands(str);
+      commands = filterCommands(commands);
+      editing = model.getEditingLayer();
+    } catch (e) {
+      return onError(e);
+    }
+    if (editing && commands && commands.length > 0) {
+      opts = commands[0].options;
+      if (!opts.target) {
+        opts.target = editing.layer.name;
+      }
+      MapShaper.runParsedCommands(commands, editing.dataset, function(err, dataset) {
+        model.updated();
+        if (err) onError(err);
+      });
+    } else {
+      message("No commands to run");
+    }
   }
 
   function filterCommands(arr) {
@@ -17785,45 +17788,43 @@ function Console(parent, model) {
           return !utils.contains(names, cmd.name);
         });
     if (filtered.length < arr.length) {
-      message("These commands can not be run in the console:", names.join(', '));
+      onError("These commands can not be run in the console:", names.join(', '));
     }
     return filtered;
   }
 
-  function parseCommands(str) {
-    var commands;
-    try {
-      commands = MapShaper.parseCommands(str);
-      commands = filterCommands(commands);
-      // TODO:
-      // get dataset and target layer
-      // apply commands
-      // refresh map
-    } catch(e) {
-      message(e.message);
+  function onError(err) {
+    if (utils.isString(err)) {
+      stop(err);
+    } else if (err.name == 'APIError') {
+      // stop() has already been called, don't need to log
+    } else if (err.name) {
+      // console.log("onError() logging err:", err.name);
+      // log to browser console, with stack trace
+      console.error(err);
+      // log to console window
+      toHistory(err.message, 'console-error');
     }
-    return commands;
   }
 
-  function run(str, done) {
-    var commands = parseCommands(str);
-    var editing = model.getEditingLayer();
-    var opts;
-    if (editing && commands && commands.length > 0) {
-      opts = commands[0].options;
-      if (!opts.target) {
-        opts.target = editing.layer.name;
-      }
-      MapShaper.runParsedCommands(commands, editing.dataset, function(err, dataset) {
-        // TODO: handle error
-        model.updated();
-        done();
-      });
-    } else {
-      done();
-    }
+  function consoleStop() {
+    var msg = gui.formatMessageArgs(arguments);
+    // console.log("consoleStop():", msg);
+    toHistory(msg, 'console-error');
+    throw new APIError(msg);
+  }
+
+  function consoleMessage() {
+    var msg = gui.formatMessageArgs(arguments);
+    toHistory(msg, 'console-message');
+  }
+
+  function consoleError() {
+    var msg = gui.formatMessageArgs(arguments);
+    throw new Error(msg);
   }
 }
+
 
 
 
@@ -17899,8 +17900,8 @@ Browser.onload(function() {
 gui.startEditing = function() {
   var model = new Model().on('select', onSelect),
       importer = new ImportControl(model),
-      map = new MshpMap("#mshp-main-map", model),
-      cons = new Console('#mshp-main-map', model),
+      map = new MshpMap(model),
+      cons = new Console(model),
       exporter = new ExportControl(model),
       repair = new RepairControl(map),
       simplify = new SimplifyControl();

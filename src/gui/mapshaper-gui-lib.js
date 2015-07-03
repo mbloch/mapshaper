@@ -11,18 +11,14 @@ window.mapshaper = api;
 api.enableLogging();
 
 error = function() { // replace default error() function
-  var msg = gui.formatMessageArgs(arguments);
-  try {
-    stop(msg);
-  } catch(e) {}
-  throw new Error(msg);
+  stop.apply(null, utils.toArray(arguments));
 };
 
 // Show a popup error message, then throw an error
 function stop() {
   var msg = gui.formatMessageArgs(arguments);
   new Message(msg);
-  throw new APIError(msg);
+  throw new Error(msg);
 }
 
 gui.browserIsSupported = function() {

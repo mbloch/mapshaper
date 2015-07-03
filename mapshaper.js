@@ -1467,9 +1467,11 @@ api.printError = function(err) {
     err = new APIError(err);
   }
   if (MapShaper.LOGGING && err.name == 'APIError') {
-    if (err.message) {
-      message("Error:", err.message);
+    msg = err.message;
+    if (!/Error/.test(msg)) {
+      msg = "Error: " + msg;
     }
+    message(msg);
     message("Run mapshaper -h to view help");
   } else {
     throw err;
@@ -5819,9 +5821,7 @@ MapShaper.getEncodings = function() {
 
 MapShaper.validateEncoding = function(enc) {
   if (!MapShaper.encodingIsSupported(enc)) {
-    message("[Unsupported encoding:", enc + "]");
-    MapShaper.printEncodings();
-    stop();
+    stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
   }
   return enc;
 };
@@ -5852,8 +5852,8 @@ MapShaper.printEncodings = function() {
     return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
   });
   encodings.sort();
-  console.log("Supported encodings:");
-  console.log(MapShaper.formatStringsAsGrid(encodings));
+  message("Supported encodings:");
+  message(MapShaper.formatStringsAsGrid(encodings));
 };
 
 
@@ -10352,8 +10352,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
     func = new Function("record,env", "with(env){with(record) { return " +
         MapShaper.removeExpressionSemicolons(exp) + "}}");
   } catch(e) {
-    message(e.name, "in expression [" + exp + "]");
-    stop();
+    stop(e.name, "in expression [" + exp + "]");
   }
 
   var compiled = function(recId) {
@@ -10373,8 +10372,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
     try {
       value = func.call(null, record, env);
     } catch(e) {
-      message(e.name, "in [" + exp + "]:", e.message);
-      stop();
+      stop(e.name, "in expression [" + exp + "]:", e.message);
     }
     return value;
   };
@@ -13616,7 +13614,7 @@ function CommandParser() {
       if (!cmdName) stop("Invalid command:", argv[0]);
       cmdDef = findCommandDefn(cmdName, commandDefs);
       if (!cmdDef) {
-        stop("Unknown command:", '-' + cmdName);
+        stop("Unknown command:", cmdName);
       }
       cmd = {
         name: cmdDef.name,
@@ -15051,7 +15049,6 @@ cli.statSync = function(fpath) {
   } catch(e) {}
   return obj;
 };
-
 
 // Expose internal objects for testing
 utils.extend(api.internal, {

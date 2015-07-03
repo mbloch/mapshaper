@@ -1,7 +1,7 @@
 /* @requires mapshaper-common, mapshaper-maplayer, mapshaper-map-nav, mapshaper-map-extent */
 
-function MshpMap(el, model) {
-  var _root = El(el),
+function MshpMap(model) {
+  var _root = El("#mshp-main-map"),
       _ext = new MapExtent(_root, {padding: 12}),
       _nav = new MapNav(_ext, _root),
       _groups = [],

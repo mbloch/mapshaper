@@ -21,9 +21,11 @@ api.printError = function(err) {
     err = new APIError(err);
   }
   if (MapShaper.LOGGING && err.name == 'APIError') {
-    if (err.message) {
-      message("Error:", err.message);
+    msg = err.message;
+    if (!/Error/.test(msg)) {
+      msg = "Error: " + msg;
     }
+    message(msg);
     message("Run mapshaper -h to view help");
   } else {
     throw err;

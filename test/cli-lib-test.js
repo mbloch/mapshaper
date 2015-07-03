@@ -2,7 +2,6 @@ var api = require('../'),
   assert = require('assert'),
   cli = api.cli;
 
-
 describe('mapshaper-cli-lib.js', function () {
 
   describe('validateInputFiles()', function () {

@@ -98,7 +98,6 @@ cli.statSync = function(fpath) {
   return obj;
 };
 
-
 // Expose internal objects for testing
 utils.extend(api.internal, {
   BinArray: BinArray,

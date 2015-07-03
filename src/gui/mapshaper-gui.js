@@ -27,8 +27,8 @@ Browser.onload(function() {
 gui.startEditing = function() {
   var model = new Model().on('select', onSelect),
       importer = new ImportControl(model),
-      map = new MshpMap("#mshp-main-map", model),
-      cons = new Console('#mshp-main-map', model),
+      map = new MshpMap(model),
+      cons = new Console(model),
       exporter = new ExportControl(model),
       repair = new RepairControl(map),
       simplify = new SimplifyControl();
