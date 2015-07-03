@@ -10586,8 +10586,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
   }
 
   if (!filter) {
-    message("[filter] missing a filter -- retaining all features");
-    return;
+    stop("[filter] Missing a filter expression");
   }
 
   utils.repeat(MapShaper.getFeatureCount(lyr), function(shapeId) {
