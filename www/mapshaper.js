@@ -17723,6 +17723,8 @@ function Console(model) {
     cmd = cmd.replace(/^mapshaper\b/, '').trim();
     if (cmd == 'clear') {
       clear();
+    } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
+      turnOff();
     } else if (cmd) {
       runMapshaperCommands(cmd);
     }
