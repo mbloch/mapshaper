@@ -17400,15 +17400,6 @@ MapShaper.getOptionParser = function() {
       describe: "view detailed information about a command"
     });
 
-  // trap v0.1 options
-  ("f,format,p,e,expression,pct,i,visvalingam,dp,rdp,interval,merge-files,combine-files," +
-  "fields,precision,auto-snap").split(',')
-    .forEach(function(str) {
-      parser.command(str).validate(function() {
-        error('Mapshaper syntax has changed since v0.1.x.');
-      });
-    });
-
   // Work-in-progress (no .describe(), so hidden from -h)
   parser.command('tracing');
   parser.command("flatten")
@@ -17425,12 +17416,6 @@ MapShaper.getOptionParser = function() {
 
   parser.command("repair")
     .option("target", targetOpt);
-  */
-
-  /*
-  parser.command("filter-layers")
-    .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
-    .validate(validateLayersOpts);
   */
 
   return parser;
