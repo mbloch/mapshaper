@@ -47,9 +47,44 @@
 Shapefile, GeoJSON and TopoJSON files
 and Zip archives are supported.
 </p>
-			<h4>Simplification method</h4>
+
+			<h4>Import options</h4>
+			<div class="g-option-menu">
+
+				<div><label for="g-snap-points-opt"><input type="checkbox" class="g-checkbox" id="g-snap-points-opt" unchecked />auto-snap (experimental)</span></label>
+				<div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Automatically fix minor topology
+errors by snapping together points
+that are almost identical. Doesn't
+apply to TopoJSON files.</div></div></div></div>
+
+				<div><input type="text" placeholder="0.0" class="g-clicktext g-import-clicktext" id="g-import-precision-opt" />coordinate precision<div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Round coordinates by a specified
+precision. Reduces the size of GeoJSON
+files but can cause intersections and
+collapsed shapes. Uses same units as
+the source file, e.g. decimal degrees for
+most unprojected files.</div></div></div></div>
+			</div>
+
+			<h4>Simplification options</h4>
 			<div id="g-simplification-menu" class="g-option-menu">
 
+				<div><label for="g-repair-intersections-opt"><input type="checkbox" checked class="g-checkbox" id="g-repair-intersections-opt"/>repair intersections</label>
+				<div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Remove line intersections. Works
+by rolling back simplification
+along intersecting segments.</div></div></div></div>
+
+				<div><label for="g-import-retain-opt"><input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>prevent shape removal</label>
+								<div class="g-tip-button">?<div class="g-tip-anchor">
+				<div class="g-tip">Prevent small polygons from
+disappearing at high simplification.
+Protects the largest ring of multi-
+ring features.
+</div></div></div></div>
+
+				<p><b>Method</b></p>
 				<div><label><input type="radio" name="method" value="mapshaper" checked class="g-radio">Visvalingam / weighted area</label><div class="g-tip-button">?<div class="g-tip-anchor">
 <div class="g-tip">Points located at the vertex
 of more acute angles are
@@ -73,41 +108,11 @@ simplification.</div></div></div>
 
 	<div><label><input type="radio" name="method" value="" class="g-radio">No simplification</label></div>
 
+
 			</div>
 
-			<h4>Other options</h4>
-			<div class="g-option-menu">
 
-				<div><label for="g-repair-intersections-opt"><input type="checkbox" checked class="g-checkbox" id="g-repair-intersections-opt"/>repair intersections</label>
-				<div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Remove line intersections. Works
-by rolling back simplification
-along intersecting segments.</div></div></div></div>
-
-				<div><label for="g-snap-points-opt"><input type="checkbox" class="g-checkbox" id="g-snap-points-opt" unchecked />auto-snap (experimental)</span></label>
-				<div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Automatically fix minor topology
-errors by snapping together points
-that are almost identical. Doesn't
-apply to TopoJSON files.</div></div></div></div>
-
-				<div><label for="g-import-retain-opt"><input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>prevent shape removal</label>
-								<div class="g-tip-button">?<div class="g-tip-anchor">
-				<div class="g-tip">Prevent small polygons from
-disappearing at high simplification.
-Protects the largest ring of multi-
-ring features.
-</div></div></div></div>
-
-				<div><input type="text" placeholder="0.0" class="g-clicktext g-import-clicktext" id="g-import-precision-opt" />coordinate precision<div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Round coordinates by a specified
-precision. Reduces the size of GeoJSON
-files but can cause intersections and
-collapsed shapes. Uses same units as
-the source file, e.g. decimal degrees for
-most unprojected files.</div></div></div></div>
-			</div>
-		</div>
+		</div> <!-- .g-info-box -->
 	</div> <!-- mshp-import -->
 </div> <!-- mshp-intro-screen -->
 

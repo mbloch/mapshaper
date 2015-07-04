@@ -17629,11 +17629,13 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
 function Console(model) {
   var CURSOR = '$ ';
   var el = El('#console').hide();
-  var buffer = El('#console-buffer');
-  var history = El('div').id('console-history').appendTo(buffer);
-  var line = El('div').id('command-line').appendTo(buffer);
+  var content = El('#console-buffer');
+  var log = El('div').id('console-log').appendTo(content);
+  var line = El('div').id('command-line').appendTo(content);
   var prompt = El('div').text(CURSOR).appendTo(line);
   var input = El('input').appendTo(line).attr('spellcheck', false).attr('autocorrect', false);
+  var history = [];
+  var historyId = 0;
   var _active = false;
   var _error = error; // save default error functions...
   var _stop = stop;
@@ -17651,8 +17653,8 @@ function Console(model) {
     turnOn();
   };
 
-  function toHistory(str, cname) {
-    var msg = El('div').text(str).appendTo(history);
+  function toLog(str, cname) {
+    var msg = El('div').text(str).appendTo(log);
     if (cname) {
       msg.addClass(cname);
     }
@@ -17679,7 +17681,7 @@ function Console(model) {
   }
 
   function scrollDown() {
-    var el = buffer.parent().node();
+    var el = content.parent().node();
     el.scrollTop = el.scrollHeight;
   }
 
@@ -17688,21 +17690,29 @@ function Console(model) {
   }
 
   function onKeyDown(e) {
-    var kc = e.keyCode;
+    var kc = e.keyCode,
+        capture = true;
     if (_active) {
       if (kc == 13) { // enter
         submit();
       } else if (kc == 27) { // escape
         turnOff();
-        e.preventDefault();
+      } else if (kc == 38) {
+        back();
+      } else if (kc == 40) {
+        forward();
       } else if (e.target != input.node() && !metaKey(e)) {
+        // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
         input.node().focus();
+        capture = false;
+      } else {
+        capture = false;
       }
-
-    } else {
-      e.stopPropagation();
-      e.preventDefault();
+    } else if (kc == 32) { // space
       turnOn();
+    }
+    if (capture) {
+      e.preventDefault();
     }
   }
 
@@ -17710,23 +17720,58 @@ function Console(model) {
     return input.node().value.trim();
   }
 
+  function toHistory(str) {
+    // truncate history, if we're behind the head
+    if (historyId > 0) {
+      history.splice(-historyId, historyId);
+      historyId = 0;
+    }
+    history.push(str);
+  }
+
+
+  function fromHistory() {
+    var i = history.length - historyId - 1;
+    input.node().value = history[i];
+  }
+
+  function back() {
+    if (history.length === 0) return;
+    if (historyId === 0) {
+      history.push(input.node().value);
+    }
+    historyId = Math.min(history.length - 1, historyId + 1);
+    fromHistory();
+  }
+
+  function forward() {
+    if (historyId <= 0) return;
+    historyId--;
+    fromHistory();
+    if (historyId === 0) {
+      history.pop();
+    }
+  }
+
   function clear() {
-    history.empty();
+    log.empty();
     scrollDown();
   }
 
   function submit() {
     var cmd = readCommandLine();
-    toHistory(CURSOR + cmd);
     input.node().value = '';
-    // TODO: disable UI until run is completed
-    cmd = cmd.replace(/^mapshaper\b/, '').trim();
-    if (cmd == 'clear') {
-      clear();
-    } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
-      turnOff();
-    } else if (cmd) {
-      runMapshaperCommands(cmd);
+    toLog(CURSOR + cmd); 
+    if (cmd) {
+      toHistory(cmd);
+      cmd = cmd.replace(/^mapshaper\b/, '').trim();
+      if (cmd == 'clear') {
+        clear();
+      } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
+        turnOff();
+      } else if (cmd) {
+        runMapshaperCommands(cmd);
+      }      
     }
   }
 
@@ -17789,12 +17834,12 @@ function Console(model) {
 
   function warning() {
     var msg = gui.formatMessageArgs(arguments);
-    toHistory(msg, 'console-error');
+    toLog(msg, 'console-error');
   }
 
   function consoleMessage() {
     var msg = gui.formatMessageArgs(arguments);
-    toHistory(msg, 'console-message');
+    toLog(msg, 'console-message');
   }
 
   function consoleError() {

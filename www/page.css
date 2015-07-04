@@ -289,11 +289,11 @@ div.error-btn.active:hover:not(.selected) {
 	color: #eddd98;
 }
 
-#console-history {
+#console-log {
 	padding-top: 6px;
 }
 
-#console-history > div {
+#console-log > div {
 	padding-top: 2px;
 }
 
