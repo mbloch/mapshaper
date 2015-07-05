@@ -4,25 +4,21 @@
 //
 function LayerGroup(dataset) {
   var _canvas = El('canvas').css('position:absolute;').node(),
-      _ctx = _canvas.getContext('2d'),
-      _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
       _bounds = MapShaper.getDatasetBounds(dataset),
-      _draw,
-      _lyr,
-      _shapes;
+      _lyr, _filteredArcs;
+
+  initArcs();
+
+  function initArcs() {
+    _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
+  }
 
   this.showLayer = function(lyr) {
-    // TODO: make sure lyr is in dataset
-    if (lyr.geometry_type == 'point') {
-      _shapes = new FilteredPointCollection(lyr.shapes);
-      _draw = MapShaper.drawPoints;
-    } else {
-      // TODO: show shapes, not arcs
-      _shapes = _filteredArcs;
-      _draw = MapShaper.drawPaths;
-    }
-    _lyr = lyr;
-    return this;
+    _lyr = lyr; // TODO: make sure lyr is in dataset
+  };
+
+  this.getLayer = function() {
+    return _lyr || dataset.layers[0];
   };
 
   this.getElement = function() {
@@ -37,20 +33,21 @@ function LayerGroup(dataset) {
     return dataset;
   };
 
-  this.getLayer = function() {
-    return _lyr;
-  };
-
   this.clear = function() {
-    _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
+    _canvas.getContext('2d').clearRect(0, 0, _canvas.width, _canvas.height);
   };
 
-  this.hide = function() {
-    this.clear();
-    _shapes = null;
-  };
-
+  // Update in response to an unknown change (e.g. as a result of editing)
+  // TODO: find a less kludgy solution
   this.updated = function() {
+    // if bounds have changed (e.g. after reprojection), update filtered arcs
+    var bounds = MapShaper.getDatasetBounds(dataset);
+    if (!bounds.equals(_bounds)) {
+      initArcs();
+      _bounds = bounds;
+    }
+
+    // update simplification level
     if (_filteredArcs) {
       _filteredArcs.setRetainedInterval(dataset.arcs.getRetainedInterval());
     }
@@ -62,13 +59,20 @@ function LayerGroup(dataset) {
   };
 
   this.draw = function(style, ext) {
-    if (_shapes) {
-      this.clear();
-      _canvas.width = ext.width();
-      _canvas.height = ext.height();
-      _shapes.setMapExtent(ext);
-      _draw(_shapes, style, _canvas);
+    var lyr = this.getLayer(),
+        draw, shapes;
+    if (_lyr.geometry_type == 'point') {
+      shapes = new FilteredPointCollection(_lyr.shapes);
+      draw = MapShaper.drawPoints;
+    } else {
+      shapes = _filteredArcs;
+      draw = MapShaper.drawPaths;
     }
+    this.clear();
+    _canvas.width = ext.width();
+    _canvas.height = ext.height();
+    shapes.setMapExtent(ext);
+    draw(shapes, style, _canvas);
   };
 
   this.remove = function() {

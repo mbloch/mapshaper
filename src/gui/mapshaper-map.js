@@ -39,6 +39,7 @@ function MshpMap(model) {
     group = findGroup(e.dataset);
     if (!group) {
       group = addGroup(e.dataset);
+      updateMapBounds();
     }
     group.showLayer(e.layer);
     _activeGroup = group;
@@ -51,6 +52,7 @@ function MshpMap(model) {
     group.updated();
     group.showLayer(e.layer);
     foregroundStyle.strokeColor = getStrokeStyle(e.layer, e.dataset.arcs);
+    updateMapBounds();
     refreshLayer(group);
   });
 
@@ -119,18 +121,18 @@ function MshpMap(model) {
     group.draw(style, _ext);
   }
 
-  function getContentBounds() {
-    return _groups.reduce(function(memo, group) {
+  function updateMapBounds() {
+    var bounds = _groups.reduce(function(memo, group) {
       memo.mergeBounds(group.getBounds());
       return memo;
     }, new Bounds());
+    _ext.setBounds(bounds);
   }
 
   function addGroup(dataset) {
     var group = new LayerGroup(dataset);
     group.getElement().appendTo(_root);
     _groups.push(group);
-    _ext.setBounds(getContentBounds());
     return group;
   }
 
