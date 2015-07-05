@@ -13315,14 +13315,18 @@ api.runCommand = function(cmd, dataset, cb) {
     T.start();
     if (dataset) {
       arcs = dataset.arcs;
+      if (dataset.layers.length > 0 === false) {
+        error("Dataset contains 0 layers");
+      }
+
       if (opts.target) {
         targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
+        if (!targetLayers.length) {
+          stop(utils.format('[%s] Missing target layer: %s\nAvailable layers: %s',
+            name, opts.target, MapShaper.getFormattedLayerList(dataset.layers)));
+        }
       } else {
         targetLayers = dataset.layers; // default: all layers
-      }
-      if (targetLayers.length === 0) {
-        message("[" + name + "] Command is missing target layer(s).");
-        MapShaper.printLayerNames(dataset.layers);
       }
     }
 
@@ -13464,20 +13468,10 @@ MapShaper.applyCommand = function(func, targetLayers) {
   }, []);
 };
 
-MapShaper.printLayerNames = function(layers) {
-  var max = 10;
-  message("Available layers:");
-  if (layers.length === 0) {
-    message("[none]");
-  } else {
-    for (var i=0; i<layers.length; i++) {
-      if (i <= max) {
-        message("... " + (layers.length - max) + " more");
-        break;
-      }
-      message("[-" + i + "]  " + (layers[i].name || "[unnamed]"));
-    }
-  }
+MapShaper.getFormattedLayerList = function(layers) {
+  return layers.reduce(function(memo, lyr, i) {
+    return memo + '\n  [' + i + ']  ' + (lyr.name || '[unnamed]');
+  }, '') || '[none]';
 };
 
 

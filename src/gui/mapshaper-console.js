@@ -152,7 +152,7 @@ function Console(model) {
   }
 
   function runMapshaperCommands(str) {
-    var commands, editing, opts;
+    var commands, editing, dataset, lyr, cmdOpts;
     if (/^[^\-]/) {
       // add hyphen prefix to bare commands
       str = '-' + str;
@@ -165,12 +165,25 @@ function Console(model) {
       return onError(e);
     }
     if (editing && commands && commands.length > 0) {
-      opts = commands[0].options;
-      if (!opts.target) {
-        opts.target = editing.layer.name;
+      cmdOpts = commands[0].options;
+      dataset = editing.dataset;
+      lyr = editing.layer;
+      // Use currently edited layer as default command target
+      // TODO: handle targeting for unnamed layer
+      if (lyr.name) {
+        commands.forEach(function(cmd) {
+          if (!cmd.options.target) {
+            cmd.options.target = lyr.name;
+          }
+        });
       }
-      MapShaper.runParsedCommands(commands, editing.dataset, function(err, dataset) {
-        model.updated();
+      MapShaper.runParsedCommands(commands, dataset, function(err) {
+        if (utils.contains(dataset.layers, lyr)) {
+          model.updated();
+        } else {
+          // If original editing layer no longer exists, switch to a different layer
+          model.setEditingLayer(dataset.layers[0], dataset);
+        }
         if (err) onError(err);
       });
     } else {

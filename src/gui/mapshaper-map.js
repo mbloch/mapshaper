@@ -41,7 +41,6 @@ function MshpMap(model) {
       group = addGroup(e.dataset);
     }
     group.showLayer(e.layer);
-    group.setRetainedPct(e.simplify_pct);
     _activeGroup = group;
     foregroundStyle.strokeColor = getStrokeStyle(e.layer, e.dataset.arcs);
     refreshLayers();
@@ -50,6 +49,7 @@ function MshpMap(model) {
   model.on('update', function(e) {
     var group = findGroup(e.dataset);
     group.updated();
+    group.showLayer(e.layer);
     foregroundStyle.strokeColor = getStrokeStyle(e.layer, e.dataset.arcs);
     refreshLayer(group);
   });

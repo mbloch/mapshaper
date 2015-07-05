@@ -12089,7 +12089,6 @@ function MshpMap(model) {
       group = addGroup(e.dataset);
     }
     group.showLayer(e.layer);
-    group.setRetainedPct(e.simplify_pct);
     _activeGroup = group;
     foregroundStyle.strokeColor = getStrokeStyle(e.layer, e.dataset.arcs);
     refreshLayers();
@@ -12098,6 +12097,7 @@ function MshpMap(model) {
   model.on('update', function(e) {
     var group = findGroup(e.dataset);
     group.updated();
+    group.showLayer(e.layer);
     foregroundStyle.strokeColor = getStrokeStyle(e.layer, e.dataset.arcs);
     refreshLayer(group);
   });
@@ -15927,14 +15927,18 @@ api.runCommand = function(cmd, dataset, cb) {
     T.start();
     if (dataset) {
       arcs = dataset.arcs;
+      if (dataset.layers.length > 0 === false) {
+        error("Dataset contains 0 layers");
+      }
+
       if (opts.target) {
         targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
+        if (!targetLayers.length) {
+          stop(utils.format('[%s] Missing target layer: %s\nAvailable layers: %s',
+            name, opts.target, MapShaper.getFormattedLayerList(dataset.layers)));
+        }
       } else {
         targetLayers = dataset.layers; // default: all layers
-      }
-      if (targetLayers.length === 0) {
-        message("[" + name + "] Command is missing target layer(s).");
-        MapShaper.printLayerNames(dataset.layers);
       }
     }
 
@@ -16076,20 +16080,10 @@ MapShaper.applyCommand = function(func, targetLayers) {
   }, []);
 };
 
-MapShaper.printLayerNames = function(layers) {
-  var max = 10;
-  message("Available layers:");
-  if (layers.length === 0) {
-    message("[none]");
-  } else {
-    for (var i=0; i<layers.length; i++) {
-      if (i <= max) {
-        message("... " + (layers.length - max) + " more");
-        break;
-      }
-      message("[-" + i + "]  " + (layers[i].name || "[unnamed]"));
-    }
-  }
+MapShaper.getFormattedLayerList = function(layers) {
+  return layers.reduce(function(memo, lyr, i) {
+    return memo + '\n  [' + i + ']  ' + (lyr.name || '[unnamed]');
+  }, '') || '[none]';
 };
 
 
@@ -17653,7 +17647,7 @@ function Console(model) {
   }
 
   function runMapshaperCommands(str) {
-    var commands, editing, opts;
+    var commands, editing, dataset, lyr, cmdOpts;
     if (/^[^\-]/) {
       // add hyphen prefix to bare commands
       str = '-' + str;
@@ -17666,12 +17660,25 @@ function Console(model) {
       return onError(e);
     }
     if (editing && commands && commands.length > 0) {
-      opts = commands[0].options;
-      if (!opts.target) {
-        opts.target = editing.layer.name;
+      cmdOpts = commands[0].options;
+      dataset = editing.dataset;
+      lyr = editing.layer;
+      // Use currently edited layer as default command target
+      // TODO: handle targeting for unnamed layer
+      if (lyr.name) {
+        commands.forEach(function(cmd) {
+          if (!cmd.options.target) {
+            cmd.options.target = lyr.name;
+          }
+        });
       }
-      MapShaper.runParsedCommands(commands, editing.dataset, function(err, dataset) {
-        model.updated();
+      MapShaper.runParsedCommands(commands, dataset, function(err) {
+        if (utils.contains(dataset.layers, lyr)) {
+          model.updated();
+        } else {
+          // If original editing layer no longer exists, switch to a different layer
+          model.setEditingLayer(dataset.layers[0], dataset);
+        }
         if (err) onError(err);
       });
     } else {
@@ -17787,7 +17794,7 @@ function Model() {
     editing = {
       layer: lyr,
       dataset: dataset,
-      opts: opts
+      opts: opts || {}
     };
     this.dispatchEvent('select', editing);
   };

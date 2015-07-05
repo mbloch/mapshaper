@@ -48,7 +48,7 @@ function Model() {
     editing = {
       layer: lyr,
       dataset: dataset,
-      opts: opts
+      opts: opts || {}
     };
     this.dispatchEvent('select', editing);
   };
