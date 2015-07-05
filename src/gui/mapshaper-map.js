@@ -8,8 +8,11 @@ function MshpMap(model) {
       _highGroup,
       _activeGroup;
 
+  var darkStroke = "#335",
+      lightStroke = "#e8d3ea";
+
   var foregroundStyle = {
-        strokeColor: "#335",
+        strokeColor: darkStroke,
         dotColor: "#223"
       };
 
@@ -40,12 +43,14 @@ function MshpMap(model) {
     group.showLayer(e.layer);
     group.setRetainedPct(e.simplify_pct);
     _activeGroup = group;
+    foregroundStyle.strokeColor = getStrokeStyle(e.layer, e.dataset.arcs);
     refreshLayers();
   });
 
   model.on('update', function(e) {
     var group = findGroup(e.dataset);
     group.updated();
+    foregroundStyle.strokeColor = getStrokeStyle(e.layer, e.dataset.arcs);
     refreshLayer(group);
   });
 
@@ -82,6 +87,19 @@ function MshpMap(model) {
   this.refresh = function() {
     refreshLayers();
   };
+
+  function getStrokeStyle(lyr, arcs) {
+    if (!MapShaper.layerHasPaths(lyr)) {
+      return 'black';
+    }
+    var counts = new Uint8Array(arcs.size()),
+        col1 = darkStroke,
+        col2 = lightStroke;
+    MapShaper.countArcsInShapes(lyr.shapes, counts);
+    return function(i) {
+      return counts[i] > 0 ? col1 : col2;
+    };
+  }
 
   function calcDotSize(n) {
     return n < 20 && 5 || n < 500 && 4 || 3;

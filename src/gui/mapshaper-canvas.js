@@ -15,11 +15,16 @@ MapShaper.drawPoints = function(paths, style, canvas) {
 MapShaper.drawPaths = function(paths, style, canvas) {
   var stroked = style.strokeColor && style.strokeWidth !== 0,
       filled = !!style.fillColor,
-      ctx = canvas.getContext('2d');
+      ctx = canvas.getContext('2d'),
+      strokeColor;
 
   if (stroked) {
     ctx.lineWidth = style.strokeWidth || 1;
-    ctx.strokeStyle = style.strokeColor;
+    if (utils.isFunction(style.strokeColor)) {
+      strokeColor = style.strokeColor;
+    } else {
+      ctx.strokeStyle = style.strokeColor;
+    }
     //ctx.lineJoin = 'round';
   }
   if (filled) {
@@ -31,6 +36,7 @@ MapShaper.drawPaths = function(paths, style, canvas) {
         x, y, xp, yp;
     if (!vec.hasNext()) return;
     ctx.beginPath();
+    if (strokeColor) ctx.strokeStyle = strokeColor(i);
     x = xp = vec.x;
     y = yp = vec.y;
     ctx.moveTo(x, y);
