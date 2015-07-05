@@ -166,11 +166,18 @@ MapShaper.layerHasGeometry = function(lyr) {
 };
 
 MapShaper.layerHasPaths = function(lyr) {
-  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
+  return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
+    MapShaper.layerHasNonNullShapes(lyr);
 };
 
 MapShaper.layerHasPoints = function(lyr) {
-  return lyr.shapes && lyr.geometry_type == 'point';
+  return lyr.geometry_type == 'point' && MapShaper.layerHasNonNullShapes(lyr);
+};
+
+MapShaper.layerHasNonNullShapes = function(lyr) {
+  return utils.some(lyr.shapes || [], function(shp) {
+    return !!shp;
+  });
 };
 
 MapShaper.requirePolygonLayer = function(lyr, msg) {

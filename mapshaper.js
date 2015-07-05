@@ -1612,11 +1612,18 @@ MapShaper.layerHasGeometry = function(lyr) {
 };
 
 MapShaper.layerHasPaths = function(lyr) {
-  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
+  return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
+    MapShaper.layerHasNonNullShapes(lyr);
 };
 
 MapShaper.layerHasPoints = function(lyr) {
-  return lyr.shapes && lyr.geometry_type == 'point';
+  return lyr.geometry_type == 'point' && MapShaper.layerHasNonNullShapes(lyr);
+};
+
+MapShaper.layerHasNonNullShapes = function(lyr) {
+  return utils.some(lyr.shapes || [], function(shp) {
+    return !!shp;
+  });
 };
 
 MapShaper.requirePolygonLayer = function(lyr, msg) {
@@ -3271,6 +3278,12 @@ MapShaper.getDatasetBounds = function(data) {
   return bounds;
 };
 
+MapShaper.datasetHasPaths = function(dataset) {
+  return utils.some(dataset.layers, function(lyr) {
+    return MapShaper.layerHasPaths(lyr);
+  });
+};
+
 MapShaper.getFeatureCount = function(lyr) {
   var count = 0;
   if (lyr.data) {
@@ -3349,6 +3362,7 @@ MapShaper.findMatchingLayers = function(layers, target) {
 };
 
 /*
+// TODO: consider adding dataset validation...
 MapShaper.validateLayer = function(lyr, arcs) {
   var type = lyr.geometry_type;
   if (!utils.isArray(lyr.shapes)) {
@@ -8600,7 +8614,7 @@ TopoJSON.exportTopology = function(src, opts) {
       bounds;
 
   // generate arcs and transform
-  if (arcs && arcs.size() > 0) {
+  if (MapShaper.datasetHasPaths(dataset)) {
     bounds = MapShaper.getDatasetBounds(dataset);
     if (opts.bbox && bounds.hasBounds()) {
       topology.bbox = bounds.toArray();

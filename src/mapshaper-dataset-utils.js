@@ -23,6 +23,12 @@ MapShaper.getDatasetBounds = function(data) {
   return bounds;
 };
 
+MapShaper.datasetHasPaths = function(dataset) {
+  return utils.some(dataset.layers, function(lyr) {
+    return MapShaper.layerHasPaths(lyr);
+  });
+};
+
 MapShaper.getFeatureCount = function(lyr) {
   var count = 0;
   if (lyr.data) {
@@ -101,6 +107,7 @@ MapShaper.findMatchingLayers = function(layers, target) {
 };
 
 /*
+// TODO: consider adding dataset validation...
 MapShaper.validateLayer = function(lyr, arcs) {
   var type = lyr.geometry_type;
   if (!utils.isArray(lyr.shapes)) {

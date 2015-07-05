@@ -15,7 +15,7 @@ TopoJSON.exportTopology = function(src, opts) {
       bounds;
 
   // generate arcs and transform
-  if (arcs && arcs.size() > 0) {
+  if (MapShaper.datasetHasPaths(dataset)) {
     bounds = MapShaper.getDatasetBounds(dataset);
     if (opts.bbox && bounds.hasBounds()) {
       topology.bbox = bounds.toArray();
