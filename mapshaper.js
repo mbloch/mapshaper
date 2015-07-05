@@ -2144,6 +2144,138 @@ utils.extend(geom, {
 
 
 
+// Constructor takes arrays of coords: xx, yy, zz (optional)
+//
+// Iterate over the points of an arc
+// properties: x, y
+// method: hasNext()
+// usage:
+//   while (iter.hasNext()) {
+//     iter.x, iter.y; // do something w/ x & y
+//   }
+//
+function ArcIter(xx, yy) {
+  this._i = 0;
+  this._inc = 1;
+  this._stop = 0;
+  this._xx = xx;
+  this._yy = yy;
+  this.i = 0;
+  this.x = 0;
+  this.y = 0;
+}
+
+ArcIter.prototype.init = function(i, len, fw) {
+  if (fw) {
+    this._i = i;
+    this._inc = 1;
+    this._stop = i + len;
+  } else {
+    this._i = i + len - 1;
+    this._inc = -1;
+    this._stop = i - 1;
+  }
+  return this;
+};
+
+ArcIter.prototype.hasNext = function() {
+  var i = this._i;
+  if (i == this._stop) return false;
+  this._i = i + this._inc;
+  this.x = this._xx[i];
+  this.y = this._yy[i];
+  this.i = i;
+  return true;
+};
+
+function FilteredArcIter(xx, yy, zz) {
+  var _zlim = 0,
+      _i = 0,
+      _inc = 1,
+      _stop = 0;
+
+  this.init = function(i, len, fw, zlim) {
+    _zlim = zlim || 0;
+    if (fw) {
+      _i = i;
+      _inc = 1;
+      _stop = i + len;
+    } else {
+      _i = i + len - 1;
+      _inc = -1;
+      _stop = i - 1;
+    }
+    return this;
+  };
+
+  this.hasNext = function() {
+    // using local vars is significantly faster when skipping many points
+    var zarr = zz,
+        i = _i,
+        j = i,
+        zlim = _zlim,
+        stop = _stop,
+        inc = _inc;
+    if (i == stop) return false;
+    do {
+      j += inc;
+    } while (j != stop && zarr[j] < zlim);
+    _i = j;
+    this.x = xx[i];
+    this.y = yy[i];
+    this.i = i;
+    return true;
+  };
+}
+
+// Iterate along a path made up of one or more arcs.
+// Similar interface to ArcIter()
+//
+function ShapeIter(arcs) {
+  this._arcs = arcs;
+  this._i = 0;
+  this._n = 0;
+  this.x = 0;
+  this.y = 0;
+
+  this.hasNext = function() {
+    var arc = this._arc;
+    if (this._i >= this._n) {
+      return false;
+    } else if (arc.hasNext()) {
+      this.x = arc.x;
+      this.y = arc.y;
+      return true;
+    } else {
+      this.nextArc();
+      return this.hasNext();
+    }
+  };
+}
+
+ShapeIter.prototype.init = function(ids) {
+  this._ids = ids;
+  this._n = ids.length;
+  this.reset();
+  return this;
+};
+
+ShapeIter.prototype.nextArc = function() {
+  var i = this._i + 1;
+  if (i < this._n) {
+    this._arc = this._arcs.getArcIter(this._ids[i]);
+    if (i > 0) this._arc.hasNext(); // skip first point
+  }
+  this._i = i;
+};
+
+ShapeIter.prototype.reset = function() {
+  this._i = -1;
+  this.nextArc();
+};
+
+
+
 
 // export for testing
 MapShaper.ArcCollection = ArcCollection;
@@ -2334,9 +2466,15 @@ function ArcCollection() {
 
   // Return arcs as arrays of [x, y] points (intended for testing).
   this.toArray = function() {
-    return utils.range(this.size()).map(function(i) {
-      return this.getArc(i).toArray();
-    }, this);
+    var arr = [];
+    this.forEach(function(iter) {
+      var arc = [];
+      while (iter.hasNext()) {
+        arc.push([iter.x, iter.y]);
+      }
+      arr.push(arc);
+    });
+    return arr;
   };
 
   this.toString = function() {
@@ -2807,18 +2945,6 @@ function ArcCollection() {
     var offs = arcId * 4;
     bounds.mergeBounds(_bb[offs], _bb[offs+1], _bb[offs+2], _bb[offs+3]);
   };
-
-  this.getArc = function(id) {
-    return new Arc(this).init(id);
-  };
-
-  this.getMultiPathShape = function(arr) {
-    if (!arr || arr.length > 0 === false) {
-      error("#getMultiPathShape() Missing arc ids");
-    } else {
-      return new MultiShape(this).init(arr);
-    }
-  };
 }
 
 ArcCollection.prototype.inspect = function() {
@@ -2831,211 +2957,6 @@ ArcCollection.prototype.inspect = function() {
   return str;
 };
 
-function Arc(src) {
-  this.src = src;
-}
-
-Arc.prototype = {
-  init: function(id) {
-    this.id = id;
-    return this;
-  },
-  pathCount: 1,
-  getPathIter: function(i) {
-    return this.src.getArcIter(this.id);
-  },
-
-  inBounds: function(bbox) {
-    return this.src.arcIntersectsBBox(this.id, bbox);
-  },
-
-  // Return arc coords as an array of [x, y] points
-  toArray: function() {
-    var iter = this.getPathIter(),
-        coords = [];
-    while (iter.hasNext()) {
-      coords.push([iter.x, iter.y]);
-    }
-    return coords;
-  },
-
-  smallerThan: function(units) {
-    return this.src.arcIsSmaller(this.id, units);
-  }
-};
-
-//
-function MultiShape(src) {
-  this.singleShape = new SimpleShape(src);
-}
-
-MultiShape.prototype = {
-  init: function(parts) {
-    this.pathCount = parts ? parts.length : 0;
-    this.parts = parts || [];
-    return this;
-  },
-  getPathIter: function(i) {
-    return this.getPath(i).getPathIter();
-  },
-  getPath: function(i) {
-    if (i < 0 || i >= this.parts.length) error("MultiShape#getPart() invalid part id:", i);
-    return this.singleShape.init(this.parts[i]);
-  },
-  // Return array of SimpleShape objects, one for each path
-  getPaths: function() {
-    return this.parts.map(function(ids) {
-      return this.singleShape.init(ids);
-    }, this);
-  }
-};
-
-function SimpleShape(src) {
-  this.pathIter = new ShapeIter(src);
-  this.ids = null;
-}
-
-SimpleShape.prototype = {
-  pathCount: 1,
-  init: function(ids) {
-    this.pathIter.init(ids);
-    this.ids = ids; // kludge for TopoJSON export -- rethink
-    return this;
-  },
-  getPathIter: function() {
-    return this.pathIter;
-  }
-};
-
-// Constructor takes arrays of coords: xx, yy, zz (optional)
-//
-// Iterate over the points of an arc
-// properties: x, y
-// method: hasNext()
-// usage:
-//   while (iter.hasNext()) {
-//     iter.x, iter.y; // do something w/ x & y
-//   }
-//
-function ArcIter(xx, yy) {
-  this._i = 0;
-  this._inc = 1;
-  this._stop = 0;
-  this._xx = xx;
-  this._yy = yy;
-  this.i = 0;
-  this.x = 0;
-  this.y = 0;
-}
-
-ArcIter.prototype.init = function(i, len, fw) {
-  if (fw) {
-    this._i = i;
-    this._inc = 1;
-    this._stop = i + len;
-  } else {
-    this._i = i + len - 1;
-    this._inc = -1;
-    this._stop = i - 1;
-  }
-  return this;
-};
-
-ArcIter.prototype.hasNext = function() {
-  var i = this._i;
-  if (i == this._stop) return false;
-  this._i = i + this._inc;
-  this.x = this._xx[i];
-  this.y = this._yy[i];
-  this.i = i;
-  return true;
-};
-
-function FilteredArcIter(xx, yy, zz) {
-  var _zlim = 0,
-      _i = 0,
-      _inc = 1,
-      _stop = 0;
-
-  this.init = function(i, len, fw, zlim) {
-    _zlim = zlim || 0;
-    if (fw) {
-      _i = i;
-      _inc = 1;
-      _stop = i + len;
-    } else {
-      _i = i + len - 1;
-      _inc = -1;
-      _stop = i - 1;
-    }
-    return this;
-  };
-
-  this.hasNext = function() {
-    // using local vars is significantly faster when skipping many points
-    var zarr = zz,
-        i = _i,
-        j = i,
-        zlim = _zlim,
-        stop = _stop,
-        inc = _inc;
-    if (i == stop) return false;
-    do {
-      j += inc;
-    } while (j != stop && zarr[j] < zlim);
-    _i = j;
-    this.x = xx[i];
-    this.y = yy[i];
-    this.i = i;
-    return true;
-  };
-}
-
-// Iterate along a path made up of one or more arcs.
-// Similar interface to ArcIter()
-//
-function ShapeIter(arcs) {
-  this._arcs = arcs;
-  this._i = 0;
-  this._n = 0;
-  this.x = 0;
-  this.y = 0;
-
-  this.hasNext = function() {
-    var arc = this._arc;
-    if (this._i >= this._n) {
-      return false;
-    } else if (arc.hasNext()) {
-      this.x = arc.x;
-      this.y = arc.y;
-      return true;
-    } else {
-      this.nextArc();
-      return this.hasNext();
-    }
-  };
-}
-
-ShapeIter.prototype.init = function(ids) {
-  this._ids = ids;
-  this._n = ids.length;
-  this.reset();
-  return this;
-};
-
-ShapeIter.prototype.nextArc = function() {
-  var i = this._i + 1;
-  if (i < this._n) {
-    this._arc = this._arcs.getArcIter(this._ids[i]);
-    if (i > 0) this._arc.hasNext(); // skip first point
-  }
-  this._i = i;
-};
-
-ShapeIter.prototype.reset = function() {
-  this._i = -1;
-  this.nextArc();
-};
 
 
 
@@ -10423,7 +10344,6 @@ function FeatureExpressionContext(lyr, arcs) {
   var hasData = !!lyr.data,
       hasPoints = MapShaper.layerHasPoints(lyr),
       hasPaths = arcs && MapShaper.layerHasPaths(lyr),
-      _shp,
       _isPlanar,
       _self = this,
       _centroid, _innerXY,
@@ -10449,15 +10369,14 @@ function FeatureExpressionContext(lyr, arcs) {
   }
 
   if (hasPaths) {
-    _shp = new MultiShape(arcs);
     _isPlanar = arcs.isPlanar();
     addGetters(this, {
       // TODO: count hole/s + containing ring as one part
       partCount: function() {
-        return _shp.pathCount;
+        return _ids ? _ids.length : 0;
       },
       isNull: function() {
-        return _shp.pathCount === 0;
+        return this.partCount === 0;
       },
       bounds: function() {
         return shapeBounds().toArray();
@@ -10526,7 +10445,6 @@ function FeatureExpressionContext(lyr, arcs) {
       _centroid = null;
       _innerXY = null;
       _ids = lyr.shapes[id];
-      _shp.init(_ids);
     }
     if (hasData) {
       _record = _records[id];

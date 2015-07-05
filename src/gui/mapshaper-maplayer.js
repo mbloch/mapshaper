@@ -3,7 +3,8 @@
 // Interface for displaying the points and paths in a dataset
 //
 function LayerGroup(dataset) {
-  var _surface = new CanvasLayer(),
+  var _canvas = El('canvas').css('position:absolute;').node(),
+      _ctx = _canvas.getContext('2d'),
       _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
       _bounds = MapShaper.getDatasetBounds(dataset),
       _draw,
@@ -25,7 +26,7 @@ function LayerGroup(dataset) {
   };
 
   this.getElement = function() {
-    return _surface.getElement();
+    return El(_canvas);
   };
 
   this.getBounds = function() {
@@ -40,8 +41,12 @@ function LayerGroup(dataset) {
     return _lyr;
   };
 
+  this.clear = function() {
+    _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
+  };
+
   this.hide = function() {
-    _surface.clear();
+    this.clear();
     _shapes = null;
   };
 
@@ -58,16 +63,16 @@ function LayerGroup(dataset) {
 
   this.draw = function(style, ext) {
     if (_shapes) {
-      _surface.prepare(ext.width(), ext.height());
+      this.clear();
+      _canvas.width = ext.width();
+      _canvas.height = ext.height();
       _shapes.setMapExtent(ext);
-      _draw(_shapes, style, _surface.getContext());
+      _draw(_shapes, style, _canvas);
     }
   };
 
   this.remove = function() {
-    if (_surface) {
-      _surface.getElement().remove();
-    }
+    this.getElement().remove();
   };
 
 }

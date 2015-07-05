@@ -94,7 +94,6 @@ function FeatureExpressionContext(lyr, arcs) {
   var hasData = !!lyr.data,
       hasPoints = MapShaper.layerHasPoints(lyr),
       hasPaths = arcs && MapShaper.layerHasPaths(lyr),
-      _shp,
       _isPlanar,
       _self = this,
       _centroid, _innerXY,
@@ -120,15 +119,14 @@ function FeatureExpressionContext(lyr, arcs) {
   }
 
   if (hasPaths) {
-    _shp = new MultiShape(arcs);
     _isPlanar = arcs.isPlanar();
     addGetters(this, {
       // TODO: count hole/s + containing ring as one part
       partCount: function() {
-        return _shp.pathCount;
+        return _ids ? _ids.length : 0;
       },
       isNull: function() {
-        return _shp.pathCount === 0;
+        return this.partCount === 0;
       },
       bounds: function() {
         return shapeBounds().toArray();
@@ -197,7 +195,6 @@ function FeatureExpressionContext(lyr, arcs) {
       _centroid = null;
       _innerXY = null;
       _ids = lyr.shapes[id];
-      _shp.init(_ids);
     }
     if (hasData) {
       _record = _records[id];

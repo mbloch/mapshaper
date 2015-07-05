@@ -1,41 +1,21 @@
 /* @requires mapshaper-common */
 
-MapShaper.drawShapes = function(shapes, style, ctx) {
-  if (style.dotColor) {
-    this.drawPoints(shapes, style, ctx);
-  } else {
-    this.drawPaths(shapes, style, ctx);
-  }
-};
-
-MapShaper.drawPoints = function(paths, style, ctx) {
-  var midCol = style.dotColor || "rgba(255, 50, 50, 0.5)",
-      endCol = style.nodeColor || midCol,
-      midSize = style.dotSize || 3,
-      endSize = style.nodeSize >= 0 ? style.nodeSize : midSize,
+MapShaper.drawPoints = function(paths, style, canvas) {
+  var color = style.dotColor || "rgba(255, 50, 50, 0.5)",
+      size = style.dotSize || 3,
       drawPoint = style.roundDot ? drawCircle : drawSquare,
-      prevX, prevY;
-
+      ctx = canvas.getContext('2d');
   paths.forEach(function(vec) {
-    if (vec.hasNext()) {
-      drawPoint(vec.x, vec.y, endSize, endCol, ctx);
-    }
-    if (vec.hasNext()) {
-      prevX = vec.x;
-      prevY = vec.y;
-      while (vec.hasNext()) {
-        drawPoint(prevX, prevY, midSize, midCol, ctx);
-        prevX = vec.x;
-        prevY = vec.y;
-      }
-      drawPoint(prevX, prevY, endSize, endCol, ctx);
+    while (vec.hasNext()) {
+      drawPoint(vec.x, vec.y, size, color, ctx);
     }
   });
 };
 
-MapShaper.drawPaths = function(paths, style, ctx) {
+MapShaper.drawPaths = function(paths, style, canvas) {
   var stroked = style.strokeColor && style.strokeWidth !== 0,
-      filled = !!style.fillColor;
+      filled = !!style.fillColor,
+      ctx = canvas.getContext('2d');
 
   if (stroked) {
     ctx.lineWidth = style.strokeWidth || 1;
@@ -46,16 +26,28 @@ MapShaper.drawPaths = function(paths, style, ctx) {
     ctx.fillStyle = style.fillColor;
   }
 
-  paths.forEach(function(vec) {
-    if (vec.hasNext()) {
-      ctx.beginPath();
-      ctx.moveTo(vec.x, vec.y);
-      while (vec.hasNext()) {
-        ctx.lineTo(vec.x, vec.y);
+  paths.forEach(function(vec, i) {
+    var minLen = 0.6,
+        x, y, xp, yp;
+    if (!vec.hasNext()) return;
+    ctx.beginPath();
+    x = xp = vec.x;
+    y = yp = vec.y;
+    ctx.moveTo(x, y);
+    while (vec.hasNext()) {
+      x = vec.x;
+      y = vec.y;
+      if (Math.abs(x - xp) > minLen || Math.abs(y - yp) > minLen) {
+        ctx.lineTo(x, y);
+        xp = x;
+        yp = y;
       }
-      if (filled) ctx.fill();
-      if (stroked) ctx.stroke();
     }
+    if (x != xp || y != yp) {
+      ctx.lineTo(x, y);
+    }
+    if (filled) ctx.fill();
+    if (stroked) ctx.stroke();
   });
 };
 
@@ -76,35 +68,4 @@ function drawSquare(x, y, size, col, ctx) {
     ctx.fillStyle = col;
     ctx.fillRect(x, y, size, size);
   }
-}
-
-
-function CanvasLayer() {
-  var canvas = El('canvas').css('position:absolute;').node(),
-      ctx = canvas.getContext('2d');
-
-  this.getContext = function() {
-    return ctx;
-  };
-
-  this.prepare = function(w, h) {
-    if (w != canvas.width || h != canvas.height) {
-      this.resize(w, h);
-    } else {
-      this.clear();
-    }
-  };
-
-  this.resize = function(w, h) {
-    canvas.width = w;
-    canvas.height = h;
-  };
-
-  this.clear = function() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  };
-
-  this.getElement = function() {
-    return El(canvas);
-  };
 }
