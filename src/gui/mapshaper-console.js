@@ -2,6 +2,7 @@
 
 function Console(model) {
   var CURSOR = '$ ';
+  var PROMPT = 'Enter mapshaper commands, or type "examples" to see examples';
   var el = El('#console').hide();
   var content = El('#console-buffer');
   var log = El('div').id('console-log').appendTo(content);
@@ -16,7 +17,7 @@ function Console(model) {
 
   // capture all messages to this console, whether open or closed
   message = consoleMessage;
-  message('Type mapshaper commands at the prompt');
+  message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
 
   this.hide = function() {
@@ -103,7 +104,6 @@ function Console(model) {
     history.push(str);
   }
 
-
   function fromHistory() {
     var i = history.length - historyId - 1;
     input.node().value = history[i];
@@ -135,17 +135,19 @@ function Console(model) {
   function submit() {
     var cmd = readCommandLine();
     input.node().value = '';
-    toLog(CURSOR + cmd); 
+    toLog(CURSOR + cmd);
     if (cmd) {
       toHistory(cmd);
       cmd = cmd.replace(/^mapshaper\b/, '').trim();
       if (cmd == 'clear') {
         clear();
+      } else if (cmd == 'examples') {
+        printExamples();
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         turnOff();
       } else if (cmd) {
         runMapshaperCommands(cmd);
-      }      
+      }
     }
   }
 
@@ -219,5 +221,16 @@ function Console(model) {
   function consoleError() {
     var msg = gui.formatMessageArgs(arguments);
     throw new Error(msg);
+  }
+
+  function printExample(comment, command) {
+    toLog(comment, 'console-message');
+    toLog(command, 'console-example');
+  }
+
+  function printExamples() {
+    printExample("View information about your data layer", "$ info");
+    printExample("View help about a command", "$ help filter");
+    printExample("Extract one state from a national dataset","$ filter 'STATE == Iowa'");
   }
 }

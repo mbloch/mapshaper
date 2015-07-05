@@ -247,38 +247,34 @@ div.error-btn.active:hover:not(.selected) {
 
 #console {
 	z-index: 50;
-	background-color: rgba(0,0,0,0.25);
+	/* background-color: rgba(0,0,0,0.8); */
 	display: none;
 }
 
 #console-window {
+	background-color: rgba(0,0,0,1);
 	position: absolute;
 	width: 100%;
-	background-color: rgba(0,0,0,1);
 	text-align: center;
 	overflow: auto;
-	max-height: 450px;
+	max-height: 80%;
 }
-
-
 
 #console-buffer {
 	width: 100%;
 	position: relative;
-	/* bottom: 12px; */
-}
-
-#console-buffer > div {
 	color: white;
-	white-space: pre;
-	/* display: inline-block; */
-	text-align: left;
-	width: 520px;
-	margin: 0 auto;
 }
 
 #console-buffer * {
-	font: 13px/1.2 monospace;
+	font: 13px/1 monospace;
+}
+
+#console-buffer > div {
+	white-space: pre;
+	text-align: left;
+	width: 520px;
+	margin: 0 auto;
 }
 
 .console-error {
@@ -289,12 +285,17 @@ div.error-btn.active:hover:not(.selected) {
 	color: #eddd98;
 }
 
+.console-example {
+	color: #9de3fc;
+}
+
 #console-log {
 	padding-top: 6px;
 }
 
 #console-log > div {
-	padding-top: 2px;
+	padding-top: 1px;
+	line-height: 15px;
 }
 
 #command-line {
@@ -308,7 +309,8 @@ div.error-btn.active:hover:not(.selected) {
 }
 
 #command-line > input {
-	color: #fff;
+	height: 16px;
+	color: white;
 	background-color: transparent;
 	border: none;
 	padding: 0;
