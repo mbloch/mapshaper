@@ -36,11 +36,11 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
 
   if (utils.isArray(fields)) {
     if (!lyr.data) {
-      stop("[lines] missing a data table:");
+      stop("[lines] Missing a data table:");
     }
     fields.forEach(function(field) {
       if (!lyr.data.fieldExists(field)) {
-        stop("[lines] unknown data field:", field);
+        stop("[lines] Unknown data field:", field);
       }
       var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');

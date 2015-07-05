@@ -7813,11 +7813,11 @@ MapShaper.importGeoJSON = function(src, opts) {
   } else if (srcCollection.type == 'GeometryCollection') {
     geometries = srcCollection.geometries;
   } else {
-    stop("[-i] Unsupported GeoJSON type:", srcCollection.type);
+    stop("[i] Unsupported GeoJSON type:", srcCollection.type);
   }
 
   if (!geometries) {
-    stop("[-i] Missing geometry data");
+    stop("[i] Missing geometry data");
   }
 
   // Import GeoJSON geometries
@@ -8314,11 +8314,11 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
 
   if (utils.isArray(fields)) {
     if (!lyr.data) {
-      stop("[lines] missing a data table:");
+      stop("[lines] Missing a data table:");
     }
     fields.forEach(function(field) {
       if (!lyr.data.fieldExists(field)) {
-        stop("[lines] unknown data field:", field);
+        stop("[lines] Unknown data field:", field);
       }
       var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
@@ -11777,7 +11777,7 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
 
 MapShaper.pointsFromPolygons = function(lyr, arcs, opts) {
   if (lyr.geometry_type != "polygon") {
-    stop("[points] expected a polygon layer");
+    stop("[points] Expected a polygon layer");
   }
   var func = opts.inner ? geom.findInteriorPoint : geom.getShapeCentroid;
   return lyr.shapes.map(function(shp) {
@@ -11787,9 +11787,9 @@ MapShaper.pointsFromPolygons = function(lyr, arcs, opts) {
 };
 
 MapShaper.pointsFromDataTable = function(data, opts) {
-  if (!data) stop("[points] layer is missing a data table");
+  if (!data) stop("[points] Layer is missing a data table");
   if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
-    stop("[points] missing x,y data fields");
+    stop("[points] Missing x,y data fields");
   }
 
   return data.getRecords().map(function(rec) {
@@ -13201,7 +13201,7 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
       tmp, bounds, lyr1, lyr2;
 
   if (!utils.isBoolean(divide)) {
-    stop("--subdivide expressions must return true or false");
+    stop("[subdivide] Expression must evaluate to true or false");
   }
   if (divide) {
     bounds = MapShaper.getLayerBounds(lyr, arcs);
