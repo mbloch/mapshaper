@@ -5,14 +5,6 @@ mapshaper-option-validation
 mapshaper-chunker
 */
 
-// Parse an array or a string of command line tokens into an array of
-// command objects.
-MapShaper.parseCommands = function(tokens) {
-  if (utils.isString(tokens)) {
-    tokens = MapShaper.splitShellTokens(tokens);
-  }
-  return MapShaper.getOptionParser().parseArgv(tokens);
-};
 
 MapShaper.getOptionParser = function() {
   // definitions of options shared by more than one command

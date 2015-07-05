@@ -137,8 +137,6 @@ function Console(model) {
     input.node().value = '';
     toLog(CURSOR + cmd);
     if (cmd) {
-      toHistory(cmd);
-      cmd = cmd.replace(/^mapshaper\b/, '').trim();
       if (cmd == 'clear') {
         clear();
       } else if (cmd == 'examples') {
@@ -148,24 +146,15 @@ function Console(model) {
       } else if (cmd) {
         runMapshaperCommands(cmd);
       }
+      toHistory(cmd);
     }
   }
 
   function runMapshaperCommands(str) {
-    var commands, editing, dataset, lyr, cmdOpts;
-    if (/^[^\-]/) {
-      // add hyphen prefix to bare commands
-      str = '-' + str;
-    }
+    var commands, editing, dataset, lyr;
     try {
-      commands = MapShaper.parseCommands(str);
-      commands = filterCommands(commands);
+      commands = MapShaper.parseConsoleCommands(str);
       editing = model.getEditingLayer();
-    } catch (e) {
-      return onError(e);
-    }
-    if (editing && commands && commands.length > 0) {
-      cmdOpts = commands[0].options;
       dataset = editing.dataset;
       lyr = editing.layer;
       // Use currently edited layer as default command target
@@ -177,6 +166,10 @@ function Console(model) {
           }
         });
       }
+    } catch (e) {
+      return onError(e);
+    }
+    if (commands.length > 0) {
       MapShaper.runParsedCommands(commands, dataset, function(err) {
         if (utils.contains(dataset.layers, lyr)) {
           model.updated();
@@ -186,20 +179,7 @@ function Console(model) {
         }
         if (err) onError(err);
       });
-    } else {
-      message("No commands to run");
     }
-  }
-
-  function filterCommands(arr) {
-    var names = 'o,i'.split(','),
-        filtered = arr.filter(function(cmd) {
-          return !utils.contains(names, cmd.name);
-        });
-    if (filtered.length < arr.length) {
-      warning("These commands can not be run in the console:", names.join(', '));
-    }
-    return filtered;
   }
 
   function onError(err) {

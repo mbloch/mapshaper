@@ -13871,7 +13871,7 @@ function validateSimplifyOpts(cmd) {
 
   if (o.method) {
     if (!utils.contains(methods, o.method)) {
-      error(o.method, "is not a recognized simplification method; choos from:", methods);
+      error(o.method, "is not a recognized simplification method; choose from:", methods);
     }
   }
 
@@ -13931,7 +13931,7 @@ function validateSplitOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.field = cmd._[0];
   } else if (cmd._.length > 1) {
-    error("command takes a single field name");
+    error("Command takes a single field name");
   }
 }
 
@@ -13945,7 +13945,7 @@ function validateClipOpts(cmd) {
     opts.bbox = opts.bbox.map(parseFloat);
   }
   if (!opts.source && !opts.bbox) {
-    error("command requires a source file, layer id or bbox");
+    error("Command requires a source file, layer id or bbox");
   }
 }
 
@@ -13955,12 +13955,12 @@ function validateDissolveOpts(cmd) {
   if (_.length == 1) {
     o.field = _[0];
   } else if (_.length > 1) {
-    error("command takes a single field name");
+    error("Command takes a single field name");
   }
 }
 
 function validateMergeLayersOpts(cmd) {
-  if (cmd._.length > 0) error("unexpected option:", cmd._);
+  if (cmd._.length > 0) error("Unexpected option:", cmd._);
 }
 
 function validateRenameLayersOpts(cmd) {
@@ -13976,7 +13976,7 @@ function validateSplitOnGridOpts(cmd) {
   }
 
   if (o.rows > 0 === false || o.cols > 0 === false) {
-    error("comand expects cols,rows");
+    error("Command expects cols,rows");
   }
 }
 
@@ -13985,7 +13985,7 @@ function validateLinesOpts(cmd) {
     var fields = validateCommaSepNames(cmd.options.fields || cmd._[0]);
     if (fields) cmd.options.fields = fields;
   } catch (e) {
-    error("command takes a comma-separated list of fields");
+    error("Command takes a comma-separated list of fields");
   }
 }
 
@@ -14085,7 +14085,7 @@ function validateOutputOpts(cmd) {
 function validateCommaSepNames(str, min) {
   if (!min && !str) return null; // treat
   if (!utils.isString(str)) {
-    error ("expected comma-separated list; found:", str);
+    error ("Expected a comma-separated list; found:", str);
   }
   var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
@@ -14122,14 +14122,6 @@ utils.trimQuotes = function(raw) {
 
 
 
-// Parse an array or a string of command line tokens into an array of
-// command objects.
-MapShaper.parseCommands = function(tokens) {
-  if (utils.isString(tokens)) {
-    tokens = MapShaper.splitShellTokens(tokens);
-  }
-  return MapShaper.getOptionParser().parseArgv(tokens);
-};
 
 MapShaper.getOptionParser = function() {
   // definitions of options shared by more than one command
@@ -14691,6 +14683,42 @@ MapShaper.getOptionParser = function() {
 
   return parser;
 };
+
+
+
+
+// Parse an array or a string of command line tokens into an array of
+// command objects.
+MapShaper.parseCommands = function(tokens) {
+  if (utils.isString(tokens)) {
+    tokens = MapShaper.splitShellTokens(tokens);
+  }
+  return MapShaper.getOptionParser().parseArgv(tokens);
+};
+
+// Parse a command line string for the browser console
+MapShaper.parseConsoleCommands = function(raw) {
+  var blocked = 'o,i,join,clip,erase'.split(','),
+      tokens, parsed, str;
+  str = raw.replace(/^mapshaper\b/, '').trim();
+  if (/^[^\-]/.test(str)) {
+    // add hyphen prefix to bare command
+    str = '-' + str;
+  }
+  tokens = MapShaper.splitShellTokens(str);
+  tokens.forEach(function(tok) {
+    if (tok[0] == '-' && utils.contains(blocked, tok.substr(1))) {
+      stop("These commands can not be run in the browser:", blocked.join(', '));
+    }
+  });
+  parsed = MapShaper.parseCommands(str);
+  // block implicit initial -i command
+  if (parsed.length > 0 && parsed[0].name == 'i') {
+    stop(utils.format("Unable to run [%s]", raw));
+  }
+  return parsed;
+};
+
 
 
 

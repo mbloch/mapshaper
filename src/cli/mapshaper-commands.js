@@ -1,4 +1,5 @@
-/* @requires mapshaper-run-command, mapshaper-options */
+/* @requires mapshaper-run-command, mapshaper-parse-commands */
+
 
 // Parse command line args into commands and run them
 // @argv Array of command line tokens or single string of commands
