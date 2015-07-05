@@ -6580,7 +6580,7 @@ api.dissolve = function(lyr, arcs, opts) {
       dissolveData = null;
 
   if (lyr.geometry_type) {
-    MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
+    MapShaper.requirePolygonLayer(lyr, "[dissolve] Only polygon type layers can be dissolved");
     dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
   }
 
@@ -8280,12 +8280,12 @@ TopoJSON.pathImporters = {
 
 api.convertPolygonsToInnerLines = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
-    stop("[innerlines] Layer not polygon type");
+    stop("[innerlines] Command requires a polygon layer");
   }
   var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
       lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
   if (lyr2.shapes.length === 0) {
-    message("[innerlines] No shared boundaries were found in layer: [" + (lyr.name || "unnamed") + "]");
+    message("[innerlines] No shared boundaries were found");
   }
   lyr2.name = lyr.name;
   return lyr2;
@@ -8293,7 +8293,7 @@ api.convertPolygonsToInnerLines = function(lyr, arcs) {
 
 api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
   if (lyr.geometry_type != 'polygon') {
-    stop("[lines] Layer not polygon type");
+    stop("[lines] Command requires a polygon layer");
   }
   var arcCount = arcs.size(),
       outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
@@ -11722,7 +11722,7 @@ api.mergeFiles = function(files, opts) {
     return d.info.input_format;
   });
   if (utils.uniq(formats).length != 1) {
-    stop("[mergeFiles()] Importing files with different formats is not supported");
+    stop("Importing files with different formats is not supported");
   }
 
   var merged = MapShaper.mergeDatasets(datasets);

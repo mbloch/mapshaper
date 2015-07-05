@@ -8858,12 +8858,12 @@ TopoJSON.pathImporters = {
 
 api.convertPolygonsToInnerLines = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
-    stop("[innerlines] Layer not polygon type");
+    stop("[innerlines] Command requires a polygon layer");
   }
   var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
       lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
   if (lyr2.shapes.length === 0) {
-    message("[innerlines] No shared boundaries were found in layer: [" + (lyr.name || "unnamed") + "]");
+    message("[innerlines] No shared boundaries were found");
   }
   lyr2.name = lyr.name;
   return lyr2;
@@ -8871,7 +8871,7 @@ api.convertPolygonsToInnerLines = function(lyr, arcs) {
 
 api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
   if (lyr.geometry_type != 'polygon') {
-    stop("[lines] Layer not polygon type");
+    stop("[lines] Command requires a polygon layer");
   }
   var arcCount = arcs.size(),
       outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
@@ -11739,25 +11739,21 @@ function PointIter() {
 //
 function LayerGroup(dataset) {
   var _canvas = El('canvas').css('position:absolute;').node(),
-      _ctx = _canvas.getContext('2d'),
-      _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
       _bounds = MapShaper.getDatasetBounds(dataset),
-      _draw,
-      _lyr,
-      _shapes;
+      _lyr, _filteredArcs;
+
+  initArcs();
+
+  function initArcs() {
+    _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
+  }
 
   this.showLayer = function(lyr) {
-    // TODO: make sure lyr is in dataset
-    if (lyr.geometry_type == 'point') {
-      _shapes = new FilteredPointCollection(lyr.shapes);
-      _draw = MapShaper.drawPoints;
-    } else {
-      // TODO: show shapes, not arcs
-      _shapes = _filteredArcs;
-      _draw = MapShaper.drawPaths;
-    }
-    _lyr = lyr;
-    return this;
+    _lyr = lyr; // TODO: make sure lyr is in dataset
+  };
+
+  this.getLayer = function() {
+    return _lyr || dataset.layers[0];
   };
 
   this.getElement = function() {
@@ -11772,20 +11768,21 @@ function LayerGroup(dataset) {
     return dataset;
   };
 
-  this.getLayer = function() {
-    return _lyr;
-  };
-
   this.clear = function() {
-    _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
+    _canvas.getContext('2d').clearRect(0, 0, _canvas.width, _canvas.height);
   };
 
-  this.hide = function() {
-    this.clear();
-    _shapes = null;
-  };
-
+  // Update in response to an unknown change (e.g. as a result of editing)
+  // TODO: find a less kludgy solution
   this.updated = function() {
+    // if bounds have changed (e.g. after reprojection), update filtered arcs
+    var bounds = MapShaper.getDatasetBounds(dataset);
+    if (!bounds.equals(_bounds)) {
+      initArcs();
+      _bounds = bounds;
+    }
+
+    // update simplification level
     if (_filteredArcs) {
       _filteredArcs.setRetainedInterval(dataset.arcs.getRetainedInterval());
     }
@@ -11797,13 +11794,20 @@ function LayerGroup(dataset) {
   };
 
   this.draw = function(style, ext) {
-    if (_shapes) {
-      this.clear();
-      _canvas.width = ext.width();
-      _canvas.height = ext.height();
-      _shapes.setMapExtent(ext);
-      _draw(_shapes, style, _canvas);
+    var lyr = this.getLayer(),
+        draw, shapes;
+    if (_lyr.geometry_type == 'point') {
+      shapes = new FilteredPointCollection(_lyr.shapes);
+      draw = MapShaper.drawPoints;
+    } else {
+      shapes = _filteredArcs;
+      draw = MapShaper.drawPaths;
     }
+    this.clear();
+    _canvas.width = ext.width();
+    _canvas.height = ext.height();
+    shapes.setMapExtent(ext);
+    draw(shapes, style, _canvas);
   };
 
   this.remove = function() {
@@ -12087,6 +12091,7 @@ function MshpMap(model) {
     group = findGroup(e.dataset);
     if (!group) {
       group = addGroup(e.dataset);
+      updateMapBounds();
     }
     group.showLayer(e.layer);
     _activeGroup = group;
@@ -12099,6 +12104,7 @@ function MshpMap(model) {
     group.updated();
     group.showLayer(e.layer);
     foregroundStyle.strokeColor = getStrokeStyle(e.layer, e.dataset.arcs);
+    updateMapBounds();
     refreshLayer(group);
   });
 
@@ -12167,18 +12173,18 @@ function MshpMap(model) {
     group.draw(style, _ext);
   }
 
-  function getContentBounds() {
-    return _groups.reduce(function(memo, group) {
+  function updateMapBounds() {
+    var bounds = _groups.reduce(function(memo, group) {
       memo.mergeBounds(group.getBounds());
       return memo;
     }, new Bounds());
+    _ext.setBounds(bounds);
   }
 
   function addGroup(dataset) {
     var group = new LayerGroup(dataset);
     group.getElement().appendTo(_root);
     _groups.push(group);
-    _ext.setBounds(getContentBounds());
     return group;
   }
 
@@ -13227,7 +13233,7 @@ api.dissolve = function(lyr, arcs, opts) {
       dissolveData = null;
 
   if (lyr.geometry_type) {
-    MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
+    MapShaper.requirePolygonLayer(lyr, "[dissolve] Only polygon type layers can be dissolved");
     dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
   }
 
@@ -15001,7 +15007,7 @@ api.mergeFiles = function(files, opts) {
     return d.info.input_format;
   });
   if (utils.uniq(formats).length != 1) {
-    stop("[mergeFiles()] Importing files with different formats is not supported");
+    stop("Importing files with different formats is not supported");
   }
 
   var merged = MapShaper.mergeDatasets(datasets);

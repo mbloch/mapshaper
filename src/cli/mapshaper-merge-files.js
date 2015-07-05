@@ -12,7 +12,7 @@ api.mergeFiles = function(files, opts) {
     return d.info.input_format;
   });
   if (utils.uniq(formats).length != 1) {
-    stop("[mergeFiles()] Importing files with different formats is not supported");
+    stop("Importing files with different formats is not supported");
   }
 
   var merged = MapShaper.mergeDatasets(datasets);

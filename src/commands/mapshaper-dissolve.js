@@ -11,7 +11,7 @@ api.dissolve = function(lyr, arcs, opts) {
       dissolveData = null;
 
   if (lyr.geometry_type) {
-    MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
+    MapShaper.requirePolygonLayer(lyr, "[dissolve] Only polygon type layers can be dissolved");
     dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
   }
 
