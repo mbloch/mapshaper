@@ -253,6 +253,7 @@ div.error-btn.active:hover:not(.selected) {
 }
 
 #console-window {
+	pointer-events: auto;
 	background-color: rgba(0,0,0,1);
 	position: absolute;
 	width: 100%;
