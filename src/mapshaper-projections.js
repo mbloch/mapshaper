@@ -63,6 +63,7 @@ function initProj(proj, name, opts, params) {
       }
     }
   };
+  opts = opts || {};
   if (params) {
     // check for required decimal degree parameters and convert to radians
     params.forEach(function(param) {
