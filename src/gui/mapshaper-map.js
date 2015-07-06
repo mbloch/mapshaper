@@ -123,7 +123,9 @@ function MshpMap(model) {
 
   function updateMapBounds() {
     var bounds = _groups.reduce(function(memo, group) {
-      memo.mergeBounds(group.getBounds());
+      if (group != _highGroup) {
+        memo.mergeBounds(group.getBounds());
+      }
       return memo;
     }, new Bounds());
     _ext.setBounds(bounds);
