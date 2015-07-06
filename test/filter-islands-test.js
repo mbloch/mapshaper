@@ -2,6 +2,48 @@ var assert = require('assert'),
     api = require("../");
 
 describe('mapshaper-filter-islands.js', function () {
+
+  it ('-filter-islands should not remove donut-hole polygons', function(done) {
+    //       e
+    //      / \
+    //     /   \
+    //    /  a  \
+    //   /  / \  \
+    //  h  d   b  f
+    //   \  \ /  /
+    //    \  c  /
+    //     \   /
+    //      \ /
+    //       g
+    //
+    //   abcda, efghe
+    //   0,     1
+    var arcs = [[[3, 4], [4, 3], [3, 2], [2, 3], [3, 4]],
+        [[3, 5], [5, 3], [3, 1], [1, 3], [3, 5]]];
+    var topojson = JSON.stringify({
+      type: "Topology",
+      arcs: arcs,
+      objects: {
+        layer1: {
+          type: "GeometryCollection",
+          geometries: [{
+            type: "Polygon",
+            arcs: [[1], [-1]]
+          }, {
+            type: "Polygon",
+            arcs: [[0]]
+          }]
+        }
+      }
+    });
+    // var cmd = '-filter-islands min-vertices=10 -o no-quantization';
+    var cmd = '-filter-islands min-area=1e13 -o no-quantization';
+    api.applyCommands(cmd, topojson, function(err, output) {
+      assert.deepEqual(JSON.parse(output), JSON.parse(topojson));
+      done();
+    });
+  });
+
   describe('Command line tests', function() {
     var geojson = JSON.stringify({
       type:"FeatureCollection",
@@ -21,7 +63,7 @@ describe('mapshaper-filter-islands.js', function () {
     });
 
     it ('-filter-islands remove-empty', function(done) {
-      api.applyCommands('-filter-islands remove-empty', geojson, function(err, json) {
+      api.applyCommands('-filter-islands min-area=0.5 remove-empty', geojson, function(err, json) {
         var output = JSON.parse(json);
         assert.equal(output.features.length, 1);
         assert.deepEqual(output.features[0],

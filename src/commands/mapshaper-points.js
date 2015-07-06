@@ -13,7 +13,7 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
   }, 0);
 
   if (nulls > 0) {
-    message(utils.format('[points] %d/%d points are null', nulls, destLyr.shapes.length));
+    message(utils.format('[points] %,d of %,d points are null', nulls, destLyr.shapes.length));
   }
   if (srcLyr.data) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;

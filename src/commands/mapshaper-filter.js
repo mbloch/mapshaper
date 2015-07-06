@@ -42,7 +42,9 @@ api.filterFeatures = function(lyr, arcs, opts) {
     filteredLyr = utils.extend(lyr, filteredLyr); // modify in-place
   }
 
-  message(utils.format('[filter] Retained %,d of %,d features', MapShaper.getFeatureCount(filteredLyr), n));
+  if (opts.verbose !== false) {
+    message(utils.format('[filter] Retained %,d of %,d features', MapShaper.getFeatureCount(filteredLyr), n));
+  }
 
   return filteredLyr;
 };
