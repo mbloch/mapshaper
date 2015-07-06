@@ -247,6 +247,7 @@ div.error-btn.active:hover:not(.selected) {
 
 #console {
 	z-index: 50;
+	pointer-events: none;
 	/* background-color: rgba(0,0,0,0.8); */
 	display: none;
 }
