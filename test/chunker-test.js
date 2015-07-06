@@ -30,6 +30,10 @@ describe('mapshaper-chunker.js', function () {
     it('mapshaper -each "FID = $.id + \'\'"', function () {
       test('mapshaper -each "FID = $.id + \'\'"', ['mapshaper', '-each', "FID = $.id + ''"]);
     })
+
+    it('mapshaper \\ -info', function () {
+      test('mapshaper \\ -info', ['mapshaper', '-info']);
+    })
   })
 
 })

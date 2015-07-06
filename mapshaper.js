@@ -3414,7 +3414,7 @@ MapShaper.getIntersectionPoints = function(intersections) {
       });
 };
 
-var count = 0;
+// var count = 0;
 
 // Identify intersecting segments in an ArcCollection
 //
@@ -3559,14 +3559,14 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
     s1p2x = xx[s1p2];
     s1p1y = yy[s1p1];
     s1p2y = yy[s1p2];
-    count++;
+    // count++;
 
     j = i;
     while (j < lim) {
       j += 2;
       s2p1 = ids[j];
       s2p1x = xx[s2p1];
-      count++;
+      // count++;
 
       if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
       //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
@@ -10544,7 +10544,9 @@ api.filterFeatures = function(lyr, arcs, opts) {
     filteredLyr = utils.extend(lyr, filteredLyr); // modify in-place
   }
 
-  message(utils.format('[filter] Retained %,d of %,d features', MapShaper.getFeatureCount(filteredLyr), n));
+  if (opts.verbose !== false) {
+    message(utils.format('[filter] Retained %,d of %,d features', MapShaper.getFeatureCount(filteredLyr), n));
+  }
 
   return filteredLyr;
 };
@@ -11008,48 +11010,95 @@ MapShaper.getRecordMapper = function(map) {
 
 
 api.filterIslands = function(lyr, arcs, opts) {
+  var removed = 0;
   if (lyr.geometry_type != 'polygon') {
-    message("[filter-islands] skipping a non-polygon layer");
     return;
   }
 
-  if (opts.min_area) {
-    MapShaper.editShapes(lyr.shapes, MapShaper.getIslandAreaFilter(arcs, opts.min_area));
-  }
-  if (opts.min_vertices) {
-    MapShaper.editShapes(lyr.shapes, MapShaper.getIslandVertexFilter(arcs, opts.min_vertices));
+  if (opts.min_area || opts.min_vertices) {
+    if (opts.min_area) {
+      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getRingAreaTest(opts.min_area, arcs));
+    }
+    if (opts.min_vertices) {
+      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getVertexCountTest(opts.min_vertices, arcs));
+    }
+    if (opts.remove_empty) {
+      api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+    }
+    message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
+  } else {
+    message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
   }
 
-  if (opts.remove_empty) {
-    api.filterFeatures(lyr, arcs, {remove_empty: true});
-  }
 };
 
-MapShaper.getIslandVertexFilter = function(arcs, minVertices) {
-  var minCount = minVertices + 1; // first and last vertex in ring count as one
-  return function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1 && geom.countVerticesInPath(path, arcs) < minCount) {
-        return null;
-      }
-    });
+MapShaper.getVertexCountTest = function(minVertices, arcs) {
+  return function(path) {
+    // first and last vertex in ring count as one
+    return geom.countVerticesInPath(path, arcs) <= minVertices;
   };
 };
 
-MapShaper.getIslandAreaFilter = function(arcs, minArea) {
+MapShaper.getRingAreaTest = function(minArea, arcs) {
   var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
-  return function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1 && Math.abs(pathArea(path, arcs)) < minArea) {
-        // Found an island to remove
-        // TODO: Remove all enclosed holes, including multi-part holes
-        return null;
-      }
-    });
+  return function(path) {
+    var area = pathArea(path, arcs);
+    return Math.abs(area) < minArea;
   };
 };
 
-MapShaper.editShapes = function(shapes, filter) {
+MapShaper.filterIslands = function(lyr, arcs, ringTest) {
+  var removed = 0;
+  var counts = new Uint8Array(arcs.size());
+  MapShaper.countArcsInShapes(lyr.shapes, counts);
+
+  var filter = function(paths) {
+    return MapShaper.editPaths(paths, function(path) {
+      if (path.length == 1) { // got an island ring
+        if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
+          if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
+            // and it does not contain any holes itself
+            // O(n^2), so testing this last
+            if (!MapShaper.ringHasHoles(path, paths, arcs)) {
+              removed++;
+              return null;
+            }
+          }
+        }
+      }
+    });
+  };
+  MapShaper.filterShapes(lyr.shapes, filter);
+  return removed;
+};
+
+MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
+  for (var i=0, n=ring.length; i<n; i++) {
+    if (arcs.arcIntersectsBBox(absArcId(ring[i]), bbox)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+// Assumes that ring boundaries to not cross
+MapShaper.ringHasHoles = function(ring, rings, arcs) {
+  var bbox = arcs.getSimpleShapeBounds(ring).toArray();
+  var sibling, p;
+  for (var i=0, n=rings.length; i<n; i++) {
+    sibling = rings[i];
+    // try to avoid expensive point-in-ring test
+    if (sibling && sibling != ring && MapShaper.ringIntersectsBBox(sibling, bbox, arcs)) {
+      p = arcs.getVertex(sibling[0], 0);
+      if (geom.testPointInRing(p.x, p.y, ring, arcs)) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+MapShaper.filterShapes = function(shapes, filter) {
   for (var i=0, n=shapes.length; i<n; i++) {
     shapes[i] = filter(shapes[i]);
   }
@@ -11781,7 +11830,7 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
   }, 0);
 
   if (nulls > 0) {
-    message(utils.format('[points] %d/%d points are null', nulls, destLyr.shapes.length));
+    message(utils.format('[points] %,d of %,d points are null', nulls, destLyr.shapes.length));
   }
   if (srcLyr.data) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
@@ -11883,6 +11932,7 @@ function initProj(proj, name, opts, params) {
       }
     }
   };
+  opts = opts || {};
   if (params) {
     // check for required decimal degree parameters and convert to radians
     params.forEach(function(param) {
@@ -14103,8 +14153,11 @@ MapShaper.splitShellTokens = function(str) {
   var DOUBLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
   var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
   var matches = str.match(rxp) || [];
-  var chunks = matches.map(utils.trimQuotes);
-  return chunks.filter(Boolean); // remove empty strings
+  var chunks = matches.map(utils.trimQuotes).filter(function(chunk) {
+    // single backslashes may be present in multiline commands pasted from a makefile, e.g.
+    return !!chunk && chunk != '\\';
+  });
+  return chunks;
 };
 
 utils.trimQuotes = function(raw) {
@@ -14698,10 +14751,10 @@ MapShaper.parseCommands = function(tokens) {
 
 // Parse a command line string for the browser console
 MapShaper.parseConsoleCommands = function(raw) {
-  var blocked = 'o,i,join,clip,erase'.split(','),
+  var blocked = 'o,i,clip,join,erase'.split(','),
       tokens, parsed, str;
   str = raw.replace(/^mapshaper\b/, '').trim();
-  if (/^[^\-]/.test(str)) {
+  if (/^[a-z]/.test(str)) {
     // add hyphen prefix to bare command
     str = '-' + str;
   }

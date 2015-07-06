@@ -43,6 +43,11 @@ describe('mapshaper-console.js', function () {
       assert.equal(commands[0].name, 'info');
     })
 
+    it('mapshaper \\ -info', function() {
+      var commands = internal.parseConsoleCommands('mapshaper \\ -info');
+      assert.equal(commands[0].name, 'info');
+    })
+
   })
 
 

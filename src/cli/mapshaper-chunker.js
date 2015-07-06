@@ -6,8 +6,11 @@ MapShaper.splitShellTokens = function(str) {
   var DOUBLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
   var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
   var matches = str.match(rxp) || [];
-  var chunks = matches.map(utils.trimQuotes);
-  return chunks.filter(Boolean); // remove empty strings
+  var chunks = matches.map(utils.trimQuotes).filter(function(chunk) {
+    // single backslashes may be present in multiline commands pasted from a makefile, e.g.
+    return !!chunk && chunk != '\\';
+  });
+  return chunks;
 };
 
 utils.trimQuotes = function(raw) {

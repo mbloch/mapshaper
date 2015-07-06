@@ -11,10 +11,10 @@ MapShaper.parseCommands = function(tokens) {
 
 // Parse a command line string for the browser console
 MapShaper.parseConsoleCommands = function(raw) {
-  var blocked = 'o,i,join,clip,erase'.split(','),
+  var blocked = 'o,i,clip,join,erase'.split(','),
       tokens, parsed, str;
   str = raw.replace(/^mapshaper\b/, '').trim();
-  if (/^[^\-]/.test(str)) {
+  if (/^[a-z]/.test(str)) {
     // add hyphen prefix to bare command
     str = '-' + str;
   }
