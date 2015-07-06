@@ -6,7 +6,6 @@ mapshaper-gui-error
 */
 
 var gui = api.gui = {};
-window.mapshaper = api;
 
 api.enableLogging();
 
