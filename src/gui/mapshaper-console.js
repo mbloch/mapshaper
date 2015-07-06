@@ -141,6 +141,9 @@ function Console(model) {
         clear();
       } else if (cmd == 'examples') {
         printExamples();
+      } else if (cmd == 'layers') {
+        message("Available layers:",
+          MapShaper.getFormattedLayerList(model.getEditingLayer().dataset.layers));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         turnOff();
       } else if (cmd) {
@@ -161,7 +164,9 @@ function Console(model) {
       // TODO: handle targeting for unnamed layer
       if (lyr.name) {
         commands.forEach(function(cmd) {
-          if (!cmd.options.target) {
+          // rename-layers should default to all layers;
+          // other commands can target the current layer
+          if (!cmd.options.target && cmd.name != 'rename-layers') {
             cmd.options.target = lyr.name;
           }
         });
@@ -224,6 +229,6 @@ function Console(model) {
   function printExamples() {
     printExample("View information about your data layer", "$ info");
     printExample("View help about a command", "$ help filter");
-    printExample("Extract one state from a national dataset","$ filter 'STATE == Iowa'");
+    printExample("Extract one state from a national dataset","$ filter 'STATE == \"Iowa\"'");
   }
 }
