@@ -41,21 +41,21 @@ describe('dbf-reader.js', function () {
       assert(deepStrictEqual(rows[1], rec1));
     })
 
-    it ('Rename fields; asterisks in num field converted to NaN', function() {
+    it ('Rename fields; asterisks in num field converted to null', function() {
       var rows = importRecords('dbf/duplicate_fields.dbf');
       var rec0 = {
         SP_ID: '1',
         geoid: '15003980600',
-        rate: NaN,
+        rate: null,
         employed: 0,
         unemployed: 0,
         not_in_lab: 0,
-        error: NaN,
-        rate_women: NaN,
+        error: null,
+        rate_women: null,
         employed_w: 0,
         unemployed_1: 0,
         not_in_lab_1: 0,
-        error_wome: NaN
+        error_wome: null
       };
       assert(deepStrictEqual(rows[0], rec0));
     })

@@ -90,7 +90,8 @@ Dbf.bufferContainsHighBit = function(buf, n) {
 
 Dbf.readNumber = function(bin, field) {
   var str = bin.readCString(field.size);
-  return parseFloat(str);
+  var val = parseFloat(str);
+  return isNaN(val) ? null : val;
 };
 
 Dbf.readInt = function(bin, field) {
