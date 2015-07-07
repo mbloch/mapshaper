@@ -41,7 +41,9 @@ function LayerGroup(dataset) {
   // TODO: find a less kludgy solution
   this.updated = function() {
     // if bounds have changed (e.g. after reprojection), update filtered arcs
-    var bounds = MapShaper.getDatasetBounds(dataset);
+    // Use arc bounds instead of active layer bounds, to show original layer
+    // arcs after e.g. filtering or point conversion.
+    var bounds = dataset.arcs ? dataset.arcs.getBounds() : MapShaper.getDatasetBounds(dataset);
     if (!bounds.equals(_bounds)) {
       initArcs();
       _bounds = bounds;
@@ -59,20 +61,21 @@ function LayerGroup(dataset) {
   };
 
   this.draw = function(style, ext) {
-    var lyr = this.getLayer(),
-        draw, shapes;
-    if (_lyr.geometry_type == 'point') {
-      shapes = new FilteredPointCollection(_lyr.shapes);
-      draw = MapShaper.drawPoints;
-    } else {
-      shapes = _filteredArcs;
-      draw = MapShaper.drawPaths;
-    }
+    var dataset = dataset,
+        lyr = this.getLayer(),
+        points;
     this.clear();
     _canvas.width = ext.width();
     _canvas.height = ext.height();
-    shapes.setMapExtent(ext);
-    draw(shapes, style, _canvas);
+    if (_filteredArcs) {
+      _filteredArcs.setMapExtent(ext);
+      MapShaper.drawPaths(_filteredArcs, style, _canvas);
+    }
+    if (lyr.geometry_type == 'point') {
+      points = new FilteredPointCollection(lyr.shapes);
+      points.setMapExtent(ext);
+      MapShaper.drawPoints(points, style, _canvas);
+    }
   };
 
   this.remove = function() {

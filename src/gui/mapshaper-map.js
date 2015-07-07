@@ -91,16 +91,16 @@ function MshpMap(model) {
   };
 
   function getStrokeStyle(lyr, arcs) {
-    if (!MapShaper.layerHasPaths(lyr)) {
-      return 'black';
+    var stroke = lightStroke,
+        counts;
+    if (MapShaper.layerHasPaths(lyr)) {
+      counts = new Uint8Array(arcs.size());
+      MapShaper.countArcsInShapes(lyr.shapes, counts);
+      stroke = function(i) {
+        return counts[i] > 0 ? darkStroke : lightStroke;
+      };
     }
-    var counts = new Uint8Array(arcs.size()),
-        col1 = darkStroke,
-        col2 = lightStroke;
-    MapShaper.countArcsInShapes(lyr.shapes, counts);
-    return function(i) {
-      return counts[i] > 0 ? col1 : col2;
-    };
+    return stroke;
   }
 
   function calcDotSize(n) {
