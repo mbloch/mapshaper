@@ -43,7 +43,7 @@ function MshpMap(model) {
     }
     group.showLayer(e.layer);
     _activeGroup = group;
-    foregroundStyle.strokeColor = getStrokeStyle(e.layer, e.dataset.arcs);
+    updateGroupStyle(foregroundStyle, group);
     refreshLayers();
   });
 
@@ -51,7 +51,7 @@ function MshpMap(model) {
     var group = findGroup(e.dataset);
     group.updated();
     group.showLayer(e.layer);
-    foregroundStyle.strokeColor = getStrokeStyle(e.layer, e.dataset.arcs);
+    updateGroupStyle(foregroundStyle, group);
     updateMapBounds();
     refreshLayer(group);
   });
@@ -64,7 +64,7 @@ function MshpMap(model) {
     if (lyr) {
       _highGroup = addGroup(dataset);
       _highGroup.showLayer(lyr);
-      highStyle.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
+      updateGroupStyle(highStyle, _highGroup);
       refreshLayer(_highGroup);
     }
   };
@@ -89,6 +89,14 @@ function MshpMap(model) {
   this.refresh = function() {
     refreshLayers();
   };
+
+  function updateGroupStyle(style, group) {
+    var lyr = group.getLayer(),
+        dataset = group.getDataset();
+    style.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
+    style.strokeColor = getStrokeStyle(lyr, dataset.arcs);
+
+  }
 
   function getStrokeStyle(lyr, arcs) {
     var stroke = lightStroke,
