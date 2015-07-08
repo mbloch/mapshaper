@@ -4009,6 +4009,118 @@ MapShaper.DataTable = DataTable;
 
 
 
+// init zip.js
+var zip = require('./www/zip').zip;
+zip.workerScripts = {
+  // deflater: ['z-worker.js', 'deflate.js'], // use zip.js deflater
+  // TODO: find out why it was necessary to rename pako_deflate.min.js
+  deflater: ['z-worker.js', 'pako.deflate.js', 'codecs.js'],
+  inflater: ['z-worker.js', 'pako.inflate.js', 'codecs.js']
+};
+
+// @file: Zip file
+// @cb: function(err, <files>)
+//
+gui.readZipFile = function(file, cb) {
+  var _files = [];
+  zip.createReader(new zip.BlobReader(file), importZipContent, onError);
+
+  function onError(err) {
+    cb(err);
+  }
+
+  function onDone() {
+    cb(null, _files);
+  }
+
+  function importZipContent(reader) {
+    var _entries;
+    reader.getEntries(readEntries);
+
+    function readEntries(entries) {
+      _entries = entries || [];
+      readNext();
+    }
+
+    function readNext() {
+      if (_entries.length > 0) {
+        readEntry(_entries.pop());
+      } else {
+        reader.close();
+        onDone();
+      }
+    }
+
+    function readEntry(entry) {
+      var filename = entry.filename,
+          isValid = !entry.directory && gui.isReadableFileType(filename) &&
+              !/^__MACOSX/.test(filename); // ignore "resource-force" files
+      if (isValid) {
+        entry.getData(new zip.BlobWriter(), function(file) {
+          file.name = filename; // Give the Blob a name, like a File object
+          _files.push(file);
+          readNext();
+        });
+      } else {
+        readNext();
+      }
+    }
+  }
+};
+
+
+
+
+function ProgressBar(el) {
+  var size = 80,
+      posCol = '#285d7e',
+      negCol = '#bdced6',
+      outerRadius = size / 2,
+      innerRadius = outerRadius / 2,
+      cx = outerRadius,
+      cy = outerRadius,
+      bar = El('div').addClass('progress-bar'),
+      canv = El('canvas').appendTo(bar).node(),
+      ctx = canv.getContext('2d'),
+      msg = El('div').appendTo(bar);
+
+  canv.width = size;
+  canv.height = size;
+
+  this.appendTo = function(el) {
+    bar.appendTo(el);
+  };
+
+  this.update = function(pct, str) {
+    var twoPI = Math.PI * 2;
+    ctx.clearRect(0, 0, size, size);
+    if (pct > 0) {
+      drawCircle(negCol, outerRadius, twoPI);
+      drawCircle(posCol, outerRadius, twoPI * pct);
+      drawCircle(null, innerRadius, twoPI);
+    }
+    msg.html(str || '');
+  };
+
+  this.remove = function() {
+    bar.remove();
+  };
+
+  function drawCircle(color, radius, radians) {
+    var halfPI = Math.PI / 2;
+    if (!color) ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = color || '#000';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, -halfPI, radians - halfPI, false);
+    ctx.closePath();
+    ctx.fill();
+    if (!color) ctx.globalCompositeOperation = 'source-over';
+  }
+}
+
+
+
 
 function distance3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
@@ -10396,221 +10508,6 @@ MapShaper.setLayerName = function(lyr, path) {
 
 
 
-function ProgressBar(el) {
-  var size = 80,
-      posCol = '#285d7e',
-      negCol = '#bdced6',
-      outerRadius = size / 2,
-      innerRadius = outerRadius / 2,
-      cx = outerRadius,
-      cy = outerRadius,
-      bar = El('div').appendTo(el).addClass('progress-bar'),
-      canv = El('canvas').appendTo(bar).node(),
-      ctx = canv.getContext('2d'),
-      msg = El('div').appendTo(bar);
-
-  canv.width = size;
-  canv.height = size;
-
-  this.update = function(pct, str) {
-    var twoPI = Math.PI * 2;
-    ctx.clearRect(0, 0, size, size);
-    if (pct > 0) {
-      drawCircle(negCol, outerRadius, twoPI);
-      drawCircle(posCol, outerRadius, twoPI * pct);
-      drawCircle(null, innerRadius, twoPI);
-    }
-    msg.html(str || '');
-  };
-
-  this.remove = function() {
-    bar.remove();
-  };
-
-  function drawCircle(color, radius, radians) {
-    var halfPI = Math.PI / 2;
-    if (!color) ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = color || '#000';
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, radius, -halfPI, radians - halfPI, false);
-    ctx.closePath();
-    ctx.fill();
-    if (!color) ctx.globalCompositeOperation = 'source-over';
-  }
-}
-
-
-
-
-// Cache and merge data from Shapefile component files (.prj, .dbf, shp) in
-// whatever order they are received in.
-//
-gui.receiveShapefileComponent = (function() {
-  var cache = {};
-
-  function merge() {
-    var dataset = cache.shp,
-        lyr, info;
-    if (dataset) {
-      lyr = dataset.layers[0];
-      info = dataset.info;
-      // only use prj or dbf if the dataset lacks this info
-      // (the files could be intended for a future re-import of .shp content)
-      if (cache.prj && !info.output_prj) {
-        info.output_prj = cache.prj;
-      }
-      if (cache.dbf && !lyr.data) {
-        // TODO: handle unknown encodings interactively
-        lyr.data = new ShapefileTable(cache.dbf);
-        delete cache.dbf;
-        if (lyr.data.size() != lyr.shapes.length) {
-          lyr.data = null;
-          stop("Different number of records in .shp and .dbf files");
-        }
-      }
-    }
-  }
-
-  // @content: imported dataset if .shp, raw file content if other file type
-  return function(path, content) {
-    var name = utils.getFileBase(path),
-        ext = utils.getFileExtension(path).toLowerCase();
-    if (name != cache.name) {
-      cache = {name: name};
-    }
-    cache[ext] = content;
-    merge();
-  };
-}());
-
-gui.importFile = function(file, opts, cb) {
-  var reader = new FileReader(),
-      isBinary = MapShaper.isBinaryFile(file.name);
-  reader.onload = function(e) {
-    gui.inputFileContent(file.name, reader.result, opts, cb);
-  };
-  // TODO: improve to handle encodings, etc.
-  if (isBinary) {
-    reader.readAsArrayBuffer(file);
-  } else {
-    reader.readAsText(file, 'UTF-8');
-  }
-};
-
-gui.inputFileContent = function(path, content, importOpts, cb) {
-  var type = MapShaper.guessInputType(path, content),
-      size = content.byteLength || content.length, // ArrayBuffer or string
-      showProgress = size > 4e7, // don't show progress bar for small datasets
-      delay = showProgress ? 25 : 0, // timeout in ms; should be long enough for Firefox to refresh.
-      progressBar, dataset, queue;
-
-  // these file types can be imported and edited right away
-  if (type == 'shp' || type == 'json') {
-    El("#mshp-import").hide();
-    El('#fork-me').hide();
-    progressBar = new ProgressBar('body');
-    if (!showProgress) progressBar.remove();
-    progressBar.update(0.2, "Importing");
-    // Import data with a delay before each step, so browser can refresh the progress bar
-    queue = gui.queueSync()
-      .defer(function() {
-        importOpts.files = [path]; // TODO: try to remove this
-        dataset = MapShaper.importFileContent(content, path, importOpts);
-      }, delay);
-    if (importOpts.method) {
-      queue.defer(function() {
-        progressBar.update(0.6, "Presimplifying");
-      })
-      .defer(function() {
-        if (dataset.arcs) {
-          MapShaper.simplifyPaths(dataset.arcs, importOpts);
-          if (importOpts.keep_shapes) {
-            MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
-          }
-        }
-      }, delay);
-    }
-    queue.await(function() {
-      if (type == 'shp') {
-        gui.receiveShapefileComponent(path, dataset);
-      }
-      progressBar.remove();
-      cb(null, dataset);
-    });
-  } else if (type == 'dbf' || type == 'prj') {
-    // merge auxiliary Shapefile files with .shp content
-    gui.receiveShapefileComponent(path, content);
-
-  } else {
-    console.log("Unexpected file type: " + path + '; ignoring');
-  }
-};
-
-
-
-// init zip.js
-var zip = require('./www/zip').zip;
-zip.workerScripts = {
-  // deflater: ['z-worker.js', 'deflate.js'], // use zip.js deflater
-  // TODO: find out why it was necessary to rename pako_deflate.min.js
-  deflater: ['z-worker.js', 'pako.deflate.js', 'codecs.js'],
-  inflater: ['z-worker.js', 'pako.inflate.js', 'codecs.js']
-};
-
-// @file: Zip file
-// @cb: function(err, <files>)
-//
-gui.readZipFile = function(file, cb) {
-  var _files = [];
-  zip.createReader(new zip.BlobReader(file), importZipContent, onError);
-
-  function onError(err) {
-    cb(err);
-  }
-
-  function onDone() {
-    cb(null, _files);
-  }
-
-  function importZipContent(reader) {
-    var _entries;
-    reader.getEntries(readEntries);
-
-    function readEntries(entries) {
-      _entries = entries || [];
-      readNext();
-    }
-
-    function readNext() {
-      if (_entries.length > 0) {
-        readEntry(_entries.pop());
-      } else {
-        reader.close();
-        onDone();
-      }
-    }
-
-    function readEntry(entry) {
-      var filename = entry.filename,
-          isValid = !entry.directory && gui.isReadableFileType(filename) &&
-              !/^__MACOSX/.test(filename); // ignore "resource-force" files
-      if (isValid) {
-        entry.getData(new zip.BlobWriter(), function(file) {
-          file.name = filename; // Give the Blob a name, like a File object
-          _files.push(file);
-          readNext();
-        });
-      } else {
-        readNext();
-      }
-    }
-  }
-};
-
-
-
-
 // @cb function(<FileList>)
 function DropControl(cb) {
   var el = El('body');
@@ -10655,12 +10552,16 @@ function FileChooser(el, cb) {
 }
 
 function ImportControl(model) {
-  var importBtn =  new SimpleButton('#import-btn').on('click', submitFiles);
-  var precisionInput;
-  El('#mshp-import').show(); // show import screen
-  new DropControl(readFiles);
-  new FileChooser('#file-selection-btn', readFiles);
+  new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
+  new SimpleButton('#import-buttons .cancel-btn').on('click', cancelImport);
+  var useCount = 0;
+  var queuedFiles = [];
+  var isOpen, precisionInput;
 
+  El('#mshp-import').show(); // start with window open
+  isOpen = true;
+  new DropControl(receiveFiles);
+  new FileChooser('#file-selection-btn', receiveFiles);
 
   precisionInput = new ClickText("#g-import-precision-opt")
     .bounds(0, Infinity)
@@ -10672,12 +10573,53 @@ function ImportControl(model) {
       return str === '' || utils.isNumber(parseFloat(str));
     });
 
-  function readFiles(files) {
-    utils.forEach((files || []), readFile);
+  function open() {
+    El('#import-buttons').show();
+    El('#mshp-import').show();
+    isOpen = true;
+  }
+
+  function close() {
+   El('#mshp-import').hide();
+   El('#import-intro').hide(); // only show intro at first
+   isOpen = false;
+  }
+
+  function cancelImport(field) {
+    clearFiles();
+    close();
+  }
+
+  function clearFiles() {
+    queuedFiles = [];
+    El('#dropped-file-list .file-list').empty();
+  }
+
+  function receiveFiles(files) {
+    files = utils.toArray(files);
+    queuedFiles = queuedFiles.concat(files);
+     // import files right away on first use -- the options dialog is already open
+    if (useCount === 0) {
+      submitFiles();
+    } else {
+      if (!isOpen) open();
+      El('#dropped-file-list').show();
+      files.forEach(function(f) {
+        El('<p>').text(f.name).appendTo(El("#dropped-file-list .file-list"));
+      });
+    }
   }
 
   function submitFiles() {
+    // TODO: handle potential issue where component files of several shapefiles
+    // are imported in interleaved sequence.
+    readFiles(queuedFiles);
+    clearFiles();
+    close();
+  }
 
+  function readFiles(files) {
+    utils.forEach((files || []), readFile);
   }
 
   function getImportOpts() {
@@ -10691,13 +10633,81 @@ function ImportControl(model) {
     };
   }
 
+  function loadFile(file, cb) {
+    var reader = new FileReader(),
+        isBinary = MapShaper.isBinaryFile(file.name);
+    // no callback on error -- fix?
+    reader.onload = function(e) {
+      cb(null, reader.result);
+    };
+    if (isBinary) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      // TODO: improve to handle encodings, etc.
+      reader.readAsText(file, 'UTF-8');
+    }
+  }
+
   function importFile(file) {
-    var opts = getImportOpts();
-    gui.importFile(file, opts, function(err, dataset) {
-      if (dataset) {
-        model.setEditingLayer(dataset.layers[0], dataset, opts);
+    loadFile(file, function(err, content) {
+      var name = file.name;
+      var type = MapShaper.guessInputType(name, content);
+      if (type == 'shp' || type == 'json') {
+        importFileContent(type, name, content);
+      } else if (type == 'dbf' || type == 'prj') {
+        // merge auxiliary Shapefile files with .shp content
+        gui.receiveShapefileComponent(name, content);
+      } else {
+        console.log("Unexpected file type: " + name + '; ignoring');
       }
     });
+  }
+
+  function importFileContent(type, path, content) {
+    var importOpts = getImportOpts(),
+      size = content.byteLength || content.length, // ArrayBuffer or string
+      showProgress = size > 4e7, // don't show progress bar for small datasets
+      delay = showProgress ? 25 : 0, // timeout in ms; should be long enough for Firefox to refresh.
+      progressBar = new ProgressBar(),
+      dataset, queue;
+
+    if (useCount++ === 0) {
+      close();
+      El('#fork-me').hide();
+    }
+
+    if (showProgress) progressBar.appendTo('body');
+    progressBar.update(0.2, "Importing");
+    // Import data with a delay before each step, so browser can refresh the progress bar
+    queue = gui.queueSync()
+      .defer(function() {
+        importOpts.files = [path]; // TODO: try to remove this
+        dataset = MapShaper.importFileContent(content, path, importOpts);
+      }, delay);
+    if (importOpts.method) {
+      queue.defer(function() {
+        progressBar.update(0.6, "Presimplifying");
+      })
+      .defer(function() {
+        if (dataset.arcs) {
+          MapShaper.simplifyPaths(dataset.arcs, importOpts);
+          if (importOpts.keep_shapes) {
+            MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
+          }
+        }
+      }, delay);
+    }
+    queue.await(function() {
+      if (type == 'shp') {
+        gui.receiveShapefileComponent(path, dataset);
+      }
+      progressBar.remove();
+      onImport(dataset, importOpts);
+    });
+  }
+
+  function onImport(dataset, opts) {
+    model.setEditingLayer(dataset.layers[0], dataset, opts);
   }
 
   // @file a File object
@@ -10713,12 +10723,56 @@ function ImportControl(model) {
         readFiles(files);
       });
     } else if (gui.isReadableFileType(name)) {
+      if (!isOpen) {
+        open();
+      }
       importFile(file);
     } else {
       console.log("File can't be imported:", name, "-- skipping.");
     }
   }
 }
+
+// Cache and merge data from Shapefile component files (.prj, .dbf, shp) in
+// whatever order they are received in.
+//
+gui.receiveShapefileComponent = (function() {
+  var cache = {};
+
+  function merge() {
+    var dataset = cache.shp,
+        lyr, info;
+    if (dataset) {
+      lyr = dataset.layers[0];
+      info = dataset.info;
+      // only use prj or dbf if the dataset lacks this info
+      // (the files could be intended for a future re-import of .shp content)
+      if (cache.prj && !info.output_prj) {
+        info.output_prj = cache.prj;
+      }
+      if (cache.dbf && !lyr.data) {
+        // TODO: handle unknown encodings interactively
+        lyr.data = new ShapefileTable(cache.dbf);
+        delete cache.dbf;
+        if (lyr.data.size() != lyr.shapes.length) {
+          lyr.data = null;
+          stop("Different number of records in .shp and .dbf files");
+        }
+      }
+    }
+  }
+
+  // @content: imported dataset if .shp, raw file content if other file type
+  return function(path, content) {
+    var name = utils.getFileBase(path),
+        ext = utils.getFileExtension(path).toLowerCase();
+    if (name != cache.name) {
+      cache = {name: name};
+    }
+    cache[ext] = content;
+    merge();
+  };
+}());
 
 
 

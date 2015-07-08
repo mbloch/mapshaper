@@ -6,6 +6,10 @@ img:-moz-loading {
 
 /* ------ UTILITY ---------- */
 
+.hidden {
+	display: none;
+}
+
 
 .g-menu-link {
 	color: white;
@@ -160,7 +164,7 @@ div.g-tip {
 
 .g-btn {
 	text-align: center;
-	padding: 3px 6px 5px 6px;
+	padding: 4px 6px 5px 6px;
 	border-radius: 4px;
 	line-height: 1;
 	display: inline-block;
@@ -171,17 +175,14 @@ div.g-tip {
 	cursor: default;
 }
 
-div.g-btn.hidden {
-	display: none;
-}
-
 .g-btn.dialog-btn:hover:not(.selected) {
 	background-color: #35517c;
 }
 
 .g-btn.dialog-btn {
+	display: inline-block;
 	margin-top: 7px;
-	font-size: 14px;
+	font-size: 13px;
 	color: white;
 	background-color: #5d85b5;
 
@@ -194,14 +195,6 @@ div.g-btn.hidden {
 	border: 1px solid #b0b0b0;
 	padding: 1px 4px 3px 3px;
 }
-
-/*
-.g-btn.inline-btn:not(.active) {
-	color: #aaa;
-	background: #eaeaea;
-	cursor: default;
-}
-*/
 
 .g-text-btn {
 	color: #1477C1;

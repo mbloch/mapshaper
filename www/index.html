@@ -37,14 +37,13 @@
 
 <div id="mshp-import" class='main-area'>
 	<div class="info-box">
-		<div class="import-intro">
+		<div id="import-intro">
 			<h3>Edit a file</h3>
 <p>Drag and drop or  <span class="inline-btn g-btn" id="file-selection-btn"><span class="g-label-text">select</span></span> a file to import.
 Shapefile, GeoJSON and TopoJSON files
 and Zip archives are supported.
 </p>
 		</div>
-		<div class="import-file-list"></div>
 		<h4>Import options</h4>
 		<div class="g-option-menu">
 
@@ -107,7 +106,16 @@ simplification.</div></div></div>
 
 
 		</div> <!-- simplification menu -->
-		<div id="import-btn" class="g-btn dialog-btn hidden">Import</div>
+
+		<div id="dropped-file-list">
+			<h4>Dropped files</h4>
+			<div class="file-list"></div>
+		</div>
+
+		<div id="import-buttons" class="hidden">
+			<div class="cancel-btn g-btn dialog-btn">Cancel</div>
+			<div class="submit-btn g-btn dialog-btn">Import</div>
+		</div>
 
 	</div> <!-- .info-box -->
 </div> <!-- mshp-import -->
