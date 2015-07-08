@@ -27,9 +27,11 @@ function Model() {
     return datasets;
   };
 
-  this.updated = function() {
+  this.updated = function(o) {
+    var e;
     if (editing) {
-      this.dispatchEvent('update', editing);
+      e = utils.extend({}, editing, o);
+      this.dispatchEvent('update', e);
     }
   };
 

@@ -5946,7 +5946,8 @@ Dbf.bufferContainsHighBit = function(buf, n) {
 
 Dbf.readNumber = function(bin, field) {
   var str = bin.readCString(field.size);
-  return parseFloat(str);
+  var val = parseFloat(str);
+  return isNaN(val) ? null : val;
 };
 
 Dbf.readInt = function(bin, field) {
@@ -6381,7 +6382,11 @@ Dbf.getFieldInfo = function(arr, name, encoding) {
   } else if (type == 'D') {
     Dbf.initDateField(info, arr, name);
   } else {
-    error("[dbf] Type error exporting field:", name);
+    // Treat null fields as empty numeric fields; this way, they will be imported
+    // again as nulls.
+    info.size = 0;
+    info.type = 'N';
+    info.write = function() {};
   }
   return info;
 };
@@ -6395,7 +6400,7 @@ Dbf.discoverFieldType = function(arr, name) {
     if (utils.isBoolean(val)) return "L";
     if (val instanceof Date) return "D";
   }
-  return "null" ;
+  return null;
 };
 
 Dbf.getDecimalFormatter = function(size, decimals) {
@@ -6446,10 +6451,9 @@ Dbf.getNumericFieldInfo = function(arr, name) {
 Dbf.getStringWriter = function(encoding) {
   if (encoding === 'ascii') {
     return Dbf.getStringWriterAscii();
-  } else if (Env.inNode) {
+  } else {
     return Dbf.getStringWriterEncoded(encoding);
   }
-  error("[Dbf.getStringWriter()] Non-ascii encodings only supported in Node.");
 };
 
 // TODO: handle non-ascii chars. Option: switch to
@@ -12443,6 +12447,9 @@ MapShaper.projectArcs = function(arcs, proj) {
   var data = arcs.getVertexData(),
       xx = data.xx,
       yy = data.yy,
+      // old zz will not be optimal after reprojection; re-using it for now
+      // to avoid error in web ui
+      zz = data.zz,
       p = {x: 0, y: 0};
   if (arcs.isPlanar()) {
     stop("[proj] Only projection from lat-lng coordinates is supported");
@@ -12452,7 +12459,7 @@ MapShaper.projectArcs = function(arcs, proj) {
     xx[i] = p.x;
     yy[i] = p.y;
   }
-  arcs.updateVertexData(data.nn, xx, yy);
+  arcs.updateVertexData(data.nn, xx, yy, zz);
 };
 
 

@@ -17,16 +17,15 @@
 }
 
 html, body {
+	height: 100%;
+	width: 100%;
 	margin: 0;
 	padding: 0;
-	height: 100%;
 }
 
-#page-wrapper {
+body {
 	overflow: hidden;
 	background-color: #fff;
-	width: 100%;
-	height: 100%;
 	font: 14px/1.4 'Source Sans Pro', Helvetica, sans-serif;
 	color: #444;
 }
@@ -82,7 +81,7 @@ html, body {
 /* --- Error message ---------- */
 
 .error-wrapper {
-	z-index: 100;
+	z-index: 120;
 	text-align: center;
 	position: absolute;
 	top: 0;
@@ -95,23 +94,9 @@ div.error-box {
 	font-size: 16px;
 	margin-top: 55px;
 	max-width: 500px;
-	text-align: left;
 	padding: 8px 12px 10px 12px;
 }
 
-div.error-btn {
-	font-size: 14px;
-	margin-top: 7px;
-	border: none;
-	background-color: #5d85b5;
-	color: white;
-	padding: 3px 6px 5px 6px;
-	border-radius: 4px;
-}
-
-div.error-btn.active:hover:not(.selected) {
-	background-color: #35517c;
-}
 
 
 /* --- Import screen -------------- */
@@ -120,7 +105,7 @@ div.error-btn.active:hover:not(.selected) {
 	background-image: url("images/fork-me-right-cerulean.png");
     background-size: 149px 149px;
 	position: absolute;
-	z-index: 50;
+	z-index: 110;
 	top: 0;
 	right: 0;
 	border: 0;
@@ -134,14 +119,6 @@ div.error-btn.active:hover:not(.selected) {
 	}
 }
 
-#mshp-not-supported, #mshp-import {
-	display:none;
-}
-
-#mshp-import .g-info-box {
-	text-align: left;
-}
-
 #mshp-import .g-clicktext {
 	width: 40px;
 	background: rgba(255, 255, 255, 0.4);
@@ -153,14 +130,22 @@ div.error-btn.active:hover:not(.selected) {
 
 }
 
-#mshp-intro-screen {
+#mshp-not-supported {
+	display: none;
+	z-index: 100;
 	text-align: center;
-	padding-top: 52px;
-	height: 100%;
-	color: #555;
 }
 
-.g-info-box {
+#mshp-import {
+	display: none;
+	z-index: 80;
+	text-align: center;
+	background-color: white;
+}
+
+.info-box {
+	text-align: left;
+	margin-top: 22px;
 	background-color: #fff;
 	padding: 10px 14px 12px 14px;
 	vertical-align: top;
@@ -169,16 +154,16 @@ div.error-btn.active:hover:not(.selected) {
 	border-radius: 9px;
 }
 
-#mshp-intro-screen h3 {
+.info-box h3 {
 	padding: 0;
 	margin: 0;
 }
 
-#mshp-intro-screen h4 {
+.info-box h4 {
 	margin: 0.4em 0 0 0;
 }
 
-#mshp-intro-screen p {
+.info-box p {
 	white-space: pre-line;
 	margin: 0.45em 0 0 0;
 }
@@ -392,19 +377,6 @@ div.error-btn.active:hover:not(.selected) {
 .g-page-header .g-label {
 	color: #fff;
 	margin: 0 4px 0 0;
-}
-
-.g-page-header .g-panel-btn {
-	margin-right: 0;
-	color: #fff;
-	background-color: rgba(16, 69, 104, 0.3);
-	border: none;
-	padding: 3px 5px 4px 5px;
-	border-radius: 3px;
-}
-
-.g-page-header .g-panel-btn.active:hover:not(.selected) {
-	background-color: rgba(172, 205, 245, 0.3);
 }
 
 

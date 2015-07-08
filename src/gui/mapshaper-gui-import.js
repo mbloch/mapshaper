@@ -18,9 +18,8 @@ gui.receiveShapefileComponent = (function() {
         info.output_prj = cache.prj;
       }
       if (cache.dbf && !lyr.data) {
-        // TODO: detect dbf encoding instead of using ascii
-        // (Currently, records are read if Shapefile is converted to *JSON).
-        lyr.data = new ShapefileTable(cache.dbf, 'ascii');
+        // TODO: handle unknown encodings interactively
+        lyr.data = new ShapefileTable(cache.dbf);
         delete cache.dbf;
         if (lyr.data.size() != lyr.shapes.length) {
           lyr.data = null;
@@ -65,8 +64,9 @@ gui.inputFileContent = function(path, content, importOpts, cb) {
 
   // these file types can be imported and edited right away
   if (type == 'shp' || type == 'json') {
-    El("#mshp-intro-screen").hide();
-    progressBar = new ProgressBar('#page-wrapper');
+    El("#mshp-import").hide();
+    El('#fork-me').hide();
+    progressBar = new ProgressBar('body');
     if (!showProgress) progressBar.remove();
     progressBar.update(0.2, "Importing");
     // Import data with a delay before each step, so browser can refresh the progress bar

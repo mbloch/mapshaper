@@ -198,7 +198,7 @@ utils.inherit(Checkbox, EventDispatcher);
 function SimpleButton(ref) {
   var _el = El(ref),
       _self = this,
-      _active = _el.hasClass('active');
+      _active = !_el.hasClass('disabled');
 
   _el.on('click', function(e) {
     if (_active) _self.dispatchEvent('click');
@@ -209,7 +209,7 @@ function SimpleButton(ref) {
     if (a === void 0) return _active;
     if (a !== _active) {
       _active = a;
-      _el.toggleClass('active');
+      _el.toggleClass('disabled');
     }
     return this;
   };

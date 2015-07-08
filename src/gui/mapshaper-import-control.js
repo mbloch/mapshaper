@@ -6,7 +6,7 @@ mapshaper-zip-reader
 
 // @cb function(<FileList>)
 function DropControl(cb) {
-  var el = El('#page-wrapper');
+  var el = El('body');
   el.on('dragleave', ondrag);
   el.on('dragover', ondrag);
   el.on('drop', ondrop);
@@ -48,10 +48,13 @@ function FileChooser(el, cb) {
 }
 
 function ImportControl(model) {
+  var importBtn =  new SimpleButton('#import-btn').on('click', submitFiles);
   var precisionInput;
   El('#mshp-import').show(); // show import screen
   new DropControl(readFiles);
-  new FileChooser('#g-shp-import-btn', readFiles);
+  new FileChooser('#file-selection-btn', readFiles);
+
+
   precisionInput = new ClickText("#g-import-precision-opt")
     .bounds(0, Infinity)
     .formatter(function(str) {
@@ -64,6 +67,10 @@ function ImportControl(model) {
 
   function readFiles(files) {
     utils.forEach((files || []), readFile);
+  }
+
+  function submitFiles() {
+
   }
 
   function getImportOpts() {

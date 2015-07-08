@@ -19,9 +19,9 @@ Browser.onload(function() {
   El('.mshp-version').text(MapShaper.VERSION);
   if (!gui.browserIsSupported()) {
     El("#mshp-not-supported").show();
-    return;
+  } else {
+    gui.startEditing();
   }
-  gui.startEditing();
 });
 
 gui.startEditing = function() {

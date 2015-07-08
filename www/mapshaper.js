@@ -2774,10 +2774,10 @@ MapShaper.filenameIsUnsupportedOutputType = function(file) {
 
 
 function Message(str) {
-  var wrapper = El('div').appendTo('#page-wrapper').addClass('error-wrapper');
-  var box = El('div').appendTo(wrapper).addClass('error-box g-info-box');
+  var wrapper = El('div').appendTo('body').addClass('error-wrapper');
+  var box = El('div').appendTo(wrapper).addClass('error-box info-box');
   var msg = El('div').addClass('error-message').appendTo(box);
-  var close = El('div').addClass("g-panel-btn error-btn active").appendTo(box).html('close');
+  var close = El('div').addClass("g-btn dialog-btn").appendTo(box).html('close');
 
   new SimpleButton(close).on('click', remove);
 
@@ -3054,7 +3054,7 @@ utils.inherit(Checkbox, EventDispatcher);
 function SimpleButton(ref) {
   var _el = El(ref),
       _self = this,
-      _active = _el.hasClass('active');
+      _active = !_el.hasClass('disabled');
 
   _el.on('click', function(e) {
     if (_active) _self.dispatchEvent('click');
@@ -3065,7 +3065,7 @@ function SimpleButton(ref) {
     if (a === void 0) return _active;
     if (a !== _active) {
       _active = a;
-      _el.toggleClass('active');
+      _el.toggleClass('disabled');
     }
     return this;
   };
@@ -3369,7 +3369,8 @@ Dbf.bufferContainsHighBit = function(buf, n) {
 
 Dbf.readNumber = function(bin, field) {
   var str = bin.readCString(field.size);
-  return parseFloat(str);
+  var val = parseFloat(str);
+  return isNaN(val) ? null : val;
 };
 
 Dbf.readInt = function(bin, field) {
@@ -3804,7 +3805,11 @@ Dbf.getFieldInfo = function(arr, name, encoding) {
   } else if (type == 'D') {
     Dbf.initDateField(info, arr, name);
   } else {
-    error("[dbf] Type error exporting field:", name);
+    // Treat null fields as empty numeric fields; this way, they will be imported
+    // again as nulls.
+    info.size = 0;
+    info.type = 'N';
+    info.write = function() {};
   }
   return info;
 };
@@ -3818,7 +3823,7 @@ Dbf.discoverFieldType = function(arr, name) {
     if (utils.isBoolean(val)) return "L";
     if (val instanceof Date) return "D";
   }
-  return "null" ;
+  return null;
 };
 
 Dbf.getDecimalFormatter = function(size, decimals) {
@@ -3869,10 +3874,9 @@ Dbf.getNumericFieldInfo = function(arr, name) {
 Dbf.getStringWriter = function(encoding) {
   if (encoding === 'ascii') {
     return Dbf.getStringWriterAscii();
-  } else if (Env.inNode) {
+  } else {
     return Dbf.getStringWriterEncoded(encoding);
   }
-  error("[Dbf.getStringWriter()] Non-ascii encodings only supported in Node.");
 };
 
 // TODO: handle non-ascii chars. Option: switch to
@@ -10457,9 +10461,8 @@ gui.receiveShapefileComponent = (function() {
         info.output_prj = cache.prj;
       }
       if (cache.dbf && !lyr.data) {
-        // TODO: detect dbf encoding instead of using ascii
-        // (Currently, records are read if Shapefile is converted to *JSON).
-        lyr.data = new ShapefileTable(cache.dbf, 'ascii');
+        // TODO: handle unknown encodings interactively
+        lyr.data = new ShapefileTable(cache.dbf);
         delete cache.dbf;
         if (lyr.data.size() != lyr.shapes.length) {
           lyr.data = null;
@@ -10504,8 +10507,9 @@ gui.inputFileContent = function(path, content, importOpts, cb) {
 
   // these file types can be imported and edited right away
   if (type == 'shp' || type == 'json') {
-    El("#mshp-intro-screen").hide();
-    progressBar = new ProgressBar('#page-wrapper');
+    El("#mshp-import").hide();
+    El('#fork-me').hide();
+    progressBar = new ProgressBar('body');
     if (!showProgress) progressBar.remove();
     progressBar.update(0.2, "Importing");
     // Import data with a delay before each step, so browser can refresh the progress bar
@@ -10609,7 +10613,7 @@ gui.readZipFile = function(file, cb) {
 
 // @cb function(<FileList>)
 function DropControl(cb) {
-  var el = El('#page-wrapper');
+  var el = El('body');
   el.on('dragleave', ondrag);
   el.on('dragover', ondrag);
   el.on('drop', ondrop);
@@ -10651,10 +10655,13 @@ function FileChooser(el, cb) {
 }
 
 function ImportControl(model) {
+  var importBtn =  new SimpleButton('#import-btn').on('click', submitFiles);
   var precisionInput;
   El('#mshp-import').show(); // show import screen
   new DropControl(readFiles);
-  new FileChooser('#g-shp-import-btn', readFiles);
+  new FileChooser('#file-selection-btn', readFiles);
+
+
   precisionInput = new ClickText("#g-import-precision-opt")
     .bounds(0, Infinity)
     .formatter(function(str) {
@@ -10667,6 +10674,10 @@ function ImportControl(model) {
 
   function readFiles(files) {
     utils.forEach((files || []), readFile);
+  }
+
+  function submitFiles() {
+
   }
 
   function getImportOpts() {
@@ -11790,7 +11801,9 @@ function LayerGroup(dataset) {
   // TODO: find a less kludgy solution
   this.updated = function() {
     // if bounds have changed (e.g. after reprojection), update filtered arcs
-    var bounds = MapShaper.getDatasetBounds(dataset);
+    // Use arc bounds instead of active layer bounds, to show original layer
+    // arcs after e.g. filtering or point conversion.
+    var bounds = dataset.arcs ? dataset.arcs.getBounds() : MapShaper.getDatasetBounds(dataset);
     if (!bounds.equals(_bounds)) {
       initArcs();
       _bounds = bounds;
@@ -11808,20 +11821,21 @@ function LayerGroup(dataset) {
   };
 
   this.draw = function(style, ext) {
-    var lyr = this.getLayer(),
-        draw, shapes;
-    if (_lyr.geometry_type == 'point') {
-      shapes = new FilteredPointCollection(_lyr.shapes);
-      draw = MapShaper.drawPoints;
-    } else {
-      shapes = _filteredArcs;
-      draw = MapShaper.drawPaths;
-    }
+    var dataset = dataset,
+        lyr = this.getLayer(),
+        points;
     this.clear();
     _canvas.width = ext.width();
     _canvas.height = ext.height();
-    shapes.setMapExtent(ext);
-    draw(shapes, style, _canvas);
+    if (_filteredArcs) {
+      _filteredArcs.setMapExtent(ext);
+      MapShaper.drawPaths(_filteredArcs, style, _canvas);
+    }
+    if (lyr.geometry_type == 'point') {
+      points = new FilteredPointCollection(lyr.shapes);
+      points.setMapExtent(ext);
+      MapShaper.drawPoints(points, style, _canvas);
+    }
   };
 
   this.remove = function() {
@@ -12157,16 +12171,16 @@ function MshpMap(model) {
   };
 
   function getStrokeStyle(lyr, arcs) {
-    if (!MapShaper.layerHasPaths(lyr)) {
-      return 'black';
+    var stroke = lightStroke,
+        counts;
+    if (MapShaper.layerHasPaths(lyr)) {
+      counts = new Uint8Array(arcs.size());
+      MapShaper.countArcsInShapes(lyr.shapes, counts);
+      stroke = function(i) {
+        return counts[i] > 0 ? darkStroke : lightStroke;
+      };
     }
-    var counts = new Uint8Array(arcs.size()),
-        col1 = darkStroke,
-        col2 = lightStroke;
-    MapShaper.countArcsInShapes(lyr.shapes, counts);
-    return function(i) {
-      return counts[i] > 0 ? col1 : col2;
-    };
+    return stroke;
   }
 
   function calcDotSize(n) {
@@ -15730,6 +15744,9 @@ MapShaper.projectArcs = function(arcs, proj) {
   var data = arcs.getVertexData(),
       xx = data.xx,
       yy = data.yy,
+      // old zz will not be optimal after reprojection; re-using it for now
+      // to avoid error in web ui
+      zz = data.zz,
       p = {x: 0, y: 0};
   if (arcs.isPlanar()) {
     stop("[proj] Only projection from lat-lng coordinates is supported");
@@ -15739,7 +15756,7 @@ MapShaper.projectArcs = function(arcs, proj) {
     xx[i] = p.x;
     yy[i] = p.y;
   }
-  arcs.updateVertexData(data.nn, xx, yy);
+  arcs.updateVertexData(data.nn, xx, yy, zz);
 };
 
 
@@ -17861,9 +17878,11 @@ function Model() {
     return datasets;
   };
 
-  this.updated = function() {
+  this.updated = function(o) {
+    var e;
     if (editing) {
-      this.dispatchEvent('update', editing);
+      e = utils.extend({}, editing, o);
+      this.dispatchEvent('update', e);
     }
   };
 
@@ -17898,9 +17917,9 @@ Browser.onload(function() {
   El('.mshp-version').text(MapShaper.VERSION);
   if (!gui.browserIsSupported()) {
     El("#mshp-not-supported").show();
-    return;
+  } else {
+    gui.startEditing();
   }
-  gui.startEditing();
 });
 
 gui.startEditing = function() {
