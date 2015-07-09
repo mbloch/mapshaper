@@ -45,10 +45,14 @@ body {
 	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
 }
 
-.g-page-header .mshp-version {
+#mshp-version {
+	z-index: 100;
+	position: absolute;
+	pointer-events: none;
+	bottom: 8px;
+	left: 11px;
 	font-size: 11px;
-	color: white;
-	font-weight: normal;
+	color: steelblue;
 }
 
 .g-mapshaper-logo {
@@ -91,10 +95,15 @@ body {
 }
 
 div.error-box {
-	font-size: 16px;
 	margin-top: 55px;
-	max-width: 500px;
 	padding: 8px 12px 10px 12px;
+	max-width: 400px;
+	text-align: center;
+	font-size: 16px;
+}
+
+div.error-box > div {
+
 }
 
 
