@@ -2,7 +2,7 @@
 
 function MshpMap(model) {
   var _root = El("#mshp-main-map"),
-      _ext = new MapExtent(_root, {padding: 12}),
+      _ext = new MapExtent(_root),
       _nav = new MapNav(_ext, _root),
       _groups = [],
       _highGroup,

@@ -1,8 +1,7 @@
 /* @requires mapshaper-gui-lib */
 
-function MapExtent(el, opts) {
+function MapExtent(el) {
   var _position = new ElementPosition(el),
-      _padPix = opts.padding,
       _scale = 1,
       _cx,
       _cy,
@@ -91,6 +90,10 @@ function MapExtent(el, opts) {
     }
   };
 
+  function getPadding(size) {
+    return size * 0.020 + 4;
+  }
+
   function calcBounds(cx, cy, scale) {
     var w = _contentBounds.width() / scale,
         h = _contentBounds.height() / scale;
@@ -102,15 +105,20 @@ function MapExtent(el, opts) {
   //    with padding applied
   function centerAlign(_contentBounds) {
     var bounds = _contentBounds.clone(),
-        wpix = _position.width() - 2 * _padPix,
-        hpix = _position.height() - 2 * _padPix,
-        padGeo;
+        wpix = _position.width(),
+        hpix = _position.height(),
+        xmarg = getPadding(wpix),
+        ymarg = getPadding(hpix),
+        xpad, ypad;
+    wpix -= 2 * xmarg;
+    hpix -= 2 * ymarg;
     if (wpix <= 0 || hpix <= 0) {
       return new Bounds(0, 0, 0, 0);
     }
     bounds.fillOut(wpix / hpix);
-    padGeo = _padPix * bounds.width() / wpix; // per-pixel scale
-    bounds.padBounds(padGeo, padGeo, padGeo, padGeo);
+    xpad = bounds.width() / wpix * xmarg;
+    ypad = bounds.height() / hpix * ymarg;
+    bounds.padBounds(xpad, ypad, xpad, ypad);
     return bounds;
   }
 }

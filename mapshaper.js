@@ -5882,6 +5882,10 @@ Dbf.encodingNames = {
   '1257': "Baltic"
 };
 
+Dbf.ENCODING_PROMPT =
+  "You can specify an encoding using the \"encoding\" import option.\n" +
+  "Run the \"encodings\" command to view supported encodings.";
+
 Dbf.lookupCodePage = function(lid) {
   var i = Dbf.languageIds.indexOf(lid);
   return i == -1 ? null : Dbf.languageIds[i+1];
@@ -5891,8 +5895,7 @@ Dbf.readAsciiString = function(bin, field) {
   var require7bit = Env.inNode;
   var str = bin.readCString(field.size, require7bit);
   if (str === null) {
-    stop("DBF file contains non-ascii text data. You need to specify an encoding.\n" +
-        "Run mapshaper -encodings for a list of supported encodings");
+    stop("DBF file contains non-ascii text.\n" + Dbf.ENCODING_PROMPT);
   }
   return utils.trim(str);
 };
@@ -6049,8 +6052,7 @@ DbfReader.prototype.findStringEncoding = function() {
     encoding = MapShaper.detectEncoding(samples);
   }
   if (!encoding) {
-    stop("[dbf] You need to specify the text encoding of this dbf file.\n" +
-        "Run mapshaper -encodings for a list of supported encodings");
+    stop("Unable to auto-detect the DBF file's text encoding.\n" + Dbf.ENCODING_PROMPT);
   }
 
   // Show a sample of decoded text if non-ascii-range text has been found
