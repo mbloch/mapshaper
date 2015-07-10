@@ -1,20 +1,23 @@
 /* @requires mapshaper-gui-lib */
 
-function Message(str) {
-  var wrapper = El('div').appendTo('body').addClass('error-wrapper');
-  var box = El('div').appendTo(wrapper).addClass('error-box info-box');
-  var msg = El('div').addClass('error-message').appendTo(box);
-  var close = El('div').addClass("g-btn dialog-btn").appendTo(box).html('close');
+function ErrorMessages(model) {
+  var el;
+  model.addMode('alert', function() {}, turnOff);
 
-  new SimpleButton(close).on('click', remove);
-
-  message(str);
-
-  function message(str) {
-    msg.html(str);
+  function turnOff() {
+    if (el) {
+      el.remove();
+      el = null;
+    }
   }
 
-  function remove() {
-    wrapper.remove();
-  }
+  return function(str) {
+    var infoBox;
+    if (el) return;
+    el = El('div').appendTo('body').addClass('error-wrapper');
+    infoBox = El('div').appendTo(el).addClass('error-box info-box');
+    El('div').addClass('error-message').appendTo(infoBox).html(str);
+    El('div').addClass("g-btn dialog-btn").appendTo(infoBox).html('close').on('click', model.clearMode);
+    model.dispatchEvent('mode', {name: 'alert'});
+  };
 }

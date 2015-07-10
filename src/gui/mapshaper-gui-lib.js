@@ -16,7 +16,7 @@ error = function() { // replace default error() function
 // Show a popup error message, then throw an error
 function stop() {
   var msg = gui.formatMessageArgs(arguments);
-  new Message(msg);
+  gui.alert(msg);
   throw new Error(msg);
 }
 

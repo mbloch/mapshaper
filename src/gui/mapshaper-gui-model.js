@@ -2,7 +2,13 @@
 
 function Model() {
   var datasets = [],
+      self = this,
+      mode = null,
       editing;
+
+  this.on('mode', function(e) {
+    mode = e.name;
+  }, null, -1); // fire after others
 
   this.size = function() {
     return datasets.length;
@@ -36,7 +42,19 @@ function Model() {
   };
 
   this.getEditingLayer = function() {
-    return editing;
+    return editing || {};
+  };
+
+  // return a function to trigger this mode
+  this.addMode = function(name, enter, exit) {
+    this.on('mode', function(e) {
+      if (mode == name) exit();
+      if (e.name && e.name == name) enter();
+    });
+  };
+
+  this.clearMode = function() {
+    self.dispatchEvent('mode', {name: null});
   };
 
   this.setEditingLayer = function(lyr, dataset, opts) {

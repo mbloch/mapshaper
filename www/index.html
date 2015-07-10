@@ -22,10 +22,8 @@
 		</div>
 		<input type="text" value="label" class="g-clicktext" />
 	</div></div>
-	<div id="g-export-control"><span class="g-label">Export</span><span id="g-export-buttons">
-		<div id="g-shapefile-btn" class="g-next-btn g-btn">Shapefile</div>
-		<div id="g-geojson-btn" class="g-next-btn g-btn">GeoJSON</div>
-		<div id="g-topojson-btn" class="g-next-btn g-btn">TopoJSON</div></span>
+	<div id="mode-buttons">
+		<span id="simplify-btn" class="mode-btn g-btn">Simplify</span><span id="console-btn" class="mode-btn g-btn">Console</span><span id="export-btn" class="mode-btn g-btn">Export</span>
 	</div>
 </div>
 
@@ -36,7 +34,65 @@
 	</div>
 </div>
 
-<div id="mshp-import" class='main-area'>
+<div id="export-options" class="main-area popup-dialog">
+	<div class="info-box">
+		<h3>Export Options</h3>
+		<div class="g-option-menu">
+			<div id="g-shapefile-btn" class="g-btn dialog-btn">Shapefile</div>
+			<div id="g-geojson-btn" class="g-btn dialog-btn">GeoJSON</div>
+			<div id="g-topojson-btn" class="g-btn dialog-btn">TopoJSON</div>
+		</div>
+	</div>
+</div>
+
+<div id="simplify-options" class="main-area popup-dialog">
+	<div class="info-box">
+		<h3>Simplification options</h3>
+		<div class="g-option-menu">
+			<div><label for="g-import-retain-opt"><input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>prevent shape removal</label>
+							<div class="g-tip-button">?<div class="g-tip-anchor">
+			<div class="g-tip">Prevent small polygons from
+disappearing at high simplification.
+Protects the largest ring of multi-
+ring features.
+</div></div></div></div>
+</div>
+
+			<h4>Method</h4>
+			<div class="g-option-menu">
+			<div><label><input type="radio" name="method" value="mapshaper" checked class="g-radio">Visvalingam / weighted area</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Points located at the vertex
+of more acute angles are
+preferentially removed, for
+a smoother appearance.</div></div></div></div>
+
+			<div><label><input type="radio" name="method" value="visvalingam" class="g-radio">Visvalingam / effective area</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Lines are simplified by iteratively
+removing the point that forms
+the least-area triangle with two
+adjacent points.</div></div></div>
+			</div>
+
+			<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Simplified lines remain within a
+given distance of original lines.
+Good for thinning dense points
+but tends to form spikes at high
+simplification.</div></div></div>
+			</div>
+
+		<div>
+			<div class="cancel-btn g-btn dialog-btn">Cancel</div>
+			<div class="submit-btn g-btn dialog-btn">Next</div>
+		</div>
+
+	</div> <!-- option menu -->
+		</div> <!-- simplification menu -->
+
+	</div>
+</div> <!-- mshp-simplify -->
+
+<div id="import-options" class="main-area popup-dialog">
 	<div class="info-box">
 		<div id="import-intro">
 			<h3>Edit a file</h3>
@@ -70,44 +126,6 @@ source file, e.g. decimal degrees for most
 unprojected files.</div></div></div></div>
 		</div>
 
-		<h4>Simplification options</h4>
-		<div id="g-simplification-menu" class="g-option-menu">
-
-			<div><label for="g-import-retain-opt"><input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>prevent shape removal</label>
-							<div class="g-tip-button">?<div class="g-tip-anchor">
-			<div class="g-tip">Prevent small polygons from
-disappearing at high simplification.
-Protects the largest ring of multi-
-ring features.
-</div></div></div></div>
-
-			<p><b>Method</b></p>
-			<div><label><input type="radio" name="method" value="mapshaper" checked class="g-radio">Visvalingam / weighted area</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Points located at the vertex
-of more acute angles are
-preferentially removed, for
-a smoother appearance.</div></div></div></div>
-
-			<div><label><input type="radio" name="method" value="visvalingam" class="g-radio">Visvalingam / effective area</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Lines are simplified by iteratively
-removing the point that forms
-the least-area triangle with two
-adjacent points.</div></div></div>
-			</div>
-
-			<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Simplified lines remain within a
-given distance of original lines.
-Good for thinning dense points
-but tends to form spikes at high
-simplification.</div></div></div>
-			</div>
-
-<div><label><input type="radio" name="method" value="" class="g-radio">No simplification</label></div>
-
-
-		</div> <!-- simplification menu -->
-
 		<div id="dropped-file-list">
 			<h4>Dropped files</h4>
 			<div class="file-list"></div>
@@ -119,7 +137,7 @@ simplification.</div></div></div>
 		</div>
 
 	</div> <!-- .info-box -->
-</div> <!-- mshp-import -->
+</div> <!-- import-options -->
 
 <!-- TODO: remove #mshp-main-page without causing the map to jitter when resized -->
 <div id="mshp-main-page">

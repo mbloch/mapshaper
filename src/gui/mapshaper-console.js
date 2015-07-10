@@ -1,4 +1,4 @@
-/* @requires mapshaper-gui-lib mapshaper-commands */
+/* @requires mapshaper-gui-lib mapshaper-commands mapshaper-mode-button */
 
 function Console(model) {
   var CURSOR = '$ ';
@@ -17,16 +17,11 @@ function Console(model) {
 
   // capture all messages to this console, whether open or closed
   message = consoleMessage;
+
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
-
-  this.hide = function() {
-    turnOff();
-  };
-
-  this.show = function() {
-    turnOn();
-  };
+  new ModeButton('#console-btn', 'console', model);
+  model.addMode('console', turnOn, turnOff);
 
   function toLog(str, cname) {
     var msg = El('div').text(str).appendTo(log);
@@ -67,11 +62,11 @@ function Console(model) {
   function onKeyDown(e) {
     var kc = e.keyCode,
         capture = true;
-    if (_active) {
+    if (kc == 27) { // esc
+      model.clearMode(); // esc escapes other modes as well
+    } else if (_active) {
       if (kc == 13) { // enter
         submit();
-      } else if (kc == 27) { // escape
-        turnOff();
       } else if (kc == 38) {
         back();
       } else if (kc == 40) {
@@ -84,7 +79,7 @@ function Console(model) {
         capture = false;
       }
     } else if (kc == 32) { // space
-      turnOn();
+      model.dispatchEvent('mode', {name: 'console'});
     }
     if (capture) {
       e.preventDefault();
@@ -145,7 +140,7 @@ function Console(model) {
         message("Available layers:",
           MapShaper.getFormattedLayerList(model.getEditingLayer().dataset.layers));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
-        turnOff();
+        model.clearMode();
       } else if (cmd) {
         runMapshaperCommands(cmd);
       }

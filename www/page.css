@@ -98,7 +98,6 @@ div.error-box {
 	margin-top: 55px;
 	padding: 8px 12px 10px 12px;
 	max-width: 400px;
-	text-align: center;
 	font-size: 16px;
 }
 
@@ -128,7 +127,7 @@ div.error-box > div {
 	}
 }
 
-#mshp-import .g-clicktext {
+#import-options .g-clicktext {
 	width: 40px;
 	background: rgba(255, 255, 255, 0.4);
 	text-align: right;
@@ -154,9 +153,10 @@ div.error-box > div {
 	margin: 0;
 }
 
-#mshp-import {
+
+.popup-dialog {
 	display: none;
-	z-index: 80;
+	z-index: 80;	
 	text-align: center;
 	background-color: rgba(255, 255, 255, 0.8);
 }
@@ -165,7 +165,7 @@ div.error-box > div {
 	text-align: left;
 	margin-top: 22px;
 	background-color: #fff;
-	padding: 10px 14px 12px 14px;
+	padding: 10px 14px 9px 14px;
 	vertical-align: top;
 	display: inline-block;
 	border: 1px solid #b5b5b5;
@@ -174,21 +174,21 @@ div.error-box > div {
 
 .info-box h3 {
 	padding: 0;
-	margin: 0;
+	margin: 0 0 5px 0;
 }
 
 .info-box h4 {
-	margin: 0.4em 0 0 0;
+	margin: 0 0 4px 0;
 }
 
 .info-box p {
 	white-space: pre-line;
-	margin: 0.45em 0 0 0;
+	margin: 0 0 0.45em 0;
 }
 
 .g-option-menu {
 	font-size: 13px;
-	margin: 2px 0 0 11px;
+	margin: 0 0 5px 0;
 }
 
 .g-option-menu input {
@@ -334,7 +334,7 @@ div.error-box > div {
 	position: absolute;
 	z-index: 20;
 	top: 7px;
-	right: 10px;
+	right: 14px;
 	text-align: right;
 }
 
@@ -380,12 +380,12 @@ div.error-box > div {
 
 /* --- Export control ------------- */
 
-#g-export-control {
+#mode-buttons {
 	position: absolute;
 	top: 0px;
 	right: 0px;
 	display: none;
-	margin: 6px 9px 0 0;
+	margin: 5px 9px 3px 0;
 }
 
 #g-export-buttons {
@@ -401,6 +401,7 @@ div.error-box > div {
 /* Simplification control ------------ */
 
 #g-simplify-control-wrapper {
+	display: none;
 	position: absolute;
 	width: 100%;
 	overflow: hidden;

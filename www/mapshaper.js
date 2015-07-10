@@ -2773,24 +2773,28 @@ MapShaper.filenameIsUnsupportedOutputType = function(file) {
 
 
 
-function Message(str) {
-  var wrapper = El('div').appendTo('body').addClass('error-wrapper');
-  var box = El('div').appendTo(wrapper).addClass('error-box info-box');
-  var msg = El('div').addClass('error-message').appendTo(box);
-  var close = El('div').addClass("g-btn dialog-btn").appendTo(box).html('close');
+function ErrorMessages(model) {
+  var el;
+  model.addMode('alert', function() {}, turnOff);
 
-  new SimpleButton(close).on('click', remove);
-
-  message(str);
-
-  function message(str) {
-    msg.html(str);
+  function turnOff() {
+    if (el) {
+      el.remove();
+      el = null;
+    }
   }
 
-  function remove() {
-    wrapper.remove();
-  }
+  return function(str) {
+    var infoBox;
+    if (el) return;
+    el = El('div').appendTo('body').addClass('error-wrapper');
+    infoBox = El('div').appendTo(el).addClass('error-box info-box');
+    El('div').addClass('error-message').appendTo(infoBox).html(str);
+    El('div').addClass("g-btn dialog-btn").appendTo(infoBox).html('close').on('click', model.clearMode);
+    model.dispatchEvent('mode', {name: 'alert'});
+  };
 }
+
 
 
 
@@ -2805,7 +2809,7 @@ error = function() { // replace default error() function
 // Show a popup error message, then throw an error
 function stop() {
   var msg = gui.formatMessageArgs(arguments);
-  new Message(msg);
+  gui.alert(msg);
   throw new Error(msg);
 }
 
@@ -3076,10 +3080,39 @@ utils.inherit(SimpleButton, EventDispatcher);
 
 
 
-var SimplifyControl = function() {
+function ModeButton(el, name, model) {
+  var btn = El(el),
+      active = false;
+  model.on('mode', function(e) {
+    active = e.name == name;
+    if (active) {
+      btn.addClass('active');
+    } else {
+      btn.removeClass('active');
+    }
+  });
+
+  btn.on('click', function() {
+    model.dispatchEvent('mode', {name: active ? null : name});
+  });
+}
+
+
+
+
+var SimplifyControl = function(model) {
   var control = new EventDispatcher();
   var _value = 1;
   var el = El('#g-simplify-control');
+  var menu = El('#simplify-options');
+
+  new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
+  new SimpleButton('#simplify-options .cancel-btn').on('click', model.clearMode);
+
+  new ModeButton('#simplify-btn', 'simplify', model);
+  model.addMode('simplify', turnOn, turnOff);
+
+
   var slider = new Slider("#g-simplify-control .g-slider");
   slider.handle("#g-simplify-control .g-handle");
   slider.track("#g-simplify-control .g-track");
@@ -3122,6 +3155,37 @@ var SimplifyControl = function() {
     control.dispatchEvent('simplify-end');
   });
 
+  function turnOn() {
+    // TODO: skip menu if thresholds have been calculated
+    menu.show();
+  }
+
+  function turnOff() {
+    menu.hide();
+    control.reset();
+  }
+
+  function onSubmit() {
+    var opts = getSimplifyOptions();
+    var dataset = model.getEditingLayer().dataset;
+    if (dataset.arcs) {
+      MapShaper.simplifyPaths(dataset.arcs, opts);
+      if (opts.keep_shapes) {
+        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
+      }
+    }
+    el.show();
+    menu.hide();
+  }
+
+  function getSimplifyOptions() {
+    var method = El('#simplify-options input[name=method]:checked').attr('value') || null;
+    return {
+      method: method,
+      keep_shapes: !!El("#g-import-retain-opt").node().checked
+    };
+  }
+
   function toSliderPct(p) {
     p = Math.sqrt(p);
     var pct = 1 - p;
@@ -3147,6 +3211,7 @@ var SimplifyControl = function() {
 
   control.reset = function() {
     el.hide();
+    menu.hide();
     El('body').removeClass('simplify');
   };
 
@@ -10555,13 +10620,14 @@ function FileChooser(el, cb) {
 
 function ImportControl(model) {
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', cancelImport);
+  new SimpleButton('#import-buttons .cancel-btn').on('click', turnOff);
   var useCount = 0;
   var queuedFiles = [];
-  var isOpen, precisionInput;
+  var isOpen = true,  // start with window open
+      precisionInput;
 
-  El('#mshp-import').show(); // start with window open
-  isOpen = true;
+  model.addMode('import', function() {}, turnOff);
+  El('#import-options').show();
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
 
@@ -10577,17 +10643,17 @@ function ImportControl(model) {
 
   function open() {
     El('#import-buttons').show();
-    El('#mshp-import').show();
+    El('#import-options').show();
     isOpen = true;
   }
 
   function close() {
-   El('#mshp-import').hide();
+   El('#import-options').hide();
    El('#import-intro').hide(); // only show intro at first
    isOpen = false;
   }
 
-  function cancelImport(field) {
+  function turnOff() {
     clearFiles();
     close();
   }
@@ -10597,10 +10663,15 @@ function ImportControl(model) {
     El('#dropped-file-list .file-list').empty();
   }
 
+  function enterImportMode() {
+    model.dispatchEvent('mode', {name: 'import'});
+  }
+
   function receiveFiles(files) {
+    enterImportMode();
     files = utils.toArray(files);
     queuedFiles = queuedFiles.concat(files);
-     // import files right away on first use -- the options dialog is already open
+    // import files right away on first use -- the options dialog is already open
     if (useCount === 0) {
       submitFiles();
     } else {
@@ -10616,8 +10687,7 @@ function ImportControl(model) {
     // TODO: handle potential issue where component files of several shapefiles
     // are imported in interleaved sequence.
     readFiles(queuedFiles);
-    clearFiles();
-    close();
+    model.clearMode();
   }
 
   function readFiles(files) {
@@ -10625,11 +10695,8 @@ function ImportControl(model) {
   }
 
   function getImportOpts() {
-    var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || null;
     return {
-      method: method,
       no_repair: !El("#g-repair-intersections-opt").node().checked,
-      keep_shapes: !!El("#g-import-retain-opt").node().checked,
       auto_snap: !!El("#g-snap-points-opt").node().checked,
       precision: precisionInput.value()
     };
@@ -10679,26 +10746,13 @@ function ImportControl(model) {
     }
 
     if (showProgress) progressBar.appendTo('body');
-    progressBar.update(0.2, "Importing");
+    progressBar.update(0.35, "Importing");
     // Import data with a delay before each step, so browser can refresh the progress bar
     queue = gui.queueSync()
       .defer(function() {
         importOpts.files = [path]; // TODO: try to remove this
         dataset = MapShaper.importFileContent(content, path, importOpts);
       }, delay);
-    if (importOpts.method) {
-      queue.defer(function() {
-        progressBar.update(0.6, "Presimplifying");
-      })
-      .defer(function() {
-        if (dataset.arcs) {
-          MapShaper.simplifyPaths(dataset.arcs, importOpts);
-          if (importOpts.keep_shapes) {
-            MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
-          }
-        }
-      }, delay);
-    }
     queue.await(function() {
       if (type == 'shp') {
         gui.receiveShapefileComponent(path, dataset);
@@ -11128,23 +11182,35 @@ var ExportControl = function(model) {
   var downloadSupport = typeof URL != 'undefined' && URL.createObjectURL &&
     typeof document.createElement("a").download != "undefined" ||
     !!window.navigator.msSaveBlob;
-  var el = El('#g-export-control');
+  var menu = El('#export-options');
   var dataset, anchor, blobUrl;
 
-  if (!downloadSupport) {
-    El('#g-export-control .g-label').text("Exporting is not supported in this browser");
+  if (!downloadSupport || true) {
+    El('#export-btn').on('click', function() {
+      gui.alert("Exporting is not supported in this browser");
+    });
   } else {
-    anchor = el.newChild('a').attr('href', '#').node();
-    El('#g-export-buttons').css('display:inline');
+    anchor = menu.newChild('a').attr('href', '#').node();
     exportButton("#g-geojson-btn", "geojson");
     exportButton("#g-shapefile-btn", "shapefile");
     exportButton("#g-topojson-btn", "topojson");
+
+    model.addMode('export', turnOn, turnOff);
+    new ModeButton('#export-btn', 'export', model);
+
     model.on('select', onSelect);
+  }
+
+  function turnOn() {
+    menu.show();
+  }
+
+  function turnOff() {
+    menu.hide();
   }
 
   function onSelect(e) {
     dataset = e.dataset;
-    el.show();
   }
 
   function exportButton(selector, format) {
@@ -17704,16 +17770,11 @@ function Console(model) {
 
   // capture all messages to this console, whether open or closed
   message = consoleMessage;
+
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
-
-  this.hide = function() {
-    turnOff();
-  };
-
-  this.show = function() {
-    turnOn();
-  };
+  new ModeButton('#console-btn', 'console', model);
+  model.addMode('console', turnOn, turnOff);
 
   function toLog(str, cname) {
     var msg = El('div').text(str).appendTo(log);
@@ -17754,11 +17815,11 @@ function Console(model) {
   function onKeyDown(e) {
     var kc = e.keyCode,
         capture = true;
-    if (_active) {
+    if (kc == 27) { // esc
+      model.clearMode(); // esc escapes other modes as well
+    } else if (_active) {
       if (kc == 13) { // enter
         submit();
-      } else if (kc == 27) { // escape
-        turnOff();
       } else if (kc == 38) {
         back();
       } else if (kc == 40) {
@@ -17771,7 +17832,7 @@ function Console(model) {
         capture = false;
       }
     } else if (kc == 32) { // space
-      turnOn();
+      model.dispatchEvent('mode', {name: 'console'});
     }
     if (capture) {
       e.preventDefault();
@@ -17832,7 +17893,7 @@ function Console(model) {
         message("Available layers:",
           MapShaper.getFormattedLayerList(model.getEditingLayer().dataset.layers));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
-        turnOff();
+        model.clearMode();
       } else if (cmd) {
         runMapshaperCommands(cmd);
       }
@@ -17925,7 +17986,13 @@ function Console(model) {
 
 function Model() {
   var datasets = [],
+      self = this,
+      mode = null,
       editing;
+
+  this.on('mode', function(e) {
+    mode = e.name;
+  }, null, -1); // fire after others
 
   this.size = function() {
     return datasets.length;
@@ -17959,7 +18026,19 @@ function Model() {
   };
 
   this.getEditingLayer = function() {
-    return editing;
+    return editing || {};
+  };
+
+  // return a function to trigger this mode
+  this.addMode = function(name, enter, exit) {
+    this.on('mode', function(e) {
+      if (mode == name) exit();
+      if (e.name && e.name == name) enter();
+    });
+  };
+
+  this.clearMode = function() {
+    self.dispatchEvent('mode', {name: null});
   };
 
   this.setEditingLayer = function(lyr, dataset, opts) {
@@ -17996,15 +18075,18 @@ Browser.onload(function() {
 
 gui.startEditing = function() {
   var model = new Model().on('select', onSelect),
-      importer = new ImportControl(model),
-      map = new MshpMap(model),
-      cons = new Console(model),
-      exporter = new ExportControl(model),
-      repair = new RepairControl(map),
-      simplify = new SimplifyControl();
+      map, repair, simplify;
   gui.startEditing = function() {};
+  gui.alert = new ErrorMessages(model);
 
   // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
+  map = new MshpMap(model);
+  repair = new RepairControl(map);
+  simplify = new SimplifyControl(model);
+  new ImportControl(model);
+  new Console(model);
+  new ExportControl(model);
+
   simplify.on('simplify-start', function() {
     repair.hide();
   });
@@ -18019,6 +18101,7 @@ gui.startEditing = function() {
   });
 
   function onSelect(e) {
+    El('#mode-buttons').show();
     simplify.reset();
     repair.reset();
 

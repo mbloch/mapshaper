@@ -50,13 +50,14 @@ function FileChooser(el, cb) {
 
 function ImportControl(model) {
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', cancelImport);
+  new SimpleButton('#import-buttons .cancel-btn').on('click', turnOff);
   var useCount = 0;
   var queuedFiles = [];
-  var isOpen, precisionInput;
+  var isOpen = true,  // start with window open
+      precisionInput;
 
-  El('#mshp-import').show(); // start with window open
-  isOpen = true;
+  model.addMode('import', function() {}, turnOff);
+  El('#import-options').show();
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
 
@@ -72,17 +73,17 @@ function ImportControl(model) {
 
   function open() {
     El('#import-buttons').show();
-    El('#mshp-import').show();
+    El('#import-options').show();
     isOpen = true;
   }
 
   function close() {
-   El('#mshp-import').hide();
+   El('#import-options').hide();
    El('#import-intro').hide(); // only show intro at first
    isOpen = false;
   }
 
-  function cancelImport(field) {
+  function turnOff() {
     clearFiles();
     close();
   }
@@ -92,10 +93,15 @@ function ImportControl(model) {
     El('#dropped-file-list .file-list').empty();
   }
 
+  function enterImportMode() {
+    model.dispatchEvent('mode', {name: 'import'});
+  }
+
   function receiveFiles(files) {
+    enterImportMode();
     files = utils.toArray(files);
     queuedFiles = queuedFiles.concat(files);
-     // import files right away on first use -- the options dialog is already open
+    // import files right away on first use -- the options dialog is already open
     if (useCount === 0) {
       submitFiles();
     } else {
@@ -111,8 +117,7 @@ function ImportControl(model) {
     // TODO: handle potential issue where component files of several shapefiles
     // are imported in interleaved sequence.
     readFiles(queuedFiles);
-    clearFiles();
-    close();
+    model.clearMode();
   }
 
   function readFiles(files) {
@@ -120,11 +125,8 @@ function ImportControl(model) {
   }
 
   function getImportOpts() {
-    var method = El('#g-simplification-menu input[name=method]:checked').attr('value') || null;
     return {
-      method: method,
       no_repair: !El("#g-repair-intersections-opt").node().checked,
-      keep_shapes: !!El("#g-import-retain-opt").node().checked,
       auto_snap: !!El("#g-snap-points-opt").node().checked,
       precision: precisionInput.value()
     };
@@ -174,26 +176,13 @@ function ImportControl(model) {
     }
 
     if (showProgress) progressBar.appendTo('body');
-    progressBar.update(0.2, "Importing");
+    progressBar.update(0.35, "Importing");
     // Import data with a delay before each step, so browser can refresh the progress bar
     queue = gui.queueSync()
       .defer(function() {
         importOpts.files = [path]; // TODO: try to remove this
         dataset = MapShaper.importFileContent(content, path, importOpts);
       }, delay);
-    if (importOpts.method) {
-      queue.defer(function() {
-        progressBar.update(0.6, "Presimplifying");
-      })
-      .defer(function() {
-        if (dataset.arcs) {
-          MapShaper.simplifyPaths(dataset.arcs, importOpts);
-          if (importOpts.keep_shapes) {
-            MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
-          }
-        }
-      }, delay);
-    }
     queue.await(function() {
       if (type == 'shp') {
         gui.receiveShapefileComponent(path, dataset);

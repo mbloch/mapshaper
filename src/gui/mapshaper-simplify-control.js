@@ -1,9 +1,18 @@
-/* @requires mapshaper-elements */
+/* @requires mapshaper-elements, mapshaper-mode-button */
 
-var SimplifyControl = function() {
+var SimplifyControl = function(model) {
   var control = new EventDispatcher();
   var _value = 1;
   var el = El('#g-simplify-control');
+  var menu = El('#simplify-options');
+
+  new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
+  new SimpleButton('#simplify-options .cancel-btn').on('click', model.clearMode);
+
+  new ModeButton('#simplify-btn', 'simplify', model);
+  model.addMode('simplify', turnOn, turnOff);
+
+
   var slider = new Slider("#g-simplify-control .g-slider");
   slider.handle("#g-simplify-control .g-handle");
   slider.track("#g-simplify-control .g-track");
@@ -46,6 +55,37 @@ var SimplifyControl = function() {
     control.dispatchEvent('simplify-end');
   });
 
+  function turnOn() {
+    // TODO: skip menu if thresholds have been calculated
+    menu.show();
+  }
+
+  function turnOff() {
+    menu.hide();
+    control.reset();
+  }
+
+  function onSubmit() {
+    var opts = getSimplifyOptions();
+    var dataset = model.getEditingLayer().dataset;
+    if (dataset.arcs) {
+      MapShaper.simplifyPaths(dataset.arcs, opts);
+      if (opts.keep_shapes) {
+        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
+      }
+    }
+    el.show();
+    menu.hide();
+  }
+
+  function getSimplifyOptions() {
+    var method = El('#simplify-options input[name=method]:checked').attr('value') || null;
+    return {
+      method: method,
+      keep_shapes: !!El("#g-import-retain-opt").node().checked
+    };
+  }
+
   function toSliderPct(p) {
     p = Math.sqrt(p);
     var pct = 1 - p;
@@ -71,6 +111,7 @@ var SimplifyControl = function() {
 
   control.reset = function() {
     el.hide();
+    menu.hide();
     El('body').removeClass('simplify');
   };
 

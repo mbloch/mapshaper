@@ -1,27 +1,39 @@
-/* @requires mapshaper-export */
+/* @requires mapshaper-export mapshaper-mode-button */
 
 // Export buttons and their behavior
 var ExportControl = function(model) {
   var downloadSupport = typeof URL != 'undefined' && URL.createObjectURL &&
     typeof document.createElement("a").download != "undefined" ||
     !!window.navigator.msSaveBlob;
-  var el = El('#g-export-control');
+  var menu = El('#export-options');
   var dataset, anchor, blobUrl;
 
-  if (!downloadSupport) {
-    El('#g-export-control .g-label').text("Exporting is not supported in this browser");
+  if (!downloadSupport || true) {
+    El('#export-btn').on('click', function() {
+      gui.alert("Exporting is not supported in this browser");
+    });
   } else {
-    anchor = el.newChild('a').attr('href', '#').node();
-    El('#g-export-buttons').css('display:inline');
+    anchor = menu.newChild('a').attr('href', '#').node();
     exportButton("#g-geojson-btn", "geojson");
     exportButton("#g-shapefile-btn", "shapefile");
     exportButton("#g-topojson-btn", "topojson");
+
+    model.addMode('export', turnOn, turnOff);
+    new ModeButton('#export-btn', 'export', model);
+
     model.on('select', onSelect);
+  }
+
+  function turnOn() {
+    menu.show();
+  }
+
+  function turnOff() {
+    menu.hide();
   }
 
   function onSelect(e) {
     dataset = e.dataset;
-    el.show();
   }
 
   function exportButton(selector, format) {

@@ -136,17 +136,20 @@ div.g-tip {
 
 /* -------- BUTTONS ---------- */
 
-.g-page-header .g-btn {
+.mode-btn {
 	margin-right: 0;
 	color: #fff;
-	background-color: rgba(16, 69, 104, 0.3);
 	border: none;
-	padding: 3px 5px 4px 5px;
+	padding: 3px 7px 4px 7px;
 	border-radius: 3px;
 }
 
-.g-page-header .g-btn:hover:not(.disabled) {
-	background-color: rgba(172, 205, 245, 0.3);
+.mode-btn:hover:not(.disabled):not(.active) {
+	background-color: #517293;
+}
+
+.mode-btn.active {
+	background-color: black;
 }
 
 .g-btn.active {
@@ -158,7 +161,7 @@ div.g-tip {
 	background: none;
 }
 
-.g-btn:hover:not(.selected) {
+.g-btn.inline-btn:hover:not(.selected) {
 	background-color: #FFFCDC;
 }
 
@@ -184,6 +187,7 @@ div.g-tip {
 	margin-top: 7px;
 	font-size: 13px;
 	color: white;
+	min-width: 48px;
 	background-color: #5d85b5;
 
 }

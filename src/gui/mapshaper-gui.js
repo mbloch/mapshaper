@@ -26,15 +26,18 @@ Browser.onload(function() {
 
 gui.startEditing = function() {
   var model = new Model().on('select', onSelect),
-      importer = new ImportControl(model),
-      map = new MshpMap(model),
-      cons = new Console(model),
-      exporter = new ExportControl(model),
-      repair = new RepairControl(map),
-      simplify = new SimplifyControl();
+      map, repair, simplify;
   gui.startEditing = function() {};
+  gui.alert = new ErrorMessages(model);
 
   // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
+  map = new MshpMap(model);
+  repair = new RepairControl(map);
+  simplify = new SimplifyControl(model);
+  new ImportControl(model);
+  new Console(model);
+  new ExportControl(model);
+
   simplify.on('simplify-start', function() {
     repair.hide();
   });
@@ -49,6 +52,7 @@ gui.startEditing = function() {
   });
 
   function onSelect(e) {
+    El('#mode-buttons').show();
     simplify.reset();
     repair.reset();
 
