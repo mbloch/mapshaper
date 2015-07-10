@@ -11116,8 +11116,12 @@ MapShaper.filterShapes = function(shapes, filter) {
 api.printInfo = function(dataset, opts) {
   // str += utils.format("Number of layers: %d\n", dataset.layers.length);
   // if (dataset.arcs) str += utils.format("Topological arcs: %'d\n", dataset.arcs.size());
-  var str = dataset.layers.map(function(lyr) {
-    return MapShaper.getLayerInfo(lyr, dataset.arcs);
+  var str = dataset.layers.map(function(lyr, i) {
+    var infoStr = MapShaper.getLayerInfo(lyr, dataset.arcs);
+    if (dataset.layers.length > 1) {
+      infoStr = 'Layer ' + (i + 1) + '\n' + infoStr;
+    }
+    return infoStr;
   }).join('\n\n');
   message(str);
 };
@@ -11136,7 +11140,7 @@ MapShaper.getLayerInfo = function(lyr, arcs) {
       nullCount = shapeCount > 0 ? MapShaper.countNullShapes(lyr.shapes) : 0,
       tableSize = lyr.data ? lyr.data.size() : 0,
       str;
-  str = "Layer: " + (lyr.name || "[unnamed]") + "\n";
+  str = "Name: " + (lyr.name || "[unnamed]") + "\n";
   str += "Geometry: " + (lyr.geometry_type || "[none]") + "\n";
   str += utils.format("Records: %,d\n", Math.max(shapeCount, tableSize));
   if (nullCount > 0) {
