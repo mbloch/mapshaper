@@ -61,10 +61,12 @@ function Console(model) {
 
   function onKeyDown(e) {
     var kc = e.keyCode,
-        capture = true;
+        capture = false;
     if (kc == 27) { // esc
       model.clearMode(); // esc escapes other modes as well
+      capture = true;
     } else if (_active) {
+      capture = true;
       if (kc == 13) { // enter
         submit();
       } else if (kc == 38) {
@@ -79,7 +81,11 @@ function Console(model) {
         capture = false;
       }
     } else if (kc == 32) { // space
-      model.enterMode('console');
+      // space bar opens console, unless typing in an input field
+      if (document.activeElement.tagName != 'INPUT') {
+        capture = true;
+        model.enterMode('console');
+      }
     }
     if (capture) {
       e.preventDefault();
@@ -157,7 +163,7 @@ function Console(model) {
       lyr = editing.layer;
       // Use currently edited layer as default command target
       // TODO: handle targeting for unnamed layer
-      if (lyr.name) {
+      if (lyr && lyr.name) {
         commands.forEach(function(cmd) {
           // rename-layers should default to all layers;
           // other commands can target the current layer
@@ -171,11 +177,13 @@ function Console(model) {
     }
     if (commands.length > 0) {
       MapShaper.runParsedCommands(commands, dataset, function(err) {
-        if (utils.contains(dataset.layers, lyr)) {
-          model.updated();
-        } else {
-          // If original editing layer no longer exists, switch to a different layer
-          model.setEditingLayer(dataset.layers[0], dataset);
+        if (dataset) {
+          if (utils.contains(dataset.layers, lyr)) {
+            model.updated();
+          } else {
+            // If original editing layer no longer exists, switch to a different layer
+            model.setEditingLayer(dataset.layers[0], dataset);
+          }
         }
         if (err) onError(err);
       });

@@ -25,7 +25,7 @@ Browser.onload(function() {
 });
 
 gui.startEditing = function() {
-  var model = new Model().on('select', onSelect),
+  var model = new Model(),
       map, repair, simplify;
   gui.startEditing = function() {};
   gui.alert = new ErrorMessages(model);
@@ -37,6 +37,8 @@ gui.startEditing = function() {
   new ImportControl(model);
   new Console(model);
   new ExportControl(model);
+
+  model.on('select', onSelect);
 
   simplify.on('simplify-start', function() {
     repair.hide();

@@ -10624,40 +10624,35 @@ function FileChooser(el, cb) {
 
 function ImportControl(model) {
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', turnOff);
+  new SimpleButton('#import-buttons .cancel-btn').on('click', model.clearMode);
   var useCount = 0;
   var queuedFiles = [];
-  var isOpen = true,  // start with window open
-      precisionInput;
+  var isOpen = true;  // start with window open
 
-  model.addMode('import', function() {}, turnOff);
-  El('#import-options').show();
+  model.addMode('import', open, turnOff);
+  // El('#import-options').show();
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
-
-  precisionInput = new ClickText("#g-import-precision-opt")
-    .bounds(0, Infinity)
-    .formatter(function(str) {
-      var val = parseFloat(str);
-      return !val ? '' : String(val);
-    })
-    .validator(function(str) {
-      return str === '' || utils.isNumber(parseFloat(str));
-    });
+  model.enterMode('import');
+  model.on('mode', function(e) {
+    // re-open import opts if leaving alert or console modes and nothing has been imported yet
+    if (!e.name && e.prev != 'import' && useCount === 0) {
+      model.enterMode('import');
+    }
+  });
 
   function open() {
-    El('#import-buttons').show();
     El('#import-options').show();
     isOpen = true;
   }
 
   function close() {
    El('#import-options').hide();
-   El('#import-intro').hide(); // only show intro at first
    isOpen = false;
   }
 
   function turnOff() {
+    El('#fork-me').hide();
     clearFiles();
     close();
   }
@@ -10675,7 +10670,8 @@ function ImportControl(model) {
     if (useCount === 0) {
       submitFiles();
     } else {
-      if (!isOpen) open();
+      El('#import-intro').hide(); // only show intro at first
+      El('#import-buttons').show();
       El('#dropped-file-list').show();
       files.forEach(function(f) {
         El('<p>').text(f.name).appendTo(El("#dropped-file-list .file-list"));
@@ -10695,11 +10691,20 @@ function ImportControl(model) {
   }
 
   function getImportOpts() {
-    return {
-      no_repair: !El("#g-repair-intersections-opt").node().checked,
-      auto_snap: !!El("#g-snap-points-opt").node().checked,
-      precision: precisionInput.value()
-    };
+    var freeform = El('#import-options .advanced-options').node().value.trim(),
+        opts, parsed;
+    if (freeform) {
+      parsed = MapShaper.parseCommands(freeform);
+      if (!parsed.length || parsed[0].name != 'i') {
+        stop("Unable to parse input options");
+      }
+      opts = parsed[0].options;
+    } else {
+      opts = {};
+    }
+    opts.no_repair = !El("#g-repair-intersections-opt").node().checked;
+    opts.auto_snap = !!El("#g-snap-points-opt").node().checked;
+    return opts;
   }
 
   function loadFile(file, cb) {
@@ -10742,7 +10747,6 @@ function ImportControl(model) {
 
     if (useCount++ === 0) {
       close();
-      El('#fork-me').hide();
     }
 
     if (showProgress) progressBar.appendTo('body');
@@ -17818,10 +17822,12 @@ function Console(model) {
 
   function onKeyDown(e) {
     var kc = e.keyCode,
-        capture = true;
+        capture = false;
     if (kc == 27) { // esc
       model.clearMode(); // esc escapes other modes as well
+      capture = true;
     } else if (_active) {
+      capture = true;
       if (kc == 13) { // enter
         submit();
       } else if (kc == 38) {
@@ -17836,7 +17842,11 @@ function Console(model) {
         capture = false;
       }
     } else if (kc == 32) { // space
-      model.enterMode('console');
+      // space bar opens console, unless typing in an input field
+      if (document.activeElement.tagName != 'INPUT') {
+        capture = true;
+        model.enterMode('console');
+      }
     }
     if (capture) {
       e.preventDefault();
@@ -17914,7 +17924,7 @@ function Console(model) {
       lyr = editing.layer;
       // Use currently edited layer as default command target
       // TODO: handle targeting for unnamed layer
-      if (lyr.name) {
+      if (lyr && lyr.name) {
         commands.forEach(function(cmd) {
           // rename-layers should default to all layers;
           // other commands can target the current layer
@@ -17928,11 +17938,13 @@ function Console(model) {
     }
     if (commands.length > 0) {
       MapShaper.runParsedCommands(commands, dataset, function(err) {
-        if (utils.contains(dataset.layers, lyr)) {
-          model.updated();
-        } else {
-          // If original editing layer no longer exists, switch to a different layer
-          model.setEditingLayer(dataset.layers[0], dataset);
+        if (dataset) {
+          if (utils.contains(dataset.layers, lyr)) {
+            model.updated();
+          } else {
+            // If original editing layer no longer exists, switch to a different layer
+            model.setEditingLayer(dataset.layers[0], dataset);
+          }
         }
         if (err) onError(err);
       });
@@ -18091,7 +18103,7 @@ Browser.onload(function() {
 });
 
 gui.startEditing = function() {
-  var model = new Model().on('select', onSelect),
+  var model = new Model(),
       map, repair, simplify;
   gui.startEditing = function() {};
   gui.alert = new ErrorMessages(model);
@@ -18103,6 +18115,8 @@ gui.startEditing = function() {
   new ImportControl(model);
   new Console(model);
   new ExportControl(model);
+
+  model.on('select', onSelect);
 
   simplify.on('simplify-start', function() {
     repair.hide();

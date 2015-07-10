@@ -127,15 +127,14 @@ div.error-box > div {
 	}
 }
 
-#import-options .g-clicktext {
-	width: 40px;
+#import-options .advanced-options {
+	width: 210px;
 	background: rgba(255, 255, 255, 0.4);
-	text-align: right;
 	border: 1px solid rgba(0,0,0,0.2);
 	padding: 0 3px;
-	margin: 0 5px 0 0px;
-	font-size: 10px;
-
+	margin: 2px 5px 0 0px;
+	height: 15px;
+	font-size: 11px;
 }
 
 #mshp-not-supported {
