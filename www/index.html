@@ -36,8 +36,8 @@
 
 <div id="export-options" class="main-area popup-dialog">
 	<div class="info-box">
-		<h3>Save as</h3>
-		<div class="gxxx-option-menu">
+		<h3>Export</h3>
+		<div>
 			<div id="g-shapefile-btn" class="g-btn dialog-btn">Shapefile</div>
 			<div id="g-geojson-btn" class="g-btn dialog-btn">GeoJSON</div>
 			<div id="g-topojson-btn" class="g-btn dialog-btn">TopoJSON</div>
@@ -81,12 +81,12 @@ but tends to form spikes at high
 simplification.</div></div></div>
 			</div>
 
+		</div> <!-- option menu -->
+
 		<div>
 			<div class="cancel-btn g-btn dialog-btn">Cancel</div>
 			<div class="submit-btn g-btn dialog-btn">Next</div>
 		</div>
-
-	</div> <!-- option menu -->
 		</div> <!-- simplification menu -->
 
 	</div>
@@ -104,7 +104,7 @@ and Zip archives are supported.
 		<h3>Import options</h3>
 		<div class="g-option-menu">
 
-			<div><label for="g-repair-intersections-opt"><input type="checkbox" checked class="g-checkbox" id="g-repair-intersections-opt"/>detect intersections</label>
+			<div><label for="g-repair-intersections-opt"><input type="checkbox" checked class="g-checkbox" id="g-repair-intersections-opt"/>detect line intersections</label>
 			<div class="g-tip-button">?<div class="g-tip-anchor">
 <div class="g-tip">Detect line intersections, including
 self-intersections, to help identify

@@ -17975,9 +17975,9 @@ function Console(model) {
   }
 
   function printExamples() {
-    printExample("View information about your data layer", "$ info");
-    printExample("View help about a command", "$ help filter");
+    printExample("View information about this data layer", "$ info");
     printExample("Extract one state from a national dataset","$ filter 'STATE == \"Iowa\"'");
+    printExample("View help about a command", "$ help filter");
   }
 }
 
