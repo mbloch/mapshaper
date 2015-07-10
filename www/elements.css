@@ -184,7 +184,8 @@ div.g-tip {
 
 .g-btn.dialog-btn {
 	display: inline-block;
-	margin-top: 7px;
+	margin-bottom: 3px;
+	margin-top: 2px;
 	font-size: 13px;
 	color: white;
 	min-width: 48px;

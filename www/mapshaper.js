@@ -2789,9 +2789,9 @@ function ErrorMessages(model) {
     if (el) return;
     el = El('div').appendTo('body').addClass('error-wrapper');
     infoBox = El('div').appendTo(el).addClass('error-box info-box');
-    El('div').addClass('error-message').appendTo(infoBox).html(str);
+    El('p').addClass('error-message').appendTo(infoBox).html(str);
     El('div').addClass("g-btn dialog-btn").appendTo(infoBox).html('close').on('click', model.clearMode);
-    model.dispatchEvent('mode', {name: 'alert'});
+    model.enterMode('alert');
   };
 }
 
@@ -3093,7 +3093,7 @@ function ModeButton(el, name, model) {
   });
 
   btn.on('click', function() {
-    model.dispatchEvent('mode', {name: active ? null : name});
+    model.enterMode(active ? null : name);
   });
 }
 
@@ -3103,7 +3103,7 @@ function ModeButton(el, name, model) {
 var SimplifyControl = function(model) {
   var control = new EventDispatcher();
   var _value = 1;
-  var el = El('#g-simplify-control');
+  var el = El('#g-simplify-control-wrapper');
   var menu = El('#simplify-options');
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
@@ -3156,6 +3156,10 @@ var SimplifyControl = function(model) {
   });
 
   function turnOn() {
+    if (!MapShaper.datasetHasPaths(model.getEditingLayer().dataset)) {
+      gui.alert("This dataset can not be simplified");
+      return;
+    }
     // TODO: skip menu if thresholds have been calculated
     menu.show();
   }
@@ -10663,12 +10667,8 @@ function ImportControl(model) {
     El('#dropped-file-list .file-list').empty();
   }
 
-  function enterImportMode() {
-    model.dispatchEvent('mode', {name: 'import'});
-  }
-
   function receiveFiles(files) {
-    enterImportMode();
+    model.enterMode('import');
     files = utils.toArray(files);
     queuedFiles = queuedFiles.concat(files);
     // import files right away on first use -- the options dialog is already open
@@ -11185,7 +11185,7 @@ var ExportControl = function(model) {
   var menu = El('#export-options');
   var dataset, anchor, blobUrl;
 
-  if (!downloadSupport || true) {
+  if (!downloadSupport) {
     El('#export-btn').on('click', function() {
       gui.alert("Exporting is not supported in this browser");
     });
@@ -17832,7 +17832,7 @@ function Console(model) {
         capture = false;
       }
     } else if (kc == 32) { // space
-      model.dispatchEvent('mode', {name: 'console'});
+      model.enterMode('console');
     }
     if (capture) {
       e.preventDefault();
@@ -17990,10 +17990,6 @@ function Model() {
       mode = null,
       editing;
 
-  this.on('mode', function(e) {
-    mode = e.name;
-  }, null, -1); // fire after others
-
   this.size = function() {
     return datasets.length;
   };
@@ -18032,13 +18028,30 @@ function Model() {
   // return a function to trigger this mode
   this.addMode = function(name, enter, exit) {
     this.on('mode', function(e) {
-      if (mode == name) exit();
-      if (e.name && e.name == name) enter();
+      if (e.prev == name) {
+        // console.log(">>> exit mode:", name);
+        exit();
+      }
+      if (e.name == name) {
+        // console.log(">>> enter mode:", name);
+        enter();
+      }
     });
   };
 
+  this.addMode(null, function() {}, function() {}); // null mode
+
   this.clearMode = function() {
-    self.dispatchEvent('mode', {name: null});
+    self.enterMode(null);
+  };
+
+  this.enterMode = function(next) {
+    var prev = mode;
+    // console.log(">>> enterMode() prev:", prev, "next:", next);
+    if (next != prev) {
+      mode = next;
+      self.dispatchEvent('mode', {name: next, prev: prev});
+    }
   };
 
   this.setEditingLayer = function(lyr, dataset, opts) {
@@ -18102,12 +18115,12 @@ gui.startEditing = function() {
 
   function onSelect(e) {
     El('#mode-buttons').show();
-    simplify.reset();
     repair.reset();
 
     if (MapShaper.layerHasPaths(e.layer)) {
-      simplify.show();
-      simplify.value(e.dataset.arcs.getRetainedPct());
+      // TODO: move this to simplify control...
+      // simplify.value(e.dataset.arcs.getRetainedPct());
+
       if (!e.opts.no_repair) {
         repair.setDataset(e.dataset);
         // use timeout so map appears before the repair control calculates

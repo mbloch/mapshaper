@@ -6,10 +6,6 @@ function Model() {
       mode = null,
       editing;
 
-  this.on('mode', function(e) {
-    mode = e.name;
-  }, null, -1); // fire after others
-
   this.size = function() {
     return datasets.length;
   };
@@ -48,13 +44,30 @@ function Model() {
   // return a function to trigger this mode
   this.addMode = function(name, enter, exit) {
     this.on('mode', function(e) {
-      if (mode == name) exit();
-      if (e.name && e.name == name) enter();
+      if (e.prev == name) {
+        // console.log(">>> exit mode:", name);
+        exit();
+      }
+      if (e.name == name) {
+        // console.log(">>> enter mode:", name);
+        enter();
+      }
     });
   };
 
+  this.addMode(null, function() {}, function() {}); // null mode
+
   this.clearMode = function() {
-    self.dispatchEvent('mode', {name: null});
+    self.enterMode(null);
+  };
+
+  this.enterMode = function(next) {
+    var prev = mode;
+    // console.log(">>> enterMode() prev:", prev, "next:", next);
+    if (next != prev) {
+      mode = next;
+      self.dispatchEvent('mode', {name: next, prev: prev});
+    }
   };
 
   this.setEditingLayer = function(lyr, dataset, opts) {

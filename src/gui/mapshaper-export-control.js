@@ -8,7 +8,7 @@ var ExportControl = function(model) {
   var menu = El('#export-options');
   var dataset, anchor, blobUrl;
 
-  if (!downloadSupport || true) {
+  if (!downloadSupport) {
     El('#export-btn').on('click', function() {
       gui.alert("Exporting is not supported in this browser");
     });

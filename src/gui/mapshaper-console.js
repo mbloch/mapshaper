@@ -79,7 +79,7 @@ function Console(model) {
         capture = false;
       }
     } else if (kc == 32) { // space
-      model.dispatchEvent('mode', {name: 'console'});
+      model.enterMode('console');
     }
     if (capture) {
       e.preventDefault();

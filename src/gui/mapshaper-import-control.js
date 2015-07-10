@@ -93,12 +93,8 @@ function ImportControl(model) {
     El('#dropped-file-list .file-list').empty();
   }
 
-  function enterImportMode() {
-    model.dispatchEvent('mode', {name: 'import'});
-  }
-
   function receiveFiles(files) {
-    enterImportMode();
+    model.enterMode('import');
     files = utils.toArray(files);
     queuedFiles = queuedFiles.concat(files);
     // import files right away on first use -- the options dialog is already open

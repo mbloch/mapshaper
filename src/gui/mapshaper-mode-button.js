@@ -13,6 +13,6 @@ function ModeButton(el, name, model) {
   });
 
   btn.on('click', function() {
-    model.dispatchEvent('mode', {name: active ? null : name});
+    model.enterMode(active ? null : name);
   });
 }

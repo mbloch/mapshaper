@@ -53,12 +53,12 @@ gui.startEditing = function() {
 
   function onSelect(e) {
     El('#mode-buttons').show();
-    simplify.reset();
     repair.reset();
 
     if (MapShaper.layerHasPaths(e.layer)) {
-      simplify.show();
-      simplify.value(e.dataset.arcs.getRetainedPct());
+      // TODO: move this to simplify control...
+      // simplify.value(e.dataset.arcs.getRetainedPct());
+
       if (!e.opts.no_repair) {
         repair.setDataset(e.dataset);
         // use timeout so map appears before the repair control calculates

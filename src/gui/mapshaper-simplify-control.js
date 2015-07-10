@@ -3,7 +3,7 @@
 var SimplifyControl = function(model) {
   var control = new EventDispatcher();
   var _value = 1;
-  var el = El('#g-simplify-control');
+  var el = El('#g-simplify-control-wrapper');
   var menu = El('#simplify-options');
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
@@ -56,6 +56,10 @@ var SimplifyControl = function(model) {
   });
 
   function turnOn() {
+    if (!MapShaper.datasetHasPaths(model.getEditingLayer().dataset)) {
+      gui.alert("This dataset can not be simplified");
+      return;
+    }
     // TODO: skip menu if thresholds have been calculated
     menu.show();
   }
