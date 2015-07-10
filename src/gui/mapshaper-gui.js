@@ -4,6 +4,7 @@ mapshaper-simplify-control
 mapshaper-import-control
 mapshaper-export-control
 mapshaper-repair-control
+mapshaper-layer-control
 mapshaper-map
 mapshaper-maplayer
 mapshaper-simplify
@@ -37,6 +38,7 @@ gui.startEditing = function() {
   new ImportControl(model);
   new Console(model);
   new ExportControl(model);
+  new LayerControl(model);
 
   model.on('select', onSelect);
 

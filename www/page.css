@@ -70,6 +70,38 @@ body {
 	text-decoration: none;
 }
 
+#mode-buttons {
+	z-index: 20;
+	position: absolute;
+	top: 0px;
+	right: 0px;
+	display: none;
+	margin: 0 9px 3px 0;
+}
+
+#g-export-buttons {
+	display: none;
+}
+
+.g-page-header .g-label {
+	color: #fff;
+	margin: 0 4px 0 0;
+}
+
+#layer-control {
+	top: 0;
+	position: absolute;
+	text-align: center;
+	z-index: 10;
+	width: 100%;
+	/*margin: 7px auto 0 auto;*/
+}
+
+body.simplify #layer-control {
+	display: none;
+}
+
+
 /* --- Main area ------------- */
 
 .main-area {
@@ -375,26 +407,6 @@ div.error-box > div {
 	position: absolute;
 	border: 2px solid #c33;
 	z-index: 10;
-}
-
-
-/* --- Export control ------------- */
-
-#mode-buttons {
-	position: absolute;
-	top: 0px;
-	right: 0px;
-	display: none;
-	margin: 5px 9px 3px 0;
-}
-
-#g-export-buttons {
-	display: none;
-}
-
-.g-page-header .g-label {
-	color: #fff;
-	margin: 0 4px 0 0;
 }
 
 

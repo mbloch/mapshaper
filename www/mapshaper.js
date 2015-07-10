@@ -3179,6 +3179,7 @@ var SimplifyControl = function(model) {
       }
     }
     el.show();
+    El('body').addClass('simplify'); // for resizing, hiding layer label, etc.
     menu.hide();
   }
 
@@ -3207,11 +3208,6 @@ var SimplifyControl = function(model) {
       control.dispatchEvent('change', {value:val});
     }
   }
-
-  control.show = function() {
-    el.show();
-    El('body').addClass('simplify');
-  };
 
   control.reset = function() {
     el.hide();
@@ -11580,6 +11576,17 @@ utils.inherit(RepairControl, EventDispatcher);
 
 
 
+function LayerControl(model) {
+  var el = El('#layer-control .layer-name');
+  model.on('select', function(e) {
+    var name = e.layer.name || "[unnamed layer]";
+    el.html(name + " &nbsp;&#9660;");
+  });
+}
+
+
+
+
 MapShaper.drawPoints = function(paths, style, canvas) {
   var color = style.dotColor || "rgba(255, 50, 50, 0.5)",
       size = style.dotSize || 3,
@@ -18115,6 +18122,7 @@ gui.startEditing = function() {
   new ImportControl(model);
   new Console(model);
   new ExportControl(model);
+  new LayerControl(model);
 
   model.on('select', onSelect);
 

@@ -79,6 +79,7 @@ var SimplifyControl = function(model) {
       }
     }
     el.show();
+    El('body').addClass('simplify'); // for resizing, hiding layer label, etc.
     menu.hide();
   }
 
@@ -107,11 +108,6 @@ var SimplifyControl = function(model) {
       control.dispatchEvent('change', {value:val});
     }
   }
-
-  control.show = function() {
-    el.show();
-    El('body').addClass('simplify');
-  };
 
   control.reset = function() {
     el.hide();
