@@ -358,10 +358,14 @@ div.error-box > div {
 
 /* --- Layer menu ----------- */
 
+#layer-menu .info-box {
+	overflow: hidden;
+	max-height: 90%;
+	overflow-y: auto;
+}
+
 #layer-menu .layer-list {
 	width: 300px;
-	max-height: 500px;
-	overflow: visible;
 	margin: 6px 0 6px 0;
 }
 
@@ -382,9 +386,12 @@ div.error-box > div {
 	background-color: #eefaff;
 }
 
+.layer-item .row {
+	white-space: nowrap;
+}
+
 .layer-item .row > div {
 	display: inline-block;
-	white-space: nowrap;
 }
 
 .layer-item .col1 {
