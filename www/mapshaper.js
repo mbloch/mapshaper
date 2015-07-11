@@ -11614,11 +11614,26 @@ function LayerControl(model) {
     });
   }
 
+  function describeLyr(lyr) {
+    var n = MapShaper.getFeatureCount(lyr),
+        str;
+    if (lyr.geometry_type) {
+      str = utils.format('%,d %s feature%s', n, lyr.geometry_type,
+          utils.pluralSuffix(n));
+    } else if (lyr.data) {
+      str = utils.format('%,d data record%s', n, utils.pluralSuffix(n));
+    } else {
+      str = "[empty]";
+    }
+    return str;
+  }
+
   function renderLayer(lyr, dataset) {
     var editLyr = model.getEditingLayer().layer;
     var entry = El('div').addClass('layer-item');
     var str = rowHTML('name', lyr.name || '[unnamed]');
     str += rowHTML('source file', dataset.info.input_files[0]);
+    str += rowHTML('contents', describeLyr(lyr));
     entry.html(str);
     entry.on('click', function() {
       if (lyr != editLyr) {

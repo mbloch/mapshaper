@@ -362,9 +362,8 @@ div.error-box > div {
 	width: 300px;
 	max-height: 500px;
 	overflow: visible;
-	margin: 6px 0 8px 0;
+	margin: 6px 0 6px 0;
 }
-
 
 #layer-menu .layer-item {
 	padding: 8px 0;
@@ -372,20 +371,24 @@ div.error-box > div {
 	padding: 8px 14px;
 	cursor: pointer;
 	width: 300px;
+	line-height: 1.1;
 }
 
 .layer-item.active {
 	background-color: #dcf3ff;
 }
 
+.layer-item:hover:not(.active) {
+	background-color: #eefaff;
+}
+
 .layer-item .row > div {
-	line-spacing: 1.2;
 	display: inline-block;
 	white-space: nowrap;
 }
 
 .layer-item .col1 {
-	width: 75px;
+	width: 85px;
 }
 
 /* --- Intersection control ----------*/
