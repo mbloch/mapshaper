@@ -6,7 +6,7 @@ var ExportControl = function(model) {
     typeof document.createElement("a").download != "undefined" ||
     !!window.navigator.msSaveBlob;
   var menu = El('#export-options');
-  var dataset, anchor, blobUrl;
+  var anchor, blobUrl;
 
   if (!downloadSupport) {
     El('#export-btn').on('click', function() {
@@ -20,8 +20,6 @@ var ExportControl = function(model) {
 
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
-
-    model.on('select', onSelect);
   }
 
   function turnOn() {
@@ -30,10 +28,6 @@ var ExportControl = function(model) {
 
   function turnOff() {
     menu.hide();
-  }
-
-  function onSelect(e) {
-    dataset = e.dataset;
   }
 
   function exportButton(selector, format) {
@@ -52,9 +46,17 @@ var ExportControl = function(model) {
   // @done function(string|Error|null)
   function exportAs(format, done) {
     var opts = {format: format}, // TODO: implement other export opts
+        editing = model.getEditingLayer(),
+        dataset = editing.dataset,
         files;
 
     try {
+      if (format != 'topojson') {
+        // unless exporting TopoJSON, only output the currently selected layer
+        dataset = utils.defaults({
+          layers: dataset.layers.filter(function(lyr) {return lyr == editing.layer;})
+        }, dataset);
+      }
       files = MapShaper.exportFileContent(dataset, opts);
     } catch(e) {
       return done(e);

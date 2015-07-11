@@ -71,7 +71,9 @@ function Model() {
   };
 
   this.setEditingLayer = function(lyr, dataset, opts) {
-    // TODO: how to handle repeat selection
+    if (editing && editing.layer == lyr) {
+      return;
+    }
     if (dataset.layers.indexOf(lyr) == -1) {
       error("Selected layer not found");
     }

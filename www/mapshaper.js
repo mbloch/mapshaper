@@ -10629,6 +10629,7 @@ function ImportControl(model) {
   // El('#import-options').show();
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
+  new FileChooser('#add-file-btn', receiveFiles);
   model.enterMode('import');
   model.on('mode', function(e) {
     // re-open import opts if leaving alert or console modes and nothing has been imported yet
@@ -11183,7 +11184,7 @@ var ExportControl = function(model) {
     typeof document.createElement("a").download != "undefined" ||
     !!window.navigator.msSaveBlob;
   var menu = El('#export-options');
-  var dataset, anchor, blobUrl;
+  var anchor, blobUrl;
 
   if (!downloadSupport) {
     El('#export-btn').on('click', function() {
@@ -11197,8 +11198,6 @@ var ExportControl = function(model) {
 
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
-
-    model.on('select', onSelect);
   }
 
   function turnOn() {
@@ -11207,10 +11206,6 @@ var ExportControl = function(model) {
 
   function turnOff() {
     menu.hide();
-  }
-
-  function onSelect(e) {
-    dataset = e.dataset;
   }
 
   function exportButton(selector, format) {
@@ -11229,9 +11224,17 @@ var ExportControl = function(model) {
   // @done function(string|Error|null)
   function exportAs(format, done) {
     var opts = {format: format}, // TODO: implement other export opts
+        editing = model.getEditingLayer(),
+        dataset = editing.dataset,
         files;
 
     try {
+      if (format != 'topojson') {
+        // unless exporting TopoJSON, only output the currently selected layer
+        dataset = utils.defaults({
+          layers: dataset.layers.filter(function(lyr) {return lyr == editing.layer;})
+        }, dataset);
+      }
       files = MapShaper.exportFileContent(dataset, opts);
     } catch(e) {
       return done(e);
@@ -11577,11 +11580,63 @@ utils.inherit(RepairControl, EventDispatcher);
 
 
 function LayerControl(model) {
-  var el = El('#layer-control .layer-name');
+  var el = El("#layer-menu");
+  var label = El('#layer-control .layer-name');
+
+  model.addMode('layer_menu', turnOn, turnOff);
+  new ModeButton('#layer-control .mode-btn', 'layer_menu', model);
+
   model.on('select', function(e) {
     var name = e.layer.name || "[unnamed layer]";
-    el.html(name + " &nbsp;&#9660;");
+    label.html(name + " &nbsp;&#9660;");
+    render();
   });
+
+  model.on('update', render); // todo: be more selective about when to rerender
+
+  function turnOn() {
+    el.show();
+  }
+
+  function turnOff() {
+    el.hide();
+  }
+
+  function render() {
+    var list = El('#layer-menu .layer-list');
+    var datasets = model.getDatasets();
+
+    list.empty();
+    datasets.forEach(function(dataset) {
+      dataset.layers.forEach(function(lyr) {
+        list.appendChild(renderLayer(lyr, dataset));
+      });
+    });
+  }
+
+  function renderLayer(lyr, dataset) {
+    var editLyr = model.getEditingLayer().layer;
+    var entry = El('div').addClass('layer-item');
+    var str = rowHTML('name', lyr.name || '[unnamed]');
+    str += rowHTML('source file', dataset.info.input_files[0]);
+    entry.html(str);
+    entry.on('click', function() {
+      if (lyr != editLyr) {
+        model.setEditingLayer(lyr, dataset);
+      }
+      model.clearMode();
+    });
+    if (lyr == editLyr) {
+      entry.addClass('active');
+    }
+
+    return entry;
+  }
+
+  function rowHTML(c1, c2) {
+    return utils.format('<div class="row"><div class="col1">%s</div>' +
+      '<div class="col2">%s</div></div>', c1, c2);
+  }
 }
 
 
@@ -18078,7 +18133,9 @@ function Model() {
   };
 
   this.setEditingLayer = function(lyr, dataset, opts) {
-    // TODO: how to handle repeat selection
+    if (editing && editing.layer == lyr) {
+      return;
+    }
     if (dataset.layers.indexOf(lyr) == -1) {
       error("Selected layer not found");
     }

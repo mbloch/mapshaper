@@ -59,6 +59,7 @@ function ImportControl(model) {
   // El('#import-options').show();
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
+  new FileChooser('#add-file-btn', receiveFiles);
   model.enterMode('import');
   model.on('mode', function(e) {
     // re-open import opts if leaving alert or console modes and nothing has been imported yet
