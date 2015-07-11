@@ -8,10 +8,8 @@ var SimplifyControl = function(model) {
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
   new SimpleButton('#simplify-options .cancel-btn').on('click', model.clearMode);
-
   new ModeButton('#simplify-btn', 'simplify', model);
   model.addMode('simplify', turnOn, turnOff);
-
 
   var slider = new Slider("#g-simplify-control .g-slider");
   slider.handle("#g-simplify-control .g-handle");

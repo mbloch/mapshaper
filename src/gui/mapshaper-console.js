@@ -133,6 +133,13 @@ function Console(model) {
     scrollDown();
   }
 
+  function getCommandFlags(commands) {
+    return commands.reduce(function(memo, cmd) {
+      memo[cmd.name] = true;
+      return memo;
+    }, {});
+  }
+
   function submit() {
     var cmd = readCommandLine();
     input.node().value = '';
@@ -179,7 +186,7 @@ function Console(model) {
       MapShaper.runParsedCommands(commands, dataset, function(err) {
         if (dataset) {
           if (utils.contains(dataset.layers, lyr)) {
-            model.updated();
+            model.updated(getCommandFlags(commands));
           } else {
             // If original editing layer no longer exists, switch to a different layer
             model.setEditingLayer(dataset.layers[0], dataset);

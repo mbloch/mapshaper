@@ -56,7 +56,11 @@ function MshpMap(model) {
     group.showLayer(e.layer);
     updateGroupStyle(foregroundStyle, group);
     _ext.setBounds(group.getBounds()); // in case bounds have changed, e.g. after proj
-    refreshLayer(group);
+    if (e.flags.proj) {
+      _ext.reset(true);
+    } else {
+      refreshLayer(group);
+    }
   });
 
   this.setHighlightLayer = function(lyr, dataset) {
@@ -74,7 +78,7 @@ function MshpMap(model) {
 
   this.setSimplifyPct = function(pct) {
     _activeGroup.setRetainedPct(pct);
-    refreshLayers(_activeGroup);
+    refreshLayer(_activeGroup);
   };
 
   this.refreshLayer = function(dataset) {

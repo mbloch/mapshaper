@@ -3108,10 +3108,8 @@ var SimplifyControl = function(model) {
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
   new SimpleButton('#simplify-options .cancel-btn').on('click', model.clearMode);
-
   new ModeButton('#simplify-btn', 'simplify', model);
   model.addMode('simplify', turnOn, turnOff);
-
 
   var slider = new Slider("#g-simplify-control .g-slider");
   slider.handle("#g-simplify-control .g-handle");
@@ -11531,6 +11529,12 @@ function RepairControl(map) {
     map.setHighlightLayer(null);
   };
 
+  this.delayedUpdate = function(ms) {
+    setTimeout(function() {
+      _self.update();
+    }, ms || 10);
+  };
+
   // Detect and display intersections for current level of arc simplification
   this.update = function() {
     var XX, showBtn, pct;
@@ -12354,7 +12358,11 @@ function MshpMap(model) {
     group.showLayer(e.layer);
     updateGroupStyle(foregroundStyle, group);
     _ext.setBounds(group.getBounds()); // in case bounds have changed, e.g. after proj
-    refreshLayer(group);
+    if (e.flags.proj) {
+      _ext.reset(true);
+    } else {
+      refreshLayer(group);
+    }
   });
 
   this.setHighlightLayer = function(lyr, dataset) {
@@ -12372,7 +12380,7 @@ function MshpMap(model) {
 
   this.setSimplifyPct = function(pct) {
     _activeGroup.setRetainedPct(pct);
-    refreshLayers(_activeGroup);
+    refreshLayer(_activeGroup);
   };
 
   this.refreshLayer = function(dataset) {
@@ -17974,6 +17982,13 @@ function Console(model) {
     scrollDown();
   }
 
+  function getCommandFlags(commands) {
+    return commands.reduce(function(memo, cmd) {
+      memo[cmd.name] = true;
+      return memo;
+    }, {});
+  }
+
   function submit() {
     var cmd = readCommandLine();
     input.node().value = '';
@@ -18020,7 +18035,7 @@ function Console(model) {
       MapShaper.runParsedCommands(commands, dataset, function(err) {
         if (dataset) {
           if (utils.contains(dataset.layers, lyr)) {
-            model.updated();
+            model.updated(getCommandFlags(commands));
           } else {
             // If original editing layer no longer exists, switch to a different layer
             model.setEditingLayer(dataset.layers[0], dataset);
@@ -18109,10 +18124,10 @@ function Model() {
     return datasets;
   };
 
-  this.updated = function(o) {
+  this.updated = function(flags) {
     var e;
     if (editing) {
-      e = utils.extend({}, editing, o);
+      e = utils.extend({flags: flags || {}}, editing);
       this.dispatchEvent('update', e);
     }
   };
@@ -18207,6 +18222,12 @@ gui.startEditing = function() {
   simplify.on('simplify-end', function() {
     repair.update();
   });
+  model.on('update', function(e) {
+    if (e.flags.simplify || e.flags.proj) {
+      repair.reset();
+      repair.delayedUpdate();
+    }
+  });
   simplify.on('change', function(e) {
     map.setSimplifyPct(e.value);
   });
@@ -18226,9 +18247,7 @@ gui.startEditing = function() {
         repair.setDataset(e.dataset);
         // use timeout so map appears before the repair control calculates
         // intersection data, which can take a little while
-        setTimeout(function() {
-          repair.update();
-        }, 10);
+        repair.delayedUpdate();
       }
     }
   }

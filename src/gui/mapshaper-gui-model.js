@@ -29,10 +29,10 @@ function Model() {
     return datasets;
   };
 
-  this.updated = function(o) {
+  this.updated = function(flags) {
     var e;
     if (editing) {
-      e = utils.extend({}, editing, o);
+      e = utils.extend({flags: flags || {}}, editing);
       this.dispatchEvent('update', e);
     }
   };

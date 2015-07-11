@@ -22,6 +22,12 @@ function RepairControl(map) {
     map.setHighlightLayer(null);
   };
 
+  this.delayedUpdate = function(ms) {
+    setTimeout(function() {
+      _self.update();
+    }, ms || 10);
+  };
+
   // Detect and display intersections for current level of arc simplification
   this.update = function() {
     var XX, showBtn, pct;

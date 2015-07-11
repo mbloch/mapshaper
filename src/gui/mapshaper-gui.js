@@ -48,6 +48,12 @@ gui.startEditing = function() {
   simplify.on('simplify-end', function() {
     repair.update();
   });
+  model.on('update', function(e) {
+    if (e.flags.simplify || e.flags.proj) {
+      repair.reset();
+      repair.delayedUpdate();
+    }
+  });
   simplify.on('change', function(e) {
     map.setSimplifyPct(e.value);
   });
@@ -67,9 +73,7 @@ gui.startEditing = function() {
         repair.setDataset(e.dataset);
         // use timeout so map appears before the repair control calculates
         // intersection data, which can take a little while
-        setTimeout(function() {
-          repair.update();
-        }, 10);
+        repair.delayedUpdate();
       }
     }
   }
