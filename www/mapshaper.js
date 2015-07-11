@@ -11966,7 +11966,8 @@ function PointIter() {
 // Interface for displaying the points and paths in a dataset
 //
 function LayerGroup(dataset) {
-  var _canvas = El('canvas').css('position:absolute;').node(),
+  var _el = El('canvas').css('position:absolute;'),
+      _canvas = _el.node(),
       _bounds = MapShaper.getDatasetBounds(dataset),
       _lyr, _filteredArcs;
 
@@ -11975,6 +11976,10 @@ function LayerGroup(dataset) {
   function initArcs() {
     _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
   }
+
+  this.hide = function() {
+    _el.hide();
+  };
 
   this.showLayer = function(lyr) {
     _lyr = lyr; // TODO: make sure lyr is in dataset
@@ -12030,6 +12035,7 @@ function LayerGroup(dataset) {
     this.clear();
     _canvas.width = ext.width();
     _canvas.height = ext.height();
+    _el.show();
     if (_filteredArcs) {
       _filteredArcs.setMapExtent(ext);
       MapShaper.drawPaths(_filteredArcs, style, _canvas);
@@ -12176,13 +12182,13 @@ function MapExtent(el) {
     this.dispatchEvent('resize');
   }, this);
 
-  this.reset = function() {
-    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1);
+  this.reset = function(force) {
+    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, force);
   };
 
-  this.recenter = function(cx, cy, scale) {
+  this.recenter = function(cx, cy, scale, force) {
     if (!scale) scale = _scale;
-    if (!(cx == _cx && cy == _cy && scale == _scale)) {
+    if (force || !(cx == _cx && cy == _cy && scale == _scale)) {
       _cx = cx;
       _cy = cy;
       _scale = scale;
@@ -12238,6 +12244,7 @@ function MapExtent(el) {
   };
 
   this.getBounds = function() {
+    if (!_contentBounds) return new Bounds();
     return centerAlign(calcBounds(_cx, _cy, _scale));
   };
 
@@ -12323,19 +12330,22 @@ function MshpMap(model) {
   });
 
   model.on('select', function(e) {
-    var group;
-    if (model.size() > 2) {
-      model.removeDataset(model.getDatasets().shift());
-    }
+    var prevBounds, newBounds, group;
     group = findGroup(e.dataset);
     if (!group) {
       group = addGroup(e.dataset);
-      updateMapBounds();
     }
     group.showLayer(e.layer);
     _activeGroup = group;
     updateGroupStyle(foregroundStyle, group);
-    refreshLayers();
+    prevBounds = _ext.getBounds();
+    newBounds = group.getBounds();
+    if (newBounds.equals(prevBounds)) {
+      refreshLayers();
+    } else {
+      _ext.setBounds(newBounds);
+      _ext.reset(true);
+    }
   });
 
   model.on('update', function(e) {
@@ -12343,7 +12353,7 @@ function MshpMap(model) {
     group.updated();
     group.showLayer(e.layer);
     updateGroupStyle(foregroundStyle, group);
-    updateMapBounds();
+    _ext.setBounds(group.getBounds()); // in case bounds have changed, e.g. after proj
     refreshLayer(group);
   });
 
@@ -12386,7 +12396,6 @@ function MshpMap(model) {
         dataset = group.getDataset();
     style.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
     style.strokeColor = getStrokeStyle(lyr, dataset.arcs);
-
   }
 
   function getStrokeStyle(lyr, arcs) {
@@ -12411,23 +12420,17 @@ function MshpMap(model) {
   }
 
   function refreshLayer(group) {
-    var style = bgStyle;
+    var style;
     if (group == _activeGroup) {
       style = foregroundStyle;
     } else if (group == _highGroup) {
       style = highStyle;
     }
-    group.draw(style, _ext);
-  }
-
-  function updateMapBounds() {
-    var bounds = _groups.reduce(function(memo, group) {
-      if (group != _highGroup) {
-        memo.mergeBounds(group.getBounds());
-      }
-      return memo;
-    }, new Bounds());
-    _ext.setBounds(bounds);
+    if (style) {
+      group.draw(style, _ext);
+    } else {
+      group.hide();
+    }
   }
 
   function addGroup(dataset) {

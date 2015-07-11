@@ -32,19 +32,22 @@ function MshpMap(model) {
   });
 
   model.on('select', function(e) {
-    var group;
-    if (model.size() > 2) {
-      model.removeDataset(model.getDatasets().shift());
-    }
+    var prevBounds, newBounds, group;
     group = findGroup(e.dataset);
     if (!group) {
       group = addGroup(e.dataset);
-      updateMapBounds();
     }
     group.showLayer(e.layer);
     _activeGroup = group;
     updateGroupStyle(foregroundStyle, group);
-    refreshLayers();
+    prevBounds = _ext.getBounds();
+    newBounds = group.getBounds();
+    if (newBounds.equals(prevBounds)) {
+      refreshLayers();
+    } else {
+      _ext.setBounds(newBounds);
+      _ext.reset(true);
+    }
   });
 
   model.on('update', function(e) {
@@ -52,7 +55,7 @@ function MshpMap(model) {
     group.updated();
     group.showLayer(e.layer);
     updateGroupStyle(foregroundStyle, group);
-    updateMapBounds();
+    _ext.setBounds(group.getBounds()); // in case bounds have changed, e.g. after proj
     refreshLayer(group);
   });
 
@@ -95,7 +98,6 @@ function MshpMap(model) {
         dataset = group.getDataset();
     style.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
     style.strokeColor = getStrokeStyle(lyr, dataset.arcs);
-
   }
 
   function getStrokeStyle(lyr, arcs) {
@@ -120,23 +122,17 @@ function MshpMap(model) {
   }
 
   function refreshLayer(group) {
-    var style = bgStyle;
+    var style;
     if (group == _activeGroup) {
       style = foregroundStyle;
     } else if (group == _highGroup) {
       style = highStyle;
     }
-    group.draw(style, _ext);
-  }
-
-  function updateMapBounds() {
-    var bounds = _groups.reduce(function(memo, group) {
-      if (group != _highGroup) {
-        memo.mergeBounds(group.getBounds());
-      }
-      return memo;
-    }, new Bounds());
-    _ext.setBounds(bounds);
+    if (style) {
+      group.draw(style, _ext);
+    } else {
+      group.hide();
+    }
   }
 
   function addGroup(dataset) {

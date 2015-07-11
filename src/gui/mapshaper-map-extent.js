@@ -13,13 +13,13 @@ function MapExtent(el) {
     this.dispatchEvent('resize');
   }, this);
 
-  this.reset = function() {
-    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1);
+  this.reset = function(force) {
+    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, force);
   };
 
-  this.recenter = function(cx, cy, scale) {
+  this.recenter = function(cx, cy, scale, force) {
     if (!scale) scale = _scale;
-    if (!(cx == _cx && cy == _cy && scale == _scale)) {
+    if (force || !(cx == _cx && cy == _cy && scale == _scale)) {
       _cx = cx;
       _cy = cy;
       _scale = scale;
@@ -75,6 +75,7 @@ function MapExtent(el) {
   };
 
   this.getBounds = function() {
+    if (!_contentBounds) return new Bounds();
     return centerAlign(calcBounds(_cx, _cy, _scale));
   };
 
