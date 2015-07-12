@@ -468,7 +468,7 @@ body.simplify #layer-control {
 }
 
 #g-simplify-control .g-slider {
-	padding: 9px 5px 0px 5px;
+	margin: 9px 5px;
 	position: relative;
 	vertical-align: top;
 	display: inline-block;
@@ -483,7 +483,7 @@ body.simplify #layer-control {
 
 #g-simplify-control .g-handle {
 	position: absolute;
-	top: 6px;
+	top: -3px;
 }
 
 #g-simplify-control .g-handle img {
