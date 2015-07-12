@@ -3413,17 +3413,23 @@ var SimplifyControl = function(model) {
   function onSubmit() {
     var opts = getSimplifyOptions();
     var dataset = model.getEditingLayer().dataset;
-    if (dataset.arcs) {
-      MapShaper.simplifyPaths(dataset.arcs, opts);
-      dataset.arcs.setRetainedPct(1);
-      if (opts.keep_shapes) {
-        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
-      }
-    }
-    control.reset();
-    model.updated({simplify: true});
-    showSlider();
+    var message = dataset.arcs && dataset.arcs.getPointCount() > 1e6 ? 'Calculating' : null;
     menu.hide();
+    gui.runAsync(
+      function proc() {
+        if (dataset.arcs) {
+          MapShaper.simplifyPaths(dataset.arcs, opts);
+          dataset.arcs.setRetainedPct(1);
+          if (opts.keep_shapes) {
+            MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
+          }
+        }
+      },
+      function done() {
+        control.reset();
+        model.updated({simplify: true});
+        showSlider();
+      }, message);
   }
 
   function showSlider() {
@@ -4387,15 +4393,14 @@ gui.readZipFile = function(file, cb) {
 
 
 
-gui.runAsync = function(task, done, message) {
+gui.runAsync = function(task, done, msg) {
   var delay = 25, // timeout in ms; should be long enough for Firefox to refresh.
       el;
-  if (!message) {
+  if (!msg) {
     task();
     done();
   } else {
-    el = El('div').addClass('progress-message').appendTo('body');
-    El('div').text(message).appendTo(el);
+    el = gui.showProgressMessage(msg);
     // Run task with a delay, so browser can display the message
     gui.queueSync()
       .defer(task, delay)
@@ -4404,6 +4409,12 @@ gui.runAsync = function(task, done, message) {
         done();
       });
   }
+};
+
+gui.showProgressMessage = function(msg) {
+  var el = El('div').addClass('progress-message').appendTo('body');
+  El('div').text(msg).appendTo(el);
+  return el;
 };
 
 
@@ -11369,7 +11380,6 @@ var ExportControl = function(model) {
     exportButton("#g-geojson-btn", "geojson");
     exportButton("#g-shapefile-btn", "shapefile");
     exportButton("#g-topojson-btn", "topojson");
-
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
   }
@@ -11383,15 +11393,17 @@ var ExportControl = function(model) {
   }
 
   function exportButton(selector, format) {
-    var btn = new SimpleButton(selector).active(true).on('click', onClick);
+    var btn = new SimpleButton(selector).on('click', onClick);
     function onClick(e) {
-      btn.active(false);
+      var msg = gui.showProgressMessage('Exporting');
+      model.clearMode();
       setTimeout(function() {
         exportAs(format, function(err) {
-          btn.active(true);
+          // hide message after a delay, so it doesn't just flash for an instant.
+          setTimeout(function(){msg.remove();}, 400);
           if (err) throw err; // error(err);
         });
-      }, 10);
+      }, 20);
     }
   }
 

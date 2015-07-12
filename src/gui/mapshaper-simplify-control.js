@@ -76,17 +76,23 @@ var SimplifyControl = function(model) {
   function onSubmit() {
     var opts = getSimplifyOptions();
     var dataset = model.getEditingLayer().dataset;
-    if (dataset.arcs) {
-      MapShaper.simplifyPaths(dataset.arcs, opts);
-      dataset.arcs.setRetainedPct(1);
-      if (opts.keep_shapes) {
-        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
-      }
-    }
-    control.reset();
-    model.updated({simplify: true});
-    showSlider();
+    var message = dataset.arcs && dataset.arcs.getPointCount() > 1e6 ? 'Calculating' : null;
     menu.hide();
+    gui.runAsync(
+      function proc() {
+        if (dataset.arcs) {
+          MapShaper.simplifyPaths(dataset.arcs, opts);
+          dataset.arcs.setRetainedPct(1);
+          if (opts.keep_shapes) {
+            MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
+          }
+        }
+      },
+      function done() {
+        control.reset();
+        model.updated({simplify: true});
+        showSlider();
+      }, message);
   }
 
   function showSlider() {

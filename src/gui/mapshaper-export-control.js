@@ -17,7 +17,6 @@ var ExportControl = function(model) {
     exportButton("#g-geojson-btn", "geojson");
     exportButton("#g-shapefile-btn", "shapefile");
     exportButton("#g-topojson-btn", "topojson");
-
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
   }
@@ -31,15 +30,17 @@ var ExportControl = function(model) {
   }
 
   function exportButton(selector, format) {
-    var btn = new SimpleButton(selector).active(true).on('click', onClick);
+    var btn = new SimpleButton(selector).on('click', onClick);
     function onClick(e) {
-      btn.active(false);
+      var msg = gui.showProgressMessage('Exporting');
+      model.clearMode();
       setTimeout(function() {
         exportAs(format, function(err) {
-          btn.active(true);
+          // hide message after a delay, so it doesn't just flash for an instant.
+          setTimeout(function(){msg.remove();}, 400);
           if (err) throw err; // error(err);
         });
-      }, 10);
+      }, 20);
     }
   }
 
