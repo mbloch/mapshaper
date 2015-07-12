@@ -2,7 +2,7 @@
 
 function Console(model) {
   var CURSOR = '$ ';
-  var PROMPT = 'Enter mapshaper commands, or type "examples" to see examples';
+  var PROMPT = 'Enter mapshaper commands or type "tips" for examples and console help';
   var el = El('#console').hide();
   var content = El('#console-buffer');
   var log = El('div').id('console-log').appendTo(content);
@@ -147,7 +147,7 @@ function Console(model) {
     if (cmd) {
       if (cmd == 'clear') {
         clear();
-      } else if (cmd == 'examples') {
+      } else if (cmd == 'tips') {
         printExamples();
       } else if (cmd == 'layers') {
         message("Available layers:",
@@ -237,8 +237,10 @@ function Console(model) {
   }
 
   function printExamples() {
-    printExample("View information about this data layer", "$ info");
     printExample("Extract one state from a national dataset","$ filter 'STATE == \"Iowa\"'");
-    printExample("View help about a command", "$ help filter");
+    printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
+    printExample("See information about the active data layer", "$ info");
+    printExample("Get help for mapshaper commands", "$ help");
+    printExample("clear the console", "$ clear");
   }
 }

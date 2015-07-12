@@ -48,9 +48,8 @@ MapShaper.getOptionParser = function() {
       };
 
   var parser = new CommandParser(),
-      usage = "Usage\n" +
-    "  mapshaper -<command> [options] ...\n" +
-    "  mapshaper -help [command(s)]";
+      usage = "Usage:  mapshaper -<command> [options] ...";
+
   parser.usage(usage);
 
   /*
@@ -61,7 +60,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
   */
 
-  parser.note("Use mapshaper -help <command> to view options for a single command");
+  parser.note("Enter mapshaper -help <command> to view options for a single command");
 
   parser.default('i');
 
