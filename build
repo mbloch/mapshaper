@@ -1,17 +1,17 @@
 #!/usr/bin/env node
  
 var follow = process.argv.indexOf('-f') > -1;
+
 require("catty")({follow: follow})
 	.addLibrary("lib")
 	.addLibrary("src")
 	.cat("src/cli/mapshaper-cli-lib.js", "./mapshaper.js")
-	.cat("src/gui/mapshaper-gui.js", browserify);
+	.cat("src/gui/mapshaper-gui.js", onCat);
 
-function browserify(err, js) {
-	var istream = new require('stream').Readable();
-	istream.push(js);
-	istream.push(null);
-	require('browserify')(istream).bundle(write);
+function onCat(err, js) {
+	var tmp = "./mapshaper-gui.js";
+	require('fs').writeFileSync(tmp, js);
+	require('browserify')(tmp).bundle(write);
 }
 
 function write(err, buf) {
