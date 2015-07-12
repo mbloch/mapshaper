@@ -88,19 +88,6 @@ body {
 	margin: 0 4px 0 0;
 }
 
-#layer-control {
-	top: 0;
-	position: absolute;
-	text-align: center;
-	z-index: 10;
-	width: 100%;
-	/*margin: 7px auto 0 auto;*/
-}
-
-body.simplify #layer-control {
-	display: none;
-}
-
 
 /* --- Main area ------------- */
 
@@ -164,7 +151,7 @@ div.error-box > div {
 	background: rgba(255, 255, 255, 0.4);
 	border: 1px solid rgba(0,0,0,0.2);
 	padding: 0 3px;
-	margin: 2px 5px 0 0px;
+	margin: 2px 0 0 0px;
 	height: 15px;
 	font-size: 11px;
 }
@@ -195,7 +182,7 @@ div.error-box > div {
 
 .info-box {
 	text-align: left;
-	margin-top: 22px;
+	margin-top: 11px;
 	background-color: #fff;
 	padding: 10px 14px 8px 14px;
 	vertical-align: top;
@@ -229,7 +216,7 @@ div.error-box > div {
 }
 
 .g-option-menu .g-tip-button {
-	margin-left: 5px;
+	margin-left: 15px;
 }
 
 .g-option-menu input.g-checkbox {
@@ -264,19 +251,6 @@ div.error-box > div {
 	width: 100%;
 }
 
-@media (max-width: 876px) {
-	body.simplify  #g-simplify-control-wrapper {
-		top: 22px;
-	}
-
-	body.simplify .g-page-header {
-		height: 52px;
-	}
-
-	body.simplify .main-area {
-		margin-top: 52px;
-	}
-}
 
 /* --- Console control ------------ */
 
@@ -358,6 +332,18 @@ div.error-box > div {
 
 /* --- Layer menu ----------- */
 
+#layer-control {
+	top: 0;
+	position: absolute;
+	text-align: center;
+	z-index: 10;
+	width: 100%;
+}
+
+body.simplify #layer-control {
+	display: none;
+}
+
 #layer-menu .info-box {
 	overflow: hidden;
 	max-height: 90%;
@@ -365,7 +351,7 @@ div.error-box > div {
 }
 
 #layer-menu .layer-list {
-	width: 300px;
+	width: 240px;
 	margin: 6px 0 6px 0;
 }
 
@@ -374,7 +360,7 @@ div.error-box > div {
 	margin-left: -14px;	
 	padding: 8px 14px;
 	cursor: pointer;
-	width: 300px;
+	width: 240px;
 	line-height: 1.1;
 }
 
@@ -453,6 +439,20 @@ div.error-box > div {
 
 /* Simplification control ------------ */
 
+@media (max-width: 765px) {
+	body.simplify  #g-simplify-control-wrapper {
+		top: 22px;
+	}
+
+	body.simplify .g-page-header {
+		height: 52px;
+	}
+
+	body.simplify .main-area {
+		margin-top: 52px;
+	}
+}
+
 #g-simplify-control-wrapper {
 	display: none;
 	position: absolute;
@@ -465,7 +465,7 @@ div.error-box > div {
 #g-simplify-control {
 	text-align: center;
 	white-space: nowrap;
-	padding: 0 144px 0 12px;
+	padding: 0 90px 0 12px;
 }
 
 #g-simplify-control .g-slider {
