@@ -3154,12 +3154,18 @@ var SimplifyControl = function(model) {
   });
 
   function turnOn() {
-    if (!MapShaper.datasetHasPaths(model.getEditingLayer().dataset)) {
+    var dataset = model.getEditingLayer().dataset;
+    if (!MapShaper.datasetHasPaths(dataset)) {
       gui.alert("This dataset can not be simplified");
       return;
     }
-    // TODO: skip menu if thresholds have been calculated
-    menu.show();
+    if (dataset.arcs.getVertexData().zz) {
+      // TODO: try to avoid calculating pct (slow);
+      showSlider(); // need to show slider before setting; TODO: fix
+      control.value(dataset.arcs.getRetainedPct());
+    } else {
+      menu.show();
+    }
   }
 
   function turnOff() {
@@ -3171,8 +3177,6 @@ var SimplifyControl = function(model) {
     var opts = getSimplifyOptions();
     var dataset = model.getEditingLayer().dataset;
     if (dataset.arcs) {
-      // todo: only popup menu if there are no arcs...
-      console.log(">>> onsubmit simp; ", !!dataset.arcs.getVertexData().zz);
       MapShaper.simplifyPaths(dataset.arcs, opts);
       dataset.arcs.setRetainedPct(1);
       if (opts.keep_shapes) {
@@ -3181,9 +3185,13 @@ var SimplifyControl = function(model) {
     }
     control.reset();
     model.updated({simplify: true});
+    showSlider();
+    menu.hide();
+  }
+
+  function showSlider() {
     el.show();
     El('body').addClass('simplify'); // for resizing, hiding layer label, etc.
-    menu.hide();
   }
 
   function getSimplifyOptions() {
@@ -3213,9 +3221,9 @@ var SimplifyControl = function(model) {
   }
 
   control.reset = function() {
+    control.value(1);
     el.hide();
     menu.hide();
-    control.value(1);
     El('body').removeClass('simplify');
   };
 
