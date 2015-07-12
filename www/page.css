@@ -35,6 +35,7 @@ body {
 
 .g-page-header {
 	position: absolute;
+	color: white;
 	top: 0;
 	left: 0;
 	z-index: 10;
@@ -56,7 +57,6 @@ body {
 }
 
 .g-mapshaper-logo {
-	color: white;
 	font-weight: bold;
 	font-size: 18px;
 	margin: 2px 0 0 12px;
@@ -79,13 +79,14 @@ body {
 	margin: 0 9px 3px 0;
 }
 
-#g-export-buttons {
-	display: none;
+.separator {
+	border-left: 1px solid white;
+	height: 10px;
+	margin: 0 2px 0 2px;
 }
 
-.g-page-header .g-label {
-	color: #fff;
-	margin: 0 4px 0 0;
+#g-export-buttons {
+	display: none;
 }
 
 
@@ -228,18 +229,22 @@ div.error-box > div {
 
 /* --- Progress bar --------------- */
 
-.progress-bar {
+.progress-message {
 	position: absolute;
 	width: 100%;
 	z-index: 90;
 	text-align: center;
-	top: 75px;
+	top: 52px;
 	font-size: 16px;
 }
 
-.progress-bar canvas {
-	width: 40px;
-	height: 40px;
+.progress-message > div {
+	display: inline-block;
+	text-transform: uppercase;
+	padding: 3px 6px;
+	font-size: 16px;
+	background-color: rgba(255, 255, 255, 0.85);
+	border: 1px solid black;
 }
 
 /* === Editing interface ========== */
@@ -468,7 +473,7 @@ body.simplify #layer-control {
 }
 
 #g-simplify-control .g-slider {
-	margin: 9px 5px;
+	margin: 9px 5px 0 7px;
 	position: relative;
 	vertical-align: top;
 	display: inline-block;
