@@ -10,29 +10,6 @@ img:-moz-loading {
 	display: none;
 }
 
-
-.g-menu-link {
-	color: white;
-	font-size: 14px;
-	font-weight: normal;
-	padding: 0 3px 1px;
-	border: 1px solid rgba(0, 0, 0, 0);
-}
-
-.g-menu-link.inactive {
-	border: none;
-	color: #aaa;
-}
-
-.g-menu-link:hover:not(.inactive) {
-	border: 1px solid white;
-	cursor: pointer;
-}
-
-div .g-experimental {
-	color: #F24400;
-}
-
 div.g-tip {
 	color: #555;
 	font-weight: normal;

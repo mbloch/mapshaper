@@ -70,11 +70,14 @@ ring features.
 
 			<h4>Method</h4>
 			<div class="g-option-menu">
-			<div><label><input type="radio" name="method" value="mapshaper" checked class="g-radio">Visvalingam / weighted area</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Points located at the vertex
-of more acute angles are
-preferentially removed, for
-a smoother appearance.</div></div></div></div>
+
+			<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Simplified lines remain within a
+given distance of original lines.
+Good for thinning dense points
+but tends to form spikes at high
+simplification.</div></div></div>
+			</div>			
 
 			<div><label><input type="radio" name="method" value="visvalingam" class="g-radio">Visvalingam / effective area</label><div class="g-tip-button">?<div class="g-tip-anchor">
 <div class="g-tip">Lines are simplified by iteratively
@@ -83,13 +86,11 @@ the least-area triangle with two
 adjacent points.</div></div></div>
 			</div>
 
-			<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Simplified lines remain within a
-given distance of original lines.
-Good for thinning dense points
-but tends to form spikes at high
-simplification.</div></div></div>
-			</div>
+			<div><label><input type="radio" name="method" value="mapshaper" checked class="g-radio">Visvalingam / weighted area</label><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Points located at the vertex
+of more acute angles are
+preferentially removed, for
+a smoother appearance.</div></div></div></div>
 
 		</div> <!-- option menu -->
 
@@ -126,11 +127,11 @@ topological errors in a dataset.</div></div></div></div>
 together points with nearly identical
 coordinates. This option does not
 apply to TopoJSON files.</div></div></div></div>
-
-<div><input type="text" class="advanced-options" placeholder="freeform options" /><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Enter command line import options.
-Examples: "precision=0.001"
-"no-topology" "encoding=big5"</div></div></div></div>
+<div style="height:3px"></div>
+<div><input type="text" class="advanced-options" placeholder="command line options" /><div class="g-tip-button">?<div class="g-tip-anchor">
+<div class="g-tip">Enter options from the command line
+interface. Examples: "no-topology"
+"precision=0.001" "encoding=big5"</div></div></div></div>
 		</div>
 
 		<div id="dropped-file-list">

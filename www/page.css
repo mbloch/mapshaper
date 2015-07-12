@@ -151,9 +151,8 @@ div.error-box > div {
 	background: rgba(255, 255, 255, 0.4);
 	border: 1px solid rgba(0,0,0,0.2);
 	padding: 0 3px;
-	margin: 2px 0 0 0px;
-	height: 15px;
-	font-size: 11px;
+	height: 17px;
+	font-size: 12px;
 }
 
 #mshp-not-supported {
@@ -193,11 +192,11 @@ div.error-box > div {
 
 .info-box h3 {
 	padding: 0;
-	margin: 0 0 5px 0;
+	margin: 0 0 3px 0;
 }
 
 .info-box h4 {
-	margin: 0 0 4px 0;
+	margin: 0 0 2px 0;
 }
 
 .info-box p {
@@ -206,8 +205,7 @@ div.error-box > div {
 }
 
 .g-option-menu {
-	font-size: 13px;
-	margin: 0 0 5px 0;
+	margin: 0 0 6px 0;
 }
 
 .g-option-menu input {
@@ -216,7 +214,8 @@ div.error-box > div {
 }
 
 .g-option-menu .g-tip-button {
-	margin-left: 15px;
+	margin-left: 12px;
+	margin-top: 3px;
 }
 
 .g-option-menu input.g-checkbox {
