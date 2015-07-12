@@ -1,7 +1,7 @@
 /* @requires
 mapshaper-data-table
 mapshaper-zip-reader
-mapshaper-progress-bar
+mapshaper-progress-message
 mapshaper-import
 */
 
@@ -167,34 +167,24 @@ function ImportControl(model) {
   function importFileContent(type, path, content) {
     var importOpts = getImportOpts(),
       size = content.byteLength || content.length, // ArrayBuffer or string
-      showProgress = size > 4e7, // don't show progress bar for small datasets
-      delay = showProgress ? 25 : 0, // timeout in ms; should be long enough for Firefox to refresh.
-      progressBar = new ProgressBar(),
-      dataset, queue;
+      message = size > 4e7 ? 'Importing' : null, // don't show message if dataset is small
+      dataset;
 
     if (useCount++ === 0) {
       close();
     }
 
-    if (showProgress) progressBar.appendTo('body');
-    progressBar.update(0.35, "Importing");
-    // Import data with a delay before each step, so browser can refresh the progress bar
-    queue = gui.queueSync()
-      .defer(function() {
+    gui.runAsync(
+      function proc() {
         importOpts.files = [path]; // TODO: try to remove this
         dataset = MapShaper.importFileContent(content, path, importOpts);
-      }, delay);
-    queue.await(function() {
-      if (type == 'shp') {
-        gui.receiveShapefileComponent(path, dataset);
-      }
-      progressBar.remove();
-      onImport(dataset, importOpts);
-    });
-  }
-
-  function onImport(dataset, opts) {
-    model.setEditingLayer(dataset.layers[0], dataset, opts);
+      },
+      function done() {
+        if (type == 'shp') {
+          gui.receiveShapefileComponent(path, dataset);
+        }
+        model.setEditingLayer(dataset.layers[0], dataset, importOpts);
+      }, message);
   }
 
   // @file a File object
