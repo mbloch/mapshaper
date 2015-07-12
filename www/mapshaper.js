@@ -2968,7 +2968,6 @@ function Slider(ref, opts) {
 
 utils.inherit(Slider, EventDispatcher);
 
-
 function ClickText(ref) {
   var _el = El(ref);
   var _self = this;
@@ -11638,10 +11637,11 @@ function LayerControl(model) {
 /* mapshaper-gui-lib */
 
 function ImportFileProxy(model) {
-  // try to match an imported dataset or layer
+  // Try to match an imported dataset or layer.
+  // TODO: think about handling import options
   return function importFile(src, opts) {
     var datasets = model.getDatasets();
-    return datasets.reduce(function(memo, d) {
+    var retn = datasets.reduce(function(memo, d) {
       var lyr;
       if (memo) return memo; // already found a match
       // try to match import filename of this dataset
@@ -11650,6 +11650,8 @@ function ImportFileProxy(model) {
       lyr = utils.find(d.layers, function(lyr) {return lyr.name == src;});
       return lyr ? MapShaper.isolateLayer(lyr, d) : null;
     }, null);
+    if (!retn) stop("Missing data layer [" + src + "]");
+    return retn;
   };
 }
 

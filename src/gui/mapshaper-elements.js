@@ -108,7 +108,6 @@ function Slider(ref, opts) {
 
 utils.inherit(Slider, EventDispatcher);
 
-
 function ClickText(ref) {
   var _el = El(ref);
   var _self = this;
