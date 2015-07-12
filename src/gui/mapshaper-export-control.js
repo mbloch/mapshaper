@@ -47,15 +47,13 @@ var ExportControl = function(model) {
   function exportAs(format, done) {
     var opts = {format: format}, // TODO: implement other export opts
         editing = model.getEditingLayer(),
-        dataset = editing.dataset,
-        files;
-
+        dataset, files;
     try {
-      if (format != 'topojson') {
-        // unless exporting TopoJSON, only output the currently selected layer
-        dataset = utils.defaults({
-          layers: dataset.layers.filter(function(lyr) {return lyr == editing.layer;})
-        }, dataset);
+      if (format == 'topojson') {
+        dataset = editing.dataset; // For TopoJSON, export all layers in this dataset
+      } else {
+        // other formats, only output the currently selected layer
+        dataset = MapShaper.isolateLayer(editing.layer, editing.dataset);
       }
       files = MapShaper.exportFileContent(dataset, opts);
     } catch(e) {

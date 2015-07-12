@@ -87,6 +87,9 @@ MapShaper.getClipLayer = function(src, dataset, opts) {
   if (src) {
     // assuming src is a filename
     clipDataset = MapShaper.readClipFile(src, opts);
+    if (!clipDataset) {
+      stop("Unable to find file [" + src + "]");
+    }
     // TODO: handle multi-layer sources, e.g. TopoJSON files
     if (clipDataset.layers.length != 1) {
       stop("Clip/erase only supports clipping with single-layer datasets");

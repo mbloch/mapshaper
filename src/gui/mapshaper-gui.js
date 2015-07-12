@@ -5,6 +5,7 @@ mapshaper-import-control
 mapshaper-export-control
 mapshaper-repair-control
 mapshaper-layer-control
+mapshaper-gui-proxy
 mapshaper-map
 mapshaper-maplayer
 mapshaper-simplify
@@ -30,6 +31,7 @@ gui.startEditing = function() {
       map, repair, simplify;
   gui.startEditing = function() {};
   gui.alert = new ErrorMessages(model);
+  api.importFile = new ImportFileProxy(model);
 
   // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
   map = new MshpMap(model);

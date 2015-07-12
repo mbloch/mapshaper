@@ -71,11 +71,16 @@ var SimplifyControl = function(model) {
     var opts = getSimplifyOptions();
     var dataset = model.getEditingLayer().dataset;
     if (dataset.arcs) {
+      // todo: only popup menu if there are no arcs...
+      console.log(">>> onsubmit simp; ", !!dataset.arcs.getVertexData().zz);
       MapShaper.simplifyPaths(dataset.arcs, opts);
+      dataset.arcs.setRetainedPct(1);
       if (opts.keep_shapes) {
         MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
       }
     }
+    control.reset();
+    model.updated({simplify: true});
     el.show();
     El('body').addClass('simplify'); // for resizing, hiding layer label, etc.
     menu.hide();
@@ -110,6 +115,7 @@ var SimplifyControl = function(model) {
   control.reset = function() {
     el.hide();
     menu.hide();
+    control.value(1);
     El('body').removeClass('simplify');
   };
 

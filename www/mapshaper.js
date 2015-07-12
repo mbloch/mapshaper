@@ -3171,11 +3171,16 @@ var SimplifyControl = function(model) {
     var opts = getSimplifyOptions();
     var dataset = model.getEditingLayer().dataset;
     if (dataset.arcs) {
+      // todo: only popup menu if there are no arcs...
+      console.log(">>> onsubmit simp; ", !!dataset.arcs.getVertexData().zz);
       MapShaper.simplifyPaths(dataset.arcs, opts);
+      dataset.arcs.setRetainedPct(1);
       if (opts.keep_shapes) {
         MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
       }
     }
+    control.reset();
+    model.updated({simplify: true});
     el.show();
     El('body').addClass('simplify'); // for resizing, hiding layer label, etc.
     menu.hide();
@@ -3210,6 +3215,7 @@ var SimplifyControl = function(model) {
   control.reset = function() {
     el.hide();
     menu.hide();
+    control.value(1);
     El('body').removeClass('simplify');
   };
 
@@ -5751,6 +5757,12 @@ MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
   dataset.layers = currLayers;
 };
 
+MapShaper.isolateLayer = function(layer, dataset) {
+  return utils.defaults({
+    layers: dataset.layers.filter(function(lyr) {return lyr == layer;})
+  }, dataset);
+};
+
 // @target is a layer identifier or a comma-sep. list of identifiers
 // an identifier is a literal name, a name containing "*" wildcard or
 // a 0-based array index
@@ -5773,48 +5785,6 @@ MapShaper.findMatchingLayers = function(layers, target) {
     return layers[i];
   });
 };
-
-/*
-// TODO: consider adding dataset validation...
-MapShaper.validateLayer = function(lyr, arcs) {
-  var type = lyr.geometry_type;
-  if (!utils.isArray(lyr.shapes)) {
-    error("Layer is missing shapes property");
-  }
-  if (lyr.data && lyr.data.size() != lyr.shapes.length) {
-    error("Layer contains mismatched data table and shapes");
-  }
-  if (arcs && arcs instanceof ArcCollection === false) {
-    error("Expected an ArcCollection");
-  }
-  if (type == 'polygon' || type == 'polyline') {
-    if (!arcs) error("Missing ArcCollection for a", type, "layer");
-    // TODO: validate shapes, make sure ids are w/in arc range
-  } else if (type == 'point') {
-    // TODO: validate shapes
-  } else if (type === null) {
-    // TODO: make sure shapes are all null
-  }
-};
-
-// Simple integrity checks
-MapShaper.validateDataset = function(data) {
-  if (!data) invalid("Missing dataset object");
-  if (!utils.isArray(data.layers) || data.layers.length > 0 === false)
-    invalid("Missing layers");
-  data.layers.forEach(function(lyr) {
-    try {
-      MapShaper.validateLayer(lyr, data.arcs);
-    } catch (e) {
-      invalid(e.message);
-    }
-  });
-
-  function invalid(msg) {
-    error("[validateDataset()] " + msg);
-  }
-};
-*/
 
 
 
@@ -11223,15 +11193,13 @@ var ExportControl = function(model) {
   function exportAs(format, done) {
     var opts = {format: format}, // TODO: implement other export opts
         editing = model.getEditingLayer(),
-        dataset = editing.dataset,
-        files;
-
+        dataset, files;
     try {
-      if (format != 'topojson') {
-        // unless exporting TopoJSON, only output the currently selected layer
-        dataset = utils.defaults({
-          layers: dataset.layers.filter(function(lyr) {return lyr == editing.layer;})
-        }, dataset);
+      if (format == 'topojson') {
+        dataset = editing.dataset; // For TopoJSON, export all layers in this dataset
+      } else {
+        // other formats, only output the currently selected layer
+        dataset = MapShaper.isolateLayer(editing.layer, editing.dataset);
       }
       files = MapShaper.exportFileContent(dataset, opts);
     } catch(e) {
@@ -11659,6 +11627,25 @@ function LayerControl(model) {
 }
 
 
+/* mapshaper-gui-lib */
+
+function ImportFileProxy(model) {
+  // try to match an imported dataset or layer
+  return function importFile(src, opts) {
+    var datasets = model.getDatasets();
+    return datasets.reduce(function(memo, d) {
+      var lyr;
+      if (memo) return memo; // already found a match
+      // try to match import filename of this dataset
+      if (d.info.input_files[0] == src) return d;
+      // try to match name of a layer in this dataset
+      lyr = utils.find(d.layers, function(lyr) {return lyr.name == src;});
+      return lyr ? MapShaper.isolateLayer(lyr, d) : null;
+    }, null);
+  };
+}
+
+
 
 
 MapShaper.drawPoints = function(paths, style, canvas) {
@@ -11972,12 +11959,12 @@ function PointIter() {
 function LayerGroup(dataset) {
   var _el = El('canvas').css('position:absolute;'),
       _canvas = _el.node(),
-      _bounds = MapShaper.getDatasetBounds(dataset),
-      _lyr, _filteredArcs;
+      _lyr, _filteredArcs, _bounds;
 
-  initArcs();
+  init();
 
-  function initArcs() {
+  function init() {
+    _bounds = MapShaper.getDatasetBounds(dataset);
     _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
   }
 
@@ -12009,21 +11996,13 @@ function LayerGroup(dataset) {
     _canvas.getContext('2d').clearRect(0, 0, _canvas.width, _canvas.height);
   };
 
-  // Update in response to an unknown change (e.g. as a result of editing)
-  // TODO: find a less kludgy solution
+  // Rebuild filtered arcs and recalculate bounds
   this.updated = function() {
-    // if bounds have changed (e.g. after reprojection), update filtered arcs
-    // Use arc bounds instead of active layer bounds, to show original layer
-    // arcs after e.g. filtering or point conversion.
-    var bounds = dataset.arcs ? dataset.arcs.getBounds() : MapShaper.getDatasetBounds(dataset);
-    if (!bounds.equals(_bounds)) {
-      initArcs();
-      _bounds = bounds;
-    }
-
+    var interval = dataset.arcs ? dataset.arcs.getRetainedInterval() : 0;
+    init();
     // update simplification level
     if (_filteredArcs) {
-      _filteredArcs.setRetainedInterval(dataset.arcs.getRetainedInterval());
+      _filteredArcs.setRetainedInterval(interval);
     }
   };
 
@@ -12354,10 +12333,14 @@ function MshpMap(model) {
 
   model.on('update', function(e) {
     var group = findGroup(e.dataset);
-    group.updated();
     group.showLayer(e.layer);
     updateGroupStyle(foregroundStyle, group);
-    _ext.setBounds(group.getBounds()); // in case bounds have changed, e.g. after proj
+    if (e.flags.simplify || e.flags.proj) {
+      // update filtered arcs when simplification thresholds are calculated
+      // or arcs are reprojected
+      group.updated();
+      _ext.setBounds(group.getBounds());
+    }
     if (e.flags.proj) {
       _ext.reset(true);
     } else {
@@ -13438,6 +13421,9 @@ MapShaper.getClipLayer = function(src, dataset, opts) {
   if (src) {
     // assuming src is a filename
     clipDataset = MapShaper.readClipFile(src, opts);
+    if (!clipDataset) {
+      stop("Unable to find file [" + src + "]");
+    }
     // TODO: handle multi-layer sources, e.g. TopoJSON files
     if (clipDataset.layers.length != 1) {
       stop("Clip/erase only supports clipping with single-layer datasets");
@@ -17622,7 +17608,7 @@ MapShaper.parseCommands = function(tokens) {
 
 // Parse a command line string for the browser console
 MapShaper.parseConsoleCommands = function(raw) {
-  var blocked = 'o,i,clip,join,erase'.split(','),
+  var blocked = 'o,i'.split(','),
       tokens, parsed, str;
   str = raw.replace(/^mapshaper\b/, '').trim();
   if (/^[a-z]/.test(str)) {
@@ -18204,6 +18190,7 @@ gui.startEditing = function() {
       map, repair, simplify;
   gui.startEditing = function() {};
   gui.alert = new ErrorMessages(model);
+  api.importFile = new ImportFileProxy(model);
 
   // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
   map = new MshpMap(model);

@@ -5,12 +5,12 @@
 function LayerGroup(dataset) {
   var _el = El('canvas').css('position:absolute;'),
       _canvas = _el.node(),
-      _bounds = MapShaper.getDatasetBounds(dataset),
-      _lyr, _filteredArcs;
+      _lyr, _filteredArcs, _bounds;
 
-  initArcs();
+  init();
 
-  function initArcs() {
+  function init() {
+    _bounds = MapShaper.getDatasetBounds(dataset);
     _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
   }
 
@@ -42,21 +42,13 @@ function LayerGroup(dataset) {
     _canvas.getContext('2d').clearRect(0, 0, _canvas.width, _canvas.height);
   };
 
-  // Update in response to an unknown change (e.g. as a result of editing)
-  // TODO: find a less kludgy solution
+  // Rebuild filtered arcs and recalculate bounds
   this.updated = function() {
-    // if bounds have changed (e.g. after reprojection), update filtered arcs
-    // Use arc bounds instead of active layer bounds, to show original layer
-    // arcs after e.g. filtering or point conversion.
-    var bounds = dataset.arcs ? dataset.arcs.getBounds() : MapShaper.getDatasetBounds(dataset);
-    if (!bounds.equals(_bounds)) {
-      initArcs();
-      _bounds = bounds;
-    }
-
+    var interval = dataset.arcs ? dataset.arcs.getRetainedInterval() : 0;
+    init();
     // update simplification level
     if (_filteredArcs) {
-      _filteredArcs.setRetainedInterval(dataset.arcs.getRetainedInterval());
+      _filteredArcs.setRetainedInterval(interval);
     }
   };
 

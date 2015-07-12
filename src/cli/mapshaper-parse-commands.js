@@ -11,7 +11,7 @@ MapShaper.parseCommands = function(tokens) {
 
 // Parse a command line string for the browser console
 MapShaper.parseConsoleCommands = function(raw) {
-  var blocked = 'o,i,clip,join,erase'.split(','),
+  var blocked = 'o,i'.split(','),
       tokens, parsed, str;
   str = raw.replace(/^mapshaper\b/, '').trim();
   if (/^[a-z]/.test(str)) {

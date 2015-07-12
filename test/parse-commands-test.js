@@ -15,10 +15,6 @@ describe('mapshaper-console.js', function () {
 
       bad("-o out.shp");
       bad("mapshaper foo.shp")
-      bad("mapshaper -clip bar");
-      bad('clip bar');
-      bad("join foo keys=a,b");
-      bad("erase bar");
       bad("o format=geojson");
       bad("-i foo");
     })

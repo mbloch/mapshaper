@@ -52,10 +52,14 @@ function MshpMap(model) {
 
   model.on('update', function(e) {
     var group = findGroup(e.dataset);
-    group.updated();
     group.showLayer(e.layer);
     updateGroupStyle(foregroundStyle, group);
-    _ext.setBounds(group.getBounds()); // in case bounds have changed, e.g. after proj
+    if (e.flags.simplify || e.flags.proj) {
+      // update filtered arcs when simplification thresholds are calculated
+      // or arcs are reprojected
+      group.updated();
+      _ext.setBounds(group.getBounds());
+    }
     if (e.flags.proj) {
       _ext.reset(true);
     } else {
