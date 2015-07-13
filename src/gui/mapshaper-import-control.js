@@ -225,7 +225,7 @@ gui.receiveShapefileComponent = (function() {
       // only use prj or dbf if the dataset lacks this info
       // (the files could be intended for a future re-import of .shp content)
       if (cache.prj && !info.output_prj) {
-        info.output_prj = cache.prj;
+        info.input_prj = cache.prj;
       }
       if (cache.dbf && !lyr.data) {
         // TODO: handle unknown encodings interactively

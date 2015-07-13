@@ -9,18 +9,15 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#335",
-      lightStroke = "#f5d4f9"; // "#e8d3ea";
-
+      lightStroke = "rgba(222, 88, 249, 0.23)";
   var foregroundStyle = {
         strokeColor: darkStroke,
         dotColor: "#223"
       };
-
   var bgStyle = {
         strokeColor: "#aaa",
         dotColor: "#aaa"
       };
-
   var highStyle = {
       dotColor: "#F24400"
   };

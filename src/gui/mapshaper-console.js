@@ -241,6 +241,6 @@ function Console(model) {
     printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
     printExample("See information about the active data layer", "$ info");
     printExample("Get help for mapshaper commands", "$ help");
-    printExample("clear the console", "$ clear");
+    printExample("Clear the console", "$ clear");
   }
 }

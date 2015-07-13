@@ -9526,8 +9526,8 @@ MapShaper.exportShapefile = function(dataset, opts) {
 
 MapShaper.exportPrjFile = function(lyr, dataset) {
   var prj = dataset.info.output_prj;
-  if (!prj && prj !== null) { // null means unknown prj
-    prj = dataset.info.output_prj;
+  if (!prj && prj !== null) { // null output_prj means prj is unknown (proj command causes this)
+    prj = dataset.info.input_prj;
   }
   return prj && {
     content: prj,

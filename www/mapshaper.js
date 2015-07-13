@@ -10508,8 +10508,8 @@ MapShaper.exportShapefile = function(dataset, opts) {
 
 MapShaper.exportPrjFile = function(lyr, dataset) {
   var prj = dataset.info.output_prj;
-  if (!prj && prj !== null) { // null means unknown prj
-    prj = dataset.info.output_prj;
+  if (!prj && prj !== null) { // null output_prj means prj is unknown (proj command causes this)
+    prj = dataset.info.input_prj;
   }
   return prj && {
     content: prj,
@@ -10990,7 +10990,7 @@ gui.receiveShapefileComponent = (function() {
       // only use prj or dbf if the dataset lacks this info
       // (the files could be intended for a future re-import of .shp content)
       if (cache.prj && !info.output_prj) {
-        info.output_prj = cache.prj;
+        info.input_prj = cache.prj;
       }
       if (cache.dbf && !lyr.data) {
         // TODO: handle unknown encodings interactively
@@ -12511,18 +12511,15 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#335",
-      lightStroke = "#f5d4f9"; // "#e8d3ea";
-
+      lightStroke = "rgba(222, 88, 249, 0.23)";
   var foregroundStyle = {
         strokeColor: darkStroke,
         dotColor: "#223"
       };
-
   var bgStyle = {
         strokeColor: "#aaa",
         dotColor: "#aaa"
       };
-
   var highStyle = {
       dotColor: "#F24400"
   };
@@ -18296,7 +18293,7 @@ function Console(model) {
     printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
     printExample("See information about the active data layer", "$ info");
     printExample("Get help for mapshaper commands", "$ help");
-    printExample("clear the console", "$ clear");
+    printExample("Clear the console", "$ clear");
   }
 }
 
