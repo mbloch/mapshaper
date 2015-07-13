@@ -4,9 +4,11 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
+MapShaper.VERSION = '0.3.0';
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
+MapShaper.CLI = typeof cli != 'undefined';
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;
@@ -19,9 +21,11 @@ api.printError = function(err) {
     err = new APIError(err);
   }
   if (MapShaper.LOGGING && err.name == 'APIError') {
-    if (err.message) {
-      message("Error:", err.message);
+    msg = err.message;
+    if (!/Error/.test(msg)) {
+      msg = "Error: " + msg;
     }
+    message(msg);
     message("Run mapshaper -h to view help");
   } else {
     throw err;
@@ -162,11 +166,18 @@ MapShaper.layerHasGeometry = function(lyr) {
 };
 
 MapShaper.layerHasPaths = function(lyr) {
-  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
+  return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
+    MapShaper.layerHasNonNullShapes(lyr);
 };
 
 MapShaper.layerHasPoints = function(lyr) {
-  return lyr.shapes && lyr.geometry_type == 'point';
+  return lyr.geometry_type == 'point' && MapShaper.layerHasNonNullShapes(lyr);
+};
+
+MapShaper.layerHasNonNullShapes = function(lyr) {
+  return utils.some(lyr.shapes || [], function(shp) {
+    return !!shp;
+  });
 };
 
 MapShaper.requirePolygonLayer = function(lyr, msg) {

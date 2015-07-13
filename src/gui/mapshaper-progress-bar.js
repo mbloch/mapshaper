@@ -8,13 +8,17 @@ function ProgressBar(el) {
       innerRadius = outerRadius / 2,
       cx = outerRadius,
       cy = outerRadius,
-      bar = El('div').appendTo(el).addClass('progress-bar'),
+      bar = El('div').addClass('progress-bar'),
       canv = El('canvas').appendTo(bar).node(),
       ctx = canv.getContext('2d'),
       msg = El('div').appendTo(bar);
 
   canv.width = size;
   canv.height = size;
+
+  this.appendTo = function(el) {
+    bar.appendTo(el);
+  };
 
   this.update = function(pct, str) {
     var twoPI = Math.PI * 2;

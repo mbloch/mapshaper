@@ -24,7 +24,7 @@ MapShaper.snapCoords = function(arcs, threshold) {
 
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
   if (snapCount > 0) arcs.dedupCoords();
-  message(utils.format("Snapped %s point%s", snapCount, "s?"));
+  message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
 };
 
 // Snap together points within a small threshold

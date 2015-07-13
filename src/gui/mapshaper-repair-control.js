@@ -2,51 +2,49 @@
 
 function RepairControl(map) {
   var el = El("#g-intersection-display"),
-      _self = this,
       readout = el.findChild("#g-intersection-count"),
       btn = el.findChild("#g-repair-btn"),
-      _pointLyr = {geometry_type: "point", shapes: []},
-      _dataset, _currXX, _displayGroup;
+      _self = this,
+      _dataset, _currXX, _initialXX;
 
   this.setDataset = function(dataset) {
     _dataset = dataset.arcs ? dataset : null;
-    this.clear();
-  };
-
-  this.show = function() {
-    el.show();
-  };
-
-  this.hide = function() {
-    this.clear();
-    el.hide();
   };
 
   this.reset = function() {
+    _currXX = null;
+    _initialXX = null;
     this.hide();
-    this.removeEventListeners();
   };
 
-  // Display intersections for dataset's current level of arc simplification
+  this.hide = function() {
+    el.hide();
+    map.setHighlightLayer(null);
+  };
+
+  this.delayedUpdate = function(ms) {
+    setTimeout(function() {
+      _self.update();
+    }, ms || 10);
+  };
+
+  // Detect and display intersections for current level of arc simplification
   this.update = function() {
     var XX, showBtn, pct;
     if (!_dataset) return;
-    if (!_displayGroup) {
-      _displayGroup = map.addLayer({layers:[_pointLyr]});
-    }
-
     if (_dataset.arcs.getRetainedInterval() > 0) {
       XX = MapShaper.findSegmentIntersections(_dataset.arcs);
       showBtn = XX.length > 0;
     } else { // no simplification
-      if (!_dataset.info.repair) {
-        _dataset.info.repair = {
-          initialXX: MapShaper.findSegmentIntersections(_dataset.arcs)
-        };
+      if (!_initialXX) {
+        // cache intersections for no simplification, to avoid recalculating
+        // every time the simplification slider is set to 100%
+        _initialXX = MapShaper.findSegmentIntersections(_dataset.arcs);
       }
-      XX = _dataset.info.repair.initialXX;
+      XX = _initialXX;
       showBtn = false;
     }
+    el.show();
     showIntersections(XX);
     btn.classed('disabled', !showBtn);
   };
@@ -60,29 +58,16 @@ function RepairControl(map) {
     _self.dispatchEvent('repair');
   });
 
-  this.clear = function() {
-    _currXX = null;
-    if (_displayGroup) _displayGroup.hide();
-  };
-
   function showIntersections(XX) {
-    var n = XX.length;
-    if (n === 0) {
-      _displayGroup.hide();
-    } else {
-      _pointLyr.shapes[0] = MapShaper.getIntersectionPoints(XX);
-      _displayGroup
-        .showLayer(_pointLyr)
-        .setStyle({
-          dotSize: n < 20 && 5 || n < 500 && 4 || 3,
-          squareDot: true,
-          dotColor: "#F24400"
-        })
-        .refresh();
-    }
-    var msg = utils.format("%s line intersection%s", n, n != 1 ? 's' : '');
-    readout.text(msg);
+    var n = XX.length, pointLyr;
     _currXX = XX;
+    if (n > 0) {
+      pointLyr = {geometry_type: 'point', shapes: [MapShaper.getIntersectionPoints(XX)]};
+      map.setHighlightLayer(pointLyr, {layers:[pointLyr]});
+    } else {
+      map.setHighlightLayer(null);
+    }
+    readout.text(utils.format("%s line intersection%s", n, utils.pluralSuffix(n)));
   }
 }
 

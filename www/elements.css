@@ -4,26 +4,10 @@ img:-moz-loading {
     visibility: hidden;
 }
 
-.g-menu-link {
-	color: white;
-	font-size: 14px;
-	font-weight: normal;
-	padding: 0 3px 1px;
-	border: 1px solid rgba(0, 0, 0, 0);
-}
+/* ------ UTILITY ---------- */
 
-.g-menu-link.inactive {
-	border: none;
-	color: #aaa;
-}
-
-.g-menu-link:hover:not(.inactive) {
-	border: 1px solid white;
-	cursor: pointer;
-}
-
-div .g-experimental {
-	color: #F24400;
+.hidden {
+	display: none;
 }
 
 div.g-tip {
@@ -37,7 +21,7 @@ div.g-tip {
 	background: #fff;
 	border: 1px solid #bbb;
 	border-radius: 6px;
-	padding: 5px 6px 6px 6px;
+	padding: 8px 11px 9px 11px;
 	bottom: 0px;
 	left: -50%;
 	margin-right: 9px;
@@ -127,32 +111,71 @@ div.g-tip {
 	top: -1000px;
 }
 
-.g-panel-btn.active {
+/* -------- BUTTONS ---------- */
+
+.mode-btn {
+	margin: 5px 0 0 0;
+	color: #fff;
+	border: none;
+	padding: 3px 7px 4px 7px;
+	border-radius: 3px;
+}
+
+.mode-btn:hover:not(.disabled):not(.active) {
+	background-color: #517293;
+}
+
+.mode-btn.active {
+	background-color: black;
+}
+
+.g-btn.active {
 	cursor: pointer;
 }
 
-.g-panel-btn.selected {
+.g-btn.selected {
 	color: #aaa;
 	background: none;
 }
 
-.g-panel-btn.active:hover:not(.selected) {
+.g-btn.inline-btn:hover:not(.selected) {
 	background-color: #FFFCDC;
 }
 
-.g-panel-btn {
-	display: inline-block;
-	border-radius: 4px;
-	border: 1px solid #b0b0b0;
+.g-btn {
 	text-align: center;
-	padding: 1px 4px 3px 3px;
+	padding: 4px 6px 5px 6px;
+	border-radius: 4px;
 	line-height: 1;
+	display: inline-block;
+	cursor: pointer;
 }
 
-.g-panel-btn:not(.active) {
-	color: #aaa;
-	background: #eaeaea;
+.g-btn.disabled {
 	cursor: default;
+}
+
+.g-btn.dialog-btn:hover:not(.selected) {
+	background-color: #35517c;
+}
+
+.g-btn.dialog-btn {
+	display: inline-block;
+	margin-bottom: 3px;
+	margin-top: 2px;
+	font-size: 13px;
+	color: white;
+	min-width: 48px;
+	background-color: #5d85b5;
+
+}
+
+.g-btn.inline-btn {
+	background-color: white;
+	text: black;
+	margin: 0;
+	border: 1px solid #b0b0b0;
+	padding: 1px 4px 3px 3px;
 }
 
 .g-text-btn {
@@ -164,3 +187,5 @@ div.g-tip {
 	cursor: auto;
 	color: #999;
 }
+
+

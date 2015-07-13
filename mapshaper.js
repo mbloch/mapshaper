@@ -116,16 +116,12 @@ var Utils = {
     return dest;
   },
 
-  /**
-   * Pseudoclassical inheritance
-   *
-   * Inherit from a Parent function:
-   *    Utils.inherit(Child, Parent);
-   * Call parent's constructor (inside child constructor):
-   *    this.__super__([args...]);
-   * Call a parent method (when it has been overriden by a same-named function in Child):
-   *    this.__super__.<method_name>.call(this, [args...]);
-   */
+  // Pseudoclassical inheritance
+  //
+  // Inherit from a Parent function:
+  //    Utils.inherit(Child, Parent);
+  // Call parent's constructor (inside child constructor):
+  //    this.__super__([args...]);
   inherit: function(targ, src) {
     var f = function() {
       if (this.__super__ == f) {
@@ -145,6 +141,19 @@ var Utils = {
     targ.prototype = Utils.extend(new f(), targ.prototype); //
     targ.prototype.constructor = targ;
     targ.prototype.__super__ = f;
+  },
+
+  // Inherit from a parent, call the parent's constructor, optionally extend
+  // prototype with optional additional arguments
+  subclass: function(parent) {
+    var child = function() {
+      this.__super__.apply(this, Utils.toArray(arguments));
+    };
+    Utils.inherit(child, parent);
+    for (var i=1; i<arguments.length; i++) {
+      Utils.extend(child.prototype, arguments[i]);
+    }
+    return child;
   }
 
 };
@@ -160,7 +169,6 @@ var Env = (function() {
   return {
     iPhone : inBrowser && !!(navigator.userAgent.match(/iPhone/i)),
     iPad : inBrowser && !!(navigator.userAgent.match(/iPad/i)),
-    touchEnabled : inBrowser && ("ontouchstart" in window),
     canvas: inBrowser && !!document.createElement('canvas').getContext,
     inNode : inNode,
     inPhantom : inPhantom,
@@ -415,6 +423,10 @@ Utils.repeatString = function(src, n) {
   for (var i=0; i<n; i++)
     str += src;
   return str;
+};
+
+Utils.pluralSuffix = function(count) {
+  return count != 1 ? 's' : '';
 };
 
 Utils.endsWith = function(str, ending) {
@@ -1438,9 +1450,11 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
+MapShaper.VERSION = '0.3.0';
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
+MapShaper.CLI = typeof cli != 'undefined';
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;
@@ -1453,9 +1467,11 @@ api.printError = function(err) {
     err = new APIError(err);
   }
   if (MapShaper.LOGGING && err.name == 'APIError') {
-    if (err.message) {
-      message("Error:", err.message);
+    msg = err.message;
+    if (!/Error/.test(msg)) {
+      msg = "Error: " + msg;
     }
+    message(msg);
     message("Run mapshaper -h to view help");
   } else {
     throw err;
@@ -1596,11 +1612,18 @@ MapShaper.layerHasGeometry = function(lyr) {
 };
 
 MapShaper.layerHasPaths = function(lyr) {
-  return lyr.shapes && (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline');
+  return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
+    MapShaper.layerHasNonNullShapes(lyr);
 };
 
 MapShaper.layerHasPoints = function(lyr) {
-  return lyr.shapes && lyr.geometry_type == 'point';
+  return lyr.geometry_type == 'point' && MapShaper.layerHasNonNullShapes(lyr);
+};
+
+MapShaper.layerHasNonNullShapes = function(lyr) {
+  return utils.some(lyr.shapes || [], function(shp) {
+    return !!shp;
+  });
 };
 
 MapShaper.requirePolygonLayer = function(lyr, msg) {
@@ -2128,6 +2151,138 @@ utils.extend(geom, {
 
 
 
+// Constructor takes arrays of coords: xx, yy, zz (optional)
+//
+// Iterate over the points of an arc
+// properties: x, y
+// method: hasNext()
+// usage:
+//   while (iter.hasNext()) {
+//     iter.x, iter.y; // do something w/ x & y
+//   }
+//
+function ArcIter(xx, yy) {
+  this._i = 0;
+  this._inc = 1;
+  this._stop = 0;
+  this._xx = xx;
+  this._yy = yy;
+  this.i = 0;
+  this.x = 0;
+  this.y = 0;
+}
+
+ArcIter.prototype.init = function(i, len, fw) {
+  if (fw) {
+    this._i = i;
+    this._inc = 1;
+    this._stop = i + len;
+  } else {
+    this._i = i + len - 1;
+    this._inc = -1;
+    this._stop = i - 1;
+  }
+  return this;
+};
+
+ArcIter.prototype.hasNext = function() {
+  var i = this._i;
+  if (i == this._stop) return false;
+  this._i = i + this._inc;
+  this.x = this._xx[i];
+  this.y = this._yy[i];
+  this.i = i;
+  return true;
+};
+
+function FilteredArcIter(xx, yy, zz) {
+  var _zlim = 0,
+      _i = 0,
+      _inc = 1,
+      _stop = 0;
+
+  this.init = function(i, len, fw, zlim) {
+    _zlim = zlim || 0;
+    if (fw) {
+      _i = i;
+      _inc = 1;
+      _stop = i + len;
+    } else {
+      _i = i + len - 1;
+      _inc = -1;
+      _stop = i - 1;
+    }
+    return this;
+  };
+
+  this.hasNext = function() {
+    // using local vars is significantly faster when skipping many points
+    var zarr = zz,
+        i = _i,
+        j = i,
+        zlim = _zlim,
+        stop = _stop,
+        inc = _inc;
+    if (i == stop) return false;
+    do {
+      j += inc;
+    } while (j != stop && zarr[j] < zlim);
+    _i = j;
+    this.x = xx[i];
+    this.y = yy[i];
+    this.i = i;
+    return true;
+  };
+}
+
+// Iterate along a path made up of one or more arcs.
+// Similar interface to ArcIter()
+//
+function ShapeIter(arcs) {
+  this._arcs = arcs;
+  this._i = 0;
+  this._n = 0;
+  this.x = 0;
+  this.y = 0;
+
+  this.hasNext = function() {
+    var arc = this._arc;
+    if (this._i >= this._n) {
+      return false;
+    } else if (arc.hasNext()) {
+      this.x = arc.x;
+      this.y = arc.y;
+      return true;
+    } else {
+      this.nextArc();
+      return this.hasNext();
+    }
+  };
+}
+
+ShapeIter.prototype.init = function(ids) {
+  this._ids = ids;
+  this._n = ids.length;
+  this.reset();
+  return this;
+};
+
+ShapeIter.prototype.nextArc = function() {
+  var i = this._i + 1;
+  if (i < this._n) {
+    this._arc = this._arcs.getArcIter(this._ids[i]);
+    if (i > 0) this._arc.hasNext(); // skip first point
+  }
+  this._i = i;
+};
+
+ShapeIter.prototype.reset = function() {
+  this._i = -1;
+  this.nextArc();
+};
+
+
+
 
 // export for testing
 MapShaper.ArcCollection = ArcCollection;
@@ -2318,9 +2473,15 @@ function ArcCollection() {
 
   // Return arcs as arrays of [x, y] points (intended for testing).
   this.toArray = function() {
-    return utils.range(this.size()).map(function(i) {
-      return this.getArc(i).toArray();
-    }, this);
+    var arr = [];
+    this.forEach(function(iter) {
+      var arc = [];
+      while (iter.hasNext()) {
+        arc.push([iter.x, iter.y]);
+      }
+      arr.push(arc);
+    });
+    return arr;
   };
 
   this.toString = function() {
@@ -2791,18 +2952,6 @@ function ArcCollection() {
     var offs = arcId * 4;
     bounds.mergeBounds(_bb[offs], _bb[offs+1], _bb[offs+2], _bb[offs+3]);
   };
-
-  this.getArc = function(id) {
-    return new Arc(this).init(id);
-  };
-
-  this.getMultiPathShape = function(arr) {
-    if (!arr || arr.length > 0 === false) {
-      error("#getMultiPathShape() Missing arc ids");
-    } else {
-      return new MultiShape(this).init(arr);
-    }
-  };
 }
 
 ArcCollection.prototype.inspect = function() {
@@ -2815,211 +2964,6 @@ ArcCollection.prototype.inspect = function() {
   return str;
 };
 
-function Arc(src) {
-  this.src = src;
-}
-
-Arc.prototype = {
-  init: function(id) {
-    this.id = id;
-    return this;
-  },
-  pathCount: 1,
-  getPathIter: function(i) {
-    return this.src.getArcIter(this.id);
-  },
-
-  inBounds: function(bbox) {
-    return this.src.arcIntersectsBBox(this.id, bbox);
-  },
-
-  // Return arc coords as an array of [x, y] points
-  toArray: function() {
-    var iter = this.getPathIter(),
-        coords = [];
-    while (iter.hasNext()) {
-      coords.push([iter.x, iter.y]);
-    }
-    return coords;
-  },
-
-  smallerThan: function(units) {
-    return this.src.arcIsSmaller(this.id, units);
-  }
-};
-
-//
-function MultiShape(src) {
-  this.singleShape = new SimpleShape(src);
-}
-
-MultiShape.prototype = {
-  init: function(parts) {
-    this.pathCount = parts ? parts.length : 0;
-    this.parts = parts || [];
-    return this;
-  },
-  getPathIter: function(i) {
-    return this.getPath(i).getPathIter();
-  },
-  getPath: function(i) {
-    if (i < 0 || i >= this.parts.length) error("MultiShape#getPart() invalid part id:", i);
-    return this.singleShape.init(this.parts[i]);
-  },
-  // Return array of SimpleShape objects, one for each path
-  getPaths: function() {
-    return this.parts.map(function(ids) {
-      return this.singleShape.init(ids);
-    }, this);
-  }
-};
-
-function SimpleShape(src) {
-  this.pathIter = new ShapeIter(src);
-  this.ids = null;
-}
-
-SimpleShape.prototype = {
-  pathCount: 1,
-  init: function(ids) {
-    this.pathIter.init(ids);
-    this.ids = ids; // kludge for TopoJSON export -- rethink
-    return this;
-  },
-  getPathIter: function() {
-    return this.pathIter;
-  }
-};
-
-// Constructor takes arrays of coords: xx, yy, zz (optional)
-//
-// Iterate over the points of an arc
-// properties: x, y
-// method: hasNext()
-// usage:
-//   while (iter.hasNext()) {
-//     iter.x, iter.y; // do something w/ x & y
-//   }
-//
-function ArcIter(xx, yy) {
-  this._i = 0;
-  this._inc = 1;
-  this._stop = 0;
-  this._xx = xx;
-  this._yy = yy;
-  this.i = 0;
-  this.x = 0;
-  this.y = 0;
-}
-
-ArcIter.prototype.init = function(i, len, fw) {
-  if (fw) {
-    this._i = i;
-    this._inc = 1;
-    this._stop = i + len;
-  } else {
-    this._i = i + len - 1;
-    this._inc = -1;
-    this._stop = i - 1;
-  }
-  return this;
-};
-
-ArcIter.prototype.hasNext = function() {
-  var i = this._i;
-  if (i == this._stop) return false;
-  this._i = i + this._inc;
-  this.x = this._xx[i];
-  this.y = this._yy[i];
-  this.i = i;
-  return true;
-};
-
-function FilteredArcIter(xx, yy, zz) {
-  var _zlim = 0,
-      _i = 0,
-      _inc = 1,
-      _stop = 0;
-
-  this.init = function(i, len, fw, zlim) {
-    _zlim = zlim || 0;
-    if (fw) {
-      _i = i;
-      _inc = 1;
-      _stop = i + len;
-    } else {
-      _i = i + len - 1;
-      _inc = -1;
-      _stop = i - 1;
-    }
-    return this;
-  };
-
-  this.hasNext = function() {
-    // using local vars is significantly faster when skipping many points
-    var zarr = zz,
-        i = _i,
-        j = i,
-        zlim = _zlim,
-        stop = _stop,
-        inc = _inc;
-    if (i == stop) return false;
-    do {
-      j += inc;
-    } while (j != stop && zarr[j] < zlim);
-    _i = j;
-    this.x = xx[i];
-    this.y = yy[i];
-    this.i = i;
-    return true;
-  };
-}
-
-// Iterate along a path made up of one or more arcs.
-// Similar interface to ArcIter()
-//
-function ShapeIter(arcs) {
-  this._arcs = arcs;
-  this._i = 0;
-  this._n = 0;
-  this.x = 0;
-  this.y = 0;
-
-  this.hasNext = function() {
-    var arc = this._arc;
-    if (this._i >= this._n) {
-      return false;
-    } else if (arc.hasNext()) {
-      this.x = arc.x;
-      this.y = arc.y;
-      return true;
-    } else {
-      this.nextArc();
-      return this.hasNext();
-    }
-  };
-}
-
-ShapeIter.prototype.init = function(ids) {
-  this._ids = ids;
-  this._n = ids.length;
-  this.reset();
-  return this;
-};
-
-ShapeIter.prototype.nextArc = function() {
-  var i = this._i + 1;
-  if (i < this._n) {
-    this._arc = this._arcs.getArcIter(this._ids[i]);
-    if (i > 0) this._arc.hasNext(); // skip first point
-  }
-  this._i = i;
-};
-
-ShapeIter.prototype.reset = function() {
-  this._i = -1;
-  this.nextArc();
-};
 
 
 
@@ -3038,6 +2982,14 @@ MapShaper.countArcsInShapes = function(shapes, counts) {
       counts[id]++;
     }
   });
+};
+
+MapShaper.countPointsInLayer = function(lyr) {
+  var count = 0;
+  if (MapShaper.layerHasPoints(lyr)) {
+    MapShaper.forEachPoint(lyr, function() {count++;});
+  }
+  return count;
 };
 
 // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
@@ -3326,6 +3278,12 @@ MapShaper.getDatasetBounds = function(data) {
   return bounds;
 };
 
+MapShaper.datasetHasPaths = function(dataset) {
+  return utils.some(dataset.layers, function(lyr) {
+    return MapShaper.layerHasPaths(lyr);
+  });
+};
+
 MapShaper.getFeatureCount = function(lyr) {
   var count = 0;
   if (lyr.data) {
@@ -3380,6 +3338,12 @@ MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
   dataset.layers = currLayers;
 };
 
+MapShaper.isolateLayer = function(layer, dataset) {
+  return utils.defaults({
+    layers: dataset.layers.filter(function(lyr) {return lyr == layer;})
+  }, dataset);
+};
+
 // @target is a layer identifier or a comma-sep. list of identifiers
 // an identifier is a literal name, a name containing "*" wildcard or
 // a 0-based array index
@@ -3403,47 +3367,6 @@ MapShaper.findMatchingLayers = function(layers, target) {
   });
 };
 
-/*
-MapShaper.validateLayer = function(lyr, arcs) {
-  var type = lyr.geometry_type;
-  if (!utils.isArray(lyr.shapes)) {
-    error("Layer is missing shapes property");
-  }
-  if (lyr.data && lyr.data.size() != lyr.shapes.length) {
-    error("Layer contains mismatched data table and shapes");
-  }
-  if (arcs && arcs instanceof ArcCollection === false) {
-    error("Expected an ArcCollection");
-  }
-  if (type == 'polygon' || type == 'polyline') {
-    if (!arcs) error("Missing ArcCollection for a", type, "layer");
-    // TODO: validate shapes, make sure ids are w/in arc range
-  } else if (type == 'point') {
-    // TODO: validate shapes
-  } else if (type === null) {
-    // TODO: make sure shapes are all null
-  }
-};
-
-// Simple integrity checks
-MapShaper.validateDataset = function(data) {
-  if (!data) invalid("Missing dataset object");
-  if (!utils.isArray(data.layers) || data.layers.length > 0 === false)
-    invalid("Missing layers");
-  data.layers.forEach(function(lyr) {
-    try {
-      MapShaper.validateLayer(lyr, data.arcs);
-    } catch (e) {
-      invalid(e.message);
-    }
-  });
-
-  function invalid(msg) {
-    error("[validateDataset()] " + msg);
-  }
-};
-*/
-
 
 
 
@@ -3455,7 +3378,7 @@ MapShaper.getIntersectionPoints = function(intersections) {
       });
 };
 
-var count = 0;
+// var count = 0;
 
 // Identify intersecting segments in an ArcCollection
 //
@@ -3600,14 +3523,14 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
     s1p2x = xx[s1p2];
     s1p1y = yy[s1p1];
     s1p2y = yy[s1p2];
-    count++;
+    // count++;
 
     j = i;
     while (j < lim) {
       j += 2;
       s2p1 = ids[j];
       s2p1x = xx[s2p1];
-      count++;
+      // count++;
 
       if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
       //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
@@ -5741,6 +5664,9 @@ MapShaper.getClipLayer = function(src, dataset, opts) {
   if (src) {
     // assuming src is a filename
     clipDataset = MapShaper.readClipFile(src, opts);
+    if (!clipDataset) {
+      stop("Unable to find file [" + src + "]");
+    }
     // TODO: handle multi-layer sources, e.g. TopoJSON files
     if (clipDataset.layers.length != 1) {
       stop("Clip/erase only supports clipping with single-layer datasets");
@@ -5795,6 +5721,13 @@ MapShaper.getEncodings = function() {
   return Object.keys(iconv.encodings);
 };
 
+MapShaper.validateEncoding = function(enc) {
+  if (!MapShaper.encodingIsSupported(enc)) {
+    stop("Unknown encoding:", enc, "\nRun the -encodings command see a list of supported encodings");
+  }
+  return enc;
+};
+
 MapShaper.encodingIsSupported = function(raw) {
   var enc = MapShaper.standardizeEncodingName(raw);
   return utils.contains(MapShaper.getEncodings(), enc);
@@ -5821,8 +5754,8 @@ MapShaper.printEncodings = function() {
     return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
   });
   encodings.sort();
-  console.log("Supported encodings:");
-  console.log(MapShaper.formatStringsAsGrid(encodings));
+  message("Supported encodings:");
+  message(MapShaper.formatStringsAsGrid(encodings));
 };
 
 
@@ -5916,6 +5849,10 @@ Dbf.encodingNames = {
   '1257': "Baltic"
 };
 
+Dbf.ENCODING_PROMPT =
+  "You can specify an encoding using the \"encoding\" import option.\n" +
+  "Run the \"encodings\" command to view supported encodings.";
+
 Dbf.lookupCodePage = function(lid) {
   var i = Dbf.languageIds.indexOf(lid);
   return i == -1 ? null : Dbf.languageIds[i+1];
@@ -5925,8 +5862,7 @@ Dbf.readAsciiString = function(bin, field) {
   var require7bit = Env.inNode;
   var str = bin.readCString(field.size, require7bit);
   if (str === null) {
-    stop("DBF file contains non-ascii text data. You need to specify an encoding.\n" +
-        "Run mapshaper -encodings for a list of supported encodings");
+    stop("DBF file contains non-ascii text.\n" + Dbf.ENCODING_PROMPT);
   }
   return utils.trim(str);
 };
@@ -5980,7 +5916,8 @@ Dbf.bufferContainsHighBit = function(buf, n) {
 
 Dbf.readNumber = function(bin, field) {
   var str = bin.readCString(field.size);
-  return parseFloat(str);
+  var val = parseFloat(str);
+  return isNaN(val) ? null : val;
 };
 
 Dbf.readInt = function(bin, field) {
@@ -6082,8 +6019,7 @@ DbfReader.prototype.findStringEncoding = function() {
     encoding = MapShaper.detectEncoding(samples);
   }
   if (!encoding) {
-    stop("[dbf] You need to specify the text encoding of this dbf file.\n" +
-        "Run mapshaper -encodings for a list of supported encodings");
+    stop("Unable to auto-detect the DBF file's text encoding.\n" + Dbf.ENCODING_PROMPT);
   }
 
   // Show a sample of decoded text if non-ascii-range text has been found
@@ -6415,7 +6351,11 @@ Dbf.getFieldInfo = function(arr, name, encoding) {
   } else if (type == 'D') {
     Dbf.initDateField(info, arr, name);
   } else {
-    error("[dbf] Type error exporting field:", name);
+    // Treat null fields as empty numeric fields; this way, they will be imported
+    // again as nulls.
+    info.size = 0;
+    info.type = 'N';
+    info.write = function() {};
   }
   return info;
 };
@@ -6429,7 +6369,7 @@ Dbf.discoverFieldType = function(arr, name) {
     if (utils.isBoolean(val)) return "L";
     if (val instanceof Date) return "D";
   }
-  return "null" ;
+  return null;
 };
 
 Dbf.getDecimalFormatter = function(size, decimals) {
@@ -6480,10 +6420,9 @@ Dbf.getNumericFieldInfo = function(arr, name) {
 Dbf.getStringWriter = function(encoding) {
   if (encoding === 'ascii') {
     return Dbf.getStringWriterAscii();
-  } else if (Env.inNode) {
+  } else {
     return Dbf.getStringWriterEncoded(encoding);
   }
-  error("[Dbf.getStringWriter()] Non-ascii encodings only supported in Node.");
 };
 
 // TODO: handle non-ascii chars. Option: switch to
@@ -6628,7 +6567,7 @@ api.dissolve = function(lyr, arcs, opts) {
       dissolveData = null;
 
   if (lyr.geometry_type) {
-    MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
+    MapShaper.requirePolygonLayer(lyr, "[dissolve] Only polygon type layers can be dissolved");
     dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
   }
 
@@ -7368,7 +7307,7 @@ MapShaper.snapCoords = function(arcs, threshold) {
 
   var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
   if (snapCount > 0) arcs.dedupCoords();
-  message(utils.format("Snapped %s point%s", snapCount, "s?"));
+  message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
 };
 
 // Snap together points within a small threshold
@@ -7664,11 +7603,11 @@ function PathImporter(opts, reservedPoints) {
     } else if (collectionType == 'polygon' || collectionType == 'polyline') {
 
       if (dupeCount > 0) {
-        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, "s?"));
+        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
       }
       if (skippedPathCount > 0) {
         // TODO: consider showing details about type of error
-        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, "s?"));
+        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, utils.pluralSuffix(skippedPathCount)));
       }
 
       if (pointId > 0) {
@@ -7861,11 +7800,11 @@ MapShaper.importGeoJSON = function(src, opts) {
   } else if (srcCollection.type == 'GeometryCollection') {
     geometries = srcCollection.geometries;
   } else {
-    stop("[-i] Unsupported GeoJSON type:", srcCollection.type);
+    stop("[i] Unsupported GeoJSON type:", srcCollection.type);
   }
 
   if (!geometries) {
-    stop("[-i] Missing geometry data");
+    stop("[i] Missing geometry data");
   }
 
   // Import GeoJSON geometries
@@ -8328,12 +8267,12 @@ TopoJSON.pathImporters = {
 
 api.convertPolygonsToInnerLines = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
-    stop("[innerlines] Layer not polygon type");
+    stop("[innerlines] Command requires a polygon layer");
   }
   var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
       lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
   if (lyr2.shapes.length === 0) {
-    message("[innerlines] No shared boundaries were found in layer: [" + (lyr.name || "unnamed") + "]");
+    message("[innerlines] No shared boundaries were found");
   }
   lyr2.name = lyr.name;
   return lyr2;
@@ -8341,7 +8280,7 @@ api.convertPolygonsToInnerLines = function(lyr, arcs) {
 
 api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
   if (lyr.geometry_type != 'polygon') {
-    stop("[lines] Layer not polygon type");
+    stop("[lines] Command requires a polygon layer");
   }
   var arcCount = arcs.size(),
       outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
@@ -8362,11 +8301,11 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
 
   if (utils.isArray(fields)) {
     if (!lyr.data) {
-      stop("[lines] missing a data table:");
+      stop("[lines] Missing a data table:");
     }
     fields.forEach(function(field) {
       if (!lyr.data.fieldExists(field)) {
-        stop("[lines] unknown data field:", field);
+        stop("[lines] Unknown data field:", field);
       }
       var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
@@ -8648,7 +8587,7 @@ TopoJSON.exportTopology = function(src, opts) {
       bounds;
 
   // generate arcs and transform
-  if (arcs && arcs.size() > 0) {
+  if (MapShaper.datasetHasPaths(dataset)) {
     bounds = MapShaper.getDatasetBounds(dataset);
     if (opts.bbox && bounds.hasBounds()) {
       topology.bbox = bounds.toArray();
@@ -9574,7 +9513,6 @@ MapShaper.importShp = function(src, opts) {
   return importer.done();
 };
 
-
 // Convert a dataset to Shapefile files
 MapShaper.exportShapefile = function(dataset, opts) {
   return dataset.layers.reduce(function(files, lyr) {
@@ -9587,22 +9525,14 @@ MapShaper.exportShapefile = function(dataset, opts) {
 };
 
 MapShaper.exportPrjFile = function(lyr, dataset) {
-  var content, prj, path;
-  if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
-    path = utils.replaceFileExtension(dataset.info.input_files[0], 'prj');
-    if (cli.isFile(path)) {
-      content = cli.readFile(path, 'utf-8');
-    }
-  } else if (dataset.info.output_prj) {
-    content = dataset.info.output_prj;
+  var prj = dataset.info.output_prj;
+  if (!prj && prj !== null) { // null means unknown prj
+    prj = dataset.info.output_prj;
   }
-  if (content) {
-    prj = {
-      content: content,
-      filename: lyr.name + '.prj'
-    };
-  }
-  return prj;
+  return prj && {
+    content: prj,
+    filename: lyr.name + '.prj'
+  };
 };
 
 MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {
@@ -10330,8 +10260,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
     func = new Function("record,env", "with(env){with(record) { return " +
         MapShaper.removeExpressionSemicolons(exp) + "}}");
   } catch(e) {
-    message(e.name, "in expression [" + exp + "]");
-    stop();
+    stop(e.name, "in expression [" + exp + "]");
   }
 
   var compiled = function(recId) {
@@ -10351,8 +10280,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
     try {
       value = func.call(null, record, env);
     } catch(e) {
-      message(e.name, "in [" + exp + "]:", e.message);
-      stop();
+      stop(e.name, "in expression [" + exp + "]:", e.message);
     }
     return value;
   };
@@ -10403,7 +10331,6 @@ function FeatureExpressionContext(lyr, arcs) {
   var hasData = !!lyr.data,
       hasPoints = MapShaper.layerHasPoints(lyr),
       hasPaths = arcs && MapShaper.layerHasPaths(lyr),
-      _shp,
       _isPlanar,
       _self = this,
       _centroid, _innerXY,
@@ -10429,15 +10356,14 @@ function FeatureExpressionContext(lyr, arcs) {
   }
 
   if (hasPaths) {
-    _shp = new MultiShape(arcs);
     _isPlanar = arcs.isPlanar();
     addGetters(this, {
       // TODO: count hole/s + containing ring as one part
       partCount: function() {
-        return _shp.pathCount;
+        return _ids ? _ids.length : 0;
       },
       isNull: function() {
-        return _shp.pathCount === 0;
+        return this.partCount === 0;
       },
       bounds: function() {
         return shapeBounds().toArray();
@@ -10506,7 +10432,6 @@ function FeatureExpressionContext(lyr, arcs) {
       _centroid = null;
       _innerXY = null;
       _ids = lyr.shapes[id];
-      _shp.init(_ids);
     }
     if (hasData) {
       _record = _records[id];
@@ -10553,6 +10478,7 @@ api.evaluateEachFeature = function(lyr, arcs, exp) {
 api.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes || null,
+      n = MapShaper.getFeatureCount(lyr),
       filteredShapes = shapes ? [] : null,
       filteredRecords = records ? [] : null,
       filteredLyr, filter;
@@ -10566,11 +10492,10 @@ api.filterFeatures = function(lyr, arcs, opts) {
   }
 
   if (!filter) {
-    message("[filter] missing a filter -- retaining all features");
-    return;
+    stop("[filter] Missing a filter expression");
   }
 
-  utils.repeat(MapShaper.getFeatureCount(lyr), function(shapeId) {
+  utils.repeat(n, function(shapeId) {
     var result = filter(shapeId);
     if (result === true) {
       if (shapes) filteredShapes.push(shapes[shapeId] || null);
@@ -10591,6 +10516,11 @@ api.filterFeatures = function(lyr, arcs, opts) {
   } else {
     filteredLyr = utils.extend(lyr, filteredLyr); // modify in-place
   }
+
+  if (opts.verbose !== false) {
+    message(utils.format('[filter] Retained %,d of %,d features', MapShaper.getFeatureCount(filteredLyr), n));
+  }
+
   return filteredLyr;
 };
 
@@ -10835,6 +10765,9 @@ MapShaper.importShapefile = function(obj, opts) {
       message("[shp] Mismatched .dbf and .shp record count -- possible data loss.");
     }
   }
+  if (obj.prj) {
+    dataset.info.input_prj = obj.prj.content;
+  }
   return dataset;
 };
 
@@ -10871,16 +10804,16 @@ MapShaper.setLayerName = function(lyr, path) {
 
 
 api.importFiles = function(opts) {
-  var files = opts.files,
+  var files = opts.files ? cli.validateInputFiles(opts.files) : [],
       dataset;
   if ((opts.merge_files || opts.combine_files) && files.length > 1) {
     dataset = api.mergeFiles(files, opts);
-  } else if (files && files.length == 1) {
+  } else if (files.length == 1) {
     dataset = api.importFile(files[0], opts);
   } else if (opts.stdin) {
     dataset = api.importFile('/dev/stdin', opts);
   } else {
-    stop('[i] Missing input file(s)');
+    stop('Missing input file(s)');
   }
   return dataset;
 };
@@ -10914,6 +10847,10 @@ api.importFile = function(path, opts) {
 MapShaper.readShapefileAuxFiles = function(path, obj) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
   var cpgPath = utils.replaceFileExtension(path, 'cpg');
+  var prjPath = utils.replaceFileExtension(path, 'prj');
+  if (cli.isFile(prjPath)) {
+    obj.prj = {filename: prjPath, content: cli.readFile(prjPath, 'utf-8')};
+  }
   if (!obj.dbf && cli.isFile(dbfPath)) {
     obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath)};
   }
@@ -10942,13 +10879,16 @@ api.exportFiles = function(dataset, opts) {
 };
 
 MapShaper.getOutputPaths = function(files, opts) {
-  var paths =  files.map(function(file) {
-    return require('path').join(opts.output_dir || '', file);
-  });
-  if (!opts.force) {
-    paths = resolveFileCollisions(paths);
+  var odir = opts.output_dir;
+  if (odir) {
+    files = files.map(function(file) {
+      return require('path').join(odir, file);
+    });
   }
-  return paths;
+  if (!opts.force) {
+    files = resolveFileCollisions(files);
+  }
+  return files;
 };
 
 // Avoid naming conflicts with existing files
@@ -11043,48 +10983,95 @@ MapShaper.getRecordMapper = function(map) {
 
 
 api.filterIslands = function(lyr, arcs, opts) {
+  var removed = 0;
   if (lyr.geometry_type != 'polygon') {
-    message("[filter-islands] skipping a non-polygon layer");
     return;
   }
 
-  if (opts.min_area) {
-    MapShaper.editShapes(lyr.shapes, MapShaper.getIslandAreaFilter(arcs, opts.min_area));
-  }
-  if (opts.min_vertices) {
-    MapShaper.editShapes(lyr.shapes, MapShaper.getIslandVertexFilter(arcs, opts.min_vertices));
+  if (opts.min_area || opts.min_vertices) {
+    if (opts.min_area) {
+      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getRingAreaTest(opts.min_area, arcs));
+    }
+    if (opts.min_vertices) {
+      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getVertexCountTest(opts.min_vertices, arcs));
+    }
+    if (opts.remove_empty) {
+      api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+    }
+    message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
+  } else {
+    message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
   }
 
-  if (opts.remove_empty) {
-    api.filterFeatures(lyr, arcs, {remove_empty: true});
-  }
 };
 
-MapShaper.getIslandVertexFilter = function(arcs, minVertices) {
-  var minCount = minVertices + 1; // first and last vertex in ring count as one
-  return function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1 && geom.countVerticesInPath(path, arcs) < minCount) {
-        return null;
-      }
-    });
+MapShaper.getVertexCountTest = function(minVertices, arcs) {
+  return function(path) {
+    // first and last vertex in ring count as one
+    return geom.countVerticesInPath(path, arcs) <= minVertices;
   };
 };
 
-MapShaper.getIslandAreaFilter = function(arcs, minArea) {
+MapShaper.getRingAreaTest = function(minArea, arcs) {
   var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
-  return function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1 && Math.abs(pathArea(path, arcs)) < minArea) {
-        // Found an island to remove
-        // TODO: Remove all enclosed holes, including multi-part holes
-        return null;
-      }
-    });
+  return function(path) {
+    var area = pathArea(path, arcs);
+    return Math.abs(area) < minArea;
   };
 };
 
-MapShaper.editShapes = function(shapes, filter) {
+MapShaper.filterIslands = function(lyr, arcs, ringTest) {
+  var removed = 0;
+  var counts = new Uint8Array(arcs.size());
+  MapShaper.countArcsInShapes(lyr.shapes, counts);
+
+  var filter = function(paths) {
+    return MapShaper.editPaths(paths, function(path) {
+      if (path.length == 1) { // got an island ring
+        if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
+          if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
+            // and it does not contain any holes itself
+            // O(n^2), so testing this last
+            if (!MapShaper.ringHasHoles(path, paths, arcs)) {
+              removed++;
+              return null;
+            }
+          }
+        }
+      }
+    });
+  };
+  MapShaper.filterShapes(lyr.shapes, filter);
+  return removed;
+};
+
+MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
+  for (var i=0, n=ring.length; i<n; i++) {
+    if (arcs.arcIntersectsBBox(absArcId(ring[i]), bbox)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+// Assumes that ring boundaries to not cross
+MapShaper.ringHasHoles = function(ring, rings, arcs) {
+  var bbox = arcs.getSimpleShapeBounds(ring).toArray();
+  var sibling, p;
+  for (var i=0, n=rings.length; i<n; i++) {
+    sibling = rings[i];
+    // try to avoid expensive point-in-ring test
+    if (sibling && sibling != ring && MapShaper.ringIntersectsBBox(sibling, bbox, arcs)) {
+      p = arcs.getVertex(sibling[0], 0);
+      if (geom.testPointInRing(p.x, p.y, ring, arcs)) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+MapShaper.filterShapes = function(shapes, filter) {
   for (var i=0, n=shapes.length; i<n; i++) {
     shapes[i] = filter(shapes[i]);
   }
@@ -11096,8 +11083,12 @@ MapShaper.editShapes = function(shapes, filter) {
 api.printInfo = function(dataset, opts) {
   // str += utils.format("Number of layers: %d\n", dataset.layers.length);
   // if (dataset.arcs) str += utils.format("Topological arcs: %'d\n", dataset.arcs.size());
-  var str = dataset.layers.map(function(lyr) {
-    return MapShaper.getLayerInfo(lyr, dataset.arcs);
+  var str = dataset.layers.map(function(lyr, i) {
+    var infoStr = MapShaper.getLayerInfo(lyr, dataset.arcs);
+    if (dataset.layers.length > 1) {
+      infoStr = 'Layer ' + (i + 1) + '\n' + infoStr;
+    }
+    return infoStr;
   }).join('\n\n');
   message(str);
 };
@@ -11116,7 +11107,7 @@ MapShaper.getLayerInfo = function(lyr, arcs) {
       nullCount = shapeCount > 0 ? MapShaper.countNullShapes(lyr.shapes) : 0,
       tableSize = lyr.data ? lyr.data.size() : 0,
       str;
-  str = "Layer: " + (lyr.name || "[unnamed]") + "\n";
+  str = "Name: " + (lyr.name || "[unnamed]") + "\n";
   str += "Geometry: " + (lyr.geometry_type || "[none]") + "\n";
   str += utils.format("Records: %,d\n", Math.max(shapeCount, tableSize));
   if (nullCount > 0) {
@@ -11771,7 +11762,7 @@ api.mergeFiles = function(files, opts) {
     return d.info.input_format;
   });
   if (utils.uniq(formats).length != 1) {
-    stop("[mergeFiles()] Importing files with different formats is not supported");
+    stop("Importing files with different formats is not supported");
   }
 
   var merged = MapShaper.mergeDatasets(datasets);
@@ -11816,7 +11807,7 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
   }, 0);
 
   if (nulls > 0) {
-    message(utils.format('[points] %d/%d points are null', nulls, destLyr.shapes.length));
+    message(utils.format('[points] %,d of %,d points are null', nulls, destLyr.shapes.length));
   }
   if (srcLyr.data) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
@@ -11826,7 +11817,7 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
 
 MapShaper.pointsFromPolygons = function(lyr, arcs, opts) {
   if (lyr.geometry_type != "polygon") {
-    stop("[points] expected a polygon layer");
+    stop("[points] Expected a polygon layer");
   }
   var func = opts.inner ? geom.findInteriorPoint : geom.getShapeCentroid;
   return lyr.shapes.map(function(shp) {
@@ -11836,9 +11827,9 @@ MapShaper.pointsFromPolygons = function(lyr, arcs, opts) {
 };
 
 MapShaper.pointsFromDataTable = function(data, opts) {
-  if (!data) stop("[points] layer is missing a data table");
+  if (!data) stop("[points] Layer is missing a data table");
   if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
-    stop("[points] missing x,y data fields");
+    stop("[points] Missing x,y data fields");
   }
 
   return data.getRecords().map(function(rec) {
@@ -11918,6 +11909,7 @@ function initProj(proj, name, opts, params) {
       }
     }
   };
+  opts = opts || {};
   if (params) {
     // check for required decimal degree parameters and convert to radians
     params.forEach(function(param) {
@@ -12411,6 +12403,7 @@ MapShaper.projectDataset = function(dataset, proj) {
     // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
     // TODO: create a valid GeoJSON crs object after projecting
     dataset.info.output_crs = null;
+    dataset.info.output_prj = null;
   }
 };
 
@@ -12427,6 +12420,9 @@ MapShaper.projectArcs = function(arcs, proj) {
   var data = arcs.getVertexData(),
       xx = data.xx,
       yy = data.yy,
+      // old zz will not be optimal after reprojection; re-using it for now
+      // to avoid error in web ui
+      zz = data.zz,
       p = {x: 0, y: 0};
   if (arcs.isPlanar()) {
     stop("[proj] Only projection from lat-lng coordinates is supported");
@@ -12436,7 +12432,7 @@ MapShaper.projectArcs = function(arcs, proj) {
     xx[i] = p.x;
     yy[i] = p.y;
   }
-  arcs.updateVertexData(data.nn, xx, yy);
+  arcs.updateVertexData(data.nn, xx, yy, zz);
 };
 
 
@@ -12831,13 +12827,12 @@ api.findAndRepairIntersections = function(arcs) {
       countPost = unfixable.length,
       countFixed = countPre > countPost ? countPre - countPost : 0;
   T.stop('Find and repair intersections');
-  return {
-    intersections_initial: countPre,
-    intersections_remaining: countPost,
-    intersections_repaired: countFixed
-  };
+  if (countPre > 0) {
+    message(utils.format(
+      "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
+      countFixed, countFixed == 1 ? '' : 's', countPost, countPost == 1 ? '' : 's'));
+  }
 };
-
 
 // Try to resolve a collection of line-segment intersections by rolling
 // back simplification along intersecting segments.
@@ -13038,8 +13033,7 @@ api.simplify = function(arcs, opts) {
   T.stop("Calculate simplification");
 
   if (!opts.no_repair) {
-    var info = api.findAndRepairIntersections(arcs);
-    cli.printRepairMessage(info);
+    api.findAndRepairIntersections(arcs);
   }
 };
 
@@ -13251,7 +13245,7 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
       tmp, bounds, lyr1, lyr2;
 
   if (!utils.isBoolean(divide)) {
-    stop("--subdivide expressions must return true or false");
+    stop("[subdivide] Expression must evaluate to true or false");
   }
   if (divide) {
     bounds = MapShaper.getLayerBounds(lyr, arcs);
@@ -13365,14 +13359,18 @@ api.runCommand = function(cmd, dataset, cb) {
     T.start();
     if (dataset) {
       arcs = dataset.arcs;
+      if (dataset.layers.length > 0 === false) {
+        error("Dataset contains 0 layers");
+      }
+
       if (opts.target) {
         targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
+        if (!targetLayers.length) {
+          stop(utils.format('[%s] Missing target layer: %s\nAvailable layers: %s',
+            name, opts.target, MapShaper.getFormattedLayerList(dataset.layers)));
+        }
       } else {
         targetLayers = dataset.layers; // default: all layers
-      }
-      if (targetLayers.length === 0) {
-        message("[" + name + "] Command is missing target layer(s).");
-        MapShaper.printLayerNames(dataset.layers);
       }
     }
 
@@ -13514,20 +13512,10 @@ MapShaper.applyCommand = function(func, targetLayers) {
   }, []);
 };
 
-MapShaper.printLayerNames = function(layers) {
-  var max = 10;
-  message("Available layers:");
-  if (layers.length === 0) {
-    message("[none]");
-  } else {
-    for (var i=0; i<layers.length; i++) {
-      if (i <= max) {
-        message("... " + (layers.length - max) + " more");
-        break;
-      }
-      message("[-" + i + "]  " + (layers[i].name || "[unnamed]"));
-    }
-  }
+MapShaper.getFormattedLayerList = function(layers) {
+  return layers.reduce(function(memo, lyr, i) {
+    return memo + '\n  [' + i + ']  ' + (lyr.name || '[unnamed]');
+  }, '') || '[none]';
 };
 
 
@@ -13585,7 +13573,7 @@ function CommandParser() {
       if (!cmdName) stop("Invalid command:", argv[0]);
       cmdDef = findCommandDefn(cmdName, commandDefs);
       if (!cmdDef) {
-        stop("Unknown command:", '-' + cmdName);
+        stop("Unknown command:", cmdName);
       }
       cmd = {
         name: cmdDef.name,
@@ -13818,7 +13806,7 @@ function CommandParser() {
   };
 
   this.printHelp = function(commands) {
-    console.log(this.getHelpMessage(commands));
+    message(this.getHelpMessage(commands));
   };
 
   function getCommands() {
@@ -13894,15 +13882,15 @@ function validateInputOpts(cmd) {
   if (_[0] == '-' || _[0] == '/dev/stdin') {
     o.stdin = true;
   } else if (_.length > 0) {
-    o.files = cli.validateInputFiles(_);
+    o.files = _;
   }
 
   if ("precision" in o && o.precision > 0 === false) {
-    error("precision option should be a positive number");
+    error("precision= option should be a positive number");
   }
 
   if (o.encoding) {
-    o.encoding = cli.validateEncoding(o.encoding);
+    o.encoding = MapShaper.validateEncoding(o.encoding);
   }
 }
 
@@ -13913,7 +13901,7 @@ function validateSimplifyOpts(cmd) {
 
   if (o.method) {
     if (!utils.contains(methods, o.method)) {
-      error(o.method, "is not a recognized simplification method; choos from:", methods);
+      error(o.method, "is not a recognized simplification method; choose from:", methods);
     }
   }
 
@@ -13923,7 +13911,7 @@ function validateSimplifyOpts(cmd) {
       pctStr = _.shift();
     }
     if (_.length > 0) {
-      error("unparsable option:", _.join(' '));
+      error("Unparsable option:", _.join(' '));
     }
   }
 
@@ -13935,7 +13923,7 @@ function validateSimplifyOpts(cmd) {
       o.pct = Number(pctStr);
     }
     if (!(o.pct >= 0 && o.pct <= 1)) {
-      error(utils.format("out-of-range pct value: %s", pctStr));
+      error(utils.format("Out-of-range pct value: %s", pctStr));
     }
   }
 
@@ -13943,12 +13931,12 @@ function validateSimplifyOpts(cmd) {
   if (intervalStr) {
     o.interval = Number(intervalStr);
     if (o.interval >= 0 === false) {
-      error(utils.format("out-of-range interval value: %s", intervalStr));
+      error(utils.format("Out-of-range interval value: %s", intervalStr));
     }
   }
 
   if (isNaN(o.interval) && isNaN(o.pct)) {
-    error("command requires an interval or pct");
+    error("Command requires an interval or pct");
   }
 }
 
@@ -13957,23 +13945,23 @@ function validateJoinOpts(cmd) {
   o.source = o.source || cmd._[0];
 
   if (!o.source) {
-    error("command requires the name of a file to join");
+    error("Command requires the name of a file to join");
   }
 
   if (utils.some("shp,xls,xlsx".split(','), function(suff) {
     return utils.endsWith(o.source, suff);
   })) {
-    error("currently only dbf and csv files are supported");
+    error("Currently only dbf and csv files are supported");
   }
 
-  if (!o.keys) error("missing required keys option");
+  if (!o.keys) error("Missing required keys option");
 }
 
 function validateSplitOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.field = cmd._[0];
   } else if (cmd._.length > 1) {
-    error("command takes a single field name");
+    error("Command takes a single field name");
   }
 }
 
@@ -13987,7 +13975,7 @@ function validateClipOpts(cmd) {
     opts.bbox = opts.bbox.map(parseFloat);
   }
   if (!opts.source && !opts.bbox) {
-    error("command requires a source file, layer id or bbox");
+    error("Command requires a source file, layer id or bbox");
   }
 }
 
@@ -13997,12 +13985,12 @@ function validateDissolveOpts(cmd) {
   if (_.length == 1) {
     o.field = _[0];
   } else if (_.length > 1) {
-    error("command takes a single field name");
+    error("Command takes a single field name");
   }
 }
 
 function validateMergeLayersOpts(cmd) {
-  if (cmd._.length > 0) error("unexpected option:", cmd._);
+  if (cmd._.length > 0) error("Unexpected option:", cmd._);
 }
 
 function validateRenameLayersOpts(cmd) {
@@ -14018,7 +14006,7 @@ function validateSplitOnGridOpts(cmd) {
   }
 
   if (o.rows > 0 === false || o.cols > 0 === false) {
-    error("comand expects cols,rows");
+    error("Command expects cols,rows");
   }
 }
 
@@ -14027,20 +14015,20 @@ function validateLinesOpts(cmd) {
     var fields = validateCommaSepNames(cmd.options.fields || cmd._[0]);
     if (fields) cmd.options.fields = fields;
   } catch (e) {
-    error("command takes a comma-separated list of fields");
+    error("Command takes a comma-separated list of fields");
   }
 }
 
 
 function validateInnerLinesOpts(cmd) {
   if (cmd._.length > 0) {
-    error("command takes no arguments");
+    error("Command takes no arguments");
   }
 }
 
 function validateSubdivideOpts(cmd) {
   if (cmd._.length !== 1) {
-    error("command requires a JavaScript expression");
+    error("Command requires a JavaScript expression");
   }
   cmd.options.expression = cmd._[0];
 }
@@ -14050,7 +14038,7 @@ function validateFilterFieldsOpts(cmd) {
     var fields = validateCommaSepNames(cmd._[0]);
     cmd.options.fields = fields || [];
   } catch(e) {
-    error("command requires a comma-sep. list of fields");
+    error("Command requires a comma-sep. list of fields");
   }
 }
 
@@ -14058,7 +14046,7 @@ function validateExpressionOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.expression = cmd._[0];
   } else if (cmd._.length > 1) {
-    error("unparsable arguments:", cmd._);
+    error("Unparsable arguments:", cmd._);
   }
 }
 
@@ -14069,7 +14057,7 @@ function validateOutputOpts(cmd) {
       pathInfo = utils.parseLocalPath(path);
 
   if (_.length > 1) {
-    error("command takes one file or directory argument");
+    error("Command takes one file or directory argument");
   }
 
   if (!path) {
@@ -14108,7 +14096,7 @@ function validateOutputOpts(cmd) {
   }
 
   if (o.encoding) {
-    o.encoding = cli.validateEncoding(o.encoding);
+    o.encoding = MapShaper.validateEncoding(o.encoding);
   }
 
   // topojson-specific
@@ -14127,11 +14115,11 @@ function validateOutputOpts(cmd) {
 function validateCommaSepNames(str, min) {
   if (!min && !str) return null; // treat
   if (!utils.isString(str)) {
-    error ("expected comma-separated list; found:", str);
+    error ("Expected a comma-separated list; found:", str);
   }
   var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
-    error(utils.format("expected a list of at least %d member%s; found: %s", min, 's?', str));
+    error(utils.format("Expected a list of at least %d member%s; found: %s", min, utils.pluralSuffix(min), str));
   }
   return parts.length > 0 ? parts : null;
 }
@@ -14139,14 +14127,34 @@ function validateCommaSepNames(str, min) {
 
 
 
-// Parse an array or a string of command line tokens into an array of
-// command objects.
-MapShaper.parseCommands = function(tokens) {
-  if (utils.isString(tokens)) {
-    tokens = require('shell-quote').parse(tokens);
-  }
-  return MapShaper.getOptionParser().parseArgv(tokens);
+MapShaper.splitShellTokens = function(str) {
+  var BAREWORD = '([^\\s\'"])+';
+  var SINGLE_QUOTE = '"((\\\\"|[^"])*?)"';
+  var DOUBLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
+  var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
+  var matches = str.match(rxp) || [];
+  var chunks = matches.map(utils.trimQuotes).filter(function(chunk) {
+    // single backslashes may be present in multiline commands pasted from a makefile, e.g.
+    return !!chunk && chunk != '\\';
+  });
+  return chunks;
 };
+
+utils.trimQuotes = function(raw) {
+  var len = raw.length, first, last;
+  if (len >= 2) {
+    first = raw.charAt(0);
+    last = raw.charAt(len-1);
+    if (first == '"' && last == '"' || first == "'" && last == "'") {
+      return raw.substr(1, len-2);
+    }
+  }
+  return raw;
+};
+
+
+
+
 
 MapShaper.getOptionParser = function() {
   // definitions of options shared by more than one command
@@ -14190,9 +14198,8 @@ MapShaper.getOptionParser = function() {
       };
 
   var parser = new CommandParser(),
-      usage = "Usage\n" +
-    "  mapshaper -<command> [options] ...\n" +
-    "  mapshaper -help [command(s)]";
+      usage = "Usage:  mapshaper -<command> [options] ...";
+
   parser.usage(usage);
 
   /*
@@ -14203,7 +14210,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
   */
 
-  parser.note("Use mapshaper -help <command> to view options for a single command");
+  parser.note("Enter mapshaper -help <command> to view options for a single command");
 
   parser.default('i');
 
@@ -14549,7 +14556,7 @@ MapShaper.getOptionParser = function() {
     .describe("create a point layer from polygons or attribute data")
     .validate(function (cmd) {
       if (cmd._.length > 0) {
-        error("unknown argument:", cmd._[0]);
+        error("Unknown argument:", cmd._[0]);
       }
     })
     .option("x", {
@@ -14635,7 +14642,7 @@ MapShaper.getOptionParser = function() {
     //.option("y0", {type: "number"})
     .validate(function(cmd) {
       if (cmd._.length != 1) {
-        error("command requires a projection name");
+        error("Command requires a projection name");
       }
       cmd.options.projection = cmd._[0];
     });
@@ -14649,7 +14656,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'")
     .validate(function(cmd) {
       if (cmd._.length === 0) {
-        error("missing a JS expression");
+        error("Missing a JS expression");
       }
       validateExpressionOpts(cmd);
     })
@@ -14688,15 +14695,6 @@ MapShaper.getOptionParser = function() {
       describe: "view detailed information about a command"
     });
 
-  // trap v0.1 options
-  ("f,format,p,e,expression,pct,i,visvalingam,dp,rdp,interval,merge-files,combine-files," +
-  "fields,precision,auto-snap").split(',')
-    .forEach(function(str) {
-      parser.command(str).validate(function() {
-        error('mapshaper syntax has changed since v0.1.x.');
-      });
-    });
-
   // Work-in-progress (no .describe(), so hidden from -h)
   parser.command('tracing');
   parser.command("flatten")
@@ -14715,14 +14713,44 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
   */
 
-  /*
-  parser.command("filter-layers")
-    .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
-    .validate(validateLayersOpts);
-  */
-
   return parser;
 };
+
+
+
+
+// Parse an array or a string of command line tokens into an array of
+// command objects.
+MapShaper.parseCommands = function(tokens) {
+  if (utils.isString(tokens)) {
+    tokens = MapShaper.splitShellTokens(tokens);
+  }
+  return MapShaper.getOptionParser().parseArgv(tokens);
+};
+
+// Parse a command line string for the browser console
+MapShaper.parseConsoleCommands = function(raw) {
+  var blocked = 'o,i'.split(','),
+      tokens, parsed, str;
+  str = raw.replace(/^mapshaper\b/, '').trim();
+  if (/^[a-z]/.test(str)) {
+    // add hyphen prefix to bare command
+    str = '-' + str;
+  }
+  tokens = MapShaper.splitShellTokens(str);
+  tokens.forEach(function(tok) {
+    if (tok[0] == '-' && utils.contains(blocked, tok.substr(1))) {
+      stop("These commands can not be run in the browser:", blocked.join(', '));
+    }
+  });
+  parsed = MapShaper.parseCommands(str);
+  // block implicit initial -i command
+  if (parsed.length > 0 && parsed[0].name == 'i') {
+    stop(utils.format("Unable to run [%s]", raw));
+  }
+  return parsed;
+};
+
 
 
 
@@ -14883,14 +14911,16 @@ MapShaper.divideImportCommand = function(commands) {
 // @memo: Initial value
 //
 utils.reduceAsync = function(arr, memo, iter, done) {
+  var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
   var i=0;
   next(null, memo);
 
   function next(err, memo) {
     // Detach next operation from call stack to prevent overflow
-    // Don't use setTimeout(, 0) -- this can introduce a long delay if
-    //   previous operation was slow, as of Node 0.10.32
-    setImmediate(function() {
+    // Don't use setTimeout(, 0) if setImmediate is available
+    // (setTimeout() can introduce a long delay if previous operation was slow,
+    //    as of Node 0.10.32 -- a bug?)
+    call(function() {
       if (err) {
         done(err, null);
       } else if (i < arr.length === false) {
@@ -14898,7 +14928,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
       } else {
         iter(memo, arr[i++], next);
       }
-    });
+    }, 0);
   }
 };
 
@@ -14906,7 +14936,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 MapShaper.runAndRemoveInfoCommands = function(commands) {
   return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
-      message(getVersion());
+      message(MapShaper.VERSION);
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'projections') {
@@ -14932,17 +14962,6 @@ var cli = api.cli = {};
 // Handle an error caused by invalid input or misuse of API
 function stop() {
   throw new APIError(MapShaper.formatLogArgs(arguments));
-}
-
-function getVersion() {
-  var v;
-  try {
-    var scriptDir = utils.parseLocalPath(require.main.filename).directory,
-        packagePath = require('path').join(scriptDir, "..", "package.json"),
-        obj = JSON.parse(cli.readFile(packagePath, 'utf-8'));
-    v = obj.version;
-  } catch(e) {}
-  return v || "";
 }
 
 cli.isFile = function(path) {
@@ -15028,29 +15047,6 @@ cli.statSync = function(fpath) {
     obj = require('fs').statSync(fpath);
   } catch(e) {}
   return obj;
-};
-
-cli.printRepairMessage = function(info) {
-  if (info.intersections_initial > 0) {
-    message(utils.format(
-        "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
-        info.intersections_repaired, "s?", info.intersections_remaining, "s?"));
-    /*
-    if (info.intersections_remaining > 10) {
-      if (!opts.snapping) {
-        message("Tip: use --auto-snap to fix minor topology errors.");
-      }
-    }*/
-  }
-};
-
-cli.validateEncoding = function(enc) {
-  if (!MapShaper.encodingIsSupported(enc)) {
-    console.error("[Unsupported encoding:", enc + "]");
-    MapShaper.printEncodings();
-    process.exit(0);
-  }
-  return enc;
 };
 
 // Expose internal objects for testing

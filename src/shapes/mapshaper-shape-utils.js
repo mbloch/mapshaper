@@ -16,6 +16,14 @@ MapShaper.countArcsInShapes = function(shapes, counts) {
   });
 };
 
+MapShaper.countPointsInLayer = function(lyr) {
+  var count = 0;
+  if (MapShaper.layerHasPoints(lyr)) {
+    MapShaper.forEachPoint(lyr, function() {count++;});
+  }
+  return count;
+};
+
 // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
 MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
   var index = numArcs ? new Uint8Array(numArcs) : [],

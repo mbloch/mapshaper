@@ -23,6 +23,12 @@ MapShaper.getDatasetBounds = function(data) {
   return bounds;
 };
 
+MapShaper.datasetHasPaths = function(dataset) {
+  return utils.some(dataset.layers, function(lyr) {
+    return MapShaper.layerHasPaths(lyr);
+  });
+};
+
 MapShaper.getFeatureCount = function(lyr) {
   var count = 0;
   if (lyr.data) {
@@ -77,6 +83,12 @@ MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
   dataset.layers = currLayers;
 };
 
+MapShaper.isolateLayer = function(layer, dataset) {
+  return utils.defaults({
+    layers: dataset.layers.filter(function(lyr) {return lyr == layer;})
+  }, dataset);
+};
+
 // @target is a layer identifier or a comma-sep. list of identifiers
 // an identifier is a literal name, a name containing "*" wildcard or
 // a 0-based array index
@@ -99,44 +111,3 @@ MapShaper.findMatchingLayers = function(layers, target) {
     return layers[i];
   });
 };
-
-/*
-MapShaper.validateLayer = function(lyr, arcs) {
-  var type = lyr.geometry_type;
-  if (!utils.isArray(lyr.shapes)) {
-    error("Layer is missing shapes property");
-  }
-  if (lyr.data && lyr.data.size() != lyr.shapes.length) {
-    error("Layer contains mismatched data table and shapes");
-  }
-  if (arcs && arcs instanceof ArcCollection === false) {
-    error("Expected an ArcCollection");
-  }
-  if (type == 'polygon' || type == 'polyline') {
-    if (!arcs) error("Missing ArcCollection for a", type, "layer");
-    // TODO: validate shapes, make sure ids are w/in arc range
-  } else if (type == 'point') {
-    // TODO: validate shapes
-  } else if (type === null) {
-    // TODO: make sure shapes are all null
-  }
-};
-
-// Simple integrity checks
-MapShaper.validateDataset = function(data) {
-  if (!data) invalid("Missing dataset object");
-  if (!utils.isArray(data.layers) || data.layers.length > 0 === false)
-    invalid("Missing layers");
-  data.layers.forEach(function(lyr) {
-    try {
-      MapShaper.validateLayer(lyr, data.arcs);
-    } catch (e) {
-      invalid(e.message);
-    }
-  });
-
-  function invalid(msg) {
-    error("[validateDataset()] " + msg);
-  }
-};
-*/

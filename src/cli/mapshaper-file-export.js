@@ -17,13 +17,16 @@ api.exportFiles = function(dataset, opts) {
 };
 
 MapShaper.getOutputPaths = function(files, opts) {
-  var paths =  files.map(function(file) {
-    return require('path').join(opts.output_dir || '', file);
-  });
-  if (!opts.force) {
-    paths = resolveFileCollisions(paths);
+  var odir = opts.output_dir;
+  if (odir) {
+    files = files.map(function(file) {
+      return require('path').join(odir, file);
+    });
   }
-  return paths;
+  if (!opts.force) {
+    files = resolveFileCollisions(files);
+  }
+  return files;
 };
 
 // Avoid naming conflicts with existing files

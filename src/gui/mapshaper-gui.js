@@ -4,6 +4,8 @@ mapshaper-simplify-control
 mapshaper-import-control
 mapshaper-export-control
 mapshaper-repair-control
+mapshaper-layer-control
+mapshaper-gui-proxy
 mapshaper-map
 mapshaper-maplayer
 mapshaper-simplify
@@ -11,92 +13,70 @@ mapshaper-export
 mapshaper-shapes
 mapshaper-topology
 mapshaper-keep-shapes
+mapshaper-console
+mapshaper-gui-model
 */
 
-if (Env.inBrowser) {
-  Browser.onload(function() {
-    if (!gui.browserIsSupported()) {
-      El("#mshp-not-supported").show();
-      return;
-    }
-    var editor = new Editor(),
-        importer = new ImportControl(editor);
-    El('#mshp-import').show(); // show import screen
-  });
-}
-
-function Editor() {
-  var datasets = [];
-  var foregroundStyle = {
-        strokeColor: "#335",
-        dotColor: "#223",
-        squareDot: true
-      };
-  var bgStyle = {
-        strokeColor: "#aaa",
-        dotColor: "#aaa",
-        squareDot: true
-      };
-  var map, exporter, slider, repair;
-
-  this.editDataset = function(dataset, opts) {
-    datasets.push(dataset);
-    if (datasets.length > 2) {
-      map.findLayer(datasets.shift()).remove();
-    }
-    if (datasets.length > 1) {
-      map.findLayer(datasets[0]).setStyle(bgStyle);
-    } else {
-      startEditing();
-    }
-
-    editDataset(dataset, opts);
-  };
-
-  function startEditing() {
-    map = new MshpMap("#mshp-main-map");
-    exporter = new ExportControl();
-    repair = new RepairControl(map);
-    slider = new SimplifyControl();
-    El("#mshp-main-page").show();
+Browser.onload(function() {
+  El('#mshp-version').text('v' + MapShaper.VERSION);
+  if (!gui.browserIsSupported()) {
+    El("#mshp-not-supported").show();
+  } else {
+    gui.startEditing();
   }
+});
 
-  function editDataset(dataset, opts) {
-    var group = map.addLayer(dataset);
-    group.showLayer(dataset.layers[0]).setStyle(foregroundStyle);
-    exporter.setDataset(dataset);
+gui.startEditing = function() {
+  var model = new Model(),
+      map, repair, simplify;
+  gui.startEditing = function() {};
+  gui.alert = new ErrorMessages(model);
+  api.importFile = new ImportFileProxy(model);
 
-    // hide widgets if visible and remove any old event handlers
-    slider.reset();
+  // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
+  map = new MshpMap(model);
+  repair = new RepairControl(map);
+  simplify = new SimplifyControl(model);
+  new ImportControl(model);
+  new Console(model);
+  new ExportControl(model);
+  new LayerControl(model);
+
+  model.on('select', onSelect);
+
+  simplify.on('simplify-start', function() {
+    repair.hide();
+  });
+  simplify.on('simplify-end', function() {
+    repair.update();
+  });
+  model.on('update', function(e) {
+    if (e.flags.simplify || e.flags.proj) {
+      repair.reset();
+      repair.delayedUpdate();
+    }
+  });
+  simplify.on('change', function(e) {
+    map.setSimplifyPct(e.value);
+  });
+  repair.on('repair', function() {
+    model.updated();
+  });
+
+  function onSelect(e) {
+    El('#mode-buttons').show();
     repair.reset();
-    map.refresh(); // redraw all map layers
 
-    if (opts.method && dataset.arcs) {
-      slider.show();
-      slider.value(dataset.arcs.getRetainedPct());
-      slider.on('change', function(e) {
-        group.setRetainedPct(e.value).refresh();
-      });
-      if (!opts.no_repair) {
-        repair.setDataset(dataset);
+    if (MapShaper.layerHasPaths(e.layer)) {
+      // TODO: move this to simplify control...
+      // simplify.value(e.dataset.arcs.getRetainedPct());
+
+      if (!e.opts.no_repair) {
+        repair.setDataset(e.dataset);
         // use timeout so map appears before the repair control calculates
         // intersection data, which can take a little while
-        setTimeout(initRepair, 10);
+        repair.delayedUpdate();
       }
     }
-
-    function initRepair() {
-      repair.show();
-      repair.update();
-      slider.on('simplify-start', function() {
-        repair.clear();
-      });
-      slider.on('simplify-end', function() {
-        repair.update();
-      });
-      repair.on('repair', function() {
-        group.refresh();
-      });
-    }
   }
-}
+};

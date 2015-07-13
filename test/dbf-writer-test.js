@@ -74,6 +74,12 @@ describe('dbf-writer.js', function () {
       ];
       assert.equal(Dbf.discoverFieldType(data, 'foo'), 'L')
     })
+    it('returns null if no data', function() {
+      var records = [{foo: null}];
+      assert.strictEqual(Dbf.discoverFieldType(records, 'foo'), null);
+      assert.strictEqual(Dbf.discoverFieldType([], 'foo'), null);
+
+    })
   })
 
 
@@ -107,6 +113,20 @@ describe('dbf-writer.js', function () {
   })
 
   describe('roundtrip: records -> export -> import -> records', function() {
+
+    it('null records are preserved', function() {
+      var records = [{foo: null}];
+      var buf = Dbf.exportRecords(records);
+      var records2 = importRecords(buf);
+      assert.deepEqual(records2, records);
+    })
+
+    it('empty strings are preserved', function() {
+      var records = [{foo: ""}];
+      var buf = Dbf.exportRecords(records);
+      var records2 = importRecords(buf);
+      assert.deepEqual(records2, records);
+    })
 
     it('10-letter field names are preserved', function() {
       var records = [{abcdefghij: 'foo'}];

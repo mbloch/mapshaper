@@ -1,13 +1,10 @@
-/* @requires mapshaper-common, mapshaper-option-parser, mapshaper-option-validation */
+/* @requires
+mapshaper-common
+mapshaper-option-parser
+mapshaper-option-validation
+mapshaper-chunker
+*/
 
-// Parse an array or a string of command line tokens into an array of
-// command objects.
-MapShaper.parseCommands = function(tokens) {
-  if (utils.isString(tokens)) {
-    tokens = require('shell-quote').parse(tokens);
-  }
-  return MapShaper.getOptionParser().parseArgv(tokens);
-};
 
 MapShaper.getOptionParser = function() {
   // definitions of options shared by more than one command
@@ -51,9 +48,8 @@ MapShaper.getOptionParser = function() {
       };
 
   var parser = new CommandParser(),
-      usage = "Usage\n" +
-    "  mapshaper -<command> [options] ...\n" +
-    "  mapshaper -help [command(s)]";
+      usage = "Usage:  mapshaper -<command> [options] ...";
+
   parser.usage(usage);
 
   /*
@@ -64,7 +60,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper tracts.shp -each \"CTY_FIPS=FIPS.substr(0, 5)\" -dissolve CTY_FIPS");
   */
 
-  parser.note("Use mapshaper -help <command> to view options for a single command");
+  parser.note("Enter mapshaper -help <command> to view options for a single command");
 
   parser.default('i');
 
@@ -410,7 +406,7 @@ MapShaper.getOptionParser = function() {
     .describe("create a point layer from polygons or attribute data")
     .validate(function (cmd) {
       if (cmd._.length > 0) {
-        error("unknown argument:", cmd._[0]);
+        error("Unknown argument:", cmd._[0]);
       }
     })
     .option("x", {
@@ -496,7 +492,7 @@ MapShaper.getOptionParser = function() {
     //.option("y0", {type: "number"})
     .validate(function(cmd) {
       if (cmd._.length != 1) {
-        error("command requires a projection name");
+        error("Command requires a projection name");
       }
       cmd.options.projection = cmd._[0];
     });
@@ -510,7 +506,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'")
     .validate(function(cmd) {
       if (cmd._.length === 0) {
-        error("missing a JS expression");
+        error("Missing a JS expression");
       }
       validateExpressionOpts(cmd);
     })
@@ -549,15 +545,6 @@ MapShaper.getOptionParser = function() {
       describe: "view detailed information about a command"
     });
 
-  // trap v0.1 options
-  ("f,format,p,e,expression,pct,i,visvalingam,dp,rdp,interval,merge-files,combine-files," +
-  "fields,precision,auto-snap").split(',')
-    .forEach(function(str) {
-      parser.command(str).validate(function() {
-        error('mapshaper syntax has changed since v0.1.x.');
-      });
-    });
-
   // Work-in-progress (no .describe(), so hidden from -h)
   parser.command('tracing');
   parser.command("flatten")
@@ -574,12 +561,6 @@ MapShaper.getOptionParser = function() {
 
   parser.command("repair")
     .option("target", targetOpt);
-  */
-
-  /*
-  parser.command("filter-layers")
-    .describe('filter and rename layers, e.g. "layer1=counties,layer2=1"')
-    .validate(validateLayersOpts);
   */
 
   return parser;

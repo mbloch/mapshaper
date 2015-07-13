@@ -3,6 +3,7 @@
 api.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes || null,
+      n = MapShaper.getFeatureCount(lyr),
       filteredShapes = shapes ? [] : null,
       filteredRecords = records ? [] : null,
       filteredLyr, filter;
@@ -16,11 +17,10 @@ api.filterFeatures = function(lyr, arcs, opts) {
   }
 
   if (!filter) {
-    message("[filter] missing a filter -- retaining all features");
-    return;
+    stop("[filter] Missing a filter expression");
   }
 
-  utils.repeat(MapShaper.getFeatureCount(lyr), function(shapeId) {
+  utils.repeat(n, function(shapeId) {
     var result = filter(shapeId);
     if (result === true) {
       if (shapes) filteredShapes.push(shapes[shapeId] || null);
@@ -41,6 +41,11 @@ api.filterFeatures = function(lyr, arcs, opts) {
   } else {
     filteredLyr = utils.extend(lyr, filteredLyr); // modify in-place
   }
+
+  if (opts.verbose !== false) {
+    message(utils.format('[filter] Retained %,d of %,d features', MapShaper.getFeatureCount(filteredLyr), n));
+  }
+
   return filteredLyr;
 };
 

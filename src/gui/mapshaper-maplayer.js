@@ -3,25 +3,31 @@
 // Interface for displaying the points and paths in a dataset
 //
 function LayerGroup(dataset) {
-  var _surface = new CanvasLayer(),
-      _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null,
-      _bounds = MapShaper.getDatasetBounds(dataset),
-      _draw,
-      _shapes,
-      _style,
-      _map;
+  var _el = El('canvas').css('position:absolute;'),
+      _canvas = _el.node(),
+      _lyr, _filteredArcs, _bounds;
+
+  init();
+
+  function init() {
+    _bounds = MapShaper.getDatasetBounds(dataset);
+    _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
+  }
+
+  this.hide = function() {
+    _el.hide();
+  };
 
   this.showLayer = function(lyr) {
-    // TODO: make sure lyr is in dataset
-    if (lyr.geometry_type == 'point') {
-      _shapes = new FilteredPointCollection(lyr.shapes);
-      _draw = MapShaper.drawPoints;
-    } else {
-      // TODO: show shapes, not arcs
-      _shapes = _filteredArcs;
-      _draw = MapShaper.drawPaths;
-    }
-    return this;
+    _lyr = lyr; // TODO: make sure lyr is in dataset
+  };
+
+  this.getLayer = function() {
+    return _lyr || dataset.layers[0];
+  };
+
+  this.getElement = function() {
+    return El(_canvas);
   };
 
   this.getBounds = function() {
@@ -32,14 +38,18 @@ function LayerGroup(dataset) {
     return dataset;
   };
 
-  this.setStyle = function(style) {
-    _style = style;
-    return this;
+  this.clear = function() {
+    _canvas.getContext('2d').clearRect(0, 0, _canvas.width, _canvas.height);
   };
 
-  this.hide = function() {
-    _surface.clear();
-    _shapes = null;
+  // Rebuild filtered arcs and recalculate bounds
+  this.updated = function() {
+    var interval = dataset.arcs ? dataset.arcs.getRetainedInterval() : 0;
+    init();
+    // update simplification level
+    if (_filteredArcs) {
+      _filteredArcs.setRetainedInterval(interval);
+    }
   };
 
   this.setRetainedPct = function(pct) {
@@ -47,23 +57,27 @@ function LayerGroup(dataset) {
     return this;
   };
 
-  this.refresh = function() {
-    if (_map && _shapes && _style) {
-      var ext = _map.getExtent();
-      _surface.prepare(ext.width(), ext.height());
-      _shapes.setMapExtent(ext);
-      _draw(_shapes, _style, _surface.getContext());
+  this.draw = function(style, ext) {
+    var dataset = dataset,
+        lyr = this.getLayer(),
+        points;
+    this.clear();
+    _canvas.width = ext.width();
+    _canvas.height = ext.height();
+    _el.show();
+    if (_filteredArcs) {
+      _filteredArcs.setMapExtent(ext);
+      MapShaper.drawPaths(_filteredArcs, style, _canvas);
+    }
+    if (lyr.geometry_type == 'point') {
+      points = new FilteredPointCollection(lyr.shapes);
+      points.setMapExtent(ext);
+      MapShaper.drawPoints(points, style, _canvas);
     }
   };
 
   this.remove = function() {
-    if (_surface) {
-      _surface.getElement().remove();
-    }
+    this.getElement().remove();
   };
 
-  this.setMap = function(map) {
-    _map = map;
-    _surface.getElement().appendTo(map.getElement());
-  };
 }

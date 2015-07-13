@@ -10,13 +10,12 @@ api.findAndRepairIntersections = function(arcs) {
       countPost = unfixable.length,
       countFixed = countPre > countPost ? countPre - countPost : 0;
   T.stop('Find and repair intersections');
-  return {
-    intersections_initial: countPre,
-    intersections_remaining: countPost,
-    intersections_repaired: countFixed
-  };
+  if (countPre > 0) {
+    message(utils.format(
+      "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
+      countFixed, countFixed == 1 ? '' : 's', countPost, countPost == 1 ? '' : 's'));
+  }
 };
-
 
 // Try to resolve a collection of line-segment intersections by rolling
 // back simplification along intersecting segments.

@@ -6,7 +6,7 @@ Mapshaper is software for editing Shapefile, GeoJSON, [TopoJSON](https://github.
 
 The `mapshaper` command line program supports common map making tasks like simplifying shapes, editing attribute data, clipping, erasing, dissolving, filtering and more.
 
-There is a [web-based gui](http://www.mapshaper.org) for interactive simplification.
+There is a [web-based gui](http://www.mapshaper.org), which supports interactive simplification and command line processing via a built-in console.
 
 See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for documentation on using mapshaper.
 
@@ -64,8 +64,6 @@ According to Mozilla's [FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html), "The MPL'
 
 ### Acknowledgements
 
-[Mike Bostock](https://github.com/mbostock), for developing the TopoJSON format and for all-around helpfulness.
-
-[Shan Carter](https://github.com/shancarter), for help designing mapshaper's web interface.
+Gregor Aisch, Mike Bostock, Shan Carter and Zhou Yi, for suggested improvements and general helpfulness.
 
 Mark Harrower, for collaborating on the original MapShaper program at the University of Wisconsin&ndash;Madison.

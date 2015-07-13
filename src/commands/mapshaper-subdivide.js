@@ -15,7 +15,7 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
       tmp, bounds, lyr1, lyr2;
 
   if (!utils.isBoolean(divide)) {
-    stop("--subdivide expressions must return true or false");
+    stop("[subdivide] Expression must evaluate to true or false");
   }
   if (divide) {
     bounds = MapShaper.getLayerBounds(lyr, arcs);

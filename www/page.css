@@ -17,16 +17,15 @@
 }
 
 html, body {
+	height: 100%;
+	width: 100%;
 	margin: 0;
 	padding: 0;
-	height: 100%;
 }
 
-#page-wrapper {
+body {
 	overflow: hidden;
 	background-color: #fff;
-	width: 100%;
-	height: 100%;
 	font: 14px/1.4 'Source Sans Pro', Helvetica, sans-serif;
 	color: #444;
 }
@@ -36,6 +35,7 @@ html, body {
 
 .g-page-header {
 	position: absolute;
+	color: white;
 	top: 0;
 	left: 0;
 	z-index: 10;
@@ -46,14 +46,17 @@ html, body {
 	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
 }
 
-.g-page-header .mshp-version {
+#mshp-version {
+	z-index: 100;
+	position: absolute;
+	pointer-events: none;
+	bottom: 8px;
+	left: 11px;
 	font-size: 11px;
-	color: white;
-	font-weight: normal;
+	color: steelblue;
 }
 
 .g-mapshaper-logo {
-	color: white;
 	font-weight: bold;
 	font-size: 18px;
 	margin: 2px 0 0 12px;
@@ -66,6 +69,26 @@ html, body {
 .g-page-header a {
 	text-decoration: none;
 }
+
+#mode-buttons {
+	z-index: 20;
+	position: absolute;
+	top: 0px;
+	right: 0px;
+	display: none;
+	margin: 0 9px 3px 0;
+}
+
+.separator {
+	border-left: 1px solid white;
+	height: 10px;
+	margin: 0 2px 0 2px;
+}
+
+#g-export-buttons {
+	display: none;
+}
+
 
 /* --- Main area ------------- */
 
@@ -82,7 +105,7 @@ html, body {
 /* --- Error message ---------- */
 
 .error-wrapper {
-	z-index: 6000;
+	z-index: 120;
 	text-align: center;
 	position: absolute;
 	top: 0;
@@ -92,26 +115,16 @@ html, body {
 }
 
 div.error-box {
-	font-size: 16px;
 	margin-top: 55px;
-	max-width: 500px;
-	text-align: left;
-	padding: 8px 12px 10px 12px;
+	/* padding: 8px 12px 10px 12px; */
+	max-width: 400px;
+	font-size: 16px;
 }
 
-div.error-btn {
-	font-size: 14px;
-	margin-top: 7px;
-	border: none;
-	background-color: #5d85b5;
-	color: white;
-	padding: 3px 6px 5px 6px;
-	border-radius: 4px;
+div.error-box > div {
+
 }
 
-div.error-btn.active:hover:not(.selected) {
-	background-color: #35517c;
-}
 
 
 /* --- Import screen -------------- */
@@ -120,7 +133,7 @@ div.error-btn.active:hover:not(.selected) {
 	background-image: url("images/fork-me-right-cerulean.png");
     background-size: 149px 149px;
 	position: absolute;
-	z-index: 50;
+	z-index: 110;
 	top: 0;
 	right: 0;
 	border: 0;
@@ -134,58 +147,66 @@ div.error-btn.active:hover:not(.selected) {
 	}
 }
 
-#mshp-not-supported, #mshp-import {
-	display:none;
-}
-
-#mshp-import .g-info-box {
-	text-align: left;
-}
-
-#mshp-import .g-clicktext {
-	width: 40px;
+#import-options .advanced-options {
+	width: 210px;
 	background: rgba(255, 255, 255, 0.4);
-	text-align: right;
 	border: 1px solid rgba(0,0,0,0.2);
 	padding: 0 3px;
-	margin: 0 5px 0 0px;
-	font-size: 10px;
-
+	height: 17px;
+	font-size: 12px;
 }
 
-#mshp-intro-screen {
+#mshp-not-supported {
+	display: none;
+	z-index: 100;
 	text-align: center;
-	padding-top: 52px;
-	height: 100%;
-	color: #555;
 }
 
-.g-info-box {
+#dropped-file-list {
+	display: none;
+	padding-bottom: 3px;
+}
+
+#dropped-file-list p {
+	line-height: 1;
+	margin-bottom: 5px;
+}
+
+
+.popup-dialog {
+	display: none;
+	z-index: 80;	
+	text-align: center;
+	background-color: rgba(255, 255, 255, 0.8);
+}
+
+.info-box {
+	text-align: left;
+	margin-top: 11px;
 	background-color: #fff;
-	padding: 10px 14px 12px 14px;
+	padding: 10px 14px 8px 14px;
 	vertical-align: top;
 	display: inline-block;
 	border: 1px solid #b5b5b5;
 	border-radius: 9px;
 }
 
-#mshp-intro-screen h3 {
+.info-box h3 {
 	padding: 0;
-	margin: 0;
+	margin: 0 0 3px 0;
 }
 
-#mshp-intro-screen h4 {
-	margin: 0.4em 0 0 0;
+.info-box h4 {
+	margin: 0 0 2px 0;
 }
 
-#mshp-intro-screen p {
+.info-box p {
 	white-space: pre-line;
-	margin: 0.45em 0 0 0;
+	margin: 0 0 0.45em 0;
 }
 
 .g-option-menu {
-	font-size: 13px;
-	margin: 2px 0 0 11px;
+	margin: 0 0 6px 0;
 }
 
 .g-option-menu input {
@@ -194,7 +215,8 @@ div.error-btn.active:hover:not(.selected) {
 }
 
 .g-option-menu .g-tip-button {
-	margin-left: 5px;
+	margin-left: 12px;
+	margin-top: 3px;
 }
 
 .g-option-menu input.g-checkbox {
@@ -207,18 +229,22 @@ div.error-btn.active:hover:not(.selected) {
 
 /* --- Progress bar --------------- */
 
-.progress-bar {
+.progress-message {
 	position: absolute;
 	width: 100%;
-	z-index: 2000;
+	z-index: 90;
 	text-align: center;
-	top: 75px;
+	top: 52px;
 	font-size: 16px;
 }
 
-.progress-bar canvas {
-	width: 40px;
-	height: 40px;
+.progress-message > div {
+	display: inline-block;
+	text-transform: uppercase;
+	padding: 3px 6px;
+	font-size: 16px;
+	background-color: rgba(255, 255, 255, 0.85);
+	border: 1px solid black;
 }
 
 /* === Editing interface ========== */
@@ -229,18 +255,137 @@ div.error-btn.active:hover:not(.selected) {
 	width: 100%;
 }
 
-@media (max-width: 876px) {
-	body.simplify  #g-simplify-control-wrapper {
-		top: 22px;
-	}
 
-	body.simplify .g-page-header {
-		height: 52px;
-	}
+/* --- Console control ------------ */
 
-	body.simplify .main-area {
-		margin-top: 52px;
-	}
+#console {
+	z-index: 50;
+	pointer-events: none;
+	/* background-color: rgba(0,0,0,0.8); */
+	display: none;
+}
+
+#console-window {
+	pointer-events: auto;
+	background-color: rgba(0,0,0,1);
+	position: absolute;
+	width: 100%;
+	text-align: center;
+	overflow: auto;
+	max-height: 80%;
+}
+
+#console-buffer {
+	width: 100%;
+	position: relative;
+	color: white;
+}
+
+#console-buffer * {
+	font: 13px/1 monospace;
+}
+
+#console-buffer > div {
+	white-space: pre;
+	text-align: left;
+	width: 520px;
+	margin: 0 auto;
+}
+
+.console-error {
+	color: #f93b00;
+}
+
+.console-message {
+	color: #eddd98;
+}
+
+.console-example {
+	color: #b9dffc;
+}
+
+#console-log {
+	padding-top: 6px;
+}
+
+#console-log > div {
+	padding-top: 1px;
+	line-height: 15px;
+}
+
+#command-line {
+	/* border-bottom: 1px solid #ccc; */
+	padding-bottom: 10px;
+}
+
+#command-line > * {
+	display: inline-block;
+	vertical-align: middle;
+}
+
+#command-line > input {
+	height: 16px;
+	color: white;
+	background-color: transparent;
+	border: none;
+	padding: 0;
+	margin: 0;
+	outline: none;
+	width: 500px;
+}
+
+/* --- Layer menu ----------- */
+
+#layer-control {
+	top: 0;
+	position: absolute;
+	text-align: center;
+	z-index: 10;
+	width: 100%;
+}
+
+body.simplify #layer-control {
+	display: none;
+}
+
+#layer-menu .info-box {
+	overflow: hidden;
+	max-height: 90%;
+	overflow-y: auto;
+}
+
+#layer-menu .layer-list {
+	width: 240px;
+	margin: 6px 0 6px 0;
+}
+
+#layer-menu .layer-item {
+	padding: 8px 0;
+	margin-left: -14px;	
+	padding: 8px 14px;
+	cursor: pointer;
+	width: 240px;
+	line-height: 1.1;
+}
+
+.layer-item.active {
+	background-color: #dcf3ff;
+}
+
+.layer-item:hover:not(.active) {
+	background-color: #eefaff;
+}
+
+.layer-item .row {
+	white-space: nowrap;
+}
+
+.layer-item .row > div {
+	display: inline-block;
+}
+
+.layer-item .col1 {
+	width: 85px;
 }
 
 /* --- Intersection control ----------*/
@@ -250,9 +395,9 @@ div.error-btn.active:hover:not(.selected) {
 	visibility: visible;
 	display: none;
 	position: absolute;
-	z-index: 2000;
+	z-index: 20;
 	top: 7px;
-	right: 10px;
+	right: 14px;
 	text-align: right;
 }
 
@@ -271,7 +416,7 @@ div.error-btn.active:hover:not(.selected) {
 }
 
 .nav-buttons {
-	z-index: 50;
+	z-index: 20;
 	position: absolute;
 	top: 6px;
 	left: 6px;
@@ -292,46 +437,28 @@ div.error-btn.active:hover:not(.selected) {
 .zoom-box {
 	position: absolute;
 	border: 2px solid #c33;
-	z-index: 500;
-}
-
-
-/* --- Export control ------------- */
-
-#g-export-control {
-	position: absolute;
-	top: 0px;
-	right: 0px;
-	display: none;
-	margin: 6px 9px 0 0;
-}
-
-#g-export-buttons {
-	display: none;
-}
-
-.g-page-header .g-label {
-	color: #fff;
-	margin: 0 4px 0 0;
-}
-
-.g-page-header .g-panel-btn {
-	margin-right: 0;
-	color: #fff;
-	background-color: rgba(16, 69, 104, 0.3);
-	border: none;
-	padding: 3px 5px 4px 5px;
-	border-radius: 3px;
-}
-
-.g-page-header .g-panel-btn.active:hover:not(.selected) {
-	background-color: rgba(172, 205, 245, 0.3);
+	z-index: 10;
 }
 
 
 /* Simplification control ------------ */
 
+@media (max-width: 765px) {
+	body.simplify  #g-simplify-control-wrapper {
+		top: 22px;
+	}
+
+	body.simplify .g-page-header {
+		height: 52px;
+	}
+
+	body.simplify .main-area {
+		margin-top: 52px;
+	}
+}
+
 #g-simplify-control-wrapper {
+	display: none;
 	position: absolute;
 	width: 100%;
 	overflow: hidden;
@@ -341,13 +468,12 @@ div.error-btn.active:hover:not(.selected) {
 
 #g-simplify-control {
 	text-align: center;
-	display: none;
 	white-space: nowrap;
-	padding: 0 144px 0 12px;
+	padding: 0 90px 0 12px;
 }
 
 #g-simplify-control .g-slider {
-	padding: 9px 5px 0px 5px;
+	margin: 9px 5px 0 7px;
 	position: relative;
 	vertical-align: top;
 	display: inline-block;
@@ -362,7 +488,7 @@ div.error-btn.active:hover:not(.selected) {
 
 #g-simplify-control .g-handle {
 	position: absolute;
-	top: 6px;
+	top: -3px;
 }
 
 #g-simplify-control .g-handle img {

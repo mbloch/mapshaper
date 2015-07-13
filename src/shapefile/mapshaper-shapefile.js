@@ -69,7 +69,6 @@ MapShaper.importShp = function(src, opts) {
   return importer.done();
 };
 
-
 // Convert a dataset to Shapefile files
 MapShaper.exportShapefile = function(dataset, opts) {
   return dataset.layers.reduce(function(files, lyr) {
@@ -82,22 +81,14 @@ MapShaper.exportShapefile = function(dataset, opts) {
 };
 
 MapShaper.exportPrjFile = function(lyr, dataset) {
-  var content, prj, path;
-  if (Env.inNode && dataset.info.input_files && dataset.info.input_format == 'shapefile') {
-    path = utils.replaceFileExtension(dataset.info.input_files[0], 'prj');
-    if (cli.isFile(path)) {
-      content = cli.readFile(path, 'utf-8');
-    }
-  } else if (dataset.info.output_prj) {
-    content = dataset.info.output_prj;
+  var prj = dataset.info.output_prj;
+  if (!prj && prj !== null) { // null means unknown prj
+    prj = dataset.info.output_prj;
   }
-  if (content) {
-    prj = {
-      content: content,
-      filename: lyr.name + '.prj'
-    };
-  }
-  return prj;
+  return prj && {
+    content: prj,
+    filename: lyr.name + '.prj'
+  };
 };
 
 MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {

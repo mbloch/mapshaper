@@ -1,51 +1,64 @@
-/* @requires mapshaper-export */
+/* @requires mapshaper-export mapshaper-mode-button */
 
 // Export buttons and their behavior
-//
-var ExportControl = function() {
+var ExportControl = function(model) {
   var downloadSupport = typeof URL != 'undefined' && URL.createObjectURL &&
     typeof document.createElement("a").download != "undefined" ||
     !!window.navigator.msSaveBlob;
-  var dataset, anchor, blobUrl;
-
-  El('#g-export-control').show();
+  var menu = El('#export-options');
+  var anchor, blobUrl;
 
   if (!downloadSupport) {
-    El('#g-export-control .g-label').text("Exporting is not supported in this browser");
+    El('#export-btn').on('click', function() {
+      gui.alert("Exporting is not supported in this browser");
+    });
   } else {
-    anchor = El('#g-export-control').newChild('a').attr('href', '#').node();
-    El('#g-export-buttons').css('display:inline');
+    anchor = menu.newChild('a').attr('href', '#').node();
     exportButton("#g-geojson-btn", "geojson");
-    shpBtn = exportButton("#g-shapefile-btn", "shapefile");
-    topoBtn = exportButton("#g-topojson-btn", "topojson");
+    exportButton("#g-shapefile-btn", "shapefile");
+    exportButton("#g-topojson-btn", "topojson");
+    model.addMode('export', turnOn, turnOff);
+    new ModeButton('#export-btn', 'export', model);
   }
 
-  this.setDataset = function(d) {
-    dataset = d;
-    return this;
-  };
+  function turnOn() {
+    menu.show();
+  }
+
+  function turnOff() {
+    menu.hide();
+  }
 
   function exportButton(selector, format) {
-    var btn = new SimpleButton(selector).active(true).on('click', onClick);
+    var btn = new SimpleButton(selector).on('click', onClick);
     function onClick(e) {
-      btn.active(false);
+      var msg = gui.showProgressMessage('Exporting');
+      model.clearMode();
       setTimeout(function() {
         exportAs(format, function(err) {
-          btn.active(true);
-          if (err) error(err);
+          // hide message after a delay, so it doesn't just flash for an instant.
+          setTimeout(function(){msg.remove();}, 400);
+          if (err) throw err; // error(err);
         });
-      }, 10);
+      }, 20);
     }
   }
 
+  // @done function(string|Error|null)
   function exportAs(format, done) {
     var opts = {format: format}, // TODO: implement other export opts
-        files;
-
+        editing = model.getEditingLayer(),
+        dataset, files;
     try {
+      if (format == 'topojson') {
+        dataset = editing.dataset; // For TopoJSON, export all layers in this dataset
+      } else {
+        // other formats, only output the currently selected layer
+        dataset = MapShaper.isolateLayer(editing.layer, editing.dataset);
+      }
       files = MapShaper.exportFileContent(dataset, opts);
     } catch(e) {
-      return done(e.message);
+      return done(e);
     }
 
     if (!utils.isArray(files) || files.length === 0) {

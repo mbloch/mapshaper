@@ -15,15 +15,15 @@ function validateInputOpts(cmd) {
   if (_[0] == '-' || _[0] == '/dev/stdin') {
     o.stdin = true;
   } else if (_.length > 0) {
-    o.files = cli.validateInputFiles(_);
+    o.files = _;
   }
 
   if ("precision" in o && o.precision > 0 === false) {
-    error("precision option should be a positive number");
+    error("precision= option should be a positive number");
   }
 
   if (o.encoding) {
-    o.encoding = cli.validateEncoding(o.encoding);
+    o.encoding = MapShaper.validateEncoding(o.encoding);
   }
 }
 
@@ -34,7 +34,7 @@ function validateSimplifyOpts(cmd) {
 
   if (o.method) {
     if (!utils.contains(methods, o.method)) {
-      error(o.method, "is not a recognized simplification method; choos from:", methods);
+      error(o.method, "is not a recognized simplification method; choose from:", methods);
     }
   }
 
@@ -44,7 +44,7 @@ function validateSimplifyOpts(cmd) {
       pctStr = _.shift();
     }
     if (_.length > 0) {
-      error("unparsable option:", _.join(' '));
+      error("Unparsable option:", _.join(' '));
     }
   }
 
@@ -56,7 +56,7 @@ function validateSimplifyOpts(cmd) {
       o.pct = Number(pctStr);
     }
     if (!(o.pct >= 0 && o.pct <= 1)) {
-      error(utils.format("out-of-range pct value: %s", pctStr));
+      error(utils.format("Out-of-range pct value: %s", pctStr));
     }
   }
 
@@ -64,12 +64,12 @@ function validateSimplifyOpts(cmd) {
   if (intervalStr) {
     o.interval = Number(intervalStr);
     if (o.interval >= 0 === false) {
-      error(utils.format("out-of-range interval value: %s", intervalStr));
+      error(utils.format("Out-of-range interval value: %s", intervalStr));
     }
   }
 
   if (isNaN(o.interval) && isNaN(o.pct)) {
-    error("command requires an interval or pct");
+    error("Command requires an interval or pct");
   }
 }
 
@@ -78,23 +78,23 @@ function validateJoinOpts(cmd) {
   o.source = o.source || cmd._[0];
 
   if (!o.source) {
-    error("command requires the name of a file to join");
+    error("Command requires the name of a file to join");
   }
 
   if (utils.some("shp,xls,xlsx".split(','), function(suff) {
     return utils.endsWith(o.source, suff);
   })) {
-    error("currently only dbf and csv files are supported");
+    error("Currently only dbf and csv files are supported");
   }
 
-  if (!o.keys) error("missing required keys option");
+  if (!o.keys) error("Missing required keys option");
 }
 
 function validateSplitOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.field = cmd._[0];
   } else if (cmd._.length > 1) {
-    error("command takes a single field name");
+    error("Command takes a single field name");
   }
 }
 
@@ -108,7 +108,7 @@ function validateClipOpts(cmd) {
     opts.bbox = opts.bbox.map(parseFloat);
   }
   if (!opts.source && !opts.bbox) {
-    error("command requires a source file, layer id or bbox");
+    error("Command requires a source file, layer id or bbox");
   }
 }
 
@@ -118,12 +118,12 @@ function validateDissolveOpts(cmd) {
   if (_.length == 1) {
     o.field = _[0];
   } else if (_.length > 1) {
-    error("command takes a single field name");
+    error("Command takes a single field name");
   }
 }
 
 function validateMergeLayersOpts(cmd) {
-  if (cmd._.length > 0) error("unexpected option:", cmd._);
+  if (cmd._.length > 0) error("Unexpected option:", cmd._);
 }
 
 function validateRenameLayersOpts(cmd) {
@@ -139,7 +139,7 @@ function validateSplitOnGridOpts(cmd) {
   }
 
   if (o.rows > 0 === false || o.cols > 0 === false) {
-    error("comand expects cols,rows");
+    error("Command expects cols,rows");
   }
 }
 
@@ -148,20 +148,20 @@ function validateLinesOpts(cmd) {
     var fields = validateCommaSepNames(cmd.options.fields || cmd._[0]);
     if (fields) cmd.options.fields = fields;
   } catch (e) {
-    error("command takes a comma-separated list of fields");
+    error("Command takes a comma-separated list of fields");
   }
 }
 
 
 function validateInnerLinesOpts(cmd) {
   if (cmd._.length > 0) {
-    error("command takes no arguments");
+    error("Command takes no arguments");
   }
 }
 
 function validateSubdivideOpts(cmd) {
   if (cmd._.length !== 1) {
-    error("command requires a JavaScript expression");
+    error("Command requires a JavaScript expression");
   }
   cmd.options.expression = cmd._[0];
 }
@@ -171,7 +171,7 @@ function validateFilterFieldsOpts(cmd) {
     var fields = validateCommaSepNames(cmd._[0]);
     cmd.options.fields = fields || [];
   } catch(e) {
-    error("command requires a comma-sep. list of fields");
+    error("Command requires a comma-sep. list of fields");
   }
 }
 
@@ -179,7 +179,7 @@ function validateExpressionOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.expression = cmd._[0];
   } else if (cmd._.length > 1) {
-    error("unparsable arguments:", cmd._);
+    error("Unparsable arguments:", cmd._);
   }
 }
 
@@ -190,7 +190,7 @@ function validateOutputOpts(cmd) {
       pathInfo = utils.parseLocalPath(path);
 
   if (_.length > 1) {
-    error("command takes one file or directory argument");
+    error("Command takes one file or directory argument");
   }
 
   if (!path) {
@@ -229,7 +229,7 @@ function validateOutputOpts(cmd) {
   }
 
   if (o.encoding) {
-    o.encoding = cli.validateEncoding(o.encoding);
+    o.encoding = MapShaper.validateEncoding(o.encoding);
   }
 
   // topojson-specific
@@ -248,11 +248,11 @@ function validateOutputOpts(cmd) {
 function validateCommaSepNames(str, min) {
   if (!min && !str) return null; // treat
   if (!utils.isString(str)) {
-    error ("expected comma-separated list; found:", str);
+    error ("Expected a comma-separated list; found:", str);
   }
   var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
-    error(utils.format("expected a list of at least %d member%s; found: %s", min, 's?', str));
+    error(utils.format("Expected a list of at least %d member%s; found: %s", min, utils.pluralSuffix(min), str));
   }
   return parts.length > 0 ? parts : null;
 }

@@ -2,12 +2,12 @@
 
 api.convertPolygonsToInnerLines = function(lyr, arcs) {
   if (lyr.geometry_type != 'polygon') {
-    stop("[innerlines] Layer not polygon type");
+    stop("[innerlines] Command requires a polygon layer");
   }
   var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
       lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
   if (lyr2.shapes.length === 0) {
-    message("[innerlines] No shared boundaries were found in layer: [" + (lyr.name || "unnamed") + "]");
+    message("[innerlines] No shared boundaries were found");
   }
   lyr2.name = lyr.name;
   return lyr2;
@@ -15,7 +15,7 @@ api.convertPolygonsToInnerLines = function(lyr, arcs) {
 
 api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
   if (lyr.geometry_type != 'polygon') {
-    stop("[lines] Layer not polygon type");
+    stop("[lines] Command requires a polygon layer");
   }
   var arcCount = arcs.size(),
       outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
@@ -36,11 +36,11 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
 
   if (utils.isArray(fields)) {
     if (!lyr.data) {
-      stop("[lines] missing a data table:");
+      stop("[lines] Missing a data table:");
     }
     fields.forEach(function(field) {
       if (!lyr.data.fieldExists(field)) {
-        stop("[lines] unknown data field:", field);
+        stop("[lines] Unknown data field:", field);
       }
       var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');

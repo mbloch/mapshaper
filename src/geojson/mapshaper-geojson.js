@@ -45,11 +45,11 @@ MapShaper.importGeoJSON = function(src, opts) {
   } else if (srcCollection.type == 'GeometryCollection') {
     geometries = srcCollection.geometries;
   } else {
-    stop("[-i] Unsupported GeoJSON type:", srcCollection.type);
+    stop("[i] Unsupported GeoJSON type:", srcCollection.type);
   }
 
   if (!geometries) {
-    stop("[-i] Missing geometry data");
+    stop("[i] Missing geometry data");
   }
 
   // Import GeoJSON geometries

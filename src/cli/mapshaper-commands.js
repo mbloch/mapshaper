@@ -1,4 +1,5 @@
-/* @requires mapshaper-run-command, mapshaper-options */
+/* @requires mapshaper-run-command, mapshaper-parse-commands */
+
 
 // Parse command line args into commands and run them
 // @argv Array of command line tokens or single string of commands
@@ -156,14 +157,16 @@ MapShaper.divideImportCommand = function(commands) {
 // @memo: Initial value
 //
 utils.reduceAsync = function(arr, memo, iter, done) {
+  var call = typeof setImmediate == 'undefined' ? setTimeout : setImmediate;
   var i=0;
   next(null, memo);
 
   function next(err, memo) {
     // Detach next operation from call stack to prevent overflow
-    // Don't use setTimeout(, 0) -- this can introduce a long delay if
-    //   previous operation was slow, as of Node 0.10.32
-    setImmediate(function() {
+    // Don't use setTimeout(, 0) if setImmediate is available
+    // (setTimeout() can introduce a long delay if previous operation was slow,
+    //    as of Node 0.10.32 -- a bug?)
+    call(function() {
       if (err) {
         done(err, null);
       } else if (i < arr.length === false) {
@@ -171,7 +174,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
       } else {
         iter(memo, arr[i++], next);
       }
-    });
+    }, 0);
   }
 };
 
@@ -179,7 +182,7 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 MapShaper.runAndRemoveInfoCommands = function(commands) {
   return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
-      message(getVersion());
+      message(MapShaper.VERSION);
     } else if (cmd.name == 'encodings') {
       MapShaper.printEncodings();
     } else if (cmd.name == 'projections') {

@@ -52,7 +52,7 @@ function CommandParser() {
       if (!cmdName) stop("Invalid command:", argv[0]);
       cmdDef = findCommandDefn(cmdName, commandDefs);
       if (!cmdDef) {
-        stop("Unknown command:", '-' + cmdName);
+        stop("Unknown command:", cmdName);
       }
       cmd = {
         name: cmdDef.name,
@@ -285,7 +285,7 @@ function CommandParser() {
   };
 
   this.printHelp = function(commands) {
-    console.log(this.getHelpMessage(commands));
+    message(this.getHelpMessage(commands));
   };
 
   function getCommands() {

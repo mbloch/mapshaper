@@ -36,6 +36,7 @@ MapShaper.projectDataset = function(dataset, proj) {
     // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
     // TODO: create a valid GeoJSON crs object after projecting
     dataset.info.output_crs = null;
+    dataset.info.output_prj = null;
   }
 };
 
@@ -52,6 +53,9 @@ MapShaper.projectArcs = function(arcs, proj) {
   var data = arcs.getVertexData(),
       xx = data.xx,
       yy = data.yy,
+      // old zz will not be optimal after reprojection; re-using it for now
+      // to avoid error in web ui
+      zz = data.zz,
       p = {x: 0, y: 0};
   if (arcs.isPlanar()) {
     stop("[proj] Only projection from lat-lng coordinates is supported");
@@ -61,5 +65,5 @@ MapShaper.projectArcs = function(arcs, proj) {
     xx[i] = p.x;
     yy[i] = p.y;
   }
-  arcs.updateVertexData(data.nn, xx, yy);
+  arcs.updateVertexData(data.nn, xx, yy, zz);
 };

@@ -1,5 +1,6 @@
 var assert = require('assert'),
-    api = require("../");
+    api = require("../"),
+    internal = api.internal;
 
 describe('mapshaper-filter.js', function () {
   describe('Command line tests', function() {
@@ -19,6 +20,28 @@ describe('mapshaper-filter.js', function () {
         geometry: null
       }]
     };
+
+    it ('empty expression throws an error', function(done) {
+      api.applyCommands('-filter ""', JSON.stringify(geojson), function(err) {
+        assert.equal(err.name, 'APIError');
+        done();
+      });
+    })
+
+    it ('-filter preserves layer name', function(done) {
+      var lyr = {
+        name: 'foo',
+        geometry_type: 'point',
+        shapes: [[[0,0]]]
+      },
+      dataset = {layers: [lyr]},
+      parsed = internal.parseCommands('-filter "true"');
+      internal.runParsedCommands(parsed, dataset, function(err, dataset) {
+        if (err) throw err;
+        assert.equal(dataset.layers[0].name, 'foo');
+        done();
+      });
+    })
 
     it ('-filter + ...', function(done) {
       // filter a layer with no-replace; check that modifying data in the filtered layer does not change the source layer.
@@ -51,7 +74,6 @@ describe('mapshaper-filter.js', function () {
       });
     })
   })
-
 
   describe('filter()', function () {
     var nullArcs = new api.internal.ArcCollection([]);

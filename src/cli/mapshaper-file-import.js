@@ -4,16 +4,16 @@ mapshaper-dbf-table
 */
 
 api.importFiles = function(opts) {
-  var files = opts.files,
+  var files = opts.files ? cli.validateInputFiles(opts.files) : [],
       dataset;
   if ((opts.merge_files || opts.combine_files) && files.length > 1) {
     dataset = api.mergeFiles(files, opts);
-  } else if (files && files.length == 1) {
+  } else if (files.length == 1) {
     dataset = api.importFile(files[0], opts);
   } else if (opts.stdin) {
     dataset = api.importFile('/dev/stdin', opts);
   } else {
-    stop('[i] Missing input file(s)');
+    stop('Missing input file(s)');
   }
   return dataset;
 };
@@ -47,6 +47,10 @@ api.importFile = function(path, opts) {
 MapShaper.readShapefileAuxFiles = function(path, obj) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
   var cpgPath = utils.replaceFileExtension(path, 'cpg');
+  var prjPath = utils.replaceFileExtension(path, 'prj');
+  if (cli.isFile(prjPath)) {
+    obj.prj = {filename: prjPath, content: cli.readFile(prjPath, 'utf-8')};
+  }
   if (!obj.dbf && cli.isFile(dbfPath)) {
     obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath)};
   }

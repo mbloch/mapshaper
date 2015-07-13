@@ -21,8 +21,7 @@ api.simplify = function(arcs, opts) {
   T.stop("Calculate simplification");
 
   if (!opts.no_repair) {
-    var info = api.findAndRepairIntersections(arcs);
-    cli.printRepairMessage(info);
+    api.findAndRepairIntersections(arcs);
   }
 };
 
