@@ -80,7 +80,6 @@ function Model() {
 
   this.enterMode = function(next) {
     var prev = mode;
-    // console.log(">>> enterMode() prev:", prev, "next:", next);
     if (next != prev) {
       mode = next;
       self.dispatchEvent('mode', {name: next, prev: prev});

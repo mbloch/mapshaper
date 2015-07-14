@@ -242,9 +242,10 @@ div.g-option-menu .advanced-options {
 	display: inline-block;
 	text-transform: uppercase;
 	padding: 3px 6px;
-	font-size: 16px;
+	font-size: 15px;
+	color: black;
 	background-color: rgba(255, 255, 222, 0.85);
-	border: 1px solid #555;
+	border: 1px solid #333;
 }
 
 /* === Editing interface ========== */
