@@ -45,9 +45,10 @@ function FilteredArcCollection(unfilteredArcs) {
   // rendering when zoomed-out.
   function initFilteredArcs(arcs, sortedThresholds) {
     var filterPct = 0.08;
+    var currInterval = arcs.getRetainedInterval();
     var filterZ = sortedThresholds[Math.floor(filterPct * sortedThresholds.length)];
     var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
-    arcs.setRetainedPct(1); // clear simplification
+    arcs.setRetainedInterval(currInterval); // reset current simplification
     return filteredArcs;
   }
 

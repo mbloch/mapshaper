@@ -12206,6 +12206,7 @@ function ImportControl(model) {
         if (type == 'shp') {
           gui.receiveShapefileComponent(path, dataset);
         }
+        dataset.info.no_repair = importOpts.no_repair; // kludge
         model.updated({select: true}, dataset.layers[0], dataset);
       }, message);
   }
@@ -12955,32 +12956,36 @@ MapShaper.repairIntersections = function(arcs, intersections) {
 
 
 
-function RepairControl(map) {
+function RepairControl(model, map) {
   var el = El("#g-intersection-display"),
       readout = el.findChild("#g-intersection-count"),
       btn = el.findChild("#g-repair-btn"),
       _self = this,
       _dataset, _currXX, _initialXX;
 
-  this.setDataset = function(dataset) {
-    _dataset = dataset.arcs ? dataset : null;
-  };
+  model.on('update', function(e) {
+    // these changes require nulling out any cached intersection data and recalculating
+    if (e.flags.simplify || e.flags.proj || e.flags.select) {
+      reset();
+      if (!e.dataset.info.no_repair) {
+        _dataset = MapShaper.layerHasPaths(e.layer) ? e.dataset : null;
+        // use timeout so map refreshes before the repair control calculates
+        // intersection data, which can take a little while
+        delayedUpdate();
+      }
+    }
+  });
 
-  this.reset = function() {
-    _currXX = null;
-    _initialXX = null;
-    this.hide();
-  };
+  btn.on('click', function() {
+    var fixed = MapShaper.repairIntersections(_dataset.arcs, _currXX);
+    showIntersections(fixed);
+    btn.addClass('disabled');
+    model.updated({repair: true});
+  });
 
   this.hide = function() {
     el.hide();
     map.setHighlightLayer(null);
-  };
-
-  this.delayedUpdate = function(ms) {
-    setTimeout(function() {
-      _self.update();
-    }, ms || 10);
   };
 
   // Detect and display intersections for current level of arc simplification
@@ -13004,14 +13009,18 @@ function RepairControl(map) {
     btn.classed('disabled', !showBtn);
   };
 
-  btn.on('click', function() {
-    T.start();
-    var fixed = MapShaper.repairIntersections(_dataset.arcs, _currXX);
-    T.stop('Fix intersections');
-    btn.addClass('disabled');
-    showIntersections(fixed);
-    _self.dispatchEvent('repair');
-  });
+  function delayedUpdate() {
+    setTimeout(function() {
+      _self.update();
+    }, 10);
+  }
+
+  function reset() {
+    _dataset = null;
+    _currXX = null;
+    _initialXX = null;
+    _self.hide();
+  }
 
   function showIntersections(XX) {
     var n = XX.length, pointLyr;
@@ -13314,9 +13323,10 @@ function FilteredArcCollection(unfilteredArcs) {
   // rendering when zoomed-out.
   function initFilteredArcs(arcs, sortedThresholds) {
     var filterPct = 0.08;
+    var currInterval = arcs.getRetainedInterval();
     var filterZ = sortedThresholds[Math.floor(filterPct * sortedThresholds.length)];
     var filteredArcs = arcs.setRetainedInterval(filterZ).getFilteredCopy();
-    arcs.setRetainedPct(1); // clear simplification
+    arcs.setRetainedInterval(currInterval); // reset current simplification
     return filteredArcs;
   }
 
@@ -13515,7 +13525,6 @@ function LayerGroup(dataset) {
   this.remove = function() {
     this.getElement().remove();
   };
-
 }
 
 
@@ -13772,18 +13781,14 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#335",
-      lightStroke = "rgba(222, 88, 249, 0.23)";
-  var foregroundStyle = {
+      lightStroke = "rgba(222, 88, 249, 0.23)",
+      activeStyle = {
         strokeColor: darkStroke,
         dotColor: "#223"
+      },
+      highStyle = {
+        dotColor: "#F24400"
       };
-  var bgStyle = {
-        strokeColor: "#aaa",
-        dotColor: "#aaa"
-      };
-  var highStyle = {
-      dotColor: "#F24400"
-  };
 
   _ext.on('change', refreshLayers);
 
@@ -13791,41 +13796,31 @@ function MshpMap(model) {
     deleteGroup(e.dataset);
   });
 
-  model.on('select', function(e) {
-    var prevBounds, newBounds, group;
-    group = findGroup(e.dataset);
+  model.on('update', function(e) {
+    var prevBounds = _activeGroup ?_activeGroup.getBounds() : null,
+        group = findGroup(e.dataset);
     if (!group) {
       group = addGroup(e.dataset);
-    } else {
-      group.updated();
-    }
-    group.showLayer(e.layer);
-    _activeGroup = group;
-    updateGroupStyle(foregroundStyle, group);
-    prevBounds = _ext.getBounds();
-    newBounds = group.getBounds();
-    if (newBounds.equals(prevBounds)) {
-      refreshLayers();
-    } else {
-      _ext.setBounds(newBounds);
-      _ext.reset(true);
-    }
-  });
-
-  model.on('update', function(e) {
-    var group = findGroup(e.dataset);
-    if (e.flags.simplify || e.flags.proj || e.flags.select) {
+    } else if (e.flags.simplify || e.flags.proj) {
       // update filtered arcs when simplification thresholds are calculated
       // or arcs are reprojected
+      if (e.flags.proj && e.dataset.arcs) {
+         // reset simplification after projection (thresholds have changed)
+         // TODO: reset is not needed if -simplify command is run after -proj
+        e.dataset.arcs.setRetainedPct(1);
+      }
       group.updated();
-      _ext.setBounds(group.getBounds());
     }
+    _activeGroup = group;
     group.showLayer(e.layer);
-    updateGroupStyle(foregroundStyle, group);
-    if (e.flags.proj) {
-      _ext.reset(true);
-    } else {
+    updateGroupStyle(activeStyle, group);
+    if (prevBounds && prevBounds.equals(group.getBounds())) {
+      // draw active group without zooming if bounds haven't changed
       refreshLayer(group);
+    } else {
+      // zoom to full view of the updated layer
+      _ext.setBounds(group.getBounds());
+      _ext.reset(true);
     }
   });
 
@@ -13894,7 +13889,7 @@ function MshpMap(model) {
   function refreshLayer(group) {
     var style;
     if (group == _activeGroup) {
-      style = foregroundStyle;
+      style = activeStyle;
     } else if (group == _highGroup) {
       style = highStyle;
     }
@@ -18343,7 +18338,6 @@ function Model() {
     return datasets.length;
   };
 
-
   this.removeDataset = function(target) {
     if (target == (editing && editing.dataset)) {
       error("Can't remove dataset while editing");
@@ -18372,8 +18366,7 @@ function Model() {
       layer: lyr,
       dataset: dataset
     };
-    // this.dispatchEvent('select', editing);
-  };
+  }
 
   this.updated = function(flags, lyr, dataset) {
     var e;
@@ -18399,11 +18392,9 @@ function Model() {
   this.addMode = function(name, enter, exit) {
     this.on('mode', function(e) {
       if (e.prev == name) {
-        // console.log(">>> exit mode:", name);
         exit();
       }
       if (e.name == name) {
-        // console.log(">>> enter mode:", name);
         enter();
       }
     });
@@ -18446,53 +18437,25 @@ gui.startEditing = function() {
   gui.startEditing = function() {};
   gui.alert = new ErrorMessages(model);
   api.importFile = new ImportFileProxy(model);
-
-  // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
   map = new MshpMap(model);
-  repair = new RepairControl(map);
+  repair = new RepairControl(model, map);
   simplify = new SimplifyControl(model);
   new ImportControl(model);
   new Console(model);
   new ExportControl(model);
   new LayerControl(model);
 
-  model.on('select', onSelect);
-
+  model.on('select', function() {El('#mode-buttons').show();});
+  // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
   simplify.on('simplify-start', function() {
     repair.hide();
   });
   simplify.on('simplify-end', function() {
     repair.update();
   });
-  model.on('update', function(e) {
-    if (e.flags.simplify || e.flags.proj) {
-      repair.reset();
-      repair.delayedUpdate();
-    }
-  });
   simplify.on('change', function(e) {
     map.setSimplifyPct(e.value);
   });
-  repair.on('repair', function() {
-    model.updated();
-  });
-
-  function onSelect(e) {
-    El('#mode-buttons').show();
-    repair.reset();
-
-    if (MapShaper.layerHasPaths(e.layer)) {
-      // TODO: move this to simplify control...
-      // simplify.value(e.dataset.arcs.getRetainedPct());
-
-      //if (!e.opts.no_repair) {
-        repair.setDataset(e.dataset);
-        // use timeout so map appears before the repair control calculates
-        // intersection data, which can take a little while
-        repair.delayedUpdate();
-      //}
-    }
-  }
 };
 
 }());

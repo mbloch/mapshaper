@@ -10,7 +10,6 @@ function Model() {
     return datasets.length;
   };
 
-
   this.removeDataset = function(target) {
     if (target == (editing && editing.dataset)) {
       error("Can't remove dataset while editing");

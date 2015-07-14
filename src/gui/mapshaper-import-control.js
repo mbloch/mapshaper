@@ -175,6 +175,7 @@ function ImportControl(model) {
         if (type == 'shp') {
           gui.receiveShapefileComponent(path, dataset);
         }
+        dataset.info.no_repair = importOpts.no_repair; // kludge
         model.updated({select: true}, dataset.layers[0], dataset);
       }, message);
   }

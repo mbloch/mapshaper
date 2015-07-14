@@ -1,31 +1,35 @@
 /* @requires mapshaper-common, mapshaper-repair */
 
-function RepairControl(map) {
+function RepairControl(model, map) {
   var el = El("#g-intersection-display"),
       readout = el.findChild("#g-intersection-count"),
       btn = el.findChild("#g-repair-btn"),
       _self = this,
       _dataset, _currXX, _initialXX;
 
-  this.setDataset = function(dataset) {
-    _dataset = dataset.arcs ? dataset : null;
-  };
+  model.on('update', function(e) {
+    // these changes require nulling out any cached intersection data and recalculating
+    if (e.flags.simplify || e.flags.proj || e.flags.select) {
+      reset();
+      if (!e.dataset.info.no_repair) {
+        _dataset = MapShaper.layerHasPaths(e.layer) ? e.dataset : null;
+        // use timeout so map refreshes before the repair control calculates
+        // intersection data, which can take a little while
+        delayedUpdate();
+      }
+    }
+  });
 
-  this.reset = function() {
-    _currXX = null;
-    _initialXX = null;
-    this.hide();
-  };
+  btn.on('click', function() {
+    var fixed = MapShaper.repairIntersections(_dataset.arcs, _currXX);
+    showIntersections(fixed);
+    btn.addClass('disabled');
+    model.updated({repair: true});
+  });
 
   this.hide = function() {
     el.hide();
     map.setHighlightLayer(null);
-  };
-
-  this.delayedUpdate = function(ms) {
-    setTimeout(function() {
-      _self.update();
-    }, ms || 10);
   };
 
   // Detect and display intersections for current level of arc simplification
@@ -49,14 +53,18 @@ function RepairControl(map) {
     btn.classed('disabled', !showBtn);
   };
 
-  btn.on('click', function() {
-    T.start();
-    var fixed = MapShaper.repairIntersections(_dataset.arcs, _currXX);
-    T.stop('Fix intersections');
-    btn.addClass('disabled');
-    showIntersections(fixed);
-    _self.dispatchEvent('repair');
-  });
+  function delayedUpdate() {
+    setTimeout(function() {
+      _self.update();
+    }, 10);
+  }
+
+  function reset() {
+    _dataset = null;
+    _currXX = null;
+    _initialXX = null;
+    _self.hide();
+  }
 
   function showIntersections(XX) {
     var n = XX.length, pointLyr;

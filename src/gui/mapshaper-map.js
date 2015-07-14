@@ -9,18 +9,14 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#335",
-      lightStroke = "rgba(222, 88, 249, 0.23)";
-  var foregroundStyle = {
+      lightStroke = "rgba(222, 88, 249, 0.23)",
+      activeStyle = {
         strokeColor: darkStroke,
         dotColor: "#223"
+      },
+      highStyle = {
+        dotColor: "#F24400"
       };
-  var bgStyle = {
-        strokeColor: "#aaa",
-        dotColor: "#aaa"
-      };
-  var highStyle = {
-      dotColor: "#F24400"
-  };
 
   _ext.on('change', refreshLayers);
 
@@ -36,14 +32,21 @@ function MshpMap(model) {
     } else if (e.flags.simplify || e.flags.proj) {
       // update filtered arcs when simplification thresholds are calculated
       // or arcs are reprojected
+      if (e.flags.proj && e.dataset.arcs) {
+         // reset simplification after projection (thresholds have changed)
+         // TODO: reset is not needed if -simplify command is run after -proj
+        e.dataset.arcs.setRetainedPct(1);
+      }
       group.updated();
     }
     _activeGroup = group;
     group.showLayer(e.layer);
-    updateGroupStyle(foregroundStyle, group);
+    updateGroupStyle(activeStyle, group);
     if (prevBounds && prevBounds.equals(group.getBounds())) {
+      // draw active group without zooming if bounds haven't changed
       refreshLayer(group);
     } else {
+      // zoom to full view of the updated layer
       _ext.setBounds(group.getBounds());
       _ext.reset(true);
     }
@@ -114,7 +117,7 @@ function MshpMap(model) {
   function refreshLayer(group) {
     var style;
     if (group == _activeGroup) {
-      style = foregroundStyle;
+      style = activeStyle;
     } else if (group == _highGroup) {
       style = highStyle;
     }
