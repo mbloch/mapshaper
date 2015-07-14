@@ -44,6 +44,12 @@ api.importFile = function(path, opts) {
   return MapShaper.importContent(input, opts);
 };
 
+api.importDataTable = function(path, opts) {
+  // TODO: avoid the overhead of importing shape data, if present
+  var dataset = api.importFile(path, opts);
+  return dataset.layers[0].data;
+};
+
 MapShaper.readShapefileAuxFiles = function(path, obj) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
   var cpgPath = utils.replaceFileExtension(path, 'cpg');

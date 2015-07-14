@@ -29,9 +29,9 @@ function MshpMap(model) {
         group = findGroup(e.dataset);
     if (!group) {
       group = addGroup(e.dataset);
-    } else if (e.flags.simplify || e.flags.proj) {
+    } else if (e.flags.simplify || e.flags.proj || e.flags.arc_count) {
       // update filtered arcs when simplification thresholds are calculated
-      // or arcs are reprojected
+      // or arcs are updated
       if (e.flags.proj && e.dataset.arcs) {
          // reset simplification after projection (thresholds have changed)
          // TODO: reset is not needed if -simplify command is run after -proj

@@ -5409,7 +5409,7 @@ function ArcCollection() {
         i = fw ? arcId : ~arcId,
         iter = _zz && _zlimit ? _filteredArcIter : _arcIter;
     if (i >= _nn.length) {
-      error("[#getArcId() out-of-range arc id:", arcId);
+      error("#getArcId() out-of-range arc id:", arcId);
     }
     return iter.init(_ii[i], _nn[i], fw, _zlimit);
   };
@@ -13121,7 +13121,7 @@ function LayerControl(model) {
 function ImportFileProxy(model) {
   // Try to match an imported dataset or layer.
   // TODO: think about handling import options
-  return function importFile(src, opts) {
+  function find(src) {
     var datasets = model.getDatasets();
     var retn = datasets.reduce(function(memo, d) {
       var lyr;
@@ -13134,7 +13134,22 @@ function ImportFileProxy(model) {
     }, null);
     if (!retn) stop("Missing data layer [" + src + "]");
     return retn;
+  }
+
+  api.importFile = function(src, opts) {
+    var dataset = find(src);
+    // return a copy with layers duplicated, so changes won't affect original layers
+    // TODO: refactor
+    return utils.defaults({
+      layers: dataset.layers.map(MapShaper.copyLayer)
+    }, dataset);
   };
+
+  api.importDataTable = function(src, opts) {
+    var dataset = find(src);
+    return dataset.layers[0].data;
+  };
+
 }
 
 
@@ -13801,9 +13816,9 @@ function MshpMap(model) {
         group = findGroup(e.dataset);
     if (!group) {
       group = addGroup(e.dataset);
-    } else if (e.flags.simplify || e.flags.proj) {
+    } else if (e.flags.simplify || e.flags.proj || e.flags.arc_count) {
       // update filtered arcs when simplification thresholds are calculated
-      // or arcs are reprojected
+      // or arcs are updated
       if (e.flags.proj && e.dataset.arcs) {
          // reset simplification after projection (thresholds have changed)
          // TODO: reset is not needed if -simplify command is run after -proj
@@ -15983,6 +15998,12 @@ api.importFile = function(path, opts) {
   return MapShaper.importContent(input, opts);
 };
 
+api.importDataTable = function(path, opts) {
+  // TODO: avoid the overhead of importing shape data, if present
+  var dataset = api.importFile(path, opts);
+  return dataset.layers[0].data;
+};
+
 MapShaper.readShapefileAuxFiles = function(path, obj) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
   var cpgPath = utils.replaceFileExtension(path, 'cpg');
@@ -16488,8 +16509,7 @@ api.importJoinTable = function(file, opts) {
     fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.field_types);
   }
   var importOpts = utils.defaults({field_types: fieldsWithTypeHints}, opts);
-  var dataset = api.importFile(file, importOpts);
-  return dataset.layers[0].data;
+  return api.importDataTable(file, importOpts);
 };
 
 // TODO: think through how best to deal with identical field names
@@ -18239,13 +18259,14 @@ function Console(model) {
   }
 
   function runMapshaperCommands(str) {
-    var commands, editing, dataset, lyr, lyrId;
+    var commands, editing, dataset, lyr, lyrId, arcCount;
     try {
       commands = MapShaper.parseConsoleCommands(str);
       editing = model.getEditingLayer();
       dataset = editing.dataset;
       lyr = editing.layer;
       lyrId = dataset.layers.indexOf(lyr);
+      arcCount = dataset.arcs ? dataset.arcs.size() : 0;
       // Use currently edited layer as default command target
       // TODO: handle targeting for unnamed layer
       if (lyr && lyr.name) {
@@ -18262,7 +18283,8 @@ function Console(model) {
     }
     if (commands.length > 0) {
       MapShaper.runParsedCommands(commands, dataset, function(err) {
-        var targetLyr;
+        var flags = getCommandFlags(commands),
+            targetLyr;
         if (dataset) {
           if (utils.contains(dataset.layers, lyr)) {
             targetLyr = lyr;
@@ -18270,7 +18292,11 @@ function Console(model) {
             // If original editing layer no longer exists, switch to a different layer
             targetLyr = dataset.layers[lyrId] || dataset.layers[0];
           }
-          model.updated(getCommandFlags(commands), targetLyr, dataset);
+          if (dataset.arcs && dataset.arcs.size() != arcCount) {
+            // kludge to signal map that filtered arcs need refreshing
+            flags.arc_count = true;
+          }
+          model.updated(flags, targetLyr, dataset);
         }
         if (err) onError(err);
       });
@@ -18436,10 +18462,10 @@ gui.startEditing = function() {
       map, repair, simplify;
   gui.startEditing = function() {};
   gui.alert = new ErrorMessages(model);
-  api.importFile = new ImportFileProxy(model);
   map = new MshpMap(model);
   repair = new RepairControl(model, map);
   simplify = new SimplifyControl(model);
+  new ImportFileProxy(model);
   new ImportControl(model);
   new Console(model);
   new ExportControl(model);

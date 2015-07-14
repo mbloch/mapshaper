@@ -3,7 +3,7 @@
 function ImportFileProxy(model) {
   // Try to match an imported dataset or layer.
   // TODO: think about handling import options
-  return function importFile(src, opts) {
+  function find(src) {
     var datasets = model.getDatasets();
     var retn = datasets.reduce(function(memo, d) {
       var lyr;
@@ -16,5 +16,20 @@ function ImportFileProxy(model) {
     }, null);
     if (!retn) stop("Missing data layer [" + src + "]");
     return retn;
+  }
+
+  api.importFile = function(src, opts) {
+    var dataset = find(src);
+    // return a copy with layers duplicated, so changes won't affect original layers
+    // TODO: refactor
+    return utils.defaults({
+      layers: dataset.layers.map(MapShaper.copyLayer)
+    }, dataset);
   };
+
+  api.importDataTable = function(src, opts) {
+    var dataset = find(src);
+    return dataset.layers[0].data;
+  };
+
 }

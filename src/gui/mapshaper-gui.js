@@ -31,10 +31,10 @@ gui.startEditing = function() {
       map, repair, simplify;
   gui.startEditing = function() {};
   gui.alert = new ErrorMessages(model);
-  api.importFile = new ImportFileProxy(model);
   map = new MshpMap(model);
   repair = new RepairControl(model, map);
   simplify = new SimplifyControl(model);
+  new ImportFileProxy(model);
   new ImportControl(model);
   new Console(model);
   new ExportControl(model);

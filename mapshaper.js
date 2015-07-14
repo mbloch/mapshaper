@@ -2763,7 +2763,7 @@ function ArcCollection() {
         i = fw ? arcId : ~arcId,
         iter = _zz && _zlimit ? _filteredArcIter : _arcIter;
     if (i >= _nn.length) {
-      error("[#getArcId() out-of-range arc id:", arcId);
+      error("#getArcId() out-of-range arc id:", arcId);
     }
     return iter.init(_ii[i], _nn[i], fw, _zlimit);
   };
@@ -10859,6 +10859,12 @@ api.importFile = function(path, opts) {
   return MapShaper.importContent(input, opts);
 };
 
+api.importDataTable = function(path, opts) {
+  // TODO: avoid the overhead of importing shape data, if present
+  var dataset = api.importFile(path, opts);
+  return dataset.layers[0].data;
+};
+
 MapShaper.readShapefileAuxFiles = function(path, obj) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
   var cpgPath = utils.replaceFileExtension(path, 'cpg');
@@ -11364,8 +11370,7 @@ api.importJoinTable = function(file, opts) {
     fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.field_types);
   }
   var importOpts = utils.defaults({field_types: fieldsWithTypeHints}, opts);
-  var dataset = api.importFile(file, importOpts);
-  return dataset.layers[0].data;
+  return api.importDataTable(file, importOpts);
 };
 
 // TODO: think through how best to deal with identical field names

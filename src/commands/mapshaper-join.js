@@ -29,8 +29,7 @@ api.importJoinTable = function(file, opts) {
     fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.field_types);
   }
   var importOpts = utils.defaults({field_types: fieldsWithTypeHints}, opts);
-  var dataset = api.importFile(file, importOpts);
-  return dataset.layers[0].data;
+  return api.importDataTable(file, importOpts);
 };
 
 // TODO: think through how best to deal with identical field names

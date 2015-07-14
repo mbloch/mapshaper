@@ -479,7 +479,7 @@ function ArcCollection() {
         i = fw ? arcId : ~arcId,
         iter = _zz && _zlimit ? _filteredArcIter : _arcIter;
     if (i >= _nn.length) {
-      error("[#getArcId() out-of-range arc id:", arcId);
+      error("#getArcId() out-of-range arc id:", arcId);
     }
     return iter.init(_ii[i], _nn[i], fw, _zlimit);
   };
