@@ -1,5 +1,8 @@
 /* mapshaper-gui-lib */
 
+// Replaces functions for reading from files with functions that try to match
+// already-loaded datasets.
+//
 function ImportFileProxy(model) {
   // Try to match an imported dataset or layer.
   // TODO: think about handling import options
@@ -20,8 +23,9 @@ function ImportFileProxy(model) {
 
   api.importFile = function(src, opts) {
     var dataset = find(src);
-    // return a copy with layers duplicated, so changes won't affect original layers
-    // TODO: refactor
+    // Aeturn a copy with layers duplicated, so changes won't affect original layers
+    // This makes an (unsafe) assumption that the dataset arcs won't be changed...
+    // need to rethink this.
     return utils.defaults({
       layers: dataset.layers.map(MapShaper.copyLayer)
     }, dataset);
@@ -31,5 +35,4 @@ function ImportFileProxy(model) {
     var dataset = find(src);
     return dataset.layers[0].data;
   };
-
 }
