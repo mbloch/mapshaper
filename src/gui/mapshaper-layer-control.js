@@ -58,7 +58,7 @@ function LayerControl(model) {
     entry.html(str);
     entry.on('click', function() {
       if (lyr != editLyr) {
-        model.setEditingLayer(lyr, dataset);
+        model.updated({select: true}, lyr, dataset);
       }
       model.clearMode();
     });

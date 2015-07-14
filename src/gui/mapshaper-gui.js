@@ -71,12 +71,12 @@ gui.startEditing = function() {
       // TODO: move this to simplify control...
       // simplify.value(e.dataset.arcs.getRetainedPct());
 
-      if (!e.opts.no_repair) {
+      //if (!e.opts.no_repair) {
         repair.setDataset(e.dataset);
         // use timeout so map appears before the repair control calculates
         // intersection data, which can take a little while
         repair.delayedUpdate();
-      }
+      //}
     }
   }
 };

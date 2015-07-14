@@ -9703,7 +9703,6 @@ MapShaper.setCoordinatePrecision = function(dataset, precision) {
       // TODO: better handling of corrupted polygons
       lyr.shapes = lyr.shapes.map(dissolvePolygon);
     }
-
   });
   return d2;
 };

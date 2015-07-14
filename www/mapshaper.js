@@ -12206,7 +12206,7 @@ function ImportControl(model) {
         if (type == 'shp') {
           gui.receiveShapefileComponent(path, dataset);
         }
-        model.setEditingLayer(dataset.layers[0], dataset, importOpts);
+        model.updated({select: true}, dataset.layers[0], dataset);
       }, message);
   }
 
@@ -12381,7 +12381,6 @@ MapShaper.setCoordinatePrecision = function(dataset, precision) {
       // TODO: better handling of corrupted polygons
       lyr.shapes = lyr.shapes.map(dissolvePolygon);
     }
-
   });
   return d2;
 };
@@ -13090,7 +13089,7 @@ function LayerControl(model) {
     entry.html(str);
     entry.on('click', function() {
       if (lyr != editLyr) {
-        model.setEditingLayer(lyr, dataset);
+        model.updated({select: true}, lyr, dataset);
       }
       model.clearMode();
     });
@@ -13322,10 +13321,20 @@ function FilteredArcCollection(unfilteredArcs) {
   }
 
   function getArcCollection() {
+    refreshFilteredArcs();
     // Use a filtered version of arcs at small scales
     var unitsPerPixel = 1/_ext.getTransform().mx,
         useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
     return useFiltering ? filteredArcs : unfilteredArcs;
+  }
+
+  function refreshFilteredArcs() {
+    if (filteredArcs) {
+      if (filteredArcs.size() != unfilteredArcs.size()) {
+        init();
+      }
+      filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
+    }
   }
 
   this.update = function(arcs) {
@@ -13337,16 +13346,10 @@ function FilteredArcCollection(unfilteredArcs) {
     if (_sortedThresholds) {
       var z = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
       z = MapShaper.clampIntervalByPct(z, pct);
-      this.setRetainedInterval(z);
+      // this.setRetainedInterval(z);
+      unfilteredArcs.setRetainedInterval(z);
     } else {
       unfilteredArcs.setRetainedPct(pct);
-    }
-  };
-
-  this.setRetainedInterval = function(z) {
-    unfilteredArcs.setRetainedInterval(z);
-    if (filteredArcs) {
-      filteredArcs.setRetainedInterval(z);
     }
   };
 
@@ -13482,12 +13485,7 @@ function LayerGroup(dataset) {
 
   // Rebuild filtered arcs and recalculate bounds
   this.updated = function() {
-    var interval = dataset.arcs ? dataset.arcs.getRetainedInterval() : 0;
     init();
-    // update simplification level
-    if (_filteredArcs) {
-      _filteredArcs.setRetainedInterval(interval);
-    }
   };
 
   this.setRetainedPct = function(pct) {
@@ -13798,6 +13796,8 @@ function MshpMap(model) {
     group = findGroup(e.dataset);
     if (!group) {
       group = addGroup(e.dataset);
+    } else {
+      group.updated();
     }
     group.showLayer(e.layer);
     _activeGroup = group;
@@ -13814,14 +13814,14 @@ function MshpMap(model) {
 
   model.on('update', function(e) {
     var group = findGroup(e.dataset);
-    group.showLayer(e.layer);
-    updateGroupStyle(foregroundStyle, group);
-    if (e.flags.simplify || e.flags.proj) {
+    if (e.flags.simplify || e.flags.proj || e.flags.select) {
       // update filtered arcs when simplification thresholds are calculated
       // or arcs are reprojected
       group.updated();
       _ext.setBounds(group.getBounds());
     }
+    group.showLayer(e.layer);
+    updateGroupStyle(foregroundStyle, group);
     if (e.flags.proj) {
       _ext.reset(true);
     } else {
@@ -18244,12 +18244,13 @@ function Console(model) {
   }
 
   function runMapshaperCommands(str) {
-    var commands, editing, dataset, lyr;
+    var commands, editing, dataset, lyr, lyrId;
     try {
       commands = MapShaper.parseConsoleCommands(str);
       editing = model.getEditingLayer();
       dataset = editing.dataset;
       lyr = editing.layer;
+      lyrId = dataset.layers.indexOf(lyr);
       // Use currently edited layer as default command target
       // TODO: handle targeting for unnamed layer
       if (lyr && lyr.name) {
@@ -18266,13 +18267,15 @@ function Console(model) {
     }
     if (commands.length > 0) {
       MapShaper.runParsedCommands(commands, dataset, function(err) {
+        var targetLyr;
         if (dataset) {
           if (utils.contains(dataset.layers, lyr)) {
-            model.updated(getCommandFlags(commands));
+            targetLyr = lyr;
           } else {
             // If original editing layer no longer exists, switch to a different layer
-            model.setEditingLayer(dataset.layers[0], dataset);
+            targetLyr = dataset.layers[lyrId] || dataset.layers[0];
           }
+          model.updated(getCommandFlags(commands), targetLyr, dataset);
         }
         if (err) onError(err);
       });
@@ -18340,10 +18343,6 @@ function Model() {
     return datasets.length;
   };
 
-  this.addDataset = function(d) {
-    datasets.push(d);
-    this.dispatchEvent('add', {dataset: d});
-  };
 
   this.removeDataset = function(target) {
     if (target == (editing && editing.dataset)) {
@@ -18359,10 +18358,35 @@ function Model() {
     return datasets;
   };
 
-  this.updated = function(flags) {
+  function setEditingLayer(lyr, dataset) {
+    if (editing && editing.layer == lyr) {
+      return;
+    }
+    if (dataset.layers.indexOf(lyr) == -1) {
+      error("Selected layer not found");
+    }
+    if (datasets.indexOf(dataset) == -1) {
+      datasets.push(dataset);
+    }
+    editing = {
+      layer: lyr,
+      dataset: dataset
+    };
+    // this.dispatchEvent('select', editing);
+  };
+
+  this.updated = function(flags, lyr, dataset) {
     var e;
+    flags = flags || {};
+    if (lyr && dataset && (!editing || editing.lyr != lyr)) {
+      setEditingLayer(lyr, dataset);
+      flags.select = true;
+    }
     if (editing) {
-      e = utils.extend({flags: flags || {}}, editing);
+      if (flags.select) {
+        this.dispatchEvent('select', editing);
+      }
+      e = utils.extend({flags: flags}, editing);
       this.dispatchEvent('update', e);
     }
   };
@@ -18398,24 +18422,6 @@ function Model() {
       mode = next;
       self.dispatchEvent('mode', {name: next, prev: prev});
     }
-  };
-
-  this.setEditingLayer = function(lyr, dataset, opts) {
-    if (editing && editing.layer == lyr) {
-      return;
-    }
-    if (dataset.layers.indexOf(lyr) == -1) {
-      error("Selected layer not found");
-    }
-    if (datasets.indexOf(dataset) == -1) {
-      this.addDataset(dataset);
-    }
-    editing = {
-      layer: lyr,
-      dataset: dataset,
-      opts: opts || {}
-    };
-    this.dispatchEvent('select', editing);
   };
 
 }
@@ -18479,12 +18485,12 @@ gui.startEditing = function() {
       // TODO: move this to simplify control...
       // simplify.value(e.dataset.arcs.getRetainedPct());
 
-      if (!e.opts.no_repair) {
+      //if (!e.opts.no_repair) {
         repair.setDataset(e.dataset);
         // use timeout so map appears before the repair control calculates
         // intersection data, which can take a little while
         repair.delayedUpdate();
-      }
+      //}
     }
   }
 };

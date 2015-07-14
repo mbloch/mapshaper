@@ -10,10 +10,6 @@ function Model() {
     return datasets.length;
   };
 
-  this.addDataset = function(d) {
-    datasets.push(d);
-    this.dispatchEvent('add', {dataset: d});
-  };
 
   this.removeDataset = function(target) {
     if (target == (editing && editing.dataset)) {
@@ -29,10 +25,34 @@ function Model() {
     return datasets;
   };
 
-  this.updated = function(flags) {
+  function setEditingLayer(lyr, dataset) {
+    if (editing && editing.layer == lyr) {
+      return;
+    }
+    if (dataset.layers.indexOf(lyr) == -1) {
+      error("Selected layer not found");
+    }
+    if (datasets.indexOf(dataset) == -1) {
+      datasets.push(dataset);
+    }
+    editing = {
+      layer: lyr,
+      dataset: dataset
+    };
+  }
+
+  this.updated = function(flags, lyr, dataset) {
     var e;
+    flags = flags || {};
+    if (lyr && dataset && (!editing || editing.lyr != lyr)) {
+      setEditingLayer(lyr, dataset);
+      flags.select = true;
+    }
     if (editing) {
-      e = utils.extend({flags: flags || {}}, editing);
+      if (flags.select) {
+        this.dispatchEvent('select', editing);
+      }
+      e = utils.extend({flags: flags}, editing);
       this.dispatchEvent('update', e);
     }
   };
@@ -45,11 +65,9 @@ function Model() {
   this.addMode = function(name, enter, exit) {
     this.on('mode', function(e) {
       if (e.prev == name) {
-        // console.log(">>> exit mode:", name);
         exit();
       }
       if (e.name == name) {
-        // console.log(">>> enter mode:", name);
         enter();
       }
     });
@@ -68,24 +86,6 @@ function Model() {
       mode = next;
       self.dispatchEvent('mode', {name: next, prev: prev});
     }
-  };
-
-  this.setEditingLayer = function(lyr, dataset, opts) {
-    if (editing && editing.layer == lyr) {
-      return;
-    }
-    if (dataset.layers.indexOf(lyr) == -1) {
-      error("Selected layer not found");
-    }
-    if (datasets.indexOf(dataset) == -1) {
-      this.addDataset(dataset);
-    }
-    editing = {
-      layer: lyr,
-      dataset: dataset,
-      opts: opts || {}
-    };
-    this.dispatchEvent('select', editing);
   };
 
 }

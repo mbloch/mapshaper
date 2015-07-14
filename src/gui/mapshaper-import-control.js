@@ -175,7 +175,7 @@ function ImportControl(model) {
         if (type == 'shp') {
           gui.receiveShapefileComponent(path, dataset);
         }
-        model.setEditingLayer(dataset.layers[0], dataset, importOpts);
+        model.updated({select: true}, dataset.layers[0], dataset);
       }, message);
   }
 

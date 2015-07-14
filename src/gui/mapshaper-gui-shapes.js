@@ -52,10 +52,20 @@ function FilteredArcCollection(unfilteredArcs) {
   }
 
   function getArcCollection() {
+    refreshFilteredArcs();
     // Use a filtered version of arcs at small scales
     var unitsPerPixel = 1/_ext.getTransform().mx,
         useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
     return useFiltering ? filteredArcs : unfilteredArcs;
+  }
+
+  function refreshFilteredArcs() {
+    if (filteredArcs) {
+      if (filteredArcs.size() != unfilteredArcs.size()) {
+        init();
+      }
+      filteredArcs.setRetainedInterval(unfilteredArcs.getRetainedInterval());
+    }
   }
 
   this.update = function(arcs) {
@@ -67,16 +77,10 @@ function FilteredArcCollection(unfilteredArcs) {
     if (_sortedThresholds) {
       var z = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
       z = MapShaper.clampIntervalByPct(z, pct);
-      this.setRetainedInterval(z);
+      // this.setRetainedInterval(z);
+      unfilteredArcs.setRetainedInterval(z);
     } else {
       unfilteredArcs.setRetainedPct(pct);
-    }
-  };
-
-  this.setRetainedInterval = function(z) {
-    unfilteredArcs.setRetainedInterval(z);
-    if (filteredArcs) {
-      filteredArcs.setRetainedInterval(z);
     }
   };
 

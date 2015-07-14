@@ -44,12 +44,7 @@ function LayerGroup(dataset) {
 
   // Rebuild filtered arcs and recalculate bounds
   this.updated = function() {
-    var interval = dataset.arcs ? dataset.arcs.getRetainedInterval() : 0;
     init();
-    // update simplification level
-    if (_filteredArcs) {
-      _filteredArcs.setRetainedInterval(interval);
-    }
   };
 
   this.setRetainedPct = function(pct) {
@@ -79,5 +74,4 @@ function LayerGroup(dataset) {
   this.remove = function() {
     this.getElement().remove();
   };
-
 }

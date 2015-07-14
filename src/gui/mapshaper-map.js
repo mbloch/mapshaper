@@ -28,39 +28,24 @@ function MshpMap(model) {
     deleteGroup(e.dataset);
   });
 
-  model.on('select', function(e) {
-    var prevBounds, newBounds, group;
-    group = findGroup(e.dataset);
+  model.on('update', function(e) {
+    var prevBounds = _activeGroup ?_activeGroup.getBounds() : null,
+        group = findGroup(e.dataset);
     if (!group) {
       group = addGroup(e.dataset);
-    }
-    group.showLayer(e.layer);
-    _activeGroup = group;
-    updateGroupStyle(foregroundStyle, group);
-    prevBounds = _ext.getBounds();
-    newBounds = group.getBounds();
-    if (newBounds.equals(prevBounds)) {
-      refreshLayers();
-    } else {
-      _ext.setBounds(newBounds);
-      _ext.reset(true);
-    }
-  });
-
-  model.on('update', function(e) {
-    var group = findGroup(e.dataset);
-    group.showLayer(e.layer);
-    updateGroupStyle(foregroundStyle, group);
-    if (e.flags.simplify || e.flags.proj) {
+    } else if (e.flags.simplify || e.flags.proj) {
       // update filtered arcs when simplification thresholds are calculated
       // or arcs are reprojected
       group.updated();
-      _ext.setBounds(group.getBounds());
     }
-    if (e.flags.proj) {
-      _ext.reset(true);
-    } else {
+    _activeGroup = group;
+    group.showLayer(e.layer);
+    updateGroupStyle(foregroundStyle, group);
+    if (prevBounds && prevBounds.equals(group.getBounds())) {
       refreshLayer(group);
+    } else {
+      _ext.setBounds(group.getBounds());
+      _ext.reset(true);
     }
   });
 

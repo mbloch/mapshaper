@@ -162,12 +162,13 @@ function Console(model) {
   }
 
   function runMapshaperCommands(str) {
-    var commands, editing, dataset, lyr;
+    var commands, editing, dataset, lyr, lyrId;
     try {
       commands = MapShaper.parseConsoleCommands(str);
       editing = model.getEditingLayer();
       dataset = editing.dataset;
       lyr = editing.layer;
+      lyrId = dataset.layers.indexOf(lyr);
       // Use currently edited layer as default command target
       // TODO: handle targeting for unnamed layer
       if (lyr && lyr.name) {
@@ -184,13 +185,15 @@ function Console(model) {
     }
     if (commands.length > 0) {
       MapShaper.runParsedCommands(commands, dataset, function(err) {
+        var targetLyr;
         if (dataset) {
           if (utils.contains(dataset.layers, lyr)) {
-            model.updated(getCommandFlags(commands));
+            targetLyr = lyr;
           } else {
             // If original editing layer no longer exists, switch to a different layer
-            model.setEditingLayer(dataset.layers[0], dataset);
+            targetLyr = dataset.layers[lyrId] || dataset.layers[0];
           }
+          model.updated(getCommandFlags(commands), targetLyr, dataset);
         }
         if (err) onError(err);
       });
