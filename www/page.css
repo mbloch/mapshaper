@@ -369,11 +369,11 @@ body.simplify #layer-control {
 }
 
 .layer-item.active {
-	background-color: #dcf3ff;
+	background-color: #e6f7ff;
 }
 
 .layer-item:hover:not(.active) {
-	background-color: #eefaff;
+	background-color: #e6f7ff;
 }
 
 .layer-item .row {
