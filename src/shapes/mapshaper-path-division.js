@@ -93,7 +93,6 @@ MapShaper.updateArcIds = function(shapes, map, nodes) {
 MapShaper.insertClippingPoints = function(arcs) {
   var points = MapShaper.findClippingPoints(arcs),
       p;
-
   // TODO: avoid some or all of the following if no points need to be added
 
   // original arc data

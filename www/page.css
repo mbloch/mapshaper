@@ -147,7 +147,7 @@ div.error-box > div {
 	}
 }
 
-#import-options .advanced-options {
+div.g-option-menu .advanced-options {
 	width: 210px;
 	background: rgba(255, 255, 255, 0.4);
 	border: 1px solid rgba(0,0,0,0.2);

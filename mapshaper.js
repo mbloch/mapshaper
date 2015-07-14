@@ -3257,7 +3257,17 @@ MapShaper.getPathMetadata = function(shape, arcs, type) {
 
 // utility functions for datasets and layers
 
-// Copy layer data, but leave new layer unnamed
+// clone all layers, make a filtered copy of arcs
+MapShaper.copyDataset = function(dataset) {
+  var d2 = utils.extend({}, dataset);
+  d2.layers = d2.layers.map(MapShaper.copyLayer);
+  if (d2.arcs) {
+    d2.arcs = d2.arcs.getFilteredCopy();
+  }
+  return d2;
+};
+
+// Make a deep copy of a layer
 MapShaper.copyLayer = function(lyr) {
   var copy = utils.extend({}, lyr);
   if (lyr.data) {
@@ -3412,6 +3422,11 @@ MapShaper.findSegmentIntersections = (function() {
         stripeSizes = new Uint32Array(stripeCount),
         i;
 
+    // check for invalid params
+    if (yrange > 0 === false || stripeCount > 0 === false) {
+      return [];
+    }
+
     function stripeId(y) {
       return Math.floor((stripeCount-1) * (y - ymin) / yrange);
     }
@@ -3453,6 +3468,7 @@ MapShaper.findSegmentIntersections = (function() {
         s1 += s2 > s1 ? 1 : -1;
       }
     });
+
 
     // Detect intersections among segments in each stripe.
     var raw = arcs.getVertexData(),
@@ -5070,7 +5086,6 @@ MapShaper.updateArcIds = function(shapes, map, nodes) {
 MapShaper.insertClippingPoints = function(arcs) {
   var points = MapShaper.findClippingPoints(arcs),
       p;
-
   // TODO: avoid some or all of the following if no points need to be added
 
   // original arc data
@@ -9667,29 +9682,30 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 
 
 
+// Return a copy of a dataset with all coordinates rounded
+//
 MapShaper.setCoordinatePrecision = function(dataset, precision) {
   var round = geom.getRoundingFunction(precision),
-      dissolvePolygon;
+      d2 = MapShaper.copyDataset(dataset),
+      dissolvePolygon, nodes;
 
-  if (dataset.arcs) {
-    // need to discard z data if present (it doesn't survive cleaning)
-    dataset.arcs.flatten();
-    // round coords
-    dataset.arcs.applyTransform(null, round);
-
-    var nodes = MapShaper.divideArcs(dataset);
+  if (d2.arcs) {
+    d2.arcs.applyTransform(null, round);
+    nodes = MapShaper.divideArcs(d2);
     dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
   }
 
-  dataset.layers.forEach(function(lyr) {
+  d2.layers.forEach(function(lyr) {
     if (MapShaper.layerHasPoints(lyr)) {
       MapShaper.roundPoints(lyr, round);
     } else if (lyr.geometry_type == 'polygon' && dissolvePolygon) {
-      // clean each polygon -- use dissolve function remove spikes
-      // TODO implement proper clean/repair function
+      // clean each polygon -- use dissolve function to remove spikes
+      // TODO: better handling of corrupted polygons
       lyr.shapes = lyr.shapes.map(dissolvePolygon);
     }
+
   });
+  return d2;
 };
 
 MapShaper.roundPoints = function(lyr, round) {
@@ -9774,7 +9790,7 @@ MapShaper.exportFileContent = function(dataset, opts) {
   }
 
   if (opts.precision) {
-    MapShaper.setCoordinatePrecision(dataset, opts.precision);
+    dataset = MapShaper.setCoordinatePrecision(dataset, opts.precision);
   }
 
   MapShaper.validateLayerData(layers);

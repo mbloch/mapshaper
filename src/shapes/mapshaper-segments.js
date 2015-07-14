@@ -42,6 +42,11 @@ MapShaper.findSegmentIntersections = (function() {
         stripeSizes = new Uint32Array(stripeCount),
         i;
 
+    // check for invalid params
+    if (yrange > 0 === false || stripeCount > 0 === false) {
+      return [];
+    }
+
     function stripeId(y) {
       return Math.floor((stripeCount-1) * (y - ymin) / yrange);
     }
@@ -83,6 +88,7 @@ MapShaper.findSegmentIntersections = (function() {
         s1 += s2 > s1 ? 1 : -1;
       }
     });
+
 
     // Detect intersections among segments in each stripe.
     var raw = arcs.getVertexData(),

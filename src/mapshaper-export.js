@@ -30,7 +30,7 @@ MapShaper.exportFileContent = function(dataset, opts) {
   }
 
   if (opts.precision) {
-    MapShaper.setCoordinatePrecision(dataset, opts.precision);
+    dataset = MapShaper.setCoordinatePrecision(dataset, opts.precision);
   }
 
   MapShaper.validateLayerData(layers);

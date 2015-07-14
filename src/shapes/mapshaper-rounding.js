@@ -1,28 +1,29 @@
 /* @require mapshaper-geom, mapshaper-shapes, mapshaper-dissolve2 */
 
+// Return a copy of a dataset with all coordinates rounded
+//
 MapShaper.setCoordinatePrecision = function(dataset, precision) {
   var round = geom.getRoundingFunction(precision),
-      dissolvePolygon;
+      d2 = MapShaper.copyDataset(dataset),
+      dissolvePolygon, nodes;
 
-  if (dataset.arcs) {
-    // need to discard z data if present (it doesn't survive cleaning)
-    dataset.arcs.flatten();
-    // round coords
-    dataset.arcs.applyTransform(null, round);
-
-    var nodes = MapShaper.divideArcs(dataset);
+  if (d2.arcs) {
+    d2.arcs.applyTransform(null, round);
+    nodes = MapShaper.divideArcs(d2);
     dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
   }
 
-  dataset.layers.forEach(function(lyr) {
+  d2.layers.forEach(function(lyr) {
     if (MapShaper.layerHasPoints(lyr)) {
       MapShaper.roundPoints(lyr, round);
     } else if (lyr.geometry_type == 'polygon' && dissolvePolygon) {
-      // clean each polygon -- use dissolve function remove spikes
-      // TODO implement proper clean/repair function
+      // clean each polygon -- use dissolve function to remove spikes
+      // TODO: better handling of corrupted polygons
       lyr.shapes = lyr.shapes.map(dissolvePolygon);
     }
+
   });
+  return d2;
 };
 
 MapShaper.roundPoints = function(lyr, round) {

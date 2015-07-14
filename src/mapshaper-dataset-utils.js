@@ -2,7 +2,17 @@
 
 // utility functions for datasets and layers
 
-// Copy layer data, but leave new layer unnamed
+// clone all layers, make a filtered copy of arcs
+MapShaper.copyDataset = function(dataset) {
+  var d2 = utils.extend({}, dataset);
+  d2.layers = d2.layers.map(MapShaper.copyLayer);
+  if (d2.arcs) {
+    d2.arcs = d2.arcs.getFilteredCopy();
+  }
+  return d2;
+};
+
+// Make a deep copy of a layer
 MapShaper.copyLayer = function(lyr) {
   var copy = utils.extend({}, lyr);
   if (lyr.data) {

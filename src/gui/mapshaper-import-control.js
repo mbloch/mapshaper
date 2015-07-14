@@ -3,6 +3,7 @@ mapshaper-data-table
 mapshaper-zip-reader
 mapshaper-progress-message
 mapshaper-import
+mapshaper-gui-options
 */
 
 // @cb function(<FileList>)
@@ -118,17 +119,8 @@ function ImportControl(model) {
   }
 
   function getImportOpts() {
-    var freeform = El('#import-options .advanced-options').node().value.trim(),
-        opts, parsed;
-    if (freeform) {
-      parsed = MapShaper.parseCommands(freeform);
-      if (!parsed.length || parsed[0].name != 'i') {
-        stop("Unable to parse input options");
-      }
-      opts = parsed[0].options;
-    } else {
-      opts = {};
-    }
+    var freeform = El('#import-options .advanced-options').node().value,
+        opts = gui.parseFreeformOptions(freeform, 'i');
     opts.no_repair = !El("#g-repair-intersections-opt").node().checked;
     opts.auto_snap = !!El("#g-snap-points-opt").node().checked;
     return opts;

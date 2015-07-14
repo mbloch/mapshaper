@@ -1,4 +1,4 @@
-/* @requires mapshaper-export mapshaper-mode-button */
+/* @requires mapshaper-export mapshaper-mode-button mapshaper-gui-options */
 
 // Export buttons and their behavior
 var ExportControl = function(model) {
@@ -38,7 +38,10 @@ var ExportControl = function(model) {
         exportAs(format, function(err) {
           // hide message after a delay, so it doesn't just flash for an instant.
           setTimeout(function(){msg.remove();}, 400);
-          if (err) throw err; // error(err);
+          if (err) {
+            console.error(err);
+            gui.alert(utils.isString(err) ? err : "Export failed for an unknown reason");
+          }
         });
       }, 20);
     }
@@ -46,9 +49,10 @@ var ExportControl = function(model) {
 
   // @done function(string|Error|null)
   function exportAs(format, done) {
-    var opts = {format: format}, // TODO: implement other export opts
+    var opts = gui.parseFreeformOptions(El('#export-options .advanced-options').node().value, 'o'),
         editing = model.getEditingLayer(),
         dataset, files;
+    opts.format = format;
     try {
       if (format == 'topojson') {
         dataset = editing.dataset; // For TopoJSON, export all layers in this dataset
