@@ -360,7 +360,6 @@ body.simplify #layer-control {
 }
 
 #layer-menu .layer-list {
-	width: 240px;
 	margin: 6px 0 6px 0;
 }
 
@@ -369,7 +368,7 @@ body.simplify #layer-control {
 	margin-left: -14px;	
 	padding: 8px 14px;
 	cursor: pointer;
-	width: 240px;
+	width: 100%;
 	line-height: 1.1;
 }
 
