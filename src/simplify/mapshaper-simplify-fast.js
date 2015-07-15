@@ -7,12 +7,17 @@ MapShaper.simplifyArcsFast = function(arcs, dist) {
       count;
   for (var i=0, n=arcs.size(); i<n; i++) {
     count = MapShaper.simplifyPathFast([i], arcs, dist, xx, yy);
+    if (count == 1) {
+      count = 0;
+      xx.pop();
+      yy.pop();
+    }
     nn.push(count);
   }
   return new ArcCollection(nn, xx, yy);
 };
 
-MapShaper.simplifyShapeFast = function(shp, arcs, dist) {
+MapShaper.simplifyPolygonFast = function(shp, arcs, dist) {
   if (!shp || !dist) return null;
   var xx = [],
       yy = [],
@@ -21,6 +26,11 @@ MapShaper.simplifyShapeFast = function(shp, arcs, dist) {
 
   shp.forEach(function(path) {
     var count = MapShaper.simplifyPathFast(path, arcs, dist, xx, yy);
+    while (count < 4 && count > 0) {
+      xx.pop();
+      yy.pop();
+      count--;
+    }
     if (count > 0) {
       shp2.push([nn.length]);
       nn.push(count);
@@ -47,15 +57,10 @@ MapShaper.simplifyPathFast = function(path, arcs, dist, xx, yy) {
       count++;
     }
   }
-  if (count > 2 && (x != prevX || y != prevY)) {
+  if (x != prevX || y != prevY) {
     xx.push(x);
     yy.push(y);
     count++;
-  }
-  while (count < 4 && count > 0) {
-    xx.pop();
-    yy.pop();
-    count--;
   }
   return count;
 };
