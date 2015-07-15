@@ -13061,7 +13061,7 @@ utils.inherit(RepairControl, EventDispatcher);
 
 
 function LayerControl(model) {
-  var el = El("#layer-menu");
+  var el = El("#layer-menu").on('click', model.clearMode);
   var label = El('#layer-control .layer-name');
 
   model.addMode('layer_menu', turnOn, turnOff);
