@@ -13855,8 +13855,8 @@ function MshpMap(model) {
     group.showLayer(e.layer);
     updateGroupStyle(activeStyle, group);
     if (prevBounds && prevBounds.equals(group.getBounds())) {
-      // draw active group without zooming if bounds haven't changed
-      refreshLayer(group);
+      // redraw without zooming if bounds haven't changed
+      refreshLayers();
     } else {
       // zoom to full view of the updated layer
       _ext.setBounds(group.getBounds());
