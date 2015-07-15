@@ -56,7 +56,7 @@ function LayerControl(model) {
     str += rowHTML('source file', dataset.info.input_files[0]);
     str += rowHTML('contents', describeLyr(lyr));
     entry.html(str);
-    entry.on('click', function() {
+    onClick(entry, function() {
       if (lyr != editLyr) {
         model.updated({select: true}, lyr, dataset);
       }
@@ -72,5 +72,16 @@ function LayerControl(model) {
   function rowHTML(c1, c2) {
     return utils.format('<div class="row"><div class="col1">%s</div>' +
       '<div class="col2">%s</div></div>', c1, c2);
+  }
+
+  // Filter out delayed click events, so users can highlight and copy text
+  function onClick(el, cb) {
+    var time;
+    el.on('mousedown', function() {
+      time = +new Date();
+    });
+    el.on('click', function(e) {
+      if (+new Date() - time < 300) cb(e);
+    });
   }
 }
