@@ -78,7 +78,7 @@ var SimplifyControl = function(model) {
     var dataset = model.getEditingLayer().dataset;
     var message = dataset.arcs && dataset.arcs.getPointCount() > 1e6 ? 'Calculating' : null;
     menu.hide();
-    gui.runAsync(
+    gui.runWithMessage(
       function proc() {
         if (dataset.arcs) {
           MapShaper.simplifyPaths(dataset.arcs, opts);

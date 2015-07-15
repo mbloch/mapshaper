@@ -162,10 +162,12 @@ div.g-option-menu .advanced-options {
 	text-align: center;
 }
 
+
 #dropped-file-list {
 	display: none;
 	padding-bottom: 3px;
 }
+
 
 #dropped-file-list p {
 	line-height: 1;

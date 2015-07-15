@@ -3061,40 +3061,6 @@ gui.formatMessageArgs = function(args) {
   return MapShaper.formatLogArgs(args).replace(/^\[[^\]]+\] ?/, '');
 };
 
-gui.isReadableFileType = function(filename) {
-  return !!MapShaper.guessInputFileType(filename);
-};
-
-// Run a series of tasks in sequence. Each task can be run after a timeout.
-// TODO: add node-style error handling
-gui.queueSync = function() {
-  var tasks = [],
-      timeouts = [];
-  return {
-    defer: function(task, timeout) {
-      tasks.push(task);
-      timeouts.push(timeout | 0);
-      return this;
-    },
-    await: function(done) {
-      var retn;
-      runNext();
-      function runNext() {
-        var task = tasks.shift(),
-            ms = timeouts.shift();
-        if (task) {
-          setTimeout(function() {
-            retn = task(retn);
-            runNext();
-          }, ms);
-        } else {
-          done(retn);
-        }
-      }
-    } // await()
-  };
-};
-
 
 
 
@@ -3415,7 +3381,7 @@ var SimplifyControl = function(model) {
     var dataset = model.getEditingLayer().dataset;
     var message = dataset.arcs && dataset.arcs.getPointCount() > 1e6 ? 'Calculating' : null;
     menu.hide();
-    gui.runAsync(
+    gui.runWithMessage(
       function proc() {
         if (dataset.arcs) {
           MapShaper.simplifyPaths(dataset.arcs, opts);
@@ -4393,21 +4359,19 @@ gui.readZipFile = function(file, cb) {
 
 
 
-gui.runAsync = function(task, done, msg) {
-  var delay = 25, // timeout in ms; should be long enough for Firefox to refresh.
+gui.runWithMessage = function(task, done, msg) {
+  var delay = 35, // timeout in ms; should be long enough for Firefox to refresh.
       el;
   if (!msg) {
     task();
     done();
   } else {
     el = gui.showProgressMessage(msg);
-    // Run task with a delay, so browser can display the message
+    // Run task with a delay, so browser can update dom
     gui.queueSync()
       .defer(task, delay)
-      .await(function() {
-        el.remove();
-        done();
-      });
+      .defer(function() {el.remove(); done();})
+      .run();
   }
 };
 
@@ -4415,6 +4379,28 @@ gui.showProgressMessage = function(msg) {
   var el = El('div').addClass('progress-message').appendTo('body');
   El('div').text(msg).appendTo(el);
   return el;
+};
+
+// Run a series of tasks in sequence. Each task can be run after a timeout.
+gui.queueSync = function() {
+  var tasks = [],
+      timeouts = [];
+  function runNext() {
+    if (tasks.length > 0) {
+      setTimeout(function() {
+        tasks.shift()();
+        runNext();
+      }, timeouts.shift());
+    }
+  }
+  return {
+    defer: function(task, timeout) {
+      tasks.push(task);
+      timeouts.push(timeout | 0);
+      return this;
+    },
+    run: runNext
+  };
 };
 
 
@@ -12037,6 +12023,11 @@ gui.parseFreeformOptions = function(raw, cmd) {
 
 
 
+// tests if filename is a type that can be used
+gui.isReadableFileType = function(filename) {
+  return !!MapShaper.guessInputFileType(filename);
+};
+
 // @cb function(<FileList>)
 function DropControl(cb) {
   var el = El('body');
@@ -12082,13 +12073,11 @@ function FileChooser(el, cb) {
 
 function ImportControl(model) {
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', model.clearMode);
-  var useCount = 0;
+  new SimpleButton('#import-buttons .cancel-btn').on('click', cancel);
+  var importCount = 0;
   var queuedFiles = [];
-  var isOpen = true;  // start with window open
 
-  model.addMode('import', open, turnOff);
-  // El('#import-options').show();
+  model.addMode('import', turnOn, turnOff);
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
   new FileChooser('#import-buttons .add-btn', receiveFiles);
@@ -12096,19 +12085,20 @@ function ImportControl(model) {
   model.enterMode('import');
   model.on('mode', function(e) {
     // re-open import opts if leaving alert or console modes and nothing has been imported yet
-    if (!e.name && e.prev != 'import' && useCount === 0) {
+    if (!e.name && importCount === 0) {
       model.enterMode('import');
     }
   });
 
-  function open() {
+  function turnOn() {
+    if (importCount > 0) {
+      El('#import-intro').hide(); // only show intro before first import
+    }
     El('#import-options').show();
-    isOpen = true;
   }
 
   function close() {
-   El('#import-options').hide();
-   isOpen = false;
+    El('#import-options').hide();
   }
 
   function turnOff() {
@@ -12117,9 +12107,18 @@ function ImportControl(model) {
     close();
   }
 
+  function cancel() {
+    if (importCount === 0) {
+      clearFiles();
+    } else {
+      model.clearMode();
+    }
+  }
+
   function clearFiles() {
     queuedFiles = [];
     El('#dropped-file-list .file-list').empty();
+    El('#dropped-file-list').hide();
   }
 
   function addFiles(a, b) {
@@ -12143,22 +12142,30 @@ function ImportControl(model) {
   }
 
   function receiveFiles(files) {
+    var prevSize = queuedFiles.length;
     queuedFiles = addFiles(queuedFiles, utils.toArray(files));
     if (queuedFiles.length === 0) return;
     model.enterMode('import');
-    if (useCount === 0) {
-      // import files right away on first use
+    if (importCount === 0 && prevSize === 0 && containsImportableFile(queuedFiles)) {
+      // if the first batch of files will be imported, process right away
       submitFiles();
     } else {
-      El('#import-intro').hide(); // only show intro at first
-      El('#import-buttons').show();
       showQueuedFiles();
+      El('#import-buttons').show();
     }
+  }
+
+  // Check if an array of File objects (probably) contains a file that can be imported
+  function containsImportableFile(files) {
+    return utils.some(files, function(f) {
+        var type = MapShaper.guessInputFileType(f.name);
+        return type == 'shp' || type == 'json';
+    });
   }
 
   function submitFiles() {
     readFiles(queuedFiles);
-    model.clearMode();
+    queuedFiles = [];
   }
 
   function readFiles(files) {
@@ -12204,6 +12211,7 @@ function ImportControl(model) {
       } else {
         console.log("Unexpected file type: " + name + '; ignoring');
       }
+      model.clearMode();
     });
   }
 
@@ -12213,11 +12221,8 @@ function ImportControl(model) {
       message = size > 4e7 ? 'Importing' : null, // don't show message if dataset is small
       dataset;
 
-    if (useCount++ === 0) {
-      close();
-    }
-
-    gui.runAsync(
+    importCount++;
+    gui.runWithMessage(
       function proc() {
         importOpts.files = [path]; // TODO: try to remove this
         dataset = MapShaper.importFileContent(content, path, importOpts);
@@ -12245,8 +12250,6 @@ function ImportControl(model) {
       });
     } else if (gui.isReadableFileType(name)) {
       importFile(file);
-    } else {
-      console.log("File can't be imported:", name, "-- skipping.");
     }
   }
 }

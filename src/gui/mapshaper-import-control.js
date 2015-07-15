@@ -6,6 +6,11 @@ mapshaper-import
 mapshaper-gui-options
 */
 
+// tests if filename is a type that can be used
+gui.isReadableFileType = function(filename) {
+  return !!MapShaper.guessInputFileType(filename);
+};
+
 // @cb function(<FileList>)
 function DropControl(cb) {
   var el = El('body');
@@ -51,13 +56,11 @@ function FileChooser(el, cb) {
 
 function ImportControl(model) {
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', model.clearMode);
-  var useCount = 0;
+  new SimpleButton('#import-buttons .cancel-btn').on('click', cancel);
+  var importCount = 0;
   var queuedFiles = [];
-  var isOpen = true;  // start with window open
 
-  model.addMode('import', open, turnOff);
-  // El('#import-options').show();
+  model.addMode('import', turnOn, turnOff);
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
   new FileChooser('#import-buttons .add-btn', receiveFiles);
@@ -65,19 +68,20 @@ function ImportControl(model) {
   model.enterMode('import');
   model.on('mode', function(e) {
     // re-open import opts if leaving alert or console modes and nothing has been imported yet
-    if (!e.name && e.prev != 'import' && useCount === 0) {
+    if (!e.name && importCount === 0) {
       model.enterMode('import');
     }
   });
 
-  function open() {
+  function turnOn() {
+    if (importCount > 0) {
+      El('#import-intro').hide(); // only show intro before first import
+    }
     El('#import-options').show();
-    isOpen = true;
   }
 
   function close() {
-   El('#import-options').hide();
-   isOpen = false;
+    El('#import-options').hide();
   }
 
   function turnOff() {
@@ -86,9 +90,18 @@ function ImportControl(model) {
     close();
   }
 
+  function cancel() {
+    if (importCount === 0) {
+      clearFiles();
+    } else {
+      model.clearMode();
+    }
+  }
+
   function clearFiles() {
     queuedFiles = [];
     El('#dropped-file-list .file-list').empty();
+    El('#dropped-file-list').hide();
   }
 
   function addFiles(a, b) {
@@ -112,22 +125,30 @@ function ImportControl(model) {
   }
 
   function receiveFiles(files) {
+    var prevSize = queuedFiles.length;
     queuedFiles = addFiles(queuedFiles, utils.toArray(files));
     if (queuedFiles.length === 0) return;
     model.enterMode('import');
-    if (useCount === 0) {
-      // import files right away on first use
+    if (importCount === 0 && prevSize === 0 && containsImportableFile(queuedFiles)) {
+      // if the first batch of files will be imported, process right away
       submitFiles();
     } else {
-      El('#import-intro').hide(); // only show intro at first
-      El('#import-buttons').show();
       showQueuedFiles();
+      El('#import-buttons').show();
     }
+  }
+
+  // Check if an array of File objects (probably) contains a file that can be imported
+  function containsImportableFile(files) {
+    return utils.some(files, function(f) {
+        var type = MapShaper.guessInputFileType(f.name);
+        return type == 'shp' || type == 'json';
+    });
   }
 
   function submitFiles() {
     readFiles(queuedFiles);
-    model.clearMode();
+    queuedFiles = [];
   }
 
   function readFiles(files) {
@@ -173,6 +194,7 @@ function ImportControl(model) {
       } else {
         console.log("Unexpected file type: " + name + '; ignoring');
       }
+      model.clearMode();
     });
   }
 
@@ -182,11 +204,8 @@ function ImportControl(model) {
       message = size > 4e7 ? 'Importing' : null, // don't show message if dataset is small
       dataset;
 
-    if (useCount++ === 0) {
-      close();
-    }
-
-    gui.runAsync(
+    importCount++;
+    gui.runWithMessage(
       function proc() {
         importOpts.files = [path]; // TODO: try to remove this
         dataset = MapShaper.importFileContent(content, path, importOpts);
@@ -214,8 +233,6 @@ function ImportControl(model) {
       });
     } else if (gui.isReadableFileType(name)) {
       importFile(file);
-    } else {
-      console.log("File can't be imported:", name, "-- skipping.");
     }
   }
 }
