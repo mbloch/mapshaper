@@ -19,14 +19,14 @@ div.g-tip {
 	font-size: 13px;
 	line-height: 1.45;
 	background: #fff;
-	border: 1px solid #bbb;
+	border: 1px solid #a2a2a2;
 	border-radius: 6px;
 	padding: 8px 11px 9px 11px;
 	bottom: 0px;
 	left: -50%;
 	margin-right: 9px;
 	white-space: pre;
-	box-shadow: 0 0px 9px rgba(0, 0, 0, 0.2);
+	box-shadow: 0 0px 10px rgba(0, 0, 0, 0.15);
 }
 
 /* tail */
@@ -174,7 +174,7 @@ div.g-tip {
 	background-color: white;
 	text: black;
 	margin: 0;
-	border: 1px solid #b0b0b0;
+	border: 1px solid #999;
 	padding: 1px 4px 3px 3px;
 }
 

@@ -68,10 +68,9 @@ interface. Examples: "bbox" "no-quantization"
 		<div class="g-option-menu">
 			<div><label for="g-import-retain-opt"><input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>prevent shape removal</label>
 							<div class="g-tip-button">?<div class="g-tip-anchor">
-			<div class="g-tip">Prevent small polygons from
-disappearing at high simplification.
-Protects the largest ring of multi-
-ring features.
+			<div class="g-tip">Prevent small polygon features from
+disappearing at high simplification. Keeps
+the largest ring of multi-ring features.
 </div></div></div></div>
 </div>
 
@@ -79,11 +78,10 @@ ring features.
 			<div class="g-option-menu">
 
 			<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Simplified lines remain within a
-given distance of original lines.
-Good for thinning dense points
-but tends to form spikes at high
-simplification.</div></div></div>
+<div class="g-tip">Simplified lines remain within a set
+distance of original lines. Good for
+thinning dense points, but spikes
+tend to form at high simplification.</div></div></div>
 			</div>			
 
 			<div><label><input type="radio" name="method" value="visvalingam" class="g-radio">Visvalingam / effective area</label><div class="g-tip-button">?<div class="g-tip-anchor">

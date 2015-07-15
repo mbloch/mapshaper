@@ -150,7 +150,7 @@ div.error-box > div {
 div.g-option-menu .advanced-options {
 	width: 210px;
 	background: rgba(255, 255, 255, 0.4);
-	border: 1px solid rgba(0,0,0,0.2);
+	border: 1px solid #999;
 	padding: 0 3px;
 	height: 17px;
 	font-size: 12px;
@@ -177,17 +177,18 @@ div.g-option-menu .advanced-options {
 	display: none;
 	z-index: 80;	
 	text-align: center;
-	background-color: rgba(255, 255, 255, 0.8);
+	/* background-color: rgba(255, 255, 255, 0.8); 
+	background-color: rgba(255, 255, 255, 0.35);*/
 }
 
 .info-box {
 	text-align: left;
-	margin-top: 11px;
+	margin-top: 17px;
 	background-color: #fff;
 	padding: 10px 14px 8px 14px;
 	vertical-align: top;
 	display: inline-block;
-	border: 1px solid #b5b5b5;
+	border: 1px solid #999;
 	border-radius: 9px;
 }
 
@@ -352,6 +353,7 @@ body.simplify #layer-control {
 #layer-menu .info-box {
 	overflow: hidden;
 	max-height: 90%;
+	margin-top: 6px;
 	overflow-y: auto;
 }
 
