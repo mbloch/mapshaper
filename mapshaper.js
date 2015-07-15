@@ -9540,14 +9540,14 @@ MapShaper.exportShapefile = function(dataset, opts) {
 };
 
 MapShaper.exportPrjFile = function(lyr, dataset) {
-  var prj = dataset.info.output_prj;
-  if (!prj && prj !== null) { // null output_prj means prj is unknown (proj command causes this)
-    prj = dataset.info.input_prj;
+  var outputPrj = dataset.info.output_prj;
+  if (!outputPrj && outputPrj !== null) { // null value indicates crs is unknown
+    outputPrj = dataset.info.input_prj;
   }
-  return prj && {
-    content: prj,
+  return outputPrj ? {
+    content: outputPrj,
     filename: lyr.name + '.prj'
-  };
+  } : null;
 };
 
 MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {
@@ -9950,12 +9950,17 @@ MapShaper.simplifyArcsFast = function(arcs, dist) {
       count;
   for (var i=0, n=arcs.size(); i<n; i++) {
     count = MapShaper.simplifyPathFast([i], arcs, dist, xx, yy);
+    if (count == 1) {
+      count = 0;
+      xx.pop();
+      yy.pop();
+    }
     nn.push(count);
   }
   return new ArcCollection(nn, xx, yy);
 };
 
-MapShaper.simplifyShapeFast = function(shp, arcs, dist) {
+MapShaper.simplifyPolygonFast = function(shp, arcs, dist) {
   if (!shp || !dist) return null;
   var xx = [],
       yy = [],
@@ -9964,6 +9969,11 @@ MapShaper.simplifyShapeFast = function(shp, arcs, dist) {
 
   shp.forEach(function(path) {
     var count = MapShaper.simplifyPathFast(path, arcs, dist, xx, yy);
+    while (count < 4 && count > 0) {
+      xx.pop();
+      yy.pop();
+      count--;
+    }
     if (count > 0) {
       shp2.push([nn.length]);
       nn.push(count);
@@ -9990,15 +10000,10 @@ MapShaper.simplifyPathFast = function(path, arcs, dist, xx, yy) {
       count++;
     }
   }
-  if (count > 2 && (x != prevX || y != prevY)) {
+  if (x != prevX || y != prevY) {
     xx.push(x);
     yy.push(y);
     count++;
-  }
-  while (count < 4 && count > 0) {
-    xx.pop();
-    yy.pop();
-    count--;
   }
   return count;
 };
@@ -10068,7 +10073,7 @@ geom.findInteriorPoint = function(shp, arcs, exact) {
 
   if (!exact) {
     var thresh = Math.sqrt(pathBounds.area()) * 0.01;
-    var simple = MapShaper.simplifyShapeFast(shp, arcs, thresh);
+    var simple = MapShaper.simplifyPolygonFast(shp, arcs, thresh);
     return geom.findInteriorPoint(simple.shape, simple.arcs, true);
   }
 

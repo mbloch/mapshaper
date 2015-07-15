@@ -60,6 +60,7 @@ function ImportControl(model) {
   // El('#import-options').show();
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
+  new FileChooser('#import-buttons .add-btn', receiveFiles);
   new FileChooser('#add-file-btn', receiveFiles);
   model.enterMode('import');
   model.on('mode', function(e) {
@@ -90,31 +91,50 @@ function ImportControl(model) {
     El('#dropped-file-list .file-list').empty();
   }
 
+  function addFiles(a, b) {
+    var index = {};
+    return a.concat(b).reduce(function(memo, f) {
+      if ((gui.isReadableFileType(f.name) || /\.zip$/i.test(f.name)) &&
+          f.name in index === false) {
+        index[f.name] = true;
+        memo.push(f);
+      }
+      return memo;
+    }, []);
+  }
+
+  function showQueuedFiles() {
+    var list = El('#dropped-file-list .file-list').empty();
+    El('#dropped-file-list').show();
+    queuedFiles.forEach(function(f) {
+      El('<p>').text(f.name).appendTo(El("#dropped-file-list .file-list"));
+    });
+  }
+
   function receiveFiles(files) {
+    queuedFiles = addFiles(queuedFiles, utils.toArray(files));
+    if (queuedFiles.length === 0) return;
     model.enterMode('import');
-    files = utils.toArray(files);
-    queuedFiles = queuedFiles.concat(files);
-    // import files right away on first use -- the options dialog is already open
     if (useCount === 0) {
+      // import files right away on first use
       submitFiles();
     } else {
       El('#import-intro').hide(); // only show intro at first
       El('#import-buttons').show();
-      El('#dropped-file-list').show();
-      files.forEach(function(f) {
-        El('<p>').text(f.name).appendTo(El("#dropped-file-list .file-list"));
-      });
+      showQueuedFiles();
     }
   }
 
   function submitFiles() {
-    // TODO: handle potential issue where component files of several shapefiles
-    // are imported in interleaved sequence.
     readFiles(queuedFiles);
     model.clearMode();
   }
 
   function readFiles(files) {
+    // read in alphabetical order, so Shapefiles aren't interleaved
+    files.sort(function(a, b) {
+      return a.name > b.name ? 1 : -1;
+    });
     utils.forEach((files || []), readFile);
   }
 
@@ -193,9 +213,6 @@ function ImportControl(model) {
         readFiles(files);
       });
     } else if (gui.isReadableFileType(name)) {
-      if (!isOpen) {
-        open();
-      }
       importFile(file);
     } else {
       console.log("File can't be imported:", name, "-- skipping.");

@@ -62,7 +62,7 @@ geom.findInteriorPoint = function(shp, arcs, exact) {
 
   if (!exact) {
     var thresh = Math.sqrt(pathBounds.area()) * 0.01;
-    var simple = MapShaper.simplifyShapeFast(shp, arcs, thresh);
+    var simple = MapShaper.simplifyPolygonFast(shp, arcs, thresh);
     return geom.findInteriorPoint(simple.shape, simple.arcs, true);
   }
 

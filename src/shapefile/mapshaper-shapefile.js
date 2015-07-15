@@ -81,14 +81,14 @@ MapShaper.exportShapefile = function(dataset, opts) {
 };
 
 MapShaper.exportPrjFile = function(lyr, dataset) {
-  var prj = dataset.info.output_prj;
-  if (!prj && prj !== null) { // null output_prj means prj is unknown (proj command causes this)
-    prj = dataset.info.input_prj;
+  var outputPrj = dataset.info.output_prj;
+  if (!outputPrj && outputPrj !== null) { // null value indicates crs is unknown
+    outputPrj = dataset.info.input_prj;
   }
-  return prj && {
-    content: prj,
+  return outputPrj ? {
+    content: outputPrj,
     filename: lyr.name + '.prj'
-  };
+  } : null;
 };
 
 MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {
