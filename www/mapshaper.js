@@ -18202,10 +18202,14 @@ function Console(model) {
         // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
         input.node().focus();
         capture = false;
+      } else if (kc == 32 && readCommandLine() === '') {
+        // space bar closes if nothing has been typed
+        model.clearMode();
       } else {
+        // normal typing
         capture = false;
       }
-    } else if (kc == 32) { // space
+    } else if (kc == 32) { // sp
       // space bar opens console, unless typing in an input field
       if (document.activeElement.tagName != 'INPUT') {
         capture = true;
