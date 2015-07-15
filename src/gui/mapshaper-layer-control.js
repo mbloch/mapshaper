@@ -1,7 +1,7 @@
 /* @require mapshaper-gui-lib */
 
 function LayerControl(model) {
-  var el = El("#layer-menu").on('click', model.clearMode);
+  var el = El("#layer-menu").on('click', gui.handleDirectEvent(model.clearMode));
   var label = El('#layer-control .layer-name');
 
   model.addMode('layer_menu', turnOn, turnOff);

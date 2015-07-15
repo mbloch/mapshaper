@@ -29,3 +29,9 @@ gui.formatMessageArgs = function(args) {
   // remove cli annotation (if present)
   return MapShaper.formatLogArgs(args).replace(/^\[[^\]]+\] ?/, '');
 };
+
+gui.handleDirectEvent = function(cb) {
+  return function(e) {
+    if (e.target == this) cb();
+  };
+};

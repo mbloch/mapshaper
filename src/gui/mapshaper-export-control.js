@@ -5,7 +5,7 @@ var ExportControl = function(model) {
   var downloadSupport = typeof URL != 'undefined' && URL.createObjectURL &&
     typeof document.createElement("a").download != "undefined" ||
     !!window.navigator.msSaveBlob;
-  var menu = El('#export-options');
+  var menu = El('#export-options').on('click', gui.handleDirectEvent(model.clearMode));
   var anchor, blobUrl;
 
   if (!downloadSupport) {

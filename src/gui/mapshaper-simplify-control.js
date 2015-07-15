@@ -4,7 +4,7 @@ var SimplifyControl = function(model) {
   var control = new EventDispatcher();
   var _value = 1;
   var el = El('#g-simplify-control-wrapper');
-  var menu = El('#simplify-options');
+  var menu = El('#simplify-options').on('click', gui.handleDirectEvent(model.clearMode));
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
   new SimpleButton('#simplify-options .cancel-btn').on('click', model.clearMode);

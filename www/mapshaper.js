@@ -3061,6 +3061,12 @@ gui.formatMessageArgs = function(args) {
   return MapShaper.formatLogArgs(args).replace(/^\[[^\]]+\] ?/, '');
 };
 
+gui.handleDirectEvent = function(cb) {
+  return function(e) {
+    if (e.target == this) cb();
+  };
+};
+
 
 
 
@@ -3307,7 +3313,7 @@ var SimplifyControl = function(model) {
   var control = new EventDispatcher();
   var _value = 1;
   var el = El('#g-simplify-control-wrapper');
-  var menu = El('#simplify-options');
+  var menu = El('#simplify-options').on('click', gui.handleDirectEvent(model.clearMode));
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
   new SimpleButton('#simplify-options .cancel-btn').on('click', model.clearMode);
@@ -12647,7 +12653,7 @@ var ExportControl = function(model) {
   var downloadSupport = typeof URL != 'undefined' && URL.createObjectURL &&
     typeof document.createElement("a").download != "undefined" ||
     !!window.navigator.msSaveBlob;
-  var menu = El('#export-options');
+  var menu = El('#export-options').on('click', gui.handleDirectEvent(model.clearMode));
   var anchor, blobUrl;
 
   if (!downloadSupport) {
@@ -13061,7 +13067,7 @@ utils.inherit(RepairControl, EventDispatcher);
 
 
 function LayerControl(model) {
-  var el = El("#layer-menu").on('click', model.clearMode);
+  var el = El("#layer-menu").on('click', gui.handleDirectEvent(model.clearMode));
   var label = El('#layer-control .layer-name');
 
   model.addMode('layer_menu', turnOn, turnOff);
