@@ -420,7 +420,8 @@ body.simplify #layer-control {
 	pointer-events: none;
 }
 
-.nav-buttons {
+#nav-buttons {
+	display: none;
 	z-index: 20;
 	position: absolute;
 	top: 6px;

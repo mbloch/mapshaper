@@ -13600,7 +13600,7 @@ function MapNav(ext, root) {
       mouse = new MouseArea(p.element),
       wheel = new MouseWheel(mouse),
       zoomBox = new HighlightBox('body'),
-      buttons = El('div').addClass('nav-buttons').appendTo(root),
+      buttons = El('div').id('nav-buttons').appendTo(root),
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
       zoomScale = 2.5,
@@ -18502,7 +18502,10 @@ gui.startEditing = function() {
   new ExportControl(model);
   new LayerControl(model);
 
-  model.on('select', function() {El('#mode-buttons').show();});
+  model.on('select', function() {
+    El('#mode-buttons').show();
+    El('#nav-buttons').show();
+  });
   // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
   simplify.on('simplify-start', function() {
     repair.hide();

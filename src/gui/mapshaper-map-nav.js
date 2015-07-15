@@ -8,7 +8,7 @@ function MapNav(ext, root) {
       mouse = new MouseArea(p.element),
       wheel = new MouseWheel(mouse),
       zoomBox = new HighlightBox('body'),
-      buttons = El('div').addClass('nav-buttons').appendTo(root),
+      buttons = El('div').id('nav-buttons').appendTo(root),
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
       zoomScale = 2.5,

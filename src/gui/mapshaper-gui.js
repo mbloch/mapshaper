@@ -40,7 +40,10 @@ gui.startEditing = function() {
   new ExportControl(model);
   new LayerControl(model);
 
-  model.on('select', function() {El('#mode-buttons').show();});
+  model.on('select', function() {
+    El('#mode-buttons').show();
+    El('#nav-buttons').show();
+  });
   // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
   simplify.on('simplify-start', function() {
     repair.hide();
