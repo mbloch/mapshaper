@@ -148,7 +148,7 @@ function ImportControl(model) {
 
   function submitFiles() {
     readFiles(queuedFiles);
-    queuedFiles = [];
+    model.clearMode();
   }
 
   function readFiles(files) {
@@ -194,7 +194,6 @@ function ImportControl(model) {
       } else {
         console.log("Unexpected file type: " + name + '; ignoring');
       }
-      model.clearMode();
     });
   }
 
@@ -204,18 +203,21 @@ function ImportControl(model) {
       message = size > 4e7 ? 'Importing' : null, // don't show message if dataset is small
       dataset;
 
-    importCount++;
     gui.runWithMessage(
       function proc() {
         importOpts.files = [path]; // TODO: try to remove this
         dataset = MapShaper.importFileContent(content, path, importOpts);
-      },
-      function done() {
         if (type == 'shp') {
           gui.receiveShapefileComponent(path, dataset);
         }
-        dataset.info.no_repair = importOpts.no_repair; // kludge
-        model.updated({select: true}, dataset.layers[0], dataset);
+        dataset.info.no_repair = importOpts.no_repair;
+      },
+      function done() {
+        if (dataset) {
+          importCount++;
+          model.clearMode();
+          model.updated({select: true}, dataset.layers[0], dataset);
+        }
       }, message);
   }
 

@@ -1,19 +1,17 @@
 /* @requires mapshaper-gui-lib */
 
+// Show a progress message while running a task, if optional @msg is passed
 gui.runWithMessage = function(task, done, msg) {
-  var delay = 35, // timeout in ms; should be long enough for Firefox to refresh.
-      el;
-  if (!msg) {
-    task();
-    done();
-  } else {
+  var delay = 0, el;
+  if (msg) {
+    delay = 35; // timeout should be long enough for Firefox to refresh.
     el = gui.showProgressMessage(msg);
-    // Run task with a delay, so browser can update dom
-    gui.queueSync()
-      .defer(task, delay)
-      .defer(function() {el.remove(); done();})
-      .run();
   }
+  gui.queueSync()
+    .defer(task, delay)
+    .defer(function() {if (el) el.remove();})
+    .defer(done)
+    .run();
 };
 
 gui.showProgressMessage = function(msg) {

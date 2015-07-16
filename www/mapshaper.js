@@ -4365,20 +4365,18 @@ gui.readZipFile = function(file, cb) {
 
 
 
+// Show a progress message while running a task, if optional @msg is passed
 gui.runWithMessage = function(task, done, msg) {
-  var delay = 35, // timeout in ms; should be long enough for Firefox to refresh.
-      el;
-  if (!msg) {
-    task();
-    done();
-  } else {
+  var delay = 0, el;
+  if (msg) {
+    delay = 35; // timeout should be long enough for Firefox to refresh.
     el = gui.showProgressMessage(msg);
-    // Run task with a delay, so browser can update dom
-    gui.queueSync()
-      .defer(task, delay)
-      .defer(function() {el.remove(); done();})
-      .run();
   }
+  gui.queueSync()
+    .defer(task, delay)
+    .defer(function() {if (el) el.remove();})
+    .defer(done)
+    .run();
 };
 
 gui.showProgressMessage = function(msg) {
@@ -12171,7 +12169,7 @@ function ImportControl(model) {
 
   function submitFiles() {
     readFiles(queuedFiles);
-    queuedFiles = [];
+    model.clearMode();
   }
 
   function readFiles(files) {
@@ -12217,7 +12215,6 @@ function ImportControl(model) {
       } else {
         console.log("Unexpected file type: " + name + '; ignoring');
       }
-      model.clearMode();
     });
   }
 
@@ -12227,18 +12224,21 @@ function ImportControl(model) {
       message = size > 4e7 ? 'Importing' : null, // don't show message if dataset is small
       dataset;
 
-    importCount++;
     gui.runWithMessage(
       function proc() {
         importOpts.files = [path]; // TODO: try to remove this
         dataset = MapShaper.importFileContent(content, path, importOpts);
-      },
-      function done() {
         if (type == 'shp') {
           gui.receiveShapefileComponent(path, dataset);
         }
-        dataset.info.no_repair = importOpts.no_repair; // kludge
-        model.updated({select: true}, dataset.layers[0], dataset);
+        dataset.info.no_repair = importOpts.no_repair;
+      },
+      function done() {
+        if (dataset) {
+          importCount++;
+          model.clearMode();
+          model.updated({select: true}, dataset.layers[0], dataset);
+        }
       }, message);
   }
 
