@@ -11427,6 +11427,7 @@ MapShaper.getOptionParser = function() {
         describe: "text encoding (applies to .dbf and delimited text files)"
       },
       autoSnapOpt = {
+        alias: "snap",
         describe: "snap nearly identical points to fix minor topology errors",
         type: "flag"
       },
@@ -11499,7 +11500,7 @@ MapShaper.getOptionParser = function() {
       describe: "import Topo/GeoJSON id property to this field"
     })
     .option("field-types", {
-      describe: "Type hints for csv files, e.g. FIPS:str,STATE_FIPS:str",
+      describe: "type hints for csv files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
     });
 

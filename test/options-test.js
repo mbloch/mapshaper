@@ -14,6 +14,8 @@ describe('mapshaper-options.js', function () {
     bad("-i precision " + file1);
     bad("-i precision 0 " + file1);
     // filename expansion
+    good('-i snap', {auto_snap: true}); // same as auto-snap
+    good('-i auto-snap', {auto_snap: true});
     good('-i', {}); // now accepting no files
     good("-i " + file1, {files: [file1]});
     good("-i no-topology " + file1 + " auto-snap precision 0.1",
