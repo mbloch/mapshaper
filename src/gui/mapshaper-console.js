@@ -47,6 +47,7 @@ function Console(model) {
       stop = _stop; // restore original error functions
       error = _error;
       el.hide();
+      input.node().blur();
     }
   }
 
@@ -61,6 +62,7 @@ function Console(model) {
 
   function onKeyDown(e) {
     var kc = e.keyCode,
+        activeEl = document.activeElement,
         capture = false;
     if (kc == 27) { // esc
       model.clearMode(); // esc escapes other modes as well
@@ -85,8 +87,8 @@ function Console(model) {
         capture = false;
       }
     } else if (kc == 32) { // sp
-      // space bar opens console, unless typing in an input field
-      if (document.activeElement.tagName != 'INPUT') {
+      // space bar opens console, unless typing in an input field or editable el
+      if (activeEl.tagName != 'INPUT' && activeEl.contentEditable != 'true') {
         capture = true;
         model.enterMode('console');
       }

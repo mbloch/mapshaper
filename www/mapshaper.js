@@ -3070,113 +3070,55 @@ gui.handleDirectEvent = function(cb) {
 
 
 
-function draggable(ref) {
-  var xdown, ydown;
-  var el = El(ref),
-      dragging = false,
-      obj = new EventDispatcher();
-  Browser.undraggable(el.node());
-  el.on('mousedown', function(e) {
-    xdown = e.pageX;
-    ydown = e.pageY;
-    window.addEventListener('mousemove', onmove);
-    window.addEventListener('mouseup', onrelease);
-  });
+// TODO: combine ClickText and ClickText2
 
-  function onrelease(e) {
-    window.removeEventListener('mousemove', onmove);
-    window.removeEventListener('mouseup', onrelease);
-    if (dragging) {
-      dragging = false;
-      obj.dispatchEvent('dragend');
-    }
-  }
+function ClickText2(ref) {
+  var self = this;
+  var selected = false;
+  var el = El(ref)
+    .attr('contentEditable', true)
+    .attr('spellcheck', false)
+    .attr('autocorrect', false)
+    .on('click', function(e) {
+      var sel = getSelection(),
+          range;
+      if (!selected && sel.isCollapsed) {
+        range = document.createRange();
+        range.selectNodeContents(el.node());
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      selected = true;
+      e.stopPropagation();
+    })
+    .on('keydown', function(e) {
+      if (e.keyCode == 13) { // enter
+        e.stopPropagation();
+        e.preventDefault();
+        this.blur();
+      }
+    })
+    .on('blur', function(e) {
+      self.dispatchEvent('change');
+      var sel = getSelection().removeAllRanges();
+      self.editing = false;
+    })
+    .on('focus', function(e) {
+      selected = false;
+      self.editing = true;
+    });
 
-  function onmove(e) {
-    if (!dragging) {
-      dragging = true;
-      obj.dispatchEvent('dragstart');
+  this.value = function(str) {
+    if (utils.isString(str)) {
+      el.node().textContent = str;
+    } else {
+      return el.node().textContent;
     }
-    obj.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
-  }
-  return obj;
+  };
 }
 
-function Slider(ref, opts) {
-  var _el = El(ref);
-  var _self = this;
-  var defaults = {
-    space: 7
-  };
-  opts = utils.extend(defaults, opts);
+utils.inherit(ClickText2, EventDispatcher);
 
-  var _pct = 0;
-  var _track,
-      _handle,
-      _handleLeft = opts.space;
-
-  function size() {
-    return _track ? _track.width() - opts.space * 2 : 0;
-  }
-
-  this.track = function(ref) {
-    if (ref && !_track) {
-      _track = El(ref);
-      _handleLeft = _track.el.offsetLeft + opts.space;
-      updateHandlePos();
-    }
-    return _track;
-  };
-
-  this.handle = function(ref) {
-    var startX;
-    if (ref && !_handle) {
-      _handle = El(ref);
-      draggable(_handle)
-        .on('drag', function(e) {
-          setHandlePos(startX + e.dx, true);
-        })
-        .on('dragstart', function(e) {
-          startX = position();
-          _self.dispatchEvent('start');
-        })
-        .on('dragend', function(e) {
-          _self.dispatchEvent('end');
-        });
-      updateHandlePos();
-    }
-    return _handle;
-  };
-
-  function position() {
-    return Math.round(_pct * size());
-  }
-
-  this.pct = function(pct) {
-    if (pct >= 0 && pct <= 1) {
-      _pct = pct;
-      updateHandlePos();
-    }
-    return _pct;
-  };
-
-  function setHandlePos(x, fire) {
-    x = utils.clamp(x, 0, size());
-    var pct = x / size();
-    if (pct != _pct) {
-      _pct = pct;
-      _handle.css('left', _handleLeft + x);
-      _self.dispatchEvent('change', {pct: _pct});
-    }
-  }
-
-  function updateHandlePos() {
-    var x = _handleLeft + Math.round(position());
-    if (_handle) _handle.css('left', x);
-  }
-}
-
-utils.inherit(Slider, EventDispatcher);
 
 function ClickText(ref) {
   var _el = El(ref);
@@ -3306,6 +3248,116 @@ function ModeButton(el, name, model) {
   });
 }
 
+
+
+
+function draggable(ref) {
+  var xdown, ydown;
+  var el = El(ref),
+      dragging = false,
+      obj = new EventDispatcher();
+  Browser.undraggable(el.node());
+  el.on('mousedown', function(e) {
+    xdown = e.pageX;
+    ydown = e.pageY;
+    window.addEventListener('mousemove', onmove);
+    window.addEventListener('mouseup', onrelease);
+  });
+
+  function onrelease(e) {
+    window.removeEventListener('mousemove', onmove);
+    window.removeEventListener('mouseup', onrelease);
+    if (dragging) {
+      dragging = false;
+      obj.dispatchEvent('dragend');
+    }
+  }
+
+  function onmove(e) {
+    if (!dragging) {
+      dragging = true;
+      obj.dispatchEvent('dragstart');
+    }
+    obj.dispatchEvent('drag', {dx: e.pageX - xdown, dy: e.pageY - ydown});
+  }
+  return obj;
+}
+
+function Slider(ref, opts) {
+  var _el = El(ref);
+  var _self = this;
+  var defaults = {
+    space: 7
+  };
+  opts = utils.extend(defaults, opts);
+
+  var _pct = 0;
+  var _track,
+      _handle,
+      _handleLeft = opts.space;
+
+  function size() {
+    return _track ? _track.width() - opts.space * 2 : 0;
+  }
+
+  this.track = function(ref) {
+    if (ref && !_track) {
+      _track = El(ref);
+      _handleLeft = _track.el.offsetLeft + opts.space;
+      updateHandlePos();
+    }
+    return _track;
+  };
+
+  this.handle = function(ref) {
+    var startX;
+    if (ref && !_handle) {
+      _handle = El(ref);
+      draggable(_handle)
+        .on('drag', function(e) {
+          setHandlePos(startX + e.dx, true);
+        })
+        .on('dragstart', function(e) {
+          startX = position();
+          _self.dispatchEvent('start');
+        })
+        .on('dragend', function(e) {
+          _self.dispatchEvent('end');
+        });
+      updateHandlePos();
+    }
+    return _handle;
+  };
+
+  function position() {
+    return Math.round(_pct * size());
+  }
+
+  this.pct = function(pct) {
+    if (pct >= 0 && pct <= 1) {
+      _pct = pct;
+      updateHandlePos();
+    }
+    return _pct;
+  };
+
+  function setHandlePos(x, fire) {
+    x = utils.clamp(x, 0, size());
+    var pct = x / size();
+    if (pct != _pct) {
+      _pct = pct;
+      _handle.css('left', _handleLeft + x);
+      _self.dispatchEvent('change', {pct: _pct});
+    }
+  }
+
+  function updateHandlePos() {
+    var x = _handleLeft + Math.round(position());
+    if (_handle) _handle.css('left', x);
+  }
+}
+
+utils.inherit(Slider, EventDispatcher);
 
 
 
@@ -13070,13 +13122,11 @@ utils.inherit(RepairControl, EventDispatcher);
 function LayerControl(model) {
   var el = El("#layer-menu").on('click', gui.handleDirectEvent(model.clearMode));
   var label = El('#layer-control .layer-name');
-
+  var btn = new ModeButton('#layer-control .mode-btn', 'layer_menu', model);
   model.addMode('layer_menu', turnOn, turnOff);
-  new ModeButton('#layer-control .mode-btn', 'layer_menu', model);
 
   model.on('select', function(e) {
-    var name = e.layer.name || "[unnamed layer]";
-    label.html(name + " &nbsp;&#9660;");
+    updateBtn();
     render();
   });
 
@@ -13084,6 +13134,11 @@ function LayerControl(model) {
 
   function turnOn() {
     el.show();
+  }
+
+  function updateBtn() {
+    var name = model.getEditingLayer().layer.name || "[unnamed layer]";
+    label.html(name + " &nbsp;&#9660;");
   }
 
   function turnOff() {
@@ -13117,23 +13172,40 @@ function LayerControl(model) {
   }
 
   function renderLayer(lyr, dataset) {
-    var editLyr = model.getEditingLayer().layer;
+    var unnamed = '[unnamed]';
     var entry = El('div').addClass('layer-item');
-    var str = rowHTML('name', lyr.name || '[unnamed]');
-    str += rowHTML('source file', dataset.info.input_files[0]);
-    str += rowHTML('contents', describeLyr(lyr));
-    entry.html(str);
+    var editLyr = model.getEditingLayer().layer;
+    var html = rowHTML('name', '<span class="layer-name">' + (lyr.name || unnamed) + '</span>');
+    var nameEl;
+
+    html += rowHTML('source file', dataset.info.input_files[0]);
+    html += rowHTML('contents', describeLyr(lyr));
+    entry.html(html);
+    if (lyr == editLyr) {
+      entry.addClass('active');
+    }
+    nameEl = new ClickText2(entry.findChild('.layer-name'))
+      .on('change', function(e) {
+        var str = cleanLayerName(nameEl.value());
+        nameEl.value(str || unnamed);
+        lyr.name = str;
+        updateBtn();
+      });
     onClick(entry, function() {
+      if (nameEl.editing) {
+        return;
+      }
       if (lyr != editLyr) {
         model.updated({select: true}, lyr, dataset);
       }
       model.clearMode();
     });
-    if (lyr == editLyr) {
-      entry.addClass('active');
-    }
-
     return entry;
+  }
+
+  function cleanLayerName(raw) {
+    return raw.replace(/[\n\t/\\]/g, '')
+      .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
   }
 
   function rowHTML(c1, c2) {
@@ -13147,7 +13219,7 @@ function LayerControl(model) {
     el.on('mousedown', function() {
       time = +new Date();
     });
-    el.on('click', function(e) {
+    el.on('mouseup', function(e) {
       if (+new Date() - time < 300) cb(e);
     });
   }
@@ -18190,6 +18262,7 @@ function Console(model) {
       stop = _stop; // restore original error functions
       error = _error;
       el.hide();
+      input.node().blur();
     }
   }
 
@@ -18204,6 +18277,7 @@ function Console(model) {
 
   function onKeyDown(e) {
     var kc = e.keyCode,
+        activeEl = document.activeElement,
         capture = false;
     if (kc == 27) { // esc
       model.clearMode(); // esc escapes other modes as well
@@ -18228,8 +18302,8 @@ function Console(model) {
         capture = false;
       }
     } else if (kc == 32) { // sp
-      // space bar opens console, unless typing in an input field
-      if (document.activeElement.tagName != 'INPUT') {
+      // space bar opens console, unless typing in an input field or editable el
+      if (activeEl.tagName != 'INPUT' && activeEl.contentEditable != 'true') {
         capture = true;
         model.enterMode('console');
       }

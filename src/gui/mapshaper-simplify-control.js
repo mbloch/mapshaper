@@ -1,4 +1,4 @@
-/* @requires mapshaper-elements, mapshaper-mode-button */
+/* @requires mapshaper-elements, mapshaper-mode-button, mapshaper-slider */
 
 var SimplifyControl = function(model) {
   var control = new EventDispatcher();

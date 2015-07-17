@@ -364,12 +364,32 @@ body.simplify #layer-control {
 }
 
 #layer-menu .layer-item {
-	padding: 8px 0;
 	margin-left: -14px;	
 	padding: 8px 14px;
 	cursor: pointer;
 	width: 100%;
-	line-height: 1.1;
+}
+
+.layer-item .row {
+	line-height: 18px;
+	margin-bottom: 1px;
+}
+
+.layer-item .layer-name {
+	display: inline-block;
+	min-height: 14px; /* For FF when content is empty */
+	padding-right: 2px;
+	min-width: 2px;
+	border-bottom: 1px dotted #264372;
+	color: #264372;
+	outline: none;
+}
+
+
+.layer-item .layer-name::selection {
+	background: black;
+	color: white;
+	text-decoration: none;
 }
 
 .layer-item.active {

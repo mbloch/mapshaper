@@ -3,13 +3,11 @@
 function LayerControl(model) {
   var el = El("#layer-menu").on('click', gui.handleDirectEvent(model.clearMode));
   var label = El('#layer-control .layer-name');
-
+  var btn = new ModeButton('#layer-control .mode-btn', 'layer_menu', model);
   model.addMode('layer_menu', turnOn, turnOff);
-  new ModeButton('#layer-control .mode-btn', 'layer_menu', model);
 
   model.on('select', function(e) {
-    var name = e.layer.name || "[unnamed layer]";
-    label.html(name + " &nbsp;&#9660;");
+    updateBtn();
     render();
   });
 
@@ -17,6 +15,11 @@ function LayerControl(model) {
 
   function turnOn() {
     el.show();
+  }
+
+  function updateBtn() {
+    var name = model.getEditingLayer().layer.name || "[unnamed layer]";
+    label.html(name + " &nbsp;&#9660;");
   }
 
   function turnOff() {
@@ -50,23 +53,40 @@ function LayerControl(model) {
   }
 
   function renderLayer(lyr, dataset) {
-    var editLyr = model.getEditingLayer().layer;
+    var unnamed = '[unnamed]';
     var entry = El('div').addClass('layer-item');
-    var str = rowHTML('name', lyr.name || '[unnamed]');
-    str += rowHTML('source file', dataset.info.input_files[0]);
-    str += rowHTML('contents', describeLyr(lyr));
-    entry.html(str);
+    var editLyr = model.getEditingLayer().layer;
+    var html = rowHTML('name', '<span class="layer-name">' + (lyr.name || unnamed) + '</span>');
+    var nameEl;
+
+    html += rowHTML('source file', dataset.info.input_files[0]);
+    html += rowHTML('contents', describeLyr(lyr));
+    entry.html(html);
+    if (lyr == editLyr) {
+      entry.addClass('active');
+    }
+    nameEl = new ClickText2(entry.findChild('.layer-name'))
+      .on('change', function(e) {
+        var str = cleanLayerName(nameEl.value());
+        nameEl.value(str || unnamed);
+        lyr.name = str;
+        updateBtn();
+      });
     onClick(entry, function() {
+      if (nameEl.editing) {
+        return;
+      }
       if (lyr != editLyr) {
         model.updated({select: true}, lyr, dataset);
       }
       model.clearMode();
     });
-    if (lyr == editLyr) {
-      entry.addClass('active');
-    }
-
     return entry;
+  }
+
+  function cleanLayerName(raw) {
+    return raw.replace(/[\n\t/\\]/g, '')
+      .replace(/^[\.\s]+/, '').replace(/[\.\s]+$/, '');
   }
 
   function rowHTML(c1, c2) {
@@ -80,7 +100,7 @@ function LayerControl(model) {
     el.on('mousedown', function() {
       time = +new Date();
     });
-    el.on('click', function(e) {
+    el.on('mouseup', function(e) {
       if (+new Date() - time < 300) cb(e);
     });
   }
