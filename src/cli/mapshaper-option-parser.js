@@ -37,7 +37,7 @@ function CommandParser() {
 
   this.parseArgv = function(raw) {
     var commandDefs = getCommands(),
-        commandRxp = /^--?([\w-]+)$/i,
+        commandRxp = /^--?([a-z][\w-]*)$/i,
         commands = [], cmd,
         argv = raw.concat(), // make copy, so we can consume the array
         cmdName, cmdDef, opt;
