@@ -28,6 +28,7 @@ Browser.onload(function() {
 
 gui.startEditing = function() {
   var model = new Model(),
+      dataLoaded = false,
       map, repair, simplify;
   gui.startEditing = function() {};
   gui.alert = new ErrorMessages(model);
@@ -36,13 +37,16 @@ gui.startEditing = function() {
   simplify = new SimplifyControl(model);
   new ImportFileProxy(model);
   new ImportControl(model);
-  new Console(model);
   new ExportControl(model);
   new LayerControl(model);
 
   model.on('select', function() {
-    El('#mode-buttons').show();
-    El('#nav-buttons').show();
+    if (!dataLoaded) {
+      dataLoaded = true;
+      El('#mode-buttons').show();
+      El('#nav-buttons').show();
+      new Console(model);
+    }
   });
   // TODO: untangle dependencies between SimplifyControl, RepairControl and Map
   simplify.on('simplify-start', function() {
