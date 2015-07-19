@@ -408,7 +408,12 @@ body.simplify #layer-control {
 }
 
 .layer-item .col1 {
-	width: 85px;
+	width: 70px;
+}
+
+.layer-item .col2 {
+	position: relative;
+	left: 12px;
 }
 
 /* --- Intersection control ----------*/

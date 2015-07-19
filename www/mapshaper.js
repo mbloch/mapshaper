@@ -13143,14 +13143,21 @@ function LayerControl(model) {
     return str;
   }
 
+  function describeSrc(lyr, dataset) {
+    var file = dataset.info.input_files[0] || '';
+    if (utils.endsWith(file, '.shp') && !lyr.data && lyr == dataset.layers[0]) {
+      file += " (missing .dbf)";
+    }
+    return file;
+  }
+
   function renderLayer(lyr, dataset) {
     var unnamed = '[unnamed]';
     var entry = El('div').addClass('layer-item');
     var editLyr = model.getEditingLayer().layer;
     var html = rowHTML('name', '<span class="layer-name">' + (lyr.name || unnamed) + '</span>');
     var nameEl;
-
-    html += rowHTML('source file', dataset.info.input_files[0]);
+    html += rowHTML('source file', describeSrc(lyr, dataset));
     html += rowHTML('contents', describeLyr(lyr));
     entry.html(html);
     if (lyr == editLyr) {
