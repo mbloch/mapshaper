@@ -56,7 +56,7 @@ function FileChooser(el, cb) {
 
 function ImportControl(model) {
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', cancel);
+  new SimpleButton('#import-buttons .cancel-btn').on('click', model.clearMode);
   var importCount = 0;
   var queuedFiles = [];
 
@@ -85,17 +85,9 @@ function ImportControl(model) {
   }
 
   function turnOff() {
-    El('#fork-me').hide();
+    gui.clearProgressMessage();
     clearFiles();
     close();
-  }
-
-  function cancel() {
-    if (importCount === 0) {
-      clearFiles();
-    } else {
-      model.clearMode();
-    }
   }
 
   function clearFiles() {
@@ -104,9 +96,9 @@ function ImportControl(model) {
     El('#dropped-file-list').hide();
   }
 
-  function addFiles(a, b) {
+  function addFiles(files) {
     var index = {};
-    return a.concat(b).reduce(function(memo, f) {
+    queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
       if ((gui.isReadableFileType(f.name) || /\.zip$/i.test(f.name)) &&
           f.name in index === false) {
         index[f.name] = true;
@@ -114,6 +106,10 @@ function ImportControl(model) {
       }
       return memo;
     }, []);
+    // sort so that Shapefile components are imported together
+    queuedFiles.sort(function(a, b) {
+      return a.name > b.name ? 1 : -1;
+    });
   }
 
   function showQueuedFiles() {
@@ -126,7 +122,7 @@ function ImportControl(model) {
 
   function receiveFiles(files) {
     var prevSize = queuedFiles.length;
-    queuedFiles = addFiles(queuedFiles, utils.toArray(files));
+    addFiles(utils.toArray(files));
     if (queuedFiles.length === 0) return;
     model.enterMode('import');
     if (importCount === 0 && prevSize === 0 && containsImportableFile(queuedFiles)) {
@@ -147,16 +143,17 @@ function ImportControl(model) {
   }
 
   function submitFiles() {
-    readFiles(queuedFiles);
-    model.clearMode();
+    El('#fork-me').hide();
+    close();
+    readNext();
   }
 
-  function readFiles(files) {
-    // read in alphabetical order, so Shapefiles aren't interleaved
-    files.sort(function(a, b) {
-      return a.name > b.name ? 1 : -1;
-    });
-    utils.forEach((files || []), readFile);
+  function readNext() {
+    if (queuedFiles.length > 0) {
+      readFile(queuedFiles.shift());
+    } else {
+      model.clearMode();
+    }
   }
 
   function getImportOpts() {
@@ -188,37 +185,38 @@ function ImportControl(model) {
       var type = MapShaper.guessInputType(name, content);
       if (type == 'shp' || type == 'json') {
         importFileContent(type, name, content);
-      } else if (type == 'dbf' || type == 'prj') {
-        // merge auxiliary Shapefile files with .shp content
-        gui.receiveShapefileComponent(name, content);
       } else {
-        console.log("Unexpected file type: " + name + '; ignoring');
+          if (type == 'dbf' || type == 'prj') {
+          // merge auxiliary Shapefile files with .shp content
+          gui.receiveShapefileComponent(name, content);
+        } else {
+          console.log("Unexpected file type: " + name + '; ignoring');
+        }
+        readNext();
       }
     });
   }
 
   function importFileContent(type, path, content) {
-    var importOpts = getImportOpts(),
-      size = content.byteLength || content.length, // ArrayBuffer or string
-      message = size > 4e7 ? 'Importing' : null, // don't show message if dataset is small
-      dataset;
-
-    gui.runWithMessage(
-      function proc() {
-        importOpts.files = [path]; // TODO: try to remove this
-        dataset = MapShaper.importFileContent(content, path, importOpts);
-        if (type == 'shp') {
-          gui.receiveShapefileComponent(path, dataset);
-        }
-        dataset.info.no_repair = importOpts.no_repair;
-      },
-      function done() {
-        if (dataset) {
-          importCount++;
-          model.clearMode();
-          model.updated({select: true}, dataset.layers[0], dataset);
-        }
-      }, message);
+    var size = content.byteLength || content.length, // ArrayBuffer or string
+        showMsg = size > 4e7, // don't show message if dataset is small
+        importOpts = getImportOpts(),
+        delay = 0;
+    importOpts.files = [path]; // TODO: try to remove this
+    if (showMsg) {
+      gui.showProgressMessage('Importing');
+      delay = 35;
+    }
+    setTimeout(function() {
+      var dataset = MapShaper.importFileContent(content, path, importOpts);
+      if (type == 'shp') {
+        gui.receiveShapefileComponent(path, dataset);
+      }
+      dataset.info.no_repair = importOpts.no_repair;
+      model.updated({select: true}, dataset.layers[0], dataset);
+      importCount++;
+      readNext();
+    }, delay);
   }
 
   // @file a File object
@@ -231,10 +229,13 @@ function ImportControl(model) {
           console.log("Zip file loading failed:");
           throw err;
         }
-        readFiles(files);
+        addFiles(files);
+        readNext();
       });
     } else if (gui.isReadableFileType(name)) {
       importFile(file);
+    } else {
+      readNext();
     }
   }
 }

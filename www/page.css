@@ -232,16 +232,15 @@ div.g-option-menu .advanced-options {
 
 /* --- Progress bar --------------- */
 
-.progress-message {
+#progress-message {
 	position: absolute;
 	width: 100%;
 	z-index: 90;
 	text-align: center;
 	top: 52px;
-	font-size: 16px;
 }
 
-.progress-message > div {
+#progress-message > div {
 	display: inline-block;
 	text-transform: uppercase;
 	padding: 3px 6px;

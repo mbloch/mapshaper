@@ -32,12 +32,12 @@ var ExportControl = function(model) {
   function exportButton(selector, format) {
     var btn = new SimpleButton(selector).on('click', onClick);
     function onClick(e) {
-      var msg = gui.showProgressMessage('Exporting');
+      gui.showProgressMessage('Exporting');
       model.clearMode();
       setTimeout(function() {
         exportAs(format, function(err) {
           // hide message after a delay, so it doesn't just flash for an instant.
-          setTimeout(function(){msg.remove();}, 400);
+          setTimeout(gui.clearProgressMessage, 400);
           if (err) {
             console.error(err);
             gui.alert(utils.isString(err) ? err : "Export failed for an unknown reason");

@@ -74,25 +74,26 @@ var SimplifyControl = function(model) {
   }
 
   function onSubmit() {
-    var opts = getSimplifyOptions();
     var dataset = model.getEditingLayer().dataset;
-    var message = dataset.arcs && dataset.arcs.getPointCount() > 1e6 ? 'Calculating' : null;
+    var showMsg = dataset.arcs && dataset.arcs.getPointCount() > 1e6;
+    var delay = 0;
+    if (showMsg) {
+      delay = 35;
+      gui.showProgressMessage('Calculating');
+    }
     menu.hide();
-    gui.runWithMessage(
-      function proc() {
-        if (dataset.arcs) {
-          MapShaper.simplifyPaths(dataset.arcs, opts);
-          dataset.arcs.setRetainedPct(1);
-          if (opts.keep_shapes) {
-            MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
-          }
-        }
-      },
-      function done() {
-        control.reset();
-        model.updated({simplify: true});
-        showSlider();
-      }, message);
+    setTimeout(function() {
+      var opts = getSimplifyOptions();
+      MapShaper.simplifyPaths(dataset.arcs, opts);
+      dataset.arcs.setRetainedPct(1);
+      if (opts.keep_shapes) {
+        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
+      }
+      control.reset();
+      model.updated({simplify: true});
+      showSlider();
+      gui.clearProgressMessage();
+    }, delay);
   }
 
   function showSlider() {

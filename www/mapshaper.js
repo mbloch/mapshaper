@@ -3435,25 +3435,26 @@ var SimplifyControl = function(model) {
   }
 
   function onSubmit() {
-    var opts = getSimplifyOptions();
     var dataset = model.getEditingLayer().dataset;
-    var message = dataset.arcs && dataset.arcs.getPointCount() > 1e6 ? 'Calculating' : null;
+    var showMsg = dataset.arcs && dataset.arcs.getPointCount() > 1e6;
+    var delay = 0;
+    if (showMsg) {
+      delay = 35;
+      gui.showProgressMessage('Calculating');
+    }
     menu.hide();
-    gui.runWithMessage(
-      function proc() {
-        if (dataset.arcs) {
-          MapShaper.simplifyPaths(dataset.arcs, opts);
-          dataset.arcs.setRetainedPct(1);
-          if (opts.keep_shapes) {
-            MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
-          }
-        }
-      },
-      function done() {
-        control.reset();
-        model.updated({simplify: true});
-        showSlider();
-      }, message);
+    setTimeout(function() {
+      var opts = getSimplifyOptions();
+      MapShaper.simplifyPaths(dataset.arcs, opts);
+      dataset.arcs.setRetainedPct(1);
+      if (opts.keep_shapes) {
+        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
+      }
+      control.reset();
+      model.updated({simplify: true});
+      showSlider();
+      gui.clearProgressMessage();
+    }, delay);
   }
 
   function showSlider() {
@@ -4417,46 +4418,16 @@ gui.readZipFile = function(file, cb) {
 
 
 
-// Show a progress message while running a task, if optional @msg is passed
-gui.runWithMessage = function(task, done, msg) {
-  var delay = 0, el;
-  if (msg) {
-    delay = 35; // timeout should be long enough for Firefox to refresh.
-    el = gui.showProgressMessage(msg);
-  }
-  gui.queueSync()
-    .defer(task, delay)
-    .defer(function() {if (el) el.remove();})
-    .defer(done)
-    .run();
-};
-
 gui.showProgressMessage = function(msg) {
-  var el = El('div').addClass('progress-message').appendTo('body');
-  El('div').text(msg).appendTo(el);
-  return el;
+  if (!gui.progressMessage) {
+    gui.progressMessage = El('div').id('progress-message')
+      .appendTo('body');
+  }
+  El('<div>').text(msg).appendTo(gui.progressMessage.empty().show());
 };
 
-// Run a series of tasks in sequence. Each task can be run after a timeout.
-gui.queueSync = function() {
-  var tasks = [],
-      timeouts = [];
-  function runNext() {
-    if (tasks.length > 0) {
-      setTimeout(function() {
-        tasks.shift()();
-        runNext();
-      }, timeouts.shift());
-    }
-  }
-  return {
-    defer: function(task, timeout) {
-      tasks.push(task);
-      timeouts.push(timeout | 0);
-      return this;
-    },
-    run: runNext
-  };
+gui.clearProgressMessage = function() {
+  if (gui.progressMessage) gui.progressMessage.hide();
 };
 
 
@@ -12130,7 +12101,7 @@ function FileChooser(el, cb) {
 
 function ImportControl(model) {
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', cancel);
+  new SimpleButton('#import-buttons .cancel-btn').on('click', model.clearMode);
   var importCount = 0;
   var queuedFiles = [];
 
@@ -12159,17 +12130,9 @@ function ImportControl(model) {
   }
 
   function turnOff() {
-    El('#fork-me').hide();
+    gui.clearProgressMessage();
     clearFiles();
     close();
-  }
-
-  function cancel() {
-    if (importCount === 0) {
-      clearFiles();
-    } else {
-      model.clearMode();
-    }
   }
 
   function clearFiles() {
@@ -12178,9 +12141,9 @@ function ImportControl(model) {
     El('#dropped-file-list').hide();
   }
 
-  function addFiles(a, b) {
+  function addFiles(files) {
     var index = {};
-    return a.concat(b).reduce(function(memo, f) {
+    queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
       if ((gui.isReadableFileType(f.name) || /\.zip$/i.test(f.name)) &&
           f.name in index === false) {
         index[f.name] = true;
@@ -12188,6 +12151,10 @@ function ImportControl(model) {
       }
       return memo;
     }, []);
+    // sort so that Shapefile components are imported together
+    queuedFiles.sort(function(a, b) {
+      return a.name > b.name ? 1 : -1;
+    });
   }
 
   function showQueuedFiles() {
@@ -12200,7 +12167,7 @@ function ImportControl(model) {
 
   function receiveFiles(files) {
     var prevSize = queuedFiles.length;
-    queuedFiles = addFiles(queuedFiles, utils.toArray(files));
+    addFiles(utils.toArray(files));
     if (queuedFiles.length === 0) return;
     model.enterMode('import');
     if (importCount === 0 && prevSize === 0 && containsImportableFile(queuedFiles)) {
@@ -12221,16 +12188,17 @@ function ImportControl(model) {
   }
 
   function submitFiles() {
-    readFiles(queuedFiles);
-    model.clearMode();
+    El('#fork-me').hide();
+    close();
+    readNext();
   }
 
-  function readFiles(files) {
-    // read in alphabetical order, so Shapefiles aren't interleaved
-    files.sort(function(a, b) {
-      return a.name > b.name ? 1 : -1;
-    });
-    utils.forEach((files || []), readFile);
+  function readNext() {
+    if (queuedFiles.length > 0) {
+      readFile(queuedFiles.shift());
+    } else {
+      model.clearMode();
+    }
   }
 
   function getImportOpts() {
@@ -12262,37 +12230,38 @@ function ImportControl(model) {
       var type = MapShaper.guessInputType(name, content);
       if (type == 'shp' || type == 'json') {
         importFileContent(type, name, content);
-      } else if (type == 'dbf' || type == 'prj') {
-        // merge auxiliary Shapefile files with .shp content
-        gui.receiveShapefileComponent(name, content);
       } else {
-        console.log("Unexpected file type: " + name + '; ignoring');
+          if (type == 'dbf' || type == 'prj') {
+          // merge auxiliary Shapefile files with .shp content
+          gui.receiveShapefileComponent(name, content);
+        } else {
+          console.log("Unexpected file type: " + name + '; ignoring');
+        }
+        readNext();
       }
     });
   }
 
   function importFileContent(type, path, content) {
-    var importOpts = getImportOpts(),
-      size = content.byteLength || content.length, // ArrayBuffer or string
-      message = size > 4e7 ? 'Importing' : null, // don't show message if dataset is small
-      dataset;
-
-    gui.runWithMessage(
-      function proc() {
-        importOpts.files = [path]; // TODO: try to remove this
-        dataset = MapShaper.importFileContent(content, path, importOpts);
-        if (type == 'shp') {
-          gui.receiveShapefileComponent(path, dataset);
-        }
-        dataset.info.no_repair = importOpts.no_repair;
-      },
-      function done() {
-        if (dataset) {
-          importCount++;
-          model.clearMode();
-          model.updated({select: true}, dataset.layers[0], dataset);
-        }
-      }, message);
+    var size = content.byteLength || content.length, // ArrayBuffer or string
+        showMsg = size > 4e7, // don't show message if dataset is small
+        importOpts = getImportOpts(),
+        delay = 0;
+    importOpts.files = [path]; // TODO: try to remove this
+    if (showMsg) {
+      gui.showProgressMessage('Importing');
+      delay = 35;
+    }
+    setTimeout(function() {
+      var dataset = MapShaper.importFileContent(content, path, importOpts);
+      if (type == 'shp') {
+        gui.receiveShapefileComponent(path, dataset);
+      }
+      dataset.info.no_repair = importOpts.no_repair;
+      model.updated({select: true}, dataset.layers[0], dataset);
+      importCount++;
+      readNext();
+    }, delay);
   }
 
   // @file a File object
@@ -12305,10 +12274,13 @@ function ImportControl(model) {
           console.log("Zip file loading failed:");
           throw err;
         }
-        readFiles(files);
+        addFiles(files);
+        readNext();
       });
     } else if (gui.isReadableFileType(name)) {
       importFile(file);
+    } else {
+      readNext();
     }
   }
 }
@@ -12733,12 +12705,12 @@ var ExportControl = function(model) {
   function exportButton(selector, format) {
     var btn = new SimpleButton(selector).on('click', onClick);
     function onClick(e) {
-      var msg = gui.showProgressMessage('Exporting');
+      gui.showProgressMessage('Exporting');
       model.clearMode();
       setTimeout(function() {
         exportAs(format, function(err) {
           // hide message after a delay, so it doesn't just flash for an instant.
-          setTimeout(function(){msg.remove();}, 400);
+          setTimeout(gui.clearProgressMessage, 400);
           if (err) {
             console.error(err);
             gui.alert(utils.isString(err) ? err : "Export failed for an unknown reason");
