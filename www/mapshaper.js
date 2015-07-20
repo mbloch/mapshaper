@@ -13099,13 +13099,15 @@ function LayerControl(model) {
 
   model.on('select', function(e) {
     updateBtn();
-    render();
   });
 
-  model.on('update', render); // todo: be more selective about when to rerender
-
   function turnOn() {
+    render();
     el.show();
+  }
+
+  function turnOff() {
+    el.hide();
   }
 
   function updateBtn() {
@@ -13113,14 +13115,9 @@ function LayerControl(model) {
     label.html(name + " &nbsp;&#9660;");
   }
 
-  function turnOff() {
-    el.hide();
-  }
-
   function render() {
     var list = El('#layer-menu .layer-list');
     var datasets = model.getDatasets();
-
     list.empty();
     datasets.forEach(function(dataset) {
       dataset.layers.forEach(function(lyr) {
