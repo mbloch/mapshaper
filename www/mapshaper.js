@@ -13890,6 +13890,19 @@ utils.inherit(MapExtent, EventDispatcher);
 
 
 
+// Test if map should be re-framed to show updated layer
+gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
+  var boundsChanged = !prevBounds || !prevBounds.equals(newBounds);
+  var intersects = newBounds.intersects(mapBounds);
+  // TODO: compare only intersecting portion of layer with map bounds
+  var areaRatio = newBounds.area() / mapBounds.area();
+  if (areaRatio > 1) areaRatio = 1 / areaRatio;
+
+  if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
+  if (!intersects) return true; // reset if layer is out-of-view
+  return areaRatio < 0.5; // reset if layer is not at a viewable scale
+};
+
 function MshpMap(model) {
   var _root = El("#mshp-main-map"),
       _ext = new MapExtent(_root),
@@ -13916,7 +13929,8 @@ function MshpMap(model) {
 
   model.on('update', function(e) {
     var prevBounds = _activeGroup ?_activeGroup.getBounds() : null,
-        group = findGroup(e.dataset);
+        group = findGroup(e.dataset),
+        needReset;
     if (!group) {
       group = addGroup(e.dataset);
     } else if (e.flags.simplify || e.flags.proj || e.flags.arc_count) {
@@ -13929,16 +13943,17 @@ function MshpMap(model) {
       }
       group.updated();
     }
-    _activeGroup = group;
     group.showLayer(e.layer);
     updateGroupStyle(activeStyle, group);
-    if (prevBounds && prevBounds.equals(group.getBounds())) {
-      // redraw without zooming if bounds haven't changed
-      refreshLayers();
-    } else {
-      // zoom to full view of the updated layer
-      _ext.setBounds(group.getBounds());
+    _activeGroup = group;
+    needReset = gui.mapNeedsReset(group.getBounds(), prevBounds, _ext.getBounds());
+    _ext.setBounds(group.getBounds()); // update map extent to match bounds of active group
+    if (needReset) {
+      // zoom to full view of the active layer and redraw
       _ext.reset(true);
+    } else {
+      // refresh without navigating
+      refreshLayers();
     }
   });
 
