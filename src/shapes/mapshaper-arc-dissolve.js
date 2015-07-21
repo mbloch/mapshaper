@@ -115,7 +115,10 @@ MapShaper.getArcDissolveTest = function(layers, arcs) {
       lastId;
 
   return function(id1, id2) {
-    if (id1 == id2 || id1 == ~id2) return false; // error condition; throw error?
+    if (id1 == id2 || id1 == ~id2) {
+      verbose("Unexpected arc sequence:", id1, id2);
+      return false; // This is unexpected; don't try to dissolve, anyway
+    }
     count = 0;
     nodes.forEachConnectedArc(id1, countArc);
     return count == 1 && lastId == ~id2;

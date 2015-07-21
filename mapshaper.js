@@ -5598,6 +5598,250 @@ MapShaper.clipPoints = function(points, clipShapes, arcs, type) {
 
 
 
+api.convertPolygonsToInnerLines = function(lyr, arcs) {
+  if (lyr.geometry_type != 'polygon') {
+    stop("[innerlines] Command requires a polygon layer");
+  }
+  var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
+      lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
+  if (lyr2.shapes.length === 0) {
+    message("[innerlines] No shared boundaries were found");
+  }
+  lyr2.name = lyr.name;
+  return lyr2;
+};
+
+api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
+  if (lyr.geometry_type != 'polygon') {
+    stop("[lines] Command requires a polygon layer");
+  }
+  var arcCount = arcs.size(),
+      outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
+      typeCode = 0,
+      allArcs = [],
+      allData = [];
+
+  function addArcs(typeArcs) {
+    var typeData = utils.repeat(typeArcs.length, function(i) {
+          return {TYPE: typeCode};
+        }) || [];
+    allArcs = utils.merge(typeArcs, allArcs);
+    allData = utils.merge(typeData, allData);
+    typeCode++;
+  }
+
+  addArcs(outerArcs);
+
+  if (utils.isArray(fields)) {
+    if (!lyr.data) {
+      stop("[lines] Missing a data table:");
+    }
+    fields.forEach(function(field) {
+      if (!lyr.data.fieldExists(field)) {
+        stop("[lines] Unknown data field:", field);
+      }
+      var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
+          dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
+      dissolvedArcs = utils.difference(dissolvedArcs, allArcs);
+      addArcs(dissolvedArcs);
+    });
+  }
+
+  var innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
+  innerArcs = utils.difference(innerArcs, allArcs);
+  addArcs(innerArcs);
+
+  var lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
+  lyr2.name = lyr.name;
+  return lyr2;
+};
+
+MapShaper.convertArcsToLineLayer = function(arcs, data) {
+  var shapes = MapShaper.convertArcsToShapes(arcs),
+      lyr = {
+        geometry_type: 'polyline',
+        shapes: shapes
+      };
+  if (data) {
+    lyr.data = new DataTable(data);
+  }
+  return lyr;
+};
+
+MapShaper.convertArcsToShapes = function(arcs) {
+  return arcs.map(function(id) {
+    return [[id]];
+  });
+};
+
+MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
+  type = type || 'all';
+  var counts = new Uint8Array(arcCount),
+      arcs = [],
+      count;
+
+  MapShaper.countArcsInShapes(shapes, counts);
+
+  for (var i=0, n=counts.length; i<n; i++) {
+    count = counts[i];
+    if (count > 0) {
+      if (type == 'all' || type == 'outer' && count == 1 ||
+          type == 'inner' && count > 1) {
+        arcs.push(i);
+      }
+    }
+  }
+  return arcs;
+};
+
+
+
+
+// Dissolve arcs that can be merged without affecting topology of @layers;
+// remove arcs that are not referenced by any layer; remap arc ids
+// in layers. (In-place).
+MapShaper.dissolveArcs = function(dataset) {
+  var arcs = dataset.arcs,
+      layers = dataset.layers.filter(MapShaper.layerHasPaths),
+      test = MapShaper.getArcDissolveTest(layers, arcs),
+      groups = [],
+      totalPoints = 0,
+      arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
+      arcStatus = new Uint8Array(arcs.size());
+      // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
+  layers.forEach(function(lyr) {
+    // modify copies of the original shapes; original shapes should be unmodified
+    // (need to test this)
+    lyr.shapes = lyr.shapes.map(function(shape) {
+      return MapShaper.editPaths(shape && shape.concat(), translatePath);
+    });
+  });
+  MapShaper.dissolveArcCollection(arcs, groups, totalPoints);
+
+  function translatePath(path) {
+    var pointCount = 0;
+    var path2 = [];
+    var group, arcId, absId, arcLen, fw, arcId2;
+
+    for (var i=0, n=path.length; i<n; i++) {
+      arcId = path[i];
+      absId = absArcId(arcId);
+      fw = arcId === absId;
+
+      if (arcs.arcIsDegenerate(arcId)) {
+        // skip
+      } else if (arcStatus[absId] === 0) {
+        arcLen = arcs.getArcLength(arcId);
+
+        if (group && test(path[i-1], arcId)) {
+          if (arcLen > 0) {
+            arcLen--; // shared endpoint not counted;
+          }
+          group.push(arcId);  // arc data is appended to previous arc
+          arcStatus[absId] = 1; // arc is dropped from output
+        } else {
+          // new group (i.e. new dissolved arc)
+          group = [arcId];
+          arcIndex[absId] = groups.length;
+          groups.push(group);
+          arcStatus[absId] = fw ? 2 : 3; // 2: unchanged; 3: reversed
+        }
+        pointCount += arcLen;
+      } else {
+        group = null;
+      }
+
+      if (arcStatus[absId] > 1) {
+        // arc is retained (and renumbered) in the dissolved path.
+        arcId2 = arcIndex[absId];
+        if (fw && arcStatus[absId] == 3 || !fw && arcStatus[absId] == 2) {
+          arcId2 = ~arcId2;
+        }
+        path2.push(arcId2);
+      }
+    }
+    totalPoints += pointCount;
+    return path2;
+  }
+};
+
+MapShaper.dissolveArcCollection = function(arcs, groups, len2) {
+  var nn2 = new Uint32Array(groups.length),
+      xx2 = new Float64Array(len2),
+      yy2 = new Float64Array(len2),
+      src = arcs.getVertexData(),
+      zz2 = src.zz ? new Float64Array(len2) : null,
+      offs = 0;
+
+  groups.forEach(function(group, newId) {
+    group.forEach(function(oldId, i) {
+      extendDissolvedArc(oldId, newId);
+    });
+  });
+
+  arcs.updateVertexData(nn2, xx2, yy2, zz2);
+
+  function extendDissolvedArc(oldId, newId) {
+    var absId = absArcId(oldId),
+        rev = oldId < 0,
+        n = src.nn[absId],
+        i = src.ii[absId],
+        n2 = nn2[newId];
+
+    if (n > 0) {
+      if (n2 > 0) {
+        n--;
+        if (!rev) i++;
+      }
+      MapShaper.copyElements(src.xx, i, xx2, offs, n, rev);
+      MapShaper.copyElements(src.yy, i, yy2, offs, n, rev);
+      if (zz2) MapShaper.copyElements(src.zz, i, zz2, offs, n, rev);
+      nn2[newId] += n;
+      offs += n;
+    }
+  }
+};
+
+MapShaper.getArcDissolveTest = function(layers, arcs) {
+  var nodes = MapShaper.getFilteredNodeCollection(layers, arcs),
+      count = 0,
+      lastId;
+
+  return function(id1, id2) {
+    if (id1 == id2 || id1 == ~id2) {
+      verbose("Unexpected arc sequence:", id1, id2);
+      return false; // This is unexpected; don't try to dissolve, anyway
+    }
+    count = 0;
+    nodes.forEachConnectedArc(id1, countArc);
+    return count == 1 && lastId == ~id2;
+  };
+
+  function countArc(arcId, i) {
+    count++;
+    lastId = arcId;
+  }
+};
+
+MapShaper.getFilteredNodeCollection = function(layers, arcs) {
+  var counts = MapShaper.countArcReferences(layers, arcs),
+      test = function(arcId) {
+        return counts[absArcId(arcId)] > 0;
+      };
+  return new NodeCollection(arcs, test);
+};
+
+MapShaper.countArcReferences = function(layers, arcs) {
+  var counts = new Uint32Array(arcs.size());
+  layers.forEach(function(lyr) {
+    MapShaper.countArcsInShapes(lyr.shapes, counts);
+  });
+  return counts;
+};
+
+
+
+
 api.clipLayers = function(target, src, dataset, opts) {
   return MapShaper.clipLayers(target, src, dataset, "clip", opts);
 };
@@ -5616,48 +5860,73 @@ api.eraseLayer = function(targetLyr, src, dataset, opts) {
 
 // @target: a single layer or an array of layers
 // @type: 'clip' or 'erase'
-MapShaper.clipLayers = function(targetLayers, src, dataset, type, opts) {
-  var clipLyr =  MapShaper.getClipLayer(src, dataset, opts),
-      nodes, output;
+MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
+  var clipLyr =  MapShaper.getClipLayer(src, srcDataset, opts),
+      usingPathClip = utils.some(targetLayers, MapShaper.layerHasPaths),
+      nodes, outputLayers, dataset;
+  opts = opts || {};
   MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
 
   // If clipping layer was imported from a second file, it won't be included in
   // dataset
   // (assuming that clipLyr arcs have been merged with dataset.arcs)
   //
-  if (utils.contains(dataset.layers, clipLyr) === false) {
+  if (utils.contains(srcDataset.layers, clipLyr) === false) {
     dataset = {
-      layers: [clipLyr].concat(dataset.layers),
-      arcs: dataset.arcs
+      layers: [clipLyr].concat(srcDataset.layers),
+      arcs: srcDataset.arcs
     };
+  } else {
+    dataset = srcDataset;
   }
 
-  output = targetLayers.map(function(targetLyr) {
-    var clippedShapes, clippedLyr;
+  if (usingPathClip) {
+    nodes = MapShaper.divideArcs(dataset);
+  }
+
+  outputLayers = targetLayers.map(function(targetLyr) {
+    var clippedShapes, outputLyr;
     if (targetLyr === clipLyr) {
       stop('[' + type + '] Can\'t clip a layer with itself');
-    } else if (MapShaper.layerHasPoints(targetLyr)) {
-      // clip point layer
+    } else if (targetLyr.geometry_type == 'point') {
       clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, dataset.arcs, type);
-    } else if (MapShaper.layerHasPaths(targetLyr)) {
-      // clip polygon or polyline layer
-      if (!nodes) nodes = MapShaper.divideArcs(dataset);
-      var clip = targetLyr.geometry_type == 'polygon' ? MapShaper.clipPolygons : MapShaper.clipPolylines;
-      clippedShapes = clip(targetLyr.shapes, clipLyr.shapes, nodes, type);
+    } else if (targetLyr.geometry_type == 'polygon') {
+      clippedShapes = MapShaper.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type);
+    } else if (targetLyr.geometry_type == 'polyline') {
+      clippedShapes = MapShaper.clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
     } else {
-      // unknown layer type
       stop('[' + type + '] Invalid target layer:', targetLyr.name);
     }
 
-    clippedLyr = utils.defaults({shapes: clippedShapes, data: null}, targetLyr);
-    if (targetLyr.data) {
-      clippedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
+    if (opts.no_replace) {
+      outputLyr = utils.extend({}, targetLyr);
+      outputLyr.data = targetLyr.data ? targetLyr.data.clone() : null;
+    } else {
+      outputLyr = targetLyr;
     }
+    outputLyr.shapes = clippedShapes;
+
     // Remove null shapes (likely removed by clipping/erasing)
-    api.filterFeatures(clippedLyr, dataset.arcs, {remove_empty: true});
-    return clippedLyr;
+    api.filterFeatures(outputLyr, dataset.arcs, {remove_empty: true});
+    return outputLyr;
   });
-  return output;
+
+  // Cleanup is set by option parser; use no-cleanup to disable
+  if (usingPathClip && opts.cleanup) {
+    // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
+    // This is to remove arcs belonging to the clipping paths from the target
+    // dataset, and to heal the cuts that were made where clipping paths
+    // crossed target paths
+    dataset = {arcs: srcDataset.arcs, layers: srcDataset.layers};
+    if (opts.no_replace) {
+      dataset.layers = dataset.layers.concat(outputLayers);
+    } else {
+      MapShaper.replaceLayers(dataset, targetLayers, outputLayers);
+    }
+    MapShaper.dissolveArcs(dataset);
+  }
+
+  return outputLayers;
 };
 
 // @src: a layer object, layer identifier or filename
@@ -8275,247 +8544,6 @@ TopoJSON.pathImporters = {
       return memo ? memo.concat(arr) : arr;
     }, null);
   }
-};
-
-
-
-
-api.convertPolygonsToInnerLines = function(lyr, arcs) {
-  if (lyr.geometry_type != 'polygon') {
-    stop("[innerlines] Command requires a polygon layer");
-  }
-  var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
-      lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
-  if (lyr2.shapes.length === 0) {
-    message("[innerlines] No shared boundaries were found");
-  }
-  lyr2.name = lyr.name;
-  return lyr2;
-};
-
-api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
-  if (lyr.geometry_type != 'polygon') {
-    stop("[lines] Command requires a polygon layer");
-  }
-  var arcCount = arcs.size(),
-      outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
-      typeCode = 0,
-      allArcs = [],
-      allData = [];
-
-  function addArcs(typeArcs) {
-    var typeData = utils.repeat(typeArcs.length, function(i) {
-          return {TYPE: typeCode};
-        }) || [];
-    allArcs = utils.merge(typeArcs, allArcs);
-    allData = utils.merge(typeData, allData);
-    typeCode++;
-  }
-
-  addArcs(outerArcs);
-
-  if (utils.isArray(fields)) {
-    if (!lyr.data) {
-      stop("[lines] Missing a data table:");
-    }
-    fields.forEach(function(field) {
-      if (!lyr.data.fieldExists(field)) {
-        stop("[lines] Unknown data field:", field);
-      }
-      var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
-          dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
-      dissolvedArcs = utils.difference(dissolvedArcs, allArcs);
-      addArcs(dissolvedArcs);
-    });
-  }
-
-  var innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
-  innerArcs = utils.difference(innerArcs, allArcs);
-  addArcs(innerArcs);
-
-  var lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
-  lyr2.name = lyr.name;
-  return lyr2;
-};
-
-MapShaper.convertArcsToLineLayer = function(arcs, data) {
-  var shapes = MapShaper.convertArcsToShapes(arcs),
-      lyr = {
-        geometry_type: 'polyline',
-        shapes: shapes
-      };
-  if (data) {
-    lyr.data = new DataTable(data);
-  }
-  return lyr;
-};
-
-MapShaper.convertArcsToShapes = function(arcs) {
-  return arcs.map(function(id) {
-    return [[id]];
-  });
-};
-
-MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
-  type = type || 'all';
-  var counts = new Uint8Array(arcCount),
-      arcs = [],
-      count;
-
-  MapShaper.countArcsInShapes(shapes, counts);
-
-  for (var i=0, n=counts.length; i<n; i++) {
-    count = counts[i];
-    if (count > 0) {
-      if (type == 'all' || type == 'outer' && count == 1 ||
-          type == 'inner' && count > 1) {
-        arcs.push(i);
-      }
-    }
-  }
-  return arcs;
-};
-
-
-
-
-// Dissolve arcs that can be merged without affecting topology of @layers;
-// remove arcs that are not referenced by any layer; remap arc ids
-// in layers. (In-place).
-MapShaper.dissolveArcs = function(dataset) {
-  var arcs = dataset.arcs,
-      layers = dataset.layers.filter(MapShaper.layerHasPaths),
-      test = MapShaper.getArcDissolveTest(layers, arcs),
-      groups = [],
-      totalPoints = 0,
-      arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
-      arcStatus = new Uint8Array(arcs.size());
-      // arcStatus: 0 = unvisited, 1 = dropped, 2 = remapped, 3 = remapped + reversed
-  layers.forEach(function(lyr) {
-    // modify copies of the original shapes; original shapes should be unmodified
-    // (need to test this)
-    lyr.shapes = lyr.shapes.map(function(shape) {
-      return MapShaper.editPaths(shape && shape.concat(), translatePath);
-    });
-  });
-  MapShaper.dissolveArcCollection(arcs, groups, totalPoints);
-
-  function translatePath(path) {
-    var pointCount = 0;
-    var path2 = [];
-    var group, arcId, absId, arcLen, fw, arcId2;
-
-    for (var i=0, n=path.length; i<n; i++) {
-      arcId = path[i];
-      absId = absArcId(arcId);
-      fw = arcId === absId;
-
-      if (arcs.arcIsDegenerate(arcId)) {
-        // skip
-      } else if (arcStatus[absId] === 0) {
-        arcLen = arcs.getArcLength(arcId);
-
-        if (group && test(path[i-1], arcId)) {
-          if (arcLen > 0) {
-            arcLen--; // shared endpoint not counted;
-          }
-          group.push(arcId);  // arc data is appended to previous arc
-          arcStatus[absId] = 1; // arc is dropped from output
-        } else {
-          // new group (i.e. new dissolved arc)
-          group = [arcId];
-          arcIndex[absId] = groups.length;
-          groups.push(group);
-          arcStatus[absId] = fw ? 2 : 3; // 2: unchanged; 3: reversed
-        }
-        pointCount += arcLen;
-      } else {
-        group = null;
-      }
-
-      if (arcStatus[absId] > 1) {
-        // arc is retained (and renumbered) in the dissolved path.
-        arcId2 = arcIndex[absId];
-        if (fw && arcStatus[absId] == 3 || !fw && arcStatus[absId] == 2) {
-          arcId2 = ~arcId2;
-        }
-        path2.push(arcId2);
-      }
-    }
-    totalPoints += pointCount;
-    return path2;
-  }
-};
-
-MapShaper.dissolveArcCollection = function(arcs, groups, len2) {
-  var nn2 = new Uint32Array(groups.length),
-      xx2 = new Float64Array(len2),
-      yy2 = new Float64Array(len2),
-      src = arcs.getVertexData(),
-      zz2 = src.zz ? new Float64Array(len2) : null,
-      offs = 0;
-
-  groups.forEach(function(group, newId) {
-    group.forEach(function(oldId, i) {
-      extendDissolvedArc(oldId, newId);
-    });
-  });
-
-  arcs.updateVertexData(nn2, xx2, yy2, zz2);
-
-  function extendDissolvedArc(oldId, newId) {
-    var absId = absArcId(oldId),
-        rev = oldId < 0,
-        n = src.nn[absId],
-        i = src.ii[absId],
-        n2 = nn2[newId];
-
-    if (n > 0) {
-      if (n2 > 0) {
-        n--;
-        if (!rev) i++;
-      }
-      MapShaper.copyElements(src.xx, i, xx2, offs, n, rev);
-      MapShaper.copyElements(src.yy, i, yy2, offs, n, rev);
-      if (zz2) MapShaper.copyElements(src.zz, i, zz2, offs, n, rev);
-      nn2[newId] += n;
-      offs += n;
-    }
-  }
-};
-
-MapShaper.getArcDissolveTest = function(layers, arcs) {
-  var nodes = MapShaper.getFilteredNodeCollection(layers, arcs),
-      count = 0,
-      lastId;
-
-  return function(id1, id2) {
-    if (id1 == id2 || id1 == ~id2) return false; // error condition; throw error?
-    count = 0;
-    nodes.forEachConnectedArc(id1, countArc);
-    return count == 1 && lastId == ~id2;
-  };
-
-  function countArc(arcId, i) {
-    count++;
-    lastId = arcId;
-  }
-};
-
-MapShaper.getFilteredNodeCollection = function(layers, arcs) {
-  var counts = MapShaper.countArcReferences(layers, arcs),
-      test = function(arcId) {
-        return counts[absArcId(arcId)] > 0;
-      };
-  return new NodeCollection(arcs, test);
-};
-
-MapShaper.countArcReferences = function(layers, arcs) {
-  var counts = new Uint32Array(arcs.size());
-  layers.forEach(function(lyr) {
-    MapShaper.countArcsInShapes(lyr.shapes, counts);
-  });
-  return counts;
 };
 
 
@@ -14002,6 +14030,10 @@ function validateClipOpts(cmd) {
   if (!opts.source && !opts.bbox) {
     error("Command requires a source file, layer id or bbox");
   }
+  if (!opts.no_cleanup) {
+    // Remove unused arcs after clipping/erasing by default.
+    opts.cleanup = true;
+  }
 }
 
 function validateDissolveOpts(cmd) {
@@ -14509,6 +14541,7 @@ MapShaper.getOptionParser = function() {
       label: "<file|layer>",
       describe: "file or layer containing clip polygons"
     })
+    .option('no-cleanup', {type: 'flag'})
     .option("bbox", bboxOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
@@ -14522,6 +14555,7 @@ MapShaper.getOptionParser = function() {
       label: "<file|layer>",
       describe: "file or layer containing erase polygons"
     })
+    .option('no-cleanup', {type: 'flag'})
     .option("bbox", bboxOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)

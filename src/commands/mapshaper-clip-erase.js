@@ -4,6 +4,7 @@ mapshaper-path-division
 mapshaper-polygon-clipping
 mapshaper-polyline-clipping
 mapshaper-point-clipping
+mapshaper-arc-dissolve
 */
 
 api.clipLayers = function(target, src, dataset, opts) {
@@ -24,48 +25,73 @@ api.eraseLayer = function(targetLyr, src, dataset, opts) {
 
 // @target: a single layer or an array of layers
 // @type: 'clip' or 'erase'
-MapShaper.clipLayers = function(targetLayers, src, dataset, type, opts) {
-  var clipLyr =  MapShaper.getClipLayer(src, dataset, opts),
-      nodes, output;
+MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
+  var clipLyr =  MapShaper.getClipLayer(src, srcDataset, opts),
+      usingPathClip = utils.some(targetLayers, MapShaper.layerHasPaths),
+      nodes, outputLayers, dataset;
+  opts = opts || {};
   MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
 
   // If clipping layer was imported from a second file, it won't be included in
   // dataset
   // (assuming that clipLyr arcs have been merged with dataset.arcs)
   //
-  if (utils.contains(dataset.layers, clipLyr) === false) {
+  if (utils.contains(srcDataset.layers, clipLyr) === false) {
     dataset = {
-      layers: [clipLyr].concat(dataset.layers),
-      arcs: dataset.arcs
+      layers: [clipLyr].concat(srcDataset.layers),
+      arcs: srcDataset.arcs
     };
+  } else {
+    dataset = srcDataset;
   }
 
-  output = targetLayers.map(function(targetLyr) {
-    var clippedShapes, clippedLyr;
+  if (usingPathClip) {
+    nodes = MapShaper.divideArcs(dataset);
+  }
+
+  outputLayers = targetLayers.map(function(targetLyr) {
+    var clippedShapes, outputLyr;
     if (targetLyr === clipLyr) {
       stop('[' + type + '] Can\'t clip a layer with itself');
-    } else if (MapShaper.layerHasPoints(targetLyr)) {
-      // clip point layer
+    } else if (targetLyr.geometry_type == 'point') {
       clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, dataset.arcs, type);
-    } else if (MapShaper.layerHasPaths(targetLyr)) {
-      // clip polygon or polyline layer
-      if (!nodes) nodes = MapShaper.divideArcs(dataset);
-      var clip = targetLyr.geometry_type == 'polygon' ? MapShaper.clipPolygons : MapShaper.clipPolylines;
-      clippedShapes = clip(targetLyr.shapes, clipLyr.shapes, nodes, type);
+    } else if (targetLyr.geometry_type == 'polygon') {
+      clippedShapes = MapShaper.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type);
+    } else if (targetLyr.geometry_type == 'polyline') {
+      clippedShapes = MapShaper.clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
     } else {
-      // unknown layer type
       stop('[' + type + '] Invalid target layer:', targetLyr.name);
     }
 
-    clippedLyr = utils.defaults({shapes: clippedShapes, data: null}, targetLyr);
-    if (targetLyr.data) {
-      clippedLyr.data = opts.no_replace ? targetLyr.data.clone() : targetLyr.data;
+    if (opts.no_replace) {
+      outputLyr = utils.extend({}, targetLyr);
+      outputLyr.data = targetLyr.data ? targetLyr.data.clone() : null;
+    } else {
+      outputLyr = targetLyr;
     }
+    outputLyr.shapes = clippedShapes;
+
     // Remove null shapes (likely removed by clipping/erasing)
-    api.filterFeatures(clippedLyr, dataset.arcs, {remove_empty: true});
-    return clippedLyr;
+    api.filterFeatures(outputLyr, dataset.arcs, {remove_empty: true});
+    return outputLyr;
   });
-  return output;
+
+  // Cleanup is set by option parser; use no-cleanup to disable
+  if (usingPathClip && opts.cleanup) {
+    // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
+    // This is to remove arcs belonging to the clipping paths from the target
+    // dataset, and to heal the cuts that were made where clipping paths
+    // crossed target paths
+    dataset = {arcs: srcDataset.arcs, layers: srcDataset.layers};
+    if (opts.no_replace) {
+      dataset.layers = dataset.layers.concat(outputLayers);
+    } else {
+      MapShaper.replaceLayers(dataset, targetLayers, outputLayers);
+    }
+    MapShaper.dissolveArcs(dataset);
+  }
+
+  return outputLayers;
 };
 
 // @src: a layer object, layer identifier or filename

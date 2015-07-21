@@ -334,6 +334,7 @@ MapShaper.getOptionParser = function() {
       label: "<file|layer>",
       describe: "file or layer containing clip polygons"
     })
+    .option('no-cleanup', {type: 'flag'})
     .option("bbox", bboxOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
@@ -347,6 +348,7 @@ MapShaper.getOptionParser = function() {
       label: "<file|layer>",
       describe: "file or layer containing erase polygons"
     })
+    .option('no-cleanup', {type: 'flag'})
     .option("bbox", bboxOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)

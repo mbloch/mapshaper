@@ -110,6 +110,10 @@ function validateClipOpts(cmd) {
   if (!opts.source && !opts.bbox) {
     error("Command requires a source file, layer id or bbox");
   }
+  if (!opts.no_cleanup) {
+    // Remove unused arcs after clipping/erasing by default.
+    opts.cleanup = true;
+  }
 }
 
 function validateDissolveOpts(cmd) {

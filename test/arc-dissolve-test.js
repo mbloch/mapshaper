@@ -1,5 +1,6 @@
 var api = require('..'),
-  assert = require('assert');
+  assert = require('assert'),
+  ArcCollection = api.internal.ArcCollection;
 
 
 describe('mapshaper-arc-dissolve.js', function () {
@@ -63,6 +64,20 @@ describe('mapshaper-arc-dissolve.js', function () {
       assert.deepEqual(layers[0].shapes, targetShapes)
     })
 
+    it('test 4: line', function() {
+      var coords = [[[0, 0], [1, 0]],
+        [[1, 0], [1, 1], [2, 0]],
+        [[2, 0], [1, 0]],
+        [[2, 0], [3, 0]],
+        [[3, 0], [2, -1], [2, 0]]];
+      var arcs = new ArcCollection(coords);
+      var layers = [{geometry_type: 'polyline', shapes: [[[0, ~2, 3]]]}];
+      api.internal.dissolveArcs({layers: layers, arcs: arcs});
+      assert.deepEqual(layers[0].shapes, [[[0]]]);
+      assert.deepEqual(arcs.toArray(), [[[0, 0], [1, 0], [2, 0], [3, 0]]]);
+
+    });
+
   })
 
   describe('getArcDissolveTest()', function () {
@@ -93,7 +108,7 @@ describe('mapshaper-arc-dissolve.js', function () {
       assert.equal(test(3, 0), true);
       assert.equal(test(0, 2), false);
       assert.equal(test(0, ~2), false);
-      assert.equal(test(4, 4), false);
+      assert.equal(test(4, 4), false); // edge case; shouldn't occur
       assert.equal(test(1, 2), false);
       assert.equal(test(1, 3), false);
       assert.equal(test(2, 3), false);
