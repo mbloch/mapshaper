@@ -213,7 +213,7 @@ function ImportControl(model) {
         gui.receiveShapefileComponent(path, dataset);
       }
       dataset.info.no_repair = importOpts.no_repair;
-      model.updated({select: true}, dataset.layers[0], dataset);
+      model.selectLayer(dataset.layers[0], dataset);
       importCount++;
       readNext();
     }, delay);

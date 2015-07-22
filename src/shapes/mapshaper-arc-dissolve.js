@@ -4,7 +4,7 @@ mapshaper-endpoints
 mapshaper-dataset-utils
 */
 
-// Dissolve arcs that can be merged without affecting topology of @layers;
+// Dissolve arcs that can be merged without affecting topology of layers
 // remove arcs that are not referenced by any layer; remap arc ids
 // in layers. (In-place).
 MapShaper.dissolveArcs = function(dataset) {

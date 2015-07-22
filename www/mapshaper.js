@@ -9374,7 +9374,7 @@ MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
 
 
 
-// Dissolve arcs that can be merged without affecting topology of @layers;
+// Dissolve arcs that can be merged without affecting topology of layers
 // remove arcs that are not referenced by any layer; remap arc ids
 // in layers. (In-place).
 MapShaper.dissolveArcs = function(dataset) {
@@ -12267,7 +12267,7 @@ function ImportControl(model) {
         gui.receiveShapefileComponent(path, dataset);
       }
       dataset.info.no_repair = importOpts.no_repair;
-      model.updated({select: true}, dataset.layers[0], dataset);
+      model.selectLayer(dataset.layers[0], dataset);
       importCount++;
       readNext();
     }, delay);
@@ -13129,8 +13129,9 @@ function LayerControl(model) {
     var datasets = model.getDatasets();
     list.empty();
     datasets.forEach(function(dataset) {
-      dataset.layers.forEach(function(lyr) {
-        list.appendChild(renderLayer(lyr, dataset));
+      dataset.layers.forEach(function(lyr, i) {
+        var item = renderLayer(lyr, dataset);
+        list.appendChild(item);
       });
     });
   }
@@ -13184,6 +13185,19 @@ function LayerControl(model) {
         model.updated({select: true}, lyr, dataset);
       }
       model.clearMode();
+    });
+    // delete button
+    El('<img>').attr('src', 'images/close.png').appendTo(entry)
+    .on('mouseup', function(e) {
+      var otherLyr = model.findAnotherLayer(lyr);
+      if (!otherLyr) {
+        window.location.href = window.location.href.toString(); // refresh browser
+      } else {
+        model.selectLayer(otherLyr.layer, otherLyr.dataset);
+        model.deleteLayer(lyr, dataset);
+        render();
+      }
+      e.stopPropagation();
     });
     return entry;
   }
@@ -18513,6 +18527,43 @@ function Model() {
     return datasets.length;
   };
 
+  this.forEachLayer = function(cb) {
+    var i = 0;
+    datasets.forEach(function(dataset) {
+      dataset.layers.forEach(function(lyr) {
+        cb(lyr, dataset, i++);
+      });
+    });
+  };
+
+  this.deleteLayer = function(lyr, dataset) {
+    var layers = dataset.layers;
+    layers.splice(layers.indexOf(lyr), 1);
+    if (layers.length === 0) {
+      this.removeDataset(dataset);
+    }
+  };
+
+  this.findLayer = function(target) {
+    var found = null;
+    this.forEachLayer(function(lyr, dataset) {
+      if (lyr == target) {
+        found = {layer: lyr, dataset: dataset};
+      }
+    });
+    return found;
+  };
+
+  this.findAnotherLayer = function(target) {
+    var found = null;
+    this.forEachLayer(function(lyr, dataset) {
+      if (!found && lyr != target) {
+        found = {layer: lyr, dataset: dataset};
+      }
+    });
+    return found;
+  };
+
   this.removeDataset = function(target) {
     if (target == (editing && editing.dataset)) {
       error("Can't remove dataset while editing");
@@ -18542,6 +18593,10 @@ function Model() {
       dataset: dataset
     };
   }
+
+  this.selectLayer = function(lyr, dataset) {
+    this.updated({select: true}, lyr, dataset);
+  };
 
   this.updated = function(flags, lyr, dataset) {
     var e;

@@ -29,8 +29,9 @@ function LayerControl(model) {
     var datasets = model.getDatasets();
     list.empty();
     datasets.forEach(function(dataset) {
-      dataset.layers.forEach(function(lyr) {
-        list.appendChild(renderLayer(lyr, dataset));
+      dataset.layers.forEach(function(lyr, i) {
+        var item = renderLayer(lyr, dataset);
+        list.appendChild(item);
       });
     });
   }
@@ -84,6 +85,19 @@ function LayerControl(model) {
         model.updated({select: true}, lyr, dataset);
       }
       model.clearMode();
+    });
+    // delete button
+    El('<img>').attr('src', 'images/close.png').appendTo(entry)
+    .on('mouseup', function(e) {
+      var otherLyr = model.findAnotherLayer(lyr);
+      if (!otherLyr) {
+        window.location.href = window.location.href.toString(); // refresh browser
+      } else {
+        model.selectLayer(otherLyr.layer, otherLyr.dataset);
+        model.deleteLayer(lyr, dataset);
+        render();
+      }
+      e.stopPropagation();
     });
     return entry;
   }

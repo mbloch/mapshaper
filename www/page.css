@@ -362,15 +362,32 @@ body.simplify #layer-control {
 }
 
 #layer-menu .layer-item {
-	margin-left: -14px;	
+	position: relative;
+	margin-left: -14px;
+	margin-right: 8px;
 	padding: 8px 14px;
 	cursor: pointer;
 	width: 100%;
 }
 
+.layer-item img {
+	position: absolute;
+	top: 7px;
+	opacity: 0.3;
+	right: 8px;
+	width: 16px;
+	height: 16px;
+	padding: 2px;
+}
+
+.layer-item img:hover {
+	opacity: 1;
+}
+
 .layer-item .row {
 	line-height: 18px;
 	margin-bottom: 1px;
+	white-space: nowrap;
 }
 
 .layer-item .layer-name {
@@ -395,24 +412,22 @@ body.simplify #layer-control {
 }
 
 .layer-item:hover:not(.active) {
-	background-color: #e6f7ff;
+	background-color: #f7f7f7;
 }
 
-.layer-item .row {
-	white-space: nowrap;
-}
 
 .layer-item .row > div {
 	display: inline-block;
 }
 
 .layer-item .col1 {
-	width: 70px;
+	width: 84px;
 }
 
 .layer-item .col2 {
-	position: relative;
+	/*position: relative;
 	left: 12px;
+	*/
 }
 
 /* --- Intersection control ----------*/
