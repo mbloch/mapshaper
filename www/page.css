@@ -372,8 +372,8 @@ body.simplify #layer-control {
 
 .layer-item img {
 	position: absolute;
-	top: 7px;
-	opacity: 0.3;
+	top: 8px;
+	opacity: 0.35;
 	right: 8px;
 	width: 16px;
 	height: 16px;
