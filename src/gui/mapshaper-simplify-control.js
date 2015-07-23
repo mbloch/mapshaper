@@ -3,7 +3,7 @@
 var SimplifyControl = function(model) {
   var control = new EventDispatcher();
   var _value = 1;
-  var el = El('#g-simplify-control-wrapper');
+  var el = El('#simplify-control-wrapper');
   var menu = El('#simplify-options').on('click', gui.handleDirectEvent(model.clearMode));
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
@@ -11,9 +11,9 @@ var SimplifyControl = function(model) {
   new ModeButton('#simplify-btn', 'simplify', model);
   model.addMode('simplify', turnOn, turnOff);
 
-  var slider = new Slider("#g-simplify-control .g-slider");
-  slider.handle("#g-simplify-control .g-handle");
-  slider.track("#g-simplify-control .g-track");
+  var slider = new Slider("#simplify-control .slider");
+  slider.handle("#simplify-control .handle");
+  slider.track("#simplify-control .track");
   slider.on('change', function(e) {
     var pct = fromSliderPct(e.pct);
     text.value(pct);
@@ -25,7 +25,7 @@ var SimplifyControl = function(model) {
     control.dispatchEvent('simplify-end');
   });
 
-  var text = new ClickText("#g-simplify-control .g-clicktext");
+  var text = new ClickText("#simplify-control .clicktext");
   text.bounds(0, 1);
   text.formatter(function(val) {
     if (isNaN(val)) return '-';
@@ -105,7 +105,7 @@ var SimplifyControl = function(model) {
     var method = El('#simplify-options input[name=method]:checked').attr('value') || null;
     return {
       method: method,
-      keep_shapes: !!El("#g-import-retain-opt").node().checked
+      keep_shapes: !!El("#import-retain-opt").node().checked
     };
   }
 

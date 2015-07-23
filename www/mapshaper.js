@@ -3028,7 +3028,7 @@ function ErrorMessages(model) {
     el = El('div').appendTo('body').addClass('error-wrapper');
     infoBox = El('div').appendTo(el).addClass('error-box info-box');
     El('p').addClass('error-message').appendTo(infoBox).html(str);
-    El('div').addClass("g-btn dialog-btn").appendTo(infoBox).html('close').on('click', model.clearMode);
+    El('div').addClass("btn dialog-btn").appendTo(infoBox).html('close').on('click', model.clearMode);
     model.enterMode('alert');
   };
 }
@@ -3364,7 +3364,7 @@ utils.inherit(Slider, EventDispatcher);
 var SimplifyControl = function(model) {
   var control = new EventDispatcher();
   var _value = 1;
-  var el = El('#g-simplify-control-wrapper');
+  var el = El('#simplify-control-wrapper');
   var menu = El('#simplify-options').on('click', gui.handleDirectEvent(model.clearMode));
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
@@ -3372,9 +3372,9 @@ var SimplifyControl = function(model) {
   new ModeButton('#simplify-btn', 'simplify', model);
   model.addMode('simplify', turnOn, turnOff);
 
-  var slider = new Slider("#g-simplify-control .g-slider");
-  slider.handle("#g-simplify-control .g-handle");
-  slider.track("#g-simplify-control .g-track");
+  var slider = new Slider("#simplify-control .slider");
+  slider.handle("#simplify-control .handle");
+  slider.track("#simplify-control .track");
   slider.on('change', function(e) {
     var pct = fromSliderPct(e.pct);
     text.value(pct);
@@ -3386,7 +3386,7 @@ var SimplifyControl = function(model) {
     control.dispatchEvent('simplify-end');
   });
 
-  var text = new ClickText("#g-simplify-control .g-clicktext");
+  var text = new ClickText("#simplify-control .clicktext");
   text.bounds(0, 1);
   text.formatter(function(val) {
     if (isNaN(val)) return '-';
@@ -3466,7 +3466,7 @@ var SimplifyControl = function(model) {
     var method = El('#simplify-options input[name=method]:checked').attr('value') || null;
     return {
       method: method,
-      keep_shapes: !!El("#g-import-retain-opt").node().checked
+      keep_shapes: !!El("#import-retain-opt").node().checked
     };
   }
 
@@ -12088,7 +12088,7 @@ function FileChooser(el, cb) {
     input.el.click();
   });
   var input = El('form')
-    .addClass('g-file-control').appendTo('body')
+    .addClass('file-control').appendTo('body')
     .newChild('input')
     .attr('type', 'file')
     .attr('multiple', 'multiple')
@@ -12213,8 +12213,8 @@ function ImportControl(model) {
   function getImportOpts() {
     var freeform = El('#import-options .advanced-options').node().value,
         opts = gui.parseFreeformOptions(freeform, 'i');
-    opts.no_repair = !El("#g-repair-intersections-opt").node().checked;
-    opts.auto_snap = !!El("#g-snap-points-opt").node().checked;
+    opts.no_repair = !El("#repair-intersections-opt").node().checked;
+    opts.auto_snap = !!El("#snap-points-opt").node().checked;
     return opts;
   }
 
@@ -12696,9 +12696,9 @@ var ExportControl = function(model) {
     });
   } else {
     anchor = menu.newChild('a').attr('href', '#').node();
-    exportButton("#g-geojson-btn", "geojson");
-    exportButton("#g-shapefile-btn", "shapefile");
-    exportButton("#g-topojson-btn", "topojson");
+    exportButton("#geojson-btn", "geojson");
+    exportButton("#shapefile-btn", "shapefile");
+    exportButton("#topojson-btn", "topojson");
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
   }
@@ -13017,9 +13017,9 @@ MapShaper.repairIntersections = function(arcs, intersections) {
 
 
 function RepairControl(model, map) {
-  var el = El("#g-intersection-display"),
-      readout = el.findChild("#g-intersection-count"),
-      btn = el.findChild("#g-repair-btn"),
+  var el = El("#intersection-display"),
+      readout = el.findChild("#intersection-count"),
+      btn = el.findChild("#repair-btn"),
       _self = this,
       _dataset, _currXX, _initialXX;
 

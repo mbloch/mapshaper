@@ -30,10 +30,15 @@ body {
 	color: #444;
 }
 
+/* --- Color themes -------------- */
+
+.theme1 .page-header {
+	
+}
 
 /* --- Page header --------------- */
 
-.g-page-header {
+.page-header {
 	position: absolute;
 	color: white;
 	top: 0;
@@ -55,17 +60,17 @@ body {
 	color: steelblue;
 }
 
-.g-mapshaper-logo {
+.mapshaper-logo {
 	font-weight: bold;
 	font-size: 18px;
 	margin: 2px 0 0 12px;
 }
 
-.g-mapshaper-logo .g-logo-highlight {
+.mapshaper-logo .logo-highlight {
 	color: #ffa;
 }
 
-.g-page-header a {
+.page-header a {
 	text-decoration: none;
 }
 
@@ -84,7 +89,7 @@ body {
 	margin: 0 2px 0 2px;
 }
 
-#g-export-buttons {
+#export-buttons {
 	display: none;
 }
 
@@ -146,7 +151,7 @@ div.error-box > div {
 	}
 }
 
-div.g-option-menu .advanced-options {
+div.option-menu .advanced-options {
 	width: 210px;
 	background: rgba(255, 255, 255, 0.4);
 	border: 1px solid #999;
@@ -207,25 +212,25 @@ div.g-option-menu .advanced-options {
 	margin: 0 0 0.45em 0;
 }
 
-.g-option-menu {
+.option-menu {
 	margin: 0 0 6px 0;
 }
 
-.g-option-menu input {
+.option-menu input {
 	width: 12px;
 	height: 12px;
 }
 
-.g-option-menu .g-tip-button {
+.option-menu .tip-button {
 	margin-left: 12px;
 	margin-top: 3px;
 }
 
-.g-option-menu input.g-checkbox {
+.option-menu input.checkbox {
 	margin: 3px 5px 0 0;
 }
 
-.g-option-menu input.g-radio {
+.option-menu input.radio {
 	margin: 0 5px 0 0;
 }
 
@@ -432,7 +437,7 @@ body.simplify #layer-control {
 
 /* --- Intersection control ----------*/
 
-#g-intersection-display {
+#intersection-display {
 	cursor: default;
 	visibility: visible;
 	display: none;
@@ -443,7 +448,7 @@ body.simplify #layer-control {
 	text-align: right;
 }
 
-#g-intersection-display .g-text-btn.disabled {
+#intersection-display .text-btn.disabled {
 	visibility: hidden;
 }
 
@@ -487,11 +492,11 @@ body.simplify #layer-control {
 /* Simplification control ------------ */
 
 @media (max-width: 765px) {
-	body.simplify  #g-simplify-control-wrapper {
+	body.simplify  #simplify-control-wrapper {
 		top: 22px;
 	}
 
-	body.simplify .g-page-header {
+	body.simplify .page-header {
 		height: 52px;
 	}
 
@@ -500,7 +505,7 @@ body.simplify #layer-control {
 	}
 }
 
-#g-simplify-control-wrapper {
+#simplify-control-wrapper {
 	display: none;
 	position: absolute;
 	width: 100%;
@@ -509,39 +514,39 @@ body.simplify #layer-control {
 	top: 0px;
 }
 
-#g-simplify-control {
+#simplify-control {
 	text-align: center;
 	white-space: nowrap;
 	padding: 0 90px 0 12px;
 }
 
-#g-simplify-control .g-slider {
+#simplify-control .slider {
 	margin: 9px 5px 0 7px;
 	position: relative;
 	vertical-align: top;
 	display: inline-block;
 }
 
-#g-simplify-control .g-track {   	
+#simplify-control .track {   	
   	border-radius: 2px;
 	width: 340px;
 	background-color: #fff;
 	height: 2px;
 }
 
-#g-simplify-control .g-handle {
+#simplify-control .handle {
 	position: absolute;
 	top: -3px;
 }
 
-#g-simplify-control .g-handle img {
+#simplify-control .handle img {
 	width: 20px;
 	height: 20px;
 	margin-left: -10px;
 	margin-top: -10px;
 }
 
-#g-simplify-control .g-clicktext {
+#simplify-control .clicktext {
 	width: 56px;
 	background: rgba(255, 255, 255, 0.4);
 	text-align: center;
@@ -549,6 +554,6 @@ body.simplify #layer-control {
 	font-size: 13px;
 }
 
-#g-simplify-control .g-clicktext:focus {
+#simplify-control .clicktext:focus {
 	background: #fff;
 }

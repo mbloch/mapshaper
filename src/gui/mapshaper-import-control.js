@@ -34,7 +34,7 @@ function FileChooser(el, cb) {
     input.el.click();
   });
   var input = El('form')
-    .addClass('g-file-control').appendTo('body')
+    .addClass('file-control').appendTo('body')
     .newChild('input')
     .attr('type', 'file')
     .attr('multiple', 'multiple')
@@ -159,8 +159,8 @@ function ImportControl(model) {
   function getImportOpts() {
     var freeform = El('#import-options .advanced-options').node().value,
         opts = gui.parseFreeformOptions(freeform, 'i');
-    opts.no_repair = !El("#g-repair-intersections-opt").node().checked;
-    opts.auto_snap = !!El("#g-snap-points-opt").node().checked;
+    opts.no_repair = !El("#repair-intersections-opt").node().checked;
+    opts.auto_snap = !!El("#snap-points-opt").node().checked;
     return opts;
   }
 

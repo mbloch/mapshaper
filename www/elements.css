@@ -10,7 +10,7 @@ img:-moz-loading {
 	display: none;
 }
 
-div.g-tip {
+div.tip {
 	color: #555;
 	font-weight: normal;
 	text-align: left;
@@ -30,7 +30,7 @@ div.g-tip {
 }
 
 /* tail */
-.g-tip:after, .g-tip:before {
+.tip:after, .tip:before {
 	top: 100%;
 	border: solid transparent;
 	content: " ";
@@ -41,7 +41,7 @@ div.g-tip {
 }
 
 /* tail fg */
-.g-tip:after {
+.tip:after {
 	border-color: rgba(136, 183, 213, 0);
 	border-top-color: #fff;
 	border-width: 8px;
@@ -50,7 +50,7 @@ div.g-tip {
 }
 
 /* tail bg */
-.g-tip:before {
+.tip:before {
 	border-color: rgba(194, 225, 245, 0);
 	border-top-color: #999;
 	border-width: 9px;
@@ -59,7 +59,7 @@ div.g-tip {
 }
 
 
-.g-tip-button {
+.tip-button {
 	float: right;
 	margin-top: 2px;
 	display:inline-block;
@@ -73,28 +73,28 @@ div.g-tip {
 	color: #799FCB;
 }
 
-.g-tip-button .g-tip-anchor {
+.tip-button .tip-anchor {
 	bottom: 24px;
 	left: 8px;
 }
 
-.g-tip-anchor {
+.tip-anchor {
 	visibility: hidden;
 	position: absolute;
 	bottom: 0;
 	left: 0;
 }
 
-.g-tip-button:hover {
+.tip-button:hover {
 	font-weight: bold;
 	color: #033D6D;
 }
 
-.g-tip-button:hover * {
+.tip-button:hover * {
 	visibility: visible;
 }
 
-.g-clicktext {
+.clicktext {
 	display:inline-block;
 	line-height: 1;
 	cursor: pointer;
@@ -106,7 +106,7 @@ div.g-tip {
 	text-indent: 0px;
 }
 
-.g-file-control {
+.file-control {
 	position: absolute;
 	top: -1000px;
 }
@@ -129,20 +129,20 @@ div.g-tip {
 	background-color: black;
 }
 
-.g-btn.active {
+.btn.active {
 	cursor: pointer;
 }
 
-.g-btn.selected {
+.btn.selected {
 	color: #aaa;
 	background: none;
 }
 
-.g-btn.inline-btn:hover:not(.selected) {
+.btn.inline-btn:hover:not(.selected) {
 	background-color: #FFFCDC;
 }
 
-.g-btn {
+.btn {
 	text-align: center;
 	padding: 4px 6px 5px 6px;
 	border-radius: 4px;
@@ -151,15 +151,15 @@ div.g-tip {
 	cursor: pointer;
 }
 
-.g-btn.disabled {
+.btn.disabled {
 	cursor: default;
 }
 
-.g-btn.dialog-btn:hover:not(.selected) {
+.btn.dialog-btn:hover:not(.selected) {
 	background-color: #35517c;
 }
 
-.g-btn.dialog-btn {
+.btn.dialog-btn {
 	display: inline-block;
 	margin-bottom: 3px;
 	margin-top: 2px;
@@ -170,7 +170,7 @@ div.g-tip {
 
 }
 
-.g-btn.inline-btn {
+.btn.inline-btn {
 	background-color: white;
 	text: black;
 	margin: 0;
@@ -178,12 +178,12 @@ div.g-tip {
 	padding: 1px 4px 3px 3px;
 }
 
-.g-text-btn {
+.text-btn {
 	color: #1477C1;
 	cursor: pointer;
 }
 
-.g-text-btn.disabled {
+.text-btn.disabled {
 	cursor: auto;
 	color: #999;
 }

@@ -14,9 +14,9 @@ var ExportControl = function(model) {
     });
   } else {
     anchor = menu.newChild('a').attr('href', '#').node();
-    exportButton("#g-geojson-btn", "geojson");
-    exportButton("#g-shapefile-btn", "shapefile");
-    exportButton("#g-topojson-btn", "topojson");
+    exportButton("#geojson-btn", "geojson");
+    exportButton("#shapefile-btn", "shapefile");
+    exportButton("#topojson-btn", "topojson");
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
   }

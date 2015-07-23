@@ -12,26 +12,26 @@
 <body>
 <div id="mshp-version"></div>
 <a href="https://github.com/mbloch/mapshaper"><div id="fork-me"></div></a>
-<div class="g-page-header">
-	<div class="g-mapshaper-logo">map<span class="g-logo-highlight">shaper</span></div>
+<div class="page-header">
+	<div class="mapshaper-logo">map<span class="logo-highlight">shaper</span></div>
 
-	<div id="layer-control"><span class="g-btn mode-btn layer-name"></span></div>
+	<div id="layer-control"><span class="btn mode-btn layer-name"></span></div>
 
-	<div id="g-simplify-control-wrapper"><div id="g-simplify-control"><span class="g-label">Simplify</span>
-		<div class="g-slider">
-			<div class="g-handle"><img src="images/slider_handle_v1.png" /></div>
-			<div class="g-track"></div>
+	<div id="simplify-control-wrapper"><div id="simplify-control"><span class="label">Simplify</span>
+		<div class="slider">
+			<div class="handle"><img src="images/slider_handle_v1.png" /></div>
+			<div class="track"></div>
 		</div>
-		<input type="text" value="label" class="g-clicktext" />
+		<input type="text" value="label" class="clicktext" />
 	</div></div>
 	<div id="mode-buttons">
-		<span id="simplify-btn" class="mode-btn g-btn">Simplify</span><span class="separator"></span><span id="console-btn" class="mode-btn g-btn">Console</span><span class="separator"></span><span id="export-btn" class="mode-btn g-btn">Export</span>
+		<span id="simplify-btn" class="mode-btn btn">Simplify</span><span class="separator"></span><span id="console-btn" class="mode-btn btn">Console</span><span class="separator"></span><span id="export-btn" class="mode-btn btn">Export</span>
 	</div>
 </div>
 
 <div id="mshp-not-supported" class="main-area">
 	<div class="info-box">
-	<h3>Unfortunately, mapshaper can't run in <span class="g-unsupported-browser">this web browser</span></h3>
+	<h3>Unfortunately, mapshaper can't run in <span class="unsupported-browser">this web browser</span></h3>
 	<div>For best results, try <a href="https://www.google.com/chrome/browser/desktop/">Google Chrome</a> or <a href="http://www.mozilla.org/en-US/firefox/new/">Mozilla Firefox</a>.</div>
 	</div>
 </div>
@@ -40,24 +40,24 @@
 	<div class="info-box">
 		<h3>Layers</h3>
 		<div class="layer-list"></div>
-		<div><div id="add-file-btn" class="dialog-btn g-btn">Add a file</div></div>
+		<div><div id="add-file-btn" class="dialog-btn btn">Add a file</div></div>
 	</div>
 </div>
 
 <div id="export-options" class="main-area popup-dialog">
 	<div class="info-box">
 		<h3>Export</h3>
-		<div class="g-option-menu">
+		<div class="option-menu">
 			<div style="height:3px"></div>
-			<div><input type="text" class="advanced-options" placeholder="command line options" /><div class="g-tip-button">?<div class="g-tip-anchor">
-			<div class="g-tip">Enter options from the command line
+			<div><input type="text" class="advanced-options" placeholder="command line options" /><div class="tip-button">?<div class="tip-anchor">
+			<div class="tip">Enter options from the command line
 interface. Examples: "bbox" "no-quantization"
 "precision=0.001"</div></div></div></div>
 		</div>
 		<div>
-			<div id="g-shapefile-btn" class="g-btn dialog-btn">Shapefile</div>
-			<div id="g-geojson-btn" class="g-btn dialog-btn">GeoJSON</div>
-			<div id="g-topojson-btn" class="g-btn dialog-btn">TopoJSON</div>
+			<div id="shapefile-btn" class="btn dialog-btn">Shapefile</div>
+			<div id="geojson-btn" class="btn dialog-btn">GeoJSON</div>
+			<div id="topojson-btn" class="btn dialog-btn">TopoJSON</div>
 		</div>
 	</div>
 </div>
@@ -65,34 +65,34 @@ interface. Examples: "bbox" "no-quantization"
 <div id="simplify-options" class="main-area popup-dialog">
 	<div class="info-box">
 		<h3>Simplification options</h3>
-		<div class="g-option-menu">
-			<div><label for="g-import-retain-opt"><input type="checkbox" class="g-checkbox" id="g-import-retain-opt"/>prevent shape removal</label>
-							<div class="g-tip-button">?<div class="g-tip-anchor">
-			<div class="g-tip">Prevent small polygon features from
+		<div class="option-menu">
+			<div><label for="import-retain-opt"><input type="checkbox" class="checkbox" id="import-retain-opt"/>prevent shape removal</label>
+							<div class="tip-button">?<div class="tip-anchor">
+			<div class="tip">Prevent small polygon features from
 disappearing at high simplification. Keeps
 the largest ring of multi-ring features.
 </div></div></div></div>
 </div>
 
 			<h4>Method</h4>
-			<div class="g-option-menu">
+			<div class="option-menu">
 
-			<div><label><input type="radio" name="method" value="dp" class="g-radio">Douglas-Peucker</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Simplified lines remain within a set
+			<div><label><input type="radio" name="method" value="dp" class="radio">Douglas-Peucker</label><div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Simplified lines remain within a set
 distance of original lines. Good for
 thinning dense points, but spikes
 tend to form at high simplification.</div></div></div>
 			</div>			
 
-			<div><label><input type="radio" name="method" value="visvalingam" class="g-radio">Visvalingam / effective area</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Lines are simplified by iteratively
+			<div><label><input type="radio" name="method" value="visvalingam" class="radio">Visvalingam / effective area</label><div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Lines are simplified by iteratively
 removing the point that forms
 the least-area triangle with two
 adjacent points.</div></div></div>
 			</div>
 
-			<div><label><input type="radio" name="method" value="mapshaper" checked class="g-radio">Visvalingam / weighted area</label><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Points located at the vertex
+			<div><label><input type="radio" name="method" value="mapshaper" checked class="radio">Visvalingam / weighted area</label><div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Points located at the vertex
 of more acute angles are
 preferentially removed, for
 a smoother appearance.</div></div></div></div>
@@ -100,8 +100,8 @@ a smoother appearance.</div></div></div></div>
 		</div> <!-- option menu -->
 
 		<div>
-			<div class="cancel-btn g-btn dialog-btn">Cancel</div>
-			<div class="submit-btn g-btn dialog-btn">Next</div>
+			<div class="cancel-btn btn dialog-btn">Cancel</div>
+			<div class="submit-btn btn dialog-btn">Next</div>
 		</div>
 		</div> <!-- simplification menu -->
 
@@ -112,29 +112,29 @@ a smoother appearance.</div></div></div></div>
 	<div class="info-box">
 		<div id="import-intro">
 			<h3>Edit a file</h3>
-<p>Drag and drop or  <span class="inline-btn g-btn" id="file-selection-btn"><span class="g-label-text">select</span></span> a file to import.
+<p>Drag and drop or  <span class="inline-btn btn" id="file-selection-btn"><span class="label-text">select</span></span> a file to import.
 Shapefile, GeoJSON and TopoJSON files
 and Zip archives are supported.
 </p>
 		</div>
 		<h3>Import options</h3>
-		<div class="g-option-menu">
+		<div class="option-menu">
 
-			<div><label for="g-repair-intersections-opt"><input type="checkbox" checked class="g-checkbox" id="g-repair-intersections-opt"/>detect line intersections</label>
-			<div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Detect line intersections, including
+			<div><label for="repair-intersections-opt"><input type="checkbox" checked class="checkbox" id="repair-intersections-opt"/>detect line intersections</label>
+			<div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Detect line intersections, including
 self-intersections, to help identify
 topological errors in a dataset.</div></div></div></div>
 
-			<div><label for="g-snap-points-opt"><input type="checkbox" class="g-checkbox" id="g-snap-points-opt" unchecked />remove tiny gaps</span></label>
-			<div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Fix topology errors by snapping
+			<div><label for="snap-points-opt"><input type="checkbox" class="checkbox" id="snap-points-opt" unchecked />remove tiny gaps</span></label>
+			<div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Fix topology errors by snapping
 together points with nearly identical
 coordinates. This option does not
 apply to TopoJSON files.</div></div></div></div>
 <div style="height:3px"></div>
-<div><input type="text" class="advanced-options" placeholder="command line options" /><div class="g-tip-button">?<div class="g-tip-anchor">
-<div class="g-tip">Enter options from the command line
+<div><input type="text" class="advanced-options" placeholder="command line options" /><div class="tip-button">?<div class="tip-anchor">
+<div class="tip">Enter options from the command line
 interface. Examples: "no-topology"
 "encoding=big5"</div></div></div></div>
 
@@ -146,9 +146,9 @@ interface. Examples: "no-topology"
 		</div>
 
 		<div id="import-buttons" class="hidden">
-			<div class="cancel-btn g-btn dialog-btn">Cancel</div>
-			<div class="add-btn g-btn dialog-btn">Add file</div>
-			<div class="submit-btn g-btn dialog-btn">Import</div>
+			<div class="cancel-btn btn dialog-btn">Cancel</div>
+			<div class="add-btn btn dialog-btn">Add file</div>
+			<div class="submit-btn btn dialog-btn">Import</div>
 		</div>
 
 	</div> <!-- .info-box -->
@@ -160,9 +160,9 @@ interface. Examples: "no-topology"
 		<div id="console-window"><div id="console-buffer"></div></div>
 	</div>
 	<div id="mshp-main-map" class="main-area">
-		<div id="g-intersection-display">
-			<div id="g-intersection-count">0 line intersections</div>
-			<div id="g-repair-btn" class="g-text-btn">Repair</div>
+		<div id="intersection-display">
+			<div id="intersection-count">0 line intersections</div>
+			<div id="repair-btn" class="text-btn">Repair</div>
 		</div>
 	</div>
 </div>

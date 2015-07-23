@@ -1,9 +1,9 @@
 /* @requires mapshaper-common, mapshaper-repair */
 
 function RepairControl(model, map) {
-  var el = El("#g-intersection-display"),
-      readout = el.findChild("#g-intersection-count"),
-      btn = el.findChild("#g-repair-btn"),
+  var el = El("#intersection-display"),
+      readout = el.findChild("#intersection-count"),
+      btn = el.findChild("#repair-btn"),
       _self = this,
       _dataset, _currXX, _initialXX;
 

@@ -17,7 +17,7 @@ function ErrorMessages(model) {
     el = El('div').appendTo('body').addClass('error-wrapper');
     infoBox = El('div').appendTo(el).addClass('error-box info-box');
     El('p').addClass('error-message').appendTo(infoBox).html(str);
-    El('div').addClass("g-btn dialog-btn").appendTo(infoBox).html('close').on('click', model.clearMode);
+    El('div').addClass("btn dialog-btn").appendTo(infoBox).html('close').on('click', model.clearMode);
     model.enterMode('alert');
   };
 }
