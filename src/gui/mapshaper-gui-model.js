@@ -6,10 +6,6 @@ function Model() {
       mode = null,
       editing;
 
-  this.size = function() {
-    return datasets.length;
-  };
-
   this.forEachLayer = function(cb) {
     var i = 0;
     datasets.forEach(function(dataset) {
@@ -31,19 +27,18 @@ function Model() {
     var found = null;
     this.forEachLayer(function(lyr, dataset) {
       if (lyr == target) {
-        found = {layer: lyr, dataset: dataset};
+        found = layerObject(lyr, dataset);
       }
     });
     return found;
   };
 
   this.findAnotherLayer = function(target) {
-    var found = null;
-    this.forEachLayer(function(lyr, dataset) {
-      if (!found && lyr != target) {
-        found = {layer: lyr, dataset: dataset};
-      }
-    });
+    var layers = this.getLayers(),
+        found = null;
+    if (layers.length > 1) {
+      found = layers[0].layer == target ? layers[1] : layers[0];
+    }
     return found;
   };
 
@@ -61,21 +56,33 @@ function Model() {
     return datasets;
   };
 
-  function setEditingLayer(lyr, dataset) {
-    if (editing && editing.layer == lyr) {
-      return;
+  this.getLayers = function() {
+    var layers = [];
+    this.forEachLayer(function(lyr, dataset) {
+      layers.push(layerObject(lyr, dataset));
+    });
+    return layers;
+  };
+
+  this.selectNextLayer = function() {
+    var layers = this.getLayers(),
+        idx = indexOfLayer(editing.layer, layers),
+        next;
+    if (layers.length > 1 && idx > -1) {
+      next = layers[(idx + 1) % layers.length];
+      this.selectLayer(next.layer, next.dataset);
     }
-    if (dataset.layers.indexOf(lyr) == -1) {
-      error("Selected layer not found");
+  };
+
+  this.selectPrevLayer = function() {
+    var layers = this.getLayers(),
+        idx = indexOfLayer(editing.layer, layers),
+        prev;
+    if (layers.length > 1 && idx > -1) {
+      prev = layers[idx === 0 ? layers.length - 1 : idx - 1];
+      this.selectLayer(prev.layer, prev.dataset);
     }
-    if (datasets.indexOf(dataset) == -1) {
-      datasets.push(dataset);
-    }
-    editing = {
-      layer: lyr,
-      dataset: dataset
-    };
-  }
+  };
 
   this.selectLayer = function(lyr, dataset) {
     this.updated({select: true}, lyr, dataset);
@@ -127,6 +134,33 @@ function Model() {
     }
   };
 
+  function setEditingLayer(lyr, dataset) {
+    if (editing && editing.layer == lyr) {
+      return;
+    }
+    if (dataset.layers.indexOf(lyr) == -1) {
+      error("Selected layer not found");
+    }
+    if (datasets.indexOf(dataset) == -1) {
+      datasets.push(dataset);
+    }
+    editing = layerObject(lyr, dataset);
+  }
+
+  function layerObject(lyr, dataset) {
+    return {
+      layer: lyr,
+      dataset: dataset
+    };
+  }
+
+  function indexOfLayer(lyr, layers) {
+    var idx = -1;
+    layers.forEach(function(o, i) {
+      if (o.layer == lyr) idx = i;
+    });
+    return idx;
+  }
 }
 
 utils.inherit(Model, EventDispatcher);

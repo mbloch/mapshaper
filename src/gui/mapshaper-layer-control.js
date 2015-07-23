@@ -8,6 +8,7 @@ function LayerControl(model) {
 
   model.on('select', function(e) {
     updateBtn();
+    render();
   });
 
   function turnOn() {
@@ -25,14 +26,9 @@ function LayerControl(model) {
   }
 
   function render() {
-    var list = El('#layer-menu .layer-list');
-    var datasets = model.getDatasets();
-    list.empty();
-    datasets.forEach(function(dataset) {
-      dataset.layers.forEach(function(lyr, i) {
-        var item = renderLayer(lyr, dataset);
-        list.appendChild(item);
-      });
+    var list = El('#layer-menu .layer-list').empty();
+    model.forEachLayer(function(lyr, dataset) {
+      list.appendChild(renderLayer(lyr, dataset));
     });
   }
 

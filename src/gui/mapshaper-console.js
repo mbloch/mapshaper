@@ -86,11 +86,15 @@ function Console(model) {
         // normal typing
         capture = false;
       }
-    } else if (kc == 32) { // sp
+    } else if (activeEl.tagName != 'INPUT' && activeEl.contentEditable != 'true') {
       // space bar opens console, unless typing in an input field or editable el
-      if (activeEl.tagName != 'INPUT' && activeEl.contentEditable != 'true') {
+      if (kc == 32) {
         capture = true;
         model.enterMode('console');
+      } else if (kc == 37) { // left
+        model.selectPrevLayer();
+      } else if (kc == 39) { // right
+        model.selectNextLayer();
       }
     }
     if (capture) {
