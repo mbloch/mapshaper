@@ -13158,7 +13158,7 @@ function LayerControl(model) {
     var unnamed = '[unnamed]';
     var entry = El('div').addClass('layer-item');
     var editLyr = model.getEditingLayer().layer;
-    var html = rowHTML('name', '<span class="layer-name">' + (lyr.name || unnamed) + '</span>');
+    var html = rowHTML('name', '<span class="layer-name colored-text dot-underline">' + (lyr.name || unnamed) + '</span>');
     var nameEl;
     html += rowHTML('source file', describeSrc(lyr, dataset));
     html += rowHTML('contents', describeLyr(lyr));
@@ -13691,9 +13691,9 @@ function MapNav(ext, root) {
       zoomScale = 2.5,
       dragStartEvt, _fx, _fy; // zoom foci, [0,1]
 
-  navBtn("images/home.png").appendTo(buttons).on('click', function() {ext.reset();});
-  navBtn("images/zoomin.png").appendTo(buttons).on('click', zoomIn);
-  navBtn("images/zoomout.png").appendTo(buttons).on('click', zoomOut);
+  navBtn("#home-icon").appendTo(buttons).on('click', function() {ext.reset();});
+  navBtn("#zoom-in-icon").appendTo(buttons).on('click', zoomIn);
+  navBtn("#zoom-out-icon").appendTo(buttons).on('click', zoomOut);
 
   zoomTween.on('change', function(e) {
     ext.rescale(e.value, _fx, _fy);
@@ -13760,11 +13760,11 @@ function MapNav(ext, root) {
     zoomTween.start(ext.scale(), ext.scale() * pct, 400);
   }
 
-  function navBtn(url) {
-    return El('div').addClass('nav-btn')
-      .on('dblclick', function(e) {e.stopPropagation();}) // block dblclick zoom
-      .newChild('img')
-      .attr('src', url).parent();
+  function navBtn(ref) {
+    var btn = El('div').addClass('nav-btn')
+      .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
+    btn.appendChild(ref);
+    return btn;
   }
 }
 
@@ -16315,7 +16315,6 @@ api.filterIslands = function(lyr, arcs, opts) {
   } else {
     message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
   }
-
 };
 
 MapShaper.getVertexCountTest = function(minVertices, arcs) {
@@ -16350,6 +16349,36 @@ MapShaper.filterIslands = function(lyr, arcs, ringTest) {
               return null;
             }
           }
+        }
+      }
+    });
+  };
+  MapShaper.filterShapes(lyr.shapes, filter);
+  return removed;
+};
+
+MapShaper.filterExternal = function(lyr, arcs, ringTest) {
+  var removed = 0;
+  var counts = new Uint8Array(arcs.size());
+  MapShaper.countArcsInShapes(lyr.shapes, counts);
+
+  var filter = function(paths) {
+    return MapShaper.editPaths(paths, function(path) {
+      var n = path.length,
+          external = false;
+      // TODO: put in a function
+      for (var i=0; i<n; i++) {
+        if (counts[absArcId(path[i])] === 1) { // has an edge arc (not shared with another shape)
+          external = true;
+          break;
+        }
+      }
+      if (external && (!ringTest || ringTest(path))) { // and it meets any filtering criteria
+        // and it does not contain any holes itself
+        // O(n^2), so testing this last
+        if (!MapShaper.ringHasHoles(path, paths, arcs)) {
+          removed++;
+          return null;
         }
       }
     });

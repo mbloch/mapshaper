@@ -58,7 +58,7 @@ function LayerControl(model) {
     var unnamed = '[unnamed]';
     var entry = El('div').addClass('layer-item');
     var editLyr = model.getEditingLayer().layer;
-    var html = rowHTML('name', '<span class="layer-name">' + (lyr.name || unnamed) + '</span>');
+    var html = rowHTML('name', '<span class="layer-name colored-text dot-underline">' + (lyr.name || unnamed) + '</span>');
     var nameEl;
     html += rowHTML('source file', describeSrc(lyr, dataset));
     html += rowHTML('contents', describeLyr(lyr));

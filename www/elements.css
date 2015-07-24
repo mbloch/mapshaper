@@ -121,19 +121,23 @@ div.tip {
 	border-radius: 3px;
 }
 
-.mode-btn:hover:not(.disabled):not(.active) {
-	background-color: #517293;
+.mode-btn.disabled,
+.mode-btn.disabled:hover {
+	background-color: none;
 }
 
-.mode-btn.active {
+.mode-btn.active,
+.mode-btn.active:hover {
 	background-color: black;
 }
+
 
 .btn.active {
 	cursor: pointer;
 }
 
-.btn.selected {
+.btn.selected,
+.btn.selected:hover {
 	color: #aaa;
 	background: none;
 }
@@ -155,22 +159,18 @@ div.tip {
 	cursor: default;
 }
 
-.btn.dialog-btn:hover:not(.selected) {
-	background-color: #35517c;
-}
 
-.btn.dialog-btn {
+.dialog-btn {
 	display: inline-block;
 	margin-bottom: 3px;
 	margin-top: 2px;
 	font-size: 13px;
 	color: white;
 	min-width: 48px;
-	background-color: #5d85b5;
-
+	background-color: #aaa;
 }
 
-.btn.inline-btn {
+.inline-btn {
 	background-color: white;
 	text: black;
 	margin: 0;
@@ -179,7 +179,6 @@ div.tip {
 }
 
 .text-btn {
-	color: #1477C1;
 	cursor: pointer;
 }
 

@@ -32,9 +32,108 @@ body {
 
 /* --- Color themes -------------- */
 
-.theme1 .page-header {
-	
+.theme0 .page-header {
+	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
 }
+
+.theme0 .mode-btn:hover {
+	background-color: #517293;
+}
+
+.theme0 .dialog-btn:hover {
+	background-color: #35517c;
+}
+
+.theme0 .dialog-btn {
+	background-color: #5d85b5;
+}
+
+.theme0 .colored-text {
+	color: #264372;
+}
+
+
+.theme0 .nav-btn polygon {
+	fill: #6E90BA;
+}
+
+.theme0 .nav-btn:hover polygon {
+	fill: #35517c;
+}
+
+.theme0 #fork-me {
+	background-image: url("images/fork-me-right-cerulean@2x.png");
+}
+
+/* blue-green */
+.theme1 .page-header,
+.theme1 .dialog-btn {
+	background-color: #18799b;
+}
+
+.theme1 .mode-btn:hover,
+.theme1 .dialog-btn:hover  {
+	background-color: #0d546d;
+}
+
+.theme1 .colored-text {
+	color: #1e6e87;
+}
+
+.theme1 .dot-underline {
+	border-bottom: 1px dotted #1e6e87;
+}
+
+.theme1 .nav-btn polygon {
+	fill: #18799b;
+}
+
+
+/* blue */
+.theme2 .page-header,
+.theme2 .dialog-btn {
+	background-color: #1d6ea0;
+}
+
+.theme2 .mode-btn:hover,
+.theme2 .dialog-btn:hover  {
+	background-color: #11486d;
+}
+
+.theme2 .colored-text {
+	color: #23658e;
+}
+
+
+.theme2 .nav-btn polygon {
+	fill: #1d6ea0;
+}
+
+
+/* purplish */
+.theme3 .page-header,
+.theme3 .dialog-btn {
+	background-color: #917a8a;
+}
+
+.theme3 .mode-btn:hover,
+.theme3 .dialog-btn:hover  {
+	background-color: #705167;
+}
+
+.theme3 .colored-text {
+	color: #705167;
+}
+
+.theme3 .nav-btn polygon {
+	fill: #917a8a;
+}
+
+
+.dot-underline {
+	border-bottom: 1px dotted #264372;
+}
+
 
 /* --- Page header --------------- */
 
@@ -47,7 +146,6 @@ body {
 	width: 100%;
 	height: 32px;
 	background-color:#6E90BA;
-	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
 }
 
 #mshp-version {
@@ -57,7 +155,6 @@ body {
 	bottom: 8px;
 	left: 11px;
 	font-size: 11px;
-	color: steelblue;
 }
 
 .mapshaper-logo {
@@ -134,7 +231,7 @@ div.error-box > div {
 /* --- Import screen -------------- */
 
 #fork-me {
-	background-image: url("images/fork-me-right-cerulean.png");
+	background-image: url("images/fork-me-right-graphite@2x.png");
     background-size: 149px 149px;
 	position: absolute;
 	z-index: 110;
@@ -145,11 +242,13 @@ div.error-box > div {
 	height: 149px;
 }
 
+/*
 @media only screen and (-webkit-device-pixel-ratio: 2) {
 	#fork-me {
 		background-image: url("images/fork-me-right-cerulean@2x.png");
 	}
 }
+*/
 
 div.option-menu .advanced-options {
 	width: 210px;
@@ -400,11 +499,8 @@ body.simplify #layer-control {
 	min-height: 14px; /* For FF when content is empty */
 	padding-right: 2px;
 	min-width: 2px;
-	border-bottom: 1px dotted #264372;
-	color: #264372;
 	outline: none;
 }
-
 
 .layer-item .layer-name::selection {
 	background: black;
@@ -475,11 +571,10 @@ body.simplify #layer-control {
 .nav-btn {
 	cursor:pointer;
 	padding: 4px;
-	opacity: 0.7;
 }
 
-.nav-btn:hover {
-	opacity: 1 !important;
+.nav-btn:hover polygon {
+	fill: black;
 }
 
 .zoom-box {
@@ -548,7 +643,7 @@ body.simplify #layer-control {
 
 #simplify-control .clicktext {
 	width: 56px;
-	background: rgba(255, 255, 255, 0.4);
+	background: rgba(255, 255, 255, 0.5);
 	text-align: center;
 	border: 1px solid rgba(0,0,0,0);
 	font-size: 13px;
