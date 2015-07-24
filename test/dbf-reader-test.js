@@ -166,6 +166,13 @@ describe('dbf-reader.js', function () {
     })
   })
 
+  describe('Issue #83: Import numbers with comma decimal separator', function() {
+    it ('Parse decimal numbers correctly', function() {
+      var rows = importRecords('dbf/comma_separated.dbf');
+      assert.equal(rows[0].AUGSTUMS, 68.5);
+    })
+  })
+
 
   describe('Bug## Empty string field hangs', function () {
     it('Read table with zero-length string fields, ascii', function () {

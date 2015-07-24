@@ -92,8 +92,10 @@ Dbf.bufferContainsHighBit = function(buf, n) {
 };
 
 Dbf.readNumber = function(bin, field) {
-  var str = bin.readCString(field.size);
-  var val = parseFloat(str);
+  var str = bin.readCString(field.size),
+      val;
+  str = str.replace(',', '.'); // handle comma decimal separator
+  val = parseFloat(str);
   return isNaN(val) ? null : val;
 };
 
