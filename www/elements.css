@@ -121,6 +121,10 @@ div.tip {
 	border-radius: 3px;
 }
 
+.mode-btn:hover {
+	background-color: #517293;
+}
+
 .mode-btn.disabled,
 .mode-btn.disabled:hover {
 	background-color: none;
@@ -167,7 +171,11 @@ div.tip {
 	font-size: 13px;
 	color: white;
 	min-width: 48px;
-	background-color: #aaa;
+	background-color: #5d85b5;
+}
+
+.dialog-btn:hover {
+	background-color: #35517c;
 }
 
 .inline-btn {

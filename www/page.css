@@ -32,29 +32,12 @@ body {
 
 /* --- Color themes -------------- */
 
-.theme0 .page-header {
-	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
-}
-
-.theme0 .mode-btn:hover {
-	background-color: #517293;
-}
-
-.theme0 .dialog-btn:hover {
-	background-color: #35517c;
-}
-
-.theme0 .dialog-btn {
-	background-color: #5d85b5;
-}
-
-.theme0 .colored-text {
+.colored-text {
 	color: #264372;
 }
 
-
-.theme0 .nav-btn polygon {
-	fill: #6E90BA;
+.theme0 .page-header {
+	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
 }
 
 .theme0 .nav-btn:hover polygon {
@@ -241,14 +224,6 @@ div.error-box > div {
 	width: 149px;
 	height: 149px;
 }
-
-/*
-@media only screen and (-webkit-device-pixel-ratio: 2) {
-	#fork-me {
-		background-image: url("images/fork-me-right-cerulean@2x.png");
-	}
-}
-*/
 
 div.option-menu .advanced-options {
 	width: 210px;
@@ -571,6 +546,10 @@ body.simplify #layer-control {
 .nav-btn {
 	cursor:pointer;
 	padding: 4px;
+}
+
+.theme0 .nav-btn polygon {
+	fill: #6E90BA;
 }
 
 .nav-btn:hover polygon {

@@ -164,11 +164,19 @@ function Console(model) {
           MapShaper.getFormattedLayerList(model.getEditingLayer().dataset.layers));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         model.clearMode();
+      } else if (/^theme\b/.test(cmd)) {
+        setTheme(cmd.split(/\s+/)[1]);
       } else if (cmd) {
         runMapshaperCommands(cmd);
       }
       toHistory(cmd);
     }
+  }
+
+  function setTheme(t) {
+    var name = 'theme' + parseInt(t);
+    El('body').attr('className', name);
+    localStorage.setItem('theme', name);
   }
 
   function runMapshaperCommands(str) {
