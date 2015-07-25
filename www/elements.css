@@ -122,7 +122,7 @@ div.tip {
 }
 
 .mode-btn:hover {
-	background-color: #517293;
+	background-color: #0d546d;
 }
 
 .mode-btn.disabled,
@@ -171,11 +171,11 @@ div.tip {
 	font-size: 13px;
 	color: white;
 	min-width: 48px;
-	background-color: #5d85b5;
+	background-color: #18799b;
 }
 
 .dialog-btn:hover {
-	background-color: #35517c;
+	background-color: #0d546d;
 }
 
 .inline-btn {

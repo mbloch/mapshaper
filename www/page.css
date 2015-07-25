@@ -33,42 +33,45 @@ body {
 /* --- Color themes -------------- */
 
 .colored-text {
-	color: #264372;
-}
-
-.theme0 .page-header {
-	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
-}
-
-.theme0 .nav-btn:hover polygon {
-	fill: #35517c;
-}
-
-.theme0 #fork-me {
-	background-image: url("images/fork-me-right-cerulean@2x.png");
-}
-
-/* blue-green */
-.theme1 .page-header,
-.theme1 .dialog-btn {
-	background-color: #18799b;
-}
-
-.theme1 .mode-btn:hover,
-.theme1 .dialog-btn:hover  {
-	background-color: #0d546d;
-}
-
-.theme1 .colored-text {
 	color: #1e6e87;
 }
 
-.theme1 .dot-underline {
+.dot-underline {
 	border-bottom: 1px dotted #1e6e87;
 }
 
-.theme1 .nav-btn polygon {
-	fill: #18799b;
+
+.theme1 .dot-underline {
+	border-bottom: 1px dotted #264372;
+}
+
+.theme1 .colored-text {
+	color: #264372;
+}
+
+.theme1 .page-header {
+	background-color: #6E90BA;
+	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
+}
+
+.theme1 .nav-btn:hover polygon {
+	fill: #35517c;
+}
+
+.theme1 #fork-me {
+	background-image: url("images/fork-me-right-cerulean@2x.png");
+}
+
+.theme1 .dialog-btn {
+	background-color: #5d85b5;
+}
+
+.theme1 .dialog-btn:hover {
+	background-color: #35517c;
+}
+
+.theme1 .mode-btn:hover {
+	background-color: #517293;
 }
 
 
@@ -113,9 +116,6 @@ body {
 }
 
 
-.dot-underline {
-	border-bottom: 1px dotted #264372;
-}
 
 
 /* --- Page header --------------- */
@@ -128,7 +128,7 @@ body {
 	z-index: 10;
 	width: 100%;
 	height: 32px;
-	background-color:#6E90BA;
+	background-color: #18799b;
 }
 
 #mshp-version {
@@ -548,8 +548,8 @@ body.simplify #layer-control {
 	padding: 4px;
 }
 
-.theme0 .nav-btn polygon {
-	fill: #6E90BA;
+.nav-btn polygon {
+	fill: #18799b;
 }
 
 .nav-btn:hover polygon {
