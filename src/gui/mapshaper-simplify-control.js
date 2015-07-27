@@ -90,7 +90,8 @@ var SimplifyControl = function(model) {
         MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
       }
       control.reset();
-      model.updated({simplify: true});
+      // TODO: also add simplify flag after method switching is supported
+      model.updated({presimplify: true});
       showSlider();
       gui.clearProgressMessage();
     }, delay);

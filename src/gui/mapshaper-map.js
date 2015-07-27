@@ -43,7 +43,7 @@ function MshpMap(model) {
         needReset;
     if (!group) {
       group = addGroup(e.dataset);
-    } else if (e.flags.simplify || e.flags.proj || e.flags.arc_count) {
+    } else if (e.flags.presimplify || e.flags.simplify || e.flags.proj || e.flags.arc_count) {
       // update filtered arcs when simplification thresholds are calculated
       // or arcs are updated
       if (e.flags.proj && e.dataset.arcs) {
