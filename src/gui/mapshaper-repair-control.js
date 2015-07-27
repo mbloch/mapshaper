@@ -11,8 +11,8 @@ function RepairControl(model, map) {
     // these changes require nulling out any cached intersection data and recalculating
     if (e.flags.simplify || e.flags.proj || e.flags.select) {
       reset();
-      if (!e.dataset.info.no_repair) {
-        _dataset = MapShaper.layerHasPaths(e.layer) ? e.dataset : null;
+      if (!e.dataset.info.no_repair && MapShaper.layerHasPaths(e.layer)) {
+        _dataset = e.dataset;
         // use timeout so map refreshes before the repair control calculates
         // intersection data, which can take a little while
         delayedUpdate();
