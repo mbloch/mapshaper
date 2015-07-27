@@ -1450,7 +1450,7 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.VERSION = '0.3.2';
+MapShaper.VERSION = '0.3.3';
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
@@ -6199,8 +6199,10 @@ Dbf.bufferContainsHighBit = function(buf, n) {
 };
 
 Dbf.readNumber = function(bin, field) {
-  var str = bin.readCString(field.size);
-  var val = parseFloat(str);
+  var str = bin.readCString(field.size),
+      val;
+  str = str.replace(',', '.'); // handle comma decimal separator
+  val = parseFloat(str);
   return isNaN(val) ? null : val;
 };
 
@@ -11056,7 +11058,6 @@ api.filterIslands = function(lyr, arcs, opts) {
   } else {
     message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
   }
-
 };
 
 MapShaper.getVertexCountTest = function(minVertices, arcs) {
@@ -11098,6 +11099,7 @@ MapShaper.filterIslands = function(lyr, arcs, ringTest) {
   MapShaper.filterShapes(lyr.shapes, filter);
   return removed;
 };
+
 
 MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
   for (var i=0, n=ring.length; i<n; i++) {
@@ -12730,16 +12732,31 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
 Visvalingam.standardMetric = triangleArea;
 Visvalingam.standardMetric3D = triangleArea3D;
 
-Visvalingam.weightedMetric = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy),
-      cos = cosine(ax, ay, bx, by, cx, cy);
-  return Visvalingam.weight(cos) * area;
+Visvalingam.getWeightedMetric = function(opts) {
+  var weight = Visvalingam.getWeightFunction(opts);
+  return function(ax, ay, bx, by, cx, cy) {
+    var area = triangleArea(ax, ay, bx, by, cx, cy),
+        cos = cosine(ax, ay, bx, by, cx, cy);
+    return weight(cos) * area;
+  };
 };
 
-Visvalingam.weightedMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
-  return Visvalingam.weight(cos) * area;
+Visvalingam.getWeightedMetric3D = function(opts) {
+  var weight = Visvalingam.getWeightFunction(opts);
+  return function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+    var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+        cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
+    return weight(cos) * area;
+  };
+};
+
+// Get a parameterized version of Visvalingam.weight()
+Visvalingam.getWeightFunction = function(opts) {
+  var k = utils.isNumber(opts && opts.weight_scale) ? opts.weight_scale : 0.7,
+      d = utils.isNumber(opts && opts.weight_shift) ? opts.weight_scale : 1;
+  return function(cos) {
+    return -cos * k + d;
+  };
 };
 
 // Weight triangle area by inverse cosine
@@ -12749,11 +12766,17 @@ Visvalingam.weight = function(cos) {
   return -cos * k + 1;
 };
 
-Visvalingam.getPathSimplifier = function(name, use3D) {
-  var metric = (use3D ? Visvalingam.metrics3D : Visvalingam.metrics2D)[name];
-  if (!metric) {
-    error("[visvalingam] Unknown metric:", name);
-  }
+Visvalingam.getEffectiveAreaSimplifier = function(use3D) {
+  var metric = use3D ? Visvalingam.standardMetric3D : Visvalingam.standardMetric;
+  return Visvalingam.getPathSimplifier(metric, use3D);
+};
+
+Visvalingam.getWeightedSimplifier = function(opts, use3D) {
+  var metric = use3D ? Visvalingam.getWeightedMetric3D(opts) : Visvalingam.getWeightedMetric(opts);
+  return Visvalingam.getPathSimplifier(metric, use3D);
+};
+
+Visvalingam.getPathSimplifier = function(metric, use3D) {
   return Visvalingam.scaledSimplify(Visvalingam.getArcCalculator(metric, use3D));
 };
 
@@ -12765,16 +12788,6 @@ Visvalingam.scaledSimplify = function(f) {
       kk[i] = Math.sqrt(kk[i]) * 0.65;
     }
   };
-};
-
-Visvalingam.metrics2D = {
-  visvalingam: Visvalingam.standardMetric,
-  mapshaper: Visvalingam.weightedMetric
-};
-
-Visvalingam.metrics3D = {
-  visvalingam: Visvalingam.standardMetric3D,
-  mapshaper: Visvalingam.weightedMetric3D
 };
 
 
@@ -13094,7 +13107,7 @@ api.simplify = function(arcs, opts) {
 // (modifies @arcs ArcCollection in-place)
 MapShaper.simplifyPaths = function(arcs, opts) {
   var use3D = !opts.cartesian && !arcs.isPlanar();
-  var simplifyPath = MapShaper.getSimplifyFunction(opts.method || 'mapshaper', use3D);
+  var simplifyPath = MapShaper.getSimplifyFunction(opts, use3D);
   arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
   if (use3D) {
     MapShaper.simplifyPaths3D(arcs, simplifyPath);
@@ -13124,11 +13137,13 @@ MapShaper.simplifyPaths3D = function(arcs, simplify) {
   });
 };
 
-MapShaper.getSimplifyFunction = function(method, use3D) {
-  if (method == 'dp') {
+MapShaper.getSimplifyFunction = function(opts, use3D) {
+  if (opts.method == 'dp') {
     return DouglasPeucker.calcArcData;
-  } else { // assuming Visvalingam simplification
-    return Visvalingam.getPathSimplifier(method, use3D);
+  } else if (opts.method == 'visvalingam') {
+    return Visvalingam.getEffectiveAreaSimplifier(use3D);
+  } else { // assuming Visvalingam weighted simplification
+    return Visvalingam.getWeightedSimplifier(opts, use3D);
   }
 };
 
@@ -14401,6 +14416,8 @@ MapShaper.getOptionParser = function() {
     .option("method", {
       // hidden option
     })
+    .option("weight-scale", {type: "number"})
+    .option("weight-shift", {type: "number"})
     .option("interval", {
       // alias: "i",
       describe: "target resolution in linear units (alternative to %)",

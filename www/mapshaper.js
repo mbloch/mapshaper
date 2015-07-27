@@ -2687,7 +2687,7 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.VERSION = '0.3.2';
+MapShaper.VERSION = '0.3.3';
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
@@ -3451,7 +3451,8 @@ var SimplifyControl = function(model) {
         MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
       }
       control.reset();
-      model.updated({simplify: true});
+      // TODO: also add simplify flag after method switching is supported
+      model.updated({presimplify: true});
       showSlider();
       gui.clearProgressMessage();
     }, delay);
@@ -11630,6 +11631,8 @@ MapShaper.getOptionParser = function() {
     .option("method", {
       // hidden option
     })
+    .option("weight-scale", {type: "number"})
+    .option("weight-shift", {type: "number"})
     .option("interval", {
       // alias: "i",
       describe: "target resolution in linear units (alternative to %)",
@@ -13029,8 +13032,8 @@ function RepairControl(model, map) {
     // these changes require nulling out any cached intersection data and recalculating
     if (e.flags.simplify || e.flags.proj || e.flags.select) {
       reset();
-      if (!e.dataset.info.no_repair) {
-        _dataset = MapShaper.layerHasPaths(e.layer) ? e.dataset : null;
+      if (!e.dataset.info.no_repair && MapShaper.layerHasPaths(e.layer)) {
+        _dataset = e.dataset;
         // use timeout so map refreshes before the repair control calculates
         // intersection data, which can take a little while
         delayedUpdate();
@@ -13265,14 +13268,20 @@ function ImportFileProxy(model) {
 
 
 
+gui.getPixelRatio = function() {
+  var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
+  return deviceRatio > 1 ? 2 : 1;
+};
+
 MapShaper.drawPoints = function(paths, style, canvas) {
   var color = style.dotColor || "rgba(255, 50, 50, 0.5)",
-      size = style.dotSize || 3,
+      size = (style.dotSize || 3) * gui.getPixelRatio(),
       drawPoint = style.roundDot ? drawCircle : drawSquare,
+      k = gui.getPixelRatio(),
       ctx = canvas.getContext('2d');
   paths.forEach(function(vec) {
     while (vec.hasNext()) {
-      drawPoint(vec.x, vec.y, size, color, ctx);
+      drawPoint(vec.x * k, vec.y * k, size, color, ctx);
     }
   });
 };
@@ -13280,11 +13289,12 @@ MapShaper.drawPoints = function(paths, style, canvas) {
 MapShaper.drawPaths = function(paths, style, canvas) {
   var stroked = style.strokeColor && style.strokeWidth !== 0,
       filled = !!style.fillColor,
+      pixRatio = gui.getPixelRatio(),
       ctx = canvas.getContext('2d'),
       strokeColor;
 
   if (stroked) {
-    ctx.lineWidth = style.strokeWidth || 1;
+    ctx.lineWidth = style.strokeWidth || 1; // don't adjust width for retina -- too slow
     if (utils.isFunction(style.strokeColor)) {
       strokeColor = style.strokeColor;
     } else {
@@ -13298,16 +13308,17 @@ MapShaper.drawPaths = function(paths, style, canvas) {
 
   paths.forEach(function(vec, i) {
     var minLen = 0.6,
+        k = pixRatio,
         x, y, xp, yp;
     if (!vec.hasNext()) return;
     ctx.beginPath();
     if (strokeColor) ctx.strokeStyle = strokeColor(i);
-    x = xp = vec.x;
-    y = yp = vec.y;
+    x = xp = vec.x * k;
+    y = yp = vec.y * k;
     ctx.moveTo(x, y);
     while (vec.hasNext()) {
-      x = vec.x;
-      y = vec.y;
+      x = vec.x * k;
+      y = vec.y * k;
       if (Math.abs(x - xp) > minLen || Math.abs(y - yp) > minLen) {
         ctx.lineTo(x, y);
         xp = x;
@@ -13634,12 +13645,15 @@ function LayerGroup(dataset) {
   };
 
   this.draw = function(style, ext) {
-    var dataset = dataset,
-        lyr = this.getLayer(),
+    var lyr = this.getLayer(),
+        w = ext.width(),
+        h = ext.height(),
+        pixRatio = gui.getPixelRatio(),
         points;
     this.clear();
-    _canvas.width = ext.width();
-    _canvas.height = ext.height();
+    _canvas.width = w * pixRatio;
+    _canvas.height = h * pixRatio;
+    _canvas.className = pixRatio == 2 ? 'retina' : '';
     _el.show();
     if (_filteredArcs) {
       _filteredArcs.setMapExtent(ext);
@@ -13945,7 +13959,7 @@ function MshpMap(model) {
         needReset;
     if (!group) {
       group = addGroup(e.dataset);
-    } else if (e.flags.simplify || e.flags.proj || e.flags.arc_count) {
+    } else if (e.flags.presimplify || e.flags.simplify || e.flags.proj || e.flags.arc_count) {
       // update filtered arcs when simplification thresholds are calculated
       // or arcs are updated
       if (e.flags.proj && e.dataset.arcs) {
@@ -14295,16 +14309,31 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
 Visvalingam.standardMetric = triangleArea;
 Visvalingam.standardMetric3D = triangleArea3D;
 
-Visvalingam.weightedMetric = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy),
-      cos = cosine(ax, ay, bx, by, cx, cy);
-  return Visvalingam.weight(cos) * area;
+Visvalingam.getWeightedMetric = function(opts) {
+  var weight = Visvalingam.getWeightFunction(opts);
+  return function(ax, ay, bx, by, cx, cy) {
+    var area = triangleArea(ax, ay, bx, by, cx, cy),
+        cos = cosine(ax, ay, bx, by, cx, cy);
+    return weight(cos) * area;
+  };
 };
 
-Visvalingam.weightedMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
-  return Visvalingam.weight(cos) * area;
+Visvalingam.getWeightedMetric3D = function(opts) {
+  var weight = Visvalingam.getWeightFunction(opts);
+  return function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+    var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+        cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
+    return weight(cos) * area;
+  };
+};
+
+// Get a parameterized version of Visvalingam.weight()
+Visvalingam.getWeightFunction = function(opts) {
+  var k = utils.isNumber(opts && opts.weight_scale) ? opts.weight_scale : 0.7,
+      d = utils.isNumber(opts && opts.weight_shift) ? opts.weight_scale : 1;
+  return function(cos) {
+    return -cos * k + d;
+  };
 };
 
 // Weight triangle area by inverse cosine
@@ -14314,11 +14343,17 @@ Visvalingam.weight = function(cos) {
   return -cos * k + 1;
 };
 
-Visvalingam.getPathSimplifier = function(name, use3D) {
-  var metric = (use3D ? Visvalingam.metrics3D : Visvalingam.metrics2D)[name];
-  if (!metric) {
-    error("[visvalingam] Unknown metric:", name);
-  }
+Visvalingam.getEffectiveAreaSimplifier = function(use3D) {
+  var metric = use3D ? Visvalingam.standardMetric3D : Visvalingam.standardMetric;
+  return Visvalingam.getPathSimplifier(metric, use3D);
+};
+
+Visvalingam.getWeightedSimplifier = function(opts, use3D) {
+  var metric = use3D ? Visvalingam.getWeightedMetric3D(opts) : Visvalingam.getWeightedMetric(opts);
+  return Visvalingam.getPathSimplifier(metric, use3D);
+};
+
+Visvalingam.getPathSimplifier = function(metric, use3D) {
   return Visvalingam.scaledSimplify(Visvalingam.getArcCalculator(metric, use3D));
 };
 
@@ -14330,16 +14365,6 @@ Visvalingam.scaledSimplify = function(f) {
       kk[i] = Math.sqrt(kk[i]) * 0.65;
     }
   };
-};
-
-Visvalingam.metrics2D = {
-  visvalingam: Visvalingam.standardMetric,
-  mapshaper: Visvalingam.weightedMetric
-};
-
-Visvalingam.metrics3D = {
-  visvalingam: Visvalingam.standardMetric3D,
-  mapshaper: Visvalingam.weightedMetric3D
 };
 
 
@@ -14458,7 +14483,7 @@ api.simplify = function(arcs, opts) {
 // (modifies @arcs ArcCollection in-place)
 MapShaper.simplifyPaths = function(arcs, opts) {
   var use3D = !opts.cartesian && !arcs.isPlanar();
-  var simplifyPath = MapShaper.getSimplifyFunction(opts.method || 'mapshaper', use3D);
+  var simplifyPath = MapShaper.getSimplifyFunction(opts, use3D);
   arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
   if (use3D) {
     MapShaper.simplifyPaths3D(arcs, simplifyPath);
@@ -14488,11 +14513,13 @@ MapShaper.simplifyPaths3D = function(arcs, simplify) {
   });
 };
 
-MapShaper.getSimplifyFunction = function(method, use3D) {
-  if (method == 'dp') {
+MapShaper.getSimplifyFunction = function(opts, use3D) {
+  if (opts.method == 'dp') {
     return DouglasPeucker.calcArcData;
-  } else { // assuming Visvalingam simplification
-    return Visvalingam.getPathSimplifier(method, use3D);
+  } else if (opts.method == 'visvalingam') {
+    return Visvalingam.getEffectiveAreaSimplifier(use3D);
+  } else { // assuming Visvalingam weighted simplification
+    return Visvalingam.getWeightedSimplifier(opts, use3D);
   }
 };
 
@@ -16359,35 +16386,6 @@ MapShaper.filterIslands = function(lyr, arcs, ringTest) {
   return removed;
 };
 
-MapShaper.filterExternal = function(lyr, arcs, ringTest) {
-  var removed = 0;
-  var counts = new Uint8Array(arcs.size());
-  MapShaper.countArcsInShapes(lyr.shapes, counts);
-
-  var filter = function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      var n = path.length,
-          external = false;
-      // TODO: put in a function
-      for (var i=0; i<n; i++) {
-        if (counts[absArcId(path[i])] === 1) { // has an edge arc (not shared with another shape)
-          external = true;
-          break;
-        }
-      }
-      if (external && (!ringTest || ringTest(path))) { // and it meets any filtering criteria
-        // and it does not contain any holes itself
-        // O(n^2), so testing this last
-        if (!MapShaper.ringHasHoles(path, paths, arcs)) {
-          removed++;
-          return null;
-        }
-      }
-    });
-  };
-  MapShaper.filterShapes(lyr.shapes, filter);
-  return removed;
-};
 
 MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
   for (var i=0, n=ring.length; i<n; i++) {

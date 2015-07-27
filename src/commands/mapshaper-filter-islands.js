@@ -20,7 +20,6 @@ api.filterIslands = function(lyr, arcs, opts) {
   } else {
     message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
   }
-
 };
 
 MapShaper.getVertexCountTest = function(minVertices, arcs) {
@@ -62,6 +61,7 @@ MapShaper.filterIslands = function(lyr, arcs, ringTest) {
   MapShaper.filterShapes(lyr.shapes, filter);
   return removed;
 };
+
 
 MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
   for (var i=0, n=ring.length; i<n; i++) {
