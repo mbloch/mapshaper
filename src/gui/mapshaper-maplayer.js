@@ -53,12 +53,15 @@ function LayerGroup(dataset) {
   };
 
   this.draw = function(style, ext) {
-    var dataset = dataset,
-        lyr = this.getLayer(),
+    var lyr = this.getLayer(),
+        w = ext.width(),
+        h = ext.height(),
+        pixRatio = gui.getPixelRatio(),
         points;
     this.clear();
-    _canvas.width = ext.width();
-    _canvas.height = ext.height();
+    _canvas.width = w * pixRatio;
+    _canvas.height = h * pixRatio;
+    _canvas.className = pixRatio == 2 ? 'retina' : '';
     _el.show();
     if (_filteredArcs) {
       _filteredArcs.setMapExtent(ext);

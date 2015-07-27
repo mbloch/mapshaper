@@ -78,41 +78,41 @@ body {
 /* blue */
 .theme2 .page-header,
 .theme2 .dialog-btn {
-	background-color: #1d6ea0;
+	background-color: #915050;
 }
 
 .theme2 .mode-btn:hover,
 .theme2 .dialog-btn:hover  {
-	background-color: #11486d;
+	background-color: #843030;
 }
 
 .theme2 .colored-text {
-	color: #23658e;
+	color: #915050;
 }
 
 
 .theme2 .nav-btn polygon {
-	fill: #1d6ea0;
+	fill: #915050;
 }
 
 
 /* purplish */
 .theme3 .page-header,
 .theme3 .dialog-btn {
-	background-color: #917a8a;
+	background-color: #968160;
 }
 
 .theme3 .mode-btn:hover,
 .theme3 .dialog-btn:hover  {
-	background-color: #705167;
+	background-color: #7c674c;
 }
 
 .theme3 .colored-text {
-	color: #705167;
+	color: #968160;
 }
 
 .theme3 .nav-btn polygon {
-	fill: #917a8a;
+	fill: #968160;
 }
 
 
@@ -531,6 +531,13 @@ body.simplify #layer-control {
 
 #mshp-main-map canvas {
 	pointer-events: none;
+}
+
+#mshp-main-map canvas.retina {
+	transform-origin: top left;
+	-webkit-transform-origin: top left;
+	transform: scale3D(0.5, 0.5, 1);
+	-webkit-transform: scale3D(0.5, 0.5, 1);
 }
 
 #nav-buttons {
