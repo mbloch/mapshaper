@@ -29,7 +29,7 @@ api.simplify = function(arcs, opts) {
 // (modifies @arcs ArcCollection in-place)
 MapShaper.simplifyPaths = function(arcs, opts) {
   var use3D = !opts.cartesian && !arcs.isPlanar();
-  var simplifyPath = MapShaper.getSimplifyFunction(opts.method || 'mapshaper', use3D);
+  var simplifyPath = MapShaper.getSimplifyFunction(opts, use3D);
   arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
   if (use3D) {
     MapShaper.simplifyPaths3D(arcs, simplifyPath);
@@ -59,11 +59,13 @@ MapShaper.simplifyPaths3D = function(arcs, simplify) {
   });
 };
 
-MapShaper.getSimplifyFunction = function(method, use3D) {
-  if (method == 'dp') {
+MapShaper.getSimplifyFunction = function(opts, use3D) {
+  if (opts.method == 'dp') {
     return DouglasPeucker.calcArcData;
-  } else { // assuming Visvalingam simplification
-    return Visvalingam.getPathSimplifier(method, use3D);
+  } else if (opts.method == 'visvalingam') {
+    return Visvalingam.getEffectiveAreaSimplifier(use3D);
+  } else { // assuming Visvalingam weighted simplification
+    return Visvalingam.getWeightedSimplifier(opts, use3D);
   }
 };
 

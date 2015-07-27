@@ -82,16 +82,31 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
 Visvalingam.standardMetric = triangleArea;
 Visvalingam.standardMetric3D = triangleArea3D;
 
-Visvalingam.weightedMetric = function(ax, ay, bx, by, cx, cy) {
-  var area = triangleArea(ax, ay, bx, by, cx, cy),
-      cos = cosine(ax, ay, bx, by, cx, cy);
-  return Visvalingam.weight(cos) * area;
+Visvalingam.getWeightedMetric = function(opts) {
+  var weight = Visvalingam.getWeightFunction(opts);
+  return function(ax, ay, bx, by, cx, cy) {
+    var area = triangleArea(ax, ay, bx, by, cx, cy),
+        cos = cosine(ax, ay, bx, by, cx, cy);
+    return weight(cos) * area;
+  };
 };
 
-Visvalingam.weightedMetric3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
-      cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
-  return Visvalingam.weight(cos) * area;
+Visvalingam.getWeightedMetric3D = function(opts) {
+  var weight = Visvalingam.getWeightFunction(opts);
+  return function(ax, ay, az, bx, by, bz, cx, cy, cz) {
+    var area = triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz),
+        cos = cosine3D(ax, ay, az, bx, by, bz, cx, cy, cz);
+    return weight(cos) * area;
+  };
+};
+
+// Get a parameterized version of Visvalingam.weight()
+Visvalingam.getWeightFunction = function(opts) {
+  var k = utils.isNumber(opts && opts.weight_scale) ? opts.weight_scale : 0.7,
+      d = utils.isNumber(opts && opts.weight_shift) ? opts.weight_scale : 1;
+  return function(cos) {
+    return -cos * k + d;
+  };
 };
 
 // Weight triangle area by inverse cosine
@@ -101,11 +116,17 @@ Visvalingam.weight = function(cos) {
   return -cos * k + 1;
 };
 
-Visvalingam.getPathSimplifier = function(name, use3D) {
-  var metric = (use3D ? Visvalingam.metrics3D : Visvalingam.metrics2D)[name];
-  if (!metric) {
-    error("[visvalingam] Unknown metric:", name);
-  }
+Visvalingam.getEffectiveAreaSimplifier = function(use3D) {
+  var metric = use3D ? Visvalingam.standardMetric3D : Visvalingam.standardMetric;
+  return Visvalingam.getPathSimplifier(metric, use3D);
+};
+
+Visvalingam.getWeightedSimplifier = function(opts, use3D) {
+  var metric = use3D ? Visvalingam.getWeightedMetric3D(opts) : Visvalingam.getWeightedMetric(opts);
+  return Visvalingam.getPathSimplifier(metric, use3D);
+};
+
+Visvalingam.getPathSimplifier = function(metric, use3D) {
   return Visvalingam.scaledSimplify(Visvalingam.getArcCalculator(metric, use3D));
 };
 
@@ -117,14 +138,4 @@ Visvalingam.scaledSimplify = function(f) {
       kk[i] = Math.sqrt(kk[i]) * 0.65;
     }
   };
-};
-
-Visvalingam.metrics2D = {
-  visvalingam: Visvalingam.standardMetric,
-  mapshaper: Visvalingam.weightedMetric
-};
-
-Visvalingam.metrics3D = {
-  visvalingam: Visvalingam.standardMetric3D,
-  mapshaper: Visvalingam.weightedMetric3D
 };

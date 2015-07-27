@@ -73,7 +73,8 @@ describe("mapshaper-visvalingam.js", function() {
   describe("weightedMetric()", function() {
     it ("is equal to or greater than standard metric for oblique-angle triangles", function() {
       function expectGE(coords) {
-        assert(v.weightedMetric.apply(null, coords) >=
+        var metric = v.getWeightedMetric()
+        assert(metric.apply(null, coords) >=
           v.standardMetric.apply(null, coords));
       }
       expectGE([1, 0, 2, 5, 1, 8]);
@@ -81,7 +82,7 @@ describe("mapshaper-visvalingam.js", function() {
 
     it ("is equal to standard metric for right-angle triangles", function() {
       function expectEqual(coords) {
-        assert(v.weightedMetric.apply(null, coords) ==
+        assert(v.getWeightedMetric().apply(null, coords) ==
           v.standardMetric.apply(null, coords));
       }
       expectEqual([0, 0, 1, 1, 2, 0]);
@@ -90,7 +91,7 @@ describe("mapshaper-visvalingam.js", function() {
 
     it ("is less than standard metric for acute-angle triangles", function() {
       function expectLesser(coords) {
-        var weighted = v.weightedMetric.apply(null, coords);
+        var weighted = v.getWeightedMetric().apply(null, coords);
         var standard = v.standardMetric.apply(null, coords);
         var angle = api.geom.innerAngle.apply(null, coords);
         // console.log("weighted:", weighted, "standard:", standard, 'angle:', angle)
@@ -102,21 +103,22 @@ describe("mapshaper-visvalingam.js", function() {
     })
 
     it ("handles collapsed triangles without freaking out", function() {
-      assert.equal(v.weightedMetric.apply(null, [1, 1, 1, 1, 2, 3]), 0)
-      assert.equal(v.weightedMetric.apply(null, [1, 1, 2, 3, 1, 1]), 0)
-      assert.equal(v.weightedMetric.apply(null, [2, 3, 1, 1, 1, 1]), 0)
-      assert.equal(v.weightedMetric.apply(null, [1, 1, 1, 1, 1, 1]), 0)
+      var metric = v.getWeightedMetric();
+      assert.equal(metric.apply(null, [1, 1, 1, 1, 2, 3]), 0)
+      assert.equal(metric.apply(null, [1, 1, 2, 3, 1, 1]), 0)
+      assert.equal(metric.apply(null, [2, 3, 1, 1, 1, 1]), 0)
+      assert.equal(metric.apply(null, [1, 1, 1, 1, 1, 1]), 0)
     })
   })
 
   describe("weightedMetric3D()", function() {
     it ("is same as weightedMetric when one dimension is axis-aligned", function() {
-      assert.equal(v.weightedMetric3D(0, 0, 9, 1, 8, 9, 2, 1, 9),
-          v.weightedMetric(0, 0, 1, 8, 2, 1));
-      assert.equal(v.weightedMetric3D(9, 0, 0, 9, 1, 8, 9, 2, 0),
-          v.weightedMetric(0, 0, 1, 8, 2, 0));
-      assert.equal(v.weightedMetric3D(0, 9, 0, 1, 9, 8, 2, 9, 0),
-          v.weightedMetric(0, 0, 1, 8, 2, 0));
+      assert.equal(v.getWeightedMetric3D()(0, 0, 9, 1, 8, 9, 2, 1, 9),
+          v.getWeightedMetric()(0, 0, 1, 8, 2, 1));
+      assert.equal(v.getWeightedMetric3D()(9, 0, 0, 9, 1, 8, 9, 2, 0),
+          v.getWeightedMetric()(0, 0, 1, 8, 2, 0));
+      assert.equal(v.getWeightedMetric3D()(0, 9, 0, 1, 9, 8, 2, 9, 0),
+          v.getWeightedMetric()(0, 0, 1, 8, 2, 0));
     })
   })
 })

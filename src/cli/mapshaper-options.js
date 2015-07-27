@@ -194,6 +194,8 @@ MapShaper.getOptionParser = function() {
     .option("method", {
       // hidden option
     })
+    .option("weight-scale", {type: "number"})
+    .option("weight-shift", {type: "number"})
     .option("interval", {
       // alias: "i",
       describe: "target resolution in linear units (alternative to %)",
