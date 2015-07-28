@@ -1,4 +1,4 @@
-/* @require mapshaper-common, mapshaper-dataset-utils */
+/* @require mapshaper-common, mapshaper-dataset-utils, mapshaper-endpoints */
 
 api.printInfo = function(dataset, opts) {
   // str += utils.format("Number of layers: %d\n", dataset.layers.length);
@@ -80,4 +80,20 @@ MapShaper.getTableInfo = function(data) {
   }).join('\n');
   return "Data table\n  " +
       utils.rpad('Field', col1Chars, ' ') + "First value\n" + table;
+};
+
+MapShaper.getSimplificationInfo = function(arcs) {
+  var nodeCount = new NodeCollection(arcs).size();
+  // get count of non-node vertices
+  var internalVertexCount = MapShaper.countInteriorVertices(arcs);
+};
+
+MapShaper.countInteriorVertices = function(arcs) {
+  var count = 0;
+  arcs.forEach2(function(i, n) {
+    if (n > 2) {
+      count += n - 2;
+    }
+  });
+  return count;
 };

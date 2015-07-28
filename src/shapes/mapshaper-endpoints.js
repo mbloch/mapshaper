@@ -35,6 +35,10 @@ function NodeCollection(arcs, filter) {
     return nodes;
   };
 
+  this.size = function() {
+    return this.toArray().length;
+  };
+
   this.debugNode = function(arcId) {
     if (!MapShaper.TRACING) return;
     var ids = [arcId];
