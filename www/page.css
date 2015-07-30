@@ -526,15 +526,14 @@ body.simplify #layer-control {
 	z-index: 30;
 	top: 30px;
 	right: 0px;
-	background-color: white;
-	padding: 10px 10px 10px 10px;
+	background-color: rgba(255, 255, 255, 0.88);
+	padding: 10px;
 	line-height: 1;
 	font-size: 13px;
 }
 
 .popup td {
 	vertical-align: top;
-	padding-left: 8px;
 	font-weight: bold;
 	max-width: 130px;
 	min-width: 130px;
@@ -542,6 +541,7 @@ body.simplify #layer-control {
 
 .popup td.field-name {
 	color: #999;
+	padding-right: 8px;
 	font-weight: normal;
 	min-width: 80px;
 }

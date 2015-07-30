@@ -72,10 +72,11 @@ function RepairControl(model, map) {
     if (n > 0) {
       pointLyr = {geometry_type: 'point', shapes: [MapShaper.getIntersectionPoints(XX)]};
       map.setHighlightLayer(pointLyr, {layers:[pointLyr]});
+      readout.text(utils.format("%s line intersection%s", n, utils.pluralSuffix(n)));
     } else {
       map.setHighlightLayer(null);
+      readout.text('');
     }
-    readout.text(utils.format("%s line intersection%s", n, utils.pluralSuffix(n)));
   }
 }
 
