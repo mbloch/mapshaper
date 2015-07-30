@@ -390,7 +390,7 @@ Utils.arrayToIndex = function(arr, val) {
 // Support for iterating over array-like objects, like typed arrays
 Utils.forEach = function(arr, func, ctx) {
   if (!Utils.isArrayLike(arr)) {
-    throw new Error("#forEach() takes an array-like argument");
+    throw new Error("#forEach() takes an array-like argument. " + arr);
   }
   for (var i=0, n=arr.length; i < n; i++) {
     func.call(ctx, arr[i], i);
@@ -897,26 +897,6 @@ Utils.getGenericComparator = function(asc) {
   };
 };
 
-// This is faster than Array.prototype.sort(<callback>) when "getter" returns a
-// precalculated sort string. (Removing -- kludgy, not very useful)
-//
-// @arr Array of objects to sort.
-// @getter Function that returns a sort key (string) for each object.
-/*
-Utils.sortOnKeyFunction = function(arr, getter) {
-  if (!arr || arr.length == 0) {
-    return;
-  }
-  // Temporarily patch toString() method w/ sort key function.
-  // Assumes array contains objects of the same type
-  // and their "constructor" property is properly set.
-  var p = arr[0].constructor.prototype;
-  var tmp = p.toString;
-  p.toString = getter;
-  arr.sort();
-  p.toString = tmp;
-};
-*/
 
 
 

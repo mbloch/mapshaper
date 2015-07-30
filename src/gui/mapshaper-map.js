@@ -1,4 +1,11 @@
-/* @requires mapshaper-common, mapshaper-maplayer, mapshaper-map-nav, mapshaper-map-extent */
+/* @requires
+mapshaper-common
+mapshaper-maplayer
+mapshaper-map-nav
+mapshaper-map-extent
+mapshaper-hit-control
+mapshaper-info-control
+*/
 
 // Test if map should be re-framed to show updated layer
 gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
@@ -16,25 +23,52 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
 function MshpMap(model) {
   var _root = El("#mshp-main-map"),
       _ext = new MapExtent(_root),
-      _nav = new MapNav(_ext, _root),
+      _mouse = new MouseArea(_root.node()),
+      _nav = new MapNav(_root, _ext, _mouse),
+      _hit = new HitControl(_ext, _mouse),
+      _info = new InfoControl(model, _hit),
       _groups = [],
       _highGroup,
+      _hoverGroup,
       _activeGroup;
 
-  var darkStroke = "#335",
+  var darkStroke = "#334",
       lightStroke = "rgba(222, 88, 249, 0.23)",
       activeStyle = {
         strokeColor: darkStroke,
+        strokeWidth: 0.7,
         dotColor: "#223"
       },
       highStyle = {
         dotColor: "#F24400"
+      },
+      hoverStyle = {
+        fillColor: "#ffc",
+        strokeColor: "black",
+        dotColor: "#ffaa00",
+        strokeWidth: 1.5
       };
 
   _ext.on('change', refreshLayers);
 
+  _hit.on('change', function(e) {
+    if (!_hoverGroup) {
+      _hoverGroup = addGroup(e.dataset, {'no_filtering': true});
+    }
+    _hoverGroup.showLayer(e.layer);
+    refreshLayer(_hoverGroup);
+  });
+
   model.on('delete', function(e) {
     deleteGroup(e.dataset);
+  });
+
+  model.on('select', function(e) {
+    if (_hoverGroup) {
+      // careful, this removes all groups with this dataset; need to improve
+      deleteGroup(_hoverGroup.getDataset());
+      _hoverGroup = null;
+    }
   });
 
   model.on('update', function(e) {
@@ -130,21 +164,27 @@ function MshpMap(model) {
   }
 
   function refreshLayer(group) {
-    var style;
+    var drawShapes = false,
+        style;
     if (group == _activeGroup) {
       style = activeStyle;
     } else if (group == _highGroup) {
       style = highStyle;
+    } else if (group == _hoverGroup) {
+      style = hoverStyle;
+      drawShapes = true;
     }
-    if (style) {
-      group.draw(style, _ext);
-    } else {
+    if (!style) {
       group.hide();
+    } else if (drawShapes) {
+      group.drawShapes(style, _ext);
+    } else {
+      group.drawStructure(style, _ext);
     }
   }
 
-  function addGroup(dataset) {
-    var group = new LayerGroup(dataset);
+  function addGroup(dataset, opts) {
+    var group = new LayerGroup(dataset, opts);
     group.getElement().appendTo(_root);
     _groups.push(group);
     return group;

@@ -5,65 +5,9 @@ gui.getPixelRatio = function() {
   return deviceRatio > 1 ? 2 : 1;
 };
 
-MapShaper.drawPoints = function(paths, style, canvas) {
-  var color = style.dotColor || "rgba(255, 50, 50, 0.5)",
-      size = (style.dotSize || 3) * gui.getPixelRatio(),
-      drawPoint = style.roundDot ? drawCircle : drawSquare,
-      k = gui.getPixelRatio(),
-      ctx = canvas.getContext('2d');
-  paths.forEach(function(vec) {
-    while (vec.hasNext()) {
-      drawPoint(vec.x * k, vec.y * k, size, color, ctx);
-    }
-  });
-};
-
-MapShaper.drawPaths = function(paths, style, canvas) {
-  var stroked = style.strokeColor && style.strokeWidth !== 0,
-      filled = !!style.fillColor,
-      pixRatio = gui.getPixelRatio(),
-      ctx = canvas.getContext('2d'),
-      strokeColor;
-
-  if (stroked) {
-    ctx.lineWidth = style.strokeWidth || 1; // don't adjust width for retina -- too slow
-    if (utils.isFunction(style.strokeColor)) {
-      strokeColor = style.strokeColor;
-    } else {
-      ctx.strokeStyle = style.strokeColor;
-    }
-    //ctx.lineJoin = 'round';
-  }
-  if (filled) {
-    ctx.fillStyle = style.fillColor;
-  }
-
-  paths.forEach(function(vec, i) {
-    var minLen = 0.6,
-        k = pixRatio,
-        x, y, xp, yp;
-    if (!vec.hasNext()) return;
-    ctx.beginPath();
-    if (strokeColor) ctx.strokeStyle = strokeColor(i);
-    x = xp = vec.x * k;
-    y = yp = vec.y * k;
-    ctx.moveTo(x, y);
-    while (vec.hasNext()) {
-      x = vec.x * k;
-      y = vec.y * k;
-      if (Math.abs(x - xp) > minLen || Math.abs(y - yp) > minLen) {
-        ctx.lineTo(x, y);
-        xp = x;
-        yp = y;
-      }
-    }
-    if (x != xp || y != yp) {
-      ctx.lineTo(x, y);
-    }
-    if (filled) ctx.fill();
-    if (stroked) ctx.stroke();
-  });
-};
+function getScaledTransform(ext) {
+  return ext.getTransform(gui.getPixelRatio());
+}
 
 function drawCircle(x, y, size, col, ctx) {
   if (size > 0) {
@@ -82,4 +26,83 @@ function drawSquare(x, y, size, col, ctx) {
     ctx.fillStyle = col;
     ctx.fillRect(x, y, size, size);
   }
+}
+
+function drawPath(vec, t, ctx) {
+  var minLen = 0.6,
+      x, y, xp, yp;
+  if (!vec.hasNext()) return;
+  x = xp = vec.x * t.mx + t.bx;
+  y = yp = vec.y * t.my + t.by;
+  ctx.moveTo(x, y);
+  while (vec.hasNext()) {
+    x = vec.x * t.mx + t.bx;
+    y = vec.y * t.my + t.by;
+    if (Math.abs(x - xp) > minLen || Math.abs(y - yp) > minLen) {
+      ctx.lineTo(x, y);
+      xp = x;
+      yp = y;
+    }
+  }
+  if (x != xp || y != yp) {
+    ctx.lineTo(x, y);
+  }
+}
+
+function getArcPencil(arcs, ext) {
+  var t = getScaledTransform(ext);
+  return function(i, ctx) {
+    drawPath(arcs.getArcIter(i), t, ctx);
+  };
+}
+
+function getShapePencil(arcs, ext) {
+  var t = getScaledTransform(ext);
+  return function(shp, ctx) {
+    var iter = new ShapeIter(arcs);
+    if (!shp) return;
+    for (var i=0; i<shp.length; i++) {
+      iter.init(shp[i]);
+      drawPath(iter, t, ctx);
+    }
+  };
+}
+
+function getPathStart(style) {
+  var stroked = style.strokeColor && style.strokeWidth !== 0,
+      filled = !!style.fillColor,
+      lineWidth, strokeColor;
+  if (stroked) {
+    lineWidth = style.strokeWidth || 1;
+    if (gui.getPixelRatio() > 1 && lineWidth < 1) {
+      lineWidth = 1; // bump up thin lines on retina, but not more than 1 (too slow)
+    }
+    if (utils.isFunction(style.strokeColor)) {
+      strokeColor = style.strokeColor;
+    } else {
+      strokeColor = function(i) {return style.strokeColor;};
+    }
+  }
+
+  return function(i, ctx) {
+    if (stroked) {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = strokeColor(i);
+    }
+    if (filled) {
+      ctx.fillStyle = style.fillColor;
+    }
+    ctx.beginPath();
+  };
+}
+
+function getPathEnd(style) {
+  var stroked = style.strokeColor && style.strokeWidth !== 0,
+      filled = !!style.fillColor;
+  return function(ctx) {
+    if (filled) ctx.fill();
+    if (stroked) ctx.stroke();
+  };
 }

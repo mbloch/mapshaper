@@ -40,7 +40,8 @@ body {
 	border-bottom: 1px dotted #1e6e87;
 }
 
-
+/* disabling themes (need to update button col, etc)
+/*
 .theme1 .dot-underline {
 	border-bottom: 1px dotted #264372;
 }
@@ -75,7 +76,6 @@ body {
 }
 
 
-/* blue */
 .theme2 .page-header,
 .theme2 .dialog-btn {
 	background-color: #915050;
@@ -95,8 +95,6 @@ body {
 	fill: #915050;
 }
 
-
-/* purplish */
 .theme3 .page-header,
 .theme3 .dialog-btn {
 	background-color: #968160;
@@ -114,9 +112,7 @@ body {
 .theme3 .nav-btn polygon {
 	fill: #968160;
 }
-
-
-
+*/
 
 /* --- Page header --------------- */
 
@@ -125,14 +121,14 @@ body {
 	color: white;
 	top: 0;
 	left: 0;
-	z-index: 10;
+	z-index: 40;
 	width: 100%;
 	height: 32px;
 	background-color: #18799b;
 }
 
 #mshp-version {
-	z-index: 100;
+	z-index: 1;
 	position: absolute;
 	pointer-events: none;
 	bottom: 8px;
@@ -523,6 +519,40 @@ body.simplify #layer-control {
 	visibility: hidden;
 }
 
+/* --- Popup -------------------- */
+
+.popup {
+	position: absolute;
+	z-index: 30;
+	top: 30px;
+	right: 0px;
+	background-color: white;
+	padding: 10px 10px 10px 10px;
+	line-height: 1;
+	font-size: 13px;
+}
+
+.popup td {
+	vertical-align: top;
+	padding-left: 8px;
+	font-weight: bold;
+	max-width: 130px;
+	min-width: 130px;
+}
+
+.popup td.field-name {
+	color: #999;
+	font-weight: normal;
+	min-width: 80px;
+}
+
+.popup td.num-field {
+	/*	padding-left: 16px;
+	font-weight: bold;
+	text-align: right;*/
+	font-style: italic;
+}
+
 /* --- Map ---------------------- */
 
 #mshp-main-map {
@@ -547,20 +577,32 @@ body.simplify #layer-control {
 	top: 6px;
 	left: 6px;
 	padding: 2px;
-	background-color: rgba(255, 255, 255, 0.7);
+	background-color: rgba(255, 255, 255, 0.85);
 }
 
 .nav-btn {
 	cursor:pointer;
 	padding: 4px;
+	line-height: 1;
 }
 
-.nav-btn polygon {
+.nav-btn polygon,
+.nav-btn path {
 	fill: #18799b;
 }
 
-.nav-btn:hover polygon {
+.nav-btn:hover polygon,
+.nav-btn:hover path  {
 	fill: black;
+}
+
+.nav-btn.selected path {
+	fill: white;
+}
+
+.nav-btn.selected {
+	background-color: #18799b;
+	border-radius: 4px;
 }
 
 .zoom-box {

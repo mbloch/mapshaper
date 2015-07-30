@@ -3,10 +3,16 @@ mapshaper-gui-lib
 mapshaper-highlight-box
 */
 
-function MapNav(ext, root) {
-  var p = ext.position(),
-      mouse = new MouseArea(p.element),
-      wheel = new MouseWheel(mouse),
+gui.addSidebarButton = function(iconId) {
+  var btn = El('div').addClass('nav-btn')
+    .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
+  btn.appendChild(iconId);
+  btn.appendTo('#nav-buttons');
+  return btn;
+};
+
+function MapNav(root, ext, mouse) {
+  var wheel = new MouseWheel(mouse),
       zoomBox = new HighlightBox('body'),
       buttons = El('div').id('nav-buttons').appendTo(root),
       zoomTween = new Tween(Tween.sineInOut),
@@ -14,9 +20,9 @@ function MapNav(ext, root) {
       zoomScale = 2.5,
       dragStartEvt, _fx, _fy; // zoom foci, [0,1]
 
-  navBtn("#home-icon").appendTo(buttons).on('click', function() {ext.reset();});
-  navBtn("#zoom-in-icon").appendTo(buttons).on('click', zoomIn);
-  navBtn("#zoom-out-icon").appendTo(buttons).on('click', zoomOut);
+  gui.addSidebarButton("#home-icon").on('click', function() {ext.reset();});
+  gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
+  gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
 
   zoomTween.on('change', function(e) {
     ext.rescale(e.value, _fx, _fy);
@@ -83,10 +89,4 @@ function MapNav(ext, root) {
     zoomTween.start(ext.scale(), ext.scale() * pct, 400);
   }
 
-  function navBtn(ref) {
-    var btn = El('div').addClass('nav-btn')
-      .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
-    btn.appendChild(ref);
-    return btn;
-  }
 }

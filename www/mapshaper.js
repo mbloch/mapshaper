@@ -630,7 +630,7 @@ Utils.arrayToIndex = function(arr, val) {
 // Support for iterating over array-like objects, like typed arrays
 Utils.forEach = function(arr, func, ctx) {
   if (!Utils.isArrayLike(arr)) {
-    throw new Error("#forEach() takes an array-like argument");
+    throw new Error("#forEach() takes an array-like argument. " + arr);
   }
   for (var i=0, n=arr.length; i < n; i++) {
     func.call(ctx, arr[i], i);
@@ -1137,26 +1137,6 @@ Utils.getGenericComparator = function(asc) {
   };
 };
 
-// This is faster than Array.prototype.sort(<callback>) when "getter" returns a
-// precalculated sort string. (Removing -- kludgy, not very useful)
-//
-// @arr Array of objects to sort.
-// @getter Function that returns a sort key (string) for each object.
-/*
-Utils.sortOnKeyFunction = function(arr, getter) {
-  if (!arr || arr.length == 0) {
-    return;
-  }
-  // Temporarily patch toString() method w/ sort key function.
-  // Assumes array contains objects of the same type
-  // and their "constructor" property is properly set.
-  var p = arr[0].constructor.prototype;
-  var tmp = p.toString;
-  p.toString = getter;
-  arr.sort();
-  p.toString = tmp;
-};
-*/
 
 
 
@@ -1785,6 +1765,17 @@ EventDispatcher.prototype.removeEventListeners = function(type, callback, contex
     }
   }
   this._handlers = newArr;
+  return count;
+};
+
+EventDispatcher.prototype.countEventListeners = function(type) {
+  var handlers = this._handlers,
+    len = handlers && handlers.length || 0,
+    count = 0;
+  if (!type) return len;
+  for (var i = 0; i < len; i++) {
+    if (handlers[i].type === type) count++;
+  }
   return count;
 };
 
@@ -2639,6 +2630,8 @@ function MouseArea(element) {
         dragY: _moveEvt.pageY - _downEvt.pageY
       };
       _self.dispatchEvent('drag', Utils.extend(obj, _moveEvt));
+    } else {
+      _self.dispatchEvent('hover', _moveEvt);
     }
   }
 
@@ -13277,65 +13270,9 @@ gui.getPixelRatio = function() {
   return deviceRatio > 1 ? 2 : 1;
 };
 
-MapShaper.drawPoints = function(paths, style, canvas) {
-  var color = style.dotColor || "rgba(255, 50, 50, 0.5)",
-      size = (style.dotSize || 3) * gui.getPixelRatio(),
-      drawPoint = style.roundDot ? drawCircle : drawSquare,
-      k = gui.getPixelRatio(),
-      ctx = canvas.getContext('2d');
-  paths.forEach(function(vec) {
-    while (vec.hasNext()) {
-      drawPoint(vec.x * k, vec.y * k, size, color, ctx);
-    }
-  });
-};
-
-MapShaper.drawPaths = function(paths, style, canvas) {
-  var stroked = style.strokeColor && style.strokeWidth !== 0,
-      filled = !!style.fillColor,
-      pixRatio = gui.getPixelRatio(),
-      ctx = canvas.getContext('2d'),
-      strokeColor;
-
-  if (stroked) {
-    ctx.lineWidth = style.strokeWidth || 1; // don't adjust width for retina -- too slow
-    if (utils.isFunction(style.strokeColor)) {
-      strokeColor = style.strokeColor;
-    } else {
-      ctx.strokeStyle = style.strokeColor;
-    }
-    //ctx.lineJoin = 'round';
-  }
-  if (filled) {
-    ctx.fillStyle = style.fillColor;
-  }
-
-  paths.forEach(function(vec, i) {
-    var minLen = 0.6,
-        k = pixRatio,
-        x, y, xp, yp;
-    if (!vec.hasNext()) return;
-    ctx.beginPath();
-    if (strokeColor) ctx.strokeStyle = strokeColor(i);
-    x = xp = vec.x * k;
-    y = yp = vec.y * k;
-    ctx.moveTo(x, y);
-    while (vec.hasNext()) {
-      x = vec.x * k;
-      y = vec.y * k;
-      if (Math.abs(x - xp) > minLen || Math.abs(y - yp) > minLen) {
-        ctx.lineTo(x, y);
-        xp = x;
-        yp = y;
-      }
-    }
-    if (x != xp || y != yp) {
-      ctx.lineTo(x, y);
-    }
-    if (filled) ctx.fill();
-    if (stroked) ctx.stroke();
-  });
-};
+function getScaledTransform(ext) {
+  return ext.getTransform(gui.getPixelRatio());
+}
 
 function drawCircle(x, y, size, col, ctx) {
   if (size > 0) {
@@ -13354,6 +13291,85 @@ function drawSquare(x, y, size, col, ctx) {
     ctx.fillStyle = col;
     ctx.fillRect(x, y, size, size);
   }
+}
+
+function drawPath(vec, t, ctx) {
+  var minLen = 0.6,
+      x, y, xp, yp;
+  if (!vec.hasNext()) return;
+  x = xp = vec.x * t.mx + t.bx;
+  y = yp = vec.y * t.my + t.by;
+  ctx.moveTo(x, y);
+  while (vec.hasNext()) {
+    x = vec.x * t.mx + t.bx;
+    y = vec.y * t.my + t.by;
+    if (Math.abs(x - xp) > minLen || Math.abs(y - yp) > minLen) {
+      ctx.lineTo(x, y);
+      xp = x;
+      yp = y;
+    }
+  }
+  if (x != xp || y != yp) {
+    ctx.lineTo(x, y);
+  }
+}
+
+function getArcPencil(arcs, ext) {
+  var t = getScaledTransform(ext);
+  return function(i, ctx) {
+    drawPath(arcs.getArcIter(i), t, ctx);
+  };
+}
+
+function getShapePencil(arcs, ext) {
+  var t = getScaledTransform(ext);
+  return function(shp, ctx) {
+    var iter = new ShapeIter(arcs);
+    if (!shp) return;
+    for (var i=0; i<shp.length; i++) {
+      iter.init(shp[i]);
+      drawPath(iter, t, ctx);
+    }
+  };
+}
+
+function getPathStart(style) {
+  var stroked = style.strokeColor && style.strokeWidth !== 0,
+      filled = !!style.fillColor,
+      lineWidth, strokeColor;
+  if (stroked) {
+    lineWidth = style.strokeWidth || 1;
+    if (gui.getPixelRatio() > 1 && lineWidth < 1) {
+      lineWidth = 1; // bump up thin lines on retina, but not more than 1 (too slow)
+    }
+    if (utils.isFunction(style.strokeColor)) {
+      strokeColor = style.strokeColor;
+    } else {
+      strokeColor = function(i) {return style.strokeColor;};
+    }
+  }
+
+  return function(i, ctx) {
+    if (stroked) {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = strokeColor(i);
+    }
+    if (filled) {
+      ctx.fillStyle = style.fillColor;
+    }
+    ctx.beginPath();
+  };
+}
+
+function getPathEnd(style) {
+  var stroked = style.strokeColor && style.strokeWidth !== 0,
+      filled = !!style.fillColor;
+  return function(ctx) {
+    if (filled) ctx.fill();
+    if (stroked) ctx.stroke();
+  };
 }
 
 
@@ -13427,12 +13443,10 @@ MapShaper.simplifyPathFast = function(path, arcs, dist, xx, yy) {
 
 
 
-// A wrapper for ArcCollection that converts source coords to screen coords
-// and filters paths to speed up rendering.
+// A wrapper for ArcCollection that filters paths to speed up rendering.
 //
-function FilteredArcCollection(unfilteredArcs) {
-  var _ext,
-      _sortedThresholds,
+function FilteredArcCollection(unfilteredArcs, opts) {
+  var _sortedThresholds,
       filteredArcs,
       filteredSegLen;
 
@@ -13442,7 +13456,9 @@ function FilteredArcCollection(unfilteredArcs) {
     var size = unfilteredArcs.getPointCount(),
         cutoff = 5e5,
         nth;
-    if (!!unfilteredArcs.getVertexData().zz) {
+    if (opts && opts.no_filtering) {
+      filteredArcs = null;
+    } else if (!!unfilteredArcs.getVertexData().zz) {
       // If we have simplification data...
       // Sort simplification thresholds for all non-endpoint vertices
       // for quick conversion of simplification percentage to threshold value.
@@ -13475,13 +13491,13 @@ function FilteredArcCollection(unfilteredArcs) {
     return filteredArcs;
   }
 
-  function getArcCollection() {
+  this.getArcCollection = function(ext) {
     refreshFilteredArcs();
     // Use a filtered version of arcs at small scales
-    var unitsPerPixel = 1/_ext.getTransform().mx,
+    var unitsPerPixel = 1/ext.getTransform().mx,
         useFiltering = filteredArcs && unitsPerPixel > filteredSegLen * 1.5;
     return useFiltering ? filteredArcs : unfilteredArcs;
-  }
+  };
 
   function refreshFilteredArcs() {
     if (filteredArcs) {
@@ -13507,90 +13523,6 @@ function FilteredArcCollection(unfilteredArcs) {
       unfilteredArcs.setRetainedPct(pct);
     }
   };
-
-  this.setMapExtent = function(ext) {
-    _ext = ext;
-  };
-
-  this.forEach = function(cb) {
-    var arcs = getArcCollection(),
-        minPathLen = 0.8 * _ext.getPixelSize(),
-        wrapPath = getCoordWrapper(_ext),
-        geoBounds = _ext.getBounds(),
-        geoBBox = geoBounds.toArray(),
-        allIn = geoBounds.contains(arcs.getBounds());
-
-    // don't drop more paths at less than full extent (i.e. zoomed far out)
-    if (_ext.scale() < 1) minPathLen *= _ext.scale();
-
-    for (var i=0, n=arcs.size(); i<n; i++) {
-      if (arcs.arcIsSmaller(i, minPathLen)) continue;
-      if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) continue;
-      cb(wrapPath(arcs.getArcIter(i)), i);
-    }
-  };
-}
-
-function FilteredPointCollection(shapes) {
-  var _ext;
-
-  this.forEach = function(cb) {
-    var iter = new PointIter();
-    var wrapped = getCoordWrapper(_ext)(iter);
-    for (var i=0, n=shapes.length; i<n; i++) {
-      iter.setPoints(shapes[i]);
-      cb(wrapped, i);
-    }
-  };
-
-  this.setMapExtent = function(ext) {
-    _ext = ext;
-  };
-}
-
-
-// @ext MapExtent
-function getCoordWrapper(ext) {
-  // Wrap point iterator to convert geographic coordinates to pixels
-  var wrapped = null;
-  var t = ext.getTransform();
-  var wrapper = {
-    x: 0,
-    y: 0,
-    hasNext: function() {
-      if (wrapped.hasNext()) {
-        this.x = wrapped.x * t.mx + t.bx;
-        this.y = wrapped.y * t.my + t.by;
-        return true;
-      }
-      return false;
-    }
-  };
-  return function(iter) {
-    wrapped = iter;
-    return wrapper;
-  };
-}
-
-function PointIter() {
-  var _i, _points;
-
-  this.setPoints = function(arr) {
-    _points = arr;
-    _i = 0;
-  };
-
-  this.hasNext = function() {
-    var n = _points ? _points.length : 0,
-        p;
-    if (_i < n) {
-      p = _points[_i++];
-      this.x = p[0];
-      this.y = p[1];
-      return true;
-    }
-    return false;
-  };
 }
 
 
@@ -13598,16 +13530,17 @@ function PointIter() {
 
 // Interface for displaying the points and paths in a dataset
 //
-function LayerGroup(dataset) {
+function LayerGroup(dataset, opts) {
   var _el = El('canvas').css('position:absolute;'),
       _canvas = _el.node(),
+      _ctx = _canvas.getContext('2d'),
       _lyr, _filteredArcs, _bounds;
 
   init();
 
   function init() {
     _bounds = MapShaper.getDatasetBounds(dataset);
-    _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
+    _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs, opts) : null;
   }
 
   this.hide = function() {
@@ -13615,7 +13548,7 @@ function LayerGroup(dataset) {
   };
 
   this.showLayer = function(lyr) {
-    _lyr = lyr; // TODO: make sure lyr is in dataset
+    _lyr = lyr; // Layer may not be in dataset...
   };
 
   this.getLayer = function() {
@@ -13634,10 +13567,6 @@ function LayerGroup(dataset) {
     return dataset;
   };
 
-  this.clear = function() {
-    _canvas.getContext('2d').clearRect(0, 0, _canvas.width, _canvas.height);
-  };
-
   // Rebuild filtered arcs and recalculate bounds
   this.updated = function() {
     init();
@@ -13648,31 +13577,97 @@ function LayerGroup(dataset) {
     return this;
   };
 
-  this.draw = function(style, ext) {
-    var lyr = this.getLayer(),
-        w = ext.width(),
-        h = ext.height(),
-        pixRatio = gui.getPixelRatio(),
-        points;
-    this.clear();
-    _canvas.width = w * pixRatio;
-    _canvas.height = h * pixRatio;
-    _canvas.className = pixRatio == 2 ? 'retina' : '';
+  this.drawStructure = function(style, ext) {
+    var lyr = this.getLayer();
+    updateCanvas(ext);
     _el.show();
     if (_filteredArcs) {
-      _filteredArcs.setMapExtent(ext);
-      MapShaper.drawPaths(_filteredArcs, style, _canvas);
+      drawArcs(style, ext);
     }
     if (lyr.geometry_type == 'point') {
-      points = new FilteredPointCollection(lyr.shapes);
-      points.setMapExtent(ext);
-      MapShaper.drawPoints(points, style, _canvas);
+      drawPoints(lyr.shapes, style, ext);
+    }
+  };
+
+  this.drawShapes = function(style, ext) {
+    var lyr = this.getLayer(),
+        type = lyr.geometry_type;
+        updateCanvas(ext);
+    _el.show();
+    if (type == 'point') {
+      drawPoints(lyr.shapes, style, ext);
+    } else {
+      drawPathShapes(lyr.shapes, style, ext);
     }
   };
 
   this.remove = function() {
     this.getElement().remove();
   };
+
+  function drawPathShapes(shapes, style, ext) {
+    var arcs = _filteredArcs.getArcCollection(ext),
+        start = getPathStart(style),
+        draw = getShapePencil(arcs, ext),
+        end = getPathEnd(style);
+    for (var i=0, n=shapes.length; i<n; i++) {
+      start(i, _ctx);
+      draw(shapes[i], _ctx);
+      end(_ctx);
+    }
+  }
+
+  function drawArcs(style, ext) {
+    var arcs = _filteredArcs.getArcCollection(ext),
+        minPathLen = 0.8 * ext.getPixelSize(),
+        geoBounds = ext.getBounds(),
+        geoBBox = geoBounds.toArray(),
+        allIn = geoBounds.contains(arcs.getBounds()),
+        start = getPathStart(style),
+        draw = getArcPencil(arcs, ext),
+        end = getPathEnd(style);
+
+    // don't drop more paths at less than full extent (i.e. zoomed far out)
+    if (ext.scale() < 1) minPathLen *= ext.scale();
+
+    for (var i=0, n=arcs.size(); i<n; i++) {
+      if (arcs.arcIsSmaller(i, minPathLen)) continue;
+      if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) continue;
+      start(i, _ctx);
+      draw(i, _ctx);
+      end(_ctx);
+    }
+  }
+
+  function drawPoints(shapes, style, ext) {
+    var t = getScaledTransform(ext),
+        color = style.dotColor || "rgba(255, 50, 50, 0.5)",
+        size = (style.dotSize || 3) * gui.getPixelRatio(),
+        drawPoint = style.roundDot ? drawCircle : drawSquare,
+        shp, p;
+    // TODO: don't try to draw offscreen points
+    for (var i=0, n=shapes.length; i<n; i++) {
+      shp = shapes[i];
+      for (var j=0; j<shp.length; j++) {
+        p = shp[j];
+        drawPoint(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, color, _ctx);
+      }
+    }
+  }
+
+  function clearCanvas() {
+    _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
+  }
+
+  function updateCanvas(ext) {
+    var w = ext.width(),
+        h = ext.height(),
+        pixRatio = gui.getPixelRatio();
+    clearCanvas();
+    _canvas.width = w * pixRatio;
+    _canvas.height = h * pixRatio;
+    _canvas.className = pixRatio == 2 ? 'retina' : '';
+  }
 }
 
 
@@ -13700,10 +13695,16 @@ function HighlightBox(el) {
 
 
 
-function MapNav(ext, root) {
-  var p = ext.position(),
-      mouse = new MouseArea(p.element),
-      wheel = new MouseWheel(mouse),
+gui.addSidebarButton = function(iconId) {
+  var btn = El('div').addClass('nav-btn')
+    .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
+  btn.appendChild(iconId);
+  btn.appendTo('#nav-buttons');
+  return btn;
+};
+
+function MapNav(root, ext, mouse) {
+  var wheel = new MouseWheel(mouse),
       zoomBox = new HighlightBox('body'),
       buttons = El('div').id('nav-buttons').appendTo(root),
       zoomTween = new Tween(Tween.sineInOut),
@@ -13711,9 +13712,9 @@ function MapNav(ext, root) {
       zoomScale = 2.5,
       dragStartEvt, _fx, _fy; // zoom foci, [0,1]
 
-  navBtn("#home-icon").appendTo(buttons).on('click', function() {ext.reset();});
-  navBtn("#zoom-in-icon").appendTo(buttons).on('click', zoomIn);
-  navBtn("#zoom-out-icon").appendTo(buttons).on('click', zoomOut);
+  gui.addSidebarButton("#home-icon").on('click', function() {ext.reset();});
+  gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
+  gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
 
   zoomTween.on('change', function(e) {
     ext.rescale(e.value, _fx, _fy);
@@ -13780,12 +13781,6 @@ function MapNav(ext, root) {
     zoomTween.start(ext.scale(), ext.scale() * pct, 400);
   }
 
-  function navBtn(ref) {
-    var btn = El('div').addClass('nav-btn')
-      .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
-    btn.appendChild(ref);
-    return btn;
-  }
 }
 
 
@@ -13859,9 +13854,13 @@ function MapExtent(el) {
   };
 
   // Get params for converting geographic coords to pixel coords
-  this.getTransform = function() {
+  this.getTransform = function(pixScale) {
     // get transform (y-flipped);
     var viewBounds = new Bounds(0, 0, _position.width(), _position.height());
+    if (pixScale) {
+      viewBounds.xmax *= pixScale;
+      viewBounds.ymax *= pixScale;
+    }
     return this.getBounds().getTransform(viewBounds, true);
   };
 
@@ -13920,6 +13919,170 @@ utils.inherit(MapExtent, EventDispatcher);
 
 
 
+function HitControl(ext, mouse) {
+  var self = this;
+  var hitId = -1;
+  var tests = {
+    polygon: polygonTest,
+    polyline: polylineTest,
+    point: pointTest
+  };
+  var selection, test;
+
+  this.turnOn = function(o) {
+    hitId = -1;
+    selection = o;
+    test = tests[o.layer.geometry_type];
+  };
+
+  this.turnOff = function() {
+    update(-1);
+    selection = null;
+    test = null;
+  };
+
+  mouse.on('hover', function(e) {
+    var tr, p;
+    if (!selection || !test || !selection.layer.data) {
+      return;
+    }
+    if (ext.scale() < 0.5) {
+      // ignore if zoomed too far out
+      update(-1);
+    } else {
+      tr = ext.getTransform();
+      p = tr.invert().transform(e.x, e.y);
+      test(p[0], p[1], 1/tr.mx);
+    }
+  });
+
+  function polygonTest(x, y, m) {
+    var cands = findHitCandidates(x, y),
+        hitId = -1,
+        cand;
+    for (var i=0; i<cands.length; i++) {
+      cand = cands[i];
+      if (geom.testPointInPolygon(x, y, cand.shape, selection.dataset.arcs)) {
+        hitId = cand.id;
+        break;
+      }
+    }
+    update(hitId);
+  }
+
+  function polylineTest(x, y, m) {
+    var cands = findHitCandidates(x, y);
+  }
+
+  function pointTest(x, y, m) {
+
+  }
+
+  function update(newId) {
+    var lyr = selection.layer,
+        o;
+    if (newId == hitId) return;
+    o = {
+      id: newId,
+      dataset: selection.dataset,
+      layer: {
+        geometry_type: lyr.geometry_type,
+        shapes: []
+      }
+    };
+    if (newId > -1) {
+      o.properties = lyr.data.getRecords()[newId];
+      o.layer.shapes.push(lyr.shapes[newId]);
+    }
+    hitId = newId;
+    self.dispatchEvent('change', o);
+  }
+
+  function findHitCandidates(x, y, m) {
+    var bounds = new Bounds(),
+        arcs = selection.dataset.arcs,
+        cands = [];
+    selection.layer.shapes.forEach(function(shp, shpId) {
+      var n = shp ? shp.length : 0,
+          i;
+      for (i=0; i<n; i++) {
+        arcs.getSimpleShapeBounds(shp[i], bounds.empty());
+        if (bounds.containsPoint(x, y)) {
+          cands.push({shape: shp, id: shpId});
+          break;
+        }
+      }
+    });
+    return cands;
+  }
+}
+
+utils.inherit(HitControl, EventDispatcher);
+
+
+
+
+function Popup() {
+
+  var el = El('div').addClass('popup').appendTo('body').hide();
+
+  this.show = function(rec) {
+    render(rec, el);
+    el.show();
+  };
+
+  this.hide = function() {
+    el.hide();
+  };
+
+  function render(rec, el) {
+    var html = "";
+    utils.forEachProperty(rec, function(v, k) {
+      var isNum = utils.isNumber(v),
+          className = isNum ? 'num-field' : 'str-field';
+      html += utils.format('<tr><td class="field-name">%s</td><td class="%s">%s</td>',
+          k, className, utils.htmlEscape(v));
+    });
+    el.html('<table>' + html + '</table>');
+  }
+
+}
+
+
+
+function InfoControl(model, hit) {
+  var _popup = new Popup();
+  var btn = gui.addSidebarButton("#info-icon").on('click', function() {
+    btn.toggleClass('selected');
+    if (btn.hasClass('selected')) {
+      turnOn();
+    } else {
+      turnOff();
+    }
+  });
+
+  hit.on('change', function(e) {
+    if (e.properties) {
+      _popup.show(e.properties);
+    } else {
+      _popup.hide();
+    }
+  });
+
+  function turnOn() {
+    hit.turnOn(model.getEditingLayer());
+  }
+
+  function turnOff() {
+    _popup.hide();
+    hit.turnOff();
+  }
+
+}
+
+
+
+
 // Test if map should be re-framed to show updated layer
 gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
   var boundsChanged = !prevBounds || !prevBounds.equals(newBounds);
@@ -13936,25 +14099,52 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
 function MshpMap(model) {
   var _root = El("#mshp-main-map"),
       _ext = new MapExtent(_root),
-      _nav = new MapNav(_ext, _root),
+      _mouse = new MouseArea(_root.node()),
+      _nav = new MapNav(_root, _ext, _mouse),
+      _hit = new HitControl(_ext, _mouse),
+      _info = new InfoControl(model, _hit),
       _groups = [],
       _highGroup,
+      _hoverGroup,
       _activeGroup;
 
-  var darkStroke = "#335",
+  var darkStroke = "#334",
       lightStroke = "rgba(222, 88, 249, 0.23)",
       activeStyle = {
         strokeColor: darkStroke,
+        strokeWidth: 0.7,
         dotColor: "#223"
       },
       highStyle = {
         dotColor: "#F24400"
+      },
+      hoverStyle = {
+        fillColor: "#ffc",
+        strokeColor: "black",
+        dotColor: "#ffaa00",
+        strokeWidth: 1.5
       };
 
   _ext.on('change', refreshLayers);
 
+  _hit.on('change', function(e) {
+    if (!_hoverGroup) {
+      _hoverGroup = addGroup(e.dataset, {'no_filtering': true});
+    }
+    _hoverGroup.showLayer(e.layer);
+    refreshLayer(_hoverGroup);
+  });
+
   model.on('delete', function(e) {
     deleteGroup(e.dataset);
+  });
+
+  model.on('select', function(e) {
+    if (_hoverGroup) {
+      // careful, this removes all groups with this dataset; need to improve
+      deleteGroup(_hoverGroup.getDataset());
+      _hoverGroup = null;
+    }
   });
 
   model.on('update', function(e) {
@@ -14050,21 +14240,27 @@ function MshpMap(model) {
   }
 
   function refreshLayer(group) {
-    var style;
+    var drawShapes = false,
+        style;
     if (group == _activeGroup) {
       style = activeStyle;
     } else if (group == _highGroup) {
       style = highStyle;
+    } else if (group == _hoverGroup) {
+      style = hoverStyle;
+      drawShapes = true;
     }
-    if (style) {
-      group.draw(style, _ext);
-    } else {
+    if (!style) {
       group.hide();
+    } else if (drawShapes) {
+      group.drawShapes(style, _ext);
+    } else {
+      group.drawStructure(style, _ext);
     }
   }
 
-  function addGroup(dataset) {
-    var group = new LayerGroup(dataset);
+  function addGroup(dataset, opts) {
+    var group = new LayerGroup(dataset, opts);
     group.getElement().appendTo(_root);
     _groups.push(group);
     return group;

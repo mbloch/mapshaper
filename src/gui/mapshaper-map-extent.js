@@ -68,9 +68,13 @@ function MapExtent(el) {
   };
 
   // Get params for converting geographic coords to pixel coords
-  this.getTransform = function() {
+  this.getTransform = function(pixScale) {
     // get transform (y-flipped);
     var viewBounds = new Bounds(0, 0, _position.width(), _position.height());
+    if (pixScale) {
+      viewBounds.xmax *= pixScale;
+      viewBounds.ymax *= pixScale;
+    }
     return this.getBounds().getTransform(viewBounds, true);
   };
 
