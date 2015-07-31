@@ -2,7 +2,9 @@
 
 function HitControl(ext, mouse) {
   var self = this;
-  var hitId = -1;
+  var selectionId = -1;
+  var hoverId = -1;
+  var pinId = -1;
   var tests = {
     polygon: polygonTest,
     polyline: polylineTest,
@@ -11,7 +13,7 @@ function HitControl(ext, mouse) {
   var selection, test;
 
   this.turnOn = function(o) {
-    hitId = -1;
+    selectionId = hoverId = pinId = -1;
     selection = o;
     test = tests[o.layer.geometry_type];
   };
@@ -25,8 +27,20 @@ function HitControl(ext, mouse) {
   };
 
   mouse.on('click', function() {
-    if (hitId > -1) {
-      self.dispatchEvent('click', {id: hitId, properties: getProperties(hitId)});
+    if (pinId > -1 && hoverId == pinId) {
+      // clicking on pinned shape: unpin
+      pinId = -1;
+    } else if (pinId == -1 && hoverId > -1) {
+      // clicking on unpinned shape while unpinned: pin
+      pinId = hoverId;
+    } else if (pinId > -1 && hoverId > -1) {
+      // clicking on unpinned shape while pinned: pin
+      select(hoverId);
+      pinId = hoverId;
+    } else if (pinId > -1 && hoverId == -1) {
+      // clicking off the layer while pinned: unpin and deselect
+      pinId = -1;
+      select(-1);
     }
   });
 
@@ -95,9 +109,16 @@ function HitControl(ext, mouse) {
   }
 
   function update(newId) {
+    hoverId = newId;
+    if (pinId == -1) {
+      select(newId);
+    }
+  }
+
+  function select(newId) {
     var lyr = selection.layer,
         o;
-    if (newId == hitId) return;
+    if (newId == selectionId) return;
     o = {
       id: newId,
       dataset: selection.dataset,
@@ -110,7 +131,7 @@ function HitControl(ext, mouse) {
       o.properties = getProperties(newId);
       o.layer.shapes.push(lyr.shapes[newId]);
     }
-    hitId = newId;
+    selectionId = newId;
     self.dispatchEvent('change', o);
   }
 

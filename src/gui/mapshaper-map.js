@@ -49,7 +49,7 @@ function MshpMap(model) {
           strokeWidth: 1.5
         }, point:  {
           dotColor: "#ffaa00",
-          dotSize: 6
+          dotSize: 8
         }, polyline:  {
           strokeColor: "black",
           strokeWidth: 3

@@ -13924,7 +13924,9 @@ utils.inherit(MapExtent, EventDispatcher);
 
 function HitControl(ext, mouse) {
   var self = this;
-  var hitId = -1;
+  var selectionId = -1;
+  var hoverId = -1;
+  var pinId = -1;
   var tests = {
     polygon: polygonTest,
     polyline: polylineTest,
@@ -13933,7 +13935,7 @@ function HitControl(ext, mouse) {
   var selection, test;
 
   this.turnOn = function(o) {
-    hitId = -1;
+    selectionId = hoverId = pinId = -1;
     selection = o;
     test = tests[o.layer.geometry_type];
   };
@@ -13947,8 +13949,20 @@ function HitControl(ext, mouse) {
   };
 
   mouse.on('click', function() {
-    if (hitId > -1) {
-      self.dispatchEvent('click', {id: hitId, properties: getProperties(hitId)});
+    if (pinId > -1 && hoverId == pinId) {
+      // clicking on pinned shape: unpin
+      pinId = -1;
+    } else if (pinId == -1 && hoverId > -1) {
+      // clicking on unpinned shape while unpinned: pin
+      pinId = hoverId;
+    } else if (pinId > -1 && hoverId > -1) {
+      // clicking on unpinned shape while pinned: pin
+      select(hoverId);
+      pinId = hoverId;
+    } else if (pinId > -1 && hoverId == -1) {
+      // clicking off the layer while pinned: unpin and deselect
+      pinId = -1;
+      select(-1);
     }
   });
 
@@ -14017,9 +14031,16 @@ function HitControl(ext, mouse) {
   }
 
   function update(newId) {
+    hoverId = newId;
+    if (pinId == -1) {
+      select(newId);
+    }
+  }
+
+  function select(newId) {
     var lyr = selection.layer,
         o;
-    if (newId == hitId) return;
+    if (newId == selectionId) return;
     o = {
       id: newId,
       dataset: selection.dataset,
@@ -14032,7 +14053,7 @@ function HitControl(ext, mouse) {
       o.properties = getProperties(newId);
       o.layer.shapes.push(lyr.shapes[newId]);
     }
-    hitId = newId;
+    selectionId = newId;
     self.dispatchEvent('change', o);
   }
 
@@ -14101,8 +14122,6 @@ function Popup() {
 
 function InfoControl(model, hit) {
   var _popup = new Popup();
-  var _pinId = -1;
-  var _hoverId = -1;
   var btn = gui.addSidebarButton("#info-icon").on('click', function() {
     btn.toggleClass('selected');
     update();
@@ -14111,22 +14130,10 @@ function InfoControl(model, hit) {
   model.on('select', update);
 
   hit.on('change', function(e) {
-    if (_pinId == -1) {
-      if (e.properties) {
-        _popup.show(e.properties);
-      } else {
-        _popup.hide();
-      }
-    }
-    _hoverId = e.id;
-  });
-
-  hit.on('click', function(e) {
-    if (e.id == _pinId) {
-      _pinId = -1;
-    } else {
+    if (e.properties) {
       _popup.show(e.properties);
-      _pinId = e.id;
+    } else {
+      _popup.hide();
     }
   });
 
@@ -14134,20 +14141,10 @@ function InfoControl(model, hit) {
     return btn.hasClass('selected');
   }
 
-  function pin() {
-    _pinId = _hoverId;
-  }
-
-  function unPin() {
-    _pinId = -1;
-  }
-
   function update() {
     if (isOn()) {
       hit.turnOn(model.getEditingLayer());
     } else {
-      _pinId = -1;
-      _hoverId = -1;
       _popup.hide();
       hit.turnOff();
     }
@@ -14200,7 +14197,7 @@ function MshpMap(model) {
           strokeWidth: 1.5
         }, point:  {
           dotColor: "#ffaa00",
-          dotSize: 6
+          dotSize: 8
         }, polyline:  {
           strokeColor: "black",
           strokeWidth: 3
