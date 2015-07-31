@@ -33,7 +33,7 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#334",
-      lightStroke = "rgba(222, 88, 249, 0.23)",
+      lightStroke = "rgba(222, 88, 249, 0.3)",
       activeStyle = {
         strokeColor: darkStroke,
         strokeWidth: 0.7,
@@ -42,11 +42,18 @@ function MshpMap(model) {
       highStyle = {
         dotColor: "#F24400"
       },
-      hoverStyle = {
-        fillColor: "#ffc",
-        strokeColor: "black",
-        dotColor: "#ffaa00",
-        strokeWidth: 1.5
+      hoverStyles = {
+        polygon: {
+          fillColor: "#ffc",
+          strokeColor: "black",
+          strokeWidth: 1.5
+        }, point:  {
+          dotColor: "#ffaa00",
+          dotSize: 6
+        }, polyline:  {
+          strokeColor: "black",
+          strokeWidth: 3
+        }
       };
 
   _ext.on('change', refreshLayers);
@@ -163,6 +170,11 @@ function MshpMap(model) {
     _groups.forEach(refreshLayer);
   }
 
+  function getHoverStyle(group) {
+    var type = group.getLayer().geometry_type;
+    return hoverStyles[type];
+  }
+
   function refreshLayer(group) {
     var drawShapes = false,
         style;
@@ -171,7 +183,7 @@ function MshpMap(model) {
     } else if (group == _highGroup) {
       style = highStyle;
     } else if (group == _hoverGroup) {
-      style = hoverStyle;
+      style = getHoverStyle(group);
       drawShapes = true;
     }
     if (!style) {

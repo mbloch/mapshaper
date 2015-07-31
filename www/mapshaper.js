@@ -2563,7 +2563,8 @@ function MouseArea(element) {
       _self = this,
       _dragging = false,
       _isOver = false,
-      _moveEvt,
+      _prevEvt,
+      // _moveEvt,
       _downEvt;
 
   pos.on('change', function() {_areaPos = pos.position()});
@@ -2612,26 +2613,26 @@ function MouseArea(element) {
   }
 
   function onMouseDown(e) {
-    if (e.button != 2 && e.which != 3) { // ignore right-click
-      _downEvt = _moveEvt;
+   if (e.button != 2 && e.which != 3) { // ignore right-click
+      _downEvt = procMouseEvent(e);
     }
   }
 
   function onMouseMove(e) {
-    _moveEvt = procMouseEvent(e, _moveEvt);
+    var evt = procMouseEvent(e);
     if (!_dragging && _downEvt && _downEvt.hover) {
       _dragging = true;
-      _self.dispatchEvent('dragstart', procMouseEvent(e));
+      _self.dispatchEvent('dragstart', evt);
     }
 
     if (_dragging) {
       var obj = {
-        dragX: _moveEvt.pageX - _downEvt.pageX,
-        dragY: _moveEvt.pageY - _downEvt.pageY
+        dragX: evt.pageX - _downEvt.pageX,
+        dragY: evt.pageY - _downEvt.pageY
       };
-      _self.dispatchEvent('drag', Utils.extend(obj, _moveEvt));
+      _self.dispatchEvent('drag', Utils.extend(obj, evt));
     } else {
-      _self.dispatchEvent('hover', _moveEvt);
+      _self.dispatchEvent('hover', evt);
     }
   }
 
@@ -2639,11 +2640,11 @@ function MouseArea(element) {
     if (_isOver) _self.dispatchEvent('dblclick', procMouseEvent(e));
   }
 
-  function procMouseEvent(e, prev) {
+  function procMouseEvent(e) {
     var pageX = e.pageX,
-        pageY = e.pageY;
-
-    return {
+        pageY = e.pageY,
+        prev = _prevEvt;
+    _prevEvt = {
       shiftKey: e.shiftKey,
       time: +new Date,
       pageX: pageX,
@@ -2654,6 +2655,7 @@ function MouseArea(element) {
       dx: prev ? pageX - prev.pageX : 0,
       dy: prev ? pageY - prev.pageY : 0
     };
+    return _prevEvt;
   }
 
   this.isOver = function() {
@@ -2665,7 +2667,7 @@ function MouseArea(element) {
   }
 
   this.mouseData = function() {
-    return Utils.extend({}, _moveEvt);
+    return Utils.extend({}, _prevEvt);
   }
 }
 
@@ -5725,10 +5727,10 @@ MapShaper.forEachPoint = function(lyr, cb) {
   if (lyr.geometry_type != 'point') {
     error("[forEachPoint()] Expects a point layer");
   }
-  lyr.shapes.forEach(function(shape) {
+  lyr.shapes.forEach(function(shape, id) {
     var n = shape ? shape.length : 0;
     for (var i=0; i<n; i++) {
-      cb(shape[i]);
+      cb(shape[i], id);
     }
   });
 };
@@ -13937,17 +13939,25 @@ function HitControl(ext, mouse) {
   };
 
   this.turnOff = function() {
-    update(-1);
-    selection = null;
-    test = null;
+    if (selection) {
+      update(-1);
+      selection = null;
+      test = null;
+    }
   };
+
+  mouse.on('click', function() {
+    if (hitId > -1) {
+      self.dispatchEvent('click', {id: hitId, properties: getProperties(hitId)});
+    }
+  });
 
   mouse.on('hover', function(e) {
     var tr, p;
-    if (!selection || !test || !selection.layer.data) {
+    if (!selection || !test) {
       return;
     }
-    if (ext.scale() < 0.5) {
+    if (ext.scale() < 0.2) {
       // ignore if zoomed too far out
       update(-1);
     } else {
@@ -13958,7 +13968,7 @@ function HitControl(ext, mouse) {
   });
 
   function polygonTest(x, y, m) {
-    var cands = findHitCandidates(x, y),
+    var cands = findHitCandidates(x, y, 0),
         hitId = -1,
         cand;
     for (var i=0; i<cands.length; i++) {
@@ -13972,11 +13982,38 @@ function HitControl(ext, mouse) {
   }
 
   function polylineTest(x, y, m) {
-    var cands = findHitCandidates(x, y);
+    var pixBuf = 15,
+        hitDist = pixBuf * m,
+        hitId = -1,
+        cands = findHitCandidates(x, y, pixBuf * m),
+        candDist;
+    for (var i=0; i<cands.length; i++) {
+      cand = cands[i];
+      candDist = geom.getPointToShapeDistance(x, y, cand.shape, selection.dataset.arcs);
+      if (candDist < hitDist) {
+        hitId = cand.id;
+        hitDist = candDist;
+      }
+    }
+    update(hitId);
   }
 
   function pointTest(x, y, m) {
+    var pixBuf = 25,
+        hitId = -1,
+        hitDist = pixBuf * pixBuf * m * m;
+    MapShaper.forEachPoint(selection.layer, function(p, id) {
+      var distSq = distanceSq(x, y, p[0], p[1]);
+      if (distSq < hitDist) {
+        hitId = id;
+        hitDist = distSq;
+      }
+    });
+    update(hitId);
+  }
 
+  function getProperties(id) {
+    return selection.layer.data ? selection.layer.data.getRecords()[id] : {};
   }
 
   function update(newId) {
@@ -13992,15 +14029,16 @@ function HitControl(ext, mouse) {
       }
     };
     if (newId > -1) {
-      o.properties = lyr.data.getRecords()[newId];
+      o.properties = getProperties(newId);
       o.layer.shapes.push(lyr.shapes[newId]);
     }
     hitId = newId;
     self.dispatchEvent('change', o);
   }
 
-  function findHitCandidates(x, y, m) {
+  function findHitCandidates(x, y, dist) {
     var bounds = new Bounds(),
+        buf = new Bounds(x-dist, y-dist, x+dist, y+dist),
         arcs = selection.dataset.arcs,
         cands = [];
     selection.layer.shapes.forEach(function(shp, shpId) {
@@ -14008,7 +14046,7 @@ function HitControl(ext, mouse) {
           i;
       for (i=0; i<n; i++) {
         arcs.getSimpleShapeBounds(shp[i], bounds.empty());
-        if (bounds.containsPoint(x, y)) {
+        if (bounds.intersects(buf)) {
           cands.push({shape: shp, id: shpId});
           break;
         }
@@ -14024,11 +14062,12 @@ utils.inherit(HitControl, EventDispatcher);
 
 
 function Popup() {
-
+  var maxWidth = 0;
   var el = El('div').addClass('popup').appendTo('body').hide();
+  var content = El('div').addClass('popup-content').appendTo(el);
 
   this.show = function(rec) {
-    render(rec, el);
+    render(rec, content);
     el.show();
   };
 
@@ -14037,14 +14076,23 @@ function Popup() {
   };
 
   function render(rec, el) {
-    var html = "";
+    var html = "", w;
     utils.forEachProperty(rec, function(v, k) {
       var isNum = utils.isNumber(v),
           className = isNum ? 'num-field' : 'str-field';
       html += utils.format('<tr><td class="field-name">%s</td><td class="%s">%s</td>',
           k, className, utils.htmlEscape(v));
     });
-    el.html('<table>' + html + '</table>');
+    if (html) {
+      el.html('<table>' + html + '</table>');
+    } else {
+      el.html('<div class="note">This layer is missing attribute data.</div>');
+    }
+    w = Math.min(el.node().offsetWidth, 250);
+    if (w > maxWidth) {
+      maxWidth = w;
+      el.css('min-width', w + 'px');
+    }
   }
 
 }
@@ -14053,30 +14101,56 @@ function Popup() {
 
 function InfoControl(model, hit) {
   var _popup = new Popup();
+  var _pinId = -1;
+  var _hoverId = -1;
   var btn = gui.addSidebarButton("#info-icon").on('click', function() {
     btn.toggleClass('selected');
-    if (btn.hasClass('selected')) {
-      turnOn();
-    } else {
-      turnOff();
-    }
+    update();
   });
+
+  model.on('select', update);
 
   hit.on('change', function(e) {
-    if (e.properties) {
-      _popup.show(e.properties);
+    if (_pinId == -1) {
+      if (e.properties) {
+        _popup.show(e.properties);
+      } else {
+        _popup.hide();
+      }
+    }
+    _hoverId = e.id;
+  });
+
+  hit.on('click', function(e) {
+    if (e.id == _pinId) {
+      _pinId = -1;
     } else {
-      _popup.hide();
+      _popup.show(e.properties);
+      _pinId = e.id;
     }
   });
 
-  function turnOn() {
-    hit.turnOn(model.getEditingLayer());
+  function isOn() {
+    return btn.hasClass('selected');
   }
 
-  function turnOff() {
-    _popup.hide();
-    hit.turnOff();
+  function pin() {
+    _pinId = _hoverId;
+  }
+
+  function unPin() {
+    _pinId = -1;
+  }
+
+  function update() {
+    if (isOn()) {
+      hit.turnOn(model.getEditingLayer());
+    } else {
+      _pinId = -1;
+      _hoverId = -1;
+      _popup.hide();
+      hit.turnOff();
+    }
   }
 
 }
@@ -14110,7 +14184,7 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#334",
-      lightStroke = "rgba(222, 88, 249, 0.23)",
+      lightStroke = "rgba(222, 88, 249, 0.3)",
       activeStyle = {
         strokeColor: darkStroke,
         strokeWidth: 0.7,
@@ -14119,11 +14193,18 @@ function MshpMap(model) {
       highStyle = {
         dotColor: "#F24400"
       },
-      hoverStyle = {
-        fillColor: "#ffc",
-        strokeColor: "black",
-        dotColor: "#ffaa00",
-        strokeWidth: 1.5
+      hoverStyles = {
+        polygon: {
+          fillColor: "#ffc",
+          strokeColor: "black",
+          strokeWidth: 1.5
+        }, point:  {
+          dotColor: "#ffaa00",
+          dotSize: 6
+        }, polyline:  {
+          strokeColor: "black",
+          strokeWidth: 3
+        }
       };
 
   _ext.on('change', refreshLayers);
@@ -14240,6 +14321,11 @@ function MshpMap(model) {
     _groups.forEach(refreshLayer);
   }
 
+  function getHoverStyle(group) {
+    var type = group.getLayer().geometry_type;
+    return hoverStyles[type];
+  }
+
   function refreshLayer(group) {
     var drawShapes = false,
         style;
@@ -14248,7 +14334,7 @@ function MshpMap(model) {
     } else if (group == _highGroup) {
       style = highStyle;
     } else if (group == _hoverGroup) {
-      style = hoverStyle;
+      style = getHoverStyle(group);
       drawShapes = true;
     }
     if (!style) {

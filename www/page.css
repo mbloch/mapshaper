@@ -524,19 +524,25 @@ body.simplify #layer-control {
 .popup {
 	position: absolute;
 	z-index: 30;
-	top: 30px;
+	top: 0;
+	bottom: 0;
 	right: 0px;
-	background-color: rgba(255, 255, 255, 0.88);
+	pointer-events: none;
+}
+
+.popup-content {
 	padding: 10px;
+	margin-top: 30px;
+	background-color: rgba(255, 255, 255, 0.88);
 	line-height: 1;
 	font-size: 13px;
+	overflow-y: auto;
 }
 
 .popup td {
 	vertical-align: top;
 	font-weight: bold;
-	max-width: 130px;
-	min-width: 130px;
+	min-width: 100px;
 }
 
 .popup td.field-name {
@@ -551,6 +557,11 @@ body.simplify #layer-control {
 	font-weight: bold;
 	text-align: right;*/
 	font-style: italic;
+}
+
+.popup .note {
+	font-style: italic;
+	text-align: right;
 }
 
 /* --- Map ---------------------- */
