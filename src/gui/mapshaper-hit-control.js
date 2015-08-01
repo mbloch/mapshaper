@@ -29,6 +29,7 @@ function HitControl(ext, mouse) {
   };
 
   mouse.on('click', function() {
+    if (!selection) return;
     if (pinId > -1 && hoverId == pinId) {
       // clicking on pinned shape: unpin
       pinId = -1;
@@ -37,13 +38,12 @@ function HitControl(ext, mouse) {
       pinId = hoverId;
     } else if (pinId > -1 && hoverId > -1) {
       // clicking on unpinned shape while pinned: pin
-      select(hoverId);
       pinId = hoverId;
     } else if (pinId > -1 && hoverId == -1) {
       // clicking off the layer while pinned: unpin and deselect
       pinId = -1;
-      select(-1);
     }
+    select(hoverId);
   });
 
   mouse.on('hover', function(e) {
@@ -51,14 +51,9 @@ function HitControl(ext, mouse) {
     if (!selection || !test) {
       return;
     }
-    if (ext.scale() < 0.2) {
-      // ignore if zoomed too far out
-      update(-1);
-    } else {
-      tr = ext.getTransform();
-      p = tr.invert().transform(e.x, e.y);
-      test(p[0], p[1], 1/tr.mx);
-    }
+    tr = ext.getTransform();
+    p = tr.invert().transform(e.x, e.y);
+    test(p[0], p[1], 1/tr.mx);
   });
 
   function polygonTest(x, y, m) {
@@ -78,8 +73,11 @@ function HitControl(ext, mouse) {
   function polylineTest(x, y, m) {
     var dist = 15 * m,
         hitId = -1,
-        cands = findHitCandidates(x, y, dist),
-        candDist;
+        cands, candDist;
+    if (ext.scale() < 1) {
+      dist *= ext.scale(); // reduce hit threshold when zoomed out
+    }
+    cands = findHitCandidates(x, y, dist);
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
       candDist = geom.getPointToShapeDistance(x, y, cand.shape, selection.dataset.arcs);
@@ -112,26 +110,24 @@ function HitControl(ext, mouse) {
   function update(newId) {
     hoverId = newId;
     map.classed('hover', newId > -1);
-    if (pinId == -1) {
+    if (pinId == -1 && hoverId != selectionId) {
       select(newId);
     }
   }
 
   function select(newId) {
-    var lyr = selection.layer,
-        o;
-    if (newId == selectionId) return;
-    o = {
+    var o = {
+      pinned: pinId > -1,
       id: newId,
       dataset: selection.dataset,
       layer: {
-        geometry_type: lyr.geometry_type,
+        geometry_type: selection.layer.geometry_type,
         shapes: []
       }
     };
     if (newId > -1) {
       o.properties = getProperties(newId);
-      o.layer.shapes.push(lyr.shapes[newId]);
+      o.layer.shapes.push(selection.layer.shapes[newId]);
     }
     selectionId = newId;
     self.dispatchEvent('change', o);

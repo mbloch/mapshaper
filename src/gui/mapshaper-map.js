@@ -48,22 +48,38 @@ function MshpMap(model) {
           strokeColor: "black",
           strokeWidth: 1.5
         }, point:  {
-          dotColor: "#ffaa00",
+          dotColor: "black",
           dotSize: 8
         }, polyline:  {
           strokeColor: "black",
           strokeWidth: 3
         }
-      };
+      },
+      pinnedStyles = {
+        polygon: {
+          fillColor: "#F46403",
+          strokeColor: "black",
+          strokeWidth: 1.5
+        }, point:  {
+          dotColor: "#F46403",
+          dotSize: 8
+        }, polyline:  {
+          strokeColor: "#E85E00",
+          strokeWidth: 4
+        }
+      },
+      hoverStyle;
 
   _ext.on('change', refreshLayers);
 
   _hit.on('change', function(e) {
+    var style;
     if (!_hoverGroup) {
       _hoverGroup = addGroup(e.dataset, {'no_filtering': true});
     }
     _hoverGroup.showLayer(e.layer);
-    refreshLayer(_hoverGroup);
+    hoverStyle = getHoverStyle(e.layer, e.pinned);
+    refreshLayer(_hoverGroup, true);
   });
 
   model.on('delete', function(e) {
@@ -170,21 +186,18 @@ function MshpMap(model) {
     _groups.forEach(refreshLayer);
   }
 
-  function getHoverStyle(group) {
-    var type = group.getLayer().geometry_type;
-    return hoverStyles[type];
+  function getHoverStyle(lyr, pinned) {
+    return (pinned ? pinnedStyles : hoverStyles)[lyr.geometry_type];
   }
 
-  function refreshLayer(group) {
-    var drawShapes = false,
-        style;
+  function refreshLayer(group, drawShapes) {
+    var style;
     if (group == _activeGroup) {
       style = activeStyle;
     } else if (group == _highGroup) {
       style = highStyle;
     } else if (group == _hoverGroup) {
-      style = getHoverStyle(group);
-      drawShapes = true;
+      style = hoverStyle;
     }
     if (!style) {
       group.hide();
