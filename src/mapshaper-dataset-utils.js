@@ -104,7 +104,7 @@ MapShaper.isolateLayer = function(layer, dataset) {
 // a 0-based array index
 MapShaper.findMatchingLayers = function(layers, target) {
   var ii = [];
-  target.split(',').forEach(function(id) {
+  String(target).split(',').forEach(function(id) {
     var i = Number(id),
         rxp = utils.wildcardToRegExp(id);
     if (utils.isInteger(i)) {

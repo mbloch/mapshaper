@@ -195,7 +195,7 @@ function Console(model) {
           // rename-layers should default to all layers;
           // other commands can target the current layer
           if (!cmd.options.target && cmd.name != 'rename-layers') {
-            cmd.options.target = lyr.name;
+            cmd.options.target = String(lyrId);
           }
         });
       }
