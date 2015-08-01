@@ -57,14 +57,14 @@ function MshpMap(model) {
       },
       pinnedStyles = {
         polygon: {
-          fillColor: "#F46403",
+          fillColor: "#FFD85C",
           strokeColor: "black",
           strokeWidth: 1.5
         }, point:  {
           dotColor: "#F46403",
           dotSize: 8
         }, polyline:  {
-          strokeColor: "#E85E00",
+          strokeColor: "#F46403",
           strokeWidth: 4
         }
       },
