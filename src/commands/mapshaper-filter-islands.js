@@ -74,7 +74,7 @@ MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
 
 // Assumes that ring boundaries to not cross
 MapShaper.ringHasHoles = function(ring, rings, arcs) {
-  var bbox = arcs.getSimpleShapeBounds(ring).toArray();
+  var bbox = arcs.getSimpleShapeBounds2(ring);
   var sibling, p;
   for (var i=0, n=rings.length; i<n; i++) {
     sibling = rings[i];

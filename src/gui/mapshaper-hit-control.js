@@ -1,7 +1,9 @@
 /* @requires mapshaper-gui-lib */
 
 function HitControl(ext, mouse) {
+
   var self = this;
+  var map = El('#mshp-main-map');
   var selectionId = -1;
   var hoverId = -1;
   var pinId = -1;
@@ -74,17 +76,16 @@ function HitControl(ext, mouse) {
   }
 
   function polylineTest(x, y, m) {
-    var pixBuf = 15,
-        hitDist = pixBuf * m,
+    var dist = 15 * m,
         hitId = -1,
-        cands = findHitCandidates(x, y, pixBuf * m),
+        cands = findHitCandidates(x, y, dist),
         candDist;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
       candDist = geom.getPointToShapeDistance(x, y, cand.shape, selection.dataset.arcs);
-      if (candDist < hitDist) {
+      if (candDist < dist) {
         hitId = cand.id;
-        hitDist = candDist;
+        dist = candDist;
       }
     }
     update(hitId);
@@ -110,6 +111,7 @@ function HitControl(ext, mouse) {
 
   function update(newId) {
     hoverId = newId;
+    map.classed('hover', newId > -1);
     if (pinId == -1) {
       select(newId);
     }
@@ -136,16 +138,16 @@ function HitControl(ext, mouse) {
   }
 
   function findHitCandidates(x, y, dist) {
-    var bounds = new Bounds(),
-        buf = new Bounds(x-dist, y-dist, x+dist, y+dist),
+    var bbox = [],
         arcs = selection.dataset.arcs,
         cands = [];
     selection.layer.shapes.forEach(function(shp, shpId) {
       var n = shp ? shp.length : 0,
           i;
       for (i=0; i<n; i++) {
-        arcs.getSimpleShapeBounds(shp[i], bounds.empty());
-        if (bounds.intersects(buf)) {
+        arcs.getSimpleShapeBounds2(shp[i], bbox);
+        if (x + dist > bbox[0] && x - dist < bbox[2] &&
+          y + dist > bbox[1] && y - dist < bbox[3]) {
           cands.push({shape: shp, id: shpId});
           break;
         }
