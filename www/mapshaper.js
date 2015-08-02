@@ -14205,7 +14205,7 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#334",
-      lightStroke = "rgba(162, 204, 33, 0.35)", // "rgba(141, 198, 0, 0.35)", // "rgba(222, 88, 249, 0.3)",
+      lightStroke = "rgba(135, 178, 0, 0.35)",
       activeStyle = {
         strokeColor: darkStroke,
         strokeWidth: 0.7,
@@ -14216,7 +14216,7 @@ function MshpMap(model) {
       },
       hoverStyles = {
         polygon: {
-          fillColor: "#ffebf1", // "#ffebf6",
+          fillColor: "#ffebf1",
           strokeColor: "black",
           strokeWidth: 1.5
         }, point:  {
@@ -14229,7 +14229,7 @@ function MshpMap(model) {
       },
       pinnedStyles = {
         polygon: {
-          fillColor: "#ffebf1", // "#f993d7",
+          fillColor: "#ffebf1",
           strokeColor: "#f74b80",
           strokeWidth: 1.5
         }, point:  {
