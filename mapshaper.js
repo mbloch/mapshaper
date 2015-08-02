@@ -2224,21 +2224,21 @@ function ShapeIter(arcs) {
   this._n = 0;
   this.x = 0;
   this.y = 0;
-
-  this.hasNext = function() {
-    var arc = this._arc;
-    if (this._i >= this._n) {
-      return false;
-    } else if (arc.hasNext()) {
-      this.x = arc.x;
-      this.y = arc.y;
-      return true;
-    } else {
-      this.nextArc();
-      return this.hasNext();
-    }
-  };
 }
+
+ShapeIter.prototype.hasNext = function() {
+  var arc = this._arc;
+  if (this._i >= this._n) {
+    return false;
+  } else if (arc.hasNext()) {
+    this.x = arc.x;
+    this.y = arc.y;
+    return true;
+  } else {
+    this.nextArc();
+    return this.hasNext();
+  }
+};
 
 ShapeIter.prototype.init = function(ids) {
   this._ids = ids;

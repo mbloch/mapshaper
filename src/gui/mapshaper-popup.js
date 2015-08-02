@@ -27,11 +27,6 @@ function Popup() {
     } else {
       el.html('<div class="note">This layer is missing attribute data.</div>');
     }
-    w = Math.min(el.node().offsetWidth, 250);
-    if (w > maxWidth) {
-      maxWidth = w;
-      el.css('min-width', w + 'px');
-    }
   }
 
 }

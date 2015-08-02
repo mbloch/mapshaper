@@ -3,7 +3,6 @@
 function HitControl(ext, mouse) {
 
   var self = this;
-  var map = El('#mshp-main-map');
   var selectionId = -1;
   var hoverId = -1;
   var pinId = -1;
@@ -114,10 +113,11 @@ function HitControl(ext, mouse) {
 
   function update(newId) {
     hoverId = newId;
-    map.classed('hover', newId > -1);
+
     if (pinId == -1 && hoverId != selectionId) {
       select(newId);
     }
+    El('#map-layers').classed('hover', hoverId > -1);
   }
 
   function select(newId) {

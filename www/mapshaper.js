@@ -4901,21 +4901,21 @@ function ShapeIter(arcs) {
   this._n = 0;
   this.x = 0;
   this.y = 0;
-
-  this.hasNext = function() {
-    var arc = this._arc;
-    if (this._i >= this._n) {
-      return false;
-    } else if (arc.hasNext()) {
-      this.x = arc.x;
-      this.y = arc.y;
-      return true;
-    } else {
-      this.nextArc();
-      return this.hasNext();
-    }
-  };
 }
+
+ShapeIter.prototype.hasNext = function() {
+  var arc = this._arc;
+  if (this._i >= this._n) {
+    return false;
+  } else if (arc.hasNext()) {
+    this.x = arc.x;
+    this.y = arc.y;
+    return true;
+  } else {
+    this.nextArc();
+    return this.hasNext();
+  }
+};
 
 ShapeIter.prototype.init = function(ids) {
   this._ids = ids;
@@ -13946,7 +13946,6 @@ utils.inherit(MapExtent, EventDispatcher);
 function HitControl(ext, mouse) {
 
   var self = this;
-  var map = El('#mshp-main-map');
   var selectionId = -1;
   var hoverId = -1;
   var pinId = -1;
@@ -14057,10 +14056,11 @@ function HitControl(ext, mouse) {
 
   function update(newId) {
     hoverId = newId;
-    map.classed('hover', newId > -1);
+
     if (pinId == -1 && hoverId != selectionId) {
       select(newId);
     }
+    El('#map-layers').classed('hover', hoverId > -1);
   }
 
   function select(newId) {
@@ -14132,11 +14132,6 @@ function Popup() {
       el.html('<table>' + html + '</table>');
     } else {
       el.html('<div class="note">This layer is missing attribute data.</div>');
-    }
-    w = Math.min(el.node().offsetWidth, 250);
-    if (w > maxWidth) {
-      maxWidth = w;
-      el.css('min-width', w + 'px');
     }
   }
 
