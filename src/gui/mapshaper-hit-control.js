@@ -22,13 +22,14 @@ function HitControl(ext, mouse) {
 
   this.turnOff = function() {
     if (selection) {
+      pinId = -1;
       update(-1);
       selection = null;
       test = null;
     }
   };
 
-  mouse.on('click', function() {
+  mouse.on('click', function(e) {
     if (!selection) return;
     if (pinId > -1 && hoverId == pinId) {
       // clicking on pinned shape: unpin
@@ -46,14 +47,18 @@ function HitControl(ext, mouse) {
     select(hoverId);
   });
 
+  // This causes the info panel to flicker on and off
+  //mouse.on('leave', function(e) {
+  // update(-1);
+  //});
+
   mouse.on('hover', function(e) {
     var tr, p;
-    if (!selection || !test) {
-      return;
+    if (selection && test && e.hover) {
+      tr = ext.getTransform();
+      p = tr.invert().transform(e.x, e.y);
+      test(p[0], p[1], 1/tr.mx);
     }
-    tr = ext.getTransform();
-    p = tr.invert().transform(e.x, e.y);
-    test(p[0], p[1], 1/tr.mx);
   });
 
   function polygonTest(x, y, m) {

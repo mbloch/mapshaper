@@ -2917,6 +2917,24 @@ function ArcCollection() {
     return bounds;
   };
 
+  this.getSimpleShapeBounds2 = function(arcIds, arr) {
+    var bbox = arr || [],
+        bb = _bb,
+        id = absArcId(arcIds[0]) * 4;
+    bbox[0] = bb[id];
+    bbox[1] = bb[++id];
+    bbox[2] = bb[++id];
+    bbox[3] = bb[++id];
+    for (var i=1, n=arcIds.length; i<n; i++) {
+      id = absArcId(arcIds[i]) * 4;
+      if (bb[id] < bbox[0]) bbox[0] = bb[id];
+      if (bb[++id] < bbox[1]) bbox[1] = bb[id];
+      if (bb[++id] > bbox[2]) bbox[2] = bb[id];
+      if (bb[++id] > bbox[3]) bbox[3] = bb[id];
+    }
+    return bbox;
+  };
+
   this.getMultiShapeBounds = function(shapeIds, bounds) {
     bounds = bounds || new Bounds();
     if (shapeIds) { // handle null shapes
@@ -3339,7 +3357,7 @@ MapShaper.isolateLayer = function(layer, dataset) {
 // a 0-based array index
 MapShaper.findMatchingLayers = function(layers, target) {
   var ii = [];
-  target.split(',').forEach(function(id) {
+  String(target).split(',').forEach(function(id) {
     var i = Number(id),
         rxp = utils.wildcardToRegExp(id);
     if (utils.isInteger(i)) {
@@ -11096,7 +11114,7 @@ MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
 
 // Assumes that ring boundaries to not cross
 MapShaper.ringHasHoles = function(ring, rings, arcs) {
-  var bbox = arcs.getSimpleShapeBounds(ring).toArray();
+  var bbox = arcs.getSimpleShapeBounds2(ring);
   var sibling, p;
   for (var i=0, n=rings.length; i<n; i++) {
     sibling = rings[i];

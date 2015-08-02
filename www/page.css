@@ -522,21 +522,22 @@ body.simplify #layer-control {
 /* --- Popup -------------------- */
 
 .popup {
+	overflow: hidden;
 	position: absolute;
 	z-index: 30;
 	top: 0;
-	bottom: 0;
+	height: 100%;
+	overflow-y: auto;
 	right: 0px;
 	pointer-events: none;
 }
 
 .popup-content {
+	pointer-events: auto;
 	padding: 10px;
-	margin-top: 30px;
 	background-color: rgba(255, 255, 255, 0.88);
 	line-height: 1;
 	font-size: 13px;
-	overflow-y: auto;
 }
 
 .popup td {
@@ -566,8 +567,16 @@ body.simplify #layer-control {
 
 /* --- Map ---------------------- */
 
+#map-layers {
+	height: 100%;
+}
+
 #mshp-main-map {
 	background-color: #fff;
+}
+
+#mshp-main-map.hover {
+	cursor: pointer;
 }
 
 #mshp-main-map canvas {

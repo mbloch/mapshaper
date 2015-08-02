@@ -7,12 +7,13 @@ function LayerGroup(dataset, opts) {
       _canvas = _el.node(),
       _ctx = _canvas.getContext('2d'),
       _lyr, _filteredArcs, _bounds;
-
+  opts = opts || {};
   init();
 
   function init() {
-    _bounds = MapShaper.getDatasetBounds(dataset);
+    //_filteredArcs.update(dataset.arcs);
     _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs, opts) : null;
+    _bounds = MapShaper.getDatasetBounds(dataset);
   }
 
   this.hide = function() {
@@ -39,6 +40,10 @@ function LayerGroup(dataset, opts) {
     return dataset;
   };
 
+  this.getArcs = function() {
+    return _filteredArcs;
+  };
+
   // Rebuild filtered arcs and recalculate bounds
   this.updated = function() {
     init();
@@ -49,8 +54,7 @@ function LayerGroup(dataset, opts) {
     return this;
   };
 
-  this.drawStructure = function(style, ext) {
-    var lyr = this.getLayer();
+  this.drawStructure = function(lyr, style, ext) {
     updateCanvas(ext);
     _el.show();
     if (_filteredArcs) {
@@ -61,9 +65,8 @@ function LayerGroup(dataset, opts) {
     }
   };
 
-  this.drawShapes = function(style, ext) {
-    var lyr = this.getLayer(),
-        type = lyr.geometry_type;
+  this.drawShapes = function(lyr, style, ext) {
+    var type = lyr.geometry_type;
         updateCanvas(ext);
     _el.show();
     if (type == 'point') {

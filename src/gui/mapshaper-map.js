@@ -21,9 +21,10 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
 };
 
 function MshpMap(model) {
-  var _root = El("#mshp-main-map"),
-      _ext = new MapExtent(_root),
-      _mouse = new MouseArea(_root.node()),
+  var _root = El('#mshp-main-map'),
+      _layers = El('#map-layers'),
+      _ext = new MapExtent(_layers),
+      _mouse = new MouseArea(_layers.node()),
       _nav = new MapNav(_root, _ext, _mouse),
       _hit = new HitControl(_ext, _mouse),
       _info = new InfoControl(model, _hit),
@@ -33,7 +34,7 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#334",
-      lightStroke = "rgba(222, 88, 249, 0.3)",
+      lightStroke = "rgba(162, 204, 33, 0.35)", // "rgba(141, 198, 0, 0.35)", // "rgba(222, 88, 249, 0.3)",
       activeStyle = {
         strokeColor: darkStroke,
         strokeWidth: 0.7,
@@ -44,7 +45,7 @@ function MshpMap(model) {
       },
       hoverStyles = {
         polygon: {
-          fillColor: "#ffc",
+          fillColor: "#ffebf1", // "#ffebf6",
           strokeColor: "black",
           strokeWidth: 1.5
         }, point:  {
@@ -57,14 +58,14 @@ function MshpMap(model) {
       },
       pinnedStyles = {
         polygon: {
-          fillColor: "#FFD85C",
+          fillColor: "#f7baca", // "#f993d7",
           strokeColor: "black",
           strokeWidth: 1.5
         }, point:  {
-          dotColor: "#F46403",
+          dotColor: "#f74b80",
           dotSize: 8
         }, polyline:  {
-          strokeColor: "#F46403",
+          strokeColor: "#f74b80",
           strokeWidth: 4
         }
       },
@@ -75,21 +76,24 @@ function MshpMap(model) {
   _hit.on('change', function(e) {
     var style;
     if (!_hoverGroup) {
-      _hoverGroup = addGroup(e.dataset, {'no_filtering': true});
+      _hoverGroup = addGroup(e.dataset, {no_filtering: true});
     }
     _hoverGroup.showLayer(e.layer);
     hoverStyle = getHoverStyle(e.layer, e.pinned);
-    refreshLayer(_hoverGroup, true);
+    refreshLayer(_hoverGroup);
   });
 
   model.on('delete', function(e) {
-    deleteGroup(e.dataset);
+    var group = findGroup(e.dataset);
+    while (group) {
+      deleteGroup(group);
+      group = findGroup(e.dataset);
+    }
   });
 
   model.on('select', function(e) {
     if (_hoverGroup) {
-      // careful, this removes all groups with this dataset; need to improve
-      deleteGroup(_hoverGroup.getDataset());
+      deleteGroup(_hoverGroup);
       _hoverGroup = null;
     }
   });
@@ -126,7 +130,7 @@ function MshpMap(model) {
 
   this.setHighlightLayer = function(lyr, dataset) {
     if (_highGroup) {
-      deleteGroup(_highGroup.getDataset());
+      deleteGroup(_highGroup);
       _highGroup = null;
     }
     if (lyr) {
@@ -190,7 +194,7 @@ function MshpMap(model) {
     return (pinned ? pinnedStyles : hoverStyles)[lyr.geometry_type];
   }
 
-  function refreshLayer(group, drawShapes) {
+  function refreshLayer(group) {
     var style;
     if (group == _activeGroup) {
       style = activeStyle;
@@ -201,23 +205,23 @@ function MshpMap(model) {
     }
     if (!style) {
       group.hide();
-    } else if (drawShapes) {
-      group.drawShapes(style, _ext);
+    } else if (group == _hoverGroup) {
+      group.drawShapes(group.getLayer(), style, _ext);
     } else {
-      group.drawStructure(style, _ext);
+      group.drawStructure(group.getLayer(), style, _ext);
     }
   }
 
   function addGroup(dataset, opts) {
     var group = new LayerGroup(dataset, opts);
-    group.getElement().appendTo(_root);
+    group.getElement().appendTo(_layers);
     _groups.push(group);
     return group;
   }
 
-  function deleteGroup(dataset) {
+  function deleteGroup(group) {
     _groups = _groups.reduce(function(memo, g) {
-      if (g.getDataset() == dataset) {
+      if (g == group) {
         g.remove();
       } else {
         memo.push(g);

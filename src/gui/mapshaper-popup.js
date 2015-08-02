@@ -2,7 +2,7 @@
 
 function Popup() {
   var maxWidth = 0;
-  var el = El('div').addClass('popup').appendTo('body').hide();
+  var el = El('div').addClass('popup').appendTo('#mshp-main-map').hide();
   var content = El('div').addClass('popup-content').appendTo(el);
 
   this.show = function(rec) {

@@ -85,6 +85,7 @@ function getPathStart(style) {
   }
 
   return function(i, ctx) {
+    ctx.beginPath();
     if (stroked) {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -94,7 +95,6 @@ function getPathStart(style) {
     if (filled) {
       ctx.fillStyle = style.fillColor;
     }
-    ctx.beginPath();
   };
 }
 

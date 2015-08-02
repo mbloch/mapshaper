@@ -2605,7 +2605,7 @@ function MouseArea(element) {
       elapsed = evt.time - _downEvt.time;
       dx = evt.pageX - _downEvt.pageX;
       dy = evt.pageY - _downEvt.pageY;
-      if (elapsed < 500 && Math.sqrt(dx * dx + dy * dy) < 6) {
+      if (_isOver && elapsed < 500 && Math.sqrt(dx * dx + dy * dy) < 6) {
         _self.dispatchEvent('click', evt);
       }
       _downEvt = null;
@@ -5594,6 +5594,24 @@ function ArcCollection() {
     return bounds;
   };
 
+  this.getSimpleShapeBounds2 = function(arcIds, arr) {
+    var bbox = arr || [],
+        bb = _bb,
+        id = absArcId(arcIds[0]) * 4;
+    bbox[0] = bb[id];
+    bbox[1] = bb[++id];
+    bbox[2] = bb[++id];
+    bbox[3] = bb[++id];
+    for (var i=1, n=arcIds.length; i<n; i++) {
+      id = absArcId(arcIds[i]) * 4;
+      if (bb[id] < bbox[0]) bbox[0] = bb[id];
+      if (bb[++id] < bbox[1]) bbox[1] = bb[id];
+      if (bb[++id] > bbox[2]) bbox[2] = bb[id];
+      if (bb[++id] > bbox[3]) bbox[3] = bb[id];
+    }
+    return bbox;
+  };
+
   this.getMultiShapeBounds = function(shapeIds, bounds) {
     bounds = bounds || new Bounds();
     if (shapeIds) { // handle null shapes
@@ -6016,7 +6034,7 @@ MapShaper.isolateLayer = function(layer, dataset) {
 // a 0-based array index
 MapShaper.findMatchingLayers = function(layers, target) {
   var ii = [];
-  target.split(',').forEach(function(id) {
+  String(target).split(',').forEach(function(id) {
     var i = Number(id),
         rxp = utils.wildcardToRegExp(id);
     if (utils.isInteger(i)) {
@@ -13353,6 +13371,7 @@ function getPathStart(style) {
   }
 
   return function(i, ctx) {
+    ctx.beginPath();
     if (stroked) {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -13362,7 +13381,6 @@ function getPathStart(style) {
     if (filled) {
       ctx.fillStyle = style.fillColor;
     }
-    ctx.beginPath();
   };
 }
 
@@ -13538,12 +13556,13 @@ function LayerGroup(dataset, opts) {
       _canvas = _el.node(),
       _ctx = _canvas.getContext('2d'),
       _lyr, _filteredArcs, _bounds;
-
+  opts = opts || {};
   init();
 
   function init() {
-    _bounds = MapShaper.getDatasetBounds(dataset);
+    //_filteredArcs.update(dataset.arcs);
     _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs, opts) : null;
+    _bounds = MapShaper.getDatasetBounds(dataset);
   }
 
   this.hide = function() {
@@ -13570,6 +13589,10 @@ function LayerGroup(dataset, opts) {
     return dataset;
   };
 
+  this.getArcs = function() {
+    return _filteredArcs;
+  };
+
   // Rebuild filtered arcs and recalculate bounds
   this.updated = function() {
     init();
@@ -13580,8 +13603,7 @@ function LayerGroup(dataset, opts) {
     return this;
   };
 
-  this.drawStructure = function(style, ext) {
-    var lyr = this.getLayer();
+  this.drawStructure = function(lyr, style, ext) {
     updateCanvas(ext);
     _el.show();
     if (_filteredArcs) {
@@ -13592,9 +13614,8 @@ function LayerGroup(dataset, opts) {
     }
   };
 
-  this.drawShapes = function(style, ext) {
-    var lyr = this.getLayer(),
-        type = lyr.geometry_type;
+  this.drawShapes = function(lyr, style, ext) {
+    var type = lyr.geometry_type;
         updateCanvas(ext);
     _el.show();
     if (type == 'point') {
@@ -13923,7 +13944,9 @@ utils.inherit(MapExtent, EventDispatcher);
 
 
 function HitControl(ext, mouse) {
+
   var self = this;
+  var map = El('#mshp-main-map');
   var selectionId = -1;
   var hoverId = -1;
   var pinId = -1;
@@ -13942,13 +13965,15 @@ function HitControl(ext, mouse) {
 
   this.turnOff = function() {
     if (selection) {
+      pinId = -1;
       update(-1);
       selection = null;
       test = null;
     }
   };
 
-  mouse.on('click', function() {
+  mouse.on('click', function(e) {
+    if (!selection) return;
     if (pinId > -1 && hoverId == pinId) {
       // clicking on pinned shape: unpin
       pinId = -1;
@@ -13957,24 +13982,22 @@ function HitControl(ext, mouse) {
       pinId = hoverId;
     } else if (pinId > -1 && hoverId > -1) {
       // clicking on unpinned shape while pinned: pin
-      select(hoverId);
       pinId = hoverId;
     } else if (pinId > -1 && hoverId == -1) {
       // clicking off the layer while pinned: unpin and deselect
       pinId = -1;
-      select(-1);
     }
+    select(hoverId);
   });
+
+  // This causes the info panel to flicker on and off
+  //mouse.on('leave', function(e) {
+  // update(-1);
+  //});
 
   mouse.on('hover', function(e) {
     var tr, p;
-    if (!selection || !test) {
-      return;
-    }
-    if (ext.scale() < 0.2) {
-      // ignore if zoomed too far out
-      update(-1);
-    } else {
+    if (selection && test && e.hover) {
       tr = ext.getTransform();
       p = tr.invert().transform(e.x, e.y);
       test(p[0], p[1], 1/tr.mx);
@@ -13996,17 +14019,19 @@ function HitControl(ext, mouse) {
   }
 
   function polylineTest(x, y, m) {
-    var pixBuf = 15,
-        hitDist = pixBuf * m,
+    var dist = 15 * m,
         hitId = -1,
-        cands = findHitCandidates(x, y, pixBuf * m),
-        candDist;
+        cands, candDist;
+    if (ext.scale() < 1) {
+      dist *= ext.scale(); // reduce hit threshold when zoomed out
+    }
+    cands = findHitCandidates(x, y, dist);
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
       candDist = geom.getPointToShapeDistance(x, y, cand.shape, selection.dataset.arcs);
-      if (candDist < hitDist) {
+      if (candDist < dist) {
         hitId = cand.id;
-        hitDist = candDist;
+        dist = candDist;
       }
     }
     update(hitId);
@@ -14032,42 +14057,41 @@ function HitControl(ext, mouse) {
 
   function update(newId) {
     hoverId = newId;
-    if (pinId == -1) {
+    map.classed('hover', newId > -1);
+    if (pinId == -1 && hoverId != selectionId) {
       select(newId);
     }
   }
 
   function select(newId) {
-    var lyr = selection.layer,
-        o;
-    if (newId == selectionId) return;
-    o = {
+    var o = {
+      pinned: pinId > -1,
       id: newId,
       dataset: selection.dataset,
       layer: {
-        geometry_type: lyr.geometry_type,
+        geometry_type: selection.layer.geometry_type,
         shapes: []
       }
     };
     if (newId > -1) {
       o.properties = getProperties(newId);
-      o.layer.shapes.push(lyr.shapes[newId]);
+      o.layer.shapes.push(selection.layer.shapes[newId]);
     }
     selectionId = newId;
     self.dispatchEvent('change', o);
   }
 
   function findHitCandidates(x, y, dist) {
-    var bounds = new Bounds(),
-        buf = new Bounds(x-dist, y-dist, x+dist, y+dist),
+    var bbox = [],
         arcs = selection.dataset.arcs,
         cands = [];
     selection.layer.shapes.forEach(function(shp, shpId) {
       var n = shp ? shp.length : 0,
           i;
       for (i=0; i<n; i++) {
-        arcs.getSimpleShapeBounds(shp[i], bounds.empty());
-        if (bounds.intersects(buf)) {
+        arcs.getSimpleShapeBounds2(shp[i], bbox);
+        if (x + dist > bbox[0] && x - dist < bbox[2] &&
+          y + dist > bbox[1] && y - dist < bbox[3]) {
           cands.push({shape: shp, id: shpId});
           break;
         }
@@ -14084,7 +14108,7 @@ utils.inherit(HitControl, EventDispatcher);
 
 function Popup() {
   var maxWidth = 0;
-  var el = El('div').addClass('popup').appendTo('body').hide();
+  var el = El('div').addClass('popup').appendTo('#mshp-main-map').hide();
   var content = El('div').addClass('popup-content').appendTo(el);
 
   this.show = function(rec) {
@@ -14169,9 +14193,10 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
 };
 
 function MshpMap(model) {
-  var _root = El("#mshp-main-map"),
-      _ext = new MapExtent(_root),
-      _mouse = new MouseArea(_root.node()),
+  var _root = El('#mshp-main-map'),
+      _layers = El('#map-layers'),
+      _ext = new MapExtent(_layers),
+      _mouse = new MouseArea(_layers.node()),
       _nav = new MapNav(_root, _ext, _mouse),
       _hit = new HitControl(_ext, _mouse),
       _info = new InfoControl(model, _hit),
@@ -14181,7 +14206,7 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#334",
-      lightStroke = "rgba(222, 88, 249, 0.3)",
+      lightStroke = "rgba(162, 204, 33, 0.35)", // "rgba(141, 198, 0, 0.35)", // "rgba(222, 88, 249, 0.3)",
       activeStyle = {
         strokeColor: darkStroke,
         strokeWidth: 0.7,
@@ -14192,36 +14217,55 @@ function MshpMap(model) {
       },
       hoverStyles = {
         polygon: {
-          fillColor: "#ffc",
+          fillColor: "#ffebf1", // "#ffebf6",
           strokeColor: "black",
           strokeWidth: 1.5
         }, point:  {
-          dotColor: "#ffaa00",
+          dotColor: "black",
           dotSize: 8
         }, polyline:  {
           strokeColor: "black",
           strokeWidth: 3
         }
-      };
+      },
+      pinnedStyles = {
+        polygon: {
+          fillColor: "#f7baca", // "#f993d7",
+          strokeColor: "black",
+          strokeWidth: 1.5
+        }, point:  {
+          dotColor: "#f74b80",
+          dotSize: 8
+        }, polyline:  {
+          strokeColor: "#f74b80",
+          strokeWidth: 4
+        }
+      },
+      hoverStyle;
 
   _ext.on('change', refreshLayers);
 
   _hit.on('change', function(e) {
+    var style;
     if (!_hoverGroup) {
-      _hoverGroup = addGroup(e.dataset, {'no_filtering': true});
+      _hoverGroup = addGroup(e.dataset, {no_filtering: true});
     }
     _hoverGroup.showLayer(e.layer);
+    hoverStyle = getHoverStyle(e.layer, e.pinned);
     refreshLayer(_hoverGroup);
   });
 
   model.on('delete', function(e) {
-    deleteGroup(e.dataset);
+    var group = findGroup(e.dataset);
+    while (group) {
+      deleteGroup(group);
+      group = findGroup(e.dataset);
+    }
   });
 
   model.on('select', function(e) {
     if (_hoverGroup) {
-      // careful, this removes all groups with this dataset; need to improve
-      deleteGroup(_hoverGroup.getDataset());
+      deleteGroup(_hoverGroup);
       _hoverGroup = null;
     }
   });
@@ -14258,7 +14302,7 @@ function MshpMap(model) {
 
   this.setHighlightLayer = function(lyr, dataset) {
     if (_highGroup) {
-      deleteGroup(_highGroup.getDataset());
+      deleteGroup(_highGroup);
       _highGroup = null;
     }
     if (lyr) {
@@ -14318,41 +14362,38 @@ function MshpMap(model) {
     _groups.forEach(refreshLayer);
   }
 
-  function getHoverStyle(group) {
-    var type = group.getLayer().geometry_type;
-    return hoverStyles[type];
+  function getHoverStyle(lyr, pinned) {
+    return (pinned ? pinnedStyles : hoverStyles)[lyr.geometry_type];
   }
 
   function refreshLayer(group) {
-    var drawShapes = false,
-        style;
+    var style;
     if (group == _activeGroup) {
       style = activeStyle;
     } else if (group == _highGroup) {
       style = highStyle;
     } else if (group == _hoverGroup) {
-      style = getHoverStyle(group);
-      drawShapes = true;
+      style = hoverStyle;
     }
     if (!style) {
       group.hide();
-    } else if (drawShapes) {
-      group.drawShapes(style, _ext);
+    } else if (group == _hoverGroup) {
+      group.drawShapes(group.getLayer(), style, _ext);
     } else {
-      group.drawStructure(style, _ext);
+      group.drawStructure(group.getLayer(), style, _ext);
     }
   }
 
   function addGroup(dataset, opts) {
     var group = new LayerGroup(dataset, opts);
-    group.getElement().appendTo(_root);
+    group.getElement().appendTo(_layers);
     _groups.push(group);
     return group;
   }
 
-  function deleteGroup(dataset) {
+  function deleteGroup(group) {
     _groups = _groups.reduce(function(memo, g) {
-      if (g.getDataset() == dataset) {
+      if (g == group) {
         g.remove();
       } else {
         memo.push(g);
@@ -16682,7 +16723,7 @@ MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
 
 // Assumes that ring boundaries to not cross
 MapShaper.ringHasHoles = function(ring, rings, arcs) {
-  var bbox = arcs.getSimpleShapeBounds(ring).toArray();
+  var bbox = arcs.getSimpleShapeBounds2(ring);
   var sibling, p;
   for (var i=0, n=rings.length; i<n; i++) {
     sibling = rings[i];
@@ -18774,7 +18815,7 @@ function Console(model) {
           // rename-layers should default to all layers;
           // other commands can target the current layer
           if (!cmd.options.target && cmd.name != 'rename-layers') {
-            cmd.options.target = lyr.name;
+            cmd.options.target = String(lyrId);
           }
         });
       }
