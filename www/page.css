@@ -578,15 +578,24 @@ body.simplify #layer-control {
 	cursor: pointer;
 }
 
-#mshp-main-map canvas {
+#map-layers canvas {
 	pointer-events: none;
+	position: absolute;
 }
 
-#mshp-main-map canvas.retina {
+#map-layers canvas.retina {
 	transform-origin: top left;
 	-webkit-transform-origin: top left;
 	transform: scale3D(0.5, 0.5, 1);
 	-webkit-transform: scale3D(0.5, 0.5, 1);
+}
+
+#map-layers canvas.highlight-layer {
+	z-index: 5;
+}
+
+#map-layers canvas.hover-layer {
+	z-index: 4;
 }
 
 #nav-buttons {

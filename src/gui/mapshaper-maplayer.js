@@ -3,7 +3,7 @@
 // Interface for displaying the points and paths in a dataset
 //
 function LayerGroup(dataset, opts) {
-  var _el = El('canvas').css('position:absolute;'),
+  var _el = El('canvas'),
       _canvas = _el.node(),
       _ctx = _canvas.getContext('2d'),
       _lyr, _filteredArcs, _bounds;
@@ -141,6 +141,6 @@ function LayerGroup(dataset, opts) {
     clearCanvas();
     _canvas.width = w * pixRatio;
     _canvas.height = h * pixRatio;
-    _canvas.className = pixRatio == 2 ? 'retina' : '';
+    _el.classed('retina', pixRatio == 2);
   }
 }

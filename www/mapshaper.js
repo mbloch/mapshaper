@@ -13552,7 +13552,7 @@ function FilteredArcCollection(unfilteredArcs, opts) {
 // Interface for displaying the points and paths in a dataset
 //
 function LayerGroup(dataset, opts) {
-  var _el = El('canvas').css('position:absolute;'),
+  var _el = El('canvas'),
       _canvas = _el.node(),
       _ctx = _canvas.getContext('2d'),
       _lyr, _filteredArcs, _bounds;
@@ -13690,7 +13690,7 @@ function LayerGroup(dataset, opts) {
     clearCanvas();
     _canvas.width = w * pixRatio;
     _canvas.height = h * pixRatio;
-    _canvas.className = pixRatio == 2 ? 'retina' : '';
+    _el.classed('retina', pixRatio == 2);
   }
 }
 
@@ -14225,8 +14225,8 @@ function MshpMap(model) {
       },
       pinnedStyles = {
         polygon: {
-          fillColor: "#f7baca", // "#f993d7",
-          strokeColor: "black",
+          fillColor: "#ffebf1", // "#f993d7",
+          strokeColor: "#f74b80",
           strokeWidth: 1.5
         }, point:  {
           dotColor: "#f74b80",
@@ -14244,6 +14244,7 @@ function MshpMap(model) {
     var style;
     if (!_hoverGroup) {
       _hoverGroup = addGroup(e.dataset, {no_filtering: true});
+      _hoverGroup.getElement().addClass('hover-layer');
     }
     _hoverGroup.showLayer(e.layer);
     hoverStyle = getHoverStyle(e.layer, e.pinned);
@@ -14303,6 +14304,7 @@ function MshpMap(model) {
     if (lyr) {
       _highGroup = addGroup(dataset);
       _highGroup.showLayer(lyr);
+      _highGroup.getElement().addClass('highlight-layer');
       updateGroupStyle(highStyle, _highGroup);
       refreshLayer(_highGroup);
     }
