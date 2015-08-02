@@ -2682,7 +2682,7 @@ var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.VERSION = '0.3.3';
+MapShaper.VERSION = '0.3.4';
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
