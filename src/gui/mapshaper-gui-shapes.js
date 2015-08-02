@@ -6,7 +6,7 @@ mapshaper-simplify-fast
 
 // A wrapper for ArcCollection that filters paths to speed up rendering.
 //
-function FilteredArcCollection(unfilteredArcs, opts) {
+function FilteredArcCollection(unfilteredArcs) {
   var _sortedThresholds,
       filteredArcs,
       filteredSegLen;
@@ -17,9 +17,7 @@ function FilteredArcCollection(unfilteredArcs, opts) {
     var size = unfilteredArcs.getPointCount(),
         cutoff = 5e5,
         nth;
-    if (opts && opts.no_filtering) {
-      filteredArcs = null;
-    } else if (!!unfilteredArcs.getVertexData().zz) {
+    if (!!unfilteredArcs.getVertexData().zz) {
       // If we have simplification data...
       // Sort simplification thresholds for all non-endpoint vertices
       // for quick conversion of simplification percentage to threshold value.

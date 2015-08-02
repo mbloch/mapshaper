@@ -2,17 +2,14 @@
 
 // Interface for displaying the points and paths in a dataset
 //
-function LayerGroup(dataset, opts) {
+function LayerGroup(dataset) {
   var _el = El('canvas'),
       _canvas = _el.node(),
       _ctx = _canvas.getContext('2d'),
       _lyr, _filteredArcs, _bounds;
-  opts = opts || {};
-  init();
 
-  function init() {
-    //_filteredArcs.update(dataset.arcs);
-    _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs, opts) : null;
+  if (dataset) {
+    _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
     _bounds = MapShaper.getDatasetBounds(dataset);
   }
 
@@ -25,7 +22,7 @@ function LayerGroup(dataset, opts) {
   };
 
   this.getLayer = function() {
-    return _lyr || dataset.layers[0];
+    return _lyr;
   };
 
   this.getElement = function() {
@@ -44,9 +41,18 @@ function LayerGroup(dataset, opts) {
     return _filteredArcs;
   };
 
+  this.setArcs = function(arcs) {
+    _filteredArcs = arcs;
+  };
+
   // Rebuild filtered arcs and recalculate bounds
   this.updated = function() {
-    init();
+    if (dataset) {
+      if (_filteredArcs) {
+        _filteredArcs.update(dataset.arcs);
+      }
+      _bounds = MapShaper.getDatasetBounds(dataset);
+    }
   };
 
   this.setRetainedPct = function(pct) {

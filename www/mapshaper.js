@@ -13466,7 +13466,7 @@ MapShaper.simplifyPathFast = function(path, arcs, dist, xx, yy) {
 
 // A wrapper for ArcCollection that filters paths to speed up rendering.
 //
-function FilteredArcCollection(unfilteredArcs, opts) {
+function FilteredArcCollection(unfilteredArcs) {
   var _sortedThresholds,
       filteredArcs,
       filteredSegLen;
@@ -13477,9 +13477,7 @@ function FilteredArcCollection(unfilteredArcs, opts) {
     var size = unfilteredArcs.getPointCount(),
         cutoff = 5e5,
         nth;
-    if (opts && opts.no_filtering) {
-      filteredArcs = null;
-    } else if (!!unfilteredArcs.getVertexData().zz) {
+    if (!!unfilteredArcs.getVertexData().zz) {
       // If we have simplification data...
       // Sort simplification thresholds for all non-endpoint vertices
       // for quick conversion of simplification percentage to threshold value.
@@ -13551,17 +13549,14 @@ function FilteredArcCollection(unfilteredArcs, opts) {
 
 // Interface for displaying the points and paths in a dataset
 //
-function LayerGroup(dataset, opts) {
+function LayerGroup(dataset) {
   var _el = El('canvas'),
       _canvas = _el.node(),
       _ctx = _canvas.getContext('2d'),
       _lyr, _filteredArcs, _bounds;
-  opts = opts || {};
-  init();
 
-  function init() {
-    //_filteredArcs.update(dataset.arcs);
-    _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs, opts) : null;
+  if (dataset) {
+    _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
     _bounds = MapShaper.getDatasetBounds(dataset);
   }
 
@@ -13574,7 +13569,7 @@ function LayerGroup(dataset, opts) {
   };
 
   this.getLayer = function() {
-    return _lyr || dataset.layers[0];
+    return _lyr;
   };
 
   this.getElement = function() {
@@ -13593,9 +13588,18 @@ function LayerGroup(dataset, opts) {
     return _filteredArcs;
   };
 
+  this.setArcs = function(arcs) {
+    _filteredArcs = arcs;
+  };
+
   // Rebuild filtered arcs and recalculate bounds
   this.updated = function() {
-    init();
+    if (dataset) {
+      if (_filteredArcs) {
+        _filteredArcs.update(dataset.arcs);
+      }
+      _bounds = MapShaper.getDatasetBounds(dataset);
+    }
   };
 
   this.setRetainedPct = function(pct) {
@@ -14243,9 +14247,10 @@ function MshpMap(model) {
   _hit.on('change', function(e) {
     var style;
     if (!_hoverGroup) {
-      _hoverGroup = addGroup(e.dataset, {no_filtering: true});
+      _hoverGroup = addGroup(null);
       _hoverGroup.getElement().addClass('hover-layer');
     }
+    _hoverGroup.setArcs(_activeGroup.getArcs());
     _hoverGroup.showLayer(e.layer);
     hoverStyle = getHoverStyle(e.layer, e.pinned);
     refreshLayer(_hoverGroup);
@@ -14312,22 +14317,6 @@ function MshpMap(model) {
 
   this.setSimplifyPct = function(pct) {
     _activeGroup.setRetainedPct(pct);
-    refreshLayer(_activeGroup);
-  };
-
-  this.refreshLayer = function(dataset) {
-    refreshLayer(findGroup(dataset));
-  };
-
-  this.getElement = function() {
-    return _root;
-  };
-
-  this.getExtent = function() {
-    return _ext;
-  };
-
-  this.refresh = function() {
     refreshLayers();
   };
 

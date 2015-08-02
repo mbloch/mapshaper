@@ -76,9 +76,10 @@ function MshpMap(model) {
   _hit.on('change', function(e) {
     var style;
     if (!_hoverGroup) {
-      _hoverGroup = addGroup(e.dataset, {no_filtering: true});
+      _hoverGroup = addGroup(null);
       _hoverGroup.getElement().addClass('hover-layer');
     }
+    _hoverGroup.setArcs(_activeGroup.getArcs());
     _hoverGroup.showLayer(e.layer);
     hoverStyle = getHoverStyle(e.layer, e.pinned);
     refreshLayer(_hoverGroup);
@@ -145,22 +146,6 @@ function MshpMap(model) {
 
   this.setSimplifyPct = function(pct) {
     _activeGroup.setRetainedPct(pct);
-    refreshLayer(_activeGroup);
-  };
-
-  this.refreshLayer = function(dataset) {
-    refreshLayer(findGroup(dataset));
-  };
-
-  this.getElement = function() {
-    return _root;
-  };
-
-  this.getExtent = function() {
-    return _ext;
-  };
-
-  this.refresh = function() {
     refreshLayers();
   };
 
