@@ -18245,6 +18245,7 @@ api.runCommand = function(cmd, dataset, cb) {
         error("Dataset contains 0 layers");
       }
 
+
       if (opts.target) {
         targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
         if (!targetLayers.length) {
@@ -18795,8 +18796,7 @@ function Console(model) {
       lyrId = dataset.layers.indexOf(lyr);
       arcCount = dataset.arcs ? dataset.arcs.size() : 0;
       // Use currently edited layer as default command target
-      // TODO: handle targeting for unnamed layer
-      if (lyr && lyr.name) {
+      if (lyr) {
         commands.forEach(function(cmd) {
           // rename-layers should default to all layers;
           // other commands can target the current layer

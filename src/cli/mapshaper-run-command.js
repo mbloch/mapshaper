@@ -47,6 +47,7 @@ api.runCommand = function(cmd, dataset, cb) {
         error("Dataset contains 0 layers");
       }
 
+
       if (opts.target) {
         targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
         if (!targetLayers.length) {
