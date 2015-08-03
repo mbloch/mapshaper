@@ -77,7 +77,7 @@ function HitControl(ext, mouse) {
   function polylineTest(x, y, m) {
     var dist = 15 * m,
         hitId = -1,
-        cands, candDist;
+        cands, cand, candDist;
     if (ext.scale() < 1) {
       dist *= ext.scale(); // reduce hit threshold when zoomed out
     }

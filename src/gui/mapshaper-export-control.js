@@ -37,7 +37,7 @@ var ExportControl = function(model) {
       setTimeout(function() {
         exportAs(format, function(err) {
           // hide message after a delay, so it doesn't just flash for an instant.
-          setTimeout(gui.clearProgressMessage, 400);
+          setTimeout(gui.clearProgressMessage, err ? 0 : 400);
           if (err) {
             console.error(err);
             gui.alert(utils.isString(err) ? err : "Export failed for an unknown reason");
@@ -49,11 +49,11 @@ var ExportControl = function(model) {
 
   // @done function(string|Error|null)
   function exportAs(format, done) {
-    var opts = gui.parseFreeformOptions(El('#export-options .advanced-options').node().value, 'o'),
-        editing = model.getEditingLayer(),
-        dataset, files;
-    opts.format = format;
+    var editing = model.getEditingLayer(),
+        opts, dataset, files;
     try {
+      opts = gui.parseFreeformOptions(El('#export-options .advanced-options').node().value, 'o');
+      opts.format = format;
       if (format == 'topojson') {
         dataset = editing.dataset; // For TopoJSON, export all layers in this dataset
       } else {
