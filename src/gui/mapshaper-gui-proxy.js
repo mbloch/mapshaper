@@ -1,5 +1,11 @@
 /* mapshaper-gui-lib */
 
+// These functions could be called when validating i/o options; TODO: avoid this
+cli.isFile =
+cli.isDirectory = function(name) {return false;};
+
+cli.validateOutputDir = function() {};
+
 // Replaces functions for reading from files with functions that try to match
 // already-loaded datasets.
 //

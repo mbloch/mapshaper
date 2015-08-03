@@ -6,8 +6,6 @@ mapshaper-commands
 mapshaper-encodings
 */
 
-var cli = api.cli = {};
-
 // Handle an error caused by invalid input or misuse of API
 function stop() {
   throw new APIError(MapShaper.formatLogArgs(arguments));
@@ -80,6 +78,12 @@ cli.validateInputFiles = function(files) {
   }, []);
   files.forEach(cli.checkFileExists);
   return files;
+};
+
+cli.validateOutputDir = function(name) {
+  if (!cli.isDirectory(name)) {
+    error("Output directory not found:", name);
+  }
 };
 
 // TODO: rename and improve

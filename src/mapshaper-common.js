@@ -2,6 +2,7 @@
 var api = {};
 var MapShaper = api.internal = {};
 var geom = api.geom = {};
+var cli = api.cli = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
 MapShaper.VERSION = '0.3.4';

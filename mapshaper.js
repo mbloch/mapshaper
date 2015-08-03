@@ -1428,6 +1428,7 @@ Utils.formatter = function(fmt) {
 var api = {};
 var MapShaper = api.internal = {};
 var geom = api.geom = {};
+var cli = api.cli = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
 MapShaper.VERSION = '0.3.4';
@@ -14144,31 +14145,28 @@ function validateExpressionOpts(cmd) {
 function validateOutputOpts(cmd) {
   var _ = cmd._,
       o = cmd.options,
-      path = _[0] || "",
-      pathInfo = utils.parseLocalPath(path);
+      arg = _[0] || "",
+      pathInfo = utils.parseLocalPath(arg);
 
   if (_.length > 1) {
     error("Command takes one file or directory argument");
   }
 
-  if (!path) {
-    // no output file or dir
-  } else if (path == '-' || path == '/dev/stdout') {
+  if (arg == '-' || arg == '/dev/stdout') {
     o.stdout = true;
-  } else if (!pathInfo.extension) {
-    o.output_dir = path;
-  } else {
-    if (pathInfo.directory) o.output_dir = pathInfo.directory;
+  } else if (arg && !pathInfo.extension) {
+    if (!cli.isDirectory(arg)) {
+      error("Unknown output option:", arg);
+    }
+    o.output_dir = arg;
+  } else if (arg) {
+    if (pathInfo.directory) {
+      o.output_dir = pathInfo.directory;
+      cli.validateOutputDir(o.output_dir);
+    }
     o.output_file = pathInfo.filename;
-  }
-
-  if (o.output_file && MapShaper.filenameIsUnsupportedOutputType(o.output_file)) {
-    error("Output file looks like an unsupported file type:", o.output_file);
-  }
-
-  if (o.output_dir && !cli.isDirectory(o.output_dir)) {
-    if (!cli.isDirectory(o.output_dir)) {
-      error("Output directory not found:", o.output_dir);
+    if (MapShaper.filenameIsUnsupportedOutputType(o.output_file)) {
+      error("Output file looks like an unsupported file type:", o.output_file);
     }
   }
 
@@ -15053,8 +15051,6 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
 
 
 
-var cli = api.cli = {};
-
 // Handle an error caused by invalid input or misuse of API
 function stop() {
   throw new APIError(MapShaper.formatLogArgs(arguments));
@@ -15127,6 +15123,12 @@ cli.validateInputFiles = function(files) {
   }, []);
   files.forEach(cli.checkFileExists);
   return files;
+};
+
+cli.validateOutputDir = function(name) {
+  if (!cli.isDirectory(name)) {
+    error("Output directory not found:", name);
+  }
 };
 
 // TODO: rename and improve
