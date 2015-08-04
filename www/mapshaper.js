@@ -18752,8 +18752,13 @@ function Console(model) {
         activeEl = document.activeElement,
         editing = activeEl && (activeEl.tagName == 'INPUT' || activeEl.contentEditable == 'true'),
         capture = false;
+
     if (kc == 27) { // esc
-      model.clearMode(); // esc escapes other modes as well
+      if (editing) {
+        activeEl.blur();
+      } else {
+        model.clearMode(); // esc escapes other modes as well
+      }
       capture = true;
     } else if (kc == 8 && !editing) {
       capture = true; // prevent delete from leaving page

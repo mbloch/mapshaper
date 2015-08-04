@@ -473,6 +473,10 @@ body.simplify #layer-control {
 	outline: none;
 }
 
+.layer-item .layer-name.editing {
+	border-bottom: 1px solid transparent;
+}
+
 .layer-item .layer-name::selection {
 	background: black;
 	color: white;
