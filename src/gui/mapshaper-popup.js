@@ -52,7 +52,7 @@ function Popup() {
     var isNum = utils.isNumber(rec[key]),
         className = isNum ? 'num-field' : 'str-field',
         el = El('tr').appendTo(table);
-    el.html(utils.format('<td class="field-name">%s</td><td class="value-cell"><span class="value %s">%s</span> </td>',
+    el.html(utils.format('<td class="field-name">%s</td><td><span class="value %s">%s</span> </td>',
           key, className, utils.htmlEscape(rec[key])));
 
     if (types && types[key]) {

@@ -534,7 +534,7 @@ body.simplify #layer-control {
 .popup-content {
 	padding: 10px;
 	background-color: rgba(255, 255, 255, 0.88);
-	line-height: 1;
+	line-height: 1.2;
 	font-size: 13px;
 }
 
@@ -553,9 +553,6 @@ body.simplify #layer-control {
 }
 
 .popup .num-field {
-	/*	padding-left: 16px;
-	font-weight: bold;
-	text-align: right;*/
 	font-style: italic;
 }
 
@@ -564,19 +561,20 @@ body.simplify #layer-control {
 	text-align: right;
 }
 
-.popup td.value-cell::selection {
-	color: white;
-}
-
 .popup .value {
 	min-width: 2px;
 	outline: none;
 	word-wrap: break-word;
 }
 
-.popup td.editable-cell .value::selection {
-	background: black;
-	color: white;
+.popup .editable-cell .value.editing {
+	color: black;
+	border-bottom: none;
+}
+
+.popup .editable-cell .value::selection {
+	/*color: white;
+	background: black;*/
 }
 
 

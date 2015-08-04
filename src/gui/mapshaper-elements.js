@@ -11,6 +11,7 @@ function ClickText2(ref) {
     .attr('spellcheck', false)
     .attr('autocorrect', false)
     .on('focus', function(e) {
+      el.addClass('editing');
       selected = false;
       self.editing = true;
       init();
@@ -20,8 +21,9 @@ function ClickText2(ref) {
     if (touched) return;
     touched = true;
     el.on('blur', function(e) {
+      el.removeClass('editing');
       self.dispatchEvent('change');
-      var sel = getSelection().removeAllRanges();
+      getSelection().removeAllRanges();
       self.editing = false;
     }).on('keydown', function(e) {
       if (e.keyCode == 13) { // enter
