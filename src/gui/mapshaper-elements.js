@@ -5,11 +5,31 @@
 function ClickText2(ref) {
   var self = this;
   var selected = false;
+  var touched = false;
   var el = El(ref)
     .attr('contentEditable', true)
     .attr('spellcheck', false)
     .attr('autocorrect', false)
-    .on('click', function(e) {
+    .on('focus', function(e) {
+      selected = false;
+      self.editing = true;
+      init();
+    });
+
+  function init() {
+    if (touched) return;
+    touched = true;
+    el.on('blur', function(e) {
+      self.dispatchEvent('change');
+      var sel = getSelection().removeAllRanges();
+      self.editing = false;
+    }).on('keydown', function(e) {
+      if (e.keyCode == 13) { // enter
+        e.stopPropagation();
+        e.preventDefault();
+        this.blur();
+      }
+    }).on('click', function(e) {
       var sel = getSelection(),
           range;
       if (!selected && sel.isCollapsed) {
@@ -20,23 +40,8 @@ function ClickText2(ref) {
       }
       selected = true;
       e.stopPropagation();
-    })
-    .on('keydown', function(e) {
-      if (e.keyCode == 13) { // enter
-        e.stopPropagation();
-        e.preventDefault();
-        this.blur();
-      }
-    })
-    .on('blur', function(e) {
-      self.dispatchEvent('change');
-      var sel = getSelection().removeAllRanges();
-      self.editing = false;
-    })
-    .on('focus', function(e) {
-      selected = false;
-      self.editing = true;
     });
+  }
 
   this.value = function(str) {
     if (utils.isString(str)) {

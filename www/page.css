@@ -541,18 +541,18 @@ body.simplify #layer-control {
 .popup td {
 	vertical-align: top;
 	font-weight: bold;
-	min-width: 110px;
-	max-width: 220px;
+	min-width: 100px;
+	max-width: 200px;
 }
 
-.popup td.field-name {
+.popup .field-name {
 	color: #999;
 	padding-right: 8px;
 	font-weight: normal;
-	min-width: 80px;
+	min-width: 60px;
 }
 
-.popup td.num-field {
+.popup .num-field {
 	/*	padding-left: 16px;
 	font-weight: bold;
 	text-align: right;*/
@@ -563,6 +563,22 @@ body.simplify #layer-control {
 	font-style: italic;
 	text-align: right;
 }
+
+.popup td.value-cell::selection {
+	color: white;
+}
+
+.popup .value {
+	min-width: 2px;
+	outline: none;
+	word-wrap: break-word;
+}
+
+.popup td.editable-cell .value::selection {
+	background: black;
+	color: white;
+}
+
 
 /* --- Map ---------------------- */
 

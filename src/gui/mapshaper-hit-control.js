@@ -133,6 +133,7 @@ function HitControl(ext, mouse) {
     if (newId > -1) {
       o.properties = getProperties(newId);
       o.layer.shapes.push(selection.layer.shapes[newId]);
+      o.table = selection.layer.data;
     }
     selectionId = newId;
     self.dispatchEvent('change', o);
