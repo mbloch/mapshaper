@@ -63,10 +63,13 @@ function Console(model) {
   function onKeyDown(e) {
     var kc = e.keyCode,
         activeEl = document.activeElement,
+        editing = activeEl && (activeEl.tagName == 'INPUT' || activeEl.contentEditable == 'true'),
         capture = false;
     if (kc == 27) { // esc
       model.clearMode(); // esc escapes other modes as well
       capture = true;
+    } else if (kc == 8 && !editing) {
+      capture = true; // prevent delete from leaving page
     } else if (_active) {
       capture = true;
       if (kc == 13) { // enter
@@ -86,7 +89,7 @@ function Console(model) {
         // normal typing
         capture = false;
       }
-    } else if (activeEl.tagName != 'INPUT' && activeEl.contentEditable != 'true') {
+    } else if (!editing) {
       // space bar opens console, unless typing in an input field or editable el
       if (kc == 32) {
         capture = true;
