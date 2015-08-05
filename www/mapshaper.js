@@ -14165,7 +14165,7 @@ function Popup() {
     // TODO: only blur popup fields
     gui.blurActiveElement();
     content.empty();
-    content.css('height:""'); // remove inline height
+    content.node().removeAttribute('style'); // remove inline height
     el.hide();
   };
 
@@ -14243,10 +14243,10 @@ function InfoControl(model, hit) {
   }
 
   function update() {
+    _popup.hide();
     if (isOn()) {
       hit.turnOn(model.getEditingLayer());
     } else {
-      _popup.hide();
       hit.turnOff();
     }
   }

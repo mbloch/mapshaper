@@ -26,10 +26,10 @@ function InfoControl(model, hit) {
   }
 
   function update() {
+    _popup.hide();
     if (isOn()) {
       hit.turnOn(model.getEditingLayer());
     } else {
-      _popup.hide();
       hit.turnOff();
     }
   }
