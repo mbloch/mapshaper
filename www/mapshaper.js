@@ -3063,6 +3063,13 @@ gui.handleDirectEvent = function(cb) {
   };
 };
 
+gui.blurActiveElement = function() {
+  var el = document.activeElement;
+  if (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) {
+    el.blur();
+  }
+};
+
 
 
 
@@ -14145,7 +14152,7 @@ function Popup() {
 
   this.show = function(rec, types) {
     var maxHeight = parent.node().clientHeight - 36;
-    content.css('height:""');
+    this.hide(); // clean up if panel is already open
     render(content, rec, types);
     el.show();
     if (content.node().clientHeight > maxHeight) {
@@ -14154,6 +14161,11 @@ function Popup() {
   };
 
   this.hide = function() {
+    // make sure any pending edits are made before re-rendering popup
+    // TODO: only blur popup fields
+    gui.blurActiveElement();
+    content.empty();
+    content.css('height:""'); // remove inline height
     el.hide();
   };
 
@@ -14165,7 +14177,6 @@ function Popup() {
       rows++;
     });
     if (rows > 0) {
-      el.empty();
       table.appendTo(el);
     } else {
       el.html('<div class="note">This layer is missing attribute data.</div>');

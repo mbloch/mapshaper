@@ -35,3 +35,10 @@ gui.handleDirectEvent = function(cb) {
     if (e.target == this) cb();
   };
 };
+
+gui.blurActiveElement = function() {
+  var el = document.activeElement;
+  if (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) {
+    el.blur();
+  }
+};
