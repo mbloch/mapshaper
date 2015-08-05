@@ -21,7 +21,7 @@ gui.inputParsers = {
 
 function Popup() {
   var parent = El('#mshp-main-map');
-  var el = El('div').addClass('popup').appendTo(parent);
+  var el = El('div').addClass('popup').appendTo(parent).hide();
   var content = El('div').addClass('popup-content').appendTo(el);
 
   this.show = function(rec, types) {
