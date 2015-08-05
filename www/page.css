@@ -254,8 +254,6 @@ div.option-menu .advanced-options {
 	display: none;
 	z-index: 80;	
 	text-align: center;
-	/* background-color: rgba(255, 255, 255, 0.8); 
-	background-color: rgba(255, 255, 255, 0.35);*/
 }
 
 .info-box {
@@ -414,7 +412,7 @@ div.option-menu .advanced-options {
 
 /* --- Layer menu ----------- */
 
-#layer-control {
+#layer-control-btn {
 	top: 0;
 	position: absolute;
 	text-align: center;
@@ -422,11 +420,11 @@ div.option-menu .advanced-options {
 	width: 100%;
 }
 
-body.simplify #layer-control {
+body.simplify #layer-control-btn {
 	display: none;
 }
 
-#layer-menu .info-box {
+#layer-control .info-box {
 	overflow: hidden;
 	max-height: 90%;
 	overflow-y: auto;
@@ -468,7 +466,6 @@ body.simplify #layer-control {
 .layer-item .layer-name {
 	display: inline-block;
 	min-height: 14px; /* For FF when content is empty */
-	padding-right: 2px;
 	min-width: 2px;
 	outline: none;
 }
@@ -550,7 +547,7 @@ body.simplify #layer-control {
 .popup td {
 	vertical-align: top;
 	/*font-weight: bold;*/
-	min-width: 100px;
+	min-width: 80px;
 	max-width: 200px;
 	color: black;
 }
@@ -583,8 +580,8 @@ body.simplify #layer-control {
 }
 
 .popup .editable-cell .value::selection {
-	/*color: white;
-	background: black;*/
+	color: white;
+	background: black;
 }
 
 

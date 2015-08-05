@@ -13126,9 +13126,9 @@ utils.inherit(RepairControl, EventDispatcher);
 
 
 function LayerControl(model) {
-  var el = El("#layer-menu").on('click', gui.handleDirectEvent(model.clearMode));
-  var label = El('#layer-control .layer-name');
-  var btn = new ModeButton('#layer-control .mode-btn', 'layer_menu', model);
+  var el = El("#layer-control").on('click', gui.handleDirectEvent(model.clearMode));
+  var label = El('#layer-control-btn .layer-name');
+  var btn = new ModeButton('#layer-control-btn .mode-btn', 'layer_menu', model);
   model.addMode('layer_menu', turnOn, turnOff);
 
   model.on('select', function(e) {
@@ -13151,7 +13151,7 @@ function LayerControl(model) {
   }
 
   function render() {
-    var list = El('#layer-menu .layer-list').empty();
+    var list = El('#layer-control .layer-list').empty();
     model.forEachLayer(function(lyr, dataset) {
       list.appendChild(renderLayer(lyr, dataset));
     });
