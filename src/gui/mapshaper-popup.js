@@ -20,13 +20,18 @@ gui.inputParsers = {
 };
 
 function Popup() {
-  var maxWidth = 0;
-  var el = El('div').addClass('popup').appendTo('#mshp-main-map').hide();
+  var parent = El('#mshp-main-map');
+  var el = El('div').addClass('popup').appendTo(parent);
   var content = El('div').addClass('popup-content').appendTo(el);
 
   this.show = function(rec, types) {
+    var maxHeight = parent.node().clientHeight - 36;
+    content.css('height:""');
     render(content, rec, types);
     el.show();
+    if (content.node().clientHeight > maxHeight) {
+      content.css('height:' + maxHeight + 'px');
+    }
   };
 
   this.hide = function() {

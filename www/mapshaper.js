@@ -2354,7 +2354,7 @@ El.prototype.on = function(type, func, ctx) {
 El.prototype.__removeEventListener = El.prototype.removeEventListener;
 El.prototype.removeEventListener = function(type, func) {
   if (this.constructor == El) {
-    this.el.addEventListener(type, func);
+    this.el.removeEventListener(type, func);
   } else {
     this.__removeEventListener.apply(this, arguments);
   }
@@ -3066,27 +3066,24 @@ gui.handleDirectEvent = function(cb) {
 
 
 
-// TODO: combine ClickText and ClickText2
+// TODO: switch all ClickText to ClickText2
 
+// @ref Reference to an element containing a text node
 function ClickText2(ref) {
   var self = this;
   var selected = false;
-  var touched = false;
-  var el = El(ref)
-    .attr('contentEditable', true)
+  var el = El(ref).on('mousedown', init);
+
+  function init() {
+    el.removeEventListener('mousedown', init);
+    el.attr('contentEditable', true)
     .attr('spellcheck', false)
     .attr('autocorrect', false)
     .on('focus', function(e) {
       el.addClass('editing');
       selected = false;
       self.editing = true;
-      init();
-    });
-
-  function init() {
-    if (touched) return;
-    touched = true;
-    el.on('blur', function(e) {
+    }).on('blur', function(e) {
       el.removeClass('editing');
       self.dispatchEvent('change');
       getSelection().removeAllRanges();
@@ -3122,7 +3119,7 @@ function ClickText2(ref) {
 
 utils.inherit(ClickText2, EventDispatcher);
 
-
+// @ref reference to a text input element
 function ClickText(ref) {
   var _el = El(ref);
   var _self = this;
@@ -14142,13 +14139,18 @@ gui.inputParsers = {
 };
 
 function Popup() {
-  var maxWidth = 0;
-  var el = El('div').addClass('popup').appendTo('#mshp-main-map').hide();
+  var parent = El('#mshp-main-map');
+  var el = El('div').addClass('popup').appendTo(parent);
   var content = El('div').addClass('popup-content').appendTo(el);
 
   this.show = function(rec, types) {
+    var maxHeight = parent.node().clientHeight - 36;
+    content.css('height:""');
     render(content, rec, types);
     el.show();
+    if (content.node().clientHeight > maxHeight) {
+      content.css('height:' + maxHeight + 'px');
+    }
   };
 
   this.hide = function() {
