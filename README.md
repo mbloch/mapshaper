@@ -6,13 +6,13 @@ Mapshaper is software for editing Shapefile, GeoJSON, [TopoJSON](https://github.
 
 The `mapshaper` command line program supports common map making tasks like simplifying shapes, editing attribute data, clipping, erasing, dissolving, filtering and more.
 
-There is a [web-based gui](http://www.mapshaper.org), which supports interactive simplification and command line processing via a built-in console.
+There is a [web UI](http://www.mapshaper.org) that supports interactive simplification and attribute editing. The Web UI also has as a built in console for running cli commands.
 
 See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for documentation on using mapshaper.
 
 To suggest improvements, add an [issue](https://github.com/mbloch/mapshaper/issues).
 
-To catch up on the latest changes, read the [changelog](https://github.com/mbloch/mapshaper/releases).
+To learn about recent updates, read the [changelog](https://github.com/mbloch/mapshaper/releases).
 
 ### Command line tool
 
@@ -24,7 +24,7 @@ For a detailed reference, see the [Command Reference](https://github.com/mbloch/
 
 ### Interactive tool
 
-The interactive web interface works in recent versions of Chrome and Firefox as well as IE 10+. Exporting is not supported in Safari. If you encounter out-of-memory errors using Chrome, try Firefox, which can handle Shapefiles larger than 1GB.
+The web UI works in recent versions of Chrome and Firefox as well as IE 10+. Exporting is not supported in Safari. If you encounter out-of-memory errors using Chrome, try Firefox, which can handle Shapefiles larger than 1GB.
 
 The mapshaper distribution includes the script `mapshaper-gui`, which runs mapshaper's web interface locally. You can also visit [mapshaper.org](http://www.mapshaper.org) to use mapshaper online.
 
@@ -32,9 +32,9 @@ All processing is done in the browser, so your data stays private, even when usi
 
 ### Installation
 
-Mapshaper requires [Node.js](http://nodejs.org). There are easy [installers](http://nodejs.org/download/) for Microsoft Windows and other platforms.
+Mapshaper requires [Node.js](http://nodejs.org/download/) or [io.js](https://iojs.org).
 
-With Node installed, you can install the latest release version using npm. Install with the "-g" flag to make the executable scripts available systemwide.
+With Node or io.js installed, you can install the latest release version of mapshaper using npm. Install with the "-g" flag to make the executable scripts available systemwide.
 
 ```bash
 npm install -g mapshaper
@@ -46,8 +46,8 @@ To install and run the latest development code from github:
 git clone git@github.com:mbloch/mapshaper.git
 cd mapshaper
 npm install
-bin/mapshaper-gui # use the web interface locally
-bin/mapshaper     # use the command line tool
+bin/mapshaper-gui # use the web UI locally
+bin/mapshaper     # run the command line program
 ```
 
 ### Building and testing
