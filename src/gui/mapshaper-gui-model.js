@@ -88,6 +88,10 @@ function Model() {
     this.updated({select: true}, lyr, dataset);
   };
 
+  this.addDataset = function(dataset) {
+    this.updated({select: true, import: true}, dataset.layers[0], dataset);
+  };
+
   this.updated = function(flags, lyr, dataset) {
     var e;
     flags = flags || {};
@@ -103,6 +107,8 @@ function Model() {
       this.dispatchEvent('update', e);
     }
   };
+
+
 
   this.getEditingLayer = function() {
     return editing || {};

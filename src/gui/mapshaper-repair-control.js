@@ -11,12 +11,23 @@ function RepairControl(model, map) {
     // these changes require nulling out any cached intersection data and recalculating
     if (e.flags.simplify || e.flags.proj || e.flags.select) {
       reset();
-      if (!e.dataset.info.no_repair && MapShaper.layerHasPaths(e.layer)) {
+      // Don't update if a dataset was just imported -- another layer may be selected
+      // right away.
+      if (!e.flags.import && !e.dataset.info.no_repair && MapShaper.layerHasPaths(e.layer)) {
         _dataset = e.dataset;
         // use timeout so map refreshes before the repair control calculates
         // intersection data, which can take a little while
         delayedUpdate();
       }
+    }
+  });
+
+  model.on('mode', function(e) {
+    var editing = model.getEditingLayer();
+    if (e.prev == 'import' && editing.dataset && editing.dataset != _dataset) {
+      // update if import just finished and a new dataset is being edited
+      _dataset = editing.dataset;
+      delayedUpdate();
     }
   });
 

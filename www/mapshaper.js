@@ -3578,8 +3578,11 @@ MapShaper.detectEncoding = function(samples) {
   var encoding = null;
   if (MapShaper.looksLikeUtf8(samples)) {
     encoding = 'utf8';
-  } else if (MapShaper.looksLikeLatin1(samples)) {
-    encoding = 'latin1';
+  } else if (MapShaper.looksLikeWin1252(samples)) {
+    // Win1252 is the same as Latin1, except it replaces a block of control
+    // characters with n-dash, Euro and other glyphs. Encountered in-the-wild
+    // in Natural Earth (airports.dbf uses n-dash).
+    encoding = 'win1252';
   }
   return encoding;
 };
@@ -3595,18 +3598,18 @@ MapShaper.formatSamples = function(str) {
   return MapShaper.formatStringsAsGrid(str.split('\n'));
 };
 
-// Quick-and-dirty latin1 detection: decoded string contains mostly common ascii
+// Quick-and-dirty win1251 detection: decoded string contains mostly common ascii
 // chars and almost no chars other than word chars + punctuation.
 // This excludes encodings like Greek, Cyrillic or Thai, but
 // is susceptible to false positives with encodings like codepage 1250 ("Eastern
 // European").
-MapShaper.looksLikeLatin1 = function(samples) {
-  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?-\n,;/ ', // common ascii
-      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ';
-  var str = MapShaper.decodeSamples('latin1', samples);
-  var asciiScore = MapShaper.getCharScore(str, ascii);
-  var totalScore = asciiScore + MapShaper.getCharScore(str, extended);
-  return totalScore > 0.98 && asciiScore > 0.7;
+MapShaper.looksLikeWin1252 = function(samples) {
+  var ascii = 'abcdefghijklmnopqrstuvwxyz0123456789.\'"?+-\n,:;/|_$% ', //common l.c. ascii chars
+      extended = 'ßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿ°–', // common extended
+      str = MapShaper.decodeSamples('win1252', samples),
+      asciiScore = MapShaper.getCharScore(str, ascii),
+      totalScore = MapShaper.getCharScore(str, extended + ascii);
+  return totalScore > 0.97 && asciiScore > 0.7;
 };
 
 // Accept string if it doesn't contain the "replacement character"
@@ -3618,8 +3621,10 @@ MapShaper.looksLikeUtf8 = function(samples) {
 // Calc percentage of chars in a string that are present in a second string
 // @chars String of chars to look for in @str
 MapShaper.getCharScore = function(str, chars) {
-  var index = {}, count = 0;
-  str = str.toLowerCase(); //
+  var index = {},
+      count = 0,
+      score;
+  str = str.toLowerCase();
   for (var i=0, n=chars.length; i<n; i++) {
     index[chars[i]] = 1;
   }
@@ -12298,7 +12303,7 @@ function ImportControl(model) {
         gui.receiveShapefileComponent(path, dataset);
       }
       dataset.info.no_repair = importOpts.no_repair;
-      model.selectLayer(dataset.layers[0], dataset);
+      model.addDataset(dataset);
       importCount++;
       readNext();
     }, delay);
@@ -13058,12 +13063,23 @@ function RepairControl(model, map) {
     // these changes require nulling out any cached intersection data and recalculating
     if (e.flags.simplify || e.flags.proj || e.flags.select) {
       reset();
-      if (!e.dataset.info.no_repair && MapShaper.layerHasPaths(e.layer)) {
+      // Don't update if a dataset was just imported -- another layer may be selected
+      // right away.
+      if (!e.flags.import && !e.dataset.info.no_repair && MapShaper.layerHasPaths(e.layer)) {
         _dataset = e.dataset;
         // use timeout so map refreshes before the repair control calculates
         // intersection data, which can take a little while
         delayedUpdate();
       }
+    }
+  });
+
+  model.on('mode', function(e) {
+    var editing = model.getEditingLayer();
+    if (e.prev == 'import' && editing.dataset && editing.dataset != _dataset) {
+      // update if import just finished and a new dataset is being edited
+      _dataset = editing.dataset;
+      delayedUpdate();
     }
   });
 
@@ -19074,6 +19090,10 @@ function Model() {
     this.updated({select: true}, lyr, dataset);
   };
 
+  this.addDataset = function(dataset) {
+    this.updated({select: true, import: true}, dataset.layers[0], dataset);
+  };
+
   this.updated = function(flags, lyr, dataset) {
     var e;
     flags = flags || {};
@@ -19089,6 +19109,8 @@ function Model() {
       this.dispatchEvent('update', e);
     }
   };
+
+
 
   this.getEditingLayer = function() {
     return editing || {};
