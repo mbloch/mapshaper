@@ -13065,8 +13065,7 @@ function RepairControl(model, map) {
       reset();
       // Don't update if a dataset was just imported -- another layer may be selected
       // right away.
-      if (!e.flags.import && !e.dataset.info.no_repair && MapShaper.layerHasPaths(e.layer)) {
-        _dataset = e.dataset;
+      if (!e.flags.import) {
         // use timeout so map refreshes before the repair control calculates
         // intersection data, which can take a little while
         delayedUpdate();
@@ -13075,10 +13074,8 @@ function RepairControl(model, map) {
   });
 
   model.on('mode', function(e) {
-    var editing = model.getEditingLayer();
-    if (e.prev == 'import' && editing.dataset && editing.dataset != _dataset) {
+    if (e.prev == 'import') {
       // update if import just finished and a new dataset is being edited
-      _dataset = editing.dataset;
       delayedUpdate();
     }
   });
@@ -13118,7 +13115,12 @@ function RepairControl(model, map) {
 
   function delayedUpdate() {
     setTimeout(function() {
-      _self.update();
+      var e = model.getEditingLayer();
+      if (e.dataset && e.dataset != _dataset && !e.dataset.info.no_repair &&
+          MapShaper.layerHasPaths(e.layer)) {
+        _dataset = e.dataset;
+        _self.update();
+      }
     }, 10);
   }
 
