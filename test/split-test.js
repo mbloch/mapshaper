@@ -3,7 +3,6 @@ var assert = require('assert'),
 
 describe('mapshaper-split.js', function () {
   describe('splitLayer()', function () {
-    var nullArcs = new api.internal.ArcCollection([]);
     it('divides a layer into multiple named layers', function () {
       var records = [{foo: "spruce"}, {foo: "fir"}, {foo: "apple"}, {foo: "fir"}];
       var lyr = {
@@ -11,7 +10,7 @@ describe('mapshaper-split.js', function () {
         data: new api.internal.DataTable(records),
         shapes: [[[0]], [[1], [2]], null, [[3]]]
       };
-      var layers = api.splitLayer(lyr, nullArcs, 'foo');
+      var layers = api.splitLayer(lyr, 'foo');
       assert.equal(layers.length, 3)
       assert.deepEqual(layers[0].data.getRecords(), [{foo: 'spruce'}]);
       assert.deepEqual(layers[0].shapes, [[[0]]]);
@@ -30,12 +29,30 @@ describe('mapshaper-split.js', function () {
         data: new api.internal.DataTable(records),
         shapes: [[[0, -2]], [[1], [2, 4]], null, [[3, 4]]]
       };
-      var layers = api.splitLayer(lyr, nullArcs, 'foo');
+      var layers = api.splitLayer(lyr, 'foo');
       assert.equal(layers.length, 3)
       assert.equal(layers[0].name, 'split-0');
       assert.equal(layers[1].name, 'split--1')
       assert.equal(layers[2].name, 'split-1')
     })
+
+    it('Handle layer with no shapes', function() {
+      var lyr = {
+        data: new api.internal.DataTable([{foo: 'a'}, {foo: 'b'}])
+      };
+      var layers = api.splitLayer(lyr, 'foo');
+      assert.deepEqual(layers[0].data.getRecords(), [{foo: 'a'}])
+      assert.deepEqual(layers[1].data.getRecords(), [{foo: 'b'}])
+    });
+
+    it('Split all shapes (no field)', function() {
+      var lyr = {
+        data: new api.internal.DataTable([{foo: 'a'}, {foo: 'b'}])
+      };
+      var layers = api.splitLayer(lyr);
+      assert.deepEqual(layers[0].data.getRecords(), [{foo: 'a'}])
+      assert.deepEqual(layers[1].data.getRecords(), [{foo: 'b'}])
+    });
 
     it('Split all features if no field is given', function() {
       var records = [{foo: 0}, {foo: -1}, {foo: 1}, {foo: 1}];
@@ -43,7 +60,7 @@ describe('mapshaper-split.js', function () {
         data: new api.internal.DataTable(records),
         shapes: [[[0, -2]], [[1], [2, 4]], null, [[3, 4]]]
       };
-      var layers = api.splitLayer(lyr, nullArcs);
+      var layers = api.splitLayer(lyr);
       assert.equal(layers.length, 4)
       assert.equal(layers[0].name, 'split-0');
       assert.equal(layers[1].name, 'split-1')
@@ -54,6 +71,9 @@ describe('mapshaper-split.js', function () {
       assert.deepEqual(layers[1].shapes, [[[1], [2, 4]]])
       assert.deepEqual(layers[2].shapes, [null])
       assert.deepEqual(layers[3].shapes, [[[3, 4]]])
+
+      assert.deepEqual(layers[0].data.getRecords(), [{foo: 0}]);
+      assert.deepEqual(layers[3].data.getRecords(), [{foo: 1}]);
     })
   })
 })

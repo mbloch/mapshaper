@@ -1,16 +1,17 @@
 /* @requires mapshaper-common */
 
-
-api.splitLayer = function(lyr0, arcs, splitField) {
-  var dataTable = lyr0.data;
-  if (splitField && (!dataTable || !dataTable.fieldExists(splitField))) stop("[split] Missing attribute field:", splitField);
-
-  var index = {},
-      properties = splitField ? dataTable.getRecords() : null,
+api.splitLayer = function(src, splitField, opts) {
+  var lyr0 = opts && opts.no_replace ? MapShaper.copyLayer(src) : src,
+      properties = lyr0.data ? lyr0.data.getRecords() : null,
       shapes = lyr0.shapes,
+      index = {},
       splitLayers = [];
 
-  shapes.forEach(function(shp, i) {
+  if (splitField && (!properties || !lyr0.data.fieldExists(splitField))) {
+    stop("[split] Missing attribute field:", splitField);
+  }
+
+  utils.repeat(MapShaper.getFeatureCount(lyr0), function(i) {
     var key = String(splitField ? properties[i][splitField] : i),
         lyr;
 
@@ -19,13 +20,15 @@ api.splitLayer = function(lyr0, arcs, splitField) {
       lyr = utils.defaults({
         name: MapShaper.getSplitLayerName(lyr0.name, key),
         data: properties ? new DataTable() : null,
-        shapes: []
+        shapes: shapes ? [] : null
       }, lyr0);
       splitLayers.push(lyr);
     } else {
       lyr = splitLayers[index[key]];
     }
-    lyr.shapes.push(shapes[i]);
+    if (shapes) {
+      lyr.shapes.push(shapes[i]);
+    }
     if (properties) {
       lyr.data.getRecords().push(properties[i]);
     }

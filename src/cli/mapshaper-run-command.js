@@ -145,7 +145,7 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
-      newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, arcs, opts.field);
+      newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, opts.field, opts);
 
     } else if (name == 'split-on-grid') {
       newLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
