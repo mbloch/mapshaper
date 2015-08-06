@@ -219,11 +219,9 @@ function ImportControl(model) {
     }, delay);
   }
 
-  // @file a File object
-  function readFile(file) {
-    var name = file.name,
-        ext = utils.getFileExtension(name).toLowerCase();
-    if (ext == 'zip') {
+  function readZipFile(file) {
+    gui.showProgressMessage('Importing');
+    setTimeout(function() {
       gui.readZipFile(file, function(err, files) {
         if (err) {
           console.log("Zip file loading failed:");
@@ -232,6 +230,15 @@ function ImportControl(model) {
         addFiles(files);
         readNext();
       });
+    }, 35);
+  }
+
+  // @file a File object
+  function readFile(file) {
+    var name = file.name,
+        ext = utils.getFileExtension(name).toLowerCase();
+    if (ext == 'zip') {
+      readZipFile(file);
     } else if (gui.isReadableFileType(name)) {
       importFile(file);
     } else {
