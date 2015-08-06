@@ -12309,11 +12309,9 @@ function ImportControl(model) {
     }, delay);
   }
 
-  // @file a File object
-  function readFile(file) {
-    var name = file.name,
-        ext = utils.getFileExtension(name).toLowerCase();
-    if (ext == 'zip') {
+  function readZipFile(file) {
+    gui.showProgressMessage('Importing');
+    setTimeout(function() {
       gui.readZipFile(file, function(err, files) {
         if (err) {
           console.log("Zip file loading failed:");
@@ -12322,6 +12320,15 @@ function ImportControl(model) {
         addFiles(files);
         readNext();
       });
+    }, 35);
+  }
+
+  // @file a File object
+  function readFile(file) {
+    var name = file.name,
+        ext = utils.getFileExtension(name).toLowerCase();
+    if (ext == 'zip') {
+      readZipFile(file);
     } else if (gui.isReadableFileType(name)) {
       importFile(file);
     } else {
@@ -14295,11 +14302,10 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
   var intersects = newBounds.intersects(mapBounds);
   // TODO: compare only intersecting portion of layer with map bounds
   var areaRatio = newBounds.area() / mapBounds.area();
-  if (areaRatio > 1) areaRatio = 1 / areaRatio;
 
   if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
   if (!intersects) return true; // reset if layer is out-of-view
-  return areaRatio < 0.5; // reset if layer is not at a viewable scale
+  return areaRatio > 5000 || areaRatio < 0.01; // reset if layer is not at a viewable scale
 };
 
 function MshpMap(model) {

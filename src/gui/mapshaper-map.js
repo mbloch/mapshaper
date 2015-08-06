@@ -13,11 +13,10 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
   var intersects = newBounds.intersects(mapBounds);
   // TODO: compare only intersecting portion of layer with map bounds
   var areaRatio = newBounds.area() / mapBounds.area();
-  if (areaRatio > 1) areaRatio = 1 / areaRatio;
 
   if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
   if (!intersects) return true; // reset if layer is out-of-view
-  return areaRatio < 0.5; // reset if layer is not at a viewable scale
+  return areaRatio > 5000 || areaRatio < 0.01; // reset if layer is not at a viewable scale
 };
 
 function MshpMap(model) {
