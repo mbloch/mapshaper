@@ -511,7 +511,7 @@ body.simplify #layer-control-btn {
 	display: none;
 	position: absolute;
 	z-index: 20;
-	top: 7px;
+	top: 9px;
 	right: 14px;
 	text-align: right;
 }
