@@ -100,7 +100,7 @@ function LayerGroup(dataset) {
 
   function drawArcs(style, ext) {
     var arcs = _filteredArcs.getArcCollection(ext),
-        minPathLen = 0.8 * ext.getPixelSize(),
+        minPathLen = 0.5 * ext.getPixelSize(),
         geoBounds = ext.getBounds(),
         geoBBox = geoBounds.toArray(),
         allIn = geoBounds.contains(arcs.getBounds()),
