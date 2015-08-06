@@ -18904,7 +18904,8 @@ function Console(model) {
         commands.forEach(function(cmd) {
           // rename-layers should default to all layers;
           // other commands can target the current layer
-          if (!cmd.options.target && cmd.name != 'rename-layers') {
+          if (!cmd.options.target && cmd.name != 'rename-layers' &&
+              cmd.name != 'merge-layers') {
             cmd.options.target = String(lyrId);
           }
         });
