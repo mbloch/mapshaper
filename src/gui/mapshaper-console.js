@@ -83,13 +83,13 @@ function Console(model) {
         back();
       } else if (kc == 40) {
         forward();
+      } else if (kc == 32 && readCommandLine() === '') {
+        // space bar closes if nothing has been typed
+        model.clearMode();
       } else if (e.target != input.node() && !metaKey(e)) {
         // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
         input.node().focus();
         capture = false;
-      } else if (kc == 32 && readCommandLine() === '') {
-        // space bar closes if nothing has been typed
-        model.clearMode();
       } else {
         // normal typing
         capture = false;
