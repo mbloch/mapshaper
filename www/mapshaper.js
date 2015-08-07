@@ -3800,26 +3800,33 @@ function DbfReader(src, encoding) {
   }
   this.bin = new BinArray(src);
   this.header = this.readHeader(this.bin);
-  this.encoding = encoding ? encoding : this.findStringEncoding();
-  // console.log("encoding:", this.encoding, "id:", this.header.ldid)
+  this.encodingOpt = encoding;
 }
+
+DbfReader.prototype.getEncoding = function() {
+  var enc = this.encodingOpt || this.findStringEncoding();
+  if (!enc) {
+    stop("Unable to auto-detect the DBF file's text encoding. " + Dbf.ENCODING_PROMPT);
+  }
+  return enc;
+};
 
 DbfReader.prototype.rows = function() {
   return this.header.recordCount;
 };
 
 DbfReader.prototype.findStringEncoding = function() {
-  // check the ldid (language driver id) (an obsolete way to specify which
-  // codepage to use for text encoding.)
-  // ArcGIS up to v.10.1 sets ldid and encoding based on the 'locale' of the
-  // user's Windows system :P
-  //
   var ldid = this.header.ldid,
       codepage = Dbf.lookupCodePage(ldid),
       samples = this.getNonAsciiSamples(50),
       only7bit = samples.length === 0,
       encoding, msg;
 
+  // First, check the ldid (language driver id) (an obsolete way to specify which
+  // codepage to use for text encoding.)
+  // ArcGIS up to v.10.1 sets ldid and encoding based on the 'locale' of the
+  // user's Windows system :P
+  //
   if (codepage && ldid != 87) {
     // if 8-bit data is found and codepage is detected, use the codepage,
     // except ldid 87, which some GIS software uses regardless of encoding.
@@ -3834,12 +3841,9 @@ DbfReader.prototype.findStringEncoding = function() {
   if (!encoding) {
     encoding = MapShaper.detectEncoding(samples);
   }
-  if (!encoding) {
-    stop("Unable to auto-detect the DBF file's text encoding.\n" + Dbf.ENCODING_PROMPT);
-  }
 
   // Show a sample of decoded text if non-ascii-range text has been found
-  if (samples.length > 0) {
+  if (encoding && samples.length > 0) {
     msg = "[dbf] Detected encoding: " + encoding;
     if (encoding in Dbf.encodingNames) {
       msg += " (" + Dbf.encodingNames[encoding] + ")";
@@ -3851,7 +3855,6 @@ DbfReader.prototype.findStringEncoding = function() {
   }
   return encoding;
 };
-
 
 
 // Return up to @size buffers containing text samples
@@ -3917,7 +3920,7 @@ DbfReader.prototype.getFieldReader = function(f) {
   } else if (type == 'D') {
     r = Dbf.readDate;
   } else if (type == 'C') {
-    r = Dbf.getStringReader(this.encoding);
+    r = Dbf.getStringReader(this.getEncoding());
   } else {
     message("[dbf] Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
     r = function() {return null;};
@@ -3927,7 +3930,7 @@ DbfReader.prototype.getFieldReader = function(f) {
 
 DbfReader.prototype.readRows = function() {
   var data = [],
-      reader = this.getRecordReader(this.header, this.encoding);
+      reader = this.getRecordReader(this.header, this.getEncoding());
   for (var r=0, rows=this.rows(); r<rows; r++) {
     data.push(reader(r));
   }
@@ -10445,7 +10448,7 @@ MapShaper.exportDbfFile = function(lyr, dataset, opts) {
   if (data.getFields().length === 0) {
     data.addIdField();
   }
-  buf = data.exportAsDbf(opts.encoding || dataset.info.dbf_encoding);
+  buf = data.exportAsDbf(opts.encoding || 'utf8');
   if (utils.isInteger(opts.ldid)) {
     new Uint8Array(buf)[29] = opts.ldid; // set language driver id
   }
@@ -10465,7 +10468,6 @@ MapShaper.exportDbfFile = function(lyr, dataset, opts) {
 function ShapefileTable(buf, encoding) {
   var reader = new DbfReader(buf, encoding),
       table;
-  this.encoding = reader.encoding; // expose import encoding, etc
 
   function getTable() {
     if (!table) {
@@ -10814,7 +10816,7 @@ MapShaper.importDbf = function(input, opts) {
   }
   table = MapShaper.importDbfTable(input.dbf.content, opts);
   return {
-    info: {dbf_encoding: table.encoding},
+    info: {},
     layers: [{data: table}]
   };
 };
@@ -12273,11 +12275,13 @@ function ImportControl(model) {
     loadFile(file, function(err, content) {
       var name = file.name;
       var type = MapShaper.guessInputType(name, content);
+      var importOpts = getImportOpts();
       if (type == 'shp' || type == 'json') {
-        importFileContent(type, name, content);
+        importFileContent(type, name, content, importOpts);
       } else {
-          if (type == 'dbf' || type == 'prj') {
-          // merge auxiliary Shapefile files with .shp content
+        if (type == 'dbf') {
+          gui.receiveShapefileComponent(name, new ShapefileTable(content, importOpts.encoding));
+        } else if (type == 'prj') {
           gui.receiveShapefileComponent(name, content);
         } else {
           console.log("Unexpected file type: " + name + '; ignoring');
@@ -12287,10 +12291,9 @@ function ImportControl(model) {
     });
   }
 
-  function importFileContent(type, path, content) {
+  function importFileContent(type, path, content, importOpts) {
     var size = content.byteLength || content.length, // ArrayBuffer or string
         showMsg = size > 4e7, // don't show message if dataset is small
-        importOpts = getImportOpts(),
         delay = 0;
     importOpts.files = [path]; // TODO: try to remove this
     if (showMsg) {
@@ -12356,7 +12359,7 @@ gui.receiveShapefileComponent = (function() {
       }
       if (cache.dbf && !lyr.data) {
         // TODO: handle unknown encodings interactively
-        lyr.data = new ShapefileTable(cache.dbf);
+        lyr.data = cache.dbf;
         delete cache.dbf;
         if (lyr.data.size() != lyr.shapes.length) {
           lyr.data = null;

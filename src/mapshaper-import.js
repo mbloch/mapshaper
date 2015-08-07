@@ -97,7 +97,7 @@ MapShaper.importDbf = function(input, opts) {
   }
   table = MapShaper.importDbfTable(input.dbf.content, opts);
   return {
-    info: {dbf_encoding: table.encoding},
+    info: {},
     layers: [{data: table}]
   };
 };

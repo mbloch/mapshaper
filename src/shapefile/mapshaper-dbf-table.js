@@ -25,7 +25,7 @@ MapShaper.exportDbfFile = function(lyr, dataset, opts) {
   if (data.getFields().length === 0) {
     data.addIdField();
   }
-  buf = data.exportAsDbf(opts.encoding || dataset.info.dbf_encoding);
+  buf = data.exportAsDbf(opts.encoding || 'utf8');
   if (utils.isInteger(opts.ldid)) {
     new Uint8Array(buf)[29] = opts.ldid; // set language driver id
   }
@@ -45,7 +45,6 @@ MapShaper.exportDbfFile = function(lyr, dataset, opts) {
 function ShapefileTable(buf, encoding) {
   var reader = new DbfReader(buf, encoding),
       table;
-  this.encoding = reader.encoding; // expose import encoding, etc
 
   function getTable() {
     if (!table) {
