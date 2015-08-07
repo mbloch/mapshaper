@@ -6200,6 +6200,7 @@ geom.getPointToShapeDistance = function(x, y, shp, arcs) {
 geom.testPointInRing = function(x, y, ids, arcs) {
   /*
   // arcs.getSimpleShapeBounds() doesn't apply simplification, can't use here
+  //// wait, why not? simplifcation shoudn't expand bounds, so this test makes sense
   if (!arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
     return false;
   }
@@ -14036,7 +14037,8 @@ function HitControl(ext, mouse) {
     select(hoverId);
   });
 
-  // This causes the info panel to flicker on and off
+  // DISABLING: This causes problems when hovering over the info panel
+  // Deselect hover shape when pointer leaves hover area
   //mouse.on('leave', function(e) {
   // update(-1);
   //});
@@ -14046,12 +14048,21 @@ function HitControl(ext, mouse) {
     if (selection && test && e.hover) {
       tr = ext.getTransform();
       p = tr.invert().transform(e.x, e.y);
-      test(p[0], p[1], 1/tr.mx);
+      test(p[0], p[1]);
     }
   });
 
-  function polygonTest(x, y, m) {
-    var cands = findHitCandidates(x, y, 0),
+  // Convert pixel distance to distance in coordinate units.
+  function getHitBuffer(pix) {
+    var dist = pix / ext.getTransform().mx,
+        scale = ext.scale();
+    if (scale < 1) dist *= scale; // reduce hit threshold when zoomed out
+    return dist;
+  }
+
+  function polygonTest(x, y) {
+    var dist = getHitBuffer(5),
+        cands = findHitCandidates(x, y, dist),
         hitId = -1,
         cand;
     for (var i=0; i<cands.length; i++) {
@@ -14061,37 +14072,44 @@ function HitControl(ext, mouse) {
         break;
       }
     }
+    if (cands.length > 0 && hitId == -1) {
+      // secondary detection: proximity, if not inside a polygon
+      hitId = findNearestCandidate(x, y, dist, cands, selection.dataset.arcs);
+    }
     update(hitId);
   }
 
-  function polylineTest(x, y, m) {
-    var dist = 15 * m,
+  function polylineTest(x, y) {
+    var dist = getHitBuffer(15),
         hitId = -1,
-        cands, cand, candDist;
-    if (ext.scale() < 1) {
-      dist *= ext.scale(); // reduce hit threshold when zoomed out
-    }
-    cands = findHitCandidates(x, y, dist);
+        cands = findHitCandidates(x, y, dist);
+    hitId = findNearestCandidate(x, y, dist, cands, selection.dataset.arcs);
+    update(hitId);
+  }
+
+  function findNearestCandidate(x, y, dist, cands, arcs) {
+    var hitId = -1,
+        cand, candDist;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
-      candDist = geom.getPointToShapeDistance(x, y, cand.shape, selection.dataset.arcs);
+      candDist = geom.getPointToShapeDistance(x, y, cand.shape, arcs);
       if (candDist < dist) {
         hitId = cand.id;
         dist = candDist;
       }
     }
-    update(hitId);
+    return hitId;
   }
 
-  function pointTest(x, y, m) {
-    var pixBuf = 25,
-        hitId = -1,
-        hitDist = pixBuf * pixBuf * m * m;
+  function pointTest(x, y) {
+    var dist = getHitBuffer(25),
+        limitSq = dist * dist,
+        hitId = -1;
     MapShaper.forEachPoint(selection.layer, function(p, id) {
       var distSq = distanceSq(x, y, p[0], p[1]);
-      if (distSq < hitDist) {
+      if (distSq < limitSq) {
         hitId = id;
-        hitDist = distSq;
+        limitSq = distSq;
       }
     });
     update(hitId);

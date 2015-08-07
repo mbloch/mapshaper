@@ -3793,6 +3793,7 @@ geom.getPointToShapeDistance = function(x, y, shp, arcs) {
 geom.testPointInRing = function(x, y, ids, arcs) {
   /*
   // arcs.getSimpleShapeBounds() doesn't apply simplification, can't use here
+  //// wait, why not? simplifcation shoudn't expand bounds, so this test makes sense
   if (!arcs.getSimpleShapeBounds(ids).containsPoint(x, y)) {
     return false;
   }
