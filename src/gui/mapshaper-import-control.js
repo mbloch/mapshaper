@@ -183,11 +183,13 @@ function ImportControl(model) {
     loadFile(file, function(err, content) {
       var name = file.name;
       var type = MapShaper.guessInputType(name, content);
+      var importOpts = getImportOpts();
       if (type == 'shp' || type == 'json') {
-        importFileContent(type, name, content);
+        importFileContent(type, name, content, importOpts);
       } else {
-          if (type == 'dbf' || type == 'prj') {
-          // merge auxiliary Shapefile files with .shp content
+        if (type == 'dbf') {
+          gui.receiveShapefileComponent(name, new ShapefileTable(content, importOpts.encoding));
+        } else if (type == 'prj') {
           gui.receiveShapefileComponent(name, content);
         } else {
           console.log("Unexpected file type: " + name + '; ignoring');
@@ -197,10 +199,9 @@ function ImportControl(model) {
     });
   }
 
-  function importFileContent(type, path, content) {
+  function importFileContent(type, path, content, importOpts) {
     var size = content.byteLength || content.length, // ArrayBuffer or string
         showMsg = size > 4e7, // don't show message if dataset is small
-        importOpts = getImportOpts(),
         delay = 0;
     importOpts.files = [path]; // TODO: try to remove this
     if (showMsg) {
@@ -266,7 +267,7 @@ gui.receiveShapefileComponent = (function() {
       }
       if (cache.dbf && !lyr.data) {
         // TODO: handle unknown encodings interactively
-        lyr.data = new ShapefileTable(cache.dbf);
+        lyr.data = cache.dbf;
         delete cache.dbf;
         if (lyr.data.size() != lyr.shapes.length) {
           lyr.data = null;
