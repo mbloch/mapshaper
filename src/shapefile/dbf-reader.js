@@ -27,8 +27,8 @@ Dbf.encodingNames = {
 };
 
 Dbf.ENCODING_PROMPT =
-  "You can specify an encoding using the \"encoding\" import option.\n" +
-  "Run the \"encodings\" command to view supported encodings.";
+  "To avoid corrupted text, re-import using the \"encoding=\" option.\n" +
+  "To see a list of supported encodings, run the \"encodings\" command.";
 
 Dbf.lookupCodePage = function(lid) {
   var i = Dbf.languageIds.indexOf(lid);
@@ -163,15 +163,19 @@ function DbfReader(src, encoding) {
   }
   this.bin = new BinArray(src);
   this.header = this.readHeader(this.bin);
-  this.encodingOpt = encoding;
+  this.encoding = encoding;
 }
 
 DbfReader.prototype.getEncoding = function() {
-  var enc = this.encodingOpt || this.findStringEncoding();
-  if (!enc) {
-    stop("Unable to auto-detect the DBF file's text encoding. " + Dbf.ENCODING_PROMPT);
+  if (!this.encoding) {
+    this.encoding = this.findStringEncoding();
+    if (!this.encoding) {
+      // fall back to utf8 if detection fails (so GUI can continue without further errors)
+      this.encoding = 'utf8';
+      stop("Unable to auto-detect the text encoding of the DBF file.\n" + Dbf.ENCODING_PROMPT);
+    }
   }
-  return enc;
+  return this.encoding;
 };
 
 DbfReader.prototype.rows = function() {
@@ -253,7 +257,7 @@ DbfReader.prototype.getRowOffset = function() {
   };
 };
 
-DbfReader.prototype.getRecordReader = function(header, encoding) {
+DbfReader.prototype.getRecordReader = function(header) {
   var fields = header.fields,
       readers = fields.map(this.getFieldReader, this),
       uniqNames = Dbf.getUniqFieldNames(utils.pluck(fields, 'name')),
@@ -293,7 +297,7 @@ DbfReader.prototype.getFieldReader = function(f) {
 
 DbfReader.prototype.readRows = function() {
   var data = [],
-      reader = this.getRecordReader(this.header, this.getEncoding());
+      reader = this.getRecordReader(this.header);
   for (var r=0, rows=this.rows(); r<rows; r++) {
     data.push(reader(r));
   }
