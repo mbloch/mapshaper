@@ -8678,7 +8678,6 @@ function PathImporter(opts, reservedPoints) {
           MapShaper.snapCoords(arcs, opts.snap_interval);
           T.stop("Snapping points");
         }
-
         MapShaper.cleanShapes(shapes, arcs, collectionType);
       } else {
         message("No geometries were imported");
@@ -14069,7 +14068,6 @@ function HitControl(ext, mouse) {
         cands = findHitCandidates(x, y, dist),
         hitId = -1,
         cand;
-    console.log(cands.length);
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
       if (geom.testPointInRing(x, y, cand.path, selection.dataset.arcs)) {

@@ -7925,7 +7925,6 @@ function PathImporter(opts, reservedPoints) {
           MapShaper.snapCoords(arcs, opts.snap_interval);
           T.stop("Snapping points");
         }
-
         MapShaper.cleanShapes(shapes, arcs, collectionType);
       } else {
         message("No geometries were imported");
