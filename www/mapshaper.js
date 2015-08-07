@@ -13339,21 +13339,19 @@ function getScaledTransform(ext) {
   return ext.getTransform(gui.getPixelRatio());
 }
 
-function drawCircle(x, y, size, col, ctx) {
+function drawCircle(x, y, size, ctx) {
   if (size > 0) {
     ctx.beginPath();
-    ctx.fillStyle = col;
     ctx.arc(x, y, size * 0.5, 0, Math.PI * 2, true);
     ctx.fill();
   }
 }
 
-function drawSquare(x, y, size, col, ctx) {
+function drawSquare(x, y, size, ctx) {
   if (size > 0) {
     var offs = size / 2;
     x = Math.round(x - offs);
     y = Math.round(y - offs);
-    ctx.fillStyle = col;
     ctx.fillRect(x, y, size, size);
   }
 }
@@ -13713,19 +13711,21 @@ function LayerGroup(dataset) {
 
   function drawPoints(shapes, style, ext) {
     var t = getScaledTransform(ext),
-        color = style.dotColor || "rgba(255, 50, 50, 0.5)",
         size = (style.dotSize || 3) * gui.getPixelRatio(),
         drawPoint = style.roundDot ? drawCircle : drawSquare,
         shp, p;
+
     // TODO: don't try to draw offscreen points
+    _ctx.fillStyle = style.dotColor || "black";
     for (var i=0, n=shapes.length; i<n; i++) {
       shp = shapes[i];
       for (var j=0; j<shp.length; j++) {
         p = shp[j];
-        drawPoint(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, color, _ctx);
+        drawPoint(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, _ctx);
       }
     }
   }
+
 
   function clearCanvas() {
     _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
@@ -14354,9 +14354,9 @@ function MshpMap(model) {
       },
       hoverStyles = {
         polygon: {
-          fillColor: "#ffebf1",
+          fillColor: "rgba(255, 120, 162, 0.2)", // "#ffebf1",
           strokeColor: "black",
-          strokeWidth: 1.5
+          strokeWidth: 1.2
         }, point:  {
           dotColor: "black",
           dotSize: 8
@@ -14367,7 +14367,7 @@ function MshpMap(model) {
       },
       pinnedStyles = {
         polygon: {
-          fillColor: "#ffebf1",
+          fillColor: "rgba(255, 120, 162, 0.2)",
           strokeColor: "#f74b80",
           strokeWidth: 1.5
         }, point:  {

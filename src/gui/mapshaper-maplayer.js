@@ -122,19 +122,21 @@ function LayerGroup(dataset) {
 
   function drawPoints(shapes, style, ext) {
     var t = getScaledTransform(ext),
-        color = style.dotColor || "rgba(255, 50, 50, 0.5)",
         size = (style.dotSize || 3) * gui.getPixelRatio(),
         drawPoint = style.roundDot ? drawCircle : drawSquare,
         shp, p;
+
     // TODO: don't try to draw offscreen points
+    _ctx.fillStyle = style.dotColor || "black";
     for (var i=0, n=shapes.length; i<n; i++) {
       shp = shapes[i];
       for (var j=0; j<shp.length; j++) {
         p = shp[j];
-        drawPoint(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, color, _ctx);
+        drawPoint(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, _ctx);
       }
     }
   }
+
 
   function clearCanvas() {
     _ctx.clearRect(0, 0, _canvas.width, _canvas.height);

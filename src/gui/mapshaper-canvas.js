@@ -9,21 +9,19 @@ function getScaledTransform(ext) {
   return ext.getTransform(gui.getPixelRatio());
 }
 
-function drawCircle(x, y, size, col, ctx) {
+function drawCircle(x, y, size, ctx) {
   if (size > 0) {
     ctx.beginPath();
-    ctx.fillStyle = col;
     ctx.arc(x, y, size * 0.5, 0, Math.PI * 2, true);
     ctx.fill();
   }
 }
 
-function drawSquare(x, y, size, col, ctx) {
+function drawSquare(x, y, size, ctx) {
   if (size > 0) {
     var offs = size / 2;
     x = Math.round(x - offs);
     y = Math.round(y - offs);
-    ctx.fillStyle = col;
     ctx.fillRect(x, y, size, size);
   }
 }

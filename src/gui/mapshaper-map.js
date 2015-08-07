@@ -44,9 +44,9 @@ function MshpMap(model) {
       },
       hoverStyles = {
         polygon: {
-          fillColor: "#ffebf1",
+          fillColor: "rgba(255, 120, 162, 0.2)", // "#ffebf1",
           strokeColor: "black",
-          strokeWidth: 1.5
+          strokeWidth: 1.2
         }, point:  {
           dotColor: "black",
           dotSize: 8
@@ -57,7 +57,7 @@ function MshpMap(model) {
       },
       pinnedStyles = {
         polygon: {
-          fillColor: "#ffebf1",
+          fillColor: "rgba(255, 120, 162, 0.2)",
           strokeColor: "#f74b80",
           strokeWidth: 1.5
         }, point:  {
