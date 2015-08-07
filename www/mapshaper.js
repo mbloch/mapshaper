@@ -14069,9 +14069,10 @@ function HitControl(ext, mouse) {
         cands = findHitCandidates(x, y, dist),
         hitId = -1,
         cand;
+    console.log(cands.length);
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
-      if (geom.testPointInPolygon(x, y, cand.shape, selection.dataset.arcs)) {
+      if (geom.testPointInRing(x, y, cand.path, selection.dataset.arcs)) {
         hitId = cand.id;
         break;
       }
@@ -14096,7 +14097,7 @@ function HitControl(ext, mouse) {
         cand, candDist;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
-      candDist = geom.getPointToShapeDistance(x, y, cand.shape, arcs);
+      candDist = geom.getPointToPathDistance(x, y, cand.path, arcs);
       if (candDist < dist) {
         hitId = cand.id;
         dist = candDist;
@@ -14162,8 +14163,8 @@ function HitControl(ext, mouse) {
         arcs.getSimpleShapeBounds2(shp[i], bbox);
         if (x + dist > bbox[0] && x - dist < bbox[2] &&
           y + dist > bbox[1] && y - dist < bbox[3]) {
-          cands.push({shape: shp, id: shpId});
-          break;
+          // may select multiple paths from same shape
+          cands.push({shape: shp, id: shpId, path: shp[i]});
         }
       }
     });
