@@ -10024,7 +10024,7 @@ MapShaper.simplifyPolygonFast = function(shp, arcs, dist) {
     }
   });
   return {
-    shape: shp2,
+    shape: shp2.length > 0 ? shp2 : null,
     arcs: new ArcCollection(nn, xx, yy)
   };
 };
@@ -10102,29 +10102,31 @@ geom.getPathCentroid = function(ids, arcs) {
 //
 // (distance is weighted to slightly favor points near centroid)
 //
-geom.findInteriorPoint = function(shp, arcs, exact) {
-  if (!shp) {
+geom.findInteriorPoint = function(shp, arcs) {
+  var maxPath = shp && geom.getMaxPath(shp, arcs),
+      pathBounds = maxPath && arcs.getSimpleShapeBounds(maxPath),
+      thresh, simple;
+  if (!pathBounds || !pathBounds.hasBounds() || pathBounds.area() === 0) {
     return null;
   }
-  var maxPath = geom.getMaxPath(shp, arcs),
-      pathBounds = arcs.getSimpleShapeBounds(maxPath),
-      halfWidth = pathBounds.width() / 2,
-      centroid, area, focus, lbound, rbound, htics, vtics;
-
-  if (!pathBounds.hasBounds() || pathBounds.area() === 0) {
-    return null;
+  thresh = Math.sqrt(pathBounds.area()) * 0.01;
+  simple = MapShaper.simplifyPolygonFast(shp, arcs, thresh);
+  if (!simple.shape) {
+    return null; // collapsed shape
   }
+  return geom.findInteriorPoint2(simple.shape, simple.arcs);
+};
 
-  if (!exact) {
-    var thresh = Math.sqrt(pathBounds.area()) * 0.01;
-    var simple = MapShaper.simplifyPolygonFast(shp, arcs, thresh);
-    return geom.findInteriorPoint(simple.shape, simple.arcs, true);
-  }
+// Assumes: shp is a polygon with at least one space-enclosing ring
+geom.findInteriorPoint2 = function(shp, arcs) {
+  var maxPath = geom.getMaxPath(shp, arcs);
+  var pathBounds = arcs.getSimpleShapeBounds(maxPath);
+  var centroid = geom.getPathCentroid(maxPath, arcs);
+  var weight = MapShaper.getPointWeightingFunction(centroid, pathBounds);
+  var area = geom.getPlanarPathArea(maxPath, arcs);
+  var hrange, lbound, rbound, focus, htics, hstep, p, p2;
 
-  centroid = geom.getPathCentroid(maxPath, arcs);
-  area = geom.getPlanarPathArea(maxPath, arcs);
-
-  // Faster search if shape is simple and squarish
+  // Limit test area if shape is simple and squarish
   if (shp.length == 1 && area * 1.2 > pathBounds.area()) {
     htics = 5;
     focus = 0.2;
@@ -10135,27 +10137,35 @@ geom.findInteriorPoint = function(shp, arcs, exact) {
     htics = 11;
     focus = 0.5;
   }
-  lbound = centroid.x - halfWidth * focus;
-  rbound = centroid.x + halfWidth * focus;
-  vtics = htics;
-
-  // Get candidate points, distributed along x-axis
-  var tics = MapShaper.getInnerTics(lbound, rbound, htics);
-  var cands = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
+  hrange = pathBounds.width() * focus;
+  lbound = centroid.x - hrange / 2;
+  rbound = lbound + hrange;
+  hstep = hrange / htics;
 
   // Find a best-fit point
-  var p = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, vtics);
+  p = MapShaper.probeForBestInteriorPoint(shp, arcs, lbound, rbound, htics, weight);
   if (!p) {
-    verbose("[findInteriorPoint()] failed, falling back to centroid");
-    return centroid;
+    verbose("[points inner] failed, falling back to centroid");
+   p = centroid;
+  } else {
+    // Look for even better fit close to best-fit point
+    p2 = MapShaper.probeForBestInteriorPoint(shp, arcs, p.x - hstep / 2,
+        p.x + hstep / 2, 2, weight);
+    if (p2.distance > p.distance) {
+      p = p2;
+    }
   }
+  return p;
+};
 
-  // Look for even better fit close to best-fit point
-  var xres = tics[1] - tics[0];
-  tics = [p.x - xres/2, p.x + xres/2];
-  cands = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
-  var p2 = MapShaper.findBestInteriorPoint(cands, shp, arcs, pathBounds, centroid, vtics * 2);
-  return p2.distance > p.distance ? p2 : p;
+MapShaper.getPointWeightingFunction = function(centroid, pathBounds) {
+  // Get a factor for weighting a candidate point
+  // Points closer to the centroid are slightly preferred
+  var referenceDist = Math.max(pathBounds.width(), pathBounds.height()) / 2;
+  return function(x, y) {
+    var offset = distance2D(centroid.x, centroid.y, x, y);
+    return 1 - Math.min(0.6 * offset / referenceDist, 0.25);
+  };
 };
 
 MapShaper.findInteriorPointCandidates = function(shp, arcs, xx) {
@@ -10166,16 +10176,16 @@ MapShaper.findInteriorPointCandidates = function(shp, arcs, xx) {
   }, []);
 };
 
-// Receive an array of candidate points
-// Return a best-fit point
-MapShaper.findBestInteriorPoint = function(candidates, shp, arcs, pathBounds, centroid, vtics) {
-  var vstep = pathBounds.height() / vtics;
-  var referenceDist = Math.max(pathBounds.width(), pathBounds.height()) / 2;
+MapShaper.probeForBestInteriorPoint = function(shp, arcs, lbound, rbound, htics, weight) {
+  var tics = MapShaper.getInnerTics(lbound, rbound, htics);
+  var interval = (rbound - lbound) / htics;
+  // Get candidate points, distributed along x-axis
+  var candidates = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
   var bestP, adjustedP, candP;
 
   // Sort candidates so points at the center of longer segments are tried first
   candidates.forEach(function(p) {
-    p.interval *= getWeight(p.x, p.y);
+    p.interval *= weight(p.x, p.y);
   });
   candidates.sort(function(a, b) {
     return b.interval - a.interval;
@@ -10188,20 +10198,12 @@ MapShaper.findBestInteriorPoint = function(candidates, shp, arcs, pathBounds, ce
     if (bestP && bestP.distance > candP.interval) {
       break;
     }
-    adjustedP = MapShaper.getAdjustedPoint(candP.x, candP.y, shp, arcs, vstep, getWeight);
+    adjustedP = MapShaper.getAdjustedPoint(candP.x, candP.y, shp, arcs, interval, weight);
 
     if (!bestP || adjustedP.distance > bestP.distance) {
       bestP = adjustedP;
     }
   }
-
-  // Get a number for weighting a candidate point
-  // Points closer to the centroid are slightly preferred
-  function getWeight(x, y) {
-    var offset = distance2D(centroid.x, centroid.y, x, y);
-    return 1 - Math.min(0.6 * offset / referenceDist, 0.25);
-  }
-
   return bestP;
 };
 

@@ -37,7 +37,7 @@ MapShaper.simplifyPolygonFast = function(shp, arcs, dist) {
     }
   });
   return {
-    shape: shp2,
+    shape: shp2.length > 0 ? shp2 : null,
     arcs: new ArcCollection(nn, xx, yy)
   };
 };

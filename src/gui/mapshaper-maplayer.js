@@ -130,7 +130,7 @@ function LayerGroup(dataset) {
     _ctx.fillStyle = style.dotColor || "black";
     for (var i=0, n=shapes.length; i<n; i++) {
       shp = shapes[i];
-      for (var j=0; j<shp.length; j++) {
+      for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
         p = shp[j];
         drawPoint(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, _ctx);
       }
