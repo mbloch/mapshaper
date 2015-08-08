@@ -49,16 +49,14 @@ var ExportControl = function(model) {
 
   // @done function(string|Error|null)
   function exportAs(format, done) {
-    var editing = model.getEditingLayer(),
-        opts, dataset, files;
+    var dataset, opts, files;
     try {
+      dataset = utils.extend({}, model.getEditingLayer().dataset);
       opts = gui.parseFreeformOptions(El('#export-options .advanced-options').node().value, 'o');
       opts.format = format;
-      if (format == 'topojson') {
-        dataset = editing.dataset; // For TopoJSON, export all layers in this dataset
-      } else {
-        // other formats, only output the currently selected layer
-        dataset = MapShaper.isolateLayer(editing.layer, editing.dataset);
+      if (opts.target) {
+        dataset.layers = MapShaper.findMatchingLayers(dataset.layers, opts.target) ||
+          stop("Unknown export target:", opts.target);
       }
       files = MapShaper.exportFileContent(dataset, opts);
     } catch(e) {
@@ -70,7 +68,7 @@ var ExportControl = function(model) {
     } else if (files.length == 1) {
       saveBlob(files[0].filename, new Blob([files[0].content]), done);
     } else {
-      name = MapShaper.getCommonFileBase(utils.pluck(files, 'filename')) || "out";
+      name = MapShaper.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
       saveZipFile(name + ".zip", files, done);
     }
   }
