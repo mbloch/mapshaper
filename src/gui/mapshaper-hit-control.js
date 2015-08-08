@@ -76,7 +76,7 @@ function HitControl(ext, mouse) {
         cand;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
-      if (geom.testPointInRing(x, y, cand.path, selection.dataset.arcs)) {
+      if (geom.testPointInPolygon(x, y, cand.shape, selection.dataset.arcs)) {
         hitId = cand.id;
         break;
       }
@@ -101,7 +101,7 @@ function HitControl(ext, mouse) {
         cand, candDist;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
-      candDist = geom.getPointToPathDistance(x, y, cand.path, arcs);
+      candDist = geom.getPointToShapeDistance(x, y, cand.shape, arcs);
       if (candDist < dist) {
         hitId = cand.id;
         dist = candDist;
@@ -157,19 +157,24 @@ function HitControl(ext, mouse) {
   }
 
   function findHitCandidates(x, y, dist) {
-    var bbox = [],
-        arcs = selection.dataset.arcs,
-        cands = [];
+    var arcs = selection.dataset.arcs,
+        index = {},
+        cands = [],
+        bbox = [];
     selection.layer.shapes.forEach(function(shp, shpId) {
-      var n = shp ? shp.length : 0,
-          i;
-      for (i=0; i<n; i++) {
+      var cand;
+      for (var i = 0, n = shp && shp.length; i < n; i++) {
         arcs.getSimpleShapeBounds2(shp[i], bbox);
-        if (x + dist > bbox[0] && x - dist < bbox[2] &&
-          y + dist > bbox[1] && y - dist < bbox[3]) {
-          // may select multiple paths from same shape
-          cands.push({shape: shp, id: shpId, path: shp[i]});
+        if (x + dist < bbox[0] || x - dist > bbox[2] ||
+          y + dist < bbox[1] || y - dist > bbox[3]) {
+          continue; // bbox non-intersection
         }
+        cand = index[shpId];
+        if (!cand) {
+          cand = index[shpId] = {shape: [], id: shpId};
+          cands.push(cand);
+        }
+        cand.shape.push(shp[i]);
       }
     });
     return cands;
