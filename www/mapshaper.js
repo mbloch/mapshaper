@@ -12119,7 +12119,6 @@ gui.addTableShapes = function(lyr, dataset) {
   if (dataset.arcs) {
     error("Unable to visualize data table.");
   }
-
   if (n > 5000) {
     cellWidth = 8;
     gutter = 4;
@@ -18835,6 +18834,7 @@ function Console(model) {
 
   // capture all messages to this console, whether open or closed
   message = consoleMessage;
+  verbose = consoleVerbose;
 
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
@@ -19077,6 +19077,12 @@ function Console(model) {
   function consoleMessage() {
     var msg = gui.formatMessageArgs(arguments);
     toLog(msg, 'console-message');
+  }
+
+  function consoleVerbose() {
+    if (MapShaper.VERBOSE) {
+      consoleMessage.apply(null, utils.toArray(arguments));
+    }
   }
 
   function consoleError() {

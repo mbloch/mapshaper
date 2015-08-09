@@ -364,7 +364,7 @@ div.option-menu .advanced-options {
 #console-buffer > div {
 	white-space: pre;
 	text-align: left;
-	width: 520px;
+	width: 620px;
 	margin: 0 auto;
 }
 
@@ -387,6 +387,7 @@ div.option-menu .advanced-options {
 #console-log > div {
 	padding-top: 1px;
 	line-height: 15px;
+	word-wrap: break-word;
 }
 
 #command-line {

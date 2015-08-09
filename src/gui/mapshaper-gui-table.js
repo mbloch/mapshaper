@@ -12,7 +12,6 @@ gui.addTableShapes = function(lyr, dataset) {
   if (dataset.arcs) {
     error("Unable to visualize data table.");
   }
-
   if (n > 5000) {
     cellWidth = 8;
     gutter = 4;
