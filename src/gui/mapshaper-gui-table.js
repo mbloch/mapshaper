@@ -30,7 +30,7 @@ gui.addTableShapes = function(lyr, dataset) {
     row = i % blockSize;
     col = Math.floor(i / blockSize);
     x = col * (cellWidth + gutter);
-    y = -row * cellHeight;
+    y = -row * cellHeight - 1e6; // out of range of geographic layers
     arcs.push(getArc(x, y, cellWidth, cellHeight));
     shapes.push([[i]]);
   }
@@ -38,6 +38,7 @@ gui.addTableShapes = function(lyr, dataset) {
   dataset.arcs = new ArcCollection(arcs);
   lyr.shapes = shapes;
   lyr.geometry_type = 'polygon';
+  lyr.menu_type = 'data record';
 
   function getArc(x, y, w, h) {
     return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];

@@ -12137,7 +12137,7 @@ gui.addTableShapes = function(lyr, dataset) {
     row = i % blockSize;
     col = Math.floor(i / blockSize);
     x = col * (cellWidth + gutter);
-    y = -row * cellHeight;
+    y = -row * cellHeight - 1e6; // out of range of geographic layers
     arcs.push(getArc(x, y, cellWidth, cellHeight));
     shapes.push([[i]]);
   }
@@ -12145,6 +12145,7 @@ gui.addTableShapes = function(lyr, dataset) {
   dataset.arcs = new ArcCollection(arcs);
   lyr.shapes = shapes;
   lyr.geometry_type = 'polygon';
+  lyr.menu_type = 'data record';
 
   function getArc(x, y, w, h) {
     return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
@@ -13257,12 +13258,16 @@ function LayerControl(model) {
 
   function describeLyr(lyr) {
     var n = MapShaper.getFeatureCount(lyr),
-        str;
-    if (lyr.geometry_type) {
-      str = utils.format('%,d %s feature%s', n, lyr.geometry_type,
-          utils.pluralSuffix(n));
+        str, type;
+    if (lyr.menu_type) {
+      type = lyr.menu_type;
+    } else if (lyr.geometry_type) {
+      type = lyr.geometry_type + ' feature';
     } else if (lyr.data) {
-      str = utils.format('%,d data record%s', n, utils.pluralSuffix(n));
+      type = 'data record';
+    }
+    if (type) {
+      str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
     } else {
       str = "[empty]";
     }
@@ -14080,6 +14085,21 @@ function HitControl(ext, mouse) {
       test = null;
     }
   };
+
+  document.addEventListener('keydown', function(e) {
+    var kc = e.keyCode, n;
+    if (pinId > -1 && kc >= 37 && kc <= 40) {
+      n = MapShaper.getFeatureCount(selection.layer);
+      if (kc == 38 || kc == 37) {
+        pinId = (pinId + n - 1) % n;
+      }
+      if (kc == 39 || kc == 40) {
+        pinId = (pinId + 1) % n;
+      }
+      select(pinId);
+      e.stopPropagation();
+    }
+  }, !!'capture');
 
   mouse.on('click', function(e) {
     if (!selection) return;

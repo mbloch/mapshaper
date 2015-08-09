@@ -28,6 +28,21 @@ function HitControl(ext, mouse) {
     }
   };
 
+  document.addEventListener('keydown', function(e) {
+    var kc = e.keyCode, n;
+    if (pinId > -1 && kc >= 37 && kc <= 40) {
+      n = MapShaper.getFeatureCount(selection.layer);
+      if (kc == 38 || kc == 37) {
+        pinId = (pinId + n - 1) % n;
+      }
+      if (kc == 39 || kc == 40) {
+        pinId = (pinId + 1) % n;
+      }
+      select(pinId);
+      e.stopPropagation();
+    }
+  }, !!'capture');
+
   mouse.on('click', function(e) {
     if (!selection) return;
     if (pinId > -1 && hoverId == pinId) {

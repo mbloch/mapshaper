@@ -34,12 +34,16 @@ function LayerControl(model) {
 
   function describeLyr(lyr) {
     var n = MapShaper.getFeatureCount(lyr),
-        str;
-    if (lyr.geometry_type) {
-      str = utils.format('%,d %s feature%s', n, lyr.geometry_type,
-          utils.pluralSuffix(n));
+        str, type;
+    if (lyr.menu_type) {
+      type = lyr.menu_type;
+    } else if (lyr.geometry_type) {
+      type = lyr.geometry_type + ' feature';
     } else if (lyr.data) {
-      str = utils.format('%,d data record%s', n, utils.pluralSuffix(n));
+      type = 'data record';
+    }
+    if (type) {
+      str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
     } else {
       str = "[empty]";
     }
