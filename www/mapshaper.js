@@ -2966,6 +2966,11 @@ MapShaper.stringIsJsonObject = function(str) {
   return /^\s*\{/.test(String(str));
 };
 
+MapShaper.probablyDsvFile = function(name) {
+  var ext = utils.getFileExtension(name).toLowerCase();
+  return /csv|tsv|txt$/.test(ext);
+};
+
 // Infer output format by considering file name and (optional) input format
 MapShaper.inferOutputFormat = function(file, inputFormat) {
   var ext = utils.getFileExtension(file).toLowerCase(),
@@ -2979,7 +2984,7 @@ MapShaper.inferOutputFormat = function(file, inputFormat) {
     if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
       format = 'topojson';
     }
-  } else if (/csv|tsv|txt$/.test(ext)) {
+  } else if (MapShaper.probablyDsvFile(file)) {
     format = 'dsv';
   } else if (inputFormat) {
     format = inputFormat;
@@ -12102,9 +12107,58 @@ gui.parseFreeformOptions = function(raw, cmd) {
 
 
 
+gui.addTableShapes = function(lyr, dataset) {
+  var n = lyr.data.size(),
+      cellWidth = 12,
+      cellHeight = 5,
+      gutter = 6,
+      arcs = [],
+      shapes = [],
+      aspectRatio = 1.3,
+      x, y, col, row, blockSize;
+  if (dataset.arcs) {
+    error("Unable to visualize data table.");
+  }
+
+  if (n > 5000) {
+    cellWidth = 8;
+    gutter = 4;
+  } else if (n > 2000) {
+    gutter = 5;
+    cellWidth = 10;
+  }
+
+  if (n < 25) {
+    blockSize = n;
+  } else {
+    blockSize = Math.sqrt(n * (cellWidth + gutter) / cellHeight / aspectRatio) | 0;
+  }
+
+  for (var i=0; i<n; i++) {
+    row = i % blockSize;
+    col = Math.floor(i / blockSize);
+    x = col * (cellWidth + gutter);
+    y = -row * cellHeight;
+    arcs.push(getArc(x, y, cellWidth, cellHeight));
+    shapes.push([[i]]);
+  }
+
+  dataset.arcs = new ArcCollection(arcs);
+  lyr.shapes = shapes;
+  lyr.geometry_type = 'polygon';
+
+  function getArc(x, y, w, h) {
+    return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
+  }
+};
+
+
+
+
 // tests if filename is a type that can be used
 gui.isReadableFileType = function(filename) {
-  return !!MapShaper.guessInputFileType(filename);
+  var ext = utils.getFileExtension(filename).toLowerCase();
+  return !!MapShaper.guessInputFileType(filename) || MapShaper.probablyDsvFile(filename);
 };
 
 // @cb function(<FileList>)
@@ -12169,6 +12223,14 @@ function ImportControl(model) {
     }
   });
 
+  function findMatchingShp(filename) {
+    // TODO: handle multiple matches
+    var shpName = utils.replaceFileExtension(filename, 'shp');
+    return utils.find(model.getDatasets(), function(d) {
+      return shpName == d.info.input_files[0];
+    });
+  }
+
   function turnOn() {
     if (importCount > 0) {
       El('#import-intro').hide(); // only show intro before first import
@@ -12202,7 +12264,7 @@ function ImportControl(model) {
       }
       return memo;
     }, []);
-    // sort so that Shapefile components are imported together
+    // sort alphabetically
     queuedFiles.sort(function(a, b) {
       return a.name > b.name ? 1 : -1;
     });
@@ -12221,7 +12283,7 @@ function ImportControl(model) {
     addFiles(utils.toArray(files));
     if (queuedFiles.length === 0) return;
     model.enterMode('import');
-    if (importCount === 0 && prevSize === 0 && containsImportableFile(queuedFiles)) {
+    if (importCount === 0 && prevSize === 0 && containsImmediateFile(queuedFiles)) {
       // if the first batch of files will be imported, process right away
       submitFiles();
     } else {
@@ -12230,8 +12292,8 @@ function ImportControl(model) {
     }
   }
 
-  // Check if an array of File objects (probably) contains a file that can be imported
-  function containsImportableFile(files) {
+  // Check if an array of File objects contains a file that should be imported right away
+  function containsImmediateFile(files) {
     return utils.some(files, function(f) {
         var type = MapShaper.guessInputFileType(f.name);
         return type == 'shp' || type == 'json';
@@ -12246,7 +12308,7 @@ function ImportControl(model) {
 
   function readNext() {
     if (queuedFiles.length > 0) {
-      readFile(queuedFiles.shift());
+      readFile(queuedFiles.pop()); // read in rev. alphabetic order, so .shp comes before .dbf
     } else {
       model.clearMode();
     }
@@ -12280,17 +12342,22 @@ function ImportControl(model) {
       var name = file.name;
       var type = MapShaper.guessInputType(name, content);
       var importOpts = getImportOpts();
-      if (type == 'shp' || type == 'json') {
-        importFileContent(type, name, content, importOpts);
-      } else {
-        if (type == 'dbf') {
-          gui.receiveShapefileComponent(name, new ShapefileTable(content, importOpts.encoding));
-        } else if (type == 'prj') {
-          gui.receiveShapefileComponent(name, content);
-        } else {
-          console.log("Unexpected file type: " + name + '; ignoring');
+      var dataset = type == 'dbf' && findMatchingShp(name);
+      var lyr;
+      if (err) {
+        readNext();
+      } else if (type == 'dbf' && dataset) {
+        lyr = dataset.layers[0];
+        lyr.data = new ShapefileTable(content, importOpts.encoding);
+        if (lyr.data.size() != lyr.shapes.length) {
+          stop("Different number of records in .shp and .dbf files");
         }
         readNext();
+      } else if (type == 'prj') {
+        gui.receiveShapefileComponent(name, content);
+        readNext();
+      } else {
+        importFileContent(type, name, content, importOpts);
       }
     });
   }
@@ -12306,8 +12373,12 @@ function ImportControl(model) {
     }
     setTimeout(function() {
       var dataset = MapShaper.importFileContent(content, path, importOpts);
+      var lyr = dataset.layers[0];
       if (type == 'shp') {
         gui.receiveShapefileComponent(path, dataset);
+      }
+      if (lyr.data && !lyr.shapes) {
+        gui.addTableShapes(lyr, dataset);
       }
       dataset.info.no_repair = importOpts.no_repair;
       model.addDataset(dataset);
@@ -12356,19 +12427,10 @@ gui.receiveShapefileComponent = (function() {
     if (dataset) {
       lyr = dataset.layers[0];
       info = dataset.info;
-      // only use prj or dbf if the dataset lacks this info
+      // only use prj if the dataset lacks this info
       // (the files could be intended for a future re-import of .shp content)
       if (cache.prj && !info.output_prj) {
         info.input_prj = cache.prj;
-      }
-      if (cache.dbf && !lyr.data) {
-        // TODO: handle unknown encodings interactively
-        lyr.data = cache.dbf;
-        delete cache.dbf;
-        if (lyr.data.size() != lyr.shapes.length) {
-          lyr.data = null;
-          stop("Different number of records in .shp and .dbf files");
-        }
       }
     }
   }

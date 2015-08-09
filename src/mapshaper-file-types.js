@@ -30,6 +30,11 @@ MapShaper.stringIsJsonObject = function(str) {
   return /^\s*\{/.test(String(str));
 };
 
+MapShaper.probablyDsvFile = function(name) {
+  var ext = utils.getFileExtension(name).toLowerCase();
+  return /csv|tsv|txt$/.test(ext);
+};
+
 // Infer output format by considering file name and (optional) input format
 MapShaper.inferOutputFormat = function(file, inputFormat) {
   var ext = utils.getFileExtension(file).toLowerCase(),
@@ -43,7 +48,7 @@ MapShaper.inferOutputFormat = function(file, inputFormat) {
     if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
       format = 'topojson';
     }
-  } else if (/csv|tsv|txt$/.test(ext)) {
+  } else if (MapShaper.probablyDsvFile(file)) {
     format = 'dsv';
   } else if (inputFormat) {
     format = inputFormat;
