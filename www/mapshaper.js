@@ -14393,7 +14393,7 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
 
   if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
   if (!intersects) return true; // reset if layer is out-of-view
-  return areaRatio > 5000 || areaRatio < 0.01; // reset if layer is not at a viewable scale
+  return areaRatio > 500 || areaRatio < 0.05; // reset if layer is not at a viewable scale
 };
 
 function MshpMap(model) {
