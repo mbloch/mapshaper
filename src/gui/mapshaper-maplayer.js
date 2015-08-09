@@ -111,6 +111,8 @@ function LayerGroup(dataset) {
     // don't drop more paths at less than full extent (i.e. zoomed far out)
     if (ext.scale() < 1) minPathLen *= ext.scale();
 
+    // TODO: canvas rendering can be sped up a lot by drawing multiple arcs
+    // before each stroke() call. This requires some refactoring.
     for (var i=0, n=arcs.size(); i<n; i++) {
       if (arcs.arcIsSmaller(i, minPathLen)) continue;
       if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) continue;

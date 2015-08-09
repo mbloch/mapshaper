@@ -10,7 +10,8 @@ mapshaper-gui-table
 // tests if filename is a type that can be used
 gui.isReadableFileType = function(filename) {
   var ext = utils.getFileExtension(filename).toLowerCase();
-  return !!MapShaper.guessInputFileType(filename) || MapShaper.probablyDsvFile(filename);
+  return !!MapShaper.guessInputFileType(filename) || MapShaper.couldBeDsvFile(filename) ||
+    MapShaper.isZipFile(filename);
 };
 
 // @cb function(<FileList>)
@@ -109,14 +110,14 @@ function ImportControl(model) {
   function addFiles(files) {
     var index = {};
     queuedFiles = queuedFiles.concat(files).reduce(function(memo, f) {
-      if ((gui.isReadableFileType(f.name) || /\.zip$/i.test(f.name)) &&
-          f.name in index === false) {
+      // filter out unreadable types and dupes
+      if (gui.isReadableFileType(f.name) && f.name in index === false) {
         index[f.name] = true;
         memo.push(f);
       }
       return memo;
     }, []);
-    // sort alphabetically
+    // sort alphabetically by filename
     queuedFiles.sort(function(a, b) {
       return a.name > b.name ? 1 : -1;
     });
@@ -189,29 +190,41 @@ function ImportControl(model) {
     }
   }
 
-  function importFile(file) {
-    loadFile(file, function(err, content) {
-      var name = file.name;
-      var type = MapShaper.guessInputType(name, content);
-      var importOpts = getImportOpts();
-      var dataset = type == 'dbf' && findMatchingShp(name);
-      var lyr;
-      if (err) {
-        readNext();
-      } else if (type == 'dbf' && dataset) {
-        lyr = dataset.layers[0];
-        lyr.data = new ShapefileTable(content, importOpts.encoding);
-        if (lyr.data.size() != lyr.shapes.length) {
-          stop("Different number of records in .shp and .dbf files");
+  // @file a File object
+  function readFile(file) {
+    if (MapShaper.isZipFile(file.name)) {
+      readZipFile(file);
+    } else {
+      loadFile(file, function(err, content) {
+        if (err) {
+          readNext();
+        } else {
+          readFileContent(file.name, content);
         }
-        readNext();
-      } else if (type == 'prj') {
-        gui.receiveShapefileComponent(name, content);
-        readNext();
-      } else {
-        importFileContent(type, name, content, importOpts);
+      });
+    }
+  }
+
+  function readFileContent(name, content) {
+    var type = MapShaper.guessInputType(name, content),
+        importOpts = getImportOpts(),
+        dataset = findMatchingShp(name),
+        lyr = dataset && dataset.layers[0];
+    if (lyr && type == 'dbf') {
+      lyr.data = new ShapefileTable(content, importOpts.encoding);
+      if (lyr.data.size() != lyr.shapes.length) {
+        stop("Different number of records in .shp and .dbf files");
       }
-    });
+      readNext();
+    } else if (type == 'prj') {
+      // assumes that .shp has been imported first
+      if (dataset && !dataset.info.output_prj) {
+        dataset.info.input_prj = content;
+      }
+      readNext();
+    } else {
+      importFileContent(type, name, content, importOpts);
+    }
   }
 
   function importFileContent(type, path, content, importOpts) {
@@ -226,9 +239,6 @@ function ImportControl(model) {
     setTimeout(function() {
       var dataset = MapShaper.importFileContent(content, path, importOpts);
       var lyr = dataset.layers[0];
-      if (type == 'shp') {
-        gui.receiveShapefileComponent(path, dataset);
-      }
       if (lyr.data && !lyr.shapes) {
         gui.addTableShapes(lyr, dataset);
       }
@@ -247,54 +257,14 @@ function ImportControl(model) {
           console.log("Zip file loading failed:");
           throw err;
         }
+        // don't try to import .txt files from zip files
+        // (these would be parsed as dsv and throw errows)
+        files = files.filter(function(f) {
+          return !/\.txt$/i.test(f.name);
+        });
         addFiles(files);
         readNext();
       });
     }, 35);
   }
-
-  // @file a File object
-  function readFile(file) {
-    var name = file.name,
-        ext = utils.getFileExtension(name).toLowerCase();
-    if (ext == 'zip') {
-      readZipFile(file);
-    } else if (gui.isReadableFileType(name)) {
-      importFile(file);
-    } else {
-      readNext();
-    }
-  }
 }
-
-// Cache and merge data from Shapefile component files (.prj, .dbf, shp) in
-// whatever order they are received in.
-//
-gui.receiveShapefileComponent = (function() {
-  var cache = {};
-
-  function merge() {
-    var dataset = cache.shp,
-        lyr, info;
-    if (dataset) {
-      lyr = dataset.layers[0];
-      info = dataset.info;
-      // only use prj if the dataset lacks this info
-      // (the files could be intended for a future re-import of .shp content)
-      if (cache.prj && !info.output_prj) {
-        info.input_prj = cache.prj;
-      }
-    }
-  }
-
-  // @content: imported dataset if .shp, raw file content if other file type
-  return function(path, content) {
-    var name = utils.getFileBase(path),
-        ext = utils.getFileExtension(path).toLowerCase();
-    if (name != cache.name) {
-      cache = {name: name};
-    }
-    cache[ext] = content;
-    merge();
-  };
-}());

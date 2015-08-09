@@ -1714,7 +1714,7 @@ MapShaper.stringIsJsonObject = function(str) {
   return /^\s*\{/.test(String(str));
 };
 
-MapShaper.probablyDsvFile = function(name) {
+MapShaper.couldBeDsvFile = function(name) {
   var ext = utils.getFileExtension(name).toLowerCase();
   return /csv|tsv|txt$/.test(ext);
 };
@@ -1732,12 +1732,16 @@ MapShaper.inferOutputFormat = function(file, inputFormat) {
     if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
       format = 'topojson';
     }
-  } else if (MapShaper.probablyDsvFile(file)) {
+  } else if (MapShaper.couldBeDsvFile(file)) {
     format = 'dsv';
   } else if (inputFormat) {
     format = inputFormat;
   }
   return format;
+};
+
+MapShaper.isZipFile = function(file) {
+  return /\.zip$/i.test(file);
 };
 
 MapShaper.isSupportedOutputFormat = function(fmt) {
