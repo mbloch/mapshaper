@@ -12147,7 +12147,7 @@ gui.addTableShapes = function(lyr, dataset) {
     row = i % blockSize;
     col = Math.floor(i / blockSize);
     x = col * (cellWidth + gutter);
-    y = blockSize * cellHeight; // out of range of geographic layers
+    y = cellHeight * (blockSize - row);
     arcs.push(getArc(x, y, cellWidth, cellHeight));
     shapes.push([[i]]);
   }
