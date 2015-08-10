@@ -196,8 +196,8 @@ function calcTransMercM(lat, e) {
 function AlbersNYT(opts) {
   var lambert = new LambertConformalConic({lng0:-96, lat1:33, lat2:45, lat0:39, spherical: true});
   return new MixedProjection(new AlbersUSA(opts))
-    .addFrame(lambert, {lat:63, lng:-152}, {lat:27, lng:-115}, 6000000, 3000000, 0.31, 29.2)  // AK
-    .addFrame(lambert, {lat:20.9, lng:-157}, {lat:28.2, lng:-106.6}, 2000000, 4000000, 0.9, 40); // HI
+    .addFrame(lambert, {lat:63, lng:-152}, {lat:27, lng:-115}, 6e6, 3e6, 0.31, 29.2)  // AK
+    .addFrame(lambert, {lat:20.9, lng:-157}, {lat:28.2, lng:-106.6}, 3e6, 5e6, 0.9, 40); // HI
 }
 
 function AlbersUSA(opts) {
