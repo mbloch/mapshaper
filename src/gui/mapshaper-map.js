@@ -182,7 +182,7 @@ function MshpMap(model) {
   }
 
   function calcDotSize(n) {
-    return n < 20 && 5 || n < 500 && 4 || 3;
+    return n < 20 && 5 || n < 500 && 4 || n < 50000 && 3 || 2;
   }
 
   function refreshLayers() {
