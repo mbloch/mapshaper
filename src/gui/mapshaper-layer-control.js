@@ -35,12 +35,10 @@ function LayerControl(model) {
   function describeLyr(lyr) {
     var n = MapShaper.getFeatureCount(lyr),
         str, type;
-    if (lyr.menu_type) {
-      type = lyr.menu_type;
+    if (lyr.data_type == 'table' || (lyr.data && !lyr.shapes)) {
+      type = 'data record';
     } else if (lyr.geometry_type) {
       type = lyr.geometry_type + ' feature';
-    } else if (lyr.data) {
-      type = 'data record';
     }
     if (type) {
       str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));

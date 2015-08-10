@@ -7,13 +7,25 @@ mapshaper-hit-control
 mapshaper-info-control
 */
 
+MapShaper.getBoundsOverlap = function(bb1, bb2) {
+  var area = 0;
+  if (bb1.intersects(bb2)) {
+    area = (Math.min(bb1.xmax, bb2.xmax) - Math.max(bb1.xmin, bb2.xmin)) *
+      (Math.min(bb1.ymax, bb2.ymax) - Math.max(bb1.ymin, bb2.ymin));
+  }
+  return area;
+};
+
 // Test if map should be re-framed to show updated layer
 gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
-  var boundsChanged = !prevBounds || !prevBounds.equals(newBounds);
+  if (!prevBounds) return true;
+  // TODO: consider similarity of prev and next bounds
+  //var overlapPct = 2 * MapShaper.getBoundsOverlap(newBounds, prevBounds) /
+  //    (newBounds.area() + prevBounds.area());
+  var boundsChanged = !prevBounds.equals(newBounds);
   var intersects = newBounds.intersects(mapBounds);
   // TODO: compare only intersecting portion of layer with map bounds
   var areaRatio = newBounds.area() / mapBounds.area();
-
   if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
   if (!intersects) return true; // reset if layer is out-of-view
   return areaRatio > 500 || areaRatio < 0.05; // reset if layer is not at a viewable scale
@@ -44,7 +56,7 @@ function MshpMap(model) {
       },
       hoverStyles = {
         polygon: {
-          fillColor: "rgba(255, 120, 162, 0.2)", // "#ffebf1",
+          fillColor: "rgba(255, 117, 165, 0.2)", // "#ffebf1",
           strokeColor: "black",
           strokeWidth: 1.2
         }, point:  {
@@ -102,7 +114,7 @@ function MshpMap(model) {
   model.on('update', function(e) {
     var prevBounds = _activeGroup ?_activeGroup.getBounds() : null,
         group = findGroup(e.dataset),
-        needReset;
+        needReset = false;
     if (!group) {
       group = addGroup(e.dataset);
     } else if (e.flags.presimplify || e.flags.simplify || e.flags.proj || e.flags.arc_count) {
@@ -119,6 +131,7 @@ function MshpMap(model) {
     updateGroupStyle(activeStyle, group);
     _activeGroup = group;
     needReset = gui.mapNeedsReset(group.getBounds(), prevBounds, _ext.getBounds());
+    needReset = needReset || e.layer.data_type == 'table'; // kludge to make tables recenter
     _ext.setBounds(group.getBounds()); // update map extent to match bounds of active group
     if (needReset) {
       // zoom to full view of the active layer and redraw
