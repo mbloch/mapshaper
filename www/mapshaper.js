@@ -11428,6 +11428,14 @@ function validateOutputOpts(cmd) {
     }
   }
 
+  if (o.delimiter) {
+    // convert "\t" '\t' \t to tab
+    o.delimiter = o.delimiter.replace(/^["']?\\t["']?$/, '\t');
+    if (!MapShaper.isSupportedDelimiter(o.delimiter)) {
+      error("Unsupported delimiter:", o.delimiter);
+    }
+  }
+
   if (o.encoding) {
     o.encoding = MapShaper.validateEncoding(o.encoding);
   }
@@ -11654,6 +11662,9 @@ MapShaper.getOptionParser = function() {
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
+    })
+    .option("delimiter", {
+      describe: "(CSV) field delimiter"
     });
 
   parser.command('simplify')
@@ -12563,13 +12574,16 @@ MapShaper.roundPoints = function(lyr, round) {
 MapShaper.exportDelim = function(dataset, opts) {
   var delim = MapShaper.getExportDelimiter(dataset.info, opts),
       ext = MapShaper.getDelimFileExtension(delim, opts);
-  return dataset.layers.map(function(lyr) {
-    return {
-      // TODO: consider supporting encoding= option
-      content: MapShaper.exportDelimTable(lyr, delim),
-      filename: (lyr.name || 'output') + '.' + ext
-    };
-  });
+  return dataset.layers.reduce(function(arr, lyr) {
+    if (lyr.data){
+      arr.push({
+        // TODO: consider supporting encoding= option
+        content: MapShaper.exportDelimTable(lyr, delim),
+        filename: (lyr.name || 'output') + '.' + ext
+      });
+    }
+    return arr;
+  }, []);
 };
 
 MapShaper.exportDelimTable = function(lyr, delim) {
@@ -12802,6 +12816,7 @@ var ExportControl = function(model) {
     exportButton("#geojson-btn", "geojson");
     exportButton("#shapefile-btn", "shapefile");
     exportButton("#topojson-btn", "topojson");
+    exportButton("#csv-btn", "dsv");
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
   }
@@ -17094,9 +17109,14 @@ MapShaper.importDelimTable = function(str, delim, opts) {
   return new DataTable(records);
 };
 
+MapShaper.supportedDelimiters = ['|', '\t', ',', ';'];
+
+MapShaper.isSupportedDelimiter = function(d) {
+  return utils.contains(MapShaper.supportedDelimiters, d);
+};
+
 MapShaper.guessDelimiter = function(content) {
-  var delimiters = ['|', '\t', ','];
-  return utils.find(delimiters, function(delim) {
+  return utils.find(MapShaper.supportedDelimiters, function(delim) {
     var rxp = MapShaper.getDelimiterRxp(delim);
     return rxp.test(content);
   }) || ',';

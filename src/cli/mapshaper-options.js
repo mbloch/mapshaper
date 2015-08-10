@@ -171,6 +171,9 @@ MapShaper.getOptionParser = function() {
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
+    })
+    .option("delimiter", {
+      describe: "(CSV) field delimiter"
     });
 
   parser.command('simplify')

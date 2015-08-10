@@ -14,6 +14,11 @@ describe('mapshaper-delim-export.js', function() {
       assert.equal(roundtrip(input), input);
     })
 
+    it('semicolons are preserved', function() {
+      var input = 'a;b;c\nfoo;0.3;0';
+      assert.equal(roundtrip(input), input);
+    })
+
     it('empty strings are preserved', function() {
       var input = 'a,b,c\nfoo,3,\n,,';
       assert.equal(roundtrip(input), input);

@@ -207,6 +207,10 @@ describe('mapshaper-delim-import.js', function() {
     it("guesses pipe delim", function() {
       assert.equal(api.internal.guessDelimiter("a|b\n1,2"), '|');
     })
+
+    it("guesses semicolon delim", function() {
+      assert.equal(api.internal.guessDelimiter("a;b\n1;2"), ';');
+    })
   })
 
   describe('parseFieldHeaders', function () {

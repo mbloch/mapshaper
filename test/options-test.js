@@ -71,6 +71,11 @@ describe('mapshaper-options.js', function () {
     bad("-o format=json");
     bad("-o format \"ESRI Shapefile\"");
 
+    // csv
+    bad("-o format=csv delimiter=~");
+    bad("-o format=csv delimiter='");
+    good("-o format=csv delimiter=\\t", {format: "dsv", delimiter: "\t"});
+    good("-o format=csv delimiter='\\t'", {format: "dsv", delimiter: "\t"});
   })
 
   describe('simplify', function() {

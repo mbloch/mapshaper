@@ -4,13 +4,16 @@
 MapShaper.exportDelim = function(dataset, opts) {
   var delim = MapShaper.getExportDelimiter(dataset.info, opts),
       ext = MapShaper.getDelimFileExtension(delim, opts);
-  return dataset.layers.map(function(lyr) {
-    return {
-      // TODO: consider supporting encoding= option
-      content: MapShaper.exportDelimTable(lyr, delim),
-      filename: (lyr.name || 'output') + '.' + ext
-    };
-  });
+  return dataset.layers.reduce(function(arr, lyr) {
+    if (lyr.data){
+      arr.push({
+        // TODO: consider supporting encoding= option
+        content: MapShaper.exportDelimTable(lyr, delim),
+        filename: (lyr.name || 'output') + '.' + ext
+      });
+    }
+    return arr;
+  }, []);
 };
 
 MapShaper.exportDelimTable = function(lyr, delim) {

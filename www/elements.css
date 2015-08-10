@@ -152,7 +152,7 @@ div.tip {
 
 .btn {
 	text-align: center;
-	padding: 4px 6px 5px 6px;
+	padding: 4px 7px 5px 7px;
 	border-radius: 4px;
 	line-height: 1;
 	display: inline-block;
@@ -170,7 +170,7 @@ div.tip {
 	margin-top: 2px;
 	font-size: 13px;
 	color: white;
-	min-width: 48px;
+	min-width: 30px;
 	background-color: #18799b;
 }
 

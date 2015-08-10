@@ -22,9 +22,14 @@ MapShaper.importDelimTable = function(str, delim, opts) {
   return new DataTable(records);
 };
 
+MapShaper.supportedDelimiters = ['|', '\t', ',', ';'];
+
+MapShaper.isSupportedDelimiter = function(d) {
+  return utils.contains(MapShaper.supportedDelimiters, d);
+};
+
 MapShaper.guessDelimiter = function(content) {
-  var delimiters = ['|', '\t', ','];
-  return utils.find(delimiters, function(delim) {
+  return utils.find(MapShaper.supportedDelimiters, function(delim) {
     var rxp = MapShaper.getDelimiterRxp(delim);
     return rxp.test(content);
   }) || ',';

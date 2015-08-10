@@ -229,6 +229,14 @@ function validateOutputOpts(cmd) {
     }
   }
 
+  if (o.delimiter) {
+    // convert "\t" '\t' \t to tab
+    o.delimiter = o.delimiter.replace(/^["']?\\t["']?$/, '\t');
+    if (!MapShaper.isSupportedDelimiter(o.delimiter)) {
+      error("Unsupported delimiter:", o.delimiter);
+    }
+  }
+
   if (o.encoding) {
     o.encoding = MapShaper.validateEncoding(o.encoding);
   }

@@ -222,13 +222,17 @@ div.error-box > div {
 	height: 149px;
 }
 
-div.option-menu .advanced-options {
+.option-menu .advanced-options {
 	width: 210px;
 	background: rgba(255, 255, 255, 0.4);
 	border: 1px solid #999;
 	padding: 0 3px;
 	height: 17px;
 	font-size: 12px;
+}
+
+#export-options .option-menu .advanced-options {
+	width: 225px;
 }
 
 #mshp-not-supported {

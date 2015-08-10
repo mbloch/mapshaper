@@ -17,6 +17,7 @@ var ExportControl = function(model) {
     exportButton("#geojson-btn", "geojson");
     exportButton("#shapefile-btn", "shapefile");
     exportButton("#topojson-btn", "topojson");
+    exportButton("#csv-btn", "dsv");
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
   }
