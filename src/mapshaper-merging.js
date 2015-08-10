@@ -36,13 +36,12 @@ MapShaper.mergeDatasets = function(arr) {
 
 MapShaper.mergeArcs = function(arr) {
   var dataArr = arr.map(function(arcs) {
-    var data = arcs.getVertexData();
-    if (data.zz) {
-      error("[mergeArcs()] Merging arcs with z data is not supported");
+    if (arcs.getRetainedInterval() > 0) {
+      verbose("Baking-in simplification setting.");
+      arcs.flatten();
     }
-    return data;
+    return arcs.getVertexData();
   });
-
   var xx = utils.mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
       yy = utils.mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
       nn = utils.mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
