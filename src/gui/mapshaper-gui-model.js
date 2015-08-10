@@ -108,10 +108,12 @@ function Model() {
     }
   };
 
-
-
   this.getEditingLayer = function() {
     return editing || {};
+  };
+
+  this.getMode = function() {
+    return mode;
   };
 
   // return a function to trigger this mode

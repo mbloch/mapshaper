@@ -14341,6 +14341,13 @@ function InfoControl(model, hit) {
 
   model.on('select', update);
 
+  document.addEventListener('keydown', function(e) {
+    if (e.keyCode == 27 && isOn() && !model.getMode()) { // esc key closes
+      btn.toggleClass('selected');
+      update();
+    }
+  });
+
   hit.on('change', function(e) {
     var types;
     if (e.properties) {
@@ -17470,13 +17477,12 @@ MapShaper.mergeDatasets = function(arr) {
 
 MapShaper.mergeArcs = function(arr) {
   var dataArr = arr.map(function(arcs) {
-    var data = arcs.getVertexData();
-    if (data.zz) {
-      error("[mergeArcs()] Merging arcs with z data is not supported");
+    if (arcs.getRetainedInterval() > 0) {
+      verbose("Baking-in simplification setting.");
+      arcs.flatten();
     }
-    return data;
+    return arcs.getVertexData();
   });
-
   var xx = utils.mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
       yy = utils.mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
       nn = utils.mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
@@ -17800,8 +17806,8 @@ function calcTransMercM(lat, e) {
 function AlbersNYT(opts) {
   var lambert = new LambertConformalConic({lng0:-96, lat1:33, lat2:45, lat0:39, spherical: true});
   return new MixedProjection(new AlbersUSA(opts))
-    .addFrame(lambert, {lat:63, lng:-152}, {lat:27, lng:-115}, 6000000, 3000000, 0.31, 29.2)  // AK
-    .addFrame(lambert, {lat:20.9, lng:-157}, {lat:28.2, lng:-106.6}, 2000000, 4000000, 0.9, 40); // HI
+    .addFrame(lambert, {lat:63, lng:-152}, {lat:27, lng:-115}, 6e6, 3e6, 0.31, 29.2)  // AK
+    .addFrame(lambert, {lat:20.9, lng:-157}, {lat:28.2, lng:-106.6}, 3e6, 5e6, 0.9, 40); // HI
 }
 
 function AlbersUSA(opts) {
@@ -18889,9 +18895,8 @@ function Console(model) {
     if (kc == 27) { // esc
       if (editing) {
         activeEl.blur();
-      } else {
-        model.clearMode(); // esc escapes other modes as well
       }
+      model.clearMode(); // esc escapes other modes as well
       capture = true;
     } else if (kc == 8 && !editing) {
       capture = true; // prevent delete from leaving page
@@ -19217,10 +19222,12 @@ function Model() {
     }
   };
 
-
-
   this.getEditingLayer = function() {
     return editing || {};
+  };
+
+  this.getMode = function() {
+    return mode;
   };
 
   // return a function to trigger this mode

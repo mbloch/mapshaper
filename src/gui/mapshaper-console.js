@@ -70,9 +70,8 @@ function Console(model) {
     if (kc == 27) { // esc
       if (editing) {
         activeEl.blur();
-      } else {
-        model.clearMode(); // esc escapes other modes as well
       }
+      model.clearMode(); // esc escapes other modes as well
       capture = true;
     } else if (kc == 8 && !editing) {
       capture = true; // prevent delete from leaving page

@@ -9,6 +9,13 @@ function InfoControl(model, hit) {
 
   model.on('select', update);
 
+  document.addEventListener('keydown', function(e) {
+    if (e.keyCode == 27 && isOn() && !model.getMode()) { // esc key closes
+      btn.toggleClass('selected');
+      update();
+    }
+  });
+
   hit.on('change', function(e) {
     var types;
     if (e.properties) {
