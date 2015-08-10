@@ -18946,6 +18946,8 @@ function Console(model) {
       capture = true;
       if (kc == 13) { // enter
         submit();
+      } else if (kc == 9) { // tab
+        tabComplete();
       } else if (kc == 38) {
         back();
       } else if (kc == 40) {
@@ -18975,6 +18977,30 @@ function Console(model) {
     if (capture) {
       e.preventDefault();
     }
+  }
+
+  // tab-completion for field names
+  function tabComplete() {
+    var line = readCommandLine(),
+        match = /\w+$/.exec(line),
+        stub = match ? match[0] : '',
+        lyr = model.getEditingLayer().layer,
+        names, name;
+    if (stub && lyr.data) {
+      names = findCompletions(stub, lyr.data.getFields());
+      if (names.length > 0) {
+        name = MapShaper.getCommonFileBase(names);
+        if (name.length > stub.length) {
+          input.node().value = line.substring(0, match.index) + name;
+        }
+      }
+    }
+  }
+
+  function findCompletions(str, fields) {
+    return fields.filter(function(name) {
+      return name.indexOf(str) === 0;
+    });
   }
 
   function readCommandLine() {

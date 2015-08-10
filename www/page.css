@@ -339,7 +339,7 @@ div.error-box > div {
 /* --- Console control ------------ */
 
 #console {
-	z-index: 50;
+	z-index: 30;
 	pointer-events: none;
 	/* background-color: rgba(0,0,0,0.8); */
 	display: none;
@@ -530,7 +530,7 @@ body.simplify #layer-control-btn {
 .popup {
 	box-sizing: border-box;
 	position: absolute;
-	z-index: 30;
+	z-index: 40;
 	top: 12px;
 	right: 12px;
 	background-color: white;
