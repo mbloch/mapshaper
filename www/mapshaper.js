@@ -17631,10 +17631,10 @@ api.mergeFiles = function(files, opts) {
 
 api.createPointLayer = function(srcLyr, arcs, opts) {
   var destLyr = MapShaper.getOutputLayer(srcLyr, opts);
-  destLyr.geometry_type = 'point';
   destLyr.shapes = opts.x || opts.y ?
       MapShaper.pointsFromDataTable(srcLyr.data, opts) :
       MapShaper.pointsFromPolygons(srcLyr, arcs, opts);
+  destLyr.geometry_type = 'point';
 
   var nulls = destLyr.shapes.reduce(function(sum, shp) {
     if (!shp) sum++;
