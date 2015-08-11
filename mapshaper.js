@@ -2830,7 +2830,7 @@ function ArcCollection() {
   // Return array of z-values that can be removed for simplification
   //
   this.getRemovableThresholds = function(nth) {
-    if (!_zz) error("ArcCollection#getRemovableThresholds() Missing simplification data.");
+    if (!_zz) error("[arcs] Missing simplification data.");
     var skip = nth | 1,
         arr = new Float64Array(Math.ceil(_zz.length / skip)),
         z;
@@ -2845,7 +2845,7 @@ function ArcCollection() {
 
   this.getArcThresholds = function(arcId) {
     if (!(arcId >= 0 && arcId < this.size())) {
-      error("ArcCollection#getArcThresholds() invalid arc id:", arcId);
+      error("[arcs] Invalid arc id:", arcId);
     }
     var start = _ii[arcId],
         end = start + _nn[arcId];

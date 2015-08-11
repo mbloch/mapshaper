@@ -8,16 +8,15 @@ function RepairControl(model, map) {
       _dataset, _currXX;
 
   model.on('update', function(e) {
-    // these changes require nulling out any cached intersection data and recalculating
-    if (e.flags.simplify || e.flags.proj || e.flags.select) {
+    if (e.flags.simplify || e.flags.proj) {
+      // these changes require nulling out any cached intersection data and recalculating
+      if (_dataset) _dataset.info.intersections = null;
+      delayedUpdate();
+    } else if (e.flags.select && !e.flags.import) {
+      // Don't update if a dataset was just imported -- another layer may be
+      // selected right away.
       reset();
-      // Don't update if a dataset was just imported -- another layer may be selected
-      // right away.
-      if (!e.flags.import) {
-        // use timeout so map refreshes before the repair control calculates
-        // intersection data, which can take a little while
-        delayedUpdate();
-      }
+      delayedUpdate();
     }
   });
 
@@ -45,14 +44,15 @@ function RepairControl(model, map) {
     var XX, showBtn, pct;
     if (!_dataset) return;
     if (_dataset.arcs.getRetainedInterval() > 0) {
+      // TODO: cache these intersections
       XX = MapShaper.findSegmentIntersections(_dataset.arcs);
       showBtn = XX.length > 0;
     } else { // no simplification
       XX = _dataset.info.intersections;
       if (!XX) {
-        // cache intersections for no simplification, to avoid recalculating
-        // every time the simplification slider is set to 100% or the layer is switched
-        XX = _dataset.info.intersections = datMapShaper.findSegmentIntersections(_dataset.arcs);
+        // cache intersections at 0 simplification, to avoid recalculating
+        // every time the simplification slider is set to 100% or the layer is selected at 100%
+        XX = _dataset.info.intersections = MapShaper.findSegmentIntersections(_dataset.arcs);
       }
       showBtn = false;
     }
@@ -73,10 +73,7 @@ function RepairControl(model, map) {
   }
 
   function reset() {
-    if (_dataset) {
-      _dataset.info.intersections = null;
-      _dataset = null;
-    }
+    _dataset = null;
     _currXX = null;
     _self.hide();
   }

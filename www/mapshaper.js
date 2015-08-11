@@ -3382,13 +3382,17 @@ var SimplifyControl = function(model) {
   var _value = 1;
   var el = El('#simplify-control-wrapper');
   var menu = El('#simplify-options').on('click', gui.handleDirectEvent(model.clearMode));
+  var slider, text;
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
   new SimpleButton('#simplify-options .cancel-btn').on('click', model.clearMode);
   new ModeButton('#simplify-btn', 'simplify', model);
   model.addMode('simplify', turnOn, turnOff);
+  model.on('select', function() {
+    if (model.getMode() == 'simplify') model.clearMode();
+  });
 
-  var slider = new Slider("#simplify-control .slider");
+  slider = new Slider("#simplify-control .slider");
   slider.handle("#simplify-control .handle");
   slider.track("#simplify-control .track");
   slider.on('change', function(e) {
@@ -3402,11 +3406,10 @@ var SimplifyControl = function(model) {
     control.dispatchEvent('simplify-end');
   });
 
-  var text = new ClickText("#simplify-control .clicktext");
+  text = new ClickText("#simplify-control .clicktext");
   text.bounds(0, 1);
   text.formatter(function(val) {
     if (isNaN(val)) return '-';
-
     var pct = val * 100;
     var decimals = 0;
     if (pct <= 0) decimals = 1;
@@ -5530,7 +5533,7 @@ function ArcCollection() {
   // Return array of z-values that can be removed for simplification
   //
   this.getRemovableThresholds = function(nth) {
-    if (!_zz) error("ArcCollection#getRemovableThresholds() Missing simplification data.");
+    if (!_zz) error("[arcs] Missing simplification data.");
     var skip = nth | 1,
         arr = new Float64Array(Math.ceil(_zz.length / skip)),
         z;
@@ -5545,7 +5548,7 @@ function ArcCollection() {
 
   this.getArcThresholds = function(arcId) {
     if (!(arcId >= 0 && arcId < this.size())) {
-      error("ArcCollection#getArcThresholds() invalid arc id:", arcId);
+      error("[arcs] Invalid arc id:", arcId);
     }
     var start = _ii[arcId],
         end = start + _nn[arcId];
@@ -13140,16 +13143,15 @@ function RepairControl(model, map) {
       _dataset, _currXX;
 
   model.on('update', function(e) {
-    // these changes require nulling out any cached intersection data and recalculating
-    if (e.flags.simplify || e.flags.proj || e.flags.select) {
+    if (e.flags.simplify || e.flags.proj) {
+      // these changes require nulling out any cached intersection data and recalculating
+      if (_dataset) _dataset.info.intersections = null;
+      delayedUpdate();
+    } else if (e.flags.select && !e.flags.import) {
+      // Don't update if a dataset was just imported -- another layer may be
+      // selected right away.
       reset();
-      // Don't update if a dataset was just imported -- another layer may be selected
-      // right away.
-      if (!e.flags.import) {
-        // use timeout so map refreshes before the repair control calculates
-        // intersection data, which can take a little while
-        delayedUpdate();
-      }
+      delayedUpdate();
     }
   });
 
@@ -13177,14 +13179,15 @@ function RepairControl(model, map) {
     var XX, showBtn, pct;
     if (!_dataset) return;
     if (_dataset.arcs.getRetainedInterval() > 0) {
+      // TODO: cache these intersections
       XX = MapShaper.findSegmentIntersections(_dataset.arcs);
       showBtn = XX.length > 0;
     } else { // no simplification
       XX = _dataset.info.intersections;
       if (!XX) {
-        // cache intersections for no simplification, to avoid recalculating
-        // every time the simplification slider is set to 100% or the layer is switched
-        XX = _dataset.info.intersections = datMapShaper.findSegmentIntersections(_dataset.arcs);
+        // cache intersections at 0 simplification, to avoid recalculating
+        // every time the simplification slider is set to 100% or the layer is selected at 100%
+        XX = _dataset.info.intersections = MapShaper.findSegmentIntersections(_dataset.arcs);
       }
       showBtn = false;
     }
@@ -13205,10 +13208,7 @@ function RepairControl(model, map) {
   }
 
   function reset() {
-    if (_dataset) {
-      _dataset.info.intersections = null;
-      _dataset = null;
-    }
+    _dataset = null;
     _currXX = null;
     _self.hide();
   }
