@@ -1,8 +1,8 @@
 /* @requires mapshaper-data-table, mapshaper-dataset-utils, mapshaper-centroid */
 
 api.createPointLayer = function(srcLyr, arcs, opts) {
-  var destLyr = {geometry_type: 'point'};
-
+  var destLyr = MapShaper.getOutputLayer(srcLyr, opts);
+  destLyr.geometry_type = 'point';
   destLyr.shapes = opts.x || opts.y ?
       MapShaper.pointsFromDataTable(srcLyr.data, opts) :
       MapShaper.pointsFromPolygons(srcLyr, arcs, opts);

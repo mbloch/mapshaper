@@ -5987,6 +5987,11 @@ MapShaper.copyDataset = function(dataset) {
   return d2;
 };
 
+// make a stub copy if the no_replace option is given, else pass thru src layer
+MapShaper.getOutputLayer = function(src, opts) {
+  return opts && opts.no_replace ? {geometry_type: src.geometry_type} : src;
+};
+
 // Make a deep copy of a layer
 MapShaper.copyLayer = function(lyr) {
   var copy = utils.extend({}, lyr);
@@ -9340,20 +9345,20 @@ TopoJSON.pathImporters = {
 
 
 
-api.convertPolygonsToInnerLines = function(lyr, arcs) {
+api.convertPolygonsToInnerLines = function(lyr, arcs, opts) {
   if (lyr.geometry_type != 'polygon') {
     stop("[innerlines] Command requires a polygon layer");
   }
   var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
-      lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
+      lyr2 = MapShaper.convertArcsToLineLayer(arcs2, null);
   if (lyr2.shapes.length === 0) {
     message("[innerlines] No shared boundaries were found");
   }
-  lyr2.name = lyr.name;
+  lyr2.name = opts && opts.no_replace ? null : lyr.name;
   return lyr2;
 };
 
-api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
+api.convertPolygonsToTypedLines = function(lyr, arcs, fields, opts) {
   if (lyr.geometry_type != 'polygon') {
     stop("[lines] Command requires a polygon layer");
   }
@@ -9361,7 +9366,8 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
       outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
       typeCode = 0,
       allArcs = [],
-      allData = [];
+      allData = [],
+      innerArcs, lyr2;
 
   function addArcs(typeArcs) {
     var typeData = utils.repeat(typeArcs.length, function(i) {
@@ -9382,21 +9388,21 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] Unknown data field:", field);
       }
-      var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
+      var dissolved = api.dissolve(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
       dissolvedArcs = utils.difference(dissolvedArcs, allArcs);
       addArcs(dissolvedArcs);
     });
   }
 
-  var innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
+  innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
   innerArcs = utils.difference(innerArcs, allArcs);
   addArcs(innerArcs);
-
-  var lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
-  lyr2.name = lyr.name;
+  lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
+  lyr2.name = opts && opts.no_replace ? null : lyr.name;
   return lyr2;
 };
+
 
 MapShaper.convertArcsToLineLayer = function(arcs, data) {
   var shapes = MapShaper.convertArcsToShapes(arcs),
@@ -12473,7 +12479,7 @@ api.dissolvePolygons2 = function(lyr, dataset, opts) {
 MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   opts = opts || {};
   var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data);
-  var lyr2 = {data: null};
+  var lyr2 = MapShaper.getOutputLayer(lyr, opts);
   var groups = lyr.shapes.reduce(function(groups, shape, i) {
     var i2 = getGroupId(i);
     if (i2 in groups === false) {
@@ -12493,7 +12499,7 @@ MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   if (lyr.data) {
     lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts));
   }
-  return utils.defaults(lyr2, lyr);
+  return lyr2;
 };
 
 MapShaper.concatShapes = function(shapes) {
@@ -15635,11 +15641,9 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
       stop('[' + type + '] Invalid target layer:', targetLyr.name);
     }
 
-    if (opts.no_replace) {
-      outputLyr = utils.extend({}, targetLyr);
-      outputLyr.data = targetLyr.data ? targetLyr.data.clone() : null;
-    } else {
-      outputLyr = targetLyr;
+    outputLyr = MapShaper.getOutputLayer(targetLyr, opts);
+    if (opts.no_replace && targetLyr.data) {
+      outputLyr.data = targetLyr.data.clone();
     }
     outputLyr.shapes = clippedShapes;
 
@@ -16531,7 +16535,8 @@ api.filterFeatures = function(lyr, arcs, opts) {
       n = MapShaper.getFeatureCount(lyr),
       filteredShapes = shapes ? [] : null,
       filteredRecords = records ? [] : null,
-      filteredLyr, filter;
+      filteredLyr = MapShaper.getOutputLayer(lyr, opts),
+      filter;
 
   if (opts.expression) {
     filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
@@ -16555,16 +16560,11 @@ api.filterFeatures = function(lyr, arcs, opts) {
     }
   });
 
-  filteredLyr = {
-    data: filteredRecords ? new DataTable(filteredRecords) : null,
-    shapes: filteredShapes
-  };
+  filteredLyr.shapes = filteredShapes;
+  filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
   if (opts.no_replace) {
     // if adding a layer, don't share objects between source and filtered layer
     filteredLyr = MapShaper.copyLayer(filteredLyr);
-    filteredLyr.geometry_type = lyr.geometry_type;
-  } else {
-    filteredLyr = utils.extend(lyr, filteredLyr); // modify in-place
   }
 
   if (opts.verbose !== false) {
@@ -17630,8 +17630,8 @@ api.mergeFiles = function(files, opts) {
 
 
 api.createPointLayer = function(srcLyr, arcs, opts) {
-  var destLyr = {geometry_type: 'point'};
-
+  var destLyr = MapShaper.getOutputLayer(srcLyr, opts);
+  destLyr.geometry_type = 'point';
   destLyr.shapes = opts.x || opts.y ?
       MapShaper.pointsFromDataTable(srcLyr.data, opts) :
       MapShaper.pointsFromPolygons(srcLyr, arcs, opts);
@@ -18522,7 +18522,7 @@ api.runCommand = function(cmd, dataset, cb) {
   var name = cmd.name,
       opts = cmd.options,
       targetLayers,
-      newLayers,
+      outputLayers,
       arcs;
 
   try { // catch errors from synchronous functions
@@ -18550,25 +18550,25 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clip') {
-      newLayers = api.clipLayers(targetLayers, opts.source, dataset, opts);
+      outputLayers = api.clipLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'dissolve') {
-      newLayers = MapShaper.applyCommand(api.dissolve, targetLayers, arcs, opts);
+      outputLayers = MapShaper.applyCommand(api.dissolve, targetLayers, arcs, opts);
 
     } else if (name == 'dissolve2') {
-      newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
+      outputLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
 
     } else if (name == 'each') {
       MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
     } else if (name == 'erase') {
-      newLayers = api.eraseLayers(targetLayers, opts.source, dataset, opts);
+      outputLayers = api.eraseLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'explode') {
-      newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
+      outputLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter') {
-      newLayers = MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
+      outputLayers = MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter-fields') {
       MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
@@ -18577,7 +18577,7 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.filterIslands, targetLayers, arcs, opts);
 
     } else if (name == 'flatten') {
-      newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
+      outputLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
 
     } else if (name == 'i') {
       dataset = api.importFiles(cmd.options);
@@ -18586,29 +18586,29 @@ api.runCommand = function(cmd, dataset, cb) {
       api.printInfo(dataset);
 
     } else if (name == 'innerlines') {
-      newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
+      outputLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
 
     } else if (name == 'join') {
       MapShaper.applyCommand(api.join, targetLayers, dataset, opts);
 
     } else if (name == 'layers') {
-      newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
+      outputLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
 
     } else if (name == 'lines') {
-      newLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
+      outputLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
 
     } else if (name == 'stitch') {
       api.stitch(dataset);
 
     } else if (name == 'merge-layers') {
       // careful, returned layers are modified input layers
-      newLayers = api.mergeLayers(targetLayers);
+      outputLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'o') {
       api.exportFiles(utils.defaults({layers: targetLayers}, dataset), opts);
 
     } else if (name == 'points') {
-      newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
+      outputLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
     } else if (name == 'proj') {
       api.proj(dataset, opts);
@@ -18620,7 +18620,7 @@ api.runCommand = function(cmd, dataset, cb) {
       api.renameLayers(targetLayers, opts.names);
 
     } else if (name == 'repair') {
-      newLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
+      outputLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
 
     } else if (name == 'simplify') {
       api.simplify(arcs, opts);
@@ -18632,30 +18632,33 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
-      newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, opts.field, opts);
+      outputLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, opts.field, opts);
 
     } else if (name == 'split-on-grid') {
-      newLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
+      outputLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
 
     } else if (name == 'subdivide') {
-      newLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
+      outputLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
     } else {
       error("Unhandled command: [" + name + "]");
     }
 
+    // apply name parameter
     if (opts.name) {
-      (newLayers || targetLayers).forEach(function(lyr) {
+      // TODO: consider uniqifying multiple layers here
+      (outputLayers || targetLayers).forEach(function(lyr) {
         lyr.name = opts.name;
       });
     }
 
-    if (newLayers) {
+    // integrate output layers into the dataset
+    if (outputLayers) {
       if (opts.no_replace) {
-        dataset.layers = dataset.layers.concat(newLayers);
+        dataset.layers = dataset.layers.concat(outputLayers);
       } else {
         // TODO: consider replacing old layers as they are generated, for gc
-        MapShaper.replaceLayers(dataset, targetLayers, newLayers);
+        MapShaper.replaceLayers(dataset, targetLayers, outputLayers);
       }
     }
   } catch(e) {

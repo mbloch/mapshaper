@@ -12,6 +12,11 @@ MapShaper.copyDataset = function(dataset) {
   return d2;
 };
 
+// make a stub copy if the no_replace option is given, else pass thru src layer
+MapShaper.getOutputLayer = function(src, opts) {
+  return opts && opts.no_replace ? {geometry_type: src.geometry_type} : src;
+};
+
 // Make a deep copy of a layer
 MapShaper.copyLayer = function(lyr) {
   var copy = utils.extend({}, lyr);

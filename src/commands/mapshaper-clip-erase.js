@@ -63,11 +63,9 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
       stop('[' + type + '] Invalid target layer:', targetLyr.name);
     }
 
-    if (opts.no_replace) {
-      outputLyr = utils.extend({}, targetLyr);
-      outputLyr.data = targetLyr.data ? targetLyr.data.clone() : null;
-    } else {
-      outputLyr = targetLyr;
+    outputLyr = MapShaper.getOutputLayer(targetLyr, opts);
+    if (opts.no_replace && targetLyr.data) {
+      outputLyr.data = targetLyr.data.clone();
     }
     outputLyr.shapes = clippedShapes;
 

@@ -25,10 +25,12 @@ api.dissolve = function(lyr, arcs, opts) {
     }
   }
 
-  return utils.defaults({
-      shapes: dissolveShapes,
-      data: dissolveData ? new DataTable(dissolveData) : null
-    }, lyr);
+  return {
+    name: opts.no_replace ? null : lyr.name,
+    shapes: dissolveShapes,
+    data: dissolveData ? new DataTable(dissolveData) : null,
+    geometry_type: lyr.geometry_type
+  };
 };
 
 // Get a function to convert original feature ids into ids of combined features

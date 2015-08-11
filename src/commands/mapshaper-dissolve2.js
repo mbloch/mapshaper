@@ -9,7 +9,7 @@ api.dissolvePolygons2 = function(lyr, dataset, opts) {
 MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   opts = opts || {};
   var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data);
-  var lyr2 = {data: null};
+  var lyr2 = MapShaper.getOutputLayer(lyr, opts);
   var groups = lyr.shapes.reduce(function(groups, shape, i) {
     var i2 = getGroupId(i);
     if (i2 in groups === false) {
@@ -29,7 +29,7 @@ MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   if (lyr.data) {
     lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts));
   }
-  return utils.defaults(lyr2, lyr);
+  return lyr2;
 };
 
 MapShaper.concatShapes = function(shapes) {

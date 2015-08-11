@@ -6,7 +6,8 @@ api.filterFeatures = function(lyr, arcs, opts) {
       n = MapShaper.getFeatureCount(lyr),
       filteredShapes = shapes ? [] : null,
       filteredRecords = records ? [] : null,
-      filteredLyr, filter;
+      filteredLyr = MapShaper.getOutputLayer(lyr, opts),
+      filter;
 
   if (opts.expression) {
     filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
@@ -30,16 +31,11 @@ api.filterFeatures = function(lyr, arcs, opts) {
     }
   });
 
-  filteredLyr = {
-    data: filteredRecords ? new DataTable(filteredRecords) : null,
-    shapes: filteredShapes
-  };
+  filteredLyr.shapes = filteredShapes;
+  filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
   if (opts.no_replace) {
     // if adding a layer, don't share objects between source and filtered layer
     filteredLyr = MapShaper.copyLayer(filteredLyr);
-    filteredLyr.geometry_type = lyr.geometry_type;
-  } else {
-    filteredLyr = utils.extend(lyr, filteredLyr); // modify in-place
   }
 
   if (opts.verbose !== false) {

@@ -137,6 +137,7 @@ describe('mapshaper-commands.js', function () {
         }]
       };
       api.internal.processFileContent("-points x=lng y=lat -o format=geojson", input, function(err, data) {
+        if (err) throw err;
         var output = JSON.parse(data[0].content);
         assert.deepEqual(output, target);
         // TODO: figure out naming

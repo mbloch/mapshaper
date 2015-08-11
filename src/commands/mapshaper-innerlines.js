@@ -1,19 +1,19 @@
 /* @requires mapshaper-shape-utils */
 
-api.convertPolygonsToInnerLines = function(lyr, arcs) {
+api.convertPolygonsToInnerLines = function(lyr, arcs, opts) {
   if (lyr.geometry_type != 'polygon') {
     stop("[innerlines] Command requires a polygon layer");
   }
   var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
-      lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
+      lyr2 = MapShaper.convertArcsToLineLayer(arcs2, null);
   if (lyr2.shapes.length === 0) {
     message("[innerlines] No shared boundaries were found");
   }
-  lyr2.name = lyr.name;
+  lyr2.name = opts && opts.no_replace ? null : lyr.name;
   return lyr2;
 };
 
-api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
+api.convertPolygonsToTypedLines = function(lyr, arcs, fields, opts) {
   if (lyr.geometry_type != 'polygon') {
     stop("[lines] Command requires a polygon layer");
   }
@@ -21,7 +21,8 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
       outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
       typeCode = 0,
       allArcs = [],
-      allData = [];
+      allData = [],
+      innerArcs, lyr2;
 
   function addArcs(typeArcs) {
     var typeData = utils.repeat(typeArcs.length, function(i) {
@@ -42,21 +43,21 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] Unknown data field:", field);
       }
-      var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
+      var dissolved = api.dissolve(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
       dissolvedArcs = utils.difference(dissolvedArcs, allArcs);
       addArcs(dissolvedArcs);
     });
   }
 
-  var innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
+  innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
   innerArcs = utils.difference(innerArcs, allArcs);
   addArcs(innerArcs);
-
-  var lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
-  lyr2.name = lyr.name;
+  lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
+  lyr2.name = opts && opts.no_replace ? null : lyr.name;
   return lyr2;
 };
+
 
 MapShaper.convertArcsToLineLayer = function(arcs, data) {
   var shapes = MapShaper.convertArcsToShapes(arcs),
