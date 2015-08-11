@@ -45,11 +45,16 @@ Dbf.readAsciiString = function(bin, field) {
 };
 
 Dbf.readStringBytes = function(bin, size, buf) {
+  // TODO: simplify by reading backwards from end of field
   var c;
   for (var i=0; i<size; i++) {
     c = bin.readUint8();
     if (c === 0) break;
     buf[i] = c;
+  }
+  // ignore trailing spaces (DBF fields are typically padded w/ spaces)
+  while (i > 0 && buf[i-1] == 32) {
+    i--;
   }
   return i;
 };

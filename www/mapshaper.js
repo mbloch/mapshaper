@@ -2751,9 +2751,13 @@ MapShaper.formatStringsAsGrid = function(arr) {
       }, 0),
       colWidth = longest + 2,
       perLine = Math.floor(80 / colWidth) || 1;
-  return arr.reduce(function(str, name, i) {
-    if (i > 0 && i % perLine === 0) str += '\n';
-    return str + '  ' + utils.rpad(name, colWidth-2, ' ');
+  return arr.reduce(function(memo, name, i) {
+    var col = i % perLine;
+    if (i > 0 && col === 0) memo += '\n';
+    if (col < perLine - 1) { // right-pad all but rightmost column
+      name = utils.rpad(name, colWidth - 2, ' ');
+    }
+    return memo +  '  ' + name;
   }, '');
 };
 
@@ -3694,11 +3698,16 @@ Dbf.readAsciiString = function(bin, field) {
 };
 
 Dbf.readStringBytes = function(bin, size, buf) {
+  // TODO: simplify by reading backwards from end of field
   var c;
   for (var i=0; i<size; i++) {
     c = bin.readUint8();
     if (c === 0) break;
     buf[i] = c;
+  }
+  // ignore trailing spaces (DBF fields are typically padded w/ spaces)
+  while (i > 0 && buf[i-1] == 32) {
+    i--;
   }
   return i;
 };
