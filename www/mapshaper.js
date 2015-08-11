@@ -13137,7 +13137,7 @@ function RepairControl(model, map) {
       readout = el.findChild("#intersection-count"),
       btn = el.findChild("#repair-btn"),
       _self = this,
-      _dataset, _currXX, _initialXX;
+      _dataset, _currXX;
 
   model.on('update', function(e) {
     // these changes require nulling out any cached intersection data and recalculating
@@ -13180,12 +13180,12 @@ function RepairControl(model, map) {
       XX = MapShaper.findSegmentIntersections(_dataset.arcs);
       showBtn = XX.length > 0;
     } else { // no simplification
-      if (!_initialXX) {
+      XX = _dataset.info.intersections;
+      if (!XX) {
         // cache intersections for no simplification, to avoid recalculating
-        // every time the simplification slider is set to 100%
-        _initialXX = MapShaper.findSegmentIntersections(_dataset.arcs);
+        // every time the simplification slider is set to 100% or the layer is switched
+        XX = _dataset.info.intersections = datMapShaper.findSegmentIntersections(_dataset.arcs);
       }
-      XX = _initialXX;
       showBtn = false;
     }
     el.show();
@@ -13205,9 +13205,11 @@ function RepairControl(model, map) {
   }
 
   function reset() {
-    _dataset = null;
+    if (_dataset) {
+      _dataset.info.intersections = null;
+      _dataset = null;
+    }
     _currXX = null;
-    _initialXX = null;
     _self.hide();
   }
 
