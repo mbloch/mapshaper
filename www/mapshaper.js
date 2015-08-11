@@ -14067,7 +14067,7 @@ utils.inherit(MapExtent, EventDispatcher);
 function HitControl(ext, mouse) {
 
   var self = this;
-  var selectionId = -1;
+  var selectedId = -1;
   var hoverId = -1;
   var pinId = -1;
   var tests = {
@@ -14075,43 +14075,51 @@ function HitControl(ext, mouse) {
     polyline: polylineTest,
     point: pointTest
   };
-  var selection, test;
+  var selectedShape;
+  var target, test;
 
-  this.turnOn = function(o) {
-    selectionId = hoverId = pinId = -1;
-    selection = o;
+  this.start = function(o) {
+    this.stop();
+    target = o;
     test = tests[o.layer.geometry_type];
   };
 
-  this.turnOff = function() {
-    if (selection) {
+  this.stop = function() {
+    if (target) {
       pinId = -1;
       update(-1);
-      selection = null;
+      target = null;
       test = null;
+    }
+  };
+
+  // Check if data for current selected shape has changed; trigger change event
+  this.refresh = function() {
+    if (selectedShape && target.layer.shapes[selectedId] != selectedShape) {
+      select(-1);
+    } else {
+      select(selectedId); // re-trigger hit event
     }
   };
 
   document.addEventListener('keydown', function(e) {
     var kc = e.keyCode, n;
-    if (pinId > -1 && kc >= 37 && kc <= 40) {
-      n = MapShaper.getFeatureCount(selection.layer);
-      if (kc == 37) {
-        pinId = (pinId + n - 1) % n;
-      } else if (kc == 38) {
-        pinId = 0;
-      } else if (kc == 39) {
-        pinId = (pinId + 1) % n;
-      } else if (kc == 40) {
-        pinId = n - 1;
+    if (pinId > -1 && (kc == 37 || kc == 39)) {
+      n = MapShaper.getFeatureCount(target.layer);
+      if (n > 1) {
+        if (kc == 37) {
+          pinId = (pinId + n - 1) % n;
+        } else {
+          pinId = (pinId + 1) % n;
+        }
+        select(pinId);
+        e.stopPropagation();
       }
-      select(pinId);
-      e.stopPropagation();
     }
   }, !!'capture'); // preempt the layer control's arrow key handler
 
   mouse.on('click', function(e) {
-    if (!selection) return;
+    if (!target) return;
     if (pinId > -1 && hoverId == pinId) {
       // clicking on pinned shape: unpin
       pinId = -1;
@@ -14135,11 +14143,10 @@ function HitControl(ext, mouse) {
   //});
 
   mouse.on('hover', function(e) {
-    var tr, p;
-    if (selection && test && e.hover) {
-      tr = ext.getTransform();
-      p = tr.invert().transform(e.x, e.y);
-      test(p[0], p[1]);
+    var p;
+    if (target && test && e.hover) {
+      p = ext.getTransform().invert().transform(e.x, e.y);
+      update(test(p[0], p[1]));
     }
   });
 
@@ -14158,24 +14165,23 @@ function HitControl(ext, mouse) {
         cand;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
-      if (geom.testPointInPolygon(x, y, cand.shape, selection.dataset.arcs)) {
+      if (geom.testPointInPolygon(x, y, cand.shape, target.dataset.arcs)) {
         hitId = cand.id;
         break;
       }
     }
     if (cands.length > 0 && hitId == -1) {
       // secondary detection: proximity, if not inside a polygon
-      hitId = findNearestCandidate(x, y, dist, cands, selection.dataset.arcs);
+      hitId = findNearestCandidate(x, y, dist, cands, target.dataset.arcs);
     }
-    update(hitId);
+    return hitId;
   }
 
   function polylineTest(x, y) {
     var dist = getHitBuffer(15),
         hitId = -1,
         cands = findHitCandidates(x, y, dist);
-    hitId = findNearestCandidate(x, y, dist, cands, selection.dataset.arcs);
-    update(hitId);
+    return findNearestCandidate(x, y, dist, cands, target.dataset.arcs);
   }
 
   function findNearestCandidate(x, y, dist, cands, arcs) {
@@ -14196,24 +14202,23 @@ function HitControl(ext, mouse) {
     var dist = getHitBuffer(25),
         limitSq = dist * dist,
         hitId = -1;
-    MapShaper.forEachPoint(selection.layer, function(p, id) {
+    MapShaper.forEachPoint(target.layer, function(p, id) {
       var distSq = distanceSq(x, y, p[0], p[1]);
       if (distSq < limitSq) {
         hitId = id;
         limitSq = distSq;
       }
     });
-    update(hitId);
+    return hitId;
   }
 
   function getProperties(id) {
-    return selection.layer.data ? selection.layer.data.getRecords()[id] : {};
+    return target.layer.data ? target.layer.data.getRecords()[id] : {};
   }
 
   function update(newId) {
     hoverId = newId;
-
-    if (pinId == -1 && hoverId != selectionId) {
+    if (pinId == -1 && hoverId != selectedId) {
       select(newId);
     }
     El('#map-layers').classed('hover', hoverId > -1);
@@ -14223,27 +14228,29 @@ function HitControl(ext, mouse) {
     var o = {
       pinned: pinId > -1,
       id: newId,
-      dataset: selection.dataset,
+      dataset: target.dataset,
       layer: {
-        geometry_type: selection.layer.geometry_type,
+        geometry_type: target.layer.geometry_type,
         shapes: []
       }
     };
+    selectedId = newId;
+    selectedShape = null;
     if (newId > -1) {
+      selectedShape = target.layer.shapes[newId];
       o.properties = getProperties(newId);
-      o.layer.shapes.push(selection.layer.shapes[newId]);
-      o.table = selection.layer.data;
+      o.layer.shapes.push(selectedShape);
+      o.table = target.layer.data;
     }
-    selectionId = newId;
     self.dispatchEvent('change', o);
   }
 
   function findHitCandidates(x, y, dist) {
-    var arcs = selection.dataset.arcs,
+    var arcs = target.dataset.arcs,
         index = {},
         cands = [],
         bbox = [];
-    selection.layer.shapes.forEach(function(shp, shpId) {
+    target.layer.shapes.forEach(function(shp, shpId) {
       var cand;
       for (var i = 0, n = shp && shp.length; i < n; i++) {
         arcs.getSimpleShapeBounds2(shp[i], bbox);
@@ -14363,15 +14370,23 @@ function InfoControl(model, hit) {
   var _popup = new Popup();
   var btn = gui.addSidebarButton("#info-icon").on('click', function() {
     btn.toggleClass('selected');
-    update();
+    reset();
   });
 
-  model.on('select', update);
+  model.on('update', function(e) {
+    if (isOn()) {
+      if (e.flags.select) {
+        reset();
+      } else {
+        hit.refresh();
+      }
+    }
+  });
 
   document.addEventListener('keydown', function(e) {
     if (e.keyCode == 27 && isOn() && !model.getMode()) { // esc key closes
       btn.toggleClass('selected');
-      update();
+      reset();
     }
   });
 
@@ -14391,12 +14406,12 @@ function InfoControl(model, hit) {
     return btn.hasClass('selected');
   }
 
-  function update() {
+  function reset() {
     _popup.hide();
     if (isOn()) {
-      hit.turnOn(model.getEditingLayer());
+      hit.start(model.getEditingLayer());
     } else {
-      hit.turnOff();
+      hit.stop();
     }
   }
 }
@@ -19280,7 +19295,7 @@ function Model() {
   this.updated = function(flags, lyr, dataset) {
     var e;
     flags = flags || {};
-    if (lyr && dataset && (!editing || editing.lyr != lyr)) {
+    if (lyr && dataset && (!editing || editing.layer != lyr)) {
       setEditingLayer(lyr, dataset);
       flags.select = true;
     }

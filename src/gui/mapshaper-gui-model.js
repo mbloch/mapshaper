@@ -95,7 +95,7 @@ function Model() {
   this.updated = function(flags, lyr, dataset) {
     var e;
     flags = flags || {};
-    if (lyr && dataset && (!editing || editing.lyr != lyr)) {
+    if (lyr && dataset && (!editing || editing.layer != lyr)) {
       setEditingLayer(lyr, dataset);
       flags.select = true;
     }

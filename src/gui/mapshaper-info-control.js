@@ -4,15 +4,23 @@ function InfoControl(model, hit) {
   var _popup = new Popup();
   var btn = gui.addSidebarButton("#info-icon").on('click', function() {
     btn.toggleClass('selected');
-    update();
+    reset();
   });
 
-  model.on('select', update);
+  model.on('update', function(e) {
+    if (isOn()) {
+      if (e.flags.select) {
+        reset();
+      } else {
+        hit.refresh();
+      }
+    }
+  });
 
   document.addEventListener('keydown', function(e) {
     if (e.keyCode == 27 && isOn() && !model.getMode()) { // esc key closes
       btn.toggleClass('selected');
-      update();
+      reset();
     }
   });
 
@@ -32,12 +40,12 @@ function InfoControl(model, hit) {
     return btn.hasClass('selected');
   }
 
-  function update() {
+  function reset() {
     _popup.hide();
     if (isOn()) {
-      hit.turnOn(model.getEditingLayer());
+      hit.start(model.getEditingLayer());
     } else {
-      hit.turnOff();
+      hit.stop();
     }
   }
 }
