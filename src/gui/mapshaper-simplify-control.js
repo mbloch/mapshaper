@@ -5,13 +5,17 @@ var SimplifyControl = function(model) {
   var _value = 1;
   var el = El('#simplify-control-wrapper');
   var menu = El('#simplify-options').on('click', gui.handleDirectEvent(model.clearMode));
+  var slider, text;
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
   new SimpleButton('#simplify-options .cancel-btn').on('click', model.clearMode);
   new ModeButton('#simplify-btn', 'simplify', model);
   model.addMode('simplify', turnOn, turnOff);
+  model.on('select', function() {
+    if (model.getMode() == 'simplify') model.clearMode();
+  });
 
-  var slider = new Slider("#simplify-control .slider");
+  slider = new Slider("#simplify-control .slider");
   slider.handle("#simplify-control .handle");
   slider.track("#simplify-control .track");
   slider.on('change', function(e) {
@@ -25,11 +29,10 @@ var SimplifyControl = function(model) {
     control.dispatchEvent('simplify-end');
   });
 
-  var text = new ClickText("#simplify-control .clicktext");
+  text = new ClickText("#simplify-control .clicktext");
   text.bounds(0, 1);
   text.formatter(function(val) {
     if (isNaN(val)) return '-';
-
     var pct = val * 100;
     var decimals = 0;
     if (pct <= 0) decimals = 1;
