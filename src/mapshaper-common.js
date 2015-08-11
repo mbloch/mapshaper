@@ -73,9 +73,13 @@ MapShaper.formatStringsAsGrid = function(arr) {
       }, 0),
       colWidth = longest + 2,
       perLine = Math.floor(80 / colWidth) || 1;
-  return arr.reduce(function(str, name, i) {
-    if (i > 0 && i % perLine === 0) str += '\n';
-    return str + '  ' + utils.rpad(name, colWidth-2, ' ');
+  return arr.reduce(function(memo, name, i) {
+    var col = i % perLine;
+    if (i > 0 && col === 0) memo += '\n';
+    if (col < perLine - 1) { // right-pad all but rightmost column
+      name = utils.rpad(name, colWidth - 2, ' ');
+    }
+    return memo +  '  ' + name;
   }, '');
 };
 
