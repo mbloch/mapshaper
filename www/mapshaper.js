@@ -3434,15 +3434,15 @@ var SimplifyControl = function(model) {
   });
 
   function turnOn() {
-    var dataset = model.getEditingLayer().dataset;
-    if (!MapShaper.datasetHasPaths(dataset)) {
-      gui.alert("This dataset can not be simplified");
+    var target = model.getEditingLayer();
+    if (!MapShaper.layerHasPaths(target.layer) || target.layer.data_type == 'table') {
+      gui.alert("This layer can not be simplified");
       return;
     }
-    if (dataset.arcs.getVertexData().zz) {
+    if (target.dataset.arcs.getVertexData().zz) {
       // TODO: try to avoid calculating pct (slow);
       showSlider(); // need to show slider before setting; TODO: fix
-      control.value(dataset.arcs.getRetainedPct());
+      control.value(target.dataset.arcs.getRetainedPct());
     } else {
       menu.show();
     }
