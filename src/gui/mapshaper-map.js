@@ -19,6 +19,7 @@ MapShaper.getBoundsOverlap = function(bb1, bb2) {
 // Test if map should be re-framed to show updated layer
 gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
   if (!prevBounds) return true;
+  if (prevBounds.xmin === 0 || newBounds.xmin === 0) return true; // kludge to handle tables
   // TODO: consider similarity of prev and next bounds
   //var overlapPct = 2 * MapShaper.getBoundsOverlap(newBounds, prevBounds) /
   //    (newBounds.area() + prevBounds.area());
@@ -131,7 +132,6 @@ function MshpMap(model) {
     updateGroupStyle(activeStyle, group);
     _activeGroup = group;
     needReset = gui.mapNeedsReset(group.getBounds(), prevBounds, _ext.getBounds());
-    needReset = needReset || e.layer.data_type == 'table'; // kludge to make tables recenter
     _ext.setBounds(group.getBounds()); // update map extent to match bounds of active group
     if (needReset) {
       // zoom to full view of the active layer and redraw
