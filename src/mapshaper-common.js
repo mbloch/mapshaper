@@ -71,11 +71,11 @@ MapShaper.formatStringsAsGrid = function(arr) {
   var longest = arr.reduce(function(len, str) {
         return Math.max(len, str.length);
       }, 0),
-      colWidth = longest + 1,
+      colWidth = longest + 2,
       perLine = Math.floor(80 / colWidth) || 1;
   return arr.reduce(function(str, name, i) {
     if (i > 0 && i % perLine === 0) str += '\n';
-    return str + ' ' + utils.rpad(name, colWidth-1, ' ');
+    return str + '  ' + utils.rpad(name, colWidth-2, ' ');
   }, '');
 };
 

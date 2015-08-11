@@ -2749,11 +2749,11 @@ MapShaper.formatStringsAsGrid = function(arr) {
   var longest = arr.reduce(function(len, str) {
         return Math.max(len, str.length);
       }, 0),
-      colWidth = longest + 1,
+      colWidth = longest + 2,
       perLine = Math.floor(80 / colWidth) || 1;
   return arr.reduce(function(str, name, i) {
     if (i > 0 && i % perLine === 0) str += '\n';
-    return str + ' ' + utils.rpad(name, colWidth-1, ' ');
+    return str + '  ' + utils.rpad(name, colWidth-2, ' ');
   }, '');
 };
 
@@ -3860,14 +3860,14 @@ DbfReader.prototype.findStringEncoding = function() {
 
   // Show a sample of decoded text if non-ascii-range text has been found
   if (encoding && samples.length > 0) {
-    msg = "[dbf] Detected encoding: " + encoding;
+    msg = "Detected DBF text encoding: " + encoding;
     if (encoding in Dbf.encodingNames) {
       msg += " (" + Dbf.encodingNames[encoding] + ")";
     }
     message(msg);
     msg = MapShaper.decodeSamples(encoding, samples);
     msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
-    message("[dbf] Sample text:" + (msg.length > 60 ? '\n' : '') + msg);
+    message("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
   }
   return encoding;
 };
@@ -3875,7 +3875,7 @@ DbfReader.prototype.findStringEncoding = function() {
 
 // Return up to @size buffers containing text samples
 // with at least one byte outside the 7-bit ascii range.
-// TODO: remove duplication with readRows()
+// TODO: filter out duplicate samples
 DbfReader.prototype.getNonAsciiSamples = function(size) {
   var samples = [];
   var stringFields = this.header.fields.filter(function(f) {
