@@ -218,6 +218,7 @@ function Console(model) {
     var commands, editing, dataset, lyr, lyrId, arcCount;
     try {
       commands = MapShaper.parseConsoleCommands(str);
+      commands = MapShaper.runAndRemoveInfoCommands(commands);
       editing = model.getEditingLayer();
       dataset = editing.dataset;
       lyr = editing.layer;
@@ -242,12 +243,7 @@ function Console(model) {
         var flags = getCommandFlags(commands),
             targetLyr;
         if (dataset) {
-          if (utils.contains(dataset.layers, lyr)) {
-            targetLyr = lyr;
-          } else {
-            // If original editing layer no longer exists, switch to a different layer
-            targetLyr = dataset.layers[lyrId] || dataset.layers[0];
-          }
+          targetLyr = getOutputLayer(lyrId, dataset, commands);
           if (dataset.arcs && dataset.arcs.size() != arcCount) {
             // kludge to signal map that filtered arcs need refreshing
             flags.arc_count = true;
@@ -257,6 +253,26 @@ function Console(model) {
         if (err) onError(err);
       });
     }
+  }
+
+  // try to get the output layer from the last console command
+  // (if multiple layers are output, pick one of the output layers)
+  // @lyrId  index of the currently edited layer
+  function getOutputLayer(lyrId, dataset, commands) {
+    var lastCmd = commands[commands.length-1],
+        layers = dataset.layers,
+        lyr;
+    if (lastCmd.options.no_replace) {
+      // pick last layer if a new layer has been created
+      // (new layers should be appended to the list of layers -- need to test)
+      lyr = layers[layers.length-1];
+    } else {
+      // use the layer in the same position as the currently selected layer;
+      // this may not be the output layer if a different layer was explicitly
+      // targeted.
+      lyr = layers[lyrId] || layers[0];
+    }
+    return lyr;
   }
 
   function onError(err) {
