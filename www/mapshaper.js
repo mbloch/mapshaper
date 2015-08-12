@@ -11777,6 +11777,9 @@ MapShaper.getOptionParser = function() {
       label: "<expression>",
       describe: "JS expression to apply to each target feature"
     })
+    .option("where", {
+      describe: "use a JS expression to select a subset of features"
+    })
     .option("target", targetOpt);
 
    parser.command("sort")
@@ -16526,17 +16529,24 @@ function FeatureExpressionContext(lyr, arcs) {
 
 
 
-api.evaluateEachFeature = function(lyr, arcs, exp) {
+api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
   var n = MapShaper.getFeatureCount(lyr),
-      compiled;
+      compiled, filter;
 
   // TODO: consider not creating a data table -- not needed if expression only references geometry
   if (n > 0 && !lyr.data) {
     lyr.data = new DataTable(n);
   }
+  if (opts && opts.where) {
+    filter = MapShaper.compileFeatureExpression(opts.where, lyr, arcs);
+  }
   compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
   // call compiled expression with id of each record
-  utils.repeat(n, compiled);
+  for (var i=0; i<n; i++) {
+    if (!filter || filter(i)) {
+      compiled(i);
+    }
+  }
 };
 
 
@@ -18572,7 +18582,7 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
 
     } else if (name == 'each') {
-      MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
+      MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
 
     } else if (name == 'erase') {
       outputLayers = api.eraseLayers(targetLayers, opts.source, dataset, opts);

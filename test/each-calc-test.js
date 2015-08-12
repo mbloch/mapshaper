@@ -121,6 +121,16 @@ describe('mapshaper-each-calc.js', function () {
       assert.deepEqual(records, [{bar: 2}, {bar: 0}]);
     })
 
+    it('Use a where= expression to exclude some records', function () {
+      var records = [{foo:4, bar: 'a'}, {foo:0, bar: 'b'}];
+      var lyr = {
+        shapes: [],
+        data: new api.internal.DataTable(records)
+      };
+      api.evaluateEachFeature(lyr, nullArcs, "foo = 22", {"where": "bar == 'b'"});
+      assert.deepEqual(records, [{foo: 4, bar: 'a'}, {foo: 22, bar: 'b'}]);
+    })
+
     describe('Point geometry', function() {
       it ('point coords are exposed', function() {
         var lyr = {

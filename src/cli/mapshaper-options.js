@@ -261,6 +261,9 @@ MapShaper.getOptionParser = function() {
       label: "<expression>",
       describe: "JS expression to apply to each target feature"
     })
+    .option("where", {
+      describe: "use a JS expression to select a subset of features"
+    })
     .option("target", targetOpt);
 
    parser.command("sort")
