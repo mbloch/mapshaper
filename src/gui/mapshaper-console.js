@@ -11,7 +11,7 @@ function Console(model) {
   var input = El('input').appendTo(line).attr('spellcheck', false).attr('autocorrect', false);
   var history = [];
   var historyId = 0;
-  var _active = false;
+  var _isOpen = false;
   var _error = error; // save default error functions...
   var _stop = stop;
 
@@ -33,8 +33,8 @@ function Console(model) {
   }
 
   function turnOn() {
-    if (!_active && !!model.getEditingLayer()) {
-      _active = true;
+    if (!_isOpen && !!model.getEditingLayer()) {
+      _isOpen = true;
       stop = consoleStop;
       error = consoleError;
       el.show();
@@ -43,8 +43,8 @@ function Console(model) {
   }
 
   function turnOff() {
-    if (_active) {
-      _active = false;
+    if (_isOpen) {
+      _isOpen = false;
       stop = _stop; // restore original error functions
       error = _error;
       el.hide();
@@ -63,19 +63,34 @@ function Console(model) {
 
   function onKeyDown(e) {
     var kc = e.keyCode,
-        activeEl = gui.getInputElement(),
-        editing = !!activeEl,
+        inputEl = gui.getInputElement(),
+        typing = !!inputEl,
+        typingInConsole = inputEl && inputEl == input.node(),
+        inputText = readCommandLine(),
         capture = false;
 
-    if (kc == 27) { // esc
-      if (editing) {
-        activeEl.blur();
+    // esc key
+    if (kc == 27) {
+      if (typing) {
+        inputEl.blur();
       }
       model.clearMode(); // esc escapes other modes as well
       capture = true;
-    } else if (kc == 8 && !editing) {
+
+    // l/r arrow keys while not typing a text field
+    } else if ((kc == 37 || kc == 39) && (!typing || typingInConsole && !inputText)) {
+      if (kc == 37) {
+        model.selectPrevLayer();
+      } else {
+        model.selectNextLayer();
+      }
+
+    // delete key while not inputting text
+    } else if (kc == 8 && !typing) {
       capture = true; // prevent delete from leaving page
-    } else if (_active) {
+
+    // any key while console is open
+    } else if (_isOpen) {
       capture = true;
       if (kc == 13) { // enter
         submit();
@@ -85,10 +100,10 @@ function Console(model) {
         back();
       } else if (kc == 40) {
         forward();
-      } else if (kc == 32 && readCommandLine() === '') {
+      } else if (kc == 32 && inputText === '') {
         // space bar closes if nothing has been typed
         model.clearMode();
-      } else if (!editing && e.target != input.node() && !metaKey(e)) {
+      } else if (!typing && e.target != input.node() && !metaKey(e)) {
         // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
         // or user is typing in a different input area somewhere
         input.node().focus();
@@ -97,17 +112,14 @@ function Console(model) {
         // normal typing
         capture = false;
       }
-    } else if (!editing) {
+
+    // space bar while not inputting text
+    } else if (!typing && kc == 32) {
       // space bar opens console, unless typing in an input field or editable el
-      if (kc == 32) {
-        capture = true;
-        model.enterMode('console');
-      } else if (kc == 37) { // left
-        model.selectPrevLayer();
-      } else if (kc == 39) { // right
-        model.selectNextLayer();
-      }
+      capture = true;
+      model.enterMode('console');
     }
+
     if (capture) {
       e.preventDefault();
     }
@@ -215,13 +227,13 @@ function Console(model) {
   }
 
   function runMapshaperCommands(str) {
-    var commands, editing, dataset, lyr, lyrId, arcCount;
+    var commands, target, dataset, lyr, lyrId, arcCount;
     try {
       commands = MapShaper.parseConsoleCommands(str);
       commands = MapShaper.runAndRemoveInfoCommands(commands);
-      editing = model.getEditingLayer();
-      dataset = editing.dataset;
-      lyr = editing.layer;
+      target = model.getEditingLayer();
+      dataset = target.dataset;
+      lyr = target.layer;
       lyrId = dataset.layers.indexOf(lyr);
       arcCount = dataset.arcs ? dataset.arcs.size() : 0;
       // Use currently edited layer as default command target

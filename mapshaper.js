@@ -14404,7 +14404,7 @@ MapShaper.getOptionParser = function() {
       type: "comma-sep"
     })
     .option("name", {
-      describe: "set name of imported layer(s)"
+      describe: "Rename the imported layer(s)"
     });
 
   parser.command('o')
