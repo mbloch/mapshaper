@@ -18596,7 +18596,7 @@ api.runCommand = function(cmd, dataset, cb) {
       api.printInfo(dataset);
 
     } else if (name == 'innerlines') {
-      outputLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
+      outputLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs, opts);
 
     } else if (name == 'join') {
       MapShaper.applyCommand(api.join, targetLayers, dataset, opts);
@@ -18605,7 +18605,7 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
 
     } else if (name == 'lines') {
-      outputLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
+      outputLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields, opts);
 
     } else if (name == 'stitch') {
       api.stitch(dataset);

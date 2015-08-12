@@ -64,6 +64,37 @@ describe('mapshaper-commands.js', function () {
       counties_shp = fixPath("test_data/six_counties.shp"),
       states_csv = fixPath("test_data/states.csv");
 
+  describe('layer naming tests', function() {
+
+    it('"-innerlines +" creates an unnamed line layer', function(done) {
+      var cmds =  api.internal.parseCommands(states_shp + " -innerlines +");
+      api.internal.runParsedCommands(cmds, null, function(err, dataset) {
+        assert.equal(dataset.layers.length, 2);
+        assert.equal(dataset.layers[1].geometry_type, "polyline");
+        assert(!dataset.layers[1].name);
+        done();
+      });
+    });
+
+    it('"-innerlines + name=innerlines" creates a named output layer', function(done) {
+      var cmds =  api.internal.parseCommands(states_shp + " -innerlines + name=innerlines");
+      api.internal.runParsedCommands(cmds, null, function(err, dataset) {
+        assert.equal(dataset.layers[1].name, 'innerlines');
+        done();
+      });
+    });
+
+    it('"-lines +" creates an unnamed line layer', function(done) {
+      var cmds =  api.internal.parseCommands(states_shp + " -lines +");
+      api.internal.runParsedCommands(cmds, null, function(err, dataset) {
+        assert.equal(dataset.layers.length, 2);
+        assert.equal(dataset.layers[1].geometry_type, "polyline");
+        assert(!dataset.layers[1].name);
+        done();
+      });
+    });
+  });
+
   describe('processFileContent()', function () {
     it('imports & exports csv file', function (done) {
       var input = "id,name\n0,foo";
