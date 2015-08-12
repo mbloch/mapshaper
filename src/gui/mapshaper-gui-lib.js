@@ -36,9 +36,12 @@ gui.handleDirectEvent = function(cb) {
   };
 };
 
-gui.blurActiveElement = function() {
+gui.getInputElement = function() {
   var el = document.activeElement;
-  if (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) {
-    el.blur();
-  }
+  return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
+};
+
+gui.blurActiveElement = function() {
+  var el = gui.getInputElement();
+  if (el) el.blur();
 };

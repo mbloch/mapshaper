@@ -63,8 +63,8 @@ function Console(model) {
 
   function onKeyDown(e) {
     var kc = e.keyCode,
-        activeEl = document.activeElement,
-        editing = activeEl && (activeEl.tagName == 'INPUT' || activeEl.contentEditable == 'true'),
+        activeEl = gui.getInputElement(),
+        editing = !!activeEl,
         capture = false;
 
     if (kc == 27) { // esc
@@ -88,8 +88,9 @@ function Console(model) {
       } else if (kc == 32 && readCommandLine() === '') {
         // space bar closes if nothing has been typed
         model.clearMode();
-      } else if (e.target != input.node() && !metaKey(e)) {
+      } else if (!editing && e.target != input.node() && !metaKey(e)) {
         // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
+        // or user is typing in a different input area somewhere
         input.node().focus();
         capture = false;
       } else {

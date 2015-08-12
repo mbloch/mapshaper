@@ -40,7 +40,8 @@ function HitControl(ext, mouse) {
 
   document.addEventListener('keydown', function(e) {
     var kc = e.keyCode, n;
-    if (pinId > -1 && (kc == 37 || kc == 39)) {
+    // arrow keys advance pinned feature unless user is editing text.
+    if (!gui.getInputElement() && pinId > -1 && (kc == 37 || kc == 39)) {
       n = MapShaper.getFeatureCount(target.layer);
       if (n > 1) {
         if (kc == 37) {

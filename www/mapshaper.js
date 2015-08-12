@@ -3080,11 +3080,14 @@ gui.handleDirectEvent = function(cb) {
   };
 };
 
-gui.blurActiveElement = function() {
+gui.getInputElement = function() {
   var el = document.activeElement;
-  if (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) {
-    el.blur();
-  }
+  return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
+};
+
+gui.blurActiveElement = function() {
+  var el = gui.getInputElement();
+  if (el) el.blur();
 };
 
 
@@ -14125,7 +14128,8 @@ function HitControl(ext, mouse) {
 
   document.addEventListener('keydown', function(e) {
     var kc = e.keyCode, n;
-    if (pinId > -1 && (kc == 37 || kc == 39)) {
+    // arrow keys advance pinned feature unless user is editing text.
+    if (!gui.getInputElement() && pinId > -1 && (kc == 37 || kc == 39)) {
       n = MapShaper.getFeatureCount(target.layer);
       if (n > 1) {
         if (kc == 37) {
@@ -18968,8 +18972,8 @@ function Console(model) {
 
   function onKeyDown(e) {
     var kc = e.keyCode,
-        activeEl = document.activeElement,
-        editing = activeEl && (activeEl.tagName == 'INPUT' || activeEl.contentEditable == 'true'),
+        activeEl = gui.getInputElement(),
+        editing = !!activeEl,
         capture = false;
 
     if (kc == 27) { // esc
@@ -18993,8 +18997,9 @@ function Console(model) {
       } else if (kc == 32 && readCommandLine() === '') {
         // space bar closes if nothing has been typed
         model.clearMode();
-      } else if (e.target != input.node() && !metaKey(e)) {
+      } else if (!editing && e.target != input.node() && !metaKey(e)) {
         // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
+        // or user is typing in a different input area somewhere
         input.node().focus();
         capture = false;
       } else {
