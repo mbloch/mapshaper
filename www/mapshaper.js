@@ -2727,6 +2727,10 @@ var message = function() {
   }
 };
 
+// alias for message; useful in web UI for sending some messages to the
+// debugging console instead of the command line.
+var consoleMessage = message;
+
 var verbose = function() {
   if (MapShaper.VERBOSE && MapShaper.LOGGING) {
     MapShaper.logArgs(arguments);
@@ -3873,10 +3877,10 @@ DbfReader.prototype.findStringEncoding = function() {
     if (encoding in Dbf.encodingNames) {
       msg += " (" + Dbf.encodingNames[encoding] + ")";
     }
-    message(msg);
+    consoleMessage(msg);
     msg = MapShaper.decodeSamples(encoding, samples);
     msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
-    message("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
+    consoleMessage("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
   }
   return encoding;
 };

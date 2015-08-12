@@ -220,10 +220,10 @@ DbfReader.prototype.findStringEncoding = function() {
     if (encoding in Dbf.encodingNames) {
       msg += " (" + Dbf.encodingNames[encoding] + ")";
     }
-    message(msg);
+    consoleMessage(msg);
     msg = MapShaper.decodeSamples(encoding, samples);
     msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
-    message("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
+    consoleMessage("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
   }
   return encoding;
 };

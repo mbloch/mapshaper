@@ -49,6 +49,10 @@ var message = function() {
   }
 };
 
+// alias for message; useful in web UI for sending some messages to the
+// debugging console instead of the command line.
+var consoleMessage = message;
+
 var verbose = function() {
   if (MapShaper.VERBOSE && MapShaper.LOGGING) {
     MapShaper.logArgs(arguments);
