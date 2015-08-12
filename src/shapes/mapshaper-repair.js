@@ -12,7 +12,7 @@ api.findAndRepairIntersections = function(arcs) {
   T.stop('Find and repair intersections');
   if (countPre > 0) {
     message(utils.format(
-      "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
+      "[simplify] Repaired %'i intersection%s; unable to repair %'i intersection%s.",
       countFixed, countFixed == 1 ? '' : 's', countPost, countPost == 1 ? '' : 's'));
   }
 };

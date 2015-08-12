@@ -98,6 +98,9 @@ MapShaper.getOptionParser = function() {
     .option("field-types", {
       describe: "type hints for csv files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
+    })
+    .option("name", {
+      describe: "set name of imported layer(s)"
     });
 
   parser.command('o')

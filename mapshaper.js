@@ -12958,7 +12958,7 @@ api.findAndRepairIntersections = function(arcs) {
   T.stop('Find and repair intersections');
   if (countPre > 0) {
     message(utils.format(
-      "Repaired %'i intersection%s; unable to repair %'i intersection%s.",
+      "[simplify] Repaired %'i intersection%s; unable to repair %'i intersection%s.",
       countFixed, countFixed == 1 ? '' : 's', countPost, countPost == 1 ? '' : 's'));
   }
 };
@@ -13610,7 +13610,7 @@ api.runCommand = function(cmd, dataset, cb) {
     // apply name parameter
     if (opts.name) {
       // TODO: consider uniqifying multiple layers here
-      (outputLayers || targetLayers).forEach(function(lyr) {
+      (outputLayers || targetLayers || dataset.layers).forEach(function(lyr) {
         lyr.name = opts.name;
       });
     }
@@ -14395,6 +14395,9 @@ MapShaper.getOptionParser = function() {
     .option("field-types", {
       describe: "type hints for csv files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
+    })
+    .option("name", {
+      describe: "set name of imported layer(s)"
     });
 
   parser.command('o')
