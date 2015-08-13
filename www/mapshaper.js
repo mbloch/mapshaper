@@ -13344,20 +13344,28 @@ function LayerControl(model) {
       }
       model.clearMode();
     });
-    // delete button
+    // init delete button
     El('<img>').attr('src', 'images/close.png').appendTo(entry)
-    .on('mouseup', function(e) {
-      var otherLyr = model.findAnotherLayer(lyr);
-      if (!otherLyr) {
-        window.location.href = window.location.href.toString(); // refresh browser
-      } else {
-        model.selectLayer(otherLyr.layer, otherLyr.dataset);
-        model.deleteLayer(lyr, dataset);
-        render();
-      }
-      e.stopPropagation();
-    });
+      .on('mouseup', function(e) {
+        e.stopPropagation();
+        deleteLayer(lyr, dataset);
+      });
     return entry;
+  }
+
+  function deleteLayer(lyr, dataset) {
+    var otherLyr = model.findAnotherLayer(lyr);
+    if (!otherLyr) {
+      // refresh browser if deleted layer is the last layer
+      window.location.href = window.location.href.toString();
+      return;
+    }
+    // switch to a different layer if deleted layer was selected
+    if (model.getEditingLayer().layer == lyr) {
+      model.selectLayer(otherLyr.layer, otherLyr.dataset);
+    }
+    model.deleteLayer(lyr, dataset);
+    render();
   }
 
   function cleanLayerName(raw) {
