@@ -77,7 +77,7 @@ function Console(model) {
       model.clearMode(); // esc escapes other modes as well
       capture = true;
 
-    // l/r arrow keys while not typing a text field
+    // l/r arrow keys while not typing in a text field
     } else if ((kc == 37 || kc == 39) && (!typing || typingInConsole && !inputText)) {
       if (kc == 37) {
         model.selectPrevLayer();
@@ -211,8 +211,6 @@ function Console(model) {
           MapShaper.getFormattedLayerList(model.getEditingLayer().dataset.layers));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         model.clearMode();
-      } else if (/^theme\b/.test(cmd)) {
-        setTheme(cmd.split(/\s+/)[1]);
       } else if (cmd) {
         runMapshaperCommands(cmd);
       }
@@ -220,51 +218,46 @@ function Console(model) {
     }
   }
 
-  function setTheme(t) {
-    var name = 'theme' + parseInt(t);
-    El('body').attr('className', name);
-    localStorage.setItem('theme', name);
-  }
-
   function runMapshaperCommands(str) {
-    var commands, target, dataset, lyr, lyrId, arcCount;
+    var commands, target;
     try {
       commands = MapShaper.parseConsoleCommands(str);
       commands = MapShaper.runAndRemoveInfoCommands(commands);
       target = model.getEditingLayer();
-      dataset = target.dataset;
-      lyr = target.layer;
-      lyrId = dataset.layers.indexOf(lyr);
-      arcCount = dataset.arcs ? dataset.arcs.size() : 0;
-      // Use currently edited layer as default command target
-      if (lyr) {
-        commands.forEach(function(cmd) {
-          // rename-layers should default to all layers;
-          // other commands can target the current layer
-          if (!cmd.options.target && cmd.name != 'rename-layers' &&
-              cmd.name != 'merge-layers') {
-            cmd.options.target = String(lyrId);
-          }
-        });
-      }
     } catch (e) {
       return onError(e);
     }
-    if (commands.length > 0) {
-      MapShaper.runParsedCommands(commands, dataset, function(err) {
-        var flags = getCommandFlags(commands),
-            targetLyr;
-        if (dataset) {
-          targetLyr = getOutputLayer(lyrId, dataset, commands);
-          if (dataset.arcs && dataset.arcs.size() != arcCount) {
-            // kludge to signal map that filtered arcs need refreshing
-            flags.arc_count = true;
-          }
-          model.updated(flags, targetLyr, dataset);
-        }
-        if (err) onError(err);
-      });
+    if (target.layer && commands.length > 0) {
+      applyParsedCommands(commands, target.layer, target.dataset);
     }
+  }
+
+  function applyParsedCommands(commands, lyr, dataset) {
+    var lyrId = dataset.layers.indexOf(lyr),
+        prevArcCount = dataset.arcs ? dataset.arcs.size() : 0;
+
+    // most commands should target the currently edited layer unless
+    // user has specified a different target
+    commands.forEach(function(cmd) {
+      if (!cmd.options.target && cmd.name != 'rename-layers' &&
+          cmd.name != 'merge-layers') {
+        cmd.options.target = String(lyrId);
+      }
+    });
+
+    MapShaper.runParsedCommands(commands, dataset, function(err) {
+      var flags = getCommandFlags(commands),
+          outputLyr = getOutputLayer(lyrId, dataset, commands);
+      if (prevArcCount > 0 && dataset.arcs.size() != prevArcCount) {
+        // kludge to signal map that filtered arcs need refreshing
+        flags.arc_count = true;
+      }
+      model.updated(flags, outputLyr, dataset);
+      // signal the map to update even if an error has occured, because the
+      // commands may have partially succeeded and changes may have occured to
+      // the data.
+      if (err) onError(err);
+    });
   }
 
   // try to get the output layer from the last console command
