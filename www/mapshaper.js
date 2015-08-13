@@ -19030,7 +19030,7 @@ function Console(model) {
         back();
       } else if (kc == 40) {
         forward();
-      } else if (kc == 32 && inputText === '') {
+      } else if (kc == 32 && (!typing || (inputText === '' && typingInConsole))) {
         // space bar closes if nothing has been typed
         model.clearMode();
       } else if (!typing && e.target != input.node() && !metaKey(e)) {
