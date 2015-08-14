@@ -3109,12 +3109,10 @@ function ClickText2(ref) {
     .on('focus', function(e) {
       el.addClass('editing');
       selected = false;
-      self.editing = true;
     }).on('blur', function(e) {
       el.removeClass('editing');
       self.dispatchEvent('change');
       getSelection().removeAllRanges();
-      self.editing = false;
     }).on('keydown', function(e) {
       if (e.keyCode == 13) { // enter
         e.stopPropagation();
@@ -13262,34 +13260,41 @@ utils.inherit(RepairControl, EventDispatcher);
 
 function LayerControl(model) {
   var el = El("#layer-control").on('click', gui.handleDirectEvent(model.clearMode));
-  var label = El('#layer-control-btn .layer-name');
-  var btn = new ModeButton('#layer-control-btn .mode-btn', 'layer_menu', model);
-  model.addMode('layer_menu', turnOn, turnOff);
+  var buttonLabel = El('#layer-control-btn .layer-name');
+  var isOpen = false;
 
+  new ModeButton('#layer-control-btn .mode-btn', 'layer_menu', model);
+  model.addMode('layer_menu', turnOn, turnOff);
   model.on('select', function(e) {
     updateBtn();
-    render();
+    if (isOpen) render();
   });
 
   function turnOn() {
+    isOpen = true;
     render();
     el.show();
   }
 
   function turnOff() {
+    isOpen = false;
     el.hide();
   }
 
   function updateBtn() {
     var name = model.getEditingLayer().layer.name || "[unnamed layer]";
-    label.html(name + " &nbsp;&#9660;");
+    buttonLabel.html(name + " &nbsp;&#9660;");
   }
 
   function render() {
-    var list = El('#layer-control .layer-list').empty();
-    model.forEachLayer(function(lyr, dataset) {
-      list.appendChild(renderLayer(lyr, dataset));
-    });
+    var list = El('#layer-control .layer-list');
+    if (isOpen) {
+      list.hide().empty();
+      model.forEachLayer(function(lyr, dataset) {
+        list.appendChild(renderLayer(lyr, dataset));
+      });
+      list.show();
+    }
   }
 
   function describeLyr(lyr) {
@@ -13316,56 +13321,57 @@ function LayerControl(model) {
     return file;
   }
 
+  function getDisplayName(name) {
+    return name || '[unnamed]';
+  }
+
   function renderLayer(lyr, dataset) {
-    var unnamed = '[unnamed]';
-    var entry = El('div').addClass('layer-item');
     var editLyr = model.getEditingLayer().layer;
-    var html = rowHTML('name', '<span class="layer-name colored-text dot-underline">' + (lyr.name || unnamed) + '</span>');
-    var nameEl;
+    var entry = El('div').addClass('layer-item').classed('active', lyr == editLyr);
+    var html = rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>');
     html += rowHTML('source file', describeSrc(lyr, dataset));
     html += rowHTML('contents', describeLyr(lyr));
+    html += '<img src="images/close.png">';
     entry.html(html);
-    if (lyr == editLyr) {
-      entry.addClass('active');
-    }
-    nameEl = new ClickText2(entry.findChild('.layer-name'))
-      .on('change', function(e) {
-        var str = cleanLayerName(nameEl.value());
-        nameEl.value(str || unnamed);
-        lyr.name = str;
-        updateBtn();
-      });
-    onClick(entry, function() {
-      if (nameEl.editing) {
-        return;
-      }
-      if (lyr != editLyr) {
-        model.updated({select: true}, lyr, dataset);
-      }
-      model.clearMode();
-    });
     // init delete button
-    El('<img>').attr('src', 'images/close.png').appendTo(entry)
-      .on('mouseup', function(e) {
+    entry.findChild('img').on('mouseup', function(e) {
         e.stopPropagation();
         deleteLayer(lyr, dataset);
       });
+    // init name editor
+    new ClickText2(entry.findChild('.layer-name'))
+      .on('change', function(e) {
+        var str = cleanLayerName(this.value());
+        this.value(getDisplayName(str));
+        lyr.name = str;
+        updateBtn();
+      });
+    // init click-to-select
+    onClick(entry, function() {
+      if (!gui.getInputElement()) { // don't select if user is typing
+        model.clearMode();
+        if (lyr != editLyr) {
+          model.updated({select: true}, lyr, dataset);
+        }
+      }
+    });
     return entry;
   }
 
   function deleteLayer(lyr, dataset) {
     var otherLyr = model.findAnotherLayer(lyr);
-    if (!otherLyr) {
-      // refresh browser if deleted layer is the last layer
+    if (otherLyr) {
+      turnOff(); // avoid rendering twice
+      if (model.getEditingLayer().layer == lyr) {
+        // switch to a different layer if deleted layer was selected
+        model.selectLayer(otherLyr.layer, otherLyr.dataset);
+      }
+      model.deleteLayer(lyr, dataset);
+      turnOn();
+    } else {
+      // refresh browser if deleted layer was the last layer
       window.location.href = window.location.href.toString();
-      return;
     }
-    // switch to a different layer if deleted layer was selected
-    if (model.getEditingLayer().layer == lyr) {
-      model.selectLayer(otherLyr.layer, otherLyr.dataset);
-    }
-    model.deleteLayer(lyr, dataset);
-    render();
   }
 
   function cleanLayerName(raw) {

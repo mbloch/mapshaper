@@ -16,12 +16,10 @@ function ClickText2(ref) {
     .on('focus', function(e) {
       el.addClass('editing');
       selected = false;
-      self.editing = true;
     }).on('blur', function(e) {
       el.removeClass('editing');
       self.dispatchEvent('change');
       getSelection().removeAllRanges();
-      self.editing = false;
     }).on('keydown', function(e) {
       if (e.keyCode == 13) { // enter
         e.stopPropagation();
