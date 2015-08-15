@@ -13714,7 +13714,6 @@ function LayerGroup(dataset) {
 
   if (dataset) {
     _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
-    _bounds = MapShaper.getDatasetBounds(dataset);
   }
 
   this.hide = function() {
@@ -13722,7 +13721,8 @@ function LayerGroup(dataset) {
   };
 
   this.showLayer = function(lyr) {
-    _lyr = lyr; // Layer may not be in dataset...
+    _lyr = lyr;
+    _bounds = getDisplayBounds(lyr, dataset);
   };
 
   this.getLayer = function() {
@@ -13749,13 +13749,10 @@ function LayerGroup(dataset) {
     _filteredArcs = arcs;
   };
 
-  // Rebuild filtered arcs and recalculate bounds
+  // Rebuild filtered arcs
   this.updated = function() {
-    if (dataset) {
-      if (_filteredArcs) {
-        _filteredArcs.update(dataset.arcs);
-      }
-      _bounds = MapShaper.getDatasetBounds(dataset);
+    if (dataset && _filteredArcs) {
+      _filteredArcs.update(dataset.arcs);
     }
   };
 
@@ -13790,6 +13787,18 @@ function LayerGroup(dataset) {
     this.getElement().remove();
   };
 
+  function getDisplayBounds(lyr, dataset) {
+    var bounds;
+    if (lyr.geometry_type == 'point') {
+      bounds = MapShaper.getLayerBounds(lyr);
+    } else if (dataset && dataset.arcs) {
+      bounds = dataset.arcs.getBounds();
+    } else {
+      bounds = new Bounds();
+    }
+    return bounds;
+  }
+
   function drawPathShapes(shapes, style, ext) {
     var arcs = _filteredArcs.getArcCollection(ext),
         start = getPathStart(style),
@@ -13812,7 +13821,7 @@ function LayerGroup(dataset) {
         draw = getArcPencil(arcs, ext),
         end = getPathEnd(style);
 
-    // don't drop more paths at less than full extent (i.e. zoomed far out)
+    // don't continue dropping paths if user zooms out farther than full extent
     if (ext.scale() < 1) minPathLen *= ext.scale();
 
     // TODO: canvas rendering can be sped up a lot by drawing multiple arcs
