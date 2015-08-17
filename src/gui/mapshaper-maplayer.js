@@ -84,13 +84,17 @@ function LayerGroup(dataset) {
   };
 
   function getDisplayBounds(lyr, dataset) {
-    var bounds;
+    var arcBounds = dataset && dataset.arcs ? dataset.arcs.getBounds() : null,
+        bounds;
     if (lyr.geometry_type == 'point') {
       bounds = MapShaper.getLayerBounds(lyr);
-    } else if (dataset && dataset.arcs) {
-      bounds = dataset.arcs.getBounds();
+      if (!bounds || bounds.area() > 0 === false) {
+        // if a point layer has no extent (e.g. contains only a single point),
+        // then use arc bounds, to match any path layers in the dataset.
+        bounds = arcBounds;
+      }
     } else {
-      bounds = new Bounds();
+      bounds = arcBounds || new Bounds();
     }
     return bounds;
   }

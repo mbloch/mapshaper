@@ -6,9 +6,13 @@ function Console(model) {
   var el = El('#console').hide();
   var content = El('#console-buffer');
   var log = El('div').id('console-log').appendTo(content);
-  var line = El('div').id('command-line').appendTo(content);
-  var prompt = El('div').text(CURSOR).appendTo(line);
-  var input = El('input').appendTo(line).attr('spellcheck', false).attr('autocorrect', false);
+  var line = El('div').id('command-line').appendTo(content).text(CURSOR);
+  var input = El('span').appendTo(line)
+    .addClass('input-field')
+    .attr('spellcheck', false)
+    .attr('autocorrect', false)
+    .attr('contentEditable', true)
+    .on('focus', receiveFocus);
   var history = [];
   var historyId = 0;
   var _isOpen = false;
@@ -23,6 +27,12 @@ function Console(model) {
   document.addEventListener('keydown', onKeyDown);
   new ModeButton('#console-btn', 'console', model);
   model.addMode('console', turnOn, turnOff);
+
+  gui.onClick(content, function() {
+    if (!gui.getInputElement()) { // don't select if user is typing
+      input.node().focus();
+    }
+  });
 
   function toLog(str, cname) {
     var msg = El('div').text(str).appendTo(log);
@@ -49,6 +59,19 @@ function Console(model) {
       error = _error;
       el.hide();
       input.node().blur();
+    }
+  }
+
+  function receiveFocus() {
+    var range, selection;
+    if (readCommandLine().length > 0) {
+      // move cursor to end of text
+      range = document.createRange();
+      range.selectNodeContents(this);
+      range.collapse(false); //collapse the range to the end point.
+      selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
   }
 
@@ -137,7 +160,7 @@ function Console(model) {
       if (names.length > 0) {
         name = MapShaper.getCommonFileBase(names);
         if (name.length > stub.length) {
-          input.node().value = line.substring(0, match.index) + name;
+          toCommandLine(line.substring(0, match.index) + name);
         }
       }
     }
@@ -150,7 +173,13 @@ function Console(model) {
   }
 
   function readCommandLine() {
-    return input.node().value.trim();
+    // return input.node().value.trim();
+    return input.node().textContent.trim();
+  }
+
+  function toCommandLine(str) {
+    // input.node().value = str;
+    input.node().textContent = str.trim();
   }
 
   function toHistory(str) {
@@ -164,13 +193,13 @@ function Console(model) {
 
   function fromHistory() {
     var i = history.length - historyId - 1;
-    input.node().value = history[i];
+    toCommandLine(history[i]);
   }
 
   function back() {
     if (history.length === 0) return;
     if (historyId === 0) {
-      history.push(input.node().value);
+      history.push(readCommandLine());
     }
     historyId = Math.min(history.length - 1, historyId + 1);
     fromHistory();
@@ -199,7 +228,7 @@ function Console(model) {
 
   function submit() {
     var cmd = readCommandLine();
-    input.node().value = '';
+    toCommandLine('');
     toLog(CURSOR + cmd);
     if (cmd) {
       if (cmd == 'clear') {

@@ -89,7 +89,7 @@ function LayerControl(model) {
         updateBtn();
       });
     // init click-to-select
-    onClick(entry, function() {
+    gui.onClick(entry, function() {
       if (!gui.getInputElement()) { // don't select if user is typing
         model.clearMode();
         if (lyr != editLyr) {
@@ -124,16 +124,5 @@ function LayerControl(model) {
   function rowHTML(c1, c2) {
     return utils.format('<div class="row"><div class="col1">%s</div>' +
       '<div class="col2">%s</div></div>', c1, c2);
-  }
-
-  // Filter out delayed click events, so users can highlight and copy text
-  function onClick(el, cb) {
-    var time;
-    el.on('mousedown', function() {
-      time = +new Date();
-    });
-    el.on('mouseup', function(e) {
-      if (+new Date() - time < 300) cb(e);
-    });
   }
 }

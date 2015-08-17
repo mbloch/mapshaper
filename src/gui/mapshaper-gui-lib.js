@@ -45,3 +45,14 @@ gui.blurActiveElement = function() {
   var el = gui.getInputElement();
   if (el) el.blur();
 };
+
+// Filter out delayed click events, e.g. so users can highlight and copy text
+gui.onClick = function(el, cb) {
+  var time;
+  el.on('mousedown', function() {
+    time = +new Date();
+  });
+  el.on('mouseup', function(e) {
+    if (+new Date() - time < 300) cb(e);
+  });
+};

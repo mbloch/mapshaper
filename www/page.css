@@ -31,15 +31,32 @@ body {
 }
 
 
-/* --- Color themes -------------- */
+/* --- Themed elements -------------- */
+
+.page-header,
+.nav-btn.selected,
+.dialog-btn {
+	background-color: #04709b;
+}
 
 .colored-text {
-	color: #1e6e87;
+	color: #04709b;
 }
 
 .dot-underline {
-	border-bottom: 1px dotted #1e6e87;
+	border-bottom: 1px dotted #04709b;
 }
+
+.nav-btn polygon,
+.nav-btn path {
+	fill: #04709b;
+}
+
+.dialog-btn:hover,
+.mode-btn:hover {
+	background-color: #014a60;
+}
+
 
 /* disabling themes (need to update button col, etc)
 /*
@@ -125,7 +142,6 @@ body {
 	z-index: 40;
 	width: 100%;
 	height: 32px;
-	background-color: #18799b;
 }
 
 #mshp-version {
@@ -359,14 +375,22 @@ div.error-box > div {
 	width: 100%;
 	position: relative;
 	color: white;
+	font: 13px/1.35 monospace;
+	margin: 8px 0 10px 0;
+	word-break: break-all;
+	word-wrap: break-word;
+	white-space: pre; /* Chrome breaks right at line end */
 }
 
-#console-buffer * {
-	font: 13px/1 monospace;
+@-moz-document url-prefix() {
+	#console-buffer {
+		white-space: pre-wrap; /* Firefox breaks right at line end */
+	}
 }
+
+
 
 #console-buffer > div {
-	white-space: pre;
 	text-align: left;
 	width: 640px;
 	margin: 0 auto;
@@ -384,35 +408,9 @@ div.error-box > div {
 	color: #b9dffc;
 }
 
-#console-log {
-	padding-top: 6px;
-}
-
-#console-log > div {
-	padding-top: 1px;
-	line-height: 15px;
-	word-wrap: break-word;
-}
-
-#command-line {
-	/* border-bottom: 1px solid #ccc; */
-	padding-bottom: 10px;
-}
-
-#command-line > * {
-	display: inline-block;
-	vertical-align: middle;
-}
-
-#command-line > input {
-	height: 16px;
-	color: white;
-	background-color: transparent;
-	border: none;
-	padding: 0;
-	margin: 0;
+.input-field {
 	outline: none;
-	width: 500px;
+	min-width: 100px;
 }
 
 /* --- Layer menu ----------- */
@@ -640,10 +638,6 @@ body.simplify #layer-control-btn {
 	line-height: 1;
 }
 
-.nav-btn polygon,
-.nav-btn path {
-	fill: #18799b;
-}
 
 .nav-btn:hover polygon,
 .nav-btn:hover path  {
@@ -655,7 +649,6 @@ body.simplify #layer-control-btn {
 }
 
 .nav-btn.selected {
-	background-color: #18799b;
 	border-radius: 4px;
 }
 

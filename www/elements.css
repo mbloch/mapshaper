@@ -121,20 +121,14 @@ div.tip {
 	border-radius: 3px;
 }
 
-.mode-btn:hover {
-	background-color: #0d546d;
-}
-
 .mode-btn.disabled,
 .mode-btn.disabled:hover {
 	background-color: none;
 }
 
-.mode-btn.active,
-.mode-btn.active:hover {
+.mode-btn.selected {
 	background-color: black;
 }
-
 
 .btn.active {
 	cursor: pointer;
@@ -171,11 +165,6 @@ div.tip {
 	font-size: 13px;
 	color: white;
 	min-width: 30px;
-	background-color: #18799b;
-}
-
-.dialog-btn:hover {
-	background-color: #0d546d;
 }
 
 .inline-btn {
