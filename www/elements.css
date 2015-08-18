@@ -126,7 +126,7 @@ div.tip {
 	background-color: none;
 }
 
-.mode-btn.selected {
+.mode-btn.active {
 	background-color: black;
 }
 
