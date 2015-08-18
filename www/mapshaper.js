@@ -19122,12 +19122,10 @@ function Console(model) {
   }
 
   function readCommandLine() {
-    // return input.node().value.trim();
     return input.node().textContent.trim();
   }
 
   function toCommandLine(str) {
-    // input.node().value = str;
     input.node().textContent = str.trim();
   }
 
