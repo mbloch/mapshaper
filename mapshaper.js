@@ -14719,7 +14719,7 @@ MapShaper.getOptionParser = function() {
     });
 
   parser.command("join")
-    .describe("join a dbf or delimited text file to the input features")
+    .describe("join data records from a file or layer to a layer")
     .example("Join a csv table to a Shapefile\n" +
       "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
       "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
@@ -14729,11 +14729,11 @@ MapShaper.getOptionParser = function() {
       describe: "file containing data records"
     })
     .option("keys", {
-      describe: "target,source keys, e.g. keys=FIPS,CNTYFIPS",
+      describe: "join by matching target,source key fields; e.g. keys=FIPS,GEOID",
       type: "comma-sep"
     })
     .option("fields", {
-      describe: "fields to join, e.g. fields=FIPS,POP (default is all)",
+      describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
       type: "comma-sep"
     })
     .option("field-types", {
@@ -14741,11 +14741,11 @@ MapShaper.getOptionParser = function() {
       type: "comma-sep"
     })
     .option("sum-fields", {
-      describe: "fields to sum when joining (comma-sep. list)",
+      describe: "fields to sum when multiple source fields match one dest. field",
       type: "comma-sep"
     })
     .option("where", {
-      describe: "use a JS expression to filter records from source table"
+      describe: "use a JS expression to filter source records"
     })
     .option("force", {
       describe: "replace values from same-named fields",
