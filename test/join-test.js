@@ -20,6 +20,7 @@ describe('mapshaper-join.js', function () {
           target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
           {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
       api.runCommands(cmd, function(err, data) {
+        if (err) throw err;
         assert.deepEqual(data.layers[0].data.getRecords(), target);
         done();
       })
@@ -123,6 +124,35 @@ describe('mapshaper-join.js', function () {
       assert.deepEqual(lyr.data.getRecords(),
           [{ key1: 'a', 'constructor': 'c', 'hasOwnProperty': 'd'}, { key1: 'b', 'constructor': null, 'hasOwnProperty': null }]);
     })
+
+    it('one-to-several mapping', function () {
+      var table1 = new DataTable([{foo: 5, bar: 'a'}, {foo: 5, bar: 'b'}]),
+          table2 = new DataTable([{shmoo: 5, baz: 'pumpkin'}]);
+      var target = {
+        data: table1
+      };
+      var opts = {
+        keys: ['foo', 'shmoo'],
+        fields: ['baz']
+      };
+      api.joinAttributesToFeatures(target, table2, opts);
+      assert.deepEqual(table1.getRecords(), [{foo: 5, bar: 'a', baz: 'pumpkin'},
+            {foo: 5, bar: 'b', baz: 'pumpkin'}]);
+    })
+
+    it('missing values are joined as null', function () {
+      var table1 = new DataTable([{foo: 5, bar: 'a'}, {foo: 3, bar: 'b'}]),
+          table2 = new DataTable([{shmoo: 5, baz: 'pumpkin'}]);
+      var target = {data: table1};
+      var opts = {
+        keys: ['foo', 'shmoo'],
+        fields: ['baz']
+      };
+      api.joinAttributesToFeatures(target, table2, opts);
+      assert.deepEqual(table1.getRecords(), [{foo: 5, bar: 'a', baz: 'pumpkin'},
+            {foo: 3, bar: 'b', baz: null}]);
+    })
+
   })
 
   describe('importJoinTable()', function() {
@@ -164,22 +194,25 @@ describe('mapshaper-join.js', function () {
     })
   })
 
-  describe('joinTables()', function () {
-    it('one-to-several mapping', function () {
-      var table1 = new DataTable([{foo: 5, bar: 'a'}, {foo: 5, bar: 'b'}]),
-          table2 = new DataTable([{shmoo: 5, baz: 'pumpkin'}]);
-      api.internal.joinTables(table1, 'foo', ['baz'], table2, 'shmoo', ['baz']);
-      assert.deepEqual(table1.getRecords(), [{foo: 5, bar: 'a', baz: 'pumpkin'},
-            {foo: 5, bar: 'b', baz: 'pumpkin'}]);
-    })
-
-    it('missing values are joined as null', function () {
-      var table1 = new DataTable([{foo: 5, bar: 'a'}, {foo: 3, bar: 'b'}]),
-          table2 = new DataTable([{shmoo: 5, baz: 'pumpkin'}]);
-
-      api.internal.joinTables(table1, 'foo', ['baz'], table2, 'shmoo', ['baz']);
-      assert.deepEqual(table1.getRecords(), [{foo: 5, bar: 'a', baz: 'pumpkin'},
-            {foo: 3, bar: 'b', baz: null}]);
+  describe('getCountFieldName', function () {
+    it('avoid collisions with other fields', function () {
+      var fields = ['joins', 'joins_1', 'joins_2'];
+      assert.equal(api.internal.getCountFieldName(fields), 'joins_3')
     })
   })
+
+  describe('updateUnmatchedRecord()', function () {
+    it('should init fields to null / empty', function () {
+      var rec = {};
+      api.internal.updateUnmatchedRecord(rec, ['foo'], ['tally'])
+      assert.deepEqual(rec, {foo: null, tally: 0});
+    })
+
+    it('should preserve pre-existing data in sum fields only', function () {
+      var rec = {foo: 'a', tally: 5};
+      api.internal.updateUnmatchedRecord(rec, ['foo'], ['tally'])
+      assert.deepEqual(rec, {foo: null, tally: 5});
+    })
+  })
+
 })

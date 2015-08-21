@@ -1,9 +1,11 @@
 /* @requires dbf-reader */
 
+Dbf.MAX_STRING_LEN = 254;
+
 Dbf.exportRecords = function(arr, encoding) {
   encoding = encoding || 'ascii';
   var fields = Dbf.getFieldNames(arr);
-  var uniqFields = Dbf.getUniqFieldNames(fields, 10);
+  var uniqFields = MapShaper.getUniqFieldNames(fields, 10);
   var rows = arr.length;
   var fieldData = fields.map(function(name) {
     return Dbf.getFieldInfo(arr, name, encoding);
@@ -155,7 +157,7 @@ Dbf.initStringField = function(info, arr, name, encoding) {
     maxLen = Math.max(maxLen, buf.byteLength);
     return buf;
   });
-  var size = Math.min(maxLen, 254);
+  var size = Math.min(maxLen, Dbf.MAX_STRING_LEN);
   info.size = size;
   info.write = function(i, bin) {
     var buf = values[i],

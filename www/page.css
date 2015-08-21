@@ -36,20 +36,20 @@ body {
 .page-header,
 .nav-btn.selected,
 .dialog-btn {
-	background-color: #00719e;
+	background-color: #0078ad;
 }
 
 .colored-text {
-	color: #00719e;
+	color: #0078ad;
 }
 
 .dot-underline {
-	border-bottom: 1px dotted #00719e;
+	border-bottom: 1px dotted #0078ad;
 }
 
 .nav-btn polygon,
 .nav-btn path {
-	fill: #00719e;
+	fill: #0078ad;
 }
 
 .dialog-btn:hover,

@@ -76,18 +76,9 @@ function validateSimplifyOpts(cmd) {
 function validateJoinOpts(cmd) {
   var o = cmd.options;
   o.source = o.source || cmd._[0];
-
   if (!o.source) {
-    error("Command requires the name of a file to join");
+    error("Command requires the name of a layer or file to join");
   }
-
-  if (utils.some("shp,xls,xlsx".split(','), function(suff) {
-    return utils.endsWith(o.source, suff);
-  })) {
-    error("Currently only dbf and csv files are supported");
-  }
-
-  if (!o.keys) error("Missing required keys option");
 }
 
 function validateSplitOpts(cmd) {

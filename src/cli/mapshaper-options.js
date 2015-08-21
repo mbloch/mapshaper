@@ -5,7 +5,6 @@ mapshaper-option-validation
 mapshaper-chunker
 */
 
-
 MapShaper.getOptionParser = function() {
   // definitions of options shared by more than one command
   var targetOpt = {
@@ -240,6 +239,10 @@ MapShaper.getOptionParser = function() {
     })
     .option("field-types", {
       describe: "type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
+      type: "comma-sep"
+    })
+    .option("sum-fields", {
+      describe: "fields to sum when joining (comma-sep. list)",
       type: "comma-sep"
     })
     .option("where", {
