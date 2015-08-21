@@ -8,12 +8,17 @@ api.findAndRepairIntersections = function(arcs) {
       unfixable = MapShaper.repairIntersections(arcs, intersections),
       countPre = intersections.length,
       countPost = unfixable.length,
-      countFixed = countPre > countPost ? countPre - countPost : 0;
+      countFixed = countPre > countPost ? countPre - countPost : 0,
+      msg;
   T.stop('Find and repair intersections');
   if (countPre > 0) {
-    message(utils.format(
-      "[simplify] Repaired %'i intersection%s; unable to repair %'i intersection%s.",
-      countFixed, countFixed == 1 ? '' : 's', countPost, countPost == 1 ? '' : 's'));
+    msg = utils.format("[simplify] Repaired %'i intersection%s", countFixed,
+        utils.pluralSuffix(countFixed));
+    if (countPost > 0) {
+      msg += utils.format("; %'i intersection%s could not be repaired", countPost,
+          utils.pluralSuffix(countPost));
+    }
+    message(msg);
   }
 };
 

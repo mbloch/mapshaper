@@ -184,19 +184,19 @@ MapShaper.joinBySum = function(dest, src, fields) {
   }
 };
 
-MapShaper.printJoinMessage = function(matched, n, joinCount, m, collisionCount) {
+MapShaper.printJoinMessage = function(matches, n, joins, m, collisions) {
   // TODO: add tip for generating layer containing unmatched records, when
   // this option is implemented.
-  message(utils.format("[join] Joined %d data record%s", joinCount, utils.pluralSuffix(joinCount)));
-  if (matched < n) {
-    message(utils.format('[join] %d/%d target records received no data', n-matched, n));
+  message(utils.format("[join] Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
+  if (matches < n) {
+    message(utils.format('[join] %d/%d target records received no data', n-matches, n));
   }
-  if (joinCount < m) {
-    message(utils.format("[join] %d/%d source records could not be joinCount", m-joinCount, m));
+  if (joins < m) {
+    message(utils.format("[join] %d/%d source records could not be joined", m-joins, m));
   }
-  if (collisionCount > 0) {
-    message(utils.format("[join] %d collision%s occured; data was copied from the first matching source record",
-      collisionCount, utils.pluralSuffix(collisionCount)));
+  if (collisions > 0) {
+    message(utils.format("[join] %'d collision%s occured; data was copied from the first matching source record",
+      collisions, utils.pluralSuffix(collisions)));
   }
 };
 
