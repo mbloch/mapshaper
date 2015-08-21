@@ -25,6 +25,13 @@ describe('mapshaper-options.js', function () {
     good("-i combine-files " + file1 + " " + file2, {combine_files: true, files: [file1, file2]});
     good("-", {stdin: true});
     good("/dev/stdin", {stdin: true});
+    good("file.shp name=states", {files:['file.shp'], name: 'states'})
+    good("file.shp name=", {files:['file.shp'], name: ''})
+    good("file.shp name=''", {files:['file.shp'], name: ''})
+    good("file.shp name='a b'", {files:['file.shp'], name: 'a b'})
+    good("file.shp name 'a b'", {files:['file.shp'], name: 'a b'})
+    good("file.shp name ''", {files:['file.shp'], name: ''})
+    good("file.shp name '' no-topology", {files:['file.shp'], name: '', no_topology: true})
  })
 
   describe('output', function() {
@@ -73,7 +80,6 @@ describe('mapshaper-options.js', function () {
 
     // csv
     bad("-o format=csv delimiter=~");
-    bad("-o format=csv delimiter='");
     good("-o format=csv delimiter=\\t", {format: "dsv", delimiter: "\t"});
     good("-o format=csv delimiter='\\t'", {format: "dsv", delimiter: "\t"});
   })
@@ -191,18 +197,16 @@ describe('mapshaper-options.js', function () {
 })
 
 function bad(str) {
-  var args = str.split(/ +/);
   it(str, function() {
     assert.throws(function() {
-      api.internal.getOptionParser().parseArgv(args);
+      api.internal.parseCommands(str);
     });
   })
 }
 
 function good(str, reference) {
-  var args = str.split(/ +/);
   it(str, function() {
-    var parsed = api.internal.getOptionParser().parseArgv(args);
+    var parsed = api.internal.parseCommands(str);
     var target = parsed[0].options;
     assert.deepEqual(target, reference);
   })

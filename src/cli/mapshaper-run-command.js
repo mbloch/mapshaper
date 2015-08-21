@@ -158,7 +158,7 @@ api.runCommand = function(cmd, dataset, cb) {
     }
 
     // apply name parameter
-    if (opts.name) {
+    if ('name' in opts) {
       // TODO: consider uniqifying multiple layers here
       (outputLayers || targetLayers || dataset.layers).forEach(function(lyr) {
         lyr.name = opts.name;

@@ -39,7 +39,7 @@ function CommandParser() {
     var commandDefs = getCommands(),
         commandRxp = /^--?([a-z][\w-]*)$/i,
         commands = [], cmd,
-        argv = raw.concat(), // make copy, so we can consume the array
+        argv = raw.map(utils.trimQuotes), // remove one level of single or dbl quotes
         cmdName, cmdDef, opt;
 
     while (argv.length > 0) {
@@ -87,7 +87,7 @@ function CommandParser() {
 
     function readNamedOption(argv, cmdDef) {
       var token = argv[0],
-          optRxp = /^([a-z0-9_+-]+)=(.+)$/i,
+          optRxp = /^([a-z0-9_+-]+)=(.*)$/i,
           match = optRxp.exec(token),
           name = match ? match[1] : token,
           optDef = findOptionDefn(name, cmdDef),
@@ -101,7 +101,7 @@ function CommandParser() {
       }
 
       if (match) {
-        argv[0] = match[2];
+        argv[0] = utils.trimQuotes(match[2]);
       } else {
         argv.shift();
       }
