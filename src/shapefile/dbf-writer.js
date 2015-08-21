@@ -151,13 +151,12 @@ Dbf.initDateField = function(info, arr, name) {
 
 Dbf.initStringField = function(info, arr, name, encoding) {
   var formatter = Dbf.getStringWriter(encoding);
-  var maxLen = 0;
+  var size = 0;
   var values = arr.map(function(rec) {
     var buf = formatter(rec[name]);
-    maxLen = Math.max(maxLen, buf.byteLength);
+    size = Math.max(size, buf.byteLength);
     return buf;
   });
-  var size = Math.min(maxLen, Dbf.MAX_STRING_LEN);
   info.size = size;
   info.write = function(i, bin) {
     var buf = values[i],
@@ -263,7 +262,7 @@ Dbf.getStringWriter = function(encoding) {
 Dbf.getStringWriterAscii = function() {
   return function(val) {
     var str = String(val),
-        n = str.length,
+        n = Math.min(str.length, Dbf.MAX_STRING_LEN),
         dest = new ArrayBuffer(n),
         view = new Uint8ClampedArray(dest);
     for (var i=0; i<n; i++) {
@@ -277,6 +276,26 @@ Dbf.getStringWriterEncoded = function(encoding) {
   var iconv = require('iconv-lite');
   return function(val) {
     var buf = iconv.encode(val, encoding);
+    if (buf.length >= Dbf.MAX_STRING_LEN) {
+      buf = Dbf.truncateEncodedString(buf, encoding, Dbf.MAX_STRING_LEN);
+    }
     return BinArray.toArrayBuffer(buf);
   };
+};
+
+// try to remove partial multi-byte characters from the end of an encoded string.
+Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
+  var truncated = buf.slice(0, maxLen);
+  var len = maxLen;
+  var tmp, str;
+  while (len > 0 && len >= maxLen - 3) {
+    tmp = len == maxLen ? truncated : buf.slice(0, len);
+    str = MapShaper.decodeString(tmp, encoding);
+    if (str.charAt(str.length-1) != '\ufffd') {
+      truncated = tmp;
+      break;
+    }
+    len--;
+  }
+  return truncated;
 };

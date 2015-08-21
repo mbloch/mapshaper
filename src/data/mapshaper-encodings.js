@@ -22,6 +22,7 @@ MapShaper.encodingIsSupported = function(raw) {
   return utils.contains(MapShaper.getEncodings(), enc);
 };
 
+// @buf a Node Buffer
 MapShaper.decodeString = function(buf, encoding) {
   var iconv = require('iconv-lite'),
       str = iconv.decode(buf, encoding);

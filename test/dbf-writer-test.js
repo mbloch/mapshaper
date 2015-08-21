@@ -2,13 +2,34 @@ var api = require('../'),
     assert = require('assert'),
     Dbf = api.internal.Dbf,
     Node = api.internal.Node,
-    Utils = api.utils;
+    Utils = api.utils,
+    iconv = require('iconv-lite');
 
 function importRecords(buf, encoding) {
   return api.internal.importDbfTable(buf, {encoding: encoding}).getRecords();
 }
 
 describe('dbf-writer.js', function () {
+
+  it('Dbf.MAX_STRING_LEN == 254', function() {
+    assert.equal(Dbf.MAX_STRING_LEN, 254);
+  })
+
+  describe('truncateEncodedString()', function () {
+    it('truncates problem string to valid utf8', function () {
+      // simple truncation creates a partial (invalid) final character
+      var enc = 'utf8';
+      var src ="Starting from March 28th, a teacher at an auxiliary kindergarten in Yangjiang City went on strike, demanding wage increases.  The teacher in question, Mr. Wu, stated that, after deductions, the net wages received were only around 1,000 yuan per month.  “As inflation creeps upward, an increase from our 1,000 yuan/month wages isn't at all unreasonable,” stated Mr. Wu.";
+      var encoded = iconv.encode(src, enc);
+      var truncated = encoded.slice(0, Dbf.MAX_STRING_LEN);
+      var str = iconv.decode(truncated, enc);
+      var truncated2 = Dbf.truncateEncodedString(encoded, enc, Dbf.MAX_STRING_LEN);
+      var str2 = iconv.decode(truncated2, enc);
+      assert.equal(str.charAt(str.length-1), '\ufffd');
+      assert.notEqual(str2.charAt(str2.length-1), '\ufffd');
+      assert(truncated2.length < truncated.length);
+    })
+  })
 
   describe('Dbf#getFieldInfo()', function () {
     it('integers are identified as type "N"', function () {
