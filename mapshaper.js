@@ -1580,6 +1580,41 @@ utils.findStringPrefix = function(a, b) {
   return a.substr(0, i);
 };
 
+// Resolve name conflicts in field names by appending numbers
+// @fields Array of field names
+// @maxLen (optional) Maximum chars in name
+//
+MapShaper.getUniqFieldNames = function(fields, maxLen) {
+  var used = {};
+  return fields.map(function(name) {
+    var i = 0,
+        validName;
+    do {
+      validName = MapShaper.adjustFieldName(name, maxLen, i);
+      i++;
+    } while (validName in used);
+    used[validName] = true;
+    return validName;
+  });
+};
+
+// Truncate and/or uniqify a name (if relevant params are present)
+MapShaper.adjustFieldName = function(name, maxLen, i) {
+  var name2, suff;
+  maxLen = maxLen || 256;
+  if (!i) {
+    name2 = name.substr(0, maxLen);
+  } else {
+    suff = String(i);
+    if (suff.length == 1) {
+      suff = '_' + suff;
+    }
+    name2 = name.substr(0, maxLen - suff.length) + suff;
+  }
+  return name2;
+};
+
+
 // Similar to isFinite() but returns false for null
 utils.isFiniteNumber = function(val) {
   return isFinite(val) && val !== null;
@@ -6172,9 +6207,9 @@ Dbf.lookupCodePage = function(lid) {
   return i == -1 ? null : Dbf.languageIds[i+1];
 };
 
-Dbf.readAsciiString = function(bin, field) {
+Dbf.readAsciiString = function(bin, size) {
   var require7bit = Env.inNode;
-  var str = bin.readCString(field.size, require7bit);
+  var str = bin.readCString(size, require7bit);
   if (str === null) {
     stop("DBF file contains non-ascii text.\n" + Dbf.ENCODING_PROMPT);
   }
@@ -6199,9 +6234,9 @@ Dbf.readStringBytes = function(bin, size, buf) {
 Dbf.getEncodedStringReader = function(encoding) {
   var buf = new Buffer(256),
       isUtf8 = MapShaper.standardizeEncodingName(encoding) == 'utf8';
-  return function(bin, field) {
+  return function(bin, size) {
     var eos = false,
-        i = Dbf.readStringBytes(bin, field.size, buf),
+        i = Dbf.readStringBytes(bin, size, buf),
         str;
     if (i === 0) {
       str = '';
@@ -6233,67 +6268,34 @@ Dbf.bufferContainsHighBit = function(buf, n) {
   return false;
 };
 
-Dbf.readNumber = function(bin, field) {
-  var str = bin.readCString(field.size),
+Dbf.readNumber = function(bin, size) {
+  var str = bin.readCString(size),
       val;
   str = str.replace(',', '.'); // handle comma decimal separator
   val = parseFloat(str);
   return isNaN(val) ? null : val;
 };
 
-Dbf.readInt = function(bin, field) {
+Dbf.readInt = function(bin, size) {
   return bin.readInt32();
 };
 
-Dbf.readBool = function(bin, field) {
-  var c = bin.readCString(field.size),
+Dbf.readBool = function(bin, size) {
+  var c = bin.readCString(size),
       val = null;
   if (/[ty]/i.test(c)) val = true;
   else if (/[fn]/i.test(c)) val = false;
   return val;
 };
 
-Dbf.readDate = function(bin, field) {
-  var str = bin.readCString(field.size),
+Dbf.readDate = function(bin, size) {
+  var str = bin.readCString(size),
       yr = str.substr(0, 4),
       mo = str.substr(4, 2),
       day = str.substr(6, 2);
   return new Date(Date.UTC(+yr, +mo - 1, +day));
 };
 
-// Truncate and/or uniqify a name (if relevant params are present)
-Dbf.adjustFieldName = function(name, maxLen, i) {
-  var name2, suff;
-  maxLen = maxLen || 256;
-  if (!i) {
-    name2 = name.substr(0, maxLen);
-  } else {
-    suff = String(i);
-    if (suff.length == 1) {
-      suff = '_' + suff;
-    }
-    name2 = name.substr(0, maxLen - suff.length) + suff;
-  }
-  return name2;
-};
-
-// Resolve name conflicts in field names by appending numbers
-// @fields Array of field names
-// @maxLen (optional) Maximum chars in name
-//
-Dbf.getUniqFieldNames = function(fields, maxLen) {
-  var used = {};
-  return fields.map(function(name) {
-    var i = 0,
-        validName;
-    do {
-      validName = Dbf.adjustFieldName(name, maxLen, i);
-      i++;
-    } while (validName in used);
-    used[validName] = true;
-    return validName;
-  });
-};
 
 // cf. http://code.google.com/p/stringencoding/
 //
@@ -6402,15 +6404,17 @@ DbfReader.prototype.getRowOffset = function() {
 DbfReader.prototype.getRecordReader = function(header) {
   var fields = header.fields,
       readers = fields.map(this.getFieldReader, this),
-      uniqNames = Dbf.getUniqFieldNames(utils.pluck(fields, 'name')),
+      uniqNames = MapShaper.getUniqFieldNames(utils.pluck(fields, 'name')),
       rowOffs = this.getRowOffset(),
       bin = this.bin;
   return function(r) {
     var rec = {},
-        offs = rowOffs(r);
+        offs = rowOffs(r),
+        field;
     for (var c=0, cols=fields.length; c<cols; c++) {
-      bin.position(offs + fields[c].columnOffset);
-      rec[uniqNames[c]] = readers[c](bin, fields[c]);
+      field = fields[c];
+      bin.position(offs + field.columnOffset);
+      rec[uniqNames[c]] = readers[c](bin, field.size);
     }
     return rec;
   };
@@ -6497,10 +6501,12 @@ MapShaper.DbfReader = DbfReader;
 
 
 
+Dbf.MAX_STRING_LEN = 254;
+
 Dbf.exportRecords = function(arr, encoding) {
   encoding = encoding || 'ascii';
   var fields = Dbf.getFieldNames(arr);
-  var uniqFields = Dbf.getUniqFieldNames(fields, 10);
+  var uniqFields = MapShaper.getUniqFieldNames(fields, 10);
   var rows = arr.length;
   var fieldData = fields.map(function(name) {
     return Dbf.getFieldInfo(arr, name, encoding);
@@ -6652,7 +6658,7 @@ Dbf.initStringField = function(info, arr, name, encoding) {
     maxLen = Math.max(maxLen, buf.byteLength);
     return buf;
   });
-  var size = Math.min(maxLen, 254);
+  var size = Math.min(maxLen, Dbf.MAX_STRING_LEN);
   info.size = size;
   info.write = function(i, bin) {
     var buf = values[i],
@@ -6838,18 +6844,6 @@ var dataTableProto = {
     this.getRecords().forEach(function(o) {
       delete o[f];
     });
-  },
-
-  indexOn: function(f) {
-    this._index = utils.indexOn(this.getRecords(), f);
-  },
-
-  getIndexedRecord: function(val) {
-    return this._index && this._index[val] || null;
-  },
-
-  clearIndex: function() {
-    this._index = null;
   },
 
   getFields: function() {
@@ -11447,13 +11441,101 @@ utils.parseNumber = function(raw) {
 
 
 
+
+api.joinPointsToPolygons = function(targetLyr, arcs, pointLyr, opts) {
+  // TODO: copy points that can't be joined to a new layer
+  var joinFunction = MapShaper.getPolygonToPointsFunction(targetLyr, arcs, pointLyr, opts);
+  MapShaper.prepJoinLayers(targetLyr, pointLyr);
+  MapShaper.joinTables(targetLyr.data, pointLyr.data, joinFunction, opts);
+};
+
+api.joinPolygonsToPoints = function(targetLyr, polygonLyr, arcs, opts) {
+  var joinFunction = MapShaper.getPointToPolygonFunction(targetLyr, polygonLyr, arcs, opts);
+  MapShaper.prepJoinLayers(targetLyr, polygonLyr);
+  MapShaper.joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
+};
+
+MapShaper.prepJoinLayers = function(targetLyr, srcLyr) {
+  if (!targetLyr.data) {
+    // create an empty data table if target layer is missing attributes
+    targetLyr.data = new DataTable(targetLyr.shapes.length);
+  }
+  if (!srcLyr.data) {
+    stop("[join] Can't join a layer that is missing attribute data");
+  }
+};
+
+MapShaper.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts) {
+  var joinFunction = MapShaper.getPointToPolygonFunction(pointLyr, polygonLyr, arcs, opts);
+  var index = [];
+  var hit, polygonId;
+  for (var i=0, n=pointLyr.shapes.length; i<n; i++) {
+    hit = joinFunction(i);
+    if (hit) {
+      polygonId = hit[0]; // TODO: handle multiple hits
+      if (polygonId in index) {
+        index[polygonId].push(i);
+      } else {
+        index[polygonId] = [i];
+      }
+    }
+  }
+  // @i id of a polygon feature
+  return function(i) {
+    return index[i] || null;
+  };
+};
+
+MapShaper.getPointToPolygonFunction = function(pointLyr, polygonLyr, arcs, opts) {
+  var index = new PathIndex(polygonLyr.shapes, arcs),
+      points = pointLyr.shapes;
+
+  // @i id of a point feature
+  return function(i) {
+    var shp = points[i],
+        shpId = -1;
+    if (shp) {
+      // TODO: handle multiple hits
+      shpId = index.findEnclosingShape(shp[0]);
+    }
+    return shpId == -1 ? null : [shpId];
+  };
+};
+
+
+
+
 api.join = function(targetLyr, dataset, opts) {
-  var srcTable = MapShaper.getJoinSource(dataset, opts);
-  api.joinAttributesToFeatures(targetLyr, srcTable, opts);
+  var src, srcLyr, srcType, targetType;
+  if (opts.keys) {
+    // join using data in attribute fields
+    if (opts.keys.length != 2) {
+      stop("[join] Expected two key fields: a target field and a source field");
+    }
+    src = MapShaper.getJoinTable(dataset, opts);
+    api.joinAttributesToFeatures(targetLyr, src, opts);
+  } else {
+    // spatial join
+    src = MapShaper.getJoinData(dataset, opts);
+    if (!src) {
+      stop("[join] Missing a joinable data source");
+    }
+    srcLyr = src.layers[0];
+    srcType = srcLyr.geometry_type;
+    targetType = targetLyr.geometry_type;
+    if (srcType == 'point' && targetType == 'polygon') {
+      api.joinPointsToPolygons(targetLyr, dataset.arcs, srcLyr, opts);
+    } else if (srcType == 'polygon' && targetType == 'point') {
+      api.joinPolygonsToPoints(targetLyr, srcLyr, src.arcs, opts);
+    } else {
+      stop(utils.format("[join] Unable to join %s geometry to %s geometry",
+          srcType || 'null', targetType || 'null'));
+    }
+  }
 };
 
 // Get a DataTable to join, either from a current layer or from a file.
-MapShaper.getJoinSource = function(dataset, opts) {
+MapShaper.getJoinTable = function(dataset, opts) {
   var layers = MapShaper.findMatchingLayers(dataset.layers, opts.source),
       table;
   if (layers.length > 0) {
@@ -11462,6 +11544,17 @@ MapShaper.getJoinSource = function(dataset, opts) {
     table = api.importJoinTable(opts.source, opts);
   }
   return table;
+};
+
+// Get a dataset containing a source layer to join
+// TODO: remove duplication with getJoinTable()
+MapShaper.getJoinData = function(dataset, opts) {
+  var layers = MapShaper.findMatchingLayers(dataset.layers, opts.source);
+  if (!layers.length) {
+    dataset = api.importFile(opts.source, opts);
+    layers = dataset.layers;
+  }
+  return layers.length ? {arcs: dataset.arcs, layers: [layers[0]]} : null;
 };
 
 api.importJoinTable = function(file, opts) {
@@ -11479,83 +11572,194 @@ api.importJoinTable = function(file, opts) {
   return api.importDataTable(file, importOpts);
 };
 
-// TODO: think through how best to deal with identical field names
 api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
-  if (!opts.keys || opts.keys.length != 2) {
-    stop("[join] Missing join keys");
-  }
   var keys = MapShaper.removeTypeHints(opts.keys),
-      joinFields = MapShaper.removeTypeHints(opts.fields || []),
-      destTable = lyr.data,
       destKey = keys[0],
-      srcKey = keys[1];
+      srcKey = keys[1],
+      destTable = lyr.data,
+      // exclude source key field from join unless explicitly listed
+      joinFields = opts.fields || utils.difference(srcTable.getFields(), [srcKey]),
+      joinFunction = MapShaper.getJoinByKey(destTable, destKey, srcTable, srcKey);
 
-  if (srcTable.fieldExists(srcKey) === false) {
+  opts = utils.defaults({fields: joinFields}, opts);
+  MapShaper.joinTables(destTable, srcTable, joinFunction, opts);
+};
+
+MapShaper.joinTables = function(dest, src, join, opts) {
+  var srcRecords = src.getRecords(),
+      destRecords = dest.getRecords(),
+      joinFields = MapShaper.getFieldsToJoin(dest, src, opts),
+      sumFields = opts.sum_fields || [],
+      copyFields = utils.difference(joinFields, sumFields),
+      countField = MapShaper.getCountFieldName(dest.getFields()),
+      addCountField = sumFields.length > 0, // add a count field if we're aggregating records
+      joinCounts = new Uint32Array(srcRecords.length),
+      matchCount = 0,
+      collisionCount = 0,
+      srcRec, srcId, destRec, joinIds, joins, count, filter;
+
+  if (opts.where) {
+    filter = MapShaper.getJoinFilter(src, opts.where);
+  }
+
+  // join source records to target records
+  for (var i=0, n=destRecords.length; i<n; i++) {
+    destRec = destRecords[i];
+    joins = join(i);
+    count = 0;
+    for (var j=0, m=joins ? joins.length : 0; j<m; j++) {
+      srcId = joins[j];
+      if (filter && !filter(srcId)) {
+        continue;
+      }
+      srcRec = srcRecords[srcId];
+      if (copyFields.length > 0) {
+        if (count === 0) {
+          // only copying the first match
+          MapShaper.joinByCopy(destRec, srcRec, copyFields);
+        } else {
+          collisionCount++;
+        }
+      }
+      if (sumFields.length > 0) {
+        MapShaper.joinBySum(destRec, srcRec, sumFields);
+      }
+      joinCounts[srcId]++;
+      count++;
+    }
+    if (count > 0) {
+      matchCount++;
+    } else if (destRec) {
+      // Unmatched records records get null/empty values
+      MapShaper.updateUnmatchedRecord(destRec, copyFields, sumFields);
+    }
+    if (addCountField) {
+      destRec[countField] = count;
+    }
+  }
+  if (matchCount === 0) {
+    stop("[join] No records could be joinCount");
+  }
+  MapShaper.printJoinMessage(matchCount, destRecords.length,
+      MapShaper.countJoins(joinCounts), srcRecords.length, collisionCount);
+};
+
+MapShaper.countJoins = function(counts) {
+  var joinCount = 0;
+  for (var i=0, n=counts.length; i<n; i++) {
+    if (counts[i] > 0) {
+      joinCount++;
+    }
+  }
+  return joinCount;
+};
+
+MapShaper.updateUnmatchedRecord = function(rec, copyFields, sumFields) {
+  MapShaper.joinByCopy(rec, {}, copyFields);
+  MapShaper.joinBySum(rec, {}, sumFields);
+};
+
+MapShaper.getCountFieldName = function(fields) {
+  var uniq = MapShaper.getUniqFieldNames(fields.concat("joins"));
+  return uniq.pop();
+};
+
+MapShaper.joinByCopy = function(dest, src, fields) {
+  var f;
+  for (var i=0, n=fields.length; i<n; i++) {
+    // dest[fields[i]] = src[fields[i]];
+    // Use null when the source record is missing an expected value
+    // TODO: think some more about whether this is desirable
+    f = fields[i];
+    dest[f] = Object.prototype.hasOwnProperty.call(src, f) ? src[f] : null;
+  }
+};
+
+MapShaper.joinBySum = function(dest, src, fields) {
+  var f;
+  for (var j=0; j<fields.length; j++) {
+    f = fields[j];
+    dest[f] = (dest[f] || 0) + (src[f] || 0);
+  }
+};
+
+MapShaper.printJoinMessage = function(matched, n, joinCount, m, collisionCount) {
+  // TODO: add tip for generating layer containing unmatched records, when
+  // this option is implemented.
+  message(utils.format("[join] Joined %d data record%s", joinCount, utils.pluralSuffix(joinCount)));
+  if (matched < n) {
+    message(utils.format('[join] %d/%d target records received no data', n-matched, n));
+  }
+  if (joinCount < m) {
+    message(utils.format("[join] %d/%d source records could not be joinCount", m-joinCount, m));
+  }
+  if (collisionCount > 0) {
+    message(utils.format("[join] %d collision%s occured; data was copied from the first matching source record",
+      collisionCount, utils.pluralSuffix(collisionCount)));
+  }
+};
+
+MapShaper.getFieldsToJoin = function(destTable, srcTable, opts) {
+  var joinFields;
+  if (opts.fields) {
+    joinFields = MapShaper.removeTypeHints(opts.fields);
+  } else {
+    // If a list of fields to join is not given, try to join all the
+    // source fields except the key field.
+    joinFields = srcTable.getFields();
+  }
+  if (!opts.force) {
+    // only overwrite existing fields if the "force" option is set.
+    joinFields = utils.difference(joinFields, destTable.getFields());
+  }
+  return joinFields;
+};
+
+// Return a function for translating a target id to an array of source ids based on values
+// of two key fields.
+MapShaper.getJoinByKey = function(dest, destKey, src, srcKey) {
+  var destRecords = dest.getRecords();
+  var index = MapShaper.createTableIndex(src.getRecords(), srcKey);
+  if (src.fieldExists(srcKey) === false) {
     stop("[join] External table is missing a field named:", srcKey);
   }
-  if (opts.where) {
-    srcTable = MapShaper.filterDataTable(srcTable, opts.where);
-  }
-  if (joinFields.length > 0 === false) {
-    // If a list of join fields is not available, try to join all the
-    // source fields except the key field.
-    joinFields = utils.difference(srcTable.getFields(), [srcKey]);
-    // ... but only overwrite existing fields if the "force" option is set.
-    if (!opts.force) {
-      joinFields = utils.difference(joinFields, destTable.getFields());
-    }
-  }
-  if (!destTable || !destTable.fieldExists(destKey)) {
+  if (!dest || !dest.fieldExists(destKey)) {
     stop("[join] Target layer is missing key field:", destKey);
   }
-  MapShaper.joinTables(destTable, destKey, joinFields, srcTable, srcKey,
-      joinFields);
+  return function(i) {
+    var destRec = destRecords[i],
+        val = destRec && destRec[destKey],
+        retn = null;
+    if (destRec && val in index) {
+      retn = index[val];
+    }
+    return retn;
+  };
 };
 
-
-// Join fields from src table to dest table, using values in src and dest key fields
-// Returns number of records in dest that receive data from src
-// TODO: consider using functions to access or generate key values, for greater flexibility
-MapShaper.joinTables = function(dest, destKey, destFields, src, srcKey, srcFields) {
-  var records = dest.getRecords(),
-      unmatchedKeys = [];
-  src.indexOn(srcKey);
-  records.forEach(function(destRec, i) {
-    var joinVal = destRec[destKey],
-        srcRec = src.getIndexedRecord(joinVal),
-        srcField;
-
-    if (!srcRec) {
-      srcRec = {}; // null record
-      unmatchedKeys.push(joinVal);
+MapShaper.getJoinFilter = function(data, exp) {
+  var test =  MapShaper.compileFeatureExpression(exp, {data: data}, null);
+  return function(i) {
+    var retn = test(i);
+    if (retn !== true && retn !== false) {
+      stop('[join] "where" expression must return true or false');
     }
-    for (var j=0, n=srcFields.length; j<n; j++) {
-      srcField = srcFields[j];
-      // Use null when the source record is missing an expected value
-      // TODO: decide if this is desirable
-      destRec[destFields[j]] = Object.prototype.hasOwnProperty.call(srcRec, srcField) ? srcRec[srcField] : null;
-    }
-  });
+    return retn;
+  };
+};
 
-  if (unmatchedKeys.length > 0) {
-    if (unmatchedKeys.length == records.length) {
-      stop("[join] No records could be joined");
+MapShaper.createTableIndex = function(records, f) {
+  var index = {}, rec, key;
+  for (var i=0, n=records.length; i<n; i++) {
+    rec = records[i];
+    key = rec[f];
+    if (key in index) {
+      index[key].push(i);
     } else {
-      message(utils.format("[join] Unable to join %d/%d records (use -verbose to see unmatched values)",
-          unmatchedKeys.length, records.length));
-      if (MapShaper.VERBOSE) {
-        verbose(utils.format("Unmatched key values: %s", unmatchedKeys.join(', ')));
-      }
+      index[key] = [i];
     }
   }
-};
-
-MapShaper.filterDataTable = function(data, exp) {
-  var compiled = MapShaper.compileFeatureExpression(exp, {data: data}, null),
-      filtered = data.getRecords().filter(function(rec, i) {
-        return compiled(i);
-      });
-  return new DataTable(filtered);
+  return index;
 };
 
 
@@ -14088,18 +14292,9 @@ function validateSimplifyOpts(cmd) {
 function validateJoinOpts(cmd) {
   var o = cmd.options;
   o.source = o.source || cmd._[0];
-
   if (!o.source) {
-    error("Command requires the name of a file to join");
+    error("Command requires the name of a layer or file to join");
   }
-
-  if (utils.some("shp,xls,xlsx".split(','), function(suff) {
-    return utils.endsWith(o.source, suff);
-  })) {
-    error("Currently only dbf and csv files are supported");
-  }
-
-  if (!o.keys) error("Missing required keys option");
 }
 
 function validateSplitOpts(cmd) {
@@ -14305,7 +14500,6 @@ utils.trimQuotes = function(raw) {
   }
   return raw;
 };
-
 
 
 
@@ -14525,7 +14719,7 @@ MapShaper.getOptionParser = function() {
     });
 
   parser.command("join")
-    .describe("join a dbf or delimited text file to the input features")
+    .describe("join data records from a file or layer to a layer")
     .example("Join a csv table to a Shapefile\n" +
       "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
       "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
@@ -14535,19 +14729,23 @@ MapShaper.getOptionParser = function() {
       describe: "file containing data records"
     })
     .option("keys", {
-      describe: "target,source keys, e.g. keys=FIPS,CNTYFIPS",
+      describe: "join by matching target,source key fields; e.g. keys=FIPS,GEOID",
       type: "comma-sep"
     })
     .option("fields", {
-      describe: "fields to join, e.g. fields=FIPS,POP (default is all)",
+      describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
       type: "comma-sep"
     })
     .option("field-types", {
       describe: "type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
     })
+    .option("sum-fields", {
+      describe: "fields to sum when multiple source fields match one dest. field",
+      type: "comma-sep"
+    })
     .option("where", {
-      describe: "use a JS expression to filter records from source table"
+      describe: "use a JS expression to filter source records"
     })
     .option("force", {
       describe: "replace values from same-named fields",

@@ -35,9 +35,9 @@ Dbf.lookupCodePage = function(lid) {
   return i == -1 ? null : Dbf.languageIds[i+1];
 };
 
-Dbf.readAsciiString = function(bin, field) {
+Dbf.readAsciiString = function(bin, size) {
   var require7bit = Env.inNode;
-  var str = bin.readCString(field.size, require7bit);
+  var str = bin.readCString(size, require7bit);
   if (str === null) {
     stop("DBF file contains non-ascii text.\n" + Dbf.ENCODING_PROMPT);
   }
@@ -62,9 +62,9 @@ Dbf.readStringBytes = function(bin, size, buf) {
 Dbf.getEncodedStringReader = function(encoding) {
   var buf = new Buffer(256),
       isUtf8 = MapShaper.standardizeEncodingName(encoding) == 'utf8';
-  return function(bin, field) {
+  return function(bin, size) {
     var eos = false,
-        i = Dbf.readStringBytes(bin, field.size, buf),
+        i = Dbf.readStringBytes(bin, size, buf),
         str;
     if (i === 0) {
       str = '';
@@ -96,67 +96,34 @@ Dbf.bufferContainsHighBit = function(buf, n) {
   return false;
 };
 
-Dbf.readNumber = function(bin, field) {
-  var str = bin.readCString(field.size),
+Dbf.readNumber = function(bin, size) {
+  var str = bin.readCString(size),
       val;
   str = str.replace(',', '.'); // handle comma decimal separator
   val = parseFloat(str);
   return isNaN(val) ? null : val;
 };
 
-Dbf.readInt = function(bin, field) {
+Dbf.readInt = function(bin, size) {
   return bin.readInt32();
 };
 
-Dbf.readBool = function(bin, field) {
-  var c = bin.readCString(field.size),
+Dbf.readBool = function(bin, size) {
+  var c = bin.readCString(size),
       val = null;
   if (/[ty]/i.test(c)) val = true;
   else if (/[fn]/i.test(c)) val = false;
   return val;
 };
 
-Dbf.readDate = function(bin, field) {
-  var str = bin.readCString(field.size),
+Dbf.readDate = function(bin, size) {
+  var str = bin.readCString(size),
       yr = str.substr(0, 4),
       mo = str.substr(4, 2),
       day = str.substr(6, 2);
   return new Date(Date.UTC(+yr, +mo - 1, +day));
 };
 
-// Truncate and/or uniqify a name (if relevant params are present)
-Dbf.adjustFieldName = function(name, maxLen, i) {
-  var name2, suff;
-  maxLen = maxLen || 256;
-  if (!i) {
-    name2 = name.substr(0, maxLen);
-  } else {
-    suff = String(i);
-    if (suff.length == 1) {
-      suff = '_' + suff;
-    }
-    name2 = name.substr(0, maxLen - suff.length) + suff;
-  }
-  return name2;
-};
-
-// Resolve name conflicts in field names by appending numbers
-// @fields Array of field names
-// @maxLen (optional) Maximum chars in name
-//
-Dbf.getUniqFieldNames = function(fields, maxLen) {
-  var used = {};
-  return fields.map(function(name) {
-    var i = 0,
-        validName;
-    do {
-      validName = Dbf.adjustFieldName(name, maxLen, i);
-      i++;
-    } while (validName in used);
-    used[validName] = true;
-    return validName;
-  });
-};
 
 // cf. http://code.google.com/p/stringencoding/
 //
@@ -265,15 +232,17 @@ DbfReader.prototype.getRowOffset = function() {
 DbfReader.prototype.getRecordReader = function(header) {
   var fields = header.fields,
       readers = fields.map(this.getFieldReader, this),
-      uniqNames = Dbf.getUniqFieldNames(utils.pluck(fields, 'name')),
+      uniqNames = MapShaper.getUniqFieldNames(utils.pluck(fields, 'name')),
       rowOffs = this.getRowOffset(),
       bin = this.bin;
   return function(r) {
     var rec = {},
-        offs = rowOffs(r);
+        offs = rowOffs(r),
+        field;
     for (var c=0, cols=fields.length; c<cols; c++) {
-      bin.position(offs + fields[c].columnOffset);
-      rec[uniqNames[c]] = readers[c](bin, fields[c]);
+      field = fields[c];
+      bin.position(offs + field.columnOffset);
+      rec[uniqNames[c]] = readers[c](bin, field.size);
     }
     return rec;
   };
