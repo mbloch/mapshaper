@@ -10,10 +10,9 @@ function InfoControl(model, hit) {
   model.on('update', function(e) {
     if (isOn()) {
       if (e.flags.select) {
-        reset();
-      } else {
-        hit.refresh();
+        _popup.hide();
       }
+      hit.start(model.getEditingLayer());
     }
   });
 

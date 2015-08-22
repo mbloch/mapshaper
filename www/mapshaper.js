@@ -14149,9 +14149,13 @@ function HitControl(ext, mouse) {
   var target, test;
 
   this.start = function(o) {
-    this.stop();
-    target = o;
     test = tests[o.layer.geometry_type];
+    if (o == target) {
+      refresh();
+    } else {
+      this.stop();
+      target = o;
+    }
   };
 
   this.stop = function() {
@@ -14159,16 +14163,6 @@ function HitControl(ext, mouse) {
       pinId = -1;
       update(-1);
       target = null;
-      test = null;
-    }
-  };
-
-  // Check if data for current selected shape has changed; trigger change event
-  this.refresh = function() {
-    if (selectedShape && target.layer.shapes[selectedId] != selectedShape) {
-      select(-1);
-    } else {
-      select(selectedId); // re-trigger hit event
     }
   };
 
@@ -14285,6 +14279,16 @@ function HitControl(ext, mouse) {
 
   function getProperties(id) {
     return target.layer.data ? target.layer.data.getRecords()[id] : {};
+  }
+
+  // Check if data for current selected shape has changed; trigger change event
+  function refresh() {
+    if (selectedShape && target.layer.shapes[selectedId] != selectedShape) {
+      pinId = -1;
+      select(-1);
+    } else {
+      select(selectedId); // re-trigger hit event
+    }
   }
 
   function update(newId) {
@@ -14447,10 +14451,9 @@ function InfoControl(model, hit) {
   model.on('update', function(e) {
     if (isOn()) {
       if (e.flags.select) {
-        reset();
-      } else {
-        hit.refresh();
+        _popup.hide();
       }
+      hit.start(model.getEditingLayer());
     }
   });
 
