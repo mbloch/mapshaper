@@ -242,7 +242,7 @@ MapShaper.getOptionParser = function() {
       type: "comma-sep"
     })
     .option("sum-fields", {
-      describe: "fields to sum when multiple source fields match one dest. field",
+      describe: "fields to sum when multiple source records match the same target",
       type: "comma-sep"
     })
     .option("where", {

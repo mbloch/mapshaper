@@ -1431,7 +1431,7 @@ var geom = api.geom = {};
 var cli = api.cli = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.VERSION = '0.3.7';
+MapShaper.VERSION = '0.3.8';
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
@@ -14766,7 +14766,7 @@ MapShaper.getOptionParser = function() {
       type: "comma-sep"
     })
     .option("sum-fields", {
-      describe: "fields to sum when multiple source fields match one dest. field",
+      describe: "fields to sum when multiple source records match the same target",
       type: "comma-sep"
     })
     .option("where", {
