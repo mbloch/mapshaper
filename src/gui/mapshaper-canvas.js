@@ -75,20 +75,16 @@ function getPathStart(style) {
     if (gui.getPixelRatio() > 1 && lineWidth < 1) {
       lineWidth = 1; // bump up thin lines on retina, but not more than 1 (too slow)
     }
-    if (utils.isFunction(style.strokeColor)) {
-      strokeColor = style.strokeColor;
-    } else {
-      strokeColor = function(i) {return style.strokeColor;};
-    }
+    strokeColor = style.strokeColor;
   }
 
-  return function(i, ctx) {
+  return function(ctx) {
     ctx.beginPath();
     if (stroked) {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.lineWidth = lineWidth;
-      ctx.strokeStyle = strokeColor(i);
+      ctx.strokeStyle = strokeColor;
     }
     if (filled) {
       ctx.fillStyle = style.fillColor;

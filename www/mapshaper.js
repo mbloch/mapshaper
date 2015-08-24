@@ -13533,20 +13533,16 @@ function getPathStart(style) {
     if (gui.getPixelRatio() > 1 && lineWidth < 1) {
       lineWidth = 1; // bump up thin lines on retina, but not more than 1 (too slow)
     }
-    if (utils.isFunction(style.strokeColor)) {
-      strokeColor = style.strokeColor;
-    } else {
-      strokeColor = function(i) {return style.strokeColor;};
-    }
+    strokeColor = style.strokeColor;
   }
 
-  return function(i, ctx) {
+  return function(ctx) {
     ctx.beginPath();
     if (stroked) {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.lineWidth = lineWidth;
-      ctx.strokeStyle = strokeColor(i);
+      ctx.strokeStyle = strokeColor;
     }
     if (filled) {
       ctx.fillStyle = style.fillColor;
@@ -13778,7 +13774,7 @@ function LayerGroup(dataset) {
     updateCanvas(ext);
     _el.show();
     if (_filteredArcs) {
-      drawArcs(style, ext);
+      drawArcs(style, style.arcFlags, ext);
     }
     if (lyr.geometry_type == 'point') {
       drawPoints(lyr.shapes, style, ext);
@@ -13822,34 +13818,54 @@ function LayerGroup(dataset) {
         draw = getShapePencil(arcs, ext),
         end = getPathEnd(style);
     for (var i=0, n=shapes.length; i<n; i++) {
-      start(i, _ctx);
+      start(_ctx);
       draw(shapes[i], _ctx);
       end(_ctx);
     }
   }
 
-  function drawArcs(style, ext) {
+  function drawArcs(style, flags, ext) {
     var arcs = _filteredArcs.getArcCollection(ext),
-        minPathLen = 0.5 * ext.getPixelSize(),
+        darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
+        lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
+    setArcVisibility(flags, arcs, ext);
+    drawFlaggedArcs(2, flags, lightStyle, arcs, ext);
+    drawFlaggedArcs(3, flags, darkStyle, arcs, ext);
+  }
+
+  function setArcVisibility(flags, arcs, ext) {
+    var minPathLen = 0.5 * ext.getPixelSize(),
         geoBounds = ext.getBounds(),
         geoBBox = geoBounds.toArray(),
         allIn = geoBounds.contains(arcs.getBounds()),
-        start = getPathStart(style),
-        draw = getArcPencil(arcs, ext),
-        end = getPathEnd(style);
-
+        visible;
     // don't continue dropping paths if user zooms out farther than full extent
     if (ext.scale() < 1) minPathLen *= ext.scale();
-
-    // TODO: canvas rendering can be sped up a lot by drawing multiple arcs
-    // before each stroke() call. This requires some refactoring.
     for (var i=0, n=arcs.size(); i<n; i++) {
-      if (arcs.arcIsSmaller(i, minPathLen)) continue;
-      if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) continue;
-      start(i, _ctx);
-      draw(i, _ctx);
-      end(_ctx);
+      visible = !arcs.arcIsSmaller(i, minPathLen) && (allIn ||
+          arcs.arcIntersectsBBox(i, geoBBox));
+      // mark visible arcs by setting second flag bit to 1
+      flags[i] = (flags[i] & 1) | (visible ? 2 : 0);
     }
+  }
+
+  function drawFlaggedArcs(flag, flags, style, arcs, ext) {
+    var start = getPathStart(style),
+        end = getPathEnd(style),
+        t = getScaledTransform(ext),
+        ctx = _ctx,
+        n = 25, // render paths in batches of this size (an optimization)
+        count = 0;
+    start(ctx);
+    for (i=0, n=arcs.size(); i<n; i++) {
+      if (flags[i] != flag) continue;
+      if (++count % n === 0) {
+        end(ctx);
+        start(ctx);
+      }
+      drawPath(arcs.getArcIter(i), t, ctx);
+    }
+    end(ctx);
   }
 
   function drawPoints(shapes, style, ext) {
@@ -13868,7 +13884,6 @@ function LayerGroup(dataset) {
       }
     }
   }
-
 
   function clearCanvas() {
     _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
@@ -14548,9 +14563,9 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#334",
-      lightStroke = "rgba(135, 178, 0, 0.35)",
+      lightStroke = "#b2d83a",
       activeStyle = {
-        strokeColor: darkStroke,
+        strokeColors: [lightStroke, darkStroke],
         strokeWidth: 0.7,
         dotColor: "#223"
       },
@@ -14631,7 +14646,8 @@ function MshpMap(model) {
       group.updated();
     }
     group.showLayer(e.layer);
-    updateGroupStyle(activeStyle, group);
+    updateDotStyle(activeStyle, group);
+    updateArcStyle(activeStyle, group);
     _activeGroup = group;
     needReset = gui.mapNeedsReset(group.getBounds(), prevBounds, _ext.getBounds());
     _ext.setBounds(group.getBounds()); // update map extent to match bounds of active group
@@ -14653,7 +14669,7 @@ function MshpMap(model) {
       _highGroup = addGroup(dataset);
       _highGroup.showLayer(lyr);
       _highGroup.getElement().addClass('highlight-layer');
-      updateGroupStyle(highStyle, _highGroup);
+      updateDotStyle(highStyle, _highGroup);
       refreshLayer(_highGroup);
     }
   };
@@ -14663,24 +14679,29 @@ function MshpMap(model) {
     refreshLayers();
   };
 
-  function updateGroupStyle(style, group) {
+  function updateArcStyle(style, group) {
+    var lyr = group.getLayer(),
+        arcs = group.getDataset().arcs;
+    if (arcs) {
+      style.arcFlags = new Uint8Array(arcs.size());
+      if (MapShaper.layerHasPaths(lyr)) {
+        initArcFlags(lyr.shapes, style.arcFlags);
+      }
+    }
+  }
+
+  function initArcFlags(shapes, arr) {
+    // Arcs belonging to at least one path are flagged 1, others 0
+    MapShaper.countArcsInShapes(shapes, arr);
+    for (var i=0, n=arr.length; i<n; i++) {
+      arr[i] = arr[i] === 0 ? 0 : 1;
+    }
+  }
+
+  function updateDotStyle(style, group) {
     var lyr = group.getLayer(),
         dataset = group.getDataset();
     style.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
-    style.strokeColor = getStrokeStyle(lyr, dataset.arcs);
-  }
-
-  function getStrokeStyle(lyr, arcs) {
-    var stroke = lightStroke,
-        counts;
-    if (MapShaper.layerHasPaths(lyr)) {
-      counts = new Uint8Array(arcs.size());
-      MapShaper.countArcsInShapes(lyr.shapes, counts);
-      stroke = function(i) {
-        return counts[i] > 0 ? darkStroke : lightStroke;
-      };
-    }
-    return stroke;
   }
 
   function calcDotSize(n) {

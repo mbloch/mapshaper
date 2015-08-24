@@ -46,9 +46,9 @@ function MshpMap(model) {
       _activeGroup;
 
   var darkStroke = "#334",
-      lightStroke = "rgba(135, 178, 0, 0.35)",
+      lightStroke = "#b2d83a",
       activeStyle = {
-        strokeColor: darkStroke,
+        strokeColors: [lightStroke, darkStroke],
         strokeWidth: 0.7,
         dotColor: "#223"
       },
@@ -129,7 +129,8 @@ function MshpMap(model) {
       group.updated();
     }
     group.showLayer(e.layer);
-    updateGroupStyle(activeStyle, group);
+    updateDotStyle(activeStyle, group);
+    updateArcStyle(activeStyle, group);
     _activeGroup = group;
     needReset = gui.mapNeedsReset(group.getBounds(), prevBounds, _ext.getBounds());
     _ext.setBounds(group.getBounds()); // update map extent to match bounds of active group
@@ -151,7 +152,7 @@ function MshpMap(model) {
       _highGroup = addGroup(dataset);
       _highGroup.showLayer(lyr);
       _highGroup.getElement().addClass('highlight-layer');
-      updateGroupStyle(highStyle, _highGroup);
+      updateDotStyle(highStyle, _highGroup);
       refreshLayer(_highGroup);
     }
   };
@@ -161,24 +162,29 @@ function MshpMap(model) {
     refreshLayers();
   };
 
-  function updateGroupStyle(style, group) {
+  function updateArcStyle(style, group) {
+    var lyr = group.getLayer(),
+        arcs = group.getDataset().arcs;
+    if (arcs) {
+      style.arcFlags = new Uint8Array(arcs.size());
+      if (MapShaper.layerHasPaths(lyr)) {
+        initArcFlags(lyr.shapes, style.arcFlags);
+      }
+    }
+  }
+
+  function initArcFlags(shapes, arr) {
+    // Arcs belonging to at least one path are flagged 1, others 0
+    MapShaper.countArcsInShapes(shapes, arr);
+    for (var i=0, n=arr.length; i<n; i++) {
+      arr[i] = arr[i] === 0 ? 0 : 1;
+    }
+  }
+
+  function updateDotStyle(style, group) {
     var lyr = group.getLayer(),
         dataset = group.getDataset();
     style.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
-    style.strokeColor = getStrokeStyle(lyr, dataset.arcs);
-  }
-
-  function getStrokeStyle(lyr, arcs) {
-    var stroke = lightStroke,
-        counts;
-    if (MapShaper.layerHasPaths(lyr)) {
-      counts = new Uint8Array(arcs.size());
-      MapShaper.countArcsInShapes(lyr.shapes, counts);
-      stroke = function(i) {
-        return counts[i] > 0 ? darkStroke : lightStroke;
-      };
-    }
-    return stroke;
   }
 
   function calcDotSize(n) {

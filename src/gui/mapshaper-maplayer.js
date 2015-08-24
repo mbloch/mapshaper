@@ -61,7 +61,7 @@ function LayerGroup(dataset) {
     updateCanvas(ext);
     _el.show();
     if (_filteredArcs) {
-      drawArcs(style, ext);
+      drawArcs(style, style.arcFlags, ext);
     }
     if (lyr.geometry_type == 'point') {
       drawPoints(lyr.shapes, style, ext);
@@ -105,34 +105,54 @@ function LayerGroup(dataset) {
         draw = getShapePencil(arcs, ext),
         end = getPathEnd(style);
     for (var i=0, n=shapes.length; i<n; i++) {
-      start(i, _ctx);
+      start(_ctx);
       draw(shapes[i], _ctx);
       end(_ctx);
     }
   }
 
-  function drawArcs(style, ext) {
+  function drawArcs(style, flags, ext) {
     var arcs = _filteredArcs.getArcCollection(ext),
-        minPathLen = 0.5 * ext.getPixelSize(),
+        darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
+        lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
+    setArcVisibility(flags, arcs, ext);
+    drawFlaggedArcs(2, flags, lightStyle, arcs, ext);
+    drawFlaggedArcs(3, flags, darkStyle, arcs, ext);
+  }
+
+  function setArcVisibility(flags, arcs, ext) {
+    var minPathLen = 0.5 * ext.getPixelSize(),
         geoBounds = ext.getBounds(),
         geoBBox = geoBounds.toArray(),
         allIn = geoBounds.contains(arcs.getBounds()),
-        start = getPathStart(style),
-        draw = getArcPencil(arcs, ext),
-        end = getPathEnd(style);
-
+        visible;
     // don't continue dropping paths if user zooms out farther than full extent
     if (ext.scale() < 1) minPathLen *= ext.scale();
-
-    // TODO: canvas rendering can be sped up a lot by drawing multiple arcs
-    // before each stroke() call. This requires some refactoring.
     for (var i=0, n=arcs.size(); i<n; i++) {
-      if (arcs.arcIsSmaller(i, minPathLen)) continue;
-      if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) continue;
-      start(i, _ctx);
-      draw(i, _ctx);
-      end(_ctx);
+      visible = !arcs.arcIsSmaller(i, minPathLen) && (allIn ||
+          arcs.arcIntersectsBBox(i, geoBBox));
+      // mark visible arcs by setting second flag bit to 1
+      flags[i] = (flags[i] & 1) | (visible ? 2 : 0);
     }
+  }
+
+  function drawFlaggedArcs(flag, flags, style, arcs, ext) {
+    var start = getPathStart(style),
+        end = getPathEnd(style),
+        t = getScaledTransform(ext),
+        ctx = _ctx,
+        n = 25, // render paths in batches of this size (an optimization)
+        count = 0;
+    start(ctx);
+    for (i=0, n=arcs.size(); i<n; i++) {
+      if (flags[i] != flag) continue;
+      if (++count % n === 0) {
+        end(ctx);
+        start(ctx);
+      }
+      drawPath(arcs.getArcIter(i), t, ctx);
+    }
+    end(ctx);
   }
 
   function drawPoints(shapes, style, ext) {
@@ -151,7 +171,6 @@ function LayerGroup(dataset) {
       }
     }
   }
-
 
   function clearCanvas() {
     _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
