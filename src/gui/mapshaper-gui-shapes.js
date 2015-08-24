@@ -7,7 +7,7 @@ mapshaper-simplify-fast
 // A wrapper for ArcCollection that filters paths to speed up rendering.
 //
 function FilteredArcCollection(unfilteredArcs) {
-  var _sortedThresholds,
+  var sortedThresholds,
       filteredArcs,
       filteredSegLen;
 
@@ -17,17 +17,18 @@ function FilteredArcCollection(unfilteredArcs) {
     var size = unfilteredArcs.getPointCount(),
         cutoff = 5e5,
         nth;
+    sortedThresholds = filteredArcs = null;
     if (!!unfilteredArcs.getVertexData().zz) {
       // If we have simplification data...
       // Sort simplification thresholds for all non-endpoint vertices
       // for quick conversion of simplification percentage to threshold value.
       // For large datasets, use every nth point, for faster sorting.
       nth = Math.ceil(size / cutoff);
-      _sortedThresholds = unfilteredArcs.getRemovableThresholds(nth);
-      utils.quicksort(_sortedThresholds, false);
+      sortedThresholds = unfilteredArcs.getRemovableThresholds(nth);
+      utils.quicksort(sortedThresholds, false);
       // For large datasets, create a filtered copy of the data for faster rendering
       if (size > cutoff) {
-        filteredArcs = initFilteredArcs(unfilteredArcs, _sortedThresholds);
+        filteredArcs = initFilteredArcs(unfilteredArcs, sortedThresholds);
         filteredSegLen = filteredArcs.getAvgSegment();
       }
     } else {
@@ -73,8 +74,8 @@ function FilteredArcCollection(unfilteredArcs) {
   };
 
   this.setRetainedPct = function(pct) {
-    if (_sortedThresholds) {
-      var z = _sortedThresholds[Math.floor(pct * _sortedThresholds.length)];
+    if (sortedThresholds) {
+      var z = sortedThresholds[Math.floor(pct * sortedThresholds.length)];
       z = MapShaper.clampIntervalByPct(z, pct);
       // this.setRetainedInterval(z);
       unfilteredArcs.setRetainedInterval(z);

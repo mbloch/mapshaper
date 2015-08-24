@@ -8,9 +8,13 @@ function RepairControl(model, map) {
       _dataset, _currXX;
 
   model.on('update', function(e) {
-    if (e.flags.simplify || e.flags.proj) {
+    if (e.flags.simplify || e.flags.proj || e.flags.arc_count) {
       // these changes require nulling out any cached intersection data and recalculating
-      if (_dataset) _dataset.info.intersections = null;
+      if (_dataset) {
+        _dataset.info.intersections = null;
+        _dataset = null;
+        _self.hide();
+      }
       delayedUpdate();
     } else if (e.flags.select && !e.flags.import) {
       // Don't update if a dataset was just imported -- another layer may be
