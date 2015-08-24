@@ -1,7 +1,7 @@
-/* @requires mapshaper-polygon-intersection, mapshaper-polygon-holes */
+/* @requires mapshaper-polygon-intersection, mapshaper-polygon-holes, mapshaper-dissolve */
 
 api.dissolvePolygons2 = function(lyr, dataset, opts) {
-  MapShaper.requirePolygonLayer(lyr, "[dissolve] only supports polygon type layers");
+  MapShaper.requirePolygonLayer(lyr, "[dissolve2] Expected a polygon type layer");
   var nodes = MapShaper.divideArcs(dataset);
   return MapShaper.dissolvePolygonLayer(lyr, nodes, opts);
 };
@@ -9,7 +9,6 @@ api.dissolvePolygons2 = function(lyr, dataset, opts) {
 MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   opts = opts || {};
   var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data);
-  var lyr2 = MapShaper.getOutputLayer(lyr, opts);
   var groups = lyr.shapes.reduce(function(groups, shape, i) {
     var i2 = getGroupId(i);
     if (i2 in groups === false) {
@@ -18,17 +17,21 @@ MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
     MapShaper.extendShape(groups[i2], shape);
     return groups;
   }, []);
+  var dissolve = MapShaper.getPolygonDissolver(nodes);
+  var lyr2, data2;
 
   T.start();
-  var dissolve = MapShaper.getPolygonDissolver(nodes);
-  lyr2.shapes = groups.map(function(group) {
-    return dissolve(group);
-  });
-  T.stop('dissolve2');
-
   if (lyr.data) {
-    lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts));
+    data2 = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts));
   }
+  lyr2 = {
+    name: opts.no_replace ? null : lyr.name,
+    data: data2,
+    shapes: groups.map(dissolve),
+    geometry_type: lyr.geometry_type
+  };
+  T.stop('dissolve2');
+  MapShaper.printDissolveMessage(lyr, lyr2, 'dissolve2');
   return lyr2;
 };
 
