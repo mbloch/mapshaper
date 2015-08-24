@@ -13505,13 +13505,6 @@ function drawPath(vec, t, ctx) {
   }
 }
 
-function getArcPencil(arcs, ext) {
-  var t = getScaledTransform(ext);
-  return function(i, ctx) {
-    drawPath(arcs.getArcIter(i), t, ctx);
-  };
-}
-
 function getShapePencil(arcs, ext) {
   var t = getScaledTransform(ext);
   return function(shp, ctx) {
