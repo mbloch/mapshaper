@@ -173,7 +173,7 @@ body {
 	top: 0px;
 	right: 0px;
 	display: none;
-	margin: 0 9px 3px 0;
+	margin: 0 8px 3px 0;
 }
 
 .separator {
@@ -388,12 +388,12 @@ div.error-box > div {
 	}
 }
 
-
-
 #console-buffer > div {
 	text-align: left;
-	width: 640px;
+	max-width: 640px;
 	margin: 0 auto;
+	padding-left: 13%;
+	padding-right: 2%;
 }
 
 .console-error {
@@ -515,8 +515,7 @@ body.simplify #layer-control-btn {
 	position: absolute;
 	z-index: 20;
 	top: 9px;
-	right: 14px;
-	text-align: right;
+	left: 12px;
 }
 
 #intersection-display .text-btn.disabled {
@@ -530,7 +529,7 @@ body.simplify #layer-control-btn {
 	position: absolute;
 	z-index: 40;
 	top: 12px;
-	right: 12px;
+	left: 12px;
 	background-color: white;
 	border: 1px solid #999;
 	border-radius: 9px;
@@ -626,15 +625,15 @@ body.simplify #layer-control-btn {
 	display: none;
 	z-index: 20;
 	position: absolute;
-	top: 6px;
-	left: 6px;
+	top: 5px;
+	right: 9px;
 	padding: 2px;
 	background-color: rgba(255, 255, 255, 0.85);
 }
 
 .nav-btn {
 	cursor:pointer;
-	padding: 4px;
+	padding: 4px 3px;
 	line-height: 1;
 }
 
