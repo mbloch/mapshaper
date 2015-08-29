@@ -13644,7 +13644,7 @@ function LayerControl(model) {
 
   new ModeButton('#layer-control-btn .mode-btn', 'layer_menu', model);
   model.addMode('layer_menu', turnOn, turnOff);
-  model.on('select', function(e) {
+  model.on('update', function(e) {
     updateBtn();
     if (isOpen) render();
   });
