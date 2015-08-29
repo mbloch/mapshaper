@@ -17,7 +17,6 @@ function ArcIndex(pointCount) {
         key = hash(xx[end], yy[end]),
         chainId = hashTable[key],
         arcId = arcs.length;
-
     hashTable[key] = arcId;
     arcs.push([xx, yy]);
     arcPoints += xx.length;
@@ -29,7 +28,21 @@ function ArcIndex(pointCount) {
   // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
   // so coincident boundaries should contain the same points in reverse sequence).
   //
-  this.findArcNeighbor = function(xx, yy, start, end, getNext) {
+  this.findMatchingArc = function(xx, yy, start, end, getNext, getPrev) {
+    // First, look for a reverse match
+    var arcId = findArcNeighbor(xx, yy, start, end, getNext);
+    if (arcId === null) {
+      // Look for forward match
+      // (Abnormal topology, but we're accepting it because in-the-wild
+      // Shapefiles sometimes have duplicate paths)
+      arcId = findArcNeighbor(xx, yy, end, start, getPrev);
+    } else {
+      arcId = ~arcId;
+    }
+    return arcId;
+  };
+
+  function findArcNeighbor(xx, yy, start, end, getNext) {
     var next = getNext(start),
         key = hash(xx[start], yy[start]),
         arcId = hashTable[key],
@@ -48,21 +61,23 @@ function ArcIndex(pointCount) {
       }
       arcId = chainIds[arcId];
     }
-    return -1;
-  };
+    return null;
+  }
 
   this.getVertexData = function() {
     var xx = new Float64Array(arcPoints),
         yy = new Float64Array(arcPoints),
         nn = new Uint32Array(arcs.length),
-        copied = 0;
-    arcs.forEach(function(arc, i) {
-      var len = arc[0].length;
+        copied = 0,
+        arc, len;
+    for (var i=0, n=arcs.length; i<n; i++) {
+      arc = arcs[i];
+      len = arc[0].length;
       MapShaper.copyElements(arc[0], 0, xx, copied, len);
       MapShaper.copyElements(arc[1], 0, yy, copied, len);
       nn[i] = len;
       copied += len;
-    });
+    }
     return {
       xx: xx,
       yy: yy,

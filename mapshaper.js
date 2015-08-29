@@ -7242,6 +7242,26 @@ function getXYHash(size) {
   };
 }
 
+// Get function to Hash a single coordinate to a non-negative integer
+function getXHash(size) {
+  var buf = new ArrayBuffer(8),
+      floats = new Float64Array(buf),
+      uints = new Uint32Array(buf),
+      lim = size | 0;
+  if (lim > 0 === false) {
+    throw new Error("Invalid size param: " + size);
+  }
+
+  return function(x) {
+    var h;
+    floats[0] = x;
+    h = uints[0] ^ uints[1];
+    h = h << 5 ^ h >> 7;
+    return (h & 0x7fffffff) % lim;
+  };
+}
+
+
 
 
 // Used for building topology
@@ -7261,7 +7281,6 @@ function ArcIndex(pointCount) {
         key = hash(xx[end], yy[end]),
         chainId = hashTable[key],
         arcId = arcs.length;
-
     hashTable[key] = arcId;
     arcs.push([xx, yy]);
     arcPoints += xx.length;
@@ -7273,7 +7292,21 @@ function ArcIndex(pointCount) {
   // opposite direction. (This program uses the convention of CW for space-enclosing rings, CCW for holes,
   // so coincident boundaries should contain the same points in reverse sequence).
   //
-  this.findArcNeighbor = function(xx, yy, start, end, getNext) {
+  this.findMatchingArc = function(xx, yy, start, end, getNext, getPrev) {
+    // First, look for a reverse match
+    var arcId = findArcNeighbor(xx, yy, start, end, getNext);
+    if (arcId === null) {
+      // Look for forward match
+      // (Abnormal topology, but we're accepting it because in-the-wild
+      // Shapefiles sometimes have duplicate paths)
+      arcId = findArcNeighbor(xx, yy, end, start, getPrev);
+    } else {
+      arcId = ~arcId;
+    }
+    return arcId;
+  };
+
+  function findArcNeighbor(xx, yy, start, end, getNext) {
     var next = getNext(start),
         key = hash(xx[start], yy[start]),
         arcId = hashTable[key],
@@ -7292,27 +7325,82 @@ function ArcIndex(pointCount) {
       }
       arcId = chainIds[arcId];
     }
-    return -1;
-  };
+    return null;
+  }
 
   this.getVertexData = function() {
     var xx = new Float64Array(arcPoints),
         yy = new Float64Array(arcPoints),
         nn = new Uint32Array(arcs.length),
-        copied = 0;
-    arcs.forEach(function(arc, i) {
-      var len = arc[0].length;
+        copied = 0,
+        arc, len;
+    for (var i=0, n=arcs.length; i<n; i++) {
+      arc = arcs[i];
+      len = arc[0].length;
       MapShaper.copyElements(arc[0], 0, xx, copied, len);
       MapShaper.copyElements(arc[1], 0, yy, copied, len);
       nn[i] = len;
       copied += len;
-    });
+    }
     return {
       xx: xx,
       yy: yy,
       nn: nn
     };
   };
+}
+
+
+
+
+function initHashChains(xx, yy) {
+  // Performance doesn't improve much above ~1.3 * point count
+  var n = xx.length,
+      m = Math.floor(n * 1.3) || 1,
+      hash = getXYHash(m),
+      hashTable = new Int32Array(m),
+      chainIds = new Int32Array(n), // Array to be filled with chain data
+      key, j;
+
+  for (var i=0; i<n; i++) {
+    key = hash(xx[i], yy[i]);
+    j = hashTable[key] - 1; // coord ids are 1-based in hash table; 0 used as null value.
+    hashTable[key] = i + 1;
+    chainIds[i] = j < 0 ? i : j; // first item in a chain points to self
+  }
+  return chainIds;
+}
+
+function initPointChains(xx, yy) {
+  var chainIds = initHashChains(xx, yy),
+      j, next, prevMatchId, prevUnmatchId;
+
+  // disentangle, reverse and close the chains created by initHashChains()
+  for (var i = xx.length-1; i>=0; i--) {
+    next = chainIds[i];
+    if (next >= i) continue;
+    prevMatchId = i;
+    prevUnmatchId = -1;
+    do {
+      j = next;
+      next = chainIds[j];
+      if (yy[j] == yy[i] && xx[j] == xx[i]) {
+        chainIds[j] = prevMatchId;
+        prevMatchId = j;
+      } else {
+        if (prevUnmatchId > -1) {
+          chainIds[prevUnmatchId] = j;
+        }
+        prevUnmatchId = j;
+      }
+    } while (next < j);
+    if (prevUnmatchId > -1) {
+      // Make sure last unmatched entry is terminated
+      chainIds[prevUnmatchId] = prevUnmatchId;
+    }
+    chainIds[i] = prevMatchId; // close the chain
+  }
+  return chainIds;
 }
 
 
@@ -7353,31 +7441,31 @@ api.buildTopology = function(dataset) {
 //
 MapShaper.buildPathTopology = function(nn, xx, yy) {
   var pointCount = xx.length,
+      chainIds = initPointChains(xx, yy),
+      pathIds = initPathIds(pointCount, nn),
       index = new ArcIndex(pointCount),
-      typedArrays = !!(xx.subarray && yy.subarray),
-      slice, array;
+      slice = usingTypedArrays() ? xx.subarray : Array.prototype.slice,
+      paths, retn;
+  paths = convertPaths(nn);
+  retn = index.getVertexData();
+  retn.paths = paths;
+  return retn;
 
-  var pathIds = initPathIds(pointCount, nn);
-
-  if (typedArrays) {
-    array = Float64Array;
-    slice = xx.subarray;
-  } else {
-    array = Array;
-    slice = Array.prototype.slice;
+  function usingTypedArrays() {
+    return !!(xx.subarray && yy.subarray);
   }
 
-  var chainIds = initPointChains(xx, yy);
-  var pointId = 0;
-  var paths = [];
-  utils.forEach(nn, function(pathLen) {
-    var arcs = pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1);
-    pointId += pathLen;
-    paths.push(arcs);
-  });
-  var obj = index.getVertexData();
-  obj.paths = paths;
-  return obj;
+  function convertPaths(nn) {
+    var paths = [],
+        pointId = 0,
+        pathLen;
+    for (var i=0, len=nn.length; i<len; i++) {
+      pathLen = nn[i];
+      paths.push(pathLen < 2 ? null : convertPath(pointId, pointId + pathLen - 1));
+      pointId += pathLen;
+    }
+    return paths;
+  }
 
   function nextPoint(id) {
     var partId = pathIds[id];
@@ -7411,7 +7499,6 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
         arcStartId;
 
     // Visit each point in the path, up to but not including the last point
-    //
     for (var i = start; i < end; i++) {
       if (pointIsArcEndpoint(i)) {
         if (firstNodeId > -1) {
@@ -7424,7 +7511,6 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
     }
 
     // Identify the final arc in the path
-    //
     if (firstNodeId == -1) {
       // Not in an arc, i.e. no nodes have been found...
       // Assuming that path is either an island or is congruent with one or more rings
@@ -7438,57 +7524,55 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
       arcIds.push(addEdge(arcStartId, i));
     } else {
       // final arc wraps around
-      arcIds.push(addEdge(arcStartId, end, start + 1, firstNodeId));
+      arcIds.push(addSplitEdge(arcStartId, end, start + 1, firstNodeId));
     }
-
     return arcIds;
   }
 
-  // @a and @b are ids of two points with same x, y coords
-  // Return false if adjacent points match, either in fw or rev direction
-  //
-  function brokenEdge(a, b) {
-    var xarr = xx, yarr = yy; // local vars: faster
-    var aprev = prevPoint(a),
-        anext = nextPoint(a),
-        bprev = prevPoint(b),
-        bnext = nextPoint(b);
-    if (aprev == -1 || anext == -1 || bprev == -1 || bnext == -1) {
+  // Test if a point @id is an endpoint of a topological path
+  function pointIsArcEndpoint(id) {
+    var id2 = chainIds[id],
+        prev = prevPoint(id),
+        next = nextPoint(id),
+        prev2, next2;
+    if (prev == -1 || next == -1) {
+      // @id is an endpoint if it is the start or end of an open path
       return true;
     }
-    else if (xarr[aprev] == xarr[bnext] && xarr[anext] == xarr[bprev] &&
-      yarr[aprev] == yarr[bnext] && yarr[anext] == yarr[bprev]) {
-      return false;
+    while (id != id2) {
+      prev2 = prevPoint(id2);
+      next2 = nextPoint(id2);
+      if (prev2 == -1 || next2 == -1 || brokenEdge(prev, next, prev2, next2)) {
+        // there is a discontinuity at @id -- point is arc endpoint
+        return true;
+      }
+      id2 = chainIds[id2];
     }
-    else if (xarr[aprev] == xarr[bprev] && xarr[anext] == xarr[bnext] &&
-      yarr[aprev] == yarr[bprev] && yarr[anext] == yarr[bnext]) {
+    return false;
+  }
+
+  // a and b are two vertices with the same x, y coordinates
+  // test if the segments on either side of them are also identical
+  function brokenEdge(aprev, anext, bprev, bnext) {
+    var apx = xx[aprev],
+        anx = xx[anext],
+        bpx = xx[bprev],
+        bnx = xx[bnext],
+        apy = yy[aprev],
+        any = yy[anext],
+        bpy = yy[bprev],
+        bny = yy[bnext];
+    if (apx == bnx && anx == bpx && apy == bny && any == bpy ||
+        apx == bpx && anx == bnx && apy == bpy && any == bny) {
       return false;
     }
     return true;
   }
 
-  // Test if a point @id is an endpoint of a topological path
-  //
-  function pointIsArcEndpoint(id) {
-    var chainId = chainIds[id];
-    if (chainId == id) {
-      // point is unique -- point is arc endpoint iff it is start or end of an open path
-      return nextPoint(id) == -1 || prevPoint(id) == -1;
-    }
-    do {
-      if (brokenEdge(id, chainId)) {
-        // there is a discontinuity at @id -- point is arc endpoint
-        return true;
-      }
-      chainId = chainIds[chainId];
-    } while (id != chainId);
-    // path parallels all adjacent paths at @id -- point is not arc endpoint
-    return false;
-  }
-
   function mergeArcParts(src, startId, endId, startId2, endId2) {
     var len = endId - startId + endId2 - startId2 + 2,
-        dest = new array(len),
+        ArrayClass = usingTypedArrays() ? Float64Array : Array,
+        dest = new ArrayClass(len),
         j = 0, i;
     for (i=startId; i <= endId; i++) {
       dest[j++] = src[i];
@@ -7496,38 +7580,28 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
     for (i=startId2; i <= endId2; i++) {
       dest[j++] = src[i];
     }
-    if (j != len) error("mergeArcParts() counting error.");
     return dest;
   }
 
-  function addEdge(startId1, endId1, startId2, endId2) {
-    var splitArc = arguments.length == 4,
-        start = startId1,
-        end = splitArc ? endId2 : endId1,
-        arcId, xarr, yarr;
-
-    // Look for previously identified arc, in reverse direction (normal topology)
-    arcId = index.findArcNeighbor(xx, yy, start, end, nextPoint);
-    if (arcId >= 0) return ~arcId;
-
-    // Look for matching arc in same direction
-    // (Abnormal topology, but we're accepting it because real-world Shapefiles
-    //   sometimes have duplicate paths)
-    arcId = index.findArcNeighbor(xx, yy, end, start, prevPoint);
-    if (arcId >= 0) return arcId;
-
-    if (splitArc) {
-      xarr = mergeArcParts(xx, startId1, endId1, startId2, endId2);
-      yarr = mergeArcParts(yy, startId1, endId1, startId2, endId2);
-    } else {
-      xarr = slice.call(xx, startId1, endId1 + 1);
-      yarr = slice.call(yy, startId1, endId1 + 1);
+  function addSplitEdge(start1, end1, start2, end2) {
+    var arcId = index.findMatchingArc(xx, yy, start1, end2, nextPoint, prevPoint);
+    if (arcId === null) {
+      arcId = index.addArc(mergeArcParts(xx, start1, end1, start2, end2),
+          mergeArcParts(yy, start1, end1, start2, end2));
     }
-    return index.addArc(xarr, yarr);
+    return arcId;
   }
 
-  //
-  //
+  function addEdge(start, end) {
+    // search for a matching edge that has already been generated
+    var arcId = index.findMatchingArc(xx, yy, start, end, nextPoint, prevPoint);
+    if (arcId === null) {
+      arcId = index.addArc(slice.call(xx, start, end + 1),
+          slice.call(yy, start, end + 1));
+    }
+    return arcId;
+  }
+
   function addRing(startId, endId) {
     var chainId = chainIds[startId],
         pathId = pathIds[startId],
@@ -7545,16 +7619,13 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
     }
 
     for (var i=startId; i<endId; i++) {
-      arcId = index.findArcNeighbor(xx, yy, i, i, nextPoint);
-      if (arcId >= 0) return ~arcId;
-
-      arcId = index.findArcNeighbor(xx, yy, i, i, prevPoint);
-      if (arcId >= 0) return arcId;
+      arcId = index.findMatchingArc(xx, yy, i, i, nextPoint, prevPoint);
+      if (arcId !== null) return arcId;
     }
-
     error("Unmatched ring; id:", pathId, "len:", nn[pathId]);
   }
 };
+
 
 // Create a lookup table for path ids; path ids are indexed by point id
 //
@@ -7567,50 +7638,6 @@ function initPathIds(size, pathSizes) {
     }
   }
   return pathIds;
-}
-
-// Return an array with data for chains of vertices with same x, y coordinates
-// Array contains ids of next point in each chain.
-// Unique vertices link to themselves (i.e. arr[n] == n)
-//
-function initPointChains(xx, yy) {
-  var pointCount = xx.length,
-      // Performance doesn't improve much above ~1.3 * point count
-      hashTableSize = Math.floor(pointCount * 1.4),
-      hash = getXYHash(hashTableSize),
-      // Hash table is temporary storage for building chains of coincident points.
-      // Hash bins contain the id of the first point in a chain.
-      hashTable = new Int32Array(hashTableSize),
-      chainIds = new Int32Array(pointCount), // Array to be filled with chain data
-      key, headId, x, y;
-
-  utils.initializeArray(hashTable, -1);
-
-  for (var i=0; i<pointCount; i++) {
-    x = xx[i];
-    y = yy[i];
-    key = hash(x, y);
-
-    while (true) {
-      headId = hashTable[key];
-      if (headId == -1) {
-        // case -- first coordinate in chain: start new chain, point to self
-        hashTable[key] = i;
-        chainIds[i] = i;
-        break;
-      }
-      if (xx[headId] == x && yy[headId] == y) {
-        // case -- extending a chain: insert new point after head of chain
-        chainIds[i] = chainIds[headId];
-        chainIds[headId] = i;
-        break;
-      }
-      // Current hash location is taken by a different point;
-      // try the next location (linear probing).
-      key = (key + 1) % hashTableSize;
-    }
-  }
-  return chainIds;
 }
 
 MapShaper.replaceArcIds = function(src, replacements) {
