@@ -57,80 +57,60 @@ body {
 	background-color: #014a60;
 }
 
-
-/* disabling themes (need to update button col, etc)
-/*
-.theme1 .dot-underline {
-	border-bottom: 1px dotted #264372;
+.layer-item.active {
+	background-color: #e6f7ff;
 }
 
-.theme1 .colored-text {
-	color: #264372;
-}
-
-.theme1 .page-header {
-	background-color: #6E90BA;
-	background: linear-gradient(to bottom, #6E90BA, #85B3DD);
-}
-
-.theme1 .nav-btn:hover polygon {
-	fill: #35517c;
-}
-
-.theme1 #fork-me {
-	background-image: url("images/fork-me-right-cerulean@2x.png");
-}
-
-.theme1 .dialog-btn {
-	background-color: #5d85b5;
-}
-
-.theme1 .dialog-btn:hover {
-	background-color: #35517c;
-}
-
-.theme1 .mode-btn:hover {
-	background-color: #517293;
-}
-
+/* THEME 2 -- OLIVE */
 
 .theme2 .page-header,
+.theme2 .nav-btn.selected,
 .theme2 .dialog-btn {
-	background-color: #915050;
-}
-
-.theme2 .mode-btn:hover,
-.theme2 .dialog-btn:hover  {
-	background-color: #843030;
+	background-color: #6D7A56;
 }
 
 .theme2 .colored-text {
-	color: #915050;
+	color: #6D7A56;
 }
 
-
-.theme2 .nav-btn polygon {
-	fill: #915050;
+.theme2 .dot-underline {
+	border-bottom: 1px dotted #6D7A56;
 }
+
+.theme2 .nav-btn polygon,
+.theme2 .nav-btn path {
+	fill: #6D7A56;
+}
+
+.theme2 .dialog-btn:hover,
+.theme2 .mode-btn:hover {
+	background-color: #43541d;
+}
+
+.theme2 .layer-item.active {
+	background-color: #eff4e4;
+}
+
+/* THEME 3 -- GREY */
 
 .theme3 .page-header,
 .theme3 .dialog-btn {
-	background-color: #968160;
+	background-color: #8c8c8c;
 }
 
-.theme3 .mode-btn:hover,
-.theme3 .dialog-btn:hover  {
-	background-color: #7c674c;
+.theme3 .nav-btn polygon,
+.theme3 .nav-btn path {
+	fill: #8c8c8c;
 }
 
-.theme3 .colored-text {
-	color: #968160;
+.theme3 .nav-btn.selected {
+	background-color: black;
 }
 
-.theme3 .nav-btn polygon {
-	fill: #968160;
+.theme3 .dialog-btn:hover,
+.theme3 .mode-btn:hover {
+	background-color: #555;
 }
-*/
 
 /* --- Page header --------------- */
 
@@ -357,7 +337,6 @@ div.error-box > div {
 #console {
 	z-index: 30;
 	pointer-events: none;
-	/* background-color: rgba(0,0,0,0.8); */
 	display: none;
 }
 
@@ -481,10 +460,6 @@ body.simplify #layer-control-btn {
 	background: black;
 	color: white;
 	text-decoration: none;
-}
-
-.layer-item.active {
-	background-color: #e6f7ff;
 }
 
 .layer-item:hover:not(.active) {
