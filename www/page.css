@@ -34,7 +34,6 @@ body {
 /* --- Themed elements -------------- */
 
 .page-header,
-.nav-btn.selected,
 .dialog-btn {
 	background-color: #1385b7;
 }
@@ -53,7 +52,7 @@ body {
 
 .dialog-btn:hover,
 .mode-btn:hover {
-	background-color: #004370;
+	background-color: #0F5A84;
 }
 
 .layer-item.active {
@@ -597,7 +596,7 @@ body.simplify #layer-control-btn {
 	display: none;
 	z-index: 20;
 	position: absolute;
-	top: 5px;
+	top: 6px;
 	right: 9px;
 	padding: 2px;
 	background-color: rgba(255, 255, 255, 0.85);
@@ -605,7 +604,7 @@ body.simplify #layer-control-btn {
 
 .nav-btn {
 	cursor:pointer;
-	padding: 4px;
+	padding: 3px;
 	line-height: 1;
 }
 
@@ -619,6 +618,7 @@ body.simplify #layer-control-btn {
 }
 
 .nav-btn.selected {
+	background-color: black;
 	border-radius: 4px;
 }
 
