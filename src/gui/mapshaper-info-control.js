@@ -2,7 +2,7 @@
 
 function InfoControl(model, hit) {
   var _popup = new Popup();
-  var btn = gui.addSidebarButton("#info-icon").on('click', function() {
+  var btn = gui.addSidebarButton("#info-icon2").on('click', function() {
     btn.toggleClass('selected');
     reset();
   });

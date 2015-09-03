@@ -47,8 +47,7 @@ body {
 	border-bottom: 1px dotted #0774a5;
 }
 
-.nav-btn polygon,
-.nav-btn path {
+.nav-btn * {
 	fill: #1385b7;
 }
 
@@ -77,8 +76,7 @@ body {
 	border-bottom: 1px dotted #6D7A56;
 }
 
-.theme2 .nav-btn polygon,
-.theme2 .nav-btn path {
+.theme2 .nav-btn * {
 	fill: #6D7A56;
 }
 
@@ -98,8 +96,7 @@ body {
 	background-color: #8c8c8c;
 }
 
-.theme3 .nav-btn polygon,
-.theme3 .nav-btn path {
+.theme3 .nav-btn * {
 	fill: #8c8c8c;
 }
 
@@ -608,17 +605,16 @@ body.simplify #layer-control-btn {
 
 .nav-btn {
 	cursor:pointer;
-	padding: 4px 3px;
+	padding: 4px;
 	line-height: 1;
 }
 
 
-.nav-btn:hover polygon,
-.nav-btn:hover path  {
+.nav-btn:hover * {
 	fill: black;
 }
 
-.nav-btn.selected path {
+.nav-btn.selected * {
 	fill: white;
 }
 
