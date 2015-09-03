@@ -2683,7 +2683,7 @@ var geom = api.geom = {};
 var cli = api.cli = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.VERSION = '0.3.8';
+MapShaper.VERSION = '0.3.9';
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
@@ -14807,7 +14807,7 @@ function Popup() {
 
 function InfoControl(model, hit) {
   var _popup = new Popup();
-  var btn = gui.addSidebarButton("#info-icon2").on('click', function() {
+  var btn = gui.addSidebarButton("#info-icon").on('click', function() {
     btn.toggleClass('selected');
     reset();
   });
