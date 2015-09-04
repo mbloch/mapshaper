@@ -118,7 +118,7 @@ function MshpMap(model) {
         needReset = false;
     if (!group) {
       group = addGroup(e.dataset);
-    } else if (e.flags.presimplify || e.flags.simplify || e.flags.proj || e.flags.arc_count) {
+    } else if (arcsMayHaveChanged(e.flags)) {
       // update filtered arcs when simplification thresholds are calculated
       // or arcs are updated
       if (e.flags.proj && e.dataset.arcs) {
@@ -161,6 +161,13 @@ function MshpMap(model) {
     _activeGroup.setRetainedPct(pct);
     refreshLayers();
   };
+
+  // Test if an update may have affected the visible shape of arcs
+  // @flags Flags from update event
+  function arcsMayHaveChanged(flags) {
+    return flags.presimplify || flags.simplify || flags.proj ||
+        flags.arc_count || flags.repair;
+  }
 
   function updateArcStyle(style, group) {
     var lyr = group.getLayer(),
