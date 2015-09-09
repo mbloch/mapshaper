@@ -16,6 +16,10 @@ gui.inputParsers = {
       val = false;
     }
     return val;
+  },
+  multiple: function(raw) {
+    var val = Number(raw);
+    return isNaN(val) ? raw : val;
   }
 };
 
@@ -58,15 +62,21 @@ function Popup() {
   }
 
   function renderRow(table, rec, key, types) {
-    var isNum = utils.isNumber(rec[key]),
-        className = isNum ? 'num-field' : 'str-field',
-        el = El('tr').appendTo(table);
-    el.html(utils.format('<td class="field-name">%s</td><td><span class="value %s">%s</span> </td>',
-          key, className, utils.htmlEscape(rec[key])));
-
-    if (types && types[key]) {
-      editItem(el.findChild('.value'), rec, key, types[key]);
+    var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
+    var val = rec[key];
+    var cell = El('tr')
+        .appendTo(table)
+        .html(utils.format(rowHtml, key, utils.htmlEscape(val)))
+        .findChild('.value');
+    setFieldClass(cell, val);
+    if (types) {
+      editItem(cell, rec, key, types[key] || 'multiple');
     }
+  }
+
+  function setFieldClass(el, val) {
+    var isNum = utils.isNumber(val);
+    el.classed('num-field', isNum);
   }
 
   function editItem(el, rec, key, type) {
@@ -79,10 +89,12 @@ function Popup() {
       var strval2 = input.value(),
           val2 = parser(strval2);
       if (val2 === null) {
+        // invalid value; revert to previous value
         input.value(strval);
       } else {
         strval = strval2;
         rec[key] = val2;
+        setFieldClass(el, val2);
       }
     });
   }
