@@ -68,8 +68,9 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
   }
 
   function nextPoint(id) {
-    var partId = pathIds[id];
-    if (pathIds[id+1] === partId) {
+    var partId = pathIds[id],
+        nextId = id + 1;
+    if (nextId < pointCount && pathIds[nextId] === partId) {
       return id + 1;
     }
     var len = nn[partId];
@@ -77,8 +78,9 @@ MapShaper.buildPathTopology = function(nn, xx, yy) {
   }
 
   function prevPoint(id) {
-    var partId = pathIds[id];
-    if (pathIds[id - 1] === partId) {
+    var partId = pathIds[id],
+        prevId = id - 1;
+    if (prevId >= 0 && pathIds[prevId] === partId) {
       return id - 1;
     }
     var len = nn[partId];
