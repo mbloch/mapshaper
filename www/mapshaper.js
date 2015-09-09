@@ -12067,10 +12067,14 @@ MapShaper.getOptionParser = function() {
     //.option("x0", {type: "number"})
     //.option("y0", {type: "number"})
     .validate(function(cmd) {
-      if (cmd._.length != 1) {
-        error("Command requires a projection name");
+      var name = cmd._[0];
+      if (!name) {
+        error("Missing a projection name");
       }
-      cmd.options.projection = cmd._[0];
+      if (cmd._.length > 1) {
+        error("Received one or more unknown projection parameters");
+      }
+      cmd.options.projection = name;
     });
 
   parser.command("calc")
