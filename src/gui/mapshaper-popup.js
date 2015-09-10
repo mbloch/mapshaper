@@ -1,33 +1,15 @@
 /* @requires mapshaper-gui-lib */
 
-gui.inputParsers = {
-  string: function(raw) {
-    return raw;
-  },
-  number: function(raw) {
-    var val = Number(raw);
-    return isNaN(val) ? null : val;
-  },
-  boolean: function(raw) {
-    var val = null;
-    if (raw == 'true') {
-      val = true;
-    } else if (raw == 'false') {
-      val = false;
-    }
-    return val;
-  }
-};
 
 function Popup() {
   var parent = El('#mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
   var content = El('div').addClass('popup-content').appendTo(el);
 
-  this.show = function(rec, types) {
+  this.show = function(rec, table, editable) {
     var maxHeight = parent.node().clientHeight - 36;
     this.hide(); // clean up if panel is already open
-    render(content, rec, types);
+    render(content, rec, table, editable);
     el.show();
     if (content.node().clientHeight > maxHeight) {
       content.css('height:' + maxHeight + 'px');
@@ -43,47 +25,121 @@ function Popup() {
     el.hide();
   };
 
-  function render(el, rec, types) {
-    var table = El('table'),
+  function render(el, rec, table, editable) {
+    var tableEl = El('table'),
         rows = 0;
     utils.forEachProperty(rec, function(v, k) {
-      renderRow(table, rec, k, types);
+      var type = MapShaper.getFieldType(v, k, table);
+      renderRow(tableEl, rec, k, type, editable);
       rows++;
     });
     if (rows > 0) {
-      table.appendTo(el);
+      tableEl.appendTo(el);
     } else {
       el.html('<div class="note">This layer is missing attribute data.</div>');
     }
   }
 
-  function renderRow(table, rec, key, types) {
-    var isNum = utils.isNumber(rec[key]),
-        className = isNum ? 'num-field' : 'str-field',
-        el = El('tr').appendTo(table);
-    el.html(utils.format('<td class="field-name">%s</td><td><span class="value %s">%s</span> </td>',
-          key, className, utils.htmlEscape(rec[key])));
-
-    if (types && types[key]) {
-      editItem(el.findChild('.value'), rec, key, types[key]);
+  function renderRow(table, rec, key, type, editable) {
+    var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
+    var val = rec[key];
+    var cell = El('tr')
+        .appendTo(table)
+        .html(utils.format(rowHtml, key, utils.htmlEscape(val)))
+        .findChild('.value');
+    setFieldClass(cell, val, type);
+    if (editable) {
+      editItem(cell, rec, key, type);
     }
+  }
+
+  function setFieldClass(el, val, type) {
+    var isNum = type ? type == 'number' : utils.isNumber(val);
+    var isNully = val === undefined || val === null || val !== val;
+    var isEmpty = val === '';
+    el.classed('num-field', isNum);
+    el.classed('null-value', isNully);
+    el.classed('empty', isEmpty);
   }
 
   function editItem(el, rec, key, type) {
     var input = new ClickText2(el),
         strval = input.value(),
-        parser = gui.inputParsers[type] || error("Unsupported type:", type);
+        parser = MapShaper.getInputParser(type);
     el.parent().addClass('editable-cell');
     el.addClass('colored-text dot-underline');
     input.on('change', function(e) {
       var strval2 = input.value(),
           val2 = parser(strval2);
-      if (val2 === null) {
+      if (strval == strval2) {
+        // contents unchanged ('change' event seems to fire on blur, regardless)
+      } else if (val2 === null) {
+        // invalid value; revert to previous value
         input.value(strval);
       } else {
         strval = strval2;
         rec[key] = val2;
+        setFieldClass(el, val2, type);
       }
     });
   }
 }
+
+MapShaper.inputParsers = {
+  string: function(raw) {
+    return raw;
+  },
+  number: function(raw) {
+    var val = Number(raw);
+    if (raw == 'NaN') {
+      val = NaN;
+    } else if (isNaN(val)) {
+      val = null;
+    }
+    return val;
+  },
+  boolean: function(raw) {
+    var val = null;
+    if (raw == 'true') {
+      val = true;
+    } else if (raw == 'false') {
+      val = false;
+    }
+    return val;
+  },
+  multiple: function(raw) {
+    var val = Number(raw);
+    return isNaN(val) ? raw : val;
+  }
+};
+
+MapShaper.getInputParser = function(type) {
+  return MapShaper.inputParsers[type || 'multiple'];
+};
+
+MapShaper.getValueType = function(val) {
+  var type = null;
+  if (utils.isString(val)) {
+    type = 'string';
+  } else if (utils.isNumber(val)) {
+    type = 'number';
+  } else if (utils.isBoolean(val)) {
+    type = 'boolean';
+  }
+  return type;
+};
+
+MapShaper.getColumnType = function(key, table) {
+  var records = table.getRecords(),
+      type = null;
+  for (var i=0, n=records.length; i<n; i++) {
+    type = MapShaper.getValueType(records[i][key]);
+    if (type) break;
+  }
+  return type;
+};
+
+MapShaper.getFieldType = function(val, key, table) {
+  // if a field has a null value, look at entire column to indentify type
+  return MapShaper.getValueType(val) || MapShaper.getColumnType(key, table);
+};

@@ -536,13 +536,22 @@ body.simplify #layer-control-btn {
 	font-style: italic;
 }
 
+.popup .empty {
+	min-width: 4px;
+	min-height: 10px;
+	display: inline-block;
+}
+
+.popup .null-value {
+	color: #aaa;
+}
+
 .popup .note {
 	font-style: italic;
 	text-align: right;
 }
 
 .popup .value {
-	min-width: 2px;
 	outline: none;
 	word-wrap: break-word;
 }
