@@ -76,7 +76,11 @@ function Popup() {
 
   function setFieldClass(el, val) {
     var isNum = utils.isNumber(val);
+    var isNully = val === undefined || val === null || val !== val;
+    var isEmpty = val === '';
     el.classed('num-field', isNum);
+    el.classed('null-value', isNully);
+    el.classed('empty', isEmpty);
   }
 
   function editItem(el, rec, key, type) {
