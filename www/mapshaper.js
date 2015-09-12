@@ -14784,21 +14784,23 @@ function Popup() {
 
   function editItem(el, rec, key, type) {
     var input = new ClickText2(el),
-        strval = input.value(),
+        strval = String(rec[key]),
         parser = MapShaper.getInputParser(type);
     el.parent().addClass('editable-cell');
     el.addClass('colored-text dot-underline');
     input.on('change', function(e) {
-      var strval2 = input.value(),
-          val2 = parser(strval2);
+      var val2 = parser(input.value()),
+          strval2 = String(val2);
       if (strval == strval2) {
-        // contents unchanged ('change' event seems to fire on blur, regardless)
+        // contents unchanged
       } else if (val2 === null) {
         // invalid value; revert to previous value
         input.value(strval);
       } else {
+        // field content has changed;
         strval = strval2;
         rec[key] = val2;
+        input.value(strval);
         setFieldClass(el, val2, type);
       }
     });
