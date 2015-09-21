@@ -2690,40 +2690,23 @@ function ArcCollection() {
   }
 
   this.dedupCoords = function() {
-    var n, n2, arcLen,
-        i = 0, i2 = 0,
-        zz = _zz;
-    for (var arcId=0, size = _nn.length; arcId < size; arcId++) {
+    var arcId = 0, i = 0, i2 = 0,
+        arcCount = this.size(),
+        zz = _zz,
+        arcLen, arcLen2;
+    while (arcId < arcCount) {
       arcLen = _nn[arcId];
-      n = 0;
-      n2 = 0;
-      while (n < arcLen) {
-        if (n === 0 || _xx[i] != _xx[i-1] || _yy[i] != _yy[i-1]) {
-          if (i != i2) {
-            _xx[i2] = _xx[i];
-            _yy[i2] = _yy[i];
-            if (zz) zz[i2] = zz[i];
-          }
-          n2++;
-          i2++;
-        }
-        i++;
-        n++;
-      }
-      if (n2 == 1) {
-        _nn[arcId] = 0;
-        i2--;
-      } else {
-        _nn[arcId] = n2;
-      }
-      // if (n2 == 1) console.log(arcId)
+      arcLen2 = MapShaper.dedupArcCoords(i, i2, arcLen, _xx, _yy, zz);
+      _nn[arcId] = arcLen2;
+      i += arcLen;
+      i2 += arcLen2;
+      arcId++;
     }
-    var dupes = i - i2;
-    if (dupes > 0) {
+    if (i > i2) {
       initXYData(_nn, _xx.subarray(0, i2), _yy.subarray(0, i2));
-      initZData(zz);
+      if (zz) initZData(zz.subarray(0, i2));
     }
-    return dupes;
+    return i - i2;
   };
 
   this.getVertex = function(arcId, nth) {
@@ -3015,6 +2998,23 @@ ArcCollection.prototype.inspect = function() {
   return str;
 };
 
+MapShaper.dedupArcCoords = function(src, dest, arcLen, xx, yy, zz) {
+  var n = 0, n2 = 0; // counters
+  while (n < arcLen) {
+    if (n === 0 || xx[src] != xx[src-1] || yy[src] != yy[src-1]) {
+      xx[dest] = xx[src];
+      yy[dest] = yy[src];
+      if (zz) zz[dest] = zz[src];
+      dest++;
+      n2++;
+    } else if (n > 0 && zz && zz[src] > zz[dest]) {
+      zz[dest-1] = zz[src];
+    }
+    src++;
+    n++;
+  }
+  return n2 > 1 ? n2 : 0;
+};
 
 
 
@@ -9812,11 +9812,12 @@ MapShaper.exportShpRecord = function(data, id, shpType) {
 
 
 
-// Return a copy of a dataset with all coordinates rounded
+// Return a copy of a dataset with all coordinates rounded without modifying
+// the original dataset
 //
 MapShaper.setCoordinatePrecision = function(dataset, precision) {
   var round = geom.getRoundingFunction(precision),
-      d2 = MapShaper.copyDataset(dataset),
+      d2 = MapShaper.copyDataset(dataset), // copies arc data
       dissolvePolygon, nodes;
 
   if (d2.arcs) {

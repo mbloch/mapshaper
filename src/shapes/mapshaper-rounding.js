@@ -1,10 +1,11 @@
 /* @require mapshaper-geom, mapshaper-shapes, mapshaper-dissolve2 */
 
-// Return a copy of a dataset with all coordinates rounded
+// Return a copy of a dataset with all coordinates rounded without modifying
+// the original dataset
 //
 MapShaper.setCoordinatePrecision = function(dataset, precision) {
   var round = geom.getRoundingFunction(precision),
-      d2 = MapShaper.copyDataset(dataset),
+      d2 = MapShaper.copyDataset(dataset), // copies arc data
       dissolvePolygon, nodes;
 
   if (d2.arcs) {

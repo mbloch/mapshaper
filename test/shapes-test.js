@@ -38,6 +38,27 @@ var arcs5 = [];
 describe('mapshaper-shapes.js', function () {
   describe('ArcCollection', function () {
 
+    describe('dedupCoords()', function () {
+      it('collapsed arcs get zeroed out', function () {
+        var xy = [[[1, 1], [1, 1], [1, 1]], [[2, 1], [2, 2]]];
+        var arcs = new ArcCollection(xy);
+        arcs.dedupCoords();
+        assert.deepEqual(arcs.toArray(), [[], [[2, 1], [2, 2]]]);
+        assert.equal(arcs.getPointCount(), 2);
+      });
+
+      it('threshold data is preserved; largest thresholds are retained', function() {
+        var xy = [[[1, 1], [1, 1], [2, 2], [2, 2], [3, 3], [3, 3], [4, 4], [4, 4]]];
+        var zz = [Infinity, 4, 5, 6, 4, 3, 2, Infinity];
+        var arcs = new ArcCollection(xy);
+        arcs.setThresholds(zz);
+        arcs.dedupCoords();
+        var zz2 = [].slice.call(arcs.getVertexData().zz);
+        assert.deepEqual(zz2, [Infinity, 6, 4, Infinity]);
+        assert.deepEqual(arcs.toArray(), [[[1, 1], [2, 2], [3, 3], [4, 4]]])
+      })
+    })
+
     it("accepts arcs with length == 0", function() {
       var arcs = new api.internal.ArcCollection(
           new Uint32Array([0, 3]),
