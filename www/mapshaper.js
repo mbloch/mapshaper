@@ -3436,7 +3436,8 @@ var SimplifyControl = function(model) {
   var control = new EventDispatcher();
   var _value = 1;
   var el = El('#simplify-control-wrapper');
-  var menu = El('#simplify-options').on('click', gui.handleDirectEvent(model.clearMode));
+  var planarCheckbox = El('#planar-opt');
+  var menu = El('#simplify-options');
   var slider, text;
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
@@ -3446,6 +3447,9 @@ var SimplifyControl = function(model) {
   model.on('select', function() {
     if (model.getMode() == 'simplify') model.clearMode();
   });
+
+  // exit simplify mode when user clicks off the visible part of the menu
+  menu.on('click', gui.handleDirectEvent(model.clearMode));
 
   slider = new Slider("#simplify-control .slider");
   slider.handle("#simplify-control .handle");
@@ -3499,8 +3503,14 @@ var SimplifyControl = function(model) {
       showSlider(); // need to show slider before setting; TODO: fix
       control.value(target.dataset.arcs.getRetainedPct());
     } else {
-      menu.show();
+      showMenu(!target.dataset.arcs.isPlanar());
     }
+  }
+
+  function showMenu(spherical) {
+    El('#planar-opt-wrapper').node().style.display = spherical ? 'block' : 'none';
+    planarCheckbox.node().checked = false;
+    menu.show();
   }
 
   function turnOff() {
@@ -3541,7 +3551,8 @@ var SimplifyControl = function(model) {
     var method = El('#simplify-options input[name=method]:checked').attr('value') || null;
     return {
       method: method,
-      keep_shapes: !!El("#import-retain-opt").node().checked
+      keep_shapes: !!El("#import-retain-opt").node().checked,
+      cartesian: !!planarCheckbox.node().checked
     };
   }
 
