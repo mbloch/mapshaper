@@ -56,22 +56,23 @@ Visvalingam.getArcCalculator = function(metric, is3D) {
       if (val === Infinity) {
         break;
       }
-      if (val >= maxVal === false) {
-        error("[visvalingam] Values should increase, but:", maxVal, val);
+      if (val < maxVal) {
+        // don't assign current point a lesser value than the last removed vertex
+        kk[c] = maxVal;
+      } else {
+        maxVal = val;
       }
-      maxVal = val;
 
       // Recompute effective area of neighbors of the removed point.
       b = prevArr[c];
       d = nextArr[c];
       if (b > 0) {
         val = calc(prevArr[b], b, d, xx, yy, zz);
-        // don't give updated values a lesser value than the last popped vertex
-        heap.updateValue(b, Math.max(maxVal, val));
+        heap.updateValue(b, val);
       }
       if (d < arcLen-1) {
         val = calc(b, d, nextArr[d], xx, yy, zz);
-        heap.updateValue(d, Math.max(maxVal, val));
+        heap.updateValue(d, val);
       }
       nextArr[b] = d;
       prevArr[d] = b;

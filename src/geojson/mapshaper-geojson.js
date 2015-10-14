@@ -249,7 +249,7 @@ MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
       obj.id = ids[i];
     }
     str = stringify(obj);
-    return memo === "" ? str : memo + ",\n" + str;
+    return memo === "" ? str : memo + (",\n" + str);
   }, "");
 
   return stringify(output).replace(/[\t ]*"\$"[\t ]*/, objects);
