@@ -180,18 +180,26 @@ function Console(model) {
     input.node().textContent = str.trim();
   }
 
+  function peekHistory(i) {
+    var idx = history.length - 1 - (i || 0);
+    return idx >= 0 ? history[idx] : null;
+  }
+
   function toHistory(str) {
-    // truncate history, if we're behind the head
-    if (historyId > 0) {
-      history.splice(-historyId, historyId);
-      historyId = 0;
+    if (historyId > 0) { // if we're back in the history stack
+      if (peekHistory() === '') {
+        // remove empty string (which may have been appended when user started going back)
+        history.pop();
+      }
+      historyId = 0; // move back to the top of the stack
     }
-    history.push(str);
+    if (str && str != peekHistory()) {
+      history.push(str);
+    }
   }
 
   function fromHistory() {
-    var i = history.length - historyId - 1;
-    toCommandLine(history[i]);
+    toCommandLine(peekHistory(historyId));
   }
 
   function back() {
