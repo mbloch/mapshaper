@@ -10489,7 +10489,7 @@ function FeatureExpressionContext(lyr, arcs) {
       hasPaths = arcs && MapShaper.layerHasPaths(lyr),
       _isPlanar,
       _self = this,
-      _centroid, _innerXY,
+      _centroid, _innerXY, _xy,
       _record, _records,
       _id, _ids, _bounds;
 
@@ -10576,6 +10576,17 @@ function FeatureExpressionContext(lyr, arcs) {
       }, get: function() {
         return lyr.shapes[_id] || null;
       }});
+
+    addGetters(this, {
+      x: function() {
+        xy();
+        return _xy ? _xy[0] : null;
+      },
+      y: function() {
+        xy();
+        return _xy ? _xy[1] : null;
+      }
+    });
   }
 
   // all contexts have $.id
@@ -10589,10 +10600,21 @@ function FeatureExpressionContext(lyr, arcs) {
       _innerXY = null;
       _ids = lyr.shapes[id];
     }
+    if (hasPoints) {
+      _xy = null;
+    }
     if (hasData) {
       _record = _records[id];
     }
   };
+
+  function xy() {
+    var shape = lyr.shapes[_id];
+    if (!_xy) {
+      _xy = shape && shape[0] || null;
+    }
+    return _xy;
+  }
 
   function centroid() {
     _centroid = _centroid || geom.getShapeCentroid(_ids, arcs);

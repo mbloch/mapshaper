@@ -132,6 +132,15 @@ describe('mapshaper-each-calc.js', function () {
     })
 
     describe('Point geometry', function() {
+      it ('x and y getters are implemented', function() {
+        var lyr = {
+          geometry_type: 'point',
+          shapes: [[[0, 1]], [[2, 3], [3, 4]], null]
+        };
+        api.evaluateEachFeature(lyr, null, "x=$.x, y=$.y");
+        assert.deepEqual(lyr.data.getRecords(), [{x: 0, y: 1}, {x: 2, y: 3}, {x: null, y: null}]);
+      })
+
       it ('point coords are exposed', function() {
         var lyr = {
           geometry_type: 'point',
