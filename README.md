@@ -32,9 +32,9 @@ All processing is done in the browser, so your data stays private, even when usi
 
 ### Installation
 
-Mapshaper requires [Node.js](http://nodejs.org/download/) or [io.js](https://iojs.org).
+Mapshaper requires [Node.js](http://nodejs.org).
 
-With Node or io.js installed, you can install the latest release version of mapshaper using npm. Install with the "-g" flag to make the executable scripts available systemwide.
+With Node installed, you can install the latest release version of mapshaper using npm. Install with the "-g" flag to make the executable scripts available systemwide.
 
 ```bash
 npm install -g mapshaper
