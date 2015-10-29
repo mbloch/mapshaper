@@ -10,8 +10,10 @@ require("catty")({follow: follow})
 
 function onCat(err, js) {
 	var tmp = "./mapshaper-gui.js";
-	require('fs').writeFileSync(tmp, js);
-	require('browserify')(tmp).bundle(write);
+	if (!err) {
+		require('fs').writeFileSync(tmp, js);
+		require('browserify')(tmp).bundle(write);		
+	}
 }
 
 function write(err, buf) {

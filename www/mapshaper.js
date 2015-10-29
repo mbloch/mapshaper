@@ -3647,7 +3647,7 @@ MapShaper.printEncodings = function() {
 };
 
 
-﻿
+
 
 // Try to detect the encoding of some sample text.
 // Returns an encoding name or null.

@@ -28,7 +28,7 @@
 		"shell-quote": "~1.4.1",
 		"mocha": ">=2.1.0",
 		"deep-eql": ">=0.1.3",
-		"catty": "0.0.4",
+		"catty": "0.0.5",
 		"browserify": "~10.2.4"
 	},
 	"bin": {
