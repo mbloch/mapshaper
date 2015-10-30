@@ -68,8 +68,8 @@ function validateSimplifyOpts(cmd) {
     }
   }
 
-  if (isNaN(o.interval) && isNaN(o.pct)) {
-    error("Command requires an interval or pct");
+  if (isNaN(o.interval) && isNaN(o.pct) && !o.resolution) {
+    error("Command requires an interval, pct or resolution parameter");
   }
 }
 

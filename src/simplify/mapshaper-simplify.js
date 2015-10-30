@@ -15,8 +15,10 @@ api.simplify = function(arcs, opts) {
     arcs.setRetainedPct(opts.pct);
   } else if (utils.isNumber(opts.interval)) {
     arcs.setRetainedInterval(opts.interval);
+  } else if (opts.resolution) {
+    arcs.setRetainedInterval(MapShaper.calcSimplifyInterval(arcs, opts));
   } else {
-    stop("[simplify] missing pct or interval parameter");
+    stop("[simplify] missing pct, interval or resolution parameter");
   }
   T.stop("Calculate simplification");
 
@@ -25,10 +27,14 @@ api.simplify = function(arcs, opts) {
   }
 };
 
+MapShaper.useSphericalSimplify = function(arcs, opts) {
+  return !opts.cartesian && !arcs.isPlanar();
+};
+
 // Calculate simplification thresholds for each vertex of an arc collection
 // (modifies @arcs ArcCollection in-place)
 MapShaper.simplifyPaths = function(arcs, opts) {
-  var use3D = !opts.cartesian && !arcs.isPlanar();
+  var use3D = MapShaper.useSphericalSimplify(arcs, opts);
   var simplifyPath = MapShaper.getSimplifyFunction(opts, use3D);
   arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
   if (use3D) {
@@ -109,4 +115,56 @@ MapShaper.findMaxThreshold = function(zz) {
     }
   }
   return maxZ;
+};
+
+MapShaper.parseSimplifyResolution = function(raw) {
+  var parts, w, h;
+  if (utils.isNumber(raw)) {
+    w = raw;
+    h = raw;
+  }
+  else if (utils.isString(raw)) {
+    parts = raw.split('x');
+    w = Number(parts[0]) || 0;
+    h = parts.length == 2 ? Number(parts[1]) || 0 : w;
+  }
+  if (!(w >= 0 && h >= 0 && w + h > 0)) {
+    stop("Invalid simplify resolution:", raw);
+  }
+  return [w, h]; // TODO: validate;
+};
+
+MapShaper.calcPlanarInterval = function(xres, yres, width, height) {
+  var fitWidth = xres !== 0 && width / height > xres / yres || yres === 0;
+  return fitWidth ? width / xres : height / yres;
+};
+
+// Calculate a simplification interval for unprojected data, given an output resolution
+// (This is approximate, since we don't know how the data will be projected for display)
+MapShaper.calcSphericalInterval = function(xres, yres, bounds) {
+  // Using length of arc along parallel through center of bbox as content width
+  // TODO: consider using great circle instead of parallel arc to calculate width
+  //    (doesn't work if width of bbox is greater than 180deg)
+  var width = bounds.width() * geom.D2R * geom.R * Math.cos(bounds.centerY() * geom.D2R);
+  var height = geom.greatCircleDistance(0, bounds.ymin, 0, bounds.ymax);
+  return MapShaper.calcPlanarInterval(xres, yres, width, height);
+};
+
+MapShaper.calcSimplifyInterval = function(arcs, opts) {
+  var res, interval, bounds;
+  if (opts.interval) {
+    interval = opts.interval;
+  } else if (opts.resolution) {
+    res = MapShaper.parseSimplifyResolution(opts.resolution);
+    bounds = arcs.getBounds();
+    if (MapShaper.useSphericalSimplify(arcs, opts)) {
+      interval = MapShaper.calcSphericalInterval(res[0], res[1], bounds);
+    } else {
+      interval = MapShaper.calcPlanarInterval(res[0], res[1], bounds.width(), bounds.height());
+    }
+    // scale interval to double the resolution (single-pixel resolution creates
+    //  visible artefacts)
+    interval *= 0.5;
+  }
+  return interval;
 };

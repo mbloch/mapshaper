@@ -31,6 +31,7 @@ api.stitch = function(dataset) {
   });
 };
 
+// TODO: test with 'wrapped' datasets
 MapShaper.findEdgeArcs = function(arcs) {
   var bbox = MapShaper.getWorldBounds(),
       ids = [];

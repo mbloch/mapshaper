@@ -1,5 +1,8 @@
 /* @requires mapshaper-common */
 
+var R = 6378137;
+var D2R = Math.PI / 180;
+
 function distance3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
     dy = ay - by,
@@ -195,7 +198,7 @@ function signedAngleSph(alng, alat, blng, blat, clng, clat) {
 //
 function convLngLatToSph(xsrc, ysrc, xbuf, ybuf, zbuf) {
   var deg2rad = Math.PI / 180,
-      r = 6378137;
+      r = R;
   for (var i=0, len=xsrc.length; i<len; i++) {
     var lng = xsrc[i] * deg2rad,
         lat = ysrc[i] * deg2rad,
@@ -204,6 +207,25 @@ function convLngLatToSph(xsrc, ysrc, xbuf, ybuf, zbuf) {
     ybuf[i] = Math.sin(lng) * cosLat * r;
     zbuf[i] = Math.sin(lat) * r;
   }
+}
+
+// Haversine formula (well conditioned at small distances)
+function sphericalDistance(lam1, phi1, lam2, phi2) {
+  var dlam = lam2 - lam1,
+      dphi = phi2 - phi1,
+      a = Math.sin(dphi / 2) * Math.sin(dphi / 2) +
+          Math.cos(phi1) * Math.cos(phi2) *
+          Math.sin(dlam / 2) * Math.sin(dlam / 2),
+      c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return c;
+}
+
+// Receive: coords in decimal degrees;
+// Return: distance in meters on spherical earth
+function greatCircleDistance(lng1, lat1, lng2, lat2) {
+  var D2R = Math.PI / 180,
+      dist = sphericalDistance(lng1 * D2R, lat1 * D2R, lng2 * D2R, lat2 * D2R);
+  return dist * R;
 }
 
 // TODO: make this safe for small angles
@@ -358,6 +380,8 @@ function boundsArea(b) {
 
 // export functions so they can be tested
 utils.extend(geom, {
+  R: R,
+  D2R: D2R,
   getRoundingFunction: getRoundingFunction,
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,
@@ -368,6 +392,8 @@ utils.extend(geom, {
   signedAngleSph: signedAngleSph,
   standardAngle: standardAngle,
   convLngLatToSph: convLngLatToSph,
+  sphericalDistance: sphericalDistance,
+  greatCircleDistance: greatCircleDistance,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,

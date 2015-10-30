@@ -10,6 +10,13 @@ function equalAngles(a, b) {
   }
 }
 
+function aboutEqual(a, b) {
+  var d = Math.abs(a - b);
+  if (isNaN(d) || d > 1e-12) {
+    assert.equal(a, b);
+  }
+}
+
 function equalBearings(a, b) {
   equalAngles(geom.standardAngle(a), geom.standardAngle(b));
 }
@@ -35,6 +42,24 @@ describe("mapshaper-geom.js", function() {
     it('bearing to s pole is PI', function () {
       equalBearings(geom.bearing(90, 0, 90, -90), Math.PI)
       equalBearings(geom.bearing(90, 70, 20, -90), Math.PI)
+    })
+  })
+
+  describe('sphericalDistance()', function () {
+    var PI = Math.PI,
+        halfPI = PI / 2;
+    it('antipodal distance is PI', function () {
+      aboutEqual(geom.sphericalDistance(0, PI/2, 0, -PI/2), PI);
+      aboutEqual(geom.sphericalDistance(-PI, PI/2, PI, -PI/2), PI);
+      aboutEqual(geom.sphericalDistance(-PI, 0, 0, 0), PI);
+      aboutEqual(geom.sphericalDistance(0, 0, PI, 0), PI);
+      aboutEqual(geom.sphericalDistance(0, 0, -PI, 0), PI);
+      aboutEqual(geom.sphericalDistance(PI/2, PI/4, -PI/2, -PI/4), PI);
+    })
+
+    it('quarter arc distance is half PI', function() {
+        aboutEqual(geom.sphericalDistance(0, PI/2, 0, 0), halfPI);
+        aboutEqual(geom.sphericalDistance(0, 0, PI/2, 0), halfPI);
     })
   })
 

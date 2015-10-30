@@ -2,7 +2,6 @@ var assert = require('assert'),
     api = require("../"),
     utils = api.utils;
 
-
 function coordBuffersEqual(a, b) {
   var precision = 1e-9,
       bufLen = a.length;
@@ -18,6 +17,70 @@ function coordBuffersEqual(a, b) {
 }
 
 describe("mapshaper-simplify.js", function() {
+
+  describe('calcPlanarInterval()', function () {
+    it('constrained by content width if content is relatively wide', function () {
+      var interval = api.internal.calcPlanarInterval(100, 300, 2000, 1000);
+      assert.equal(interval, 20);
+    })
+    it('constrained by content height if content is relatively tall', function () {
+      var interval = api.internal.calcPlanarInterval(300, 100, 1000, 2000);
+      assert.equal(interval, 20);
+    })
+    it('constrained by content width if height resolution is 0', function () {
+      var interval = api.internal.calcPlanarInterval(100, 0, 2000, 1000);
+      assert.equal(interval, 20);
+    })
+    it('constrained by content height if width resolution is 0', function () {
+      var interval = api.internal.calcPlanarInterval(0, 100, 2000, 1000);
+      assert.equal(interval, 10);
+    })
+  })
+
+  describe('calcSphericalInterval()', function () {
+    it('world layer uses length of equator in meters when width constrained', function () {
+      var bounds = new api.internal.Bounds([-180,-90,180,90]);
+      var interval = api.internal.calcSphericalInterval(1000, 1000, bounds);
+      var target = api.geom.R * 2 * Math.PI / 1000;
+      assert.equal(interval, target);
+    })
+    it('world layer uses length of meridian in meters when height constrained', function () {
+      var bounds = new api.internal.Bounds([-180,-90,180,90]);
+      var interval = api.internal.calcSphericalInterval(3000, 1000, bounds);
+      var target = api.geom.R * Math.PI / 1000;
+      assert.equal(interval, target);
+    })
+  })
+
+  describe('parseSimplifyResolution()', function () {
+    it('parse grid', function () {
+      assert.deepEqual(api.internal.parseSimplifyResolution('100x200'), [100, 200]);
+    })
+    it('parse partial grid', function () {
+      assert.deepEqual(api.internal.parseSimplifyResolution('x200'), [0, 200]);
+      assert.deepEqual(api.internal.parseSimplifyResolution('100x'), [100, 0]);
+    })
+    it('accept number', function() {
+      assert.deepEqual(api.internal.parseSimplifyResolution(1000), [1000, 1000]);
+    })
+    it('accept numeric string', function() {
+      assert.deepEqual(api.internal.parseSimplifyResolution('1e4'), [10000, 10000]);
+    })
+    it('reject negative numbers', function() {
+      assert.throws(function() {
+        api.internal.parseSimplifyResolution('-200');
+      });
+      assert.throws(function() {
+        api.internal.parseSimplifyResolution('-200x200');
+      });
+      assert.throws(function() {
+        api.internal.parseSimplifyResolution('-200x');
+      });
+      assert.throws(function() {
+        api.internal.parseSimplifyResolution('x-200');
+      });
+    })
+  })
 
   describe("convLngLatToSph()", function() {
     var xbuf, ybuf, zbuf,

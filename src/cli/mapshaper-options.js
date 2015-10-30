@@ -201,9 +201,12 @@ MapShaper.getOptionParser = function() {
     })
     .option("weight-scale", {type: "number"})
     .option("weight-shift", {type: "number"})
+    .option("resolution", {
+      describe: "output resolution as a grid (e.g. 1000x500)"
+    })
     .option("interval", {
       // alias: "i",
-      describe: "target resolution in linear units (alternative to %)",
+      describe: "output resolution as a distance (e.g. 100)",
       type: "number"
     })
     .option("cartesian", {

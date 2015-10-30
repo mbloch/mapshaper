@@ -624,7 +624,6 @@ function ArcCollection() {
   };
 
   this.getBounds = function() {
-
     return _allBounds;
   };
 
