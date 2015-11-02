@@ -62,7 +62,6 @@ MapShaper.filterIslands = function(lyr, arcs, ringTest) {
   return removed;
 };
 
-
 MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
   for (var i=0, n=ring.length; i<n; i++) {
     if (arcs.arcIntersectsBBox(absArcId(ring[i]), bbox)) {

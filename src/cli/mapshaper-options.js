@@ -325,6 +325,22 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
+  parser.command("filter-slivers")
+    // .describe("remove small polygon rings")
+    .validate(validateExpressionOpts)
+
+    .option("min-area", {
+      type: "number",
+      describe: "remove small-area rings (source units)"
+    })
+    /*
+    .option("remove-empty", {
+      type: "flag",
+      describe: "delete features with null geometry"
+    })
+    */
+    .option("target", targetOpt);
+
   parser.command("filter-fields")
     .describe('filter and optionally rename data fields')
     .validate(validateFilterFieldsOpts)

@@ -11920,6 +11920,22 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
+  parser.command("filter-slivers")
+    // .describe("remove small polygon rings")
+    .validate(validateExpressionOpts)
+
+    .option("min-area", {
+      type: "number",
+      describe: "remove small-area rings (source units)"
+    })
+    /*
+    .option("remove-empty", {
+      type: "flag",
+      describe: "delete features with null geometry"
+    })
+    */
+    .option("target", targetOpt);
+
   parser.command("filter-fields")
     .describe('filter and optionally rename data fields')
     .validate(validateFilterFieldsOpts)
@@ -16163,157 +16179,6 @@ MapShaper.clipPoints = function(points, clipShapes, arcs, type) {
 
 
 
-api.clipLayers = function(target, src, dataset, opts) {
-  return MapShaper.clipLayers(target, src, dataset, "clip", opts);
-};
-
-api.eraseLayers = function(target, src, dataset, opts) {
-  return MapShaper.clipLayers(target, src, dataset, "erase", opts);
-};
-
-api.clipLayer = function(targetLyr, src, dataset, opts) {
-  return api.clipLayers([targetLyr], src, dataset, opts)[0];
-};
-
-api.eraseLayer = function(targetLyr, src, dataset, opts) {
-  return api.eraseLayers([targetLyr], src, dataset, opts)[0];
-};
-
-// @target: a single layer or an array of layers
-// @type: 'clip' or 'erase'
-MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
-  var clipLyr =  MapShaper.getClipLayer(src, srcDataset, opts),
-      usingPathClip = utils.some(targetLayers, MapShaper.layerHasPaths),
-      nodes, outputLayers, dataset;
-  opts = opts || {};
-  MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
-
-  // If clipping layer was imported from a second file, it won't be included in
-  // dataset
-  // (assuming that clipLyr arcs have been merged with dataset.arcs)
-  //
-  if (utils.contains(srcDataset.layers, clipLyr) === false) {
-    dataset = {
-      layers: [clipLyr].concat(srcDataset.layers),
-      arcs: srcDataset.arcs
-    };
-  } else {
-    dataset = srcDataset;
-  }
-
-  if (usingPathClip) {
-    nodes = MapShaper.divideArcs(dataset);
-  }
-
-  outputLayers = targetLayers.map(function(targetLyr) {
-    var clippedShapes, outputLyr;
-    if (targetLyr === clipLyr) {
-      stop('[' + type + '] Can\'t clip a layer with itself');
-    } else if (targetLyr.geometry_type == 'point') {
-      clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, dataset.arcs, type);
-    } else if (targetLyr.geometry_type == 'polygon') {
-      clippedShapes = MapShaper.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type);
-    } else if (targetLyr.geometry_type == 'polyline') {
-      clippedShapes = MapShaper.clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
-    } else {
-      stop('[' + type + '] Invalid target layer:', targetLyr.name);
-    }
-
-    outputLyr = MapShaper.getOutputLayer(targetLyr, opts);
-    if (opts.no_replace && targetLyr.data) {
-      outputLyr.data = targetLyr.data.clone();
-    }
-    outputLyr.shapes = clippedShapes;
-
-    // Remove null shapes (likely removed by clipping/erasing)
-    api.filterFeatures(outputLyr, dataset.arcs, {remove_empty: true});
-    return outputLyr;
-  });
-
-  // Cleanup is set by option parser; use no-cleanup to disable
-  if (usingPathClip && opts.cleanup) {
-    // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
-    // This is to remove arcs belonging to the clipping paths from the target
-    // dataset, and to heal the cuts that were made where clipping paths
-    // crossed target paths
-    dataset = {arcs: srcDataset.arcs, layers: srcDataset.layers};
-    if (opts.no_replace) {
-      dataset.layers = dataset.layers.concat(outputLayers);
-    } else {
-      MapShaper.replaceLayers(dataset, targetLayers, outputLayers);
-    }
-    MapShaper.dissolveArcs(dataset);
-  }
-
-  return outputLayers;
-};
-
-// @src: a layer object, layer identifier or filename
-MapShaper.getClipLayer = function(src, dataset, opts) {
-  var clipLayers, clipDataset, mergedDataset;
-  if (utils.isObject(src)) {
-    // src is layer object
-    return src;
-  }
-  // check if src is the name of an existing layer
-  if (src) {
-    clipLayers = MapShaper.findMatchingLayers(dataset.layers, src);
-    if (clipLayers.length > 1) {
-      stop("[clip/erase] Received more than one source layer");
-    } else if (clipLayers.length == 1) {
-      return clipLayers[0];
-    }
-  }
-  if (src) {
-    // assuming src is a filename
-    clipDataset = MapShaper.readClipFile(src, opts);
-    if (!clipDataset) {
-      stop("Unable to find file [" + src + "]");
-    }
-    // TODO: handle multi-layer sources, e.g. TopoJSON files
-    if (clipDataset.layers.length != 1) {
-      stop("Clip/erase only supports clipping with single-layer datasets");
-    }
-  } else if (opts.bbox) {
-    clipDataset = MapShaper.convertClipBounds(opts.bbox);
-  } else {
-    stop("[clip/erase] Missing clipping data");
-  }
-  mergedDataset = MapShaper.mergeDatasets([dataset, clipDataset]);
-  api.buildTopology(mergedDataset);
-
-  // use arcs from merged dataset, but don't add clip layer to target dataset
-  dataset.arcs = mergedDataset.arcs;
-  return clipDataset.layers[0];
-};
-
-// @src Filename
-MapShaper.readClipFile = function(src, opts) {
-  // Load clip file without topology; later merge clipping data with target
-  //   dataset and build topology.
-  opts = utils.extend(opts, {no_topology: true});
-  return api.importFile(src, opts);
-};
-
-MapShaper.convertClipBounds = function(bb) {
-  var x0 = bb[0], y0 = bb[1], x1 = bb[2], y1 = bb[3],
-      arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];
-
-  if (!(y1 > y0 && x1 > x0)) {
-    stop("[clip/erase] Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
-  }
-  return {
-    arcs: new ArcCollection([arc]),
-    layers: [{
-      shapes: [[[0]]],
-      geometry_type: 'polygon'
-    }]
-  };
-};
-
-
-
-
 // Get the centroid of the largest ring of a polygon
 // TODO: Include holes in the calculation
 // TODO: Add option to find centroid of all rings, not just the largest
@@ -16806,29 +16671,6 @@ function FeatureExpressionContext(lyr, arcs) {
 
 
 
-api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
-  var n = MapShaper.getFeatureCount(lyr),
-      compiled, filter;
-
-  // TODO: consider not creating a data table -- not needed if expression only references geometry
-  if (n > 0 && !lyr.data) {
-    lyr.data = new DataTable(n);
-  }
-  if (opts && opts.where) {
-    filter = MapShaper.compileFeatureExpression(opts.where, lyr, arcs);
-  }
-  compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
-  // call compiled expression with id of each record
-  for (var i=0; i<n; i++) {
-    if (!filter || filter(i)) {
-      compiled(i);
-    }
-  }
-};
-
-
-
-
 api.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes || null,
@@ -16893,6 +16735,349 @@ MapShaper.combineFilters = function(a, b) {
   return (a && b && function(id) {
       return a(id) && b(id);
     }) || a || b;
+};
+
+
+
+
+api.filterIslands = function(lyr, arcs, opts) {
+  var removed = 0;
+  if (lyr.geometry_type != 'polygon') {
+    return;
+  }
+
+  if (opts.min_area || opts.min_vertices) {
+    if (opts.min_area) {
+      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getRingAreaTest(opts.min_area, arcs));
+    }
+    if (opts.min_vertices) {
+      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getVertexCountTest(opts.min_vertices, arcs));
+    }
+    if (opts.remove_empty) {
+      api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+    }
+    message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
+  } else {
+    message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
+  }
+};
+
+MapShaper.getVertexCountTest = function(minVertices, arcs) {
+  return function(path) {
+    // first and last vertex in ring count as one
+    return geom.countVerticesInPath(path, arcs) <= minVertices;
+  };
+};
+
+MapShaper.getRingAreaTest = function(minArea, arcs) {
+  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
+  return function(path) {
+    var area = pathArea(path, arcs);
+    return Math.abs(area) < minArea;
+  };
+};
+
+MapShaper.filterIslands = function(lyr, arcs, ringTest) {
+  var removed = 0;
+  var counts = new Uint8Array(arcs.size());
+  MapShaper.countArcsInShapes(lyr.shapes, counts);
+
+  var filter = function(paths) {
+    return MapShaper.editPaths(paths, function(path) {
+      if (path.length == 1) { // got an island ring
+        if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
+          if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
+            // and it does not contain any holes itself
+            // O(n^2), so testing this last
+            if (!MapShaper.ringHasHoles(path, paths, arcs)) {
+              removed++;
+              return null;
+            }
+          }
+        }
+      }
+    });
+  };
+  MapShaper.filterShapes(lyr.shapes, filter);
+  return removed;
+};
+
+MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
+  for (var i=0, n=ring.length; i<n; i++) {
+    if (arcs.arcIntersectsBBox(absArcId(ring[i]), bbox)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+// Assumes that ring boundaries to not cross
+MapShaper.ringHasHoles = function(ring, rings, arcs) {
+  var bbox = arcs.getSimpleShapeBounds2(ring);
+  var sibling, p;
+  for (var i=0, n=rings.length; i<n; i++) {
+    sibling = rings[i];
+    // try to avoid expensive point-in-ring test
+    if (sibling && sibling != ring && MapShaper.ringIntersectsBBox(sibling, bbox, arcs)) {
+      p = arcs.getVertex(sibling[0], 0);
+      if (geom.testPointInRing(p.x, p.y, ring, arcs)) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+MapShaper.filterShapes = function(shapes, filter) {
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shapes[i] = filter(shapes[i]);
+  }
+};
+
+
+
+
+// Remove small-area polygon rings (very simple implementation of sliver removal)
+// TODO: more sophisticated sliver detection (e.g. could consider ratio of area to perimeter)
+// TODO: consider merging slivers into adjacent polygons to prevent gaps from forming
+// TODO: consider separate gap removal function as an alternative to merging slivers
+//
+api.filterSlivers = function(lyr, arcs, opts) {
+  if (lyr.geometry_type != 'polygon') {
+    return 0;
+  }
+  return MapShaper.filterSlivers(lyr, arcs, opts);
+};
+
+MapShaper.filterSlivers = function(lyr, arcs, opts) {
+  var removed = 0;
+  var area = opts && opts.min_area;
+  var spherical = area && !!arcs.isPlanar();
+  var ringTest;
+  if (!area) {
+    area = MapShaper.calcDefaultSliverArea(arcs);
+  }
+  ringTest = MapShaper.getSliverTest(area, arcs, spherical);
+
+  function shapeFilter(paths) {
+    return MapShaper.editPaths(paths, function(path) {
+      if (ringTest(path)) {
+        removed++;
+        return null;
+      }
+    });
+  }
+
+  MapShaper.filterShapes(lyr.shapes, shapeFilter);
+  return removed;
+};
+
+MapShaper.calcDefaultSliverArea = function(arcs) {
+  var xy = arcs.getAvgSegment2();
+  return xy[0] * xy[1]; // TODO: do some testing to find a better default
+};
+
+MapShaper.getSliverTest = function(minArea, arcs, spherical) {
+  var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
+  return function(path) {
+    var area = pathArea(path, arcs);
+    return Math.abs(area) < minArea;
+  };
+};
+
+
+
+
+api.clipLayers = function(target, src, dataset, opts) {
+  return MapShaper.clipLayers(target, src, dataset, "clip", opts);
+};
+
+api.eraseLayers = function(target, src, dataset, opts) {
+  return MapShaper.clipLayers(target, src, dataset, "erase", opts);
+};
+
+api.clipLayer = function(targetLyr, src, dataset, opts) {
+  return api.clipLayers([targetLyr], src, dataset, opts)[0];
+};
+
+api.eraseLayer = function(targetLyr, src, dataset, opts) {
+  return api.eraseLayers([targetLyr], src, dataset, opts)[0];
+};
+
+// @target: a single layer or an array of layers
+// @type: 'clip' or 'erase'
+MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
+  var clipLyr =  MapShaper.getClipLayer(src, srcDataset, opts),
+      usingPathClip = utils.some(targetLayers, MapShaper.layerHasPaths),
+      nullCount = 0, sliverCount = 0,
+      nodes, outputLayers, dataset;
+  opts = opts || {};
+  MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
+
+  // If clipping layer was imported from a second file, it won't be included in
+  // dataset
+  // (assuming that clipLyr arcs have been merged with dataset.arcs)
+  //
+  if (utils.contains(srcDataset.layers, clipLyr) === false) {
+    dataset = {
+      layers: [clipLyr].concat(srcDataset.layers),
+      arcs: srcDataset.arcs
+    };
+  } else {
+    dataset = srcDataset;
+  }
+
+  if (usingPathClip) {
+    nodes = MapShaper.divideArcs(dataset);
+  }
+
+  outputLayers = targetLayers.map(function(targetLyr) {
+    var shapeCount = targetLyr.shapes ? targetLyr.shapes.length : 0;
+    var clippedShapes, outputLyr;
+    if (targetLyr === clipLyr) {
+      stop('[' + type + '] Can\'t clip a layer with itself');
+    } else if (targetLyr.geometry_type == 'point') {
+      clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, dataset.arcs, type);
+    } else if (targetLyr.geometry_type == 'polygon') {
+      clippedShapes = MapShaper.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type);
+    } else if (targetLyr.geometry_type == 'polyline') {
+      clippedShapes = MapShaper.clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
+    } else {
+      stop('[' + type + '] Invalid target layer:', targetLyr.name);
+    }
+
+    outputLyr = MapShaper.getOutputLayer(targetLyr, opts);
+    if (opts.no_replace && targetLyr.data) {
+      outputLyr.data = targetLyr.data.clone();
+    }
+    outputLyr.shapes = clippedShapes;
+
+    // Remove sliver polygons
+    if (opts.cleanup && outputLyr.geometry_type == 'polygon') {
+      sliverCount += MapShaper.filterSlivers(outputLyr, dataset.arcs);
+    }
+
+    // Remove null shapes (likely removed by clipping/erasing)
+    api.filterFeatures(outputLyr, dataset.arcs, {remove_empty: true, verbose: false});
+    nullCount += shapeCount - outputLyr.shapes.length;
+    return outputLyr;
+  });
+
+  // Cleanup is set by option parser; use no-cleanup to disable
+  if (usingPathClip && opts.cleanup) {
+    // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
+    // This is to remove arcs belonging to the clipping paths from the target
+    // dataset, and to heal the cuts that were made where clipping paths
+    // crossed target paths
+    dataset = {arcs: srcDataset.arcs, layers: srcDataset.layers};
+    if (opts.no_replace) {
+      dataset.layers = dataset.layers.concat(outputLayers);
+    } else {
+      MapShaper.replaceLayers(dataset, targetLayers, outputLayers);
+    }
+    MapShaper.dissolveArcs(dataset);
+  }
+
+  if (nullCount && sliverCount) {
+    message(MapShaper.getClipMessage(type, nullCount, sliverCount));
+  }
+
+  return outputLayers;
+};
+
+MapShaper.getClipMessage = function(type, nullCount, sliverCount) {
+  var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
+  var sliverMsg = sliverCount ? utils.format('%,d sliver%s', sliverCount, utils.pluralSuffix(sliverCount)) : '';
+  if (nullMsg || sliverMsg) {
+    return utils.format('[%s] Removed %s%s%s', type, nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
+  }
+  return '';
+};
+
+// @src: a layer object, layer identifier or filename
+MapShaper.getClipLayer = function(src, dataset, opts) {
+  var clipLayers, clipDataset, mergedDataset;
+  if (utils.isObject(src)) {
+    // src is layer object
+    return src;
+  }
+  // check if src is the name of an existing layer
+  if (src) {
+    clipLayers = MapShaper.findMatchingLayers(dataset.layers, src);
+    if (clipLayers.length > 1) {
+      stop("[clip/erase] Received more than one source layer");
+    } else if (clipLayers.length == 1) {
+      return clipLayers[0];
+    }
+  }
+  if (src) {
+    // assuming src is a filename
+    clipDataset = MapShaper.readClipFile(src, opts);
+    if (!clipDataset) {
+      stop("Unable to find file [" + src + "]");
+    }
+    // TODO: handle multi-layer sources, e.g. TopoJSON files
+    if (clipDataset.layers.length != 1) {
+      stop("Clip/erase only supports clipping with single-layer datasets");
+    }
+  } else if (opts.bbox) {
+    clipDataset = MapShaper.convertClipBounds(opts.bbox);
+  } else {
+    stop("[clip/erase] Missing clipping data");
+  }
+  mergedDataset = MapShaper.mergeDatasets([dataset, clipDataset]);
+  api.buildTopology(mergedDataset);
+
+  // use arcs from merged dataset, but don't add clip layer to target dataset
+  dataset.arcs = mergedDataset.arcs;
+  return clipDataset.layers[0];
+};
+
+// @src Filename
+MapShaper.readClipFile = function(src, opts) {
+  // Load clip file without topology; later merge clipping data with target
+  //   dataset and build topology.
+  opts = utils.extend(opts, {no_topology: true});
+  return api.importFile(src, opts);
+};
+
+MapShaper.convertClipBounds = function(bb) {
+  var x0 = bb[0], y0 = bb[1], x1 = bb[2], y1 = bb[3],
+      arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];
+
+  if (!(y1 > y0 && x1 > x0)) {
+    stop("[clip/erase] Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
+  }
+  return {
+    arcs: new ArcCollection([arc]),
+    layers: [{
+      shapes: [[[0]]],
+      geometry_type: 'polygon'
+    }]
+  };
+};
+
+
+
+
+api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
+  var n = MapShaper.getFeatureCount(lyr),
+      compiled, filter;
+
+  // TODO: consider not creating a data table -- not needed if expression only references geometry
+  if (n > 0 && !lyr.data) {
+    lyr.data = new DataTable(n);
+  }
+  if (opts && opts.where) {
+    filter = MapShaper.compileFeatureExpression(opts.where, lyr, arcs);
+  }
+  compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
+  // call compiled expression with id of each record
+  for (var i=0; i<n; i++) {
+    if (!filter || filter(i)) {
+      compiled(i);
+    }
+  }
 };
 
 
@@ -17212,104 +17397,6 @@ MapShaper.getRecordMapper = function(map) {
     }
     return dest;
   };
-};
-
-
-
-
-api.filterIslands = function(lyr, arcs, opts) {
-  var removed = 0;
-  if (lyr.geometry_type != 'polygon') {
-    return;
-  }
-
-  if (opts.min_area || opts.min_vertices) {
-    if (opts.min_area) {
-      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getRingAreaTest(opts.min_area, arcs));
-    }
-    if (opts.min_vertices) {
-      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getVertexCountTest(opts.min_vertices, arcs));
-    }
-    if (opts.remove_empty) {
-      api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
-    }
-    message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
-  } else {
-    message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
-  }
-};
-
-MapShaper.getVertexCountTest = function(minVertices, arcs) {
-  return function(path) {
-    // first and last vertex in ring count as one
-    return geom.countVerticesInPath(path, arcs) <= minVertices;
-  };
-};
-
-MapShaper.getRingAreaTest = function(minArea, arcs) {
-  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
-  return function(path) {
-    var area = pathArea(path, arcs);
-    return Math.abs(area) < minArea;
-  };
-};
-
-MapShaper.filterIslands = function(lyr, arcs, ringTest) {
-  var removed = 0;
-  var counts = new Uint8Array(arcs.size());
-  MapShaper.countArcsInShapes(lyr.shapes, counts);
-
-  var filter = function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1) { // got an island ring
-        if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
-          if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
-            // and it does not contain any holes itself
-            // O(n^2), so testing this last
-            if (!MapShaper.ringHasHoles(path, paths, arcs)) {
-              removed++;
-              return null;
-            }
-          }
-        }
-      }
-    });
-  };
-  MapShaper.filterShapes(lyr.shapes, filter);
-  return removed;
-};
-
-
-MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
-  for (var i=0, n=ring.length; i<n; i++) {
-    if (arcs.arcIntersectsBBox(absArcId(ring[i]), bbox)) {
-      return true;
-    }
-  }
-  return false;
-};
-
-// Assumes that ring boundaries to not cross
-MapShaper.ringHasHoles = function(ring, rings, arcs) {
-  var bbox = arcs.getSimpleShapeBounds2(ring);
-  var sibling, p;
-  for (var i=0, n=rings.length; i<n; i++) {
-    sibling = rings[i];
-    // try to avoid expensive point-in-ring test
-    if (sibling && sibling != ring && MapShaper.ringIntersectsBBox(sibling, bbox, arcs)) {
-      p = arcs.getVertex(sibling[0], 0);
-      if (geom.testPointInRing(p.x, p.y, ring, arcs)) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
-MapShaper.filterShapes = function(shapes, filter) {
-  for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = filter(shapes[i]);
-  }
 };
 
 
@@ -19086,6 +19173,9 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'filter-islands') {
       MapShaper.applyCommand(api.filterIslands, targetLayers, arcs, opts);
+
+    } else if (name == 'filter-slivers') {
+      MapShaper.applyCommand(api.filterSlivers, targetLayers, arcs, opts);
 
     } else if (name == 'flatten') {
       outputLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);

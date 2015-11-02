@@ -7096,6 +7096,783 @@ MapShaper.countArcReferences = function(layers, arcs) {
 
 
 
+MapShaper.simplifyArcsFast = function(arcs, dist) {
+  var xx = [],
+      yy = [],
+      nn = [],
+      count;
+  for (var i=0, n=arcs.size(); i<n; i++) {
+    count = MapShaper.simplifyPathFast([i], arcs, dist, xx, yy);
+    if (count == 1) {
+      count = 0;
+      xx.pop();
+      yy.pop();
+    }
+    nn.push(count);
+  }
+  return new ArcCollection(nn, xx, yy);
+};
+
+MapShaper.simplifyPolygonFast = function(shp, arcs, dist) {
+  if (!shp || !dist) return null;
+  var xx = [],
+      yy = [],
+      nn = [],
+      shp2 = [];
+
+  shp.forEach(function(path) {
+    var count = MapShaper.simplifyPathFast(path, arcs, dist, xx, yy);
+    while (count < 4 && count > 0) {
+      xx.pop();
+      yy.pop();
+      count--;
+    }
+    if (count > 0) {
+      shp2.push([nn.length]);
+      nn.push(count);
+    }
+  });
+  return {
+    shape: shp2.length > 0 ? shp2 : null,
+    arcs: new ArcCollection(nn, xx, yy)
+  };
+};
+
+MapShaper.simplifyPathFast = function(path, arcs, dist, xx, yy) {
+  var iter = arcs.getShapeIter(path),
+      count = 0,
+      prevX, prevY, x, y;
+  while (iter.hasNext()) {
+    x = iter.x;
+    y = iter.y;
+    if (count === 0 || distance2D(x, y, prevX, prevY) > dist) {
+      xx.push(x);
+      yy.push(y);
+      prevX = x;
+      prevY = y;
+      count++;
+    }
+  }
+  if (x != prevX || y != prevY) {
+    xx.push(x);
+    yy.push(y);
+    count++;
+  }
+  return count;
+};
+
+
+
+
+// Get the centroid of the largest ring of a polygon
+// TODO: Include holes in the calculation
+// TODO: Add option to find centroid of all rings, not just the largest
+geom.getShapeCentroid = function(shp, arcs) {
+  var maxPath = geom.getMaxPath(shp, arcs);
+  return maxPath ? geom.getPathCentroid(maxPath, arcs) : null;
+};
+
+geom.getPathCentroid = function(ids, arcs) {
+  var iter = arcs.getShapeIter(ids),
+      sum = 0,
+      sumX = 0,
+      sumY = 0,
+      ax, ay, tmp, area;
+  if (!iter.hasNext()) return null;
+  ax = iter.x;
+  ay = iter.y;
+  while (iter.hasNext()) {
+    tmp = ax * iter.y - ay * iter.x;
+    sum += tmp;
+    sumX += tmp * (iter.x + ax);
+    sumY += tmp * (iter.y + ay);
+    ax = iter.x;
+    ay = iter.y;
+  }
+  area = sum / 2;
+  if (area === 0) {
+    return geom.getAvgPathXY(ids, arcs);
+  } else return {
+    x: sumX / (6 * area),
+    y: sumY / (6 * area)
+  };
+};
+
+// Find a point inside a polygon and located away from the polygon edge
+// Method:
+// - get the largest ring of the polygon
+// - get an array of x-values distributed along the horizontal extent of the ring
+// - for each x:
+//     intersect a vertical line with the polygon at x
+//     find midpoints of each intersecting segment
+// - for each midpoint:
+//     adjust point vertically to maximize weighted distance from polygon edge
+// - return the adjusted point having the maximum weighted distance from the edge
+//
+// (distance is weighted to slightly favor points near centroid)
+//
+geom.findInteriorPoint = function(shp, arcs) {
+  var maxPath = shp && geom.getMaxPath(shp, arcs),
+      pathBounds = maxPath && arcs.getSimpleShapeBounds(maxPath),
+      thresh, simple;
+  if (!pathBounds || !pathBounds.hasBounds() || pathBounds.area() === 0) {
+    return null;
+  }
+  thresh = Math.sqrt(pathBounds.area()) * 0.01;
+  simple = MapShaper.simplifyPolygonFast(shp, arcs, thresh);
+  if (!simple.shape) {
+    return null; // collapsed shape
+  }
+  return geom.findInteriorPoint2(simple.shape, simple.arcs);
+};
+
+// Assumes: shp is a polygon with at least one space-enclosing ring
+geom.findInteriorPoint2 = function(shp, arcs) {
+  var maxPath = geom.getMaxPath(shp, arcs);
+  var pathBounds = arcs.getSimpleShapeBounds(maxPath);
+  var centroid = geom.getPathCentroid(maxPath, arcs);
+  var weight = MapShaper.getPointWeightingFunction(centroid, pathBounds);
+  var area = geom.getPlanarPathArea(maxPath, arcs);
+  var hrange, lbound, rbound, focus, htics, hstep, p, p2;
+
+  // Limit test area if shape is simple and squarish
+  if (shp.length == 1 && area * 1.2 > pathBounds.area()) {
+    htics = 5;
+    focus = 0.2;
+  } else if (shp.length == 1 && area * 1.7 > pathBounds.area()) {
+    htics = 7;
+    focus = 0.4;
+  } else {
+    htics = 11;
+    focus = 0.5;
+  }
+  hrange = pathBounds.width() * focus;
+  lbound = centroid.x - hrange / 2;
+  rbound = lbound + hrange;
+  hstep = hrange / htics;
+
+  // Find a best-fit point
+  p = MapShaper.probeForBestInteriorPoint(shp, arcs, lbound, rbound, htics, weight);
+  if (!p) {
+    verbose("[points inner] failed, falling back to centroid");
+   p = centroid;
+  } else {
+    // Look for even better fit close to best-fit point
+    p2 = MapShaper.probeForBestInteriorPoint(shp, arcs, p.x - hstep / 2,
+        p.x + hstep / 2, 2, weight);
+    if (p2.distance > p.distance) {
+      p = p2;
+    }
+  }
+  return p;
+};
+
+MapShaper.getPointWeightingFunction = function(centroid, pathBounds) {
+  // Get a factor for weighting a candidate point
+  // Points closer to the centroid are slightly preferred
+  var referenceDist = Math.max(pathBounds.width(), pathBounds.height()) / 2;
+  return function(x, y) {
+    var offset = distance2D(centroid.x, centroid.y, x, y);
+    return 1 - Math.min(0.6 * offset / referenceDist, 0.25);
+  };
+};
+
+MapShaper.findInteriorPointCandidates = function(shp, arcs, xx) {
+  var ymin = arcs.getBounds().ymin - 1;
+  return xx.reduce(function(memo, x) {
+    var cands = MapShaper.findHitCandidates(x, ymin, shp, arcs);
+    return memo.concat(cands);
+  }, []);
+};
+
+MapShaper.probeForBestInteriorPoint = function(shp, arcs, lbound, rbound, htics, weight) {
+  var tics = MapShaper.getInnerTics(lbound, rbound, htics);
+  var interval = (rbound - lbound) / htics;
+  // Get candidate points, distributed along x-axis
+  var candidates = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
+  var bestP, adjustedP, candP;
+
+  // Sort candidates so points at the center of longer segments are tried first
+  candidates.forEach(function(p) {
+    p.interval *= weight(p.x, p.y);
+  });
+  candidates.sort(function(a, b) {
+    return b.interval - a.interval;
+  });
+
+  for (var i=0; i<candidates.length; i++) {
+    candP = candidates[i];
+    // Optimization: Stop searching if weighted half-segment length of remaining
+    //   points is less than the weighted edge distance of the best candidate
+    if (bestP && bestP.distance > candP.interval) {
+      break;
+    }
+    adjustedP = MapShaper.getAdjustedPoint(candP.x, candP.y, shp, arcs, interval, weight);
+
+    if (!bestP || adjustedP.distance > bestP.distance) {
+      bestP = adjustedP;
+    }
+  }
+  return bestP;
+};
+
+// [x, y] is a point assumed to be inside a polygon @shp
+// Try to move the point farther from the polygon edge
+MapShaper.getAdjustedPoint = function(x, y, shp, arcs, vstep, weight) {
+  var p = {
+    x: x,
+    y: y,
+    distance: geom.getPointToShapeDistance(x, y, shp, arcs) * weight(x, y)
+  };
+  MapShaper.scanForBetterPoint(p, shp, arcs, vstep, weight); // scan up
+  MapShaper.scanForBetterPoint(p, shp, arcs, -vstep, weight); // scan down
+  return p;
+};
+
+// Try to find a better-fit point than @p by scanning vertically
+// Modify p in-place
+MapShaper.scanForBetterPoint = function(p, shp, arcs, vstep, weight) {
+  var x = p.x,
+      y = p.y,
+      dmax = p.distance,
+      d;
+
+  while (true) {
+    y += vstep;
+    d = geom.getPointToShapeDistance(x, y, shp, arcs) * weight(x, y);
+    // overcome vary small local minima
+    if (d > dmax * 0.90 && geom.testPointInPolygon(x, y, shp, arcs)) {
+      if (d > dmax) {
+        p.distance = dmax = d;
+        p.y = y;
+      }
+    } else {
+      break;
+    }
+  }
+};
+
+// Return array of points at the midpoint of each line segment formed by the
+//   intersection of a vertical ray at [x, y] and a polygon shape
+MapShaper.findHitCandidates = function(x, y, shp, arcs) {
+  var yy = MapShaper.findRayShapeIntersections(x, y, shp, arcs);
+  var cands = [], y1, y2, interval;
+
+  // sortying by y-coord organizes y-intercepts into interior segments
+  utils.genericSort(yy);
+  for (var i=0; i<yy.length; i+=2) {
+    y1 = yy[i];
+    y2 = yy[i+1];
+    interval = (y2 - y1) / 2;
+    if (interval > 0) {
+      cands.push({
+        y: (y1 + y2) / 2,
+        x: x,
+        interval: interval
+      });
+    }
+  }
+  return cands;
+};
+
+// Return array of y-intersections between vertical ray with origin at [x, y]
+//   and a polygon
+MapShaper.findRayShapeIntersections = function(x, y, shp, arcs) {
+  if (!shp) return [];
+  return shp.reduce(function(memo, path) {
+    var yy = MapShaper.findRayRingIntersections(x, y, path, arcs);
+    return memo.concat(yy);
+  }, []);
+};
+
+// Return array of y-intersections between vertical ray and a polygon ring
+MapShaper.findRayRingIntersections = function(x, y, path, arcs) {
+  var yints = [];
+  MapShaper.forEachPathSegment(path, arcs, function(a, b, xx, yy) {
+    var result = geom.getRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
+    if (result > -Infinity) {
+      yints.push(result);
+    }
+  });
+  // Ignore odd number of intersections -- probably caused by a ray that touches
+  //   but doesn't cross the ring
+  // TODO: improve method to handle edge case with two touches and no crosses.
+  if (yints.length % 2 === 1) {
+    yints = [];
+  }
+  return yints;
+};
+
+// TODO: find better home + name for this
+MapShaper.getInnerTics = function(min, max, steps) {
+  var range = max - min,
+      step = range / (steps + 1),
+      arr = [];
+  for (var i = 1; i<=steps; i++) {
+    arr.push(min + step * i);
+  }
+  return arr;
+};
+
+
+
+
+MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
+  var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
+      exp = MapShaper.validateExpression(rawExp),
+      newFields = exp.match(RE_ASSIGNEE) || null,
+      env = MapShaper.getBaseContext(),
+      records,
+      func;
+
+  if (newFields && !lyr.data) {
+    lyr.data = new DataTable(MapShaper.getFeatureCount(lyr));
+  }
+  if (lyr.data) records = lyr.data.getRecords();
+
+  env.$ = new FeatureExpressionContext(lyr, arcs);
+  try {
+    func = new Function("record,env", "with(env){with(record) { return " +
+        MapShaper.removeExpressionSemicolons(exp) + "}}");
+  } catch(e) {
+    stop(e.name, "in expression [" + exp + "]");
+  }
+
+  var compiled = function(recId) {
+    var record = records ? records[recId] || (records[recId] = {}) : {},
+        value, f;
+
+    // initialize new fields to null so assignments work
+    if (newFields) {
+      for (var i=0; i<newFields.length; i++) {
+        f = newFields[i];
+        if (f in record === false) {
+          record[f] = null;
+        }
+      }
+    }
+    env.$.__setId(recId);
+    try {
+      value = func.call(null, record, env);
+    } catch(e) {
+      stop(e.name, "in expression [" + exp + "]:", e.message);
+    }
+    return value;
+  };
+
+  compiled.context = env;
+  return compiled;
+};
+
+MapShaper.getBaseContext = function() {
+  var obj = {};
+  // Mask global properties (is this effective/worth doing?)
+  (function() {
+    for (var key in this) {
+      obj[key] = null;
+    }
+  }());
+  obj.console = console;
+  return obj;
+};
+
+MapShaper.validateExpression = function(exp) {
+  exp = exp || '';
+  return MapShaper.removeExpressionSemicolons(exp);
+};
+
+// Semicolons that divide the expression into two or more js statements
+// cause problems when 'return' is added before the expression
+// (only the first statement is evaluated). Replacing with commas fixes this
+//
+MapShaper.removeExpressionSemicolons = function(exp) {
+  if (exp.indexOf(';') != -1) {
+    // remove any ; from end of expression
+    exp = exp.replace(/[; ]+$/, '');
+    // change any other semicolons to commas
+    // (this is not very safe -- what if a string literal contains a semicolon?)
+    exp = exp.replace(/;/g, ',');
+  }
+  return exp;
+};
+
+function addGetters(obj, getters) {
+  Object.keys(getters).forEach(function(name) {
+    Object.defineProperty(obj, name, {get: getters[name]});
+  });
+}
+
+function FeatureExpressionContext(lyr, arcs) {
+  var hasData = !!lyr.data,
+      hasPoints = MapShaper.layerHasPoints(lyr),
+      hasPaths = arcs && MapShaper.layerHasPaths(lyr),
+      _isPlanar,
+      _self = this,
+      _centroid, _innerXY, _xy,
+      _record, _records,
+      _id, _ids, _bounds;
+
+  if (hasData) {
+    _records = lyr.data.getRecords();
+    Object.defineProperty(this, 'properties',
+      {set: function(obj) {
+        if (utils.isObject(obj)) {
+          _records[_id] = obj;
+        } else {
+          stop("Can't assign non-object to $.properties");
+        }
+      }, get: function() {
+        var rec = _records[_id];
+        if (!rec) {
+          rec = _records[_id] = {};
+        }
+        return rec;
+      }});
+  }
+
+  if (hasPaths) {
+    _isPlanar = arcs.isPlanar();
+    addGetters(this, {
+      // TODO: count hole/s + containing ring as one part
+      partCount: function() {
+        return _ids ? _ids.length : 0;
+      },
+      isNull: function() {
+        return this.partCount === 0;
+      },
+      bounds: function() {
+        return shapeBounds().toArray();
+      },
+      height: function() {
+        return shapeBounds().height();
+      },
+      width: function() {
+        return shapeBounds().width();
+      }
+    });
+
+    if (lyr.geometry_type == 'polygon') {
+      addGetters(this, {
+        area: function() {
+          return _isPlanar ? geom.getPlanarShapeArea(_ids, arcs) : geom.getSphericalShapeArea(_ids, arcs);
+        },
+        originalArea: function() {
+          var i = arcs.getRetainedInterval(),
+              area;
+          arcs.setRetainedInterval(0);
+          area = _self.area;
+          arcs.setRetainedInterval(i);
+          return area;
+        },
+        centroidX: function() {
+          var p = centroid();
+          return p ? p.x : null;
+        },
+        centroidY: function() {
+          var p = centroid();
+          return p ? p.y : null;
+        },
+        innerX: function() {
+          var p = innerXY();
+          return p ? p.x : null;
+        },
+        innerY: function() {
+          var p = innerXY();
+          return p ? p.y : null;
+        }
+      });
+    }
+
+  } else if (hasPoints) {
+    // TODO: add functions like bounds, isNull, pointCount
+    Object.defineProperty(this, 'coordinates',
+      {set: function(obj) {
+        if (!obj || utils.isArray(obj)) {
+          lyr.shapes[_id] = obj || null;
+        } else {
+          stop("Can't assign non-array to $.coordinates");
+        }
+      }, get: function() {
+        return lyr.shapes[_id] || null;
+      }});
+
+    addGetters(this, {
+      x: function() {
+        xy();
+        return _xy ? _xy[0] : null;
+      },
+      y: function() {
+        xy();
+        return _xy ? _xy[1] : null;
+      }
+    });
+  }
+
+  // all contexts have $.id
+  addGetters(this, {id: function() { return _id; }});
+
+  this.__setId = function(id) {
+    _id = id;
+    if (hasPaths) {
+      _bounds = null;
+      _centroid = null;
+      _innerXY = null;
+      _ids = lyr.shapes[id];
+    }
+    if (hasPoints) {
+      _xy = null;
+    }
+    if (hasData) {
+      _record = _records[id];
+    }
+  };
+
+  function xy() {
+    var shape = lyr.shapes[_id];
+    if (!_xy) {
+      _xy = shape && shape[0] || null;
+    }
+    return _xy;
+  }
+
+  function centroid() {
+    _centroid = _centroid || geom.getShapeCentroid(_ids, arcs);
+    return _centroid;
+  }
+
+  function innerXY() {
+    _innerXY = _innerXY || geom.findInteriorPoint(_ids, arcs);
+    return _innerXY;
+  }
+
+  function shapeBounds() {
+    if (!_bounds) {
+      _bounds = arcs.getMultiShapeBounds(_ids);
+    }
+    return _bounds;
+  }
+}
+
+
+
+
+api.filterFeatures = function(lyr, arcs, opts) {
+  var records = lyr.data ? lyr.data.getRecords() : null,
+      shapes = lyr.shapes || null,
+      n = MapShaper.getFeatureCount(lyr),
+      filteredShapes = shapes ? [] : null,
+      filteredRecords = records ? [] : null,
+      filteredLyr = MapShaper.getOutputLayer(lyr, opts),
+      filter;
+
+  if (opts.expression) {
+    filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
+  }
+
+  if (opts.remove_empty) {
+    filter = MapShaper.combineFilters(filter, MapShaper.getNullGeometryFilter(lyr, arcs));
+  }
+
+  if (!filter) {
+    stop("[filter] Missing a filter expression");
+  }
+
+  utils.repeat(n, function(shapeId) {
+    var result = filter(shapeId);
+    if (result === true) {
+      if (shapes) filteredShapes.push(shapes[shapeId] || null);
+      if (records) filteredRecords.push(records[shapeId] || null);
+    } else if (result !== false) {
+      stop("[filter] Expressions must return true or false");
+    }
+  });
+
+  filteredLyr.shapes = filteredShapes;
+  filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
+  if (opts.no_replace) {
+    // if adding a layer, don't share objects between source and filtered layer
+    filteredLyr = MapShaper.copyLayer(filteredLyr);
+  }
+
+  if (opts.verbose !== false) {
+    message(utils.format('[filter] Retained %,d of %,d features', MapShaper.getFeatureCount(filteredLyr), n));
+  }
+
+  return filteredLyr;
+};
+
+MapShaper.getNullGeometryFilter = function(lyr, arcs) {
+  var shapes = lyr.shapes;
+  if (lyr.geometry_type == 'polygon') {
+    return MapShaper.getEmptyPolygonFilter(shapes, arcs);
+  }
+  return function(i) {return !!shapes[i];};
+};
+
+MapShaper.getEmptyPolygonFilter = function(shapes, arcs) {
+  return function(i) {
+    var shp = shapes[i];
+    return !!shp && geom.getPlanarShapeArea(shapes[i], arcs) > 0;
+  };
+};
+
+MapShaper.combineFilters = function(a, b) {
+  return (a && b && function(id) {
+      return a(id) && b(id);
+    }) || a || b;
+};
+
+
+
+
+api.filterIslands = function(lyr, arcs, opts) {
+  var removed = 0;
+  if (lyr.geometry_type != 'polygon') {
+    return;
+  }
+
+  if (opts.min_area || opts.min_vertices) {
+    if (opts.min_area) {
+      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getRingAreaTest(opts.min_area, arcs));
+    }
+    if (opts.min_vertices) {
+      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getVertexCountTest(opts.min_vertices, arcs));
+    }
+    if (opts.remove_empty) {
+      api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
+    }
+    message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
+  } else {
+    message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
+  }
+};
+
+MapShaper.getVertexCountTest = function(minVertices, arcs) {
+  return function(path) {
+    // first and last vertex in ring count as one
+    return geom.countVerticesInPath(path, arcs) <= minVertices;
+  };
+};
+
+MapShaper.getRingAreaTest = function(minArea, arcs) {
+  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
+  return function(path) {
+    var area = pathArea(path, arcs);
+    return Math.abs(area) < minArea;
+  };
+};
+
+MapShaper.filterIslands = function(lyr, arcs, ringTest) {
+  var removed = 0;
+  var counts = new Uint8Array(arcs.size());
+  MapShaper.countArcsInShapes(lyr.shapes, counts);
+
+  var filter = function(paths) {
+    return MapShaper.editPaths(paths, function(path) {
+      if (path.length == 1) { // got an island ring
+        if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
+          if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
+            // and it does not contain any holes itself
+            // O(n^2), so testing this last
+            if (!MapShaper.ringHasHoles(path, paths, arcs)) {
+              removed++;
+              return null;
+            }
+          }
+        }
+      }
+    });
+  };
+  MapShaper.filterShapes(lyr.shapes, filter);
+  return removed;
+};
+
+MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
+  for (var i=0, n=ring.length; i<n; i++) {
+    if (arcs.arcIntersectsBBox(absArcId(ring[i]), bbox)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+// Assumes that ring boundaries to not cross
+MapShaper.ringHasHoles = function(ring, rings, arcs) {
+  var bbox = arcs.getSimpleShapeBounds2(ring);
+  var sibling, p;
+  for (var i=0, n=rings.length; i<n; i++) {
+    sibling = rings[i];
+    // try to avoid expensive point-in-ring test
+    if (sibling && sibling != ring && MapShaper.ringIntersectsBBox(sibling, bbox, arcs)) {
+      p = arcs.getVertex(sibling[0], 0);
+      if (geom.testPointInRing(p.x, p.y, ring, arcs)) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+MapShaper.filterShapes = function(shapes, filter) {
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shapes[i] = filter(shapes[i]);
+  }
+};
+
+
+
+
+// Remove small-area polygon rings (very simple implementation of sliver removal)
+// TODO: more sophisticated sliver detection (e.g. could consider ratio of area to perimeter)
+// TODO: consider merging slivers into adjacent polygons to prevent gaps from forming
+// TODO: consider separate gap removal function as an alternative to merging slivers
+//
+api.filterSlivers = function(lyr, arcs, opts) {
+  if (lyr.geometry_type != 'polygon') {
+    return 0;
+  }
+  return MapShaper.filterSlivers(lyr, arcs, opts);
+};
+
+MapShaper.filterSlivers = function(lyr, arcs, opts) {
+  var removed = 0;
+  var area = opts && opts.min_area;
+  var spherical = area && !!arcs.isPlanar();
+  var ringTest;
+  if (!area) {
+    area = MapShaper.calcDefaultSliverArea(arcs);
+  }
+  ringTest = MapShaper.getSliverTest(area, arcs, spherical);
+
+  function shapeFilter(paths) {
+    return MapShaper.editPaths(paths, function(path) {
+      if (ringTest(path)) {
+        removed++;
+        return null;
+      }
+    });
+  }
+
+  MapShaper.filterShapes(lyr.shapes, shapeFilter);
+  return removed;
+};
+
+MapShaper.calcDefaultSliverArea = function(arcs) {
+  var xy = arcs.getAvgSegment2();
+  return xy[0] * xy[1]; // TODO: do some testing to find a better default
+};
+
+MapShaper.getSliverTest = function(minArea, arcs, spherical) {
+  var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
+  return function(path) {
+    var area = pathArea(path, arcs);
+    return Math.abs(area) < minArea;
+  };
+};
+
+
+
+
 api.clipLayers = function(target, src, dataset, opts) {
   return MapShaper.clipLayers(target, src, dataset, "clip", opts);
 };
@@ -7117,6 +7894,7 @@ api.eraseLayer = function(targetLyr, src, dataset, opts) {
 MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
   var clipLyr =  MapShaper.getClipLayer(src, srcDataset, opts),
       usingPathClip = utils.some(targetLayers, MapShaper.layerHasPaths),
+      nullCount = 0, sliverCount = 0,
       nodes, outputLayers, dataset;
   opts = opts || {};
   MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
@@ -7139,6 +7917,7 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
   }
 
   outputLayers = targetLayers.map(function(targetLyr) {
+    var shapeCount = targetLyr.shapes ? targetLyr.shapes.length : 0;
     var clippedShapes, outputLyr;
     if (targetLyr === clipLyr) {
       stop('[' + type + '] Can\'t clip a layer with itself');
@@ -7158,8 +7937,14 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
     }
     outputLyr.shapes = clippedShapes;
 
+    // Remove sliver polygons
+    if (opts.cleanup && outputLyr.geometry_type == 'polygon') {
+      sliverCount += MapShaper.filterSlivers(outputLyr, dataset.arcs);
+    }
+
     // Remove null shapes (likely removed by clipping/erasing)
-    api.filterFeatures(outputLyr, dataset.arcs, {remove_empty: true});
+    api.filterFeatures(outputLyr, dataset.arcs, {remove_empty: true, verbose: false});
+    nullCount += shapeCount - outputLyr.shapes.length;
     return outputLyr;
   });
 
@@ -7178,7 +7963,20 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
     MapShaper.dissolveArcs(dataset);
   }
 
+  if (nullCount && sliverCount) {
+    message(MapShaper.getClipMessage(type, nullCount, sliverCount));
+  }
+
   return outputLayers;
+};
+
+MapShaper.getClipMessage = function(type, nullCount, sliverCount) {
+  var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
+  var sliverMsg = sliverCount ? utils.format('%,d sliver%s', sliverCount, utils.pluralSuffix(sliverCount)) : '';
+  if (nullMsg || sliverMsg) {
+    return utils.format('[%s] Removed %s%s%s', type, nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
+  }
+  return '';
 };
 
 // @src: a layer object, layer identifier or filename
@@ -10102,566 +10900,6 @@ MapShaper.uniqifyNames = function(names) {
 
 
 
-MapShaper.simplifyArcsFast = function(arcs, dist) {
-  var xx = [],
-      yy = [],
-      nn = [],
-      count;
-  for (var i=0, n=arcs.size(); i<n; i++) {
-    count = MapShaper.simplifyPathFast([i], arcs, dist, xx, yy);
-    if (count == 1) {
-      count = 0;
-      xx.pop();
-      yy.pop();
-    }
-    nn.push(count);
-  }
-  return new ArcCollection(nn, xx, yy);
-};
-
-MapShaper.simplifyPolygonFast = function(shp, arcs, dist) {
-  if (!shp || !dist) return null;
-  var xx = [],
-      yy = [],
-      nn = [],
-      shp2 = [];
-
-  shp.forEach(function(path) {
-    var count = MapShaper.simplifyPathFast(path, arcs, dist, xx, yy);
-    while (count < 4 && count > 0) {
-      xx.pop();
-      yy.pop();
-      count--;
-    }
-    if (count > 0) {
-      shp2.push([nn.length]);
-      nn.push(count);
-    }
-  });
-  return {
-    shape: shp2.length > 0 ? shp2 : null,
-    arcs: new ArcCollection(nn, xx, yy)
-  };
-};
-
-MapShaper.simplifyPathFast = function(path, arcs, dist, xx, yy) {
-  var iter = arcs.getShapeIter(path),
-      count = 0,
-      prevX, prevY, x, y;
-  while (iter.hasNext()) {
-    x = iter.x;
-    y = iter.y;
-    if (count === 0 || distance2D(x, y, prevX, prevY) > dist) {
-      xx.push(x);
-      yy.push(y);
-      prevX = x;
-      prevY = y;
-      count++;
-    }
-  }
-  if (x != prevX || y != prevY) {
-    xx.push(x);
-    yy.push(y);
-    count++;
-  }
-  return count;
-};
-
-
-
-
-// Get the centroid of the largest ring of a polygon
-// TODO: Include holes in the calculation
-// TODO: Add option to find centroid of all rings, not just the largest
-geom.getShapeCentroid = function(shp, arcs) {
-  var maxPath = geom.getMaxPath(shp, arcs);
-  return maxPath ? geom.getPathCentroid(maxPath, arcs) : null;
-};
-
-geom.getPathCentroid = function(ids, arcs) {
-  var iter = arcs.getShapeIter(ids),
-      sum = 0,
-      sumX = 0,
-      sumY = 0,
-      ax, ay, tmp, area;
-  if (!iter.hasNext()) return null;
-  ax = iter.x;
-  ay = iter.y;
-  while (iter.hasNext()) {
-    tmp = ax * iter.y - ay * iter.x;
-    sum += tmp;
-    sumX += tmp * (iter.x + ax);
-    sumY += tmp * (iter.y + ay);
-    ax = iter.x;
-    ay = iter.y;
-  }
-  area = sum / 2;
-  if (area === 0) {
-    return geom.getAvgPathXY(ids, arcs);
-  } else return {
-    x: sumX / (6 * area),
-    y: sumY / (6 * area)
-  };
-};
-
-// Find a point inside a polygon and located away from the polygon edge
-// Method:
-// - get the largest ring of the polygon
-// - get an array of x-values distributed along the horizontal extent of the ring
-// - for each x:
-//     intersect a vertical line with the polygon at x
-//     find midpoints of each intersecting segment
-// - for each midpoint:
-//     adjust point vertically to maximize weighted distance from polygon edge
-// - return the adjusted point having the maximum weighted distance from the edge
-//
-// (distance is weighted to slightly favor points near centroid)
-//
-geom.findInteriorPoint = function(shp, arcs) {
-  var maxPath = shp && geom.getMaxPath(shp, arcs),
-      pathBounds = maxPath && arcs.getSimpleShapeBounds(maxPath),
-      thresh, simple;
-  if (!pathBounds || !pathBounds.hasBounds() || pathBounds.area() === 0) {
-    return null;
-  }
-  thresh = Math.sqrt(pathBounds.area()) * 0.01;
-  simple = MapShaper.simplifyPolygonFast(shp, arcs, thresh);
-  if (!simple.shape) {
-    return null; // collapsed shape
-  }
-  return geom.findInteriorPoint2(simple.shape, simple.arcs);
-};
-
-// Assumes: shp is a polygon with at least one space-enclosing ring
-geom.findInteriorPoint2 = function(shp, arcs) {
-  var maxPath = geom.getMaxPath(shp, arcs);
-  var pathBounds = arcs.getSimpleShapeBounds(maxPath);
-  var centroid = geom.getPathCentroid(maxPath, arcs);
-  var weight = MapShaper.getPointWeightingFunction(centroid, pathBounds);
-  var area = geom.getPlanarPathArea(maxPath, arcs);
-  var hrange, lbound, rbound, focus, htics, hstep, p, p2;
-
-  // Limit test area if shape is simple and squarish
-  if (shp.length == 1 && area * 1.2 > pathBounds.area()) {
-    htics = 5;
-    focus = 0.2;
-  } else if (shp.length == 1 && area * 1.7 > pathBounds.area()) {
-    htics = 7;
-    focus = 0.4;
-  } else {
-    htics = 11;
-    focus = 0.5;
-  }
-  hrange = pathBounds.width() * focus;
-  lbound = centroid.x - hrange / 2;
-  rbound = lbound + hrange;
-  hstep = hrange / htics;
-
-  // Find a best-fit point
-  p = MapShaper.probeForBestInteriorPoint(shp, arcs, lbound, rbound, htics, weight);
-  if (!p) {
-    verbose("[points inner] failed, falling back to centroid");
-   p = centroid;
-  } else {
-    // Look for even better fit close to best-fit point
-    p2 = MapShaper.probeForBestInteriorPoint(shp, arcs, p.x - hstep / 2,
-        p.x + hstep / 2, 2, weight);
-    if (p2.distance > p.distance) {
-      p = p2;
-    }
-  }
-  return p;
-};
-
-MapShaper.getPointWeightingFunction = function(centroid, pathBounds) {
-  // Get a factor for weighting a candidate point
-  // Points closer to the centroid are slightly preferred
-  var referenceDist = Math.max(pathBounds.width(), pathBounds.height()) / 2;
-  return function(x, y) {
-    var offset = distance2D(centroid.x, centroid.y, x, y);
-    return 1 - Math.min(0.6 * offset / referenceDist, 0.25);
-  };
-};
-
-MapShaper.findInteriorPointCandidates = function(shp, arcs, xx) {
-  var ymin = arcs.getBounds().ymin - 1;
-  return xx.reduce(function(memo, x) {
-    var cands = MapShaper.findHitCandidates(x, ymin, shp, arcs);
-    return memo.concat(cands);
-  }, []);
-};
-
-MapShaper.probeForBestInteriorPoint = function(shp, arcs, lbound, rbound, htics, weight) {
-  var tics = MapShaper.getInnerTics(lbound, rbound, htics);
-  var interval = (rbound - lbound) / htics;
-  // Get candidate points, distributed along x-axis
-  var candidates = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
-  var bestP, adjustedP, candP;
-
-  // Sort candidates so points at the center of longer segments are tried first
-  candidates.forEach(function(p) {
-    p.interval *= weight(p.x, p.y);
-  });
-  candidates.sort(function(a, b) {
-    return b.interval - a.interval;
-  });
-
-  for (var i=0; i<candidates.length; i++) {
-    candP = candidates[i];
-    // Optimization: Stop searching if weighted half-segment length of remaining
-    //   points is less than the weighted edge distance of the best candidate
-    if (bestP && bestP.distance > candP.interval) {
-      break;
-    }
-    adjustedP = MapShaper.getAdjustedPoint(candP.x, candP.y, shp, arcs, interval, weight);
-
-    if (!bestP || adjustedP.distance > bestP.distance) {
-      bestP = adjustedP;
-    }
-  }
-  return bestP;
-};
-
-// [x, y] is a point assumed to be inside a polygon @shp
-// Try to move the point farther from the polygon edge
-MapShaper.getAdjustedPoint = function(x, y, shp, arcs, vstep, weight) {
-  var p = {
-    x: x,
-    y: y,
-    distance: geom.getPointToShapeDistance(x, y, shp, arcs) * weight(x, y)
-  };
-  MapShaper.scanForBetterPoint(p, shp, arcs, vstep, weight); // scan up
-  MapShaper.scanForBetterPoint(p, shp, arcs, -vstep, weight); // scan down
-  return p;
-};
-
-// Try to find a better-fit point than @p by scanning vertically
-// Modify p in-place
-MapShaper.scanForBetterPoint = function(p, shp, arcs, vstep, weight) {
-  var x = p.x,
-      y = p.y,
-      dmax = p.distance,
-      d;
-
-  while (true) {
-    y += vstep;
-    d = geom.getPointToShapeDistance(x, y, shp, arcs) * weight(x, y);
-    // overcome vary small local minima
-    if (d > dmax * 0.90 && geom.testPointInPolygon(x, y, shp, arcs)) {
-      if (d > dmax) {
-        p.distance = dmax = d;
-        p.y = y;
-      }
-    } else {
-      break;
-    }
-  }
-};
-
-// Return array of points at the midpoint of each line segment formed by the
-//   intersection of a vertical ray at [x, y] and a polygon shape
-MapShaper.findHitCandidates = function(x, y, shp, arcs) {
-  var yy = MapShaper.findRayShapeIntersections(x, y, shp, arcs);
-  var cands = [], y1, y2, interval;
-
-  // sortying by y-coord organizes y-intercepts into interior segments
-  utils.genericSort(yy);
-  for (var i=0; i<yy.length; i+=2) {
-    y1 = yy[i];
-    y2 = yy[i+1];
-    interval = (y2 - y1) / 2;
-    if (interval > 0) {
-      cands.push({
-        y: (y1 + y2) / 2,
-        x: x,
-        interval: interval
-      });
-    }
-  }
-  return cands;
-};
-
-// Return array of y-intersections between vertical ray with origin at [x, y]
-//   and a polygon
-MapShaper.findRayShapeIntersections = function(x, y, shp, arcs) {
-  if (!shp) return [];
-  return shp.reduce(function(memo, path) {
-    var yy = MapShaper.findRayRingIntersections(x, y, path, arcs);
-    return memo.concat(yy);
-  }, []);
-};
-
-// Return array of y-intersections between vertical ray and a polygon ring
-MapShaper.findRayRingIntersections = function(x, y, path, arcs) {
-  var yints = [];
-  MapShaper.forEachPathSegment(path, arcs, function(a, b, xx, yy) {
-    var result = geom.getRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
-    if (result > -Infinity) {
-      yints.push(result);
-    }
-  });
-  // Ignore odd number of intersections -- probably caused by a ray that touches
-  //   but doesn't cross the ring
-  // TODO: improve method to handle edge case with two touches and no crosses.
-  if (yints.length % 2 === 1) {
-    yints = [];
-  }
-  return yints;
-};
-
-// TODO: find better home + name for this
-MapShaper.getInnerTics = function(min, max, steps) {
-  var range = max - min,
-      step = range / (steps + 1),
-      arr = [];
-  for (var i = 1; i<=steps; i++) {
-    arr.push(min + step * i);
-  }
-  return arr;
-};
-
-
-
-
-MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
-  var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
-      exp = MapShaper.validateExpression(rawExp),
-      newFields = exp.match(RE_ASSIGNEE) || null,
-      env = MapShaper.getBaseContext(),
-      records,
-      func;
-
-  if (newFields && !lyr.data) {
-    lyr.data = new DataTable(MapShaper.getFeatureCount(lyr));
-  }
-  if (lyr.data) records = lyr.data.getRecords();
-
-  env.$ = new FeatureExpressionContext(lyr, arcs);
-  try {
-    func = new Function("record,env", "with(env){with(record) { return " +
-        MapShaper.removeExpressionSemicolons(exp) + "}}");
-  } catch(e) {
-    stop(e.name, "in expression [" + exp + "]");
-  }
-
-  var compiled = function(recId) {
-    var record = records ? records[recId] || (records[recId] = {}) : {},
-        value, f;
-
-    // initialize new fields to null so assignments work
-    if (newFields) {
-      for (var i=0; i<newFields.length; i++) {
-        f = newFields[i];
-        if (f in record === false) {
-          record[f] = null;
-        }
-      }
-    }
-    env.$.__setId(recId);
-    try {
-      value = func.call(null, record, env);
-    } catch(e) {
-      stop(e.name, "in expression [" + exp + "]:", e.message);
-    }
-    return value;
-  };
-
-  compiled.context = env;
-  return compiled;
-};
-
-MapShaper.getBaseContext = function() {
-  var obj = {};
-  // Mask global properties (is this effective/worth doing?)
-  (function() {
-    for (var key in this) {
-      obj[key] = null;
-    }
-  }());
-  obj.console = console;
-  return obj;
-};
-
-MapShaper.validateExpression = function(exp) {
-  exp = exp || '';
-  return MapShaper.removeExpressionSemicolons(exp);
-};
-
-// Semicolons that divide the expression into two or more js statements
-// cause problems when 'return' is added before the expression
-// (only the first statement is evaluated). Replacing with commas fixes this
-//
-MapShaper.removeExpressionSemicolons = function(exp) {
-  if (exp.indexOf(';') != -1) {
-    // remove any ; from end of expression
-    exp = exp.replace(/[; ]+$/, '');
-    // change any other semicolons to commas
-    // (this is not very safe -- what if a string literal contains a semicolon?)
-    exp = exp.replace(/;/g, ',');
-  }
-  return exp;
-};
-
-function addGetters(obj, getters) {
-  Object.keys(getters).forEach(function(name) {
-    Object.defineProperty(obj, name, {get: getters[name]});
-  });
-}
-
-function FeatureExpressionContext(lyr, arcs) {
-  var hasData = !!lyr.data,
-      hasPoints = MapShaper.layerHasPoints(lyr),
-      hasPaths = arcs && MapShaper.layerHasPaths(lyr),
-      _isPlanar,
-      _self = this,
-      _centroid, _innerXY, _xy,
-      _record, _records,
-      _id, _ids, _bounds;
-
-  if (hasData) {
-    _records = lyr.data.getRecords();
-    Object.defineProperty(this, 'properties',
-      {set: function(obj) {
-        if (utils.isObject(obj)) {
-          _records[_id] = obj;
-        } else {
-          stop("Can't assign non-object to $.properties");
-        }
-      }, get: function() {
-        var rec = _records[_id];
-        if (!rec) {
-          rec = _records[_id] = {};
-        }
-        return rec;
-      }});
-  }
-
-  if (hasPaths) {
-    _isPlanar = arcs.isPlanar();
-    addGetters(this, {
-      // TODO: count hole/s + containing ring as one part
-      partCount: function() {
-        return _ids ? _ids.length : 0;
-      },
-      isNull: function() {
-        return this.partCount === 0;
-      },
-      bounds: function() {
-        return shapeBounds().toArray();
-      },
-      height: function() {
-        return shapeBounds().height();
-      },
-      width: function() {
-        return shapeBounds().width();
-      }
-    });
-
-    if (lyr.geometry_type == 'polygon') {
-      addGetters(this, {
-        area: function() {
-          return _isPlanar ? geom.getPlanarShapeArea(_ids, arcs) : geom.getSphericalShapeArea(_ids, arcs);
-        },
-        originalArea: function() {
-          var i = arcs.getRetainedInterval(),
-              area;
-          arcs.setRetainedInterval(0);
-          area = _self.area;
-          arcs.setRetainedInterval(i);
-          return area;
-        },
-        centroidX: function() {
-          var p = centroid();
-          return p ? p.x : null;
-        },
-        centroidY: function() {
-          var p = centroid();
-          return p ? p.y : null;
-        },
-        innerX: function() {
-          var p = innerXY();
-          return p ? p.x : null;
-        },
-        innerY: function() {
-          var p = innerXY();
-          return p ? p.y : null;
-        }
-      });
-    }
-
-  } else if (hasPoints) {
-    // TODO: add functions like bounds, isNull, pointCount
-    Object.defineProperty(this, 'coordinates',
-      {set: function(obj) {
-        if (!obj || utils.isArray(obj)) {
-          lyr.shapes[_id] = obj || null;
-        } else {
-          stop("Can't assign non-array to $.coordinates");
-        }
-      }, get: function() {
-        return lyr.shapes[_id] || null;
-      }});
-
-    addGetters(this, {
-      x: function() {
-        xy();
-        return _xy ? _xy[0] : null;
-      },
-      y: function() {
-        xy();
-        return _xy ? _xy[1] : null;
-      }
-    });
-  }
-
-  // all contexts have $.id
-  addGetters(this, {id: function() { return _id; }});
-
-  this.__setId = function(id) {
-    _id = id;
-    if (hasPaths) {
-      _bounds = null;
-      _centroid = null;
-      _innerXY = null;
-      _ids = lyr.shapes[id];
-    }
-    if (hasPoints) {
-      _xy = null;
-    }
-    if (hasData) {
-      _record = _records[id];
-    }
-  };
-
-  function xy() {
-    var shape = lyr.shapes[_id];
-    if (!_xy) {
-      _xy = shape && shape[0] || null;
-    }
-    return _xy;
-  }
-
-  function centroid() {
-    _centroid = _centroid || geom.getShapeCentroid(_ids, arcs);
-    return _centroid;
-  }
-
-  function innerXY() {
-    _innerXY = _innerXY || geom.findInteriorPoint(_ids, arcs);
-    return _innerXY;
-  }
-
-  function shapeBounds() {
-    if (!_bounds) {
-      _bounds = arcs.getMultiShapeBounds(_ids);
-    }
-    return _bounds;
-  }
-}
-
-
-
-
 api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
   var n = MapShaper.getFeatureCount(lyr),
       compiled, filter;
@@ -10680,75 +10918,6 @@ api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
       compiled(i);
     }
   }
-};
-
-
-
-
-api.filterFeatures = function(lyr, arcs, opts) {
-  var records = lyr.data ? lyr.data.getRecords() : null,
-      shapes = lyr.shapes || null,
-      n = MapShaper.getFeatureCount(lyr),
-      filteredShapes = shapes ? [] : null,
-      filteredRecords = records ? [] : null,
-      filteredLyr = MapShaper.getOutputLayer(lyr, opts),
-      filter;
-
-  if (opts.expression) {
-    filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
-  }
-
-  if (opts.remove_empty) {
-    filter = MapShaper.combineFilters(filter, MapShaper.getNullGeometryFilter(lyr, arcs));
-  }
-
-  if (!filter) {
-    stop("[filter] Missing a filter expression");
-  }
-
-  utils.repeat(n, function(shapeId) {
-    var result = filter(shapeId);
-    if (result === true) {
-      if (shapes) filteredShapes.push(shapes[shapeId] || null);
-      if (records) filteredRecords.push(records[shapeId] || null);
-    } else if (result !== false) {
-      stop("[filter] Expressions must return true or false");
-    }
-  });
-
-  filteredLyr.shapes = filteredShapes;
-  filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
-  if (opts.no_replace) {
-    // if adding a layer, don't share objects between source and filtered layer
-    filteredLyr = MapShaper.copyLayer(filteredLyr);
-  }
-
-  if (opts.verbose !== false) {
-    message(utils.format('[filter] Retained %,d of %,d features', MapShaper.getFeatureCount(filteredLyr), n));
-  }
-
-  return filteredLyr;
-};
-
-MapShaper.getNullGeometryFilter = function(lyr, arcs) {
-  var shapes = lyr.shapes;
-  if (lyr.geometry_type == 'polygon') {
-    return MapShaper.getEmptyPolygonFilter(shapes, arcs);
-  }
-  return function(i) {return !!shapes[i];};
-};
-
-MapShaper.getEmptyPolygonFilter = function(shapes, arcs) {
-  return function(i) {
-    var shp = shapes[i];
-    return !!shp && geom.getPlanarShapeArea(shapes[i], arcs) > 0;
-  };
-};
-
-MapShaper.combineFilters = function(a, b) {
-  return (a && b && function(id) {
-      return a(id) && b(id);
-    }) || a || b;
 };
 
 
@@ -11189,104 +11358,6 @@ MapShaper.getRecordMapper = function(map) {
     }
     return dest;
   };
-};
-
-
-
-
-api.filterIslands = function(lyr, arcs, opts) {
-  var removed = 0;
-  if (lyr.geometry_type != 'polygon') {
-    return;
-  }
-
-  if (opts.min_area || opts.min_vertices) {
-    if (opts.min_area) {
-      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getRingAreaTest(opts.min_area, arcs));
-    }
-    if (opts.min_vertices) {
-      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getVertexCountTest(opts.min_vertices, arcs));
-    }
-    if (opts.remove_empty) {
-      api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
-    }
-    message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
-  } else {
-    message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
-  }
-};
-
-MapShaper.getVertexCountTest = function(minVertices, arcs) {
-  return function(path) {
-    // first and last vertex in ring count as one
-    return geom.countVerticesInPath(path, arcs) <= minVertices;
-  };
-};
-
-MapShaper.getRingAreaTest = function(minArea, arcs) {
-  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
-  return function(path) {
-    var area = pathArea(path, arcs);
-    return Math.abs(area) < minArea;
-  };
-};
-
-MapShaper.filterIslands = function(lyr, arcs, ringTest) {
-  var removed = 0;
-  var counts = new Uint8Array(arcs.size());
-  MapShaper.countArcsInShapes(lyr.shapes, counts);
-
-  var filter = function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1) { // got an island ring
-        if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
-          if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
-            // and it does not contain any holes itself
-            // O(n^2), so testing this last
-            if (!MapShaper.ringHasHoles(path, paths, arcs)) {
-              removed++;
-              return null;
-            }
-          }
-        }
-      }
-    });
-  };
-  MapShaper.filterShapes(lyr.shapes, filter);
-  return removed;
-};
-
-
-MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
-  for (var i=0, n=ring.length; i<n; i++) {
-    if (arcs.arcIntersectsBBox(absArcId(ring[i]), bbox)) {
-      return true;
-    }
-  }
-  return false;
-};
-
-// Assumes that ring boundaries to not cross
-MapShaper.ringHasHoles = function(ring, rings, arcs) {
-  var bbox = arcs.getSimpleShapeBounds2(ring);
-  var sibling, p;
-  for (var i=0, n=rings.length; i<n; i++) {
-    sibling = rings[i];
-    // try to avoid expensive point-in-ring test
-    if (sibling && sibling != ring && MapShaper.ringIntersectsBBox(sibling, bbox, arcs)) {
-      p = arcs.getVertex(sibling[0], 0);
-      if (geom.testPointInRing(p.x, p.y, ring, arcs)) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
-MapShaper.filterShapes = function(shapes, filter) {
-  for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = filter(shapes[i]);
-  }
 };
 
 
@@ -13927,6 +13998,9 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'filter-islands') {
       MapShaper.applyCommand(api.filterIslands, targetLayers, arcs, opts);
 
+    } else if (name == 'filter-slivers') {
+      MapShaper.applyCommand(api.filterSlivers, targetLayers, arcs, opts);
+
     } else if (name == 'flatten') {
       outputLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
 
@@ -14999,6 +15073,22 @@ MapShaper.getOptionParser = function() {
       type: "flag",
       describe: "delete features with null geometry"
     })
+    .option("target", targetOpt);
+
+  parser.command("filter-slivers")
+    // .describe("remove small polygon rings")
+    .validate(validateExpressionOpts)
+
+    .option("min-area", {
+      type: "number",
+      describe: "remove small-area rings (source units)"
+    })
+    /*
+    .option("remove-empty", {
+      type: "flag",
+      describe: "delete features with null geometry"
+    })
+    */
     .option("target", targetOpt);
 
   parser.command("filter-fields")

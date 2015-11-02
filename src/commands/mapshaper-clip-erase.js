@@ -5,6 +5,7 @@ mapshaper-polygon-clipping
 mapshaper-polyline-clipping
 mapshaper-point-clipping
 mapshaper-arc-dissolve
+mapshaper-filter-slivers
 */
 
 api.clipLayers = function(target, src, dataset, opts) {
@@ -28,6 +29,7 @@ api.eraseLayer = function(targetLyr, src, dataset, opts) {
 MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
   var clipLyr =  MapShaper.getClipLayer(src, srcDataset, opts),
       usingPathClip = utils.some(targetLayers, MapShaper.layerHasPaths),
+      nullCount = 0, sliverCount = 0,
       nodes, outputLayers, dataset;
   opts = opts || {};
   MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
@@ -50,6 +52,7 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
   }
 
   outputLayers = targetLayers.map(function(targetLyr) {
+    var shapeCount = targetLyr.shapes ? targetLyr.shapes.length : 0;
     var clippedShapes, outputLyr;
     if (targetLyr === clipLyr) {
       stop('[' + type + '] Can\'t clip a layer with itself');
@@ -69,8 +72,14 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
     }
     outputLyr.shapes = clippedShapes;
 
+    // Remove sliver polygons
+    if (opts.cleanup && outputLyr.geometry_type == 'polygon') {
+      sliverCount += MapShaper.filterSlivers(outputLyr, dataset.arcs);
+    }
+
     // Remove null shapes (likely removed by clipping/erasing)
-    api.filterFeatures(outputLyr, dataset.arcs, {remove_empty: true});
+    api.filterFeatures(outputLyr, dataset.arcs, {remove_empty: true, verbose: false});
+    nullCount += shapeCount - outputLyr.shapes.length;
     return outputLyr;
   });
 
@@ -89,7 +98,20 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
     MapShaper.dissolveArcs(dataset);
   }
 
+  if (nullCount && sliverCount) {
+    message(MapShaper.getClipMessage(type, nullCount, sliverCount));
+  }
+
   return outputLayers;
+};
+
+MapShaper.getClipMessage = function(type, nullCount, sliverCount) {
+  var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
+  var sliverMsg = sliverCount ? utils.format('%,d sliver%s', sliverCount, utils.pluralSuffix(sliverCount)) : '';
+  if (nullMsg || sliverMsg) {
+    return utils.format('[%s] Removed %s%s%s', type, nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
+  }
+  return '';
 };
 
 // @src: a layer object, layer identifier or filename

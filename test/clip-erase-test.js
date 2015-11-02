@@ -3,6 +3,16 @@ var api = require('../'),
     ArcCollection = api.internal.ArcCollection;
 
 describe('mapshaper-clip-erase.js', function () {
+
+  describe('getClipMessage()', function () {
+    it('test', function () {
+      assert.equal(api.internal.getClipMessage('clip', 0, 1), '[clip] Removed 1 sliver');
+      assert.equal(api.internal.getClipMessage('clip', 1, 0), '[clip] Removed 1 null feature');
+      assert.equal(api.internal.getClipMessage('erase', 2, 20), '[erase] Removed 2 null features and 20 slivers');
+      assert.equal(api.internal.getClipMessage('clip', 0, 0), '');
+    })
+  })
+
   describe('bbox option', function() {
     it('Clip a point layer with a bbox', function() {
       var points = [[[0, 0]],

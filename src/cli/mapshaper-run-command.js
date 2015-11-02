@@ -10,6 +10,7 @@ mapshaper-file-export
 mapshaper-filter
 mapshaper-filter-rename-fields
 mapshaper-filter-islands
+mapshaper-filter-slivers
 mapshaper-info
 mapshaper-innerlines
 mapshaper-join
@@ -88,6 +89,9 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'filter-islands') {
       MapShaper.applyCommand(api.filterIslands, targetLayers, arcs, opts);
+
+    } else if (name == 'filter-slivers') {
+      MapShaper.applyCommand(api.filterSlivers, targetLayers, arcs, opts);
 
     } else if (name == 'flatten') {
       outputLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
