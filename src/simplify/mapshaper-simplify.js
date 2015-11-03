@@ -4,6 +4,7 @@ mapshaper-dp
 mapshaper-dataset-utils
 mapshaper-repair
 mapshaper-geom
+mapshaper-simplify-error
 */
 
 api.simplify = function(arcs, opts) {
@@ -21,6 +22,8 @@ api.simplify = function(arcs, opts) {
     stop("[simplify] missing pct, interval or resolution parameter");
   }
   T.stop("Calculate simplification");
+
+  // console.log("Error:", MapShaper.calcSimplifyError(arcs));
 
   if (!opts.no_repair) {
     api.findAndRepairIntersections(arcs);

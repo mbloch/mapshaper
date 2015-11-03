@@ -242,6 +242,7 @@ function ArcCollection() {
     return [dx / count || 0, dy / count || 0];
   };
 
+  // @cb function(i, j, xx, yy)
   this.forEachArcSegment = function(arcId, cb) {
     var fw = arcId >= 0,
         absId = fw ? arcId : ~arcId,
@@ -263,6 +264,7 @@ function ArcCollection() {
     }
   };
 
+  // @cb function(i, j, xx, yy)
   this.forEachSegment = function(cb) {
     for (var i=0, n=this.size(); i<n; i++) {
       this.forEachArcSegment(i, cb);

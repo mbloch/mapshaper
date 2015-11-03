@@ -2,19 +2,8 @@
 
 var DouglasPeucker = {};
 
-DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
-      ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
-      bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
-  return pointSegDistSq(ab2, bc2, ac2);
-};
-
-DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
-  var ab2 = distanceSq(ax, ay, bx, by),
-      ac2 = distanceSq(ax, ay, cx, cy),
-      bc2 = distanceSq(bx, by, cx, cy);
-  return pointSegDistSq(ab2, bc2, ac2);
-};
+DouglasPeucker.metricSq3D = geom.pointSegDistSq3D;
+DouglasPeucker.metricSq = geom.pointSegDistSq;
 
 // @dest array to contain point removal thresholds
 // @xx, @yy arrays of x, y coords of a path
@@ -49,9 +38,9 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
     for (var i=startIdx+1; i<endIdx; i++) {
       if (useZ) {
-        distSq = DouglasPeucker.metricSq3D(ax, ay, az, xx[i], yy[i], zz[i], cx, cy, cz);
+        distSq = DouglasPeucker.metricSq3D(xx[i], yy[i], zz[i], ax, ay, az, cx, cy, cz);
       } else {
-        distSq = DouglasPeucker.metricSq(ax, ay, xx[i], yy[i], cx, cy);
+        distSq = DouglasPeucker.metricSq(xx[i], yy[i], ax, ay, cx, cy);
       }
 
       if (distSq >= maxDistSq) {

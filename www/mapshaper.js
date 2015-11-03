@@ -4822,11 +4822,11 @@ function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return area;
 }
 
-// Given point B and segment AC, return the distSq from B to the nearest
-// point on AC
-// Receive the distSq of segments AB, BC, AC
+// Given point B and segment AC, return the squared distance from B to the
+// nearest point on AC
+// Receive the squared length of segments AB, BC, AC
 //
-function pointSegDistSq(ab2, bc2, ac2) {
+function apexDistSq(ab2, bc2, ac2) {
   var dist2;
   if (ac2 === 0) {
     dist2 = ab2;
@@ -4843,6 +4843,21 @@ function pointSegDistSq(ab2, bc2, ac2) {
   }
   return dist2;
 }
+
+function pointSegDistSq(ax, ay, bx, by, cx, cy) {
+  var ab2 = distanceSq(ax, ay, bx, by),
+      ac2 = distanceSq(ax, ay, cx, cy),
+      bc2 = distanceSq(bx, by, cx, cy);
+  return apexDistSq(ab2, ac2, bc2);
+}
+
+function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
+      ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
+      bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
+  return pointSegDistSq(ab2, ac2, bc2);
+}
+
 
 MapShaper.calcArcBounds = function(xx, yy, start, len) {
   var xmin = Infinity,
@@ -4911,6 +4926,8 @@ utils.extend(geom, {
   convLngLatToSph: convLngLatToSph,
   sphericalDistance: sphericalDistance,
   greatCircleDistance: greatCircleDistance,
+  pointSegDistSq: pointSegDistSq,
+  pointSegDistSq3D: pointSegDistSq3D,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,
@@ -5295,6 +5312,7 @@ function ArcCollection() {
     return [dx / count || 0, dy / count || 0];
   };
 
+  // @cb function(i, j, xx, yy)
   this.forEachArcSegment = function(arcId, cb) {
     var fw = arcId >= 0,
         absId = fw ? arcId : ~arcId,
@@ -5316,6 +5334,7 @@ function ArcCollection() {
     }
   };
 
+  // @cb function(i, j, xx, yy)
   this.forEachSegment = function(cb) {
     for (var i=0, n=this.size(); i<n; i++) {
       this.forEachArcSegment(i, cb);
@@ -6264,7 +6283,7 @@ geom.getPointToPathDistance = function(px, py, ids, arcs) {
     by = iter.y;
     pbSq = distanceSq(px, py, bx, by);
     abSq = distanceSq(ax, ay, bx, by);
-    pPathSq = Math.min(pPathSq, pointSegDistSq(paSq, pbSq, abSq));
+    pPathSq = Math.min(pPathSq, apexDistSq(paSq, pbSq, abSq));
     ax = bx;
     ay = by;
     paSq = pbSq;
@@ -15505,19 +15524,8 @@ Visvalingam.scaledSimplify = function(f) {
 
 var DouglasPeucker = {};
 
-DouglasPeucker.metricSq3D = function(ax, ay, az, bx, by, bz, cx, cy, cz) {
-  var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
-      ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
-      bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
-  return pointSegDistSq(ab2, bc2, ac2);
-};
-
-DouglasPeucker.metricSq = function(ax, ay, bx, by, cx, cy) {
-  var ab2 = distanceSq(ax, ay, bx, by),
-      ac2 = distanceSq(ax, ay, cx, cy),
-      bc2 = distanceSq(bx, by, cx, cy);
-  return pointSegDistSq(ab2, bc2, ac2);
-};
+DouglasPeucker.metricSq3D = geom.pointSegDistSq3D;
+DouglasPeucker.metricSq = geom.pointSegDistSq;
 
 // @dest array to contain point removal thresholds
 // @xx, @yy arrays of x, y coords of a path
@@ -15552,9 +15560,9 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
     for (var i=startIdx+1; i<endIdx; i++) {
       if (useZ) {
-        distSq = DouglasPeucker.metricSq3D(ax, ay, az, xx[i], yy[i], zz[i], cx, cy, cz);
+        distSq = DouglasPeucker.metricSq3D(xx[i], yy[i], zz[i], ax, ay, az, cx, cy, cz);
       } else {
-        distSq = DouglasPeucker.metricSq(ax, ay, xx[i], yy[i], cx, cy);
+        distSq = DouglasPeucker.metricSq(xx[i], yy[i], ax, ay, cx, cy);
       }
 
       if (distSq >= maxDistSq) {
@@ -15593,6 +15601,36 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
 
 
+MapShaper.calcSimplifyError = function(arcs) {
+  var count = 0,
+      sum = 0,
+      sumSq = 0;
+
+  arcs.forEachSegment(function(i, j, xx, yy) {
+    var ax, ay, bx, by, k, distSq;
+    if (j - i <= 1) return;
+    ax = xx[i];
+    ay = yy[i];
+    bx = xx[j];
+    by = yy[j];
+    for (k=i+1; k<j; k++) {
+      distSq = geom.pointSegDistSq(xx[k], yy[k], ax, ay, bx, by);
+      sumSq += distSq;
+      sum += Math.sqrt(distSq);
+      count++;
+    }
+  });
+
+  return {
+    avg: count > 0 ? sum / count : 0, // avg. displacement
+    avg2: count > 0 ? sumSq / count : 0, // avg. squared displacement
+    count: count // # of removed vertices
+  };
+};
+
+
+
+
 api.simplify = function(arcs, opts) {
   if (!arcs) stop("[simplify] Missing path data");
   T.start();
@@ -15608,6 +15646,8 @@ api.simplify = function(arcs, opts) {
     stop("[simplify] missing pct, interval or resolution parameter");
   }
   T.stop("Calculate simplification");
+
+  // console.log("Error:", MapShaper.calcSimplifyError(arcs));
 
   if (!opts.no_repair) {
     api.findAndRepairIntersections(arcs);

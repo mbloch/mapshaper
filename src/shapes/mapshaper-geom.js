@@ -305,11 +305,11 @@ function triangleArea3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return area;
 }
 
-// Given point B and segment AC, return the distSq from B to the nearest
-// point on AC
-// Receive the distSq of segments AB, BC, AC
+// Given point B and segment AC, return the squared distance from B to the
+// nearest point on AC
+// Receive the squared length of segments AB, BC, AC
 //
-function pointSegDistSq(ab2, bc2, ac2) {
+function apexDistSq(ab2, bc2, ac2) {
   var dist2;
   if (ac2 === 0) {
     dist2 = ab2;
@@ -326,6 +326,21 @@ function pointSegDistSq(ab2, bc2, ac2) {
   }
   return dist2;
 }
+
+function pointSegDistSq(ax, ay, bx, by, cx, cy) {
+  var ab2 = distanceSq(ax, ay, bx, by),
+      ac2 = distanceSq(ax, ay, cx, cy),
+      bc2 = distanceSq(bx, by, cx, cy);
+  return apexDistSq(ab2, ac2, bc2);
+}
+
+function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
+      ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
+      bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
+  return pointSegDistSq(ab2, ac2, bc2);
+}
+
 
 MapShaper.calcArcBounds = function(xx, yy, start, len) {
   var xmin = Infinity,
@@ -394,6 +409,8 @@ utils.extend(geom, {
   convLngLatToSph: convLngLatToSph,
   sphericalDistance: sphericalDistance,
   greatCircleDistance: greatCircleDistance,
+  pointSegDistSq: pointSegDistSq,
+  pointSegDistSq3D: pointSegDistSq3D,
   innerAngle3D: innerAngle3D,
   triangleArea: triangleArea,
   triangleArea3D: triangleArea3D,
