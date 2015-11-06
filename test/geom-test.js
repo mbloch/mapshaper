@@ -23,6 +23,24 @@ function equalBearings(a, b) {
 
 describe("mapshaper-geom.js", function() {
 
+  describe('pointSegDistSq()', function () {
+    it('Perpendicular dist. to vertical line', function () {
+      assert.equal(geom.pointSegDistSq(0, 0, 2, -1, 2, 3), 4);
+    })
+    it('Perpendicular dist. to sloping line', function () {
+      assert.equal(geom.pointSegDistSq(1, 1, 3, 1, 1, 3), 2);
+    })
+    it('Shortest distance is an endpoint', function () {
+      assert.equal(geom.pointSegDistSq(0, 0, 2, 6, 2, 2), 8);
+    })
+  })
+
+  describe('pointSegDistSq3D()', function () {
+    it('Perpendicular dist. to sloping line', function () {
+      assert.equal(geom.pointSegDistSq3D(1, 1, 1, 3, 1, 2, 1, 3, 2), 3);
+    })
+  })
+
   // degrees to meters in equirectangular projection
   describe('degreesToMeters()', function () {
     var d2r = Math.PI / 180;

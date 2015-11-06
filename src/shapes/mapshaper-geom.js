@@ -343,7 +343,7 @@ function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
       ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
       bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
-  return pointSegDistSq(ab2, ac2, bc2);
+  return apexDistSq(ab2, ac2, bc2);
 }
 
 
