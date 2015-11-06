@@ -3,6 +3,11 @@
 var R = 6378137;
 var D2R = Math.PI / 180;
 
+// Equirectangular projection
+function degreesToMeters(deg) {
+  return deg * D2R * R;
+}
+
 function distance3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
     dy = ay - by,
@@ -397,6 +402,7 @@ function boundsArea(b) {
 utils.extend(geom, {
   R: R,
   D2R: D2R,
+  degreesToMeters: degreesToMeters,
   getRoundingFunction: getRoundingFunction,
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,

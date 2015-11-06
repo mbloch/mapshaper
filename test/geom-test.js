@@ -23,6 +23,18 @@ function equalBearings(a, b) {
 
 describe("mapshaper-geom.js", function() {
 
+  // degrees to meters in equirectangular projection
+  describe('degreesToMeters()', function () {
+    var d2r = Math.PI / 180;
+    it('360 deg', function () {
+      aboutEqual(geom.degreesToMeters(360), 360 * d2r * 6378137);
+    });
+
+    it('1 deg', function () {
+      aboutEqual(geom.degreesToMeters(1), d2r * 6378137);
+    });
+  })
+
   describe('standardAngle()', function() {
     it('wraps', function() {
       equalAngles(geom.standardAngle(-Math.PI), Math.PI);

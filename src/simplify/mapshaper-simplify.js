@@ -148,8 +148,8 @@ MapShaper.calcSphericalInterval = function(xres, yres, bounds) {
   // Using length of arc along parallel through center of bbox as content width
   // TODO: consider using great circle instead of parallel arc to calculate width
   //    (doesn't work if width of bbox is greater than 180deg)
-  var width = bounds.width() * geom.D2R * geom.R * Math.cos(bounds.centerY() * geom.D2R);
-  var height = geom.greatCircleDistance(0, bounds.ymin, 0, bounds.ymax);
+  var width = geom.degreesToMeters(bounds.width()) * Math.cos(bounds.centerY() * geom.D2R);
+  var height = geom.degreesToMeters(bounds.height());
   return MapShaper.calcPlanarInterval(xres, yres, width, height);
 };
 
