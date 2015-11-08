@@ -517,6 +517,10 @@ MapShaper.getOptionParser = function() {
 
   parser.command("proj")
     // .describe("project the coordinates in a dataset")
+    .option("densify", {
+      type: "flag",
+      describe: "interpolate points to approximate curves"
+    })
     .option("spherical", {type: "flag"})
     .option("lng0", {type: "number"})
     .option("lat0", {type: "number"})

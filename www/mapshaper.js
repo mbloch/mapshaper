@@ -4520,6 +4520,11 @@ gui.clearProgressMessage = function() {
 var R = 6378137;
 var D2R = Math.PI / 180;
 
+// Equirectangular projection
+function degreesToMeters(deg) {
+  return deg * D2R * R;
+}
+
 function distance3D(ax, ay, az, bx, by, bz) {
   var dx = ax - bx,
     dy = ay - by,
@@ -4855,7 +4860,7 @@ function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   var ab2 = distanceSq3D(ax, ay, az, bx, by, bz),
       ac2 = distanceSq3D(ax, ay, az, cx, cy, cz),
       bc2 = distanceSq3D(bx, by, bz, cx, cy, cz);
-  return pointSegDistSq(ab2, ac2, bc2);
+  return apexDistSq(ab2, ac2, bc2);
 }
 
 
@@ -4914,6 +4919,7 @@ function boundsArea(b) {
 utils.extend(geom, {
   R: R,
   D2R: D2R,
+  degreesToMeters: degreesToMeters,
   getRoundingFunction: getRoundingFunction,
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,
@@ -12131,6 +12137,10 @@ MapShaper.getOptionParser = function() {
 
   parser.command("proj")
     // .describe("project the coordinates in a dataset")
+    .option("densify", {
+      type: "flag",
+      describe: "interpolate points to approximate curves"
+    })
     .option("spherical", {type: "flag"})
     .option("lng0", {type: "number"})
     .option("lat0", {type: "number"})
@@ -15772,8 +15782,8 @@ MapShaper.calcSphericalInterval = function(xres, yres, bounds) {
   // Using length of arc along parallel through center of bbox as content width
   // TODO: consider using great circle instead of parallel arc to calculate width
   //    (doesn't work if width of bbox is greater than 180deg)
-  var width = bounds.width() * geom.D2R * geom.R * Math.cos(bounds.centerY() * geom.D2R);
-  var height = geom.greatCircleDistance(0, bounds.ymin, 0, bounds.ymax);
+  var width = geom.degreesToMeters(bounds.width()) * Math.cos(bounds.centerY() * geom.D2R);
+  var height = geom.degreesToMeters(bounds.height());
   return MapShaper.calcPlanarInterval(xres, yres, width, height);
 };
 
@@ -18840,12 +18850,50 @@ Matrix2D.prototype.scale = function(sx, sy) {
 
 
 
+MapShaper.editArcs = function(arcs, onPoint) {
+  var nn2 = [],
+      xx2 = [],
+      yy2 = [],
+      n;
+
+  arcs.forEach(function(arc, i) {
+    editArc(arc, onPoint);
+  });
+  arcs.updateVertexData(nn2, xx2, yy2);
+
+  function append(p) {
+    xx2.push(p.x);
+    yy2.push(p.y);
+    n++;
+  }
+
+  function editArc(arc, cb) {
+    var x, y, xp, yp;
+    var i = 0;
+    n = 0;
+    while (arc.hasNext()) {
+      x = arc.x;
+      y = arc.y;
+      cb(append, x, y, xp, yp, i++);
+      xp = x;
+      yp = y;
+    }
+    if (n == 1) { // invalid arc len
+      error("An invalid arc was created");
+    }
+    nn2.push(n);
+  }
+};
+
+
+
+
 api.proj = function(dataset, opts) {
   var proj = MapShaper.getProjection(opts.projection, opts);
   if (!proj) {
     stop("[proj] Unknown projection:", opts.projection);
   }
-  MapShaper.projectDataset(dataset, proj);
+  MapShaper.projectDataset(dataset, proj, opts);
 };
 
 MapShaper.getProjection = function(name, opts) {
@@ -18861,14 +18909,18 @@ MapShaper.printProjections = function() {
   });
 };
 
-MapShaper.projectDataset = function(dataset, proj) {
+MapShaper.projectDataset = function(dataset, proj, opts) {
   dataset.layers.forEach(function(lyr) {
     if (MapShaper.layerHasPoints(lyr)) {
       MapShaper.projectPointLayer(lyr, proj);
     }
   });
   if (dataset.arcs) {
-    MapShaper.projectArcs(dataset.arcs, proj);
+    if (opts.densify) {
+      MapShaper.projectAndDensifyArcs(dataset.arcs, proj);
+    } else {
+      MapShaper.projectArcs(dataset.arcs, proj);
+    }
   }
   if (dataset.info) {
     // Setting output crs to null: "If the value of CRS is null, no CRS can be assumed"
@@ -18906,6 +18958,57 @@ MapShaper.projectArcs = function(arcs, proj) {
     yy[i] = p.y;
   }
   arcs.updateVertexData(data.nn, xx, yy, zz);
+};
+
+MapShaper.getDefaultDensifyInterval = function(arcs, proj) {
+  var xy = arcs.getAvgSegment2(),
+      bb = arcs.getBounds(),
+      a = proj.projectLatLng(bb.centerY(), bb.centerX()),
+      b = proj.projectLatLng(bb.centerY() + xy[1], bb.centerX());
+  return distance2D(a.x, a.y, b.x, b.y);
+};
+
+// Interpolate points into a projected line segment if needed to prevent large
+//   deviations from path of original unprojected segment.
+// @points (optional) array of accumulated points
+MapShaper.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
+  // Find midpoint between two endpoints and project it (assumes longitude does
+  // not wrap). TODO Consider bisecting along great circle path -- although this
+  // would not be good for boundaries that follow line of constant latitude.
+  var lng1 = (lng0 + lng2) / 2,
+      lat1 = (lat0 + lat2) / 2,
+      p = proj.projectLatLng(lat1, lng1),
+      distSq = geom.pointSegDistSq(p.x, p.y, x0, y0, x2, y2); // sq displacement
+  points = points || [];
+  // Bisect current segment if the projected midpoint deviates from original
+  //   segment by more than the @interval parameter.
+  //   ... but don't bisect very small segments to prevent infinite recursion
+  //   (e.g. if projection function is discontinuous)
+  if (distSq > interval * interval && distance2D(lng0, lat0, lng2, lat2) > 0.01) {
+    MapShaper.densifySegment(lng0, lat0, x0, y0, lng1, lat1, p.x, p.y, proj, interval, points);
+    points.push(p);
+    MapShaper.densifySegment(lng1, lat1, p.x, p.y, lng2, lat2, x2, y2, proj, interval, points);
+  }
+  return points;
+};
+
+MapShaper.projectAndDensifyArcs = function(arcs, proj) {
+  var interval = MapShaper.getDefaultDensifyInterval(arcs, proj);
+  var tmp = {x: 0, y: 0};
+  MapShaper.editArcs(arcs, onPoint);
+
+  function onPoint(append, lng, lat, prevLng, prevLat, i) {
+    var p = tmp,
+        prevX = p.x,
+        prevY = p.y;
+    proj.projectLatLng(lat, lng, p);
+    // Try to densify longer segments (optimization)
+    if (i > 0 && distanceSq(p.x, p.y, prevX, prevY) > interval * interval * 25) {
+      MapShaper.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p.x, p.y, proj, interval)
+        .forEach(append);
+    }
+    append(p);
+  }
 };
 
 

@@ -6,18 +6,16 @@ MapShaper.editArcs = function(arcs, onPoint) {
       yy2 = [],
       n;
 
-  var sink = {
-    append: function(x, y) {
-      xx2.push(x);
-      yy2.push(y);
-      n++;
-    }
-  };
-
   arcs.forEach(function(arc, i) {
     editArc(arc, onPoint);
   });
   arcs.updateVertexData(nn2, xx2, yy2);
+
+  function append(p) {
+    xx2.push(p.x);
+    yy2.push(p.y);
+    n++;
+  }
 
   function editArc(arc, cb) {
     var x, y, xp, yp;
@@ -26,7 +24,7 @@ MapShaper.editArcs = function(arcs, onPoint) {
     while (arc.hasNext()) {
       x = arc.x;
       y = arc.y;
-      cb(sink, x, y, xp, yp, i++);
+      cb(append, x, y, xp, yp, i++);
       xp = x;
       yp = y;
     }
