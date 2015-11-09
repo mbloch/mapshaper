@@ -2,7 +2,7 @@ var assert = require('assert'),
     api = require("../"),
     internal = api.internal;
 
-describe('mapshaper-segments.js', function () {
+describe('mapshaper-segment-intersection.js', function () {
 
   describe('calcSegmentIntersectionStripeCount()', function () {
     it('Issue #49 test 1', function () {

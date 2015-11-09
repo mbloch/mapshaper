@@ -1,5 +1,5 @@
 /* @requires
-mapshaper-segments,
+mapshaper-segment-intersection,
 mapshaper-dataset-utils,
 mapshaper-path-index
 mapshaper-polygon-repair

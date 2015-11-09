@@ -1,4 +1,4 @@
-/* @require mapshaper-segments */
+/* @require mapshaper-segment-intersection */
 
 // Combine detection and repair for cli
 //
