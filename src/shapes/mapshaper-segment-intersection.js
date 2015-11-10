@@ -89,32 +89,37 @@ MapShaper.findSegmentIntersections = (function() {
       }
     });
 
-
     // Detect intersections among segments in each stripe.
     var raw = arcs.getVertexData(),
         intersections = [],
-        index = {},
         arr;
     for (i=0; i<stripeCount; i++) {
       arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy, spherical);
       if (arr.length > 0) {
-        extendIntersections(intersections, arr, i);
+        intersections.push.apply(intersections, arr);
       }
     }
-    return intersections;
-
-    // Add intersections from a bin, but avoid duplicates.
-    function extendIntersections(intersections, arr, stripeId) {
-      arr.forEach(function(obj, i) {
-        var key = MapShaper.getIntersectionKey(obj.a, obj.b);
-        if (key in index === false) {
-          intersections.push(obj);
-          index[key] = true;
-        }
-      });
-    }
+    return MapShaper.dedupIntersections(intersections);
   };
 })();
+
+MapShaper.dedupIntersections = function(arr) {
+  var index = {};
+  return arr.filter(function(o) {
+    var key = MapShaper.getIntersectionKey(o);
+    if (key in index) {
+      return false;
+    }
+    index[key] = true;
+    return true;
+  });
+};
+
+// Get an indexable key from an intersection object
+// Assumes that vertex ids of o.a and o.b are sorted
+MapShaper.getIntersectionKey = function(o) {
+  return o.a.join(',') + ';' + o.b.join(',');
+};
 
 MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
   var yrange = arcs.getBounds().height(),
@@ -124,12 +129,6 @@ MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
     count = Math.ceil(yrange / segLen / 20);
   }
   return count || 1;
-};
-
-// Get an indexable key that is consistent regardless of point sequence
-// @a, @b endpoint ids in format [i, j]
-MapShaper.getIntersectionKey = function(a, b) {
-  return a.concat(b).sort().join(',');
 };
 
 // Find intersections among a group of line segments
@@ -144,8 +143,7 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
   var s1p1, s1p2, s2p1, s2p2,
       s1p1x, s1p2x, s2p1x, s2p2x,
       s1p1y, s1p2y, s2p1y, s2p2y,
-      hit, i, j;
-
+      hit, seg1, seg2, i, j;
 
   // Sort segments by xmin, to allow efficient exclusion of segments with
   // non-overlapping x extents.
@@ -195,12 +193,12 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
           s2p1x, s2p1y, s2p2x, s2p2y);
 
       if (hit) {
-        intersections.push({
-          x: hit[0],
-          y: hit[1],
-          a: getEndpointIds(s1p1, s1p2, hit),
-          b: getEndpointIds(s2p1, s2p2, hit)
-        });
+        seg1 = [s1p1, s1p2];
+        seg2 = [s2p1, s2p2];
+        intersections.push(MapShaper.formatIntersection(hit, seg1, seg2, xx, yy));
+        if (hit.length == 4) {
+          intersections.push(MapShaper.formatIntersection(hit.slice(2), seg1, seg2, xx, yy));
+        }
       }
     }
     i += 2;
@@ -220,6 +218,28 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
     }
     return [i, j];
   }
+};
+
+MapShaper.formatIntersection = function(xy, s1, s2, xx, yy) {
+  var x = xy[0],
+      y = xy[1],
+      a, b;
+  s1 = MapShaper.formatIntersectingSegment(x, y, s1[0], s1[1], xx, yy);
+  s2 = MapShaper.formatIntersectingSegment(x, y, s2[0], s2[1], xx, yy);
+  a = s1[0] < s2[0] ? s1 : s2;
+  b = a == s1 ? s2 : s1;
+  return {x: x, y: y, a: a, b: b};
+};
+
+MapShaper.formatIntersectingSegment = function(x, y, id1, id2, xx, yy) {
+  var i = id1 < id2 ? id1 : id2,
+      j = i === id1 ? id2 : id1;
+  if (xx[i] == x && yy[i] == y) {
+    j = i;
+  } else if (xx[j] == x && yy[j] == y) {
+    i = j;
+  }
+  return [i, j];
 };
 
 MapShaper.orderSegmentIds = function(xx, ids, spherical) {
