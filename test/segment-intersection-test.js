@@ -7,18 +7,39 @@ function findIntersections(coords) {
   return internal.findSegmentIntersections(arcs);
 }
 
-
 describe('mapshaper-segment-intersection.js', function () {
 
   describe('findSegmentIntersections()', function () {
-    /*
-    it('find collinear intersection (segs share one endpoint, seg A contained by B)', function () {
+
+    it('find collinear intersections (segs share one endpoint, seg A contained by B)', function () {
       var xx = findIntersections([[[1, 0], [2, 0]], [[0, 0], [2, 0]]]),
           // vertex id of segment endpoint is duplicated if intersection is at the endpoint
           target = [{x: 1, y: 0, a: [0, 0], b: [2, 3]}];
       assert.deepEqual(xx, target);
     })
-    */
+
+    it('find collinear intersections 2 (segs are overlapping)', function () {
+      var xx = findIntersections([[[1, 0], [3, 0]], [[0, 0], [2, 0]]]),
+          // two intersections
+          target = [{x: 1, y: 0, a: [0, 0], b: [2, 3]}, {x: 2, y: 0, a: [0, 1], b: [3, 3]}];
+      internal.sortIntersections(xx);
+      assert.deepEqual(xx, target);
+    })
+
+    it('find collinear intersections 3 (seg A contained by seg B)', function () {
+      var xx = findIntersections([[[1, 0], [2, 0]], [[0, 0], [3, 0]]]),
+          // two intersections
+          target = [{x: 1, y: 0, a: [0, 0], b: [2, 3]}, {x: 2, y: 0, a: [1, 1], b: [2, 3]}];
+      internal.sortIntersections(xx);
+      assert.deepEqual(xx, target);
+    })
+
+    it('find collinear intersections 4 (path segs A and B fit to C)', function () {
+      var xx = findIntersections([[[0, 0], [1, 1], [2, 2]], [[0, 0], [2, 2]]]),
+          // two intersections
+          target = [{x: 1, y: 1, a: [1, 1], b: [3, 4]}];
+      assert.deepEqual(xx, target);
+    })
 
     it('find axis-aligned intersection', function () {
       var xx = findIntersections([[[0, 0], [3, 0]], [[2, -1], [2, 4]]]);

@@ -17,6 +17,7 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
 
   // clean each target polygon by dissolving its rings
   targetShapes = targetShapes.map(dissolvePolygon);
+
   // merge rings of clip/erase polygons and dissolve them all
   clipShapes = [dissolvePolygon(MapShaper.concatShapes(clipShapes))];
 

@@ -1873,41 +1873,104 @@ function nearestPoint(x, y, x0, y0) {
 
 function lineIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
   var den = determinant2D(s1p2x - s1p1x, s1p2y - s1p1y, s2p2x - s2p1x, s2p2y - s2p1y);
-  if (den === 0) return false;
+  if (den === 0) return null;
   var m = orient2D(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) / den;
   var x = s1p1x + m * (s1p2x - s1p1x);
   var y = s1p1y + m * (s1p2y - s1p1y);
   return [x, y];
 }
 
-// Find intersection between two 2D segments.
-// Return [x, y] point if segments intersect at a single point
-// Return false if segments do not touch or are colinear
-function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
-  // Source: Sedgewick, _Algorithms in C_
-  // (Tried various other functions that failed owing to floating point errors)
-  var p = false;
-  var hit = orient2D(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y) *
+// Get intersection point if segments are non-collinear, else return null
+// Assumes that segments intersect
+function crossIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  var p = lineIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
+  var nearest;
+  if (p) {
+    // Re-order operands so intersection point is closest to s1p1 (better precision)
+    // Source: Jonathan Shewchuk http://www.cs.berkeley.edu/~jrs/meshpapers/robnotes.pdf
+    nearest = nearestPoint(p[0], p[1], s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
+    if (nearest == 1) {
+      // use b a c d
+      p = lineIntersection(s1p2x, s1p2y, s1p1x, s1p1y, s2p1x, s2p1y, s2p2x, s2p2y);
+    } else if (nearest == 2) {
+      // use c d a b
+      p = lineIntersection(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y, s1p2x, s1p2y);
+    } else if (nearest == 3) {
+      // use d c a b
+      p = lineIntersection(s2p2x, s2p2y, s2p1x, s2p1y, s1p1x, s1p1y, s1p2x, s1p2y);
+    }
+  }
+  return p;
+}
+
+// Source: Sedgewick, _Algorithms in C_
+// (Tried various other functions that failed owing to floating point errors)
+function segmentHit(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  return orient2D(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y) *
       orient2D(s1p1x, s1p1y, s1p2x, s1p2y, s2p2x, s2p2y) <= 0 &&
       orient2D(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) *
       orient2D(s2p1x, s2p1y, s2p2x, s2p2y, s1p2x, s1p2y) <= 0;
+}
 
+function inside(x, minX, maxX) {
+  return x > minX && x < maxX;
+}
+
+function sortSeg(x1, y1, x2, y2) {
+  return x1 < x2 || x1 == x2 && y1 < y2 ? [x1, y1, x2, y2] : [x2, y2, x1, y1];
+}
+
+// Assume segments s1 and s2 are collinear and overlap; find one or two internal endpoints points
+// TODO: refactor
+function collinearIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  var minX = Math.min(s1p1x, s1p2x, s2p1x, s2p2x),
+      maxX = Math.max(s1p1x, s1p2x, s2p1x, s2p2x),
+      minY = Math.min(s1p1y, s1p2y, s2p1y, s2p2y),
+      maxY = Math.max(s1p1y, s1p2y, s2p1y, s2p2y),
+      useY = maxY - minY > maxX - minX,
+      coords = [];
+
+  if (useY ? inside(s1p1y, minY, maxY) : inside(s1p1x, minX, maxX)) {
+    coords.push(s1p1x, s1p1y);
+  }
+  if (useY ? inside(s1p2y, minY, maxY) : inside(s1p2x, minX, maxX)) {
+    coords.push(s1p2x, s1p2y);
+  }
+  if (useY ? inside(s2p1y, minY, maxY) : inside(s2p1x, minX, maxX)) {
+    coords.push(s2p1x, s2p1y);
+  }
+  if (useY ? inside(s2p2y, minY, maxY) : inside(s2p2x, minX, maxX)) {
+    coords.push(s2p2x, s2p2y);
+  }
+  if (coords.length != 2 && coords.length != 4) {
+    warning("Invalid collinear segment intersection:", coords);
+    coords = null;
+  } else if (coords.length == 4 && coords[0] == coords[2] && coords[1] == coords[3]) {
+    // segs that meet in the middle don't count
+    coords = null;
+  }
+  return coords;
+}
+
+function endpointHit(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  return s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
+          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y;
+}
+
+// Find intersections between two 2D segments.
+// Return [x, y] point if segments intersect at a single point or are overlapping+collinear
+//   and one endpoint is inside overlapping portion
+// Return [x1, y1, x2, y2] if segments are overlapping+collinear and have two endpoints inside overlapping portion
+// Return null if segments do not touch
+function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  var hit = segmentHit(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y),
+      p = null;
   if (hit) {
-    p = lineIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
-    if (p) { // colinear if p is false -- treating this as no intersection
-      // Re-order operands so intersection point is closest to s1p1 (better numerical accuracy)
-      // Source: Jonathan Shewchuk http://www.cs.berkeley.edu/~jrs/meshpapers/robnotes.pdf
-      var nearest = nearestPoint(p[0], p[1], s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
-      if (nearest == 1) {
-        // use b a c d
-        p = lineIntersection(s1p2x, s1p2y, s1p1x, s1p1y, s2p1x, s2p1y, s2p2x, s2p2y);
-      } else if (nearest == 2) {
-        // use c d a b
-        p = lineIntersection(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y, s1p2x, s1p2y);
-      } else if (nearest == 3) {
-        // use d c a b
-        p = lineIntersection(s2p2x, s2p2y, s2p1x, s2p1y, s1p1x, s1p1y, s1p2x, s1p2y);
-      }
+    p = crossIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
+    if (!p) { // colinear if p is null
+      p = collinearIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
+    } else if (endpointHit(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y)) {
+      p = null; // filter out segments that only intersect at an endpoint
     }
   }
   return p;
@@ -2153,7 +2216,6 @@ function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return apexDistSq(ab2, ac2, bc2);
 }
 
-
 MapShaper.calcArcBounds = function(xx, yy, start, len) {
   var xmin = Infinity,
       ymin = Infinity,
@@ -2211,6 +2273,7 @@ utils.extend(geom, {
   D2R: D2R,
   degreesToMeters: degreesToMeters,
   getRoundingFunction: getRoundingFunction,
+  segmentHit: segmentHit,
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,
   innerAngle: innerAngle,
@@ -3526,16 +3589,14 @@ MapShaper.findSegmentIntersections = (function() {
         yrange = bounds.ymax - ymin,
         stripeCount = MapShaper.calcSegmentIntersectionStripeCount(arcs),
         stripeSizes = new Uint32Array(stripeCount),
+        stripeId = stripeCount > 1 ? multiStripeId : singleStripeId,
         i;
 
-    // check for invalid params
-    if (yrange > 0 === false || stripeCount > 0 === false) {
-      return [];
-    }
-
-    function stripeId(y) {
+    function multiStripeId(y) {
       return Math.floor((stripeCount-1) * (y - ymin) / yrange);
     }
+
+    function singleStripeId(y) {return 0;}
 
     // Count segments in each stripe
     arcs.forEachSegment(function(id1, id2, xx, yy) {
@@ -3575,32 +3636,43 @@ MapShaper.findSegmentIntersections = (function() {
       }
     });
 
-
     // Detect intersections among segments in each stripe.
     var raw = arcs.getVertexData(),
         intersections = [],
-        index = {},
         arr;
     for (i=0; i<stripeCount; i++) {
       arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy, spherical);
       if (arr.length > 0) {
-        extendIntersections(intersections, arr, i);
+        intersections.push.apply(intersections, arr);
       }
     }
-    return intersections;
-
-    // Add intersections from a bin, but avoid duplicates.
-    function extendIntersections(intersections, arr, stripeId) {
-      arr.forEach(function(obj, i) {
-        var key = MapShaper.getIntersectionKey(obj.a, obj.b);
-        if (key in index === false) {
-          intersections.push(obj);
-          index[key] = true;
-        }
-      });
-    }
+    return MapShaper.dedupIntersections(intersections);
   };
 })();
+
+MapShaper.sortIntersections = function(arr) {
+  arr.sort(function(a, b) {
+    return a.x - b.x || a.y - b.y;
+  });
+};
+
+MapShaper.dedupIntersections = function(arr) {
+  var index = {};
+  return arr.filter(function(o) {
+    var key = MapShaper.getIntersectionKey(o);
+    if (key in index) {
+      return false;
+    }
+    index[key] = true;
+    return true;
+  });
+};
+
+// Get an indexable key from an intersection object
+// Assumes that vertex ids of o.a and o.b are sorted
+MapShaper.getIntersectionKey = function(o) {
+  return o.a.join(',') + ';' + o.b.join(',');
+};
 
 MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
   var yrange = arcs.getBounds().height(),
@@ -3610,12 +3682,6 @@ MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
     count = Math.ceil(yrange / segLen / 20);
   }
   return count || 1;
-};
-
-// Get an indexable key that is consistent regardless of point sequence
-// @a, @b endpoint ids in format [i, j]
-MapShaper.getIntersectionKey = function(a, b) {
-  return a.concat(b).sort().join(',');
 };
 
 // Find intersections among a group of line segments
@@ -3630,8 +3696,7 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
   var s1p1, s1p2, s2p1, s2p2,
       s1p1x, s1p2x, s2p1x, s2p2x,
       s1p1y, s1p2y, s2p1y, s2p2y,
-      hit, i, j;
-
+      hit, seg1, seg2, i, j;
 
   // Sort segments by xmin, to allow efficient exclusion of segments with
   // non-overlapping x extents.
@@ -3652,7 +3717,9 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
       j += 2;
       s2p1 = ids[j];
       s2p1x = xx[s2p1];
-      // count++;
+
+      // count++
+      // console.log(s1p1, s1p2, 'vs', s2p1, ids[j+1]);
 
       if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
       //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
@@ -3670,9 +3737,18 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
       }
 
       // skip segments that share an endpoint
+      /*
       if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
           s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
         // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
+        continue;
+      }
+      */
+
+      // skip segments that are adjacent in a path (optimization)
+      // TODO: consider if this eliminates some cases that should
+      // be detected, e.g. spikes formed by unequal segments
+      if (s1p1 == s2p1 || s1p1 == s2p2 || s1p2 == s2p1 || s1p2 == s2p2) {
         continue;
       }
 
@@ -3681,12 +3757,12 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
           s2p1x, s2p1y, s2p2x, s2p2y);
 
       if (hit) {
-        intersections.push({
-          x: hit[0],
-          y: hit[1],
-          a: getEndpointIds(s1p1, s1p2, hit),
-          b: getEndpointIds(s2p1, s2p2, hit)
-        });
+        seg1 = [s1p1, s1p2];
+        seg2 = [s2p1, s2p2];
+        intersections.push(MapShaper.formatIntersection(hit, seg1, seg2, xx, yy));
+        if (hit.length == 4) {
+          intersections.push(MapShaper.formatIntersection(hit.slice(2), seg1, seg2, xx, yy));
+        }
       }
     }
     i += 2;
@@ -3706,6 +3782,28 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
     }
     return [i, j];
   }
+};
+
+MapShaper.formatIntersection = function(xy, s1, s2, xx, yy) {
+  var x = xy[0],
+      y = xy[1],
+      a, b;
+  s1 = MapShaper.formatIntersectingSegment(x, y, s1[0], s1[1], xx, yy);
+  s2 = MapShaper.formatIntersectingSegment(x, y, s2[0], s2[1], xx, yy);
+  a = s1[0] < s2[0] ? s1 : s2;
+  b = a == s1 ? s2 : s1;
+  return {x: x, y: y, a: a, b: b};
+};
+
+MapShaper.formatIntersectingSegment = function(x, y, id1, id2, xx, yy) {
+  var i = id1 < id2 ? id1 : id2,
+      j = i === id1 ? id2 : id1;
+  if (xx[i] == x && yy[i] == y) {
+    j = i;
+  } else if (xx[j] == x && yy[j] == y) {
+    i = j;
+  }
+  return [i, j];
 };
 
 MapShaper.orderSegmentIds = function(xx, ids, spherical) {
@@ -6588,6 +6686,7 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
 
   // clean each target polygon by dissolving its rings
   targetShapes = targetShapes.map(dissolvePolygon);
+
   // merge rings of clip/erase polygons and dissolve them all
   clipShapes = [dissolvePolygon(MapShaper.concatShapes(clipShapes))];
 

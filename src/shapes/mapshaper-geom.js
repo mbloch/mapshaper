@@ -66,41 +66,104 @@ function nearestPoint(x, y, x0, y0) {
 
 function lineIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
   var den = determinant2D(s1p2x - s1p1x, s1p2y - s1p1y, s2p2x - s2p1x, s2p2y - s2p1y);
-  if (den === 0) return false;
+  if (den === 0) return null;
   var m = orient2D(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) / den;
   var x = s1p1x + m * (s1p2x - s1p1x);
   var y = s1p1y + m * (s1p2y - s1p1y);
   return [x, y];
 }
 
-// Find intersection between two 2D segments.
-// Return [x, y] point if segments intersect at a single point
-// Return false if segments do not touch or are colinear
-function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
-  // Source: Sedgewick, _Algorithms in C_
-  // (Tried various other functions that failed owing to floating point errors)
-  var p = false;
-  var hit = orient2D(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y) *
+// Get intersection point if segments are non-collinear, else return null
+// Assumes that segments intersect
+function crossIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  var p = lineIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
+  var nearest;
+  if (p) {
+    // Re-order operands so intersection point is closest to s1p1 (better precision)
+    // Source: Jonathan Shewchuk http://www.cs.berkeley.edu/~jrs/meshpapers/robnotes.pdf
+    nearest = nearestPoint(p[0], p[1], s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
+    if (nearest == 1) {
+      // use b a c d
+      p = lineIntersection(s1p2x, s1p2y, s1p1x, s1p1y, s2p1x, s2p1y, s2p2x, s2p2y);
+    } else if (nearest == 2) {
+      // use c d a b
+      p = lineIntersection(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y, s1p2x, s1p2y);
+    } else if (nearest == 3) {
+      // use d c a b
+      p = lineIntersection(s2p2x, s2p2y, s2p1x, s2p1y, s1p1x, s1p1y, s1p2x, s1p2y);
+    }
+  }
+  return p;
+}
+
+// Source: Sedgewick, _Algorithms in C_
+// (Tried various other functions that failed owing to floating point errors)
+function segmentHit(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  return orient2D(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y) *
       orient2D(s1p1x, s1p1y, s1p2x, s1p2y, s2p2x, s2p2y) <= 0 &&
       orient2D(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y) *
       orient2D(s2p1x, s2p1y, s2p2x, s2p2y, s1p2x, s1p2y) <= 0;
+}
 
+function inside(x, minX, maxX) {
+  return x > minX && x < maxX;
+}
+
+function sortSeg(x1, y1, x2, y2) {
+  return x1 < x2 || x1 == x2 && y1 < y2 ? [x1, y1, x2, y2] : [x2, y2, x1, y1];
+}
+
+// Assume segments s1 and s2 are collinear and overlap; find one or two internal endpoints points
+// TODO: refactor
+function collinearIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  var minX = Math.min(s1p1x, s1p2x, s2p1x, s2p2x),
+      maxX = Math.max(s1p1x, s1p2x, s2p1x, s2p2x),
+      minY = Math.min(s1p1y, s1p2y, s2p1y, s2p2y),
+      maxY = Math.max(s1p1y, s1p2y, s2p1y, s2p2y),
+      useY = maxY - minY > maxX - minX,
+      coords = [];
+
+  if (useY ? inside(s1p1y, minY, maxY) : inside(s1p1x, minX, maxX)) {
+    coords.push(s1p1x, s1p1y);
+  }
+  if (useY ? inside(s1p2y, minY, maxY) : inside(s1p2x, minX, maxX)) {
+    coords.push(s1p2x, s1p2y);
+  }
+  if (useY ? inside(s2p1y, minY, maxY) : inside(s2p1x, minX, maxX)) {
+    coords.push(s2p1x, s2p1y);
+  }
+  if (useY ? inside(s2p2y, minY, maxY) : inside(s2p2x, minX, maxX)) {
+    coords.push(s2p2x, s2p2y);
+  }
+  if (coords.length != 2 && coords.length != 4) {
+    warning("Invalid collinear segment intersection:", coords);
+    coords = null;
+  } else if (coords.length == 4 && coords[0] == coords[2] && coords[1] == coords[3]) {
+    // segs that meet in the middle don't count
+    coords = null;
+  }
+  return coords;
+}
+
+function endpointHit(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  return s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
+          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y;
+}
+
+// Find intersections between two 2D segments.
+// Return [x, y] point if segments intersect at a single point or are overlapping+collinear
+//   and one endpoint is inside overlapping portion
+// Return [x1, y1, x2, y2] if segments are overlapping+collinear and have two endpoints inside overlapping portion
+// Return null if segments do not touch
+function segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y) {
+  var hit = segmentHit(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y),
+      p = null;
   if (hit) {
-    p = lineIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
-    if (p) { // colinear if p is false -- treating this as no intersection
-      // Re-order operands so intersection point is closest to s1p1 (better numerical accuracy)
-      // Source: Jonathan Shewchuk http://www.cs.berkeley.edu/~jrs/meshpapers/robnotes.pdf
-      var nearest = nearestPoint(p[0], p[1], s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
-      if (nearest == 1) {
-        // use b a c d
-        p = lineIntersection(s1p2x, s1p2y, s1p1x, s1p1y, s2p1x, s2p1y, s2p2x, s2p2y);
-      } else if (nearest == 2) {
-        // use c d a b
-        p = lineIntersection(s2p1x, s2p1y, s2p2x, s2p2y, s1p1x, s1p1y, s1p2x, s1p2y);
-      } else if (nearest == 3) {
-        // use d c a b
-        p = lineIntersection(s2p2x, s2p2y, s2p1x, s2p1y, s1p1x, s1p1y, s1p2x, s1p2y);
-      }
+    p = crossIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
+    if (!p) { // colinear if p is null
+      p = collinearIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y);
+    } else if (endpointHit(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, s2p2y)) {
+      p = null; // filter out segments that only intersect at an endpoint
     }
   }
   return p;
@@ -346,7 +409,6 @@ function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return apexDistSq(ab2, ac2, bc2);
 }
 
-
 MapShaper.calcArcBounds = function(xx, yy, start, len) {
   var xmin = Infinity,
       ymin = Infinity,
@@ -404,6 +466,7 @@ utils.extend(geom, {
   D2R: D2R,
   degreesToMeters: degreesToMeters,
   getRoundingFunction: getRoundingFunction,
+  segmentHit: segmentHit,
   segmentIntersection: segmentIntersection,
   distance3D: distance3D,
   innerAngle: innerAngle,

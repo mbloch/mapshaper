@@ -40,16 +40,14 @@ MapShaper.findSegmentIntersections = (function() {
         yrange = bounds.ymax - ymin,
         stripeCount = MapShaper.calcSegmentIntersectionStripeCount(arcs),
         stripeSizes = new Uint32Array(stripeCount),
+        stripeId = stripeCount > 1 ? multiStripeId : singleStripeId,
         i;
 
-    // check for invalid params
-    if (yrange > 0 === false || stripeCount > 0 === false) {
-      return [];
-    }
-
-    function stripeId(y) {
+    function multiStripeId(y) {
       return Math.floor((stripeCount-1) * (y - ymin) / yrange);
     }
+
+    function singleStripeId(y) {return 0;}
 
     // Count segments in each stripe
     arcs.forEachSegment(function(id1, id2, xx, yy) {
@@ -102,6 +100,12 @@ MapShaper.findSegmentIntersections = (function() {
     return MapShaper.dedupIntersections(intersections);
   };
 })();
+
+MapShaper.sortIntersections = function(arr) {
+  arr.sort(function(a, b) {
+    return a.x - b.x || a.y - b.y;
+  });
+};
 
 MapShaper.dedupIntersections = function(arr) {
   var index = {};
@@ -164,7 +168,9 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
       j += 2;
       s2p1 = ids[j];
       s2p1x = xx[s2p1];
-      // count++;
+
+      // count++
+      // console.log(s1p1, s1p2, 'vs', s2p1, ids[j+1]);
 
       if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
       //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
@@ -182,9 +188,18 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
       }
 
       // skip segments that share an endpoint
+      /*
       if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
           s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
         // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
+        continue;
+      }
+      */
+
+      // skip segments that are adjacent in a path (optimization)
+      // TODO: consider if this eliminates some cases that should
+      // be detected, e.g. spikes formed by unequal segments
+      if (s1p1 == s2p1 || s1p1 == s2p2 || s1p2 == s2p1 || s1p2 == s2p2) {
         continue;
       }
 
