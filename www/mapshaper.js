@@ -2424,46 +2424,50 @@ Utils.inherit(ElementPosition, EventDispatcher);
 
 
 
+function getTimerFunction() {
+  return typeof requestAnimationFrame == 'function' ?
+    requestAnimationFrame : function(cb) {setTimeout(cb, 25);};
+}
+
 function Timer() {
   var self = this,
-      interval = 25,
-      id, duration, start, prev;
+      running = false,
+      tickTime, startTime, duration;
 
   this.start = function(ms) {
     var now = +new Date();
     duration = ms;
-    start = now;
-    if (!id) { // not currently running
-      prev = now;
-      startTick();
+    startTime = now;
+    if (!running) {
+      running = true;
+      startTick(now);
     }
   };
 
   this.stop = function() {
-    clearTimeout(id);
-    id = null;
+    running = false;
   };
 
-  function startTick() {
-    id = setTimeout(onTick, interval);
+  function startTick(now) {
+    tickTime = now;
+    getTimerFunction()(onTick);
   }
 
   function onTick() {
     var now = +new Date(),
-        elapsed = now - start,
+        elapsed = now - startTime,
         pct = Math.min((elapsed + 10) / duration, 1),
-        done = pct >= 1,
-        evt = {
-          done: done, pct: pct, time: now, elapsed: elapsed,
-          scale: (now - prev) / interval
-        };
-        prev = now;
-    if (done) {
-      id = null;
-    } else {
-      startTick();
-    }
-    self.dispatchEvent('tick', evt);
+        done = pct >= 1;
+    if (!running) return; // interrupted
+    if (done) running = false;
+    self.dispatchEvent('tick', {
+      elapsed: elapsed,
+      pct: pct,
+      done: done,
+      time: now,
+      tickTime: now - tickTime
+    });
+    if (running) startTick(now);
   }
 }
 
@@ -2518,7 +2522,7 @@ function MouseWheel(mouse) {
   }
 
   function handleWheel(evt) {
-    var direction; // 1 = zoom in / scroll up, -1 = zoom out / scroll down
+    var direction;
     if (evt.wheelDelta) {
       direction = evt.wheelDelta > 0 ? 1 : -1;
     } else if (evt.detail) {
@@ -2537,7 +2541,7 @@ function MouseWheel(mouse) {
   function onTick(evt) {
     var elapsed = evt.time - prevWheelTime,
         fadeElapsed = elapsed - sustainTime,
-        scale = evt.scale,
+        scale = evt.tickTime / 25,
         obj;
     if (evt.done) {
       currDirection = 0;
