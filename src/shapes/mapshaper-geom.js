@@ -136,7 +136,8 @@ function collinearIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, 
     coords.push(s2p2x, s2p2y);
   }
   if (coords.length != 2 && coords.length != 4) {
-    warning("Invalid collinear segment intersection:", coords);
+    // e.g. congruent segments
+    trace("Invalid collinear segment intersection", coords);
     coords = null;
   } else if (coords.length == 4 && coords[0] == coords[2] && coords[1] == coords[3]) {
     // segs that meet in the middle don't count

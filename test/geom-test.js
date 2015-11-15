@@ -228,9 +228,11 @@ describe("mapshaper-geom.js", function() {
       assert.equal(geom.segmentIntersection(0, 0, 1, -1, 1, -1, 2, 0), null)
     });
 
-    it('Congruent segments are false', function() {
-      assert.equal(geom.segmentIntersection(0, 0, 1, 1, 0, 0, 1, 1), null)
-      assert.equal(geom.segmentIntersection(1, 1, 0, 0, 0, 0, 1, 1), null)
+    it('Congruent segments are nully', function() {
+      assert.equal(geom.segmentIntersection(0, 0, 1, 1, 0, 0, 1, 2), null)
+      assert.equal(geom.segmentIntersection(1, 2, 0, 0, 0, 0, 1, 1), null)
+      assert.equal(geom.segmentIntersection(0, 0, 1, 0, 1, 0, 0, 0), null)
+      assert.equal(geom.segmentIntersection(0, 1, 0, 0, 0, 1, 0, 0), null)
     })
 
     it('Partially congruent segments are treated as having one or two intersections', function() {

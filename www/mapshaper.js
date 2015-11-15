@@ -4657,7 +4657,8 @@ function collinearIntersection(s1p1x, s1p1y, s1p2x, s1p2y, s2p1x, s2p1y, s2p2x, 
     coords.push(s2p2x, s2p2y);
   }
   if (coords.length != 2 && coords.length != 4) {
-    warning("Invalid collinear segment intersection:", coords);
+    // e.g. congruent segments
+    trace("Invalid collinear segment intersection", coords);
     coords = null;
   } else if (coords.length == 4 && coords[0] == coords[2] && coords[1] == coords[3]) {
     // segs that meet in the middle don't count
@@ -7819,9 +7820,6 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
       s2p1 = ids[j];
       s2p1x = xx[s2p1];
 
-      // count++
-      // console.log(s1p1, s1p2, 'vs', s2p1, ids[j+1]);
-
       if (s1p2x < s2p1x) break; // x extent of seg 2 is greater than seg 1: done with seg 1
       //if (s1p2x <= s2p1x) break; // this misses point-segment intersections when s1 or s2 is vertical
 
@@ -7837,15 +7835,6 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
         if (s1p1y < s2p2y && s1p2y < s2p1y && s1p2y < s2p2y) continue;
       }
 
-      // skip segments that share an endpoint
-      /*
-      if (s1p1x == s2p1x && s1p1y == s2p1y || s1p1x == s2p2x && s1p1y == s2p2y ||
-          s1p2x == s2p1x && s1p2y == s2p1y || s1p2x == s2p2x && s1p2y == s2p2y) {
-        // TODO: don't reject segments that share exactly one endpoint and fold back on themselves
-        continue;
-      }
-      */
-
       // skip segments that are adjacent in a path (optimization)
       // TODO: consider if this eliminates some cases that should
       // be detected, e.g. spikes formed by unequal segments
@@ -7856,7 +7845,6 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
       // test two candidate segments for intersection
       hit = segmentIntersection(s1p1x, s1p1y, s1p2x, s1p2y,
           s2p1x, s2p1y, s2p2x, s2p2y);
-
       if (hit) {
         seg1 = [s1p1, s1p2];
         seg2 = [s2p1, s2p2];
