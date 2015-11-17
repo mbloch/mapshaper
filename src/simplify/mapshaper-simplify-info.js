@@ -24,7 +24,7 @@ MapShaper.printSimplifyInfo = function(arcs, opts) {
   var removableCount = err.removed + err.retained;
   var pct1 = (err.removed + err.collapsed) / uniqueCount || 0;
   var pct2 = err.removed / removableCount || 0;
-  var lines = ["Simplification info"];
+  var lines = ["Simplification statistics"];
   lines.push(utils.format("Method: %s (%s)", name, type));
   lines.push(utils.format("Removed vertices: %,d", err.removed + err.collapsed));
   lines.push(utils.format("   %.1f% of %,d unique coordinate locations", pct1 * 100, uniqueCount));
