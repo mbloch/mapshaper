@@ -13744,30 +13744,41 @@ MapShaper.repairIntersections = function(arcs, intersections) {
 
 MapShaper.calcSimplifyError = function(arcs, use3D) {
   var distSq = use3D ? pointSegGeoDistSq : geom.pointSegDistSq,
-      count = 0,
       removed = 0,
-      collapsed = 0,
+      retained = 0,
+      collapsedRings = 0,
+      // collapsedPoints = 0,
       max = 0,
       sum = 0,
-      sumSq = 0;
+      sumSq = 0,
+      measures = [],
+      zz = arcs.getVertexData().zz,
+      count;
 
   arcs.forEachSegment(function(i, j, xx, yy) {
-    var ax, ay, bx, by, d2, d;
-    if (j - i <= 1) return;
-    removed += j - i - 1;
+    var ax, ay, bx, by, d2, d, skipped;
+    if (zz[i] < Infinity) {
+      retained++;
+    }
+    skipped = j - i - 1;
+    if (skipped < 1) return;
+    removed += skipped;
     ax = xx[i];
     ay = yy[i];
     bx = xx[j];
     by = yy[j];
     if (ax == bx && ay == by) {
-      collapsed++;
-    } else while (++i < j) {
-      d2 = distSq(xx[i], yy[i], ax, ay, bx, by);
-      sumSq += d2;
-      d = Math.sqrt(d2);
-      sum += d;
-      max = Math.max(max, d);
-      count++;
+      collapsedRings++;
+      // collapsedPoints += skipped;
+    } else {
+      while (++i < j) {
+        d2 = distSq(xx[i], yy[i], ax, ay, bx, by);
+        sumSq += d2;
+        d = Math.sqrt(d2);
+        sum += d;
+        max = Math.max(max, d);
+        measures.push(d);
+      }
     }
   });
 
@@ -13778,12 +13789,15 @@ MapShaper.calcSimplifyError = function(arcs, use3D) {
           xx[2], yy[2], zz[2]);
   }
 
+  count = measures.length;
   return {
+    median: count > 0 ? utils.findMedian(measures) : 0,
     avg: count > 0 ? sum / count : 0, // avg. displacement
     avg2: count > 0 ? sumSq / count : 0, // avg. squared displacement
     max: max,
-    collapsed: collapsed,
-    removed: removed
+    collapsed: collapsedRings,
+    removed: removed,
+    retained: retained
   };
 };
 
@@ -13810,13 +13824,19 @@ MapShaper.printSimplifyInfo = function(arcs, opts) {
   var name = MapShaper.getSimplifyMethodLabel(MapShaper.getSimplifyMethod(opts));
   var type = MapShaper.useSphericalSimplify(arcs, opts) ? 'spherical' : 'planar';
   var err = MapShaper.calcSimplifyError(arcs, type == 'spherical');
-  var pct1 = (err.removed + err.collapsed) / MapShaper.countUniqueVertices(arcs) || 0;
+  var uniqueCount = MapShaper.countUniqueVertices(arcs);
+  var removableCount = err.removed + err.retained;
+  var pct1 = (err.removed + err.collapsed) / uniqueCount || 0;
+  var pct2 = err.removed / removableCount || 0;
   var lines = ["Simplification info"];
   lines.push(utils.format("Method: %s (%s)", name, type));
-  lines.push(utils.format("Removed vertices: %,d (%.2f%)", err.removed + err.collapsed, pct1 * 100));
+  lines.push(utils.format("Removed vertices: %,d", err.removed + err.collapsed));
+  lines.push(utils.format("   %.1f% of %,d unique coordinate locations", pct1 * 100, uniqueCount));
+  lines.push(utils.format("   %.1f% of %,d filterable coordinate locations", pct2 * 100, removableCount));
   lines.push(utils.format("Collapsed rings: %,d", err.collapsed));
-  lines.push(utils.format("Reference distance: %.2f", arcs.getRetainedInterval()));
+  lines.push(utils.format("Reference displacement: %.2f", arcs.getRetainedInterval()));
   lines.push(utils.format("Mean displacement: %.4f", err.avg));
+  lines.push(utils.format("Median displacement: %.4f", err.median));
   lines.push(utils.format("Max displacement: %.4f", err.max));
   lines.push(utils.format("Std. deviation: %.4f", Math.sqrt(err.avg2)));
   message(lines.join('\n  '));

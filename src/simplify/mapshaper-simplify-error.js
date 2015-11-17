@@ -2,30 +2,41 @@
 
 MapShaper.calcSimplifyError = function(arcs, use3D) {
   var distSq = use3D ? pointSegGeoDistSq : geom.pointSegDistSq,
-      count = 0,
       removed = 0,
-      collapsed = 0,
+      retained = 0,
+      collapsedRings = 0,
+      // collapsedPoints = 0,
       max = 0,
       sum = 0,
-      sumSq = 0;
+      sumSq = 0,
+      measures = [],
+      zz = arcs.getVertexData().zz,
+      count;
 
   arcs.forEachSegment(function(i, j, xx, yy) {
-    var ax, ay, bx, by, d2, d;
-    if (j - i <= 1) return;
-    removed += j - i - 1;
+    var ax, ay, bx, by, d2, d, skipped;
+    if (zz[i] < Infinity) {
+      retained++;
+    }
+    skipped = j - i - 1;
+    if (skipped < 1) return;
+    removed += skipped;
     ax = xx[i];
     ay = yy[i];
     bx = xx[j];
     by = yy[j];
     if (ax == bx && ay == by) {
-      collapsed++;
-    } else while (++i < j) {
-      d2 = distSq(xx[i], yy[i], ax, ay, bx, by);
-      sumSq += d2;
-      d = Math.sqrt(d2);
-      sum += d;
-      max = Math.max(max, d);
-      count++;
+      collapsedRings++;
+      // collapsedPoints += skipped;
+    } else {
+      while (++i < j) {
+        d2 = distSq(xx[i], yy[i], ax, ay, bx, by);
+        sumSq += d2;
+        d = Math.sqrt(d2);
+        sum += d;
+        max = Math.max(max, d);
+        measures.push(d);
+      }
     }
   });
 
@@ -36,11 +47,14 @@ MapShaper.calcSimplifyError = function(arcs, use3D) {
           xx[2], yy[2], zz[2]);
   }
 
+  count = measures.length;
   return {
+    median: count > 0 ? utils.findMedian(measures) : 0,
     avg: count > 0 ? sum / count : 0, // avg. displacement
     avg2: count > 0 ? sumSq / count : 0, // avg. squared displacement
     max: max,
-    collapsed: collapsed,
-    removed: removed
+    collapsed: collapsedRings,
+    removed: removed,
+    retained: retained
   };
 };
