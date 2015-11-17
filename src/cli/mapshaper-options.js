@@ -220,6 +220,10 @@ MapShaper.getOptionParser = function() {
     .option("no-repair", {
       describe: "don't remove intersections introduced by simplification",
       type: "flag"
+    })
+    .option("stats", {
+      // describe: "display statistics about simplified arcs",
+      type: "flag"
     });
 
   parser.command("join")

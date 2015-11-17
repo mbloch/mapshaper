@@ -11930,6 +11930,10 @@ MapShaper.getOptionParser = function() {
     .option("no-repair", {
       describe: "don't remove intersections introduced by simplification",
       type: "flag"
+    })
+    .option("stats", {
+      // describe: "display statistics about simplified arcs",
+      type: "flag"
     });
 
   parser.command("join")
@@ -15701,37 +15705,90 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
 
 
-MapShaper.calcSimplifyError = function(arcs) {
-  var count = 0,
+MapShaper.calcSimplifyError = function(arcs, use3D) {
+  var distSq = use3D ? pointSegGeoDistSq : geom.pointSegDistSq,
+      count = 0,
+      removed = 0,
+      collapsed = 0,
+      max = 0,
       sum = 0,
       sumSq = 0;
 
   arcs.forEachSegment(function(i, j, xx, yy) {
-    var ax, ay, bx, by, k, distSq;
+    var ax, ay, bx, by, d2, d;
     if (j - i <= 1) return;
+    removed += j - i - 1;
     ax = xx[i];
     ay = yy[i];
     bx = xx[j];
     by = yy[j];
-    for (k=i+1; k<j; k++) {
-      distSq = geom.pointSegDistSq(xx[k], yy[k], ax, ay, bx, by);
-      sumSq += distSq;
-      sum += Math.sqrt(distSq);
+    if (ax == bx && ay == by) {
+      collapsed++;
+    } else while (++i < j) {
+      d2 = distSq(xx[i], yy[i], ax, ay, bx, by);
+      sumSq += d2;
+      d = Math.sqrt(d2);
+      sum += d;
+      max = Math.max(max, d);
       count++;
     }
   });
 
+  function pointSegGeoDistSq(alng, alat, blng, blat, clng, clat) {
+    var xx = [], yy = [], zz = [];
+    geom.convLngLatToSph([alng, blng, clng], [alat, blat, clat], xx, yy, zz);
+    return geom.pointSegDistSq3D(xx[0], yy[0], zz[0], xx[1], yy[1], zz[1],
+          xx[2], yy[2], zz[2]);
+  }
+
   return {
     avg: count > 0 ? sum / count : 0, // avg. displacement
     avg2: count > 0 ? sumSq / count : 0, // avg. squared displacement
-    count: count // # of removed vertices
+    max: max,
+    collapsed: collapsed,
+    removed: removed
   };
 };
 
 
 
 
-api.simplify = function(arcs, opts) {
+
+MapShaper.getSimplifyMethodLabel = function(slug) {
+  return {
+    dp: "Ramer-Douglas-Peucker",
+    visvalingam: "Visvalingam",
+    weighted_visvalingam: "Weighted Visvalingam"
+  }[slug] || "Unknown";
+};
+
+MapShaper.countUniqueVertices = function(arcs) {
+  // TODO: exclude any zero-length arcs
+  var endpoints = arcs.size() * 2;
+  var nodes = new NodeCollection(arcs).size();
+  return arcs.getPointCount() - endpoints + nodes;
+};
+
+MapShaper.printSimplifyInfo = function(arcs, opts) {
+  var name = MapShaper.getSimplifyMethodLabel(MapShaper.getSimplifyMethod(opts));
+  var type = MapShaper.useSphericalSimplify(arcs, opts) ? 'spherical' : 'planar';
+  var err = MapShaper.calcSimplifyError(arcs, type == 'spherical');
+  var pct1 = (err.removed + err.collapsed) / MapShaper.countUniqueVertices(arcs) || 0;
+  var lines = ["Simplification info"];
+  lines.push(utils.format("Method: %s (%s)", name, type));
+  lines.push(utils.format("Removed vertices: %,d (%.2f%)", err.removed + err.collapsed, pct1 * 100));
+  lines.push(utils.format("Collapsed rings: %,d", err.collapsed));
+  lines.push(utils.format("Reference distance: %.2f", arcs.getRetainedInterval()));
+  lines.push(utils.format("Mean displacement: %.4f", err.avg));
+  lines.push(utils.format("Max displacement: %.4f", err.max));
+  lines.push(utils.format("Std. deviation: %.4f", Math.sqrt(err.avg2)));
+  message(lines.join('\n  '));
+};
+
+
+
+api.simplify = function(dataset, opts) {
+  var arcs = dataset.arcs;
   if (!arcs) stop("[simplify] Missing path data");
   T.start();
   MapShaper.simplifyPaths(arcs, opts);
@@ -15747,10 +15804,16 @@ api.simplify = function(arcs, opts) {
   }
   T.stop("Calculate simplification");
 
-  // console.log("Error:", MapShaper.calcSimplifyError(arcs));
+  if (opts.keep_shapes) {
+    api.keepEveryPolygon(arcs, dataset.layers);
+  }
 
   if (!opts.no_repair) {
     api.findAndRepairIntersections(arcs);
+  }
+
+  if (opts.stats) {
+    MapShaper.printSimplifyInfo(arcs, opts);
   }
 };
 
@@ -15762,7 +15825,8 @@ MapShaper.useSphericalSimplify = function(arcs, opts) {
 // (modifies @arcs ArcCollection in-place)
 MapShaper.simplifyPaths = function(arcs, opts) {
   var use3D = MapShaper.useSphericalSimplify(arcs, opts);
-  var simplifyPath = MapShaper.getSimplifyFunction(opts, use3D);
+  var method = MapShaper.getSimplifyMethod(opts);
+  var simplifyPath = MapShaper.getSimplifyFunction(method, use3D, opts);
   arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
   if (use3D) {
     MapShaper.simplifyPaths3D(arcs, simplifyPath);
@@ -15792,14 +15856,21 @@ MapShaper.simplifyPaths3D = function(arcs, simplify) {
   });
 };
 
-MapShaper.getSimplifyFunction = function(opts, use3D) {
-  if (opts.method == 'dp') {
-    return DouglasPeucker.calcArcData;
-  } else if (opts.method == 'visvalingam') {
-    return Visvalingam.getEffectiveAreaSimplifier(use3D);
-  } else { // assuming Visvalingam weighted simplification
-    return Visvalingam.getWeightedSimplifier(opts, use3D);
+MapShaper.getSimplifyMethod = function(opts) {
+  return opts.method || "weighted_visvalingam";
+};
+
+
+MapShaper.getSimplifyFunction = function(method, use3D, opts) {
+  var f;
+  if (method == 'dp') {
+    f = DouglasPeucker.calcArcData;
+  } else if (method == 'visvalingam') {
+    f = Visvalingam.getEffectiveAreaSimplifier(use3D);
+  } else if (method == 'weighted_visvalingam') {
+    f = Visvalingam.getWeightedSimplifier(opts, use3D);
   }
+  return f;
 };
 
 // Protect polar coordinates and coordinates at the prime meridian from
@@ -19458,10 +19529,7 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
 
     } else if (name == 'simplify') {
-      api.simplify(arcs, opts);
-      if (opts.keep_shapes) {
-        api.keepEveryPolygon(arcs, targetLayers);
-      }
+      api.simplify(dataset, opts);
 
     } else if (name == 'sort') {
       MapShaper.applyCommand(api.sortFeatures, targetLayers, arcs, opts);

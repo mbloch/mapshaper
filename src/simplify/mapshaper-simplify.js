@@ -4,10 +4,11 @@ mapshaper-dp
 mapshaper-dataset-utils
 mapshaper-repair
 mapshaper-geom
-mapshaper-simplify-error
+mapshaper-simplify-info
 */
 
-api.simplify = function(arcs, opts) {
+api.simplify = function(dataset, opts) {
+  var arcs = dataset.arcs;
   if (!arcs) stop("[simplify] Missing path data");
   T.start();
   MapShaper.simplifyPaths(arcs, opts);
@@ -23,10 +24,16 @@ api.simplify = function(arcs, opts) {
   }
   T.stop("Calculate simplification");
 
-  // console.log("Error:", MapShaper.calcSimplifyError(arcs));
+  if (opts.keep_shapes) {
+    api.keepEveryPolygon(arcs, dataset.layers);
+  }
 
   if (!opts.no_repair) {
     api.findAndRepairIntersections(arcs);
+  }
+
+  if (opts.stats) {
+    MapShaper.printSimplifyInfo(arcs, opts);
   }
 };
 
@@ -38,7 +45,8 @@ MapShaper.useSphericalSimplify = function(arcs, opts) {
 // (modifies @arcs ArcCollection in-place)
 MapShaper.simplifyPaths = function(arcs, opts) {
   var use3D = MapShaper.useSphericalSimplify(arcs, opts);
-  var simplifyPath = MapShaper.getSimplifyFunction(opts, use3D);
+  var method = MapShaper.getSimplifyMethod(opts);
+  var simplifyPath = MapShaper.getSimplifyFunction(method, use3D, opts);
   arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
   if (use3D) {
     MapShaper.simplifyPaths3D(arcs, simplifyPath);
@@ -68,14 +76,21 @@ MapShaper.simplifyPaths3D = function(arcs, simplify) {
   });
 };
 
-MapShaper.getSimplifyFunction = function(opts, use3D) {
-  if (opts.method == 'dp') {
-    return DouglasPeucker.calcArcData;
-  } else if (opts.method == 'visvalingam') {
-    return Visvalingam.getEffectiveAreaSimplifier(use3D);
-  } else { // assuming Visvalingam weighted simplification
-    return Visvalingam.getWeightedSimplifier(opts, use3D);
+MapShaper.getSimplifyMethod = function(opts) {
+  return opts.method || "weighted_visvalingam";
+};
+
+
+MapShaper.getSimplifyFunction = function(method, use3D, opts) {
+  var f;
+  if (method == 'dp') {
+    f = DouglasPeucker.calcArcData;
+  } else if (method == 'visvalingam') {
+    f = Visvalingam.getEffectiveAreaSimplifier(use3D);
+  } else if (method == 'weighted_visvalingam') {
+    f = Visvalingam.getWeightedSimplifier(opts, use3D);
   }
+  return f;
 };
 
 // Protect polar coordinates and coordinates at the prime meridian from

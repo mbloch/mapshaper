@@ -140,10 +140,7 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
 
     } else if (name == 'simplify') {
-      api.simplify(arcs, opts);
-      if (opts.keep_shapes) {
-        api.keepEveryPolygon(arcs, targetLayers);
-      }
+      api.simplify(dataset, opts);
 
     } else if (name == 'sort') {
       MapShaper.applyCommand(api.sortFeatures, targetLayers, arcs, opts);

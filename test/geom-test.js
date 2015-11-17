@@ -26,6 +26,10 @@ describe("mapshaper-geom.js", function() {
   describe('pointSegDistSq()', function () {
     it('Perpendicular dist. to vertical line', function () {
       assert.equal(geom.pointSegDistSq(0, 0, 2, -1, 2, 3), 4);
+      assert.equal(geom.pointSegDistSq(1, 0, 0, 3, 2, 3), 9);
+    })
+    it('Perpendicular dist. to horiz. line', function () {
+      assert.equal(geom.pointSegDistSq(1, 1, -3, 0, -3, 3), 16);
     })
     it('Perpendicular dist. to sloping line', function () {
       assert.equal(geom.pointSegDistSq(1, 1, 3, 1, 1, 3), 2);
