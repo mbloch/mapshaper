@@ -13906,6 +13906,8 @@ MapShaper.getSimplifyFunction = function(method, use3D, opts) {
     f = Visvalingam.getEffectiveAreaSimplifier(use3D);
   } else if (method == 'weighted_visvalingam') {
     f = Visvalingam.getWeightedSimplifier(opts, use3D);
+  } else {
+    stop('[simplify] Unsupported simplify method:', method);
   }
   return f;
 };
