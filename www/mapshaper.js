@@ -2432,16 +2432,15 @@ function getTimerFunction() {
 function Timer() {
   var self = this,
       running = false,
+      busy = false,
       tickTime, startTime, duration;
 
   this.start = function(ms) {
     var now = +new Date();
     duration = ms;
     startTime = now;
-    if (!running) {
-      running = true;
-      startTick(now);
-    }
+    running = true;
+    if (!busy) startTick(now);
   };
 
   this.stop = function() {
@@ -2449,6 +2448,7 @@ function Timer() {
   };
 
   function startTick(now) {
+    busy = true;
     tickTime = now;
     getTimerFunction()(onTick);
   }
@@ -2458,7 +2458,10 @@ function Timer() {
         elapsed = now - startTime,
         pct = Math.min((elapsed + 10) / duration, 1),
         done = pct >= 1;
-    if (!running) return; // interrupted
+    if (!running) { // interrupted
+      busy = false;
+      return;
+    }
     if (done) running = false;
     self.dispatchEvent('tick', {
       elapsed: elapsed,
@@ -2467,6 +2470,7 @@ function Timer() {
       time: now,
       tickTime: now - tickTime
     });
+    busy = false;
     if (running) startTick(now);
   }
 }
