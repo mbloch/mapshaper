@@ -77,7 +77,11 @@ MapShaper.simplifyPaths3D = function(arcs, simplify) {
 };
 
 MapShaper.getSimplifyMethod = function(opts) {
-  return opts.method || "weighted_visvalingam";
+  var m = opts.method;
+  if (!m || m == 'weighted' || m == 'visvalingam' && opts.weighting) {
+    m =  'weighted_visvalingam';
+  }
+  return m;
 };
 
 

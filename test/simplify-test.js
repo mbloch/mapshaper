@@ -18,6 +18,19 @@ function coordBuffersEqual(a, b) {
 
 describe("mapshaper-simplify.js", function() {
 
+  describe("getSimplifyMethod()", function() {
+    it ('"weighted" aliases to "weighted_visvalingam"', function() {
+      assert.equal(api.internal.getSimplifyMethod({method: 'weighted'}), 'weighted_visvalingam');
+    })
+    it ('"visvalingam" aliases to "weighted_visvalingam" whem weighting param is present', function() {
+      assert.equal(api.internal.getSimplifyMethod({method: 'visvalingam', weighting: 0.5}), 'weighted_visvalingam');
+    })
+    it ('"weighted_visvalingam" is default', function() {
+      assert.equal(api.internal.getSimplifyMethod({}), 'weighted_visvalingam');
+    })
+  })
+
+
   describe('calcPlanarInterval()', function () {
     it('constrained by content width if content is relatively wide', function () {
       var interval = api.internal.calcPlanarInterval(100, 300, 2000, 1000);

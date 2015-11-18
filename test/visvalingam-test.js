@@ -121,4 +121,43 @@ describe("mapshaper-visvalingam.js", function() {
           v.getWeightedMetric()(0, 0, 1, 8, 2, 0));
     })
   })
+
+  describe('getWeightFunction()', function () {
+    it('weight is 1 when weighting == 0', function () {
+      var f = v.getWeightFunction({weighting: 0});
+      assert.equal(f(0), 1);
+      assert.equal(f(1), 1);
+      assert.equal(f(-1), 1);
+    })
+
+    it('weight is <1 when angle < 90deg', function () {
+      // weight function receives cosine of angle
+      var f = v.getWeightFunction({weighting: 0.5});
+      assert(f(0.1) < 1);
+      assert(f(1) < 1);
+    })
+
+    it('weight is >1 when angle > 90deg', function () {
+      var f = v.getWeightFunction({weighting: 0.5});
+      assert(f(-0.1) > 1);
+      assert(f(-1) > 1);
+    })
+
+    it('weight is 0 when angle = 90deg', function () {
+      var f = v.getWeightFunction({weighting: 0.5});
+      assert.equal(f(0), 1);
+    })
+
+    it('greater angles have greater weights', function () {
+      var f = v.getWeightFunction({weighting: 0.5});
+      assert(f(0) > f(0.1))
+      assert(f(0.1) > f(0.2))
+      assert(f(0.9) > f(1))
+      assert(f(-0.1) > f(0))
+      assert(f(-0.2) > f(-0.1))
+      assert(f(-1) > f(-0.9))
+    })
+
+  })
+
 })
