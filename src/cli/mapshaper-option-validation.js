@@ -29,14 +29,7 @@ function validateInputOpts(cmd) {
 
 function validateSimplifyOpts(cmd) {
   var o = cmd.options,
-      _ = cmd._,
-      methods = ["visvalingam", "dp"];
-
-  if (o.method) {
-    if (!utils.contains(methods, o.method)) {
-      error(o.method, "is not a recognized simplification method; choose from:", methods);
-    }
-  }
+      _ = cmd._;
 
   var pctStr = o.pct || "";
   if (_.length > 0) {

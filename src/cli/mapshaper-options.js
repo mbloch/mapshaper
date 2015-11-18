@@ -189,18 +189,24 @@ MapShaper.getOptionParser = function() {
     })
     .option("dp", {
       alias: "rdp",
-      describe: "use (Ramer-)Douglas-Peucker simplification",
+      describe: "use Ramer-Douglas-Peucker simplification",
       assign_to: "method"
     })
     .option("visvalingam", {
       describe: "use Visvalingam simplification with \"effective area\" metric",
       assign_to: "method"
     })
+    .option("weighted", {
+      describe: "use weighted Visvalingam simplification (default)",
+      assign_to: "method"
+    })
     .option("method", {
       // hidden option
     })
-    .option("weight-scale", {type: "number"})
-    .option("weight-shift", {type: "number"})
+    .option("weighting", {
+      type: "number",
+      describe: "weighted Visvalingam coefficient (default is 0.7)"
+    })
     .option("resolution", {
       describe: "output resolution as a grid (e.g. 1000x500)"
     })

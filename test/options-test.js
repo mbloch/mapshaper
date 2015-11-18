@@ -90,8 +90,8 @@ describe('mapshaper-options.js', function () {
     good("-simplify visvalingam 10%", {method: "visvalingam", pct: 0.1})
 
     // invalid method names
-    bad("-simplify 4% method=douglas-peucker");
-    bad("-simplify 4% 0.1 method=vis");
+    // now handled in simplify function
+    //bad("-simplify 4% method=douglas-peucker");
 
     // assigning to a boolean or set variable is wrong
     bad('-simplify 5% keep-shapes=true');
