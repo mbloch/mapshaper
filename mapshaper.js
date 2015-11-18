@@ -13762,7 +13762,7 @@ MapShaper.calcSimplifyStats = function(arcs, use3D) {
       count, stats;
 
   arcs.forEachSegment(function(i, j, xx, yy) {
-    var ax, ay, bx, by, d2, d, skipped, angle;
+    var ax, ay, bx, by, d2, d, skipped, angle, tmp;
     ax = xx[i];
     ay = yy[i];
     bx = xx[j];
@@ -13788,14 +13788,16 @@ MapShaper.calcSimplifyStats = function(arcs, use3D) {
     if (ax == bx && ay == by) {
       collapsedRings++;
     } else {
+      d2 = 0;
       while (++i < j) {
-        d2 = distSq(xx[i], yy[i], ax, ay, bx, by);
-        sumSq += d2;
-        d = Math.sqrt(d2);
-        sum += d;
-        max = Math.max(max, d);
-        measures.push(d);
+        tmp = distSq(xx[i], yy[i], ax, ay, bx, by);
+        d2 = Math.max(d2, tmp);
       }
+      sumSq += d2;
+      d = Math.sqrt(d2);
+      sum += d;
+      measures.push(d);
+      max = Math.max(max, d);
     }
   });
 
