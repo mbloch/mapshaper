@@ -1,4 +1,4 @@
-/* @requires mapshaper-simplify-error */
+/* @requires mapshaper-simplify-stats */
 
 
 MapShaper.getSimplifyMethodLabel = function(slug) {
@@ -9,31 +9,32 @@ MapShaper.getSimplifyMethodLabel = function(slug) {
   }[slug] || "Unknown";
 };
 
-MapShaper.countUniqueVertices = function(arcs) {
-  // TODO: exclude any zero-length arcs
-  var endpoints = arcs.size() * 2;
-  var nodes = new NodeCollection(arcs).size();
-  return arcs.getPointCount() - endpoints + nodes;
-};
-
 MapShaper.printSimplifyInfo = function(arcs, opts) {
-  var name = MapShaper.getSimplifyMethodLabel(MapShaper.getSimplifyMethod(opts));
+  var method = MapShaper.getSimplifyMethod(opts);
+  var name = MapShaper.getSimplifyMethodLabel(method);
   var type = MapShaper.useSphericalSimplify(arcs, opts) ? 'spherical' : 'planar';
-  var err = MapShaper.calcSimplifyError(arcs, type == 'spherical');
-  var uniqueCount = MapShaper.countUniqueVertices(arcs);
-  var removableCount = err.removed + err.retained;
-  var pct1 = (err.removed + err.collapsed) / uniqueCount || 0;
-  var pct2 = err.removed / removableCount || 0;
+  var stats = MapShaper.calcSimplifyStats(arcs, type == 'spherical');
+  var pct1 = (stats.removed + stats.collapsed) / stats.uniqueCount || 0;
+  var pct2 = stats.removed / stats.removableCount || 0;
   var lines = ["Simplification statistics"];
-  lines.push(utils.format("Method: %s (%s)", name, type));
-  lines.push(utils.format("Removed vertices: %,d", err.removed + err.collapsed));
-  lines.push(utils.format("   %.1f% of %,d unique coordinate locations", pct1 * 100, uniqueCount));
-  lines.push(utils.format("   %.1f% of %,d filterable coordinate locations", pct2 * 100, removableCount));
-  lines.push(utils.format("Collapsed rings: %,d", err.collapsed));
-  lines.push(utils.format("Reference displacement: %.2f", arcs.getRetainedInterval()));
-  lines.push(utils.format("Mean displacement: %.4f", err.avg));
-  lines.push(utils.format("Median displacement: %.4f", err.median));
-  lines.push(utils.format("Max displacement: %.4f", err.max));
-  lines.push(utils.format("Std. deviation: %.4f", Math.sqrt(err.avg2)));
-  message(lines.join('\n  '));
+  lines.push(utils.format("Method: %s (%s) %s", name, type, method == 'weighted_visvalingam' ? '(weighting=' + Visvalingam.getWeightCoefficient(opts) + ')' : ''));
+  lines.push(utils.format("Removed vertices: %,d", stats.removed + stats.collapsed));
+  lines.push(utils.format("   %.1f% of %,d unique coordinate locations", pct1 * 100, stats.uniqueCount));
+  lines.push(utils.format("   %.1f% of %,d filterable coordinate locations", pct2 * 100, stats.removableCount));
+  lines.push(utils.format("Simplification interval: %.4f", arcs.getRetainedInterval()));
+  lines.push(utils.format("Collapsed rings: %,d", stats.collapsed));
+  lines.push("Displacement statistics");
+  lines.push(utils.format("   Mean displacement: %.4f", stats.mean));
+  lines.push(utils.format("   Median displacement: %.4f", stats.median));
+  lines.push(utils.format("   Max displacement: %.4f", stats.max));
+  lines.push(utils.format("   Standard deviation: %.4f", stats.stdDev));
+  lines.push("Vertex angle statistics");
+  lines.push(utils.format("   Mean angle: %.2f degrees", stats.meanAngle));
+  lines.push(utils.format("   Median angle: %.2f degrees", stats.medianAngle));
+  // lines.push(utils.format("Angles < 30deg: %.2f%", stats.lt30));
+  lines.push(utils.format("   Angles < 45: %.2f%", stats.lt45));
+  // lines.push(utils.format("Angles < 60deg: %.2f%", stats.lt60));
+  lines.push(utils.format("   Angles < 90: %.2f%", stats.lt90));
+  lines.push(utils.format("   Angles < 135: %.2f%", stats.lt135));
+  message(lines.join('\n   '));
 };

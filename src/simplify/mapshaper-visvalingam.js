@@ -101,9 +101,13 @@ Visvalingam.getWeightedMetric3D = function(opts) {
   };
 };
 
+Visvalingam.getWeightCoefficient = function(opts) {
+  return opts && utils.isNumber(opts && opts.weighting) ? opts.weighting : 0.7;
+};
+
 // Get a parameterized version of Visvalingam.weight()
 Visvalingam.getWeightFunction = function(opts) {
-  var k = utils.isNumber(opts && opts.weighting) ? opts.weighting : 0.7;
+  var k = Visvalingam.getWeightCoefficient(opts);
   return function(cos) {
     return -cos * k + 1;
   };

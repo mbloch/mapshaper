@@ -11460,14 +11460,7 @@ function validateInputOpts(cmd) {
 
 function validateSimplifyOpts(cmd) {
   var o = cmd.options,
-      _ = cmd._,
-      methods = ["visvalingam", "dp"];
-
-  if (o.method) {
-    if (!utils.contains(methods, o.method)) {
-      error(o.method, "is not a recognized simplification method; choose from:", methods);
-    }
-  }
+      _ = cmd._;
 
   var pctStr = o.pct || "";
   if (_.length > 0) {
@@ -11903,18 +11896,24 @@ MapShaper.getOptionParser = function() {
     })
     .option("dp", {
       alias: "rdp",
-      describe: "use (Ramer-)Douglas-Peucker simplification",
+      describe: "use Ramer-Douglas-Peucker simplification",
       assign_to: "method"
     })
     .option("visvalingam", {
       describe: "use Visvalingam simplification with \"effective area\" metric",
       assign_to: "method"
     })
+    .option("weighted", {
+      describe: "use weighted Visvalingam simplification (default)",
+      assign_to: "method"
+    })
     .option("method", {
       // hidden option
     })
-    .option("weight-scale", {type: "number"})
-    .option("weight-shift", {type: "number"})
+    .option("weighting", {
+      type: "number",
+      describe: "weighted Visvalingam coefficient (default is 0.7)"
+    })
     .option("resolution", {
       describe: "output resolution as a grid (e.g. 1000x500)"
     })
@@ -15587,12 +15586,15 @@ Visvalingam.getWeightedMetric3D = function(opts) {
   };
 };
 
+Visvalingam.getWeightCoefficient = function(opts) {
+  return opts && utils.isNumber(opts && opts.weighting) ? opts.weighting : 0.7;
+};
+
 // Get a parameterized version of Visvalingam.weight()
 Visvalingam.getWeightFunction = function(opts) {
-  var k = utils.isNumber(opts && opts.weight_scale) ? opts.weight_scale : 0.7,
-      d = utils.isNumber(opts && opts.weight_shift) ? opts.weight_scale : 1;
+  var k = Visvalingam.getWeightCoefficient(opts);
   return function(cos) {
-    return -cos * k + d;
+    return -cos * k + 1;
   };
 };
 
@@ -15709,34 +15711,48 @@ DouglasPeucker.calcArcData = function(dest, xx, yy, zz) {
 
 
 
-MapShaper.calcSimplifyError = function(arcs, use3D) {
+MapShaper.calcSimplifyStats = function(arcs, use3D) {
   var distSq = use3D ? pointSegGeoDistSq : geom.pointSegDistSq,
+      calcAngle = use3D ? geom.signedAngleSph : geom.signedAngle,
       removed = 0,
       retained = 0,
       collapsedRings = 0,
-      // collapsedPoints = 0,
       max = 0,
       sum = 0,
       sumSq = 0,
+      iprev = -1,
+      jprev = -1,
       measures = [],
+      angles = [],
       zz = arcs.getVertexData().zz,
-      count;
+      count, stats;
 
   arcs.forEachSegment(function(i, j, xx, yy) {
-    var ax, ay, bx, by, d2, d, skipped;
+    var ax, ay, bx, by, d2, d, skipped, angle;
+    ax = xx[i];
+    ay = yy[i];
+    bx = xx[j];
+    by = yy[j];
+
+    if (i == jprev) {
+      angle = calcAngle(xx[iprev], yy[iprev], ax, ay, bx, by);
+      if (angle > Math.PI) angle = 2 * Math.PI - angle;
+      if (!isNaN(angle)) {
+        angles.push(angle * 180 / Math.PI);
+      }
+    }
+    iprev = i;
+    jprev = j;
+
     if (zz[i] < Infinity) {
       retained++;
     }
     skipped = j - i - 1;
     if (skipped < 1) return;
     removed += skipped;
-    ax = xx[i];
-    ay = yy[i];
-    bx = xx[j];
-    by = yy[j];
+
     if (ax == bx && ay == by) {
       collapsedRings++;
-      // collapsedPoints += skipped;
     } else {
       while (++i < j) {
         d2 = distSq(xx[i], yy[i], ax, ay, bx, by);
@@ -15756,16 +15772,44 @@ MapShaper.calcSimplifyError = function(arcs, use3D) {
           xx[2], yy[2], zz[2]);
   }
 
-  count = measures.length;
-  return {
-    median: count > 0 ? utils.findMedian(measures) : 0,
-    avg: count > 0 ? sum / count : 0, // avg. displacement
-    avg2: count > 0 ? sumSq / count : 0, // avg. squared displacement
+  stats = {
+    medianAngle: 0,
+    meanAngle: 0,
+    median: 0,
+    mean: 0,
+    stdDev: 0,
     max: max,
     collapsed: collapsedRings,
     removed: removed,
-    retained: retained
+    retained: retained,
+    uniqueCount: MapShaper.countUniqueVertices(arcs),
+    removableCount: removed + retained
   };
+
+  if (angles.length > 0) {
+    stats.medianAngle = utils.findMedian(angles);
+    stats.meanAngle = utils.sum(angles) / angles.length;
+    // stats.lt30 = utils.findRankByValue(angles, 30) / angles.length * 100;
+    stats.lt45 = utils.findRankByValue(angles, 45) / angles.length * 100;
+    // stats.lt60 = utils.findRankByValue(angles, 60) / angles.length * 100;
+    stats.lt90 = utils.findRankByValue(angles, 90) / angles.length * 100;
+    // stats.lt120 = utils.findRankByValue(angles, 120) / angles.length * 100;
+    stats.lt135 = utils.findRankByValue(angles, 135) / angles.length * 100;
+  }
+
+  if (measures.length > 0) {
+    stats.mean = sum / measures.length;
+    stats.median = utils.findMedian(measures);
+    stats.stdDev = Math.sqrt(sumSq / measures.length);
+  }
+  return stats;
+};
+
+MapShaper.countUniqueVertices = function(arcs) {
+  // TODO: exclude any zero-length arcs
+  var endpoints = arcs.size() * 2;
+  var nodes = new NodeCollection(arcs).size();
+  return arcs.getPointCount() - endpoints + nodes;
 };
 
 
@@ -15780,34 +15824,36 @@ MapShaper.getSimplifyMethodLabel = function(slug) {
   }[slug] || "Unknown";
 };
 
-MapShaper.countUniqueVertices = function(arcs) {
-  // TODO: exclude any zero-length arcs
-  var endpoints = arcs.size() * 2;
-  var nodes = new NodeCollection(arcs).size();
-  return arcs.getPointCount() - endpoints + nodes;
+MapShaper.printSimplifyInfo = function(arcs, opts) {
+  var method = MapShaper.getSimplifyMethod(opts);
+  var name = MapShaper.getSimplifyMethodLabel(method);
+  var type = MapShaper.useSphericalSimplify(arcs, opts) ? 'spherical' : 'planar';
+  var stats = MapShaper.calcSimplifyStats(arcs, type == 'spherical');
+  var pct1 = (stats.removed + stats.collapsed) / stats.uniqueCount || 0;
+  var pct2 = stats.removed / stats.removableCount || 0;
+  var lines = ["Simplification statistics"];
+  lines.push(utils.format("Method: %s (%s) %s", name, type, method == 'weighted_visvalingam' ? '(weighting=' + Visvalingam.getWeightCoefficient(opts) + ')' : ''));
+  lines.push(utils.format("Removed vertices: %,d", stats.removed + stats.collapsed));
+  lines.push(utils.format("   %.1f% of %,d unique coordinate locations", pct1 * 100, stats.uniqueCount));
+  lines.push(utils.format("   %.1f% of %,d filterable coordinate locations", pct2 * 100, stats.removableCount));
+  lines.push(utils.format("Simplification interval: %.4f", arcs.getRetainedInterval()));
+  lines.push(utils.format("Collapsed rings: %,d", stats.collapsed));
+  lines.push("Displacement statistics");
+  lines.push(utils.format("   Mean displacement: %.4f", stats.mean));
+  lines.push(utils.format("   Median displacement: %.4f", stats.median));
+  lines.push(utils.format("   Max displacement: %.4f", stats.max));
+  lines.push(utils.format("   Standard deviation: %.4f", stats.stdDev));
+  lines.push("Vertex angle statistics");
+  lines.push(utils.format("   Mean angle: %.2f degrees", stats.meanAngle));
+  lines.push(utils.format("   Median angle: %.2f degrees", stats.medianAngle));
+  // lines.push(utils.format("Angles < 30deg: %.2f%", stats.lt30));
+  lines.push(utils.format("   Angles < 45: %.2f%", stats.lt45));
+  // lines.push(utils.format("Angles < 60deg: %.2f%", stats.lt60));
+  lines.push(utils.format("   Angles < 90: %.2f%", stats.lt90));
+  lines.push(utils.format("   Angles < 135: %.2f%", stats.lt135));
+  message(lines.join('\n   '));
 };
 
-MapShaper.printSimplifyInfo = function(arcs, opts) {
-  var name = MapShaper.getSimplifyMethodLabel(MapShaper.getSimplifyMethod(opts));
-  var type = MapShaper.useSphericalSimplify(arcs, opts) ? 'spherical' : 'planar';
-  var err = MapShaper.calcSimplifyError(arcs, type == 'spherical');
-  var uniqueCount = MapShaper.countUniqueVertices(arcs);
-  var removableCount = err.removed + err.retained;
-  var pct1 = (err.removed + err.collapsed) / uniqueCount || 0;
-  var pct2 = err.removed / removableCount || 0;
-  var lines = ["Simplification statistics"];
-  lines.push(utils.format("Method: %s (%s)", name, type));
-  lines.push(utils.format("Removed vertices: %,d", err.removed + err.collapsed));
-  lines.push(utils.format("   %.1f% of %,d unique coordinate locations", pct1 * 100, uniqueCount));
-  lines.push(utils.format("   %.1f% of %,d filterable coordinate locations", pct2 * 100, removableCount));
-  lines.push(utils.format("Collapsed rings: %,d", err.collapsed));
-  lines.push(utils.format("Reference displacement: %.2f", arcs.getRetainedInterval()));
-  lines.push(utils.format("Mean displacement: %.4f", err.avg));
-  lines.push(utils.format("Median displacement: %.4f", err.median));
-  lines.push(utils.format("Max displacement: %.4f", err.max));
-  lines.push(utils.format("Std. deviation: %.4f", Math.sqrt(err.avg2)));
-  message(lines.join('\n  '));
-};
 
 
 
@@ -15881,7 +15927,11 @@ MapShaper.simplifyPaths3D = function(arcs, simplify) {
 };
 
 MapShaper.getSimplifyMethod = function(opts) {
-  return opts.method || "weighted_visvalingam";
+  var m = opts.method;
+  if (!m || m == 'weighted' || m == 'visvalingam' && opts.weighting) {
+    m =  'weighted_visvalingam';
+  }
+  return m;
 };
 
 
