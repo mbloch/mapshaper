@@ -228,7 +228,7 @@ MapShaper.getOptionParser = function() {
       type: "flag"
     })
     .option("stats", {
-      // describe: "display statistics about simplified arcs",
+      describe: "display simplification statistics",
       type: "flag"
     });
 
