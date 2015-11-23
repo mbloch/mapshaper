@@ -78,6 +78,21 @@ MapShaper.clampIntervalByPct = function(z, pct) {
   return z;
 };
 
+MapShaper.findNextRemovableVertices = function(zz, zlim, start, end) {
+  var i = MapShaper.findNextRemovableVertex(zz, zlim, start, end),
+      arr, k;
+  if (i > -1) {
+    k = zz[i];
+    arr = [i];
+    while (++i < end) {
+      if (zz[i] == k) {
+        arr.push(i);
+      }
+    }
+  }
+  return arr || null;
+};
+
 // Return id of the vertex between @start and @end with the highest
 // threshold that is less than @zlim, or -1 if none
 //

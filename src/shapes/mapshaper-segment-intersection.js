@@ -8,8 +8,6 @@ MapShaper.getIntersectionPoints = function(intersections) {
       });
 };
 
-// var count = 0;
-
 // Identify intersecting segments in an ArcCollection
 //
 // Method: bin segments into horizontal stripes
