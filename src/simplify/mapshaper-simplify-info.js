@@ -14,29 +14,27 @@ MapShaper.printSimplifyInfo = function(arcs, opts) {
   var name = MapShaper.getSimplifyMethodLabel(method);
   var spherical = MapShaper.useSphericalSimplify(arcs, opts);
   var stats = MapShaper.calcSimplifyStats(arcs, spherical);
-  var pct1 = (stats.removed + stats.collapsed) / stats.uniqueCount || 0;
+  var pct1 = (stats.removed + stats.collapsedRings) / stats.uniqueCount || 0;
   var pct2 = stats.removed / stats.removableCount || 0;
+  var aq = stats.angleQuartiles;
+  var dq = stats.displacementQuartiles;
   var lines = ["Simplification statistics"];
   lines.push(utils.format("Method: %s (%s) %s", name, spherical ? 'spherical' : 'planar',
       method == 'weighted_visvalingam' ? '(weighting=' + Visvalingam.getWeightCoefficient(opts) + ')' : ''));
-  lines.push(utils.format("Removed vertices: %,d", stats.removed + stats.collapsed));
+  lines.push(utils.format("Removed vertices: %,d", stats.removed + stats.collapsedRings));
   lines.push(utils.format("   %.1f% of %,d unique coordinate locations", pct1 * 100, stats.uniqueCount));
   lines.push(utils.format("   %.1f% of %,d filterable coordinate locations", pct2 * 100, stats.removableCount));
   lines.push(utils.format("Simplification interval: %.4f %s", arcs.getRetainedInterval(),
       spherical ? 'meters' : ''));
-  lines.push(utils.format("Collapsed rings: %,d", stats.collapsed));
+  lines.push(utils.format("Collapsed rings: %,d", stats.collapsedRings));
   lines.push("Displacement statistics");
-  lines.push(utils.format("   Mean displacement: %.4f", stats.mean));
-  lines.push(utils.format("   Median displacement: %.4f", stats.median));
-  lines.push(utils.format("   Max displacement: %.4f", stats.max));
-  lines.push(utils.format("   Standard deviation: %.4f", stats.stdDev));
+  lines.push(utils.format("   Mean displacement: %.4f", stats.displacementMean));
+  lines.push(utils.format("   Max displacement: %.4f", stats.displacementMax));
+  lines.push(utils.format("   Quartiles: %.2f, %.2f, %.2f", dq[0], dq[1], dq[2]));
   lines.push("Vertex angle statistics");
-  lines.push(utils.format("   Mean angle: %.2f degrees", stats.meanAngle));
-  lines.push(utils.format("   Median angle: %.2f degrees", stats.medianAngle));
-  // lines.push(utils.format("Angles < 30deg: %.2f%", stats.lt30));
-  lines.push(utils.format("   Angles < 45: %.2f%", stats.lt45));
-  // lines.push(utils.format("Angles < 60deg: %.2f%", stats.lt60));
-  lines.push(utils.format("   Angles < 90: %.2f%", stats.lt90));
-  lines.push(utils.format("   Angles < 135: %.2f%", stats.lt135));
+  lines.push(utils.format("   Mean angle: %.2f degrees", stats.angleMean));
+  // lines.push(utils.format("   Angles < 45: %.2f%", stats.lt45));
+  lines.push(utils.format("   Quartiles: %.2f, %.2f, %.2f", aq[0], aq[1], aq[2]));
+
   message(lines.join('\n   '));
 };

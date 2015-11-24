@@ -64,13 +64,10 @@ MapShaper.calcSimplifyStats = function(arcs, use3D) {
   }
 
   stats = {
-    medianAngle: 0,
-    meanAngle: 0,
-    median: 0,
-    mean: 0,
-    stdDev: 0,
-    max: max,
-    collapsed: collapsedRings,
+    angleMean: 0,
+    displacementMean: 0,
+    displacementMax: max,
+    collapsedRings: collapsedRings,
     removed: removed,
     retained: retained,
     uniqueCount: MapShaper.countUniqueVertices(arcs),
@@ -78,20 +75,30 @@ MapShaper.calcSimplifyStats = function(arcs, use3D) {
   };
 
   if (angles.length > 0) {
-    stats.medianAngle = utils.findMedian(angles);
-    stats.meanAngle = utils.sum(angles) / angles.length;
+    // stats.medianAngle = utils.findMedian(angles);
+    stats.angleMean = utils.sum(angles) / angles.length;
     // stats.lt30 = utils.findRankByValue(angles, 30) / angles.length * 100;
-    stats.lt45 = utils.findRankByValue(angles, 45) / angles.length * 100;
+    // stats.lt45 = utils.findRankByValue(angles, 45) / angles.length * 100;
     // stats.lt60 = utils.findRankByValue(angles, 60) / angles.length * 100;
-    stats.lt90 = utils.findRankByValue(angles, 90) / angles.length * 100;
+    // stats.lt90 = utils.findRankByValue(angles, 90) / angles.length * 100;
     // stats.lt120 = utils.findRankByValue(angles, 120) / angles.length * 100;
-    stats.lt135 = utils.findRankByValue(angles, 135) / angles.length * 100;
+    // stats.lt135 = utils.findRankByValue(angles, 135) / angles.length * 100;
+    stats.angleQuartiles = [
+      utils.findValueByPct(angles, 0.75),
+      utils.findValueByPct(angles, 0.5),
+      utils.findValueByPct(angles, 0.25)
+    ];
   }
 
   if (measures.length > 0) {
-    stats.mean = sum / measures.length;
-    stats.median = utils.findMedian(measures);
-    stats.stdDev = Math.sqrt(sumSq / measures.length);
+    stats.displacementMean = sum / measures.length;
+    // stats.median = utils.findMedian(measures);
+    // stats.stdDev = Math.sqrt(sumSq / measures.length);
+    stats.displacementQuartiles = [
+      utils.findValueByPct(measures, 0.75),
+      utils.findValueByPct(measures, 0.5),
+      utils.findValueByPct(measures, 0.25)
+    ];
   }
   return stats;
 };
