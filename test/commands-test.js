@@ -224,6 +224,37 @@ describe('mapshaper-commands.js', function () {
       });
     })
 
+    it('-o command accepts target= option', function(done) {
+      var topojson = {
+        type: "Topology",
+        arcs: [],
+        objects: {
+          layer1: {
+            type: "GeometryCollection",
+            geometries: [{
+              type: "Point",
+              coordinates: [0, 0]
+            }]
+          },
+          layer2: {
+            type: "GeometryCollection",
+            geometries: [{
+              type: "Point",
+              coordinates: [1, 1]
+            }]
+          }
+        }
+      };
+
+      api.applyCommands('-o target=layer2', topojson, function(err, output) {
+        var obj = JSON.parse(output);
+        assert.equal(obj.objects.layer1, undefined);
+        assert.deepEqual(obj.objects.layer2, topojson.objects.layer2);
+        done();
+      });
+
+    });
+
     it('import GeoJSON points with rounding on import', function (done) {
      var geojson = {
         type: "GeometryCollection",

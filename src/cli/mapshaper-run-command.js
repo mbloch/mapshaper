@@ -37,6 +37,7 @@ api.runCommand = function(cmd, dataset, cb) {
       opts = cmd.options,
       targetLayers,
       outputLayers,
+      outputFiles,
       arcs;
 
   try { // catch errors from synchronous functions
@@ -122,8 +123,12 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'o') {
-      api.exportFiles(utils.defaults({layers: targetLayers}, dataset), opts);
-
+      // output = api.exportFiles(utils.defaults({layers: targetLayers}, dataset), opts);
+      outputFiles = MapShaper.exportFileContent(utils.defaults({layers: targetLayers}, dataset), opts);
+      if (!opts.__nowrite) {
+        MapShaper.writeFiles(outputFiles, opts);
+        outputFiles = null;
+      }
     } else if (name == 'points') {
       outputLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
@@ -179,11 +184,12 @@ api.runCommand = function(cmd, dataset, cb) {
     done(e, null);
     return;
   }
-  done(null, dataset);
 
-  function done(err, dataset) {
+  done(null, outputFiles || dataset);
+
+  function done(err, output) {
     T.stop('-' + name);
-    cb(err, dataset);
+    cb(err, output);
   }
 };
 

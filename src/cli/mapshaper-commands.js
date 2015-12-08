@@ -46,7 +46,7 @@ api.applyCommands = function(argv, content, done) {
 // @done: Callback function(<error>, <output>); <output> is an array of objects
 //        with properties "content" and "filename"
 MapShaper.processFileContent = function(tokens, content, done) {
-  var dataset, commands, outCmd, inOpts, outOpts;
+  var dataset, commands, lastCmd, inOpts;
   try {
     commands = MapShaper.parseCommands(tokens);
     commands = MapShaper.runAndRemoveInfoCommands(commands);
@@ -63,27 +63,18 @@ MapShaper.processFileContent = function(tokens, content, done) {
     }
 
     // if last command is -o, use -o options for exporting
-    outCmd = commands[commands.length-1];
-    if (outCmd && outCmd.name == 'o') {
-      outOpts = commands.pop().options;
-    } else {
-      outOpts = {};
+    lastCmd = commands[commands.length-1];
+    if (!lastCmd || lastCmd.name != 'o') {
+      lastCmd = {name: 'o', options: {}};
+      commands.push(lastCmd);
     }
+    // export to callback, not file
+    lastCmd.options.__nowrite = true;
   } catch(e) {
     return done(e);
   }
 
-  MapShaper.runParsedCommands(commands, dataset, function(err, dataset) {
-    var exports = null;
-    if (!err) {
-      try {
-        exports = MapShaper.exportFileContent(dataset, outOpts);
-      } catch(e) {
-        err = e;
-      }
-    }
-    done(err, exports);
-  });
+  MapShaper.runParsedCommands(commands, dataset, done);
 };
 
 // Execute a sequence of commands
