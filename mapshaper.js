@@ -1431,7 +1431,7 @@ var geom = api.geom = {};
 var cli = api.cli = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.VERSION = '0.3.11';
+MapShaper.VERSION = '0.3.12';
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
