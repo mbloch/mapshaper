@@ -10,11 +10,10 @@ MapShaper.getIntersectionPoints = function(intersections) {
 
 // Identify intersecting segments in an ArcCollection
 //
-// Method: bin segments into horizontal stripes
-// Segments that span stripes are assigned to all intersecting stripes
 // To find all intersections:
-// 1. Assign each segment to one or more bins
-// 2. Find intersections inside each bin (ignoring duplicate intersections)
+// 1. Assign each segment to one or more horizontal stripes/bins
+// 2. Find intersections inside each stripe
+// 3. Concat and dedup
 //
 MapShaper.findSegmentIntersections = (function() {
 
@@ -134,6 +133,7 @@ MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
 };
 
 // Find intersections among a group of line segments
+//
 // TODO: handle case where a segment starts and ends at the same point (i.e. duplicate coords);
 //
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]

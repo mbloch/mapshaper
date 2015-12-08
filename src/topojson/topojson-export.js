@@ -23,6 +23,7 @@ TopoJSON.exportTopology = function(src, opts) {
     if (!opts.no_quantization) {
       topology.transform = TopoJSON.transformDataset(dataset, bounds, opts);
     }
+    MapShaper.dissolveArcs(dataset); // dissolve/prune arcs for more compact output
     topology.arcs = TopoJSON.exportArcs(arcs, bounds, opts);
     if (topology.transform) {
       TopoJSON.deltaEncodeArcs(topology.arcs);
@@ -63,7 +64,6 @@ TopoJSON.transformDataset = function(dataset, bounds, opts) {
       transform = bounds.getTransform(bounds2),
       inv = transform.invert();
   dataset.arcs.applyTransform(transform, true); // flag -> round coords
-  MapShaper.dissolveArcs(dataset); // dissolve/prune arcs for more compact output
   // TODO: think about handling geometrical errors introduced by quantization,
   // e.g. segment intersections and collapsed polygon rings.
   return {

@@ -28,10 +28,10 @@ describe('mapshaper-filter-islands.js', function () {
           type: "GeometryCollection",
           geometries: [{
             type: "Polygon",
-            arcs: [[1], [-1]]
+            arcs: [[0]]
           }, {
             type: "Polygon",
-            arcs: [[0]]
+            arcs: [[1], [-1]]
           }]
         }
       }

@@ -74,7 +74,7 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
 
     // Remove sliver polygons
     if (opts.cleanup && outputLyr.geometry_type == 'polygon') {
-      sliverCount += MapShaper.filterSlivers(outputLyr, dataset.arcs);
+      sliverCount += MapShaper.filterClipSlivers(outputLyr, clipLyr, dataset.arcs);
     }
 
     // Remove null shapes (likely removed by clipping/erasing)
@@ -104,6 +104,7 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
 
   return outputLayers;
 };
+
 
 MapShaper.getClipMessage = function(type, nullCount, sliverCount) {
   var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';

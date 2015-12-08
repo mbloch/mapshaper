@@ -5369,26 +5369,39 @@ function ArcCollection() {
 
   // Return average segment length (with simplification)
   this.getAvgSegment = function() {
-    var sum = 0, count = 0;
-    this.forEachSegment(function(i, j, xx, yy) {
+    var sum = 0;
+    var count = this.forEachSegment(function(i, j, xx, yy) {
       var dx = xx[i] - xx[j],
           dy = yy[i] - yy[j];
       sum += Math.sqrt(dx * dx + dy * dy);
-      count++;
     });
     return sum / count || 0;
   };
 
   // Return average magnitudes of dx, dy (with simplification)
   this.getAvgSegment2 = function() {
-    var dx = 0, dy = 0, count = 0;
-    this.forEachSegment(function(i, j, xx, yy) {
+    var dx = 0, dy = 0;
+    var count = this.forEachSegment(function(i, j, xx, yy) {
       dx += Math.abs(xx[i] - xx[j]);
       dy += Math.abs(yy[i] - yy[j]);
-      count++;
     });
     return [dx / count || 0, dy / count || 0];
   };
+
+  // Return average magnitudes of dx, dy (with simplification)
+  /*
+  this.getAvgSegmentSph2 = function() {
+    var sumx = 0, sumy = 0;
+    var count = this.forEachSegment(function(i, j, xx, yy) {
+      var lat1 = yy[i],
+          lat2 = yy[j];
+      sumy += geom.degreesToMeters(Math.abs(lat1 - lat2));
+      sumx += geom.degreesToMeters(Math.abs(xx[i] - xx[j]) *
+          Math.cos((lat1 + lat2) * 0.5 * geom.D2R);
+    });
+    return [sumx / count || 0, sumy / count || 0];
+  };
+  */
 
   // @cb function(i, j, xx, yy)
   this.forEachArcSegment = function(arcId, cb) {
@@ -5403,20 +5416,23 @@ function ArcCollection() {
 
     for (var j = 0; j < n; j++, i += step) {
       if (zlim === 0 || _zz[i] >= zlim) {
-        if (count > 0) {
+        if (j > 0) {
           cb(prev, i, _xx, _yy);
+          count++;
         }
         prev = i;
-        count++;
       }
     }
+    return count;
   };
 
   // @cb function(i, j, xx, yy)
   this.forEachSegment = function(cb) {
+    var count = 0;
     for (var i=0, n=this.size(); i<n; i++) {
-      this.forEachArcSegment(i, cb);
+      count += this.forEachArcSegment(i, cb);
     }
+    return count;
   };
 
   // Apply a linear transform to the data, with or without rounding.
@@ -5999,6 +6015,8 @@ MapShaper.forEachPath = function(paths, cb) {
   MapShaper.editPaths(paths, cb);
 };
 
+// @cb: function(path, i, paths)
+//
 MapShaper.editPaths = function(paths, cb) {
   if (!paths) return null; // null shape
   if (!utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
@@ -6007,7 +6025,7 @@ MapShaper.editPaths = function(paths, cb) {
       retn;
 
   for (var i=0; i<n; i++) {
-    retn = cb(paths[i], i);
+    retn = cb(paths[i], i, paths);
     if (retn === null) {
       nulls++;
       paths[i] = null;
@@ -7680,11 +7698,10 @@ MapShaper.getIntersectionPoints = function(intersections) {
 
 // Identify intersecting segments in an ArcCollection
 //
-// Method: bin segments into horizontal stripes
-// Segments that span stripes are assigned to all intersecting stripes
 // To find all intersections:
-// 1. Assign each segment to one or more bins
-// 2. Find intersections inside each bin (ignoring duplicate intersections)
+// 1. Assign each segment to one or more horizontal stripes/bins
+// 2. Find intersections inside each stripe
+// 3. Concat and dedup
 //
 MapShaper.findSegmentIntersections = (function() {
 
@@ -7804,6 +7821,7 @@ MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
 };
 
 // Find intersections among a group of line segments
+//
 // TODO: handle case where a segment starts and ends at the same point (i.e. duplicate coords);
 //
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
@@ -9906,6 +9924,7 @@ TopoJSON.exportTopology = function(src, opts) {
     if (!opts.no_quantization) {
       topology.transform = TopoJSON.transformDataset(dataset, bounds, opts);
     }
+    MapShaper.dissolveArcs(dataset); // dissolve/prune arcs for more compact output
     topology.arcs = TopoJSON.exportArcs(arcs, bounds, opts);
     if (topology.transform) {
       TopoJSON.deltaEncodeArcs(topology.arcs);
@@ -9946,7 +9965,6 @@ TopoJSON.transformDataset = function(dataset, bounds, opts) {
       transform = bounds.getTransform(bounds2),
       inv = transform.invert();
   dataset.arcs.applyTransform(transform, true); // flag -> round coords
-  MapShaper.dissolveArcs(dataset); // dissolve/prune arcs for more compact output
   // TODO: think about handling geometrical errors introduced by quantization,
   // e.g. segment intersections and collapsed polygon rings.
   return {
@@ -17074,23 +17092,21 @@ MapShaper.filterIslands = function(lyr, arcs, ringTest) {
   var counts = new Uint8Array(arcs.size());
   MapShaper.countArcsInShapes(lyr.shapes, counts);
 
-  var filter = function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1) { // got an island ring
-        if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
-          if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
-            // and it does not contain any holes itself
-            // O(n^2), so testing this last
-            if (!MapShaper.ringHasHoles(path, paths, arcs)) {
-              removed++;
-              return null;
-            }
+  var pathFilter = function(path, i, paths) {
+    if (path.length == 1) { // got an island ring
+      if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
+        if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
+          // and it does not contain any holes itself
+          // O(n^2), so testing this last
+          if (!MapShaper.ringHasHoles(path, paths, arcs)) {
+            removed++;
+            return null;
           }
         }
       }
-    });
+    }
   };
-  MapShaper.filterShapes(lyr.shapes, filter);
+  MapShaper.filterShapes(lyr.shapes, pathFilter);
   return removed;
 };
 
@@ -17120,9 +17136,12 @@ MapShaper.ringHasHoles = function(ring, rings, arcs) {
   return false;
 };
 
-MapShaper.filterShapes = function(shapes, filter) {
+MapShaper.filterShapes = function(shapes, pathFilter) {
+  var shapeFilter = function(paths) {
+    return MapShaper.editPaths(paths, pathFilter);
+  };
   for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = filter(shapes[i]);
+    shapes[i] = shapeFilter(shapes[i]);
   }
 };
 
@@ -17142,25 +17161,40 @@ api.filterSlivers = function(lyr, arcs, opts) {
 };
 
 MapShaper.filterSlivers = function(lyr, arcs, opts) {
+  var ringTest = MapShaper.getSliverTest(arcs, opts && opts.min_area);
   var removed = 0;
-  var area = opts && opts.min_area;
-  var spherical = area && !!arcs.isPlanar();
-  var ringTest;
-  if (!area) {
-    area = MapShaper.calcDefaultSliverArea(arcs);
-  }
-  ringTest = MapShaper.getSliverTest(area, arcs, spherical);
+  var pathFilter = function(path, i, paths) {
+    if (ringTest(path)) {
+      removed++;
+      return null;
+    }
+  };
 
-  function shapeFilter(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (ringTest(path)) {
-        removed++;
-        return null;
+  MapShaper.filterShapes(lyr.shapes, pathFilter);
+  return removed;
+};
+
+MapShaper.filterClipSlivers = function(lyr, clipLyr, arcs) {
+  var flags = new Uint8Array(arcs.size());
+  var ringTest = MapShaper.getSliverTest(arcs);
+  var removed = 0;
+  var pathFilter = function(path) {
+    var clipped = false;
+    var absId;
+    for (var i=0, n=path && path.length || 0; i<n; i++) {
+      if (flags[absArcId(path[i])] > 0) {
+        clipped = true;
+        break;
       }
-    });
-  }
+    }
+    if (clipped && ringTest(path)) {
+      removed++;
+      return null;
+    }
+  };
 
-  MapShaper.filterShapes(lyr.shapes, shapeFilter);
+  MapShaper.countArcsInShapes(clipLyr.shapes, flags);
+  MapShaper.filterShapes(lyr.shapes, pathFilter);
   return removed;
 };
 
@@ -17169,8 +17203,15 @@ MapShaper.calcDefaultSliverArea = function(arcs) {
   return xy[0] * xy[1]; // TODO: do some testing to find a better default
 };
 
-MapShaper.getSliverTest = function(minArea, arcs, spherical) {
-  var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
+MapShaper.getSliverTest = function(arcs, minArea) {
+  var pathArea;
+  if (minArea) {
+    pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
+  } else {
+    // use planar area if no min area is given
+    pathArea = geom.getPlanarPathArea;
+    minArea = MapShaper.calcDefaultSliverArea(arcs);
+  }
   return function(path) {
     var area = pathArea(path, arcs);
     return Math.abs(area) < minArea;
@@ -17246,7 +17287,7 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
 
     // Remove sliver polygons
     if (opts.cleanup && outputLyr.geometry_type == 'polygon') {
-      sliverCount += MapShaper.filterSlivers(outputLyr, dataset.arcs);
+      sliverCount += MapShaper.filterClipSlivers(outputLyr, clipLyr, dataset.arcs);
     }
 
     // Remove null shapes (likely removed by clipping/erasing)
@@ -17276,6 +17317,7 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
 
   return outputLayers;
 };
+
 
 MapShaper.getClipMessage = function(type, nullCount, sliverCount) {
   var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
@@ -17574,8 +17616,12 @@ MapShaper.readShapefileAuxFiles = function(path, obj) {
 
 
 
+// TODO: remove?
 api.exportFiles = function(dataset, opts) {
-  var exports = MapShaper.exportFileContent(dataset, opts);
+  MapShaper.writeFiles(MapShaper.exportFileContent(dataset, opts), opts);
+};
+
+MapShaper.writeFiles = function(exports, opts) {
   if (exports.length > 0 === false) {
     message("No files to save");
   } else if (opts.stdout) {
@@ -19506,6 +19552,7 @@ api.runCommand = function(cmd, dataset, cb) {
       opts = cmd.options,
       targetLayers,
       outputLayers,
+      outputFiles,
       arcs;
 
   try { // catch errors from synchronous functions
@@ -19591,8 +19638,12 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'o') {
-      api.exportFiles(utils.defaults({layers: targetLayers}, dataset), opts);
-
+      // output = api.exportFiles(utils.defaults({layers: targetLayers}, dataset), opts);
+      outputFiles = MapShaper.exportFileContent(utils.defaults({layers: targetLayers}, dataset), opts);
+      if (!opts.__nowrite) {
+        MapShaper.writeFiles(outputFiles, opts);
+        outputFiles = null;
+      }
     } else if (name == 'points') {
       outputLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
@@ -19648,11 +19699,12 @@ api.runCommand = function(cmd, dataset, cb) {
     done(e, null);
     return;
   }
-  done(null, dataset);
 
-  function done(err, dataset) {
+  done(null, outputFiles || dataset);
+
+  function done(err, output) {
     T.stop('-' + name);
-    cb(err, dataset);
+    cb(err, output);
   }
 };
 
@@ -19725,7 +19777,7 @@ api.applyCommands = function(argv, content, done) {
 // @done: Callback function(<error>, <output>); <output> is an array of objects
 //        with properties "content" and "filename"
 MapShaper.processFileContent = function(tokens, content, done) {
-  var dataset, commands, outCmd, inOpts, outOpts;
+  var dataset, commands, lastCmd, inOpts;
   try {
     commands = MapShaper.parseCommands(tokens);
     commands = MapShaper.runAndRemoveInfoCommands(commands);
@@ -19742,27 +19794,18 @@ MapShaper.processFileContent = function(tokens, content, done) {
     }
 
     // if last command is -o, use -o options for exporting
-    outCmd = commands[commands.length-1];
-    if (outCmd && outCmd.name == 'o') {
-      outOpts = commands.pop().options;
-    } else {
-      outOpts = {};
+    lastCmd = commands[commands.length-1];
+    if (!lastCmd || lastCmd.name != 'o') {
+      lastCmd = {name: 'o', options: {}};
+      commands.push(lastCmd);
     }
+    // export to callback, not file
+    lastCmd.options.__nowrite = true;
   } catch(e) {
     return done(e);
   }
 
-  MapShaper.runParsedCommands(commands, dataset, function(err, dataset) {
-    var exports = null;
-    if (!err) {
-      try {
-        exports = MapShaper.exportFileContent(dataset, outOpts);
-      } catch(e) {
-        err = e;
-      }
-    }
-    done(err, exports);
-  });
+  MapShaper.runParsedCommands(commands, dataset, done);
 };
 
 // Execute a sequence of commands

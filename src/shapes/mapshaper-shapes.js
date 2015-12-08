@@ -221,26 +221,39 @@ function ArcCollection() {
 
   // Return average segment length (with simplification)
   this.getAvgSegment = function() {
-    var sum = 0, count = 0;
-    this.forEachSegment(function(i, j, xx, yy) {
+    var sum = 0;
+    var count = this.forEachSegment(function(i, j, xx, yy) {
       var dx = xx[i] - xx[j],
           dy = yy[i] - yy[j];
       sum += Math.sqrt(dx * dx + dy * dy);
-      count++;
     });
     return sum / count || 0;
   };
 
   // Return average magnitudes of dx, dy (with simplification)
   this.getAvgSegment2 = function() {
-    var dx = 0, dy = 0, count = 0;
-    this.forEachSegment(function(i, j, xx, yy) {
+    var dx = 0, dy = 0;
+    var count = this.forEachSegment(function(i, j, xx, yy) {
       dx += Math.abs(xx[i] - xx[j]);
       dy += Math.abs(yy[i] - yy[j]);
-      count++;
     });
     return [dx / count || 0, dy / count || 0];
   };
+
+  // Return average magnitudes of dx, dy (with simplification)
+  /*
+  this.getAvgSegmentSph2 = function() {
+    var sumx = 0, sumy = 0;
+    var count = this.forEachSegment(function(i, j, xx, yy) {
+      var lat1 = yy[i],
+          lat2 = yy[j];
+      sumy += geom.degreesToMeters(Math.abs(lat1 - lat2));
+      sumx += geom.degreesToMeters(Math.abs(xx[i] - xx[j]) *
+          Math.cos((lat1 + lat2) * 0.5 * geom.D2R);
+    });
+    return [sumx / count || 0, sumy / count || 0];
+  };
+  */
 
   // @cb function(i, j, xx, yy)
   this.forEachArcSegment = function(arcId, cb) {
@@ -255,20 +268,23 @@ function ArcCollection() {
 
     for (var j = 0; j < n; j++, i += step) {
       if (zlim === 0 || _zz[i] >= zlim) {
-        if (count > 0) {
+        if (j > 0) {
           cb(prev, i, _xx, _yy);
+          count++;
         }
         prev = i;
-        count++;
       }
     }
+    return count;
   };
 
   // @cb function(i, j, xx, yy)
   this.forEachSegment = function(cb) {
+    var count = 0;
     for (var i=0, n=this.size(); i<n; i++) {
-      this.forEachArcSegment(i, cb);
+      count += this.forEachArcSegment(i, cb);
     }
+    return count;
   };
 
   // Apply a linear transform to the data, with or without rounding.

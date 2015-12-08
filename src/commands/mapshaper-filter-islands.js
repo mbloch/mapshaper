@@ -42,23 +42,21 @@ MapShaper.filterIslands = function(lyr, arcs, ringTest) {
   var counts = new Uint8Array(arcs.size());
   MapShaper.countArcsInShapes(lyr.shapes, counts);
 
-  var filter = function(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (path.length == 1) { // got an island ring
-        if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
-          if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
-            // and it does not contain any holes itself
-            // O(n^2), so testing this last
-            if (!MapShaper.ringHasHoles(path, paths, arcs)) {
-              removed++;
-              return null;
-            }
+  var pathFilter = function(path, i, paths) {
+    if (path.length == 1) { // got an island ring
+      if (counts[absArcId(path[0])] === 1) { // and not part of a donut hole
+        if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
+          // and it does not contain any holes itself
+          // O(n^2), so testing this last
+          if (!MapShaper.ringHasHoles(path, paths, arcs)) {
+            removed++;
+            return null;
           }
         }
       }
-    });
+    }
   };
-  MapShaper.filterShapes(lyr.shapes, filter);
+  MapShaper.filterShapes(lyr.shapes, pathFilter);
   return removed;
 };
 
@@ -88,8 +86,11 @@ MapShaper.ringHasHoles = function(ring, rings, arcs) {
   return false;
 };
 
-MapShaper.filterShapes = function(shapes, filter) {
+MapShaper.filterShapes = function(shapes, pathFilter) {
+  var shapeFilter = function(paths) {
+    return MapShaper.editPaths(paths, pathFilter);
+  };
   for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = filter(shapes[i]);
+    shapes[i] = shapeFilter(shapes[i]);
   }
 };

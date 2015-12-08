@@ -148,6 +148,8 @@ MapShaper.forEachPath = function(paths, cb) {
   MapShaper.editPaths(paths, cb);
 };
 
+// @cb: function(path, i, paths)
+//
 MapShaper.editPaths = function(paths, cb) {
   if (!paths) return null; // null shape
   if (!utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
@@ -156,7 +158,7 @@ MapShaper.editPaths = function(paths, cb) {
       retn;
 
   for (var i=0; i<n; i++) {
-    retn = cb(paths[i], i);
+    retn = cb(paths[i], i, paths);
     if (retn === null) {
       nulls++;
       paths[i] = null;

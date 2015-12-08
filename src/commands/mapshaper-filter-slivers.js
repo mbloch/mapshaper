@@ -13,25 +13,40 @@ api.filterSlivers = function(lyr, arcs, opts) {
 };
 
 MapShaper.filterSlivers = function(lyr, arcs, opts) {
+  var ringTest = MapShaper.getSliverTest(arcs, opts && opts.min_area);
   var removed = 0;
-  var area = opts && opts.min_area;
-  var spherical = area && !!arcs.isPlanar();
-  var ringTest;
-  if (!area) {
-    area = MapShaper.calcDefaultSliverArea(arcs);
-  }
-  ringTest = MapShaper.getSliverTest(area, arcs, spherical);
+  var pathFilter = function(path, i, paths) {
+    if (ringTest(path)) {
+      removed++;
+      return null;
+    }
+  };
 
-  function shapeFilter(paths) {
-    return MapShaper.editPaths(paths, function(path) {
-      if (ringTest(path)) {
-        removed++;
-        return null;
+  MapShaper.filterShapes(lyr.shapes, pathFilter);
+  return removed;
+};
+
+MapShaper.filterClipSlivers = function(lyr, clipLyr, arcs) {
+  var flags = new Uint8Array(arcs.size());
+  var ringTest = MapShaper.getSliverTest(arcs);
+  var removed = 0;
+  var pathFilter = function(path) {
+    var clipped = false;
+    var absId;
+    for (var i=0, n=path && path.length || 0; i<n; i++) {
+      if (flags[absArcId(path[i])] > 0) {
+        clipped = true;
+        break;
       }
-    });
-  }
+    }
+    if (clipped && ringTest(path)) {
+      removed++;
+      return null;
+    }
+  };
 
-  MapShaper.filterShapes(lyr.shapes, shapeFilter);
+  MapShaper.countArcsInShapes(clipLyr.shapes, flags);
+  MapShaper.filterShapes(lyr.shapes, pathFilter);
   return removed;
 };
 
@@ -40,8 +55,15 @@ MapShaper.calcDefaultSliverArea = function(arcs) {
   return xy[0] * xy[1]; // TODO: do some testing to find a better default
 };
 
-MapShaper.getSliverTest = function(minArea, arcs, spherical) {
-  var pathArea = spherical ? geom.getSphericalPathArea : geom.getPlanarPathArea;
+MapShaper.getSliverTest = function(arcs, minArea) {
+  var pathArea;
+  if (minArea) {
+    pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
+  } else {
+    // use planar area if no min area is given
+    pathArea = geom.getPlanarPathArea;
+    minArea = MapShaper.calcDefaultSliverArea(arcs);
+  }
   return function(path) {
     var area = pathArea(path, arcs);
     return Math.abs(area) < minArea;
