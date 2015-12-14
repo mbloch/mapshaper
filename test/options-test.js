@@ -69,13 +69,13 @@ describe('mapshaper-options.js', function () {
     good("-o format=csv", {format: "dsv", delimiter: ","});
     good("-o format=tsv", {format: "dsv", delimiter: "\t"});
     good("-o format=dbf", {format: "dbf"});
+    good("-o format=json", {format: "json"});
 
     // invalid formats
     bad("-o topojson");
     bad("-o shapefile");
     bad("-o geojson");
     bad("-o format=shp");
-    bad("-o format=json");
     bad("-o format \"ESRI Shapefile\"");
 
     // csv

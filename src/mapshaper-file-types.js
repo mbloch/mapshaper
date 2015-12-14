@@ -15,8 +15,8 @@ MapShaper.guessInputFileType = function(file) {
 MapShaper.guessInputContentType = function(content) {
   var type = null;
   if (utils.isString(content)) {
-    type = MapShaper.stringIsJsonObject(content) ? 'json' : 'text';
-  } else if (utils.isObject(content) && content.type) {
+    type = MapShaper.stringLooksLikeJSON(content) ? 'json' : 'text';
+  } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
     type = 'json';
   }
   return type;
@@ -26,8 +26,9 @@ MapShaper.guessInputType = function(file, content) {
   return MapShaper.guessInputFileType(file) || MapShaper.guessInputContentType(content);
 };
 
-MapShaper.stringIsJsonObject = function(str) {
-  return /^\s*\{/.test(String(str));
+//
+MapShaper.stringLooksLikeJSON = function(str) {
+  return /^\s*[{[]/.test(String(str));
 };
 
 MapShaper.couldBeDsvFile = function(name) {
@@ -47,6 +48,8 @@ MapShaper.inferOutputFormat = function(file, inputFormat) {
     format = 'geojson';
     if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
       format = 'topojson';
+    } else if (ext == 'json' && inputFormat == 'json') {
+      format = 'json'; // JSON table
     }
   } else if (MapShaper.couldBeDsvFile(file)) {
     format = 'dsv';
@@ -61,7 +64,7 @@ MapShaper.isZipFile = function(file) {
 };
 
 MapShaper.isSupportedOutputFormat = function(fmt) {
-  var types = ['geojson', 'topojson', 'dsv', 'dbf', 'shapefile'];
+  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile'];
   return types.indexOf(fmt) > -1;
 };
 

@@ -1,4 +1,10 @@
-/* @requires mapshaper-common, mapshaper-geojson, mapshaper-topojson, mapshaper-shapefile */
+/* @requires
+mapshaper-common
+mapshaper-geojson
+mapshaper-topojson
+mapshaper-shapefile
+mapshaper-json-table
+*/
 
 // Parse content of one or more input files and return a dataset
 // @obj: file data, indexed by file type
@@ -21,6 +27,9 @@ MapShaper.importContent = function(obj, opts) {
     } else if (content.type) {
       fileFmt = 'geojson';
       dataset = MapShaper.importGeoJSON(content, opts);
+    } else if (utils.isArray(content)) {
+      fileFmt = 'json';
+      dataset = MapShaper.importJSONTable(content, opts);
     }
   } else if (obj.text) {
     fileFmt = 'dsv';

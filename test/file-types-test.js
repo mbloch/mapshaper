@@ -53,6 +53,18 @@ describe('mapshaper-file-types.js', function () {
 
   })
 
+  describe('stringLooksLikeJSON()', function() {
+    it('JSON Object', function() {
+      assert(api.internal.stringLooksLikeJSON(' {"type": "FeatureCollection", "features": []}'));
+    })
+    it('JSON Array', function() {
+      assert(api.internal.stringLooksLikeJSON(' [{"id": 0}]'));
+    })
+    it('whitespace', function() {
+      assert(!api.internal.stringLooksLikeJSON(' \n'));
+    })
+  })
+
   describe('filenameIsUnsupportedOutputType()', function () {
     var test = api.internal.filenameIsUnsupportedOutputType;
     it('unsupported types -> true', function () {

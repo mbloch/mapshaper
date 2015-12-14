@@ -200,7 +200,6 @@ MapShaper.exportCRS = function(dataset, jsonObj) {
   }
 };
 
-
 MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
   opts = opts || {};
   var properties = MapShaper.exportProperties(lyr.data, opts),
