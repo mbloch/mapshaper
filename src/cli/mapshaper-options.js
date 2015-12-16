@@ -110,7 +110,7 @@ MapShaper.getOptionParser = function() {
       describe: "(optional) name of output file or directory, or - for stdout"
     })
     .option("format", {
-      describe: "set export format (shapefile|geojson|topojson|dbf|csv|tsv)"
+      describe: "export format (shapefile|geojson|topojson|json|dbf|csv|tsv)"
     })
     .option("target", targetOpt)
     .option("force", {

@@ -11365,8 +11365,10 @@ function CommandParser() {
       obj.help = help;
       if (detailView) {
         w = obj.options.reduce(function(w, opt) {
-          obj.options.forEach(formatOption);
-          return Math.max(formatOption(opt), w);
+          if (opt.describe) {
+            w = Math.max(formatOption(opt), w);
+          }
+          return w;
         }, w);
       }
       return Math.max(w, help.length);
@@ -11881,7 +11883,7 @@ MapShaper.getOptionParser = function() {
       describe: "(optional) name of output file or directory, or - for stdout"
     })
     .option("format", {
-      describe: "set export format (shapefile|geojson|topojson|dbf|csv|tsv)"
+      describe: "export format (shapefile|geojson|topojson|json|dbf|csv|tsv)"
     })
     .option("target", targetOpt)
     .option("force", {

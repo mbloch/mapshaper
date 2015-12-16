@@ -216,8 +216,10 @@ function CommandParser() {
       obj.help = help;
       if (detailView) {
         w = obj.options.reduce(function(w, opt) {
-          obj.options.forEach(formatOption);
-          return Math.max(formatOption(opt), w);
+          if (opt.describe) {
+            w = Math.max(formatOption(opt), w);
+          }
+          return w;
         }, w);
       }
       return Math.max(w, help.length);
