@@ -347,6 +347,7 @@ div.error-box > div {
 }
 
 #console-buffer {
+	cursor: text;
 	width: 100%;
 	position: relative;
 	color: white;

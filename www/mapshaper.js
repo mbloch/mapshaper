@@ -19989,8 +19989,11 @@ function Console(model) {
   new ModeButton('#console-btn', 'console', model);
   model.addMode('console', turnOn, turnOff);
 
-  gui.onClick(content, function() {
-    if (!gui.getInputElement()) { // don't select if user is typing
+  gui.onClick(content, function(e) {
+    var targ = El(e.target);
+    if (gui.getInputElement() || targ.hasClass('console-message')) {
+      // don't focus if user is typing or user clicks content area
+    } else {
       input.node().focus();
     }
   });
@@ -20024,6 +20027,24 @@ function Console(model) {
   }
 
   function receiveFocus() {
+    placeCursor();
+  }
+
+  function placeCursor() {
+    var el = input.node();
+    var range, selection;
+    if (readCommandLine().length > 0) {
+      // move cursor to end of text
+      range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false); //collapse the range to the end point.
+      selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }
+
+  function receiveFocus_() {
     var range, selection;
     if (readCommandLine().length > 0) {
       // move cursor to end of text
@@ -20035,6 +20056,8 @@ function Console(model) {
       selection.addRange(range);
     }
   }
+
+
 
   function scrollDown() {
     var el = content.parent().node();
@@ -20139,6 +20162,7 @@ function Console(model) {
 
   function toCommandLine(str) {
     input.node().textContent = str.trim();
+    placeCursor();
   }
 
   function peekHistory(i) {
