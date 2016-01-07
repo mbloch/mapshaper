@@ -19973,7 +19973,8 @@ function Console(model) {
     .attr('spellcheck', false)
     .attr('autocorrect', false)
     .attr('contentEditable', true)
-    .on('focus', receiveFocus);
+    .on('focus', receiveFocus)
+    .on('paste', onPaste);
   var history = [];
   var historyId = 0;
   var _isOpen = false;
@@ -20024,6 +20025,13 @@ function Console(model) {
       el.hide();
       input.node().blur();
     }
+  }
+
+  function onPaste(e) {
+    // paste plain text (remove any copied HTML tags)
+    e.preventDefault();
+    var str = (e.originalEvent || e).clipboardData.getData('text/plain');
+    document.execCommand("insertHTML", false, str);
   }
 
   function receiveFocus() {
