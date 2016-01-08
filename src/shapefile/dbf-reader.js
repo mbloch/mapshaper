@@ -195,7 +195,6 @@ DbfReader.prototype.findStringEncoding = function() {
   return encoding;
 };
 
-
 // Return up to @size buffers containing text samples
 // with at least one byte outside the 7-bit ascii range.
 // TODO: filter out duplicate samples
@@ -206,7 +205,8 @@ DbfReader.prototype.getNonAsciiSamples = function(size) {
   });
   var rowOffs = this.getRowOffset();
   var buf = new Buffer(256);
-  var f, chars;
+  var index = {};
+  var f, chars, sample, hash;
   for (var r=0, rows=this.rows(); r<rows; r++) {
     for (var c=0, cols=stringFields.length; c<cols; c++) {
       if (samples.length >= size) break;
@@ -214,7 +214,12 @@ DbfReader.prototype.getNonAsciiSamples = function(size) {
       this.bin.position(rowOffs(r) + f.columnOffset);
       chars = Dbf.readStringBytes(this.bin, f.size, buf);
       if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
-        samples.push(new Buffer(buf.slice(0, chars))); // make a copy
+        sample = new Buffer(buf.slice(0, chars)); //
+        hash = sample.toString('hex');
+        if (hash in index === false) { // avoid duplicate samples
+          index[hash] = true;
+          samples.push(sample);
+        }
       }
     }
   }
