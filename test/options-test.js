@@ -120,6 +120,12 @@ describe('mapshaper-options.js', function () {
     good('-filter-fields', {fields: []});
   })
 
+  describe('filter', function () {
+    good('-filter true', {expression: 'true'});
+    good('-filter \'id=="OR"\'', {expression: 'id=="OR"'});
+    good('-filter name=="foo"', {expression: 'name=="foo"'});
+  })
+
   describe('join', function() {
     var file1 = fixPath("test_data/two_states.dbf"),
         file2 = fixPath("test_data/two_states.shp");

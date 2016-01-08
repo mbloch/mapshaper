@@ -87,7 +87,7 @@ function CommandParser() {
 
     function readNamedOption(argv, cmdDef) {
       var token = argv[0],
-          optRxp = /^([a-z0-9_+-]+)=(.*)$/i,
+          optRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i, // exclude ==
           match = optRxp.exec(token),
           name = match ? match[1] : token,
           optDef = findOptionDefn(name, cmdDef),
