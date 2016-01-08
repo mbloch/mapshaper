@@ -1,6 +1,7 @@
 
 var assert = require('assert');
-var getProjection = require("..").internal.getProjection;
+var api = require("..");
+var getProjection = api.internal.getProjection;
 
 function roundtripTest(proj, lng, lat) {
   var xy = proj.projectLatLng(lat, lng);
@@ -21,6 +22,16 @@ function almostEqual(a, b, e) {
 }
 
 describe('mapshaper-projections.js', function() {
+
+  describe('getProjection()', function () {
+    it('projection opts are not modified', function () {
+      var opts = {lng0:-96, lat1:33, lat2:45, lat0:39, spherical: true};
+      var copy = api.utils.extend({}, opts);
+      var proj = getProjection('lambertcc', opts);
+      assert.deepEqual(opts, copy);
+    })
+  })
+
   describe('albersusa', function () {
     it ('projects/unprojects', function() {
       var proj = getProjection('albersusa');

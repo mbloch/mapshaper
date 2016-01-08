@@ -18721,7 +18721,7 @@ function initProj(proj, name, opts, params) {
       }
     }
   };
-  opts = opts || {};
+  opts = utils.extend({}, opts); // make a copy, don't modify original param
   if (params) {
     // check for required decimal degree parameters and convert to radians
     params.forEach(function(param) {
