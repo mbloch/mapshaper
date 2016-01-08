@@ -84,17 +84,29 @@ function LayerGroup(dataset) {
   };
 
   function getDisplayBounds(lyr, dataset) {
-    var arcBounds = dataset && dataset.arcs ? dataset.arcs.getBounds() : null,
-        bounds;
+    var arcBounds = dataset && dataset.arcs ? dataset.arcs.getBounds() : new Bounds(),
+        bounds = arcBounds, // default display extent: all arcs in the dataset
+        lyrBounds;
+
     if (lyr.geometry_type == 'point') {
-      bounds = MapShaper.getLayerBounds(lyr);
-      if (!bounds || bounds.area() > 0 === false) {
+      lyrBounds = MapShaper.getLayerBounds(lyr);
+      if (lyrBounds && lyrBounds.hasBounds()) {
+        if (lyrBounds.area() > 0 || arcBounds.area() === 0) {
+          bounds = lyrBounds;
+        }
         // if a point layer has no extent (e.g. contains only a single point),
-        // then use arc bounds, to match any path layers in the dataset.
-        bounds = arcBounds;
+        // then use arc bounds (if present), to match any path layers in the dataset.
       }
-    } else {
-      bounds = arcBounds || new Bounds();
+    }
+
+    // If a layer has collapsed, inflate it by a default amount
+    if (bounds.width() === 0) {
+      bounds.xmin = (bounds.centerX() || 0) - 1;
+      bounds.xmax = bounds.xmin + 2;
+    }
+    if (bounds.height() === 0) {
+      bounds.ymin = (bounds.centerY() || 0) - 1;
+      bounds.ymax = bounds.ymin + 2;
     }
     return bounds;
   }
