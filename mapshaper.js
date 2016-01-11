@@ -11454,7 +11454,7 @@ api.exportFiles = function(dataset, opts) {
   MapShaper.writeFiles(MapShaper.exportFileContent(dataset, opts), opts);
 };
 
-MapShaper.writeFiles = function(exports, opts) {
+MapShaper.writeFiles = function(exports, opts, cb) {
   if (exports.length > 0 === false) {
     message("No files to save");
   } else if (opts.stdout) {
@@ -11467,6 +11467,7 @@ MapShaper.writeFiles = function(exports, opts) {
       message("Wrote " + path);
     });
   }
+  if (cb) cb(null);
 };
 
 MapShaper.getOutputPaths = function(files, opts) {
@@ -14486,12 +14487,14 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'o') {
-      // output = api.exportFiles(utils.defaults({layers: targetLayers}, dataset), opts);
       outputFiles = MapShaper.exportFileContent(utils.defaults({layers: targetLayers}, dataset), opts);
-      if (!opts.__nowrite) {
-        MapShaper.writeFiles(outputFiles, opts);
-        outputFiles = null;
+      if (opts.__nowrite) {
+        done(null, outputFiles);
+      } else {
+        MapShaper.writeFiles(outputFiles, opts, done);
       }
+      return;
+
     } else if (name == 'points') {
       outputLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
@@ -14544,15 +14547,15 @@ api.runCommand = function(cmd, dataset, cb) {
       }
     }
   } catch(e) {
-    done(e, null);
+    done(e);
     return;
   }
 
-  done(null, outputFiles || dataset);
+  done(null);
 
   function done(err, output) {
     T.stop('-' + name);
-    cb(err, output);
+    cb(err, err ? null : output || dataset);
   }
 };
 
@@ -15837,19 +15840,15 @@ MapShaper.parseCommands = function(tokens) {
 
 // Parse a command line string for the browser console
 MapShaper.parseConsoleCommands = function(raw) {
-  var blocked = 'o,i'.split(','),
-      tokens, parsed, str;
-  str = raw.replace(/^mapshaper\b/, '').trim();
+  var str = raw.replace(/^mapshaper\b/, '').trim();
+  var parsed;
   if (/^[a-z]/.test(str)) {
     // add hyphen prefix to bare command
     str = '-' + str;
   }
-  tokens = MapShaper.splitShellTokens(str);
-  tokens.forEach(function(tok) {
-    if (tok[0] == '-' && utils.contains(blocked, tok.substr(1))) {
-      stop("These commands can not be run in the browser:", blocked.join(', '));
-    }
-  });
+  if (utils.contains(MapShaper.splitShellTokens(str), '-i')) {
+    stop("The input command cannot be run in the browser");
+  }
   parsed = MapShaper.parseCommands(str);
   // block implicit initial -i command
   if (parsed.length > 0 && parsed[0].name == 'i') {

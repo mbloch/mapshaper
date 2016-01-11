@@ -91,21 +91,6 @@ function Console(model) {
     }
   }
 
-  function receiveFocus_() {
-    var range, selection;
-    if (readCommandLine().length > 0) {
-      // move cursor to end of text
-      range = document.createRange();
-      range.selectNodeContents(this);
-      range.collapse(false); //collapse the range to the end point.
-      selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-  }
-
-
-
   function scrollDown() {
     var el = content.parent().node();
     el.scrollTop = el.scrollHeight;

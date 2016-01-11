@@ -5,13 +5,18 @@ var ExportControl = function(model) {
   var downloadSupport = typeof URL != 'undefined' && URL.createObjectURL &&
     typeof document.createElement("a").download != "undefined" ||
     !!window.navigator.msSaveBlob;
+  var unsupportedMsg = "Exporting is not supported in this browser";
   var menu = El('#export-options').on('click', gui.handleDirectEvent(model.clearMode));
   var anchor, blobUrl;
 
   if (!downloadSupport) {
     El('#export-btn').on('click', function() {
-      gui.alert("Exporting is not supported in this browser");
+      gui.alert(unsupportedMsg);
     });
+
+    MapShaper.writeFiles = function() {
+      error(unsupportedMsg);
+    };
   } else {
     anchor = menu.newChild('a').attr('href', '#').node();
     exportButton("#geojson-btn", "geojson");
@@ -20,6 +25,18 @@ var ExportControl = function(model) {
     exportButton("#csv-btn", "dsv");
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
+
+    MapShaper.writeFiles = function(files, opts, done) {
+      var filename;
+      if (!utils.isArray(files) || files.length === 0) {
+        done("Nothing to export");
+      } else if (files.length == 1) {
+        saveBlob(files[0].filename, new Blob([files[0].content]), done);
+      } else {
+        filename = MapShaper.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
+        saveZipFile(filename + ".zip", files, done);
+      }
+    };
   }
 
   function turnOn() {
@@ -64,14 +81,7 @@ var ExportControl = function(model) {
       return done(e);
     }
 
-    if (!utils.isArray(files) || files.length === 0) {
-      done("Nothing to export");
-    } else if (files.length == 1) {
-      saveBlob(files[0].filename, new Blob([files[0].content]), done);
-    } else {
-      name = MapShaper.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
-      saveZipFile(name + ".zip", files, done);
-    }
+    MapShaper.writeFiles(files, opts, done);
   }
 
   function saveBlob(filename, blob, done) {

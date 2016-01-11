@@ -2,10 +2,10 @@ var api = require('../'),
   internal = api.internal,
   assert = require('assert');
 
-describe('mapshaper-console.js', function () {
+describe('mapshaper-parse-commands.js', function () {
 
   describe('parseConsoleCommands()', function () {
-    it('should block some commands', function () {
+    it('should block input commands', function () {
 
       function bad(cmd) {
         assert.throws(function() {
@@ -13,9 +13,7 @@ describe('mapshaper-console.js', function () {
         });
       }
 
-      bad("-o out.shp");
       bad("mapshaper foo.shp")
-      bad("o format=geojson");
       bad("-i foo");
     })
 

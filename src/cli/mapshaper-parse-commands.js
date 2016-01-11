@@ -11,19 +11,15 @@ MapShaper.parseCommands = function(tokens) {
 
 // Parse a command line string for the browser console
 MapShaper.parseConsoleCommands = function(raw) {
-  var blocked = 'o,i'.split(','),
-      tokens, parsed, str;
-  str = raw.replace(/^mapshaper\b/, '').trim();
+  var str = raw.replace(/^mapshaper\b/, '').trim();
+  var parsed;
   if (/^[a-z]/.test(str)) {
     // add hyphen prefix to bare command
     str = '-' + str;
   }
-  tokens = MapShaper.splitShellTokens(str);
-  tokens.forEach(function(tok) {
-    if (tok[0] == '-' && utils.contains(blocked, tok.substr(1))) {
-      stop("These commands can not be run in the browser:", blocked.join(', '));
-    }
-  });
+  if (utils.contains(MapShaper.splitShellTokens(str), '-i')) {
+    stop("The input command cannot be run in the browser");
+  }
   parsed = MapShaper.parseCommands(str);
   // block implicit initial -i command
   if (parsed.length > 0 && parsed[0].name == 'i') {
