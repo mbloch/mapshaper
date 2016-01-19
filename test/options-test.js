@@ -6,6 +6,7 @@ function fixPath(p) {
 }
 
 describe('mapshaper-options.js', function () {
+
   describe('import', function () {
     var file1 = fixPath("test_data/two_states.shp"),
         file2 = fixPath("test_data/two_states.json"),
@@ -83,6 +84,10 @@ describe('mapshaper-options.js', function () {
     good("-o format=csv delimiter=\\t", {format: "dsv", delimiter: "\t"});
     good("-o format=csv delimiter='\\t'", {format: "dsv", delimiter: "\t"});
   })
+
+  describe('each', function() {
+    good('-each target=filtered \'name="foo"', {target: 'filtered', expression: 'name="foo"'});
+  });
 
   describe('simplify', function() {
     bad("-s") // no alias (add one?)

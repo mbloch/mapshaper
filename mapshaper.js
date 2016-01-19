@@ -14583,7 +14583,9 @@ MapShaper.getFormattedLayerList = function(layers) {
 
 
 function CommandParser() {
-  var _usage = "",
+  var commandRxp = /^--?([a-z][\w-]*)$/i,
+      assignmentRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i, // exclude ==
+      _usage = "",
       _examples = [],
       _commands = [],
       _default = null,
@@ -14619,19 +14621,21 @@ function CommandParser() {
 
   this.parseArgv = function(raw) {
     var commandDefs = getCommands(),
-        commandRxp = /^--?([a-z][\w-]*)$/i,
         commands = [], cmd,
         argv = raw.map(utils.trimQuotes), // remove one level of single or dbl quotes
         cmdName, cmdDef, opt;
 
     while (argv.length > 0) {
-      // if there are arguments before the first explicit command, use the default command
-      if (commands.length === 0 && moreOptions(argv)) {
-        cmdName = _default;
-      } else {
+      cmdName = null;
+      if (tokenIsCommand(argv[0])) {
         cmdName = readCommandName(argv);
+      } else if (commands.length === 0) {
+        // if there are arguments before the first explicit command, use the default command
+        cmdName = _default;
       }
-      if (!cmdName) stop("Invalid command:", argv[0]);
+      if (!cmdName) {
+        stop("Invalid command:", argv[0]);
+      }
       cmdDef = findCommandDefn(cmdName, commandDefs);
       if (!cmdDef) {
         stop("Unknown command:", cmdName);
@@ -14642,14 +14646,8 @@ function CommandParser() {
         _: []
       };
 
-      while (moreOptions(argv)) {
-        opt = readNamedOption(argv, cmdDef);
-        if (!opt) {
-          // not a defined option; add it to _ array for later processing
-          cmd._.push(argv.shift());
-        } else {
-          cmd.options[opt[0]] = opt[1];
-        }
+      while (argv.length > 0 && !tokenIsCommand(argv[0])) {
+        readOption(cmd, argv, cmdDef);
       }
 
       if (cmdDef.validate) {
@@ -14663,69 +14661,82 @@ function CommandParser() {
     }
     return commands;
 
-    function moreOptions(argv) {
-      return argv.length > 0 && !commandRxp.test(argv[0]);
+    function tokenIsCommand(s) {
+      return commandRxp.test(s);
     }
 
-    function readNamedOption(argv, cmdDef) {
-      var token = argv[0],
-          optRxp = /^([a-z0-9_+-]+)=(?!\=)(.*)$/i, // exclude ==
-          match = optRxp.exec(token),
-          name = match ? match[1] : token,
-          optDef = findOptionDefn(name, cmdDef),
-          optName,
-          optVal;
+    // Try to parse an assignment @token for command @cmdDef
+    function parseAssignment(cmd, token, cmdDef) {
+      var match = assignmentRxp.exec(token),
+          name = match[1],
+          val = utils.trimQuotes(match[2]),
+          optDef = findOptionDefn(name, cmdDef);
 
-      if (!optDef) return null;
-
-      if (match && (optDef.type == 'flag' || optDef.assign_to)) {
-        stop("-" + cmdDef.name + " " + name + " doesn't take a value");
-      }
-
-      if (match) {
-        argv[0] = utils.trimQuotes(match[2]);
+      if (!optDef) {
+        // Assignment to an unrecognized names count be an expression
+        // (e.g. -each 'id=$.id') -- save for later parsing
+        cmd._.push(token);
+      } else if (optDef.type == 'flag' || optDef.assign_to) {
+        stop("-" + cmdDef.name + " " + name + " option doesn't take a value");
       } else {
-        argv.shift();
+        readOption(cmd, [name, val], cmdDef);
       }
-
-      optName = optDef.assign_to || optDef.name.replace(/-/g, '_');
-      optVal = readOptionValue(argv, optDef);
-      if (optVal === null) {
-        stop("Invalid value for -" + cmdDef.name + " " + optName + "=<value>");
-      }
-      return [optName, optVal];
     }
 
-    function readOptionValue(args, def) {
-      var type = def.type,
-          raw, val;
-      if (type == 'flag') {
-        val = true;
-      } else if (def.assign_to) { // opt is a member of a set, assigned to another name
-        val = def.name;
-      } else if (args.length === 0 || commandRxp.test(args[0])) {
-        val = null;
+    // Try to read an option for command @cmdDef from @argv
+    function readOption(cmd, argv, cmdDef) {
+      var token = argv.shift(),
+          optDef = findOptionDefn(token, cmdDef),
+          optName;
+
+      if (assignmentRxp.test(token)) {
+        parseAssignment(cmd, token, cmdDef);
+        return;
+      }
+
+      if (!optDef) {
+        // not a defined option; add it to _ array for later processing
+        cmd._.push(token);
+        return;
+      }
+
+      optName = optDef.name.replace(/-/g, '_');
+
+      if (optDef.assign_to) {
+        cmd.options[optDef.assign_to] = optDef.name;
+      } else if (optDef.type == 'flag') {
+        cmd.options[optName] = true;
       } else {
-        raw = args[0];
+        cmd.options[optName] = readOptionValue(argv, optDef);
+      }
+    }
+
+    // Read an option value for @optDef from @argv
+    function readOptionValue(argv, optDef) {
+      var type = optDef.type,
+          val, err, token;
+      if (argv.length === 0 || tokenIsCommand(argv[0])) {
+        err = 'Missing value';
+      } else {
+        token = argv.shift(); // remove token from argv
         if (type == 'number') {
-          val = Number(raw);
+          val = Number(token);
         } else if (type == 'integer') {
-          val = Math.round(Number(raw));
+          val = Math.round(Number(token));
         } else if (type == 'comma-sep') {
-          val = raw.split(',');
-        } else if (type) {
-          val = null; // unknown type
+          val = token.split(',');
         } else {
-          val = raw; // string
+          val = token; // assumes string
         }
 
-        if (val !== val || val === null) {
-          val = null; // null indicates invalid value
-        } else {
-          args.shift(); // good value, remove from argv
+        if (val !== val) {
+          err = "Invalid numeric value";
         }
       }
 
+      if (err) {
+        stop(err + " for option " + optDef.name + "=<value>");
+      }
       return val;
     }
 
