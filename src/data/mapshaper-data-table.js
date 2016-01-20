@@ -62,8 +62,9 @@ var dataTableProto = {
   },
 
   getFields: function() {
-    var records = this.getRecords();
-    return records.length > 0 ? Object.keys(records[0]) : [];
+    var records = this.getRecords(),
+        first = records[0];
+    return first ? Object.keys(first) : [];
   },
 
   update: function(f) {

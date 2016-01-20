@@ -4426,8 +4426,9 @@ var dataTableProto = {
   },
 
   getFields: function() {
-    var records = this.getRecords();
-    return records.length > 0 ? Object.keys(records[0]) : [];
+    var records = this.getRecords(),
+        first = records[0];
+    return first ? Object.keys(first) : [];
   },
 
   update: function(f) {
@@ -16813,19 +16814,39 @@ MapShaper.getInnerTics = function(min, max, steps) {
 
 
 MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
-  var RE_ASSIGNEE = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g,
-      exp = MapShaper.validateExpression(rawExp),
-      newFields = exp.match(RE_ASSIGNEE) || null,
-      env = MapShaper.getBaseContext(),
-      records,
-      func;
+  var exp = rawExp || '',
+      vars = MapShaper.getAssignedVars(exp),
+      func, records;
 
-  if (newFields && !lyr.data) {
+  if (vars.length > 0 && !lyr.data) {
     lyr.data = new DataTable(MapShaper.getFeatureCount(lyr));
   }
-  if (lyr.data) records = lyr.data.getRecords();
 
-  env.$ = new FeatureExpressionContext(lyr, arcs);
+  records = lyr.data ? lyr.data.getRecords() : [];
+  func = MapShaper.getExpressionFunction(exp, lyr, arcs);
+  return function(recId) {
+    var record = records[recId];
+    if (!record) {
+      record = records[recId] = {};
+    }
+    // initialize new fields to null so assignments work
+    for (var i=0; i<vars.length; i++) {
+      if (vars[i] in record === false) {
+        record[vars[i]] = null;
+      }
+    }
+    return func(record, recId);
+  };
+};
+
+MapShaper.getAssignedVars = function(exp) {
+  var rxp = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g;
+  return exp.match(rxp) || [];
+};
+
+MapShaper.getExpressionFunction = function(exp, lyr, arcs) {
+  var env = MapShaper.getExpressionContext(lyr, arcs);
+  var func;
   try {
     func = new Function("record,env", "with(env){with(record) { return " +
         MapShaper.removeExpressionSemicolons(exp) + "}}");
@@ -16833,30 +16854,28 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
     stop(e.name, "in expression [" + exp + "]");
   }
 
-  var compiled = function(recId) {
-    var record = records ? records[recId] || (records[recId] = {}) : {},
-        value, f;
-
-    // initialize new fields to null so assignments work
-    if (newFields) {
-      for (var i=0; i<newFields.length; i++) {
-        f = newFields[i];
-        if (f in record === false) {
-          record[f] = null;
-        }
-      }
-    }
-    env.$.__setId(recId);
+  return function(rec, i) {
+    var val;
+    env.$.__setId(i);
     try {
-      value = func.call(null, record, env);
+      val = func.call(null, rec, env);
     } catch(e) {
       stop(e.name, "in expression [" + exp + "]:", e.message);
     }
-    return value;
+    return val;
   };
+};
 
-  compiled.context = env;
-  return compiled;
+MapShaper.getExpressionContext = function(lyr, arcs) {
+  var env = MapShaper.getBaseContext();
+  if (lyr.data) {
+    // default to null values when a data field is missing
+    lyr.data.getFields().forEach(function(f) {
+      env[f] = null;
+    });
+  }
+  env.$ = new FeatureExpressionContext(lyr, arcs);
+  return env;
 };
 
 MapShaper.getBaseContext = function() {
@@ -16869,11 +16888,6 @@ MapShaper.getBaseContext = function() {
   }());
   obj.console = console;
   return obj;
-};
-
-MapShaper.validateExpression = function(exp) {
-  exp = exp || '';
-  return MapShaper.removeExpressionSemicolons(exp);
 };
 
 // Semicolons that divide the expression into two or more js statements
@@ -17552,8 +17566,7 @@ MapShaper.initCalcFunctions = function(env, lyr, arcs) {
 };
 
 MapShaper.getCalcFunction = function(fname, lyr, arcs) {
-  return function(rawExp) {
-    var exp = MapShaper.validateExpression(rawExp);
+  return function(exp) {
     var calculator = new FeatureCalculator();
     var func = calculator.functions[fname];
     var compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);

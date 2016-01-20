@@ -111,6 +111,17 @@ describe('mapshaper-each-calc.js', function () {
       assert.deepEqual(lyr.data.getRecords(), [{menu: 'mice'}, {menu: 'beans'}]);
     })
 
+    it('Missing properties evaluate to null', function() {
+      var records = [{foo:'mice'}, {}];
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      api.evaluateEachFeature(lyr, nullArcs, "bar = foo");
+      assert.deepEqual(lyr.data.getRecords(), [{foo:'mice', bar: 'mice'}, {
+        bar: null
+      }]);
+    });
+
     it('use Math.sqrt() to transform a field', function () {
       var records = [{foo:4}, {foo:0}];
       var lyr = {

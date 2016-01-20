@@ -69,8 +69,7 @@ MapShaper.initCalcFunctions = function(env, lyr, arcs) {
 };
 
 MapShaper.getCalcFunction = function(fname, lyr, arcs) {
-  return function(rawExp) {
-    var exp = MapShaper.validateExpression(rawExp);
+  return function(exp) {
     var calculator = new FeatureCalculator();
     var func = calculator.functions[fname];
     var compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
