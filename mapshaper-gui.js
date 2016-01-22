@@ -14353,7 +14353,12 @@ function MapNav(root, ext, mouse) {
   });
 
   wheel.on('mousewheel', function(e) {
-    ext.rescale(Math.pow(2, e.wheelDelta * 0.00075) * ext.scale(), e.x / ext.width(), e.y / ext.height());
+    var maxDelta = 350,
+        wheelDelta = e.wheelDelta,
+        direction = wheelDelta > 0 ? 1 : -1,
+        k = Math.min(maxDelta, Math.abs(wheelDelta)) * direction;
+
+    ext.rescale(Math.pow(2, k * 0.00075) * ext.scale(), e.x / ext.width(), e.y / ext.height());
   });
 
   function zoomIn() {
