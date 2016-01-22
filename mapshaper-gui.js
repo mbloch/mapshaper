@@ -2277,7 +2277,8 @@ function MouseWheel(mouse) {
       currDirection = 0,
       timer = new Timer().addEventListener('tick', onTick),
       sustainTime = 60,
-      fadeTime = 80;
+      fadeTime = 80,
+      wheelDelta;
 
   if (window.onmousewheel !== undefined) { // ie, webkit
     window.addEventListener('mousewheel', handleWheel);
@@ -2288,10 +2289,13 @@ function MouseWheel(mouse) {
   function handleWheel(evt) {
     var direction;
     if (evt.wheelDelta) {
-      direction = evt.wheelDelta > 0 ? 1 : -1;
+      wheelDelta = evt.wheelDelta;
     } else if (evt.detail) {
-      direction = evt.detail > 0 ? -1 : 1;
+      wheelDelta = evt.detail;
     }
+
+    direction = wheelDelta > 0 ? 1 : -1;
+
     if (!mouse.isOver() || !direction) return;
     evt.preventDefault();
     prevWheelTime = +new Date();
@@ -2314,7 +2318,7 @@ function MouseWheel(mouse) {
         // Decelerate if the timer fires during 'fade time' (for smoother zooming)
         scale *= Tween.quadraticOut((fadeTime - fadeElapsed) / fadeTime);
       }
-      obj = utils.extend({direction: currDirection, multiplier: scale}, mouse.mouseData());
+      obj = utils.extend({direction: currDirection, multiplier: scale, wheelDelta: wheelDelta}, mouse.mouseData());
       self.dispatchEvent('mousewheel', obj);
     }
   }
@@ -2440,8 +2444,6 @@ function MouseArea(element) {
 }
 
 Utils.inherit(MouseArea, EventDispatcher);
-
-
 
 
 
@@ -14351,9 +14353,7 @@ function MapNav(root, ext, mouse) {
   });
 
   wheel.on('mousewheel', function(e) {
-    var k = 1 + (0.11 * e.multiplier),
-        delta = e.direction > 0 ? k : 1 / k;
-    ext.rescale(ext.scale() * delta, e.x / ext.width(), e.y / ext.height());
+    ext.rescale(Math.pow(2, e.wheelDelta * 0.00075) * ext.scale(), e.x / ext.width(), e.y / ext.height());
   });
 
   function zoomIn() {

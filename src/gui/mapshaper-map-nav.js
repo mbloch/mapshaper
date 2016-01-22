@@ -60,9 +60,7 @@ function MapNav(root, ext, mouse) {
   });
 
   wheel.on('mousewheel', function(e) {
-    var k = 1 + (0.11 * e.multiplier),
-        delta = e.direction > 0 ? k : 1 / k;
-    ext.rescale(ext.scale() * delta, e.x / ext.width(), e.y / ext.height());
+    ext.rescale(Math.pow(2, e.wheelDelta * 0.00075) * ext.scale(), e.x / ext.width(), e.y / ext.height());
   });
 
   function zoomIn() {
