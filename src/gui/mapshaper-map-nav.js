@@ -65,7 +65,7 @@ function MapNav(root, ext, mouse) {
         direction = wheelDelta > 0 ? 1 : -1,
         k = Math.min(maxDelta, Math.abs(wheelDelta)) * direction;
 
-    ext.rescale(Math.pow(2, k * 0.00075) * ext.scale(), e.x / ext.width(), e.y / ext.height());
+    ext.rescale(Math.pow(2, k * 0.001) * ext.scale(), e.x / ext.width(), e.y / ext.height());
   });
 
   function zoomIn() {
