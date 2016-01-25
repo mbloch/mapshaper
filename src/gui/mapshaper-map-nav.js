@@ -67,7 +67,8 @@ function MapNav(root, ext, mouse) {
         wheelDelta = e.wheelDelta,
         scale = ext.scale(),
         direction = wheelDelta > 0 ? 1 : -1,
-        k = Math.min(maxDelta, Math.abs(wheelDelta)) * direction;
+        k = Math.min(maxDelta, Math.abs(wheelDelta)) * direction,
+        newScale = Math.pow(2, k * 0.001) * scale || 1;
 
     if (!zooming) {
       zooming = true;
@@ -81,7 +82,7 @@ function MapNav(root, ext, mouse) {
       autoSimplify(zooming);
     }, zoomTimeout);
 
-    ext.rescale(Math.pow(2, k * 0.001) * scale, e.x / ext.width(), e.y / ext.height());
+    ext.rescale(newScale, e.x / ext.width(), e.y / ext.height());
   });
 
   function zoomIn() {
