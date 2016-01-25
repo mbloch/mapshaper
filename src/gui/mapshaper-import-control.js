@@ -77,9 +77,8 @@ function ImportControl(model) {
   });
 
   function findMatchingShp(filename) {
-    // TODO: handle multiple matches
     var shpName = utils.replaceFileExtension(filename, 'shp');
-    return utils.find(model.getDatasets(), function(d) {
+    return model.getDatasets().filter(function(d) {
       return shpName == d.info.input_files[0];
     });
   }
@@ -208,23 +207,42 @@ function ImportControl(model) {
   function readFileContent(name, content) {
     var type = MapShaper.guessInputType(name, content),
         importOpts = getImportOpts(),
-        dataset = findMatchingShp(name),
-        lyr = dataset && dataset.layers[0];
-    if (lyr && type == 'dbf') {
-      lyr.data = new ShapefileTable(content, importOpts.encoding);
-      if (lyr.data.size() != lyr.shapes.length) {
-        stop("Different number of records in .shp and .dbf files");
+        matches = findMatchingShp(name),
+        lyr;
+
+    // TODO: refactor
+    if (type == 'dbf' && matches.length > 0) {
+      // find an imported .shp layer that is missing attribute data
+      // (if multiple matches, try to use the most recently imported one)
+      lyr = matches.reduce(function(memo, d) {
+        var lyr = d.layers[0];
+        if (!lyr.data) {
+          memo = lyr;
+        }
+        return memo;
+      }, null);
+      if (lyr) {
+        lyr.data = new ShapefileTable(content, importOpts.encoding);
+        if (lyr.data.size() != lyr.shapes.length) {
+          stop("Different number of records in .shp and .dbf files");
+        }
+        readNext();
+        return;
       }
-      readNext();
-    } else if (type == 'prj') {
-      // assumes that .shp has been imported first
-      if (dataset && !dataset.info.output_prj) {
-        dataset.info.input_prj = content;
-      }
-      readNext();
-    } else {
-      importFileContent(type, name, content, importOpts);
     }
+
+    if (type == 'prj') {
+      // assumes that .shp has been imported first
+      matches.forEach(function(d) {
+        if (!d.info.output_prj && !d.info.input_prj) {
+          d.info.input_prj = content;
+        }
+      });
+      readNext();
+      return;
+    }
+
+    importFileContent(type, name, content, importOpts);
   }
 
   function importFileContent(type, path, content, importOpts) {
