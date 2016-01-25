@@ -14338,7 +14338,6 @@ function MapNav(root, ext, mouse) {
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
       zoomScale = 2.5,
-      zoomTimeout = 250,
       dragStartEvt, _fx, _fy; // zoom foci, [0,1]
 
   gui.addSidebarButton("#home-icon").on('click', function() {ext.reset();});
@@ -14358,6 +14357,7 @@ function MapNav(root, ext, mouse) {
     if (shiftDrag) {
       dragStartEvt = e;
     }
+    clearTimeout(gui.operation);
     autoSimplify(true);
   });
 
@@ -14379,7 +14379,7 @@ function MapNav(root, ext, mouse) {
         zoomToBox(bounds);
       }
     }
-    autoSimplify(false);
+    autoSimplifyEnd(500);
   });
 
   wheel.on('mousewheel', function(e) {
@@ -14393,12 +14393,8 @@ function MapNav(root, ext, mouse) {
     if (!gui.operation) {
       autoSimplify(true);
     }
-
     clearTimeout(gui.operation);
-
-    gui.operation = setTimeout(function() {
-      autoSimplify(false);
-    }, zoomTimeout);
+    autoSimplifyEnd(250);
 
     ext.rescale(newScale, e.x / ext.width(), e.y / ext.height());
   });
@@ -14429,6 +14425,12 @@ function MapNav(root, ext, mouse) {
 
   function autoSimplify(operation) {
     gui.simplify.dispatchEvent('operation', { operation: operation, scale: ext.scale() });
+  }
+
+  function autoSimplifyEnd(timeout) {
+    gui.operation = setTimeout(function() {
+      autoSimplify(false);
+    }, timeout);
   }
 }
 
