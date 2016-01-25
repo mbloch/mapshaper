@@ -239,12 +239,22 @@ function ImportControl(model) {
     setTimeout(function() {
       var dataset = MapShaper.importFileContent(content, path, importOpts);
       var lyr = dataset.layers[0];
+      var simplifyOpts = {
+        method: 'weighted_visvalingam',
+        keep_shapes: true,
+        cartesian: false
+      };
       if (lyr.data && !lyr.shapes) {
         gui.addTableShapes(lyr, dataset);
       }
       dataset.info.no_repair = importOpts.no_repair;
       model.addDataset(dataset);
       importCount++;
+      MapShaper.simplifyPaths(dataset.arcs, simplifyOpts);
+      dataset.arcs.setRetainedPct(1);
+      if (simplifyOpts.keep_shapes) {
+        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
+      }
       readNext();
     }, delay);
   }

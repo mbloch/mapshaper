@@ -18,7 +18,8 @@ function MapNav(root, ext, mouse) {
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
       zoomScale = 2.5,
-      dragStartEvt, _fx, _fy; // zoom foci, [0,1]
+      zoomTimeout = 250,
+      zooming, dragStartEvt, _fx, _fy; // zoom foci, [0,1]
 
   gui.addSidebarButton("#home-icon").on('click', function() {ext.reset();});
   gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
@@ -37,6 +38,7 @@ function MapNav(root, ext, mouse) {
     if (shiftDrag) {
       dragStartEvt = e;
     }
+    autoSimplify(true);
   });
 
   mouse.on('drag', function(e) {
@@ -57,15 +59,29 @@ function MapNav(root, ext, mouse) {
         zoomToBox(bounds);
       }
     }
+    autoSimplify(false);
   });
 
   wheel.on('mousewheel', function(e) {
     var maxDelta = 350,
         wheelDelta = e.wheelDelta,
+        scale = ext.scale(),
         direction = wheelDelta > 0 ? 1 : -1,
         k = Math.min(maxDelta, Math.abs(wheelDelta)) * direction;
 
-    ext.rescale(Math.pow(2, k * 0.001) * ext.scale(), e.x / ext.width(), e.y / ext.height());
+    if (!zooming) {
+      zooming = true;
+      autoSimplify(zooming);
+    }
+
+    clearTimeout(zooming);
+
+    zooming = setTimeout(function() {
+      zooming = false;
+      autoSimplify(zooming);
+    }, zoomTimeout);
+
+    ext.rescale(Math.pow(2, k * 0.001) * scale, e.x / ext.width(), e.y / ext.height());
   });
 
   function zoomIn() {
@@ -92,4 +108,7 @@ function MapNav(root, ext, mouse) {
     zoomTween.start(ext.scale(), ext.scale() * pct, 400);
   }
 
+  function autoSimplify(operation) {
+    gui.simplify.dispatchEvent('operation', { operation: operation, scale: ext.scale() });
+  }
 }
