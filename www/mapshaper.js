@@ -14661,7 +14661,9 @@ function MapNav(root, ext, mouse) {
 
 function MapExtent(el) {
   var _position = new ElementPosition(el),
-      _scale = 1,
+      _minScale = 1,
+      _maxScale = 25,
+      _scale = _minScale,
       _cx,
       _cy,
       _contentBounds;
@@ -14673,7 +14675,7 @@ function MapExtent(el) {
   }, this);
 
   this.reset = function(force) {
-    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, force);
+    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), _minScale, force);
   };
 
   this.recenter = function(cx, cy, scale, force) {
@@ -14695,6 +14697,9 @@ function MapExtent(el) {
   // Zoom to @scale (a multiple of the map's full scale)
   // @xpct, @ypct: optional focus, [0-1]...
   this.rescale = function(scale, xpct, ypct) {
+    if (scale <= _minScale || scale >= _maxScale) {
+      return;
+    }
     if (arguments.length < 3) {
       xpct = 0.5;
       ypct = 0.5;
