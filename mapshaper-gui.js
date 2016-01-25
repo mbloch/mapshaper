@@ -709,7 +709,7 @@ Bounds.prototype.fillOut = function(aspect, focusX, focusY) {
       pad;
   if (isNaN(aspect) || aspect <= 0) {
     // error condition; don't pad
-  } else if (currAspect < aspect) { // fill out x dimension
+  } else if (currAspect > aspect) { // fill out x dimension
     pad = h * aspect - w;
     this.xmin -= (1 - focusX) * pad;
     this.xmax += focusX * pad;
@@ -14515,7 +14515,8 @@ function MapExtent(el) {
   };
 
   function getPadding(size) {
-    return size * 0.020 + 4;
+    // return size * 0.020 + 4;
+    return 0;
   }
 
   function calcBounds(cx, cy, scale) {

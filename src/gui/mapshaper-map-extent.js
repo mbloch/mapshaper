@@ -96,7 +96,8 @@ function MapExtent(el) {
   };
 
   function getPadding(size) {
-    return size * 0.020 + 4;
+    // return size * 0.020 + 4;
+    return 0;
   }
 
   function calcBounds(cx, cy, scale) {
