@@ -34,7 +34,7 @@ function drawSquare(x, y, size, ctx) {
 }
 
 function drawPath(vec, t, ctx) {
-  var minLen = gui.getPixelRatio() > 1 ? 2 : 1,
+  var minLen = gui.getPixelRatio() > 1 ? 1 : 1.5,
       x, y, xp, yp;
   if (!vec.hasNext()) return;
   x = xp = vec.x * t.mx + t.bx;

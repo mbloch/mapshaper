@@ -13867,7 +13867,7 @@ function drawSquare(x, y, size, ctx) {
 }
 
 function drawPath(vec, t, ctx) {
-  var minLen = gui.getPixelRatio() > 1 ? 2 : 1,
+  var minLen = gui.getPixelRatio() > 1 ? 1 : 1.5,
       x, y, xp, yp;
   if (!vec.hasNext()) return;
   x = xp = vec.x * t.mx + t.bx;
@@ -20414,7 +20414,7 @@ gui.startEditing = function() {
     map.setSimplifyPct(e.value);
   });
   gui.simplify.on('operation', function(opts) {
-    var starting = opts.operation ? 0.05 : 0.5,
+    var starting = opts.operation ? 0.1 : 0.5,
         value = Math.min(1, ((opts.scale / 10) + 1) * starting);
 
     gui.operation = opts.operation;

@@ -59,7 +59,7 @@ gui.startEditing = function() {
     map.setSimplifyPct(e.value);
   });
   gui.simplify.on('operation', function(opts) {
-    var starting = opts.operation ? 0.05 : 0.5,
+    var starting = opts.operation ? 0.1 : 0.5,
         value = Math.min(1, ((opts.scale / 10) + 1) * starting);
 
     gui.operation = opts.operation;
