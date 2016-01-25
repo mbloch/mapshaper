@@ -12518,7 +12518,7 @@ function ImportControl(model) {
       if (lyr.data && !lyr.shapes) {
         gui.addTableShapes(lyr, dataset);
       }
-      dataset.info.no_repair = importOpts.no_repair;
+      dataset.info.no_repair = true;
       model.addDataset(dataset);
       importCount++;
       MapShaper.simplifyPaths(dataset.arcs, simplifyOpts);
