@@ -3,6 +3,8 @@ mapshaper-gui-lib
 mapshaper-highlight-box
 */
 
+gui.operation = false;
+
 gui.addSidebarButton = function(iconId) {
   var btn = El('div').addClass('nav-btn')
     .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
@@ -19,7 +21,7 @@ function MapNav(root, ext, mouse) {
       shiftDrag = false,
       zoomScale = 2.5,
       zoomTimeout = 250,
-      zooming, dragStartEvt, _fx, _fy; // zoom foci, [0,1]
+      dragStartEvt, _fx, _fy; // zoom foci, [0,1]
 
   gui.addSidebarButton("#home-icon").on('click', function() {ext.reset();});
   gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
@@ -70,16 +72,14 @@ function MapNav(root, ext, mouse) {
         k = Math.min(maxDelta, Math.abs(wheelDelta)) * direction,
         newScale = Math.pow(2, k * 0.001) * scale || 1;
 
-    if (!zooming) {
-      zooming = true;
-      autoSimplify(zooming);
+    if (!gui.operation) {
+      autoSimplify(true);
     }
 
-    clearTimeout(zooming);
+    clearTimeout(gui.operation);
 
-    zooming = setTimeout(function() {
-      zooming = false;
-      autoSimplify(zooming);
+    gui.operation = setTimeout(function() {
+      autoSimplify(false);
     }, zoomTimeout);
 
     ext.rescale(newScale, e.x / ext.width(), e.y / ext.height());

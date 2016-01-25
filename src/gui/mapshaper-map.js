@@ -218,9 +218,11 @@ function MshpMap(model) {
     if (!style) {
       group.hide();
     } else if (group == _hoverGroup) {
-      group.drawShapes(group.getLayer(), style, _ext);
+      group.drawShapes(group.getLayer(), style, _ext, null, true);
     } else {
-      group.drawStructure(group.getLayer(), style, _ext);
+      var attr = group.getDataset().layers[0].data.getRecords();
+      group.drawShapes(group.getLayer(), style, _ext, attr, false);
+      //group.drawStructure(group.getLayer(), style, _ext);
     }
   }
 

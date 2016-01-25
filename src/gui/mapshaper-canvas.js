@@ -1,8 +1,15 @@
 /* @requires mapshaper-gui-lib */
 
+var colorScale = d3.scale.linear()
+    .domain([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+    .range(['#722d57', '#b85353', '#f5e2e2', '#b1e1f1', '#5bc8a8', '#3e9065', '#fee086', '#feae3b', '#e7562f', '#a71b2b', '#78291a'])
+    .interpolate(d3.interpolateHcl);
+
 gui.getPixelRatio = function() {
-  var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
-  return deviceRatio > 1 ? 2 : 1;
+  var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1,
+      pixelRatio = deviceRatio > 1 ? 2 : 1;
+
+  return gui.operation ? 1 : pixelRatio;
 };
 
 function getScaledTransform(ext) {
@@ -27,7 +34,7 @@ function drawSquare(x, y, size, ctx) {
 }
 
 function drawPath(vec, t, ctx) {
-  var minLen = gui.getPixelRatio() > 1 ? 1 : 0.6,
+  var minLen = gui.getPixelRatio() > 1 ? 2 : 1,
       x, y, xp, yp;
   if (!vec.hasNext()) return;
   x = xp = vec.x * t.mx + t.bx;
@@ -86,10 +93,17 @@ function getPathStart(style) {
 }
 
 function getPathEnd(style) {
-  var stroked = style.strokeColor && style.strokeWidth !== 0,
-      filled = !!style.fillColor;
-  return function(ctx) {
-    if (filled) ctx.fill();
-    if (stroked) ctx.stroke();
+  return function(ctx, p, hover) {
+    var color = colorScale(p);
+
+    if (hover) {
+      ctx.fillStyle = 'rgba(0,0,0,0.05)';
+      ctx.fill();
+    } else {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = color;
+      ctx.fill();
+      ctx.stroke();
+    }
   };
 }

@@ -240,7 +240,7 @@ function ImportControl(model) {
       var dataset = MapShaper.importFileContent(content, path, importOpts);
       var lyr = dataset.layers[0];
       var simplifyOpts = {
-        method: 'weighted_visvalingam',
+        method: 'visvalingam',
         keep_shapes: true,
         cartesian: false
       };

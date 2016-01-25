@@ -12511,7 +12511,7 @@ function ImportControl(model) {
       var dataset = MapShaper.importFileContent(content, path, importOpts);
       var lyr = dataset.layers[0];
       var simplifyOpts = {
-        method: 'weighted_visvalingam',
+        method: 'visvalingam',
         keep_shapes: true,
         cartesian: false
       };
@@ -13833,9 +13833,16 @@ function ImportFileProxy(model) {
 
 
 
+var colorScale = d3.scale.linear()
+    .domain([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+    .range(['#722d57', '#b85353', '#f5e2e2', '#b1e1f1', '#5bc8a8', '#3e9065', '#fee086', '#feae3b', '#e7562f', '#a71b2b', '#78291a'])
+    .interpolate(d3.interpolateHcl);
+
 gui.getPixelRatio = function() {
-  var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1;
-  return deviceRatio > 1 ? 2 : 1;
+  var deviceRatio = window.devicePixelRatio || window.webkitDevicePixelRatio || 1,
+      pixelRatio = deviceRatio > 1 ? 2 : 1;
+
+  return gui.operation ? 1 : pixelRatio;
 };
 
 function getScaledTransform(ext) {
@@ -13860,7 +13867,7 @@ function drawSquare(x, y, size, ctx) {
 }
 
 function drawPath(vec, t, ctx) {
-  var minLen = gui.getPixelRatio() > 1 ? 1 : 0.6,
+  var minLen = gui.getPixelRatio() > 1 ? 2 : 1,
       x, y, xp, yp;
   if (!vec.hasNext()) return;
   x = xp = vec.x * t.mx + t.bx;
@@ -13919,11 +13926,18 @@ function getPathStart(style) {
 }
 
 function getPathEnd(style) {
-  var stroked = style.strokeColor && style.strokeWidth !== 0,
-      filled = !!style.fillColor;
-  return function(ctx) {
-    if (filled) ctx.fill();
-    if (stroked) ctx.stroke();
+  return function(ctx, p, hover) {
+    var color = colorScale(p);
+
+    if (hover) {
+      ctx.fillStyle = 'rgba(0,0,0,0.05)';
+      ctx.fill();
+    } else {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = color;
+      ctx.fill();
+      ctx.stroke();
+    }
   };
 }
 
@@ -14150,14 +14164,14 @@ function LayerGroup(dataset) {
     }
   };
 
-  this.drawShapes = function(lyr, style, ext) {
+  this.drawShapes = function(lyr, style, ext, attr, hover) {
     var type = lyr.geometry_type;
         updateCanvas(ext);
     _el.show();
     if (type == 'point') {
       drawPoints(lyr.shapes, style, ext);
     } else {
-      drawPathShapes(lyr.shapes, style, ext);
+      drawPathShapes(lyr.shapes, style, ext, attr, hover);
     }
   };
 
@@ -14193,15 +14207,16 @@ function LayerGroup(dataset) {
     return bounds;
   }
 
-  function drawPathShapes(shapes, style, ext) {
+  function drawPathShapes(shapes, style, ext, attr, hover) {
     var arcs = _filteredArcs.getArcCollection(ext),
         start = getPathStart(style),
         draw = getShapePencil(arcs, ext),
         end = getPathEnd(style);
     for (var i=0, n=shapes.length; i<n; i++) {
+      var p = attr ? attr[i].p : null;
       start(_ctx);
       draw(shapes[i], _ctx);
-      end(_ctx);
+      end(_ctx, p, hover);
     }
   }
 
@@ -14306,6 +14321,8 @@ function HighlightBox(el) {
 
 
 
+gui.operation = false;
+
 gui.addSidebarButton = function(iconId) {
   var btn = El('div').addClass('nav-btn')
     .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
@@ -14322,7 +14339,7 @@ function MapNav(root, ext, mouse) {
       shiftDrag = false,
       zoomScale = 2.5,
       zoomTimeout = 250,
-      zooming, dragStartEvt, _fx, _fy; // zoom foci, [0,1]
+      dragStartEvt, _fx, _fy; // zoom foci, [0,1]
 
   gui.addSidebarButton("#home-icon").on('click', function() {ext.reset();});
   gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
@@ -14373,16 +14390,14 @@ function MapNav(root, ext, mouse) {
         k = Math.min(maxDelta, Math.abs(wheelDelta)) * direction,
         newScale = Math.pow(2, k * 0.001) * scale || 1;
 
-    if (!zooming) {
-      zooming = true;
-      autoSimplify(zooming);
+    if (!gui.operation) {
+      autoSimplify(true);
     }
 
-    clearTimeout(zooming);
+    clearTimeout(gui.operation);
 
-    zooming = setTimeout(function() {
-      zooming = false;
-      autoSimplify(zooming);
+    gui.operation = setTimeout(function() {
+      autoSimplify(false);
     }, zoomTimeout);
 
     ext.rescale(newScale, e.x / ext.width(), e.y / ext.height());
@@ -15184,9 +15199,11 @@ function MshpMap(model) {
     if (!style) {
       group.hide();
     } else if (group == _hoverGroup) {
-      group.drawShapes(group.getLayer(), style, _ext);
+      group.drawShapes(group.getLayer(), style, _ext, null, true);
     } else {
-      group.drawStructure(group.getLayer(), style, _ext);
+      var attr = group.getDataset().layers[0].data.getRecords();
+      group.drawShapes(group.getLayer(), style, _ext, attr, false);
+      //group.drawStructure(group.getLayer(), style, _ext);
     }
   }
 
@@ -20395,9 +20412,10 @@ gui.startEditing = function() {
     map.setSimplifyPct(e.value);
   });
   gui.simplify.on('operation', function(opts) {
-    var starting = opts.operation ? 0.25 : 0.5,
+    var starting = opts.operation ? 0.05 : 0.5,
         value = Math.min(1, ((opts.scale / 10) + 1) * starting);
 
+    gui.operation = opts.operation;
     map.setSimplifyPct(value);
   });
 };

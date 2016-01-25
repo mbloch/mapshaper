@@ -68,14 +68,14 @@ function LayerGroup(dataset) {
     }
   };
 
-  this.drawShapes = function(lyr, style, ext) {
+  this.drawShapes = function(lyr, style, ext, attr, hover) {
     var type = lyr.geometry_type;
         updateCanvas(ext);
     _el.show();
     if (type == 'point') {
       drawPoints(lyr.shapes, style, ext);
     } else {
-      drawPathShapes(lyr.shapes, style, ext);
+      drawPathShapes(lyr.shapes, style, ext, attr, hover);
     }
   };
 
@@ -111,15 +111,16 @@ function LayerGroup(dataset) {
     return bounds;
   }
 
-  function drawPathShapes(shapes, style, ext) {
+  function drawPathShapes(shapes, style, ext, attr, hover) {
     var arcs = _filteredArcs.getArcCollection(ext),
         start = getPathStart(style),
         draw = getShapePencil(arcs, ext),
         end = getPathEnd(style);
     for (var i=0, n=shapes.length; i<n; i++) {
+      var p = attr ? attr[i].p : null;
       start(_ctx);
       draw(shapes[i], _ctx);
-      end(_ctx);
+      end(_ctx, p, hover);
     }
   }
 
