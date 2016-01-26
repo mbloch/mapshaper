@@ -14697,11 +14697,28 @@ function MapExtent(el) {
   };
 
   this.recenter = function(cx, cy, scale, force) {
+    var xmin = _contentBounds.xmin,
+        xmax = _contentBounds.xmax,
+        ymin = _contentBounds.ymin,
+        ymax = _contentBounds.ymax,
+        xextent, yextent;
+
     if (!scale) scale = _scale;
     if (force || !(cx == _cx && cy == _cy && scale == _scale)) {
-      _cx = cx;
-      _cy = cy;
+
+      xextent = Math.abs(xmin - xmax) / scale / 2,
+      xmax = xmax - xextent;
+      xmin = xmin + xextent;
+
+      yextent = Math.abs(ymin - ymax) / scale / 2;
+      ymax = ymax - yextent;
+      ymin = ymin + yextent;
+
+      _cx = (cx <= xmax && cx >= xmin) ? cx : (cx > xmax ? xmax : xmin );
+      _cy = (cy <= ymax && cy >= ymin) ? cy : (cy > ymax ? ymax : ymin );
+
       _scale = scale;
+
       this.dispatchEvent('change');
       this.dispatchEvent('navigate');
     }
