@@ -40,6 +40,7 @@ function MapNav(root, ext, mouse) {
       dragStartEvt = e;
     }
     clearTimeout(gui.operation);
+
     autoSimplify(true);
   });
 
@@ -75,7 +76,7 @@ function MapNav(root, ext, mouse) {
     if (!gui.operation) {
       autoSimplify(true);
     }
-    clearTimeout(gui.operation);
+
     autoSimplifyEnd(250);
 
     ext.rescale(newScale, e.x / ext.width(), e.y / ext.height());
@@ -110,6 +111,7 @@ function MapNav(root, ext, mouse) {
   }
 
   function autoSimplifyEnd(timeout) {
+    clearTimeout(gui.operation);
     gui.operation = setTimeout(function() {
       autoSimplify(false);
     }, timeout);
