@@ -3,6 +3,8 @@ mapshaper-gui-lib
 mapshaper-highlight-box
 */
 
+gui.operation = false;
+
 gui.addSidebarButton = function(iconId) {
   var btn = El('div').addClass('nav-btn')
     .on('dblclick', function(e) {e.stopPropagation();}); // block dblclick zoom
@@ -37,6 +39,9 @@ function MapNav(root, ext, mouse) {
     if (shiftDrag) {
       dragStartEvt = e;
     }
+    clearTimeout(gui.operation);
+
+    autoSimplify(true);
   });
 
   mouse.on('drag', function(e) {
@@ -57,12 +62,24 @@ function MapNav(root, ext, mouse) {
         zoomToBox(bounds);
       }
     }
+    autoSimplifyEnd(500);
   });
 
   wheel.on('mousewheel', function(e) {
-    var k = 1 + (0.11 * e.multiplier),
-        delta = e.direction > 0 ? k : 1 / k;
-    ext.rescale(ext.scale() * delta, e.x / ext.width(), e.y / ext.height());
+    var maxDelta = 350,
+        wheelDelta = e.wheelDelta,
+        scale = ext.scale(),
+        direction = wheelDelta > 0 ? 1 : -1,
+        k = Math.min(maxDelta, Math.abs(wheelDelta)) * direction,
+        newScale = Math.pow(2, k * 0.001) * scale || 1;
+
+    if (!gui.operation) {
+      autoSimplify(true);
+    }
+
+    autoSimplifyEnd(250);
+
+    ext.rescale(newScale, e.x / ext.width(), e.y / ext.height());
   });
 
   function zoomIn() {
@@ -89,4 +106,14 @@ function MapNav(root, ext, mouse) {
     zoomTween.start(ext.scale(), ext.scale() * pct, 400);
   }
 
+  function autoSimplify(operation) {
+    gui.simplify.dispatchEvent('operation', { operation: operation, scale: ext.scale() });
+  }
+
+  function autoSimplifyEnd(timeout) {
+    clearTimeout(gui.operation);
+    gui.operation = setTimeout(function() {
+      autoSimplify(false);
+    }, timeout);
+  }
 }

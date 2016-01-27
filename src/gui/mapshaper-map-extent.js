@@ -2,7 +2,9 @@
 
 function MapExtent(el) {
   var _position = new ElementPosition(el),
-      _scale = 1,
+      _minScale = 1,
+      _maxScale = 25,
+      _scale = _minScale,
       _cx,
       _cy,
       _contentBounds;
@@ -14,15 +16,31 @@ function MapExtent(el) {
   }, this);
 
   this.reset = function(force) {
-    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, force);
+    this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), _minScale, force);
   };
 
   this.recenter = function(cx, cy, scale, force) {
     if (!scale) scale = _scale;
     if (force || !(cx == _cx && cy == _cy && scale == _scale)) {
-      _cx = cx;
-      _cy = cy;
       _scale = scale;
+
+      var xmin = _contentBounds.xmin,
+          xmax = _contentBounds.xmax,
+          ymin = _contentBounds.ymin,
+          ymax = _contentBounds.ymax,
+          transform = this.getTransform(),
+          xoffset = _position.width() / transform.mx / 2,
+          yoffset = _position.height() / transform.my / 2;
+
+      xmin = xmin + xoffset;
+      xmax = xmax - xoffset;
+
+      ymin = ymin - yoffset;
+      ymax = ymax + yoffset;
+
+      _cx = (cx <= xmax && cx >= xmin) ? cx : (cx > xmax ? xmax : xmin );
+      _cy = (cy <= ymax && cy >= ymin) ? cy : (cy > ymax ? ymax : ymin );
+
       this.dispatchEvent('change');
       this.dispatchEvent('navigate');
     }
@@ -36,6 +54,9 @@ function MapExtent(el) {
   // Zoom to @scale (a multiple of the map's full scale)
   // @xpct, @ypct: optional focus, [0-1]...
   this.rescale = function(scale, xpct, ypct) {
+    if (scale <= _minScale || scale >= _maxScale) {
+      return;
+    }
     if (arguments.length < 3) {
       xpct = 0.5;
       ypct = 0.5;
@@ -96,7 +117,8 @@ function MapExtent(el) {
   };
 
   function getPadding(size) {
-    return size * 0.020 + 4;
+    // return size * 0.020 + 4;
+    return 0;
   }
 
   function calcBounds(cx, cy, scale) {

@@ -118,6 +118,7 @@ body {
 	z-index: 40;
 	width: 100%;
 	height: 32px;
+  display: none;
 }
 
 #mshp-version {
@@ -127,6 +128,7 @@ body {
 	bottom: 8px;
 	left: 11px;
 	font-size: 11px;
+  display: none;
 }
 
 .mapshaper-logo {
@@ -171,7 +173,7 @@ body {
 	right: 0;
 	bottom: 0;
 	left: 0;
-	margin: 32px 0 0 0;	
+	margin: 0;
 }
 
 
@@ -248,7 +250,7 @@ div.error-box > div {
 
 .popup-dialog {
 	display: none;
-	z-index: 80;	
+	z-index: 80;
 	text-align: center;
 }
 
@@ -677,7 +679,7 @@ body.simplify #layer-control-btn {
 	display: inline-block;
 }
 
-#simplify-control .track {   	
+#simplify-control .track {
   	border-radius: 2px;
 	width: 340px;
 	background-color: #fff;
