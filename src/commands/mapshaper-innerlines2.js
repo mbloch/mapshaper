@@ -105,11 +105,12 @@ MapShaper.extractLines = function(shapes, classify) {
         line.push([arcId]); // new part
       }
 
-      // wraparound, if needed
-      if (o.i == part.arcs.length - 1 && line.length > 1 && line[0][0] == part.arcs[0]) {
+      // if extracted line is split across endpoint of original polygon ring, then merge
+      if (o.i == part.arcs.length - 1 &&  // this is last arc in ring
+          line.length > 1 &&              // extracted line has more than one part
+          line[0][0] == part.arcs[0]) {   // first arc of first extracted part is first arc in ring
         line[0] = line.pop().concat(line[0]);
       }
-
     }
     prev = o;
     prevKey = key;
