@@ -9598,106 +9598,6 @@ TopoJSON.pathImporters = {
 
 
 
-api.convertPolygonsToInnerLines = function(lyr, arcs, opts) {
-  if (lyr.geometry_type != 'polygon') {
-    stop("[innerlines] Command requires a polygon layer");
-  }
-  var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
-      lyr2 = MapShaper.convertArcsToLineLayer(arcs2, null);
-  if (lyr2.shapes.length === 0) {
-    message("[innerlines] No shared boundaries were found");
-  }
-  lyr2.name = opts && opts.no_replace ? null : lyr.name;
-  return lyr2;
-};
-
-api.convertPolygonsToTypedLines = function(lyr, arcs, fields, opts) {
-  if (lyr.geometry_type != 'polygon') {
-    stop("[lines] Command requires a polygon layer");
-  }
-  var arcCount = arcs.size(),
-      outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
-      typeCode = 0,
-      allArcs = [],
-      allData = [],
-      innerArcs, lyr2;
-
-  function addArcs(typeArcs) {
-    var typeData = utils.repeat(typeArcs.length, function(i) {
-          return {TYPE: typeCode};
-        }) || [];
-    allArcs = utils.merge(typeArcs, allArcs);
-    allData = utils.merge(typeData, allData);
-    typeCode++;
-  }
-
-  addArcs(outerArcs);
-
-  if (utils.isArray(fields)) {
-    if (!lyr.data) {
-      stop("[lines] Missing a data table:");
-    }
-    fields.forEach(function(field) {
-      if (!lyr.data.fieldExists(field)) {
-        stop("[lines] Unknown data field:", field);
-      }
-      var dissolved = api.dissolve(lyr, arcs, {field: field, silent: true}),
-          dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
-      dissolvedArcs = utils.difference(dissolvedArcs, allArcs);
-      addArcs(dissolvedArcs);
-    });
-  }
-
-  innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
-  innerArcs = utils.difference(innerArcs, allArcs);
-  addArcs(innerArcs);
-  lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
-  lyr2.name = opts && opts.no_replace ? null : lyr.name;
-  return lyr2;
-};
-
-
-MapShaper.convertArcsToLineLayer = function(arcs, data) {
-  var shapes = MapShaper.convertArcsToShapes(arcs),
-      lyr = {
-        geometry_type: 'polyline',
-        shapes: shapes
-      };
-  if (data) {
-    lyr.data = new DataTable(data);
-  }
-  return lyr;
-};
-
-MapShaper.convertArcsToShapes = function(arcs) {
-  return arcs.map(function(id) {
-    return [[id]];
-  });
-};
-
-MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
-  type = type || 'all';
-  var counts = new Uint8Array(arcCount),
-      arcs = [],
-      count;
-
-  MapShaper.countArcsInShapes(shapes, counts);
-
-  for (var i=0, n=counts.length; i<n; i++) {
-    count = counts[i];
-    if (count > 0) {
-      if (type == 'all' || type == 'outer' && count == 1 ||
-          type == 'inner' && count > 1) {
-        arcs.push(i);
-      }
-    }
-  }
-  return arcs;
-};
-
-
-
-
 // Dissolve arcs that can be merged without affecting topology of layers
 // remove arcs that are not referenced by any layer; remap arc ids
 // in layers. (In-place).
@@ -12598,9 +12498,8 @@ function ImportControl(model) {
   });
 
   function findMatchingShp(filename) {
-    // TODO: handle multiple matches
     var shpName = utils.replaceFileExtension(filename, 'shp');
-    return utils.find(model.getDatasets(), function(d) {
+    return model.getDatasets().filter(function(d) {
       return shpName == d.info.input_files[0];
     });
   }
@@ -12729,23 +12628,42 @@ function ImportControl(model) {
   function readFileContent(name, content) {
     var type = MapShaper.guessInputType(name, content),
         importOpts = getImportOpts(),
-        dataset = findMatchingShp(name),
-        lyr = dataset && dataset.layers[0];
-    if (lyr && type == 'dbf') {
-      lyr.data = new ShapefileTable(content, importOpts.encoding);
-      if (lyr.data.size() != lyr.shapes.length) {
-        stop("Different number of records in .shp and .dbf files");
+        matches = findMatchingShp(name),
+        lyr;
+
+    // TODO: refactor
+    if (type == 'dbf' && matches.length > 0) {
+      // find an imported .shp layer that is missing attribute data
+      // (if multiple matches, try to use the most recently imported one)
+      lyr = matches.reduce(function(memo, d) {
+        var lyr = d.layers[0];
+        if (!lyr.data) {
+          memo = lyr;
+        }
+        return memo;
+      }, null);
+      if (lyr) {
+        lyr.data = new ShapefileTable(content, importOpts.encoding);
+        if (lyr.data.size() != lyr.shapes.length) {
+          stop("Different number of records in .shp and .dbf files");
+        }
+        readNext();
+        return;
       }
-      readNext();
-    } else if (type == 'prj') {
-      // assumes that .shp has been imported first
-      if (dataset && !dataset.info.output_prj) {
-        dataset.info.input_prj = content;
-      }
-      readNext();
-    } else {
-      importFileContent(type, name, content, importOpts);
     }
+
+    if (type == 'prj') {
+      // assumes that .shp has been imported first
+      matches.forEach(function(d) {
+        if (!d.info.output_prj && !d.info.input_prj) {
+          d.info.input_prj = content;
+        }
+      });
+      readNext();
+      return;
+    }
+
+    importFileContent(type, name, content, importOpts);
   }
 
   function importFileContent(type, path, content, importOpts) {
@@ -14132,14 +14050,23 @@ function getShapePencil(arcs, ext) {
   };
 }
 
-function getPathStart(style) {
+function getPathStart(style, ext) {
   var stroked = style.strokeColor && style.strokeWidth !== 0,
       filled = !!style.fillColor,
+      mapScale = ext.scale(),
       lineWidth, strokeColor;
   if (stroked) {
     lineWidth = style.strokeWidth || 1;
+     // bump up thin lines on retina, but not to more than 1px (too slow)
     if (gui.getPixelRatio() > 1 && lineWidth < 1) {
-      lineWidth = 1; // bump up thin lines on retina, but not more than 1 (too slow)
+      lineWidth = 1;
+    }
+    // vary line width according to zoom ratio; for performance and clarity,
+    // don't start thickening lines until zoomed quite far in.
+    if (mapScale < 1) {
+      lineWidth *= Math.pow(mapScale, 0.6);
+    } else if (mapScale > 40) {
+      lineWidth *= Math.pow(mapScale - 39, 0.2);
     }
     strokeColor = style.strokeColor;
   }
@@ -14435,7 +14362,7 @@ function LayerGroup(dataset) {
 
   function drawPathShapes(shapes, style, ext) {
     var arcs = _filteredArcs.getArcCollection(ext),
-        start = getPathStart(style),
+        start = getPathStart(style, ext),
         draw = getShapePencil(arcs, ext),
         end = getPathEnd(style);
     for (var i=0, n=shapes.length; i<n; i++) {
@@ -14471,7 +14398,7 @@ function LayerGroup(dataset) {
   }
 
   function drawFlaggedArcs(flag, flags, style, arcs, ext) {
-    var start = getPathStart(style),
+    var start = getPathStart(style, ext),
         end = getPathEnd(style),
         t = getScaledTransform(ext),
         ctx = _ctx,
@@ -17925,6 +17852,159 @@ MapShaper.countInteriorVertices = function(arcs) {
 
 
 
+api.innerlines = function(lyr, arcs, opts) {
+  MapShaper.requirePolygonLayer(lyr, "[innerlines] Command requires a polygon layer");
+  var classifier = MapShaper.getArcClassifier(lyr.shapes, arcs);
+  var lines = MapShaper.extractInnerLines(lyr.shapes, classifier);
+  var outputLyr = MapShaper.createLineLayer(lines, null);
+
+  if (lines.length === 0) {
+    message("[innerlines] No shared boundaries were found");
+  }
+  outputLyr.name = opts && opts.no_replace ? null : lyr.name;
+  return outputLyr;
+};
+
+api.lines = function(lyr, arcs, opts) {
+  opts = opts || {};
+  var classifier = MapShaper.getArcClassifier(lyr.shapes, arcs),
+      fields = utils.isArray(opts.fields) ? opts.fields : [],
+      typeId = 0,
+      shapes = [],
+      records = [],
+      outputLyr;
+
+  MapShaper.requirePolygonLayer(lyr, "[lines] Command requires a polygon layer");
+  if (fields.length > 0 && !lyr.data) {
+    stop("[lines] Missing a data table");
+  }
+
+  addLines(MapShaper.extractOuterLines(lyr.shapes, classifier));
+
+  fields.forEach(function(field) {
+    var data = lyr.data.getRecords();
+    var key = function(a, b) {
+      var arec = data[a];
+      var brec = data[b];
+      var aval, bval;
+      if (!arec || !brec || arec[field] === brec[field]) {
+        return '';
+      }
+      return a + '-' + b;
+    };
+    if (!lyr.data.fieldExists(field)) {
+      stop("[lines] Unknown data field:", field);
+    }
+    addLines(MapShaper.extractLines(lyr.shapes, classifier(key)));
+  });
+
+  addLines(MapShaper.extractInnerLines(lyr.shapes, classifier));
+  outputLyr = MapShaper.createLineLayer(shapes, records);
+  outputLyr.name = opts.no_replace ? null : lyr.name;
+  return outputLyr;
+
+  function addLines(lines) {
+    var attr = lines.map(function(shp, i) {
+      return {TYPE: typeId};
+    });
+    shapes = utils.merge(lines, shapes);
+    records = utils.merge(attr, records);
+    typeId++;
+  }
+};
+
+MapShaper.createLineLayer = function(lines, records) {
+  return {
+    geometry_type: 'polyline',
+    shapes: lines,
+    data: records ? new DataTable(records) : null
+  };
+};
+
+MapShaper.extractOuterLines = function(shapes, classifier) {
+  var key = function(a, b) {return b == -1 ? String(a) : '';};
+  return MapShaper.extractLines(shapes, classifier(key));
+};
+
+MapShaper.extractInnerLines = function(shapes, classifier) {
+  var key = function(a, b) {return b > -1 ? a + '-' + b : '';};
+  return MapShaper.extractLines(shapes, classifier(key));
+};
+
+MapShaper.extractLines = function(shapes, classify) {
+  var lines = [],
+      index = {},
+      prev = null,
+      prevKey = '';
+
+  MapShaper.traverseShapes(shapes, function(o) {
+    var arcId = o.arcId,
+        key = classify(absArcId(arcId)),
+        isContinuation, line;
+    if (!!key) {
+      line = key in index ? index[key] : null;
+      isContinuation = key == prevKey && o.shapeId == prev.shapeId && o.partId == prev.partId;
+      if (!line) {
+        lines.push(index[key] = [[arcId]]); // new shape
+      } else if (isContinuation) {
+        // TODO: consider combining sections split across original ring endpoint
+        line[line.length-1].push(arcId); // extending prev part
+      } else {
+        line.push([arcId]); // new part
+      }
+    }
+    prev = o;
+    prevKey = key;
+  });
+
+  return lines;
+};
+
+
+MapShaper.getArcClassifier = function(shapes, arcs) {
+  var n = arcs.size(),
+      a = new Int32Array(n),
+      b = new Int32Array(n);
+
+  utils.initializeArray(a, -1);
+  utils.initializeArray(b, -1);
+
+  MapShaper.traverseShapes(shapes, function(o) {
+    var i = absArcId(o.arcId);
+    var shpId = o.shapeId;
+    var aval = a[i];
+    if (aval == -1) {
+      a[i] = shpId;
+    } else if (shpId < aval) {
+      b[i] = aval;
+      a[i] = shpId;
+    } else {
+      b[i] = shpId;
+    }
+  });
+
+  function classify(i, getKey) {
+    var key = '';
+    if (a[i] > -1) {
+      key = getKey(a[i], b[i]);
+      if (key) {
+        a[i] = -1;
+        b[i] = -1;
+      }
+    }
+    return key;
+  }
+
+  return function(getKey) {
+    return function(i) {
+      return classify(i, getKey);
+    };
+  };
+};
+
+
+
+
 // Convert a string containing delimited text data into a dataset object
 MapShaper.importDelim = function(str, opts) {
   var delim = MapShaper.guessDelimiter(str);
@@ -19648,7 +19728,6 @@ api.runCommand = function(cmd, dataset, cb) {
         error("Dataset contains 0 layers");
       }
 
-
       if (opts.target) {
         targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
         if (!targetLayers.length) {
@@ -19703,7 +19782,7 @@ api.runCommand = function(cmd, dataset, cb) {
       api.printInfo(dataset);
 
     } else if (name == 'innerlines') {
-      outputLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs, opts);
+      outputLayers = MapShaper.applyCommand(api.innerlines, targetLayers, arcs, opts);
 
     } else if (name == 'join') {
       MapShaper.applyCommand(api.join, targetLayers, dataset, opts);
@@ -19712,7 +19791,7 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
 
     } else if (name == 'lines') {
-      outputLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields, opts);
+      outputLayers = MapShaper.applyCommand(api.lines, targetLayers, arcs, opts);
 
     } else if (name == 'stitch') {
       api.stitch(dataset);

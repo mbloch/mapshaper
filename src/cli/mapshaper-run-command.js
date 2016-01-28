@@ -12,7 +12,7 @@ mapshaper-filter-rename-fields
 mapshaper-filter-islands
 mapshaper-filter-slivers
 mapshaper-info
-mapshaper-innerlines
+mapshaper-innerlines2
 mapshaper-join
 mapshaper-keep-shapes
 mapshaper-stitch
@@ -48,7 +48,6 @@ api.runCommand = function(cmd, dataset, cb) {
       if (dataset.layers.length > 0 === false) {
         error("Dataset contains 0 layers");
       }
-
 
       if (opts.target) {
         targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
@@ -104,7 +103,7 @@ api.runCommand = function(cmd, dataset, cb) {
       api.printInfo(dataset);
 
     } else if (name == 'innerlines') {
-      outputLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs, opts);
+      outputLayers = MapShaper.applyCommand(api.innerlines, targetLayers, arcs, opts);
 
     } else if (name == 'join') {
       MapShaper.applyCommand(api.join, targetLayers, dataset, opts);
@@ -113,7 +112,7 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
 
     } else if (name == 'lines') {
-      outputLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields, opts);
+      outputLayers = MapShaper.applyCommand(api.lines, targetLayers, arcs, opts);
 
     } else if (name == 'stitch') {
       api.stitch(dataset);

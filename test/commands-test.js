@@ -87,6 +87,7 @@ describe('mapshaper-commands.js', function () {
     it('"-lines +" creates an unnamed line layer', function(done) {
       var cmds =  api.internal.parseCommands(states_shp + " -lines +");
       api.internal.runParsedCommands(cmds, null, function(err, dataset) {
+        if (err) console.log(err)
         assert.equal(dataset.layers.length, 2);
         assert.equal(dataset.layers[1].geometry_type, "polyline");
         assert(!dataset.layers[1].name);

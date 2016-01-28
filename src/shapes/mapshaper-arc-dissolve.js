@@ -1,5 +1,4 @@
 /* @requires
-mapshaper-innerlines
 mapshaper-endpoints
 mapshaper-dataset-utils
 */
