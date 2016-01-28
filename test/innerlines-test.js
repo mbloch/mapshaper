@@ -118,18 +118,18 @@ describe('mapshaper-innerlines.js', function () {
           [[[1]], [[5]], [[2]], [[4]], [[0]], [[3]], [[6]], [[7]]]);
     })
 
-    // testing multi-arc feature parts
+    // testing multi-arc parts
     it( 'test 3 with one field', function() {
       var lyr2 = api.lines(lyrc, arcsc, {fields:['foo']});
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.deepEqual(lyr2.data.getRecords(),
           [{TYPE: 1}, {TYPE: 0}, {TYPE: 0}]);
-      assert.deepEqual(lyr2.shapes, [[[1, 3]], [[0], [4]], [[2, 5]]]);
+      // Arcs in shapes[1] are rearranged to form a single part
+      assert.deepEqual(lyr2.shapes, [[[1, 3]], [[4, 0]], [[2, 5]]]);
     })
 
     it( 'test with two fields', function() {
       var lyr2 = api.lines(lyrb, arcsb, {fields:['foo', 'bar']});
-      // TODO: shapes[1] is split into two parts -- arcs should be rearranged into one part
       assert.deepEqual(lyr2.shapes,
           [[[1]], [[5]], [[2]], [[4]], [[0]], [[3]], [[6]], [[7]]]);
       assert.equal(lyr2.geometry_type, 'polyline');

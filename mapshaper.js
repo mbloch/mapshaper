@@ -11671,9 +11671,12 @@ MapShaper.extractLines = function(shapes, classify) {
   var lines = [],
       index = {},
       prev = null,
-      prevKey = '';
+      prevKey = '',
+      part;
 
-  MapShaper.traverseShapes(shapes, function(o) {
+  MapShaper.traverseShapes(shapes, onArc, onPart);
+
+  function onArc(o) {
     var arcId = o.arcId,
         key = classify(absArcId(arcId)),
         isContinuation, line;
@@ -11681,17 +11684,28 @@ MapShaper.extractLines = function(shapes, classify) {
       line = key in index ? index[key] : null;
       isContinuation = key == prevKey && o.shapeId == prev.shapeId && o.partId == prev.partId;
       if (!line) {
-        lines.push(index[key] = [[arcId]]); // new shape
+        line = [[arcId]]; // new shape
+        index[key] = line;
+        lines.push(line);
       } else if (isContinuation) {
-        // TODO: consider combining sections split across original ring endpoint
         line[line.length-1].push(arcId); // extending prev part
       } else {
         line.push([arcId]); // new part
       }
+
+      // wraparound, if needed
+      if (o.i == part.arcs.length - 1 && line.length > 1 && line[0][0] == part.arcs[0]) {
+        line[0] = line.pop().concat(line[0]);
+      }
+
     }
     prev = o;
     prevKey = key;
-  });
+  }
+
+  function onPart(o) {
+    part = o;
+  }
 
   return lines;
 };
