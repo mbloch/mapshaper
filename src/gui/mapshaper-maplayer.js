@@ -113,7 +113,7 @@ function LayerGroup(dataset) {
 
   function drawPathShapes(shapes, style, ext) {
     var arcs = _filteredArcs.getArcCollection(ext),
-        start = getPathStart(style),
+        start = getPathStart(style, ext),
         draw = getShapePencil(arcs, ext),
         end = getPathEnd(style);
     for (var i=0, n=shapes.length; i<n; i++) {
@@ -149,7 +149,7 @@ function LayerGroup(dataset) {
   }
 
   function drawFlaggedArcs(flag, flags, style, arcs, ext) {
-    var start = getPathStart(style),
+    var start = getPathStart(style, ext),
         end = getPathEnd(style),
         t = getScaledTransform(ext),
         ctx = _ctx,

@@ -59,14 +59,23 @@ function getShapePencil(arcs, ext) {
   };
 }
 
-function getPathStart(style) {
+function getPathStart(style, ext) {
   var stroked = style.strokeColor && style.strokeWidth !== 0,
       filled = !!style.fillColor,
+      mapScale = ext.scale(),
       lineWidth, strokeColor;
   if (stroked) {
     lineWidth = style.strokeWidth || 1;
+     // bump up thin lines on retina, but not to more than 1px (too slow)
     if (gui.getPixelRatio() > 1 && lineWidth < 1) {
-      lineWidth = 1; // bump up thin lines on retina, but not more than 1 (too slow)
+      lineWidth = 1;
+    }
+    // vary line width according to zoom ratio; for performance and clarity,
+    // don't start thickening lines until zoomed quite far in.
+    if (mapScale < 1) {
+      lineWidth *= Math.pow(mapScale, 0.6);
+    } else if (mapScale > 40) {
+      lineWidth *= Math.pow(mapScale - 39, 0.2);
     }
     strokeColor = style.strokeColor;
   }
