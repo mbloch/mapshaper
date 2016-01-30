@@ -5,3 +5,4 @@ npm-debug.log
 .npmignore
 .jshintrc
 mapshaper-gui.js
+mapshaper.js
