@@ -4,9 +4,9 @@
 
 Mapshaper is software for editing Shapefile, GeoJSON, [TopoJSON](https://github.com/mbostock/topojson/wiki) and several other data formats, written in JavaScript.
 
-The `mapshaper` command line program supports common map making tasks like simplifying shapes, editing attribute data, clipping, erasing, dissolving, filtering and more.
+The `mapshaper` command line program supports essential map making tasks like simplifying shapes, editing attribute data, clipping, erasing, dissolving, filtering and more.
 
-There is a [web UI](http://www.mapshaper.org) that supports interactive simplification and attribute editing. The web interface also has as a built in console for running cli commands.
+The [web UI](http://www.mapshaper.org) supports interactive simplification and attribute data editing. There is also a console for running cli commands.
 
 See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for documentation on using mapshaper.
 
@@ -46,13 +46,13 @@ To install and run the latest development code from github:
 git clone git@github.com:mbloch/mapshaper.git
 cd mapshaper
 npm install
-bin/mapshaper-gui # use the web UI locally
 bin/mapshaper     # run the command line program
+bin/mapshaper-gui # use the web UI locally
 ```
 
 ### Building and testing
 
-Run the `build` script after editing any of the files in the src/ or lib/ directories.
+Run the `build` script to build both the cli and web UI modules.
 
 Run `npm test` in the project directory to run mapshaper's tests.
 
