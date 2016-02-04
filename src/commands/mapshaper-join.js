@@ -131,7 +131,6 @@ MapShaper.joinTables = function(dest, src, join, opts) {
     if (count > 0) {
       matchCount++;
     } else if (destRec) {
-      // Unmatched records records get null/empty values
       MapShaper.updateUnmatchedRecord(destRec, copyFields, sumFields);
     }
     if (addCountField) {
@@ -155,6 +154,7 @@ MapShaper.countJoins = function(counts) {
   return joinCount;
 };
 
+// Unset fields of unmatched records get null/empty values
 MapShaper.updateUnmatchedRecord = function(rec, copyFields, sumFields) {
   MapShaper.joinByCopy(rec, {}, copyFields);
   MapShaper.joinBySum(rec, {}, sumFields);
@@ -172,7 +172,11 @@ MapShaper.joinByCopy = function(dest, src, fields) {
     // Use null when the source record is missing an expected value
     // TODO: think some more about whether this is desirable
     f = fields[i];
-    dest[f] = Object.prototype.hasOwnProperty.call(src, f) ? src[f] : null;
+    if (Object.prototype.hasOwnProperty.call(src, f)) {
+      dest[f] = src[f];
+    } else if (!Object.prototype.hasOwnProperty.call(dest, f)) {
+      dest[f] = null;
+    }
   }
 };
 

@@ -23,7 +23,7 @@ describe('mapshaper-join.js', function () {
         if (err) throw err;
         assert.deepEqual(data.layers[0].data.getRecords(), target);
         done();
-      })
+      });
     })
 
     it('test "-join force" option, topojson input', function(done) {
@@ -32,11 +32,12 @@ describe('mapshaper-join.js', function () {
         objects: {
           a: {
             type: "GeometryCollection",
-            geometries: [{type: null, properties: {foo: 'a', bar: "old"}}]
+            geometries: [{type: null, properties: {foo: 'a', bar: "old"}},
+              {type: null, properties: {foo: 'b', bar: 'old'}}]
           },
           b: {
             type: "GeometryCollection",
-            geometries: [{type: null, properties: {fooz: 'a', bar: "new"}}]
+            geometries: [{type: null, properties: {fooz: 'a', bar: "new", baz: 'new'}}]
           }
         }
       };
@@ -47,10 +48,13 @@ describe('mapshaper-join.js', function () {
         assert.deepEqual(output.objects.b, src.objects.b);
         // dest value has been overwritten
         assert.deepEqual(output.objects.a.geometries,
-          [{type: null, properties: {foo: 'a', bar: "new"}}]);
+          [{type: null, properties: {foo: 'a', bar: "new", baz: "new"}},
+            {type: null, properties: {foo: 'b', bar: 'old', baz: null}}]);
         done();
       });
     })
+
+
   })
 
   describe('joinAttributesToFeatures()', function () {
@@ -208,10 +212,10 @@ describe('mapshaper-join.js', function () {
       assert.deepEqual(rec, {foo: null, tally: 0});
     })
 
-    it('should preserve pre-existing data in sum fields only', function () {
+    it('should preserve pre-existing data', function () {
       var rec = {foo: 'a', tally: 5};
-      api.internal.updateUnmatchedRecord(rec, ['foo'], ['tally'])
-      assert.deepEqual(rec, {foo: null, tally: 5});
+      api.internal.updateUnmatchedRecord(rec, ['foo', 'bar'], ['tally'])
+      assert.deepEqual(rec, {foo: 'a', tally: 5, bar: null});
     })
   })
 
