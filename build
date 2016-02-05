@@ -1,10 +1,12 @@
 #!/usr/bin/env node
  
 var follow = process.argv.indexOf('-f') > -1;
+var version = require('./package.json').version;
 
 require("catty")({follow: follow})
 	.addLibrary("lib")
 	.addLibrary("src")
+	.prepend("var VERSION = '" + version + "';")
 	.cat("src/cli/mapshaper-cli-lib.js", "./mapshaper.js")
 	.cat("src/gui/mapshaper-gui.js", onCat);
 
