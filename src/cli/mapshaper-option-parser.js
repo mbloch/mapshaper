@@ -91,7 +91,7 @@ function CommandParser() {
           optDef = findOptionDefn(name, cmdDef);
 
       if (!optDef) {
-        // Assignment to an unrecognized names count be an expression
+        // Assignment to an unrecognized identifier could be an expression
         // (e.g. -each 'id=$.id') -- save for later parsing
         cmd._.push(token);
       } else if (optDef.type == 'flag' || optDef.assign_to) {
