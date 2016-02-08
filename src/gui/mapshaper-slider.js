@@ -1,4 +1,4 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-gui-lib */
 
 function draggable(ref) {
   var xdown, ydown;

@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-repair */
+/* @requires mapshaper-gui-lib */
 
 function RepairControl(model, map) {
   var el = El("#intersection-display"),

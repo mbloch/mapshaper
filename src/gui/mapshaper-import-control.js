@@ -1,8 +1,6 @@
 /* @requires
-mapshaper-data-table
 mapshaper-zip-reader
 mapshaper-progress-message
-mapshaper-import
 mapshaper-gui-options
 mapshaper-gui-table
 */
@@ -222,7 +220,7 @@ function ImportControl(model) {
         return memo;
       }, null);
       if (lyr) {
-        lyr.data = new ShapefileTable(content, importOpts.encoding);
+        lyr.data = new MapShaper.ShapefileTable(content, importOpts.encoding);
         if (lyr.data.size() != lyr.shapes.length) {
           stop("Different number of records in .shp and .dbf files");
         }

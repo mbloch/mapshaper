@@ -51,7 +51,7 @@ gui.addTableShapes = function(lyr, dataset) {
   if (usePoints) {
     lyr.geometry_type = 'point';
   } else {
-    dataset.arcs = new ArcCollection(arcs);
+    dataset.arcs = new MapShaper.ArcCollection(arcs);
     lyr.geometry_type = 'polygon';
   }
   lyr.shapes = shapes;

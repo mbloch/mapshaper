@@ -50,7 +50,7 @@ function drawPath(vec, t, ctx) {
 function getShapePencil(arcs, ext) {
   var t = getScaledTransform(ext);
   return function(shp, ctx) {
-    var iter = new ShapeIter(arcs);
+    var iter = new MapShaper.ShapeIter(arcs);
     if (!shp) return;
     for (var i=0; i<shp.length; i++) {
       iter.init(shp[i]);

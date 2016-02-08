@@ -1,5 +1,3 @@
-/* @requires mapshaper-gui-lib */
-
 function ErrorMessages(model) {
   var el;
   model.addMode('alert', function() {}, turnOff);

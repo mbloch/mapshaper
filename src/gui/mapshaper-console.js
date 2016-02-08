@@ -1,4 +1,4 @@
-/* @requires mapshaper-gui-lib mapshaper-commands mapshaper-mode-button */
+/* @requires mapshaper-gui-lib mapshaper-mode-button */
 
 function Console(model) {
   var CURSOR = '$ ';

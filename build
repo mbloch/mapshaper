@@ -6,21 +6,25 @@ var version = require('./package.json').version;
 require("catty")({follow: follow})
 	.addLibrary("lib")
 	.addLibrary("src")
+	.cat("src/gui/mapshaper-gui.js", './www/mapshaper-gui.js')
 	.prepend("var VERSION = '" + version + "';")
-	.cat("src/cli/mapshaper-cli-lib.js", "./mapshaper.js")
-	.cat("src/gui/mapshaper-gui.js", onCat);
+	.cat("src/cli/mapshaper-cli-lib.js", onCat);
 
 function onCat(err, js) {
-	var tmp = "./mapshaper-gui.js";
+	var ofile = "./mapshaper.js";
 	if (!err) {
-		require('fs').writeFileSync(tmp, js);
-		require('browserify')(tmp).bundle(write);		
+		write(ofile, js);
+		require('browserify')(ofile).bundle(onBundle);
 	}
 }
 
-function write(err, buf) {
+function onBundle(err, buf) {
 	var ofile = "./www/mapshaper.js"
 	if (err) throw err;
-	require('fs').writeFileSync(ofile, buf, 'utf-8');
+	write(ofile, buf);
+}
+
+function write(ofile, contents) {
+	require('fs').writeFileSync(ofile, contents, 'utf-8');
 	console.log('Wrote', ofile);
 }

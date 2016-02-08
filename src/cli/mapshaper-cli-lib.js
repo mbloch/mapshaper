@@ -109,6 +109,7 @@ utils.extend(api.internal, {
   Visvalingam: Visvalingam,
   ShpReader: ShpReader,
   ShpType: ShpType,
+  ShapeIter: ShapeIter,
   Bounds: Bounds
 });
 

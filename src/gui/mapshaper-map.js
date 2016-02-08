@@ -1,5 +1,5 @@
 /* @requires
-mapshaper-common
+mapshaper-gui-lib
 mapshaper-maplayer
 mapshaper-map-nav
 mapshaper-map-extent

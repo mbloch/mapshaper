@@ -1,4 +1,4 @@
-/* mapshaper-gui-lib */
+/* @require mapshaper-gui-lib */
 
 // These functions could be called when validating i/o options; TODO: avoid this
 cli.isFile =

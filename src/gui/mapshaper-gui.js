@@ -8,11 +8,6 @@ mapshaper-layer-control
 mapshaper-gui-proxy
 mapshaper-map
 mapshaper-maplayer
-mapshaper-simplify
-mapshaper-export
-mapshaper-shapes
-mapshaper-topology
-mapshaper-keep-shapes
 mapshaper-console
 mapshaper-gui-model
 */

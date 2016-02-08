@@ -3,13 +3,14 @@ var api = {};
 var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var cli = api.cli = {};
-var utils = api.utils = Utils.extend({}, Utils);
 
 MapShaper.VERSION = VERSION; // export version
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
 MapShaper.CLI = typeof cli != 'undefined';
+
+api.utils = utils;
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;

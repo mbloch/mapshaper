@@ -1,6 +1,4 @@
-
-// init zip.js
-var zip = require('./www/zip').zip;
+// Assume zip.js is loaded and zip is defined globally
 zip.workerScripts = {
   // deflater: ['z-worker.js', 'deflate.js'], // use zip.js deflater
   // TODO: find out why it was necessary to rename pako_deflate.min.js

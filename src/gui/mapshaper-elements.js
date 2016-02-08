@@ -1,4 +1,4 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-gui-lib */
 
 // TODO: switch all ClickText to ClickText2
 

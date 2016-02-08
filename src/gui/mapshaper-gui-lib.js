@@ -1,11 +1,14 @@
 /* @requires
 mapshaper-gui-utils
-mapshaper-common
-mapshaper-file-types
 mapshaper-gui-error
 */
 
+var api = mapshaper;
 var gui = api.gui = {};
+var cli = api.cli;
+var geom = api.geom;
+var MapShaper = api.internal;
+var Bounds = MapShaper.Bounds;
 
 api.enableLogging();
 

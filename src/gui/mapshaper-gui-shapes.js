@@ -1,8 +1,4 @@
-/* @requires
-mapshaper-shapes
-mapshaper-shape-utils
-mapshaper-simplify-fast
-*/
+/* @requires mapshaper-gui-lib */
 
 // A wrapper for ArcCollection that filters paths to speed up rendering.
 //

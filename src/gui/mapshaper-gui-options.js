@@ -1,4 +1,4 @@
-/* @requires mapshaper-gui-lib mapshaper-parse-commands */
+/* @requires mapshaper-gui-lib */
 
 gui.parseFreeformOptions = function(raw, cmd) {
   var str = raw.trim(),
