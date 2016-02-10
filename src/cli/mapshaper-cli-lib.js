@@ -1,15 +1,10 @@
 /* @requires
-mapshaper-cli-utils
+mapshaper-utils
 mapshaper-common
 mapshaper-file-types
 mapshaper-commands
 mapshaper-encodings
 */
-
-// Handle an error caused by invalid input or misuse of API
-function stop() {
-  throw new APIError(MapShaper.formatLogArgs(arguments));
-}
 
 cli.isFile = function(path) {
   var ss = cli.statSync(path);
@@ -110,14 +105,6 @@ utils.extend(api.internal, {
   ShpReader: ShpReader,
   ShpType: ShpType,
   ShapeIter: ShapeIter,
-  Bounds: Bounds
+  Bounds: Bounds,
+  APIError: APIError
 });
-
-api.T = T;
-
-if (typeof define === "function" && define.amd) {
-  define("mapshaper", api);
-} else if (typeof module === "object" && module.exports) {
-  module.exports = api;
-}
-this.mapshaper = api;

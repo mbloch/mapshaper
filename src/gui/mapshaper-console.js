@@ -17,12 +17,11 @@ function Console(model) {
   var history = [];
   var historyId = 0;
   var _isOpen = false;
-  var _error = error; // save default error functions...
-  var _stop = stop;
+  var _error = MapShaper.error; // save default error functions...
+  var _stop = MapShaper.stop;
 
   // capture all messages to this console, whether open or closed
-  message = consoleMessage;
-  verbose = consoleVerbose;
+  message = MapShaper.message = consoleMessage;
 
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
@@ -49,8 +48,8 @@ function Console(model) {
   function turnOn() {
     if (!_isOpen && !!model.getEditingLayer()) {
       _isOpen = true;
-      stop = consoleStop;
-      error = consoleError;
+      stop = MapShaper.stop = consoleStop;
+      error = MapShaper.error = consoleError;
       el.show();
       input.node().focus();
     }
@@ -59,8 +58,8 @@ function Console(model) {
   function turnOff() {
     if (_isOpen) {
       _isOpen = false;
-      stop = _stop; // restore original error functions
-      error = _error;
+      stop = MapShaper.stop = _stop; // restore original error functions
+      error = MapShaper.error = _error;
       el.hide();
       input.node().blur();
     }
@@ -359,12 +358,6 @@ function Console(model) {
   function consoleMessage() {
     var msg = gui.formatMessageArgs(arguments);
     toLog(msg, 'console-message');
-  }
-
-  function consoleVerbose() {
-    if (MapShaper.VERBOSE) {
-      consoleMessage.apply(null, utils.toArray(arguments));
-    }
   }
 
   function consoleError() {

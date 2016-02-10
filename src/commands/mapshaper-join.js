@@ -138,7 +138,7 @@ MapShaper.joinTables = function(dest, src, join, opts) {
     }
   }
   if (matchCount === 0) {
-    stop("[join] No records could be joinCount");
+    stop("[join] No records could be joined");
   }
   MapShaper.printJoinMessage(matchCount, destRecords.length,
       MapShaper.countJoins(joinCounts), srcRecords.length, collisionCount);

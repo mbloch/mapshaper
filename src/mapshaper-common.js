@@ -3,14 +3,12 @@ var api = {};
 var MapShaper = api.internal = {};
 var geom = api.geom = {};
 var cli = api.cli = {};
+api.utils = utils;
 
 MapShaper.VERSION = VERSION; // export version
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
-MapShaper.CLI = typeof cli != 'undefined';
-
-api.utils = utils;
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;
@@ -34,25 +32,40 @@ api.printError = function(err) {
   }
 };
 
+// replace error function from mapshaper-utils
+error = function() {
+  MapShaper.error.apply(null, utils.toArray(arguments));
+};
+
+MapShaper.error = function() {
+  var msg = Utils.toArray(arguments).join(' ');
+  throw new Error(msg);
+};
+
+// Handle an error caused by invalid input or misuse of API
+var stop = function() {
+  MapShaper.stop.apply(null, utils.toArray(arguments));
+};
+
+MapShaper.stop = function() {
+  throw new APIError(MapShaper.formatLogArgs(arguments));
+};
+
 function APIError(msg) {
   var err = new Error(msg);
   err.name = 'APIError';
   return err;
 }
 
-var warning = function() {
-  message("Warning: " + MapShaper.formatLogArgs(arguments));
+var message = function() {
+  MapShaper.message.apply(null, utils.toArray(arguments));
 };
 
-var message = function() {
+MapShaper.message = function() {
   if (MapShaper.LOGGING) {
     MapShaper.logArgs(arguments);
   }
 };
-
-// alias for message; useful in web UI for sending some messages to the
-// debugging console instead of the command line.
-var consoleMessage = message;
 
 var verbose = function() {
   if (MapShaper.VERBOSE && MapShaper.LOGGING) {
@@ -60,7 +73,7 @@ var verbose = function() {
   }
 };
 
-var trace = function() {
+var trace = MapShaper.trace = function() {
   if (MapShaper.TRACING) {
     MapShaper.logArgs(arguments);
   }
@@ -189,7 +202,6 @@ MapShaper.adjustFieldName = function(name, maxLen, i) {
   return name2;
 };
 
-
 // Similar to isFinite() but returns false for null
 utils.isFiniteNumber = function(val) {
   return isFinite(val) && val !== null;
@@ -232,3 +244,10 @@ MapShaper.requirePolygonLayer = function(lyr, msg) {
 MapShaper.requirePathLayer = function(lyr, msg) {
   if (!lyr || !MapShaper.layerHasPaths(lyr)) stop(msg || "Expected a polygon or polyline layer");
 };
+
+if (typeof define === "function" && define.amd) {
+  define("mapshaper", api);
+} else if (typeof module === "object" && module.exports) {
+  module.exports = api;
+}
+this.mapshaper = api;
