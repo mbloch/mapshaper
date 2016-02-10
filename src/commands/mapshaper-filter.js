@@ -10,7 +10,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
       filter;
 
   if (opts.expression) {
-    filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
+    filter = MapShaper.compileValueExpression(opts.expression, lyr, arcs);
   }
 
   if (opts.remove_empty) {

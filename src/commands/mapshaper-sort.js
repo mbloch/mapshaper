@@ -6,7 +6,7 @@ mapshaper-dataset-utils
 api.sortFeatures = function(lyr, arcs, opts) {
   var n = MapShaper.getFeatureCount(lyr),
       ascending = !opts.descending,
-      compiled = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs),
+      compiled = MapShaper.compileValueExpression(opts.expression, lyr, arcs),
       values = [];
 
   utils.repeat(n, function(i) {

@@ -5,7 +5,12 @@ mapshaper-shapes
 mapshaper-dataset-utils
 */
 
-MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
+// Compiled expression returns a value
+MapShaper.compileValueExpression = function(exp, lyr, arcs) {
+  return MapShaper.compileFeatureExpression(exp, lyr, arcs, true);
+};
+
+MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, returns) {
   var exp = rawExp || '',
       vars = MapShaper.getAssignedVars(exp),
       func, records;
@@ -15,7 +20,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs) {
   }
 
   records = lyr.data ? lyr.data.getRecords() : [];
-  func = MapShaper.getExpressionFunction(exp, lyr, arcs);
+  func = MapShaper.getExpressionFunction(exp, lyr, arcs, returns);
   return function(recId) {
     var record = records[recId];
     if (!record) {
@@ -36,12 +41,12 @@ MapShaper.getAssignedVars = function(exp) {
   return exp.match(rxp) || [];
 };
 
-MapShaper.getExpressionFunction = function(exp, lyr, arcs) {
+MapShaper.getExpressionFunction = function(exp, lyr, arcs, returns) {
   var env = MapShaper.getExpressionContext(lyr, arcs);
+  var body = (returns ? 'return ' : '') + exp;
   var func;
   try {
-    func = new Function("record,env", "with(env){with(record) { return " +
-        MapShaper.removeExpressionSemicolons(exp) + "}}");
+    func = new Function("record,env", "with(env){with(record){ " + body + "}}");
   } catch(e) {
     stop(e.name, "in expression [" + exp + "]");
   }
@@ -82,20 +87,6 @@ MapShaper.getBaseContext = function() {
   return obj;
 };
 
-// Semicolons that divide the expression into two or more js statements
-// cause problems when 'return' is added before the expression
-// (only the first statement is evaluated). Replacing with commas fixes this
-//
-MapShaper.removeExpressionSemicolons = function(exp) {
-  if (exp.indexOf(';') != -1) {
-    // remove any ; from end of expression
-    exp = exp.replace(/[; ]+$/, '');
-    // change any other semicolons to commas
-    // (this is not very safe -- what if a string literal contains a semicolon?)
-    exp = exp.replace(/;/g, ',');
-  }
-  return exp;
-};
 
 function addGetters(obj, getters) {
   Object.keys(getters).forEach(function(name) {

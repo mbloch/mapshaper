@@ -243,7 +243,7 @@ MapShaper.getJoinByKey = function(dest, destKey, src, srcKey) {
 };
 
 MapShaper.getJoinFilter = function(data, exp) {
-  var test =  MapShaper.compileFeatureExpression(exp, {data: data}, null);
+  var test =  MapShaper.compileValueExpression(exp, {data: data}, null);
   return function(i) {
     var retn = test(i);
     if (retn !== true && retn !== false) {

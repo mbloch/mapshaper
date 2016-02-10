@@ -65,7 +65,6 @@ describe('mapshaper-calc.js', function () {
     })
   })
 
-
   describe('compileCalcExpression()', function () {
     var nullArcs = new api.internal.ArcCollection([]),
         records = [{foo: 4}, {foo: 0}, {foo: 3.5}, {foo: -0.5}, {foo: 3}];

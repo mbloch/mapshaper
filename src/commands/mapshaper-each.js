@@ -12,7 +12,7 @@ api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
     lyr.data = new DataTable(n);
   }
   if (opts && opts.where) {
-    filter = MapShaper.compileFeatureExpression(opts.where, lyr, arcs);
+    filter = MapShaper.compileValueExpression(opts.where, lyr, arcs);
   }
   compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
   // call compiled expression with id of each record

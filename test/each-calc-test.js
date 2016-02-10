@@ -142,6 +142,15 @@ describe('mapshaper-each-calc.js', function () {
       assert.deepEqual(records, [{foo: 4, bar: 'a'}, {foo: 22, bar: 'b'}]);
     })
 
+    it('Fix: Semicolons in expressions are preserved', function() {
+      var records = [{foo: 'As'}];
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      api.evaluateEachFeature(lyr, nullArcs, "foo = 'A&raquo;s'; bar=''", {"where": "!/;/.test(foo)"});
+      assert.deepEqual(records, [{foo: 'A&raquo;s', bar: ''}]);
+    })
+
     describe('Point geometry', function() {
       it ('x and y getters are implemented', function() {
         var lyr = {

@@ -72,7 +72,7 @@ MapShaper.getCalcFunction = function(fname, lyr, arcs) {
   return function(exp) {
     var calculator = new FeatureCalculator();
     var func = calculator.functions[fname];
-    var compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
+    var compiled = MapShaper.compileValueExpression(exp, lyr, arcs);
     utils.repeat(MapShaper.getFeatureCount(lyr), function(i) {
       func(compiled(i));
     });
