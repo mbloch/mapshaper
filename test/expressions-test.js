@@ -52,7 +52,6 @@ describe('mapshaper-expressions.js', function () {
       });
     })
 
-
   })
 
   describe('getAssignedVars()', function () {
