@@ -1,4 +1,4 @@
-/* @requires shp-record */
+/* @requires shp-record, mapshaper-cli-utils */
 
 // Read data from a .shp file
 // @src is an ArrayBuffer, Node.js Buffer or filename

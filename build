@@ -8,7 +8,7 @@ require("catty")({follow: follow})
 	.addLibrary("src")
 	.cat("src/gui/mapshaper-gui.js", './www/mapshaper-gui.js')
 	.prepend("var VERSION = '" + version + "';")
-	.cat("src/cli/mapshaper-cli-lib.js", onCat);
+	.cat("src/mapshaper.js", onCat);
 
 function onCat(err, js) {
 	var ofile = "./mapshaper.js";

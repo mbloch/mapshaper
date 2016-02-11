@@ -1,9 +1,7 @@
+/* @require mapshaper-utils */
 
 var api = {};
-var MapShaper = api.internal = {};
-var geom = api.geom = {};
-var cli = api.cli = {};
-api.utils = utils;
+var MapShaper = {};
 
 MapShaper.VERSION = VERSION; // export version
 MapShaper.LOGGING = false;
@@ -244,10 +242,3 @@ MapShaper.requirePolygonLayer = function(lyr, msg) {
 MapShaper.requirePathLayer = function(lyr, msg) {
   if (!lyr || !MapShaper.layerHasPaths(lyr)) stop(msg || "Expected a polygon or polyline layer");
 };
-
-if (typeof define === "function" && define.amd) {
-  define("mapshaper", api);
-} else if (typeof module === "object" && module.exports) {
-  module.exports = api;
-}
-this.mapshaper = api;

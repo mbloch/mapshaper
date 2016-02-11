@@ -1,10 +1,9 @@
 /* @requires
-mapshaper-utils
 mapshaper-common
 mapshaper-file-types
-mapshaper-commands
-mapshaper-encodings
 */
+
+var cli = {};
 
 cli.isFile = function(path) {
   var ss = cli.statSync(path);
@@ -96,15 +95,3 @@ cli.statSync = function(fpath) {
   } catch(e) {}
   return obj;
 };
-
-// Expose internal objects for testing
-utils.extend(api.internal, {
-  BinArray: BinArray,
-  DouglasPeucker: DouglasPeucker,
-  Visvalingam: Visvalingam,
-  ShpReader: ShpReader,
-  ShpType: ShpType,
-  ShapeIter: ShapeIter,
-  Bounds: Bounds,
-  APIError: APIError
-});

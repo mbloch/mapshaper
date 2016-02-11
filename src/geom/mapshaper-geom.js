@@ -462,7 +462,7 @@ function boundsArea(b) {
 }
 
 // export functions so they can be tested
-utils.extend(geom, {
+var geom = {
   R: R,
   D2R: D2R,
   degreesToMeters: degreesToMeters,
@@ -486,4 +486,4 @@ utils.extend(geom, {
   triangleArea3D: triangleArea3D,
   cosine: cosine,
   cosine3D: cosine3D
-});
+};
