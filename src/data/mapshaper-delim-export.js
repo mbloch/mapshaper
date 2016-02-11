@@ -17,7 +17,7 @@ MapShaper.exportDelim = function(dataset, opts) {
 };
 
 MapShaper.exportDelimTable = function(lyr, delim) {
-  var dsv = require("./lib/d3/d3-dsv.js").dsv(delim);
+  var dsv = require("d3-dsv").dsv(delim);
   return dsv.format(lyr.data.getRecords());
 };
 

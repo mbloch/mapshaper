@@ -14,10 +14,11 @@ MapShaper.importDelim = function(str, opts) {
 };
 
 MapShaper.importDelimTable = function(str, delim, opts) {
-  var records = require("./lib/d3/d3-dsv.js").dsv(delim).parse(str);
+  var records = require("d3-dsv").dsv(delim).parse(str);
   if (records.length === 0) {
     stop("[dsv] Unable to read any records");
   }
+  delete records.columns; // added by d3-dsv
   MapShaper.adjustRecordTypes(records, opts && opts.field_types);
   return new DataTable(records);
 };
