@@ -33,6 +33,15 @@ describe('mapshaper-delim-import.js', function() {
       assert(deepStrictEqual(records, target));
     })
 
+    it('ignore unnamed columns', function() {
+      stringifyEqual(importRecords('\n\n'), [{}]);
+      stringifyEqual(importRecords(',foo,\na,b,c\n'), [{foo:'b'}]);
+    })
+
+   it('ignore whitespace column names', function() {
+      stringifyEqual(importRecords(' ,  ,foo, \na,b,c,d\n'), [{foo: 'c'}]);
+    })
+
   })
 
 

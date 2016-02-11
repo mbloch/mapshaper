@@ -1,4 +1,4 @@
-/* @requires mapshaper-data-table */
+/* @requires mapshaper-data-table, mapshaper-data-utils */
 
 // Convert a string containing delimited text data into a dataset object
 MapShaper.importDelim = function(str, opts) {
@@ -15,12 +15,15 @@ MapShaper.importDelim = function(str, opts) {
 
 MapShaper.importDelimTable = function(str, delim, opts) {
   var records = require("d3-dsv").dsv(delim).parse(str);
+  var table;
   if (records.length === 0) {
     stop("[dsv] Unable to read any records");
   }
   delete records.columns; // added by d3-dsv
   MapShaper.adjustRecordTypes(records, opts && opts.field_types);
-  return new DataTable(records);
+  table = new DataTable(records);
+  MapShaper.deleteFields(table, MapShaper.isInvalidFieldName);
+ return table;
 };
 
 MapShaper.supportedDelimiters = ['|', '\t', ',', ';'];
