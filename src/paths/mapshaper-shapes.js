@@ -261,18 +261,17 @@ function ArcCollection() {
         absId = fw ? arcId : ~arcId,
         zlim = this.getRetainedInterval(),
         n = _nn[absId],
-        i = fw ? _ii[absId] : _ii[absId] + n - 1,
         step = fw ? 1 : -1,
-        count = 0,
-        prev;
+        v1 = fw ? _ii[absId] : _ii[absId] + n - 1,
+        v2 = v1,
+        count = 0;
 
-    for (var j = 0; j < n; j++, i += step) {
-      if (zlim === 0 || _zz[i] >= zlim) {
-        if (j > 0) {
-          cb(prev, i, _xx, _yy);
-          count++;
-        }
-        prev = i;
+    for (var j = 1; j < n; j++) {
+      v2 += step;
+      if (zlim === 0 || _zz[v2] >= zlim) {
+        cb(v1, v2, _xx, _yy);
+        v1 = v2;
+        count++;
       }
     }
     return count;
