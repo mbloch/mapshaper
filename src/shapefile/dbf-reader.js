@@ -227,7 +227,7 @@ DbfReader.prototype.getNonAsciiSamples = function(size) {
 };
 
 DbfReader.prototype.getRowOffset = function() {
-  var start = this.header.headerSize,
+  var start = this.header.dataOffset,
       recLen = this.header.recordSize;
   return function(r) {
     return start + recLen * r;
@@ -239,19 +239,28 @@ DbfReader.prototype.getRecordReader = function(header) {
       readers = fields.map(this.getFieldReader, this),
       uniqNames = MapShaper.getUniqFieldNames(utils.pluck(fields, 'name')),
       rowOffs = this.getRowOffset(),
-      bin = this.bin;
+      bin = this.bin,
+      eofOffs = bin.size() - 1;
+  if (bin.peek(eofOffs) != 0x1A) { // last byte may or may not be EOF
+    eofOffs++;
+  }
   return function(r) {
     var rec = {},
         offs = rowOffs(r),
-        field;
+        field, fieldOffs;
     for (var c=0, cols=fields.length; c<cols; c++) {
       field = fields[c];
-      bin.position(offs + field.columnOffset);
+      fieldOffs = offs + field.columnOffset;
+      if (fieldOffs + field.size > eofOffs) {
+        stop('[dbf] Invalid DBF file: encountered end-of-file while reading data');
+      }
+      bin.position(fieldOffs);
       rec[uniqNames[c]] = readers[c](bin, field.size);
     }
     return rec;
   };
 };
+
 
 // @f Field metadata from dbf header
 DbfReader.prototype.getFieldReader = function(f) {
@@ -291,7 +300,7 @@ DbfReader.prototype.readHeader = function(bin, encoding) {
     updateMonth: bin.readUint8(),
     updateDay: bin.readUint8(),
     recordCount: bin.readUint32(),
-    headerSize: bin.readUint16(),
+    dataOffset: bin.readUint16(),
     recordSize: bin.readUint16(),
     incompleteTransaction: bin.skipBytes(2).readUint8(),
     encrypted: bin.readUint8(),
@@ -302,15 +311,20 @@ DbfReader.prototype.readHeader = function(bin, encoding) {
   var field;
   bin.skipBytes(2);
   header.fields = [];
-  // stop at ascii newline or carriage return (LF is standard, CR has been used)
-  while (bin.peek() != 0x0D && bin.peek() != 0x0A) {
+
+  // Detect header terminator (LF is standard, CR has been seen in the wild)
+  while (bin.peek() != 0x0D && bin.peek() != 0x0A && bin.position() < header.dataOffset - 1) {
     field = this.readFieldHeader(bin, encoding);
     field.columnOffset = colOffs;
     header.fields.push(field);
     colOffs += field.size;
   }
-  if (colOffs != header.recordSize)
+  if (colOffs != header.recordSize) {
     error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
+  }
+  if (bin.peek() != 0x0D) {
+    message('[dbf] Found a non-standard header terminator (' + bin.peek() + '). DBF file may be corrupted.');
+  }
   return header;
 };
 

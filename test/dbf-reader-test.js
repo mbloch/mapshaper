@@ -166,13 +166,29 @@ describe('dbf-reader.js', function () {
     })
   })
 
+  describe('Issue #115: Invalid header terminator + misplaced EOF (geojson.io export)', function() {
+
+    it ('Able to parse header with 0 as terminator byte', function() {
+      var buf = require('fs').readFileSync('test/test_data/dbf/POLYGON.dbf');
+      var reader = new api.internal.DbfReader(buf);
+      assert.equal(reader.header.recordCount, 2);
+      assert.equal(reader.header.fields.length, 1);
+      assert.equal(reader.header.fields[0].name, 'NAME');
+    })
+
+    it ('Fatal error if last data byte is EOF', function() {
+      assert.throws(function() {
+        var rows = importRecords('dbf/POLYGON.dbf');
+      })
+    })
+  })
+
   describe('Issue #83: Import numbers with comma decimal separator', function() {
     it ('Parse decimal numbers correctly', function() {
       var rows = importRecords('dbf/comma_separated.dbf');
       assert.equal(rows[0].AUGSTUMS, 68.5);
     })
   })
-
 
   describe('Bug## Empty string field hangs', function () {
     it('Read table with zero-length string fields, ascii', function () {
