@@ -1,5 +1,52 @@
 /* @requires topojson-common */
 
+// Convert a TopoJSON topology into mapshaper's internal format
+// Side-effect: data in topology is modified
+//
+MapShaper.importTopoJSON = function(topology, opts) {
+  var layers = [],
+      dataset, arcs;
+
+  if (utils.isString(topology)) {
+    topology = JSON.parse(topology);
+  }
+
+  if (topology.arcs && topology.arcs.length > 0) {
+    // TODO: apply transform to ArcCollection, not input arcs
+    if (topology.transform) {
+      TopoJSON.decodeArcs(topology.arcs, topology.transform);
+    }
+
+    if (opts && opts.precision) {
+      TopoJSON.roundCoords(topology.arcs, opts.precision);
+    }
+
+    arcs = new ArcCollection(topology.arcs);
+  }
+
+  utils.forEachProperty(topology.objects, function(object, name) {
+    var lyr = TopoJSON.importObject(object, opts);
+
+    if (MapShaper.layerHasPaths(lyr)) {
+      MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+    }
+
+    lyr.name = name;
+    layers.push(lyr);
+  });
+
+  dataset = {
+    layers: layers,
+    arcs: arcs,
+    info: {}
+  };
+
+  MapShaper.importCRS(dataset, topology);
+
+  return dataset;
+};
+
+
 TopoJSON.decodeArcs = function(arcs, transform) {
   var mx = transform.scale[0],
       my = transform.scale[1],

@@ -1,10 +1,10 @@
 /* @require
 mapshaper-common
 mapshaper-expressions
-mapshaper-dbf-table
 mapshaper-delim-import
 mapshaper-spatial-join
 mapshaper-data-utils
+dbf-import
 */
 
 api.join = function(targetLyr, dataset, opts) {

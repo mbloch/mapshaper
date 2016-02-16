@@ -5,8 +5,8 @@ mapshaper-shapefile
 mapshaper-dataset-utils
 mapshaper-rounding
 mapshaper-delim-export
-mapshaper-dbf-table
 mapshaper-json-table
+dbf-export
 */
 
 // Return an array of objects with "filename" "filebase" "extension" and

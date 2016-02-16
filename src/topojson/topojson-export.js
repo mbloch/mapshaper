@@ -1,11 +1,34 @@
 /* @requires
-mapshaper-geojson,
-topojson-common,
-mapshaper-shape-geom,
-mapshaper-arc-dissolve,
-mapshaper-explode,
+topojson-common
 topojson-presimplify
+mapshaper-shape-geom
+mapshaper-arc-dissolve
+mapshaper-explode
+mapshaper-stringify
+mapshaper-dataset-utils
 */
+
+MapShaper.exportTopoJSON = function(dataset, opts) {
+  var topology = TopoJSON.exportTopology(dataset, opts),
+      stringify = JSON.stringify,
+      filename;
+  if (opts.prettify) {
+    stringify = MapShaper.getFormattedStringify('coordinates,arcs,bbox,translate,scale'.split(','));
+  }
+  if (opts.output_file) {
+    filename = opts.output_file;
+  } else if (dataset.info && dataset.info.input_files) {
+    // use base name of input file(s)
+    filename = (MapShaper.getCommonFileBase(dataset.info.input_files) || 'output') + '.json';
+  } else {
+    filename = 'output.json';
+  }
+
+  return [{
+    content: stringify(topology),
+    filename: filename
+  }];
+};
 
 // Convert a dataset object to a TopoJSON topology object
 TopoJSON.exportTopology = function(src, opts) {

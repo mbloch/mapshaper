@@ -3,7 +3,7 @@ mapshaper-encodings
 mapshaper-encoding-detection
 mapshaper-data-utils
 */
-//
+
 // DBF format references:
 // http://www.dbf2002.com/dbf-file-format.html
 // http://www.digitalpreservation.gov/formats/fdd/fdd000325.shtml
