@@ -1,4 +1,8 @@
-/* @requires mapshaper-encodings, mapshaper-encoding-detection */
+/* @requires
+mapshaper-encodings
+mapshaper-encoding-detection
+mapshaper-data-utils
+*/
 //
 // DBF format references:
 // http://www.dbf2002.com/dbf-file-format.html

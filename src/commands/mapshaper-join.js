@@ -4,6 +4,7 @@ mapshaper-expressions
 mapshaper-dbf-table
 mapshaper-delim-import
 mapshaper-spatial-join
+mapshaper-data-utils
 */
 
 api.join = function(targetLyr, dataset, opts) {
