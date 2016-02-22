@@ -16,7 +16,8 @@
 	"scripts": {
 		"test": "mocha --check-leaks -R dot",
 		"pretest": "./build",
-		"prepublish": "npm test"
+		"prepublish": "npm test",
+		"postpublish": "./release"
 	},
 	"main": "./mapshaper.js",
 	"dependencies": {
