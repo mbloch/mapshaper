@@ -21,7 +21,7 @@ function testInnerPoints(file, cmd, done) {
 }
 
 
-describe('mapshaper-centroid.js', function () {
+describe('mapshaper-polygon-centroid.js', function () {
   describe('inner points test', function () {
 
     var a = "-each 'cx=$.innerX, cy=$.innerY' -points x=cx y=cy +";

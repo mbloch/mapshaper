@@ -262,8 +262,7 @@ function signedAngleSph(alng, alat, blng, blat, clng, clat) {
 }
 
 // Convert arrays of lng and lat coords (xsrc, ysrc) into
-// x, y, z coords on the surface of a sphere with radius 6378137
-// (the radius of spherical Earth datum in meters)
+// x, y, z coords (meters) on the most common spherical Earth model.
 //
 function convLngLatToSph(xsrc, ysrc, xbuf, ybuf, zbuf) {
   var deg2rad = Math.PI / 180,

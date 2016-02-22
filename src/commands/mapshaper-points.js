@@ -1,4 +1,8 @@
-/* @requires mapshaper-data-table, mapshaper-dataset-utils, mapshaper-centroid */
+/* @requires
+mapshaper-data-table
+mapshaper-dataset-utils
+mapshaper-polygon-centroid
+*/
 
 api.createPointLayer = function(srcLyr, arcs, opts) {
   var destLyr = MapShaper.getOutputLayer(srcLyr, opts);
