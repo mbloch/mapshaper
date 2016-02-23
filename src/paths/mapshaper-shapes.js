@@ -369,7 +369,7 @@ function ArcCollection() {
   function condenseArcs(map) {
     var goodPoints = 0,
         goodArcs = 0,
-        copyElements = MapShaper.copyElements,
+        copyElements = utils.copyElements,
         k, arcLen;
     for (var i=0, n=map.length; i<n; i++) {
       k = map[i];

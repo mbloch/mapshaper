@@ -63,9 +63,9 @@ MapShaper.simplifyPaths2D = function(arcs, simplify) {
 };
 
 MapShaper.simplifyPaths3D = function(arcs, simplify) {
-  var xbuf = MapShaper.expandoBuffer(Float64Array),
-      ybuf = MapShaper.expandoBuffer(Float64Array),
-      zbuf = MapShaper.expandoBuffer(Float64Array);
+  var xbuf = utils.expandoBuffer(Float64Array),
+      ybuf = utils.expandoBuffer(Float64Array),
+      zbuf = utils.expandoBuffer(Float64Array);
   arcs.forEach3(function(xx, yy, kk, i) {
     var n = xx.length,
         xx2 = xbuf(n),

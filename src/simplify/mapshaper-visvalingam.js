@@ -4,8 +4,8 @@ var Visvalingam = {};
 
 Visvalingam.getArcCalculator = function(metric, is3D) {
   var heap = new Heap(),
-      prevBuf = MapShaper.expandoBuffer(Int32Array),
-      nextBuf = MapShaper.expandoBuffer(Int32Array),
+      prevBuf = utils.expandoBuffer(Int32Array),
+      nextBuf = utils.expandoBuffer(Int32Array),
       calc = is3D ?
         function(b, c, d, xx, yy, zz) {
           return metric(xx[b], yy[b], zz[b], xx[c], yy[c], zz[c], xx[d], yy[d], zz[d]);

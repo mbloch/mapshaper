@@ -194,7 +194,7 @@ MapShaper.findHitCandidates = function(x, y, shp, arcs) {
   var yy = MapShaper.findRayShapeIntersections(x, y, shp, arcs);
   var cands = [], y1, y2, interval;
 
-  // sortying by y-coord organizes y-intercepts into interior segments
+  // sorting by y-coord organizes y-intercepts into interior segments
   utils.genericSort(yy);
   for (var i=0; i<yy.length; i+=2) {
     y1 = yy[i];

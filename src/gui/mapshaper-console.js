@@ -173,7 +173,7 @@ function Console(model) {
     if (stub && lyr.data) {
       names = findCompletions(stub, lyr.data.getFields());
       if (names.length > 0) {
-        name = MapShaper.getCommonFileBase(names);
+        name = utils.getCommonFileBase(names);
         if (name.length > stub.length) {
           toCommandLine(line.substring(0, match.index) + name);
         }

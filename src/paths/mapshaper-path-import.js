@@ -44,8 +44,8 @@ function PathImporter(opts, reservedPoints) {
   function checkBuffers(needed) {
     if (needed > xx.length) {
       var newLen = Math.max(needed, Math.ceil(xx.length * 1.5));
-      xx = MapShaper.extendBuffer(xx, newLen, pointId);
-      yy = MapShaper.extendBuffer(yy, newLen, pointId);
+      xx = utils.extendBuffer(xx, newLen, pointId);
+      yy = utils.extendBuffer(yy, newLen, pointId);
     }
   }
 

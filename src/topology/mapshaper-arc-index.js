@@ -73,8 +73,8 @@ function ArcIndex(pointCount) {
     for (var i=0, n=arcs.length; i<n; i++) {
       arc = arcs[i];
       len = arc[0].length;
-      MapShaper.copyElements(arc[0], 0, xx, copied, len);
-      MapShaper.copyElements(arc[1], 0, yy, copied, len);
+      utils.copyElements(arc[0], 0, xx, copied, len);
+      utils.copyElements(arc[1], 0, yy, copied, len);
       nn[i] = len;
       copied += len;
     }

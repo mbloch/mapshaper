@@ -1,4 +1,4 @@
-/* @require mapshaper-path-utils */
+/* @require mapshaper-filename-utils */
 
 // Guess the type of a data file from file extension, or return null if not sure
 MapShaper.guessInputFileType = function(file) {

@@ -1,7 +1,7 @@
 var api = require('../'),
   assert = require('assert');
 
-describe('mapshaper-path-utils.js', function () {
+describe('mapshaper-filename-utils.js', function () {
 
   describe('parseLocalPath()', function () {
     var path1 = "shapefiles/usa.shp";

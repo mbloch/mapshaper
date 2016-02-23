@@ -1,4 +1,9 @@
-/* @requires mapshaper-polygon-intersection, mapshaper-polygon-holes, mapshaper-dissolve */
+/* @requires
+mapshaper-polygon-intersection
+mapshaper-polygon-holes
+mapshaper-dissolve
+mapshaper-data-aggregation
+*/
 
 api.dissolvePolygons2 = function(lyr, dataset, opts) {
   MapShaper.requirePolygonLayer(lyr, "[dissolve2] Expected a polygon type layer");
@@ -22,7 +27,7 @@ MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
 
   T.start();
   if (lyr.data) {
-    data2 = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts));
+    data2 = new DataTable(MapShaper.aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts));
   }
   lyr2 = {
     name: opts.no_replace ? null : lyr.name,

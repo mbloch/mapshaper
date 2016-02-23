@@ -19,7 +19,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
     filename = opts.output_file;
   } else if (dataset.info && dataset.info.input_files) {
     // use base name of input file(s)
-    filename = (MapShaper.getCommonFileBase(dataset.info.input_files) || 'output') + '.json';
+    filename = (utils.getCommonFileBase(dataset.info.input_files) || 'output') + '.json';
   } else {
     filename = 'output.json';
   }

@@ -50,15 +50,13 @@ utils.getPathBase = function(path) {
   return utils.parseLocalPath(path).pathbase;
 };
 
-MapShaper.getCommonFileBase = function(names) {
+utils.getCommonFileBase = function(names) {
   return names.reduce(function(memo, name, i) {
     if (i === 0) {
       memo = utils.getFileBase(name);
     } else {
-      memo = MapShaper.mergeNames(memo, name);
+      memo = utils.mergeNames(memo, name);
     }
     return memo;
   }, "");
 };
-
-

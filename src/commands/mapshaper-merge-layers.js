@@ -23,7 +23,7 @@ api.mergeLayers = function(layers) {
       merged.push(lyr);
     } else {
       indexedLyr = index[key];
-      indexedLyr.name = MapShaper.mergeNames(indexedLyr.name, lyr.name);
+      indexedLyr.name = utils.mergeNames(indexedLyr.name, lyr.name);
       indexedLyr.shapes = indexedLyr.shapes.concat(lyr.shapes);
       if (indexedLyr.data) {
         records = indexedLyr.data.getRecords().concat(lyr.data.getRecords());

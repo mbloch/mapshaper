@@ -86,7 +86,7 @@ MapShaper.extractLines = function(shapes, classify) {
       prevKey = '',
       part;
 
-  MapShaper.traverseShapes(shapes, onArc, onPart);
+  MapShaper.traversePaths(shapes, onArc, onPart);
 
   function onArc(o) {
     var arcId = o.arcId,
@@ -132,7 +132,7 @@ MapShaper.getArcClassifier = function(shapes, arcs) {
   utils.initializeArray(a, -1);
   utils.initializeArray(b, -1);
 
-  MapShaper.traverseShapes(shapes, function(o) {
+  MapShaper.traversePaths(shapes, function(o) {
     var i = absArcId(o.arcId);
     var shpId = o.shapeId;
     var aval = a[i];

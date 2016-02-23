@@ -1,11 +1,11 @@
-/* @requires mapshaper-shapes */
+/* @requires mapshaper-shapes mapshaper-point-utils */
 
 // Utility functions for working with ArcCollection and arrays of arc ids.
 
 // @counts A typed array for accumulating count of each abs arc id
 //   (assume it won't overflow)
 MapShaper.countArcsInShapes = function(shapes, counts) {
-  MapShaper.traverseShapes(shapes, null, function(obj) {
+  MapShaper.traversePaths(shapes, null, function(obj) {
     var arcs = obj.arcs,
         id;
     for (var i=0; i<arcs.length; i++) {
@@ -16,13 +16,6 @@ MapShaper.countArcsInShapes = function(shapes, counts) {
   });
 };
 
-MapShaper.countPointsInLayer = function(lyr) {
-  var count = 0;
-  if (MapShaper.layerHasPoints(lyr)) {
-    MapShaper.forEachPoint(lyr, function() {count++;});
-  }
-  return count;
-};
 
 // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
 MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
@@ -113,18 +106,6 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   return j;
 };
 
-MapShaper.forEachPoint = function(lyr, cb) {
-  if (lyr.geometry_type != 'point') {
-    error("[forEachPoint()] Expects a point layer");
-  }
-  lyr.shapes.forEach(function(shape, id) {
-    var n = shape ? shape.length : 0;
-    for (var i=0; i<n; i++) {
-      cb(shape[i], id);
-    }
-  });
-};
-
 // Visit each arc id in a shape (array of array of arc ids)
 // Use non-undefined return values of callback @cb as replacements.
 MapShaper.forEachArcId = function(arr, cb) {
@@ -181,7 +162,7 @@ MapShaper.forEachPathSegment = function(shape, arcs, cb) {
   });
 };
 
-MapShaper.traverseShapes = function traverseShapes(shapes, cbArc, cbPart, cbShape) {
+MapShaper.traversePaths = function traversePaths(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   shapes.forEach(function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape

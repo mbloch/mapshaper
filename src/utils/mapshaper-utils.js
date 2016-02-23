@@ -1,0 +1,63 @@
+/* @requires mbloch-utils */
+
+utils.wildcardToRegExp = function(name) {
+  var rxp = name.split('*').map(function(str) {
+    return utils.regexEscape(str);
+  }).join('.*');
+  return new RegExp(rxp);
+};
+
+utils.expandoBuffer = function(constructor, rate) {
+  var capacity = 0,
+      k = rate >= 1 ? rate : 1.2,
+      buf;
+  return function(size) {
+    if (size > capacity) {
+      capacity = Math.ceil(size * k);
+      buf = new constructor(capacity);
+    }
+    return buf;
+  };
+};
+
+utils.copyElements = function(src, i, dest, j, n, rev) {
+  if (src === dest && j > i) error ("copy error");
+  var inc = 1,
+      offs = 0;
+  if (rev) {
+    inc = -1;
+    offs = n - 1;
+  }
+  for (var k=0; k<n; k++, offs += inc) {
+    dest[k + j] = src[i + offs];
+  }
+};
+
+utils.extendBuffer = function(src, newLen, copyLen) {
+  var len = Math.max(src.length, newLen);
+  var n = copyLen || src.length;
+  var dest = new src.constructor(len);
+  utils.copyElements(src, 0, dest, 0, n);
+  return dest;
+};
+
+utils.mergeNames = function(name1, name2) {
+  var merged = "";
+  if (name1 && name2) {
+    merged = utils.findStringPrefix(name1, name2).replace(/[-_]$/, '');
+  }
+  return merged;
+};
+
+utils.findStringPrefix = function(a, b) {
+  var i = 0;
+  for (var n=a.length; i<n; i++) {
+    if (a[i] !== b[i]) break;
+  }
+  return a.substr(0, i);
+};
+
+// Similar to isFinite() but returns false for null
+utils.isFiniteNumber = function(val) {
+  return isFinite(val) && val !== null;
+};

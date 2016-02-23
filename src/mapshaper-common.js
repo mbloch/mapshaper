@@ -1,12 +1,47 @@
-/* @require mapshaper-utils */
+/* @requires mapshaper-utils */
 
 var api = {};
-var MapShaper = {};
+var MapShaper = {
+  VERSION: VERSION, // export version
+  LOGGING: false,
+  TRACING: false,
+  VERBOSE: false
+};
 
-MapShaper.VERSION = VERSION; // export version
-MapShaper.LOGGING = false;
-MapShaper.TRACING = false;
-MapShaper.VERBOSE = false;
+function error() {
+  MapShaper.error.apply(null, utils.toArray(arguments));
+}
+
+// Handle an error caused by invalid input or misuse of API
+function stop() {
+  MapShaper.stop.apply(null, utils.toArray(arguments));
+}
+
+function APIError(msg) {
+  var err = new Error(msg);
+  err.name = 'APIError';
+  return err;
+}
+
+function message() {
+  MapShaper.message.apply(null, utils.toArray(arguments));
+}
+
+function verbose() {
+  if (MapShaper.VERBOSE && MapShaper.LOGGING) {
+    MapShaper.logArgs(arguments);
+  }
+}
+
+function trace() {
+  if (MapShaper.TRACING) {
+    MapShaper.logArgs(arguments);
+  }
+}
+
+function absArcId(arcId) {
+  return arcId >= 0 ? arcId : ~arcId;
+}
 
 api.enableLogging = function() {
   MapShaper.LOGGING = true;
@@ -30,49 +65,17 @@ api.printError = function(err) {
   }
 };
 
-// replace error function from mapshaper-utils
-error = function() {
-  MapShaper.error.apply(null, utils.toArray(arguments));
-};
-
 MapShaper.error = function() {
   var msg = Utils.toArray(arguments).join(' ');
   throw new Error(msg);
-};
-
-// Handle an error caused by invalid input or misuse of API
-var stop = function() {
-  MapShaper.stop.apply(null, utils.toArray(arguments));
 };
 
 MapShaper.stop = function() {
   throw new APIError(MapShaper.formatLogArgs(arguments));
 };
 
-function APIError(msg) {
-  var err = new Error(msg);
-  err.name = 'APIError';
-  return err;
-}
-
-var message = function() {
-  MapShaper.message.apply(null, utils.toArray(arguments));
-};
-
 MapShaper.message = function() {
   if (MapShaper.LOGGING) {
-    MapShaper.logArgs(arguments);
-  }
-};
-
-var verbose = function() {
-  if (MapShaper.VERBOSE && MapShaper.LOGGING) {
-    MapShaper.logArgs(arguments);
-  }
-};
-
-var trace = MapShaper.trace = function() {
-  if (MapShaper.TRACING) {
     MapShaper.logArgs(arguments);
   }
 };
@@ -103,72 +106,6 @@ MapShaper.logArgs = function(args) {
   if (utils.isArrayLike(args)) {
     (console.error || console.log).call(console, MapShaper.formatLogArgs(args));
   }
-};
-
-function absArcId(arcId) {
-  return arcId >= 0 ? arcId : ~arcId;
-}
-
-utils.wildcardToRegExp = function(name) {
-  var rxp = name.split('*').map(function(str) {
-    return utils.regexEscape(str);
-  }).join('.*');
-  return new RegExp(rxp);
-};
-
-MapShaper.expandoBuffer = function(constructor, rate) {
-  var capacity = 0,
-      k = rate >= 1 ? rate : 1.2,
-      buf;
-  return function(size) {
-    if (size > capacity) {
-      capacity = Math.ceil(size * k);
-      buf = new constructor(capacity);
-    }
-    return buf;
-  };
-};
-
-MapShaper.copyElements = function(src, i, dest, j, n, rev) {
-  if (src === dest && j > i) error ("copy error");
-  var inc = 1,
-      offs = 0;
-  if (rev) {
-    inc = -1;
-    offs = n - 1;
-  }
-  for (var k=0; k<n; k++, offs += inc) {
-    dest[k + j] = src[i + offs];
-  }
-};
-
-MapShaper.extendBuffer = function(src, newLen, copyLen) {
-  var len = Math.max(src.length, newLen);
-  var n = copyLen || src.length;
-  var dest = new src.constructor(len);
-  MapShaper.copyElements(src, 0, dest, 0, n);
-  return dest;
-};
-
-MapShaper.mergeNames = function(name1, name2) {
-  var merged = "";
-  if (name1 && name2) {
-    merged = utils.findStringPrefix(name1, name2).replace(/[-_]$/, '');
-  }
-  return merged;
-};
-
-utils.findStringPrefix = function(a, b) {
-  var i = 0;
-  for (var n=a.length; i<n; i++) {
-    if (a[i] !== b[i]) break;
-  }
-  return a.substr(0, i);
-};
-
-// Similar to isFinite() but returns false for null
-utils.isFiniteNumber = function(val) {
-  return isFinite(val) && val !== null;
 };
 
 MapShaper.getWorldBounds = function(e) {

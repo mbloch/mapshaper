@@ -1,9 +1,16 @@
-/* @requires mapshaper-common, mapshaper-data-table, mapshaper-shape-utils */
+/* @requires
+mapshaper-common
+mapshaper-data-table
+mapshaper-shape-utils
+mapshaper-point-geom
+mapshaper-data-aggregation
+*/
 
 // Generate a dissolved layer
 // @opts.field (optional) name of data field (dissolves all if falsy)
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
+//
 api.dissolvePolygons = // TODO: remove deprecated name
 api.dissolve = function(lyr, arcs, opts) {
   var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data),
@@ -11,12 +18,16 @@ api.dissolve = function(lyr, arcs, opts) {
       dissolveData = null,
       lyr2;
 
-  if (lyr.geometry_type) {
-    MapShaper.requirePolygonLayer(lyr, "[dissolve] Only polygon type layers can be dissolved");
+  if (lyr.geometry_type == 'polygon') {
     dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
+  } else if (MapShaper.layerHasPoints(lyr)) {
+    dissolveShapes = dissolvePointLayerGeometry(lyr, getGroupId, opts);
+  } else if (lyr.geometry_type) {
+    stop("[dissolve] Only point and polygon geometries can be dissolved");
   }
+
   if (lyr.data) {
-    dissolveData = MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts);
+    dissolveData = MapShaper.aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts);
     // replace missing shapes with nulls
     for (var i=0, n=dissolveData.length; i<n; i++) {
       if (dissolveShapes && !dissolveShapes[i]) {
@@ -45,24 +56,10 @@ MapShaper.printDissolveMessage = function(pre, post, cmd) {
   message(msg);
 };
 
-// Get a function to convert original feature ids into ids of combined features
-// Use categorical classification (a different id for each unique value)
-MapShaper.getCategoryClassifier = function(field, data) {
-  if (!field) return function(i) {return 0;};
-  if (!data || !data.fieldExists(field)) {
-    stop("[dissolve] Data table is missing field:", field);
-  }
-  var index = {},
-      count = 0,
-      records = data.getRecords();
-  return function(i) {
-    var val = String(records[i][field]);
-    if (val in index === false) {
-      index[val] = count++;
-    }
-    return index[val];
-  };
-};
+function dissolvePointLayerGeometry(lyr, getGroupId, opts) {
+  var useSph = MapShaper.probablyDecimalDegreeBounds(MapShaper.getLayerBounds(lyr));
+  return null;
+}
 
 function dissolvePolygonGeometry(shapes, getGroupId) {
   var segments = dissolveFirstPass(shapes, getGroupId);
@@ -78,7 +75,7 @@ function dissolveFirstPass(shapes, getGroupId) {
         return getGroupId(i);
       });
 
-  MapShaper.traverseShapes(shapes, procArc);
+  MapShaper.traversePaths(shapes, procArc);
   largeGroups.forEach(splitGroup);
   return segments;
 
@@ -279,41 +276,3 @@ function getSegmentByOffs(seg, segments, shapes, offs) {
   if (!nextSeg || nextSeg.shapeId != seg.shapeId) error("index error");
   return nextSeg;
 }
-
-// Return a properties array for a set of dissolved shapes
-// Records contain dissolve field data (or are empty if not dissolving on a field)
-// TODO: copy other user-specified fields
-//
-// @properties original records
-// @index hash of dissolve shape ids, indexed on dissolve keys
-//
-MapShaper.calcDissolveData = function(properties, getGroupId, opts) {
-  var arr = [];
-  var sumFields = opts.sum_fields || [],
-      copyFields = opts.copy_fields || [];
-
-  if (opts.field) {
-    copyFields.push(opts.field);
-  }
-
-  properties.forEach(function(rec, i) {
-    if (!rec) return;
-    var idx = getGroupId(i),
-        dissolveRec;
-
-    if (idx in arr) {
-      dissolveRec = arr[idx];
-    } else {
-      arr[idx] = dissolveRec = {};
-      copyFields.forEach(function(f) {
-        dissolveRec[f] = rec[f];
-      });
-    }
-
-    sumFields.forEach(function(f) {
-      // TODO: handle strings
-      dissolveRec[f] = (rec[f] || 0) + (dissolveRec[f] || 0);
-    });
-  });
-  return arr;
-};

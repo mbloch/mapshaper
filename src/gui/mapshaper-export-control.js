@@ -33,7 +33,7 @@ var ExportControl = function(model) {
       } else if (files.length == 1) {
         saveBlob(files[0].filename, new Blob([files[0].content]), done);
       } else {
-        filename = MapShaper.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
+        filename = utils.getCommonFileBase(utils.pluck(files, 'filename')) || "output";
         saveZipFile(filename + ".zip", files, done);
       }
     };

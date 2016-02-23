@@ -1,29 +1,10 @@
 /* @requires
-mapshaper-gui-utils
+mapshaper-gui-start
+mbloch-gui-lib
 mapshaper-gui-error
 */
 
-var api = mapshaper;
-var gui = api.gui = {};
-var cli = api.cli;
-var geom = api.geom;
-var MapShaper = api.internal;
-var Bounds = MapShaper.Bounds;
-var APIError = MapShaper.APIError;
-var message = MapShaper.message;
-
 api.enableLogging();
-
-var error = MapShaper.error = function() { // replace default error() function
-  stop.apply(null, utils.toArray(arguments));
-};
-
-// Show a popup error message, then throw an error
-var stop = MapShaper.stop = function() {
-  var msg = gui.formatMessageArgs(arguments);
-  gui.alert(msg);
-  throw new Error(msg);
-};
 
 gui.browserIsSupported = function() {
   return typeof ArrayBuffer != 'undefined' &&

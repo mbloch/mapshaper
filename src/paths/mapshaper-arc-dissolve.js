@@ -99,9 +99,9 @@ MapShaper.dissolveArcCollection = function(arcs, groups, len2) {
         n--;
         if (!rev) i++;
       }
-      MapShaper.copyElements(src.xx, i, xx2, offs, n, rev);
-      MapShaper.copyElements(src.yy, i, yy2, offs, n, rev);
-      if (zz2) MapShaper.copyElements(src.zz, i, zz2, offs, n, rev);
+      utils.copyElements(src.xx, i, xx2, offs, n, rev);
+      utils.copyElements(src.yy, i, yy2, offs, n, rev);
+      if (zz2) utils.copyElements(src.zz, i, zz2, offs, n, rev);
       nn2[newId] += n;
       offs += n;
     }
