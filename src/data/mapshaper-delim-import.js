@@ -14,7 +14,7 @@ MapShaper.importDelim = function(str, opts) {
 };
 
 MapShaper.importDelimTable = function(str, delim, opts) {
-  var records = require("d3-dsv").dsv(delim).parse(str);
+  var records = require("d3-dsv").dsvFormat(delim).parse(str);
   var table;
   if (records.length === 0) {
     stop("[dsv] Unable to read any records");

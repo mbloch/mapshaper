@@ -26,7 +26,7 @@
 		"iconv-lite": "~0.4.13",
 		"rbush": "~1.3.4",
 		"rw": "~1.1.1",
-		"d3-dsv": "~0.2.0"
+		"d3-dsv": "~0.3.0"
 	},
 	"devDependencies": {
 		"shell-quote": "~1.4.1",
