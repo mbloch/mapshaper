@@ -2,6 +2,32 @@ var assert = require('assert'),
     api = require("../"),
     Heap = api.internal.Heap;
 
+function heapSort(arr) {
+  var heap = new Heap();
+  var sorted = [];
+  heap.init(arr);
+  while (heap.size() > 0) {
+    sorted.push(heap.popValue());
+  }
+  return sorted;
+}
+
+function referenceSort(arr) {
+  arr = arr.concat();
+  return arr.sort(function(a, b) {
+    return a - b;
+  });
+}
+
+function getUnsortedTestArray(n) {
+  var arr = [], val;
+  for (var i=0; i<n; i++) {
+    // include plenty of dupes
+    arr.push(Math.floor(Math.random() * n / 3));
+  }
+  return arr;
+}
+
 describe("mapshaper-heap.js", function() {
 
   describe("Heap", function() {
@@ -24,7 +50,6 @@ describe("mapshaper-heap.js", function() {
       heap.updateValue(3, -0.2);
       assert.equal(heap.pop(), 3);
       heap.updateValue(0, 8.5);
-      assert.ok(heap.testHeapOrder())
       assert.equal(heap.pop(), 1);
       assert.equal(heap.pop(), 0);
       assert.equal(heap.pop(), 4);
@@ -56,7 +81,16 @@ describe("mapshaper-heap.js", function() {
       assert.equal(heap.pop(), 5);
     });
 
-    it("popping from empty heap throws", function() {
+    it("randomized test", function() {
+      var n = 10000;
+      var unsorted1 = getUnsortedTestArray(n);
+      var unsorted2 = unsorted1.concat();
+      var sorted1 = heapSort(unsorted1);
+      var sorted2 = referenceSort(unsorted2);
+      assert.deepEqual(sorted1, sorted2);
+    });
+
+    it("popping from empty heap throws error", function() {
       var heap = new Heap();
       assert.throws(function() {
         heap.pop();
