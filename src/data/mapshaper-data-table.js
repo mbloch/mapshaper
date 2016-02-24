@@ -87,6 +87,3 @@ var dataTableProto = {
 };
 
 utils.extend(DataTable.prototype, dataTableProto);
-
-// export for testing
-MapShaper.DataTable = DataTable;

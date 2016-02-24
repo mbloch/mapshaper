@@ -344,7 +344,3 @@ DbfReader.prototype.readFieldHeader = function(bin, encoding) {
     indexFlag: bin.skipBytes(7).readUint8()
   };
 };
-
-// export for testing
-MapShaper.Dbf = Dbf;
-MapShaper.DbfReader = DbfReader;

@@ -46,4 +46,3 @@ function ShapefileTable(buf, encoding) {
 }
 
 utils.extend(ShapefileTable.prototype, dataTableProto);
-MapShaper.ShapefileTable = ShapefileTable;

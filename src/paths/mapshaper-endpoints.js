@@ -1,7 +1,5 @@
 /* @require mapshaper-common, mapshaper-geom */
 
-MapShaper.NodeCollection = NodeCollection;
-
 // @arcs ArcCollection
 // @filter Optional filter function, arcIds that return false are excluded
 //

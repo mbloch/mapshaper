@@ -2,7 +2,7 @@
 mapshaper-common
 */
 
-var GeoJSON = MapShaper.geojson = {};
+var GeoJSON = {};
 GeoJSON.ID_FIELD = "FID"; // default field name of imported *JSON feature ids
 
 GeoJSON.typeLookup = {

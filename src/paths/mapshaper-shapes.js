@@ -1,9 +1,5 @@
 /* @requires mapshaper-common, mapshaper-geom, mapshaper-shape-iter */
 
-// export for testing
-MapShaper.ArcCollection = ArcCollection;
-MapShaper.ArcIter = ArcIter;
-
 // An interface for managing a collection of paths.
 // Constructor signatures:
 //

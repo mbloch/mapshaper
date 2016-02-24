@@ -3,8 +3,6 @@
 // PolygonIndex indexes the coordinates in one polygon feature for efficient
 // point-in-polygon tests
 
-MapShaper.PolygonIndex = PolygonIndex;
-
 function PolygonIndex(shape, arcs) {
   var data = arcs.getVertexData(),
       polygonBounds = arcs.getMultiShapeBounds(shape),

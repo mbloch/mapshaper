@@ -5,8 +5,6 @@ mapshaper-shape-geom
 mapshaper-polygon-index
 */
 
-MapShaper.PathIndex = PathIndex;
-
 function PathIndex(shapes, arcs) {
   var _index;
   // var totalArea = arcs.getBounds().area();

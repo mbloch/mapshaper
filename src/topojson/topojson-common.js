@@ -3,7 +3,7 @@ mapshaper-common
 mapshaper-geojson
 */
 
-var TopoJSON = MapShaper.topojson = {};
+var TopoJSON = {};
 
 // Iterate over all arrays of arc is in a geometry object
 // @cb callback: function(ids)
