@@ -468,6 +468,7 @@ var geom = {
   getRoundingFunction: getRoundingFunction,
   segmentHit: segmentHit,
   segmentIntersection: segmentIntersection,
+  distanceSq: distanceSq,
   distance3D: distance3D,
   innerAngle: innerAngle,
   innerAngle2: innerAngle2,

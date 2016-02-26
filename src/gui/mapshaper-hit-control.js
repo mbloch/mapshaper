@@ -133,8 +133,8 @@ function HitControl(ext, mouse) {
     var dist = getHitBuffer(25),
         limitSq = dist * dist,
         hitId = -1;
-    MapShaper.forEachPoint(target.layer, function(p, id) {
-      var distSq = distanceSq(x, y, p[0], p[1]);
+    MapShaper.forEachPoint(target.layer.shapes, function(p, id) {
+      var distSq = geom.distanceSq(x, y, p[0], p[1]);
       if (distSq < limitSq) {
         hitId = id;
         limitSq = distSq;
