@@ -51,7 +51,7 @@ MapShaper.projectDataset = function(dataset, proj, opts) {
 
 MapShaper.projectPointLayer = function(lyr, proj) {
   var xy = {x: 0, y: 0};
-  MapShaper.forEachPoint(lyr, function(p) {
+  MapShaper.forEachPoint(lyr.shapes, function(p) {
     proj.projectLatLng(p[1], p[0], xy);
     p[0] = xy.x;
     p[1] = xy.y;

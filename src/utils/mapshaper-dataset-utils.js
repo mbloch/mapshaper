@@ -44,6 +44,14 @@ MapShaper.datasetHasPaths = function(dataset) {
   });
 };
 
+MapShaper.countMultiPartFeatures = function(shapes) {
+  var count = 0;
+  for (var i=0, n=shapes.length; i<n; i++) {
+    if (shapes[i] && shapes[i].length > 1) count++;
+  }
+  return count;
+};
+
 MapShaper.getFeatureCount = function(lyr) {
   var count = 0;
   if (lyr.data) {
@@ -58,7 +66,7 @@ MapShaper.getLayerBounds = function(lyr, arcs) {
   var bounds = null;
   if (lyr.geometry_type == 'point') {
     bounds = new Bounds();
-    MapShaper.forEachPoint(lyr, function(p) {
+    MapShaper.forEachPoint(lyr.shapes, function(p) {
       bounds.mergePoint(p[0], p[1]);
     });
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {

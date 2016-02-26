@@ -27,7 +27,7 @@ MapShaper.setCoordinatePrecision = function(dataset, precision) {
 };
 
 MapShaper.roundPoints = function(lyr, round) {
-  MapShaper.forEachPoint(lyr, function(p) {
+  MapShaper.forEachPoint(lyr.shapes, function(p) {
     p[0] = round(p[0]);
     p[1] = round(p[1]);
   });
