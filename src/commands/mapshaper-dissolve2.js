@@ -5,7 +5,7 @@ mapshaper-dissolve
 mapshaper-data-aggregation
 */
 
-api.dissolvePolygons2 = function(lyr, dataset, opts) {
+api.dissolve2 = function(lyr, dataset, opts) {
   MapShaper.requirePolygonLayer(lyr, "[dissolve2] Expected a polygon type layer");
   var nodes = MapShaper.divideArcs(dataset);
   return MapShaper.dissolvePolygonLayer(lyr, nodes, opts);

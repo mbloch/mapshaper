@@ -70,7 +70,7 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = MapShaper.applyCommand(api.dissolve, targetLayers, arcs, opts);
 
     } else if (name == 'dissolve2') {
-      outputLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
+      outputLayers = MapShaper.applyCommand(api.dissolve2, targetLayers, dataset, opts);
 
     } else if (name == 'each') {
       MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);

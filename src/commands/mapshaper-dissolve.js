@@ -11,7 +11,6 @@ mapshaper-data-aggregation
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
 //
-api.dissolvePolygons = // TODO: remove deprecated name
 api.dissolve = function(lyr, arcs, opts) {
   var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data),
       dissolveShapes = null,

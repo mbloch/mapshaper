@@ -2,7 +2,7 @@ var assert = require('assert'),
     api = require("../"),
     ArcCollection = api.internal.ArcCollection,
     NodeCollection = api.internal.NodeCollection,
-    dissolvePolygons2 = api.dissolvePolygons2,
+    dissolve2 = api.dissolve2,
     dissolvePolygons = api.internal.dissolvePolygonLayer;
 
 describe('mapshaper-dissolve2.js dissolve tests', function () {
@@ -29,7 +29,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
       };
 
       var target = [[[0, 2]]];
-      var dissolved = dissolvePolygons2(lyr, dataset)
+      var dissolved = dissolve2(lyr, dataset)
       assert.deepEqual(dissolved.shapes, target);
     })
   })
@@ -63,7 +63,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
       };
 
       var target = [[[0, 2, 3]]];
-      var dissolved = dissolvePolygons2(lyr, dataset);
+      var dissolved = dissolve2(lyr, dataset);
       assert.deepEqual(dissolved.shapes, target);
     });
 
@@ -79,7 +79,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
       };
 
       var target = [[[0, 2, 3]]];
-      var dissolved = dissolvePolygons2(lyr, dataset);
+      var dissolved = dissolve2(lyr, dataset);
       assert.deepEqual(dissolved.shapes, target);
     })
 
@@ -95,7 +95,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
       };
 
       var target = [[[0, 2, 3]]];
-      var dissolved = dissolvePolygons2(lyr, dataset);
+      var dissolved = dissolve2(lyr, dataset);
       assert.deepEqual(dissolved.shapes, target);
     })
   })
@@ -126,7 +126,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
       };
 
       var target = [[[0, 2]]];
-      var dissolved = dissolvePolygons2(lyr, dataset);
+      var dissolved = dissolve2(lyr, dataset);
       assert.deepEqual(dissolved.shapes, target);
     })
   })
@@ -379,7 +379,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
             layers:[lyr],
             arcs: new ArcCollection(coords)
           };
-      var lyr2 = dissolvePolygons2(lyr, dataset, {field:'foo'});
+      var lyr2 = dissolve2(lyr, dataset, {field:'foo'});
       assert.deepEqual(lyr2.shapes, [[[0, 1]], [[~1, 2]]]);
     })
 
@@ -393,7 +393,7 @@ describe('mapshaper-dissolve2.js dissolve tests', function () {
             layers: [lyr],
             arcs: new ArcCollection(coords)
           };
-      var lyr2 = dissolvePolygons2(lyr, dataset, {field: 'foo'});
+      var lyr2 = dissolve2(lyr, dataset, {field: 'foo'});
       assert.deepEqual(lyr2.shapes, [[[0, 2]]]);
     })
 
