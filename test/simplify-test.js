@@ -2,20 +2,6 @@ var assert = require('assert'),
     api = require("../"),
     utils = api.utils;
 
-function coordBuffersEqual(a, b) {
-  var precision = 1e-9,
-      bufLen = a.length;
-  assert.equal(bufLen, b.length, "buffers should have same length");
-  for (var i=0; i<bufLen; i++) {
-    var c1 = a[i],
-        c2 = b[i];
-    if (Math.abs(c1 - c2) > precision) {
-      assert.equal(c1, c2);
-    }
-  }
-  return true;
-}
-
 describe("mapshaper-simplify.js", function() {
 
   describe("getSimplifyMethod()", function() {
@@ -92,31 +78,6 @@ describe("mapshaper-simplify.js", function() {
       assert.throws(function() {
         api.internal.parseSimplifyResolution('x-200');
       });
-    })
-  })
-
-  describe("convLngLatToSph()", function() {
-    var xbuf, ybuf, zbuf,
-      R = 6378137;
-
-    beforeEach(function() {
-      xbuf = [];
-      ybuf = [];
-      zbuf = [];
-    });
-
-    it("correctly handles coordinates at the poles", function() {
-      api.geom.convLngLatToSph([0, 90, 180, -180], [90, 90, -90, -90], xbuf, ybuf, zbuf);
-      coordBuffersEqual(xbuf, [0, 0, 0, 0]);
-      coordBuffersEqual(ybuf, [0, 0, 0, 0]);
-      coordBuffersEqual(zbuf, [R, R, -R, -R]);
-    })
-
-    it("correctly handles coordinates at the equator", function() {
-      api.geom.convLngLatToSph([0, 90, 180, -90, -180], [0, 0, 0, 0], xbuf, ybuf, zbuf);
-      coordBuffersEqual(xbuf, [R, 0, -R, 0, R]);
-      coordBuffersEqual(ybuf, [0, R, 0, -R, 0]);
-      coordBuffersEqual(zbuf, [0, 0, 0, 0, 0]);
     })
   })
 

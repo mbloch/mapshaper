@@ -1,6 +1,6 @@
 var assert = require('assert'),
-    mapshaper = require("../"),
-    geom = mapshaper.geom;
+    api = require("../"),
+    geom = api.geom;
 
 function equalAngles(a, b) {
   if (Math.abs(a - b) < 1e-10) {
@@ -19,6 +19,20 @@ function aboutEqual(a, b) {
 
 function equalBearings(a, b) {
   equalAngles(geom.standardAngle(a), geom.standardAngle(b));
+}
+
+function coordBuffersEqual(a, b) {
+  var precision = 1e-9,
+      bufLen = a.length;
+  assert.equal(bufLen, b.length, "buffers should have same length");
+  for (var i=0; i<bufLen; i++) {
+    var c1 = a[i],
+        c2 = b[i];
+    if (Math.abs(c1 - c2) > precision) {
+      assert.equal(c1, c2);
+    }
+  }
+  return true;
 }
 
 describe("mapshaper-geom.js", function() {
@@ -363,6 +377,51 @@ describe("mapshaper-geom.js", function() {
       assert.equal(geom.triangleArea(1, 1, 1, 1, 1, 1), 0)
    })
 
+  })
+
+  describe("convLngLatToSph()", function() {
+    var xbuf, ybuf, zbuf,
+      R = 6378137;
+
+    beforeEach(function() {
+      xbuf = [];
+      ybuf = [];
+      zbuf = [];
+    });
+
+    it("correctly handles coordinates at the poles", function() {
+      api.geom.convLngLatToSph([0, 90, 180, -180], [90, 90, -90, -90], xbuf, ybuf, zbuf);
+      coordBuffersEqual(xbuf, [0, 0, 0, 0]);
+      coordBuffersEqual(ybuf, [0, 0, 0, 0]);
+      coordBuffersEqual(zbuf, [R, R, -R, -R]);
+    })
+
+    it("correctly handles coordinates at the equator", function() {
+      api.geom.convLngLatToSph([0, 90, 180, -90, -180], [0, 0, 0, 0], xbuf, ybuf, zbuf);
+      coordBuffersEqual(xbuf, [R, 0, -R, 0, R]);
+      coordBuffersEqual(ybuf, [0, R, 0, -R, 0]);
+      coordBuffersEqual(zbuf, [0, 0, 0, 0, 0]);
+    })
+  })
+
+  describe('latLngToXYZ()/xyzToLngLat()', function () {
+    function test(lng, lat) {
+      var p = [], p2 = [];
+      geom.lngLatToXYZ(lng, lat, p);
+      geom.xyzToLngLat(p[0], p[1], p[2], p2);
+      aboutEqual(p2[0], lng);
+      aboutEqual(p2[1], lat);
+      // console.log(p2[0], lng, p2[1], lat, p);
+    }
+
+    it('roundtrip tests', function () {
+      test(0, 0);
+      test(0, 70);
+      test(0, -70);
+      test(179, -89);
+      test(-179, 89);
+      test(90, 45);
+    })
   })
 
 })

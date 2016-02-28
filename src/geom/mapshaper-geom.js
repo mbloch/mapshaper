@@ -261,6 +261,7 @@ function signedAngleSph(alng, alat, blng, blat, clng, clat) {
   return standardAngle(a);
 }
 
+/*
 // Convert arrays of lng and lat coords (xsrc, ysrc) into
 // x, y, z coords (meters) on the most common spherical Earth model.
 //
@@ -275,6 +276,38 @@ function convLngLatToSph(xsrc, ysrc, xbuf, ybuf, zbuf) {
     ybuf[i] = Math.sin(lng) * cosLat * r;
     zbuf[i] = Math.sin(lat) * r;
   }
+}
+*/
+
+// Convert arrays of lng and lat coords (xsrc, ysrc) into
+// x, y, z coords (meters) on the most common spherical Earth model.
+//
+function convLngLatToSph(xsrc, ysrc, xbuf, ybuf, zbuf) {
+  var p = [];
+  for (var i=0, len=xsrc.length; i<len; i++) {
+    lngLatToXYZ(xsrc[i], ysrc[i], p);
+    xbuf[i] = p[0];
+    ybuf[i] = p[1];
+    zbuf[i] = p[2];
+  }
+}
+
+function xyzToLngLat(x, y, z, p) {
+  var d = distance3D(0, 0, 0, x, y, z); // normalize
+  var lat = Math.asin(z / d) / D2R;
+  var lng = Math.atan2(y / d, x / d) / D2R;
+  p[0] = lng;
+  p[1] = lat;
+}
+
+function lngLatToXYZ(lng, lat, p) {
+  var cosLat;
+  lng *= D2R;
+  lat *= D2R;
+  cosLat = Math.cos(lat);
+  p[0] = Math.cos(lng) * cosLat * R;
+  p[1] = Math.sin(lng) * cosLat * R;
+  p[2] = Math.sin(lat) * R;
 }
 
 // Haversine formula (well conditioned at small distances)
@@ -477,6 +510,8 @@ var geom = {
   signedAngleSph: signedAngleSph,
   standardAngle: standardAngle,
   convLngLatToSph: convLngLatToSph,
+  lngLatToXYZ: lngLatToXYZ,
+  xyzToLngLat: xyzToLngLat,
   sphericalDistance: sphericalDistance,
   greatCircleDistance: greatCircleDistance,
   pointSegDistSq: pointSegDistSq,

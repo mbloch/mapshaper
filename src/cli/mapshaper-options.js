@@ -401,7 +401,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("dissolve")
     .validate(validateDissolveOpts)
-    .describe("merge adjacent polygons")
+    .describe("merge polygon or point features")
     .example("Dissolve all polygons in a feature layer into a single polygon\n" +
       "$ mapshaper states.shp -dissolve -o country.shp")
     .example("Generate state-level polygons by dissolving a layer of counties\n" +
@@ -410,6 +410,9 @@ MapShaper.getOptionParser = function() {
     .option("field", dissolveFieldOpt)
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
+    .option("weight", {
+      describe: "[points] field or expression for weighting centroid"
+    })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);

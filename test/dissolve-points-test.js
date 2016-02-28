@@ -1,7 +1,9 @@
 var assert = require('assert'),
-    api = require("../");
+    api = require("../"),
+    geom = api.geom;
 
-describe('mapshaper-dissolve.js', function () {
+
+describe('mapshaper-dissolve.js (points)', function () {
 
   it('no field -> finds centroid of all points', function() {
     var lyr = {
@@ -9,8 +11,19 @@ describe('mapshaper-dissolve.js', function () {
       shapes: [[[1, 1]], [[0, 0]], [[0, 1]], [[1, 0]]]
     };
 
-    var lyr2 = api.dissolve(lyr, null, {});
+    var lyr2 = api.dissolve(lyr, null, {cartesian: true});
     assert.deepEqual(lyr2.shapes, [[[0.5, 0.5]]])
+  })
+
+
+  it('latlng coords -> finds centroid on surface of sphere', function() {
+    var lyr = {
+      geometry_type: 'point',
+      shapes: [[[90, 45]], [[-90, 45]]]
+    };
+
+    var lyr2 = api.dissolve(lyr, null, {});
+    assert.deepEqual(lyr2.shapes, [[[0, 90]]])
   })
 
   it('field -> finds centroid of groups of points, ignoring null points', function() {
@@ -20,7 +33,7 @@ describe('mapshaper-dissolve.js', function () {
       data: new api.internal.DataTable([{foo: 'a'}, {foo: 'a'}, {foo: 'a'}, {foo: 'a'}, {foo: 'b'}, {foo: 'c'}, {foo: 'c'}])
     };
 
-    var lyr2 = api.dissolve(lyr, null, {field: 'foo'});
+    var lyr2 = api.dissolve(lyr, null, {field: 'foo', cartesian: true});
     assert.deepEqual(lyr2.shapes, [[[1, 1]], [[1, 0]], [[1, 1]]])
     assert.deepEqual(lyr2.data.getRecords(), [{foo: 'a'}, {foo: 'b'}, {foo: 'c'}]);
   })
@@ -32,9 +45,8 @@ describe('mapshaper-dissolve.js', function () {
       data: new api.internal.DataTable([{w: 0}, {w: 1}, {w: 3}])
     };
 
-    var lyr2 = api.dissolve(lyr, null, {weighting: 'w'});
+    var lyr2 = api.dissolve(lyr, null, {weight: 'w', cartesian: true});
     assert.deepEqual(lyr2.shapes, [[[0.75, 1.5]]])
   })
-
 
 })
