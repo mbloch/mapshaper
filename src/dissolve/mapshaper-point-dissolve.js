@@ -3,9 +3,12 @@
 function dissolvePointLayerGeometry(lyr, getGroupId, opts) {
   var useSph = !opts.cartesian && MapShaper.probablyDecimalDegreeBounds(MapShaper.getLayerBounds(lyr));
   var getWeight = opts.weight ? MapShaper.compileValueExpression(opts.weight, lyr) : null;
-  // TODO: handle multipoints
-  // var multipoints = MapShaper.countMultiPartFeatures(lyr.shapes);
   var groups = [];
+
+  // TODO: support multipoints
+  if (MapShaper.countMultiPartFeatures(lyr.shapes) !== 0) {
+    stop("[dissolve] Dissolving multi-part points is not supported");
+  }
 
   lyr.shapes.forEach(function(shp, i) {
     var groupId = getGroupId(i);

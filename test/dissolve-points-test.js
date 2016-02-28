@@ -5,6 +5,16 @@ var assert = require('assert'),
 
 describe('mapshaper-dissolve.js (points)', function () {
 
+  it('multipoints are not supported', function() {
+    assert.throws(function() {
+      var lyr = {
+        geometry_type: 'point',
+        shapes: [[[1, 1], [0, 0]]]
+      };
+      api.dissolve(lyr, null);
+    })
+  });
+
   it('no field -> finds centroid of all points', function() {
     var lyr = {
       geometry_type: 'point',
@@ -22,7 +32,7 @@ describe('mapshaper-dissolve.js (points)', function () {
       shapes: [[[90, 45]], [[-90, 45]]]
     };
 
-    var lyr2 = api.dissolve(lyr, null, {});
+    var lyr2 = api.dissolve(lyr, null);
     assert.deepEqual(lyr2.shapes, [[[0, 90]]])
   })
 
