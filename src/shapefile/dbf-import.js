@@ -3,8 +3,13 @@ dbf-reader
 mapshaper-data-table
 */
 
-MapShaper.importDbfTable = function(buf, opts) {
-  return new ShapefileTable(buf, opts && opts.encoding);
+MapShaper.importDbfTable = function(buf, o) {
+  var opts = o || {};
+  var table = new ShapefileTable(buf, opts.encoding);
+  if (o.fields) {
+    table.filterFields(o.fields);
+  }
+  return table;
 };
 
 // Implements the DataTable api for DBF file data.
@@ -15,6 +20,7 @@ MapShaper.importDbfTable = function(buf, opts) {
 //
 function ShapefileTable(buf, encoding) {
   var reader = new DbfReader(buf, encoding),
+      altered = false,
       table;
 
   function getTable() {
@@ -28,8 +34,21 @@ function ShapefileTable(buf, encoding) {
   }
 
   this.exportAsDbf = function(encoding) {
-    // export original dbf string if records haven't been touched.
-    return table ? table.exportAsDbf(encoding) : reader.bin.buffer();
+    // export original dbf bytes if records haven't been touched.
+    return reader && !altered ? reader.bin.buffer() : getTable().exportAsDbf(encoding);
+  };
+
+  this.getRecordAt = function(i) {
+    return reader ? reader.readRow(i) : table.getRecordAt(i);
+  };
+
+  this.deleteField = function(f) {
+    if (table) {
+      table.deleteField(f);
+    } else {
+      altered = true;
+      reader.deleteField(f);
+    }
   };
 
   this.getRecords = function() {

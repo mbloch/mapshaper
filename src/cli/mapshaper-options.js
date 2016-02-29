@@ -91,6 +91,10 @@ MapShaper.getOptionParser = function() {
     .option("auto-snap", autoSnapOpt)
     .option("snap-interval", snapIntervalOpt)
     .option("encoding", encodingOpt)
+    .option("fields", {
+      // describe: "attribute fields to import (comma-sep.) (default is all fields)",
+      type: "comma-sep"
+    })
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
     })

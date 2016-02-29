@@ -287,11 +287,24 @@ DbfReader.prototype.getFieldReader = function(f) {
   return r;
 };
 
+DbfReader.prototype.readRow = function(i) {
+  // create record reader on first call to #readRow()
+  // (delays encoding detection until we need to read data)
+  var reader = this.getRecordReader(this.header);
+  this.readRow = reader;
+  return reader.call(this, i);
+};
+
+DbfReader.prototype.deleteField = function(f) {
+  this.header.fields = this.header.fields.filter(function(field) {
+    return field.name != f;
+  });
+};
+
 DbfReader.prototype.readRows = function() {
-  var data = [],
-      reader = this.getRecordReader(this.header);
+  var data = [];
   for (var r=0, rows=this.rows(); r<rows; r++) {
-    data.push(reader(r));
+    data.push(this.readRow(r));
   }
   return data;
 };

@@ -166,6 +166,15 @@ describe('dbf-reader.js', function () {
     })
   })
 
+  describe('DbfReader()', function () {
+    it('#readRow() method', function () {
+      var buf = require('fs').readFileSync('test/test_data/two_states.dbf');
+      var reader = new api.internal.DbfReader(buf);
+      // read second row
+      assert.deepEqual(reader.readRow(1), { "STATE_NAME": "Washington", "FIPS": "53", "STATE": "WA", "LAT": 47.38, "LONG": -120.0});
+    })
+  })
+
   describe('Issue #115: Invalid header terminator + misplaced EOF (geojson.io export)', function() {
 
     it ('Able to parse header with 0 as terminator byte', function() {

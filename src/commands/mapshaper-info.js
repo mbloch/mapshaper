@@ -60,7 +60,7 @@ MapShaper.getTableInfo = function(data) {
     return Math.max(memo, name.length);
   }, 5) + 2;
   var vals = fields.map(function(fname) {
-    return data.getRecords()[0][fname];
+    return data.getRecordAt(0)[fname];
   });
   var digits = vals.map(function(val, i) {
     return utils.isNumber(vals[i]) ? (val + '.').indexOf('.') + 1 :  0;

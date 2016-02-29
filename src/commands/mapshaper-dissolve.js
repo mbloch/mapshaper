@@ -10,8 +10,9 @@ mapshaper-polygon-dissolve
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
 //
-api.dissolve = function(lyr, arcs, opts) {
-  var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data),
+api.dissolve = function(lyr, arcs, o) {
+  var opts = o || {},
+      getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data),
       dissolveShapes = null,
       dissolveData = null,
       lyr2;

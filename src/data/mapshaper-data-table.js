@@ -25,6 +25,10 @@ function DataTable(obj) {
   this.getRecords = function() {
     return records;
   };
+
+  this.getRecordAt = function(i) {
+    return records[i];
+  };
 }
 
 var dataTableProto = {
@@ -59,6 +63,11 @@ var dataTableProto = {
     this.getRecords().forEach(function(o) {
       delete o[f];
     });
+  },
+
+  filterFields: function(arr) {
+    var unwanted = utils.difference(this.getFields(), arr);
+    unwanted.forEach(this.deleteField, this);
   },
 
   getFields: function() {
