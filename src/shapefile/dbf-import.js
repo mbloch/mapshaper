@@ -5,11 +5,7 @@ mapshaper-data-table
 
 MapShaper.importDbfTable = function(buf, o) {
   var opts = o || {};
-  var table = new ShapefileTable(buf, opts.encoding);
-  if (o.fields) {
-    table.filterFields(o.fields);
-  }
-  return table;
+  return new ShapefileTable(buf, opts.encoding);
 };
 
 // Implements the DataTable api for DBF file data.

@@ -1,48 +1,27 @@
 /* @requires mapshaper-data-table */
 
 api.filterFields = function(lyr, names) {
-  MapShaper.updateFields(lyr, names, "filter-fields");
+  var table = lyr.data;
+  MapShaper.requireDataFields(table, names, 'filter-fields');
+  utils.difference(table.getFields(), names).forEach(table.deleteField, table);
 };
 
 api.renameFields = function(lyr, names) {
-  MapShaper.updateFields(lyr, names, "rename-fields");
+  var map = MapShaper.mapFieldNames(names);
+  MapShaper.requireDataFields(lyr.data, Object.keys(map), 'rename-fields');
+  utils.defaults(map, MapShaper.mapFieldNames(lyr.data.getFields()));
+  lyr.data.update(MapShaper.getRecordMapper(map));
 };
 
-MapShaper.updateFields = function(lyr, names, cmd) {
-  if (!lyr.data) {
-    stop("[filter-fields] Layer is missing a data table");
-  } else if (!utils.isArray(names)) {
-    stop("[filter-fields] Expected an array of field names; found:", names);
-  }
-
-  var dataFields = lyr.data.getFields(),
-      fieldMap = MapShaper.mapFieldNames(names, {}),
-      mappedFields = Object.keys(fieldMap),
-      unmappedFields = utils.difference(dataFields, mappedFields),
-      missingFields = utils.difference(mappedFields, dataFields);
-
-  if (missingFields.length > 0) {
-    stop("[" + cmd + "] Table is missing one or more specified fields:\n",
-        missingFields, "\nExisting fields:", '\n' + MapShaper.formatStringsAsGrid(dataFields));
-  }
-
-  if (cmd == "rename-fields" && unmappedFields.length > 0) {
-    // add unmapped fields to the map, so all fields are retained
-    MapShaper.mapFieldNames(unmappedFields, fieldMap);
-  }
-
-  lyr.data.update(MapShaper.getRecordMapper(fieldMap));
-};
-
-MapShaper.mapFieldNames = function(names, fieldMap) {
+MapShaper.mapFieldNames = function(names) {
   return names.reduce(function(memo, str) {
     var parts = str.split('=');
     var dest = parts[0],
         src = parts[1] || dest;
-    if (!src || !dest) stop("[fields] Invalid field description:", str);
+    if (!src || !dest) stop("[rename-fields] Invalid field description:", str);
     memo[src] = dest;
     return memo;
-  }, fieldMap || {});
+  }, {});
 };
 
 MapShaper.getRecordMapper = function(map) {

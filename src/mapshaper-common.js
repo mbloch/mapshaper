@@ -138,6 +138,19 @@ MapShaper.layerHasNonNullShapes = function(lyr) {
   });
 };
 
+MapShaper.requireDataFields = function(table, fields, cmd) {
+  var prefix = cmd ? '[' + cmd + '] ' : '';
+  if (!table) {
+    stop(prefix + "Missing attribute data");
+  }
+  var dataFields = table.getFields(),
+      missingFields = utils.difference(fields, dataFields);
+  if (missingFields.length > 0) {
+    stop(prefix + "Table is missing one or more fields:\n",
+        missingFields, "\nExisting fields:", '\n' + MapShaper.formatStringsAsGrid(dataFields));
+  }
+};
+
 MapShaper.requirePolygonLayer = function(lyr, msg) {
   if (!lyr || lyr.geometry_type !== 'polygon') stop(msg || "Expected a polygon layer");
 };

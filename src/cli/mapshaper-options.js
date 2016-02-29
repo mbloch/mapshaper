@@ -91,10 +91,11 @@ MapShaper.getOptionParser = function() {
     .option("auto-snap", autoSnapOpt)
     .option("snap-interval", snapIntervalOpt)
     .option("encoding", encodingOpt)
+    /*
     .option("fields", {
-      // describe: "attribute fields to import (comma-sep.) (default is all fields)",
+      describe: "attribute fields to import (comma-sep.) (default is all fields)",
       type: "comma-sep"
-    })
+    }) */
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
     })
@@ -360,7 +361,7 @@ MapShaper.getOptionParser = function() {
     .validate(validateFilterFieldsOpts)
     .option("fields", {
       label: "<field(s)>",
-      describe: "fields to retain/rename (comma-sep.), e.g. 'fips,st=state'"
+      describe: "fields to retain (comma-sep.), e.g. 'fips,name'"
     })
     .option("target", targetOpt);
 

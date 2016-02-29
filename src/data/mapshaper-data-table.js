@@ -65,11 +65,6 @@ var dataTableProto = {
     });
   },
 
-  filterFields: function(arr) {
-    var unwanted = utils.difference(this.getFields(), arr);
-    unwanted.forEach(this.deleteField, this);
-  },
-
   getFields: function() {
     var records = this.getRecords(),
         first = records[0];
