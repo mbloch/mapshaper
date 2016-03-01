@@ -21,7 +21,7 @@ describe('mapshaper-dissolve.js (points)', function () {
       shapes: [[[1, 1]], [[0, 0]], [[0, 1]], [[1, 0]]]
     };
 
-    var lyr2 = api.dissolve(lyr, null, {cartesian: true});
+    var lyr2 = api.dissolve(lyr, null, {planar: true});
     assert.deepEqual(lyr2.shapes, [[[0.5, 0.5]]])
   })
 
@@ -43,7 +43,7 @@ describe('mapshaper-dissolve.js (points)', function () {
       data: new api.internal.DataTable([{foo: 'a'}, {foo: 'a'}, {foo: 'a'}, {foo: 'a'}, {foo: 'b'}, {foo: 'c'}, {foo: 'c'}])
     };
 
-    var lyr2 = api.dissolve(lyr, null, {field: 'foo', cartesian: true});
+    var lyr2 = api.dissolve(lyr, null, {field: 'foo', planar: true});
     assert.deepEqual(lyr2.shapes, [[[1, 1]], [[1, 0]], [[1, 1]]])
     assert.deepEqual(lyr2.data.getRecords(), [{foo: 'a'}, {foo: 'b'}, {foo: 'c'}]);
   })
@@ -55,7 +55,7 @@ describe('mapshaper-dissolve.js (points)', function () {
       data: new api.internal.DataTable([{w: 0}, {w: 1}, {w: 3}])
     };
 
-    var lyr2 = api.dissolve(lyr, null, {weight: 'w', cartesian: true});
+    var lyr2 = api.dissolve(lyr, null, {weight: 'w', planar: true});
     assert.deepEqual(lyr2.shapes, [[[0.75, 1.5]]])
   })
 

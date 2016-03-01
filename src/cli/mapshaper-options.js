@@ -220,9 +220,14 @@ MapShaper.getOptionParser = function() {
       describe: "output resolution as a distance (e.g. 100)",
       type: "number"
     })
-    .option("cartesian", {
+    .option("planar", {
       describe: "simplify decimal degree coords in 2D space (default is 3D)",
       type: "flag"
+    })
+    .option("cartesian", {
+      describe: "(deprecated) alias for planar",
+      type: "flag",
+      alias_to: "planar"
     })
     .option("keep-shapes", {
       describe: "prevent small polygon features from disappearing",
@@ -416,7 +421,11 @@ MapShaper.getOptionParser = function() {
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
     .option("weight", {
-      describe: "[points] field or expression for weighting centroid"
+      describe: "[points] field or expression to use for weighting centroid"
+    })
+    .option("planar", {
+      type: 'flag',
+      describe: "[points] use 2D math to find centroids of latlong points"
     })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)

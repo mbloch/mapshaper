@@ -1,7 +1,7 @@
 /* @requires mapshaper-expressions */
 
 function dissolvePointLayerGeometry(lyr, getGroupId, opts) {
-  var useSph = !opts.cartesian && MapShaper.probablyDecimalDegreeBounds(MapShaper.getLayerBounds(lyr));
+  var useSph = !opts.planar && MapShaper.probablyDecimalDegreeBounds(MapShaper.getLayerBounds(lyr));
   var getWeight = opts.weight ? MapShaper.compileValueExpression(opts.weight, lyr) : null;
   var groups = [];
 

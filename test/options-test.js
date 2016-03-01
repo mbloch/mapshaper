@@ -93,6 +93,7 @@ describe('mapshaper-options.js', function () {
     bad("-s") // no alias (add one?)
     bad("-simplify cartesian i 0.001")
     good("-simplify visvalingam 10%", {method: "visvalingam", pct: 0.1})
+    good("-simplify cartesian 1%", {planar: true, pct: 0.01})
 
     // invalid method names
     // now handled in simplify function

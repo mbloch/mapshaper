@@ -38,7 +38,7 @@ api.simplify = function(dataset, opts) {
 };
 
 MapShaper.useSphericalSimplify = function(arcs, opts) {
-  return !opts.cartesian && !arcs.isPlanar();
+  return !opts.planar && !arcs.isPlanar();
 };
 
 // Calculate simplification thresholds for each vertex of an arc collection

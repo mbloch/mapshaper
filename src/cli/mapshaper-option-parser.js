@@ -118,7 +118,8 @@ function CommandParser() {
         return;
       }
 
-      optName = optDef.name.replace(/-/g, '_');
+      optName = optDef.alias_to || optDef.name;
+      optName = optName.replace(/-/g, '_');
 
       if (optDef.assign_to) {
         cmd.options[optDef.assign_to] = optDef.name;

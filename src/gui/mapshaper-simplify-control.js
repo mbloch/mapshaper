@@ -120,7 +120,7 @@ var SimplifyControl = function(model) {
     return {
       method: method,
       keep_shapes: !!El("#import-retain-opt").node().checked,
-      cartesian: !!planarCheckbox.node().checked
+      planar: !!planarCheckbox.node().checked
     };
   }
 
