@@ -8,17 +8,17 @@ dbf-import
 */
 
 api.join = function(targetLyr, dataset, opts) {
-  var src, srcLyr, srcType, targetType;
+  var src, srcLyr, srcType, targetType, retn;
   if (opts.keys) {
     // join using data in attribute fields
     if (opts.keys.length != 2) {
       stop("[join] Expected two key fields: a target field and a source field");
     }
     src = MapShaper.getJoinTable(dataset, opts);
-    api.joinAttributesToFeatures(targetLyr, src, opts);
+    retn = api.joinAttributesToFeatures(targetLyr, src, opts);
   } else {
     // spatial join
-    src = MapShaper.getJoinData(dataset, opts);
+    src = MapShaper.getJoinDataset(dataset, opts);
     if (!src) {
       stop("[join] Missing a joinable data source");
     }
@@ -26,13 +26,20 @@ api.join = function(targetLyr, dataset, opts) {
     srcType = srcLyr.geometry_type;
     targetType = targetLyr.geometry_type;
     if (srcType == 'point' && targetType == 'polygon') {
-      api.joinPointsToPolygons(targetLyr, dataset.arcs, srcLyr, opts);
+      retn = api.joinPointsToPolygons(targetLyr, dataset.arcs, srcLyr, opts);
     } else if (srcType == 'polygon' && targetType == 'point') {
-      api.joinPolygonsToPoints(targetLyr, srcLyr, src.arcs, opts);
+      retn = api.joinPolygonsToPoints(targetLyr, srcLyr, src.arcs, opts);
     } else {
       stop(utils.format("[join] Unable to join %s geometry to %s geometry",
           srcType || 'null', targetType || 'null'));
     }
+  }
+
+  if (retn.unmatched) {
+    dataset.layers.push(retn.unmatched);
+  }
+  if (retn.unjoined) {
+    dataset.layers.push(retn.unjoined);
   }
 };
 
@@ -50,7 +57,7 @@ MapShaper.getJoinTable = function(dataset, opts) {
 
 // Get a dataset containing a source layer to join
 // TODO: remove duplication with getJoinTable()
-MapShaper.getJoinData = function(dataset, opts) {
+MapShaper.getJoinDataset = function(dataset, opts) {
   var layers = MapShaper.findMatchingLayers(dataset.layers, opts.source);
   if (!layers.length) {
     dataset = api.importFile(opts.source, opts);
@@ -84,7 +91,7 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
       joinFunction = MapShaper.getJoinByKey(destTable, destKey, srcTable, srcKey);
 
   opts = utils.defaults({fields: joinFields}, opts);
-  MapShaper.joinTables(destTable, srcTable, joinFunction, opts);
+  return MapShaper.joinTables(destTable, srcTable, joinFunction, opts);
 };
 
 MapShaper.joinTables = function(dest, src, join, opts) {
@@ -96,8 +103,10 @@ MapShaper.joinTables = function(dest, src, join, opts) {
       countField = MapShaper.getCountFieldName(dest.getFields()),
       addCountField = sumFields.length > 0, // add a count field if we're aggregating records
       joinCounts = new Uint32Array(srcRecords.length),
+      matchCounts = new Uint32Array(destRecords.length),
       matchCount = 0,
       collisionCount = 0,
+      retn = {},
       srcRec, srcId, destRec, joinIds, joins, count, filter;
 
   if (opts.where) {
@@ -126,6 +135,7 @@ MapShaper.joinTables = function(dest, src, join, opts) {
       if (sumFields.length > 0) {
         MapShaper.joinBySum(destRec, srcRec, sumFields);
       }
+      matchCounts[i]++;
       joinCounts[srcId]++;
       count++;
     }
@@ -141,8 +151,29 @@ MapShaper.joinTables = function(dest, src, join, opts) {
   if (matchCount === 0) {
     stop("[join] No records could be joined");
   }
+
   MapShaper.printJoinMessage(matchCount, destRecords.length,
       MapShaper.countJoins(joinCounts), srcRecords.length, collisionCount);
+
+  if (opts.unjoined) {
+    retn.unjoined = MapShaper.getUnjoinedLayer(src, joinCounts);
+    retn.unjoined.name = 'unjoined';
+  }
+  if (opts.unmatched) {
+    // TODO: copy destination records before null values for join fields are added
+    retn.unmatched = MapShaper.getUnjoinedLayer(dest, matchCounts);
+    retn.unmatched.name = 'unmatched';
+  }
+  return retn;
+};
+
+MapShaper.getUnjoinedLayer = function(data, counts) {
+  var filtered = data.getRecords().filter(function(o, i) {
+    return counts[i] === 0;
+  });
+  return {
+    data: new DataTable(filtered).clone()
+  };
 };
 
 MapShaper.countJoins = function(counts) {

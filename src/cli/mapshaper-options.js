@@ -220,6 +220,13 @@ MapShaper.getOptionParser = function() {
       describe: "output resolution as a distance (e.g. 100)",
       type: "number"
     })
+    /*
+    .option("value", {
+      // for testing
+      // describe: "raw value of simplification threshold",
+      type: "number"
+    })
+    */
     .option("planar", {
       describe: "simplify decimal degree coords in 2D space (default is 3D)",
       type: "flag"
@@ -273,6 +280,14 @@ MapShaper.getOptionParser = function() {
     })
     .option("force", {
       describe: "replace values from same-named fields",
+      type: "flag"
+    })
+    .option("unjoined", {
+      describe: "copy unjoined records from source table to \"unjoined\" layer",
+      type: "flag"
+    })
+    .option("unmatched", {
+      describe: "copy unmatched records in target table to \"unmatched\" layer",
       type: "flag"
     })
     .option("encoding", encodingOpt)

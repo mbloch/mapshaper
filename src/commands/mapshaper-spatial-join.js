@@ -5,13 +5,13 @@ api.joinPointsToPolygons = function(targetLyr, arcs, pointLyr, opts) {
   // TODO: copy points that can't be joined to a new layer
   var joinFunction = MapShaper.getPolygonToPointsFunction(targetLyr, arcs, pointLyr, opts);
   MapShaper.prepJoinLayers(targetLyr, pointLyr);
-  MapShaper.joinTables(targetLyr.data, pointLyr.data, joinFunction, opts);
+  return MapShaper.joinTables(targetLyr.data, pointLyr.data, joinFunction, opts);
 };
 
 api.joinPolygonsToPoints = function(targetLyr, polygonLyr, arcs, opts) {
   var joinFunction = MapShaper.getPointToPolygonFunction(targetLyr, polygonLyr, arcs, opts);
   MapShaper.prepJoinLayers(targetLyr, polygonLyr);
-  MapShaper.joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
+  return MapShaper.joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
 };
 
 MapShaper.prepJoinLayers = function(targetLyr, srcLyr) {
