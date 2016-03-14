@@ -56,13 +56,11 @@ function Heap() {
   };
 
   function upHeap(idx) {
-    var val = valueAt(idx),
-        parentIdx;
-
+    var parentIdx;
     // Move item up in the heap until it's at the top or is not lighter than its parent
     while (idx > 0) {
       parentIdx = (idx - 1) >> 1;
-      if (val >= valueAt(parentIdx)) {
+      if (greaterThan(idx, parentIdx)) {
         break;
       }
       swapItems(idx, parentIdx);
@@ -73,13 +71,12 @@ function Heap() {
 
   // Swap item at @idx with any lighter children
   function downHeap(idx) {
-    var val = valueAt(idx),
-        minIdx = compareDown(idx, val, itemsInHeap);
+    var minIdx = compareDown(idx);
 
     while (minIdx > idx) {
       swapItems(idx, minIdx);
       idx = minIdx; // descend in the heap
-      minIdx = compareDown(idx, val, itemsInHeap);
+      minIdx = compareDown(idx);
     }
   }
 
@@ -95,18 +92,28 @@ function Heap() {
     heapArr[heapIdx] = valId;
   }
 
-  function valueAt(idx) {
-    return dataArr[heapArr[idx]];
+  // @a, @b: Indexes in @heapArr
+  function greaterThan(a, b) {
+    var idx1 = heapArr[a],
+        idx2 = heapArr[b],
+        val1 = dataArr[idx1],
+        val2 = dataArr[idx2];
+    // If values are equal, compare array indexes.
+    // This is not a requirement of the Visvalingam algorithm,
+    // but it generates output that matches Mahes Visvalingam's
+    // reference implementation.
+    // See https://hydra.hull.ac.uk/assets/hull:10874/content
+    return (val1 > val2 || val1 === val2 && idx1 > idx2);
   }
 
-  function compareDown(idx, val, n) {
+  function compareDown(idx) {
     var a = 2 * idx + 1,
-        b = a + 1;
-    if (a < n && valueAt(a) < val) {
+        b = a + 1,
+        n = itemsInHeap;
+    if (a < n && greaterThan(idx, a)) {
       idx = a;
-      val = valueAt(a);
     }
-    if (b < n && valueAt(b) < val) {
+    if (b < n && greaterThan(idx, b)) {
       idx = b;
     }
     return idx;
