@@ -215,42 +215,6 @@ function ArcCollection() {
     this.applyTransform(inverse);
   };
 
-  // Return average segment length (with simplification)
-  this.getAvgSegment = function() {
-    var sum = 0;
-    var count = this.forEachSegment(function(i, j, xx, yy) {
-      var dx = xx[i] - xx[j],
-          dy = yy[i] - yy[j];
-      sum += Math.sqrt(dx * dx + dy * dy);
-    });
-    return sum / count || 0;
-  };
-
-  // Return average magnitudes of dx, dy (with simplification)
-  this.getAvgSegment2 = function() {
-    var dx = 0, dy = 0;
-    var count = this.forEachSegment(function(i, j, xx, yy) {
-      dx += Math.abs(xx[i] - xx[j]);
-      dy += Math.abs(yy[i] - yy[j]);
-    });
-    return [dx / count || 0, dy / count || 0];
-  };
-
-  // Return average magnitudes of dx, dy (with simplification)
-  /*
-  this.getAvgSegmentSph2 = function() {
-    var sumx = 0, sumy = 0;
-    var count = this.forEachSegment(function(i, j, xx, yy) {
-      var lat1 = yy[i],
-          lat2 = yy[j];
-      sumy += geom.degreesToMeters(Math.abs(lat1 - lat2));
-      sumx += geom.degreesToMeters(Math.abs(xx[i] - xx[j]) *
-          Math.cos((lat1 + lat2) * 0.5 * geom.D2R);
-    });
-    return [sumx / count || 0, sumy / count || 0];
-  };
-  */
-
   // @cb function(i, j, xx, yy)
   this.forEachArcSegment = function(arcId, cb) {
     var fw = arcId >= 0,

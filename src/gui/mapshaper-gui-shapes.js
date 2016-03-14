@@ -25,12 +25,12 @@ function FilteredArcCollection(unfilteredArcs) {
       // For large datasets, create a filtered copy of the data for faster rendering
       if (size > cutoff) {
         filteredArcs = initFilteredArcs(unfilteredArcs, sortedThresholds);
-        filteredSegLen = filteredArcs.getAvgSegment();
+        filteredSegLen = MapShaper.getAvgSegment(filteredArcs);
       }
     } else {
       if (size > cutoff) {
         // generate filtered arcs when no simplification data is present
-        filteredSegLen = unfilteredArcs.getAvgSegment() * 4;
+        filteredSegLen = MapShaper.getAvgSegment(unfilteredArcs) * 4;
         filteredArcs = MapShaper.simplifyArcsFast(unfilteredArcs, filteredSegLen);
       }
     }

@@ -290,3 +290,17 @@ geom.transposePoints = function(points) {
   }
   return [xx, yy];
 };
+
+geom.calcPathLen = (function() {
+  var len;
+  function addSegLen(i, j, xx, yy) {
+    len += distance2D(xx[i], yy[i], xx[j], yy[j]);
+  }
+  return function(path, arcs) {
+    len = 0;
+    for (var i=0, n=path.length; i<n; i++) {
+      arcs.forEachArcSegment(path[i], addSegLen);
+    }
+    return len;
+  };
+}());

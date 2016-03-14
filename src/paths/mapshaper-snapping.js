@@ -13,7 +13,7 @@ MapShaper.getHighPrecisionSnapInterval = function(arcs) {
 };
 
 MapShaper.snapCoords = function(arcs, threshold) {
-    var avgDist = arcs.getAvgSegment(),
+    var avgDist = MapShaper.getAvgSegment(arcs),
         autoSnapDist = avgDist * 0.0025,
         snapDist = autoSnapDist;
 

@@ -1,4 +1,4 @@
-/* @requires mapshaper-shapes */
+/* @requires mapshaper-shapes, mapshaper-segment-geom */
 
 // Convert an array of intersections into an ArcCollection (for display)
 //
@@ -124,7 +124,7 @@ MapShaper.getIntersectionKey = function(o) {
 
 MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
   var yrange = arcs.getBounds().height(),
-      segLen = arcs.getAvgSegment2()[1],
+      segLen = MapShaper.getAvgSegment2(arcs)[1],
       count = 1;
   if (segLen > 0 && yrange > 0) {
     count = Math.ceil(yrange / segLen / 20);

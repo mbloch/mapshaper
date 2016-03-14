@@ -134,6 +134,7 @@ Visvalingam.getPathSimplifier = function(metric, use3D) {
   return Visvalingam.scaledSimplify(Visvalingam.getArcCalculator(metric, use3D));
 };
 
+
 Visvalingam.scaledSimplify = function(f) {
   return function(kk, xx, yy, zz) {
     f(kk, xx, yy, zz);

@@ -6,6 +6,7 @@ mapshaper-arc-dissolve
 mapshaper-explode
 mapshaper-stringify
 mapshaper-dataset-utils
+mapshaper-segment-geom
 */
 
 MapShaper.exportTopoJSON = function(dataset, opts) {
@@ -142,7 +143,7 @@ TopoJSON.deltaEncodeArcs = function(arcs) {
 // as a fraction of the x- and y- extents of the average segment.
 TopoJSON.calcExportResolution = function(arcs, k) {
   // TODO: think about the effect of long lines, e.g. from polar cuts.
-  var xy = arcs.getAvgSegment2();
+  var xy = MapShaper.getAvgSegment2(arcs);
   return [xy[0] * k, xy[1] * k];
 };
 

@@ -3,6 +3,7 @@ mapshaper-common
 mapshaper-projections
 mapshaper-geom
 mapshaper-arc-editor
+mapshaper-segment-geom
 */
 
 api.proj = function(dataset, opts) {
@@ -78,7 +79,7 @@ MapShaper.projectArcs = function(arcs, proj) {
 };
 
 MapShaper.getDefaultDensifyInterval = function(arcs, proj) {
-  var xy = arcs.getAvgSegment2(),
+  var xy = MapShaper.getAvgSegment2(arcs),
       bb = arcs.getBounds(),
       a = proj.projectLatLng(bb.centerY(), bb.centerX()),
       b = proj.projectLatLng(bb.centerY() + xy[1], bb.centerX());
