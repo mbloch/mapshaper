@@ -24,7 +24,7 @@ MapShaper.printSimplifyInfo = function(arcs, opts) {
   lines.push(utils.format("Removed vertices: %,d", stats.removed + stats.collapsedRings));
   lines.push(utils.format("   %.1f% of %,d unique coordinate locations", pct1 * 100, stats.uniqueCount));
   lines.push(utils.format("   %.1f% of %,d filterable coordinate locations", pct2 * 100, stats.removableCount));
-  lines.push(utils.format("Simplification interval: %.4f %s", arcs.getRetainedInterval(),
+  lines.push(utils.format("Simplification threshold: %.4f %s", arcs.getRetainedInterval(),
       spherical ? 'meters' : ''));
   lines.push(utils.format("Collapsed rings: %,d", stats.collapsedRings));
   lines.push("Displacement statistics");
