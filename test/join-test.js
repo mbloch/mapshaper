@@ -41,7 +41,7 @@ describe('mapshaper-join.js', function () {
           }
         }
       };
-      var cmd = "-join b key=foo:fooz target=a keys=foo,fooz force";
+      var cmd = "-join b target=a keys=foo,fooz force";
       api.applyCommands(cmd, src, function(err, data) {
         var output = JSON.parse(data);
         // source hasn't changed
@@ -54,7 +54,36 @@ describe('mapshaper-join.js', function () {
       });
     })
 
-
+    it('test "unmatched" and "unjoined" flags', function(done) {
+      var src = {
+        type: "Topology",
+        objects: {
+          a: {
+            type: "GeometryCollection",
+            geometries: [{type: null, properties: {foo: 'a'}},
+              {type: null, properties: {foo: 'a'}},
+              {type: null, properties: {foo: 'b'}},
+            ]
+          },
+          b: {
+            type: "GeometryCollection",
+            geometries: [
+              {type: null, properties: {fooz: 'b', bar: "beta"}},
+              {type: null, properties: {fooz: 'c', bar: "gamma"}},
+            ]
+          }
+        }
+      };
+      var cmd = "-join b unjoined unmatched target=a keys=foo,fooz";
+      api.applyCommands(cmd, src, function(err, data) {
+        var output = JSON.parse(data);
+        assert.deepEqual(output.objects.unjoined.geometries,
+          [{type: null, properties: {fooz: 'c', bar: 'gamma'}}])
+        assert.deepEqual(output.objects.unmatched.geometries,
+          [{type: null, properties: {foo: 'a', bar: null}}, {type: null, properties: {foo: 'a', bar: null}}])
+        done();
+      })
+    })
   })
 
   describe('joinAttributesToFeatures()', function () {

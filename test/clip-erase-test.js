@@ -73,7 +73,7 @@ describe('mapshaper-clip-erase.js', function () {
 
   describe('Issue #68', function () {
     it('Cell along inside edge of clip shape is retained', function (done) {
-      var cmd = '-i test/test_data/bugfix/68/cell1.shp -clip test/test_data/bugfix/68/clipper.shp';
+      var cmd = '-i test/test_data/issues/68/cell1.shp -clip test/test_data/issues/68/clipper.shp';
       api.runCommands(cmd, function(err, data) {
         assert.equal(err, null);
         var shapes = data.layers[0].shapes;

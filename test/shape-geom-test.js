@@ -243,4 +243,25 @@ describe('mapshaper-shape-geom.js', function () {
     })
 
   })
+
+  describe('calcPathLen()', function () {
+    it('tests', function () {
+      //
+      //  a ----------- b
+      //  |             |
+      //  |  h - e - i  |
+      //  |  |   |   |  |
+      //  |  g - f - j  |
+      //  |             |
+      //  d ----------- c
+      //
+      var coords = [[[1, 4], [5, 4], [5, 1], [1, 1], [1, 4]], // abcda
+          [[3, 3], [3, 2]],  // ef
+          [[3, 2], [2, 2], [2, 3], [3, 3]],  // fghe
+          [[3, 3], [4, 3], [4, 2], [3, 2]]]; // eijf
+      var arcs = new api.internal.ArcCollection(coords);
+      assert.equal(geom.calcPathLen([0], arcs), 14);
+      assert.equal(geom.calcPathLen([2, 3], arcs), 6);
+    })
+  })
 })
