@@ -83,7 +83,6 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
     return outputLyr;
   });
 
-  // Cleanup is set by option parser; use no-cleanup to disable
   if (usingPathClip && opts.cleanup) {
     // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
     // This is to remove arcs belonging to the clipping paths from the target

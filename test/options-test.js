@@ -141,7 +141,8 @@ describe('mapshaper-options.js', function () {
   })
 
   describe('clip', function () {
-    good("-clip bbox=0,-23.1,1,1.2e6)", {bbox: [0, -23.1, 1, 1.2e6], cleanup: true});
+    good("-clip bbox=0,-23.1,1,1.2e6)", {bbox: [0, -23.1, 1, 1.2e6]});
+    good("-clip polys.shp cleanup", {source: 'polys.shp', cleanup: true})
     bad("-clip");
   })
 
