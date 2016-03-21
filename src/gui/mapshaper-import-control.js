@@ -2,7 +2,6 @@
 mapshaper-zip-reader
 mapshaper-progress-message
 mapshaper-gui-options
-mapshaper-gui-table
 */
 
 // tests if filename is a type that can be used
@@ -254,10 +253,6 @@ function ImportControl(model) {
     }
     setTimeout(function() {
       var dataset = MapShaper.importFileContent(content, path, importOpts);
-      var lyr = dataset.layers[0];
-      if (lyr.data && !lyr.shapes) {
-        gui.addTableShapes(lyr, dataset);
-      }
       dataset.info.no_repair = importOpts.no_repair;
       model.addDataset(dataset);
       importCount++;

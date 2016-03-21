@@ -42,7 +42,7 @@ function LayerControl(model) {
   function describeLyr(lyr) {
     var n = MapShaper.getFeatureCount(lyr),
         str, type;
-    if (lyr.data_type == 'table' || (lyr.data && !lyr.shapes)) {
+    if (lyr.data && !lyr.shapes) {
       type = 'data record';
     } else if (lyr.geometry_type) {
       type = lyr.geometry_type + ' feature';

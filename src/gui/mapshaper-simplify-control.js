@@ -62,7 +62,7 @@ var SimplifyControl = function(model) {
 
   function turnOn() {
     var target = model.getEditingLayer();
-    if (!MapShaper.layerHasPaths(target.layer) || target.layer.data_type == 'table') {
+    if (!MapShaper.layerHasPaths(target.layer)) {
       gui.alert("This layer can not be simplified");
       return;
     }

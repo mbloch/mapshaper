@@ -64,6 +64,8 @@ function FilteredArcCollection(unfilteredArcs) {
     }
   }
 
+  this.size = function() {return unfilteredArcs.size();};
+
   this.update = function(arcs) {
     unfilteredArcs = arcs;
     init();

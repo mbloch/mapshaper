@@ -1,18 +1,18 @@
 /* @requires mapshaper-gui-lib */
 
-gui.addTableShapes = function(lyr, dataset) {
-  var n = lyr.data.size(),
+gui.getDisplayLayerForTable = function(table) {
+  var n = table.size(),
       cellWidth = 12,
       cellHeight = 5,
       gutter = 6,
       arcs = [],
       shapes = [],
+      lyr = {shapes: shapes},
+      data = {layer: lyr},
       aspectRatio = 1.1,
       usePoints = false,
       x, y, col, row, blockSize;
-  if (dataset.arcs) {
-    error("Unable to visualize data table.");
-  }
+
   if (n > 10000) {
     usePoints = true;
     gutter = 0;
@@ -51,13 +51,14 @@ gui.addTableShapes = function(lyr, dataset) {
   if (usePoints) {
     lyr.geometry_type = 'point';
   } else {
-    dataset.arcs = new MapShaper.ArcCollection(arcs);
+    data.arcs = new MapShaper.ArcCollection(arcs);
     lyr.geometry_type = 'polygon';
   }
-  lyr.shapes = shapes;
-  lyr.data_type = 'table';
+  lyr.data = table;
 
   function getArc(x, y, w, h) {
     return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
   }
+
+  return data;
 };

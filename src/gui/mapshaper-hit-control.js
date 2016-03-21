@@ -6,6 +6,7 @@ function HitControl(ext, mouse) {
   var selectedId = -1;
   var hoverId = -1;
   var pinId = -1;
+  var active = false;
   var tests = {
     polygon: polygonTest,
     polyline: polylineTest,
@@ -14,21 +15,32 @@ function HitControl(ext, mouse) {
   var selectedShape;
   var target, test;
 
-  this.start = function(o) {
-    test = tests[o.layer.geometry_type];
-    if (o == target) {
-      refresh();
-    } else {
-      this.stop();
-      target = o;
+  this.update = function(o) {
+    if (active && selectedId > -1) {
+      // if selected shape has changed, deselect
+      if (selectedShape != o.layer.shapes[selectedId]) {
+        pinId = -1;
+        select(-1);
+      } else {
+        // kludge: re-trigger change event (in case popup needs to update)
+        select(selectedId);
+      }
     }
+    test = tests[o.layer.geometry_type];
+    target = o;
+  };
+
+  this.start = function() {
+    active = true;
   };
 
   this.stop = function() {
-    if (target) {
+    if (active) {
       pinId = -1;
       update(-1);
-      target = null;
+      selectedId = -1;
+      selectedShape = null;
+      active = false;
     }
   };
 
@@ -50,7 +62,7 @@ function HitControl(ext, mouse) {
   }, !!'capture'); // preempt the layer control's arrow key handler
 
   mouse.on('click', function(e) {
-    if (!target) return;
+    if (!active || !target) return;
     if (pinId > -1 && hoverId == pinId) {
       // clicking on pinned shape: unpin
       pinId = -1;
@@ -75,7 +87,7 @@ function HitControl(ext, mouse) {
 
   mouse.on('hover', function(e) {
     var p;
-    if (target && test && e.hover) {
+    if (active && target && test && e.hover) {
       p = ext.getTransform().invert().transform(e.x, e.y);
       update(test(p[0], p[1]));
     }
@@ -147,16 +159,6 @@ function HitControl(ext, mouse) {
     return target.layer.data ? target.layer.data.getRecords()[id] : {};
   }
 
-  // Check if data for current selected shape has changed; trigger change event
-  function refresh() {
-    if (selectedShape && target.layer.shapes[selectedId] != selectedShape) {
-      pinId = -1;
-      select(-1);
-    } else {
-      select(selectedId); // re-trigger hit event
-    }
-  }
-
   function update(newId) {
     hoverId = newId;
     if (pinId == -1 && hoverId != selectedId) {
@@ -168,19 +170,13 @@ function HitControl(ext, mouse) {
   function select(newId) {
     var o = {
       pinned: pinId > -1,
-      id: newId,
-      dataset: target.dataset,
-      layer: {
-        geometry_type: target.layer.geometry_type,
-        shapes: []
-      }
+      id: newId
     };
     selectedId = newId;
     selectedShape = null;
     if (newId > -1) {
       selectedShape = target.layer.shapes[newId];
       o.properties = getProperties(newId);
-      o.layer.shapes.push(selectedShape);
       o.table = target.layer.data;
     }
     self.dispatchEvent('change', o);

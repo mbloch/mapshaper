@@ -5,6 +5,7 @@ mapshaper-map-nav
 mapshaper-map-extent
 mapshaper-hit-control
 mapshaper-info-control
+mapshaper-map-style
 */
 
 MapShaper.getBoundsOverlap = function(bb1, bb2) {
@@ -39,128 +40,85 @@ function MshpMap(model) {
       _mouse = new MouseArea(_layers.node()),
       _nav = new MapNav(_root, _ext, _mouse),
       _hit = new HitControl(_ext, _mouse),
-      _info = new InfoControl(model, _hit),
-      _groups = [],
-      _highGroup,
-      _hoverGroup,
-      _activeGroup;
+      _info = new InfoControl(model, _hit);
 
-  var darkStroke = "#334",
-      lightStroke = "#b2d83a",
-      activeStyle = {
-        strokeColors: [lightStroke, darkStroke],
-        strokeWidth: 0.7,
-        dotColor: "#223"
-      },
-      highStyle = {
-        dotColor: "#F24400"
-      },
-      hoverStyles = {
-        polygon: {
-          fillColor: "rgba(255, 117, 165, 0.2)", // "#ffebf1",
-          strokeColor: "black",
-          strokeWidth: 1.2
-        }, point:  {
-          dotColor: "black",
-          dotSize: 8
-        }, polyline:  {
-          strokeColor: "black",
-          strokeWidth: 3
-        }
-      },
-      pinnedStyles = {
-        polygon: {
-          fillColor: "rgba(255, 120, 162, 0.2)",
-          strokeColor: "#f74b80",
-          strokeWidth: 1.5
-        }, point:  {
-          dotColor: "#f74b80",
-          dotSize: 8
-        }, polyline:  {
-          strokeColor: "#f74b80",
-          strokeWidth: 4
-        }
-      },
-      hoverStyle;
+  var _activeCanv = new DisplayCanvas().appendTo(_layers),
+      _hoverCanv = new DisplayCanvas().appendTo(_layers),
+      _highCanv = new DisplayCanvas().addClass('highlight-layer').appendTo(_layers),
+      _highLyr, _activeLyr, _highStyle, _activeStyle, _hoverStyle;
 
-  _ext.on('change', refreshLayers);
+  _ext.on('change', drawLayers);
 
   _hit.on('change', function(e) {
-    var style;
-    if (!_hoverGroup) {
-      _hoverGroup = addGroup(null);
-      _hoverGroup.getElement().addClass('hover-layer');
-    }
-    _hoverGroup.setArcs(_activeGroup.getArcs());
-    _hoverGroup.showLayer(e.layer);
-    hoverStyle = getHoverStyle(e.layer, e.pinned);
-    refreshLayer(_hoverGroup);
+    var lyr = _activeLyr.getDisplayLayer().layer;
+    _hoverStyle = e.id >= 0 ? MapStyle.getSelectionStyle(lyr, [e.id], e.pinned) : null;
+    drawLayer(_activeLyr, _hoverCanv, _hoverStyle);
   });
 
   model.on('delete', function(e) {
-    var group = findGroup(e.dataset);
-    while (group) {
-      deleteGroup(group);
-      group = findGroup(e.dataset);
-    }
+    _activeLyr = null;
   });
 
   model.on('select', function(e) {
-    if (_hoverGroup) {
-      deleteGroup(_hoverGroup);
-      _hoverGroup = null;
-    }
+    _highStyle = null;
+    _hoverStyle = null;
   });
 
   model.on('update', function(e) {
-    var prevBounds = _activeGroup ?_activeGroup.getBounds() : null,
-        group = findGroup(e.dataset),
-        needReset = false;
-    if (!group) {
-      group = addGroup(e.dataset);
-    } else if (arcsMayHaveChanged(e.flags)) {
+    var prevBounds = _activeLyr ?_activeLyr.getBounds() : null,
+        needReset = false,
+        displayLyr = initActiveLayer(e);
+
+    if (arcsMayHaveChanged(e.flags)) {
       // update filtered arcs when simplification thresholds are calculated
       // or arcs are updated
+      delete e.dataset.filteredArcs;
+
+      // reset simplification after projection (thresholds have changed)
+      // TODO: reset is not needed if -simplify command is run after -proj
       if (e.flags.proj && e.dataset.arcs) {
-         // reset simplification after projection (thresholds have changed)
-         // TODO: reset is not needed if -simplify command is run after -proj
-        e.dataset.arcs.setRetainedPct(1);
+        displayLyr.setRetainedPct(1);
       }
-      group.updated();
     }
-    group.showLayer(e.layer);
-    updateDotStyle(activeStyle, group);
-    updateArcStyle(activeStyle, group);
-    _activeGroup = group;
-    needReset = gui.mapNeedsReset(group.getBounds(), prevBounds, _ext.getBounds());
-    _ext.setBounds(group.getBounds()); // update map extent to match bounds of active group
+    _activeLyr = displayLyr;
+    needReset = gui.mapNeedsReset(displayLyr.getBounds(), prevBounds, _ext.getBounds());
+    _ext.setBounds(displayLyr.getBounds()); // update map extent to match bounds of active group
     if (needReset) {
       // zoom to full view of the active layer and redraw
       _ext.reset(true);
     } else {
       // refresh without navigating
-      refreshLayers();
+      drawLayers();
     }
   });
 
   this.setHighlightLayer = function(lyr, dataset) {
-    if (_highGroup) {
-      deleteGroup(_highGroup);
-      _highGroup = null;
-    }
     if (lyr) {
-      _highGroup = addGroup(dataset);
-      _highGroup.showLayer(lyr);
-      _highGroup.getElement().addClass('highlight-layer');
-      updateDotStyle(highStyle, _highGroup);
-      refreshLayer(_highGroup);
+      _highLyr = new DisplayLayer(lyr, dataset);
+      _highStyle = MapStyle.getHighlightStyle();
+      // _highLyr.setStyle(highStyle);
+      // refreshLayer(_highGroup);
+      drawLayer(_highLyr, _highCanv, _highStyle);
+    } else {
+      _highStyle = null;
+      _highLyr = null;
     }
   };
 
+  // lightweight way to update simplification of display lines
+  // TODO: consider handling this as a model update
   this.setSimplifyPct = function(pct) {
-    _activeGroup.setRetainedPct(pct);
-    refreshLayers();
+    _activeLyr.setRetainedPct(pct);
+    drawLayers();
   };
+
+  function initActiveLayer(o) {
+    var lyr = new DisplayLayer(o.layer, o.dataset);
+    _hit.update(lyr.getDisplayLayer(_ext));
+    _activeStyle = MapStyle.getOutlineStyle();
+    lyr.updateStyle(_activeStyle);
+    return lyr;
+  }
 
   // Test if an update may have affected the visible shape of arcs
   // @flags Flags from update event
@@ -169,83 +127,20 @@ function MshpMap(model) {
         flags.arc_count || flags.repair;
   }
 
-  function updateArcStyle(style, group) {
-    var lyr = group.getLayer(),
-        arcs = group.getDataset().arcs;
-    if (arcs) {
-      style.arcFlags = new Uint8Array(arcs.size());
-      if (MapShaper.layerHasPaths(lyr)) {
-        initArcFlags(lyr.shapes, style.arcFlags);
-      }
-    }
+  function drawLayers() {
+    drawLayer(_activeLyr, _hoverCanv, _hoverStyle);
+    drawLayer(_activeLyr, _activeCanv, _activeStyle);
+    drawLayer(_highLyr, _highCanv, _highStyle);
   }
 
-  function initArcFlags(shapes, arr) {
-    // Arcs belonging to at least one path are flagged 1, others 0
-    MapShaper.countArcsInShapes(shapes, arr);
-    for (var i=0, n=arr.length; i<n; i++) {
-      arr[i] = arr[i] === 0 ? 0 : 1;
-    }
-  }
-
-  function updateDotStyle(style, group) {
-    var lyr = group.getLayer(),
-        dataset = group.getDataset();
-    style.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
-  }
-
-  function calcDotSize(n) {
-    return n < 20 && 5 || n < 500 && 4 || n < 50000 && 3 || 2;
-  }
-
-  function refreshLayers() {
-    _groups.forEach(refreshLayer);
-  }
-
-  function getHoverStyle(lyr, pinned) {
-    return (pinned ? pinnedStyles : hoverStyles)[lyr.geometry_type];
-  }
-
-  function refreshLayer(group) {
-    var style;
-    if (group == _activeGroup) {
-      style = activeStyle;
-    } else if (group == _highGroup) {
-      style = highStyle;
-    } else if (group == _hoverGroup) {
-      style = hoverStyle;
-    }
-    if (!style) {
-      group.hide();
-    } else if (group == _hoverGroup) {
-      group.drawShapes(group.getLayer(), style, _ext);
+  function drawLayer(lyr, canv, style) {
+    if (style) {
+      canv.prep(_ext);
+      lyr.draw(canv, style, _ext);
     } else {
-      group.drawStructure(group.getLayer(), style, _ext);
+      canv.hide();
     }
-  }
 
-  function addGroup(dataset, opts) {
-    var group = new LayerGroup(dataset, opts);
-    group.getElement().appendTo(_layers);
-    _groups.push(group);
-    return group;
-  }
-
-  function deleteGroup(group) {
-    _groups = _groups.reduce(function(memo, g) {
-      if (g == group) {
-        g.remove();
-      } else {
-        memo.push(g);
-      }
-      return memo;
-    }, []);
-  }
-
-  function findGroup(dataset) {
-    return utils.find(_groups, function(group) {
-      return group.getDataset() == dataset;
-    });
   }
 }
 

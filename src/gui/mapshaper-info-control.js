@@ -10,9 +10,11 @@ function InfoControl(model, hit) {
   model.on('update', function(e) {
     if (isOn()) {
       if (e.flags.select) {
+        // hide popup if new layer has been selected
         _popup.hide();
       }
-      hit.start(model.getEditingLayer());
+      // hit detection receives current data elsewhere
+      // hit.start(model.getEditingLayer());
     }
   });
 
@@ -39,7 +41,7 @@ function InfoControl(model, hit) {
   function reset() {
     _popup.hide();
     if (isOn()) {
-      hit.start(model.getEditingLayer());
+      hit.start();
     } else {
       hit.stop();
     }

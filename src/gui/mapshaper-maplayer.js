@@ -1,200 +1,150 @@
-/* @requires mapshaper-canvas, mapshaper-gui-shapes */
+/* @requires mapshaper-canvas, mapshaper-gui-shapes, mapshaper-gui-table */
 
-// Interface for displaying the points and paths in a dataset
-//
-function LayerGroup(dataset) {
-  var _el = El('canvas'),
-      _canvas = _el.node(),
-      _ctx = _canvas.getContext('2d'),
-      _lyr, _filteredArcs, _bounds;
+function DisplayLayer(lyr, dataset) {
+  var _displayBounds;
 
-  if (dataset) {
-    _filteredArcs = dataset.arcs ? new FilteredArcCollection(dataset.arcs) : null;
-  }
+  init();
 
-  this.hide = function() {
-    _el.hide();
-  };
-
-  this.showLayer = function(lyr) {
-    _lyr = lyr;
-    _bounds = getDisplayBounds(lyr, dataset);
-  };
-
-  this.getLayer = function() {
-    return _lyr;
-  };
-
-  this.getElement = function() {
-    return El(_canvas);
+  this.setStyle = function(o) {
+    lyr.display.style = o;
   };
 
   this.getBounds = function() {
-    return _bounds;
-  };
-
-  this.getDataset = function() {
-    return dataset;
-  };
-
-  this.getArcs = function() {
-    return _filteredArcs;
-  };
-
-  this.setArcs = function(arcs) {
-    _filteredArcs = arcs;
-  };
-
-  // Rebuild filtered arcs
-  this.updated = function() {
-    if (dataset && _filteredArcs) {
-      _filteredArcs.update(dataset.arcs);
-    }
+    return _displayBounds;
   };
 
   this.setRetainedPct = function(pct) {
-    _filteredArcs.setRetainedPct(pct);
-    return this;
-  };
-
-  this.drawStructure = function(lyr, style, ext) {
-    updateCanvas(ext);
-    _el.show();
-    if (_filteredArcs) {
-      drawArcs(style, style.arcFlags, ext);
-    }
-    if (lyr.geometry_type == 'point') {
-      drawPoints(lyr.shapes, style, ext);
+    if (dataset.arcs) {
+      dataset.arcs.setRetainedPct(pct);
     }
   };
 
-  this.drawShapes = function(lyr, style, ext) {
-    var type = lyr.geometry_type;
-        updateCanvas(ext);
-    _el.show();
-    if (type == 'point') {
-      drawPoints(lyr.shapes, style, ext);
+  this.updateStyle = function(style) {
+    var o = this.getDisplayLayer();
+    // dot style
+    style.dotSize = calcDotSize(MapShaper.countPointsInLayer(o.layer));
+    // arc style
+    if (o.dataset.arcs) {
+      lyr.display.arcFlags = new Uint8Array(o.dataset.arcs.size());
+      if (MapShaper.layerHasPaths(o.layer)) {
+        initArcFlags(o.layer.shapes, lyr.display.arcFlags);
+      }
+    }
+  };
+
+  // @ext (optional) map extent
+  // @ids (optional) ids of selected shapes
+  this.getDisplayLayer = function(ext, ids) {
+    var arcs = lyr.display.arcs;
+    if (!arcs) {
+      // use filtered arcs if available & map extent is known
+      arcs = ext && dataset.filteredArcs ?
+        dataset.filteredArcs.getArcCollection(ext) : dataset.arcs;
+    }
+    return {
+      layer: lyr.display.layer || lyr,
+      dataset: {arcs: arcs}
+    };
+  };
+
+  this.draw = function(canv, style, ext) {
+    style = style || lyr.display.style;
+    if (style.type == 'outline') {
+      this.drawStructure(canv, style, ext);
     } else {
-      drawPathShapes(lyr.shapes, style, ext);
+      this.drawShapes(canv, style, ext);
     }
   };
 
-  this.remove = function() {
-    this.getElement().remove();
+  this.drawStructure = function(canv, style, ext) {
+    var obj = this.getDisplayLayer(ext);
+    var arcs = obj.dataset.arcs;
+    if (arcs && lyr.display.arcFlags) {
+      canv.drawArcs(arcs, lyr.display.arcFlags, style);
+    }
+    if (obj.layer.geometry_type == 'point') {
+      canv.drawPoints(obj.layer.shapes, style);
+    }
   };
 
-  function getDisplayBounds(lyr, dataset) {
-    var arcBounds = dataset && dataset.arcs ? dataset.arcs.getBounds() : new Bounds(),
-        bounds = arcBounds, // default display extent: all arcs in the dataset
-        lyrBounds;
-
+  this.drawShapes = function(canv, style, ext) {
+    var obj = this.getDisplayLayer(ext);
+    var lyr = style.ids ? filterLayer(obj.layer, style.ids) : obj.layer;
     if (lyr.geometry_type == 'point') {
-      lyrBounds = MapShaper.getLayerBounds(lyr);
-      if (lyrBounds && lyrBounds.hasBounds()) {
-        if (lyrBounds.area() > 0 || arcBounds.area() === 0) {
-          bounds = lyrBounds;
-        }
-        // if a point layer has no extent (e.g. contains only a single point),
-        // then use arc bounds (if present), to match any path layers in the dataset.
+      canv.drawPoints(lyr.shapes, style);
+    } else {
+      canv.drawPathShapes(lyr.shapes, obj.dataset.arcs, style);
+    }
+  };
+
+  function filterLayer(lyr, ids) {
+    if (lyr.shapes) {
+      shapes = ids.map(function(id) {
+        return lyr.shapes[id];
+      });
+      return utils.defaults({shapes: shapes}, lyr);
+    }
+    return lyr;
+  }
+
+  function initArcFlags(shapes, arr) {
+    // Arcs belonging to at least one path are flagged 1, others 0
+    MapShaper.countArcsInShapes(shapes, arr);
+    for (var i=0, n=arr.length; i<n; i++) {
+      arr[i] = arr[i] === 0 ? 0 : 1;
+    }
+  }
+
+  function calcDotSize(n) {
+    return n < 20 && 5 || n < 500 && 4 || n < 50000 && 3 || 2;
+  }
+
+  function init() {
+    var display = lyr.display = lyr.display || {};
+
+    // init filtered arcs, if needed
+    if (MapShaper.layerHasPaths(lyr) && !dataset.filteredArcs) {
+      dataset.filteredArcs = new FilteredArcCollection(dataset.arcs);
+    }
+
+    // init table shapes, if needed
+    if (lyr.data && !lyr.shapes) {
+      if (!display.layer || display.layer.shapes.length != lyr.data.size()) {
+        utils.extend(display, gui.getDisplayLayerForTable(lyr.data));
       }
+    } else if (display.layer) {
+      delete display.layer;
+      delete display.arcs;
     }
 
-    // If a layer has collapsed, inflate it by a default amount
-    if (bounds.width() === 0) {
-      bounds.xmin = (bounds.centerX() || 0) - 1;
-      bounds.xmax = bounds.xmin + 2;
-    }
-    if (bounds.height() === 0) {
-      bounds.ymin = (bounds.centerY() || 0) - 1;
-      bounds.ymax = bounds.ymin + 2;
-    }
-    return bounds;
+    _displayBounds = getDisplayBounds(display.layer || lyr, display.arcs || dataset.arcs);
   }
+}
 
-  function drawPathShapes(shapes, style, ext) {
-    var arcs = _filteredArcs.getArcCollection(ext),
-        start = getPathStart(style, ext),
-        draw = getShapePencil(arcs, ext),
-        end = getPathEnd(style);
-    for (var i=0, n=shapes.length; i<n; i++) {
-      start(_ctx);
-      draw(shapes[i], _ctx);
-      end(_ctx);
-    }
-  }
+function getDisplayBounds(lyr, arcs) {
+  var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
+      bounds = arcBounds, // default display extent: all arcs in the dataset
+      lyrBounds;
 
-  function drawArcs(style, flags, ext) {
-    var arcs = _filteredArcs.getArcCollection(ext),
-        darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
-        lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
-    setArcVisibility(flags, arcs, ext);
-    drawFlaggedArcs(2, flags, lightStyle, arcs, ext);
-    drawFlaggedArcs(3, flags, darkStyle, arcs, ext);
-  }
-
-  function setArcVisibility(flags, arcs, ext) {
-    var minPathLen = 0.5 * ext.getPixelSize(),
-        geoBounds = ext.getBounds(),
-        geoBBox = geoBounds.toArray(),
-        allIn = geoBounds.contains(arcs.getBounds()),
-        visible;
-    // don't continue dropping paths if user zooms out farther than full extent
-    if (ext.scale() < 1) minPathLen *= ext.scale();
-    for (var i=0, n=arcs.size(); i<n; i++) {
-      visible = !arcs.arcIsSmaller(i, minPathLen) && (allIn ||
-          arcs.arcIntersectsBBox(i, geoBBox));
-      // mark visible arcs by setting second flag bit to 1
-      flags[i] = (flags[i] & 1) | (visible ? 2 : 0);
-    }
-  }
-
-  function drawFlaggedArcs(flag, flags, style, arcs, ext) {
-    var start = getPathStart(style, ext),
-        end = getPathEnd(style),
-        t = getScaledTransform(ext),
-        ctx = _ctx,
-        n = 25, // render paths in batches of this size (an optimization)
-        count = 0;
-    start(ctx);
-    for (i=0, n=arcs.size(); i<n; i++) {
-      if (flags[i] != flag) continue;
-      if (++count % n === 0) {
-        end(ctx);
-        start(ctx);
+  if (lyr.geometry_type == 'point') {
+    lyrBounds = MapShaper.getLayerBounds(lyr);
+    if (lyrBounds && lyrBounds.hasBounds()) {
+      if (lyrBounds.area() > 0 || arcBounds.area() === 0) {
+        bounds = lyrBounds;
       }
-      drawPath(arcs.getArcIter(i), t, ctx);
-    }
-    end(ctx);
-  }
-
-  function drawPoints(shapes, style, ext) {
-    var t = getScaledTransform(ext),
-        size = (style.dotSize || 3) * gui.getPixelRatio(),
-        drawPoint = style.roundDot ? drawCircle : drawSquare,
-        shp, p;
-
-    // TODO: don't try to draw offscreen points
-    _ctx.fillStyle = style.dotColor || "black";
-    for (var i=0, n=shapes.length; i<n; i++) {
-      shp = shapes[i];
-      for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
-        p = shp[j];
-        drawPoint(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, _ctx);
-      }
+      // if a point layer has no extent (e.g. contains only a single point),
+      // then use arc bounds (if present), to match any path layers in the dataset.
     }
   }
 
-  function clearCanvas() {
-    _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
+  // If a layer has collapsed, inflate it by a default amount
+  if (bounds.width() === 0) {
+    bounds.xmin = (bounds.centerX() || 0) - 1;
+    bounds.xmax = bounds.xmin + 2;
   }
-
-  function updateCanvas(ext) {
-    var w = ext.width(),
-        h = ext.height(),
-        pixRatio = gui.getPixelRatio();
-    clearCanvas();
-    _canvas.width = w * pixRatio;
-    _canvas.height = h * pixRatio;
-    _el.classed('retina', pixRatio == 2);
+  if (bounds.height() === 0) {
+    bounds.ymin = (bounds.centerY() || 0) - 1;
+    bounds.ymax = bounds.ymin + 2;
   }
+  return bounds;
 }
