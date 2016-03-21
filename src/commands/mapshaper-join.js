@@ -144,7 +144,7 @@ MapShaper.joinTables = function(dest, src, join, opts) {
       if (opts.unmatched) {
         // Save a copy of unmatched record, before null values from join fields
         // are added.
-        unmatchedRecords[i] = utils.extend({}, destRec);
+        unmatchedRecords.push(utils.extend({}, destRec));
       }
       MapShaper.updateUnmatchedRecord(destRec, copyFields, sumFields);
     }

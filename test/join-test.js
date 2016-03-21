@@ -61,8 +61,8 @@ describe('mapshaper-join.js', function () {
           a: {
             type: "GeometryCollection",
             geometries: [{type: null, properties: {foo: 'a'}},
-              {type: null, properties: {foo: 'a'}},
               {type: null, properties: {foo: 'b'}},
+              {type: null, properties: {foo: 'a'}}
             ]
           },
           b: {
