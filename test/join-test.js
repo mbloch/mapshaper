@@ -80,7 +80,7 @@ describe('mapshaper-join.js', function () {
         assert.deepEqual(output.objects.unjoined.geometries,
           [{type: null, properties: {fooz: 'c', bar: 'gamma'}}])
         assert.deepEqual(output.objects.unmatched.geometries,
-          [{type: null, properties: {foo: 'a', bar: null}}, {type: null, properties: {foo: 'a', bar: null}}])
+          [{type: null, properties: {foo: 'a'}}, {type: null, properties: {foo: 'a'}}])
         done();
       })
     })

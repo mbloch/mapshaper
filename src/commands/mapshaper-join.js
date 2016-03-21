@@ -97,13 +97,13 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
 MapShaper.joinTables = function(dest, src, join, opts) {
   var srcRecords = src.getRecords(),
       destRecords = dest.getRecords(),
+      unmatchedRecords = [],
       joinFields = MapShaper.getFieldsToJoin(dest, src, opts),
       sumFields = opts.sum_fields || [],
       copyFields = utils.difference(joinFields, sumFields),
       countField = MapShaper.getCountFieldName(dest.getFields()),
       addCountField = sumFields.length > 0, // add a count field if we're aggregating records
       joinCounts = new Uint32Array(srcRecords.length),
-      matchCounts = new Uint32Array(destRecords.length),
       matchCount = 0,
       collisionCount = 0,
       retn = {},
@@ -135,13 +135,17 @@ MapShaper.joinTables = function(dest, src, join, opts) {
       if (sumFields.length > 0) {
         MapShaper.joinBySum(destRec, srcRec, sumFields);
       }
-      matchCounts[i]++;
       joinCounts[srcId]++;
       count++;
     }
     if (count > 0) {
       matchCount++;
     } else if (destRec) {
+      if (opts.unmatched) {
+        // Save a copy of unmatched record, before null values from join fields
+        // are added.
+        unmatchedRecords[i] = utils.extend({}, destRec);
+      }
       MapShaper.updateUnmatchedRecord(destRec, copyFields, sumFields);
     }
     if (addCountField) {
@@ -156,24 +160,20 @@ MapShaper.joinTables = function(dest, src, join, opts) {
       MapShaper.countJoins(joinCounts), srcRecords.length, collisionCount);
 
   if (opts.unjoined) {
-    retn.unjoined = MapShaper.getUnjoinedLayer(src, joinCounts);
-    retn.unjoined.name = 'unjoined';
+    retn.unjoined = {
+      name: 'unjoined',
+      data: new DataTable(srcRecords.filter(function(o, i) {
+        return joinCounts[i] === 0;
+      }))
+    };
   }
   if (opts.unmatched) {
-    // TODO: copy destination records before null values for join fields are added
-    retn.unmatched = MapShaper.getUnjoinedLayer(dest, matchCounts);
-    retn.unmatched.name = 'unmatched';
+    retn.unmatched = {
+      name: 'unmatched',
+      data: new DataTable(unmatchedRecords)
+    };
   }
   return retn;
-};
-
-MapShaper.getUnjoinedLayer = function(data, counts) {
-  var filtered = data.getRecords().filter(function(o, i) {
-    return counts[i] === 0;
-  });
-  return {
-    data: new DataTable(filtered).clone()
-  };
 };
 
 MapShaper.countJoins = function(counts) {
