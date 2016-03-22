@@ -22,6 +22,7 @@ MapShaper.exportGeoJSON = function(dataset, opts) {
 MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
   opts = opts || {};
   var properties = MapShaper.exportProperties(lyr.data, opts),
+      shapes = lyr.shapes,
       arcs = dataset.arcs,
       ids = MapShaper.exportIds(lyr.data, opts),
       useFeatures = !!(properties || ids),
@@ -30,7 +31,7 @@ MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
   if (opts.prettify) {
     stringify = MapShaper.getFormattedStringify(['bbox', 'coordinates']);
   }
-  if (properties && properties.length !== lyr.shapes.length) {
+  if (properties && shapes && properties.length !== shapes.length) {
     error("[-o] Mismatch between number of properties and number of shapes");
   }
 
@@ -51,13 +52,14 @@ MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
 
   // serialize features one at a time to avoid allocating lots of arrays
   // TODO: consider serializing once at the end, for clarity
-  var objects = lyr.shapes.reduce(function(memo, shape, i) {
+  var objects = (shapes || properties).reduce(function(memo, o, i) {
+    var shape = shapes ? shapes[i] : null;
     var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, lyr.geometry_type),
         str;
     if (useFeatures) {
       obj = {
         type: "Feature",
-        properties: properties && properties[i] || null,
+        properties: properties ? properties[i] : null,
         geometry: obj
       };
     } else if (obj === null) {

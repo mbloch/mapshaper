@@ -41,7 +41,6 @@ describe('mapshaper-geojson.js', function () {
     })
 
 
-
     it('Import GeometryCollection inside a feature', function() {
       var src = {
         type: 'Feature',
@@ -74,6 +73,21 @@ describe('mapshaper-geojson.js', function () {
 
 
   describe('exportGeoJSON()', function () {
+
+    it('export FeatureCollection with null geometries if no shapes are present', function() {
+      var lyr = {
+        data: new DataTable([{foo: 'a'}])
+      }
+      var dataset = {
+        layers: [lyr]
+      };
+      var target = {type: "FeatureCollection", features: [
+        {type: 'Feature', geometry: null, properties: {foo: 'a'}}
+      ]};
+
+      assert.deepEqual(api.internal.exportGeoJSONObject(lyr, dataset), target);
+    })
+
     it('collapsed polygon exported as null geometry', function () {
       var arcs = new api.internal.ArcCollection([[[1, 1], [2, 3], [1, 1]]]);
       var lyr = {
