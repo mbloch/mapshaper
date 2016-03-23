@@ -52,7 +52,7 @@ MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
 
   // serialize features one at a time to avoid allocating lots of arrays
   // TODO: consider serializing once at the end, for clarity
-  var objects = (shapes || properties).reduce(function(memo, o, i) {
+  var objects = (shapes || properties || []).reduce(function(memo, o, i) {
     var shape = shapes ? shapes[i] : null;
     var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, lyr.geometry_type),
         str;

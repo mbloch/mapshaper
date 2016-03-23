@@ -237,6 +237,11 @@ describe('mapshaper-geojson.js', function () {
 
   describe('Import/Export roundtrip tests', function () {
 
+    it('empty GeometryCollection', function () {
+      var empty = {"type":"GeometryCollection","geometries":[]};
+      assert.deepEqual(empty, importExport(empty));
+    })
+
     it('preserve top-level crs', function(done) {
       var crs = {
         "type": "name",
@@ -316,10 +321,6 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(input, importExport(input));
     })
 
-    it('empty GeometryCollection', function () {
-      var empty = {"type":"GeometryCollection","geometries":[]};
-      assert.deepEqual(empty, importExport(empty));
-    })
 
     it('null geom, one property', function () {
       var geom = {"type":"FeatureCollection", "features":[
