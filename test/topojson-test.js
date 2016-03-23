@@ -202,6 +202,20 @@ describe('topojson-export.js and topojson-import.js', function () {
   })
 
   describe('TopoJSON import', function () {
+    it('GeometryCollection with all null geometries is imported without shapes', function() {
+      var obj = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: null,
+          properties: {foo: 'a'}
+        }]
+      }
+      var lyr = TopoJSON.importObject(obj);
+      assert.equal(lyr.geometry_type, undefined);
+      assert.equal(lyr.shapes, undefined);
+      assert.deepEqual(lyr.data.getRecords(), [{foo: 'a'}]);
+    })
+
     it('importObject() with id_field', function () {
       var obj = {
         type: "Point",

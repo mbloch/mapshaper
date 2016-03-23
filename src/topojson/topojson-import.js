@@ -154,14 +154,14 @@ TopoJSON.GeometryImporter = function(opts) {
   };
 
   this.done = function() {
-    var lyr = {
-      shapes: shapes,
-      geometry_type: collectionType
-    };
+    var lyr = {};
+    if (collectionType) {
+      lyr.geometry_type = collectionType;
+      lyr.shapes = shapes;
+    }
     if (properties.length > 0) {
       lyr.data = new DataTable(properties);
     }
-    // console.log(lyr.shapes)
     return lyr;
   };
 };
