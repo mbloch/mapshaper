@@ -88,7 +88,7 @@ MapShaper.importShapefile = function(obj, opts) {
     dbf = MapShaper.importDbf(obj, opts);
     utils.extend(dataset.info, dbf.info);
     lyr.data = dbf.layers[0].data;
-    if (lyr.data.size() != lyr.shapes.length) {
+    if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
       message("[shp] Mismatched .dbf and .shp record count -- possible data loss.");
     }
   }

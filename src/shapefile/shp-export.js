@@ -15,9 +15,9 @@ MapShaper.exportShapefile = function(dataset, opts) {
 };
 
 MapShaper.exportPrjFile = function(lyr, dataset) {
-  var outputPrj = dataset.info.output_prj;
+  var outputPrj = dataset.info && dataset.info.output_prj;
   if (!outputPrj && outputPrj !== null) { // null value indicates crs is unknown
-    outputPrj = dataset.info.input_prj;
+    outputPrj = dataset.info && dataset.info.input_prj;
   }
   return outputPrj ? {
     content: outputPrj,
@@ -28,13 +28,10 @@ MapShaper.exportPrjFile = function(lyr, dataset) {
 MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {
   var geomType = layer.geometry_type;
   var shpType = MapShaper.getShapefileType(geomType);
-  if (shpType === null) {
-    error("[exportShpAndShx()] Unable to export geometry type:", geomType);
-  }
-
   var fileBytes = 100;
   var bounds = new Bounds();
-  var shapeBuffers = layer.shapes.map(function(shape, i) {
+  var shapes = layer.shapes || utils.initializeArray(new Array(MapShaper.getFeatureCount(layer)), null);
+  var shapeBuffers = shapes.map(function(shape, i) {
     var pathData = MapShaper.exportPathData(shape, dataset.arcs, geomType);
     var rec = MapShaper.exportShpRecord(pathData, i+1, shpType);
     fileBytes += rec.buffer.byteLength;

@@ -108,7 +108,7 @@ function DisplayLayer(lyr, dataset) {
     }
 
     // init table shapes, if needed
-    if (lyr.data && !lyr.shapes) {
+    if (lyr.data && !lyr.geometry_type) {
       if (!display.layer || display.layer.shapes.length != lyr.data.size()) {
         utils.extend(display, gui.getDisplayLayerForTable(lyr.data));
       }

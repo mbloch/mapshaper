@@ -14,7 +14,7 @@ MapShaper.importShp = function(src, opts) {
       maxPoints = Math.round(reader.header().byteLength / 16), // for reserving buffer space
       importer = new PathImporter(opts, maxPoints);
 
-  if (!type) {
+  if (!MapShaper.isSupportedShapefileType(shpType)) {
     stop("Unsupported Shapefile type:", shpType);
   }
   if (ShpType.isZType(shpType)) {

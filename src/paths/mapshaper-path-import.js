@@ -153,6 +153,7 @@ function PathImporter(opts, reservedPoints) {
   //
   this.done = function() {
     var arcs;
+    var lyr = {name: ''};
 
     // possible values: polygon, polyline, point, mixed, null
     if (collectionType == 'mixed') {
@@ -194,14 +195,16 @@ function PathImporter(opts, reservedPoints) {
     // TODO: remove empty arcs, collapsed arcs
     // ...
 
+    // If shapes are all null, don't add a shapes array or geometry_type
+    if (collectionType) {
+      lyr.geometry_type = collectionType;
+      lyr.shapes = shapes;
+    }
+
     return {
       arcs: arcs || null,
       info: {},
-      layers: [{
-        name: '',
-        geometry_type: collectionType,
-        shapes: shapes
-      }]
+      layers: [lyr]
     };
   };
 }

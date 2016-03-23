@@ -15,11 +15,14 @@ MapShaper.translateShapefileType = function(shpType) {
   return null;
 };
 
+MapShaper.isSupportedShapefileType = function(t) {
+  return utils.contains([0,1,3,5,8,11,13,15,18,21,23,25,28], t);
+};
+
 MapShaper.getShapefileType = function(type) {
-  if (type === null) return ShpType.NULL;
   return {
     polygon: ShpType.POLYGON,
     polyline: ShpType.POLYLINE,
     point: ShpType.MULTIPOINT  // TODO: use POINT when possible
-  }[type] || null;
+  }[type] || ShpType.NULL;
 };

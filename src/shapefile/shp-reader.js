@@ -97,12 +97,13 @@ function ShpReader(src) {
       error("Not a valid .shp file");
     }
 
-    var supportedTypes = [1,3,5,8,11,13,15,18,21,23,25,28];
-    if (!utils.contains(supportedTypes, header.type))
+    if (!MapShaper.isSupportedShapefileType(header.type)) {
       error("Unsupported .shp type:", header.type);
+    }
 
-    if (header.byteLength != file.size())
+    if (header.byteLength != file.size()) {
       error("File size of .shp doesn't match size in header");
+    }
 
     return header;
   }

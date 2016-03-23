@@ -20,6 +20,26 @@ describe('mapshaper-shapefile.js', function () {
     });
   })
 
+  describe('Export and import layers containing data but no shapes', function () {
+    it('test 1', function () {
+      var records = [{foo: 'a'}]
+      var dataset = {
+        layers: [{
+          name: 'test',
+          data: new api.internal.DataTable(records)
+        }]
+      };
+      var files = api.internal.exportFileContent(dataset, {encoding: 'ascii', format:"shapefile"});
+      var obj = {
+        shp: {content: files[0].content},
+        dbf: {content: files[2].content}
+      };
+      var dataset2 = api.internal.importContent(obj, {encoding: 'ascii'});
+      assert.deepEqual(dataset2.layers[0].data.getRecords(), records);
+      assert.equal(dataset2.layers[0].shapes, null);
+    })
+  })
+
   describe('Export/Import roundtrip tests', function () {
 
     it('Six counties', function () {

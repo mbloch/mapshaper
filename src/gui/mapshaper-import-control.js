@@ -205,23 +205,27 @@ function ImportControl(model) {
     var type = MapShaper.guessInputType(name, content),
         importOpts = getImportOpts(),
         matches = findMatchingShp(name),
-        lyr;
+        dataset, lyr;
 
     // TODO: refactor
     if (type == 'dbf' && matches.length > 0) {
       // find an imported .shp layer that is missing attribute data
       // (if multiple matches, try to use the most recently imported one)
-      lyr = matches.reduce(function(memo, d) {
-        var lyr = d.layers[0];
-        if (!lyr.data) {
-          memo = lyr;
+      dataset = matches.reduce(function(memo, d) {
+        if (!d.layers[0].data) {
+          memo = d;
         }
         return memo;
       }, null);
-      if (lyr) {
+      if (dataset) {
+        lyr = dataset.layers[0];
         lyr.data = new MapShaper.ShapefileTable(content, importOpts.encoding);
-        if (lyr.data.size() != lyr.shapes.length) {
+        if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
           stop("Different number of records in .shp and .dbf files");
+        }
+        if (!lyr.geometry_type) {
+          // kludge: trigger display of table cells if .shp has null geometry
+          model.updated(null, lyr, dataset);
         }
         readNext();
         return;
