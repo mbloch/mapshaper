@@ -49,7 +49,6 @@ function Model() {
     datasets = datasets.filter(function(d) {
       return d != target;
     });
-    this.dispatchEvent('delete', {dataset: target});
   };
 
   this.getDatasets = function() {

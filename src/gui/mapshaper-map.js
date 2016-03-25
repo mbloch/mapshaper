@@ -55,10 +55,6 @@ function MshpMap(model) {
     drawLayer(_activeLyr, _hoverCanv, _hoverStyle);
   });
 
-  model.on('delete', function(e) {
-    _activeLyr = null;
-  });
-
   model.on('select', function(e) {
     _highStyle = null;
     _hoverStyle = null;
