@@ -51,7 +51,11 @@ function MshpMap(model) {
 
   _hit.on('change', function(e) {
     var lyr = _activeLyr.getDisplayLayer().layer;
-    _hoverStyle = e.id >= 0 ? MapStyle.getSelectionStyle(lyr, [e.id], e.pinned) : null;
+    _hoverStyle = null;
+    if (e.id >= 0) {
+      _hoverStyle = e.pinned ? MapStyle.getSelectionStyle(lyr, [e.id]) :
+        MapStyle.getHoverStyle(lyr, [e.id]);
+    }
     drawLayer(_activeLyr, _hoverCanv, _hoverStyle);
   });
 
