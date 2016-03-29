@@ -47,7 +47,7 @@ describe('geojson-to-svg.js', function () {
         properties: {cx: 0, cy: 0, r: 2, id: 'a'}
       }, {
         tag: 'path',
-        properties: {d: 'M1 2 L0 2', id: 'b'}
+        properties: {d: 'M 1 2 0 2', id: 'b'}
       }];
       assert.deepEqual(SVG.importGeoJSONFeatures(geo, [0, 0, 1, 2]), target);
     })
@@ -61,8 +61,8 @@ describe('geojson-to-svg.js', function () {
     })
 
     it('path element', function() {
-      var obj = {tag: 'path', properties: {d: 'M0 0 L1 1'}};
-      assert.equal(SVG.stringify(obj), '<path d="M0 0 L1 1"/>')
+      var obj = {tag: 'path', properties: {d: 'M 0 0 1 1'}};
+      assert.equal(SVG.stringify(obj), '<path d="M 0 0 1 1"/>')
     })
 
     it('group inside a group', function() {

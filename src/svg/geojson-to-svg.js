@@ -78,10 +78,8 @@ SVG.importMultiGeometry = function(coords, importer) {
 SVG.reducePathCoord = function(memo, p, i) {
   if (i === 0) {
     memo = 'M';
-  } else {
-    memo += ' L';
   }
-  memo += p[0] + ' ' + -p[1];
+  memo += ' ' + p[0] + ' ' + -p[1];
   return memo;
 };
 
