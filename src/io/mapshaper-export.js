@@ -2,6 +2,7 @@
 mapshaper-geojson
 mapshaper-topojson
 mapshaper-shapefile
+mapshaper-svg
 mapshaper-dataset-utils
 mapshaper-rounding
 mapshaper-delim-export
@@ -31,7 +32,8 @@ MapShaper.exportFileContent = function(dataset, opts) {
   }
 
   if (opts.precision) {
-    dataset = MapShaper.setCoordinatePrecision(dataset, opts.precision);
+    dataset = MapShaper.copyDataset(dataset);
+    MapShaper.setCoordinatePrecision(dataset, opts.precision);
   }
 
   MapShaper.validateLayerData(layers);
@@ -59,7 +61,8 @@ MapShaper.exporters = {
   shapefile: MapShaper.exportShapefile,
   dsv: MapShaper.exportDelim,
   dbf: MapShaper.exportDbf,
-  json: MapShaper.exportJSON
+  json: MapShaper.exportJSON,
+  svg: MapShaper.exportSVG
 };
 
 MapShaper.getOutputFormat = function(dataset, opts) {

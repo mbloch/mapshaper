@@ -200,21 +200,6 @@ function ArcCollection() {
     return JSON.stringify(this.toArray());
   };
 
-  // Snap coordinates to a grid of @quanta locations on both axes
-  // This may snap nearby points to the same coordinates.
-  // Consider a cleanup pass to remove dupes, make sure collapsed arcs are
-  //   removed on export.
-  //
-  this.quantize = function(quanta) {
-    var bb1 = this.getBounds(),
-        bb2 = new Bounds(0, 0, quanta-1, quanta-1),
-        transform = bb1.getTransform(bb2),
-        inverse = transform.invert();
-
-    this.applyTransform(transform, true);
-    this.applyTransform(inverse);
-  };
-
   // @cb function(i, j, xx, yy)
   this.forEachArcSegment = function(arcId, cb) {
     var fw = arcId >= 0,
@@ -246,25 +231,12 @@ function ArcCollection() {
     return count;
   };
 
-  // Apply a linear transform to the data, with or without rounding.
-  //
-  this.applyTransform = function(t, round) {
-    var xx = _xx, yy = _yy, x, y;
-    if (round && typeof round != 'function') {
-      round = Math.round;
-    }
-    if (!t) {
-      t = new Transform(); // null transform
-    }
+  this.transformPoints = function(f) {
+    var xx = _xx, yy = _yy, p;
     for (var i=0, n=xx.length; i<n; i++) {
-      x = xx[i] * t.mx + t.bx;
-      y = yy[i] * t.my + t.by;
-      if (round) {
-        x = round(x);
-        y = round(y);
-      }
-      xx[i] = x;
-      yy[i] = y;
+      p = f(xx[i], yy[i]);
+      xx[i] = p[0];
+      yy[i] = p[1];
     }
     initBounds();
   };

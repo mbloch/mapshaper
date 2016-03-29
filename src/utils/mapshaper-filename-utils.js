@@ -60,3 +60,8 @@ utils.getCommonFileBase = function(names) {
     return memo;
   }, "");
 };
+
+utils.getOutputFileBase = function(dataset) {
+  var inputFiles = dataset.info && dataset.info.input_files;
+  return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
+};

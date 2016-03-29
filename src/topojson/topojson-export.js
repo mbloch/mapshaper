@@ -12,19 +12,10 @@ mapshaper-segment-geom
 MapShaper.exportTopoJSON = function(dataset, opts) {
   var topology = TopoJSON.exportTopology(dataset, opts),
       stringify = JSON.stringify,
-      filename;
+      filename = opts.output_file || utils.getOutputFileBase(dataset) + '.json';
   if (opts.prettify) {
     stringify = MapShaper.getFormattedStringify('coordinates,arcs,bbox,translate,scale'.split(','));
   }
-  if (opts.output_file) {
-    filename = opts.output_file;
-  } else if (dataset.info && dataset.info.input_files) {
-    // use base name of input file(s)
-    filename = (utils.getCommonFileBase(dataset.info.input_files) || 'output') + '.json';
-  } else {
-    filename = 'output.json';
-  }
-
   return [{
     content: stringify(topology),
     filename: filename
@@ -85,9 +76,14 @@ TopoJSON.copyDatasetForExport = function(dataset) {
 
 TopoJSON.transformDataset = function(dataset, bounds, opts) {
   var bounds2 = TopoJSON.calcExportBounds(bounds, dataset.arcs, opts),
-      transform = bounds.getTransform(bounds2),
-      inv = transform.invert();
-  dataset.arcs.applyTransform(transform, true); // flag -> round coords
+      fw = bounds.getTransform(bounds2),
+      inv = fw.invert();
+
+  dataset.arcs.transformPoints(function(x, y) {
+    var p = fw.transform(x, y);
+    return [Math.round(p[0]), Math.round(p[1])];
+  });
+
   // TODO: think about handling geometrical errors introduced by quantization,
   // e.g. segment intersections and collapsed polygon rings.
   return {

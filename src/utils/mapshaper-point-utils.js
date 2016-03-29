@@ -16,3 +16,13 @@ MapShaper.forEachPoint = function(shapes, cb) {
     }
   });
 };
+
+MapShaper.transformPointsInLayer = function(lyr, f) {
+  if (MapShaper.layerHasPoints(lyr)) {
+    MapShaper.forEachPoint(lyr.shapes, function(p) {
+      var p2 = f(p[0], p[1]);
+      p[0] = p2[0];
+      p[1] = p2[1];
+    });
+  }
+};

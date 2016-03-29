@@ -27,7 +27,6 @@ MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
       ids = MapShaper.exportIds(lyr.data, opts),
       useFeatures = !!(properties || ids),
       stringify = JSON.stringify;
-
   if (opts.prettify) {
     stringify = MapShaper.getFormattedStringify(['bbox', 'coordinates']);
   }

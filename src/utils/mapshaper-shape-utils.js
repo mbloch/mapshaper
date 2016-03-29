@@ -281,3 +281,20 @@ MapShaper.getPathMetadata = function(shape, arcs, type) {
     };
   });
 };
+
+MapShaper.quantizeArcs = function(arcs, quanta) {
+  // Snap coordinates to a grid of @quanta locations on both axes
+  // This may snap nearby points to the same coordinates.
+  // Consider a cleanup pass to remove dupes, make sure collapsed arcs are
+  //   removed on export.
+  //
+  var bb1 = arcs.getBounds(),
+      bb2 = new Bounds(0, 0, quanta-1, quanta-1),
+      fw = bb1.getTransform(bb2),
+      inv = fw.invert();
+
+  arcs.transformPoints(function(x, y) {
+    var p = fw.transform(x, y);
+    return inv.transform(Math.round(p[0]), Math.round(p[1]));
+  });
+};

@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-shape-utils */
+/* @requires mapshaper-common, mapshaper-shape-utils, mapshaper-point-utils */
 
 // utility functions for datasets and layers
 
@@ -132,5 +132,17 @@ MapShaper.findMatchingLayers = function(layers, target) {
   ii = utils.uniq(ii); // remove dupes
   return ii.map(function(i) {
     return layers[i];
+  });
+};
+
+// Transform the points in a dataset in-place; don't clean up corrupted shapes
+MapShaper.transformPoints = function(dataset, f) {
+  if (dataset.arcs) {
+    dataset.arcs.transformPoints(f);
+  }
+  dataset.layers.forEach(function(lyr) {
+    if (MapShaper.layerHasPoints(lyr)) {
+      MapShaper.transformPointsInLayer(lyr, f);
+    }
   });
 };

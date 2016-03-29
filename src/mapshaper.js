@@ -24,10 +24,13 @@ utils.extend(api.internal, {
   ArcIter: ArcIter,
   ShapeIter: ShapeIter,
   Bounds: Bounds,
+  Transform: Transform,
   NodeCollection: NodeCollection,
   PolygonIndex: PolygonIndex,
   PathIndex: PathIndex,
   topojson: TopoJSON,
+  geojson: GeoJSON,
+  svg: SVG,
   APIError: APIError
 });
 

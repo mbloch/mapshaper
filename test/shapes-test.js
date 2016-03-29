@@ -170,8 +170,9 @@ describe('mapshaper-shapes.js', function () {
       assert.equal(arcs.getPctByThreshold(0.3), 1);
       assert.equal(arcs.getPctByThreshold(4.5), 0.5);
       assert.equal(arcs.getPctByThreshold(6), 0);
-    });
 
+    });
+    /*
     it('#applyTransform() works', function() {
       var arcs = new ArcCollection(arcs4);
       arcs.applyTransform({
@@ -184,8 +185,22 @@ describe('mapshaper-shapes.js', function () {
       assert([[[3, 2], [5, 8], [7, 2], [3, 2]]], arcs.toArray());
       assert({xmin: 3, ymin: 2, xmax: 7, ymax: 8}, arcs.getBounds());
     });
+    */
 
-
+    it('#transformPoints() works', function() {
+      var arcs = new ArcCollection(arcs4);
+      var transform = new api.internal.Transform();
+      transform.mx = 2;
+      transform.my = 3;
+      transform.bx = 1;
+      transform.by = -1;
+      arcs.transformPoints(function(x, y) {
+        return transform.transform(x, y);
+      });
+      // from: // [1, 1], [2, 3], [3, 1], [1, 1]
+      assert([[[3, 2], [5, 8], [7, 2], [3, 2]]], arcs.toArray());
+      assert({xmin: 3, ymin: 2, xmax: 7, ymax: 8}, arcs.getBounds());
+    });
 
     it('#filter() works', function() {
       var arcs = new ArcCollection(arcs1);
@@ -200,27 +215,6 @@ describe('mapshaper-shapes.js', function () {
       arcs.filter(function() { return false });
       assert.deepEqual([], arcs.toArray());
     });
-
-    it('#quantize() works', function() {
-      // points: [1, 1], [2, 3], [3, 1], [1, 1]
-      var arcs = new ArcCollection(arcs4);
-      var bb1 = arcs.getBounds();
-
-      // hi-res
-      arcs.quantize(9999); // multiple of 3, so original coords are preserved
-      assert.deepEqual(bb1, arcs.getBounds());
-      assert.deepEqual([[[1, 1], [2, 3], [3, 1], [1, 1]]], arcs.toArray())
-
-      // low-res
-      arcs.quantize(3);
-      assert.deepEqual(bb1, arcs.getBounds());
-      assert.deepEqual([[[1, 1], [2, 3], [3, 1], [1, 1]]], arcs.toArray());
-
-      // ultra low-res
-      arcs.quantize(2);
-      assert.deepEqual(bb1, arcs.getBounds());
-      assert.deepEqual([[[1, 1], [3, 3], [3, 1], [1, 1]]], arcs.toArray());
-    })
 
   })
 

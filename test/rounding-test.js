@@ -5,8 +5,9 @@ function testPoints(src, precision, target) {
   var lyr = {
     geometry_type: 'point',
     shapes: src
-  },
-  dataset = api.internal.setCoordinatePrecision({layers:[lyr]}, precision);
+  };
+  var dataset = {layers:[lyr]};
+  api.internal.setCoordinatePrecision(dataset, precision);
   assert.deepEqual(dataset.layers[0].shapes, target);
 }
 
@@ -31,8 +32,8 @@ describe('mapshaper-rounding.js', function () {
       var target = [[[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]];
 
       var dataset = api.internal.importGeoJSON(json, {});
-      var rounded = api.internal.setCoordinatePrecision(dataset, 1);
-      var output = api.internal.exportGeoJSON(rounded, {});
+      api.internal.setCoordinatePrecision(dataset, 1);
+      var output = api.internal.exportGeoJSON(dataset, {});
       assert.deepEqual(JSON.parse(output[0].content).geometries[0].coordinates, target);
     })
 
@@ -48,8 +49,8 @@ describe('mapshaper-rounding.js', function () {
       var target = [[[1, 2], [2, 2], [2, 1], [1, 1], [1, 2]]];
 
       var dataset = api.internal.importGeoJSON(json, {});
-      var rounded = api.internal.setCoordinatePrecision(dataset, 1);
-      var output = api.internal.exportGeoJSON(rounded, {});
+      api.internal.setCoordinatePrecision(dataset, 1);
+      var output = api.internal.exportGeoJSON(dataset, {});
       assert.deepEqual(JSON.parse(output[0].content).geometries[0].coordinates, target);
     })
 
@@ -69,8 +70,8 @@ describe('mapshaper-rounding.js', function () {
       var target2 = [[[2, 3], [2, 2], [1, 2], [1, 3], [2, 3]]];
 
       var dataset = api.internal.importGeoJSON(json, {});
-      var rounded = api.internal.setCoordinatePrecision(dataset, 1);
-      var output = api.internal.exportGeoJSON(rounded, {});
+      api.internal.setCoordinatePrecision(dataset, 1);
+      var output = api.internal.exportGeoJSON(dataset, {});
 
       assert.deepEqual(JSON.parse(output[0].content).geometries[0].coordinates, target1);
       assert.deepEqual(JSON.parse(output[0].content).geometries[1].coordinates, target2);
@@ -86,11 +87,9 @@ describe('mapshaper-rounding.js', function () {
       };
 
       var dataset = api.internal.importGeoJSON(json, {});
-      var rounded = api.internal.setCoordinatePrecision(dataset, 1);
-      assert.deepEqual(rounded.layers[0].shapes, [null]);
-      // original coords are unaffected
-      assert.deepEqual(dataset.arcs.toArray(), [[[1, 1], [1, 2], [1.1, 2], [1, 1]]]);
-    })
+      api.internal.setCoordinatePrecision(dataset, 1);
+      assert.deepEqual(dataset.layers[0].shapes, [null]);
+    });
 
     it('bounding box is updated', function() {
       var json = {
@@ -102,10 +101,9 @@ describe('mapshaper-rounding.js', function () {
       };
 
       var dataset = api.internal.importGeoJSON(json, {});
-      var rounded = api.internal.setCoordinatePrecision(dataset, 1);
-      assert.deepEqual(rounded.arcs.getBounds().toArray(), [1, 1, 2, 2]);
-      // original arcs are unaffected
-      assert.deepEqual(dataset.arcs.getBounds().toArray(), [0.8, 0.9, 1.9, 2.1]);
+      api.internal.setCoordinatePrecision(dataset, 1);
+      assert.deepEqual(dataset.arcs.getBounds().toArray(), [1, 1, 2, 2]);
+
     })
 
   })

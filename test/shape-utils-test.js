@@ -34,4 +34,35 @@ describe('mapshaper-shape-utils.js', function () {
     });
   })
 
+  describe('quantizeArcs', function () {
+
+    it('quantizeArcs() works', function() {
+      //      b
+      //     / \
+      //    /   \
+      //   a --- c
+
+      // abca
+      var coords = [[[1, 1], [2, 3], [3, 1], [1, 1]]];
+      var arcs = new api.internal.ArcCollection(coords);
+      var bb1 = arcs.getBounds();
+
+      // hi-res
+      api.internal.quantizeArcs(arcs, 9999); // multiple of 3, so original coords are preserved
+      assert.deepEqual(bb1, arcs.getBounds());
+      assert.deepEqual([[[1, 1], [2, 3], [3, 1], [1, 1]]], arcs.toArray())
+
+      // low-res
+      api.internal.quantizeArcs(arcs, 3);
+      assert.deepEqual(bb1, arcs.getBounds());
+      assert.deepEqual([[[1, 1], [2, 3], [3, 1], [1, 1]]], arcs.toArray());
+
+      // ultra low-res
+      api.internal.quantizeArcs(arcs, 2);
+      assert.deepEqual(bb1, arcs.getBounds());
+      assert.deepEqual([[[1, 1], [3, 3], [3, 1], [1, 1]]], arcs.toArray());
+    })
+
+  })
+
 });

@@ -44,6 +44,8 @@ MapShaper.inferOutputFormat = function(file, inputFormat) {
     format = 'shapefile';
   } else if (ext == 'dbf') {
     format = 'dbf';
+  } else if (ext == 'svg') {
+    format = 'svg';
   } else if (/json$/.test(ext)) {
     format = 'geojson';
     if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
@@ -64,7 +66,7 @@ MapShaper.isZipFile = function(file) {
 };
 
 MapShaper.isSupportedOutputFormat = function(fmt) {
-  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile'];
+  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
   return types.indexOf(fmt) > -1;
 };
 
