@@ -158,10 +158,16 @@ body {
 	margin: 0 2px 0 2px;
 }
 
-#export-buttons {
-	display: none;
+/* --- Export dialog --------- */
+
+#export-options .dialog-btn {
+	min-width: 20px;
+	padding: 4px 6px 5px 6px;
 }
 
+#export-options .option-menu .advanced-options {
+	width: 242px;
+}
 
 /* --- Main area ------------- */
 
@@ -199,7 +205,6 @@ div.error-box > div {
 }
 
 
-
 /* --- Import screen -------------- */
 
 #fork-me {
@@ -223,28 +228,21 @@ div.error-box > div {
 	font-size: 12px;
 }
 
-#export-options .option-menu .advanced-options {
-	width: 225px;
-}
-
 #mshp-not-supported {
 	display: none;
 	z-index: 100;
 	text-align: center;
 }
 
-
 #dropped-file-list {
 	display: none;
 	padding-bottom: 3px;
 }
 
-
 #dropped-file-list p {
 	line-height: 1;
 	margin-bottom: 5px;
 }
-
 
 .popup-dialog {
 	display: none;
@@ -256,7 +254,7 @@ div.error-box > div {
 	text-align: left;
 	margin-top: 12px;
 	background-color: #fff;
-	padding: 10px 14px 8px 14px;
+	padding: 10px 14px 9px 14px;
 	vertical-align: top;
 	display: inline-block;
 	border: 1px solid #999;
@@ -462,7 +460,6 @@ body.simplify #layer-control-btn {
 .layer-item:hover:not(.active) {
 	background-color: #f7f7f7;
 }
-
 
 .layer-item .row > div {
 	display: inline-block;
