@@ -14,10 +14,10 @@ describe('geojson-to-svg.js', function () {
         tag: 'g',
         children: [{
           tag: 'circle',
-          properties: {cx: 0, cy: 1}
+          properties: {cx: 0, cy: 1, r: 2}
         }, {
           tag: 'circle',
-          properties: {cx: 1, cy: 2}
+          properties: {cx: 1, cy: 2, r: 2}
         }]
       }];
       assert.deepEqual(SVG.importGeoJSONFeatures(geo), target);
@@ -44,7 +44,7 @@ describe('geojson-to-svg.js', function () {
       };
       var target = [{
         tag: 'circle',
-        properties: {cx: 0, cy: 0, id: 'a'}
+        properties: {cx: 0, cy: 0, r: 2, id: 'a'}
       }, {
         tag: 'path',
         properties: {d: 'M1 2 L0 2', id: 'b'}

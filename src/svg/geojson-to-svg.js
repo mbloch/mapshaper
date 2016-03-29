@@ -99,7 +99,8 @@ SVG.importPoint = function(p) {
     tag: 'circle',
     properties: {
       cx: p[0],
-      cy: -p[1]
+      cy: -p[1],
+      r: 2
     }
   };
 };

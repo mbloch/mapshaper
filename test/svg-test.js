@@ -16,6 +16,24 @@ describe('mapshaper-svg.js', function () {
       assert.equal(data, svg)
       done();
     });
+  });
 
+  it ('id-field= works', function(done) {
+    var geo = {
+      type: 'Feature',
+      geometry: {
+        type: 'MultiPoint',
+        coordinates: [[0, 2], [2, 0]]
+      },
+      properties: {name: 'dots'}
+    };
+    var cmd = '-o id-field=name format=svg';
+
+    api.applyCommands(cmd, geo, function(err, data) {
+      var svg = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="800" height="800" viewBox="0 0 800 800">\n' +
+      '<g id="layer1" fill="black">\n<g id="dots">\n<circle cx="1" cy="1" r="2"/>\n<circle cx="799" cy="799" r="2"/>\n</g>\n</g>\n</svg>'
+      assert.equal(data, svg)
+      done();
+    });
   });
 });
