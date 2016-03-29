@@ -32,7 +32,7 @@ MapShaper.transformCoordsForSVG = function(dataset, opts) {
   MapShaper.transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);
   });
-  MapShaper.setCoordinatePrecision(dataset, 0.01);
+  MapShaper.setCoordinatePrecision(dataset, 0.001);
   return bounds2;
 };
 
