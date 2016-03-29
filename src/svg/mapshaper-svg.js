@@ -5,10 +5,7 @@ MapShaper.exportSVG = function(dataset, opts) {
     'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s">\n%s\n</svg>';
   var b, svg;
 
-  if (!opts.precision) {
-    // Modify a copy of the dataset
-    dataset = MapShaper.copyDataset(dataset);
-  }
+  dataset = MapShaper.copyDataset(dataset); // Modify a copy of the dataset
   b = MapShaper.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
     return MapShaper.exportLayerAsSVG(lyr, dataset, opts);
@@ -24,6 +21,7 @@ MapShaper.transformCoordsForSVG = function(dataset, opts) {
   var width = 800; // TODO: make this settable
   var margin = opts.margin >= 0 ? opts.margin : 1;
   var bounds = MapShaper.getDatasetBounds(dataset);
+  var precision = opts.precision || 0.0001;
   var height, bounds2, fwd;
   MapShaper.padViewportBoundsForSVG(bounds, width, margin);
   height = Math.ceil(width * bounds.height() / bounds.width());
@@ -32,7 +30,7 @@ MapShaper.transformCoordsForSVG = function(dataset, opts) {
   MapShaper.transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);
   });
-  MapShaper.setCoordinatePrecision(dataset, 0.001);
+  MapShaper.setCoordinatePrecision(dataset, precision);
   return bounds2;
 };
 
@@ -47,7 +45,6 @@ MapShaper.padViewportBoundsForSVG = function(bounds, width, marginPx) {
 };
 
 MapShaper.exportLayerAsSVG = function(lyr, dataset, opts) {
-  // TODO: style
   var geojson = MapShaper.exportGeoJSONObject(lyr, dataset, opts);
   var features = SVG.importGeoJSONFeatures(geojson);
   var svgObj = {

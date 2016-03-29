@@ -31,7 +31,7 @@ MapShaper.exportFileContent = function(dataset, opts) {
     });
   }
 
-  if (opts.precision) {
+  if (opts.precision && outFmt != 'svg') {
     dataset = MapShaper.copyDataset(dataset);
     MapShaper.setCoordinatePrecision(dataset, opts.precision);
   }
