@@ -18,7 +18,7 @@ MapShaper.exportSVG = function(dataset, opts) {
 };
 
 MapShaper.transformCoordsForSVG = function(dataset, opts) {
-  var width = 800; // TODO: make this settable
+  var width = opts.width > 0 ? opts.width : 800;
   var margin = opts.margin >= 0 ? opts.margin : 1;
   var bounds = MapShaper.getDatasetBounds(dataset);
   var precision = opts.precision || 0.0001;

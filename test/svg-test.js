@@ -36,4 +36,26 @@ describe('mapshaper-svg.js', function () {
       done();
     });
   });
+
+  it ('width= and margin= options work', function(done) {
+    var geo = {
+      type: 'GeometryCollection',
+      geometries: [{
+        type: 'Point',
+        coordinates: [0, -10]
+      }, {
+        type: 'Point',
+        coordinates: [-10, 10]
+      }]
+    };
+    var cmd = '-o width=10 margin=0 format=svg';
+
+    api.applyCommands(cmd, geo, function(err, data) {
+      var svg = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="10" height="20" viewBox="0 0 10 20">\n' +
+      '<g id="layer1" fill="black">\n<circle cx="10" cy="20" r="2"/>\n<circle cx="0" cy="0" r="2"/>\n</g>\n</svg>'
+      assert.equal(data, svg)
+      done();
+    });
+  });
+
 });

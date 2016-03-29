@@ -115,7 +115,7 @@ MapShaper.getOptionParser = function() {
       describe: "(optional) name of output file or directory, or - for stdout"
     })
     .option("format", {
-      describe: "export format (shapefile|geojson|topojson|json|dbf|csv|tsv)"
+      describe: "options: shapefile,geojson,topojson,json,dbf,csv,tsv,svg"
     })
     .option("target", targetOpt)
     .option("force", {
@@ -133,12 +133,6 @@ MapShaper.getOptionParser = function() {
       describe: "export a .json file with bbox of each layer",
       type: 'flag'
     })
-    /*
-    .option("drop-table", {
-      describe: "delete data attributes",
-      type: "flag"
-    })
-    */
     .option("cut-table", {
       describe: "detach data attributes from shapes and save as a JSON file",
       type: "flag"
@@ -177,6 +171,14 @@ MapShaper.getOptionParser = function() {
     })
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
+      type: "number"
+    })
+    .option("width", {
+      describe: "(SVG) width of the SVG viewport (default is 800)",
+      type: "number"
+    })
+    .option("margin", {
+      describe: "(SVG) margin between data and viewport bounds (default is 1)",
       type: "number"
     })
     .option("delimiter", {
