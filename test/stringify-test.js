@@ -8,7 +8,7 @@ describe('mapshaper-stringify.js', function () {
         bbox: [-1,0,1,2]
       };
       var stringify = api.internal.getFormattedStringify(['bbox']);
-      assert.equal(stringify(obj), '{\n "bbox": [-1, 0, 1, 2]\n}');
+      assert.equal(stringify(obj), '{\n  "bbox": [-1, 0, 1, 2]\n}');
     })
   })
 })
