@@ -13,73 +13,67 @@ MapShaper.exportGeoJSON = function(dataset, opts) {
   }
   return dataset.layers.map(function(lyr) {
     return {
-      content: MapShaper.exportGeoJSONString(lyr, dataset, opts),
+      content: MapShaper.exportLayerAsGeoJSON(lyr, dataset, opts),
       filename: lyr.name ? lyr.name + '.' + extension : ""
     };
   });
 };
 
-MapShaper.exportGeoJSONString = function(lyr, dataset, opts) {
+MapShaper.exportGeoJSONCollection = function(lyr, dataset, opts) {
   opts = opts || {};
   var properties = MapShaper.exportProperties(lyr.data, opts),
       shapes = lyr.shapes,
-      arcs = dataset.arcs,
       ids = MapShaper.exportIds(lyr.data, opts),
       useFeatures = !!(properties || ids),
-      stringify = JSON.stringify;
-  if (opts.prettify) {
-    stringify = MapShaper.getFormattedStringify(['bbox', 'coordinates']);
-  }
+      geojson, geometries, bounds;
+
   if (properties && shapes && properties.length !== shapes.length) {
     error("[-o] Mismatch between number of properties and number of shapes");
   }
 
-  var output = {
-    type: useFeatures ? 'FeatureCollection' : 'GeometryCollection'
-  };
+  geometries = (shapes || properties || []).map(function(o, i) {
+    var shape = shapes ? shapes[i] : null,
+        type = lyr.geometry_type;
+    return shape ? GeoJSON.exporters[type](shape, dataset.arcs) : null;
+  });
 
-  MapShaper.exportCRS(dataset, output);
-
-  if (opts.bbox) {
-    var bounds = MapShaper.getLayerBounds(lyr, arcs);
-    if (bounds.hasBounds()) {
-      output.bbox = bounds.toArray();
-    }
+  if (useFeatures) {
+    geojson = {
+      type: 'FeatureCollection'
+    };
+    geojson.features = geometries.map(function(geom, i) {
+      var feat = {
+        type: 'Feature',
+        geometry: geom,
+        properties: properties ? properties[i] : null
+      };
+      if (ids) {
+        feat.id = ids[i];
+      }
+      return feat;
+    });
+  } else {
+    // null geometries not allowed in GeometryCollection, skip them
+    geojson = {
+      type: 'GeometryCollection',
+      geometries: geometries.filter(function(geom) {return !!geom;})
+    };
   }
 
-  output[useFeatures ? 'features' : 'geometries'] = ['$'];
-
-  // serialize features one at a time to avoid allocating lots of arrays
-  // TODO: consider serializing once at the end, for clarity
-  var objects = (shapes || properties || []).reduce(function(memo, o, i) {
-    var shape = shapes ? shapes[i] : null;
-    var obj = MapShaper.exportGeoJSONGeometry(shape, arcs, lyr.geometry_type),
-        str;
-    if (useFeatures) {
-      obj = {
-        type: "Feature",
-        properties: properties ? properties[i] : null,
-        geometry: obj
-      };
-    } else if (obj === null) {
-      return memo; // null geometries not allowed in GeometryCollection, skip them
+  MapShaper.exportCRS(dataset, geojson);
+  if (opts.bbox) {
+    bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
+    if (bounds.hasBounds()) {
+      geojson.bbox = bounds.toArray();
     }
-    if (ids) {
-      obj.id = ids[i];
-    }
-    str = stringify(obj);
-    return memo === "" ? str : memo + (",\n" + str);
-  }, "");
-
-  return stringify(output).replace(/[\t ]*"\$"[\t ]*/, objects);
+  }
+  return geojson;
 };
 
-MapShaper.exportGeoJSONObject = function(lyr, arcs, opts) {
-  return JSON.parse(MapShaper.exportGeoJSONString(lyr, arcs, opts));
-};
-
-MapShaper.exportGeoJSONGeometry = function(shape, arcs, type) {
-  return shape ? GeoJSON.exporters[type](shape, arcs) : null;
+MapShaper.exportLayerAsGeoJSON = function(lyr, dataset, opts) {
+  var stringify = opts && opts.prettify ?
+    MapShaper.getFormattedStringify(['bbox', 'coordinates']) : JSON.stringify;
+  return stringify(MapShaper.exportGeoJSONCollection(lyr, dataset, opts));
 };
 
 // export GeoJSON or TopoJSON point geometry

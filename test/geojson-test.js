@@ -66,7 +66,7 @@ describe('mapshaper-geojson.js', function () {
         }
       };
       var dataset = api.internal.importGeoJSON(src, {});
-      var output = api.internal.exportGeoJSONObject(dataset.layers[0], dataset);
+      var output = api.internal.exportGeoJSONCollection(dataset.layers[0], dataset);
       assert.deepEqual(output.features[0], target);
     })
   })
@@ -85,7 +85,7 @@ describe('mapshaper-geojson.js', function () {
         {type: 'Feature', geometry: null, properties: {foo: 'a'}}
       ]};
 
-      assert.deepEqual(api.internal.exportGeoJSONObject(lyr, dataset), target);
+      assert.deepEqual(api.internal.exportGeoJSONCollection(lyr, dataset), target);
     })
 
     it('collapsed polygon exported as null geometry', function () {
@@ -104,7 +104,7 @@ describe('mapshaper-geojson.js', function () {
         {type: 'Feature', properties: {ID: 1}, geometry: null}
       ]};
 
-      assert.deepEqual(api.internal.exportGeoJSONObject(lyr, dataset), target);
+      assert.deepEqual(api.internal.exportGeoJSONCollection(lyr, dataset), target);
     })
 
     it('use cut_table option', function () {
@@ -180,7 +180,7 @@ describe('mapshaper-geojson.js', function () {
         bbox: [0, 1, 2, 4]
       };
 
-      var result = api.internal.exportGeoJSONObject(lyr, dataset, {bbox: true});
+      var result = api.internal.exportGeoJSONCollection(lyr, dataset, {bbox: true});
       assert.deepEqual(result, target);
     })
 
@@ -206,7 +206,7 @@ describe('mapshaper-geojson.js', function () {
         ]
         , bbox: [-1, 0, 2, 3]
       };
-      var result = api.internal.exportGeoJSONObject(lyr, dataset, {bbox: true});
+      var result = api.internal.exportGeoJSONCollection(lyr, dataset, {bbox: true});
       assert.deepEqual(result, target);
     })
 
@@ -229,7 +229,7 @@ describe('mapshaper-geojson.js', function () {
           }
         }]
       };
-      var result = api.internal.exportGeoJSONObject(lyr, dataset, {id_field: 'FID'});
+      var result = api.internal.exportGeoJSONCollection(lyr, dataset, {id_field: 'FID'});
       assert.deepEqual(result, target);
     })
 
@@ -456,5 +456,5 @@ function geoJSONRoundTrip(fname) {
 function importExport(obj, noTopo) {
   var json = Utils.isString(obj) ? obj : JSON.stringify(obj);
   var geom = api.internal.importFileContent(json, 'json', {no_topology: noTopo});
-  return api.internal.exportGeoJSONObject(geom.layers[0], geom);
+  return api.internal.exportGeoJSONCollection(geom.layers[0], geom);
 }

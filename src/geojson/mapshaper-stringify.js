@@ -4,7 +4,7 @@ MapShaper.getFormattedStringify = function(numArrayKeys) {
   var keyIndex = utils.arrayToIndex(numArrayKeys);
   var sentinel = '\u1000\u2FD5\u0310';
   var stripRxp = new RegExp('"' + sentinel + '|' + sentinel + '"', 'g');
-  var indentChars = '\t';
+  var indentChars = ' ';
 
   function replace(key, val) {
     // We want to format numerical arrays like [1, 2, 3] instead of

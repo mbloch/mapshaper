@@ -45,7 +45,7 @@ MapShaper.padViewportBoundsForSVG = function(bounds, width, marginPx) {
 };
 
 MapShaper.exportLayerAsSVG = function(lyr, dataset, opts) {
-  var geojson = MapShaper.exportGeoJSONObject(lyr, dataset, opts);
+  var geojson = MapShaper.exportGeoJSONCollection(lyr, dataset, opts);
   var features = SVG.importGeoJSONFeatures(geojson);
   var svgObj = {
     tag: 'g',

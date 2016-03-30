@@ -75,20 +75,15 @@ SVG.importMultiGeometry = function(coords, importer) {
   return o;
 };
 
-SVG.reducePathCoord = function(memo, p, i) {
-  if (i === 0) {
-    memo = 'M';
-  }
-  memo += ' ' + p[0] + ' ' + -p[1];
-  return memo;
+SVG.mapVertex = function(p) {
+  return p[0] + ' ' + -p[1];
 };
 
 SVG.importLineString = function(coords) {
+  var d = 'M ' + coords.map(SVG.mapVertex).join(' ');
   return {
     tag: 'path',
-    properties: {
-      d: coords.reduce(SVG.reducePathCoord, '')
-    }
+    properties: {d: d}
   };
 };
 
