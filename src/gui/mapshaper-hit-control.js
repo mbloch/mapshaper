@@ -88,11 +88,12 @@ function HitControl(ext, mouse) {
   //});
 
   mouse.on('hover', function(e) {
-    var p;
+    var p, decimals;
     if (!active) return;
     p = ext.getTransform().invert().transform(e.x, e.y);
     if (pinId == -1) {
-      coords.text(p[0].toFixed(5) + ', ' + p[1].toFixed(5));
+      decimals = getCoordPrecision(ext.getBounds());
+      coords.text(p[0].toFixed(decimals) + ', ' + p[1].toFixed(decimals));
     }
     if (target && test && e.hover) {
       update(test(p[0], p[1]));
@@ -105,6 +106,12 @@ function HitControl(ext, mouse) {
         scale = ext.scale();
     if (scale < 1) dist *= scale; // reduce hit threshold when zoomed out
     return dist;
+  }
+
+  function getCoordPrecision(bounds) {
+    var min = Math.min(Math.abs(bounds.xmax), Math.abs(bounds.ymax)),
+        decimals = Math.ceil(Math.log(min) / Math.LN10);
+    return Math.max(0, 7 - decimals);
   }
 
   function polygonTest(x, y) {
