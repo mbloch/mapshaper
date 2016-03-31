@@ -35,15 +35,17 @@ function DisplayLayer(lyr, dataset) {
   // @ext (optional) map extent
   // @ids (optional) ids of selected shapes
   this.getDisplayLayer = function(ext, ids) {
-    var arcs = lyr.display.arcs;
+    var arcs = lyr.display.arcs,
+        layer = lyr.display.layer || lyr;
     if (!arcs) {
       // use filtered arcs if available & map extent is known
       arcs = ext && dataset.filteredArcs ?
         dataset.filteredArcs.getArcCollection(ext) : dataset.arcs;
     }
     return {
-      layer: lyr.display.layer || lyr,
-      dataset: {arcs: arcs}
+      layer: layer,
+      dataset: {arcs: arcs},
+      geographic: layer == lyr // (kludge) false if using table-only shapes
     };
   };
 

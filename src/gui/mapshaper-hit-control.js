@@ -32,7 +32,6 @@ function HitControl(ext, mouse) {
 
   this.start = function() {
     active = true;
-    coords.show();
   };
 
   this.stop = function() {
@@ -90,13 +89,14 @@ function HitControl(ext, mouse) {
 
   mouse.on('hover', function(e) {
     var p, decimals;
-    if (!active) return;
+    if (!active || !target) return;
     p = ext.getTransform().invert().transform(e.x, e.y);
-    // update coordinate readout
-    decimals = getCoordPrecision(ext.getBounds());
-    coords.text(p[0].toFixed(decimals) + ', ' + p[1].toFixed(decimals));
-
-    if (target && test && e.hover) {
+    if (target.geographic) {
+      // update coordinate readout if displaying geographic shapes
+      decimals = getCoordPrecision(ext.getBounds());
+      coords.text(p[0].toFixed(decimals) + ', ' + p[1].toFixed(decimals)).show();
+    }
+    if (test && e.hover) {
       update(test(p[0], p[1]));
     }
   });
