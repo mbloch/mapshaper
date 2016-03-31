@@ -1,7 +1,6 @@
 /* @requires mapshaper-gui-lib */
 
 function HitControl(ext, mouse) {
-
   var self = this;
   var selectedId = -1;
   var hoverId = -1;
@@ -12,6 +11,7 @@ function HitControl(ext, mouse) {
     polyline: polylineTest,
     point: pointTest
   };
+  var coords = El('#coordinate-info').hide();
   var selectedShape;
   var target, test;
 
@@ -32,6 +32,7 @@ function HitControl(ext, mouse) {
 
   this.start = function() {
     active = true;
+    coords.show();
   };
 
   this.stop = function() {
@@ -41,6 +42,7 @@ function HitControl(ext, mouse) {
       selectedId = -1;
       selectedShape = null;
       active = false;
+      coords.text('').hide();
     }
   };
 
@@ -87,8 +89,12 @@ function HitControl(ext, mouse) {
 
   mouse.on('hover', function(e) {
     var p;
-    if (active && target && test && e.hover) {
-      p = ext.getTransform().invert().transform(e.x, e.y);
+    if (!active) return;
+    p = ext.getTransform().invert().transform(e.x, e.y);
+    if (pinId == -1) {
+      coords.text(p[0].toFixed(5) + ', ' + p[1].toFixed(5));
+    }
+    if (target && test && e.hover) {
       update(test(p[0], p[1]));
     }
   });

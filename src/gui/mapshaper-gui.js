@@ -13,7 +13,6 @@ mapshaper-gui-model
 */
 
 Browser.onload(function() {
-  El('#mshp-version').text('v' + MapShaper.VERSION);
   if (!gui.browserIsSupported()) {
     El("#mshp-not-supported").show();
   } else {

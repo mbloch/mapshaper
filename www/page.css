@@ -120,12 +120,12 @@ body {
 	height: 32px;
 }
 
-#mshp-version {
+#coordinate-info {
 	z-index: 1;
 	position: absolute;
-	pointer-events: none;
-	bottom: 8px;
-	left: 11px;
+	bottom: 6px;
+	left: 6px;
+	padding: 2px 5px 2px 5px;
 	font-size: 11px;
 }
 
