@@ -42,6 +42,14 @@ body {
 	color: #0774a5;
 }
 
+.colored-text::selection {
+	background-color: #e6f7ff;
+}
+
+.colored-text::-moz-selection {
+	background-color: #e6f7ff;
+}
+
 .dot-underline {
 	border-bottom: 1px dotted #0774a5;
 }
@@ -128,6 +136,8 @@ body {
 	padding: 2px 5px 2px 5px;
 	font-size: 11px;
 }
+
+
 
 .mapshaper-logo {
 	font-weight: bold;
@@ -457,6 +467,12 @@ body.simplify #layer-control-btn {
 	text-decoration: none;
 }
 
+.layer-item .layer-name::-moz-selection {
+	background: black;
+	color: white;
+	text-decoration: none;
+}
+
 .layer-item:hover:not(.active) {
 	background-color: #f7f7f7;
 }
@@ -564,11 +580,18 @@ body.simplify #layer-control-btn {
 	background: black;
 }
 
+.popup .editable-cell .value::-moz-selection {
+	color: white;
+	background: black;
+}
+
 
 /* --- Map ---------------------- */
 
 #map-layers {
 	height: 100%;
+	user-select: none;
+	-webkit-user-select: none;
 }
 
 #mshp-main-map {
@@ -578,6 +601,7 @@ body.simplify #layer-control-btn {
 #map-layers.hover {
 	cursor: pointer;
 }
+
 
 #map-layers canvas {
 	pointer-events: none;
