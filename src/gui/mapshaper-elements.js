@@ -27,13 +27,8 @@ function ClickText2(ref) {
         this.blur();
       }
     }).on('click', function(e) {
-      var sel = getSelection(),
-          range;
-      if (!selected && sel.isCollapsed) {
-        range = document.createRange();
-        range.selectNodeContents(el.node());
-        sel.removeAllRanges();
-        sel.addRange(range);
+      if (!selected && getSelection().isCollapsed) {
+        gui.selectElement(el.node());
       }
       selected = true;
       e.stopPropagation();

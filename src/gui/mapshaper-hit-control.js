@@ -78,6 +78,7 @@ function HitControl(ext, mouse) {
       // clicking off the layer while pinned: unpin and deselect
       pinId = -1;
     }
+    gui.selectElement(coords.node());
     select(hoverId);
   });
 
@@ -91,10 +92,10 @@ function HitControl(ext, mouse) {
     var p, decimals;
     if (!active) return;
     p = ext.getTransform().invert().transform(e.x, e.y);
-    if (pinId == -1) {
-      decimals = getCoordPrecision(ext.getBounds());
-      coords.text(p[0].toFixed(decimals) + ', ' + p[1].toFixed(decimals));
-    }
+    // update coordinate readout
+    decimals = getCoordPrecision(ext.getBounds());
+    coords.text(p[0].toFixed(decimals) + ', ' + p[1].toFixed(decimals));
+
     if (target && test && e.hover) {
       update(test(p[0], p[1]));
     }

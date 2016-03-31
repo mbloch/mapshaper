@@ -27,6 +27,14 @@ gui.getInputElement = function() {
   return (el && (el.tagName == 'INPUT' || el.contentEditable == 'true')) ? el : null;
 };
 
+gui.selectElement = function(el) {
+  var range = document.createRange(),
+      sel = getSelection();
+  range.selectNodeContents(el);
+  sel.removeAllRanges();
+  sel.addRange(range);
+};
+
 gui.blurActiveElement = function() {
   var el = gui.getInputElement();
   if (el) el.blur();
