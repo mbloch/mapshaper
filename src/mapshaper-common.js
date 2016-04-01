@@ -8,6 +8,8 @@ var MapShaper = {
   VERBOSE: false
 };
 
+new Float64Array(1); // workaround for v5.10 bug (first typed array not always zero-filled)
+
 function error() {
   MapShaper.error.apply(null, utils.toArray(arguments));
 }
