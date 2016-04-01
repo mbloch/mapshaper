@@ -57,7 +57,7 @@ utils.findStringPrefix = function(a, b) {
   return a.substr(0, i);
 };
 
-// Similar to isFinite() but returns false for null
+// Similar to isFinite() but does not convert strings or other types
 utils.isFiniteNumber = function(val) {
-  return isFinite(val) && val !== null;
+  return val === 0 || !!val && val.constructor == Number && val !== Infinity && val !== -Infinity;
 };
