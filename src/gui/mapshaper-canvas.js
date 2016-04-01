@@ -194,5 +194,6 @@ function getPathEnd(style) {
   return function(ctx) {
     if (filled) ctx.fill();
     if (stroked) ctx.stroke();
+    ctx.closePath();
   };
 }

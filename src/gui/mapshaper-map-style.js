@@ -45,7 +45,7 @@ var MapStyle = (function() {
     getHighlightStyle: function() {
       return highStyle;
     },
-    getOutlineStyle: function() {
+    getOutlineStyle: function(lyr) {
       return outlineStyle;
     },
     getHoverStyle: function(lyr, ids) {
