@@ -566,8 +566,11 @@ MapShaper.getOptionParser = function() {
 
   parser.command("svg-style")
     .describe("set style attributes for SVG output")
+    .option("class", {
+      describe: 'name of CSS class or classes (space sep.)'
+    })
     .option("fill", {
-      describe: 'fill color'
+      describe: 'fill color, examples: #eee pink rgba(0, 0, 0, 0.2)'
     })
     .option("stroke", {
       describe: 'stroke color'
@@ -575,14 +578,11 @@ MapShaper.getOptionParser = function() {
     .option("stroke-width", {
       describe: 'stroke width'
     })
+    .option("opacity", {
+      describe: 'opacity, example: 0.5'
+    })
     .option("r", {
       describe: 'radius of circle symbols',
-    })
-    .option("opacity", {
-      describe: 'opacity'
-    })
-    .option("class", {
-      describe: 'name of CSS class or classes (space sep.)'
     })
     .option("target", targetOpt);
 
@@ -615,7 +615,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("calc")
     .title("\nInformational commands")
-    .describe("Calculate statistics about the features in a layer")
+    .describe("calculate statistics about the features in a layer")
     .example("Calculate the total area of a polygon layer\n" +
       "$ mapshaper polygons.shp -calc 'sum($.area)'")
     .example("Count census blocks in NY with zero population\n" +

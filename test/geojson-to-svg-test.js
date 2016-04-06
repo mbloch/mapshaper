@@ -26,7 +26,7 @@ describe('geojson-to-svg.js', function () {
     it('single point feature', function() {
       var geo = {
         type: "Feature",
-        properties: {r: 2, opacity: 0.5, 'class': "dot"},
+        properties: {r: 2, opacity: 0.5, 'class': "dot pinkdot"},
         geometry: {
           type: "MultiPoint",
           coordinates: [[0, -1], [1, -2]]
@@ -37,10 +37,10 @@ describe('geojson-to-svg.js', function () {
         properties: {opacity: "0.5"},
         children: [{
           tag: 'circle',
-          properties: {cx: 0, cy: 1, r: 2, 'class': "dot"} // class attached to glyph, not container
+          properties: {cx: 0, cy: 1, r: 2, 'class': "dot pinkdot"} // class attached to glyph, not container
         }, {
           tag: 'circle',
-          properties: {cx: 1, cy: 2, r: 2, 'class': "dot"}
+          properties: {cx: 1, cy: 2, r: 2, 'class': "dot pinkdot"}
         }]
       }];
       assert.deepEqual(SVG.importGeoJSONFeatures([geo], {r: 2}), target);
