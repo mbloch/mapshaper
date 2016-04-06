@@ -4,7 +4,7 @@ utils.wildcardToRegExp = function(name) {
   var rxp = name.split('*').map(function(str) {
     return utils.regexEscape(str);
   }).join('.*');
-  return new RegExp(rxp);
+  return new RegExp('^' + rxp + '$');
 };
 
 utils.expandoBuffer = function(constructor, rate) {

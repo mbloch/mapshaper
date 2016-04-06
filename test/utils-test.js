@@ -59,12 +59,18 @@ describe('mapshaper-utils.js', function () {
   describe('wildcardToRxp()', function () {
     var ex1 = "layer1"
     it(ex1, function () {
-      assert.equal(utils.wildcardToRegExp(ex1).source, 'layer1');
+      assert.equal(utils.wildcardToRegExp(ex1).source, '^layer1$');
     })
 
     var ex2 = "layer*";
     it(ex2, function() {
-      assert.equal(utils.wildcardToRegExp(ex2).source, 'layer.*');
+      assert.equal(utils.wildcardToRegExp(ex2).source, '^layer.*$');
+    })
+
+    it('matches entire string', function() {
+      assert.equal(utils.wildcardToRegExp('cz').test('cz-pts'), false);
+      assert.equal(utils.wildcardToRegExp('cz').test('acz'), false);
+      assert.equal(utils.wildcardToRegExp('cz').test('cz'), true);
     })
   })
 

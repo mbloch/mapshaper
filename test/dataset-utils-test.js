@@ -62,5 +62,10 @@ describe('mapshaper-database-utils.js', function () {
         [{name: 'layer2'}]);
     })
 
+    it("layers with same suffix", function() {
+        var layers = [{name: 'cz'}, {name: 'cz-points'}];
+        assert.deepEqual(api.internal.findMatchingLayers(layers, 'cz'), [{name: 'cz'}])
+    })
+
   })
 })
