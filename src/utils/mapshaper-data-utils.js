@@ -1,5 +1,6 @@
 /* @requires mapshaper-common */
 
+
 MapShaper.deleteFields = function(table, test) {
   table.getFields().forEach(function(name) {
     if (test(name)) {

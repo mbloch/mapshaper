@@ -16,7 +16,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, returns) {
       func, records;
 
   if (vars.length > 0 && !lyr.data) {
-    lyr.data = new DataTable(MapShaper.getFeatureCount(lyr));
+    MapShaper.initDataTable(lyr);
   }
 
   records = lyr.data ? lyr.data.getRecords() : [];

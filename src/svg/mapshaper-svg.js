@@ -1,8 +1,16 @@
-/* @require mapshaper-common, geojson-export, geojson-to-svg */
+/* @requires
+mapshaper-common
+geojson-export
+geojson-to-svg
+mapshaper-svg-style
+*/
 
+//
+//
+//
 MapShaper.exportSVG = function(dataset, opts) {
   var template = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" ' +
-    'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s">\n%s\n</svg>';
+    'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
   var b, svg;
 
   dataset = MapShaper.copyDataset(dataset); // Modify a copy of the dataset
@@ -45,14 +53,16 @@ MapShaper.padViewportBoundsForSVG = function(bounds, width, marginPx) {
 };
 
 MapShaper.exportLayerAsSVG = function(lyr, dataset, opts) {
+  // TODO: convert geojson features one at a time
   var geojson = MapShaper.exportGeoJSONCollection(lyr, dataset, opts);
-  var features = SVG.importGeoJSONFeatures(geojson);
+  var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
+  var symbols = SVG.importGeoJSONFeatures(features);
   var svgObj = {
     tag: 'g',
-    children: features,
+    children: symbols,
     properties: {id: lyr.name}
   };
-  var style = SVG.defaultStyles[lyr.geometry_type];
-  utils.extend(svgObj.properties, style);
+  // SVG.defaultStyles[lyr.geometry_type];
+  // utils.extend(svgObj.properties, style);
   return SVG.stringify(svgObj);
 };

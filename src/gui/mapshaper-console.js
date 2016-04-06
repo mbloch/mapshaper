@@ -337,8 +337,8 @@ function Console(model) {
     } else if (err.name == 'APIError') {
       // stop() has already been called, don't need to log
     } else if (err.name) {
-      // log to browser console, with stack trace
-      console.error(err);
+      // log stack trace to browser console
+      console.error(err.stack);
       // log to console window
       warning(err.message);
     }

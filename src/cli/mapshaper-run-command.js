@@ -25,6 +25,7 @@ mapshaper-split
 mapshaper-split-on-grid
 mapshaper-subdivide
 mapshaper-sort
+mapshaper-svg-style
 */
 
 // TODO: consider refactoring to allow modules
@@ -160,7 +161,11 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'subdivide') {
       outputLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
+    } else if (name == 'svg-style') {
+      MapShaper.applyCommand(api.svgStyle, targetLayers, dataset, opts);
+
     } else {
+
       error("Unhandled command: [" + name + "]");
     }
 
@@ -213,3 +218,5 @@ MapShaper.getFormattedLayerList = function(layers) {
     return memo + '\n  [' + i + ']  ' + (lyr.name || '[unnamed]');
   }, '') || '[none]';
 };
+
+

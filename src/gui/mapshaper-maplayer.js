@@ -65,7 +65,7 @@ function DisplayLayer(lyr, dataset) {
       canv.drawArcs(arcs, lyr.display.arcFlags, style);
     }
     if (obj.layer.geometry_type == 'point') {
-      canv.drawPoints(obj.layer.shapes, style);
+      canv.drawSquareDots(obj.layer.shapes, style);
     }
   };
 

@@ -53,8 +53,7 @@ function MshpMap(model) {
     var lyr = _activeLyr.getDisplayLayer().layer;
     _hoverStyle = null;
     if (e.id >= 0) {
-      _hoverStyle = e.pinned ? MapStyle.getSelectionStyle(lyr, [e.id]) :
-        MapStyle.getHoverStyle(lyr, [e.id]);
+      _hoverStyle = MapStyle.getHoverStyle(lyr, [e.id], e.pinned);
     }
     drawLayer(_activeLyr, _hoverCanv, _hoverStyle);
   });
@@ -115,7 +114,7 @@ function MshpMap(model) {
   function initActiveLayer(o) {
     var lyr = new DisplayLayer(o.layer, o.dataset);
     _hit.update(lyr.getDisplayLayer(_ext));
-    _activeStyle = MapStyle.getOutlineStyle(o.layer);
+    _activeStyle = MapStyle.getActiveStyle(o.layer);
     lyr.updateStyle(_activeStyle);
     return lyr;
   }

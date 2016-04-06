@@ -1,6 +1,4 @@
-/* @requires
-mapshaper-gui-lib
-*/
+/* @requires */
 
 var MapStyle = (function() {
   var darkStroke = "#334",
@@ -45,14 +43,70 @@ var MapStyle = (function() {
     getHighlightStyle: function() {
       return highStyle;
     },
-    getOutlineStyle: function(lyr) {
-      return outlineStyle;
+    getActiveStyle: function(lyr) {
+      var style;
+      if (MapShaper.layerHasSvgDisplayStyle(lyr)) {
+        style = MapShaper.getSvgDisplayStyle(lyr);
+      } else {
+        style = utils.extend({}, outlineStyle);
+      }
+      return style;
     },
-    getHoverStyle: function(lyr, ids) {
-      return utils.defaults({ids: ids}, hoverStyles[lyr.geometry_type]);
-    },
-    getSelectionStyle: function(lyr, ids) {
-      return utils.defaults({ids: ids}, pinnedStyles[lyr.geometry_type]);
+    getHoverStyle: function(lyr, ids, pinned) {
+      var type = lyr.geometry_type;
+      var hoverStyle = pinned ? pinnedStyles[type] : hoverStyles[type];
+      var style;
+      if (MapShaper.layerHasSvgDisplayStyle(lyr) && type == 'point') {
+        style = MapShaper.wrapHoverStyle(MapShaper.getSvgDisplayStyle(lyr), hoverStyle);
+      } else {
+        style = utils.extend({}, hoverStyle);
+      }
+      style.ids = ids;
+      return style;
     }
   };
 }());
+
+MapShaper.wrapHoverStyle = function(style, hoverStyle) {
+  var col = hoverStyle.dotColor;
+  var styler = function(obj, i) {
+    style.styler(obj, i);
+    if (obj.radius) {
+      obj.radius += 1.5;
+      obj.fillColor = col;
+      obj.strokeColor = col;
+      obj.opacity = 1;
+    }
+  };
+  return {styler: styler};
+};
+
+MapShaper.getSvgDisplayStyle = function(lyr) {
+  var records = lyr.data.getRecords(),
+      fields = MapShaper.getSvgStyleFields(lyr),
+      index = MapShaper.svgStyles;
+  var styler = function(style, i) {
+    var f, key, val;
+    for (var j=0; j<fields.length; j++) {
+      f = fields[j];
+      key = index[f];
+      val = records[i][f];
+      if (val == 'none') {
+        val = 'transparent'; // canvas equivalent
+      }
+      style[key] = val;
+    }
+
+    // TODO: make sure canvas rendering matches svg output
+    if (('strokeWidth' in style) && !style.strokeColor) {
+      style.strokeColor = 'black';
+    } else if (!('strokeWidth' in style) && style.strokeColor) {
+      style.strokeWidth = 1;
+    }
+    if (('radius' in style) && !style.strokeColor && !style.fillColor &&
+      lyr.geometry_type == 'point') {
+      style.fillColor = 'black';
+    }
+  };
+  return {styler: styler};
+};

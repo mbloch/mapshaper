@@ -28,16 +28,15 @@ function DisplayCanvas() {
         draw = getShapePencil(arcs, _ext),
         end = getPathEnd(style);
     for (var i=0, n=shapes.length; i<n; i++) {
-      start(_ctx);
+      start(_ctx, i);
       draw(shapes[i], _ctx);
       end(_ctx);
     }
   };
 
-  _self.drawPoints = function(shapes, style) {
+  _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
         size = (style.dotSize || 3) * gui.getPixelRatio(),
-        drawPoint = style.roundDot ? drawCircle : drawSquare,
         shp, p;
 
     // TODO: don't try to draw offscreen points
@@ -46,8 +45,32 @@ function DisplayCanvas() {
       shp = shapes[i];
       for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
         p = shp[j];
-        drawPoint(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, _ctx);
+        drawSquare(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, _ctx);
       }
+    }
+  };
+
+  _self.drawPoints = function(shapes, style) {
+    var t = getScaledTransform(_ext),
+        pixRatio = gui.getPixelRatio(),
+        isStyled = !!style.styler,
+        start = getPathStart(style, _ext),
+        end = getPathEnd(style),
+        shp, p;
+
+    if (!isStyled) {
+      return _self.drawSquareDots(shapes, style);
+    }
+
+    for (var i=0, n=shapes.length; i<n; i++) {
+      shp = shapes[i];
+      start(_ctx, i);
+      if (!shp || style.radius > 0 === false) continue;
+      for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
+        p = shp[j];
+        drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, style.radius * pixRatio, _ctx);
+      }
+      end(_ctx);
     }
   };
 
@@ -97,17 +120,13 @@ function DisplayCanvas() {
   return _self;
 }
 
-
-
 function getScaledTransform(ext) {
   return ext.getTransform(gui.getPixelRatio());
 }
 
-function drawCircle(x, y, size, ctx) {
-  if (size > 0) {
-    ctx.beginPath();
-    ctx.arc(x, y, size * 0.5, 0, Math.PI * 2, true);
-    ctx.fill();
+function drawCircle(x, y, radius, ctx) {
+  if (radius > 0) {
+    ctx.arc(x, y, radius, 0, Math.PI * 2, true);
   }
 }
 
@@ -154,46 +173,50 @@ function getShapePencil(arcs, ext) {
 }
 
 function getPathStart(style, ext) {
-  var stroked = style.strokeColor && style.strokeWidth !== 0,
-      filled = !!style.fillColor,
-      mapScale = ext.scale(),
-      lineWidth, strokeColor;
-  if (stroked) {
-    lineWidth = style.strokeWidth || 1;
-     // bump up thin lines on retina, but not to more than 1px (too slow)
-    if (gui.getPixelRatio() > 1 && lineWidth < 1) {
-      lineWidth = 1;
-    }
-    // vary line width according to zoom ratio; for performance and clarity,
-    // don't start thickening lines until zoomed quite far in.
-    if (mapScale < 1) {
-      lineWidth *= Math.pow(mapScale, 0.6);
-    } else if (mapScale > 40) {
-      lineWidth *= Math.pow(mapScale - 39, 0.2);
-    }
-    strokeColor = style.strokeColor;
+  var mapScale = ext.scale(),
+      styler = style.styler || null,
+      pixRatio = gui.getPixelRatio(),
+      lineScale = 1;
+
+  // vary line width according to zoom ratio; for performance and clarity,
+  // don't start thickening lines until zoomed quite far in.
+  if (mapScale < 1) {
+    lineScale *= Math.pow(mapScale, 0.6);
+  } else if (mapScale > 40) {
+    lineScale *= Math.pow(mapScale - 39, 0.2);
   }
 
-  return function(ctx) {
+  return function(ctx, i) {
+    var strokeWidth;
     ctx.beginPath();
-    if (stroked) {
+    if (styler) {
+      styler(style, i);
+    }
+    if (style.opacity >= 0) {
+      ctx.globalAlpha = style.opacity;
+    }
+    if (style.strokeWidth > 0) {
+      strokeWidth = style.strokeWidth;
+      if (pixRatio > 1) {
+        // bump up thin lines on retina, but not to more than 1px (too slow)
+        strokeWidth = strokeWidth < 1 ? 1 : strokeWidth * pixRatio;
+      }
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.lineWidth = lineWidth;
-      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = strokeWidth * lineScale;
+      ctx.strokeStyle = style.strokeColor;
     }
-    if (filled) {
+    if (style.fillColor) {
       ctx.fillStyle = style.fillColor;
     }
   };
 }
 
 function getPathEnd(style) {
-  var stroked = style.strokeColor && style.strokeWidth !== 0,
-      filled = !!style.fillColor;
   return function(ctx) {
-    if (filled) ctx.fill();
-    if (stroked) ctx.stroke();
+    if (style.fillColor) ctx.fill();
+    if (style.strokeWidth > 0) ctx.stroke();
+    if (style.opacity >= 0) ctx.globalAlpha = 1;
     ctx.closePath();
   };
 }

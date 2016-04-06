@@ -564,6 +564,28 @@ MapShaper.getOptionParser = function() {
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
+  parser.command("svg-style")
+    .describe("set style attributes for SVG output")
+    .option("fill", {
+      describe: 'fill color'
+    })
+    .option("stroke", {
+      describe: 'stroke color'
+    })
+    .option("stroke-width", {
+      describe: 'stroke width'
+    })
+    .option("r", {
+      describe: 'radius of circle symbols',
+    })
+    .option("opacity", {
+      describe: 'opacity'
+    })
+    .option("class", {
+      describe: 'name of CSS class or classes (space sep.)'
+    })
+    .option("target", targetOpt);
+
   parser.command("proj")
     // .describe("project the coordinates in a dataset")
     .option("densify", {
@@ -590,6 +612,7 @@ MapShaper.getOptionParser = function() {
       cmd.options.projection = name;
     });
 
+
   parser.command("calc")
     .title("\nInformational commands")
     .describe("Calculate statistics about the features in a layer")
@@ -611,6 +634,7 @@ MapShaper.getOptionParser = function() {
       describe: "use a JS expression to select a subset of features"
     })
     .option("target", targetOpt);
+
 
   parser.command('encodings')
     .describe("print list of supported text encodings (for .dbf import)");

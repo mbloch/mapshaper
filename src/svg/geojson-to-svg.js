@@ -2,17 +2,13 @@
 
 var SVG = {};
 
-SVG.defaultStyles = {
-  polygon: {
-    stroke: 'black',
-    fill: '#eee'
-  },
-  polyline: {
-    stroke: 'black'
-  },
-  point: {
-    fill: 'black'
-  }
+SVG.styleIndex = {
+  // svgClass: 'class',
+  opacity: 'opacity',
+  radius: 'r',
+  fillColor: 'fill',
+  strokeColor: 'stroke',
+  strokeWidth: 'stroke-width'
 };
 
 SVG.stringifyProperties = function(o) {
@@ -45,9 +41,35 @@ SVG.stringify = function(obj) {
   return svg;
 };
 
-SVG.importGeoJSONFeatures = function(geojson) {
-  var arr = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
-  return arr.map(function(obj) {
+SVG.applyStyleAttributes = function(svgObj, rec) {
+  var properties = svgObj.properties;
+  var fields = MapShaper.getStyleFields(Object.keys(rec), MapShaper.svgStyles);
+  var k;
+  for (var i=0, n=fields.length; i<n; i++) {
+    k = fields[i];
+    SVG.setAttribute(svgObj, k.replace('_', '-'), rec[k]);
+  }
+};
+
+SVG.setAttribute = function(obj, k, v) {
+  var children, child;
+  if ((k == 'r' || k == 'class') && obj.children) {
+    // 'r' is a geometry attribute and can't be applied to a 'g' container
+    // 'class' may refer to a CSS class with a value for 'r'
+    children = obj.children;
+    for (var i=0; i<children.length; i++) {
+      child = children[i];
+      if (!child.properties) child.properties = {};
+      child.properties[k] = v;
+    }
+  } else {
+    if (!obj.properties) obj.properties = {};
+    obj.properties[k] = v;
+  }
+};
+
+SVG.importGeoJSONFeatures = function(features) {
+  return features.map(function(obj, i) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
     var geomType = geom && geom.type;
     var svgObj;
@@ -55,11 +77,15 @@ SVG.importGeoJSONFeatures = function(geojson) {
       return {tag: 'g'}; // empty element
     }
     svgObj = SVG.geojsonImporters[geomType](geom.coordinates);
+    if (obj.properties) {
+      SVG.applyStyleAttributes(svgObj, obj.properties);
+    }
     if ('id' in obj) {
-      svgObj.properties = svgObj.properties || {};
+      if (!svgObj.properties) {
+        svgObj.properties = {};
+      }
       svgObj.properties.id = obj.id;
     }
-    // TODO: apply feature-level attributes
     return svgObj;
   });
 };
@@ -92,8 +118,7 @@ SVG.importPoint = function(p) {
     tag: 'circle',
     properties: {
       cx: p[0],
-      cy: -p[1],
-      r: 2
+      cy: -p[1]
     }
   };
 };

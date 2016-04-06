@@ -8,7 +8,7 @@ var MapShaper = {
   VERBOSE: false
 };
 
-new Float64Array(1); // workaround for v5.10 bug (first typed array not always zero-filled)
+new Float64Array(1); // workaround for https://github.com/nodejs/node/issues/6006
 
 function error() {
   MapShaper.error.apply(null, utils.toArray(arguments));

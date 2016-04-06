@@ -14,7 +14,7 @@ function PolygonIndex(shape, arcs) {
 
   init();
 
-  // Return 0 if outside, 1 if inside, -1 if on boundary
+  // Return 0 if o utside, 1 if inside, -1 if on boundary
   this.pointInPolygon = function(x, y) {
     if (!polygonBounds.containsPoint(x, y)) {
       return false;

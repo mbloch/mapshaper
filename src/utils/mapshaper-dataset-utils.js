@@ -146,3 +146,7 @@ MapShaper.transformPoints = function(dataset, f) {
     }
   });
 };
+
+MapShaper.initDataTable = function(lyr) {
+  lyr.data = new DataTable(MapShaper.getFeatureCount(lyr));
+};
