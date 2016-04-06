@@ -1,20 +1,20 @@
-/* @require mapshaper-shape-geom */
+/* @require mapshaper-shape-geom, mapshaper-segment-sorting */
 
 // PolygonIndex indexes the coordinates in one polygon feature for efficient
 // point-in-polygon tests
 
-function PolygonIndex(shape, arcs) {
+function PolygonIndex(shape, arcs, opts) {
   var data = arcs.getVertexData(),
       polygonBounds = arcs.getMultiShapeBounds(shape),
       boundsLeft,
-      p1Arr, p2Arr,
+      xminIds, xmaxIds, // vertex ids of segment endpoints
       bucketCount,
       bucketOffsets,
       bucketWidth;
 
   init();
 
-  // Return 0 if o utside, 1 if inside, -1 if on boundary
+  // Return 0 if outside, 1 if inside, -1 if on boundary
   this.pointInPolygon = function(x, y) {
     if (!polygonBounds.containsPoint(x, y)) {
       return false;
@@ -24,90 +24,25 @@ function PolygonIndex(shape, arcs) {
     if (bucketId > 0) {
       count += countCrosses(x, y, bucketId - 1);
     }
-    if (bucketId < bucketCount - 1) {
-      count += countCrosses(x, y, bucketId + 1);
-    }
     count += countCrosses(x, y, bucketCount); // check oflo bucket
     if (isNaN(count)) return -1;
     return count % 2 == 1 ? 1 : 0;
   };
 
-  function init() {
-    var xx = data.xx,
-        segCount = 0,
-        bucketId = 0,
-        bucketLeft = boundsLeft,
-        segId = 0,
-        segments,
-        lastX,
-        head, tail,
-        a, b, i, j, xmin, xmax;
-
-    // get sorted array of segment ids
-    MapShaper.forEachPathSegment(shape, arcs, function() {
-      segCount++;
-    });
-    segments = new Uint32Array(segCount * 2);
-    i = 0;
-    MapShaper.forEachPathSegment(shape, arcs, function(a, b, xx, yy) {
-      segments[i++] = a;
-      segments[i++] = b;
-    });
-    MapShaper.sortSegmentIds(xx, segments);
-
-    // populate buckets
-    p1Arr = new Uint32Array(segCount);
-    p2Arr = new Uint32Array(segCount);
-    bucketCount = Math.ceil(segCount / 100);
-    bucketOffsets = new Uint32Array(bucketCount + 1);
-    lastX = xx[segments[segments.length - 2]]; // xmin of last segment
-    bucketLeft = boundsLeft = xx[segments[0]]; // xmin of first segment
-    bucketWidth = (lastX - boundsLeft) / bucketCount;
-    head = 0;
-    tail = segCount - 1;
-
-    while (bucketId < bucketCount && segId < segCount) {
-      j = segId * 2;
-      a = segments[j];
-      b = segments[j+1];
-      xmin = xx[a];
-      xmax = xx[b];
-
-      if (xmin > bucketLeft + bucketWidth && bucketId < bucketCount - 1) {
-        bucketId++;
-        bucketLeft = bucketId * bucketWidth + boundsLeft;
-        bucketOffsets[bucketId] = head;
-      } else {
-        if (getBucketId(xmin) != bucketId) console.log("wrong bucket");
-        if (xmin < bucketLeft) error("out-of-range");
-        if (xmax - xmin >= 0 === false) error("invalid segment");
-        if (xmax > bucketLeft + 2 * bucketWidth) {
-          p1Arr[tail] = a;
-          p2Arr[tail] = b;
-          tail--;
-        } else {
-          p1Arr[head] = a;
-          p2Arr[head] = b;
-          head++;
-        }
-        segId++;
-      }
-    }
-    bucketOffsets[bucketCount] = head;
-    if (head != tail + 1) error("counting error; head:", head, "tail:", tail);
-  }
-
   function countCrosses(x, y, bucketId) {
     var offs = bucketOffsets[bucketId],
-        n = (bucketId == bucketCount) ? p1Arr.length - offs : bucketOffsets[bucketId + 1] - offs,
         count = 0,
         xx = data.xx,
         yy = data.yy,
-        a, b;
-
+        n, a, b;
+    if (bucketId == bucketCount) { // oflo bucket
+      n = xminIds.length - offs;
+    } else {
+      n = bucketOffsets[bucketId + 1] - offs;
+    }
     for (var i=0; i<n; i++) {
-      a = p1Arr[i + offs];
-      b = p2Arr[i + offs];
+      a = xminIds[i + offs];
+      b = xmaxIds[i + offs];
       count += geom.testRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
     }
     return count;
@@ -120,4 +55,73 @@ function PolygonIndex(shape, arcs) {
     return i;
   }
 
+  function getBucketCount(segCount) {
+    // default is 100 segs per bucket (average)
+    var buckets = opts && opts.buckets > 0 ? opts.buckets : segCount / 100;
+    return Math.ceil(buckets);
+  }
+
+  function init() {
+    var xx = data.xx,
+        segCount = 0,
+        segId = 0,
+        bucketId = -1,
+        prevBucketId,
+        segments,
+        head, tail,
+        a, b, i, j, xmin, xmax;
+
+    // get array of sorted segment endpoint ids
+    MapShaper.forEachPathSegment(shape, arcs, function() {
+      segCount++;
+    });
+    segments = new Uint32Array(segCount * 2);
+    i = 0;
+    MapShaper.forEachPathSegment(shape, arcs, function(a, b, xx, yy) {
+      segments[i++] = a;
+      segments[i++] = b;
+    });
+    MapShaper.sortSegmentIds(xx, segments);
+
+    // assign segment ids to buckets
+    xminIds = new Uint32Array(segCount);
+    xmaxIds = new Uint32Array(segCount);
+    bucketCount = getBucketCount(segCount);
+    bucketOffsets = new Uint32Array(bucketCount + 1); // add an oflo bucket
+    boundsLeft = xx[segments[0]]; // xmin of first segment
+    bucketWidth = (xx[segments[segments.length - 2]] - boundsLeft) / bucketCount;
+    head = 0; // insertion index for next segment in the current bucket
+    tail = segCount - 1; // insertion index for next segment in oflo bucket
+
+    while (segId < segCount) {
+      j = segId * 2;
+      a = segments[j];
+      b = segments[j+1];
+      xmin = xx[a];
+      xmax = xx[b];
+      prevBucketId = bucketId;
+      bucketId = getBucketId(xmin);
+
+      while (bucketId > prevBucketId) {
+        prevBucketId++;
+        bucketOffsets[prevBucketId] = head;
+      }
+
+      if (xmax - xmin >= 0 === false) error("Invalid segment");
+      if (getBucketId(xmax) - bucketId > 1) {
+        // if segment extends to more than two buckets, put it in the oflo bucket
+        xminIds[tail] = a;
+        xmaxIds[tail] = b;
+        tail--; // oflo bucket fills from right to left
+      } else {
+        // else place segment in a bucket based on x coord of leftmost endpoint
+        xminIds[head] = a;
+        xmaxIds[head] = b;
+        head++;
+      }
+      segId++;
+    }
+    bucketOffsets[bucketCount] = head;
+    if (head != tail + 1) error("Segment indexing error");
+  }
 }
