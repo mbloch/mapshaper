@@ -565,7 +565,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("svg-style")
-    .describe("set SVG styles, using JS expressions or literal values")
+    .describe("set SVG style attributes with JS expressions or literal values")
     .option("class", {
       describe: 'name of CSS class or classes (space sep.)'
     })
