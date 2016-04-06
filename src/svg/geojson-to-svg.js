@@ -1,29 +1,27 @@
-/* @requires mapshaper-common */
+/* @requires geojson-common, mapshaper-svg-style */
 
 var SVG = {};
 
-SVG.styleIndex = {
-  // svgClass: 'class',
-  opacity: 'opacity',
-  radius: 'r',
-  fillColor: 'fill',
-  strokeColor: 'stroke',
-  strokeWidth: 'stroke-width'
-};
-
-SVG.stringifyProperties = function(o) {
-  return Object.keys(o).reduce(function(memo, key, i) {
-    var val = o[key],
-        strval = JSON.stringify(val);
-    if (strval.charAt(0) != '"') {
-      if (!utils.isFiniteNumber(val)) {
-        // not a string or number -- skipping
-        return memo;
-      }
-      strval = '"' + strval + '"';
+SVG.importGeoJSONFeatures = function(features) {
+  return features.map(function(obj, i) {
+    var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
+    var geomType = geom && geom.type;
+    var svgObj;
+    if (!geomType) {
+      return {tag: 'g'}; // empty element
     }
-    return memo + ' ' + key + "=" + strval;
-  }, '');
+    svgObj = SVG.geojsonImporters[geomType](geom.coordinates);
+    if (obj.properties) {
+      SVG.applyStyleAttributes(svgObj, geomType, obj.properties);
+    }
+    if ('id' in obj) {
+      if (!svgObj.properties) {
+        svgObj.properties = {};
+      }
+      svgObj.properties.id = obj.id;
+    }
+    return svgObj;
+  });
 };
 
 SVG.stringify = function(obj) {
@@ -41,9 +39,26 @@ SVG.stringify = function(obj) {
   return svg;
 };
 
-SVG.applyStyleAttributes = function(svgObj, rec) {
+SVG.stringifyProperties = function(o) {
+  return Object.keys(o).reduce(function(memo, key, i) {
+    var val = o[key],
+        strval = JSON.stringify(val);
+    if (strval.charAt(0) != '"') {
+      if (!utils.isFiniteNumber(val)) {
+        // not a string or number -- skipping
+        return memo;
+      }
+      strval = '"' + strval + '"';
+    }
+    return memo + ' ' + key + "=" + strval;
+  }, '');
+};
+
+
+SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
   var properties = svgObj.properties;
-  var fields = MapShaper.getStyleFields(Object.keys(rec), MapShaper.svgStyles);
+  var invalidStyles = MapShaper.invalidSvgTypes[GeoJSON.translateGeoJSONType(geomType)];
+  var fields = MapShaper.getStyleFields(Object.keys(rec), MapShaper.svgStyles, invalidStyles);
   var k;
   for (var i=0, n=fields.length; i<n; i++) {
     k = fields[i];
@@ -66,28 +81,6 @@ SVG.setAttribute = function(obj, k, v) {
     if (!obj.properties) obj.properties = {};
     obj.properties[k] = v;
   }
-};
-
-SVG.importGeoJSONFeatures = function(features) {
-  return features.map(function(obj, i) {
-    var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
-    var geomType = geom && geom.type;
-    var svgObj;
-    if (!geomType) {
-      return {tag: 'g'}; // empty element
-    }
-    svgObj = SVG.geojsonImporters[geomType](geom.coordinates);
-    if (obj.properties) {
-      SVG.applyStyleAttributes(svgObj, obj.properties);
-    }
-    if ('id' in obj) {
-      if (!svgObj.properties) {
-        svgObj.properties = {};
-      }
-      svgObj.properties.id = obj.id;
-    }
-    return svgObj;
-  });
 };
 
 SVG.importMultiGeometry = function(coords, importer) {

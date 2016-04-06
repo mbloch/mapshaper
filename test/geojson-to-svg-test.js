@@ -91,6 +91,38 @@ describe('geojson-to-svg.js', function () {
       assert.deepEqual(SVG.importGeoJSONFeatures(geo.features), target);
     })
 
+    it('filter out styles that do not match LineString type', function() {
+      var geo = {
+        type: "Feature",
+        properties: {fill: '#eee', stroke: 'pink', r: 3},
+        geometry: {
+          type: "LineString",
+          coordinates: [[0, 0], [1, 0]]
+        }
+      };
+      var target = [{
+        tag: 'path',
+        properties: {d: 'M 0 0 1 0', stroke: 'pink'}
+      }];
+      assert.deepEqual(SVG.importGeoJSONFeatures([geo]), target);
+    })
+
+    it('filter out styles that do not match Polygon type', function() {
+      var geo = {
+        type: "Feature",
+        properties: {fill: '#eee', r: 3},
+        geometry: {
+          type: "Polygon",
+          coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]]
+        }
+      };
+      var target = [{
+        tag: 'path',
+        properties: {d: 'M 0 0 1 0 1 -1 0 0 Z', fill: '#eee'}
+      }];
+      assert.deepEqual(SVG.importGeoJSONFeatures([geo]), target);
+    })
+
   })
 
   describe('stringify()', function () {
