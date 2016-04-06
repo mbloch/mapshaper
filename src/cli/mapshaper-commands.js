@@ -156,10 +156,11 @@ utils.reduceAsync = function(arr, memo, iter, done) {
     // Don't use setTimeout(, 0) if setImmediate is available
     // (setTimeout() can introduce a long delay if previous operation was slow,
     //    as of Node 0.10.32 -- a bug?)
+    if (err) {
+      return done(err, null);
+    }
     call(function() {
-      if (err) {
-        done(err, null);
-      } else if (i < arr.length === false) {
+      if (i < arr.length === false) {
         done(null, memo);
       } else {
         iter(memo, arr[i++], next);
