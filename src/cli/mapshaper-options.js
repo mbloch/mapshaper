@@ -181,6 +181,10 @@ MapShaper.getOptionParser = function() {
       describe: "(SVG) margin between data and viewport bounds (default is 1)",
       type: "number"
     })
+    .option("svg-scale", {
+      // describe: "(SVG) data units (e.g. meters) per pixel"
+      type: "number"
+    })
     .option("delimiter", {
       describe: "(CSV) field delimiter"
     });
@@ -565,7 +569,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("svg-style")
-    .describe("set SVG style attributes with JS expressions or literal values")
+    .describe("set SVG style using JS expressions or literal values")
     .option("class", {
       describe: 'name of CSS class or classes (space sep.)'
     })

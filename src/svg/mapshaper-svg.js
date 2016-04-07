@@ -31,6 +31,12 @@ MapShaper.transformCoordsForSVG = function(dataset, opts) {
   var bounds = MapShaper.getDatasetBounds(dataset);
   var precision = opts.precision || 0.0001;
   var height, bounds2, fwd;
+  if (opts.svg_scale > 0) {
+    // alternative to using a fixed width (e.g. when generating multiple files
+    // at a consistent geographic scale)
+    width = bounds.width() / opts.svg_scale;
+    margin = 0;
+  }
   MapShaper.padViewportBoundsForSVG(bounds, width, margin);
   height = Math.ceil(width * bounds.height() / bounds.width());
   bounds2 = new Bounds(0, -height, width, 0);
