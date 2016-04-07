@@ -39,22 +39,27 @@ describe('mapshaper-polygon-index.js', function () {
       assert.equal(index.pointInPolygon(4, 3), 1);
       assert.equal(index.pointInPolygon(2, 2), -1);  // on boundary
       assert.equal(index.pointInPolygon(4, 4), -1);  // on boundary
+      assert.equal(index.pointInPolygon(3, -1), 0);   // below two vertices
     })
 
     it ("polygon with hole", function() {
       var shape = [[1], [~0]];
       var index = new PolygonIndex(shape, arcs);
 
-      assert.equal(index.pointInPolygon(3, 3), 0); // inside hole
-      assert.equal(index.pointInPolygon(3, 1.5), 1); // inside donut
+      assert.equal(index.pointInPolygon(3, 3), 0);    // inside hole
+      assert.equal(index.pointInPolygon(3, 1.5), 1);  // just below hole vertices
+      assert.equal(index.pointInPolygon(3, 4.5), 1);  // just above hole vertices
       assert.equal(index.pointInPolygon(3.1, 1.5), 1); // inside donut
-      assert.equal(index.pointInPolygon(2, 3), -1);  // on a hole vertex
+      assert.equal(index.pointInPolygon(2, 3), -1);   // on a hole vertex
+      assert.equal(index.pointInPolygon(2, 2.9), 1);  // just below a hole vertex
+      assert.equal(index.pointInPolygon(2, 3.1), 1);  // just above a hole vertex
+
     })
 
   })
 
 
-  describe('Figure 2 -- rectangle, many buckets', function () {
+  describe('Figure 2 -- rectangle', function () {
 
     // a - b - c
     // |       |
