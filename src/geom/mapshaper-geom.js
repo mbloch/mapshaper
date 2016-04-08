@@ -443,23 +443,20 @@ function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
 }
 
 MapShaper.calcArcBounds = function(xx, yy, start, len) {
-  var xmin = Infinity,
-      ymin = Infinity,
-      xmax = -Infinity,
-      ymax = -Infinity,
-      i = start | 0,
+  var i = start | 0,
       n = isNaN(len) ? xx.length - i : len + i,
-      x, y;
-  for (; i<n; i++) {
+      x, y, xmin, ymin, xmax, ymax;
+  if (n > 0) {
+    xmin = xmax = xx[i];
+    ymin = ymax = yy[i];
+  }
+  for (i++; i<n; i++) {
     x = xx[i];
     y = yy[i];
     if (x < xmin) xmin = x;
     if (x > xmax) xmax = x;
     if (y < ymin) ymin = y;
     if (y > ymax) ymax = y;
-  }
-  if (xmin > xmax || ymin > ymax) {
-    error("#calcArcBounds() null bounds");
   }
   return [xmin, ymin, xmax, ymax];
 };

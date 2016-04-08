@@ -39,6 +39,13 @@ describe('mapshaper-shapes.js', function () {
   describe('ArcCollection', function () {
 
     describe('dedupCoords()', function () {
+      it('NaNs are removed', function() {
+        var xy = [[[NaN, NaN], [NaN, NaN], [NaN, NaN]], [[NaN, NaN], [NaN, NaN]]];
+        var arcs = new ArcCollection(xy);
+        arcs.dedupCoords();
+        assert.deepEqual(arcs.toArray(), [[], []]);
+        assert.equal(arcs.getPointCount(), 0);
+      });
       it('collapsed arcs get zeroed out', function () {
         var xy = [[[1, 1], [1, 1], [1, 1]], [[2, 1], [2, 2]]];
         var arcs = new ArcCollection(xy);

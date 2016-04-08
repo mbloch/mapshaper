@@ -3,7 +3,7 @@
 // Used for building topology
 //
 function ArcIndex(pointCount) {
-  var hashTableSize = Math.ceil(pointCount * 0.25),
+  var hashTableSize = Math.floor(pointCount * 0.25 + 1),
       hash = getXYHash(hashTableSize),
       hashTable = new Int32Array(hashTableSize),
       chainIds = [],

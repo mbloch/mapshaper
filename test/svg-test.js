@@ -3,6 +3,15 @@ var api = require('../'),
     assert = require('assert');
 
 describe('mapshaper-svg.js', function () {
+
+  it('outputs svg file if output filename ends in ".svg"', function(done) {
+    api.internal.processFileContent('-i test/test_data/two_states.shp -o two_states.svg', null, function(err, output) {
+      assert.equal(output[0].filename, 'two_states.svg');
+      assert(/^<\?xml version="1.0"\?>/.test(output[0].content));
+      done();
+    });
+  });
+
   it ('default scaling w/ 1px margin', function(done) {
     var geo = {
       type: 'Feature',

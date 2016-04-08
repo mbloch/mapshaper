@@ -629,19 +629,24 @@ ArcCollection.prototype.inspect = function() {
   return str;
 };
 
+// Remove duplicate coords and NaNs
 MapShaper.dedupArcCoords = function(src, dest, arcLen, xx, yy, zz) {
   var n = 0, n2 = 0; // counters
+  var x, y, i, j, keep;
   while (n < arcLen) {
-    if (n === 0 || xx[src] != xx[src-1] || yy[src] != yy[src-1]) {
-      xx[dest] = xx[src];
-      yy[dest] = yy[src];
-      if (zz) zz[dest] = zz[src];
-      dest++;
+    j = src + n;
+    x = xx[j];
+    y = yy[j];
+    keep = x == x && y == y && (n2 === 0 || x != xx[j-1] || y != yy[j-1]);
+    if (keep) {
+      i = dest + n2;
+      xx[i] = x;
+      yy[i] = y;
       n2++;
-    } else if (n > 0 && zz && zz[src] > zz[dest]) {
-      zz[dest-1] = zz[src];
     }
-    src++;
+    if (zz && n2 > 0 && (keep || zz[j] > zz[i])) {
+      zz[i] = zz[j];
+    }
     n++;
   }
   return n2 > 1 ? n2 : 0;

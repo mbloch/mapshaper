@@ -7,12 +7,10 @@ mapshaper-svg-style
 
 //
 //
-//
 MapShaper.exportSVG = function(dataset, opts) {
   var template = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" ' +
     'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
   var b, svg;
-
   dataset = MapShaper.copyDataset(dataset); // Modify a copy of the dataset
   b = MapShaper.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
@@ -31,6 +29,7 @@ MapShaper.transformCoordsForSVG = function(dataset, opts) {
   var bounds = MapShaper.getDatasetBounds(dataset);
   var precision = opts.precision || 0.0001;
   var height, bounds2, fwd;
+
   if (opts.svg_scale > 0) {
     // alternative to using a fixed width (e.g. when generating multiple files
     // at a consistent geographic scale)
@@ -44,6 +43,7 @@ MapShaper.transformCoordsForSVG = function(dataset, opts) {
   MapShaper.transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);
   });
+
   MapShaper.setCoordinatePrecision(dataset, precision);
   return bounds2;
 };
