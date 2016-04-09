@@ -35,6 +35,10 @@ TopoJSON.exportTopology = function(src, opts) {
     if (opts.bbox && bounds.hasBounds()) {
       topology.bbox = bounds.toArray();
     }
+    if (opts.presimplify && !dataset.arcs.getVertexData().zz) {
+      // Calculate simplification thresholds if needed
+      MapShaper.simplifyPaths(dataset.arcs, opts);
+    }
     if (!opts.no_quantization) {
       topology.transform = TopoJSON.transformDataset(dataset, bounds, opts);
     }
@@ -97,10 +101,6 @@ TopoJSON.exportArcs = function(arcs, bounds, opts) {
   var fromZ = null,
       output = [];
   if (opts.presimplify) {
-    // Calculate simplification thresholds if none exist
-    if (!arcs.getVertexData().zz) {
-      MapShaper.simplifyPaths(arcs, opts);
-    }
     fromZ = TopoJSON.getPresimplifyFunction(bounds.width());
   }
   arcs.forEach2(function(i, n, xx, yy, zz) {
