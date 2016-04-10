@@ -37,7 +37,7 @@ TopoJSON.exportTopology = function(src, opts) {
     }
     if (opts.presimplify && !dataset.arcs.getVertexData().zz) {
       // Calculate simplification thresholds if needed
-      MapShaper.simplifyPaths(dataset.arcs, opts);
+      api.simplify(dataset, opts);
     }
     if (!opts.no_quantization) {
       topology.transform = TopoJSON.transformDataset(dataset, bounds, opts);

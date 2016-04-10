@@ -5,7 +5,7 @@ function LayerControl(model) {
   var buttonLabel = El('#layer-control-btn .layer-name');
   var isOpen = false;
 
-  new ModeButton('#layer-control-btn .mode-btn', 'layer_menu', model);
+  new ModeButton('#layer-control-btn .header-btn', 'layer_menu', model);
   model.addMode('layer_menu', turnOn, turnOff);
   model.on('update', function(e) {
     updateBtn();

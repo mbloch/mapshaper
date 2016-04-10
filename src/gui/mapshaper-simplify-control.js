@@ -4,12 +4,26 @@ var SimplifyControl = function(model) {
   var control = new EventDispatcher();
   var _value = 1;
   var el = El('#simplify-control-wrapper');
-  var planarCheckbox = El('#planar-opt');
   var menu = El('#simplify-options');
   var slider, text;
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
-  new SimpleButton('#simplify-options .cancel-btn').on('click', model.clearMode);
+  new SimpleButton('#simplify-options .cancel-btn').on('click', function() {
+    if (el.visible()) {
+      // cancel just hides menu if slider is visible
+      menu.hide();
+    } else {
+      model.clearMode();
+    }
+  });
+  new SimpleButton('#simplify-settings-btn').on('click', function() {
+    if (menu.visible()) {
+      menu.hide();
+    } else {
+      initMenu();
+    }
+  });
+
   new ModeButton('#simplify-btn', 'simplify', model);
   model.addMode('simplify', turnOn, turnOff);
   model.on('select', function() {
@@ -71,13 +85,18 @@ var SimplifyControl = function(model) {
       showSlider(); // need to show slider before setting; TODO: fix
       control.value(target.dataset.arcs.getRetainedPct());
     } else {
-      showMenu(!target.dataset.arcs.isPlanar());
+      initMenu();
     }
   }
 
-  function showMenu(spherical) {
-    El('#planar-opt-wrapper').node().style.display = spherical ? 'block' : 'none';
-    planarCheckbox.node().checked = false;
+  function initMenu() {
+    var dataset = model.getEditingLayer().dataset;
+    var showPlanarOpt = !dataset.arcs.isPlanar();
+    var opts = MapShaper.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);
+    El('#planar-opt-wrapper').node().style.display = showPlanarOpt ? 'block' : 'none';
+    El('#planar-opt').node().checked = !opts.spherical;
+    El("#import-retain-opt").node().checked = opts.keep_shapes;
+    El("#simplify-options input[value=" + opts.method + "]").node().checked = true;
     menu.show();
   }
 
@@ -97,14 +116,13 @@ var SimplifyControl = function(model) {
     menu.hide();
     setTimeout(function() {
       var opts = getSimplifyOptions();
-      MapShaper.simplifyPaths(dataset.arcs, opts);
-      dataset.arcs.setRetainedPct(1);
-      if (opts.keep_shapes) {
-        MapShaper.keepEveryPolygon(dataset.arcs, dataset.layers);
-      }
-      control.reset();
-      // TODO: also add simplify flag after method switching is supported
-      model.updated({presimplify: true});
+      mapshaper.simplify(dataset, opts);
+      model.updated({
+        // use presimplify flag if no vertices are removed
+        // (to trigger map redraw without recalculating intersections)
+        presimplify: opts.pct == 1,
+        simplify: opts.pct < 1
+      });
       showSlider();
       gui.clearProgressMessage();
     }, delay);
@@ -119,8 +137,10 @@ var SimplifyControl = function(model) {
     var method = El('#simplify-options input[name=method]:checked').attr('value') || null;
     return {
       method: method,
+      pct: _value,
+      no_repair: true,
       keep_shapes: !!El("#import-retain-opt").node().checked,
-      planar: !!planarCheckbox.node().checked
+      planar: !!El('#planar-opt').node().checked
     };
   }
 

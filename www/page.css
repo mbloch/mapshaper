@@ -59,7 +59,7 @@ body {
 }
 
 .dialog-btn:hover,
-.mode-btn:hover {
+.header-btn:hover {
 	background-color: #0F5A84;
 }
 
@@ -88,7 +88,7 @@ body {
 }
 
 .theme2 .dialog-btn:hover,
-.theme2 .mode-btn:hover {
+.theme2 .header-btn:hover {
 	background-color: #43541d;
 }
 
@@ -112,7 +112,7 @@ body {
 }
 
 .theme3 .dialog-btn:hover,
-.theme3 .mode-btn:hover {
+.theme3 .header-btn:hover {
 	background-color: #555;
 }
 
@@ -681,7 +681,7 @@ body.simplify #layer-control-btn {
 	position: absolute;
 	width: 100%;
 	overflow: hidden;
-	margin: 7px auto 0 auto;
+	margin: 0 auto 0 auto;
 	top: 0px;
 }
 
@@ -692,7 +692,7 @@ body.simplify #layer-control-btn {
 }
 
 #simplify-control .slider {
-	margin: 9px 5px 0 7px;
+	margin: 15px 5px 0 3px;
 	position: relative;
 	vertical-align: top;
 	display: inline-block;

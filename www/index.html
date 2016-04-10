@@ -49,9 +49,9 @@
 <div class="page-header">
 	<div class="mapshaper-logo">map<span class="logo-highlight">shaper</span></div>
 
-	<div id="layer-control-btn"><span class="btn mode-btn layer-name"></span></div>
+	<div id="layer-control-btn"><span class="btn header-btn layer-name"></span></div>
 
-	<div id="simplify-control-wrapper"><div id="simplify-control"><span class="label">Simplify</span>
+	<div id="simplify-control-wrapper"><div id="simplify-control"><div class="header-btn btn" id="simplify-settings-btn">Settings</div>
 		<div class="slider">
 			<div class="handle"><img src="images/slider_handle_v1.png" alt=""/></div>
 			<div class="track"></div>
@@ -59,7 +59,7 @@
 		<input type="text" value="label" class="clicktext" />
 	</div></div>
 	<div id="mode-buttons">
-		<span id="simplify-btn" class="mode-btn btn">Simplify</span><span class="separator"></span><span id="console-btn" class="mode-btn btn">Console</span><span class="separator"></span><span id="export-btn" class="mode-btn btn">Export</span>
+		<span id="simplify-btn" class="header-btn btn">Simplify</span><span class="separator"></span><span id="console-btn" class="header-btn btn">Console</span><span class="separator"></span><span id="export-btn" class="header-btn btn">Export</span>
 	</div>
 </div>
 
@@ -102,7 +102,7 @@ interface. Examples: "bbox" "no-quantization"
 
 <div id="simplify-options" class="main-area popup-dialog">
 	<div class="info-box">
-		<h3>Simplification options</h3>
+		<h3>Simplification settings</h3>
 		<div class="option-menu">
 			<div><label for="import-retain-opt"><input type="checkbox" class="checkbox" id="import-retain-opt"/>prevent shape removal</label>
 							<div class="tip-button">?<div class="tip-anchor">
@@ -144,7 +144,7 @@ the least-area triangle with two
 adjacent points.</div></div></div>
 			</div>
 
-			<div><label><input type="radio" name="method" value="weighted_visvalingam" checked class="radio">Visvalingam / weighted area</label><div class="tip-button">?<div class="tip-anchor">
+			<div><label><input type="radio" name="method" value="weighted_visvalingam" class="radio">Visvalingam / weighted area</label><div class="tip-button">?<div class="tip-anchor">
 <div class="tip">Points located at the vertex
 of more acute angles are
 preferentially removed, for
@@ -155,7 +155,7 @@ a smoother appearance.</div></div></div></div>
 
 		<div>
 			<div class="cancel-btn btn dialog-btn">Cancel</div>
-			<div class="submit-btn btn dialog-btn">Next</div>
+			<div class="submit-btn btn dialog-btn">Apply</div>
 		</div>
 	</div> <!-- .info-box -->
 </div> <!-- #simplify-options -->

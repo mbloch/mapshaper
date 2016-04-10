@@ -4,6 +4,29 @@ var assert = require('assert'),
 
 describe("mapshaper-simplify.js", function() {
 
+  describe('simplify() creates database.info.simplify object', function () {
+    it('default method, auto-detect spherical', function () {
+      var arcs = new api.internal.ArcCollection([[[180, 90], [-180, -90]]]);
+      var dataset = {arcs: arcs};
+      api.simplify(dataset);
+      assert.deepEqual(dataset.info.simplify, {method: 'weighted_visvalingam', spherical: true});
+    })
+
+    it('Douglas-Peucker, auto-detect planar', function () {
+      var arcs = new api.internal.ArcCollection([[[0, 100], [100, 100]]]);
+      var dataset = {arcs: arcs};
+      api.simplify(dataset, {method: 'dp'});
+      assert.deepEqual(dataset.info.simplify, {method: 'dp', spherical: false});
+    })
+
+    it('unweighted Visvalingam, explicit planar', function () {
+      var arcs = new api.internal.ArcCollection([[[0, 0], [1, -1]]]);
+      var dataset = {arcs: arcs};
+      api.simplify(dataset, {method: 'visvalingam', planar: true});
+      assert.deepEqual(dataset.info.simplify, {method: 'visvalingam', spherical: false, planar: true});
+    })
+  })
+
   describe("getSimplifyMethod()", function() {
     it ('"weighted" aliases to "weighted_visvalingam"', function() {
       assert.equal(api.internal.getSimplifyMethod({method: 'weighted'}), 'weighted_visvalingam');

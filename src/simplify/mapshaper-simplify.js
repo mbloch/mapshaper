@@ -10,6 +10,11 @@ mapshaper-simplify-info
 api.simplify = function(dataset, opts) {
   var arcs = dataset.arcs;
   if (!arcs) stop("[simplify] Missing path data");
+  // standardize options
+  opts = MapShaper.getStandardSimplifyOpts(dataset, opts);
+  // stash simplifcation options (used by gui settings dialog)
+  dataset.info = utils.defaults({simplify: opts}, dataset.info);
+
   T.start();
   MapShaper.simplifyPaths(arcs, opts);
 
@@ -19,8 +24,6 @@ api.simplify = function(dataset, opts) {
     arcs.setRetainedInterval(opts.interval);
   } else if (opts.resolution) {
     arcs.setRetainedInterval(MapShaper.calcSimplifyInterval(arcs, opts));
-  } else {
-    stop("[simplify] missing pct, interval or resolution parameter");
   }
   T.stop("Calculate simplification");
 
@@ -28,13 +31,21 @@ api.simplify = function(dataset, opts) {
     api.keepEveryPolygon(arcs, dataset.layers);
   }
 
-  if (!opts.no_repair) {
+  if (!opts.no_repair && arcs.getRetainedInterval() > 0) {
     api.findAndRepairIntersections(arcs);
   }
 
   if (opts.stats) {
     MapShaper.printSimplifyInfo(arcs, opts);
   }
+};
+
+MapShaper.getStandardSimplifyOpts = function(dataset, opts) {
+  opts = opts || {};
+  return utils.defaults({
+    method: MapShaper.getSimplifyMethod(opts),
+    spherical: MapShaper.useSphericalSimplify(dataset.arcs, opts)
+  }, opts);
 };
 
 MapShaper.useSphericalSimplify = function(arcs, opts) {
@@ -44,11 +55,9 @@ MapShaper.useSphericalSimplify = function(arcs, opts) {
 // Calculate simplification thresholds for each vertex of an arc collection
 // (modifies @arcs ArcCollection in-place)
 MapShaper.simplifyPaths = function(arcs, opts) {
-  var use3D = MapShaper.useSphericalSimplify(arcs, opts);
-  var method = MapShaper.getSimplifyMethod(opts);
-  var simplifyPath = MapShaper.getSimplifyFunction(method, use3D, opts);
+  var simplifyPath = MapShaper.getSimplifyFunction(opts);
   arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
-  if (use3D) {
+  if (opts.spherical) {
     MapShaper.simplifyPaths3D(arcs, simplifyPath);
     MapShaper.protectWorldEdges(arcs);
   } else {
@@ -85,14 +94,14 @@ MapShaper.getSimplifyMethod = function(opts) {
 };
 
 
-MapShaper.getSimplifyFunction = function(method, use3D, opts) {
+MapShaper.getSimplifyFunction = function(opts) {
   var f;
-  if (method == 'dp') {
+  if (opts.method == 'dp') {
     f = DouglasPeucker.calcArcData;
-  } else if (method == 'visvalingam') {
-    f = Visvalingam.getEffectiveAreaSimplifier(use3D);
-  } else if (method == 'weighted_visvalingam') {
-    f = Visvalingam.getWeightedSimplifier(opts, use3D);
+  } else if (opts.method == 'visvalingam') {
+    f = Visvalingam.getEffectiveAreaSimplifier(opts.spherical);
+  } else if (opts.method == 'weighted_visvalingam') {
+    f = Visvalingam.getWeightedSimplifier(opts, opts.spherical);
   } else {
     stop('[simplify] Unsupported simplify method:', method);
   }

@@ -113,20 +113,20 @@ div.tip {
 
 /* -------- BUTTONS ---------- */
 
-.mode-btn {
-	margin: 5px 0 0 0;
+.header-btn {
 	color: #fff;
 	border: none;
 	padding: 3px 7px 4px 7px;
 	border-radius: 3px;
+	margin-top: 5px;
 }
 
-.mode-btn.disabled,
-.mode-btn.disabled:hover {
+.header-btn.disabled,
+.header-btn.disabled:hover {
 	background-color: none;
 }
 
-.mode-btn.active {
+.header-btn.active {
 	background-color: black;
 }
 
