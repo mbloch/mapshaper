@@ -4,6 +4,22 @@ var assert = require('assert'),
 
 describe("mapshaper-simplify.js", function() {
 
+  describe('simplify() can be re-applied', function () {
+    it('test 1', function(done) {
+      api.runCommands('-i test/test_data/ne/ne_110m_admin_1_states_provinces_shp.shp', function(err, dataset) {
+        var a = dataset.arcs.toArray();
+        api.simplify(dataset, {pct: 0.1, method: 'dp'});
+        var b = dataset.arcs.toArray();
+        api.simplify(dataset, {pct: 0.3, method: 'visvalingam'});
+        api.simplify(dataset, {pct: 1});
+        var c = dataset.arcs.toArray();
+        assert.notDeepEqual(b, a);
+        assert.deepEqual(c, a);
+        done();
+      });
+    });
+  });
+
   describe('simplify() creates database.info.simplify object', function () {
     it('default method, auto-detect spherical', function () {
       var arcs = new api.internal.ArcCollection([[[180, 90], [-180, -90]]]);
