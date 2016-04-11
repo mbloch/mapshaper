@@ -19,11 +19,7 @@ var ExportControl = function(model) {
     };
   } else {
     anchor = menu.newChild('a').attr('href', '#').node();
-    exportButton("#geojson-btn", "geojson");
-    exportButton("#shapefile-btn", "shapefile");
-    exportButton("#topojson-btn", "topojson");
-    exportButton("#svg-btn", "svg");
-    exportButton("#csv-btn", "dsv");
+    initExportButton();
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
 
@@ -40,7 +36,40 @@ var ExportControl = function(model) {
     };
   }
 
+  function initLayerMenu() {
+    // init layer menu with current editing layer selected
+    var list = El('#export-layer-list').empty();
+    var selected = model.getEditingLayer().layer;
+    var template = '<label><input type="checkbox"> %s</label>';
+    var datasets = model.getDatasets().map(initDataset);
+
+    function initDataset(dataset) {
+      var layers = dataset.layers.map(function(lyr) {
+        var html = utils.format(template, lyr.name || '[unnamed layer]');
+        var box = El('div').html(html).appendTo(list).findChild('input').node();
+        if (lyr === selected) box.checked = true;
+        return {
+          checkbox: box,
+          layer: lyr
+        };
+      });
+      return {
+        dataset: dataset,
+        layers: layers
+      };
+    }
+  }
+
+  function initFormatMenu() {
+    var fmt = MapShaper.getOutputFormat(model.getEditingLayer().dataset, {});
+    var btn = El('#export-formats input[value="' + fmt + '"]').node();
+    if (btn) btn.checked = true;
+
+  }
+
   function turnOn() {
+    initLayerMenu();
+    initFormatMenu();
     menu.show();
   }
 
@@ -48,13 +77,17 @@ var ExportControl = function(model) {
     menu.hide();
   }
 
-  function exportButton(selector, format) {
-    var btn = new SimpleButton(selector).on('click', onClick);
-    function onClick(e) {
+  function getSelectedFormat() {
+    return El('#export-formats input:checked').node().value;
+  }
+
+  function initExportButton() {
+    new SimpleButton('#save-btn').on('click', function() {
       gui.showProgressMessage('Exporting');
       model.clearMode();
       setTimeout(function() {
-        exportAs(format, function(err) {
+        var fmt = getSelectedFormat();
+        exportAs(fmt, function(err) {
           // hide message after a delay, so it doesn't just flash for an instant.
           setTimeout(gui.clearProgressMessage, err ? 0 : 400);
           if (err) {
@@ -63,7 +96,7 @@ var ExportControl = function(model) {
           }
         });
       }, 20);
-    }
+    });
   }
 
   // @done function(string|Error|null)
