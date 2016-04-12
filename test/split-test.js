@@ -26,14 +26,26 @@ describe('mapshaper-split.js', function () {
     it('Fix: numerical values are converted to string names', function () {
       var records = [{foo: 0}, {foo: -1}, {foo: 1}, {foo: 1}];
       var lyr = {
+        name: 'bar',
         data: new api.internal.DataTable(records),
         shapes: [[[0, -2]], [[1], [2, 4]], null, [[3, 4]]]
       };
       var layers = api.splitLayer(lyr, 'foo');
       assert.equal(layers.length, 3)
-      assert.equal(layers[0].name, 'split-0');
-      assert.equal(layers[1].name, 'split--1')
-      assert.equal(layers[2].name, 'split-1')
+      assert.equal(layers[0].name, 'bar-0');
+      assert.equal(layers[1].name, 'bar--1')
+      assert.equal(layers[2].name, 'bar-1')
+    })
+
+    it('Issue #123 if layer is unnamed and a field is given, do not add a prefix to output layers', function () {
+      var records = [{foo: 'a'}, {foo: 'b'}];
+      var lyr = {
+        data: new api.internal.DataTable(records)
+      };
+      var layers = api.splitLayer(lyr, 'foo');
+      assert.equal(layers.length, 2)
+      assert.equal(layers[0].name, 'a');
+      assert.equal(layers[1].name, 'b')
     })
 
     it('Handle layer with no shapes', function() {

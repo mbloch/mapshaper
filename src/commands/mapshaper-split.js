@@ -5,11 +5,16 @@ api.splitLayer = function(src, splitField, opts) {
       properties = lyr0.data ? lyr0.data.getRecords() : null,
       shapes = lyr0.shapes,
       index = {},
-      splitLayers = [];
+      splitLayers = [],
+      prefix;
 
   if (splitField && (!properties || !lyr0.data.fieldExists(splitField))) {
     stop("[split] Missing attribute field:", splitField);
   }
+
+  // if not splitting on a field and layer is unnamed, name split-apart layers
+  // like: split-0, split-1, ...
+  prefix = lyr0.name || (splitField ? '' : 'split');
 
   utils.repeat(MapShaper.getFeatureCount(lyr0), function(i) {
     var key = String(splitField ? properties[i][splitField] : i),
@@ -18,7 +23,7 @@ api.splitLayer = function(src, splitField, opts) {
     if (key in index === false) {
       index[key] = splitLayers.length;
       lyr = utils.defaults({
-        name: MapShaper.getSplitLayerName(lyr0.name, key),
+        name: MapShaper.getSplitLayerName(prefix, key),
         data: properties ? new DataTable() : null,
         shapes: shapes ? [] : null
       }, lyr0);
@@ -37,5 +42,5 @@ api.splitLayer = function(src, splitField, opts) {
 };
 
 MapShaper.getSplitLayerName = function(base, key) {
-  return (base || 'split') + '-' + (key || '');
+  return (base ? base + '-' : '') + key;
 };
