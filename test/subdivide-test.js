@@ -19,6 +19,20 @@ describe('mapshaper-subdivide.js', function () {
       assert.deepEqual(layers[4].shapes, [[[4]]])
     })
 
+    it('subdivided layer naming is consistent with split command', function() {
+      var lyr = {
+        geometry_type: "polygon",
+        shapes: [[[0]], [[1]], [[2]], [[3]], [[4]]]
+      }
+      var layers = api.subdivideLayer(lyr, nullArcs, "true");
+      assert.equal(layers[0].name, 'split-0')
+      assert.equal(layers[1].name, 'split-1')
+      lyr.name = 'foo';
+      layers = api.subdivideLayer(lyr, nullArcs, "true");
+      assert.equal(layers[0].name, 'foo-0')
+      assert.equal(layers[1].name, 'foo-1')
+    })
+
     it('divide on a sum', function() {
       var lyr = {
         geometry_type: "polygon",

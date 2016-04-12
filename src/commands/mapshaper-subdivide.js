@@ -38,7 +38,7 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
   }
 
   subdividedLayers.forEach(function(lyr2, i) {
-    lyr2.name = MapShaper.getSplitLayerName(lyr.name, i + 1);
+    lyr2.name = MapShaper.getSplitLayerName(lyr.name || 'split', i);
     utils.defaults(lyr2, lyr);
   });
   return subdividedLayers;
