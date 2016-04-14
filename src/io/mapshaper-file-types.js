@@ -70,6 +70,18 @@ MapShaper.isSupportedOutputFormat = function(fmt) {
   return types.indexOf(fmt) > -1;
 };
 
+MapShaper.getFormatName = function(fmt) {
+  return {
+    geojson: 'GeoJSON',
+    topojson: 'TopoJSON',
+    json: 'JSON records',
+    dsv: 'CSV',
+    dbf: 'DBF',
+    shapefile: 'Shapefile',
+    svg: 'SVG'
+  }[fmt] || '';
+};
+
 // Assumes file at @path is one of Mapshaper's supported file types
 MapShaper.isBinaryFile = function(path) {
   var ext = utils.getFileExtension(path).toLowerCase();

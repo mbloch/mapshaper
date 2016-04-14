@@ -10,12 +10,12 @@ var APIError = api.internal.APIError;
 var message = api.internal.message;
 
 // Replace error function in mapshaper lib
-MapShaper.error = function error() {
+var error = MapShaper.error = function() {
   stop.apply(null, utils.toArray(arguments));
 };
 
 // replace stop function
-MapShaper.stop = function stop() {
+var stop = MapShaper.stop = function() {
   // Show a popup error message, then throw an error
   var msg = gui.formatMessageArgs(arguments);
   gui.alert(msg);
