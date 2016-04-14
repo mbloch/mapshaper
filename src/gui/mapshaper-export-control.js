@@ -7,7 +7,9 @@ var ExportControl = function(model) {
     !!window.navigator.msSaveBlob;
   var unsupportedMsg = "Exporting is not supported in this browser";
   var menu = El('#export-options').on('click', gui.handleDirectEvent(model.clearMode));
+  var datasets = []; // array of exportable layers grouped by dataset
   var anchor, blobUrl;
+  new SimpleButton('#export-options .cancel-btn').on('click', model.clearMode);
 
   if (!downloadSupport) {
     El('#export-btn').on('click', function() {
@@ -42,6 +44,11 @@ var ExportControl = function(model) {
     var selected = model.getEditingLayer().layer;
     var template = '<label><input type="checkbox"> %s</label>';
     var datasets = model.getDatasets().map(initDataset);
+    // hide single layer
+    if (datasets.length == 1 && datasets[0].layers.length < 2) {
+      El('#export-layers').hide();
+    }
+    return datasets;
 
     function initDataset(dataset) {
       var layers = dataset.layers.map(function(lyr) {
@@ -62,13 +69,20 @@ var ExportControl = function(model) {
 
   function initFormatMenu() {
     var fmt = MapShaper.getOutputFormat(model.getEditingLayer().dataset, {});
-    var btn = El('#export-formats input[value="' + fmt + '"]').node();
-    if (btn) btn.checked = true;
-
+    var formats = ['shapefile', 'geojson', 'topojson', 'dsv', 'svg'];
+    if (formats.indexOf(fmt) == -1) {
+      formats.unshift(fmt);
+    }
+    var items = formats.map(function(fmt) {
+      return utils.format('<div><label><input type="radio" name="format" value="%s"' +
+        ' class="radio">%s</label></div>', fmt, MapShaper.getFormatName(fmt));
+    });
+    El('#export-formats').html(items.join('\n'));
+    El('#export-formats input[value="' + fmt + '"]').node().checked = true;
   }
 
   function turnOn() {
-    initLayerMenu();
+    datasets = initLayerMenu();
     initFormatMenu();
     menu.show();
   }
@@ -81,13 +95,32 @@ var ExportControl = function(model) {
     return El('#export-formats input:checked').node().value;
   }
 
+  function getSelectedLayers() {
+    var selections = datasets.reduce(function(memo, obj) {
+      var dataset = obj.dataset;
+      var selection = obj.layers.reduce(reduceLayer, []);
+      if (selection.length > 0) {
+        memo.push(utils.defaults({layers: selection}, dataset));
+      }
+      return memo;
+    }, []);
+
+    function reduceLayer(memo, obj) {
+      if (obj.checkbox.checked) {
+        // TODO: shallow-copy layer, so changed filenames do not affect original layers
+        memo.push(obj.layer);
+      }
+      return memo;
+    }
+    return selections;
+  }
+
   function initExportButton() {
     new SimpleButton('#save-btn').on('click', function() {
       gui.showProgressMessage('Exporting');
       model.clearMode();
       setTimeout(function() {
-        var fmt = getSelectedFormat();
-        exportAs(fmt, function(err) {
+        exportMenuSelection(function(err) {
           // hide message after a delay, so it doesn't just flash for an instant.
           setTimeout(gui.clearProgressMessage, err ? 0 : 400);
           if (err) {
@@ -100,22 +133,31 @@ var ExportControl = function(model) {
   }
 
   // @done function(string|Error|null)
-  function exportAs(format, done) {
-    var dataset, opts, files;
+  function exportMenuSelection(done) {
+    var opts, files, datasets;
     try {
-      dataset = utils.extend({}, model.getEditingLayer().dataset);
       opts = gui.parseFreeformOptions(El('#export-options .advanced-options').node().value, 'o');
-      opts.format = format;
-      if (opts.target) {
-        dataset.layers = MapShaper.findMatchingLayers(dataset.layers, opts.target) ||
-          stop("Unknown export target:", opts.target);
+      if (!opts.format) opts.format = getSelectedFormat();
+      // ignoring command line "target" option
+      datasets = getSelectedLayers();
+      if (!isMultiLayerFormat(opts.format)) {
+        // uniqify layer names of single-layer formats (geojson, shp, csv)
+        MapShaper.assignUniqueLayerNames2(datasets);
       }
-      files = MapShaper.exportFileContent(dataset, opts);
+      files = datasets.reduce(function(memo, dataset) {
+        var output = MapShaper.exportFileContent(dataset, opts);
+        return memo.concat(output);
+      }, []);
+      // multiple output files will be zipped, need unique names
+      MapShaper.assignUniqueFileNames(files);
     } catch(e) {
       return done(e);
     }
-
     MapShaper.writeFiles(files, opts, done);
+  }
+
+  function isMultiLayerFormat(fmt) {
+    return fmt == 'svg' || fmt == 'topojson';
   }
 
   function saveBlob(filename, blob, done) {

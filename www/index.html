@@ -82,31 +82,22 @@
 
 <div id="export-options" class="main-area popup-dialog">
 	<div class="info-box">
-		<h3>Export menu</h3>
-		<div class="option-menu">
-			<div style="height:3px"></div>
-			<div id=export-layers>
-				<h4>Layers</h4>
-				<div id="export-layer-list"></div>
-			</div>
-			<div id="export-formats">
-				<h4>Format</h4>
-				<div><label><input type="radio" name="format" value="shapefile" class="radio">Shapefile</label></div>
-				<div><label><input type="radio" name="format" value="geojson" class="radio">GeoJSON</label></div>
-				<div><label><input type="radio" name="format" value="topojson" class="radio">TopoJSON</label></div>
-				<div><label><input type="radio" name="format" value="dsv" class="radio">CSV</label></div>
-				<div><label><input type="radio" name="format" value="svg" class="radio">SVG</label></div>
-			</div>
+		<h3>Export options</h3>
+		<div style="height:3px"></div>
+		<div id=export-layers>
+			<h4>Layers</h4>
+			<div id="export-layer-list" class="option-menu"></div>
+		</div>
+		<h4>File format</h4>
+		<div id="export-formats" class="option-menu">
+		</div>
 
-			<div><input type="text" class="advanced-options" placeholder="command line options" /><div class="tip-button">?<div class="tip-anchor">
-			<div class="tip">Enter options from the command line
+		<div class="option-menu"><input type="text" class="advanced-options" placeholder="command line options" /><div class="tip-button">?<div class="tip-anchor">
+		<div class="tip">Enter options from the command line
 interface. Examples: "bbox" "no-quantization"
 "precision=0.001"</div></div></div></div>
-		</div>
-
-		<div>
-			<div id="save-btn" class="btn dialog-btn">Export</div>
-		</div>
+		<div class="cancel-btn btn dialog-btn">Cancel</div>
+		<div id="save-btn" class="btn dialog-btn">Export</div>
 	</div>
 </div>
 
@@ -126,16 +117,7 @@ the largest ring of multi-ring features.
 on a plane, rather than longitude, latitude
 coordinates on a sphere.
 </div></div></div></div>
-
-<!--
-			<div style="height:3px"></div>
-			<div><input type="text" class="advanced-options" placeholder="command line options" /><div class="tip-button">?<div class="tip-anchor">
-			<div class="tip">Enter options from the command line
-interface. Examples: "bbox" "no-quantization"
-"precision=0.001"</div></div></div></div>
--->
-
-</div>
+		</div>
 
 			<h4>Method</h4>
 			<div class="option-menu">
