@@ -74,10 +74,10 @@ describe('mapshaper-split.js', function () {
       };
       var layers = api.splitLayer(lyr);
       assert.equal(layers.length, 4)
-      assert.equal(layers[0].name, 'split-0');
-      assert.equal(layers[1].name, 'split-1')
-      assert.equal(layers[2].name, 'split-2')
-      assert.equal(layers[3].name, 'split-3')
+      assert.equal(layers[0].name, 'split-1');
+      assert.equal(layers[1].name, 'split-2')
+      assert.equal(layers[2].name, 'split-3')
+      assert.equal(layers[3].name, 'split-4')
 
       assert.deepEqual(layers[0].shapes, [[[0, -2]]])
       assert.deepEqual(layers[1].shapes, [[[1], [2, 4]]])

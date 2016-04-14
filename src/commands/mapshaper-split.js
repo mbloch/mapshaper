@@ -17,7 +17,7 @@ api.splitLayer = function(src, splitField, opts) {
   prefix = lyr0.name || (splitField ? '' : 'split');
 
   utils.repeat(MapShaper.getFeatureCount(lyr0), function(i) {
-    var key = String(splitField ? properties[i][splitField] : i),
+    var key = String(splitField ? properties[i][splitField] : i + 1),
         lyr;
 
     if (key in index === false) {

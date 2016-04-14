@@ -25,12 +25,12 @@ describe('mapshaper-subdivide.js', function () {
         shapes: [[[0]], [[1]], [[2]], [[3]], [[4]]]
       }
       var layers = api.subdivideLayer(lyr, nullArcs, "true");
-      assert.equal(layers[0].name, 'split-0')
-      assert.equal(layers[1].name, 'split-1')
+      assert.equal(layers[0].name, 'split-1')
+      assert.equal(layers[1].name, 'split-2')
       lyr.name = 'foo';
       layers = api.subdivideLayer(lyr, nullArcs, "true");
-      assert.equal(layers[0].name, 'foo-0')
-      assert.equal(layers[1].name, 'foo-1')
+      assert.equal(layers[0].name, 'foo-1')
+      assert.equal(layers[1].name, 'foo-2')
     })
 
     it('divide on a sum', function() {

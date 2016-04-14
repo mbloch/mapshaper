@@ -285,7 +285,7 @@ div.error-box > div {
 .info-box h3 {
 	font-size: 1.2em;
 	padding: 0;
-	margin: 0 0 3px 0;
+	margin: 0 0 2px 0;
 }
 
 .info-box h4 {
@@ -295,7 +295,7 @@ div.error-box > div {
 
 .info-box p {
 	white-space: pre-line;
-	margin: 0 0 0.45em 0;
+	margin: 0 0 0.5em 0;
 }
 
 .option-menu {
