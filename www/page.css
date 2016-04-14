@@ -175,8 +175,19 @@ body {
 	padding: 4px 6px 5px 6px;
 }
 
+#export-layer-list {
+	max-height: 160px;
+	overflow: hidden;
+	overflow-y: auto;
+	margin-right: -13px;
+}
+
+#export-layer-list > div {
+	white-space: nowrap;
+}
+
 #export-options .option-menu .advanced-options {
-	width: 185px;
+	width: 190px;
 }
 
 /* --- Main area ------------- */
@@ -264,7 +275,7 @@ div.error-box > div {
 	text-align: left;
 	margin-top: 12px;
 	background-color: #fff;
-	padding: 10px 14px 9px 14px;
+	padding: 10px 14px 8px 14px;
 	vertical-align: top;
 	display: inline-block;
 	border: 1px solid #999;
@@ -277,7 +288,7 @@ div.error-box > div {
 }
 
 .info-box h4 {
-	margin: 0 0 2px 0;
+	margin: 0 0 1px 0;
 }
 
 .info-box p {
@@ -286,7 +297,7 @@ div.error-box > div {
 }
 
 .option-menu {
-	margin: 0 0 6px 0;
+	margin: 0 0 7px 0;
 }
 
 .option-menu input {
@@ -411,11 +422,13 @@ body.simplify #layer-control-btn {
 	display: none;
 }
 
-#layer-control .info-box {
-	overflow: hidden;
+#layer-menu .info-box {
 	max-height: 90%;
+	overflow: hidden;
 	overflow-y: auto;
+
 }
+
 
 #layer-menu .layer-list {
 	margin: 6px 0 6px 0;

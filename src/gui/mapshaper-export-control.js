@@ -44,10 +44,8 @@ var ExportControl = function(model) {
     var selected = model.getEditingLayer().layer;
     var template = '<label><input type="checkbox"> %s</label>';
     var datasets = model.getDatasets().map(initDataset);
-    // hide single layer
-    if (datasets.length == 1 && datasets[0].layers.length < 2) {
-      El('#export-layers').hide();
-    }
+    var hideLayers = datasets.length == 1 && datasets[0].layers.length < 2;
+    El('#export-layers').css('display', hideLayers ? 'none' : 'block');
     return datasets;
 
     function initDataset(dataset) {
@@ -67,18 +65,28 @@ var ExportControl = function(model) {
     }
   }
 
+  function getInputFormats() {
+    return model.getDatasets().reduce(function(memo, d) {
+      var fmt = d.info && d.info.input_format;
+      if (fmt) memo.push(fmt);
+      return memo;
+    }, []);
+  }
+
+  function getDefaultExportFormat() {
+    var dataset = model.getEditingLayer().dataset;
+    return dataset.info && dataset.info.input_format || 'geojson';
+  }
+
   function initFormatMenu() {
-    var fmt = MapShaper.getOutputFormat(model.getEditingLayer().dataset, {});
-    var formats = ['shapefile', 'geojson', 'topojson', 'dsv', 'svg'];
-    if (formats.indexOf(fmt) == -1) {
-      formats.unshift(fmt);
-    }
+    var defaults = ['shapefile', 'geojson', 'topojson', 'dsv', 'svg'];
+    var formats = utils.uniq(defaults.concat(getInputFormats()));
     var items = formats.map(function(fmt) {
       return utils.format('<div><label><input type="radio" name="format" value="%s"' +
         ' class="radio">%s</label></div>', fmt, MapShaper.getFormatName(fmt));
     });
     El('#export-formats').html(items.join('\n'));
-    El('#export-formats input[value="' + fmt + '"]').node().checked = true;
+    El('#export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;
   }
 
   function turnOn() {
