@@ -283,11 +283,13 @@ div.error-box > div {
 }
 
 .info-box h3 {
+	font-size: 1.2em;
 	padding: 0;
 	margin: 0 0 3px 0;
 }
 
 .info-box h4 {
+	font-size: 1em;
 	margin: 0 0 1px 0;
 }
 
@@ -297,7 +299,7 @@ div.error-box > div {
 }
 
 .option-menu {
-	margin: 0 0 7px 0;
+	padding: 0 0 7px 0;
 }
 
 .option-menu input {
