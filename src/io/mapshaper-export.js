@@ -138,6 +138,19 @@ MapShaper.assignUniqueLayerNames = function(layers) {
   });
 };
 
+MapShaper.assignUniqueLayerNames2 = function(datasets) {
+  var layers = datasets.reduce(function(memo, dataset) {
+    return memo.concat(dataset.layers);
+  }, []);
+  MapShaper.assignUniqueLayerNames(layers);
+};
+
+MapShaper.assignUniqueFileNames = function(output) {
+  var names = output.map(function(o) {return o.filename;});
+  var uniqnames = MapShaper.uniqifyNames(names, MapShaper.formatVersionedFileName);
+  output.forEach(function(o, i) {o.filename = uniqnames[i];});
+};
+
 /*
 MapShaper.getDefaultFileExtension = function(fileType) {
   var ext = "";
@@ -163,25 +176,46 @@ MapShaper.exportDataTables = function(layers, opts) {
   return tables;
 };
 
-MapShaper.uniqifyNames = function(names) {
+MapShaper.formatVersionedName = function(name, i) {
+  var suffix = String(i);
+  if (/[0-9]$/.test(name)) {
+    suffix = '-' + suffix;
+  }
+  return name + suffix;
+};
 
+MapShaper.formatVersionedFileName = function(filename, i) {
+  var parts = filename.split('.');
+  var ext, base;
+  if (parts.length < 2) {
+    return MapShaper.formatVersionedName(filename, i);
+  }
+  ext = parts.pop();
+  base = parts.join('.');
+  return MapShaper.formatVersionedName(base, i) + '.' + ext;
+};
+
+MapShaper.uniqifyNames = function(names, formatter) {
   var counts = utils.countValues(names),
-      index = {},
-      suffix;
+      format = formatter || MapShaper.formatVersionedName,
+      blacklist = {};
+
+  Object.keys(counts).forEach(function(name) {
+    if (counts[name] > 1) blacklist[name] = true; // uniqify all instances of a name
+  });
   return names.map(function(name) {
-    var count = counts[name],
-        i = 1;
-    if (count > 1 || name in index) {
-      do {
-        suffix = String(i);
-        if (/[0-9]$/.test(name)) {
-          suffix = '-' + suffix;
-        }
-        i++;
-      } while ((name + suffix) in index);
-      name = name + suffix;
+    var i = 1, // first version id
+        candidate = name,
+        versionedName;
+    while (candidate in blacklist) {
+      versionedName = format(name, i);
+      if (!versionedName || versionedName == candidate) {
+        throw new Error("Naming error"); // catch buggy versioning function
+      }
+      candidate = versionedName;
+      i++;
     }
-    index[name] = true;
-    return name;
+    blacklist[candidate] = true;
+    return candidate;
   });
 };
