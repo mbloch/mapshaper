@@ -24,7 +24,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
 
 // Convert a dataset object to a TopoJSON topology object
 TopoJSON.exportTopology = function(src, opts) {
-  var dataset = TopoJSON.copyDatasetForExport(src),
+  var dataset = opts.cloned ? src : TopoJSON.copyDatasetForExport(src),
       arcs = dataset.arcs,
       topology = {type: "Topology"},
       bounds;
@@ -64,6 +64,8 @@ TopoJSON.exportTopology = function(src, opts) {
   return topology;
 };
 
+// TODO: switch to MapShaper.copyDatasetForExport(), which is similar but
+// deep-copies shape data.
 // Clone arc data (this gets modified in place during TopoJSON export)
 // Shallow-copy shape data in each layer (gets replaced with remapped shapes)
 TopoJSON.copyDatasetForExport = function(dataset) {

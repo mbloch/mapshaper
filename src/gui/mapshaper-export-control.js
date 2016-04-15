@@ -129,12 +129,17 @@ var ExportControl = function(model) {
       model.clearMode();
       setTimeout(function() {
         exportMenuSelection(function(err) {
+          if (err) {
+            if (utils.isString(err)) {
+              gui.alert(err);
+            } else {
+              // stack seems to change if Error is logged directly
+              console.error(err.stack);
+              gui.alert("Export failed for an unknown reason");
+            }
+          }
           // hide message after a delay, so it doesn't just flash for an instant.
           setTimeout(gui.clearProgressMessage, err ? 0 : 400);
-          if (err) {
-            console.error(err);
-            gui.alert(utils.isString(err) ? err : "Export failed for an unknown reason");
-          }
         });
       }, 20);
     });
@@ -148,8 +153,23 @@ var ExportControl = function(model) {
       if (!opts.format) opts.format = getSelectedFormat();
       // ignoring command line "target" option
       datasets = getSelectedLayers();
-      if (!isMultiLayerFormat(opts.format)) {
-        // uniqify layer names of single-layer formats (geojson, shp, csv)
+      if (isMultiLayerFormat(opts.format)) {
+        // merge multiple datasets into one for export as SVG or TopoJSON
+        if (datasets.length > 1) {
+          datasets = [MapShaper.mergeDatasetsForExport(datasets)];
+          if (opts.format == 'topojson') {
+            // Build topology, in case user has loaded several
+            // files derived from the same source, with matching coordinates
+            // (Downsides: useless work if geometry is unrelated;
+            // could create many small arcs if layers are partially related)
+            api.buildTopology(datasets[0]);
+          }
+          // KLUDGE let exporter know that cloning is not needed
+          // (because shape data was deep-copied during merge)
+          opts.cloned = true;
+        }
+      } else {
+        // TODO: make sure names aren't modified in-place
         MapShaper.assignUniqueLayerNames2(datasets);
       }
       files = datasets.reduce(function(memo, dataset) {
