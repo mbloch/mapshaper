@@ -12,6 +12,16 @@ MapShaper.copyDataset = function(dataset) {
   return d2;
 };
 
+// clone coordinate data, shallow-copy attribute data
+MapShaper.copyDatasetForExport = function(dataset) {
+  var d2 = utils.extend({}, dataset);
+  d2.layers = d2.layers.map(MapShaper.copyLayerShapes);
+  if (d2.arcs) {
+    d2.arcs = d2.arcs.getFilteredCopy();
+  }
+  return d2;
+};
+
 // make a stub copy if the no_replace option is given, else pass thru src layer
 MapShaper.getOutputLayer = function(src, opts) {
   return opts && opts.no_replace ? {geometry_type: src.geometry_type} : src;
@@ -19,14 +29,19 @@ MapShaper.getOutputLayer = function(src, opts) {
 
 // Make a deep copy of a layer
 MapShaper.copyLayer = function(lyr) {
-  var copy = utils.extend({}, lyr);
-  if (lyr.data) {
-    copy.data = lyr.data.clone();
-  }
-  if (lyr.shapes) {
-    copy.shapes = MapShaper.cloneShapes(lyr.shapes);
+  var copy = MapShaper.copyLayerShapes(lyr);
+  if (copy.data) {
+    copy.data = copy.data.clone();
   }
   return copy;
+};
+
+MapShaper.copyLayerShapes = function(lyr) {
+  var copy = utils.extend({}, lyr);
+    if (lyr.shapes) {
+      copy.shapes = MapShaper.cloneShapes(lyr.shapes);
+    }
+    return copy;
 };
 
 MapShaper.getDatasetBounds = function(data) {
