@@ -19,7 +19,11 @@ MapShaper.importContent = function(obj, opts) {
     data = obj.json;
     content = data.content;
     if (utils.isString(content)) {
-      content = JSON.parse(content);
+      try {
+        content = JSON.parse(content);
+      } catch(e) {
+        stop("Invalid JSON");
+      }
     }
     if (content.type == 'Topology') {
       fileFmt = 'topojson';
