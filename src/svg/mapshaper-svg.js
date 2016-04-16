@@ -32,6 +32,7 @@ MapShaper.transformCoordsForSVG = function(dataset, opts) {
   var precision = opts.precision || 0.0001;
   var height, bounds2, fwd;
 
+
   if (opts.svg_scale > 0) {
     // alternative to using a fixed width (e.g. when generating multiple files
     // at a consistent geographic scale)
@@ -52,11 +53,12 @@ MapShaper.transformCoordsForSVG = function(dataset, opts) {
 
 // pad bounds to accomodate stroke width and circle radius
 MapShaper.padViewportBoundsForSVG = function(bounds, width, marginPx) {
+  var bw = bounds.width() || bounds.height() || 1; // handle 0 width bbox
   var marg;
   if (marginPx >= 0 === false) {
     marginPx = 1;
   }
-  marg = bounds.width() / (width - marginPx * 2) * marginPx;
+  marg = bw / (width - marginPx * 2) * marginPx;
   bounds.padBounds(marg, marg, marg, marg);
 };
 
@@ -65,12 +67,19 @@ MapShaper.exportLayerAsSVG = function(lyr, dataset, opts) {
   var geojson = MapShaper.exportGeoJSONCollection(lyr, dataset, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
   var symbols = SVG.importGeoJSONFeatures(features);
-  var svgObj = {
+  var layerObj = {
     tag: 'g',
     children: symbols,
     properties: {id: lyr.name}
   };
-  // SVG.defaultStyles[lyr.geometry_type];
-  // utils.extend(svgObj.properties, style);
-  return SVG.stringify(svgObj);
+
+  // add default display properties to line layers
+  // (these are overridden by feature-level styles set via -svg-style)
+  if (lyr.geometry_type == 'polyline') {
+    layerObj.properties.fill = 'none';
+    layerObj.properties.stroke = 'black';
+    layerObj.properties['stroke-width'] = 1;
+  }
+
+  return SVG.stringify(layerObj);
 };
