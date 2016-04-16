@@ -115,8 +115,8 @@ var ExportControl = function(model) {
 
     function reduceLayer(memo, obj) {
       if (obj.checkbox.checked) {
-        // TODO: shallow-copy layer, so changed filenames do not affect original layers
-        memo.push(obj.layer);
+        // shallow-copy layer, so uniqified filenames do not affect original layers
+        memo.push(utils.extend({}, obj.layer));
       }
       return memo;
     }
