@@ -16,11 +16,14 @@ function RepairControl(model, map) {
         _self.hide();
       }
       delayedUpdate();
-    } else if (e.flags.select && !e.flags.import) {
-      // Don't update if a dataset was just imported -- another layer may be
-      // selected right away.
-      reset();
-      delayedUpdate();
+    } else if (e.flags.select) {
+      _self.hide();
+      if (!e.flags.import) {
+        // Don't recalculate if a dataset was just imported -- another layer may be
+        // selected right away.
+        reset();
+        delayedUpdate();
+      }
     }
   });
 

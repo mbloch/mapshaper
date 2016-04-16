@@ -28,6 +28,7 @@ function HitControl(ext, mouse) {
     }
     test = tests[o.layer.geometry_type];
     target = o;
+    coords.hide();
   };
 
   this.start = function() {
