@@ -371,10 +371,11 @@ function Console(model) {
   }
 
   function printExamples() {
-    printExample("Extract one state from a national dataset","$ filter 'STATE == \"Iowa\"'");
+    printExample("See a list of all console commands", "$ help");
+    printExample("Get help using a single command", "$ help innerlines");
+    printExample("Get information about the active data layer", "$ info");
+    printExample("Delete one state from a national dataset","$ filter 'STATE != \"Alaska\"'");
     printExample("Aggregate counties to states by dissolving shared edges" ,"$ dissolve 'STATE'");
-    printExample("See information about the active data layer", "$ info");
-    printExample("Get help for mapshaper commands", "$ help");
     printExample("Clear the console", "$ clear");
   }
 }

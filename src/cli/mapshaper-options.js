@@ -383,7 +383,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("filter-fields")
-    .describe('filter and optionally rename data fields')
+    .describe('retain a subset of data fields')
     .validate(validateFilterFieldsOpts)
     .option("fields", {
       label: "<field(s)>",
