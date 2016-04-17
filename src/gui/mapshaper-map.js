@@ -50,7 +50,7 @@ function MshpMap(model) {
   _ext.on('change', drawLayers);
 
   _hit.on('change', function(e) {
-    var lyr = _activeLyr.getDisplayLayer().layer;
+    var lyr = _activeLyr.getDisplayLayer(_ext).layer;
     _hoverStyle = null;
     if (e.id >= 0) {
       _hoverStyle = MapStyle.getHoverStyle(lyr, [e.id], e.pinned);
@@ -65,8 +65,7 @@ function MshpMap(model) {
 
   model.on('update', function(e) {
     var prevBounds = _activeLyr ?_activeLyr.getBounds() : null,
-        needReset = false,
-        displayLyr = initActiveLayer(e);
+        needReset = false;
 
     if (arcsMayHaveChanged(e.flags)) {
       // update filtered arcs when simplification thresholds are calculated
@@ -76,12 +75,13 @@ function MshpMap(model) {
       // reset simplification after projection (thresholds have changed)
       // TODO: reset is not needed if -simplify command is run after -proj
       if (e.flags.proj && e.dataset.arcs) {
-        displayLyr.setRetainedPct(1);
+        e.dataset.arcs.setRetainedPct(1);
       }
     }
-    _activeLyr = displayLyr;
-    needReset = gui.mapNeedsReset(displayLyr.getBounds(), prevBounds, _ext.getBounds());
-    _ext.setBounds(displayLyr.getBounds()); // update map extent to match bounds of active group
+
+    _activeLyr = initActiveLayer(e);
+    needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevBounds, _ext.getBounds());
+    _ext.setBounds(_activeLyr.getBounds()); // update map extent to match bounds of active group
     if (needReset) {
       // zoom to full view of the active layer and redraw
       _ext.reset(true);
@@ -95,8 +95,6 @@ function MshpMap(model) {
     if (lyr) {
       _highLyr = new DisplayLayer(lyr, dataset);
       _highStyle = MapStyle.getHighlightStyle();
-      // _highLyr.setStyle(highStyle);
-      // refreshLayer(_highGroup);
       drawLayer(_highLyr, _highCanv, _highStyle);
     } else {
       _highStyle = null;
@@ -115,7 +113,7 @@ function MshpMap(model) {
     var lyr = new DisplayLayer(o.layer, o.dataset);
     _hit.update(lyr.getDisplayLayer(_ext));
     _activeStyle = MapStyle.getActiveStyle(o.layer);
-    lyr.updateStyle(_activeStyle);
+    lyr.updateStyle(_activeStyle, _ext);
     return lyr;
   }
 

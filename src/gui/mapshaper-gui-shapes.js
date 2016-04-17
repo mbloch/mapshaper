@@ -66,11 +66,6 @@ function FilteredArcCollection(unfilteredArcs) {
 
   this.size = function() {return unfilteredArcs.size();};
 
-  this.update = function(arcs) {
-    unfilteredArcs = arcs;
-    init();
-  };
-
   this.setRetainedPct = function(pct) {
     if (sortedThresholds) {
       var z = sortedThresholds[Math.floor(pct * sortedThresholds.length)];

@@ -169,7 +169,6 @@ var ExportControl = function(model) {
           opts.cloned = true;
         }
       } else {
-        // TODO: make sure names aren't modified in-place
         MapShaper.assignUniqueLayerNames2(datasets);
       }
       files = datasets.reduce(function(memo, dataset) {

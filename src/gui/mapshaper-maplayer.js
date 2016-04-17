@@ -14,13 +14,14 @@ function DisplayLayer(lyr, dataset) {
   };
 
   this.setRetainedPct = function(pct) {
-    if (dataset.arcs) {
-      dataset.arcs.setRetainedPct(pct);
+    var arcs = dataset.filteredArcs || dataset.arcs;
+    if (arcs) {
+      arcs.setRetainedPct(pct);
     }
   };
 
-  this.updateStyle = function(style) {
-    var o = this.getDisplayLayer();
+  this.updateStyle = function(style, ext) {
+    var o = this.getDisplayLayer(ext);
     // dot style
     style.dotSize = calcDotSize(MapShaper.countPointsInLayer(o.layer));
     // arc style
@@ -32,14 +33,14 @@ function DisplayLayer(lyr, dataset) {
     }
   };
 
-  // @ext (optional) map extent
+  // @ext map extent
   // @ids (optional) ids of selected shapes
   this.getDisplayLayer = function(ext, ids) {
     var arcs = lyr.display.arcs,
         layer = lyr.display.layer || lyr;
     if (!arcs) {
       // use filtered arcs if available & map extent is known
-      arcs = ext && dataset.filteredArcs ?
+      arcs = dataset.filteredArcs ?
         dataset.filteredArcs.getArcCollection(ext) : dataset.arcs;
     }
     return {
