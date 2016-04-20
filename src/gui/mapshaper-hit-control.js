@@ -171,7 +171,7 @@ function HitControl(ext, mouse) {
   }
 
   function getProperties(id) {
-    return target.layer.data ? target.layer.data.getRecords()[id] : {};
+    return target.layer.data ? target.layer.data.getRecordAt(id) : {};
   }
 
   function update(newId) {
