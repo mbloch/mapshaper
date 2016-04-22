@@ -63,12 +63,23 @@ Dbf.readStringBytes = function(bin, size, buf) {
   return i;
 };
 
+Dbf.getAsciiStringReader = function() {
+  var buf = new Uint8Array(256); // new Buffer(256);
+  return function readAsciiString(bin, size) {
+    var str = '',
+        n = Dbf.readStringBytes(bin, size, buf);
+    for (var i=0; i<n; i++) {
+      str += String.fromCharCode(buf[i]);
+    }
+    return str;
+  };
+};
+
 Dbf.getEncodedStringReader = function(encoding) {
   var buf = new Buffer(256),
       isUtf8 = MapShaper.standardizeEncodingName(encoding) == 'utf8';
-  return function(bin, size) {
-    var eos = false,
-        i = Dbf.readStringBytes(bin, size, buf),
+  return function readEncodedString(bin, size) {
+    var i = Dbf.readStringBytes(bin, size, buf),
         str;
     if (i === 0) {
       str = '';
@@ -77,14 +88,14 @@ Dbf.getEncodedStringReader = function(encoding) {
     } else {
       str = MapShaper.decodeString(buf.slice(0, i), encoding); // slice references same memory
     }
-    str = utils.trim(str);
     return str;
   };
 };
 
 Dbf.getStringReader = function(encoding) {
   if (!encoding || encoding === 'ascii') {
-    return Dbf.readAsciiString;
+    return Dbf.getAsciiStringReader();
+    // return Dbf.readAsciiString;
   } else if (Env.inNode) {
     return Dbf.getEncodedStringReader(encoding);
   } else {
@@ -128,232 +139,249 @@ Dbf.readDate = function(bin, size) {
   return new Date(Date.UTC(+yr, +mo - 1, +day));
 };
 
-
 // cf. http://code.google.com/p/stringencoding/
 //
 // @src is a Buffer or ArrayBuffer or filename
 //
-function DbfReader(src, encoding) {
+function DbfReader(src, encodingArg) {
   if (utils.isString(src)) {
     error("[DbfReader] Expected a buffer, not a string");
   }
-  this.bin = new BinArray(src);
-  this.header = this.readHeader(this.bin);
-  this.encoding = encoding;
-}
+  var bin = new BinArray(src);
+  var header = readHeader(bin);
+  var encoding = encodingArg || null;
 
-DbfReader.prototype.getEncoding = function() {
-  if (!this.encoding) {
-    this.encoding = this.findStringEncoding();
-    if (!this.encoding) {
-      // fall back to utf8 if detection fails (so GUI can continue without further errors)
-      this.encoding = 'utf8';
-      stop("Unable to auto-detect the text encoding of the DBF file.\n" + Dbf.ENCODING_PROMPT);
+  this.size = function() {return header.recordCount;};
+
+  this.readRow = function(i) {
+    // create record reader on-the-fly
+    // (delays encoding detection until we need to read data)
+    return getRecordReader(header.fields)(i);
+  };
+
+  this.getFields = getFieldNames;
+
+  this.getBuffer = function() {return bin.buffer();};
+
+  this.deleteField = function(f) {
+    header.fields = header.fields.filter(function(field) {
+      return field.name != f;
+    });
+  };
+
+  this.readRows = function() {
+    var reader = getRecordReader(header.fields);
+    var data = [];
+    for (var r=0, n=this.size(); r<n; r++) {
+      data.push(reader(r));
     }
-  }
-  return this.encoding;
-};
+    return data;
+  };
 
-DbfReader.prototype.rows = function() {
-  return this.header.recordCount;
-};
+  function readHeader(bin) {
+    bin.position(0).littleEndian();
+    var header = {
+      version: bin.readInt8(),
+      updateYear: bin.readUint8(),
+      updateMonth: bin.readUint8(),
+      updateDay: bin.readUint8(),
+      recordCount: bin.readUint32(),
+      dataOffset: bin.readUint16(),
+      recordSize: bin.readUint16(),
+      incompleteTransaction: bin.skipBytes(2).readUint8(),
+      encrypted: bin.readUint8(),
+      mdx: bin.skipBytes(12).readUint8(),
+      ldid: bin.readUint8()
+    };
+    var colOffs = 1; // first column starts on second byte of record
+    var field;
+    bin.skipBytes(2);
+    header.fields = [];
 
-DbfReader.prototype.findStringEncoding = function() {
-  var ldid = this.header.ldid,
-      codepage = Dbf.lookupCodePage(ldid),
-      samples = this.getNonAsciiSamples(50),
-      only7bit = samples.length === 0,
-      encoding, msg;
-
-  // First, check the ldid (language driver id) (an obsolete way to specify which
-  // codepage to use for text encoding.)
-  // ArcGIS up to v.10.1 sets ldid and encoding based on the 'locale' of the
-  // user's Windows system :P
-  //
-  if (codepage && ldid != 87) {
-    // if 8-bit data is found and codepage is detected, use the codepage,
-    // except ldid 87, which some GIS software uses regardless of encoding.
-    encoding = codepage;
-  } else if (only7bit) {
-    // Text with no 8-bit chars should be compatible with 7-bit ascii
-    // (Most encodings are supersets of ascii)
-    encoding = 'ascii';
-  }
-
-  // As a last resort, try to guess the encoding:
-  if (!encoding) {
-    encoding = MapShaper.detectEncoding(samples);
-  }
-
-  // Show a sample of decoded text if non-ascii-range text has been found
-  if (encoding && samples.length > 0) {
-    msg = "Detected DBF text encoding: " + encoding;
-    if (encoding in Dbf.encodingNames) {
-      msg += " (" + Dbf.encodingNames[encoding] + ")";
+    // Detect header terminator (LF is standard, CR has been seen in the wild)
+    while (bin.peek() != 0x0D && bin.peek() != 0x0A && bin.position() < header.dataOffset - 1) {
+      field = readFieldHeader(bin);
+      field.columnOffset = colOffs;
+      header.fields.push(field);
+      colOffs += field.size;
     }
-    message(msg);
-    msg = MapShaper.decodeSamples(encoding, samples);
-    msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
-    message("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
-  }
-  return encoding;
-};
+    if (colOffs != header.recordSize) {
+      error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
+    }
+    if (bin.peek() != 0x0D) {
+      message('[dbf] Found a non-standard header terminator (' + bin.peek() + '). DBF file may be corrupted.');
+    }
 
-// Return up to @size buffers containing text samples
-// with at least one byte outside the 7-bit ascii range.
-// TODO: filter out duplicate samples
-DbfReader.prototype.getNonAsciiSamples = function(size) {
-  var samples = [];
-  var stringFields = this.header.fields.filter(function(f) {
-    return f.type == 'C';
-  });
-  var rowOffs = this.getRowOffset();
-  var buf = new Buffer(256);
-  var index = {};
-  var f, chars, sample, hash;
-  for (var r=0, rows=this.rows(); r<rows; r++) {
-    for (var c=0, cols=stringFields.length; c<cols; c++) {
-      if (samples.length >= size) break;
-      f = stringFields[c];
-      this.bin.position(rowOffs(r) + f.columnOffset);
-      chars = Dbf.readStringBytes(this.bin, f.size, buf);
-      if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
-        sample = new Buffer(buf.slice(0, chars)); //
-        hash = sample.toString('hex');
-        if (hash in index === false) { // avoid duplicate samples
-          index[hash] = true;
-          samples.push(sample);
+    // Uniqify header names
+    MapShaper.getUniqFieldNames(utils.pluck(header.fields, 'name')).forEach(function(name2, i) {
+      header.fields[i].name = name2;
+    });
+
+    return header;
+  }
+
+  function readFieldHeader(bin) {
+    return {
+      name: bin.readCString(11),
+      type: String.fromCharCode(bin.readUint8()),
+      address: bin.readUint32(),
+      size: bin.readUint8(),
+      decimals: bin.readUint8(),
+      id: bin.skipBytes(2).readUint8(),
+      position: bin.skipBytes(2).readUint8(),
+      indexFlag: bin.skipBytes(7).readUint8()
+    };
+  }
+
+  function getFieldNames() {
+    return utils.pluck(header.fields, 'name');
+  }
+
+  function getRowOffset(r) {
+    return header.dataOffset + header.recordSize * r;
+  }
+
+  function getEncoding() {
+    if (!encoding) {
+      encoding = findStringEncoding();
+      if (!encoding) {
+        // fall back to utf8 if detection fails (so GUI can continue without further errors)
+        encoding = 'utf8';
+        stop("Unable to auto-detect the text encoding of the DBF file.\n" + Dbf.ENCODING_PROMPT);
+      }
+    }
+    return encoding;
+  }
+
+  // Create new record objects using object literal syntax
+  // (Much faster in v8 and other engines than assigning a series of properties
+  //  to an object)
+  function getRecordConstructor() {
+    var args = getFieldNames().map(function(name, i) {
+          return JSON.stringify(name) + ': arguments[' + i + ']';
+        });
+    return new Function('return {' + args.join(',') + '};');
+  }
+
+  function findEofPos(bin) {
+    var pos = bin.size() - 1;
+    if (bin.peek(pos) != 0x1A) { // last byte may or may not be EOF
+      pos++;
+    }
+    return pos;
+  }
+
+  function getRecordReader(fields) {
+    var readers = fields.map(getFieldReader),
+        eofOffs = findEofPos(bin),
+        create = getRecordConstructor(),
+        values = [];
+
+    return function readRow(r) {
+      var offs = getRowOffset(r),
+          fieldOffs, field;
+      for (var c=0, cols=fields.length; c<cols; c++) {
+        field = fields[c];
+        fieldOffs = offs + field.columnOffset;
+        if (fieldOffs + field.size > eofOffs) {
+          stop('[dbf] Invalid DBF file: encountered end-of-file while reading data');
+        }
+        bin.position(fieldOffs);
+        values[c] = readers[c](bin, field.size);
+      }
+      return create.apply(null, values);
+    };
+  }
+
+  // @f Field metadata from dbf header
+  function getFieldReader(f) {
+    var type = f.type,
+        r = null;
+    if (type == 'I') {
+      r = Dbf.readInt;
+    } else if (type == 'F' || type == 'N') {
+      r = Dbf.readNumber;
+    } else if (type == 'L') {
+      r = Dbf.readBool;
+    } else if (type == 'D') {
+      r = Dbf.readDate;
+    } else if (type == 'C') {
+      r = Dbf.getStringReader(getEncoding());
+    } else {
+      message("[dbf] Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
+      r = function() {return null;};
+    }
+    return r;
+  }
+
+  function findStringEncoding() {
+    var ldid = header.ldid,
+        codepage = Dbf.lookupCodePage(ldid),
+        samples = getNonAsciiSamples(50),
+        only7bit = samples.length === 0,
+        encoding, msg;
+
+    // First, check the ldid (language driver id) (an obsolete way to specify which
+    // codepage to use for text encoding.)
+    // ArcGIS up to v.10.1 sets ldid and encoding based on the 'locale' of the
+    // user's Windows system :P
+    //
+    if (codepage && ldid != 87) {
+      // if 8-bit data is found and codepage is detected, use the codepage,
+      // except ldid 87, which some GIS software uses regardless of encoding.
+      encoding = codepage;
+    } else if (only7bit) {
+      // Text with no 8-bit chars should be compatible with 7-bit ascii
+      // (Most encodings are supersets of ascii)
+      encoding = 'ascii';
+    }
+
+    // As a last resort, try to guess the encoding:
+    if (!encoding) {
+      encoding = MapShaper.detectEncoding(samples);
+    }
+
+    // Show a sample of decoded text if non-ascii-range text has been found
+    if (encoding && samples.length > 0) {
+      msg = "Detected DBF text encoding: " + encoding;
+      if (encoding in Dbf.encodingNames) {
+        msg += " (" + Dbf.encodingNames[encoding] + ")";
+      }
+      message(msg);
+      msg = MapShaper.decodeSamples(encoding, samples);
+      msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
+      message("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
+    }
+    return encoding;
+  }
+
+  // Return up to @size buffers containing text samples
+  // with at least one byte outside the 7-bit ascii range.
+  function getNonAsciiSamples(size) {
+    var samples = [];
+    var stringFields = header.fields.filter(function(f) {
+      return f.type == 'C';
+    });
+    var buf = new Buffer(256);
+    var index = {};
+    var f, chars, sample, hash;
+    for (var r=0, rows=header.recordCount; r<rows; r++) {
+      for (var c=0, cols=stringFields.length; c<cols; c++) {
+        if (samples.length >= size) break;
+        f = stringFields[c];
+        bin.position(getRowOffset(r) + f.columnOffset);
+        chars = Dbf.readStringBytes(bin, f.size, buf);
+        if (chars > 0 && Dbf.bufferContainsHighBit(buf, chars)) {
+          sample = new Buffer(buf.slice(0, chars)); //
+          hash = sample.toString('hex');
+          if (hash in index === false) { // avoid duplicate samples
+            index[hash] = true;
+            samples.push(sample);
+          }
         }
       }
     }
+    return samples;
   }
-  return samples;
-};
 
-DbfReader.prototype.getRowOffset = function() {
-  var start = this.header.dataOffset,
-      recLen = this.header.recordSize;
-  return function(r) {
-    return start + recLen * r;
-  };
-};
-
-DbfReader.prototype.getRecordReader = function(header) {
-  var fields = header.fields,
-      readers = fields.map(this.getFieldReader, this),
-      uniqNames = MapShaper.getUniqFieldNames(utils.pluck(fields, 'name')),
-      rowOffs = this.getRowOffset(),
-      bin = this.bin,
-      eofOffs = bin.size() - 1;
-  if (bin.peek(eofOffs) != 0x1A) { // last byte may or may not be EOF
-    eofOffs++;
-  }
-  return function(r) {
-    var rec = {},
-        offs = rowOffs(r),
-        field, fieldOffs;
-    for (var c=0, cols=fields.length; c<cols; c++) {
-      field = fields[c];
-      fieldOffs = offs + field.columnOffset;
-      if (fieldOffs + field.size > eofOffs) {
-        stop('[dbf] Invalid DBF file: encountered end-of-file while reading data');
-      }
-      bin.position(fieldOffs);
-      rec[uniqNames[c]] = readers[c](bin, field.size);
-    }
-    return rec;
-  };
-};
-
-
-// @f Field metadata from dbf header
-DbfReader.prototype.getFieldReader = function(f) {
-  var type = f.type,
-      r = null;
-  if (type == 'I') {
-    r = Dbf.readInt;
-  } else if (type == 'F' || type == 'N') {
-    r = Dbf.readNumber;
-  } else if (type == 'L') {
-    r = Dbf.readBool;
-  } else if (type == 'D') {
-    r = Dbf.readDate;
-  } else if (type == 'C') {
-    r = Dbf.getStringReader(this.getEncoding());
-  } else {
-    message("[dbf] Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
-    r = function() {return null;};
-  }
-  return r;
-};
-
-DbfReader.prototype.readRow = function(i) {
-  // create record reader on first call to #readRow()
-  // (delays encoding detection until we need to read data)
-  var reader = this.getRecordReader(this.header);
-  this.readRow = reader;
-  return reader.call(this, i);
-};
-
-DbfReader.prototype.deleteField = function(f) {
-  this.header.fields = this.header.fields.filter(function(field) {
-    return field.name != f;
-  });
-};
-
-DbfReader.prototype.readRows = function() {
-  var data = [];
-  for (var r=0, rows=this.rows(); r<rows; r++) {
-    data.push(this.readRow(r));
-  }
-  return data;
-};
-
-DbfReader.prototype.readHeader = function(bin, encoding) {
-  bin.position(0).littleEndian();
-  var header = {
-    version: bin.readInt8(),
-    updateYear: bin.readUint8(),
-    updateMonth: bin.readUint8(),
-    updateDay: bin.readUint8(),
-    recordCount: bin.readUint32(),
-    dataOffset: bin.readUint16(),
-    recordSize: bin.readUint16(),
-    incompleteTransaction: bin.skipBytes(2).readUint8(),
-    encrypted: bin.readUint8(),
-    mdx: bin.skipBytes(12).readUint8(),
-    ldid: bin.readUint8()
-  };
-  var colOffs = 1; // first column starts on second byte of record
-  var field;
-  bin.skipBytes(2);
-  header.fields = [];
-
-  // Detect header terminator (LF is standard, CR has been seen in the wild)
-  while (bin.peek() != 0x0D && bin.peek() != 0x0A && bin.position() < header.dataOffset - 1) {
-    field = this.readFieldHeader(bin, encoding);
-    field.columnOffset = colOffs;
-    header.fields.push(field);
-    colOffs += field.size;
-  }
-  if (colOffs != header.recordSize) {
-    error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
-  }
-  if (bin.peek() != 0x0D) {
-    message('[dbf] Found a non-standard header terminator (' + bin.peek() + '). DBF file may be corrupted.');
-  }
-  return header;
-};
-
-DbfReader.prototype.readFieldHeader = function(bin, encoding) {
-  return {
-    name: bin.readCString(11),
-    type: String.fromCharCode(bin.readUint8()),
-    address: bin.readUint32(),
-    size: bin.readUint8(),
-    decimals: bin.readUint8(),
-    id: bin.skipBytes(2).readUint8(),
-    position: bin.skipBytes(2).readUint8(),
-    indexFlag: bin.skipBytes(7).readUint8()
-  };
-};
+}

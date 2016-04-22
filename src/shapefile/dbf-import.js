@@ -31,7 +31,7 @@ function ShapefileTable(buf, encoding) {
 
   this.exportAsDbf = function(encoding) {
     // export original dbf bytes if records haven't been touched.
-    return reader && !altered ? reader.bin.buffer() : getTable().exportAsDbf(encoding);
+    return reader && !altered ? reader.getBuffer() : getTable().exportAsDbf(encoding);
   };
 
   this.getRecordAt = function(i) {
@@ -52,11 +52,11 @@ function ShapefileTable(buf, encoding) {
   };
 
   this.getFields = function() {
-    return reader ? utils.pluck(reader.header.fields, 'name') : table.getFields();
+    return reader ? reader.getFields() : table.getFields();
   };
 
   this.size = function() {
-    return reader ? reader.rows() : table.size();
+    return reader ? reader.size() : table.size();
   };
 }
 

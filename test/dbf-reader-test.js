@@ -180,9 +180,9 @@ describe('dbf-reader.js', function () {
     it ('Able to parse header with 0 as terminator byte', function() {
       var buf = require('fs').readFileSync('test/test_data/dbf/POLYGON.dbf');
       var reader = new api.internal.DbfReader(buf);
-      assert.equal(reader.header.recordCount, 2);
-      assert.equal(reader.header.fields.length, 1);
-      assert.equal(reader.header.fields[0].name, 'NAME');
+      assert.equal(reader.size(), 2);
+      assert.equal(reader.getFields().length, 1);
+      assert.equal(reader.getFields()[0], 'NAME');
     })
 
     it ('Fatal error if last data byte is EOF', function() {
