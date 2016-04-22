@@ -49,18 +49,19 @@ Dbf.readAsciiString = function(bin, size) {
 };
 
 Dbf.readStringBytes = function(bin, size, buf) {
-  // TODO: simplify by reading backwards from end of field
-  var c;
+  var count = 0, c;
   for (var i=0; i<size; i++) {
     c = bin.readUint8();
-    if (c === 0) break;
-    buf[i] = c;
+    if (c === 0) break; // C string-terminator (observed in-the-wild)
+    if (count > 0 || c != 32) { // ignore leading spaces (e.g. DBF numbers)
+      buf[count++] = c;
+    }
   }
-  // ignore trailing spaces (DBF fields are typically padded w/ spaces)
-  while (i > 0 && buf[i-1] == 32) {
-    i--;
+  // ignore trailing spaces (DBF string fields are typically r-padded w/ spaces)
+  while (count > 0 && buf[count-1] == 32) {
+    count--;
   }
-  return i;
+  return count;
 };
 
 Dbf.getAsciiStringReader = function() {
@@ -111,12 +112,17 @@ Dbf.bufferContainsHighBit = function(buf, n) {
   return false;
 };
 
-Dbf.readNumber = function(bin, size) {
-  var str = bin.readCString(size),
-      val;
-  str = str.replace(',', '.'); // handle comma decimal separator
-  val = parseFloat(str);
-  return isNaN(val) ? null : val;
+Dbf.getNumberReader = function() {
+  var read = Dbf.getAsciiStringReader();
+  return function readNumber(bin, size) {
+    var str = read(bin, size);
+    var val;
+    if (str.indexOf(',') >= 0) {
+      str = str.replace(',', '.'); // handle comma decimal separator
+    }
+    val = parseFloat(str);
+    return isNaN(val) ? null : val;
+  };
 };
 
 Dbf.readInt = function(bin, size) {
@@ -300,7 +306,7 @@ function DbfReader(src, encodingArg) {
     if (type == 'I') {
       r = Dbf.readInt;
     } else if (type == 'F' || type == 'N') {
-      r = Dbf.readNumber;
+      r = Dbf.getNumberReader();
     } else if (type == 'L') {
       r = Dbf.readBool;
     } else if (type == 'D') {

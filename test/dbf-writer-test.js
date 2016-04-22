@@ -235,12 +235,12 @@ describe('dbf-writer.js', function () {
     })
 
     it('ascii w spaces', function() {
-      // blanks are stripped from r -- is this what we want?
-      // 4/22/2016 stopped trimming all but r-padded spaces
+      // spaces are trimmed from l & r of strings -- is this what we want?
+      // 4/22/2016 other whitespace chars are preserved
       var records = [{a: " moon   "}, {a:"\tstars "}];
       var buf = Dbf.exportRecords(records, 'ascii');
       var records2 = importRecords(buf, 'ascii');
-      assert.deepEqual(records2, [{a:" moon"}, {a:"\tstars"}]);
+      assert.deepEqual(records2, [{a:"moon"}, {a:"\tstars"}]);
     })
 
     it('latin1', function() {
