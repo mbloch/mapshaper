@@ -13,7 +13,7 @@ api.filterSlivers = function(lyr, arcs, opts) {
 };
 
 MapShaper.filterSlivers = function(lyr, arcs, opts) {
-  var ringTest = opts && opts.min_area ? MapShaper.getMinAreaTest(arcs, opts.min_area) :
+  var ringTest = opts && opts.min_area ? MapShaper.getMinAreaTest(opts.min_area, arcs) :
     MapShaper.getSliverTest(arcs);
   var removed = 0;
   var pathFilter = function(path, i, paths) {
@@ -52,14 +52,6 @@ MapShaper.filterClipSlivers = function(lyr, clipLyr, arcs) {
   MapShaper.countArcsInShapes(clipLyr.shapes, flags);
   MapShaper.filterShapes(lyr.shapes, pathFilter);
   return removed;
-};
-
-MapShaper.getMinAreaTest = function(arcs, minArea) {
-  var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
-  return function(path) {
-    var area = pathArea(path, arcs);
-    return Math.abs(area) < minArea;
-  };
 };
 
 MapShaper.getSliverTest = function(arcs) {

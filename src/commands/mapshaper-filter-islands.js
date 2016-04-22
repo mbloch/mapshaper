@@ -8,7 +8,7 @@ api.filterIslands = function(lyr, arcs, opts) {
 
   if (opts.min_area || opts.min_vertices) {
     if (opts.min_area) {
-      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getRingAreaTest(opts.min_area, arcs));
+      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getMinAreaTest(opts.min_area, arcs));
     }
     if (opts.min_vertices) {
       removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getVertexCountTest(opts.min_vertices, arcs));
@@ -29,7 +29,7 @@ MapShaper.getVertexCountTest = function(minVertices, arcs) {
   };
 };
 
-MapShaper.getRingAreaTest = function(minArea, arcs) {
+MapShaper.getMinAreaTest = function(minArea, arcs) {
   var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
   return function(path) {
     var area = pathArea(path, arcs);

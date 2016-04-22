@@ -367,12 +367,12 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("filter-slivers")
-    // .describe("remove small polygon rings")
+    .describe("remove small polygon rings")
     .validate(validateExpressionOpts)
 
     .option("min-area", {
       type: "number",
-      describe: "remove small-area rings (source units)"
+      describe: "remove small-area rings (sq meters or projected units)"
     })
     /*
     .option("remove-empty", {
