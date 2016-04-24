@@ -8,20 +8,41 @@ mapshaper-shape-utils,
 mapshaper-polygon-repair
 */
 
+function PathImportStream(drain) {
+  var buflen = 1000,
+      xx = new Float64Array(buflen),
+      yy = new Float64Array(buflen),
+      i = 0;
+
+  this.endPath = function() {
+    drain(xx, yy, i);
+    i = 0;
+  };
+
+  this.addPoint = function(x, y) {
+    if (i >= buflen) {
+      buflen = Math.ceil(buflen * 1.3);
+      xx = utils.extendBuffer(xx, buflen);
+      yy = utils.extendBuffer(yy, buflen);
+    }
+    xx[i] = x;
+    yy[i] = y;
+    i++;
+  };
+}
+
 // Import path data from a non-topological source (Shapefile, GeoJSON, etc)
 // in preparation for identifying topology.
 // @reservedPoints (optional) estimate of points in dataset, for allocating buffers
 //
-function PathImporter(opts, reservedPoints) {
-  opts = opts || {};
-
-  var bufSize = reservedPoints > 0 ? reservedPoints : 20000,
+function PathImporter(opts) {
+  var bufSize = opts.reserved_points > 0 ? opts.reserved_points : 20000,
       xx = new Float64Array(bufSize),
       yy = new Float64Array(bufSize),
       buf = new Float64Array(1024),
       shapes = [],
       nn = [],
-      collectionType = null,
+      collectionType = opts.type || null,
       round = null,
       pathId = -1,
       shapeId = -1,
@@ -33,11 +54,13 @@ function PathImporter(opts, reservedPoints) {
     round = getRoundingFunction(opts.precision);
   }
 
-  function addShapeType(t) {
+  function setShapeType(t) {
+    // possible values: polygon, polyline, point, mixed, null
+    // TODO validate
     if (!collectionType) {
       collectionType = t;
     } else if (t != collectionType) {
-      collectionType = "mixed";
+      stop("[PathImporter] Mixed feature types are not allowed");
     }
   }
 
@@ -57,7 +80,12 @@ function PathImporter(opts, reservedPoints) {
     return buf;
   }
 
-  this.startShape = function() {
+  this.type = setShapeType;
+
+  this.sink = new PathImportStream(importPathCoords);
+
+  this.startShape = function(type) {
+    if (type) this.type(type);
     shapes[++shapeId] = null;
   };
 
@@ -66,8 +94,7 @@ function PathImporter(opts, reservedPoints) {
     currShape.push(part);
   }
 
-  function appendPath(n, type) {
-    addShapeType(type);
+  function appendPath(n) {
     pathId++;
     nn[pathId] = n;
     appendToShape([pathId]);
@@ -80,18 +107,13 @@ function PathImporter(opts, reservedPoints) {
     });
   }
 
-  // Import coordinates from an array with coordinates in format: [x, y, x, y, ...]
-  //
-  this.importPathFromFlatArray = function(arr, type, len, start) {
-    var i = start || 0,
-        end = i + len,
-        n = 0,
-        x, y, prevX, prevY;
-
-    checkBuffers(pointId + len);
-    while (i < end) {
-      x = arr[i++];
-      y = arr[i++];
+  function importPathCoords(xsrc, ysrc, n) {
+    var count = 0;
+    var x, y, prevX, prevY;
+    checkBuffers(pointId + n);
+    for (var i=0; i<n; i++) {
+      x = xsrc[i];
+      y = ysrc[i];
       if (round) {
         x = round(x);
         y = round(y);
@@ -102,49 +124,45 @@ function PathImporter(opts, reservedPoints) {
         xx[pointId] = x;
         yy[pointId] = y;
         pointId++;
-        n++;
+        count++;
       }
       prevY = y;
       prevX = x;
     }
+    appendPath(count);
+  }
 
-    appendPath(n, type);
-
+  this.importLine = function(points) {
+    setShapeType('polyline');
+    this.importPath(points);
   };
 
   // Import an array of [x, y] Points
-  //
-  this.importPath = function(points, type) {
-    var n = points.length,
-        buf = getPointBuf(n),
-        j = 0;
-    for (var i=0; i < n; i++) {
-      buf[j++] = points[i][0];
-      buf[j++] = points[i][1];
+  this.importPath = function(points) {
+    var p;
+    for (var i=0, n=points.length; i<n; i++) {
+      p = points[i];
+      this.sink.addPoint(p[0], p[1]);
     }
-    this.importPathFromFlatArray(buf, type, j, 0);
+    this.sink.endPath();
   };
 
   this.importPoints = function(points) {
-    addShapeType('point');
+    setShapeType('point');
     if (round) {
       roundPoints(points, round);
     }
     points.forEach(appendToShape);
   };
 
-  this.importLine = function(points) {
-    this.importPath(points, 'polyline');
-  };
-
-  this.importPolygon = function(points, isHole) {
+  this.importRing = function(points, isHole) {
     var area = geom.getPlanarPathArea2(points);
-
+    setShapeType('polygon');
     if (isHole === true && area > 0 || isHole === false && area < 0) {
       verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
       points.reverse();
     }
-    this.importPath(points, 'polygon');
+    this.importPath(points);
   };
 
   // Return topological shape data
@@ -155,10 +173,7 @@ function PathImporter(opts, reservedPoints) {
     var arcs;
     var lyr = {name: ''};
 
-    // possible values: polygon, polyline, point, mixed, null
-    if (collectionType == 'mixed') {
-      stop("[PathImporter] Mixed feature types are not allowed");
-    } else if (collectionType == 'polygon' || collectionType == 'polyline') {
+    if (collectionType == 'polygon' || collectionType == 'polyline') {
 
       if (dupeCount > 0) {
         verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));

@@ -134,6 +134,12 @@ function ShpRecordClass(type) {
       if (hasZ) n++;
       if (this.hasM()) n++;
       return this._data().skipBytes(12).readFloat64Array(n);
+    },
+
+    stream: function(sink) {
+      var src = this._data().skipBytes(12);
+      sink.addPoint(src.readFloat64(), src.readFloat64());
+      sink.endPath();
     }
   };
 
@@ -142,11 +148,29 @@ function ShpRecordClass(type) {
       return this._data().skipBytes(12).readFloat64Array(4);
     },
 
+    stream: function(sink) {
+      var sizes = this.readPartSizes(),
+          src = this._data().skipBytes(this._xypos());
+      for (var i=0; i<sizes.length; i++) {
+        this.streamCoords(src, sizes[i], sink);
+      }
+    },
+
+    streamCoords: function(src, n, sink) {
+      for (var i=0; i<n; i++) {
+        sink.addPoint(src.readFloat64(), src.readFloat64());
+      }
+      sink.endPath();
+    },
+
     read: function() {
-      var points = this.readPoints();
-      var parts = this.readPartSizes().map(function(size) {
-          return points.splice(0, size);
-        });
+      var parts = [],
+          sizes = this.readPartSizes(),
+          points = this.readPoints();
+      for (var i=0, n = sizes.length - 1; i<n; i++) {
+        parts.push(points.splice(0, sizes[i]));
+      }
+      parts.push(points);
       return parts;
     }
   };

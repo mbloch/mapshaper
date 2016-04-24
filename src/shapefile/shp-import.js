@@ -11,8 +11,11 @@ MapShaper.importShp = function(src, opts) {
   var reader = new ShpReader(src),
       shpType = reader.type(),
       type = MapShaper.translateShapefileType(shpType),
-      maxPoints = Math.round(reader.header().byteLength / 16), // for reserving buffer space
-      importer = new PathImporter(opts, maxPoints);
+      importOpts = utils.defaults({
+        type: type,
+        reserved_points: Math.round(reader.header().byteLength / 16)
+      }, opts),
+      importer = new PathImporter(importOpts);
 
   if (!MapShaper.isSupportedShapefileType(shpType)) {
     stop("Unsupported Shapefile type:", shpType);
@@ -27,20 +30,7 @@ MapShaper.importShp = function(src, opts) {
   reader.forEachShape(function(shp) {
     importer.startShape();
     if (shp.isNull) return;
-    if (type == 'point') {
-      importer.importPoints(shp.readPoints());
-    } else {
-      var xy = shp.readXY(),
-          parts = shp.readPartSizes(),
-          start = 0,
-          len;
-
-      for (var i=0; i<parts.length; i++) {
-        len = parts[i] * 2;
-        importer.importPathFromFlatArray(xy, type, len, start);
-        start += len;
-      }
-    }
+    shp.stream(importer.sink);
   });
 
   return importer.done();

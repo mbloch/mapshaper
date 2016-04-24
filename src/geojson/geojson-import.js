@@ -90,7 +90,7 @@ GeoJSON.pathImporters = {
   },
   Polygon: function(coords, importer) {
     for (var i=0; i<coords.length; i++) {
-      importer.importPolygon(coords[i], i > 0);
+      importer.importRing(coords[i], i > 0);
     }
   },
   MultiPolygon: function(coords, importer) {
