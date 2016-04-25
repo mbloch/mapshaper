@@ -27,6 +27,19 @@ describe('mapshaper-path-import.js', function () {
         done();
       });
     })
+
+    it('test 2', function (done) {
+      api.applyCommands('-i test/test_data/issues/125/openring.json', null, function(err, data) {
+        var coords = JSON.parse(data).geometries[0].coordinates;
+        var first = coords[0][0];
+        var last = coords[0][coords[0].length - 1];
+        assert(!!first);
+        assert.deepEqual(first, last);
+        done();
+      });
+    })
+
+
   })
 
 
