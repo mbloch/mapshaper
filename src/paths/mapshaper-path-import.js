@@ -8,8 +8,11 @@ mapshaper-shape-utils,
 mapshaper-polygon-repair
 */
 
+// Accumulates points in buffers until #endPath() is called
+// @drain callback: function(xarr, yarr, size) {}
+//
 function PathImportStream(drain) {
-  var buflen = 1000,
+  var buflen = 10000,
       xx = new Float64Array(buflen),
       yy = new Float64Array(buflen),
       i = 0;
@@ -33,30 +36,34 @@ function PathImportStream(drain) {
 
 // Import path data from a non-topological source (Shapefile, GeoJSON, etc)
 // in preparation for identifying topology.
-// @reservedPoints (optional) estimate of points in dataset, for allocating buffers
+// @opts.reserved_points -- estimate of points in dataset, for pre-allocating buffers
 //
 function PathImporter(opts) {
   var bufSize = opts.reserved_points > 0 ? opts.reserved_points : 20000,
       xx = new Float64Array(bufSize),
       yy = new Float64Array(bufSize),
-      buf = new Float64Array(1024),
       shapes = [],
       nn = [],
-      collectionType = opts.type || null,
+      collectionType = opts.type || null, // possible values: polygon, polyline, point
       round = null,
       pathId = -1,
       shapeId = -1,
       pointId = 0,
       dupeCount = 0,
-      skippedPathCount = 0;
+      skippedPathCount = 0,
+      openRingCount = 0;
 
   if (opts.precision) {
     round = getRoundingFunction(opts.precision);
   }
 
+  this.sink = new PathImportStream(importPathCoords);
+
+  this.startShape = function() {
+    shapes[++shapeId] = null;
+  };
+
   function setShapeType(t) {
-    // possible values: polygon, polyline, point, mixed, null
-    // TODO validate
     if (!collectionType) {
       collectionType = t;
     } else if (t != collectionType) {
@@ -72,23 +79,6 @@ function PathImporter(opts) {
     }
   }
 
-  function getPointBuf(n) {
-    var len = n * 2;
-    if (buf.length < len) {
-      buf = new Float64Array(Math.ceil(len * 1.3));
-    }
-    return buf;
-  }
-
-  this.type = setShapeType;
-
-  this.sink = new PathImportStream(importPathCoords);
-
-  this.startShape = function(type) {
-    if (type) this.type(type);
-    shapes[++shapeId] = null;
-  };
-
   function appendToShape(part) {
     var currShape = shapes[shapeId] || (shapes[shapeId] = []);
     currShape.push(part);
@@ -98,13 +88,6 @@ function PathImporter(opts) {
     pathId++;
     nn[pathId] = n;
     appendToShape([pathId]);
-  }
-
-  function roundPoints(points, round) {
-    points.forEach(function(p) {
-      p[0] = round(p[0]);
-      p[1] = round(p[1]);
-    });
   }
 
   function importPathCoords(xsrc, ysrc, n) {
@@ -129,6 +112,19 @@ function PathImporter(opts) {
       prevY = y;
       prevX = x;
     }
+
+    // check for open rings
+    if (collectionType == 'polygon' && count > 0) {
+      if (xsrc[0] != xsrc[n-1] || ysrc[0] != ysrc[n-1]) {
+        checkBuffers(pointId + 1);
+        xx[pointId] = xsrc[0];
+        yy[pointId] = ysrc[0];
+        openRingCount++;
+        pointId++;
+        count++;
+      }
+    }
+
     appendPath(count);
   }
 
@@ -137,20 +133,13 @@ function PathImporter(opts) {
     this.importPath(points);
   };
 
-  // Import an array of [x, y] Points
-  this.importPath = function(points) {
-    var p;
-    for (var i=0, n=points.length; i<n; i++) {
-      p = points[i];
-      this.sink.addPoint(p[0], p[1]);
-    }
-    this.sink.endPath();
-  };
-
   this.importPoints = function(points) {
     setShapeType('point');
     if (round) {
-      roundPoints(points, round);
+      points.forEach(function(p) {
+        p[0] = round(p[0]);
+        p[1] = round(p[1]);
+      });
     }
     points.forEach(appendToShape);
   };
@@ -163,6 +152,16 @@ function PathImporter(opts) {
       points.reverse();
     }
     this.importPath(points);
+  };
+
+  // Import an array of [x, y] Points
+  this.importPath = function(points) {
+    var p;
+    for (var i=0, n=points.length; i<n; i++) {
+      p = points[i];
+      this.sink.addPoint(p[0], p[1]);
+    }
+    this.sink.endPath();
   };
 
   // Return topological shape data
@@ -182,6 +181,9 @@ function PathImporter(opts) {
         // TODO: consider showing details about type of error
         message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, utils.pluralSuffix(skippedPathCount)));
       }
+      if (openRingCount > 0) {
+        message(utils.format("Closed %,d open polygon ring%s", openRingCount, utils.pluralSuffix(openRingCount)));
+      }
 
       if (pointId > 0) {
         if (pointId < xx.length) {
@@ -190,12 +192,13 @@ function PathImporter(opts) {
         }
         arcs = new ArcCollection(nn, xx, yy);
 
-        // TODO: move shape validation after snapping (which may corrupt shapes)
         if (opts.auto_snap || opts.snap_interval) {
           T.start();
           MapShaper.snapCoords(arcs, opts.snap_interval);
           T.stop("Snapping points");
         }
+        // Detect and handle some geometry problems
+        // TODO: print message summarizing any changes
         MapShaper.cleanShapes(shapes, arcs, collectionType);
       } else {
         message("No geometries were imported");
@@ -206,9 +209,6 @@ function PathImporter(opts) {
     } else {
       error("Unexpected collection type:", collectionType);
     }
-
-    // TODO: remove empty arcs, collapsed arcs
-    // ...
 
     // If shapes are all null, don't add a shapes array or geometry_type
     if (collectionType) {

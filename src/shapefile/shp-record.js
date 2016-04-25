@@ -103,10 +103,6 @@ function ShpRecordClass(type) {
       return points;
     },
 
-    read: function() {
-      return this.readPoints();
-    },
-
     readPartSizes: function() {
       if (this.partCount == 1) return [this.pointCount];
       if (this.partCount === 0) return [];
@@ -150,17 +146,17 @@ function ShpRecordClass(type) {
 
     stream: function(sink) {
       var sizes = this.readPartSizes(),
-          src = this._data().skipBytes(this._xypos());
-      for (var i=0; i<sizes.length; i++) {
-        this.streamCoords(src, sizes[i], sink);
+          xy = this.readXY(),
+          i = 0, j = 0, n;
+      while (i < sizes.length) {
+        n = sizes[i];
+        while (n-- > 0) {
+          sink.addPoint(xy[j++], xy[j++]);
+        }
+        sink.endPath();
+        i++;
       }
-    },
-
-    streamCoords: function(src, n, sink) {
-      for (var i=0; i<n; i++) {
-        sink.addPoint(src.readFloat64(), src.readFloat64());
-      }
-      sink.endPath();
+      if (xy.length != j) error('Counting error');
     },
 
     read: function() {

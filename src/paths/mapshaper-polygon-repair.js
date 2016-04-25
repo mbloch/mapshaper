@@ -9,8 +9,8 @@ MapShaper.cleanShapes = function(shapes, arcs, type) {
 };
 
 // Remove defective arcs and zero-area polygon rings
+// Remove simple polygon spikes of form: [..., id, ~id, ...]
 // Don't remove duplicate points
-// Don't remove spikes (between arcs or within arcs)
 // Don't check winding order of polygon rings
 MapShaper.cleanShape = function(shape, arcs, type) {
   return MapShaper.editPaths(shape, function(path) {
