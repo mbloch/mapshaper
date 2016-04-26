@@ -16,7 +16,6 @@ dbf-export
 MapShaper.exportFileContent = function(dataset, opts) {
   var outFmt = opts.format = MapShaper.getOutputFormat(dataset, opts),
       exporter = MapShaper.exporters[outFmt],
-      layers = dataset.layers,
       files = [];
 
   if (!outFmt) {
@@ -25,8 +24,13 @@ MapShaper.exportFileContent = function(dataset, opts) {
     error("[o] Unknown export format:", outFmt);
   }
 
+  // shallow-copy dataset and layers, so layers can be renamed for export
+  dataset = utils.defaults({
+    layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
+  }, dataset);
+
   if (opts.output_file && outFmt != 'topojson') {
-    layers.forEach(function(lyr) {
+    dataset.layers.forEach(function(lyr) {
       lyr.name = utils.getFileBase(opts.output_file);
     });
   }
@@ -36,11 +40,11 @@ MapShaper.exportFileContent = function(dataset, opts) {
     MapShaper.setCoordinatePrecision(dataset, opts.precision);
   }
 
-  MapShaper.validateLayerData(layers);
-  MapShaper.assignUniqueLayerNames(layers);
+  MapShaper.validateLayerData(dataset.layers);
+  MapShaper.assignUniqueLayerNames(dataset.layers);
 
   if (opts.cut_table) {
-    files = MapShaper.exportDataTables(layers, opts).concat(files);
+    files = MapShaper.exportDataTables(dataset.layers, opts).concat(files);
   }
 
   files = exporter(dataset, opts).concat(files);
@@ -138,6 +142,7 @@ MapShaper.assignUniqueLayerNames = function(layers) {
   });
 };
 
+// Assign unique layer names across multiple datasets
 MapShaper.assignUniqueLayerNames2 = function(datasets) {
   var layers = datasets.reduce(function(memo, dataset) {
     return memo.concat(dataset.layers);

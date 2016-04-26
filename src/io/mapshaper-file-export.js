@@ -8,6 +8,8 @@ api.exportFiles = function(dataset, opts) {
 MapShaper.writeFiles = function(exports, opts, cb) {
   if (exports.length > 0 === false) {
     message("No files to save");
+  } else if (opts.dry_run) {
+    // no output
   } else if (opts.stdout) {
     cli.writeFile('/dev/stdout', exports[0].content);
   } else {

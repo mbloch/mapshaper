@@ -122,6 +122,10 @@ MapShaper.getOptionParser = function() {
       type: "flag",
       describe: "let output files overwrite existing files"
     })
+    .option("dry-run", {
+      // describe: "do not output any files"
+      type: "flag"
+    })
     .option("encoding", {
       describe: "text encoding of output dbf file"
     })
