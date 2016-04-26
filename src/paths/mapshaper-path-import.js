@@ -57,7 +57,8 @@ function PathImporter(opts) {
     round = getRoundingFunction(opts.precision);
   }
 
-  this.sink = new PathImportStream(importPathCoords);
+  // mix in #addPoint() and #endPath() methods
+  utils.extend(this, new PathImportStream(importPathCoords));
 
   this.startShape = function() {
     shapes[++shapeId] = null;
@@ -159,9 +160,9 @@ function PathImporter(opts) {
     var p;
     for (var i=0, n=points.length; i<n; i++) {
       p = points[i];
-      this.sink.addPoint(p[0], p[1]);
+      this.addPoint(p[0], p[1]);
     }
-    this.sink.endPath();
+    this.endPath();
   };
 
   // Return topological shape data

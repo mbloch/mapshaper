@@ -30,7 +30,7 @@ MapShaper.importShp = function(src, opts) {
   reader.forEachShape(function(shp) {
     importer.startShape();
     if (!shp.isNull) {
-      shp.stream(importer.sink);
+      shp.stream(importer);
     }
   });
 
