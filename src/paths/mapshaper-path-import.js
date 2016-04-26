@@ -64,6 +64,99 @@ function PathImporter(opts) {
     shapes[++shapeId] = null;
   };
 
+  this.importLine = function(points) {
+    setShapeType('polyline');
+    this.importPath(points);
+  };
+
+  this.importPoints = function(points) {
+    setShapeType('point');
+    if (round) {
+      points.forEach(function(p) {
+        p[0] = round(p[0]);
+        p[1] = round(p[1]);
+      });
+    }
+    points.forEach(appendToShape);
+  };
+
+  this.importRing = function(points, isHole) {
+    var area = geom.getPlanarPathArea2(points);
+    setShapeType('polygon');
+    if (isHole === true && area > 0 || isHole === false && area < 0) {
+      verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
+      points.reverse();
+    }
+    this.importPath(points);
+  };
+
+  // Import an array of [x, y] Points
+  this.importPath = function importPath(points) {
+    var p;
+    for (var i=0, n=points.length; i<n; i++) {
+      p = points[i];
+      this.addPoint(p[0], p[1]);
+    }
+    this.endPath();
+  };
+
+  // Return topological shape data
+  // Apply any requested snapping and rounding
+  // Remove duplicate points, check for ring inversions
+  //
+  this.done = function() {
+    var arcs;
+    var lyr = {name: ''};
+
+    if (collectionType == 'polygon' || collectionType == 'polyline') {
+
+      if (dupeCount > 0) {
+        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
+      }
+      if (skippedPathCount > 0) {
+        // TODO: consider showing details about type of error
+        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, utils.pluralSuffix(skippedPathCount)));
+      }
+      if (openRingCount > 0) {
+        message(utils.format("Closed %,d open polygon ring%s", openRingCount, utils.pluralSuffix(openRingCount)));
+      }
+
+      if (pointId > 0) {
+        if (pointId < xx.length) {
+          xx = xx.subarray(0, pointId);
+          yy = yy.subarray(0, pointId);
+        }
+        arcs = new ArcCollection(nn, xx, yy);
+
+        if (opts.auto_snap || opts.snap_interval) {
+          MapShaper.snapCoords(arcs, opts.snap_interval);
+        }
+        // Detect and handle some geometry problems
+        // TODO: print message summarizing any changes
+        MapShaper.cleanShapes(shapes, arcs, collectionType);
+      } else {
+        message("No geometries were imported");
+        collectionType = null;
+      }
+    } else if (collectionType == 'point' || collectionType === null) {
+      // pass
+    } else {
+      error("Unexpected collection type:", collectionType);
+    }
+
+    // If shapes are all null, don't add a shapes array or geometry_type
+    if (collectionType) {
+      lyr.geometry_type = collectionType;
+      lyr.shapes = shapes;
+    }
+
+    return {
+      arcs: arcs || null,
+      info: {},
+      layers: [lyr]
+    };
+  };
+
   function setShapeType(t) {
     if (!collectionType) {
       collectionType = t;
@@ -129,98 +222,4 @@ function PathImporter(opts) {
     appendPath(count);
   }
 
-  this.importLine = function(points) {
-    setShapeType('polyline');
-    this.importPath(points);
-  };
-
-  this.importPoints = function(points) {
-    setShapeType('point');
-    if (round) {
-      points.forEach(function(p) {
-        p[0] = round(p[0]);
-        p[1] = round(p[1]);
-      });
-    }
-    points.forEach(appendToShape);
-  };
-
-  this.importRing = function(points, isHole) {
-    var area = geom.getPlanarPathArea2(points);
-    setShapeType('polygon');
-    if (isHole === true && area > 0 || isHole === false && area < 0) {
-      verbose("Warning: reversing", isHole ? "a CW hole" : "a CCW ring");
-      points.reverse();
-    }
-    this.importPath(points);
-  };
-
-  // Import an array of [x, y] Points
-  this.importPath = function(points) {
-    var p;
-    for (var i=0, n=points.length; i<n; i++) {
-      p = points[i];
-      this.addPoint(p[0], p[1]);
-    }
-    this.endPath();
-  };
-
-  // Return topological shape data
-  // Apply any requested snapping and rounding
-  // Remove duplicate points, check for ring inversions
-  //
-  this.done = function() {
-    var arcs;
-    var lyr = {name: ''};
-
-    if (collectionType == 'polygon' || collectionType == 'polyline') {
-
-      if (dupeCount > 0) {
-        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
-      }
-      if (skippedPathCount > 0) {
-        // TODO: consider showing details about type of error
-        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, utils.pluralSuffix(skippedPathCount)));
-      }
-      if (openRingCount > 0) {
-        message(utils.format("Closed %,d open polygon ring%s", openRingCount, utils.pluralSuffix(openRingCount)));
-      }
-
-      if (pointId > 0) {
-        if (pointId < xx.length) {
-          xx = xx.subarray(0, pointId);
-          yy = yy.subarray(0, pointId);
-        }
-        arcs = new ArcCollection(nn, xx, yy);
-
-        if (opts.auto_snap || opts.snap_interval) {
-          T.start();
-          MapShaper.snapCoords(arcs, opts.snap_interval);
-          T.stop("Snapping points");
-        }
-        // Detect and handle some geometry problems
-        // TODO: print message summarizing any changes
-        MapShaper.cleanShapes(shapes, arcs, collectionType);
-      } else {
-        message("No geometries were imported");
-        collectionType = null;
-      }
-    } else if (collectionType == 'point' || collectionType === null) {
-      // pass
-    } else {
-      error("Unexpected collection type:", collectionType);
-    }
-
-    // If shapes are all null, don't add a shapes array or geometry_type
-    if (collectionType) {
-      lyr.geometry_type = collectionType;
-      lyr.shapes = shapes;
-    }
-
-    return {
-      arcs: arcs || null,
-      info: {},
-      layers: [lyr]
-    };
-  };
 }
