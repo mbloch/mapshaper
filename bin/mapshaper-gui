@@ -8,7 +8,7 @@ var http = require("http"),
     optimist = require("optimist");
 
 var defaultPort = 5555,
-    usage = "Usage: $ mapshaper-gui [options]",
+    usage = "Usage: $ mapshaper-gui [options] [path/to/file.geojson]",
     opts = optimist.usage(usage)
 
   .options("h", {
@@ -28,12 +28,23 @@ var defaultPort = 5555,
       optimist.showHelp();
       process.exit(0);
     }
+    if (argv._.length) {
+      if (argv._.length != 1) {
+        optimist.showHelp();
+        process.exit(0);
+      }
+      if (!fs.existsSync(argv._[0])) {
+        console.error('File ', argv._[0], ' does not exist.');
+        process.exit(1);
+      }
+    }
   })
   .argv;
 
 var webRoot = path.join(__dirname, "../www"),
     port = opts.port || defaultPort,
-    indexUrl = "http://localhost:" + port + "/index.html";
+    indexUrl = "http://localhost:" + port + "/index.html",
+    dataFilename = opts._[0];
 
 process.on('uncaughtException', function(err) {
   if (err.errno === 'EADDRINUSE')
@@ -43,34 +54,46 @@ process.on('uncaughtException', function(err) {
 
 serveOnPort(webRoot, port);
 
+function serveFile(filename, response) {
+  fs.exists(filename, function(exists) {
+    if(!exists) {
+      response.writeHead(404, {"Content-Type": "text/plain"});
+      response.write("404 Not Found\n");
+      response.end();
+      return;
+    }
+
+    if (fs.statSync(filename).isDirectory()) filename += '/index.html';
+
+    fs.readFile(filename, "binary", function(err, file) {
+      if(err) {
+        response.writeHead(500, {"Content-Type": "text/plain"});
+        response.write(err + "\n");
+        response.end();
+        return;
+      }
+
+      response.writeHead(200);
+      response.write(file, "binary");
+      response.end();
+    });
+  });
+}
+
 function serveOnPort(www, port) {
   http.createServer(function(request, response) {
     var uri = url.parse(request.url).pathname
       , filename = path.join(www, uri);
 
-    fs.exists(filename, function(exists) {
-      if(!exists) {
-        response.writeHead(404, {"Content-Type": "text/plain"});
-        response.write("404 Not Found\n");
-        response.end();
-        return;
-      }
-
-      if (fs.statSync(filename).isDirectory()) filename += '/index.html';
-
-      fs.readFile(filename, "binary", function(err, file) {
-        if(err) {
-          response.writeHead(500, {"Content-Type": "text/plain"});
-          response.write(err + "\n");
-          response.end();
-          return;
-        }
-
-        response.writeHead(200);
-        response.write(file, "binary");
-        response.end();
-      });
-    });
+    if (request.url === '/cli/data') {
+      serveFile(dataFilename, response);
+    } else if (request.url === '/cli/filename') {
+      response.writeHead(200);
+      response.write(JSON.stringify(dataFilename || null));
+      response.end();
+    } else {
+      serveFile(filename, response);
+    }
   }).listen(parseInt(port, 10), onListening);
 }
 
