@@ -282,4 +282,22 @@ function ImportControl(model) {
       });
     }, 35);
   }
+
+  // Check whether a file was requested from the command line.
+  if (window.fetch) {
+    fetch('/cli/filename')
+      .then(function(response) {
+        return response.text();
+      }).then(function(filename) {
+        if (!filename) return;
+
+        fetch('/cli/data')
+          .then(function(response) {
+            return response.text();
+          }).then(function(text) {
+            console.log('Loading ', text.length, ' bytes from ', filename);
+            readFileContent(filename, text);
+          });
+      })
+  }
 }
