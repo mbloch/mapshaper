@@ -8,7 +8,7 @@ var http = require("http"),
     optimist = require("optimist");
 
 var defaultPort = 5555,
-    usage = "Usage: $ mapshaper-gui [options] [path/to/file.geojson]",
+    usage = "Usage: $ mapshaper-gui [options] [file ...]",
     opts = optimist.usage(usage)
 
   .options("h", {
@@ -28,75 +28,111 @@ var defaultPort = 5555,
       optimist.showHelp();
       process.exit(0);
     }
-    if (argv._.length) {
-      if (argv._.length != 1) {
-        optimist.showHelp();
-        process.exit(0);
-      }
-      if (!fs.existsSync(argv._[0])) {
-        console.error('File ', argv._[0], ' does not exist.');
-        process.exit(1);
-      }
-    }
   })
   .argv;
 
 var webRoot = path.join(__dirname, "../www"),
     port = opts.port || defaultPort,
     indexUrl = "http://localhost:" + port + "/index.html",
-    dataFilename = opts._[0];
+    dataFiles = expandShapefiles(opts._);
+
+validateFiles(dataFiles); // print an error and exit if a file is unreadable
 
 process.on('uncaughtException', function(err) {
-  if (err.errno === 'EADDRINUSE')
-    console.log("Port " + port + ' is in use (Run mapshaper-gui -h for help).');
+  if (err.errno === 'EADDRINUSE') {
+    console.error("Port " + port + ' is in use (Run mapshaper-gui -h for help).');
+  } else {
+    console.error(err);
+  }
   process.exit(1);
 });
 
-serveOnPort(webRoot, port);
+startServer(port);
 
-function serveFile(filename, response) {
-  fs.exists(filename, function(exists) {
-    if(!exists) {
-      response.writeHead(404, {"Content-Type": "text/plain"});
-      response.write("404 Not Found\n");
-      response.end();
-      return;
-    }
-
-    if (fs.statSync(filename).isDirectory()) filename += '/index.html';
-
-    fs.readFile(filename, "binary", function(err, file) {
-      if(err) {
-        response.writeHead(500, {"Content-Type": "text/plain"});
-        response.write(err + "\n");
-        response.end();
-        return;
-      }
-
-      response.writeHead(200);
-      response.write(file, "binary");
-      response.end();
-    });
-  });
-}
-
-function serveOnPort(www, port) {
+function startServer(port) {
   http.createServer(function(request, response) {
-    var uri = url.parse(request.url).pathname
-      , filename = path.join(www, uri);
+    var uri = url.parse(request.url).pathname;
+    var dataPath = '/data/';
 
-    if (request.url === '/cli/data') {
-      serveFile(dataFilename, response);
-    } else if (request.url === '/cli/filename') {
-      response.writeHead(200);
-      response.write(JSON.stringify(dataFilename || null));
-      response.end();
+    if (uri == '/') {
+      uri = '/index.html';
+    }
+    if (uri == "/manifest.js") {
+      // serve JS file containing manifest of files for mapshaper to load
+      serveContent(getManifestJS(dataFiles), response);
+    } else if (uri.indexOf(dataPath) === 0) {
+      // serve a file from a path relative to this script
+      // (assumed to be a data file from the cmd line)
+      serveFile(uri.replace(dataPath, ''), response);
     } else {
-      serveFile(filename, response);
+      // serve a file from the web root
+      serveFile(path.join(webRoot, uri), response);
     }
   }).listen(parseInt(port, 10), onListening);
 }
 
 function onListening() {
   open(indexUrl);
+}
+
+function serveFile(filename, response) {
+  fs.readFile(filename, "binary", function(err, content) {
+    if (err) {
+      response.writeHead(404, {"Content-Type": "text/plain"});
+      response.write("404 Not Found\n");
+      response.end();
+    } else {
+      serveContent(content, response);
+    }
+  });
+}
+
+function serveContent(content, response) {
+  response.writeHead(200);
+  response.write(content, "binary");
+  response.end();
+}
+
+function getManifestJS(files) {
+  if (files.length > 0) {
+    return "mapshaper.manifest = " + JSON.stringify(files) + ";\n";
+  }
+  return '';
+}
+
+function validateFiles(files) {
+  files.forEach(function(f) {
+    var stat, msg;
+    try {
+      stat = fs.statSync(f);
+      if (!stat.isFile()) {
+        msg = 'Not a readable file';
+      }
+    } catch(e) {
+      msg = 'File not found';
+    }
+    if (msg) {
+      console.error(msg + ":", f);
+      process.exit(1);
+    }
+  });
+}
+
+// pull in auxiliary files along with .shp, if they exist
+function expandShapefiles(files) {
+  var shps = files.filter(function(f) {return path.parse(f).ext == '.shp';});
+  shps.forEach(function(f) {
+    addAuxFile(files, f, '.dbf');
+    addAuxFile(files, f, '.prj');
+    addAuxFile(files, f, '.cpg');
+  });
+  return files;
+}
+
+// append auxiliary file, if it exists in the filesystem but not the file list
+function addAuxFile(files, file, ext) {
+  var aux = file.replace(/\.[^.]+$/, ext);
+  if (fs.existsSync(aux) && files.indexOf(aux) == -1) {
+    files.push(aux);
+  }
 }

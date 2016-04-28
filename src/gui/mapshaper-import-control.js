@@ -81,13 +81,18 @@ function ImportControl(model) {
   }
 
   function turnOn() {
-    if (importCount > 0) {
-      El('#import-intro').hide(); // only show intro before first import
+    if (mapshaper.manifest) {
+      downloadFiles(mapshaper.manifest);
+      mapshaper.manifest = null;
+    } else {
+      El('#import-options').show();
     }
-    El('#import-options').show();
   }
 
   function close() {
+    El('#fork-me').hide();
+    El('#import-intro').hide(); // only show intro before first import
+    El('#import-buttons').show();
     El('#import-options').hide();
   }
 
@@ -150,7 +155,6 @@ function ImportControl(model) {
   }
 
   function submitFiles() {
-    El('#fork-me').hide();
     close();
     readNext();
   }
@@ -283,21 +287,33 @@ function ImportControl(model) {
     }, 35);
   }
 
-  // Check whether a file was requested from the command line.
-  if (window.fetch) {
-    fetch('/cli/filename')
-      .then(function(response) {
-        return response.text();
-      }).then(function(filename) {
-        if (!filename) return;
+  function downloadFiles(paths, opts) {
+    paths = paths.filter(function(f) {
+      return gui.isReadableFileType(f);
+    });
+    utils.reduceAsync(paths, [], downloadNextFile, function(err, files) {
+      if (err || !files.length) {
+        model.clearMode();
+      } else {
+        addFiles(files);
+        submitFiles();
+      }
+    });
+  }
 
-        fetch('/cli/data')
-          .then(function(response) {
-            return response.text();
-          }).then(function(text) {
-            console.log('Loading ', text.length, ' bytes from ', filename);
-            readFileContent(filename, text);
-          });
-      })
+  function downloadNextFile(memo, filepath, next) {
+    var req = new XMLHttpRequest();
+    req.responseType = 'blob';
+    req.addEventListener('load', function(e) {
+      var blob = req.response;
+      blob.name = filepath;
+      memo.push(blob);
+      next(null, memo);
+    });
+    req.addEventListener('error', function(e) {
+      next('error');
+    });
+    req.open('GET', '/data/' + filepath);
+    req.send();
   }
 }
