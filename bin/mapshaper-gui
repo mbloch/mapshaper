@@ -5,41 +5,40 @@ var http = require("http"),
     url = require("url"),
     fs = require("fs"),
     open = require("open"),
-    optimist = require("optimist");
-
-var defaultPort = 5555,
-    usage = "Usage: $ mapshaper-gui [options] [file ...]",
-    opts = optimist.usage(usage)
-
-  .options("h", {
-    alias: "help",
-    describe: "show this help message",
-    'boolean': true
-  })
-
-  .options("p", {
-    alias: "port",
-    default: defaultPort,
-    describe: "http port of server on localhost"
-  })
-
-  .check(function(argv) {
-    if (argv.h) {
-      optimist.showHelp();
-      process.exit(0);
-    }
-  })
-  .argv;
-
-var webRoot = path.join(__dirname, "../www"),
-    port = opts.port || defaultPort,
-    indexUrl = "http://localhost:" + port + "/index.html",
+    optimist = require("optimist"),
+    defaultPort = 5555,
+    webRoot = path.join(__dirname, "../www"),
+    opts = optimist.usage("Usage: $ mapshaper-gui [options] [file ...]")
+      .options("h", {
+        alias: "help",
+        describe: "show this help message",
+        'boolean': true
+      })
+      .options("p", {
+        alias: "port",
+        default: defaultPort,
+        describe: "http port of server on localhost"
+      })
+      .check(function(argv) {
+        if (argv.h) {
+          optimist.showHelp();
+          process.exit(0);
+        }
+      }).argv,
+    port = parseInt(opts.port, 10) || defaultPort,
+    probeCount = 0,
     dataFiles = expandShapefiles(opts._);
 
-validateFiles(dataFiles); // print an error and exit if a file is unreadable
+validateFiles(dataFiles);
 
 process.on('uncaughtException', function(err) {
   if (err.errno === 'EADDRINUSE') {
+    // probe for an open port, unless user has specified a non-default port
+    if (port == defaultPort && probeCount < 10) {
+      probeCount++;
+      startServer(port + probeCount);
+      return;
+    }
     console.error("Port " + port + ' is in use (Run mapshaper-gui -h for help).');
   } else {
     console.error(err);
@@ -68,11 +67,11 @@ function startServer(port) {
       // serve a file from the web root
       serveFile(path.join(webRoot, uri), response);
     }
-  }).listen(parseInt(port, 10), onListening);
+  }).listen(port, onListening);
 }
 
 function onListening() {
-  open(indexUrl);
+  open("http://localhost:" + (port + probeCount) + "/index.html");
 }
 
 function serveFile(filename, response) {
@@ -100,6 +99,7 @@ function getManifestJS(files) {
   return '';
 }
 
+// print an error and exit if a file is unreadable
 function validateFiles(files) {
   files.forEach(function(f) {
     var stat, msg;
@@ -129,7 +129,7 @@ function expandShapefiles(files) {
   return files;
 }
 
-// append auxiliary file, if it exists in the filesystem but not the file list
+// append auxiliary file, if it exists in the filesystem but not in the file list
 function addAuxFile(files, file, ext) {
   var aux = file.replace(/\.[^.]+$/, ext);
   if (fs.existsSync(aux) && files.indexOf(aux) == -1) {
