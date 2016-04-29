@@ -15,8 +15,16 @@ mapshaper-gui-model
 Browser.onload(function() {
   if (!gui.browserIsSupported()) {
     El("#mshp-not-supported").show();
-  } else {
-    gui.startEditing();
+    return;
+  }
+  gui.startEditing();
+  if (window.location.hostname == 'localhost') {
+    window.addEventListener('beforeunload', function() {
+      // send termination signal for mapshaper-gui
+      var req = new XMLHttpRequest();
+      req.open('GET', '/close');
+      req.send();
+    });
   }
 });
 

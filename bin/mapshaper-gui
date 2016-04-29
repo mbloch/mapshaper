@@ -49,29 +49,34 @@ process.on('uncaughtException', function(err) {
 startServer(port);
 
 function startServer(port) {
+  var timeout;
   http.createServer(function(request, response) {
     var uri = url.parse(request.url).pathname;
     var dataPath = '/data/';
+    clearTimeout(timeout);
 
-    if (uri == '/') {
-      uri = '/index.html';
-    }
-    if (uri == "/manifest.js") {
+    if (uri == '/close') {
+      // end process when page closes, unless page is immediately refreshed
+      timeout = setTimeout(function() {
+        process.exit(0);
+      }, 200);
+    } else if (uri == "/manifest.js") {
       // serve JS file containing manifest of files for mapshaper to load
       serveContent(getManifestJS(dataFiles), response);
     } else if (uri.indexOf(dataPath) === 0) {
       // serve a file from a path relative to this script
-      // (assumed to be a data file from the cmd line)
+      // assumed to be a data file from the cmd line (!)
       serveFile(uri.replace(dataPath, ''), response);
     } else {
       // serve a file from the web root
+      if (uri == '/') {
+        uri = '/index.html';
+      }
       serveFile(path.join(webRoot, uri), response);
     }
-  }).listen(port, onListening);
-}
-
-function onListening() {
-  open("http://localhost:" + (port + probeCount) + "/index.html");
+  }).listen(port, function() {
+    open("http://localhost:" + port);
+  });
 }
 
 function serveFile(filename, response) {
