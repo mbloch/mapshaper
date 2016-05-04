@@ -44,7 +44,9 @@ MapShaper.getLayerInfo = function(lyr, arcs) {
   return str;
 };
 
-MapShaper.getTableInfo = function(data) {
+MapShaper.getTableInfo = function(data, i) {
+  var featureId = i || 0;
+  var featureLabel = i >= 0 ? 'Value' : 'First value';
   var fields = data.getFields().sort();
   var replacements = {
     '\n': '\\n',
@@ -60,7 +62,7 @@ MapShaper.getTableInfo = function(data) {
     return Math.max(memo, name.length);
   }, 5) + 2;
   var vals = fields.map(function(fname) {
-    return data.getRecordAt(0)[fname];
+    return data.getRecordAt(featureId)[fname];
   });
   var digits = vals.map(function(val, i) {
     return utils.isNumber(vals[i]) ? (val + '.').indexOf('.') + 1 :  0;
@@ -79,7 +81,7 @@ MapShaper.getTableInfo = function(data) {
     return str;
   }).join('\n');
   return "Data table\n  " +
-      utils.rpad('Field', col1Chars, ' ') + "First value\n" + table;
+      utils.rpad('Field', col1Chars, ' ') + featureLabel + "\n" + table;
 };
 
 MapShaper.getSimplificationInfo = function(arcs) {

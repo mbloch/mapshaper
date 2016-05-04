@@ -13,6 +13,7 @@ mapshaper-filter-islands
 mapshaper-filter-slivers
 mapshaper-info
 mapshaper-innerlines2
+mapshaper-inspect
 mapshaper-join
 mapshaper-keep-shapes
 mapshaper-stitch
@@ -102,6 +103,9 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'info') {
       api.printInfo(dataset);
+
+    } else if (name == 'inspect') {
+      MapShaper.applyCommand(api.inspect, targetLayers, arcs, opts);
 
     } else if (name == 'innerlines') {
       outputLayers = MapShaper.applyCommand(api.innerlines, targetLayers, arcs, opts);

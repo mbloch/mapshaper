@@ -27,7 +27,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
       if (shapes) filteredShapes.push(shapes[shapeId] || null);
       if (records) filteredRecords.push(records[shapeId] || null);
     } else if (result !== false) {
-      stop("[filter] Expressions must return true or false");
+      stop("[filter] Expression must return true or false");
     }
   });
 

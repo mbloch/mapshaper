@@ -657,6 +657,19 @@ MapShaper.getOptionParser = function() {
   parser.command('info')
     .describe("print information about data layers");
 
+  parser.command('inspect')
+    .describe("print information about a feature")
+    .option("expression", {
+      label: "<expression>",
+      describe: "boolean JS expression for selecting a feature"
+    })
+    .option("target", targetOpt)
+    .validate(function(cmd) {
+      if (cmd._.length > 0) {
+        cmd.options.expression = cmd._[0];
+      }
+    });
+
   parser.command('verbose')
     .describe("print verbose processing messages");
 
