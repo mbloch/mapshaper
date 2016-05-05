@@ -1,6 +1,7 @@
 /* @requires mapshaper-canvas, mapshaper-gui-shapes, mapshaper-gui-table */
 
-function DisplayLayer(lyr, dataset) {
+function DisplayLayer(lyr, dataset, ext) {
+  var _displayLyr = {};
   var _displayBounds;
 
   init();
@@ -20,8 +21,8 @@ function DisplayLayer(lyr, dataset) {
     }
   };
 
-  this.updateStyle = function(style, ext) {
-    var o = this.getDisplayLayer(ext);
+  this.updateStyle = function(style) {
+    var o = this.getDisplayLayer();
     // dot style
     style.dotSize = calcDotSize(MapShaper.countPointsInLayer(o.layer));
     // arc style
@@ -34,8 +35,7 @@ function DisplayLayer(lyr, dataset) {
   };
 
   // @ext map extent
-  // @ids (optional) ids of selected shapes
-  this.getDisplayLayer = function(ext, ids) {
+  this.getDisplayLayer = function() {
     var arcs = lyr.display.arcs,
         layer = lyr.display.layer || lyr;
     if (!arcs) {
@@ -43,23 +43,23 @@ function DisplayLayer(lyr, dataset) {
       arcs = dataset.filteredArcs ?
         dataset.filteredArcs.getArcCollection(ext) : dataset.arcs;
     }
-    return {
+    return utils.extend(_displayLyr, {
       layer: layer,
       dataset: {arcs: arcs},
-      geographic: layer == lyr // (kludge) false if using table-only shapes
-    };
+      geographic: layer == lyr // false if using table-only shapes
+    });
   };
 
-  this.draw = function(canv, style, ext) {
+  this.draw = function(canv, style) {
     style = style || lyr.display.style;
     if (style.type == 'outline') {
-      this.drawStructure(canv, style, ext);
+      this.drawStructure(canv, style);
     } else {
-      this.drawShapes(canv, style, ext);
+      this.drawShapes(canv, style);
     }
   };
 
-  this.drawStructure = function(canv, style, ext) {
+  this.drawStructure = function(canv, style) {
     var obj = this.getDisplayLayer(ext);
     var arcs = obj.dataset.arcs;
     if (arcs && lyr.display.arcFlags) {
@@ -70,7 +70,7 @@ function DisplayLayer(lyr, dataset) {
     }
   };
 
-  this.drawShapes = function(canv, style, ext) {
+  this.drawShapes = function(canv, style) {
     var obj = this.getDisplayLayer(ext);
     var lyr = style.ids ? filterLayer(obj.layer, style.ids) : obj.layer;
     if (lyr.geometry_type == 'point') {

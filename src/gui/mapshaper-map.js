@@ -4,7 +4,7 @@ mapshaper-maplayer
 mapshaper-map-nav
 mapshaper-map-extent
 mapshaper-hit-control
-mapshaper-info-control
+mapshaper-inspection-control
 mapshaper-map-style
 */
 
@@ -39,28 +39,32 @@ function MshpMap(model) {
       _ext = new MapExtent(_layers),
       _mouse = new MouseArea(_layers.node()),
       _nav = new MapNav(_root, _ext, _mouse),
-      _hit = new HitControl(_ext, _mouse),
-      _info = new InfoControl(model, _hit);
+      _inspector = new InspectionControl(model, new HitControl(_ext, _mouse));
 
-  var _activeCanv = new DisplayCanvas().appendTo(_layers),
-      _hoverCanv = new DisplayCanvas().appendTo(_layers),
-      _highCanv = new DisplayCanvas().addClass('highlight-layer').appendTo(_layers),
-      _highLyr, _activeLyr, _highStyle, _activeStyle, _hoverStyle;
+  var _activeCanv = new DisplayCanvas().appendTo(_layers), // data layer shapes
+      _selectionCanv = new DisplayCanvas().appendTo(_layers), // selected subset
+      _highlightCanv = new DisplayCanvas().appendTo(_layers), // inspected shape
+      _annotationCanv = new DisplayCanvas().appendTo(_layers), // used for line intersections
+      _annotationLyr, _annotationStyle,
+      _activeLyr, _activeStyle, _selectionStyle, _highlightStyle;
 
   _ext.on('change', drawLayers);
 
-  _hit.on('change', function(e) {
-    var lyr = _activeLyr.getDisplayLayer(_ext).layer;
-    _hoverStyle = null;
+  _inspector.on('change', function(e) {
+    // issue: returns a filtered version of the layer
+    var lyr = _activeLyr.getDisplayLayer().layer;
+    _highlightStyle = null;
+    _selectionStyle = null;
     if (e.id >= 0) {
-      _hoverStyle = MapStyle.getHoverStyle(lyr, [e.id], e.pinned);
+      _highlightStyle = MapStyle.getHoverStyle(lyr, [e.id], e.pinned);
     }
-    drawLayer(_activeLyr, _hoverCanv, _hoverStyle);
+    drawLayer(_activeLyr, _highlightCanv, _highlightStyle);
   });
 
   model.on('select', function(e) {
-    _highStyle = null;
-    _hoverStyle = null;
+    _annotationStyle = null;
+    _highlightStyle = null;
+    _selectionStyle = null;
   });
 
   model.on('update', function(e) {
@@ -68,12 +72,12 @@ function MshpMap(model) {
         needReset = false;
 
     if (arcsMayHaveChanged(e.flags)) {
-      // update filtered arcs when simplification thresholds are calculated
+      // regenerate filtered arcs when simplification thresholds are calculated
       // or arcs are updated
       delete e.dataset.filteredArcs;
 
       // reset simplification after projection (thresholds have changed)
-      // TODO: reset is not needed if -simplify command is run after -proj
+      // TODO: preserve simplification pct (need to record pct before change)
       if (e.flags.proj && e.dataset.arcs) {
         e.dataset.arcs.setRetainedPct(1);
       }
@@ -93,12 +97,12 @@ function MshpMap(model) {
 
   this.setHighlightLayer = function(lyr, dataset) {
     if (lyr) {
-      _highLyr = new DisplayLayer(lyr, dataset);
-      _highStyle = MapStyle.getHighlightStyle();
-      drawLayer(_highLyr, _highCanv, _highStyle);
+      _annotationLyr = new DisplayLayer(lyr, dataset, _ext);
+      _annotationStyle = MapStyle.getHighlightStyle();
+      drawLayer(_annotationLyr, _annotationCanv, _annotationStyle);
     } else {
-      _highStyle = null;
-      _highLyr = null;
+      _annotationStyle = null;
+      _annotationLyr = null;
     }
   };
 
@@ -110,10 +114,10 @@ function MshpMap(model) {
   };
 
   function initActiveLayer(o) {
-    var lyr = new DisplayLayer(o.layer, o.dataset);
-    _hit.update(lyr.getDisplayLayer(_ext));
+    var lyr = new DisplayLayer(o.layer, o.dataset, _ext);
+    _inspector.updateLayer(lyr);
     _activeStyle = MapStyle.getActiveStyle(o.layer);
-    lyr.updateStyle(_activeStyle, _ext);
+    lyr.updateStyle(_activeStyle);
     return lyr;
   }
 
@@ -125,15 +129,16 @@ function MshpMap(model) {
   }
 
   function drawLayers() {
-    drawLayer(_activeLyr, _hoverCanv, _hoverStyle);
+    drawLayer(_activeLyr, _highlightCanv, _highlightStyle);
+    drawLayer(_activeLyr, _selectionCanv, _selectionStyle);
     drawLayer(_activeLyr, _activeCanv, _activeStyle);
-    drawLayer(_highLyr, _highCanv, _highStyle);
+    drawLayer(_annotationLyr, _annotationCanv, _annotationStyle);
   }
 
   function drawLayer(lyr, canv, style) {
     if (style) {
       canv.prep(_ext);
-      lyr.draw(canv, style, _ext);
+      lyr.draw(canv, style);
     } else {
       canv.hide();
     }

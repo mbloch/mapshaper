@@ -1,10 +1,8 @@
 /* @requires mapshaper-gui-lib */
 
 function HitControl(ext, mouse) {
-  var self = this;
-  var selectedId = -1;
+  var self = new EventDispatcher();
   var hoverId = -1;
-  var pinId = -1;
   var active = false;
   var tests = {
     polygon: polygonTest,
@@ -12,80 +10,41 @@ function HitControl(ext, mouse) {
     point: pointTest
   };
   var coords = El('#coordinate-info').hide();
-  var selectedShape;
-  var target, test;
+  var lyr, target, test;
 
-  this.update = function(o) {
-    if (active && selectedId > -1) {
-      // if selected shape has changed, deselect
-      if (selectedShape != o.layer.shapes[selectedId]) {
-        pinId = -1;
-        select(-1);
-      } else {
-        // kludge: re-trigger change event (in case popup needs to update)
-        select(selectedId);
-      }
-    }
-    test = tests[o.layer.geometry_type];
-    target = o;
+  ext.on('change', function() {
+    // shapes may change along with map scale
+    target = lyr ? lyr.getDisplayLayer() : null;
+  });
+
+  self.setLayer = function(o) {
+    lyr = o;
+    target = o.getDisplayLayer();
+    test = tests[target.layer.geometry_type];
     coords.hide();
   };
 
-  this.start = function() {
+  self.start = function() {
     active = true;
   };
 
-  this.stop = function() {
+  self.stop = function() {
     if (active) {
-      pinId = -1;
-      update(-1);
-      selectedId = -1;
-      selectedShape = null;
-      active = false;
+      hover(-1);
       coords.text('').hide();
     }
   };
 
-  document.addEventListener('keydown', function(e) {
-    var kc = e.keyCode, n;
-    // arrow keys advance pinned feature unless user is editing text.
-    if (!gui.getInputElement() && pinId > -1 && (kc == 37 || kc == 39)) {
-      n = MapShaper.getFeatureCount(target.layer);
-      if (n > 1) {
-        if (kc == 37) {
-          pinId = (pinId + n - 1) % n;
-        } else {
-          pinId = (pinId + 1) % n;
-        }
-        select(pinId);
-        e.stopPropagation();
-      }
-    }
-  }, !!'capture'); // preempt the layer control's arrow key handler
-
   mouse.on('click', function(e) {
     if (!active || !target) return;
-    if (pinId > -1 && hoverId == pinId) {
-      // clicking on pinned shape: unpin
-      pinId = -1;
-    } else if (pinId == -1 && hoverId > -1) {
-      // clicking on unpinned shape while unpinned: pin
-      pinId = hoverId;
-    } else if (pinId > -1 && hoverId > -1) {
-      // clicking on unpinned shape while pinned: pin
-      pinId = hoverId;
-    } else if (pinId > -1 && hoverId == -1) {
-      // clicking off the layer while pinned: unpin and deselect
-      pinId = -1;
-    }
+    self.dispatchEvent('click', {id: hoverId});
     gui.selectElement(coords.node());
-    select(hoverId);
   });
 
   // DISABLING: This causes problems when hovering over the info panel
   // Deselect hover shape when pointer leaves hover area
   //mouse.on('leave', function(e) {
-  // update(-1);
+  // hover(-1);
   //});
 
   mouse.on('hover', function(e) {
@@ -98,7 +57,7 @@ function HitControl(ext, mouse) {
       coords.text(p[0].toFixed(decimals) + ', ' + p[1].toFixed(decimals)).show();
     }
     if (test && e.hover) {
-      update(test(p[0], p[1]));
+      hover(test(p[0], p[1]));
     }
   });
 
@@ -174,27 +133,12 @@ function HitControl(ext, mouse) {
     return target.layer.data ? target.layer.data.getRecordAt(id) : {};
   }
 
-  function update(newId) {
-    hoverId = newId;
-    if (pinId == -1 && hoverId != selectedId) {
-      select(newId);
+  function hover(newId) {
+    if (newId != hoverId) {
+      hoverId = newId;
+      El('#map-layers').classed('hover', hoverId > -1);
+      self.dispatchEvent('hover', {id: hoverId});
     }
-    El('#map-layers').classed('hover', hoverId > -1);
-  }
-
-  function select(newId) {
-    var o = {
-      pinned: pinId > -1,
-      id: newId
-    };
-    selectedId = newId;
-    selectedShape = null;
-    if (newId > -1) {
-      selectedShape = target.layer.shapes[newId];
-      o.properties = getProperties(newId);
-      o.table = target.layer.data;
-    }
-    self.dispatchEvent('change', o);
   }
 
   function findHitCandidates(x, y, dist) {
@@ -220,6 +164,6 @@ function HitControl(ext, mouse) {
     });
     return cands;
   }
-}
 
-utils.inherit(HitControl, EventDispatcher);
+  return self;
+}

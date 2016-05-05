@@ -18,7 +18,7 @@ MapShaper.selectFeatures = function(lyr, arcs, opts) {
       ids = [],
       filter;
   if (!opts.expression) {
-    stop("[inspect] Missing a JS expression for selecting feature(s)");
+    stop("[inspect] Missing a JS expression for selecting a feature");
   }
   filter = MapShaper.compileValueExpression(opts.expression, lyr, arcs);
   utils.repeat(n, function(id) {
