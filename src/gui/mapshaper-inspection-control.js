@@ -39,15 +39,20 @@ function InspectionControl(model, hit) {
       message("No features were selected");
       return;
     }
-    btn.addClass('selected');
-    reset();
+    turnOn();
     inspect(ids[0], true); // TODO: multiple selection
   };
 
   document.addEventListener('keydown', function(e) {
     var kc = e.keyCode, n, id;
+    if (!_inspecting) return;
+
+    // esc key closes (unless in an editing mode)
+    if (e.keyCode == 27 && _inspecting && !model.getMode()) {
+      turnOff();
+
     // arrow keys advance pinned feature unless user is editing text.
-    if (!gui.getInputElement() && _pinned && (kc == 37 || kc == 39)) {
+    } else if ((kc == 37 || kc == 39) && _pinned && !gui.getInputElement()) {
       n = MapShaper.getFeatureCount(_lyr.getDisplayLayer().layer);
       if (n > 1) {
         if (kc == 37) {
@@ -60,13 +65,6 @@ function InspectionControl(model, hit) {
       }
     }
   }, !!'capture'); // preempt the layer control's arrow key handler
-
-  document.addEventListener('keydown', function(e) {
-    if (e.keyCode == 27 && isOn() && !model.getMode()) { // esc key closes
-      btn.toggleClass('selected');
-      reset();
-    }
-  });
 
   hit.on('click', function(e) {
     var id = e.id;
