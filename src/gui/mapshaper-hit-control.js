@@ -2,7 +2,7 @@
 
 function HitControl(ext, mouse) {
   var self = new EventDispatcher();
-  var hoverId = -1;
+  var prevHits = [];
   var active = false;
   var tests = {
     polygon: polygonTest,
@@ -30,14 +30,14 @@ function HitControl(ext, mouse) {
 
   self.stop = function() {
     if (active) {
-      hover(-1);
+      hover([]);
       coords.text('').hide();
     }
   };
 
   mouse.on('click', function(e) {
     if (!active || !target) return;
-    self.dispatchEvent('click', {id: hoverId});
+    trigger('click', prevHits);
     gui.selectElement(coords.node());
   });
 
@@ -78,66 +78,83 @@ function HitControl(ext, mouse) {
   function polygonTest(x, y) {
     var dist = getHitBuffer(5),
         cands = findHitCandidates(x, y, dist),
-        hitId = -1,
-        cand;
+        hits = [],
+        cand, hitId;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
       if (geom.testPointInPolygon(x, y, cand.shape, target.dataset.arcs)) {
-        hitId = cand.id;
-        break;
+        hits.push(cand.id);
       }
     }
-    if (cands.length > 0 && hitId == -1) {
+    if (cands.length > 0 && hits.length === 0) {
       // secondary detection: proximity, if not inside a polygon
-      hitId = findNearestCandidate(x, y, dist, cands, target.dataset.arcs);
+      hits = findNearestCandidates(x, y, dist, cands, target.dataset.arcs);
     }
-    return hitId;
+    return hits;
   }
 
   function polylineTest(x, y) {
     var dist = getHitBuffer(15),
-        hitId = -1,
         cands = findHitCandidates(x, y, dist);
-    return findNearestCandidate(x, y, dist, cands, target.dataset.arcs);
+    return findNearestCandidates(x, y, dist, cands, target.dataset.arcs);
   }
 
-  function findNearestCandidate(x, y, dist, cands, arcs) {
-    var hitId = -1,
+  function findNearestCandidates(x, y, dist, cands, arcs) {
+    var hits = [],
         cand, candDist;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
       candDist = geom.getPointToShapeDistance(x, y, cand.shape, arcs);
       if (candDist < dist) {
-        hitId = cand.id;
+        hits = [cand.id];
         dist = candDist;
+      } else if (candDist == dist) {
+        hits.push(cand.id);
       }
     }
-    return hitId;
+    return hits;
   }
 
   function pointTest(x, y) {
     var dist = getHitBuffer(25),
         limitSq = dist * dist,
-        hitId = -1;
+        hits = [];
     MapShaper.forEachPoint(target.layer.shapes, function(p, id) {
       var distSq = geom.distanceSq(x, y, p[0], p[1]);
       if (distSq < limitSq) {
-        hitId = id;
+        hits = [id];
         limitSq = distSq;
+      } else if (distSq == limitSq) {
+        hits.push(id);
       }
     });
-    return hitId;
+    return hits;
   }
 
   function getProperties(id) {
     return target.layer.data ? target.layer.data.getRecordAt(id) : {};
   }
 
-  function hover(newId) {
-    if (newId != hoverId) {
-      hoverId = newId;
-      El('#map-layers').classed('hover', hoverId > -1);
-      self.dispatchEvent('hover', {id: hoverId});
+  function sameIds(a, b) {
+    if (a.length != b.length) return false;
+    for (var i=0; i<a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  function trigger(event, hits) {
+    self.dispatchEvent(event, {
+      ids: hits,
+      id: hits.length > 0 ? hits[0] : -1
+    });
+  }
+
+  function hover(hits) {
+    if (!sameIds(hits, prevHits)) {
+      prevHits = hits;
+      El('#map-layers').classed('hover', hits.length > 0);
+      trigger('hover', hits);
     }
   }
 
