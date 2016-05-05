@@ -42,13 +42,6 @@ body {
 	color: #0774a5;
 }
 
-.colored-text::selection {
-	background-color: #e6f7ff;
-}
-
-.colored-text::-moz-selection {
-	background-color: #e6f7ff;
-}
 
 .dot-underline {
 	border-bottom: 1px dotted #0774a5;
@@ -63,37 +56,52 @@ body {
 	background-color: #0F5A84;
 }
 
+.colored-text::selection {
+	background-color: #e6f7ff;
+}
+
+.colored-text::-moz-selection {
+	background-color: #e6f7ff;
+}
+
 .layer-item.active {
 	background-color: #e6f7ff;
 }
 
-/* THEME 2 -- OLIVE */
+/* THEME 2  */
 
 .theme2 .page-header,
-.theme2 .nav-btn.selected,
 .theme2 .dialog-btn {
-	background-color: #6D7A56;
+	background-color: #678691;
 }
 
 .theme2 .colored-text {
-	color: #6D7A56;
+	color: #678691;
 }
 
 .theme2 .dot-underline {
-	border-bottom: 1px dotted #6D7A56;
+	border-bottom: 1px dotted #678691;
 }
 
 .theme2 .nav-btn * {
-	fill: #6D7A56;
+	fill: #678691;
 }
 
 .theme2 .dialog-btn:hover,
 .theme2 .header-btn:hover {
-	background-color: #43541d;
+	background-color: #365A68;
+}
+
+.theme2 .colored-text::selection {
+	background-color: #DEF1F9;
+}
+
+.theme2 .colored-text::-moz-selection {
+	background-color: #DEF1F9;
 }
 
 .theme2 .layer-item.active {
-	background-color: #eff4e4;
+	background-color: #DEF1F9;
 }
 
 /* THEME 3 -- GREY */
@@ -536,8 +544,7 @@ body.simplify #layer-control-btn {
 	padding: 5px 0;
 }
 
-
-.popup-content {
+.popup > div {
 	box-sizing: border-box;
 	overflow: hidden;
 	overflow-y: auto;
@@ -546,17 +553,22 @@ body.simplify #layer-control-btn {
 	font-size: 13px;
 }
 
+.popup table {
+	border-spacing: 0px;
+}
+
 .popup td {
 	vertical-align: top;
+	padding: 2px 0;
 	/*font-weight: bold;*/
 	min-width: 80px;
 	max-width: 180px;
 	color: black;
 }
 
-.popup .field-name {
+.popup td.field-name {
 	color: #aaa;
-	padding-right: 8px;
+	padding-right: 7px;
 	font-weight: normal;
 	min-width: 60px;
 }
@@ -617,7 +629,6 @@ body.simplify #layer-control-btn {
 	cursor: pointer;
 }
 
-
 #map-layers canvas {
 	pointer-events: none;
 	position: absolute;
@@ -628,14 +639,6 @@ body.simplify #layer-control-btn {
 	-webkit-transform-origin: top left;
 	transform: scale3D(0.5, 0.5, 1);
 	-webkit-transform: scale3D(0.5, 0.5, 1);
-}
-
-#map-layers canvas.highlight-layer {
-	z-index: 5;
-}
-
-#map-layers canvas.hover-layer {
-	z-index: 4;
 }
 
 #nav-buttons {

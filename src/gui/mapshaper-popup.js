@@ -4,6 +4,7 @@
 function Popup() {
   var parent = El('#mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
+  // var head = El('div').addClass('popup-head').appendTo(el).text('Feature 1 of 5  next prev');
   var content = El('div').addClass('popup-content').appendTo(el);
 
   this.show = function(rec, table, editable) {

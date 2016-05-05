@@ -121,12 +121,12 @@ div.tip {
 	margin-top: 5px;
 }
 
-.header-btn.disabled,
-.header-btn.disabled:hover {
+.page-header .header-btn.disabled,
+.page-header .header-btn.disabled:hover {
 	background-color: none;
 }
 
-.header-btn.active {
+.page-header .header-btn.active {
 	background-color: black;
 }
 
