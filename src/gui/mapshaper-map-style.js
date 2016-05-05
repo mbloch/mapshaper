@@ -22,9 +22,22 @@ var MapStyle = (function() {
           dotSize: 8
         }, polyline:  {
           strokeColor: "black",
-          strokeWidth: 3
+          strokeWidth: 2.5
         }
       },
+      selectionStyles = {
+        polygon: {
+          fillColor: "#FFFEEB",
+          strokeColor: "#EAC618",
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: "#EAC618",
+          dotSize: 6
+        }, polyline:  {
+          strokeColor: "#EAC618",
+          strokeWidth: 1.8
+        }
+      };
       pinnedStyles = {
         polygon: {
           fillColor: "rgba(255, 120, 162, 0.2)",
@@ -35,7 +48,7 @@ var MapStyle = (function() {
           dotSize: 8
         }, polyline:  {
           strokeColor: "#f74b80",
-          strokeWidth: 4
+          strokeWidth: 3
         }
       };
 
@@ -60,6 +73,18 @@ var MapStyle = (function() {
         style = MapShaper.wrapHoverStyle(MapShaper.getSvgDisplayStyle(lyr), hoverStyle);
       } else {
         style = utils.extend({}, hoverStyle);
+      }
+      style.ids = ids;
+      return style;
+    },
+    getSelectionStyle: function(lyr, ids) {
+      var type = lyr.geometry_type;
+      var selectionStyle = selectionStyles[type];
+      var style;
+      if (MapShaper.layerHasSvgDisplayStyle(lyr) && type == 'point') {
+        style = MapShaper.wrapHoverStyle(MapShaper.getSvgDisplayStyle(lyr), selectionStyles);
+      } else {
+        style = utils.extend({}, selectionStyle);
       }
       style.ids = ids;
       return style;

@@ -53,11 +53,20 @@ function MshpMap(model) {
   _inspector.on('change', function(e) {
     // issue: returns a filtered version of the layer
     var lyr = _activeLyr.getDisplayLayer().layer;
+    var selection = e.selection;
+    if (e.id > -1) {
+      selection = utils.difference(selection, [e.id]);
+    }
     _highlightStyle = null;
     _selectionStyle = null;
-    if (e.id >= 0) {
+
+    if (e.id > -1) {
       _highlightStyle = MapStyle.getHoverStyle(lyr, [e.id], e.pinned);
     }
+    if (selection.length > 0) {
+      _selectionStyle = MapStyle.getSelectionStyle(lyr, selection);
+    }
+    drawLayer(_activeLyr, _selectionCanv, _selectionStyle);
     drawLayer(_activeLyr, _highlightCanv, _highlightStyle);
   });
 

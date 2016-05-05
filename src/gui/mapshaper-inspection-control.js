@@ -7,7 +7,7 @@ function InspectionControl(model, hit) {
   var _inspecting = false;
   var _pinned = false; // TODO: switch to flag
   var _highId = -1;
-  var _highShape = null;
+  var _shapes;
   var _selectionIds = [];
   var _self = new EventDispatcher();
 
@@ -16,17 +16,19 @@ function InspectionControl(model, hit) {
   });
 
   _self.updateLayer = function(o) {
-    var newShape;
-    if (_inspecting && _highId > -1) {
-      newShape = getShapeById(_highId, o);
-      if (newShape != _highShape) {
-        inspect(-1, false);
-      } else {
+    var shapes = o.getDisplayLayer().layer.shapes;
+    if (_inspecting) {
+      // kludge: check if shapes have changed
+      if (_shapes == shapes) {
         // kludge: re-display the inspector, in case data changed
         inspect(_highId, _pinned);
+      } else {
+        _selectionIds = [];
+        inspect(-1, false);
       }
     }
     hit.setLayer(o);
+    _shapes = shapes;
     _lyr = o;
   };
 
@@ -39,8 +41,9 @@ function InspectionControl(model, hit) {
       message("No features were selected");
       return;
     }
+    _selectionIds = ids;
     turnOn();
-    inspect(ids[0], true); // TODO: multiple selection
+    inspect(ids[0], true);
   };
 
   document.addEventListener('keydown', function(e) {
@@ -89,11 +92,6 @@ function InspectionControl(model, hit) {
     inspect(id, false);
   });
 
-  function getShapeById(id, lyr) {
-    var shapes = lyr.getDisplayLayer().layer.shapes;
-    return shapes ? shapes[id] : null;
-  }
-
   function showInspector(id, editable) {
     var o = _lyr.getDisplayLayer();
     var rec = o.layer.data ? o.layer.data.getRecordAt(id) : {};
@@ -105,14 +103,13 @@ function InspectionControl(model, hit) {
     if (!_inspecting) return;
     if (id > -1) {
       showInspector(id, pin);
-      _highShape = getShapeById(id, _lyr);
     } else {
       _popup.hide();
-      _highShape = null;
     }
     _highId = id;
     _pinned = pin;
     _self.dispatchEvent('change', {
+      selection: _selectionIds,
       id: id,
       pinned: pin
     });
@@ -127,6 +124,7 @@ function InspectionControl(model, hit) {
   function turnOff() {
     btn.removeClass('selected');
     hit.stop();
+    _selectionIds = [];
     if (_highId > -1) {
       inspect(-1);
       _inspecting = false;

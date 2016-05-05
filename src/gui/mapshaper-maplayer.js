@@ -1,7 +1,6 @@
 /* @requires mapshaper-canvas, mapshaper-gui-shapes, mapshaper-gui-table */
 
 function DisplayLayer(lyr, dataset, ext) {
-  var _displayLyr = {};
   var _displayBounds;
 
   init();
@@ -43,11 +42,11 @@ function DisplayLayer(lyr, dataset, ext) {
       arcs = dataset.filteredArcs ?
         dataset.filteredArcs.getArcCollection(ext) : dataset.arcs;
     }
-    return utils.extend(_displayLyr, {
+    return {
       layer: layer,
       dataset: {arcs: arcs},
       geographic: layer == lyr // false if using table-only shapes
-    });
+    };
   };
 
   this.draw = function(canv, style) {
