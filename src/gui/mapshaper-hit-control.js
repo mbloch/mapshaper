@@ -32,6 +32,7 @@ function HitControl(ext, mouse) {
     if (active) {
       hover([]);
       coords.text('').hide();
+      active = false;
     }
   };
 
