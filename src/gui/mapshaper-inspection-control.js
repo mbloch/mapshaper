@@ -2,18 +2,15 @@
 
 function InspectionControl(model, hit) {
   var _popup = new Popup();
-  var _cli_inspect = api.inspect;
-  var _lyr;
   var _inspecting = false;
   var _pinned = false; // TODO: switch to flag
   var _highId = -1;
   var _selectionIds = null;
-  var _shapes;
-  var _self = new EventDispatcher();
-
   var btn = gui.addSidebarButton("#info-icon2").on('click', function() {
     if (_inspecting) turnOff(); else turnOn();
   });
+  var _self = new EventDispatcher();
+  var _shapes, _lyr;
 
   _self.updateLayer = function(o) {
     var shapes = o.getDisplayLayer().layer.shapes;
@@ -34,9 +31,11 @@ function InspectionControl(model, hit) {
 
   // replace cli inspect command
   api.inspect = function(lyr, arcs, opts) {
-    // TODO: make sure that lyr is the same as the active layer
-    // (If a different layer is targeted, output could be written to the console
-    var ids = MapShaper.selectFeatures(lyr, arcs, opts);
+    var ids;
+    if (lyr != model.getEditingLayer().layer) {
+      error("Only the active layer can be targeted");
+    }
+    ids = MapShaper.selectFeatures(lyr, arcs, opts);
     if (ids.length === 0) {
       message("No features were selected");
       return;
