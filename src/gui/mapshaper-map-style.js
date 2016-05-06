@@ -3,6 +3,13 @@
 var MapStyle = (function() {
   var darkStroke = "#334",
       lightStroke = "#b2d83a",
+      pink = "#f74b80",  // dark
+      pink2 = "#ffcadd", // medium
+      gold = "#EAC618",
+      gold2 = "#f7ea9f",
+      black = "black",
+      selectionFill = "rgba(237, 214, 0, 0.12)",
+      hoverFill = "rgba(255, 117, 165, 0.2)",
       outlineStyle = {
         type: 'outline',
         strokeColors: [lightStroke, darkStroke],
@@ -14,40 +21,66 @@ var MapStyle = (function() {
       },
       hoverStyles = {
         polygon: {
-          fillColor: "rgba(255, 117, 165, 0.2)", // "#ffebf1",
-          strokeColor: "black",
+          fillColor: hoverFill,
+          strokeColor: black,
           strokeWidth: 1.2
         }, point:  {
-          dotColor: "black",
+          dotColor: black,
           dotSize: 8
         }, polyline:  {
-          strokeColor: "black",
+          strokeColor: black,
           strokeWidth: 2.5
         }
       },
       selectionStyles = {
         polygon: {
-          fillColor: "#FFFEEB",
-          strokeColor: "#EAC618",
-          strokeWidth: 1.2
+          fillColor: selectionFill,
+          strokeColor: gold,
+          strokeWidth: 1
         }, point:  {
-          dotColor: "#EAC618",
+          dotColor: gold,
           dotSize: 6
         }, polyline:  {
-          strokeColor: "#EAC618",
+          strokeColor: gold,
           strokeWidth: 1.8
         }
-      };
+      },
+      selectionHoverStyles = {
+        polygon: {
+          fillColor: selectionFill,
+          strokeColor: black,
+          strokeWidth: 1.2
+        }, point:  {
+          dotColor: black,
+          dotSize: 6
+        }, polyline:  {
+          strokeColor: black,
+          strokeWidth: 2.5
+        }
+      },
       pinnedStyles = {
         polygon: {
-          fillColor: "rgba(255, 120, 162, 0.2)",
-          strokeColor: "#f74b80",
-          strokeWidth: 1.5
+          fillColor: pink2,
+          strokeColor: pink,
+          strokeWidth: 1.8
         }, point:  {
-          dotColor: "#f74b80",
+          dotColor: pink,
           dotSize: 8
         }, polyline:  {
-          strokeColor: "#f74b80",
+          strokeColor: pink,
+          strokeWidth: 3
+        }
+      },
+      pinnedSelectionStyles = {
+        polygon: {
+          fillColor: pink2, // gold2,
+          strokeColor: pink, // gold,
+          strokeWidth: 1.8
+        }, point: {
+          dotColor: pink, // gold,
+          dotSize: 8
+        }, polyline: {
+          strokeColor: pink, // gold,
           strokeWidth: 3
         }
       };
@@ -65,41 +98,73 @@ var MapStyle = (function() {
       }
       return style;
     },
-    getHoverStyle: function(lyr, ids, pinned) {
-      var type = lyr.geometry_type;
-      var hoverStyle = pinned ? pinnedStyles[type] : hoverStyles[type];
-      var style;
-      if (MapShaper.layerHasSvgDisplayStyle(lyr) && type == 'point') {
-        style = MapShaper.wrapHoverStyle(MapShaper.getSvgDisplayStyle(lyr), hoverStyle);
-      } else {
-        style = utils.extend({}, hoverStyle);
-      }
-      style.ids = ids;
-      return style;
-    },
-    getSelectionStyle: function(lyr, ids) {
-      var type = lyr.geometry_type;
-      var selectionStyle = selectionStyles[type];
-      var style;
-      if (MapShaper.layerHasSvgDisplayStyle(lyr) && type == 'point') {
-        style = MapShaper.wrapHoverStyle(MapShaper.getSvgDisplayStyle(lyr), selectionStyles);
-      } else {
-        style = utils.extend({}, selectionStyle);
-      }
-      style.ids = ids;
-      return style;
-    }
+    getOverlayStyle: getOverlayStyle
   };
+
+  function getOverlayStyle(lyr, o) {
+    var type = lyr.geometry_type;
+    var topId = o.id;
+    var ids = [];
+    var styles = [];
+    var styler = function(o, i) {
+      utils.extend(o, styles[i]);
+    };
+    var overlayStyle = {styler: styler};
+    // first layer: selected feature(s)
+    o.selection_ids.forEach(function(i) {
+      // skip features in a higher layer
+      if (i == topId || o.hover_ids.indexOf(i) > -1) return;
+      ids.push(i);
+      styles.push(selectionStyles[type]);
+    });
+    // second layer: hover feature(s)
+    o.hover_ids.forEach(function(i) {
+      var style;
+      if (i == topId) return;
+      style = o.selection_ids.indexOf(i) > -1 ? selectionHoverStyles[type] : hoverStyles[type];
+      ids.push(i);
+      styles.push(style);
+    });
+    // top layer: highlighted feature
+    if (topId > -1) {
+      var isPinned = o.pinned;
+      var inSelection = o.selection_ids.indexOf(topId) > -1;
+      var style;
+      if (isPinned && inSelection) {
+        style = pinnedSelectionStyles[type];
+      } else if (isPinned && !inSelection) {
+        style = pinnedStyles[type];
+      } else if (!isPinned && inSelection) {
+        style = selectionHoverStyles[type]; // TODO: differentiate from other hover ids
+      } else if (!isPinned && !inSelection) {
+        style = hoverStyles[type]; // TODO: differentiate from other hover ids
+      }
+      ids.push(topId);
+      styles.push(style);
+    }
+
+    if (MapShaper.layerHasSvgDisplayStyle(lyr) && type == 'point') {
+      overlayStyle = MapShaper.wrapHoverStyle(MapShaper.getSvgDisplayStyle(lyr), overlayStyle);
+    }
+    overlayStyle.ids = ids;
+    return ids.length > 0 ? overlayStyle : null;
+  }
+
 }());
 
+// Modify style to use scaled circle instead of dot symbol
 MapShaper.wrapHoverStyle = function(style, hoverStyle) {
-  var col = hoverStyle.dotColor;
   var styler = function(obj, i) {
+    var dotCol;
     style.styler(obj, i);
-    if (obj.radius) {
+    if (hoverStyle.styler) {
+      hoverStyler.styler(obj, i);
+    }
+    dotCol = obj.dotColor;
+    if (obj.radius && dotColor) {
       obj.radius += 1.5;
-      obj.fillColor = col;
-      obj.strokeColor = col;
+      obj.fillColor = dotColor;
+      obj.strokeColor = dotColor;
       obj.opacity = 1;
     }
   };

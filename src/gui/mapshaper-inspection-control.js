@@ -7,8 +7,8 @@ function InspectionControl(model, hit) {
   var _inspecting = false;
   var _pinned = false; // TODO: switch to flag
   var _highId = -1;
+  var _selectionIds = null;
   var _shapes;
-  var _selectionIds = [];
   var _self = new EventDispatcher();
 
   var btn = gui.addSidebarButton("#info-icon2").on('click', function() {
@@ -23,7 +23,7 @@ function InspectionControl(model, hit) {
         // kludge: re-display the inspector, in case data changed
         inspect(_highId, _pinned);
       } else {
-        _selectionIds = [];
+        _selectionIds = null;
         inspect(-1, false);
       }
     }
@@ -83,13 +83,13 @@ function InspectionControl(model, hit) {
     } else if (!_pinned && id == -1) {
       // clicking off the layer while pinned: unpin and deselect
     }
-    inspect(id, pin);
+    inspect(id, pin, e.ids);
   });
 
   hit.on('hover', function(e) {
     var id = e.id;
-    if (!_inspecting || _pinned || id == _highId) return;
-    inspect(id, false);
+    if (!_inspecting || _pinned) return;
+    inspect(id, false, e.ids);
   });
 
   function showInspector(id, editable) {
@@ -99,7 +99,7 @@ function InspectionControl(model, hit) {
   }
 
   // @id Id of a feature in the active layer, or -1
-  function inspect(id, pin) {
+  function inspect(id, pin, ids) {
     if (!_inspecting) return;
     if (id > -1) {
       showInspector(id, pin);
@@ -109,7 +109,8 @@ function InspectionControl(model, hit) {
     _highId = id;
     _pinned = pin;
     _self.dispatchEvent('change', {
-      selection: _selectionIds,
+      selection_ids: _selectionIds || [],
+      hover_ids: ids || [],
       id: id,
       pinned: pin
     });
@@ -124,11 +125,9 @@ function InspectionControl(model, hit) {
   function turnOff() {
     btn.removeClass('selected');
     hit.stop();
-    _selectionIds = [];
-    if (_highId > -1) {
-      inspect(-1);
-      _inspecting = false;
-    }
+    _selectionIds = null;
+    inspect(-1); // clear the map
+    _inspecting = false;
   }
 
   return _self;

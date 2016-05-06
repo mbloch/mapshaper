@@ -42,38 +42,22 @@ function MshpMap(model) {
       _inspector = new InspectionControl(model, new HitControl(_ext, _mouse));
 
   var _activeCanv = new DisplayCanvas().appendTo(_layers), // data layer shapes
-      _selectionCanv = new DisplayCanvas().appendTo(_layers), // selected subset
-      _highlightCanv = new DisplayCanvas().appendTo(_layers), // inspected shape
+      _overlayCanv = new DisplayCanvas().appendTo(_layers), // hover and selection shapes
       _annotationCanv = new DisplayCanvas().appendTo(_layers), // used for line intersections
       _annotationLyr, _annotationStyle,
-      _activeLyr, _activeStyle, _selectionStyle, _highlightStyle;
+      _activeLyr, _activeStyle, _overlayStyle;
 
   _ext.on('change', drawLayers);
 
   _inspector.on('change', function(e) {
-    // issue: returns a filtered version of the layer
     var lyr = _activeLyr.getDisplayLayer().layer;
-    var selection = e.selection;
-    if (e.id > -1) {
-      selection = utils.difference(selection, [e.id]);
-    }
-    _highlightStyle = null;
-    _selectionStyle = null;
-
-    if (e.id > -1) {
-      _highlightStyle = MapStyle.getHoverStyle(lyr, [e.id], e.pinned);
-    }
-    if (selection.length > 0) {
-      _selectionStyle = MapStyle.getSelectionStyle(lyr, selection);
-    }
-    drawLayer(_activeLyr, _selectionCanv, _selectionStyle);
-    drawLayer(_activeLyr, _highlightCanv, _highlightStyle);
+    _overlayStyle = MapStyle.getOverlayStyle(lyr, e);
+    drawLayer(_activeLyr, _overlayCanv, _overlayStyle);
   });
 
   model.on('select', function(e) {
     _annotationStyle = null;
-    _highlightStyle = null;
-    _selectionStyle = null;
+    _overlayStyle = null;
   });
 
   model.on('update', function(e) {
@@ -138,8 +122,7 @@ function MshpMap(model) {
   }
 
   function drawLayers() {
-    drawLayer(_activeLyr, _highlightCanv, _highlightStyle);
-    drawLayer(_activeLyr, _selectionCanv, _selectionStyle);
+    drawLayer(_activeLyr, _overlayCanv, _overlayStyle);
     drawLayer(_activeLyr, _activeCanv, _activeStyle);
     drawLayer(_annotationLyr, _annotationCanv, _annotationStyle);
   }
