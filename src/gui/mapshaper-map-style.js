@@ -4,9 +4,8 @@ var MapStyle = (function() {
   var darkStroke = "#334",
       lightStroke = "#b2d83a",
       pink = "#f74b80",  // dark
-      pink2 = "#ffd9e7", // medium
+      pink2 = "rgba(239, 0, 86, 0.16)", // "#ffd9e7", // medium
       gold = "#efc100",
-      gold2 = "#f7ea9f",
       black = "black",
       selectionFill = "rgba(237, 214, 0, 0.12)",
       hoverFill = "rgba(255, 117, 165, 0.18)",
@@ -70,19 +69,6 @@ var MapStyle = (function() {
           strokeColor: pink,
           strokeWidth: 3
         }
-      },
-      pinnedSelectionStyles = {
-        polygon: {
-          fillColor: pink2, // gold2,
-          strokeColor: pink, // gold,
-          strokeWidth: 1.8
-        }, point: {
-          dotColor: pink, // gold,
-          dotSize: 8
-        }, polyline: {
-          strokeColor: pink, // gold,
-          strokeWidth: 3
-        }
       };
 
   return {
@@ -133,13 +119,11 @@ var MapStyle = (function() {
       var isPinned = o.pinned;
       var inSelection = o.selection_ids.indexOf(topId) > -1;
       var style;
-      if (isPinned && inSelection) {
-        style = pinnedSelectionStyles[type];
-      } else if (isPinned && !inSelection) {
+      if (isPinned) {
         style = pinnedStyles[type];
-      } else if (!isPinned && inSelection) {
+      } else if (inSelection) {
         style = selectionHoverStyles[type]; // TODO: differentiate from other hover ids
-      } else if (!isPinned && !inSelection) {
+      } else {
         style = hoverStyles[type]; // TODO: differentiate from other hover ids
       }
       ids.push(topId);
