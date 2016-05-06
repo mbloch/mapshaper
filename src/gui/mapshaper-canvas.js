@@ -36,14 +36,22 @@ function DisplayCanvas() {
 
   _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
-        size = (style.dotSize || 3) * gui.getPixelRatio(),
+        pixRatio = gui.getPixelRatio(),
+        size = (style.dotSize || 3) * pixRatio,
+        styler = style.styler || null,
         shp, p;
 
-    // TODO: don't try to draw offscreen points
     _ctx.fillStyle = style.dotColor || "black";
+    // TODO: don't try to draw offscreen points
     for (var i=0, n=shapes.length; i<n; i++) {
+      if (styler !== null) {
+        styler(style, i);
+        size = style.dotSize * pixRatio;
+        _ctx.fillStyle = style.dotColor;
+      }
       shp = shapes[i];
       for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
+        if (!shp) continue;
         p = shp[j];
         drawSquare(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, _ctx);
       }
@@ -58,7 +66,7 @@ function DisplayCanvas() {
         end = getPathEnd(style),
         shp, p;
 
-    if (!isStyled) {
+    if (!isStyled || style.dotSize) {
       return _self.drawSquareDots(shapes, style);
     }
 

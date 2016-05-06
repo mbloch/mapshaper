@@ -5,7 +5,7 @@ var MapStyle = (function() {
       lightStroke = "#b2d83a",
       pink = "#f74b80",  // dark
       pink2 = "#ffcadd", // medium
-      gold = "#EAC618",
+      gold = "#efc100",
       gold2 = "#f7ea9f",
       black = "black",
       selectionFill = "rgba(237, 214, 0, 0.12)",
@@ -109,7 +109,10 @@ var MapStyle = (function() {
     var styler = function(o, i) {
       utils.extend(o, styles[i]);
     };
-    var overlayStyle = {styler: styler};
+    var overlayStyle = {
+      styler: styler,
+      dotSize: 1 // dotSize: kludge to trigger dot renderer
+    };
     // first layer: selected feature(s)
     o.selection_ids.forEach(function(i) {
       // skip features in a higher layer
