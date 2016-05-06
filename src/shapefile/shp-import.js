@@ -29,7 +29,11 @@ MapShaper.importShp = function(src, opts) {
   // TODO: test cases: null shape; non-null shape with no valid parts
   reader.forEachShape(function(shp) {
     importer.startShape();
-    if (!shp.isNull) {
+    if (shp.isNull) {
+      // skip
+    } else if (type == 'point') {
+      importer.importPoints(shp.readPoints());
+    } else {
       shp.stream(importer);
     }
   });
