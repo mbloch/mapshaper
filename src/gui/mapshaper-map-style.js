@@ -4,12 +4,12 @@ var MapStyle = (function() {
   var darkStroke = "#334",
       lightStroke = "#b2d83a",
       pink = "#f74b80",  // dark
-      pink2 = "#ffcadd", // medium
+      pink2 = "#ffd9e7", // medium
       gold = "#efc100",
       gold2 = "#f7ea9f",
       black = "black",
       selectionFill = "rgba(237, 214, 0, 0.12)",
-      hoverFill = "rgba(255, 117, 165, 0.2)",
+      hoverFill = "rgba(255, 117, 165, 0.18)",
       outlineStyle = {
         type: 'outline',
         strokeColors: [lightStroke, darkStroke],
