@@ -61,14 +61,9 @@ function DisplayCanvas() {
   _self.drawPoints = function(shapes, style) {
     var t = getScaledTransform(_ext),
         pixRatio = gui.getPixelRatio(),
-        isStyled = !!style.styler,
         start = getPathStart(style, _ext),
         end = getPathEnd(style),
         shp, p;
-
-    if (!isStyled || style.dotSize) {
-      return _self.drawSquareDots(shapes, style);
-    }
 
     for (var i=0, n=shapes.length; i<n; i++) {
       shp = shapes[i];
@@ -134,6 +129,7 @@ function getScaledTransform(ext) {
 
 function drawCircle(x, y, radius, ctx) {
   if (radius > 0) {
+    ctx.moveTo(x + radius, y);
     ctx.arc(x, y, radius, 0, Math.PI * 2, true);
   }
 }

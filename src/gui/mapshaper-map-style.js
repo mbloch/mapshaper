@@ -81,11 +81,16 @@ var MapStyle = (function() {
         style = MapShaper.getSvgDisplayStyle(lyr);
       } else {
         style = utils.extend({}, outlineStyle);
+        style.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
       }
       return style;
     },
     getOverlayStyle: getOverlayStyle
   };
+
+  function calcDotSize(n) {
+    return n < 20 && 5 || n < 500 && 4 || n < 50000 && 3 || 2;
+  }
 
   function getOverlayStyle(lyr, o) {
     var type = lyr.geometry_type;
@@ -96,8 +101,7 @@ var MapStyle = (function() {
       utils.extend(o, styles[i]);
     };
     var overlayStyle = {
-      styler: styler,
-      dotSize: 1 // dotSize: kludge to trigger dot renderer
+      styler: styler
     };
     // first layer: selected feature(s)
     o.selection_ids.forEach(function(i) {
@@ -130,8 +134,11 @@ var MapStyle = (function() {
       styles.push(style);
     }
 
-    if (MapShaper.layerHasSvgDisplayStyle(lyr) && type == 'point') {
-      overlayStyle = MapShaper.wrapHoverStyle(MapShaper.getSvgDisplayStyle(lyr), overlayStyle);
+    if (MapShaper.layerHasSvgDisplayStyle(lyr)) {
+      if (type == 'point') {
+        overlayStyle = MapShaper.wrapHoverStyle(MapShaper.getSvgDisplayStyle(lyr), overlayStyle);
+      }
+      overlayStyle.type = 'styled';
     }
     overlayStyle.ids = ids;
     return ids.length > 0 ? overlayStyle : null;
@@ -142,12 +149,12 @@ var MapStyle = (function() {
 // Modify style to use scaled circle instead of dot symbol
 MapShaper.wrapHoverStyle = function(style, hoverStyle) {
   var styler = function(obj, i) {
-    var dotCol;
+    var dotColor;
     style.styler(obj, i);
     if (hoverStyle.styler) {
-      hoverStyler.styler(obj, i);
+      hoverStyle.styler(obj, i);
     }
-    dotCol = obj.dotColor;
+    dotColor = obj.dotColor;
     if (obj.radius && dotColor) {
       obj.radius += 1.5;
       obj.fillColor = dotColor;
@@ -185,5 +192,5 @@ MapShaper.getSvgDisplayStyle = function(lyr) {
       style.fillColor = 'black';
     }
   };
-  return {styler: styler};
+  return {styler: styler, type: 'styled'};
 };

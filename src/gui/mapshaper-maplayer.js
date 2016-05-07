@@ -22,8 +22,6 @@ function DisplayLayer(lyr, dataset, ext) {
 
   this.updateStyle = function(style) {
     var o = this.getDisplayLayer();
-    // dot style
-    style.dotSize = calcDotSize(MapShaper.countPointsInLayer(o.layer));
     // arc style
     if (o.dataset.arcs) {
       lyr.display.arcFlags = new Uint8Array(o.dataset.arcs.size());
@@ -73,7 +71,11 @@ function DisplayLayer(lyr, dataset, ext) {
     var obj = this.getDisplayLayer(ext);
     var lyr = style.ids ? filterLayer(obj.layer, style.ids) : obj.layer;
     if (lyr.geometry_type == 'point') {
-      canv.drawPoints(lyr.shapes, style);
+      if (style.type == 'styled') {
+        canv.drawPoints(lyr.shapes, style);
+      } else {
+        canv.drawSquareDots(lyr.shapes, style);
+      }
     } else {
       canv.drawPathShapes(lyr.shapes, obj.dataset.arcs, style);
     }
@@ -95,10 +97,6 @@ function DisplayLayer(lyr, dataset, ext) {
     for (var i=0, n=arr.length; i<n; i++) {
       arr[i] = arr[i] === 0 ? 0 : 1;
     }
-  }
-
-  function calcDotSize(n) {
-    return n < 20 && 5 || n < 500 && 4 || n < 50000 && 3 || 2;
   }
 
   function init() {
