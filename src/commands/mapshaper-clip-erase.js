@@ -28,7 +28,7 @@ api.eraseLayer = function(targetLyr, src, dataset, opts) {
 // @type: 'clip' or 'erase'
 MapShaper.clipLayers = function(targetLayers, clipSrc, dataset, type, opts) {
   var clipLyr, clipDataset;
-  opts = opts || {};
+  opts = opts || {no_cleanup: true}; // TODO: update testing functions
 
   // check if clip source is another layer in the same dataset
   clipLyr = MapShaper.findClippingLayer(clipSrc, dataset);
@@ -95,7 +95,7 @@ MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, cli
     outputLyr.shapes = clippedShapes;
 
     // Remove sliver polygons
-    if (opts.cleanup && outputLyr.geometry_type == 'polygon') {
+    if (opts.remove_slivers && outputLyr.geometry_type == 'polygon') {
       sliverCount += MapShaper.filterClipSlivers(outputLyr, clipLyr, targetDataset.arcs);
     }
 
@@ -113,7 +113,7 @@ MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, cli
     MapShaper.replaceLayers(targetDataset, targetLayers, outputLayers);
   }
 
-  if (usingPathClip && opts.cleanup) {
+  if (usingPathClip && !opts.no_cleanup) {
     // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
     // This is to remove arcs belonging to the clipping paths from the target
     // dataset, and to heal the cuts that were made where clipping paths

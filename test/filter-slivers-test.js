@@ -45,7 +45,7 @@ describe('mapshaper-filter-slivers.js', function () {
       }
     };
 
-    api.applyCommands('-erase cleanup target=layer1 source=layer2 -o target=layer1 format=topojson no-quantization', topo, function(err, data) {
+    api.applyCommands('-erase remove-slivers target=layer1 source=layer2 -o target=layer1 format=topojson no-quantization', topo, function(err, data) {
       if (err) throw err;
       var obj = JSON.parse(data);
       var target = {
@@ -110,7 +110,7 @@ describe('mapshaper-filter-slivers.js', function () {
       }
     };
 
-    api.applyCommands('-erase cleanup target=layer1 source=layer2 -o target=layer1 format=topojson no-quantization bbox', topo, function(err, data) {
+    api.applyCommands('-erase remove-slivers target=layer1 source=layer2 -o target=layer1 format=topojson no-quantization bbox', topo, function(err, data) {
       if (err) throw err;
       var obj = JSON.parse(data);
       // sliver from erase is removed but equally tiny ring is retained

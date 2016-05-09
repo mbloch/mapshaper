@@ -87,6 +87,11 @@ function validateClipOpts(cmd) {
   if (cmd._[0]) {
     opts.source = cmd._[0];
   }
+  // rename old option
+  if (opts.cleanup) {
+    delete opts.cleanup;
+    opts.remove_slivers = true;
+  }
   if (opts.bbox) {
     // assume comma-sep bbox has been parsed into array of strings
     opts.bbox = opts.bbox.map(parseFloat);
