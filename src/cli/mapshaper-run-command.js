@@ -66,7 +66,7 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clip') {
-      outputLayers = api.clipLayers(targetLayers, opts.source, dataset, opts);
+      api.clipLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'dissolve') {
       outputLayers = MapShaper.applyCommand(api.dissolve, targetLayers, arcs, opts);
@@ -78,7 +78,7 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
 
     } else if (name == 'erase') {
-      outputLayers = api.eraseLayers(targetLayers, opts.source, dataset, opts);
+      api.eraseLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'explode') {
       outputLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);

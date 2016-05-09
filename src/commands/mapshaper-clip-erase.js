@@ -24,31 +24,53 @@ api.eraseLayer = function(targetLyr, src, dataset, opts) {
   return api.eraseLayers([targetLyr], src, dataset, opts)[0];
 };
 
-// @target: a single layer or an array of layers
+// @clipSrc: layer in @dataset or filename
 // @type: 'clip' or 'erase'
-MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
-  var clipLyr =  MapShaper.getClipLayer(src, srcDataset, opts),
-      usingPathClip = utils.some(targetLayers, MapShaper.layerHasPaths),
-      nullCount = 0, sliverCount = 0,
-      nodes, outputLayers, dataset;
+MapShaper.clipLayers = function(targetLayers, clipSrc, dataset, type, opts) {
+  var clipLyr, clipDataset;
   opts = opts || {};
-  MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
 
-  // If clipping layer was imported from a second file, it won't be included in
-  // dataset
-  // (assuming that clipLyr arcs have been merged with dataset.arcs)
-  //
-  if (utils.contains(srcDataset.layers, clipLyr) === false) {
-    dataset = {
-      layers: [clipLyr].concat(srcDataset.layers),
-      arcs: srcDataset.arcs
-    };
+  // check if clip source is another layer in the same dataset
+  clipLyr = MapShaper.findClippingLayer(clipSrc, dataset);
+  if (clipLyr) {
+    clipDataset = dataset;
   } else {
-    dataset = srcDataset;
+    if (opts.bbox) {
+      // use bbox for clipping
+      clipDataset = MapShaper.convertClipBounds(opts.bbox);
+    } else {
+      // use external file for clipping (assume clipSrc is a filename)
+      clipDataset = MapShaper.loadExternalClipLayer(clipSrc, opts);
+    }
+    if (!clipDataset || clipDataset.layers.length != 1) {
+      stop("[clip/erase] Missing clipping data");
+    }
+    clipLyr = clipDataset.layers[0];
+  }
+  MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
+  return MapShaper.clipLayersByLayer(targetLayers, dataset, clipLyr, clipDataset, type, opts);
+};
+
+MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, clipDataset, type, opts) {
+  var usingPathClip = utils.some(targetLayers, MapShaper.layerHasPaths);
+  var usingExternalDataset = targetDataset != clipDataset;
+  var nullCount = 0, sliverCount = 0,
+      nodes, outputLayers, mergedDataset;
+
+  if (usingExternalDataset) {
+    // merge external dataset with target dataset,
+    // so arcs are shared between target layers and clipping lyr
+    mergedDataset = MapShaper.mergeDatasets([targetDataset, clipDataset]);
+    api.buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
+    targetDataset.arcs = mergedDataset.arcs; // replace arcs in original dataset with merged arcs
+
+  } else {
+    mergedDataset = targetDataset;
   }
 
   if (usingPathClip) {
-    nodes = MapShaper.divideArcs(dataset);
+    // add vertices at all line intersections
+    nodes = MapShaper.divideArcs(mergedDataset);
   }
 
   outputLayers = targetLayers.map(function(targetLyr) {
@@ -57,7 +79,7 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
     if (targetLyr === clipLyr) {
       stop('[' + type + '] Can\'t clip a layer with itself');
     } else if (targetLyr.geometry_type == 'point') {
-      clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, dataset.arcs, type);
+      clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, mergedDataset.arcs, type);
     } else if (targetLyr.geometry_type == 'polygon') {
       clippedShapes = MapShaper.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type);
     } else if (targetLyr.geometry_type == 'polyline') {
@@ -74,33 +96,34 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
 
     // Remove sliver polygons
     if (opts.cleanup && outputLyr.geometry_type == 'polygon') {
-      sliverCount += MapShaper.filterClipSlivers(outputLyr, clipLyr, dataset.arcs);
+      sliverCount += MapShaper.filterClipSlivers(outputLyr, clipLyr, targetDataset.arcs);
     }
 
-    // Remove null shapes (likely removed by clipping/erasing)
-    api.filterFeatures(outputLyr, dataset.arcs, {remove_empty: true, verbose: false});
+    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
+    api.filterFeatures(outputLyr, targetDataset.arcs, {remove_empty: true, verbose: false});
     nullCount += shapeCount - outputLyr.shapes.length;
     return outputLyr;
   });
+
+  // integrate output layers into target dataset
+  // (doing this here instead of in runCommand() to allow arc cleaning)
+  if (opts.no_replace) {
+    targetDataset.layers = targetDataset.layers.concat(outputLayers);
+  } else {
+    MapShaper.replaceLayers(targetDataset, targetLayers, outputLayers);
+  }
 
   if (usingPathClip && opts.cleanup) {
     // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
     // This is to remove arcs belonging to the clipping paths from the target
     // dataset, and to heal the cuts that were made where clipping paths
     // crossed target paths
-    dataset = {arcs: srcDataset.arcs, layers: srcDataset.layers};
-    if (opts.no_replace) {
-      dataset.layers = dataset.layers.concat(outputLayers);
-    } else {
-      MapShaper.replaceLayers(dataset, targetLayers, outputLayers);
-    }
-    MapShaper.dissolveArcs(dataset);
+    MapShaper.dissolveArcs(targetDataset);
   }
 
   if (nullCount && sliverCount) {
     message(MapShaper.getClipMessage(type, nullCount, sliverCount));
   }
-
   return outputLayers;
 };
 
@@ -114,51 +137,35 @@ MapShaper.getClipMessage = function(type, nullCount, sliverCount) {
   return '';
 };
 
-// @src: a layer object, layer identifier or filename
-MapShaper.getClipLayer = function(src, dataset, opts) {
-  var clipLayers, clipDataset, mergedDataset;
-  if (utils.isObject(src)) {
-    // src is layer object
-    return src;
-  }
-  // check if src is the name of an existing layer
-  if (src) {
-    clipLayers = MapShaper.findMatchingLayers(dataset.layers, src);
-    if (clipLayers.length > 1) {
+// see if @clipSrc is a layer in @dataset
+MapShaper.findClippingLayer = function(clipSrc, dataset) {
+  var layers, lyr;
+  if (utils.isObject(clipSrc) && utils.contains(dataset.layers, clipSrc)) {
+    lyr = clipSrc;
+  } else if (utils.isString(clipSrc)) {
+    // see if clipSrc is a layer name
+    layers = MapShaper.findMatchingLayers(dataset.layers, clipSrc);
+    if (layers.length > 1) {
       stop("[clip/erase] Received more than one source layer");
-    } else if (clipLayers.length == 1) {
-      return clipLayers[0];
+    } else if (layers.length == 1) {
+      lyr = layers[0];
     }
   }
-  if (src) {
-    // assuming src is a filename
-    clipDataset = MapShaper.readClipFile(src, opts);
-    if (!clipDataset) {
-      stop("Unable to find file [" + src + "]");
-    }
-    // TODO: handle multi-layer sources, e.g. TopoJSON files
-    if (clipDataset.layers.length != 1) {
-      stop("Clip/erase only supports clipping with single-layer datasets");
-    }
-  } else if (opts.bbox) {
-    clipDataset = MapShaper.convertClipBounds(opts.bbox);
-  } else {
-    stop("[clip/erase] Missing clipping data");
-  }
-  mergedDataset = MapShaper.mergeDatasets([dataset, clipDataset]);
-  api.buildTopology(mergedDataset);
-
-  // use arcs from merged dataset, but don't add clip layer to target dataset
-  dataset.arcs = mergedDataset.arcs;
-  return clipDataset.layers[0];
+  return lyr || null;
 };
 
-// @src Filename
-MapShaper.readClipFile = function(src, opts) {
-  // Load clip file without topology; later merge clipping data with target
-  //   dataset and build topology.
-  opts = utils.extend(opts, {no_topology: true});
-  return api.importFile(src, opts);
+// try to load a clipping layer from a file
+MapShaper.loadExternalClipLayer = function(path, opts) {
+  // Load clip file without topology (topology is built later, together with target dataset)
+  var dataset = api.importFile(path, utils.defaults({no_topology: true}, opts));
+  if (!dataset) {
+    stop("Unable to find file [" + path + "]");
+  }
+  if (dataset.layers.length != 1) {
+    // TODO: handle multi-layer sources, e.g. TopoJSON files
+    stop("Clip/erase only supports clipping with single-layer datasets");
+  }
+  return dataset;
 };
 
 MapShaper.convertClipBounds = function(bb) {
