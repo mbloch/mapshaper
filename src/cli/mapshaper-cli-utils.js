@@ -20,10 +20,6 @@ cli.isDirectory = function(path) {
   return ss && ss.isDirectory() || false;
 };
 
-cli.isNodeEncoding = function(str) {
-  return /^utf-?8|ascii$/i.test(str);
-};
-
 // @encoding (optional) e.g. 'utf8'
 cli.readFile = function(fname, encoding) {
   var lib = require(fname == '/dev/stdin' ? 'rw' : 'fs');
