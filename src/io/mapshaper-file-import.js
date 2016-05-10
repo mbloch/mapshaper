@@ -32,9 +32,20 @@ api.importFile = function(path, opts) {
   } else {
     content = cli.readFile(path, opts && opts.encoding || 'utf-8');
   }
-
-  type = MapShaper.guessInputType(path, content) || error("Unkown file type:", path);
+  type = MapShaper.guessInputFileType(path) || MapShaper.guessInputContentType(content);
+  if (!type) {
+    error("Unkown file type:", path);
+  } else if (type == 'json') {
+    // parsing JSON here so input file can be gc'd before JSON data is imported
+    // TODO: look into incrementally parsing JSON data
+    try {
+      content = JSON.parse(content);
+    } catch(e) {
+      stop("Invalid JSON");
+    }
+  }
   input[type] = {filename: path, content: content};
+  content = null; // for g.c.
   if (type == 'shp' || type == 'dbf') {
     MapShaper.readShapefileAuxFiles(path, input);
   }
