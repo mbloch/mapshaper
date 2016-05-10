@@ -41,7 +41,7 @@ api.importFile = function(path, opts) {
     try {
       content = JSON.parse(content);
     } catch(e) {
-      stop("Invalid JSON");
+      stop("Unable to parse JSON");
     }
   }
   input[type] = {filename: path, content: content};

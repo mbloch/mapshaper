@@ -22,7 +22,7 @@ MapShaper.importContent = function(obj, opts) {
       try {
         content = JSON.parse(content);
       } catch(e) {
-        stop("Invalid JSON");
+        stop("Unable to parse JSON");
       }
     }
     if (content.type == 'Topology') {
