@@ -41,8 +41,7 @@ var ExportControl = function(model) {
   function initLayerMenu() {
     // init layer menu with current editing layer selected
     var list = El('#export-layer-list').empty();
-    var selected = model.getEditingLayer().layer;
-    var template = '<label><input type="checkbox"> %s</label>';
+    var template = '<label><input type="checkbox" checked> %s</label>';
     var datasets = model.getDatasets().map(initDataset);
     var hideLayers = datasets.length == 1 && datasets[0].layers.length < 2;
     El('#export-layers').css('display', hideLayers ? 'none' : 'block');
@@ -52,7 +51,6 @@ var ExportControl = function(model) {
       var layers = dataset.layers.map(function(lyr) {
         var html = utils.format(template, lyr.name || '[unnamed layer]');
         var box = El('div').html(html).appendTo(list).findChild('input').node();
-        if (lyr === selected) box.checked = true;
         return {
           checkbox: box,
           layer: lyr
