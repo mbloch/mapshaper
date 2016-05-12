@@ -43,14 +43,16 @@ function CommandParser() {
         argv = raw.map(utils.trimQuotes), // remove one level of single or dbl quotes
         cmdName, cmdDef, opt;
 
+    if (argv.length == 1 && tokenIsCommandName(argv[0])) {
+      // show help if only a command name is given
+      argv.unshift('-help'); // kludge (assumes -help <command> syntax)
+    } else if (argv.length > 0 && !tokenLooksLikeCommand(argv[0]) && _default) {
+      // if there are arguments before the first explicit command, use the default command
+      argv.unshift('-' + _default);
+    }
+
     while (argv.length > 0) {
-      cmdName = null;
-      if (tokenIsCommand(argv[0])) {
-        cmdName = readCommandName(argv);
-      } else if (commands.length === 0) {
-        // if there are arguments before the first explicit command, use the default command
-        cmdName = _default;
-      }
+      cmdName = readCommandName(argv);
       if (!cmdName) {
         stop("Invalid command:", argv[0]);
       }
@@ -64,7 +66,7 @@ function CommandParser() {
         _: []
       };
 
-      while (argv.length > 0 && !tokenIsCommand(argv[0])) {
+      while (argv.length > 0 && !tokenLooksLikeCommand(argv[0])) {
         readOption(cmd, argv, cmdDef);
       }
 
@@ -79,7 +81,13 @@ function CommandParser() {
     }
     return commands;
 
-    function tokenIsCommand(s) {
+    function tokenIsCommandName(s) {
+      return !!getCommands().find(function(cmd) {
+        return s === cmd.name || s === cmd.alias;
+      });
+    }
+
+    function tokenLooksLikeCommand(s) {
       return commandRxp.test(s);
     }
 
@@ -134,7 +142,7 @@ function CommandParser() {
     function readOptionValue(argv, optDef) {
       var type = optDef.type,
           val, err, token;
-      if (argv.length === 0 || tokenIsCommand(argv[0])) {
+      if (argv.length === 0 || tokenLooksLikeCommand(argv[0])) {
         err = 'Missing value';
       } else {
         token = argv.shift(); // remove token from argv
