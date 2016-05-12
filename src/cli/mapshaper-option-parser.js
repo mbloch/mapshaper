@@ -82,7 +82,7 @@ function CommandParser() {
     return commands;
 
     function tokenIsCommandName(s) {
-      return !!getCommands().find(function(cmd) {
+      return !!utils.find(getCommands(), function(cmd) {
         return s === cmd.name || s === cmd.alias;
       });
     }
