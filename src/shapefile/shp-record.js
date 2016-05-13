@@ -84,7 +84,7 @@ function ShpRecordClass(type) {
     },
 
     readXY: function() {
-      if (this.pointCount === 0) return null;
+      if (this.pointCount === 0) return new Float64Array(0);
       return this._data().skipBytes(this._xypos()).readFloat64Array(this.pointCount * 2);
     },
 
@@ -103,22 +103,28 @@ function ShpRecordClass(type) {
       return points;
     },
 
+    // Return an array of point counts in each part
+    // Parts containing zero points are skipped (Shapefiles with zero-point
+    // parts are out-of-spec but exist in the wild).
     readPartSizes: function() {
-      if (this.partCount == 1) return [this.pointCount];
-      if (this.partCount === 0) return [];
-      var partLen,
-          startId = 0,
-          sizes = [],
-          bin = this._data().skipBytes(56); // skip to second entry in part index
-      for (var i=0, n=this.partCount; i<n; i++) {
-        if (i < n - 1)
-          partLen = bin.readUint32() - startId;
-        else
-          partLen = this.pointCount - startId;
-
-        if (partLen <= 0) error("ShapeRecord#readPartSizes() corrupted part");
-        sizes.push(partLen);
-        startId += partLen;
+      var sizes = [];
+      var partLen, startId, bin;
+      if (this.pointCount === 0) {
+        // no parts
+      } else if (this.partCount == 1) {
+        // single-part type or multi-part type with one part
+        sizes.push(this.pointCount);
+      } else {
+        // more than one part
+        startId = 0;
+        bin = this._data().skipBytes(56); // skip to second entry in part index
+        for (var i=0, n=this.partCount; i<n; i++) {
+          partLen = (i < n - 1 ? bin.readUint32() : this.pointCount) - startId;
+          if (partLen > 0) {
+            sizes.push(partLen);
+            startId += partLen;
+          }
+        }
       }
       return sizes;
     }
