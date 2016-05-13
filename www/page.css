@@ -30,12 +30,14 @@ body {
 	color: #444;
 	user-select: none;
 	-webkit-user-select: none;
+	-moz-user-select: none;
 	cursor: default;
 }
 
 .selectable,.selectable * {
 	user-select: default;
 	-webkit-user-select: text;
+	-moz-user-select: text;
 	cursor: text;
 }
 
