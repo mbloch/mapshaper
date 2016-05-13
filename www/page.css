@@ -28,6 +28,15 @@ body {
 	background-color: #fff;
 	font: 14px/1.4 'Source Sans Pro', Helvetica, sans-serif;
 	color: #444;
+	user-select: none;
+	-webkit-user-select: none;
+	cursor: default;
+}
+
+.selectable,.selectable * {
+	user-select: default;
+	-webkit-user-select: text;
+	cursor: text;
 }
 
 
@@ -617,8 +626,6 @@ body.simplify #layer-control-btn {
 
 #map-layers {
 	height: 100%;
-	user-select: none;
-	-webkit-user-select: none;
 }
 
 #mshp-main-map {

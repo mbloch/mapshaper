@@ -27,7 +27,7 @@ function Popup() {
   };
 
   function render(el, rec, table, editable) {
-    var tableEl = El('table'),
+    var tableEl = El('table').addClass('selectable'),
         rows = 0;
     utils.forEachProperty(rec, function(v, k) {
       var type = MapShaper.getFieldType(v, k, table);
