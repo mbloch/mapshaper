@@ -93,8 +93,9 @@ function InspectionControl(model, hit) {
 
   function showInspector(id, editable) {
     var o = _lyr.getDisplayLayer();
-    var rec = o.layer.data ? o.layer.data.getRecordAt(id) : {};
-    _popup.show(rec, o.layer.data, editable);
+    var table = o.layer.data || null;
+    var rec = table ? table.getRecordAt(id) : {};
+    _popup.show(rec, table, editable);
   }
 
   // @id Id of a feature in the active layer, or -1

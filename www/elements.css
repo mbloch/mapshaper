@@ -123,7 +123,7 @@ div.tip {
 
 .page-header .header-btn.disabled,
 .page-header .header-btn.disabled:hover {
-	background-color: none;
+	background-color: transparent;
 }
 
 .page-header .header-btn.active {
@@ -168,8 +168,6 @@ div.tip {
 }
 
 .inline-btn {
-	background-color: white;
-	text: black;
 	margin: 0;
 	border: 1px solid #999;
 	padding: 1px 4px 3px 3px;

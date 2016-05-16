@@ -143,6 +143,6 @@ MapShaper.getColumnType = function(key, table) {
 };
 
 MapShaper.getFieldType = function(val, key, table) {
-  // if a field has a null value, look at entire column to indentify type
+  // if a field has a null value, look at entire column to identify type
   return MapShaper.getValueType(val) || MapShaper.getColumnType(key, table);
 };
