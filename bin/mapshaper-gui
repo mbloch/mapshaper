@@ -49,12 +49,12 @@ process.on('uncaughtException', function(err) {
 startServer(port);
 
 function startServer(port) {
+  var dataPath = '/data/';
   var timeout;
+
   http.createServer(function(request, response) {
     var uri = url.parse(request.url).pathname;
-    var dataPath = '/data/';
     clearTimeout(timeout);
-
     if (uri == '/close') {
       // end process when page closes, unless page is immediately refreshed
       timeout = setTimeout(function() {
@@ -62,7 +62,7 @@ function startServer(port) {
       }, 200);
     } else if (uri == "/manifest.js") {
       // serve JS file containing manifest of files for mapshaper to load
-      serveContent(getManifestJS(dataFiles), response);
+      serveContent(getManifestJS(dataFiles), response, getMimeType(uri));
     } else if (uri.indexOf(dataPath) === 0) {
       // serve a file from a path relative to this script
       // assumed to be a data file from the cmd line (!)
@@ -86,12 +86,15 @@ function serveFile(filename, response) {
       response.write("404 Not Found\n");
       response.end();
     } else {
-      serveContent(content, response);
+      serveContent(content, response, getMimeType(filename));
     }
   });
 }
 
-function serveContent(content, response) {
+function serveContent(content, response, mimeType) {
+  if (mimeType) {
+    response.setHeader("Content-Type", mimeType);
+  }
   response.writeHead(200);
   response.write(content, "binary");
   response.end();
@@ -125,13 +128,26 @@ function validateFiles(files) {
 
 // pull in auxiliary files along with .shp, if they exist
 function expandShapefiles(files) {
-  var shps = files.filter(function(f) {return path.parse(f).ext == '.shp';});
+  var shps = files.filter(function(f) {return extname(f) == 'shp';});
   shps.forEach(function(f) {
     addAuxFile(files, f, '.dbf');
     addAuxFile(files, f, '.prj');
     addAuxFile(files, f, '.cpg');
   });
   return files;
+}
+
+function getMimeType(filename) {
+  return {
+    css: 'text/css',
+    js: 'application/javascript',
+    html: 'text/html',
+    png: 'image/png'
+  }[extname(filename)] || null;
+}
+
+function extname(filename) {
+  return path.extname(filename).replace('.', '');
 }
 
 // append auxiliary file, if it exists in the filesystem but not in the file list
