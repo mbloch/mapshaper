@@ -186,8 +186,8 @@ function getPathStart(style, ext) {
   // don't start thickening lines until zoomed quite far in.
   if (mapScale < 1) {
     lineScale *= Math.pow(mapScale, 0.6);
-  } else if (mapScale > 40) {
-    lineScale *= Math.pow(mapScale - 39, 0.2);
+  } else if (mapScale > 60) {
+    lineScale *= Math.pow(mapScale - 59, 0.18);
   }
 
   return function(ctx, i) {
