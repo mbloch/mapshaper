@@ -3,7 +3,7 @@
 function InspectionControl(model, hit) {
   var _popup = new Popup();
   var _inspecting = false;
-  var _pinned = false; // TODO: switch to flag
+  var _pinned = false;
   var _highId = -1;
   var _selectionIds = null;
   var btn = gui.addSidebarButton("#info-icon2").on('click', function() {

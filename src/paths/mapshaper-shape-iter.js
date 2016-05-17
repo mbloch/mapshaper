@@ -11,8 +11,8 @@
 //
 function ArcIter(xx, yy) {
   this._i = 0;
+  this._n = 0;
   this._inc = 1;
-  this._stop = 0;
   this._xx = xx;
   this._yy = yy;
   this.i = 0;
@@ -24,23 +24,25 @@ ArcIter.prototype.init = function(i, len, fw) {
   if (fw) {
     this._i = i;
     this._inc = 1;
-    this._stop = i + len;
   } else {
     this._i = i + len - 1;
     this._inc = -1;
-    this._stop = i - 1;
   }
+  this._n = len;
   return this;
 };
 
 ArcIter.prototype.hasNext = function() {
   var i = this._i;
-  if (i == this._stop) return false;
-  this._i = i + this._inc;
-  this.x = this._xx[i];
-  this.y = this._yy[i];
-  this.i = i;
-  return true;
+  if (this._n > 0) {
+    this._i = i + this._inc;
+    this.x = this._xx[i];
+    this.y = this._yy[i];
+    this.i = i;
+    this._n--;
+    return true;
+  }
+  return false;
 };
 
 function FilteredArcIter(xx, yy, zz) {
@@ -96,16 +98,16 @@ function ShapeIter(arcs) {
 
 ShapeIter.prototype.hasNext = function() {
   var arc = this._arc;
-  if (this._i >= this._n) {
+  if (this._i < this._n === false) {
     return false;
-  } else if (arc.hasNext()) {
+  }
+  if (arc.hasNext()) {
     this.x = arc.x;
     this.y = arc.y;
     return true;
-  } else {
-    this.nextArc();
-    return this.hasNext();
   }
+  this.nextArc();
+  return this.hasNext();
 };
 
 ShapeIter.prototype.init = function(ids) {

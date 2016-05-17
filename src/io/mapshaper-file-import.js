@@ -50,7 +50,7 @@ api.importFile = function(path, opts) {
     MapShaper.readShapefileAuxFiles(path, input);
   }
   if (type == 'shp' && !input.dbf) {
-    message(utils.format("[%s] .dbf file is missing -- shapes imported without attribute data.", path));
+    message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
   }
   return MapShaper.importContent(input, opts);
 };

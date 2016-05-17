@@ -22,29 +22,39 @@ MapShaper.countNullShapes = function(shapes) {
   return count;
 };
 
+MapShaper.getGeometryInfo = function(lyr, id) {
+  var type = lyr.geometry_type || "[none]";
+  if (utils.isInteger(id) && lyr.shapes && !lyr.shapes[id]) {
+    type = '[null]';
+  }
+  return "Geometry: " + type + "\n";
+};
+
 MapShaper.getLayerInfo = function(lyr, arcs) {
   var shapeCount = lyr.shapes ? lyr.shapes.length : 0,
       nullCount = shapeCount > 0 ? MapShaper.countNullShapes(lyr.shapes) : 0,
-      tableSize = lyr.data ? lyr.data.size() : 0,
       str;
-  str = "Name: " + (lyr.name || "[unnamed]") + "\n";
-  str += "Geometry: " + (lyr.geometry_type || "[none]") + "\n";
-  str += utils.format("Records: %,d\n", Math.max(shapeCount, tableSize));
+  str = "Layer name: " + (lyr.name || "[unnamed]") + "\n";
+  str += utils.format("Records: %,d\n", MapShaper.getFeatureCount(lyr));
+  str += MapShaper.getGeometryInfo(lyr);
   if (nullCount > 0) {
     str += utils.format("Null shapes: %'d\n", nullCount);
   }
   if (shapeCount > nullCount) {
     str += "Bounds: " + MapShaper.getLayerBounds(lyr, arcs).toArray().join(' ') + "\n";
   }
-  if (tableSize > 0 && lyr.data.getFields().length > 0) {
-    str += MapShaper.getTableInfo(lyr.data);
-  } else {
-    str += "Missing attribute data";
-  }
+  str += MapShaper.getTableInfo(lyr);
   return str;
 };
 
-MapShaper.getTableInfo = function(data, i) {
+MapShaper.getTableInfo = function(lyr, i) {
+  if (!lyr.data || lyr.data.size() === 0) {
+    return "Attribute data: [none]";
+  }
+  return MapShaper.getAttributeInfo(lyr.data, i);
+};
+
+MapShaper.getAttributeInfo = function(data, i) {
   var featureId = i || 0;
   var featureLabel = i >= 0 ? 'Value' : 'First value';
   var fields = data.getFields().sort();
@@ -80,7 +90,7 @@ MapShaper.getTableInfo = function(data, i) {
     }
     return str;
   }).join('\n');
-  return "Data table\n  " +
+  return "Attribute data\n  " +
       utils.rpad('Field', col1Chars, ' ') + featureLabel + "\n" + table;
 };
 
