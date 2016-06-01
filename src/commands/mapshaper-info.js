@@ -58,6 +58,30 @@ MapShaper.getAttributeInfo = function(data, i) {
   var featureId = i || 0;
   var featureLabel = i >= 0 ? 'Value' : 'First value';
   var fields = data.getFields().sort();
+  var col1Chars = fields.reduce(function(memo, name) {
+    return Math.max(memo, name.length);
+  }, 5) + 2;
+  var vals = fields.map(function(fname) {
+    return data.getRecordAt(featureId)[fname];
+  });
+  var maxIntegralChars = vals.reduce(function(max, val) {
+    if (utils.isNumber(val)) {
+      max = Math.max(max, MapShaper.countIntegralChars(val));
+    }
+    return max;
+  }, 0);
+  var table = vals.map(function(val, i) {
+    return '  ' + MapShaper.formatTableItem(fields[i], val, col1Chars, maxIntegralChars);
+  }).join('\n');
+  return "Attribute data\n  " +
+      utils.rpad('Field', col1Chars, ' ') + featureLabel + "\n" + table;
+};
+
+MapShaper.formatNumber = function(val) {
+  return val + '';
+};
+
+MapShaper.formatString = function(str) {
   var replacements = {
     '\n': '\\n',
     '\r': '\\r',
@@ -68,30 +92,27 @@ MapShaper.getAttributeInfo = function(data, i) {
     // TODO: better handling of non-printing chars
     return c in replacements ? replacements[c] : '';
   };
-  var col1Chars = fields.reduce(function(memo, name) {
-    return Math.max(memo, name.length);
-  }, 5) + 2;
-  var vals = fields.map(function(fname) {
-    return data.getRecordAt(featureId)[fname];
-  });
-  var digits = vals.map(function(val, i) {
-    return utils.isNumber(vals[i]) ? (val + '.').indexOf('.') + 1 :  0;
-  });
-  var maxDigits = Math.max.apply(null, digits);
-  var table = vals.map(function(val, i) {
-    var str = '  ' + utils.rpad(fields[i], col1Chars, ' ');
-    if (utils.isNumber(val)) {
-      str += utils.lpad("", maxDigits - digits[i], ' ') + val;
-    } else if (utils.isString(val)) {
-      val = val.replace(/[\r\t\n]/g, cleanChar);
-      str += "'" + val + "'";
-    } else {
-      str += String(val);
-    }
-    return str;
-  }).join('\n');
-  return "Attribute data\n  " +
-      utils.rpad('Field', col1Chars, ' ') + featureLabel + "\n" + table;
+  str = str.replace(/[\r\t\n]/g, cleanChar);
+  return "'" + str + "'";
+};
+
+MapShaper.countIntegralChars = function(val) {
+  return utils.isNumber(val) ? (MapShaper.formatNumber(val) + '.').indexOf('.') : 0;
+};
+
+MapShaper.formatTableItem = function(name, val, col1Chars, integralChars) {
+  var str = utils.rpad(name, col1Chars, ' ');
+  if (utils.isNumber(val)) {
+    str += utils.lpad("", integralChars - MapShaper.countIntegralChars(val), ' ') +
+      MapShaper.formatNumber(val);
+  } else if (utils.isString(val)) {
+    str += MapShaper.formatString(val);
+  } else if (utils.isObject(val)) { // if {} or [], display JSON
+    str += JSON.stringify(val);
+  } else {
+    str += String(val);
+  }
+  return str;
 };
 
 MapShaper.getSimplificationInfo = function(arcs) {
