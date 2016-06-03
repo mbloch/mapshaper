@@ -44,9 +44,10 @@ function Popup() {
   function renderRow(table, rec, key, type, editable) {
     var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
     var val = rec[key];
+    var str = MapShaper.formatInspectorValue(val, type);
     var cell = El('tr')
         .appendTo(table)
-        .html(utils.format(rowHtml, key, utils.htmlEscape(val)))
+        .html(utils.format(rowHtml, key, utils.htmlEscape(str)))
         .findChild('.value');
     setFieldClass(cell, val, type);
     if (editable) {
@@ -59,19 +60,20 @@ function Popup() {
     var isNully = val === undefined || val === null || val !== val;
     var isEmpty = val === '';
     el.classed('num-field', isNum);
+    el.classed('object-field', type == 'object');
     el.classed('null-value', isNully);
     el.classed('empty', isEmpty);
   }
 
   function editItem(el, rec, key, type) {
     var input = new ClickText2(el),
-        strval = String(rec[key]),
+        strval = MapShaper.formatInspectorValue(rec[key], type),
         parser = MapShaper.getInputParser(type);
     el.parent().addClass('editable-cell');
     el.addClass('colored-text dot-underline');
     input.on('change', function(e) {
       var val2 = parser(input.value()),
-          strval2 = String(val2);
+          strval2 = MapShaper.formatInspectorValue(val2, type);
       if (strval == strval2) {
         // contents unchanged
       } else if (val2 === null) {
@@ -88,6 +90,16 @@ function Popup() {
   }
 }
 
+MapShaper.formatInspectorValue = function(val, type) {
+  var str;
+  if (type == 'object') {
+    str = JSON.stringify(val);
+  } else {
+    str = String(val);
+  }
+  return str;
+};
+
 MapShaper.inputParsers = {
   string: function(raw) {
     return raw;
@@ -99,6 +111,13 @@ MapShaper.inputParsers = {
     } else if (isNaN(val)) {
       val = null;
     }
+    return val;
+  },
+  object: function(raw) {
+    var val = null;
+    try {
+      val = JSON.parse(raw);
+    } catch(e) {}
     return val;
   },
   boolean: function(raw) {
@@ -128,6 +147,8 @@ MapShaper.getValueType = function(val) {
     type = 'number';
   } else if (utils.isBoolean(val)) {
     type = 'boolean';
+  } else if (utils.isObject(val)) {
+    type = 'object';
   }
   return type;
 };
