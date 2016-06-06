@@ -1,4 +1,4 @@
-/* @requires mapshaper-data-table */
+/* @requires mapshaper-data-table, mapshaper-data-utils */
 
 // Generate output content from a dataset object
 MapShaper.exportDelim = function(dataset, opts) {
@@ -16,9 +16,46 @@ MapShaper.exportDelim = function(dataset, opts) {
   }, []);
 };
 
+/* default d3 formatting doesn't serialize objects
 MapShaper.exportDelimTable = function(lyr, delim) {
   var dsv = require("d3-dsv").dsvFormat(delim);
   return dsv.format(lyr.data.getRecords());
+};
+*/
+
+MapShaper.exportDelimTable = function(lyr, delim) {
+  var dsv = require("d3-dsv").dsvFormat(delim);
+  var fields = lyr.data.getFields();
+  var formatRow = MapShaper.getDelimRowFormatter(fields, lyr.data);
+  var records = lyr.data.getRecords();
+  var str = dsv.formatRows([fields]); // headers
+  // don't copy all data elements
+  // str += dsv.formatRows(records.map(formatRow));
+  for (var i=0, n=records.length; i<n; i++) {
+    str += '\n' + dsv.formatRows([formatRow(records[i])]);
+  }
+  return str;
+};
+
+// Return a function for converting a record into an array of values
+// to pass to dsv.formatRows()
+MapShaper.getDelimRowFormatter = function(fields, data) {
+  var formatters = fields.map(function(f) {
+    var type = MapShaper.getColumnType(f, data);
+    return function(rec) {
+      if (type == 'object') {
+        return JSON.stringify(rec[f]);
+      }
+      return rec[f]; // use default d3-dsv formatting
+    };
+  });
+  return function(rec) {
+    var values = [];
+    for (var i=0; i<formatters.length; i++) {
+      values.push(formatters[i](rec));
+    }
+    return values;
+  };
 };
 
 MapShaper.getExportDelimiter = function(info, opts) {

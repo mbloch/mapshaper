@@ -3,6 +3,22 @@ var api = require('../'),
 
 describe('mapshaper-delim-export.js', function() {
 
+  describe('exportDelimTable()', function() {
+    it('objects are exported as JSON', function() {
+      var data = new api.internal.DataTable([{foo: {}, bar: {a: 2}}]);
+      var csv = api.internal.exportDelimTable({data: data}, ',');
+      var target = 'foo,bar\n{},"{""a"":2}"';
+      assert.equal(csv, target);
+    });
+
+    it('arrays are exported as JSON', function() {
+      var data = new api.internal.DataTable([{foo: [], bar: ["a", "b"]}]);
+      var csv = api.internal.exportDelimTable({data: data}, ',');
+      var target = 'foo,bar\n[],"[""a"",""b""]"';
+      assert.equal(csv, target);
+    });
+  });
+
   describe('import/export roundtrip', function() {
     function roundtrip(str) {
       var dataset = api.internal.importDelim(str, {});

@@ -242,6 +242,18 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(empty, importExport(empty));
     })
 
+    it('preserve object data properties', function() {
+      var input = {type:"FeatureCollection", features: [{
+        type: "Feature",
+        properties: {
+          foo: {"a": 3},
+          bar: [2, 3, 4]
+        },
+        geometry: null
+      }]};
+      assert.deepEqual(input, importExport(input));
+    })
+
     it('preserve top-level crs', function(done) {
       var crs = {
         "type": "name",

@@ -1,5 +1,30 @@
 /* @requires mapshaper-common */
 
+MapShaper.getValueType = function(val) {
+  var type = null;
+  if (utils.isString(val)) {
+    type = 'string';
+  } else if (utils.isNumber(val)) {
+    type = 'number';
+  } else if (utils.isBoolean(val)) {
+    type = 'boolean';
+  } else if (utils.isObject(val)) {
+    type = 'object';
+  }
+  return type;
+};
+
+MapShaper.getColumnType = function(key, table) {
+  var type = null,
+      records = table.getRecords(),
+      rec;
+  for (var i=0, n=table.size(); i<n; i++) {
+    rec = records[i] || {};
+    type = MapShaper.getValueType(rec[key]);
+    if (type) break;
+  }
+  return type;
+};
 
 MapShaper.deleteFields = function(table, test) {
   table.getFields().forEach(function(name) {

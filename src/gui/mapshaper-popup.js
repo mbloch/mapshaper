@@ -139,30 +139,6 @@ MapShaper.getInputParser = function(type) {
   return MapShaper.inputParsers[type || 'multiple'];
 };
 
-MapShaper.getValueType = function(val) {
-  var type = null;
-  if (utils.isString(val)) {
-    type = 'string';
-  } else if (utils.isNumber(val)) {
-    type = 'number';
-  } else if (utils.isBoolean(val)) {
-    type = 'boolean';
-  } else if (utils.isObject(val)) {
-    type = 'object';
-  }
-  return type;
-};
-
-MapShaper.getColumnType = function(key, table) {
-  var records = table.getRecords(),
-      type = null;
-  for (var i=0, n=records.length; i<n; i++) {
-    type = MapShaper.getValueType(records[i][key]);
-    if (type) break;
-  }
-  return type;
-};
-
 MapShaper.getFieldType = function(val, key, table) {
   // if a field has a null value, look at entire column to identify type
   return MapShaper.getValueType(val) || MapShaper.getColumnType(key, table);
