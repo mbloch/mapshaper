@@ -195,12 +195,8 @@ describe('mapshaper-options.js', function () {
   })
 
   describe('proj', function() {
-    good("-proj lambertcc lat0=47.0 lng0=-119 lat1=47.5 lat2=48.73333333333333", {
-      projection: 'lambertcc',
-      lat0: 47,
-      lat1: 47.5,
-      lng0: -119,
-      lat2: 48.73333333333333
+    good("-proj +proj=merc +ellps=sphere", {
+      projection: '+proj=merc +ellps=sphere'
     });
   })
 

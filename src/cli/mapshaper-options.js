@@ -598,31 +598,27 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("proj")
-    // .describe("project the coordinates in a dataset")
+    .describe("project a dataset using a proj4 string or alias")
     .option("densify", {
       type: "flag",
-      describe: "interpolate points to approximate curves"
+      describe: "add points along straight segments to approximate curves"
     })
-    .option("spherical", {type: "flag"})
-    .option("lng0", {type: "number"})
-    .option("lat0", {type: "number"})
-    .option("lat1", {type: "number"})
-    .option("lat2", {type: "number"})
-    .option("zone") // for UTM
-    //.option("k0", {type: "number"})
-    //.option("x0", {type: "number"})
-    //.option("y0", {type: "number"})
     .validate(function(cmd) {
-      var name = cmd._[0];
-      if (!name) {
-        error("Missing a projection name");
-      }
-      if (cmd._.length > 1) {
+      var _ = cmd._,
+          proj;
+      if (_.length > 1 && utils.every(_, function(arg) {
+        return arg[0] == '+';
+        })) {
+        proj = _.join(' '); // join proj4 args into one string
+      } else if (_.length == 1) {
+        proj = _[0];
+      } else if (_.length > 1) {
         error("Received one or more unknown projection parameters");
+      } else {
+        error("Missing projection data");
       }
-      cmd.options.projection = name;
+      cmd.options.projection = proj;
     });
-
 
   parser.command("calc")
     .title("\nInformational commands")
@@ -650,8 +646,8 @@ MapShaper.getOptionParser = function() {
   parser.command('encodings')
     .describe("print list of supported text encodings (for .dbf import)");
 
-  parser.command('projections');
-    // .describe("print names of supported projections");
+  parser.command('projections')
+    .describe("print list of supported projections");
 
   parser.command('version')
     .alias('v')

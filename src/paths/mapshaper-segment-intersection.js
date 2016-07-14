@@ -38,7 +38,7 @@ MapShaper.findSegmentIntersections = (function() {
         stripeCount = MapShaper.calcSegmentIntersectionStripeCount(arcs),
         stripeSizes = new Uint32Array(stripeCount),
         stripeId = stripeCount > 1 ? multiStripeId : singleStripeId,
-        i;
+        i, j;
 
     function multiStripeId(y) {
       return Math.floor((stripeCount-1) * (y - ymin) / yrange);
@@ -90,8 +90,8 @@ MapShaper.findSegmentIntersections = (function() {
         arr;
     for (i=0; i<stripeCount; i++) {
       arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy, spherical);
-      if (arr.length > 0) {
-        intersections.push.apply(intersections, arr);
+      for (j=0; j<arr.length; j++) {
+        intersections.push(arr[j]);
       }
     }
     return MapShaper.dedupIntersections(intersections);

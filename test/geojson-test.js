@@ -294,7 +294,7 @@ describe('mapshaper-geojson.js', function () {
         type: 'Point',
         coordinates: [0, 0]
       };
-      api.applyCommands('-proj mercator', input, function(err, data) {
+      api.applyCommands('-proj +proj=merc', input, function(err, data) {
         var output = JSON.parse(data);
         assert.strictEqual(output.crs, null);
         done();

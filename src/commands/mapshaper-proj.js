@@ -7,27 +7,42 @@ mapshaper-segment-geom
 */
 
 api.proj = function(dataset, opts) {
-  var proj = MapShaper.getProjection(opts.projection, opts);
-  if (!proj) {
+  var src = MapShaper.getSrcProjection(dataset);
+  var dest = MapShaper.getProjection(opts.projection, opts);
+  if (!src) {
+    stop("[proj] Unable to project -- source coordinate system is unknown");
+  }
+  if (!dest) {
     stop("[proj] Unknown projection:", opts.projection);
   }
-  MapShaper.projectDataset(dataset, proj, opts);
+  MapShaper.projectDataset(dataset, src, dest, opts);
 };
 
-MapShaper.getProjection = function(name, opts) {
-  var f = MapShaper.projectionIndex[name.toLowerCase().replace(/-_ /g, '')];
-  return f ? new f(opts) : null;
+MapShaper.getSrcProjection = function(dataset) {
+  var info = dataset.info || {},
+      P = info.crs;
+  if (!P && info.input_prj) {
+    P = MapShaper.parsePrj(info.input_prj);
+  }
+  if (!P && MapShaper.probablyDecimalDegreeBounds(MapShaper.getDatasetBounds(dataset))) {
+    // use wgs84 for probable latlong datasets with unknown datums
+    P = MapShaper.getProjection('wgs84');
+  }
+  return P;
 };
 
-MapShaper.printProjections = function() {
-  var names = Object.keys(MapShaper.projectionIndex);
-  names.sort();
-  names.forEach(function(n) {
-    message(n);
-  });
+MapShaper.parsePrj = function(str) {
+  var proj4;
+  try {
+    proj4 = require('mproj').internal.wkt_to_proj4(str);
+  } catch(e) {
+    stop('Unusable .prj file (' + e.message + ')');
+  }
+  return MapShaper.getProjection(proj4);
 };
 
-MapShaper.projectDataset = function(dataset, proj, opts) {
+MapShaper.projectDataset = function(dataset, src, dest, opts) {
+  var proj = MapShaper.getProjTransform(src, dest);
   dataset.layers.forEach(function(lyr) {
     if (MapShaper.layerHasPoints(lyr)) {
       MapShaper.projectPointLayer(lyr, proj);
@@ -47,15 +62,32 @@ MapShaper.projectDataset = function(dataset, proj, opts) {
     // TODO: create a valid GeoJSON crs object after projecting
     dataset.info.output_crs = null;
     dataset.info.output_prj = null;
+    dataset.info.input_prj = null;
+    dataset.info.crs = dest;
   }
 };
 
+MapShaper.getProjTransform = function(src, dest) {
+  var mproj = require('mproj');
+  var clampSrc = src.is_latlong; //  && !dest.over_orig;
+  return function(x, y) {
+    var xy;
+    if (clampSrc) {
+      // snap lng to bounds
+      if (x < -180) x = -180;
+      else if (x > 180) x = 180;
+    }
+    xy = [x, y];
+    mproj.pj_transform_point(src, dest, xy);
+    return xy;
+  };
+};
+
 MapShaper.projectPointLayer = function(lyr, proj) {
-  var xy = {x: 0, y: 0};
   MapShaper.forEachPoint(lyr.shapes, function(p) {
-    proj.projectLatLng(p[1], p[0], xy);
-    p[0] = xy.x;
-    p[1] = xy.y;
+    var p2 = proj(p[0], p[1]);
+    p[0] = p2[0];
+    p[1] = p2[1];
   });
 };
 
@@ -66,14 +98,12 @@ MapShaper.projectArcs = function(arcs, proj) {
       // old zz will not be optimal after reprojection; re-using it for now
       // to avoid error in web ui
       zz = data.zz,
-      p = {x: 0, y: 0};
-  if (arcs.isPlanar()) {
-    stop("[proj] Only projection from lat-lng coordinates is supported");
-  }
+      p;
+
   for (var i=0, n=xx.length; i<n; i++) {
-    proj.projectLatLng(yy[i], xx[i], p);
-    xx[i] = p.x;
-    yy[i] = p.y;
+    p = proj(xx[i], yy[i]);
+    xx[i] = p[0];
+    yy[i] = p[1];
   }
   arcs.updateVertexData(data.nn, xx, yy, zz);
 };
@@ -81,9 +111,9 @@ MapShaper.projectArcs = function(arcs, proj) {
 MapShaper.getDefaultDensifyInterval = function(arcs, proj) {
   var xy = MapShaper.getAvgSegment2(arcs),
       bb = arcs.getBounds(),
-      a = proj.projectLatLng(bb.centerY(), bb.centerX()),
-      b = proj.projectLatLng(bb.centerY() + xy[1], bb.centerX());
-  return distance2D(a.x, a.y, b.x, b.y);
+      a = proj(bb.centerX(), bb.centerY()),
+      b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]);
+  return distance2D(a[0], a[1], b[0], b[1]);
 };
 
 // Interpolate points into a projected line segment if needed to prevent large
@@ -95,34 +125,33 @@ MapShaper.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj
   // would not be good for boundaries that follow line of constant latitude.
   var lng1 = (lng0 + lng2) / 2,
       lat1 = (lat0 + lat2) / 2,
-      p = proj.projectLatLng(lat1, lng1),
-      distSq = geom.pointSegDistSq(p.x, p.y, x0, y0, x2, y2); // sq displacement
+      p = proj(lng1, lat1),
+      distSq = geom.pointSegDistSq(p[0], p[1], x0, y0, x2, y2); // sq displacement
   points = points || [];
   // Bisect current segment if the projected midpoint deviates from original
   //   segment by more than the @interval parameter.
   //   ... but don't bisect very small segments to prevent infinite recursion
   //   (e.g. if projection function is discontinuous)
-  if (distSq > interval * interval && distance2D(lng0, lat0, lng2, lat2) > 0.01) {
-    MapShaper.densifySegment(lng0, lat0, x0, y0, lng1, lat1, p.x, p.y, proj, interval, points);
+  if (distSq > interval * interval * 0.25 && distance2D(lng0, lat0, lng2, lat2) > 0.01) {
+    MapShaper.densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
     points.push(p);
-    MapShaper.densifySegment(lng1, lat1, p.x, p.y, lng2, lat2, x2, y2, proj, interval, points);
+    MapShaper.densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
   }
   return points;
 };
 
 MapShaper.projectAndDensifyArcs = function(arcs, proj) {
   var interval = MapShaper.getDefaultDensifyInterval(arcs, proj);
-  var tmp = {x: 0, y: 0};
+  var p = [0, 0];
   MapShaper.editArcs(arcs, onPoint);
 
   function onPoint(append, lng, lat, prevLng, prevLat, i) {
-    var p = tmp,
-        prevX = p.x,
-        prevY = p.y;
-    proj.projectLatLng(lat, lng, p);
-    // Try to densify longer segments (optimization)
-    if (i > 0 && distanceSq(p.x, p.y, prevX, prevY) > interval * interval * 25) {
-      MapShaper.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p.x, p.y, proj, interval)
+    var prevX = p[0],
+        prevY = p[1];
+    p = proj(lng, lat);
+    // Don't try to optimize shorter segments (optimization)
+    if (i > 0 && distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
+      MapShaper.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
         .forEach(append);
     }
     append(p);

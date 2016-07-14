@@ -10,7 +10,7 @@ describe("mapshaper-arc-editor.js", function() {
       var coords = [[[0, 0], [1, 2]], []],
           arcs = new mapshaper.internal.ArcCollection(coords);
       mapshaper.internal.editArcs(arcs, function(append, x, y, xp, yp, i) {
-        append({x: x * 2, y: y * 3});
+        append([x * 2, y * 3]);
       });
       assert.deepEqual(arcs.toArray(), [[[0, 0], [2, 6]], []]);
     })
@@ -20,10 +20,9 @@ describe("mapshaper-arc-editor.js", function() {
           arcs = new mapshaper.internal.ArcCollection(coords);
       assert.throws(function() {
         mapshaper.internal.editArcs(arcs, function(append, x, y, xp, yp, i) {
-          if (i > 0) append({x: x, y: y});
+          if (i > 0) append([x, y]);
         });
       })
-
     })
 
     it('previous coords are correctly passed', function () {
@@ -34,7 +33,7 @@ describe("mapshaper-arc-editor.js", function() {
           x += xp;
           y += yp;
         }
-        append({x: x, y: y});
+        append([x, y]);
       });
       assert.deepEqual(arcs.toArray(), [[], [[1, 1], [3, 4]], [[5, 3], [5, 5]]]);
     })

@@ -12,8 +12,8 @@ MapShaper.editArcs = function(arcs, onPoint) {
   arcs.updateVertexData(nn2, xx2, yy2);
 
   function append(p) {
-    xx2.push(p.x);
-    yy2.push(p.y);
+    xx2.push(p[0]);
+    yy2.push(p[1]);
     n++;
   }
 
