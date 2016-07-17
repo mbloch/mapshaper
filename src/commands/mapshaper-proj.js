@@ -1,21 +1,57 @@
 /* @requires
-mapshaper-common
 mapshaper-projections
 mapshaper-geom
 mapshaper-arc-editor
 mapshaper-segment-geom
+mapshaper-shape-utils
 */
 
 api.proj = function(dataset, opts) {
   var src = MapShaper.getSrcProjection(dataset);
   var dest = MapShaper.getProjection(opts.projection, opts);
+  var target = dataset;
+  var useCopy = !!api.gui; // modify copy when running in web UI
   if (!src) {
     stop("[proj] Unable to project -- source coordinate system is unknown");
   }
   if (!dest) {
     stop("[proj] Unknown projection:", opts.projection);
   }
-  MapShaper.projectDataset(dataset, src, dest, opts);
+  if (useCopy) {
+    // make deep copy of objects that will get modified
+    target = {
+      arcs: dataset.arcs.getCopy()
+    };
+    target.layers = dataset.layers.map(function(lyr) {
+      if (MapShaper.layerHasPoints(lyr)) {
+        lyr = utils.extend({}, lyr);
+        lyr.shapes = Mapshaper.cloneShapes(lyr.shapes);
+      }
+      return lyr;
+    });
+  }
+  try {
+    MapShaper.projectDataset(target, src, dest, opts);
+  } catch(e) {
+    // console.error(e.stack);
+    stop(utils.format("[proj] Projection failure%s (%s)",
+      e.point ? ' at ' + e.point.join(' ') : '', e.message));
+  }
+  if (useCopy) {
+    // replace originals with modified copies
+    dataset.arcs = target.arcs;
+    dataset.layers = target.layers;
+  }
+  if (dataset.info) {
+    // Setting output crs to null: "If the value of CRS is null, no CRS can be assumed"
+    // (by default, GeoJSON assumes WGS84)
+    // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
+    // TODO: create a valid GeoJSON crs object after projecting
+    dataset.info.output_crs = null;
+    dataset.info.output_prj = null;
+    dataset.info.input_prj = null;
+    dataset.info.crs = dest;
+  }
 };
 
 MapShaper.getSrcProjection = function(dataset) {
@@ -31,6 +67,7 @@ MapShaper.getSrcProjection = function(dataset) {
   return P;
 };
 
+// Convert contents of a .prj file to a projection object
 MapShaper.parsePrj = function(str) {
   var proj4;
   try {
@@ -54,16 +91,6 @@ MapShaper.projectDataset = function(dataset, src, dest, opts) {
     } else {
       MapShaper.projectArcs(dataset.arcs, proj);
     }
-  }
-  if (dataset.info) {
-    // Setting output crs to null: "If the value of CRS is null, no CRS can be assumed"
-    // (by default, GeoJSON assumes WGS84)
-    // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
-    // TODO: create a valid GeoJSON crs object after projecting
-    dataset.info.output_crs = null;
-    dataset.info.output_prj = null;
-    dataset.info.input_prj = null;
-    dataset.info.crs = dest;
   }
 };
 
@@ -95,8 +122,8 @@ MapShaper.projectArcs = function(arcs, proj) {
   var data = arcs.getVertexData(),
       xx = data.xx,
       yy = data.yy,
-      // old zz will not be optimal after reprojection; re-using it for now
-      // to avoid error in web ui
+      // old simplification data  will not be optimal after reprojection;
+      // re-using for now to avoid error in web ui
       zz = data.zz,
       p;
 

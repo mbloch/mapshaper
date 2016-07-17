@@ -27,7 +27,6 @@ MapShaper.getProjection = function(name, opts) {
 };
 
 MapShaper.printProjections = function() {
-
   MapShaper.initProjections();
 
   message('Proj4 projections');
