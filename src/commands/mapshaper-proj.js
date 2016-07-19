@@ -25,7 +25,7 @@ api.proj = function(dataset, opts) {
     target.layers = dataset.layers.map(function(lyr) {
       if (MapShaper.layerHasPoints(lyr)) {
         lyr = utils.extend({}, lyr);
-        lyr.shapes = Mapshaper.cloneShapes(lyr.shapes);
+        lyr.shapes = MapShaper.cloneShapes(lyr.shapes);
       }
       return lyr;
     });
@@ -33,7 +33,6 @@ api.proj = function(dataset, opts) {
   try {
     MapShaper.projectDataset(target, src, dest, opts);
   } catch(e) {
-    // console.error(e.stack);
     stop(utils.format("[proj] Projection failure%s (%s)",
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
   }
