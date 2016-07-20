@@ -27,6 +27,7 @@ mapshaper-split-on-grid
 mapshaper-subdivide
 mapshaper-sort
 mapshaper-svg-style
+mapshaper-uniq
 */
 
 // TODO: consider refactoring to allow modules
@@ -113,9 +114,6 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'join') {
       MapShaper.applyCommand(api.join, targetLayers, dataset, opts);
 
-    } else if (name == 'layers') {
-      outputLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
-
     } else if (name == 'lines') {
       outputLayers = MapShaper.applyCommand(api.lines, targetLayers, arcs, opts);
 
@@ -147,9 +145,6 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
 
-    } else if (name == 'repair') {
-      outputLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
-
     } else if (name == 'simplify') {
       api.simplify(dataset, opts);
 
@@ -168,8 +163,10 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'svg-style') {
       MapShaper.applyCommand(api.svgStyle, targetLayers, dataset, opts);
 
-    } else {
+    } else if (name == 'uniq') {
+      MapShaper.applyCommand(api.uniq, targetLayers, arcs, opts);
 
+    } else {
       error("Unhandled command: [" + name + "]");
     }
 
