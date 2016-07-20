@@ -65,7 +65,7 @@ MapShaper.getOptionParser = function() {
   parser.default('i');
 
   parser.command('i')
-    .title("Editing commands")
+    .title("I/O commands")
     .describe("input one or more files")
     .validate(validateInputOpts)
     .option("files", {
@@ -193,6 +193,316 @@ MapShaper.getOptionParser = function() {
       describe: "(CSV) field delimiter"
     });
 
+  parser.command("clip")
+    .title("\nEditing commands")
+    .describe("use a polygon layer to clip another layer")
+    .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
+    .validate(validateClipOpts)
+    .option("source", {
+      label: "<file|layer>",
+      describe: "file or layer containing clip polygons"
+    })
+    .option('remove-slivers', {
+      describe: "remove sliver polygons created by clipping",
+      type: 'flag'
+    })
+    .option("cleanup", {type: 'flag'}) // obsolete; renamed in validation func.
+    .option("bbox", bboxOpt)
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("dissolve")
+    .validate(validateDissolveOpts)
+    .describe("merge polygon or point features")
+    .example("Dissolve all polygons in a feature layer into a single polygon\n" +
+      "$ mapshaper states.shp -dissolve -o country.shp")
+    .example("Generate state-level polygons by dissolving a layer of counties\n" +
+      "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
+      "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
+    .option("field", dissolveFieldOpt)
+    .option("sum-fields", sumFieldsOpt)
+    .option("copy-fields", copyFieldsOpt)
+    .option("weight", {
+      describe: "[points] field or expression to use for weighting centroid"
+    })
+    .option("planar", {
+      type: 'flag',
+      describe: "[points] use 2D math to find centroids of latlong points"
+    })
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("dissolve2")
+    .validate(validateDissolveOpts)
+    .describe("merge adjacent and overlapping polygons")
+    .option("field", dissolveFieldOpt)
+    .option("sum-fields", sumFieldsOpt)
+    .option("copy-fields", copyFieldsOpt)
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("each")
+    .describe("create/update/delete data fields using a JS expression")
+    .example("Add two calculated data fields to a layer of U.S. counties\n" +
+        "$ mapshaper counties.shp -each 'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=$.area'")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "JS expression to apply to each target feature"
+    })
+    .option("where", {
+      describe: "use a JS expression to select a subset of features"
+    })
+    .option("target", targetOpt);
+
+  parser.command("erase")
+    .describe("use a polygon layer to erase another layer")
+    .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
+    .validate(validateClipOpts)
+    .option("source", {
+      label: "<file|layer>",
+      describe: "file or layer containing erase polygons"
+    })
+    .option('remove-slivers', {
+      describe: "remove sliver polygons created by erasing",
+      type: 'flag'
+    })
+    .option("cleanup", {type: 'flag'})
+    .option("bbox", bboxOpt)
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("explode")
+    .describe("divide multi-part features into single-part features")
+    .option("convert-holes", {type: "flag"}) // testing
+    .option("target", targetOpt);
+
+
+  parser.command("filter")
+    .describe("delete features using a JS expression")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "delete features that evaluate to false"
+    })
+    .option("remove-empty", {
+      type: "flag",
+      describe: "delete features with null geometry"
+    })
+    .option("keep-shapes", {
+      type: "flag"
+    })
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("filter-fields")
+    .describe('retain a subset of data fields')
+    .validate(validateFilterFieldsOpts)
+    .option("fields", {
+      label: "<field(s)>",
+      describe: "fields to retain (comma-sep.), e.g. 'fips,name'"
+    })
+    .option("target", targetOpt);
+
+  parser.command("filter-islands")
+    .describe("remove small detached polygon rings (islands)")
+    .validate(validateExpressionOpts)
+
+    .option("min-area", {
+      type: "number",
+      describe: "remove small-area islands (sq meters or projected units)"
+    })
+    .option("min-vertices", {
+      type: "integer",
+      describe: "remove low-vertex-count islands"
+    })
+    .option("remove-empty", {
+      type: "flag",
+      describe: "delete features with null geometry"
+    })
+    .option("target", targetOpt);
+
+  parser.command("filter-slivers")
+    .describe("remove small polygon rings")
+    .validate(validateExpressionOpts)
+
+    .option("min-area", {
+      type: "number",
+      describe: "remove small-area rings (sq meters or projected units)"
+    })
+    /*
+    .option("remove-empty", {
+      type: "flag",
+      describe: "delete features with null geometry"
+    })
+    */
+    .option("target", targetOpt);
+
+  // Work-in-progress (no .describe(), so hidden from -h)
+  parser.command("flatten")
+    .option("target", targetOpt);
+
+
+  parser.command("innerlines")
+    .describe("convert polygons to polylines along shared edges")
+    .validate(validateInnerLinesOpts)
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("join")
+    .describe("join data records from a file or layer to a layer")
+    .example("Join a csv table to a Shapefile\n" +
+      "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
+      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
+    .validate(validateJoinOpts)
+    .option("source", {
+      label: "<file>",
+      describe: "file containing data records"
+    })
+    .option("keys", {
+      describe: "join by matching target,source key fields; e.g. keys=FIPS,GEOID",
+      type: "comma-sep"
+    })
+    .option("fields", {
+      describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
+      type: "comma-sep"
+    })
+    .option("field-types", {
+      describe: "type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
+      type: "comma-sep"
+    })
+    .option("sum-fields", {
+      describe: "fields to sum when multiple source records match the same target",
+      type: "comma-sep"
+    })
+    .option("where", {
+      describe: "use a JS expression to filter source records"
+    })
+    .option("force", {
+      describe: "replace values from same-named fields",
+      type: "flag"
+    })
+    .option("unjoined", {
+      describe: "copy unjoined records from source table to \"unjoined\" layer",
+      type: "flag"
+    })
+    .option("unmatched", {
+      describe: "copy unmatched records in target table to \"unmatched\" layer",
+      type: "flag"
+    })
+    .option("encoding", encodingOpt)
+    .option("target", targetOpt);
+
+  parser.command("lines")
+    .describe("convert polygons to polylines, classified by edge type")
+    .validate(validateLinesOpts)
+    .option("fields", {
+      label: "<field(s)>",
+      describe: "optional comma-sep. list of fields to create a hierarchy",
+      type: "comma-sep"
+    })
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("merge-layers")
+    .describe("merge multiple layers into as few layers as possible")
+    .validate(validateMergeLayersOpts)
+    .option("name", nameOpt)
+    .option("target", targetOpt);
+
+  parser.command("points")
+    .describe("create a point layer from polygons or attribute data")
+    .validate(function (cmd) {
+      if (cmd._.length > 0) {
+        error("Unknown argument:", cmd._[0]);
+      }
+    })
+    .option("x", {
+      describe: "field containing x coordinate"
+    })
+    .option("y", {
+      describe: "field containing y coordinate"
+    })
+    .option("inner", {
+      describe: "create an interior point for each polygon's largest ring",
+      type: "flag"
+    })
+    .option("centroid", {
+      describe: "create a centroid point for each polygon's largest ring",
+      type: "flag"
+    })
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("proj")
+    .describe("project a dataset using a proj4 string or alias")
+    .option("densify", {
+      type: "flag",
+      describe: "add points along straight segments to approximate curves"
+    })
+    .validate(function(cmd) {
+      var _ = cmd._,
+          proj;
+      if (_.length > 1 && utils.every(_, function(arg) {
+        return arg[0] == '+';
+        })) {
+        proj = _.join(' '); // join proj4 args into one string
+      } else if (_.length == 1) {
+        proj = _[0];
+      } else if (_.length > 1) {
+        error("Received one or more unknown projection parameters");
+      } else {
+        error("Missing projection data");
+      }
+      cmd.options.projection = proj;
+    });
+
+  parser.command("rename-fields")
+    .describe('rename data fields')
+    .validate(validateFilterFieldsOpts)
+    .option("fields", {
+      label: "<field(s)>",
+      describe: "fields to rename (comma-sep.), e.g. 'fips=STATE_FIPS,st=state'"
+    })
+    .option("target", targetOpt);
+
+  parser.command("rename-layers")
+    .describe("assign new names to layers")
+    .validate(validateRenameLayersOpts)
+    .option("names", {
+      label: "<name(s)>",
+      type: "comma-sep",
+      describe: "new layer name(s) (comma-sep. list)"
+    })
+    .option("target", targetOpt);
+
+  parser.command("sort")
+    .describe("sort features using a JS expression")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "JS expression to generate a sort key for each feature"
+    })
+    .option("ascending", {
+      describe: "Sort in ascending order (default)",
+      type: "flag"
+    })
+    .option("descending", {
+      describe: "Sort in descending order",
+      type: "flag"
+    })
+    .option("target", targetOpt);
+
+  // parser.command("stitch");
+
   parser.command('simplify')
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
@@ -259,270 +569,6 @@ MapShaper.getOptionParser = function() {
       type: "flag"
     });
 
-  parser.command("join")
-    .describe("join data records from a file or layer to a layer")
-    .example("Join a csv table to a Shapefile\n" +
-      "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
-      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
-    .validate(validateJoinOpts)
-    .option("source", {
-      label: "<file>",
-      describe: "file containing data records"
-    })
-    .option("keys", {
-      describe: "join by matching target,source key fields; e.g. keys=FIPS,GEOID",
-      type: "comma-sep"
-    })
-    .option("fields", {
-      describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
-      type: "comma-sep"
-    })
-    .option("field-types", {
-      describe: "type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
-      type: "comma-sep"
-    })
-    .option("sum-fields", {
-      describe: "fields to sum when multiple source records match the same target",
-      type: "comma-sep"
-    })
-    .option("where", {
-      describe: "use a JS expression to filter source records"
-    })
-    .option("force", {
-      describe: "replace values from same-named fields",
-      type: "flag"
-    })
-    .option("unjoined", {
-      describe: "copy unjoined records from source table to \"unjoined\" layer",
-      type: "flag"
-    })
-    .option("unmatched", {
-      describe: "copy unmatched records in target table to \"unmatched\" layer",
-      type: "flag"
-    })
-    .option("encoding", encodingOpt)
-    .option("target", targetOpt);
-
-  parser.command("each")
-    .describe("create/update/delete data fields using a JS expression")
-    .example("Add two calculated data fields to a layer of U.S. counties\n" +
-        "$ mapshaper counties.shp -each 'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=$.area'")
-    .validate(validateExpressionOpts)
-    .option("expression", {
-      label: "<expression>",
-      describe: "JS expression to apply to each target feature"
-    })
-    .option("where", {
-      describe: "use a JS expression to select a subset of features"
-    })
-    .option("target", targetOpt);
-
-   parser.command("sort")
-    .describe("sort features using a JS expression")
-    .validate(validateExpressionOpts)
-    .option("expression", {
-      label: "<expression>",
-      describe: "JS expression to generate a sort key for each feature"
-    })
-    .option("ascending", {
-      describe: "Sort in ascending order (default)",
-      type: "flag"
-    })
-    .option("descending", {
-      describe: "Sort in descending order",
-      type: "flag"
-    })
-    .option("target", targetOpt);
-
-  parser.command("filter")
-    .describe("delete features using a JS expression")
-    .validate(validateExpressionOpts)
-    .option("expression", {
-      label: "<expression>",
-      describe: "delete features that evaluate to false"
-    })
-    .option("remove-empty", {
-      type: "flag",
-      describe: "delete features with null geometry"
-    })
-    .option("keep-shapes", {
-      type: "flag"
-    })
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
-  parser.command("filter-islands")
-    .describe("remove small detached polygon rings (islands)")
-    .validate(validateExpressionOpts)
-
-    .option("min-area", {
-      type: "number",
-      describe: "remove small-area islands (sq meters or projected units)"
-    })
-    .option("min-vertices", {
-      type: "integer",
-      describe: "remove low-vertex-count islands"
-    })
-    .option("remove-empty", {
-      type: "flag",
-      describe: "delete features with null geometry"
-    })
-    .option("target", targetOpt);
-
-  parser.command("filter-slivers")
-    .describe("remove small polygon rings")
-    .validate(validateExpressionOpts)
-
-    .option("min-area", {
-      type: "number",
-      describe: "remove small-area rings (sq meters or projected units)"
-    })
-    /*
-    .option("remove-empty", {
-      type: "flag",
-      describe: "delete features with null geometry"
-    })
-    */
-    .option("target", targetOpt);
-
-  parser.command("filter-fields")
-    .describe('retain a subset of data fields')
-    .validate(validateFilterFieldsOpts)
-    .option("fields", {
-      label: "<field(s)>",
-      describe: "fields to retain (comma-sep.), e.g. 'fips,name'"
-    })
-    .option("target", targetOpt);
-
-  parser.command("rename-fields")
-    .describe('rename data fields')
-    .validate(validateFilterFieldsOpts)
-    .option("fields", {
-      label: "<field(s)>",
-      describe: "fields to rename (comma-sep.), e.g. 'fips=STATE_FIPS,st=state'"
-    })
-    .option("target", targetOpt);
-
-  parser.command("clip")
-    .describe("use a polygon layer to clip another layer")
-    .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
-    .validate(validateClipOpts)
-    .option("source", {
-      label: "<file|layer>",
-      describe: "file or layer containing clip polygons"
-    })
-    .option('remove-slivers', {
-      describe: "remove sliver polygons created by clipping",
-      type: 'flag'
-    })
-    .option("cleanup", {type: 'flag'}) // obsolete; renamed in validation func.
-    .option("bbox", bboxOpt)
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
-  parser.command("erase")
-    .describe("use a polygon layer to erase another layer")
-    .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
-    .validate(validateClipOpts)
-    .option("source", {
-      label: "<file|layer>",
-      describe: "file or layer containing erase polygons"
-    })
-    .option('remove-slivers', {
-      describe: "remove sliver polygons created by erasing",
-      type: 'flag'
-    })
-    .option("cleanup", {type: 'flag'})
-    .option("bbox", bboxOpt)
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
-  parser.command("stitch");
-
-  parser.command("dissolve")
-    .validate(validateDissolveOpts)
-    .describe("merge polygon or point features")
-    .example("Dissolve all polygons in a feature layer into a single polygon\n" +
-      "$ mapshaper states.shp -dissolve -o country.shp")
-    .example("Generate state-level polygons by dissolving a layer of counties\n" +
-      "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
-      "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
-    .option("field", dissolveFieldOpt)
-    .option("sum-fields", sumFieldsOpt)
-    .option("copy-fields", copyFieldsOpt)
-    .option("weight", {
-      describe: "[points] field or expression to use for weighting centroid"
-    })
-    .option("planar", {
-      type: 'flag',
-      describe: "[points] use 2D math to find centroids of latlong points"
-    })
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
-  parser.command("dissolve2")
-    .validate(validateDissolveOpts)
-    .describe("merge adjacent and overlapping polygons")
-    .option("field", dissolveFieldOpt)
-    .option("sum-fields", sumFieldsOpt)
-    .option("copy-fields", copyFieldsOpt)
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
-  parser.command("explode")
-    .describe("divide multi-part features into single-part features")
-    .option("convert-holes", {type: "flag"}) // testing
-    .option("target", targetOpt);
-
-  parser.command("innerlines")
-    .describe("convert polygons to polylines along shared edges")
-    .validate(validateInnerLinesOpts)
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
-  parser.command("lines")
-    .describe("convert polygons to polylines, classified by edge type")
-    .validate(validateLinesOpts)
-    .option("fields", {
-      label: "<field(s)>",
-      describe: "optional comma-sep. list of fields to create a hierarchy",
-      type: "comma-sep"
-    })
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
-  parser.command("points")
-    .describe("create a point layer from polygons or attribute data")
-    .validate(function (cmd) {
-      if (cmd._.length > 0) {
-        error("Unknown argument:", cmd._[0]);
-      }
-    })
-    .option("x", {
-      describe: "field containing x coordinate"
-    })
-    .option("y", {
-      describe: "field containing y coordinate"
-    })
-    .option("inner", {
-      describe: "create an interior point for each polygon's largest ring",
-      type: "flag"
-    })
-    .option("centroid", {
-      describe: "create a centroid point for each polygon's largest ring",
-      type: "flag"
-    })
-    .option("name", nameOpt)
-    .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
   parser.command("split")
     .describe("split features into separate layers using a data field")
     .validate(validateSplitOpts)
@@ -531,32 +577,6 @@ MapShaper.getOptionParser = function() {
       describe: "name of an attribute field (omit to split all features)"
     })
     .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
-  parser.command("merge-layers")
-    .describe("merge multiple layers into as few layers as possible")
-    .validate(validateMergeLayersOpts)
-    .option("name", nameOpt)
-    .option("target", targetOpt);
-
-  parser.command("rename-layers")
-    .describe("assign new names to layers")
-    .validate(validateRenameLayersOpts)
-    .option("names", {
-      label: "<name(s)>",
-      type: "comma-sep",
-      describe: "new layer name(s) (comma-sep. list)"
-    })
-    .option("target", targetOpt);
-
-  parser.command("subdivide")
-    .describe("recursively split a layer using a JS expression")
-    .validate(validateSubdivideOpts)
-    .option("expression", {
-      label: "<expression>",
-      describe: "boolean JS expression"
-    })
-    // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
   parser.command("split-on-grid")
@@ -571,6 +591,16 @@ MapShaper.getOptionParser = function() {
     })
     .option("rows", {
       type: "integer"
+    })
+    // .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+  parser.command("subdivide")
+    .describe("recursively split a layer using a JS expression")
+    .validate(validateSubdivideOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "boolean JS expression"
     })
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -597,28 +627,14 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-  parser.command("proj")
-    .describe("project a dataset using a proj4 string or alias")
-    .option("densify", {
-      type: "flag",
-      describe: "add points along straight segments to approximate curves"
+   parser.command("uniq")
+    .describe("delete features with the same id as a previous feature")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "JS expression to obtain the id of a feature"
     })
-    .validate(function(cmd) {
-      var _ = cmd._,
-          proj;
-      if (_.length > 1 && utils.every(_, function(arg) {
-        return arg[0] == '+';
-        })) {
-        proj = _.join(' '); // join proj4 args into one string
-      } else if (_.length == 1) {
-        proj = _[0];
-      } else if (_.length > 1) {
-        error("Received one or more unknown projection parameters");
-      } else {
-        error("Missing projection data");
-      }
-      cmd.options.projection = proj;
-    });
+    .option("target", targetOpt);
 
   parser.command("calc")
     .title("\nInformational commands")
@@ -642,16 +658,18 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-
   parser.command('encodings')
     .describe("print list of supported text encodings (for .dbf import)");
 
-  parser.command('projections')
-    .describe("print list of supported projections");
-
-  parser.command('version')
-    .alias('v')
-    .describe("print mapshaper version");
+  parser.command('help')
+    .alias('h')
+    .validate(validateHelpOpts)
+    .describe("print help; takes optional command name")
+    .option("commands", {
+      label: "<command>",
+      type: "comma-sep",
+      describe: "view detailed information about a command"
+    });
 
   parser.command('info')
     .describe("print information about data layers");
@@ -669,23 +687,18 @@ MapShaper.getOptionParser = function() {
       }
     });
 
+  parser.command('projections')
+    .describe("print list of supported projections");
+
+  parser.command('version')
+    .alias('v')
+    .describe("print mapshaper version");
+
   parser.command('verbose')
     .describe("print verbose processing messages");
 
-  parser.command('help')
-    .alias('h')
-    .validate(validateHelpOpts)
-    .describe("print help; takes optional command name")
-    .option("commands", {
-      label: "<command>",
-      type: "comma-sep",
-      describe: "view detailed information about a command"
-    });
-
-  // Work-in-progress (no .describe(), so hidden from -h)
   parser.command('tracing');
-  parser.command("flatten")
-    .option("target", targetOpt);
+
   /*
   parser.command("divide")
     .option("name", nameOpt)
