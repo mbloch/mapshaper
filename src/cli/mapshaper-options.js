@@ -47,10 +47,8 @@ MapShaper.getOptionParser = function() {
         describe: "comma-sep. bounding box: xmin,ymin,xmax,ymax"
       };
 
-  var parser = new CommandParser(),
-      usage = "Usage:  mapshaper -<command> [options] ...";
-
-  parser.usage(usage);
+  var parser = new CommandParser();
+  parser.usage("Usage:  mapshaper -<command> [options] ...");
 
   /*
   parser.example("Fix minor topology errors, simplify to 10%, convert to GeoJSON\n" +
@@ -484,25 +482,6 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-  parser.command("sort")
-    .describe("sort features using a JS expression")
-    .validate(validateExpressionOpts)
-    .option("expression", {
-      label: "<expression>",
-      describe: "JS expression to generate a sort key for each feature"
-    })
-    .option("ascending", {
-      describe: "Sort in ascending order (default)",
-      type: "flag"
-    })
-    .option("descending", {
-      describe: "Sort in descending order",
-      type: "flag"
-    })
-    .option("target", targetOpt);
-
-  // parser.command("stitch");
-
   parser.command('simplify')
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
@@ -568,6 +547,23 @@ MapShaper.getOptionParser = function() {
       describe: "display simplification statistics",
       type: "flag"
     });
+
+  parser.command("sort")
+    .describe("sort features using a JS expression")
+    .validate(validateExpressionOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "JS expression to generate a sort key for each feature"
+    })
+    .option("ascending", {
+      describe: "Sort in ascending order (default)",
+      type: "flag"
+    })
+    .option("descending", {
+      describe: "Sort in descending order",
+      type: "flag"
+    })
+    .option("target", targetOpt);
 
   parser.command("split")
     .describe("split features into separate layers using a data field")
@@ -635,6 +631,8 @@ MapShaper.getOptionParser = function() {
       describe: "JS expression to obtain the id of a feature"
     })
     .option("target", targetOpt);
+
+  // Info commands
 
   parser.command("calc")
     .title("\nInformational commands")
