@@ -446,6 +446,9 @@ MapShaper.getOptionParser = function() {
       type: "flag",
       describe: "add points along straight segments to approximate curves"
     })
+    .option("from", {
+      describe: "define the source projection"
+    })
     .validate(function(cmd) {
       var _ = cmd._,
           proj;

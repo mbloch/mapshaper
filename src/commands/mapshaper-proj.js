@@ -7,7 +7,7 @@ mapshaper-shape-utils
 */
 
 api.proj = function(dataset, opts) {
-  var src = MapShaper.getSrcProjection(dataset);
+  var src = MapShaper.getSrcProjection(dataset, opts);
   var dest = MapShaper.getProjection(opts.projection, opts);
   var target = dataset;
   var useCopy = !!api.gui; // modify copy when running in web UI
@@ -19,9 +19,10 @@ api.proj = function(dataset, opts) {
   }
   if (useCopy) {
     // make deep copy of objects that will get modified
-    target = {
-      arcs: dataset.arcs.getCopy()
-    };
+    target = {};
+    if (dataset.arcs) {
+      target.arcs = dataset.arcs.getCopy();
+    }
     target.layers = dataset.layers.map(function(lyr) {
       if (MapShaper.layerHasPoints(lyr)) {
         lyr = utils.extend({}, lyr);
@@ -53,9 +54,15 @@ api.proj = function(dataset, opts) {
   }
 };
 
-MapShaper.getSrcProjection = function(dataset) {
+MapShaper.getSrcProjection = function(dataset, opts) {
   var info = dataset.info || {},
       P = info.crs;
+  if (opts && opts.from) {
+    P = MapShaper.getProjection(opts.from, opts);
+    if (!P) {
+      stop("[proj] Unknown source projection:", opts.from);
+    }
+  }
   if (!P && info.input_prj) {
     P = MapShaper.parsePrj(info.input_prj);
   }
@@ -95,7 +102,7 @@ MapShaper.projectDataset = function(dataset, src, dest, opts) {
 
 MapShaper.getProjTransform = function(src, dest) {
   var mproj = require('mproj');
-  var clampSrc = src.is_latlong; //  && !dest.over_orig;
+  var clampSrc = src.is_latlong;
   return function(x, y) {
     var xy;
     if (clampSrc) {
