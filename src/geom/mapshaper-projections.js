@@ -18,11 +18,6 @@ MapShaper.getProjection = function(name, opts) {
     MapShaper.initProjections();
     P = MapShaper.projectionIndex[name.toLowerCase().replace(/-_ /g, '')];
   }
-  if (P) {
-    // kludge to prevent wrapping
-    P.over_orig = P.over;
-    P.over = true;
-  }
   return P;
 };
 
