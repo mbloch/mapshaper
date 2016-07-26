@@ -1,29 +1,56 @@
 /* @requires mapshaper-mixed-projection */
 
-MapShaper.projectionIndex = null;
+// some aliases
+MapShaper.projectionIndex = {
+  robinson: '+proj=robin +datum=WGS84',
+  webmercator: '+proj=merc +ellps=sphere',
+  wgs84: '+proj=longlat +datum=WGS84',
+  albersusa: AlbersNYT
+};
 
-MapShaper.getProjection = function(name, opts) {
-  var mproj = require('mproj');
-  var P;
-  if (name in mproj.internal.pj_list) {
-    name = '+proj=' + name;
+MapShaper.getProjection = function(defn, opts) {
+  var mproj = require('mproj'),
+      P;
+  if (defn in MapShaper.projectionIndex) {
+    defn = MapShaper.projectionIndex[defn];
+  } else if (defn in mproj.internal.pj_list) {
+    defn = '+proj=' + defn;
   }
-  if (/^\+/.test(name)) {
+  if (typeof defn == 'function') {
+    P = defn();
+  } else if (/^\+/.test(defn)) {
     try {
-      P = mproj.pj_init(name);
+      P = mproj.pj_init(defn);
     } catch(e) {
-      stop('Unable to use projection', name, '(' + e.message + ')');
+      stop('Unable to use projection', defn, '(' + e.message + ')');
     }
-  } else {
-    MapShaper.initProjections();
-    P = MapShaper.projectionIndex[name.toLowerCase().replace(/-_ /g, '')];
+  }
+  return P || null;
+};
+
+
+MapShaper.getDatasetProjection = function(dataset) {
+  var info = dataset.info || {},
+      P = info.crs;
+  if (!P && info.input_prj) {
+    P = MapShaper.parsePrj(info.input_prj);
+  }
+  if (!P && MapShaper.probablyDecimalDegreeBounds(MapShaper.getDatasetBounds(dataset))) {
+    // use wgs84 for probable latlong datasets with unknown datums
+    P = MapShaper.getProjection('wgs84');
   }
   return P;
 };
 
-MapShaper.printProjections = function() {
-  MapShaper.initProjections();
+MapShaper.getDatasetProjInfo = function(dataset) {
+  var P = MapShaper.getDatasetProjection(dataset);
+  var info;
+  if (!P) {
 
+  }
+};
+
+MapShaper.printProjections = function() {
   message('Proj4 projections');
   var index = require('mproj').internal.pj_list;
   var msg = Object.keys(index).sort().map(function(id) {
@@ -36,16 +63,6 @@ MapShaper.printProjections = function() {
   });
 };
 
-MapShaper.initProjections = function() {
-  if (MapShaper.projectionIndex) return;
-  var mproj = require('mproj');
-  var index = MapShaper.projectionIndex = {};
-  // aliases for some common projections
-  index.robinson = mproj.pj_init('+proj=robin +datum=WGS84');
-  index.webmercator = mproj.pj_init('+proj=merc +ellps=sphere');
-  index.albersusa = new AlbersNYT();
-  index.wgs84 = mproj.pj_init('+proj=longlat +datum=WGS84');
-};
 
 function AlbersNYT() {
   var mproj = require('mproj');

@@ -7,16 +7,26 @@ mapshaper-shape-utils
 */
 
 api.proj = function(dataset, opts) {
-  var src = MapShaper.getSrcProjection(dataset, opts);
-  var dest = MapShaper.getProjection(opts.projection, opts);
-  var target = dataset;
   var useCopy = !!api.gui; // modify copy when running in web UI
-  if (!src) {
-    stop("[proj] Unable to project -- source coordinate system is unknown");
+  var target, src, dest;
+
+  if (opts && opts.from) {
+    src = MapShaper.getProjection(opts.from, opts);
+    if (!src) {
+      stop("[proj] Unknown source projection:", opts.from);
+    }
+  } else {
+    src = MapShaper.getDatasetProjection(dataset);
+    if (!src) {
+      stop("[proj] Unable to project -- source coordinate system is unknown");
+    }
   }
+
+  dest = MapShaper.getProjection(opts.projection, opts);
   if (!dest) {
     stop("[proj] Unknown projection:", opts.projection);
   }
+
   if (useCopy) {
     // make deep copy of objects that will get modified
     target = {};
@@ -30,47 +40,26 @@ api.proj = function(dataset, opts) {
       }
       return lyr;
     });
+  } else {
+    target = dataset; // project in-place
   }
+
   try {
     MapShaper.projectDataset(target, src, dest, opts);
   } catch(e) {
     stop(utils.format("[proj] Projection failure%s (%s)",
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
   }
+
   if (useCopy) {
     // replace originals with modified copies
     dataset.arcs = target.arcs;
     dataset.layers = target.layers;
   }
+
   if (dataset.info) {
-    // Setting output crs to null: "If the value of CRS is null, no CRS can be assumed"
-    // (by default, GeoJSON assumes WGS84)
-    // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
-    // TODO: create a valid GeoJSON crs object after projecting
-    dataset.info.output_crs = null;
-    dataset.info.output_prj = null;
-    dataset.info.input_prj = null;
     dataset.info.crs = dest;
   }
-};
-
-MapShaper.getSrcProjection = function(dataset, opts) {
-  var info = dataset.info || {},
-      P = info.crs;
-  if (opts && opts.from) {
-    P = MapShaper.getProjection(opts.from, opts);
-    if (!P) {
-      stop("[proj] Unknown source projection:", opts.from);
-    }
-  }
-  if (!P && info.input_prj) {
-    P = MapShaper.parsePrj(info.input_prj);
-  }
-  if (!P && MapShaper.probablyDecimalDegreeBounds(MapShaper.getDatasetBounds(dataset))) {
-    // use wgs84 for probable latlong datasets with unknown datums
-    P = MapShaper.getProjection('wgs84');
-  }
-  return P;
 };
 
 // Convert contents of a .prj file to a projection object

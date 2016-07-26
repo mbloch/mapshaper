@@ -301,6 +301,18 @@ describe('mapshaper-geojson.js', function () {
       })
     });
 
+    it('do not set crs to null coords were transformed to latlong', function(done) {
+      var input = {
+        type: 'Point',
+        coordinates: [0, 0]
+      };
+      api.applyCommands('-proj wgs84 from="merc"', input, function(err, data) {
+        var output = JSON.parse(data);
+        assert.strictEqual(output.crs, undefined);
+        done();
+      })
+    });
+
     it('preserve ids with no properties', function() {
       var input = {
         type: "FeatureCollection",

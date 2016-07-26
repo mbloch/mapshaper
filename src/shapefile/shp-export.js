@@ -15,10 +15,8 @@ MapShaper.exportShapefile = function(dataset, opts) {
 };
 
 MapShaper.exportPrjFile = function(lyr, dataset) {
-  var outputPrj = dataset.info && dataset.info.output_prj;
-  if (!outputPrj && outputPrj !== null) { // null value indicates crs is unknown
-    outputPrj = dataset.info && dataset.info.input_prj;
-  }
+  // TODO: generate .prj if projection is known
+  var outputPrj = dataset.info && !dataset.info.crs && dataset.info.input_prj;
   return outputPrj ? {
     content: outputPrj,
     filename: lyr.name + '.prj'

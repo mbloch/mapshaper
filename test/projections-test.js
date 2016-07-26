@@ -1,6 +1,7 @@
 
 var assert = require('assert');
 var api = require("..");
+var mproj = require("mproj");
 
 function roundtrip(proj, xy) {
   it (proj, function() {
@@ -35,16 +36,27 @@ function almostEqual(a, b, e) {
 }
 
 describe('mapshaper-projections.js', function() {
-  roundtrip('albersusa', [-96, 40]);
-  roundtrip('+proj=robin', [10, 0]);
-  roundtrip('robin', [10, 0]);
-  roundtrip('+proj=lcc +lon_0=-96 +lat_1=33 +lat_2=45 +lat_0=39', [-96, 40]);
-  roundtrip('+proj=lcc +lon_0=-96 +lat_1=33 +lat_2=45 +lat_0=39 +ellps=sphere',
-     [-96, 40]);
-  roundtrip('webmercator', [-70, 20]);
-  roundtrip('merc', [-70, 20]);
-  roundtrip('etmerc', [10, -80]);
-  roundtrip('+proj=tmerc +units=ft', [2, 3]);
-  roundtrip('+proj=utm +zone=34 +south', [18.423889, -33.925278]);
+  describe('roundtrip tests', function () {
+    roundtrip('albersusa', [-96, 40]);
+    roundtrip('+proj=robin', [10, 0]);
+    roundtrip('robin', [10, 0]);
+    roundtrip('+proj=lcc +lon_0=-96 +lat_1=33 +lat_2=45 +lat_0=39', [-96, 40]);
+    roundtrip('+proj=lcc +lon_0=-96 +lat_1=33 +lat_2=45 +lat_0=39 +ellps=sphere',
+       [-96, 40]);
+    roundtrip('webmercator', [-70, 20]);
+    roundtrip('merc', [-70, 20]);
+    roundtrip('etmerc', [10, -80]);
+    roundtrip('+proj=tmerc +units=ft', [2, 3]);
+    roundtrip('+proj=utm +zone=34 +south', [18.423889, -33.925278]);
+  })
+
+  describe('test aliases', function () {
+    it('webmercator', function () {
+      var a = api.internal.getProjection('webmercator');
+      var b = api.internal.getProjection('+proj=merc +ellps=sphere');
+      var lp = {lam: 0.3, phi: 0.2};
+      assert.deepEqual(mproj.pj_fwd(lp, a), mproj.pj_fwd(lp, b));
+    })
+  })
 
 });

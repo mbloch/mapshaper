@@ -144,12 +144,20 @@ GeoJSON.exporters = {
 };
 
 // @jsonObj is a top-level GeoJSON or TopoJSON object
+// TODO: generate crs if projection is known
+// TODO: handle case of non-WGS84 geodetic coordinates
 MapShaper.exportCRS = function(dataset, jsonObj) {
   var info = dataset.info || {};
-  if ('output_crs' in info) {
-    jsonObj.crs = info.output_crs;
-  } else if ('input_crs' in info) {
-    jsonObj.crs = info.input_crs;
+  if (!info.crs && 'input_geojson_crs' in info) {
+    // use input geojson crs if available and coords have not changed
+    jsonObj.crs = info.input_geojson_crs;
+  } else if (info.crs && !info.crs.is_latlong) {
+    // Setting output crs to null if coords have been projected
+    // "If the value of CRS is null, no CRS can be assumed"
+    // source: http://geojson.org/geojson-spec.html#coordinate-reference-system-objects
+    jsonObj.crs = null;
+  } else {
+    // crs property not set: assuming WGS84
   }
 };
 

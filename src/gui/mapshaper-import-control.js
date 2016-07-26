@@ -239,7 +239,7 @@ function ImportControl(model) {
     if (type == 'prj') {
       // assumes that .shp has been imported first
       matches.forEach(function(d) {
-        if (!d.info.output_prj && !d.info.input_prj) {
+        if (!d.info.input_prj) {
           d.info.input_prj = content;
         }
       });

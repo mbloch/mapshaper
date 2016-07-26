@@ -108,6 +108,6 @@ GeoJSON.pathImporters = {
 
 MapShaper.importCRS = function(dataset, jsonObj) {
   if ('crs' in jsonObj) {
-    dataset.info.input_crs = jsonObj.crs;
+    dataset.info.input_geojson_crs = jsonObj.crs;
   }
 };
