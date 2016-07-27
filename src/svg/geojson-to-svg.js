@@ -39,18 +39,28 @@ SVG.stringify = function(obj) {
   return svg;
 };
 
+SVG.stringEscape = (function() {
+  // See http://commons.oreilly.com/wiki/index.php/SVG_Essentials/The_XML_You_Need_for_SVG
+  var rxp = /[&<>"']/g,
+      map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&apos;'
+      };
+  return function(s) {
+    return String(s).replace(rxp, function(s) {
+      return map[s];
+    });
+  };
+}());
+
 SVG.stringifyProperties = function(o) {
   return Object.keys(o).reduce(function(memo, key, i) {
     var val = o[key],
-        strval = JSON.stringify(val);
-    if (strval.charAt(0) != '"') {
-      if (!utils.isFiniteNumber(val)) {
-        // not a string or number -- skipping
-        return memo;
-      }
-      strval = '"' + strval + '"';
-    }
-    return memo + ' ' + key + "=" + strval;
+        strval = utils.isString(val) ? val : JSON.stringify(val);
+    return memo + ' ' + key + '="' + SVG.stringEscape(strval) + '"';
   }, '');
 };
 

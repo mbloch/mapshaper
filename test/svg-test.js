@@ -24,7 +24,6 @@ describe('mapshaper-svg.js', function () {
       done();
     });
   });
-  return;
 
   it('outputs svg file if output filename ends in ".svg"', function(done) {
     api.internal.processFileContent('-i test/test_data/two_states.shp -o two_states.svg', null, function(err, output) {
@@ -70,6 +69,26 @@ describe('mapshaper-svg.js', function () {
     api.applyCommands(cmd, geo, function(err, data) {
       var svg = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="800" height="800" viewBox="0 0 800 800" stroke-linecap="round" stroke-linejoin="round">\n' +
       '<g id="layer1">\n<g id="dots">\n<circle cx="1" cy="1"/>\n<circle cx="799" cy="799"/>\n</g>\n</g>\n</svg>';
+
+      assert.equal(data, svg)
+      done();
+    });
+  });
+
+  it ('XML entities are replaced', function(done) {
+    var geo = {
+      type: 'Feature',
+      geometry: {
+        type: 'MultiPoint',
+        coordinates: [[0, 2], [2, 0]]
+      },
+      properties: {name: '"1980\'s" & <now>'}
+    };
+    var cmd = '-o id-field=name format=svg';
+
+    api.applyCommands(cmd, geo, function(err, data) {
+      var svg = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny" width="800" height="800" viewBox="0 0 800 800" stroke-linecap="round" stroke-linejoin="round">\n' +
+      '<g id="layer1">\n<g id="&quot;1980&apos;s&quot; &amp; &lt;now&gt;">\n<circle cx="1" cy="1"/>\n<circle cx="799" cy="799"/>\n</g>\n</g>\n</svg>';
 
       assert.equal(data, svg)
       done();

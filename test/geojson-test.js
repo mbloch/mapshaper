@@ -301,7 +301,7 @@ describe('mapshaper-geojson.js', function () {
       })
     });
 
-    it('do not set crs to null coords were transformed to latlong', function(done) {
+    it('do not set crs to null if coords were transformed to latlong', function(done) {
       var input = {
         type: 'Point',
         coordinates: [0, 0]
