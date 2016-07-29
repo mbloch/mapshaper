@@ -8,26 +8,35 @@ MapShaper.projectionIndex = {
   albersusa: AlbersNYT
 };
 
-MapShaper.getProjection = function(defn, opts) {
-  var mproj = require('mproj'),
-      P;
-  if (defn in MapShaper.projectionIndex) {
-    defn = MapShaper.projectionIndex[defn];
-  } else if (defn in mproj.internal.pj_list) {
-    defn = '+proj=' + defn;
+MapShaper.getProjDefn = function(str) {
+  var mproj = require('mproj');
+  var defn;
+  if (str in MapShaper.projectionIndex) {
+    defn = MapShaper.projectionIndex[str];
+  } else if (str in mproj.internal.pj_list) {
+    defn = '+proj=' + str;
+  } else if (/^\+/.test(str)) {
+    defn = str;
+  } else {
+    stop("Unknown projection definition:", str);
   }
+  return defn;
+};
+
+MapShaper.getProjection = function(str) {
+  var defn = MapShaper.getProjDefn(str);
+  var P;
   if (typeof defn == 'function') {
     P = defn();
-  } else if (/^\+/.test(defn)) {
+  } else {
     try {
-      P = mproj.pj_init(defn);
+      P = require('mproj').pj_init(defn);
     } catch(e) {
       stop('Unable to use projection', defn, '(' + e.message + ')');
     }
   }
   return P || null;
 };
-
 
 MapShaper.getDatasetProjection = function(dataset) {
   var info = dataset.info || {},

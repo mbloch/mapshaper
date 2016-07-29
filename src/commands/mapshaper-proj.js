@@ -8,7 +8,7 @@ mapshaper-shape-utils
 
 api.proj = function(dataset, opts) {
   var useCopy = !!api.gui; // modify copy when running in web UI
-  var target, src, dest;
+  var target, src, dest, defn;
 
   if (opts && opts.from) {
     src = MapShaper.getProjection(opts.from, opts);

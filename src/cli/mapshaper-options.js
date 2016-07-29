@@ -451,19 +451,29 @@ MapShaper.getOptionParser = function() {
     })
     .validate(function(cmd) {
       var _ = cmd._,
-          proj;
-      if (_.length > 1 && utils.every(_, function(arg) {
-        return arg[0] == '+';
-        })) {
-        proj = _.join(' '); // join proj4 args into one string
-      } else if (_.length == 1) {
-        proj = _[0];
-      } else if (_.length > 1) {
+          proj4 = [];
+
+      // separate proj4 options
+      _ = _.filter(function(arg) {
+        if (/^\+[a-z]/i.test(arg)) {
+          proj4.push(arg);
+          return false;
+        }
+        return true;
+      });
+
+      if (proj4.length > 0) {
+        cmd.options.projection = proj4.join(' ');
+      } else if (_.length > 0) {
+        cmd.options.projection = _.shift();
+      }
+
+      if (_.length > 0) {
         error("Received one or more unknown projection parameters");
-      } else {
+      }
+      if (!cmd.options.projection) {
         error("Missing projection data");
       }
-      cmd.options.projection = proj;
     });
 
   parser.command("rename-fields")

@@ -198,6 +198,14 @@ describe('mapshaper-options.js', function () {
     good("-proj +proj=merc +ellps=sphere", {
       projection: '+proj=merc +ellps=sphere'
     });
+
+    good("-proj albersusa densify", {
+      projection: 'albersusa',
+      densify: true
+    });
+
+    bad("-proj");
+    bad("-proj merc +ellps=sphere")
   })
 
   describe('syntax rules', function () {
