@@ -345,6 +345,8 @@ MapShaper.getOptionParser = function() {
   parser.command("flatten")
     .option("target", targetOpt);
 
+  parser.command("graticule")
+    .describe("create a graticule layer");
 
   parser.command("innerlines")
     .describe("convert polygons to polylines along shared edges")

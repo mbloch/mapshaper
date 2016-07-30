@@ -11,6 +11,7 @@ mapshaper-filter
 mapshaper-filter-rename-fields
 mapshaper-filter-islands
 mapshaper-filter-slivers
+mapshaper-graticule
 mapshaper-info
 mapshaper-innerlines2
 mapshaper-inspect
@@ -61,6 +62,11 @@ api.runCommand = function(cmd, dataset, cb) {
       } else {
         targetLayers = dataset.layers; // default: all layers
       }
+
+    } else { // no dataset
+      if (!(name == 'graticule' || name == 'i')) {
+        throw new APIError("Missing a -i command");
+      }
     }
 
     if (name == 'calc') {
@@ -98,6 +104,9 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'flatten') {
       outputLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
+
+    } else if (name == 'graticule') {
+      dataset = api.graticule(dataset, opts);
 
     } else if (name == 'i') {
       dataset = api.importFiles(cmd.options);

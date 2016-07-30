@@ -105,9 +105,6 @@ MapShaper.runParsedCommands = function(commands) {
     return done(null, dataset);
   }
   commands = MapShaper.divideImportCommand(commands);
-  if (commands[0].name != 'i' && !dataset) {
-    return done(new APIError("Missing a -i command"));
-  }
 
   utils.reduceAsync(commands, dataset, function(dataset, cmd, nextCmd) {
     api.runCommand(cmd, dataset, nextCmd);
