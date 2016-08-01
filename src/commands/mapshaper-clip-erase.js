@@ -76,6 +76,9 @@ MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, cli
   outputLayers = targetLayers.map(function(targetLyr) {
     var shapeCount = targetLyr.shapes ? targetLyr.shapes.length : 0;
     var clippedShapes, outputLyr;
+    if (shapeCount === 0) {
+      return targetLyr; // ignore empty layer
+    }
     if (targetLyr === clipLyr) {
       stop('[' + type + '] Can\'t clip a layer with itself');
     } else if (targetLyr.geometry_type == 'point') {

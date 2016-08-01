@@ -69,6 +69,17 @@ describe('mapshaper-clip-erase.js', function () {
         done();
       });
     })
+
+    it('No error when clipping an empty layer', function() {
+      var dataset = {
+        layers: [{
+          geometry_type: 'polygon',
+          shapes: []
+        }]
+      };
+      var output = api.clipLayers(dataset.layers, null, dataset, {bbox: [0, 0, 1, 1]});
+
+    });
   });
 
   describe('Issue #68', function () {
