@@ -8,6 +8,22 @@ MapShaper.projectionIndex = {
   albersusa: AlbersNYT
 };
 
+MapShaper.getProjInfo = function(dataset) {
+  var P, info;
+  try {
+    P = MapShaper.getDatasetProjection(dataset);
+    if (P) {
+      info = require('mproj').internal.get_proj_defn(P);
+    }
+    if (!info) {
+      info = "unknown";
+    }
+  } catch(e) {
+    info = e.message;
+  }
+  return info;
+};
+
 MapShaper.getProjDefn = function(str) {
   var mproj = require('mproj');
   var defn;
@@ -51,14 +67,6 @@ MapShaper.getDatasetProjection = function(dataset) {
   return P;
 };
 
-MapShaper.getDatasetProjInfo = function(dataset) {
-  var P = MapShaper.getDatasetProjection(dataset);
-  var info;
-  if (!P) {
-
-  }
-};
-
 MapShaper.printProjections = function() {
   message('Proj4 projections');
   var index = require('mproj').internal.pj_list;
@@ -72,6 +80,16 @@ MapShaper.printProjections = function() {
   });
 };
 
+// Convert contents of a .prj file to a projection object
+MapShaper.parsePrj = function(str) {
+  var proj4;
+  try {
+    proj4 = require('mproj').internal.wkt_to_proj4(str);
+  } catch(e) {
+    stop('Unusable .prj file (' + e.message + ')');
+  }
+  return MapShaper.getProjection(proj4);
+};
 
 function AlbersNYT() {
   var mproj = require('mproj');

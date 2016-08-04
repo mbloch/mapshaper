@@ -62,16 +62,6 @@ api.proj = function(dataset, opts) {
   }
 };
 
-// Convert contents of a .prj file to a projection object
-MapShaper.parsePrj = function(str) {
-  var proj4;
-  try {
-    proj4 = require('mproj').internal.wkt_to_proj4(str);
-  } catch(e) {
-    stop('Unusable .prj file (' + e.message + ')');
-  }
-  return MapShaper.getProjection(proj4);
-};
 
 MapShaper.projectDataset = function(dataset, src, dest, opts) {
   var proj = MapShaper.getProjTransform(src, dest);

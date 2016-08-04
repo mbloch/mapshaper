@@ -1,10 +1,15 @@
-/* @require mapshaper-common, mapshaper-dataset-utils, mapshaper-endpoints */
+/* @requires
+mapshaper-common
+mapshaper-dataset-utils
+mapshaper-endpoints
+mapshaper-projections
+*/
 
 api.printInfo = function(dataset, opts) {
   // str += utils.format("Number of layers: %d\n", dataset.layers.length);
   // if (dataset.arcs) str += utils.format("Topological arcs: %'d\n", dataset.arcs.size());
   var str = dataset.layers.map(function(lyr, i) {
-    var infoStr = MapShaper.getLayerInfo(lyr, dataset.arcs);
+    var infoStr = MapShaper.getLayerInfo(lyr, dataset);
     if (dataset.layers.length > 1) {
       infoStr = 'Layer ' + (i + 1) + '\n' + infoStr;
     }
@@ -30,7 +35,7 @@ MapShaper.getGeometryInfo = function(lyr, id) {
   return "Geometry: " + type + "\n";
 };
 
-MapShaper.getLayerInfo = function(lyr, arcs) {
+MapShaper.getLayerInfo = function(lyr, dataset) {
   var shapeCount = lyr.shapes ? lyr.shapes.length : 0,
       nullCount = shapeCount > 0 ? MapShaper.countNullShapes(lyr.shapes) : 0,
       str;
@@ -41,7 +46,8 @@ MapShaper.getLayerInfo = function(lyr, arcs) {
     str += utils.format("Null shapes: %'d\n", nullCount);
   }
   if (shapeCount > nullCount) {
-    str += "Bounds: " + MapShaper.getLayerBounds(lyr, arcs).toArray().join(' ') + "\n";
+    str += "Bounds: " + MapShaper.getLayerBounds(lyr, dataset.arcs).toArray().join(' ') + "\n";
+    str += "Proj4: " + MapShaper.getProjInfo(dataset) + "\n";
   }
   str += MapShaper.getTableInfo(lyr);
   return str;
