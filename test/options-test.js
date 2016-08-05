@@ -31,8 +31,10 @@ describe('mapshaper-options.js', function () {
     good("file.shp name=''", {files:['file.shp'], name: ''})
     good("file.shp name='a b'", {files:['file.shp'], name: 'a b'})
     good("file.shp name 'a b'", {files:['file.shp'], name: 'a b'})
-    good("file.shp name ''", {files:['file.shp'], name: ''})
-    good("file.shp name '' no-topology", {files:['file.shp'], name: '', no_topology: true})
+    // disallowing whitespace tokens
+    // good("file.shp name ''", {files:['file.shp'], name: ''})
+    // good("file.shp name '' no-topology", {files:['file.shp'], name: '', no_topology: true})
+    bad("file.shp name ''");
  })
 
   describe('output', function() {

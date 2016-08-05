@@ -40,7 +40,7 @@ function CommandParser() {
   this.parseArgv = function(raw) {
     var commandDefs = getCommands(),
         commands = [], cmd,
-        argv = raw.map(utils.trimQuotes), // remove one level of single or dbl quotes
+        argv = MapShaper.cleanArgv(raw),
         cmdName, cmdDef, opt;
 
     if (argv.length == 1 && tokenIsCommandName(argv[0])) {
@@ -364,3 +364,10 @@ function CommandOptions(name) {
     return _command;
   };
 }
+
+MapShaper.cleanArgv = function(argv) {
+  argv = argv.map(function(s) {return s.trim();}); // trim whitespace
+  argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
+  argv = argv.map(utils.trimQuotes); // remove one level of single or dbl quotes
+  return argv;
+};
