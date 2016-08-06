@@ -13,7 +13,6 @@ api.inspect = function(lyr, arcs, opts) {
 
 MapShaper.getFeatureInfo = function(id, lyr, arcs) {
     var msg = "Feature " + id + '\n';
-    msg += MapShaper.getGeometryInfo(lyr, id);
     msg += MapShaper.getShapeInfo(id, lyr, arcs);
     msg += MapShaper.getTableInfo(lyr, id);
     return msg;
@@ -22,11 +21,12 @@ MapShaper.getFeatureInfo = function(id, lyr, arcs) {
 MapShaper.getShapeInfo = function(id, lyr, arcs) {
   var shp = lyr.shapes ? lyr.shapes[id] : null;
   var type = lyr.geometry_type;
-  var msg = '';
-  var info;
+  var info, msg;
   if (!shp || !type) {
-    //
-  } else if (type == 'point') {
+    return 'Geometry: [null]\n';
+  }
+  msg = 'Geometry\n  Type: ' + type + '\n';
+  if (type == 'point') {
     msg += '  Points: ' + shp.length + '\n';
   } else if (type == 'polyline') {
     msg += '  Parts: ' + shp.length + '\n';

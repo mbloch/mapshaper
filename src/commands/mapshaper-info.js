@@ -27,30 +27,31 @@ MapShaper.countNullShapes = function(shapes) {
   return count;
 };
 
-MapShaper.getGeometryInfo = function(lyr, id) {
-  var type = lyr.geometry_type || "[none]";
-  if (utils.isInteger(id) && lyr.shapes && !lyr.shapes[id]) {
-    type = '[null]';
-  }
-  return "Geometry: " + type + "\n";
-};
-
 MapShaper.getLayerInfo = function(lyr, dataset) {
-  var shapeCount = lyr.shapes ? lyr.shapes.length : 0,
-      nullCount = shapeCount > 0 ? MapShaper.countNullShapes(lyr.shapes) : 0,
-      str;
-  str = "Layer name: " + (lyr.name || "[unnamed]") + "\n";
+  var str = "Layer name: " + (lyr.name || "[unnamed]") + "\n";
   str += utils.format("Records: %,d\n", MapShaper.getFeatureCount(lyr));
-  str += MapShaper.getGeometryInfo(lyr);
-  if (nullCount > 0) {
-    str += utils.format("Null shapes: %'d\n", nullCount);
-  }
-  if (shapeCount > nullCount) {
-    str += "Bounds: " + MapShaper.getLayerBounds(lyr, dataset.arcs).toArray().join(' ') + "\n";
-    str += "Proj4: " + MapShaper.getProjInfo(dataset) + "\n";
-  }
+  str += MapShaper.getGeometryInfo(lyr, dataset);
   str += MapShaper.getTableInfo(lyr);
   return str;
+};
+
+MapShaper.getGeometryInfo = function(lyr, dataset) {
+  var shapeCount = lyr.shapes ? lyr.shapes.length : 0,
+      nullCount = shapeCount > 0 ? MapShaper.countNullShapes(lyr.shapes) : 0,
+      lines;
+  if (!lyr.geometry_type) {
+    lines = ["Geometry: [none]"];
+  } else {
+    lines = ["Geometry", "Type: " + lyr.geometry_type];
+    if (nullCount > 0) {
+      lines.push(utils.format("Null shapes: %'d", nullCount));
+    }
+    if (shapeCount > nullCount) {
+      lines.push("Bounds: " + MapShaper.getLayerBounds(lyr, dataset.arcs).toArray().join(' '));
+      lines.push("Proj.4: " + MapShaper.getProjInfo(dataset));
+    }
+  }
+  return lines.join('\n  ') + '\n';
 };
 
 MapShaper.getTableInfo = function(lyr, i) {
