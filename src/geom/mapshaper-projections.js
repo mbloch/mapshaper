@@ -68,12 +68,11 @@ MapShaper.getDatasetProjection = function(dataset) {
 };
 
 MapShaper.printProjections = function() {
-  message('Proj4 projections');
   var index = require('mproj').internal.pj_list;
-  var msg = Object.keys(index).sort().map(function(id) {
-    return '  ' + id + '\t ' + index[id].name;
-  }).join('\n');
-  message(msg);
+  message('Proj4 projections');
+  Object.keys(index).sort().forEach(function(id) {
+    message('  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name);
+  });
   message('\nAliases');
   Object.keys(MapShaper.projectionIndex).sort().forEach(function(n) {
     message('  ' + n);
