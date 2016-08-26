@@ -1,4 +1,4 @@
-/* @requires mapshaper-shapes mapshaper-point-utils */
+/* @requires mapshaper-arcs mapshaper-point-utils */
 
 // Utility functions for working with ArcCollection and arrays of arc ids.
 

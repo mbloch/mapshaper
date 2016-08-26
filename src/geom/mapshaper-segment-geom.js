@@ -1,4 +1,4 @@
-/* @requires mapshaper-shapes, mapshaper-geom */
+/* @requires mapshaper-arcs, mapshaper-geom */
 
 // Return average segment length (with simplification)
 MapShaper.getAvgSegment = function(arcs) {

@@ -1,7 +1,7 @@
 /* @requires
 mapshaper-shape-geom
 mapshaper-polygon-centroid
-mapshaper-shapes
+mapshaper-arcs
 mapshaper-dataset-utils
 */
 

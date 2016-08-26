@@ -1,5 +1,5 @@
 /* @requires
-mapshaper-endpoints
+mapshaper-nodes
 mapshaper-path-endpoints
 mapshaper-dataset-utils
 */

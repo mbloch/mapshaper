@@ -1,4 +1,4 @@
-/* @requires mapshaper-shapes, mapshaper-geom */
+/* @requires mapshaper-arcs, mapshaper-geom */
 
 MapShaper.simplifyArcsFast = function(arcs, dist) {
   var xx = [],

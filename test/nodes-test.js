@@ -3,7 +3,7 @@ var api = require('../'),
     ArcCollection = api.internal.ArcCollection,
     NodeCollection = api.internal.NodeCollection;
 
-describe('mapshaper-endpoints.js', function () {
+describe('mapshaper-nodes.js', function () {
 
   describe('NodeCollection#toArray()', function () {
     it('test 1', function () {

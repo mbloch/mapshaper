@@ -1,6 +1,6 @@
 /* @requires
 mapshaper-common
-mapshaper-shapes
+mapshaper-arcs
 mapshaper-shape-utils
 mapshaper-arc-index
 mapshaper-topology-chains-v2

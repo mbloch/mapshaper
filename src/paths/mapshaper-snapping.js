@@ -1,7 +1,7 @@
 /* @requires
 mapshaper-topology,
 mapshaper-geom,
-mapshaper-shapes
+mapshaper-arcs
 */
 
 MapShaper.getHighPrecisionSnapInterval = function(arcs) {

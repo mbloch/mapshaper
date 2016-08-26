@@ -1,4 +1,4 @@
-/* @requires mapshaper-shapes, mapshaper-geom */
+/* @requires mapshaper-arcs, mapshaper-geom */
 
 // Calculations for planar geometry of shapes
 // TODO: consider 3D versions of some of these

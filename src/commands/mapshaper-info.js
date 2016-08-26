@@ -1,7 +1,7 @@
 /* @requires
 mapshaper-common
 mapshaper-dataset-utils
-mapshaper-endpoints
+mapshaper-nodes
 mapshaper-projections
 */
 

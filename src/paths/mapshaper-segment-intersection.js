@@ -1,4 +1,4 @@
-/* @requires mapshaper-shapes, mapshaper-segment-geom, mapshaper-segment-sorting */
+/* @requires mapshaper-arcs, mapshaper-segment-geom, mapshaper-segment-sorting */
 
 // Convert an array of intersections into an ArcCollection (for display)
 //

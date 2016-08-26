@@ -1,6 +1,6 @@
 /* @requires
 mapshaper-dataset-utils
-mapshaper-endpoints
+mapshaper-nodes
 mapshaper-shape-geom
 mapshaper-path-index
 mapshaper-path-division

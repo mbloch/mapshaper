@@ -1,4 +1,4 @@
-/* @require mapshaper-shapes */
+/* @require mapshaper-arcs */
 
 MapShaper.editArcs = function(arcs, onPoint) {
   var nn2 = [],

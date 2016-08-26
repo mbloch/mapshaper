@@ -1,4 +1,4 @@
-/* @require mapshaper-geom, mapshaper-shapes, mapshaper-dissolve2 */
+/* @require mapshaper-geom, mapshaper-arcs, mapshaper-dissolve2 */
 
 MapShaper.roundPoints = function(lyr, round) {
   MapShaper.forEachPoint(lyr.shapes, function(p) {

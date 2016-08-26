@@ -35,7 +35,7 @@ var arcs4 = [[[1, 1], [2, 3], [3, 1], [1, 1]]];
 // null dataset
 var arcs5 = [];
 
-describe('mapshaper-shapes.js', function () {
+describe('mapshaper-arcs.js', function () {
   describe('ArcCollection', function () {
 
     describe('dedupCoords()', function () {
