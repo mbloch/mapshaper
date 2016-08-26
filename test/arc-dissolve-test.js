@@ -53,7 +53,7 @@ describe('mapshaper-arc-dissolve.js', function () {
       var arcs = new api.internal.ArcCollection(coords),
           layers = [{
             geometry_type: 'polygon',
-            shapes: [[[~1, ~0, ~3]], [[0, 1, 3], [4]]]
+            shapes: [[[~1, ~0, ~3]], [[0, 1, 3], [4]]] // dcbad, abcda, eghe
           }];
 
       var targetArcs = [[[3, 1], [4, 2], [2, 2], [1, 1], [3, 1]], [[6, 2], [7, 1], [5, 1], [6, 2]]];
@@ -75,8 +75,41 @@ describe('mapshaper-arc-dissolve.js', function () {
       api.internal.dissolveArcs({layers: layers, arcs: arcs});
       assert.deepEqual(layers[0].shapes, [[[0]]]);
       assert.deepEqual(arcs.toArray(), [[[0, 0], [1, 0], [2, 0], [3, 0]]]);
-
     });
+
+    describe('issue #140 -- partially overlapping lines', function() {
+      //
+      //  b --- c
+      //  |
+      //  |
+      //  a
+      //
+      var coords = [[[1, 1], [1, 2]], [[1, 2], [2, 2]]];
+      it("test 1", function() {
+        var arcs = new ArcCollection(coords);
+        var layers = [{
+          geometry_type: 'polyline',
+          shapes: [[[0, 1]], [[0]]]
+        }];
+        api.internal.dissolveArcs({layers: layers, arcs: arcs});
+        assert.deepEqual(layers[0].shapes, [[[0, 1]], [[0]]]);
+      })
+
+      it("test 2", function() {
+        var arcs = new ArcCollection(coords);
+        var layers = [{
+          geometry_type: 'polyline',
+          shapes: [[[~1, ~0]]] // cba
+        }, {
+          geometry_type: 'polyline',
+          shapes: [[[0]]] // ab
+        }];
+        api.internal.dissolveArcs({layers: layers, arcs: arcs});
+        assert.deepEqual(layers[0].shapes, [[[0, 1]]]);
+        assert.deepEqual(layers[1].shapes, [[[~1]]]);
+      })
+
+    })
 
   })
 

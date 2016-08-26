@@ -1,5 +1,6 @@
 /* @requires
 mapshaper-endpoints
+mapshaper-path-endpoints
 mapshaper-dataset-utils
 */
 
@@ -9,8 +10,8 @@ mapshaper-dataset-utils
 MapShaper.dissolveArcs = function(dataset) {
   var arcs = dataset.arcs,
       layers = dataset.layers.filter(MapShaper.layerHasPaths),
-      test = MapShaper.getArcDissolveTest(layers, arcs),
-      groups = [],
+      arcsCanDissolve = MapShaper.getArcDissolveTest(layers, arcs),
+      newArcs = [],
       totalPoints = 0,
       arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
       arcStatus = new Uint8Array(arcs.size());
@@ -22,12 +23,12 @@ MapShaper.dissolveArcs = function(dataset) {
       return MapShaper.editPaths(shape && shape.concat(), translatePath);
     });
   });
-  MapShaper.dissolveArcCollection(arcs, groups, totalPoints);
+  MapShaper.dissolveArcCollection(arcs, newArcs, totalPoints);
 
   function translatePath(path) {
     var pointCount = 0;
-    var path2 = [];
-    var group, arcId, absId, arcLen, fw, arcId2;
+    var newPath = [];
+    var newArc, arcId, absId, arcLen, fw, newArcId;
 
     for (var i=0, n=path.length; i<n; i++) {
       arcId = path[i];
@@ -35,52 +36,53 @@ MapShaper.dissolveArcs = function(dataset) {
       fw = arcId === absId;
 
       if (arcs.arcIsDegenerate(arcId)) {
-        // skip
-      } else if (arcStatus[absId] === 0) {
+        // arc has collapsed -- skip
+      } else if (arcStatus[absId] !== 0) {
+        // arc has already been translated -- skip
+        newArc = null;
+      } else {
         arcLen = arcs.getArcLength(arcId);
 
-        if (group && test(path[i-1], arcId)) {
+        if (newArc && arcsCanDissolve(path[i-1], arcId)) {
           if (arcLen > 0) {
             arcLen--; // shared endpoint not counted;
           }
-          group.push(arcId);  // arc data is appended to previous arc
+          newArc.push(arcId);  // arc data is appended to previous arc
           arcStatus[absId] = 1; // arc is dropped from output
         } else {
-          // new group (i.e. new dissolved arc)
-          group = [arcId];
-          arcIndex[absId] = groups.length;
-          groups.push(group);
+          // start a new dissolved arc
+          newArc = [arcId];
+          arcIndex[absId] = newArcs.length;
+          newArcs.push(newArc);
           arcStatus[absId] = fw ? 2 : 3; // 2: unchanged; 3: reversed
         }
         pointCount += arcLen;
-      } else {
-        group = null;
       }
 
       if (arcStatus[absId] > 1) {
-        // arc is retained (and renumbered) in the dissolved path.
-        arcId2 = arcIndex[absId];
+        // arc is retained (and renumbered) in the dissolved path -- add to path
+        newArcId = arcIndex[absId];
         if (fw && arcStatus[absId] == 3 || !fw && arcStatus[absId] == 2) {
-          arcId2 = ~arcId2;
+          newArcId = ~newArcId;
         }
-        path2.push(arcId2);
+        newPath.push(newArcId);
       }
     }
     totalPoints += pointCount;
-    return path2;
+    return newPath;
   }
 };
 
-MapShaper.dissolveArcCollection = function(arcs, groups, len2) {
-  var nn2 = new Uint32Array(groups.length),
-      xx2 = new Float64Array(len2),
-      yy2 = new Float64Array(len2),
+MapShaper.dissolveArcCollection = function(arcs, newArcs, newLen) {
+  var nn2 = new Uint32Array(newArcs.length),
+      xx2 = new Float64Array(newLen),
+      yy2 = new Float64Array(newLen),
       src = arcs.getVertexData(),
-      zz2 = src.zz ? new Float64Array(len2) : null,
+      zz2 = src.zz ? new Float64Array(newLen) : null,
       offs = 0;
 
-  groups.forEach(function(group, newId) {
-    group.forEach(function(oldId, i) {
+  newArcs.forEach(function(newArc, newId) {
+    newArc.forEach(function(oldId, i) {
       extendDissolvedArc(oldId, newId);
     });
   });
@@ -108,23 +110,26 @@ MapShaper.dissolveArcCollection = function(arcs, groups, len2) {
   }
 };
 
+// Test whether two arcs can be merged together
 MapShaper.getArcDissolveTest = function(layers, arcs) {
   var nodes = MapShaper.getFilteredNodeCollection(layers, arcs),
-      count = 0,
-      lastId;
+      // don't allow dissolving through endpoints of polyline paths
+      lineLayers = layers.filter(function(lyr) {return lyr.geometry_type == 'polyline';}),
+      testLineEndpoint = MapShaper.getPathEndpointTest(lineLayers, arcs),
+      linkCount, lastId;
 
   return function(id1, id2) {
     if (id1 == id2 || id1 == ~id2) {
       verbose("Unexpected arc sequence:", id1, id2);
       return false; // This is unexpected; don't try to dissolve, anyway
     }
-    count = 0;
-    nodes.forEachConnectedArc(id1, countArc);
-    return count == 1 && lastId == ~id2;
+    linkCount = 0;
+    nodes.forEachConnectedArc(id1, countLink);
+    return linkCount == 1 && lastId == ~id2 && !testLineEndpoint(id1) && !testLineEndpoint(~id2);
   };
 
-  function countArc(arcId, i) {
-    count++;
+  function countLink(arcId, i) {
+    linkCount++;
     lastId = arcId;
   }
 };
