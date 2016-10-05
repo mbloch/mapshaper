@@ -95,7 +95,7 @@ Dbf.getValidFieldName = function(name) {
 
 Dbf.initNumericField = function(info, arr, name) {
   var MAX_FIELD_SIZE = 18,
-      size;
+      data, size;
 
   data = this.getNumericFieldInfo(arr, name);
   info.decimals = data.decimals;
