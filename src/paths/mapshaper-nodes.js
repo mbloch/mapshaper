@@ -78,6 +78,16 @@ function NodeCollection(arcs, filter) {
     }
   };
 
+  this.getConnectedArcs = function(arcId) {
+    var ids = [];
+    var nextId = nextConnectedArc(arcId);
+    while (nextId != arcId) {
+      ids.push(nextId);
+      nextId = nextConnectedArc(nextId);
+    }
+    return ids;
+  };
+
   // Returns the id of the first identical arc or @arcId if none found
   // TODO: find a better function name
   this.findMatchingArc = function(arcId) {

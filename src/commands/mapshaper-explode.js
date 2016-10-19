@@ -6,7 +6,7 @@ api.explodeFeatures = function(lyr, arcs, opts) {
       explodedShapes = [],
       explodedLyr = utils.extend({}, lyr);
 
-  lyr.shapes.forEach(function(shp, shpId) {
+  lyr.shapes.forEach(function explodeShape(shp, shpId) {
     var exploded;
     if (!shp) {
       explodedShapes.push(null);
@@ -18,9 +18,7 @@ api.explodeFeatures = function(lyr, arcs, opts) {
       }
       utils.merge(explodedShapes, exploded);
     }
-
-    explodedLyr.shapes = explodedShapes;
-    if (explodedProperties) {
+    if (explodedProperties !== null) {
       for (var i=0, n=exploded ? exploded.length : 1; i<n; i++) {
         explodedProperties.push(MapShaper.cloneProperties(properties[shpId]));
       }
@@ -28,7 +26,7 @@ api.explodeFeatures = function(lyr, arcs, opts) {
   });
 
   explodedLyr.shapes = explodedShapes;
-  if (explodedProperties) {
+  if (explodedProperties !== null) {
     explodedLyr.data = new DataTable(explodedProperties);
   }
   return explodedLyr;
@@ -43,9 +41,9 @@ MapShaper.explodeShape = function(shp) {
 MapShaper.explodePolygon = function(shape, arcs) {
   var paths = MapShaper.getPathMetadata(shape, arcs, "polygon");
   var groups = MapShaper.groupPolygonRings(paths);
-  return groups.map(function(shape) {
-    return shape.map(function(path) {
-      return path.ids;
+  return groups.map(function(group) {
+    return group.map(function(ring) {
+      return ring.ids;
     });
   });
 };

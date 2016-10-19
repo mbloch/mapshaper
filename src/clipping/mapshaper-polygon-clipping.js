@@ -1,5 +1,5 @@
 /* @requires
-mapshaper-polygon-intersection
+mapshaper-pathfinder
 mapshaper-dissolve2
 mapshaper-path-index
 */
@@ -12,7 +12,7 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   var clipArcTouches = 0;
   var clipArcUses = 0;
   var usedClipArcs = [];
-  var dividePath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute);
+  var dividePath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive);
   var dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
 
   // clean each target polygon by dissolving its rings
@@ -157,23 +157,6 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
     targetBits |= fw ? 4 : 0x40; // record as visited
     routeFlags[abs] = targetBits;
     return usable;
-  }
-
-  function chooseRoute(id1, angle1, id2, angle2, prevId) {
-    var selection = 1;
-    if (angle1 == angle2) {
-      // less likely now that congruent arcs are prevented in updateArcIds()
-      var bits2 = MapShaper.getRouteBits(id2, routeFlags);
-      if (bits2 == 3) { // route2 follows a target layer arc; prefer it
-        selection = 2;
-      }
-    } else {
-      // prefer right-hand angle
-      if (angle2 < angle1) {
-        selection = 2;
-      }
-    }
-    return selection;
   }
 
   // Filter a collection of shapes to exclude paths that contain clip/erase arcs

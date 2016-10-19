@@ -63,7 +63,6 @@ MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, cli
     mergedDataset = MapShaper.mergeDatasets([targetDataset, clipDataset]);
     api.buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
     targetDataset.arcs = mergedDataset.arcs; // replace arcs in original dataset with merged arcs
-
   } else {
     mergedDataset = targetDataset;
   }

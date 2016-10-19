@@ -1,4 +1,4 @@
-/* @require mapshaper-polygon-intersection */
+/* @require mapshaper-pathfinder */
 
 // Assumes layers and arcs have been processed with divideArcs()
 /*

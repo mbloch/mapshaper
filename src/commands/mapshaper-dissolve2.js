@@ -1,5 +1,5 @@
 /* @requires
-mapshaper-polygon-intersection
+mapshaper-pathfinder
 mapshaper-polygon-holes
 mapshaper-dissolve
 mapshaper-data-aggregation

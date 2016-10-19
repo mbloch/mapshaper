@@ -1,4 +1,4 @@
-/* @require mapshaper-polygon-intersection, mapshaper-polygon-repair, mapshaper-dissolve2 */
+/* @require mapshaper-pathfinder, mapshaper-polygon-repair, mapshaper-dissolve2 */
 
 /*
 MapShaper.repairPolygonGeometry2 = function(layers, arcs) {

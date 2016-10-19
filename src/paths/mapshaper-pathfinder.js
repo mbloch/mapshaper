@@ -5,6 +5,7 @@ mapshaper-shape-geom
 mapshaper-path-index
 mapshaper-path-division
 mapshaper-polygon-repair
+mapshaper-pathfinder-utils
 */
 
 // Functions for redrawing polygons for clipping / erasing / flattening / division
@@ -104,67 +105,19 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
 };
 
 // Return a function for generating a path across a field of intersecting arcs
-// TODO: add option to calculate angle on sphere for lat-lng coords
+// TODO: add option to use spherical geometry for lat-lng coords
+// TODO: try to remove useRoute() function
 //
-MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute, spherical) {
-  var arcs = nodes.arcs,
-      coords = arcs.getVertexData(),
-      xx = coords.xx,
-      yy = coords.yy,
-      calcAngle = spherical ? geom.signedAngleSph : geom.signedAngle;
+MapShaper.getPathFinder = function(nodes, useRoute, routeIsUsable) {
+
+  function filterArc(arcId) {
+    return routeIsUsable(~arcId); // outward path must be traversable
+  }
 
   function getNextArc(prevId) {
-    var ai = arcs.indexOfVertex(prevId, -2),
-        ax = xx[ai],
-        ay = yy[ai],
-        bi = arcs.indexOfVertex(prevId, -1),
-        bx = xx[bi],
-        by = yy[bi],
-        nextId = NaN,
-        nextAngle = 0;
-
-    nodes.forEachConnectedArc(prevId, function(candId) {
-      if (!routeIsVisible(~candId)) return;
-      if (arcs.getArcLength(candId) < 2) error("[pathfinder] defective arc");
-
-      var ci = arcs.indexOfVertex(candId, -2),
-          cx = xx[ci],
-          cy = yy[ci],
-
-          // sanity check: make sure both arcs share the same vertex;
-          di = arcs.indexOfVertex(candId, -1),
-          dx = xx[di],
-          dy = yy[di],
-          candAngle;
-      if (dx !== bx || dy !== by) {
-        message("cd:", cx, cy, dx, dy, 'arc:', candId);
-        error("Error in node topology");
-      }
-
-      candAngle = calcAngle(ax, ay, bx, by, cx, cy);
-
-      if (candAngle > 0) {
-        if (nextAngle === 0) {
-          nextId = candId;
-          nextAngle = candAngle;
-        } else {
-          var choice = chooseRoute(~nextId, nextAngle, ~candId, candAngle, prevId);
-          if (choice == 2) {
-            nextId = candId;
-            nextAngle = candAngle;
-          }
-        }
-      } else {
-        // candAngle is NaN or 0
-        trace("#getNextArc() Invalid angle; id:", candId, "angle:", candAngle);
-        nodes.debugNode(prevId);
-      }
-    });
-
-    if (nextId === prevId) {
-      // TODO: confirm that this can't happen
-      nodes.debugNode(prevId);
-      error("#getNextArc() nextId === prevId");
+    var nextId = MapShaper.getRightmostArc(prevId, nodes, filterArc);
+    if (prevId === nextId) {
+      error("Pathfinder error");
     }
     return ~nextId; // reverse arc to point onwards
   }
@@ -172,19 +125,14 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute,
   return function(startId) {
     var path = [],
         nextId, msg,
-        candId = startId,
-        verbose = false;
+        candId = startId;
 
     do {
-      if (verbose) msg = (nextId === undefined ? " " : "  " + nextId) + " -> " + candId;
       if (useRoute(candId)) {
         path.push(candId);
         nextId = candId;
-        if (verbose) message(msg);
         candId = getNextArc(nextId);
-        if (verbose && candId == startId ) message("  o", geom.getPlanarPathArea(path, arcs));
       } else {
-        if (verbose) message(msg + " x");
         return null;
       }
 
@@ -201,9 +149,9 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsVisible, chooseRoute,
 // Returns a function for flattening or dissolving a collection of rings
 // Assumes rings are oriented in CW direction
 //
-MapShaper.getRingIntersector = function(nodes, type, flags, spherical) {
+MapShaper.getRingIntersector = function(nodes, type, flags) {
   var arcs = nodes.arcs;
-  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive, chooseRoute, spherical);
+  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive);
   flags = flags || new Uint8Array(arcs.size());
 
   return function(rings) {
@@ -231,17 +179,6 @@ MapShaper.getRingIntersector = function(nodes, type, flags, spherical) {
     return output;
   };
 
-  function chooseRoute(id1, angle1, id2, angle2, prevId) {
-    var route = 1;
-    if (angle1 == angle2) {
-      trace("[chooseRoute()] parallel routes, unsure which to choose");
-      //MapShaper.debugRoute(id1, id2, nodes.arcs);
-    } else if (angle2 < angle1) {
-      route = 2;
-    }
-    return route;
-  }
-
   function routeIsActive(arcId) {
     var bits = MapShaper.getRouteBits(arcId, flags);
     return (bits & 1) == 1;
@@ -250,12 +187,10 @@ MapShaper.getRingIntersector = function(nodes, type, flags, spherical) {
   function useRoute(arcId) {
     var route = MapShaper.getRouteBits(arcId, flags),
         isOpen = false;
-
     if (route == 3) {
       isOpen = true;
       MapShaper.setRouteBits(1, arcId, flags); // close the path, leave visible
     }
-
     return isOpen;
   }
 };
@@ -277,51 +212,3 @@ MapShaper.debugFlags = function(flags) {
     return str;
   }
 };
-
-/*
-// Print info about two arcs whose first segments are parallel
-//
-MapShaper.debugRoute = function(id1, id2, arcs) {
-  var n1 = arcs.getArcLength(id1),
-      n2 = arcs.getArcLength(id2),
-      len1 = 0,
-      len2 = 0,
-      p1, p2, pp1, pp2, ppp1, ppp2,
-      angle1, angle2;
-
-      console.log("chooseRoute() lengths:", n1, n2, 'ids:', id1, id2);
-  for (var i=0; i<n1 && i<n2; i++) {
-    p1 = arcs.getVertex(id1, i);
-    p2 = arcs.getVertex(id2, i);
-    if (i === 0) {
-      if (p1.x != p2.x || p1.y != p2.y) {
-        error("chooseRoute() Routes should originate at the same point)");
-      }
-    }
-
-    if (i > 1) {
-      angle1 = signedAngle(ppp1.x, ppp1.y, pp1.x, pp1.y, p1.x, p1.y);
-      angle2 = signedAngle(ppp2.x, ppp2.y, pp2.x, pp2.y, p2.x, p2.y);
-
-      console.log("angles:", angle1, angle2, 'lens:', len1, len2);
-      // return;
-    }
-
-    if (i >= 1) {
-      len1 += distance2D(p1.x, p1.y, pp1.x, pp1.y);
-      len2 += distance2D(p2.x, p2.y, pp2.x, pp2.y);
-    }
-
-    if (i == 1 && (n1 == 2 || n2 == 2)) {
-      console.log("arc1:", pp1, p1, "len:", len1);
-      console.log("arc2:", pp2, p2, "len:", len2);
-    }
-
-    ppp1 = pp1;
-    ppp2 = pp2;
-    pp1 = p1;
-    pp2 = p2;
-  }
-  return 1;
-};
-*/

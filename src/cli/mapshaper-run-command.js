@@ -17,7 +17,6 @@ mapshaper-innerlines2
 mapshaper-inspect
 mapshaper-join
 mapshaper-keep-shapes
-mapshaper-stitch
 mapshaper-merge-files
 mapshaper-points
 mapshaper-proj
@@ -30,6 +29,9 @@ mapshaper-sort
 mapshaper-svg-style
 mapshaper-uniq
 */
+
+// mapshaper-stitch
+
 
 // TODO: consider refactoring to allow modules
 // @cmd  example: {name: "dissolve", options:{field: "STATE"}}

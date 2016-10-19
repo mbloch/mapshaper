@@ -16,7 +16,6 @@ MapShaper.countArcsInShapes = function(shapes, counts) {
   });
 };
 
-
 // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
 MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
   var index = numArcs ? new Uint8Array(numArcs) : [],
@@ -272,14 +271,17 @@ MapShaper.groupPolygonRings = function(paths) {
 };
 
 MapShaper.getPathMetadata = function(shape, arcs, type) {
-  return (shape || []).map(function(ids) {
-    if (!utils.isArray(ids)) throw new Error("expected array");
-    return {
+  var data = [],
+      ids;
+  for (var i=0, n=shape && shape.length; i<n; i++) {
+    ids = shape[i];
+    data.push({
       ids: ids,
       area: type == 'polygon' ? geom.getPlanarPathArea(ids, arcs) : 0,
       bounds: arcs.getSimpleShapeBounds(ids)
-    };
-  });
+    });
+  }
+  return data;
 };
 
 MapShaper.quantizeArcs = function(arcs, quanta) {

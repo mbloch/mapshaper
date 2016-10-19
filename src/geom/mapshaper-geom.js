@@ -499,6 +499,7 @@ var geom = {
   segmentHit: segmentHit,
   segmentIntersection: segmentIntersection,
   distanceSq: distanceSq,
+  distance2D: distance2D,
   distance3D: distance3D,
   innerAngle: innerAngle,
   innerAngle2: innerAngle2,
