@@ -1,6 +1,6 @@
 /* @require mapshaper-pathfinder */
 
-// Assumes layers and arcs have been processed with divideArcs()
+// Assumes layers and arcs have been processed with addIntersectionCuts()
 /*
 api.dividePolygonLayer = function(lyrA, lyrB, arcs) {
   if (lyrA.geometry_type != 'polygon') {

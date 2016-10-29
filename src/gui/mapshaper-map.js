@@ -18,6 +18,7 @@ MapShaper.getBoundsOverlap = function(bb1, bb2) {
 };
 
 // Test if map should be re-framed to show updated layer
+// TODO: only reframe if new bounds are out-of-view
 gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
   if (!prevBounds) return true;
   if (prevBounds.xmin === 0 || newBounds.xmin === 0) return true; // kludge to handle tables

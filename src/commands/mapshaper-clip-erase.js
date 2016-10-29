@@ -69,7 +69,7 @@ MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, cli
 
   if (usingPathClip) {
     // add vertices at all line intersections
-    nodes = MapShaper.divideArcs(mergedDataset);
+    nodes = MapShaper.addIntersectionCuts(mergedDataset, opts);
   }
 
   outputLayers = targetLayers.map(function(targetLyr) {

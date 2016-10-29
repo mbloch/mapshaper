@@ -91,7 +91,6 @@ function NodeCollection(arcs, filter) {
   // Returns the id of the first identical arc or @arcId if none found
   // TODO: find a better function name
   this.findMatchingArc = function(arcId) {
-    var verbose = arcId ==  -12794 || arcId == 19610;
     var nextId = nextConnectedArc(arcId),
         match = arcId;
     while (nextId != arcId) {
@@ -101,8 +100,7 @@ function NodeCollection(arcs, filter) {
       nextId = nextConnectedArc(nextId);
     }
     if (match != arcId) {
-      trace("found identical arc:", arcId, "->", match);
-      // this.debugNode(arcId);
+      // console.log("found identical arc:", arcId, "->", match);
     }
     return match;
   };

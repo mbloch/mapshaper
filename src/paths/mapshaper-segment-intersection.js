@@ -89,7 +89,7 @@ MapShaper.findSegmentIntersections = (function() {
         intersections = [],
         arr;
     for (i=0; i<stripeCount; i++) {
-      arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy, spherical);
+      arr = MapShaper.intersectSegments(stripes[i], raw.xx, raw.yy);
       for (j=0; j<arr.length; j++) {
         intersections.push(arr[j]);
       }
@@ -139,7 +139,7 @@ MapShaper.calcSegmentIntersectionStripeCount = function(arcs) {
 // @ids: Array of indexes: [s0p0, s0p1, s1p0, s1p1, ...] where xx[sip0] <= xx[sip1]
 // @xx, @yy: Arrays of x- and y-coordinates
 //
-MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
+MapShaper.intersectSegments = function(ids, xx, yy) {
   var lim = ids.length - 2,
       intersections = [];
   var s1p1, s1p2, s2p1, s2p2,
@@ -197,6 +197,7 @@ MapShaper.intersectSegments = function(ids, xx, yy, spherical) {
         seg2 = [s2p1, s2p2];
         intersections.push(MapShaper.formatIntersection(hit, seg1, seg2, xx, yy));
         if (hit.length == 4) {
+          // two collinear segments may have two endpoint intersections
           intersections.push(MapShaper.formatIntersection(hit.slice(2), seg1, seg2, xx, yy));
         }
       }

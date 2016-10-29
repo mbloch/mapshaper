@@ -17,7 +17,7 @@ api.stitch = function(dataset) {
   if (!MapShaper.snapEdgeArcs(arcs)) {
     return;
   }
-  nodes = MapShaper.divideArcs(dataset);
+  nodes = MapShaper.addIntersectionCuts(dataset);
   // console.log(arcs.toArray())
 
   // TODO: implement pathfinding on sphere

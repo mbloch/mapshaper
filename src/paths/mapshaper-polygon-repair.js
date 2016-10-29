@@ -16,7 +16,7 @@ MapShaper.cleanShape = function(shape, arcs, type) {
   return MapShaper.editPaths(shape, function(path) {
     var cleaned = MapShaper.cleanPath(path, arcs);
     if (type == 'polygon' && cleaned) {
-      MapShaper.removeSpikesInPath(cleaned); // assumed by divideArcs()
+      MapShaper.removeSpikesInPath(cleaned); // assumed by addIntersectionCuts()
       if (geom.getPlanarPathArea(cleaned, arcs) === 0) {
         cleaned = null;
       }
@@ -63,7 +63,7 @@ MapShaper.removeSpikesInPath = function(ids) {
 // when part of a self-intersecting polygon is removed
 //
 MapShaper.repairPolygonGeometry = function(layers, dataset, opts) {
-  var nodes = MapShaper.divideArcs(dataset);
+  var nodes = MapShaper.addIntersectionCuts(dataset);
   layers.forEach(function(lyr) {
     MapShaper.repairSelfIntersections(lyr, nodes);
   });

@@ -119,10 +119,12 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsUsable) {
     if (prevId === nextId) {
       error("Pathfinder error");
     }
+    // console.log("  -> to:", ~nextId)
     return ~nextId; // reverse arc to point onwards
   }
 
   return function(startId) {
+    // console.log(" # from:" ,startId);
     var path = [],
         nextId, msg,
         candId = startId;

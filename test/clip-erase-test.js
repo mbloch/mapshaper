@@ -124,7 +124,7 @@ describe('mapshaper-clip-erase.js', function () {
           [[4, 4], [5, 4], [5, 1], [1, 1], [1, 4], [2, 4]],
           [[2, 4], [3, 4]]];
 
-      var map = api.internal.insertClippingPoints(arcs);
+      var map = api.internal.divideArcs(arcs);
       assert.deepEqual(arcs.toArray(), target);
       assert.deepEqual(api.utils.toArray(map), [0, 3]);
     })
@@ -178,7 +178,7 @@ describe('mapshaper-clip-erase.js', function () {
           [[4, 4], [4, 3]],
           [[4, 3], [4, 2], [2, 2], [2, 5]]];
 
-      var map = api.internal.insertClippingPoints(arcs);
+      var map = api.internal.divideArcs(arcs);
 
       assert.deepEqual(arcs.toArray(), target);
       assert.deepEqual(api.utils.toArray(map), [0, 1, 4])
@@ -310,7 +310,7 @@ describe('mapshaper-clip-erase.js', function () {
           [[5, 3], [4, 3]],
           [[4, 3], [3, 3], [3, 4]]];
 
-      var map = api.internal.insertClippingPoints(arcs);
+      var map = api.internal.divideArcs(arcs);
       assert.deepEqual(arcs.toArray(), target);
       assert.deepEqual(api.utils.toArray(map), [0, 3, 6]);
     })
@@ -424,7 +424,7 @@ describe('mapshaper-clip-erase.js', function () {
       var target = JSON.parse(JSON.stringify(coords));
       var arcs = new ArcCollection(coords);
 
-      var map = api.internal.insertClippingPoints(arcs);
+      var map = api.internal.divideArcs(arcs);
       assert.deepEqual(arcs.toArray(), target);
       assert.deepEqual(api.utils.toArray(map), [0, 1]);
     })

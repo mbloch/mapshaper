@@ -14,7 +14,7 @@ MapShaper.setCoordinatePrecision = function(dataset, precision) {
     return [round(x), round(y)];
   });
   if (dataset.arcs) {
-    nodes = MapShaper.divideArcs(dataset);
+    nodes = MapShaper.addIntersectionCuts(dataset);
     dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
   }
   dataset.layers.forEach(function(lyr) {

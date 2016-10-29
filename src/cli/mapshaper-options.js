@@ -18,6 +18,10 @@ MapShaper.getOptionParser = function() {
         type: 'flag',
         describe: "retain the original layer(s) instead of replacing"
       },
+      noSnapOpt = {
+        // describe: "don't snap points before applying command"
+        type: 'flag'
+      },
       encodingOpt = {
         describe: "text encoding (applies to .dbf and delimited text files)"
       },
@@ -208,6 +212,7 @@ MapShaper.getOptionParser = function() {
     .option("bbox", bboxOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
+    .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
   parser.command("dissolve")
@@ -240,6 +245,7 @@ MapShaper.getOptionParser = function() {
     .option("copy-fields", copyFieldsOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
+    .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
   parser.command("each")
@@ -272,6 +278,7 @@ MapShaper.getOptionParser = function() {
     .option("bbox", bboxOpt)
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
+    .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
   parser.command("explode")

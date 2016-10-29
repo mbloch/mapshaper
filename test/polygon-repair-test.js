@@ -3,12 +3,12 @@ var api = require('../'),
     internal = api.internal,
     ArcCollection = internal.ArcCollection;
 
-function divideArcs(layers, arcs) {
+function addIntersectionCuts(layers, arcs) {
   var dataset = {
     layers: layers,
     arcs: arcs
   };
-  return api.internal.divideArcs(dataset);
+  return api.internal.addIntersectionCuts(dataset);
 }
 
 describe('mapshaper-polygon-repair.js', function () {
@@ -49,7 +49,7 @@ describe('mapshaper-polygon-repair.js', function () {
           shapes: [[[0]]]
         };
         var arcs = new ArcCollection(coords);
-        var nodes = divideArcs([lyr], arcs);
+        var nodes = addIntersectionCuts([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes)
         var target = [[[0, 2]]];
 
@@ -63,7 +63,7 @@ describe('mapshaper-polygon-repair.js', function () {
           shapes: [[[0]]]
         };
         var arcs = new ArcCollection(coords);
-        var nodes = divideArcs([lyr], arcs);
+        var nodes = addIntersectionCuts([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes)
         var target = [[[1]]];
 
@@ -78,7 +78,7 @@ describe('mapshaper-polygon-repair.js', function () {
           shapes: [[[0]]]
         };
         var arcs = new ArcCollection(coords);
-        var nodes = divideArcs([lyr], arcs);
+        var nodes = addIntersectionCuts([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes)
         var target = [[[1]]];
 
@@ -103,7 +103,7 @@ describe('mapshaper-polygon-repair.js', function () {
           shapes: [[[0]]]
         };
         var arcs = new ArcCollection(coords);
-        var nodes = divideArcs([lyr], arcs);
+        var nodes = addIntersectionCuts([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes);
         var target = [[[0, 2]]];
         assert.deepEqual(lyr.shapes, target);
@@ -116,7 +116,7 @@ describe('mapshaper-polygon-repair.js', function () {
           shapes: [[[0]]]
         };
         var arcs = new ArcCollection(coords);
-        var nodes = divideArcs([lyr], arcs);
+        var nodes = addIntersectionCuts([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes);
         var target = [[[1]]];
 
@@ -125,7 +125,7 @@ describe('mapshaper-polygon-repair.js', function () {
     })
 
     describe('Fig xx - polygon with two self-intersections', function () {
-      return; // TODO: handle this polygon; currently fails in divideArcs() because area == 0
+      return; // TODO: handle this polygon; currently fails in addIntersectionCuts() because area == 0
       //
       //  Remove the triangles
       //
@@ -144,7 +144,7 @@ describe('mapshaper-polygon-repair.js', function () {
           shapes: [[[0]]]
         };
         var arcs = new ArcCollection(coords);
-        var nodes = divideArcs([lyr], arcs);
+        var nodes = addIntersectionCuts([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes);
         var target = [[[0, 2, 4]]];
         assert.deepEqual(lyr.shapes, target);
@@ -171,7 +171,7 @@ describe('mapshaper-polygon-repair.js', function () {
           shapes: [[[0]]]
         };
         var arcs = new ArcCollection(coords);
-        var nodes = divideArcs([lyr], arcs);
+        var nodes = addIntersectionCuts([lyr], arcs);
         api.internal.repairSelfIntersections(lyr, nodes);
         var target = [[[0, 2, 4]]];
         assert.deepEqual(lyr.shapes, target);

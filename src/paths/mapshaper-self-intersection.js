@@ -3,7 +3,7 @@
 // Return function for splitting self-intersecting polygon rings
 // Returned function receives a single path, returns an array of paths
 // Assumes that any intersections occur at vertices, not along segments
-// (requires that MapShaper.divideArcs() has already been run)
+// (requires that MapShaper.addIntersectionCuts() has already been run)
 //
 MapShaper.getSelfIntersectionSplitter = function(nodes) {
 

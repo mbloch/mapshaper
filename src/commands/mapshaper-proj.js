@@ -2,7 +2,6 @@
 mapshaper-projections
 mapshaper-geom
 mapshaper-arc-editor
-mapshaper-segment-geom
 mapshaper-shape-utils
 */
 

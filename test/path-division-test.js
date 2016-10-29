@@ -3,6 +3,81 @@ var api = require('../'),
     ArcCollection = api.internal.ArcCollection;
 
 describe('mapshaper-path-division.js', function () {
+
+  describe('insertCutPoints()', function () {
+    var insertCutPoints = api.internal.insertCutPoints;
+    it('skip point at start of an arc', function () {
+      var arcs = new ArcCollection([[[0, 0], [1, 0]]]);
+      var points = [{x: 0, y: 0, i: 0}];
+      var map = insertCutPoints(points, arcs);
+      assert.deepEqual(arcs.toArray(), [[[0, 0], [1, 0]]]);
+    })
+  })
+
+  describe('getCutPoint()', function () {
+    var getCutPoint = api.internal.getCutPoint;
+    var xx = [0, 0, 1, 1, 2];
+    var yy = [0, 0, 1, 2, 2];
+
+    it('out-of-range cut point-> null', function() {
+      assert.equal(getCutPoint(-1e-20, 0, 1, 2, xx, yy), null)
+    })
+
+    it('out-of-sequence arc ids -> error', function() {
+      assert.throws(function() {
+        getCutPoint(0.5, 0.5, 1, 3, xx, yy);
+      })
+      assert.throws(function() {
+        getCutPoint(0.5, 0.5, 2, 1, xx, yy);
+      })
+    })
+
+    it('midpoint', function() {
+      assert.deepEqual(getCutPoint(0.5, 0.5, 1, 2, xx, yy), {x: 0.5, y: 0.5, i: 1});
+      assert.deepEqual(getCutPoint(1, 1.5, 2, 3, xx, yy), {x: 1, y: 1.5, i: 2});
+    })
+  })
+
+  describe('filterSortedCutPoints()', function () {
+    var arcs = new ArcCollection([[[0,1], [1, 1], [2, 1]]]);
+    it('remove duplicates from sorted points', function () {
+
+      var points = [
+        {x: 0, y: 1, i: 0}, {x: 0, y: 1, i: 0},
+        {x: 1, y: 1, i: 1}, {x: 1, y: 1, i: 1},
+        {x: 2, y: 1, i: 2}
+        ];
+      assert.deepEqual(api.internal.filterSortedCutPoints(points, arcs),
+        [{x: 1, y: 1, i: 1}]);
+
+    })
+  });
+
+  describe('sortCutPoints()', function () {
+    it('different ids', function () {
+      var points = [{x: 0, y: 0, i: 1}, {x: 1, y: 1, i: 2}, {x: 4, y: 3, i: 0}];
+      api.internal.sortCutPoints(points);
+      assert.deepEqual(points, [{x: 4, y: 3, i: 0}, {x: 0, y: 0, i: 1}, {x: 1, y: 1, i: 2}])
+    })
+
+    it('same ids', function () {
+      var xx = [0, 1],
+          yy = [0, 1];
+      var points = [{x: 0.2, y: 0.2, i: 0, }, {x: 0.1, y: 0.1, i: 0}];
+      api.internal.sortCutPoints(points, xx, yy);
+      assert.deepEqual(points, [{x: 0.1, y: 0.1, i: 0}, {x: 0.2, y: 0.2, i: 0, }])
+    })
+
+    it('same ids2', function() {
+      var xx = [1, 0],
+          yy = [1, 0];
+      var points = [{x: 0.2, y: 0.2, i: 0, }, {x: 0.1, y: 0.1, i: 0}];
+      api.internal.sortCutPoints(points, xx, yy);
+      assert.deepEqual(points, [{x: 0.2, y: 0.2, i: 0, }, {x: 0.1, y: 0.1, i: 0}])
+
+    })
+  })
+
   // TODO: move to correct file
   describe('setting bits', function() {
     var setBits = api.internal.setBits,
@@ -37,7 +112,7 @@ describe('mapshaper-path-division.js', function () {
         [[2, 2], [2, 4], [4, 4], [4, 2], [2, 2]]];
 
     var arcs = new ArcCollection(coords);
-    var map = api.internal.insertClippingPoints(arcs);
+    var map = api.internal.divideArcs(arcs);
     var nodes = new api.internal.NodeCollection(arcs);
 
     it('insert clipping points', function () {
@@ -138,7 +213,7 @@ describe('mapshaper-path-division.js', function () {
 
 
     var arcs = new ArcCollection(coords);
-    var map = api.internal.insertClippingPoints(arcs);
+    var map = api.internal.divideArcs(arcs);
 
     it('arcs are divided', function () {
       var targetArcs = [
@@ -189,7 +264,7 @@ describe('mapshaper-path-division.js', function () {
       shapes: [[[1, 2]], [[4, ~2]]]
     };
 
-    var map = api.internal.insertClippingPoints(arcs);
+    var map = api.internal.divideArcs(arcs);
     var nodes = new api.internal.NodeCollection(arcs);
     api.internal.updateArcIds(lyrA.shapes, map, nodes);
     api.internal.updateArcIds(lyrB.shapes, map, nodes);
@@ -246,7 +321,5 @@ describe('mapshaper-path-division.js', function () {
       assert.deepEqual(dividedLyr.shapes, target);
     })
     */
-
   })
-
 })

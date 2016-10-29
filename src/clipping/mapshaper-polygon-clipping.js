@@ -15,6 +15,7 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   var dividePath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive);
   var dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
 
+
   // clean each target polygon by dissolving its rings
   targetShapes = targetShapes.map(dissolvePolygon);
 
@@ -28,7 +29,7 @@ MapShaper.clipPolygons = function(targetShapes, clipShapes, nodes, type) {
   MapShaper.openArcRoutes(clipShapes, arcs, clipFlags, type == 'clip', type == 'erase', !!"dissolve", 0x11);
 
   var index = new PathIndex(clipShapes, arcs);
-  var clippedShapes = targetShapes.map(function(shape) {
+  var clippedShapes = targetShapes.map(function(shape, i) {
     if (shape) {
       return clipPolygon(shape, type, index);
     }

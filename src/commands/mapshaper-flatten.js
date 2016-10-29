@@ -3,7 +3,7 @@
 // Flatten overlapping polygon shapes
 // (Unfinished)
 api.flattenLayer = function(lyr, dataset, opts) {
-  var nodes = MapShaper.divideArcs(dataset);
+  var nodes = MapShaper.addIntersectionCuts(dataset);
   var flatten = MapShaper.getPolygonFlattener(nodes);
   var lyr2 = {data: null};
   lyr2.shapes = lyr.shapes.map(flatten);
