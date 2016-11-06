@@ -216,33 +216,38 @@ Dbf.getDecimalFormatter = function(size, decimals) {
 };
 
 Dbf.getNumericFieldInfo = function(arr, name) {
-  var maxDecimals = 0,
-      limit = 15,
-      min = Infinity,
-      max = -Infinity,
+  var min = 0,
+      max = 0,
       k = 1,
-      val, decimals;
+      power = 1,
+      decimals = 0,
+      eps = 1e-15,
+      val;
   for (var i=0, n=arr.length; i<n; i++) {
     val = arr[i][name];
     if (!utils.isFiniteNumber(val)) {
       continue;
     }
-    decimals = 0;
-    if (val < min) min = val;
-    if (val > max) max = val;
-    while (val * k % 1 !== 0) {
-      if (decimals == limit) {
-        // TODO: verify limit, remove oflo message, round overflowing values
-        // trace ("#getNumericFieldInfo() Number field overflow; value:", val);
+    if (val < min || val > max) {
+      if (val < min) min = val;
+      if (val > max) max = val;
+      while (Math.abs(val) >= power) {
+        power *= 10;
+        eps *= 10;
+      }
+    }
+    while (Math.abs(Math.round(val * k) - val * k) > eps) {
+      if (decimals == 15) { // dbf limit
+        // TODO: round overflowing values ?
         break;
       }
       decimals++;
+      eps *= 10;
       k *= 10;
     }
-    if (decimals > maxDecimals) maxDecimals = decimals;
   }
   return {
-    decimals: maxDecimals,
+    decimals: decimals,
     min: min,
     max: max
   };
