@@ -60,11 +60,39 @@ describe('dbf-writer.js', function () {
   })
 
   describe('#getNumericFieldInfo()', function () {
+    function calc(arr) {
+      var records = arr.map(function(n) {return {foo: n}});
+      return Dbf.getNumericFieldInfo(records, 'foo');
+    }
     it('test1', function () {
-      var data = [{foo: 0}, {foo: -100.22}, {foo: 0.2}];
-      assert.deepEqual(Dbf.getNumericFieldInfo(data, 'foo'),
+      assert.deepEqual(calc([0, -100.22, 0.2]),
         {min: -100.22, max: 0.2, decimals: 2});
-    })
+    });
+
+    it('test2', function () {
+      assert.deepEqual(calc([-0.000001, 100000000.999999]),
+        {min: -0.000001, max: 100000000.999999, decimals: 6});
+    });
+
+    it('test3', function () {
+      assert.deepEqual(calc([-73.9356]),
+        {min: -73.9356, max: 0, decimals: 4});
+    });
+
+    it('test4', function () {
+      assert.deepEqual(calc([Infinity, -Infinity, 2, null, NaN, undefined]),
+        {min: 0, max: 2, decimals: 0});
+    });
+
+    it('test5', function () {
+      assert.deepEqual(calc([]),
+        {min: 0, max: 0, decimals: 0});
+    });
+
+    it('test6', function () {
+      assert.deepEqual(calc([2.324209002348e-6]),
+        {min: 0, max: 2.324209002348e-6, decimals: 15});
+    });
   })
 
   describe('#discoverFieldType()', function () {
