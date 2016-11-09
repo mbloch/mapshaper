@@ -63,6 +63,9 @@ MapShaper.simplifyPaths = function(arcs, opts) {
   } else {
     MapShaper.simplifyPaths2D(arcs, simplifyPath);
   }
+  if (opts.lock_box) {
+    MapShaper.protectContentEdges(arcs);
+  }
 };
 
 MapShaper.simplifyPaths2D = function(arcs, simplify) {
@@ -108,6 +111,38 @@ MapShaper.getSimplifyFunction = function(opts) {
   return f;
 };
 
+MapShaper.protectContentEdges = function(arcs) {
+  var e = 1e-14;
+  var bb = arcs.getBounds();
+  bb.padBounds(-e, -e, -e, -e);
+  MapShaper.limitSimplificationExtent(arcs, bb.toArray(), true);
+};
+
+// @hardLimit
+//    true: never remove edge vertices
+//    false: never remove before other vertices
+MapShaper.limitSimplificationExtent = function(arcs, bb, hardLimit) {
+  var arcBounds = arcs.getBounds().toArray();
+  // return if content doesn't reach edges
+  if (containsBounds(bb, arcBounds) === true) return;
+  arcs.forEach3(function(xx, yy, zz) {
+    var lockZ = hardLimit ? Infinity : 0,
+    x, y;
+    for (var i=0, n=zz.length; i<n; i++) {
+      x = xx[i];
+      y = yy[i];
+      if (x >= bb[2] || x <= bb[0] || y <= bb[1] || y >= bb[3]) {
+        if (lockZ === 0) {
+          lockZ = MapShaper.findMaxThreshold(zz);
+        }
+        if (zz[i] !== Infinity) { // don't override lock value
+          zz[i] = lockZ;
+        }
+      }
+    }
+  });
+};
+
 // Protect polar coordinates and coordinates at the prime meridian from
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
@@ -116,25 +151,7 @@ MapShaper.protectWorldEdges = function(arcs) {
   // Need to handle coords with rounding errors:
   // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
   // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
-  var bb1 = MapShaper.getWorldBounds(1e-12),
-      bb2 = arcs.getBounds().toArray();
-  if (containsBounds(bb1, bb2) === true) return; // return if content doesn't reach edges
-  arcs.forEach3(function(xx, yy, zz) {
-    var maxZ = 0,
-    x, y;
-    for (var i=0, n=zz.length; i<n; i++) {
-      x = xx[i];
-      y = yy[i];
-      if (x > bb1[2] || x < bb1[0] || y < bb1[1] || y > bb1[3]) {
-        if (maxZ === 0) {
-          maxZ = MapShaper.findMaxThreshold(zz);
-        }
-        if (zz[i] !== Infinity) { // don't override lock value
-          zz[i] = maxZ;
-        }
-      }
-    }
-  });
+  MapShaper.limitSimplificationExtent(arcs, MapShaper.getWorldBounds(1e-12), false);
 };
 
 // Return largest value in an array, ignoring Infinity (lock value)

@@ -20,6 +20,20 @@ describe("mapshaper-simplify.js", function() {
     });
   });
 
+  describe('-simplify lock-box option', function() {
+    it('protects a square shape', function(done) {
+      var square = {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [0, 1], [2, 1], [2, 0], [0, 0]]]
+      };
+      api.applyCommands('-simplify 0% lock-box', square, function(err, data) {
+        assert.deepEqual(JSON.parse(data).geometries[0], square);
+        done();
+      })
+    })
+
+  })
+
   describe('simplify() creates database.info.simplify object', function () {
     it('default method, auto-detect spherical', function () {
       var arcs = new api.internal.ArcCollection([[[180, 90], [-180, -90]]]);

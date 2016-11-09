@@ -561,6 +561,10 @@ MapShaper.getOptionParser = function() {
       describe: "prevent small polygon features from disappearing",
       type: "flag"
     })
+    .option("lock-box", {
+      // describe: "don't remove vertices along bbox edges"
+      type: "flag"
+    })
     .option("no-repair", {
       describe: "don't remove intersections introduced by simplification",
       type: "flag"
