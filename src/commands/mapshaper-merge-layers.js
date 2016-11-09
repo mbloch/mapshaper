@@ -24,10 +24,16 @@ api.mergeLayers = function(layers) {
     } else {
       indexedLyr = index[key];
       indexedLyr.name = utils.mergeNames(indexedLyr.name, lyr.name);
-      indexedLyr.shapes = indexedLyr.shapes.concat(lyr.shapes);
-      if (indexedLyr.data) {
+      if (indexedLyr.shapes && lyr.shapes) {
+        indexedLyr.shapes = indexedLyr.shapes.concat(lyr.shapes);
+      } else {
+        indexedLyr.shapes = null;
+      }
+      if (indexedLyr.data && lyr.data) {
         records = indexedLyr.data.getRecords().concat(lyr.data.getRecords());
         indexedLyr.data = new DataTable(records);
+      } else {
+        indexedLyr.data = null;
       }
     }
   });

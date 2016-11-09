@@ -34,6 +34,23 @@ describe('mapshaper-merge-layers.js', function () {
       })
     })
 
+    it('layers with only data are merged', function () {
+      var lyr1 = {
+        data: new internal.DataTable([{a: 9, b: ''}, {b: 'b', a: 8}])
+      };
+      var lyr2 = {
+        data: new internal.DataTable([{a: 7, b: 'w'}])
+      };
+      var lyr3 = {
+        data: new internal.DataTable([{b: 'e', a: 7}])
+      };
+      var merged = api.mergeLayers([lyr1, lyr2, lyr3]);
+      assert.deepEqual(merged[0].data.getRecords(), [{a: 9, b: ''}, {b: 'b', a: 8},
+        {a: 7, b: 'w'}, {b: 'e', a: 7}]);
+      assert.equal(merged.length, 1);
+
+    })
+
     it('layers with incompatible data are not merged', function () {
       var lyr1 = {
         geometry_type: "point",
