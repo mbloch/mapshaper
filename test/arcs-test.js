@@ -38,6 +38,8 @@ var arcs5 = [];
 describe('mapshaper-arcs.js', function () {
   describe('ArcCollection', function () {
 
+
+
     describe('dedupCoords()', function () {
       it('NaNs are removed', function() {
         var xy = [[[NaN, NaN], [NaN, NaN], [NaN, NaN]], [[NaN, NaN], [NaN, NaN]]];
@@ -96,6 +98,14 @@ describe('mapshaper-arcs.js', function () {
       var target = [69.41179916666665, 30.197322777777778, 140.70805638888888, 41.2486984752703];
       assert.deepEqual(arcs.getBounds().toArray(), target);
     });
+
+    it('#getBounds() returns a copy', function () {
+      var arcs = new ArcCollection(arcs3);
+      var arr1 = arcs.getBounds().toArray();
+      var bounds2 = arcs.getBounds();
+      bounds2.padBounds(1, 1, 1, 1);
+      assert.deepEqual(arr1, arcs.getBounds().toArray());
+    })
 
     it('#getPointCount() returns correct point count', function() {
       assert.equal(new ArcCollection(arcs3).getPointCount(), 10)

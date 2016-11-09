@@ -573,7 +573,7 @@ function ArcCollection() {
   };
 
   this.getBounds = function() {
-    return _allBounds;
+    return _allBounds.clone();
   };
 
   this.getSimpleShapeBounds = function(arcIds, bounds) {
