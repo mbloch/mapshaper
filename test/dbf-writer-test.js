@@ -93,6 +93,30 @@ describe('dbf-writer.js', function () {
       assert.deepEqual(calc([2.324209002348e-6]),
         {min: 0, max: 2.324209002348e-6, decimals: 15});
     });
+
+   it('test7', function () {
+      assert.deepEqual(calc([ 100000.00000001]),
+        {min: 0, max:100000.00000001, decimals: 8});
+    });
+
+   it('test8', function () {
+      // this used to fail
+      assert.deepEqual(calc([0.0000001, 0.99999, 0.00002, 0.001]),
+        {min: 0, max: 0.99999, decimals: 7});
+    });
+
+   /*
+   // TODO: still some issues with rounding causing more decimals than needed
+   it('test9', function () {
+      assert.deepEqual(calc([ 1200000.00000001]),
+        {min: 0, max:1200000.00000001, decimals: 8});
+    });
+
+   it('test10', function () {
+      assert.deepEqual(calc([10000000.9999999]),
+        {min: 0, max: 10000000.9999999, decimals: 0});
+    });
+    */
   })
 
   describe('#discoverFieldType()', function () {
