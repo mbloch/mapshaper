@@ -65,15 +65,15 @@ var ExportControl = function(model) {
 
   function getInputFormats() {
     return model.getDatasets().reduce(function(memo, d) {
-      var fmt = d.info && d.info.input_format;
-      if (fmt) memo.push(fmt);
-      return memo;
+      var fmts = d.info && d.info.input_formats || [];
+      return memo.concat(fmts);
     }, []);
   }
 
   function getDefaultExportFormat() {
     var dataset = model.getEditingLayer().dataset;
-    return dataset.info && dataset.info.input_format || 'geojson';
+    return dataset.info && dataset.info.input_format &&
+        dataset.info.input_formats[0] || 'geojson';
   }
 
   function initFormatMenu() {

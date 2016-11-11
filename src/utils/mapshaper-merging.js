@@ -15,6 +15,7 @@ MapShaper.mergeDatasets = function(arr) {
   var arcSources = [],
       arcCount = 0,
       mergedLayers = [],
+      mergedInfo = MapShaper.mergeDatasetInfo(arr),
       mergedArcs;
 
   arr.forEach(function(data) {
@@ -40,9 +41,40 @@ MapShaper.mergeDatasets = function(arr) {
   }
 
   return {
+    info: mergedInfo,
     arcs: mergedArcs,
     layers: mergedLayers
   };
+};
+
+MapShaper.mergeDatasetInfo = function(arr) {
+  // Get crs, prevent incompatible CRSs
+  var crs = arr.reduce(function(memo, d) {
+    var P = MapShaper.getDatasetProjection(d);
+    if (!memo) {
+      memo = P;
+    } else if (memo && P) {
+      if (memo.is_latlong != P.is_latlong) {
+        stop("Unable to combine projected and unprojected datasets");
+      } else if (memo.is_latlong) {
+        // datasets are both unprojected
+        // TODO: check for incompatibility
+      } else {
+        // datasets are both unprojected
+        // TODO: check for incompatibility
+      }
+    }
+    return memo;
+  }, null);
+  var info = arr.reduce(function(memo, d) {
+    var info = d.info || {};
+    memo.input_files = memo.input_files.concat(info.input_files || []);
+    memo.input_formats = memo.input_formats.concat(info.input_formats || []);
+    // merge other info properties (e.g. input_geojson_crs, input_delimiter, input_prj)
+    // TODO: check for incompatibilities
+    return utils.defaults(memo, info);
+  }, {crs: crs, input_formats: [], input_files: []});
+  return info;
 };
 
 MapShaper.mergeArcs = function(arr) {

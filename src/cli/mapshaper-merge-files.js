@@ -1,40 +1,38 @@
 /* @requires mapshaper-file-import, mapshaper-path-import, mapshaper-merging */
 
-api.mergeFiles = function(files, opts) {
+// Import multiple files to one dataset and merge any compatible layers
+MapShaper.importMergedFiles = function(files, opts) {
+  var combined = MapShaper.importFiles(files, opts);
+  combined.layers = api.mergeLayers(combined.layers);
+  return combined;
+};
+
+// Import multiple files to a single dataset
+MapShaper.importFiles = function(files, opts) {
+  var unbuiltTopology = false;
   var datasets = files.map(function(fname) {
     // import without topology or snapping
     var importOpts = utils.defaults({no_topology: true, auto_snap: false, snap_interval: null, files: [fname]}, opts);
-    return api.importFile(fname, importOpts);
+    var dataset = api.importFile(fname, importOpts);
+    // check if dataset contains non-topological paths
+    // TODO: may also need to rebuild topology if multiple topojson files are merged
+    if (dataset.arcs && dataset.arcs.length > 0 && dataset.import_formats[0] != 'topojson') {
+      unbuiltTopology = true;
+    }
+    return dataset;
   });
+  var combined = MapShaper.mergeDatasets(datasets);
 
-  // Don't allow multiple input formats
-  var formats = datasets.map(function(d) {
-    return d.info.input_format;
-  });
-  if (utils.uniq(formats).length != 1) {
-    stop("Importing files with different formats is not supported");
-  }
-
-  var merged = MapShaper.mergeDatasets(datasets);
-  // kludge -- using info property of first dataset
-  merged.info = datasets[0].info;
-  merged.info.input_files = files;
-
-  // Don't try to re-build topology of TopoJSON files
+  // Build topology, if needed
   // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
   // (but problem of mismatched coordinates due to quantization in input files.)
-  if (!opts.no_topology && merged.info.input_format != 'topojson') {
+  if (unbuiltTopology && !opts.no_topology) {
     // TODO: remove duplication with mapshaper-path-import.js; consider applying
     //   snapping option inside buildTopology()
     if (opts.auto_snap || opts.snap_interval) {
-      MapShaper.snapCoords(merged.arcs, opts.snap_interval);
+      MapShaper.snapCoords(combined.arcs, opts.snap_interval);
     }
-
-    api.buildTopology(merged);
+    api.buildTopology(combined);
   }
-
-  if (opts.merge_files) {
-    merged.layers = api.mergeLayers(merged.layers);
-  }
-  return merged;
+  return combined;
 };

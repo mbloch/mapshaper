@@ -21,7 +21,7 @@ MapShaper.exportFileContent = function(dataset, opts) {
   if (!outFmt) {
     error("[o] Missing output format");
   } else if (!exporter) {
-    error("[o] Unknown export format:", outFmt);
+    error("[o] Unknown output format:", outFmt);
   }
 
   // shallow-copy dataset and layers, so layers can be renamed for export
@@ -71,7 +71,7 @@ MapShaper.exporters = {
 
 MapShaper.getOutputFormat = function(dataset, opts) {
   var outFile = opts.output_file || null,
-      inFmt = dataset.info && dataset.info.input_format,
+      inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
       outFmt = null;
 
   if (opts.format) {

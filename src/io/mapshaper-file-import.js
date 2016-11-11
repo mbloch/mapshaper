@@ -6,14 +6,19 @@ dbf-import
 api.importFiles = function(opts) {
   var files = opts.files ? cli.validateInputFiles(opts.files) : [],
       dataset;
-  if ((opts.merge_files || opts.combine_files) && files.length > 1) {
-    dataset = api.mergeFiles(files, opts);
-  } else if (files.length == 1) {
-    dataset = api.importFile(files[0], opts);
+
+  if (files.length > 0 === false) {
+    stop('Missing input file(s)');
   } else if (opts.stdin) {
     dataset = api.importFile('/dev/stdin', opts);
+  } else if (files.length == 1) {
+    dataset = api.importFile(files[0], opts);
+  } else if (opts.merge_files) {
+    dataset = MapShaper.importMergedFiles(files, opts);
+  } else if (opts.combine_files) {
+    dataset = MapShaper.importFiles(files, opts);
   } else {
-    stop('Missing input file(s)');
+    stop('Invalid inputs');
   }
   return dataset;
 };
