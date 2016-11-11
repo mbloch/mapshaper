@@ -3,14 +3,12 @@
 // Combine detection and repair for cli
 //
 api.findAndRepairIntersections = function(arcs) {
-  T.start();
   var intersections = MapShaper.findSegmentIntersections(arcs),
       unfixable = MapShaper.repairIntersections(arcs, intersections),
       countPre = intersections.length,
       countPost = unfixable.length,
       countFixed = countPre > countPost ? countPre - countPost : 0,
       msg;
-  T.stop('Find and repair intersections');
   if (countPre > 0) {
     msg = utils.format("[simplify] Repaired %'i intersection%s", countFixed,
         utils.pluralSuffix(countFixed));

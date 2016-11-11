@@ -55,9 +55,7 @@ MapShaper.importContent = function(obj, opts) {
 
   // Convert to topological format, if needed
   if (dataset.arcs && !opts.no_topology && fileFmt != 'topojson') {
-    T.start();
     api.buildTopology(dataset);
-    T.stop("Process topology");
   }
 
   // Use file basename for layer name, except TopoJSON, which uses object names

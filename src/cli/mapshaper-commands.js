@@ -14,9 +14,7 @@ api.runCommands = function(argv, done) {
     return done(new APIError("No commands to run"));
   }
 
-  T.start("Start timing");
   MapShaper.runParsedCommands(commands, function(err, output) {
-    T.stop("Total time");
     done(err, output);
   });
 };

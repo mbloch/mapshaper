@@ -25,7 +25,6 @@ MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   var dissolve = MapShaper.getPolygonDissolver(nodes);
   var lyr2, data2;
 
-  T.start();
   if (lyr.data) {
     data2 = new DataTable(MapShaper.aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts));
   }
@@ -35,7 +34,6 @@ MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
     shapes: groups.map(dissolve),
     geometry_type: lyr.geometry_type
   };
-  T.stop('dissolve2');
   MapShaper.printDissolveMessage(lyr, lyr2, 'dissolve2');
   return lyr2;
 };

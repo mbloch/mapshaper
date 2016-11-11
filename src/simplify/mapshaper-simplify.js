@@ -15,7 +15,6 @@ api.simplify = function(dataset, opts) {
   // stash simplifcation options (used by gui settings dialog)
   dataset.info = utils.defaults({simplify: opts}, dataset.info);
 
-  T.start();
   MapShaper.simplifyPaths(arcs, opts);
 
   if (utils.isNumber(opts.pct)) {
@@ -25,7 +24,6 @@ api.simplify = function(dataset, opts) {
   } else if (opts.resolution) {
     arcs.setRetainedInterval(MapShaper.calcSimplifyInterval(arcs, opts));
   }
-  T.stop("Calculate simplification");
 
   if (opts.keep_shapes) {
     api.keepEveryPolygon(arcs, dataset.layers);

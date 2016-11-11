@@ -27,9 +27,7 @@ api.mergeFiles = function(files, opts) {
     // TODO: remove duplication with mapshaper-path-import.js; consider applying
     //   snapping option inside buildTopology()
     if (opts.auto_snap || opts.snap_interval) {
-      T.start();
       MapShaper.snapCoords(merged.arcs, opts.snap_interval);
-      T.stop("Snapping points");
     }
 
     api.buildTopology(merged);

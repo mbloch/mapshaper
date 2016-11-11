@@ -2,13 +2,11 @@
 
 api.keepEveryPolygon =
 MapShaper.keepEveryPolygon = function(arcData, layers) {
-  T.start();
   layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polygon') {
       MapShaper.protectLayerShapes(arcData, lyr.shapes);
     }
   });
-  T.stop("Protect shapes");
 };
 
 MapShaper.protectLayerShapes = function(arcData, shapes) {
