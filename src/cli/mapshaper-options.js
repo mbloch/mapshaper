@@ -47,7 +47,7 @@ MapShaper.getOptionParser = function() {
         describe: "(optional) name of a data field to dissolve on"
       },
       bboxOpt = {
-        type: "comma-sep",
+        type: "bbox",
         describe: "comma-sep. bounding box: xmin,ymin,xmax,ymax"
       };
 
@@ -355,6 +355,28 @@ MapShaper.getOptionParser = function() {
   parser.command("graticule")
     .describe("create a graticule layer");
 
+  parser.command("point-grid")
+    .describe("create a rectangular grid of points")
+    .validate(validateGridOpts)
+    .option("-", {
+      label: "<cols,rows>",
+      describe: "size of the grid, e.g. -point-grid 100,100"
+    })
+    .option('interval', {
+      describe: 'distance between adjacent points, in source units',
+      type: 'number'
+    })
+    .option("cols", {
+      type: "integer"
+    })
+    .option("rows", {
+      type: "integer"
+    })
+    .option('bbox', {
+      type: "bbox",
+      describe: "xmin,ymin,xmax,ymax (default is bbox of data)"
+    });
+
   parser.command("innerlines")
     .describe("convert polygons to polylines along shared edges")
     .validate(validateInnerLinesOpts)
@@ -603,7 +625,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("split-on-grid")
     .describe("split features into separate layers using a grid")
-    .validate(validateSplitOnGridOpts)
+    .validate(validateGridOpts)
     .option("-", {
       label: "<cols,rows>",
       describe: "size of the grid, e.g. -split-on-grid 12,10"

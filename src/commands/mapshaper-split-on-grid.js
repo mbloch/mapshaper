@@ -13,6 +13,10 @@ api.splitLayerOnGrid = function(lyr, arcs, rows, cols) {
       properties = lyr.data ? lyr.data.getRecords() : null,
       groups = [];
 
+  if (rows > 0 === false || cols > 0 === false) {
+    stop('[split-on-grid] Invalid grid parameters');
+  }
+
   function groupId(shpBounds) {
     var c = Math.floor((shpBounds.centerX() - xmin) / w * cols),
         r = Math.floor((shpBounds.centerY() - ymin) / h * rows);

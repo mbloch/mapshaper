@@ -157,7 +157,7 @@ describe('mapshaper-options.js', function () {
   })
 
   describe('split-on-grid', function() {
-    bad("-split-on-grid");
+    // bad("-split-on-grid"); // invalid grid handled downstream
     good("-split-on-grid 2", {cols: 2, rows: 2});
     good("-split-on-grid 5,3", {cols: 5, rows: 3});
   })

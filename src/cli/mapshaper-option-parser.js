@@ -152,6 +152,8 @@ function CommandParser() {
           val = Math.round(Number(token));
         } else if (type == 'comma-sep') {
           val = token.split(',');
+        } else if (type == 'bbox') {
+          val = token.split(',').map(parseFloat);
         } else {
           val = token; // assumes string
         }

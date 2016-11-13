@@ -19,6 +19,7 @@ mapshaper-join
 mapshaper-keep-shapes
 mapshaper-merge-files
 mapshaper-points
+mapshaper-point-grid
 mapshaper-proj
 mapshaper-rename-layers
 mapshaper-simplify
@@ -66,7 +67,7 @@ api.runCommand = function(cmd, dataset, cb) {
       }
 
     } else { // no dataset
-      if (!(name == 'graticule' || name == 'i')) {
+      if (!(name == 'graticule' || name == 'i' || name == 'point-grid')) {
         throw new APIError("Missing a -i command");
       }
     }
@@ -128,9 +129,6 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'lines') {
       outputLayers = MapShaper.applyCommand(api.lines, targetLayers, arcs, opts);
 
-    } else if (name == 'stitch') {
-      api.stitch(dataset);
-
     } else if (name == 'merge-layers') {
       // careful, returned layers are modified input layers
       outputLayers = api.mergeLayers(targetLayers);
@@ -143,6 +141,9 @@ api.runCommand = function(cmd, dataset, cb) {
         MapShaper.writeFiles(outputFiles, opts, done);
       }
       return;
+
+    } else if (name == 'point-grid') {
+      dataset = api.pointGrid(dataset, opts);
 
     } else if (name == 'points') {
       outputLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
@@ -167,6 +168,9 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'split-on-grid') {
       outputLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
+
+    } else if (name == 'stitch') {
+      api.stitch(dataset);
 
     } else if (name == 'subdivide') {
       outputLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);

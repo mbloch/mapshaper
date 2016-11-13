@@ -92,10 +92,6 @@ function validateClipOpts(cmd) {
     delete opts.cleanup;
     opts.remove_slivers = true;
   }
-  if (opts.bbox) {
-    // assume comma-sep bbox has been parsed into array of strings
-    opts.bbox = opts.bbox.map(parseFloat);
-  }
   if (!opts.source && !opts.bbox) {
     error("Command requires a source file, layer id or bbox");
   }
@@ -119,16 +115,12 @@ function validateRenameLayersOpts(cmd) {
   cmd.options.names = validateCommaSepNames(cmd._[0]) || null;
 }
 
-function validateSplitOnGridOpts(cmd) {
+function validateGridOpts(cmd) {
   var o = cmd.options;
   if (cmd._.length == 1) {
     var tmp = cmd._[0].split(',');
     o.cols = parseInt(tmp[0], 10);
     o.rows = parseInt(tmp[1], 10) || o.cols;
-  }
-
-  if (o.rows > 0 === false || o.cols > 0 === false) {
-    error("Command expects cols,rows");
   }
 }
 
