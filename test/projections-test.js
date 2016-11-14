@@ -53,7 +53,7 @@ describe('mapshaper-projections.js', function() {
   describe('test aliases', function () {
     it('webmercator', function () {
       var a = api.internal.getProjection('webmercator');
-      var b = api.internal.getProjection('+proj=merc +ellps=sphere');
+      var b = api.internal.getProjection('+proj=merc +a=6378137');
       var lp = {lam: 0.3, phi: 0.2};
       assert.deepEqual(mproj.pj_fwd(lp, a), mproj.pj_fwd(lp, b));
     })

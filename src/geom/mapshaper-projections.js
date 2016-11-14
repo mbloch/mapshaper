@@ -3,7 +3,7 @@
 // some aliases
 MapShaper.projectionIndex = {
   robinson: '+proj=robin +datum=WGS84',
-  webmercator: '+proj=merc +ellps=sphere',
+  webmercator: '+proj=merc +a=6378137 +b=6378137',
   wgs84: '+proj=longlat +datum=WGS84',
   albersusa: AlbersNYT
 };
