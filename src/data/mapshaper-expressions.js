@@ -2,10 +2,10 @@
 
 // Compiled expression returns a value
 MapShaper.compileValueExpression = function(exp, lyr, arcs) {
-  return MapShaper.compileFeatureExpression(exp, lyr, arcs, true);
+  return MapShaper.compileFeatureExpression(exp, lyr, arcs, {returns: true});
 };
 
-MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, returns) {
+MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, opts) {
   var exp = rawExp || '',
       vars = MapShaper.getAssignedVars(exp),
       func, records;
@@ -15,7 +15,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, returns) {
   }
 
   records = lyr.data ? lyr.data.getRecords() : [];
-  func = MapShaper.getExpressionFunction(exp, lyr, arcs, returns);
+  func = MapShaper.getExpressionFunction(exp, lyr, arcs, opts);
   return function(recId) {
     var record = records[recId];
     if (!record) {
@@ -36,10 +36,10 @@ MapShaper.getAssignedVars = function(exp) {
   return exp.match(rxp) || [];
 };
 
-MapShaper.getExpressionFunction = function(exp, lyr, arcs, returns) {
+MapShaper.getExpressionFunction = function(exp, lyr, arcs, opts) {
   var getFeatureById = MapShaper.initFeatureProxy(lyr, arcs);
-  var ctx = MapShaper.getExpressionContext(lyr);
-  var functionBody = "with(env){with(record){ " + (returns ? 'return ' : '') +
+  var ctx = MapShaper.getExpressionContext(lyr, opts && opts.context);
+  var functionBody = "with(env){with(record){ " + (opts && opts.returns ? 'return ' : '') +
         exp + "}}";
   var func;
   try {
@@ -59,13 +59,16 @@ MapShaper.getExpressionFunction = function(exp, lyr, arcs, returns) {
   };
 };
 
-MapShaper.getExpressionContext = function(lyr) {
+MapShaper.getExpressionContext = function(lyr, mixins) {
   var env = MapShaper.getBaseContext();
   if (lyr.data) {
     // default to null values when a data field is missing
     lyr.data.getFields().forEach(function(f) {
       env[f] = null;
     });
+  }
+  if (mixins) {
+    utils.extend(env, mixins);
   }
   return env;
 };
