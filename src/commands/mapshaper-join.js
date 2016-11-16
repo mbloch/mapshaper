@@ -1,10 +1,10 @@
 /* @require
 mapshaper-common
-mapshaper-expressions
 mapshaper-delim-import
 mapshaper-spatial-join
 mapshaper-data-utils
 dbf-import
+mapshaper-join-filter
 */
 
 api.join = function(targetLyr, dataset, opts) {
@@ -94,6 +94,11 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
   return MapShaper.joinTables(destTable, srcTable, joinFunction, opts);
 };
 
+// Join data from @src table to records in @dest table
+// @join function
+//    Receives index of record in the dest table
+//    Returns array of matching records in src table, or null if no matches
+//
 MapShaper.joinTables = function(dest, src, join, opts) {
   var srcRecords = src.getRecords(),
       destRecords = dest.getRecords(),
@@ -115,14 +120,14 @@ MapShaper.joinTables = function(dest, src, join, opts) {
 
   // join source records to target records
   for (var i=0, n=destRecords.length; i<n; i++) {
+    count = 0;
     destRec = destRecords[i];
     joins = join(i);
-    count = 0;
+    if (joins && filter) {
+      joins = filter(joins);
+    }
     for (var j=0, m=joins ? joins.length : 0; j<m; j++) {
       srcId = joins[j];
-      if (filter && !filter(srcId)) {
-        continue;
-      }
       srcRec = srcRecords[srcId];
       if (copyFields.length > 0) {
         if (count === 0) {
@@ -265,25 +270,11 @@ MapShaper.getJoinByKey = function(dest, destKey, src, srcKey) {
   }
   return function(i) {
     var destRec = destRecords[i],
-        val = destRec && destRec[destKey],
-        retn = null;
-    if (destRec && val in index) {
-      retn = index[val];
-    }
-    return retn;
+        val = destRec ? destRec[destKey] : null;
+    return destRec && val in index ? index[val] : null;
   };
 };
 
-MapShaper.getJoinFilter = function(data, exp) {
-  var test =  MapShaper.compileValueExpression(exp, {data: data}, null);
-  return function(i) {
-    var retn = test(i);
-    if (retn !== true && retn !== false) {
-      stop('[join] "where" expression must return true or false');
-    }
-    return retn;
-  };
-};
 
 MapShaper.createTableIndex = function(records, f) {
   var index = {}, rec, key;
