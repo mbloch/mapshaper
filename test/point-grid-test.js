@@ -8,8 +8,8 @@ describe('mapshaper-point-grid.js', function () {
       bbox: [0, 0, 2, 4],
       rows: 2, cols: 1
     };
-    var dataset = api.pointGrid(null, opts);
-    assert.deepEqual(dataset.layers[0], {
+    var lyr = api.pointGrid(null, opts);
+    assert.deepEqual(lyr, {
       geometry_type: 'point',
       shapes: [[[1, 1]], [[1, 3]]]
     });
@@ -20,8 +20,8 @@ describe('mapshaper-point-grid.js', function () {
       bbox: [0, 0, 2, 4],
       interval: 2
     };
-    var dataset = api.pointGrid(null, opts);
-    assert.deepEqual(dataset.layers[0], {
+    var lyr = api.pointGrid(null, opts);
+    assert.deepEqual(lyr, {
       geometry_type: 'point',
       shapes: [[[1, 1]], [[1, 3]]]
     });
@@ -37,8 +37,8 @@ describe('mapshaper-point-grid.js', function () {
     var opts = {
       rows: 2, cols: 1
     };
-    var dataset2 = api.pointGrid(dataset, opts);
-    assert.deepEqual(dataset2.layers[1], {
+    var lyr = api.pointGrid(dataset, opts);
+    assert.deepEqual(lyr, {
       geometry_type: 'point',
       shapes: [[[1, 1]], [[1, 3]]]
     });
@@ -48,8 +48,8 @@ describe('mapshaper-point-grid.js', function () {
     var opts = {
       rows: 1, cols: 2
     };
-    var dataset = api.pointGrid(null, opts);
-    assert.deepEqual(dataset.layers[0], {
+    var lyr = api.pointGrid(null, opts);
+    assert.deepEqual(lyr, {
       geometry_type: 'point',
       shapes: [[[-90, 0]], [[90, 0]]]
     });

@@ -143,8 +143,11 @@ api.runCommand = function(cmd, dataset, cb) {
       return;
 
     } else if (name == 'point-grid') {
-      dataset = api.pointGrid(dataset, opts);
-
+      outputLayers = [api.pointGrid(dataset, opts)];
+      targetLayers = [];
+      if (!dataset) {
+        dataset = {layers: []};
+      }
     } else if (name == 'points') {
       outputLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
