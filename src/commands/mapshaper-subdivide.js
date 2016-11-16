@@ -1,4 +1,4 @@
-/* @requires mapshaper-dataset-utils, mapshaper-expressions */
+/* @requires mapshaper-dataset-utils, mapshaper-calc */
 
 // Recursively divide a layer into two layers until a (compiled) expression
 // no longer returns true. The original layer is split along the long side of
@@ -6,11 +6,11 @@
 // shapes (+/- 1).
 //
 api.subdivideLayer = function(lyr, arcs, exp) {
-  return MapShaper.subdivide(lyr, arcs, MapShaper.compileCalcExpression(exp));
+  return MapShaper.subdivide(lyr, arcs, exp);
 };
 
-MapShaper.subdivide = function(lyr, arcs, compiled) {
-  var divide = compiled(lyr, arcs),
+MapShaper.subdivide = function(lyr, arcs, exp) {
+  var divide = MapShaper.evalCalcExpression(lyr, arcs, exp),
       subdividedLayers = [],
       tmp, bounds, lyr1, lyr2;
 
@@ -22,14 +22,14 @@ MapShaper.subdivide = function(lyr, arcs, compiled) {
     tmp = MapShaper.divideLayer(lyr, arcs, bounds);
     lyr1 = tmp[0];
     if (lyr1.shapes.length > 1 && lyr1.shapes.length < lyr.shapes.length) {
-      utils.merge(subdividedLayers, MapShaper.subdivide(lyr1, arcs, compiled));
+      utils.merge(subdividedLayers, MapShaper.subdivide(lyr1, arcs, exp));
     } else {
       subdividedLayers.push(lyr1);
     }
 
     lyr2 = tmp[1];
     if (lyr2.shapes.length > 1 && lyr2.shapes.length < lyr.shapes.length) {
-      utils.merge(subdividedLayers, MapShaper.subdivide(lyr2, arcs, compiled));
+      utils.merge(subdividedLayers, MapShaper.subdivide(lyr2, arcs, exp));
     } else {
       subdividedLayers.push(lyr2);
     }

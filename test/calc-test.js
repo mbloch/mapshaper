@@ -20,7 +20,7 @@ describe('mapshaper-calc.js', function () {
     })
 
     it ('average()', function() {
-      var result = evalCalcExpression(lyr1, null, 'average("foo + 2")');
+      var result = evalCalcExpression(lyr1, null, 'average(foo + 2)');
       assert.equal(result, 4);
     })
 
@@ -49,6 +49,27 @@ describe('mapshaper-calc.js', function () {
       assert.equal(result, 2);
     })
 
+    it ('width() and height() functions', function() {
+      var lyr = {
+        geometry_type: 'point',
+        shapes: [[[0, 1]], [[2, 0]]]
+      };
+      var result = evalCalcExpression(lyr, null, 'width() * height()');
+      assert.equal(result, 2);
+    });
+
+    it ('sum(this.planarArea) works', function() {
+      var arcs = new api.internal.ArcCollection([[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]);
+      var lyr = {
+        geometry_type: 'polygon',
+        arcs: arcs,
+        shapes: [[[0]]]
+      };
+      var result = evalCalcExpression(lyr, arcs, 'sum(this.planarArea)');
+      assert.equal(result, 1);
+    });
+
+
     it ('where= expression excludes a record', function() {
       var data2 = [
           {foo: -1, bar: true},
@@ -63,41 +84,6 @@ describe('mapshaper-calc.js', function () {
           {expression: 'average(foo)', where: '!!bar'});
       assert.equal(result, 1);
     })
-  })
-
-  describe('compileCalcExpression()', function () {
-    var nullArcs = new api.internal.ArcCollection([]),
-        records = [{foo: 4}, {foo: 0}, {foo: 3.5}, {foo: -0.5}, {foo: 3}];
-    var lyr = {
-      shapes: new Array(5),
-      data: new api.internal.DataTable(records)
-    };
-
-    it('sum()', function() {
-      var compiled = new api.internal.compileCalcExpression("sum('foo')")
-      assert.equal(compiled(lyr, nullArcs), 10);
-    })
-
-    it('average()', function() {
-      var compiled = new api.internal.compileCalcExpression("average('foo')")
-      assert.equal(compiled(lyr, nullArcs), 2);
-    })
-
-    it('median()', function() {
-      var compiled = new api.internal.compileCalcExpression("median('foo')")
-      assert.equal(compiled(lyr, nullArcs), 3);
-    })
-
-    it('max()', function() {
-      var compiled = new api.internal.compileCalcExpression("max('foo')")
-      assert.equal(compiled(lyr, nullArcs), 4);
-    })
-
-    it('min()', function() {
-      var compiled = new api.internal.compileCalcExpression("min('foo')")
-      assert.equal(compiled(lyr, nullArcs), -0.5);
-    })
-
   })
 
 })

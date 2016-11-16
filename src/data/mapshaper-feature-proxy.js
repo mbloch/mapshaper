@@ -62,13 +62,16 @@ MapShaper.initFeatureProxy = function(lyr, arcs) {
     if (lyr.geometry_type == 'polygon') {
       addGetters(ctx, {
         area: function() {
-          return _isPlanar ? geom.getPlanarShapeArea(_ids, arcs) : geom.getSphericalShapeArea(_ids, arcs);
+          return _isPlanar ? ctx.planarArea : geom.getSphericalShapeArea(_ids, arcs);
+        },
+        planarArea: function() {
+          return geom.getPlanarShapeArea(_ids, arcs);
         },
         originalArea: function() {
           var i = arcs.getRetainedInterval(),
               area;
           arcs.setRetainedInterval(0);
-          area = _self.area;
+          area = ctx.area;
           arcs.setRetainedInterval(i);
           return area;
         },

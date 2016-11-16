@@ -375,7 +375,9 @@ MapShaper.getOptionParser = function() {
     .option('bbox', {
       type: "bbox",
       describe: "xmin,ymin,xmax,ymax (default is bbox of data)"
-    });
+    })
+    .option("name", nameOpt);
+
 
   parser.command("innerlines")
     .describe("convert polygons to polylines along shared edges")
