@@ -22,4 +22,7 @@ api.uniq = function(lyr, arcs, opts) {
   if (lyr.data) {
     lyr.data = new DataTable(lyr.data.getRecords().filter(f));
   }
+  if (opts.verbose !== false) {
+    message(utils.format('[uniq] Retained %,d of %,d features', MapShaper.getFeatureCount(lyr), n));
+  }
 };
