@@ -115,12 +115,8 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsUsable) {
   }
 
   function getNextArc(prevId) {
-    var nextId = MapShaper.getRightmostArc(prevId, nodes, filterArc);
-    if (prevId === nextId) {
-      error("Pathfinder error");
-    }
-    // console.log("  -> to:", ~nextId)
-    return ~nextId; // reverse arc to point onwards
+    // reverse arc to point onwards
+    return ~MapShaper.getRightmostArc(prevId, nodes, filterArc);
   }
 
   return function(startId) {
@@ -139,7 +135,8 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsUsable) {
       }
 
       if (candId == ~nextId) {
-        trace("dead-end"); // TODO: handle or prevent this error condition
+        // TODO: handle or prevent this error condition
+        message("Pathfinder warning: dead-end path");
         return null;
       }
     } while (candId != startId);

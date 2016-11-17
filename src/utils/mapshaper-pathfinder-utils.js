@@ -7,6 +7,9 @@ MapShaper.getRightmostArc = function(arcId, nodes, filter) {
   if (filter) {
     ids = ids.filter(filter);
   }
+  if (ids.length === 0) {
+    return arcId; // error condition, handled by caller
+  }
   return MapShaper.getRighmostArc2(arcId, ids, nodes.arcs);
 };
 
@@ -39,6 +42,10 @@ MapShaper.getRighmostArc2 = function(fromId, ids, arcs) {
       toId = candId;
       ito = icand;
     }
+  }
+  if (toId == fromId) {
+    // This shouldn't occur, assuming that other arcs are present
+    error("Pathfinder error");
   }
   return toId;
 };

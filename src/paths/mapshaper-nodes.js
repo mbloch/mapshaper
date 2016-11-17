@@ -38,7 +38,6 @@ function NodeCollection(arcs, filter) {
   };
 
   this.debugNode = function(arcId) {
-    if (!MapShaper.TRACING) return;
     var ids = [arcId];
     this.forEachConnectedArc(arcId, function(id) {
       ids.push(id);
