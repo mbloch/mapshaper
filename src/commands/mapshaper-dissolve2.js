@@ -5,10 +5,16 @@ mapshaper-dissolve
 mapshaper-data-aggregation
 */
 
-api.dissolve2 = function(lyr, dataset, opts) {
-  MapShaper.requirePolygonLayer(lyr, "[dissolve2] Expected a polygon type layer");
+// src: single layer or array of layers (must belong to dataset)
+api.dissolve2 = function(src, dataset, opts) {
+  var multiple = Array.isArray(src);
   var nodes = MapShaper.addIntersectionCuts(dataset, opts);
-  return MapShaper.dissolvePolygonLayer(lyr, nodes, opts);
+  var layers = multiple ? src : [src];
+  var layers2 = layers.map(function(lyr) {
+    MapShaper.requirePolygonLayer(lyr, "[dissolve2] Expected a polygon type layer");
+    return MapShaper.dissolvePolygonLayer(lyr, nodes, opts);
+  });
+  return multiple ? layers2 : layers2[0];
 };
 
 MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
