@@ -14,7 +14,9 @@ function LayerControl(model) {
 
   function turnOn() {
     isOpen = true;
+    // set max layer menu height
     render();
+    El('#layer-control div.info-box-scrolled').css('max-height', El('body').height() - 80);
     el.show();
   }
 
@@ -80,6 +82,7 @@ function LayerControl(model) {
         e.stopPropagation();
         deleteLayer(lyr, dataset);
       });
+
     // init name editor
     new ClickText2(entry.findChild('.layer-name'))
       .on('change', function(e) {
