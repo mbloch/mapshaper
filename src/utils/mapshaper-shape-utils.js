@@ -167,7 +167,16 @@ MapShaper.forEachPath = function(paths, cb) {
   MapShaper.editPaths(paths, cb);
 };
 
+MapShaper.editShapes = function(shapes, editPath) {
+  for (var i=0, n=shapes.length; i<n; i++) {
+    shapes[i] = MapShaper.editPaths(shapes[i], editPath);
+  }
+};
+
+// @paths: geometry of a feature (array of paths or null)
 // @cb: function(path, i, paths)
+//    If @cb returns an array, it replaces the existing value
+//    If @cb returns null, the path is removed from the feature
 //
 MapShaper.editPaths = function(paths, cb) {
   if (!paths) return null; // null shape

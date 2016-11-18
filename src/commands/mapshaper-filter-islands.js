@@ -56,7 +56,7 @@ MapShaper.filterIslands = function(lyr, arcs, ringTest) {
       }
     }
   };
-  MapShaper.filterShapes(lyr.shapes, pathFilter);
+  MapShaper.editShapes(lyr.shapes, pathFilter);
   return removed;
 };
 
@@ -84,13 +84,4 @@ MapShaper.ringHasHoles = function(ring, rings, arcs) {
     }
   }
   return false;
-};
-
-MapShaper.filterShapes = function(shapes, pathFilter) {
-  var shapeFilter = function(paths) {
-    return MapShaper.editPaths(paths, pathFilter);
-  };
-  for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = shapeFilter(shapes[i]);
-  }
 };

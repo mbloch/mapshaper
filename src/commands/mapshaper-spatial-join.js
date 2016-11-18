@@ -1,6 +1,5 @@
 /* @requires mapshaper-path-index */
 
-
 api.joinPointsToPolygons = function(targetLyr, arcs, pointLyr, opts) {
   // TODO: copy points that can't be joined to a new layer
   var joinFunction = MapShaper.getPolygonToPointsFunction(targetLyr, arcs, pointLyr, opts);

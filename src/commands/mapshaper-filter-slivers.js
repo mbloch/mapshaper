@@ -23,7 +23,7 @@ MapShaper.filterSlivers = function(lyr, arcs, opts) {
     }
   };
 
-  MapShaper.filterShapes(lyr.shapes, pathFilter);
+  MapShaper.editShapes(lyr.shapes, pathFilter);
   return removed;
 };
 
@@ -50,7 +50,7 @@ MapShaper.filterClipSlivers = function(lyr, clipLyr, arcs) {
   };
 
   MapShaper.countArcsInShapes(clipLyr.shapes, flags);
-  MapShaper.filterShapes(lyr.shapes, pathFilter);
+  MapShaper.editShapes(lyr.shapes, pathFilter);
   return removed;
 };
 
