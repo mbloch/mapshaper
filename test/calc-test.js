@@ -14,6 +14,12 @@ describe('mapshaper-calc.js', function () {
       assert.equal(result, 6);
     })
 
+   it ('sum() expects a number', function() {
+      assert.throws(function() {
+        evalCalcExpression(lyr1, null, 'sum("foo")');
+      })
+    })
+
     it ('average()', function() {
       var result = evalCalcExpression(lyr1, null, 'average(foo)');
       assert.equal(result, 2);

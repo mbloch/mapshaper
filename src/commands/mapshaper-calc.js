@@ -6,10 +6,10 @@ mapshaper-filter
 
 // Calculate an expression across a group of features, print and return the result
 // Supported functions include sum(), average(), max(), min(), median(), count()
-// Functions receive a field name or a feature expression (like the -each command)
-// Examples: 'sum("$.area")' 'min(income)'
+// Functions receive an expression to be applied to each feature (like the -each command)
+// Examples: 'sum($.area)' 'min(income)'
 // opts.expression  Expression to evaluate
-// opts.where  Optional filter expression (like -filter command)
+// opts.where  Optional filter expression (see -filter command)
 //
 api.calc = function(lyr, arcs, opts) {
   var msg = 'calc ' + opts.expression,
@@ -28,31 +28,31 @@ api.calc = function(lyr, arcs, opts) {
   return result;
 };
 
-// TODO: make this reusable, e.g. return a function that takes an array of ids
-//
+// TODO: make this reusable, e.g. return a function that takes an array of
+//   feature ids
 MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
   var rowNo = 0, colNo = 0, cols = [];
-  var ctx1 = {
+  var ctx1 = { // context for first phase (capturing values for each feature)
         count: capture,
-        sum: capture,
-        average: capture,
-        median: capture,
-        min: capture,
-        max: capture
+        sum: captureNum,
+        average: captureNum,
+        median: captureNum,
+        min: captureNum,
+        max: captureNum
       },
-      ctx2 = {
+      ctx2 = { // context for second phase (calculating results)
         count: function() {colNo++; return rowNo;},
         sum: function() {return utils.sum(cols[colNo++]);},
         median: function() {return utils.findMedian(cols[colNo++]);},
         min: function() {return utils.getArrayBounds(cols[colNo++]).min;},
         max: function() {return utils.getArrayBounds(cols[colNo++]).max;},
-        average: function() {return mean(cols[colNo++]);}
+        average: function() {return utils.mean(cols[colNo++]);}
       },
       len = MapShaper.getFeatureCount(lyr),
       calc1, calc2;
 
   if (lyr.geometry_type) {
-    // add layer geometry (e.g. for subdivide())
+    // add functions related to layer geometry (e.g. for subdivide())
     ctx1.width = ctx1.height = noop;
     ctx2.width = function() {return MapShaper.getLayerBounds(lyr, arcs).width();};
     ctx2.height = function() {return MapShaper.getLayerBounds(lyr, arcs).height();};
@@ -71,19 +71,14 @@ MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
   // phase 2: calculate
   return calc2(undefined);
 
-  function mean(arr) {
-    var count = 0,
-        avg = NaN,
-        val;
-    for (var i=0, n=arr.length; i<n; i++) {
-      val = arr[i];
-      if (isNaN(val)) continue;
-      avg = ++count == 1 ? val : val / count + (count - 1) / count * avg;
-    }
-    return avg;
-  }
-
   function noop() {}
+
+  function captureNum(val) {
+    if (isNaN(val) && val) { // accepting falsy values (be more strict?)
+      stop("Expected a number, received:", val);
+    }
+    capture(val);
+  }
 
   function capture(val) {
     var col;
@@ -92,15 +87,12 @@ MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
     }
     col = cols[colNo];
     if (col.length != rowNo) {
+      // make sure all functions are called each time
+      // (if expression contains a condition, it will throw off the calculation)
+      // TODO: allow conditions
       stop("Evaluation failed");
     }
     col.push(val);
     colNo++;
   }
-
-  // function reset() {
-  //   cols = [];
-  //   rowNo = 0;
-  //   callNo = 0;
-  // }
 };
