@@ -18,6 +18,7 @@ mapshaper-inspect
 mapshaper-join
 mapshaper-keep-shapes
 mapshaper-merge-files
+mapshaper-merge-layers
 mapshaper-points
 mapshaper-point-grid
 mapshaper-proj

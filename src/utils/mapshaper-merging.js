@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-merge-layers */
+/* @requires mapshaper-common */
 
 // Don't modify input layers (mergeDatasets() updates arc ids in-place)
 MapShaper.mergeDatasetsForExport = function(arr) {
@@ -10,6 +10,7 @@ MapShaper.mergeDatasetsForExport = function(arr) {
   });
   return MapShaper.mergeDatasets(copy);
 };
+
 
 MapShaper.mergeDatasets = function(arr) {
   var arcSources = [],

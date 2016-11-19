@@ -51,6 +51,18 @@ describe('mapshaper-merge-layers.js', function () {
 
     })
 
+    it('layers with incompatible data types are not merged', function() {
+      var lyr1 = {
+        data: new internal.DataTable([{a: 9}, {a: 8}])
+      };
+      var lyr2 = {
+        data: new internal.DataTable([{a: '9'}])
+      };
+      assert.throws(function() {
+        api.mergeLayers([lyr1, lyr2]);
+      })
+    })
+
     it('layers with incompatible data are not merged', function () {
       var lyr1 = {
         geometry_type: "point",

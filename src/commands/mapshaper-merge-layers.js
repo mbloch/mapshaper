@@ -1,46 +1,60 @@
-/* @require mapshaper-common */
+/* @require mapshaper-merging, mapshaper-data-utils */
 
-// Merge similar layers in a dataset, in-place
+// Merge layers, in-place (assumes layers belong to the same dataset)
 api.mergeLayers = function(layers) {
-  var index = {},
-      merged = [];
-
-  // layers with same key can be merged
-  function layerKey(lyr) {
-    var key = lyr.geometry_type || '';
-    if (lyr.data) {
-      key += '~' + lyr.data.getFields().sort().join(',');
-    }
-    return key;
-  }
-
+  var merged;
+  MapShaper.checkLayersCanMerge(layers);
   layers.forEach(function(lyr) {
-    var key = layerKey(lyr),
-        indexedLyr,
-        records;
-    if (key in index === false) {
-      index[key] = lyr;
-      merged.push(lyr);
+    if (!merged) {
+      merged = lyr;
     } else {
-      indexedLyr = index[key];
-      indexedLyr.name = utils.mergeNames(indexedLyr.name, lyr.name);
-      if (indexedLyr.shapes && lyr.shapes) {
-        indexedLyr.shapes = indexedLyr.shapes.concat(lyr.shapes);
+      merged.name = utils.mergeNames(merged.name, lyr.name);
+      if (merged.shapes && lyr.shapes) {
+        merged.shapes = merged.shapes.concat(lyr.shapes);
       } else {
-        indexedLyr.shapes = null;
+        merged.shapes = null;
       }
-      if (indexedLyr.data && lyr.data) {
-        records = indexedLyr.data.getRecords().concat(lyr.data.getRecords());
-        indexedLyr.data = new DataTable(records);
+      if (merged.data && lyr.data) {
+        merged.data = new DataTable(merged.data.getRecords().concat(lyr.data.getRecords()));
       } else {
-        indexedLyr.data = null;
+        merged.data = null;
       }
     }
   });
+  return merged ? [merged] : null;
+};
 
-  if (merged.length >= 2) {
-    stop("[merge-layers] Unable to merge " + (merged.length < layers.length ? "some " : "") + "layers. Geometry and data fields must be compatible.");
+MapShaper.checkFieldType = function(key, layers) {
+  // accepts empty + non-empty field types
+  return layers.reduce(function(memo, lyr) {
+    var type = lyr.data ? MapShaper.getColumnType(key, lyr.data) : null;
+    if (!memo) {
+      memo = type;
+    } else if (type && type != memo) {
+      memo = 'mixed';
+    }
+    return memo;
+  }, null);
+};
+
+MapShaper.checkLayersCanMerge = function(layers) {
+  var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type')),
+      dataKeys = utils.uniq(layers.map(getDataKey)),
+      fields = dataKeys[0] ? layers[0].data.getFields() : [];
+  if (utils.uniq(geoTypes).length > 1) {
+    stop("[merge-layers] Incompatible geometry types");
   }
+  if (utils.uniq(dataKeys).length > 1) {
+    stop("[merge-layers] Incompatible fields");
+  }
+  fields.forEach(function(key) {
+    var type = MapShaper.checkFieldType(key, layers);
+    if (type == 'mixed') {
+      stop("[merge-layers] Inconsistent data types in field:", key);
+    }
+  });
 
-  return merged;
+  function getDataKey(lyr) {
+    return lyr.data ? lyr.data.getFields().sort().join(',') : '';
+  }
 };

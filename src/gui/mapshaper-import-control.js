@@ -85,15 +85,12 @@ function ImportControl(model) {
       downloadFiles(mapshaper.manifest);
       mapshaper.manifest = null;
     } else {
+      if (importCount > 0) {
+        El('#import-intro').hide(); // only show intro before first import
+        El('#import-buttons').show();
+      }
       El('#import-options').show();
     }
-  }
-
-  function close() {
-    El('#fork-me').hide();
-    El('#import-intro').hide(); // only show intro before first import
-    El('#import-buttons').show();
-    El('#import-options').hide();
   }
 
   function turnOff() {
@@ -101,6 +98,12 @@ function ImportControl(model) {
     clearFiles();
     close();
   }
+
+  function close() {
+    El('#fork-me').hide();
+    El('#import-options').hide();
+  }
+
 
   function clearFiles() {
     queuedFiles = [];
@@ -292,7 +295,9 @@ function ImportControl(model) {
       return gui.isReadableFileType(f);
     });
     utils.reduceAsync(paths, [], downloadNextFile, function(err, files) {
-      if (err || !files.length) {
+      if (err) {
+        gui.alert(err);
+      } else if (!files.length) {
         model.clearMode();
       } else {
         addFiles(files);
@@ -303,15 +308,21 @@ function ImportControl(model) {
 
   function downloadNextFile(memo, filepath, next) {
     var req = new XMLHttpRequest();
+    var errmsg = "Missing file: " + filepath;
     req.responseType = 'blob';
     req.addEventListener('load', function(e) {
-      var blob = req.response;
-      blob.name = filepath;
-      memo.push(blob);
-      next(null, memo);
+      var err, blob;
+      if (req.status >= 300) {
+        err = errmsg;
+      } else {
+        blob = req.response;
+        blob.name = filepath;
+        memo.push(blob);
+      }
+      next(err, memo);
     });
     req.addEventListener('error', function(e) {
-      next('error');
+      next(errmsg);
     });
     req.open('GET', '/data/' + filepath);
     req.send();
