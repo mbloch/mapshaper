@@ -64,7 +64,6 @@ function MshpMap(model) {
   model.on('update', function(e) {
     var prevBounds = _activeLyr ?_activeLyr.getBounds() : null,
         needReset = false;
-
     if (arcsMayHaveChanged(e.flags)) {
       // regenerate filtered arcs when simplification thresholds are calculated
       // or arcs are updated
@@ -119,7 +118,7 @@ function MshpMap(model) {
   // @flags Flags from update event
   function arcsMayHaveChanged(flags) {
     return flags.presimplify || flags.simplify || flags.proj ||
-        flags.arc_count || flags.repair;
+        flags.arc_count || flags.repair || flags.clip || flags.erase || flags.slice || false;
   }
 
   function drawLayers() {
