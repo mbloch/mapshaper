@@ -291,6 +291,7 @@ div.error-box > div {
 }
 
 .info-box {
+	word-wrap: break-word;
 	text-align: left;
 	margin-top: 12px;
 	background-color: #fff;

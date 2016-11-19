@@ -111,6 +111,7 @@ function getManifestJS(files) {
 function validateFiles(files) {
   files.forEach(function(f) {
     var stat, msg;
+    if (isUrl(f)) return;
     try {
       stat = fs.statSync(f);
       if (!stat.isFile()) {
@@ -130,6 +131,7 @@ function validateFiles(files) {
 function expandShapefiles(files) {
   var shps = files.filter(function(f) {return extname(f) == 'shp';});
   shps.forEach(function(f) {
+    if (isUrl(f)) return; // TODO: try to load aux files from URLs
     addAuxFile(files, f, '.dbf');
     addAuxFile(files, f, '.prj');
     addAuxFile(files, f, '.cpg');
@@ -148,6 +150,10 @@ function getMimeType(filename) {
 
 function extname(filename) {
   return path.extname(filename).replace('.', '');
+}
+
+function isUrl(name) {
+  return /:\/\//.test(name);
 }
 
 // append auxiliary file, if it exists in the filesystem but not in the file list

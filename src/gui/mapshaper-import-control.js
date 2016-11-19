@@ -309,6 +309,7 @@ function ImportControl(model) {
   function downloadNextFile(memo, filepath, next) {
     var req = new XMLHttpRequest();
     var errmsg = "Missing file: " + filepath;
+    var url = /:\/\//.test(filepath) ? filepath : '/data/' + filepath;
     req.responseType = 'blob';
     req.addEventListener('load', function(e) {
       var err, blob;
@@ -324,7 +325,7 @@ function ImportControl(model) {
     req.addEventListener('error', function(e) {
       next(errmsg);
     });
-    req.open('GET', '/data/' + filepath);
+    req.open('GET', url);
     req.send();
   }
 }
