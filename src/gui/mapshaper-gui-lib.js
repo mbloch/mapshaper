@@ -11,6 +11,23 @@ gui.browserIsSupported = function() {
       typeof Blob != 'undefined' && typeof File != 'undefined';
 };
 
+gui.getUrlVars = function() {
+  var q = window.location.search.substring(1);
+  return q.split('&').reduce(function(memo, chunk) {
+    var pair = chunk.split('=');
+    var key = decodeURIComponent(pair[0]);
+    memo[key] = decodeURIComponent(pair[1]);
+    return memo;
+  }, {});
+};
+
+// Assumes that URL path ends with a filename
+gui.getUrlFilename = function(url) {
+  var path = /\/\/([^#?]+)/.exec(url);
+  var file = path ? path[1].split('/').pop() : '';
+  return file;
+};
+
 gui.formatMessageArgs = function(args) {
   // remove cli annotation (if present)
   return MapShaper.formatLogArgs(args).replace(/^\[[^\]]+\] ?/, '');

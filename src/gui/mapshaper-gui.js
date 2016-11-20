@@ -28,6 +28,15 @@ Browser.onload(function() {
   }
 });
 
+gui.getImportOpts = function() {
+  var vars = gui.getUrlVars();
+  var urlFiles = vars.files ? vars.files.split(',') : [];
+  var manifestFiles = mapshaper.manifest || [];
+  return {
+    files: urlFiles.concat(manifestFiles)
+  };
+};
+
 gui.startEditing = function() {
   var model = new Model(),
       dataLoaded = false,
@@ -38,7 +47,7 @@ gui.startEditing = function() {
   repair = new RepairControl(model, map);
   simplify = new SimplifyControl(model);
   new ImportFileProxy(model);
-  new ImportControl(model);
+  new ImportControl(model, gui.getImportOpts());
   new ExportControl(model);
   new LayerControl(model);
 

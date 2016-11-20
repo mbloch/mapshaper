@@ -54,12 +54,12 @@ function FileChooser(el, cb) {
   }
 }
 
-function ImportControl(model) {
+function ImportControl(model, opts) {
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
   new SimpleButton('#import-buttons .cancel-btn').on('click', model.clearMode);
   var importCount = 0;
   var queuedFiles = [];
-
+  var manifestFiles = opts.files || [];
   model.addMode('import', turnOn, turnOff);
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
@@ -81,9 +81,9 @@ function ImportControl(model) {
   }
 
   function turnOn() {
-    if (mapshaper.manifest) {
-      downloadFiles(mapshaper.manifest);
-      mapshaper.manifest = null;
+    if (manifestFiles.length > 0) {
+      downloadFiles(manifestFiles);
+      manifestFiles = [];
     } else {
       if (importCount > 0) {
         El('#import-intro').hide(); // only show intro before first import
@@ -290,11 +290,25 @@ function ImportControl(model) {
     }, 35);
   }
 
-  function downloadFiles(paths, opts) {
-    paths = paths.filter(function(f) {
-      return gui.isReadableFileType(f);
+  function prepFilesForDownload(names) {
+    var items = names.map(function(name) {
+      var isUrl = /:\/\//.test(name);
+      var item = {name: name};
+      if (isUrl) {
+        item.url = name;
+        item.basename = gui.getUrlFilename(name);
+      } else {
+        item.basename = name;
+        item.url = '/data/' + name;
+      }
+      return gui.isReadableFileType(item.basename) ? item : null;
     });
-    utils.reduceAsync(paths, [], downloadNextFile, function(err, files) {
+    return items.filter(Boolean);
+  }
+
+  function downloadFiles(paths, opts) {
+    var items = prepFilesForDownload(paths);
+    utils.reduceAsync(items, [], downloadNextFile, function(err, files) {
       if (err) {
         gui.alert(err);
       } else if (!files.length) {
@@ -306,10 +320,9 @@ function ImportControl(model) {
     });
   }
 
-  function downloadNextFile(memo, filepath, next) {
+  function downloadNextFile(memo, item, next) {
     var req = new XMLHttpRequest();
-    var errmsg = "Missing file: " + filepath;
-    var url = /:\/\//.test(filepath) ? filepath : '/data/' + filepath;
+    var errmsg = "Missing file: " + item.name;
     req.responseType = 'blob';
     req.addEventListener('load', function(e) {
       var err, blob;
@@ -317,7 +330,7 @@ function ImportControl(model) {
         err = errmsg;
       } else {
         blob = req.response;
-        blob.name = filepath;
+        blob.name = item.basename;
         memo.push(blob);
       }
       next(err, memo);
@@ -325,7 +338,7 @@ function ImportControl(model) {
     req.addEventListener('error', function(e) {
       next(errmsg);
     });
-    req.open('GET', url);
+    req.open('GET', item.url);
     req.send();
   }
 }

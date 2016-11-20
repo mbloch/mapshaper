@@ -234,7 +234,7 @@ describe('topojson-export.js and topojson-import.js', function () {
       api.runCommands('-i test/test_data/one_point.geojson', function(err, data) {
         var topology = TopoJSON.exportTopology(data, {quantization: 10000, bbox:true});
         assert.deepEqual(topology,
-    // output from topojson program
+    // reference output from topojson program
 {"type":"Topology","objects":{"one_point":{"type":"GeometryCollection","geometries":[{"type":"Point","properties":{"scalerank":2,"featurecla":"waterfall","name":"Niagara Falls","comment":"","name_alt":"","lat_y":43.087653,"long_x":-79.044073,"region":"North America","subregion":""},"coordinates":[0,0]}]}},"arcs":[],"bbox":[-79.04411780507252,43.08771393436908,-79.04411780507252,43.08771393436908],"transform":{"scale":[1,1],"translate":[-79.04411780507252,43.08771393436908]}}
           )
         done()
@@ -245,7 +245,7 @@ describe('topojson-export.js and topojson-import.js', function () {
       api.runCommands('-i test/test_data/three_points.geojson', function(err, data) {
         var topology = TopoJSON.exportTopology(data, {quantization: 10000, bbox:true});
         assert.deepEqual(topology,
-  // output from topojson program
+  // reference output from topojson program
 {"type":"Topology","objects":{"three_points":{"type":"GeometryCollection","geometries":[{"type":"Point","properties":{"scalerank":2,"featurecla":"waterfall","name":"Niagara Falls","comment":"","name_alt":"","lat_y":43.087653,"long_x":-79.044073,"region":"North America","subregion":""},"coordinates":[0,9999]},{"type":"Point","properties":{"scalerank":2,"featurecla":"waterfall","name":"Salto Angel","comment":"","name_alt":"Angel Falls","lat_y":5.686836,"long_x":-62.061848,"region":"South America","subregion":""},"coordinates":[6942,4552]},{"type":"Point","properties":{"scalerank":2,"featurecla":"waterfall","name":"Iguazu Falls","comment":"","name_alt":"","lat_y":-25.568265,"long_x":-54.582842,"region":"South America","subregion":""},"coordinates":[9999,0]}]}},"arcs":[],"bbox":[-79.04411780507252,-25.568291925005923,-54.58299719960377,43.08771393436908],"transform":{"scale":[0.0024463566962164966,0.0068662872146589655],"translate":[-79.04411780507252,-25.568291925005923]}}
 
           )
