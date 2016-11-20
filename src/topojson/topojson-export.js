@@ -24,33 +24,32 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
 
 // Convert a dataset object to a TopoJSON topology object
 TopoJSON.exportTopology = function(src, opts) {
-  var dataset = opts.cloned ? src : TopoJSON.copyDatasetForExport(src),
+  var dataset = opts.cloned ? src : MapShaper.copyDatasetForExport(src),
       arcs = dataset.arcs,
-      topology = {type: "Topology"},
-      bounds;
+      topology = {type: "Topology", arcs: []},
+      hasPaths = MapShaper.datasetHasPaths(dataset),
+      bounds = MapShaper.getDatasetBounds(dataset);
 
-  // generate arcs and transform
-  if (MapShaper.datasetHasPaths(dataset)) {
-    bounds = MapShaper.getDatasetBounds(dataset);
-    if (opts.bbox && bounds.hasBounds()) {
-      topology.bbox = bounds.toArray();
-    }
-    if (opts.presimplify && !dataset.arcs.getVertexData().zz) {
-      // Calculate simplification thresholds if needed
-      api.simplify(dataset, opts);
-    }
-    if (!opts.no_quantization) {
-      topology.transform = TopoJSON.transformDataset(dataset, bounds, opts);
-    }
+  if (opts.bbox && bounds.hasBounds()) {
+    topology.bbox = bounds.toArray();
+  }
+
+  if (hasPaths && opts.presimplify && !dataset.arcs.getVertexData().zz) {
+    // Calculate simplification thresholds if needed
+    api.simplify(dataset, opts);
+  }
+  // auto-detect quantization if arcs are present
+  if (!opts.no_quantization && (opts.quantization || hasPaths)) {
+    topology.transform = TopoJSON.transformDataset(dataset, bounds, opts);
+  }
+  if (hasPaths) {
     MapShaper.dissolveArcs(dataset); // dissolve/prune arcs for more compact output
     topology.arcs = TopoJSON.exportArcs(arcs, bounds, opts);
     if (topology.transform) {
       TopoJSON.deltaEncodeArcs(topology.arcs);
     }
-  } else {
-    // some datasets may lack arcs; spec seems to require an array anyway
-    topology.arcs = [];
   }
+
 
   // export layers as TopoJSON named objects
   topology.objects = dataset.layers.reduce(function(objects, lyr, i) {
@@ -64,28 +63,12 @@ TopoJSON.exportTopology = function(src, opts) {
   return topology;
 };
 
-// TODO: switch to MapShaper.copyDatasetForExport(), which is similar but
-// deep-copies shape data.
-// Clone arc data (this gets modified in place during TopoJSON export)
-// Shallow-copy shape data in each layer (gets replaced with remapped shapes)
-TopoJSON.copyDatasetForExport = function(dataset) {
-  var copy = {info: dataset.info};
-  copy.layers = dataset.layers.map(function(lyr) {
-    var shapes = lyr.shapes ? lyr.shapes.concat() : null;
-    return utils.defaults({shapes: shapes}, lyr);
-  });
-  if (dataset.arcs) {
-    copy.arcs = dataset.arcs.getFilteredCopy();
-  }
-  return copy;
-};
-
 TopoJSON.transformDataset = function(dataset, bounds, opts) {
   var bounds2 = TopoJSON.calcExportBounds(bounds, dataset.arcs, opts),
       fw = bounds.getTransform(bounds2),
       inv = fw.invert();
 
-  dataset.arcs.transformPoints(function(x, y) {
+  MapShaper.transformPoints(dataset, function(x, y) {
     var p = fw.transform(x, y);
     return [Math.round(p[0]), Math.round(p[1])];
   });
@@ -159,8 +142,8 @@ TopoJSON.calcExportBounds = function(bounds, arcs, opts) {
     // default -- auto quantization at 0.02 of avg. segment len
     unitXY = TopoJSON.calcExportResolution(arcs, 0.02);
   }
-  xmax = Math.ceil(bounds.width() / unitXY[0]);
-  ymax = Math.ceil(bounds.height() / unitXY[1]);
+  xmax = Math.ceil(bounds.width() / unitXY[0]) || 0;
+  ymax = Math.ceil(bounds.height() / unitXY[1]) || 0;
   return new Bounds(0, 0, xmax, ymax);
 };
 

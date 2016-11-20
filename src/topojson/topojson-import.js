@@ -1,4 +1,4 @@
-/* @requires topojson-common */
+/* @requires topojson-common, mapshaper-point-utils */
 
 // Convert a TopoJSON topology into mapshaper's internal format
 // Side-effect: data in topology is modified
@@ -31,6 +31,10 @@ MapShaper.importTopoJSON = function(topology, opts) {
       MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
 
+    if (lyr.geometry_type == 'point' && topology.transform) {
+      TopoJSON.decodePoints(lyr.shapes, topology.transform);
+    }
+
     lyr.name = name;
     layers.push(lyr);
   });
@@ -46,6 +50,12 @@ MapShaper.importTopoJSON = function(topology, opts) {
   return dataset;
 };
 
+TopoJSON.decodePoints = function(shapes, transform) {
+  MapShaper.forEachPoint(shapes, function(p) {
+    p[0] = p[0] * transform.scale[0] + transform.translate[0];
+    p[1] = p[1] * transform.scale[1] + transform.translate[1];
+  });
+};
 
 TopoJSON.decodeArcs = function(arcs, transform) {
   var mx = transform.scale[0],
