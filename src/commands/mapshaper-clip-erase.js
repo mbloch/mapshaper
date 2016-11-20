@@ -6,6 +6,7 @@ mapshaper-polyline-clipping
 mapshaper-point-clipping
 mapshaper-arc-dissolve
 mapshaper-filter-slivers
+mapshaper-split
 */
 
 api.clipLayers = function(target, src, dataset, opts) {
@@ -22,6 +23,14 @@ api.clipLayer = function(targetLyr, src, dataset, opts) {
 
 api.eraseLayer = function(targetLyr, src, dataset, opts) {
   return api.eraseLayers([targetLyr], src, dataset, opts)[0];
+};
+
+api.sliceLayers = function(target, src, dataset, opts) {
+  return MapShaper.clipLayers(target, src, dataset, "slice", opts);
+};
+
+api.sliceLayer = function(targetLyr, src, dataset, opts) {
+  return api.sliceLayers([targetLyr], src, dataset, opts);
 };
 
 // @clipSrc: layer in @dataset or filename
@@ -43,7 +52,7 @@ MapShaper.clipLayers = function(targetLayers, clipSrc, dataset, type, opts) {
       clipDataset = MapShaper.loadExternalClipLayer(clipSrc, opts);
     }
     if (!clipDataset || clipDataset.layers.length != 1) {
-      stop("[clip/erase] Missing clipping data");
+      stop("[" + type + "] Missing clipping data");
     }
     clipLyr = clipDataset.layers[0];
   }
@@ -51,11 +60,76 @@ MapShaper.clipLayers = function(targetLayers, clipSrc, dataset, type, opts) {
   return MapShaper.clipLayersByLayer(targetLayers, dataset, clipLyr, clipDataset, type, opts);
 };
 
+MapShaper.getSliceLayerName = function(clipLyr, field, i) {
+  var id = field ? clipLyr.data.getRecords()[0][field] : i + 1;
+  return 'slice-' + id;
+};
+
+MapShaper.sliceLayerByLayer = function(targetLyr, clipLyr, nodes, opts) {
+  // may not need no_replace
+  var clipLayers = api.splitLayer(clipLyr, opts.id_field, {no_replace: true});
+  return clipLayers.map(function(clipLyr, i) {
+    var outputLyr = MapShaper.clipLayerByLayer(targetLyr, clipLyr, nodes, 'clip', opts);
+    outputLyr.name = MapShaper.getSliceLayerName(clipLyr, opts.id_field, i);
+    return outputLyr;
+  });
+};
+
+MapShaper.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
+  var arcs = nodes.arcs;
+  var shapeCount = targetLyr.shapes ? targetLyr.shapes.length : 0;
+  var nullCount = 0, sliverCount = 0;
+  var clippedShapes, outputLyr;
+  if (shapeCount === 0) {
+    return targetLyr; // ignore empty layer
+  }
+  if (targetLyr === clipLyr) {
+    stop('[' + type + '] Can\'t clip a layer with itself');
+  }
+
+  if (targetLyr.geometry_type == 'point') {
+    clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, arcs, type);
+  } else if (targetLyr.geometry_type == 'polygon') {
+    clippedShapes = MapShaper.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type);
+  } else if (targetLyr.geometry_type == 'polyline') {
+    clippedShapes = MapShaper.clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
+  } else {
+    stop('[' + type + '] Invalid target layer:', targetLyr.name);
+  }
+
+  outputLyr = {
+    name: targetLyr.name,
+    geometry_type: targetLyr.geometry_type,
+    shapes: clippedShapes,
+    data: targetLyr.data // replaced post-filter
+  };
+
+  // Remove sliver polygons
+  if (opts.remove_slivers && outputLyr.geometry_type == 'polygon') {
+    sliverCount = MapShaper.filterClipSlivers(outputLyr, clipLyr, arcs);
+  }
+
+  // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
+  api.filterFeatures(outputLyr, arcs, {remove_empty: true, verbose: false});
+
+  // clone data records (to avoid sharing records between layers)
+  // TODO: this is not needed when replacing target with a single layer
+  if (outputLyr.data) {
+    outputLyr.data = outputLyr.data.clone();
+  }
+
+  // TODO: redo messages, now that many layers may be clipped
+  nullCount = shapeCount - outputLyr.shapes.length;
+  if (nullCount && sliverCount) {
+    message(MapShaper.getClipMessage(type, nullCount, sliverCount));
+  }
+  return outputLyr;
+};
+
 MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, clipDataset, type, opts) {
   var usingPathClip = utils.some(targetLayers, MapShaper.layerHasPaths);
   var usingExternalDataset = targetDataset != clipDataset;
-  var nullCount = 0, sliverCount = 0,
-      nodes, outputLayers, mergedDataset;
+  var nodes, outputLayers, mergedDataset;
 
   if (usingExternalDataset) {
     // merge external dataset with target dataset,
@@ -69,43 +143,20 @@ MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, cli
 
   if (usingPathClip) {
     // add vertices at all line intersections
+    // (generally slower than clipping)
     nodes = MapShaper.addIntersectionCuts(mergedDataset, opts);
+  } else {
+    nodes = new NodeCollection(targetDataset.arcs);
   }
 
-  outputLayers = targetLayers.map(function(targetLyr) {
-    var shapeCount = targetLyr.shapes ? targetLyr.shapes.length : 0;
-    var clippedShapes, outputLyr;
-    if (shapeCount === 0) {
-      return targetLyr; // ignore empty layer
-    }
-    if (targetLyr === clipLyr) {
-      stop('[' + type + '] Can\'t clip a layer with itself');
-    } else if (targetLyr.geometry_type == 'point') {
-      clippedShapes = MapShaper.clipPoints(targetLyr.shapes, clipLyr.shapes, mergedDataset.arcs, type);
-    } else if (targetLyr.geometry_type == 'polygon') {
-      clippedShapes = MapShaper.clipPolygons(targetLyr.shapes, clipLyr.shapes, nodes, type);
-    } else if (targetLyr.geometry_type == 'polyline') {
-      clippedShapes = MapShaper.clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
+  outputLayers = targetLayers.reduce(function(memo, targetLyr) {
+    if (type == 'slice') {
+      memo = memo.concat(MapShaper.sliceLayerByLayer(targetLyr, clipLyr, nodes, opts));
     } else {
-      stop('[' + type + '] Invalid target layer:', targetLyr.name);
+      memo.push(MapShaper.clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts));
     }
-
-    outputLyr = MapShaper.getOutputLayer(targetLyr, opts);
-    if (opts.no_replace && targetLyr.data) {
-      outputLyr.data = targetLyr.data.clone();
-    }
-    outputLyr.shapes = clippedShapes;
-
-    // Remove sliver polygons
-    if (opts.remove_slivers && outputLyr.geometry_type == 'polygon') {
-      sliverCount += MapShaper.filterClipSlivers(outputLyr, clipLyr, targetDataset.arcs);
-    }
-
-    // Remove null shapes (likely removed by clipping/erasing, although possibly already present)
-    api.filterFeatures(outputLyr, targetDataset.arcs, {remove_empty: true, verbose: false});
-    nullCount += shapeCount - outputLyr.shapes.length;
-    return outputLyr;
-  });
+    return memo;
+  }, []);
 
   // integrate output layers into target dataset
   // (doing this here instead of in runCommand() to allow arc cleaning)
@@ -123,12 +174,8 @@ MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, cli
     MapShaper.dissolveArcs(targetDataset);
   }
 
-  if (nullCount && sliverCount) {
-    message(MapShaper.getClipMessage(type, nullCount, sliverCount));
-  }
   return outputLayers;
 };
-
 
 MapShaper.getClipMessage = function(type, nullCount, sliverCount) {
   var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';

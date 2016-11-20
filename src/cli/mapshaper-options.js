@@ -598,6 +598,26 @@ MapShaper.getOptionParser = function() {
       type: "flag"
     });
 
+  parser.command("slice")
+    // .describe("slice a layer using polygons in another layer")
+    .validate(validateClipOpts)
+    .option("source", {
+      label: "<file|layer>",
+      describe: "file or layer containing clip polygons"
+    })
+    /*
+    .option('remove-slivers', {
+      describe: "remove sliver polygons created by clipping",
+      type: 'flag'
+    }) */
+    .option("id-field", {
+      describe: "slice id field (from source layer)"
+    })
+    .option("name", nameOpt)
+    .option("no-replace", noReplaceOpt)
+    .option("no-snap", noSnapOpt)
+    .option("target", targetOpt);
+
   parser.command("sort")
     .describe("sort features using a JS expression")
     .validate(validateExpressionOpts)
@@ -606,11 +626,11 @@ MapShaper.getOptionParser = function() {
       describe: "JS expression to generate a sort key for each feature"
     })
     .option("ascending", {
-      describe: "Sort in ascending order (default)",
+      describe: "sort in ascending order (default)",
       type: "flag"
     })
     .option("descending", {
-      describe: "Sort in descending order",
+      describe: "sort in descending order",
       type: "flag"
     })
     .option("target", targetOpt);

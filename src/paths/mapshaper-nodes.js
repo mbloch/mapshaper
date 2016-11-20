@@ -10,27 +10,26 @@ function NodeCollection(arcs, filter) {
   var arcData = arcs.getVertexData(),
       nn = arcData.nn,
       xx = arcData.xx,
-      yy = arcData.yy;
+      yy = arcData.yy,
+      chains;
 
-  var nodeData = MapShaper.findNodeTopology(arcs, filter);
-
-  if (nn.length * 2 != nodeData.chains.length) error("[NodeCollection] count error");
-
+  // Accessor function for arcs
   // TODO: could check that arc collection hasn't been modified, using accessor function
   Object.defineProperty(this, 'arcs', {value: arcs});
 
   this.toArray = function() {
-    var flags = new Uint8Array(nodeData.xx.length),
-        nodes = [];
-    utils.forEach(nodeData.chains, function(next, i) {
+    var nodes = MapShaper.findNodeTopology(arcs, filter),
+        flags = new Uint8Array(nodes.xx.length),
+        arr = [];
+    utils.forEach(nodes.chains, function(next, i) {
       if (flags[i] == 1) return;
-      nodes.push([nodeData.xx[i], nodeData.yy[i]]);
+      arr.push([nodes.xx[i], nodes.yy[i]]);
       while (flags[next] != 1) {
         flags[next] = 1;
-        next = nodeData.chains[next];
+        next = nodes.chains[next];
       }
     });
-    return nodes;
+    return arr;
   };
 
   this.size = function() {
@@ -104,6 +103,16 @@ function NodeCollection(arcs, filter) {
     return match;
   };
 
+  function getNodeChains() {
+    var nodeData;
+    if (!chains) {
+      nodeData = MapShaper.findNodeTopology(arcs, filter);
+      chains = nodeData.chains;
+      if (nn.length * 2 != chains.length) error("[NodeCollection] count error");
+    }
+    return chains;
+  }
+
   function testArcMatch(a, b) {
     var absA = a >= 0 ? a : ~a,
         absB = b >= 0 ? b : ~b,
@@ -134,13 +143,14 @@ function NodeCollection(arcs, filter) {
     var fw = arcId >= 0,
         absId = fw ? arcId : ~arcId,
         nodeId = fw ? absId * 2 + 1: absId * 2, // if fw, use end, if rev, use start
-        chainedId = nodeData.chains[nodeId],
+        chains = getNodeChains(),
+        chainedId = chains[nodeId],
         nextAbsId = chainedId >> 1,
         nextArcId = chainedId & 1 == 1 ? nextAbsId : ~nextAbsId;
 
-    if (chainedId < 0 || chainedId >= nodeData.chains.length) error("out-of-range chain id");
+    if (chainedId < 0 || chainedId >= chains.length) error("out-of-range chain id");
     if (absId >= nn.length) error("out-of-range arc id");
-    if (nodeData.chains.length <= nodeId) error("out-of-bounds node id");
+    if (chains.length <= nodeId) error("out-of-bounds node id");
     return nextArcId;
   }
 

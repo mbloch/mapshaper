@@ -165,6 +165,9 @@ api.runCommand = function(cmd, dataset, cb) {
     } else if (name == 'simplify') {
       api.simplify(dataset, opts);
 
+    } else if (name == 'slice') {
+      api.sliceLayers(targetLayers, opts.source, dataset, opts);
+
     } else if (name == 'sort') {
       MapShaper.applyCommand(api.sortFeatures, targetLayers, arcs, opts);
 
