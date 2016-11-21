@@ -299,6 +299,7 @@ function ImportControl(model, opts) {
         item.basename = gui.getUrlFilename(name);
       } else {
         item.basename = name;
+        // Assume non-urls are local files loaded via mapshaper-gui
         item.url = '/data/' + name;
       }
       return gui.isReadableFileType(item.basename) ? item : null;
@@ -322,21 +323,27 @@ function ImportControl(model, opts) {
 
   function downloadNextFile(memo, item, next) {
     var req = new XMLHttpRequest();
-    var errmsg = "Missing file: " + item.name;
+    var blob;
     req.responseType = 'blob';
     req.addEventListener('load', function(e) {
-      var err, blob;
-      if (req.status >= 300) {
-        err = errmsg;
-      } else {
+      if (req.status == 200) {
         blob = req.response;
+      }
+    });
+    req.addEventListener('loadend', function() {
+      var err;
+      if (req.status == 404) {
+        err = "Not&nbsp;found:&nbsp;" + item.name;
+      } else if (!blob) {
+        // Errors like DNS lookup failure, no CORS headers, no network connection
+        // all are status 0 - it seems impossible to show a more specific message
+        // actual reason is displayed on the console
+        err = "Error&nbsp;loading&nbsp;" + item.name + ". Possible causes include: wrong URL, no network connection, server not configured for cross-domain sharing (CORS).";
+      } else {
         blob.name = item.basename;
         memo.push(blob);
       }
       next(err, memo);
-    });
-    req.addEventListener('error', function(e) {
-      next(errmsg);
     });
     req.open('GET', item.url);
     req.send();
