@@ -4,8 +4,7 @@
 // Side-effect: data in topology is modified
 //
 MapShaper.importTopoJSON = function(topology, opts) {
-  var layers = [],
-      dataset, arcs;
+  var dataset, arcs, layers;
 
   if (utils.isString(topology)) {
     topology = JSON.parse(topology);
@@ -24,19 +23,24 @@ MapShaper.importTopoJSON = function(topology, opts) {
     arcs = new ArcCollection(topology.arcs);
   }
 
-  utils.forEachProperty(topology.objects, function(object, name) {
-    var lyr = TopoJSON.importObject(object, opts);
+  layers = Object.keys(topology.objects).reduce(function(memo, name) {
+    var layers = TopoJSON.importObject(topology.objects[name], opts),
+        lyr;
+    for (var i=0, n=layers.length; i<n; i++) {
+      lyr = layers[i];
+      lyr.name = name; // TODO: consider type-suffixes if different-typed layers
+      memo.push(lyr);
+    }
+    return memo;
+  }, []);
 
+  layers.forEach(function(lyr) {
     if (MapShaper.layerHasPaths(lyr)) {
       MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
-
     if (lyr.geometry_type == 'point' && topology.transform) {
       TopoJSON.decodePoints(lyr.shapes, topology.transform);
     }
-
-    lyr.name = name;
-    layers.push(lyr);
   });
 
   dataset = {
@@ -93,18 +97,9 @@ TopoJSON.roundCoords = function(arcs, precision) {
 };
 
 TopoJSON.importObject = function(obj, opts) {
-  if (obj.type != 'GeometryCollection') {
-    obj = {
-      type: "GeometryCollection",
-      geometries: [obj]
-    };
-  }
-  return TopoJSON.importGeometryCollection(obj, opts);
-};
-
-TopoJSON.importGeometryCollection = function(obj, opts) {
   var importer = new TopoJSON.GeometryImporter(opts);
-  obj.geometries.forEach(importer.addGeometry, importer);
+  var geometries = obj.type == 'GeometryCollection' ? obj.geometries : [obj];
+  geometries.forEach(importer.addGeometry, importer);
   return importer.done();
 };
 
@@ -114,20 +109,20 @@ TopoJSON.GeometryImporter = function(opts) {
   var idField = opts && opts.id_field || GeoJSON.ID_FIELD,
       properties = [],
       shapes = [], // topological ids
+      types = [],
+      dataNulls = 0,
+      shapeNulls = 0,
       collectionType = null;
 
   this.addGeometry = function(geom) {
     var type = GeoJSON.translateGeoJSONType(geom.type),
         shapeId = shapes.length,
-        rec = geom.properties,
+        rec = geom.properties || null,
         shape = null;
 
     if ('id' in geom) {
       rec = rec || {};
       rec[idField] = geom.id;
-    }
-    if (rec) {
-      properties[shapeId] = rec;
     }
     if (type == 'point') {
       shape = this.importPointGeometry(geom);
@@ -139,7 +134,11 @@ TopoJSON.GeometryImporter = function(opts) {
       }
       // null geometry -- ok
     }
+    properties.push(rec);
     shapes.push(shape);
+    types.push(type);
+    if (!rec) dataNulls++;
+    if (!shape) shapeNulls++;
     this.updateCollectionType(type);
   };
 
@@ -164,16 +163,41 @@ TopoJSON.GeometryImporter = function(opts) {
   };
 
   this.done = function() {
-    var lyr = {};
-    if (collectionType) {
-      lyr.geometry_type = collectionType;
-      lyr.shapes = shapes;
+    var layers;
+    if (collectionType == 'mixed') {
+      layers = TopoJSON.divideFeaturesByType(shapes, properties, types);
+    } else {
+      layers = [{
+        geometry_type: collectionType,
+        shapes : collectionType ? shapes : null,
+        data: dataNulls < shapes.length ? new DataTable(properties) : null
+      }];
     }
-    if (properties.length > 0) {
-      lyr.data = new DataTable(properties);
-    }
-    return lyr;
+    return layers;
   };
+};
+
+TopoJSON.divideFeaturesByType = function(shapes, properties, types) {
+  var typeSet = utils.uniq(types);
+  var layers = typeSet.map(function(geoType) {
+    var p = [],
+        s = [],
+        dataNulls = 0,
+        rec;
+    for (var i=0, n=shapes.length; i<n; i++) {
+      if (types[i] != geoType) continue;
+      if (geoType) s.push(shapes[i]);
+      rec = properties[i];
+      p.push(rec);
+      if (!rec) dataNulls++;
+    }
+    return {
+      geometry_type: geoType,
+      shapes: s,
+      data: dataNulls < s.length ? new DataTable(p) : null
+    };
+  });
+  return layers;
 };
 
 TopoJSON.pathImporters = {

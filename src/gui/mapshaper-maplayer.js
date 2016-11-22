@@ -129,11 +129,13 @@ function getDisplayBounds(lyr, arcs) {
   if (lyr.geometry_type == 'point') {
     lyrBounds = MapShaper.getLayerBounds(lyr);
     if (lyrBounds && lyrBounds.hasBounds()) {
-      if (lyrBounds.area() > 0 || arcBounds.area() === 0) {
+      if (lyrBounds.area() > 0 || !arcBounds.hasBounds()) {
         bounds = lyrBounds;
+      } else {
+        // if a point layer has no extent (e.g. contains only a single point),
+        // then merge with arc bounds, to place the point in context.
+        bounds = arcBounds.mergeBounds(lyrBounds);
       }
-      // if a point layer has no extent (e.g. contains only a single point),
-      // then use arc bounds (if present), to match any path layers in the dataset.
     }
   }
 

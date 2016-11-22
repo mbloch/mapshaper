@@ -73,7 +73,7 @@ GeoJSON.importGeometry = function(geom, importer) {
       GeoJSON.importGeometry(geom, importer);
     });
   } else {
-    verbose("TopoJSON.importGeometryCollection() Unsupported geometry type:", geom.type);
+    verbose("GeoJSON.importGeometry() Unsupported geometry type:", geom.type);
   }
 };
 
