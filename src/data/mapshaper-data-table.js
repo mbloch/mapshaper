@@ -32,12 +32,15 @@ function DataTable(obj) {
 }
 
 var dataTableProto = {
+
   fieldExists: function(name) {
     return utils.contains(this.getFields(), name);
   },
 
-  exportAsJSON: function() {
-    return JSON.stringify(this.getRecords());
+  toString: function() {return JSON.stringify(this);},
+
+  toJSON: function() {
+    return this.getRecords();
   },
 
   addField: function(name, init) {

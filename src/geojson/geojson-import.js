@@ -8,8 +8,8 @@ MapShaper.importGeoJSON = function(src, opts) {
   var srcObj = utils.isString(src) ? JSON.parse(src) : src,
       supportedGeometries = Object.keys(GeoJSON.pathImporters),
       idField = opts.id_field || GeoJSON.ID_FIELD,
-      properties = null,
-      geometries, srcCollection, importer, dataset;
+      importer = new PathImporter(opts),
+      srcCollection, dataset;
 
   // Convert single feature or geometry into a collection with one member
   if (srcObj.type == 'Feature') {
@@ -26,41 +26,24 @@ MapShaper.importGeoJSON = function(src, opts) {
     srcCollection = srcObj;
   }
 
-  if (srcCollection.type == 'FeatureCollection') {
-    properties = [];
-    geometries = srcCollection.features.map(function(feat) {
-      var rec = feat.properties || {};
-      if ('id' in feat) {
-        rec[idField] = feat.id;
+  (srcCollection.features || srcCollection.geometries || []).forEach(function(o) {
+    var geom, rec;
+    if (o.type == 'Feature') {
+      geom = o.geometry;
+      rec = o.properties || {};
+      if ('id' in o) {
+        rec[idField] = o.id;
       }
-      properties.push(rec);
-      return feat.geometry;
-    });
-  } else if (srcCollection.type == 'GeometryCollection') {
-    geometries = srcCollection.geometries;
-  } else {
-    stop("[i] Unsupported GeoJSON type:", srcCollection.type);
-  }
-
-  if (!geometries) {
-    stop("[i] Missing geometry data");
-  }
-
-  // Import GeoJSON geometries
-  importer = new PathImporter(opts);
-  geometries.forEach(function(geom) {
-    importer.startShape();
-    if (geom) {
-      GeoJSON.importGeometry(geom, importer);
+    } else if (o.type) {
+      geom = o;
     }
+    importer.startShape(rec);
+    if (geom) GeoJSON.importGeometry(geom, importer);
   });
+
   dataset = importer.done();
 
-  if (properties) {
-    dataset.layers[0].data = new DataTable(properties);
-  }
   MapShaper.importCRS(dataset, srcObj);
-
   return dataset;
 };
 

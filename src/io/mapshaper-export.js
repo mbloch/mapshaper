@@ -173,7 +173,7 @@ MapShaper.exportDataTables = function(layers, opts) {
   layers.forEach(function(lyr) {
     if (lyr.data) {
       tables.push({
-        content: lyr.data.exportAsJSON(), // TODO: other formats
+        content: JSON.stringify(lyr.data),
         filename: (lyr.name ? lyr.name + '-' : '') + 'table.json'
       });
     }

@@ -1,9 +1,7 @@
 /* @requires
-mapshaper-common,
 mapshaper-geom,
 mapshaper-shape-geom,
 mapshaper-snapping,
-mapshaper-topology,
 mapshaper-shape-utils,
 mapshaper-polygon-repair
 */
@@ -43,14 +41,15 @@ function PathImporter(opts) {
       xx = new Float64Array(bufSize),
       yy = new Float64Array(bufSize),
       shapes = [],
+      properties = [],
       nn = [],
+      types = [],
       collectionType = opts.type || null, // possible values: polygon, polyline, point
       round = null,
       pathId = -1,
       shapeId = -1,
       pointId = 0,
       dupeCount = 0,
-      skippedPathCount = 0,
       openRingCount = 0;
 
   if (opts.precision) {
@@ -60,8 +59,9 @@ function PathImporter(opts) {
   // mix in #addPoint() and #endPath() methods
   utils.extend(this, new PathImportStream(importPathCoords));
 
-  this.startShape = function() {
+  this.startShape = function(d) {
     shapes[++shapeId] = null;
+    if (d) properties[shapeId] = d;
   };
 
   this.importLine = function(points) {
@@ -100,68 +100,66 @@ function PathImporter(opts) {
     this.endPath();
   };
 
-  // Return topological shape data
+  // Return imported dataset
   // Apply any requested snapping and rounding
   // Remove duplicate points, check for ring inversions
   //
   this.done = function() {
     var arcs;
+    var layers;
     var lyr = {name: ''};
 
-    if (collectionType == 'polygon' || collectionType == 'polyline') {
+    if (dupeCount > 0) {
+      verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
+    }
+    if (openRingCount > 0) {
+      message(utils.format("Closed %,d open polygon ring%s", openRingCount, utils.pluralSuffix(openRingCount)));
+    }
+    if (pointId > 0) {
+       if (pointId < xx.length) {
+        xx = xx.subarray(0, pointId);
+        yy = yy.subarray(0, pointId);
+      }
+      arcs = new ArcCollection(nn, xx, yy);
 
-      if (dupeCount > 0) {
-        verbose(utils.format("Removed %,d duplicate point%s", dupeCount, utils.pluralSuffix(dupeCount)));
+      if (opts.auto_snap || opts.snap_interval) {
+        MapShaper.snapCoords(arcs, opts.snap_interval);
       }
-      if (skippedPathCount > 0) {
-        // TODO: consider showing details about type of error
-        message(utils.format("Removed %,d path%s with defective geometry", skippedPathCount, utils.pluralSuffix(skippedPathCount)));
-      }
-      if (openRingCount > 0) {
-        message(utils.format("Closed %,d open polygon ring%s", openRingCount, utils.pluralSuffix(openRingCount)));
-      }
+    }
 
-      if (pointId > 0) {
-        if (pointId < xx.length) {
-          xx = xx.subarray(0, pointId);
-          yy = yy.subarray(0, pointId);
-        }
-        arcs = new ArcCollection(nn, xx, yy);
+    if (collectionType == 'mixed') {
+      layers = MapShaper.divideFeaturesByType(shapes, properties, types);
 
-        if (opts.auto_snap || opts.snap_interval) {
-          MapShaper.snapCoords(arcs, opts.snap_interval);
-        }
-        // Detect and handle some geometry problems
-        // TODO: print message summarizing any changes
-        MapShaper.cleanShapes(shapes, arcs, collectionType);
-      } else {
-        message("No geometries were imported");
-        collectionType = null;
-      }
-    } else if (collectionType == 'point' || collectionType === null) {
-      // pass
     } else {
-      error("Unexpected collection type:", collectionType);
+      lyr = {geometry_type: collectionType};
+      if (collectionType) {
+        lyr.shapes = shapes;
+      }
+      if (properties.length > 0) {
+        lyr.data = new DataTable(properties);
+      }
+      layers = [lyr];
     }
 
-    // If shapes are all null, don't add a shapes array or geometry_type
-    if (collectionType) {
-      lyr.geometry_type = collectionType;
-      lyr.shapes = shapes;
-    }
+    layers.forEach(function(lyr) {
+      if (MapShaper.layerHasPaths(lyr)) {
+        MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+      }
+    });
 
     return {
       arcs: arcs || null,
       info: {},
-      layers: [lyr]
+      layers: layers
     };
   };
 
   function setShapeType(t) {
+    types[shapeId] = t;
     if (!collectionType) {
       collectionType = t;
     } else if (t != collectionType) {
-      stop("[PathImporter] Mixed feature types are not allowed");
+      collectionType = 'mixed';
     }
   }
 
@@ -221,5 +219,4 @@ function PathImporter(opts) {
 
     appendPath(count);
   }
-
 }

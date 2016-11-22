@@ -28,14 +28,17 @@ describe('mapshaper-import.js', function () {
       type: "FeatureCollection",
       features: [
         {
+          type: 'Feature',
           geometry: {
             type: "Polygon",
             coordinates: [[[3, 1], [1, 1], [2, 3], [3, 1]]]
           }, properties: {FID: 0}
         }, {
+          type: 'Feature',
           geometry: null,
           properties: {FID: 1}
         }, {
+          type: 'Feature',
           geometry: {
             type: "Polygon",
             coordinates: [[[4, 3], [3, 1], [2, 3], [4, 3]]]

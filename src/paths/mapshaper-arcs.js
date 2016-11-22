@@ -196,8 +196,8 @@ function ArcCollection() {
     return arr;
   };
 
-  this.toString = function() {
-    return JSON.stringify(this.toArray());
+  this.toJSON = function() {
+    return this.toArray();
   };
 
   // @cb function(i, j, xx, yy)

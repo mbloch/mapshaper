@@ -25,6 +25,56 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(Utils.pluck(data.layers[0].data.getRecords(), 'NAME'), ["District of Columbia", "Arlington", "Fairfax County", "Alexandria", "Fairfax City", "Manassas"]);
     })
 
+    it('Import FeatureCollection with mixed geometry types', function() {
+      var json = {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          properties: null,
+          geometry: {
+            type: "MultiPoint",
+            coordinates: [[0, 1], [2, 3]]
+          }
+        }, {
+          type: "Feature",
+          properties: {name: "A"},
+          geometry: {
+            type: "LineString",
+            coordinates: [[0, 1], [2, 3], [4, 5]]
+          }
+        }, {
+          type: "Feature",
+          properties: {name: "B"},
+          geometry: {
+            type: "Polygon",
+            coordinates: [[[0, 1], [1, 1], [0, 0], [0, 1]]]
+          }
+        }]
+      };
+
+      var target = {
+        info: {},
+        arcs: [[[0, 1], [2, 3], [4, 5]], [[0, 1], [1, 1], [0, 0], [0, 1]]],
+        layers: [{
+          geometry_type: 'point',
+          data: [{}],
+          shapes: [[[0, 1], [2, 3]]]
+        }, {
+          geometry_type: "polyline",
+          data: [{name: "A"}],
+          shapes: [[[0]]]
+        }, {
+          geometry_type: "polygon",
+          data: [{name: "B"}],
+          shapes: [[[1]]]
+        }]
+      }
+
+      var dataset = api.internal.importGeoJSON(json, {});
+      var data = JSON.stringify(dataset)
+      assert.deepEqual(JSON.parse(data), target);
+    })
+
     it('Import Feature with id field', function () {
       var obj = {
         type: 'Feature',

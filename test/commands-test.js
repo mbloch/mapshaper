@@ -134,7 +134,7 @@ describe('mapshaper-commands.js', function () {
       var input = {
         type: "FeatureCollection",
         features: [{
-          type: "Point",
+          type: "Feature",
           geometry: null,
           properties: {
             id: 0,

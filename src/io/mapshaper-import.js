@@ -60,7 +60,9 @@ MapShaper.importContent = function(obj, opts) {
 
   // Use file basename for layer name, except TopoJSON, which uses object names
   if (fileFmt != 'topojson') {
-    MapShaper.setLayerName(dataset.layers[0], MapShaper.filenameToLayerName(data.filename || ''));
+    dataset.layers.forEach(function(lyr) {
+      MapShaper.setLayerName(lyr, MapShaper.filenameToLayerName(data.filename || ''));
+    });
   }
 
   // Add input filename and format to the dataset's 'info' object

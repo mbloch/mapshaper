@@ -2,6 +2,32 @@
 
 // utility functions for datasets and layers
 
+// Divide a collection of features with mixed types into layers of a single type
+// (Used for importing Shapefile and GeoJSON features)
+MapShaper.divideFeaturesByType = function(shapes, properties, types) {
+  var typeSet = utils.uniq(types);
+  var layers = typeSet.map(function(geoType) {
+    var p = [],
+        s = [],
+        dataNulls = 0,
+        rec;
+    for (var i=0, n=shapes.length; i<n; i++) {
+      if (types[i] != geoType) continue;
+      if (geoType) s.push(shapes[i]);
+      rec = properties[i];
+      p.push(rec);
+      if (!rec) dataNulls++;
+    }
+    return {
+      geometry_type: geoType,
+      shapes: s,
+      data: dataNulls < s.length ? new DataTable(p) : null
+    };
+  });
+  return layers;
+};
+
+
 // clone all layers, make a filtered copy of arcs
 MapShaper.copyDataset = function(dataset) {
   var d2 = utils.extend({}, dataset);

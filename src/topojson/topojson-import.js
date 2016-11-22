@@ -48,9 +48,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
     arcs: arcs,
     info: {}
   };
-
   MapShaper.importCRS(dataset, topology);
-
   return dataset;
 };
 
@@ -165,7 +163,7 @@ TopoJSON.GeometryImporter = function(opts) {
   this.done = function() {
     var layers;
     if (collectionType == 'mixed') {
-      layers = TopoJSON.divideFeaturesByType(shapes, properties, types);
+      layers = MapShaper.divideFeaturesByType(shapes, properties, types);
     } else {
       layers = [{
         geometry_type: collectionType,
@@ -175,29 +173,6 @@ TopoJSON.GeometryImporter = function(opts) {
     }
     return layers;
   };
-};
-
-TopoJSON.divideFeaturesByType = function(shapes, properties, types) {
-  var typeSet = utils.uniq(types);
-  var layers = typeSet.map(function(geoType) {
-    var p = [],
-        s = [],
-        dataNulls = 0,
-        rec;
-    for (var i=0, n=shapes.length; i<n; i++) {
-      if (types[i] != geoType) continue;
-      if (geoType) s.push(shapes[i]);
-      rec = properties[i];
-      p.push(rec);
-      if (!rec) dataNulls++;
-    }
-    return {
-      geometry_type: geoType,
-      shapes: s,
-      data: dataNulls < s.length ? new DataTable(p) : null
-    };
-  });
-  return layers;
 };
 
 TopoJSON.pathImporters = {
