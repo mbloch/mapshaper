@@ -158,11 +158,16 @@ function PathImporter(opts) {
   };
 
   function setShapeType(t) {
-    types[shapeId] = t;
-    if (!collectionType) {
-      collectionType = t;
-    } else if (t != collectionType) {
-      collectionType = 'mixed';
+    var currType = shapeId < types.length ? types[shapeId] : null;
+    if (!currType) {
+      types[shapeId] = t;
+      if (!collectionType) {
+        collectionType = t;
+      } else if (t != collectionType) {
+        collectionType = 'mixed';
+      }
+    } else if (currType != t) {
+      stop("Unable to import mixed-geometry GeoJSON features");
     }
   }
 

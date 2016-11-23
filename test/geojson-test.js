@@ -25,6 +25,49 @@ describe('mapshaper-geojson.js', function () {
       assert.deepEqual(Utils.pluck(data.layers[0].data.getRecords(), 'NAME'), ["District of Columbia", "Arlington", "Fairfax County", "Alexandria", "Fairfax City", "Manassas"]);
     })
 
+    it('Able to import Feature containing GeometryCollection of same-type objects', function() {
+      var json = {
+          "type": "Feature",
+          "properties": {"name": "A"},
+          "geometry": {
+            "type": "GeometryCollection",
+            "geometries": [{
+                "type": "MultiPoint",
+                "coordinates": [[0, 1], [2, 3]]
+              }, {
+                "type": "Point",
+                "coordinates": [4, 5]
+              }
+            ]
+          }
+        };
+      var dataset = api.internal.importGeoJSON(json, {});
+      assert.deepEqual(dataset.layers[0].shapes, [[[0, 1], [2, 3], [4, 5]]])
+    })
+
+    it('Unable to import Feature containing mixed geometry types', function() {
+      var json = {
+          "type": "Feature",
+          "properties": {"name": "A"},
+          "geometry": {
+            "type": "GeometryCollection",
+            "geometries": [{
+                "type": "MultiPoint",
+                "coordinates": [[0, 1], [2, 3]]
+              }, {
+                "type": "LineString",
+                "coordinates": [[0, 1], [2, 3], [4, 5]]
+              }, {
+                "type": "Polygon",
+                "coordinates": [[[0, 1], [1, 1], [0, 0], [0, 1]]]
+              }
+            ]
+          }
+        };
+
+      assert.throws(function() {api.internal.importGeoJSON(json, {});}, /Unable to import mixed/);
+    });
+
     it('Import FeatureCollection with mixed geometry types', function() {
       var json = {
         type: "FeatureCollection",
