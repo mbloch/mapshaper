@@ -72,7 +72,7 @@ var ExportControl = function(model) {
 
   function getDefaultExportFormat() {
     var dataset = model.getEditingLayer().dataset;
-    return dataset.info && dataset.info.input_format &&
+    return dataset.info && dataset.info.input_formats &&
         dataset.info.input_formats[0] || 'geojson';
   }
 
