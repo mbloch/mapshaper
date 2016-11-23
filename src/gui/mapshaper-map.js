@@ -26,12 +26,13 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
   //var overlapPct = 2 * MapShaper.getBoundsOverlap(newBounds, prevBounds) /
   //    (newBounds.area() + prevBounds.area());
   var boundsChanged = !prevBounds.equals(newBounds);
-  var intersects = newBounds.intersects(mapBounds);
+  var inView = newBounds.intersects(mapBounds);
   // TODO: compare only intersecting portion of layer with map bounds
   var areaRatio = newBounds.area() / mapBounds.area();
   if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
-  if (!intersects) return true; // reset if layer is out-of-view
-  return areaRatio > 500 || areaRatio < 0.05; // reset if layer is not at a viewable scale
+  if (!inView) return true; // reset if layer is out-of-view
+  return false;
+  // return areaRatio > 500 || areaRatio < 0.05; // reset if layer is not at a viewable scale
 };
 
 function MshpMap(model) {
