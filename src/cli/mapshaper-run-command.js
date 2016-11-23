@@ -11,6 +11,7 @@ mapshaper-filter
 mapshaper-filter-rename-fields
 mapshaper-filter-islands
 mapshaper-filter-slivers
+mapshaper-flatten
 mapshaper-graticule
 mapshaper-info
 mapshaper-innerlines2

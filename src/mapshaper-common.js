@@ -10,6 +10,9 @@ var MapShaper = {
 
 new Float64Array(1); // workaround for https://github.com/nodejs/node/issues/6006
 
+// in case running in browser and loading browserified modules separately
+var Buffer = require('buffer').Buffer;
+
 function error() {
   MapShaper.error.apply(null, utils.toArray(arguments));
 }

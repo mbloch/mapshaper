@@ -1,7 +1,18 @@
 #!/usr/bin/env node
 
-var follow = process.argv.indexOf('-f') > -1;
 var version = require('./package.json').version;
+var follow = process.argv.indexOf('-f') > -1;
+var buildAll = process.argv.indexOf('all') > -1;
+var requiredModules = [
+    'buffer',
+    'iconv-lite',
+    'fs',
+    'rbush',
+    'rw',
+    'path',
+    'd3-dsv',
+    'mproj'
+  ];
 
 require("catty")({follow: follow})
   .addLibrary("lib")
@@ -10,18 +21,20 @@ require("catty")({follow: follow})
   .prepend("var VERSION = '" + version + "';")
   .cat("src/mapshaper.js", onCat);
 
-function onCat(err, js) {
-  var ofile = "./mapshaper.js";
-  if (!err) {
-    write(ofile, js);
-    require('browserify')(ofile).bundle(onBundle);
-  }
+if (buildAll) {
+  require('browserify')()
+    .require(requiredModules)
+    .bundle(function(err, buf) {
+      if (err) throw err;
+      write('./www/node_modules.js', buf);
+    });
 }
 
-function onBundle(err, buf) {
-  var ofile = "./www/mapshaper.js"
-  if (err) throw err;
-  write(ofile, buf);
+function onCat(err, js) {
+  if (!err) {
+    write('./mapshaper.js', js);
+    write('./www/mapshaper.js', js);
+  }
 }
 
 function write(ofile, contents) {

@@ -7,5 +7,6 @@ npm-debug.log
 /mapshaper.js
 /www/mapshaper-gui.js
 /www/mapshaper.js
+/www/node_modules.js
 CHANGELOG.md
 release*
