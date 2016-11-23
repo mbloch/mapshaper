@@ -109,7 +109,7 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.filterSlivers, targetLayers, arcs, opts);
 
     } else if (name == 'flatten') {
-      outputLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
+      MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
 
     } else if (name == 'graticule') {
       dataset = api.graticule(dataset, opts);
