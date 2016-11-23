@@ -16,7 +16,7 @@ api.filterIslands = function(lyr, arcs, opts) {
     if (opts.remove_empty) {
       api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
     }
-    message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
+    message(utils.format("[filter-islands] Removed %'d island%s", removed, utils.pluralSuffix(removed)));
   } else {
     message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
   }

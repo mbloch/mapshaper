@@ -24,6 +24,7 @@ MapShaper.filterSlivers = function(lyr, arcs, opts) {
   };
 
   MapShaper.editShapes(lyr.shapes, pathFilter);
+  message(utils.format("[filter-slivers] Removed %'d sliver%s", removed, utils.pluralSuffix(removed)));
   return removed;
 };
 
