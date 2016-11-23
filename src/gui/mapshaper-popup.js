@@ -31,8 +31,10 @@ function Popup() {
         rows = 0;
     utils.forEachProperty(rec, function(v, k) {
       var type = MapShaper.getFieldType(v, k, table);
-      renderRow(tableEl, rec, k, type, editable);
-      rows++;
+      if (v !== undefined) {
+        renderRow(tableEl, rec, k, type, editable);
+        rows++;
+      }
     });
     if (rows > 0) {
       tableEl.appendTo(el);
