@@ -40,7 +40,7 @@ Dbf.lookupCodePage = function(lid) {
 };
 
 Dbf.readAsciiString = function(bin, size) {
-  var require7bit = Env.inNode;
+  var require7bit = true;
   var str = bin.readCString(size, require7bit);
   if (str === null) {
     stop("DBF file contains non-ascii text.\n" + Dbf.ENCODING_PROMPT);
@@ -97,11 +97,8 @@ Dbf.getStringReader = function(encoding) {
   if (!encoding || encoding === 'ascii') {
     return Dbf.getAsciiStringReader();
     // return Dbf.readAsciiString;
-  } else if (Env.inNode) {
-    return Dbf.getEncodedStringReader(encoding);
   } else {
-    // TODO: user browserify or other means of decoding string data in the browser
-    error("[Dbf.getStringReader()] Non-ascii encodings only supported in Node.");
+    return Dbf.getEncodedStringReader(encoding);
   }
 };
 
