@@ -3,7 +3,7 @@
 // utility functions for datasets and layers
 
 // Divide a collection of features with mixed types into layers of a single type
-// (Used for importing Shapefile and GeoJSON features)
+// (Used for importing TopoJSON and GeoJSON features)
 MapShaper.divideFeaturesByType = function(shapes, properties, types) {
   var typeSet = utils.uniq(types);
   var layers = typeSet.map(function(geoType) {

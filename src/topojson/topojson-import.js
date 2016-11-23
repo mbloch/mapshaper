@@ -41,6 +41,9 @@ MapShaper.importTopoJSON = function(topology, opts) {
     if (lyr.geometry_type == 'point' && topology.transform) {
       TopoJSON.decodePoints(lyr.shapes, topology.transform);
     }
+    if (lyr.data) {
+      MapShaper.fixInconsistentFields(lyr.data.getRecords());
+    }
   });
 
   dataset = {

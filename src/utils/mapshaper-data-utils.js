@@ -14,6 +14,39 @@ MapShaper.getValueType = function(val) {
   return type;
 };
 
+// Fill out a data table with undefined values
+// The undefined members will disappear when records are exported as JSON,
+// but will show up when fields are listed using Object.keys()
+MapShaper.fixInconsistentFields = function(records) {
+  var fields = MapShaper.findIncompleteFields(records);
+  MapShaper.patchMissingFields(records, fields);
+};
+
+MapShaper.findIncompleteFields = function(records) {
+  var counts = {},
+      i, j, keys;
+  for (i=0; i<records.length; i++) {
+    keys = Object.keys(records[i] || {});
+    for (j=0; j<keys.length; j++) {
+      counts[keys[j]] = (counts[keys[j]] | 0) + 1;
+    }
+  }
+  return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
+};
+
+MapShaper.patchMissingFields = function(records, fields) {
+  var rec, i, j, f;
+  for (i=0; i<records.length; i++) {
+    rec = records[i] || (records[i] = {});
+    for (j=0; j<fields.length; j++) {
+      f = fields[j];
+      if (f in rec === false) {
+        rec[f] = undefined;
+      }
+    }
+  }
+};
+
 MapShaper.getColumnType = function(key, table) {
   var type = null,
       records = table.getRecords(),

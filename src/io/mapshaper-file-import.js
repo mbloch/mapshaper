@@ -63,6 +63,15 @@ api.importFile = function(path, opts) {
 api.importDataTable = function(path, opts) {
   // TODO: avoid the overhead of importing shape data, if present
   var dataset = api.importFile(path, opts);
+  if (dataset.layers.length > 1) {
+    // if multiple layers are imported (e.g. from multi-type GeoJSON), throw away
+    // the geometry and merge them
+    dataset.layers.forEach(function(lyr) {
+      lyr.shapes = null;
+      lyr.geometry_type = null;
+    });
+    dataset.layers = api.mergeLayers(dataset.layers);
+  }
   return dataset.layers[0].data;
 };
 

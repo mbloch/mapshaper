@@ -1,6 +1,7 @@
 /* @require mapshaper-merging, mapshaper-data-utils */
 
-// Merge layers, in-place (assumes layers belong to the same dataset)
+// Merge layers; assumes that layers belong to the same dataset and have compatible
+// geometries and data fields.
 api.mergeLayers = function(layers) {
   var merged;
   MapShaper.checkLayersCanMerge(layers);

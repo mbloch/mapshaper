@@ -17,7 +17,7 @@ MapShaper.exportDbfFile = function(lyr, dataset, opts) {
       buf;
   // create empty data table if missing a table or table is being cut out
   if (!data || opts.cut_table || opts.drop_table) {
-    data = new DataTable(lyr.shapes.length);
+    data = new DataTable(lyr.shapes ? lyr.shapes.length : 0);
   }
   // dbfs should have at least one column; add id field if none
   if (data.getFields().length === 0) {

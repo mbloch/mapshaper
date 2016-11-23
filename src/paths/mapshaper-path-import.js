@@ -145,6 +145,9 @@ function PathImporter(opts) {
       if (MapShaper.layerHasPaths(lyr)) {
         MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
       }
+      if (lyr.data) {
+        MapShaper.fixInconsistentFields(lyr.data.getRecords());
+      }
     });
 
     return {

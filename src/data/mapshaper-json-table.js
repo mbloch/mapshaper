@@ -1,6 +1,7 @@
 /* @requires mapshaper-data-table */
 
 MapShaper.importJSONTable = function(arr) {
+  MapShaper.fixInconsistentFields(arr);
   return {
     layers: [{
       data: new DataTable(arr)
