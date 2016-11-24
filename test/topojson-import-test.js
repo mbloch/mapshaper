@@ -5,10 +5,62 @@ var api = require('../'),
   ArcCollection = api.internal.ArcCollection,
   Utils = api.utils;
 
-
 describe('topojson-import.js', function () {
 
   describe('importTopoJSON()', function () {
+
+    it('accepts nested GeometryCollection objects of one type', function() {
+      var topology = {
+        arcs: [],
+        objects: {
+          points: {
+            type: "GeometryCollection",
+            geometries: [{
+              type: "GeometryCollection",
+              properties: {type: "A"},
+              geometries: [{
+                type: "Point",
+                properties: {type: "B"}, // ignored
+                coordinates: [1, 2]
+              }]
+            }]
+          }
+        }
+      };
+      var dataset = api.internal.importTopoJSON(topology, {});
+      assert.deepEqual(JSON.parse(JSON.stringify(dataset.layers[0])), {
+        name: 'points',
+        geometry_type: 'point',
+        shapes: [[[1, 2]]],
+        data: [{type: 'A'}]
+      });
+    })
+
+    it('error on nested GeometryCollection objects of mixed types', function() {
+      var topology = {
+        arcs: [[[0, 0], [0, 1]]],
+        objects: {
+          points: {
+            type: "GeometryCollection",
+            geometries: [{
+              type: "GeometryCollection",
+              properties: {type: "A"},
+              geometries: [{
+                type: "Point",
+                coordinates: [1, 2]
+              }, {
+                type: "LineString",
+                arcs: [0]
+              }]
+            }]
+          }
+        }
+      };
+      assert.throws(function() {
+        api.internal.importTopoJSON(topology, {});
+      }, /Unable to import mixed/);
+    })
+
     it('mixed geom types are split into layers', function () {
       var topology = {
         type: "Topology",

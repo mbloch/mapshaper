@@ -100,7 +100,7 @@ TopoJSON.roundCoords = function(arcs, precision) {
 TopoJSON.importObject = function(obj, opts) {
   var importer = new TopoJSON.GeometryImporter(opts);
   var geometries = obj.type == 'GeometryCollection' ? obj.geometries : [obj];
-  geometries.forEach(importer.addGeometry, importer);
+  geometries.forEach(importer.addGeometryObject, importer);
   return importer.done();
 };
 
@@ -113,46 +113,54 @@ TopoJSON.GeometryImporter = function(opts) {
       types = [],
       dataNulls = 0,
       shapeNulls = 0,
-      collectionType = null;
+      collectionType = null,
+      shapeId;
 
-  this.addGeometry = function(geom) {
-    var type = GeoJSON.translateGeoJSONType(geom.type),
-        shapeId = shapes.length,
-        rec = geom.properties || null,
-        shape = null;
-
+  this.addGeometryObject = function(geom) {
+    var rec = geom.properties || null;
+    shapeId = shapes.length;
+    shapes[shapeId] = null;
     if ('id' in geom) {
       rec = rec || {};
       rec[idField] = geom.id;
     }
-    if (type == 'point') {
-      shape = this.importPointGeometry(geom);
-    } else if (geom.type in TopoJSON.pathImporters) {
-      shape = TopoJSON.pathImporters[geom.type](geom.arcs);
-    } else {
-      if (geom.type) {
-        verbose("[TopoJSON] Unknown geometry type:", geom.type);
-      }
-      // null geometry -- ok
-    }
-    properties.push(rec);
-    shapes.push(shape);
-    types.push(type);
+    properties[shapeId] = rec;
     if (!rec) dataNulls++;
-    if (!shape) shapeNulls++;
-    this.updateCollectionType(type);
+    if (geom.type) {
+      this.addShape(geom);
+    }
+    if (shapes[shapeId] === null) {
+      shapeNulls++;
+    }
   };
 
-  this.importPointGeometry = function(geom) {
-    var shape = null;
-    if (geom.type == 'Point') {
-      shape = [geom.coordinates];
-    } else if (geom.type == 'MultiPoint') {
-      shape = geom.coordinates;
-    } else {
-      stop("Invalid TopoJSON point geometry:", geom);
+  this.addShape = function(geom) {
+    var curr = shapes[shapeId];
+    var type = GeoJSON.translateGeoJSONType(geom.type);
+    var shape, importer;
+    if (geom.type == "GeometryCollection") {
+      geom.geometries.forEach(this.addShape, this);
+    } else if (type) {
+      this.setGeometryType(type);
+      shape = TopoJSON.shapeImporters[geom.type](geom);
+      // TODO: better shape validation
+      if (!shape || !shape.length || !Array.isArray(shape[0])) {
+        stop("Invalid TopoJSON", geom.type, "geometry");
+      }
+      shapes[shapeId] = curr ? curr.concat(shape) : shape;
+    } else if (geom.type) {
+      stop("Invalid TopoJSON geometry type:", geom.type);
     }
-    return shape;
+  };
+
+  this.setGeometryType = function(type) {
+    var currType = shapeId < types.length ? types[shapeId] : null;
+    if (!currType) {
+      types[shapeId] = type;
+      this.updateCollectionType(type);
+    } else if (currType != type) {
+      stop("Unable to import mixed-type TopoJSON geometries");
+    }
   };
 
   this.updateCollectionType = function(type) {
@@ -178,18 +186,24 @@ TopoJSON.GeometryImporter = function(opts) {
   };
 };
 
-TopoJSON.pathImporters = {
-  LineString: function(arcs) {
-    return [arcs];
+TopoJSON.shapeImporters = {
+  Point: function(geom) {
+    return [geom.coordinates];
   },
-  MultiLineString: function(arcs) {
-    return arcs;
+  MultiPoint: function(geom) {
+    return geom.coordinates;
   },
-  Polygon: function(arcs) {
-    return arcs;
+  LineString: function(geom) {
+    return [geom.arcs];
   },
-  MultiPolygon: function(arcs) {
-    return arcs.reduce(function(memo, arr) {
+  MultiLineString: function(geom) {
+    return geom.arcs;
+  },
+  Polygon: function(geom) {
+    return geom.arcs;
+  },
+  MultiPolygon: function(geom) {
+    return geom.arcs.reduce(function(memo, arr) {
       return memo ? memo.concat(arr) : arr;
     }, null);
   }
