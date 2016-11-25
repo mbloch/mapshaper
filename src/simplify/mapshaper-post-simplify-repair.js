@@ -1,8 +1,13 @@
 /* @require mapshaper-segment-intersection */
 
-// Combine detection and repair for cli
+// Remove line-segment intersections introduced by simplification by rolling
+// back simplification along intersecting segments.
 //
-api.findAndRepairIntersections = function(arcs) {
+// Limitation of this method: it can't remove intersections that are present
+// in the original dataset.
+// TODO: don't roll back simplification for unrepairable intersections.
+//
+MapShaper.postSimplifyRepair = function(arcs) {
   var intersections = MapShaper.findSegmentIntersections(arcs),
       unfixable = MapShaper.repairIntersections(arcs, intersections),
       countPre = intersections.length,
@@ -20,13 +25,6 @@ api.findAndRepairIntersections = function(arcs) {
   }
 };
 
-// Try to resolve a collection of line-segment intersections by rolling
-// back simplification along intersecting segments.
-//
-// Limitation of this method: it can't remove intersections that are present
-// in the original dataset.
-//
-// @arcs ArcCollection object
 // @intersections (Array) Output from MapShaper.findSegmentIntersections()
 // Returns array of unresolved intersections, or empty array if none.
 //

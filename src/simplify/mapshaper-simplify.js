@@ -2,7 +2,7 @@
 mapshaper-visvalingam
 mapshaper-dp
 mapshaper-dataset-utils
-mapshaper-repair
+mapshaper-post-simplify-repair
 mapshaper-geom
 mapshaper-simplify-info
 */
@@ -30,7 +30,7 @@ api.simplify = function(dataset, opts) {
   }
 
   if (!opts.no_repair && arcs.getRetainedInterval() > 0) {
-    api.findAndRepairIntersections(arcs);
+    MapShaper.postSimplifyRepair(arcs);
   }
 
   if (opts.stats) {

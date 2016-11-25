@@ -195,6 +195,10 @@ MapShaper.getOptionParser = function() {
       describe: "(CSV) field delimiter"
     });
 
+  // Work-in-progress (no .describe(), so hidden from -h)
+  parser.command("clean")
+    .option("target", targetOpt);
+
   parser.command("clip")
     .title("\nEditing commands")
     .describe("use a polygon layer to clip another layer")
@@ -346,10 +350,6 @@ MapShaper.getOptionParser = function() {
       describe: "delete features with null geometry"
     })
     */
-    .option("target", targetOpt);
-
-  // Work-in-progress (no .describe(), so hidden from -h)
-  parser.command("flatten")
     .option("target", targetOpt);
 
   parser.command("graticule")
@@ -777,8 +777,7 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("repair")
-    .option("target", targetOpt);
+
   */
 
   return parser;

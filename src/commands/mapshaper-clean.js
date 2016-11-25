@@ -1,11 +1,14 @@
 /* @requires mapshaper-dissolve2 */
 
-// Flatten overlapping polygon shapes (in-place)
-api.flattenLayer = function(lyr, dataset, opts) {
-  MapShaper.requirePolygonLayer(lyr, "[flatten] Expected a polygon type layer");
+// Fix overlapping polygon shapes (in-place)
+// TODO: patch small gaps
+api.cleanLayers = function(layers, dataset, opts) {
   var nodes = MapShaper.addIntersectionCuts(dataset);
   var flatten = MapShaper.getPolygonFlattener(nodes);
-  lyr.shapes = lyr.shapes.map(flatten);
+  layers.forEach(function(lyr) {
+    MapShaper.requirePolygonLayer(lyr, "[flatten] Expected a polygon type layer");
+    lyr.shapes = lyr.shapes.map(flatten);
+  });
 };
 
 MapShaper.getPolygonFlattener = function(nodes) {

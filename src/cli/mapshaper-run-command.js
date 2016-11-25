@@ -1,4 +1,5 @@
 /* @requires
+mapshaper-clean
 mapshaper-clip-erase
 mapshaper-dissolve
 mapshaper-dissolve2
@@ -11,7 +12,6 @@ mapshaper-filter
 mapshaper-filter-rename-fields
 mapshaper-filter-islands
 mapshaper-filter-slivers
-mapshaper-flatten
 mapshaper-graticule
 mapshaper-info
 mapshaper-innerlines2
@@ -77,6 +77,10 @@ api.runCommand = function(cmd, dataset, cb) {
     if (name == 'calc') {
       MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);
 
+    } else if (name == 'clean') {
+      // MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
+      api.cleanLayers(targetLayers, dataset, opts);
+
     } else if (name == 'clip') {
       api.clipLayers(targetLayers, opts.source, dataset, opts);
 
@@ -107,9 +111,6 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'filter-slivers') {
       MapShaper.applyCommand(api.filterSlivers, targetLayers, arcs, opts);
-
-    } else if (name == 'flatten') {
-      MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
 
     } else if (name == 'graticule') {
       dataset = api.graticule(dataset, opts);
