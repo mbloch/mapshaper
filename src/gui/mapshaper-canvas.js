@@ -37,7 +37,8 @@ function DisplayCanvas() {
   _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
         pixRatio = gui.getPixelRatio(),
-        size = (style.dotSize || 3) * pixRatio,
+        scaleRatio = getDotScale(_ext),
+        size = Math.ceil((style.dotSize || 3) * pixRatio * scaleRatio),
         styler = style.styler || null,
         shp, p;
 
@@ -176,19 +177,28 @@ function getShapePencil(arcs, ext) {
   };
 }
 
-function getPathStart(style, ext) {
+// Vary line width according to zoom ratio.
+// For performance and clarity don't start widening until zoomed quite far in.
+function getLineScale(ext) {
   var mapScale = ext.scale(),
-      styler = style.styler || null,
-      pixRatio = gui.getPixelRatio(),
-      lineScale = 1;
-
-  // vary line width according to zoom ratio; for performance and clarity,
-  // don't start thickening lines until zoomed quite far in.
+      s = 1;
   if (mapScale < 1) {
-    lineScale *= Math.pow(mapScale, 0.6);
+    s *= Math.pow(mapScale, 0.6);
   } else if (mapScale > 60) {
-    lineScale *= Math.pow(mapScale - 59, 0.18);
+    s *= Math.pow(mapScale - 59, 0.18);
+    s = Math.min(s, 5); // limit max scale
   }
+  return s;
+}
+
+function getDotScale(ext) {
+  return Math.pow(getLineScale(ext), 0.6);
+}
+
+function getPathStart(style, ext) {
+  var styler = style.styler || null,
+      pixRatio = gui.getPixelRatio(),
+      lineScale = getLineScale(ext);
 
   return function(ctx, i) {
     var strokeWidth;
