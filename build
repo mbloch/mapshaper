@@ -4,15 +4,17 @@ var version = require('./package.json').version;
 var follow = process.argv.indexOf('-f') > -1;
 var buildAll = process.argv.indexOf('all') > -1;
 var requiredModules = [
+    'mproj',
     'buffer',
     'iconv-lite',
     'fs',
     'rbush',
     'rw',
     'path',
-    'd3-dsv',
-    'mproj'
+    'd3-dsv'
   ];
+
+
 
 require("catty")({follow: follow})
   .addLibrary("lib")
@@ -30,10 +32,21 @@ if (buildAll) {
     });
 }
 
+
 function onCat(err, js) {
   if (!err) {
     write('./mapshaper.js', js);
     write('./www/mapshaper.js', js);
+
+    /*
+    // switch to this if any modules are bundled w/ mapshaper.js
+    require('browserify')('./mapshaper.js')
+      .external(requiredModules)
+      .bundle(function(err, buf) {
+        if (err) throw err;
+        write('./www/mapshaper.js', buf);
+      });
+    */
   }
 }
 
