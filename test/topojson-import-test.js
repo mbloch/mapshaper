@@ -36,6 +36,68 @@ describe('topojson-import.js', function () {
       });
     })
 
+    it('winding order of polygon rings is updated to CW/CCW', function() {
+      var topology = {
+        arcs: [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]],
+          [[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]],
+        objects: {
+          layer1: {
+            type: "Polygon",
+            arcs: [[0], [1]]
+          }
+        }
+      };
+      var dataset = api.internal.importTopoJSON(topology, {});
+      assert.deepEqual(dataset.layers[0], {
+        name: 'layer1',
+        data: null,
+        geometry_type: 'polygon',
+        shapes: [[[~0], [~1]]]
+      });
+    })
+
+    it('zero-area polygon rings are dropped', function() {
+      var topology = {
+        arcs: [[[0, 0], [4, 0], [4, 4]],
+          [[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]],
+        objects: {
+          layer1: {
+            type: "Polygon",
+            arcs: [[0, ~0], [1]]
+          }
+        }
+      };
+      var dataset = api.internal.importTopoJSON(topology, {});
+      // TODO: consider not assigning a geometry type if there are no shapes
+      assert.deepEqual(dataset.layers[0], {
+        name: 'layer1',
+        data: null,
+        shapes: [null],
+        geometry_type: 'polygon'
+      });
+    })
+
+    it('zero-area polygon holes are dropped', function() {
+      var topology = {
+        arcs: [[[0, 0], [0, 4], [4, 4], [4, 0], [0, 0]],
+          [[1, 1], [1, 2], [2, 2], [2, 1]]],
+        objects: {
+          layer1: {
+            type: "Polygon",
+            arcs: [[0], [1, ~1]]
+          }
+        }
+      };
+      var dataset = api.internal.importTopoJSON(topology, {});
+      // TODO: consider not assigning a geometry type if there are no shapes
+      assert.deepEqual(dataset.layers[0], {
+        name: 'layer1',
+        data: null,
+        shapes: [[[0]]],
+        geometry_type: 'polygon'
+      });
+    })
+
     it('error on nested GeometryCollection objects of mixed types', function() {
       var topology = {
         arcs: [[[0, 0], [0, 1]]],
@@ -117,7 +179,7 @@ describe('topojson-import.js', function () {
         id: 'bar',
         coordinates: [3, 2]
       };
-      var lyr = TopoJSON.importObject(obj, {id_field: 'foo'})[0];
+      var lyr = TopoJSON.importObject(obj, null, {id_field: 'foo'})[0];
       var records = lyr.data.getRecords();
       assert.deepEqual(records, [{foo: 'bar'}]);
     })

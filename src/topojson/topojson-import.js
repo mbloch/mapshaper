@@ -1,4 +1,4 @@
-/* @requires topojson-common, mapshaper-point-utils */
+/* @requires topojson-common, mapshaper-point-utils, mapshaper-shape-geom */
 
 // Convert a TopoJSON topology into mapshaper's internal format
 // Side-effect: data in topology is modified
@@ -24,7 +24,7 @@ MapShaper.importTopoJSON = function(topology, opts) {
   }
 
   layers = Object.keys(topology.objects).reduce(function(memo, name) {
-    var layers = TopoJSON.importObject(topology.objects[name], opts),
+    var layers = TopoJSON.importObject(topology.objects[name], arcs, opts),
         lyr;
     for (var i=0, n=layers.length; i<n; i++) {
       lyr = layers[i];
@@ -97,8 +97,8 @@ TopoJSON.roundCoords = function(arcs, precision) {
   });
 };
 
-TopoJSON.importObject = function(obj, opts) {
-  var importer = new TopoJSON.GeometryImporter(opts);
+TopoJSON.importObject = function(obj, arcs, opts) {
+  var importer = new TopoJSON.GeometryImporter(arcs, opts);
   var geometries = obj.type == 'GeometryCollection' ? obj.geometries : [obj];
   geometries.forEach(importer.addGeometryObject, importer);
   return importer.done();
@@ -106,7 +106,7 @@ TopoJSON.importObject = function(obj, opts) {
 
 //
 //
-TopoJSON.GeometryImporter = function(opts) {
+TopoJSON.GeometryImporter = function(arcs, opts) {
   var idField = opts && opts.id_field || GeoJSON.ID_FIELD,
       properties = [],
       shapes = [], // topological ids
@@ -142,12 +142,15 @@ TopoJSON.GeometryImporter = function(opts) {
       geom.geometries.forEach(this.addShape, this);
     } else if (type) {
       this.setGeometryType(type);
-      shape = TopoJSON.shapeImporters[geom.type](geom);
+      shape = TopoJSON.shapeImporters[geom.type](geom, arcs);
       // TODO: better shape validation
-      if (!shape || !shape.length || !Array.isArray(shape[0])) {
+      if (!shape || !shape.length) {
+        // do nothing
+      } else if (!Array.isArray(shape[0])) {
         stop("Invalid TopoJSON", geom.type, "geometry");
+      } else {
+        shapes[shapeId] = curr ? curr.concat(shape) : shape;
       }
-      shapes[shapeId] = curr ? curr.concat(shape) : shape;
     } else if (geom.type) {
       stop("Invalid TopoJSON geometry type:", geom.type);
     }
@@ -186,6 +189,27 @@ TopoJSON.GeometryImporter = function(opts) {
   };
 };
 
+// TODO: check that interior ring bboxes are contained in external ring
+// TODO: check that rings are closed
+TopoJSON.importPolygonArcs = function(rings, arcs) {
+  var ring = rings[0],
+      area = geom.getPlanarPathArea(ring, arcs),
+      imported = null;
+  if (!area) {
+    return null;
+  }
+  if (area < 0) MapShaper.reversePath(ring);
+  imported = [ring];
+  for (var i=1; i<rings.length; i++) {
+    ring = rings[i];
+    area = geom.getPlanarPathArea(ring, arcs);
+    if (!area) continue;
+    if (area > 0) MapShaper.reversePath(ring);
+    imported.push(ring);
+  }
+  return imported;
+};
+
 TopoJSON.shapeImporters = {
   Point: function(geom) {
     return [geom.coordinates];
@@ -199,12 +223,16 @@ TopoJSON.shapeImporters = {
   MultiLineString: function(geom) {
     return geom.arcs;
   },
-  Polygon: function(geom) {
-    return geom.arcs;
+  Polygon: function(geom, arcColl) {
+    return TopoJSON.importPolygonArcs(geom.arcs, arcColl);
   },
-  MultiPolygon: function(geom) {
+  MultiPolygon: function(geom, arcColl) {
     return geom.arcs.reduce(function(memo, arr) {
-      return memo ? memo.concat(arr) : arr;
+      var rings = TopoJSON.importPolygonArcs(arr, arcColl);
+      if (rings) {
+        memo = memo ? memo.concat(rings) : rings;
+      }
+      return memo;
     }, null);
   }
 };
