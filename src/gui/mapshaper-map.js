@@ -8,32 +8,36 @@ mapshaper-inspection-control
 mapshaper-map-style
 */
 
-MapShaper.getBoundsOverlap = function(bb1, bb2) {
-  var area = 0;
-  if (bb1.intersects(bb2)) {
-    area = (Math.min(bb1.xmax, bb2.xmax) - Math.max(bb1.xmin, bb2.xmin)) *
-      (Math.min(bb1.ymax, bb2.ymax) - Math.max(bb1.ymin, bb2.ymin));
-  }
-  return area;
-};
 
 // Test if map should be re-framed to show updated layer
-// TODO: only reframe if new bounds are out-of-view
 gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
   if (!prevBounds) return true;
   if (prevBounds.xmin === 0 || newBounds.xmin === 0) return true; // kludge to handle tables
-  // TODO: consider similarity of prev and next bounds
-  //var overlapPct = 2 * MapShaper.getBoundsOverlap(newBounds, prevBounds) /
-  //    (newBounds.area() + prevBounds.area());
+  var viewportPct = gui.getIntersectionPct(newBounds, mapBounds);
+  var contentPct = gui.getIntersectionPct(mapBounds, newBounds);
   var boundsChanged = !prevBounds.equals(newBounds);
   var inView = newBounds.intersects(mapBounds);
-  // TODO: compare only intersecting portion of layer with map bounds
-  var areaRatio = newBounds.area() / mapBounds.area();
   if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
   if (!inView) return true; // reset if layer is out-of-view
+  if (viewportPct < 0.3 && contentPct < 0.9) return true; // reset if content is mostly offscreen
   return false;
-  // return areaRatio > 500 || areaRatio < 0.05; // reset if layer is not at a viewable scale
 };
+
+// TODO: move to utilities file
+gui.getBoundsIntersection = function(a, b) {
+  var c = new Bounds();
+  if (a.intersects(b)) {
+    c.setBounds(Math.max(a.xmin, b.xmin), Math.max(a.ymin, b.ymin),
+    Math.min(a.xmax, b.xmax), Math.min(a.ymax, b.ymax));
+  }
+  return c;
+};
+
+// Returns proportion of bb2 occupied by bb1
+gui.getIntersectionPct = function(bb1, bb2) {
+  return gui.getBoundsIntersection(bb1, bb2).area() / bb2.area() || 0;
+};
+
 
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
