@@ -81,15 +81,15 @@ function ImportControl(model, opts) {
   }
 
   function turnOn() {
+    var el = El('#import-options');
     if (manifestFiles.length > 0) {
       downloadFiles(manifestFiles);
       manifestFiles = [];
     } else {
       if (importCount > 0) {
-        El('#import-intro').hide(); // only show intro before first import
-        El('#import-buttons').show();
+        el.removeClass('first-run');
       }
-      El('#import-options').show();
+      el.show();
     }
   }
 
