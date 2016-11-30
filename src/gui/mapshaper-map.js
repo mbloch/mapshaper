@@ -96,7 +96,7 @@ function MshpMap(model) {
   this.setHighlightLayer = function(lyr, dataset) {
     if (lyr) {
       _annotationLyr = new DisplayLayer(lyr, dataset, _ext);
-      _annotationStyle = MapStyle.getHighlightStyle();
+      _annotationStyle = MapStyle.getHighlightStyle(lyr);
       drawLayer(_annotationLyr, _annotationCanv, _annotationStyle);
     } else {
       _annotationStyle = null;

@@ -72,8 +72,11 @@ var MapStyle = (function() {
       };
 
   return {
-    getHighlightStyle: function() {
-      return highStyle;
+    getHighlightStyle: function(lyr) {
+      var style = utils.extend({}, highStyle);
+      var n = MapShaper.countPointsInLayer(lyr);
+      style.dotSize = n < 20 && 4 || n < 500 && 3 || 2;
+      return style;
     },
     getActiveStyle: function(lyr) {
       var style;
