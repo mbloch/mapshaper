@@ -4,20 +4,30 @@ var assert = require('assert'),
 
 describe('mapshaper-self-intersection.js', function () {
   describe('splitPathByIds()', function () {
-    it('test1', function () {
+    it('test1', function() {
       var path = [5, 6, 7, 8],
           ids = [5, 7];
       assert.deepEqual(internal.splitPathByIds(path, ids), [[5, 6], [7, 8]])
     })
-    it('test2', function () {
+    it('test2', function() {
       var path = [5, 6, 7, 8],
           ids = [7, 5];
       assert.deepEqual(internal.splitPathByIds(path, ids), [[5, 6], [7, 8]])
     })
-    it('test3', function () {
+    it('test3', function() {
       var path = [5, 6, 7, 8],
           ids = [8, 7, 6];
       assert.deepEqual(internal.splitPathByIds(path, ids), [[5, 8], [6], [7]])
+    })
+    it('test4', function() {
+      var path = [5, 6, 7, 8],
+          ids = [8, 5];
+      assert.deepEqual(internal.splitPathByIds(path, ids), [[5, 6, 7], [8]]);
+    })
+    it('test5', function() {
+      var path = [5, 6, 7, 8],
+          ids = [6, 7];
+      assert.deepEqual(internal.splitPathByIds(path, ids), [[5, 7, 8], [6]]);
     })
   })
 

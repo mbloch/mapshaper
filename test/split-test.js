@@ -66,6 +66,25 @@ describe('mapshaper-split.js', function () {
       assert.deepEqual(layers[1].data.getRecords(), [{foo: 'b'}])
     });
 
+    it('Split all shapes if layer has no data', function() {
+      var lyr = {
+        geometry_type: 'point',
+        shapes: [[[0, 0]], [[0, 1]]]
+      };
+      var layers = api.splitLayer(lyr);
+      assert.deepEqual(layers, [{
+        name: 'split-1',
+        data: null,
+        geometry_type: 'point',
+        shapes: [[[0, 0]]]
+      }, {
+        name: 'split-2',
+        data: null,
+        geometry_type: 'point',
+        shapes: [[[0, 1]]]
+      }]);
+    });
+
     it('Split all features if no field is given', function() {
       var records = [{foo: 0}, {foo: -1}, {foo: 1}, {foo: 1}];
       var lyr = {
