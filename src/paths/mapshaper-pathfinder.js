@@ -99,7 +99,6 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
       if (hide) mask &= ~0x10;
       mask ^= 0x20;
     }
-
     flags[absId] = currFlag & mask;
   });
 };
