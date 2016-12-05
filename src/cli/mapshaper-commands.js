@@ -136,7 +136,7 @@ MapShaper.divideImportCommand = function(commands) {
   return (opts.files).reduce(function(memo, file) {
     var importCmd = {
       name: 'i',
-      options: utils.defaults({files:[file]}, firstOpts)
+      options: utils.defaults({files:[file]}, opts)
     };
     memo.push(importCmd);
     memo.push.apply(memo, commands.slice(1));

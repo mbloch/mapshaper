@@ -57,7 +57,6 @@ describe('stdin/stdout tests', function() {
 
 })
 
-
 describe('mapshaper-commands.js', function () {
 
   var states_shp = fixPath("test_data/two_states.shp"),
@@ -287,6 +286,14 @@ describe('mapshaper-commands.js', function () {
   })
 
   describe('runCommands()', function() {
+
+    it('multiple input files are processed in sequence', function(done) {
+      mapshaper.runCommands('-i test/test_data/three_points.geojson test/test_data/one_point.geojson', function(err, dataset) {
+          assert.deepEqual(dataset.info.input_files, ['test/test_data/one_point.geojson' ]);
+          assert.equal(dataset.layers[0].name, 'one_point');
+          done();
+        });
+    })
 
     it('Error: empty command string', function(done) {
       mapshaper.runCommands("", function(err) {
