@@ -41,7 +41,7 @@ var MapStyle = (function() {
           dotSize: 6
         }, polyline:  {
           strokeColor: gold,
-          strokeWidth: 1.8
+          strokeWidth: 1.5
         }
       },
       selectionHoverStyles = {
@@ -54,17 +54,17 @@ var MapStyle = (function() {
           dotSize: 6
         }, polyline:  {
           strokeColor: black,
-          strokeWidth: 2.5
+          strokeWidth: 2
         }
       },
       pinnedStyles = {
         polygon: {
           fillColor: pink2,
           strokeColor: pink,
-          strokeWidth: 1.8
+          strokeWidth: 1.6
         }, point:  {
           dotColor: pink,
-          dotSize: 8
+          dotSize: 7
         }, polyline:  {
           strokeColor: pink,
           strokeWidth: 3
