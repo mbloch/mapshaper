@@ -3,9 +3,15 @@
 // Parse command line args into commands and run them
 // @argv Array of command line tokens or single string of commands
 api.runCommands = function(argv, done) {
-  var commands;
+  var commands, last;
   try {
     commands = MapShaper.parseCommands(argv);
+    last = commands[commands.length-1];
+    if (last && last.name == 'o') {
+      // final output -- ok to modify dataset in-place during export, avoids
+      //   having to copy entire dataset
+      last.options.final = true;
+    }
   } catch(e) {
     return done(e);
   }
@@ -13,6 +19,9 @@ api.runCommands = function(argv, done) {
   if (commands.length === 0) {
     return done(new APIError("No commands to run"));
   }
+
+  commands = MapShaper.runAndRemoveInfoCommands(commands);
+  commands = MapShaper.divideImportCommand(commands);
 
   MapShaper.runParsedCommands(commands, function(err, output) {
     done(err, output);
@@ -66,7 +75,10 @@ MapShaper.processFileContent = function(tokens, content, done) {
       commands.push(lastCmd);
     }
     // export to callback, not file
-    lastCmd.options.__nowrite = true;
+    lastCmd.options.callback = function(output) {
+      done(null, output);
+      done = function() {}; // only trigger callback once
+    };
   } catch(e) {
     return done(e);
   }
@@ -102,7 +114,6 @@ MapShaper.runParsedCommands = function(commands) {
   if (commands.length === 0) {
     return done(null, dataset);
   }
-  commands = MapShaper.divideImportCommand(commands);
 
   utils.reduceAsync(commands, dataset, function(dataset, cmd, nextCmd) {
     api.runCommand(cmd, dataset, nextCmd);
@@ -117,14 +128,12 @@ MapShaper.runParsedCommands = function(commands) {
 //
 MapShaper.divideImportCommand = function(commands) {
   var firstCmd = commands[0],
-      firstOpts = firstCmd.options,
-      files = firstOpts.files || [];
-
-  if (firstCmd.name != 'i' || files.length <= 1 || firstOpts.stdin ||
-      firstOpts.merge_files || firstOpts.combine_files) {
+      opts = firstCmd && firstCmd.options;
+  if (!firstCmd || firstCmd.name != 'i' || opts.stdin || opts.merge_files ||
+    opts.combine_files || !opts.files || opts.files.length < 2) {
     return commands;
   }
-  return files.reduce(function(memo, file) {
+  return (opts.files).reduce(function(memo, file) {
     var importCmd = {
       name: 'i',
       options: utils.defaults({files:[file]}, firstOpts)

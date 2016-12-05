@@ -1,4 +1,4 @@
-/* @requires mapshaper-common, mapshaper-file-types */
+/* @requires mapshaper-common, mapshaper-file-types, mapshaper-option-parser */
 
 
 function validateHelpOpts(cmd) {
@@ -42,15 +42,7 @@ function validateSimplifyOpts(cmd) {
   }
 
   if (pctStr) {
-    var isPct = pctStr.indexOf('%') > 0;
-    if (isPct) {
-      o.pct = Number(pctStr.replace('%', '')) / 100;
-    } else {
-      o.pct = Number(pctStr);
-    }
-    if (!(o.pct >= 0 && o.pct <= 1)) {
-      error(utils.format("Out-of-range pct value: %s", pctStr));
-    }
+    o.pct = MapShaper.parsePercentValue(pctStr);
   }
 
   var intervalStr = o.interval;

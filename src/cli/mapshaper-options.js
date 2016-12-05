@@ -163,6 +163,10 @@ MapShaper.getOptionParser = function() {
       describe: "(Topo/GeoJSON/SVG) field to use for id property",
       type: "comma-sep"
     })
+    .option("singles", {
+      // describe: "(TopoJSON) save each layer as a single file",
+      type: "flag"
+    })
     .option("quantization", {
       describe: "(TopoJSON) specify quantization (auto-set by default)",
       type: "integer"
@@ -196,6 +200,21 @@ MapShaper.getOptionParser = function() {
     });
 
   // Work-in-progress (no .describe(), so hidden from -h)
+
+  parser.command("aggregate")
+    .option("target", targetOpt)
+    .option("sum-fields", sumFieldsOpt)
+    .option("copy-fields", copyFieldsOpt)
+    .option('pct', {
+      alias: 'p',
+      type: 'percent',
+      describe: "percentage of shapes to retain, e.g. 50%"
+    })
+    .option("max-area", {
+      describe: "max area of aggregated polygon",
+      type: "number"
+    });
+
   parser.command("clean")
     .option("target", targetOpt);
 

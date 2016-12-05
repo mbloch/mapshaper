@@ -138,6 +138,8 @@ function CommandParser() {
       }
     }
 
+
+
     // Read an option value for @optDef from @argv
     function readOptionValue(argv, optDef) {
       var type = optDef.type,
@@ -154,6 +156,8 @@ function CommandParser() {
           val = token.split(',');
         } else if (type == 'bbox') {
           val = token.split(',').map(parseFloat);
+        } else if (type == 'percent') {
+          val = parsePercentValue(token);
         } else {
           val = token; // assumes string
         }
@@ -366,6 +370,20 @@ function CommandOptions(name) {
     return _command;
   };
 }
+
+MapShaper.parsePercentValue = function(str) {
+  var isPct = str.indexOf('%') > 0;
+  var pct;
+  if (isPct) {
+    pct = Number(str.replace('%', '')) / 100;
+  } else {
+    pct = Number(str);
+  }
+  if (!(pct >= 0 && pct <= 1)) {
+    error(utils.format("Out-of-range pct value: %s", pctStr));
+  }
+  return pct;
+};
 
 MapShaper.cleanArgv = function(argv) {
   argv = argv.map(function(s) {return s.trim();}); // trim whitespace

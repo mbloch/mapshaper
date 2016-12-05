@@ -1,4 +1,5 @@
 /* @requires
+mapshaper-aggregate
 mapshaper-clean
 mapshaper-clip-erase
 mapshaper-dissolve
@@ -74,7 +75,10 @@ api.runCommand = function(cmd, dataset, cb) {
       }
     }
 
-    if (name == 'calc') {
+    if (name == 'aggregate') {
+      outputLayers = MapShaper.applyCommand(api.aggregate, targetLayers, arcs, opts);
+
+    } else if (name == 'calc') {
       MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clean') {
@@ -139,12 +143,15 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'o') {
       outputFiles = MapShaper.exportFileContent(utils.defaults({layers: targetLayers}, dataset), opts);
-      if (opts.__nowrite) {
-        done(null, outputFiles);
-      } else {
-        MapShaper.writeFiles(outputFiles, opts, done);
+      if (opts.final) {
+        // don't propagate dataset if output is final
+        dataset = null;
       }
-      return;
+      if (opts.callback) {
+        opts.callback(outputFiles);
+      } else {
+        return MapShaper.writeFiles(outputFiles, opts, done);
+      }
 
     } else if (name == 'point-grid') {
       outputLayers = [api.pointGrid(dataset, opts)];
@@ -213,15 +220,14 @@ api.runCommand = function(cmd, dataset, cb) {
       }
     }
   } catch(e) {
-    done(e);
-    return;
+    return done(e);
   }
 
   done(null);
 
-  function done(err, output) {
+  function done(err) {
     T.stop('-' + name);
-    cb(err, err ? null : output || dataset);
+    cb(err, err ? null : dataset);
   }
 };
 
