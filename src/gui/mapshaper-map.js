@@ -17,9 +17,11 @@ gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
   var contentPct = gui.getIntersectionPct(mapBounds, newBounds);
   var boundsChanged = !prevBounds.equals(newBounds);
   var inView = newBounds.intersects(mapBounds);
+  var areaChg = newBounds.area() / prevBounds.area();
   if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
   if (!inView) return true; // reset if layer is out-of-view
   if (viewportPct < 0.3 && contentPct < 0.9) return true; // reset if content is mostly offscreen
+  if (areaChg > 1e8 || areaChg < 1e-8) return true; // large area chg, e.g. after projection
   return false;
 };
 
