@@ -144,7 +144,7 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
   return j;
 };
 
-// Visit each arc id in a shape (array of array of arc ids)
+// Visit each arc id in a path, shape or array of shapes
 // Use non-undefined return values of callback @cb as replacements.
 MapShaper.forEachArcId = function(arr, cb) {
   var item;

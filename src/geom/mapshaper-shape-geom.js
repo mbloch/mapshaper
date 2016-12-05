@@ -3,6 +3,10 @@
 // Calculations for planar geometry of shapes
 // TODO: consider 3D versions of some of these
 
+geom.getShapeArea = function(shp, arcs) {
+  return (arcs.isPlanar() ? geom.getPlanarShapeArea : geom.getSphericalShapeArea)(shp, arcs);
+};
+
 geom.getPlanarShapeArea = function(shp, arcs) {
   return (shp || []).reduce(function(area, ids) {
     return area + geom.getPlanarPathArea(ids, arcs);
