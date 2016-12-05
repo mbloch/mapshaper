@@ -7,10 +7,10 @@ api.importFiles = function(opts) {
   var files = opts.files ? cli.validateInputFiles(opts.files) : [],
       dataset;
 
-  if (files.length > 0 === false) {
-    stop('Missing input file(s)');
-  } else if (opts.stdin) {
+  if (opts.stdin) {
     dataset = api.importFile('/dev/stdin', opts);
+  } else if (files.length > 0 === false) {
+    stop('Missing input file(s)');
   } else if (files.length == 1) {
     dataset = api.importFile(files[0], opts);
   } else if (opts.merge_files) {
@@ -39,7 +39,7 @@ api.importFile = function(path, opts) {
   }
   type = MapShaper.guessInputFileType(path) || MapShaper.guessInputContentType(content);
   if (!type) {
-    error("Unkown file type:", path);
+    stop("Unable to import", path);
   } else if (type == 'json') {
     // parsing JSON here so input file can be gc'd before JSON data is imported
     // TODO: look into incrementally parsing JSON data
