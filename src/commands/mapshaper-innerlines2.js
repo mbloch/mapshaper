@@ -1,4 +1,4 @@
-/* @requires mapshaper-shape-utils */
+/* @requires mapshaper-shape-utils, mapshaper-arc-classifier */
 
 api.innerlines = function(lyr, arcs, opts) {
   MapShaper.requirePolygonLayer(lyr, "[innerlines] Command requires a polygon layer");
@@ -36,7 +36,7 @@ api.lines = function(lyr, arcs, opts) {
       var brec = data[b];
       var aval, bval;
       if (!arec || !brec || arec[field] === brec[field]) {
-        return '';
+        return null;
       }
       return a + '-' + b;
     };
@@ -70,12 +70,12 @@ MapShaper.createLineLayer = function(lines, records) {
 };
 
 MapShaper.extractOuterLines = function(shapes, classifier) {
-  var key = function(a, b) {return b == -1 ? String(a) : '';};
+  var key = function(a, b) {return b == -1 ? String(a) : null;};
   return MapShaper.extractLines(shapes, classifier(key));
 };
 
 MapShaper.extractInnerLines = function(shapes, classifier) {
-  var key = function(a, b) {return b > -1 ? a + '-' + b : '';};
+  var key = function(a, b) {return b > -1 ? a + '-' + b : null;};
   return MapShaper.extractLines(shapes, classifier(key));
 };
 
@@ -83,14 +83,14 @@ MapShaper.extractLines = function(shapes, classify) {
   var lines = [],
       index = {},
       prev = null,
-      prevKey = '',
+      prevKey = null,
       part;
 
   MapShaper.traversePaths(shapes, onArc, onPart);
 
   function onArc(o) {
     var arcId = o.arcId,
-        key = classify(absArcId(arcId)),
+        key = classify(arcId),
         isContinuation, line;
     if (!!key) {
       line = key in index ? index[key] : null;
@@ -121,46 +121,4 @@ MapShaper.extractLines = function(shapes, classify) {
   }
 
   return lines;
-};
-
-
-MapShaper.getArcClassifier = function(shapes, arcs) {
-  var n = arcs.size(),
-      a = new Int32Array(n),
-      b = new Int32Array(n);
-
-  utils.initializeArray(a, -1);
-  utils.initializeArray(b, -1);
-
-  MapShaper.traversePaths(shapes, function(o) {
-    var i = absArcId(o.arcId);
-    var shpId = o.shapeId;
-    var aval = a[i];
-    if (aval == -1) {
-      a[i] = shpId;
-    } else if (shpId < aval) {
-      b[i] = aval;
-      a[i] = shpId;
-    } else {
-      b[i] = shpId;
-    }
-  });
-
-  function classify(i, getKey) {
-    var key = '';
-    if (a[i] > -1) {
-      key = getKey(a[i], b[i]);
-      if (key) {
-        a[i] = -1;
-        b[i] = -1;
-      }
-    }
-    return key;
-  }
-
-  return function(getKey) {
-    return function(i) {
-      return classify(i, getKey);
-    };
-  };
 };
