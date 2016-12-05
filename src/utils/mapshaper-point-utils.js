@@ -8,6 +8,14 @@ MapShaper.countPointsInLayer = function(lyr) {
   return count;
 };
 
+MapShaper.getPointBounds = function(shapes) {
+  var bounds = new Bounds();
+  MapShaper.forEachPoint(shapes, function(p) {
+    bounds.mergePoint(p[0], p[1]);
+  });
+  return bounds;
+};
+
 MapShaper.forEachPoint = function(shapes, cb) {
   shapes.forEach(function(shape, id) {
     var n = shape ? shape.length : 0;

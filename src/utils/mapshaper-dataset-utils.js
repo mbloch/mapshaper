@@ -117,10 +117,7 @@ MapShaper.getFeatureCount = function(lyr) {
 MapShaper.getLayerBounds = function(lyr, arcs) {
   var bounds = null;
   if (lyr.geometry_type == 'point') {
-    bounds = new Bounds();
-    MapShaper.forEachPoint(lyr.shapes, function(p) {
-      bounds.mergePoint(p[0], p[1]);
-    });
+    bounds = MapShaper.getPointBounds(lyr.shapes);
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
     bounds = MapShaper.getPathBounds(lyr.shapes, arcs);
   } else {
@@ -129,6 +126,8 @@ MapShaper.getLayerBounds = function(lyr, arcs) {
   }
   return bounds;
 };
+
+
 
 MapShaper.getPathBounds = function(shapes, arcs) {
   var bounds = new Bounds();

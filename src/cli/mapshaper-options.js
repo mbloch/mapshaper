@@ -677,6 +677,9 @@ MapShaper.getOptionParser = function() {
     .option("rows", {
       type: "integer"
     })
+    .option("id-field", {
+      describe: "assign grid id property instead of splitting layer"
+    })
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 

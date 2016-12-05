@@ -184,7 +184,7 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, opts.field, opts);
 
     } else if (name == 'split-on-grid') {
-      outputLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
+      outputLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts);
 
     } else if (name == 'stitch') {
       api.stitch(dataset);
