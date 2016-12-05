@@ -10,22 +10,33 @@ mapshaper-segment-geom
 */
 
 MapShaper.exportTopoJSON = function(dataset, opts) {
-  var topology = TopoJSON.exportTopology(dataset, opts),
-      stringify = JSON.stringify,
-      filename = opts.output_file || utils.getOutputFileBase(dataset) + '.json';
+  var extension = '.json',
+      stringify = JSON.stringify;
+
   if (opts.prettify) {
     stringify = MapShaper.getFormattedStringify('coordinates,arcs,bbox,translate,scale'.split(','));
   }
-  return [{
-    content: stringify(topology),
-    filename: filename
-  }];
+
+  if (opts.singles) {
+    return MapShaper.splitDataset(dataset).map(function(dataset) {
+
+      return {
+        content: stringify(TopoJSON.exportTopology(dataset, opts)),
+        filename: (dataset.layers[0].name || 'output') + extension
+      };
+    });
+  } else {
+    return [{
+      filename: opts.output_file || utils.getOutputFileBase(dataset) + extension,
+      content: stringify(TopoJSON.exportTopology(dataset, opts))
+    }];
+  }
 };
 
 // Convert a dataset object to a TopoJSON topology object
-TopoJSON.exportTopology = function(src, opts) {
-  var dataset = opts.cloned ? src : MapShaper.copyDatasetForExport(src),
-      arcs = dataset.arcs,
+// Careful -- dataset must be a copy if further processing will occur.
+TopoJSON.exportTopology = function(dataset, opts) {
+  var arcs = dataset.arcs,
       topology = {type: "Topology", arcs: []},
       hasPaths = MapShaper.datasetHasPaths(dataset),
       bounds = MapShaper.getDatasetBounds(dataset);

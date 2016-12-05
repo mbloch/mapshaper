@@ -27,6 +27,17 @@ MapShaper.divideFeaturesByType = function(shapes, properties, types) {
   return layers;
 };
 
+// Split into datasets with one layer each
+// Warning: arcs and info are shallow-copied
+MapShaper.splitDataset = function(dataset) {
+  return dataset.layers.map(function(lyr) {
+    return {
+      arcs: dataset.arcs,
+      layers: [lyr],
+      info: dataset.info
+    };
+  });
+};
 
 // clone all layers, make a filtered copy of arcs
 MapShaper.copyDataset = function(dataset) {

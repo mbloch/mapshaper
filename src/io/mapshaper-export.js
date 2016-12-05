@@ -24,10 +24,14 @@ MapShaper.exportFileContent = function(dataset, opts) {
     error("[o] Unknown output format:", outFmt);
   }
 
-  // shallow-copy dataset and layers, so layers can be renamed for export
-  dataset = utils.defaults({
-    layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
-  }, dataset);
+  if (MapShaper.exportNeedsDeepCopy(outFmt, opts)) {
+    dataset = MapShaper.copyDatasetForExport(dataset);
+  } else {
+    // shallow-copy dataset and layers, so layers can be renamed for export
+    dataset = utils.defaults({
+      layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
+    }, dataset);
+  }
 
   if (opts.output_file && outFmt != 'topojson') {
     dataset.layers.forEach(function(lyr) {
@@ -36,7 +40,6 @@ MapShaper.exportFileContent = function(dataset, opts) {
   }
 
   if (opts.precision && outFmt != 'svg') {
-    dataset = MapShaper.copyDatasetForExport(dataset);
     MapShaper.setCoordinatePrecision(dataset, opts.precision);
   }
 
@@ -57,6 +60,18 @@ MapShaper.exportFileContent = function(dataset, opts) {
 
   MapShaper.validateFileNames(files);
   return files;
+};
+
+MapShaper.exportNeedsDeepCopy = function(fmt, opts) {
+  var deep = false;
+  if (opts.final) {
+    deep = false;
+  } else if (opts.precision && fmt != 'svg') {
+    deep = true;
+  } else if (fmt == 'topojson') {
+    deep = true;
+  }
+  return deep;
 };
 
 MapShaper.exporters = {
@@ -156,18 +171,9 @@ MapShaper.assignUniqueFileNames = function(output) {
   output.forEach(function(o, i) {o.filename = uniqnames[i];});
 };
 
-/*
-MapShaper.getDefaultFileExtension = function(fileType) {
-  var ext = "";
-  if (fileType == 'shapefile') {
-    ext = 'shp';
-  } else if (fileType == 'geojson' || fileType == 'topojson') {
-    ext = "json";
-  }
-  return ext;
-};
-*/
-
+// TODO: remove this -- format=json creates the same output
+//   (but need to make sure there's a way to prevent names of json data files
+//    from colliding with names of GeoJSON or TopoJSON files)
 MapShaper.exportDataTables = function(layers, opts) {
   var tables = [];
   layers.forEach(function(lyr) {
