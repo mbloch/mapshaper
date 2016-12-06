@@ -94,7 +94,6 @@ MapShaper.getSimplifyMethod = function(opts) {
   return m;
 };
 
-
 MapShaper.getSimplifyFunction = function(opts) {
   var f;
   if (opts.method == 'dp') {

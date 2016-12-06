@@ -30,11 +30,15 @@ MapShaper.printSimplifyInfo = function(arcs, opts) {
   lines.push("Displacement statistics");
   lines.push(utils.format("   Mean displacement: %.4f", stats.displacementMean));
   lines.push(utils.format("   Max displacement: %.4f", stats.displacementMax));
-  lines.push(utils.format("   Quartiles: %.2f, %.2f, %.2f", dq[0], dq[1], dq[2]));
+  if (dq) {
+    lines.push(utils.format("   Quartiles: %.2f, %.2f, %.2f", dq[0], dq[1], dq[2]));
+  }
   lines.push("Vertex angle statistics");
   lines.push(utils.format("   Mean angle: %.2f degrees", stats.angleMean));
   // lines.push(utils.format("   Angles < 45: %.2f%", stats.lt45));
-  lines.push(utils.format("   Quartiles: %.2f, %.2f, %.2f", aq[0], aq[1], aq[2]));
+  if (aq) {
+    lines.push(utils.format("   Quartiles: %.2f, %.2f, %.2f", aq[0], aq[1], aq[2]));
+  }
 
   message(lines.join('\n   '));
 };
