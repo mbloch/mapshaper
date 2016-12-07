@@ -11,6 +11,7 @@ mapshaper-segment-geom
 
 MapShaper.exportTopoJSON = function(dataset, opts) {
   var extension = '.json',
+      needCopy = !opts.final || MapShaper.datasetHasPaths(dataset) && dataset.arcs.getRetainedInterval() > 0,
       stringify = JSON.stringify;
 
   if (opts.prettify) {
@@ -19,13 +20,17 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
 
   if (opts.singles) {
     return MapShaper.splitDataset(dataset).map(function(dataset) {
-
+      if (needCopy) dataset = MapShaper.copyDatasetForExport(dataset);
       return {
         content: stringify(TopoJSON.exportTopology(dataset, opts)),
         filename: (dataset.layers[0].name || 'output') + extension
       };
     });
   } else {
+    if (needCopy) {
+      // TODO: redundant if precision was applied in mapshaper-export.js
+      dataset = MapShaper.copyDatasetForExport(dataset);
+    }
     return [{
       filename: opts.output_file || utils.getOutputFileBase(dataset) + extension,
       content: stringify(TopoJSON.exportTopology(dataset, opts))
@@ -34,10 +39,9 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
 };
 
 // Convert a dataset object to a TopoJSON topology object
-// Careful -- dataset must be a copy if further processing will occur.
+// Careful -- arcs must be a copy if further processing will occur.
 TopoJSON.exportTopology = function(dataset, opts) {
-  var arcs = dataset.arcs,
-      topology = {type: "Topology", arcs: []},
+  var topology = {type: "Topology", arcs: []},
       hasPaths = MapShaper.datasetHasPaths(dataset),
       bounds = MapShaper.getDatasetBounds(dataset);
 
@@ -55,17 +59,16 @@ TopoJSON.exportTopology = function(dataset, opts) {
   }
   if (hasPaths) {
     MapShaper.dissolveArcs(dataset); // dissolve/prune arcs for more compact output
-    topology.arcs = TopoJSON.exportArcs(arcs, bounds, opts);
+    topology.arcs = TopoJSON.exportArcs(dataset.arcs, bounds, opts);
     if (topology.transform) {
       TopoJSON.deltaEncodeArcs(topology.arcs);
     }
   }
 
-
   // export layers as TopoJSON named objects
   topology.objects = dataset.layers.reduce(function(objects, lyr, i) {
     var name = lyr.name || "layer" + (i + 1);
-    objects[name] = TopoJSON.exportLayer(lyr, arcs, opts);
+    objects[name] = TopoJSON.exportLayer(lyr, dataset.arcs, opts);
     return objects;
   }, {});
 

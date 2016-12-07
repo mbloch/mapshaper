@@ -27,7 +27,7 @@ api.splitLayerOnGrid = function(lyr, arcs, opts) {
     rec[fieldName] = name;
   });
 
-  if (setId) return lyr;
+  if (setId) return lyr; // don't split layer (instead assign cell ids)
 
   return api.splitLayer(lyr, fieldName).filter(function(lyr) {
     var name = lyr.data.getRecordAt(0)[fieldName];

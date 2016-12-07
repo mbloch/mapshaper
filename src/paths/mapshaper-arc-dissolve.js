@@ -9,8 +9,14 @@ mapshaper-dataset-utils
 // in layers. (In-place).
 MapShaper.dissolveArcs = function(dataset) {
   var arcs = dataset.arcs,
-      layers = dataset.layers.filter(MapShaper.layerHasPaths),
-      arcsCanDissolve = MapShaper.getArcDissolveTest(layers, arcs),
+      layers = dataset.layers.filter(MapShaper.layerHasPaths);
+
+  if (!arcs || !layers.length) {
+    dataset.arcs = null;
+    return;
+  }
+
+  var arcsCanDissolve = MapShaper.getArcDissolveTest(layers, arcs),
       newArcs = [],
       totalPoints = 0,
       arcIndex = new Int32Array(arcs.size()), // maps old arc ids to new ids
@@ -23,7 +29,7 @@ MapShaper.dissolveArcs = function(dataset) {
       return MapShaper.editPaths(shape && shape.concat(), translatePath);
     });
   });
-  MapShaper.dissolveArcCollection(arcs, newArcs, totalPoints);
+  dataset.arcs = MapShaper.dissolveArcCollection(arcs, newArcs, totalPoints);
 
   function translatePath(path) {
     var pointCount = 0;
@@ -79,6 +85,7 @@ MapShaper.dissolveArcCollection = function(arcs, newArcs, newLen) {
       yy2 = new Float64Array(newLen),
       src = arcs.getVertexData(),
       zz2 = src.zz ? new Float64Array(newLen) : null,
+      interval = arcs.getRetainedInterval(),
       offs = 0;
 
   newArcs.forEach(function(newArc, newId) {
@@ -87,7 +94,7 @@ MapShaper.dissolveArcCollection = function(arcs, newArcs, newLen) {
     });
   });
 
-  arcs.updateVertexData(nn2, xx2, yy2, zz2);
+  return new ArcCollection(nn2, xx2, yy2).setThresholds(zz2).setRetainedInterval(interval);
 
   function extendDissolvedArc(oldId, newId) {
     var absId = absArcId(oldId),

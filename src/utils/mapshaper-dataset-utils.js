@@ -28,14 +28,15 @@ MapShaper.divideFeaturesByType = function(shapes, properties, types) {
 };
 
 // Split into datasets with one layer each
-// Warning: arcs and info are shallow-copied
 MapShaper.splitDataset = function(dataset) {
   return dataset.layers.map(function(lyr) {
-    return {
+    var split = {
       arcs: dataset.arcs,
       layers: [lyr],
       info: dataset.info
     };
+    MapShaper.dissolveArcs(split);
+    return split;
   });
 };
 
@@ -126,7 +127,6 @@ MapShaper.getLayerBounds = function(lyr, arcs) {
   }
   return bounds;
 };
-
 
 
 MapShaper.getPathBounds = function(shapes, arcs) {

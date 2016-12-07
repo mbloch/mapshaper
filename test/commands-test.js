@@ -176,7 +176,6 @@ describe('mapshaper-commands.js', function () {
         done();
       })
     })
-
   })
 
   describe('applyCommands()', function () {

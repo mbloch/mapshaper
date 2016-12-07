@@ -24,14 +24,10 @@ MapShaper.exportFileContent = function(dataset, opts) {
     error("[o] Unknown output format:", outFmt);
   }
 
-  if (MapShaper.exportNeedsDeepCopy(outFmt, opts)) {
-    dataset = MapShaper.copyDatasetForExport(dataset);
-  } else {
-    // shallow-copy dataset and layers, so layers can be renamed for export
-    dataset = utils.defaults({
-      layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
-    }, dataset);
-  }
+  // shallow-copy dataset and layers, so layers can be renamed for export
+  dataset = utils.defaults({
+    layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
+  }, dataset);
 
   if (opts.output_file && outFmt != 'topojson') {
     dataset.layers.forEach(function(lyr) {
@@ -40,6 +36,7 @@ MapShaper.exportFileContent = function(dataset, opts) {
   }
 
   if (opts.precision && outFmt != 'svg') {
+    dataset = MapShaper.copyDatasetForExport(dataset);
     MapShaper.setCoordinatePrecision(dataset, opts.precision);
   }
 
@@ -60,18 +57,6 @@ MapShaper.exportFileContent = function(dataset, opts) {
 
   MapShaper.validateFileNames(files);
   return files;
-};
-
-MapShaper.exportNeedsDeepCopy = function(fmt, opts) {
-  var deep = false;
-  if (opts.final) {
-    deep = false;
-  } else if (opts.precision && fmt != 'svg') {
-    deep = true;
-  } else if (fmt == 'topojson') {
-    deep = true;
-  }
-  return deep;
 };
 
 MapShaper.exporters = {

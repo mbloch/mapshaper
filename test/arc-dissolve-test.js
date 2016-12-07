@@ -2,7 +2,6 @@ var api = require('..'),
   assert = require('assert'),
   ArcCollection = api.internal.ArcCollection;
 
-
 describe('mapshaper-arc-dissolve.js', function () {
 
   describe('dissolveArcs()', function () {
@@ -28,10 +27,12 @@ describe('mapshaper-arc-dissolve.js', function () {
 
       var targetArcs = [[[1, 1], [2, 2], [4, 2], [3, 1], [1, 1]], [[6, 2], [7, 1], [5, 1], [6, 2]]];
       var targetShapes = [[[0], [1]]];
+      var dataset = {layers: layers, arcs: arcs};
 
-      api.internal.dissolveArcs({layers: layers, arcs: arcs});
-      assert.deepEqual(arcs.toArray(), targetArcs);
-      assert.deepEqual(layers[0].shapes, targetShapes)
+      api.internal.dissolveArcs(dataset);
+      assert.deepEqual(dataset.arcs.toArray(), targetArcs);
+      assert.deepEqual(dataset.layers[0].shapes, targetShapes)
+      assert.deepEqual(arcs.toArray(), coords); // arcs have not changed
     })
 
     it('test 2', function () {
@@ -43,10 +44,12 @@ describe('mapshaper-arc-dissolve.js', function () {
 
       var targetArcs = [[[3, 1], [4, 2], [2, 2], [1, 1], [3, 1]]];
       var targetShapes = [[[0]]];
+      var dataset = {layers: layers, arcs: arcs};
 
-      api.internal.dissolveArcs({layers: layers, arcs: arcs});
-      assert.deepEqual(arcs.toArray(), targetArcs);
-      assert.deepEqual(layers[0].shapes, targetShapes)
+      api.internal.dissolveArcs(dataset);
+      assert.deepEqual(dataset.arcs.toArray(), targetArcs);
+      assert.deepEqual(dataset.layers[0].shapes, targetShapes)
+      assert.deepEqual(arcs.toArray(), coords); // arcs have not changed
     })
 
     it('test 3', function () {
@@ -58,10 +61,12 @@ describe('mapshaper-arc-dissolve.js', function () {
 
       var targetArcs = [[[3, 1], [4, 2], [2, 2], [1, 1], [3, 1]], [[6, 2], [7, 1], [5, 1], [6, 2]]];
       var targetShapes = [[[0]], [[~0], [1]]];
+      var dataset = {layers: layers, arcs: arcs};
 
-      api.internal.dissolveArcs({layers: layers, arcs: arcs});
-      assert.deepEqual(arcs.toArray(), targetArcs);
-      assert.deepEqual(layers[0].shapes, targetShapes)
+      api.internal.dissolveArcs(dataset);
+      assert.deepEqual(dataset.arcs.toArray(), targetArcs);
+      assert.deepEqual(dataset.layers[0].shapes, targetShapes)
+      assert.deepEqual(arcs.toArray(), coords); // arcs have not changed
     })
 
     it('test 4: line', function() {
@@ -72,9 +77,11 @@ describe('mapshaper-arc-dissolve.js', function () {
         [[3, 0], [2, -1], [2, 0]]];
       var arcs = new ArcCollection(coords);
       var layers = [{geometry_type: 'polyline', shapes: [[[0, ~2, 3]]]}];
-      api.internal.dissolveArcs({layers: layers, arcs: arcs});
-      assert.deepEqual(layers[0].shapes, [[[0]]]);
-      assert.deepEqual(arcs.toArray(), [[[0, 0], [1, 0], [2, 0], [3, 0]]]);
+      var dataset = {layers: layers, arcs: arcs};
+      api.internal.dissolveArcs(dataset);
+      assert.deepEqual(dataset.layers[0].shapes, [[[0]]]);
+      assert.deepEqual(dataset.arcs.toArray(), [[[0, 0], [1, 0], [2, 0], [3, 0]]]);
+      assert.deepEqual(arcs.toArray(), coords); // arcs have not changed
     });
 
     describe('issue #140 -- partially overlapping lines', function() {

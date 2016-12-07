@@ -11,7 +11,7 @@ MapShaper.exportSVG = function(dataset, opts) {
   var template = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" ' +
     'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
   var b, svg;
-  if (!opts.cloned) {
+  if (!opts.final) {
     dataset = MapShaper.copyDataset(dataset); // Modify a copy of the dataset
   }
   b = MapShaper.transformCoordsForSVG(dataset, opts);
