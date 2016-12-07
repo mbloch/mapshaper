@@ -1,5 +1,19 @@
 /* @requires mapshaper-common */
 
+// Insert a column of values into a (new or existing) data field
+MapShaper.insertFieldValues = function(lyr, fieldName, values) {
+  var size = MapShaper.getFeatureCount(lyr) || values.length,
+      table = lyr.data = (lyr.data || new DataTable(size)),
+      records = table.getRecords(),
+      rec;
+
+  for (var i=0; i<size; i++) {
+    rec = records[i] = (records[i] || {});
+    rec[fieldName] = i in values ? values[i] : null;
+  }
+};
+
+
 MapShaper.getValueType = function(val) {
   var type = null;
   if (utils.isString(val)) {

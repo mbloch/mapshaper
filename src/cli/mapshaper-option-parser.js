@@ -157,7 +157,7 @@ function CommandParser() {
         } else if (type == 'bbox') {
           val = token.split(',').map(parseFloat);
         } else if (type == 'percent') {
-          val = parsePercentValue(token);
+          val = MapShaper.parsePercentValue(token);
         } else {
           val = token; // assumes string
         }

@@ -76,7 +76,7 @@ api.runCommand = function(cmd, dataset, cb) {
     }
 
     if (name == 'aggregate') {
-      outputLayers = MapShaper.applyCommand(api.aggregate, targetLayers, arcs, opts);
+      MapShaper.applyCommand(api.aggregate, targetLayers, arcs, opts);
 
     } else if (name == 'calc') {
       MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);

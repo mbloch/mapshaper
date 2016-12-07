@@ -199,27 +199,39 @@ MapShaper.getOptionParser = function() {
       describe: "(CSV) field delimiter"
     });
 
-  // Work-in-progress (no .describe(), so hidden from -h)
-
   parser.command("aggregate")
+    .title("\nEditing commands")
+    .describe("group polygons by repeatedly merging smallest neighbors")
     .option("target", targetOpt)
-    .option("sum-fields", sumFieldsOpt)
-    .option("copy-fields", copyFieldsOpt)
+    .option("id-field", {
+      describe: "field name for aggregation id"
+    })
     .option('pct', {
       alias: 'p',
       type: 'percent',
       describe: "percentage of shapes to retain, e.g. 50%"
     })
+    .option("max-width", {
+      describe: "max width of bounding box",
+      type: "number"
+    })
+    .option("max-height", {
+      describe: "max height of bounding box",
+      type: "number"
+    })
     .option("max-area", {
       describe: "max area of aggregated polygon",
       type: "number"
+    })
+    .option("group-by", {
+      describe: "field name; only same-value shapes will be aggregated"
     });
 
+  // Work-in-progress (no .describe(), so hidden from -h)
   parser.command("clean")
     .option("target", targetOpt);
 
   parser.command("clip")
-    .title("\nEditing commands")
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClipOpts)
@@ -678,7 +690,7 @@ MapShaper.getOptionParser = function() {
       type: "integer"
     })
     .option("id-field", {
-      describe: "assign grid id property instead of splitting layer"
+      describe: "assign each feature a cell id instead of splitting layer"
     })
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
