@@ -52,7 +52,7 @@ api.applyCommands = function(argv, content, done) {
 // @done: Callback function(<error>, <output>); <output> is an array of objects
 //        with properties "content" and "filename"
 MapShaper.processFileContent = function(tokens, content, done) {
-  var dataset, commands, lastCmd, inOpts;
+  var dataset, commands, lastCmd, inOpts, output;
   try {
     commands = MapShaper.parseCommands(tokens);
     commands = MapShaper.runAndRemoveInfoCommands(commands);
@@ -75,15 +75,16 @@ MapShaper.processFileContent = function(tokens, content, done) {
       commands.push(lastCmd);
     }
     // export to callback, not file
-    lastCmd.options.callback = function(output) {
-      done(null, output);
-      done = function() {}; // only trigger callback once
+    lastCmd.options.callback = function(data) {
+      output = data;
     };
   } catch(e) {
     return done(e);
   }
 
-  MapShaper.runParsedCommands(commands, dataset, done);
+  MapShaper.runParsedCommands(commands, dataset, function(err) {
+    done(err, output);
+  });
 };
 
 // Execute a sequence of commands
