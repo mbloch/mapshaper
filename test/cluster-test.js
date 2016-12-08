@@ -1,7 +1,7 @@
 var assert = require('assert'),
     api = require("../");
 
-describe('mapshaper-aggregate.js', function () {
+describe('mapshaper-cluster.js', function () {
   // areas: 1, 2, 3, 6
   var polys = {
     type: "GeometryCollection",
@@ -21,18 +21,18 @@ describe('mapshaper-aggregate.js', function () {
   };
 
 
-  it ('aggregates everything by default', function(done) {
+  it ('clusters everything by default', function(done) {
 
-    api.applyCommands('-aggregate id-field=aggId -o format=csv', polys, function(err, output) {
+    api.applyCommands('-cluster -o format=csv', polys, function(err, output) {
       if (err) throw err;
-      var target = 'aggId\n0\n0\n0\n0';
+      var target = 'cluster\n0\n0\n0\n0';
       assert.equal(output, target);
       done();
     });
   })
 
   it ('uses max-height parameter', function(done) {
-    api.applyCommands('-aggregate id-field=aggId max-height=1 -o format=csv', polys, function(err, output) {
+    api.applyCommands('-cluster id-field=aggId max-height=1 -o format=csv', polys, function(err, output) {
       var target = 'aggId\n2\n2\n0\n1';
       assert.equal(output, target);
       done();
@@ -40,7 +40,7 @@ describe('mapshaper-aggregate.js', function () {
   })
 
   it ('uses max-width parameter', function(done) {
-    api.applyCommands('-aggregate id-field=aggId max-width=1 -o format=csv', polys, function(err, output) {
+    api.applyCommands('-cluster id-field=aggId max-width=1 -o format=csv', polys, function(err, output) {
       var target = 'aggId\n2\n0\n2\n1';
       assert.equal(output, target);
       done();
@@ -48,7 +48,7 @@ describe('mapshaper-aggregate.js', function () {
   })
 
   it ('pct=50%', function(done) {
-    api.applyCommands('-aggregate id-field=aggId pct=50% -o format=csv', polys, function(err, output) {
+    api.applyCommands('-cluster id-field=aggId pct=50% -o format=csv', polys, function(err, output) {
       var target = 'aggId\n2\n2\n0\n1';
       assert.equal(output, target);
       done();
@@ -56,7 +56,7 @@ describe('mapshaper-aggregate.js', function () {
   })
 
   it ('pct=1%', function(done) {
-    api.applyCommands('-aggregate id-field=aggId pct=1% -o format=csv', polys, function(err, output) {
+    api.applyCommands('-cluster id-field=aggId pct=1% -o format=csv', polys, function(err, output) {
       var target = 'aggId\n0\n1\n2\n3';
       assert.equal(output, target);
       done();
@@ -64,7 +64,7 @@ describe('mapshaper-aggregate.js', function () {
   })
 
   it ('pct=1', function(done) {
-    api.applyCommands('-aggregate id-field=aggId pct=1 -o format=csv', polys, function(err, output) {
+    api.applyCommands('-cluster id-field=aggId pct=1 -o format=csv', polys, function(err, output) {
       var target = 'aggId\n0\n0\n0\n0';
       assert.equal(output, target);
       done();
@@ -72,7 +72,7 @@ describe('mapshaper-aggregate.js', function () {
   })
 
   it ('works with -dissolve test1', function(done) {
-    api.applyCommands('-aggregate id-field=aggId -dissolve aggId -o format=csv', polys, function(err, output) {
+    api.applyCommands('-cluster id-field=aggId -dissolve aggId -o format=csv', polys, function(err, output) {
       var target = 'aggId\n0';
       assert.equal(output, target);
       done();
@@ -81,7 +81,7 @@ describe('mapshaper-aggregate.js', function () {
   })
 
   it ('works with -dissolve test2', function(done) {
-    api.applyCommands('-aggregate id-field=aggId pct=0.5 -dissolve aggId -o format=csv', polys, function(err, output) {
+    api.applyCommands('-cluster id-field=aggId pct=0.5 -dissolve aggId -o format=csv', polys, function(err, output) {
       var target = 'aggId\n2\n0\n1';
       assert.equal(output, target);
       done();
@@ -123,7 +123,7 @@ describe('mapshaper-aggregate.js', function () {
       }]
     };
 
-    api.applyCommands('-aggregate group-by=group id-field=grouping -o format=csv', geojson, function(err, output) {
+    api.applyCommands('-cluster group-by=group id-field=grouping -o format=csv', geojson, function(err, output) {
       var target = 'group,grouping\na,0\na,0\nb,1\nb,1';
       assert.equal(output, target);
       done();

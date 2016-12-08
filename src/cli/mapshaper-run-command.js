@@ -1,7 +1,7 @@
 /* @requires
-mapshaper-aggregate
 mapshaper-clean
 mapshaper-clip-erase
+mapshaper-cluster
 mapshaper-dissolve
 mapshaper-dissolve2
 mapshaper-export
@@ -75,8 +75,8 @@ api.runCommand = function(cmd, dataset, cb) {
       }
     }
 
-    if (name == 'aggregate') {
-      MapShaper.applyCommand(api.aggregate, targetLayers, arcs, opts);
+    if (name == 'cluster') {
+      MapShaper.applyCommand(api.cluster, targetLayers, arcs, opts);
 
     } else if (name == 'calc') {
       MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);

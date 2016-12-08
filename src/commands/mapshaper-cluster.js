@@ -1,8 +1,8 @@
 /* @requires mapshaper-polygon-neighbors, mapshaper-common, mapshaper-shape-geom */
 
-api.aggregate = function(lyr, arcs, opts) {
-  MapShaper.requirePolygonLayer(lyr, "[aggregate] Command requires a polygon layer");
-  var idField = opts.id_field || "group";
+api.cluster = function(lyr, arcs, opts) {
+  MapShaper.requirePolygonLayer(lyr, "[cluster] Command requires a polygon layer");
+  var idField = opts.id_field || "cluster";
   var groups = MapShaper.calcAggregationGroups(lyr, arcs, opts);
   MapShaper.insertFieldValues(lyr, idField, groups);
   return lyr;

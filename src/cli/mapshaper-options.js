@@ -199,33 +199,6 @@ MapShaper.getOptionParser = function() {
       describe: "(CSV) field delimiter"
     });
 
-  parser.command("aggregate")
-    .title("\nEditing commands")
-    .describe("group polygons by repeatedly merging smallest neighbors")
-    .option("target", targetOpt)
-    .option("id-field", {
-      describe: "field name for aggregation id"
-    })
-    .option('pct', {
-      alias: 'p',
-      type: 'percent',
-      describe: "percentage of shapes to retain, e.g. 50%"
-    })
-    .option("max-width", {
-      describe: "max width of bounding box",
-      type: "number"
-    })
-    .option("max-height", {
-      describe: "max height of bounding box",
-      type: "number"
-    })
-    .option("max-area", {
-      describe: "max area of aggregated polygon",
-      type: "number"
-    })
-    .option("group-by", {
-      describe: "field name; only same-value shapes will be aggregated"
-    });
 
   // Work-in-progress (no .describe(), so hidden from -h)
   parser.command("clean")
@@ -249,6 +222,35 @@ MapShaper.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
+
+  parser.command("cluster")
+    .title("\nEditing commands")
+    .describe("group polygons by repeatedly merging smallest neighbors")
+    .option("target", targetOpt)
+    .option("id-field", {
+      describe: "field name for cluster id (default is \"cluster\")"
+    })
+    .option('pct', {
+      alias: 'p',
+      type: 'percent',
+      describe: "percentage of shapes to retain, e.g. 50%"
+    })
+    .option("max-width", {
+      describe: "max width of bounding box",
+      type: "number"
+    })
+    .option("max-height", {
+      describe: "max height of bounding box",
+      type: "number"
+    })
+    .option("max-area", {
+      describe: "max area of polygon cluster",
+      type: "number"
+    })
+    .option("group-by", {
+      describe: "field name; only same-value shapes will be grouped"
+    });
+
 
   parser.command("dissolve")
     .validate(validateDissolveOpts)
