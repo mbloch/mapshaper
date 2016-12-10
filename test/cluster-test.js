@@ -16,7 +16,7 @@ describe('mapshaper-cluster.js', function () {
       coordinates: [[[0, 1], [0, 4], [1, 4], [1, 1], [0, 1]]]
     }, {
       type: "Polygon",
-      coordinates: [[[1, 1], [1, 4], [3, 4], [3, 1], [1, 1]]]
+      coordinates: [[[1, 1], [1, 5], [3, 5], [3, 1], [1, 1]]]
     }]
   };
 
@@ -49,7 +49,7 @@ describe('mapshaper-cluster.js', function () {
 
   it ('pct=50%', function(done) {
     api.applyCommands('-cluster id-field=aggId pct=50% -o format=csv', polys, function(err, output) {
-      var target = 'aggId\n2\n2\n0\n1';
+      var target = 'aggId\n1\n1\n1\n0';
       assert.equal(output, target);
       done();
     });
@@ -82,7 +82,7 @@ describe('mapshaper-cluster.js', function () {
 
   it ('works with -dissolve test2', function(done) {
     api.applyCommands('-cluster id-field=aggId pct=0.5 -dissolve aggId -o format=csv', polys, function(err, output) {
-      var target = 'aggId\n2\n0\n1';
+      var target = 'aggId\n1\n0';
       assert.equal(output, target);
       done();
     });
