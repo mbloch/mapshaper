@@ -5,23 +5,28 @@ mapshaper-shape-geom
 mapshaper-polygon-centroid
 */
 
+// Assign a cluster id to each polygon in a dataset, which can be used with
+//   one of the dissolve commands to dissolve the clusters
+// Works by iteratively grouping pairs of polygons with the smallest distance
+//   between centroids.
+// Results are not optimal -- may be useful for creating levels of detail on
+//   interactive maps, not useful for analysis.
+//
 api.cluster = function(lyr, arcs, opts) {
   MapShaper.requirePolygonLayer(lyr, "[cluster] Command requires a polygon layer");
-  var idField = opts.id_field || "cluster";
   var groups = MapShaper.calcPolygonClusters(lyr, arcs, opts);
+  var idField = opts.id_field || "cluster";
   MapShaper.insertFieldValues(lyr, idField, groups);
   return lyr;
 };
 
 MapShaper.calcPolygonClusters = function(lyr, arcs, opts) {
   var calcScore = MapShaper.getPolygonClusterCalculator(opts);
-  var groupField = opts.group_by || null;
   var size = lyr.shapes.length;
   var count = Math.round(size * (opts.pct || 1));
+  var groupField = opts.group_by || null;
 
-  if (groupField && !lyr.data) stop("[aggregate] Missing attribute data table");
-
-  // working set of shapes
+  // working set of polygon records
   var shapeItems = lyr.shapes.map(function(shp, i) {
     var groupId = groupField && lyr.data.getRecordAt(i)[groupField] || null;
     return {
@@ -34,12 +39,15 @@ MapShaper.calcPolygonClusters = function(lyr, arcs, opts) {
     };
   });
 
-  var aggItems = [];
-  var aggIndex = {};
+  var mergeItems = []; // list of pairs of shapes that can be merged
+  var mergeIndex = {}; // keep track of merges, to prevent duplicates
   var next;
 
+  if (groupField && !lyr.data) stop("[cluster] Missing attribute data table");
+
+  // Populate mergeItems array
   MapShaper.findNeighbors(lyr.shapes, arcs).forEach(function(ab, i) {
-    // ab: [a, b] indexes of shape items
+    // ab: [a, b] indexes of two polygons
     var a = shapeItems[ab[0]],
         b = shapeItems[ab[1]],
         item, id;
@@ -47,22 +55,23 @@ MapShaper.calcPolygonClusters = function(lyr, arcs, opts) {
     item = {ids: ab};
     item.score = getScore(item);
     if (item.score < 0) return;
-    id = aggItems.length;
+    id = mergeItems.length;
     a.friends.push(id);
     b.friends.push(id);
-    aggItems.push(item);
+    mergeItems.push(item);
   });
 
+  // main loop
   while (count-- > 0 && (next = nextItem())) {
     merge(next);
   }
 
   // Assign a sequential id to each of the remaining original shapes and the
   // new aggregated shapes
-  return shapeItems.filter(Boolean).reduce(function(memo, shape, aggId) {
+  return shapeItems.filter(Boolean).reduce(function(memo, shape, clusterId) {
     var ids = shape.ids;
     for (var i=0; i<ids.length; i++) {
-      memo[ids[i]] = aggId;
+      memo[ids[i]] = clusterId;
     }
     return memo;
   }, []);
@@ -71,24 +80,25 @@ MapShaper.calcPolygonClusters = function(lyr, arcs, opts) {
     var merged = mergeShapes(item.ids);
     var mergedId = shapeItems.length;
     shapeItems[mergedId] = merged;
-    updateList2(merged.friends, item.ids, mergedId);
+    updateList(merged.friends, item.ids, mergedId);
   }
 
+  // Find lowest-ranked merge candidate and remove it from the list
+  // Scans entire list - n^2 performance - tested ~20sec for 50,000 polygons
   function nextItem() {
-    var minId = -1, min = Infinity, item;
-    for (var i=0, n=aggItems.length; i<n; i++) {
-      item = aggItems[i];
-      if (item === null) {
-        continue;
-      }
-      if (item.score < min) {
+    var minId = -1,
+        min = Infinity,
+        item, i, n;
+    for (i=0, n=mergeItems.length; i<n; i++) {
+      item = mergeItems[i];
+      if (item !== null && item.score < min) {
         min = item.score;
         minId = i;
       }
     }
     if (minId == -1) return null;
-    item = aggItems[minId];
-    aggItems[minId] = null;
+    item = mergeItems[minId];
+    mergeItems[minId] = null;
     return item;
   }
 
@@ -105,20 +115,6 @@ MapShaper.calcPolygonClusters = function(lyr, arcs, opts) {
     a.y = a.y * k + b.y * (1 - k);
   }
 
-  function filterFriends(friends) {
-    var index = {};
-    var merged = [];
-    var id;
-    for (var i=0; i<friends.length; i++) {
-      id = friends[i];
-      if ((id in index === false) && aggItems[id] !== null) {
-        merged.push(id);
-        index[id] = true;
-      }
-    }
-    return merged;
-  }
-
   function mergeShapes(ids) {
     var dest = shapeItems[ids[0]];
     var src = shapeItems[ids[1]];
@@ -132,17 +128,35 @@ MapShaper.calcPolygonClusters = function(lyr, arcs, opts) {
     return dest;
   }
 
-  function updateList2(friends, oldIds, newId) {
+  // remove ids of duplicate and invalid merge candidates
+  function filterFriends(friends) {
+    var index = {};
+    var merged = [];
+    var id;
+    for (var i=0; i<friends.length; i++) {
+      id = friends[i];
+      if ((id in index === false) && mergeItems[id] !== null) {
+        merged.push(id);
+        index[id] = true;
+      }
+    }
+    return merged;
+  }
+
+  // re-index merge candidates after merging two shapes into a new shape
+  function updateList(friends, oldIds, newId) {
     var item, id;
     for (var i=0, n=friends.length; i<n; i++) {
       id = friends[i];
-      item = aggItems[id];
+      item = mergeItems[id];
       if (contains(item.ids, oldIds)) {
-        aggItems[id] = updateItem(item, oldIds, newId);
+        mergeItems[id] = updateItem(item, oldIds, newId);
       }
     }
   }
 
+  // re-index a merge candidate; return null if it duplicates a previously merged
+  //   pair of shapes
   function updateItem(item, oldIds, newId) {
     var a = item.ids[0];
     var b = item.ids[1];
@@ -152,8 +166,8 @@ MapShaper.calcPolygonClusters = function(lyr, arcs, opts) {
     if (a == b) return null;
     item.ids = [a, b];
     key = clusterKey(item);
-    if (key in aggIndex) return null;
-    aggIndex[key] = true;
+    if (key in mergeIndex) return null;
+    mergeIndex[key] = true;
     item.score = getScore(item);
     if (item.score < 0) return null;
     return item;

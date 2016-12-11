@@ -16,7 +16,7 @@ MapShaper.importFiles = function(files, opts) {
     var dataset = api.importFile(fname, importOpts);
     // check if dataset contains non-topological paths
     // TODO: may also need to rebuild topology if multiple topojson files are merged
-    if (dataset.arcs && dataset.arcs.length > 0 && dataset.import_formats[0] != 'topojson') {
+    if (dataset.arcs && dataset.arcs.size() > 0 && dataset.info.input_formats[0] != 'topojson') {
       unbuiltTopology = true;
     }
     return dataset;

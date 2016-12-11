@@ -19,6 +19,31 @@ describe('mapshaper-merge-files.js', function () {
       // TODO: check geometry
   })
 
+  it('issue #153 topology is build with -i combine-files option', function(done) {
+    var a = 'test/test_data/issues/153/a.json',
+        b = 'test/test_data/issues/153/b.json',
+        cmd = '-i combine-files ' + a + ' ' + b;
+    api.runCommands(cmd, function(err, combined) {
+      var targetArcs = [ [ [ 1, 1 ], [ 1, 0 ] ],
+          [ [ 1, 0 ], [ 0, 0 ], [ 0, 1 ], [ 1, 1 ] ],
+          [ [ 1, 1 ], [ 2, 1 ], [ 2, 0 ], [ 1, 0 ] ] ];
+      var targetA = {
+        geometry_type: 'polygon',
+        name: 'a',
+        shapes: [[[0, 1]]]
+      };
+      var targetB = {
+        geometry_type: 'polygon',
+        name: 'b',
+        shapes: [[[2, ~0]]]
+      }
+      assert.deepEqual(combined.arcs.toArray(), targetArcs)
+      assert.deepEqual(combined.layers[0], targetA);
+      assert.deepEqual(combined.layers[1], targetB);
+      done();
+    })
+  })
+
   it('importing a projected and an unprojected polygon file throws and error', function() {
     assert.throws(function() {
       var a = 'test/test_data/two_states_mercator.shp',

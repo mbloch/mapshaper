@@ -225,10 +225,9 @@ MapShaper.getOptionParser = function() {
 
   parser.command("cluster")
     .title("\nEditing commands")
-    .describe("group polygons by repeatedly merging smallest neighbors")
-    .option("target", targetOpt)
+    .describe("make clusters by repeatedly grouping adjacent polygon pairs")
     .option("id-field", {
-      describe: "field name for cluster id (default is \"cluster\")"
+      describe: "field name of cluster id (default is \"cluster\")"
     })
     .option('pct', {
       alias: 'p',
@@ -249,7 +248,8 @@ MapShaper.getOptionParser = function() {
     })
     .option("group-by", {
       describe: "field name; only same-value shapes will be grouped"
-    });
+    })
+    .option("target", targetOpt);
 
 
   parser.command("dissolve")
