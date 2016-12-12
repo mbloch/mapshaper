@@ -107,6 +107,8 @@ function ClickText(ref) {
     return this;
   };
 
+  this.text = function() {return _el.el.value;};
+
   this.value = function(arg) {
     if (arg == void 0) {
       // var valStr = this.el.value;

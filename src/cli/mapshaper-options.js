@@ -225,7 +225,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("cluster")
     .title("\nEditing commands")
-    .describe("make clusters by repeatedly grouping adjacent polygon pairs")
+    .describe("group polygons into compact clusters")
     .option("id-field", {
       describe: "field name of cluster id (default is \"cluster\")"
     })
@@ -235,15 +235,15 @@ MapShaper.getOptionParser = function() {
       describe: "percentage of shapes to retain, e.g. 50%"
     })
     .option("max-width", {
-      describe: "max width of bounding box",
+      describe: "max width of cluster bounding box",
       type: "number"
     })
     .option("max-height", {
-      describe: "max height of bounding box",
+      describe: "max height of cluster bounding box",
       type: "number"
     })
     .option("max-area", {
-      describe: "max area of polygon cluster",
+      describe: "max area of a cluster",
       type: "number"
     })
     .option("group-by", {

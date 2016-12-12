@@ -42,7 +42,7 @@ function validateSimplifyOpts(cmd) {
   }
 
   if (pctStr) {
-    o.pct = MapShaper.parsePercentValue(pctStr);
+    o.pct = utils.parsePercent(pctStr);
   }
 
   var intervalStr = o.interval;

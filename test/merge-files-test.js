@@ -19,7 +19,7 @@ describe('mapshaper-merge-files.js', function () {
       // TODO: check geometry
   })
 
-  it('issue #153 topology is build with -i combine-files option', function(done) {
+  it('issue #153 topology was ignored when using -i combine-files option', function(done) {
     var a = 'test/test_data/issues/153/a.json',
         b = 'test/test_data/issues/153/b.json',
         cmd = '-i combine-files ' + a + ' ' + b;

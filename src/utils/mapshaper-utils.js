@@ -61,3 +61,18 @@ utils.findStringPrefix = function(a, b) {
 utils.isFiniteNumber = function(val) {
   return val === 0 || !!val && val.constructor == Number && val !== Infinity && val !== -Infinity;
 };
+
+utils.parsePercent = function(o) {
+  var str = String(o);
+  var isPct = str.indexOf('%') > 0;
+  var pct;
+  if (isPct) {
+    pct = Number(str.replace('%', '')) / 100;
+  } else {
+    pct = Number(str);
+  }
+  if (!(pct >= 0 && pct <= 1)) {
+    error(utils.format("Invalid pct value: %s", str));
+  }
+  return pct;
+};

@@ -28,6 +28,36 @@ describe('mapshaper-utils.js', function () {
     })
   })
 
+  describe('parsePercent()', function () {
+    it('correctly parse values with %', function () {
+      assert.equal(utils.parsePercent('4%'), 0.04);
+      assert.equal(utils.parsePercent('0%'), 0);
+      assert.equal(utils.parsePercent('100%'), 1);
+    })
+
+    it('correctly parse fractions', function () {
+      assert.equal(utils.parsePercent('0.04'), 0.04);
+      assert.equal(utils.parsePercent('0'), 0);
+      assert.equal(utils.parsePercent('1'), 1);
+    })
+
+    it('throws on invalid values', function () {
+      assert.throws(function() {
+        utils.parsePercent('a');
+      });
+      assert.throws(function() {
+        utils.parsePercent('101%');
+      });
+      assert.throws(function() {
+        utils.parsePercent('10');
+      });
+      assert.throws(function() {
+        utils.parsePercent('-1%');
+      });
+    })
+
+  })
+
   describe('isFiniteNumber()', function () {
     it('positive tests', function () {
       assert(utils.isFiniteNumber(1));
