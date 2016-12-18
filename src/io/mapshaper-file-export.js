@@ -11,7 +11,9 @@ MapShaper.writeFiles = function(exports, opts, cb) {
   } else if (opts.dry_run) {
     // no output
   } else if (opts.stdout) {
-    cli.writeFile('/dev/stdout', exports[0].content);
+    // Pass callback for asynchronous output (synchronous output to stdout can
+    // trigger EAGAIN error, e.g. when piped to less)
+    return cli.writeFile('/dev/stdout', exports[0].content, cb);
   } else {
     var paths = MapShaper.getOutputPaths(utils.pluck(exports, 'filename'), opts);
     exports.forEach(function(obj, i) {

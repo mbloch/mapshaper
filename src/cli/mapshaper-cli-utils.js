@@ -31,11 +31,16 @@ cli.readFile = function(fname, encoding) {
 };
 
 // @content Buffer, ArrayBuffer or string
-cli.writeFile = function(path, content) {
+cli.writeFile = function(path, content, cb) {
+  var fs = require('rw');
   if (content instanceof ArrayBuffer) {
-    content = cli.convertArrayBuffer(content);
+    content = cli.convertArrayBuffer(content); // convert to Buffer
   }
-  require('rw').writeFileSync(path, content);
+  if (cb) {
+    fs.writeFile(path, content, cb);
+  } else {
+    fs.writeFileSync(path, content);
+  }
 };
 
 // Returns Node Buffer
