@@ -12,7 +12,11 @@ api.explodeFeatures = function(lyr, arcs, opts) {
       explodedShapes.push(null);
     } else {
       if (lyr.geometry_type == 'polygon' && shp.length > 1) {
-        exploded = MapShaper.explodePolygon(shp, arcs);
+        if (opts && opts.naive) {
+          exploded = MapShaper.explodePolygonNaive(shp, arcs);
+        } else {
+          exploded = MapShaper.explodePolygon(shp, arcs);
+        }
       } else {
         exploded = MapShaper.explodeShape(shp);
       }
@@ -45,6 +49,17 @@ MapShaper.explodePolygon = function(shape, arcs) {
     return group.map(function(ring) {
       return ring.ids;
     });
+  });
+};
+
+MapShaper.explodePolygonNaive = function(shape, arcs) {
+  var paths = MapShaper.getPathMetadata(shape, arcs, "polygon");
+  console.log("Naive");
+  return paths.map(function(path) {
+    if (path.area < 0) {
+      MapShaper.reversePath(path.ids);
+    }
+    return [path.ids];
   });
 };
 

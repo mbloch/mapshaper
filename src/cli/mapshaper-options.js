@@ -320,7 +320,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("explode")
     .describe("divide multi-part features into single-part features")
-    .option("convert-holes", {type: "flag"}) // testing
+    .option("naive", {type: "flag"}) // testing
     .option("target", targetOpt);
 
 
