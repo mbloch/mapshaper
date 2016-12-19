@@ -232,7 +232,7 @@ function ImportControl(model, opts) {
         }
         if (!lyr.geometry_type) {
           // kludge: trigger display of table cells if .shp has null geometry
-          model.updated(null, lyr, dataset);
+          model.updated({}, lyr, dataset);
         }
         readNext();
         return;
@@ -265,7 +265,7 @@ function ImportControl(model, opts) {
     setTimeout(function() {
       var dataset = MapShaper.importFileContent(content, path, importOpts);
       dataset.info.no_repair = importOpts.no_repair;
-      model.addDataset(dataset);
+      model.updated({select: true, import: true}, dataset.layers[0], dataset);
       importCount++;
       readNext();
     }, delay);

@@ -76,7 +76,7 @@ var SimplifyControl = function(model) {
   });
 
   function turnOn() {
-    var target = model.getEditingLayer();
+    var target = model.getActiveLayer();
     if (!MapShaper.layerHasPaths(target.layer)) {
       gui.alert("This layer can not be simplified");
       return;
@@ -91,7 +91,7 @@ var SimplifyControl = function(model) {
   }
 
   function initMenu() {
-    var dataset = model.getEditingLayer().dataset;
+    var dataset = model.getActiveLayer().dataset;
     var showPlanarOpt = !dataset.arcs.isPlanar();
     var opts = MapShaper.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);
     El('#planar-opt-wrapper').node().style.display = showPlanarOpt ? 'block' : 'none';
@@ -107,7 +107,7 @@ var SimplifyControl = function(model) {
   }
 
   function onSubmit() {
-    var dataset = model.getEditingLayer().dataset;
+    var dataset = model.getActiveLayer().dataset;
     var showMsg = dataset.arcs && dataset.arcs.getPointCount() > 1e6;
     var delay = 0;
     if (showMsg) {

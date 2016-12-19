@@ -32,7 +32,7 @@ function InspectionControl(model, hit) {
   // replace cli inspect command
   api.inspect = function(lyr, arcs, opts) {
     var ids;
-    if (lyr != model.getEditingLayer().layer) {
+    if (lyr != model.getActiveLayer().layer) {
       error("Only the active layer can be targeted");
     }
     ids = MapShaper.selectFeatures(lyr, arcs, opts);

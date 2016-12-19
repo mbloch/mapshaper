@@ -26,7 +26,7 @@ function LayerControl(model) {
   }
 
   function updateBtn() {
-    var name = model.getEditingLayer().layer.name || "[unnamed layer]";
+    var name = model.getActiveLayer().layer.name || "[unnamed layer]";
     buttonLabel.html(name + " &nbsp;&#9660;");
   }
 
@@ -70,7 +70,7 @@ function LayerControl(model) {
   }
 
   function renderLayer(lyr, dataset) {
-    var editLyr = model.getEditingLayer().layer;
+    var editLyr = model.getActiveLayer().layer;
     var entry = El('div').addClass('layer-item').classed('active', lyr == editLyr);
     var html = rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>');
     html += rowHTML('source file', describeSrc(lyr, dataset));
@@ -107,7 +107,7 @@ function LayerControl(model) {
     var otherLyr = model.findAnotherLayer(lyr);
     if (otherLyr) {
       turnOff(); // avoid rendering twice
-      if (model.getEditingLayer().layer == lyr) {
+      if (model.getActiveLayer().layer == lyr) {
         // switch to a different layer if deleted layer was selected
         model.selectLayer(otherLyr.layer, otherLyr.dataset);
       }

@@ -46,7 +46,7 @@ function Console(model) {
   }
 
   function turnOn() {
-    if (!_isOpen && !!model.getEditingLayer()) {
+    if (!_isOpen && !!model.getActiveLayer()) {
       _isOpen = true;
       stop = MapShaper.stop = consoleStop;
       error = MapShaper.error = consoleError;
@@ -168,7 +168,7 @@ function Console(model) {
     var line = readCommandLine(),
         match = /\w+$/.exec(line),
         stub = match ? match[0] : '',
-        lyr = model.getEditingLayer().layer,
+        lyr = model.getActiveLayer().layer,
         names, name;
     if (stub && lyr.data) {
       names = findCompletions(stub, lyr.data.getFields());
@@ -259,7 +259,7 @@ function Console(model) {
         printExamples();
       } else if (cmd == 'layers') {
         message("Available layers:",
-          MapShaper.getFormattedLayerList(model.getEditingLayer().dataset.layers));
+          MapShaper.getFormattedLayerList(model.getActiveLayer().dataset.layers));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         gui.clearMode();
       } else if (cmd) {
@@ -274,7 +274,7 @@ function Console(model) {
     try {
       commands = MapShaper.parseConsoleCommands(str);
       commands = MapShaper.runAndRemoveInfoCommands(commands);
-      target = model.getEditingLayer();
+      target = model.getActiveLayer();
     } catch (e) {
       return onError(e);
     }
