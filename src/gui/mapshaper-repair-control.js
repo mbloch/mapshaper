@@ -27,7 +27,7 @@ function RepairControl(model, map) {
     }
   });
 
-  model.on('mode', function(e) {
+  gui.on('mode', function(e) {
     if (e.prev == 'import') {
       // update if import just finished and a new dataset is being edited
       delayedUpdate();

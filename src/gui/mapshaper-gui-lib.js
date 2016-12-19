@@ -1,9 +1,10 @@
 /* @requires
 mapshaper-gui-start
 mbloch-gui-lib
-mapshaper-gui-error
+mapshaper-gui-modes
 */
 
+var gui = api.gui = new ModeSwitcher();
 api.enableLogging();
 
 gui.browserIsSupported = function() {

@@ -1,12 +1,12 @@
 /* @require mapshaper-gui-lib */
 
 function LayerControl(model) {
-  var el = El("#layer-control").on('click', gui.handleDirectEvent(model.clearMode));
+  var el = El("#layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
   var buttonLabel = El('#layer-control-btn .layer-name');
   var isOpen = false;
 
-  new ModeButton('#layer-control-btn .header-btn', 'layer_menu', model);
-  model.addMode('layer_menu', turnOn, turnOff);
+  new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
+  gui.addMode('layer_menu', turnOn, turnOff);
   model.on('update', function(e) {
     updateBtn();
     if (isOpen) render();
@@ -94,7 +94,7 @@ function LayerControl(model) {
     // init click-to-select
     gui.onClick(entry, function() {
       if (!gui.getInputElement()) { // don't select if user is typing
-        model.clearMode();
+        gui.clearMode();
         if (lyr != editLyr) {
           model.updated({select: true}, lyr, dataset);
         }

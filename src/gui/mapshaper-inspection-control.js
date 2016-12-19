@@ -50,7 +50,7 @@ function InspectionControl(model, hit) {
     if (!_inspecting) return;
 
     // esc key closes (unless in an editing mode)
-    if (e.keyCode == 27 && _inspecting && !model.getMode()) {
+    if (e.keyCode == 27 && _inspecting && !gui.getMode()) {
       turnOff();
 
     // arrow keys advance pinned feature unless user is editing text.

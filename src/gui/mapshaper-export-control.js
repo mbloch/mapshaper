@@ -3,9 +3,9 @@
 // Export buttons and their behavior
 var ExportControl = function(model) {
   var unsupportedMsg = "Exporting is not supported in this browser";
-  var menu = El('#export-options').on('click', gui.handleDirectEvent(model.clearMode));
+  var menu = El('#export-options').on('click', gui.handleDirectEvent(gui.clearMode));
   var datasets = []; // array of exportable layers grouped by dataset
-  new SimpleButton('#export-options .cancel-btn').on('click', model.clearMode);
+  new SimpleButton('#export-options .cancel-btn').on('click', gui.clearMode);
 
   if (!gui.exportIsSupported()) {
     El('#export-btn').on('click', function() {
@@ -17,13 +17,13 @@ var ExportControl = function(model) {
     };
   } else {
     new SimpleButton('#save-btn').on('click', onExportClick);
-    model.addMode('export', turnOn, turnOff);
-    new ModeButton('#export-btn', 'export', model);
+    gui.addMode('export', turnOn, turnOff);
+    new ModeButton('#export-btn', 'export');
   }
 
   function onExportClick() {
     gui.showProgressMessage('Exporting');
-    model.clearMode();
+    gui.clearMode();
     setTimeout(function() {
       exportMenuSelection(function(err) {
         if (err) {

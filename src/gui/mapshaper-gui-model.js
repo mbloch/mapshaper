@@ -2,8 +2,6 @@
 
 function Model() {
   var datasets = [],
-      self = this,
-      mode = null,
       editing;
 
   this.forEachLayer = function(cb) {
@@ -33,6 +31,7 @@ function Model() {
     return found;
   };
 
+  // layer panel (after deletion)
   this.findAnotherLayer = function(target) {
     var layers = this.getLayers(),
         found = null;
@@ -63,6 +62,7 @@ function Model() {
     return layers;
   };
 
+  // gui (console)
   this.selectNextLayer = function() {
     var layers = this.getLayers(),
         idx = indexOfLayer(editing.layer, layers),
@@ -73,6 +73,7 @@ function Model() {
     }
   };
 
+  // gui (console)
   this.selectPrevLayer = function() {
     var layers = this.getLayers(),
         idx = indexOfLayer(editing.layer, layers),
@@ -83,19 +84,22 @@ function Model() {
     }
   };
 
+  // gui (vs setEditingLayer())
   this.selectLayer = function(lyr, dataset) {
     this.updated({select: true}, lyr, dataset);
   };
 
+  // gui (import)
   this.addDataset = function(dataset) {
     this.updated({select: true, import: true}, dataset.layers[0], dataset);
   };
 
+  // gui
   this.updated = function(flags, lyr, dataset) {
     var e;
     flags = flags || {};
     if (lyr && dataset && (!editing || editing.layer != lyr)) {
-      setEditingLayer(lyr, dataset);
+      setEditingLayer(lyr, dataset); // *
       flags.select = true;
     }
     if (editing) {
@@ -111,35 +115,6 @@ function Model() {
     return editing || {};
   };
 
-  this.getMode = function() {
-    return mode;
-  };
-
-  // return a function to trigger this mode
-  this.addMode = function(name, enter, exit) {
-    this.on('mode', function(e) {
-      if (e.prev == name) {
-        exit();
-      }
-      if (e.name == name) {
-        enter();
-      }
-    });
-  };
-
-  this.addMode(null, function() {}, function() {}); // null mode
-
-  this.clearMode = function() {
-    self.enterMode(null);
-  };
-
-  this.enterMode = function(next) {
-    var prev = mode;
-    if (next != prev) {
-      mode = next;
-      self.dispatchEvent('mode', {name: next, prev: prev});
-    }
-  };
 
   function setEditingLayer(lyr, dataset) {
     if (editing && editing.layer == lyr) {
@@ -161,6 +136,7 @@ function Model() {
     };
   }
 
+  // gui
   function indexOfLayer(lyr, layers) {
     var idx = -1;
     layers.forEach(function(o, i) {

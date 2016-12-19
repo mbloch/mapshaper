@@ -25,8 +25,8 @@ function Console(model) {
 
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
-  new ModeButton('#console-btn', 'console', model);
-  model.addMode('console', turnOn, turnOff);
+  new ModeButton('#console-btn', 'console');
+  gui.addMode('console', turnOn, turnOff);
 
   gui.onClick(content, function(e) {
     var targ = El(e.target);
@@ -112,7 +112,7 @@ function Console(model) {
       if (typing) {
         inputEl.blur();
       }
-      model.clearMode(); // esc escapes other modes as well
+      gui.clearMode(); // esc escapes other modes as well
       capture = true;
 
     // l/r arrow keys while not typing in a text field
@@ -140,7 +140,7 @@ function Console(model) {
         forward();
       } else if (kc == 32 && (!typing || (inputText === '' && typingInConsole))) {
         // space bar closes if nothing has been typed
-        model.clearMode();
+        gui.clearMode();
       } else if (!typing && e.target != input.node() && !metaKey(e)) {
         // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
         // or user is typing in a different input area somewhere
@@ -155,7 +155,7 @@ function Console(model) {
     } else if (!typing && kc == 32) {
       // space bar opens console, unless typing in an input field or editable el
       capture = true;
-      model.enterMode('console');
+      gui.enterMode('console');
     }
 
     if (capture) {
@@ -261,7 +261,7 @@ function Console(model) {
         message("Available layers:",
           MapShaper.getFormattedLayerList(model.getEditingLayer().dataset.layers));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
-        model.clearMode();
+        gui.clearMode();
       } else if (cmd) {
         runMapshaperCommands(cmd);
       }

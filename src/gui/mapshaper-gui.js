@@ -1,5 +1,6 @@
 /* @requires
 mapshaper-gui-lib
+mapshaper-gui-error
 mapshaper-simplify-control
 mapshaper-import-control
 mapshaper-export-control
@@ -10,6 +11,7 @@ mapshaper-map
 mapshaper-maplayer
 mapshaper-console
 mapshaper-gui-model
+mapshaper-gui-modes
 */
 
 Browser.onload(function() {
@@ -42,10 +44,10 @@ gui.startEditing = function() {
       dataLoaded = false,
       map, repair, simplify;
   gui.startEditing = function() {};
-  gui.alert = new ErrorMessages(model);
   map = new MshpMap(model);
   repair = new RepairControl(model, map);
   simplify = new SimplifyControl(model);
+  new AlertControl();
   new ImportFileProxy(model);
   new ImportControl(model, gui.getImportOpts());
   new ExportControl(model);

@@ -53,6 +53,11 @@ describe('mapshaper-shapefile.js', function () {
     })
   })
 
+  describe('Import/Export rountrip tests', function() {
+
+
+  })
+
   describe('Export/Import roundtrip tests', function () {
 
     it('Six counties', function () {
