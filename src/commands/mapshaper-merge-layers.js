@@ -25,37 +25,43 @@ api.mergeLayers = function(layers) {
   return merged ? [merged] : null;
 };
 
-MapShaper.checkFieldType = function(key, layers) {
-  // accepts empty + non-empty field types
+MapShaper.checkFieldTypes = function(key, layers) {
+  // ignores empty-type fields
   return layers.reduce(function(memo, lyr) {
     var type = lyr.data ? MapShaper.getColumnType(key, lyr.data) : null;
-    if (!memo) {
-      memo = type;
-    } else if (type && type != memo) {
-      memo = 'mixed';
+    if (type && memo.indexOf(type) == -1) {
+      memo.push(type);
     }
     return memo;
-  }, null);
+  }, []);
+};
+
+MapShaper.findMissingFields = function(layers) {
+  var matrix = layers.map(function(lyr) {return lyr.data ? lyr.data.getFields() : [];});
+  var allFields = matrix.reduce(function(memo, fields) {
+    return utils.uniq(memo.concat(fields));
+  }, []);
+  return matrix.reduce(function(memo, fields) {
+    var diff = utils.difference(allFields, fields);
+    return utils.uniq(memo.concat(diff));
+  }, []);
 };
 
 MapShaper.checkLayersCanMerge = function(layers) {
   var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type')),
-      dataKeys = utils.uniq(layers.map(getDataKey)),
-      fields = dataKeys[0] ? layers[0].data.getFields() : [];
+      missingFields = MapShaper.findMissingFields(layers);
   if (utils.uniq(geoTypes).length > 1) {
-    stop("[merge-layers] Incompatible geometry types");
+    stop("[merge-layers] Incompatible geometry types:",
+      geoTypes.map(function(type) {return type || '[none]';}).join(', '));
   }
-  if (utils.uniq(dataKeys).length > 1) {
-    stop("[merge-layers] Incompatible fields");
+  if (missingFields.length > 0) {
+    stop("[merge-layers] Field" + utils.pluralSuffix(missingFields.length), "missing from one or more layers:",
+        missingFields.join(', '));
   }
-  fields.forEach(function(key) {
-    var type = MapShaper.checkFieldType(key, layers);
-    if (type == 'mixed') {
-      stop("[merge-layers] Inconsistent data types in field:", key);
+  layers[0].data.getFields().forEach(function(key) {
+    var types = MapShaper.checkFieldTypes(key, layers);
+    if (types.length > 1) {
+      stop("[merge-layers] Inconsistent data types in \"" + key + "\" field:", types.join(', '));
     }
   });
-
-  function getDataKey(lyr) {
-    return lyr.data ? lyr.data.getFields().sort().join(',') : '';
-  }
 };
