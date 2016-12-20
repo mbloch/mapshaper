@@ -61,7 +61,7 @@ MapShaper.mergeDatasetInfo = function(arr) {
         // datasets are both unprojected
         // TODO: check for incompatibility
       } else {
-        // datasets are both unprojected
+        // datasets are both projected
         // TODO: check for incompatibility
       }
     }
