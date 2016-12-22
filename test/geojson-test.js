@@ -167,6 +167,22 @@ describe('mapshaper-geojson.js', function () {
 
   describe('exportGeoJSON()', function () {
 
+    it('default file extension is .json', function(done) {
+      api.internal.processFileContent('-i test/test_data/two_states.json -o', null, function(err, output) {
+        assert.equal(output[0].filename, 'two_states.json');
+        done();
+      })
+
+    })
+
+    it('-o extension= overrides default file extension', function(done) {
+      api.internal.processFileContent('-i test/test_data/two_states.json -o extension=geojson', null, function(err, output) {
+        assert.equal(output[0].filename, 'two_states.geojson');
+        done();
+      })
+
+    })
+
     it('export FeatureCollection with null geometries if no shapes are present', function() {
       var lyr = {
         data: new DataTable([{foo: 'a'}])

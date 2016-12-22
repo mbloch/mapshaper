@@ -47,6 +47,10 @@ MapShaper.exportFileContent = function(dataset, opts) {
     files = MapShaper.exportDataTables(dataset.layers, opts).concat(files);
   }
 
+  if (opts.extension) {
+    opts.extension = MapShaper.fixFileExtension(opts.extension, outFmt);
+  }
+
   files = exporter(dataset, opts).concat(files);
   // If rounding or quantization are applied during export, bounds may
   // change somewhat... consider adding a bounds property to each layer during
@@ -189,6 +193,11 @@ MapShaper.formatVersionedFileName = function(filename, i) {
   ext = parts.pop();
   base = parts.join('.');
   return MapShaper.formatVersionedName(base, i) + '.' + ext;
+};
+
+MapShaper.fixFileExtension = function(ext, fmt) {
+  // TODO: use fmt to validate
+  return ext.replace(/^\.+/, '');
 };
 
 MapShaper.uniqifyNames = function(names, formatter) {

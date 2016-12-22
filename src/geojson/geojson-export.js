@@ -6,7 +6,7 @@ mapshaper-dataset-utils
 */
 
 MapShaper.exportGeoJSON = function(dataset, opts) {
-  var extension = "json";
+  var extension = opts.extension || "json";
   if (opts.output_file) {
     // override default output extension if output filename is given
     extension = utils.getFileExtension(opts.output_file);
