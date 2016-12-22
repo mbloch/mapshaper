@@ -7,28 +7,25 @@ dbf-import
 mapshaper-join-filter
 */
 
-api.join = function(targetLyr, dataset, opts) {
-  var src, srcLyr, srcType, targetType, retn;
+api.join = function(targetLyr, dataset, src, opts) {
+  var srcType, targetType, retn;
+  if (!src || !src.layer.data || !src.dataset) {
+    stop("[join] Missing a joinable data source");
+  }
   if (opts.keys) {
     // join using data in attribute fields
     if (opts.keys.length != 2) {
       stop("[join] Expected two key fields: a target field and a source field");
     }
-    src = MapShaper.getJoinTable(dataset, opts);
-    retn = api.joinAttributesToFeatures(targetLyr, src, opts);
+    retn = api.joinAttributesToFeatures(targetLyr, src.layer.data, opts);
   } else {
     // spatial join
-    src = MapShaper.getJoinDataset(dataset, opts);
-    if (!src) {
-      stop("[join] Missing a joinable data source");
-    }
-    srcLyr = src.layers[0];
-    srcType = srcLyr.geometry_type;
+    srcType = src.layer.geometry_type;
     targetType = targetLyr.geometry_type;
     if (srcType == 'point' && targetType == 'polygon') {
-      retn = api.joinPointsToPolygons(targetLyr, dataset.arcs, srcLyr, opts);
+      retn = api.joinPointsToPolygons(targetLyr, dataset.arcs, src.layer, opts);
     } else if (srcType == 'polygon' && targetType == 'point') {
-      retn = api.joinPolygonsToPoints(targetLyr, srcLyr, src.arcs, opts);
+      retn = api.joinPolygonsToPoints(targetLyr, src.layer, src.dataset.arcs, opts);
     } else {
       stop(utils.format("[join] Unable to join %s geometry to %s geometry",
           srcType || 'null', targetType || 'null'));
@@ -44,6 +41,7 @@ api.join = function(targetLyr, dataset, opts) {
 };
 
 // Get a DataTable to join, either from a current layer or from a file.
+/*
 MapShaper.getJoinTable = function(dataset, opts) {
   var layers = MapShaper.findMatchingLayers(dataset.layers, opts.source),
       table;
@@ -54,9 +52,11 @@ MapShaper.getJoinTable = function(dataset, opts) {
   }
   return table;
 };
+*/
 
 // Get a dataset containing a source layer to join
 // TODO: remove duplication with getJoinTable()
+/*
 MapShaper.getJoinDataset = function(dataset, opts) {
   var layers = MapShaper.findMatchingLayers(dataset.layers, opts.source);
   if (!layers.length) {
@@ -65,7 +65,9 @@ MapShaper.getJoinDataset = function(dataset, opts) {
   }
   return layers.length ? {arcs: dataset.arcs, layers: [layers[0]]} : null;
 };
+*/
 
+/*
 api.importJoinTable = function(file, opts) {
   var fieldsWithTypeHints = [];
   if (opts.keys) {
@@ -79,6 +81,15 @@ api.importJoinTable = function(file, opts) {
   }
   var importOpts = utils.defaults({field_types: fieldsWithTypeHints}, opts);
   return api.importDataTable(file, importOpts);
+};
+*/
+
+MapShaper.removeTypeHints = function(arr) {
+  var arr2 = MapShaper.parseFieldHeaders(arr, {});
+  if (arr.join(',') != arr2.join(',')) {
+    stop("[join] Type hints are no longer supported. Use field-types= option instead");
+  }
+  return arr;
 };
 
 api.joinAttributesToFeatures = function(lyr, srcTable, opts) {

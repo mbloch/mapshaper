@@ -9,8 +9,7 @@ api.pointGrid = function(dataset, opts) {
   } else {
     bbox = [-180, -90, 180, 90];
   }
-  gridLyr = MapShaper.createPointGrid(bbox, opts);
-  return gridLyr;
+  return MapShaper.createPointGrid(bbox, opts);
 };
 
 MapShaper.createPointGrid = function(bbox, opts) {

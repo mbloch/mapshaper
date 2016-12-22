@@ -16,7 +16,7 @@ describe('mapshaper-join.js', function () {
     it('test1', function (done) {
       var shp = "test/test_data/two_states.shp";
       var csv = "test/test_data/text/states.csv";
-      var cmd = api.utils.format("-i %s -join %s keys=FIPS,STATE_FIPS:str fields=POP2010,SUB_REGION", shp, csv),
+      var cmd = api.utils.format("-i %s -join %s keys=FIPS,STATE_FIPS fields=POP2010,SUB_REGION field-types=STATE_FIPS:str", shp, csv),
           target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
           {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
       api.runCommands(cmd, function(err, data) {
@@ -24,6 +24,21 @@ describe('mapshaper-join.js', function () {
         assert.deepEqual(data.layers[0].data.getRecords(), target);
         done();
       });
+    })
+
+    it('join layers from two separately loaded datasets', function(done) {
+      var shp = "test/test_data/two_states.shp";
+      var csv = "test/test_data/text/states.csv";
+      var cmd = api.utils.format("-i %s -i %s field-types=STATE_FIPS:str -join target=two_states states keys=FIPS,STATE_FIPS fields=POP2010,SUB_REGION ", shp, csv);
+      var target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
+          {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
+      api.runCommands(cmd, function(err, data) {
+        if (err) throw err;
+        var records = data.layers[0].data.getRecords();
+        assert.deepEqual(records, target);
+        done();
+      });
+
     })
 
     it('test "-join force" option, topojson input', function(done) {
@@ -45,7 +60,8 @@ describe('mapshaper-join.js', function () {
       api.applyCommands(cmd, src, function(err, data) {
         var output = JSON.parse(data);
         // source hasn't changed
-        assert.deepEqual(output.objects.b, src.objects.b);
+        // v0.4 - only one layer is output by default
+        // assert.deepEqual(output.objects.b, src.objects.b);
         // dest value has been overwritten
         assert.deepEqual(output.objects.a.geometries,
           [{type: null, properties: {foo: 'a', bar: "new", baz: "new"}},
@@ -74,7 +90,7 @@ describe('mapshaper-join.js', function () {
           }
         }
       };
-      var cmd = "-join b unjoined unmatched target=a keys=foo,fooz";
+      var cmd = "-join b unjoined unmatched target=a keys=foo,fooz -o target=unjoined,unmatched";
       api.applyCommands(cmd, src, function(err, data) {
         var output = JSON.parse(data);
         assert.deepEqual(output.objects.unjoined.geometries,
@@ -188,6 +204,7 @@ describe('mapshaper-join.js', function () {
 
   })
 
+  /*
   describe('importJoinTable()', function() {
     it('should not adjust types of dbf table fields', function() {
       var opts = {
@@ -226,6 +243,7 @@ describe('mapshaper-join.js', function () {
       assert.strictEqual(table.getRecords()[0].LAT, '43.94')
     })
   })
+  */
 
   describe('getCountFieldName', function () {
     it('avoid collisions with other fields', function () {

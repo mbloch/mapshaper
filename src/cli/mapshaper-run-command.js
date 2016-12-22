@@ -39,39 +39,64 @@ mapshaper-uniq
 
 // TODO: consider refactoring to allow modules
 // @cmd  example: {name: "dissolve", options:{field: "STATE"}}
-// @dataset  format: {arcs: <ArcCollection>, layers:[]}
-// @done callback: function(err, dataset)
+// @catalog: Catalog object
+// @done callback: function(err, catalog)
 //
-api.runCommand = function(cmd, dataset, cb) {
+api.runCommand = function(cmd, catalog, cb) {
   var name = cmd.name,
       opts = cmd.options,
-      targetLayers,
+      sources,
+      source,
+      sourceDataset,
       outputLayers,
       outputFiles,
+      targets,
+      targetDataset,
+      targetLayers,
       arcs;
 
   try { // catch errors from synchronous functions
 
     T.start();
-    if (dataset) {
-      arcs = dataset.arcs;
-      if (dataset.layers.length > 0 === false) {
-        error("Dataset contains 0 layers");
-      }
-
-      if (opts.target) {
-        targetLayers = MapShaper.findMatchingLayers(dataset.layers, opts.target);
-        if (!targetLayers.length) {
-          stop(utils.format('[%s] Missing target layer: %s\nAvailable layers: %s',
-            name, opts.target, MapShaper.getFormattedLayerList(dataset.layers)));
-        }
-      } else {
-        targetLayers = dataset.layers; // default: all layers
-      }
-
-    } else { // no dataset
+    if (!catalog) catalog = new Catalog();
+    if (!catalog.getActiveLayer()) { // no dataset
       if (!(name == 'graticule' || name == 'i' || name == 'point-grid')) {
         throw new APIError("Missing a -i command");
+      }
+    } else {
+      targets = catalog.findCommandTargets(opts.target);
+      if (targets.length > 1) {
+        stop("Targetting multiple datasets is not supported");
+      } else if (!targets.length) {
+        if (opts.target) {
+          stop(utils.format('[%s] Missing target layer: %s\nAvailable layers: %s',
+            name, opts.target, MapShaper.getFormattedLayerList(catalog)));
+        }
+        stop("Missing a target"); // shouldn't occur
+      }
+      targetDataset = targets[0].dataset;
+      arcs = targetDataset.arcs;
+      targetLayers = targets[0].layers;
+      catalog.setActiveLayer(targetLayers[0], targetDataset); // target= option sets active layer
+    }
+
+    if (opts.source) {
+      sources = catalog.findCommandTargets(opts.source);
+      if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
+        stop(utils.format('[%s] Source option [%s] matched multiple layers', name, opts.source));
+      } else if (sources.length == 1) {
+        source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
+      } else {
+        // don't build topology, because:
+        //    join -- don't need topology
+        //    clip/erase -- topology is built later, when datasets are combined
+        sourceDataset = api.importFile(opts.source, utils.defaults({no_topology: true}, opts));
+        if (!sourceDataset) {
+          stop(utils.format('[%s] Unable to find source [%s]', name, opts.source));
+        } else if (sourceDataset.layers.length > 1) {
+          stop(utils.format('[%s] Multiple-layer sources are not supported', name));
+        }
+        source = {dataset: sourceDataset, layer: sourceDataset.layers[0]};
       }
     }
 
@@ -83,23 +108,23 @@ api.runCommand = function(cmd, dataset, cb) {
 
     } else if (name == 'clean') {
       // MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
-      api.cleanLayers(targetLayers, dataset, opts);
+      api.cleanLayers(targetLayers, targetDataset, opts);
 
     } else if (name == 'clip') {
-      api.clipLayers(targetLayers, opts.source, dataset, opts);
+      outputLayers = api.clipLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'dissolve') {
       outputLayers = MapShaper.applyCommand(api.dissolve, targetLayers, arcs, opts);
 
     } else if (name == 'dissolve2') {
-      outputLayers = api.dissolve2(targetLayers, dataset, opts);
+      outputLayers = api.dissolve2(targetLayers, targetDataset, opts);
       //outputLayers = MapShaper.applyCommand(api.dissolve2, targetLayers, dataset, opts);
 
     } else if (name == 'each') {
       MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression, opts);
 
     } else if (name == 'erase') {
-      api.eraseLayers(targetLayers, opts.source, dataset, opts);
+      outputLayers = api.eraseLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'explode') {
       outputLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
@@ -117,13 +142,14 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.filterSlivers, targetLayers, arcs, opts);
 
     } else if (name == 'graticule') {
-      dataset = api.graticule(dataset, opts);
+      catalog.addDataset(api.graticule(targetDataset, opts));
 
     } else if (name == 'i') {
-      dataset = api.importFiles(cmd.options);
+      if (opts.replace) catalog = new Catalog();
+      catalog.addDataset(api.importFiles(cmd.options));
 
     } else if (name == 'info') {
-      api.printInfo(dataset);
+      api.printInfo(targetDataset, targetLayers);
 
     } else if (name == 'inspect') {
       MapShaper.applyCommand(api.inspect, targetLayers, arcs, opts);
@@ -132,7 +158,7 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = MapShaper.applyCommand(api.innerlines, targetLayers, arcs, opts);
 
     } else if (name == 'join') {
-      MapShaper.applyCommand(api.join, targetLayers, dataset, opts);
+      MapShaper.applyCommand(api.join, targetLayers, targetDataset, source, opts);
 
     } else if (name == 'lines') {
       outputLayers = MapShaper.applyCommand(api.lines, targetLayers, arcs, opts);
@@ -142,10 +168,10 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'o') {
-      outputFiles = MapShaper.exportFileContent(utils.defaults({layers: targetLayers}, dataset), opts);
+      outputFiles = MapShaper.exportFileContent(utils.defaults({layers: targetLayers}, targetDataset), opts);
       if (opts.final) {
-        // don't propagate dataset if output is final
-        dataset = null;
+        // don't propagate data if output is final
+        catalog = null;
       }
       if (opts.callback) {
         opts.callback(outputFiles);
@@ -154,16 +180,15 @@ api.runCommand = function(cmd, dataset, cb) {
       }
 
     } else if (name == 'point-grid') {
-      outputLayers = [api.pointGrid(dataset, opts)];
-      targetLayers = [];
-      if (!dataset) {
-        dataset = {layers: []};
+      outputLayers = [api.pointGrid(targetDataset, opts)];
+      if (!targetDataset) {
+        catalog.addDataset({layers: outputLayers});
       }
     } else if (name == 'points') {
       outputLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
     } else if (name == 'proj') {
-      api.proj(dataset, opts);
+      api.proj(targetDataset, opts);
 
     } else if (name == 'rename-fields') {
       MapShaper.applyCommand(api.renameFields, targetLayers, opts.fields);
@@ -172,10 +197,10 @@ api.runCommand = function(cmd, dataset, cb) {
       api.renameLayers(targetLayers, opts.names);
 
     } else if (name == 'simplify') {
-      api.simplify(dataset, opts);
+      api.simplify(targetDataset, opts);
 
     } else if (name == 'slice') {
-      api.sliceLayers(targetLayers, opts.source, dataset, opts);
+      outputLayers = api.sliceLayers(targetLayers, source, targetDataset, opts);
 
     } else if (name == 'sort') {
       MapShaper.applyCommand(api.sortFeatures, targetLayers, arcs, opts);
@@ -187,13 +212,13 @@ api.runCommand = function(cmd, dataset, cb) {
       outputLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts);
 
     } else if (name == 'stitch') {
-      api.stitch(dataset);
+      api.stitch(targetDataset);
 
     } else if (name == 'subdivide') {
       outputLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
     } else if (name == 'svg-style') {
-      MapShaper.applyCommand(api.svgStyle, targetLayers, dataset, opts);
+      MapShaper.applyCommand(api.svgStyle, targetLayers, targetDataset, opts);
 
     } else if (name == 'uniq') {
       MapShaper.applyCommand(api.uniq, targetLayers, arcs, opts);
@@ -205,19 +230,20 @@ api.runCommand = function(cmd, dataset, cb) {
     // apply name parameter
     if ('name' in opts) {
       // TODO: consider uniqifying multiple layers here
-      (outputLayers || targetLayers || dataset.layers).forEach(function(lyr) {
+      (outputLayers || targetLayers || targetDataset.layers).forEach(function(lyr) {
         lyr.name = opts.name;
       });
     }
 
-    // integrate output layers into the dataset
-    if (outputLayers) {
+    // integrate output layers into the target dataset
+    if (outputLayers && targetDataset) {
       if (opts.no_replace) {
-        dataset.layers = dataset.layers.concat(outputLayers);
+        targetDataset.layers = targetDataset.layers.concat(outputLayers);
       } else {
         // TODO: consider replacing old layers as they are generated, for gc
-        MapShaper.replaceLayers(dataset, targetLayers, outputLayers);
+        MapShaper.replaceLayers(targetDataset, targetLayers, outputLayers);
       }
+      catalog.setActiveLayer(outputLayers[0], targetDataset);
     }
   } catch(e) {
     return done(e);
@@ -227,7 +253,7 @@ api.runCommand = function(cmd, dataset, cb) {
 
   function done(err) {
     T.stop('-' + name);
-    cb(err, err ? null : dataset);
+    cb(err, err ? null : catalog);
   }
 };
 
@@ -244,11 +270,3 @@ MapShaper.applyCommand = function(func, targetLayers) {
     return memo;
   }, []);
 };
-
-MapShaper.getFormattedLayerList = function(layers) {
-  return layers.reduce(function(memo, lyr, i) {
-    return memo + '\n  [' + i + ']  ' + (lyr.name || '[unnamed]');
-  }, '') || '[none]';
-};
-
-

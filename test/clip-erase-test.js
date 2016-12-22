@@ -82,6 +82,7 @@ describe('mapshaper-clip-erase.js', function () {
     });
   });
 
+
   describe('Issue #68', function () {
     it('Cell along inside edge of clip shape is retained', function (done) {
       var cmd = '-i test/test_data/issues/68/cell1.shp -clip test/test_data/issues/68/clipper.shp';
@@ -207,6 +208,8 @@ describe('mapshaper-clip-erase.js', function () {
       assert.deepEqual(clippedLyr.shapes, target);
     })
 
+    /*
+    // v0.4.0 no longer supports strings as clipping source parameters
     it ("Clip test 1 - variation", function() {
       var lyr1 = {
         geometry_type: "polygon",
@@ -229,6 +232,7 @@ describe('mapshaper-clip-erase.js', function () {
 
       assert.deepEqual(clippedLyr.shapes, target);
     })
+    */
 
     it ("Clip test 2", function() {
       // use layer with hole to clip simple polygon

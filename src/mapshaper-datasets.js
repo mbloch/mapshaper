@@ -1,5 +1,15 @@
 
-function Datasets() {
+
+MapShaper.getFormattedLayerList = function(catalog) {
+  var lines = [];
+  catalog.forEachLayer(function(lyr, i) {
+    lines.push('  [' + i + ']  ' + (lyr.name || '[unnamed]'));
+  });
+  return lines.length > 0 ? lines.join('\n') : '[none]';
+};
+
+
+function Catalog() {
   var datasets = [],
       active;
 
@@ -30,6 +40,27 @@ function Datasets() {
     return found;
   };
 
+  this.findCommandTargets = function(pattern) {
+    var targets = [];
+    if (pattern) {
+      datasets.forEach(function(dataset) {
+        var layers = MapShaper.findMatchingLayers(dataset.layers, pattern);
+        if (layers.length > 0) {
+          targets.push({
+            layers: layers,
+            dataset: dataset
+          });
+        }
+      });
+    } else if (active) {
+      targets.push({
+        layers: [active.layer],
+        dataset: active.dataset
+      });
+    }
+    return targets;
+  };
+
   this.removeDataset = function(target) {
     if (target == (active && active.dataset)) {
       error("Can't remove dataset while active");
@@ -49,6 +80,12 @@ function Datasets() {
       layers.push(layerObject(lyr, dataset));
     });
     return layers;
+  };
+
+  this.addDataset = function(dataset) {
+    datasets.push(dataset);
+    this.setActiveLayer(dataset.layers[0], dataset);
+    return this;
   };
 
   this.getActiveLayer = function() {

@@ -259,7 +259,7 @@ function Console(model) {
         printExamples();
       } else if (cmd == 'layers') {
         message("Available layers:",
-          MapShaper.getFormattedLayerList(model.getActiveLayer().dataset.layers));
+          MapShaper.getFormattedLayerList(model));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         gui.clearMode();
       } else if (cmd) {

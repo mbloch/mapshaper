@@ -1,4 +1,4 @@
-/* @requires mapshaper-run-command, mapshaper-parse-commands */
+/* @requires mapshaper-run-command, mapshaper-parse-commands, mapshaper-datasets */
 
 // Parse command line args into commands and run them
 // @argv Array of command line tokens or single string of commands
@@ -93,14 +93,16 @@ MapShaper.processFileContent = function(tokens, content, done) {
 // @done: function(<error>, <dataset>)
 //
 MapShaper.runParsedCommands = function(commands) {
-  var dataset = null,
-      done;
+  var catalog = new Catalog(),
+      cb;
 
   if (arguments.length == 2) {
-    done = arguments[1];
+    cb = arguments[1];
   } else if (arguments.length == 3) {
-    dataset = arguments[1];
-    done = arguments[2];
+    cb = arguments[2];
+    if (arguments[1]) {
+      catalog.addDataset(arguments[1]);
+    }
   }
 
   if (!utils.isFunction(done)) {
@@ -113,12 +115,17 @@ MapShaper.runParsedCommands = function(commands) {
 
   commands = MapShaper.runAndRemoveInfoCommands(commands);
   if (commands.length === 0) {
-    return done(null, dataset);
+    return cb(null);
   }
 
-  utils.reduceAsync(commands, dataset, function(dataset, cmd, nextCmd) {
-    api.runCommand(cmd, dataset, nextCmd);
+  utils.reduceAsync(commands, catalog, function(catalog, cmd, nextCmd) {
+    api.runCommand(cmd, catalog, nextCmd);
   }, done);
+
+  function done(err, catalog) {
+    var active = catalog && catalog.getActiveLayer();
+    cb(err, !err && active && active.dataset); // kludge for backwards compatibility
+  }
 };
 
 // If an initial import command indicates that several input files should be
@@ -137,7 +144,10 @@ MapShaper.divideImportCommand = function(commands) {
   return (opts.files).reduce(function(memo, file) {
     var importCmd = {
       name: 'i',
-      options: utils.defaults({files:[file]}, opts)
+      options: utils.defaults({
+        files:[file],
+        replace: true  // kludge to replace data catalog
+      }, opts)
     };
     memo.push(importCmd);
     memo.push.apply(memo, commands.slice(1));

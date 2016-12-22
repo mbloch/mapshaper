@@ -38,23 +38,19 @@ api.sliceLayer = function(targetLyr, src, dataset, opts) {
 MapShaper.clipLayers = function(targetLayers, clipSrc, dataset, type, opts) {
   var clipLyr, clipDataset;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
-
-  // check if clip source is another layer in the same dataset
-  clipLyr = MapShaper.findClippingLayer(clipSrc, dataset);
-  if (clipLyr) {
-    clipDataset = dataset;
-  } else {
-    if (opts.bbox) {
-      // use bbox for clipping
-      clipDataset = MapShaper.convertClipBounds(opts.bbox);
-    } else {
-      // use external file for clipping (assume clipSrc is a filename)
-      clipDataset = MapShaper.loadExternalClipLayer(clipSrc, opts);
-    }
-    if (!clipDataset || clipDataset.layers.length != 1) {
-      stop("[" + type + "] Missing clipping data");
-    }
+  if (clipSrc && clipSrc.geometry_type) {
+    // convert from old api -- still used in many tests
+    clipSrc = {dataset: dataset, layer: clipSrc};
+  }
+  if (opts.bbox) {
+    clipDataset = MapShaper.convertClipBounds(opts.bbox);
     clipLyr = clipDataset.layers[0];
+  } else if (clipSrc) {
+    clipDataset = clipSrc.dataset;
+    clipLyr = clipSrc.layer;
+  }
+  if (!clipDataset || !clipLyr) {
+    stop("[" + type + "] Missing clipping data");
   }
   MapShaper.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
   return MapShaper.clipLayersByLayer(targetLayers, dataset, clipLyr, clipDataset, type, opts);
@@ -129,13 +125,14 @@ MapShaper.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
 MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, clipDataset, type, opts) {
   var usingPathClip = utils.some(targetLayers, MapShaper.layerHasPaths);
   var usingExternalDataset = targetDataset != clipDataset;
-  var nodes, outputLayers, mergedDataset;
+  var nodes, outputLayers, mergedDataset, tmp;
 
   if (usingExternalDataset) {
     // merge external dataset with target dataset,
     // so arcs are shared between target layers and clipping lyr
     mergedDataset = MapShaper.mergeDatasets([targetDataset, clipDataset]);
     api.buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
+
     targetDataset.arcs = mergedDataset.arcs; // replace arcs in original dataset with merged arcs
   } else {
     mergedDataset = targetDataset;
@@ -143,13 +140,16 @@ MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, cli
 
   if (usingPathClip) {
     // add vertices at all line intersections
-    // (generally slower than clipping)
+    // (generally slower than actual clipping)
     nodes = MapShaper.addIntersectionCuts(mergedDataset, opts);
   } else {
     nodes = new NodeCollection(targetDataset.arcs);
   }
 
   outputLayers = targetLayers.reduce(function(memo, targetLyr) {
+    if (opts.no_replace) {
+      memo.push(targetLyr);
+    }
     if (type == 'slice') {
       memo = memo.concat(MapShaper.sliceLayerByLayer(targetLyr, clipLyr, nodes, opts));
     } else {
@@ -158,20 +158,18 @@ MapShaper.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, cli
     return memo;
   }, []);
 
-  // integrate output layers into target dataset
-  // (doing this here instead of in runCommand() to allow arc cleaning)
-  if (opts.no_replace) {
-    targetDataset.layers = targetDataset.layers.concat(outputLayers);
-  } else {
-    MapShaper.replaceLayers(targetDataset, targetLayers, outputLayers);
-  }
-
   if (usingPathClip && !opts.no_cleanup) {
     // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
     // This is to remove arcs belonging to the clipping paths from the target
     // dataset, and to heal the cuts that were made where clipping paths
     // crossed target paths
-    MapShaper.dissolveArcs(targetDataset);
+    tmp = {
+      arcs: targetDataset.arcs,
+      layers: targetDataset.layers
+    };
+    MapShaper.replaceLayers(tmp, tmp.layers, outputLayers);
+    MapShaper.dissolveArcs(tmp);
+    targetDataset.arcs = tmp.arcs;
   }
 
   return outputLayers;
@@ -186,6 +184,8 @@ MapShaper.getClipMessage = function(type, nullCount, sliverCount) {
   return '';
 };
 
+
+/*
 // see if @clipSrc is a layer in @dataset
 MapShaper.findClippingLayer = function(clipSrc, dataset) {
   var layers, lyr;
@@ -216,6 +216,7 @@ MapShaper.loadExternalClipLayer = function(path, opts) {
   }
   return dataset;
 };
+*/
 
 MapShaper.convertClipBounds = function(bb) {
   var x0 = bb[0], y0 = bb[1], x1 = bb[2], y1 = bb[3],

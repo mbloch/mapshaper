@@ -1,7 +1,7 @@
-/* @requires mapshaper-gui-lib, mapshaper-datasets */
+/* @requires mapshaper-gui-lib */
 
 function Model() {
-  var self = new Datasets();
+  var self = new api.internal.Catalog();
   utils.extend(self, EventDispatcher.prototype);
 
   self.updated = function(flags, lyr, dataset) {

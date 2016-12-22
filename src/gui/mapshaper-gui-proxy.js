@@ -37,8 +37,10 @@ function ImportFileProxy(model) {
     }, dataset);
   };
 
+  /*
   api.importDataTable = function(src, opts) {
     var dataset = find(src);
     return dataset.layers[0].data;
   };
+  */
 }
