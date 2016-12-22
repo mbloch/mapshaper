@@ -121,8 +121,8 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt)
     .option("force", {
-      type: "flag",
-      describe: "let output files overwrite existing files"
+      // describe: "let output files overwrite existing files",
+      type: "flag"
     })
     .option("dry-run", {
       // describe: "do not output any files"

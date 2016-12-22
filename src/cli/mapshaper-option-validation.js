@@ -218,7 +218,6 @@ function validateOutputOpts(cmd) {
   if ("topojson_precision" in o && o.topojson_precision > 0 === false) {
     error("topojson-precision= option should be a positive number");
   }
-
 }
 
 // Convert a comma-separated string into an array of trimmed strings

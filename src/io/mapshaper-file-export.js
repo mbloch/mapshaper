@@ -27,41 +27,13 @@ MapShaper.writeFiles = function(exports, opts, cb) {
 
 MapShaper.getOutputPaths = function(files, opts) {
   var odir = opts.output_dir;
+  if (opts.force) {
+    message("[o] The force option is obsolete, files are now overwritten by default");
+  }
   if (odir) {
     files = files.map(function(file) {
       return require('path').join(odir, file);
     });
   }
-  if (!opts.force) {
-    files = resolveFileCollisions(files);
-  }
   return files;
 };
-
-// Avoid naming conflicts with existing files
-// by adding file suffixes to output filenames: -ms, -ms2, -ms3 etc.
-function resolveFileCollisions(candidates) {
-  var i = 0,
-      suffix = "",
-      paths = candidates.concat();
-
-  while (testFileCollision(paths)) {
-    i++;
-    suffix = "-ms";
-    if (i > 1) suffix += String(i);
-    paths = addFileSuffix(candidates, suffix);
-  }
-  return paths;
-}
-
-function addFileSuffix(paths, suff) {
-  return paths.map(function(path) {
-     return utils.getPathBase(path) + suff + '.' + utils.getFileExtension(path);
-  });
-}
-
-function testFileCollision(paths) {
-  return utils.some(paths, function(path) {
-    return cli.isFile(path) || cli.isDirectory(path);
-  });
-}

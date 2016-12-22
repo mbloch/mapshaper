@@ -280,7 +280,6 @@ describe('mapshaper-commands.js', function () {
         assert.equal(err.name, 'APIError');
         done();
       })
-
     })
   })
 
