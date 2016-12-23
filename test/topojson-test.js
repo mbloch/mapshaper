@@ -68,6 +68,7 @@ describe('topojson-export.js and topojson-import.js', function () {
   });
 
 
+
   describe('exportProperties', function () {
     it('use id_field option', function () {
       var geometries = [{type: null}, {type: null}],
@@ -201,6 +202,22 @@ describe('topojson-export.js and topojson-import.js', function () {
   })
 
   describe('TopoJSON export', function () {
+
+    it('default file extension is .json', function(done) {
+      api.internal.processFileContent('-i test/test_data/two_states.shp -o format=topojson', null, function(err, output) {
+        assert.equal(output[0].filename, 'two_states.json');
+        done();
+      })
+
+    })
+
+    it('-o extension= overrides default file extension', function(done) {
+      api.internal.processFileContent('-i test/test_data/two_states.shp -o format=topojson extension=TOPOJSON', null, function(err, output) {
+        assert.equal(output[0].filename, 'two_states.TOPOJSON');
+        done();
+      })
+    })
+
 
     it("export a single point with quantization", function(done) {
       api.runCommands('-i test/test_data/one_point.geojson', function(err, data) {
