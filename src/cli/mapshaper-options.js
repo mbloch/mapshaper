@@ -8,7 +8,7 @@ mapshaper-chunker
 MapShaper.getOptionParser = function() {
   // definitions of options shared by more than one command
   var targetOpt = {
-        describe: "layer(s) to target (comma-sep. list); default is all layers"
+        describe: "layer(s) to target (comma-sep. list)"
       },
       nameOpt = {
         describe: "rename the edited layer(s)"
@@ -732,7 +732,19 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-   parser.command("uniq")
+  parser.command("target")
+    .describe("set active layer")
+    .validate(function(cmd) {
+      if (!cmd.options.layer && cmd._.length) {
+        cmd.options.layer = cmd._.shift();
+      }
+    })
+    .option("layer", {
+      label: "<layer>",
+      describe: "name or index of layer to target"
+    });
+
+  parser.command("uniq")
     .describe("delete features with the same id as a previous feature")
     .validate(validateExpressionOpts)
     .option("expression", {

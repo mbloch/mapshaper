@@ -31,6 +31,7 @@ mapshaper-split-on-grid
 mapshaper-subdivide
 mapshaper-sort
 mapshaper-svg-style
+mapshaper-target
 mapshaper-uniq
 */
 
@@ -222,6 +223,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'uniq') {
       MapShaper.applyCommand(api.uniq, targetLayers, arcs, opts);
+
+    } else if (name == 'target') {
+      api.target(catalog, opts.layer);
 
     } else {
       error("Unhandled command: [" + name + "]");
