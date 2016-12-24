@@ -104,18 +104,15 @@ function LayerControl(model) {
   }
 
   function deleteLayer(lyr, dataset) {
-    var otherLyr = model.findAnotherLayer(lyr);
-    if (otherLyr) {
-      turnOff(); // avoid rendering twice
-      if (model.getActiveLayer().layer == lyr) {
-        // switch to a different layer if deleted layer was selected
-        model.selectLayer(otherLyr.layer, otherLyr.dataset);
-      }
-      model.deleteLayer(lyr, dataset);
-      turnOn();
-    } else {
+    var active;
+    model.deleteLayer(lyr, dataset);
+    active = model.getActiveLayer();
+    if (!active) {
       // refresh browser if deleted layer was the last layer
       window.location.href = window.location.href.toString();
+    } else {
+      // trigger update event
+      model.selectLayer(active.layer, active.dataset);
     }
   }
 

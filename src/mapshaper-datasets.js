@@ -1,5 +1,4 @@
 
-
 MapShaper.getFormattedLayerList = function(catalog) {
   var lines = [];
   catalog.forEachLayer(function(lyr, i) {
@@ -43,7 +42,14 @@ function Catalog() {
 
   this.deleteLayer = function(lyr, dataset) {
     var layers = dataset.layers;
+    var other = this.findAnotherLayer(lyr);
     layers.splice(layers.indexOf(lyr), 1);
+    if (active.layer == lyr) {
+      active = null;
+      if (other) {
+        this.setActiveLayer(other.layer, other.dataset);
+      }
+    }
     if (layers.length === 0) {
       this.removeDataset(dataset);
     }
@@ -105,6 +111,15 @@ function Catalog() {
     datasets.push(dataset);
     this.setActiveLayer(dataset.layers[0], dataset);
     return this;
+  };
+
+  this.findAnotherLayer = function(target) {
+    var layers = this.getLayers(),
+        found = null;
+    if (layers.length > 1) {
+      found = layers[0].layer == target ? layers[1] : layers[0];
+    }
+    return found;
   };
 
   this.getActiveLayer = function() {

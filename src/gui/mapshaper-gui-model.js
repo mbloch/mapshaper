@@ -43,15 +43,5 @@ function Model() {
     }
   };
 
-  // layer panel (after deletion)
-  self.findAnotherLayer = function(target) {
-    var layers = self.getLayers(),
-        found = null;
-    if (layers.length > 1) {
-      found = layers[0].layer == target ? layers[1] : layers[0];
-    }
-    return found;
-  };
-
   return self;
 }
