@@ -5,17 +5,8 @@ mapshaper-nodes
 mapshaper-projections
 */
 
-api.printInfo = function(dataset, layers) {
-  // str += utils.format("Number of layers: %d\n", dataset.layers.length);
-  // if (dataset.arcs) str += utils.format("Topological arcs: %'d\n", dataset.arcs.size());
-  layers = layers || dataset.layers;
-  var str = layers.map(function(lyr, i) {
-    var infoStr = MapShaper.getLayerInfo(lyr, dataset);
-    if (layers.length > 1) {
-      infoStr = 'Layer ' + (i + 1) + '\n' + infoStr;
-    }
-    return infoStr;
-  }).join('\n\n');
+MapShaper.printLayerInfo = function(lyr, dataset, i) {
+  var str = 'Layer ' + (i + 1) + '\n' + MapShaper.getLayerInfo(lyr, dataset) + '\n';
   message(str);
 };
 

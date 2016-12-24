@@ -8,6 +8,25 @@ MapShaper.getFormattedLayerList = function(catalog) {
   return lines.length > 0 ? lines.join('\n') : '[none]';
 };
 
+MapShaper.getLayerMatch = function(pattern) {
+  var isIndex = utils.isInteger(Number(pattern));
+  var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
+  return function(lyr, i) {
+    return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
+  };
+};
+
+// @pattern is a layer identifier or a comma-sep. list of identifiers
+// an identifier is a literal name, a name containing "*" wildcard or
+// a 0-based array index
+MapShaper.getTargetMatch = function(pattern) {
+  var tests = pattern.split(',').map(MapShaper.getLayerMatch);
+  return function(lyr, i) {
+    return utils.some(tests, function(test) {
+      return test(lyr, i);
+    });
+  };
+};
 
 function Catalog() {
   var datasets = [],

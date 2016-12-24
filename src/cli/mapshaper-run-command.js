@@ -67,13 +67,13 @@ api.runCommand = function(cmd, catalog, cb) {
     } else {
       targets = catalog.findCommandTargets(opts.target);
       if (targets.length > 1) {
-        stop("Targetting multiple datasets is not supported");
+        fail("Targetting multiple datasets is not supported");
       } else if (!targets.length) {
         if (opts.target) {
-          stop(utils.format('[%s] Missing target layer: %s\nAvailable layers: %s',
-            name, opts.target, MapShaper.getFormattedLayerList(catalog)));
+          fail(utils.format('Missing target layer: %s\nAvailable layers: %s',
+            opts.target, MapShaper.getFormattedLayerList(catalog)));
         }
-        stop("Missing a target"); // shouldn't occur
+        fail("Missing a target"); // shouldn't occur
       }
       targetDataset = targets[0].dataset;
       arcs = targetDataset.arcs;
@@ -84,7 +84,7 @@ api.runCommand = function(cmd, catalog, cb) {
     if (opts.source) {
       sources = catalog.findCommandTargets(opts.source);
       if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
-        stop(utils.format('[%s] Source option [%s] matched multiple layers', name, opts.source));
+        fail(utils.format('Source option [%s] matched multiple layers', opts.source));
       } else if (sources.length == 1) {
         source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
       } else {
@@ -93,9 +93,9 @@ api.runCommand = function(cmd, catalog, cb) {
         //    clip/erase -- topology is built later, when datasets are combined
         sourceDataset = api.importFile(opts.source, utils.defaults({no_topology: true}, opts));
         if (!sourceDataset) {
-          stop(utils.format('[%s] Unable to find source [%s]', name, opts.source));
+          fail(utils.format('Unable to find source [%s]', opts.source));
         } else if (sourceDataset.layers.length > 1) {
-          stop(utils.format('[%s] Multiple-layer sources are not supported', name));
+          fail('Multiple-layer sources are not supported');
         }
         source = {dataset: sourceDataset, layer: sourceDataset.layers[0]};
       }
@@ -147,10 +147,13 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'i') {
       if (opts.replace) catalog = new Catalog();
-      catalog.addDataset(api.importFiles(cmd.options));
+      targetDataset = api.importFiles(cmd.options); // kludge to allow layer naming below
+      if (targetDataset) {
+        catalog.addDataset(targetDataset);
+      }
 
     } else if (name == 'info') {
-      api.printInfo(targetDataset, targetLayers);
+      catalog.forEachLayer(MapShaper.printLayerInfo);
 
     } else if (name == 'inspect') {
       MapShaper.applyCommand(api.inspect, targetLayers, arcs, opts);
@@ -166,6 +169,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'merge-layers') {
       // careful, returned layers are modified input layers
+      if (!opts.target) {
+        targetLayers = targetDataset.layers; // kludge
+      }
       outputLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'o') {
@@ -254,6 +260,10 @@ api.runCommand = function(cmd, catalog, cb) {
   }
 
   done(null);
+
+  function fail(msg) {
+    stop("[" + name + "]", msg);
+  }
 
   function done(err) {
     T.stop('-' + name);

@@ -41,7 +41,7 @@ describe('mapshaper-database-utils.js', function () {
     it("comma sep. + wildcard", function() {
       var layers = [{name: 'layer1'}, {name: 'layer2'}, {name: 'points'}, {name: 'polygons'}];
       assert.deepEqual(api.internal.findMatchingLayers(layers, 'points,layer*'),
-        [{name: 'points'}, {name: 'layer1'}, {name: 'layer2'}]);
+        [{name: 'layer1'}, {name: 'layer2'}, {name: 'points'}]);
     })
 
     it("all layers (*)", function() {
