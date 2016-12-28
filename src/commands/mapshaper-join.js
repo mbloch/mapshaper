@@ -40,50 +40,6 @@ api.join = function(targetLyr, dataset, src, opts) {
   }
 };
 
-// Get a DataTable to join, either from a current layer or from a file.
-/*
-MapShaper.getJoinTable = function(dataset, opts) {
-  var layers = MapShaper.findMatchingLayers(dataset.layers, opts.source),
-      table;
-  if (layers.length > 0) {
-    table = layers[0].data;
-  } else {
-    table = api.importJoinTable(opts.source, opts);
-  }
-  return table;
-};
-*/
-
-// Get a dataset containing a source layer to join
-// TODO: remove duplication with getJoinTable()
-/*
-MapShaper.getJoinDataset = function(dataset, opts) {
-  var layers = MapShaper.findMatchingLayers(dataset.layers, opts.source);
-  if (!layers.length) {
-    dataset = api.importFile(opts.source, opts);
-    layers = dataset.layers;
-  }
-  return layers.length ? {arcs: dataset.arcs, layers: [layers[0]]} : null;
-};
-*/
-
-/*
-api.importJoinTable = function(file, opts) {
-  var fieldsWithTypeHints = [];
-  if (opts.keys) {
-    fieldsWithTypeHints.push(opts.keys[1]);
-  }
-  if (opts.fields) {
-    fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.fields);
-  }
-  if (opts.field_types) {
-    fieldsWithTypeHints = fieldsWithTypeHints.concat(opts.field_types);
-  }
-  var importOpts = utils.defaults({field_types: fieldsWithTypeHints}, opts);
-  return api.importDataTable(file, importOpts);
-};
-*/
-
 MapShaper.removeTypeHints = function(arr) {
   var arr2 = MapShaper.parseFieldHeaders(arr, {});
   if (arr.join(',') != arr2.join(',')) {

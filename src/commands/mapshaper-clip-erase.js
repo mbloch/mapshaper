@@ -185,39 +185,6 @@ MapShaper.getClipMessage = function(type, nullCount, sliverCount) {
 };
 
 
-/*
-// see if @clipSrc is a layer in @dataset
-MapShaper.findClippingLayer = function(clipSrc, dataset) {
-  var layers, lyr;
-  if (utils.isObject(clipSrc) && utils.contains(dataset.layers, clipSrc)) {
-    lyr = clipSrc;
-  } else if (utils.isString(clipSrc)) {
-    // see if clipSrc is a layer name
-    layers = MapShaper.findMatchingLayers(dataset.layers, clipSrc);
-    if (layers.length > 1) {
-      stop("[clip/erase] Received more than one source layer");
-    } else if (layers.length == 1) {
-      lyr = layers[0];
-    }
-  }
-  return lyr || null;
-};
-
-// try to load a clipping layer from a file
-MapShaper.loadExternalClipLayer = function(path, opts) {
-  // Load clip file without topology (topology is built later, together with target dataset)
-  var dataset = api.importFile(path, utils.defaults({no_topology: true}, opts));
-  if (!dataset) {
-    stop("Unable to find file [" + path + "]");
-  }
-  if (dataset.layers.length != 1) {
-    // TODO: handle multi-layer sources, e.g. TopoJSON files
-    stop("Clip/erase only supports clipping with single-layer datasets");
-  }
-  return dataset;
-};
-*/
-
 MapShaper.convertClipBounds = function(bb) {
   var x0 = bb[0], y0 = bb[1], x1 = bb[2], y1 = bb[3],
       arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];

@@ -35,9 +35,6 @@ mapshaper-target
 mapshaper-uniq
 */
 
-// mapshaper-stitch
-
-
 // TODO: consider refactoring to allow modules
 // @cmd  example: {name: "dissolve", options:{field: "STATE"}}
 // @catalog: Catalog object
@@ -60,25 +57,27 @@ api.runCommand = function(cmd, catalog, cb) {
 
     T.start();
     if (!catalog) catalog = new Catalog();
-    if (!catalog.getActiveLayer()) { // no dataset
+    targets = catalog.findCommandTargets(opts.target);
+    if (targets.length === 0) {
+      if (opts.target) {
+        fail(utils.format('Missing target: %s\nAvailable layers: %s',
+            opts.target, MapShaper.getFormattedLayerList(catalog)));
+      }
       if (!(name == 'graticule' || name == 'i' || name == 'point-grid')) {
         throw new APIError("Missing a -i command");
       }
-    } else {
-      targets = catalog.findCommandTargets(opts.target);
-      if (targets.length > 1) {
-        fail("Targetting multiple datasets is not supported");
-      } else if (!targets.length) {
-        if (opts.target) {
-          fail(utils.format('Missing target layer: %s\nAvailable layers: %s',
-            opts.target, MapShaper.getFormattedLayerList(catalog)));
-        }
-        fail("Missing a target"); // shouldn't occur
-      }
+
+    } else if (targets.length == 1) {
       targetDataset = targets[0].dataset;
       arcs = targetDataset.arcs;
       targetLayers = targets[0].layers;
-      catalog.setActiveLayer(targetLayers[0], targetDataset); // target= option sets active layer
+      // target= option sets active layer
+      catalog.setActiveLayer(targetLayers[0], targetDataset);
+
+    } else { // >1 target
+      if (name != 'o') {
+        fail("Targetting multiple datasets is not supported");
+      }
     }
 
     if (opts.source) {
@@ -175,7 +174,7 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'o') {
-      outputFiles = MapShaper.exportFileContent(utils.defaults({layers: targetLayers}, targetDataset), opts);
+      outputFiles = MapShaper.exportTargetLayers(targets, opts);
       if (opts.final) {
         // don't propagate data if output is final
         catalog = null;

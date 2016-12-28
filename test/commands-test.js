@@ -67,26 +67,28 @@ describe('mapshaper-commands.js', function () {
 
     it('"-innerlines +" creates an unnamed line layer', function(done) {
       var cmds =  api.internal.parseCommands(states_shp + " -innerlines +");
-      api.internal.runParsedCommands(cmds, null, function(err, dataset) {
-        assert.equal(dataset.layers.length, 2);
-        assert.equal(dataset.layers[1].geometry_type, "polyline");
-        assert(!dataset.layers[1].name);
+      api.internal.runParsedCommands(cmds, null, function(err, catalog) {
+        var layer = catalog.getActiveLayer().layer;
+        assert.equal(layer.geometry_type, "polyline");
+        assert(!layer.name);
         done();
       });
     });
 
     it('"-innerlines + name=innerlines" creates a named output layer', function(done) {
       var cmds =  api.internal.parseCommands(states_shp + " -innerlines + name=innerlines");
-      api.internal.runParsedCommands(cmds, null, function(err, dataset) {
-        assert.equal(dataset.layers[1].name, 'innerlines');
+      api.internal.runParsedCommands(cmds, null, function(err, catalog) {
+        var lyr = catalog.getActiveLayer().layer;
+        assert.equal(lyr.name, 'innerlines');
         done();
       });
     });
 
     it('"-lines +" creates an unnamed line layer', function(done) {
       var cmds =  api.internal.parseCommands(states_shp + " -lines +");
-      api.internal.runParsedCommands(cmds, null, function(err, dataset) {
+      api.internal.runParsedCommands(cmds, null, function(err, catalog) {
         if (err) console.log(err)
+        var dataset = catalog.getActiveLayer().dataset;
         assert.equal(dataset.layers.length, 2);
         assert.equal(dataset.layers[1].geometry_type, "polyline");
         assert(!dataset.layers[1].name);

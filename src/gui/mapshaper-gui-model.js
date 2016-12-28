@@ -22,25 +22,13 @@ function Model() {
   };
 
   self.selectNextLayer = function() {
-    var layers = self.getLayers(),
-        active = self.getActiveLayer(),
-        idx = indexOfLayer(active.layer, layers),
-        next;
-    if (layers.length > 1 && idx > -1) {
-      next = layers[(idx + 1) % layers.length];
-      self.selectLayer(next.layer, next.dataset);
-    }
+    var next = self.findNextLayer(self.getActiveLayer().layer);
+    if (next) self.selectLayer(next.layer, next.dataset);
   };
 
   self.selectPrevLayer = function() {
-    var layers = self.getLayers(),
-        active = self.getActiveLayer(),
-        idx = indexOfLayer(active.layer, layers),
-        prev;
-    if (layers.length > 1 && idx > -1) {
-      prev = layers[idx === 0 ? layers.length - 1 : idx - 1];
-      self.selectLayer(prev.layer, prev.dataset);
-    }
+    var prev = self.findPrevLayer(self.getActiveLayer().layer);
+    if (prev) self.selectLayer(prev.layer, prev.dataset);
   };
 
   return self;

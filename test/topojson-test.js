@@ -208,7 +208,6 @@ describe('topojson-export.js and topojson-import.js', function () {
         assert.equal(output[0].filename, 'two_states.json');
         done();
       })
-
     })
 
     it('-o extension= overrides default file extension', function(done) {
@@ -217,7 +216,6 @@ describe('topojson-export.js and topojson-import.js', function () {
         done();
       })
     })
-
 
     it("export a single point with quantization", function(done) {
       api.runCommands('-i test/test_data/one_point.geojson', function(err, data) {

@@ -43,6 +43,4 @@ describe('mapshaper-parse-commands.js', function () {
     })
 
   })
-
-
 })

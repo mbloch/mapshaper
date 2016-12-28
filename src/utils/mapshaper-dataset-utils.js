@@ -60,6 +60,13 @@ MapShaper.copyDatasetForExport = function(dataset) {
   return d2;
 };
 
+// shallow-copy layers, so they can be renamed (for export)
+MapShaper.copyDatasetForRenaming = function(dataset) {
+  return utils.defaults({
+    layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
+  }, dataset);
+};
+
 // make a stub copy if the no_replace option is given, else pass thru src layer
 MapShaper.getOutputLayer = function(src, opts) {
   return opts && opts.no_replace ? {geometry_type: src.geometry_type} : src;

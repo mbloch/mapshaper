@@ -1,10 +1,5 @@
 /* @require mapshaper-common */
 
-// TODO: remove?
-api.exportFiles = function(dataset, opts) {
-  MapShaper.writeFiles(MapShaper.exportFileContent(dataset, opts), opts);
-};
-
 MapShaper.writeFiles = function(exports, opts, cb) {
   if (exports.length > 0 === false) {
     message("No files to save");

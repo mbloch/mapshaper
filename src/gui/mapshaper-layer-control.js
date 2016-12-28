@@ -106,12 +106,12 @@ function LayerControl(model) {
   function deleteLayer(lyr, dataset) {
     var active;
     model.deleteLayer(lyr, dataset);
-    active = model.getActiveLayer();
-    if (!active) {
+    if (model.empty()) {
       // refresh browser if deleted layer was the last layer
       window.location.href = window.location.href.toString();
     } else {
       // trigger update event
+      active = model.getActiveLayer();
       model.selectLayer(active.layer, active.dataset);
     }
   }

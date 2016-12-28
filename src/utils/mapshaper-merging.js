@@ -11,7 +11,6 @@ MapShaper.mergeDatasetsForExport = function(arr) {
   return MapShaper.mergeDatasets(copy);
 };
 
-
 MapShaper.mergeDatasets = function(arr) {
   var arcSources = [],
       arcCount = 0,

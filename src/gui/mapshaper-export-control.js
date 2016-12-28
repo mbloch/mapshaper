@@ -4,7 +4,7 @@
 var ExportControl = function(model) {
   var unsupportedMsg = "Exporting is not supported in this browser";
   var menu = El('#export-options').on('click', gui.handleDirectEvent(gui.clearMode));
-  var datasets = []; // array of exportable layers grouped by dataset
+  var checkboxes = []; // array of layer checkboxes
   new SimpleButton('#export-options .cancel-btn').on('click', gui.clearMode);
 
   if (!gui.exportIsSupported()) {
@@ -47,7 +47,7 @@ var ExportControl = function(model) {
     if (!opts.format) opts.format = getSelectedFormat();
     // ignoring command line "target" option
     try {
-      files = gui.exportDatasets(getSelectedLayers(), opts);
+      files = MapShaper.exportTargetLayers(getTargetLayers(), opts);
     } catch(e) {
       return done(e);
     }
@@ -58,25 +58,14 @@ var ExportControl = function(model) {
     // init layer menu with current editing layer selected
     var list = El('#export-layer-list').empty();
     var template = '<label><input type="checkbox" checked> %s</label>';
-    var datasets = model.getDatasets().map(initDataset);
-    var hideLayers = datasets.length == 1 && datasets[0].layers.length < 2;
-    El('#export-layers').css('display', hideLayers ? 'none' : 'block');
-    return datasets;
-
-    function initDataset(dataset) {
-      var layers = dataset.layers.map(function(lyr) {
-        var html = utils.format(template, lyr.name || '[unnamed layer]');
-        var box = El('div').html(html).appendTo(list).findChild('input').node();
-        return {
-          checkbox: box,
-          layer: lyr
-        };
-      });
-      return {
-        dataset: dataset,
-        layers: layers
-      };
-    }
+    var checkboxes = [];
+    model.forEachLayer(function(lyr, dataset) {
+      var html = utils.format(template, lyr.name || '[unnamed layer]');
+      var box = El('div').html(html).appendTo(list).findChild('input').node();
+      checkboxes.push(box);
+    });
+    El('#export-layers').css('display', checkboxes.length < 2 ? 'none' : 'block');
+    return checkboxes;
   }
 
   function getInputFormats() {
@@ -104,7 +93,7 @@ var ExportControl = function(model) {
   }
 
   function turnOn() {
-    datasets = initLayerMenu();
+    checkboxes = initLayerMenu();
     initFormatMenu();
     menu.show();
   }
@@ -117,23 +106,11 @@ var ExportControl = function(model) {
     return El('#export-formats input:checked').node().value;
   }
 
-  function getSelectedLayers() {
-    var selections = datasets.reduce(function(memo, obj) {
-      var dataset = obj.dataset;
-      var selection = obj.layers.reduce(reduceLayer, []);
-      if (selection.length > 0) {
-        memo.push(utils.defaults({layers: selection}, dataset));
-      }
+  function getTargetLayers() {
+    var ids = checkboxes.reduce(function(memo, box, i) {
+      if (box.checked) memo.push(String(i + 1)); // numerical layer id
       return memo;
-    }, []);
-
-    function reduceLayer(memo, obj) {
-      if (obj.checkbox.checked) {
-        // shallow-copy layer, so uniqified filenames do not affect original layers
-        memo.push(utils.extend({}, obj.layer));
-      }
-      return memo;
-    }
-    return selections;
+    }, []).join(',');
+    return ids ? model.findCommandTargets(ids) : [];
   }
 };

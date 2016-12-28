@@ -1,4 +1,4 @@
-/* @requires mapshaper-run-command, mapshaper-parse-commands, mapshaper-datasets */
+/* @requires mapshaper-run-command, mapshaper-parse-commands, mapshaper-catalog */
 
 // Parse command line args into commands and run them
 // @argv Array of command line tokens or single string of commands
@@ -23,7 +23,13 @@ api.runCommands = function(argv, done) {
   commands = MapShaper.runAndRemoveInfoCommands(commands);
   commands = MapShaper.divideImportCommand(commands);
 
-  MapShaper.runParsedCommands(commands, function(err, output) {
+  MapShaper.runParsedCommands(commands, function(err, catalog) {
+    var active = catalog && catalog.getActiveLayer();
+    var output;
+    if (!err && active) {
+      // returns dataset for compatibility with versions < 0.4.0
+      output = active.dataset;
+    }
     done(err, output);
   });
 };
@@ -52,7 +58,7 @@ api.applyCommands = function(argv, content, done) {
 // @done: Callback function(<error>, <output>); <output> is an array of objects
 //        with properties "content" and "filename"
 MapShaper.processFileContent = function(tokens, content, done) {
-  var dataset, commands, lastCmd, inOpts, output;
+  var catalog, dataset, commands, lastCmd, inOpts, output;
   try {
     commands = MapShaper.parseCommands(tokens);
     commands = MapShaper.runAndRemoveInfoCommands(commands);
@@ -66,6 +72,7 @@ MapShaper.processFileContent = function(tokens, content, done) {
         inOpts = {};
       }
       dataset = MapShaper.importFileContent(content, null, inOpts);
+      catalog = new Catalog().addDataset(dataset);
     }
 
     // if last command is -o, use -o options for exporting
@@ -82,50 +89,47 @@ MapShaper.processFileContent = function(tokens, content, done) {
     return done(e);
   }
 
-  MapShaper.runParsedCommands(commands, dataset, function(err) {
+  MapShaper.runParsedCommands(commands, catalog, function(err) {
     done(err, output);
   });
 };
 
 // Execute a sequence of commands
-// Signature: function(commands, [dataset,] done)
+// Signature: function(commands, [catalog,] done)
 // @commands Array of parsed commands
-// @done: function(<error>, <dataset>)
+// [@catalog]: Optional Catalog object containing data
+// @done: function(<error>, <catalog>)
 //
 MapShaper.runParsedCommands = function(commands) {
   var catalog = new Catalog(),
-      cb;
+      done;
 
   if (arguments.length == 2) {
-    cb = arguments[1];
+    done = arguments[1];
   } else if (arguments.length == 3) {
-    cb = arguments[2];
-    if (arguments[1]) {
-      catalog.addDataset(arguments[1]);
+    catalog = arguments[1];
+    done = arguments[2];
+    if (catalog && catalog instanceof Catalog === false) {
+      error("Changed in v0.4: runParsedCommands() takes a Catalog object");
     }
   }
 
   if (!utils.isFunction(done)) {
-    error("[runParsedCommands()] Missing a callback function");
+    error("Missing a callback function");
   }
 
   if (!utils.isArray(commands)) {
-    error("[runParsedCommands()] Expected an array of parsed commands");
+    error("Expected an array of parsed commands");
   }
 
   commands = MapShaper.runAndRemoveInfoCommands(commands);
   if (commands.length === 0) {
-    return cb(null);
+    return done(null);
   }
 
   utils.reduceAsync(commands, catalog, function(catalog, cmd, nextCmd) {
     api.runCommand(cmd, catalog, nextCmd);
   }, done);
-
-  function done(err, catalog) {
-    var active = catalog && catalog.getActiveLayer();
-    cb(err, !err && active && active.dataset); // kludge for backwards compatibility
-  }
 };
 
 // If an initial import command indicates that several input files should be

@@ -34,11 +34,11 @@ describe('mapshaper-filter.js', function () {
         geometry_type: 'point',
         shapes: [[[0,0]]]
       },
-      dataset = {layers: [lyr]},
+      catalog = new internal.Catalog().addDataset({layers: [lyr]}),
       parsed = internal.parseCommands('-filter "true"');
-      internal.runParsedCommands(parsed, dataset, function(err, dataset) {
+      internal.runParsedCommands(parsed, catalog, function(err, catalog) {
         if (err) throw err;
-        assert.equal(dataset.layers[0].name, 'foo');
+        assert.equal(catalog.getActiveLayer().layer.name, 'foo');
         done();
       });
     })

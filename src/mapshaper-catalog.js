@@ -1,32 +1,8 @@
+/* @requires mapshaper-common */
 
-MapShaper.getFormattedLayerList = function(catalog) {
-  var lines = [];
-  catalog.forEachLayer(function(lyr, i) {
-    lines.push('  [' + i + ']  ' + (lyr.name || '[unnamed]'));
-  });
-  return lines.length > 0 ? lines.join('\n') : '[none]';
-};
-
-MapShaper.getLayerMatch = function(pattern) {
-  var isIndex = utils.isInteger(Number(pattern));
-  var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
-  return function(lyr, i) {
-    return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
-  };
-};
-
-// @pattern is a layer identifier or a comma-sep. list of identifiers
-// an identifier is a literal name, a name containing "*" wildcard or
-// a 0-based array index
-MapShaper.getTargetMatch = function(pattern) {
-  var tests = pattern.split(',').map(MapShaper.getLayerMatch);
-  return function(lyr, i) {
-    return utils.some(tests, function(test) {
-      return test(lyr, i);
-    });
-  };
-};
-
+// Catalog contains zero or more multi-layer datasets
+// One layer is always "active", corresponding to the currently selected
+//   layer in the GUI or the current target in the CLI
 function Catalog() {
   var datasets = [],
       active;
@@ -113,6 +89,18 @@ function Catalog() {
     return this;
   };
 
+  this.findNextLayer = function(lyr) {
+    var layers = this.getLayers(),
+        idx = indexOfLayer(lyr, layers);
+    return idx > -1 ? layers[(idx + 1) % layers.length] : null;
+  };
+
+  this.findPrevLayer = function(lyr) {
+    var layers = this.getLayers(),
+        idx = indexOfLayer(lyr, layers);
+    return idx > -1 ? layers[(idx - 1 + layers.length) % layers.length] : null;
+  };
+
   this.findAnotherLayer = function(target) {
     var layers = this.getLayers(),
         found = null;
@@ -125,6 +113,8 @@ function Catalog() {
   this.getActiveLayer = function() {
     return active || null;
   };
+
+  this.empty = function() {return !active;};
 
   this.setActiveLayer = function(lyr, dataset) {
     if (active && active.layer == lyr) {
@@ -154,3 +144,31 @@ function Catalog() {
     return idx;
   }
 }
+
+MapShaper.getFormattedLayerList = function(catalog) {
+  var lines = [];
+  catalog.forEachLayer(function(lyr, i) {
+    lines.push('  [' + i + ']  ' + (lyr.name || '[unnamed]'));
+  });
+  return lines.length > 0 ? lines.join('\n') : '[none]';
+};
+
+MapShaper.getLayerMatch = function(pattern) {
+  var isIndex = utils.isInteger(Number(pattern));
+  var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
+  return function(lyr, i) {
+    return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
+  };
+};
+
+// @pattern is a layer identifier or a comma-sep. list of identifiers.
+// An identifier is a literal name, a pattern containing "*" wildcard or
+// a 1-based index (1..n)
+MapShaper.getTargetMatch = function(pattern) {
+  var tests = pattern.split(',').map(MapShaper.getLayerMatch);
+  return function(lyr, i) {
+    return utils.some(tests, function(test) {
+      return test(lyr, i + 1); // layers are 1-indexed
+    });
+  };
+};
