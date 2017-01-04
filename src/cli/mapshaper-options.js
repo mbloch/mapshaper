@@ -751,6 +751,10 @@ MapShaper.getOptionParser = function() {
       label: "<expression>",
       describe: "JS expression to obtain the id of a feature"
     })
+    .option("verbose", {
+      describe: "print each removed feature",
+      type: "flag"
+    })
     .option("target", targetOpt);
 
   // Info commands

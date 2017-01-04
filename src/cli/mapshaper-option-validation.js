@@ -125,7 +125,6 @@ function validateLinesOpts(cmd) {
   }
 }
 
-
 function validateInnerLinesOpts(cmd) {
   if (cmd._.length > 0) {
     error("Command takes no arguments");
