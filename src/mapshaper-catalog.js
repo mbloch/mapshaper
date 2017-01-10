@@ -5,7 +5,7 @@
 //   layer in the GUI or the current target in the CLI
 function Catalog() {
   var datasets = [],
-      active;
+      target;
 
   this.forEachLayer = function(cb) {
     var i = 0;
@@ -16,18 +16,30 @@ function Catalog() {
     });
   };
 
+  // remove a layer from a dataset
   this.deleteLayer = function(lyr, dataset) {
-    var layers = dataset.layers;
-    var other = this.findAnotherLayer(lyr);
-    layers.splice(layers.indexOf(lyr), 1);
-    if (active.layer == lyr) {
-      active = null;
-      if (other) {
-        this.setActiveLayer(other.layer, other.dataset);
-      }
-    }
-    if (layers.length === 0) {
+    var targ = this.getDefaultTarget(),
+        other;
+
+    // remove layer from its dataset
+    dataset.layers.splice(dataset.layers.indexOf(lyr), 1);
+
+    if (dataset.layers.length === 0) {
       this.removeDataset(dataset);
+    }
+
+    if (this.empty()) {
+      target = null;
+    } else if (targ.layers[0] == lyr) {
+      // deleting first target layer (selected in gui) -- switch to some other layer
+      other = this.findAnotherLayer(lyr);
+      this.setDefaultTarget([other.layer], other.dataset);
+    } else if (targ.layers.indexOf(lyr) > -1) {
+      // deleted layer is targeted -- update target
+      targ.layers.splice(targ.layers.indexOf(lyr), 1);
+      this.setDefaultTarget(targ.layers, targ.dataset);
+    } else {
+      // deleted layer is not a targeted layer, target not updated
     }
   };
 
@@ -53,21 +65,18 @@ function Catalog() {
           });
         }
       });
-    } else if (active) {
-      targets.push({
-        layers: [active.layer],
-        dataset: active.dataset
-      });
+    } else if (target) {
+      targets.push(target);
     }
     return targets;
   };
 
-  this.removeDataset = function(target) {
-    if (target == (active && active.dataset)) {
-      error("Can't remove dataset while active");
+  this.removeDataset = function(dataset) {
+    if (target && target.dataset == dataset) {
+      target = null;
     }
     datasets = datasets.filter(function(d) {
-      return d != target;
+      return d != dataset;
     });
   };
 
@@ -84,8 +93,7 @@ function Catalog() {
   };
 
   this.addDataset = function(dataset) {
-    datasets.push(dataset);
-    this.setActiveLayer(dataset.layers[0], dataset);
+    this.setDefaultTarget(dataset.layers, dataset);
     return this;
   };
 
@@ -104,29 +112,32 @@ function Catalog() {
   this.findAnotherLayer = function(target) {
     var layers = this.getLayers(),
         found = null;
-    if (layers.length > 1) {
+    if (layers.length > 0) {
       found = layers[0].layer == target ? layers[1] : layers[0];
     }
     return found;
   };
 
-  this.getActiveLayer = function() {
-    return active || null;
+  this.empty = function() {
+    return datasets.length === 0;
   };
 
-  this.empty = function() {return !active;};
+  this.getDefaultTarget = function() {return target || null;};
 
-  this.setActiveLayer = function(lyr, dataset) {
-    if (active && active.layer == lyr) {
-      return;
-    }
-    if (dataset.layers.indexOf(lyr) == -1) {
-      error("Selected layer not found");
-    }
+  this.setDefaultTarget = function(layers, dataset) {
     if (datasets.indexOf(dataset) == -1) {
       datasets.push(dataset);
     }
-    active = layerObject(lyr, dataset);
+    target = {
+      layers: layers,
+      dataset: dataset
+    };
+  };
+
+  // should be in mapshaper-gui-model.js, moved here for testing
+  this.getActiveLayer = function() {
+    var targ = this.getDefaultTarget();
+    return targ ? {layer: targ.layers[0], dataset: targ.dataset} : null;
   };
 
   function layerObject(lyr, dataset) {
@@ -144,6 +155,7 @@ function Catalog() {
     return idx;
   }
 }
+
 
 MapShaper.getFormattedLayerList = function(catalog) {
   var lines = [];

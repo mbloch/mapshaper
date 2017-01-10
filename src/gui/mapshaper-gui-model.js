@@ -5,12 +5,16 @@ function Model() {
   utils.extend(self, EventDispatcher.prototype);
 
   self.updated = function(flags, lyr, dataset) {
-    var active = self.getActiveLayer();
-    if (lyr && dataset && (!active || active.layer != lyr)) {
-      self.setActiveLayer(lyr, dataset);
-      active = self.getActiveLayer();
+    var targ, active;
+    // if (lyr && dataset && (!active || active.layer != lyr)) {
+    if (lyr && dataset) {
+      self.setDefaultTarget([lyr], dataset);
+    }
+    targ = self.getDefaultTarget();
+    if (targ.layers[0] != lyr) {
       flags.select = true;
     }
+    active = {layer: targ.layers[0], dataset: targ.dataset};
     if (flags.select) {
       self.dispatchEvent('select', active);
     }

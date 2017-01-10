@@ -71,10 +71,11 @@ api.runCommand = function(cmd, catalog, cb) {
       targetDataset = targets[0].dataset;
       arcs = targetDataset.arcs;
       targetLayers = targets[0].layers;
-      // target= option sets active layer
-      catalog.setActiveLayer(targetLayers[0], targetDataset);
+      // target= option sets default target
+      catalog.setDefaultTarget(targetLayers, targetDataset);
 
     } else { // >1 target
+      // TODO: decide if -o target= option should change default target
       if (name != 'o') {
         fail("Targetting multiple datasets is not supported");
       }
@@ -252,7 +253,8 @@ api.runCommand = function(cmd, catalog, cb) {
         // TODO: consider replacing old layers as they are generated, for gc
         MapShaper.replaceLayers(targetDataset, targetLayers, outputLayers);
       }
-      catalog.setActiveLayer(outputLayers[0], targetDataset);
+      // use command output as new default target
+      catalog.setDefaultTarget(outputLayers, targetDataset);
     }
   } catch(e) {
     return done(e);

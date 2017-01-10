@@ -24,11 +24,11 @@ api.runCommands = function(argv, done) {
   commands = MapShaper.divideImportCommand(commands);
 
   MapShaper.runParsedCommands(commands, function(err, catalog) {
-    var active = catalog && catalog.getActiveLayer();
+    var target = catalog && catalog.getDefaultTarget();
     var output;
-    if (!err && active) {
+    if (!err && target) {
       // returns dataset for compatibility with versions < 0.4.0
-      output = active.dataset;
+      output = target.dataset;
     }
     done(err, output);
   });
