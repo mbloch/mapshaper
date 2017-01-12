@@ -813,12 +813,15 @@ MapShaper.getOptionParser = function() {
   parser.command('projections')
     .describe("print list of supported projections");
 
-  parser.command('version')
-    .alias('v')
-    .describe("print mapshaper version");
+  parser.command('quiet')
+    .describe("inhibit console messages");
 
   parser.command('verbose')
     .describe("print verbose processing messages");
+
+  parser.command('version')
+    .alias('v')
+    .describe("print mapshaper version");
 
   parser.command('tracing');
 

@@ -201,6 +201,8 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
       MapShaper.getOptionParser().printHelp(cmd.options.commands);
     } else if (cmd.name == 'verbose') {
       MapShaper.VERBOSE = true;
+    } else if (cmd.name == 'quiet') {
+      MapShaper.LOGGING = false;
     } else if (cmd.name == 'tracing') {
       MapShaper.TRACING = true;
     } else {

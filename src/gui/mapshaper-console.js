@@ -292,6 +292,10 @@ function Console(model) {
           sameArcs = active.dataset.arcs == active2.dataset.arcs && prevArcCount > 0 &&
               active2.dataset.arcs.size() == prevArcCount;
 
+      // restore default logging options, in case -quiet or -verbose command was run
+      MapShaper.LOGGING = true;
+      MapShaper.VERBOSE = false;
+
       // kludge to signal map that filtered arcs need refreshing
       // TODO: find a better solution, outside the console
       if (!sameArcs) {
@@ -331,7 +335,9 @@ function Console(model) {
 
   function consoleMessage() {
     var msg = gui.formatMessageArgs(arguments);
-    toLog(msg, 'console-message');
+    if (MapShaper.LOGGING) {
+      toLog(msg, 'console-message');
+    }
   }
 
   function consoleError() {
