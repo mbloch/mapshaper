@@ -3,11 +3,19 @@ mapshaper-common
 mapshaper-file-types
 */
 
-var cli = {};
+var cli = {
+  manifest: {}
+};
 
 cli.isFile = function(path) {
-  var ss = cli.statSync(path);
-  return ss && ss.isFile() || false;
+  var ss;
+  if (cli.fileInManifest(path)) return true;
+  ss = cli.statSync(path);
+  return ss ? ss.isFile() : false;
+};
+
+cli.fileInManifest = function(path) {
+  return path in cli.manifest;
 };
 
 cli.fileSize = function(path) {
@@ -22,8 +30,13 @@ cli.isDirectory = function(path) {
 
 // @encoding (optional) e.g. 'utf8'
 cli.readFile = function(fname, encoding) {
-  var lib = require(fname == '/dev/stdin' ? 'rw' : 'fs');
-  var content = lib.readFileSync(fname);
+  var content;
+  if (cli.fileInManifest(fname)) {
+    content = cli.manifest[fname];
+    delete cli.manifest[fname];
+  } else {
+    content = require(fname == '/dev/stdin' ? 'rw' : 'fs').readFileSync(fname);
+  }
   if (encoding) {
     content = MapShaper.decodeString(content, encoding);
   }

@@ -5,7 +5,12 @@
 api.runCommands = function(argv, done) {
   var commands, last;
   try {
-    commands = MapShaper.parseCommands(argv);
+    if (Array.isArray(argv) && argv.length > 0 && argv[0].name) {
+      // argv seems to contain parsed commands
+      commands = argv;
+    } else {
+      commands = MapShaper.parseCommands(argv);
+    }
     last = commands[commands.length-1];
     if (last && last.name == 'o') {
       // final output -- ok to modify dataset in-place during export, avoids
@@ -30,6 +35,17 @@ api.runCommands = function(argv, done) {
       // returns dataset for compatibility with versions < 0.4.0
       output = target.dataset;
     }
+    done(err, output);
+  });
+};
+
+api.applyCommands2 = function(commands, input, done) {
+  cli.manifest = input;
+  cli.output = {};
+  api.runCommands(commands, function(err) {
+    var output = cli.output;
+    cli.manifest = {};
+    delete cli.output;
     done(err, output);
   });
 };
