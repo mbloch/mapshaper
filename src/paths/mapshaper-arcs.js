@@ -45,6 +45,7 @@ function ArcCollection() {
     _yy = yy;
     _nn = nn;
     _zz = null;
+    _zlimit = 0;
     _filteredArcIter = null;
 
     // generate array of starting idxs of each arc
@@ -67,6 +68,7 @@ function ArcCollection() {
   function initZData(zz) {
     if (!zz) {
       _zz = null;
+      _zlimit = 0;
       _filteredArcIter = null;
     } else {
       if (zz.length != _xx.length) error("ArcCollection#initZData() mismatched arrays");

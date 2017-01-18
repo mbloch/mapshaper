@@ -197,6 +197,9 @@ MapShaper.getOptionParser = function() {
     })
     .option("delimiter", {
       describe: "(CSV) field delimiter"
+    })
+    .option("final", {
+      type: "flag" // for testing
     });
 
 
