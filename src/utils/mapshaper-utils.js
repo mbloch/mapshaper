@@ -72,7 +72,7 @@ utils.parsePercent = function(o) {
     pct = Number(str);
   }
   if (!(pct >= 0 && pct <= 1)) {
-    error(utils.format("Invalid pct value: %s", str));
+    stop(utils.format("Invalid percentage: %s", str));
   }
   return pct;
 };

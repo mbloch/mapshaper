@@ -571,9 +571,10 @@ MapShaper.getOptionParser = function() {
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
     .describe("simplify the geometry of polygon and polyline features")
-    .option('pct', {
+    .option('percentage', {
       alias: 'p',
-      label: "<x%>",
+      label: "<percentage>",
+      type: 'percent',
       describe: "percentage of removable points to retain, e.g. 10%"
     })
     .option("dp", {

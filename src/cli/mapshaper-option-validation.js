@@ -31,18 +31,13 @@ function validateSimplifyOpts(cmd) {
   var o = cmd.options,
       _ = cmd._;
 
-  var pctStr = o.pct || "";
   if (_.length > 0) {
     if (/^[0-9.]+%?$/.test(_[0])) {
-      pctStr = _.shift();
+      o.percentage = utils.parsePercent(_.shift());
     }
     if (_.length > 0) {
       error("Unparsable option:", _.join(' '));
     }
-  }
-
-  if (pctStr) {
-    o.pct = utils.parsePercent(pctStr);
   }
 
   var intervalStr = o.interval;
@@ -53,8 +48,8 @@ function validateSimplifyOpts(cmd) {
     }
   }
 
-  if (isNaN(o.interval) && isNaN(o.pct) && !o.resolution) {
-    error("Command requires an interval, pct or resolution parameter");
+  if (isNaN(o.interval) && !utils.isNumber(o.percentage) && !o.resolution) {
+    error("Command requires an interval, percentage or resolution parameter");
   }
 }
 
