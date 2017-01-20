@@ -204,21 +204,21 @@ describe('topojson-export.js and topojson-import.js', function () {
   describe('TopoJSON export', function () {
 
     it('default file extension is .json', function(done) {
-      api.internal.processFileContent('-i test/test_data/two_states.shp -o format=topojson', null, function(err, output) {
-        assert.equal(output[0].filename, 'two_states.json');
+      api.applyCommands('-i test/test_data/two_states.shp -o format=topojson', {}, function(err, output) {
+        assert('two_states.json' in output);
         done();
       })
     })
 
     it('-o extension= overrides default file extension', function(done) {
-      api.internal.processFileContent('-i test/test_data/two_states.shp -o format=topojson extension=TOPOJSON', null, function(err, output) {
-        assert.equal(output[0].filename, 'two_states.TOPOJSON');
+      api.applyCommands('-i test/test_data/two_states.shp -o format=topojson extension=TOPOJSON', {}, function(err, output) {
+        assert('two_states.TOPOJSON' in output);
         done();
       })
     })
 
     it("export a single point with quantization", function(done) {
-      api.runCommands('-i test/test_data/one_point.geojson', function(err, data) {
+      api.internal.testCommands('-i test/test_data/one_point.geojson', function(err, data) {
         var topology = TopoJSON.exportTopology(data, {quantization: 10000, bbox:true});
         assert.deepEqual(topology,
     // reference output from topojson program
@@ -229,7 +229,7 @@ describe('topojson-export.js and topojson-import.js', function () {
     })
 
     it("export three points with quantization", function(done) {
-      api.runCommands('-i test/test_data/three_points.geojson', function(err, data) {
+      api.internal.testCommands('-i test/test_data/three_points.geojson', function(err, data) {
         var topology = TopoJSON.exportTopology(data, {quantization: 10000, bbox:true});
         assert.deepEqual(topology,
   // reference output from topojson program

@@ -3,19 +3,17 @@ mapshaper-common
 mapshaper-file-types
 */
 
-var cli = {
-  manifest: {}
-};
+var cli = {};
 
 cli.isFile = function(path) {
   var ss;
-  if (cli.fileInManifest(path)) return true;
+  if (cli.fileIsLoaded(path)) return true;
   ss = cli.statSync(path);
   return ss ? ss.isFile() : false;
 };
 
-cli.fileInManifest = function(path) {
-  return path in cli.manifest;
+cli.fileIsLoaded = function(path) {
+  return (cli.input && (path in cli.input));
 };
 
 cli.fileSize = function(path) {
@@ -31,13 +29,13 @@ cli.isDirectory = function(path) {
 // @encoding (optional) e.g. 'utf8'
 cli.readFile = function(fname, encoding) {
   var content;
-  if (cli.fileInManifest(fname)) {
-    content = cli.manifest[fname];
-    delete cli.manifest[fname];
+  if (cli.fileIsLoaded(fname)) {
+    content = cli.input[fname];
+    delete cli.input[fname];
   } else {
     content = require(fname == '/dev/stdin' ? 'rw' : 'fs').readFileSync(fname);
   }
-  if (encoding) {
+  if (encoding && Buffer.isBuffer(content)) {
     content = MapShaper.decodeString(content, encoding);
   }
   return content;
@@ -49,7 +47,10 @@ cli.writeFile = function(path, content, cb) {
   if (content instanceof ArrayBuffer) {
     content = cli.convertArrayBuffer(content); // convert to Buffer
   }
-  if (cb) {
+  if (cli.output) {
+    cli.output[path] = content;
+    if (cb) cb();
+  } else if (cb) {
     fs.writeFile(path, content, cb);
   } else {
     fs.writeFileSync(path, content);

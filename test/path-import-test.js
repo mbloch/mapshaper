@@ -29,8 +29,8 @@ describe('mapshaper-path-import.js', function () {
     })
 
     it('test 2', function (done) {
-      api.applyCommands('-i test/test_data/issues/125/openring.json', null, function(err, data) {
-        var coords = JSON.parse(data).geometries[0].coordinates;
+      api.applyCommands('-i test/test_data/issues/125/openring.json -o', null, function(err, output) {
+        var coords = JSON.parse(output['openring.json']).geometries[0].coordinates;
         var first = coords[0][0];
         var last = coords[0][coords[0].length - 1];
         assert(!!first);

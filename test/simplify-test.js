@@ -7,7 +7,7 @@ describe("mapshaper-simplify.js", function() {
   describe('simplify() can be re-applied', function () {
 
     it('test 1', function(done) {
-      api.runCommands('-i test/test_data/ne/ne_110m_admin_1_states_provinces_shp.shp', function(err, dataset) {
+      api.internal.testCommands('-i test/test_data/ne/ne_110m_admin_1_states_provinces_shp.shp', function(err, dataset) {
         var a = dataset.arcs.toArray();
         api.simplify(dataset, {pct: 0.1, method: 'dp'});
         var b = dataset.arcs.toArray();

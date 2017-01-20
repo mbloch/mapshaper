@@ -25,35 +25,38 @@ api.runCommands = function(argv, done) {
     return done(new APIError("No commands to run"));
   }
 
-  commands = MapShaper.runAndRemoveInfoCommands(commands);
-  commands = MapShaper.divideImportCommand(commands);
-
   MapShaper.runParsedCommands(commands, function(err, catalog) {
-    var target = catalog && catalog.getDefaultTarget();
-    var output;
-    if (!err && target) {
-      // returns dataset for compatibility with versions < 0.4.0
-      output = target.dataset;
-    }
-    done(err, output);
+    done(err);
   });
 };
 
-api.applyCommands2 = function(commands, input, done) {
-  cli.manifest = input;
-  cli.output = {};
+// Current api:
+// @commands  String containing command line arguments or array of parsed commands
+// @input  Object containing file contents indexed by filename
+// @done  Callback: function(<error>, <output>), where output is an object containing
+//           output from -o command(s) indexed by filename
+//
+// <0.4 api (deprecated): see MapShaper.applyCommands_v1() below
+//
+api.applyCommands = function(commands, input, done) {
+  if (utils.isString(input) || utils.isArray(input) || (input && input.type)) {
+    // old (deprecated) api: input is the content of a CSV or JSON file
+    return MapShaper.applyCommands_v1(commands, input, done);
+  }
+  cli.input = input;
+  cli.output = {}; // tells cli to accumulate output instead of writing to file
   api.runCommands(commands, function(err) {
-    var output = cli.output;
-    cli.manifest = {};
+    var o = cli.output;
+    delete cli.input;
     delete cli.output;
-    done(err, output);
+    done(err, o);
   });
 };
 
 // Apply a set of processing commands to the contents of an input file
 // @argv Command line arguments, as string or array
 // @done Callback: function(<error>, <output>)
-api.applyCommands = function(argv, content, done) {
+MapShaper.applyCommands_v1 = function(argv, content, done) {
   MapShaper.processFileContent(argv, content, function(err, exports) {
     var output = null;
     if (!err) {
@@ -63,6 +66,18 @@ api.applyCommands = function(argv, content, done) {
       if (output.length == 1) {
         output = output[0];
       }
+    }
+    done(err, output);
+  });
+};
+
+MapShaper.testCommands = function(argv, done) {
+  MapShaper.runParsedCommands(MapShaper.parseCommands(argv), function(err, catalog) {
+    var target = catalog && catalog.getDefaultTarget();
+    var output;
+    if (!err && target) {
+      // returns dataset for compatibility with versions < 0.4.0
+      output = target.dataset;
     }
     done(err, output);
   });
@@ -139,6 +154,8 @@ MapShaper.runParsedCommands = function(commands) {
   }
 
   commands = MapShaper.runAndRemoveInfoCommands(commands);
+  commands = MapShaper.divideImportCommand(commands);
+
   if (commands.length === 0) {
     return done(null);
   }

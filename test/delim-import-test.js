@@ -48,40 +48,35 @@ describe('mapshaper-delim-import.js', function() {
   describe('infer export delimiter from filename, if possible', function () {
     it('.tsv implies tab-delimited text', function (done) {
       var cmd = '-i test/test_data/text/two_states.csv -o output.tsv';
-      api.internal.processFileContent(cmd, null, function(err, output) {
-        var o = output[0];
-        assert.equal(o.filename, 'output.tsv'); // filename is correct
-        assert.ok(o.content.indexOf('\t') > -1); // got tabs
+      api.applyCommands(cmd, {}, function(err, output) {
+        assert.ok(output['output.tsv'].indexOf('\t') > -1); // got tabs
         done();
       })
     })
 
     it('use input delimiter if export filename is ambiguous', function (done) {
       var cmd = '-i test/test_data/text/two_states.csv -o output.txt';
-      api.internal.processFileContent(cmd, null, function(err, output) {
+      api.applyCommands(cmd, {}, function(err, output) {
         var o = output[0];
-        assert.equal(o.filename, 'output.txt'); // filename is correct
-        assert.ok(o.content.indexOf(',') > -1); // got commas
+        assert.ok(output['output.txt'].indexOf(',') > -1); // got commas
         done();
       })
     })
 
     it('use comma as default delimiter if other methods fail', function (done) {
       var cmd = '-i test/test_data/two_states.shp -o output.txt';
-      api.internal.processFileContent(cmd, null, function(err, output) {
+      api.applyCommands(cmd, {}, function(err, output) {
         var o = output[0];
-        assert.equal(o.filename, 'output.txt'); // filename is correct
-        assert.ok(o.content.indexOf(',') > -1); // got commas
+        assert.ok(output['output.txt'].indexOf(',') > -1); // got commas
         done();
       })
     })
 
     it('.csv in output filename implies comma-delimited text', function (done) {
       var cmd = '-i test/test_data/text/two_states.tsv -o output.csv';
-      api.internal.processFileContent(cmd, null, function(err, output) {
+      api.applyCommands(cmd, {}, function(err, output) {
         var o = output[0];
-        assert.equal(o.filename, 'output.csv'); // filename is correct
-        assert.ok(o.content.indexOf(',') > -1); // got commas
+        assert.ok(output['output.csv'].indexOf(',') > -1); // got commas
         done();
       })
     })
@@ -90,7 +85,7 @@ describe('mapshaper-delim-import.js', function() {
   describe('Importing dsv with encoding= option', function() {
     it ('utf16 (be)', function(done) {
       var cmd = '-i test/test_data/text/utf16.txt encoding=utf16';
-      api.runCommands(cmd, function(err, data) {
+      api.internal.testCommands(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getRecords(), [{NAME: '国语國語'}])
         done();
       });
@@ -98,7 +93,7 @@ describe('mapshaper-delim-import.js', function() {
 
     it ('utf16 (be) with BOM', function(done) {
       var cmd = '-i test/test_data/text/utf16bom.txt encoding=utf16';
-      api.runCommands(cmd, function(err, data) {
+      api.internal.testCommands(cmd, function(err, data) {
         var rec = data.layers[0].data.getRecords()[0];
         assert.deepEqual(rec, {NAME: '国语國語'})
         done();
@@ -107,7 +102,7 @@ describe('mapshaper-delim-import.js', function() {
 
     it ('utf16be with BOM', function(done) {
       var cmd = '-i test/test_data/text/utf16bom.txt encoding=utf-16be';
-      api.runCommands(cmd, function(err, data) {
+      api.internal.testCommands(cmd, function(err, data) {
         var rec = data.layers[0].data.getRecords()[0];
         assert.deepEqual(rec, {NAME: '国语國語'})
         done();
@@ -116,7 +111,7 @@ describe('mapshaper-delim-import.js', function() {
 
     it ('utf16le with BOM', function(done) {
       var cmd = '-i test/test_data/text/utf16le_bom.txt encoding=utf16le';
-      api.runCommands(cmd, function(err, data) {
+      api.internal.testCommands(cmd, function(err, data) {
         var rec = data.layers[0].data.getRecords()[0];
         assert.deepEqual(rec, {NAME: '国语國語'})
         done();
@@ -125,7 +120,7 @@ describe('mapshaper-delim-import.js', function() {
 
     it ('utf8 with BOM', function(done) {
       var cmd = '-i test/test_data/text/utf8bom.txt';
-      api.runCommands(cmd, function(err, data) {
+      api.internal.testCommands(cmd, function(err, data) {
         var rec = data.layers[0].data.getRecords()[0];
         assert.deepEqual(rec, {NAME: '国语國語'})
         done();

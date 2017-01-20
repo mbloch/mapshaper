@@ -44,7 +44,10 @@ api.importFile = function(path, opts) {
     // parsing JSON here so input file can be gc'd before JSON data is imported
     // TODO: look into incrementally parsing JSON data
     try {
-      content = JSON.parse(content);
+      // JSON data may already be parsed if imported via applyCommands()
+      if (utils.isString(content)) {
+        content = JSON.parse(content);
+      }
     } catch(e) {
       stop("Unable to parse JSON");
     }

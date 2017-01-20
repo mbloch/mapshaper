@@ -23,7 +23,7 @@ describe('mapshaper-merge-files.js', function () {
     var a = 'test/test_data/issues/153/a.json',
         b = 'test/test_data/issues/153/b.json',
         cmd = '-i combine-files ' + a + ' ' + b;
-    api.runCommands(cmd, function(err, combined) {
+    api.internal.testCommands(cmd, function(err, combined) {
       var targetArcs = [ [ [ 1, 1 ], [ 1, 0 ] ],
           [ [ 1, 0 ], [ 0, 0 ], [ 0, 1 ], [ 1, 1 ] ],
           [ [ 1, 1 ], [ 2, 1 ], [ 2, 0 ], [ 1, 0 ] ] ];

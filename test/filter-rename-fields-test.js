@@ -10,7 +10,7 @@ describe('mapshaper-filter-rename-fields.js', function () {
 
     it("drop all fields", function (done) {
       var cmd = format("-i %s -filter-fields", states_shp);
-      api.runCommands(cmd, function(err, data) {
+      api.internal.testCommands(cmd, function(err, data) {
         assert.deepEqual(data.layers[0].data.getFields(), []);
         done();
       })
@@ -20,7 +20,7 @@ describe('mapshaper-filter-rename-fields.js', function () {
   describe('-rename-fields', function () {
     it("test 1: rename two fields", function (done) {
       var cmd = format("-i %s -rename-fields lat=LAT,lng=LONG", states_shp);
-      api.runCommands(cmd, function(err, data) {
+      api.internal.testCommands(cmd, function(err, data) {
         if (err) throw err;
         assert.deepEqual(data.layers[0].data.getFields(), ['lat', 'lng', 'STATE_NAME', 'FIPS', 'STATE']);
         done();

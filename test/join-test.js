@@ -19,7 +19,7 @@ describe('mapshaper-join.js', function () {
       var cmd = api.utils.format("-i %s -join %s keys=FIPS,STATE_FIPS fields=POP2010,SUB_REGION field-types=STATE_FIPS:str", shp, csv),
           target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
           {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
-      api.runCommands(cmd, function(err, data) {
+      api.internal.testCommands(cmd, function(err, data) {
         if (err) throw err;
         assert.deepEqual(data.layers[0].data.getRecords(), target);
         done();
@@ -32,7 +32,7 @@ describe('mapshaper-join.js', function () {
       var cmd = api.utils.format("-i %s -i %s field-types=STATE_FIPS:str -join target=two_states states keys=FIPS,STATE_FIPS fields=POP2010,SUB_REGION ", shp, csv);
       var target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
           {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
-      api.runCommands(cmd, function(err, data) {
+      api.internal.testCommands(cmd, function(err, data) {
         if (err) throw err;
         var records = data.layers[0].data.getRecords();
         assert.deepEqual(records, target);

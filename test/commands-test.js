@@ -97,36 +97,55 @@ describe('mapshaper-commands.js', function () {
     });
   });
 
-  describe('processFileContent()', function () {
-    it('imports & exports csv file', function (done) {
-      var input = "id,name\n0,foo";
-      api.internal.processFileContent("-i", input, function(err, data) {
-        assert.deepEqual(data, [{
-          content: input,
-          filename: 'layer1.csv'
-        }]);
+
+  describe('applyCommands() (v0.4 API)', function () {
+
+    it('missing file', function(done) {
+      api.applyCommands('-i data.csv', {}, function(err, output) {
+        assert(err.name, 'APIError');
+        done();
+      })
+    });
+
+    it ('pass-through', function(done) {
+      var input = {
+        'data.csv': 'id\n0\n1'
+      };
+      api.applyCommands('-i data.csv -o', input, function(err, output) {
+        assert.equal(output['data.csv'], 'id\n0\n1');
         done();
       })
     })
 
-    it('imports & exports tsv file', function (done) {
-      var input = "id\tname\n0\tfoo";
-      api.internal.processFileContent("-i", input, function(err, data) {
-        assert.deepEqual(data, [{
-          content: input,
-          filename: 'layer1.tsv'
-        }]);
+    it ('multiple files', function(done) {
+      var input = {
+        'data.csv': 'id\n0\n1',
+        'data2.csv': 'id\n2\n3'
+      };
+      api.applyCommands('-i data.csv data2.csv -rename-fields FID=id -o', input, function(err, output) {
+        assert.equal(output['data.csv'], 'FID\n0\n1');
+        assert.equal(output['data2.csv'], 'FID\n2\n3');
         done();
       })
     })
 
-    it('converts csv to tsv', function (done) {
-      var input = "id,name\n0,foo";
-      api.internal.processFileContent("-o format=tsv", input, function(err, data) {
-        assert.deepEqual(data, [{
-          content: "id\tname\n0\tfoo",
-          filename: 'layer1.tsv'
-        }]);
+    it ('merge multiple files', function(done) {
+      var input = {
+        'data.csv': 'id\n0\n1',
+        'data2.csv': 'id\n2\n3'
+      };
+      api.applyCommands('-i data.csv data2.csv combine-files -merge-layers -o merged.csv', input, function(err, output) {
+        assert.equal(output['merged.csv'], 'id\n0\n1\n2\n3');
+        done();
+      })
+    })
+
+    it ('rename, convert csv', function(done) {
+      var input = {
+        'data.csv': 'id,count\n0,2\n1,4'
+      };
+      api.applyCommands('-i data.csv -o data2.tsv', input, function(err, output) {
+        assert.equal(output['data2.tsv'], 'id\tcount\n0\t2\n1\t4');
         done();
       })
     })
@@ -143,11 +162,10 @@ describe('mapshaper-commands.js', function () {
           }
         }]
       };
-      api.internal.processFileContent("-o format=tsv", input, function(err, data) {
-        assert.deepEqual(data, [{
-          content: "id\tname\n0\tfoo",
-          filename: 'layer1.tsv'
-        }]);
+      api.applyCommands("-i feature.json -o format=tsv", {'feature.json': input}, function(err, output) {
+        assert.deepEqual(output, {
+          'feature.tsv': "id\tname\n0\tfoo"
+        });
         done();
       })
     })
@@ -169,18 +187,15 @@ describe('mapshaper-commands.js', function () {
           }
         }]
       };
-      api.internal.processFileContent("-points x=lng y=lat -o format=geojson", input, function(err, data) {
-        if (err) throw err;
-        var output = JSON.parse(data[0].content);
+      api.applyCommands("-i points.csv -points x=lng y=lat -o format=geojson", {'points.csv': input}, function(err, output) {
+        var output = JSON.parse(output['points.json']);
         assert.deepEqual(output, target);
-        // TODO: figure out naming
-        // assert.equal(data[0].filename, 'layer1.json');
         done();
       })
     })
   })
 
-  describe('applyCommands()', function () {
+  describe('applyCommands() (<v0.4 API)', function () {
     it('import GeoJSON points as string', function (done) {
       var json = fs.readFileSync(fixPath('test_data/three_points.geojson'), 'utf8');
       api.applyCommands('', json, function(err, output) {
@@ -285,15 +300,7 @@ describe('mapshaper-commands.js', function () {
     })
   })
 
-  describe('runCommands()', function() {
-
-    it('multiple input files are processed in sequence', function(done) {
-      mapshaper.runCommands('-i test/test_data/three_points.geojson test/test_data/one_point.geojson', function(err, dataset) {
-          assert.deepEqual(dataset.info.input_files, ['test/test_data/one_point.geojson' ]);
-          assert.equal(dataset.layers[0].name, 'one_point');
-          done();
-        });
-    })
+  describe('runCommands()', function () {
 
     it('Error: empty command string', function(done) {
       mapshaper.runCommands("", function(err) {
@@ -344,8 +351,22 @@ describe('mapshaper-commands.js', function () {
       });
     });
 
+  })
+
+  describe('testCommands()', function() {
+
+    it('multiple input files are processed in sequence', function(done) {
+      mapshaper.internal.testCommands('-i test/test_data/three_points.geojson test/test_data/one_point.geojson', function(err, dataset) {
+          assert.deepEqual(dataset.info.input_files, ['test/test_data/one_point.geojson' ]);
+          assert.equal(dataset.layers[0].name, 'one_point');
+          done();
+        });
+    })
+
+
+
     it('Callback returns dataset for imported file', function(done) {
-      mapshaper.runCommands("-i " + states_shp, function(err, dataset) {
+      mapshaper.internal.testCommands("-i " + states_shp, function(err, dataset) {
         assert.equal(dataset.layers[0].name, 'two_states');
         done();
       });
@@ -358,7 +379,7 @@ describe('mapshaper-commands.js', function () {
 
     it('test 1', function(done) {
       var cmd = format("-i %s -dissolve + copy-fields NAME,STATE_FIPS sum-fields POP2000,MULT_RACE", counties_shp);
-        api.runCommands(cmd, function(err, data) {
+        api.internal.testCommands(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
         var lyr1 = data.layers[0]; // original lyr
         assert.equal(lyr1.data.size(), 6); // original data table hasn't been replaced
@@ -376,7 +397,7 @@ describe('mapshaper-commands.js', function () {
 
     it('test 1', function(done) {
       var cmd = format("-i %s -split STATE", states_shp);
-      api.runCommands(cmd, function(err, data) {
+      api.internal.testCommands(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
         assert.equal(data.layers[0].shapes.length, 1);
         assert.equal(data.layers[1].shapes.length, 1);
