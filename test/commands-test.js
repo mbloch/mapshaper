@@ -117,6 +117,7 @@ describe('mapshaper-commands.js', function () {
       })
     })
 
+
     it ('multiple files', function(done) {
       var input = {
         'data.csv': 'id\n0\n1',
@@ -149,6 +150,34 @@ describe('mapshaper-commands.js', function () {
         done();
       })
     })
+
+
+    it ('accepts array of parsed commands', function(done) {
+      var input = {
+        'data.csv': 'id\n0\n1'
+      };
+      var commands = [{
+        name: "i",
+        options: {
+          files: ['data.csv']
+        }
+      }, {
+        name: "each",
+        options: {
+          expression: "id2 = id + 2"
+        }
+      }, {
+        name: "o",
+        options: {
+          file: "out.csv"
+        }
+      }];
+      api.applyCommands(commands, input, function(err, output) {
+        assert.equal(output['out.csv'], 'id,id2\n0,2\n1,3');
+        done();
+      })
+    })
+
 
     it('converts geojson to tsv', function (done) {
       var input = {
