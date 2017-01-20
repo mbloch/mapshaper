@@ -21,7 +21,7 @@ MapShaper.writeFiles = function(exports, opts, cb) {
 };
 
 MapShaper.getOutputPaths = function(files, opts) {
-  var odir = opts.output_dir;
+  var odir = opts.directory;
   if (opts.force) {
     message("[o] The force option is obsolete, files are now overwritten by default");
   }

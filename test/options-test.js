@@ -43,10 +43,10 @@ describe('mapshaper-options.js', function () {
     bad("-o output.shp output.json"); // only one file per -o command
 
     good("-o", {});
-    good("-o " + dir1, {output_dir: dir1});
-    good("-o output.topojson", {output_file: "output.topojson"});
-    good("-o output.shp target=points", {output_file: "output.shp", target: "points"});
-    good("-o cut-table output.json", {cut_table: true, output_file: "output.json"});
+    good("-o " + dir1, {directory: dir1});
+    good("-o output.topojson", {file: "output.topojson"});
+    good("-o output.shp target=points", {file: "output.shp", target: "points"});
+    good("-o cut-table output.json", {cut_table: true, file: "output.json"});
     good("-o cut-table", {cut_table: true})
     good("-o drop-table", {drop_table: true})
     good("-o -", {stdout: true})

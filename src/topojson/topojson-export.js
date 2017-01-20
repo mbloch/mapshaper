@@ -32,7 +32,7 @@ MapShaper.exportTopoJSON = function(dataset, opts) {
       dataset = MapShaper.copyDatasetForExport(dataset);
     }
     return [{
-      filename: opts.output_file || utils.getOutputFileBase(dataset) + extension,
+      filename: opts.file || utils.getOutputFileBase(dataset) + extension,
       content: stringify(TopoJSON.exportTopology(dataset, opts))
     }];
   }

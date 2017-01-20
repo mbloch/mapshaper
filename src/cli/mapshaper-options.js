@@ -71,7 +71,7 @@ MapShaper.getOptionParser = function() {
     .describe("input one or more files")
     .validate(validateInputOpts)
     .option("files", {
-      label: "<file(s)>",
+      label: "<files>",
       describe: "files to import (separated by spaces), or - to use stdin"
     })
     .option("merge-files", {
@@ -113,7 +113,7 @@ MapShaper.getOptionParser = function() {
     .describe("output edited content")
     .validate(validateOutputOpts)
     .option('_', {
-      label: "<file|dir|->",
+      label: "<file|directory|->",
       describe: "(optional) name of output file or directory, or - for stdout"
     })
     .option("format", {
@@ -215,7 +215,7 @@ MapShaper.getOptionParser = function() {
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClipOpts)
     .option("source", {
-      label: "<file|layer>",
+      label: "<source>",
       describe: "file or layer containing clip polygons"
     })
     .option('remove-slivers', {
@@ -310,7 +310,7 @@ MapShaper.getOptionParser = function() {
     .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
     .validate(validateClipOpts)
     .option("source", {
-      label: "<file|layer>",
+      label: "<source>",
       describe: "file or layer containing erase polygons"
     })
     .option('remove-slivers', {
@@ -352,7 +352,7 @@ MapShaper.getOptionParser = function() {
     .describe('retain a subset of data fields')
     .validate(validateFilterFieldsOpts)
     .option("fields", {
-      label: "<field(s)>",
+      label: "<fields>",
       describe: "fields to retain (comma-sep.), e.g. 'fips,name'"
     })
     .option("target", targetOpt);
@@ -432,7 +432,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
     .validate(validateJoinOpts)
     .option("source", {
-      label: "<file>",
+      label: "<source>",
       describe: "file containing data records"
     })
     .option("keys", {
@@ -473,7 +473,7 @@ MapShaper.getOptionParser = function() {
     .describe("convert polygons to polylines, classified by edge type")
     .validate(validateLinesOpts)
     .option("fields", {
-      label: "<field(s)>",
+      label: "<fields>",
       describe: "optional comma-sep. list of fields to create a hierarchy",
       type: "comma-sep"
     })
@@ -552,7 +552,7 @@ MapShaper.getOptionParser = function() {
     .describe('rename data fields')
     .validate(validateFilterFieldsOpts)
     .option("fields", {
-      label: "<field(s)>",
+      label: "<fields>",
       describe: "fields to rename (comma-sep.), e.g. 'fips=STATE_FIPS,st=state'"
     })
     .option("target", targetOpt);
@@ -561,7 +561,7 @@ MapShaper.getOptionParser = function() {
     .describe("assign new names to layers")
     .validate(validateRenameLayersOpts)
     .option("names", {
-      label: "<name(s)>",
+      label: "<names>",
       type: "comma-sep",
       describe: "new layer name(s) (comma-sep. list)"
     })
@@ -642,7 +642,7 @@ MapShaper.getOptionParser = function() {
     // .describe("slice a layer using polygons in another layer")
     .validate(validateClipOpts)
     .option("source", {
-      label: "<file|layer>",
+      label: "<source>",
       describe: "file or layer containing clip polygons"
     })
     /*

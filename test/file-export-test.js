@@ -11,7 +11,7 @@ describe('mapshaper-file-export.js', function () {
 
     it('append filename to directory', function () {
       var paths = ["file1.json", "file2.json"],
-          opts = {output_dir: "somedir"},
+          opts = {directory: "somedir"},
           target = [path.join('somedir', paths[0]),
               path.join('somedir', paths[1])];
       assert.deepEqual(api.internal.getOutputPaths(paths, opts), target);

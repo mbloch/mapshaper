@@ -166,15 +166,15 @@ function validateOutputOpts(cmd) {
     if (!cli.isDirectory(arg)) {
       error("Unknown output option:", arg);
     }
-    o.output_dir = arg;
+    o.directory = arg;
   } else if (arg) {
     if (pathInfo.directory) {
-      o.output_dir = pathInfo.directory;
-      cli.validateOutputDir(o.output_dir);
+      o.directory = pathInfo.directory;
+      cli.validateOutputDir(o.directory);
     }
-    o.output_file = pathInfo.filename;
-    if (MapShaper.filenameIsUnsupportedOutputType(o.output_file)) {
-      error("Output file looks like an unsupported file type:", o.output_file);
+    o.file = pathInfo.filename;
+    if (MapShaper.filenameIsUnsupportedOutputType(o.file)) {
+      error("Output file looks like an unsupported file type:", o.file);
     }
   }
 

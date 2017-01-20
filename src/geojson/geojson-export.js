@@ -7,9 +7,9 @@ mapshaper-dataset-utils
 
 MapShaper.exportGeoJSON = function(dataset, opts) {
   var extension = opts.extension || "json";
-  if (opts.output_file) {
+  if (opts.file) {
     // override default output extension if output filename is given
-    extension = utils.getFileExtension(opts.output_file);
+    extension = utils.getFileExtension(opts.file);
   }
   return dataset.layers.map(function(lyr) {
     return {

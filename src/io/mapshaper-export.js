@@ -72,9 +72,9 @@ MapShaper.exportFileContent = function(dataset, opts) {
     layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
   }, dataset);
 
-  if (opts.output_file && outFmt != 'topojson') {
+  if (opts.file && outFmt != 'topojson') {
     dataset.layers.forEach(function(lyr) {
-      lyr.name = utils.getFileBase(opts.output_file);
+      lyr.name = utils.getFileBase(opts.file);
     });
   }
 
@@ -117,7 +117,7 @@ MapShaper.exporters = {
 };
 
 MapShaper.getOutputFormat = function(dataset, opts) {
-  var outFile = opts.output_file || null,
+  var outFile = opts.file || null,
       inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
       outFmt = null;
 

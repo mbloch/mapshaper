@@ -21,7 +21,7 @@ MapShaper.exportSVG = function(dataset, opts) {
   svg = utils.format(template, b.width(), b.height(), 0, 0, b.width(), b.height(), svg);
   return [{
     content: svg,
-    filename: opts.output_file || utils.getOutputFileBase(dataset) + '.svg'
+    filename: opts.file || utils.getOutputFileBase(dataset) + '.svg'
   }];
 };
 
