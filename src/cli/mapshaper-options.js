@@ -8,7 +8,7 @@ mapshaper-chunker
 MapShaper.getOptionParser = function() {
   // definitions of options shared by more than one command
   var targetOpt = {
-        describe: "layer(s) to target (comma-sep. list); default is all layers"
+        describe: "layer(s) to target (comma-sep. list)"
       },
       nameOpt = {
         describe: "rename the edited layer(s)"
@@ -71,7 +71,7 @@ MapShaper.getOptionParser = function() {
     .describe("input one or more files")
     .validate(validateInputOpts)
     .option("files", {
-      label: "<file(s)>",
+      label: "<files>",
       describe: "files to import (separated by spaces), or - to use stdin"
     })
     .option("merge-files", {
@@ -113,7 +113,7 @@ MapShaper.getOptionParser = function() {
     .describe("output edited content")
     .validate(validateOutputOpts)
     .option('_', {
-      label: "<file|dir|->",
+      label: "<file|directory|->",
       describe: "(optional) name of output file or directory, or - for stdout"
     })
     .option("format", {
@@ -121,8 +121,8 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt)
     .option("force", {
-      type: "flag",
-      describe: "let output files overwrite existing files"
+      // describe: "let output files overwrite existing files",
+      type: "flag"
     })
     .option("dry-run", {
       // describe: "do not output any files"
@@ -154,6 +154,9 @@ MapShaper.getOptionParser = function() {
     .option("bbox", {
       type: "flag",
       describe: "(Topo/GeoJSON) add bbox property"
+    })
+    .option("extension", {
+      describe: "(Topo/GeoJSON) set file extension (default is \".json\")"
     })
     .option("prettify", {
       type: "flag",
@@ -208,11 +211,12 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("clip")
+    .title("\nEditing commands")
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClipOpts)
     .option("source", {
-      label: "<file|layer>",
+      label: "<source>",
       describe: "file or layer containing clip polygons"
     })
     .option('remove-slivers', {
@@ -227,7 +231,6 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("cluster")
-    .title("\nEditing commands")
     .describe("group polygons into compact clusters")
     .option("id-field", {
       describe: "field name of cluster id (default is \"cluster\")"
@@ -307,7 +310,7 @@ MapShaper.getOptionParser = function() {
     .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
     .validate(validateClipOpts)
     .option("source", {
-      label: "<file|layer>",
+      label: "<source>",
       describe: "file or layer containing erase polygons"
     })
     .option('remove-slivers', {
@@ -323,7 +326,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("explode")
     .describe("divide multi-part features into single-part features")
-    .option("convert-holes", {type: "flag"}) // testing
+    .option("naive", {type: "flag"}) // testing
     .option("target", targetOpt);
 
 
@@ -349,7 +352,7 @@ MapShaper.getOptionParser = function() {
     .describe('retain a subset of data fields')
     .validate(validateFilterFieldsOpts)
     .option("fields", {
-      label: "<field(s)>",
+      label: "<fields>",
       describe: "fields to retain (comma-sep.), e.g. 'fips,name'"
     })
     .option("target", targetOpt);
@@ -391,30 +394,6 @@ MapShaper.getOptionParser = function() {
   parser.command("graticule")
     .describe("create a graticule layer");
 
-  parser.command("point-grid")
-    .describe("create a rectangular grid of points")
-    .validate(validateGridOpts)
-    .option("-", {
-      label: "<cols,rows>",
-      describe: "size of the grid, e.g. -point-grid 100,100"
-    })
-    .option('interval', {
-      describe: 'distance between adjacent points, in source units',
-      type: 'number'
-    })
-    .option("cols", {
-      type: "integer"
-    })
-    .option("rows", {
-      type: "integer"
-    })
-    .option('bbox', {
-      type: "bbox",
-      describe: "xmin,ymin,xmax,ymax (default is bbox of data)"
-    })
-    .option("name", nameOpt);
-
-
   parser.command("innerlines")
     .describe("convert polygons to polylines along shared edges")
     .validate(validateInnerLinesOpts)
@@ -429,7 +408,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
     .validate(validateJoinOpts)
     .option("source", {
-      label: "<file>",
+      label: "<source>",
       describe: "file containing data records"
     })
     .option("keys", {
@@ -470,7 +449,7 @@ MapShaper.getOptionParser = function() {
     .describe("convert polygons to polylines, classified by edge type")
     .validate(validateLinesOpts)
     .option("fields", {
-      label: "<field(s)>",
+      label: "<fields>",
       describe: "optional comma-sep. list of fields to create a hierarchy",
       type: "comma-sep"
     })
@@ -483,6 +462,29 @@ MapShaper.getOptionParser = function() {
     .validate(validateMergeLayersOpts)
     .option("name", nameOpt)
     .option("target", targetOpt);
+
+  parser.command("point-grid")
+    .describe("create a rectangular grid of points")
+    .validate(validateGridOpts)
+    .option("-", {
+      label: "<cols,rows>",
+      describe: "size of the grid, e.g. -point-grid 100,100"
+    })
+    .option('interval', {
+      describe: 'distance between adjacent points, in source units',
+      type: 'number'
+    })
+    .option("cols", {
+      type: "integer"
+    })
+    .option("rows", {
+      type: "integer"
+    })
+    .option('bbox', {
+      type: "bbox",
+      describe: "xmin,ymin,xmax,ymax (default is bbox of data)"
+    })
+    .option("name", nameOpt);
 
   parser.command("points")
     .describe("create a point layer from polygons or attribute data")
@@ -549,7 +551,7 @@ MapShaper.getOptionParser = function() {
     .describe('rename data fields')
     .validate(validateFilterFieldsOpts)
     .option("fields", {
-      label: "<field(s)>",
+      label: "<fields>",
       describe: "fields to rename (comma-sep.), e.g. 'fips=STATE_FIPS,st=state'"
     })
     .option("target", targetOpt);
@@ -558,7 +560,7 @@ MapShaper.getOptionParser = function() {
     .describe("assign new names to layers")
     .validate(validateRenameLayersOpts)
     .option("names", {
-      label: "<name(s)>",
+      label: "<names>",
       type: "comma-sep",
       describe: "new layer name(s) (comma-sep. list)"
     })
@@ -568,9 +570,10 @@ MapShaper.getOptionParser = function() {
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
     .describe("simplify the geometry of polygon and polyline features")
-    .option('pct', {
+    .option('percentage', {
       alias: 'p',
-      label: "<x%>",
+      label: "<percentage>",
+      type: 'percent',
       describe: "percentage of removable points to retain, e.g. 10%"
     })
     .option("dp", {
@@ -638,7 +641,7 @@ MapShaper.getOptionParser = function() {
     // .describe("slice a layer using polygons in another layer")
     .validate(validateClipOpts)
     .option("source", {
-      label: "<file|layer>",
+      label: "<source>",
       describe: "file or layer containing clip polygons"
     })
     /*
@@ -732,12 +735,28 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-   parser.command("uniq")
+  parser.command("target")
+    .describe("set active layer")
+    .validate(function(cmd) {
+      if (!cmd.options.target && cmd._.length) {
+        cmd.options.target = cmd._.shift();
+      }
+    })
+    .option("target", {
+      label: "<target>",
+      describe: "name or index of layer to target"
+    });
+
+  parser.command("uniq")
     .describe("delete features with the same id as a previous feature")
     .validate(validateExpressionOpts)
     .option("expression", {
       label: "<expression>",
       describe: "JS expression to obtain the id of a feature"
+    })
+    .option("verbose", {
+      describe: "print each removed feature",
+      type: "flag"
     })
     .option("target", targetOpt);
 
@@ -797,12 +816,15 @@ MapShaper.getOptionParser = function() {
   parser.command('projections')
     .describe("print list of supported projections");
 
-  parser.command('version')
-    .alias('v')
-    .describe("print mapshaper version");
+  parser.command('quiet')
+    .describe("inhibit console messages");
 
   parser.command('verbose')
     .describe("print verbose processing messages");
+
+  parser.command('version')
+    .alias('v')
+    .describe("print mapshaper version");
 
   parser.command('tracing');
 

@@ -41,7 +41,7 @@ describe('mapshaper-database-utils.js', function () {
     it("comma sep. + wildcard", function() {
       var layers = [{name: 'layer1'}, {name: 'layer2'}, {name: 'points'}, {name: 'polygons'}];
       assert.deepEqual(api.internal.findMatchingLayers(layers, 'points,layer*'),
-        [{name: 'points'}, {name: 'layer1'}, {name: 'layer2'}]);
+        [{name: 'layer1'}, {name: 'layer2'}, {name: 'points'}]);
     })
 
     it("all layers (*)", function() {
@@ -52,13 +52,13 @@ describe('mapshaper-database-utils.js', function () {
 
     it("numerically indexed layers", function() {
       var layers = [{name: 'layer1'}, {name: 'layer2'}, {name: 'points'}, {name: 'polygons'}];
-      assert.deepEqual(api.internal.findMatchingLayers(layers, '0,2'),
+      assert.deepEqual(api.internal.findMatchingLayers(layers, '1,3'),
         [{name: 'layer1'}, {name: 'points'}]);
     })
 
     it("no dupes", function() {
       var layers = [{name: 'points'}, {name: 'layer2'}];
-      assert.deepEqual(api.internal.findMatchingLayers(layers, '1,layer2,layer*,1'),
+      assert.deepEqual(api.internal.findMatchingLayers(layers, '2,layer2,layer*,2'),
         [{name: 'layer2'}]);
     })
 

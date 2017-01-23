@@ -103,9 +103,6 @@ MapShaper.validateFieldType = function(hint) {
   return type;
 };
 
-MapShaper.removeTypeHints = function(arr) {
-  return MapShaper.parseFieldHeaders(arr, {});
-};
 
 // Look for type hints in array of field headers
 // return index of field types

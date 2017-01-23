@@ -13,12 +13,8 @@ api.graticule = function(dataset, opts) {
     src = MapShaper.getProjection('wgs84');
     if (!dest) stop("[graticule] Coordinate system is unknown, unable to create a graticule");
     MapShaper.projectDataset(graticule, src, dest, {}); // TODO: densify?
-    // add graticule layer to original dataset (TODO: improve)
-    utils.extend(dataset, MapShaper.mergeDatasets([dataset, graticule]));
-  } else {
-    dataset = graticule;
   }
-  return dataset;
+  return graticule;
 };
 
 // create graticule as a dataset

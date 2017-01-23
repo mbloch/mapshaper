@@ -56,20 +56,20 @@ function FileChooser(el, cb) {
 
 function ImportControl(model, opts) {
   new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', model.clearMode);
+  new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
   var importCount = 0;
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
-  model.addMode('import', turnOn, turnOff);
+  gui.addMode('import', turnOn, turnOff);
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
   new FileChooser('#import-buttons .add-btn', receiveFiles);
   new FileChooser('#add-file-btn', receiveFiles);
-  model.enterMode('import');
-  model.on('mode', function(e) {
+  gui.enterMode('import');
+  gui.on('mode', function(e) {
     // re-open import opts if leaving alert or console modes and nothing has been imported yet
     if (!e.name && importCount === 0) {
-      model.enterMode('import');
+      gui.enterMode('import');
     }
   });
 
@@ -139,7 +139,7 @@ function ImportControl(model, opts) {
     var prevSize = queuedFiles.length;
     addFiles(utils.toArray(files));
     if (queuedFiles.length === 0) return;
-    model.enterMode('import');
+    gui.enterMode('import');
     if (importCount === 0 && prevSize === 0 && containsImmediateFile(queuedFiles)) {
       // if the first batch of files will be imported, process right away
       submitFiles();
@@ -166,7 +166,7 @@ function ImportControl(model, opts) {
     if (queuedFiles.length > 0) {
       readFile(queuedFiles.pop()); // read in rev. alphabetic order, so .shp comes before .dbf
     } else {
-      model.clearMode();
+      gui.clearMode();
     }
   }
 
@@ -232,7 +232,7 @@ function ImportControl(model, opts) {
         }
         if (!lyr.geometry_type) {
           // kludge: trigger display of table cells if .shp has null geometry
-          model.updated(null, lyr, dataset);
+          model.updated({}, lyr, dataset);
         }
         readNext();
         return;
@@ -265,7 +265,7 @@ function ImportControl(model, opts) {
     setTimeout(function() {
       var dataset = MapShaper.importFileContent(content, path, importOpts);
       dataset.info.no_repair = importOpts.no_repair;
-      model.addDataset(dataset);
+      model.updated({select: true, import: true}, dataset.layers[0], dataset);
       importCount++;
       readNext();
     }, delay);
@@ -313,7 +313,7 @@ function ImportControl(model, opts) {
       if (err) {
         gui.alert(err);
       } else if (!files.length) {
-        model.clearMode();
+        gui.clearMode();
       } else {
         addFiles(files);
         submitFiles();

@@ -33,7 +33,7 @@ function message() {
 }
 
 function verbose() {
-  if (MapShaper.VERBOSE && MapShaper.LOGGING) {
+  if (MapShaper.VERBOSE) {
     MapShaper.logArgs(arguments);
   }
 }
@@ -80,9 +80,7 @@ MapShaper.stop = function() {
 };
 
 MapShaper.message = function() {
-  if (MapShaper.LOGGING) {
-    MapShaper.logArgs(arguments);
-  }
+  MapShaper.logArgs(arguments);
 };
 
 MapShaper.formatLogArgs = function(args) {
@@ -108,7 +106,7 @@ MapShaper.formatStringsAsGrid = function(arr) {
 };
 
 MapShaper.logArgs = function(args) {
-  if (utils.isArrayLike(args)) {
+  if (MapShaper.LOGGING && utils.isArrayLike(args)) {
     (console.error || console.log).call(console, MapShaper.formatLogArgs(args));
   }
 };

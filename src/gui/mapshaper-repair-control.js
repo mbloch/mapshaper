@@ -27,7 +27,7 @@ function RepairControl(model, map) {
     }
   });
 
-  model.on('mode', function(e) {
+  gui.on('mode', function(e) {
     if (e.prev == 'import') {
       // update if import just finished and a new dataset is being edited
       delayedUpdate();
@@ -70,7 +70,7 @@ function RepairControl(model, map) {
 
   function delayedUpdate() {
     setTimeout(function() {
-      var e = model.getEditingLayer();
+      var e = model.getActiveLayer();
       if (e.dataset && e.dataset != _dataset && !e.dataset.info.no_repair &&
           MapShaper.layerHasPaths(e.layer)) {
         _dataset = e.dataset;

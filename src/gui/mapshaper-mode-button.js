@@ -1,9 +1,9 @@
 /* @requires mapshaper-gui-lib */
 
-function ModeButton(el, name, model) {
+function ModeButton(el, name) {
   var btn = El(el),
       active = false;
-  model.on('mode', function(e) {
+  gui.on('mode', function(e) {
     active = e.name == name;
     if (active) {
       btn.addClass('active');
@@ -13,6 +13,6 @@ function ModeButton(el, name, model) {
   });
 
   btn.on('click', function() {
-    model.enterMode(active ? null : name);
+    gui.enterMode(active ? null : name);
   });
 }

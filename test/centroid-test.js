@@ -7,7 +7,7 @@ function fixPath(p) {
 
 function testInnerPoints(file, cmd, done) {
   var cmd = fixPath(file) + " " + cmd;
-  api.runCommands(cmd, function(err, data) {
+  api.internal.testCommands(cmd, function(err, data) {
     var polys = data.layers[0],
         points = data.layers[1];
 

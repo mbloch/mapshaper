@@ -10,6 +10,7 @@ this.mapshaper = api;
 
 // Expose internal objects for testing
 utils.extend(api.internal, {
+  Catalog: Catalog,
   DataTable: DataTable,
   BinArray: BinArray,
   DouglasPeucker: DouglasPeucker,

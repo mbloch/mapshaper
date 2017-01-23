@@ -19,39 +19,6 @@ MapShaper.writeFiles = function(files, opts, done) {
   }
 };
 
-function isMultiLayerFormat(fmt) {
-  return fmt == 'svg' || fmt == 'topojson';
-}
-
-gui.exportDatasets = function(datasets, opts) {
-  var files;
-  if (isMultiLayerFormat(opts.format)) {
-    // merge multiple datasets into one for export as SVG or TopoJSON
-    if (datasets.length > 1) {
-      datasets = [MapShaper.mergeDatasetsForExport(datasets)];
-      if (opts.format == 'topojson') {
-        // Build topology, in case user has loaded several
-        // files derived from the same source, with matching coordinates
-        // (Downsides: useless work if geometry is unrelated;
-        // could create many small arcs if layers are partially related)
-        api.buildTopology(datasets[0]);
-      }
-      // KLUDGE let exporter know that copying is not needed
-      // (because shape data was deep-copied during merge)
-      opts.final = true;
-    }
-  } else {
-    MapShaper.assignUniqueLayerNames2(datasets);
-  }
-  files = datasets.reduce(function(memo, dataset) {
-    var output = MapShaper.exportFileContent(dataset, opts);
-    return memo.concat(output);
-  }, []);
-  // multiple output files will be zipped, need unique names
-  MapShaper.assignUniqueFileNames(files);
-  return files;
-};
-
 function saveZipFile(zipfileName, files, done) {
   var toAdd = files;
   try {

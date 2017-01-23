@@ -5,20 +5,27 @@ var api = require('../'),
 describe('mapshaper-export.js', function () {
 
   describe('Issue: output should not rename original layers', function () {
-    it('unnamed layers, csv output', function () {
+    it('unnamed layers, csv output', function (done) {
       var lyr1 = {
         data: new internal.DataTable([{foo: 'bar'}])
       };
       var lyr2 = {
         data: new internal.DataTable([{foo: 'bar'}])
-      }
+      };
       var dataset = {
         info: {},
         layers: [lyr1, lyr2]
       };
-      api.exportFiles(dataset, {dry_run: true, format: 'dsv'});
-      assert.equal(lyr1.name, undefined);
-      assert.equal(lyr2.name, undefined);
+      var catalog = new internal.Catalog().addDataset(dataset);
+      var commands = [{name: 'o', options: {
+        dry_run: true,
+        format: 'dsv'
+      }}];
+      internal.runParsedCommands(commands, catalog, function(err, output) {
+        assert.equal(lyr1.name, undefined);
+        assert.equal(lyr2.name, undefined);
+        done();
+      });
     })
   })
 

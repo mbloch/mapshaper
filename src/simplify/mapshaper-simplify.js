@@ -17,8 +17,8 @@ api.simplify = function(dataset, opts) {
 
   MapShaper.simplifyPaths(arcs, opts);
 
-  if (utils.isNumber(opts.pct)) {
-    arcs.setRetainedPct(opts.pct);
+  if (opts.percentage) {
+    arcs.setRetainedPct(utils.parsePercent(opts.percentage));
   } else if (utils.isNumber(opts.interval)) {
     arcs.setRetainedInterval(opts.interval);
   } else if (opts.resolution) {

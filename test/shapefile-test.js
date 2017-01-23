@@ -11,7 +11,7 @@ describe('mapshaper-shapefile.js', function () {
 
   describe('Fix: point shapefile importing', function (done) {
     it('import point shp', function () {
-      api.runCommands('-i test/test_data/issues/shp_point_import/points.shp', function(err, dataset) {
+      api.internal.testCommands('-i test/test_data/issues/shp_point_import/points.shp', function(err, dataset) {
 
         assert.deepEqual(dataset.layers[0], {
           shapes: [[[0, 0]], [[1, 1], [1, 2]]],
@@ -51,6 +51,11 @@ describe('mapshaper-shapefile.js', function () {
       assert.deepEqual(dataset2.layers[0].data.getRecords(), records);
       assert.equal(dataset2.layers[0].shapes, null);
     })
+  })
+
+  describe('Import/Export rountrip tests', function() {
+
+
   })
 
   describe('Export/Import roundtrip tests', function () {

@@ -13,7 +13,7 @@ var SimplifyControl = function(model) {
       // cancel just hides menu if slider is visible
       menu.hide();
     } else {
-      model.clearMode();
+      gui.clearMode();
     }
   });
   new SimpleButton('#simplify-settings-btn').on('click', function() {
@@ -24,14 +24,14 @@ var SimplifyControl = function(model) {
     }
   });
 
-  new ModeButton('#simplify-btn', 'simplify', model);
-  model.addMode('simplify', turnOn, turnOff);
+  new ModeButton('#simplify-btn', 'simplify');
+  gui.addMode('simplify', turnOn, turnOff);
   model.on('select', function() {
-    if (model.getMode() == 'simplify') model.clearMode();
+    if (gui.getMode() == 'simplify') gui.clearMode();
   });
 
   // exit simplify mode when user clicks off the visible part of the menu
-  menu.on('click', gui.handleDirectEvent(model.clearMode));
+  menu.on('click', gui.handleDirectEvent(gui.clearMode));
 
   slider = new Slider("#simplify-control .slider");
   slider.handle("#simplify-control .handle");
@@ -76,7 +76,7 @@ var SimplifyControl = function(model) {
   });
 
   function turnOn() {
-    var target = model.getEditingLayer();
+    var target = model.getActiveLayer();
     if (!MapShaper.layerHasPaths(target.layer)) {
       gui.alert("This layer can not be simplified");
       return;
@@ -91,7 +91,7 @@ var SimplifyControl = function(model) {
   }
 
   function initMenu() {
-    var dataset = model.getEditingLayer().dataset;
+    var dataset = model.getActiveLayer().dataset;
     var showPlanarOpt = !dataset.arcs.isPlanar();
     var opts = MapShaper.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);
     El('#planar-opt-wrapper').node().style.display = showPlanarOpt ? 'block' : 'none';
@@ -107,7 +107,7 @@ var SimplifyControl = function(model) {
   }
 
   function onSubmit() {
-    var dataset = model.getEditingLayer().dataset;
+    var dataset = model.getActiveLayer().dataset;
     var showMsg = dataset.arcs && dataset.arcs.getPointCount() > 1e6;
     var delay = 0;
     if (showMsg) {

@@ -10,8 +10,51 @@ mapshaper-json-table
 dbf-export
 */
 
-// Return an array of objects with "filename" "filebase" "extension" and
-// "content" attributes.
+
+// @targets - non-empty output from Catalog#findCommandTargets()
+//
+MapShaper.exportTargetLayers = function(targets, opts) {
+  // convert target fmt to dataset fmt
+  var datasets = targets.map(function(target) {
+    return utils.defaults({layers: target.layers}, target.dataset);
+  });
+  return MapShaper.exportDatasets(datasets, opts);
+};
+
+//
+//
+MapShaper.exportDatasets = function(datasets, opts) {
+  var format = MapShaper.getOutputFormat(datasets[0], opts);
+  var files;
+  if (format == 'svg' || format == 'topojson') {
+    // multi-layer formats: combine multiple datasets into one
+    if (datasets.length > 1) {
+      datasets = [MapShaper.mergeDatasetsForExport(datasets)];
+      if (format == 'topojson') {
+        // Build topology, in case user has loaded several
+        // files derived from the same source, with matching coordinates
+        // (Downsides: useless work if geometry is unrelated;
+        // could create many small arcs if layers are partially related)
+        api.buildTopology(datasets[0]);
+      }
+      // KLUDGE let exporter know that copying is not needed
+      // (because shape data was deep-copied during merge)
+      opts.final = true;
+    }
+  } else {
+    datasets = datasets.map(MapShaper.copyDatasetForRenaming);
+    MapShaper.assignUniqueLayerNames2(datasets);
+  }
+  files = datasets.reduce(function(memo, dataset) {
+    var output = MapShaper.exportFileContent(dataset, opts);
+    return memo.concat(output);
+  }, []);
+  // need unique names for multiple output files
+  MapShaper.assignUniqueFileNames(files);
+  return files;
+};
+
+// Return an array of objects with "filename" and "content" members.
 //
 MapShaper.exportFileContent = function(dataset, opts) {
   var outFmt = opts.format = MapShaper.getOutputFormat(dataset, opts),
@@ -29,9 +72,9 @@ MapShaper.exportFileContent = function(dataset, opts) {
     layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
   }, dataset);
 
-  if (opts.output_file && outFmt != 'topojson') {
+  if (opts.file && outFmt != 'topojson') {
     dataset.layers.forEach(function(lyr) {
-      lyr.name = utils.getFileBase(opts.output_file);
+      lyr.name = utils.getFileBase(opts.file);
     });
   }
 
@@ -45,6 +88,10 @@ MapShaper.exportFileContent = function(dataset, opts) {
 
   if (opts.cut_table) {
     files = MapShaper.exportDataTables(dataset.layers, opts).concat(files);
+  }
+
+  if (opts.extension) {
+    opts.extension = MapShaper.fixFileExtension(opts.extension, outFmt);
   }
 
   files = exporter(dataset, opts).concat(files);
@@ -70,7 +117,7 @@ MapShaper.exporters = {
 };
 
 MapShaper.getOutputFormat = function(dataset, opts) {
-  var outFile = opts.output_file || null,
+  var outFile = opts.file || null,
       inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
       outFmt = null;
 
@@ -189,6 +236,11 @@ MapShaper.formatVersionedFileName = function(filename, i) {
   ext = parts.pop();
   base = parts.join('.');
   return MapShaper.formatVersionedName(base, i) + '.' + ext;
+};
+
+MapShaper.fixFileExtension = function(ext, fmt) {
+  // TODO: use fmt to validate
+  return ext.replace(/^\.+/, '');
 };
 
 MapShaper.uniqifyNames = function(names, formatter) {

@@ -31,18 +31,13 @@ function validateSimplifyOpts(cmd) {
   var o = cmd.options,
       _ = cmd._;
 
-  var pctStr = o.pct || "";
   if (_.length > 0) {
     if (/^[0-9.]+%?$/.test(_[0])) {
-      pctStr = _.shift();
+      o.percentage = utils.parsePercent(_.shift());
     }
     if (_.length > 0) {
       error("Unparsable option:", _.join(' '));
     }
-  }
-
-  if (pctStr) {
-    o.pct = utils.parsePercent(pctStr);
   }
 
   var intervalStr = o.interval;
@@ -53,8 +48,8 @@ function validateSimplifyOpts(cmd) {
     }
   }
 
-  if (isNaN(o.interval) && isNaN(o.pct) && !o.resolution) {
-    error("Command requires an interval, pct or resolution parameter");
+  if (isNaN(o.interval) && !utils.isNumber(o.percentage) && !o.resolution) {
+    error("Command requires an interval, percentage or resolution parameter");
   }
 }
 
@@ -125,7 +120,6 @@ function validateLinesOpts(cmd) {
   }
 }
 
-
 function validateInnerLinesOpts(cmd) {
   if (cmd._.length > 0) {
     error("Command takes no arguments");
@@ -172,15 +166,15 @@ function validateOutputOpts(cmd) {
     if (!cli.isDirectory(arg)) {
       error("Unknown output option:", arg);
     }
-    o.output_dir = arg;
+    o.directory = arg;
   } else if (arg) {
     if (pathInfo.directory) {
-      o.output_dir = pathInfo.directory;
-      cli.validateOutputDir(o.output_dir);
+      o.directory = pathInfo.directory;
+      cli.validateOutputDir(o.directory);
     }
-    o.output_file = pathInfo.filename;
-    if (MapShaper.filenameIsUnsupportedOutputType(o.output_file)) {
-      error("Output file looks like an unsupported file type:", o.output_file);
+    o.file = pathInfo.filename;
+    if (MapShaper.filenameIsUnsupportedOutputType(o.file)) {
+      error("Output file looks like an unsupported file type:", o.file);
     }
   }
 
@@ -218,7 +212,6 @@ function validateOutputOpts(cmd) {
   if ("topojson_precision" in o && o.topojson_precision > 0 === false) {
     error("topojson-precision= option should be a positive number");
   }
-
 }
 
 // Convert a comma-separated string into an array of trimmed strings

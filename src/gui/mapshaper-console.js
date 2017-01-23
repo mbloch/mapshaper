@@ -25,8 +25,8 @@ function Console(model) {
 
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
-  new ModeButton('#console-btn', 'console', model);
-  model.addMode('console', turnOn, turnOff);
+  new ModeButton('#console-btn', 'console');
+  gui.addMode('console', turnOn, turnOff);
 
   gui.onClick(content, function(e) {
     var targ = El(e.target);
@@ -46,7 +46,7 @@ function Console(model) {
   }
 
   function turnOn() {
-    if (!_isOpen && !!model.getEditingLayer()) {
+    if (!_isOpen && !model.isEmpty()) {
       _isOpen = true;
       stop = MapShaper.stop = consoleStop;
       error = MapShaper.error = consoleError;
@@ -112,7 +112,7 @@ function Console(model) {
       if (typing) {
         inputEl.blur();
       }
-      model.clearMode(); // esc escapes other modes as well
+      gui.clearMode(); // esc escapes other modes as well
       capture = true;
 
     // l/r arrow keys while not typing in a text field
@@ -140,7 +140,7 @@ function Console(model) {
         forward();
       } else if (kc == 32 && (!typing || (inputText === '' && typingInConsole))) {
         // space bar closes if nothing has been typed
-        model.clearMode();
+        gui.clearMode();
       } else if (!typing && e.target != input.node() && !metaKey(e)) {
         // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
         // or user is typing in a different input area somewhere
@@ -155,7 +155,7 @@ function Console(model) {
     } else if (!typing && kc == 32) {
       // space bar opens console, unless typing in an input field or editable el
       capture = true;
-      model.enterMode('console');
+      gui.enterMode('console');
     }
 
     if (capture) {
@@ -168,7 +168,7 @@ function Console(model) {
     var line = readCommandLine(),
         match = /\w+$/.exec(line),
         stub = match ? match[0] : '',
-        lyr = model.getEditingLayer().layer,
+        lyr = model.getActiveLayer().layer,
         names, name;
     if (stub && lyr.data) {
       names = findCompletions(stub, lyr.data.getFields());
@@ -259,9 +259,9 @@ function Console(model) {
         printExamples();
       } else if (cmd == 'layers') {
         message("Available layers:",
-          MapShaper.getFormattedLayerList(model.getEditingLayer().dataset.layers));
+          MapShaper.getFormattedLayerList(model));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
-        model.clearMode();
+        gui.clearMode();
       } else if (cmd) {
         runMapshaperCommands(cmd);
       }
@@ -270,65 +270,43 @@ function Console(model) {
   }
 
   function runMapshaperCommands(str) {
-    var commands, target;
+    var commands;
     try {
       commands = MapShaper.parseConsoleCommands(str);
       commands = MapShaper.runAndRemoveInfoCommands(commands);
-      target = model.getEditingLayer();
     } catch (e) {
       return onError(e);
     }
-    if (target.layer && commands.length > 0) {
-      applyParsedCommands(commands, target.layer, target.dataset);
+    if (commands.length > 0) {
+      applyParsedCommands(commands);
     }
   }
 
-  function applyParsedCommands(commands, lyr, dataset) {
-    var lyrId = dataset.layers.indexOf(lyr),
-        prevArcCount = dataset.arcs ? dataset.arcs.size() : 0;
+  function applyParsedCommands(commands) {
+    var active = model.getActiveLayer(),
+        prevArcCount = active.dataset.arcs ? active.dataset.arcs.size() : 0;
 
-    // most commands should target the currently edited layer unless
-    // user has specified a different target
-    commands.forEach(function(cmd) {
-      if (!cmd.options.target && cmd.name != 'rename-layers' &&
-          cmd.name != 'merge-layers') {
-        cmd.options.target = String(lyrId);
-      }
-    });
-
-    MapShaper.runParsedCommands(commands, dataset, function(err) {
+    MapShaper.runParsedCommands(commands, model, function(err) {
       var flags = getCommandFlags(commands),
-          outputLyr = getOutputLayer(lyrId, dataset, commands);
-      if (prevArcCount > 0 && dataset.arcs.size() != prevArcCount) {
-        // kludge to signal map that filtered arcs need refreshing
+          active2 = model.getActiveLayer(),
+          sameArcs = active.dataset.arcs == active2.dataset.arcs && prevArcCount > 0 &&
+              active2.dataset.arcs.size() == prevArcCount;
+
+      // restore default logging options, in case -quiet or -verbose command was run
+      MapShaper.LOGGING = true;
+      MapShaper.VERBOSE = false;
+
+      // kludge to signal map that filtered arcs need refreshing
+      // TODO: find a better solution, outside the console
+      if (!sameArcs) {
         flags.arc_count = true;
       }
-      model.updated(flags, outputLyr, dataset);
+      model.updated(flags, active2.layer, active2.dataset);
       // signal the map to update even if an error has occured, because the
       // commands may have partially succeeded and changes may have occured to
       // the data.
       if (err) onError(err);
     });
-  }
-
-  // try to get the output layer from the last console command
-  // (if multiple layers are output, pick one of the output layers)
-  // @lyrId  index of the currently edited layer
-  function getOutputLayer(lyrId, dataset, commands) {
-    var lastCmd = commands[commands.length-1],
-        layers = dataset.layers,
-        lyr;
-    if (lastCmd.options.no_replace) {
-      // pick last layer if a new layer has been created
-      // (new layers should be appended to the list of layers -- need to test)
-      lyr = layers[layers.length-1];
-    } else {
-      // use the layer in the same position as the currently selected layer;
-      // this may not be the output layer if a different layer was explicitly
-      // targeted.
-      lyr = layers[lyrId] || layers[0];
-    }
-    return lyr;
   }
 
   function onError(err) {
@@ -357,7 +335,9 @@ function Console(model) {
 
   function consoleMessage() {
     var msg = gui.formatMessageArgs(arguments);
-    toLog(msg, 'console-message');
+    if (MapShaper.LOGGING) {
+      toLog(msg, 'console-message');
+    }
   }
 
   function consoleError() {

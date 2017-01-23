@@ -5,9 +5,9 @@ mapshaper-file-types
 
 var cli = {};
 
-cli.isFile = function(path) {
+cli.isFile = function(path, cache) {
   var ss = cli.statSync(path);
-  return ss && ss.isFile() || false;
+  return cache && (path in cache) || ss && ss.isFile() || false;
 };
 
 cli.fileSize = function(path) {
@@ -21,21 +21,28 @@ cli.isDirectory = function(path) {
 };
 
 // @encoding (optional) e.g. 'utf8'
-cli.readFile = function(fname, encoding) {
-  var lib = require(fname == '/dev/stdin' ? 'rw' : 'fs');
-  var content = lib.readFileSync(fname);
-  if (encoding) {
+cli.readFile = function(fname, encoding, cache) {
+  var content;
+  if (cache && (fname in cache)) {
+    content = cache[fname];
+    delete cache[fname];
+  } else {
+    content = require(fname == '/dev/stdin' ? 'rw' : 'fs').readFileSync(fname);
+  }
+  if (encoding && Buffer.isBuffer(content)) {
     content = MapShaper.decodeString(content, encoding);
   }
   return content;
 };
 
-// @content Buffer, ArrayBuffer or string
-cli.writeFile = function(path, content) {
-  if (content instanceof ArrayBuffer) {
-    content = cli.convertArrayBuffer(content);
+// @content Buffer or string
+cli.writeFile = function(path, content, cb) {
+  var fs = require('rw');
+  if (cb) {
+    fs.writeFile(path, content, cb);
+  } else {
+    fs.writeFileSync(path, content);
   }
-  require('rw').writeFileSync(path, content);
 };
 
 // Returns Node Buffer
@@ -67,11 +74,11 @@ cli.expandFileName = function(name) {
 };
 
 // Expand any wildcards and check that files exist.
-cli.validateInputFiles = function(files) {
+cli.validateInputFiles = function(files, cache) {
   files = files.reduce(function(memo, name) {
     return memo.concat(cli.expandFileName(name));
   }, []);
-  files.forEach(cli.checkFileExists);
+  files.forEach(function(f) {cli.checkFileExists(f, cache);});
   return files;
 };
 
@@ -83,8 +90,8 @@ cli.validateOutputDir = function(name) {
 
 // TODO: rename and improve
 // Want to test if a path is something readable (e.g. file or stdin)
-cli.checkFileExists = function(path) {
-  if (!cli.isFile(path) && path != '/dev/stdin') {
+cli.checkFileExists = function(path, cache) {
+  if (!cli.isFile(path, cache) && path != '/dev/stdin') {
     stop("File not found (" + path + ")");
   }
 };

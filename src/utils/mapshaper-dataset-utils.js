@@ -60,6 +60,13 @@ MapShaper.copyDatasetForExport = function(dataset) {
   return d2;
 };
 
+// shallow-copy layers, so they can be renamed (for export)
+MapShaper.copyDatasetForRenaming = function(dataset) {
+  return utils.defaults({
+    layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
+  }, dataset);
+};
+
 // make a stub copy if the no_replace option is given, else pass thru src layer
 MapShaper.getOutputLayer = function(src, opts) {
   return opts && opts.no_replace ? {geometry_type: src.geometry_type} : src;
@@ -163,26 +170,11 @@ MapShaper.isolateLayer = function(layer, dataset) {
   }, dataset);
 };
 
-// @target is a layer identifier or a comma-sep. list of identifiers
-// an identifier is a literal name, a name containing "*" wildcard or
-// a 0-based array index
-MapShaper.findMatchingLayers = function(layers, target) {
-  var ii = [];
-  String(target).split(',').forEach(function(id) {
-    var i = Number(id),
-        rxp = utils.wildcardToRegExp(id);
-    if (utils.isInteger(i)) {
-      ii.push(i); // TODO: handle out-of-range index
-    } else {
-      layers.forEach(function(lyr, i) {
-        if (rxp.test(lyr.name)) ii.push(i);
-      });
-    }
-  });
-
-  ii = utils.uniq(ii); // remove dupes
-  return ii.map(function(i) {
-    return layers[i];
+// legacy function (TODO: update tests and remove)
+MapShaper.findMatchingLayers = function(layers, pattern) {
+  var test = MapShaper.getTargetMatch(pattern);
+  return layers.filter(function(lyr, i) {
+    return test(lyr, i);
   });
 };
 

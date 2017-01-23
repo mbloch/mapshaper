@@ -26,9 +26,8 @@ describe('mapshaper-svg.js', function () {
   });
 
   it('outputs svg file if output filename ends in ".svg"', function(done) {
-    api.internal.processFileContent('-i test/test_data/two_states.shp -o two_states.svg', null, function(err, output) {
-      assert.equal(output[0].filename, 'two_states.svg');
-      assert(/^<\?xml version="1.0"\?>/.test(output[0].content));
+    api.applyCommands('-i test/test_data/two_states.shp -o two_states.svg', {}, function(err, output) {
+      assert(/^<\?xml version="1.0"\?>/.test(output['two_states.svg']));
       done();
     });
   });

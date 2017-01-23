@@ -60,7 +60,7 @@ MapShaper.getDelimRowFormatter = function(fields, data) {
 
 MapShaper.getExportDelimiter = function(info, opts) {
   var delim = ','; // default
-  var outputExt = opts.output_file ? utils.getFileExtension(opts.output_file) : '';
+  var outputExt = opts.file ? utils.getFileExtension(opts.file) : '';
   if (opts.delimiter) {
     delim = opts.delimiter;
   } else if (outputExt == 'tsv') {
@@ -77,8 +77,8 @@ MapShaper.getExportDelimiter = function(info, opts) {
 // an extension.
 MapShaper.getDelimFileExtension = function(delim, opts) {
   var ext = 'txt'; // default
-  if (opts.output_file) {
-    ext = utils.getFileExtension(opts.output_file);
+  if (opts.file) {
+    ext = utils.getFileExtension(opts.file);
   } else if (delim == '\t') {
     ext = 'tsv';
   } else if (delim == ',') {
