@@ -106,7 +106,7 @@ function LayerControl(model) {
   function deleteLayer(lyr, dataset) {
     var active;
     model.deleteLayer(lyr, dataset);
-    if (model.empty()) {
+    if (model.isEmpty()) {
       // refresh browser if deleted layer was the last layer
       window.location.href = window.location.href.toString();
     } else {

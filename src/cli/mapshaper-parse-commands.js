@@ -3,6 +3,12 @@
 // Parse an array or a string of command line tokens into an array of
 // command objects.
 MapShaper.parseCommands = function(tokens) {
+  if (Array.isArray(tokens) && utils.isObject(tokens[0])) {
+    // argv seems to contain parsed commands already... make a copy
+    return tokens.map(function(cmd) {
+      return {name: cmd.name, options: utils.extend({}, cmd.options)};
+    });
+  }
   if (utils.isString(tokens)) {
     tokens = MapShaper.splitShellTokens(tokens);
   }

@@ -180,11 +180,7 @@ api.runCommand = function(cmd, catalog, cb) {
         // don't propagate data if output is final
         catalog = null;
       }
-      if (opts.callback) {
-        opts.callback(outputFiles);
-      } else {
-        return MapShaper.writeFiles(outputFiles, opts, done);
-      }
+      return MapShaper.writeFiles(outputFiles, opts, done);
 
     } else if (name == 'point-grid') {
       outputLayers = [api.pointGrid(targetDataset, opts)];

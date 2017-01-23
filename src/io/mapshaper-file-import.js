@@ -4,7 +4,7 @@ dbf-import
 */
 
 api.importFiles = function(opts) {
-  var files = opts.files ? cli.validateInputFiles(opts.files) : [],
+  var files = opts.files ? cli.validateInputFiles(opts.files, opts.input) : [],
       dataset;
 
   if (opts.stdin) {
@@ -24,18 +24,19 @@ api.importFiles = function(opts) {
 };
 
 api.importFile = function(path, opts) {
-  cli.checkFileExists(path);
   var isBinary = MapShaper.isBinaryFile(path),
       isShp = MapShaper.guessInputFileType(path) == 'shp',
       input = {},
+      cache = opts && opts.input || null,
       type, content;
 
+  cli.checkFileExists(path, cache);
   if (isShp) {
     content = null; // let ShpReader read the file (supports larger files)
   } else if (isBinary) {
-    content = cli.readFile(path);
+    content = cli.readFile(path, null, cache);
   } else {
-    content = cli.readFile(path, opts && opts.encoding || 'utf-8');
+    content = cli.readFile(path, opts && opts.encoding || 'utf-8', cache);
   }
   type = MapShaper.guessInputFileType(path) || MapShaper.guessInputContentType(content);
   if (!type) {
@@ -55,7 +56,7 @@ api.importFile = function(path, opts) {
   input[type] = {filename: path, content: content};
   content = null; // for g.c.
   if (type == 'shp' || type == 'dbf') {
-    MapShaper.readShapefileAuxFiles(path, input);
+    MapShaper.readShapefileAuxFiles(path, input, cache);
   }
   if (type == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
@@ -80,17 +81,17 @@ api.importDataTable = function(path, opts) {
 };
 */
 
-MapShaper.readShapefileAuxFiles = function(path, obj) {
+MapShaper.readShapefileAuxFiles = function(path, obj, cache) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
   var cpgPath = utils.replaceFileExtension(path, 'cpg');
   var prjPath = utils.replaceFileExtension(path, 'prj');
-  if (cli.isFile(prjPath)) {
-    obj.prj = {filename: prjPath, content: cli.readFile(prjPath, 'utf-8')};
+  if (cli.isFile(prjPath, cache)) {
+    obj.prj = {filename: prjPath, content: cli.readFile(prjPath, 'utf-8', cache)};
   }
-  if (!obj.dbf && cli.isFile(dbfPath)) {
-    obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath)};
+  if (!obj.dbf && cli.isFile(dbfPath, cache)) {
+    obj.dbf = {filename: dbfPath, content: cli.readFile(dbfPath, null, cache)};
   }
-  if (obj.dbf && cli.isFile(cpgPath)) {
-    obj.cpg = {filename: cpgPath, content: cli.readFile(cpgPath, 'utf-8').trim()};
+  if (obj.dbf && cli.isFile(cpgPath, cache)) {
+    obj.cpg = {filename: cpgPath, content: cli.readFile(cpgPath, 'utf-8', cache).trim()};
   }
 };

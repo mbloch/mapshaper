@@ -28,7 +28,7 @@ function Catalog() {
       this.removeDataset(dataset);
     }
 
-    if (this.empty()) {
+    if (this.isEmpty()) {
       target = null;
     } else if (targ.layers[0] == lyr) {
       // deleting first target layer (selected in gui) -- switch to some other layer
@@ -118,7 +118,7 @@ function Catalog() {
     return found;
   };
 
-  this.empty = function() {
+  this.isEmpty = function() {
     return datasets.length === 0;
   };
 

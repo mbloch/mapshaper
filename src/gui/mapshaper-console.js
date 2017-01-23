@@ -46,7 +46,7 @@ function Console(model) {
   }
 
   function turnOn() {
-    if (!_isOpen && !model.empty()) {
+    if (!_isOpen && !model.isEmpty()) {
       _isOpen = true;
       stop = MapShaper.stop = consoleStop;
       error = MapShaper.error = consoleError;

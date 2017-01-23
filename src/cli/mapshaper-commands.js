@@ -1,126 +1,98 @@
 /* @requires mapshaper-run-command, mapshaper-parse-commands, mapshaper-catalog */
 
 // Parse command line args into commands and run them
-// @argv Array of command line tokens or single string of commands
+// @argv String or array of command line args, or array of parsed commands
 api.runCommands = function(argv, done) {
-  var commands, last;
+  var commands;
   try {
-    if (Array.isArray(argv) && argv.length > 0 && argv[0].name) {
-      // argv seems to contain parsed commands
-      commands = argv;
-    } else {
-      commands = MapShaper.parseCommands(argv);
-    }
-    last = commands[commands.length-1];
-    if (last && last.name == 'o') {
-      // final output -- ok to modify dataset in-place during export, avoids
-      //   having to copy entire dataset
-      last.options.final = true;
-    }
+    commands = MapShaper.parseCommands(argv);
   } catch(e) {
     return done(e);
   }
-
-  if (commands.length === 0) {
-    return done(new APIError("No commands to run"));
-  }
-
   MapShaper.runParsedCommands(commands, function(err, catalog) {
     done(err);
   });
 };
 
-// Current api:
-// @commands  String containing command line arguments or array of parsed commands
+// @commands  String or array of command line args, or array of parsed commands
 // @input  Object containing file contents indexed by filename
-// @done  Callback: function(<error>, <output>), where output is an object containing
-//           output from -o command(s) indexed by filename
-//
-// <0.4 api (deprecated): see MapShaper.applyCommands_v1() below
+// @done  Callback: function(<error>, <output>), where output is an object
+//           containing output from -o command(s) indexed by filename
 //
 api.applyCommands = function(commands, input, done) {
-  if (utils.isString(input) || utils.isArray(input) || (input && input.type)) {
-    // old (deprecated) api: input is the content of a CSV or JSON file
-    return MapShaper.applyCommands_v1(commands, input, done);
+  var output = [],
+      type = MapShaper.guessInputContentType(input);
+
+  try {
+    commands = MapShaper.parseCommands(commands);
+  } catch(e) {
+    return done(e);
   }
-  cli.input = input;
-  cli.output = {}; // tells cli to accumulate output instead of writing to file
-  api.runCommands(commands, function(err) {
-    var o = cli.output;
-    delete cli.input;
-    delete cli.output;
-    done(err, o);
-  });
-};
-
-// Apply a set of processing commands to the contents of an input file
-// @argv Command line arguments, as string or array
-// @done Callback: function(<error>, <output>)
-MapShaper.applyCommands_v1 = function(argv, content, done) {
-  MapShaper.processFileContent(argv, content, function(err, exports) {
-    var output = null;
-    if (!err) {
-      output = exports.map(function(obj) {
-        return obj.content;
-      });
-      if (output.length == 1) {
-        output = output[0];
-      }
+  if (type == 'text' || type == 'json') {
+    // old api: input is the content of a CSV or JSON file
+    // return done(new APIError('applyCommands() has changed, see v0.4 docs'));
+    message("Warning: applyCommands() was called with deprecated input format");
+    return MapShaper.applyCommandsOld(commands, input, done);
+  }
+  // add options to -i and -o commands to bypass file i/o
+  commands = commands.map(function(cmd) {
+    // copy options so passed-in commands are unchanged
+    if (cmd.name == 'i' && input) {
+      cmd.options.input = input;
+    } else if (cmd.name == 'o') {
+      cmd.options.output = output;
     }
-    done(err, output);
+    return cmd;
+  });
+
+  MapShaper.runParsedCommands(commands, function(err) {
+    var data = output.reduce(function(memo, o) {
+        memo[o.filename] = o.content;
+        return memo;
+      }, {});
+    done(err, data);
   });
 };
 
+// TODO: rewrite applyCommands() tests and remove this function
+// @commands array of parsed commands
+// @content a JSON or CSV dataset
+// @done callback: function(err, <data>) where <data> is the content of a
+//     single output file or an array if multiple files are output
+//
+MapShaper.applyCommandsOld = function(commands, content, done) {
+  var output = [], lastCmd;
+  commands = MapShaper.runAndRemoveInfoCommands(commands);
+  if (commands.length === 0 || commands[0].name != 'i') {
+    commands.unshift({name: 'i', options: {}});
+  }
+  commands[0].options.input = {input: content};
+  commands[0].options.files = ['input'];
+  lastCmd = commands.pop();
+  if (lastCmd.name != 'o') {
+    commands.push(lastCmd);
+    lastCmd = {name: 'o', options: {}};
+  }
+  commands.push(lastCmd);
+  lastCmd.options.output = output;
+  MapShaper.runParsedCommands(commands, function(err) {
+    var data = output.map(function(o) {return o.content;});
+    if (data.length == 1) {
+      data = data[0];
+    }
+    done(err, data);
+  });
+};
+
+// TODO: rewrite tests and remove this function
 MapShaper.testCommands = function(argv, done) {
   MapShaper.runParsedCommands(MapShaper.parseCommands(argv), function(err, catalog) {
     var target = catalog && catalog.getDefaultTarget();
     var output;
     if (!err && target) {
-      // returns dataset for compatibility with versions < 0.4.0
+      // returns dataset for compatibility with some older tests
       output = target.dataset;
     }
-    done(err, output);
-  });
-};
-
-// Capture output data instead of writing files (useful for testing)
-// @tokens Command line arguments, as string or array
-// @content (may be null) Contents of input data file
-// @done: Callback function(<error>, <output>); <output> is an array of objects
-//        with properties "content" and "filename"
-MapShaper.processFileContent = function(tokens, content, done) {
-  var catalog, dataset, commands, lastCmd, inOpts, output;
-  try {
-    commands = MapShaper.parseCommands(tokens);
-    commands = MapShaper.runAndRemoveInfoCommands(commands);
-
-    // if we're processing raw content, import it to a dataset object
-    if (content) {
-      // if first command is -i, use -i options for importing
-      if (commands[0] && commands[0].name == 'i') {
-        inOpts = commands.shift().options;
-      } else {
-        inOpts = {};
-      }
-      dataset = MapShaper.importFileContent(content, null, inOpts);
-      catalog = new Catalog().addDataset(dataset);
-    }
-
-    // if last command is -o, use -o options for exporting
-    lastCmd = commands[commands.length-1];
-    if (!lastCmd || lastCmd.name != 'o') {
-      lastCmd = {name: 'o', options: {}};
-      commands.push(lastCmd);
-    }
-    // export to callback, not file
-    lastCmd.options.callback = function(data) {
-      output = data;
-    };
-  } catch(e) {
-    return done(e);
-  }
-
-  MapShaper.runParsedCommands(commands, catalog, function(err) {
     done(err, output);
   });
 };
@@ -133,7 +105,7 @@ MapShaper.processFileContent = function(tokens, content, done) {
 //
 MapShaper.runParsedCommands = function(commands) {
   var catalog = new Catalog(),
-      done;
+      last, done;
 
   if (arguments.length == 2) {
     done = arguments[1];
@@ -153,12 +125,14 @@ MapShaper.runParsedCommands = function(commands) {
     error("Expected an array of parsed commands");
   }
 
+  if (commands.length === 0) {
+    return done(new APIError("No commands to run"));
+  }
   commands = MapShaper.runAndRemoveInfoCommands(commands);
-  commands = MapShaper.divideImportCommand(commands);
-
   if (commands.length === 0) {
     return done(null);
   }
+  commands = MapShaper.divideImportCommand(commands);
 
   utils.reduceAsync(commands, catalog, function(catalog, cmd, nextCmd) {
     api.runCommand(cmd, catalog, nextCmd);
@@ -173,8 +147,16 @@ MapShaper.runParsedCommands = function(commands) {
 //
 MapShaper.divideImportCommand = function(commands) {
   var firstCmd = commands[0],
-      opts = firstCmd && firstCmd.options;
-  if (!firstCmd || firstCmd.name != 'i' || opts.stdin || opts.merge_files ||
+      lastCmd = commands[commands.length-1],
+      opts = firstCmd.options;
+
+  if (lastCmd.name == 'o') {
+    // final output -- ok to modify dataset in-place during export, avoids
+    //   having to copy entire dataset
+    lastCmd.options.final = true;
+  }
+
+  if (firstCmd.name != 'i' || opts.stdin || opts.merge_files ||
     opts.combine_files || !opts.files || opts.files.length < 2) {
     return commands;
   }

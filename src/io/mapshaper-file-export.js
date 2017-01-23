@@ -13,8 +13,16 @@ MapShaper.writeFiles = function(exports, opts, cb) {
     var paths = MapShaper.getOutputPaths(utils.pluck(exports, 'filename'), opts);
     exports.forEach(function(obj, i) {
       var path = paths[i];
-      cli.writeFile(path, obj.content);
-      message("Wrote " + path);
+      var content = obj.content;
+      if (content instanceof ArrayBuffer) {
+        content = cli.convertArrayBuffer(content); // convert to Buffer
+      }
+      if (opts.output) {
+        opts.output.push({filename: path, content: content});
+      } else {
+        cli.writeFile(path, obj.content);
+        message("Wrote " + path);
+      }
     });
   }
   if (cb) cb(null);
