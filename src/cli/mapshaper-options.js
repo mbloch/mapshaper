@@ -211,6 +211,7 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("clip")
+    .title("\nEditing commands")
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClipOpts)
@@ -230,7 +231,6 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("cluster")
-    .title("\nEditing commands")
     .describe("group polygons into compact clusters")
     .option("id-field", {
       describe: "field name of cluster id (default is \"cluster\")"
@@ -394,30 +394,6 @@ MapShaper.getOptionParser = function() {
   parser.command("graticule")
     .describe("create a graticule layer");
 
-  parser.command("point-grid")
-    .describe("create a rectangular grid of points")
-    .validate(validateGridOpts)
-    .option("-", {
-      label: "<cols,rows>",
-      describe: "size of the grid, e.g. -point-grid 100,100"
-    })
-    .option('interval', {
-      describe: 'distance between adjacent points, in source units',
-      type: 'number'
-    })
-    .option("cols", {
-      type: "integer"
-    })
-    .option("rows", {
-      type: "integer"
-    })
-    .option('bbox', {
-      type: "bbox",
-      describe: "xmin,ymin,xmax,ymax (default is bbox of data)"
-    })
-    .option("name", nameOpt);
-
-
   parser.command("innerlines")
     .describe("convert polygons to polylines along shared edges")
     .validate(validateInnerLinesOpts)
@@ -486,6 +462,29 @@ MapShaper.getOptionParser = function() {
     .validate(validateMergeLayersOpts)
     .option("name", nameOpt)
     .option("target", targetOpt);
+
+  parser.command("point-grid")
+    .describe("create a rectangular grid of points")
+    .validate(validateGridOpts)
+    .option("-", {
+      label: "<cols,rows>",
+      describe: "size of the grid, e.g. -point-grid 100,100"
+    })
+    .option('interval', {
+      describe: 'distance between adjacent points, in source units',
+      type: 'number'
+    })
+    .option("cols", {
+      type: "integer"
+    })
+    .option("rows", {
+      type: "integer"
+    })
+    .option('bbox', {
+      type: "bbox",
+      describe: "xmin,ymin,xmax,ymax (default is bbox of data)"
+    })
+    .option("name", nameOpt);
 
   parser.command("points")
     .describe("create a point layer from polygons or attribute data")
@@ -739,12 +738,12 @@ MapShaper.getOptionParser = function() {
   parser.command("target")
     .describe("set active layer")
     .validate(function(cmd) {
-      if (!cmd.options.layer && cmd._.length) {
-        cmd.options.layer = cmd._.shift();
+      if (!cmd.options.target && cmd._.length) {
+        cmd.options.target = cmd._.shift();
       }
     })
-    .option("layer", {
-      label: "<layer>",
+    .option("target", {
+      label: "<target>",
       describe: "name or index of layer to target"
     });
 

@@ -227,7 +227,7 @@ api.runCommand = function(cmd, catalog, cb) {
       MapShaper.applyCommand(api.uniq, targetLayers, arcs, opts);
 
     } else if (name == 'target') {
-      api.target(catalog, opts.layer);
+      api.target(catalog, opts.target);
 
     } else {
       error("Unhandled command: [" + name + "]");

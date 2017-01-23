@@ -54,10 +54,14 @@ function Catalog() {
   };
 
   this.findCommandTargets = function(pattern) {
-    var targets = [];
+    var targets = [], test, i;
     if (pattern) {
+      i = 0;
+      test = MapShaper.getTargetMatch(pattern);
       datasets.forEach(function(dataset) {
-        var layers = MapShaper.findMatchingLayers(dataset.layers, pattern);
+        var layers = dataset.layers.filter(function(lyr) {
+          return test(lyr, i++);
+        });
         if (layers.length > 0) {
           targets.push({
             layers: layers,
