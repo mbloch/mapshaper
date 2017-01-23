@@ -212,7 +212,7 @@ MapShaper.runAndRemoveInfoCommands = function(commands) {
     } else if (cmd.name == 'verbose') {
       MapShaper.VERBOSE = true;
     } else if (cmd.name == 'quiet') {
-      MapShaper.LOGGING = false;
+      MapShaper.QUIET = true;
     } else if (cmd.name == 'tracing') {
       MapShaper.TRACING = true;
     } else {

@@ -4,6 +4,7 @@ var api = {};
 var MapShaper = {
   VERSION: VERSION, // export version
   LOGGING: false,
+  QUIET: false,
   TRACING: false,
   VERBOSE: false
 };
@@ -63,7 +64,7 @@ api.printError = function(err) {
     if (!/Error/.test(msg)) {
       msg = "Error: " + msg;
     }
-    message(msg);
+    console.error(msg);
     message("Run mapshaper -h to view help");
   } else {
     throw err;
@@ -106,7 +107,7 @@ MapShaper.formatStringsAsGrid = function(arr) {
 };
 
 MapShaper.logArgs = function(args) {
-  if (MapShaper.LOGGING && utils.isArrayLike(args)) {
+  if (MapShaper.LOGGING && !MapShaper.QUIET && utils.isArrayLike(args)) {
     (console.error || console.log).call(console, MapShaper.formatLogArgs(args));
   }
 };

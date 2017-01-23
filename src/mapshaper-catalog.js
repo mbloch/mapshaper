@@ -160,7 +160,6 @@ function Catalog() {
   }
 }
 
-
 MapShaper.getFormattedLayerList = function(catalog) {
   var lines = [];
   catalog.forEachLayer(function(lyr, dataset, i) {

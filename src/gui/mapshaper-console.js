@@ -293,7 +293,7 @@ function Console(model) {
               active2.dataset.arcs.size() == prevArcCount;
 
       // restore default logging options, in case -quiet or -verbose command was run
-      MapShaper.LOGGING = true;
+      MapShaper.QUIET = false;
       MapShaper.VERBOSE = false;
 
       // kludge to signal map that filtered arcs need refreshing
@@ -335,7 +335,7 @@ function Console(model) {
 
   function consoleMessage() {
     var msg = gui.formatMessageArgs(arguments);
-    if (MapShaper.LOGGING) {
+    if (MapShaper.LOGGING && !MapShaper.QUIET) {
       toLog(msg, 'console-message');
     }
   }
