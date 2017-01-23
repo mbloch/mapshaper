@@ -163,8 +163,8 @@ function Catalog() {
 
 MapShaper.getFormattedLayerList = function(catalog) {
   var lines = [];
-  catalog.forEachLayer(function(lyr, i) {
-    lines.push('  [' + i + ']  ' + (lyr.name || '[unnamed]'));
+  catalog.forEachLayer(function(lyr, dataset, i) {
+    lines.push('  [' + (i+1) + ']  ' + (lyr.name || '[unnamed]'));
   });
   return lines.length > 0 ? lines.join('\n') : '[none]';
 };
