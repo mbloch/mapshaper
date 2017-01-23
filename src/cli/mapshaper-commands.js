@@ -9,11 +9,14 @@ api.runCommands = function(argv, done) {
   } catch(e) {
     return done(e);
   }
-  MapShaper.runParsedCommands(commands, function(err, catalog) {
+  MapShaper.runParsedCommands(commands, null, function(err, catalog) {
     done(err);
   });
 };
 
+// Similar to runCommands(), but receives input files from an object and
+// returns output files to a callback, instead of using file I/O.
+//
 // @commands  String or array of command line args, or array of parsed commands
 // @input  Object containing file contents indexed by filename
 // @done  Callback: function(<error>, <output>), where output is an object
@@ -45,7 +48,7 @@ api.applyCommands = function(commands, input, done) {
     return cmd;
   });
 
-  MapShaper.runParsedCommands(commands, function(err) {
+  MapShaper.runParsedCommands(commands, null, function(err) {
     var data = output.reduce(function(memo, o) {
         memo[o.filename] = o.content;
         return memo;
@@ -75,7 +78,7 @@ MapShaper.applyCommandsOld = function(commands, content, done) {
   }
   commands.push(lastCmd);
   lastCmd.options.output = output;
-  MapShaper.runParsedCommands(commands, function(err) {
+  MapShaper.runParsedCommands(commands, null, function(err) {
     var data = output.map(function(o) {return o.content;});
     if (data.length == 1) {
       data = data[0];
@@ -86,7 +89,7 @@ MapShaper.applyCommandsOld = function(commands, content, done) {
 
 // TODO: rewrite tests and remove this function
 MapShaper.testCommands = function(argv, done) {
-  MapShaper.runParsedCommands(MapShaper.parseCommands(argv), function(err, catalog) {
+  MapShaper.runParsedCommands(MapShaper.parseCommands(argv), null, function(err, catalog) {
     var target = catalog && catalog.getDefaultTarget();
     var output;
     if (!err && target) {
@@ -98,23 +101,15 @@ MapShaper.testCommands = function(argv, done) {
 };
 
 // Execute a sequence of commands
-// Signature: function(commands, [catalog,] done)
 // @commands Array of parsed commands
-// [@catalog]: Optional Catalog object containing data
+// @catalog: Optional Catalog object containing previously imported data
 // @done: function(<error>, <catalog>)
 //
-MapShaper.runParsedCommands = function(commands) {
-  var catalog = new Catalog(),
-      last, done;
-
-  if (arguments.length == 2) {
-    done = arguments[1];
-  } else if (arguments.length == 3) {
-    catalog = arguments[1];
-    done = arguments[2];
-    if (catalog && catalog instanceof Catalog === false) {
-      error("Changed in v0.4: runParsedCommands() takes a Catalog object");
-    }
+MapShaper.runParsedCommands = function(commands, catalog, done) {
+  if (!catalog) {
+    catalog = new Catalog();
+  } else if (catalog instanceof Catalog === false) {
+    error("Changed in v0.4: runParsedCommands() takes a Catalog object");
   }
 
   if (!utils.isFunction(done)) {
