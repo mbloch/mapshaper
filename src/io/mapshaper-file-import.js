@@ -28,10 +28,11 @@ api.importFile = function(path, opts) {
       isShp = MapShaper.guessInputFileType(path) == 'shp',
       input = {},
       cache = opts && opts.input || null,
+      cached = cache && (path in cache),
       type, content;
 
   cli.checkFileExists(path, cache);
-  if (isShp) {
+  if (isShp && !cached) {
     content = null; // let ShpReader read the file (supports larger files)
   } else if (isBinary) {
     content = cli.readFile(path, null, cache);

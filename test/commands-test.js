@@ -222,6 +222,31 @@ describe('mapshaper-commands.js', function () {
         done();
       })
     })
+
+
+    it('accepts Buffer objects as input (Issue #159)', function(done) {
+      var fs = require('fs');
+      var shp = fs.readFileSync('test/test_data/three_points.shp');
+      var dbf = fs.readFileSync('test/test_data/three_points.dbf');
+      var input = {
+        'points.shp': shp,
+        'points.dbf': dbf
+      };
+      var geojson = {"type":"FeatureCollection","features":[
+        {"type":"Feature","geometry":{"type":"Point","coordinates":[-79.04411780507252,43.08771393436908]},"properties":{"name":"Niagara Falls"}},
+        {"type":"Feature","geometry":{"type":"Point","coordinates":[-62.06181800038502,5.686896063275327]},"properties":{"name":"Salto Angel"}},
+        {"type":"Feature","geometry":{"type":"Point","coordinates":[-54.58299719960377,-25.568291925005923]},"properties":{"name":"Iguazu Falls"}}
+      ]};
+      api.applyCommands('-i points.shp -filter-fields name -o -o format=geojson', input, function(err, output) {
+        assert(output['points.shx'] instanceof Buffer);
+        assert(output['points.shp'] instanceof Buffer);
+        assert(output['points.dbf'] instanceof Buffer);
+        assert.deepEqual(JSON.parse(output['points.json']), geojson);
+        done();
+      });
+
+    })
+
   })
 
   describe('applyCommands() (<v0.4 API)', function () {
