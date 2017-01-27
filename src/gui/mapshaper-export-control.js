@@ -43,10 +43,10 @@ var ExportControl = function(model) {
   // @done function(string|Error|null)
   function exportMenuSelection(done) {
     var opts, files;
-    opts = gui.parseFreeformOptions(El('#export-options .advanced-options').node().value, 'o');
-    if (!opts.format) opts.format = getSelectedFormat();
-    // ignoring command line "target" option
     try {
+      opts = gui.parseFreeformOptions(El('#export-options .advanced-options').node().value, 'o');
+      if (!opts.format) opts.format = getSelectedFormat();
+      // ignoring command line "target" option
       files = MapShaper.exportTargetLayers(getTargetLayers(), opts);
     } catch(e) {
       return done(e);
