@@ -1,16 +1,13 @@
 var api = require('../'),
   assert = require('assert');
 
-function fixPath(p) {
-  return require('path').join(__dirname, p);
-}
 
 describe('mapshaper-options.js', function () {
 
   describe('import', function () {
-    var file1 = fixPath("test_data/two_states.shp"),
-        file2 = fixPath("test_data/two_states.json"),
-        file3 = fixPath("test_data/two_states.shx");
+    var file1 = "test/test_data/two_states.shp",
+        file2 = "test/test_data/two_states.json",
+        file3 = "test/test_data/two_states.shx";
 
     bad("-i precision " + file1);
     bad("-i precision 0 " + file1);
@@ -38,7 +35,7 @@ describe('mapshaper-options.js', function () {
  })
 
   describe('output', function() {
-    var dir1 = fixPath("test_data");
+    var dir1 = "test/test_data";
     bad("-o output.shx");
     bad("-o output.shp output.json"); // only one file per -o command
 
@@ -135,8 +132,8 @@ describe('mapshaper-options.js', function () {
   })
 
   describe('join', function() {
-    var file1 = fixPath("test_data/two_states.dbf"),
-        file2 = fixPath("test_data/two_states.shp");
+    var file1 ="test/test_data/two_states.dbf",
+        file2 = "test/test_data/two_states.shp";
 
     good("-join " + file1 + " keys ID,FIPS fields FIPS,NAME", {source: file1, keys: ["ID","FIPS"], fields: ["FIPS","NAME"]})
     good("-join " + file1 + " keys ID,FIPS", {source: file1, keys: ["ID","FIPS"]}) // fields are optional

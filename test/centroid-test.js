@@ -1,12 +1,8 @@
 var assert = require('assert'),
     api = require("../");
 
-function fixPath(p) {
-  return require('path').join(__dirname, p);
-}
-
 function testInnerPoints(file, cmd, done) {
-  var cmd = fixPath(file) + " " + cmd;
+  var cmd = file + " " + cmd;
   api.internal.testCommands(cmd, function(err, data) {
     var polys = data.layers[0],
         points = data.layers[1];
@@ -27,19 +23,19 @@ describe('mapshaper-polygon-centroid.js', function () {
     var a = "-each 'cx=$.innerX, cy=$.innerY' -points x=cx y=cy +";
     var b = "-points inner +";
     it('file A', function(done) {
-      testInnerPoints('test_data/centroids/a.shp', a, done);
+      testInnerPoints('test/test_data/centroids/a.shp', a, done);
     })
     it('file B', function(done) {
-      testInnerPoints('test_data/centroids/b.shp', a, done);
+      testInnerPoints('test/test_data/centroids/b.shp', a, done);
     })
     it('file C', function(done) {
-      testInnerPoints('test_data/six_counties.shp', a, done);
+      testInnerPoints('test/test_data/six_counties.shp', a, done);
     })
     it('file A v2', function(done) {
-      testInnerPoints('test_data/centroids/a.shp', b, done);
+      testInnerPoints('test/test_data/centroids/a.shp', b, done);
     })
     it('file B v2', function(done) {
-      testInnerPoints('test_data/centroids/b.shp', b, done);
+      testInnerPoints('test/test_data/centroids/b.shp', b, done);
     })
   })
 

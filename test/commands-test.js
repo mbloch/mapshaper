@@ -3,13 +3,10 @@ var api = require('../'),
   fs = require('fs'),
   format = api.utils.format;
 
-function fixPath(p) {
-  return require('path').join(__dirname, p);
-}
 
 function runFile(cmd, done) {
   var args = require('shell-quote').parse(cmd);
-  var mapshaper = fixPath("../bin/mapshaper");
+  var mapshaper = "./bin/mapshaper";
   var execFile = require('child_process').execFile;
 
   execFile(mapshaper, args, function(err, stdout, stderr) {
@@ -19,7 +16,7 @@ function runFile(cmd, done) {
 
 function runCmd(cmd, input, done) {
   var args = require('shell-quote').parse(cmd);
-  var mapshaper = fixPath("../bin/mapshaper");
+  var mapshaper = "./bin/mapshaper";
   var str = api.utils.format("echo '%s' | %s %s", input, mapshaper, cmd);
   var exec = require('child_process').exec;
 
@@ -59,9 +56,9 @@ describe('stdin/stdout tests', function() {
 
 describe('mapshaper-commands.js', function () {
 
-  var states_shp = fixPath("test_data/two_states.shp"),
-      counties_shp = fixPath("test_data/six_counties.shp"),
-      states_csv = fixPath("test_data/states.csv");
+  var states_shp = "test/test_data/two_states.shp",
+      counties_shp = "test/test_data/six_counties.shp",
+      states_csv = "test/test_data/states.csv";
 
   describe('layer naming tests', function() {
 
@@ -251,7 +248,7 @@ describe('mapshaper-commands.js', function () {
 
   describe('applyCommands() (<v0.4 API)', function () {
     it('import GeoJSON points as string', function (done) {
-      var json = fs.readFileSync(fixPath('test_data/three_points.geojson'), 'utf8');
+      var json = fs.readFileSync('test/test_data/three_points.geojson', 'utf8');
       api.applyCommands('', json, function(err, output) {
         assert.deepEqual(JSON.parse(json), JSON.parse(output));
         done();
@@ -259,7 +256,7 @@ describe('mapshaper-commands.js', function () {
     })
 
     it('import GeoJSON points as object', function (done) {
-      var json = fs.readFileSync(fixPath('test_data/three_points.geojson'), 'utf8');
+      var json = fs.readFileSync('test/test_data/three_points.geojson', 'utf8');
       json = JSON.parse(json);
       api.applyCommands('', json, function(err, output) {
         assert.deepEqual(JSON.parse(output), json);
