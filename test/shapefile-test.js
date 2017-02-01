@@ -23,7 +23,7 @@ describe('mapshaper-shapefile.js', function () {
   })
 
   describe('.prj tests', function() {
-    it ('prj is exported if input prj is present', function() {
+    it('prj is exported if input prj is present', function() {
       var data = api.importFile(fixPath('test_data/three_points.shp'), {});
       var files = api.internal.exportFileContent(data, {});
       var prj = Utils.find(files, function(o) {
