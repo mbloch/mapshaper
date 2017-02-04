@@ -13,7 +13,7 @@ MapShaper.getProjInfo = function(dataset) {
   try {
     P = MapShaper.getDatasetProjection(dataset);
     if (P) {
-      info = require('mproj').internal.get_proj_defn(P);
+      info = MapShaper.crsToProj4(P);
     }
     if (!info) {
       info = "unknown";
@@ -22,6 +22,15 @@ MapShaper.getProjInfo = function(dataset) {
     info = e.message;
   }
   return info;
+};
+
+MapShaper.crsToProj4 = function(P) {
+  return require('mproj').internal.get_proj_defn(P);
+};
+
+MapShaper.crsAreEqual = function(a, b) {
+  var str = MapShaper.crsToProj4(a);
+  return !!str && str == MapShaper.crsToProj4(b);
 };
 
 MapShaper.getProjDefn = function(str) {
@@ -89,6 +98,7 @@ MapShaper.parsePrj = function(str) {
   }
   return MapShaper.getProjection(proj4);
 };
+
 
 function AlbersNYT() {
   var mproj = require('mproj');

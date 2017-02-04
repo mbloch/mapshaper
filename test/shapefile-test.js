@@ -9,17 +9,13 @@ function fixPath(p) {
 
 describe('mapshaper-shapefile.js', function () {
 
-  describe('Fix: point shapefile importing', function (done) {
-    it('import point shp', function () {
-      api.internal.testCommands('-i test/test_data/issues/shp_point_import/points.shp', function(err, dataset) {
+  it('Fix: point shapefile importing', function (done) {
 
-        assert.deepEqual(dataset.layers[0], {
-          shapes: [[[0, 0]], [[1, 1], [1, 2]]],
-          geometry_type: 'point'
-        });
-        done();
-      });
-    })
+    api.internal.testCommands('-i test/test_data/issues/shp_point_import/points.shp', function(err, dataset) {
+      assert.deepEqual(dataset.layers[0].shapes, [[[0, 0]], [[1, 1], [1, 2]]]);
+      assert.equal(dataset.layers[0].geometry_type, 'point');
+      done();
+    });
   })
 
   describe('.prj tests', function() {

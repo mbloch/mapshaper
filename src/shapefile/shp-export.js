@@ -15,8 +15,18 @@ MapShaper.exportShapefile = function(dataset, opts) {
 };
 
 MapShaper.exportPrjFile = function(lyr, dataset) {
+  var crs, inputPrj, outputPrj;
+  if (dataset.info) {
+    inputPrj = dataset.info.input_prj;
+    crs = dataset.info.crs;
+  }
+  if (crs && inputPrj && MapShaper.crsAreEqual(crs, MapShaper.parsePrj(inputPrj))) {
+    outputPrj = inputPrj;
+  } else if (!crs && inputPrj) { // dataset has not been reprojected
+    outputPrj = inputPrj;
+  }
   // TODO: generate .prj if projection is known
-  var outputPrj = dataset.info && !dataset.info.crs && dataset.info.input_prj;
+
   return outputPrj ? {
     content: outputPrj,
     filename: lyr.name + '.prj'

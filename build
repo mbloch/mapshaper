@@ -15,7 +15,6 @@ var requiredModules = [
   ];
 
 
-
 require("catty")({follow: follow})
   .addLibrary("lib")
   .addLibrary("src")
