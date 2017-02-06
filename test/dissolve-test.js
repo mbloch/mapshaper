@@ -6,7 +6,26 @@ var assert = require('assert'),
 
 describe('mapshaper-dissolve.js', function () {
 
+  describe('-dissolve command', function () {
+
+    it('test 1', function(done) {
+      var cmd = "-i test/test_data/six_counties.shp -dissolve + copy-fields NAME,STATE_FIPS sum-fields POP2000,MULT_RACE";
+        api.internal.testCommands(cmd, function(err, data) {
+        assert.equal(data.layers.length, 2);
+        var lyr1 = data.layers[0]; // original lyr
+        assert.equal(lyr1.data.size(), 6); // original data table hasn't been replaced
+
+        var lyr2 = data.layers[1]; // dissolved lyr
+        assert.deepEqual(lyr2.data.getRecords(),
+            [{NAME: 'District of Columbia', STATE_FIPS: '11', POP2000: 1916238, MULT_RACE: 76770}]);
+        done();
+      })
+    })
+
+  })
+
   describe('dissolve()', function() {
+
     it('dissolves a layer with no geometry', function() {
       var lyr = {
         data: new api.internal.DataTable([{foo: 1, bar: 2}, {foo: 2, bar: 3}, {foo: 2, bar: 4}])
@@ -14,10 +33,6 @@ describe('mapshaper-dissolve.js', function () {
       var lyr2 = api.dissolve(lyr, null, {field: 'foo', sum_fields: ['bar']})
       assert.deepEqual(lyr2.data.getRecords(), [{foo: 1, bar: 2}, {foo: 2, bar: 7}]);
     })
-
-  })
-
-  describe('dissolve()', function () {
 
     describe('two adjacent triangles', function () {
 

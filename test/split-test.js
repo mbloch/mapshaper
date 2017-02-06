@@ -2,6 +2,19 @@ var assert = require('assert'),
     api = require("../");
 
 describe('mapshaper-split.js', function () {
+
+  describe('-split command', function () {
+    it('test 1', function(done) {
+      var cmd = "-i test/test_data/two_states.shp -split STATE";
+      api.internal.testCommands(cmd, function(err, data) {
+        assert.equal(data.layers.length, 2);
+        assert.equal(data.layers[0].shapes.length, 1);
+        assert.equal(data.layers[1].shapes.length, 1);
+        done();
+      })
+    })
+  })
+
   describe('splitLayer()', function () {
     it('divides a layer into multiple named layers', function () {
       var records = [{foo: "spruce"}, {foo: "fir"}, {foo: "apple"}, {foo: "fir"}];

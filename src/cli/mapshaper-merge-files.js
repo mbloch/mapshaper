@@ -1,12 +1,5 @@
 /* @requires mapshaper-file-import, mapshaper-path-import, mapshaper-merging */
 
-// Import multiple files to one dataset and merge any compatible layers
-MapShaper.importMergedFiles = function(files, opts) {
-  var combined = MapShaper.importFiles(files, opts);
-  combined.layers = api.mergeLayers(combined.layers);
-  return combined;
-};
-
 // Import multiple files to a single dataset
 MapShaper.importFiles = function(files, opts) {
   var unbuiltTopology = false;

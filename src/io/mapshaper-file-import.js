@@ -4,17 +4,23 @@ dbf-import
 */
 
 api.importFiles = function(opts) {
-  var files = opts.files ? cli.validateInputFiles(opts.files, opts.input) : [],
+  var files = opts.files || [],
       dataset;
 
   if (opts.stdin) {
-    dataset = api.importFile('/dev/stdin', opts);
-  } else if (files.length > 0 === false) {
+    return api.importFile('/dev/stdin', opts);
+  }
+
+  if (files.length > 0 === false) {
     stop('Missing input file(s)');
-  } else if (files.length == 1) {
+  }
+
+  if (files.length == 1) {
     dataset = api.importFile(files[0], opts);
   } else if (opts.merge_files) {
-    dataset = MapShaper.importMergedFiles(files, opts);
+    // TODO: deprecate and remove this option (use -merge-layers cmd instead)
+    dataset = MapShaper.importFiles(files, opts);
+    dataset.layers = api.mergeLayers(dataset.layers);
   } else if (opts.combine_files) {
     dataset = MapShaper.importFiles(files, opts);
   } else {

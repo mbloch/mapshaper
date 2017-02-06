@@ -78,13 +78,12 @@ cli.expandFileName = function(name) {
   return files;
 };
 
-// Expand any wildcards and check that files exist.
-cli.validateInputFiles = function(files, cache) {
+// Expand any wildcards.
+cli.expandInputFiles = function(files) {
   return files.reduce(function(memo, name) {
     if (name.indexOf('*') > -1) {
       memo = memo.concat(cli.expandFileName(name));
     } else {
-      cli.checkFileExists(name, cache);
       memo.push(name);
     }
     return memo;

@@ -25,6 +25,20 @@ function runCmd(cmd, input, done) {
   });
 }
 
+describe('User-reported bug: wildcard expansion in Windows', function () {
+  it('files are processed, no error thrown', function (done) {
+    // this duplicates the error (Windows shell doesn't expand wildcards,
+    // but bash does)
+    var cmd = '-i test/test_data/issues/166/*.dbf -o format=csv';
+    api.applyCommands(cmd, {}, function(err, output) {
+      assert(!err);
+      assert('a_utm.csv' in output);
+      assert('b_utm.csv' in output);
+      done();
+    });
+  })
+})
+
 describe('stdin/stdout tests', function() {
   // Travis fails on these tests -- removing for now.
   return;
@@ -51,14 +65,11 @@ describe('stdin/stdout tests', function() {
       done();
     });
   })
-
 })
 
 describe('mapshaper-commands.js', function () {
 
-  var states_shp = "test/test_data/two_states.shp",
-      counties_shp = "test/test_data/six_counties.shp",
-      states_csv = "test/test_data/states.csv";
+  var states_shp = "test/test_data/two_states.shp";
 
   describe('layer naming tests', function() {
 
@@ -414,8 +425,6 @@ describe('mapshaper-commands.js', function () {
         });
     })
 
-
-
     it('Callback returns dataset for imported file', function(done) {
       mapshaper.internal.testCommands("-i " + states_shp, function(err, dataset) {
         assert.equal(dataset.layers[0].name, 'two_states');
@@ -426,35 +435,4 @@ describe('mapshaper-commands.js', function () {
   });
 
 
-  describe('-dissolve', function () {
-
-    it('test 1', function(done) {
-      var cmd = format("-i %s -dissolve + copy-fields NAME,STATE_FIPS sum-fields POP2000,MULT_RACE", counties_shp);
-        api.internal.testCommands(cmd, function(err, data) {
-        assert.equal(data.layers.length, 2);
-        var lyr1 = data.layers[0]; // original lyr
-        assert.equal(lyr1.data.size(), 6); // original data table hasn't been replaced
-
-        var lyr2 = data.layers[1]; // dissolved lyr
-        assert.deepEqual(lyr2.data.getRecords(),
-            [{NAME: 'District of Columbia', STATE_FIPS: '11', POP2000: 1916238, MULT_RACE: 76770}]);
-        done();
-      })
-    })
-
-  })
-
-  describe('-split', function () {
-
-    it('test 1', function(done) {
-      var cmd = format("-i %s -split STATE", states_shp);
-      api.internal.testCommands(cmd, function(err, data) {
-        assert.equal(data.layers.length, 2);
-        assert.equal(data.layers[0].shapes.length, 1);
-        assert.equal(data.layers[1].shapes.length, 1);
-        done();
-      })
-    })
-
-  })
 })

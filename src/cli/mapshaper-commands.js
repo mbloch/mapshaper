@@ -155,6 +155,7 @@ MapShaper.divideImportCommand = function(commands) {
     opts.combine_files || !opts.files || opts.files.length < 2) {
     return commands;
   }
+
   return (opts.files).reduce(function(memo, file) {
     var importCmd = {
       name: 'i',
