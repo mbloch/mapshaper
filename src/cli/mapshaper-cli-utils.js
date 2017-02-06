@@ -58,28 +58,37 @@ cli.convertArrayBuffer = function(buf) {
 // Expand any "*" wild cards in file name
 // (For the Windows command line; unix shells do this automatically)
 cli.expandFileName = function(name) {
-  if (name.indexOf('*') == -1) return [name];
-  var path = utils.parseLocalPath(name),
-      dir = path.directory || '.',
-      listing = require('fs').readdirSync(dir),
-      rxp = utils.wildcardToRegExp(path.filename);
+  var info = utils.parseLocalPath(name),
+      rxp = utils.wildcardToRegExp(info.filename),
+      dir = info.directory || '.',
+      files = [];
 
-  return listing.reduce(function(memo, item) {
-    var path = require('path').join(dir, item);
-    if (rxp.test(item) && cli.isFile(path)) {
-      memo.push(path);
-    }
-    return memo;
-  }, []);
+  try {
+    require('fs').readdirSync(dir).forEach(function(item) {
+      var path = require('path').join(dir, item);
+      if (rxp.test(item) && cli.isFile(path)) {
+        files.push(path);
+      }
+    });
+  } catch(e) {}
+
+  if (files.length === 0) {
+    stop('No files matched (' + name + ')');
+  }
+  return files;
 };
 
 // Expand any wildcards and check that files exist.
 cli.validateInputFiles = function(files, cache) {
-  files = files.reduce(function(memo, name) {
-    return memo.concat(cli.expandFileName(name));
+  return files.reduce(function(memo, name) {
+    if (name.indexOf('*') > -1) {
+      memo = memo.concat(cli.expandFileName(name));
+    } else {
+      cli.checkFileExists(name, cache);
+      memo.push(name);
+    }
+    return memo;
   }, []);
-  files.forEach(function(f) {cli.checkFileExists(f, cache);});
-  return files;
 };
 
 cli.validateOutputDir = function(name) {
