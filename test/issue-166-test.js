@@ -34,9 +34,18 @@ describe('Issue #165: .prj lost after combine-files', function () {
 
   it ('error if projected and unprojected Shapefiles are merged', function(done) {
     var path = 'test/test_data/issues/166/';
-    var i = '-i ' + path + 'a_utm.shp ' + path + 'd.shp combine-files';
+    var i = '-i ' + path + 'a_utm.shp ' + path + 'd_geo.shp combine-files';
     api.applyCommands(i + ' -merge-layers -o out.shp', {}, function(err, output) {
       assert.equal(err.name, 'APIError');
+      done();
+    });
+  });
+
+  it ('if incompatible projected Shapefiles are merged, .prj of first dataset is used', function(done) {
+    var path = 'test/test_data/issues/166/';
+    var i = '-i ' + path + 'a_utm.shp ' + path + 'e_merc.shp combine-files';
+    api.applyCommands(i + ' -merge-layers -o out.shp', {}, function(err, output) {
+      assert(/NAD_1983_UTM_Zone_18N/.test(output['out.prj']));
       done();
     });
   });
