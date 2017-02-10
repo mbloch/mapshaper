@@ -10,6 +10,16 @@ describe('mapshaper-calc.js', function () {
           data: new DataTable(data1)
         };
 
+    it ('first() captures value of first record', function() {
+      var result = evalCalcExpression(lyr1, null, 'first(foo)');
+      assert.equal(result, -1);
+    })
+
+    it ('last() captures value of last record', function() {
+      var result = evalCalcExpression(lyr1, null, 'last(foo)');
+      assert.equal(result, 4);
+    })
+
     it ('mode() picks first among equals', function() {
       var result = evalCalcExpression(lyr1, null, 'mode(foo)');
       assert.equal(result, -1);

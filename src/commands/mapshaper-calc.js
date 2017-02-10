@@ -42,7 +42,9 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
         median: captureNum,
         min: captureNum,
         max: captureNum,
-        mode: capture
+        mode: capture,
+        first: assignOnce,
+        last: assign
       },
       ctx2 = { // context for second phase (calculating results)
         count: function() {colNo++; return rowNo;},
@@ -51,7 +53,9 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
         min: function() {return utils.getArrayBounds(cols[colNo++]).min;},
         max: function() {return utils.getArrayBounds(cols[colNo++]).max;},
         average: function() {return utils.mean(cols[colNo++]);},
-        mode: function() {return MapShaper.getMode(cols[colNo++]);}
+        mode: function() {return MapShaper.getMode(cols[colNo++]);},
+        first: function() {return cols[colNo++];},
+        last: function() {return cols[colNo++];}
       },
       len = MapShaper.getFeatureCount(lyr),
       calc1, calc2, result;
@@ -106,6 +110,14 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
       stop("Expected a number, received:", val);
     }
     capture(val);
+  }
+
+  function assignOnce(val) {
+    if (rowNo === 0) assign(val);
+  }
+
+  function assign(val) {
+    cols[colNo++] = val;
   }
 
   function capture(val) {

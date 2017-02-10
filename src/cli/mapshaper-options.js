@@ -432,6 +432,9 @@ MapShaper.getOptionParser = function() {
       describe: "fields to sum when multiple source records match the same target",
       type: "comma-sep"
     })
+    .option("calc", {
+      describe: "use a JS expression to calculate many-to-one variables"
+    })
     .option("where", {
       describe: "use a JS expression to filter source records"
     })
