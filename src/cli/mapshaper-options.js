@@ -205,13 +205,18 @@ MapShaper.getOptionParser = function() {
       type: "flag" // for testing
     });
 
+  parser.command("assign")
+    .title("\nEditing commands")
+    .describe("borrow field values from nearby polygons")
+    .option("field", {
+
+    });
 
   // Work-in-progress (no .describe(), so hidden from -h)
   parser.command("clean")
     .option("target", targetOpt);
 
   parser.command("clip")
-    .title("\nEditing commands")
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClipOpts)

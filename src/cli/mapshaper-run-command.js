@@ -1,4 +1,5 @@
 /* @requires
+mapshaper-assign
 mapshaper-clean
 mapshaper-clip-erase
 mapshaper-cluster
@@ -101,7 +102,9 @@ api.runCommand = function(cmd, catalog, cb) {
       }
     }
 
-    if (name == 'cluster') {
+    if (name == 'assign') {
+      MapShaper.applyCommand(api.assign, targetLayers, arcs, opts);
+    } else if (name == 'cluster') {
       MapShaper.applyCommand(api.cluster, targetLayers, arcs, opts);
 
     } else if (name == 'calc') {

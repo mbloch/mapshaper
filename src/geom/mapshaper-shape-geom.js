@@ -296,11 +296,16 @@ geom.transposePoints = function(points) {
 };
 
 geom.calcPathLen = (function() {
-  var len;
+  var len, calcLen;
   function addSegLen(i, j, xx, yy) {
-    len += distance2D(xx[i], yy[i], xx[j], yy[j]);
+    len += calcLen(xx[i], yy[i], xx[j], yy[j]);
   }
-  return function(path, arcs) {
+  // @spherical (optional bool) calculate great circle length in meters
+  return function(path, arcs, spherical) {
+    if (spherical && arcs.isPlanar()) {
+      error("Expected lat-long coordinates");
+    }
+    calcLen = spherical ? greatCircleDistance : distance2D;
     len = 0;
     for (var i=0, n=path.length; i<n; i++) {
       arcs.forEachArcSegment(path[i], addSegLen);
