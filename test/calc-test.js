@@ -1,13 +1,35 @@
 var assert = require('assert'),
     api = require("../"),
-    evalCalcExpression = api.internal.evalCalcExpression;
+    evalCalcExpression = api.internal.evalCalcExpression,
+    DataTable = api.internal.DataTable;
 
 describe('mapshaper-calc.js', function () {
   describe('evalCalcExpression()', function () {
     var data1 = [{foo: -1}, {foo: 3}, {foo: 4}],
         lyr1 = {
-          data: new api.internal.DataTable(data1)
+          data: new DataTable(data1)
         };
+
+    it ('mode() picks first among equals', function() {
+      var result = evalCalcExpression(lyr1, null, 'mode(foo)');
+      assert.equal(result, -1);
+    })
+
+    it ('mode() picks most common string value', function() {
+      var lyr = {
+        data: new DataTable([{bar: 'a'}, {bar: 'b'}, {bar: 'a'}, {bar: 'c'}])
+      }
+      var result = evalCalcExpression(lyr, null, 'mode(bar)');
+      assert.equal(result, 'a');
+    })
+
+    it ('mode() picks most common numerical value', function() {
+      var lyr = {
+        data: new DataTable([{bar: 0}, {bar: 0}, {bar: 1}, {bar: 2}])
+      }
+      var result = evalCalcExpression(lyr, null, 'mode(bar)');
+      assert.strictEqual(result, 0);
+    })
 
     it ('sum()', function() {
       var result = evalCalcExpression(lyr1, null, 'sum(foo)');

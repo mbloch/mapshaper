@@ -2,6 +2,7 @@
 mapshaper-expressions
 mapshaper-dataset-utils
 mapshaper-filter
+mapshaper-calc-utils
 */
 
 // Calculate an expression across a group of features, print and return the result
@@ -28,9 +29,11 @@ api.calc = function(lyr, arcs, opts) {
   return result;
 };
 
-// TODO: make this reusable, e.g. return a function that takes an array of
-//   feature ids
 MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
+  return MapShaper.compileCalcExpression(lyr, arcs, exp)();
+};
+
+MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
   var rowNo = 0, colNo = 0, cols = [];
   var ctx1 = { // context for first phase (capturing values for each feature)
         count: capture,
@@ -38,7 +41,8 @@ MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
         average: captureNum,
         median: captureNum,
         min: captureNum,
-        max: captureNum
+        max: captureNum,
+        mode: capture
       },
       ctx2 = { // context for second phase (calculating results)
         count: function() {colNo++; return rowNo;},
@@ -46,10 +50,11 @@ MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
         median: function() {return utils.findMedian(cols[colNo++]);},
         min: function() {return utils.getArrayBounds(cols[colNo++]).min;},
         max: function() {return utils.getArrayBounds(cols[colNo++]).max;},
-        average: function() {return utils.mean(cols[colNo++]);}
+        average: function() {return utils.mean(cols[colNo++]);},
+        mode: function() {return MapShaper.getMode(cols[colNo++]);}
       },
       len = MapShaper.getFeatureCount(lyr),
-      calc1, calc2;
+      calc1, calc2, result;
 
   if (lyr.geometry_type) {
     // add functions related to layer geometry (e.g. for subdivide())
@@ -61,17 +66,40 @@ MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
   calc1 = MapShaper.compileFeatureExpression(exp, lyr, arcs, {context: ctx1});
   calc2 = MapShaper.compileFeatureExpression(exp, {data: lyr.data}, null, {returns: true, context: ctx2});
 
-  // phase 1: capture data
-  for (var i=0; i<len; i++) {
+  return function(ids) {
+    var result;
+    // phase 1: capture data
+    if (ids) procRecords(ids);
+    else procAll();
+    // phase 2: calculate
+    result = calc2(undefined);
+    reset();
+    return result;
+  };
+
+  function procAll() {
+    for (var i=0; i<len; i++) {
+      procRecord(i);
+    }
+  }
+
+  function procRecords(ids) {
+    ids.forEach(procRecord);
+  }
+
+  function procRecord(i) {
     calc1(i);
     rowNo++;
     colNo = 0;
   }
 
-  // phase 2: calculate
-  return calc2(undefined);
-
   function noop() {}
+
+  function reset() {
+    rowNo = 0;
+    colNo = 0;
+    cols = [];
+  }
 
   function captureNum(val) {
     if (isNaN(val) && val) { // accepting falsy values (be more strict?)

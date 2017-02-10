@@ -7,7 +7,7 @@ describe('mapshaper-cli-lib.js', function () {
   describe('expandInputFiles()', function () {
     it('files without wildcards are passed through (even missing files)', function () {
       assert.deepEqual(cli.expandInputFiles(['missing.json']), ['missing.json']);
-    })
+    });
 
     it('expands wild cards', function() {
       assert.deepEqual(cli.expandInputFiles(['test/test_data/centroids/*.shp']),
@@ -31,5 +31,4 @@ describe('mapshaper-cli-lib.js', function () {
     });
 
   })
-
 })

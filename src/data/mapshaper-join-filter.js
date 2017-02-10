@@ -1,4 +1,4 @@
-/* @requires mapshaper-expressions */
+/* @requires mapshaper-expressions, mapshaper-calc-utils */
 
 MapShaper.getJoinFilter = function(data, exp) {
   var test = MapShaper.getJoinFilterTestFunction(exp, data);
@@ -57,45 +57,21 @@ MapShaper.getJoinFilterCalcFunction = function(exp, data) {
   }
 
   return function(ids) {
+    var mode;
     reset();
     for (var i=0; i<ids.length; i++) {
       calc(ids[i]);
     }
+    mode = values ? MapShaper.getModeData(values) : null;
     return {
       max: max,
       min: min,
-      modes: values ? MapShaper.getModeValues(values) : null
+      modes: mode ? mode.modes : null,
+      margin: mode ? mode.margin : null
     };
   };
 };
 
-MapShaper.getModeValues = function(values) {
-  var maxCount = 0,
-      counts, uniq, modes, val, i, count;
-  if (values.length == 1) {
-    return values;
-  }
-  uniq = [];
-  counts = {};
-  // get max count and array of uniq values
-  for (i=0; i<values.length; i++) {
-    val = values[i];
-    if (val in counts === false) {
-      counts[val] = 0;
-      uniq.push(val);
-    }
-    count = ++counts[val];
-    if (count > maxCount) maxCount = count;
-  }
-  // get mode values (may be multiple)
-  modes = [];
-  for (i=0; i<uniq.length; i++) {
-    if (counts[uniq[i]] === maxCount) {
-      modes.push(uniq[i]);
-    }
-  }
-  return modes;
-};
 
 MapShaper.getJoinFilterTestFunction = function(exp, data) {
   var context, test, d;
