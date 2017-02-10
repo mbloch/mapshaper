@@ -67,16 +67,17 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
     ctx2.height = function() {return MapShaper.getLayerBounds(lyr, arcs).height();};
   }
 
-  calc1 = MapShaper.compileFeatureExpression(exp, lyr, arcs, {context: ctx1});
+  calc1 = MapShaper.compileFeatureExpression(exp, lyr, arcs, {context: ctx1, no_assign: true});
   calc2 = MapShaper.compileFeatureExpression(exp, {data: lyr.data}, null, {returns: true, context: ctx2});
 
-  return function(ids) {
+  // @destRec: optional destination record for assignments
+  return function(ids, destRec) {
     var result;
     // phase 1: capture data
     if (ids) procRecords(ids);
     else procAll();
     // phase 2: calculate
-    result = calc2(undefined);
+    result = calc2(undefined, destRec);
     reset();
     return result;
   };
@@ -92,6 +93,7 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
   }
 
   function procRecord(i) {
+    if (i < 0 || i >= len) error("Invalid record index");
     calc1(i);
     rowNo++;
     colNo = 0;

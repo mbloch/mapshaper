@@ -5,6 +5,7 @@ mapshaper-spatial-join
 mapshaper-data-utils
 dbf-import
 mapshaper-join-filter
+mapshaper-join-calc
 */
 
 api.join = function(targetLyr, dataset, src, opts) {
@@ -79,10 +80,14 @@ MapShaper.joinTables = function(dest, src, join, opts) {
       matchCount = 0,
       collisionCount = 0,
       retn = {},
-      srcRec, srcId, destRec, joinIds, joins, count, filter;
+      srcRec, srcId, destRec, joinIds, joins, count, filter, calc;
 
   if (opts.where) {
     filter = MapShaper.getJoinFilter(src, opts.where);
+  }
+
+  if (opts.calc) {
+    calc = MapShaper.getJoinCalc(src, opts.calc);
   }
 
   // join source records to target records
@@ -109,6 +114,9 @@ MapShaper.joinTables = function(dest, src, join, opts) {
       }
       joinCounts[srcId]++;
       count++;
+    }
+    if (calc) {
+      calc(joins, destRec);
     }
     if (count > 0) {
       matchCount++;
