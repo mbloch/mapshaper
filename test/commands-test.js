@@ -73,6 +73,19 @@ describe('mapshaper-commands.js', function () {
 
   describe('layer naming tests', function() {
 
+    it('Fix: name= option of second dataset ignored', function(done) {
+      var input = {
+        'a.json': [{a: 0}],
+        'b.json': [{b: 1}]
+      };
+      api.applyCommands('-i a.json name=one -i b.json name=two -o target=*',
+        input, function(err, output) {
+          assert.deepEqual(JSON.parse(output['one.json']), [{a: 0}]);
+          assert.deepEqual(JSON.parse(output['two.json']), [{b: 1}]);
+          done();
+        })
+    })
+
     it('"-innerlines +" creates an unnamed line layer', function(done) {
       var cmds =  api.internal.parseCommands(states_shp + " -innerlines +");
       api.internal.runParsedCommands(cmds, null, function(err, catalog) {

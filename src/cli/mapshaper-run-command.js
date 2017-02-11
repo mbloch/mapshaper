@@ -150,9 +150,10 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'i') {
       if (opts.replace) catalog = new Catalog();
-      targetDataset = api.importFiles(cmd.options); // kludge to allow layer naming below
+      targetDataset = api.importFiles(cmd.options);
       if (targetDataset) {
         catalog.addDataset(targetDataset);
+        targetLayers = null; // kludge to allow layer naming below
       }
 
     } else if (name == 'info') {
