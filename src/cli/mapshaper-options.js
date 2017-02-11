@@ -64,10 +64,11 @@ MapShaper.getOptionParser = function() {
 
   parser.note("Enter mapshaper -help <command> to view options for a single command");
 
+  parser.section("I/O commands");
+
   parser.default('i');
 
   parser.command('i')
-    .title("I/O commands")
     .describe("input one or more files")
     .validate(validateInputOpts)
     .option("files", {
@@ -205,12 +206,11 @@ MapShaper.getOptionParser = function() {
       type: "flag" // for testing
     });
 
-  parser.command("assign")
-    .title("\nEditing commands")
-    .describe("borrow field values from nearby polygons")
-    .option("field", {
+  parser.section("\nEditing commands");
 
-    });
+  parser.command("assign")
+    // .describe("borrow field values from nearby polygons")
+    .option("field", {});
 
   // Work-in-progress (no .describe(), so hidden from -h)
   parser.command("clean")
@@ -769,9 +769,9 @@ MapShaper.getOptionParser = function() {
     .option("target", targetOpt);
 
   // Info commands
+  parser.section("\nInformational commands");
 
   parser.command("calc")
-    .title("\nInformational commands")
     .describe("calculate statistics about the features in a layer")
     .example("Calculate the total area of a polygon layer\n" +
       "$ mapshaper polygons.shp -calc 'sum($.area)'")

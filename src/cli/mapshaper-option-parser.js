@@ -37,6 +37,10 @@ function CommandParser() {
     return opts;
   };
 
+  this.section = function(name) {
+    return this.command("").title(name);
+  };
+
   this.parseArgv = function(raw) {
     var commandDefs = getCommands(),
         commands = [], cmd,
@@ -208,8 +212,8 @@ function CommandParser() {
         helpCommands, allCommands;
 
     allCommands = getCommands().filter(function(cmd) {
-      // hide commands without a description
-      return !!cmd.describe;
+      // hide commands without a description, except section headers
+      return !!cmd.describe || cmd.title;
     });
 
     if (commandNames) {
@@ -254,7 +258,7 @@ function CommandParser() {
     // Layout help display
     helpCommands.forEach(function(cmd) {
       if (!detailView && cmd.title) {
-        helpStr += cmd.title + "\n";
+        helpStr += cmd.title;
       }
       if (detailView) {
         helpStr += '\nCommand\n';
