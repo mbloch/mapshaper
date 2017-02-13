@@ -167,10 +167,12 @@ MapShaper.updateUnmatchedRecord = function(rec, copyFields, sumFields) {
   MapShaper.joinBySum(rec, {}, sumFields);
 };
 
+/*
 MapShaper.getCountFieldName = function(fields) {
   var uniq = MapShaper.getUniqFieldNames(fields.concat("joins"));
   return uniq.pop();
 };
+*/
 
 MapShaper.joinByCopy = function(dest, src, fields) {
   var f;

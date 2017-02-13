@@ -14,6 +14,23 @@ api.dataFill = function(lyr, arcs, opts) {
     count = MapShaper.fillMissingValues(lyr, field, MapShaper.getMultipleAssignment(lyr, field, arcs));
     verbose("count:", count);
   } while (count > 0);
+
+  if (opts.postprocess) {
+    MapShaper.fillDataIslands(lyr, field, arcs);
+    MapShaper.fillDataIslands(lyr, field, arcs); // kludge: second pass removes flipped donut-holes
+  }
+};
+
+MapShaper.fillDataIslands = function(lyr, field, arcs) {
+  var records = lyr.data.getRecords();
+  var getValue = MapShaper.getSingleAssignment(lyr, field, arcs, {min_border_pct: 0.5});
+  records.forEach(function(rec, shpId) {
+    var val = rec[field];
+    var nabe = getValue(shpId);
+    if (nabe && nabe != val) {
+      rec[field] = nabe;
+    }
+  });
 };
 
 MapShaper.fillMissingValues = function(lyr, field, getValue) {
@@ -30,8 +47,10 @@ MapShaper.fillMissingValues = function(lyr, field, getValue) {
   return count;
 };
 
-MapShaper.getSingleAssignment = function(lyr, field, arcs) {
+MapShaper.getSingleAssignment = function(lyr, field, arcs, opts) {
   var index = MapShaper.buildAssignmentIndex(lyr, field, arcs);
+  var minBorderPct = opts && opts.min_border_pct || 0;
+
   return function(shpId) {
     var nabes = index[shpId];
     var emptyLen = 0;
@@ -53,10 +72,11 @@ MapShaper.getSingleAssignment = function(lyr, field, arcs) {
       }
     }
 
+    if (fieldLen / (fieldLen + emptyLen) < minBorderPct) return null;
+
     return fieldLen > 0 ? fieldVal : null;
   };
 };
-
 
 MapShaper.getMultipleAssignment = function(lyr, field, arcs) {
   var index;
@@ -106,7 +126,6 @@ MapShaper.getEmptyRecordIds = function(records, field) {
   return ids;
 };
 
-
 MapShaper.buildAssignmentIndex = function(lyr, field, arcs) {
   var shapes = lyr.shapes;
   var records = lyr.data.getRecords();
@@ -126,10 +145,8 @@ MapShaper.buildAssignmentIndex = function(lyr, field, arcs) {
     for (var i=0; i<nabes.length; i++) {
       nabeId = nabes[i];
       arr.push({
-        // neighbor: nabeId,
         length: o[nabeId],
-        // properties: records[nabeId],
-        value: records[nabeId][field]
+        value: nabeId > -1 ? records[nabeId][field] : null
       });
     }
   });
@@ -137,7 +154,7 @@ MapShaper.buildAssignmentIndex = function(lyr, field, arcs) {
   return index2;
 
   function filter(a, b) {
-    return b > -1 && a > -1 ? [a, b] : null;
+    return a > -1 ? [a, b] : null;  // edges are b == -1
   }
 
   function onArc(arcId) {
@@ -146,7 +163,9 @@ MapShaper.buildAssignmentIndex = function(lyr, field, arcs) {
     if (ab) {
       len = geom.calcPathLen([arcId], arcs, !arcs.isPlanar());
       addArc(ab[0], ab[1], len);
-      addArc(ab[1], ab[0], len);
+      if (ab[1] > -1) { // arc is not an outside boundary
+        addArc(ab[1], ab[0], len);
+      }
     }
   }
 

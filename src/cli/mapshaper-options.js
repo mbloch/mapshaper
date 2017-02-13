@@ -212,6 +212,10 @@ MapShaper.getOptionParser = function() {
     // .describe("interpolate missing values by copying from neighbor polygons")
     .option("field", {
       describe: "name of field to fill out"
+    })
+    .option("postprocess", {
+      describe: "remove data islands",
+      type: "flag"
     });
 
   // Work-in-progress (no .describe(), so hidden from -h)
