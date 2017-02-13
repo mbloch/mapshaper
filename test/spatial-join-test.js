@@ -39,9 +39,9 @@ describe('mapshaper-spatial-join.js', function () {
         shapes:[[[0.5, 0.5]], [[0.25, 0.75]]],
         data: new DataTable([{count: 1, foo: 'a'}, {count: 3, foo: 'b'}])
       };
-      var opts = {sum_fields: ['count']};
+      var opts = {calc: "joins = _.count(), total=sum(count)"};
       api.joinPointsToPolygons(target.layers[0], target.arcs, src, opts);
-      assert.deepEqual(target.layers[0].data.getRecords(), [{count: 4, foo: 'a', joins: 2}] )
+      assert.deepEqual(target.layers[0].data.getRecords(), [{total: 4, joins: 2}] )
     })
 
     it('simple polygon to point join', function () {

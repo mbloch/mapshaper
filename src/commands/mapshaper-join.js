@@ -71,11 +71,9 @@ MapShaper.joinTables = function(dest, src, join, opts) {
   var srcRecords = src.getRecords(),
       destRecords = dest.getRecords(),
       unmatchedRecords = [],
-      joinFields = MapShaper.getFieldsToJoin(dest, src, opts),
+      joinFields = MapShaper.getFieldsToJoin(dest.getFields(), src.getFields(), opts),
       sumFields = opts.sum_fields || [],
       copyFields = utils.difference(joinFields, sumFields),
-      countField = MapShaper.getCountFieldName(dest.getFields()),
-      addCountField = sumFields.length > 0, // add a count field if we're aggregating records
       joinCounts = new Uint32Array(srcRecords.length),
       matchCount = 0,
       collisionCount = 0,
@@ -127,9 +125,6 @@ MapShaper.joinTables = function(dest, src, join, opts) {
         unmatchedRecords.push(utils.extend({}, destRec));
       }
       MapShaper.updateUnmatchedRecord(destRec, copyFields, sumFields);
-    }
-    if (addCountField) {
-      destRec[countField] = count;
     }
   }
   if (matchCount === 0) {
@@ -216,18 +211,22 @@ MapShaper.printJoinMessage = function(matches, n, joins, m, collisions) {
   }
 };
 
-MapShaper.getFieldsToJoin = function(destTable, srcTable, opts) {
+MapShaper.getFieldsToJoin = function(destFields, srcFields, opts) {
   var joinFields;
   if (opts.fields) {
-    joinFields = MapShaper.removeTypeHints(opts.fields);
+    if (opts.fields.indexOf('*') > -1) {
+      joinFields = srcFields;
+    } else {
+      joinFields = MapShaper.removeTypeHints(opts.fields);
+    }
   } else {
     // If a list of fields to join is not given, try to join all the
-    // source fields except the key field.
-    joinFields = srcTable.getFields();
+    // source fields, unless calc= option is present
+    joinFields = opts.calc ? [] : srcFields;
   }
   if (!opts.force) {
     // only overwrite existing fields if the "force" option is set.
-    joinFields = utils.difference(joinFields, destTable.getFields());
+    joinFields = utils.difference(joinFields, destFields);
   }
   return joinFields;
 };

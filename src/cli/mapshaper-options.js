@@ -427,7 +427,7 @@ MapShaper.getOptionParser = function() {
       type: "comma-sep"
     })
     .option("field-types", {
-      describe: "type hints for importing csv files, e.g. FIPS:str,STATE_FIPS:str",
+      describe: "type hints for csv source files, e.g. FIPS:str,STATE_FIPS:str",
       type: "comma-sep"
     })
     .option("sum-fields", {
@@ -435,7 +435,7 @@ MapShaper.getOptionParser = function() {
       type: "comma-sep"
     })
     .option("calc", {
-      describe: "use a JS expression to calculate many-to-one variables"
+      describe: "use a JS expression to calculate values for many-to-one joins"
     })
     .option("where", {
       describe: "use a JS expression to filter source records"

@@ -266,4 +266,37 @@ describe('mapshaper-join.js', function () {
     })
   })
 
+  describe('getFieldsToJoin()', function () {
+    it('Use fields option, if present', function () {
+      var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {fields: ['st']})
+      assert.deepEqual(fields, ['st']);
+    })
+
+    it('Use all fields, if fields option contains "*"', function () {
+      var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {fields: ['*']})
+      assert.deepEqual(fields, ['st', 'co']);
+    })
+
+    it('Use all fields, if fields option is missing', function () {
+      var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {})
+      assert.deepEqual(fields, ['st', 'co']);
+    })
+
+    it('Do not join fields that are already present in dest table', function () {
+      var fields = api.internal.getFieldsToJoin(['st'], ['st', 'co'], {})
+      assert.deepEqual(fields, ['co']);
+    })
+
+    it('Join fields that are already present in dest table if the "force" option is present', function () {
+      var fields = api.internal.getFieldsToJoin(['st'], ['st', 'co'], {force: true})
+      assert.deepEqual(fields, ['st', 'co']);
+    })
+
+    it('Do not join all fields by default if calc= option is present', function () {
+      var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {calc: 'n=count()'})
+      assert.deepEqual(fields, []);
+    })
+
+  })
+
 })
