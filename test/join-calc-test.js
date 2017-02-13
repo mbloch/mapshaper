@@ -55,6 +55,15 @@ describe('mapshaper-join-calc.js', function() {
       assert.deepEqual(records, [{count: 3}, {count: 5}]);
     })
 
+    it('collect() function', function() {
+      var f = api.internal.getJoinCalc(data, 'a = collect(fips), b=collect(area)');
+      var a = {}, b = {};
+      f([0, 1, 3], a);
+      f([], b);
+      assert.deepEqual(a, {a: ['41', '41', '51'], b: [500, 300, 450]});
+      assert.deepEqual(b, {a: null, b: null});
+    })
+
     it('supports multiple uses', function() {
       var f = api.internal.getJoinCalc(data, 'a = first(fips), b=last(fips), min_area = min(area), fips_mode = mode(fips), med=median(area)');
       var a = {}, b = {}, c = {}, d = {};

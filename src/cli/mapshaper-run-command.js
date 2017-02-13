@@ -1,8 +1,8 @@
 /* @requires
-mapshaper-assign
 mapshaper-clean
 mapshaper-clip-erase
 mapshaper-cluster
+mapshaper-data-fill
 mapshaper-dissolve
 mapshaper-dissolve2
 mapshaper-export
@@ -102,8 +102,8 @@ api.runCommand = function(cmd, catalog, cb) {
       }
     }
 
-    if (name == 'assign') {
-      MapShaper.applyCommand(api.assign, targetLayers, arcs, opts);
+    if (name == 'data-fill') {
+      MapShaper.applyCommand(api.dataFill, targetLayers, arcs, opts);
     } else if (name == 'cluster') {
       MapShaper.applyCommand(api.cluster, targetLayers, arcs, opts);
 

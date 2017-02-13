@@ -208,9 +208,11 @@ MapShaper.getOptionParser = function() {
 
   parser.section("\nEditing commands");
 
-  parser.command("assign")
-    // .describe("borrow field values from nearby polygons")
-    .option("field", {});
+  parser.command("data-fill")
+    // .describe("interpolate missing values by copying from neighbor polygons")
+    .option("field", {
+      describe: "name of field to fill out"
+    });
 
   // Work-in-progress (no .describe(), so hidden from -h)
   parser.command("clean")

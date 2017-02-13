@@ -1,6 +1,6 @@
 /* @require mapshaper-common, mapshaper-polygon-neighbors */
 
-api.assign = function(lyr, arcs, opts) {
+api.dataFill = function(lyr, arcs, opts) {
 
   var field = opts.field;
   var count;

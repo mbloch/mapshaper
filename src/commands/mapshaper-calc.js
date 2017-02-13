@@ -43,6 +43,7 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
         min: captureNum,
         max: captureNum,
         mode: capture,
+        collect: capture,
         first: assignOnce,
         last: assign
       },
@@ -54,6 +55,7 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
         max: wrap(max),
         average: wrap(utils.mean),
         mode: wrap(MapShaper.getMode),
+        collect: wrap(pass),
         first: wrap(pass),
         last: wrap(pass)
       },
