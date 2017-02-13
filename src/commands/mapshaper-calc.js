@@ -36,7 +36,7 @@ MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
 MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
   var rowNo = 0, colNo = 0, cols = [];
   var ctx1 = { // context for first phase (capturing values for each feature)
-        count: capture,
+        count: assign,
         sum: captureNum,
         average: captureNum,
         median: captureNum,
@@ -47,15 +47,15 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
         last: assign
       },
       ctx2 = { // context for second phase (calculating results)
-        count: function() {colNo++; return rowNo;},
-        sum: function() {return utils.sum(cols[colNo++]);},
-        median: function() {return utils.findMedian(cols[colNo++]);},
-        min: function() {return utils.getArrayBounds(cols[colNo++]).min;},
-        max: function() {return utils.getArrayBounds(cols[colNo++]).max;},
-        average: function() {return utils.mean(cols[colNo++]);},
-        mode: function() {return MapShaper.getMode(cols[colNo++]);},
-        first: function() {return cols[colNo++];},
-        last: function() {return cols[colNo++];}
+        count: wrap(function() {return rowNo;}, 0),
+        sum: wrap(utils.sum, 0),
+        median: wrap(utils.findMedian),
+        min: wrap(min),
+        max: wrap(max),
+        average: wrap(utils.mean),
+        mode: wrap(MapShaper.getMode),
+        first: wrap(pass),
+        last: wrap(pass)
       },
       len = MapShaper.getFeatureCount(lyr),
       calc1, calc2, result;
@@ -67,8 +67,10 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
     ctx2.height = function() {return MapShaper.getLayerBounds(lyr, arcs).height();};
   }
 
-  calc1 = MapShaper.compileFeatureExpression(exp, lyr, arcs, {context: ctx1, no_assign: true});
-  calc2 = MapShaper.compileFeatureExpression(exp, {data: lyr.data}, null, {returns: true, context: ctx2});
+  calc1 = MapShaper.compileFeatureExpression(exp, lyr, arcs, {context: ctx1,
+      no_assign: true});
+  calc2 = MapShaper.compileFeatureExpression(exp, {data: lyr.data}, null,
+      {returns: true, context: ctx2});
 
   // @destRec: optional destination record for assignments
   return function(ids, destRec) {
@@ -81,6 +83,25 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
     reset();
     return result;
   };
+
+  function pass(o) {return o;}
+
+  function max(arr) {
+    return utils.getArrayBounds(arr).max;
+  }
+
+  function min(arr) {
+    return utils.getArrayBounds(arr).min;
+  }
+
+  // process captured data, or return nodata value if no records have been captured
+  function wrap(proc, nullVal) {
+    var nodata = arguments.length > 1 ? nullVal : null;
+    return function() {
+      var c = colNo++;
+      return rowNo > 0 ? proc(cols[c]) : nodata;
+    };
+  }
 
   function procAll() {
     for (var i=0; i<len; i++) {
@@ -115,7 +136,8 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
   }
 
   function assignOnce(val) {
-    if (rowNo === 0) assign(val);
+    if (rowNo === 0) cols[colNo] = val;
+    colNo++;
   }
 
   function assign(val) {

@@ -16,6 +16,21 @@ describe('mapshaper-join-calc.js', function() {
     var copy = JSON.parse(JSON.stringify(records));
     var data = new DataTable(records);
 
+    it('null input yields null values, zero count', function() {
+      var f = api.internal.getJoinCalc(data, 'n = count(), min_area = min(area), fips_mode = mode(fips), tot_area = sum(area)');
+      var o = {};
+      f(null, o);
+      assert(deepStrictEqual(o, {n: 0, min_area: null, fips_mode: null, tot_area: 0}));
+    })
+
+    it('empty input yields null values, zero count', function() {
+      var f = api.internal.getJoinCalc(data,
+        'n = count(), max_area = max(area), mean_area=average(area), first_fips = first(fips), last_fips=last(fips)');
+      var o = {};
+      f([], o);
+      assert(deepStrictEqual(o, {n: 0, max_area: null, mean_area: null, first_fips: null, last_fips: null}));
+    })
+
     it('source records are not modified', function() {
       var f = api.internal.getJoinCalc(data, 'min_area = min(area), fips_mode = mode(fips)');
       f([0, 2, 3, 4], {});
@@ -41,28 +56,17 @@ describe('mapshaper-join-calc.js', function() {
     })
 
     it('supports multiple uses', function() {
-      var f = api.internal.getJoinCalc(data, 'min_area = min(area), fips_mode = mode(fips)');
-      var a = {}, b = {};
-      f([0], a);
+      var f = api.internal.getJoinCalc(data, 'a = first(fips), b=last(fips), min_area = min(area), fips_mode = mode(fips), med=median(area)');
+      var a = {}, b = {}, c = {}, d = {};
       f([1, 2, 3], b);
-      assert.deepEqual(a, {min_area: 500, fips_mode: '41'});
-      assert.deepEqual(b, {min_area: 300, fips_mode: '51'});
+      f([0], a);
+      f([], d);
+      f([1, 2, 3], c);
+      assert.deepEqual(a, {min_area: 500, fips_mode: '41', a: '41', b: '41', med: 500});
+      assert.deepEqual(b, {min_area: 300, fips_mode: '51', a: '41', b: '51', med: 450});
+      assert.deepEqual(c, {min_area: 300, fips_mode: '51', a: '41', b: '51', med: 450});
+      assert(deepStrictEqual(d, {min_area: null, fips_mode: null, a: null, b: null, med: null}));
     })
-
-    it('null input yields null values', function() {
-      var f = api.internal.getJoinCalc(data, 'min_area = min(area), fips_mode = mode(fips)');
-      var o = {};
-      f(null, o);
-      assert(deepStrictEqual(o, {min_area: null, fips_mode: null}));
-    })
-
-    it('empty input yields null values', function() {
-      var f = api.internal.getJoinCalc(data, 'min_area = min(area), fips_mode = mode(fips)');
-      var o = {};
-      f([], o);
-      assert(deepStrictEqual(o, {min_area: null, fips_mode: null}));
-    })
-
   })
 
   });
