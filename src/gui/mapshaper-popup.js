@@ -78,7 +78,7 @@ function Popup() {
           strval2 = MapShaper.formatInspectorValue(val2, type);
       if (strval == strval2) {
         // contents unchanged
-      } else if (val2 === null) {
+      } else if (val2 === null && type != 'object') { // allow null objects
         // invalid value; revert to previous value
         input.value(strval);
       } else {
@@ -95,7 +95,7 @@ function Popup() {
 MapShaper.formatInspectorValue = function(val, type) {
   var str;
   if (type == 'object') {
-    str = JSON.stringify(val);
+    str = val ? JSON.stringify(val) : "";
   } else {
     str = String(val);
   }

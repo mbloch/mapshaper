@@ -589,13 +589,13 @@ body.simplify #layer-control-btn {
 	border-spacing: 0px;
 }
 
-.popup td {
+.popup table td {
 	vertical-align: top;
-	padding: 2px 0;
-	/*font-weight: bold;*/
+	/* padding: 2px 0; */
 	min-width: 80px;
 	max-width: 180px;
 	color: black;
+	height: 17px; /* functions like min-height on <td> */
 }
 
 .popup td.field-name {
@@ -605,14 +605,19 @@ body.simplify #layer-control-btn {
 	min-width: 60px;
 }
 
+.popup .value {
+	outline: none;
+	word-wrap: break-word;
+}
+
 .popup .num-field {
 	font-style: italic;
 }
 
-.popup .empty {
+.popup .empty, .popup .null-value {
 	min-width: 4px;
-	min-height: 10px;
 	display: inline-block;
+	min-height: 13px;
 }
 
 .popup .null-value {
@@ -622,11 +627,6 @@ body.simplify #layer-control-btn {
 .popup .note {
 	font-style: italic;
 	text-align: right;
-}
-
-.popup .value {
-	outline: none;
-	word-wrap: break-word;
 }
 
 .popup .editable-cell .value.editing {

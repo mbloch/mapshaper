@@ -52,5 +52,8 @@ MapShaper.aggregateDataRecords = function(properties, getGroupId, opts) {
       dissolveRec[f] = (rec[f] || 0) + (dissolveRec[f] || 0);
     });
   });
+
+
+
   return arr;
 };

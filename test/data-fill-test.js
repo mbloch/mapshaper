@@ -94,9 +94,6 @@ describe('mapshaper-data-fill.js', function () {
     // |                 |
     // . --------------- .
     //
-    var coords = [[[1, 4], [4, 4], [4, 1], [1, 1], [1, 4]],  // abcda
-          [[2, 3], [3, 3], [3, 2], [2, 2], [2, 3]]];         // efghe
-
     var input = {
       type: 'FeatureCollection',
       features: [{
