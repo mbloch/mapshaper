@@ -26,7 +26,7 @@ MapShaper.exportGeoJSONCollection = function(lyr, dataset, opts, asString) {
       ids = MapShaper.exportIds(lyr.data, opts),
       useFeatures = !!(properties || ids),
       geojson = {},
-      collection, collname, bounds, stringify;
+      collection, collname, bounds, stringify, parts;
 
   if (properties && shapes && properties.length !== shapes.length) {
     error("[-o] Mismatch between number of properties and number of shapes");
@@ -44,6 +44,7 @@ MapShaper.exportGeoJSONCollection = function(lyr, dataset, opts, asString) {
     geojson.type = 'GeometryCollection';
     collname = 'geometries';
   }
+
 
   MapShaper.exportCRS(dataset, geojson);
   if (opts.bbox) {
@@ -79,8 +80,11 @@ MapShaper.exportGeoJSONCollection = function(lyr, dataset, opts, asString) {
   }, []);
 
   if (asString) {
+    // collection is an array of individual GeoJSON Feature strings,
+    // need to create complete GeoJSON output by concatenation.
     geojson[collname] = ["$"];
-    geojson = JSON.stringify(geojson).replace('"$"', '\n' + collection.join(',\n') + '\n');
+    parts = JSON.stringify(geojson).split('"$"');
+    geojson = parts[0] + '\n' + collection.join(',\n') + '\n' + parts[1];
   } else {
     geojson[collname] = collection;
   }
