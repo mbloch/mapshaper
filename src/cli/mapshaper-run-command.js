@@ -58,7 +58,15 @@ api.runCommand = function(cmd, catalog, cb) {
 
     T.start();
     if (!catalog) catalog = new Catalog();
-    targets = catalog.findCommandTargets(opts.target);
+
+    if (name == 'o') {
+      // when combining GeoJSON layers, default is all layers
+      // TODO: check that combine_layers is only used w/ GeoJSON output
+      targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
+    } else {
+      targets = catalog.findCommandTargets(opts.target);
+    }
+
     if (targets.length === 0) {
       if (opts.target) {
         fail(utils.format('Missing target: %s\nAvailable layers: %s',

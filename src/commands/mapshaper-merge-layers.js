@@ -4,12 +4,12 @@
 // geometries and data fields.
 api.mergeLayers = function(layers) {
   var merged;
+  if (!layers.length) return null;
   MapShaper.checkLayersCanMerge(layers);
   layers.forEach(function(lyr) {
     if (!merged) {
       merged = lyr;
     } else {
-      merged.name = utils.mergeNames(merged.name, lyr.name);
       if (merged.shapes && lyr.shapes) {
         merged.shapes = merged.shapes.concat(lyr.shapes);
       } else {
@@ -22,7 +22,19 @@ api.mergeLayers = function(layers) {
       }
     }
   });
-  return merged ? [merged] : null;
+  merged.name = MapShaper.mergeLayerNames(layers);
+  return [merged];
+};
+
+MapShaper.mergeLayerNames = function(layers) {
+  return layers.reduce(function(memo, lyr) {
+    if (memo === null) {
+      memo = lyr.name || null;
+    } else if (memo && lyr.name) {
+      memo = utils.mergeNames(memo, lyr.name);
+    }
+    return memo;
+  }, null) || '';
 };
 
 MapShaper.checkFieldTypes = function(key, layers) {

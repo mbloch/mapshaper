@@ -35,7 +35,7 @@ MapShaper.splitDataset = function(dataset) {
       layers: [lyr],
       info: dataset.info
     };
-    MapShaper.dissolveArcs(split);
+    MapShaper.dissolveArcs(split); // replace arcs with filtered + dissolved copy
     return split;
   });
 };

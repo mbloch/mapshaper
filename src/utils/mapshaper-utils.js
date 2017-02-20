@@ -42,11 +42,11 @@ utils.extendBuffer = function(src, newLen, copyLen) {
 };
 
 utils.mergeNames = function(name1, name2) {
-  var merged = "";
+  var merged;
   if (name1 && name2) {
     merged = utils.findStringPrefix(name1, name2).replace(/[-_]$/, '');
   }
-  return merged;
+  return merged || '';
 };
 
 utils.findStringPrefix = function(a, b) {

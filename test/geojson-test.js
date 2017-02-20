@@ -9,7 +9,6 @@ function fixPath(p) {
 }
 
 describe('mapshaper-geojson.js', function () {
-
   describe('importGeoJSON', function () {
     it('Import FeatureCollection with polygon geometries', function () {
       var data = api.importFile(fixPath('test_data/two_states.json'))
@@ -166,6 +165,93 @@ describe('mapshaper-geojson.js', function () {
 
 
   describe('exportGeoJSON()', function () {
+
+    describe('-o combine-layers option', function () {
+      it('combines datasets derived from same input file', function(done) {
+        var a = {
+          type: 'Feature',
+          properties: {foo: 'a'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[0, 0], [1, 1]]
+          }
+        };
+        api.applyCommands('-i a.json -filter true + name=a2 -o combine-layers', {'a.json': a}, function(err, output) {
+          assert.deepEqual(JSON.parse(output['a.json']), {
+            type: 'FeatureCollection',
+            features: [a, a]
+          });
+          done();
+        });
+
+      });
+
+      it('combines datasets of different types from different sources', function (done) {
+        var a = {
+          type: 'Feature',
+          properties: {foo: 'a'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[0, 0], [1, 1]]
+          }
+        };
+        var b = {
+          type: 'Point',
+          coordinates: [2, 2]
+        };
+        api.applyCommands('-i a.json -i b.json -o combine-layers c.json', {'a.json': a, 'b.json': b}, function(err, output) {
+          assert('c.json' in output);
+          assert.deepEqual(JSON.parse(output['c.json']), {
+            type: 'FeatureCollection',
+            features: [a,
+              {
+                type: 'Feature',
+                properties: null,
+                geometry: b
+              }]
+          });
+          done();
+        });
+      })
+
+      it('generated GeometryCollection when none of the layers have attribute data', function(done) {
+        var a = {
+          type: 'LineString',
+          coordinates: [[0, 0], [1, 1]]
+        };
+        var b = {
+          type: 'Polygon',
+          coordinates: [[[2, 2], [2, 3], [3, 2], [2, 2]]]
+        };
+        api.applyCommands('-i a.json b.json combine-files -o combine-layers', {'a.json': a, 'b.json': b}, function(err, output) {
+          assert.deepEqual(JSON.parse(output['output.json']), {
+            type: 'GeometryCollection',
+            geometries: [a, b]
+          });
+          done();
+        });
+      })
+
+      it('respects -o target= option', function(done) {
+        var a = {
+          type: 'LineString',
+          coordinates: [[0, 0], [1, 1]]
+        };
+        var b = {
+          type: 'Polygon',
+          coordinates: [[[2, 2], [2, 3], [3, 2], [2, 2]]]
+        };
+        api.applyCommands('-i a.json b.json combine-files -o target=a combine-layers', {'a.json': a, 'b.json': b}, function(err, output) {
+          assert.deepEqual(JSON.parse(output['a.json']), {
+            type: 'GeometryCollection',
+            geometries: [a]
+          });
+          done();
+        });
+
+      })
+
+    })
 
     it('default file extension is .json', function(done) {
       api.applyCommands('-i test/test_data/two_states.json -o', {}, function(err, output) {

@@ -3,39 +3,88 @@ geojson-common
 mapshaper-stringify
 mapshaper-path-export
 mapshaper-dataset-utils
+mapshaper-merge-layers
 */
 
+
 MapShaper.exportGeoJSON = function(dataset, opts) {
+  opts = opts || {};
   var extension = opts.extension || "json";
+  var layerGroups;
   if (opts.file) {
-    // override default output extension if output filename is given
+    // Override default output extension if output filename is given
     extension = utils.getFileExtension(opts.file);
   }
-  return dataset.layers.map(function(lyr) {
+  if (opts.combine_layers) {
+    layerGroups = [dataset.layers];
+  } else {
+    layerGroups = dataset.layers.map(function(lyr) {
+      return [lyr];
+    });
+  }
+  return layerGroups.map(function(layers) {
+    // Use common part of layer names if multiple layers are being merged
+    var name = MapShaper.mergeLayerNames(layers) || 'output';
     return {
-      content: MapShaper.exportGeoJSONCollection(lyr, dataset, opts, true),
-      filename: lyr.name ? lyr.name + '.' + extension : ""
+      content: MapShaper.exportLayersAsGeoJSON(layers, dataset, opts, true),
+      filename: name + '.' + extension
     };
   });
 };
 
-MapShaper.exportGeoJSONCollection = function(lyr, dataset, opts, asString) {
-  opts = opts || {};
+// Return an array of Features or Geometries as objects or strings
+//
+MapShaper.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, asString) {
   var properties = MapShaper.exportProperties(lyr.data, opts),
-      shapes = lyr.shapes,
-      ids = MapShaper.exportIds(lyr.data, opts),
-      useFeatures = !!(properties || ids),
-      geojson = {},
-      collection, collname, bounds, stringify, parts;
+    shapes = lyr.shapes,
+    ids = MapShaper.exportIds(lyr.data, opts),
+    items, stringify;
 
-  if (properties && shapes && properties.length !== shapes.length) {
-    error("[-o] Mismatch between number of properties and number of shapes");
-  }
+    if (asString) {
+      stringify = opts.prettify ?
+        MapShaper.getFormattedStringify(['bbox', 'coordinates']) :
+        JSON.stringify;
+    }
 
-  if (asString) {
-    stringify = opts.prettify ? MapShaper.getFormattedStringify(['bbox', 'coordinates']) :
-      JSON.stringify;
-  }
+    if (properties && shapes && properties.length !== shapes.length) {
+      error("[-o] Mismatch between number of properties and number of shapes");
+    }
+
+    return (shapes || properties || []).reduce(function(memo, o, i) {
+      var shape = shapes ? shapes[i] : null,
+          exporter = GeoJSON.exporters[lyr.geometry_type],
+          obj = shape ? exporter(shape, dataset.arcs) : null;
+      if (asFeatures) {
+        obj = {
+          type: 'Feature',
+          geometry: obj,
+          properties: properties ? properties[i] : null
+        };
+        if (ids) {
+          obj.id = ids[i];
+        }
+      } else if (!obj) {
+        return memo; // don't add null objects to GeometryCollection
+      }
+      if (asString) {
+        // stringify features as soon as they are generated, to reduce the
+        // number of JS objects in memory (so larger files can be exported)
+        obj = stringify(obj);
+      }
+      memo.push(obj);
+      return memo;
+    }, []);
+};
+
+// TODO: remove
+MapShaper.exportGeoJSONCollection = function(lyr, dataset, opts) {
+  return MapShaper.exportLayersAsGeoJSON([lyr], dataset, opts || {});
+};
+
+MapShaper.exportLayersAsGeoJSON = function(layers, dataset, opts, asString) {
+  var geojson = {};
+  var useFeatures = MapShaper.useFeatureCollection(layers, opts);
+  var parts, collection, bounds, collname;
 
   if (useFeatures) {
     geojson.type = 'FeatureCollection';
@@ -45,38 +94,17 @@ MapShaper.exportGeoJSONCollection = function(lyr, dataset, opts, asString) {
     collname = 'geometries';
   }
 
-
   MapShaper.exportCRS(dataset, geojson);
   if (opts.bbox) {
-    bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
+    bounds = MapShaper.getDatasetBounds(dataset);
     if (bounds.hasBounds()) {
       geojson.bbox = bounds.toArray();
     }
   }
 
-  collection = (shapes || properties || []).reduce(function(memo, o, i) {
-    var shape = shapes ? shapes[i] : null,
-        exporter = GeoJSON.exporters[lyr.geometry_type],
-        obj = shape ? exporter(shape, dataset.arcs) : null;
-    if (useFeatures) {
-      obj = {
-        type: 'Feature',
-        geometry: obj,
-        properties: properties ? properties[i] : null
-      };
-      if (ids) {
-        obj.id = ids[i];
-      }
-    } else if (!obj) {
-      return memo; // don't add null objects to GeometryCollection
-    }
-    if (asString) {
-      // stringify features as soon as they are generated, to reduce the
-      // number of JS objects in memory (so larger files can be exported)
-      obj = stringify(obj);
-    }
-    memo.push(obj);
-    return memo;
+  collection = layers.reduce(function(memo, lyr, i) {
+    var items = MapShaper.exportLayerAsGeoJSON(lyr, dataset, opts, useFeatures, asString);
+    return memo.length > 0 ? memo.concat(items) : items;
   }, []);
 
   if (asString) {
@@ -107,7 +135,6 @@ GeoJSON.exportPointGeom = function(points, arcs) {
   }
   return geom;
 };
-
 GeoJSON.exportLineGeom = function(ids, arcs) {
   var obj = MapShaper.exportPathData(ids, arcs, "polyline");
   if (obj.pointCount === 0) return null;
@@ -165,31 +192,29 @@ MapShaper.exportCRS = function(dataset, jsonObj) {
   }
 };
 
-// @opt value of id-field option (empty, string or array of strings)
-// @fields array
-MapShaper.getIdField = function(fields, opt) {
-  var ids = [];
-  if (utils.isString(opt)) {
-    ids.push(opt);
-  } else if (utils.isArray(opt)) {
-    ids = opt;
-  }
-  ids.push(GeoJSON.ID_FIELD); // default id field
-  return utils.find(ids, function(name) {
-    return utils.contains(fields, name);
+MapShaper.useFeatureCollection = function(layers, opts) {
+  return utils.some(layers, function(lyr) {
+    var fields = lyr.data ? lyr.data.getFields() : [];
+    var haveData = MapShaper.useFeatureProperties(fields, opts);
+    var haveId = !!MapShaper.getIdField(fields, opts);
+    return haveData || haveId;
   });
+};
+
+MapShaper.useFeatureProperties = function(fields, opts) {
+  return !(opts.drop_table || opts.cut_table || fields.length === 0 ||
+      fields.length == 1 && fields[0] == GeoJSON.ID_FIELD);
 };
 
 MapShaper.exportProperties = function(table, opts) {
   var fields = table ? table.getFields() : [],
-      idField = MapShaper.getIdField(fields, opts.id_field),
-      deleteId = idField == GeoJSON.ID_FIELD, // delete default field, not user-set fields
+      idField = MapShaper.getIdField(fields, opts),
       properties, records;
-  if (opts.drop_table || opts.cut_table || fields.length === 0 || deleteId && fields.length == 1) {
+  if (!MapShaper.useFeatureProperties(fields, opts)) {
     return null;
   }
   records = table.getRecords();
-  if (deleteId) {
+  if (idField == GeoJSON.ID_FIELD) {// delete default id field, not user-set fields
     properties = records.map(function(rec) {
       rec = utils.extend({}, rec); // copy rec;
       delete rec[idField];
@@ -201,9 +226,25 @@ MapShaper.exportProperties = function(table, opts) {
   return properties;
 };
 
+// @opt value of id-field option (empty, string or array of strings)
+// @fields array
+MapShaper.getIdField = function(fields, opts) {
+  var ids = [];
+  var opt = opts.id_field;
+  if (utils.isString(opt)) {
+    ids.push(opt);
+  } else if (utils.isArray(opt)) {
+    ids = opt;
+  }
+  ids.push(GeoJSON.ID_FIELD); // default id field
+  return utils.find(ids, function(name) {
+    return utils.contains(fields, name);
+  });
+};
+
 MapShaper.exportIds = function(table, opts) {
   var fields = table ? table.getFields() : [],
-      idField = MapShaper.getIdField(fields, opts.id_field);
+      idField = MapShaper.getIdField(fields, opts);
   if (!idField) return null;
   return table.getRecords().map(function(rec) {
     return idField in rec ? rec[idField] : null;

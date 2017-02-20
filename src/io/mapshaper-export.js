@@ -26,7 +26,7 @@ MapShaper.exportTargetLayers = function(targets, opts) {
 MapShaper.exportDatasets = function(datasets, opts) {
   var format = MapShaper.getOutputFormat(datasets[0], opts);
   var files;
-  if (format == 'svg' || format == 'topojson') {
+  if (format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
     // multi-layer formats: combine multiple datasets into one
     if (datasets.length > 1) {
       datasets = [MapShaper.mergeDatasetsForExport(datasets)];
@@ -72,19 +72,20 @@ MapShaper.exportFileContent = function(dataset, opts) {
     layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
   }, dataset);
 
+  // Adjust layer names, so they can be used as output file names
   if (opts.file && outFmt != 'topojson') {
     dataset.layers.forEach(function(lyr) {
       lyr.name = utils.getFileBase(opts.file);
     });
   }
+  MapShaper.assignUniqueLayerNames(dataset.layers);
 
+  // apply coordinate precision, except for svg precision, which is applied
+  // during export, after rescaling
   if (opts.precision && outFmt != 'svg') {
     dataset = MapShaper.copyDatasetForExport(dataset);
     MapShaper.setCoordinatePrecision(dataset, opts.precision);
   }
-
-  MapShaper.validateLayerData(dataset.layers);
-  MapShaper.assignUniqueLayerNames(dataset.layers);
 
   if (opts.cut_table) {
     files = MapShaper.exportDataTables(dataset.layers, opts).concat(files);
@@ -93,6 +94,8 @@ MapShaper.exportFileContent = function(dataset, opts) {
   if (opts.extension) {
     opts.extension = MapShaper.fixFileExtension(opts.extension, outFmt);
   }
+
+  MapShaper.validateLayerData(dataset.layers);
 
   files = exporter(dataset, opts).concat(files);
   // If rounding or quantization are applied during export, bounds may
@@ -149,6 +152,7 @@ MapShaper.createIndexFile = function(dataset) {
   };
 };
 
+// Throw errors for various error conditions
 MapShaper.validateLayerData = function(layers) {
   layers.forEach(function(lyr) {
     if (!lyr.geometry_type) {

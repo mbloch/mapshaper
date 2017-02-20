@@ -159,6 +159,10 @@ MapShaper.getOptionParser = function() {
     .option("extension", {
       describe: "(Topo/GeoJSON) set file extension (default is \".json\")"
     })
+    .option("combine-layers", {
+      describe: "(GeoJSON) output layers as a single file",
+      type: "flag"
+    })
     .option("prettify", {
       type: "flag",
       describe: "(Topo/GeoJSON) format output for readability"
