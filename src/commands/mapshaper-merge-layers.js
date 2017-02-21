@@ -61,6 +61,7 @@ MapShaper.findMissingFields = function(layers) {
 
 MapShaper.checkLayersCanMerge = function(layers) {
   var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type')),
+      fields = layers[0].data ? layers[0].data.getFields() : [],
       missingFields = MapShaper.findMissingFields(layers);
   if (utils.uniq(geoTypes).length > 1) {
     stop("[merge-layers] Incompatible geometry types:",
@@ -70,7 +71,7 @@ MapShaper.checkLayersCanMerge = function(layers) {
     stop("[merge-layers] Field" + utils.pluralSuffix(missingFields.length), "missing from one or more layers:",
         missingFields.join(', '));
   }
-  layers[0].data.getFields().forEach(function(key) {
+  fields.forEach(function(key) {
     var types = MapShaper.checkFieldTypes(key, layers);
     if (types.length > 1) {
       stop("[merge-layers] Inconsistent data types in \"" + key + "\" field:", types.join(', '));
