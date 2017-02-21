@@ -4,8 +4,8 @@ api.dataFill = function(lyr, arcs, opts) {
 
   var field = opts.field;
   var count;
-  if (!field) stop("[assign] Missing required field= parameter");
-  if (lyr.geometry_type != 'polygon') stop("[assign] Target layer must be polygon type");
+  if (!field) stop("[data-fill] Missing required field= parameter");
+  if (lyr.geometry_type != 'polygon') stop("[data-fill] Target layer must be polygon type");
 
   // first, fill some holes?
   count = MapShaper.fillMissingValues(lyr, field, MapShaper.getSingleAssignment(lyr, field, arcs));
@@ -39,7 +39,7 @@ MapShaper.fillMissingValues = function(lyr, field, getValue) {
   var count = 0;
   unassigned.forEach(function(shpId) {
     var value = getValue(shpId);
-    if (value) {
+    if (!MapShaper.isEmptyValue(value)) {
       count++;
       records[shpId][field] = value;
     }
@@ -62,12 +62,13 @@ MapShaper.getSingleAssignment = function(lyr, field, arcs, opts) {
       nabe = nabes[i];
       val = nabe.value;
       len = nabe.length;
-      if (!val) {
+      if (MapShaper.isEmptyValue(val)) {
         emptyLen += len;
-      } else if (!fieldVal || fieldVal == val) {
+      } else if (fieldVal === null || fieldVal == val) {
         fieldVal = val;
         fieldLen += len;
       } else {
+        // this shape has neighbors with different field values
         return null;
       }
     }
@@ -78,48 +79,47 @@ MapShaper.getSingleAssignment = function(lyr, field, arcs, opts) {
   };
 };
 
+MapShaper.isEmptyValue = function(val) {
+  return !val && val !== 0;
+};
+
 MapShaper.getMultipleAssignment = function(lyr, field, arcs) {
   var index;
   return function(shpId) {
     // create index on first use
     index = index || MapShaper.buildAssignmentIndex(lyr, field, arcs);
     var nabes = index[shpId];
+    var nabeIndex = {}; // boundary length indexed by value
     var emptyLen = 0;
-    var nabeIndex = {}; // tot. length by value
-    var nabeCount = 0; // non-empty nabes
+    var maxLen = 0;
+    var maxVal = null;
     var nabe, val, len;
 
     for (var i=0; i<nabes.length; i++) {
       nabe = nabes[i];
       val = nabe.value;
       len = nabe.length;
-      if (!val) {
+      if (MapShaper.isEmptyValue(val)) {
         emptyLen += len;
-      } else if (val in nabeIndex) {
-        nabeIndex[val] += len;
-      } else {
-        nabeCount++;
-        nabeIndex[val] = len;
+        continue;
       }
+      if (val in nabeIndex) {
+        len += nabeIndex[val];
+      }
+      if (len > maxLen) {
+        maxLen = len;
+        maxVal = val;
+      }
+      nabeIndex[val] = len;
     }
-
-    return nabeCount > 0 ? getMaxVal(nabeIndex) : null;
+    return maxVal; // may be null
   };
-
-  function getMaxVal(nabeIndex) {
-    var keys = Object.keys(nabeIndex);
-    // sort values in descending order of border length
-    keys.sort(function(a, b) {
-      return nabeIndex[b] - nabeIndex[a];
-    });
-    return keys[0];
-  }
 };
 
 MapShaper.getEmptyRecordIds = function(records, field) {
   var ids = [];
   for (var i=0, n=records.length; i<n; i++) {
-    if (!records[i][field]) {
+    if (MapShaper.isEmptyValue(records[i][field])) {
       ids.push(i);
     }
   }
@@ -133,10 +133,11 @@ MapShaper.buildAssignmentIndex = function(lyr, field, arcs) {
   var index = {};
   var index2 = {};
 
-  // build first index, accumulate length of shared boundaries
+  // calculate length of shared boundaries of each shape, indexed by shape id
   MapShaper.forEachArcId(shapes, onArc);
 
   // build final index
+  // collects border length and data value of each neighbor, indexed by shape id
   Object.keys(index).forEach(function(shpId) {
     var o = index[shpId];
     var nabes = Object.keys(o);

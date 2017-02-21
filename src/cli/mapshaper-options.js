@@ -152,6 +152,10 @@ MapShaper.getOptionParser = function() {
       describe: "coordinate precision in source units, e.g. 0.001",
       type: "number"
     })
+    .option("id-field", {
+      describe: "(Topo/GeoJSON/SVG) field to use for id property",
+      type: "comma-sep"
+    })
     .option("bbox", {
       type: "flag",
       describe: "(Topo/GeoJSON) add bbox property"
@@ -159,17 +163,10 @@ MapShaper.getOptionParser = function() {
     .option("extension", {
       describe: "(Topo/GeoJSON) set file extension (default is \".json\")"
     })
-    .option("combine-layers", {
-      describe: "(GeoJSON) output layers as a single file",
-      type: "flag"
-    })
+
     .option("prettify", {
       type: "flag",
       describe: "(Topo/GeoJSON) format output for readability"
-    })
-    .option("id-field", {
-      describe: "(Topo/GeoJSON/SVG) field to use for id property",
-      type: "comma-sep"
     })
     .option("singles", {
       // describe: "(TopoJSON) save each layer as a single file",
@@ -190,6 +187,10 @@ MapShaper.getOptionParser = function() {
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
+    })
+    .option("combine-layers", {
+      describe: "(GeoJSON) output layers as a single file",
+      type: "flag"
     })
     .option("width", {
       describe: "(SVG) width of the SVG viewport (default is 800)",
