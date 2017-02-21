@@ -104,6 +104,18 @@ SVG.importMultiGeometry = function(coords, importer) {
   return o;
 };
 
+SVG.importMultiPath = function(coords, importer) {
+  var o;
+  for (var i=0; i<coords.length; i++) {
+    if (i === 0) {
+      o = importer(coords[i]);
+    } else {
+      o.properties.d += ' ' + importer(coords[i]).properties.d;
+    }
+  }
+  return o;
+};
+
 SVG.mapVertex = function(p) {
   return p[0] + ' ' + -p[1];
 };
@@ -144,9 +156,9 @@ SVG.geojsonImporters = {
     return SVG.importMultiGeometry(coords, SVG.importPoint);
   },
   MultiLineString: function(coords) {
-    return SVG.importMultiGeometry(coords, SVG.importLineString);
+    return SVG.importMultiPath(coords, SVG.importLineString);
   },
   MultiPolygon: function(coords) {
-    return SVG.importMultiGeometry(coords, SVG.importPolygon);
+    return SVG.importMultiPath(coords, SVG.importPolygon);
   }
 };
