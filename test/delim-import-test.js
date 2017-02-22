@@ -33,6 +33,41 @@ describe('mapshaper-delim-import.js', function() {
       assert(deepStrictEqual(records, target));
     })
 
+    it('detect numeric field when whitespace is present', function() {
+      var str = 'a\tb\tc\n 3\t4 \t  5  ';
+      var records = importRecords(str);
+      var target = [{a:3, b:4, c:5}];
+      assert(deepStrictEqual(records, target));
+    })
+
+    it('detect string field when first value looks like a number', function() {
+      var str = 'a,b\n2,0\n4a,8x';
+      var records = importRecords(str);
+      var target = [{a:'2', b:'0'}, {a:'4a', b:'8x'}];
+      assert(deepStrictEqual(records, target));
+    })
+
+    it('retain whitespace in string fields', function() {
+      var str = 'a,b,c\n" ", , a ';
+      var records = importRecords(str);
+      var target = [{a:' ', b:' ', c:' a '}];
+      assert(deepStrictEqual(records, target));
+    })
+
+    it('type hints prevent auto-detection of number fields', function() {
+      var str = 'a\tb\tc\n3\t4\t5';
+      var records = importRecords(str, {field_types: ['a:str','b:string']});
+      var target = [{a:"3", b:"4", c:5}];
+      assert(deepStrictEqual(records, target));
+    })
+
+    it('type hints force numeric conversion', function() {
+      var str = 'a\tb\tc\nfour\t\t5';
+      var records = importRecords(str, {field_types: ['a:num','b:number']});
+      var target = [{a:null, b:null, c:5}];
+      assert(deepStrictEqual(records, target));
+    })
+
     it('ignore unnamed columns', function() {
       stringifyEqual(importRecords('\n\n'), [{}]);
       stringifyEqual(importRecords(',foo,\na,b,c\n'), [{foo:'b'}]);
@@ -154,49 +189,50 @@ describe('mapshaper-delim-import.js', function() {
       assert.equal(utils.parseNumber('1e3'), 1000);
     })
 
-  })
-
-  describe('stringIsNumeric()', function () {
-    it('identifies decimal numbers', function() {
-      assert.ok(utils.stringIsNumeric('-43.2'))
+    it('parses decimal numbers', function() {
+      assert.equal(utils.parseNumber('-43.2'), -43.2)
     })
 
-    it('identifies numbers with spaces', function() {
-      assert.ok(utils.stringIsNumeric('-2.0  '))
-      assert.ok(utils.stringIsNumeric('  0'))
+    it('parses decimal numbers with positive sign', function() {
+      assert.equal(utils.parseNumber('+43.2'), 43.2)
+    })
+
+    it('parses numbers with spaces', function() {
+      assert.equal(utils.parseNumber('-2.0  '), -2)
+      assert.strictEqual(utils.parseNumber('  0'), 0)
     })
 
     it('identifies numbers with comma delimiters', function() {
-      assert.ok(utils.stringIsNumeric('3,211'))
-      assert.ok(utils.stringIsNumeric('-2,000,000.0  '))
+      assert.strictEqual(utils.parseNumber('3,211'), 3211)
+      assert.strictEqual(utils.parseNumber('-2,000,000.0  '), -2e6)
     })
 
     it('identifies scientific notation', function() {
-      assert.ok(utils.stringIsNumeric('1.3e3'));
+      assert.strictEqual(utils.parseNumber('1.3e3'), 1.3e3);
     })
 
     it('reject alphabetic words', function() {
-      assert.equal(utils.stringIsNumeric('Alphabet'), false)
+      assert.strictEqual(utils.parseNumber('Alphabet'), null)
     })
 
-    it('rejects hex numbers', function() {
-      assert.ok(!utils.stringIsNumeric('0xcc'));
+    it('parse hex numbers', function() {
+      assert.strictEqual(utils.parseNumber('0xcc'), 0xcc);
     })
 
     it('reject empty strings', function() {
-      assert.equal(utils.stringIsNumeric(''), false)
-      assert.equal(utils.stringIsNumeric(' '), false)
+      assert.strictEqual(utils.parseNumber(''), null)
+      assert.strictEqual(utils.parseNumber(' '), null)
     })
 
     it('rejects street addresses', function() {
-      assert.equal(utils.stringIsNumeric('312 Orchard St'), false);
+      assert.strictEqual(utils.parseNumber('312 Orchard St'), null);
     })
 
-    it('reject dates', function() {
-      assert.equal(utils.stringIsNumeric('2013-12-03'), false);
+    it('rejects dates', function() {
+      assert.strictEqual(utils.parseNumber('2013-12-03'), null);
     })
 
-    // TODO: handle hex numbers, comma-separated numbers, European decimals
+    // TODO: European decimals?
   })
 
   describe('guessDelimiter()', function () {
@@ -264,7 +300,7 @@ describe('mapshaper-delim-import.js', function() {
       var records = [{foo:"0", bar:"4,000,300", baz: "0xcc", goo: '300 E'}],
           fields = ['foo', 'bar', 'baz', 'goo']
       api.internal.adjustRecordTypes(records, fields);
-      stringifyEqual(records, [{foo:0, bar:4000300, baz: "0xcc", goo: '300 E'}])
+      stringifyEqual(records, [{foo:0, bar:4000300, baz: 0xcc, goo: '300 E'}])
     })
 
     it('protect string-format numbers with type hints', function() {

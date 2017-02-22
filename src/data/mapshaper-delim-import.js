@@ -55,39 +55,62 @@ MapShaper.getDelimiterRxp = function(delim) {
 MapShaper.adjustRecordTypes = function(records, fieldList) {
   var hintIndex = {},
       fields = Object.keys(records[0] || []),
-      type;
+      detectedNumFields = [];
   if (fieldList) {
     // parse optional type hints
     MapShaper.parseFieldHeaders(fieldList, hintIndex);
   }
   fields.forEach(function(key) {
-    type = hintIndex[key] || MapShaper.detectConversionType(key, records);
-    if (type == 'number') {
-      MapShaper.convertDataField(records, key, utils.parseNumber);
-    } else if (type == 'string') {
-      MapShaper.convertDataField(records, key, utils.parseString);
+    var typeHint = hintIndex[key];
+    var type = MapShaper.adjustFieldValues(key, records, typeHint);
+    if (!typeHint && type == 'number') {
+      detectedNumFields.push(key);
     }
   });
+  if (detectedNumFields.length > 0) {
+    message(utils.format("Auto-detected number field%s: %s",
+        detectedNumFields.length == 1 ? '' : 's', detectedNumFields.join(', ')));
+  }
 };
 
-MapShaper.convertDataField = function(records, name, f) {
+MapShaper.adjustFieldValues = function(key, records, type) {
+  var values;
+  if (!type) {
+    values = MapShaper.tryNumericField(key, records);
+  }
+  if (values) {
+    type = 'number';
+    MapShaper.insertFieldValues2(key, records, values);
+  } else if (type == 'number') {
+    MapShaper.convertDataField(key, records, utils.parseNumber);
+  } else {
+    type = 'string';
+    MapShaper.convertDataField(key, records, utils.parseString);
+  }
+  return type;
+};
+
+MapShaper.tryNumericField = function(key, records) {
+  var arr = [],
+      count = 0,
+      raw, num;
+  for (var i=0, n=records.length; i<n; i++) {
+    raw = records[i][key];
+    num = utils.parseNumber(raw);
+    if (num !== null) {
+      count++;
+    } else if (raw && raw.trim()) {
+      return null; // unparseable value -- fail
+    }
+    arr.push(num);
+  }
+  return count > 0 ? arr : null;
+};
+
+MapShaper.convertDataField = function(name, records, f) {
   for (var i=0, n=records.length; i<n; i++) {
     records[i][name] = f(records[i][name]);
   }
-};
-
-// Returns 'string', 'number' or null
-// Detection is based on value of first non-empty record
-MapShaper.detectConversionType = function(name, records) {
-  var type = null, val;
-  for (var i=0, n=records.length; i<n; i++) {
-    val = records[i][name];
-    if (!!val && utils.isString(val)) {
-      type = utils.stringIsNumeric(val) ? 'number' : 'string';
-      break;
-    }
-  }
-  return type;
 };
 
 // Accept a type hint from a header like "FIPS:str"
@@ -132,16 +155,10 @@ MapShaper.parseFieldHeaders = function(fields, index) {
   return parsed;
 };
 
-utils.stringIsNumeric = function(str) {
-  var parsed = utils.parseNumber(str);
-  // exclude values like '300 E'
-  return !isNaN(parsed) && parsed == Number(utils.cleanNumericString(str));
-};
-
 // Remove comma separators from strings
 // TODO: accept European-style numbers?
 utils.cleanNumericString = function(raw) {
-  return String(raw).replace(/,/g, '');
+  return raw.replace(/,/g, '');
 };
 
 // Assume: @raw is string, undefined or null
@@ -154,6 +171,7 @@ utils.parseString = function(raw) {
 // (in part because if NaN is used, empty strings get converted to "NaN"
 // when re-exported).
 utils.parseNumber = function(raw) {
-  var parsed = raw ? parseFloat(utils.cleanNumericString(raw)) : NaN;
+  var str = String(raw).trim();
+  var parsed = str ? Number(utils.cleanNumericString(str)) : NaN;
   return isNaN(parsed) ? null : parsed;
 };

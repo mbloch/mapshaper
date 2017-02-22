@@ -4,15 +4,20 @@
 MapShaper.insertFieldValues = function(lyr, fieldName, values) {
   var size = MapShaper.getFeatureCount(lyr) || values.length,
       table = lyr.data = (lyr.data || new DataTable(size)),
-      records = table.getRecords(),
-      rec;
-
-  for (var i=0; i<size; i++) {
-    rec = records[i] = (records[i] || {});
-    rec[fieldName] = i in values ? values[i] : null;
-  }
+      records = table.getRecords();
+  MapShaper.insertFieldValues2(fieldName, table.getRecords(), values);
 };
 
+MapShaper.insertFieldValues2 = function(key, records, values) {
+  var n = records.length,
+      i, rec, val;
+  for (i=0, n=records.length; i<n; i++) {
+    rec = records[i];
+    val = values[i];
+    if (!rec) rec = records[i] = {};
+    rec[key] = val === undefined ? null : val;
+  }
+};
 
 MapShaper.getValueType = function(val) {
   var type = null;
