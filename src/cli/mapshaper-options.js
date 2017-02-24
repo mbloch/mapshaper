@@ -42,6 +42,10 @@ MapShaper.getOptionParser = function() {
         describe: "fields to copy when dissolving (comma-sep. list)",
         type: "comma-sep"
       },
+      aggFieldsOpt = {
+        describe: "fields to create a comma separated list from when dissolving (comma-sep. list)",
+        type: "comma-sep"
+      },
       dissolveFieldOpt = {
         label: "<field>",
         describe: "(optional) name of a data field to dissolve on"
@@ -284,6 +288,7 @@ MapShaper.getOptionParser = function() {
       "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
     .option("field", dissolveFieldOpt)
     .option("sum-fields", sumFieldsOpt)
+    .option("aggregate-fields", aggFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
     .option("weight", {
       describe: "[points] field or expression to use for weighting centroid"
