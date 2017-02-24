@@ -162,7 +162,7 @@ describe('mapshaper-options.js', function () {
   describe('dissolve', function() {
     good("-dissolve", {});
     good("-dissolve STATE", {field: 'STATE'});
-    good("-dissolve FIPS sum-fields POP copy-fields NAME,FIPS", {field: "FIPS", copy_fields: ["NAME", "FIPS"], sum_fields: ["POP"]});
+    good("-dissolve FIPS sum-fields POP copy-fields NAME,FIPS aggregate-fields PIP", {field: "FIPS", copy_fields: ["NAME", "FIPS"], sum_fields: ["POP"], aggregate_fields: ["PIP"]});
     bad("-dissolve STATE COUNTY");
     bad("-dissolve name -o"); // expects name=<lyr name>
   })

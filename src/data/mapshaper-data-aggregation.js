@@ -27,7 +27,8 @@ MapShaper.getCategoryClassifier = function(field, data) {
 MapShaper.aggregateDataRecords = function(properties, getGroupId, opts) {
   var arr = [];
   var sumFields = opts.sum_fields || [],
-      copyFields = opts.copy_fields || [];
+      copyFields = opts.copy_fields || [],
+      aggregateFields = opts.aggregate_fields || [];
 
   if (opts.field) {
     copyFields.push(opts.field);
@@ -50,6 +51,10 @@ MapShaper.aggregateDataRecords = function(properties, getGroupId, opts) {
     sumFields.forEach(function(f) {
       // TODO: handle strings
       dissolveRec[f] = (rec[f] || 0) + (dissolveRec[f] || 0);
+    });
+
+    aggregateFields.forEach(function(f){
+      dissolveRec[f] = (rec[f] || '') + (dissolveRec[f] ? (',' + dissolveRec[f]) : '');
     });
   });
 

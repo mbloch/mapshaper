@@ -9,6 +9,7 @@ mapshaper-polygon-dissolve
 // @opts.field (optional) name of data field (dissolves all if falsy)
 // @opts.sum-fields (Array) (optional)
 // @opts.copy-fields (Array) (optional)
+// @opts.aggregate-fields (Array) (optional)
 //
 api.dissolve = function(lyr, arcs, o) {
   var opts = o || {},
