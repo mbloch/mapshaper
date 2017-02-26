@@ -283,6 +283,9 @@ MapShaper.getOptionParser = function() {
       "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
       "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
     .option("field", dissolveFieldOpt)
+    .option("calc", {
+      describe: "use a JS expression to aggregate data values"
+    })
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
     .option("weight", {
@@ -300,6 +303,9 @@ MapShaper.getOptionParser = function() {
     .validate(validateDissolveOpts)
     .describe("merge adjacent and overlapping polygons")
     .option("field", dissolveFieldOpt)
+    .option("calc", {
+      describe: "use a JS expression to aggregate data values"
+    })
     .option("sum-fields", sumFieldsOpt)
     .option("copy-fields", copyFieldsOpt)
     .option("name", nameOpt)

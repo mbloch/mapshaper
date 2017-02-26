@@ -68,7 +68,7 @@ MapShaper.adjustRecordTypes = function(records, fieldList) {
     }
   });
   if (detectedNumFields.length > 0) {
-    message(utils.format("Auto-detected number field%s: %s",
+    message(utils.format("[csv] Auto-detected number field%s: %s",
         detectedNumFields.length == 1 ? '' : 's', detectedNumFields.join(', ')));
   }
 };

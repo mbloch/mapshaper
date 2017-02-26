@@ -1,4 +1,4 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-join-calc */
 
 // Return a function to convert original feature ids into ids of combined features
 // Use categorical classification (a different id for each unique value)
@@ -25,35 +25,59 @@ MapShaper.getCategoryClassifier = function(field, data) {
 // @getGroupId()  converts input record id to id of aggregated record
 //
 MapShaper.aggregateDataRecords = function(properties, getGroupId, opts) {
-  var arr = [];
-  var sumFields = opts.sum_fields || [],
-      copyFields = opts.copy_fields || [];
+  var groups = MapShaper.groupIds(getGroupId, properties.length),
+      sumFields = opts.sum_fields || [],
+      copyFields = opts.copy_fields || [],
+      calc;
 
   if (opts.field) {
     copyFields.push(opts.field);
   }
 
-  properties.forEach(function(rec, i) {
-    if (!rec) return;
-    var idx = getGroupId(i),
-        dissolveRec;
+  if (opts.calc) {
+    calc = MapShaper.getJoinCalc(new DataTable(properties), opts.calc);
+  }
 
-    if (idx in arr) {
-      dissolveRec = arr[idx];
-    } else {
-      arr[idx] = dissolveRec = {};
-      copyFields.forEach(function(f) {
-        dissolveRec[f] = rec[f];
-      });
+  function sum(field, group) {
+    var tot = 0, rec;
+    for (var i=0; i<group.length; i++) {
+      rec = properties[group[i]];
+      tot += rec && rec[field] || 0;
     }
+    return tot;
+  }
 
-    sumFields.forEach(function(f) {
-      // TODO: handle strings
-      dissolveRec[f] = (rec[f] || 0) + (dissolveRec[f] || 0);
-    });
+  return groups.map(function(group) {
+    var rec = {},
+        j, first;
+    group = group || [];
+    first = properties[group[0]];
+    for (j=0; j<sumFields.length; j++) {
+      rec[sumFields[j]] = sum(sumFields[j], group);
+    }
+    for (j=0; j<copyFields.length; j++) {
+      rec[copyFields[j]] = first ? first[copyFields[j]] : null;
+    }
+    if (calc) {
+      calc(group, rec);
+    }
+    return rec;
   });
+};
 
-
-
-  return arr;
+// Returns array containing groups of feature indexes
+// @getId() (function) converts feature index into group index
+// @n number of features
+//
+MapShaper.groupIds = function(getId, n) {
+  var groups = [], id;
+  for (var i=0; i<n; i++) {
+    id = getId(i);
+    if (id in groups) {
+      groups[id].push(i);
+    } else {
+      groups[id] = [i];
+    }
+  }
+  return groups;
 };
