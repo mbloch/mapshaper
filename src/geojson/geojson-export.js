@@ -6,7 +6,6 @@ mapshaper-dataset-utils
 mapshaper-merge-layers
 */
 
-
 MapShaper.exportGeoJSON = function(dataset, opts) {
   opts = opts || {};
   var extension = opts.extension || "json";

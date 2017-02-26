@@ -58,7 +58,8 @@ function LayerControl(model) {
   }
 
   function describeSrc(lyr, dataset) {
-    var file = dataset.info.input_files[0] || '';
+    var inputs = dataset.info.input_files;
+    var file = inputs && inputs[0] || '';
     if (utils.endsWith(file, '.shp') && !lyr.data && lyr == dataset.layers[0]) {
       file += " (missing .dbf)";
     }
@@ -73,7 +74,7 @@ function LayerControl(model) {
     var editLyr = model.getActiveLayer().layer;
     var entry = El('div').addClass('layer-item').classed('active', lyr == editLyr);
     var html = rowHTML('name', '<span class="layer-name colored-text dot-underline">' + getDisplayName(lyr.name) + '</span>');
-    html += rowHTML('source file', describeSrc(lyr, dataset));
+    html += rowHTML('source file', describeSrc(lyr, dataset) || 'n/a');
     html += rowHTML('contents', describeLyr(lyr));
     html += '<img src="images/close.png">';
     entry.html(html);
