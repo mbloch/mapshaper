@@ -8,7 +8,7 @@ MapShaper.compileValueExpression = function(exp, lyr, arcs) {
 MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
   var opts = utils.extend({}, opts_),
       exp = rawExp || '',
-      mutable = !opts.no_assign,
+      mutable = !opts.no_assign, // block assignment expressions
       vars = MapShaper.getAssignedVars(exp),
       func, records;
 
@@ -62,7 +62,6 @@ MapShaper.getExpressionFunction = function(exp, lyr, arcs, opts) {
     var val;
     ctx.$ = getFeatureById(i);
     ctx._ = ctx; // provide access to functions when masked by variable names
-
     try {
       val = func.call(ctx.$, rec, ctx);
     } catch(e) {

@@ -27,6 +27,7 @@ describe('mapshaper-dissolve.js', function () {
         {POP: 200, INCOME: 20000, GROUP: "A", NAME: "Apple"},
         {POP: 400, INCOME: 15000, GROUP: "B", NAME: "Beet"},
         {POP: 600, INCOME: 8000, GROUP: "A", NAME: "Ant"}];
+      var copy = JSON.parse(JSON.stringify(input));
       var target = [
         {INCOMES: [20000,8000], TOTPOP: 800, MAXPOP: 600, MINPOP: 200, n: 2, GROUP: "A", NAMES: ['Apple', 'Ant']},
         {INCOMES: [15000], TOTPOP: 400, MAXPOP: 400, MINPOP: 400, n: 1, GROUP: "B", NAMES: ['Beet']}];
@@ -35,6 +36,25 @@ describe('mapshaper-dissolve.js', function () {
       var cmd = '-i data.json -dissolve GROUP calc="' + calc + '" -o';
       api.applyCommands(cmd, {'data.json': input}, function(err, output) {
         assert.deepEqual(JSON.parse(output['data.json']), target);
+        assert.deepEqual(input, copy);
+        done();
+      });
+    });
+
+    it('calc= option: collect().join() works', function(done) {
+      var input = [
+        {POP: 200, NAME: "Apple"},
+        {POP: 400, NAME: "Beet"},
+        {POP: 600, NAME: "Ant"}];
+      var copy = JSON.parse(JSON.stringify(input));
+      var target = [
+        {POPS:"200,400,600", NAMES: "Apple,Beet,Ant"}];
+
+      var calc = "POPS=collect(POP).join(','), NAMES=collect(NAME).join(',')";
+      var cmd = '-i data.json -dissolve calc="' + calc + '" -o';
+      api.applyCommands(cmd, {'data.json': input}, function(err, output) {
+        assert.deepEqual(JSON.parse(output['data.json']), target);
+        assert.deepEqual(input, copy);
         done();
       });
     });

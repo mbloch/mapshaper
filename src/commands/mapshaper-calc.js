@@ -43,7 +43,7 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
         min: captureNum,
         max: captureNum,
         mode: capture,
-        collect: capture,
+        collect: captureArr,
         first: assignOnce,
         last: assign
       },
@@ -144,6 +144,11 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
 
   function assign(val) {
     cols[colNo++] = val;
+  }
+
+  function captureArr(val) {
+    capture(val);
+    return [];
   }
 
   function capture(val) {
