@@ -67,8 +67,37 @@ describe('mapshaper-expressions.js', function () {
       assert.deepEqual(api.internal.getAssignedVars('foo = 1, bar = 3; baz = "a"'), ['foo', 'bar', 'baz']);
     })
 
-    it('no assignment', function () {
-      assert.deepEqual(api.internal.getAssignedVars('foo== 0, bar >= 2'), []);
+    it('other operators containing =', function () {
+      assert.deepEqual(api.internal.getAssignedVars('foo== 0,bar >= 2'), []);
+    })
+
+    it('don\'t capture dot assignments', function () {
+      assert.deepEqual(api.internal.getAssignedVars('d.a = "a"'), []);
+    })
+
+    it('capture only dot assignments', function () {
+      assert.deepEqual(
+        api.internal.getAssignedVars('d.a = "a",ab.cd=3.0, ac = 8, bv = 8', true),
+        ['d.a', 'ab.cd']);
+    })
+
+    it('ignore repeat assignments', function () {
+      assert.deepEqual(api.internal.getAssignedVars('foo=1, foo=2'), ['foo']);
+    })
+
+  })
+
+  describe('getAssignmentObjects()', function() {
+    it('capture names of objects', function () {
+      assert.deepEqual(
+        api.internal.getAssignmentObjects('d.a = "a", d.b = "b", a.c = "c"'),
+        ['d', 'a']);
+    })
+
+    it('ignore this.<property> assignments', function () {
+      assert.deepEqual(
+        api.internal.getAssignmentObjects('d.a = "a", this.coordinates = [[0, 0]], this.properties.a = "b"'),
+        ['d']);
     })
 
   })

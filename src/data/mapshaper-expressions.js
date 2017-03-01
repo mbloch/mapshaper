@@ -42,9 +42,31 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
   };
 };
 
-MapShaper.getAssignedVars = function(exp) {
-  var rxp = /[A-Za-z_][A-Za-z0-9_]*(?= *=[^=])/g;
-  return exp.match(rxp) || [];
+// Return array of variables on the left side of assignment operations
+// @hasDot (bool) Return property assignments via dot notation
+MapShaper.getAssignedVars = function(exp, hasDot) {
+  var rxp = /[a-z_][.a-z0-9_]*(?= *=[^=])/ig;
+  var matches = exp.match(rxp) || [];
+  var f = function(s) {
+    var i = s.indexOf('.');
+    return hasDot ? i > -1 : i == -1;
+  };
+  return utils.uniq(matches.filter(f));
+};
+
+// Return array of objects with properties assigned via dot notation
+// e.g.  'd.value = 45' ->  ['d']
+MapShaper.getAssignmentObjects = function(exp) {
+  var matches = MapShaper.getAssignedVars(exp, true),
+      names = [];
+  matches.forEach(function(s) {
+    var match = /^([^.]+)\.[^.]+$/.exec(s);
+    var name = match ? match[1] : null;
+    if (name && name != 'this') {
+      names.push(name);
+    }
+  });
+  return utils.uniq(names);
 };
 
 MapShaper.getExpressionFunction = function(exp, lyr, arcs, opts) {
