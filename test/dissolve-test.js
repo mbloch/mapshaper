@@ -41,6 +41,28 @@ describe('mapshaper-dissolve.js', function () {
       });
     });
 
+    it('calc= assigning to same var name does not modify original data', function(done) {
+      var input = [
+        {POP: 200, MAXINCOME: 20000, GROUP: "A", NAME: "Apple"},
+        {POP: 400, MAXINCOME: 15000, GROUP: "B", NAME: "Beet"},
+        {POP: 600, MAXINCOME: 8000, GROUP: "A", NAME: "Ant"}];
+      var copy = JSON.parse(JSON.stringify(input));
+      var target = [
+        {MAXINCOME: 20000, POP: 1200,  NAME: 'Apple'}];
+
+      var calc = "MAXINCOME=max(MAXINCOME), POP=sum(POP), NAME = first(NAME)";
+      var cmd = '-i data.json -dissolve calc="' + calc + '" -o';
+      api.applyCommands(cmd, {'data.json': input}, function(err, output) {
+        assert.deepEqual(JSON.parse(output['data.json']), target);
+        assert.deepEqual(input, copy);
+        done();
+      });
+    });
+
+    /*
+    // THIS NO LONGER WORKS -- in order to support assingment to same-named variables,
+    // First-pass collect() function could no longer return an array
+
     it('calc= option: collect().join() works', function(done) {
       var input = [
         {POP: 200, NAME: "Apple"},
@@ -58,6 +80,7 @@ describe('mapshaper-dissolve.js', function () {
         done();
       });
     });
+    */
 
   })
 

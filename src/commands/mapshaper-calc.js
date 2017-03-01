@@ -43,7 +43,7 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
         min: captureNum,
         max: captureNum,
         mode: capture,
-        collect: captureArr,
+        collect: capture,
         first: assignOnce,
         last: assign
       },
@@ -134,22 +134,25 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
     if (isNaN(val) && val) { // accepting falsy values (be more strict?)
       stop("Expected a number, received:", val);
     }
-    capture(val);
+    return capture(val);
   }
 
   function assignOnce(val) {
     if (rowNo === 0) cols[colNo] = val;
     colNo++;
+    return val;
   }
 
   function assign(val) {
     cols[colNo++] = val;
+    return val;
   }
-
+  /*
   function captureArr(val) {
     capture(val);
     return [];
   }
+  */
 
   function capture(val) {
     var col;
@@ -165,5 +168,6 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
     }
     col.push(val);
     colNo++;
+    return val;
   }
 };
