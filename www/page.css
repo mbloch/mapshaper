@@ -486,7 +486,7 @@ body.simplify #layer-control-btn {
 
 .layer-item img {
 	position: absolute;
-	opacity: 0.3;
+	opacity: 0.25;
 	width: 16px;
 	height: 16px;
 	padding: 2px;
