@@ -49,10 +49,12 @@ function MshpMap(model) {
       _nav = new MapNav(_root, _ext, _mouse),
       _inspector = new InspectionControl(model, new HitControl(_ext, _mouse));
 
-  var _activeCanv = new DisplayCanvas().appendTo(_layers), // data layer shapes
+  var _referenceCanv = new DisplayCanvas().appendTo(_layers), // comparison layer
+      _activeCanv = new DisplayCanvas().appendTo(_layers), // data layer shapes
       _overlayCanv = new DisplayCanvas().appendTo(_layers), // hover and selection shapes
       _annotationCanv = new DisplayCanvas().appendTo(_layers), // used for line intersections
       _annotationLyr, _annotationStyle,
+      _referenceLyr, _referenceStyle,
       _activeLyr, _activeStyle, _overlayStyle;
 
   _ext.on('change', drawLayers);
@@ -95,6 +97,20 @@ function MshpMap(model) {
     }
   });
 
+  this.setReferenceLayer = function(lyr, dataset) {
+    if (lyr) {
+      // TODO: create display layer
+      _referenceLyr = new DisplayLayer(lyr, dataset, _ext);
+      _referenceStyle = MapStyle.getReferenceStyle(lyr);
+    } else if (_referenceLyr) {
+      _referenceStyle = null;
+      _referenceLyr = null;
+
+    }
+    drawLayers(); // draw all layers (reference layer can change how active layer is drawn)
+  };
+
+  // Currently used to show dots at line intersections
   this.setHighlightLayer = function(lyr, dataset) {
     if (lyr) {
       _annotationLyr = new DisplayLayer(lyr, dataset, _ext);
@@ -113,6 +129,17 @@ function MshpMap(model) {
     drawLayers();
   };
 
+  function referenceLayerVisible() {
+    if (!_referenceLyr ||
+        // don't show if same as active layer
+        _activeLyr && _activeLyr.getLayer() == _referenceLyr.getLayer() ||
+        // or if active layer isn't geographic (kludge)
+        _activeLyr && !_activeLyr.getLayer().shapes) {
+      return false;
+    }
+    return true;
+  }
+
   function initActiveLayer(o) {
     var lyr = new DisplayLayer(o.layer, o.dataset, _ext);
     _inspector.updateLayer(lyr);
@@ -128,9 +155,26 @@ function MshpMap(model) {
         flags.arc_count || flags.repair || flags.clip || flags.erase || flags.slice || false;
   }
 
+  function referenceStyle() {
+    return referenceLayerVisible() ? _referenceStyle : null;
+  }
+
+  function activeStyle() {
+    var style = _activeStyle;
+    if (referenceLayerVisible()) {
+      style = utils.defaults({
+        // kludge to hide ghosted layers
+        // TODO: improve
+        strokeColors: [null, _activeStyle.strokeColors[1]]
+      }, _activeStyle);
+    }
+    return style;
+  }
+
   function drawLayers() {
+    drawLayer(_referenceLyr, _referenceCanv, referenceStyle());
     drawLayer(_activeLyr, _overlayCanv, _overlayStyle);
-    drawLayer(_activeLyr, _activeCanv, _activeStyle);
+    drawLayer(_activeLyr, _activeCanv, activeStyle());
     drawLayer(_annotationLyr, _annotationCanv, _annotationStyle);
   }
 

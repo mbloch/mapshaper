@@ -2,7 +2,7 @@
 
 var MapStyle = (function() {
   var darkStroke = "#334",
-      lightStroke = "#b2d83a",
+      lightStroke = "#b7d9ea",
       pink = "#f74b80",  // dark
       pink2 = "rgba(239, 0, 86, 0.16)", // "#ffd9e7", // medium
       gold = "#efc100",
@@ -14,6 +14,12 @@ var MapStyle = (function() {
         strokeColors: [lightStroke, darkStroke],
         strokeWidth: 0.7,
         dotColor: "#223"
+      },
+      referenceStyle = {
+        type: 'outline',
+        strokeColors: [null, '#a3d133'],
+        strokeWidth: 0.7,
+        dotColor: "#9bbf2b"
       },
       highStyle = {
         dotColor: "#F24400"
@@ -76,6 +82,11 @@ var MapStyle = (function() {
       var style = utils.extend({}, highStyle);
       var n = MapShaper.countPointsInLayer(lyr);
       style.dotSize = n < 20 && 4 || n < 500 && 3 || 2;
+      return style;
+    },
+    getReferenceStyle: function(lyr) {
+      var style = utils.extend({}, referenceStyle);
+      style.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
       return style;
     },
     getActiveStyle: function(lyr) {

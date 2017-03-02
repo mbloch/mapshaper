@@ -9,6 +9,8 @@ function DisplayLayer(lyr, dataset, ext) {
     lyr.display.style = o;
   };
 
+  this.getLayer = function() {return lyr;};
+
   this.getBounds = function() {
     return _displayBounds;
   };

@@ -82,7 +82,10 @@ function DisplayCanvas() {
     var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
         lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
     setArcVisibility(flags, arcs);
-    drawFlaggedArcs(2, flags, lightStyle, arcs);
+    // TODO: don't show light arcs if reference layer is visible
+    if (lightStyle.strokeColor) {
+      drawFlaggedArcs(2, flags, lightStyle, arcs);
+    }
     drawFlaggedArcs(3, flags, darkStyle, arcs);
   };
 

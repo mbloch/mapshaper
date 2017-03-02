@@ -51,7 +51,7 @@ gui.startEditing = function() {
   new ImportFileProxy(model);
   new ImportControl(model, gui.getImportOpts());
   new ExportControl(model);
-  new LayerControl(model);
+  new LayerControl(model, map);
 
   model.on('select', function() {
     if (!dataLoaded) {
