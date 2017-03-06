@@ -99,7 +99,6 @@ function MshpMap(model) {
 
   this.setReferenceLayer = function(lyr, dataset) {
     if (lyr) {
-      // TODO: create display layer
       _referenceLyr = new DisplayLayer(lyr, dataset, _ext);
       _referenceStyle = MapStyle.getReferenceStyle(lyr);
     } else if (_referenceLyr) {
@@ -144,7 +143,6 @@ function MshpMap(model) {
     var lyr = new DisplayLayer(o.layer, o.dataset, _ext);
     _inspector.updateLayer(lyr);
     _activeStyle = MapStyle.getActiveStyle(lyr.getDisplayLayer().layer);
-    lyr.updateStyle(_activeStyle);
     return lyr;
   }
 

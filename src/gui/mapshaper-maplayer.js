@@ -2,12 +2,7 @@
 
 function DisplayLayer(lyr, dataset, ext) {
   var _displayBounds;
-
-  init();
-
-  this.setStyle = function(o) {
-    lyr.display.style = o;
-  };
+  var _arcFlags;
 
   this.getLayer = function() {return lyr;};
 
@@ -19,17 +14,6 @@ function DisplayLayer(lyr, dataset, ext) {
     var arcs = dataset.filteredArcs || dataset.arcs;
     if (arcs) {
       arcs.setRetainedPct(pct);
-    }
-  };
-
-  this.updateStyle = function(style) {
-    var o = this.getDisplayLayer();
-    // arc style
-    if (o.dataset.arcs) {
-      lyr.display.arcFlags = new Uint8Array(o.dataset.arcs.size());
-      if (MapShaper.layerHasPaths(o.layer)) {
-        initArcFlags(o.layer.shapes, lyr.display.arcFlags);
-      }
     }
   };
 
@@ -50,7 +34,6 @@ function DisplayLayer(lyr, dataset, ext) {
   };
 
   this.draw = function(canv, style) {
-    style = style || lyr.display.style;
     if (style.type == 'outline') {
       this.drawStructure(canv, style);
     } else {
@@ -61,8 +44,8 @@ function DisplayLayer(lyr, dataset, ext) {
   this.drawStructure = function(canv, style) {
     var obj = this.getDisplayLayer(ext);
     var arcs = obj.dataset.arcs;
-    if (arcs && lyr.display.arcFlags) {
-      canv.drawArcs(arcs, lyr.display.arcFlags, style);
+    if (arcs && _arcFlags) {
+      canv.drawArcs(arcs, _arcFlags, style);
     }
     if (obj.layer.geometry_type == 'point') {
       canv.drawSquareDots(obj.layer.shapes, style);
@@ -93,15 +76,19 @@ function DisplayLayer(lyr, dataset, ext) {
     return lyr;
   }
 
-  function initArcFlags(shapes, arr) {
-    // Arcs belonging to at least one path are flagged 1, others 0
-    MapShaper.countArcsInShapes(shapes, arr);
-    for (var i=0, n=arr.length; i<n; i++) {
-      arr[i] = arr[i] === 0 ? 0 : 1;
+  function initArcFlags(self) {
+    var o = self.getDisplayLayer();
+    if (o.dataset.arcs && MapShaper.layerHasPaths(o.layer)) {
+      _arcFlags = new Uint8Array(o.dataset.arcs.size());
+      // Arcs belonging to at least one path are flagged 1, others 0
+      MapShaper.countArcsInShapes(o.layer.shapes, _arcFlags);
+      for (var i=0, n=_arcFlags.length; i<n; i++) {
+        _arcFlags[i] = _arcFlags[i] === 0 ? 0 : 1;
+      }
     }
   }
 
-  function init() {
+  function init(self) {
     var display = lyr.display = lyr.display || {};
 
     // init filtered arcs, if needed
@@ -120,7 +107,10 @@ function DisplayLayer(lyr, dataset, ext) {
     }
 
     _displayBounds = getDisplayBounds(display.layer || lyr, display.arcs || dataset.arcs);
+    initArcFlags(self);
   }
+
+  init(this);
 }
 
 function getDisplayBounds(lyr, arcs) {
