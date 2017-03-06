@@ -172,6 +172,7 @@ function MshpMap(model) {
   }
 
   function drawLayers() {
+    // TODO: consider drawing active and reference layers to the same canvas
     drawLayer(_referenceLyr, _referenceCanv, referenceStyle());
     drawLayer(_activeLyr, _overlayCanv, _overlayStyle);
     drawLayer(_activeLyr, _activeCanv, activeStyle());

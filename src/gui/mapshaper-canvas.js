@@ -185,8 +185,8 @@ function getShapePencil(arcs, ext) {
 function getLineScale(ext) {
   var mapScale = ext.scale(),
       s = 1;
-  if (mapScale < 1) {
-    s *= Math.pow(mapScale, 0.6);
+  if (mapScale < 0.5) {
+    s *= Math.pow(mapScale + 0.5, 0.25);
   } else if (mapScale > 60) {
     s *= Math.pow(mapScale - 59, 0.18);
     s = Math.min(s, 5); // limit max scale

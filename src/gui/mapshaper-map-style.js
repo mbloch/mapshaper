@@ -17,9 +17,9 @@ var MapStyle = (function() {
       },
       referenceStyle = {
         type: 'outline',
-        strokeColors: [null, '#a3d133'],
-        strokeWidth: 0.7,
-        dotColor: "#9bbf2b"
+        strokeColors: [null, '#86c927'],
+        strokeWidth: 0.85,
+        dotColor: "#73ba20"
       },
       highStyle = {
         dotColor: "#F24400"

@@ -6,9 +6,9 @@ Mapshaper is software for editing Shapefile, GeoJSON, [TopoJSON](https://github.
 
 The `mapshaper` command line program supports essential map making tasks like simplifying shapes, editing attribute data, clipping, erasing, dissolving, filtering and more.
 
-The [web UI](http://www.mapshaper.org) supports interactive simplification and attribute data editing. There is also a console for running cli commands.
+The web UI supports interactive simplification, attribute data editing, and running cli commands in a built-in console. Visit the public website at [www.mapshaper.org](http://www.mapshaper.org) or use the web UI locally via the `mapshaper-gui` script.
 
-See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for documentation on using mapshaper.
+See the [project wiki](https://github.com/mbloch/mapshaper/wiki) for more documentation on how to use mapshaper.
 
 To suggest improvements, add an [issue](https://github.com/mbloch/mapshaper/issues).
 

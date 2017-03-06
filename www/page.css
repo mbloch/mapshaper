@@ -479,6 +479,7 @@ body.simplify #layer-control-btn {
 #layer-menu .layer-item {
 	position: relative;
 	margin-left: -14px;
+	margin-right: 6px;
 	padding: 8px 14px;
 	cursor: pointer;
 	width: 100%;
@@ -486,40 +487,41 @@ body.simplify #layer-control-btn {
 
 .layer-item img {
 	position: absolute;
-	opacity: 0.25;
+	opacity: 0.2;
 	width: 16px;
 	height: 16px;
 	padding: 2px;
+	right: 6px;
 }
 
-
-
 .layer-item img.close-btn {
-	right: 4px;
 	top: 7px;
 }
 
 .layer-item img.pin-btn {
-	right: 22px;
-	top: 7px;
+	top: 26px;
 }
 
-.layer-item.pinned img.pinned,
-.layer-item:not(.pinned) img.unpinned {
-	display: block;
-}
-
-.layer-item.pinned img.unpinned,
+/* .layer-item.active img.pin-btn, */
 .layer-item:not(.pinned) img.pinned {
+	opacity: 0;
+}
+
+.layer-item:not(.pinned) img.pinned:hover {
+	opacity: 0.6;
+}
+.layer-item.active img.pinned {
 	display: none;
 }
 
-.layer-item img.pinned {
-	opacity: 1;
+.layer-item.active img.unpinned,
+.layer-item img.close-btn:hover,
+.layer-item.pinned img.pinned {
+	opacity: 1
 }
 
-.layer-item img:hover {
-	opacity: 1;
+.layer-item img.pinned {
+	z-index: 1;
 }
 
 .layer-item .row {

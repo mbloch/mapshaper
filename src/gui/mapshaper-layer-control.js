@@ -108,8 +108,8 @@ function LayerControl(model, map) {
     html += rowHTML('contents', describeLyr(lyr));
     html += '<img class="close-btn" src="images/close.png">';
     if (pinnable) {
-      html += '<img class="pin-btn unpinned" src="images/pin.png">';
-      html += '<img class="pin-btn pinned" src="images/pinned.png">';
+      html += '<img class="pin-btn unpinned" src="images/eye.png">';
+      html += '<img class="pin-btn pinned" src="images/eye2.png">';
     }
     entry.html(html);
 
@@ -123,16 +123,16 @@ function LayerControl(model, map) {
       if (pinnedLyr == lyr) {
         entry.addClass('pinned');
       }
+
       // init pin button
-      entry.findChild('img.unpinned').on('mouseup', function(e) {
-        e.stopPropagation();
-        setPin(lyr, dataset);
-        entry.addClass('pinned');
-      });
-      // init unpin button
       entry.findChild('img.pinned').on('mouseup', function(e) {
         e.stopPropagation();
-        clearPin();
+        if (lyr == pinnedLyr) {
+          clearPin();
+        } else {
+          setPin(lyr, dataset);
+          entry.addClass('pinned');
+        }
       });
     }
 
