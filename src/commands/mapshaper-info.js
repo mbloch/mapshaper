@@ -47,7 +47,7 @@ MapShaper.getGeometryInfo = function(lyr, dataset) {
 };
 
 MapShaper.getTableInfo = function(lyr, i) {
-  if (!lyr.data || lyr.data.size() === 0) {
+  if (!lyr.data || lyr.data.size() === 0 || lyr.data.getFields().length === 0) {
     return "Attribute data: [none]";
   }
   return MapShaper.getAttributeInfo(lyr.data, i);
