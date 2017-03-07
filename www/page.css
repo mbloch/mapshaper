@@ -405,13 +405,9 @@ div.error-box > div {
 	margin: 8px 0 10px 0;
 	word-break: break-all;
 	word-wrap: break-word;
-	white-space: pre; /* Chrome breaks right at line end */
-}
-
-@-moz-document url-prefix() {
-	#console-buffer {
-		white-space: pre-wrap; /* Firefox breaks right at line end */
-	}
+	white-space: pre-wrap;
+	 /* Removing this workaround: non-standard behavior fixed in recent Chrome
+	white-space: pre; */
 }
 
 #console-buffer > div {
