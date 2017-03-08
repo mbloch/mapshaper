@@ -11,7 +11,7 @@ function Model() {
       self.setDefaultTarget([lyr], dataset);
     }
     targ = self.getDefaultTarget();
-    if (targ.layers[0] != lyr) {
+    if (lyr && targ.layers[0] != lyr) {
       flags.select = true;
     }
     active = {layer: targ.layers[0], dataset: targ.dataset};
