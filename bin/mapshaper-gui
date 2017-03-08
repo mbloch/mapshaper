@@ -129,7 +129,7 @@ function validateFiles(files) {
 
 // pull in auxiliary files along with .shp, if they exist
 function expandShapefiles(files) {
-  var shps = files.filter(function(f) {return extname(f) == 'shp';});
+  var shps = files.filter(function(f) {return extname(f).toLowerCase() == 'shp';});
   shps.forEach(function(f) {
     if (isUrl(f)) return; // TODO: try to load aux files from URLs
     addAuxFile(files, f, '.dbf');
@@ -158,8 +158,15 @@ function isUrl(name) {
 
 // append auxiliary file, if it exists in the filesystem but not in the file list
 function addAuxFile(files, file, ext) {
-  var aux = file.replace(/\.[^.]+$/, ext);
-  if (fs.existsSync(aux) && files.indexOf(aux) == -1) {
-    files.push(aux);
+  var extRx = /\.[^.]+$/;
+  // handle UC and LC extensions
+  var aux = file.replace(extRx, ext.toLowerCase());
+  var AUX = file.replace(extRx, ext.toUpperCase());
+  if (files.indexOf(aux) == -1 && files.indexOf(AUX) == -1) {
+    if (fs.existsSync(aux)) {
+      files.push(aux);
+    } else if (fs.existsSync(AUX)) {
+      files.push(AUX);
+    }
   }
 }

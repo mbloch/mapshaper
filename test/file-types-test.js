@@ -14,6 +14,9 @@ describe('mapshaper-file-types.js', function () {
       assert.equal(guess('input.shp', null), 'shp');
       assert.equal(guess('input.dbf', null), 'dbf');
       assert.equal(guess('input.prj', null), 'prj');
+      assert.equal(guess('input.SHP', null), 'shp');
+      assert.equal(guess('input.DBF', null), 'dbf');
+      assert.equal(guess('input.PRJ', null), 'prj');
     })
   })
 

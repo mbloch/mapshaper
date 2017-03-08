@@ -74,9 +74,12 @@ function ImportControl(model, opts) {
   });
 
   function findMatchingShp(filename) {
-    var shpName = utils.replaceFileExtension(filename, 'shp');
+    var base = utils.getPathBase(filename);
     return model.getDatasets().filter(function(d) {
-      return shpName == d.info.input_files[0];
+      var fname = d.info.input_files[0] || '';
+      var ext = utils.getFileExtension(fname).toLowerCase();
+      var base2 = utils.getPathBase(fname);
+      return base == base2 && ext == 'shp';
     });
   }
 
@@ -123,7 +126,12 @@ function ImportControl(model, opts) {
     }, []);
     // sort alphabetically by filename
     queuedFiles.sort(function(a, b) {
-      return a.name > b.name ? 1 : -1;
+      // Sorting on LC filename is a kludge, so Shapefiles with mixed-case
+      // extensions are sorted with .shp component before .dbf
+      // (When .dbf files are queued first, they are imported as a separate layer.
+      // This is so data layers are not later converted into shape layers,
+      // e.g. to allow joining a shape layer to its own dbf data table).
+      return a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1;
     });
   }
 
