@@ -83,6 +83,7 @@ function LayerControl(model, map) {
       clearPin();
       map.setReferenceLayer(lyr, dataset);
       pinnedLyr = lyr;
+      el.addClass('visible-pin');
     }
   }
 
@@ -91,6 +92,7 @@ function LayerControl(model, map) {
       Elements('.layer-item.pinned').forEach(function(el) {
         el.removeClass('pinned');
       });
+      el.removeClass('visible-pin');
       pinnedLyr = null;
       map.setReferenceLayer(null);
     }
