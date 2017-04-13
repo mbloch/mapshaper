@@ -76,7 +76,7 @@ function CommandParser() {
 
       try {
         if (cmd._.length > 1 && !cmdDef.multi_arg) {
-          error("Command takes a single argument. Received:", cmd._);
+          error("Command takes a single argument. Received:", cmd._.join(' '));
         }
         if (cmdDef.validate) {
           cmdDef.validate(cmd);
