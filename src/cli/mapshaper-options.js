@@ -71,6 +71,7 @@ MapShaper.getOptionParser = function() {
   parser.command('i')
     .describe("input one or more files")
     .validate(validateInputOpts)
+    .flag("multi_arg")
     .option("files", {
       label: "<files>",
       describe: "files to import (separated by spaces), or - to use stdin"
@@ -431,7 +432,7 @@ MapShaper.getOptionParser = function() {
     .validate(validateJoinOpts)
     .option("source", {
       label: "<source>",
-      describe: "file containing data records"
+      describe: "file or layer containing data records"
     })
     .option("keys", {
       describe: "join by matching target,source key fields; e.g. keys=FIPS,GEOID",
@@ -538,6 +539,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("proj")
     .describe("project a dataset using a proj4 string or alias")
+    .flag("multi_arg")
     .option("densify", {
       type: "flag",
       describe: "add points along straight segments to approximate curves"

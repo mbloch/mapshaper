@@ -74,12 +74,15 @@ function CommandParser() {
         readOption(cmd, argv, cmdDef);
       }
 
-      if (cmdDef.validate) {
-        try {
-          cmdDef.validate(cmd);
-        } catch(e) {
-          stop("[" + cmdName + "] " + e.message);
+      try {
+        if (cmd._.length > 1 && !cmdDef.multi_arg) {
+          error("Command takes a single argument. Received:", cmd._);
         }
+        if (cmdDef.validate) {
+          cmdDef.validate(cmd);
+        }
+      } catch(e) {
+        stop("[" + cmdName + "] " + e.message);
       }
       commands.push(cmd);
     }
@@ -358,6 +361,11 @@ function CommandOptions(name) {
 
   this.title = function(str) {
     _command.title = str;
+    return this;
+  };
+
+  this.flag = function(name) {
+    _command[name] = true;
     return this;
   };
 

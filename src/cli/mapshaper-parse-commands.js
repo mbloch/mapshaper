@@ -1,4 +1,4 @@
-/* @requires mapshaper-options */
+/* @requires mapshaper-options, mapshaper-chunker */
 
 // Parse an array or a string of command line tokens into an array of
 // command objects.

@@ -23,11 +23,12 @@ describe('mapshaper-options.js', function () {
     good("-i combine-files " + file1 + " " + file2, {combine_files: true, files: [file1, file2]});
     good("-", {stdin: true});
     good("/dev/stdin", {stdin: true});
-    good("file.shp name=states", {files:['file.shp'], name: 'states'})
-    good("file.shp name=", {files:['file.shp'], name: ''})
-    good("file.shp name=''", {files:['file.shp'], name: ''})
-    good("file.shp name='a b'", {files:['file.shp'], name: 'a b'})
-    good("file.shp name 'a b'", {files:['file.shp'], name: 'a b'})
+    good("file.shp name=states", {files:['file.shp'], name: 'states'});
+    good("file.shp name=", {files:['file.shp'], name: ''});
+    good("file.shp name=''", {files:['file.shp'], name: ''});
+    good("file.shp name='a b'", {files:['file.shp'], name: 'a b'});
+    good("file.shp name 'a b'", {files:['file.shp'], name: 'a b'});
+    good("file1.shp file2.shp", {files:['file1.shp', 'file2.shp']}); // accepts multiple files
     // disallowing whitespace tokens
     // good("file.shp name ''", {files:['file.shp'], name: ''})
     // good("file.shp name '' no-topology", {files:['file.shp'], name: '', no_topology: true})
@@ -138,6 +139,9 @@ describe('mapshaper-options.js', function () {
     good("-join " + file1 + " keys ID,FIPS fields FIPS,NAME", {source: file1, keys: ["ID","FIPS"], fields: ["FIPS","NAME"]})
     good("-join " + file1 + " keys ID,FIPS", {source: file1, keys: ["ID","FIPS"]}) // fields are optional
     good("-join " + file1 + " keys=ID,FIPS unjoined unmatched", {source: file1, keys: ['ID', 'FIPS'], unjoined: true, unmatched: true});
+
+    good("-join data.tsv field-types=FIPS:str keys=GEOID,FIPS", {source: 'data.tsv', keys: ['GEOID', 'FIPS'], field_types: ['FIPS:str']});
+    bad("-join data.tsv field-types:FIPS:str keys=GEOID,FIPS"); // catch invalid field-types argument
   })
 
   describe('clip', function () {

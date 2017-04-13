@@ -29,14 +29,13 @@ function validateInputOpts(cmd) {
 
 function validateSimplifyOpts(cmd) {
   var o = cmd.options,
-      _ = cmd._;
+      arg = cmd._[0];
 
-  if (_.length > 0) {
-    if (/^[0-9.]+%?$/.test(_[0])) {
-      o.percentage = utils.parsePercent(_.shift());
-    }
-    if (_.length > 0) {
-      error("Unparsable option:", _.join(' '));
+  if (arg) {
+    if (/^[0-9.]+%?$/.test(arg)) {
+      o.percentage = utils.parsePercent(arg);
+    } else {
+      error("Unparsable option:", arg);
     }
   }
 
@@ -64,8 +63,6 @@ function validateJoinOpts(cmd) {
 function validateSplitOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.field = cmd._[0];
-  } else if (cmd._.length > 1) {
-    error("Command takes a single field name");
   }
 }
 
@@ -89,8 +86,6 @@ function validateDissolveOpts(cmd) {
       o = cmd.options;
   if (_.length == 1) {
     o.field = _[0];
-  } else if (_.length > 1) {
-    error("Command takes a single field name");
   }
 }
 
@@ -145,8 +140,6 @@ function validateFilterFieldsOpts(cmd) {
 function validateExpressionOpts(cmd) {
   if (cmd._.length == 1) {
     cmd.options.expression = cmd._[0];
-  } else if (cmd._.length > 1) {
-    error("Unparsable arguments:", cmd._);
   }
 }
 
@@ -219,7 +212,7 @@ function validateOutputOpts(cmd) {
 function validateCommaSepNames(str, min) {
   if (!min && !str) return null; // treat
   if (!utils.isString(str)) {
-    error ("Expected a comma-separated list; found:", str);
+    error("Expected a comma-separated list; found:", str);
   }
   var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
   if (min && min > parts.length < min) {
