@@ -159,10 +159,9 @@ function MshpMap(model) {
 
   function activeStyle() {
     var style = _activeStyle;
-    if (referenceLayerVisible()) {
+    if (referenceLayerVisible() && _activeStyle.type != 'styled') {
       style = utils.defaults({
         // kludge to hide ghosted layers
-        // TODO: improve
         strokeColors: [null, _activeStyle.strokeColors[1]]
       }, _activeStyle);
     }

@@ -2,6 +2,35 @@ var assert = require('assert'),
     api = require("../");
 
 describe('mapshaper-rename-layers.js', function () {
+
+  it ('All layers are targeted by default', function(done) {
+    var a = {
+      type: 'Polygon',
+      coordinates: [[[0, 0], [0, 1], [1, 0], [0, 0]]]
+    };
+    var b = {
+      type: 'Point',
+      coordinates: [3, 3]
+    };
+    api.applyCommands('-i a.json -i b.json -rename-layers c,d -o target=*', {'a.json': a, 'b.json': b}, function(err, output) {
+      assert.deepEqual(JSON.parse(output['c.json']).geometries[0], a);
+      assert.deepEqual(JSON.parse(output['d.json']).geometries[0], b);
+      done();
+    })
+  })
+
+  it ('Matches unnamed layer', function(done) {
+    var a = {
+      type: 'Polygon',
+      coordinates: [[[0, 0], [0, 1], [1, 0], [0, 0]]]
+    };
+    api.applyCommands('-i a.json -dissolve + -rename-layers c,d -o target=*', {'a.json': a}, function(err, output) {
+      assert.deepEqual(JSON.parse(output['c.json']).geometries[0], a);
+      assert.deepEqual(JSON.parse(output['d.json']).geometries[0], a);
+      done();
+    })
+  })
+
   it ('assign new names to layers', function() {
     var layers = [{}, {}],
         names = ['a', 'b'];

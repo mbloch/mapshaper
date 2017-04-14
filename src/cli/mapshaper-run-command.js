@@ -59,12 +59,30 @@ api.runCommand = function(cmd, catalog, cb) {
     T.start();
     if (!catalog) catalog = new Catalog();
 
-    if (name == 'o') {
+    if (name == 'rename-layers') {
+      // default target is all layers
+      targets = catalog.findCommandTargets(opts.target || '*');
+      targetLayers = targets.reduce(function(memo, obj) {
+        return memo.concat(obj.layers);
+      }, []);
+
+    } else if (name == 'o') {
       // when combining GeoJSON layers, default is all layers
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
+
     } else {
       targets = catalog.findCommandTargets(opts.target);
+      if (targets.length == 1) {
+        targetDataset = targets[0].dataset;
+        arcs = targetDataset.arcs;
+        targetLayers = targets[0].layers;
+        // target= option sets default target
+        catalog.setDefaultTarget(targetLayers, targetDataset);
+
+      } else if (targets.length > 1) {
+        fail("Targetting multiple datasets is not supported");
+      }
     }
 
     if (targets.length === 0) {
@@ -74,19 +92,6 @@ api.runCommand = function(cmd, catalog, cb) {
       }
       if (!(name == 'graticule' || name == 'i' || name == 'point-grid')) {
         throw new APIError("Missing a -i command");
-      }
-
-    } else if (targets.length == 1) {
-      targetDataset = targets[0].dataset;
-      arcs = targetDataset.arcs;
-      targetLayers = targets[0].layers;
-      // target= option sets default target
-      catalog.setDefaultTarget(targetLayers, targetDataset);
-
-    } else { // >1 target
-      // TODO: decide if -o target= option should change default target
-      if (name != 'o') {
-        fail("Targetting multiple datasets is not supported");
       }
     }
 
@@ -112,6 +117,7 @@ api.runCommand = function(cmd, catalog, cb) {
 
     if (name == 'data-fill') {
       MapShaper.applyCommand(api.dataFill, targetLayers, arcs, opts);
+
     } else if (name == 'cluster') {
       MapShaper.applyCommand(api.cluster, targetLayers, arcs, opts);
 
