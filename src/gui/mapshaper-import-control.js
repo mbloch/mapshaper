@@ -112,6 +112,7 @@ function ImportControl(model, opts) {
     queuedFiles = [];
     El('#dropped-file-list .file-list').empty();
     El('#dropped-file-list').hide();
+    El('#import-buttons').hide();
   }
 
   function addFiles(files) {
@@ -271,12 +272,27 @@ function ImportControl(model, opts) {
       delay = 35;
     }
     setTimeout(function() {
-      var dataset = MapShaper.importFileContent(content, path, importOpts);
-      dataset.info.no_repair = importOpts.no_repair;
-      model.updated({select: true, import: true}, dataset.layers[0], dataset);
-      importCount++;
-      readNext();
+      var dataset;
+      try {
+        dataset = MapShaper.importFileContent(content, path, importOpts);
+        dataset.info.no_repair = importOpts.no_repair;
+        model.updated({select: true, import: true}, dataset.layers[0], dataset);
+        importCount++;
+        readNext();
+     } catch(e) {
+        handleImportError(e, path);
+      }
     }, delay);
+  }
+
+  function handleImportError(e, path) {
+    var msg = utils.isString(e) ? e : e.message;
+    if (path) {
+      msg = "Error importing " + path + ":\n" + msg;
+    }
+    clearFiles();
+    gui.alert(msg);
+    console.error(e);
   }
 
   function readZipFile(file) {
@@ -284,16 +300,16 @@ function ImportControl(model, opts) {
     setTimeout(function() {
       gui.readZipFile(file, function(err, files) {
         if (err) {
-          console.log("Zip file loading failed:");
-          throw err;
+          handleImportError(err, file.name);
+        } else {
+          // don't try to import .txt files from zip files
+          // (these would be parsed as dsv and throw errows)
+          files = files.filter(function(f) {
+            return !/\.txt$/i.test(f.name);
+          });
+          addFiles(files);
+          readNext();
         }
-        // don't try to import .txt files from zip files
-        // (these would be parsed as dsv and throw errows)
-        files = files.filter(function(f) {
-          return !/\.txt$/i.test(f.name);
-        });
-        addFiles(files);
-        readNext();
       });
     }, 35);
   }
