@@ -36,11 +36,11 @@ MapShaper.getOptionParser = function() {
       },
       sumFieldsOpt = {
         describe: "fields to sum when dissolving  (comma-sep. list)",
-        type: "comma-sep"
+        type: "strings"
       },
       copyFieldsOpt = {
         describe: "fields to copy when dissolving (comma-sep. list)",
-        type: "comma-sep"
+        type: "strings"
       },
       dissolveFieldOpt = {
         label: "<field>",
@@ -98,14 +98,14 @@ MapShaper.getOptionParser = function() {
     /*
     .option("fields", {
       describe: "attribute fields to import (comma-sep.) (default is all fields)",
-      type: "comma-sep"
+      type: "strings"
     }) */
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
     })
     .option("field-types", {
       describe: "type hints for csv files, e.g. FIPS:str,STATE_FIPS:str",
-      type: "comma-sep"
+      type: "strings"
     })
     .option("name", {
       describe: "Rename the imported layer(s)"
@@ -155,7 +155,7 @@ MapShaper.getOptionParser = function() {
     })
     .option("id-field", {
       describe: "(Topo/GeoJSON/SVG) field to use for id property",
-      type: "comma-sep"
+      type: "strings"
     })
     .option("bbox", {
       type: "flag",
@@ -274,6 +274,23 @@ MapShaper.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
+  parser.command("colorizer")
+    .flag("no_arg")
+    .option("breaks", {
+      type: "numbers"
+    })
+    .option("colors", {
+      type: "strings"
+    })
+    .option("nodata", {
+
+    })
+    .option("name", {
+
+    })
+    .option("precision", {
+      type: "number"
+    });
 
   parser.command("dissolve")
     .validate(validateDissolveOpts)
@@ -351,7 +368,6 @@ MapShaper.getOptionParser = function() {
     .describe("divide multi-part features into single-part features")
     .option("naive", {type: "flag"}) // testing
     .option("target", targetOpt);
-
 
   parser.command("filter")
     .describe("delete features using a JS expression")
@@ -436,19 +452,19 @@ MapShaper.getOptionParser = function() {
     })
     .option("keys", {
       describe: "join by matching target,source key fields; e.g. keys=FIPS,GEOID",
-      type: "comma-sep"
+      type: "strings"
     })
     .option("fields", {
       describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
-      type: "comma-sep"
+      type: "strings"
     })
     .option("field-types", {
       describe: "type hints for csv source files, e.g. FIPS:str,STATE_FIPS:str",
-      type: "comma-sep"
+      type: "strings"
     })
     .option("sum-fields", {
       describe: "fields to sum when multiple source records match the same target",
-      type: "comma-sep"
+      type: "strings"
     })
     .option("calc", {
       describe: "use a JS expression to calculate values for many-to-one joins"
@@ -477,7 +493,7 @@ MapShaper.getOptionParser = function() {
     .option("fields", {
       label: "<fields>",
       describe: "optional comma-sep. list of fields to create a hierarchy",
-      type: "comma-sep"
+      type: "strings"
     })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
@@ -588,7 +604,7 @@ MapShaper.getOptionParser = function() {
     .validate(validateRenameLayersOpts)
     .option("names", {
       label: "<names>",
-      type: "comma-sep",
+      type: "strings",
       describe: "new layer name(s) (comma-sep. list)"
     })
     .option("target", targetOpt);
@@ -820,7 +836,7 @@ MapShaper.getOptionParser = function() {
     .describe("print help; takes optional command name")
     .option("commands", {
       label: "<command>",
-      type: "comma-sep",
+      type: "strings",
       describe: "view detailed information about a command"
     });
 

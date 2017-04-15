@@ -6,7 +6,8 @@ var MapShaper = {
   LOGGING: false,
   QUIET: false,
   TRACING: false,
-  VERBOSE: false
+  VERBOSE: false,
+  defs: {}
 };
 
 new Float64Array(1); // workaround for https://github.com/nodejs/node/issues/6006

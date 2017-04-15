@@ -75,6 +75,9 @@ function CommandParser() {
       }
 
       try {
+        if (cmd._.length > 0 && cmdDef.no_arg) {
+          error("Command takes no unnamed arguments. Received:", cmd._.join(' '));
+        }
         if (cmd._.length > 1 && !cmdDef.multi_arg) {
           error("Command takes a single argument. Received:", cmd._.join(' '));
         }
@@ -159,9 +162,9 @@ function CommandParser() {
           val = Number(token);
         } else if (type == 'integer') {
           val = Math.round(Number(token));
-        } else if (type == 'comma-sep') {
+        } else if (type == 'strings') {
           val = token.split(',');
-        } else if (type == 'bbox') {
+        } else if (type == 'bbox' || type == 'numbers') {
           val = token.split(',').map(parseFloat);
         } else if (type == 'percent') {
           val = utils.parsePercent(token);

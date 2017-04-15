@@ -34,21 +34,6 @@ function distanceSq3D(ax, ay, az, bx, by, bz) {
   return dx * dx + dy * dy + dz * dz;
 }
 
-function getRoundingFunction(inc) {
-  if (!utils.isNumber(inc) || inc === 0) {
-    error("Rounding increment must be a non-zero number.");
-  }
-  var inv = 1 / inc;
-  if (inv > 1) inv = Math.round(inv);
-  return function(x) {
-    return Math.round(x * inv) / inv;
-    // these alternatives show rounding error after JSON.stringify()
-    // return Math.round(x / inc) / inv;
-    // return Math.round(x / inc) * inc;
-    // return Math.round(x * inv) * inc;
-  };
-}
-
 // Return id of nearest point to x, y, among x0, y0, x1, y1, ...
 function nearestPoint(x, y, x0, y0) {
   var minIdx = -1,
@@ -378,7 +363,6 @@ var geom = {
   R: R,
   D2R: D2R,
   degreesToMeters: degreesToMeters,
-  getRoundingFunction: getRoundingFunction,
   segmentHit: segmentHit,
   segmentIntersection: segmentIntersection,
   distanceSq: distanceSq,

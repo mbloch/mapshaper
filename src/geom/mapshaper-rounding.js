@@ -1,4 +1,4 @@
-/* @require mapshaper-geom, mapshaper-arcs, mapshaper-dissolve2 */
+/* @require mapshaper-arcs, mapshaper-dissolve2 */
 
 MapShaper.roundPoints = function(lyr, round) {
   MapShaper.forEachPoint(lyr.shapes, function(p) {
@@ -8,7 +8,7 @@ MapShaper.roundPoints = function(lyr, round) {
 };
 
 MapShaper.setCoordinatePrecision = function(dataset, precision) {
-  var round = geom.getRoundingFunction(precision);
+  var round = utils.getRoundingFunction(precision);
   var dissolvePolygon, nodes;
   MapShaper.transformPoints(dataset, function(x, y) {
     return [round(x), round(y)];
@@ -25,4 +25,19 @@ MapShaper.setCoordinatePrecision = function(dataset, precision) {
     }
   });
   return dataset;
+};
+
+utils.getRoundingFunction = function(inc) {
+  if (!utils.isNumber(inc) || inc === 0) {
+    error("Rounding increment must be a non-zero number.");
+  }
+  var inv = 1 / inc;
+  if (inv > 1) inv = Math.round(inv);
+  return function(x) {
+    return Math.round(x * inv) / inv;
+    // these alternatives show rounding error after JSON.stringify()
+    // return Math.round(x / inc) / inv;
+    // return Math.round(x / inc) * inc;
+    // return Math.round(x * inv) * inc;
+  };
 };

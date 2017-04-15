@@ -1,8 +1,10 @@
 /* @requires mapshaper-feature-proxy */
 
 // Compiled expression returns a value
-MapShaper.compileValueExpression = function(exp, lyr, arcs) {
-  return MapShaper.compileFeatureExpression(exp, lyr, arcs, {returns: true});
+MapShaper.compileValueExpression = function(exp, lyr, arcs, opts) {
+  opts = opts || {};
+  opts.returns = true;
+  return MapShaper.compileFeatureExpression(exp, lyr, arcs, opts);
 };
 
 MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {

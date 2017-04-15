@@ -1,5 +1,5 @@
 /* @requires
-mapshaper-geom,
+mapshaper-rounding,
 mapshaper-shape-geom,
 mapshaper-snapping,
 mapshaper-shape-utils,
@@ -53,7 +53,7 @@ function PathImporter(opts) {
       openRingCount = 0;
 
   if (opts.precision) {
-    round = getRoundingFunction(opts.precision);
+    round = utils.getRoundingFunction(opts.precision);
   }
 
   // mix in #addPoint() and #endPath() methods

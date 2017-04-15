@@ -14,7 +14,7 @@ api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
   if (opts && opts.where) {
     filter = MapShaper.compileValueExpression(opts.where, lyr, arcs);
   }
-  compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs);
+  compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs, {context: MapShaper.defs});
   // call compiled expression with id of each record
   for (var i=0; i<n; i++) {
     if (!filter || filter(i)) {

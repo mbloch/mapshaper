@@ -2,6 +2,7 @@
 mapshaper-clean
 mapshaper-clip-erase
 mapshaper-cluster
+mapshaper-colorizer
 mapshaper-data-fill
 mapshaper-dissolve
 mapshaper-dissolve2
@@ -131,6 +132,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'clip') {
       outputLayers = api.clipLayers(targetLayers, source, targetDataset, opts);
 
+    } else if (name == 'colorizer') {
+      outputLayers = api.colorizer(opts);
+
     } else if (name == 'dissolve') {
       outputLayers = MapShaper.applyCommand(api.dissolve, targetLayers, arcs, opts);
 
@@ -167,7 +171,7 @@ api.runCommand = function(cmd, catalog, cb) {
       targetDataset = api.importFiles(cmd.options);
       if (targetDataset) {
         catalog.addDataset(targetDataset);
-        targetLayers = null; // kludge to allow layer naming below
+        outputLayers = targetDataset.layers; // kludge to allow layer naming below
       }
 
     } else if (name == 'info') {
@@ -252,15 +256,15 @@ api.runCommand = function(cmd, catalog, cb) {
     }
 
     // apply name parameter
-    if ('name' in opts) {
+    if (('name' in opts) && outputLayers) {
       // TODO: consider uniqifying multiple layers here
-      (outputLayers || targetLayers || targetDataset.layers).forEach(function(lyr) {
+      outputLayers.forEach(function(lyr) {
         lyr.name = opts.name;
       });
     }
 
     // integrate output layers into the target dataset
-    if (outputLayers && targetDataset) {
+    if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
       if (opts.no_replace) {
         targetDataset.layers = targetDataset.layers.concat(outputLayers);
       } else {

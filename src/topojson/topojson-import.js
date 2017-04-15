@@ -1,4 +1,4 @@
-/* @requires topojson-common, mapshaper-point-utils, mapshaper-shape-geom */
+/* @requires topojson-common, mapshaper-point-utils, mapshaper-shape-geom, mapshaper-rounding */
 
 // Convert a TopoJSON topology into mapshaper's internal format
 // Side-effect: data in topology is modified
@@ -86,7 +86,7 @@ TopoJSON.decodeArcs = function(arcs, transform) {
 
 // TODO: consider removing dupes...
 TopoJSON.roundCoords = function(arcs, precision) {
-  var round = getRoundingFunction(precision),
+  var round = utils.getRoundingFunction(precision),
       p;
   arcs.forEach(function(arc) {
     for (var i=0, len=arc.length; i<len; i++) {
