@@ -67,8 +67,8 @@ SVG.stringifyProperties = function(o) {
 
 SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
   var properties = svgObj.properties;
-  var invalidStyles = MapShaper.invalidSvgTypes[GeoJSON.translateGeoJSONType(geomType)];
-  var fields = MapShaper.getStyleFields(Object.keys(rec), MapShaper.svgStyles, invalidStyles);
+  var invalidStyles = internal.invalidSvgTypes[GeoJSON.translateGeoJSONType(geomType)];
+  var fields = internal.getStyleFields(Object.keys(rec), internal.svgStyles, invalidStyles);
   var k;
   for (var i=0, n=fields.length; i<n; i++) {
     k = fields[i];

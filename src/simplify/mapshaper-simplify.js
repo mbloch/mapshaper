@@ -11,18 +11,18 @@ api.simplify = function(dataset, opts) {
   var arcs = dataset.arcs;
   if (!arcs) stop("[simplify] Missing path data");
   // standardize options
-  opts = MapShaper.getStandardSimplifyOpts(dataset, opts);
+  opts = internal.getStandardSimplifyOpts(dataset, opts);
   // stash simplifcation options (used by gui settings dialog)
   dataset.info = utils.defaults({simplify: opts}, dataset.info);
 
-  MapShaper.simplifyPaths(arcs, opts);
+  internal.simplifyPaths(arcs, opts);
 
   if (opts.percentage) {
     arcs.setRetainedPct(utils.parsePercent(opts.percentage));
   } else if (utils.isNumber(opts.interval)) {
     arcs.setRetainedInterval(opts.interval);
   } else if (opts.resolution) {
-    arcs.setRetainedInterval(MapShaper.calcSimplifyInterval(arcs, opts));
+    arcs.setRetainedInterval(internal.calcSimplifyInterval(arcs, opts));
   }
 
   if (opts.keep_shapes) {
@@ -30,49 +30,49 @@ api.simplify = function(dataset, opts) {
   }
 
   if (!opts.no_repair && arcs.getRetainedInterval() > 0) {
-    MapShaper.postSimplifyRepair(arcs);
+    internal.postSimplifyRepair(arcs);
   }
 
   if (opts.stats) {
-    MapShaper.printSimplifyInfo(arcs, opts);
+    internal.printSimplifyInfo(arcs, opts);
   }
 };
 
-MapShaper.getStandardSimplifyOpts = function(dataset, opts) {
+internal.getStandardSimplifyOpts = function(dataset, opts) {
   opts = opts || {};
   return utils.defaults({
-    method: MapShaper.getSimplifyMethod(opts),
-    spherical: MapShaper.useSphericalSimplify(dataset.arcs, opts)
+    method: internal.getSimplifyMethod(opts),
+    spherical: internal.useSphericalSimplify(dataset.arcs, opts)
   }, opts);
 };
 
-MapShaper.useSphericalSimplify = function(arcs, opts) {
+internal.useSphericalSimplify = function(arcs, opts) {
   return !opts.planar && !arcs.isPlanar();
 };
 
 // Calculate simplification thresholds for each vertex of an arc collection
 // (modifies @arcs ArcCollection in-place)
-MapShaper.simplifyPaths = function(arcs, opts) {
-  var simplifyPath = MapShaper.getSimplifyFunction(opts);
+internal.simplifyPaths = function(arcs, opts) {
+  var simplifyPath = internal.getSimplifyFunction(opts);
   arcs.setThresholds(new Float64Array(arcs.getPointCount())); // Create array to hold simplification data
   if (opts.spherical) {
-    MapShaper.simplifyPaths3D(arcs, simplifyPath);
-    MapShaper.protectWorldEdges(arcs);
+    internal.simplifyPaths3D(arcs, simplifyPath);
+    internal.protectWorldEdges(arcs);
   } else {
-    MapShaper.simplifyPaths2D(arcs, simplifyPath);
+    internal.simplifyPaths2D(arcs, simplifyPath);
   }
   if (opts.lock_box) {
-    MapShaper.protectContentEdges(arcs);
+    internal.protectContentEdges(arcs);
   }
 };
 
-MapShaper.simplifyPaths2D = function(arcs, simplify) {
+internal.simplifyPaths2D = function(arcs, simplify) {
   arcs.forEach3(function(xx, yy, kk, i) {
     simplify(kk, xx, yy);
   });
 };
 
-MapShaper.simplifyPaths3D = function(arcs, simplify) {
+internal.simplifyPaths3D = function(arcs, simplify) {
   var xbuf = utils.expandoBuffer(Float64Array),
       ybuf = utils.expandoBuffer(Float64Array),
       zbuf = utils.expandoBuffer(Float64Array);
@@ -86,7 +86,7 @@ MapShaper.simplifyPaths3D = function(arcs, simplify) {
   });
 };
 
-MapShaper.getSimplifyMethod = function(opts) {
+internal.getSimplifyMethod = function(opts) {
   var m = opts.method;
   if (!m || m == 'weighted' || m == 'visvalingam' && opts.weighting) {
     m =  'weighted_visvalingam';
@@ -94,7 +94,7 @@ MapShaper.getSimplifyMethod = function(opts) {
   return m;
 };
 
-MapShaper.getSimplifyFunction = function(opts) {
+internal.getSimplifyFunction = function(opts) {
   var f;
   if (opts.method == 'dp') {
     f = DouglasPeucker.calcArcData;
@@ -108,17 +108,17 @@ MapShaper.getSimplifyFunction = function(opts) {
   return f;
 };
 
-MapShaper.protectContentEdges = function(arcs) {
+internal.protectContentEdges = function(arcs) {
   var e = 1e-14;
   var bb = arcs.getBounds();
   bb.padBounds(-e, -e, -e, -e);
-  MapShaper.limitSimplificationExtent(arcs, bb.toArray(), true);
+  internal.limitSimplificationExtent(arcs, bb.toArray(), true);
 };
 
 // @hardLimit
 //    true: never remove edge vertices
 //    false: never remove before other vertices
-MapShaper.limitSimplificationExtent = function(arcs, bb, hardLimit) {
+internal.limitSimplificationExtent = function(arcs, bb, hardLimit) {
   var arcBounds = arcs.getBounds().toArray();
   // return if content doesn't reach edges
   if (containsBounds(bb, arcBounds) === true) return;
@@ -130,7 +130,7 @@ MapShaper.limitSimplificationExtent = function(arcs, bb, hardLimit) {
       y = yy[i];
       if (x >= bb[2] || x <= bb[0] || y <= bb[1] || y >= bb[3]) {
         if (lockZ === 0) {
-          lockZ = MapShaper.findMaxThreshold(zz);
+          lockZ = internal.findMaxThreshold(zz);
         }
         if (zz[i] !== Infinity) { // don't override lock value
           zz[i] = lockZ;
@@ -144,16 +144,16 @@ MapShaper.limitSimplificationExtent = function(arcs, bb, hardLimit) {
 // being removed before other points in a path.
 // Assume: coordinates are in decimal degrees
 //
-MapShaper.protectWorldEdges = function(arcs) {
+internal.protectWorldEdges = function(arcs) {
   // Need to handle coords with rounding errors:
   // -179.99999999999994 in test/test_data/ne/ne_110m_admin_0_scale_rank.shp
   // 180.00000000000003 in ne/ne_50m_admin_0_countries.shp
-  MapShaper.limitSimplificationExtent(arcs, MapShaper.getWorldBounds(1e-12), false);
+  internal.limitSimplificationExtent(arcs, internal.getWorldBounds(1e-12), false);
 };
 
 // Return largest value in an array, ignoring Infinity (lock value)
 //
-MapShaper.findMaxThreshold = function(zz) {
+internal.findMaxThreshold = function(zz) {
   var z, maxZ = 0;
   for (var i=0, n=zz.length; i<n; i++) {
     z = zz[i];
@@ -164,7 +164,7 @@ MapShaper.findMaxThreshold = function(zz) {
   return maxZ;
 };
 
-MapShaper.parseSimplifyResolution = function(raw) {
+internal.parseSimplifyResolution = function(raw) {
   var parts, w, h;
   if (utils.isNumber(raw)) {
     w = raw;
@@ -181,33 +181,33 @@ MapShaper.parseSimplifyResolution = function(raw) {
   return [w, h]; // TODO: validate;
 };
 
-MapShaper.calcPlanarInterval = function(xres, yres, width, height) {
+internal.calcPlanarInterval = function(xres, yres, width, height) {
   var fitWidth = xres !== 0 && width / height > xres / yres || yres === 0;
   return fitWidth ? width / xres : height / yres;
 };
 
 // Calculate a simplification interval for unprojected data, given an output resolution
 // (This is approximate, since we don't know how the data will be projected for display)
-MapShaper.calcSphericalInterval = function(xres, yres, bounds) {
+internal.calcSphericalInterval = function(xres, yres, bounds) {
   // Using length of arc along parallel through center of bbox as content width
   // TODO: consider using great circle instead of parallel arc to calculate width
   //    (doesn't work if width of bbox is greater than 180deg)
   var width = geom.degreesToMeters(bounds.width()) * Math.cos(bounds.centerY() * geom.D2R);
   var height = geom.degreesToMeters(bounds.height());
-  return MapShaper.calcPlanarInterval(xres, yres, width, height);
+  return internal.calcPlanarInterval(xres, yres, width, height);
 };
 
-MapShaper.calcSimplifyInterval = function(arcs, opts) {
+internal.calcSimplifyInterval = function(arcs, opts) {
   var res, interval, bounds;
   if (opts.interval) {
     interval = opts.interval;
   } else if (opts.resolution) {
-    res = MapShaper.parseSimplifyResolution(opts.resolution);
+    res = internal.parseSimplifyResolution(opts.resolution);
     bounds = arcs.getBounds();
-    if (MapShaper.useSphericalSimplify(arcs, opts)) {
-      interval = MapShaper.calcSphericalInterval(res[0], res[1], bounds);
+    if (internal.useSphericalSimplify(arcs, opts)) {
+      interval = internal.calcSphericalInterval(res[0], res[1], bounds);
     } else {
-      interval = MapShaper.calcPlanarInterval(res[0], res[1], bounds.width(), bounds.height());
+      interval = internal.calcPlanarInterval(res[0], res[1], bounds.width(), bounds.height());
     }
     // scale interval to double the resolution (single-pixel resolution creates
     //  visible artefacts)

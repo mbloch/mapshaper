@@ -1,21 +1,21 @@
 /* @require mapshaper-arcs, mapshaper-dissolve2 */
 
-MapShaper.roundPoints = function(lyr, round) {
-  MapShaper.forEachPoint(lyr.shapes, function(p) {
+internal.roundPoints = function(lyr, round) {
+  internal.forEachPoint(lyr.shapes, function(p) {
     p[0] = round(p[0]);
     p[1] = round(p[1]);
   });
 };
 
-MapShaper.setCoordinatePrecision = function(dataset, precision) {
+internal.setCoordinatePrecision = function(dataset, precision) {
   var round = utils.getRoundingFunction(precision);
   var dissolvePolygon, nodes;
-  MapShaper.transformPoints(dataset, function(x, y) {
+  internal.transformPoints(dataset, function(x, y) {
     return [round(x), round(y)];
   });
   if (dataset.arcs) {
-    nodes = MapShaper.addIntersectionCuts(dataset);
-    dissolvePolygon = MapShaper.getPolygonDissolver(nodes);
+    nodes = internal.addIntersectionCuts(dataset);
+    dissolvePolygon = internal.getPolygonDissolver(nodes);
   }
   dataset.layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polygon' && dissolvePolygon) {

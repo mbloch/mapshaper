@@ -2,7 +2,7 @@
 
 // Return a function to convert original feature ids into ids of combined features
 // Use categorical classification (a different id for each unique value)
-MapShaper.getCategoryClassifier = function(field, data) {
+internal.getCategoryClassifier = function(field, data) {
   if (!field) return function(i) {return 0;};
   if (!data || !data.fieldExists(field)) {
     stop("[dissolve] Data table is missing field:", field);
@@ -24,8 +24,8 @@ MapShaper.getCategoryClassifier = function(field, data) {
 // @properties input records
 // @getGroupId()  converts input record id to id of aggregated record
 //
-MapShaper.aggregateDataRecords = function(properties, getGroupId, opts) {
-  var groups = MapShaper.groupIds(getGroupId, properties.length),
+internal.aggregateDataRecords = function(properties, getGroupId, opts) {
+  var groups = internal.groupIds(getGroupId, properties.length),
       sumFields = opts.sum_fields || [],
       copyFields = opts.copy_fields || [],
       calc;
@@ -35,7 +35,7 @@ MapShaper.aggregateDataRecords = function(properties, getGroupId, opts) {
   }
 
   if (opts.calc) {
-    calc = MapShaper.getJoinCalc(new DataTable(properties), opts.calc);
+    calc = internal.getJoinCalc(new DataTable(properties), opts.calc);
   }
 
   function sum(field, group) {
@@ -69,7 +69,7 @@ MapShaper.aggregateDataRecords = function(properties, getGroupId, opts) {
 // @getId() (function) converts feature index into group index
 // @n number of features
 //
-MapShaper.groupIds = function(getId, n) {
+internal.groupIds = function(getId, n) {
   var groups = [], id;
   for (var i=0; i<n; i++) {
     id = getId(i);

@@ -1,6 +1,6 @@
 /* @requires mapshaper-shape-utils */
 
-MapShaper.exportPointData = function(points) {
+internal.exportPointData = function(points) {
   var data, path;
   if (!points || points.length === 0) {
     data = {partCount: 0, pointCount: 0};
@@ -20,10 +20,10 @@ MapShaper.exportPointData = function(points) {
   return data;
 };
 
-// TODO: remove duplication with MapShaper.getPathMetadata()
-MapShaper.exportPathData = function(shape, arcs, type) {
+// TODO: remove duplication with internal.getPathMetadata()
+internal.exportPathData = function(shape, arcs, type) {
   // kludge until Shapefile exporting is refactored
-  if (type == 'point') return MapShaper.exportPointData(shape);
+  if (type == 'point') return internal.exportPointData(shape);
 
   var pointCount = 0,
       bounds = new Bounds(),
@@ -32,7 +32,7 @@ MapShaper.exportPathData = function(shape, arcs, type) {
   if (shape && (type == 'polyline' || type == 'polygon')) {
     shape.forEach(function(arcIds, i) {
       var iter = arcs.getShapeIter(arcIds),
-          path = MapShaper.exportPathCoords(iter),
+          path = internal.exportPathCoords(iter),
           valid = true;
       if (type == 'polygon') {
         path.area = geom.getPlanarPathArea2(path.points);
@@ -59,7 +59,7 @@ MapShaper.exportPathData = function(shape, arcs, type) {
   };
 };
 
-MapShaper.exportPathCoords = function(iter) {
+internal.exportPathCoords = function(iter) {
   var points = [],
       i = 0,
       x, y, prevX, prevY;

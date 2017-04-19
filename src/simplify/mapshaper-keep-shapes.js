@@ -1,17 +1,17 @@
 /* @require mapshaper-arcs, mapshaper-shape-geom */
 
 api.keepEveryPolygon =
-MapShaper.keepEveryPolygon = function(arcData, layers) {
+internal.keepEveryPolygon = function(arcData, layers) {
   layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polygon') {
-      MapShaper.protectLayerShapes(arcData, lyr.shapes);
+      internal.protectLayerShapes(arcData, lyr.shapes);
     }
   });
 };
 
-MapShaper.protectLayerShapes = function(arcData, shapes) {
+internal.protectLayerShapes = function(arcData, shapes) {
   shapes.forEach(function(shape) {
-    MapShaper.protectShape(arcData, shape);
+    internal.protectShape(arcData, shape);
   });
 };
 
@@ -19,7 +19,7 @@ MapShaper.protectLayerShapes = function(arcData, shapes) {
 // @arcData an ArcCollection
 // @shape an array containing one or more arrays of arc ids, or null if null shape
 //
-MapShaper.protectShape = function(arcData, shape) {
+internal.protectShape = function(arcData, shape) {
   var maxArea = 0,
       arcCount = shape ? shape.length : 0,
       maxRing, area;
@@ -36,9 +36,9 @@ MapShaper.protectShape = function(arcData, shape) {
     // invald shape
     verbose("[protectShape()] Invalid shape:", shape);
   } else if (maxRing.length == 1) {
-    MapShaper.protectIslandRing(arcData, maxRing);
+    internal.protectIslandRing(arcData, maxRing);
   } else {
-    MapShaper.protectMultiRing(arcData, maxRing);
+    internal.protectMultiRing(arcData, maxRing);
   }
 };
 
@@ -46,22 +46,22 @@ MapShaper.protectShape = function(arcData, shape) {
 // Assuming that this will inflate the ring.
 // Consider using the function for multi-arc rings, which
 //   calculates ring area...
-MapShaper.protectIslandRing = function(arcData, ring) {
-  var added = MapShaper.lockMaxThreshold(arcData, ring);
+internal.protectIslandRing = function(arcData, ring) {
+  var added = internal.lockMaxThreshold(arcData, ring);
   if (added == 1) {
-    added += MapShaper.lockMaxThreshold(arcData, ring);
+    added += internal.lockMaxThreshold(arcData, ring);
   }
   if (added < 2) verbose("[protectIslandRing()] Failed on ring:", ring);
 };
 
-MapShaper.protectMultiRing = function(arcData, ring) {
+internal.protectMultiRing = function(arcData, ring) {
   var zlim = arcData.getRetainedInterval(),
       minArea = 0, // 0.00000001, // Need to handle rounding error?
       area, added;
   arcData.setRetainedInterval(Infinity);
   area = geom.getPlanarPathArea(ring, arcData);
   while (area <= minArea) {
-    added = MapShaper.lockMaxThreshold(arcData, ring);
+    added = internal.lockMaxThreshold(arcData, ring);
     if (added === 0) {
       verbose("[protectMultiRing()] Failed on ring:", ring);
       break;
@@ -74,7 +74,7 @@ MapShaper.protectMultiRing = function(arcData, ring) {
 // Protect the vertex or vertices with the largest non-infinite
 // removal threshold in a ring.
 //
-MapShaper.lockMaxThreshold = function(arcData, ring) {
+internal.lockMaxThreshold = function(arcData, ring) {
   var targZ = 0,
       targArcId,
       raw = arcData.getVertexData(),
@@ -86,7 +86,7 @@ MapShaper.lockMaxThreshold = function(arcData, ring) {
     if (arcId < 0) arcId = ~arcId;
     start = raw.ii[arcId];
     end = start + raw.nn[arcId] - 1;
-    id = MapShaper.findNextRemovableVertex(raw.zz, Infinity, start, end);
+    id = internal.findNextRemovableVertex(raw.zz, Infinity, start, end);
     if (id == -1) continue;
     z = raw.zz[id];
     if (z > targZ) {
@@ -98,12 +98,12 @@ MapShaper.lockMaxThreshold = function(arcData, ring) {
     // There may be more than one vertex with the target Z value; lock them all.
     start = raw.ii[targArcId];
     end = start + raw.nn[targArcId] - 1;
-    return MapShaper.replaceInArray(raw.zz, targZ, Infinity, start, end);
+    return internal.replaceInArray(raw.zz, targZ, Infinity, start, end);
   }
   return 0;
 };
 
-MapShaper.replaceInArray = function(zz, value, replacement, start, end) {
+internal.replaceInArray = function(zz, value, replacement, start, end) {
   var count = 0;
   for (var i=start; i<=end; i++) {
     if (zz[i] === value) {

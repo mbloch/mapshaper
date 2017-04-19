@@ -3,7 +3,7 @@
 // Convert a TopoJSON topology into mapshaper's internal format
 // Side-effect: data in topology is modified
 //
-MapShaper.importTopoJSON = function(topology, opts) {
+internal.importTopoJSON = function(topology, opts) {
   var dataset, arcs, layers;
 
   if (utils.isString(topology)) {
@@ -35,14 +35,14 @@ MapShaper.importTopoJSON = function(topology, opts) {
   }, []);
 
   layers.forEach(function(lyr) {
-    if (MapShaper.layerHasPaths(lyr)) {
-      MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+    if (internal.layerHasPaths(lyr)) {
+      internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
     if (lyr.geometry_type == 'point' && topology.transform) {
       TopoJSON.decodePoints(lyr.shapes, topology.transform);
     }
     if (lyr.data) {
-      MapShaper.fixInconsistentFields(lyr.data.getRecords());
+      internal.fixInconsistentFields(lyr.data.getRecords());
     }
   });
 
@@ -51,12 +51,12 @@ MapShaper.importTopoJSON = function(topology, opts) {
     arcs: arcs,
     info: {}
   };
-  MapShaper.importCRS(dataset, topology);
+  internal.importCRS(dataset, topology);
   return dataset;
 };
 
 TopoJSON.decodePoints = function(shapes, transform) {
-  MapShaper.forEachPoint(shapes, function(p) {
+  internal.forEachPoint(shapes, function(p) {
     p[0] = p[0] * transform.scale[0] + transform.translate[0];
     p[1] = p[1] * transform.scale[1] + transform.translate[1];
   });
@@ -177,7 +177,7 @@ TopoJSON.GeometryImporter = function(arcs, opts) {
   this.done = function() {
     var layers;
     if (collectionType == 'mixed') {
-      layers = MapShaper.divideFeaturesByType(shapes, properties, types);
+      layers = internal.divideFeaturesByType(shapes, properties, types);
     } else {
       layers = [{
         geometry_type: collectionType,
@@ -198,13 +198,13 @@ TopoJSON.importPolygonArcs = function(rings, arcs) {
   if (!area) {
     return null;
   }
-  if (area < 0) MapShaper.reversePath(ring);
+  if (area < 0) internal.reversePath(ring);
   imported = [ring];
   for (var i=1; i<rings.length; i++) {
     ring = rings[i];
     area = geom.getPlanarPathArea(ring, arcs);
     if (!area) continue;
-    if (area > 0) MapShaper.reversePath(ring);
+    if (area > 0) internal.reversePath(ring);
     imported.push(ring);
   }
   return imported;

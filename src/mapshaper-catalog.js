@@ -57,7 +57,7 @@ function Catalog() {
     var targets = [], test, i;
     if (pattern) {
       i = 0;
-      test = MapShaper.getTargetMatch(pattern);
+      test = internal.getTargetMatch(pattern);
       datasets.forEach(function(dataset) {
         var layers = dataset.layers.filter(function(lyr) {
           return test(lyr, i++);
@@ -160,7 +160,7 @@ function Catalog() {
   }
 }
 
-MapShaper.getFormattedLayerList = function(catalog) {
+internal.getFormattedLayerList = function(catalog) {
   var lines = [];
   catalog.forEachLayer(function(lyr, dataset, i) {
     lines.push('  [' + (i+1) + ']  ' + (lyr.name || '[unnamed]'));
@@ -168,7 +168,7 @@ MapShaper.getFormattedLayerList = function(catalog) {
   return lines.length > 0 ? lines.join('\n') : '[none]';
 };
 
-MapShaper.getLayerMatch = function(pattern) {
+internal.getLayerMatch = function(pattern) {
   var isIndex = utils.isInteger(Number(pattern));
   var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
   return function(lyr, i) {
@@ -179,8 +179,8 @@ MapShaper.getLayerMatch = function(pattern) {
 // @pattern is a layer identifier or a comma-sep. list of identifiers.
 // An identifier is a literal name, a pattern containing "*" wildcard or
 // a 1-based index (1..n)
-MapShaper.getTargetMatch = function(pattern) {
-  var tests = pattern.split(',').map(MapShaper.getLayerMatch);
+internal.getTargetMatch = function(pattern) {
+  var tests = pattern.split(',').map(internal.getLayerMatch);
   return function(lyr, i) {
     return utils.some(tests, function(test) {
       return test(lyr, i + 1); // layers are 1-indexed

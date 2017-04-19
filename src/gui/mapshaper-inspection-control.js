@@ -35,7 +35,7 @@ function InspectionControl(model, hit) {
     if (lyr != model.getActiveLayer().layer) {
       error("Only the active layer can be targeted");
     }
-    ids = MapShaper.selectFeatures(lyr, arcs, opts);
+    ids = internal.selectFeatures(lyr, arcs, opts);
     if (ids.length === 0) {
       message("No features were selected");
       return;
@@ -55,7 +55,7 @@ function InspectionControl(model, hit) {
 
     // arrow keys advance pinned feature unless user is editing text.
     } else if ((kc == 37 || kc == 39) && _pinned && !gui.getInputElement()) {
-      n = MapShaper.getFeatureCount(_lyr.getDisplayLayer().layer);
+      n = internal.getFeatureCount(_lyr.getDisplayLayer().layer);
       if (n > 1) {
         if (kc == 37) {
           id = (_highId + n - 1) % n;

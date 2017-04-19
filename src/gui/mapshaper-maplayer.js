@@ -78,10 +78,10 @@ function DisplayLayer(lyr, dataset, ext) {
 
   function initArcFlags(self) {
     var o = self.getDisplayLayer();
-    if (o.dataset.arcs && MapShaper.layerHasPaths(o.layer)) {
+    if (o.dataset.arcs && internal.layerHasPaths(o.layer)) {
       _arcFlags = new Uint8Array(o.dataset.arcs.size());
       // Arcs belonging to at least one path are flagged 1, others 0
-      MapShaper.countArcsInShapes(o.layer.shapes, _arcFlags);
+      internal.countArcsInShapes(o.layer.shapes, _arcFlags);
       for (var i=0, n=_arcFlags.length; i<n; i++) {
         _arcFlags[i] = _arcFlags[i] === 0 ? 0 : 1;
       }
@@ -92,7 +92,7 @@ function DisplayLayer(lyr, dataset, ext) {
     var display = lyr.display = lyr.display || {};
 
     // init filtered arcs, if needed
-    if (MapShaper.layerHasPaths(lyr) && !dataset.filteredArcs) {
+    if (internal.layerHasPaths(lyr) && !dataset.filteredArcs) {
       dataset.filteredArcs = new FilteredArcCollection(dataset.arcs);
     }
 
@@ -119,7 +119,7 @@ function getDisplayBounds(lyr, arcs) {
       lyrBounds;
 
   if (lyr.geometry_type == 'point') {
-    lyrBounds = MapShaper.getLayerBounds(lyr);
+    lyrBounds = internal.getLayerBounds(lyr);
     if (lyrBounds && lyrBounds.hasBounds()) {
       if (lyrBounds.area() > 0 || !arcBounds.hasBounds()) {
         bounds = lyrBounds;

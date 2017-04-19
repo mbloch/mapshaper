@@ -25,13 +25,13 @@ function FilteredArcCollection(unfilteredArcs) {
       // For large datasets, create a filtered copy of the data for faster rendering
       if (size > cutoff) {
         filteredArcs = initFilteredArcs(unfilteredArcs, sortedThresholds);
-        filteredSegLen = MapShaper.getAvgSegment(filteredArcs);
+        filteredSegLen = internal.getAvgSegment(filteredArcs);
       }
     } else {
       if (size > cutoff) {
         // generate filtered arcs when no simplification data is present
-        filteredSegLen = MapShaper.getAvgSegment(unfilteredArcs) * 4;
-        filteredArcs = MapShaper.simplifyArcsFast(unfilteredArcs, filteredSegLen);
+        filteredSegLen = internal.getAvgSegment(unfilteredArcs) * 4;
+        filteredArcs = internal.simplifyArcsFast(unfilteredArcs, filteredSegLen);
       }
     }
   }
@@ -69,7 +69,7 @@ function FilteredArcCollection(unfilteredArcs) {
   this.setRetainedPct = function(pct) {
     if (sortedThresholds) {
       var z = sortedThresholds[Math.floor(pct * sortedThresholds.length)];
-      z = MapShaper.clampIntervalByPct(z, pct);
+      z = internal.clampIntervalByPct(z, pct);
       // this.setRetainedInterval(z);
       unfilteredArcs.setRetainedInterval(z);
     } else {

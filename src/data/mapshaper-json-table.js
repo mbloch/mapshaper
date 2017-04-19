@@ -1,7 +1,7 @@
 /* @requires mapshaper-data-table */
 
-MapShaper.importJSONTable = function(arr) {
-  MapShaper.fixInconsistentFields(arr);
+internal.importJSONTable = function(arr) {
+  internal.fixInconsistentFields(arr);
   return {
     layers: [{
       data: new DataTable(arr)
@@ -10,11 +10,11 @@ MapShaper.importJSONTable = function(arr) {
   };
 };
 
-MapShaper.exportJSON = function(dataset, opts) {
+internal.exportJSON = function(dataset, opts) {
   return dataset.layers.reduce(function(arr, lyr) {
     if (lyr.data){
       arr.push({
-        content: MapShaper.exportJSONTable(lyr),
+        content: internal.exportJSONTable(lyr),
         filename: (lyr.name || 'output') + '.json'
       });
     }
@@ -22,6 +22,6 @@ MapShaper.exportJSON = function(dataset, opts) {
   }, []);
 };
 
-MapShaper.exportJSONTable = function(lyr) {
+internal.exportJSONTable = function(lyr) {
   return JSON.stringify(lyr.data.getRecords());
 };

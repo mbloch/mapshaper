@@ -3,9 +3,9 @@
 // Return function for splitting self-intersecting polygon rings
 // Splitter function receives a single path, returns an array of paths
 // Intersections are assumed to occur at vertices, not along segments
-// (requires that MapShaper.addIntersectionCuts() has already been run)
+// (requires that internal.addIntersectionCuts() has already been run)
 //
-MapShaper.getSelfIntersectionSplitter = function(nodes) {
+internal.getSelfIntersectionSplitter = function(nodes) {
   return dividePath;
 
   // Returns array of 0 or more divided paths
@@ -18,7 +18,7 @@ MapShaper.getSelfIntersectionSplitter = function(nodes) {
       }
     }
     // indivisible path -- clean it by removing any spikes
-    MapShaper.removeSpikesInPath(path);
+    internal.removeSpikesInPath(path);
     return path.length > 0 ? [path] : [];
   }
 
@@ -37,7 +37,7 @@ MapShaper.getSelfIntersectionSplitter = function(nodes) {
     }
     if (exitIds.length > 1) {
       // path forks -- recursively subdivide
-      return MapShaper.splitPathByIds(path, exitIds).reduce(accumulatePaths, null);
+      return internal.splitPathByIds(path, exitIds).reduce(accumulatePaths, null);
     }
     return null;
   }
@@ -60,7 +60,7 @@ MapShaper.getSelfIntersectionSplitter = function(nodes) {
 // @path An array of arc ids describing a self-intersecting polygon ring
 // @ids An array of two or more ids of arcs that originate from a single vertex
 //      where @path intersects itself.
-MapShaper.splitPathByIds = function(path, ids) {
+internal.splitPathByIds = function(path, ids) {
   var subPaths = [];
   // Find array indexes in @path of each split id
   var indexes = ids.map(function(id) {

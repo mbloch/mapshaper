@@ -8,10 +8,10 @@ api.filterIslands = function(lyr, arcs, opts) {
 
   if (opts.min_area || opts.min_vertices) {
     if (opts.min_area) {
-      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getMinAreaTest(opts.min_area, arcs));
+      removed += internal.filterIslands(lyr, arcs, internal.getMinAreaTest(opts.min_area, arcs));
     }
     if (opts.min_vertices) {
-      removed += MapShaper.filterIslands(lyr, arcs, MapShaper.getVertexCountTest(opts.min_vertices, arcs));
+      removed += internal.filterIslands(lyr, arcs, internal.getVertexCountTest(opts.min_vertices, arcs));
     }
     if (opts.remove_empty) {
       api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
@@ -22,14 +22,14 @@ api.filterIslands = function(lyr, arcs, opts) {
   }
 };
 
-MapShaper.getVertexCountTest = function(minVertices, arcs) {
+internal.getVertexCountTest = function(minVertices, arcs) {
   return function(path) {
     // first and last vertex in ring count as one
     return geom.countVerticesInPath(path, arcs) <= minVertices;
   };
 };
 
-MapShaper.getMinAreaTest = function(minArea, arcs) {
+internal.getMinAreaTest = function(minArea, arcs) {
   var pathArea = arcs.isPlanar() ? geom.getPlanarPathArea : geom.getSphericalPathArea;
   return function(path) {
     var area = pathArea(path, arcs);
@@ -37,10 +37,10 @@ MapShaper.getMinAreaTest = function(minArea, arcs) {
   };
 };
 
-MapShaper.filterIslands = function(lyr, arcs, ringTest) {
+internal.filterIslands = function(lyr, arcs, ringTest) {
   var removed = 0;
   var counts = new Uint8Array(arcs.size());
-  MapShaper.countArcsInShapes(lyr.shapes, counts);
+  internal.countArcsInShapes(lyr.shapes, counts);
 
   var pathFilter = function(path, i, paths) {
     if (path.length == 1) { // got an island ring
@@ -48,7 +48,7 @@ MapShaper.filterIslands = function(lyr, arcs, ringTest) {
         if (!ringTest || ringTest(path)) { // and it meets any filtering criteria
           // and it does not contain any holes itself
           // O(n^2), so testing this last
-          if (!MapShaper.ringHasHoles(path, paths, arcs)) {
+          if (!internal.ringHasHoles(path, paths, arcs)) {
             removed++;
             return null;
           }
@@ -56,11 +56,11 @@ MapShaper.filterIslands = function(lyr, arcs, ringTest) {
       }
     }
   };
-  MapShaper.editShapes(lyr.shapes, pathFilter);
+  internal.editShapes(lyr.shapes, pathFilter);
   return removed;
 };
 
-MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
+internal.ringIntersectsBBox = function(ring, bbox, arcs) {
   for (var i=0, n=ring.length; i<n; i++) {
     if (arcs.arcIntersectsBBox(absArcId(ring[i]), bbox)) {
       return true;
@@ -70,13 +70,13 @@ MapShaper.ringIntersectsBBox = function(ring, bbox, arcs) {
 };
 
 // Assumes that ring boundaries to not cross
-MapShaper.ringHasHoles = function(ring, rings, arcs) {
+internal.ringHasHoles = function(ring, rings, arcs) {
   var bbox = arcs.getSimpleShapeBounds2(ring);
   var sibling, p;
   for (var i=0, n=rings.length; i<n; i++) {
     sibling = rings[i];
     // try to avoid expensive point-in-ring test
-    if (sibling && sibling != ring && MapShaper.ringIntersectsBBox(sibling, bbox, arcs)) {
+    if (sibling && sibling != ring && internal.ringIntersectsBBox(sibling, bbox, arcs)) {
       p = arcs.getVertex(sibling[0], 0);
       if (geom.testPointInRing(p.x, p.y, ring, arcs)) {
         return true;

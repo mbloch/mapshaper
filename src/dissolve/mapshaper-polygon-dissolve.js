@@ -14,7 +14,7 @@ function dissolveFirstPass(shapes, getGroupId) {
         return getGroupId(i);
       });
 
-  MapShaper.traversePaths(shapes, procArc);
+  internal.traversePaths(shapes, procArc);
   largeGroups.forEach(splitGroup);
   return segments;
 

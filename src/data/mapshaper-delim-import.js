@@ -1,11 +1,11 @@
 /* @requires mapshaper-data-table, mapshaper-data-utils */
 
 // Convert a string containing delimited text data into a dataset object
-MapShaper.importDelim = function(str, opts) {
-  var delim = MapShaper.guessDelimiter(str);
+internal.importDelim = function(str, opts) {
+  var delim = internal.guessDelimiter(str);
   return {
     layers: [{
-      data: MapShaper.importDelimTable(str, delim, opts)
+      data: internal.importDelimTable(str, delim, opts)
     }],
     info: {
       input_delimiter: delim
@@ -13,28 +13,28 @@ MapShaper.importDelim = function(str, opts) {
   };
 };
 
-MapShaper.importDelimTable = function(str, delim, opts) {
+internal.importDelimTable = function(str, delim, opts) {
   var records = require("d3-dsv").dsvFormat(delim).parse(str);
   var table;
   if (records.length === 0) {
     stop("[dsv] Unable to read any records");
   }
   delete records.columns; // added by d3-dsv
-  MapShaper.adjustRecordTypes(records, opts && opts.field_types);
+  internal.adjustRecordTypes(records, opts && opts.field_types);
   table = new DataTable(records);
-  MapShaper.deleteFields(table, MapShaper.isInvalidFieldName);
+  internal.deleteFields(table, internal.isInvalidFieldName);
  return table;
 };
 
-MapShaper.supportedDelimiters = ['|', '\t', ',', ';'];
+internal.supportedDelimiters = ['|', '\t', ',', ';'];
 
-MapShaper.isSupportedDelimiter = function(d) {
-  return utils.contains(MapShaper.supportedDelimiters, d);
+internal.isSupportedDelimiter = function(d) {
+  return utils.contains(internal.supportedDelimiters, d);
 };
 
-MapShaper.guessDelimiter = function(content) {
-  return utils.find(MapShaper.supportedDelimiters, function(delim) {
-    var rxp = MapShaper.getDelimiterRxp(delim);
+internal.guessDelimiter = function(content) {
+  return utils.find(internal.supportedDelimiters, function(delim) {
+    var rxp = internal.getDelimiterRxp(delim);
     return rxp.test(content);
   }) || ',';
 };
@@ -42,7 +42,7 @@ MapShaper.guessDelimiter = function(content) {
 // Get RegExp to test for a delimiter before first line break of a string
 // Assumes that the first line does not contain alternate delim chars (this will
 // be true if the first line has field headers composed of word characters).
-MapShaper.getDelimiterRxp = function(delim) {
+internal.getDelimiterRxp = function(delim) {
   var rxp = "^[^\\n\\r]+" + utils.regexEscape(delim);
   return new RegExp(rxp);
 };
@@ -52,17 +52,17 @@ MapShaper.getDelimiterRxp = function(delim) {
 //    currently assumes tabular data
 // @fieldList (optional) array of field names with type hints; may contain
 //    duplicate names with inconsistent type hints.
-MapShaper.adjustRecordTypes = function(records, fieldList) {
+internal.adjustRecordTypes = function(records, fieldList) {
   var hintIndex = {},
       fields = Object.keys(records[0] || []),
       detectedNumFields = [];
   if (fieldList) {
     // parse optional type hints
-    MapShaper.parseFieldHeaders(fieldList, hintIndex);
+    internal.parseFieldHeaders(fieldList, hintIndex);
   }
   fields.forEach(function(key) {
     var typeHint = hintIndex[key];
-    var type = MapShaper.adjustFieldValues(key, records, typeHint);
+    var type = internal.adjustFieldValues(key, records, typeHint);
     if (!typeHint && type == 'number') {
       detectedNumFields.push(key);
     }
@@ -73,24 +73,24 @@ MapShaper.adjustRecordTypes = function(records, fieldList) {
   }
 };
 
-MapShaper.adjustFieldValues = function(key, records, type) {
+internal.adjustFieldValues = function(key, records, type) {
   var values;
   if (!type) {
-    values = MapShaper.tryNumericField(key, records);
+    values = internal.tryNumericField(key, records);
   }
   if (values) {
     type = 'number';
-    MapShaper.insertFieldValues2(key, records, values);
+    internal.insertFieldValues2(key, records, values);
   } else if (type == 'number') {
-    MapShaper.convertDataField(key, records, utils.parseNumber);
+    internal.convertDataField(key, records, utils.parseNumber);
   } else {
     type = 'string';
-    MapShaper.convertDataField(key, records, utils.parseString);
+    internal.convertDataField(key, records, utils.parseString);
   }
   return type;
 };
 
-MapShaper.tryNumericField = function(key, records) {
+internal.tryNumericField = function(key, records) {
   var arr = [],
       count = 0,
       raw, num;
@@ -107,7 +107,7 @@ MapShaper.tryNumericField = function(key, records) {
   return count > 0 ? arr : null;
 };
 
-MapShaper.convertDataField = function(name, records, f) {
+internal.convertDataField = function(name, records, f) {
   for (var i=0, n=records.length; i<n; i++) {
     records[i][name] = f(records[i][name]);
   }
@@ -115,7 +115,7 @@ MapShaper.convertDataField = function(name, records, f) {
 
 // Accept a type hint from a header like "FIPS:str"
 // Return standard type name (number|string) or null if hint is not recognized
-MapShaper.validateFieldType = function(hint) {
+internal.validateFieldType = function(hint) {
   var str = hint.toLowerCase(),
       type = null;
   if (str[0] == 'n') {
@@ -131,13 +131,13 @@ MapShaper.validateFieldType = function(hint) {
 // return index of field types
 // modify @fields to remove type hints
 //
-MapShaper.parseFieldHeaders = function(fields, index) {
+internal.parseFieldHeaders = function(fields, index) {
   var parsed = fields.map(function(raw) {
     var parts, name, type;
     if (raw.indexOf(':') != -1) {
       parts = raw.split(':');
       name = parts[0];
-      type = MapShaper.validateFieldType(parts[1]);
+      type = internal.validateFieldType(parts[1]);
       if (!type) {
         message("Invalid type hint (expected :str or :num) [" + raw + "]");
       }

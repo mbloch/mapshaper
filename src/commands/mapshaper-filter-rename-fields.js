@@ -2,18 +2,18 @@
 
 api.filterFields = function(lyr, names) {
   var table = lyr.data;
-  MapShaper.requireDataFields(table, names, 'filter-fields');
+  internal.requireDataFields(table, names, 'filter-fields');
   utils.difference(table.getFields(), names).forEach(table.deleteField, table);
 };
 
 api.renameFields = function(lyr, names) {
-  var map = MapShaper.mapFieldNames(names);
-  MapShaper.requireDataFields(lyr.data, Object.keys(map), 'rename-fields');
-  utils.defaults(map, MapShaper.mapFieldNames(lyr.data.getFields()));
-  lyr.data.update(MapShaper.getRecordMapper(map));
+  var map = internal.mapFieldNames(names);
+  internal.requireDataFields(lyr.data, Object.keys(map), 'rename-fields');
+  utils.defaults(map, internal.mapFieldNames(lyr.data.getFields()));
+  lyr.data.update(internal.getRecordMapper(map));
 };
 
-MapShaper.mapFieldNames = function(names) {
+internal.mapFieldNames = function(names) {
   return names.reduce(function(memo, str) {
     var parts = str.split('=');
     var dest = parts[0],
@@ -24,7 +24,7 @@ MapShaper.mapFieldNames = function(names) {
   }, {});
 };
 
-MapShaper.getRecordMapper = function(map) {
+internal.getRecordMapper = function(map) {
   var fields = Object.keys(map);
   return function(src) {
     var dest = {}, key;

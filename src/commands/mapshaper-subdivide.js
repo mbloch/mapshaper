@@ -6,11 +6,11 @@
 // shapes (+/- 1).
 //
 api.subdivideLayer = function(lyr, arcs, exp) {
-  return MapShaper.subdivide(lyr, arcs, exp);
+  return internal.subdivide(lyr, arcs, exp);
 };
 
-MapShaper.subdivide = function(lyr, arcs, exp) {
-  var divide = MapShaper.evalCalcExpression(lyr, arcs, exp),
+internal.subdivide = function(lyr, arcs, exp) {
+  var divide = internal.evalCalcExpression(lyr, arcs, exp),
       subdividedLayers = [],
       tmp, bounds, lyr1, lyr2;
 
@@ -18,18 +18,18 @@ MapShaper.subdivide = function(lyr, arcs, exp) {
     stop("[subdivide] Expression must evaluate to true or false");
   }
   if (divide) {
-    bounds = MapShaper.getLayerBounds(lyr, arcs);
-    tmp = MapShaper.divideLayer(lyr, arcs, bounds);
+    bounds = internal.getLayerBounds(lyr, arcs);
+    tmp = internal.divideLayer(lyr, arcs, bounds);
     lyr1 = tmp[0];
     if (lyr1.shapes.length > 1 && lyr1.shapes.length < lyr.shapes.length) {
-      utils.merge(subdividedLayers, MapShaper.subdivide(lyr1, arcs, exp));
+      utils.merge(subdividedLayers, internal.subdivide(lyr1, arcs, exp));
     } else {
       subdividedLayers.push(lyr1);
     }
 
     lyr2 = tmp[1];
     if (lyr2.shapes.length > 1 && lyr2.shapes.length < lyr.shapes.length) {
-      utils.merge(subdividedLayers, MapShaper.subdivide(lyr2, arcs, exp));
+      utils.merge(subdividedLayers, internal.subdivide(lyr2, arcs, exp));
     } else {
       subdividedLayers.push(lyr2);
     }
@@ -38,7 +38,7 @@ MapShaper.subdivide = function(lyr, arcs, exp) {
   }
 
   subdividedLayers.forEach(function(lyr2, i) {
-    lyr2.name = MapShaper.getSplitLayerName(lyr.name || 'split', i + 1);
+    lyr2.name = internal.getSplitLayerName(lyr.name || 'split', i + 1);
     utils.defaults(lyr2, lyr);
   });
   return subdividedLayers;
@@ -47,7 +47,7 @@ MapShaper.subdivide = function(lyr, arcs, exp) {
 // split one layer into two layers containing the same number of shapes (+-1),
 // either horizontally or vertically
 //
-MapShaper.divideLayer = function(lyr, arcs, bounds) {
+internal.divideLayer = function(lyr, arcs, bounds) {
   var properties = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes,
       lyr1, lyr2;

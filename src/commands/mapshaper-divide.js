@@ -7,18 +7,18 @@ api.dividePolygonLayer = function(lyrA, lyrB, arcs) {
     stop("[dividePolygonLayer()] Expected polygon layer, received:", lyrA.geometry_type);
   }
   var flags = new Uint8Array(arcs.size());
-  MapShaper.openArcRoutes(lyrA.shapes, arcs, flags, true, false, false);
-  MapShaper.openArcRoutes(lyrB.shapes, arcs, flags, true, true, false);
+  internal.openArcRoutes(lyrA.shapes, arcs, flags, true, false, false);
+  internal.openArcRoutes(lyrB.shapes, arcs, flags, true, true, false);
 
-  var dividedShapes = MapShaper.dividePolygons(lyrA.shapes, arcs, flags);
+  var dividedShapes = internal.dividePolygons(lyrA.shapes, arcs, flags);
   return utils.defaults({shapes: dividedShapes, data: null}, lyrA);
 };
 
-MapShaper.dividePolygons = function(shapes, arcs, flags) {
-  var divide = MapShaper.getPathFinder(nodes, flags);
+internal.dividePolygons = function(shapes, arcs, flags) {
+  var divide = internal.getPathFinder(nodes, flags);
   return shapes.map(function(shape, i) {
     var dividedShape = [];
-    MapShaper.forEachPath(shape, function(ids) {
+    internal.forEachPath(shape, function(ids) {
       var path;
       for (var i=0; i<ids.length; i++) {
         path = divide(ids[i]);

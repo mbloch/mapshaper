@@ -2,25 +2,25 @@
 
 api.svgStyle = function(lyr, dataset, opts) {
   var keys = Object.keys(opts),
-      svgFields = MapShaper.getStyleFields(keys, MapShaper.svgStyles, MapShaper.invalidSvgTypes[lyr.geometry_type]);
+      svgFields = internal.getStyleFields(keys, internal.svgStyles, internal.invalidSvgTypes[lyr.geometry_type]);
 
   svgFields.forEach(function(f) {
     var val = opts[f];
     var literal = null;
     var records, func;
-    var type = MapShaper.svgStyleTypes[f];
+    var type = internal.svgStyleTypes[f];
     if (!lyr.data) {
-      MapShaper.initDataTable(lyr);
+      internal.initDataTable(lyr);
     }
-    if (type == 'number' && MapShaper.isSvgNumber(val)) {
+    if (type == 'number' && internal.isSvgNumber(val)) {
       literal = Number(val);
-    } else if (type == 'color' && MapShaper.isSvgColor(val, lyr.data.getFields())) {
+    } else if (type == 'color' && internal.isSvgColor(val, lyr.data.getFields())) {
       literal = val;
-    } else if (type == 'classname' && MapShaper.isSvgClassName(val, lyr.data.getFields())) {
+    } else if (type == 'classname' && internal.isSvgClassName(val, lyr.data.getFields())) {
       literal = val;
     }
     if (literal === null) {
-      func = MapShaper.compileValueExpression(val, lyr, dataset.arcs, {context: MapShaper.defs});
+      func = internal.compileValueExpression(val, lyr, dataset.arcs, {context: internal.defs});
     }
 
     records = lyr.data.getRecords();
@@ -30,22 +30,22 @@ api.svgStyle = function(lyr, dataset, opts) {
   });
 };
 
-MapShaper.isSvgClassName = function(str, fields) {
+internal.isSvgClassName = function(str, fields) {
   str = str.trim();
   return (!fields || fields.indexOf(str) == -1) && /^( ?[_a-z][-_a-z0-9]*\b)+$/i.test(str);
 };
 
-MapShaper.isSvgNumber = function(o) {
+internal.isSvgNumber = function(o) {
   return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+$/.test(o);
 };
 
-MapShaper.isSvgColor = function(str, fields) {
+internal.isSvgColor = function(str, fields) {
   str = str.trim();
   return (!fields || fields.indexOf(str) == -1) && /^[a-z]+$/i.test(str) ||
     /^#[0-9a-f]+$/i.test(str) || /^rgba?\([0-9,. ]+\)$/.test(str);
 };
 
-MapShaper.getStyleFields = function(fields, index, blacklist) {
+internal.getStyleFields = function(fields, index, blacklist) {
   return fields.reduce(function(memo, f) {
     if (f in index) {
       if (!blacklist || blacklist.indexOf(f) == -1) {
@@ -56,22 +56,22 @@ MapShaper.getStyleFields = function(fields, index, blacklist) {
   }, []);
 };
 
-MapShaper.getSvgStyleFields = function(lyr) {
+internal.getSvgStyleFields = function(lyr) {
   var fields = lyr.data ? lyr.data.getFields() : [];
-  return MapShaper.getStyleFields(fields, MapShaper.svgStyles, MapShaper.invalidSvgTypes[lyr.geometry_type]);
+  return internal.getStyleFields(fields, internal.svgStyles, internal.invalidSvgTypes[lyr.geometry_type]);
 };
 
-MapShaper.layerHasSvgDisplayStyle = function(lyr) {
-  var fields = MapShaper.getSvgStyleFields(lyr);
+internal.layerHasSvgDisplayStyle = function(lyr) {
+  var fields = internal.getSvgStyleFields(lyr);
   return utils.difference(fields, ['opacity', 'class']).length > 0;
 };
 
-MapShaper.invalidSvgTypes = {
+internal.invalidSvgTypes = {
   polygon: ['r'],
   polyline: ['r', 'fill']
 };
 
-MapShaper.svgStyles = {
+internal.svgStyles = {
   'class': 'class',
   opacity: 'opacity',
   r: 'radius',
@@ -80,7 +80,7 @@ MapShaper.svgStyles = {
   stroke_width: 'strokeWidth'
 };
 
-MapShaper.svgStyleTypes = {
+internal.svgStyleTypes = {
   class: 'classname',
   opacity: 'number',
   r: 'number',

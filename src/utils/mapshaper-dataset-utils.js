@@ -4,7 +4,7 @@
 
 // Divide a collection of features with mixed types into layers of a single type
 // (Used for importing TopoJSON and GeoJSON features)
-MapShaper.divideFeaturesByType = function(shapes, properties, types) {
+internal.divideFeaturesByType = function(shapes, properties, types) {
   var typeSet = utils.uniq(types);
   var layers = typeSet.map(function(geoType) {
     var p = [],
@@ -28,22 +28,22 @@ MapShaper.divideFeaturesByType = function(shapes, properties, types) {
 };
 
 // Split into datasets with one layer each
-MapShaper.splitDataset = function(dataset) {
+internal.splitDataset = function(dataset) {
   return dataset.layers.map(function(lyr) {
     var split = {
       arcs: dataset.arcs,
       layers: [lyr],
       info: dataset.info
     };
-    MapShaper.dissolveArcs(split); // replace arcs with filtered + dissolved copy
+    internal.dissolveArcs(split); // replace arcs with filtered + dissolved copy
     return split;
   });
 };
 
 // clone all layers, make a filtered copy of arcs
-MapShaper.copyDataset = function(dataset) {
+internal.copyDataset = function(dataset) {
   var d2 = utils.extend({}, dataset);
-  d2.layers = d2.layers.map(MapShaper.copyLayer);
+  d2.layers = d2.layers.map(internal.copyLayer);
   if (d2.arcs) {
     d2.arcs = d2.arcs.getFilteredCopy();
   }
@@ -51,9 +51,9 @@ MapShaper.copyDataset = function(dataset) {
 };
 
 // clone coordinate data, shallow-copy attribute data
-MapShaper.copyDatasetForExport = function(dataset) {
+internal.copyDatasetForExport = function(dataset) {
   var d2 = utils.extend({}, dataset);
-  d2.layers = d2.layers.map(MapShaper.copyLayerShapes);
+  d2.layers = d2.layers.map(internal.copyLayerShapes);
   if (d2.arcs) {
     d2.arcs = d2.arcs.getFilteredCopy();
   }
@@ -61,50 +61,50 @@ MapShaper.copyDatasetForExport = function(dataset) {
 };
 
 // shallow-copy layers, so they can be renamed (for export)
-MapShaper.copyDatasetForRenaming = function(dataset) {
+internal.copyDatasetForRenaming = function(dataset) {
   return utils.defaults({
     layers: dataset.layers.map(function(lyr) {return utils.extend({}, lyr);})
   }, dataset);
 };
 
 // make a stub copy if the no_replace option is given, else pass thru src layer
-MapShaper.getOutputLayer = function(src, opts) {
+internal.getOutputLayer = function(src, opts) {
   return opts && opts.no_replace ? {geometry_type: src.geometry_type} : src;
 };
 
 // Make a deep copy of a layer
-MapShaper.copyLayer = function(lyr) {
-  var copy = MapShaper.copyLayerShapes(lyr);
+internal.copyLayer = function(lyr) {
+  var copy = internal.copyLayerShapes(lyr);
   if (copy.data) {
     copy.data = copy.data.clone();
   }
   return copy;
 };
 
-MapShaper.copyLayerShapes = function(lyr) {
+internal.copyLayerShapes = function(lyr) {
   var copy = utils.extend({}, lyr);
     if (lyr.shapes) {
-      copy.shapes = MapShaper.cloneShapes(lyr.shapes);
+      copy.shapes = internal.cloneShapes(lyr.shapes);
     }
     return copy;
 };
 
-MapShaper.getDatasetBounds = function(data) {
+internal.getDatasetBounds = function(data) {
   var bounds = new Bounds();
   data.layers.forEach(function(lyr) {
-    var lyrbb = MapShaper.getLayerBounds(lyr, data.arcs);
+    var lyrbb = internal.getLayerBounds(lyr, data.arcs);
     if (lyrbb) bounds.mergeBounds(lyrbb);
   });
   return bounds;
 };
 
-MapShaper.datasetHasPaths = function(dataset) {
+internal.datasetHasPaths = function(dataset) {
   return utils.some(dataset.layers, function(lyr) {
-    return MapShaper.layerHasPaths(lyr);
+    return internal.layerHasPaths(lyr);
   });
 };
 
-MapShaper.countMultiPartFeatures = function(shapes) {
+internal.countMultiPartFeatures = function(shapes) {
   var count = 0;
   for (var i=0, n=shapes.length; i<n; i++) {
     if (shapes[i] && shapes[i].length > 1) count++;
@@ -112,7 +112,7 @@ MapShaper.countMultiPartFeatures = function(shapes) {
   return count;
 };
 
-MapShaper.getFeatureCount = function(lyr) {
+internal.getFeatureCount = function(lyr) {
   var count = 0;
   if (lyr.data) {
     count = lyr.data.size();
@@ -122,12 +122,12 @@ MapShaper.getFeatureCount = function(lyr) {
   return count;
 };
 
-MapShaper.getLayerBounds = function(lyr, arcs) {
+internal.getLayerBounds = function(lyr, arcs) {
   var bounds = null;
   if (lyr.geometry_type == 'point') {
-    bounds = MapShaper.getPointBounds(lyr.shapes);
+    bounds = internal.getPointBounds(lyr.shapes);
   } else if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-    bounds = MapShaper.getPathBounds(lyr.shapes, arcs);
+    bounds = internal.getPathBounds(lyr.shapes, arcs);
   } else {
     // just return null if layer has no bounds
     // error("Layer is missing a valid geometry type");
@@ -136,9 +136,9 @@ MapShaper.getLayerBounds = function(lyr, arcs) {
 };
 
 
-MapShaper.getPathBounds = function(shapes, arcs) {
+internal.getPathBounds = function(shapes, arcs) {
   var bounds = new Bounds();
-  MapShaper.forEachArcId(shapes, function(id) {
+  internal.forEachArcId(shapes, function(id) {
     arcs.mergeArcBounds(id, bounds);
   });
   return bounds;
@@ -146,7 +146,7 @@ MapShaper.getPathBounds = function(shapes, arcs) {
 
 // replace cut layers in-sequence (to maintain layer indexes)
 // append any additional new layers
-MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
+internal.replaceLayers = function(dataset, cutLayers, newLayers) {
   // modify a copy in case cutLayers == dataset.layers
   var currLayers = dataset.layers.concat();
   utils.repeat(Math.max(cutLayers.length, newLayers.length), function(i) {
@@ -164,32 +164,32 @@ MapShaper.replaceLayers = function(dataset, cutLayers, newLayers) {
   dataset.layers = currLayers;
 };
 
-MapShaper.isolateLayer = function(layer, dataset) {
+internal.isolateLayer = function(layer, dataset) {
   return utils.defaults({
     layers: dataset.layers.filter(function(lyr) {return lyr == layer;})
   }, dataset);
 };
 
 // legacy function (TODO: update tests and remove)
-MapShaper.findMatchingLayers = function(layers, pattern) {
-  var test = MapShaper.getTargetMatch(pattern);
+internal.findMatchingLayers = function(layers, pattern) {
+  var test = internal.getTargetMatch(pattern);
   return layers.filter(function(lyr, i) {
     return test(lyr, i);
   });
 };
 
 // Transform the points in a dataset in-place; don't clean up corrupted shapes
-MapShaper.transformPoints = function(dataset, f) {
+internal.transformPoints = function(dataset, f) {
   if (dataset.arcs) {
     dataset.arcs.transformPoints(f);
   }
   dataset.layers.forEach(function(lyr) {
-    if (MapShaper.layerHasPoints(lyr)) {
-      MapShaper.transformPointsInLayer(lyr, f);
+    if (internal.layerHasPoints(lyr)) {
+      internal.transformPointsInLayer(lyr, f);
     }
   });
 };
 
-MapShaper.initDataTable = function(lyr) {
-  lyr.data = new DataTable(MapShaper.getFeatureCount(lyr));
+internal.initDataTable = function(lyr) {
+  lyr.data = new DataTable(internal.getFeatureCount(lyr));
 };

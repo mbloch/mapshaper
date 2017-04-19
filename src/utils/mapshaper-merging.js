@@ -1,21 +1,21 @@
 /* @requires mapshaper-common */
 
 // Don't modify input layers (mergeDatasets() updates arc ids in-place)
-MapShaper.mergeDatasetsForExport = function(arr) {
+internal.mergeDatasetsForExport = function(arr) {
   // copy layers but not arcs, which get copied in mergeDatasets()
   var copy = arr.map(function(dataset) {
     return utils.defaults({
-      layers: dataset.layers.map(MapShaper.copyLayerShapes)
+      layers: dataset.layers.map(internal.copyLayerShapes)
     }, dataset);
   });
-  return MapShaper.mergeDatasets(copy);
+  return internal.mergeDatasets(copy);
 };
 
-MapShaper.mergeDatasets = function(arr) {
+internal.mergeDatasets = function(arr) {
   var arcSources = [],
       arcCount = 0,
       mergedLayers = [],
-      mergedInfo = MapShaper.mergeDatasetInfo(arr),
+      mergedInfo = internal.mergeDatasetInfo(arr),
       mergedArcs;
 
   arr.forEach(function(data) {
@@ -26,7 +26,7 @@ MapShaper.mergeDatasets = function(arr) {
     data.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
         // reindex arc ids
-        MapShaper.forEachArcId(lyr.shapes, function(id) {
+        internal.forEachArcId(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
         });
       }
@@ -35,7 +35,7 @@ MapShaper.mergeDatasets = function(arr) {
     arcCount += n;
   });
 
-  mergedArcs = MapShaper.mergeArcs(arcSources);
+  mergedArcs = internal.mergeArcs(arcSources);
   if (mergedArcs.size() != arcCount) {
     error("[mergeDatasets()] Arc indexing error");
   }
@@ -47,10 +47,10 @@ MapShaper.mergeDatasets = function(arr) {
   };
 };
 
-MapShaper.mergeDatasetInfo = function(arr) {
+internal.mergeDatasetInfo = function(arr) {
   // Get crs, prevent incompatible CRSs
   var crs = arr.reduce(function(memo, d) {
-    var P = MapShaper.getDatasetProjection(d);
+    var P = internal.getDatasetProjection(d);
     if (!memo) {
       memo = P;
     } else if (memo && P) {
@@ -77,7 +77,7 @@ MapShaper.mergeDatasetInfo = function(arr) {
   return info;
 };
 
-MapShaper.mergeArcs = function(arr) {
+internal.mergeArcs = function(arr) {
   var dataArr = arr.map(function(arcs) {
     if (arcs.getRetainedInterval() > 0) {
       verbose("Baking-in simplification setting.");

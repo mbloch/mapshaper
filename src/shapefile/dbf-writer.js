@@ -5,7 +5,7 @@ Dbf.MAX_STRING_LEN = 254;
 Dbf.exportRecords = function(arr, encoding) {
   encoding = encoding || 'ascii';
   var fields = Dbf.getFieldNames(arr);
-  var uniqFields = MapShaper.getUniqFieldNames(fields, 10);
+  var uniqFields = internal.getUniqFieldNames(fields, 10);
   var rows = arr.length;
   var fieldData = fields.map(function(name) {
     return Dbf.getFieldInfo(arr, name, encoding);
@@ -295,7 +295,7 @@ Dbf.truncateEncodedString = function(buf, encoding, maxLen) {
   var tmp, str;
   while (len > 0 && len >= maxLen - 3) {
     tmp = len == maxLen ? truncated : buf.slice(0, len);
-    str = MapShaper.decodeString(tmp, encoding);
+    str = internal.decodeString(tmp, encoding);
     if (str.charAt(str.length-1) != '\ufffd') {
       truncated = tmp;
       break;

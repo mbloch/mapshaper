@@ -1,16 +1,16 @@
 /* @requires mapshaper-shape-utils */
 
 // Test if the second endpoint of an arc is the endpoint of any path in any layer
-MapShaper.getPathEndpointTest = function(layers, arcs) {
+internal.getPathEndpointTest = function(layers, arcs) {
   var index = new Uint8Array(arcs.size());
   layers.forEach(function(lyr) {
-    if (MapShaper.layerHasPaths(lyr)) {
+    if (internal.layerHasPaths(lyr)) {
       lyr.shapes.forEach(addShape);
     }
   });
 
   function addShape(shape) {
-    MapShaper.forEachPath(shape, addPath);
+    internal.forEachPath(shape, addPath);
   }
 
   function addPath(path) {

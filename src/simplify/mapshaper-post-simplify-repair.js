@@ -7,9 +7,9 @@
 // in the original dataset.
 // TODO: don't roll back simplification for unrepairable intersections.
 //
-MapShaper.postSimplifyRepair = function(arcs) {
-  var intersections = MapShaper.findSegmentIntersections(arcs),
-      unfixable = MapShaper.repairIntersections(arcs, intersections),
+internal.postSimplifyRepair = function(arcs) {
+  var intersections = internal.findSegmentIntersections(arcs),
+      unfixable = internal.repairIntersections(arcs, intersections),
       countPre = intersections.length,
       countPost = unfixable.length,
       countFixed = countPre > countPost ? countPre - countPost : 0,
@@ -25,17 +25,17 @@ MapShaper.postSimplifyRepair = function(arcs) {
   }
 };
 
-// @intersections (Array) Output from MapShaper.findSegmentIntersections()
+// @intersections (Array) Output from internal.findSegmentIntersections()
 // Returns array of unresolved intersections, or empty array if none.
 //
-MapShaper.repairIntersections = function(arcs, intersections) {
-  while (MapShaper.unwindIntersections(arcs, intersections) > 0) {
-    intersections = MapShaper.findSegmentIntersections(arcs);
+internal.repairIntersections = function(arcs, intersections) {
+  while (internal.unwindIntersections(arcs, intersections) > 0) {
+    intersections = internal.findSegmentIntersections(arcs);
   }
   return intersections;
 };
 
-MapShaper.unwindIntersections = function(arcs, intersections) {
+internal.unwindIntersections = function(arcs, intersections) {
   var data = arcs.getVertexData(),
       zlim = arcs.getRetainedInterval(),
       changes = 0,
@@ -43,23 +43,23 @@ MapShaper.unwindIntersections = function(arcs, intersections) {
       replacements, queue, target, i;
 
   // create a queue of unwind targets
-  queue = MapShaper.getUnwindTargets(intersections, zlim, data.zz);
+  queue = internal.getUnwindTargets(intersections, zlim, data.zz);
   utils.sortOn(queue, 'z', !!"ascending");
 
   while (queue.length > 0) {
     target = queue.pop();
     // redetect unwind target, in case a previous unwind operation has changed things
     // TODO: don't redetect if target couldn't have been affected
-    replacements = MapShaper.redetectIntersectionTarget(target, zlim, data.xx, data.yy, data.zz);
+    replacements = internal.redetectIntersectionTarget(target, zlim, data.xx, data.yy, data.zz);
     if (replacements.length == 1) {
-      replacements = MapShaper.unwindIntersection(replacements[0], zlim, data.zz);
+      replacements = internal.unwindIntersection(replacements[0], zlim, data.zz);
       changes++;
     } else  {
       // either 0 or multiple intersections detected
     }
 
     for (i=0; i<replacements.length; i++) {
-      MapShaper.insertUnwindTarget(queue, replacements[i]);
+      internal.insertUnwindTarget(queue, replacements[i]);
     }
   }
   if (++loops > 500000) {
@@ -69,9 +69,9 @@ MapShaper.unwindIntersections = function(arcs, intersections) {
   return changes;
 };
 
-MapShaper.getUnwindTargets = function(intersections, zlim, zz) {
+internal.getUnwindTargets = function(intersections, zlim, zz) {
   return intersections.reduce(function(memo, o) {
-    var target = MapShaper.getUnwindTarget(o, zlim, zz);
+    var target = internal.getUnwindTarget(o, zlim, zz);
     if (target !== null) {
       memo.push(target);
     }
@@ -85,9 +85,9 @@ MapShaper.getUnwindTargets = function(intersections, zlim, zz) {
 //   a: intersecting segment to be partitioned
 //   b: intersecting segment to be retained
 //   z: threshold value of one or more points along [a] to be re-added
-MapShaper.getUnwindTarget = function(o, zlim, zz) {
-  var ai = MapShaper.findNextRemovableVertex(zz, zlim, o.a[0], o.a[1]),
-      bi = MapShaper.findNextRemovableVertex(zz, zlim, o.b[0], o.b[1]),
+internal.getUnwindTarget = function(o, zlim, zz) {
+  var ai = internal.findNextRemovableVertex(zz, zlim, o.a[0], o.a[1]),
+      bi = internal.findNextRemovableVertex(zz, zlim, o.b[0], o.b[1]),
       targ;
   if (ai == -1 && bi == -1) {
     targ = null;
@@ -108,7 +108,7 @@ MapShaper.getUnwindTarget = function(o, zlim, zz) {
 };
 
 // Insert an intersection into sorted position
-MapShaper.insertUnwindTarget = function(arr, obj) {
+internal.insertUnwindTarget = function(arr, obj) {
   var ins = arr.length;
   while (ins > 0) {
     if (arr[ins-1].z <= obj.z) {
@@ -123,7 +123,7 @@ MapShaper.insertUnwindTarget = function(arr, obj) {
 // Partition one of two intersecting segments by setting the removal threshold
 // of vertices indicated by @target equal to @zlim (the current simplification
 // level of the ArcCollection)
-MapShaper.unwindIntersection = function(target, zlim, zz) {
+internal.unwindIntersection = function(target, zlim, zz) {
   var replacements = [];
   var start = target.a[0],
       end = target.a[1],
@@ -143,22 +143,22 @@ MapShaper.unwindIntersection = function(target, zlim, zz) {
   return replacements;
 };
 
-MapShaper.redetectIntersectionTarget = function(targ, zlim, xx, yy, zz) {
-  var segIds = MapShaper.getIntersectionCandidates(targ, zlim, xx, yy, zz);
-  var intersections = MapShaper.intersectSegments(segIds, xx, yy);
-  return MapShaper.getUnwindTargets(intersections, zlim, zz);
+internal.redetectIntersectionTarget = function(targ, zlim, xx, yy, zz) {
+  var segIds = internal.getIntersectionCandidates(targ, zlim, xx, yy, zz);
+  var intersections = internal.intersectSegments(segIds, xx, yy);
+  return internal.getUnwindTargets(intersections, zlim, zz);
 };
 
-MapShaper.getIntersectionCandidates = function(o, zlim, xx, yy, zz) {
-  var segIds = MapShaper.getSegmentVertices(o.a, zlim, xx, yy, zz);
-  segIds = segIds.concat(MapShaper.getSegmentVertices(o.b, zlim, xx, yy, zz));
+internal.getIntersectionCandidates = function(o, zlim, xx, yy, zz) {
+  var segIds = internal.getSegmentVertices(o.a, zlim, xx, yy, zz);
+  segIds = segIds.concat(internal.getSegmentVertices(o.b, zlim, xx, yy, zz));
   return segIds;
 };
 
 // Get all segments defined by two endpoints and the vertices between
 // them that are at or above the current simplification threshold.
 // TODO: test intersections with identical start + end ids
-MapShaper.getSegmentVertices = function(seg, zlim, xx, yy, zz) {
+internal.getSegmentVertices = function(seg, zlim, xx, yy, zz) {
   var start, end, prev, ids = [];
   if (seg[0] <= seg[1]) {
     start = seg[0];

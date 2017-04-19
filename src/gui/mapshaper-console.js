@@ -17,11 +17,11 @@ function Console(model) {
   var history = [];
   var historyId = 0;
   var _isOpen = false;
-  var _error = MapShaper.error; // save default error functions...
-  var _stop = MapShaper.stop;
+  var _error = internal.error; // save default error functions...
+  var _stop = internal.stop;
 
   // capture all messages to this console, whether open or closed
-  message = MapShaper.message = consoleMessage;
+  message = internal.message = consoleMessage;
 
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
@@ -48,8 +48,8 @@ function Console(model) {
   function turnOn() {
     if (!_isOpen && !model.isEmpty()) {
       _isOpen = true;
-      stop = MapShaper.stop = consoleStop;
-      error = MapShaper.error = consoleError;
+      stop = internal.stop = consoleStop;
+      error = internal.error = consoleError;
       el.show();
       input.node().focus();
     }
@@ -58,8 +58,8 @@ function Console(model) {
   function turnOff() {
     if (_isOpen) {
       _isOpen = false;
-      stop = MapShaper.stop = _stop; // restore original error functions
-      error = MapShaper.error = _error;
+      stop = internal.stop = _stop; // restore original error functions
+      error = internal.error = _error;
       el.hide();
       input.node().blur();
     }
@@ -259,7 +259,7 @@ function Console(model) {
         printExamples();
       } else if (cmd == 'layers') {
         message("Available layers:",
-          MapShaper.getFormattedLayerList(model));
+          internal.getFormattedLayerList(model));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         gui.clearMode();
       } else if (cmd) {
@@ -272,8 +272,8 @@ function Console(model) {
   function runMapshaperCommands(str) {
     var commands;
     try {
-      commands = MapShaper.parseConsoleCommands(str);
-      commands = MapShaper.runAndRemoveInfoCommands(commands);
+      commands = internal.parseConsoleCommands(str);
+      commands = internal.runAndRemoveInfoCommands(commands);
     } catch (e) {
       return onError(e);
     }
@@ -286,15 +286,15 @@ function Console(model) {
     var active = model.getActiveLayer(),
         prevArcCount = active.dataset.arcs ? active.dataset.arcs.size() : 0;
 
-    MapShaper.runParsedCommands(commands, model, function(err) {
+    internal.runParsedCommands(commands, model, function(err) {
       var flags = getCommandFlags(commands),
           active2 = model.getActiveLayer(),
           sameArcs = active.dataset.arcs == active2.dataset.arcs && prevArcCount > 0 &&
               active2.dataset.arcs.size() == prevArcCount;
 
       // restore default logging options, in case -quiet or -verbose command was run
-      MapShaper.QUIET = false;
-      MapShaper.VERBOSE = false;
+      internal.QUIET = false;
+      internal.VERBOSE = false;
 
       // kludge to signal map that filtered arcs need refreshing
       // TODO: find a better solution, outside the console
@@ -335,7 +335,7 @@ function Console(model) {
 
   function consoleMessage() {
     var msg = gui.formatMessageArgs(arguments);
-    if (MapShaper.LOGGING && !MapShaper.QUIET) {
+    if (internal.LOGGING && !internal.QUIET) {
       toLog(msg, 'console-message');
     }
   }

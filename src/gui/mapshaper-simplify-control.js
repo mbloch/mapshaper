@@ -77,7 +77,7 @@ var SimplifyControl = function(model) {
 
   function turnOn() {
     var target = model.getActiveLayer();
-    if (!MapShaper.layerHasPaths(target.layer)) {
+    if (!internal.layerHasPaths(target.layer)) {
       gui.alert("This layer can not be simplified");
       return;
     }
@@ -93,7 +93,7 @@ var SimplifyControl = function(model) {
   function initMenu() {
     var dataset = model.getActiveLayer().dataset;
     var showPlanarOpt = !dataset.arcs.isPlanar();
-    var opts = MapShaper.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);
+    var opts = internal.getStandardSimplifyOpts(dataset, dataset.info && dataset.info.simplify);
     El('#planar-opt-wrapper').node().style.display = showPlanarOpt ? 'block' : 'none';
     El('#planar-opt').node().checked = !opts.spherical;
     El("#import-retain-opt").node().checked = opts.keep_shapes;

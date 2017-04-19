@@ -23,7 +23,7 @@ function validateInputOpts(cmd) {
   }
 
   if (o.encoding) {
-    o.encoding = MapShaper.validateEncoding(o.encoding);
+    o.encoding = internal.validateEncoding(o.encoding);
   }
 }
 
@@ -187,7 +187,7 @@ function validateOutputOpts(cmd) {
       cli.validateOutputDir(o.directory);
     }
     o.file = pathInfo.filename;
-    if (MapShaper.filenameIsUnsupportedOutputType(o.file)) {
+    if (internal.filenameIsUnsupportedOutputType(o.file)) {
       error("Output file looks like an unsupported file type:", o.file);
     }
   }
@@ -201,7 +201,7 @@ function validateOutputOpts(cmd) {
       o.format = 'dsv';
       o.delimiter = o.delimiter || '\t';
     }
-    if (!MapShaper.isSupportedOutputFormat(o.format)) {
+    if (!internal.isSupportedOutputFormat(o.format)) {
       error("Unsupported output format:", o.format);
     }
   }
@@ -209,13 +209,13 @@ function validateOutputOpts(cmd) {
   if (o.delimiter) {
     // convert "\t" '\t' \t to tab
     o.delimiter = o.delimiter.replace(/^["']?\\t["']?$/, '\t');
-    if (!MapShaper.isSupportedDelimiter(o.delimiter)) {
+    if (!internal.isSupportedDelimiter(o.delimiter)) {
       error("Unsupported delimiter:", o.delimiter);
     }
   }
 
   if (o.encoding) {
-    o.encoding = MapShaper.validateEncoding(o.encoding);
+    o.encoding = internal.validateEncoding(o.encoding);
   }
 
   // topojson-specific

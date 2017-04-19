@@ -30,7 +30,7 @@ function Popup() {
     var tableEl = El('table').addClass('selectable'),
         rows = 0;
     utils.forEachProperty(rec, function(v, k) {
-      var type = MapShaper.getFieldType(v, k, table);
+      var type = internal.getFieldType(v, k, table);
       if (v !== undefined) {
         renderRow(tableEl, rec, k, type, editable);
         rows++;
@@ -46,7 +46,7 @@ function Popup() {
   function renderRow(table, rec, key, type, editable) {
     var rowHtml = '<td class="field-name">%s</td><td><span class="value">%s</span> </td>';
     var val = rec[key];
-    var str = MapShaper.formatInspectorValue(val, type);
+    var str = internal.formatInspectorValue(val, type);
     var cell = El('tr')
         .appendTo(table)
         .html(utils.format(rowHtml, key, utils.htmlEscape(str)))
@@ -69,13 +69,13 @@ function Popup() {
 
   function editItem(el, rec, key, type) {
     var input = new ClickText2(el),
-        strval = MapShaper.formatInspectorValue(rec[key], type),
-        parser = MapShaper.getInputParser(type);
+        strval = internal.formatInspectorValue(rec[key], type),
+        parser = internal.getInputParser(type);
     el.parent().addClass('editable-cell');
     el.addClass('colored-text dot-underline');
     input.on('change', function(e) {
       var val2 = parser(input.value()),
-          strval2 = MapShaper.formatInspectorValue(val2, type);
+          strval2 = internal.formatInspectorValue(val2, type);
       if (strval == strval2) {
         // contents unchanged
       } else if (val2 === null && type != 'object') { // allow null objects
@@ -92,7 +92,7 @@ function Popup() {
   }
 }
 
-MapShaper.formatInspectorValue = function(val, type) {
+internal.formatInspectorValue = function(val, type) {
   var str;
   if (type == 'object') {
     str = val ? JSON.stringify(val) : "";
@@ -102,7 +102,7 @@ MapShaper.formatInspectorValue = function(val, type) {
   return str;
 };
 
-MapShaper.inputParsers = {
+internal.inputParsers = {
   string: function(raw) {
     return raw;
   },
@@ -137,11 +137,11 @@ MapShaper.inputParsers = {
   }
 };
 
-MapShaper.getInputParser = function(type) {
-  return MapShaper.inputParsers[type || 'multiple'];
+internal.getInputParser = function(type) {
+  return internal.inputParsers[type || 'multiple'];
 };
 
-MapShaper.getFieldType = function(val, key, table) {
+internal.getFieldType = function(val, key, table) {
   // if a field has a null value, look at entire column to identify type
-  return MapShaper.getValueType(val) || MapShaper.getColumnType(key, table);
+  return internal.getValueType(val) || internal.getColumnType(key, table);
 };

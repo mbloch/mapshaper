@@ -35,7 +35,7 @@ function RepairControl(model, map) {
   });
 
   btn.on('click', function() {
-    var fixed = MapShaper.repairIntersections(_dataset.arcs, _currXX);
+    var fixed = internal.repairIntersections(_dataset.arcs, _currXX);
     showIntersections(fixed);
     btn.addClass('disabled');
     model.updated({repair: true});
@@ -52,14 +52,14 @@ function RepairControl(model, map) {
     if (!_dataset) return;
     if (_dataset.arcs.getRetainedInterval() > 0) {
       // TODO: cache these intersections
-      XX = MapShaper.findSegmentIntersections(_dataset.arcs);
+      XX = internal.findSegmentIntersections(_dataset.arcs);
       showBtn = XX.length > 0;
     } else { // no simplification
       XX = _dataset.info.intersections;
       if (!XX) {
         // cache intersections at 0 simplification, to avoid recalculating
         // every time the simplification slider is set to 100% or the layer is selected at 100%
-        XX = _dataset.info.intersections = MapShaper.findSegmentIntersections(_dataset.arcs);
+        XX = _dataset.info.intersections = internal.findSegmentIntersections(_dataset.arcs);
       }
       showBtn = false;
     }
@@ -72,7 +72,7 @@ function RepairControl(model, map) {
     setTimeout(function() {
       var e = model.getActiveLayer();
       if (e.dataset && e.dataset != _dataset && !e.dataset.info.no_repair &&
-          MapShaper.layerHasPaths(e.layer)) {
+          internal.layerHasPaths(e.layer)) {
         _dataset = e.dataset;
         _self.update();
       }
@@ -89,7 +89,7 @@ function RepairControl(model, map) {
     var n = XX.length, pointLyr;
     _currXX = XX;
     if (n > 0) {
-      pointLyr = {geometry_type: 'point', shapes: [MapShaper.getIntersectionPoints(XX)]};
+      pointLyr = {geometry_type: 'point', shapes: [internal.getIntersectionPoints(XX)]};
       map.setHighlightLayer(pointLyr, {layers:[pointLyr]});
       readout.text(utils.format("%s line intersection%s", n, utils.pluralSuffix(n)));
     } else {

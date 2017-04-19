@@ -2,18 +2,18 @@
 
 api.joinPointsToPolygons = function(targetLyr, arcs, pointLyr, opts) {
   // TODO: copy points that can't be joined to a new layer
-  var joinFunction = MapShaper.getPolygonToPointsFunction(targetLyr, arcs, pointLyr, opts);
-  MapShaper.prepJoinLayers(targetLyr, pointLyr);
-  return MapShaper.joinTables(targetLyr.data, pointLyr.data, joinFunction, opts);
+  var joinFunction = internal.getPolygonToPointsFunction(targetLyr, arcs, pointLyr, opts);
+  internal.prepJoinLayers(targetLyr, pointLyr);
+  return internal.joinTables(targetLyr.data, pointLyr.data, joinFunction, opts);
 };
 
 api.joinPolygonsToPoints = function(targetLyr, polygonLyr, arcs, opts) {
-  var joinFunction = MapShaper.getPointToPolygonFunction(targetLyr, polygonLyr, arcs, opts);
-  MapShaper.prepJoinLayers(targetLyr, polygonLyr);
-  return MapShaper.joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
+  var joinFunction = internal.getPointToPolygonFunction(targetLyr, polygonLyr, arcs, opts);
+  internal.prepJoinLayers(targetLyr, polygonLyr);
+  return internal.joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
 };
 
-MapShaper.prepJoinLayers = function(targetLyr, srcLyr) {
+internal.prepJoinLayers = function(targetLyr, srcLyr) {
   if (!targetLyr.data) {
     // create an empty data table if target layer is missing attributes
     targetLyr.data = new DataTable(targetLyr.shapes.length);
@@ -23,8 +23,8 @@ MapShaper.prepJoinLayers = function(targetLyr, srcLyr) {
   }
 };
 
-MapShaper.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts) {
-  var joinFunction = MapShaper.getPointToPolygonFunction(pointLyr, polygonLyr, arcs, opts);
+internal.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts) {
+  var joinFunction = internal.getPointToPolygonFunction(pointLyr, polygonLyr, arcs, opts);
   var index = [];
   var hit, polygonId;
   for (var i=0, n=pointLyr.shapes.length; i<n; i++) {
@@ -44,7 +44,7 @@ MapShaper.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts
   };
 };
 
-MapShaper.getPointToPolygonFunction = function(pointLyr, polygonLyr, arcs, opts) {
+internal.getPointToPolygonFunction = function(pointLyr, polygonLyr, arcs, opts) {
   var index = new PathIndex(polygonLyr.shapes, arcs),
       points = pointLyr.shapes;
 

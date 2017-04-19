@@ -97,7 +97,7 @@ function ShpReader(src) {
       error("Not a valid .shp file");
     }
 
-    if (!MapShaper.isSupportedShapefileType(header.type)) {
+    if (!internal.isSupportedShapefileType(header.type)) {
       error("Unsupported .shp type:", header.type);
     }
 

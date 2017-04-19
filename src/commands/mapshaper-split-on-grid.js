@@ -8,7 +8,7 @@ api.splitLayerOnGrid = function(lyr, arcs, opts) {
       type = lyr.geometry_type,
       setId = !!opts.id_field, // assign id but, don't split to layers
       fieldName = opts.id_field || "__split__",
-      classify = getShapeClassifier(MapShaper.getLayerBounds(lyr, arcs), opts.cols, opts.rows),
+      classify = getShapeClassifier(internal.getLayerBounds(lyr, arcs), opts.cols, opts.rows),
       properties, layers;
 
   if (!type) {
@@ -21,7 +21,7 @@ api.splitLayerOnGrid = function(lyr, arcs, opts) {
   properties = lyr.data.getRecords();
 
   lyr.shapes.forEach(function(shp, i) {
-    var bounds = type == 'point' ? MapShaper.getPointBounds([shp]) : arcs.getMultiShapeBounds(shp);
+    var bounds = type == 'point' ? internal.getPointBounds([shp]) : arcs.getMultiShapeBounds(shp);
     var name = bounds.hasBounds() ? classify(bounds) : '';
     var rec = properties[i] = properties[i] || {};
     rec[fieldName] = name;

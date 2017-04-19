@@ -1,24 +1,24 @@
 /* @requires mapshaper-info, mapshaper-expressions, mapshaper-shape-geom */
 
 api.inspect = function(lyr, arcs, opts) {
-  var ids = MapShaper.selectFeatures(lyr, arcs, opts);
+  var ids = internal.selectFeatures(lyr, arcs, opts);
   var msg;
   if (ids.length == 1) {
-    msg = MapShaper.getFeatureInfo(ids[0], lyr, arcs);
+    msg = internal.getFeatureInfo(ids[0], lyr, arcs);
   } else {
     msg = utils.format("[inspect] Expression matched %d feature%s. Select one feature for details", ids.length, utils.pluralSuffix(ids.length));
   }
   message(msg);
 };
 
-MapShaper.getFeatureInfo = function(id, lyr, arcs) {
+internal.getFeatureInfo = function(id, lyr, arcs) {
     var msg = "Feature " + id + '\n';
-    msg += MapShaper.getShapeInfo(id, lyr, arcs);
-    msg += MapShaper.getTableInfo(lyr, id);
+    msg += internal.getShapeInfo(id, lyr, arcs);
+    msg += internal.getTableInfo(lyr, id);
     return msg;
 };
 
-MapShaper.getShapeInfo = function(id, lyr, arcs) {
+internal.getShapeInfo = function(id, lyr, arcs) {
   var shp = lyr.shapes ? lyr.shapes[id] : null;
   var type = lyr.geometry_type;
   var info, msg;
@@ -31,7 +31,7 @@ MapShaper.getShapeInfo = function(id, lyr, arcs) {
   } else if (type == 'polyline') {
     msg += '  Parts: ' + shp.length + '\n';
   } else if (type == 'polygon') {
-    info = MapShaper.getPolygonInfo(shp, arcs);
+    info = internal.getPolygonInfo(shp, arcs);
     msg += utils.format('  Rings: %d cw, %d ccw\n', info.cw, info.ccw);
     msg += '  Planar area: ' + info.area + '\n';
     if (info.sph_area) {
@@ -41,7 +41,7 @@ MapShaper.getShapeInfo = function(id, lyr, arcs) {
   return msg;
 };
 
-MapShaper.getPolygonInfo = function(shp, arcs) {
+internal.getPolygonInfo = function(shp, arcs) {
   var o = {rings: shp.length, cw: 0, ccw: 0, area: 0};
   var area;
   for (var i=0; i<shp.length; i++) {
@@ -59,14 +59,14 @@ MapShaper.getPolygonInfo = function(shp, arcs) {
   return o;
 };
 
-MapShaper.selectFeatures = function(lyr, arcs, opts) {
-  var n = MapShaper.getFeatureCount(lyr),
+internal.selectFeatures = function(lyr, arcs, opts) {
+  var n = internal.getFeatureCount(lyr),
       ids = [],
       filter;
   if (!opts.expression) {
     stop("[inspect] Missing a JS expression for selecting a feature");
   }
-  filter = MapShaper.compileValueExpression(opts.expression, lyr, arcs);
+  filter = internal.compileValueExpression(opts.expression, lyr, arcs);
   utils.repeat(n, function(id) {
     var result = filter(id);
     if (result === true) {

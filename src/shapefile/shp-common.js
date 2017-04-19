@@ -3,7 +3,7 @@ shp-type
 mapshaper-common
 */
 
-MapShaper.translateShapefileType = function(shpType) {
+internal.translateShapefileType = function(shpType) {
   if (utils.contains([ShpType.POLYGON, ShpType.POLYGONM, ShpType.POLYGONZ], shpType)) {
     return 'polygon';
   } else if (utils.contains([ShpType.POLYLINE, ShpType.POLYLINEM, ShpType.POLYLINEZ], shpType)) {
@@ -15,11 +15,11 @@ MapShaper.translateShapefileType = function(shpType) {
   return null;
 };
 
-MapShaper.isSupportedShapefileType = function(t) {
+internal.isSupportedShapefileType = function(t) {
   return utils.contains([0,1,3,5,8,11,13,15,18,21,23,25,28], t);
 };
 
-MapShaper.getShapefileType = function(type) {
+internal.getShapefileType = function(type) {
   return {
     polygon: ShpType.POLYGON,
     polyline: ShpType.POLYLINE,

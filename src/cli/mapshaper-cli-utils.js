@@ -30,7 +30,7 @@ cli.readFile = function(fname, encoding, cache) {
     content = require(fname == '/dev/stdin' ? 'rw' : 'fs').readFileSync(fname);
   }
   if (encoding && Buffer.isBuffer(content)) {
-    content = MapShaper.decodeString(content, encoding);
+    content = internal.decodeString(content, encoding);
   }
   return content;
 };

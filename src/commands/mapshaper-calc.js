@@ -24,16 +24,16 @@ api.calc = function(lyr, arcs, opts) {
     api.filterFeatures(lyr, arcs, {expression: opts.where});
     msg += ' where ' + opts.where;
   }
-  result = MapShaper.evalCalcExpression(lyr, arcs, opts.expression);
+  result = internal.evalCalcExpression(lyr, arcs, opts.expression);
   message(msg + ":  " + result);
   return result;
 };
 
-MapShaper.evalCalcExpression = function(lyr, arcs, exp) {
-  return MapShaper.compileCalcExpression(lyr, arcs, exp)();
+internal.evalCalcExpression = function(lyr, arcs, exp) {
+  return internal.compileCalcExpression(lyr, arcs, exp)();
 };
 
-MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
+internal.compileCalcExpression = function(lyr, arcs, exp) {
   var rowNo = 0, colNo = 0, cols = [];
   var ctx1 = { // context for first phase (capturing values for each feature)
         count: assign,
@@ -54,24 +54,24 @@ MapShaper.compileCalcExpression = function(lyr, arcs, exp) {
         min: wrap(min),
         max: wrap(max),
         average: wrap(utils.mean),
-        mode: wrap(MapShaper.getMode),
+        mode: wrap(internal.getMode),
         collect: wrap(pass),
         first: wrap(pass),
         last: wrap(pass)
       },
-      len = MapShaper.getFeatureCount(lyr),
+      len = internal.getFeatureCount(lyr),
       calc1, calc2, result;
 
   if (lyr.geometry_type) {
     // add functions related to layer geometry (e.g. for subdivide())
     ctx1.width = ctx1.height = noop;
-    ctx2.width = function() {return MapShaper.getLayerBounds(lyr, arcs).width();};
-    ctx2.height = function() {return MapShaper.getLayerBounds(lyr, arcs).height();};
+    ctx2.width = function() {return internal.getLayerBounds(lyr, arcs).width();};
+    ctx2.height = function() {return internal.getLayerBounds(lyr, arcs).height();};
   }
 
-  calc1 = MapShaper.compileFeatureExpression(exp, lyr, arcs, {context: ctx1,
+  calc1 = internal.compileFeatureExpression(exp, lyr, arcs, {context: ctx1,
       no_assign: true});
-  calc2 = MapShaper.compileFeatureExpression(exp, {data: lyr.data}, null,
+  calc2 = internal.compileFeatureExpression(exp, {data: lyr.data}, null,
       {returns: true, context: ctx2});
 
   // @destRec: optional destination record for assignments

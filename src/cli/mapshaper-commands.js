@@ -5,11 +5,11 @@
 api.runCommands = function(argv, done) {
   var commands;
   try {
-    commands = MapShaper.parseCommands(argv);
+    commands = internal.parseCommands(argv);
   } catch(e) {
     return done(e);
   }
-  MapShaper.runParsedCommands(commands, null, function(err, catalog) {
+  internal.runParsedCommands(commands, null, function(err, catalog) {
     done(err);
   });
 };
@@ -24,10 +24,10 @@ api.runCommands = function(argv, done) {
 //
 api.applyCommands = function(commands, input, done) {
   var output = [],
-      type = MapShaper.guessInputContentType(input);
+      type = internal.guessInputContentType(input);
 
   try {
-    commands = MapShaper.parseCommands(commands);
+    commands = internal.parseCommands(commands);
   } catch(e) {
     return done(e);
   }
@@ -35,7 +35,7 @@ api.applyCommands = function(commands, input, done) {
     // old api: input is the content of a CSV or JSON file
     // return done(new APIError('applyCommands() has changed, see v0.4 docs'));
     message("Warning: applyCommands() was called with deprecated input format");
-    return MapShaper.applyCommandsOld(commands, input, done);
+    return internal.applyCommandsOld(commands, input, done);
   }
   // add options to -i and -o commands to bypass file i/o
   commands = commands.map(function(cmd) {
@@ -48,7 +48,7 @@ api.applyCommands = function(commands, input, done) {
     return cmd;
   });
 
-  MapShaper.runParsedCommands(commands, null, function(err) {
+  internal.runParsedCommands(commands, null, function(err) {
     var data = output.reduce(function(memo, o) {
         memo[o.filename] = o.content;
         return memo;
@@ -63,9 +63,9 @@ api.applyCommands = function(commands, input, done) {
 // @done callback: function(err, <data>) where <data> is the content of a
 //     single output file or an array if multiple files are output
 //
-MapShaper.applyCommandsOld = function(commands, content, done) {
+internal.applyCommandsOld = function(commands, content, done) {
   var output = [], lastCmd;
-  commands = MapShaper.runAndRemoveInfoCommands(commands);
+  commands = internal.runAndRemoveInfoCommands(commands);
   if (commands.length === 0 || commands[0].name != 'i') {
     commands.unshift({name: 'i', options: {}});
   }
@@ -78,7 +78,7 @@ MapShaper.applyCommandsOld = function(commands, content, done) {
   }
   commands.push(lastCmd);
   lastCmd.options.output = output;
-  MapShaper.runParsedCommands(commands, null, function(err) {
+  internal.runParsedCommands(commands, null, function(err) {
     var data = output.map(function(o) {return o.content;});
     if (data.length == 1) {
       data = data[0];
@@ -88,8 +88,8 @@ MapShaper.applyCommandsOld = function(commands, content, done) {
 };
 
 // TODO: rewrite tests and remove this function
-MapShaper.testCommands = function(argv, done) {
-  MapShaper.runParsedCommands(MapShaper.parseCommands(argv), null, function(err, catalog) {
+internal.testCommands = function(argv, done) {
+  internal.runParsedCommands(internal.parseCommands(argv), null, function(err, catalog) {
     var target = catalog && catalog.getDefaultTarget();
     var output;
     if (!err && target) {
@@ -105,7 +105,7 @@ MapShaper.testCommands = function(argv, done) {
 // @catalog: Optional Catalog object containing previously imported data
 // @done: function(<error>, <catalog>)
 //
-MapShaper.runParsedCommands = function(commands, catalog, done) {
+internal.runParsedCommands = function(commands, catalog, done) {
   if (!catalog) {
     catalog = new Catalog();
   } else if (catalog instanceof Catalog === false) {
@@ -123,11 +123,11 @@ MapShaper.runParsedCommands = function(commands, catalog, done) {
   if (commands.length === 0) {
     return done(new APIError("No commands to run"));
   }
-  commands = MapShaper.runAndRemoveInfoCommands(commands);
+  commands = internal.runAndRemoveInfoCommands(commands);
   if (commands.length === 0) {
     return done(null);
   }
-  commands = MapShaper.divideImportCommand(commands);
+  commands = internal.divideImportCommand(commands);
 
   utils.reduceAsync(commands, catalog, function(catalog, cmd, nextCmd) {
     api.runCommand(cmd, catalog, nextCmd);
@@ -140,7 +140,7 @@ MapShaper.runParsedCommands = function(commands, catalog, done) {
 // @commands Array of parsed commands
 // Returns: either original command array or array of duplicated commands.
 //
-MapShaper.divideImportCommand = function(commands) {
+internal.divideImportCommand = function(commands) {
   var firstCmd = commands[0],
       lastCmd = commands[commands.length-1],
       opts = firstCmd.options;
@@ -200,22 +200,22 @@ utils.reduceAsync = function(arr, memo, iter, done) {
 };
 
 // Handle information commands and remove them from the list
-MapShaper.runAndRemoveInfoCommands = function(commands) {
+internal.runAndRemoveInfoCommands = function(commands) {
   return commands.filter(function(cmd) {
     if (cmd.name == 'version') {
-      message(MapShaper.VERSION);
+      message(internal.VERSION);
     } else if (cmd.name == 'encodings') {
-      MapShaper.printEncodings();
+      internal.printEncodings();
     } else if (cmd.name == 'projections') {
-      MapShaper.printProjections();
+      internal.printProjections();
     } else if (cmd.name == 'help') {
-      MapShaper.getOptionParser().printHelp(cmd.options.commands);
+      internal.getOptionParser().printHelp(cmd.options.commands);
     } else if (cmd.name == 'verbose') {
-      MapShaper.VERBOSE = true;
+      internal.VERBOSE = true;
     } else if (cmd.name == 'quiet') {
-      MapShaper.QUIET = true;
+      internal.QUIET = true;
     } else if (cmd.name == 'tracing') {
-      MapShaper.TRACING = true;
+      internal.TRACING = true;
     } else {
       return true;
     }

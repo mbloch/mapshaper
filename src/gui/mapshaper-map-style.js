@@ -80,22 +80,22 @@ var MapStyle = (function() {
   return {
     getHighlightStyle: function(lyr) {
       var style = utils.extend({}, highStyle);
-      var n = MapShaper.countPointsInLayer(lyr);
+      var n = internal.countPointsInLayer(lyr);
       style.dotSize = n < 20 && 4 || n < 500 && 3 || 2;
       return style;
     },
     getReferenceStyle: function(lyr) {
       var style = utils.extend({}, referenceStyle);
-      style.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
+      style.dotSize = calcDotSize(internal.countPointsInLayer(lyr));
       return style;
     },
     getActiveStyle: function(lyr) {
       var style;
-      if (MapShaper.layerHasSvgDisplayStyle(lyr)) {
-        style = MapShaper.getSvgDisplayStyle(lyr);
+      if (internal.layerHasSvgDisplayStyle(lyr)) {
+        style = internal.getSvgDisplayStyle(lyr);
       } else {
         style = utils.extend({}, outlineStyle);
-        style.dotSize = calcDotSize(MapShaper.countPointsInLayer(lyr));
+        style.dotSize = calcDotSize(internal.countPointsInLayer(lyr));
       }
       return style;
     },
@@ -148,9 +148,9 @@ var MapStyle = (function() {
       styles.push(style);
     }
 
-    if (MapShaper.layerHasSvgDisplayStyle(lyr)) {
+    if (internal.layerHasSvgDisplayStyle(lyr)) {
       if (type == 'point') {
-        overlayStyle = MapShaper.wrapHoverStyle(MapShaper.getSvgDisplayStyle(lyr), overlayStyle);
+        overlayStyle = internal.wrapHoverStyle(internal.getSvgDisplayStyle(lyr), overlayStyle);
       }
       overlayStyle.type = 'styled';
     }
@@ -161,7 +161,7 @@ var MapStyle = (function() {
 }());
 
 // Modify style to use scaled circle instead of dot symbol
-MapShaper.wrapHoverStyle = function(style, hoverStyle) {
+internal.wrapHoverStyle = function(style, hoverStyle) {
   var styler = function(obj, i) {
     var dotColor;
     style.styler(obj, i);
@@ -179,10 +179,10 @@ MapShaper.wrapHoverStyle = function(style, hoverStyle) {
   return {styler: styler};
 };
 
-MapShaper.getSvgDisplayStyle = function(lyr) {
+internal.getSvgDisplayStyle = function(lyr) {
   var records = lyr.data.getRecords(),
-      fields = MapShaper.getSvgStyleFields(lyr),
-      index = MapShaper.svgStyles;
+      fields = internal.getSvgStyleFields(lyr),
+      index = internal.svgStyles;
   var styler = function(style, i) {
     var f, key, val;
     for (var j=0; j<fields.length; j++) {

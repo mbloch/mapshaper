@@ -2,12 +2,12 @@
 /* @require mapshaper-gui-lib */
 
 // Replace error function in mapshaper lib
-var error = MapShaper.error = function() {
+var error = internal.error = function() {
   stop.apply(null, utils.toArray(arguments));
 };
 
 // replace stop function
-var stop = MapShaper.stop = function() {
+var stop = internal.stop = function() {
   // Show a popup error message, then throw an error
   var msg = gui.formatMessageArgs(arguments);
   gui.alert(msg);

@@ -1,11 +1,11 @@
 /* @requires mapshaper-common */
 
-MapShaper.getMode = function(values) {
-  var data = MapShaper.getModeData(values);
+internal.getMode = function(values) {
+  var data = internal.getModeData(values);
   return data.modes[0];
 };
 
-MapShaper.getModeData = function(values) {
+internal.getModeData = function(values) {
   var maxCount = 0, nextCount = 0,
       uniq = [],
       modes = [],

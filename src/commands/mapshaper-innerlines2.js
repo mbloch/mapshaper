@@ -1,10 +1,10 @@
 /* @requires mapshaper-shape-utils, mapshaper-arc-classifier */
 
 api.innerlines = function(lyr, arcs, opts) {
-  MapShaper.requirePolygonLayer(lyr, "[innerlines] Command requires a polygon layer");
-  var classifier = MapShaper.getArcClassifier(lyr.shapes, arcs);
-  var lines = MapShaper.extractInnerLines(lyr.shapes, classifier);
-  var outputLyr = MapShaper.createLineLayer(lines, null);
+  internal.requirePolygonLayer(lyr, "[innerlines] Command requires a polygon layer");
+  var classifier = internal.getArcClassifier(lyr.shapes, arcs);
+  var lines = internal.extractInnerLines(lyr.shapes, classifier);
+  var outputLyr = internal.createLineLayer(lines, null);
 
   if (lines.length === 0) {
     message("[innerlines] No shared boundaries were found");
@@ -15,19 +15,19 @@ api.innerlines = function(lyr, arcs, opts) {
 
 api.lines = function(lyr, arcs, opts) {
   opts = opts || {};
-  var classifier = MapShaper.getArcClassifier(lyr.shapes, arcs),
+  var classifier = internal.getArcClassifier(lyr.shapes, arcs),
       fields = utils.isArray(opts.fields) ? opts.fields : [],
       typeId = 0,
       shapes = [],
       records = [],
       outputLyr;
 
-  MapShaper.requirePolygonLayer(lyr, "[lines] Command requires a polygon layer");
+  internal.requirePolygonLayer(lyr, "[lines] Command requires a polygon layer");
   if (fields.length > 0 && !lyr.data) {
     stop("[lines] Missing a data table");
   }
 
-  addLines(MapShaper.extractOuterLines(lyr.shapes, classifier));
+  addLines(internal.extractOuterLines(lyr.shapes, classifier));
 
   fields.forEach(function(field) {
     var data = lyr.data.getRecords();
@@ -43,11 +43,11 @@ api.lines = function(lyr, arcs, opts) {
     if (!lyr.data.fieldExists(field)) {
       stop("[lines] Unknown data field:", field);
     }
-    addLines(MapShaper.extractLines(lyr.shapes, classifier(key)));
+    addLines(internal.extractLines(lyr.shapes, classifier(key)));
   });
 
-  addLines(MapShaper.extractInnerLines(lyr.shapes, classifier));
-  outputLyr = MapShaper.createLineLayer(shapes, records);
+  addLines(internal.extractInnerLines(lyr.shapes, classifier));
+  outputLyr = internal.createLineLayer(shapes, records);
   outputLyr.name = opts.no_replace ? null : lyr.name;
   return outputLyr;
 
@@ -61,7 +61,7 @@ api.lines = function(lyr, arcs, opts) {
   }
 };
 
-MapShaper.createLineLayer = function(lines, records) {
+internal.createLineLayer = function(lines, records) {
   return {
     geometry_type: 'polyline',
     shapes: lines,
@@ -69,24 +69,24 @@ MapShaper.createLineLayer = function(lines, records) {
   };
 };
 
-MapShaper.extractOuterLines = function(shapes, classifier) {
+internal.extractOuterLines = function(shapes, classifier) {
   var key = function(a, b) {return b == -1 ? String(a) : null;};
-  return MapShaper.extractLines(shapes, classifier(key));
+  return internal.extractLines(shapes, classifier(key));
 };
 
-MapShaper.extractInnerLines = function(shapes, classifier) {
+internal.extractInnerLines = function(shapes, classifier) {
   var key = function(a, b) {return b > -1 ? a + '-' + b : null;};
-  return MapShaper.extractLines(shapes, classifier(key));
+  return internal.extractLines(shapes, classifier(key));
 };
 
-MapShaper.extractLines = function(shapes, classify) {
+internal.extractLines = function(shapes, classify) {
   var lines = [],
       index = {},
       prev = null,
       prevKey = null,
       part;
 
-  MapShaper.traversePaths(shapes, onArc, onPart);
+  internal.traversePaths(shapes, onArc, onPart);
 
   function onArc(o) {
     var arcId = o.arcId,

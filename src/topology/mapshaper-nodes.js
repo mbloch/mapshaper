@@ -18,7 +18,7 @@ function NodeCollection(arcs, filter) {
   Object.defineProperty(this, 'arcs', {value: arcs});
 
   this.toArray = function() {
-    var nodes = MapShaper.findNodeTopology(arcs, filter),
+    var nodes = internal.findNodeTopology(arcs, filter),
         flags = new Uint8Array(nodes.xx.length),
         arr = [];
     utils.forEach(nodes.chains, function(next, i) {
@@ -106,7 +106,7 @@ function NodeCollection(arcs, filter) {
   function getNodeChains() {
     var nodeData;
     if (!chains) {
-      nodeData = MapShaper.findNodeTopology(arcs, filter);
+      nodeData = internal.findNodeTopology(arcs, filter);
       chains = nodeData.chains;
       if (nn.length * 2 != chains.length) error("[NodeCollection] count error");
     }
@@ -161,7 +161,7 @@ function NodeCollection(arcs, filter) {
   };
 }
 
-MapShaper.findNodeTopology = function(arcs, filter) {
+internal.findNodeTopology = function(arcs, filter) {
   var n = arcs.size() * 2,
       xx2 = new Float64Array(n),
       yy2 = new Float64Array(n),

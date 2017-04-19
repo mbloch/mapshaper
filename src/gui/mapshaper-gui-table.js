@@ -51,7 +51,7 @@ gui.getDisplayLayerForTable = function(table) {
   if (usePoints) {
     lyr.geometry_type = 'point';
   } else {
-    data.arcs = new MapShaper.ArcCollection(arcs);
+    data.arcs = new internal.ArcCollection(arcs);
     lyr.geometry_type = 'polygon';
   }
   lyr.data = table;

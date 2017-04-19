@@ -7,17 +7,17 @@ mapshaper-path-import
 
 // Read Shapefile data from a file, ArrayBuffer or Buffer
 // @src filename or buffer
-MapShaper.importShp = function(src, opts) {
+internal.importShp = function(src, opts) {
   var reader = new ShpReader(src),
       shpType = reader.type(),
-      type = MapShaper.translateShapefileType(shpType),
+      type = internal.translateShapefileType(shpType),
       importOpts = utils.defaults({
         type: type,
         reserved_points: Math.round(reader.header().byteLength / 16)
       }, opts),
       importer = new PathImporter(importOpts);
 
-  if (!MapShaper.isSupportedShapefileType(shpType)) {
+  if (!internal.isSupportedShapefileType(shpType)) {
     stop("Unsupported Shapefile type:", shpType);
   }
   if (ShpType.isZType(shpType)) {

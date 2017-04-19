@@ -1,6 +1,6 @@
 /* @requires mapshaper-shape-utils */
 
-MapShaper.getArcClassifier = function(shapes, arcs) {
+internal.getArcClassifier = function(shapes, arcs) {
   var n = arcs.size(),
       a = new Int32Array(n),
       b = new Int32Array(n);
@@ -8,7 +8,7 @@ MapShaper.getArcClassifier = function(shapes, arcs) {
   utils.initializeArray(a, -1);
   utils.initializeArray(b, -1);
 
-  MapShaper.traversePaths(shapes, function(o) {
+  internal.traversePaths(shapes, function(o) {
     var i = absArcId(o.arcId);
     var shpId = o.shapeId;
     var aval = a[i];

@@ -4,7 +4,7 @@
 
 
 // Return average segment length (with simplification)
-MapShaper.getAvgSegment = function(arcs) {
+internal.getAvgSegment = function(arcs) {
   var sum = 0;
   var count = arcs.forEachSegment(function(i, j, xx, yy) {
     var dx = xx[i] - xx[j],
@@ -15,7 +15,7 @@ MapShaper.getAvgSegment = function(arcs) {
 };
 
 // Return average magnitudes of dx, dy (with simplification)
-MapShaper.getAvgSegment2 = function(arcs) {
+internal.getAvgSegment2 = function(arcs) {
   var dx = 0, dy = 0;
   var count = arcs.forEachSegment(function(i, j, xx, yy) {
     dx += Math.abs(xx[i] - xx[j]);
@@ -43,8 +43,8 @@ this.getAvgSegmentSph2 = function() {
 
 // @counts A typed array for accumulating count of each abs arc id
 //   (assume it won't overflow)
-MapShaper.countArcsInShapes = function(shapes, counts) {
-  MapShaper.traversePaths(shapes, null, function(obj) {
+internal.countArcsInShapes = function(shapes, counts) {
+  internal.traversePaths(shapes, null, function(obj) {
     var arcs = obj.arcs,
         id;
     for (var i=0; i<arcs.length; i++) {
@@ -56,7 +56,7 @@ MapShaper.countArcsInShapes = function(shapes, counts) {
 };
 
 // Returns subset of shapes in @shapes that contain one or more arcs in @arcIds
-MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
+internal.findShapesByArcId = function(shapes, arcIds, numArcs) {
   var index = numArcs ? new Uint8Array(numArcs) : [],
       found = [];
   arcIds.forEach(function(id) {
@@ -64,7 +64,7 @@ MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
   });
   shapes.forEach(function(shp, shpId) {
     var isHit = false;
-    MapShaper.forEachArcId(shp || [], function(id) {
+    internal.forEachArcId(shp || [], function(id) {
       isHit = isHit || index[absArcId(id)] == 1;
     });
     if (isHit) {
@@ -76,19 +76,19 @@ MapShaper.findShapesByArcId = function(shapes, arcIds, numArcs) {
 
 // @shp An element of the layer.shapes array
 //   (may be null, or, depending on layer type, an array of points or an array of arrays of arc ids)
-MapShaper.cloneShape = function(shp) {
+internal.cloneShape = function(shp) {
   if (!shp) return null;
   return shp.map(function(part) {
     return part.concat();
   });
 };
 
-MapShaper.cloneShapes = function(arr) {
-  return utils.isArray(arr) ? arr.map(MapShaper.cloneShape) : null;
+internal.cloneShapes = function(arr) {
+  return utils.isArray(arr) ? arr.map(internal.cloneShape) : null;
 };
 
 // a and b are arrays of arc ids
-MapShaper.pathsAreIdentical = function(a, b) {
+internal.pathsAreIdentical = function(a, b) {
   if (a.length != b.length) return false;
   for (var i=0, n=a.length; i<n; i++) {
     if (a[i] != b[i]) return false;
@@ -96,21 +96,21 @@ MapShaper.pathsAreIdentical = function(a, b) {
   return true;
 };
 
-MapShaper.reversePath = function(ids) {
+internal.reversePath = function(ids) {
   ids.reverse();
   for (var i=0, n=ids.length; i<n; i++) {
     ids[i] = ~ids[i];
   }
 };
 
-MapShaper.clampIntervalByPct = function(z, pct) {
+internal.clampIntervalByPct = function(z, pct) {
   if (pct <= 0) z = Infinity;
   else if (pct >= 1) z = 0;
   return z;
 };
 
-MapShaper.findNextRemovableVertices = function(zz, zlim, start, end) {
-  var i = MapShaper.findNextRemovableVertex(zz, zlim, start, end),
+internal.findNextRemovableVertices = function(zz, zlim, start, end) {
+  var i = internal.findNextRemovableVertex(zz, zlim, start, end),
       arr, k;
   if (i > -1) {
     k = zz[i];
@@ -127,7 +127,7 @@ MapShaper.findNextRemovableVertices = function(zz, zlim, start, end) {
 // Return id of the vertex between @start and @end with the highest
 // threshold that is less than @zlim, or -1 if none
 //
-MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
+internal.findNextRemovableVertex = function(zz, zlim, start, end) {
   var tmp, jz = 0, j = -1, z;
   if (start > end) {
     tmp = start;
@@ -146,12 +146,12 @@ MapShaper.findNextRemovableVertex = function(zz, zlim, start, end) {
 
 // Visit each arc id in a path, shape or array of shapes
 // Use non-undefined return values of callback @cb as replacements.
-MapShaper.forEachArcId = function(arr, cb) {
+internal.forEachArcId = function(arr, cb) {
   var item;
   for (var i=0; i<arr.length; i++) {
     item = arr[i];
     if (item instanceof Array) {
-      MapShaper.forEachArcId(item, cb);
+      internal.forEachArcId(item, cb);
     } else if (utils.isInteger(item)) {
       var val = cb(item);
       if (val !== void 0) {
@@ -163,13 +163,13 @@ MapShaper.forEachArcId = function(arr, cb) {
   }
 };
 
-MapShaper.forEachPath = function(paths, cb) {
-  MapShaper.editPaths(paths, cb);
+internal.forEachPath = function(paths, cb) {
+  internal.editPaths(paths, cb);
 };
 
-MapShaper.editShapes = function(shapes, editPath) {
+internal.editShapes = function(shapes, editPath) {
   for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = MapShaper.editPaths(shapes[i], editPath);
+    shapes[i] = internal.editPaths(shapes[i], editPath);
   }
 };
 
@@ -178,7 +178,7 @@ MapShaper.editShapes = function(shapes, editPath) {
 //    If @cb returns an array, it replaces the existing value
 //    If @cb returns null, the path is removed from the feature
 //
-MapShaper.editPaths = function(paths, cb) {
+internal.editPaths = function(paths, cb) {
   if (!paths) return null; // null shape
   if (!utils.isArray(paths)) error("[editPaths()] Expected an array, found:", arr);
   var nulls = 0,
@@ -203,13 +203,13 @@ MapShaper.editPaths = function(paths, cb) {
   }
 };
 
-MapShaper.forEachPathSegment = function(shape, arcs, cb) {
-  MapShaper.forEachArcId(shape, function(arcId) {
+internal.forEachPathSegment = function(shape, arcs, cb) {
+  internal.forEachArcId(shape, function(arcId) {
     arcs.forEachArcSegment(arcId, cb);
   });
 };
 
-MapShaper.traversePaths = function traversePaths(shapes, cbArc, cbPart, cbShape) {
+internal.traversePaths = function traversePaths(shapes, cbArc, cbPart, cbShape) {
   var segId = 0;
   shapes.forEach(function(parts, shapeId) {
     if (!parts || parts.length === 0) return; // null shape
@@ -244,7 +244,7 @@ MapShaper.traversePaths = function traversePaths(shapes, cbArc, cbPart, cbShape)
   });
 };
 
-MapShaper.arcHasLength = function(id, coords) {
+internal.arcHasLength = function(id, coords) {
   var iter = coords.getArcIter(id), x, y;
   if (iter.hasNext()) {
     x = iter.x;
@@ -256,13 +256,13 @@ MapShaper.arcHasLength = function(id, coords) {
   return false;
 };
 
-MapShaper.filterEmptyArcs = function(shape, coords) {
+internal.filterEmptyArcs = function(shape, coords) {
   if (!shape) return null;
   var shape2 = [];
   shape.forEach(function(ids) {
     var path = [];
     for (var i=0; i<ids.length; i++) {
-      if (MapShaper.arcHasLength(ids[i], coords)) {
+      if (internal.arcHasLength(ids[i], coords)) {
         path.push(ids[i]);
       }
     }
@@ -273,13 +273,13 @@ MapShaper.filterEmptyArcs = function(shape, coords) {
 
 // Bundle holes with their containing rings for Topo/GeoJSON polygon export.
 // Assumes outer rings are CW and inner (hole) rings are CCW.
-// @paths array of objects with path metadata -- see MapShaper.exportPathData()
+// @paths array of objects with path metadata -- see internal.exportPathData()
 //
 // TODO: Improve reliability. Currently uses winding order, area and bbox to
 //   identify holes and their enclosures -- could be confused by strange
 //   geometry.
 //
-MapShaper.groupPolygonRings = function(paths) {
+internal.groupPolygonRings = function(paths) {
   var pos = [],
       neg = [];
   if (paths) {
@@ -318,7 +318,7 @@ MapShaper.groupPolygonRings = function(paths) {
   return output;
 };
 
-MapShaper.getPathMetadata = function(shape, arcs, type) {
+internal.getPathMetadata = function(shape, arcs, type) {
   var data = [],
       ids;
   for (var i=0, n=shape && shape.length; i<n; i++) {
@@ -332,7 +332,7 @@ MapShaper.getPathMetadata = function(shape, arcs, type) {
   return data;
 };
 
-MapShaper.quantizeArcs = function(arcs, quanta) {
+internal.quantizeArcs = function(arcs, quanta) {
   // Snap coordinates to a grid of @quanta locations on both axes
   // This may snap nearby points to the same coordinates.
   // Consider a cleanup pass to remove dupes, make sure collapsed arcs are

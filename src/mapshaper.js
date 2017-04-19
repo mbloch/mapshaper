@@ -3,7 +3,7 @@ mapshaper-commands
 */
 
 api.cli = cli;
-api.internal = MapShaper;
+api.internal = internal;
 api.utils = utils;
 api.geom = geom;
 this.mapshaper = api;

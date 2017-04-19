@@ -1,10 +1,10 @@
 /* @requires mapshaper-shape-utils, mapshaper-arc-classifier */
 
-MapShaper.findNeighbors = function(shapes, arcs) {
+internal.findNeighbors = function(shapes, arcs) {
   var getKey = function(a, b) {
     return b > -1 && a > -1 ? [a, b] : null;
   };
-  var classify = MapShaper.getArcClassifier(shapes, arcs)(getKey);
+  var classify = internal.getArcClassifier(shapes, arcs)(getKey);
   var arr = [];
   var index = {};
   var onArc = function(arcId) {
@@ -18,6 +18,6 @@ MapShaper.findNeighbors = function(shapes, arcs) {
       }
     }
   };
-  MapShaper.forEachArcId(shapes, onArc);
+  internal.forEachArcId(shapes, onArc);
   return arr;
 };

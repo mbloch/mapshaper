@@ -5,10 +5,10 @@ mapshaper-polygon-centroid
 */
 
 api.createPointLayer = function(srcLyr, arcs, opts) {
-  var destLyr = MapShaper.getOutputLayer(srcLyr, opts);
+  var destLyr = internal.getOutputLayer(srcLyr, opts);
   destLyr.shapes = opts.x || opts.y ?
-      MapShaper.pointsFromDataTable(srcLyr.data, opts) :
-      MapShaper.pointsFromPolygons(srcLyr, arcs, opts);
+      internal.pointsFromDataTable(srcLyr.data, opts) :
+      internal.pointsFromPolygons(srcLyr, arcs, opts);
   destLyr.geometry_type = 'point';
 
   var nulls = destLyr.shapes.reduce(function(sum, shp) {
@@ -25,7 +25,7 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
   return destLyr;
 };
 
-MapShaper.pointsFromPolygons = function(lyr, arcs, opts) {
+internal.pointsFromPolygons = function(lyr, arcs, opts) {
   if (lyr.geometry_type != "polygon") {
     stop("[points] Expected a polygon layer");
   }
@@ -36,7 +36,7 @@ MapShaper.pointsFromPolygons = function(lyr, arcs, opts) {
   });
 };
 
-MapShaper.pointsFromDataTable = function(data, opts) {
+internal.pointsFromDataTable = function(data, opts) {
   if (!data) stop("[points] Layer is missing a data table");
   if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
     stop("[points] Missing x,y data fields");

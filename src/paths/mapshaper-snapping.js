@@ -4,7 +4,7 @@ mapshaper-geom,
 mapshaper-arcs
 */
 
-MapShaper.getHighPrecisionSnapInterval = function(arcs) {
+internal.getHighPrecisionSnapInterval = function(arcs) {
   var bb = arcs.getBounds();
   if (!bb.hasBounds()) return 0;
   var maxCoord = Math.max(Math.abs(bb.xmin), Math.abs(bb.ymin),
@@ -12,8 +12,8 @@ MapShaper.getHighPrecisionSnapInterval = function(arcs) {
   return maxCoord * 1e-14;
 };
 
-MapShaper.snapCoords = function(arcs, threshold) {
-    var avgDist = MapShaper.getAvgSegment(arcs),
+internal.snapCoords = function(arcs, threshold) {
+    var avgDist = internal.getAvgSegment(arcs),
         autoSnapDist = avgDist * 0.0025,
         snapDist = autoSnapDist;
 
@@ -22,14 +22,14 @@ MapShaper.snapCoords = function(arcs, threshold) {
     message(utils.format("Applying snapping threshold of %s -- %.6f times avg. segment length", threshold, threshold / avgDist));
   }
 
-  var snapCount = MapShaper.snapCoordsByInterval(arcs, snapDist);
+  var snapCount = internal.snapCoordsByInterval(arcs, snapDist);
   if (snapCount > 0) arcs.dedupCoords();
   message(utils.format("Snapped %s point%s", snapCount, utils.pluralSuffix(snapCount)));
 };
 
 // Snap together points within a small threshold
 //
-MapShaper.snapCoordsByInterval = function(arcs, snapDist) {
+internal.snapCoordsByInterval = function(arcs, snapDist) {
   var snapCount = 0,
       data = arcs.getVertexData();
 

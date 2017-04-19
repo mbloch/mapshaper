@@ -3,16 +3,16 @@ dbf-writer
 mapshaper-data-table
 */
 
-MapShaper.exportDbf = function(dataset, opts) {
+internal.exportDbf = function(dataset, opts) {
   return dataset.layers.reduce(function(files, lyr) {
     if (lyr.data) {
-      files = files.concat(MapShaper.exportDbfFile(lyr, dataset, opts));
+      files = files.concat(internal.exportDbfFile(lyr, dataset, opts));
     }
     return files;
   }, []);
 };
 
-MapShaper.exportDbfFile = function(lyr, dataset, opts) {
+internal.exportDbfFile = function(lyr, dataset, opts) {
   var data = lyr.data,
       buf;
   // create empty data table if missing a table or table is being cut out

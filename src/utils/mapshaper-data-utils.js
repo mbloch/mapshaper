@@ -1,14 +1,14 @@
 /* @requires mapshaper-common */
 
 // Insert a column of values into a (new or existing) data field
-MapShaper.insertFieldValues = function(lyr, fieldName, values) {
-  var size = MapShaper.getFeatureCount(lyr) || values.length,
+internal.insertFieldValues = function(lyr, fieldName, values) {
+  var size = internal.getFeatureCount(lyr) || values.length,
       table = lyr.data = (lyr.data || new DataTable(size)),
       records = table.getRecords();
-  MapShaper.insertFieldValues2(fieldName, table.getRecords(), values);
+  internal.insertFieldValues2(fieldName, table.getRecords(), values);
 };
 
-MapShaper.insertFieldValues2 = function(key, records, values) {
+internal.insertFieldValues2 = function(key, records, values) {
   var n = records.length,
       i, rec, val;
   for (i=0, n=records.length; i<n; i++) {
@@ -19,7 +19,7 @@ MapShaper.insertFieldValues2 = function(key, records, values) {
   }
 };
 
-MapShaper.getValueType = function(val) {
+internal.getValueType = function(val) {
   var type = null;
   if (utils.isString(val)) {
     type = 'string';
@@ -36,12 +36,12 @@ MapShaper.getValueType = function(val) {
 // Fill out a data table with undefined values
 // The undefined members will disappear when records are exported as JSON,
 // but will show up when fields are listed using Object.keys()
-MapShaper.fixInconsistentFields = function(records) {
-  var fields = MapShaper.findIncompleteFields(records);
-  MapShaper.patchMissingFields(records, fields);
+internal.fixInconsistentFields = function(records) {
+  var fields = internal.findIncompleteFields(records);
+  internal.patchMissingFields(records, fields);
 };
 
-MapShaper.findIncompleteFields = function(records) {
+internal.findIncompleteFields = function(records) {
   var counts = {},
       i, j, keys;
   for (i=0; i<records.length; i++) {
@@ -53,7 +53,7 @@ MapShaper.findIncompleteFields = function(records) {
   return Object.keys(counts).filter(function(k) {return counts[k] < records.length;});
 };
 
-MapShaper.patchMissingFields = function(records, fields) {
+internal.patchMissingFields = function(records, fields) {
   var rec, i, j, f;
   for (i=0; i<records.length; i++) {
     rec = records[i] || (records[i] = {});
@@ -66,19 +66,19 @@ MapShaper.patchMissingFields = function(records, fields) {
   }
 };
 
-MapShaper.getColumnType = function(key, table) {
+internal.getColumnType = function(key, table) {
   var type = null,
       records = table.getRecords(),
       rec;
   for (var i=0, n=table.size(); i<n; i++) {
     rec = records[i] || {};
-    type = MapShaper.getValueType(rec[key]);
+    type = internal.getValueType(rec[key]);
     if (type) break;
   }
   return type;
 };
 
-MapShaper.deleteFields = function(table, test) {
+internal.deleteFields = function(table, test) {
   table.getFields().forEach(function(name) {
     if (test(name)) {
       table.deleteField(name);
@@ -86,7 +86,7 @@ MapShaper.deleteFields = function(table, test) {
   });
 };
 
-MapShaper.isInvalidFieldName = function(f) {
+internal.isInvalidFieldName = function(f) {
   // Reject empty and all-whitespace strings. TODO: consider other criteria
   return /^\s*$/.test(f);
 };
@@ -95,13 +95,13 @@ MapShaper.isInvalidFieldName = function(f) {
 // @fields Array of field names
 // @maxLen (optional) Maximum chars in name
 //
-MapShaper.getUniqFieldNames = function(fields, maxLen) {
+internal.getUniqFieldNames = function(fields, maxLen) {
   var used = {};
   return fields.map(function(name) {
     var i = 0,
         validName;
     do {
-      validName = MapShaper.adjustFieldName(name, maxLen, i);
+      validName = internal.adjustFieldName(name, maxLen, i);
       i++;
     } while (validName in used);
     used[validName] = true;
@@ -110,7 +110,7 @@ MapShaper.getUniqFieldNames = function(fields, maxLen) {
 };
 
 // Truncate and/or uniqify a name (if relevant params are present)
-MapShaper.adjustFieldName = function(name, maxLen, i) {
+internal.adjustFieldName = function(name, maxLen, i) {
   var name2, suff;
   maxLen = maxLen || 256;
   if (!i) {

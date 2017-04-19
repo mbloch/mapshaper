@@ -13,15 +13,15 @@ mapshaper-polygon-centroid
 //   interactive maps, not useful for analysis.
 //
 api.cluster = function(lyr, arcs, opts) {
-  MapShaper.requirePolygonLayer(lyr, "[cluster] Command requires a polygon layer");
-  var groups = MapShaper.calcPolygonClusters(lyr, arcs, opts);
+  internal.requirePolygonLayer(lyr, "[cluster] Command requires a polygon layer");
+  var groups = internal.calcPolygonClusters(lyr, arcs, opts);
   var idField = opts.id_field || "cluster";
-  MapShaper.insertFieldValues(lyr, idField, groups);
+  internal.insertFieldValues(lyr, idField, groups);
   return lyr;
 };
 
-MapShaper.calcPolygonClusters = function(lyr, arcs, opts) {
-  var calcScore = MapShaper.getPolygonClusterCalculator(opts);
+internal.calcPolygonClusters = function(lyr, arcs, opts) {
+  var calcScore = internal.getPolygonClusterCalculator(opts);
   var size = lyr.shapes.length;
   var count = Math.round(size * (opts.pct || 1));
   var groupField = opts.group_by || null;
@@ -46,7 +46,7 @@ MapShaper.calcPolygonClusters = function(lyr, arcs, opts) {
   if (groupField && !lyr.data) stop("[cluster] Missing attribute data table");
 
   // Populate mergeItems array
-  MapShaper.findNeighbors(lyr.shapes, arcs).forEach(function(ab, i) {
+  internal.findNeighbors(lyr.shapes, arcs).forEach(function(ab, i) {
     // ab: [a, b] indexes of two polygons
     var a = shapeItems[ab[0]],
         b = shapeItems[ab[1]],
@@ -188,7 +188,7 @@ MapShaper.calcPolygonClusters = function(lyr, arcs, opts) {
   }
 };
 
-MapShaper.getPolygonClusterCalculator = function(opts) {
+internal.getPolygonClusterCalculator = function(opts) {
   var maxWidth = opts.max_width || Infinity;
   var maxHeight = opts.max_height || Infinity;
   var maxArea = opts.max_area || Infinity;

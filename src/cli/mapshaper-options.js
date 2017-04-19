@@ -5,7 +5,7 @@ mapshaper-option-validation
 mapshaper-chunker
 */
 
-MapShaper.getOptionParser = function() {
+internal.getOptionParser = function() {
   // definitions of options shared by more than one command
   var targetOpt = {
         describe: "layer(s) to target (comma-sep. list)"

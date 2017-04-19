@@ -4,7 +4,7 @@ mapshaper-dataset-utils
 */
 
 api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
-  var n = MapShaper.getFeatureCount(lyr),
+  var n = internal.getFeatureCount(lyr),
       compiled, filter;
 
   // TODO: consider not creating a data table -- not needed if expression only references geometry
@@ -12,9 +12,9 @@ api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
     lyr.data = new DataTable(n);
   }
   if (opts && opts.where) {
-    filter = MapShaper.compileValueExpression(opts.where, lyr, arcs);
+    filter = internal.compileValueExpression(opts.where, lyr, arcs);
   }
-  compiled = MapShaper.compileFeatureExpression(exp, lyr, arcs, {context: MapShaper.defs});
+  compiled = internal.compileFeatureExpression(exp, lyr, arcs, {context: internal.defs});
   // call compiled expression with id of each record
   for (var i=0; i<n; i++) {
     if (!filter || filter(i)) {

@@ -4,8 +4,8 @@ api.convertPolygonsToInnerLines = function(lyr, arcs, opts) {
   if (lyr.geometry_type != 'polygon') {
     stop("[innerlines] Command requires a polygon layer");
   }
-  var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
-      lyr2 = MapShaper.convertArcsToLineLayer(arcs2, null);
+  var arcs2 = internal.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
+      lyr2 = internal.convertArcsToLineLayer(arcs2, null);
   if (lyr2.shapes.length === 0) {
     message("[innerlines] No shared boundaries were found");
   }
@@ -18,7 +18,7 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields, opts) {
     stop("[lines] Command requires a polygon layer");
   }
   var arcCount = arcs.size(),
-      outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
+      outerArcs = internal.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
       typeCode = 0,
       allArcs = [],
       allData = [],
@@ -44,23 +44,23 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields, opts) {
         stop("[lines] Unknown data field:", field);
       }
       var dissolved = api.dissolve(lyr, arcs, {field: field, silent: true}),
-          dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
+          dissolvedArcs = internal.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
       dissolvedArcs = utils.difference(dissolvedArcs, allArcs);
       addArcs(dissolvedArcs);
     });
   }
 
-  innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
+  innerArcs = internal.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
   innerArcs = utils.difference(innerArcs, allArcs);
   addArcs(innerArcs);
-  lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
+  lyr2 = internal.convertArcsToLineLayer(allArcs, allData);
   lyr2.name = opts && opts.no_replace ? null : lyr.name;
   return lyr2;
 };
 
 
-MapShaper.convertArcsToLineLayer = function(arcs, data) {
-  var shapes = MapShaper.convertArcsToShapes(arcs),
+internal.convertArcsToLineLayer = function(arcs, data) {
+  var shapes = internal.convertArcsToShapes(arcs),
       lyr = {
         geometry_type: 'polyline',
         shapes: shapes
@@ -71,19 +71,19 @@ MapShaper.convertArcsToLineLayer = function(arcs, data) {
   return lyr;
 };
 
-MapShaper.convertArcsToShapes = function(arcs) {
+internal.convertArcsToShapes = function(arcs) {
   return arcs.map(function(id) {
     return [[id]];
   });
 };
 
-MapShaper.convertShapesToArcs = function(shapes, arcCount, type) {
+internal.convertShapesToArcs = function(shapes, arcCount, type) {
   type = type || 'all';
   var counts = new Uint8Array(arcCount),
       arcs = [],
       count;
 
-  MapShaper.countArcsInShapes(shapes, counts);
+  internal.countArcsInShapes(shapes, counts);
 
   for (var i=0, n=counts.length; i<n; i++) {
     count = counts[i];

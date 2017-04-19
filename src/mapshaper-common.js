@@ -1,7 +1,7 @@
 /* @requires mapshaper-utils */
 
 var api = {};
-var MapShaper = {
+var internal = {
   VERSION: VERSION, // export version
   LOGGING: false,
   QUIET: false,
@@ -16,12 +16,12 @@ new Float64Array(1); // workaround for https://github.com/nodejs/node/issues/600
 var Buffer = require('buffer').Buffer;
 
 function error() {
-  MapShaper.error.apply(null, utils.toArray(arguments));
+  internal.error.apply(null, utils.toArray(arguments));
 }
 
 // Handle an error caused by invalid input or misuse of API
 function stop() {
-  MapShaper.stop.apply(null, utils.toArray(arguments));
+  internal.stop.apply(null, utils.toArray(arguments));
 }
 
 function APIError(msg) {
@@ -31,18 +31,18 @@ function APIError(msg) {
 }
 
 function message() {
-  MapShaper.message.apply(null, utils.toArray(arguments));
+  internal.message.apply(null, utils.toArray(arguments));
 }
 
 function verbose() {
-  if (MapShaper.VERBOSE) {
-    MapShaper.logArgs(arguments);
+  if (internal.VERBOSE) {
+    internal.logArgs(arguments);
   }
 }
 
 function trace() {
-  if (MapShaper.TRACING) {
-    MapShaper.logArgs(arguments);
+  if (internal.TRACING) {
+    internal.logArgs(arguments);
   }
 }
 
@@ -51,7 +51,7 @@ function absArcId(arcId) {
 }
 
 api.enableLogging = function() {
-  MapShaper.LOGGING = true;
+  internal.LOGGING = true;
   return api;
 };
 
@@ -60,7 +60,7 @@ api.printError = function(err) {
   if (utils.isString(err)) {
     err = new APIError(err);
   }
-  if (MapShaper.LOGGING && err.name == 'APIError') {
+  if (internal.LOGGING && err.name == 'APIError') {
     msg = err.message;
     if (!/Error/.test(msg)) {
       msg = "Error: " + msg;
@@ -72,25 +72,25 @@ api.printError = function(err) {
   }
 };
 
-MapShaper.error = function() {
+internal.error = function() {
   var msg = Utils.toArray(arguments).join(' ');
   throw new Error(msg);
 };
 
-MapShaper.stop = function() {
-  throw new APIError(MapShaper.formatLogArgs(arguments));
+internal.stop = function() {
+  throw new APIError(internal.formatLogArgs(arguments));
 };
 
-MapShaper.message = function() {
-  MapShaper.logArgs(arguments);
+internal.message = function() {
+  internal.logArgs(arguments);
 };
 
-MapShaper.formatLogArgs = function(args) {
+internal.formatLogArgs = function(args) {
   return utils.toArray(args).join(' ');
 };
 
 // Format an array of (preferably short) strings in columns for console logging.
-MapShaper.formatStringsAsGrid = function(arr) {
+internal.formatStringsAsGrid = function(arr) {
   // TODO: variable column width
   var longest = arr.reduce(function(len, str) {
         return Math.max(len, str.length);
@@ -107,43 +107,43 @@ MapShaper.formatStringsAsGrid = function(arr) {
   }, '');
 };
 
-MapShaper.logArgs = function(args) {
-  if (MapShaper.LOGGING && !MapShaper.QUIET && utils.isArrayLike(args)) {
-    (console.error || console.log).call(console, MapShaper.formatLogArgs(args));
+internal.logArgs = function(args) {
+  if (internal.LOGGING && !internal.QUIET && utils.isArrayLike(args)) {
+    (console.error || console.log).call(console, internal.formatLogArgs(args));
   }
 };
 
-MapShaper.getWorldBounds = function(e) {
+internal.getWorldBounds = function(e) {
   e = utils.isFiniteNumber(e) ? e : 1e-10;
   return [-180 + e, -90 + e, 180 - e, 90 - e];
 };
 
-MapShaper.probablyDecimalDegreeBounds = function(b) {
-  var world = MapShaper.getWorldBounds(-1), // add a bit of excess
+internal.probablyDecimalDegreeBounds = function(b) {
+  var world = internal.getWorldBounds(-1), // add a bit of excess
       bbox = (b instanceof Bounds) ? b.toArray() : b;
   return containsBounds(world, bbox);
 };
 
-MapShaper.layerHasGeometry = function(lyr) {
-  return MapShaper.layerHasPaths(lyr) || MapShaper.layerHasPoints(lyr);
+internal.layerHasGeometry = function(lyr) {
+  return internal.layerHasPaths(lyr) || internal.layerHasPoints(lyr);
 };
 
-MapShaper.layerHasPaths = function(lyr) {
+internal.layerHasPaths = function(lyr) {
   return (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') &&
-    MapShaper.layerHasNonNullShapes(lyr);
+    internal.layerHasNonNullShapes(lyr);
 };
 
-MapShaper.layerHasPoints = function(lyr) {
-  return lyr.geometry_type == 'point' && MapShaper.layerHasNonNullShapes(lyr);
+internal.layerHasPoints = function(lyr) {
+  return lyr.geometry_type == 'point' && internal.layerHasNonNullShapes(lyr);
 };
 
-MapShaper.layerHasNonNullShapes = function(lyr) {
+internal.layerHasNonNullShapes = function(lyr) {
   return utils.some(lyr.shapes || [], function(shp) {
     return !!shp;
   });
 };
 
-MapShaper.requireDataFields = function(table, fields, cmd) {
+internal.requireDataFields = function(table, fields, cmd) {
   var prefix = cmd ? '[' + cmd + '] ' : '';
   if (!table) {
     stop(prefix + "Missing attribute data");
@@ -152,14 +152,14 @@ MapShaper.requireDataFields = function(table, fields, cmd) {
       missingFields = utils.difference(fields, dataFields);
   if (missingFields.length > 0) {
     stop(prefix + "Table is missing one or more fields:\n",
-        missingFields, "\nExisting fields:", '\n' + MapShaper.formatStringsAsGrid(dataFields));
+        missingFields, "\nExisting fields:", '\n' + internal.formatStringsAsGrid(dataFields));
   }
 };
 
-MapShaper.requirePolygonLayer = function(lyr, msg) {
+internal.requirePolygonLayer = function(lyr, msg) {
   if (!lyr || lyr.geometry_type !== 'polygon') stop(msg || "Expected a polygon layer");
 };
 
-MapShaper.requirePathLayer = function(lyr, msg) {
-  if (!lyr || !MapShaper.layerHasPaths(lyr)) stop(msg || "Expected a polygon or polyline layer");
+internal.requirePathLayer = function(lyr, msg) {
+  if (!lyr || !internal.layerHasPaths(lyr)) stop(msg || "Expected a polygon or polyline layer");
 };

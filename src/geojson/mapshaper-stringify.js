@@ -1,6 +1,6 @@
 /* @requires mapshaper-common */
 
-MapShaper.getFormattedStringify = function(numArrayKeys) {
+internal.getFormattedStringify = function(numArrayKeys) {
   var keyIndex = utils.arrayToIndex(numArrayKeys);
   var sentinel = '\u1000\u2FD5\u0310';
   var stripRxp = new RegExp('"' + sentinel + '|' + sentinel + '"', 'g');

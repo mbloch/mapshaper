@@ -7,7 +7,7 @@ mapshaper-svg-style
 
 //
 //
-MapShaper.exportSVG = function(dataset, opts) {
+internal.exportSVG = function(dataset, opts) {
   var template = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" ' +
     'version="1.2" baseProfile="tiny" width="%d" height="%d" viewBox="%s %s %s %s" stroke-linecap="round" stroke-linejoin="round">\n%s\n</svg>';
   var b, svg;
@@ -16,12 +16,12 @@ MapShaper.exportSVG = function(dataset, opts) {
   if (opts.final) {
     if (dataset.arcs) dataset.arcs.flatten();
   } else {
-    dataset = MapShaper.copyDataset(dataset); // Modify a copy of the dataset
+    dataset = internal.copyDataset(dataset); // Modify a copy of the dataset
   }
 
-  b = MapShaper.transformCoordsForSVG(dataset, opts);
+  b = internal.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
-    return MapShaper.exportLayerAsSVG(lyr, dataset, opts);
+    return internal.exportLayerAsSVG(lyr, dataset, opts);
   }).join('\n');
   svg = utils.format(template, b.width(), b.height(), 0, 0, b.width(), b.height(), svg);
   return [{
@@ -30,10 +30,10 @@ MapShaper.exportSVG = function(dataset, opts) {
   }];
 };
 
-MapShaper.transformCoordsForSVG = function(dataset, opts) {
+internal.transformCoordsForSVG = function(dataset, opts) {
   var width = opts.width > 0 ? opts.width : 800;
   var margin = opts.margin >= 0 ? opts.margin : 1;
-  var bounds = MapShaper.getDatasetBounds(dataset);
+  var bounds = internal.getDatasetBounds(dataset);
   var precision = opts.precision || 0.0001;
   var height, bounds2, fwd;
 
@@ -44,20 +44,20 @@ MapShaper.transformCoordsForSVG = function(dataset, opts) {
     width = bounds.width() / opts.svg_scale;
     margin = 0;
   }
-  MapShaper.padViewportBoundsForSVG(bounds, width, margin);
+  internal.padViewportBoundsForSVG(bounds, width, margin);
   height = Math.ceil(width * bounds.height() / bounds.width());
   bounds2 = new Bounds(0, -height, width, 0);
   fwd = bounds.getTransform(bounds2);
-  MapShaper.transformPoints(dataset, function(x, y) {
+  internal.transformPoints(dataset, function(x, y) {
     return fwd.transform(x, y);
   });
 
-  MapShaper.setCoordinatePrecision(dataset, precision);
+  internal.setCoordinatePrecision(dataset, precision);
   return bounds2;
 };
 
 // pad bounds to accomodate stroke width and circle radius
-MapShaper.padViewportBoundsForSVG = function(bounds, width, marginPx) {
+internal.padViewportBoundsForSVG = function(bounds, width, marginPx) {
   var bw = bounds.width() || bounds.height() || 1; // handle 0 width bbox
   var marg;
   if (marginPx >= 0 === false) {
@@ -67,9 +67,9 @@ MapShaper.padViewportBoundsForSVG = function(bounds, width, marginPx) {
   bounds.padBounds(marg, marg, marg, marg);
 };
 
-MapShaper.exportLayerAsSVG = function(lyr, dataset, opts) {
+internal.exportLayerAsSVG = function(lyr, dataset, opts) {
   // TODO: convert geojson features one at a time
-  var geojson = MapShaper.exportGeoJSONCollection(lyr, dataset, opts);
+  var geojson = internal.exportGeoJSONCollection(lyr, dataset, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
   var symbols = SVG.importGeoJSONFeatures(features);
   var layerObj = {

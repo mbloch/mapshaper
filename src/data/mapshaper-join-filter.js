@@ -1,10 +1,10 @@
 /* @requires mapshaper-expressions, mapshaper-calc-utils */
 
-MapShaper.getJoinFilter = function(data, exp) {
-  var test = MapShaper.getJoinFilterTestFunction(exp, data);
+internal.getJoinFilter = function(data, exp) {
+  var test = internal.getJoinFilterTestFunction(exp, data);
   var calc = null;
-  if (MapShaper.expressionHasCalcFunction(exp)) {
-    calc = MapShaper.getJoinFilterCalcFunction(exp, data);
+  if (internal.expressionHasCalcFunction(exp)) {
+    calc = internal.getJoinFilterCalcFunction(exp, data);
   }
 
   return function(ids) {
@@ -23,14 +23,14 @@ MapShaper.getJoinFilter = function(data, exp) {
   };
 };
 
-MapShaper.expressionHasCalcFunction = function(exp) {
+internal.expressionHasCalcFunction = function(exp) {
   return utils.some(['isMax', 'isMin', 'isMode'], function(name) {
     return exp.indexOf(name) > -1;
   });
 };
 
 
-MapShaper.getJoinFilterCalcFunction = function(exp, data) {
+internal.getJoinFilterCalcFunction = function(exp, data) {
   var values, counts, max, min, context, calc, n;
 
   context = {
@@ -48,7 +48,7 @@ MapShaper.getJoinFilterCalcFunction = function(exp, data) {
     }
   };
 
-  calc = MapShaper.compileFeatureExpression(exp, {data: data}, null, {context: context});
+  calc = internal.compileFeatureExpression(exp, {data: data}, null, {context: context});
 
   function reset() {
     max = -Infinity;
@@ -62,7 +62,7 @@ MapShaper.getJoinFilterCalcFunction = function(exp, data) {
     for (var i=0; i<ids.length; i++) {
       calc(ids[i]);
     }
-    mode = values ? MapShaper.getModeData(values) : null;
+    mode = values ? internal.getModeData(values) : null;
     return {
       max: max,
       min: min,
@@ -73,7 +73,7 @@ MapShaper.getJoinFilterCalcFunction = function(exp, data) {
 };
 
 
-MapShaper.getJoinFilterTestFunction = function(exp, data) {
+internal.getJoinFilterTestFunction = function(exp, data) {
   var context, test, d;
   context = {
     isMax: function(val) {
@@ -86,7 +86,7 @@ MapShaper.getJoinFilterTestFunction = function(exp, data) {
       return d.modes.indexOf(val) > -1;
     }
   };
-  test = MapShaper.compileFeatureExpression(exp, {data: data}, null, {context: context, returns: true});
+  test = internal.compileFeatureExpression(exp, {data: data}, null, {context: context, returns: true});
   // @datum  results from calculation phase
   return function(i, datum) {
     d = datum;

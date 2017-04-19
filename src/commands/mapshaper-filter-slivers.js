@@ -9,12 +9,12 @@ api.filterSlivers = function(lyr, arcs, opts) {
   if (lyr.geometry_type != 'polygon') {
     return 0;
   }
-  return MapShaper.filterSlivers(lyr, arcs, opts);
+  return internal.filterSlivers(lyr, arcs, opts);
 };
 
-MapShaper.filterSlivers = function(lyr, arcs, opts) {
-  var ringTest = opts && opts.min_area ? MapShaper.getMinAreaTest(opts.min_area, arcs) :
-    MapShaper.getSliverTest(arcs);
+internal.filterSlivers = function(lyr, arcs, opts) {
+  var ringTest = opts && opts.min_area ? internal.getMinAreaTest(opts.min_area, arcs) :
+    internal.getSliverTest(arcs);
   var removed = 0;
   var pathFilter = function(path, i, paths) {
     if (ringTest(path)) {
@@ -23,14 +23,14 @@ MapShaper.filterSlivers = function(lyr, arcs, opts) {
     }
   };
 
-  MapShaper.editShapes(lyr.shapes, pathFilter);
+  internal.editShapes(lyr.shapes, pathFilter);
   message(utils.format("[filter-slivers] Removed %'d sliver%s", removed, utils.pluralSuffix(removed)));
   return removed;
 };
 
-MapShaper.filterClipSlivers = function(lyr, clipLyr, arcs) {
+internal.filterClipSlivers = function(lyr, clipLyr, arcs) {
   var flags = new Uint8Array(arcs.size());
-  var ringTest = MapShaper.getSliverTest(arcs);
+  var ringTest = internal.getSliverTest(arcs);
   var removed = 0;
   var pathFilter = function(path) {
     var prevArcs = 0,
@@ -50,13 +50,13 @@ MapShaper.filterClipSlivers = function(lyr, clipLyr, arcs) {
     }
   };
 
-  MapShaper.countArcsInShapes(clipLyr.shapes, flags);
-  MapShaper.editShapes(lyr.shapes, pathFilter);
+  internal.countArcsInShapes(clipLyr.shapes, flags);
+  internal.editShapes(lyr.shapes, pathFilter);
   return removed;
 };
 
-MapShaper.getSliverTest = function(arcs) {
-  var maxSliverArea = MapShaper.calcMaxSliverArea(arcs);
+internal.getSliverTest = function(arcs) {
+  var maxSliverArea = internal.calcMaxSliverArea(arcs);
   return function(path) {
     // TODO: more sophisticated metric, perhaps considering shape
     return Math.abs(geom.getPlanarPathArea(path, arcs)) <= maxSliverArea;
@@ -69,7 +69,7 @@ MapShaper.getSliverTest = function(arcs) {
 // TODO: need something more reliable
 // consider: calculating the distribution of segment lengths in one pass
 //
-MapShaper.calcMaxSliverArea = function(arcs) {
+internal.calcMaxSliverArea = function(arcs) {
   var k = 2,
       dxMax = arcs.getBounds().width() / k,
       dyMax = arcs.getBounds().height() / k,

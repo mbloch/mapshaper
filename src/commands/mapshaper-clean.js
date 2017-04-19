@@ -4,19 +4,19 @@
 // TODO: remove small overlaps
 // TODO: patch small gaps
 api.cleanLayers = function(layers, dataset, opts) {
-  var nodes = MapShaper.addIntersectionCuts(dataset);
-  var flatten = MapShaper.getPolygonFlattener(nodes);
+  var nodes = internal.addIntersectionCuts(dataset);
+  var flatten = internal.getPolygonFlattener(nodes);
 
   layers.forEach(function(lyr) {
-    MapShaper.requirePolygonLayer(lyr, "[clean] Expected a polygon type layer");
+    internal.requirePolygonLayer(lyr, "[clean] Expected a polygon type layer");
     lyr.shapes = lyr.shapes.map(flatten);
   });
 };
 
-MapShaper.getPolygonFlattener = function(nodes) {
+internal.getPolygonFlattener = function(nodes) {
   var flags = new Uint8Array(nodes.arcs.size());
-  var divide = MapShaper.getHoleDivider(nodes);
-  var flatten = MapShaper.getRingIntersector(nodes, 'flatten', flags);
+  var divide = internal.getHoleDivider(nodes);
+  var flatten = internal.getRingIntersector(nodes, 'flatten', flags);
 
   return function(shp) {
     if (!shp) return null;
@@ -25,11 +25,11 @@ MapShaper.getPolygonFlattener = function(nodes) {
 
     divide(shp, cw, ccw);
     cw = flatten(cw);
-    ccw.forEach(MapShaper.reversePath);
+    ccw.forEach(internal.reversePath);
     ccw = flatten(ccw);
-    ccw.forEach(MapShaper.reversePath);
+    ccw.forEach(internal.reversePath);
 
-    var shp2 = MapShaper.appendHolestoRings(cw, ccw);
+    var shp2 = internal.appendHolestoRings(cw, ccw);
     return shp2 && shp2.length > 0 ? shp2 : null;
   };
 };

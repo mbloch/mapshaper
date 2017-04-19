@@ -1,7 +1,7 @@
 /* @requires mapshaper-simplify-stats */
 
 
-MapShaper.getSimplifyMethodLabel = function(slug) {
+internal.getSimplifyMethodLabel = function(slug) {
   return {
     dp: "Ramer-Douglas-Peucker",
     visvalingam: "Visvalingam",
@@ -9,11 +9,11 @@ MapShaper.getSimplifyMethodLabel = function(slug) {
   }[slug] || "Unknown";
 };
 
-MapShaper.printSimplifyInfo = function(arcs, opts) {
-  var method = MapShaper.getSimplifyMethod(opts);
-  var name = MapShaper.getSimplifyMethodLabel(method);
-  var spherical = MapShaper.useSphericalSimplify(arcs, opts);
-  var stats = MapShaper.calcSimplifyStats(arcs, spherical);
+internal.printSimplifyInfo = function(arcs, opts) {
+  var method = internal.getSimplifyMethod(opts);
+  var name = internal.getSimplifyMethodLabel(method);
+  var spherical = internal.useSphericalSimplify(arcs, opts);
+  var stats = internal.calcSimplifyStats(arcs, spherical);
   var pct1 = (stats.removed + stats.collapsedRings) / stats.uniqueCount || 0;
   var pct2 = stats.removed / stats.removableCount || 0;
   var aq = stats.angleQuartiles;

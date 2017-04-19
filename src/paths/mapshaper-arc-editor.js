@@ -1,6 +1,6 @@
 /* @require mapshaper-arcs */
 
-MapShaper.editArcs = function(arcs, onPoint) {
+internal.editArcs = function(arcs, onPoint) {
   var nn2 = [],
       xx2 = [],
       yy2 = [],

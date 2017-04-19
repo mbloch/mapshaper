@@ -9,7 +9,7 @@ gui.parseFreeformOptions = function(raw, cmd) {
   if (!/^-/.test(str)) {
     str = '-' + cmd + ' ' + str;
   }
-  parsed =  MapShaper.parseCommands(str);
+  parsed =  internal.parseCommands(str);
   if (!parsed.length || parsed[0].name != cmd) {
     stop("Unable to parse command line options");
   }

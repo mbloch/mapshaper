@@ -3,7 +3,7 @@ dbf-reader
 mapshaper-data-table
 */
 
-MapShaper.importDbfTable = function(buf, o) {
+internal.importDbfTable = function(buf, o) {
   var opts = o || {};
   return new ShapefileTable(buf, opts.encoding);
 };

@@ -72,16 +72,16 @@ function PolygonIndex(shape, arcs, opts) {
         a, b, i, j, xmin, xmax;
 
     // get array of segments as [s0p0, s0p1, s1p0, s1p1, ...], sorted by xmin coordinate
-    MapShaper.forEachPathSegment(shape, arcs, function() {
+    internal.forEachPathSegment(shape, arcs, function() {
       segCount++;
     });
     segments = new Uint32Array(segCount * 2);
     i = 0;
-    MapShaper.forEachPathSegment(shape, arcs, function(a, b, xx, yy) {
+    internal.forEachPathSegment(shape, arcs, function(a, b, xx, yy) {
       segments[i++] = a;
       segments[i++] = b;
     });
-    MapShaper.sortSegmentIds(xx, segments);
+    internal.sortSegmentIds(xx, segments);
 
     // assign segments to buckets according to xmin coordinate
     xminIds = new Uint32Array(segCount);

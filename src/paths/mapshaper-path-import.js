@@ -123,12 +123,12 @@ function PathImporter(opts) {
       arcs = new ArcCollection(nn, xx, yy);
 
       if (opts.auto_snap || opts.snap_interval) {
-        MapShaper.snapCoords(arcs, opts.snap_interval);
+        internal.snapCoords(arcs, opts.snap_interval);
       }
     }
 
     if (collectionType == 'mixed') {
-      layers = MapShaper.divideFeaturesByType(shapes, properties, types);
+      layers = internal.divideFeaturesByType(shapes, properties, types);
 
     } else {
       lyr = {geometry_type: collectionType};
@@ -142,11 +142,11 @@ function PathImporter(opts) {
     }
 
     layers.forEach(function(lyr) {
-      if (MapShaper.layerHasPaths(lyr)) {
-        MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+      if (internal.layerHasPaths(lyr)) {
+        internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
       }
       if (lyr.data) {
-        MapShaper.fixInconsistentFields(lyr.data.getRecords());
+        internal.fixInconsistentFields(lyr.data.getRecords());
       }
     });
 

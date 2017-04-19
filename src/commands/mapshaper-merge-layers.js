@@ -5,7 +5,7 @@
 api.mergeLayers = function(layers) {
   var merged;
   if (!layers.length) return null;
-  MapShaper.checkLayersCanMerge(layers);
+  internal.checkLayersCanMerge(layers);
   layers.forEach(function(lyr) {
     if (!merged) {
       merged = lyr;
@@ -22,11 +22,11 @@ api.mergeLayers = function(layers) {
       }
     }
   });
-  merged.name = MapShaper.mergeLayerNames(layers);
+  merged.name = internal.mergeLayerNames(layers);
   return [merged];
 };
 
-MapShaper.mergeLayerNames = function(layers) {
+internal.mergeLayerNames = function(layers) {
   return layers.reduce(function(memo, lyr) {
     if (memo === null) {
       memo = lyr.name || null;
@@ -37,10 +37,10 @@ MapShaper.mergeLayerNames = function(layers) {
   }, null) || '';
 };
 
-MapShaper.checkFieldTypes = function(key, layers) {
+internal.checkFieldTypes = function(key, layers) {
   // ignores empty-type fields
   return layers.reduce(function(memo, lyr) {
-    var type = lyr.data ? MapShaper.getColumnType(key, lyr.data) : null;
+    var type = lyr.data ? internal.getColumnType(key, lyr.data) : null;
     if (type && memo.indexOf(type) == -1) {
       memo.push(type);
     }
@@ -48,7 +48,7 @@ MapShaper.checkFieldTypes = function(key, layers) {
   }, []);
 };
 
-MapShaper.findMissingFields = function(layers) {
+internal.findMissingFields = function(layers) {
   var matrix = layers.map(function(lyr) {return lyr.data ? lyr.data.getFields() : [];});
   var allFields = matrix.reduce(function(memo, fields) {
     return utils.uniq(memo.concat(fields));
@@ -59,10 +59,10 @@ MapShaper.findMissingFields = function(layers) {
   }, []);
 };
 
-MapShaper.checkLayersCanMerge = function(layers) {
+internal.checkLayersCanMerge = function(layers) {
   var geoTypes = utils.uniq(utils.pluck(layers, 'geometry_type')),
       fields = layers[0].data ? layers[0].data.getFields() : [],
-      missingFields = MapShaper.findMissingFields(layers);
+      missingFields = internal.findMissingFields(layers);
   if (utils.uniq(geoTypes).length > 1) {
     stop("[merge-layers] Incompatible geometry types:",
       geoTypes.map(function(type) {return type || '[none]';}).join(', '));
@@ -72,7 +72,7 @@ MapShaper.checkLayersCanMerge = function(layers) {
         missingFields.join(', '));
   }
   fields.forEach(function(key) {
-    var types = MapShaper.checkFieldTypes(key, layers);
+    var types = internal.checkFieldTypes(key, layers);
     if (types.length > 1) {
       stop("[merge-layers] Inconsistent data types in \"" + key + "\" field:", types.join(', '));
     }

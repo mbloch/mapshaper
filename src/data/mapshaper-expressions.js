@@ -1,31 +1,31 @@
 /* @requires mapshaper-feature-proxy */
 
 // Compiled expression returns a value
-MapShaper.compileValueExpression = function(exp, lyr, arcs, opts) {
+internal.compileValueExpression = function(exp, lyr, arcs, opts) {
   opts = opts || {};
   opts.returns = true;
-  return MapShaper.compileFeatureExpression(exp, lyr, arcs, opts);
+  return internal.compileFeatureExpression(exp, lyr, arcs, opts);
 };
 
-MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
+internal.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
   var opts = utils.extend({}, opts_),
       exp = rawExp || '',
       mutable = !opts.no_assign, // block assignment expressions
-      vars = MapShaper.getAssignedVars(exp),
+      vars = internal.getAssignedVars(exp),
       func, records;
 
   if (mutable && vars.length > 0 && !lyr.data) {
-    MapShaper.initDataTable(lyr);
+    internal.initDataTable(lyr);
   }
 
   if (!mutable) {
     // protect global object from assigned values
     opts.context = opts.context || {};
-    MapShaper.nullifyUnsetProperties(vars, opts.context);
+    internal.nullifyUnsetProperties(vars, opts.context);
   }
 
   records = lyr.data ? lyr.data.getRecords() : [];
-  func = MapShaper.getExpressionFunction(exp, lyr, arcs, opts);
+  func = internal.getExpressionFunction(exp, lyr, arcs, opts);
 
   // @destRec (optional) substitute for records[recId] (used by -calc)
   return function(recId, destRec) {
@@ -38,7 +38,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
 
     // initialize new fields to null so assignments work
     if (mutable) {
-      MapShaper.nullifyUnsetProperties(vars, record);
+      internal.nullifyUnsetProperties(vars, record);
     }
     return func(record, recId);
   };
@@ -46,7 +46,7 @@ MapShaper.compileFeatureExpression = function(rawExp, lyr, arcs, opts_) {
 
 // Return array of variables on the left side of assignment operations
 // @hasDot (bool) Return property assignments via dot notation
-MapShaper.getAssignedVars = function(exp, hasDot) {
+internal.getAssignedVars = function(exp, hasDot) {
   var rxp = /[a-z_][.a-z0-9_]*(?= *=[^=])/ig;
   var matches = exp.match(rxp) || [];
   var f = function(s) {
@@ -58,8 +58,8 @@ MapShaper.getAssignedVars = function(exp, hasDot) {
 
 // Return array of objects with properties assigned via dot notation
 // e.g.  'd.value = 45' ->  ['d']
-MapShaper.getAssignmentObjects = function(exp) {
-  var matches = MapShaper.getAssignedVars(exp, true),
+internal.getAssignmentObjects = function(exp) {
+  var matches = internal.getAssignedVars(exp, true),
       names = [];
   matches.forEach(function(s) {
     var match = /^([^.]+)\.[^.]+$/.exec(s);
@@ -71,9 +71,9 @@ MapShaper.getAssignmentObjects = function(exp) {
   return utils.uniq(names);
 };
 
-MapShaper.getExpressionFunction = function(exp, lyr, arcs, opts) {
-  var getFeatureById = MapShaper.initFeatureProxy(lyr, arcs);
-  var ctx = MapShaper.getExpressionContext(lyr, opts.context);
+internal.getExpressionFunction = function(exp, lyr, arcs, opts) {
+  var getFeatureById = internal.initFeatureProxy(lyr, arcs);
+  var ctx = internal.getExpressionContext(lyr, opts.context);
   var functionBody = "with(env){with(record){ " + (opts.returns ? 'return ' : '') +
         exp + "}}";
   var func;
@@ -95,7 +95,7 @@ MapShaper.getExpressionFunction = function(exp, lyr, arcs, opts) {
   };
 };
 
-MapShaper.nullifyUnsetProperties = function(vars, obj) {
+internal.nullifyUnsetProperties = function(vars, obj) {
   for (var i=0; i<vars.length; i++) {
     if (vars[i] in obj === false) {
       obj[vars[i]] = null;
@@ -103,11 +103,11 @@ MapShaper.nullifyUnsetProperties = function(vars, obj) {
   }
 };
 
-MapShaper.getExpressionContext = function(lyr, mixins) {
-  var env = MapShaper.getBaseContext();
+internal.getExpressionContext = function(lyr, mixins) {
+  var env = internal.getBaseContext();
   if (lyr.data) {
     // default to null values when a data field is missing
-    MapShaper.nullifyUnsetProperties(lyr.data.getFields(), env);
+    internal.nullifyUnsetProperties(lyr.data.getFields(), env);
   }
   if (mixins) {
     utils.extend(env, mixins);
@@ -119,7 +119,7 @@ MapShaper.getExpressionContext = function(lyr, mixins) {
   }, {});
 };
 
-MapShaper.getBaseContext = function() {
+internal.getBaseContext = function() {
   var obj = {};
   // Mask global properties (is this effective/worth doing?)
   (function() {

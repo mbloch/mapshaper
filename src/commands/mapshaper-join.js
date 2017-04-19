@@ -41,8 +41,8 @@ api.join = function(targetLyr, dataset, src, opts) {
   }
 };
 
-MapShaper.removeTypeHints = function(arr) {
-  var arr2 = MapShaper.parseFieldHeaders(arr, {});
+internal.removeTypeHints = function(arr) {
+  var arr2 = internal.parseFieldHeaders(arr, {});
   if (arr.join(',') != arr2.join(',')) {
     stop("[join] Type hints are no longer supported. Use field-types= option instead");
   }
@@ -50,16 +50,16 @@ MapShaper.removeTypeHints = function(arr) {
 };
 
 api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
-  var keys = MapShaper.removeTypeHints(opts.keys),
+  var keys = internal.removeTypeHints(opts.keys),
       destKey = keys[0],
       srcKey = keys[1],
       destTable = lyr.data,
       // exclude source key field from join unless explicitly listed
       joinFields = opts.fields || utils.difference(srcTable.getFields(), [srcKey]),
-      joinFunction = MapShaper.getJoinByKey(destTable, destKey, srcTable, srcKey);
+      joinFunction = internal.getJoinByKey(destTable, destKey, srcTable, srcKey);
 
   opts = utils.defaults({fields: joinFields}, opts);
-  return MapShaper.joinTables(destTable, srcTable, joinFunction, opts);
+  return internal.joinTables(destTable, srcTable, joinFunction, opts);
 };
 
 // Join data from @src table to records in @dest table
@@ -67,11 +67,11 @@ api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
 //    Receives index of record in the dest table
 //    Returns array of matching records in src table, or null if no matches
 //
-MapShaper.joinTables = function(dest, src, join, opts) {
+internal.joinTables = function(dest, src, join, opts) {
   var srcRecords = src.getRecords(),
       destRecords = dest.getRecords(),
       unmatchedRecords = [],
-      joinFields = MapShaper.getFieldsToJoin(dest.getFields(), src.getFields(), opts),
+      joinFields = internal.getFieldsToJoin(dest.getFields(), src.getFields(), opts),
       sumFields = opts.sum_fields || [],
       copyFields = utils.difference(joinFields, sumFields),
       joinCounts = new Uint32Array(srcRecords.length),
@@ -81,11 +81,11 @@ MapShaper.joinTables = function(dest, src, join, opts) {
       srcRec, srcId, destRec, joinIds, joins, count, filter, calc;
 
   if (opts.where) {
-    filter = MapShaper.getJoinFilter(src, opts.where);
+    filter = internal.getJoinFilter(src, opts.where);
   }
 
   if (opts.calc) {
-    calc = MapShaper.getJoinCalc(src, opts.calc);
+    calc = internal.getJoinCalc(src, opts.calc);
   }
 
   // join source records to target records
@@ -102,13 +102,13 @@ MapShaper.joinTables = function(dest, src, join, opts) {
       if (copyFields.length > 0) {
         if (count === 0) {
           // only copying the first match
-          MapShaper.joinByCopy(destRec, srcRec, copyFields);
+          internal.joinByCopy(destRec, srcRec, copyFields);
         } else {
           collisionCount++;
         }
       }
       if (sumFields.length > 0) {
-        MapShaper.joinBySum(destRec, srcRec, sumFields);
+        internal.joinBySum(destRec, srcRec, sumFields);
       }
       joinCounts[srcId]++;
       count++;
@@ -124,15 +124,15 @@ MapShaper.joinTables = function(dest, src, join, opts) {
         // are added.
         unmatchedRecords.push(utils.extend({}, destRec));
       }
-      MapShaper.updateUnmatchedRecord(destRec, copyFields, sumFields);
+      internal.updateUnmatchedRecord(destRec, copyFields, sumFields);
     }
   }
   if (matchCount === 0) {
     stop("[join] No records could be joined");
   }
 
-  MapShaper.printJoinMessage(matchCount, destRecords.length,
-      MapShaper.countJoins(joinCounts), srcRecords.length, collisionCount);
+  internal.printJoinMessage(matchCount, destRecords.length,
+      internal.countJoins(joinCounts), srcRecords.length, collisionCount);
 
   if (opts.unjoined) {
     retn.unjoined = {
@@ -151,7 +151,7 @@ MapShaper.joinTables = function(dest, src, join, opts) {
   return retn;
 };
 
-MapShaper.countJoins = function(counts) {
+internal.countJoins = function(counts) {
   var joinCount = 0;
   for (var i=0, n=counts.length; i<n; i++) {
     if (counts[i] > 0) {
@@ -162,19 +162,19 @@ MapShaper.countJoins = function(counts) {
 };
 
 // Unset fields of unmatched records get null/empty values
-MapShaper.updateUnmatchedRecord = function(rec, copyFields, sumFields) {
-  MapShaper.joinByCopy(rec, {}, copyFields);
-  MapShaper.joinBySum(rec, {}, sumFields);
+internal.updateUnmatchedRecord = function(rec, copyFields, sumFields) {
+  internal.joinByCopy(rec, {}, copyFields);
+  internal.joinBySum(rec, {}, sumFields);
 };
 
 /*
-MapShaper.getCountFieldName = function(fields) {
-  var uniq = MapShaper.getUniqFieldNames(fields.concat("joins"));
+internal.getCountFieldName = function(fields) {
+  var uniq = internal.getUniqFieldNames(fields.concat("joins"));
   return uniq.pop();
 };
 */
 
-MapShaper.joinByCopy = function(dest, src, fields) {
+internal.joinByCopy = function(dest, src, fields) {
   var f;
   for (var i=0, n=fields.length; i<n; i++) {
     // dest[fields[i]] = src[fields[i]];
@@ -189,7 +189,7 @@ MapShaper.joinByCopy = function(dest, src, fields) {
   }
 };
 
-MapShaper.joinBySum = function(dest, src, fields) {
+internal.joinBySum = function(dest, src, fields) {
   var f;
   for (var j=0; j<fields.length; j++) {
     f = fields[j];
@@ -197,7 +197,7 @@ MapShaper.joinBySum = function(dest, src, fields) {
   }
 };
 
-MapShaper.printJoinMessage = function(matches, n, joins, m, collisions) {
+internal.printJoinMessage = function(matches, n, joins, m, collisions) {
   // TODO: add tip for generating layer containing unmatched records, when
   // this option is implemented.
   message(utils.format("[join] Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
@@ -213,13 +213,13 @@ MapShaper.printJoinMessage = function(matches, n, joins, m, collisions) {
   }
 };
 
-MapShaper.getFieldsToJoin = function(destFields, srcFields, opts) {
+internal.getFieldsToJoin = function(destFields, srcFields, opts) {
   var joinFields;
   if (opts.fields) {
     if (opts.fields.indexOf('*') > -1) {
       joinFields = srcFields;
     } else {
-      joinFields = MapShaper.removeTypeHints(opts.fields);
+      joinFields = internal.removeTypeHints(opts.fields);
     }
   } else {
     // If a list of fields to join is not given, try to join all the
@@ -235,9 +235,9 @@ MapShaper.getFieldsToJoin = function(destFields, srcFields, opts) {
 
 // Return a function for translating a target id to an array of source ids based on values
 // of two key fields.
-MapShaper.getJoinByKey = function(dest, destKey, src, srcKey) {
+internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   var destRecords = dest.getRecords();
-  var index = MapShaper.createTableIndex(src.getRecords(), srcKey);
+  var index = internal.createTableIndex(src.getRecords(), srcKey);
   if (src.fieldExists(srcKey) === false) {
     stop("[join] External table is missing a field named:", srcKey);
   }
@@ -252,7 +252,7 @@ MapShaper.getJoinByKey = function(dest, destKey, src, srcKey) {
 };
 
 
-MapShaper.createTableIndex = function(records, f) {
+internal.createTableIndex = function(records, f) {
   var index = {}, rec, key;
   for (var i=0, n=records.length; i<n; i++) {
     rec = records[i];

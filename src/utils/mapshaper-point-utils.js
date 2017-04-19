@@ -1,22 +1,22 @@
 /* @requires mapshaper-common */
 
-MapShaper.countPointsInLayer = function(lyr) {
+internal.countPointsInLayer = function(lyr) {
   var count = 0;
-  if (MapShaper.layerHasPoints(lyr)) {
-    MapShaper.forEachPoint(lyr.shapes, function() {count++;});
+  if (internal.layerHasPoints(lyr)) {
+    internal.forEachPoint(lyr.shapes, function() {count++;});
   }
   return count;
 };
 
-MapShaper.getPointBounds = function(shapes) {
+internal.getPointBounds = function(shapes) {
   var bounds = new Bounds();
-  MapShaper.forEachPoint(shapes, function(p) {
+  internal.forEachPoint(shapes, function(p) {
     bounds.mergePoint(p[0], p[1]);
   });
   return bounds;
 };
 
-MapShaper.forEachPoint = function(shapes, cb) {
+internal.forEachPoint = function(shapes, cb) {
   shapes.forEach(function(shape, id) {
     var n = shape ? shape.length : 0;
     for (var i=0; i<n; i++) {
@@ -25,9 +25,9 @@ MapShaper.forEachPoint = function(shapes, cb) {
   });
 };
 
-MapShaper.transformPointsInLayer = function(lyr, f) {
-  if (MapShaper.layerHasPoints(lyr)) {
-    MapShaper.forEachPoint(lyr.shapes, function(p) {
+internal.transformPointsInLayer = function(lyr, f) {
+  if (internal.layerHasPoints(lyr)) {
+    internal.forEachPoint(lyr.shapes, function(p) {
       var p2 = f(p[0], p[1]);
       p[0] = p2[0];
       p[1] = p2[1];

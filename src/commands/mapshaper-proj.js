@@ -10,18 +10,18 @@ api.proj = function(dataset, opts) {
   var target, src, dest, defn;
 
   if (opts && opts.from) {
-    src = MapShaper.getProjection(opts.from, opts);
+    src = internal.getProjection(opts.from, opts);
     if (!src) {
       stop("[proj] Unknown source projection:", opts.from);
     }
   } else {
-    src = MapShaper.getDatasetProjection(dataset);
+    src = internal.getDatasetProjection(dataset);
     if (!src) {
       stop("[proj] Unable to project -- source coordinate system is unknown");
     }
   }
 
-  dest = MapShaper.getProjection(opts.projection, opts);
+  dest = internal.getProjection(opts.projection, opts);
   if (!dest) {
     stop("[proj] Unknown projection:", opts.projection);
   }
@@ -33,9 +33,9 @@ api.proj = function(dataset, opts) {
       target.arcs = dataset.arcs.getCopy();
     }
     target.layers = dataset.layers.map(function(lyr) {
-      if (MapShaper.layerHasPoints(lyr)) {
+      if (internal.layerHasPoints(lyr)) {
         lyr = utils.extend({}, lyr);
-        lyr.shapes = MapShaper.cloneShapes(lyr.shapes);
+        lyr.shapes = internal.cloneShapes(lyr.shapes);
       }
       return lyr;
     });
@@ -44,7 +44,7 @@ api.proj = function(dataset, opts) {
   }
 
   try {
-    MapShaper.projectDataset(target, src, dest, opts);
+    internal.projectDataset(target, src, dest, opts);
   } catch(e) {
     stop(utils.format("[proj] Projection failure%s (%s)",
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
@@ -62,23 +62,23 @@ api.proj = function(dataset, opts) {
 };
 
 
-MapShaper.projectDataset = function(dataset, src, dest, opts) {
-  var proj = MapShaper.getProjTransform(src, dest);
+internal.projectDataset = function(dataset, src, dest, opts) {
+  var proj = internal.getProjTransform(src, dest);
   dataset.layers.forEach(function(lyr) {
-    if (MapShaper.layerHasPoints(lyr)) {
-      MapShaper.projectPointLayer(lyr, proj);
+    if (internal.layerHasPoints(lyr)) {
+      internal.projectPointLayer(lyr, proj);
     }
   });
   if (dataset.arcs) {
     if (opts.densify) {
-      MapShaper.projectAndDensifyArcs(dataset.arcs, proj);
+      internal.projectAndDensifyArcs(dataset.arcs, proj);
     } else {
-      MapShaper.projectArcs(dataset.arcs, proj);
+      internal.projectArcs(dataset.arcs, proj);
     }
   }
 };
 
-MapShaper.getProjTransform = function(src, dest) {
+internal.getProjTransform = function(src, dest) {
   var mproj = require('mproj');
   var clampSrc = src.is_latlong;
   return function(x, y) {
@@ -94,15 +94,15 @@ MapShaper.getProjTransform = function(src, dest) {
   };
 };
 
-MapShaper.projectPointLayer = function(lyr, proj) {
-  MapShaper.forEachPoint(lyr.shapes, function(p) {
+internal.projectPointLayer = function(lyr, proj) {
+  internal.forEachPoint(lyr.shapes, function(p) {
     var p2 = proj(p[0], p[1]);
     p[0] = p2[0];
     p[1] = p2[1];
   });
 };
 
-MapShaper.projectArcs = function(arcs, proj) {
+internal.projectArcs = function(arcs, proj) {
   var data = arcs.getVertexData(),
       xx = data.xx,
       yy = data.yy,
@@ -119,8 +119,8 @@ MapShaper.projectArcs = function(arcs, proj) {
   arcs.updateVertexData(data.nn, xx, yy, zz);
 };
 
-MapShaper.getDefaultDensifyInterval = function(arcs, proj) {
-  var xy = MapShaper.getAvgSegment2(arcs),
+internal.getDefaultDensifyInterval = function(arcs, proj) {
+  var xy = internal.getAvgSegment2(arcs),
       bb = arcs.getBounds(),
       a = proj(bb.centerX(), bb.centerY()),
       b = proj(bb.centerX() + xy[0], bb.centerY() + xy[1]);
@@ -130,7 +130,7 @@ MapShaper.getDefaultDensifyInterval = function(arcs, proj) {
 // Interpolate points into a projected line segment if needed to prevent large
 //   deviations from path of original unprojected segment.
 // @points (optional) array of accumulated points
-MapShaper.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
+internal.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj, interval, points) {
   // Find midpoint between two endpoints and project it (assumes longitude does
   // not wrap). TODO Consider bisecting along great circle path -- although this
   // would not be good for boundaries that follow line of constant latitude.
@@ -144,17 +144,17 @@ MapShaper.densifySegment = function(lng0, lat0, x0, y0, lng2, lat2, x2, y2, proj
   //   ... but don't bisect very small segments to prevent infinite recursion
   //   (e.g. if projection function is discontinuous)
   if (distSq > interval * interval * 0.25 && distance2D(lng0, lat0, lng2, lat2) > 0.01) {
-    MapShaper.densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
+    internal.densifySegment(lng0, lat0, x0, y0, lng1, lat1, p[0], p[1], proj, interval, points);
     points.push(p);
-    MapShaper.densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
+    internal.densifySegment(lng1, lat1, p[0], p[1], lng2, lat2, x2, y2, proj, interval, points);
   }
   return points;
 };
 
-MapShaper.projectAndDensifyArcs = function(arcs, proj) {
-  var interval = MapShaper.getDefaultDensifyInterval(arcs, proj);
+internal.projectAndDensifyArcs = function(arcs, proj) {
+  var interval = internal.getDefaultDensifyInterval(arcs, proj);
   var p = [0, 0];
-  MapShaper.editArcs(arcs, onPoint);
+  internal.editArcs(arcs, onPoint);
 
   function onPoint(append, lng, lat, prevLng, prevLat, i) {
     var prevX = p[0],
@@ -162,7 +162,7 @@ MapShaper.projectAndDensifyArcs = function(arcs, proj) {
     p = proj(lng, lat);
     // Don't try to optimize shorter segments (optimization)
     if (i > 0 && distanceSq(p[0], p[1], prevX, prevY) > interval * interval * 25) {
-      MapShaper.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
+      internal.densifySegment(prevLng, prevLat, prevX, prevY, lng, lat, p[0], p[1], proj, interval)
         .forEach(append);
     }
     append(p);

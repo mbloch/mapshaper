@@ -13,18 +13,18 @@ api.explodeFeatures = function(lyr, arcs, opts) {
     } else {
       if (lyr.geometry_type == 'polygon' && shp.length > 1) {
         if (opts && opts.naive) {
-          exploded = MapShaper.explodePolygonNaive(shp, arcs);
+          exploded = internal.explodePolygonNaive(shp, arcs);
         } else {
-          exploded = MapShaper.explodePolygon(shp, arcs);
+          exploded = internal.explodePolygon(shp, arcs);
         }
       } else {
-        exploded = MapShaper.explodeShape(shp);
+        exploded = internal.explodeShape(shp);
       }
       utils.merge(explodedShapes, exploded);
     }
     if (explodedProperties !== null) {
       for (var i=0, n=exploded ? exploded.length : 1; i<n; i++) {
-        explodedProperties.push(MapShaper.cloneProperties(properties[shpId]));
+        explodedProperties.push(internal.cloneProperties(properties[shpId]));
       }
     }
   });
@@ -36,15 +36,15 @@ api.explodeFeatures = function(lyr, arcs, opts) {
   return explodedLyr;
 };
 
-MapShaper.explodeShape = function(shp) {
+internal.explodeShape = function(shp) {
   return shp.map(function(part) {
     return [part.concat()];
   });
 };
 
-MapShaper.explodePolygon = function(shape, arcs) {
-  var paths = MapShaper.getPathMetadata(shape, arcs, "polygon");
-  var groups = MapShaper.groupPolygonRings(paths);
+internal.explodePolygon = function(shape, arcs) {
+  var paths = internal.getPathMetadata(shape, arcs, "polygon");
+  var groups = internal.groupPolygonRings(paths);
   return groups.map(function(group) {
     return group.map(function(ring) {
       return ring.ids;
@@ -52,18 +52,18 @@ MapShaper.explodePolygon = function(shape, arcs) {
   });
 };
 
-MapShaper.explodePolygonNaive = function(shape, arcs) {
-  var paths = MapShaper.getPathMetadata(shape, arcs, "polygon");
+internal.explodePolygonNaive = function(shape, arcs) {
+  var paths = internal.getPathMetadata(shape, arcs, "polygon");
   console.log("Naive");
   return paths.map(function(path) {
     if (path.area < 0) {
-      MapShaper.reversePath(path.ids);
+      internal.reversePath(path.ids);
     }
     return [path.ids];
   });
 };
 
-MapShaper.cloneProperties = function(obj) {
+internal.cloneProperties = function(obj) {
   var clone = {};
   for (var key in obj) {
     clone[key] = obj[key];

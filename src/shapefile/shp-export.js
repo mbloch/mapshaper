@@ -4,23 +4,23 @@ mapshaper-path-export
 */
 
 // Convert a dataset to Shapefile files
-MapShaper.exportShapefile = function(dataset, opts) {
+internal.exportShapefile = function(dataset, opts) {
   return dataset.layers.reduce(function(files, lyr) {
-    var prj = MapShaper.exportPrjFile(lyr, dataset);
-    files = files.concat(MapShaper.exportShpAndShxFiles(lyr, dataset, opts));
-    files = files.concat(MapShaper.exportDbfFile(lyr, dataset, opts));
+    var prj = internal.exportPrjFile(lyr, dataset);
+    files = files.concat(internal.exportShpAndShxFiles(lyr, dataset, opts));
+    files = files.concat(internal.exportDbfFile(lyr, dataset, opts));
     if (prj) files.push(prj);
     return files;
   }, []);
 };
 
-MapShaper.exportPrjFile = function(lyr, dataset) {
+internal.exportPrjFile = function(lyr, dataset) {
   var crs, inputPrj, outputPrj;
   if (dataset.info) {
     inputPrj = dataset.info.input_prj;
     crs = dataset.info.crs;
   }
-  if (crs && inputPrj && MapShaper.crsAreEqual(crs, MapShaper.parsePrj(inputPrj))) {
+  if (crs && inputPrj && internal.crsAreEqual(crs, internal.parsePrj(inputPrj))) {
     outputPrj = inputPrj;
   } else if (!crs && inputPrj) { // dataset has not been reprojected
     outputPrj = inputPrj;
@@ -33,15 +33,15 @@ MapShaper.exportPrjFile = function(lyr, dataset) {
   } : null;
 };
 
-MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {
+internal.exportShpAndShxFiles = function(layer, dataset, opts) {
   var geomType = layer.geometry_type;
-  var shpType = MapShaper.getShapefileType(geomType);
+  var shpType = internal.getShapefileType(geomType);
   var fileBytes = 100;
   var bounds = new Bounds();
-  var shapes = layer.shapes || utils.initializeArray(new Array(MapShaper.getFeatureCount(layer)), null);
+  var shapes = layer.shapes || utils.initializeArray(new Array(internal.getFeatureCount(layer)), null);
   var shapeBuffers = shapes.map(function(shape, i) {
-    var pathData = MapShaper.exportPathData(shape, dataset.arcs, geomType);
-    var rec = MapShaper.exportShpRecord(pathData, i+1, shpType);
+    var pathData = internal.exportPathData(shape, dataset.arcs, geomType);
+    var rec = internal.exportShpRecord(pathData, i+1, shpType);
     fileBytes += rec.buffer.byteLength;
     if (rec.bounds) bounds.mergeBounds(rec.bounds);
     return rec.buffer;
@@ -99,7 +99,7 @@ MapShaper.exportShpAndShxFiles = function(layer, dataset, opts) {
 //   and the bounding box of the shape.
 // TODO: remove collapsed rings, convert to null shape if necessary
 //
-MapShaper.exportShpRecord = function(data, id, shpType) {
+internal.exportShpRecord = function(data, id, shpType) {
   var bounds = null,
       bin = null;
   if (data.pointCount > 0) {

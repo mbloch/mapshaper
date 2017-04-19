@@ -19,10 +19,10 @@ api.importFiles = function(opts) {
     dataset = api.importFile(files[0], opts);
   } else if (opts.merge_files) {
     // TODO: deprecate and remove this option (use -merge-layers cmd instead)
-    dataset = MapShaper.importFiles(files, opts);
+    dataset = internal.importFiles(files, opts);
     dataset.layers = api.mergeLayers(dataset.layers);
   } else if (opts.combine_files) {
-    dataset = MapShaper.importFiles(files, opts);
+    dataset = internal.importFiles(files, opts);
   } else {
     stop('Invalid inputs');
   }
@@ -30,8 +30,8 @@ api.importFiles = function(opts) {
 };
 
 api.importFile = function(path, opts) {
-  var isBinary = MapShaper.isBinaryFile(path),
-      isShp = MapShaper.guessInputFileType(path) == 'shp',
+  var isBinary = internal.isBinaryFile(path),
+      isShp = internal.guessInputFileType(path) == 'shp',
       input = {},
       cache = opts && opts.input || null,
       cached = cache && (path in cache),
@@ -45,7 +45,7 @@ api.importFile = function(path, opts) {
   } else {
     content = cli.readFile(path, opts && opts.encoding || 'utf-8', cache);
   }
-  type = MapShaper.guessInputFileType(path) || MapShaper.guessInputContentType(content);
+  type = internal.guessInputFileType(path) || internal.guessInputContentType(content);
   if (!type) {
     stop("Unable to import", path);
   } else if (type == 'json') {
@@ -63,12 +63,12 @@ api.importFile = function(path, opts) {
   input[type] = {filename: path, content: content};
   content = null; // for g.c.
   if (type == 'shp' || type == 'dbf') {
-    MapShaper.readShapefileAuxFiles(path, input, cache);
+    internal.readShapefileAuxFiles(path, input, cache);
   }
   if (type == 'shp' && !input.dbf) {
     message(utils.format("[%s] .dbf file is missing - shapes imported without attribute data.", path));
   }
-  return MapShaper.importContent(input, opts);
+  return internal.importContent(input, opts);
 };
 
 /*
@@ -88,7 +88,7 @@ api.importDataTable = function(path, opts) {
 };
 */
 
-MapShaper.readShapefileAuxFiles = function(path, obj, cache) {
+internal.readShapefileAuxFiles = function(path, obj, cache) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
   var cpgPath = utils.replaceFileExtension(path, 'cpg');
   var prjPath = utils.replaceFileExtension(path, 'prj');

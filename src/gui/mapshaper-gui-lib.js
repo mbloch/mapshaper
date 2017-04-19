@@ -31,7 +31,7 @@ gui.getUrlFilename = function(url) {
 
 gui.formatMessageArgs = function(args) {
   // remove cli annotation (if present)
-  return MapShaper.formatLogArgs(args).replace(/^\[[^\]]+\] ?/, '');
+  return internal.formatLogArgs(args).replace(/^\[[^\]]+\] ?/, '');
 };
 
 gui.handleDirectEvent = function(cb) {

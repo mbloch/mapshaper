@@ -3,18 +3,18 @@
 api.filterFeatures = function(lyr, arcs, opts) {
   var records = lyr.data ? lyr.data.getRecords() : null,
       shapes = lyr.shapes || null,
-      n = MapShaper.getFeatureCount(lyr),
+      n = internal.getFeatureCount(lyr),
       filteredShapes = shapes ? [] : null,
       filteredRecords = records ? [] : null,
-      filteredLyr = MapShaper.getOutputLayer(lyr, opts),
+      filteredLyr = internal.getOutputLayer(lyr, opts),
       filter;
 
   if (opts.expression) {
-    filter = MapShaper.compileValueExpression(opts.expression, lyr, arcs);
+    filter = internal.compileValueExpression(opts.expression, lyr, arcs);
   }
 
   if (opts.remove_empty) {
-    filter = MapShaper.combineFilters(filter, MapShaper.getNullGeometryFilter(lyr, arcs));
+    filter = internal.combineFilters(filter, internal.getNullGeometryFilter(lyr, arcs));
   }
 
   if (!filter) {
@@ -35,32 +35,32 @@ api.filterFeatures = function(lyr, arcs, opts) {
   filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
   if (opts.no_replace) {
     // if adding a layer, don't share objects between source and filtered layer
-    filteredLyr = MapShaper.copyLayer(filteredLyr);
+    filteredLyr = internal.copyLayer(filteredLyr);
   }
 
   if (opts.verbose !== false) {
-    message(utils.format('[filter] Retained %,d of %,d features', MapShaper.getFeatureCount(filteredLyr), n));
+    message(utils.format('[filter] Retained %,d of %,d features', internal.getFeatureCount(filteredLyr), n));
   }
 
   return filteredLyr;
 };
 
-MapShaper.getNullGeometryFilter = function(lyr, arcs) {
+internal.getNullGeometryFilter = function(lyr, arcs) {
   var shapes = lyr.shapes;
   if (lyr.geometry_type == 'polygon') {
-    return MapShaper.getEmptyPolygonFilter(shapes, arcs);
+    return internal.getEmptyPolygonFilter(shapes, arcs);
   }
   return function(i) {return !!shapes[i];};
 };
 
-MapShaper.getEmptyPolygonFilter = function(shapes, arcs) {
+internal.getEmptyPolygonFilter = function(shapes, arcs) {
   return function(i) {
     var shp = shapes[i];
     return !!shp && geom.getPlanarShapeArea(shapes[i], arcs) > 0;
   };
 };
 
-MapShaper.combineFilters = function(a, b) {
+internal.combineFilters = function(a, b) {
   return (a && b && function(id) {
       return a(id) && b(id);
     }) || a || b;

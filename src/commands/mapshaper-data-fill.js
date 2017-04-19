@@ -8,22 +8,22 @@ api.dataFill = function(lyr, arcs, opts) {
   if (lyr.geometry_type != 'polygon') stop("[data-fill] Target layer must be polygon type");
 
   // first, fill some holes?
-  count = MapShaper.fillMissingValues(lyr, field, MapShaper.getSingleAssignment(lyr, field, arcs));
+  count = internal.fillMissingValues(lyr, field, internal.getSingleAssignment(lyr, field, arcs));
   verbose("first pass:", count);
   do {
-    count = MapShaper.fillMissingValues(lyr, field, MapShaper.getMultipleAssignment(lyr, field, arcs));
+    count = internal.fillMissingValues(lyr, field, internal.getMultipleAssignment(lyr, field, arcs));
     verbose("count:", count);
   } while (count > 0);
 
   if (opts.postprocess) {
-    MapShaper.fillDataIslands(lyr, field, arcs);
-    MapShaper.fillDataIslands(lyr, field, arcs); // kludge: second pass removes flipped donut-holes
+    internal.fillDataIslands(lyr, field, arcs);
+    internal.fillDataIslands(lyr, field, arcs); // kludge: second pass removes flipped donut-holes
   }
 };
 
-MapShaper.fillDataIslands = function(lyr, field, arcs) {
+internal.fillDataIslands = function(lyr, field, arcs) {
   var records = lyr.data.getRecords();
-  var getValue = MapShaper.getSingleAssignment(lyr, field, arcs, {min_border_pct: 0.5});
+  var getValue = internal.getSingleAssignment(lyr, field, arcs, {min_border_pct: 0.5});
   records.forEach(function(rec, shpId) {
     var val = rec[field];
     var nabe = getValue(shpId);
@@ -33,13 +33,13 @@ MapShaper.fillDataIslands = function(lyr, field, arcs) {
   });
 };
 
-MapShaper.fillMissingValues = function(lyr, field, getValue) {
+internal.fillMissingValues = function(lyr, field, getValue) {
   var records = lyr.data.getRecords();
-  var unassigned = MapShaper.getEmptyRecordIds(records, field);
+  var unassigned = internal.getEmptyRecordIds(records, field);
   var count = 0;
   unassigned.forEach(function(shpId) {
     var value = getValue(shpId);
-    if (!MapShaper.isEmptyValue(value)) {
+    if (!internal.isEmptyValue(value)) {
       count++;
       records[shpId][field] = value;
     }
@@ -47,8 +47,8 @@ MapShaper.fillMissingValues = function(lyr, field, getValue) {
   return count;
 };
 
-MapShaper.getSingleAssignment = function(lyr, field, arcs, opts) {
-  var index = MapShaper.buildAssignmentIndex(lyr, field, arcs);
+internal.getSingleAssignment = function(lyr, field, arcs, opts) {
+  var index = internal.buildAssignmentIndex(lyr, field, arcs);
   var minBorderPct = opts && opts.min_border_pct || 0;
 
   return function(shpId) {
@@ -62,7 +62,7 @@ MapShaper.getSingleAssignment = function(lyr, field, arcs, opts) {
       nabe = nabes[i];
       val = nabe.value;
       len = nabe.length;
-      if (MapShaper.isEmptyValue(val)) {
+      if (internal.isEmptyValue(val)) {
         emptyLen += len;
       } else if (fieldVal === null || fieldVal == val) {
         fieldVal = val;
@@ -79,15 +79,15 @@ MapShaper.getSingleAssignment = function(lyr, field, arcs, opts) {
   };
 };
 
-MapShaper.isEmptyValue = function(val) {
+internal.isEmptyValue = function(val) {
   return !val && val !== 0;
 };
 
-MapShaper.getMultipleAssignment = function(lyr, field, arcs) {
+internal.getMultipleAssignment = function(lyr, field, arcs) {
   var index;
   return function(shpId) {
     // create index on first use
-    index = index || MapShaper.buildAssignmentIndex(lyr, field, arcs);
+    index = index || internal.buildAssignmentIndex(lyr, field, arcs);
     var nabes = index[shpId];
     var nabeIndex = {}; // boundary length indexed by value
     var emptyLen = 0;
@@ -99,7 +99,7 @@ MapShaper.getMultipleAssignment = function(lyr, field, arcs) {
       nabe = nabes[i];
       val = nabe.value;
       len = nabe.length;
-      if (MapShaper.isEmptyValue(val)) {
+      if (internal.isEmptyValue(val)) {
         emptyLen += len;
         continue;
       }
@@ -116,25 +116,25 @@ MapShaper.getMultipleAssignment = function(lyr, field, arcs) {
   };
 };
 
-MapShaper.getEmptyRecordIds = function(records, field) {
+internal.getEmptyRecordIds = function(records, field) {
   var ids = [];
   for (var i=0, n=records.length; i<n; i++) {
-    if (MapShaper.isEmptyValue(records[i][field])) {
+    if (internal.isEmptyValue(records[i][field])) {
       ids.push(i);
     }
   }
   return ids;
 };
 
-MapShaper.buildAssignmentIndex = function(lyr, field, arcs) {
+internal.buildAssignmentIndex = function(lyr, field, arcs) {
   var shapes = lyr.shapes;
   var records = lyr.data.getRecords();
-  var classify = MapShaper.getArcClassifier(shapes, arcs)(filter);
+  var classify = internal.getArcClassifier(shapes, arcs)(filter);
   var index = {};
   var index2 = {};
 
   // calculate length of shared boundaries of each shape, indexed by shape id
-  MapShaper.forEachArcId(shapes, onArc);
+  internal.forEachArcId(shapes, onArc);
 
   // build final index
   // collects border length and data value of each neighbor, indexed by shape id

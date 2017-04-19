@@ -4,8 +4,8 @@ mapshaper-dataset-utils
 */
 
 api.uniq = function(lyr, arcs, opts) {
-  var n = MapShaper.getFeatureCount(lyr),
-      compiled = MapShaper.compileValueExpression(opts.expression, lyr, arcs),
+  var n = internal.getFeatureCount(lyr),
+      compiled = internal.compileValueExpression(opts.expression, lyr, arcs),
       index = {},
       flags = [],
       verbose = !!opts.verbose,
@@ -28,6 +28,6 @@ api.uniq = function(lyr, arcs, opts) {
     lyr.data = new DataTable(records.filter(f));
   }
   if (opts.verbose !== false) {
-    message(utils.format('[uniq] Retained %,d of %,d features', MapShaper.getFeatureCount(lyr), n));
+    message(utils.format('[uniq] Retained %,d of %,d features', internal.getFeatureCount(lyr), n));
   }
 };

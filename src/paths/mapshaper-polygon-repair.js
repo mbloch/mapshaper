@@ -2,9 +2,9 @@
 
 // clean polygon or polyline shapes, in-place
 //
-MapShaper.cleanShapes = function(shapes, arcs, type) {
+internal.cleanShapes = function(shapes, arcs, type) {
   for (var i=0, n=shapes.length; i<n; i++) {
-    shapes[i] = MapShaper.cleanShape(shapes[i], arcs, type);
+    shapes[i] = internal.cleanShape(shapes[i], arcs, type);
   }
 };
 
@@ -12,11 +12,11 @@ MapShaper.cleanShapes = function(shapes, arcs, type) {
 // Remove simple polygon spikes of form: [..., id, ~id, ...]
 // Don't remove duplicate points
 // Don't check winding order of polygon rings
-MapShaper.cleanShape = function(shape, arcs, type) {
-  return MapShaper.editPaths(shape, function(path) {
-    var cleaned = MapShaper.cleanPath(path, arcs);
+internal.cleanShape = function(shape, arcs, type) {
+  return internal.editPaths(shape, function(path) {
+    var cleaned = internal.cleanPath(path, arcs);
     if (type == 'polygon' && cleaned) {
-      MapShaper.removeSpikesInPath(cleaned); // assumed by addIntersectionCuts()
+      internal.removeSpikesInPath(cleaned); // assumed by addIntersectionCuts()
       if (geom.getPlanarPathArea(cleaned, arcs) === 0) {
         cleaned = null;
       }
@@ -25,7 +25,7 @@ MapShaper.cleanShape = function(shape, arcs, type) {
   });
 };
 
-MapShaper.cleanPath = function(path, arcs) {
+internal.cleanPath = function(path, arcs) {
   var nulls = 0;
   for (var i=0, n=path.length; i<n; i++) {
     if (arcs.arcIsDegenerate(path[i])) {
@@ -38,7 +38,7 @@ MapShaper.cleanPath = function(path, arcs) {
 
 // Remove pairs of ids where id[n] == ~id[n+1] or id[0] == ~id[n-1];
 // (in place)
-MapShaper.removeSpikesInPath = function(ids) {
+internal.removeSpikesInPath = function(ids) {
   var n = ids.length;
   if (n >= 2) {
     if (ids[0] == ~ids[n-1]) {
@@ -53,7 +53,7 @@ MapShaper.removeSpikesInPath = function(ids) {
       }
     }
     if (ids.length < n) {
-      MapShaper.removeSpikesInPath(ids);
+      internal.removeSpikesInPath(ids);
     }
   }
 };
@@ -62,10 +62,10 @@ MapShaper.removeSpikesInPath = function(ids) {
 // TODO: Need to rethink polygon repair: these function can cause problems
 // when part of a self-intersecting polygon is removed
 //
-MapShaper.repairPolygonGeometry = function(layers, dataset, opts) {
-  var nodes = MapShaper.addIntersectionCuts(dataset);
+internal.repairPolygonGeometry = function(layers, dataset, opts) {
+  var nodes = internal.addIntersectionCuts(dataset);
   layers.forEach(function(lyr) {
-    MapShaper.repairSelfIntersections(lyr, nodes);
+    internal.repairSelfIntersections(lyr, nodes);
   });
   return layers;
 };
@@ -75,8 +75,8 @@ MapShaper.repairPolygonGeometry = function(layers, dataset, opts) {
 // // this causes problems when a cut-off hole has a matching ring in another polygon
 // TODO: consider cases where cut-off parts should be retained
 //
-MapShaper.repairSelfIntersections = function(lyr, nodes) {
-  var splitter = MapShaper.getSelfIntersectionSplitter(nodes);
+internal.repairSelfIntersections = function(lyr, nodes) {
+  var splitter = internal.getSelfIntersectionSplitter(nodes);
 
   lyr.shapes = lyr.shapes.map(function(shp, i) {
     return cleanPolygon(shp);
@@ -84,7 +84,7 @@ MapShaper.repairSelfIntersections = function(lyr, nodes) {
 
   function cleanPolygon(shp) {
     var cleanedPolygon = [];
-    MapShaper.forEachPath(shp, function(ids) {
+    internal.forEachPath(shp, function(ids) {
       // TODO: consider returning null if path can't be split
       var splitIds = splitter(ids);
       if (splitIds.length === 0) {

@@ -12,7 +12,7 @@ var ExportControl = function(model) {
       gui.alert(unsupportedMsg);
     });
 
-    MapShaper.writeFiles = function() {
+    internal.writeFiles = function() {
       error(unsupportedMsg);
     };
   } else {
@@ -47,11 +47,11 @@ var ExportControl = function(model) {
       opts = gui.parseFreeformOptions(El('#export-options .advanced-options').node().value, 'o');
       if (!opts.format) opts.format = getSelectedFormat();
       // ignoring command line "target" option
-      files = MapShaper.exportTargetLayers(getTargetLayers(), opts);
+      files = internal.exportTargetLayers(getTargetLayers(), opts);
     } catch(e) {
       return done(e);
     }
-    MapShaper.writeFiles(files, opts, done);
+    internal.writeFiles(files, opts, done);
   }
 
   function initLayerMenu() {
@@ -86,7 +86,7 @@ var ExportControl = function(model) {
     var formats = utils.uniq(defaults.concat(getInputFormats()));
     var items = formats.map(function(fmt) {
       return utils.format('<div><label><input type="radio" name="format" value="%s"' +
-        ' class="radio">%s</label></div>', fmt, MapShaper.getFormatName(fmt));
+        ' class="radio">%s</label></div>', fmt, internal.getFormatName(fmt));
     });
     El('#export-formats').html(items.join('\n'));
     El('#export-formats input[value="' + getDefaultExportFormat() + '"]').node().checked = true;

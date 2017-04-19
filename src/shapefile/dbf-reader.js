@@ -78,7 +78,7 @@ Dbf.getAsciiStringReader = function() {
 
 Dbf.getEncodedStringReader = function(encoding) {
   var buf = new Buffer(256),
-      isUtf8 = MapShaper.standardizeEncodingName(encoding) == 'utf8';
+      isUtf8 = internal.standardizeEncodingName(encoding) == 'utf8';
   return function readEncodedString(bin, size) {
     var i = Dbf.readStringBytes(bin, size, buf),
         str;
@@ -87,7 +87,7 @@ Dbf.getEncodedStringReader = function(encoding) {
     } else if (isUtf8) {
       str = buf.toString('utf8', 0, i);
     } else {
-      str = MapShaper.decodeString(buf.slice(0, i), encoding); // slice references same memory
+      str = internal.decodeString(buf.slice(0, i), encoding); // slice references same memory
     }
     return str;
   };
@@ -216,7 +216,7 @@ function DbfReader(src, encodingArg) {
     }
 
     // Uniqify header names
-    MapShaper.getUniqFieldNames(utils.pluck(header.fields, 'name')).forEach(function(name2, i) {
+    internal.getUniqFieldNames(utils.pluck(header.fields, 'name')).forEach(function(name2, i) {
       header.fields[i].name = name2;
     });
 
@@ -341,7 +341,7 @@ function DbfReader(src, encodingArg) {
 
     // As a last resort, try to guess the encoding:
     if (!encoding) {
-      encoding = MapShaper.detectEncoding(samples);
+      encoding = internal.detectEncoding(samples);
     }
 
     // Show a sample of decoded text if non-ascii-range text has been found
@@ -351,8 +351,8 @@ function DbfReader(src, encodingArg) {
         msg += " (" + Dbf.encodingNames[encoding] + ")";
       }
       message(msg);
-      msg = MapShaper.decodeSamples(encoding, samples);
-      msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
+      msg = internal.decodeSamples(encoding, samples);
+      msg = internal.formatStringsAsGrid(msg.split('\n'));
       message("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
     }
     return encoding;

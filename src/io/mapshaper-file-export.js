@@ -1,6 +1,6 @@
 /* @require mapshaper-common */
 
-MapShaper.writeFiles = function(exports, opts, cb) {
+internal.writeFiles = function(exports, opts, cb) {
   if (exports.length > 0 === false) {
     message("No files to save");
   } else if (opts.dry_run) {
@@ -10,7 +10,7 @@ MapShaper.writeFiles = function(exports, opts, cb) {
     // trigger EAGAIN error, e.g. when piped to less)
     return cli.writeFile('/dev/stdout', exports[0].content, cb);
   } else {
-    var paths = MapShaper.getOutputPaths(utils.pluck(exports, 'filename'), opts);
+    var paths = internal.getOutputPaths(utils.pluck(exports, 'filename'), opts);
     exports.forEach(function(obj, i) {
       var path = paths[i];
       if (obj.content instanceof ArrayBuffer) {
@@ -28,7 +28,7 @@ MapShaper.writeFiles = function(exports, opts, cb) {
   if (cb) cb(null);
 };
 
-MapShaper.getOutputPaths = function(files, opts) {
+internal.getOutputPaths = function(files, opts) {
   var odir = opts.directory;
   if (opts.force) {
     message("[o] The force option is obsolete, files are now overwritten by default");

@@ -1,14 +1,14 @@
 /* @requires mapshaper-data-table, mapshaper-data-utils */
 
 // Generate output content from a dataset object
-MapShaper.exportDelim = function(dataset, opts) {
-  var delim = MapShaper.getExportDelimiter(dataset.info, opts),
-      ext = MapShaper.getDelimFileExtension(delim, opts);
+internal.exportDelim = function(dataset, opts) {
+  var delim = internal.getExportDelimiter(dataset.info, opts),
+      ext = internal.getDelimFileExtension(delim, opts);
   return dataset.layers.reduce(function(arr, lyr) {
     if (lyr.data){
       arr.push({
         // TODO: consider supporting encoding= option
-        content: MapShaper.exportDelimTable(lyr, delim),
+        content: internal.exportDelimTable(lyr, delim),
         filename: (lyr.name || 'output') + '.' + ext
       });
     }
@@ -17,16 +17,16 @@ MapShaper.exportDelim = function(dataset, opts) {
 };
 
 /* default d3 formatting doesn't serialize objects
-MapShaper.exportDelimTable = function(lyr, delim) {
+internal.exportDelimTable = function(lyr, delim) {
   var dsv = require("d3-dsv").dsvFormat(delim);
   return dsv.format(lyr.data.getRecords());
 };
 */
 
-MapShaper.exportDelimTable = function(lyr, delim) {
+internal.exportDelimTable = function(lyr, delim) {
   var dsv = require("d3-dsv").dsvFormat(delim);
   var fields = lyr.data.getFields();
-  var formatRow = MapShaper.getDelimRowFormatter(fields, lyr.data);
+  var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
   var records = lyr.data.getRecords();
   var str = dsv.formatRows([fields]); // headers
   // don't copy all data elements
@@ -39,9 +39,9 @@ MapShaper.exportDelimTable = function(lyr, delim) {
 
 // Return a function for converting a record into an array of values
 // to pass to dsv.formatRows()
-MapShaper.getDelimRowFormatter = function(fields, data) {
+internal.getDelimRowFormatter = function(fields, data) {
   var formatters = fields.map(function(f) {
-    var type = MapShaper.getColumnType(f, data);
+    var type = internal.getColumnType(f, data);
     return function(rec) {
       if (type == 'object') {
         return JSON.stringify(rec[f]);
@@ -58,7 +58,7 @@ MapShaper.getDelimRowFormatter = function(fields, data) {
   };
 };
 
-MapShaper.getExportDelimiter = function(info, opts) {
+internal.getExportDelimiter = function(info, opts) {
   var delim = ','; // default
   var outputExt = opts.file ? utils.getFileExtension(opts.file) : '';
   if (opts.delimiter) {
@@ -75,7 +75,7 @@ MapShaper.getExportDelimiter = function(info, opts) {
 
 // If output filename is not specified, use the delimiter char to pick
 // an extension.
-MapShaper.getDelimFileExtension = function(delim, opts) {
+internal.getDelimFileExtension = function(delim, opts) {
   var ext = 'txt'; // default
   if (opts.file) {
     ext = utils.getFileExtension(opts.file);

@@ -5,14 +5,14 @@ api.pointGrid = function(dataset, opts) {
   if (opts.bbox) {
     bbox = opts.bbox;
   } else if (dataset) {
-    bbox = MapShaper.getDatasetBounds(dataset).toArray();
+    bbox = internal.getDatasetBounds(dataset).toArray();
   } else {
     bbox = [-180, -90, 180, 90];
   }
-  return MapShaper.createPointGrid(bbox, opts);
+  return internal.createPointGrid(bbox, opts);
 };
 
-MapShaper.createPointGrid = function(bbox, opts) {
+internal.createPointGrid = function(bbox, opts) {
   var w = bbox[2] - bbox[0],
       h = bbox[3] - bbox[1],
       points = [],

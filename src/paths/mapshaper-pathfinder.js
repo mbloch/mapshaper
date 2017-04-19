@@ -10,15 +10,15 @@ mapshaper-pathfinder-utils
 
 // Functions for redrawing polygons for clipping / erasing / flattening / division
 
-MapShaper.setBits = function(src, flags, mask) {
+internal.setBits = function(src, flags, mask) {
   return (src & ~mask) | (flags & mask);
 };
 
-MapShaper.andBits = function(src, flags, mask) {
+internal.andBits = function(src, flags, mask) {
   return src & (~mask | flags);
 };
 
-MapShaper.setRouteBits = function(bits, id, flags) {
+internal.setRouteBits = function(bits, id, flags) {
   var abs = absArcId(id),
       mask;
   if (abs == id) { // fw
@@ -30,7 +30,7 @@ MapShaper.setRouteBits = function(bits, id, flags) {
   flags[abs] &= (bits | mask);
 };
 
-MapShaper.getRouteBits = function(id, flags) {
+internal.getRouteBits = function(id, flags) {
   var abs = absArcId(id),
       bits = flags[abs];
   if (abs != id) bits = bits >> 4;
@@ -45,8 +45,8 @@ MapShaper.getRouteBits = function(id, flags) {
 // 1: fw path is open for traversal
 // ...
 //
-MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits) {
-  MapShaper.forEachArcId(arcIds, function(id) {
+internal.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBits) {
+  internal.forEachArcId(arcIds, function(id) {
     var isInv = id < 0,
         absId = isInv ? ~id : id,
         currFlag = flags[absId],
@@ -82,8 +82,8 @@ MapShaper.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBi
   });
 };
 
-MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
-  MapShaper.forEachArcId(arcIds, function(id) {
+internal.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
+  internal.forEachArcId(arcIds, function(id) {
     var isInv = id < 0,
         absId = isInv ? ~id : id,
         currFlag = flags[absId],
@@ -107,7 +107,7 @@ MapShaper.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
 // TODO: add option to use spherical geometry for lat-lng coords
 // TODO: try to remove useRoute() function
 //
-MapShaper.getPathFinder = function(nodes, useRoute, routeIsUsable) {
+internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
 
   function filterArc(arcId) {
     return routeIsUsable(~arcId); // outward path must be traversable
@@ -115,7 +115,7 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsUsable) {
 
   function getNextArc(prevId) {
     // reverse arc to point onwards
-    return ~MapShaper.getRightmostArc(prevId, nodes, filterArc);
+    return ~internal.getRightmostArc(prevId, nodes, filterArc);
   }
 
   return function(startId) {
@@ -147,9 +147,9 @@ MapShaper.getPathFinder = function(nodes, useRoute, routeIsUsable) {
 // Returns a function for flattening or dissolving a collection of rings
 // Assumes rings are oriented in CW direction
 //
-MapShaper.getRingIntersector = function(nodes, type, flags) {
+internal.getRingIntersector = function(nodes, type, flags) {
   var arcs = nodes.arcs;
-  var findPath = MapShaper.getPathFinder(nodes, useRoute, routeIsActive);
+  var findPath = internal.getPathFinder(nodes, useRoute, routeIsActive);
   flags = flags || new Uint8Array(arcs.size());
 
   return function(rings) {
@@ -160,8 +160,8 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
     // even single rings get transformed (e.g. to remove spikes)
     if (rings.length > 0) {
       output = [];
-      MapShaper.openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
-      MapShaper.forEachPath(rings, function(ids) {
+      internal.openArcRoutes(rings, arcs, flags, openFwd, openRev, dissolve);
+      internal.forEachPath(rings, function(ids) {
         var path;
         for (var i=0, n=ids.length; i<n; i++) {
           path = findPath(ids[i]);
@@ -170,7 +170,7 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
           }
         }
       });
-      MapShaper.closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
+      internal.closeArcRoutes(rings, arcs, flags, openFwd, openRev, true);
     } else {
       output = rings;
     }
@@ -178,22 +178,22 @@ MapShaper.getRingIntersector = function(nodes, type, flags) {
   };
 
   function routeIsActive(arcId) {
-    var bits = MapShaper.getRouteBits(arcId, flags);
+    var bits = internal.getRouteBits(arcId, flags);
     return (bits & 1) == 1;
   }
 
   function useRoute(arcId) {
-    var route = MapShaper.getRouteBits(arcId, flags),
+    var route = internal.getRouteBits(arcId, flags),
         isOpen = false;
     if (route == 3) {
       isOpen = true;
-      MapShaper.setRouteBits(1, arcId, flags); // close the path, leave visible
+      internal.setRouteBits(1, arcId, flags); // close the path, leave visible
     }
     return isOpen;
   }
 };
 
-MapShaper.debugFlags = function(flags) {
+internal.debugFlags = function(flags) {
   var arr = [];
   utils.forEach(flags, function(flag) {
     arr.push(bitsToString(flag));

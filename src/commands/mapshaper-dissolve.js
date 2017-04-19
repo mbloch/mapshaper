@@ -12,7 +12,7 @@ mapshaper-polygon-dissolve
 //
 api.dissolve = function(lyr, arcs, o) {
   var opts = o || {},
-      getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data),
+      getGroupId = internal.getCategoryClassifier(opts.field, lyr.data),
       dissolveShapes = null,
       dissolveData = null,
       lyr2;
@@ -26,7 +26,7 @@ api.dissolve = function(lyr, arcs, o) {
   }
 
   if (lyr.data) {
-    dissolveData = MapShaper.aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts);
+    dissolveData = internal.aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts);
     // replace missing shapes with nulls
     for (var i=0, n=dissolveData.length; i<n; i++) {
       if (dissolveShapes && !dissolveShapes[i]) {
@@ -41,14 +41,14 @@ api.dissolve = function(lyr, arcs, o) {
     geometry_type: lyr.geometry_type
   };
   if (!opts.silent) {
-    MapShaper.printDissolveMessage(lyr, lyr2);
+    internal.printDissolveMessage(lyr, lyr2);
   }
   return lyr2;
 };
 
-MapShaper.printDissolveMessage = function(pre, post, cmd) {
-  var n1 = MapShaper.getFeatureCount(pre),
-      n2 = MapShaper.getFeatureCount(post),
+internal.printDissolveMessage = function(pre, post, cmd) {
+  var n1 = internal.getFeatureCount(pre),
+      n2 = internal.getFeatureCount(post),
       msg = utils.format('[%s] Dissolved %,d feature%s into %,d feature%s',
         cmd || 'dissolve', n1, utils.pluralSuffix(n1), n2,
         utils.pluralSuffix(n2));

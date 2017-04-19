@@ -14,18 +14,18 @@ api.stitch = function(dataset) {
   if (!arcs || arcs.isPlanar()) {
     error("[stitch] Requires lat-lng dataset");
   }
-  if (!MapShaper.snapEdgeArcs(arcs)) {
+  if (!internal.snapEdgeArcs(arcs)) {
     return;
   }
-  nodes = MapShaper.addIntersectionCuts(dataset);
+  nodes = internal.addIntersectionCuts(dataset);
   // console.log(arcs.toArray())
 
   // TODO: implement pathfinding on sphere
-  dissolver = MapShaper.getPolygonDissolver(nodes, !!'spherical');
+  dissolver = internal.getPolygonDissolver(nodes, !!'spherical');
   dataset.layers.forEach(function(lyr) {
     if (lyr.geometry_type != 'polygon') return;
     var shapes = lyr.shapes,
-        edgeShapeIds = MapShaper.findEdgeShapes(shapes, arcs);
+        edgeShapeIds = internal.findEdgeShapes(shapes, arcs);
     edgeShapeIds.forEach(function(i) {
       shapes[i] = dissolver(shapes[i]);
     });
@@ -33,8 +33,8 @@ api.stitch = function(dataset) {
 };
 
 // TODO: test with 'wrapped' datasets
-MapShaper.findEdgeArcs = function(arcs) {
-  var bbox = MapShaper.getWorldBounds(),
+internal.findEdgeArcs = function(arcs) {
+  var bbox = internal.getWorldBounds(),
       ids = [];
   for (var i=0, n=arcs.size(); i<n; i++) {
     if (!arcs.arcIsContained(i, bbox)) {
@@ -44,14 +44,14 @@ MapShaper.findEdgeArcs = function(arcs) {
   return ids;
 };
 
-MapShaper.findEdgeShapes = function(shapes, arcs) {
-  var arcIds = MapShaper.findEdgeArcs(arcs);
-  return MapShaper.findShapesByArcId(shapes, arcIds, arcs.size());
+internal.findEdgeShapes = function(shapes, arcs) {
+  var arcIds = internal.findEdgeArcs(arcs);
+  return internal.findShapesByArcId(shapes, arcIds, arcs.size());
 };
 
 // Snap arcs that either touch poles or prime meridian to 0 degrees longitude
 // Return array of affected arc ids
-MapShaper.snapEdgeArcs = function(arcs) {
+internal.snapEdgeArcs = function(arcs) {
   var data = arcs.getVertexData(),
       xx = data.xx,
       yy = data.yy,

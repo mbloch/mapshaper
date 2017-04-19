@@ -7,8 +7,8 @@ mapshaper-gui-options
 // tests if filename is a type that can be used
 gui.isReadableFileType = function(filename) {
   var ext = utils.getFileExtension(filename).toLowerCase();
-  return !!MapShaper.guessInputFileType(filename) || MapShaper.couldBeDsvFile(filename) ||
-    MapShaper.isZipFile(filename);
+  return !!internal.guessInputFileType(filename) || internal.couldBeDsvFile(filename) ||
+    internal.isZipFile(filename);
 };
 
 // @cb function(<FileList>)
@@ -161,7 +161,7 @@ function ImportControl(model, opts) {
   // Check if an array of File objects contains a file that should be imported right away
   function containsImmediateFile(files) {
     return utils.some(files, function(f) {
-        var type = MapShaper.guessInputFileType(f.name);
+        var type = internal.guessInputFileType(f.name);
         return type == 'shp' || type == 'json';
     });
   }
@@ -189,7 +189,7 @@ function ImportControl(model, opts) {
 
   function loadFile(file, cb) {
     var reader = new FileReader(),
-        isBinary = MapShaper.isBinaryFile(file.name);
+        isBinary = internal.isBinaryFile(file.name);
     // no callback on error -- fix?
     reader.onload = function(e) {
       cb(null, reader.result);
@@ -204,7 +204,7 @@ function ImportControl(model, opts) {
 
   // @file a File object
   function readFile(file) {
-    if (MapShaper.isZipFile(file.name)) {
+    if (internal.isZipFile(file.name)) {
       readZipFile(file);
     } else {
       loadFile(file, function(err, content) {
@@ -218,7 +218,7 @@ function ImportControl(model, opts) {
   }
 
   function readFileContent(name, content) {
-    var type = MapShaper.guessInputType(name, content),
+    var type = internal.guessInputType(name, content),
         importOpts = getImportOpts(),
         matches = findMatchingShp(name),
         dataset, lyr;
@@ -235,7 +235,7 @@ function ImportControl(model, opts) {
       }, null);
       if (dataset) {
         lyr = dataset.layers[0];
-        lyr.data = new MapShaper.ShapefileTable(content, importOpts.encoding);
+        lyr.data = new internal.ShapefileTable(content, importOpts.encoding);
         if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
           stop("Different number of records in .shp and .dbf files");
         }
@@ -274,7 +274,7 @@ function ImportControl(model, opts) {
     setTimeout(function() {
       var dataset;
       try {
-        dataset = MapShaper.importFileContent(content, path, importOpts);
+        dataset = internal.importFileContent(content, path, importOpts);
         dataset.info.no_repair = importOpts.no_repair;
         model.updated({select: true, import: true}, dataset.layers[0], dataset);
         importCount++;

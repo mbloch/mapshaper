@@ -10,7 +10,7 @@ api.colorizer = function(opts) {
     stop("Missing required name= parameter.");
   }
 
-  MapShaper.defs[opts.name] = function(val) {
+  internal.defs[opts.name] = function(val) {
     var i = -1;
     if (round) val = val(round);
     i = utils.getClassId(val, _breaks);

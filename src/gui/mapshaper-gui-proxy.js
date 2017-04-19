@@ -21,7 +21,7 @@ function ImportFileProxy(model) {
       if (d.info.input_files[0] == src) return d;
       // try to match name of a layer in this dataset
       lyr = utils.find(d.layers, function(lyr) {return lyr.name == src;});
-      return lyr ? MapShaper.isolateLayer(lyr, d) : null;
+      return lyr ? internal.isolateLayer(lyr, d) : null;
     }, null);
     if (!retn) stop("Missing data layer [" + src + "]");
     return retn;
@@ -33,7 +33,7 @@ function ImportFileProxy(model) {
     // This makes an (unsafe) assumption that the dataset arcs won't be changed...
     // need to rethink this.
     return utils.defaults({
-      layers: dataset.layers.map(MapShaper.copyLayer)
+      layers: dataset.layers.map(internal.copyLayer)
     }, dataset);
   };
 

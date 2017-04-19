@@ -310,7 +310,7 @@ function pointSegDistSq3D(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return apexDistSq(ab2, ac2, bc2);
 }
 
-MapShaper.calcArcBounds = function(xx, yy, start, len) {
+internal.calcArcBounds = function(xx, yy, start, len) {
   var i = start | 0,
       n = isNaN(len) ? xx.length - i : len + i,
       x, y, xmin, ymin, xmax, ymax;
@@ -329,7 +329,7 @@ MapShaper.calcArcBounds = function(xx, yy, start, len) {
   return [xmin, ymin, xmax, ymax];
 };
 
-MapShaper.reversePathCoords = function(arr, start, len) {
+internal.reversePathCoords = function(arr, start, len) {
   var i = start,
       j = start + len - 1,
       tmp;

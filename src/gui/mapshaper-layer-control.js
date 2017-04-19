@@ -50,7 +50,7 @@ function LayerControl(model, map) {
   }
 
   function describeLyr(lyr) {
-    var n = MapShaper.getFeatureCount(lyr),
+    var n = internal.getFeatureCount(lyr),
         str, type;
     if (lyr.data && !lyr.shapes) {
       type = 'data record';

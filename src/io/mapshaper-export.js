@@ -13,23 +13,23 @@ dbf-export
 
 // @targets - non-empty output from Catalog#findCommandTargets()
 //
-MapShaper.exportTargetLayers = function(targets, opts) {
+internal.exportTargetLayers = function(targets, opts) {
   // convert target fmt to dataset fmt
   var datasets = targets.map(function(target) {
     return utils.defaults({layers: target.layers}, target.dataset);
   });
-  return MapShaper.exportDatasets(datasets, opts);
+  return internal.exportDatasets(datasets, opts);
 };
 
 //
 //
-MapShaper.exportDatasets = function(datasets, opts) {
-  var format = MapShaper.getOutputFormat(datasets[0], opts);
+internal.exportDatasets = function(datasets, opts) {
+  var format = internal.getOutputFormat(datasets[0], opts);
   var files;
   if (format == 'svg' || format == 'topojson' || format == 'geojson' && opts.combine_layers) {
     // multi-layer formats: combine multiple datasets into one
     if (datasets.length > 1) {
-      datasets = [MapShaper.mergeDatasetsForExport(datasets)];
+      datasets = [internal.mergeDatasetsForExport(datasets)];
       if (format == 'topojson') {
         // Build topology, in case user has loaded several
         // files derived from the same source, with matching coordinates
@@ -42,23 +42,23 @@ MapShaper.exportDatasets = function(datasets, opts) {
       opts.final = true;
     }
   } else {
-    datasets = datasets.map(MapShaper.copyDatasetForRenaming);
-    MapShaper.assignUniqueLayerNames2(datasets);
+    datasets = datasets.map(internal.copyDatasetForRenaming);
+    internal.assignUniqueLayerNames2(datasets);
   }
   files = datasets.reduce(function(memo, dataset) {
-    var output = MapShaper.exportFileContent(dataset, opts);
+    var output = internal.exportFileContent(dataset, opts);
     return memo.concat(output);
   }, []);
   // need unique names for multiple output files
-  MapShaper.assignUniqueFileNames(files);
+  internal.assignUniqueFileNames(files);
   return files;
 };
 
 // Return an array of objects with "filename" and "content" members.
 //
-MapShaper.exportFileContent = function(dataset, opts) {
-  var outFmt = opts.format = MapShaper.getOutputFormat(dataset, opts),
-      exporter = MapShaper.exporters[outFmt],
+internal.exportFileContent = function(dataset, opts) {
+  var outFmt = opts.format = internal.getOutputFormat(dataset, opts),
+      exporter = internal.exporters[outFmt],
       files = [];
 
   if (!outFmt) {
@@ -78,48 +78,48 @@ MapShaper.exportFileContent = function(dataset, opts) {
       lyr.name = utils.getFileBase(opts.file);
     });
   }
-  MapShaper.assignUniqueLayerNames(dataset.layers);
+  internal.assignUniqueLayerNames(dataset.layers);
 
   // apply coordinate precision, except for svg precision, which is applied
   // during export, after rescaling
   if (opts.precision && outFmt != 'svg') {
-    dataset = MapShaper.copyDatasetForExport(dataset);
-    MapShaper.setCoordinatePrecision(dataset, opts.precision);
+    dataset = internal.copyDatasetForExport(dataset);
+    internal.setCoordinatePrecision(dataset, opts.precision);
   }
 
   if (opts.cut_table) {
-    files = MapShaper.exportDataTables(dataset.layers, opts).concat(files);
+    files = internal.exportDataTables(dataset.layers, opts).concat(files);
   }
 
   if (opts.extension) {
-    opts.extension = MapShaper.fixFileExtension(opts.extension, outFmt);
+    opts.extension = internal.fixFileExtension(opts.extension, outFmt);
   }
 
-  MapShaper.validateLayerData(dataset.layers);
+  internal.validateLayerData(dataset.layers);
 
   files = exporter(dataset, opts).concat(files);
   // If rounding or quantization are applied during export, bounds may
   // change somewhat... consider adding a bounds property to each layer during
   // export when appropriate.
   if (opts.bbox_index) {
-    files.push(MapShaper.createIndexFile(dataset));
+    files.push(internal.createIndexFile(dataset));
   }
 
-  MapShaper.validateFileNames(files);
+  internal.validateFileNames(files);
   return files;
 };
 
-MapShaper.exporters = {
-  geojson: MapShaper.exportGeoJSON,
-  topojson: MapShaper.exportTopoJSON,
-  shapefile: MapShaper.exportShapefile,
-  dsv: MapShaper.exportDelim,
-  dbf: MapShaper.exportDbf,
-  json: MapShaper.exportJSON,
-  svg: MapShaper.exportSVG
+internal.exporters = {
+  geojson: internal.exportGeoJSON,
+  topojson: internal.exportTopoJSON,
+  shapefile: internal.exportShapefile,
+  dsv: internal.exportDelim,
+  dbf: internal.exportDbf,
+  json: internal.exportJSON,
+  svg: internal.exportSVG
 };
 
-MapShaper.getOutputFormat = function(dataset, opts) {
+internal.getOutputFormat = function(dataset, opts) {
   var outFile = opts.file || null,
       inFmt = dataset.info && dataset.info.input_formats && dataset.info.input_formats[0],
       outFmt = null;
@@ -127,7 +127,7 @@ MapShaper.getOutputFormat = function(dataset, opts) {
   if (opts.format) {
     outFmt = opts.format;
   } else if (outFile) {
-    outFmt = MapShaper.inferOutputFormat(outFile, inFmt);
+    outFmt = internal.inferOutputFormat(outFile, inFmt);
   } else if (inFmt) {
     outFmt = inFmt;
   }
@@ -137,9 +137,9 @@ MapShaper.getOutputFormat = function(dataset, opts) {
 // Generate json file with bounding boxes and names of each export layer
 // TODO: consider making this a command, or at least make format settable
 //
-MapShaper.createIndexFile = function(dataset) {
+internal.createIndexFile = function(dataset) {
   var index = dataset.layers.map(function(lyr) {
-    var bounds = MapShaper.getLayerBounds(lyr, dataset.arcs);
+    var bounds = internal.getLayerBounds(lyr, dataset.arcs);
     return {
       bbox: bounds.toArray(),
       name: lyr.name
@@ -153,7 +153,7 @@ MapShaper.createIndexFile = function(dataset) {
 };
 
 // Throw errors for various error conditions
-MapShaper.validateLayerData = function(layers) {
+internal.validateLayerData = function(layers) {
   layers.forEach(function(lyr) {
     if (!lyr.geometry_type) {
       // allowing data-only layers
@@ -173,7 +173,7 @@ MapShaper.validateLayerData = function(layers) {
   });
 };
 
-MapShaper.validateFileNames = function(files) {
+internal.validateFileNames = function(files) {
   var index = {};
   files.forEach(function(file, i) {
     var filename = file.filename;
@@ -183,34 +183,34 @@ MapShaper.validateFileNames = function(files) {
   });
 };
 
-MapShaper.assignUniqueLayerNames = function(layers) {
+internal.assignUniqueLayerNames = function(layers) {
   var names = layers.map(function(lyr) {
     return lyr.name || "layer";
   });
-  var uniqueNames = MapShaper.uniqifyNames(names);
+  var uniqueNames = internal.uniqifyNames(names);
   layers.forEach(function(lyr, i) {
     lyr.name = uniqueNames[i];
   });
 };
 
 // Assign unique layer names across multiple datasets
-MapShaper.assignUniqueLayerNames2 = function(datasets) {
+internal.assignUniqueLayerNames2 = function(datasets) {
   var layers = datasets.reduce(function(memo, dataset) {
     return memo.concat(dataset.layers);
   }, []);
-  MapShaper.assignUniqueLayerNames(layers);
+  internal.assignUniqueLayerNames(layers);
 };
 
-MapShaper.assignUniqueFileNames = function(output) {
+internal.assignUniqueFileNames = function(output) {
   var names = output.map(function(o) {return o.filename;});
-  var uniqnames = MapShaper.uniqifyNames(names, MapShaper.formatVersionedFileName);
+  var uniqnames = internal.uniqifyNames(names, internal.formatVersionedFileName);
   output.forEach(function(o, i) {o.filename = uniqnames[i];});
 };
 
 // TODO: remove this -- format=json creates the same output
 //   (but need to make sure there's a way to prevent names of json data files
 //    from colliding with names of GeoJSON or TopoJSON files)
-MapShaper.exportDataTables = function(layers, opts) {
+internal.exportDataTables = function(layers, opts) {
   var tables = [];
   layers.forEach(function(lyr) {
     if (lyr.data) {
@@ -223,7 +223,7 @@ MapShaper.exportDataTables = function(layers, opts) {
   return tables;
 };
 
-MapShaper.formatVersionedName = function(name, i) {
+internal.formatVersionedName = function(name, i) {
   var suffix = String(i);
   if (/[0-9]$/.test(name)) {
     suffix = '-' + suffix;
@@ -231,25 +231,25 @@ MapShaper.formatVersionedName = function(name, i) {
   return name + suffix;
 };
 
-MapShaper.formatVersionedFileName = function(filename, i) {
+internal.formatVersionedFileName = function(filename, i) {
   var parts = filename.split('.');
   var ext, base;
   if (parts.length < 2) {
-    return MapShaper.formatVersionedName(filename, i);
+    return internal.formatVersionedName(filename, i);
   }
   ext = parts.pop();
   base = parts.join('.');
-  return MapShaper.formatVersionedName(base, i) + '.' + ext;
+  return internal.formatVersionedName(base, i) + '.' + ext;
 };
 
-MapShaper.fixFileExtension = function(ext, fmt) {
+internal.fixFileExtension = function(ext, fmt) {
   // TODO: use fmt to validate
   return ext.replace(/^\.+/, '');
 };
 
-MapShaper.uniqifyNames = function(names, formatter) {
+internal.uniqifyNames = function(names, formatter) {
   var counts = utils.countValues(names),
-      format = formatter || MapShaper.formatVersionedName,
+      format = formatter || internal.formatVersionedName,
       blacklist = {};
 
   Object.keys(counts).forEach(function(name) {

@@ -7,7 +7,7 @@ gui.exportIsSupported = function() {
 };
 
 // replaces function from mapshaper.js
-MapShaper.writeFiles = function(files, opts, done) {
+internal.writeFiles = function(files, opts, done) {
   var filename;
   if (!utils.isArray(files) || files.length === 0) {
     done("Nothing to export");

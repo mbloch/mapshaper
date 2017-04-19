@@ -2,12 +2,12 @@
 
 // @zz Optional
 //
-MapShaper.getPointCentroid = function(xx, yy) {
+internal.getPointCentroid = function(xx, yy) {
 
 
 };
 
-MapShaper.getPointCentroidSph = function(xx, yy) {
+internal.getPointCentroidSph = function(xx, yy) {
 
 
 };

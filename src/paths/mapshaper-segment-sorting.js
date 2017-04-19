@@ -3,12 +3,12 @@
 // @xx array of x coords
 // @ids an array of segment endpoint ids [a0, b0, a1, b1, ...]
 // Sort @ids in place so that xx[a(n)] <= xx[b(n)] and xx[a(n)] <= xx[a(n+1)]
-MapShaper.sortSegmentIds = function(xx, ids) {
-  MapShaper.orderSegmentIds(xx, ids);
-  MapShaper.quicksortSegmentIds(xx, ids, 0, ids.length-2);
+internal.sortSegmentIds = function(xx, ids) {
+  internal.orderSegmentIds(xx, ids);
+  internal.quicksortSegmentIds(xx, ids, 0, ids.length-2);
 };
 
-MapShaper.orderSegmentIds = function(xx, ids, spherical) {
+internal.orderSegmentIds = function(xx, ids, spherical) {
   function swap(i, j) {
     var tmp = ids[i];
     ids[i] = ids[j];
@@ -21,7 +21,7 @@ MapShaper.orderSegmentIds = function(xx, ids, spherical) {
   }
 };
 
-MapShaper.insertionSortSegmentIds = function(arr, ids, start, end) {
+internal.insertionSortSegmentIds = function(arr, ids, start, end) {
   var id, id2;
   for (var j = start + 2; j <= end; j+=2) {
     id = ids[j];
@@ -35,7 +35,7 @@ MapShaper.insertionSortSegmentIds = function(arr, ids, start, end) {
   }
 };
 
-MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
+internal.quicksortSegmentIds = function (a, ids, lo, hi) {
   var i = lo,
       j = hi,
       pivot, tmp;
@@ -56,10 +56,10 @@ MapShaper.quicksortSegmentIds = function (a, ids, lo, hi) {
       }
     }
 
-    if (j - lo < 40) MapShaper.insertionSortSegmentIds(a, ids, lo, j);
-    else MapShaper.quicksortSegmentIds(a, ids, lo, j);
+    if (j - lo < 40) internal.insertionSortSegmentIds(a, ids, lo, j);
+    else internal.quicksortSegmentIds(a, ids, lo, j);
     if (hi - i < 40) {
-      MapShaper.insertionSortSegmentIds(a, ids, i, hi);
+      internal.insertionSortSegmentIds(a, ids, i, hi);
       return;
     }
     lo = i;

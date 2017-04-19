@@ -1,6 +1,6 @@
 /* @require mapshaper-arcs, mapshaper-geom */
 
-MapShaper.calcSimplifyStats = function(arcs, use3D) {
+internal.calcSimplifyStats = function(arcs, use3D) {
   var distSq = use3D ? pointSegGeoDistSq : geom.pointSegDistSq,
       calcAngle = use3D ? geom.signedAngleSph : geom.signedAngle,
       removed = 0,
@@ -70,7 +70,7 @@ MapShaper.calcSimplifyStats = function(arcs, use3D) {
     collapsedRings: collapsedRings,
     removed: removed,
     retained: retained,
-    uniqueCount: MapShaper.countUniqueVertices(arcs),
+    uniqueCount: internal.countUniqueVertices(arcs),
     removableCount: removed + retained
   };
 
@@ -103,7 +103,7 @@ MapShaper.calcSimplifyStats = function(arcs, use3D) {
   return stats;
 };
 
-MapShaper.countUniqueVertices = function(arcs) {
+internal.countUniqueVertices = function(arcs) {
   // TODO: exclude any zero-length arcs
   var endpoints = arcs.size() * 2;
   var nodes = new NodeCollection(arcs).size();

@@ -8,7 +8,7 @@ mapshaper-polygon-index
 function PathIndex(shapes, arcs) {
   var _index;
   // var totalArea = arcs.getBounds().area();
-  var totalArea = MapShaper.getPathBounds(shapes, arcs).area();
+  var totalArea = internal.getPathBounds(shapes, arcs).area();
   init(shapes);
 
   function init(shapes) {

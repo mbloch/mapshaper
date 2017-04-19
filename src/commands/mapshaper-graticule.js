@@ -5,20 +5,20 @@ mapshaper-merging
 */
 
 api.graticule = function(dataset, opts) {
-  var graticule = MapShaper.createGraticule(opts);
+  var graticule = internal.createGraticule(opts);
   var dest, src;
   if (dataset) {
     // project graticule to match dataset
-    dest = MapShaper.getDatasetProjection(dataset);
-    src = MapShaper.getProjection('wgs84');
+    dest = internal.getDatasetProjection(dataset);
+    src = internal.getProjection('wgs84');
     if (!dest) stop("[graticule] Coordinate system is unknown, unable to create a graticule");
-    MapShaper.projectDataset(graticule, src, dest, {}); // TODO: densify?
+    internal.projectDataset(graticule, src, dest, {}); // TODO: densify?
   }
   return graticule;
 };
 
 // create graticule as a dataset
-MapShaper.createGraticule = function(opts) {
+internal.createGraticule = function(opts) {
   var precision = 1; // degrees between each vertex
   var step = 10;
   var majorStep = 90;
@@ -33,21 +33,21 @@ MapShaper.createGraticule = function(opts) {
       ymin += step;
       ymax -= step;
     }
-    return MapShaper.createMeridian(x, ymin, ymax, precision);
+    return internal.createMeridian(x, ymin, ymax, precision);
   });
   var parallels = yy.map(function(y) {
-    return MapShaper.createParallel(y, -180, 180, precision);
+    return internal.createParallel(y, -180, 180, precision);
   });
   var geojson = {
     type: 'FeatureCollection',
     features: meridians.concat(parallels)
   };
-  var graticule = MapShaper.importGeoJSON(geojson, {});
+  var graticule = internal.importGeoJSON(geojson, {});
   graticule.layers[0].name = 'graticule';
   return graticule;
 };
 
-MapShaper.graticuleFeature = function(coords, o) {
+internal.graticuleFeature = function(coords, o) {
   return {
     type: 'Feature',
     properties: o,
@@ -58,20 +58,20 @@ MapShaper.graticuleFeature = function(coords, o) {
   };
 };
 
-MapShaper.createMeridian = function(x, ymin, ymax, precision) {
+internal.createMeridian = function(x, ymin, ymax, precision) {
   var coords = [];
   for (var y = ymin; y < ymax; y += precision) {
     coords.push([x, y]);
   }
   coords.push([x, ymax]);
-  return MapShaper.graticuleFeature(coords, {type: 'meridian', value: x});
+  return internal.graticuleFeature(coords, {type: 'meridian', value: x});
 };
 
-MapShaper.createParallel = function(y, xmin, xmax, precision) {
+internal.createParallel = function(y, xmin, xmax, precision) {
   var coords = [];
   for (var x = xmin; x < xmax; x += precision) {
     coords.push([x, y]);
   }
   coords.push([xmax, y]);
-  return MapShaper.graticuleFeature(coords, {type: 'parallel', value: y});
+  return internal.graticuleFeature(coords, {type: 'parallel', value: y});
 };

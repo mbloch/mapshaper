@@ -12,7 +12,7 @@ mapshaper-json-table
 //    content: Buffer, ArrayBuffer, String or Object
 //    filename: String or null
 //
-MapShaper.importContent = function(obj, opts) {
+internal.importContent = function(obj, opts) {
   var dataset, content, fileFmt, data;
   opts = opts || {};
   if (obj.json) {
@@ -27,26 +27,26 @@ MapShaper.importContent = function(obj, opts) {
     }
     if (content.type == 'Topology') {
       fileFmt = 'topojson';
-      dataset = MapShaper.importTopoJSON(content, opts);
+      dataset = internal.importTopoJSON(content, opts);
     } else if (content.type) {
       fileFmt = 'geojson';
-      dataset = MapShaper.importGeoJSON(content, opts);
+      dataset = internal.importGeoJSON(content, opts);
     } else if (utils.isArray(content)) {
       fileFmt = 'json';
-      dataset = MapShaper.importJSONTable(content, opts);
+      dataset = internal.importJSONTable(content, opts);
     }
   } else if (obj.text) {
     fileFmt = 'dsv';
     data = obj.text;
-    dataset = MapShaper.importDelim(data.content, opts);
+    dataset = internal.importDelim(data.content, opts);
   } else if (obj.shp) {
     fileFmt = 'shapefile';
     data = obj.shp;
-    dataset = MapShaper.importShapefile(obj, opts);
+    dataset = internal.importShapefile(obj, opts);
   } else if (obj.dbf) {
     fileFmt = 'dbf';
     data = obj.dbf;
-    dataset = MapShaper.importDbf(obj, opts);
+    dataset = internal.importDbf(obj, opts);
   }
 
   if (!dataset) {
@@ -61,7 +61,7 @@ MapShaper.importContent = function(obj, opts) {
   // Use file basename for layer name, except TopoJSON, which uses object names
   if (fileFmt != 'topojson') {
     dataset.layers.forEach(function(lyr) {
-      MapShaper.setLayerName(lyr, MapShaper.filenameToLayerName(data.filename || ''));
+      internal.setLayerName(lyr, internal.filenameToLayerName(data.filename || ''));
     });
   }
 
@@ -76,20 +76,20 @@ MapShaper.importContent = function(obj, opts) {
 };
 
 // Deprecated (included for compatibility with older tests)
-MapShaper.importFileContent = function(content, filename, opts) {
-  var type = MapShaper.guessInputType(filename, content),
+internal.importFileContent = function(content, filename, opts) {
+  var type = internal.guessInputType(filename, content),
       input = {};
   input[type] = {filename: filename, content: content};
-  return MapShaper.importContent(input, opts);
+  return internal.importContent(input, opts);
 };
 
-MapShaper.importShapefile = function(obj, opts) {
+internal.importShapefile = function(obj, opts) {
   var shpSrc = obj.shp.content || obj.shp.filename, // content may be missing
-      dataset = MapShaper.importShp(shpSrc, opts),
+      dataset = internal.importShp(shpSrc, opts),
       lyr = dataset.layers[0],
       dbf;
   if (obj.dbf) {
-    dbf = MapShaper.importDbf(obj, opts);
+    dbf = internal.importDbf(obj, opts);
     utils.extend(dataset.info, dbf.info);
     lyr.data = dbf.layers[0].data;
     if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
@@ -102,20 +102,20 @@ MapShaper.importShapefile = function(obj, opts) {
   return dataset;
 };
 
-MapShaper.importDbf = function(input, opts) {
+internal.importDbf = function(input, opts) {
   var table;
   opts = utils.extend({}, opts);
   if (input.cpg && !opts.encoding) {
     opts.encoding = input.cpg.content;
   }
-  table = MapShaper.importDbfTable(input.dbf.content, opts);
+  table = internal.importDbfTable(input.dbf.content, opts);
   return {
     info: {},
     layers: [{data: table}]
   };
 };
 
-MapShaper.filenameToLayerName = function(path) {
+internal.filenameToLayerName = function(path) {
   var name = 'layer1';
   var obj = utils.parseLocalPath(path);
   if (obj.basename && obj.extension) { // exclude paths like '/dev/stdin'
@@ -125,7 +125,7 @@ MapShaper.filenameToLayerName = function(path) {
 };
 
 // initialize layer name using filename
-MapShaper.setLayerName = function(lyr, path) {
+internal.setLayerName = function(lyr, path) {
   if (!lyr.name) {
     lyr.name = utils.getFileBase(path);
   }

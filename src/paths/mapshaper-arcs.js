@@ -95,7 +95,7 @@ function ArcCollection() {
       arcLen = nn[i];
       if (arcLen > 0) {
         j = i * 4;
-        b = MapShaper.calcArcBounds(xx, yy, arcOffs, arcLen);
+        b = internal.calcArcBounds(xx, yy, arcOffs, arcLen);
         bb[j++] = b[0];
         bb[j++] = b[1];
         bb[j++] = b[2];
@@ -330,7 +330,7 @@ function ArcCollection() {
         arcLen, arcLen2;
     while (arcId < arcCount) {
       arcLen = _nn[arcId];
-      arcLen2 = MapShaper.dedupArcCoords(i, i2, arcLen, _xx, _yy, zz);
+      arcLen2 = internal.dedupArcCoords(i, i2, arcLen, _xx, _yy, zz);
       _nn[arcId] = arcLen2;
       i += arcLen;
       i2 += arcLen2;
@@ -482,7 +482,7 @@ function ArcCollection() {
       _zlimit = 0;
     } else {
       _zlimit = this.getThresholdByPct(pct);
-      _zlimit = MapShaper.clampIntervalByPct(_zlimit, pct);
+      _zlimit = internal.clampIntervalByPct(_zlimit, pct);
     }
     return this;
   };
@@ -563,7 +563,7 @@ function ArcCollection() {
 
   // TODO: allow datasets in lat-lng coord range to be flagged as planar
   this.isPlanar = function() {
-    return !MapShaper.probablyDecimalDegreeBounds(this.getBounds());
+    return !internal.probablyDecimalDegreeBounds(this.getBounds());
   };
 
   this.size = function() {
@@ -632,7 +632,7 @@ ArcCollection.prototype.inspect = function() {
 };
 
 // Remove duplicate coords and NaNs
-MapShaper.dedupArcCoords = function(src, dest, arcLen, xx, yy, zz) {
+internal.dedupArcCoords = function(src, dest, arcLen, xx, yy, zz) {
   var n = 0, n2 = 0; // counters
   var x, y, i, j, keep;
   while (n < arcLen) {

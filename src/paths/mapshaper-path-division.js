@@ -16,10 +16,10 @@ mapshaper-polygon-repair
 // Divide a collection of arcs at points where segments intersect
 // and re-index the paths of all the layers that reference the arc collection.
 // (in-place)
-MapShaper.addIntersectionCuts = function(dataset, opts) {
+internal.addIntersectionCuts = function(dataset, opts) {
   var arcs = dataset.arcs;
-  var snapDist = MapShaper.getHighPrecisionSnapInterval(arcs);
-  var snapCount = opts && opts.no_snap ? 0 : MapShaper.snapCoordsByInterval(arcs, snapDist);
+  var snapDist = internal.getHighPrecisionSnapInterval(arcs);
+  var snapCount = opts && opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
   var dupeCount = arcs.dedupCoords();
   if (snapCount > 0 || dupeCount > 0) {
     // Detect topology again if coordinates have changed
@@ -27,18 +27,18 @@ MapShaper.addIntersectionCuts = function(dataset, opts) {
   }
 
   // cut arcs at points where segments intersect
-  var map = MapShaper.divideArcs(arcs);
+  var map = internal.divideArcs(arcs);
 
   // update arc ids in arc-based layers and clean up arc geometry
   // to remove degenerate arcs and duplicate points
   var nodes = new NodeCollection(arcs);
   dataset.layers.forEach(function(lyr) {
-    if (MapShaper.layerHasPaths(lyr)) {
-      MapShaper.updateArcIds(lyr.shapes, map, nodes);
+    if (internal.layerHasPaths(lyr)) {
+      internal.updateArcIds(lyr.shapes, map, nodes);
       // Clean shapes by removing collapsed arc references, etc.
       // TODO: consider alternative -- avoid creating degenerate arcs
       // in insertCutPoints()
-      MapShaper.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
+      internal.cleanShapes(lyr.shapes, arcs, lyr.geometry_type);
     }
   });
   return nodes;
@@ -46,10 +46,10 @@ MapShaper.addIntersectionCuts = function(dataset, opts) {
 
 // Divides a collection of arcs at points where arc paths cross each other
 // Returns array for remapping arc ids
-MapShaper.divideArcs = function(arcs) {
-  var points = MapShaper.findClippingPoints(arcs);
+internal.divideArcs = function(arcs) {
+  var points = internal.findClippingPoints(arcs);
   // TODO: avoid the following if no points need to be added
-  var map = MapShaper.insertCutPoints(points, arcs);
+  var map = internal.insertCutPoints(points, arcs);
   // segment-point intersections currently create duplicate points
   arcs.dedupCoords();
   return map;
@@ -57,7 +57,7 @@ MapShaper.divideArcs = function(arcs) {
 
 // Inserts array of cutting points into an ArcCollection
 // Returns array for remapping arc ids
-MapShaper.insertCutPoints = function(unfilteredPoints, arcs) {
+internal.insertCutPoints = function(unfilteredPoints, arcs) {
   var data = arcs.getVertexData(),
       xx0 = data.xx,
       yy0 = data.yy,
@@ -67,7 +67,7 @@ MapShaper.insertCutPoints = function(unfilteredPoints, arcs) {
       nn1 = [],
       srcArcTotal = arcs.size(),
       map = new Uint32Array(srcArcTotal),
-      points = MapShaper.filterSortedCutPoints(MapShaper.sortCutPoints(unfilteredPoints, xx0, yy0), arcs),
+      points = internal.filterSortedCutPoints(internal.sortCutPoints(unfilteredPoints, xx0, yy0), arcs),
       destPointTotal = arcs.getPointCount() + points.length * 2,
       xx1 = new Float64Array(destPointTotal),
       yy1 = new Float64Array(destPointTotal),
@@ -113,19 +113,19 @@ MapShaper.insertCutPoints = function(unfilteredPoints, arcs) {
   return map;
 };
 
-MapShaper.convertIntersectionsToCutPoints = function(intersections, xx, yy) {
+internal.convertIntersectionsToCutPoints = function(intersections, xx, yy) {
   var points = [], ix, a, b;
   for (var i=0, n=intersections.length; i<n; i++) {
     ix = intersections[i];
-    a = MapShaper.getCutPoint(ix.x, ix.y, ix.a[0], ix.a[1], xx, yy);
-    b = MapShaper.getCutPoint(ix.x, ix.y, ix.b[0], ix.b[1], xx, yy);
+    a = internal.getCutPoint(ix.x, ix.y, ix.a[0], ix.a[1], xx, yy);
+    b = internal.getCutPoint(ix.x, ix.y, ix.b[0], ix.b[1], xx, yy);
     if (a) points.push(a);
     if (b) points.push(b);
   }
   return points;
 };
 
-MapShaper.getCutPoint = function(x, y, i, j, xx, yy) {
+internal.getCutPoint = function(x, y, i, j, xx, yy) {
   var ix = xx[i],
       iy = yy[i],
       jx = xx[j],
@@ -144,7 +144,7 @@ MapShaper.getCutPoint = function(x, y, i, j, xx, yy) {
 // Sort insertion points in order of insertion
 // Insertion order: ascending id of first endpoint of containing segment and
 //   ascending distance from same endpoint.
-MapShaper.sortCutPoints = function(points, xx, yy) {
+internal.sortCutPoints = function(points, xx, yy) {
   points.sort(function(a, b) {
     return a.i - b.i ||
       Math.abs(a.x - xx[a.i]) - Math.abs(b.x - xx[b.i]) ||
@@ -154,7 +154,7 @@ MapShaper.sortCutPoints = function(points, xx, yy) {
 };
 
 // Removes duplicate points and arc endpoints
-MapShaper.filterSortedCutPoints = function(points, arcs) {
+internal.filterSortedCutPoints = function(points, arcs) {
   var filtered = [],
       pointId = 0;
   arcs.forEach2(function(i, n, xx, yy) {
@@ -181,20 +181,20 @@ MapShaper.filterSortedCutPoints = function(points, arcs) {
   return filtered;
 };
 
-MapShaper.findClippingPoints = function(arcs) {
-  var intersections = MapShaper.findSegmentIntersections(arcs),
+internal.findClippingPoints = function(arcs) {
+  var intersections = internal.findSegmentIntersections(arcs),
       data = arcs.getVertexData();
-  return MapShaper.convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
+  return internal.convertIntersectionsToCutPoints(intersections, data.xx, data.yy);
 };
 
 // Updates arc ids in @shapes array using @map object
 // ... also, removes references to duplicate arcs
-MapShaper.updateArcIds = function(shapes, map, nodes) {
+internal.updateArcIds = function(shapes, map, nodes) {
   var arcCount = nodes.arcs.size(),
       shape2;
   for (var i=0; i<shapes.length; i++) {
     shape2 = [];
-    MapShaper.forEachPath(shapes[i], remapPathIds);
+    internal.forEachPath(shapes[i], remapPathIds);
     shapes[i] = shape2;
   }
 

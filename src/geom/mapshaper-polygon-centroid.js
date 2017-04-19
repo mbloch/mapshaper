@@ -55,7 +55,7 @@ geom.findInteriorPoint = function(shp, arcs) {
     return null;
   }
   thresh = Math.sqrt(pathBounds.area()) * 0.01;
-  simple = MapShaper.simplifyPolygonFast(shp, arcs, thresh);
+  simple = internal.simplifyPolygonFast(shp, arcs, thresh);
   if (!simple.shape) {
     return null; // collapsed shape
   }
@@ -67,7 +67,7 @@ geom.findInteriorPoint2 = function(shp, arcs) {
   var maxPath = geom.getMaxPath(shp, arcs);
   var pathBounds = arcs.getSimpleShapeBounds(maxPath);
   var centroid = geom.getPathCentroid(maxPath, arcs);
-  var weight = MapShaper.getPointWeightingFunction(centroid, pathBounds);
+  var weight = internal.getPointWeightingFunction(centroid, pathBounds);
   var area = geom.getPlanarPathArea(maxPath, arcs);
   var hrange, lbound, rbound, focus, htics, hstep, p, p2;
 
@@ -88,13 +88,13 @@ geom.findInteriorPoint2 = function(shp, arcs) {
   hstep = hrange / htics;
 
   // Find a best-fit point
-  p = MapShaper.probeForBestInteriorPoint(shp, arcs, lbound, rbound, htics, weight);
+  p = internal.probeForBestInteriorPoint(shp, arcs, lbound, rbound, htics, weight);
   if (!p) {
     verbose("[points inner] failed, falling back to centroid");
    p = centroid;
   } else {
     // Look for even better fit close to best-fit point
-    p2 = MapShaper.probeForBestInteriorPoint(shp, arcs, p.x - hstep / 2,
+    p2 = internal.probeForBestInteriorPoint(shp, arcs, p.x - hstep / 2,
         p.x + hstep / 2, 2, weight);
     if (p2.distance > p.distance) {
       p = p2;
@@ -103,7 +103,7 @@ geom.findInteriorPoint2 = function(shp, arcs) {
   return p;
 };
 
-MapShaper.getPointWeightingFunction = function(centroid, pathBounds) {
+internal.getPointWeightingFunction = function(centroid, pathBounds) {
   // Get a factor for weighting a candidate point
   // Points closer to the centroid are slightly preferred
   var referenceDist = Math.max(pathBounds.width(), pathBounds.height()) / 2;
@@ -113,19 +113,19 @@ MapShaper.getPointWeightingFunction = function(centroid, pathBounds) {
   };
 };
 
-MapShaper.findInteriorPointCandidates = function(shp, arcs, xx) {
+internal.findInteriorPointCandidates = function(shp, arcs, xx) {
   var ymin = arcs.getBounds().ymin - 1;
   return xx.reduce(function(memo, x) {
-    var cands = MapShaper.findHitCandidates(x, ymin, shp, arcs);
+    var cands = internal.findHitCandidates(x, ymin, shp, arcs);
     return memo.concat(cands);
   }, []);
 };
 
-MapShaper.probeForBestInteriorPoint = function(shp, arcs, lbound, rbound, htics, weight) {
-  var tics = MapShaper.getInnerTics(lbound, rbound, htics);
+internal.probeForBestInteriorPoint = function(shp, arcs, lbound, rbound, htics, weight) {
+  var tics = internal.getInnerTics(lbound, rbound, htics);
   var interval = (rbound - lbound) / htics;
   // Get candidate points, distributed along x-axis
-  var candidates = MapShaper.findInteriorPointCandidates(shp, arcs, tics);
+  var candidates = internal.findInteriorPointCandidates(shp, arcs, tics);
   var bestP, adjustedP, candP;
 
   // Sort candidates so points at the center of longer segments are tried first
@@ -143,7 +143,7 @@ MapShaper.probeForBestInteriorPoint = function(shp, arcs, lbound, rbound, htics,
     if (bestP && bestP.distance > candP.interval) {
       break;
     }
-    adjustedP = MapShaper.getAdjustedPoint(candP.x, candP.y, shp, arcs, interval, weight);
+    adjustedP = internal.getAdjustedPoint(candP.x, candP.y, shp, arcs, interval, weight);
 
     if (!bestP || adjustedP.distance > bestP.distance) {
       bestP = adjustedP;
@@ -154,20 +154,20 @@ MapShaper.probeForBestInteriorPoint = function(shp, arcs, lbound, rbound, htics,
 
 // [x, y] is a point assumed to be inside a polygon @shp
 // Try to move the point farther from the polygon edge
-MapShaper.getAdjustedPoint = function(x, y, shp, arcs, vstep, weight) {
+internal.getAdjustedPoint = function(x, y, shp, arcs, vstep, weight) {
   var p = {
     x: x,
     y: y,
     distance: geom.getPointToShapeDistance(x, y, shp, arcs) * weight(x, y)
   };
-  MapShaper.scanForBetterPoint(p, shp, arcs, vstep, weight); // scan up
-  MapShaper.scanForBetterPoint(p, shp, arcs, -vstep, weight); // scan down
+  internal.scanForBetterPoint(p, shp, arcs, vstep, weight); // scan up
+  internal.scanForBetterPoint(p, shp, arcs, -vstep, weight); // scan down
   return p;
 };
 
 // Try to find a better-fit point than @p by scanning vertically
 // Modify p in-place
-MapShaper.scanForBetterPoint = function(p, shp, arcs, vstep, weight) {
+internal.scanForBetterPoint = function(p, shp, arcs, vstep, weight) {
   var x = p.x,
       y = p.y,
       dmax = p.distance,
@@ -190,8 +190,8 @@ MapShaper.scanForBetterPoint = function(p, shp, arcs, vstep, weight) {
 
 // Return array of points at the midpoint of each line segment formed by the
 //   intersection of a vertical ray at [x, y] and a polygon shape
-MapShaper.findHitCandidates = function(x, y, shp, arcs) {
-  var yy = MapShaper.findRayShapeIntersections(x, y, shp, arcs);
+internal.findHitCandidates = function(x, y, shp, arcs) {
+  var yy = internal.findRayShapeIntersections(x, y, shp, arcs);
   var cands = [], y1, y2, interval;
 
   // sorting by y-coord organizes y-intercepts into interior segments
@@ -213,18 +213,18 @@ MapShaper.findHitCandidates = function(x, y, shp, arcs) {
 
 // Return array of y-intersections between vertical ray with origin at [x, y]
 //   and a polygon
-MapShaper.findRayShapeIntersections = function(x, y, shp, arcs) {
+internal.findRayShapeIntersections = function(x, y, shp, arcs) {
   if (!shp) return [];
   return shp.reduce(function(memo, path) {
-    var yy = MapShaper.findRayRingIntersections(x, y, path, arcs);
+    var yy = internal.findRayRingIntersections(x, y, path, arcs);
     return memo.concat(yy);
   }, []);
 };
 
 // Return array of y-intersections between vertical ray and a polygon ring
-MapShaper.findRayRingIntersections = function(x, y, path, arcs) {
+internal.findRayRingIntersections = function(x, y, path, arcs) {
   var yints = [];
-  MapShaper.forEachPathSegment(path, arcs, function(a, b, xx, yy) {
+  internal.forEachPathSegment(path, arcs, function(a, b, xx, yy) {
     var result = geom.getRayIntersection(x, y, xx[a], yy[a], xx[b], yy[b]);
     if (result > -Infinity) {
       yints.push(result);
@@ -240,7 +240,7 @@ MapShaper.findRayRingIntersections = function(x, y, path, arcs) {
 };
 
 // TODO: find better home + name for this
-MapShaper.getInnerTics = function(min, max, steps) {
+internal.getInnerTics = function(min, max, steps) {
   var range = max - min,
       step = range / (steps + 1),
       arr = [];

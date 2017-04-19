@@ -11,11 +11,11 @@ mapshaper-topology-chains-v2
 api.buildTopology = function(dataset) {
   if (!dataset.arcs) return;
   var raw = dataset.arcs.getVertexData(),
-      cooked = MapShaper.buildPathTopology(raw.nn, raw.xx, raw.yy);
+      cooked = internal.buildPathTopology(raw.nn, raw.xx, raw.yy);
   dataset.arcs.updateVertexData(cooked.nn, cooked.xx, cooked.yy);
   dataset.layers.forEach(function(lyr) {
     if (lyr.geometry_type == 'polyline' || lyr.geometry_type == 'polygon') {
-      lyr.shapes = MapShaper.replaceArcIds(lyr.shapes, cooked.paths);
+      lyr.shapes = internal.replaceArcIds(lyr.shapes, cooked.paths);
     }
   });
 };
@@ -39,7 +39,7 @@ api.buildTopology = function(dataset) {
 //
 // Negative arc ids in the paths array indicate a reversal of arc -(id + 1)
 //
-MapShaper.buildPathTopology = function(nn, xx, yy) {
+internal.buildPathTopology = function(nn, xx, yy) {
   var pointCount = xx.length,
       chainIds = initPointChains(xx, yy),
       pathIds = initPathIds(pointCount, nn),
@@ -242,7 +242,7 @@ function initPathIds(size, pathSizes) {
   return pathIds;
 }
 
-MapShaper.replaceArcIds = function(src, replacements) {
+internal.replaceArcIds = function(src, replacements) {
   return src.map(function(shape) {
     return replaceArcsInShape(shape, replacements);
   });
@@ -261,7 +261,7 @@ MapShaper.replaceArcIds = function(src, replacements) {
       if (topoPath) {
         if (id < 0) {
           topoPath = topoPath.concat(); // TODO: need to copy?
-          MapShaper.reversePath(topoPath);
+          internal.reversePath(topoPath);
         }
         for (var i=0, n=topoPath.length; i<n; i++) {
           memo.push(topoPath[i]);

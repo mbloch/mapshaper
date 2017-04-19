@@ -4,7 +4,7 @@ mapshaper-path-import
 mapshaper-data-table
 */
 
-MapShaper.importGeoJSON = function(src, opts) {
+internal.importGeoJSON = function(src, opts) {
   var srcObj = utils.isString(src) ? JSON.parse(src) : src,
       supportedGeometries = Object.keys(GeoJSON.pathImporters),
       idField = opts.id_field || GeoJSON.ID_FIELD,
@@ -43,7 +43,7 @@ MapShaper.importGeoJSON = function(src, opts) {
 
   dataset = importer.done();
 
-  MapShaper.importCRS(dataset, srcObj);
+  internal.importCRS(dataset, srcObj);
   return dataset;
 };
 
@@ -89,7 +89,7 @@ GeoJSON.pathImporters = {
   }
 };
 
-MapShaper.importCRS = function(dataset, jsonObj) {
+internal.importCRS = function(dataset, jsonObj) {
   if ('crs' in jsonObj) {
     dataset.info.input_geojson_crs = jsonObj.crs;
   }

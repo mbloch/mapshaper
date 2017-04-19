@@ -1,7 +1,7 @@
 /* @requires mapshaper-file-import, mapshaper-path-import, mapshaper-merging */
 
 // Import multiple files to a single dataset
-MapShaper.importFiles = function(files, opts) {
+internal.importFiles = function(files, opts) {
   var unbuiltTopology = false;
   var datasets = files.map(function(fname) {
     // import without topology or snapping
@@ -14,7 +14,7 @@ MapShaper.importFiles = function(files, opts) {
     }
     return dataset;
   });
-  var combined = MapShaper.mergeDatasets(datasets);
+  var combined = internal.mergeDatasets(datasets);
 
   // Build topology, if needed
   // TODO: consider updating topology of TopoJSON files instead of concatenating arcs
@@ -23,7 +23,7 @@ MapShaper.importFiles = function(files, opts) {
     // TODO: remove duplication with mapshaper-path-import.js; consider applying
     //   snapping option inside buildTopology()
     if (opts.auto_snap || opts.snap_interval) {
-      MapShaper.snapCoords(combined.arcs, opts.snap_interval);
+      internal.snapCoords(combined.arcs, opts.snap_interval);
     }
     api.buildTopology(combined);
   }

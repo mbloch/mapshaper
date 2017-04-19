@@ -120,7 +120,7 @@ function HitControl(ext, mouse) {
     var dist = getHitBuffer(25),
         limitSq = dist * dist,
         hits = [];
-    MapShaper.forEachPoint(target.layer.shapes, function(p, id) {
+    internal.forEachPoint(target.layer.shapes, function(p, id) {
       var distSq = geom.distanceSq(x, y, p[0], p[1]);
       if (distSq < limitSq) {
         hits = [id];

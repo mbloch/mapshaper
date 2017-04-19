@@ -4,7 +4,7 @@ mapshaper-path-index
 
 // Assumes: Arcs have been divided
 //
-MapShaper.clipPolylines = function(targetShapes, clipShapes, nodes, type) {
+internal.clipPolylines = function(targetShapes, clipShapes, nodes, type) {
   var index = new PathIndex(clipShapes, nodes.arcs);
 
   return targetShapes.map(function(shp) {

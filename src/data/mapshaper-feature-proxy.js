@@ -11,9 +11,9 @@ function addGetters(obj, getters) {
   });
 }
 
-MapShaper.initFeatureProxy = function(lyr, arcs) {
-  var hasPoints = MapShaper.layerHasPoints(lyr),
-      hasPaths = arcs && MapShaper.layerHasPaths(lyr),
+internal.initFeatureProxy = function(lyr, arcs) {
+  var hasPoints = internal.layerHasPoints(lyr),
+      hasPaths = arcs && internal.layerHasPaths(lyr),
       _records = lyr.data ? lyr.data.getRecords() : null,
       _isPlanar = hasPaths && arcs.isPlanar(),
       ctx = {},

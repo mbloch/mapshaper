@@ -1,12 +1,12 @@
 /* @requires mapshaper-arcs, mapshaper-geom */
 
-MapShaper.simplifyArcsFast = function(arcs, dist) {
+internal.simplifyArcsFast = function(arcs, dist) {
   var xx = [],
       yy = [],
       nn = [],
       count;
   for (var i=0, n=arcs.size(); i<n; i++) {
-    count = MapShaper.simplifyPathFast([i], arcs, dist, xx, yy);
+    count = internal.simplifyPathFast([i], arcs, dist, xx, yy);
     if (count == 1) {
       count = 0;
       xx.pop();
@@ -17,7 +17,7 @@ MapShaper.simplifyArcsFast = function(arcs, dist) {
   return new ArcCollection(nn, xx, yy);
 };
 
-MapShaper.simplifyPolygonFast = function(shp, arcs, dist) {
+internal.simplifyPolygonFast = function(shp, arcs, dist) {
   if (!shp || !dist) return null;
   var xx = [],
       yy = [],
@@ -25,7 +25,7 @@ MapShaper.simplifyPolygonFast = function(shp, arcs, dist) {
       shp2 = [];
 
   shp.forEach(function(path) {
-    var count = MapShaper.simplifyPathFast(path, arcs, dist, xx, yy);
+    var count = internal.simplifyPathFast(path, arcs, dist, xx, yy);
     while (count < 4 && count > 0) {
       xx.pop();
       yy.pop();
@@ -42,7 +42,7 @@ MapShaper.simplifyPolygonFast = function(shp, arcs, dist) {
   };
 };
 
-MapShaper.simplifyPathFast = function(path, arcs, dist, xx, yy) {
+internal.simplifyPathFast = function(path, arcs, dist, xx, yy) {
   var iter = arcs.getShapeIter(path),
       count = 0,
       prevX, prevY, x, y;

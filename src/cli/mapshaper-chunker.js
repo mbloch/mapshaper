@@ -1,6 +1,6 @@
 /* @requires mapshaper-common */
 
-MapShaper.splitShellTokens = function(str) {
+internal.splitShellTokens = function(str) {
   var BAREWORD = '([^\\s\'"])+';
   var SINGLE_QUOTE = '"((\\\\"|[^"])*?)"';
   var DOUBLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
