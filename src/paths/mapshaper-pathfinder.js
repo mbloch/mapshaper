@@ -104,18 +104,26 @@ internal.closeArcRoutes = function(arcIds, arcs, flags, fwd, rev, hide) {
 };
 
 // Return a function for generating a path across a field of intersecting arcs
+// useRoute: function(arcId) {}
+//           Tries to extend path to the given arc
+//           Returns true and extends path by one arc on success
+//           Returns false and rejects the entire path on failure
+// routeIsUsable (optional): function(arcId) {}
+//           An optional filter function; pathfinder ignores the given arc if
+//           this function returns false;
 // TODO: add option to use spherical geometry for lat-lng coords
-// TODO: try to remove useRoute() function
 //
 internal.getPathFinder = function(nodes, useRoute, routeIsUsable) {
-
-  function filterArc(arcId) {
-    return routeIsUsable(~arcId); // outward path must be traversable
+  var testArc = null;
+  if (routeIsUsable) {
+    testArc = function(arcId) {
+      return routeIsUsable(~arcId); // outward path must be traversable
+    };
   }
 
   function getNextArc(prevId) {
     // reverse arc to point onwards
-    return ~internal.getRightmostArc(prevId, nodes, filterArc);
+    return ~internal.getRightmostArc(prevId, nodes, testArc);
   }
 
   return function(startId) {

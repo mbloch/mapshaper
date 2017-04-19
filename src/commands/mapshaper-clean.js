@@ -1,4 +1,4 @@
-/* @requires mapshaper-dissolve2 */
+/* @requires mapshaper-dissolve2, mapshaper-polygon-mosaic */
 
 // (This doesn't currently do much)
 // TODO: remove small overlaps
