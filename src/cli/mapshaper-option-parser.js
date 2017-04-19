@@ -76,10 +76,10 @@ function CommandParser() {
 
       try {
         if (cmd._.length > 0 && cmdDef.no_arg) {
-          error("Command takes no unnamed arguments. Received:", cmd._.join(' '));
+          error("Received one or more unexpected parameters:", cmd._.join(' '));
         }
         if (cmd._.length > 1 && !cmdDef.multi_arg) {
-          error("Command takes a single argument. Received:", cmd._.join(' '));
+          error("Command expects a single value. Received:", cmd._.join(' '));
         }
         if (cmdDef.validate) {
           cmdDef.validate(cmd);

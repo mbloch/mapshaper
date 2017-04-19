@@ -52,6 +52,33 @@ function validateSimplifyOpts(cmd) {
   }
 }
 
+function validateProjOpts(cmd) {
+  var _ = cmd._,
+      proj4 = [];
+
+  // separate proj4 options
+  _ = _.filter(function(arg) {
+    if (/^\+[a-z]/i.test(arg)) {
+      proj4.push(arg);
+      return false;
+    }
+    return true;
+  });
+
+  if (proj4.length > 0) {
+    cmd.options.projection = proj4.join(' ');
+  } else if (_.length > 0) {
+    cmd.options.projection = _.shift();
+  }
+
+  if (_.length > 0) {
+    error("Received one or more unexpected parameters: " + _.join(', '));
+  }
+  if (!cmd.options.projection) {
+    error("Missing projection data");
+  }
+}
+
 function validateJoinOpts(cmd) {
   var o = cmd.options;
   o.source = o.source || cmd._[0];
@@ -112,12 +139,6 @@ function validateLinesOpts(cmd) {
     if (fields) cmd.options.fields = fields;
   } catch (e) {
     error("Command takes a comma-separated list of fields");
-  }
-}
-
-function validateInnerLinesOpts(cmd) {
-  if (cmd._.length > 0) {
-    error("Command takes no arguments");
   }
 }
 

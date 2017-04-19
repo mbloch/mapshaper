@@ -435,7 +435,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("innerlines")
     .describe("convert polygons to polylines along shared edges")
-    .validate(validateInnerLinesOpts)
+    .flag('no_arg')
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -530,11 +530,7 @@ MapShaper.getOptionParser = function() {
 
   parser.command("points")
     .describe("create a point layer from polygons or attribute data")
-    .validate(function (cmd) {
-      if (cmd._.length > 0) {
-        error("Unknown argument:", cmd._[0]);
-      }
-    })
+    .flag("no_arg")
     .option("x", {
       describe: "field containing x coordinate"
     })
@@ -563,32 +559,7 @@ MapShaper.getOptionParser = function() {
     .option("from", {
       describe: "define the source projection"
     })
-    .validate(function(cmd) {
-      var _ = cmd._,
-          proj4 = [];
-
-      // separate proj4 options
-      _ = _.filter(function(arg) {
-        if (/^\+[a-z]/i.test(arg)) {
-          proj4.push(arg);
-          return false;
-        }
-        return true;
-      });
-
-      if (proj4.length > 0) {
-        cmd.options.projection = proj4.join(' ');
-      } else if (_.length > 0) {
-        cmd.options.projection = _.shift();
-      }
-
-      if (_.length > 0) {
-        error("Received one or more unknown projection parameters");
-      }
-      if (!cmd.options.projection) {
-        error("Missing projection data");
-      }
-    });
+    .validate(validateProjOpts);
 
   parser.command("rename-fields")
     .describe('rename data fields')
@@ -880,8 +851,6 @@ MapShaper.getOptionParser = function() {
   parser.command("fill-holes")
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
-
-
   */
 
   return parser;

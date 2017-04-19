@@ -85,6 +85,10 @@ describe('mapshaper-options.js', function () {
     good("-o format=csv delimiter='\\t'", {format: "dsv", delimiter: "\t"});
   })
 
+  describe('innerlines', function () {
+    bad("-innerlines FIELD"); // doesn't take an argument
+  })
+
   describe('each', function() {
     good('-each target=filtered \'name="foo"', {target: 'filtered', expression: 'name="foo"'});
   });
