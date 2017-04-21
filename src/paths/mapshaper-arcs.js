@@ -234,11 +234,15 @@ function ArcCollection() {
   };
 
   this.transformPoints = function(f) {
-    var xx = _xx, yy = _yy, p;
-    for (var i=0, n=xx.length; i<n; i++) {
-      p = f(xx[i], yy[i]);
+    var xx = _xx, yy = _yy, arcId = -1, n = 0, p;
+    for (var i=0, len=xx.length; i<len; i++) {
+      while (n === 0) {
+        n = _nn[++arcId];
+      }
+      p = f(xx[i], yy[i], arcId);
       xx[i] = p[0];
       yy[i] = p[1];
+      n--;
     }
     initBounds();
   };

@@ -1,4 +1,5 @@
 /* @requires
+mapshaper-affine
 mapshaper-clean
 mapshaper-clip-erase
 mapshaper-cluster
@@ -116,7 +117,10 @@ api.runCommand = function(cmd, catalog, cb) {
       }
     }
 
-    if (name == 'data-fill') {
+    if (name == 'affine') {
+      api.affine(targetLayers, arcs, opts);
+
+    } else if (name == 'data-fill') {
       internal.applyCommand(api.dataFill, targetLayers, arcs, opts);
 
     } else if (name == 'cluster') {

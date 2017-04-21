@@ -13,6 +13,7 @@ api.cleanLayers = function(layers, dataset, opts) {
   });
 };
 
+
 internal.getPolygonFlattener = function(nodes) {
   var flags = new Uint8Array(nodes.arcs.size());
   var divide = internal.getHoleDivider(nodes);

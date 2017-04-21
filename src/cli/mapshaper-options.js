@@ -214,6 +214,18 @@ internal.getOptionParser = function() {
 
   parser.section("\nEditing commands");
 
+  parser.command("affine")
+    // .describe("transform coordinates by shifting, scaling and rotating")
+    .flag("no_args")
+    .option("shift", {
+      type: 'numbers',
+      describe: "x,y offsets"
+    })
+    .option("where", {
+      describe: "use a JS expression to select a subset of features"
+    })
+    .option("target", targetOpt);
+
   parser.command("data-fill")
     // .describe("interpolate missing values by copying from neighbor polygons")
     .option("field", {

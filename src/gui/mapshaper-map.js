@@ -149,8 +149,8 @@ function MshpMap(model) {
   // Test if an update may have affected the visible shape of arcs
   // @flags Flags from update event
   function arcsMayHaveChanged(flags) {
-    return flags.presimplify || flags.simplify || flags.proj ||
-        flags.arc_count || flags.repair || flags.clip || flags.erase || flags.slice || false;
+    return flags.presimplify || flags.simplify || flags.proj || flags.arc_count ||
+      flags.repair || flags.clip || flags.erase || flags.slice || flags.affine || false;
   }
 
   function referenceStyle() {
