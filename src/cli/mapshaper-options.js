@@ -123,7 +123,7 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt)
     .option("force", {
-      // describe: "let output files overwrite existing files",
+      // obsolete option, triggers warning
       type: "flag"
     })
     .option("dry-run", {
@@ -214,44 +214,6 @@ internal.getOptionParser = function() {
 
   parser.section("\nEditing commands");
 
-  parser.command("affine")
-    // .describe("transform coordinates by shifting, scaling and rotating")
-    .flag("no_args")
-    .option("shift", {
-      type: 'numbers',
-      describe: "x,y offsets"
-    })
-    .option("scale", {
-      type: 'number',
-      describe: "scale (default is 1)"
-    })
-    .option("rotate", {
-      type: 'number',
-      describe: "angle of rotation in degrees (default is 0)"
-    })
-    .option("anchor", {
-      type: 'numbers',
-      describe: "center of rotation/scaling (default is center of selected shapes)"
-    })
-    .option("where", {
-      describe: "use a JS expression to select a subset of features"
-    })
-    .option("target", targetOpt);
-
-  parser.command("data-fill")
-    // .describe("interpolate missing values by copying from neighbor polygons")
-    .option("field", {
-      describe: "name of field to fill out"
-    })
-    .option("postprocess", {
-      describe: "remove data islands",
-      type: "flag"
-    });
-
-  // Work-in-progress (no .describe(), so hidden from -h)
-  parser.command("clean")
-    .option("target", targetOpt);
-
   parser.command("clip")
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
@@ -270,51 +232,6 @@ internal.getOptionParser = function() {
     .option("no-replace", noReplaceOpt)
     .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
-
-  parser.command("cluster")
-    .describe("group polygons into compact clusters")
-    .option("id-field", {
-      describe: "field name of cluster id (default is \"cluster\")"
-    })
-    .option('pct', {
-      alias: 'p',
-      type: 'percent',
-      describe: "percentage of shapes to retain, e.g. 50%"
-    })
-    .option("max-width", {
-      describe: "max width of cluster bounding box",
-      type: "number"
-    })
-    .option("max-height", {
-      describe: "max height of cluster bounding box",
-      type: "number"
-    })
-    .option("max-area", {
-      describe: "max area of a cluster",
-      type: "number"
-    })
-    .option("group-by", {
-      describe: "field name; only same-value shapes will be grouped"
-    })
-    .option("target", targetOpt);
-
-  parser.command("colorizer")
-    .flag("no_arg")
-    .option("breaks", {
-      type: "numbers"
-    })
-    .option("colors", {
-      type: "strings"
-    })
-    .option("nodata", {
-
-    })
-    .option("name", {
-
-    })
-    .option("precision", {
-      type: "number"
-    });
 
   parser.command("dissolve")
     .validate(validateDissolveOpts)
@@ -741,16 +658,6 @@ internal.getOptionParser = function() {
     // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
-  parser.command("subdivide")
-    .describe("recursively split a layer using a JS expression")
-    .validate(validateSubdivideOpts)
-    .option("expression", {
-      label: "<expression>",
-      describe: "boolean JS expression"
-    })
-    // .option("no-replace", noReplaceOpt)
-    .option("target", targetOpt);
-
   parser.command("svg-style")
     .describe("set SVG style using JS expressions or literal values")
     .option("class", {
@@ -798,7 +705,111 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
-  // Info commands
+
+  // Experimental commands
+  parser.section("\nExperimental commands (may give unexpected results)");
+
+  parser.command("affine")
+    .describe("transform coordinates by shifting, scaling and rotating")
+    .flag("no_args")
+    .option("shift", {
+      type: 'numbers',
+      describe: "x,y offsets in source units (e.g. 5000,-5000)"
+    })
+    .option("scale", {
+      type: 'number',
+      describe: "scale (default is 1)"
+    })
+    .option("rotate", {
+      type: 'number',
+      describe: "angle of rotation in degrees (default is 0)"
+    })
+    .option("anchor", {
+      type: 'numbers',
+      describe: "center of rotation/scaling (default is center of selected shapes)"
+    })
+    .option("where", {
+      describe: "use a JS expression to select a subset of features"
+    })
+    .option("target", targetOpt);
+
+
+  // Work-in-progress (no .describe(), so hidden from -h)
+  parser.command("clean")
+    .option("target", targetOpt);
+
+
+  parser.command("cluster")
+    .describe("group polygons into compact clusters")
+    .option("id-field", {
+      describe: "field name of cluster id (default is \"cluster\")"
+    })
+    .option('pct', {
+      alias: 'p',
+      type: 'percent',
+      describe: "percentage of shapes to retain, e.g. 50%"
+    })
+    .option("max-width", {
+      describe: "max width of cluster bounding box",
+      type: "number"
+    })
+    .option("max-height", {
+      describe: "max height of cluster bounding box",
+      type: "number"
+    })
+    .option("max-area", {
+      describe: "max area of a cluster",
+      type: "number"
+    })
+    .option("group-by", {
+      describe: "field name; only same-value shapes will be grouped"
+    })
+    .option("target", targetOpt);
+
+  parser.command("colorizer")
+    .describe("Define a function to convert data values to color classes")
+    .flag("no_arg")
+    .option("breaks", {
+      describe: "comma-sep. list of class breaks in ascending order",
+      type: "numbers"
+    })
+    .option("colors", {
+      describe: "comma-sep. list of colors (one more than number of breaks)",
+      type: "strings"
+    })
+    .option("nodata", {
+      describe: "color to use when no data is present (default is #eee)"
+    })
+    .option("name", {
+      describe: "function name to use in -each and -svg-style commands"
+    })
+    .option("precision", {
+      describe: "rounding precision to apply before classification (e.g. 0.1)",
+      type: "number"
+    });
+
+  parser.command("data-fill")
+    .describe("interpolate missing values by copying from neighbor polygons")
+    .option("field", {
+      describe: "name of field to fill out"
+    })
+    .option("postprocess", {
+      describe: "remove data islands",
+      type: "flag"
+    });
+
+
+  parser.command("subdivide")
+    .describe("recursively split a layer using a JS expression")
+    .validate(validateSubdivideOpts)
+    .option("expression", {
+      label: "<expression>",
+      describe: "boolean JS expression"
+    })
+    // .option("no-replace", noReplaceOpt)
+    .option("target", targetOpt);
+
+
   parser.section("\nInformational commands");
 
   parser.command("calc")
