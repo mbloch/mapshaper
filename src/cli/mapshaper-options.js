@@ -221,6 +221,18 @@ internal.getOptionParser = function() {
       type: 'numbers',
       describe: "x,y offsets"
     })
+    .option("scale", {
+      type: 'number',
+      describe: "scale (default is 1)"
+    })
+    .option("rotate", {
+      type: 'number',
+      describe: "angle of rotation in degrees (default is 0)"
+    })
+    .option("anchor", {
+      type: 'numbers',
+      describe: "center of rotation/scaling (default is center of selected shapes)"
+    })
     .option("where", {
       describe: "use a JS expression to select a subset of features"
     })

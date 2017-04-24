@@ -3,7 +3,6 @@ var assert = require('assert'),
     ArcCollection = api.internal.ArcCollection,
     flattenShapes = api.internal.flattenShapes;
 
-
 describe('mapshaper-clean.js', function () {
 
   describe('overlap tests', function () {

@@ -235,14 +235,15 @@ function ArcCollection() {
 
   this.transformPoints = function(f) {
     var xx = _xx, yy = _yy, arcId = -1, n = 0, p;
-    for (var i=0, len=xx.length; i<len; i++) {
+    for (var i=0, len=xx.length; i<len; i++, n--) {
       while (n === 0) {
         n = _nn[++arcId];
       }
       p = f(xx[i], yy[i], arcId);
-      xx[i] = p[0];
-      yy[i] = p[1];
-      n--;
+      if (p) {
+        xx[i] = p[0];
+        yy[i] = p[1];
+      }
     }
     initBounds();
   };

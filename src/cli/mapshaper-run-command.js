@@ -118,7 +118,7 @@ api.runCommand = function(cmd, catalog, cb) {
     }
 
     if (name == 'affine') {
-      api.affine(targetLayers, arcs, opts);
+      api.affine(targetLayers, targetDataset, opts);
 
     } else if (name == 'data-fill') {
       internal.applyCommand(api.dataFill, targetLayers, arcs, opts);

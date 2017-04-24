@@ -25,7 +25,6 @@ internal.mergeDatasets = function(arr) {
     }
     data.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
-        // reindex arc ids
         internal.forEachArcId(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
         });
