@@ -21,10 +21,13 @@ internal.writeFiles = function(files, opts, done) {
 
 function saveZipFile(zipfileName, files, done) {
   var toAdd = files;
+  var zipWriter;
   try {
-    zip.createWriter(new zip.BlobWriter("application/zip"), addFile, zipError);
+    zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
+      zipWriter = writer;
+      nextFile();
+    }, zipError);
   } catch(e) {
-    // TODO: show proper error message, not alert
     done("This browser doesn't support Zip file creation.");
   }
 
@@ -36,15 +39,15 @@ function saveZipFile(zipfileName, files, done) {
     done(str);
   }
 
-  function addFile(archive) {
+  function nextFile() {
     if (toAdd.length === 0) {
-      archive.close(function(blob) {
+      zipWriter.close(function(blob) {
         saveBlob(zipfileName, blob, done);
       });
     } else {
       var obj = toAdd.pop(),
           blob = new Blob([obj.content]);
-      archive.add(obj.filename, new zip.BlobReader(blob), function() {addFile(archive);});
+      zipWriter.add(obj.filename, new zip.BlobReader(blob), nextFile);
     }
   }
 }

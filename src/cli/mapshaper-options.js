@@ -769,16 +769,23 @@ internal.getOptionParser = function() {
   parser.command("colorizer")
     .describe("Define a function to convert data values to color classes")
     .flag("no_arg")
-    .option("breaks", {
-      describe: "comma-sep. list of class breaks in ascending order",
-      type: "numbers"
-    })
     .option("colors", {
       describe: "comma-sep. list of colors (one more than number of breaks)",
       type: "strings"
     })
+    .option("breaks", {
+      describe: "ascending-order list of breaks for sequential color scheme",
+      type: "numbers"
+    })
+    .option("categories", {
+      describe: "comma-sep. list of keys for a categorical color scheme",
+      type: "strings"
+    })
+    .option("other", {
+      describe: "default for categorical color scheme (defaults to nodata color)"
+    })
     .option("nodata", {
-      describe: "color to use when no data is present (default is #eee)"
+      describe: "color to use for invalid or missing data (default is #fff)"
     })
     .option("name", {
       describe: "function name to use in -each and -svg-style commands"
@@ -789,7 +796,7 @@ internal.getOptionParser = function() {
     });
 
   parser.command("data-fill")
-    .describe("interpolate missing values by copying from neighbor polygons")
+    // .describe("interpolate missing values by copying from neighbor polygons")
     .option("field", {
       describe: "name of field to fill out"
     })
