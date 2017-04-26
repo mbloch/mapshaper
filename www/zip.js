@@ -282,11 +282,9 @@
 		}
 
 		function writeUint8Array(array, callback) {
-			console.log("blob pre:", blob.size, appendABViewSupported);
 			blob = new Blob([ blob, appendABViewSupported ? array : array.buffer ], {
 				type : contentType
 			});
-			console.log("blob post:", blob.size);
 			callback();
 		}
 
