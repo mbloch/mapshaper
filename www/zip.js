@@ -39,12 +39,15 @@
 	var ERR_READ_DATA = "Error while reading file data.";
 	var ERR_DUPLICATED_NAME = "File already exists.";
 	var CHUNK_SIZE = 512 * 1024;
-	
+
 	var TEXT_PLAIN = "text/plain";
 
 	var appendABViewSupported;
 	try {
-		appendABViewSupported = new Blob([ new DataView(new ArrayBuffer(0)) ]).size === 0;
+		// Using the generic DataView contructor throws InvalidStateError in IE 11.
+		// Using a specific view like Uint8Array works.
+		// appendABViewSupported = new Blob([ new DataView(new ArrayBuffer(0)) ]).size === 0;
+		appendABViewSupported = new Blob([ new Uint8Array(new ArrayBuffer(0)) ]).size === 0;
 	} catch (e) {
 	}
 
@@ -73,7 +76,7 @@
 		}
 		return table;
 	})();
-	
+
 	// "no-op" codec
 	function NOOP() {}
 	NOOP.prototype.append = function append(bytes, onprogress) {
@@ -279,9 +282,11 @@
 		}
 
 		function writeUint8Array(array, callback) {
+			console.log("blob pre:", blob.size, appendABViewSupported);
 			blob = new Blob([ blob, appendABViewSupported ? array : array.buffer ], {
 				type : contentType
 			});
+			console.log("blob post:", blob.size);
 			callback();
 		}
 
@@ -296,7 +301,7 @@
 	BlobWriter.prototype = new Writer();
 	BlobWriter.prototype.constructor = BlobWriter;
 
-	/** 
+	/**
 	 * inflate/deflate core functions
 	 * @param worker {Worker} web worker for the task.
 	 * @param initialMessage {Object} initial message to be sent to the worker. should contain
@@ -360,14 +365,15 @@
 
 		function step() {
 			index = chunkIndex * CHUNK_SIZE;
-			if (index < size) {
+			// use `<=` instead of `<`, because `size` may be 0.
+			if (index <= size) {
 				reader.readUint8Array(offset + index, Math.min(CHUNK_SIZE, size - index), function(array) {
 					if (onprogress)
 						onprogress(index, size);
 					var msg = index === 0 ? initialMessage : {sn : sn};
 					msg.type = 'append';
 					msg.data = array;
-					
+
 					// posting a message with transferables will fail on IE10
 					try {
 						worker.postMessage(msg, [array.buffer]);
