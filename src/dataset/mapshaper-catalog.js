@@ -1,4 +1,4 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-target-utils */
 
 // Catalog contains zero or more multi-layer datasets
 // One layer is always "active", corresponding to the currently selected
@@ -54,25 +54,10 @@ function Catalog() {
   };
 
   this.findCommandTargets = function(pattern) {
-    var targets = [], test, i;
     if (pattern) {
-      i = 0;
-      test = internal.getTargetMatch(pattern);
-      datasets.forEach(function(dataset) {
-        var layers = dataset.layers.filter(function(lyr) {
-          return test(lyr, i++);
-        });
-        if (layers.length > 0) {
-          targets.push({
-            layers: layers,
-            dataset: dataset
-          });
-        }
-      });
-    } else if (target) {
-      targets.push(target);
+      return internal.findCommandTargets(pattern, this);
     }
-    return targets;
+    return target ? [target] : [];
   };
 
   this.removeDataset = function(dataset) {
@@ -166,24 +151,4 @@ internal.getFormattedLayerList = function(catalog) {
     lines.push('  [' + (i+1) + ']  ' + (lyr.name || '[unnamed]'));
   });
   return lines.length > 0 ? lines.join('\n') : '[none]';
-};
-
-internal.getLayerMatch = function(pattern) {
-  var isIndex = utils.isInteger(Number(pattern));
-  var nameRxp = isIndex ? null : utils.wildcardToRegExp(pattern);
-  return function(lyr, i) {
-    return isIndex ? String(i) == pattern : nameRxp.test(lyr.name || '');
-  };
-};
-
-// @pattern is a layer identifier or a comma-sep. list of identifiers.
-// An identifier is a literal name, a pattern containing "*" wildcard or
-// a 1-based index (1..n)
-internal.getTargetMatch = function(pattern) {
-  var tests = pattern.split(',').map(internal.getLayerMatch);
-  return function(lyr, i) {
-    return utils.some(tests, function(test) {
-      return test(lyr, i + 1); // layers are 1-indexed
-    });
-  };
 };

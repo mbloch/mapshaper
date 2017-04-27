@@ -170,14 +170,6 @@ internal.isolateLayer = function(layer, dataset) {
   }, dataset);
 };
 
-// legacy function (TODO: update tests and remove)
-internal.findMatchingLayers = function(layers, pattern) {
-  var test = internal.getTargetMatch(pattern);
-  return layers.filter(function(lyr, i) {
-    return test(lyr, i);
-  });
-};
-
 // Transform the points in a dataset in-place; don't clean up corrupted shapes
 internal.transformPoints = function(dataset, f) {
   if (dataset.arcs) {
