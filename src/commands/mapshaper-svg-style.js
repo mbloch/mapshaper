@@ -22,7 +22,6 @@ api.svgStyle = function(lyr, dataset, opts) {
     if (literal === null) {
       func = internal.compileValueExpression(val, lyr, dataset.arcs, {context: internal.defs});
     }
-
     records = lyr.data.getRecords();
     records.forEach(function(rec, i) {
       rec[f] = func ? func(i) : literal;

@@ -1,6 +1,7 @@
 /* @requires
 mapshaper-common
 geojson-export
+geojson-points
 geojson-to-svg
 mapshaper-svg-style
 */
@@ -37,7 +38,6 @@ internal.transformCoordsForSVG = function(dataset, opts) {
   var precision = opts.precision || 0.0001;
   var height, bounds2, fwd;
 
-
   if (opts.svg_scale > 0) {
     // alternative to using a fixed width (e.g. when generating multiple files
     // at a consistent geographic scale)
@@ -67,9 +67,19 @@ internal.padViewportBoundsForSVG = function(bounds, width, marginPx) {
   bounds.padBounds(marg, marg, marg, marg);
 };
 
+internal.exportGeoJSONForSVG = function(lyr, dataset, opts) {
+  var geojson = internal.exportGeoJSONCollection(lyr, dataset, opts);
+  if (opts.point_symbol == 'square' && geojson.features) {
+    geojson.features.forEach(function(feat) {
+      GeoJSON.convertPointFeatureToSquare(feat, 'r', 2);
+    });
+  }
+  return geojson;
+};
+
 internal.exportLayerAsSVG = function(lyr, dataset, opts) {
   // TODO: convert geojson features one at a time
-  var geojson = internal.exportGeoJSONCollection(lyr, dataset, opts);
+  var geojson = internal.exportGeoJSONForSVG(lyr, dataset, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
   var symbols = SVG.importGeoJSONFeatures(features);
   var layerObj = {

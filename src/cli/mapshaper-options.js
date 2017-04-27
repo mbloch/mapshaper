@@ -201,6 +201,9 @@ internal.getOptionParser = function() {
       describe: "(SVG) margin between data and viewport bounds (default is 1)",
       type: "number"
     })
+    .option("point-symbol", {
+      describe: "(SVG) circle or square (default is circle)"
+    })
     .option("svg-scale", {
       // describe: "(SVG) data units (e.g. meters) per pixel"
       type: "number"
@@ -770,7 +773,7 @@ internal.getOptionParser = function() {
     .describe("Define a function to convert data values to color classes")
     .flag("no_arg")
     .option("colors", {
-      describe: "comma-sep. list of colors (one more than number of breaks)",
+      describe: "comma-separated list of CSS colors",
       type: "strings"
     })
     .option("breaks", {
@@ -778,14 +781,14 @@ internal.getOptionParser = function() {
       type: "numbers"
     })
     .option("categories", {
-      describe: "comma-sep. list of keys for a categorical color scheme",
+      describe: "comma-sep. list of keys for categorical color scheme",
       type: "strings"
     })
     .option("other", {
-      describe: "default for categorical color scheme (defaults to nodata color)"
+      describe: "default color for categorical scheme (defaults to no-data color)"
     })
     .option("nodata", {
-      describe: "color to use for invalid or missing data (default is #fff)"
+      describe: "color to use for invalid or missing data (default is white)"
     })
     .option("name", {
       describe: "function name to use in -each and -svg-style commands"

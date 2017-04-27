@@ -9,7 +9,7 @@ api.colorizer = function(opts) {
 };
 
 internal.getColorizerFunction = function(opts) {
-  var nodataColor = opts.nodata || '#eee';
+  var nodataColor = opts.nodata || 'white';
   var round = opts.precision ? utils.getRoundingFunction(opts.precision) : null;
   var colorFunction;
 
