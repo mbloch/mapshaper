@@ -67,17 +67,15 @@ internal.getSequentialColorFunction = function(colors, breaks, round) {
   };
 };
 
+// breaks: threshold values between ranges (ascending order)
+// Returns array index of a sequential range, or -1 if @val not numeric
 utils.getClassId = function(val, breaks) {
-  var id = -1;
-  if (Number(val) === val) {
-    id = 0;
-    for (var j = 0, len=breaks.length; j < len; j++) {
-      var breakVal = breaks[j];
-      if (val < breakVal) {
-        break;
-      }
-      id = j + 1;
-    }
+  var minVal = -Infinity,
+      maxVal = Infinity,
+      i = 0;
+  if (!(val >= minVal && val <= maxVal)) {
+    return -1;
   }
-  return id;
+  while (i < breaks.length && val >= breaks[i]) i++;
+  return i;
 };

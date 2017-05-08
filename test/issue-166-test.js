@@ -1,7 +1,7 @@
 var api = require('../'),
     assert = require('assert');
 
-describe('Issue #165: .prj lost after combine-files', function () {
+describe('Issue #166: .prj lost after combine-files', function () {
   it ('.prj is preserved after -merge-layers', function(done) {
     var path = 'test/test_data/issues/166/';
     var i = '-i ' + path + 'a_utm.shp ' + path + 'b_utm.shp combine-files';
