@@ -1,3 +1,8 @@
+v0.4.18
+* Stacking order of layers in SVG output follows order of `target=` list.
+* [-colorizer] `colors=` can take a space- or a comma-delimited list.
+* [-o] Added `point-symbol=square` option for SVG output.
+
 v0.4.17
 * Added section for experimental commands to command line help.
 * Added experimental `-affine` command for scaling, shifting and rotating coordinates.
