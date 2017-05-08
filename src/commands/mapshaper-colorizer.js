@@ -59,15 +59,17 @@ internal.getSequentialColorFunction = function(colors, breaks, round) {
   internal.validateSequentialBreaks(breaks);
   return function(val) {
     var i = -1;
-    if (round) val = val(round);
-    i = utils.getClassId(val, breaks);
+    if (Number(val) === val) { // exclude null, NaN, strings, etc.
+      if (round) val = val(round);
+      i = utils.getClassId(val, breaks);
+    }
     return i > -1 && i < colors.length ? colors[i] : null;
   };
 };
 
 utils.getClassId = function(val, breaks) {
   var id = -1;
-  if (!isNaN(val)) {
+  if (Number(val) === val) {
     id = 0;
     for (var j = 0, len=breaks.length; j < len; j++) {
       var breakVal = breaks[j];

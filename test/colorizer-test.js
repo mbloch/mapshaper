@@ -28,6 +28,14 @@ describe('mapshaper-colorizer.js', function () {
     });
   })
 
+  describe('getSequentialColorFunction()', function () {
+    it('null should not be coerced to 0', function () {
+      var f = api.internal.getSequentialColorFunction(['red', 'blue'], [10]);
+      assert.strictEqual(f(0), 'red');
+      assert.strictEqual(f(null), null);
+    })
+  })
+
   describe('getColorizerFunction()', function () {
 
     it('matches categories', function() {
