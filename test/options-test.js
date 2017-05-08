@@ -85,6 +85,10 @@ describe('mapshaper-options.js', function () {
     good("-o format=csv delimiter='\\t'", {format: "dsv", delimiter: "\t"});
   })
 
+  describe('colorizer', function () {
+    good('-colorizer breaks=0,10 colors="red white blue" name=col', {name: "col", breaks: [0, 10], colors: ["red", "white", "blue"]})
+  })
+
   describe('innerlines', function () {
     bad("-innerlines FIELD"); // doesn't take an argument
   })

@@ -774,7 +774,7 @@ internal.getOptionParser = function() {
     .flag("no_arg")
     .option("colors", {
       describe: "comma-separated list of CSS colors",
-      type: "strings"
+      type: "colors"
     })
     .option("breaks", {
       describe: "ascending-order list of breaks for sequential color scheme",

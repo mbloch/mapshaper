@@ -164,6 +164,8 @@ function CommandParser() {
           val = Math.round(Number(token));
         } else if (type == 'strings') {
           val = token.split(',');
+        } else if (type == 'colors') {
+          val = token.trim().split(/[, ]+/); // accept space and/or comma delimiter
         } else if (type == 'bbox' || type == 'numbers') {
           val = token.split(',').map(parseFloat);
         } else if (type == 'percent') {
