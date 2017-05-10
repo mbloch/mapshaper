@@ -1,0 +1,804 @@
+/*
+@import url(http://fonts.googleapis.com/css?family=Source+Sans+Pro:400,600);
+*/
+
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: normal;
+  font-weight: 400;
+  src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url(SourceSansPro-Regular.woff) format('woff');
+}
+
+@font-face {
+  font-family: 'Source Sans Pro';
+  font-style: normal;
+  font-weight: 600;
+  src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url(SourceSansPro-Semibold.woff) format('woff');
+}
+
+html, body {
+	height: 100%;
+	width: 100%;
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	overflow: hidden;
+	background-color: #fff;
+	font: 14px/1.4 'Source Sans Pro', Helvetica, sans-serif;
+	color: #444;
+	user-select: none;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	cursor: default;
+}
+
+.selectable,.selectable * {
+	user-select: default;
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	cursor: text;
+}
+
+
+/* --- Themed elements -------------- */
+
+.page-header,
+.dialog-btn {
+	background-color: #1385b7;
+}
+
+.colored-text {
+	color: #0774a5;
+}
+
+
+.dot-underline {
+	border-bottom: 1px dotted #0774a5;
+}
+
+.nav-btn * {
+	fill: #1385b7;
+}
+
+.dialog-btn:hover,
+.header-btn:hover {
+	background-color: #0F5A84;
+}
+
+.colored-text::selection {
+	background-color: #e6f7ff;
+}
+
+.colored-text::-moz-selection {
+	background-color: #e6f7ff;
+}
+
+.layer-item.active {
+	background-color: #e6f7ff;
+}
+
+/* THEME 2  */
+
+.theme2 .page-header,
+.theme2 .dialog-btn {
+	background-color: #678691;
+}
+
+.theme2 .colored-text {
+	color: #678691;
+}
+
+.theme2 .dot-underline {
+	border-bottom: 1px dotted #678691;
+}
+
+.theme2 .nav-btn * {
+	fill: #678691;
+}
+
+.theme2 .dialog-btn:hover,
+.theme2 .header-btn:hover {
+	background-color: #365A68;
+}
+
+.theme2 .colored-text::selection {
+	background-color: #DEF1F9;
+}
+
+.theme2 .colored-text::-moz-selection {
+	background-color: #DEF1F9;
+}
+
+.theme2 .layer-item.active {
+	background-color: #DEF1F9;
+}
+
+/* THEME 3 -- GREY */
+
+.theme3 .page-header,
+.theme3 .dialog-btn {
+	background-color: #8c8c8c;
+}
+
+.theme3 .nav-btn * {
+	fill: #8c8c8c;
+}
+
+.theme3 .nav-btn.selected {
+	background-color: black;
+}
+
+.theme3 .dialog-btn:hover,
+.theme3 .header-btn:hover {
+	background-color: #555;
+}
+
+/* --- Page header --------------- */
+
+.page-header {
+	position: absolute;
+	color: white;
+	top: 0;
+	left: 0;
+	z-index: 40;
+	width: 100%;
+	height: 32px;
+}
+
+#coordinate-info {
+	z-index: 1;
+	position: absolute;
+	bottom: 6px;
+	left: 6px;
+	padding: 2px 5px 2px 5px;
+	font-size: 11px;
+}
+
+
+
+.mapshaper-logo {
+	font-weight: bold;
+	font-size: 18px;
+	margin: 2px 0 0 12px;
+}
+
+.mapshaper-logo .logo-highlight {
+	color: #ffa;
+}
+
+.page-header a {
+	text-decoration: none;
+}
+
+#mode-buttons {
+	z-index: 20;
+	position: absolute;
+	top: 0px;
+	right: 0px;
+	display: none;
+	margin: 0 8px 3px 0;
+}
+
+.separator {
+	border-left: 1px solid white;
+	height: 10px;
+	margin: 0 2px 0 2px;
+}
+
+/* --- Export dialog --------- */
+
+#export-options .dialog-btn {
+	min-width: 20px;
+	padding: 4px 6px 5px 6px;
+}
+
+#export-layer-list {
+	max-height: 160px;
+	overflow: hidden;
+	overflow-y: auto;
+	margin-right: -13px;
+}
+
+#export-layer-list > div {
+	white-space: nowrap;
+}
+
+#export-options .option-menu .advanced-options {
+	width: 190px;
+}
+
+/* --- Main area ------------- */
+
+.main-area {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	margin: 32px 0 0 0;	
+}
+
+
+/* --- Error message ---------- */
+
+
+.error-wrapper {
+	z-index: 120;
+	text-align: center;
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+}
+
+div.error-box {
+	margin-top: 55px;
+	/* padding: 8px 12px 10px 12px; */
+	max-width: 400px;
+	font-size: 16px;
+}
+
+div.error-box > div {
+
+}
+
+
+/* --- Import screen -------------- */
+
+#fork-me {
+	background-image: url("images/fork-me-right-graphite@2x.png");
+    background-size: 149px 149px;
+	position: absolute;
+	z-index: 110;
+	top: 0;
+	right: 0;
+	border: 0;
+	width: 149px;
+	height: 149px;
+}
+
+#import-options.first-run {
+	background-color: #eee;
+}
+
+#import-options:not(.first-run) #import-intro {
+	display: none;
+}
+
+.option-menu .advanced-options {
+	width: 210px;
+	background: rgba(255, 255, 255, 0.4);
+	border: 1px solid #999;
+	padding: 0 3px;
+	height: 17px;
+	font-size: 12px;
+}
+
+#mshp-not-supported {
+	display: none;
+	z-index: 100;
+	text-align: center;
+}
+
+#dropped-file-list {
+	display: none;
+	padding-bottom: 3px;
+}
+
+#dropped-file-list p {
+	line-height: 1;
+	margin-bottom: 5px;
+}
+
+.popup-dialog {
+	display: none;
+	z-index: 80;	
+	text-align: center;
+}
+
+.info-box {
+	word-wrap: break-word;
+	text-align: left;
+	margin-top: 15px;
+	background-color: #fff;
+	padding: 11px 15px 9px 15px;
+	vertical-align: top;
+	display: inline-block;
+	border: 1px solid #aaa;
+	border-radius: 9px;
+}
+
+.info-box h3 {
+	font-size: 1.2em;
+	padding: 0;
+	margin: 0 0 2px 0;
+}
+
+.info-box h4 {
+	font-size: 1em;
+	margin: 0 0 1px 0;
+}
+
+.info-box p {
+	white-space: pre-line;
+	margin: 0 0 0.5em 0;
+}
+
+.option-menu {
+	padding: 0 0 7px 0;
+}
+
+.option-menu input {
+	width: 12px;
+	height: 12px;
+}
+
+.option-menu .tip-button {
+	margin-left: 12px;
+	margin-top: 3px;
+}
+
+.option-menu input.checkbox {
+	margin: 3px 5px 0 0;
+}
+
+.option-menu input.radio {
+	margin: 0 5px 0 0;
+}
+
+/* --- Progress bar --------------- */
+
+#progress-message {
+	position: absolute;
+	width: 100%;
+	z-index: 90;
+	text-align: center;
+	top: 52px;
+}
+
+#progress-message > div {
+	display: inline-block;
+	text-transform: uppercase;
+	padding: 3px 6px;
+	font-size: 15px;
+	color: black;
+	background-color: rgba(255, 255, 222, 0.85);
+	border: 1px solid #333;
+}
+
+/* === Editing interface ========== */
+
+#mshp-main-page {
+	position: relative;
+	height: 100%;
+	width: 100%;
+}
+
+
+/* --- Console control ------------ */
+
+#console {
+	z-index: 30;
+	pointer-events: none;
+	display: none;
+}
+
+#console-window {
+	pointer-events: auto;
+	background-color: rgba(0,0,0,1);
+	position: absolute;
+	width: 100%;
+	text-align: center;
+	overflow: auto;
+	max-height: 80%;
+}
+
+#console-buffer {
+	cursor: text;
+	width: 100%;
+	position: relative;
+	color: white;
+	font: 13px/1.35 monospace;
+	margin: 8px 0 10px 0;
+	word-break: break-all;
+	word-wrap: break-word;
+	white-space: pre-wrap;
+	 /* Removing this workaround: non-standard behavior fixed in recent Chrome
+	white-space: pre; */
+}
+
+#console-buffer > div {
+	text-align: left;
+	max-width: 640px;
+	margin: 0 auto;
+	padding-left: 13%;
+	padding-right: 2%;
+}
+
+.console-error {
+	color: #f93b00;
+}
+
+.console-message {
+	color: #eddd98;
+}
+
+.console-example {
+	color: #b9dffc;
+}
+
+.input-field {
+	outline: none;
+	min-width: 100px;
+}
+
+/* --- Layer menu ----------- */
+
+#layer-control-btn {
+	top: 0;
+	position: absolute;
+	text-align: center;
+	z-index: 10;
+	width: 100%;
+}
+
+body.simplify #layer-control-btn {
+	display: none;
+}
+
+#layer-control .info-box {
+	padding: 0;
+	pointer-events: none;
+	background-color: transparent;
+}
+
+#layer-control div.info-box-scrolled {
+	position: relative;
+	z-index: -1;
+	background-color: white;
+	max-height: 500px;
+	overflow: hidden;
+	overflow-y: auto;
+	padding: 9px 14px 6px 14px;
+	pointer-events: auto;
+	border-radius: 9px;
+}
+
+
+#layer-menu .layer-list {
+	margin: 6px 0 6px 0;
+}
+
+#layer-menu .layer-item {
+	position: relative;
+	margin-left: -14px;
+	margin-right: 6px;
+	padding: 8px 14px;
+	cursor: pointer;
+	width: 100%;
+}
+
+.layer-item img {
+	position: absolute;
+	width: 16px;
+	height: 16px;
+	padding: 2px;
+	right: 6px;
+}
+
+.layer-item img.close-btn {
+	opacity: 0.2;
+	top: 7px;
+}
+
+.layer-item img.pin-btn {
+	opacity: 0;
+	top: 26px;
+}
+
+.layer-item:not(.active) img.unpinned {
+	opacity: 0.2;
+}
+
+.layer-item:not(.pinned) img.pinned:hover {
+	opacity: 0.6;
+}
+
+.layer-item.active img.pinned {
+	display: none;
+}
+
+.visible-pin .layer-item.active img.unpinned,
+.layer-item img.close-btn:hover,
+.layer-item.pinned img.pinned {
+	opacity: 1
+}
+
+.layer-item img.pinned {
+	z-index: 1;
+}
+
+.layer-item .row {
+	line-height: 18px;
+	margin-bottom: 1px;
+	white-space: nowrap;
+}
+
+.layer-item .layer-name {
+	display: inline-block;
+	min-height: 14px; /* For FF when content is empty */
+	min-width: 2px;
+	outline: none;
+}
+
+.layer-item .layer-name.editing {
+	border-bottom: 1px solid transparent;
+}
+
+.layer-item .layer-name::selection {
+	background: black;
+	color: white;
+	text-decoration: none;
+}
+
+.layer-item .layer-name::-moz-selection {
+	background: black;
+	color: white;
+	text-decoration: none;
+}
+
+.layer-item:hover:not(.active) {
+	background-color: #f7f7f7;
+}
+
+.layer-item .row > div {
+	display: inline-block;
+}
+
+.layer-item .col1 {
+	width: 84px;
+}
+
+.layer-item .row1 .col2 {
+	margin-right: 19px; /* room for buttons */
+}
+
+.layer-item .col2 {
+	/*position: relative;
+	left: 12px;
+	*/
+}
+
+/* --- Intersection control ----------*/
+
+#intersection-display {
+	cursor: default;
+	visibility: visible;
+	display: none;
+	position: absolute;
+	z-index: 20;
+	top: 9px;
+	left: 12px;
+}
+
+#intersection-display .text-btn.disabled {
+	visibility: hidden;
+}
+
+/* --- Popup -------------------- */
+
+.popup {
+	box-sizing: border-box;
+	position: absolute;
+	z-index: 40;
+	top: 12px;
+	left: 12px;
+	background-color: white;
+	border: 1px solid #999;
+	border-radius: 9px;
+	padding: 5px 0;
+}
+
+.popup > div {
+	box-sizing: border-box;
+	overflow: hidden;
+	overflow-y: auto;
+	padding: 4px 12px;
+	line-height: 1.2;
+	font-size: 13px;
+}
+
+.popup table {
+	border-spacing: 0px;
+}
+
+.popup table td {
+	vertical-align: top;
+	/* padding: 2px 0; */
+	min-width: 80px;
+	max-width: 180px;
+	color: black;
+	height: 17px; /* functions like min-height on <td> */
+}
+
+.popup td.field-name {
+	color: #aaa;
+	padding-right: 7px;
+	font-weight: normal;
+	min-width: 60px;
+}
+
+.popup .value {
+	outline: none;
+	word-wrap: break-word;
+}
+
+.popup .num-field {
+	font-style: italic;
+}
+
+.popup .empty, .popup .null-value {
+	min-width: 4px;
+	display: inline-block;
+	min-height: 13px;
+}
+
+.popup .null-value {
+	color: #aaa;
+}
+
+.popup .note {
+	font-style: italic;
+	text-align: right;
+}
+
+.popup .editable-cell .value.editing {
+	color: black;
+	border-bottom: none;
+}
+
+.popup .editable-cell .value::selection {
+	color: white;
+	background: black;
+}
+
+.popup .editable-cell .value::-moz-selection {
+	color: white;
+	background: black;
+}
+
+
+/* --- Map ---------------------- */
+
+#map-layers {
+	height: 100%;
+}
+
+#mshp-main-map {
+	background-color: #fff;
+}
+
+#map-layers.hover {
+	cursor: pointer;
+}
+
+#map-layers canvas {
+	pointer-events: none;
+	position: absolute;
+}
+
+#map-layers canvas.retina {
+	transform-origin: top left;
+	-webkit-transform-origin: top left;
+	transform: scale3D(0.5, 0.5, 1);
+	-webkit-transform: scale3D(0.5, 0.5, 1);
+}
+
+#nav-buttons {
+	display: none;
+	z-index: 20;
+	position: absolute;
+	top: 6px;
+	right: 9px;
+	padding: 2px;
+	background-color: rgba(255, 255, 255, 0.85);
+}
+
+.nav-btn {
+	cursor:pointer;
+	padding: 3px;
+	line-height: 1;
+}
+
+
+.nav-btn:hover * {
+	fill: black;
+}
+
+.nav-btn.selected * {
+	fill: white;
+}
+
+.nav-btn.selected {
+	background-color: black;
+	border-radius: 4px;
+}
+
+.zoom-box {
+	position: absolute;
+	border: 1px solid #f74b80;
+	z-index: 15;
+}
+
+
+/* Simplification control ------------ */
+
+@media (max-width: 765px) {
+	body.simplify  #simplify-control-wrapper {
+		top: 22px;
+	}
+
+	body.simplify .page-header {
+		height: 52px;
+	}
+
+	body.simplify .main-area {
+		margin-top: 52px;
+	}
+}
+
+#simplify-control-wrapper {
+	display: none;
+	position: absolute;
+	width: 100%;
+	overflow: hidden;
+	margin: 0 auto 0 auto;
+	top: 0px;
+}
+
+#simplify-control {
+	text-align: center;
+	white-space: nowrap;
+	padding: 0 90px 0 12px;
+}
+
+#simplify-control .slider {
+	margin: 15px 5px 0 3px;
+	position: relative;
+	vertical-align: top;
+	display: inline-block;
+}
+
+#simplify-control .track {   	
+  	border-radius: 2px;
+	width: 340px;
+	background-color: #fff;
+	height: 2px;
+}
+
+#simplify-control .handle {
+	position: absolute;
+	top: -3px;
+}
+
+#simplify-control .handle img {
+	width: 20px;
+	height: 20px;
+	margin-left: -10px;
+	margin-top: -10px;
+}
+
+#simplify-control .clicktext {
+	width: 56px;
+	background: rgba(255, 255, 255, 0.5);
+	text-align: center;
+	border: 1px solid rgba(0,0,0,0);
+	font-size: 13px;
+}
+
+#simplify-control .clicktext:focus {
+	background: #fff;
+}
