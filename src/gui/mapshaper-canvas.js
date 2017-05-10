@@ -23,16 +23,58 @@ function DisplayCanvas() {
     _ext = extent;
   };
 
+  /*
+  // Original function, not optimized
   _self.drawPathShapes = function(shapes, arcs, style) {
-    var start = getPathStart(style, _ext),
-        draw = getShapePencil(arcs, _ext),
-        end = getPathEnd(style);
+    var startPath = getPathStart(_ext),
+        drawPath = getShapePencil(arcs, _ext),
+        styler = style.styler || null;
     for (var i=0, n=shapes.length; i<n; i++) {
-      start(_ctx, i);
-      draw(shapes[i], _ctx);
-      end(_ctx);
+      if (styler) styler(style, i);
+      startPath(_ctx, style);
+      drawPath(shapes[i], _ctx);
+      endPath(_ctx, style);
     }
   };
+  */
+
+  // Optimized to draw paths in same-style batches (faster Canvas drawing)
+  _self.drawPathShapes = function(shapes, arcs, style) {
+    var styleIndex = {};
+    var batchSize = 1500;
+    var startPath = getPathStart(_ext);
+    var drawPath = getShapePencil(arcs, _ext);
+    var key, item;
+    var styler = style.styler || null;
+    for (var i=0; i<shapes.length; i++) {
+      if (styler) styler(style, i);
+      key = getStyleKey(style);
+      if (key in styleIndex === false) {
+        styleIndex[key] = {
+          style: utils.defaults({}, style),
+          shapes: []
+        };
+      }
+      item = styleIndex[key];
+      item.shapes.push(shapes[i]);
+      if (item.shapes.length >= batchSize) {
+        drawPaths(item.shapes, startPath, drawPath, item.style);
+        item.shapes = [];
+      }
+    }
+    Object.keys(styleIndex).forEach(function(key) {
+      var item = styleIndex[key];
+      drawPaths(item.shapes, startPath, drawPath, item.style);
+    });
+  };
+
+  function drawPaths(shapes, startPath, drawPath, style) {
+    startPath(_ctx, style);
+    for (var i=0, n=shapes.length; i<n; i++) {
+      drawPath(shapes[i], _ctx);
+    }
+    endPath(_ctx, style);
+  }
 
   _self.drawSquareDots = function(shapes, style) {
     var t = getScaledTransform(_ext),
@@ -59,69 +101,50 @@ function DisplayCanvas() {
     }
   };
 
+  // TODO: consider using drawPathShapes(), which draws paths in batches
+  // for faster Canvas rendering. Downside: changes stacking order, which
+  // is bad if circles are graduated.
   _self.drawPoints = function(shapes, style) {
     var t = getScaledTransform(_ext),
         pixRatio = gui.getPixelRatio(),
-        start = getPathStart(style, _ext),
-        end = getPathEnd(style),
+        startPath = getPathStart(_ext),
+        styler = style.styler || null,
         shp, p;
 
     for (var i=0, n=shapes.length; i<n; i++) {
       shp = shapes[i];
-      start(_ctx, i);
+      if (styler) styler(style, i);
+      startPath(_ctx, style);
       if (!shp || style.radius > 0 === false) continue;
       for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
         p = shp[j];
         drawCircle(p[0] * t.mx + t.bx, p[1] * t.my + t.by, style.radius * pixRatio, _ctx);
       }
-      end(_ctx);
+      endPath(_ctx, style);
     }
   };
 
-  _self.drawArcs = function(arcs, flags, style) {
-    var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
-        lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
-    setArcVisibility(flags, arcs);
-    // TODO: don't show light arcs if reference layer is visible
-    if (lightStyle.strokeColor) {
-      drawFlaggedArcs(2, flags, lightStyle, arcs);
-    }
-    drawFlaggedArcs(3, flags, darkStyle, arcs);
-  };
-
-  function setArcVisibility(flags, arcs) {
-    var minPathLen = 0.5 * _ext.getPixelSize(),
-        geoBounds = _ext.getBounds(),
-        geoBBox = geoBounds.toArray(),
-        allIn = geoBounds.contains(arcs.getBounds()),
-        visible;
-    // don't continue dropping paths if user zooms out farther than full extent
-    if (_ext.scale() < 1) minPathLen *= _ext.scale();
-    for (var i=0, n=arcs.size(); i<n; i++) {
-      visible = !arcs.arcIsSmaller(i, minPathLen) && (allIn ||
-          arcs.arcIntersectsBBox(i, geoBBox));
-      // mark visible arcs by setting second flag bit to 1
-      flags[i] = (flags[i] & 1) | (visible ? 2 : 0);
-    }
-  }
-
-  function drawFlaggedArcs(flag, flags, style, arcs) {
-    var start = getPathStart(style, _ext),
-        end = getPathEnd(style),
+  _self.drawArcs = function(arcs, style, filter) {
+    var startPath = getPathStart(_ext),
         t = getScaledTransform(_ext),
         ctx = _ctx,
         n = 25, // render paths in batches of this size (an optimization)
         count = 0;
-    start(ctx);
+    startPath(ctx, style);
     for (i=0, n=arcs.size(); i<n; i++) {
-      if (flags[i] != flag) continue;
+      if (filter && !filter(i)) continue;
       if (++count % n === 0) {
-        end(ctx);
-        start(ctx);
+        endPath(ctx, style);
+        startPath(ctx, style);
       }
-      drawPath(arcs.getArcIter(i), t, ctx);
+      drawPath(arcs.getArcIter(i), t, ctx, 0.6);
     }
-    end(ctx);
+    endPath(ctx, style);
+  };
+
+  function getStyleKey(style) {
+    return (style.strokeWidth > 0 ? style.strokeColor + '~' + style.strokeWidth +
+      '~' : '') + (style.fillColor || '') + (style.opacity < 1 ? '~' + style.opacity : '');
   }
 
   return _self;
@@ -147,10 +170,10 @@ function drawSquare(x, y, size, ctx) {
   }
 }
 
-function drawPath(vec, t, ctx) {
-  var minLen = gui.getPixelRatio() > 1 ? 1 : 0.6,
-      x, y, xp, yp;
+function drawPath(vec, t, ctx, minLen) {
+  var x, y, xp, yp;
   if (!vec.hasNext()) return;
+  minLen = minLen >= 0 ? minLen : 0.4;
   x = xp = vec.x * t.mx + t.bx;
   y = yp = vec.y * t.my + t.by;
   ctx.moveTo(x, y);
@@ -163,19 +186,16 @@ function drawPath(vec, t, ctx) {
       yp = y;
     }
   }
-  if (x != xp || y != yp) {
-    ctx.lineTo(x, y);
-  }
 }
 
 function getShapePencil(arcs, ext) {
   var t = getScaledTransform(ext);
+  var iter = new internal.ShapeIter(arcs);
   return function(shp, ctx) {
-    var iter = new internal.ShapeIter(arcs);
-    if (!shp) return;
-    for (var i=0; i<shp.length; i++) {
+    for (var i=0, n=shp ? shp.length : 0; i<n; i++) {
       iter.init(shp[i]);
-      drawPath(iter, t, ctx);
+      // 0.2 trades visible seams for performance
+      drawPath(iter, t, ctx, 0.2);
     }
   };
 }
@@ -198,17 +218,13 @@ function getDotScale(ext) {
   return Math.pow(getLineScale(ext), 0.6);
 }
 
-function getPathStart(style, ext) {
-  var styler = style.styler || null,
-      pixRatio = gui.getPixelRatio(),
+function getPathStart(ext) {
+  var pixRatio = gui.getPixelRatio(),
       lineScale = getLineScale(ext);
 
-  return function(ctx, i) {
+  return function(ctx, style) {
     var strokeWidth;
     ctx.beginPath();
-    if (styler) {
-      styler(style, i);
-    }
     if (style.opacity >= 0) {
       ctx.globalAlpha = style.opacity;
     }
@@ -229,11 +245,9 @@ function getPathStart(style, ext) {
   };
 }
 
-function getPathEnd(style) {
-  return function(ctx) {
-    if (style.fillColor) ctx.fill();
-    if (style.strokeWidth > 0) ctx.stroke();
-    if (style.opacity >= 0) ctx.globalAlpha = 1;
-    ctx.closePath();
-  };
+function endPath(ctx, style) {
+  if (style.fillColor) ctx.fill();
+  if (style.strokeWidth > 0) ctx.stroke();
+  if (style.opacity >= 0) ctx.globalAlpha = 1;
+  ctx.closePath();
 }

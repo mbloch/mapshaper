@@ -44,8 +44,19 @@ function DisplayLayer(lyr, dataset, ext) {
   this.drawStructure = function(canv, style) {
     var obj = this.getDisplayLayer(ext);
     var arcs = obj.dataset.arcs;
+    var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
+        lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
+    var filter;
+
     if (arcs && _arcFlags) {
-      canv.drawArcs(arcs, _arcFlags, style);
+      if (lightStyle.strokeColor) {
+        filter = getArcFilter(arcs, ext, _arcFlags, 0);
+        canv.drawArcs(arcs, lightStyle, filter);
+      }
+      if (darkStyle.strokeColor) {
+        filter = getArcFilter(arcs, ext, _arcFlags, 1);
+        canv.drawArcs(arcs, darkStyle, filter);
+      }
     }
     if (obj.layer.geometry_type == 'point') {
       canv.drawSquareDots(obj.layer.shapes, style);
@@ -53,6 +64,7 @@ function DisplayLayer(lyr, dataset, ext) {
   };
 
   this.drawShapes = function(canv, style) {
+    // TODO: add filter for out-of-view shapes
     var obj = this.getDisplayLayer(ext);
     var lyr = style.ids ? filterLayer(obj.layer, style.ids) : obj.layer;
     if (lyr.geometry_type == 'point') {
@@ -65,6 +77,27 @@ function DisplayLayer(lyr, dataset, ext) {
       canv.drawPathShapes(lyr.shapes, obj.dataset.arcs, style);
     }
   };
+
+  function getArcFilter(arcs, ext, flags, flag) {
+    var minPathLen = 0.5 * ext.getPixelSize(),
+        geoBounds = ext.getBounds(),
+        geoBBox = geoBounds.toArray(),
+        allIn = geoBounds.contains(arcs.getBounds()),
+        visible;
+    // don't continue dropping paths if user zooms out farther than full extent
+    if (ext.scale() < 1) minPathLen *= ext.scale();
+    return function(i) {
+      var visible = true;
+      if (flags[i] != flag) {
+        visible = false;
+      } else if (arcs.arcIsSmaller(i, minPathLen)) {
+        visible = false;
+      } else if (!allIn && !arcs.arcIntersectsBBox(i, geoBBox)) {
+        visible = false;
+      }
+      return visible;
+    };
+  }
 
   function filterLayer(lyr, ids) {
     if (lyr.shapes) {

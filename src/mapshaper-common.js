@@ -7,6 +7,7 @@ var internal = {
   QUIET: false,
   TRACING: false,
   VERBOSE: false,
+  T: T,
   defs: {}
 };
 
