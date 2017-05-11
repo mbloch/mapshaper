@@ -2332,7 +2332,8 @@ function RepairControl(model, map) {
       _dataset, _currXX;
 
   model.on('update', function(e) {
-    if (e.flags.simplify || e.flags.proj || e.flags.arc_count || e.flags.affine) {
+    if (e.flags.simplify || e.flags.proj || e.flags.arc_count ||e.flags.affine ||
+      e.flags.points) {
       // these changes require nulling out any cached intersection data and recalculating
       if (_dataset) {
         _dataset.info.intersections = null;
@@ -2706,7 +2707,7 @@ function DisplayCanvas() {
   _self.drawPathShapes = function(shapes, arcs, style) {
     var styleIndex = {};
     var batchSize = 1500;
-    var startPath = getPathStart(_ext);
+    var startPath = getPathStart(_ext, getLineScale(_ext));
     var drawPath = getShapePencil(arcs, _ext);
     var key, item;
     var styler = style.styler || null;
@@ -2789,7 +2790,7 @@ function DisplayCanvas() {
   };
 
   _self.drawArcs = function(arcs, style, filter) {
-    var startPath = getPathStart(_ext),
+    var startPath = getPathStart(_ext, getLineScale(_ext)),
         t = getScaledTransform(_ext),
         ctx = _ctx,
         n = 25, // render paths in batches of this size (an optimization)
@@ -2882,10 +2883,9 @@ function getDotScale(ext) {
   return Math.pow(getLineScale(ext), 0.6);
 }
 
-function getPathStart(ext) {
-  var pixRatio = gui.getPixelRatio(),
-      lineScale = getLineScale(ext);
-
+function getPathStart(ext, lineScale) {
+  var pixRatio = gui.getPixelRatio();
+  if (!lineScale) lineScale = 1;
   return function(ctx, style) {
     var strokeWidth;
     ctx.beginPath();
@@ -3068,7 +3068,7 @@ gui.getDisplayLayerForTable = function(table) {
 
 function DisplayLayer(lyr, dataset, ext) {
   var _displayBounds;
-  var _arcFlags;
+  var _arcCounts;
 
   this.getLayer = function() {return lyr;};
 
@@ -3113,14 +3113,13 @@ function DisplayLayer(lyr, dataset, ext) {
     var darkStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[1]},
         lightStyle = {strokeWidth: style.strokeWidth, strokeColor: style.strokeColors[0]};
     var filter;
-
-    if (arcs && _arcFlags) {
+    if (arcs && _arcCounts) {
       if (lightStyle.strokeColor) {
-        filter = getArcFilter(arcs, ext, _arcFlags, 0);
+        filter = getArcFilter(arcs, ext, false, _arcCounts);
         canv.drawArcs(arcs, lightStyle, filter);
       }
-      if (darkStyle.strokeColor) {
-        filter = getArcFilter(arcs, ext, _arcFlags, 1);
+      if (darkStyle.strokeColor && obj.layer.geometry_type != 'point') {
+        filter = getArcFilter(arcs, ext, true, _arcCounts);
         canv.drawArcs(arcs, darkStyle, filter);
       }
     }
@@ -3144,7 +3143,7 @@ function DisplayLayer(lyr, dataset, ext) {
     }
   };
 
-  function getArcFilter(arcs, ext, flags, flag) {
+  function getArcFilter(arcs, ext, usedFlag, arcCounts) {
     var minPathLen = 0.5 * ext.getPixelSize(),
         geoBounds = ext.getBounds(),
         geoBBox = geoBounds.toArray(),
@@ -3154,7 +3153,7 @@ function DisplayLayer(lyr, dataset, ext) {
     if (ext.scale() < 1) minPathLen *= ext.scale();
     return function(i) {
       var visible = true;
-      if (flags[i] != flag) {
+      if (usedFlag != arcCounts[i] > 0) { // show either used or unused arcs
         visible = false;
       } else if (arcs.arcIsSmaller(i, minPathLen)) {
         visible = false;
@@ -3175,15 +3174,11 @@ function DisplayLayer(lyr, dataset, ext) {
     return lyr;
   }
 
-  function initArcFlags(self) {
+  function initArcCounts(self) {
     var o = self.getDisplayLayer();
-    if (o.dataset.arcs && internal.layerHasPaths(o.layer)) {
-      _arcFlags = new Uint8Array(o.dataset.arcs.size());
-      // Arcs belonging to at least one path are flagged 1, others 0
-      internal.countArcsInShapes(o.layer.shapes, _arcFlags);
-      for (var i=0, n=_arcFlags.length; i<n; i++) {
-        _arcFlags[i] = _arcFlags[i] === 0 ? 0 : 1;
-      }
+    _arcCounts = o.dataset.arcs ? new Uint8Array(o.dataset.arcs.size()) : null;
+    if (internal.layerHasPaths(o.layer)) {
+      internal.countArcsInShapes(o.layer.shapes, _arcCounts);
     }
   }
 
@@ -3206,7 +3201,7 @@ function DisplayLayer(lyr, dataset, ext) {
     }
 
     _displayBounds = getDisplayBounds(display.layer || lyr, display.arcs || dataset.arcs);
-    initArcFlags(self);
+    initArcCounts(self);
   }
 
   init(this);
@@ -4287,11 +4282,11 @@ function MshpMap(model) {
     if (lyr) {
       _annotationLyr = new DisplayLayer(lyr, dataset, _ext);
       _annotationStyle = MapStyle.getHighlightStyle(lyr);
-      drawLayer(_annotationLyr, _annotationCanv, _annotationStyle);
     } else {
       _annotationStyle = null;
       _annotationLyr = null;
     }
+    drawLayer(_annotationLyr, _annotationCanv, _annotationStyle); // also hides
   };
 
   // lightweight way to update simplification of display lines
