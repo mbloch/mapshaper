@@ -8,7 +8,8 @@ function RepairControl(model, map) {
       _dataset, _currXX;
 
   model.on('update', function(e) {
-    if (e.flags.simplify || e.flags.proj || e.flags.arc_count || e.flags.affine) {
+    if (e.flags.simplify || e.flags.proj || e.flags.arc_count ||e.flags.affine ||
+      e.flags.points) {
       // these changes require nulling out any cached intersection data and recalculating
       if (_dataset) {
         _dataset.info.intersections = null;

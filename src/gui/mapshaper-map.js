@@ -114,11 +114,11 @@ function MshpMap(model) {
     if (lyr) {
       _annotationLyr = new DisplayLayer(lyr, dataset, _ext);
       _annotationStyle = MapStyle.getHighlightStyle(lyr);
-      drawLayer(_annotationLyr, _annotationCanv, _annotationStyle);
     } else {
       _annotationStyle = null;
       _annotationLyr = null;
     }
+    drawLayer(_annotationLyr, _annotationCanv, _annotationStyle); // also hides
   };
 
   // lightweight way to update simplification of display lines
