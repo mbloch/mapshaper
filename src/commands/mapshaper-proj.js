@@ -6,8 +6,12 @@ mapshaper-shape-utils
 */
 
 api.proj = function(dataset, opts) {
-  var useCopy = !!api.gui; // modify copy when running in web UI
-  var target, src, dest, defn;
+  // modify copy of coordinate data when running in web UI, so original shapes
+  // are preserved if an error occurs
+  var modifyCopy = !!api.gui;
+  var originals = [],
+      target = {},
+      src, dest, defn;
 
   if (opts && opts.from) {
     src = internal.getProjection(opts.from, opts);
@@ -26,22 +30,18 @@ api.proj = function(dataset, opts) {
     stop("[proj] Unknown projection:", opts.projection);
   }
 
-  if (useCopy) {
-    // make deep copy of objects that will get modified
-    target = {};
-    if (dataset.arcs) {
-      target.arcs = dataset.arcs.getCopy();
-    }
-    target.layers = dataset.layers.map(function(lyr) {
-      if (internal.layerHasPoints(lyr)) {
-        lyr = utils.extend({}, lyr);
-        lyr.shapes = internal.cloneShapes(lyr.shapes);
-      }
-      return lyr;
-    });
-  } else {
-    target = dataset; // project in-place
+  // make deep copy of objects that will get modified
+  if (dataset.arcs) {
+    target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
   }
+  target.layers = dataset.layers.filter(internal.layerHasPoints).map(function(lyr) {
+    if (modifyCopy) {
+      originals.push(lyr);
+      lyr = utils.extend({}, lyr);
+      lyr.shapes = internal.cloneShapes(lyr.shapes);
+    }
+    return lyr;
+  });
 
   try {
     internal.projectDataset(target, src, dest, opts);
@@ -50,15 +50,15 @@ api.proj = function(dataset, opts) {
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
   }
 
-  if (useCopy) {
-    // replace originals with modified copies
-    dataset.arcs = target.arcs;
-    dataset.layers = target.layers;
-  }
-
   if (dataset.info) {
     dataset.info.crs = dest;
   }
+
+  dataset.arcs = target.arcs;
+  originals.forEach(function(lyr, i) {
+    // replace original layers with modified layers
+    utils.extend(lyr, target.layers[i]);
+  });
 };
 
 
