@@ -175,7 +175,7 @@ internal.wrapOverlayStyle = function(style, hoverStyle) {
       obj.radius += 1;
       // obj.fillColor = dotColor; // comment out to only highlight stroke
       obj.strokeColor = dotColor;
-      obj.strokeWidth = Math.max(obj.strokeWidth + 1, 2);
+      obj.strokeWidth = Math.max(obj.strokeWidth + 0.7, 1.5);
       obj.opacity = 1;
     }
   };
