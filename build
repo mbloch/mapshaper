@@ -27,7 +27,7 @@ if (buildAll) {
     .require(requiredModules)
     .bundle(function(err, buf) {
       if (err) throw err;
-      write('./www/node_modules.js', buf);
+      write('./www/modules.js', buf);
     });
 }
 
