@@ -125,7 +125,7 @@ function DisplayCanvas() {
   };
 
   _self.drawArcs = function(arcs, style, filter) {
-    var startPath = getPathStart(_ext, getLineScale(ext)),
+    var startPath = getPathStart(_ext, getLineScale(_ext)),
         t = getScaledTransform(_ext),
         ctx = _ctx,
         n = 25, // render paths in batches of this size (an optimization)
