@@ -4115,7 +4115,7 @@ var MapStyle = (function() {
 
     if (internal.layerHasSvgDisplayStyle(lyr)) {
       if (type == 'point') {
-        overlayStyle = internal.wrapHoverStyle(internal.getSvgDisplayStyle(lyr), overlayStyle);
+        overlayStyle = internal.wrapOverlayStyle(internal.getSvgDisplayStyle(lyr), overlayStyle);
       }
       overlayStyle.type = 'styled';
     }
@@ -4126,18 +4126,21 @@ var MapStyle = (function() {
 }());
 
 // Modify style to use scaled circle instead of dot symbol
-internal.wrapHoverStyle = function(style, hoverStyle) {
+internal.wrapOverlayStyle = function(style, hoverStyle) {
   var styler = function(obj, i) {
     var dotColor;
-    style.styler(obj, i);
+    var id = obj.ids ? obj.ids[i] : -1;
+    obj.strokeWidth = 0; // kludge to support setting minimum stroke width
+    style.styler(obj, id);
     if (hoverStyle.styler) {
       hoverStyle.styler(obj, i);
     }
     dotColor = obj.dotColor;
     if (obj.radius && dotColor) {
-      obj.radius += 1.5;
-      obj.fillColor = dotColor;
+      obj.radius += 1;
+      // obj.fillColor = dotColor; // comment out to only highlight stroke
       obj.strokeColor = dotColor;
+      obj.strokeWidth = Math.max(obj.strokeWidth + 0.7, 1.5);
       obj.opacity = 1;
     }
   };
@@ -4149,11 +4152,12 @@ internal.getSvgDisplayStyle = function(lyr) {
       fields = internal.getSvgStyleFields(lyr),
       index = internal.svgStyles;
   var styler = function(style, i) {
-    var f, key, val;
+    var f, key, val, rec;
     for (var j=0; j<fields.length; j++) {
       f = fields[j];
       key = index[f];
-      val = records[i][f];
+      rec = records[i];
+      val = rec && rec[f];
       if (val == 'none') {
         val = 'transparent'; // canvas equivalent
       }
