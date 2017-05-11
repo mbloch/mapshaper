@@ -42,7 +42,7 @@ function DisplayCanvas() {
   _self.drawPathShapes = function(shapes, arcs, style) {
     var styleIndex = {};
     var batchSize = 1500;
-    var startPath = getPathStart(_ext);
+    var startPath = getPathStart(_ext, getLineScale(_ext));
     var drawPath = getShapePencil(arcs, _ext);
     var key, item;
     var styler = style.styler || null;
@@ -125,7 +125,7 @@ function DisplayCanvas() {
   };
 
   _self.drawArcs = function(arcs, style, filter) {
-    var startPath = getPathStart(_ext),
+    var startPath = getPathStart(_ext, getLineScale(ext)),
         t = getScaledTransform(_ext),
         ctx = _ctx,
         n = 25, // render paths in batches of this size (an optimization)
@@ -218,10 +218,9 @@ function getDotScale(ext) {
   return Math.pow(getLineScale(ext), 0.6);
 }
 
-function getPathStart(ext) {
-  var pixRatio = gui.getPixelRatio(),
-      lineScale = getLineScale(ext);
-
+function getPathStart(ext, lineScale) {
+  var pixRatio = gui.getPixelRatio();
+  if (!lineScale) lineScale = 1;
   return function(ctx, style) {
     var strokeWidth;
     ctx.beginPath();
