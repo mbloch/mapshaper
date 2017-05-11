@@ -164,13 +164,14 @@ var MapStyle = (function() {
 internal.wrapHoverStyle = function(style, hoverStyle) {
   var styler = function(obj, i) {
     var dotColor;
-    style.styler(obj, i);
+    var id = obj.ids ? obj.ids[i] : -1;
+    style.styler(obj, id);
     if (hoverStyle.styler) {
       hoverStyle.styler(obj, i);
     }
     dotColor = obj.dotColor;
     if (obj.radius && dotColor) {
-      obj.radius += 1.5;
+      obj.radius += 1;
       obj.fillColor = dotColor;
       obj.strokeColor = dotColor;
       obj.opacity = 1;
@@ -184,11 +185,13 @@ internal.getSvgDisplayStyle = function(lyr) {
       fields = internal.getSvgStyleFields(lyr),
       index = internal.svgStyles;
   var styler = function(style, i) {
-    var f, key, val;
+    var f, key, val, rec;
     for (var j=0; j<fields.length; j++) {
       f = fields[j];
       key = index[f];
-      val = records[i][f];
+      rec = records[i];
+      val = rec && rec[f] || 'none';
+      if (!rec) console.log("Missing:", i, 'n:', records.length);
       if (val == 'none') {
         val = 'transparent'; // canvas equivalent
       }
