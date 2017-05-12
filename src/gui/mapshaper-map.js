@@ -141,8 +141,8 @@ function MshpMap(model) {
 
   function initActiveLayer(o) {
     var lyr = new DisplayLayer(o.layer, o.dataset, _ext);
-    _inspector.updateLayer(lyr);
     _activeStyle = MapStyle.getActiveStyle(lyr.getDisplayLayer().layer);
+    _inspector.updateLayer(lyr, _activeStyle);
     return lyr;
   }
 

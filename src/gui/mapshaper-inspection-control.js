@@ -12,7 +12,7 @@ function InspectionControl(model, hit) {
   var _self = new EventDispatcher();
   var _shapes, _lyr;
 
-  _self.updateLayer = function(o) {
+  _self.updateLayer = function(o, style) {
     var shapes = o.getDisplayLayer().layer.shapes;
     if (_inspecting) {
       // kludge: check if shapes have changed
@@ -24,7 +24,7 @@ function InspectionControl(model, hit) {
         inspect(-1, false);
       }
     }
-    hit.setLayer(o);
+    hit.setLayer(o, style);
     _shapes = shapes;
     _lyr = o;
   };
