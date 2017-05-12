@@ -13044,8 +13044,12 @@ internal.getSvgStyleFields = function(lyr) {
   return internal.getStyleFields(fields, internal.svgStyles, internal.invalidSvgTypes[lyr.geometry_type]);
 };
 
+// check if layer should be displayed with styles
 internal.layerHasSvgDisplayStyle = function(lyr) {
   var fields = internal.getSvgStyleFields(lyr);
+  if (lyr.geometry_type == 'point') {
+    return fields.indexOf('r') > -1; // require 'r' field for point symbols
+  }
   return utils.difference(fields, ['opacity', 'class']).length > 0;
 };
 

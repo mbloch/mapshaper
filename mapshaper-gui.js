@@ -3503,10 +3503,14 @@ function HitControl(ext, mouse) {
     target = lyr ? lyr.getDisplayLayer() : null;
   });
 
-  self.setLayer = function(o) {
+  self.setLayer = function(o, style) {
     lyr = o;
     target = o.getDisplayLayer();
-    test = tests[target.layer.geometry_type];
+    if (target.layer.geometry_type == 'point' && style.type == 'styled') {
+      test = getGraduatedCircleTest(getRadiusFunction(style));
+    } else {
+      test = tests[target.layer.geometry_type];
+    }
     coords.hide();
   };
 
@@ -3550,10 +3554,14 @@ function HitControl(ext, mouse) {
 
   // Convert pixel distance to distance in coordinate units.
   function getHitBuffer(pix) {
-    var dist = pix / ext.getTransform().mx,
-        scale = ext.scale();
-    if (scale < 1) dist *= scale; // reduce hit threshold when zoomed out
-    return dist;
+    return pix / ext.getTransform().mx;
+  }
+
+  // reduce hit threshold when zoomed out
+  function getHitBuffer2(pix) {
+    var scale = ext.scale();
+    if (scale > 1) scale = 1;
+    return getHitBuffer(pix) * scale;
   }
 
   function getCoordPrecision(bounds) {
@@ -3563,7 +3571,7 @@ function HitControl(ext, mouse) {
   }
 
   function polygonTest(x, y) {
-    var dist = getHitBuffer(5),
+    var dist = getHitBuffer2(5),
         cands = findHitCandidates(x, y, dist),
         hits = [],
         cand, hitId;
@@ -3581,7 +3589,7 @@ function HitControl(ext, mouse) {
   }
 
   function polylineTest(x, y) {
-    var dist = getHitBuffer(15),
+    var dist = getHitBuffer2(15),
         cands = findHitCandidates(x, y, dist);
     return findNearestCandidates(x, y, dist, cands, target.dataset.arcs);
   }
@@ -3603,7 +3611,7 @@ function HitControl(ext, mouse) {
   }
 
   function pointTest(x, y) {
-    var dist = getHitBuffer(25),
+    var dist = getHitBuffer2(25),
         limitSq = dist * dist,
         hits = [];
     internal.forEachPoint(target.layer.shapes, function(p, id) {
@@ -3616,6 +3624,61 @@ function HitControl(ext, mouse) {
       }
     });
     return hits;
+  }
+
+  function getRadiusFunction(style) {
+    var o = {};
+    if (style.styler) {
+      return function(i) {
+        style.styler(o, i);
+        return o.radius || 0;
+      };
+    }
+    return function() {return style.radius || 0;};
+  }
+
+  function getGraduatedCircleTest(radius) {
+    return function(x, y) {
+      var hits = [],
+          margin = getHitBuffer(12),
+          limit = getHitBuffer(50), // short-circuit hit test beyond this threshold
+          directHit = false,
+          hitRadius = 0,
+          hitDist;
+      internal.forEachPoint(target.layer.shapes, function(p, id) {
+        var distSq = geom.distanceSq(x, y, p[0], p[1]);
+        var isHit = false;
+        var isOver, isNear, r, d, rpix;
+        if (distSq > limit * limit) return;
+        rpix = radius(id);
+        r = getHitBuffer(rpix + 1); // increase effective radius to make small bubbles easier to hit in clusters
+        d = Math.sqrt(distSq) - r; // pointer distance from edge of circle (negative = inside)
+        isOver = d < 0;
+        isNear = d < margin;
+        if (!isNear || rpix > 0 === false) {
+          isHit = false;
+        } else if (hits.length === 0) {
+          isHit = isNear;
+        } else if (!directHit && isOver) {
+          isHit = true;
+        } else if (directHit && isOver) {
+          isHit = r == hitRadius ? d <= hitDist : r < hitRadius; // smallest bubble wins if multiple direct hits
+        } else if (!directHit && !isOver) {
+          // closest to bubble edge wins
+          isHit = hitDist == d ? r <= hitRadius : d < hitDist; // closest bubble wins if multiple indirect hits
+        }
+        if (isHit) {
+          if (hits.length > 0 && (r != hitRadius || d != hitDist)) {
+            hits = [];
+          }
+          hitRadius = r;
+          hitDist = d;
+          directHit = isOver;
+          hits.push(id);
+        }
+      });
+      return hits;
+    };
   }
 
   function getProperties(id) {
@@ -3836,7 +3899,7 @@ function InspectionControl(model, hit) {
   var _self = new EventDispatcher();
   var _shapes, _lyr;
 
-  _self.updateLayer = function(o) {
+  _self.updateLayer = function(o, style) {
     var shapes = o.getDisplayLayer().layer.shapes;
     if (_inspecting) {
       // kludge: check if shapes have changed
@@ -3848,7 +3911,7 @@ function InspectionControl(model, hit) {
         inspect(-1, false);
       }
     }
-    hit.setLayer(o);
+    hit.setLayer(o, style);
     _shapes = shapes;
     _lyr = o;
   };
@@ -4132,10 +4195,11 @@ internal.wrapOverlayStyle = function(style, hoverStyle) {
     }
     dotColor = obj.dotColor;
     if (obj.radius && dotColor) {
-      obj.radius += 1;
+      obj.radius += 0.4;
+      delete obj.fillColor; // only show outline
       // obj.fillColor = dotColor; // comment out to only highlight stroke
       obj.strokeColor = dotColor;
-      obj.strokeWidth = Math.max(obj.strokeWidth + 0.7, 1.5);
+      obj.strokeWidth = Math.max(obj.strokeWidth + 0.8, 1.5);
       obj.opacity = 1;
     }
   };
@@ -4309,8 +4373,8 @@ function MshpMap(model) {
 
   function initActiveLayer(o) {
     var lyr = new DisplayLayer(o.layer, o.dataset, _ext);
-    _inspector.updateLayer(lyr);
     _activeStyle = MapStyle.getActiveStyle(lyr.getDisplayLayer().layer);
+    _inspector.updateLayer(lyr, _activeStyle);
     return lyr;
   }
 
