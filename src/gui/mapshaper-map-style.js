@@ -172,10 +172,11 @@ internal.wrapOverlayStyle = function(style, hoverStyle) {
     }
     dotColor = obj.dotColor;
     if (obj.radius && dotColor) {
-      obj.radius += 1;
+      obj.radius += 0.4;
+      delete obj.fillColor; // only show outline
       // obj.fillColor = dotColor; // comment out to only highlight stroke
       obj.strokeColor = dotColor;
-      obj.strokeWidth = Math.max(obj.strokeWidth + 0.7, 1.5);
+      obj.strokeWidth = Math.max(obj.strokeWidth + 0.8, 1.5);
       obj.opacity = 1;
     }
   };
