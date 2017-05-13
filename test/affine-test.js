@@ -57,7 +57,7 @@ describe('mapshaper-affine.js', function () {
         type: 'MultiPoint',
         coordinates: [[2, 2], [4, 4]]
       };
-      api.applyCommands('-i point.json -scale=2 -affine scale=2 -o',
+      api.applyCommands('-i point.json -affine scale=2 -o',
         {'point.json': geojson}, function(err, output) {
           var geojson = JSON.parse(output['point.json']);
           assert.deepEqual(geojson.geometries[0].coordinates, [[1, 1], [5, 5]]);

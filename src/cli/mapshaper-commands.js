@@ -53,7 +53,7 @@ api.applyCommands = function(commands, input, done) {
         memo[o.filename] = o.content;
         return memo;
       }, {});
-    done(err, data);
+    done(err, err ? null : data);
   });
 };
 

@@ -3,6 +3,8 @@ var api = require('../'),
   fs = require('fs'),
   format = api.utils.format;
 
+var states_shp = "test/test_data/two_states.shp";
+
 
 function runFile(cmd, done) {
   var args = require('shell-quote').parse(cmd);
@@ -25,51 +27,49 @@ function runCmd(cmd, input, done) {
   });
 }
 
-describe('User-reported bug: wildcard expansion in Windows', function () {
-  it('files are processed, no error thrown', function (done) {
-    // this duplicates the error (Windows shell doesn't expand wildcards,
-    // but bash does)
-    var cmd = '-i test/test_data/issues/166/*.dbf -o format=csv';
-    api.applyCommands(cmd, {}, function(err, output) {
-      assert(!err);
-      assert('a_utm.csv' in output);
-      assert('b_utm.csv' in output);
-      done();
-    });
-  })
-})
-
-describe('stdin/stdout tests', function() {
-  // Travis fails on these tests -- removing for now.
-  return;
-  it ("pass-through GeoJSON", function(done) {
-    var cmd = "- -o - -verbose"; // -verbose to check that messages aren't sent to stdout
-    var geojson = {"type":"GeometryCollection","geometries":[{"type":"Point","coordinates":[0,0]}]};
-    runCmd(cmd, JSON.stringify(geojson), function(err, stdout, stderr) {
-      assert.deepEqual(JSON.parse(stdout), geojson);
-      done();
-    });
-  })
-
-  it ("pass-through TopoJSON", function(done) {
-    var cmd = "/dev/stdin -info -o /dev/stdout -verbose"; // -info and -verbose to check that messages aren't sent to stdout
-    var json = {type: "Topology",
-      arcs: [],
-      objects: { point: {
-          "type":"GeometryCollection",
-          "geometries":[{"type":"Point","coordinates":[0,0]}]}}
-    };
-
-    runCmd(cmd, JSON.stringify(json), function(err, stdout, stderr) {
-      assert.deepEqual(JSON.parse(stdout), json);
-      done();
-    });
-  })
-})
-
 describe('mapshaper-commands.js', function () {
 
-  var states_shp = "test/test_data/two_states.shp";
+  describe('User-reported bug: wildcard expansion in Windows', function () {
+    it('files are processed, no error thrown', function (done) {
+      // this duplicates the error (Windows shell doesn't expand wildcards,
+      // but bash does)
+      var cmd = '-i test/test_data/issues/166/*.dbf -o format=csv';
+      api.applyCommands(cmd, {}, function(err, output) {
+        assert(!err);
+        assert('a_utm.csv' in output);
+        assert('b_utm.csv' in output);
+        done();
+      });
+    })
+  })
+
+  describe('stdin/stdout tests', function() {
+    // Travis fails on these tests -- removing for now.
+    return;
+    it ("pass-through GeoJSON", function(done) {
+      var cmd = "- -o - -verbose"; // -verbose to check that messages aren't sent to stdout
+      var geojson = {"type":"GeometryCollection","geometries":[{"type":"Point","coordinates":[0,0]}]};
+      runCmd(cmd, JSON.stringify(geojson), function(err, stdout, stderr) {
+        assert.deepEqual(JSON.parse(stdout), geojson);
+        done();
+      });
+    })
+
+    it ("pass-through TopoJSON", function(done) {
+      var cmd = "/dev/stdin -info -o /dev/stdout -verbose"; // -info and -verbose to check that messages aren't sent to stdout
+      var json = {type: "Topology",
+        arcs: [],
+        objects: { point: {
+            "type":"GeometryCollection",
+            "geometries":[{"type":"Point","coordinates":[0,0]}]}}
+      };
+
+      runCmd(cmd, JSON.stringify(json), function(err, stdout, stderr) {
+        assert.deepEqual(JSON.parse(stdout), json);
+        done();
+      });
+    })
+  })
 
   describe('layer naming tests', function() {
 
@@ -139,7 +139,7 @@ describe('mapshaper-commands.js', function () {
     })
 
 
-    it ('multiple files', function(done) {
+    it ('output from sequentially processed files is combined', function(done) {
       var input = {
         'data.csv': 'id\n0\n1',
         'data2.csv': 'id\n2\n3'
@@ -150,6 +150,18 @@ describe('mapshaper-commands.js', function () {
         done();
       })
     })
+
+    it('when two files are processed in sequence and second file triggers error, no output is generated', function(done) {
+      var input = {
+        'data.csv': 'id\n0\n1',
+        'data2.json': '{'
+      };
+      api.applyCommands('-i data.csv data2.json -o', input, function(err, output) {
+        assert.equal(err.name, 'APIError');
+        assert.equal(output, null);
+        done();
+      })
+    });
 
     it ('merge multiple files', function(done) {
       var input = {

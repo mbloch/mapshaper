@@ -770,7 +770,7 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("colorizer")
-    .describe("Define a function to convert data values to color classes")
+    .describe("define a function to convert data values to color classes")
     .flag("no_arg")
     .option("colors", {
       describe: "comma-separated list of CSS colors",
