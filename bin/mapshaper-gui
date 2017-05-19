@@ -66,7 +66,7 @@ function startServer(port) {
     } else if (uri.indexOf(dataPath) === 0) {
       // serve a file from a path relative to this script
       // assumed to be a data file from the cmd line (!)
-      serveFile(uri.replace(dataPath, ''), response);
+      serveFile(decodeURI(uri).replace(dataPath, ''), response);
     } else {
       // serve a file from the web root
       if (uri == '/') {
