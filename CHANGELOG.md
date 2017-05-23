@@ -1,3 +1,7 @@
+v0.4.19
+* Improved display of styled layers.
+* Bug fixes
+
 v0.4.18
 * Stacking order of layers in SVG output follows order of `target=` list.
 * [-colorizer] `colors=` can take a space- or a comma-delimited list.
