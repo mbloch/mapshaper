@@ -19,18 +19,7 @@ function RepairControl(model, map) {
       delayedUpdate();
     } else if (e.flags.select) {
       _self.hide();
-      if (!e.flags.import) {
-        // Don't recalculate if a dataset was just imported -- another layer may be
-        // selected right away.
-        reset();
-        delayedUpdate();
-      }
-    }
-  });
-
-  gui.on('mode', function(e) {
-    if (e.prev == 'import') {
-      // update if import just finished and a new dataset is being edited
+      reset();
       delayedUpdate();
     }
   });
