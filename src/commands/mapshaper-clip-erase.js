@@ -167,7 +167,7 @@ internal.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, clip
       arcs: targetDataset.arcs,
       layers: targetDataset.layers
     };
-    internal.replaceLayers(tmp, tmp.layers, outputLayers);
+    internal.replaceLayers(tmp, targetLayers, outputLayers);
     internal.dissolveArcs(tmp);
     targetDataset.arcs = tmp.arcs;
   }

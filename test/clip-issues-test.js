@@ -6,6 +6,38 @@ describe('mapshaper-clip-erase.js', function () {
 
   describe('Misc. clipping issues', function () {
 
+    describe('Issue: arcs of non-clipped layers in the clipped dataset should not be deleted', function() {
+      it('test1', function(done) {
+        var boxes = {
+          type: 'Topology',
+          arcs: [
+            [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]],
+            [[2, 0], [2, 1], [3, 1], [3, 0], [2, 0]]],
+          objects: {
+            a: {
+              type: 'Polygon',
+              arcs: [[0]],
+              properties: {name: 'a'}
+            },
+            b: {
+              type: 'Polygon',
+              arcs: [[1]],
+              properties: {name: 'b'}
+            }
+          }
+        };
+
+        api.applyCommands('-i data -clip target=a bbox=-1,-1,1.5,1.5 -o format=geojson target=*', {data: boxes}, function(err, output) {
+          var a = JSON.parse(output['a.json']);
+          var b = JSON.parse(output['b.json']);
+          assert.deepEqual(a.features[0].geometry.coordinates, [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]])
+          assert.deepEqual(b.features[0].geometry.coordinates, [[[2, 0], [2, 1], [3, 1], [3, 0], [2, 0]]])
+          done();
+
+        });
+      });
+    })
+
     describe('Issue: bbox clipping can fail along almost-parallel segments', function () {
 
       it('test 1', function(done) {
