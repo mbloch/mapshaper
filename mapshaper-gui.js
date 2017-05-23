@@ -1802,11 +1802,13 @@ function FileChooser(el, cb) {
 }
 
 function ImportControl(model, opts) {
-  new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
-  new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
   var importCount = 0;
   var queuedFiles = [];
   var manifestFiles = opts.files || [];
+  var importDataset;
+
+  new SimpleButton('#import-buttons .submit-btn').on('click', submitFiles);
+  new SimpleButton('#import-buttons .cancel-btn').on('click', gui.clearMode);
   gui.addMode('import', turnOn, turnOff);
   new DropControl(receiveFiles);
   new FileChooser('#file-selection-btn', receiveFiles);
@@ -1844,6 +1846,11 @@ function ImportControl(model, opts) {
   }
 
   function turnOff() {
+    if (importDataset) {
+      // display first layer of most recently imported dataset
+      model.selectLayer(importDataset.layers[0], importDataset);
+      importDataset = null;
+    }
     gui.clearProgressMessage();
     clearFiles();
     close();
@@ -2023,7 +2030,8 @@ function ImportControl(model, opts) {
       try {
         dataset = internal.importFileContent(content, path, importOpts);
         dataset.info.no_repair = importOpts.no_repair;
-        model.updated({select: true, import: true}, dataset.layers[0], dataset);
+        model.addDataset(dataset);
+        importDataset = dataset;
         importCount++;
         readNext();
      } catch(e) {
@@ -2343,18 +2351,7 @@ function RepairControl(model, map) {
       delayedUpdate();
     } else if (e.flags.select) {
       _self.hide();
-      if (!e.flags.import) {
-        // Don't recalculate if a dataset was just imported -- another layer may be
-        // selected right away.
-        reset();
-        delayedUpdate();
-      }
-    }
-  });
-
-  gui.on('mode', function(e) {
-    if (e.prev == 'import') {
-      // update if import just finished and a new dataset is being edited
+      reset();
       delayedUpdate();
     }
   });

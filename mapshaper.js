@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.18';
+var VERSION = '0.4.19';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -9075,7 +9075,7 @@ internal.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, clip
       arcs: targetDataset.arcs,
       layers: targetDataset.layers
     };
-    internal.replaceLayers(tmp, tmp.layers, outputLayers);
+    internal.replaceLayers(tmp, targetLayers, outputLayers);
     internal.dissolveArcs(tmp);
     targetDataset.arcs = tmp.arcs;
   }
@@ -15113,8 +15113,9 @@ internal.joinTables = function(dest, src, join, opts) {
       joinCounts = new Uint32Array(srcRecords.length),
       matchCount = 0,
       collisionCount = 0,
+      skipCount = 0,
       retn = {},
-      srcRec, srcId, destRec, joinIds, joins, count, filter, calc;
+      srcRec, srcId, destRec, joinIds, joins, count, filter, calc, i, j, n, m;
 
   if (opts.where) {
     filter = internal.getJoinFilter(src, opts.where);
@@ -15125,23 +15126,24 @@ internal.joinTables = function(dest, src, join, opts) {
   }
 
   // join source records to target records
-  for (var i=0, n=destRecords.length; i<n; i++) {
-    count = 0;
+  for (i=0, n=destRecords.length; i<n; i++) {
     destRec = destRecords[i];
     joins = join(i);
     if (joins && filter) {
+      skipCount += joins.length;
       joins = filter(joins);
+      skipCount -= joins.length;
     }
-    for (var j=0, m=joins ? joins.length : 0; j<m; j++) {
+    for (j=0, count=0, m=joins ? joins.length : 0; j<m; j++) {
       srcId = joins[j];
       srcRec = srcRecords[srcId];
-      if (copyFields.length > 0) {
-        if (count === 0) {
+      if (count === 0) {
+        if (copyFields.length > 0) {
           // only copying the first match
           internal.joinByCopy(destRec, srcRec, copyFields);
-        } else {
-          collisionCount++;
         }
+      } else if (count == 1) {
+        collisionCount++; // count target records with multiple joins
       }
       if (sumFields.length > 0) {
         internal.joinBySum(destRec, srcRec, sumFields);
@@ -15168,7 +15170,7 @@ internal.joinTables = function(dest, src, join, opts) {
   }
 
   internal.printJoinMessage(matchCount, destRecords.length,
-      internal.countJoins(joinCounts), srcRecords.length, collisionCount);
+      internal.countJoins(joinCounts), srcRecords.length, collisionCount, skipCount);
 
   if (opts.unjoined) {
     retn.unjoined = {
@@ -15233,19 +15235,21 @@ internal.joinBySum = function(dest, src, fields) {
   }
 };
 
-internal.printJoinMessage = function(matches, n, joins, m, collisions) {
+internal.printJoinMessage = function(matches, n, joins, m, collisions, skipped) {
   // TODO: add tip for generating layer containing unmatched records, when
   // this option is implemented.
   message(utils.format("[join] Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
   if (matches < n) {
     message(utils.format('[join] %d/%d target records received no data', n-matches, n));
   }
+  if (collisions > 0) {
+    message(utils.format('[join] %d/%d target records were matched by multiple source records', collisions, n));
+  }
   if (joins < m) {
     message(utils.format("[join] %d/%d source records could not be joined", m-joins, m));
   }
-  if (collisions > 0) {
-    message(utils.format("[join] %'d collision%s occured; data was copied from the first matching source record",
-      collisions, utils.pluralSuffix(collisions)));
+  if (skipped > 0) {
+    message(utils.format("[join] %d/%d source records were skipped", skipped, m));
   }
 };
 
@@ -18622,7 +18626,7 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("colorizer")
-    .describe("Define a function to convert data values to color classes")
+    .describe("define a function to convert data values to color classes")
     .flag("no_arg")
     .option("colors", {
       describe: "comma-separated list of CSS colors",
@@ -19049,7 +19053,7 @@ api.applyCommands = function(commands, input, done) {
         memo[o.filename] = o.content;
         return memo;
       }, {});
-    done(err, data);
+    done(err, err ? null : data);
   });
 };
 
