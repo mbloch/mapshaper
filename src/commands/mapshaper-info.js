@@ -6,7 +6,8 @@ mapshaper-projections
 */
 
 internal.printLayerInfo = function(lyr, dataset, i) {
-  var str = 'Layer ' + (i + 1) + '\n' + internal.getLayerInfo(lyr, dataset) + '\n';
+  var str = 'Layer ' + (i + 1) + '\n' + internal.getLayerInfo(lyr, dataset);
+  if (i > 0) str = '\n' + str;
   message(str);
 };
 
