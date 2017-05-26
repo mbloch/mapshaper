@@ -156,13 +156,22 @@ function isUrl(name) {
   return /:\/\//.test(name);
 }
 
+function containsStringCI(arr, str) {
+  str = str.toLowerCase();
+  for (var i=0; i<arr.length; i++) {
+    if (arr[i].toLowerCase() == str) return true;
+  }
+  return false;
+}
+
 // append auxiliary file, if it exists in the filesystem but not in the file list
 function addAuxFile(files, file, ext) {
   var extRx = /\.[^.]+$/;
   // handle UC and LC extensions
+  // TODO: match any combination of UC and LC characters in filename
   var aux = file.replace(extRx, ext.toLowerCase());
   var AUX = file.replace(extRx, ext.toUpperCase());
-  if (files.indexOf(aux) == -1 && files.indexOf(AUX) == -1) {
+  if (!containsStringCI(files, file)) {
     if (fs.existsSync(aux)) {
       files.push(aux);
     } else if (fs.existsSync(AUX)) {

@@ -76,10 +76,11 @@ function ImportControl(model, opts) {
   });
 
   function findMatchingShp(filename) {
-    var base = utils.getPathBase(filename);
+    // use case-insensitive matching
+    var base = utils.getPathBase(filename).toLowerCase();
     return model.getDatasets().filter(function(d) {
-      var fname = d.info.input_files[0] || '';
-      var ext = utils.getFileExtension(fname).toLowerCase();
+      var fname = (d.info.input_files[0] || '').toLowerCase();
+      var ext = utils.getFileExtension(fname);
       var base2 = utils.getPathBase(fname);
       return base == base2 && ext == 'shp';
     });
