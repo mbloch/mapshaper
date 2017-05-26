@@ -82,10 +82,20 @@ TopoJSON.transformDataset = function(dataset, bounds, opts) {
       fw = bounds.getTransform(bounds2),
       inv = fw.invert();
 
-  internal.transformPoints(dataset, function(x, y) {
+  function transform(x, y) {
     var p = fw.transform(x, y);
     return [Math.round(p[0]), Math.round(p[1])];
-  });
+  }
+
+  if (dataset.arcs) {
+    dataset.arcs.transformPoints(transform);
+  }
+  // support non-standard format with quantized arcs and non-quantized points
+  if (!opts.no_point_quantization) {
+    dataset.layers.filter(internal.layerHasPoints).forEach(function(lyr) {
+      internal.transformPointsInLayer(lyr, transform);
+    });
+  }
 
   // TODO: think about handling geometrical errors introduced by quantization,
   // e.g. segment intersections and collapsed polygon rings.

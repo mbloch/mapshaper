@@ -178,7 +178,11 @@ internal.getOptionParser = function() {
       type: "integer"
     })
     .option("no-quantization", {
-      describe: "(TopoJSON) export arc coordinates without quantization",
+      describe: "(TopoJSON) export coordinates without quantization",
+      type: "flag"
+    })
+    .option("no-point-quantization", {
+      // describe: "(TopoJSON) export point coordinates without quantization",
       type: "flag"
     })
     .option('presimplify', {
