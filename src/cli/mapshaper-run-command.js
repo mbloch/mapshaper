@@ -104,7 +104,8 @@ api.runCommand = function(cmd, catalog, cb) {
       } else if (sources.length == 1) {
         source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
       } else {
-        // don't build topology, because:
+        // assuming opts.source is a filename
+        // don't need to build topology, because:
         //    join -- don't need topology
         //    clip/erase -- topology is built later, when datasets are combined
         sourceDataset = api.importFile(opts.source, utils.defaults({no_topology: true}, opts));
@@ -113,7 +114,8 @@ api.runCommand = function(cmd, catalog, cb) {
         } else if (sourceDataset.layers.length > 1) {
           fail('Multiple-layer sources are not supported');
         }
-        source = {dataset: sourceDataset, layer: sourceDataset.layers[0]};
+        // mark as disposable to indicate that data can be mutated
+        source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
       }
     }
 

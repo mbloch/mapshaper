@@ -1,3 +1,6 @@
+v0.4.20 (unreleased)
+* Bug fixes
+
 v0.4.19
 * Improved display of styled layers.
 * Bug fixes

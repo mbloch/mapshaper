@@ -38,6 +38,29 @@ describe('mapshaper-clip-erase.js', function () {
       });
     })
 
+    describe('Issue: arcs of clipping layer should not be modified', function() {
+      it('test1', function(done) {
+        var clipper = {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+        };
+        var clipped = {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [0, 1], [2, 1], [2, 0], [0, 0]]]
+        }
+
+        api.applyCommands('-i clipper.json -i clipped.json -clip clipper -o target=*', {'clipper.json': clipper, 'clipped.json': clipped}, function(err, output) {
+          var clipped2 = JSON.parse(output['clipped.json']);
+          var clipper2 = JSON.parse(output['clipper.json']);
+          assert.deepEqual(clipper2.geometries[0].coordinates, [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]])
+          assert.deepEqual(clipped2.geometries[0].coordinates, [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]])
+          done();
+
+        });
+      });
+    })
+
+
     describe('Issue: bbox clipping can fail along almost-parallel segments', function () {
 
       it('test 1', function(done) {

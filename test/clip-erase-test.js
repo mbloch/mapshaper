@@ -51,7 +51,8 @@ describe('mapshaper-clip-erase.js', function () {
         }]
       }
       api.applyCommands('-clip bbox=1,0,2,2', input, function(err, data) {
-        assert.deepEqual(JSON.parse(data), output);
+        var json = JSON.parse(data);
+        assert.deepEqual(json, output);
         done();
       });
     })
@@ -81,7 +82,6 @@ describe('mapshaper-clip-erase.js', function () {
 
     });
   });
-
 
   describe('Issue #68', function () {
     it('Cell along inside edge of clip shape is retained', function (done) {
