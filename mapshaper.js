@@ -8943,25 +8943,75 @@ api.sliceLayer = function(targetLyr, src, dataset, opts) {
 
 // @clipSrc: layer in @dataset or filename
 // @type: 'clip' or 'erase'
-internal.clipLayers = function(targetLayers, clipSrc, dataset, type, opts) {
-  var clipLyr, clipDataset;
+internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts) {
+  var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
+  var clipDataset, mergedDataset, clipLyr, nodes, tmp, outputLayers;
   opts = opts || {no_cleanup: true}; // TODO: update testing functions
   if (clipSrc && clipSrc.geometry_type) {
-    // convert from old api -- still used in many tests
-    clipSrc = {dataset: dataset, layer: clipSrc};
+    // TODO: update tests to remove this case (clipSrc is a layer)
+    clipSrc = {dataset: targetDataset, layer: clipSrc, disposable: true};
   }
   if (opts.bbox) {
     clipDataset = internal.convertClipBounds(opts.bbox);
     clipLyr = clipDataset.layers[0];
   } else if (clipSrc) {
-    clipDataset = clipSrc.dataset;
     clipLyr = clipSrc.layer;
-  }
-  if (!clipDataset || !clipLyr) {
+    clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
+  } else {
     stop("[" + type + "] Missing clipping data");
   }
+  if (targetDataset.arcs != clipDataset.arcs) {
+    // using external dataset -- need to merge arcs
+    if (clipSrc && !clipSrc.disposable) {
+      // copy layer shapes because arc ids will be reindexed during merging
+      clipLyr = clipDataset.layers[0] = internal.copyLayerShapes(clipDataset.layers[0]);
+    }
+    // merge external dataset with target dataset,
+    // so arcs are shared between target layers and clipping lyr
+    // Assumes that layers in clipDataset can be modified (if necessary, a copy should be passed in)
+    mergedDataset = internal.mergeDatasets([targetDataset, clipDataset]);
+    api.buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
+  } else {
+    mergedDataset = targetDataset;
+  }
+  if (usingPathClip) {
+    // add vertices at all line intersections
+    // (generally slower than actual clipping)
+    nodes = internal.addIntersectionCuts(mergedDataset, opts);
+    targetDataset.arcs = mergedDataset.arcs;
+  } else {
+    nodes = new NodeCollection(mergedDataset.arcs);
+  }
+  outputLayers = internal.clipLayersByLayer(targetLayers, clipLyr, nodes, type, opts);
+  if (usingPathClip && !opts.no_cleanup) {
+    // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
+    // This is to remove arcs belonging to the clipping paths from the target
+    // dataset, and to heal the cuts that were made where clipping paths
+    // crossed target paths
+    tmp = {
+      arcs: mergedDataset.arcs,
+      layers: targetDataset.layers
+    };
+    internal.replaceLayers(tmp, targetLayers, outputLayers);
+    internal.dissolveArcs(tmp);
+    targetDataset.arcs = tmp.arcs;
+  }
+  return outputLayers;
+};
+
+internal.clipLayersByLayer = function(targetLayers, clipLyr, nodes, type, opts) {
   internal.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
-  return internal.clipLayersByLayer(targetLayers, dataset, clipLyr, clipDataset, type, opts);
+  return targetLayers.reduce(function(memo, targetLyr) {
+    if (opts.no_replace) {
+      memo.push(targetLyr);
+    }
+    if (type == 'slice') {
+      memo = memo.concat(internal.sliceLayerByLayer(targetLyr, clipLyr, nodes, opts));
+    } else {
+      memo.push(internal.clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts));
+    }
+    return memo;
+  }, []);
 };
 
 internal.getSliceLayerName = function(clipLyr, field, i) {
@@ -9030,59 +9080,6 @@ internal.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
   return outputLyr;
 };
 
-internal.clipLayersByLayer = function(targetLayers, targetDataset, clipLyr, clipDataset, type, opts) {
-  var usingPathClip = utils.some(targetLayers, internal.layerHasPaths);
-  var usingExternalDataset = targetDataset != clipDataset;
-  var nodes, outputLayers, mergedDataset, tmp;
-
-  if (usingExternalDataset) {
-    // merge external dataset with target dataset,
-    // so arcs are shared between target layers and clipping lyr
-    mergedDataset = internal.mergeDatasets([targetDataset, clipDataset]);
-    api.buildTopology(mergedDataset); // identify any shared arcs between clipping layer and target dataset
-
-    targetDataset.arcs = mergedDataset.arcs; // replace arcs in original dataset with merged arcs
-  } else {
-    mergedDataset = targetDataset;
-  }
-
-  if (usingPathClip) {
-    // add vertices at all line intersections
-    // (generally slower than actual clipping)
-    nodes = internal.addIntersectionCuts(mergedDataset, opts);
-  } else {
-    nodes = new NodeCollection(targetDataset.arcs);
-  }
-
-  outputLayers = targetLayers.reduce(function(memo, targetLyr) {
-    if (opts.no_replace) {
-      memo.push(targetLyr);
-    }
-    if (type == 'slice') {
-      memo = memo.concat(internal.sliceLayerByLayer(targetLyr, clipLyr, nodes, opts));
-    } else {
-      memo.push(internal.clipLayerByLayer(targetLyr, clipLyr, nodes, type, opts));
-    }
-    return memo;
-  }, []);
-
-  if (usingPathClip && !opts.no_cleanup) {
-    // Delete unused arcs, merge remaining arcs, remap arcs of retained shapes.
-    // This is to remove arcs belonging to the clipping paths from the target
-    // dataset, and to heal the cuts that were made where clipping paths
-    // crossed target paths
-    tmp = {
-      arcs: targetDataset.arcs,
-      layers: targetDataset.layers
-    };
-    internal.replaceLayers(tmp, targetLayers, outputLayers);
-    internal.dissolveArcs(tmp);
-    targetDataset.arcs = tmp.arcs;
-  }
-
-  return outputLayers;
-};
-
 internal.getClipMessage = function(type, nullCount, sliverCount) {
   var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
   var sliverMsg = sliverCount ? utils.format('%,d sliver%s', sliverCount, utils.pluralSuffix(sliverCount)) : '';
@@ -9091,7 +9088,6 @@ internal.getClipMessage = function(type, nullCount, sliverCount) {
   }
   return '';
 };
-
 
 internal.convertClipBounds = function(bb) {
   var x0 = bb[0], y0 = bb[1], x1 = bb[2], y1 = bb[3],
@@ -11657,10 +11653,20 @@ TopoJSON.transformDataset = function(dataset, bounds, opts) {
       fw = bounds.getTransform(bounds2),
       inv = fw.invert();
 
-  internal.transformPoints(dataset, function(x, y) {
+  function transform(x, y) {
     var p = fw.transform(x, y);
     return [Math.round(p[0]), Math.round(p[1])];
-  });
+  }
+
+  if (dataset.arcs) {
+    dataset.arcs.transformPoints(transform);
+  }
+  // support non-standard format with quantized arcs and non-quantized points
+  if (!opts.no_point_quantization) {
+    dataset.layers.filter(internal.layerHasPoints).forEach(function(lyr) {
+      internal.transformPointsInLayer(lyr, transform);
+    });
+  }
 
   // TODO: think about handling geometrical errors introduced by quantization,
   // e.g. segment intersections and collapsed polygon rings.
@@ -14371,7 +14377,8 @@ internal.createParallel = function(y, xmin, xmax, precision) {
 
 
 internal.printLayerInfo = function(lyr, dataset, i) {
-  var str = 'Layer ' + (i + 1) + '\n' + internal.getLayerInfo(lyr, dataset) + '\n';
+  var str = 'Layer ' + (i + 1) + '\n' + internal.getLayerInfo(lyr, dataset);
+  if (i > 0) str = '\n' + str;
   message(str);
 };
 
@@ -16983,7 +16990,8 @@ api.runCommand = function(cmd, catalog, cb) {
       } else if (sources.length == 1) {
         source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
       } else {
-        // don't build topology, because:
+        // assuming opts.source is a filename
+        // don't need to build topology, because:
         //    join -- don't need topology
         //    clip/erase -- topology is built later, when datasets are combined
         sourceDataset = api.importFile(opts.source, utils.defaults({no_topology: true}, opts));
@@ -16992,7 +17000,8 @@ api.runCommand = function(cmd, catalog, cb) {
         } else if (sourceDataset.layers.length > 1) {
           fail('Multiple-layer sources are not supported');
         }
-        source = {dataset: sourceDataset, layer: sourceDataset.layers[0]};
+        // mark as disposable to indicate that data can be mutated
+        source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
       }
     }
 
@@ -18034,7 +18043,11 @@ internal.getOptionParser = function() {
       type: "integer"
     })
     .option("no-quantization", {
-      describe: "(TopoJSON) export arc coordinates without quantization",
+      describe: "(TopoJSON) export coordinates without quantization",
+      type: "flag"
+    })
+    .option("no-point-quantization", {
+      // describe: "(TopoJSON) export point coordinates without quantization",
       type: "flag"
     })
     .option('presimplify', {
