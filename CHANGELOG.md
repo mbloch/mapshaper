@@ -1,4 +1,5 @@
-v0.4.20 (unreleased)
+v0.4.20
+* Added support for generating .prj files
 * Bug fixes
 
 v0.4.19
