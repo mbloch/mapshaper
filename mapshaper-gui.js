@@ -1,5 +1,4 @@
 (function(){
-var VERSION = '0.4.19';
 
 var api = mapshaper; // assuming mapshaper is in global scope
 var utils = api.utils;

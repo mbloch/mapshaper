@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.19';
+var VERSION = '0.4.20';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -12698,6 +12698,244 @@ internal.importShp = function(src, opts) {
 
 
 
+// A matrix class that supports affine transformations (scaling, translation, rotation).
+// Elements:
+//   a  c  tx
+//   b  d  ty
+//   0  0  1  (u v w are not used)
+//
+function Matrix2D() {
+  this.a = 1;
+  this.c = 0;
+  this.tx = 0;
+  this.b = 0;
+  this.d = 1;
+  this.ty = 0;
+}
+
+Matrix2D.prototype.transformXY = function(x, y, p) {
+  p = p || {};
+  p.x = x * this.a + y * this.c + this.tx;
+  p.y = x * this.b + y * this.d + this.ty;
+  return p;
+};
+
+Matrix2D.prototype.translate = function(dx, dy) {
+  this.tx += dx;
+  this.ty += dy;
+};
+
+Matrix2D.prototype.rotate = function(q, x, y) {
+  var cos = Math.cos(q);
+  var sin = Math.sin(q);
+  x = x || 0;
+  y = y || 0;
+  this.a = cos;
+  this.c = -sin;
+  this.b = sin;
+  this.d = cos;
+  this.tx += x - x * cos + y * sin;
+  this.ty += y - x * sin - y * cos;
+};
+
+Matrix2D.prototype.scale = function(sx, sy) {
+  this.a *= sx;
+  this.c *= sx;
+  this.b *= sy;
+  this.d *= sy;
+};
+
+
+
+
+// A compound projection, consisting of a default projection and one or more rectangular frames
+// that are reprojected and/or affine transformed.
+// @proj Default projection.
+function MixedProjection(proj) {
+  var frames = [];
+  var mixed = utils.extend({}, proj);
+  var mproj = require('mproj');
+
+  // @proj2 projection to use.
+  // @ctr1 {lam, phi} center of the frame contents.
+  // @ctr2 {lam, phi} geo location to move the frame center
+  // @frameWidth Width of the frame in base projection units
+  // @frameHeight Height of the frame in base projection units
+  // @scale Scale factor; 1 = no scaling.
+  // @rotation Rotation in degrees; 0 = no rotation.
+  mixed.addFrame = function(proj2, ctr1, ctr2, frameWidth, frameHeight, scale, rotation) {
+    var m = new Matrix2D(),
+        a2 = proj.a * 2,
+        xy1 = toRawXY(ctr1, proj),
+        xy2 = toRawXY(ctr2, proj),
+        bbox = [xy1.x - frameWidth / a2, xy1.y - frameHeight / a2,
+            xy1.x + frameWidth / a2, xy1.y + frameHeight / a2];
+    m.rotate(rotation * Math.PI / 180.0, xy1.x, xy1.y);
+    m.scale(scale, scale);
+    m.transformXY(xy1.x, xy1.y, xy1);
+    m.translate(xy2.x - xy1.x, xy2.y - xy1.y);
+    frames.push({
+      bbox: bbox,
+      matrix: m,
+      projection: proj2
+    });
+    return this;
+  };
+
+  // convert a latlon position to x,y in earth radii relative to datum origin
+  function toRawXY(lp, P) {
+    var xy = mproj.pj_fwd_deg(lp, P);
+    return {
+      x: (xy.x / P.fr_meter - P.x0) / P.a,
+      y: (xy.y / P.fr_meter - P.y0) / P.a
+    };
+  }
+
+  mixed.fwd = function(lp, xy) {
+    var lam = lp.lam,
+        phi = lp.phi,
+        frame, bbox;
+    proj.fwd(lp, xy);
+    for (var i=0, n=frames.length; i<n; i++) {
+      frame = frames[i];
+      bbox = frame.bbox;
+      if (xy.x >= bbox[0] && xy.x <= bbox[2] && xy.y >= bbox[1] && xy.y <= bbox[3]) {
+        // copy lp (some proj functions may modify it)
+        frame.projection.fwd({lam: lam, phi: phi}, xy);
+        frame.matrix.transformXY(xy.x, xy.y, xy);
+        break;
+      }
+    }
+  };
+
+  return mixed;
+}
+
+
+
+
+// some aliases
+internal.projectionIndex = {
+  robinson: '+proj=robin +datum=WGS84',
+  webmercator: '+proj=merc +a=6378137 +b=6378137',
+  wgs84: '+proj=longlat +datum=WGS84',
+  albersusa: AlbersNYT
+};
+
+internal.getProjInfo = function(dataset) {
+  var P, info;
+  try {
+    P = internal.getDatasetProjection(dataset);
+    if (P) {
+      info = internal.crsToProj4(P);
+    }
+    if (!info) {
+      info = "unknown";
+    }
+  } catch(e) {
+    info = e.message;
+  }
+  return info;
+};
+
+internal.crsToProj4 = function(P) {
+  return require('mproj').internal.get_proj_defn(P);
+};
+
+internal.crsToPrj = function(P) {
+  var wkt;
+  try {
+    wkt = require('mproj').internal.wkt_from_proj4(P);
+  } catch(e) {
+
+  }
+  return wkt;
+};
+
+internal.crsAreEqual = function(a, b) {
+  var str = internal.crsToProj4(a);
+  return !!str && str == internal.crsToProj4(b);
+};
+
+internal.getProjDefn = function(str) {
+  var mproj = require('mproj');
+  var defn;
+  if (str in internal.projectionIndex) {
+    defn = internal.projectionIndex[str];
+  } else if (str in mproj.internal.pj_list) {
+    defn = '+proj=' + str;
+  } else if (/^\+/.test(str)) {
+    defn = str;
+  } else {
+    stop("Unknown projection definition:", str);
+  }
+  return defn;
+};
+
+internal.getProjection = function(str) {
+  var defn = internal.getProjDefn(str);
+  var P;
+  if (typeof defn == 'function') {
+    P = defn();
+  } else {
+    try {
+      P = require('mproj').pj_init(defn);
+    } catch(e) {
+      stop('Unable to use projection', defn, '(' + e.message + ')');
+    }
+  }
+  return P || null;
+};
+
+internal.getDatasetProjection = function(dataset) {
+  var info = dataset.info || {},
+      P = info.crs;
+  if (!P && info.input_prj) {
+    P = internal.parsePrj(info.input_prj);
+  }
+  if (!P && internal.probablyDecimalDegreeBounds(internal.getDatasetBounds(dataset))) {
+    // use wgs84 for probable latlong datasets with unknown datums
+    P = internal.getProjection('wgs84');
+  }
+  return P;
+};
+
+internal.printProjections = function() {
+  var index = require('mproj').internal.pj_list;
+  message('Proj4 projections');
+  Object.keys(index).sort().forEach(function(id) {
+    message('  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name);
+  });
+  message('\nAliases');
+  Object.keys(internal.projectionIndex).sort().forEach(function(n) {
+    message('  ' + n);
+  });
+};
+
+// Convert contents of a .prj file to a projection object
+internal.parsePrj = function(str) {
+  var proj4;
+  try {
+    proj4 = require('mproj').internal.wkt_to_proj4(str);
+  } catch(e) {
+    stop('Unusable .prj file (' + e.message + ')');
+  }
+  return internal.getProjection(proj4);
+};
+
+
+function AlbersNYT() {
+  var mproj = require('mproj');
+  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
+  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
+  var mixed = new MixedProjection(aea)
+    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
+    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
+  return mixed;
+}
+
+
+
 
 // Convert a dataset to Shapefile files
 internal.exportShapefile = function(dataset, opts) {
@@ -12711,17 +12949,15 @@ internal.exportShapefile = function(dataset, opts) {
 };
 
 internal.exportPrjFile = function(lyr, dataset) {
-  var crs, inputPrj, outputPrj;
-  if (dataset.info) {
-    inputPrj = dataset.info.input_prj;
-    crs = dataset.info.crs;
-  }
+  var inputPrj = dataset.info && dataset.info.input_prj;
+  var crs = internal.getDatasetProjection(dataset);
+  var outputPrj;
+
   if (crs && inputPrj && internal.crsAreEqual(crs, internal.parsePrj(inputPrj))) {
     outputPrj = inputPrj;
-  } else if (!crs && inputPrj) { // dataset has not been reprojected
-    outputPrj = inputPrj;
+  } else if (crs) {
+    outputPrj = internal.crsToPrj(crs);
   }
-  // TODO: generate .prj if projection is known
 
   return outputPrj ? {
     content: outputPrj,
@@ -14069,234 +14305,6 @@ internal.getRecordMapper = function(map) {
     return dest;
   };
 };
-
-
-
-// A matrix class that supports affine transformations (scaling, translation, rotation).
-// Elements:
-//   a  c  tx
-//   b  d  ty
-//   0  0  1  (u v w are not used)
-//
-function Matrix2D() {
-  this.a = 1;
-  this.c = 0;
-  this.tx = 0;
-  this.b = 0;
-  this.d = 1;
-  this.ty = 0;
-}
-
-Matrix2D.prototype.transformXY = function(x, y, p) {
-  p = p || {};
-  p.x = x * this.a + y * this.c + this.tx;
-  p.y = x * this.b + y * this.d + this.ty;
-  return p;
-};
-
-Matrix2D.prototype.translate = function(dx, dy) {
-  this.tx += dx;
-  this.ty += dy;
-};
-
-Matrix2D.prototype.rotate = function(q, x, y) {
-  var cos = Math.cos(q);
-  var sin = Math.sin(q);
-  x = x || 0;
-  y = y || 0;
-  this.a = cos;
-  this.c = -sin;
-  this.b = sin;
-  this.d = cos;
-  this.tx += x - x * cos + y * sin;
-  this.ty += y - x * sin - y * cos;
-};
-
-Matrix2D.prototype.scale = function(sx, sy) {
-  this.a *= sx;
-  this.c *= sx;
-  this.b *= sy;
-  this.d *= sy;
-};
-
-
-
-
-// A compound projection, consisting of a default projection and one or more rectangular frames
-// that are reprojected and/or affine transformed.
-// @proj Default projection.
-function MixedProjection(proj) {
-  var frames = [];
-  var mixed = utils.extend({}, proj);
-  var mproj = require('mproj');
-
-  // @proj2 projection to use.
-  // @ctr1 {lam, phi} center of the frame contents.
-  // @ctr2 {lam, phi} geo location to move the frame center
-  // @frameWidth Width of the frame in base projection units
-  // @frameHeight Height of the frame in base projection units
-  // @scale Scale factor; 1 = no scaling.
-  // @rotation Rotation in degrees; 0 = no rotation.
-  mixed.addFrame = function(proj2, ctr1, ctr2, frameWidth, frameHeight, scale, rotation) {
-    var m = new Matrix2D(),
-        a2 = proj.a * 2,
-        xy1 = toRawXY(ctr1, proj),
-        xy2 = toRawXY(ctr2, proj),
-        bbox = [xy1.x - frameWidth / a2, xy1.y - frameHeight / a2,
-            xy1.x + frameWidth / a2, xy1.y + frameHeight / a2];
-    m.rotate(rotation * Math.PI / 180.0, xy1.x, xy1.y);
-    m.scale(scale, scale);
-    m.transformXY(xy1.x, xy1.y, xy1);
-    m.translate(xy2.x - xy1.x, xy2.y - xy1.y);
-    frames.push({
-      bbox: bbox,
-      matrix: m,
-      projection: proj2
-    });
-    return this;
-  };
-
-  // convert a latlon position to x,y in earth radii relative to datum origin
-  function toRawXY(lp, P) {
-    var xy = mproj.pj_fwd_deg(lp, P);
-    return {
-      x: (xy.x / P.fr_meter - P.x0) / P.a,
-      y: (xy.y / P.fr_meter - P.y0) / P.a
-    };
-  }
-
-  mixed.fwd = function(lp, xy) {
-    var lam = lp.lam,
-        phi = lp.phi,
-        frame, bbox;
-    proj.fwd(lp, xy);
-    for (var i=0, n=frames.length; i<n; i++) {
-      frame = frames[i];
-      bbox = frame.bbox;
-      if (xy.x >= bbox[0] && xy.x <= bbox[2] && xy.y >= bbox[1] && xy.y <= bbox[3]) {
-        // copy lp (some proj functions may modify it)
-        frame.projection.fwd({lam: lam, phi: phi}, xy);
-        frame.matrix.transformXY(xy.x, xy.y, xy);
-        break;
-      }
-    }
-  };
-
-  return mixed;
-}
-
-
-
-
-// some aliases
-internal.projectionIndex = {
-  robinson: '+proj=robin +datum=WGS84',
-  webmercator: '+proj=merc +a=6378137 +b=6378137',
-  wgs84: '+proj=longlat +datum=WGS84',
-  albersusa: AlbersNYT
-};
-
-internal.getProjInfo = function(dataset) {
-  var P, info;
-  try {
-    P = internal.getDatasetProjection(dataset);
-    if (P) {
-      info = internal.crsToProj4(P);
-    }
-    if (!info) {
-      info = "unknown";
-    }
-  } catch(e) {
-    info = e.message;
-  }
-  return info;
-};
-
-internal.crsToProj4 = function(P) {
-  return require('mproj').internal.get_proj_defn(P);
-};
-
-internal.crsAreEqual = function(a, b) {
-  var str = internal.crsToProj4(a);
-  return !!str && str == internal.crsToProj4(b);
-};
-
-internal.getProjDefn = function(str) {
-  var mproj = require('mproj');
-  var defn;
-  if (str in internal.projectionIndex) {
-    defn = internal.projectionIndex[str];
-  } else if (str in mproj.internal.pj_list) {
-    defn = '+proj=' + str;
-  } else if (/^\+/.test(str)) {
-    defn = str;
-  } else {
-    stop("Unknown projection definition:", str);
-  }
-  return defn;
-};
-
-internal.getProjection = function(str) {
-  var defn = internal.getProjDefn(str);
-  var P;
-  if (typeof defn == 'function') {
-    P = defn();
-  } else {
-    try {
-      P = require('mproj').pj_init(defn);
-    } catch(e) {
-      stop('Unable to use projection', defn, '(' + e.message + ')');
-    }
-  }
-  return P || null;
-};
-
-internal.getDatasetProjection = function(dataset) {
-  var info = dataset.info || {},
-      P = info.crs;
-  if (!P && info.input_prj) {
-    P = internal.parsePrj(info.input_prj);
-  }
-  if (!P && internal.probablyDecimalDegreeBounds(internal.getDatasetBounds(dataset))) {
-    // use wgs84 for probable latlong datasets with unknown datums
-    P = internal.getProjection('wgs84');
-  }
-  return P;
-};
-
-internal.printProjections = function() {
-  var index = require('mproj').internal.pj_list;
-  message('Proj4 projections');
-  Object.keys(index).sort().forEach(function(id) {
-    message('  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name);
-  });
-  message('\nAliases');
-  Object.keys(internal.projectionIndex).sort().forEach(function(n) {
-    message('  ' + n);
-  });
-};
-
-// Convert contents of a .prj file to a projection object
-internal.parsePrj = function(str) {
-  var proj4;
-  try {
-    proj4 = require('mproj').internal.wkt_to_proj4(str);
-  } catch(e) {
-    stop('Unusable .prj file (' + e.message + ')');
-  }
-  return internal.getProjection(proj4);
-};
-
-
-function AlbersNYT() {
-  var mproj = require('mproj');
-  var lcc = mproj.pj_init('+proj=lcc +lon_0=-96 +lat_0=39 +lat_1=33 +lat_2=45');
-  var aea = mproj.pj_init('+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5');
-  var mixed = new MixedProjection(aea)
-    .addFrame(lcc, {lam: -152, phi: 63}, {lam: -115, phi: 27}, 6e6, 3e6, 0.31, 29.2) // AK
-    .addFrame(lcc, {lam: -157, phi: 20.9}, {lam: -106.6, phi: 28.2}, 3e6, 5e6, 0.9, 40); // HI
-  return mixed;
-}
 
 
 
