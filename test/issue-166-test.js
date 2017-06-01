@@ -50,14 +50,4 @@ describe('Issue #166: .prj lost after combine-files', function () {
     });
   });
 
-  // TODO: generate .prj
-  it ('.prj is not generated after reprojection', function(done) {
-    var path = 'test/test_data/issues/166/a_utm.shp';
-    api.applyCommands('-i ' + path + ' -proj wgs84 -o out.shp', {}, function(err, output) {
-      assert(!err && !!output);
-      assert.equal(output['out.prj'], undefined);
-      done();
-    });
-  });
-
 });

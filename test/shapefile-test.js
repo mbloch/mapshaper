@@ -27,6 +27,39 @@ describe('mapshaper-shapefile.js', function () {
       });
       assert.equal(prj && prj.filename, 'three_points.prj');
     });
+
+    it('prj is exported if data is reprojected to "webmercator"', function(done) {
+      api.applyCommands('-i test/test_data/three_points.shp -proj webmercator -o', {}, function(err, output) {
+        var prj = output['three_points.prj']
+        assert(/Pseudo-Mercator/.test(prj));
+        done();
+      });
+    });
+
+    it('Albers WKT is exported if data is reprojected to "albersusa"', function(done) {
+      api.applyCommands('-i test/test_data/three_points.shp -proj albersusa -o', {}, function(err, output) {
+        var prj = output['three_points.prj']
+        assert(/Albers/.test(prj));
+        done();
+      });
+    });
+
+    it('WGS84 prj is generated if input is unprojected GeoJSON', function(done) {
+      api.applyCommands('-i test/test_data/three_points.geojson -o format=shapefile', {}, function(err, output) {
+        var prj = output['three_points.prj']
+        assert(/WGS84/.test(prj));
+        done();
+      });
+    });
+
+    it('No prj is generated if CRS has no WKT equivalent', function(done) {
+      api.applyCommands('-i test/test_data/three_points.geojson -proj +proj=boggs -o format=shapefile', {}, function(err, output) {
+        var prj = output['three_points.prj']
+        assert(!err && !prj);
+        done();
+      });
+    });
+
   })
 
   describe('Export and import layers containing data but no shapes', function () {

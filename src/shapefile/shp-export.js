@@ -1,6 +1,7 @@
 /* @requires
 shp-common
 mapshaper-path-export
+mapshaper-projections
 */
 
 // Convert a dataset to Shapefile files
@@ -15,17 +16,15 @@ internal.exportShapefile = function(dataset, opts) {
 };
 
 internal.exportPrjFile = function(lyr, dataset) {
-  var crs, inputPrj, outputPrj;
-  if (dataset.info) {
-    inputPrj = dataset.info.input_prj;
-    crs = dataset.info.crs;
-  }
+  var inputPrj = dataset.info && dataset.info.input_prj;
+  var crs = internal.getDatasetProjection(dataset);
+  var outputPrj;
+
   if (crs && inputPrj && internal.crsAreEqual(crs, internal.parsePrj(inputPrj))) {
     outputPrj = inputPrj;
-  } else if (!crs && inputPrj) { // dataset has not been reprojected
-    outputPrj = inputPrj;
+  } else if (crs) {
+    outputPrj = internal.crsToPrj(crs);
   }
-  // TODO: generate .prj if projection is known
 
   return outputPrj ? {
     content: outputPrj,

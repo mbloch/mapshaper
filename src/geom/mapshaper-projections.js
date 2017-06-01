@@ -28,6 +28,16 @@ internal.crsToProj4 = function(P) {
   return require('mproj').internal.get_proj_defn(P);
 };
 
+internal.crsToPrj = function(P) {
+  var wkt;
+  try {
+    wkt = require('mproj').internal.wkt_from_proj4(P);
+  } catch(e) {
+
+  }
+  return wkt;
+};
+
 internal.crsAreEqual = function(a, b) {
   var str = internal.crsToProj4(a);
   return !!str && str == internal.crsToProj4(b);

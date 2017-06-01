@@ -9488,7 +9488,7 @@ if (nodeVer) {
 
 }).call(this,require('_process'),require("buffer").Buffer)
 },{"../encodings":8,"./bom-handling":23,"./extend-node":24,"./streams":25,"_process":31,"buffer":"buffer"}],"mproj":[function(require,module,exports){
-(function (__dirname){
+(function (__filename){
 (function(){
 
 // add math.h functions to library scope
@@ -9680,25 +9680,24 @@ function ProjError(msg, o) {
 }
 
 
-// Convert a formatted value in DMS or decimal degrees to radians
 function dmstor(str) {
   return dmstod(str) * DEG_TO_RAD;
 }
 
+// Parse a formatted value in DMS DM or D to a numeric value
+// Delimiters: D|d (degrees), ' (minutes), " (seconds)
 function dmstod(str) {
-  var deg = /-?[0-9.]+d/i.exec(str);
-  var min = /[0-9.]+'/.exec(str);
-  var sec = /[0-9.]+"/.exec(str);
-  var inv = /[ws][\s]*$/i.test(str);
-  var d = parseFloat(deg ? deg[0] : str);
-  if (min) {
-    d += parseFloat(min[0]) / 60;
-  }
-  if (sec) {
-    d += parseFloat(sec[0]) / 3600;
-  }
-  if (inv) {
-    d = -d;
+  var match = /(-?[0-9.]+)d?([0-9.]*)'?([0-9.]*)"?([nsew]?)$/i.exec(str);
+  var d = NaN;
+  var deg, min, sec;
+  if (match) {
+    deg = match[1] || '0';
+    min = match[2] || '0';
+    sec = match[3] || '0';
+    d = (+deg) + (+min) / 60 + (+sec) / 3600;
+    if (/[ws]/i.test(match[4])) {
+      d = -d;
+    }
   }
   if (isNaN(d)) {
     // throw an exception instead of just setting an error code
@@ -9748,7 +9747,7 @@ function pj_param(params, code) {
     if (type == 'i') {
       val = parseInt(param);
     } else if (type == 'd') {
-      // Proj.4 handles local-specific decimal mark
+      // Proj.4 handles locale-specific decimal mark
       // TODO: what to do about NaNs
       val = pj_atof(param);
     } else if (type == 'r') {
@@ -9820,6 +9819,7 @@ function pj_add(func, key, name, desc) {
 }
 
 
+/* @pj_param */
 
 function pj_is_latlong(P) {
   return !P || P.is_latlong;
@@ -9827,11 +9827,6 @@ function pj_is_latlong(P) {
 
 function pj_is_geocent(P) {
   return !P || P.is_geocent;
-}
-
-function pj_latlong_from_proj(P) {
-  var defn = '+proj=latlong' + get_geod_defn(P);
-  return pj_init(defn);
 }
 
 function get_geod_defn(P) {
@@ -9870,7 +9865,7 @@ function get_geod_defn(P) {
   return defn;
 }
 
-// Not in Proj.4
+
 function get_proj_defn(P) {
   // skip geodetic params and some initialization-related params
   var skip = 'datum,ellps,a,b,es,rf,f,towgs84,nadgrids,R,R_A,R_V,R_a,R_lat_a,R_lat_g,pm,init,no_defs'.split(',');
@@ -9900,7 +9895,7 @@ function get_param(P, name) {
 
 var pj_datums = [
   /* id defn ellipse_id comments */
-  ["WGS84", "towgs84=0,0,0", "WGS84", ""],
+  ["WGS84", "towgs84=0,0,0", "WGS84", "WGS_1984"], // added comment for wkt creation
   ["GGRS87", "towgs84=-199.87,74.79,246.62", "GRS80", "Greek_Geodetic_Reference_System_1987"],
   ["NAD83", "towgs84=0,0,0", "GRS80", "North_American_Datum_1983"],
   // nadgrids not supported; NAD27 will trigger an error
@@ -9910,7 +9905,7 @@ var pj_datums = [
   ["hermannskogel", "towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232", "bessel", "Hermannskogel"],
   ["ire65", "towgs84=482.530,-130.596,564.557,-1.042,-0.214,-0.631,8.15", "mod_airy", "Ireland 1965"],
   ["nzgd49", "towgs84=59.47,-5.04,187.44,0.47,-0.1,1.024,-4.5993", "intl", "New Zealand Geodetic Datum 1949"],
-  ["OSGB36", "towgs84=446.448,-125.157,542.060,0.1502,0.2470,0.8421,-20.4894", "airy", "Airy 1830"],
+  ["OSGB36", "towgs84=446.448,-125.157,542.060,0.1502,0.2470,0.8421,-20.4894", "airy", "OSGB 1936"],
   [null, null, null, null]
 ];
 
@@ -9944,7 +9939,7 @@ function find_datum(id) {
   var defn = pj_datums.reduce(function(memo, arr) {
     return arr[0] === id ? arr : memo;
   }, null);
-  return defn ? {id: defn[0], defn: defn[1], ellipse_id: defn[2], comments: defn[3]} : null;
+  return defn ? {id: defn[0], defn: defn[1], ellipse_id: defn[2], name: defn[3]} : null;
 }
 
 
@@ -10152,6 +10147,15 @@ var pj_units = [
   [null, null, null]
 ];
 
+function find_units_by_value(val) {
+  return pj_units.reduce(function(memo, defn) {
+    if (val == +defn[1]) {
+      memo = find_units(defn[0]);
+    }
+    return memo;
+  }, null);
+}
+
 function find_units(id) {
   var arr = pj_units.reduce(function(memo, defn) {
     return id === defn[0] ? defn : memo;
@@ -10177,40 +10181,56 @@ function pj_insert_initcache(key, defn) {
 
 // Return opts from a section of a config file,
 //   or null if not found or unable to read file
-function pj_read_lib_opts(file, id) {
-  var path, str;
+function pj_read_init_opts(initStr) {
+  var parts = initStr.split(':'),
+      file = parts[0],
+      id = parts[1],
+      path, o;
+  if (!id) {
+    error(-3);
+  }
   try {
-    path = require('path').join(__dirname, '../nad', file);
-    str = pj_read_opts(path, id);
+    path = require('path');
+    // assumes compiled library is in the dist/ directory
+    o = pj_read_opts(path.join(path.dirname(__filename), '../nad', file), id);
   } catch(e) {}
-  return str || null;
+  return o || null;
 }
 
 // Read projections params from a file and return in a standard format
 function pj_read_opts(path, id) {
   var contents = require('fs').readFileSync(path, 'utf8'),
-      str = '',
-      idx;
+      opts = '', comment = '',
+      idx, idx2;
   // get requested parameters
   idx = contents.indexOf('<' + id + '>');
   if (idx > -1) {
-    str = contents.substr(idx + id.length + 2);
-    str = str.substr(0, str.indexOf('<'));
-  }
-  // remove comments
-  str = str.replace(/#.*/g, '');
-  // convert all whitespace to single <sp>
-  str = str.replace(/[\s]+/g, ' ');
+    // get comment text
+    idx2 = contents.lastIndexOf('#', idx);
+    if (idx2 > -1) {
+      comment = contents.substring(idx2 + 1, idx).trim();
+      if (/\n/.test(comment)) {
+        comment = '';
+      }
+    }
+    // get projection params
+    opts = contents.substr(idx + id.length + 2);
+    opts = opts.substr(0, opts.indexOf('<'));
+    // remove comments
+    opts = opts.replace(/#.*/g, '');
+    // convert all whitespace to single <sp>
+    opts = opts.replace(/[\s]+/g, ' ');
 
-  // if '+' is missing from args, add it
-  // kludge: protect spaces in +title= opts
-  str = str.replace(/\+title=[^+]*[^ +]/g, function(match) {
-    return match.replace(/ /g, '\t');
-  });
-  str = ' ' + str;
-  str = str.replace(/ (?=[a-z])/ig, ' +');
-  str = str.replace(/\t/g, ' ');
-  return str.trim() || null;
+    // if '+' is missing from args, add it
+    // kludge: protect spaces in +title= opts
+    opts = opts.replace(/\+title=[^+]*[^ +]/g, function(match) {
+      return match.replace(/ /g, '\t');
+    });
+    opts = ' ' + opts;
+    opts = opts.replace(/ (?=[a-z])/ig, ' +');
+    opts = opts.replace(/\t/g, ' ').trim();
+  }
+  return opts ? {opts: opts, comment: comment} : null;
 }
 
 
@@ -10319,19 +10339,15 @@ function get_defaults(params, name) {
 
 function get_init(params, initStr) {
   var defn = pj_search_initcache(initStr),
-      parts, paramStr;
+      parts, opts;
   if (defn) return defn;
-  parts = initStr.split(':');
-  if (parts.length < 2) {
-    error(-3);
-  }
-  paramStr = pj_read_lib_opts(parts[0], parts[1]);
-  if (!paramStr) {
+  opts = pj_read_init_opts(initStr);
+  if (!opts) {
     error(-2);
   }
   pj_insert_initcache(initStr, defn);
   // merge init params
-  get_opt(params, paramStr);
+  get_opt(params, opts.opts);
 }
 
 // Merge params from a proj4 string
@@ -11181,6 +11197,69 @@ function get_proj4js_transform(P1, P2) {
 }
 
 
+// Global collections of WKT parsers and makers
+// arr[0] is test function; arr[1] is conversion function
+var wkt_makers = [];
+var wkt_parsers = [];
+
+// TODO: use utility library
+function wkt_is_object(val) {
+  return !!val && typeof val == 'object' && !Array.isArray(val);
+}
+
+function wkt_is_string(val) {
+  return typeof val == 'string';
+}
+
+function find_wkt_parser(projcs) {
+  var parser = find_wkt_conversion_function(projcs, wkt_parsers);
+  if (!parser) {
+    wkt_error('unsupported WKT definition: ' + get_wkt_label(projcs));
+  }
+  return parser;
+}
+
+function find_wkt_maker(P) {
+  var marker = find_wkt_conversion_function(P, wkt_makers);
+  if (!marker) {
+    wkt_error('unsupported projection: ' + get_proj_label(P));
+  }
+  return marker;
+}
+
+function find_wkt_conversion_function(o, arr) {
+  for (var i=0; i<arr.length; i++) {
+    if (arr[i][0](o)) return arr[i][1];
+  }
+  return null;
+}
+
+function get_proj_label(P) {
+  return get_proj_id(P) || '[unknown]';
+}
+
+function get_wkt_label(o) {
+  return o.NAME || '[unknown]';
+}
+
+function get_proj_id(P) {
+  return  pj_param(P.params, 'sproj');
+}
+
+function wkt_name_to_slug(name) {
+  return name.replace(/[-_ \/]+/g, '_').toLowerCase();
+}
+
+function wkt_split_names(names) {
+  var arr;
+  if (Array.isArray(names)) {
+    arr = names;
+  } else if (names && names.length > 0) {
+    arr = names.split(',');
+  }
+  return arr;
+}
+
 function wkt_error(msg) {
   throw new Error(msg);
 }
@@ -11188,107 +11267,42 @@ function wkt_error(msg) {
 function wkt_warn(msg) {
   // TODO: consider option to inhibit logging
   //       consider strict mode to throw error
-  console.error(msg);
+  console.error('[wkt] ' + msg);
 }
 
 
-// Table for looking up proj4 projection ids from WKT names
-// Sources: https://github.com/mapgears/mitab/blob/master/ogr/ogr_srs_api.h
-// Entries that are not supported in mapshaper-proj are commented out
-// Some proj4 names are handled elswhere (utm, ups)
-var wkt_projections = [
-  ['aitoff', 'Aitoff'],
-  ['aea', 'Albers_Conic_Equal_Area'],
-  ['aea', 'Albers'],
-  ['aeqd', 'Azimuthal_Equidistant'],
-  // ['airy', ''],
-  // ['boggs', ''],
-  ['cass', 'Cassini_Soldner'],
-  ['cass', 'Cassini'],
-  ['cea', 'Cylindrical_Equal_Area'],
-  // ['crast', 'Craster_Parabolic'],
-  ['bonne', 'Bonne'],
-  ['eck1', 'Eckert_I'],
-  ['eck2', 'Eckert_II'],
-  ['eck3', 'Eckert_III'],
-  ['eck4', 'Eckert_IV'],
-  ['eck5', 'Eckert_V'],
-  ['eck6', 'Eckert_VI'],
-  ['eqdc', 'Equidistant_Conic'],
-  ['eqc', 'Equidistant_Cylindrical'], // ESRI
-  ['eqc', 'Plate_Carree'],
-  ['eqc', 'Equirectangular'],
-  ['gall', 'Gall_Stereographic'],
-  // ['gn_sinu', ''],
-  // ['gstmerc', 'Gauss_Schreiber_Transverse_Mercator'], // https://trac.osgeo.org/gdal/ticket/2663
-  // ['geos', 'Geostationary_Satellite'],
-  // ['goode', 'Goode_Homolosine'],
-  ['gnom', 'Gnomonic'],
-  // ['igh', 'Interrupted_Goode_Homolosine'],
-  // ['imw_p', 'International_Map_of_the_World_Polyconic'],
-  // ['kav7', ''],
-  // ['krovak', 'Krovak'],
-  // ['laborde', 'Laborde_Oblique_Mercator'],
-  ['lcc', 'Lambert_Conformal_Conic'],
-  ['lcc', 'Lambert_Conformal_Conic_1SP'],
-  ['lcc', 'Lambert_Conformal_Conic_2SP'],
-  ['laea', 'Lambert_Azimuthal_Equal_Area'],
-  ['loxim', 'Loximuthal'],
-  // ['mbtfps', ''],
-  ['merc', 'Mercator'],
-  ['merc', 'Mercator_1SP'],
-  ['merc', 'Mercator_2SP'], // http://www.remotesensing.org/geotiff/proj_list/mercator_2sp.html
-  ['merc', 'Mercator_Auxiliary_Sphere'],
-  ['mill', 'Miller_Cylindrical'],
-  ['moll', 'Mollweide'],
-  // ['nell_h', ''],
-  // ['nzmg', 'New_Zealand_Map_Grid'],
-  ['nsper', 'Vertical_Near_Side_Perspective'],
-  ['omerc', 'Hotine_Oblique_Mercator'], // A
-  ['omerc', 'Hotine_Oblique_Mercator_Azimuth_Natural_Origin'], // A
-  ['omerc', 'Oblique_Mercator'], // B
-  ['omerc', 'Hotine_Oblique_Mercator_Two_Point_Natural_Origin'],
-  ['omerc', 'Hotine_Oblique_Mercator_Azimuth_Center'], // B
-  ['ortho', 'Orthographic'],
-  ['poly', 'Polyconic'],
-  // ['qua_aut', 'Quartic_Authalic'],
-  ['robin', 'Robinson'],
-  ['sinu', 'Sinusoidal'],
-  ['stere', 'Stereographic'],
-  ['stere', 'Stereographic_North_Pole'], // ESRI
-  ['stere', 'Stereographic_South_Pole'], // ESRI
-  ['stere', 'Polar_Stereographic'],
-  ['sterea', 'Double_Stereographic'], // ESRI
-  ['sterea', 'Oblique_Stereographic'], // http://www.remotesensing.org/geotiff/proj_list/oblique_stereographic.html
-  // ['', 'Swiss_Oblique_Cylindrical'], // http://www.remotesensing.org/geotiff/proj_list/swiss_oblique_cylindrical.html
-  ['tmerc', 'Transverse_Mercator'],
-  // ['', 'Transverse_Mercator_South_Orientated'], // http://www.remotesensing.org/geotiff/proj_list/transverse_mercator_south_oriented.html
-  ['tpeqd', 'Two_Point_Equidistant'],
-  ['vandg', 'VanDerGrinten'],
-  ['vandg', 'Van_der_Grinten_I'], // ESRI
-  ['wag1', 'Wagner_I'],
-  ['wag2', 'Wagner_II'],
-  ['wag3', 'Wagner_III'],
-  ['wag4', 'Wagner_IV'],
-  ['wag5', 'Wagner_V'],
-  ['wag6', 'Wagner_VI'],
-  ['wag7', 'Wagner_VII'],
-  ['wink1', 'Winkel_I'],
-  ['wink2', 'Winkel_II'],
-  ['wintri', 'Winkel_Tripel'],
-  []
-];
 
-function wkt_get_proj(name) {
-  var defn, i;
-  for (i=0; i<wkt_projections.length; i++) {
-    defn = wkt_projections[i];
-    if (defn[1] == name) {
-      return {proj: defn[0], wkt: defn[1]};
-    }
+
+function wkt_get_unit_defn(projcs) {
+  // TODO: consider using unit names
+  return {
+    to_meter: projcs.UNIT[1]
+  };
+}
+
+function wkt_convert_unit(PROJCS) {
+  var defn = wkt_get_unit_defn(PROJCS);
+  var proj4 = "";
+  if (defn.to_meter != 1) {
+    proj4 = '+to_meter=' + defn.to_meter;
+  } else if (!WKT_OMIT_DEFAULTS) {
+    proj4 = '+units=m';
   }
-  return null;
+  return proj4;
 }
+
+function wkt_make_unit(P) {
+  return ['Meter', P.to_meter || 1];
+}
+
+/*
+// OLD -- merge into wkt_make_unit()
+function wkt_get_unit(P) {
+  var defn = pj_find_units_by_value(P.to_meter);
+  var name = defn ? defn.name : 'Unknown';
+  return ['UNIT', name, P.to_meter];
+}
+*/
 
 
 
@@ -11303,22 +11317,25 @@ function wkt_convert_geogcs(geogcs, opts) {
       rf = spheroid[2],
       str, pm;
 
-  wkt_check_units(geogcs.UNIT, 'degree');
+  // TODO: consider identifying more datums or ellipsoids by name
+  var datums = {
+    northamericandatum1983: 'NAD83',
+    northamerican1983: 'NAD83', // ESRI
+    wgs1984: 'WGS84',
+    osgb1936: 'OSGB36'
+  };
 
+  wkt_check_units(geogcs.UNIT, 'degree');
   if (aux_sphere) {
     // TODO: in addition to semimajor, ESRI supports spheres based on
     //   semiminor and authalic radii; could support these
     str = '+a=' + spheroid[1];
-  } else if (datumName == 'wgs1984') {
-    str = '+datum=WGS84';
-  } else if (datumName == 'northamerican1983') {
-    str = '+datum=NAD83';
-  } else if (datumName == 'osgb1936') {
-    str = '+datum=OSGB36';
-  } else if (sphName == 'grs1980') {
+  } else if (datumName in datums) {
+    str = '+datum=' + datums[datumName];
+  } else if (/^grs1980/.test(sphName)) { // handle cases like "GRS 1980(IUGG, 1980)"
+    // TODO: improve support for named ellipsoids
     str = '+ellps=GRS80';
   } else {
-  // TODO: consider identifying more datums or ellipsoids by name
    str = '+a=' + a;
     if (rf > 0) {
       str += ' +rf=' + rf;
@@ -11346,172 +11363,834 @@ function wkt_check_units(UNIT, expect) {
 }
 
 
-
-/*
-proj4 unusual params
-lat_ts
-  see http://spatialreference.org/ref/epsg/3078/
-  +proj=stere +lat_0=90 +lat_ts=90 +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 +ellps=WGS84 +datum=WGS84 +units=m +no_defs
-alpha  (omerc, ocea)
-gamma
-*/
-
-var wkt_params = [
-  ['x_0', 'false_easting'],
-  ['y_0', 'false_northing'],
-  ['k_0', 'scale_factor'],
-  ['lon_0', 'longitude_of_center'],
-  ['lat_0', 'latitude_of_center'],
-  ['lat_1', 'standard_parallel_1'],
-  ['lat_2', 'standard_parallel_2'],
-  ['lat_1', 'latitude_of_point_1'],
-  ['lon_1', 'longitude_of_point_1'],
-  ['lon_2', 'longitude_of_point_2'],
-  ['lat_1', 'latitude_of_point_1'],
-  ['lat_2', 'latitude_of_point_2'],
-  ['h', 'height'] // e.g. nsper
-];
-
-var wkt_param_aliases = {
-  central_meridian: 'longitude_of_center',
-  latitude_of_origin: 'latitude_of_center',
-  longitude_of_1st_point: 'longitude_of_point_1',
-  longitude_of_2nd_point: 'longitude_of_point_2',
-  latitude_of_1st_point: 'latitude_of_point_1',
-  latitude_of_2nd_point: 'latitude_of_point_2',
-};
-
-function wkt_find_param(wktName) {
-  for (var i=0; i<wkt_params.length; i++) {
-    if (wkt_params[i][1] == wktName) {
-      return wkt_params[i][0];
-    }
-  }
-  return '';
+function wkt_convert_projcs(projcs) {
+  return find_wkt_parser(projcs)(projcs);
 }
 
-function wkt_harmonize_param_name(name) {
-  name = name.toLowerCase();
-  return wkt_param_aliases[name] || name;
-}
-
-function wkt_convert_params(params, projDefn, unitDefn) {
-  var index = {};
-  var parts = [];
-  params.forEach(function(param) {
-    var pair = wkt_convert_param(param, projDefn, unitDefn),
-        val, name;
-    if (pair) {
-      name = pair[0];
-      val = pair[1];
-      index[name] = val;
-      // TODO: consider if val might need special formatting
-      parts.push('+' + name + '=' + val);
-    }
+function wkt_simple_projcs_converter(projId, paramIds) {
+  return wkt_projcs_converter({
+    PROJECTION: wkt_simple_projection_converter(projId),
+    PARAMETER: wkt_parameter_converter(paramIds)
   });
-  // special cases
-  if (projDefn.proj == 'lcc') {
-    if ('lat_0' in index && 'lat_1' in index === false) {
-      // SP1 version of lcc
-      parts.push('+lat_1=' + index.lat_0);
-    }
-  }
-  if (projDefn.proj == 'omerc') {
-    if (projDefn.wkt == 'Hotine_Oblique_Mercator' || projDefn.wkt == 'Hotine_Oblique_Mercator_Azimuth_Natural_Origin') {
-      parts.push('+no_uoff');
-    }
-  }
-  return parts.join(' ');
 }
 
-function wkt_convert_param(param, projDefn, unitDefn) {
-  var projName = projDefn.proj;
-  var wktName = wkt_harmonize_param_name(param[0]);
-  var val = param[1];
-  var p4Name;
-
-  // special cases
-  if (projName == 'stere') {
-    if (wktName == 'standard_parallel_1') p4Name = 'lat_0'; // ESRI
-  }
-  if (projName == 'omerc') {
-    // see http://spatialreference.org/ref/epsg/3078/
-    if (wktName == 'longitude_of_center') p4Name = 'lonc';
-    if (wktName == 'azimuth') p4Name = 'alpha';
-    if (wktName == 'rectified_grid_angle') p4Name = 'gamma';
-  }
-  if (projName == 'merc') {
-    if (projDefn.wkt == 'Mercator_2SP' && wktName == 'standard_parallel_1') {
-      p4Name = 'lat_ts';
-    }
-  }
-  if (projName == 'eqc') {
-    if (wktName == 'standard_parallel_1') {
-      p4Name = 'lat_ts';
-    }
-  }
-
-  // general case
-  if (!p4Name) {
-    p4Name = wkt_find_param(wktName);
-  }
-
-  if (p4Name == 'x_0' || p4Name == 'y_0' || p4Name == 'h') {
-    val *= unitDefn.to_meter;
-  }
-
-  if (WKT_OMIT_DEFAULTS) {
-    if ('x_0,y_0,lat_0,lon_0'.indexOf(p4Name) > -1 && val === 0 ||
-      p4Name == 'k_0' && val == 1) {
-      return;
-    }
-  }
-
-  if (p4Name) {
-    return [p4Name, val];
-  }
-
-  wkt_warn('unhandled param: ' + param[0]);
+function wkt_simple_projection_converter(id) {
+  return function() {return '+proj=' + id;};
 }
 
-
-
-function wkt_get_unit(param) {
-  // TODO: consider using unit names
-  return {
-    to_meter: param[1]
+function wkt_projcs_converter(o) {
+  return function(projcs) {
+    var projStr = o.PROJECTION(projcs);
+    var paramStr = o.PARAMETER(projcs);
+    var geogStr = o.GEOGCS ? o.GEOGCS(projcs) : wkt_convert_geogcs(projcs.GEOGCS);
+    var unitStr = wkt_convert_unit(projcs);
+    return [projStr, paramStr, geogStr, unitStr, '+no_defs'].filter(function(s) {return !!s;}).join(' ');
   };
 }
 
 
-// TODO: add OGC names
-var wkt_aliases = {
+// Functions for exporting a wkt GEOGCS definition
+
+function wkt_make_geogcs(P) {
+  var geogcs = {
+    NAME: wkt_get_geogcs_name(P),
+    DATUM: wkt_make_datum(P),
+    PRIMEM: ['Greenwich', 0], // TODO: don't assume greenwich
+    UNIT: ['degree', 0.017453292519943295] // TODO: support other units
+  };
+  return geogcs;
+}
+
+function wkt_make_datum(P) {
+  var datum = {
+    NAME: wkt_get_datum_name(P),
+    SPHEROID: wkt_make_spheroid(P)
+  };
+  var towgs84 = pj_param(P.params, 'stowgs84');
+  if (/[1-9]/.test(towgs84)) { // only adding TOWGS84 if transformation is non-zero
+    datum.TOWGS84 = towgs84;
+  }
+  return datum;
+}
+
+function wkt_make_spheroid(P) {
+  var rf;
+  if (pj_param(P.params, 'trf')) {
+    rf = pj_param(P.params, 'drf');
+  } else if (P.es) {
+    rf = 1 / (1 - Math.sqrt(1 - P.es));
+  } else {
+    rf = 0;
+  }
+  return [wkt_get_ellps_name(P), P.a, rf];
+}
+
+function wkt_get_geogcs_name(P) {
+  var name;
+  if (pj_is_latlong(P)) {
+    name = wkt_get_init_name(P);
+  }
+  if (!name) {
+    name = wkt_get_datum_id(P);
+    if (/^[a-z]+$/.test(name)) {
+      name = name[0].toUpperCase() + name.substr(1);
+    } else {
+      name = name.toUpperCase();
+    }
+  }
+  return name || 'UNK';
+}
+
+function wkt_get_ellps_name(P) {
+  var ellps = find_ellps(wkt_get_ellps_id(P));
+  return ellps ? ellps.name : 'Unknown ellipsoid';
+}
+
+function wkt_get_datum_name(P) {
+  var defn = find_datum(wkt_get_datum_id(P));
+  return defn && defn.name || 'Unknown datum';
+}
+
+function wkt_get_datum_id(P) {
+  return pj_param(P.params, 'sdatum');
+}
+
+function wkt_get_ellps_id(P) {
+  var datumId = wkt_get_datum_id(P),
+      datum = datumId ? find_datum(datumId) : null,
+      ellpsId;
+  if (datum) {
+    ellpsId = datum.ellipse_id;
+  } else {
+    ellpsId = pj_param(P.params, 'sellps');
+  }
+  return ellpsId || '';
+}
 
 
+function wkt_make_projcs(P) {
+  return find_wkt_maker(P)(P);
+}
+
+function wkt_simple_projcs_maker(wktProjection, paramIds) {
+  return wkt_projcs_maker({
+    PROJECTION: wktProjection,
+    PARAMETER: wkt_parameter_maker(paramIds)
+  });
+}
+
+function wkt_projcs_maker(o) {
+  return function(P) {
+    var projcs = {
+      // if o.NAME GEOGCS exists and returns falsy value, use default function
+      GEOGCS: o.GEOGCS && o.GEOGCS(P) || wkt_make_geogcs(P),
+      PROJECTION: wkt_is_string(o.PROJECTION) ? o.PROJECTION : o.PROJECTION(P),
+      PARAMETER: o.PARAMETER(P),
+      UNIT: wkt_make_unit(P)
+    };
+    // if o.NAME function exists and returns falsy value, use default name
+    projcs.NAME = o.NAME && o.NAME(P, projcs) || wkt_make_default_projcs_name(P, projcs);
+    return {PROJCS: projcs};
+  };
+}
+
+// Get CS name from comment in +init source (if +init param is present)
+function wkt_get_init_name(P) {
+  var o;
+  if (pj_param(P.params, 'tinit')) {
+    o = pj_read_init_opts(pj_param(P.params, 'sinit'));
+  }
+  return o ? o.comment : '';
+}
+
+function wkt_make_default_projcs_name(P, projcs) {
+  var initName = wkt_get_init_name(P);
+  return initName || projcs.GEOGCS.NAME + ' / ' + projcs.PROJECTION;
+}
+
+
+function add_simple_wkt_parser(projId, wktProjections, params) {
+  var is_match = get_simple_parser_test(wktProjections);
+  var convert = wkt_simple_projcs_converter(projId, params);
+  add_wkt_parser(is_match, convert);
+}
+
+function add_simple_wkt_maker(projId, wktProjection, params) {
+  var is_match = get_simple_maker_test(projId);
+  var make = wkt_simple_projcs_maker(wktProjection, params);
+  // add_wkt_maker(is_match, wkt_make_projcs);
+  add_wkt_maker(is_match, make);
+}
+
+function get_simple_parser_test(wktNames) {
+  var slugs = wkt_split_names(wktNames).map(wkt_name_to_slug);
+  return function(obj) {
+    var wktName = obj.PROJECTION[0]; // TODO: handle unexected structure
+    return slugs.indexOf(wkt_name_to_slug(wktName)) > -1;
+  };
+}
+
+function get_simple_maker_test(projId) {
+  return function(P) {
+    var id = get_proj_id(P);
+    return id && id == projId;
+  };
+}
+
+function add_wkt_parser(is_match, parse) {
+  if (typeof is_match != 'function') wkt_error("Missing WKT parser test");
+  if (typeof parse != 'function') wkt_error("Missing WKT parse function");
+  wkt_parsers.push([is_match, parse]);
+}
+
+function add_wkt_maker(is_match, make) {
+  if (typeof is_match != 'function') wkt_error("Missing WKT maker test");
+  if (typeof make != 'function') wkt_error("Missing WKT maker function");
+  wkt_makers.push([is_match, make]);
+}
+
+
+add_wkt_parser(wkt_is_utm, wkt_to_utm);
+add_wkt_parser(wkt_is_ups, wkt_to_ups);
+
+add_wkt_maker(get_simple_maker_test('utm'), wkt_from_utm);
+add_wkt_maker(get_simple_maker_test('ups'), wkt_from_ups);
+
+var WKT_UTM = /UTM_zone_([0-9]{1,2})(N|S)/i;
+var WKT_UPS = /UPS_(North|South)/i;
+
+function wkt_is_utm(projcs) {
+  return WKT_UTM.test(wkt_name_to_slug(projcs.NAME));
+}
+
+function wkt_is_ups(projcs) {
+  return WKT_UPS.test(wkt_name_to_slug(projcs.NAME));
+}
+
+function wkt_to_utm(projcs) {
+  return wkt_projcs_converter({
+    PROJECTION: wkt_simple_projection_converter('utm'),
+    PARAMETER: utm_params
+  })(projcs);
+
+  function utm_params(projcs) {
+    var match = WKT_UTM.exec(wkt_name_to_slug(projcs.NAME));
+    var params = '+zone=' + match[1];
+    if (match[2] == 'S') params += ' +south';
+    return params;
+  }
+}
+
+function wkt_to_ups(projcs) {
+  return wkt_projcs_converter({
+    PROJECTION: wkt_simple_projection_converter('ups'),
+    PARAMETER: ups_params
+  })(projcs);
+
+  function ups_params(projcs) {
+    var match = WKT_UPS.exec(wkt_name_to_slug(projcs.NAME));
+    return match[1].toLowerCase() == 'south' ? '+south' : '';
+  }
+}
+
+function wkt_from_utm(P) {
+  return wkt_projcs_maker({
+    NAME: wkt_make_utm_name,
+    PROJECTION: function () {return 'Transverse_Mercator';},
+    PARAMETER: wkt_make_utm_params
+  })(P);
+}
+
+function wkt_from_ups(P) {
+  return wkt_projcs_maker({
+    NAME: wkt_make_ups_name,
+    PROJECTION: function () {return 'Polar_Stereographic';},
+    PARAMETER: wkt_make_ups_params
+  })(P);
+}
+
+function wkt_make_utm_name(P, projcs) {
+  return projcs.GEOGCS.NAME + ' / UTM zone ' + pj_param(P.params, 'szone') + (pj_param(P.params, 'tsouth') ? 'S' : 'N');
+}
+
+function wkt_make_ups_name(P, projcs) {
+  return projcs.GEOGCS.NAME + ' / UPS ' + (pj_param(P.params, 'tsouth') ? 'South' : 'North');
+}
+
+function wkt_make_utm_params(P) {
+  var lon0 = P.lam0 * 180 / M_PI;
+  return [
+    ["latitude_of_origin", 0],
+    ["central_meridian", lon0],
+    ["scale_factor", P.k0],
+    ["false_easting", P.x0],
+    ["false_northing", P.y0]
+  ];
+}
+
+function wkt_make_ups_params(P) {
+  return [
+    ["latitude_of_origin", -90],
+    ["central_meridian", 0],
+    ["scale_factor", 0.994],
+    ["false_easting", 2000000],
+    ["false_northing", 2000000]
+  ];
+}
+
+
+// Mercator_2SP references:
+//    http://geotiff.maptools.org/proj_list/mercator_2sp.html
+//    http://www.remotesensing.org/geotiff/proj_list/mercator_2sp.html
+//    https://trac.osgeo.org/gdal/ticket/4861
+
+add_wkt_parser(get_simple_parser_test('Mercator_2SP,Mercator_1SP,Mercator,Mercator_Auxiliary_Sphere'),
+  wkt_projcs_converter({
+    GEOGCS: wkt_convert_merc_geogcs,
+    PROJECTION: wkt_simple_projection_converter('merc'),
+    PARAMETER: wkt_convert_merc_params
+  }));
+
+add_wkt_maker(get_simple_maker_test('merc'),
+  wkt_projcs_maker({
+    GEOGCS: wkt_make_merc_geogcs,
+    PROJECTION: wkt_make_merc_projection,
+    PARAMETER: wkt_make_merc_params,
+    NAME: wkt_make_merc_name
+  }));
+
+function wkt_make_merc_name(P) {
+  return wkt_proj4_is_webmercator(P) ? 'WGS 84 / Pseudo-Mercator' : null;
+}
+
+function wkt_make_merc_geogcs(P) {
+  // PROBLEM: no clear way to get geographic cs from proj4 string
+  // ... so assuming WGS 84 (consider using spherical datum instead)
+  if (wkt_proj4_is_webmercator(P)) {
+    return wkt_make_geogcs(pj_init('+proj=longlat +datum=WGS84'));
+  }
+  return null;
+}
+
+function wkt_convert_merc_geogcs(projcs) {
+  var opts = wkt_projcs_is_webmercator(projcs) ? {aux_sphere: true} : null;
+  return wkt_convert_geogcs(projcs.GEOGCS, opts);
+}
+
+function wkt_make_merc_projection(P) {
+  return wkt_proj4_is_merc_2sp(P) ? 'Mercator_2SP' : 'Mercator_1SP';
+}
+
+function wkt_convert_merc_params(projcs) {
+  // TODO: handle (esri) standard_parallel_1 in 1sp version
+  // 1sp version accepts latitude_of_origin (ogc) or standard_parallel_1 (esri)
+  // var rules = wkt_projcs_is_merc_2sp(projcs) ? 'lat_ts,lat_0b' : 'lat_tsb,lat_ts';
+  var rules = wkt_projcs_is_merc_2sp(projcs) ? 'lat_ts,lat_0b' : 'lat_tsb,lat_ts';
+  return wkt_parameter_converter(rules)(projcs);
+}
+
+function wkt_make_merc_params(P) {
+  var rules = wkt_proj4_is_merc_2sp(P) ? 'lat_ts,lat_0b' : 'lat_tsb';
+  return wkt_parameter_maker(rules)(P);
+}
+
+function wkt_projcs_is_merc_2sp(projcs) {
+  var param = wkt_find_parameter_by_name(projcs, 'standard_parallel_1');
+  return param && param[1] != 0;
+}
+
+function wkt_proj4_is_merc_2sp(P) {
+  return pj_param(P.params, 'tlat_ts') && pj_param(P.params, 'dlat_ts') != 0;
+}
+
+function wkt_projcs_is_webmercator(projcs) {
+  return /(Web_Mercator|Pseudo_Mercator)/i.test(wkt_name_to_slug(projcs.NAME));
+}
+
+// TODO: support other spheroids (web mercator may be used for other planets)
+function wkt_proj4_is_webmercator(P) {
+  return P.es === 0 && P.a == 6378137;
+}
+
+
+
+
+// Reference:
+// http://proj4.org/parameters.html
+
+var wkt_common_params = [
+  ['x_0', 'false_easting', 'm'],
+  ['y_0', 'false_northing', 'm'],
+  ['k_0', 'scale_factor', 'f'],
+  ['lat_0', 'latitude_of_center'],
+  ['lon_0', 'central_meridian']
+];
+
+var wkt_param_table = {
+  lat_0b:  ['lat_0', 'latitude_of_origin'],
+  lat_0c:  ['lat_0', null], // lcc 1sp, stere
+  lat_0d:  ['lat_0', 'standard_parallel_1'],  // stere (esri), merc (esri)
+  lat_1:   ['lat_1', 'standard_parallel_1'],
+  lat_1b:  ['lat_1', 'latitude_of_point_1'],  // omerc,tpeqd
+  lat_1c:  ['lat_1', 'latitude_of_origin'],   // lcc
+  lat_2:   ['lat_2', 'standard_parallel_2'],
+  lat_2b:  ['lat_2', 'latitude_of_point_2'],  // omerc,tpeqd
+  lat_ts:  ['lat_ts', 'standard_parallel_1'], // cea,eqc,merc,stere,wag3,wink1
+  lat_tsb: ['lat_ts', 'latitude_of_origin'],  // merc
+  lonc:    ['lonc', 'central_meridian'],      // omerc,ocea
+  lon_1:   ['lon_1', 'longitude_of_point_1'], // omerc,tpeqd
+  lon_2:   ['lon_2', 'longitude_of_point_2'], // omerc,tpeqd
+  alpha:   ['alpha', 'azimuth'],              // omerc,ocea
+  gamma:   ['gamma', 'rectified_grid_angle'], // omerc
+  h:       ['h', 'height', 'f'] // nsper
 };
 
+// non-standard name -> standard name
+// TODO: consider accepting standard_parallel_1 as (esri) alias for latitude_of_center / latitude_of_origin
+var wkt_param_aliases = {
+  longitude_of_center: 'central_meridian',
+  latitude_of_origin: 'latitude_of_center',
+  latitude_of_center: 'latitude_of_origin',
+  longitude_of_1st_point: 'longitude_of_point_1',
+  longitude_of_2nd_point: 'longitude_of_point_2',
+  latitude_of_1st_point: 'latitude_of_point_1',
+  latitude_of_2nd_point: 'latitude_of_point_2',
+  // proj4
+  k: 'k_0'
+};
+
+// Convert a wkt PARAMETER name to a proj4 param id
+function wkt_convert_param_name_old(wktName, proj) {
+  var defn = wkt_find_param_defn_old(proj, function(defn) {
+    return defn[1] == wktName;
+  });
+  return defn ? defn[0] : '';
+}
+
+// @proj Proj.4 projection id
+function wkt_find_param_defn_old(proj, test) {
+  var defn, projs;
+  for (var i=0; i<wkt_params.length; i++) {
+    defn = wkt_params[i];
+    projs = defn[3];
+    if (projs && projs.split(',').indexOf(proj) == -1) continue;
+    if (test(defn)) return defn;
+  }
+  return null;
+}
+
+
+function wkt_find_defn(name, idx, arr) {
+  for (var i=0; i<arr.length; i++) {
+    // returns first match (additional matches -- aliases -- may be present)
+    if (arr[i][idx] === name) return arr[i];
+  }
+  return null;
+}
+
+function wkt_find_parameter_defn(name, idx, rules) {
+  var defn = null;
+  name = name.toLowerCase();
+  defn = wkt_find_defn(name, idx, rules);
+  if (!defn && (name in wkt_param_aliases)) {
+    defn = wkt_find_defn(wkt_param_aliases[name], idx, rules);
+  }
+  return defn;
+}
+
+function wkt_convert_parameter(defn, value, unitDefn) {
+  var name = defn[0],
+      type = defn[2];
+  if (type == 'm') {
+    value *= unitDefn.to_meter;
+  }
+  if (WKT_OMIT_DEFAULTS) {
+    if ('x_0,y_0,lat_0,lon_0'.indexOf(name) > -1 && value === 0 ||
+      name == 'k_0' && value == 1) {
+      return;
+    }
+  }
+  return '+' + name + '=' + value;
+}
+
+function wkt_make_parameter(defn, strVal, toMeter) {
+  var type = defn[2],
+      val;
+  if (type == 'm') {
+    val = parseFloat(strVal) / toMeter;
+  } else if (type == 'f') {
+    val = parseFloat(strVal);
+  } else {
+    val = dmstod(strVal); // default is decimal degrees or DMS
+  }
+  return [defn[1], val];
+}
+
+function wkt_find_parameter_by_name(projcs, name) {
+  var params = projcs.PARAMETER || [];
+  var paramName;
+  for (var i=0; i<params.length; i++) {
+    paramName = params[i][0].toLowerCase();
+    if (name === paramName || name === wkt_param_aliases[paramName]) {
+      return params[i];
+    }
+  }
+  return null;
+}
+
+function wkt_get_parameter_value(projcs, name) {
+  var param = wkt_find_parameter_by_name(projcs, name);
+  return param === null ? null : param[1];
+}
+
+function wkt_get_parameter_rules(ids) {
+  var rules = null;
+  if (ids) {
+    rules = wkt_split_names(ids).reduce(function(memo, id) {
+      var rule = wkt_param_table[id];
+      if (!rule) wkt_error("missing parameter rule: " + id);
+      memo.push(rule);
+      return memo;
+    }, []);
+  }
+  return (rules || []).concat(wkt_common_params);
+}
+
+function wkt_parameter_converter(extraRules) {
+  return function(projcs) {
+    var parts = [];
+    var rules = wkt_get_parameter_rules(extraRules);
+    var unitDefn = wkt_get_unit_defn(projcs);
+    (projcs.PARAMETER || []).forEach(function(param) { // handle no params
+      var defn = wkt_find_parameter_defn(param[0], 1, rules);
+      var proj4;
+      if (!defn) {
+        wkt_warn('unhandled parameter: ' + param[0]);
+      } else {
+        proj4 = wkt_convert_parameter(defn, param[1], unitDefn);
+        if (proj4) parts.push(proj4);
+      }
+    });
+    return parts.join(' ');
+  };
+}
+
+function wkt_parameter_maker(extraRules) {
+  return function(P) {
+    var params = [];
+    var rules = wkt_get_parameter_rules(extraRules);
+    // TODO: think about how to add default params omitted from proj4 defn
+    // TODO: think about detecting unused params in proj4 defn
+    Object.keys(P.params).forEach(function(key) {
+      var defn = wkt_find_parameter_defn(key, 0, rules);
+      var sval;
+      if (defn && defn[1]) { // handle dummy rules with null wkt param name (see wkt_lcc.js)
+        sval = pj_param(P.params, 's' + key);
+        params.push(wkt_make_parameter(defn, sval, P.to_meter));
+      }
+    });
+    return params;
+  };
+}
+
+
+add_wkt_parser(get_simple_parser_test(
+  'Lambert_Conformal_Conic,Lambert_Conformal_Conic_1SP,Lambert_Conformal_Conic_2SP'),
+  wkt_projcs_converter({
+    PROJECTION: wkt_simple_projection_converter('lcc'),
+    PARAMETER: wkt_convert_lcc_params
+  }));
+
+add_wkt_maker(get_simple_maker_test('lcc'),
+  wkt_projcs_maker({
+    PROJECTION: wkt_make_lcc_projection,
+    PARAMETER: wkt_make_lcc_params
+  }));
+
+function wkt_make_lcc_params(P) {
+  var params = wkt_proj4_is_lcc_1sp(P) ? 'lat_1c,lat_0c' : 'lat_0b,lat_1,lat_2';
+  return wkt_parameter_maker(params)(P);
+}
+
+function wkt_convert_lcc_params(projcs) {
+  var params = wkt_projcs_is_lcc_1sp(projcs) ? 'lat_1c' : 'lat_0b,lat_1,lat_2';
+  return wkt_parameter_converter(params)(projcs);
+}
+
+function wkt_make_lcc_projection(P) {
+  return wkt_proj4_is_lcc_1sp(P) ? 'Lambert_Conformal_Conic_1SP' : 'Lambert_Conformal_Conic_2SP';
+}
+
+function wkt_projcs_is_lcc_1sp(projcs) {
+  return !wkt_find_parameter_by_name(projcs, 'standard_parallel_2');
+}
+
+function wkt_proj4_is_lcc_1sp(P) {
+  return !('lat_1' in P.params && 'lat_2' in P.params);
+}
+
+
+// Type A
+add_wkt_parser(
+  get_simple_parser_test('Hotine_Oblique_Mercator,Hotine_Oblique_Mercator_Azimuth_Natural_Origin'),
+  wkt_projcs_converter({
+    PROJECTION: wkt_simple_projection_converter('omerc'),
+    PARAMETER: function(P) {return wkt_parameter_converter('alpha,gamma,lonc')(P) + ' +no_uoff';}
+  })
+);
+add_wkt_maker(wkt_proj4_is_omerc_A, wkt_simple_projcs_maker('Hotine_Oblique_Mercator', 'alpha,gamma,lonc'));
+
+// Type B
+add_simple_wkt_parser('omerc', 'Oblique_Mercator,Hotine_Oblique_Mercator_Azimuth_Center', 'alpha,gamma,lonc');
+add_wkt_maker(wkt_proj4_is_omerc_B, wkt_simple_projcs_maker('Oblique_Mercator', 'alpha,gamma,lonc'));
+
+// Two-point version
+add_simple_wkt_parser('omerc', 'Hotine_Oblique_Mercator_Two_Point_Natural_Origin', 'lat_1b,lat_2b,lon_1,lon_2');
+add_wkt_maker(
+  wkt_proj4_is_omerc_2pt,
+  wkt_simple_projcs_maker('Hotine_Oblique_Mercator_Two_Point_Natural_Origin', 'lat_1b,lat_2b,lon_1,lon_2')
+);
+
+function wkt_proj4_is_omerc_2pt(P) {
+  return get_proj_id(P) == 'omerc' && 'lat_2' in P.params && 'lon_2' in P.params;
+}
+
+function wkt_proj4_is_omerc(P) {
+  return get_proj_id(P) == 'omerc' && ('alpha' in P.params || 'gamma' in P.params);
+}
+
+function wkt_proj4_is_omerc_A(P) {
+  return wkt_proj4_is_omerc(P) && 'no_uoff' in P.params;
+}
+
+function wkt_proj4_is_omerc_B(P) {
+  return wkt_proj4_is_omerc(P) && 'no_uoff' in P.params === false;
+}
+
+
+// add_simple_wkt_parser('stere', ['Stereographic', 'Polar_Stereographic', 'Stereographic_North_Pole', 'Stereographic_South_Pole']);
+
+/*
+  Stereographic vs. Polar Stereographic from geotiff
+  http://geotiff.maptools.org/proj_list/polar_stereographic.html
+  http://geotiff.maptools.org/proj_list/stereographic.html
+  http://geotiff.maptools.org/proj_list/random_issues.html#stereographic
+
+*/
+
+add_wkt_parser(get_simple_parser_test('Stereographic,Polar_Stereographic,Stereographic_North_Pole,Stereographic_South_Pole'),
+  wkt_projcs_converter({
+    PROJECTION: wkt_simple_projection_converter('stere'),
+    PARAMETER: wkt_convert_stere_params
+  }));
+
+add_wkt_maker(get_simple_maker_test('stere'),
+  wkt_projcs_maker({
+    PROJECTION: wkt_make_stere_projection,
+    PARAMETER: wkt_make_stere_params
+  }));
+
+function wkt_convert_stere_params(projcs) {
+  // assuming not oblique; TOOD: verify not oblique
+  var params = wkt_parameter_converter('lat_ts,lat_tsb')(projcs);
+  var match = /lat_ts=([^ ]+)/.exec(params);
+  if (match && params.indexOf('lat_0=') == -1) {
+    // Add +lat_0=90 or +lat_0=-90
+    params = '+lat_0=' + (parseFloat(match[1]) < 0 ? -90 : 90) + ' ' + params;
+  }
+  return params;
+}
+
+function wkt_make_stere_projection(P) {
+  return wkt_proj4_is_stere_polar(P) ? 'Polar_Stereographic' : 'Oblique_Stereographic';
+}
+
+function wkt_make_stere_params(P) {
+  return wkt_proj4_is_stere_polar(P) ?
+    wkt_parameter_maker('lat_tsb,lat_0c')(P) : // lat_ts -> latitude_of_origin, lat_0 -> null
+    wkt_parameter_maker('lat_0b');      // lat_0 -> latitude_of_origin
+}
+
+function wkt_proj4_is_stere_polar(P) {
+  return pj_param(P.params, 'tlat_ts');
+}
+
+
+add_simple_wkt_maker('vandg', 'VanDerGrinten');
+add_wkt_parser(
+  get_simple_parser_test('VanDerGrinten,Van_der_Grinten_I'),
+  wkt_projcs_converter({
+    PROJECTION: wkt_simple_projection_converter('vandg'),
+    PARAMETER: function(P) {
+      var params = wkt_parameter_converter('')(P);
+      if (params) params += ' ';
+      return params + '+R_A';
+    }
+  })
+);
+
+
+/*
+// projections still missing WKT conversion
+[
+  ['airy', ''],
+  ['boggs', ''],
+  ['crast', 'Craster_Parabolic'],
+  ['gn_sinu', ''],
+  ['gstmerc', 'Gauss_Schreiber_Transverse_Mercator'], // https://trac.osgeo.org/gdal/ticket/2663
+  ['geos', 'Geostationary_Satellite'],
+  ['goode', 'Goode_Homolosine'],
+  ['igh', 'Interrupted_Goode_Homolosine'],
+  ['imw_p', 'International_Map_of_the_World_Polyconic'],
+  ['kav7', ''],
+  ['krovak', 'Krovak'],
+  ['laborde', 'Laborde_Oblique_Mercator'],
+  ['mbtfps', ''],
+  ['nell_h', ''],
+  ['nzmg', 'New_Zealand_Map_Grid'],
+  ['ocea', ''], // see OneNote notes
+  ['qua_aut', 'Quartic_Authalic'],
+  ['', 'Swiss_Oblique_Cylindrical'], // http://www.remotesensing.org/geotiff/proj_list/swiss_oblique_cylindrical.html
+  ['', 'Transverse_Mercator_South_Orientated'], // http://www.remotesensing.org/geotiff/proj_list/transverse_mercator_south_oriented.html
+]
+*/
+
+// Add simple conversion functions
+// optional third field gives alternate parameters (defined in wkt_parameters.js)
+[
+  ['aitoff', 'Aitoff', 'lat1'],
+  ['aea', 'Albers_Conic_Equal_Area,Albers', 'lat_1,lat_2'],
+  ['aeqd', 'Azimuthal_Equidistant'],
+  ['bonne', 'Bonne', 'lat_1'],
+  ['cass', 'Cassini_Soldner,Cassini'],
+  ['cea', 'Cylindrical_Equal_Area', 'lat_ts'],
+  ['eck1', 'Eckert_I'],
+  ['eck2', 'Eckert_II'],
+  ['eck3', 'Eckert_III'],
+  ['eck4', 'Eckert_IV'],
+  ['eck5', 'Eckert_V'],
+  ['eck6', 'Eckert_VI'],
+  ['eqdc', 'Equidistant_Conic', 'lat_1,lat_2'],
+  ['eqc', 'Plate_Carree,Equirectangular,Equidistant_Cylindrical', 'lat_ts'],
+  ['gall', 'Gall_Stereographic'],
+  ['gnom', 'Gnomonic'],
+  ['laea', 'Lambert_Azimuthal_Equal_Area'],
+  ['loxim', 'Loximuthal', 'lat_1'],
+  ['mill', 'Miller_Cylindrical'],
+  ['moll', 'Mollweide'],
+  ['nsper', 'Vertical_Near_Side_Perspective', 'h'],
+  ['ortho', 'Orthographic', 'lat_0b'],
+  ['poly', 'Polyconic'],
+  ['robin', 'Robinson'],
+  ['sinu', 'Sinusoidal'],
+  ['sterea', 'Oblique_Stereographic,Double_Stereographic'], // http://geotiff.maptools.org/proj_list/oblique_stereographic.html
+  ['tmerc', 'Transverse_Mercator', 'lat_0b'],
+  ['tpeqd', 'Two_Point_Equidistant', 'lat_1b,lat_2b,lon_1,lon_2'],
+  // ['vandg', 'VanDerGrinten,Van_der_Grinten_I'], // slight complication, see wkt_vandg.js
+  ['wag1', 'Wagner_I'],
+  ['wag2', 'Wagner_II'],
+  ['wag3', 'Wagner_III', 'lat_ts'],
+  ['wag4', 'Wagner_IV'],
+  ['wag5', 'Wagner_V'],
+  ['wag6', 'Wagner_VI'],
+  ['wag7', 'Wagner_VII'],
+  ['wink1', 'Winkel_I', 'lat_ts'],
+  ['wink2', 'Winkel_II'],
+  ['wintri', 'Winkel_Tripel', 'lat_1']
+].forEach(function(arr) {
+  var alternateParams = arr[2] || null;
+  add_simple_wkt_parser(arr[0], arr[1], alternateParams);
+  add_simple_wkt_maker(arr[0], arr[1].split(',')[0], alternateParams);
+});
+
+
+
+function wkt_stringify(o) {
+  var str = JSON.stringify(wkt_stringify_reorder(o));
+  str = str.replace(/\["([A-Z0-9]+)",/g, '$1['); // convert JSON arrays to WKT
+  // remove quotes from AXIS values (not supported: UP|DOWN|OTHER etc.)
+  // see (http://www.geoapi.org/apidocs/org/opengis/referencing/doc-files/WKT.html)
+  str = str.replace(/"(EAST|NORTH|SOUTH|WEST)"/g, '$1');
+  return str;
+}
+
+function wkt_sort_order(key) {
+  // supported WKT names in sorted order
+  var names = 'NAME,PROJCS,GEOGCS,GEOCCS,DATUM,SPHEROID,PRIMEM,PROJECTION,PARAMETER,UNIT,AXIS';
+  return names.indexOf(key) + 1 || 999;
+}
+
+function wkt_keys(o) {
+  var keys = Object.keys(o);
+  return keys.sort(function(a, b) {
+    return wkt_sort_order(a) - wkt_sort_order(b);
+  });
+}
+
+
+// Rearrange a generated WKT object for easier string conversion
+// inverse of wkt_parse_reorder()
+function wkt_stringify_reorder(o, depth) {
+  var arr = [], e;
+  depth = depth || 0;
+  wkt_keys(o).forEach(function(name) {
+    var val = o[name];
+    if (wkt_is_object(val)) {
+      arr.push([name].concat(wkt_stringify_reorder(val, depth + 1)));
+    } else if (name == 'NAME') {
+      arr.push(wkt_is_string(val) ? val : val[0]);
+    } else if (name == 'PARAMETER' || name == 'AXIS') {
+      val.forEach(function(param) {
+        arr.push([name].concat(param));
+      });
+    } else if (wkt_is_string(val)) {
+      arr.push([name, val]);
+    } else if (Array.isArray(val)) {
+       arr.push([name].concat(val));
+    } else {
+      e = {};
+      e[name] = val;
+      wkt_error("Incorrectly formatted WKT element: " + JSON.stringify(e));
+    }
+  });
+  if (depth === 0 && arr.length == 1) {
+    arr = arr[0]; // kludge to remove top-level array
+  }
+  return arr;
+}
+
+
+
+
 function wkt_parse(str) {
+  return wkt_parse_reorder(wkt_unpack(str), {});
+}
+
+// Convert WKT string to a JS object
+// WKT format: http://docs.opengeospatial.org/is/12-063r5/12-063r5.html#11
+function wkt_unpack(str) {
+
   var obj;
-  // reference http://docs.opengeospatial.org/is/12-063r5/12-063r5.html#11
+  // Use regex to convert WKT to valid JSON
   str = str.replace(/""/g, '\\"'); // convert WKT doublequote to JSON escaped quote
   str = str.replace(/([A-Z0-9]+)\[/g, '["$1",'); // convert WKT entities to JSON arrays
-  // TODO: more targeted regex
-  str = str.replace(/, *([a-zA-Z]+) *(?=[,\]])/g, ',"$1"'); // wrap axis direction keywords in quotes
+  str = str.replace(/, *([a-zA-Z]+) *(?=[,\]])/g, ',"$1"'); // quote axis keywords
   // str = str.replace(/[^\]]*$/, ''); // esri .prj string may have extra stuff appended
   try {
     obj = JSON.parse(str);
   } catch(e) {
     wkt_error('unparsable WKT format');
   }
-  return wkt_reorder(obj, {});
+  return obj;
 }
 
-function wkt_harmonize_keyword(name) {
-  return wkt_aliases[name] || name;
-}
-
-function wkt_reorder(arr, obj) {
-  var name = wkt_harmonize_keyword(arr[0]),
+// Rearrange a parsed WKT file for easier traversal
+// E.g.
+//   ["WGS84", ...]  to  {NAME: "WGS84"}
+//   ["PROJECTION", "Mercator"]  to  {PROJECTION: "Mercator"}
+//   ["PARAMETER", <param1>], ...  to  {PARAMETER: [<param1>, ...]}
+function wkt_parse_reorder(arr, obj) {
+  var name = arr[0], // TODO: handle alternate OGC names
       i;
   if (name == 'GEOGCS' || name == 'GEOCCS' || name == 'PROJCS' || name == 'DATUM') {
     obj[name] = {
@@ -11519,7 +12198,7 @@ function wkt_reorder(arr, obj) {
     };
     for (i=2; i<arr.length; i++) {
       if (Array.isArray(arr[i])) {
-        wkt_reorder(arr[i], obj[name]);
+        wkt_parse_reorder(arr[i], obj[name]);
       } else {
         throw wkt_error("WKT parse error");
       }
@@ -11539,13 +12218,24 @@ function wkt_reorder(arr, obj) {
 
 var WKT_OMIT_DEFAULTS = true;
 
+function wkt_from_proj4(P) {
+  var obj;
+  if (P.length) P = pj_init(P); // convert proj4 string
+  if (pj_is_latlong(P)) {
+    obj = {GEOGCS: wkt_make_geogcs(P)};
+  } else {
+    obj = wkt_make_projcs(P);
+  }
+  return wkt_stringify(obj);
+}
+
 // @str A WKT CRS definition string (e.g. contents of a .prj file)
 function wkt_to_proj4(str) {
   var o = wkt_parse(str);
   var proj4;
 
   if (o.PROJCS) {
-    proj4 = wkt_convert_projection(o.PROJCS);
+    proj4 = wkt_convert_projcs(o.PROJCS);
 
   } else if (o.GEOGCS) {
     proj4 = '+proj=longlat ' + wkt_convert_geogcs(o.GEOGCS);
@@ -11559,63 +12249,6 @@ function wkt_to_proj4(str) {
   return proj4;
 }
 
-function wkt_convert_projection(obj) {
-  var projName = obj.PROJECTION[0];
-  var projDefn = wkt_get_proj(projName);
-  var wktName = obj.NAME.replace(/ /g, '_');
-  var unitDefn, i, match, projStr, geogStr, paramStr;
-
-  // TODO: implement separate ogc vertical units param
-  unitDefn = wkt_get_unit(obj.UNIT);
-
-  if (!projDefn) {
-    wkt_error('unknown projection: ' + projName);
-  }
-  if (!projDefn.proj) {
-    wkt_error('projection not implemented: ' + projName);
-  }
-
-  // handle several special cases by matching PROJCS wkt name
-  if (match = /UPS_(North|South)/i.exec(wktName)) {
-    projStr = '+proj=ups';
-    if (match[1].toLowerCase() == 'south') {
-      projStr += ' +south';
-    }
-  } else if (match = /UTM_zone_([1-9]{1,2})(N|S)/i.exec(wktName)) {
-    projStr = '+proj=utm +zone=' + match[1];
-    if (match[2] == 'S') {
-      projStr += ' +south';
-    }
-  } else if (/(Web_Mercator|Pseudo-Mercator)/i.test(wktName)) {
-    // kludge for web mercator
-    projStr = '+proj=merc';
-    geogStr = wkt_convert_geogcs(obj.GEOGCS, {aux_sphere: true});
-  } else {
-    projStr = '+proj=' + projDefn.proj;
-    paramStr = wkt_convert_params(obj.PARAMETER || [], projDefn, unitDefn);
-    if (paramStr) projStr += ' ' + paramStr;
-  }
-
-  if (!geogStr) {
-    geogStr = wkt_convert_geogcs(obj.GEOGCS);
-  }
-
-  // special cases
-  if (projDefn.proj == 'vandg') {
-    // adding R_A param to match ogr2ogr and epsg (source: https://epsg.io/54029)
-    geogStr += ' +R_A';
-  }
-
-  projStr += ' ' + geogStr;
-
-  if (unitDefn.to_meter != 1) {
-    projStr += ' +to_meter=' + unitDefn.to_meter;
-  } else if (!WKT_OMIT_DEFAULTS) {
-    projStr += ' +units=m';
-  }
-
-  return projStr + ' +no_defs';
-}
 
 
 function pj_qsfn(sinphi, e, one_es) {
@@ -14131,6 +14764,7 @@ function pj_aeqd(P) {
     switch (mode) {
       case N_POLE:
         coslam = - coslam;
+        /* falls through */
       case S_POLE:
         xy.x = (rho = fabs(Mp - pj_mlfn(lp.phi, sinphi, cosphi, en))) *
             sin(lp.lam);
@@ -14206,6 +14840,7 @@ function pj_aeqd(P) {
       case N_POLE:
         lp.phi = -lp.phi;
         coslam = -coslam;
+        /* falls through */
       case S_POLE:
         if (fabs(lp.phi - M_HALFPI) < EPS10) f_error();
         xy.x = (xy.y = (M_HALFPI + lp.phi)) * sin(lp.lam);
@@ -15064,6 +15699,11 @@ function pj_eqdc(P) {
 pj_add(pj_etmerc, 'etmerc', 'Extended Transverse Mercator', '\n\tCyl, Sph\n\tlat_ts=(0)\nlat_0=(0)');
 pj_add(pj_utm, 'utm', 'Universal Transverse Mercator (UTM)', '\n\tCyl, Sph\n\tzone= south');
 
+
+function pj_utm_zone(P) {
+
+}
+
 function pj_utm(P) {
   var zone;
   if (!P.es) e_error(-34);
@@ -15497,6 +16137,7 @@ function pj_gnom(P) {
             break;
         case N_POLE:
             coslam = - coslam;
+            /* falls through */
         case S_POLE:
             xy.y *= cosphi * coslam;
             break;
@@ -15544,6 +16185,108 @@ function pj_gnom(P) {
         lp.lam = atan2(x, y);
     }
   }
+}
+
+
+pj_add(pj_moll, 'moll', 'Mollweide', '\n\tPCyl Sph');
+pj_add(pj_wag4, 'wag4', 'Wagner IV', '\n\tPCyl Sph');
+pj_add(pj_wag5, 'wag5', 'Wagner V', '\n\tPCyl Sph');
+
+function pj_moll(P) {
+  pj_moll_init(P, pj_moll_init_Q(P, M_HALFPI));
+}
+
+function pj_wag4(P) {
+  pj_moll_init(P, pj_moll_init_Q(P, M_PI/3));
+}
+
+function pj_wag5(P) {
+  var Q = {
+    C_x: 0.90977,
+    C_y: 1.65014,
+    C_p: 3.00896
+  };
+  pj_moll_init(P, Q);
+}
+
+function pj_moll_init_Q(P, p) {
+  var sp = sin(p),
+      p2 = p + p,
+      r = sqrt(M_TWOPI * sp / (p2 + sin(p2)));
+  return {
+    C_x: 2 * r / M_PI,
+    C_y: r / sp,
+    C_p: p2 + sin(p2)
+  };
+}
+
+function pj_moll_init(P, Q) {
+  var MAX_ITER = 10,
+      LOOP_TOL = 1e-7;
+  P.fwd = s_fwd;
+  P.inv = s_inv;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var k, V, i;
+    k = Q.C_p * sin(lp.phi);
+    for (i = MAX_ITER; i;--i) {
+      lp.phi -= V = (lp.phi + sin(lp.phi) - k) /
+        (1 + cos(lp.phi));
+      if (fabs(V) < LOOP_TOL)
+        break;
+    }
+    if (!i)
+      lp.phi = (lp.phi < 0) ? -M_HALFPI : M_HALFPI;
+    else
+      lp.phi *= 0.5;
+    xy.x = Q.C_x * lp.lam * cos(lp.phi);
+    xy.y = Q.C_y * sin(lp.phi);
+  }
+
+  function s_inv(xy, lp) {
+    lp.phi = aasin(xy.y / Q.C_y);
+    lp.lam = xy.x / (Q.C_x * cos(lp.phi));
+    // if (fabs(lp.lam) < M_PI) { // from Proj.4; fails for edge coordinates
+    if (fabs(lp.lam) - M_PI < EPS10) { // allows inv projection of world layer
+      lp.phi += lp.phi;
+      lp.phi = aasin((lp.phi + sin(lp.phi)) / Q.C_p);
+    } else {
+      lp.lam = lp.phi = HUGE_VAL;
+    }
+  }
+}
+
+
+pj_add(pj_goode, 'goode', "Goode Homolosine", "\n\tPCyl, Sph.");
+
+function pj_goode(P) {
+  var Y_COR = 0.05280,
+      PHI_LIM = 0.71093078197902358062,
+      sinuFwd, sinuInv, mollFwd, mollInv;
+  P.es = 0;
+  pj_sinu(P);
+  sinuFwd = P.fwd;
+  sinuInv = P.inv;
+  pj_moll(P);
+  mollFwd = P.fwd;
+  mollInv = P.inv;
+  P.fwd = function(lp, xy) {
+    if (fabs(lp.phi) < PHI_LIM) {
+      sinuFwd(lp, xy);
+    } else {
+      mollFwd(lp, xy);
+      xy.y -= lp.phi > 0 ? Y_COR : -Y_COR;
+    }
+  };
+  P.inv = function(xy, lp) {
+    if (fabs(xy.y) <= PHI_LIM) {
+      sinuInv(xy, lp);
+    } else {
+      xy.y += xy.y > 0 ? Y_COR : -Y_COR;
+      mollInv(xy, lp);
+    }
+  };
 }
 
 
@@ -15685,6 +16428,7 @@ function pj_laea(P) {
         break;
       case N_POLE:
         xy.y = -xy.y;
+        /* falls through */
       case S_POLE:
         q = (xy.x * xy.x + xy.y * xy.y);
         if (!q) {
@@ -15723,6 +16467,7 @@ function pj_laea(P) {
         break;
       case N_POLE:
         coslam = -coslam;
+        /* falls through */
       case S_POLE:
         if (fabs(lp.phi + P.phi0) < EPS10) f_error();
         xy.y = M_FORTPI - lp.phi * 0.5;
@@ -15771,38 +16516,23 @@ function pj_laea(P) {
 
 pj_add(pj_lonlat, 'lonlat', 'Lat/long (Geodetic)', '\n\t');
 pj_add(pj_lonlat, 'longlat', 'Lat/long (Geodetic alias)', '\n\t');
-pj_add(pj_latlon, 'latlon', 'Lat/long (Geodetic alias)', '\n\t');
-pj_add(pj_latlon, 'latlong', 'Lat/long (Geodetic alias)', '\n\t');
+pj_add(pj_lonlat, 'latlon', 'Lat/long (Geodetic alias)', '\n\t');
+pj_add(pj_lonlat, 'latlong', 'Lat/long (Geodetic alias)', '\n\t');
 
 function pj_lonlat(P) {
-  pj_lonlat_init(P, false);
-}
-
-function pj_latlon(P) {
-  pj_lonlat_init(P, true);
-}
-
-function pj_lonlat_init(P, swapped) {
   P.x0 = 0;
   P.y0 = 0;
-  P.is_latlong = 1;
-  if (swapped) {
-    P.inv = fwd;
-    P.fwd = inv;
-  } else {
-    P.inv = inv;
-    P.fwd = fwd;
-  }
+  P.is_latlong = true;
 
-  function fwd(lp, xy) {
+  P.fwd = function(lp, xy) {
     xy.x = lp.lam / P.a;
     xy.y = lp.phi / P.a;
-  }
+  };
 
-  function inv(xy, lp) {
+  P.inv = function(xy, lp) {
     lp.lam = xy.x * P.a;
     lp.phi = xy.y * P.a;
-  }
+  };
 }
 
 
@@ -15947,16 +16677,16 @@ function pj_phi2(ts, e) {
   var N_ITER = 15,
       TOL = 1e-10,
       eccnth = 0.5 * e,
-      Phi = M_HALFPI - 2 * Math.atan(ts),
+      Phi = M_HALFPI - 2 * atan(ts),
       i = N_ITER,
       con, dphi;
 
   do {
-    con = e * Math.sin(Phi);
-    dphi = M_HALFPI - 2 * Math.atan(ts * Math.pow((1 - con) /
+    con = e * sin(Phi);
+    dphi = M_HALFPI - 2 * atan(ts * pow((1 - con) /
        (1 + con), eccnth)) - Phi;
     Phi += dphi;
-  } while ( Math.abs(dphi) > TOL && --i);
+  } while (fabs(dphi) > TOL && --i);
   if (i <= 0) {
     pj_ctx_set_errno(-18);
   }
@@ -15980,7 +16710,7 @@ function pj_merc(P) {
 
   if (P.es) { // ellipsoid
     if (is_phits) {
-      P.k0 = pj_msfn(Math.sin(phits), Math.cos(phits), P.es);
+      P.k0 = pj_msfn(sin(phits), cos(phits), P.es);
     }
     P.inv = e_inv;
     P.fwd = e_fwd;
@@ -15998,7 +16728,7 @@ function pj_merc(P) {
   }
 
   function e_inv(xy, lp) {
-    lp.phi = pj_phi2(Math.exp(-xy.y / P.k0), P.e);
+    lp.phi = pj_phi2(exp(-xy.y / P.k0), P.e);
     if (lp.phi === HUGE_VAL) {
       i_error();
     }
@@ -16006,15 +16736,15 @@ function pj_merc(P) {
   }
 
   function s_fwd(lp, xy) {
-    if (Math.abs(Math.abs(lp.phi) - M_HALFPI) <= EPS10) {
+    if (fabs(fabs(lp.phi) - M_HALFPI) <= EPS10) {
       f_error();
     }
     xy.x = P.k0 * lp.lam;
-    xy.y = P.k0 * Math.log(Math.tan(M_FORTPI + 0.5 * lp.phi));
+    xy.y = P.k0 * log(tan(M_FORTPI + 0.5 * lp.phi));
   }
 
   function s_inv(xy, lp) {
-    lp.phi = M_HALFPI - 2 * Math.atan(Math.exp(-xy.y / P.k0));
+    lp.phi = M_HALFPI - 2 * atan(exp(-xy.y / P.k0));
     lp.lam = xy.x / P.k0;
   }
 }
@@ -16036,76 +16766,6 @@ function pj_mill(P) {
   function s_inv(xy, lp) {
     lp.lam = xy.x;
     lp.phi = 2.5 * (atan(exp(0.8 * xy.y)) - M_FORTPI);
-  }
-}
-
-
-pj_add(pj_moll, 'moll', 'Mollweide', '\n\tPCyl Sph');
-pj_add(pj_wag4, 'wag4', 'Wagner IV', '\n\tPCyl Sph');
-pj_add(pj_wag5, 'wag5', 'Wagner V', '\n\tPCyl Sph');
-
-function pj_moll(P) {
-  pj_moll_init(P, pj_moll_init_Q(P, M_HALFPI));
-}
-
-function pj_wag4(P) {
-  pj_moll_init(P, pj_moll_init_Q(P, M_PI/3));
-}
-
-function pj_wag5(P) {
-  var Q = {
-    C_x: 0.90977,
-    C_y: 1.65014,
-    C_p: 3.00896
-  };
-  pj_moll_init(P, Q);
-}
-
-function pj_moll_init_Q(P, p) {
-  var sp = sin(p),
-      p2 = p + p,
-      r = sqrt(M_TWOPI * sp / (p2 + sin(p2)));
-  return {
-    C_x: 2 * r / M_PI,
-    C_y: r / sp,
-    C_p: p2 + sin(p2)
-  };
-}
-
-function pj_moll_init(P, Q) {
-  var MAX_ITER = 10,
-      LOOP_TOL = 1e-7;
-  P.fwd = s_fwd;
-  P.inv = s_inv;
-  P.es = 0;
-
-  function s_fwd(lp, xy) {
-    var k, V, i;
-    k = Q.C_p * sin(lp.phi);
-    for (i = MAX_ITER; i;--i) {
-      lp.phi -= V = (lp.phi + sin(lp.phi) - k) /
-        (1 + cos(lp.phi));
-      if (fabs(V) < LOOP_TOL)
-        break;
-    }
-    if (!i)
-      lp.phi = (lp.phi < 0) ? -M_HALFPI : M_HALFPI;
-    else
-      lp.phi *= 0.5;
-    xy.x = Q.C_x * lp.lam * cos(lp.phi);
-    xy.y = Q.C_y * sin(lp.phi);
-  }
-
-  function s_inv(xy, lp) {
-    lp.phi = aasin(xy.y / Q.C_y);
-    lp.lam = xy.x / (Q.C_x * cos(lp.phi));
-    // if (fabs(lp.lam) < M_PI) { // from Proj.4; fails for edge coordinates
-    if (fabs(lp.lam) - M_PI < EPS10) { // allows inv projection of world layer
-      lp.phi += lp.phi;
-      lp.phi = aasin((lp.phi + sin(lp.phi)) / Q.C_p);
-    } else {
-      lp.lam = lp.phi = HUGE_VAL;
-    }
   }
 }
 
@@ -16342,6 +17002,7 @@ function pj_tpers_init(P, height, tiltAngle, azimuth) {
         break;
       case N_POLE:
         coslam = - coslam;
+        /* falls through */
       case S_POLE:
         xy.y *= cosphi * coslam;
         break;
@@ -16392,6 +17053,122 @@ function pj_tpers_init(P, height, tiltAngle, azimuth) {
           break;
       }
       lp.lam = atan2(xy.x, xy.y);
+    }
+  }
+}
+
+
+pj_add(pj_ob_tran, 'ob_tran', 'General Oblique Transformation', "\n\tMisc Sph" +
+  "\n\to_proj= plus parameters for projection" +
+  "\n\to_lat_p= o_lon_p= (new pole) or" +
+  "\n\to_alpha= o_lon_c= o_lat_c= or" +
+  "\n\to_lon_1= o_lat_1= o_lon_2= o_lat_2=");
+
+function pj_ob_tran(P) {
+  var name, defn, P2;
+  var lamp, cphip, sphip, phip;
+  var lamc, phic, alpha;
+  var lam1, lam2, phi1, phi2, con;
+  var TOL = 1e-10;
+
+  name = pj_param(P.params, 'so_proj') || E_ERROR(-26);
+  defn = pj_list[name] || E_ERROR(-37);
+  P.es = 0;
+  // copy params to second object
+  P2 = {};
+  Object.keys(P).forEach(function(key) {
+    // TODO: remove o_ params?
+    P2[key] = P[key];
+  });
+  defn.init(P2);
+
+  // NOT in Proj.4
+  // fix output units when doing latlong transform (see pj_transform.js)
+  if (P2.is_latlong && P.to_meter == 1) {
+    P.to_meter = DEG_TO_RAD;
+    P.fr_meter = RAD_TO_DEG;
+  }
+
+  if (pj_param(P.params, "to_alpha")) {
+    lamc  = pj_param(P.params, "ro_lon_c");
+    phic  = pj_param(P.params, "ro_lat_c");
+    alpha = pj_param(P.params, "ro_alpha");
+
+    if (fabs(fabs(phic) - M_HALFPI) <= TOL) E_ERROR(-32);
+    lamp = lamc + aatan2(-cos(alpha), -sin(alpha) * sin(phic));
+    phip = aasin(cos(phic) * sin(alpha));
+
+  } else if (pj_param(P.params, "to_lat_p")) { /* specified new pole */
+    lamp = pj_param(P.params, "ro_lon_p");
+    phip = pj_param(P.params, "ro_lat_p");
+
+  } else { /* specified new "equator" points */
+
+    lam1 = pj_param(P.params, "ro_lon_1");
+    phi1 = pj_param(P.params, "ro_lat_1");
+    lam2 = pj_param(P.params, "ro_lon_2");
+    phi2 = pj_param(P.params, "ro_lat_2");
+    if (fabs(phi1 - phi2) <= TOL ||
+        (con = fabs(phi1)) <= TOL ||
+        fabs(con - M_HALFPI) <= TOL ||
+        fabs(fabs(phi2) - M_HALFPI) <= TOL) E_ERROR(-33);
+    lamp = atan2(cos(phi1) * sin(phi2) * cos(lam1) -
+        sin(phi1) * cos(phi2) * cos(lam2),
+        sin(phi1) * cos(phi2) * sin(lam2) -
+        cos(phi1) * sin(phi2) * sin(lam1));
+    phip = atan(-cos(lamp - lam1) / tan(phi1));
+  }
+  if (fabs(phip) > TOL) { /* oblique */
+    cphip = cos(phip);
+    sphip = sin(phip);
+    P.fwd = o_fwd;
+    P.inv = P2.inv ? o_inv : null;
+  } else { /* transverse */
+    P.fwd = t_fwd;
+    P.inv = P2.inv ? t_inv : null;
+  }
+
+  function o_fwd(lp, xy) {
+    var coslam, sinphi, cosphi;
+    coslam = cos(lp.lam);
+    sinphi = sin(lp.phi);
+    cosphi = cos(lp.phi);
+    lp.lam = adjlon(aatan2(cosphi * sin(lp.lam), sphip * cosphi * coslam +
+        cphip * sinphi) + lamp);
+    lp.phi = aasin(sphip * sinphi - cphip * cosphi * coslam);
+    P2.fwd(lp, xy);
+  }
+
+  function t_fwd(lp, xy) {
+    var cosphi, coslam;
+    cosphi = cos(lp.phi);
+    coslam = cos(lp.lam);
+    lp.lam = adjlon(aatan2(cosphi * sin(lp.lam), sin(lp.phi)) + lamp);
+    lp.phi = aasin(-cosphi * coslam);
+    P2.fwd(lp, xy);
+  }
+
+  function o_inv(xy, lp) {
+    var coslam, sinphi, cosphi;
+    P2.inv(xy, lp);
+    if (lp.lam != HUGE_VAL) {
+      coslam = cos(lp.lam -= lamp);
+      sinphi = sin(lp.phi);
+      cosphi = cos(lp.phi);
+      lp.phi = aasin(sphip * sinphi + cphip * cosphi * coslam);
+      lp.lam = aatan2(cosphi * sin(lp.lam), sphip * cosphi * coslam -
+        cphip * sinphi);
+    }
+  }
+
+  function t_inv(xy, lp) {
+    var cosphi, t;
+    P2.inv(xy, lp);
+    if (lp.lam != HUGE_VAL) {
+      cosphi = cos(lp.phi);
+      t = lp.lam - lamp;
+      lp.lam = aatan2(cosphi * sin(t), - sin(lp.phi));
+      lp.phi = aasin(cosphi * cos(t));
     }
   }
 }
@@ -16666,6 +17443,7 @@ function pj_ortho(P) {
       break;
     case N_POLE:
       coslam = -coslam;
+      /* falls through */
     case S_POLE:
       if (fabs(lp.phi - P.phi0) - EPS10 > M_HALFPI) f_error();
       xy.y = cosphi * coslam;
@@ -16942,7 +17720,6 @@ function pj_robin(P) {
 pj_add(pj_stere, 'stere', 'Stereographic', '\n\tAzi, Sph&Ell\n\tlat_ts=');
 pj_add(pj_ups, 'ups', 'Universal Polar Stereographic', '\n\tAzi, Sph&Ell\n\tsouth');
 
-
 function pj_ups(P) {
   P.phi0 = pj_param(P.params, "bsouth") ? -M_HALFPI : M_HALFPI;
   P.k0 = 0.994;
@@ -17007,6 +17784,7 @@ function pj_stere_init(P, phits) {
       case OBLIQ:
         sinph0 = sin(P.phi0);
         cosph0 = cos(P.phi0);
+        /* falls through */
       case EQUIT:
         akm1 = 2 * P.k0;
         break;
@@ -17046,6 +17824,7 @@ function pj_stere_init(P, phits) {
         lp.phi = -lp.phi;
         coslam = -coslam;
         sinphi = -sinphi;
+        /* falls through */
       case N_POLE:
         xy.x = akm1 * pj_tsfn (lp.phi, sinphi, P.e);
         xy.y = - xy.x * coslam;
@@ -17077,6 +17856,7 @@ function pj_stere_init(P, phits) {
     case N_POLE:
       coslam = - coslam;
       phi = - phi;
+      /* falls through */
     case S_POLE:
       if (fabs(phi - M_HALFPI) < TOL) f_error();
       xy.x = sinlam * (xy.y = akm1 * tan (M_FORTPI + 0.5 * phi));
@@ -17109,6 +17889,7 @@ function pj_stere_init(P, phits) {
         break;
       case N_POLE:
         xy.y = -xy.y;
+        /* falls through */
       case S_POLE:
         phi_l = M_HALFPI - 2 * atan (tp = - rho / akm1);
         halfpi = -M_HALFPI;
@@ -17154,6 +17935,7 @@ function pj_stere_init(P, phits) {
         break;
       case N_POLE:
         xy.y = -xy.y;
+        /* falls through */
       case S_POLE:
         if (fabs (rh) <= EPS10)
             lp.phi = P.phi0;
@@ -17813,17 +18595,20 @@ function pj_wink2(P) {
 
 // Projections are inserted here by the build script
 
-var api = proj4js; //
+var api = proj4js; // (partial) support for proj4js api
 
+// Add Proj.4-style api
 api.pj_init = pj_init;
 api.pj_fwd = pj_fwd;
-api.pj_fwd_deg = pj_fwd_deg;
 api.pj_inv = pj_inv;
-api.pj_inv_deg = pj_inv_deg;
 api.pj_transform = pj_transform;
+
+// Convenience functions not in Proj.4
+api.pj_fwd_deg = pj_fwd_deg;
+api.pj_inv_deg = pj_inv_deg;
 api.pj_transform_point = pj_transform_point;
 
-// export functions for testing
+// Export some functions for testing
 api.internal = {
   dmstod: dmstod,
   dmstor: dmstor,
@@ -17836,12 +18621,17 @@ api.internal = {
   pj_list: pj_list,
   pj_ellps: pj_ellps,
   pj_units: pj_units,
-  pj_read_opts: pj_read_opts,
+  pj_read_init_opts: pj_read_init_opts,
   find_datum: find_datum,
   DEG_TO_RAD: DEG_TO_RAD,
   RAD_TO_DEG: RAD_TO_DEG,
   wkt_parse: wkt_parse,
-  wkt_to_proj4: wkt_to_proj4
+  wkt_unpack: wkt_unpack,
+  wkt_to_proj4: wkt_to_proj4,
+  wkt_from_proj4: wkt_from_proj4,
+  wkt_make_projcs: wkt_make_projcs,
+  wkt_get_geogcs_name: wkt_get_geogcs_name,
+  wkt_stringify: wkt_stringify
 };
 
 if (typeof define == 'function' && define.amd) {
@@ -17852,9 +18642,15 @@ if (typeof define == 'function' && define.amd) {
   this.mproj = api;
 }
 
+// TODO: move to better file
+function pj_latlong_from_proj(P) {
+  var defn = '+proj=latlong' + get_geod_defn(P);
+  return pj_init(defn);
+}
+
 }());
 
-}).call(this,"/node_modules/mproj/dist")
+}).call(this,"/node_modules/mproj/dist/mproj.js")
 },{"fs":"fs","path":"path"}],"path":[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.

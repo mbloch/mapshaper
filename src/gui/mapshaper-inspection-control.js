@@ -1,4 +1,4 @@
-/* @requires mapshaper-gui-lib, mapshaper-popup */
+/* @requires mapshaper-gui-lib, mapshaper-popup, mapshaper-hit-control */
 
 function InspectionControl(model, hit) {
   var _popup = new Popup();
