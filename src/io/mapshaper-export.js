@@ -39,7 +39,7 @@ internal.exportDatasets = function(datasets, opts) {
       }
       // KLUDGE let exporter know that copying is not needed
       // (because shape data was deep-copied during merge)
-      opts.final = true;
+      opts = utils.defaults({final: true}, opts);
     }
   } else {
     datasets = datasets.map(internal.copyDatasetForRenaming);
