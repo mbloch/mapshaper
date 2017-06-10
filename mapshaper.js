@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.20';
+var VERSION = '0.4.21';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -2328,7 +2328,10 @@ function ArcCollection() {
   this.getCopy = function() {
     var copy = new ArcCollection(new Int32Array(_nn), new Float64Array(_xx),
         new Float64Array(_yy));
-    if (_zz) copy.setThresholds(new Float64Array(_zz));
+    if (_zz) {
+      copy.setThresholds(new Float64Array(_zz));
+      copy.setRetainedInterval(_zlimit);
+    }
     return copy;
   };
 
@@ -13731,7 +13734,7 @@ internal.exportDatasets = function(datasets, opts) {
       }
       // KLUDGE let exporter know that copying is not needed
       // (because shape data was deep-copied during merge)
-      opts.final = true;
+      opts = utils.defaults({final: true}, opts);
     }
   } else {
     datasets = datasets.map(internal.copyDatasetForRenaming);
@@ -15645,8 +15648,8 @@ api.proj = function(dataset, opts) {
     stop("[proj] Unknown projection:", opts.projection);
   }
 
-  // make deep copy of objects that will get modified
   if (dataset.arcs) {
+    dataset.arcs.flatten(); // bake in any pending simplification
     target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
   }
   target.layers = dataset.layers.filter(internal.layerHasPoints).map(function(lyr) {
@@ -15801,6 +15804,37 @@ api.renameLayers = function(layers, names) {
     }
     lyr.name = name;
   });
+};
+
+
+
+
+api.shape = function(source, opts) {
+  var bounds, coords;
+  if (source) {
+    bounds = internal.getLayerBounds(source.layer, source.dataset.arcs);
+  } else if (opts.bbox) {
+    bounds = new Bounds(opts.bbox);
+  }
+  if (!bounds || !bounds.hasBounds()) {
+    stop('[shape] Missing shape extent');
+  }
+  if (opts.offset > 0) {
+    bounds.padBounds(opts.offset, opts.offset, opts.offset, opts.offset);
+  }
+  var geojson = internal.convertBboxToGeoJSON(bounds.toArray(), opts);
+  var dataset = internal.importGeoJSON(geojson, {});
+  dataset.layers[0].name = opts.name || 'shape';
+  return dataset;
+};
+
+internal.convertBboxToGeoJSON = function(bbox, opts) {
+  var coords = [[bbox[0], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]],
+      [bbox[2], bbox[1]], [bbox[0], bbox[1]]];
+  return {
+    type: 'Polygon',
+    coordinates: [coords]
+  };
 };
 
 
@@ -16986,7 +17020,7 @@ api.runCommand = function(cmd, catalog, cb) {
         fail(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'graticule' || name == 'i' || name == 'point-grid')) {
+      if (!(name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
         throw new APIError("Missing a -i command");
       }
     }
@@ -17120,6 +17154,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
+
+    } else if (name == 'shape') {
+      catalog.addDataset(api.shape(source, opts));
 
     } else if (name == 'simplify') {
       api.simplify(targetDataset, opts);
@@ -18400,6 +18437,24 @@ internal.getOptionParser = function() {
       describe: "new layer name(s) (comma-sep. list)"
     })
     .option("target", targetOpt);
+
+  parser.command('shape')
+    // .describe("create a geometric shape")
+    .option('type', {
+
+    })
+    .option("bbox", {
+      describe: "bounding box of shape",
+      type: "bounds"
+    })
+    .option("offset", {
+      describe: "space around the bounding box or contents",
+      type: "number"
+    })
+    .option("source", {
+      describe: "name of layer to surround"
+    })
+    .option("name", nameOpt);
 
   parser.command('simplify')
     .validate(validateSimplifyOpts)
