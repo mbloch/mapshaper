@@ -130,7 +130,10 @@ function ArcCollection() {
   this.getCopy = function() {
     var copy = new ArcCollection(new Int32Array(_nn), new Float64Array(_xx),
         new Float64Array(_yy));
-    if (_zz) copy.setThresholds(new Float64Array(_zz));
+    if (_zz) {
+      copy.setThresholds(new Float64Array(_zz));
+      copy.setRetainedInterval(_zlimit);
+    }
     return copy;
   };
 

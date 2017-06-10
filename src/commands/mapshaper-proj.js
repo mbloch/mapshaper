@@ -30,8 +30,8 @@ api.proj = function(dataset, opts) {
     stop("[proj] Unknown projection:", opts.projection);
   }
 
-  // make deep copy of objects that will get modified
   if (dataset.arcs) {
+    dataset.arcs.flatten(); // bake in any pending simplification
     target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
   }
   target.layers = dataset.layers.filter(internal.layerHasPoints).map(function(lyr) {

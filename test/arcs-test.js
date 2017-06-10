@@ -38,8 +38,6 @@ var arcs5 = [];
 describe('mapshaper-arcs.js', function () {
   describe('ArcCollection', function () {
 
-
-
     describe('dedupCoords()', function () {
       it('NaNs are removed', function() {
         var xy = [[[NaN, NaN], [NaN, NaN], [NaN, NaN]], [[NaN, NaN], [NaN, NaN]]];
@@ -48,6 +46,7 @@ describe('mapshaper-arcs.js', function () {
         assert.deepEqual(arcs.toArray(), [[], []]);
         assert.equal(arcs.getPointCount(), 0);
       });
+
       it('collapsed arcs get zeroed out', function () {
         var xy = [[[1, 1], [1, 1], [1, 1]], [[2, 1], [2, 2]]];
         var arcs = new ArcCollection(xy);
@@ -66,6 +65,17 @@ describe('mapshaper-arcs.js', function () {
         assert.deepEqual(zz2, [Infinity, 6, 4, Infinity]);
         assert.deepEqual(arcs.toArray(), [[[1, 1], [2, 2], [3, 3], [4, 4]]])
       })
+    })
+
+    it("getCopy() preserves simplification data", function() {
+        var xy = [[[1, 1], [1, 1], [2, 2], [2, 2], [3, 3], [3, 3], [4, 4], [4, 4]]];
+        var zz = [Infinity, 4, 5, 6, 4, 3, 2, Infinity];
+        var arcs = new ArcCollection(xy);
+        arcs.setThresholds(zz);
+        arcs.setRetainedInterval(4);
+        var copy = arcs.getCopy();
+        assert.equal(copy.getRetainedInterval(), 4);
+        assert.deepEqual([].slice.call(copy.getVertexData().zz), [Infinity, 4, 5, 6, 4, 3, 2, Infinity]);
     })
 
     it("accepts arcs with length == 0", function() {
