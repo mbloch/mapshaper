@@ -11036,7 +11036,8 @@ function pj_fwd(lp, P) {
       xy.x = xy.y = HUGE_VAL;
     }
   }
-  if (ctx.last_errno || isNaN(xy.x) || isNaN(xy.y)) {
+  if (ctx.last_errno || !isFinite(xy.x) || !isFinite(xy.y)) {
+    // isFinite() catches NaN and +/- Infinity but not null
     xy.x = xy.y = HUGE_VAL;
   }
   return xy;
@@ -11075,7 +11076,8 @@ function pj_inv(xy, P) {
       lp.lam = lp.phi = HUGE_VAL;
     }
   }
-  if (ctx.last_errno || isNaN(lp.lam) || isNaN(lp.phi)) {
+  if (ctx.last_errno || !isFinite(lp.lam) || !isFinite(lp.phi)) {
+    // isFinite() catches NaN and +/- Infinity but not null
     lp.lam = lp.phi = HUGE_VAL;
   }
   return lp;
@@ -11305,43 +11307,32 @@ function wkt_get_unit(P) {
 */
 
 
-
-
 function wkt_convert_geogcs(geogcs, opts) {
   var datum = geogcs.DATUM,
       spheroid = datum.SPHEROID,
-      datumName = wkt_harmonize_geo_name(datum.NAME),
-      sphName = wkt_harmonize_geo_name(spheroid[0]),
+      datumId = wkt_find_datum_id(datum),
+      ellId = wkt_find_ellps_id(spheroid),
       aux_sphere = opts && opts.aux_sphere,
       a = spheroid[1],
       rf = spheroid[2],
       str, pm;
-
-  // TODO: consider identifying more datums or ellipsoids by name
-  var datums = {
-    northamericandatum1983: 'NAD83',
-    northamerican1983: 'NAD83', // ESRI
-    wgs1984: 'WGS84',
-    osgb1936: 'OSGB36'
-  };
 
   wkt_check_units(geogcs.UNIT, 'degree');
   if (aux_sphere) {
     // TODO: in addition to semimajor, ESRI supports spheres based on
     //   semiminor and authalic radii; could support these
     str = '+a=' + spheroid[1];
-  } else if (datumName in datums) {
-    str = '+datum=' + datums[datumName];
-  } else if (/^grs1980/.test(sphName)) { // handle cases like "GRS 1980(IUGG, 1980)"
-    // TODO: improve support for named ellipsoids
-    str = '+ellps=GRS80';
+  } else if (datumId) {
+    str = '+datum=' + datumId;
+  } else if (ellId) {
+    str = '+ellps=' + ellId;
   } else {
    str = '+a=' + a;
     if (rf > 0) {
       str += ' +rf=' + rf;
     }
   }
-  if (datum.TOWGS84 && !aux_sphere) {
+  if (datum.TOWGS84 && !aux_sphere && !datumId) {
     str += ' +towgs84=' + datum.TOWGS84.join(',');
   }
 
@@ -11352,8 +11343,57 @@ function wkt_convert_geogcs(geogcs, opts) {
   return str;
 }
 
+function wkt_find_ellps_id(spheroid) {
+  // TODO: validate ellipsoid parameters?
+  var aliases = {
+    international1924: "intl"
+  };
+  var key = wkt_harmonize_geo_name(spheroid[0]);
+  var defn;
+  if (key in aliases) {
+    return aliases[key];
+  }
+  if (/^grs1980/.test(key)) {
+    // handle cases like "GRS 1980(IUGG, 1980)")
+    return 'GRS80';
+  }
+  if (key == 'sphere') {
+    // not a well defined ellipsoid
+    // TODO: if we check ellipsoid params, this test can go away
+    return null;
+  }
+  for (var i=0; i<pj_ellps.length; i++) {
+    defn = pj_ellps[i];
+    if (wkt_harmonize_geo_name(defn[3]) == key ||
+        wkt_harmonize_geo_name(defn[0]) == key) {
+      break;
+    }
+  }
+  return defn ? defn[0] : null;
+}
+
+function wkt_find_datum_id(datum) {
+  var aliases = { // ESRI aliases
+    northamerican1983: 'NAD83',
+    newzealand1949: 'nzgd49'
+  };
+  var key = wkt_harmonize_geo_name(datum.NAME);
+  var defn;
+  if (key in aliases) {
+    return aliases[key];
+  }
+  for (var i=0; i<pj_datums.length; i++) {
+    defn = pj_datums[i];
+    if (wkt_harmonize_geo_name(defn[3]) == key ||
+        wkt_harmonize_geo_name(defn[0]) == key) {
+      break;
+    }
+  }
+  return defn ? defn[0] : null;
+}
+
 function wkt_harmonize_geo_name(name) {
-  return name.replace(/^(GCS|D)_/i, '').replace(/[ _]/g, '').toLowerCase();
+  return (name || '').replace(/^(GCS|D)_/i, '').replace(/[ _]/g, '').toLowerCase();
 }
 
 function wkt_check_units(UNIT, expect) {
@@ -11960,11 +12000,11 @@ function wkt_proj4_is_omerc(P) {
 }
 
 function wkt_proj4_is_omerc_A(P) {
-  return wkt_proj4_is_omerc(P) && 'no_uoff' in P.params;
+  return wkt_proj4_is_omerc(P) && ('no_uoff' in P.params || 'no_off' in P.params);
 }
 
 function wkt_proj4_is_omerc_B(P) {
-  return wkt_proj4_is_omerc(P) && 'no_uoff' in P.params === false;
+  return wkt_proj4_is_omerc(P) && !wkt_proj4_is_omerc_A(P);
 }
 
 
@@ -12047,7 +12087,6 @@ add_wkt_parser(
   ['laborde', 'Laborde_Oblique_Mercator'],
   ['mbtfps', ''],
   ['nell_h', ''],
-  ['nzmg', 'New_Zealand_Map_Grid'],
   ['ocea', ''], // see OneNote notes
   ['qua_aut', 'Quartic_Authalic'],
   ['', 'Swiss_Oblique_Cylindrical'], // http://www.remotesensing.org/geotiff/proj_list/swiss_oblique_cylindrical.html
@@ -12079,6 +12118,7 @@ add_wkt_parser(
   ['mill', 'Miller_Cylindrical'],
   ['moll', 'Mollweide'],
   ['nsper', 'Vertical_Near_Side_Perspective', 'h'],
+  ['nzmg', 'New_Zealand_Map_Grid', 'lat_0b'],
   ['ortho', 'Orthographic', 'lat_0b'],
   ['poly', 'Polyconic'],
   ['robin', 'Robinson'],
@@ -12249,6 +12289,23 @@ function wkt_to_proj4(str) {
   return proj4;
 }
 
+
+
+pj_add(pj_blank, 'blank', 'Blank', '');
+
+function pj_blank(P) {
+
+  P.inv = e_inv;
+  P.fwd = e_fwd;
+
+  function e_fwd(lp, xy) {
+
+  }
+
+  function e_inv(xy, lp) {
+
+  }
+}
 
 
 function pj_qsfn(sinphi, e, one_es) {
@@ -12466,9 +12523,9 @@ function aatan2(n, d) {
  * Transcription of Math.hpp, Constants.hpp, and Accumulator.hpp into
  * JavaScript.
  *
- * Copyright (c) Charles Karney (2011-2016) <charles@karney.com> and licensed
+ * Copyright (c) Charles Karney (2011-2017) <charles@karney.com> and licensed
  * under the MIT/X11 License.  For more information, see
- * http://geographiclib.sourceforge.net/
+ * https://geographiclib.sourceforge.io/
  */
 
 /**
@@ -12528,12 +12585,12 @@ GeographicLib.Accumulator = {};
    * @property {number} minor the minor version number.
    * @property {number} patch the patch number.
    */
-  c.version = { major: 1, minor: 46, patch: 0 };
+  c.version = { major: 1, minor: 48, patch: 0 };
   /**
    * @constant
    * @summary version string
    */
-  c.version_string = "1.46";
+  c.version_string = "1.48";
 })(GeographicLib.Constants);
 
 (function(
@@ -12684,13 +12741,13 @@ GeographicLib.Accumulator = {};
   /**
    * @summary Normalize an angle.
    * @param {number} x the angle in degrees.
-   * @returns {number} the angle reduced to the range [&minus;180&deg;,
-   *   180&deg;).
+   * @returns {number} the angle reduced to the range (&minus;180&deg;,
+   *   180&deg;].
    */
   m.AngNormalize = function(x) {
     // Place angle in [-180, 180).
     x = x % 360;
-    return x < -180 ? x + 360 : (x < 180 ? x : x - 360);
+    return x <= -180 ? x + 360 : (x <= 180 ? x : x - 360);
   };
 
   /**
@@ -12717,10 +12774,10 @@ GeographicLib.Accumulator = {};
    */
   m.AngDiff = function(x, y) {
     // Compute y - x and reduce to [-180,180] accurately.
-    var r = m.sum(m.AngNormalize(x), m.AngNormalize(-y)),
-        d = - m.AngNormalize(r.s),
+    var r = m.sum(m.AngNormalize(-x), m.AngNormalize(y)),
+        d = m.AngNormalize(r.s),
         t = r.t;
-    return m.sum(d === 180 && t < 0 ? -180 : d, -t);
+    return m.sum(d === 180 && t > 0 ? -180 : d, t);
   };
 
   /**
@@ -12741,11 +12798,12 @@ GeographicLib.Accumulator = {};
     // Possibly could call the gnu extension sincos
     s = Math.sin(r); c = Math.cos(r);
     switch (q & 3) {
-    case  0: sinx =     s; cosx =     c; break;
-    case  1: sinx =     c; cosx = 0 - s; break;
-    case  2: sinx = 0 - s; cosx = 0 - c; break;
-    default: sinx = 0 - c; cosx =     s; break; // case 3
+      case 0:  sinx =  s; cosx =  c; break;
+      case 1:  sinx =  c; cosx = -s; break;
+      case 2:  sinx = -s; cosx = -c; break;
+      default: sinx = -c; cosx =  s; break; // case 3
     }
+    if (x) { sinx += 0; cosx += 0; }
     return {s: sinx, c: cosx};
   };
 
@@ -12753,8 +12811,8 @@ GeographicLib.Accumulator = {};
    * @summary Evaluate the atan2 function with the result in degrees
    * @param {number} y
    * @param {number} x
-   * @returns atan2(y, x) in degrees, in the range [&minus;180&deg;
-   *   180&deg;).
+   * @returns atan2(y, x) in degrees, in the range (&minus;180&deg;
+   *   180&deg;].
    */
   m.atan2d = function(y, x) {
     // In order to minimize round-off errors, this function rearranges the
@@ -12773,9 +12831,9 @@ GeographicLib.Accumulator = {};
       //   case 0: ang = 0 + ang; break;
       //
       // and handle mpfr as in AngRound.
-    case 1: ang = (y > 0 ? 180 : -180) - ang; break;
-    case 2: ang =  90 - ang; break;
-    case 3: ang = -90 + ang; break;
+      case 1: ang = (y >= 0 ? 180 : -180) - ang; break;
+      case 2: ang =  90 - ang; break;
+      case 3: ang = -90 + ang; break;
     }
     return ang;
   };
@@ -12901,12 +12959,12 @@ GeographicLib.Accumulator = {};
  *
  *    Charles F. F. Karney,
  *    Algorithms for geodesics, J. Geodesy 87, 43-55 (2013);
- *    https://dx.doi.org/10.1007/s00190-012-0578-z
- *    Addenda: http://geographiclib.sourceforge.net/geod-addenda.html
+ *    https://doi.org/10.1007/s00190-012-0578-z
+ *    Addenda: https://geographiclib.sourceforge.io/geod-addenda.html
  *
- * Copyright (c) Charles Karney (2011-2016) <charles@karney.com> and licensed
+ * Copyright (c) Charles Karney (2011-2017) <charles@karney.com> and licensed
  * under the MIT/X11 License.  For more information, see
- * http://geographiclib.sourceforge.net/
+ * https://geographiclib.sourceforge.io/
  */
 
 // Load AFTER Math.js
@@ -13209,9 +13267,9 @@ GeographicLib.PolygonArea = {};
       Math.sqrt( Math.max(0.001, Math.abs(this.f)) *
                  Math.min(1.0, 1 - this.f/2) / 2 );
     if (!(isFinite(this.a) && this.a > 0))
-      throw new Error("Major radius is not positive");
+      throw new Error("Equatorial radius is not positive");
     if (!(isFinite(this._b) && this._b > 0))
-      throw new Error("Minor radius is not positive");
+      throw new Error("Polar semi-axis is not positive");
     this._A3x = new Array(nA3x_);
     this._C3x = new Array(nC3x_);
     this._C4x = new Array(nC4x_);
@@ -13534,7 +13592,7 @@ GeographicLib.PolygonArea = {};
         // strip near cut
         if (this.f >= 0) {
           vals.salp1 = Math.min(1, -x);
-          vals.calp1 = - Math.sqrt(1 - m.sq(vals.salp1));
+          vals.calp1 = -Math.sqrt(1 - m.sq(vals.salp1));
         } else {
           vals.calp1 = Math.max(x > -tol1_ ? 0 : -1, x);
           vals.salp1 = Math.sqrt(1 - m.sq(vals.calp1));
@@ -13601,7 +13659,7 @@ GeographicLib.PolygonArea = {};
                                            diffp, C1a, C2a, C3a) {
     var vals = {},
         t, salp0, calp0,
-        somg1, comg1, somg2, comg2, B312, eta, k2, nvals;
+        somg1, comg1, somg2, comg2, somg12, comg12, B312, eta, k2, nvals;
     if (sbet1 === 0 && calp1 === 0)
       // Break degeneracy of equatorial line.  This case has already been
       // handled.
@@ -13643,25 +13701,26 @@ GeographicLib.PolygonArea = {};
 
     // sig12 = sig2 - sig1, limit to [0, pi]
     vals.sig12 = Math.atan2(Math.max(0, vals.csig1 * vals.ssig2 -
-                                     vals.ssig1 * vals.csig2),
-                            vals.csig1 * vals.csig2 + vals.ssig1 * vals.ssig2);
+                                        vals.ssig1 * vals.csig2),
+                                        vals.csig1 * vals.csig2 +
+                                        vals.ssig1 * vals.ssig2);
 
     // omg12 = omg2 - omg1, limit to [0, pi]
-    vals.somg12 = Math.max(0, comg1 * somg2 - somg1 * comg2);
-    vals.comg12 =             comg1 * comg2 + somg1 * somg2;
+    somg12 = Math.max(0, comg1 * somg2 - somg1 * comg2);
+    comg12 =             comg1 * comg2 + somg1 * somg2;
     // eta = omg12 - lam120
-    eta = Math.atan2(vals.somg12 * clam120 - vals.comg12 * slam120,
-                     vals.comg12 * clam120 + vals.somg12 * slam120);
+    eta = Math.atan2(somg12 * clam120 - comg12 * slam120,
+                     comg12 * clam120 + somg12 * slam120);
     k2 = m.sq(calp0) * this._ep2;
     vals.eps = k2 / (2 * (1 + Math.sqrt(1 + k2)) + k2);
     this.C3f(vals.eps, C3a);
     B312 = (g.SinCosSeries(true, vals.ssig2, vals.csig2, C3a) -
             g.SinCosSeries(true, vals.ssig1, vals.csig1, C3a));
-    vals.lam12 = eta - this.f * this.A3f(vals.eps) *
-      salp0 * (vals.sig12 + B312);
+    vals.domg12 =  -this.f * this.A3f(vals.eps) * salp0 * (vals.sig12 + B312);
+    vals.lam12 = eta + vals.domg12;
     if (diffp) {
       if (vals.calp2 === 0)
-        vals.dlam12 = - 2 * this._f1 * dn1 / sbet1;
+        vals.dlam12 = -2 * this._f1 * dn1 / sbet1;
       else {
         nvals = this.Lengths(vals.eps, vals.sig12,
                              vals.ssig1, vals.csig1, dn1,
@@ -13710,7 +13769,7 @@ GeographicLib.PolygonArea = {};
         numit, salp1a, calp1a, salp1b, calp1b,
         tripn, tripb, v, dv, dalp1, sdalp1, cdalp1, nsalp1,
         lengthmask, salp0, calp0, alp12, k2, A4, C4a, B41, B42,
-        somg12, comg12, domg12, dbet1, dbet2, salp12, calp12;
+        somg12, comg12, domg12, dbet1, dbet2, salp12, calp12, sdomg12, cdomg12;
     // Compute longitude difference (AngDiff does this carefully).  Result is
     // in [-180, 180] but -180 is only for west-going geodesics.  180 is for
     // east-going and meridional geodesics.
@@ -13810,7 +13869,7 @@ GeographicLib.PolygonArea = {};
 
       // sig12 = sig2 - sig1
       sig12 = Math.atan2(Math.max(0, csig1 * ssig2 - ssig1 * csig2),
-                         csig1 * csig2 + ssig1 * ssig2);
+                                     csig1 * csig2 + ssig1 * ssig2);
       nvals = this.Lengths(this._n, sig12,
                            ssig1, csig1, dn1, ssig2, csig2, dn2, cbet1, cbet2,
                            outmask | g.DISTANCE | g.REDUCEDLENGTH,
@@ -13910,8 +13969,7 @@ GeographicLib.PolygonArea = {};
           ssig2 = nvals.ssig2;
           csig2 = nvals.csig2;
           eps = nvals.eps;
-          somg12 = nvals.somg12;
-          comg12 = nvals.comg12;
+          domg12 = nvals.domg12;
           dv = nvals.dlam12;
 
           // 2 * tol0 is approximately 1 ulp for a number in [0, pi].
@@ -13920,7 +13978,7 @@ GeographicLib.PolygonArea = {};
             break;
           // Update bracketing values
           if (v > 0 && (numit < maxit1_ || calp1/salp1 > calp1b/salp1b)) {
-              salp1b = salp1; calp1b = calp1;
+            salp1b = salp1; calp1b = calp1;
           } else if (v < 0 &&
                      (numit < maxit1_ || calp1/salp1 < calp1a/salp1a)) {
             salp1a = salp1; calp1a = calp1;
@@ -13941,7 +13999,7 @@ GeographicLib.PolygonArea = {};
               continue;
             }
           }
-          // Either dv was not postive or updated value was outside legal
+          // Either dv was not positive or updated value was outside legal
           // range.  Use the midpoint of the bracket as the next estimate.
           // This mechanism is not needed for the WGS84 ellipsoid, but it does
           // catch problems with more eccentric ellipsoids.  Its efficacy is
@@ -13973,6 +14031,12 @@ GeographicLib.PolygonArea = {};
         m12x *= this._b;
         s12x *= this._b;
         vals.a12 = sig12 / m.degree;
+        if (outmask & g.AREA) {
+          // omg12 = lam12 - domg12
+          sdomg12 = Math.sin(domg12); cdomg12 = Math.cos(domg12);
+          somg12 = slam12 * cdomg12 - clam12 * sdomg12;
+          comg12 = clam12 * cdomg12 + slam12 * sdomg12;
+        }
       }
     }
 
@@ -14006,19 +14070,15 @@ GeographicLib.PolygonArea = {};
       } else
         // Avoid problems with indeterminate sig1, sig2 on equator
         vals.S12 = 0;
-      if (!meridian) {
-        if (somg12 > 1) {
-          somg12 = Math.sin(omg12); comg12 = Math.cos(omg12);
-        } else {
-          t = m.hypot(somg12, comg12); somg12 /= t; comg12 /= t;
-        }
+      if (!meridian && somg12 > 1) {
+        somg12 = Math.sin(omg12); comg12 = Math.cos(omg12);
       }
       if (!meridian &&
-          omg12 > -0.7071 &&      // Long difference not too big
+          comg12 > -0.7071 &&      // Long difference not too big
           sbet2 - sbet1 < 1.75) { // Lat difference not too big
-          // Use tan(Gamma/2) = tan(omg12/2)
-          // * (tan(bet1/2)+tan(bet2/2))/(1+tan(bet1/2)*tan(bet2/2))
-          // with tan(x/2) = sin(x)/(1+cos(x))
+        // Use tan(Gamma/2) = tan(omg12/2)
+        // * (tan(bet1/2)+tan(bet2/2))/(1+tan(bet1/2)*tan(bet2/2))
+        // with tan(x/2) = sin(x)/(1+cos(x))
         domg12 = 1 + comg12; dbet1 = 1 + cbet1; dbet2 = 1 + cbet2;
         alp12 = 2 * Math.atan2( somg12 * (sbet1*dbet2 + sbet2*dbet1),
                                 domg12 * (sbet1*sbet2 + dbet1*dbet2) );
@@ -14083,12 +14143,12 @@ GeographicLib.PolygonArea = {};
    *   parameter, see {@tutorial 2-interface}, "The outmask and caps
    *   parameters".
    */
-  g.Geodesic.prototype.GenDirect = function (lat1, lon1, azi1,
-                                             arcmode, s12_a12, outmask) {
+  g.Geodesic.prototype.GenDirect = function(lat1, lon1, azi1,
+                                            arcmode, s12_a12, outmask) {
     var line;
     if (!outmask) outmask = g.STANDARD;
     else if (outmask === g.LONG_UNROLL) outmask |= g.STANDARD;
-                              // Automatically supply DISTANCE_IN if necessary
+    // Automatically supply DISTANCE_IN if necessary
     if (!arcmode) outmask |= g.DISTANCE_IN;
     line = new l.GeodesicLine(this, lat1, lon1, azi1, outmask);
     return line.GenPosition(arcmode, s12_a12, outmask);
@@ -14107,7 +14167,7 @@ GeographicLib.PolygonArea = {};
    *   always set.  For details on the outmask parameter, see {@tutorial
    *   2-interface}, "The outmask and caps parameters".
    */
-  g.Geodesic.prototype.Direct = function (lat1, lon1, azi1, s12, outmask) {
+  g.Geodesic.prototype.Direct = function(lat1, lon1, azi1, s12, outmask) {
     return this.GenDirect(lat1, lon1, azi1, false, s12, outmask);
   };
 
@@ -14124,7 +14184,7 @@ GeographicLib.PolygonArea = {};
    *   always set.  For details on the outmask parameter, see {@tutorial
    *   2-interface}, "The outmask and caps parameters".
    */
-  g.Geodesic.prototype.ArcDirect = function (lat1, lon1, azi1, a12, outmask) {
+  g.Geodesic.prototype.ArcDirect = function(lat1, lon1, azi1, a12, outmask) {
     return this.GenDirect(lat1, lon1, azi1, true, a12, outmask);
   };
 
@@ -14143,7 +14203,7 @@ GeographicLib.PolygonArea = {};
    * @description For details on the caps parameter, see {@tutorial
    *   2-interface}, "The outmask and caps parameters".
    */
-  g.Geodesic.prototype.Line = function (lat1, lon1, azi1, caps) {
+  g.Geodesic.prototype.Line = function(lat1, lon1, azi1, caps) {
     return new l.GeodesicLine(this, lat1, lon1, azi1, caps);
   };
 
@@ -14167,7 +14227,7 @@ GeographicLib.PolygonArea = {};
    *   parameter, see {@tutorial 2-interface}, "The outmask and caps
    *   parameters".
    */
-  g.Geodesic.prototype.DirectLine = function (lat1, lon1, azi1, s12, caps) {
+  g.Geodesic.prototype.DirectLine = function(lat1, lon1, azi1, s12, caps) {
     return this.GenDirectLine(lat1, lon1, azi1, false, s12, caps);
   };
 
@@ -14191,7 +14251,7 @@ GeographicLib.PolygonArea = {};
    *   parameter, see {@tutorial 2-interface}, "The outmask and caps
    *   parameters".
    */
-  g.Geodesic.prototype.ArcDirectLine = function (lat1, lon1, azi1, a12, caps) {
+  g.Geodesic.prototype.ArcDirectLine = function(lat1, lon1, azi1, a12, caps) {
     return this.GenDirectLine(lat1, lon1, azi1, true, a12, caps);
   };
 
@@ -14218,8 +14278,8 @@ GeographicLib.PolygonArea = {};
    *   parameter, see {@tutorial 2-interface}, "The outmask and caps
    *   parameters".
    */
-  g.Geodesic.prototype.GenDirectLine = function (lat1, lon1, azi1,
-                                                 arcmode, s12_a12, caps) {
+  g.Geodesic.prototype.GenDirectLine = function(lat1, lon1, azi1,
+                                                arcmode, s12_a12, caps) {
     var t;
     if (!caps) caps = g.STANDARD | g.DISTANCE_IN;
     // Automatically supply DISTANCE_IN if necessary
@@ -14246,7 +14306,7 @@ GeographicLib.PolygonArea = {};
    *   parameter, see {@tutorial 2-interface}, "The outmask and caps
    *   parameters".
    */
-  g.Geodesic.prototype.InverseLine = function (lat1, lon1, lat2, lon2, caps) {
+  g.Geodesic.prototype.InverseLine = function(lat1, lon1, lat2, lon2, caps) {
     var r, t, azi1;
     if (!caps) caps = g.STANDARD | g.DISTANCE_IN;
     r = this.InverseInt(lat1, lon1, lat2, lon2, g.ARC);
@@ -14267,7 +14327,7 @@ GeographicLib.PolygonArea = {};
    *   {@link module:GeographicLib/PolygonArea.PolygonArea
    *   PolygonArea} object
    */
-  g.Geodesic.prototype.Polygon = function (polyline) {
+  g.Geodesic.prototype.Polygon = function(polyline) {
     return new p.PolygonArea(this, polyline);
   };
 
@@ -14292,12 +14352,12 @@ GeographicLib.PolygonArea = {};
  *
  *    Charles F. F. Karney,
  *    Algorithms for geodesics, J. Geodesy 87, 43-55 (2013);
- *    https://dx.doi.org/10.1007/s00190-012-0578-z
- *    Addenda: http://geographiclib.sourceforge.net/geod-addenda.html
+ *    https://doi.org/10.1007/s00190-012-0578-z
+ *    Addenda: https://geographiclib.sourceforge.io/geod-addenda.html
  *
  * Copyright (c) Charles Karney (2011-2016) <charles@karney.com> and licensed
  * under the MIT/X11 License.  For more information, see
- * http://geographiclib.sourceforge.net/
+ * https://geographiclib.sourceforge.io/
  */
 
 // Load AFTER GeographicLib/Math.js, GeographicLib/Geodesic.js
@@ -14485,10 +14545,10 @@ GeographicLib.PolygonArea = {};
       s = Math.sin(tau12);
       c = Math.cos(tau12);
       // tau2 = tau1 + tau12
-      B12 = - g.SinCosSeries(true,
-                             this._stau1 * c + this._ctau1 * s,
-                             this._ctau1 * c - this._stau1 * s,
-                             this._C1pa);
+      B12 = -g.SinCosSeries(true,
+                            this._stau1 * c + this._ctau1 * s,
+                            this._ctau1 * c - this._stau1 * s,
+                            this._C1pa);
       sig12 = tau12 - (B12 - this._B11);
       ssig12 = Math.sin(sig12); csig12 = Math.cos(sig12);
       if (Math.abs(this.f) > 0.01) {
@@ -15095,6 +15155,66 @@ function pj_aitoff(P) {
 }
 
 
+pj_add(pj_august, 'august', 'August Epicycloidal', '\n\tMisc Sph, no inv.');
+
+function pj_august(P) {
+  P.fwd = s_fwd;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var M = 4 / 3;
+    var lam = lp.lam;
+    var t, c1, c, x1, x12, y1, y12;
+    t = tan(0.5 * lp.phi);
+    c1 = sqrt(1 - t * t);
+    c = 1 + c1 * cos(lam *= 0.5);
+    x1 = sin(lam) *  c1 / c;
+    y1 =  t / c;
+    xy.x = M * x1 * (3 + (x12 = x1 * x1) - 3 * (y12 = y1 *  y1));
+    xy.y = M * y1 * (3 + 3 * x12 - y12);
+  }
+}
+
+
+pj_add(pj_apian, 'apian', 'Apian Globular I', '\n\tMisc Sph, no inv.');
+pj_add(pj_ortel, 'ortel', 'Ortelius Oval', '\n\tMisc Sph, no inv.');
+pj_add(pj_bacon, 'bacon', 'Bacon Globular', '\n\tMisc Sph, no inv.');
+
+function pj_bacon(P) {
+  pj_bacon_init(P, true, false);
+}
+
+function pj_apian(P) {
+  pj_bacon_init(P, false, false);
+}
+
+function pj_ortel(P) {
+  pj_bacon_init(P, false, true);
+}
+
+function pj_bacon_init(P, bacn, ortl) {
+  P.es = 0;
+  P.fwd = s_fwd;
+
+  function s_fwd(lp, xy) {
+    var HLFPI2 = 2.46740110027233965467; /* (pi/2)^2 */
+    var EPS = 1e-10;
+    var ax, f;
+    xy.y = bacn ? M_HALFPI * sin(lp.phi) : lp.phi;
+    if ((ax = fabs(lp.lam)) >= EPS) {
+      if (ortl && ax >= M_HALFPI)
+        xy.x = sqrt(HLFPI2 - lp.phi * lp.phi + EPS) + ax - M_HALFPI;
+      else {
+        f = 0.5 * (HLFPI2 / ax + ax);
+        xy.x = ax - f + sqrt(f * f - xy.y * xy.y);
+      }
+      if (lp.lam < 0) xy.x = - xy.x;
+    } else
+      xy.x = 0;
+  }
+}
+
+
 pj_add(pj_boggs, 'boggs', 'Boggs Eumorphic', '\n\tPCyl., no inv., Sph.');
 
 function pj_boggs(P) {
@@ -15434,6 +15554,53 @@ function pj_chamb(P) {
   /* law of cosines */
   function lc(b, c, a) {
     return aacos(0.5 * (b * b + c * c - a * a) / (b * c));
+  }
+}
+
+
+pj_add(pj_crast, 'crast', 'Craster Parabolic (Putnins P4)', '\n\tPCyl., Sph.');
+
+function pj_crast(P) {
+  var XM = 0.97720502380583984317;
+  var RXM = 1.02332670794648848847;
+  var YM = 3.06998012383946546542;
+  var RYM = 0.32573500793527994772;
+  var THIRD = 1/3;
+  P.inv = s_inv;
+  P.fwd = s_fwd;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    lp.phi *= THIRD;
+    xy.x = XM * lp.lam * (2 * cos(lp.phi + lp.phi) - 1);
+    xy.y = YM * sin(lp.phi);
+  }
+
+  function s_inv(xy, lp) {
+    lp.phi = 3 * asin(xy.y * RYM);
+    lp.lam = xy.x * RXM / (2 * cos((lp.phi + lp.phi) * THIRD) - 1);
+  }
+}
+
+
+pj_add(pj_denoy, 'denoy', 'Denoyer Semi-Elliptical', '\n\tPCyl, Sph., no inv.');
+
+function pj_denoy(P) {
+  P.fwd = s_fwd;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var C0 = 0.95;
+    var C1 = -0.08333333333333333333;
+    var C3 = 0.00166666666666666666;
+    var D1 = 0.9;
+    var D5 = 0.03;
+    var lam = fabs(lp.lam);
+    xy.y = lp.phi;
+    xy.x = lp.lam;
+    xy.x *= cos((C0 + lam * (C1 + lam * lam * C3)) *
+            (lp.phi * (D1 + D5 * lp.phi * lp.phi * lp.phi * lp.phi)));
+
   }
 }
 
@@ -15833,7 +16000,7 @@ function pj_etmerc(P) {
       tmp = clenS(utg, 2*Cn, 2*Ce);
       Cn += tmp[0];
       Ce += tmp[1];
-      Ce = atan(sinh(Ce)); /* Replaces: Ce = 2*(atan(exp(Ce)) - FORTPI); */
+      Ce = atan(sinh(Ce)); /* Replaces: Ce = 2*(atan(exp(Ce)) - M_FORTPI); */
       /* compl. sph. LAT -> Gaussian LAT, LNG */
       sin_Cn = sin(Cn);
       cos_Cn = cos(Cn);
@@ -15989,6 +16156,25 @@ function pj_gilbert(P) {
 
   function phiprime(phi) {
     return aasin(tan(0.5 * phi));
+  }
+}
+
+
+pj_add(pj_gins8, 'gins8', 'Ginsburg VIII (TsNIIGAiK)', '\n\tPCyl, Sph., no inv.');
+
+function pj_gins8(P) {
+  P.fwd = s_fwd;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var Cl = 0.000952426;
+    var Cp = 0.162388;
+    var C12 = 0.08333333333333333;
+    var t = lp.phi * lp.phi;
+    xy.y = lp.phi * (1 + t * C12);
+    xy.x = lp.lam * (1 - Cp * t);
+    t = lp.lam * lp.lam;
+    xy.x *= (0.87 - Cl * t * t);
   }
 }
 
@@ -16287,6 +16473,201 @@ function pj_goode(P) {
       mollInv(xy, lp);
     }
   };
+}
+
+
+pj_add(pj_hammer, 'hammer', 'Hammer & Eckert-Greifendorff', '\n\tMisc Sph, \n\tW= M=');
+
+function pj_hammer(P) {
+  var w, m, rm;
+  var EPS = 1e-10;
+  P.inv = s_inv;
+  P.fwd = s_fwd;
+  P.es = 0;
+
+  if (pj_param(P.params, "tW")) {
+    if ((w = fabs(pj_param(P.params, "dW"))) <= 0) e_error(-27);
+  } else
+    w = 0.5;
+  if (pj_param(P.params, "tM")) {
+      if ((m = fabs(pj_param(P.params, "dM"))) <= 0) e_error(-27);
+  } else
+      m = 1;
+  rm = 1 / m;
+  m /= w;
+
+  function s_fwd(lp, xy) {
+    var cosphi, d;
+    d = sqrt(2/(1 + (cosphi = cos(lp.phi)) * cos(lp.lam *= w)));
+    xy.x = m * d * cosphi * sin(lp.lam);
+    xy.y = rm * d * sin(lp.phi);
+  }
+
+  function s_inv(xy, lp) {
+    var z = sqrt(1 - 0.25*w*w*xy.x*xy.x - 0.25*xy.y*xy.y);
+    if (fabs(2*z*z-1) < EPS) {
+      lp.lam = HUGE_VAL;
+      lp.phi = HUGE_VAL;
+      pj_errno = -14;
+    } else {
+      lp.lam = aatan2(w * xy.x * z,2 * z * z - 1)/w;
+      lp.phi = aasin(z * xy.y);
+    }
+  }
+}
+
+
+pj_add(pj_hatano, 'hatano', 'Hatano Asymmetrical Equal Area', '\n\tPCyl., Sph.');
+
+function pj_hatano(P) {
+  var NITER = 20;
+  var EPS = 1e-7;
+  var ONETOL = 1.000001;
+  var CN = 2.67595;
+  var CS = 2.43763;
+  var RCN = 0.37369906014686373063;
+  var RCS = 0.41023453108141924738;
+  var FYCN = 1.75859;
+  var FYCS = 1.93052;
+  var RYCN = 0.56863737426006061674;
+  var RYCS = 0.51799515156538134803;
+  var FXC = 0.85;
+  var RXC = 1.17647058823529411764;
+
+  P.inv = s_inv;
+  P.fwd = s_fwd;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var th1, c;
+    var i;
+    c = sin(lp.phi) * (lp.phi < 0 ? CS : CN);
+    for (i = NITER; i; --i) {
+      lp.phi -= th1 = (lp.phi + sin(lp.phi) - c) / (1 + cos(lp.phi));
+      if (fabs(th1) < EPS) break;
+    }
+    xy.x = FXC * lp.lam * cos(lp.phi *= 0.5);
+    xy.y = sin(lp.phi) * (lp.phi < 0 ? FYCS : FYCN);
+  }
+
+  function s_inv(xy, lp) {
+    var th = xy.y * (xy.y < 0 ? RYCS : RYCN);
+    if (fabs(th) > 1) {
+      if (fabs(th) > ONETOL) {
+        i_error();
+      } else {
+        th = th > 0 ? M_HALFPI : -M_HALFPI;
+      }
+    } else {
+      th = asin(th);
+    }
+
+    lp.lam = RXC * xy.x / cos(th);
+    th += th;
+    lp.phi = (th + sin(th)) * (xy.y < 0 ? RCS : RCN);
+    if (fabs(lp.phi) > 1) {
+      if (fabs(lp.phi) > ONETOL) {
+        i_error();
+      } else {
+        lp.phi = lp.phi > 0 ? M_HALFPI : -M_HALFPI;
+      }
+    } else {
+      lp.phi = asin(lp.phi);
+    }
+  }
+}
+
+
+pj_add(pj_krovak, 'krovak', 'Krovak', '\n\tPCyl., Ellps.');
+
+function pj_krovak(P) {
+  var u0, n0, g;
+  var alpha, k, n, rho0, ad, czech;
+  var EPS = 1e-15;
+  var S45 = 0.785398163397448; /* 45 deg */
+  var S90 = 1.570796326794896; /* 90 deg */
+  var UQ = 1.04216856380474;   /* DU(2, 59, 42, 42.69689) */
+  var S0 = 1.37008346281555;   /* Latitude of pseudo standard parallel 78deg 30'00" N */
+
+  /* we want Bessel as fixed ellipsoid */
+  P.a = 6377397.155;
+  P.e = sqrt(P.es = 0.006674372230614);
+
+  /* if latitude of projection center is not set, use 49d30'N */
+  if (!pj_param(P.params, "tlat_0"))
+    P.phi0 = 0.863937979737193;
+
+  /* if center long is not set use 42d30'E of Ferro - 17d40' for Ferro */
+  /* that will correspond to using longitudes relative to greenwich    */
+  /* as input and output, instead of lat/long relative to Ferro */
+  if (!pj_param(P.params, "tlon_0"))
+          P.lam0 = 0.7417649320975901 - 0.308341501185665;
+
+  /* if scale not set default to 0.9999 */
+  if (!pj_param(P.params, "tk"))
+          P.k0 = 0.9999;
+  czech = 1;
+  if (!pj_param(P.params, "tczech"))
+    czech = -1;
+
+  /* Set up shared parameters between forward and inverse */
+  alpha = sqrt(1 + (P.es * pow(cos(P.phi0), 4)) / (1 - P.es));
+  u0 = asin(sin(P.phi0) / alpha);
+  g = pow((1 + P.e * sin(P.phi0)) / (1 - P.e * sin(P.phi0)), alpha * P.e / 2);
+  k = tan( u0 / 2 + S45) / pow  (tan(P.phi0 / 2 + S45) , alpha) * g;
+  n0 = sqrt(1 - P.es) / (1 - P.es * pow(sin(P.phi0), 2));
+  n = sin(S0);
+  rho0 = P.k0 * n0 / tan(S0);
+  ad = S90 - UQ;
+  P.inv = e_inv;
+  P.fwd = e_fwd;
+
+  function e_fwd(lp, xy) {
+    var gfi, u, deltav, s, d, eps, rho;
+
+    gfi = pow ( (1 + P.e * sin(lp.phi)) / (1 - P.e * sin(lp.phi)), alpha * P.e / 2);
+
+    u = 2 * (atan(k * pow( tan(lp.phi / 2 + S45), alpha) / gfi)-S45);
+    deltav = -lp.lam * alpha;
+
+    s = asin(cos(ad) * sin(u) + sin(ad) * cos(u) * cos(deltav));
+    d = asin(cos(u) * sin(deltav) / cos(s));
+    eps = n * d;
+    rho = rho0 * pow(tan(S0 / 2 + S45) , n) / pow(tan(s / 2 + S45) , n);
+    xy.y = rho * cos(eps);
+    xy.x = rho * sin(eps);
+    xy.y *= czech;
+    xy.x *= czech;
+  }
+
+  function e_inv(xy, lp) {
+    var u, deltav, s, d, eps, rho, fi1, xy0;
+    var ok;
+    xy0 = xy.x;
+    xy.x = xy.y;
+    xy.y = xy0;
+    xy.x *= czech;
+    xy.y *= czech;
+
+    rho = sqrt(xy.x * xy.x + xy.y * xy.y);
+    eps = atan2(xy.y, xy.x);
+    d = eps / sin(S0);
+    s = 2 * (atan(  pow(rho0 / rho, 1 / n) * tan(S0 / 2 + S45)) - S45);
+    u = asin(cos(ad) * sin(s) - sin(ad) * cos(s) * cos(d));
+    deltav = asin(cos(s) * sin(d) / cos(u));
+    lp.lam = P.lam0 - deltav / alpha;
+
+    /* ITERATION FOR lp.phi */
+    fi1 = u;
+    ok = 0;
+    do {
+      lp.phi = 2 * (atan(pow( k, -1 / alpha) * pow( tan(u / 2 + S45), 1 / alpha) *
+        pow( (1 + P.e * sin(fi1)) / (1 - P.e * sin(fi1)) , P.e / 2))  - S45);
+      if (fabs(fi1 - lp.phi) < EPS) ok=1;
+      fi1 = lp.phi;
+   } while (ok===0);
+   lp.lam -= P.lam0;
+  }
 }
 
 
@@ -16770,6 +17151,260 @@ function pj_mill(P) {
 }
 
 
+/* evaluate complex polynomial */
+
+/* note: coefficients are always from C_1 to C_n
+**  i.e. C_0 == (0., 0)
+**  n should always be >= 1 though no checks are made
+*/
+// z: Complex number (object with r and i properties)
+// C: Array of complex numbers
+// returns: complex number
+function pj_zpoly1(z, C) {
+  var t, r, i;
+  var n = C.length - 1;
+  r = C[n][0];
+  i = C[n][1];
+  while (--n >= 0) {
+    t = r;
+    r = C[n][0] + z.r * t - z.i * i;
+    i = C[n][1] + z.r * i + z.i * t;
+  }
+  return {
+    r: z.r * r - z.i * i,
+    i: z.r * i + z.i * r
+  };
+}
+
+/* evaluate complex polynomial and derivative */
+function pj_zpolyd1(z, C, der) {
+  var ai, ar, bi, br, t;
+  var first = true;
+  var n = C.length - 1;
+  ar = br = C[n][0];
+  ai = bi = C[n][1];
+  while (--n >= 0) {
+    if (first) {
+      first = false;
+    } else {
+      br = ar + z.r * (t = br) - z.i * bi;
+      bi = ai + z.r * bi + z.i * t;
+    }
+    ar = C[n][0] + z.r * (t = ar) - z.i * ai;
+    ai = C[n][1] + z.r * ai + z.i * t;
+  }
+  der.r = ar + z.r * br - z.i * bi;
+  der.i = ai + z.r * bi + z.i * br;
+  return {
+    r: z.r * ar - z.i * ai,
+    i: z.r * ai + z.i * ar
+  };
+}
+
+
+pj_add(pj_mil_os, 'mil_os', 'Miller Oblated Stereographic', '\n\tAzi(mod)');
+pj_add(pj_lee_os, 'lee_os', 'Lee Oblated Stereographic', '\n\tAzi(mod)');
+pj_add(pj_gs48, 'gs48', 'Mod Stereographic of 48 U.S.', '\n\tAzi(mod)');
+pj_add(pj_alsk, 'alsk', 'Mod Stereographic of Alaska', '\n\tAzi(mod)');
+pj_add(pj_gs50, 'gs50', 'Mod Stereographic of 50 U.S.', '\n\tAzi(mod)');
+
+function pj_mil_os(P) {
+  var AB = [
+    [0.924500, 0],
+    [0,        0],
+    [0.019430, 0]
+  ];
+  P.lam0 = DEG_TO_RAD * 20;
+  P.phi0 = DEG_TO_RAD * 18;
+  P.es = 0;
+  pj_mod_ster(P, AB);
+}
+
+function pj_lee_os(P) {
+  var AB = [
+    [0.721316,    0],
+    [0,           0],
+    [-0.0088162, -0.00617325]
+  ];
+  P.lam0 = DEG_TO_RAD * -165;
+  P.phi0 = DEG_TO_RAD * -10;
+  P.es = 0;
+  pj_mod_ster(P, AB);
+}
+
+function pj_gs48(P) {
+  var AB = [
+    [0.98879,   0],
+    [0,         0],
+    [-0.050909, 0],
+    [0,         0],
+    [0.075528,  0]
+  ];
+  P.lam0 = DEG_TO_RAD * -96;
+  P.phi0 = DEG_TO_RAD * 39;
+  P.es = 0;
+  P.a = 6370997;
+  pj_mod_ster(P, AB);
+}
+
+function pj_alsk(P) {
+  var ABe = [ /* Alaska ellipsoid */
+    [ 0.9945303, 0],
+    [ 0.0052083, -0.0027404],
+    [ 0.0072721,  0.0048181],
+    [-0.0151089, -0.1932526],
+    [ 0.0642675, -0.1381226],
+    [ 0.3582802, -0.2884586],
+  ];
+  var ABs = [ /* Alaska sphere */
+    [ 0.9972523,  0],
+    [ 0.0052513, -0.0041175],
+    [ 0.0074606,  0.0048125],
+    [-0.0153783, -0.1968253],
+    [ 0.0636871, -0.1408027],
+    [ 0.3660976, -0.2937382]
+  ];
+  var AB;
+  P.lam0 = DEG_TO_RAD * -152;
+  P.phi0 = DEG_TO_RAD * 64;
+  if (P.es != 0.0) { /* fixed ellipsoid/sphere */
+    AB = ABe;
+    P.a = 6378206.4;
+    P.e = sqrt(P.es = 0.00676866);
+  } else {
+    AB = ABs;
+    P.a = 6370997;
+  }
+  pj_mod_ster(P, AB);
+}
+
+function pj_gs50(P) {
+  var ABe = [
+    [ 0.9827497,  0],
+    [ 0.0210669,  0.0053804],
+    [-0.1031415, -0.0571664],
+    [-0.0323337, -0.0322847],
+    [ 0.0502303,  0.1211983],
+    [ 0.0251805,  0.0895678],
+    [-0.0012315, -0.1416121],
+    [ 0.0072202, -0.1317091],
+    [-0.0194029,  0.0759677],
+    [-0.0210072,  0.0834037]
+  ];
+  var ABs = [
+    [ 0.9842990,  0],
+    [ 0.0211642,  0.0037608],
+    [-0.1036018, -0.0575102],
+    [-0.0329095, -0.0320119],
+    [ 0.0499471,  0.1223335],
+    [ 0.0260460,  0.0899805],
+    [ 0.0007388, -0.1435792],
+    [ 0.0075848, -0.1334108],
+    [-0.0216473,  0.0776645],
+    [-0.0225161,  0.0853673]
+  ];
+  var AB;
+  P.lam0 = DEG_TO_RAD * -120;
+  P.phi0 = DEG_TO_RAD * 45;
+  if (P.es != 0.0) { /* fixed ellipsoid/sphere */
+    AB = ABe;
+    P.a = 6378206.4;
+    P.e = sqrt(P.es = 0.00676866);
+  } else {
+    AB = ABs;
+    P.a = 6370997;
+  }
+  pj_mod_ster(P, AB);
+}
+
+function pj_mod_ster(P, zcoeff) {
+  var EPSLN = 1e-12;
+  var esphi, chio;
+  var cchio, schio;
+  if (P.es != 0.0) {
+    esphi = P.e * sin(P.phi0);
+    chio = 2 * atan(tan((M_HALFPI + P.phi0) * 0.5) *
+        pow((1 - esphi) / (1 + esphi), P.e * 0.5)) - M_HALFPI;
+  } else
+    chio = P.phi0;
+  schio = sin(chio);
+  cchio = cos(chio);
+  P.inv = e_inv;
+  P.fwd = e_fwd;
+
+  function e_fwd(lp, xy) {
+    var sinlon, coslon, esphi, chi, schi, cchi, s;
+    var p = {};
+
+    sinlon = sin(lp.lam);
+    coslon = cos(lp.lam);
+    esphi = P.e * sin(lp.phi);
+    chi = 2 * atan(tan((M_HALFPI + lp.phi) * 0.5) *
+        pow((1 - esphi) / (1 + esphi), P.e * 0.5)) - M_HALFPI;
+    schi = sin(chi);
+    cchi = cos(chi);
+    s = 2 / (1 + schio * schi + cchio * cchi * coslon);
+    p.r = s * cchi * sinlon;
+    p.i = s * (cchio * schi - schio * cchi * coslon);
+    p = pj_zpoly1(p, zcoeff);
+    xy.x = p.r;
+    xy.y = p.i;
+  }
+
+  function e_inv(xy, lp) {
+    var nn;
+    var p = {}, fxy, fpxy = {}, dp = {}; // complex numbers
+    var den, rh = 0.0, z, sinz = 0.0, cosz = 0.0, chi, phi = 0.0, esphi;
+    var dphi;
+
+    p.r = xy.x;
+    p.i = xy.y;
+    for (nn = 20; nn ;--nn) {
+      fxy = pj_zpolyd1(p, zcoeff, fpxy);
+      fxy.r -= xy.x;
+      fxy.i -= xy.y;
+      den = fpxy.r * fpxy.r + fpxy.i * fpxy.i;
+      dp.r = -(fxy.r * fpxy.r + fxy.i * fpxy.i) / den;
+      dp.i = -(fxy.i * fpxy.r - fxy.r * fpxy.i) / den;
+      p.r += dp.r;
+      p.i += dp.i;
+      if ((fabs(dp.r) + fabs(dp.i)) <= EPSLN)
+          break;
+    }
+    if (nn) {
+      rh = hypot(p.r, p.i);
+      z = 2 * atan(0.5 * rh);
+      sinz = sin(z);
+      cosz = cos(z);
+      lp.lam = P.lam0;
+      if (fabs(rh) <= EPSLN) {
+        /* if we end up here input coordinates were (0,0).
+         * pj_inv() adds P.lam0 to lp.lam, this way we are
+         * sure to get the correct offset */
+        lp.lam = 0.0;
+        lp.phi = P.phi0;
+        return;
+      }
+      chi = aasin(cosz * schio + p.i * sinz * cchio / rh);
+      phi = chi;
+      for (nn = 20; nn ;--nn) {
+        esphi = P.e * sin(phi);
+        dphi = 2 * atan(tan((M_HALFPI + chi) * 0.5) *
+            pow((1 + esphi) / (1 - esphi), P.e * 0.5)) - M_HALFPI - phi;
+        phi += dphi;
+        if (fabs(dphi) <= EPSLN)
+          break;
+      }
+    }
+    if (nn) {
+      lp.phi = phi;
+      lp.lam = atan2(p.r * sinz, rh * cchio * cosz - p.i * schio * sinz);
+    } else
+      lp.lam = lp.phi = HUGE_VAL;
+  }
+}
+
+
 pj_add(pj_natearth, 'natearth', 'Natural Earth', '\n\tPCyl., Sph.');
 pj_add(pj_natearth2, 'natearth2', 'Natural Earth 2', '\n\tPCyl., Sph.');
 
@@ -16885,6 +17520,37 @@ function pj_natearth2(P) {
     y4 = y2 * y2;
     y6 = y2 * y4;
     lp.lam = x / (A0 + A1 * y2 + y6 * y6 * (A2 + A3 * y2 + A4 * y4 + A5 * y6));
+  }
+}
+
+
+pj_add(pj_nell, 'nell', 'Nell', '\n\tPCyl., Sph.');
+
+function pj_nell(P) {
+  var MAX_ITER = 10;
+  var LOOP_TOL = 1e-7;
+  P.inv = s_inv;
+  P.fwd = s_fwd;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var k, V, i;
+    k = 2 * sin(lp.phi);
+    V = lp.phi * lp.phi;
+    lp.phi *= 1.00371 + V * (-0.0935382 + V * -0.011412);
+    for (i = MAX_ITER; i ; --i) {
+        lp.phi -= V = (lp.phi + sin(lp.phi) - k) /
+            (1 + cos(lp.phi));
+        if (fabs(V) < LOOP_TOL)
+            break;
+    }
+    xy.x = 0.5 * lp.lam * (1 + cos(lp.phi));
+    xy.y = lp.phi;
+  }
+
+  function s_inv(xy, lp) {
+    lp.lam = 2 * xy.x / (1 + cos(xy.y));
+    lp.phi = aasin(0.5 * (xy.y + sin(xy.y)));
   }
 }
 
@@ -17058,6 +17724,75 @@ function pj_tpers_init(P, height, tiltAngle, azimuth) {
 }
 
 
+pj_add(pj_nzmg, 'nzmg', 'New Zealand Map Grid', '\n\tfixed Earth');
+
+function pj_nzmg(P) {
+  var EPSLN = 1e-10;
+  var SEC5_TO_RAD = 0.4848136811095359935899141023;
+  var RAD_TO_SEC5 = 2.062648062470963551564733573;
+  var bf = [
+    [ 0.7557853228, 0.0],
+    [ 0.249204646,  0.003371507],
+    [-0.001541739,  0.041058560],
+    [-0.10162907,   0.01727609],
+    [-0.26623489,  -0.36249218],
+    [-0.6870983,   -1.1651967]];
+
+  var tphi= [1.5627014243, 0.5185406398, -0.03333098,
+    -0.1052906, -0.0368594, 0.007317, 0.01220, 0.00394, -0.0013];
+
+  var tpsi = [0.6399175073, -0.1358797613, 0.063294409, -0.02526853, 0.0117879,
+    -0.0055161, 0.0026906, -0.001333, 0.00067, -0.00034];
+
+  /* force to International major axis */
+  P.ra = 1 / (P.a = 6378388.0);
+  P.lam0 = DEG_TO_RAD * 173;
+  P.phi0 = DEG_TO_RAD * -41;
+  P.x0 = 2510000;
+  P.y0 = 6023150;
+
+  P.inv = e_inv;
+  P.fwd = e_fwd;
+
+  function e_fwd(lp, xy) {
+    var i = tpsi.length - 1;
+    var p = {r: tpsi[i]};
+    var phi = (lp.phi - P.phi0) * RAD_TO_SEC5;
+    for (--i; i >= 0; --i)
+      p.r = tpsi[i] + phi * p.r;
+    p.r *= phi;
+    p.i = lp.lam;
+    p = pj_zpoly1(p, bf);
+    xy.x = p.i;
+    xy.y = p.r;
+  }
+
+  function e_inv(xy, lp) {
+    var nn, i, dr, di, f, den;
+    var p = {r: xy.y, i: xy.x};
+    var fp = {};
+    for (nn = 20; nn > 0 ;--nn) {
+      f = pj_zpolyd1(p, bf, fp);
+      f.r -= xy.y;
+      f.i -= xy.x;
+      den = fp.r * fp.r + fp.i * fp.i;
+      p.r += dr = -(f.r * fp.r + f.i * fp.i) / den;
+      p.i += di = -(f.i * fp.r - f.r * fp.i) / den;
+      if ((fabs(dr) + fabs(di)) <= EPSLN) break;
+    }
+    if (nn > 0) {
+      lp.lam = p.i;
+      i = tphi.length - 1;
+      lp.phi = tphi[i];
+      for (--i; i >= 0; --i)
+        lp.phi = tphi[i] + p.r * lp.phi;
+      lp.phi = P.phi0 + p.r * lp.phi * SEC5_TO_RAD;
+    } else
+      lp.lam = lp.phi = HUGE_VAL;
+  }
+}
+
+
 pj_add(pj_ob_tran, 'ob_tran', 'General Oblique Transformation', "\n\tMisc Sph" +
   "\n\to_proj= plus parameters for projection" +
   "\n\to_lat_p= o_lon_p= (new pole) or" +
@@ -17180,8 +17915,8 @@ function pj_ocea(P) {
   var phi_0 = 0,
       phi_1, phi_2, lam_1, lam_2, lonz, alpha,
       rok, rtk, sinphi, cosphi, singam, cosgam;
-  rok = P.a / P.k0;
-  rtk = P.a * P.k0;
+  rok = 1 / P.k0;
+  rtk = P.k0;
   /*If the keyword "alpha" is found in the sentence then use 1point+1azimuth*/
   if (pj_param(P.params, "talpha")) {
     /*Define Pole of oblique transformation from 1 point & 1 azimuth*/
@@ -17203,6 +17938,11 @@ function pj_ocea(P) {
       sin(phi_1) * cos(phi_2) * cos(lam_2),
       sin(phi_1) * cos(phi_2) * sin(lam_2) -
       cos(phi_1) * sin(phi_2) * sin(lam_1) );
+
+    /* take care of P->lam0 wrap-around when +lam_1=-90*/
+    if (lam_1 == -M_HALFPI)
+      singam = -singam;
+
     /*Equation 9-2 page 80 (http://pubs.usgs.gov/pp/1395/report.pdf)*/
     sinphi = atan(-cos(singam - lam_1) / tan(phi_1));
   }
@@ -17258,7 +17998,7 @@ function pj_omerc(P) {
   if (alp || gam) {
     lamc = pj_param(P.params, "rlonc");
     no_off =
-      /* For libproj4 compatability ... for backward compatibility */
+      /* For libproj4 compatibility ... for backward compatibility */
       pj_param(P.params, "tno_off") || pj_param(P.params, "tno_uoff");
     if (no_off) {
       /* Mark the parameter as used, so that the pj_get_def() return them */
@@ -17304,10 +18044,6 @@ function pj_omerc(P) {
           gamma = alpha_c;
     } else
         alpha_c = asin(D*sin(gamma0 = gamma));
-    if ((con = fabs(alpha_c)) <= TOL ||
-        fabs(con - M_PI) <= TOL ||
-        fabs(fabs(P.phi0) - M_HALFPI) <= TOL)
-        e_error(-32);
     P.lam0 = lamc - asin(0.5 * (F - 1 / F) * tan(gamma0)) / B;
   } else {
     H = pow(pj_tsfn(phi1, sin(phi1), P.e), B);
@@ -17333,7 +18069,7 @@ function pj_omerc(P) {
   if (no_off)
     u_0 = 0;
   else {
-    u_0 = fabs(ArB * atan2(sqrt(D * D - 1), cos(alpha_c)));
+    u_0 = fabs(ArB * atan(sqrt(D * D - 1) / cos(alpha_c)));
     if (P.phi0 < 0)
         u_0 = - u_0;
   }
@@ -17598,6 +18334,538 @@ function pj_poly(P) {
 }
 
 
+pj_add(pj_putp2, 'putp2', 'Putnins P2', '\n\tPCyl., Sph.');
+
+function pj_putp2(P) {
+  var C_x = 1.89490,
+      C_y = 1.71848,
+      C_p = 0.6141848493043784,
+      EPS = 1e-10,
+      NITER = 10,
+      PI_DIV_3 = 1.0471975511965977;
+  P.es = 0;
+  P.fwd = s_fwd;
+  P.inv = s_inv;
+
+  function s_fwd(lp, xy) {
+    var p, c, s, V, i;
+    p = C_p * sin(lp.phi);
+    s = lp.phi * lp.phi;
+    lp.phi *= 0.615709 + s * ( 0.00909953 + s * 0.0046292 );
+    for (i = NITER; i ; --i) {
+      c = cos(lp.phi);
+      s = sin(lp.phi);
+      lp.phi -= V = (lp.phi + s * (c - 1) - p) /
+        (1 + c * (c - 1) - s * s);
+      if (fabs(V) < EPS)
+        break;
+    }
+    if (!i)
+      lp.phi = lp.phi < 0 ? - PI_DIV_3 : PI_DIV_3;
+    xy.x = C_x * lp.lam * (cos(lp.phi) - 0.5);
+    xy.y = C_y * sin(lp.phi);
+  }
+
+  function s_inv(xy, lp) {
+    var c;
+    lp.phi = aasin(xy.y / C_y);
+    lp.lam = xy.x / (C_x * ((c = cos(lp.phi)) - 0.5));
+    lp.phi = aasin((lp.phi + sin(lp.phi) * (c - 1)) / C_p);
+  }
+}
+
+
+pj_add(pj_putp3, 'putp3', 'Putnins P3', '\n\tPCyl., Sph.');
+pj_add(pj_putp3p, 'putp3p', 'Putnins P3\'', '\n\tPCyl., Sph.');
+
+function pj_putp3p(P) {
+  pj_putp3(P, true);
+}
+
+function pj_putp3(P, prime) {
+  var C = 0.79788456,
+      RPISQ = 0.1013211836,
+      A = (prime ? 2 : 4) * RPISQ;
+  P.es = 0;
+  P.fwd = s_fwd;
+  P.inv = s_inv;
+
+  function s_fwd(lp, xy) {
+    xy.x = C * lp.lam * (1 - A * lp.phi * lp.phi);
+    xy.y = C * lp.phi;
+  }
+
+  function s_inv(xy, lp) {
+    lp.phi = xy.y / C;
+    lp.lam = xy.x / (C * (1 - A * lp.phi * lp.phi));
+  }
+}
+
+
+pj_add(pj_putp4p, 'putp4p', 'Putnins P4\'', '\n\tPCyl., Sph.');
+pj_add(pj_weren, 'weren', 'Werenskiold I', '\n\tPCyl., Sph.');
+
+function pj_putp4p(P) {
+  pj_putp4p_init(P, 0.874038744, 3.883251825);
+}
+
+function pj_weren(P) {
+  pj_putp4p_init(P, 1, 4.442882938);
+}
+
+function pj_putp4p_init(P, C_x, C_y) {
+  P.es = 0;
+  P.fwd = s_fwd;
+  P.inv = s_inv;
+
+  function s_fwd(lp, xy) {
+    lp.phi = aasin(0.883883476 * sin(lp.phi));
+    xy.x = C_x * lp.lam * cos(lp.phi);
+    xy.x /= cos(lp.phi *= 0.333333333333333);
+    xy.y = C_y * sin(lp.phi);
+  }
+
+  function s_inv(xy, lp) {
+    lp.phi = aasin(xy.y / C_y);
+    lp.lam = xy.x * cos(lp.phi) / C_x;
+    lp.phi *= 3;
+    lp.lam /= cos(lp.phi);
+    lp.phi = aasin(1.13137085 * sin(lp.phi));
+  }
+}
+
+
+pj_add(pj_putp5, 'putp5', 'Putnins P5', '\n\tPCyl., Sph.');
+pj_add(pj_putp5p, 'putp5p', 'Putnins P5\'', '\n\tPCyl., Sph.');
+
+function pj_putp5p(P) {
+  pj_putp5(P, true);
+}
+
+function pj_putp5(P, prime) {
+  var A = (prime ? 1.5 : 2),
+      B = (prime ? 0.5 : 1),
+      C = 1.01346,
+      D = 1.2158542;
+
+  P.es = 0;
+  P.fwd = s_fwd;
+  P.inv = s_inv;
+
+  function s_fwd(lp, xy) {
+    xy.x = C * lp.lam * (A - B * sqrt(1 + D * lp.phi * lp.phi));
+    xy.y = C * lp.phi;
+  }
+
+  function s_inv(xy, lp) {
+    lp.phi = xy.y / C;
+    lp.lam = xy.x / (C * (A - B * sqrt(1 + D * lp.phi * lp.phi)));
+  }
+}
+
+
+pj_add(pj_putp6, 'putp6', 'Putnins P6', '\n\tPCyl., Sph.');
+pj_add(pj_putp6p, 'putp6p', 'Putnins P6\'', '\n\tPCyl., Sph.');
+
+function pj_putp6p(P) {
+  pj_putp6(P, true);
+}
+
+function pj_putp6(P, prime) {
+  var EPS = 1e-10,
+      NITER = 10,
+      CON_POLE = 1.732050807568877,
+      A, B, C_x, C_y, D;
+
+  if (prime) {
+    C_x = 0.44329;
+    C_y = 0.80404;
+    A   = 6;
+    B   = 5.61125;
+    D   = 3;
+  } else {
+    C_x = 1.01346;
+    C_y = 0.91910;
+    A   = 4;
+    B   = 2.1471437182129378784;
+    D   = 2;
+  }
+
+  P.es = 0;
+  P.fwd = s_fwd;
+  P.inv = s_inv;
+
+  function s_fwd(lp, xy) {
+    var p, r, V, i;
+    p = B * sin(lp.phi);
+    lp.phi *=  1.10265779;
+    for (i = NITER; i ; --i) {
+        r = sqrt(1 + lp.phi * lp.phi);
+        lp.phi -= V = ( (A - r) * lp.phi - log(lp.phi + r) - p ) /
+            (A - 2 * r);
+        if (fabs(V) < EPS)
+            break;
+    }
+    if (!i)
+        lp.phi = p < 0 ? -CON_POLE : CON_POLE;
+    xy.x = C_x * lp.lam * (D - sqrt(1 + lp.phi * lp.phi));
+    xy.y = C_y * lp.phi;
+  }
+
+  function s_inv(xy, lp) {
+    var r;
+    lp.phi = xy.y / C_y;
+    r = sqrt(1 + lp.phi * lp.phi);
+    lp.lam = xy.x / (C_x * (D - r));
+    lp.phi = aasin(((A - r) * lp.phi - log(lp.phi + r)) / B);
+  }
+}
+
+
+pj_add(pj_qsc, 'qsc', 'Quadrilateralized Spherical Cube', '\n\tAzi, Sph.');
+
+function pj_qsc(P) {
+  var EPS10 = 1.e-10;
+
+  /* The six cube faces. */
+  var FACE_FRONT = 0;
+  var FACE_RIGHT = 1;
+  var FACE_BACK = 2;
+  var FACE_LEFT = 3;
+  var FACE_TOP = 4;
+  var FACE_BOTTOM = 5;
+
+  /* The four areas on a cube face. AREA_0 is the area of definition,
+   * the other three areas are counted counterclockwise. */
+  var AREA_0 = 0;
+  var AREA_1 = 1;
+  var AREA_2 = 2;
+  var AREA_3 = 3;
+  var face;
+  var a_squared;
+  var b;
+  var one_minus_f;
+  var one_minus_f_squared;
+
+  /* Determine the cube face from the center of projection. */
+  if (P.phi0 >= M_HALFPI - M_FORTPI / 2.0) {
+    face = FACE_TOP;
+  } else if (P.phi0 <= -(M_HALFPI - M_FORTPI / 2.0)) {
+    face = FACE_BOTTOM;
+  } else if (fabs(P.lam0) <= M_FORTPI) {
+    face = FACE_FRONT;
+  } else if (fabs(P.lam0) <= M_HALFPI + M_FORTPI) {
+    face = (P.lam0 > 0.0 ? FACE_RIGHT : FACE_LEFT);
+  } else {
+    face = FACE_BACK;
+  }
+  /* Fill in useful values for the ellipsoid <-> sphere shift
+   * described in [LK12]. */
+  if (P.es !== 0.0) {
+    a_squared = P.a * P.a;
+    b = P.a * sqrt(1.0 - P.es);
+    one_minus_f = 1.0 - (P.a - b) / P.a;
+    one_minus_f_squared = one_minus_f * one_minus_f;
+  }
+
+  P.fwd = e_fwd;
+  P.inv = e_inv;
+
+  function e_fwd(lp, xy) {
+    var lat, lon;
+    var theta, phi;
+    var t, mu; /* nu; */
+    var area;
+    var q, r, s;
+    var sinlat, coslat;
+    var sinlon, coslon;
+    var tmp;
+
+    /* Convert the geodetic latitude to a geocentric latitude.
+     * This corresponds to the shift from the ellipsoid to the sphere
+     * described in [LK12]. */
+    if (P.es !== 0.0) {
+      lat = atan(one_minus_f_squared * tan(lp.phi));
+    } else {
+      lat = lp.phi;
+    }
+
+    /* Convert the input lat, lon into theta, phi as used by QSC.
+     * This depends on the cube face and the area on it.
+     * For the top and bottom face, we can compute theta and phi
+     * directly from phi, lam. For the other faces, we must use
+     * unit sphere cartesian coordinates as an intermediate step. */
+    lon = lp.lam;
+    if (face == FACE_TOP) {
+      phi = M_HALFPI - lat;
+      if (lon >= M_FORTPI && lon <= M_HALFPI + M_FORTPI) {
+        area = AREA_0;
+        theta = lon - M_HALFPI;
+      } else if (lon > M_HALFPI + M_FORTPI || lon <= -(M_HALFPI + M_FORTPI)) {
+        area = AREA_1;
+        theta = (lon > 0.0 ? lon - M_PI : lon + M_PI);
+      } else if (lon > -(M_HALFPI + M_FORTPI) && lon <= -M_FORTPI) {
+        area = AREA_2;
+        theta = lon + M_HALFPI;
+      } else {
+        area = AREA_3;
+        theta = lon;
+      }
+    } else if (face == FACE_BOTTOM) {
+      phi = M_HALFPI + lat;
+      if (lon >= M_FORTPI && lon <= M_HALFPI + M_FORTPI) {
+        area = AREA_0;
+        theta = -lon + M_HALFPI;
+      } else if (lon < M_FORTPI && lon >= -M_FORTPI) {
+        area = AREA_1;
+        theta = -lon;
+      } else if (lon < -M_FORTPI && lon >= -(M_HALFPI + M_FORTPI)) {
+        area = AREA_2;
+        theta = -lon - M_HALFPI;
+      } else {
+        area = AREA_3;
+        theta = (lon > 0.0 ? -lon + M_PI : -lon - M_PI);
+      }
+    } else {
+      if (face == FACE_RIGHT) {
+        lon = qsc_shift_lon_origin(lon, +M_HALFPI);
+      } else if (face == FACE_BACK) {
+        lon = qsc_shift_lon_origin(lon, +M_PI);
+      } else if (face == FACE_LEFT) {
+        lon = qsc_shift_lon_origin(lon, -M_HALFPI);
+      }
+      sinlat = sin(lat);
+      coslat = cos(lat);
+      sinlon = sin(lon);
+      coslon = cos(lon);
+      q = coslat * coslon;
+      r = coslat * sinlon;
+      s = sinlat;
+
+      if (face == FACE_FRONT) {
+        phi = acos(q);
+        tmp = qsc_fwd_equat_face_theta(phi, s, r);
+      } else if (face == FACE_RIGHT) {
+        phi = acos(r);
+        tmp = qsc_fwd_equat_face_theta(phi, s, -q);
+      } else if (face == FACE_BACK) {
+        phi = acos(-q);
+        tmp = qsc_fwd_equat_face_theta(phi, s, -r);
+      } else if (face == FACE_LEFT) {
+        phi = acos(-r);
+        tmp = qsc_fwd_equat_face_theta(phi, s, q);
+      } else {
+        /* Impossible */
+        phi = 0.0;
+        tmp = {
+          area: AREA_0,
+          theta: 0
+        };
+      }
+      theta = tmp.theta;
+      area = tmp.area;
+    }
+
+    /* Compute mu and nu for the area of definition.
+     * For mu, see Eq. (3-21) in [OL76], but note the typos:
+     * compare with Eq. (3-14). For nu, see Eq. (3-38). */
+    mu = atan((12.0 / M_PI) * (theta + acos(sin(theta) * cos(M_FORTPI)) - M_HALFPI));
+    t = sqrt((1.0 - cos(phi)) / (cos(mu) * cos(mu)) / (1.0 - cos(atan(1.0 / cos(theta)))));
+    /* nu = atan(t);        We don't really need nu, just t, see below. */
+
+    /* Apply the result to the real area. */
+    if (area == AREA_1) {
+      mu += M_HALFPI;
+    } else if (area == AREA_2) {
+      mu += M_PI;
+    } else if (area == AREA_3) {
+      mu += M_PI_HALFPI;
+    }
+
+    /* Now compute x, y from mu and nu */
+    /* t = tan(nu); */
+    xy.x = t * cos(mu);
+    xy.y = t * sin(mu);
+  }
+
+  function e_inv(xy, lp) {
+    var mu, nu, cosmu, tannu;
+    var tantheta, theta, cosphi, phi;
+    var t;
+    var area;
+
+    /* Convert the input x, y to the mu and nu angles as used by QSC.
+     * This depends on the area of the cube face. */
+    nu = atan(sqrt(xy.x * xy.x + xy.y * xy.y));
+    mu = atan2(xy.y, xy.x);
+    if (xy.x >= 0.0 && xy.x >= fabs(xy.y)) {
+      area = AREA_0;
+    } else if (xy.y >= 0.0 && xy.y >= fabs(xy.x)) {
+      area = AREA_1;
+      mu -= M_HALFPI;
+    } else if (xy.x < 0.0 && -xy.x >= fabs(xy.y)) {
+      area = AREA_2;
+      mu = (mu < 0.0 ? mu + M_PI : mu - M_PI);
+    } else {
+      area = AREA_3;
+      mu += M_HALFPI;
+    }
+
+    /* Compute phi and theta for the area of definition.
+     * The inverse projection is not described in the original paper, but some
+     * good hints can be found here (as of 2011-12-14):
+     * http://fits.gsfc.nasa.gov/fitsbits/saf.93/saf.9302
+     * (search for "Message-Id: <9302181759.AA25477 at fits.cv.nrao.edu>") */
+    t = (M_PI / 12.0) * tan(mu);
+    tantheta = sin(t) / (cos(t) - (1.0 / sqrt(2.0)));
+    theta = atan(tantheta);
+    cosmu = cos(mu);
+    tannu = tan(nu);
+    cosphi = 1.0 - cosmu * cosmu * tannu * tannu * (1.0 - cos(atan(1.0 / cos(theta))));
+    if (cosphi < -1.0) {
+      cosphi = -1.0;
+    } else if (cosphi > +1.0) {
+      cosphi = +1.0;
+    }
+
+    /* Apply the result to the real area on the cube face.
+     * For the top and bottom face, we can compute phi and lam directly.
+     * For the other faces, we must use unit sphere cartesian coordinates
+     * as an intermediate step. */
+    if (face == FACE_TOP) {
+      phi = acos(cosphi);
+      lp.phi = M_HALFPI - phi;
+      if (area == AREA_0) {
+        lp.lam = theta + M_HALFPI;
+      } else if (area == AREA_1) {
+        lp.lam = (theta < 0.0 ? theta + M_PI : theta - M_PI);
+      } else if (area == AREA_2) {
+        lp.lam = theta - M_HALFPI;
+      } else /* area == AREA_3 */ {
+        lp.lam = theta;
+      }
+    } else if (face == FACE_BOTTOM) {
+      phi = acos(cosphi);
+      lp.phi = phi - M_HALFPI;
+      if (area == AREA_0) {
+        lp.lam = -theta + M_HALFPI;
+      } else if (area == AREA_1) {
+        lp.lam = -theta;
+      } else if (area == AREA_2) {
+        lp.lam = -theta - M_HALFPI;
+      } else /* area == AREA_3 */ {
+        lp.lam = (theta < 0.0 ? -theta - M_PI : -theta + M_PI);
+      }
+    } else {
+      /* Compute phi and lam via cartesian unit sphere coordinates. */
+      var q, r, s;
+      q = cosphi;
+      t = q * q;
+      if (t >= 1.0) {
+        s = 0.0;
+      } else {
+        s = sqrt(1.0 - t) * sin(theta);
+      }
+      t += s * s;
+      if (t >= 1.0) {
+        r = 0.0;
+      } else {
+        r = sqrt(1.0 - t);
+      }
+      /* Rotate q,r,s into the correct area. */
+      if (area == AREA_1) {
+        t = r;
+        r = -s;
+        s = t;
+      } else if (area == AREA_2) {
+        r = -r;
+        s = -s;
+      } else if (area == AREA_3) {
+        t = r;
+        r = s;
+        s = -t;
+      }
+      /* Rotate q,r,s into the correct cube face. */
+      if (face == FACE_RIGHT) {
+        t = q;
+        q = -r;
+        r = t;
+      } else if (face == FACE_BACK) {
+        q = -q;
+        r = -r;
+      } else if (face == FACE_LEFT) {
+        t = q;
+        q = r;
+        r = -t;
+      }
+      /* Now compute phi and lam from the unit sphere coordinates. */
+      lp.phi = acos(-s) - M_HALFPI;
+      lp.lam = atan2(r, q);
+      if (face == FACE_RIGHT) {
+        lp.lam = qsc_shift_lon_origin(lp.lam, -M_HALFPI);
+      } else if (face == FACE_BACK) {
+        lp.lam = qsc_shift_lon_origin(lp.lam, -M_PI);
+      } else if (face == FACE_LEFT) {
+        lp.lam = qsc_shift_lon_origin(lp.lam, +M_HALFPI);
+      }
+    }
+
+    /* Apply the shift from the sphere to the ellipsoid as described
+     * in [LK12]. */
+    if (P.es !== 0) {
+      var invert_sign;
+      var tanphi, xa;
+      invert_sign = (lp.phi < 0.0 ? 1 : 0);
+      tanphi = tan(lp.phi);
+      xa = b / sqrt(tanphi * tanphi + one_minus_f_squared);
+      lp.phi = atan(sqrt(P.a * P.a - xa * xa) / (one_minus_f * xa));
+      if (invert_sign) {
+        lp.phi = -lp.phi;
+      }
+    }
+  }
+
+  /* Helper function for forward projection: compute the theta angle
+   * and determine the area number. */
+  function qsc_fwd_equat_face_theta(phi, y, x) {
+    var area, theta;
+    if (phi < EPS10) {
+      area = AREA_0;
+      theta = 0.0;
+    } else {
+      theta = atan2(y, x);
+      if (fabs(theta) <= M_FORTPI) {
+        area = AREA_0;
+      } else if (theta > M_FORTPI && theta <= M_HALFPI + M_FORTPI) {
+        area = AREA_1;
+        theta -= M_HALFPI;
+      } else if (theta > M_HALFPI + M_FORTPI || theta <= -(M_HALFPI + M_FORTPI)) {
+        area = AREA_2;
+        theta = (theta >= 0.0 ? theta - M_PI : theta + M_PI);
+      } else {
+        area = AREA_3;
+        theta += M_HALFPI;
+      }
+    }
+    return {
+      area: area,
+      theta: theta
+    };
+  }
+
+  /* Helper function: shift the longitude. */
+  function qsc_shift_lon_origin(lon, offset) {
+    var slon = lon + offset;
+    if (slon < -M_PI) {
+      slon += M_TWOPI;
+    } else if (slon > +M_PI) {
+      slon -= M_TWOPI;
+    }
+    return slon;
+  }
+}
+
+
 pj_add(pj_robin, 'robin', 'Robinson', "\n\tPCyl., Sph.");
 
 function pj_robin(P) {
@@ -17660,6 +18928,7 @@ function pj_robin(P) {
   function s_fwd(lp, xy) {
     var i, dphi;
     i = floor((dphi = fabs(lp.phi)) * C1);
+    if (i < 0) f_error();
     if (i >= NODES) i = NODES - 1;
     dphi = RAD_TO_DEG * (dphi - RC1 * i);
     xy.x = V(X[i], dphi) * FXC * lp.lam;
@@ -17679,7 +18948,11 @@ function pj_robin(P) {
       }
     } else { /* general problem */
       /* in Y space, reduce to table interval */
-      for (i = floor(lp.phi * NODES);;) {
+      i = floor(lp.phi * NODES);
+      if (i < 0 || i >= NODES) {
+        return i_error();
+      }
+      for (;;) {
         if (Y[i][0] > lp.phi) --i;
         else if (Y[i+1][0] <= lp.phi) ++i;
         else break;
@@ -17713,6 +18986,199 @@ function pj_robin(P) {
     return rows.map(function(row) {
       return new Float32Array(row);
     });
+  }
+}
+
+
+pj_add(pj_get_sconic('EULER'), 'euler', 'Euler', '\n\tConic, Sph\n\tlat_1= and lat_2=');
+pj_add(pj_get_sconic('MURD1'), 'murd1', 'Murdoch I', '\n\tConic, Sph\n\tlat_1= and lat_2=');
+pj_add(pj_get_sconic('MURD2'), 'murd2', 'Murdoch II', '\n\tConic, Sph\n\tlat_1= and lat_2=');
+pj_add(pj_get_sconic('MURD3'), 'murd3', 'Murdoch III', '\n\tConic, Sph\n\tlat_1= and lat_2=');
+pj_add(pj_get_sconic('PCONIC'), 'pconic', 'Perspective Conic', '\n\tConic, Sph\n\tlat_1= and lat_2=');
+pj_add(pj_get_sconic('TISSOT'), 'tissot', 'Tissot', '\n\tConic, Sph\n\tlat_1= and lat_2=');
+pj_add(pj_get_sconic('VITK1'), 'vitk1', 'Vitkovsky I', '\n\tConic, Sph\n\tlat_1= and lat_2=');
+
+function pj_get_sconic(type) {
+  return function(P) {
+    pj_sconic(P, type);
+  };
+}
+
+function pj_sconic(P, type) {
+  var del, cs;
+  var p1, p2;
+  var n;
+  var rho_c;
+  var rho_0;
+  var sig;
+  var c1, c2;
+  var EPS = 1e-10;
+
+  if (!pj_param(P.params, "tlat_1") || !pj_param(P.params, "tlat_2")) {
+    e_error(-41);
+  } else {
+    p1 = pj_param(P.params, "rlat_1");
+    p2 = pj_param(P.params, "rlat_2");
+    del = 0.5 * (p2 - p1);
+    sig = 0.5 * (p2 + p1);
+    if (fabs(del) < EPS || fabs(sig) < EPS) {
+      e_error(-42);
+    }
+  }
+
+  switch (type) {
+    case 'TISSOT':
+      n = sin(sig);
+      cs = cos(del);
+      rho_c = n / cs + cs / n;
+      rho_0 = sqrt((rho_c - 2 * sin(P.phi0)) / n);
+      break;
+
+    case 'MURD1':
+      rho_c = sin(del) / (del * tan(sig)) + sig;
+      rho_0 = rho_c - P.phi0;
+      n = sin(sig);
+      break;
+
+    case 'MURD2':
+      rho_c = (cs = sqrt(cos(del))) / tan(sig);
+      rho_0 = rho_c + tan(sig - P.phi0);
+      n = sin(sig) * cs;
+      break;
+
+    case 'MURD3':
+      rho_c = del / (tan(sig) * tan(del)) + sig;
+      rho_0 = rho_c - P.phi0;
+      n = sin(sig) * sin(del) * tan(del) / (del * del);
+      break;
+
+    case 'EULER':
+      n = sin(sig) * sin(del) / del;
+      del *= 0.5;
+      rho_c = del / (tan(del) * tan(sig)) + sig;
+      rho_0 = rho_c - P.phi0;
+      break;
+
+    case 'PCONIC':
+      n = sin(sig);
+      c2 = cos(del);
+      c1 = 1 / tan(sig);
+      if (fabs(del = P.phi0 - sig) - EPS >= M_HALFPI)
+        E_ERROR(-43);
+      rho_0 = c2 * (c1 - tan(del));
+      break;
+
+    case 'VITK1':
+      n = (cs = tan(del)) * sin(sig) / del;
+      rho_c = del / (cs * tan(sig)) + sig;
+      rho_0 = rho_c - P.phi0;
+      break;
+  }
+
+  P.inv = s_inv;
+  P.fwd = s_fwd;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var rho;
+
+    switch (type) {
+      case 'MURD2':
+        rho = rho_c + tan(sig - lp.phi);
+        break;
+      case 'PCONIC':
+        rho = c2 * (c1 - tan(lp.phi - sig));
+        break;
+      default:
+        rho = rho_c - lp.phi;
+        break;
+    }
+    xy.x = rho * sin(lp.lam *= n);
+    xy.y = rho_0 - rho * cos(lp.lam);
+  }
+
+  function s_inv(xy, lp) {
+    var rho;
+
+    rho = hypot(xy.x, xy.y = rho_0 - xy.y);
+    if (n < 0) {
+      rho = -rho;
+      xy.x = -xy.x;
+      xy.y = -xy.y;
+    }
+
+    lp.lam = atan2(xy.x, xy.y) / n;
+
+    switch (type) {
+      case 'PCONIC':
+        lp.phi = atan(c1 - rho / c2) + sig;
+        break;
+      case 'MURD2':
+        lp.phi = sig - atan(rho - rho_c);
+        break;
+      default:
+        lp.phi = rho_c - rho;
+    }
+  }
+}
+
+
+pj_add(pj_somerc, 'somerc', 'Swiss. Obl. Mercator', '\n\tCyl, Ell\n\tFor CH1903');
+
+function pj_somerc(P) {
+  var K, c, hlf_e, kR, cosp0, sinp0;
+  var EPS = 1.e-10;
+  var NITER = 6;
+  var cp, phip0, sp;
+  hlf_e = 0.5 * P.e;
+  cp = cos (P.phi0);
+  cp *= cp;
+  c = sqrt (1 + P.es * cp * cp * P.rone_es);
+  sp = sin (P.phi0);
+  cosp0 = cos(phip0 = aasin(sinp0 = sp / c));
+  sp *= P.e;
+  K = log (tan(M_FORTPI + 0.5 * phip0)) - c * (
+      log (tan(M_FORTPI + 0.5 * P.phi0)) - hlf_e *
+      log ((1 + sp) / (1 - sp)));
+  kR = P.k0 * sqrt(P.one_es) / (1 - sp * sp);
+  P.inv = e_inv;
+  P.fwd = e_fwd;
+
+  function e_fwd(lp, xy) {
+    var phip, lamp, phipp, lampp, sp, cp;
+    sp = P.e * sin(lp.phi);
+    phip = 2* atan(exp(c * (log(tan(M_FORTPI + 0.5 * lp.phi)) -
+        hlf_e * log((1 + sp)/(1 - sp))) + K)) - M_HALFPI;
+    lamp = c * lp.lam;
+    cp = cos(phip);
+    phipp = aasin(cosp0 * sin(phip) - sinp0 * cp * cos(lamp));
+    lampp = aasin(cp * sin(lamp) / cos(phipp));
+    xy.x = kR * lampp;
+    xy.y = kR * log(tan(M_FORTPI + 0.5 * phipp));
+  }
+
+  function e_inv(xy, lp) {
+    var phip, lamp, phipp, lampp, cp, esp, con, delp;
+    var i;
+    phipp = 2 * (atan(exp(xy.y / kR)) - M_FORTPI);
+    lampp = xy.x / kR;
+    cp = cos (phipp);
+    phip = aasin(cosp0 * sin(phipp) + sinp0 * cp * cos(lampp));
+    lamp = aasin(cp * sin(lampp) / cos(phip));
+    con = (K - log(tan(M_FORTPI + 0.5 * phip)))/c;
+    for (i = NITER; i; --i) {
+      esp = P.e * sin(phip);
+      delp = (con + log(tan(M_FORTPI + 0.5 * phip)) - hlf_e *
+        log((1 + esp)/(1 - esp))) * (1 - esp * esp) * cos(phip) * P.rone_es;
+      phip -= delp;
+      if (fabs(delp) < EPS)
+        break;
+    }
+    if (i) {
+      lp.phi = phip;
+      lp.lam = lamp / c;
+    } else
+      i_error();
   }
 }
 
@@ -17761,16 +19227,16 @@ function pj_stere_init(P, phits) {
             akm1 = 2 * P.k0 /
                sqrt(pow(1 + P.e, 1 + P.e) * pow(1 - P.e, 1 - P.e));
         else {
-            akm1 = cos (phits) /
-               pj_tsfn (phits, t = sin(phits), P.e);
+            akm1 = cos(phits) /
+               pj_tsfn(phits, t = sin(phits), P.e);
             t *= P.e;
             akm1 /= sqrt(1 - t * t);
         }
         break;
       case EQUIT:
       case OBLIQ:
-        t = sin (P.phi0);
-        X = 2 * atan (ssfn(P.phi0, t, P.e)) - M_HALFPI;
+        t = sin(P.phi0);
+        X = 2 * atan(ssfn(P.phi0, t, P.e)) - M_HALFPI;
         t *= P.e;
         akm1 = 2 * P.k0 * cos(P.phi0) / sqrt(1 - t * t);
         sinX1 = sin(X);
@@ -17816,7 +19282,8 @@ function pj_stere_init(P, phits) {
         xy.x = A * cosX;
         break;
       case EQUIT:
-        A = 2 * akm1 / (1 + cosX * coslam);
+        /* zero division is handled in pj_fwd */
+        A = akm1 / (1 + cosX * coslam);
         xy.y = A * sinX;
         xy.x = A * cosX;
         break;
@@ -18040,6 +19507,64 @@ function pj_sterea(P) {
 }
 
 
+pj_add(pj_kav5, 'kav5', 'Kavraisky V', '\n\tPCyl., Sph.');
+pj_add(pj_qua_aut, 'qua_aut', 'Quartic Authalic', '\n\tPCyl., Sph.');
+pj_add(pj_fouc, 'fouc', 'Foucaut', '\n\tPCyl., Sph.');
+pj_add(pj_mbt_s, 'mbt_s', 'McBryde-Thomas Flat-Polar Sine (No. 1)', '\n\tPCyl., Sph.');
+
+function pj_kav5(P) {
+  pj_sts(P, 1.50488, 1.35439, false);
+}
+
+function pj_qua_aut(P) {
+  pj_sts(P, 2, 2, false);
+}
+
+function pj_fouc(P) {
+  pj_sts(P, 2, 2, true);
+}
+
+function pj_mbt_s(P) {
+  pj_sts(P, 1.48875, 1.36509, false);
+}
+
+function pj_sts(P, p, q, tan_mode) {
+  var C_x = q / p;
+  var C_y = p;
+  var C_p = 1 / q;
+  P.inv = s_inv;
+  P.fwd = s_fwd;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var c;
+    xy.x = C_x * lp.lam * cos(lp.phi);
+    xy.y = C_y;
+    lp.phi *= C_p;
+    c = cos(lp.phi);
+    if (tan_mode) {
+      xy.x *= c * c;
+      xy.y *= tan(lp.phi);
+    } else {
+      xy.x /= c;
+      xy.y *= sin (lp.phi);
+    }
+  }
+
+  function s_inv(xy, lp) {
+    var c;
+    xy.y /= C_y;
+    c = cos (lp.phi = tan_mode ? atan(xy.y) : aasin(xy.y));
+    lp.phi /= C_p;
+    lp.lam = xy.x / (C_x * cos(lp.phi));
+    if (tan_mode)
+      lp.lam /= c * c;
+    else
+      lp.lam *= c;
+  }
+}
+
+
 pj_add(pj_tcea, 'tcea', 'Transverse Cylindrical Equal Area', '\n\tCyl, Sph');
 
 function pj_tcea(P) {
@@ -18191,7 +19716,7 @@ function pj_tmerc(P) {
       lp.phi -= (con * ds / (1-P.es)) * FC2 * (1 -
         ds * FC4 * (5 + t * (3 - 9 *  n) + n * (1 - 4 * n) -
         ds * FC6 * (61 + t * (90 - 252 * n + 45 * t) + 46 * n -
-        ds * FC8 * (1385 + t * (3633 + t * (4095 + 1574 * t)))
+        ds * FC8 * (1385 + t * (3633 + t * (4095 + 1575 * t)))
         )));
       lp.lam = d * (FC1 - ds * FC3 * (1 + 2 * t + n -
         ds * FC5 * (5 + t * (28 + 24*t + 8*n) + 6 * n -
@@ -18205,7 +19730,8 @@ function pj_tmerc(P) {
     var g = 0.5 * (h - 1 / h);
     h = cos (P.phi0 + xy.y / esp);
     lp.phi = asin(sqrt((1 - h * h) / (1 + g * g)));
-    if (xy.y < 0) lp.phi = -lp.phi;
+    /* Make sure that phi is on the correct hemisphere when false northing is used */
+    if (xy.y < 0 && -lp.phi + P.phi0 < 0) lp.phi = -lp.phi;
     lp.lam = (g || h) ? atan2(g, h) : 0;
   }
 }
