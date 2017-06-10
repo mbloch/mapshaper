@@ -28,6 +28,7 @@ mapshaper-points
 mapshaper-point-grid
 mapshaper-proj
 mapshaper-rename-layers
+mapshaper-shape
 mapshaper-simplify
 mapshaper-split
 mapshaper-split-on-grid
@@ -92,7 +93,7 @@ api.runCommand = function(cmd, catalog, cb) {
         fail(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'graticule' || name == 'i' || name == 'point-grid')) {
+      if (!(name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
         throw new APIError("Missing a -i command");
       }
     }
@@ -226,6 +227,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'rename-layers') {
       api.renameLayers(targetLayers, opts.names);
+
+    } else if (name == 'shape') {
+      catalog.addDataset(api.shape(source, opts));
 
     } else if (name == 'simplify') {
       api.simplify(targetDataset, opts);

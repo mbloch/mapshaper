@@ -528,6 +528,24 @@ internal.getOptionParser = function() {
     })
     .option("target", targetOpt);
 
+  parser.command('shape')
+    // .describe("create a geometric shape")
+    .option('type', {
+
+    })
+    .option("bbox", {
+      describe: "bounding box of shape",
+      type: "bounds"
+    })
+    .option("offset", {
+      describe: "space around the bounding box or contents",
+      type: "number"
+    })
+    .option("source", {
+      describe: "name of layer to surround"
+    })
+    .option("name", nameOpt);
+
   parser.command('simplify')
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
