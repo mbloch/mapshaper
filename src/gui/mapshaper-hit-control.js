@@ -9,10 +9,21 @@ function HitControl(ext, mouse) {
     polyline: polylineTest,
     point: pointTest
   };
-  var coords = El('#coordinate-info').hide();
+  var readout = El('#coordinate-info').hide();
+  var bboxPoint;
   var lyr, target, test;
 
+  readout.on('copy', function(e) {
+    // remove selection on copy (using timeout or else copy is cancelled)
+    setTimeout(function() {
+      getSelection().removeAllRanges();
+    }, 50);
+    // don't display bounding box if user copies coords
+    bboxPoint = null;
+  });
+
   ext.on('change', function() {
+    clearCoords();
     // shapes may change along with map scale
     target = lyr ? lyr.getDisplayLayer() : null;
   });
@@ -25,7 +36,7 @@ function HitControl(ext, mouse) {
     } else {
       test = tests[target.layer.geometry_type];
     }
-    coords.hide();
+    readout.hide();
   };
 
   self.start = function() {
@@ -35,15 +46,23 @@ function HitControl(ext, mouse) {
   self.stop = function() {
     if (active) {
       hover([]);
-      coords.text('').hide();
+      // readout.text('').hide();
       active = false;
     }
   };
 
   mouse.on('click', function(e) {
-    if (!active || !target) return;
-    trigger('click', prevHits);
-    gui.selectElement(coords.node());
+    if (!target) return;
+    if (active) {
+      trigger('click', prevHits);
+    }
+    if (target.geographic) {
+      gui.selectElement(readout.node());
+      // don't save bbox point when inspector is active
+      // clear bbox point if already present
+      bboxPoint = bboxPoint || active ? null : getPointerCoords(e);
+    }
+
   });
 
   // DISABLING: This causes problems when hovering over the info panel
@@ -52,19 +71,47 @@ function HitControl(ext, mouse) {
   // hover(-1);
   //});
 
+  mouse.on('leave', clearCoords);
+
   mouse.on('hover', function(e) {
-    var p, decimals;
-    if (!active || !target) return;
-    p = ext.getTransform().invert().transform(e.x, e.y);
+    var p;
+    if (!target) return;
+    p = getPointerCoords(e);
     if (target.geographic) {
       // update coordinate readout if displaying geographic shapes
-      decimals = getCoordPrecision(ext.getBounds());
-      coords.text(p[0].toFixed(decimals) + ', ' + p[1].toFixed(decimals)).show();
+      displayCoords(p);
+    } else {
+      clearCoords();
     }
-    if (test && e.hover) {
+    if (active && test && e.hover) {
       hover(test(p[0], p[1]));
     }
   });
+
+  function getPointerCoords(e) {
+    return ext.getTransform().invert().transform(e.x, e.y);
+  }
+
+  function displayCoords(p) {
+    var decimals = getCoordPrecision(ext.getBounds());
+    var coords = bboxPoint ? getBbox(p, bboxPoint) : p;
+    var str = coords.map(function(n) {return n.toFixed(decimals);}).join(',');
+    readout.text(str).show();
+  }
+
+  function getBbox(a, b) {
+    return [
+      Math.min(a[0], b[0]),
+      Math.min(a[1], b[1]),
+      Math.max(a[0], b[0]),
+      Math.max(a[1], b[1])
+    ];
+  }
+
+  function clearCoords() {
+    bboxPoint = null;
+    readout.hide();
+  }
 
   // Convert pixel distance to distance in coordinate units.
   function getHitBuffer(pix) {
