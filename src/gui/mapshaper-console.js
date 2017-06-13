@@ -37,6 +37,20 @@ function Console(model) {
     }
   });
 
+  function getHistory() {
+    var hist;
+    try {
+      hist = JSON.parse(localStorage.getItem('console_history'));
+    } catch(e) {}
+    return hist && hist.length > 0 ? hist : [];
+  }
+
+  function saveHistory(history) {
+    try {
+      localStorage.setItem('console_history', JSON.stringify(history.slice(-20)));
+    } catch(e) {}
+  }
+
   function toLog(str, cname) {
     var msg = El('div').text(str).appendTo(log);
     if (cname) {
@@ -52,6 +66,7 @@ function Console(model) {
       error = internal.error = consoleError;
       el.show();
       input.node().focus();
+      history = getHistory();
     }
   }
 
@@ -62,6 +77,7 @@ function Console(model) {
       error = internal.error = _error;
       el.hide();
       input.node().blur();
+      saveHistory(history);
     }
   }
 
