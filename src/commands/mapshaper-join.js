@@ -27,6 +27,8 @@ api.join = function(targetLyr, dataset, src, opts) {
       retn = api.joinPointsToPolygons(targetLyr, dataset.arcs, src.layer, opts);
     } else if (srcType == 'polygon' && targetType == 'point') {
       retn = api.joinPolygonsToPoints(targetLyr, src.layer, src.dataset.arcs, opts);
+    } else if (srcType == 'point' && targetType == 'point') {
+      retn = api.joinPointsToPoints(targetLyr, src.layer, opts);
     } else {
       stop(utils.format("[join] Unable to join %s geometry to %s geometry",
           srcType || 'null', targetType || 'null'));

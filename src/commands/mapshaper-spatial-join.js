@@ -1,4 +1,4 @@
-/* @requires mapshaper-path-index */
+/* @requires mapshaper-path-index, mapshaper-point-index */
 
 api.joinPointsToPolygons = function(targetLyr, arcs, pointLyr, opts) {
   // TODO: copy points that can't be joined to a new layer
@@ -13,6 +13,12 @@ api.joinPolygonsToPoints = function(targetLyr, polygonLyr, arcs, opts) {
   return internal.joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
 };
 
+api.joinPointsToPoints = function(targetLyr, srcLyr, opts) {
+  var joinFunction = internal.getPointToPointFunction(targetLyr, srcLyr, opts);
+  internal.prepJoinLayers(targetLyr, srcLyr);
+  return internal.joinTables(targetLyr.data, srcLyr.data, joinFunction, opts);
+};
+
 internal.prepJoinLayers = function(targetLyr, srcLyr) {
   if (!targetLyr.data) {
     // create an empty data table if target layer is missing attributes
@@ -21,6 +27,16 @@ internal.prepJoinLayers = function(targetLyr, srcLyr) {
   if (!srcLyr.data) {
     stop("[join] Can't join a layer that is missing attribute data");
   }
+};
+
+internal.getPointToPointFunction = function(targetLyr, srcLyr, opts) {
+  var shapes = targetLyr.shapes;
+  var index = new PointIndex(srcLyr.shapes, {});
+  return function(targId) {
+    var srcId = index.findNearestPointFeature(shapes[targId]);
+    // TODO: accept multiple hits
+    return srcId > -1 ? [srcId] : null;
+  };
 };
 
 internal.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts) {
