@@ -80,8 +80,6 @@ function PathIndex(shapes, arcs) {
     if (cands.length > 6) {
       index = new PolygonIndex([pathIds], arcs);
     }
-
-
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids[0]);
       var isEnclosed = index ?

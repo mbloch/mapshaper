@@ -6,9 +6,13 @@ mapshaper-polygon-centroid
 
 api.createPointLayer = function(srcLyr, arcs, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
-  destLyr.shapes = opts.x || opts.y ?
-      internal.pointsFromDataTable(srcLyr.data, opts) :
-      internal.pointsFromPolygons(srcLyr, arcs, opts);
+  if (opts.vertices) {
+    destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
+  } else if (opts.x || opts.y) {
+    destLyr.shapes = internal.pointsFromDataTable(srcLyr.data, opts);
+  } else {
+    destLyr.shapes = internal.pointsFromPolygons(srcLyr, arcs, opts);
+  }
   destLyr.geometry_type = 'point';
 
   var nulls = destLyr.shapes.reduce(function(sum, shp) {
@@ -23,6 +27,31 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
   }
   return destLyr;
+};
+
+internal.pointsFromVertices = function(lyr, arcs, opts) {
+  var coords, index;
+  if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
+    stop("[points] Expected a polygon or polyline layer");
+  }
+  return lyr.shapes.map(function(shp, shpId) {
+    coords = [];
+    index = {}; // TODO: use more efficient index
+    (shp || []).forEach(nextPart);
+    return coords.length > 0 ? coords : null;
+  });
+
+  function nextPart(ids) {
+    var iter = arcs.getShapeIter(ids);
+    var key;
+    while (iter.hasNext()) {
+      key = iter.x + '~' + iter.y;
+      if (key in index === false) {
+        index[key] = true;
+        coords.push([iter.x, iter.y]);
+      }
+    }
+  }
 };
 
 internal.pointsFromPolygons = function(lyr, arcs, opts) {
