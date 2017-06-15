@@ -5,15 +5,16 @@ mapshaper-arc-editor
 mapshaper-shape-utils
 */
 
-api.proj = function(dataset, opts) {
+api.proj = function(dataset, opts_, matchDataset) {
   // modify copy of coordinate data when running in web UI, so original shapes
   // are preserved if an error occurs
-  var modifyCopy = !!api.gui;
-  var originals = [],
+  var modifyCopy = !!api.gui,
+      opts = opts_ || {},
+      originals = [],
       target = {},
-      src, dest, defn;
+      src, dest, defn, prj, tmp;
 
-  if (opts && opts.from) {
+  if (opts.from) {
     src = internal.getProjection(opts.from, opts);
     if (!src) {
       stop("[proj] Unknown source projection:", opts.from);
@@ -25,9 +26,21 @@ api.proj = function(dataset, opts) {
     }
   }
 
-  dest = internal.getProjection(opts.projection, opts);
-  if (!dest) {
-    stop("[proj] Unknown projection:", opts.projection);
+  if (matchDataset) {
+    dest = internal.getDatasetProjection(matchDataset);
+    if (!dest) {
+      stop("[proj] Match target has an unknown coordinate system:", opts.source);
+    }
+  } else {
+    dest = internal.getProjection(opts.projection, opts);
+    if (!dest) {
+      stop("[proj] Unknown projection:", opts.projection);
+    }
+  }
+
+  if (internal.crsAreEqual(src, dest)) {
+    message("[proj] Source and destination CRS are the same");
+    return;
   }
 
   if (dataset.arcs) {

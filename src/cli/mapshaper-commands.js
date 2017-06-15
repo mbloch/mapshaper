@@ -37,10 +37,10 @@ api.applyCommands = function(commands, input, done) {
     message("Warning: applyCommands() was called with deprecated input format");
     return internal.applyCommandsOld(commands, input, done);
   }
-  // add options to -i and -o commands to bypass file i/o
+  // add options to -i -o -join commands to bypass file i/o
   commands = commands.map(function(cmd) {
     // copy options so passed-in commands are unchanged
-    if (cmd.name == 'i' && input) {
+    if ((cmd.name == 'i' || cmd.name == 'join') && input) {
       cmd.options.input = input;
     } else if (cmd.name == 'o') {
       cmd.options.output = output;

@@ -220,7 +220,7 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
     } else if (name == 'proj') {
-      api.proj(targetDataset, opts);
+      api.proj(targetDataset, opts, source && source.dataset);
 
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);

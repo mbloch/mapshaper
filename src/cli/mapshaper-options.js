@@ -493,6 +493,10 @@ internal.getOptionParser = function() {
       describe: "create a centroid point for each polygon's largest ring",
       type: "flag"
     })
+    .option("vertices", {
+      describe: "capture unique vertices of polygons and polylines",
+      type: "flag"
+    })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -500,12 +504,19 @@ internal.getOptionParser = function() {
   parser.command("proj")
     .describe("project a dataset using a proj4 string or alias")
     .flag("multi_arg")
-    .option("densify", {
-      type: "flag",
-      describe: "add points along straight segments to approximate curves"
+    .option("projection", {
+      label: "<projection>",
+      describe: "Proj.4 projection definition or mapshaper alias"
+    })
+    .option("source", {
+      describe: "name of .prj file or layer to match"
     })
     .option("from", {
       describe: "define the source projection"
+    })
+    .option("densify", {
+      type: "flag",
+      describe: "add points along straight segments to approximate curves"
     })
     .validate(validateProjOpts);
 

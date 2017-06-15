@@ -47,6 +47,11 @@ internal.importContent = function(obj, opts) {
     fileFmt = 'dbf';
     data = obj.dbf;
     dataset = internal.importDbf(obj, opts);
+  } else if (obj.prj) {
+    // added for -proj command source
+    fileFmt = 'prj';
+    data = obj.prj;
+    dataset = {layers: [], info: {input_prj: data.content}};
   }
 
   if (!dataset) {

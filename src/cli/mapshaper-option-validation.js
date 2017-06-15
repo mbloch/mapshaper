@@ -74,7 +74,7 @@ function validateProjOpts(cmd) {
   if (_.length > 0) {
     error("Received one or more unexpected parameters: " + _.join(', '));
   }
-  if (!cmd.options.projection) {
+  if (!cmd.options.projection && !cmd.options.source) {
     error("Missing projection data");
   }
 }
