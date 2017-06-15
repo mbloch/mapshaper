@@ -16,20 +16,8 @@ internal.dissolvePolygonLayer = function(lyr, nodes, opts) {
     internal.extendShape(groups[i2], shape);
     return groups;
   }, []);
-  var dissolve = internal.getPolygonDissolver(nodes);
-  var lyr2, data2;
-
-  if (lyr.data) {
-    data2 = new DataTable(internal.aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts));
-  }
-  lyr2 = {
-    name: opts.no_replace ? null : lyr.name,
-    data: data2,
-    shapes: groups.map(dissolve),
-    geometry_type: lyr.geometry_type
-  };
-  internal.printDissolveMessage(lyr, lyr2, 'dissolve2');
-  return lyr2;
+  var shapes2 = groups.map(internal.getPolygonDissolver(nodes));
+  return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
 
 internal.concatShapes = function(shapes) {

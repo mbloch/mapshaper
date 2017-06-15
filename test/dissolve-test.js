@@ -8,7 +8,40 @@ describe('mapshaper-dissolve.js', function () {
 
   describe('-dissolve command', function () {
 
-    it('test 1', function(done) {
+    it('polyline test 1', function(done) {
+      var a = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {name: 'bar'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[1, 1], [0, 0]]
+          }
+        }, {
+          type: 'Feature',
+          properties: {name: 'foo'},
+          geometry: {
+            type: 'MultiLineString',
+            coordinates: [[[1, 1], [2, 2], [3, 3]], [[4, 4], [3, 3]]]
+          }
+        }]
+      };
+      var expect = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'LineString',
+          coordinates: [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]]
+        }]
+      };
+      api.applyCommands('-i a.json -dissolve -o', {'a.json': a}, function(err, output) {
+        var geojson = JSON.parse(output['a.json']);
+        assert.deepEqual(geojson, expect)
+        done();
+      })
+    });
+
+    it('polygon test 1', function(done) {
       var cmd = "-i test/test_data/six_counties.shp -dissolve + copy-fields NAME,STATE_FIPS sum-fields POP2000,MULT_RACE";
         api.internal.testCommands(cmd, function(err, data) {
         assert.equal(data.layers.length, 2);
