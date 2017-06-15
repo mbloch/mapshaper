@@ -1,3 +1,6 @@
+v0.4.23
+* Added polyline support to -dissolve command
+
 v0.4.22
 * Added `-proj source=` option to match projection from a .prj file or another layer.
 * Added support for simple point-to-point spatial joins.
