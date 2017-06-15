@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.22';
+var VERSION = '0.4.23';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -1527,7 +1527,7 @@ function error() {
 
 // Handle an error caused by invalid input or misuse of API
 function stop() {
-  internal.stop.apply(null, utils.toArray(arguments));
+  internal.stop.apply(null, messageArgs(arguments));
 }
 
 function APIError(msg) {
@@ -1536,8 +1536,16 @@ function APIError(msg) {
   return err;
 }
 
+function messageArgs(args) {
+  var arr = utils.toArray(args);
+  if (internal.CURR_CMD) {
+    arr.unshift('[' + internal.CURR_CMD + ']');
+  }
+  return arr;
+}
+
 function message() {
-  internal.message.apply(null, utils.toArray(arguments));
+  internal.message.apply(null, messageArgs(arguments));
 }
 
 function verbose() {
@@ -1649,15 +1657,14 @@ internal.layerHasNonNullShapes = function(lyr) {
   });
 };
 
-internal.requireDataFields = function(table, fields, cmd) {
-  var prefix = cmd ? '[' + cmd + '] ' : '';
+internal.requireDataFields = function(table, fields) {
   if (!table) {
-    stop(prefix + "Missing attribute data");
+    stop("Missing attribute data");
   }
   var dataFields = table.getFields(),
       missingFields = utils.difference(fields, dataFields);
   if (missingFields.length > 0) {
-    stop(prefix + "Table is missing one or more fields:\n",
+    stop("Table is missing one or more fields:\n",
         missingFields, "\nExisting fields:", '\n' + internal.formatStringsAsGrid(dataFields));
   }
 };
@@ -5726,8 +5733,7 @@ internal.printEncodings = function() {
     return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
   });
   encodings.sort();
-  message("Supported encodings:");
-  message(internal.formatStringsAsGrid(encodings));
+  message("Supported encodings:\n" + internal.formatStringsAsGrid(encodings));
 };
 
 
@@ -6136,7 +6142,7 @@ function DbfReader(src, encodingArg) {
       error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
     }
     if (bin.peek() != 0x0D) {
-      message('[dbf] Found a non-standard header terminator (' + bin.peek() + '). DBF file may be corrupted.');
+      message('Found a non-standard DBF header terminator (' + bin.peek() + '). DBF file may be corrupted.');
     }
 
     // Uniqify header names
@@ -6211,7 +6217,7 @@ function DbfReader(src, encodingArg) {
         field = fields[c];
         fieldOffs = offs + field.columnOffset;
         if (fieldOffs + field.size > eofOffs) {
-          stop('[dbf] Invalid DBF file: encountered end-of-file while reading data');
+          stop('Invalid DBF file: encountered end-of-file while reading data');
         }
         bin.position(fieldOffs);
         values[c] = readers[c](bin, field.size);
@@ -6235,7 +6241,7 @@ function DbfReader(src, encodingArg) {
     } else if (type == 'C') {
       r = Dbf.getStringReader(getEncoding());
     } else {
-      message("[dbf] Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
+      message("Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
       r = function() {return null;};
     }
     return r;
@@ -6270,14 +6276,11 @@ function DbfReader(src, encodingArg) {
 
     // Show a sample of decoded text if non-ascii-range text has been found
     if (encoding && samples.length > 0) {
-      msg = "Detected DBF text encoding: " + encoding;
-      if (encoding in Dbf.encodingNames) {
-        msg += " (" + Dbf.encodingNames[encoding] + ")";
-      }
-      message(msg);
       msg = internal.decodeSamples(encoding, samples);
       msg = internal.formatStringsAsGrid(msg.split('\n'));
-      message("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
+      msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
+      msg = "Detected DBF text encoding: " + encoding + (encoding in Dbf.encodingNames ? " (" + Dbf.encodingNames[encoding] + ")" : "") + msg;
+      message(msg);
     }
     return encoding;
   }
@@ -6638,7 +6641,7 @@ function DataTable(obj) {
         records.push({});
       }
     } else if (obj) {
-      error("[DataTable] Invalid constructor argument:", obj);
+      error("Invalid DataTable constructor argument:", obj);
     }
   }
 
@@ -7355,7 +7358,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
   }
 
   if (!filter) {
-    stop("[filter] Missing a filter expression");
+    stop("Missing a filter expression");
   }
 
   utils.repeat(n, function(shapeId) {
@@ -7364,7 +7367,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
       if (shapes) filteredShapes.push(shapes[shapeId] || null);
       if (records) filteredRecords.push(records[shapeId] || null);
     } else if (result !== false) {
-      stop("[filter] Expression must return true or false");
+      stop("Expression must return true or false");
     }
   });
 
@@ -7376,7 +7379,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
   }
 
   if (opts.verbose !== false) {
-    message(utils.format('[filter] Retained %,d of %,d features', internal.getFeatureCount(filteredLyr), n));
+    message(utils.format('Retained %,d of %,d features', internal.getFeatureCount(filteredLyr), n));
   }
 
   return filteredLyr;
@@ -7459,7 +7462,7 @@ internal.getModeData = function(values) {
 // opts.where  Optional filter expression (see -filter command)
 //
 api.calc = function(lyr, arcs, opts) {
-  var msg = '[calc] ' + opts.expression,
+  var msg = opts.expression,
       result;
   if (opts.where) {
     // TODO: implement no_replace option for filter() instead of this
@@ -7638,7 +7641,7 @@ internal.getJoinCalc = function(src, exp) {
 internal.getCategoryClassifier = function(field, data) {
   if (!field) return function(i) {return 0;};
   if (!data || !data.fieldExists(field)) {
-    stop("[dissolve] Data table is missing field:", field);
+    stop("Data table is missing field:", field);
   }
   var index = {},
       count = 0,
@@ -7725,7 +7728,7 @@ function dissolvePointLayerGeometry(lyr, getGroupId, opts) {
 
   // TODO: support multipoints
   if (internal.countMultiPartFeatures(lyr.shapes) !== 0) {
-    stop("[dissolve] Dissolving multi-part points is not supported");
+    stop("Dissolving multi-part points is not supported");
   }
 
   lyr.shapes.forEach(function(shp, i) {
@@ -7940,7 +7943,7 @@ function dissolveSecondPass(segments, shapes, getGroupId) {
       match = findDissolveArc(next);
       if (match) {
         if (depth > 100) {
-          error ('[dissolve] deep recursion -- unhandled topology problem');
+          error ('deep recursion -- unhandled topology problem');
         }
         // if (match.part.arcs.length == 1) {
         if (shapes[match.shapeId][match.partId].length == 1) {
@@ -8000,6 +8003,71 @@ function getSegmentByOffs(seg, segments, shapes, offs) {
 
 
 
+// Dissolve polyline features, but also organize arcs into as few parts as possible,
+// with the arcs in each part layed out in connected sequence
+internal.dissolvePolylineGeometry = function(lyr, getGroupId, arcs, opts) {
+  var groups = internal.getPolylineDissolveGroups(lyr.shapes, getGroupId);
+  var shapes2 = groups.map(function(group) {
+    return internal.dissolvePolylineArcs(group, arcs);
+  });
+  return shapes2;
+};
+
+internal.getPolylineDissolveGroups = function(shapes, getGroupId) {
+  var groups = [];
+  internal.traversePaths(shapes, function(o) {
+    var groupId = getGroupId(o.shapeId);
+    if (groupId in groups === false) {
+      groups[groupId] = [];
+    }
+    groups[groupId].push(o.arcId);
+  });
+  return groups;
+};
+
+internal.dissolvePolylineArcs = function(ids, arcs) {
+  var counts = new Uint8Array(arcs.size());
+  ids.forEach(function(id) {counts[absArcId(id)] = 1;});
+  var testArc = function(id) {return counts[absArcId(id)] > 0;};
+  var useArc = function(id) {counts[absArcId(id)] = 0;};
+  var nodes = new NodeCollection(arcs, testArc);
+  var ends = internal.findPolylineEnds(ids, nodes);
+  var parts = [];
+  ends.forEach(function(endId) {
+    var ids = [];
+    var nextIds;
+    while(testArc(endId)) {
+      ids.push(endId);
+      useArc(endId);
+      nextIds = nodes.getConnectedArcs(endId).filter(testArc);
+      if (nextIds.length > 0) {
+        endId = ~nextIds[0]; // switch arc direction to lead away from node
+      } else {
+        break;
+      }
+    }
+    if (ids.length > 0) parts.push(ids);
+  });
+  return parts;
+};
+
+internal.findPolylineEnds = function(ids, nodes) {
+  var ends = [];
+  ids.forEach(function(arcId) {
+    if (nodes.getConnectedArcs(arcId).length === 0) {
+      ends.push(~arcId);
+    }
+    if (nodes.getConnectedArcs(~arcId).length === 0) {
+      ends.push(arcId);
+    }
+    return ends;
+  });
+  return ends;
+};
+
+
+
+
 // Generate a dissolved layer
 // @opts.field (optional) name of data field (dissolves all if falsy)
 // @opts.sum-fields (Array) (optional)
@@ -8008,31 +8076,38 @@ function getSegmentByOffs(seg, segments, shapes, offs) {
 api.dissolve = function(lyr, arcs, o) {
   var opts = o || {},
       getGroupId = internal.getCategoryClassifier(opts.field, lyr.data),
-      dissolveShapes = null,
-      dissolveData = null,
-      lyr2;
+      dissolveShapes = null;
 
   if (lyr.geometry_type == 'polygon') {
     dissolveShapes = dissolvePolygonGeometry(lyr.shapes, getGroupId);
+  } else if (lyr.geometry_type == 'polyline') {
+    dissolveShapes = internal.dissolvePolylineGeometry(lyr, getGroupId, arcs, opts);
   } else if (lyr.geometry_type == 'point') {
     dissolveShapes = dissolvePointLayerGeometry(lyr, getGroupId, opts);
   } else if (lyr.geometry_type) {
-    stop("[dissolve] Only point and polygon geometries can be dissolved");
+    stop("Only point and polygon geometries can be dissolved");
   }
+  return internal.composeDissolveLayer(lyr, dissolveShapes, getGroupId, opts);
+};
 
+// @lyr: original undissolved layer
+// @shapes: dissolved shapes
+internal.composeDissolveLayer = function(lyr, shapes, getGroupId, opts) {
+  var records = null;
+  var lyr2;
   if (lyr.data) {
-    dissolveData = internal.aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts);
+    records = internal.aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts);
     // replace missing shapes with nulls
-    for (var i=0, n=dissolveData.length; i<n; i++) {
-      if (dissolveShapes && !dissolveShapes[i]) {
-        dissolveShapes[i] = null;
+    for (var i=0, n=records.length; i<n; i++) {
+      if (shapes && !shapes[i]) {
+        shapes[i] = null;
       }
     }
   }
   lyr2 = {
     name: opts.no_replace ? null : lyr.name,
-    shapes: dissolveShapes,
-    data: dissolveData ? new DataTable(dissolveData) : null,
+    shapes: shapes,
+    data: records ? new DataTable(records) : null,
     geometry_type: lyr.geometry_type
   };
   if (!opts.silent) {
@@ -8041,29 +8116,17 @@ api.dissolve = function(lyr, arcs, o) {
   return lyr2;
 };
 
-internal.printDissolveMessage = function(pre, post, cmd) {
+internal.printDissolveMessage = function(pre, post) {
   var n1 = internal.getFeatureCount(pre),
       n2 = internal.getFeatureCount(post),
-      msg = utils.format('[%s] Dissolved %,d feature%s into %,d feature%s',
-        cmd || 'dissolve', n1, utils.pluralSuffix(n1), n2,
+      msg = utils.format('Dissolved %,d feature%s into %,d feature%s',
+        n1, utils.pluralSuffix(n1), n2,
         utils.pluralSuffix(n2));
   message(msg);
 };
 
 
 
-
-// src: single layer or array of layers (must belong to dataset)
-api.dissolve2 = function(src, dataset, opts) {
-  var multiple = Array.isArray(src);
-  var nodes = internal.addIntersectionCuts(dataset, opts);
-  var layers = multiple ? src : [src];
-  var layers2 = layers.map(function(lyr) {
-    internal.requirePolygonLayer(lyr, "[dissolve2] Expected a polygon type layer");
-    return internal.dissolvePolygonLayer(lyr, nodes, opts);
-  });
-  return multiple ? layers2 : layers2[0];
-};
 
 internal.dissolvePolygonLayer = function(lyr, nodes, opts) {
   opts = opts || {};
@@ -8076,20 +8139,8 @@ internal.dissolvePolygonLayer = function(lyr, nodes, opts) {
     internal.extendShape(groups[i2], shape);
     return groups;
   }, []);
-  var dissolve = internal.getPolygonDissolver(nodes);
-  var lyr2, data2;
-
-  if (lyr.data) {
-    data2 = new DataTable(internal.aggregateDataRecords(lyr.data.getRecords(), getGroupId, opts));
-  }
-  lyr2 = {
-    name: opts.no_replace ? null : lyr.name,
-    data: data2,
-    shapes: groups.map(dissolve),
-    geometry_type: lyr.geometry_type
-  };
-  internal.printDissolveMessage(lyr, lyr2, 'dissolve2');
-  return lyr2;
+  var shapes2 = groups.map(internal.getPolygonDissolver(nodes));
+  return internal.composeDissolveLayer(lyr, shapes2, getGroupId, opts);
 };
 
 internal.concatShapes = function(shapes) {
@@ -8143,6 +8194,22 @@ internal.appendHolestoRings = function(cw, ccw) {
 
 
 
+// src: single layer or array of layers (must belong to dataset)
+api.dissolve2 = function(src, dataset, opts) {
+  var multiple = Array.isArray(src);
+  var layers = multiple ? src : [src];
+  var nodes;
+  var layers2 = layers.map(function(lyr) {
+    internal.requirePolygonLayer(lyr);
+    if (!nodes) nodes = internal.addIntersectionCuts(dataset, opts);
+    return internal.dissolvePolygonLayer(lyr, nodes, opts);
+  });
+  return multiple ? layers2 : layers2[0];
+};
+
+
+
+
 
 internal.buildPolygonMosaic = function(nodes) {
   // Assumes that insertClippingPoints() has been run
@@ -8180,7 +8247,7 @@ api.cleanLayers = function(layers, dataset, opts) {
   var flatten = internal.getPolygonFlattener(nodes);
 
   layers.forEach(function(lyr) {
-    internal.requirePolygonLayer(lyr, "[clean] Expected a polygon type layer");
+    internal.requirePolygonLayer(lyr);
     lyr.shapes = lyr.shapes.map(flatten);
   });
 };
@@ -8703,9 +8770,9 @@ api.filterIslands = function(lyr, arcs, opts) {
     if (opts.remove_empty) {
       api.filterFeatures(lyr, arcs, {remove_empty: true, verbose: false});
     }
-    message(utils.format("[filter-islands] Removed %'d island%s", removed, utils.pluralSuffix(removed)));
+    message(utils.format("Removed %'d island%s", removed, utils.pluralSuffix(removed)));
   } else {
-    message("[filter-islands] Missing a criterion for filtering islands; use min-area or min-vertices");
+    message("Missing a criterion for filtering islands; use min-area or min-vertices");
   }
 };
 
@@ -8800,7 +8867,7 @@ internal.filterSlivers = function(lyr, arcs, opts) {
   };
 
   internal.editShapes(lyr.shapes, pathFilter);
-  message(utils.format("[filter-slivers] Removed %'d sliver%s", removed, utils.pluralSuffix(removed)));
+  message(utils.format("Removed %'d sliver%s", removed, utils.pluralSuffix(removed)));
   return removed;
 };
 
@@ -8874,7 +8941,7 @@ api.splitLayer = function(src, splitField, opts) {
       prefix;
 
   if (splitField && (!properties || !lyr0.data.fieldExists(splitField))) {
-    stop("[split] Missing attribute field:", splitField);
+    stop("Missing attribute field:", splitField);
   }
 
   // if not splitting on a field and layer is unnamed, name split-apart layers
@@ -8959,7 +9026,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
     clipLyr = clipSrc.layer;
     clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
   } else {
-    stop("[" + type + "] Missing clipping data");
+    stop("Missing clipping data");
   }
   if (targetDataset.arcs != clipDataset.arcs) {
     // using external dataset -- need to merge arcs
@@ -9001,7 +9068,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
 };
 
 internal.clipLayersByLayer = function(targetLayers, clipLyr, nodes, type, opts) {
-  internal.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
+  internal.requirePolygonLayer(clipLyr, "Requires a polygon clipping layer");
   return targetLayers.reduce(function(memo, targetLyr) {
     if (opts.no_replace) {
       memo.push(targetLyr);
@@ -9039,7 +9106,7 @@ internal.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
     return targetLyr; // ignore empty layer
   }
   if (targetLyr === clipLyr) {
-    stop('[' + type + '] Can\'t clip a layer with itself');
+    stop('Can\'t clip a layer with itself');
   }
 
   if (targetLyr.geometry_type == 'point') {
@@ -9049,7 +9116,7 @@ internal.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
   } else if (targetLyr.geometry_type == 'polyline') {
     clippedShapes = internal.clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
   } else {
-    stop('[' + type + '] Invalid target layer:', targetLyr.name);
+    stop('Invalid target layer:', targetLyr.name);
   }
 
   outputLyr = {
@@ -9076,16 +9143,16 @@ internal.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
   // TODO: redo messages, now that many layers may be clipped
   nullCount = shapeCount - outputLyr.shapes.length;
   if (nullCount && sliverCount) {
-    message(internal.getClipMessage(type, nullCount, sliverCount));
+    message(internal.getClipMessage(nullCount, sliverCount));
   }
   return outputLyr;
 };
 
-internal.getClipMessage = function(type, nullCount, sliverCount) {
+internal.getClipMessage = function(nullCount, sliverCount) {
   var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
   var sliverMsg = sliverCount ? utils.format('%,d sliver%s', sliverCount, utils.pluralSuffix(sliverCount)) : '';
   if (nullMsg || sliverMsg) {
-    return utils.format('[%s] Removed %s%s%s', type, nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
+    return utils.format('Removed %s%s%s', nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
   }
   return '';
 };
@@ -9095,7 +9162,7 @@ internal.convertClipBounds = function(bb) {
       arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];
 
   if (!(y1 > y0 && x1 > x0)) {
-    stop("[clip/erase] Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
+    stop("Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
   }
   return {
     arcs: new ArcCollection([arc]),
@@ -9187,7 +9254,7 @@ internal.findNeighbors = function(shapes, arcs) {
 //   interactive maps, not useful for analysis.
 //
 api.cluster = function(lyr, arcs, opts) {
-  internal.requirePolygonLayer(lyr, "[cluster] Command requires a polygon layer");
+  internal.requirePolygonLayer(lyr);
   var groups = internal.calcPolygonClusters(lyr, arcs, opts);
   var idField = opts.id_field || "cluster";
   internal.insertFieldValues(lyr, idField, groups);
@@ -9217,7 +9284,7 @@ internal.calcPolygonClusters = function(lyr, arcs, opts) {
   var mergeIndex = {}; // keep track of merges, to prevent duplicates
   var next;
 
-  if (groupField && !lyr.data) stop("[cluster] Missing attribute data table");
+  if (groupField && !lyr.data) stop("Missing attribute data table");
 
   // Populate mergeItems array
   internal.findNeighbors(lyr.shapes, arcs).forEach(function(ab, i) {
@@ -9514,8 +9581,8 @@ api.dataFill = function(lyr, arcs, opts) {
 
   var field = opts.field;
   var count;
-  if (!field) stop("[data-fill] Missing required field= parameter");
-  if (lyr.geometry_type != 'polygon') stop("[data-fill] Target layer must be polygon type");
+  if (!field) stop("Missing required field= parameter");
+  if (lyr.geometry_type != 'polygon') stop("Target layer must be polygon type");
 
   // first, fill some holes?
   count = internal.fillMissingValues(lyr, field, internal.getSingleAssignment(lyr, field, arcs));
@@ -10937,17 +11004,17 @@ internal.checkLayersCanMerge = function(layers) {
       fields = layers[0].data ? layers[0].data.getFields() : [],
       missingFields = internal.findMissingFields(layers);
   if (utils.uniq(geoTypes).length > 1) {
-    stop("[merge-layers] Incompatible geometry types:",
+    stop("Incompatible geometry types:",
       geoTypes.map(function(type) {return type || '[none]';}).join(', '));
   }
   if (missingFields.length > 0) {
-    stop("[merge-layers] Field" + utils.pluralSuffix(missingFields.length), "missing from one or more layers:",
+    stop("Field" + utils.pluralSuffix(missingFields.length), "missing from one or more layers:",
         missingFields.join(', '));
   }
   fields.forEach(function(key) {
     var types = internal.checkFieldTypes(key, layers);
     if (types.length > 1) {
-      stop("[merge-layers] Inconsistent data types in \"" + key + "\" field:", types.join(', '));
+      stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
     }
   });
 };
@@ -10995,7 +11062,7 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, asStrin
     }
 
     if (properties && shapes && properties.length !== shapes.length) {
-      error("[-o] Mismatch between number of properties and number of shapes");
+      error("Mismatch between number of properties and number of shapes");
     }
 
     return (shapes || properties || []).reduce(function(memo, o, i) {
@@ -12488,14 +12555,14 @@ function ShpReader(src) {
       recordOffs += shape.byteLength;
       if (shape.id < i) {
         // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
-        message("[shp] Record " + shape.id + " appears more than once -- possible file corruption.");
+        message("Shapefile record " + shape.id + " appears more than once -- possible file corruption.");
         return this.nextShape();
       }
       i++;
     } else {
       if (skippedBytes > 0) {
         // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
-        message("[shp] Skipped " + skippedBytes + " bytes in .shp file -- possible data loss.");
+        message("Skipped " + skippedBytes + " bytes in .shp file -- possible data loss.");
       }
       file.close();
       reset();
@@ -12903,14 +12970,15 @@ internal.getDatasetProjection = function(dataset) {
 
 internal.printProjections = function() {
   var index = require('mproj').internal.pj_list;
-  message('Proj4 projections');
+  var msg = 'Proj4 projections\n';
   Object.keys(index).sort().forEach(function(id) {
-    message('  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name);
+    msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
   });
-  message('\nAliases');
+  msg += '\nAliases';
   Object.keys(internal.projectionIndex).sort().forEach(function(n) {
-    message('  ' + n);
+    msg += '\n  ' + n;
   });
+  message(msg);
 };
 
 // Convert contents of a .prj file to a projection object
@@ -13760,9 +13828,9 @@ internal.exportFileContent = function(dataset, opts) {
       files = [];
 
   if (!outFmt) {
-    error("[o] Missing output format");
+    error("Missing output format");
   } else if (!exporter) {
-    error("[o] Unknown output format:", outFmt);
+    error("Unknown output format:", outFmt);
   }
 
   // shallow-copy dataset and layers, so layers can be renamed for export
@@ -13858,14 +13926,14 @@ internal.validateLayerData = function(layers) {
       if (lyr.shapes && utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
-        error("[export] A layer contains shape records and a null geometry type");
+        error("A layer contains shape records and a null geometry type");
       }
     } else {
       if (!utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-        error ("[export] A layer has an invalid geometry type:", lyr.geometry_type);
+        error ("A layer has an invalid geometry type:", lyr.geometry_type);
       }
       if (!lyr.shapes) {
-        error ("[export] A layer is missing shape data");
+        error ("A layer is missing shape data");
       }
     }
   });
@@ -13875,8 +13943,8 @@ internal.validateFileNames = function(files) {
   var index = {};
   files.forEach(function(file, i) {
     var filename = file.filename;
-    if (!filename) error("[o] Missing a filename for file" + i);
-    if (filename in index) error("[o] Duplicate filename", filename);
+    if (!filename) error("Missing a filename for file" + i);
+    if (filename in index) error("Duplicate filename", filename);
     index[filename] = true;
   });
 };
@@ -14088,7 +14156,7 @@ internal.importShapefile = function(obj, opts) {
     utils.extend(dataset.info, dbf.info);
     lyr.data = dbf.layers[0].data;
     if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
-      message("[shp] Mismatched .dbf and .shp record count -- possible data loss.");
+      message("Mismatched .dbf and .shp record count -- possible data loss.");
     }
   }
   if (obj.prj) {
@@ -14263,7 +14331,7 @@ internal.writeFiles = function(exports, opts, cb) {
 internal.getOutputPaths = function(files, opts) {
   var odir = opts.directory;
   if (opts.force) {
-    message("[o] The force option is obsolete, files are now overwritten by default");
+    message("The force option is obsolete, files are now overwritten by default");
   }
   if (odir) {
     files = files.map(function(file) {
@@ -14278,13 +14346,13 @@ internal.getOutputPaths = function(files, opts) {
 
 api.filterFields = function(lyr, names) {
   var table = lyr.data;
-  internal.requireDataFields(table, names, 'filter-fields');
+  internal.requireDataFields(table, names);
   utils.difference(table.getFields(), names).forEach(table.deleteField, table);
 };
 
 api.renameFields = function(lyr, names) {
   var map = internal.mapFieldNames(names);
-  internal.requireDataFields(lyr.data, Object.keys(map), 'rename-fields');
+  internal.requireDataFields(lyr.data, Object.keys(map));
   utils.defaults(map, internal.mapFieldNames(lyr.data.getFields()));
   lyr.data.update(internal.getRecordMapper(map));
 };
@@ -14294,7 +14362,7 @@ internal.mapFieldNames = function(names) {
     var parts = str.split('=');
     var dest = parts[0],
         src = parts[1] || dest;
-    if (!src || !dest) stop("[rename-fields] Invalid field description:", str);
+    if (!src || !dest) stop("Invalid field description:", str);
     memo[src] = dest;
     return memo;
   }, {});
@@ -14322,7 +14390,7 @@ api.graticule = function(dataset, opts) {
     // project graticule to match dataset
     dest = internal.getDatasetProjection(dataset);
     src = internal.getProjection('wgs84');
-    if (!dest) stop("[graticule] Coordinate system is unknown, unable to create a graticule");
+    if (!dest) stop("Coordinate system is unknown, unable to create a graticule");
     internal.projectDataset(graticule, src, dest, {}); // TODO: densify?
   }
   return graticule;
@@ -14390,9 +14458,12 @@ internal.createParallel = function(y, xmin, xmax, precision) {
 
 
 
-internal.printLayerInfo = function(lyr, dataset, i) {
-  var str = 'Layer ' + (i + 1) + '\n' + internal.getLayerInfo(lyr, dataset);
-  if (i > 0) str = '\n' + str;
+internal.printInfo = function(layers) {
+  var str = '';
+  layers.forEach(function(o, i) {
+    if (i > 0) str += '\n';
+    str += '\nLayer ' + (i + 1) + '\n' + internal.getLayerInfo(o.layer, o.dataset);
+  });
   message(str);
 };
 
@@ -14520,13 +14591,13 @@ internal.countInteriorVertices = function(arcs) {
 
 
 api.innerlines = function(lyr, arcs, opts) {
-  internal.requirePolygonLayer(lyr, "[innerlines] Command requires a polygon layer");
+  internal.requirePolygonLayer(lyr);
   var classifier = internal.getArcClassifier(lyr.shapes, arcs);
   var lines = internal.extractInnerLines(lyr.shapes, classifier);
   var outputLyr = internal.createLineLayer(lines, null);
 
   if (lines.length === 0) {
-    message("[innerlines] No shared boundaries were found");
+    message("No shared boundaries were found");
   }
   outputLyr.name = opts && opts.no_replace ? null : lyr.name;
   return outputLyr;
@@ -14541,9 +14612,9 @@ api.lines = function(lyr, arcs, opts) {
       records = [],
       outputLyr;
 
-  internal.requirePolygonLayer(lyr, "[lines] Command requires a polygon layer");
+  internal.requirePolygonLayer(lyr, "Command requires a polygon layer");
   if (fields.length > 0 && !lyr.data) {
-    stop("[lines] Missing a data table");
+    stop("Missing a data table");
   }
 
   addLines(internal.extractOuterLines(lyr.shapes, classifier));
@@ -14560,7 +14631,7 @@ api.lines = function(lyr, arcs, opts) {
       return a + '-' + b;
     };
     if (!lyr.data.fieldExists(field)) {
-      stop("[lines] Unknown data field:", field);
+      stop("Unknown data field:", field);
     }
     addLines(internal.extractLines(lyr.shapes, classifier(key)));
   });
@@ -14651,7 +14722,7 @@ api.inspect = function(lyr, arcs, opts) {
   if (ids.length == 1) {
     msg = internal.getFeatureInfo(ids[0], lyr, arcs);
   } else {
-    msg = utils.format("[inspect] Expression matched %d feature%s. Select one feature for details", ids.length, utils.pluralSuffix(ids.length));
+    msg = utils.format("Expression matched %d feature%s. Select one feature for details", ids.length, utils.pluralSuffix(ids.length));
   }
   message(msg);
 };
@@ -14709,7 +14780,7 @@ internal.selectFeatures = function(lyr, arcs, opts) {
       ids = [],
       filter;
   if (!opts.expression) {
-    stop("[inspect] Missing a JS expression for selecting a feature");
+    stop("Missing a JS expression for selecting a feature");
   }
   filter = internal.compileValueExpression(opts.expression, lyr, arcs);
   utils.repeat(n, function(id) {
@@ -14717,7 +14788,7 @@ internal.selectFeatures = function(lyr, arcs, opts) {
     if (result === true) {
       ids.push(id);
     } else if (result !== false) {
-      stop("[inspect] Expression must return true or false");
+      stop("Expression must return true or false");
     }
   });
   return ids;
@@ -14743,7 +14814,7 @@ internal.importDelimTable = function(str, delim, opts) {
   var records = require("d3-dsv").dsvFormat(delim).parse(str);
   var table;
   if (records.length === 0) {
-    stop("[dsv] Unable to read any records");
+    stop("Unable to read any records");
   }
   delete records.columns; // added by d3-dsv
   internal.adjustRecordTypes(records, opts && opts.field_types);
@@ -14794,7 +14865,7 @@ internal.adjustRecordTypes = function(records, fieldList) {
     }
   });
   if (detectedNumFields.length > 0) {
-    message(utils.format("[csv] Auto-detected number field%s: %s",
+    message(utils.format("Auto-detected number field%s: %s",
         detectedNumFields.length == 1 ? '' : 's', detectedNumFields.join(', ')));
   }
 };
@@ -14957,7 +15028,7 @@ internal.prepJoinLayers = function(targetLyr, srcLyr) {
     targetLyr.data = new DataTable(targetLyr.shapes.length);
   }
   if (!srcLyr.data) {
-    stop("[join] Can't join a layer that is missing attribute data");
+    stop("Can't join a layer that is missing attribute data");
   }
 };
 
@@ -15027,7 +15098,7 @@ internal.getJoinFilter = function(data, exp) {
       if (retn === true) {
         filtered.push(ids[i]);
       } else if (retn !== false) {
-        stop('[join] "where" expression must return true or false');
+        stop('"where" expression must return true or false');
       }
     }
     return filtered;
@@ -15111,12 +15182,12 @@ internal.getJoinFilterTestFunction = function(exp, data) {
 api.join = function(targetLyr, dataset, src, opts) {
   var srcType, targetType, retn;
   if (!src || !src.layer.data || !src.dataset) {
-    stop("[join] Missing a joinable data source");
+    stop("Missing a joinable data source");
   }
   if (opts.keys) {
     // join using data in attribute fields
     if (opts.keys.length != 2) {
-      stop("[join] Expected two key fields: a target field and a source field");
+      stop("Expected two key fields: a target field and a source field");
     }
     retn = api.joinAttributesToFeatures(targetLyr, src.layer.data, opts);
   } else {
@@ -15130,7 +15201,7 @@ api.join = function(targetLyr, dataset, src, opts) {
     } else if (srcType == 'point' && targetType == 'point') {
       retn = api.joinPointsToPoints(targetLyr, src.layer, opts);
     } else {
-      stop(utils.format("[join] Unable to join %s geometry to %s geometry",
+      stop(utils.format("Unable to join %s geometry to %s geometry",
           srcType || 'null', targetType || 'null'));
     }
   }
@@ -15146,7 +15217,7 @@ api.join = function(targetLyr, dataset, src, opts) {
 internal.removeTypeHints = function(arr) {
   var arr2 = internal.parseFieldHeaders(arr, {});
   if (arr.join(',') != arr2.join(',')) {
-    stop("[join] Type hints are no longer supported. Use field-types= option instead");
+    stop("Type hints are no longer supported. Use field-types= option instead");
   }
   return arr;
 };
@@ -15232,7 +15303,7 @@ internal.joinTables = function(dest, src, join, opts) {
     }
   }
   if (matchCount === 0) {
-    stop("[join] No records could be joined");
+    stop("No records could be joined");
   }
 
   internal.printJoinMessage(matchCount, destRecords.length,
@@ -15304,18 +15375,18 @@ internal.joinBySum = function(dest, src, fields) {
 internal.printJoinMessage = function(matches, n, joins, m, collisions, skipped) {
   // TODO: add tip for generating layer containing unmatched records, when
   // this option is implemented.
-  message(utils.format("[join] Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
+  message(utils.format("Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
   if (matches < n) {
-    message(utils.format('[join] %d/%d target records received no data', n-matches, n));
+    message(utils.format('%d/%d target records received no data', n-matches, n));
   }
   if (collisions > 0) {
-    message(utils.format('[join] %d/%d target records were matched by multiple source records', collisions, n));
+    message(utils.format('%d/%d target records were matched by multiple source records', collisions, n));
   }
   if (joins < m) {
-    message(utils.format("[join] %d/%d source records could not be joined", m-joins, m));
+    message(utils.format("%d/%d source records could not be joined", m-joins, m));
   }
   if (skipped > 0) {
-    message(utils.format("[join] %d/%d source records were skipped", skipped, m));
+    message(utils.format("%d/%d source records were skipped", skipped, m));
   }
 };
 
@@ -15345,10 +15416,10 @@ internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   var destRecords = dest.getRecords();
   var index = internal.createTableIndex(src.getRecords(), srcKey);
   if (src.fieldExists(srcKey) === false) {
-    stop("[join] External table is missing a field named:", srcKey);
+    stop("External table is missing a field named:", srcKey);
   }
   if (!dest || !dest.fieldExists(destKey)) {
-    stop("[join] Target layer is missing key field:", destKey);
+    stop("Target layer is missing key field:", destKey);
   }
   return function(i) {
     var destRec = destRecords[i],
@@ -15542,7 +15613,7 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
   }, 0);
 
   if (nulls > 0) {
-    message(utils.format('[points] %,d of %,d points are null', nulls, destLyr.shapes.length));
+    message(utils.format('%,d of %,d points are null', nulls, destLyr.shapes.length));
   }
   if (srcLyr.data) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
@@ -15553,7 +15624,7 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
 internal.pointsFromVertices = function(lyr, arcs, opts) {
   var coords, index;
   if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
-    stop("[points] Expected a polygon or polyline layer");
+    stop("Expected a polygon or polyline layer");
   }
   return lyr.shapes.map(function(shp, shpId) {
     coords = [];
@@ -15577,7 +15648,7 @@ internal.pointsFromVertices = function(lyr, arcs, opts) {
 
 internal.pointsFromPolygons = function(lyr, arcs, opts) {
   if (lyr.geometry_type != "polygon") {
-    stop("[points] Expected a polygon layer");
+    stop("Expected a polygon layer");
   }
   var func = opts.inner ? geom.findInteriorPoint : geom.getShapeCentroid;
   return lyr.shapes.map(function(shp) {
@@ -15587,9 +15658,9 @@ internal.pointsFromPolygons = function(lyr, arcs, opts) {
 };
 
 internal.pointsFromDataTable = function(data, opts) {
-  if (!data) stop("[points] Layer is missing a data table");
+  if (!data) stop("Layer is missing a data table");
   if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
-    stop("[points] Missing x,y data fields");
+    stop("Missing x,y data fields");
   }
 
   return data.getRecords().map(function(rec) {
@@ -15641,7 +15712,7 @@ internal.createPointGrid = function(bbox, opts) {
   }
 
   if (dx > 0 === false || dy > 0 === false) {
-    stop('[point-grid] Invalid grid parameters');
+    stop('Invalid grid parameters');
   }
 
   y = y0;
@@ -15712,29 +15783,29 @@ api.proj = function(dataset, opts_, matchDataset) {
   if (opts.from) {
     src = internal.getProjection(opts.from, opts);
     if (!src) {
-      stop("[proj] Unknown source projection:", opts.from);
+      stop("Unknown source projection:", opts.from);
     }
   } else {
     src = internal.getDatasetProjection(dataset);
     if (!src) {
-      stop("[proj] Unable to project -- source coordinate system is unknown");
+      stop("Unable to project -- source coordinate system is unknown");
     }
   }
 
   if (matchDataset) {
     dest = internal.getDatasetProjection(matchDataset);
     if (!dest) {
-      stop("[proj] Match target has an unknown coordinate system:", opts.source);
+      stop("Match target has an unknown coordinate system:", opts.source);
     }
   } else {
     dest = internal.getProjection(opts.projection, opts);
     if (!dest) {
-      stop("[proj] Unknown projection:", opts.projection);
+      stop("Unknown projection:", opts.projection);
     }
   }
 
   if (internal.crsAreEqual(src, dest)) {
-    message("[proj] Source and destination CRS are the same");
+    message("Source and destination CRS are the same");
     return;
   }
 
@@ -15754,7 +15825,7 @@ api.proj = function(dataset, opts_, matchDataset) {
   try {
     internal.projectDataset(target, src, dest, opts);
   } catch(e) {
-    stop(utils.format("[proj] Projection failure%s (%s)",
+    stop(utils.format("Projection failure%s (%s)",
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
   }
 
@@ -15907,7 +15978,7 @@ api.shape = function(source, opts) {
     bounds = new Bounds(opts.bbox);
   }
   if (!bounds || !bounds.hasBounds()) {
-    stop('[shape] Missing shape extent');
+    stop('Missing shape extent');
   }
   if (opts.offset > 0) {
     bounds.padBounds(opts.offset, opts.offset, opts.offset, opts.offset);
@@ -16295,7 +16366,7 @@ internal.postSimplifyRepair = function(arcs) {
       countFixed = countPre > countPost ? countPre - countPost : 0,
       msg;
   if (countPre > 0) {
-    msg = utils.format("[simplify] Repaired %'i intersection%s", countFixed,
+    msg = utils.format("Repaired %'i intersection%s", countFixed,
         utils.pluralSuffix(countFixed));
     if (countPost > 0) {
       msg += utils.format("; %'i intersection%s could not be repaired", countPost,
@@ -16625,7 +16696,7 @@ internal.printSimplifyInfo = function(arcs, opts) {
 
 api.simplify = function(dataset, opts) {
   var arcs = dataset.arcs;
-  if (!arcs) stop("[simplify] Missing path data");
+  if (!arcs) stop("Missing path data");
   // standardize options
   opts = internal.getStandardSimplifyOpts(dataset, opts);
   // stash simplifcation options (used by gui settings dialog)
@@ -16719,7 +16790,7 @@ internal.getSimplifyFunction = function(opts) {
   } else if (opts.method == 'weighted_visvalingam') {
     f = Visvalingam.getWeightedSimplifier(opts, opts.spherical);
   } else {
-    stop('[simplify] Unsupported simplify method:', method);
+    stop('Unsupported simplify method:', method);
   }
   return f;
 };
@@ -16847,7 +16918,7 @@ api.splitLayerOnGrid = function(lyr, arcs, opts) {
       properties, layers;
 
   if (!type) {
-    stop("[split-on-grid] Layer has no geometry");
+    stop("Layer has no geometry");
   }
 
   if (!lyr.data) {
@@ -16878,7 +16949,7 @@ api.splitLayerOnGrid = function(lyr, arcs, opts) {
         h = bounds.height();
 
     if (rows > 0 === false || cols > 0 === false) {
-      stop('[split-on-grid] Invalid grid parameters');
+      stop('Invalid grid parameters');
     }
 
     if (w > 0 === false || h > 0 === false) {
@@ -16914,7 +16985,7 @@ internal.subdivide = function(lyr, arcs, exp) {
       tmp, bounds, lyr1, lyr2;
 
   if (!utils.isBoolean(divide)) {
-    stop("[subdivide] Expression must evaluate to true or false");
+    stop("Expression must evaluate to true or false");
   }
   if (divide) {
     bounds = internal.getLayerBounds(lyr, arcs);
@@ -17014,9 +17085,9 @@ api.sortFeatures = function(lyr, arcs, opts) {
 api.target = function(catalog, pattern) {
   var targets = catalog.findCommandTargets(pattern);
   if (targets.length === 0) {
-    stop("[target] Target not found (" + pattern + ")");
+    stop("Target not found (" + pattern + ")");
   } else if (targets.length > 1 || targets[0].layers.length > 1) {
-    stop("[target] Matched more than one layer");
+    stop("Matched more than one layer");
   }
   catalog.setDefaultTarget(targets[0].layers, targets[0].dataset);
 };
@@ -17037,7 +17108,7 @@ api.uniq = function(lyr, arcs, opts) {
     var val = compiled(i);
     flags[i] = val in index;
     if (verbose && index[val]) {
-      message(utils.format('[uniq] Removing feature %i key: [%s]', i, val));
+      message(utils.format('Removing feature %i key: [%s]', i, val));
     }
     index[val] = true;
   });
@@ -17049,7 +17120,7 @@ api.uniq = function(lyr, arcs, opts) {
     lyr.data = new DataTable(records.filter(f));
   }
   if (opts.verbose !== false) {
-    message(utils.format('[uniq] Retained %,d of %,d features', internal.getFeatureCount(lyr), n));
+    message(utils.format('Retained %,d of %,d features', internal.getFeatureCount(lyr), n));
   }
 };
 
@@ -17073,6 +17144,7 @@ api.runCommand = function(cmd, catalog, cb) {
       targetDataset,
       targetLayers,
       arcs;
+  internal.CURR_CMD = name;
 
   try { // catch errors from synchronous functions
 
@@ -17101,13 +17173,13 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog.setDefaultTarget(targetLayers, targetDataset);
 
       } else if (targets.length > 1) {
-        fail("Targetting multiple datasets is not supported");
+        stop("Targetting multiple datasets is not supported");
       }
     }
 
     if (targets.length === 0) {
       if (opts.target) {
-        fail(utils.format('Missing target: %s\nAvailable layers: %s',
+        stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
       if (!(name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
@@ -17118,7 +17190,7 @@ api.runCommand = function(cmd, catalog, cb) {
     if (opts.source) {
       sources = catalog.findCommandTargets(opts.source);
       if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
-        fail(utils.format('Source option [%s] matched multiple layers', opts.source));
+        stop(utils.format('Source option [%s] matched multiple layers', opts.source));
       } else if (sources.length == 1) {
         source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
       } else {
@@ -17128,9 +17200,9 @@ api.runCommand = function(cmd, catalog, cb) {
         //    clip/erase -- topology is built later, when datasets are combined
         sourceDataset = api.importFile(opts.source, utils.defaults({no_topology: true}, opts));
         if (!sourceDataset) {
-          fail(utils.format('Unable to find source [%s]', opts.source));
+          stop(utils.format('Unable to find source [%s]', opts.source));
         } else if (sourceDataset.layers.length > 1) {
-          fail('Multiple-layer sources are not supported');
+          stop('Multiple-layer sources are not supported');
         }
         // mark as disposable to indicate that data can be mutated
         source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
@@ -17199,7 +17271,7 @@ api.runCommand = function(cmd, catalog, cb) {
       }
 
     } else if (name == 'info') {
-      catalog.forEachLayer(internal.printLayerInfo);
+      internal.printInfo(catalog.getLayers());
 
     } else if (name == 'inspect') {
       internal.applyCommand(api.inspect, targetLayers, arcs, opts);
@@ -17307,12 +17379,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
   done(null);
 
-  function fail(msg) {
-    stop("[" + name + "]", msg);
-  }
-
   function done(err) {
     T.stop('-' + name);
+    internal.CURR_CMD = null;
     cb(err, err ? null : catalog);
   }
 };
