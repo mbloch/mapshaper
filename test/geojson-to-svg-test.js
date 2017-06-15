@@ -5,6 +5,18 @@ var api = require('../'),
 describe('geojson-to-svg.js', function () {
 
   describe('importGeoJSONFeatures()', function() {
+    it('invalid multi-part become empty <g> tags', function() {
+      var input = [{
+        type: 'MultiPolygon',
+        coordinates: []
+      }, {
+        type: 'MultiPoint',
+        coordinates: []
+      }];
+      var output = [{tag: 'g'}, {tag: 'g'}];
+      assert.deepEqual(SVG.importGeoJSONFeatures(input), output);
+    })
+
     it('single point geometry', function() {
       var geo = {
         type: "MultiPoint",

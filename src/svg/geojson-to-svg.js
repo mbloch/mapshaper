@@ -6,11 +6,14 @@ SVG.importGeoJSONFeatures = function(features) {
   return features.map(function(obj, i) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
     var geomType = geom && geom.type;
-    var svgObj;
-    if (!geomType) {
+    var svgObj = null;
+    if (geomType && geom.coordinates) {
+      svgObj = SVG.geojsonImporters[geomType](geom.coordinates);
+    }
+    if (!svgObj) {
       return {tag: 'g'}; // empty element
     }
-    svgObj = SVG.geojsonImporters[geomType](geom.coordinates);
+    // TODO: fix error caused by null svgObj (caused by e.g. MultiPolygon with [] coordinates)
     if (obj.properties) {
       SVG.applyStyleAttributes(svgObj, geomType, obj.properties);
     }
@@ -94,14 +97,11 @@ SVG.setAttribute = function(obj, k, v) {
 };
 
 SVG.importMultiGeometry = function(coords, importer) {
-  var o = {
-    tag: 'g',
-    children: []
-  };
+  var children = [];
   for (var i=0; i<coords.length; i++) {
-    o.children.push(importer(coords[i]));
+    children.push(importer(coords[i]));
   }
-  return o;
+  return children.length > 0 ? {tag: 'g', children: children} : null;
 };
 
 SVG.importMultiPath = function(coords, importer) {
