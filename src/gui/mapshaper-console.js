@@ -47,7 +47,7 @@ function Console(model) {
 
   function saveHistory(history) {
     try {
-      localStorage.setItem('console_history', JSON.stringify(history.slice(-20)));
+      localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
     } catch(e) {}
   }
 
