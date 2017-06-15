@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.21';
+var VERSION = '0.4.22';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -4356,8 +4356,6 @@ function PathIndex(shapes, arcs) {
     if (cands.length > 6) {
       index = new PolygonIndex([pathIds], arcs);
     }
-
-
     cands.forEach(function(cand) {
       var p = getTestPoint(cand.ids[0]);
       var isEnclosed = index ?
@@ -13330,11 +13328,14 @@ SVG.importGeoJSONFeatures = function(features) {
   return features.map(function(obj, i) {
     var geom = obj.type == 'Feature' ? obj.geometry : obj; // could be null
     var geomType = geom && geom.type;
-    var svgObj;
-    if (!geomType) {
+    var svgObj = null;
+    if (geomType && geom.coordinates) {
+      svgObj = SVG.geojsonImporters[geomType](geom.coordinates);
+    }
+    if (!svgObj) {
       return {tag: 'g'}; // empty element
     }
-    svgObj = SVG.geojsonImporters[geomType](geom.coordinates);
+    // TODO: fix error caused by null svgObj (caused by e.g. MultiPolygon with [] coordinates)
     if (obj.properties) {
       SVG.applyStyleAttributes(svgObj, geomType, obj.properties);
     }
@@ -13418,14 +13419,11 @@ SVG.setAttribute = function(obj, k, v) {
 };
 
 SVG.importMultiGeometry = function(coords, importer) {
-  var o = {
-    tag: 'g',
-    children: []
-  };
+  var children = [];
   for (var i=0; i<coords.length; i++) {
-    o.children.push(importer(coords[i]));
+    children.push(importer(coords[i]));
   }
-  return o;
+  return children.length > 0 ? {tag: 'g', children: children} : null;
 };
 
 SVG.importMultiPath = function(coords, importer) {
@@ -14039,6 +14037,11 @@ internal.importContent = function(obj, opts) {
     fileFmt = 'dbf';
     data = obj.dbf;
     dataset = internal.importDbf(obj, opts);
+  } else if (obj.prj) {
+    // added for -proj command source
+    fileFmt = 'prj';
+    data = obj.prj;
+    dataset = {layers: [], info: {input_prj: data.content}};
   }
 
   if (!dataset) {
@@ -14902,6 +14905,33 @@ utils.parseNumber = function(raw) {
 
 
 
+// TODO: use an actual index instead of linear search
+function PointIndex(shapes, opts) {
+  var buf = opts.buffer >= 0 ? opts.buffer : 1e-3;
+  var minDistSq, minId, target;
+  this.findNearestPointFeature = function(shape) {
+    minDistSq = Infinity;
+    minId = -1;
+    target = shape || [];
+    internal.forEachPoint(shapes, testPoint);
+    return minId;
+  };
+
+  function testPoint(p, id) {
+    var distSq;
+    for (var i=0; i<target.length; i++) {
+      distSq = distanceSq(target[i][0], target[i][1], p[0], p[1]);
+      if (distSq < minDistSq && distSq <= buf * buf) {
+        minDistSq = distSq;
+        minId = id;
+      }
+    }
+  }
+}
+
+
+
+
 api.joinPointsToPolygons = function(targetLyr, arcs, pointLyr, opts) {
   // TODO: copy points that can't be joined to a new layer
   var joinFunction = internal.getPolygonToPointsFunction(targetLyr, arcs, pointLyr, opts);
@@ -14915,6 +14945,12 @@ api.joinPolygonsToPoints = function(targetLyr, polygonLyr, arcs, opts) {
   return internal.joinTables(targetLyr.data, polygonLyr.data, joinFunction, opts);
 };
 
+api.joinPointsToPoints = function(targetLyr, srcLyr, opts) {
+  var joinFunction = internal.getPointToPointFunction(targetLyr, srcLyr, opts);
+  internal.prepJoinLayers(targetLyr, srcLyr);
+  return internal.joinTables(targetLyr.data, srcLyr.data, joinFunction, opts);
+};
+
 internal.prepJoinLayers = function(targetLyr, srcLyr) {
   if (!targetLyr.data) {
     // create an empty data table if target layer is missing attributes
@@ -14923,6 +14959,16 @@ internal.prepJoinLayers = function(targetLyr, srcLyr) {
   if (!srcLyr.data) {
     stop("[join] Can't join a layer that is missing attribute data");
   }
+};
+
+internal.getPointToPointFunction = function(targetLyr, srcLyr, opts) {
+  var shapes = targetLyr.shapes;
+  var index = new PointIndex(srcLyr.shapes, {});
+  return function(targId) {
+    var srcId = index.findNearestPointFeature(shapes[targId]);
+    // TODO: accept multiple hits
+    return srcId > -1 ? [srcId] : null;
+  };
 };
 
 internal.getPolygonToPointsFunction = function(polygonLyr, arcs, pointLyr, opts) {
@@ -15081,6 +15127,8 @@ api.join = function(targetLyr, dataset, src, opts) {
       retn = api.joinPointsToPolygons(targetLyr, dataset.arcs, src.layer, opts);
     } else if (srcType == 'polygon' && targetType == 'point') {
       retn = api.joinPolygonsToPoints(targetLyr, src.layer, src.dataset.arcs, opts);
+    } else if (srcType == 'point' && targetType == 'point') {
+      retn = api.joinPointsToPoints(targetLyr, src.layer, opts);
     } else {
       stop(utils.format("[join] Unable to join %s geometry to %s geometry",
           srcType || 'null', targetType || 'null'));
@@ -15479,9 +15527,13 @@ internal.importFiles = function(files, opts) {
 
 api.createPointLayer = function(srcLyr, arcs, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
-  destLyr.shapes = opts.x || opts.y ?
-      internal.pointsFromDataTable(srcLyr.data, opts) :
-      internal.pointsFromPolygons(srcLyr, arcs, opts);
+  if (opts.vertices) {
+    destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
+  } else if (opts.x || opts.y) {
+    destLyr.shapes = internal.pointsFromDataTable(srcLyr.data, opts);
+  } else {
+    destLyr.shapes = internal.pointsFromPolygons(srcLyr, arcs, opts);
+  }
   destLyr.geometry_type = 'point';
 
   var nulls = destLyr.shapes.reduce(function(sum, shp) {
@@ -15496,6 +15548,31 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
   }
   return destLyr;
+};
+
+internal.pointsFromVertices = function(lyr, arcs, opts) {
+  var coords, index;
+  if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
+    stop("[points] Expected a polygon or polyline layer");
+  }
+  return lyr.shapes.map(function(shp, shpId) {
+    coords = [];
+    index = {}; // TODO: use more efficient index
+    (shp || []).forEach(nextPart);
+    return coords.length > 0 ? coords : null;
+  });
+
+  function nextPart(ids) {
+    var iter = arcs.getShapeIter(ids);
+    var key;
+    while (iter.hasNext()) {
+      key = iter.x + '~' + iter.y;
+      if (key in index === false) {
+        index[key] = true;
+        coords.push([iter.x, iter.y]);
+      }
+    }
+  }
 };
 
 internal.pointsFromPolygons = function(lyr, arcs, opts) {
@@ -15623,15 +15700,16 @@ internal.editArcs = function(arcs, onPoint) {
 
 
 
-api.proj = function(dataset, opts) {
+api.proj = function(dataset, opts_, matchDataset) {
   // modify copy of coordinate data when running in web UI, so original shapes
   // are preserved if an error occurs
-  var modifyCopy = !!api.gui;
-  var originals = [],
+  var modifyCopy = !!api.gui,
+      opts = opts_ || {},
+      originals = [],
       target = {},
-      src, dest, defn;
+      src, dest, defn, prj, tmp;
 
-  if (opts && opts.from) {
+  if (opts.from) {
     src = internal.getProjection(opts.from, opts);
     if (!src) {
       stop("[proj] Unknown source projection:", opts.from);
@@ -15643,9 +15721,21 @@ api.proj = function(dataset, opts) {
     }
   }
 
-  dest = internal.getProjection(opts.projection, opts);
-  if (!dest) {
-    stop("[proj] Unknown projection:", opts.projection);
+  if (matchDataset) {
+    dest = internal.getDatasetProjection(matchDataset);
+    if (!dest) {
+      stop("[proj] Match target has an unknown coordinate system:", opts.source);
+    }
+  } else {
+    dest = internal.getProjection(opts.projection, opts);
+    if (!dest) {
+      stop("[proj] Unknown projection:", opts.projection);
+    }
+  }
+
+  if (internal.crsAreEqual(src, dest)) {
+    message("[proj] Source and destination CRS are the same");
+    return;
   }
 
   if (dataset.arcs) {
@@ -17147,7 +17237,7 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
     } else if (name == 'proj') {
-      api.proj(targetDataset, opts);
+      api.proj(targetDataset, opts, source && source.dataset);
 
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);
@@ -17716,7 +17806,7 @@ function validateProjOpts(cmd) {
   if (_.length > 0) {
     error("Received one or more unexpected parameters: " + _.join(', '));
   }
-  if (!cmd.options.projection) {
+  if (!cmd.options.projection && !cmd.options.source) {
     error("Missing projection data");
   }
 }
@@ -18403,6 +18493,10 @@ internal.getOptionParser = function() {
       describe: "create a centroid point for each polygon's largest ring",
       type: "flag"
     })
+    .option("vertices", {
+      describe: "capture unique vertices of polygons and polylines",
+      type: "flag"
+    })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -18410,12 +18504,19 @@ internal.getOptionParser = function() {
   parser.command("proj")
     .describe("project a dataset using a proj4 string or alias")
     .flag("multi_arg")
-    .option("densify", {
-      type: "flag",
-      describe: "add points along straight segments to approximate curves"
+    .option("projection", {
+      label: "<projection>",
+      describe: "Proj.4 projection definition or mapshaper alias"
+    })
+    .option("source", {
+      describe: "name of .prj file or layer to match"
     })
     .option("from", {
       describe: "define the source projection"
+    })
+    .option("densify", {
+      type: "flag",
+      describe: "add points along straight segments to approximate curves"
     })
     .validate(validateProjOpts);
 
@@ -19113,10 +19214,10 @@ api.applyCommands = function(commands, input, done) {
     message("Warning: applyCommands() was called with deprecated input format");
     return internal.applyCommandsOld(commands, input, done);
   }
-  // add options to -i and -o commands to bypass file i/o
+  // add options to -i -o -join commands to bypass file i/o
   commands = commands.map(function(cmd) {
     // copy options so passed-in commands are unchanged
-    if (cmd.name == 'i' && input) {
+    if ((cmd.name == 'i' || cmd.name == 'join') && input) {
       cmd.options.input = input;
     } else if (cmd.name == 'o') {
       cmd.options.output = output;
