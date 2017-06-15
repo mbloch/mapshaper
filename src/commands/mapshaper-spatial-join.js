@@ -25,7 +25,7 @@ internal.prepJoinLayers = function(targetLyr, srcLyr) {
     targetLyr.data = new DataTable(targetLyr.shapes.length);
   }
   if (!srcLyr.data) {
-    stop("[join] Can't join a layer that is missing attribute data");
+    stop("Can't join a layer that is missing attribute data");
   }
 };
 

@@ -11,12 +11,12 @@ mapshaper-join-calc
 api.join = function(targetLyr, dataset, src, opts) {
   var srcType, targetType, retn;
   if (!src || !src.layer.data || !src.dataset) {
-    stop("[join] Missing a joinable data source");
+    stop("Missing a joinable data source");
   }
   if (opts.keys) {
     // join using data in attribute fields
     if (opts.keys.length != 2) {
-      stop("[join] Expected two key fields: a target field and a source field");
+      stop("Expected two key fields: a target field and a source field");
     }
     retn = api.joinAttributesToFeatures(targetLyr, src.layer.data, opts);
   } else {
@@ -30,7 +30,7 @@ api.join = function(targetLyr, dataset, src, opts) {
     } else if (srcType == 'point' && targetType == 'point') {
       retn = api.joinPointsToPoints(targetLyr, src.layer, opts);
     } else {
-      stop(utils.format("[join] Unable to join %s geometry to %s geometry",
+      stop(utils.format("Unable to join %s geometry to %s geometry",
           srcType || 'null', targetType || 'null'));
     }
   }
@@ -46,7 +46,7 @@ api.join = function(targetLyr, dataset, src, opts) {
 internal.removeTypeHints = function(arr) {
   var arr2 = internal.parseFieldHeaders(arr, {});
   if (arr.join(',') != arr2.join(',')) {
-    stop("[join] Type hints are no longer supported. Use field-types= option instead");
+    stop("Type hints are no longer supported. Use field-types= option instead");
   }
   return arr;
 };
@@ -132,7 +132,7 @@ internal.joinTables = function(dest, src, join, opts) {
     }
   }
   if (matchCount === 0) {
-    stop("[join] No records could be joined");
+    stop("No records could be joined");
   }
 
   internal.printJoinMessage(matchCount, destRecords.length,
@@ -204,18 +204,18 @@ internal.joinBySum = function(dest, src, fields) {
 internal.printJoinMessage = function(matches, n, joins, m, collisions, skipped) {
   // TODO: add tip for generating layer containing unmatched records, when
   // this option is implemented.
-  message(utils.format("[join] Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
+  message(utils.format("Joined %'d data record%s", joins, utils.pluralSuffix(joins)));
   if (matches < n) {
-    message(utils.format('[join] %d/%d target records received no data', n-matches, n));
+    message(utils.format('%d/%d target records received no data', n-matches, n));
   }
   if (collisions > 0) {
-    message(utils.format('[join] %d/%d target records were matched by multiple source records', collisions, n));
+    message(utils.format('%d/%d target records were matched by multiple source records', collisions, n));
   }
   if (joins < m) {
-    message(utils.format("[join] %d/%d source records could not be joined", m-joins, m));
+    message(utils.format("%d/%d source records could not be joined", m-joins, m));
   }
   if (skipped > 0) {
-    message(utils.format("[join] %d/%d source records were skipped", skipped, m));
+    message(utils.format("%d/%d source records were skipped", skipped, m));
   }
 };
 
@@ -245,10 +245,10 @@ internal.getJoinByKey = function(dest, destKey, src, srcKey) {
   var destRecords = dest.getRecords();
   var index = internal.createTableIndex(src.getRecords(), srcKey);
   if (src.fieldExists(srcKey) === false) {
-    stop("[join] External table is missing a field named:", srcKey);
+    stop("External table is missing a field named:", srcKey);
   }
   if (!dest || !dest.fieldExists(destKey)) {
-    stop("[join] Target layer is missing key field:", destKey);
+    stop("Target layer is missing key field:", destKey);
   }
   return function(i) {
     var destRec = destRecords[i],

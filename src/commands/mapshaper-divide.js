@@ -4,7 +4,7 @@
 /*
 api.dividePolygonLayer = function(lyrA, lyrB, arcs) {
   if (lyrA.geometry_type != 'polygon') {
-    stop("[dividePolygonLayer()] Expected polygon layer, received:", lyrA.geometry_type);
+    stop("Expected polygon layer, received:", lyrA.geometry_type);
   }
   var flags = new Uint8Array(arcs.size());
   internal.openArcRoutes(lyrA.shapes, arcs, flags, true, false, false);

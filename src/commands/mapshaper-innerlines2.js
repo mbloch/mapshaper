@@ -1,13 +1,13 @@
 /* @requires mapshaper-shape-utils, mapshaper-arc-classifier */
 
 api.innerlines = function(lyr, arcs, opts) {
-  internal.requirePolygonLayer(lyr, "[innerlines] Command requires a polygon layer");
+  internal.requirePolygonLayer(lyr);
   var classifier = internal.getArcClassifier(lyr.shapes, arcs);
   var lines = internal.extractInnerLines(lyr.shapes, classifier);
   var outputLyr = internal.createLineLayer(lines, null);
 
   if (lines.length === 0) {
-    message("[innerlines] No shared boundaries were found");
+    message("No shared boundaries were found");
   }
   outputLyr.name = opts && opts.no_replace ? null : lyr.name;
   return outputLyr;
@@ -22,9 +22,9 @@ api.lines = function(lyr, arcs, opts) {
       records = [],
       outputLyr;
 
-  internal.requirePolygonLayer(lyr, "[lines] Command requires a polygon layer");
+  internal.requirePolygonLayer(lyr, "Command requires a polygon layer");
   if (fields.length > 0 && !lyr.data) {
-    stop("[lines] Missing a data table");
+    stop("Missing a data table");
   }
 
   addLines(internal.extractOuterLines(lyr.shapes, classifier));
@@ -41,7 +41,7 @@ api.lines = function(lyr, arcs, opts) {
       return a + '-' + b;
     };
     if (!lyr.data.fieldExists(field)) {
-      stop("[lines] Unknown data field:", field);
+      stop("Unknown data field:", field);
     }
     addLines(internal.extractLines(lyr.shapes, classifier(key)));
   });

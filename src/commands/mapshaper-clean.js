@@ -8,7 +8,7 @@ api.cleanLayers = function(layers, dataset, opts) {
   var flatten = internal.getPolygonFlattener(nodes);
 
   layers.forEach(function(lyr) {
-    internal.requirePolygonLayer(lyr, "[clean] Expected a polygon type layer");
+    internal.requirePolygonLayer(lyr);
     lyr.shapes = lyr.shapes.map(flatten);
   });
 };

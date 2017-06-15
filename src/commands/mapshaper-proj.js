@@ -17,29 +17,29 @@ api.proj = function(dataset, opts_, matchDataset) {
   if (opts.from) {
     src = internal.getProjection(opts.from, opts);
     if (!src) {
-      stop("[proj] Unknown source projection:", opts.from);
+      stop("Unknown source projection:", opts.from);
     }
   } else {
     src = internal.getDatasetProjection(dataset);
     if (!src) {
-      stop("[proj] Unable to project -- source coordinate system is unknown");
+      stop("Unable to project -- source coordinate system is unknown");
     }
   }
 
   if (matchDataset) {
     dest = internal.getDatasetProjection(matchDataset);
     if (!dest) {
-      stop("[proj] Match target has an unknown coordinate system:", opts.source);
+      stop("Match target has an unknown coordinate system:", opts.source);
     }
   } else {
     dest = internal.getProjection(opts.projection, opts);
     if (!dest) {
-      stop("[proj] Unknown projection:", opts.projection);
+      stop("Unknown projection:", opts.projection);
     }
   }
 
   if (internal.crsAreEqual(src, dest)) {
-    message("[proj] Source and destination CRS are the same");
+    message("Source and destination CRS are the same");
     return;
   }
 
@@ -59,7 +59,7 @@ api.proj = function(dataset, opts_, matchDataset) {
   try {
     internal.projectDataset(target, src, dest, opts);
   } catch(e) {
-    stop(utils.format("[proj] Projection failure%s (%s)",
+    stop(utils.format("Projection failure%s (%s)",
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
   }
 

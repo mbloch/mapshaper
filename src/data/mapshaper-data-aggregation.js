@@ -5,7 +5,7 @@
 internal.getCategoryClassifier = function(field, data) {
   if (!field) return function(i) {return 0;};
   if (!data || !data.fieldExists(field)) {
-    stop("[dissolve] Data table is missing field:", field);
+    stop("Data table is missing field:", field);
   }
   var index = {},
       count = 0,

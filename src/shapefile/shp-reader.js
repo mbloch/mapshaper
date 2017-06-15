@@ -61,14 +61,14 @@ function ShpReader(src) {
       recordOffs += shape.byteLength;
       if (shape.id < i) {
         // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
-        message("[shp] Record " + shape.id + " appears more than once -- possible file corruption.");
+        message("Shapefile record " + shape.id + " appears more than once -- possible file corruption.");
         return this.nextShape();
       }
       i++;
     } else {
       if (skippedBytes > 0) {
         // Encountered in ne_10m_railroads.shp from natural earth v2.0.0
-        message("[shp] Skipped " + skippedBytes + " bytes in .shp file -- possible data loss.");
+        message("Skipped " + skippedBytes + " bytes in .shp file -- possible data loss.");
       }
       file.close();
       reset();

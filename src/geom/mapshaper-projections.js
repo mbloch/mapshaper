@@ -88,14 +88,15 @@ internal.getDatasetProjection = function(dataset) {
 
 internal.printProjections = function() {
   var index = require('mproj').internal.pj_list;
-  message('Proj4 projections');
+  var msg = 'Proj4 projections\n';
   Object.keys(index).sort().forEach(function(id) {
-    message('  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name);
+    msg += '  ' + utils.rpad(id, 7, ' ') + '  ' + index[id].name + '\n';
   });
-  message('\nAliases');
+  msg += '\nAliases';
   Object.keys(internal.projectionIndex).sort().forEach(function(n) {
-    message('  ' + n);
+    msg += '\n  ' + n;
   });
+  message(msg);
 };
 
 // Convert contents of a .prj file to a projection object

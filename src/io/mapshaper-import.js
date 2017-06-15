@@ -98,7 +98,7 @@ internal.importShapefile = function(obj, opts) {
     utils.extend(dataset.info, dbf.info);
     lyr.data = dbf.layers[0].data;
     if (lyr.shapes && lyr.data.size() != lyr.shapes.length) {
-      message("[shp] Mismatched .dbf and .shp record count -- possible data loss.");
+      message("Mismatched .dbf and .shp record count -- possible data loss.");
     }
   }
   if (obj.prj) {

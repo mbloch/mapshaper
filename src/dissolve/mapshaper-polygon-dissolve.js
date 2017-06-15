@@ -159,7 +159,7 @@ function dissolveSecondPass(segments, shapes, getGroupId) {
       match = findDissolveArc(next);
       if (match) {
         if (depth > 100) {
-          error ('[dissolve] deep recursion -- unhandled topology problem');
+          error ('deep recursion -- unhandled topology problem');
         }
         // if (match.part.arcs.length == 1) {
         if (shapes[match.shapeId][match.partId].length == 1) {

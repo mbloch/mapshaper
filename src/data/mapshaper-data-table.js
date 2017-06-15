@@ -14,7 +14,7 @@ function DataTable(obj) {
         records.push({});
       }
     } else if (obj) {
-      error("[DataTable] Invalid constructor argument:", obj);
+      error("Invalid DataTable constructor argument:", obj);
     }
   }
 

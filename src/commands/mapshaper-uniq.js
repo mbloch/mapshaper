@@ -16,7 +16,7 @@ api.uniq = function(lyr, arcs, opts) {
     var val = compiled(i);
     flags[i] = val in index;
     if (verbose && index[val]) {
-      message(utils.format('[uniq] Removing feature %i key: [%s]', i, val));
+      message(utils.format('Removing feature %i key: [%s]', i, val));
     }
     index[val] = true;
   });
@@ -28,6 +28,6 @@ api.uniq = function(lyr, arcs, opts) {
     lyr.data = new DataTable(records.filter(f));
   }
   if (opts.verbose !== false) {
-    message(utils.format('[uniq] Retained %,d of %,d features', internal.getFeatureCount(lyr), n));
+    message(utils.format('Retained %,d of %,d features', internal.getFeatureCount(lyr), n));
   }
 };

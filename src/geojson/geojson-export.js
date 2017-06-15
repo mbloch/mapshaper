@@ -46,7 +46,7 @@ internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, asStrin
     }
 
     if (properties && shapes && properties.length !== shapes.length) {
-      error("[-o] Mismatch between number of properties and number of shapes");
+      error("Mismatch between number of properties and number of shapes");
     }
 
     return (shapes || properties || []).reduce(function(memo, o, i) {

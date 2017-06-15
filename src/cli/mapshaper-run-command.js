@@ -56,6 +56,7 @@ api.runCommand = function(cmd, catalog, cb) {
       targetDataset,
       targetLayers,
       arcs;
+  internal.CURR_CMD = name;
 
   try { // catch errors from synchronous functions
 
@@ -84,13 +85,13 @@ api.runCommand = function(cmd, catalog, cb) {
         catalog.setDefaultTarget(targetLayers, targetDataset);
 
       } else if (targets.length > 1) {
-        fail("Targetting multiple datasets is not supported");
+        stop("Targetting multiple datasets is not supported");
       }
     }
 
     if (targets.length === 0) {
       if (opts.target) {
-        fail(utils.format('Missing target: %s\nAvailable layers: %s',
+        stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
       if (!(name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
@@ -101,7 +102,7 @@ api.runCommand = function(cmd, catalog, cb) {
     if (opts.source) {
       sources = catalog.findCommandTargets(opts.source);
       if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
-        fail(utils.format('Source option [%s] matched multiple layers', opts.source));
+        stop(utils.format('Source option [%s] matched multiple layers', opts.source));
       } else if (sources.length == 1) {
         source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
       } else {
@@ -111,9 +112,9 @@ api.runCommand = function(cmd, catalog, cb) {
         //    clip/erase -- topology is built later, when datasets are combined
         sourceDataset = api.importFile(opts.source, utils.defaults({no_topology: true}, opts));
         if (!sourceDataset) {
-          fail(utils.format('Unable to find source [%s]', opts.source));
+          stop(utils.format('Unable to find source [%s]', opts.source));
         } else if (sourceDataset.layers.length > 1) {
-          fail('Multiple-layer sources are not supported');
+          stop('Multiple-layer sources are not supported');
         }
         // mark as disposable to indicate that data can be mutated
         source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
@@ -182,7 +183,7 @@ api.runCommand = function(cmd, catalog, cb) {
       }
 
     } else if (name == 'info') {
-      catalog.forEachLayer(internal.printLayerInfo);
+      internal.printInfo(catalog.getLayers());
 
     } else if (name == 'inspect') {
       internal.applyCommand(api.inspect, targetLayers, arcs, opts);
@@ -290,12 +291,9 @@ api.runCommand = function(cmd, catalog, cb) {
 
   done(null);
 
-  function fail(msg) {
-    stop("[" + name + "]", msg);
-  }
-
   function done(err) {
     T.stop('-' + name);
+    internal.CURR_CMD = null;
     cb(err, err ? null : catalog);
   }
 };

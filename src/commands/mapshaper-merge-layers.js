@@ -64,17 +64,17 @@ internal.checkLayersCanMerge = function(layers) {
       fields = layers[0].data ? layers[0].data.getFields() : [],
       missingFields = internal.findMissingFields(layers);
   if (utils.uniq(geoTypes).length > 1) {
-    stop("[merge-layers] Incompatible geometry types:",
+    stop("Incompatible geometry types:",
       geoTypes.map(function(type) {return type || '[none]';}).join(', '));
   }
   if (missingFields.length > 0) {
-    stop("[merge-layers] Field" + utils.pluralSuffix(missingFields.length), "missing from one or more layers:",
+    stop("Field" + utils.pluralSuffix(missingFields.length), "missing from one or more layers:",
         missingFields.join(', '));
   }
   fields.forEach(function(key) {
     var types = internal.checkFieldTypes(key, layers);
     if (types.length > 1) {
-      stop("[merge-layers] Inconsistent data types in \"" + key + "\" field:", types.join(', '));
+      stop("Inconsistent data types in \"" + key + "\" field:", types.join(', '));
     }
   });
 };

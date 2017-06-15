@@ -6,7 +6,7 @@ api.inspect = function(lyr, arcs, opts) {
   if (ids.length == 1) {
     msg = internal.getFeatureInfo(ids[0], lyr, arcs);
   } else {
-    msg = utils.format("[inspect] Expression matched %d feature%s. Select one feature for details", ids.length, utils.pluralSuffix(ids.length));
+    msg = utils.format("Expression matched %d feature%s. Select one feature for details", ids.length, utils.pluralSuffix(ids.length));
   }
   message(msg);
 };
@@ -64,7 +64,7 @@ internal.selectFeatures = function(lyr, arcs, opts) {
       ids = [],
       filter;
   if (!opts.expression) {
-    stop("[inspect] Missing a JS expression for selecting a feature");
+    stop("Missing a JS expression for selecting a feature");
   }
   filter = internal.compileValueExpression(opts.expression, lyr, arcs);
   utils.repeat(n, function(id) {
@@ -72,7 +72,7 @@ internal.selectFeatures = function(lyr, arcs, opts) {
     if (result === true) {
       ids.push(id);
     } else if (result !== false) {
-      stop("[inspect] Expression must return true or false");
+      stop("Expression must return true or false");
     }
   });
   return ids;

@@ -12,7 +12,7 @@ api.splitLayerOnGrid = function(lyr, arcs, opts) {
       properties, layers;
 
   if (!type) {
-    stop("[split-on-grid] Layer has no geometry");
+    stop("Layer has no geometry");
   }
 
   if (!lyr.data) {
@@ -43,7 +43,7 @@ api.splitLayerOnGrid = function(lyr, arcs, opts) {
         h = bounds.height();
 
     if (rows > 0 === false || cols > 0 === false) {
-      stop('[split-on-grid] Invalid grid parameters');
+      stop('Invalid grid parameters');
     }
 
     if (w > 0 === false || h > 0 === false) {

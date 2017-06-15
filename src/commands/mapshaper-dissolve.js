@@ -22,7 +22,7 @@ api.dissolve = function(lyr, arcs, o) {
   } else if (lyr.geometry_type == 'point') {
     dissolveShapes = dissolvePointLayerGeometry(lyr, getGroupId, opts);
   } else if (lyr.geometry_type) {
-    stop("[dissolve] Only point and polygon geometries can be dissolved");
+    stop("Only point and polygon geometries can be dissolved");
   }
 
   if (lyr.data) {
@@ -49,8 +49,8 @@ api.dissolve = function(lyr, arcs, o) {
 internal.printDissolveMessage = function(pre, post, cmd) {
   var n1 = internal.getFeatureCount(pre),
       n2 = internal.getFeatureCount(post),
-      msg = utils.format('[%s] Dissolved %,d feature%s into %,d feature%s',
-        cmd || 'dissolve', n1, utils.pluralSuffix(n1), n2,
+      msg = utils.format('Dissolved %,d feature%s into %,d feature%s',
+        n1, utils.pluralSuffix(n1), n2,
         utils.pluralSuffix(n2));
   message(msg);
 };

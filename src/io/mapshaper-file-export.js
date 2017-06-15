@@ -31,7 +31,7 @@ internal.writeFiles = function(exports, opts, cb) {
 internal.getOutputPaths = function(files, opts) {
   var odir = opts.directory;
   if (opts.force) {
-    message("[o] The force option is obsolete, files are now overwritten by default");
+    message("The force option is obsolete, files are now overwritten by default");
   }
   if (odir) {
     files = files.map(function(file) {

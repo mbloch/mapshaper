@@ -22,7 +22,7 @@ function error() {
 
 // Handle an error caused by invalid input or misuse of API
 function stop() {
-  internal.stop.apply(null, utils.toArray(arguments));
+  internal.stop.apply(null, messageArgs(arguments));
 }
 
 function APIError(msg) {
@@ -31,8 +31,16 @@ function APIError(msg) {
   return err;
 }
 
+function messageArgs(args) {
+  var arr = utils.toArray(args);
+  if (internal.CURR_CMD) {
+    arr.unshift('[' + internal.CURR_CMD + ']');
+  }
+  return arr;
+}
+
 function message() {
-  internal.message.apply(null, utils.toArray(arguments));
+  internal.message.apply(null, messageArgs(arguments));
 }
 
 function verbose() {
@@ -144,15 +152,14 @@ internal.layerHasNonNullShapes = function(lyr) {
   });
 };
 
-internal.requireDataFields = function(table, fields, cmd) {
-  var prefix = cmd ? '[' + cmd + '] ' : '';
+internal.requireDataFields = function(table, fields) {
   if (!table) {
-    stop(prefix + "Missing attribute data");
+    stop("Missing attribute data");
   }
   var dataFields = table.getFields(),
       missingFields = utils.difference(fields, dataFields);
   if (missingFields.length > 0) {
-    stop(prefix + "Table is missing one or more fields:\n",
+    stop("Table is missing one or more fields:\n",
         missingFields, "\nExisting fields:", '\n' + internal.formatStringsAsGrid(dataFields));
   }
 };

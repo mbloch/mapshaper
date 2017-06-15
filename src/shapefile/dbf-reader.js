@@ -212,7 +212,7 @@ function DbfReader(src, encodingArg) {
       error("Record length mismatch; header:", header.recordSize, "detected:", colOffs);
     }
     if (bin.peek() != 0x0D) {
-      message('[dbf] Found a non-standard header terminator (' + bin.peek() + '). DBF file may be corrupted.');
+      message('Found a non-standard DBF header terminator (' + bin.peek() + '). DBF file may be corrupted.');
     }
 
     // Uniqify header names
@@ -287,7 +287,7 @@ function DbfReader(src, encodingArg) {
         field = fields[c];
         fieldOffs = offs + field.columnOffset;
         if (fieldOffs + field.size > eofOffs) {
-          stop('[dbf] Invalid DBF file: encountered end-of-file while reading data');
+          stop('Invalid DBF file: encountered end-of-file while reading data');
         }
         bin.position(fieldOffs);
         values[c] = readers[c](bin, field.size);
@@ -311,7 +311,7 @@ function DbfReader(src, encodingArg) {
     } else if (type == 'C') {
       r = Dbf.getStringReader(getEncoding());
     } else {
-      message("[dbf] Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
+      message("Field \"" + field.name + "\" has an unsupported type (" + field.type + ") -- converting to null values");
       r = function() {return null;};
     }
     return r;
@@ -346,14 +346,11 @@ function DbfReader(src, encodingArg) {
 
     // Show a sample of decoded text if non-ascii-range text has been found
     if (encoding && samples.length > 0) {
-      msg = "Detected DBF text encoding: " + encoding;
-      if (encoding in Dbf.encodingNames) {
-        msg += " (" + Dbf.encodingNames[encoding] + ")";
-      }
-      message(msg);
       msg = internal.decodeSamples(encoding, samples);
       msg = internal.formatStringsAsGrid(msg.split('\n'));
-      message("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
+      msg = "\nSample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg;
+      msg = "Detected DBF text encoding: " + encoding + (encoding in Dbf.encodingNames ? " (" + Dbf.encodingNames[encoding] + ")" : "") + msg;
+      message(msg);
     }
     return encoding;
   }

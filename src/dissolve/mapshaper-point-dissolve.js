@@ -7,7 +7,7 @@ function dissolvePointLayerGeometry(lyr, getGroupId, opts) {
 
   // TODO: support multipoints
   if (internal.countMultiPartFeatures(lyr.shapes) !== 0) {
-    stop("[dissolve] Dissolving multi-part points is not supported");
+    stop("Dissolving multi-part points is not supported");
   }
 
   lyr.shapes.forEach(function(shp, i) {

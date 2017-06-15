@@ -9,7 +9,7 @@ mapshaper-simplify-info
 
 api.simplify = function(dataset, opts) {
   var arcs = dataset.arcs;
-  if (!arcs) stop("[simplify] Missing path data");
+  if (!arcs) stop("Missing path data");
   // standardize options
   opts = internal.getStandardSimplifyOpts(dataset, opts);
   // stash simplifcation options (used by gui settings dialog)
@@ -103,7 +103,7 @@ internal.getSimplifyFunction = function(opts) {
   } else if (opts.method == 'weighted_visvalingam') {
     f = Visvalingam.getWeightedSimplifier(opts, opts.spherical);
   } else {
-    stop('[simplify] Unsupported simplify method:', method);
+    stop('Unsupported simplify method:', method);
   }
   return f;
 };

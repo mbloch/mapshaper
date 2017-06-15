@@ -67,9 +67,9 @@ internal.exportFileContent = function(dataset, opts) {
       files = [];
 
   if (!outFmt) {
-    error("[o] Missing output format");
+    error("Missing output format");
   } else if (!exporter) {
-    error("[o] Unknown output format:", outFmt);
+    error("Unknown output format:", outFmt);
   }
 
   // shallow-copy dataset and layers, so layers can be renamed for export
@@ -165,14 +165,14 @@ internal.validateLayerData = function(layers) {
       if (lyr.shapes && utils.some(lyr.shapes, function(o) {
         return !!o;
       })) {
-        error("[export] A layer contains shape records and a null geometry type");
+        error("A layer contains shape records and a null geometry type");
       }
     } else {
       if (!utils.contains(['polygon', 'polyline', 'point'], lyr.geometry_type)) {
-        error ("[export] A layer has an invalid geometry type:", lyr.geometry_type);
+        error ("A layer has an invalid geometry type:", lyr.geometry_type);
       }
       if (!lyr.shapes) {
-        error ("[export] A layer is missing shape data");
+        error ("A layer is missing shape data");
       }
     }
   });
@@ -182,8 +182,8 @@ internal.validateFileNames = function(files) {
   var index = {};
   files.forEach(function(file, i) {
     var filename = file.filename;
-    if (!filename) error("[o] Missing a filename for file" + i);
-    if (filename in index) error("[o] Duplicate filename", filename);
+    if (!filename) error("Missing a filename for file" + i);
+    if (filename in index) error("Duplicate filename", filename);
     index[filename] = true;
   });
 };

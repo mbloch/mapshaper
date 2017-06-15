@@ -24,7 +24,7 @@ internal.filterSlivers = function(lyr, arcs, opts) {
   };
 
   internal.editShapes(lyr.shapes, pathFilter);
-  message(utils.format("[filter-slivers] Removed %'d sliver%s", removed, utils.pluralSuffix(removed)));
+  message(utils.format("Removed %'d sliver%s", removed, utils.pluralSuffix(removed)));
   return removed;
 };
 

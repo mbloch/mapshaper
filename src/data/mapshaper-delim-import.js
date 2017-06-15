@@ -17,7 +17,7 @@ internal.importDelimTable = function(str, delim, opts) {
   var records = require("d3-dsv").dsvFormat(delim).parse(str);
   var table;
   if (records.length === 0) {
-    stop("[dsv] Unable to read any records");
+    stop("Unable to read any records");
   }
   delete records.columns; // added by d3-dsv
   internal.adjustRecordTypes(records, opts && opts.field_types);
@@ -68,7 +68,7 @@ internal.adjustRecordTypes = function(records, fieldList) {
     }
   });
   if (detectedNumFields.length > 0) {
-    message(utils.format("[csv] Auto-detected number field%s: %s",
+    message(utils.format("Auto-detected number field%s: %s",
         detectedNumFields.length == 1 ? '' : 's', detectedNumFields.join(', ')));
   }
 };

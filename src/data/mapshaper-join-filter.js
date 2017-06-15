@@ -16,7 +16,7 @@ internal.getJoinFilter = function(data, exp) {
       if (retn === true) {
         filtered.push(ids[i]);
       } else if (retn !== false) {
-        stop('[join] "where" expression must return true or false');
+        stop('"where" expression must return true or false');
       }
     }
     return filtered;

@@ -4,8 +4,8 @@ api.dataFill = function(lyr, arcs, opts) {
 
   var field = opts.field;
   var count;
-  if (!field) stop("[data-fill] Missing required field= parameter");
-  if (lyr.geometry_type != 'polygon') stop("[data-fill] Target layer must be polygon type");
+  if (!field) stop("Missing required field= parameter");
+  if (lyr.geometry_type != 'polygon') stop("Target layer must be polygon type");
 
   // first, fill some holes?
   count = internal.fillMissingValues(lyr, field, internal.getSingleAssignment(lyr, field, arcs));

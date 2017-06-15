@@ -8,7 +8,7 @@ api.shape = function(source, opts) {
     bounds = new Bounds(opts.bbox);
   }
   if (!bounds || !bounds.hasBounds()) {
-    stop('[shape] Missing shape extent');
+    stop('Missing shape extent');
   }
   if (opts.offset > 0) {
     bounds.padBounds(opts.offset, opts.offset, opts.offset, opts.offset);

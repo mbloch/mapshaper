@@ -12,7 +12,7 @@ api.stitch = function(dataset) {
   var arcs = dataset.arcs,
       edgeArcs, dissolver, nodes;
   if (!arcs || arcs.isPlanar()) {
-    error("[stitch] Requires lat-lng dataset");
+    stop("Requires lat-lng dataset");
   }
   if (!internal.snapEdgeArcs(arcs)) {
     return;

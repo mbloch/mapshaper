@@ -18,7 +18,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
   }
 
   if (!filter) {
-    stop("[filter] Missing a filter expression");
+    stop("Missing a filter expression");
   }
 
   utils.repeat(n, function(shapeId) {
@@ -27,7 +27,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
       if (shapes) filteredShapes.push(shapes[shapeId] || null);
       if (records) filteredRecords.push(records[shapeId] || null);
     } else if (result !== false) {
-      stop("[filter] Expression must return true or false");
+      stop("Expression must return true or false");
     }
   });
 
@@ -39,7 +39,7 @@ api.filterFeatures = function(lyr, arcs, opts) {
   }
 
   if (opts.verbose !== false) {
-    message(utils.format('[filter] Retained %,d of %,d features', internal.getFeatureCount(filteredLyr), n));
+    message(utils.format('Retained %,d of %,d features', internal.getFeatureCount(filteredLyr), n));
   }
 
   return filteredLyr;

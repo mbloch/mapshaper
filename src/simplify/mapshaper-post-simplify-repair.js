@@ -15,7 +15,7 @@ internal.postSimplifyRepair = function(arcs) {
       countFixed = countPre > countPost ? countPre - countPost : 0,
       msg;
   if (countPre > 0) {
-    msg = utils.format("[simplify] Repaired %'i intersection%s", countFixed,
+    msg = utils.format("Repaired %'i intersection%s", countFixed,
         utils.pluralSuffix(countFixed));
     if (countPost > 0) {
       msg += utils.format("; %'i intersection%s could not be repaired", countPost,

@@ -44,6 +44,5 @@ internal.printEncodings = function() {
     return !/^(_|cs|internal|ibm|isoir|singlebyte|table|[0-9]|l[0-9]|windows)/.test(name);
   });
   encodings.sort();
-  message("Supported encodings:");
-  message(internal.formatStringsAsGrid(encodings));
+  message("Supported encodings:\n" + internal.formatStringsAsGrid(encodings));
 };

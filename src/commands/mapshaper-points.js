@@ -21,7 +21,7 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
   }, 0);
 
   if (nulls > 0) {
-    message(utils.format('[points] %,d of %,d points are null', nulls, destLyr.shapes.length));
+    message(utils.format('%,d of %,d points are null', nulls, destLyr.shapes.length));
   }
   if (srcLyr.data) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
@@ -32,7 +32,7 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
 internal.pointsFromVertices = function(lyr, arcs, opts) {
   var coords, index;
   if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
-    stop("[points] Expected a polygon or polyline layer");
+    stop("Expected a polygon or polyline layer");
   }
   return lyr.shapes.map(function(shp, shpId) {
     coords = [];
@@ -56,7 +56,7 @@ internal.pointsFromVertices = function(lyr, arcs, opts) {
 
 internal.pointsFromPolygons = function(lyr, arcs, opts) {
   if (lyr.geometry_type != "polygon") {
-    stop("[points] Expected a polygon layer");
+    stop("Expected a polygon layer");
   }
   var func = opts.inner ? geom.findInteriorPoint : geom.getShapeCentroid;
   return lyr.shapes.map(function(shp) {
@@ -66,9 +66,9 @@ internal.pointsFromPolygons = function(lyr, arcs, opts) {
 };
 
 internal.pointsFromDataTable = function(data, opts) {
-  if (!data) stop("[points] Layer is missing a data table");
+  if (!data) stop("Layer is missing a data table");
   if (!opts.x || !opts.y || !data.fieldExists(opts.x) || !data.fieldExists(opts.y)) {
-    stop("[points] Missing x,y data fields");
+    stop("Missing x,y data fields");
   }
 
   return data.getRecords().map(function(rec) {

@@ -15,7 +15,7 @@ internal.subdivide = function(lyr, arcs, exp) {
       tmp, bounds, lyr1, lyr2;
 
   if (!utils.isBoolean(divide)) {
-    stop("[subdivide] Expression must evaluate to true or false");
+    stop("Expression must evaluate to true or false");
   }
   if (divide) {
     bounds = internal.getLayerBounds(lyr, arcs);

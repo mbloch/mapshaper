@@ -35,7 +35,7 @@ internal.createPointGrid = function(bbox, opts) {
   }
 
   if (dx > 0 === false || dy > 0 === false) {
-    stop('[point-grid] Invalid grid parameters');
+    stop('Invalid grid parameters');
   }
 
   y = y0;

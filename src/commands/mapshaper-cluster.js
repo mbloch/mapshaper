@@ -13,7 +13,7 @@ mapshaper-polygon-centroid
 //   interactive maps, not useful for analysis.
 //
 api.cluster = function(lyr, arcs, opts) {
-  internal.requirePolygonLayer(lyr, "[cluster] Command requires a polygon layer");
+  internal.requirePolygonLayer(lyr);
   var groups = internal.calcPolygonClusters(lyr, arcs, opts);
   var idField = opts.id_field || "cluster";
   internal.insertFieldValues(lyr, idField, groups);
@@ -43,7 +43,7 @@ internal.calcPolygonClusters = function(lyr, arcs, opts) {
   var mergeIndex = {}; // keep track of merges, to prevent duplicates
   var next;
 
-  if (groupField && !lyr.data) stop("[cluster] Missing attribute data table");
+  if (groupField && !lyr.data) stop("Missing attribute data table");
 
   // Populate mergeItems array
   internal.findNeighbors(lyr.shapes, arcs).forEach(function(ab, i) {

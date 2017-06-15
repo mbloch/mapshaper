@@ -50,7 +50,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
     clipLyr = clipSrc.layer;
     clipDataset = utils.defaults({layers: [clipLyr]}, clipSrc.dataset);
   } else {
-    stop("[" + type + "] Missing clipping data");
+    stop("Missing clipping data");
   }
   if (targetDataset.arcs != clipDataset.arcs) {
     // using external dataset -- need to merge arcs
@@ -92,7 +92,7 @@ internal.clipLayers = function(targetLayers, clipSrc, targetDataset, type, opts)
 };
 
 internal.clipLayersByLayer = function(targetLayers, clipLyr, nodes, type, opts) {
-  internal.requirePolygonLayer(clipLyr, "[" + type + "] Requires a polygon clipping layer");
+  internal.requirePolygonLayer(clipLyr, "Requires a polygon clipping layer");
   return targetLayers.reduce(function(memo, targetLyr) {
     if (opts.no_replace) {
       memo.push(targetLyr);
@@ -130,7 +130,7 @@ internal.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
     return targetLyr; // ignore empty layer
   }
   if (targetLyr === clipLyr) {
-    stop('[' + type + '] Can\'t clip a layer with itself');
+    stop('Can\'t clip a layer with itself');
   }
 
   if (targetLyr.geometry_type == 'point') {
@@ -140,7 +140,7 @@ internal.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
   } else if (targetLyr.geometry_type == 'polyline') {
     clippedShapes = internal.clipPolylines(targetLyr.shapes, clipLyr.shapes, nodes, type);
   } else {
-    stop('[' + type + '] Invalid target layer:', targetLyr.name);
+    stop('Invalid target layer:', targetLyr.name);
   }
 
   outputLyr = {
@@ -167,16 +167,16 @@ internal.clipLayerByLayer = function(targetLyr, clipLyr, nodes, type, opts) {
   // TODO: redo messages, now that many layers may be clipped
   nullCount = shapeCount - outputLyr.shapes.length;
   if (nullCount && sliverCount) {
-    message(internal.getClipMessage(type, nullCount, sliverCount));
+    message(internal.getClipMessage(nullCount, sliverCount));
   }
   return outputLyr;
 };
 
-internal.getClipMessage = function(type, nullCount, sliverCount) {
+internal.getClipMessage = function(nullCount, sliverCount) {
   var nullMsg = nullCount ? utils.format('%,d null feature%s', nullCount, utils.pluralSuffix(nullCount)) : '';
   var sliverMsg = sliverCount ? utils.format('%,d sliver%s', sliverCount, utils.pluralSuffix(sliverCount)) : '';
   if (nullMsg || sliverMsg) {
-    return utils.format('[%s] Removed %s%s%s', type, nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
+    return utils.format('Removed %s%s%s', nullMsg, (nullMsg && sliverMsg ? ' and ' : ''), sliverMsg);
   }
   return '';
 };
@@ -186,7 +186,7 @@ internal.convertClipBounds = function(bb) {
       arc = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]];
 
   if (!(y1 > y0 && x1 > x0)) {
-    stop("[clip/erase] Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
+    stop("Invalid bbox (should be [xmin, ymin, xmax, ymax]):", bb);
   }
   return {
     arcs: new ArcCollection([arc]),

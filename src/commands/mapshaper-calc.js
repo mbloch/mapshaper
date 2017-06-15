@@ -13,7 +13,7 @@ mapshaper-calc-utils
 // opts.where  Optional filter expression (see -filter command)
 //
 api.calc = function(lyr, arcs, opts) {
-  var msg = '[calc] ' + opts.expression,
+  var msg = opts.expression,
       result;
   if (opts.where) {
     // TODO: implement no_replace option for filter() instead of this
