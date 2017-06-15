@@ -1,3 +1,11 @@
+v0.4.22
+* Added `-proj source=` option to match projection from a .prj file or another layer.
+* Added support for simple point-to-point spatial joins.
+* Added `-points vertices` option to convert polygon and polyline features to multipoint features.
+* [web] Save console history between sessions using browser localStorage.
+* [web] Always display mouse coordinates.
+* [web] Display coordinates of mouse bbox after first click.
+
 v0.4.21
 * Updated mapshaper-proj to v0.0.9, with better WKT parsing and more projections.
 * Added (undocumented) -shape command
