@@ -7,10 +7,14 @@ function InspectionControl(model, hit) {
   var _highId = -1;
   var _selectionIds = null;
   var btn = gui.addSidebarButton("#info-icon2").on('click', function() {
-    if (_inspecting) turnOff(); else turnOn();
+    gui.dispatchEvent('inspector_toggle');
   });
   var _self = new EventDispatcher();
   var _shapes, _lyr;
+
+  gui.on('inspector_toggle', function() {
+    if (_inspecting) turnOff(); else turnOn();
+  });
 
   _self.updateLayer = function(o, style) {
     var shapes = o.getDisplayLayer().layer.shapes;

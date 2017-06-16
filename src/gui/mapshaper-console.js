@@ -167,11 +167,16 @@ function Console(model) {
         capture = false;
       }
 
-    // space bar while not inputting text
-    } else if (!typing && kc == 32) {
-      // space bar opens console, unless typing in an input field or editable el
-      capture = true;
-      gui.enterMode('console');
+    // various shortcuts (while not typing in an input field or editable el)
+    } else if (!typing) {
+       if (kc == 32) { // space bar opens console
+        capture = true;
+        gui.enterMode('console');
+      } else if (kc == 73) { // letter i opens inspector
+        gui.dispatchEvent('inspector_toggle');
+      } else if (kc == 72) { // letter h resets map extent
+        gui.dispatchEvent('map_reset');
+      }
     }
 
     if (capture) {

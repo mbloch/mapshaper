@@ -20,9 +20,15 @@ function MapNav(root, ext, mouse) {
       zoomScale = 2.5,
       dragStartEvt, _fx, _fy; // zoom foci, [0,1]
 
-  gui.addSidebarButton("#home-icon").on('click', function() {ext.reset();});
+  gui.addSidebarButton("#home-icon").on('click', function() {
+    gui.dispatchEvent('map_reset');
+  });
   gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
   gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
+
+  gui.on('map_reset', function() {
+    ext.reset();
+  });
 
   zoomTween.on('change', function(e) {
     ext.rescale(e.value, _fx, _fy);
