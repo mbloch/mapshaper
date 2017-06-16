@@ -242,7 +242,7 @@ internal.getOptionParser = function() {
 
   parser.command("dissolve")
     .validate(validateDissolveOpts)
-    .describe("merge polygon or point features")
+    .describe("merge features within a layer")
     .example("Dissolve all polygons in a feature layer into a single polygon\n" +
       "$ mapshaper states.shp -dissolve -o country.shp")
     .example("Generate state-level polygons by dissolving a layer of counties\n" +

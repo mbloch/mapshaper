@@ -1,5 +1,8 @@
+v0.4.24
+* Fixed: error dissolving polyline features containing rings.
+
 v0.4.23
-* Added polyline support to -dissolve command
+* Added polyline support to -dissolve command.
 
 v0.4.22
 * Added `-proj source=` option to match projection from a .prj file or another layer.
@@ -11,11 +14,11 @@ v0.4.22
 
 v0.4.21
 * Updated mapshaper-proj to v0.0.9, with better WKT parsing and more projections.
-* Added (undocumented) -shape command
+* Added (undocumented) -shape command.
 * Bug fixes
 
 v0.4.20
-* Added support for generating .prj files
+* Added support for generating .prj files.
 * Bug fixes
 
 v0.4.19
