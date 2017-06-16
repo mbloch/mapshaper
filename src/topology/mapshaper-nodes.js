@@ -14,7 +14,6 @@ function NodeCollection(arcs, filter) {
       chains;
 
   // Accessor function for arcs
-  // TODO: could check that arc collection hasn't been modified, using accessor function
   Object.defineProperty(this, 'arcs', {value: arcs});
 
   this.toArray = function() {

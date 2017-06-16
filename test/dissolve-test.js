@@ -8,7 +8,7 @@ describe('mapshaper-dissolve.js', function () {
 
   describe('-dissolve command', function () {
 
-    it('polyline test 1', function(done) {
+    it('polyline test 1 (multiple segments)', function(done) {
       var a = {
         type: 'FeatureCollection',
         features: [{
@@ -32,6 +32,65 @@ describe('mapshaper-dissolve.js', function () {
         geometries: [{
           type: 'LineString',
           coordinates: [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]]
+        }]
+      };
+      api.applyCommands('-i a.json -dissolve -o', {'a.json': a}, function(err, output) {
+        var geojson = JSON.parse(output['a.json']);
+        assert.deepEqual(geojson, expect)
+        done();
+      })
+    });
+
+    it('polyline test 2 (simple ring)', function(done) {
+      var a = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {name: 'bar'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[1, 1], [1, 0], [0, 1], [1, 1]]
+          }
+        }]
+      };
+      var expect = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'LineString',
+          coordinates: [[1, 1], [1, 0], [0, 1], [1, 1]]
+        }]
+      };
+      api.applyCommands('-i a.json -dissolve -o', {'a.json': a}, function(err, output) {
+        var geojson = JSON.parse(output['a.json']);
+        assert.deepEqual(geojson, expect)
+        done();
+      })
+    });
+
+    it('polyline test 3 (split ring)', function(done) {
+      var a = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {name: 'foo'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[1, 1], [1, 0], [0, 0]]
+          }
+        }, {
+          type: 'Feature',
+          properties: {name: 'bar'},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[0, 0], [0, 1], [1, 1]]
+          }
+        }]
+      };
+      var expect = {
+        type: 'GeometryCollection',
+        geometries: [{
+          type: 'LineString',
+          coordinates: [[1, 1], [1, 0], [0, 0], [0, 1], [1, 1]]
         }]
       };
       api.applyCommands('-i a.json -dissolve -o', {'a.json': a}, function(err, output) {

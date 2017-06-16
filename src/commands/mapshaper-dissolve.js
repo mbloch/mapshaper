@@ -22,8 +22,6 @@ api.dissolve = function(lyr, arcs, o) {
     dissolveShapes = internal.dissolvePolylineGeometry(lyr, getGroupId, arcs, opts);
   } else if (lyr.geometry_type == 'point') {
     dissolveShapes = dissolvePointLayerGeometry(lyr, getGroupId, opts);
-  } else if (lyr.geometry_type) {
-    stop("Only point and polygon geometries can be dissolved");
   }
   return internal.composeDissolveLayer(lyr, dissolveShapes, getGroupId, opts);
 };
