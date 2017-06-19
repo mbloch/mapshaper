@@ -726,7 +726,8 @@ internal.getOptionParser = function() {
     .option("target", {
       label: "<target>",
       describe: "name or index of layer to target"
-    });
+    })
+    .option("name", nameOpt);
 
   parser.command("uniq")
     .describe("delete features with the same id as a previous feature")

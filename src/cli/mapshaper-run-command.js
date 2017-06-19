@@ -260,7 +260,7 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.applyCommand(api.uniq, targetLayers, arcs, opts);
 
     } else if (name == 'target') {
-      api.target(catalog, opts.target);
+      api.target(catalog, opts.target, opts);
 
     } else {
       error("Unhandled command: [" + name + "]");

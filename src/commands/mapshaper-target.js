@@ -1,11 +1,15 @@
 /* @require mapshaper-common */
 
-api.target = function(catalog, pattern) {
+api.target = function(catalog, pattern, opts) {
   var targets = catalog.findCommandTargets(pattern);
-  if (targets.length === 0) {
+  var target = targets[0];
+  if (!target || target.layers.length === 0) {
     stop("Target not found (" + pattern + ")");
-  } else if (targets.length > 1 || targets[0].layers.length > 1) {
+  } else if (targets.length > 1 || target.layers.length > 1) {
     stop("Matched more than one layer");
   }
-  catalog.setDefaultTarget(targets[0].layers, targets[0].dataset);
+  if (opts && opts.name) {
+    target.layers[0].name = opts.name;
+  }
+  catalog.setDefaultTarget(target.layers, target.dataset);
 };

@@ -29,6 +29,15 @@ describe('mapshaper-target.js', function () {
     })
   })
 
+  it('-target name= option renames target layer', function(done) {
+    var cmd = "-i test/test_data/three_points.shp -target 1 name=a -o format=geojson";
+    api.applyCommands(cmd, {}, function(err, output) {
+      var a = JSON.parse(output['a.json']);
+      assert.equal(a.type, 'FeatureCollection');
+      done();
+    })
+  })
+
   it('error if no layer is matched', function(done) {
     var cmd = "-i test/test_data/three_points.shp -target states";
     api.runCommands(cmd, function(err) {
