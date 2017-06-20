@@ -1,5 +1,5 @@
 v0.4.25
-* Added `-proj target=` option.
+* Added `-proj target=` option, with support for target=*.
 * Added `-target name=` option for renaming the target layer.
 
 v0.4.24
