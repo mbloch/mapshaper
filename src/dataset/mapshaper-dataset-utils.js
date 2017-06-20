@@ -104,6 +104,15 @@ internal.datasetHasPaths = function(dataset) {
   });
 };
 
+internal.cleanupArcs = function(dataset) {
+  // remove arcs if no longer referenced by any layer
+  // TODO: consider doing arc dissolve, or just removing unreferenced arcs
+  if (dataset.arcs && !utils.some(dataset.layers, internal.layerHasPaths)) {
+    dataset.arcs = null;
+    return true;
+  }
+};
+
 internal.countMultiPartFeatures = function(shapes) {
   var count = 0;
   for (var i=0, n=shapes.length; i<n; i++) {

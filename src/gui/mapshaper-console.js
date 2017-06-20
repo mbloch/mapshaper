@@ -305,13 +305,15 @@ function Console(model) {
 
   function applyParsedCommands(commands) {
     var active = model.getActiveLayer(),
-        prevArcCount = active.dataset.arcs ? active.dataset.arcs.size() : 0;
+        prevArcs = active.dataset.arcs,
+        prevArcCount = prevArcs ? prevArcs.size() : 0;
 
     internal.runParsedCommands(commands, model, function(err) {
       var flags = getCommandFlags(commands),
           active2 = model.getActiveLayer(),
-          sameArcs = active.dataset.arcs == active2.dataset.arcs && prevArcCount > 0 &&
-              active2.dataset.arcs.size() == prevArcCount;
+          postArcs = active2.dataset.arcs,
+          postArcCount = postArcs ? postArcs.size() : 0,
+          sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
 
       // restore default logging options, in case -quiet or -verbose command was run
       internal.QUIET = false;

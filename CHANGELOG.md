@@ -1,3 +1,7 @@
+v0.4.25
+* Added `-proj target=` option.
+* Added `-target name=` option for renaming the target layer.
+
 v0.4.24
 * Fixed: error dissolving polyline features containing rings.
 

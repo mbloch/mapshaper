@@ -279,6 +279,11 @@ api.runCommand = function(cmd, catalog, cb) {
       });
     }
 
+    // delete arcs if no longer needed (e.g. after -points command)
+    if (targetDataset) {
+      internal.cleanupArcs(targetDataset);
+    }
+
     // integrate output layers into the target dataset
     if (outputLayers && targetDataset && outputLayers != targetDataset.layers) {
       if (opts.no_replace) {

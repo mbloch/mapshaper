@@ -159,7 +159,7 @@ function LayerControl(model, map) {
   }
 
   function deleteLayer(lyr, dataset) {
-    var active;
+    var active, flags;
     if (lyr == pinnedLyr) {
       clearPin();
     }
@@ -168,9 +168,16 @@ function LayerControl(model, map) {
       // refresh browser if deleted layer was the last layer
       window.location.href = window.location.href.toString();
     } else {
-      // trigger update event
+      // trigger event to update layer list and, if needed, the map view
+      flags = {};
       active = model.getActiveLayer();
-      model.selectLayer(active.layer, active.dataset);
+      if (active.layer != lyr) {
+        flags.select = true;
+      }
+      if (internal.cleanupArcs(active.dataset)) {
+        flags.arc_count = true;
+      }
+      model.updated(flags, active.layer, active.dataset);
     }
   }
 
