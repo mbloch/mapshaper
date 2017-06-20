@@ -74,7 +74,9 @@ api.runCommand = function(cmd, catalog, cb) {
       // when combining GeoJSON layers, default is all layers
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
-
+    } else if (name == 'proj') {
+      // accepts multiple target datasets
+      targets = catalog.findCommandTargets(opts.target);
     } else {
       targets = catalog.findCommandTargets(opts.target);
       if (targets.length == 1) {
@@ -221,7 +223,10 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
     } else if (name == 'proj') {
-      api.proj(targetDataset, opts, source && source.dataset);
+      targets.forEach(function(targ) {
+        api.proj(targ.dataset, opts, source && source.dataset);
+      });
+      // TODO: consider updating default dataset.
 
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);

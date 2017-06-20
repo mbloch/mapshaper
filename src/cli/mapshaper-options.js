@@ -518,6 +518,7 @@ internal.getOptionParser = function() {
       type: "flag",
       describe: "add points along straight segments to approximate curves"
     })
+    .option("target", targetOpt)
     .validate(validateProjOpts);
 
   parser.command("rename-fields")
