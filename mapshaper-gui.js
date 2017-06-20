@@ -2586,7 +2586,7 @@ function LayerControl(model, map) {
   }
 
   function deleteLayer(lyr, dataset) {
-    var active;
+    var active, flags;
     if (lyr == pinnedLyr) {
       clearPin();
     }
@@ -2595,9 +2595,16 @@ function LayerControl(model, map) {
       // refresh browser if deleted layer was the last layer
       window.location.href = window.location.href.toString();
     } else {
-      // trigger update event
+      // trigger event to update layer list and, if needed, the map view
+      flags = {};
       active = model.getActiveLayer();
-      model.selectLayer(active.layer, active.dataset);
+      if (active.layer != lyr) {
+        flags.select = true;
+      }
+      if (internal.cleanupArcs(active.dataset)) {
+        flags.arc_count = true;
+      }
+      model.updated(flags, active.layer, active.dataset);
     }
   }
 
@@ -3277,9 +3284,15 @@ function MapNav(root, ext, mouse) {
       zoomScale = 2.5,
       dragStartEvt, _fx, _fy; // zoom foci, [0,1]
 
-  gui.addSidebarButton("#home-icon").on('click', function() {ext.reset();});
+  gui.addSidebarButton("#home-icon").on('click', function() {
+    gui.dispatchEvent('map_reset');
+  });
   gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
   gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
+
+  gui.on('map_reset', function() {
+    ext.reset();
+  });
 
   zoomTween.on('change', function(e) {
     ext.rescale(e.value, _fx, _fy);
@@ -3939,10 +3952,14 @@ function InspectionControl(model, hit) {
   var _highId = -1;
   var _selectionIds = null;
   var btn = gui.addSidebarButton("#info-icon2").on('click', function() {
-    if (_inspecting) turnOff(); else turnOn();
+    gui.dispatchEvent('inspector_toggle');
   });
   var _self = new EventDispatcher();
   var _shapes, _lyr;
+
+  gui.on('inspector_toggle', function() {
+    if (_inspecting) turnOff(); else turnOn();
+  });
 
   _self.updateLayer = function(o, style) {
     var shapes = o.getDisplayLayer().layer.shapes;
@@ -4426,8 +4443,9 @@ function MshpMap(model) {
   // Test if an update may have affected the visible shape of arcs
   // @flags Flags from update event
   function arcsMayHaveChanged(flags) {
-    return flags.presimplify || flags.simplify || flags.proj || flags.arc_count ||
-      flags.repair || flags.clip || flags.erase || flags.slice || flags.affine || false;
+    return flags.presimplify || flags.simplify || flags.proj ||
+      flags.arc_count || flags.repair || flags.clip || flags.erase ||
+      flags.slice || flags.affine || false;
   }
 
   function referenceStyle() {
@@ -4636,11 +4654,16 @@ function Console(model) {
         capture = false;
       }
 
-    // space bar while not inputting text
-    } else if (!typing && kc == 32) {
-      // space bar opens console, unless typing in an input field or editable el
-      capture = true;
-      gui.enterMode('console');
+    // various shortcuts (while not typing in an input field or editable el)
+    } else if (!typing) {
+       if (kc == 32) { // space bar opens console
+        capture = true;
+        gui.enterMode('console');
+      } else if (kc == 73) { // letter i opens inspector
+        gui.dispatchEvent('inspector_toggle');
+      } else if (kc == 72) { // letter h resets map extent
+        gui.dispatchEvent('map_reset');
+      }
     }
 
     if (capture) {
@@ -4769,13 +4792,15 @@ function Console(model) {
 
   function applyParsedCommands(commands) {
     var active = model.getActiveLayer(),
-        prevArcCount = active.dataset.arcs ? active.dataset.arcs.size() : 0;
+        prevArcs = active.dataset.arcs,
+        prevArcCount = prevArcs ? prevArcs.size() : 0;
 
     internal.runParsedCommands(commands, model, function(err) {
       var flags = getCommandFlags(commands),
           active2 = model.getActiveLayer(),
-          sameArcs = active.dataset.arcs == active2.dataset.arcs && prevArcCount > 0 &&
-              active2.dataset.arcs.size() == prevArcCount;
+          postArcs = active2.dataset.arcs,
+          postArcCount = postArcs ? postArcs.size() : 0,
+          sameArcs = prevArcs == postArcs && postArcCount == prevArcCount;
 
       // restore default logging options, in case -quiet or -verbose command was run
       internal.QUIET = false;

@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.24';
+var VERSION = '0.4.25';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -3490,6 +3490,15 @@ internal.datasetHasPaths = function(dataset) {
   return utils.some(dataset.layers, function(lyr) {
     return internal.layerHasPaths(lyr);
   });
+};
+
+internal.cleanupArcs = function(dataset) {
+  // remove arcs if no longer referenced by any layer
+  // TODO: consider doing arc dissolve, or just removing unreferenced arcs
+  if (dataset.arcs && !utils.some(dataset.layers, internal.layerHasPaths)) {
+    dataset.arcs = null;
+    return true;
+  }
 };
 
 internal.countMultiPartFeatures = function(shapes) {
@@ -7315,6 +7324,11 @@ internal.getExpressionContext = function(lyr, mixins) {
     internal.nullifyUnsetProperties(lyr.data.getFields(), env);
   }
   if (mixins) {
+    Object.keys(mixins).forEach(function(key) {
+      // Catch name collisions between data fields and user-defined functions
+      if (key in env) message('Warning: "' + key + '" has multiple definitions');
+      env[key] = mixins[key];
+    });
     utils.extend(env, mixins);
   }
   // make context properties non-writable, so they can't be replaced by an expression
@@ -9504,8 +9518,14 @@ api.colorizer = function(opts) {
   if (!opts.name) {
     stop("Missing required name= parameter");
   }
-
+  if (internal.isReservedName(opts.name)) {
+    stop('"' + opts.name + '" is a reserved name');
+  }
   internal.defs[opts.name] = internal.getColorizerFunction(opts);
+};
+
+internal.isReservedName = function(name) {
+  return /^(stroke|stroke-width|fill|opacity|r|class)$/.test(name);
 };
 
 internal.getColorizerFunction = function(opts) {
@@ -15959,17 +15979,16 @@ internal.projectAndDensifyArcs = function(arcs, proj) {
 
 api.renameLayers = function(layers, names) {
   var nameCount = names && names.length || 0;
+  var name = 'layer';
+  var suffix = '';
   layers.forEach(function(lyr, i) {
-    var name;
-    if (nameCount === 0) {
-      name = "layer" + (i + 1);
-    } else {
-      name = i < nameCount - 1 ? names[i] : names[nameCount - 1];
-      if (nameCount < layers.length && i >= nameCount - 2) {
-        name += i - nameCount + 2;
-      }
+    if (i < nameCount) {
+      name = names[i];
     }
-    lyr.name = name;
+    if (nameCount < layers.length && (i >= nameCount - 1)) {
+      suffix = (suffix || 0) + 1;
+    }
+    lyr.name = name + suffix;
   });
 };
 
@@ -17088,14 +17107,18 @@ api.sortFeatures = function(lyr, arcs, opts) {
 
 
 
-api.target = function(catalog, pattern) {
+api.target = function(catalog, pattern, opts) {
   var targets = catalog.findCommandTargets(pattern);
-  if (targets.length === 0) {
+  var target = targets[0];
+  if (!target || target.layers.length === 0) {
     stop("Target not found (" + pattern + ")");
-  } else if (targets.length > 1 || targets[0].layers.length > 1) {
+  } else if (targets.length > 1 || target.layers.length > 1) {
     stop("Matched more than one layer");
   }
-  catalog.setDefaultTarget(targets[0].layers, targets[0].dataset);
+  if (opts && opts.name) {
+    target.layers[0].name = opts.name;
+  }
+  catalog.setDefaultTarget(target.layers, target.dataset);
 };
 
 
@@ -17168,7 +17191,9 @@ api.runCommand = function(cmd, catalog, cb) {
       // when combining GeoJSON layers, default is all layers
       // TODO: check that combine_layers is only used w/ GeoJSON output
       targets = catalog.findCommandTargets(opts.target || opts.combine_layers && '*');
-
+    } else if (name == 'proj') {
+      // accepts multiple target datasets
+      targets = catalog.findCommandTargets(opts.target);
     } else {
       targets = catalog.findCommandTargets(opts.target);
       if (targets.length == 1) {
@@ -17315,7 +17340,10 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers = internal.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
     } else if (name == 'proj') {
-      api.proj(targetDataset, opts, source && source.dataset);
+      targets.forEach(function(targ) {
+        api.proj(targ.dataset, opts, source && source.dataset);
+      });
+      // TODO: consider updating default dataset.
 
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);
@@ -17354,7 +17382,7 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.applyCommand(api.uniq, targetLayers, arcs, opts);
 
     } else if (name == 'target') {
-      api.target(catalog, opts.target);
+      api.target(catalog, opts.target, opts);
 
     } else {
       error("Unhandled command: [" + name + "]");
@@ -17366,6 +17394,11 @@ api.runCommand = function(cmd, catalog, cb) {
       outputLayers.forEach(function(lyr) {
         lyr.name = opts.name;
       });
+    }
+
+    // delete arcs if no longer needed (e.g. after -points command)
+    if (targetDataset) {
+      internal.cleanupArcs(targetDataset);
     }
 
     // integrate output layers into the target dataset
@@ -18593,6 +18626,7 @@ internal.getOptionParser = function() {
       type: "flag",
       describe: "add points along straight segments to approximate curves"
     })
+    .option("target", targetOpt)
     .validate(validateProjOpts);
 
   parser.command("rename-fields")
@@ -18801,6 +18835,9 @@ internal.getOptionParser = function() {
     .option("target", {
       label: "<target>",
       describe: "name or index of layer to target"
+    })
+    .option("name", {
+      describe: 'rename the target layer'
     });
 
   parser.command("uniq")
