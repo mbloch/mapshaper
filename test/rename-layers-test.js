@@ -45,6 +45,13 @@ describe('mapshaper-rename-layers.js', function () {
     assert.deepEqual(layers, [{name: 'layer1'}, {name: 'layer2'}]);
   })
 
+  it ('use last name + count if more layers than names', function() {
+    var layers = [{}, {}, {}, {}],
+        names = ['counties', 'outline', 'innerlines'];
+    api.renameLayers(layers, names);
+    assert.deepEqual(layers, [{name: 'counties'}, {name: 'outline'}, {name: 'innerlines1'}, {name: 'innerlines2'}]);
+  })
+
   it ('ignore excess names', function() {
     var layers = [{}, {}],
         names = ['a', 'b', 'c'];
