@@ -1,11 +1,17 @@
-/* @requires mapshaper-common, mapshaper-rounding */
+/* @requires mapshaper-rounding */
 
 api.colorizer = function(opts) {
   if (!opts.name) {
     stop("Missing required name= parameter");
   }
-
+  if (internal.isReservedName(opts.name)) {
+    stop('"' + opts.name + '" is a reserved name');
+  }
   internal.defs[opts.name] = internal.getColorizerFunction(opts);
+};
+
+internal.isReservedName = function(name) {
+  return /^(stroke|stroke-width|fill|opacity|r|class)$/.test(name);
 };
 
 internal.getColorizerFunction = function(opts) {

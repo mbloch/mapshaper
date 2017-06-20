@@ -26,6 +26,28 @@ describe('mapshaper-colorizer.js', function () {
             done();
           });
     });
+
+    it('svg style properties are reserved words', function() {
+      assert.doesNotThrow(function() {
+        api.colorizer({name: 'rgb', colors: ['black'], categories: ['foo']});
+      });
+      assert.throws(function() {
+        api.colorizer({name: 'stroke', colors: ['black'], categories: ['foo']});
+      });
+      assert.throws(function() {
+        api.colorizer({name: 'r', colors: ['black'], categories: ['foo']});
+      });
+      assert.throws(function() {
+        api.colorizer({name: 'stroke-width', colors: ['black'], categories: ['foo']});
+      });
+      assert.throws(function() {
+        api.colorizer({name: 'fill', colors: ['black'], categories: ['foo']});
+      });
+      assert.throws(function() {
+        api.colorizer({name: 'opacity', colors: ['black'], categories: ['foo']});
+      });
+
+    });
   })
 
   describe('getSequentialColorFunction()', function () {
@@ -85,7 +107,6 @@ describe('mapshaper-colorizer.js', function () {
       assert.throws(testInvalidOpts({colors: ['red', 'blue'], breaks: [NaN]}))
       assert.throws(testInvalidOpts({colors: ['red', 'blue'], breaks: [1, 0]}))
     })
-
 
   })
 

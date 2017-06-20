@@ -110,6 +110,11 @@ internal.getExpressionContext = function(lyr, mixins) {
     internal.nullifyUnsetProperties(lyr.data.getFields(), env);
   }
   if (mixins) {
+    Object.keys(mixins).forEach(function(key) {
+      // Catch name collisions between data fields and user-defined functions
+      if (key in env) message('Warning: "' + key + '" has multiple definitions');
+      env[key] = mixins[key];
+    });
     utils.extend(env, mixins);
   }
   // make context properties non-writable, so they can't be replaced by an expression
