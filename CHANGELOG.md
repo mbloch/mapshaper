@@ -1,6 +1,7 @@
 v0.4.25
-* Added `-proj target=` option, with support for target=*.
+* Added `-proj target=` option, with support for `target=*`.
 * Added `-target name=` option for renaming the target layer.
+* Updated mapshaper-proj to v0.0.10.
 
 v0.4.24
 * Fixed: error dissolving polyline features containing rings.
