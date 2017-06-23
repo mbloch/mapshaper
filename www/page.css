@@ -170,8 +170,6 @@ body {
 	pointer-events: none;
 }
 
-
-
 .mapshaper-logo {
 	font-weight: bold;
 	font-size: 18px;
@@ -241,6 +239,44 @@ body.console-open .map-area {
 .console-area {
 	right: auto;
 	width: 50%;
+}
+
+@media screen and (min-width: 1000px) {
+	body.console-open .map-area {
+		left: 500px;
+	}
+
+	.console-area {
+		width: 500px;
+	}
+}
+
+@media screen and (min-width: 1100px) {
+	body.console-open .map-area {
+		left: 550px;
+	}
+
+	.console-area {
+		width: 550px;
+	}
+
+	.console-area #console-buffer {
+		font-size: 13px;
+	}
+}
+
+@media screen and (min-width: 1200px) {
+	body.console-open .map-area {
+		left: 600px;
+	}
+
+	.console-area {
+		width: 600px;
+	}
+
+	.console-area #console-buffer {
+		font-size: 14px;
+	}
 }
 
 /* --- Error message ---------- */
@@ -412,9 +448,9 @@ div.error-box > div {
 	pointer-events: auto;
 	background-color: rgba(0,0,0,1);
 	position: absolute;
-	width: 100%;
 	text-align: center;
 	overflow: auto;
+	width: 100%;
 	height: 100%;
 }
 
@@ -423,7 +459,7 @@ div.error-box > div {
 	width: 100%;
 	position: relative;
 	color: white;
-	font: 13px/1.35 Iosevka, monospace;
+	font: 12px/1.35 Iosevka, monospace;
 	font-weight: 500;
 	margin: 8px 0 20px 0;
 	word-break: break-all;
@@ -435,10 +471,9 @@ div.error-box > div {
 
 #console-buffer > div {
 	text-align: left;
-	max-width: 640px;
+	/* max-width: 640px; */
 	margin: 0 auto;
-	padding-left: 3%;
-	padding-right: 3%;
+	padding: 0 10px 0 14px;
 }
 
 .console-error {
