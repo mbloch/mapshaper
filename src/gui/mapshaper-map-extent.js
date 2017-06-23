@@ -13,6 +13,10 @@ function MapExtent(el) {
     this.dispatchEvent('resize');
   }, this);
 
+  gui.on('resize', function() {
+    _position.update(); // kludge to detect new map size
+  });
+
   this.reset = function(force) {
     this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, force);
   };

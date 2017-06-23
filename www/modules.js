@@ -9509,8 +9509,8 @@ var fabs = Math.abs,
     hypot = Math.hypot,
     sinh = Math.sinh,
     cosh = Math.cosh,
-    min = Math.min,
-    max = Math.max;
+    MIN = Math.min,
+    MAX = Math.max;
 
 // constants from math.h
 var HUGE_VAL = Infinity,
@@ -10100,6 +10100,9 @@ function pj_ell_set(P) {
       a = sqrt(a * b);
       es = 0;
     } else if (pj_param(params, 'bR_h')) {
+      if (a + b === 0) {
+        error(-20);
+      }
       a = 2 * a * b / (a + b);
       es = 0;
     } else if (i = pj_param(params, 'tR_lat_a') || pj_param(params, 'tR_lat_g')) {
@@ -10300,6 +10303,12 @@ function pj_init(args) {
   P.is_long_wrap_set = pj_param(params, 'tlon_wrap');
   if (P.is_long_wrap_set) {
     P.long_wrap_center = pj_param(params, 'rlon_wrap');
+    // Don't accept excessive values otherwise we might perform badly
+    // when correcting longitudes around it
+    // The test is written this way to error on long_wrap_center "=" NaN
+    if(!(fabs(P.long_wrap_center) < 10 * M_TWOPI)) {
+      error(-14);
+    }
   }
 
   if (pj_param(params, 'saxis')) {
@@ -12291,28 +12300,13 @@ function wkt_to_proj4(str) {
 
 
 
-pj_add(pj_blank, 'blank', 'Blank', '');
-
-function pj_blank(P) {
-
-  P.inv = e_inv;
-  P.fwd = e_fwd;
-
-  function e_fwd(lp, xy) {
-
-  }
-
-  function e_inv(xy, lp) {
-
-  }
-}
-
-
 function pj_qsfn(sinphi, e, one_es) {
   var EPS = 1e-7;
   var con;
   if (e >= EPS) {
     con = e * sinphi;
+    // Proj.4 check for div0 and returns HUGE_VAL
+    // this returns +/- Infinity; effect should be same
     return (one_es * (sinphi / (1 - con * con) -
        (0.5 / e) * log ((1 - con) / (1 + con))));
   } else
@@ -12360,6 +12354,7 @@ function pj_aea_init(P, phi1, phi2) {
       cosphi = cos(phi2);
       m2 = pj_msfn(sinphi, cosphi, P.es);
       ml2 = pj_qsfn(sinphi, P.e, P.one_es);
+      // Ignoring Proj.4 div0 check (above checks should prevent this)
       n = (m1 * m1 - m2 * m2) / (ml2 - ml1);
     }
     ec = 1 - 0.5 * P.one_es * log((1 - P.e) / (1 + P.e)) / P.e;
@@ -15226,6 +15221,7 @@ function pj_boggs(P) {
       FXC2 = 1.11072,
       FYC = 0.49931;
   P.fwd = s_fwd;
+  P.es = 0;
 
   function s_fwd(lp, xy) {
     var theta, th1, c, i;
@@ -16578,6 +16574,478 @@ function pj_hatano(P) {
 }
 
 
+pj_add(pj_healpix, 'healpix', 'HEALPix', '\n\tSph., Ellps.');
+pj_add(pj_rhealpix, 'rhealpix', 'rHEALPix', '\n\tSph., Ellps.\n\tnorth_square= south_square=');
+
+function pj_rhealpix(P) {
+  pj_healpix(P, true);
+}
+
+function pj_healpix(P, rhealpix) {
+  var R1 = [
+    [0, -1],
+    [1, 0]
+  ];
+  var R2 = [
+    [-1, 0],
+    [0, -1]
+  ];
+  var R3 = [
+    [0, 1],
+    [-1, 0]
+  ];
+  var IDENT = [
+    [1, 0],
+    [0, 1]
+  ];
+  var rot = [IDENT, R1, R2, R3, R3, R2, R1];
+  var EPS = 1e-15;
+
+  var north_square;
+  var south_square;
+  var qp;
+  var apa;
+  var vertsJit;
+
+  if (rhealpix) {
+    north_square = pj_param(P.params, "inorth_square");
+    south_square = pj_param(P.params, "isouth_square");
+
+    /* Check for valid north_square and south_square inputs. */
+    if (north_square < 0 || north_square > 3) {
+      e_error(-47);
+    }
+    if (south_square < 0 || south_square > 3) {
+      e_error(-47);
+    }
+    vertsJit = [
+      [-M_PI - EPS, M_FORTPI + EPS],
+      [-M_PI + north_square * M_HALFPI - EPS, M_FORTPI + EPS],
+      [-M_PI + north_square * M_HALFPI - EPS, 3 * M_FORTPI + EPS],
+      [-M_PI + (north_square + 1.0) * M_HALFPI + EPS, 3 * M_FORTPI + EPS],
+      [-M_PI + (north_square + 1.0) * M_HALFPI + EPS, M_FORTPI + EPS],
+      [M_PI + EPS, M_FORTPI + EPS],
+      [M_PI + EPS, -M_FORTPI - EPS],
+      [-M_PI + (south_square + 1.0) * M_HALFPI + EPS, -M_FORTPI - EPS],
+      [-M_PI + (south_square + 1.0) * M_HALFPI + EPS, -3 * M_FORTPI - EPS],
+      [-M_PI + south_square * M_HALFPI - EPS, -3 * M_FORTPI - EPS],
+      [-M_PI + south_square * M_HALFPI - EPS, -M_FORTPI - EPS],
+      [-M_PI - EPS, -M_FORTPI - EPS]
+    ];
+
+    if (P.es != 0.0) {
+      apa = pj_authset(P.es); /* For auth_lat(). */
+      qp = pj_qsfn(1.0, P.e, P.one_es); /* For auth_lat(). */
+      P.a = P.a * sqrt(0.5 * qp); /* Set P.a to authalic radius. */
+      P.ra = 1.0 / P.a;
+      P.fwd = e_rhealpix_forward;
+      P.inv = e_rhealpix_inverse;
+    } else {
+      P.fwd = s_rhealpix_forward;
+      P.inv = s_rhealpix_inverse;
+    }
+
+  } else { // healpix
+    vertsJit = [
+      [-M_PI - EPS, M_FORTPI],
+      [-3 * M_FORTPI, M_HALFPI + EPS],
+      [-M_HALFPI, M_FORTPI + EPS],
+      [-M_FORTPI, M_HALFPI + EPS],
+      [0.0, M_FORTPI + EPS],
+      [M_FORTPI, M_HALFPI + EPS],
+      [M_HALFPI, M_FORTPI + EPS],
+      [3 * M_FORTPI, M_HALFPI + EPS],
+      [M_PI + EPS, M_FORTPI],
+      [M_PI + EPS, -M_FORTPI],
+      [3 * M_FORTPI, -M_HALFPI - EPS],
+      [M_HALFPI, -M_FORTPI - EPS],
+      [M_FORTPI, -M_HALFPI - EPS],
+      [0.0, -M_FORTPI - EPS],
+      [-M_FORTPI, -M_HALFPI - EPS],
+      [-M_HALFPI, -M_FORTPI - EPS],
+      [-3 * M_FORTPI, -M_HALFPI - EPS],
+      [-M_PI - EPS, -M_FORTPI]
+    ];
+
+    if (P.es != 0.0) {
+      apa = pj_authset(P.es); /* For auth_lat(). */
+      qp = pj_qsfn(1.0, P.e, P.one_es); /* For auth_lat(). */
+      P.a = P.a * sqrt(0.5 * qp); /* Set P.a to authalic radius. */
+      P.ra = 1.0 / P.a;
+      P.fwd = e_healpix_forward;
+      P.inv = e_healpix_inverse;
+    } else {
+      P.fwd = s_healpix_forward;
+      P.inv = s_healpix_inverse;
+    }
+  }
+
+  function s_healpix_forward(lp, xy) {
+    healpix_sphere(lp, xy);
+  }
+
+  function e_healpix_forward(lp, xy) {
+    lp.phi = auth_lat(P, lp.phi, 0);
+    healpix_sphere(lp, xy);
+  }
+
+  function s_healpix_inverse(xy, lp) {
+    if (!in_image(xy.x, xy.y)) {
+      lp.lam = HUGE_VAL;
+      lp.phi = HUGE_VAL;
+      pj_ctx_set_errno(-15);
+      return;
+    }
+    healpix_sphere_inverse(xy, lp);
+  }
+
+  function e_healpix_inverse(xy, lp) {
+    if (!in_image(xy.x, xy.y)) {
+      lp.lam = HUGE_VAL;
+      lp.phi = HUGE_VAL;
+      pj_ctx_set_errno(-15);
+      return;
+    }
+    healpix_sphere_inverse(xy, lp);
+    lp.phi = auth_lat(P, lp.phi, 1);
+  }
+
+  function s_rhealpix_forward(lp, xy) {
+    healpix_sphere(lp, xy);
+    combine_caps(xy, north_square, south_square, 0);
+  }
+
+  function e_rhealpix_forward(lp, xy) {
+    lp.phi = auth_lat(P, lp.phi, 0);
+    healpix_sphere(lp, xy);
+    return combine_caps(xy, north_square, south_square, 0);
+  }
+
+  function s_rhealpix_inverse(xy, lp) {
+    if (!in_image(xy.x, xy.y)) {
+      lp.lam = HUGE_VAL;
+      lp.phi = HUGE_VAL;
+      pj_ctx_set_errno(-15);
+      return;
+    }
+    combine_caps(xy, north_square, south_square, 1);
+    healpix_sphere_inverse(xy, lp);
+  }
+
+  function e_rhealpix_inverse(xy, lp) {
+    if (!in_image(xy.x, xy.y)) {
+      lp.lam = HUGE_VAL;
+      lp.phi = HUGE_VAL;
+      pj_ctx_set_errno(-15);
+      return;
+    }
+    combine_caps(xy, north_square, south_square, 1);
+    healpix_sphere_inverse(xy, lp);
+    lp.phi = auth_lat(P, lp.phi, 1);
+  }
+
+  function healpix_sphere(lp, xy) {
+    var lam = lp.lam;
+    var phi = lp.phi;
+    var phi0 = asin(2.0 / 3.0);
+
+    /* equatorial region */
+    if (fabs(phi) <= phi0) {
+      xy.x = lam;
+      xy.y = 3 * M_PI / 8 * sin(phi);
+    } else {
+      var lamc;
+      var sigma = sqrt(3 * (1 - fabs(sin(phi))));
+      var cn = floor(2 * lam / M_PI + 2);
+      if (cn >= 4) {
+        cn = 3;
+      }
+      lamc = -3 * M_FORTPI + M_HALFPI * cn;
+      xy.x = lamc + (lam - lamc) * sigma;
+      xy.y = pj_sign(phi) * M_FORTPI * (2 - sigma);
+    }
+  }
+
+  function healpix_sphere_inverse(xy, lp) {
+    var x = xy.x;
+    var y = xy.y;
+    var y0 = M_FORTPI;
+
+    /* Equatorial region. */
+    if (fabs(y) <= y0) {
+      lp.lam = x;
+      lp.phi = asin(8 * y / (3 * M_PI));
+    } else if (fabs(y) < M_HALFPI) {
+      var cn = floor(2 * x / M_PI + 2);
+      var xc, tau;
+      if (cn >= 4) {
+        cn = 3;
+      }
+      xc = -3 * M_FORTPI + M_HALFPI * cn;
+      tau = 2.0 - 4 * fabs(y) / M_PI;
+      lp.lam = xc + (x - xc) / tau;
+      lp.phi = pj_sign(y) * asin(1.0 - pow(tau, 2) / 3.0);
+    } else {
+      lp.lam = -M_PI;
+      lp.phi = pj_sign(y) * M_HALFPI;
+    }
+  }
+
+  function pj_sign(v) {
+    return v > 0 ? 1 : (v < 0 ? -1 : 0);
+  }
+
+  /**
+   * Return the index of the matrix in ROT.
+   * @param index ranges from -3 to 3.
+   */
+  function get_rotate_index(index) {
+    switch (index) {
+      case 0:
+        return 0;
+      case 1:
+        return 1;
+      case 2:
+        return 2;
+      case 3:
+        return 3;
+      case -1:
+        return 4;
+      case -2:
+        return 5;
+      case -3:
+        return 6;
+    }
+    return 0;
+  }
+
+  /**
+   * Return true if point (testx, testy) lies in the interior of the polygon
+   * determined by the vertices in vert, and return false otherwise.
+   * See http://paulbourke.net/geometry/polygonmesh/ for more details.
+   * @param nvert the number of vertices in the polygon.
+   * @param vert the (x, y)-coordinates of the polygon's vertices
+   **/
+  function pnpoly(vert, testx, testy) {
+    var counter = 0;
+    var nvert = vert.length;
+    var x1, y1, x2, y2;
+    var xinters;
+    var i;
+
+    /* Check for boundary cases */
+    for (i = 0; i < nvert; i++) {
+      if (testx == vert[i][0] && testy == vert[i][1]) {
+        return true;
+      }
+    }
+
+    x1 = vert[0][0];
+    y1 = vert[0][1];
+
+    for (i = 1; i < nvert; i++) {
+      x2 = vert[i % nvert][0];
+      y2 = vert[i % nvert][1];
+      if (testy > MIN(y1, y2) &&
+        testy <= MAX(y1, y2) &&
+        testx <= MAX(x1, x2) &&
+        y1 != y2) {
+        xinters = (testy - y1) * (x2 - x1) / (y2 - y1) + x1;
+        if (x1 == x2 || testx <= xinters)
+          counter++;
+      }
+      x1 = x2;
+      y1 = y2;
+    }
+    return counter % 2 != 0;
+  }
+
+  function in_image(x, y) {
+    return pnpoly(vertsJit, x, y);
+  }
+
+  /**
+   * Return the authalic latitude of latitude alpha (if inverse=0) or
+   * return the approximate latitude of authalic latitude alpha (if inverse=1).
+   * P contains the relevant ellipsoid parameters.
+   **/
+  function auth_lat(P, alpha, inverse) {
+    if (!inverse) {
+      /* Authalic latitude. */
+      var q = pj_qsfn(sin(alpha), P.e, 1.0 - P.es);
+      var ratio = q / qp;
+
+      if (fabs(ratio) > 1) {
+        /* Rounding error. */
+        ratio = pj_sign(ratio);
+      }
+      return asin(ratio);
+    } else {
+      /* Approximation to inverse authalic latitude. */
+      return pj_authlat(alpha, apa);
+    }
+  }
+
+  function vector_add(a, b) {
+    return [a[0] + b[0], a[1] + b[1]];
+  }
+
+  function vector_sub(a, b) {
+    return [a[0] - b[0], a[1] - b[1]];
+  }
+
+  function dot_product(a, b) {
+    var i, j;
+    var ret = [0, 0];
+    for (i = 0; i < 2; i++) {
+      for (j = 0; j < 2; j++) {
+        ret[i] += a[i][j] * b[j];
+      }
+    }
+    return ret;
+  }
+
+  /**
+   * Return the number of the polar cap, the pole point coordinates, and
+   * the region that (x, y) lies in.
+   * If inverse=0, then assume (x,y) lies in the image of the HEALPix
+   * projection of the unit sphere.
+   * If inverse=1, then assume (x,y) lies in the image of the
+   * (north_square, south_square)-rHEALPix projection of the unit sphere.
+   **/
+  function get_cap(x, y, north_square, south_square, inverse) {
+    var capmap = {};
+    var c;
+    capmap.x = x;
+    capmap.y = y;
+    if (!inverse) {
+      if (y > M_FORTPI) {
+        capmap.region = 'north';
+        c = M_HALFPI;
+      } else if (y < -M_FORTPI) {
+        capmap.region = 'south';
+        c = -M_HALFPI;
+      } else {
+        capmap.region = 'equatorial';
+        capmap.cn = 0;
+        return capmap;
+      }
+      /* polar region */
+      if (x < -M_HALFPI) {
+        capmap.cn = 0;
+        capmap.x = (-3 * M_FORTPI);
+        capmap.y = c;
+      } else if (x >= -M_HALFPI && x < 0) {
+        capmap.cn = 1;
+        capmap.x = -M_FORTPI;
+        capmap.y = c;
+      } else if (x >= 0 && x < M_HALFPI) {
+        capmap.cn = 2;
+        capmap.x = M_FORTPI;
+        capmap.y = c;
+      } else {
+        capmap.cn = 3;
+        capmap.x = 3 * M_FORTPI;
+        capmap.y = c;
+      }
+    } else {
+      if (y > M_FORTPI) {
+        capmap.region = 'north';
+        capmap.x = -3 * M_FORTPI + north_square * M_HALFPI;
+        capmap.y = M_HALFPI;
+        x = x - north_square * M_HALFPI;
+      } else if (y < -M_FORTPI) {
+        capmap.region = 'south';
+        capmap.x = -3 * M_FORTPI + south_square * M_HALFPI;
+        capmap.y = -M_HALFPI;
+        x = x - south_square * M_HALFPI;
+      } else {
+        capmap.region = 'equatorial';
+        capmap.cn = 0;
+        return capmap;
+      }
+      /* Polar Region, find the HEALPix polar cap number that
+         x, y moves to when rHEALPix polar square is disassembled. */
+      if (capmap.region == 'north') {
+        if (y >= -x - M_FORTPI - EPS && y < x + 5 * M_FORTPI - EPS) {
+          capmap.cn = (north_square + 1) % 4;
+        } else if (y > -x - M_FORTPI + EPS && y >= x + 5 * M_FORTPI - EPS) {
+          capmap.cn = (north_square + 2) % 4;
+        } else if (y <= -x - M_FORTPI + EPS && y > x + 5 * M_FORTPI + EPS) {
+          capmap.cn = (north_square + 3) % 4;
+        } else {
+          capmap.cn = north_square;
+        }
+      } else if (capmap.region == 'south') {
+        if (y <= x + M_FORTPI + EPS && y > -x - 5 * M_FORTPI + EPS) {
+          capmap.cn = (south_square + 1) % 4;
+        } else if (y < x + M_FORTPI - EPS && y <= -x - 5 * M_FORTPI + EPS) {
+          capmap.cn = (south_square + 2) % 4;
+        } else if (y >= x + M_FORTPI - EPS && y < -x - 5 * M_FORTPI - EPS) {
+          capmap.cn = (south_square + 3) % 4;
+        } else {
+          capmap.cn = south_square;
+        }
+      }
+    }
+    return capmap;
+  }
+
+  /**
+   * Rearrange point (x, y) in the HEALPix projection by
+   * combining the polar caps into two polar squares.
+   * Put the north polar square in position north_square and
+   * the south polar square in position south_square.
+   * If inverse=1, then uncombine the polar caps.
+   * @param north_square integer between 0 and 3.
+   * @param south_square integer between 0 and 3.
+   **/
+  function combine_caps(xy, north_square, south_square, inverse) {
+    var v, c, vector, v_min_c, ret_dot, tmpRot, a;
+    var pole = 0;
+    var capmap = get_cap(xy.x, xy.y, north_square, south_square, inverse);
+    if (capmap.region == 'equatorial') {
+      xy.x = capmap.x;
+      xy.y = capmap.y;
+      return;
+    }
+    v = [xy.x, xy.y];
+    c = [capmap.x, capmap.y];
+
+    if (!inverse) {
+      /* Rotate (x, y) about its polar cap tip and then translate it to
+         north_square or south_square. */
+
+      if (capmap.region == 'north') {
+        pole = north_square;
+        tmpRot = rot[get_rotate_index(capmap.cn - pole)];
+      } else {
+        pole = south_square;
+        tmpRot = rot[get_rotate_index(-1 * (capmap.cn - pole))];
+      }
+    } else {
+      /* Inverse function.
+       Unrotate (x, y) and then translate it back. */
+
+      /* disassemble */
+      if (capmap.region == 'north') {
+        pole = north_square;
+        tmpRot = rot[get_rotate_index(-1 * (capmap.cn - pole))];
+      } else {
+        pole = south_square;
+        tmpRot = rot[get_rotate_index(capmap.cn - pole)];
+      }
+    }
+    v_min_c = vector_sub(v, c);
+    ret_dot = dot_product(tmpRot, v_min_c);
+    a = [-3 * M_FORTPI + ((!inverse) ? 0 : capmap.cn) * M_HALFPI, M_HALFPI];
+    vector = vector_add(ret_dot, a);
+    xy.x = vector[0];
+    xy.y = vector[1];
+  }
+}
+
+
 pj_add(pj_krovak, 'krovak', 'Krovak', '\n\tPCyl., Ellps.');
 
 function pj_krovak(P) {
@@ -16920,6 +17388,7 @@ function pj_lonlat(P) {
 
 function pj_tsfn(phi, sinphi, e) {
 	sinphi *= e;
+  // Proj.4 returns HUGE_VAL on div0; this returns +/- Infinity; effect should be same
 	return (tan(0.5 * (M_HALFPI - phi)) /
 	  pow((1 - sinphi) / (1 + sinphi), 0.5 * e));
 }
@@ -17050,6 +17519,143 @@ function pj_loxim(P) {
       else
         lp.lam = xy.x * log(tan(lp.lam) / tanphi1) / xy.y;
     }
+  }
+}
+
+
+pj_add(pj_mbt_fpp, 'mbt_fpp', 'McBride-Thomas Flat-Polar Parabolic', '\n\tCyl., Sph.');
+
+function pj_mbt_fpp(P) {
+  var CS = 0.95257934441568037152,
+      FXC = 0.92582009977255146156,
+      FYC = 3.40168025708304504493,
+      C23 = 2 / 3,
+      C13 = 1 / 3,
+      ONEEPS = 1.0000001;
+
+  P.fwd = s_fwd;
+  P.inv = s_inv;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    lp.phi = asin(CS * sin(lp.phi));
+    xy.x = FXC * lp.lam * (2 * cos(C23 * lp.phi) - 1);
+    xy.y = FYC * sin(C13 * lp.phi);
+  }
+
+  function s_inv(xy, lp) {
+    lp.phi = xy.y / FYC;
+    if (fabs(lp.phi) >= 1) {
+      if (fabs(lp.phi) > ONEEPS)
+        i_error();
+      else
+        lp.phi = (lp.phi < 0) ? -M_HALFPI : M_HALFPI;
+    } else
+      lp.phi = asin(lp.phi);
+
+    lp.lam = xy.x / (FXC * (2 * cos(C23 * (lp.phi *= 3)) - 1));
+    if (fabs(lp.phi = sin(lp.phi) / CS) >= 1) {
+      if (fabs(lp.phi) > ONEEPS)
+        i_error();
+      else
+        lp.phi = (lp.phi < 0) ? -M_HALFPI : M_HALFPI;
+    } else
+      lp.phi = asin(lp.phi);
+  }
+}
+
+
+pj_add(pj_mbt_fpq, 'mbt_fpq', 'McBryde-Thomas Flat-Polar Quartic', '\n\tCyl., Sph.');
+
+function pj_mbt_fpq(P) {
+  var NITER = 20,
+      EPS = 1e-7,
+      ONETOL = 1.000001,
+      C = 1.70710678118654752440,
+      RC = 0.58578643762690495119,
+      FYC = 1.87475828462269495505,
+      RYC = 0.53340209679417701685,
+      FXC = 0.31245971410378249250,
+      RXC = 3.20041258076506210122;
+
+  P.fwd = s_fwd;
+  P.inv = s_inv;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var th1, c, i;
+    c = C * sin(lp.phi);
+    for (i = NITER; i; --i) {
+      lp.phi -= th1 = (sin(0.5 * lp.phi) + sin(lp.phi) - c) /
+        (0.5 * cos(0.5 * lp.phi) + cos(lp.phi));
+      if (fabs(th1) < EPS) break;
+    }
+    xy.x = FXC * lp.lam * (1.0 + 2 * cos(lp.phi) / cos(0.5 * lp.phi));
+    xy.y = FYC * sin(0.5 * lp.phi);
+  }
+
+  function s_inv(xy, lp) {
+    var t;
+    lp.phi = RYC * xy.y;
+    if (fabs(lp.phi) > 1) {
+      if (fabs(lp.phi) > ONETOL) i_error();
+      else if (lp.phi < 0) {
+        t = -1;
+        lp.phi = -M_PI;
+      } else {
+        t = 1;
+        lp.phi = M_PI;
+      }
+    } else
+      lp.phi = 2 * asin(t = lp.phi);
+    lp.lam = RXC * xy.x / (1 + 2 * cos(lp.phi) / cos(0.5 * lp.phi));
+    lp.phi = RC * (t + sin(lp.phi));
+    if (fabs(lp.phi) > 1)
+      if (fabs(lp.phi) > ONETOL) i_error();
+      else
+        lp.phi = lp.phi < 0 ? -M_HALFPI : M_HALFPI;
+    else
+      lp.phi = asin(lp.phi);
+  }
+}
+
+
+pj_add(pj_mbt_fps, 'mbt_fps', 'McBryde-Thomas Flat-Pole Sine (No. 2)', '\n\tCyl., Sph.');
+
+function pj_mbt_fps(P) {
+  var MAX_ITER = 10,
+      LOOP_TOL = 1e-7,
+      C1 = 0.45503,
+      C2 = 1.36509,
+      C3 = 1.41546,
+      C_x = 0.22248,
+      C_y = 1.44492,
+      C1_2 = 1 / 3;
+
+  P.fwd = s_fwd;
+  P.inv = s_inv;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var k, V, t, i;
+    k = C3 * sin(lp.phi);
+    for (i = MAX_ITER; i; --i) {
+      t = lp.phi / C2;
+      lp.phi -= V = (C1 * sin(t) + sin(lp.phi) - k) /
+        (C1_2 * cos(t) + cos(lp.phi));
+      if (fabs(V) < LOOP_TOL)
+        break;
+    }
+    t = lp.phi / C2;
+    xy.x = C_x * lp.lam * (1 + 3 * cos(lp.phi) / cos(t));
+    xy.y = C_y * sin(t);
+  }
+
+  function s_inv(xy, lp) {
+    var t;
+    lp.phi = C2 * (t = aasin(xy.y / C_y));
+    lp.lam = xy.x / (C_x * (1 + 3 * cos(lp.phi) / cos(t)));
+    lp.phi = aasin((C1 * sin(t) + sin(lp.phi)) / C3);
   }
 }
 
@@ -17806,8 +18412,10 @@ function pj_ob_tran(P) {
   var lam1, lam2, phi1, phi2, con;
   var TOL = 1e-10;
 
-  name = pj_param(P.params, 'so_proj') || E_ERROR(-26);
-  defn = pj_list[name] || E_ERROR(-37);
+  name = pj_param(P.params, 'so_proj');
+  defn = pj_list[name];
+  if (!name) e_error(-26);
+  if (!defn || name == 'ob_tran') e_error(-37);
   P.es = 0;
   // copy params to second object
   P2 = {};
@@ -17829,7 +18437,7 @@ function pj_ob_tran(P) {
     phic  = pj_param(P.params, "ro_lat_c");
     alpha = pj_param(P.params, "ro_alpha");
 
-    if (fabs(fabs(phic) - M_HALFPI) <= TOL) E_ERROR(-32);
+    if (fabs(fabs(phic) - M_HALFPI) <= TOL) e_error(-32);
     lamp = lamc + aatan2(-cos(alpha), -sin(alpha) * sin(phic));
     phip = aasin(cos(phic) * sin(alpha));
 
@@ -17846,7 +18454,7 @@ function pj_ob_tran(P) {
     if (fabs(phi1 - phi2) <= TOL ||
         (con = fabs(phi1)) <= TOL ||
         fabs(con - M_HALFPI) <= TOL ||
-        fabs(fabs(phi2) - M_HALFPI) <= TOL) E_ERROR(-33);
+        fabs(fabs(phi2) - M_HALFPI) <= TOL) e_error(-33);
     lamp = atan2(cos(phi1) * sin(phi2) * cos(lam1) -
         sin(phi1) * cos(phi2) * cos(lam2),
         sin(phi1) * cos(phi2) * sin(lam2) -
@@ -19064,7 +19672,7 @@ function pj_sconic(P, type) {
       c2 = cos(del);
       c1 = 1 / tan(sig);
       if (fabs(del = P.phi0 - sig) - EPS >= M_HALFPI)
-        E_ERROR(-43);
+        e_error(-43);
       rho_0 = c2 * (c1 - tan(del));
       break;
 
@@ -19433,6 +20041,7 @@ function pj_gauss_ini(e, phi0) {
       cphi = cos(phi0),
       rc = sqrt(1 - es) / (1 - es * sphi * sphi),
       C = sqrt(1 + es * cphi * cphi * cphi * cphi / (1 - es)),
+      // ignoring Proj.4 div0 check (seems unneccessary)
       chi = asin(sphi / C),
       ratexp = 0.5 * C * e,
       K = tan(0.5 * chi + M_FORTPI) / (pow(tan(0.5 * phi0 + M_FORTPI), C) *
@@ -19809,6 +20418,33 @@ function pj_tpeqd(P) {
     cp = cos(lp.phi);
     lp.phi = aasin(sa * sp + ca * cp * (s = cos(lp.lam -= lamp)));
     lp.lam = atan2(cp * sin(lp.lam), sa * cp * s - ca * sp) + lamc;
+  }
+}
+
+
+pj_add(pj_urm5, 'urm5', 'Urmaev V', '\n\tPCyl., Sph., no inv.\n\tn= q= alpha=');
+
+function pj_urm5(P) {
+  var m, rmn, q3, n;
+  var alpha, t;
+  n = pj_param(P.params, "dn");
+  if (n > 0 && n <= 1 === false) {
+    e_error(-40);
+  }
+  q3 = pj_param(P.params, "dq") / 3;
+  alpha = pj_param(P.params, "ralpha");
+  t = n * sin (alpha);
+  m = cos (alpha) / sqrt (1 - t * t);
+  rmn = 1 / (m * n);
+
+  P.fwd = s_fwd;
+  P.es = 0;
+
+  function s_fwd(lp, xy) {
+    var t = lp.phi = aasin (n * sin (lp.phi));
+    xy.x = m * lp.lam * cos (lp.phi);
+    t *= t;
+    xy.y = lp.phi * (1 + t * q3) * rmn;
   }
 }
 

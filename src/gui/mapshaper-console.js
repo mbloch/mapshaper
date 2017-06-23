@@ -64,6 +64,8 @@ function Console(model) {
       _isOpen = true;
       stop = internal.stop = consoleStop;
       error = internal.error = consoleError;
+      El('body').addClass('console-open');
+      gui.dispatchEvent('resize');
       el.show();
       input.node().focus();
       history = getHistory();
@@ -78,6 +80,8 @@ function Console(model) {
       el.hide();
       input.node().blur();
       saveHistory(history);
+      El('body').removeClass('console-open');
+      gui.dispatchEvent('resize');
     }
   }
 

@@ -6,14 +6,27 @@
   font-family: 'Source Sans Pro';
   font-style: normal;
   font-weight: 400;
-  src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url(SourceSansPro-Regular.woff) format('woff');
+  src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url('assets/SourceSansPro-Regular.woff') format('woff');
 }
 
 @font-face {
   font-family: 'Source Sans Pro';
   font-style: normal;
   font-weight: 600;
-  src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url(SourceSansPro-Semibold.woff) format('woff');
+  src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('assets/SourceSansPro-Semibold.woff') format('woff');
+}
+
+/*
+@font-face {
+	font-family: 'Iosevka';
+	font-weight: 500;
+	src: url('assets/iosevka-medium.woff2') format('woff2'), url('assets/iosevka-medium.woff') format('woff');
+}
+*/
+
+@font-face {
+	font-family: 'Iosevka';
+	src: url('assets/iosevka-regular.woff2') format('woff2'), url('assets/iosevka-regular.woff') format('woff');
 }
 
 html, body {
@@ -217,9 +230,17 @@ body {
 	right: 0;
 	bottom: 0;
 	left: 0;
-	margin: 32px 0 0 0;	
+	margin: 32px 0 0 0;
 }
 
+body.console-open .map-area {
+	left: 50%;
+}
+
+.console-area {
+	right: auto;
+	width: 50%;
+}
 
 /* --- Error message ---------- */
 
@@ -393,7 +414,7 @@ div.error-box > div {
 	width: 100%;
 	text-align: center;
 	overflow: auto;
-	max-height: 80%;
+	height: 100%;
 }
 
 #console-buffer {
@@ -401,8 +422,9 @@ div.error-box > div {
 	width: 100%;
 	position: relative;
 	color: white;
-	font: 13px/1.35 monospace;
-	margin: 8px 0 10px 0;
+	font: 13px/1.35 Iosevka, monospace;
+	font-weight: 500;
+	margin: 8px 0 20px 0;
 	word-break: break-all;
 	word-wrap: break-word;
 	white-space: pre-wrap;
@@ -414,8 +436,8 @@ div.error-box > div {
 	text-align: left;
 	max-width: 640px;
 	margin: 0 auto;
-	padding-left: 13%;
-	padding-right: 2%;
+	padding-left: 3%;
+	padding-right: 3%;
 }
 
 .console-error {
