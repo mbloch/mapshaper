@@ -167,6 +167,7 @@ body {
 	left: 6px;
 	padding: 2px 5px 2px 5px;
 	font-size: 11px;
+	pointer-events: none;
 }
 
 
