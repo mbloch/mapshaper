@@ -18,7 +18,8 @@ function MapNav(root, ext, mouse) {
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
       zoomScale = 2.5,
-      dragStartEvt, _fx, _fy; // zoom foci, [0,1]
+      dragStartEvt,
+      _fx, _fy; // zoom foci, [0,1]
 
   gui.addSidebarButton("#home-icon").on('click', function() {
     gui.dispatchEvent('map_reset');

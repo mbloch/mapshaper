@@ -44,8 +44,9 @@ gui.getIntersectionPct = function(bb1, bb2) {
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
       _layers = El('#map-layers'),
-      _ext = new MapExtent(_layers),
-      _mouse = new MouseArea(_layers.node()),
+      _position = new ElementPosition(_layers),
+      _ext = new MapExtent(_position),
+      _mouse = new MouseArea(_layers.node(), _position),
       _nav = new MapNav(_root, _ext, _mouse),
       _inspector = new InspectionControl(model, new HitControl(_ext, _mouse));
 
@@ -58,6 +59,10 @@ function MshpMap(model) {
       _activeLyr, _activeStyle, _overlayStyle;
 
   _ext.on('change', drawLayers);
+
+  gui.on('resize', function() {
+    _position.update(); // kludge to detect new map size after console toggle
+  });
 
   _inspector.on('change', function(e) {
     var lyr = _activeLyr.getDisplayLayer().layer;

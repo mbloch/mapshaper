@@ -1,21 +1,15 @@
 /* @requires mapshaper-gui-lib */
 
-function MapExtent(el) {
-  var _position = new ElementPosition(el),
-      _scale = 1,
-      _cx,
-      _cy,
+function MapExtent(_position) {
+  var _scale = 1,
+      _cx, _cy, // center in geographic units
       _contentBounds;
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
-    this.dispatchEvent('navigate');
-    this.dispatchEvent('resize');
+    // this.dispatchEvent('navigate');
+    // this.dispatchEvent('resize');
   }, this);
-
-  gui.on('resize', function() {
-    _position.update(); // kludge to detect new map size
-  });
 
   this.reset = function(force) {
     this.recenter(_contentBounds.centerX(), _contentBounds.centerY(), 1, force);
@@ -28,7 +22,7 @@ function MapExtent(el) {
       _cy = cy;
       _scale = scale;
       this.dispatchEvent('change');
-      this.dispatchEvent('navigate');
+      // this.dispatchEvent('navigate');
     }
   };
 
