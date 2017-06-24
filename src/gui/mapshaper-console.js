@@ -19,14 +19,12 @@ function Console(model) {
   var _isOpen = false;
   var _error = internal.error; // save default error functions...
   var _stop = internal.stop;
+  var btn = El('#console-btn').on('click', toggle);
 
   // capture all messages to this console, whether open or closed
   message = internal.message = consoleMessage;
-
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
-  new ModeButton('#console-btn', 'console');
-  gui.addMode('console', turnOn, turnOff);
 
   gui.onClick(content, function(e) {
     var targ = El(e.target);
@@ -36,6 +34,11 @@ function Console(model) {
       input.node().focus();
     }
   });
+
+  function toggle() {
+    if (_isOpen) turnOff();
+    else turnOn();
+  }
 
   function getHistory() {
     var hist;
@@ -61,6 +64,7 @@ function Console(model) {
 
   function turnOn() {
     if (!_isOpen && !model.isEmpty()) {
+      btn.addClass('active');
       _isOpen = true;
       stop = internal.stop = consoleStop;
       error = internal.error = consoleError;
@@ -74,6 +78,7 @@ function Console(model) {
 
   function turnOff() {
     if (_isOpen) {
+      btn.removeClass('active');
       _isOpen = false;
       stop = internal.stop = _stop; // restore original error functions
       error = internal.error = _error;
@@ -132,7 +137,8 @@ function Console(model) {
       if (typing) {
         inputEl.blur();
       }
-      gui.clearMode(); // esc escapes other modes as well
+      gui.clearMode(); // esc closes any open panels
+      turnOff();
       capture = true;
 
     // l/r arrow keys while not typing in a text field
@@ -160,7 +166,7 @@ function Console(model) {
         forward();
       } else if (kc == 32 && (!typing || (inputText === '' && typingInConsole))) {
         // space bar closes if nothing has been typed
-        gui.clearMode();
+        turnOff();
       } else if (!typing && e.target != input.node() && !metaKey(e)) {
         // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
         // or user is typing in a different input area somewhere
@@ -175,7 +181,7 @@ function Console(model) {
     } else if (!typing) {
        if (kc == 32) { // space bar opens console
         capture = true;
-        gui.enterMode('console');
+        turnOn();
       } else if (kc == 73) { // letter i opens inspector
         gui.dispatchEvent('inspector_toggle');
       } else if (kc == 72) { // letter h resets map extent
@@ -286,8 +292,9 @@ function Console(model) {
         message("Available layers:",
           internal.getFormattedLayerList(model));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
-        gui.clearMode();
+        turnOff();
       } else if (cmd) {
+        gui.clearMode(); // close any panels that  might be open
         runMapshaperCommands(cmd);
       }
       toHistory(cmd);
