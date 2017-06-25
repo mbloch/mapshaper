@@ -398,42 +398,36 @@ div.error-box > div {
 
 .console-area {
 	right: auto;
-	width: 500px;
+	width: 495px;
 	max-width: 100%;
 	font-size: 12px;
 }
 
-/* responsive sizing */
+/* responsive sizing, should be 78 chars per line */
 @media screen and (min-width: 800px) {
 	body.console-open .map-area {
-		left: 500px;
-	}
-}
-
-@media screen and (min-width: 1100px) {
-	body.console-open .map-area {
-		left: 550px;
-	}
-
-	.console-area {
-		width: 550px;
-	}
-
-	.console-area #console-buffer {
-		font-size: 13px;
+		left: 495px;
 	}
 }
 
 @media screen and (min-width: 1200px) {
 	body.console-open .map-area {
-		left: 600px;
+		left: 535px;
 	}
 
 	.console-area {
-		width: 600px;
+		width: 535px;
+		font-size: 13px;
+	}
+}
+
+@media screen and (min-width: 1400px) {
+	body.console-open .map-area {
+		left: 575px;
 	}
 
-	.console-area #console-buffer {
+	.console-area {
+		width: 575px;
 		font-size: 14px;
 	}
 }
