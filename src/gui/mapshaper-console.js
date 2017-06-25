@@ -159,6 +159,7 @@ function Console(model) {
     // any key while console is open
     } else if (_isOpen) {
       capture = true;
+      gui.clearMode(); // close any panels that  might be open
       if (kc == 13) { // enter
         submit();
       } else if (kc == 9) { // tab
@@ -297,7 +298,6 @@ function Console(model) {
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
         turnOff();
       } else if (cmd) {
-        gui.clearMode(); // close any panels that  might be open
         runMapshaperCommands(cmd);
       }
       toHistory(cmd);

@@ -1,3 +1,6 @@
+v0.4.26
+* [web] Update console interface.
+
 v0.4.25
 * Added `-proj target=` option, with support for `target=*`.
 * Added `-target name=` option for renaming the target layer.
