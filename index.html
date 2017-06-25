@@ -44,7 +44,6 @@
 
 </div>
 
-<div id="coordinate-info" class="colored-text selectable"></div>
 <a href="https://github.com/mbloch/mapshaper"><div id="fork-me"></div></a>
 <div class="page-header">
 	<div class="mapshaper-logo">map<span class="logo-highlight">shaper</span></div>
@@ -202,10 +201,11 @@ interface. Examples: "no-topology"
 
 <!-- TODO: remove #mshp-main-page without causing the map to jitter when resized -->
 <div id="mshp-main-page">
-	<div id="console" class="main-area">
+	<div id="console" class="main-area console-area">
 		<div id="console-window"><div id="console-buffer" class="selectable"></div></div>
 	</div>
-	<div id="mshp-main-map" class="main-area">
+	<div id="mshp-main-map" class="main-area map-area">
+		<div id="coordinate-info" class="colored-text selectable"></div>
 		<div id="intersection-display">
 			<div id="intersection-count">0 line intersections</div>
 			<div id="repair-btn" class="text-btn colored-text">Repair</div>

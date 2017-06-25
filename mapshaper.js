@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.25';
+var VERSION = '0.4.26';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -17684,7 +17684,7 @@ function CommandParser() {
 
     if (!detailView) {
       if (_usage) {
-        helpStr +=  "\n" + _usage + "\n\n";
+        helpStr += _usage + "\n\n";
       }
       helpCommands = allCommands;
     }
@@ -18272,7 +18272,6 @@ internal.getOptionParser = function() {
     .option("extension", {
       describe: "(Topo/GeoJSON) set file extension (default is \".json\")"
     })
-
     .option("prettify", {
       type: "flag",
       describe: "(Topo/GeoJSON) format output for readability"

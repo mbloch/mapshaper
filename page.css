@@ -6,15 +6,33 @@
   font-family: 'Source Sans Pro';
   font-style: normal;
   font-weight: 400;
-  src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url(SourceSansPro-Regular.woff) format('woff');
+  src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url('assets/SourceSansPro-Regular.woff') format('woff');
 }
 
 @font-face {
   font-family: 'Source Sans Pro';
   font-style: normal;
   font-weight: 600;
-  src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url(SourceSansPro-Semibold.woff) format('woff');
+  src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('assets/SourceSansPro-Semibold.woff') format('woff');
 }
+
+/*
+@font-face {
+	font-family: 'Iosevka';
+	src: url('assets/iosevka-regular.woff2') format('woff2'), url('assets/iosevka-regular.woff') format('woff');
+}
+
+@font-face {
+	font-family: 'Iosevka';
+	src: url('assets/iosevka-slab-light.woff2') format('woff2'), url('assets/iosevka-slab-light.woff') format('woff');
+}
+*/
+
+@font-face {
+	font-family: 'Iosevka';
+	src: url('assets/iosevka-light.woff2') format('woff2'), url('assets/iosevka-light.woff') format('woff');
+}
+
 
 html, body {
 	height: 100%;
@@ -154,9 +172,8 @@ body {
 	left: 6px;
 	padding: 2px 5px 2px 5px;
 	font-size: 11px;
+	pointer-events: none;
 }
-
-
 
 .mapshaper-logo {
 	font-weight: bold;
@@ -217,12 +234,11 @@ body {
 	right: 0;
 	bottom: 0;
 	left: 0;
-	margin: 32px 0 0 0;	
+	margin: 32px 0 0 0;
 }
 
 
 /* --- Error message ---------- */
-
 
 .error-wrapper {
 	z-index: 120;
@@ -380,6 +396,43 @@ div.error-box > div {
 
 /* --- Console control ------------ */
 
+.console-area {
+	right: auto;
+	width: 495px;
+	max-width: 100%;
+	font-size: 12px;
+}
+
+/* responsive sizing, should be 78 chars per line */
+@media screen and (min-width: 800px) {
+	body.console-open .map-area {
+		left: 495px;
+	}
+}
+
+@media screen and (min-width: 1200px) {
+	body.console-open .map-area {
+		left: 535px;
+	}
+
+	.console-area {
+		width: 535px;
+		font-size: 13px;
+	}
+}
+
+@media screen and (min-width: 1400px) {
+	body.console-open .map-area {
+		left: 575px;
+	}
+
+	.console-area {
+		width: 575px;
+		font-size: 14px;
+	}
+}
+
+
 #console {
 	z-index: 30;
 	pointer-events: none;
@@ -390,10 +443,10 @@ div.error-box > div {
 	pointer-events: auto;
 	background-color: rgba(0,0,0,1);
 	position: absolute;
-	width: 100%;
 	text-align: center;
 	overflow: auto;
-	max-height: 80%;
+	width: 100%;
+	height: 100%;
 }
 
 #console-buffer {
@@ -401,8 +454,9 @@ div.error-box > div {
 	width: 100%;
 	position: relative;
 	color: white;
-	font: 13px/1.35 monospace;
-	margin: 8px 0 10px 0;
+	font-family: Iosevka, monospace;
+	line-height: 1.35;
+	margin: 8px 0 20px 0;
 	word-break: break-all;
 	word-wrap: break-word;
 	white-space: pre-wrap;
@@ -412,10 +466,9 @@ div.error-box > div {
 
 #console-buffer > div {
 	text-align: left;
-	max-width: 640px;
+	/* max-width: 640px; */
 	margin: 0 auto;
-	padding-left: 13%;
-	padding-right: 2%;
+	padding: 0 10px 0 14px;
 }
 
 .console-error {

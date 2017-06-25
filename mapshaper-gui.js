@@ -912,17 +912,16 @@ function MouseWheel(mouse) {
 utils.inherit(MouseWheel, EventDispatcher);
 
 
-function MouseArea(element) {
-  var pos = new ElementPosition(element),
-      _areaPos = pos.position(),
+function MouseArea(element, pos) {
+  var _pos = pos || new ElementPosition(element),
+      _areaPos = _pos.position(),
       _self = this,
       _dragging = false,
       _isOver = false,
       _prevEvt,
-      // _moveEvt,
       _downEvt;
 
-  pos.on('change', function() {_areaPos = pos.position()});
+  _pos.on('change', function() {_areaPos = _pos.position()});
   // TODO: think about touch events
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mousedown', onMouseDown);
@@ -1099,8 +1098,8 @@ gui.getUrlFilename = function(url) {
 };
 
 gui.formatMessageArgs = function(args) {
-  // remove cli annotation (if present)
-  return internal.formatLogArgs(args).replace(/^\[[^\]]+\] ?/, '');
+  // .replace(/^\[[^\]]+\] ?/, ''); // remove cli annotation (if present)
+  return internal.formatLogArgs(args);
 };
 
 gui.handleDirectEvent = function(cb) {
@@ -3282,7 +3281,8 @@ function MapNav(root, ext, mouse) {
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
       zoomScale = 2.5,
-      dragStartEvt, _fx, _fy; // zoom foci, [0,1]
+      dragStartEvt,
+      _fx, _fy; // zoom foci, [0,1]
 
   gui.addSidebarButton("#home-icon").on('click', function() {
     gui.dispatchEvent('map_reset');
@@ -3364,17 +3364,15 @@ function MapNav(root, ext, mouse) {
 
 
 
-function MapExtent(el) {
-  var _position = new ElementPosition(el),
-      _scale = 1,
-      _cx,
-      _cy,
+function MapExtent(_position) {
+  var _scale = 1,
+      _cx, _cy, // center in geographic units
       _contentBounds;
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
-    this.dispatchEvent('navigate');
-    this.dispatchEvent('resize');
+    // this.dispatchEvent('navigate');
+    // this.dispatchEvent('resize');
   }, this);
 
   this.reset = function(force) {
@@ -3388,7 +3386,7 @@ function MapExtent(el) {
       _cy = cy;
       _scale = scale;
       this.dispatchEvent('change');
-      this.dispatchEvent('navigate');
+      // this.dispatchEvent('navigate');
     }
   };
 
@@ -4338,8 +4336,9 @@ gui.getIntersectionPct = function(bb1, bb2) {
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
       _layers = El('#map-layers'),
-      _ext = new MapExtent(_layers),
-      _mouse = new MouseArea(_layers.node()),
+      _position = new ElementPosition(_layers),
+      _ext = new MapExtent(_position),
+      _mouse = new MouseArea(_layers.node(), _position),
       _nav = new MapNav(_root, _ext, _mouse),
       _inspector = new InspectionControl(model, new HitControl(_ext, _mouse));
 
@@ -4352,6 +4351,10 @@ function MshpMap(model) {
       _activeLyr, _activeStyle, _overlayStyle;
 
   _ext.on('change', drawLayers);
+
+  gui.on('resize', function() {
+    _position.update(); // kludge to detect new map size after console toggle
+  });
 
   _inspector.on('change', function(e) {
     var lyr = _activeLyr.getDisplayLayer().layer;
@@ -4506,14 +4509,12 @@ function Console(model) {
   var _isOpen = false;
   var _error = internal.error; // save default error functions...
   var _stop = internal.stop;
+  var btn = El('#console-btn').on('click', toggle);
 
   // capture all messages to this console, whether open or closed
   message = internal.message = consoleMessage;
-
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
-  new ModeButton('#console-btn', 'console');
-  gui.addMode('console', turnOn, turnOff);
 
   gui.onClick(content, function(e) {
     var targ = El(e.target);
@@ -4523,6 +4524,11 @@ function Console(model) {
       input.node().focus();
     }
   });
+
+  function toggle() {
+    if (_isOpen) turnOff();
+    else turnOn();
+  }
 
   function getHistory() {
     var hist;
@@ -4548,9 +4554,12 @@ function Console(model) {
 
   function turnOn() {
     if (!_isOpen && !model.isEmpty()) {
+      btn.addClass('active');
       _isOpen = true;
       stop = internal.stop = consoleStop;
       error = internal.error = consoleError;
+      El('body').addClass('console-open');
+      gui.dispatchEvent('resize');
       el.show();
       input.node().focus();
       history = getHistory();
@@ -4559,12 +4568,15 @@ function Console(model) {
 
   function turnOff() {
     if (_isOpen) {
+      btn.removeClass('active');
       _isOpen = false;
       stop = internal.stop = _stop; // restore original error functions
       error = internal.error = _error;
       el.hide();
       input.node().blur();
       saveHistory(history);
+      El('body').removeClass('console-open');
+      gui.dispatchEvent('resize');
     }
   }
 
@@ -4615,7 +4627,11 @@ function Console(model) {
       if (typing) {
         inputEl.blur();
       }
-      gui.clearMode(); // esc escapes other modes as well
+      if (gui.getMode()) {
+        gui.clearMode(); // esc closes any open panels
+      } else {
+        turnOff();
+      }
       capture = true;
 
     // l/r arrow keys while not typing in a text field
@@ -4633,6 +4649,7 @@ function Console(model) {
     // any key while console is open
     } else if (_isOpen) {
       capture = true;
+      gui.clearMode(); // close any panels that  might be open
       if (kc == 13) { // enter
         submit();
       } else if (kc == 9) { // tab
@@ -4643,7 +4660,7 @@ function Console(model) {
         forward();
       } else if (kc == 32 && (!typing || (inputText === '' && typingInConsole))) {
         // space bar closes if nothing has been typed
-        gui.clearMode();
+        turnOff();
       } else if (!typing && e.target != input.node() && !metaKey(e)) {
         // typing returns focus, unless a meta key is down (to allow Cmd-C copy)
         // or user is typing in a different input area somewhere
@@ -4658,7 +4675,7 @@ function Console(model) {
     } else if (!typing) {
        if (kc == 32) { // space bar opens console
         capture = true;
-        gui.enterMode('console');
+        turnOn();
       } else if (kc == 73) { // letter i opens inspector
         gui.dispatchEvent('inspector_toggle');
       } else if (kc == 72) { // letter h resets map extent
@@ -4769,7 +4786,7 @@ function Console(model) {
         message("Available layers:",
           internal.getFormattedLayerList(model));
       } else if (cmd == 'close' || cmd == 'exit' || cmd == 'quit') {
-        gui.clearMode();
+        turnOff();
       } else if (cmd) {
         runMapshaperCommands(cmd);
       }
