@@ -30,8 +30,8 @@ gui.getUrlFilename = function(url) {
 };
 
 gui.formatMessageArgs = function(args) {
-  // remove cli annotation (if present)
-  return internal.formatLogArgs(args).replace(/^\[[^\]]+\] ?/, '');
+  // .replace(/^\[[^\]]+\] ?/, ''); // remove cli annotation (if present)
+  return internal.formatLogArgs(args);
 };
 
 gui.handleDirectEvent = function(cb) {

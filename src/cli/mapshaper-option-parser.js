@@ -242,7 +242,7 @@ function CommandParser() {
 
     if (!detailView) {
       if (_usage) {
-        helpStr +=  "\n" + _usage + "\n\n";
+        helpStr += _usage + "\n\n";
       }
       helpCommands = allCommands;
     }

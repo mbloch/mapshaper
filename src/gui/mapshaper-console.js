@@ -137,8 +137,11 @@ function Console(model) {
       if (typing) {
         inputEl.blur();
       }
-      gui.clearMode(); // esc closes any open panels
-      turnOff();
+      if (gui.getMode()) {
+        gui.clearMode(); // esc closes any open panels
+      } else {
+        turnOff();
+      }
       capture = true;
 
     // l/r arrow keys while not typing in a text field

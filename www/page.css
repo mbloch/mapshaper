@@ -19,15 +19,20 @@
 /*
 @font-face {
 	font-family: 'Iosevka';
-	font-weight: 500;
-	src: url('assets/iosevka-medium.woff2') format('woff2'), url('assets/iosevka-medium.woff') format('woff');
+	src: url('assets/iosevka-regular.woff2') format('woff2'), url('assets/iosevka-regular.woff') format('woff');
+}
+
+@font-face {
+	font-family: 'Iosevka';
+	src: url('assets/iosevka-slab-light.woff2') format('woff2'), url('assets/iosevka-slab-light.woff') format('woff');
 }
 */
 
 @font-face {
 	font-family: 'Iosevka';
-	src: url('assets/iosevka-regular.woff2') format('woff2'), url('assets/iosevka-regular.woff') format('woff');
+	src: url('assets/iosevka-light.woff2') format('woff2'), url('assets/iosevka-light.woff') format('woff');
 }
+
 
 html, body {
 	height: 100%;
@@ -232,55 +237,8 @@ body {
 	margin: 32px 0 0 0;
 }
 
-body.console-open .map-area {
-	left: 50%;
-}
-
-.console-area {
-	right: auto;
-	width: 50%;
-}
-
-@media screen and (min-width: 1000px) {
-	body.console-open .map-area {
-		left: 500px;
-	}
-
-	.console-area {
-		width: 500px;
-	}
-}
-
-@media screen and (min-width: 1100px) {
-	body.console-open .map-area {
-		left: 550px;
-	}
-
-	.console-area {
-		width: 550px;
-	}
-
-	.console-area #console-buffer {
-		font-size: 13px;
-	}
-}
-
-@media screen and (min-width: 1200px) {
-	body.console-open .map-area {
-		left: 600px;
-	}
-
-	.console-area {
-		width: 600px;
-	}
-
-	.console-area #console-buffer {
-		font-size: 14px;
-	}
-}
 
 /* --- Error message ---------- */
-
 
 .error-wrapper {
 	z-index: 120;
@@ -438,6 +396,49 @@ div.error-box > div {
 
 /* --- Console control ------------ */
 
+.console-area {
+	right: auto;
+	width: 500px;
+	max-width: 100%;
+	font-size: 12px;
+}
+
+/* responsive sizing */
+@media screen and (min-width: 800px) {
+	body.console-open .map-area {
+		left: 500px;
+	}
+}
+
+@media screen and (min-width: 1100px) {
+	body.console-open .map-area {
+		left: 550px;
+	}
+
+	.console-area {
+		width: 550px;
+	}
+
+	.console-area #console-buffer {
+		font-size: 13px;
+	}
+}
+
+@media screen and (min-width: 1200px) {
+	body.console-open .map-area {
+		left: 600px;
+	}
+
+	.console-area {
+		width: 600px;
+	}
+
+	.console-area #console-buffer {
+		font-size: 14px;
+	}
+}
+
+
 #console {
 	z-index: 30;
 	pointer-events: none;
@@ -459,8 +460,8 @@ div.error-box > div {
 	width: 100%;
 	position: relative;
 	color: white;
-	font: 12px/1.35 Iosevka, monospace;
-	font-weight: 500;
+	font-family: Iosevka, monospace;
+	line-height: 1.35;
 	margin: 8px 0 20px 0;
 	word-break: break-all;
 	word-wrap: break-word;
