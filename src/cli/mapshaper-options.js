@@ -507,11 +507,15 @@ internal.getOptionParser = function() {
       label: "<projection>",
       describe: "Proj.4 projection definition or mapshaper alias"
     })
+    .option("match", {
+      describe: "set the destination CRS using a .prj file or layer id"
+    })
     .option("source", {
-      describe: "name of .prj file or layer to match"
+      // describe: "(deprecated) alias for match",
+      alias_to: "match"
     })
     .option("from", {
-      describe: "define the source projection"
+      describe: "set the source CRS; takes a projection string, .prj or layer"
     })
     .option("densify", {
       type: "flag",
@@ -607,7 +611,7 @@ internal.getOptionParser = function() {
       type: "flag"
     })
     .option("cartesian", {
-      describe: "(deprecated) alias for planar",
+      // describe: "(deprecated) alias for planar",
       type: "flag",
       alias_to: "planar"
     })

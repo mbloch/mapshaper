@@ -47,8 +47,8 @@ mapshaper-uniq
 api.runCommand = function(cmd, catalog, cb) {
   var name = cmd.name,
       opts = cmd.options,
-      sources,
       source,
+      sources,
       sourceDataset,
       outputLayers,
       outputFiles,
@@ -102,25 +102,7 @@ api.runCommand = function(cmd, catalog, cb) {
     }
 
     if (opts.source) {
-      sources = catalog.findCommandTargets(opts.source);
-      if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
-        stop(utils.format('Source option [%s] matched multiple layers', opts.source));
-      } else if (sources.length == 1) {
-        source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
-      } else {
-        // assuming opts.source is a filename
-        // don't need to build topology, because:
-        //    join -- don't need topology
-        //    clip/erase -- topology is built later, when datasets are combined
-        sourceDataset = api.importFile(opts.source, utils.defaults({no_topology: true}, opts));
-        if (!sourceDataset) {
-          stop(utils.format('Unable to find source [%s]', opts.source));
-        } else if (sourceDataset.layers.length > 1) {
-          stop('Multiple-layer sources are not supported');
-        }
-        // mark as disposable to indicate that data can be mutated
-        source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
-      }
+      source = internal.findCommandSource(opts.source, catalog, opts);
     }
 
     if (name == 'affine') {
@@ -224,9 +206,17 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'proj') {
       targets.forEach(function(targ) {
-        api.proj(targ.dataset, opts, source && source.dataset);
+        var srcDefn, destDefn;
+        if (opts.from) {
+          srcDefn = internal.getProjectionString(opts.from, catalog);
+        }
+        if (opts.match) {
+          destDefn = internal.getProjectionString(opts.match, catalog);
+        } else {
+          destDefn = opts.projection;
+        }
+        api.proj(targ.dataset, srcDefn, destDefn, opts);
       });
-      // TODO: consider updating default dataset.
 
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);
@@ -320,4 +310,28 @@ internal.applyCommand = function(func, targetLayers) {
     }
     return memo;
   }, []);
+};
+
+internal.findCommandSource = function(sourceName, catalog, opts) {
+  var sources = catalog.findCommandTargets(sourceName);
+  var sourceDataset, source;
+  if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
+    stop(utils.format('Source [%s] matched multiple layers', sourceName));
+  } else if (sources.length == 1) {
+    source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
+  } else {
+    // assuming opts.source is a filename
+    // don't need to build topology, because:
+    //    join -- don't need topology
+    //    clip/erase -- topology is built later, when datasets are combined
+    sourceDataset = api.importFile(sourceName, utils.defaults({no_topology: true}, opts));
+    if (!sourceDataset) {
+      stop(utils.format('Unable to find source [%s]', sourceName));
+    } else if (sourceDataset.layers.length > 1) {
+      stop('Multiple-layer sources are not supported');
+    }
+    // mark as disposable to indicate that data can be mutated
+    source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
+  }
+  return source;
 };

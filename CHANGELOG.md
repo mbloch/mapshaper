@@ -1,3 +1,8 @@
+v0.4.27 (Unreleased)
+* Renamed `-proj source=` option to `-proj match=`.
+* `-proj from=` option accepts a .prj filename or layer id as an alternative to a projection string.
+* `-proj from=` sets the target CRS if no destination projection is given.
+
 v0.4.26
 * [web] Update console interface.
 

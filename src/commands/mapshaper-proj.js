@@ -5,7 +5,7 @@ mapshaper-arc-editor
 mapshaper-shape-utils
 */
 
-api.proj = function(dataset, opts_, matchDataset) {
+api.proj = function(dataset, srcDefn, destDefn, opts_) {
   // modify copy of coordinate data when running in web UI, so original shapes
   // are preserved if an error occurs
   var modifyCopy = !!api.gui,
@@ -14,27 +14,33 @@ api.proj = function(dataset, opts_, matchDataset) {
       target = {},
       src, dest, defn, prj, tmp;
 
-  if (opts.from) {
-    src = internal.getProjection(opts.from, opts);
+  if (!srcDefn && !destDefn) {
+    stop("Missing projection data");
+  }
+
+  if (srcDefn) {
+    src = internal.getProjection(srcDefn);
     if (!src) {
-      stop("Unknown source projection:", opts.from);
-    }
-  } else {
-    src = internal.getDatasetProjection(dataset);
-    if (!src) {
-      stop("Unable to project -- source coordinate system is unknown");
+      stop("Unknown projection:", srcDefn);
     }
   }
 
-  if (matchDataset) {
-    dest = internal.getDatasetProjection(matchDataset);
-    if (!dest) {
-      stop("Match target has an unknown coordinate system:", opts.source);
-    }
-  } else {
-    dest = internal.getProjection(opts.projection, opts);
-    if (!dest) {
-      stop("Unknown projection:", opts.projection);
+  if (!destDefn) {
+    // just set CRS of dataset
+    dataset.info.crs = src;
+    return;
+  }
+
+  dest = internal.getProjection(destDefn);
+  if (!dest) {
+    stop("Unknown projection:", destDefn);
+  }
+
+  if (!src) {
+    // get from dataset
+    src = internal.getDatasetProjection(dataset);
+    if (!src) {
+      stop("Unable to project -- source coordinate system is unknown");
     }
   }
 
@@ -47,6 +53,7 @@ api.proj = function(dataset, opts_, matchDataset) {
     dataset.arcs.flatten(); // bake in any pending simplification
     target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
   }
+
   target.layers = dataset.layers.filter(internal.layerHasPoints).map(function(lyr) {
     if (modifyCopy) {
       originals.push(lyr);
@@ -74,6 +81,29 @@ api.proj = function(dataset, opts_, matchDataset) {
   });
 };
 
+// @source: a layer identifier, .prj file or projection defn
+// Converts layer ids and .prj files to projection defn
+// Returns projection defn
+internal.getProjectionString = function(sourceName, catalog) {
+  var dataset, sources, defn, P;
+  if (/\.prj$/i.test(sourceName)) {
+    dataset = api.importFile(sourceName, {});
+    if (dataset) {
+      defn = internal.translatePrj(dataset.info.input_prj);
+    }
+  } else {
+    sources = catalog.findCommandTargets(sourceName);
+    if (sources.length > 0) {
+      P = internal.getDatasetProjection(sources[0].dataset);
+      defn = internal.crsToProj4(P);
+    }
+  }
+  if (!defn) {
+    // assume sourceName is a projection defn
+    defn = sourceName;
+  }
+  return defn;
+};
 
 internal.projectDataset = function(dataset, src, dest, opts) {
   var proj = internal.getProjTransform(src, dest);

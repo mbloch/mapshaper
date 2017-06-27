@@ -99,17 +99,20 @@ internal.printProjections = function() {
   message(msg);
 };
 
-// Convert contents of a .prj file to a projection object
-internal.parsePrj = function(str) {
+internal.translatePrj = function(str) {
   var proj4;
   try {
     proj4 = require('mproj').internal.wkt_to_proj4(str);
   } catch(e) {
     stop('Unusable .prj file (' + e.message + ')');
   }
-  return internal.getProjection(proj4);
+  return proj4;
 };
 
+// Convert contents of a .prj file to a projection object
+internal.parsePrj = function(str) {
+  return internal.getProjection(internal.translatePrj(str));
+};
 
 function AlbersNYT() {
   var mproj = require('mproj');
