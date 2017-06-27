@@ -403,10 +403,14 @@ div.error-box > div {
 	font-size: 12px;
 }
 
-/* responsive sizing, should be 78 chars per line */
-@media screen and (min-width: 800px) {
+body.console-open .map-area {
+	left: 495px;
+}
+
+/* responsive sizing, should be 78-80 chars per line */
+@media screen and (max-width: 525px) {
 	body.console-open .map-area {
-		left: 495px;
+		display: none;
 	}
 }
 
@@ -441,7 +445,7 @@ div.error-box > div {
 
 #console-window {
 	pointer-events: auto;
-	background-color: rgba(0,0,0,1);
+	background-color: black;
 	position: absolute;
 	text-align: center;
 	overflow: auto;
