@@ -1,7 +1,9 @@
-v0.4.27 (Unreleased)
+v0.4.27
+* Add `-points interpolated interval=` options, for interpolating points along polylines at a fixed interval.
+* Updated parsing of list options to accept quoted items, like this: `fields="County FIPS",State`	.
 * Renamed `-proj source=` option to `-proj match=`.
-* `-proj from=` option accepts a .prj filename or layer id as an alternative to a projection string.
-* `-proj from=` sets the target CRS if no destination projection is given.
+* Now, `-proj from=` option accepts a .prj file name or layer id as an alternative to a projection string.
+* Now, `-proj from=` sets the target CRS if no destination projection is given.
 
 v0.4.26
 * [web] Update console interface.
