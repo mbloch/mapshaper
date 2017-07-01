@@ -1,4 +1,4 @@
-/* @requires mapshaper-common */
+/* @requires mapshaper-common, mapshaper-chunker */
 
 function CommandParser() {
   var commandRxp = /^--?([a-z][\w-]*)$/i,
@@ -81,6 +81,10 @@ function CommandParser() {
         if (cmd._.length > 1 && !cmdDef.multi_arg) {
           error("Command expects a single value. Received:", cmd._.join(' '));
         }
+        if (cmdDef.default && cmd._.length == 1) {
+          // TODO: support multiple-token values, like -i filenames
+          readDefaultOptionValue(cmd, cmdDef);
+        }
         if (cmdDef.validate) {
           cmdDef.validate(cmd);
         }
@@ -148,39 +152,44 @@ function CommandParser() {
       }
     }
 
-
-
     // Read an option value for @optDef from @argv
     function readOptionValue(argv, optDef) {
-      var type = optDef.type,
-          val, err, token;
       if (argv.length === 0 || tokenLooksLikeCommand(argv[0])) {
-        err = 'Missing value';
-      } else {
-        token = argv.shift(); // remove token from argv
-        if (type == 'number') {
-          val = Number(token);
-        } else if (type == 'integer') {
-          val = Math.round(Number(token));
-        } else if (type == 'strings') {
-          val = token.split(',');
-        } else if (type == 'colors') {
-          val = token.trim().split(/[, ]+/); // accept space and/or comma delimiter
-        } else if (type == 'bbox' || type == 'numbers') {
-          val = token.split(',').map(parseFloat);
-        } else if (type == 'percent') {
-          val = utils.parsePercent(token);
-        } else {
-          val = token; // assumes string
-        }
+        stop("Missing value for " + optDef.name + " option");
+      }
+      return parseOptionValue(argv.shift(), optDef); // remove token from argv
+    }
 
-        if (val !== val) {
-          err = "Invalid numeric value";
-        }
+    function readDefaultOptionValue(cmd, cmdDef) {
+      var optDef = findOptionDefn(cmdDef.default, cmdDef);
+      cmd.options[cmdDef.default] = readOptionValue(cmd._, optDef);
+    }
+
+    function parseOptionValue(token, optDef) {
+      var type = optDef.type;
+      var val, err;
+      if (type == 'number') {
+        val = Number(token);
+      } else if (type == 'integer') {
+        val = Math.round(Number(token));
+      } else if (type == 'colors') {
+        val = internal.parseColorList(token);
+      } else if (type == 'strings') {
+        val = internal.parseStringList(token);
+      } else if (type == 'bbox' || type == 'numbers') {
+        val = token.split(',').map(parseFloat);
+      } else if (type == 'percent') {
+        val = utils.parsePercent(token);
+      } else {
+        val = token; // assume string type
+      }
+
+      if (val !== val) {
+        err = "Invalid numeric value";
       }
 
       if (err) {
-        stop(err + " for option " + optDef.name + "=<value>");
+        stop(err + " for " + optDef.name + " option");
       }
       return val;
     }
@@ -202,14 +211,14 @@ function CommandParser() {
       });
     }
 
-    function findOptionDefn(name, cmd) {
-      return utils.find(cmd.options, function(o) {
+    function findOptionDefn(name, cmdDef) {
+      return utils.find(cmdDef.options, function(o) {
         return o.name === name || o.alias === name;
       });
     }
   };
 
-  this.getHelpMessage = function(commandNames) {
+  this.getHelpMessage = function(commandName) {
     var helpStr = '',
         cmdPre = '  ',
         optPre = '  ',
@@ -217,45 +226,37 @@ function CommandParser() {
         gutter = '  ',
         colWidth = 0,
         detailView = false,
-        helpCommands, allCommands;
+        cmd, helpCommands;
 
-    allCommands = getCommands().filter(function(cmd) {
+    helpCommands = getCommands().filter(function(cmd) {
       // hide commands without a description, except section headers
       return !!cmd.describe || cmd.title;
     });
 
-    if (commandNames) {
-      detailView = true;
-      helpCommands = commandNames.reduce(function(memo, name) {
-        var cmd = utils.find(allCommands, function(cmd) {return cmd.name == name;});
-        if (cmd) memo.push(cmd);
-        return memo;
-      }, []);
-
-      allCommands.filter(function(cmd) {
-        return utils.contains(commandNames, cmd.name);
-      });
-      if (helpCommands.length === 0) {
-        detailView = false;
+    if (commandName) {
+      cmd = utils.find(helpCommands, function(cmd) {return cmd.name == commandName;});
+      if (!cmd) {
+        stop(commandName, "is not a known command");
       }
+      detailView = true;
+      helpCommands = [cmd];
     }
 
     if (!detailView) {
       if (_usage) {
         helpStr += _usage + "\n\n";
       }
-      helpCommands = allCommands;
     }
 
     // Format help strings, calc width of left column.
-    colWidth = helpCommands.reduce(function(w, obj) {
-      var help = cmdPre + (obj.name ? "-" + obj.name : "");
-      if (obj.alias) help += ", -" + obj.alias;
-      obj.help = help;
+    colWidth = helpCommands.reduce(function(w, cmd) {
+      var help = cmdPre + (cmd.name ? "-" + cmd.name : "");
+      if (cmd.alias) help += ", -" + cmd.alias;
+      cmd.help = help;
       if (detailView) {
-        w = obj.options.reduce(function(w, opt) {
-          if (opt.describe) {
-            w = Math.max(formatOption(opt), w);
+        w = cmd.options.reduce(function(w, opt) {
+          if (cmd.describe) {
+            w = Math.max(formatOption(opt, cmd), w);
           }
           return w;
         }, w);
@@ -310,10 +311,12 @@ function CommandParser() {
       return utils.rpad(help, colWidth, ' ') + gutter + (desc || '') + '\n';
     }
 
-    function formatOption(o) {
+    function formatOption(o, cmd) {
       o.help = optPre;
       if (o.label) {
         o.help += o.label;
+      } else if (o.name == cmd.default) {
+        o.help += '<' + o.name + '>';
       } else {
         o.help += o.name;
         if (o.alias) o.help += ", " + o.alias;
@@ -324,8 +327,8 @@ function CommandParser() {
 
   };
 
-  this.printHelp = function(commands) {
-    message(this.getHelpMessage(commands));
+  this.printHelp = function(command) {
+    message(this.getHelpMessage(command));
   };
 
   function getCommands() {
@@ -339,6 +342,12 @@ function CommandOptions(name) {
   var _command = {
     name: name,
     options: []
+  };
+
+  // set default option (assign unnamed argument to option of this name)
+  this.default = function(name) {
+    _command.default = name;
+    return this;
   };
 
   this.validate = function(f) {
@@ -387,6 +396,27 @@ function CommandOptions(name) {
     return _command;
   };
 }
+
+// Split comma-delimited list, trim quotes from entire list and
+// individual members
+internal.parseStringList = function(token) {
+  var delim = ',';
+  var list = internal.splitTokens(token, delim);
+  if (list.length == 1) {
+    list = internal.splitTokens(list[0], delim);
+  }
+  return list;
+};
+
+// Accept spaces and/or commas as delimiters
+internal.parseColorList = function(token) {
+  var delim = ', ';
+  var list = internal.splitTokens(token, delim);
+  if (list.length == 1) {
+    list = internal.splitTokens(list[0], delim);
+  }
+  return list;
+};
 
 internal.cleanArgv = function(argv) {
   argv = argv.map(function(s) {return s.trim();}); // trim whitespace

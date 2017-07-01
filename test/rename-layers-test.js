@@ -3,6 +3,23 @@ var assert = require('assert'),
 
 describe('mapshaper-rename-layers.js', function () {
 
+  it ('Accept field names with spaces, in quotes', function(done) {
+    var csv = 'County FIPS,"State FIPS"\n10001,10';
+    api.applyCommands('-i csv.csv -rename-fields "CFIPS=County FIPS,SFIPS=State FIPS" -o format=json', {'csv.csv': csv}, function(err, output) {
+      var json = JSON.parse(output['csv.json']);
+      assert.deepEqual(json, [{CFIPS: 10001, SFIPS: 10}]);
+      done();
+    });
+  });
+
+  it ('Accept field names with spaces, with alternate quotes', function(done) {
+    var csv = 'County FIPS,"State FIPS"\n10001,10';
+    api.applyCommands('-i csv.csv -rename-fields CFIPS="County FIPS",SFIPS="State FIPS" -o format=json', {'csv.csv': csv}, function(err, output) {
+      var json = JSON.parse(output['csv.json']);
+      done();
+    });
+  });
+
   it ('All layers are targeted by default', function(done) {
     var a = {
       type: 'Polygon',

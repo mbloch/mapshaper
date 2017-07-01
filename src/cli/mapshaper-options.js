@@ -43,7 +43,6 @@ internal.getOptionParser = function() {
         type: "strings"
       },
       dissolveFieldOpt = {
-        label: "<field>",
         describe: "(optional) name of a data field to dissolve on"
       },
       bboxOpt = {
@@ -224,8 +223,8 @@ internal.getOptionParser = function() {
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClipOpts)
+    .default("source")
     .option("source", {
-      label: "<source>",
       describe: "file or layer containing clip polygons"
     })
     .option('remove-slivers', {
@@ -240,13 +239,13 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("dissolve")
-    .validate(validateDissolveOpts)
     .describe("merge features within a layer")
     .example("Dissolve all polygons in a feature layer into a single polygon\n" +
       "$ mapshaper states.shp -dissolve -o country.shp")
     .example("Generate state-level polygons by dissolving a layer of counties\n" +
       "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
       "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
+    .default("field")
     .option("field", dissolveFieldOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
@@ -265,8 +264,8 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("dissolve2")
-    .validate(validateDissolveOpts)
     .describe("merge adjacent and overlapping polygons")
+    .default("field")
     .option("field", dissolveFieldOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
@@ -282,9 +281,8 @@ internal.getOptionParser = function() {
     .describe("create/update/delete data fields using a JS expression")
     .example("Add two calculated data fields to a layer of U.S. counties\n" +
         "$ mapshaper counties.shp -each 'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=$.area'")
-    .validate(validateExpressionOpts)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "JS expression to apply to each target feature"
     })
     .option("where", {
@@ -296,8 +294,8 @@ internal.getOptionParser = function() {
     .describe("use a polygon layer to erase another layer")
     .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
     .validate(validateClipOpts)
+    .default("source")
     .option("source", {
-      label: "<source>",
       describe: "file or layer containing erase polygons"
     })
     .option('remove-slivers', {
@@ -318,9 +316,8 @@ internal.getOptionParser = function() {
 
   parser.command("filter")
     .describe("delete features using a JS expression")
-    .validate(validateExpressionOpts)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "delete features that evaluate to false"
     })
     .option("remove-empty", {
@@ -336,17 +333,15 @@ internal.getOptionParser = function() {
 
   parser.command("filter-fields")
     .describe('retain a subset of data fields')
-    .validate(validateFilterFieldsOpts)
+    .default('fields')
     .option("fields", {
-      label: "<fields>",
+      type: "strings",
       describe: "fields to retain (comma-sep.), e.g. 'fips,name'"
     })
     .option("target", targetOpt);
 
   parser.command("filter-islands")
     .describe("remove small detached polygon rings (islands)")
-    .validate(validateExpressionOpts)
-
     .option("min-area", {
       type: "number",
       describe: "remove small-area islands (sq meters or projected units)"
@@ -363,8 +358,6 @@ internal.getOptionParser = function() {
 
   parser.command("filter-slivers")
     .describe("remove small polygon rings")
-    .validate(validateExpressionOpts)
-
     .option("min-area", {
       type: "number",
       describe: "remove small-area rings (sq meters or projected units)"
@@ -392,9 +385,13 @@ internal.getOptionParser = function() {
     .example("Join a csv table to a Shapefile\n" +
       "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
       "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
-    .validate(validateJoinOpts)
+    .validate(function(cmd) {
+      if (!cmd.options.source) {
+        error("Command requires the name of a layer or file to join");
+      }
+    })
+    .default("source")
     .option("source", {
-      label: "<source>",
       describe: "file or layer containing data records"
     })
     .option("keys", {
@@ -436,9 +433,8 @@ internal.getOptionParser = function() {
 
   parser.command("lines")
     .describe("convert polygons to polylines, classified by edge type")
-    .validate(validateLinesOpts)
+    .default("fields")
     .option("fields", {
-      label: "<fields>",
       describe: "optional comma-sep. list of fields to create a hierarchy",
       type: "strings"
     })
@@ -448,7 +444,7 @@ internal.getOptionParser = function() {
 
   parser.command("merge-layers")
     .describe("merge multiple layers into as few layers as possible")
-    .validate(validateMergeLayersOpts)
+    .flag('no_arg')
     .option("name", nameOpt)
     .option("target", targetOpt);
 
@@ -496,6 +492,10 @@ internal.getOptionParser = function() {
       describe: "capture unique vertices of polygons and polylines",
       type: "flag"
     })
+    .option("interpolation-interval", {
+      // describe: "distance between interpolated points (meters or projected units)",
+      type: "number"
+    })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -525,19 +525,18 @@ internal.getOptionParser = function() {
     .validate(validateProjOpts);
 
   parser.command("rename-fields")
+    .default('fields')
     .describe('rename data fields')
-    .validate(validateFilterFieldsOpts)
     .option("fields", {
-      label: "<fields>",
+      type: "strings",
       describe: "fields to rename (comma-sep.), e.g. 'fips=STATE_FIPS,st=state'"
     })
     .option("target", targetOpt);
 
   parser.command("rename-layers")
+    .default('names')
     .describe("assign new names to layers")
-    .validate(validateRenameLayersOpts)
     .option("names", {
-      label: "<names>",
       type: "strings",
       describe: "new layer name(s) (comma-sep. list)"
     })
@@ -562,12 +561,12 @@ internal.getOptionParser = function() {
     .option("name", nameOpt);
 
   parser.command('simplify')
+    .default('percentage')
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
     .describe("simplify the geometry of polygon and polyline features")
     .option('percentage', {
       alias: 'p',
-      label: "<percentage>",
       type: 'percent',
       describe: "percentage of removable points to retain, e.g. 10%"
     })
@@ -634,9 +633,8 @@ internal.getOptionParser = function() {
 
   parser.command("slice")
     // .describe("slice a layer using polygons in another layer")
-    .validate(validateClipOpts)
+    .default("source")
     .option("source", {
-      label: "<source>",
       describe: "file or layer containing clip polygons"
     })
     /*
@@ -654,9 +652,8 @@ internal.getOptionParser = function() {
 
   parser.command("sort")
     .describe("sort features using a JS expression")
-    .validate(validateExpressionOpts)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "JS expression to generate a sort key for each feature"
     })
     .option("ascending", {
@@ -671,9 +668,8 @@ internal.getOptionParser = function() {
 
   parser.command("split")
     .describe("split features into separate layers using a data field")
-    .validate(validateSplitOpts)
+    .default("field")
     .option("field", {
-      label: '<field>',
       describe: "name of an attribute field (omit to split all features)"
     })
     .option("no-replace", noReplaceOpt)
@@ -737,9 +733,8 @@ internal.getOptionParser = function() {
 
   parser.command("uniq")
     .describe("delete features with the same id as a previous feature")
-    .validate(validateExpressionOpts)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "JS expression to obtain the id of a feature"
     })
     .option("verbose", {
@@ -851,12 +846,11 @@ internal.getOptionParser = function() {
 
   parser.command("subdivide")
     .describe("recursively split a layer using a JS expression")
-    .validate(validateSubdivideOpts)
+    .validate(validateExpressionOpt)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "boolean JS expression"
     })
-    // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
 
@@ -868,14 +862,9 @@ internal.getOptionParser = function() {
       "$ mapshaper polygons.shp -calc 'sum($.area)'")
     .example("Count census blocks in NY with zero population\n" +
       "$ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'")
-    .validate(function(cmd) {
-      if (cmd._.length === 0) {
-        error("Missing a JS expression");
-      }
-      validateExpressionOpts(cmd);
-    })
+    .validate(validateExpressionOpt)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "functions: sum() average() median() max() min() count()"
     })
     .option("where", {
@@ -888,11 +877,9 @@ internal.getOptionParser = function() {
 
   parser.command('help')
     .alias('h')
-    .validate(validateHelpOpts)
     .describe("print help; takes optional command name")
-    .option("commands", {
-      label: "<command>",
-      type: "strings",
+    .default('command')
+    .option("command", {
       describe: "view detailed information about a command"
     });
 
@@ -901,16 +888,12 @@ internal.getOptionParser = function() {
 
   parser.command('inspect')
     .describe("print information about a feature")
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "boolean JS expression for selecting a feature"
     })
     .option("target", targetOpt)
-    .validate(function(cmd) {
-      if (cmd._.length > 0) {
-        cmd.options.expression = cmd._[0];
-      }
-    });
+    .validate(validateExpressionOpt);
 
   parser.command('projections')
     .describe("print list of supported projections");

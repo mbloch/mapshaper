@@ -1,13 +1,6 @@
 /* @requires mapshaper-common, mapshaper-file-types, mapshaper-option-parser */
 
 
-function validateHelpOpts(cmd) {
-  var commands = validateCommaSepNames(cmd._[0]);
-  if (commands) {
-    cmd.options.commands = commands;
-  }
-}
-
 function validateInputOpts(cmd) {
   var o = cmd.options,
       _ = cmd._;
@@ -78,28 +71,11 @@ function validateProjOpts(cmd) {
   if (!(cmd.options.projection  || cmd.options.match || cmd.options.from)) {
     stop("Missing projection data");
   }
-
 }
 
-function validateJoinOpts(cmd) {
-  var o = cmd.options;
-  o.source = o.source || cmd._[0];
-  if (!o.source) {
-    error("Command requires the name of a layer or file to join");
-  }
-}
-
-function validateSplitOpts(cmd) {
-  if (cmd._.length == 1) {
-    cmd.options.field = cmd._[0];
-  }
-}
 
 function validateClipOpts(cmd) {
   var opts = cmd.options;
-  if (cmd._[0]) {
-    opts.source = cmd._[0];
-  }
   // rename old option
   if (opts.cleanup) {
     delete opts.cleanup;
@@ -108,22 +84,6 @@ function validateClipOpts(cmd) {
   if (!opts.source && !opts.bbox) {
     error("Command requires a source file, layer id or bbox");
   }
-}
-
-function validateDissolveOpts(cmd) {
-  var _= cmd._,
-      o = cmd.options;
-  if (_.length == 1) {
-    o.field = _[0];
-  }
-}
-
-function validateMergeLayersOpts(cmd) {
-  if (cmd._.length > 0) error("Unexpected option:", cmd._);
-}
-
-function validateRenameLayersOpts(cmd) {
-  cmd.options.names = validateCommaSepNames(cmd._[0]) || null;
 }
 
 function validateGridOpts(cmd) {
@@ -135,34 +95,9 @@ function validateGridOpts(cmd) {
   }
 }
 
-function validateLinesOpts(cmd) {
-  try {
-    var fields = validateCommaSepNames(cmd.options.fields || cmd._[0]);
-    if (fields) cmd.options.fields = fields;
-  } catch (e) {
-    error("Command takes a comma-separated list of fields");
-  }
-}
-
-function validateSubdivideOpts(cmd) {
-  if (cmd._.length !== 1) {
+function validateExpressionOpt(cmd) {
+  if (!cmd.options.expression) {
     error("Command requires a JavaScript expression");
-  }
-  cmd.options.expression = cmd._[0];
-}
-
-function validateFilterFieldsOpts(cmd) {
-  try {
-    var fields = validateCommaSepNames(cmd._[0]);
-    cmd.options.fields = fields || [];
-  } catch(e) {
-    error("Command requires a comma-sep. list of fields");
-  }
-}
-
-function validateExpressionOpts(cmd) {
-  if (cmd._.length == 1) {
-    cmd.options.expression = cmd._[0];
   }
 }
 
@@ -228,18 +163,4 @@ function validateOutputOpts(cmd) {
   if ("topojson_precision" in o && o.topojson_precision > 0 === false) {
     error("topojson-precision= option should be a positive number");
   }
-}
-
-// Convert a comma-separated string into an array of trimmed strings
-// Return null if list is empty
-function validateCommaSepNames(str, min) {
-  if (!min && !str) return null; // treat
-  if (!utils.isString(str)) {
-    error("Expected a comma-separated list; found:", str);
-  }
-  var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
-  if (min && min > parts.length < min) {
-    error(utils.format("Expected a list of at least %d member%s; found: %s", min, utils.pluralSuffix(min), str));
-  }
-  return parts.length > 0 ? parts : null;
 }

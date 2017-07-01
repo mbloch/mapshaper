@@ -87,6 +87,9 @@ describe('mapshaper-options.js', function () {
 
   describe('colorizer', function () {
     good('-colorizer breaks=0,10 colors="red white blue" name=col', {name: "col", breaks: [0, 10], colors: ["red", "white", "blue"]})
+    good('-colorizer categories="good,bad" colors=\'"#000", "white"\'',
+        {categories: ['good', 'bad'], colors: ['#000', 'white']});
+    // TODO: accept arguments like: colors="#000","#FFF"
   })
 
   describe('innerlines', function () {
@@ -131,7 +134,7 @@ describe('mapshaper-options.js', function () {
 
   describe('filter-fields', function () {
     good('-filter-fields STATE,FIPS:STATE_FIPS', {fields:["STATE", "FIPS:STATE_FIPS"]});
-    good('-filter-fields', {fields: []});
+    good('-filter-fields', {});
   })
 
   describe('filter', function () {

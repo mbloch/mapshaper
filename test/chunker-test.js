@@ -8,6 +8,15 @@ function test(src, dest) {
 }
 
 describe('mapshaper-chunker.js', function () {
+
+  describe('splitTokens()', function () {
+    it('splits list containing quoted strings', function () {
+      var str = 'foo, "foo bar",baz ';
+      assert.deepEqual(api.internal.splitTokens(str, ', '), ['foo', 'foo bar', 'baz']);
+    })
+  })
+
+
   describe('splitShellTokens()', function () {
     it('mapshaper', function () {
       test('mapshaper', ['mapshaper']);

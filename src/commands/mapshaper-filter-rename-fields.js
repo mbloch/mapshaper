@@ -2,6 +2,7 @@
 
 api.filterFields = function(lyr, names) {
   var table = lyr.data;
+  names = names || [];
   internal.requireDataFields(table, names);
   utils.difference(table.getFields(), names).forEach(table.deleteField, table);
 };
@@ -14,10 +15,10 @@ api.renameFields = function(lyr, names) {
 };
 
 internal.mapFieldNames = function(names) {
-  return names.reduce(function(memo, str) {
-    var parts = str.split('=');
-    var dest = parts[0],
-        src = parts[1] || dest;
+  return (names || []).reduce(function(memo, str) {
+    var parts = str.split('='),
+        dest = utils.trimQuotes(parts[0]),
+        src = parts.length > 1 ? utils.trimQuotes(parts[1]) : dest;
     if (!src || !dest) stop("Invalid field description:", str);
     memo[src] = dest;
     return memo;

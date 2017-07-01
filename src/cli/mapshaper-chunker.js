@@ -1,7 +1,11 @@
 /* @requires mapshaper-common */
 
 internal.splitShellTokens = function(str) {
-  var BAREWORD = '([^\\s\'"])+';
+  return internal.splitTokens(str, '\\s');
+};
+
+internal.splitTokens = function(str, delimChars) {
+  var BAREWORD = '([^' + delimChars + '\'"])+'; // TODO: make safer
   var SINGLE_QUOTE = '"((\\\\"|[^"])*?)"';
   var DOUBLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
   var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
