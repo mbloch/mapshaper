@@ -3621,8 +3621,8 @@ function HitControl(ext, mouse) {
   }
 
   function getCoordPrecision(bounds) {
-    var min = Math.min(Math.abs(bounds.xmax), Math.abs(bounds.ymax)),
-        decimals = Math.ceil(Math.log(min) / Math.LN10);
+    var shortSide = Math.min(Math.abs(bounds.xmax), Math.abs(bounds.ymax)),
+        decimals = Math.ceil(Math.log(Math.max(shortSide, 1)) / Math.LN10);
     return Math.max(0, 7 - decimals);
   }
 

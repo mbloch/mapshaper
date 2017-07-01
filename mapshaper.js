@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.26';
+var VERSION = '0.4.27';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -13007,17 +13007,20 @@ internal.printProjections = function() {
   message(msg);
 };
 
-// Convert contents of a .prj file to a projection object
-internal.parsePrj = function(str) {
+internal.translatePrj = function(str) {
   var proj4;
   try {
     proj4 = require('mproj').internal.wkt_to_proj4(str);
   } catch(e) {
     stop('Unusable .prj file (' + e.message + ')');
   }
-  return internal.getProjection(proj4);
+  return proj4;
 };
 
+// Convert contents of a .prj file to a projection object
+internal.parsePrj = function(str) {
+  return internal.getProjection(internal.translatePrj(str));
+};
 
 function AlbersNYT() {
   var mproj = require('mproj');
@@ -14372,6 +14375,7 @@ internal.getOutputPaths = function(files, opts) {
 
 api.filterFields = function(lyr, names) {
   var table = lyr.data;
+  names = names || [];
   internal.requireDataFields(table, names);
   utils.difference(table.getFields(), names).forEach(table.deleteField, table);
 };
@@ -14384,10 +14388,10 @@ api.renameFields = function(lyr, names) {
 };
 
 internal.mapFieldNames = function(names) {
-  return names.reduce(function(memo, str) {
-    var parts = str.split('=');
-    var dest = parts[0],
-        src = parts[1] || dest;
+  return (names || []).reduce(function(memo, str) {
+    var parts = str.split('='),
+        dest = utils.trimQuotes(parts[0]),
+        src = parts.length > 1 ? utils.trimQuotes(parts[1]) : dest;
     if (!src || !dest) stop("Invalid field description:", str);
     memo[src] = dest;
     return memo;
@@ -15624,7 +15628,10 @@ internal.importFiles = function(files, opts) {
 
 api.createPointLayer = function(srcLyr, arcs, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
-  if (opts.vertices) {
+  if (opts.interpolated) {
+    // TODO: consider making attributed points, including distance from origin
+    destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, arcs, opts);
+  } else if (opts.vertices) {
     destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
   } else if (opts.x || opts.y) {
     destLyr.shapes = internal.pointsFromDataTable(srcLyr.data, opts);
@@ -15645,6 +15652,61 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
   }
   return destLyr;
+};
+
+internal.interpolatePoint2D = function(ax, ay, bx, by, k) {
+  var j = 1 - k;
+  return [ax * j + bx * k, ay * j + by * k];
+};
+
+internal.interpolatePointsAlongArc = function(ids, arcs, interval) {
+  var iter = arcs.getShapeIter(ids);
+  var distance = arcs.isPlanar() ? distance2D : greatCircleDistance;
+  var coords = [];
+  var elapsedDist = 0;
+  var prevX, prevY;
+  var segLen, k, p;
+  if (iter.hasNext()) {
+    coords.push([iter.x, iter.y]);
+    prevX = iter.x;
+    prevY = iter.y;
+  }
+  while (iter.hasNext()) {
+    segLen = distance(prevX, prevY, iter.x, iter.y);
+    while (elapsedDist + segLen >= interval) {
+      k = (interval - elapsedDist) / segLen;
+      // TODO: consider using great-arc distance for lat-long points
+      p = internal.interpolatePoint2D(prevX, prevY, iter.x, iter.y, k);
+      elapsedDist = 0;
+      coords.push(p);
+      prevX = p[0];
+      prevY = p[1];
+      segLen = distance(prevX, prevY, iter.x, iter.y);
+    }
+    elapsedDist += segLen;
+    prevX = iter.x;
+    prevY = iter.y;
+  }
+  if (elapsedDist > 0) {
+    coords.push([prevX, prevY]);
+  }
+  return coords;
+};
+
+internal.interpolatedPointsFromVertices = function(lyr, arcs, opts) {
+  var interval = opts.interval;
+  var coords;
+  if (interval > 0 === false) stop("Invalid interpolation interval:", interval);
+  if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
+  return lyr.shapes.map(function(shp, shpId) {
+    coords = [];
+    if (shp) shp.forEach(nextPart);
+    return coords.length > 0 ? coords : null;
+  });
+  function nextPart(ids) {
+    var points = internal.interpolatePointsAlongArc(ids, arcs, interval);
+    coords = coords.concat(points);
+  }
 };
 
 internal.pointsFromVertices = function(lyr, arcs, opts) {
@@ -15797,7 +15859,7 @@ internal.editArcs = function(arcs, onPoint) {
 
 
 
-api.proj = function(dataset, opts_, matchDataset) {
+api.proj = function(dataset, srcDefn, destDefn, opts_) {
   // modify copy of coordinate data when running in web UI, so original shapes
   // are preserved if an error occurs
   var modifyCopy = !!api.gui,
@@ -15806,27 +15868,33 @@ api.proj = function(dataset, opts_, matchDataset) {
       target = {},
       src, dest, defn, prj, tmp;
 
-  if (opts.from) {
-    src = internal.getProjection(opts.from, opts);
+  if (!srcDefn && !destDefn) {
+    stop("Missing projection data");
+  }
+
+  if (srcDefn) {
+    src = internal.getProjection(srcDefn);
     if (!src) {
-      stop("Unknown source projection:", opts.from);
-    }
-  } else {
-    src = internal.getDatasetProjection(dataset);
-    if (!src) {
-      stop("Unable to project -- source coordinate system is unknown");
+      stop("Unknown projection:", srcDefn);
     }
   }
 
-  if (matchDataset) {
-    dest = internal.getDatasetProjection(matchDataset);
-    if (!dest) {
-      stop("Match target has an unknown coordinate system:", opts.source);
-    }
-  } else {
-    dest = internal.getProjection(opts.projection, opts);
-    if (!dest) {
-      stop("Unknown projection:", opts.projection);
+  if (!destDefn) {
+    // just set CRS of dataset
+    dataset.info.crs = src;
+    return;
+  }
+
+  dest = internal.getProjection(destDefn);
+  if (!dest) {
+    stop("Unknown projection:", destDefn);
+  }
+
+  if (!src) {
+    // get from dataset
+    src = internal.getDatasetProjection(dataset);
+    if (!src) {
+      stop("Unable to project -- source coordinate system is unknown");
     }
   }
 
@@ -15839,6 +15907,7 @@ api.proj = function(dataset, opts_, matchDataset) {
     dataset.arcs.flatten(); // bake in any pending simplification
     target.arcs = modifyCopy ? dataset.arcs.getCopy() : dataset.arcs;
   }
+
   target.layers = dataset.layers.filter(internal.layerHasPoints).map(function(lyr) {
     if (modifyCopy) {
       originals.push(lyr);
@@ -15866,6 +15935,29 @@ api.proj = function(dataset, opts_, matchDataset) {
   });
 };
 
+// @source: a layer identifier, .prj file or projection defn
+// Converts layer ids and .prj files to projection defn
+// Returns projection defn
+internal.getProjectionString = function(sourceName, catalog) {
+  var dataset, sources, defn, P;
+  if (/\.prj$/i.test(sourceName)) {
+    dataset = api.importFile(sourceName, {});
+    if (dataset) {
+      defn = internal.translatePrj(dataset.info.input_prj);
+    }
+  } else {
+    sources = catalog.findCommandTargets(sourceName);
+    if (sources.length > 0) {
+      P = internal.getDatasetProjection(sources[0].dataset);
+      defn = internal.crsToProj4(P);
+    }
+  }
+  if (!defn) {
+    // assume sourceName is a projection defn
+    defn = sourceName;
+  }
+  return defn;
+};
 
 internal.projectDataset = function(dataset, src, dest, opts) {
   var proj = internal.getProjTransform(src, dest);
@@ -17164,9 +17256,7 @@ api.uniq = function(lyr, arcs, opts) {
 api.runCommand = function(cmd, catalog, cb) {
   var name = cmd.name,
       opts = cmd.options,
-      sources,
       source,
-      sourceDataset,
       outputLayers,
       outputFiles,
       targets,
@@ -17213,31 +17303,13 @@ api.runCommand = function(cmd, catalog, cb) {
         stop(utils.format('Missing target: %s\nAvailable layers: %s',
             opts.target, internal.getFormattedLayerList(catalog)));
       }
-      if (!(name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
+      if (!(name == 'help' || name == 'graticule' || name == 'i' || name == 'point-grid' || name == 'shape')) {
         throw new APIError("Missing a -i command");
       }
     }
 
     if (opts.source) {
-      sources = catalog.findCommandTargets(opts.source);
-      if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
-        stop(utils.format('Source option [%s] matched multiple layers', opts.source));
-      } else if (sources.length == 1) {
-        source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
-      } else {
-        // assuming opts.source is a filename
-        // don't need to build topology, because:
-        //    join -- don't need topology
-        //    clip/erase -- topology is built later, when datasets are combined
-        sourceDataset = api.importFile(opts.source, utils.defaults({no_topology: true}, opts));
-        if (!sourceDataset) {
-          stop(utils.format('Unable to find source [%s]', opts.source));
-        } else if (sourceDataset.layers.length > 1) {
-          stop('Multiple-layer sources are not supported');
-        }
-        // mark as disposable to indicate that data can be mutated
-        source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
-      }
+      source = internal.findCommandSource(opts.source, catalog, opts);
     }
 
     if (name == 'affine') {
@@ -17293,6 +17365,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'graticule') {
       catalog.addDataset(api.graticule(targetDataset, opts));
 
+    } else if (name == 'help') {
+      internal.getOptionParser().printHelp(opts.command);
+
     } else if (name == 'i') {
       if (opts.replace) catalog = new Catalog();
       targetDataset = api.importFiles(cmd.options);
@@ -17341,9 +17416,17 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'proj') {
       targets.forEach(function(targ) {
-        api.proj(targ.dataset, opts, source && source.dataset);
+        var srcDefn, destDefn;
+        if (opts.from) {
+          srcDefn = internal.getProjectionString(opts.from, catalog);
+        }
+        if (opts.match) {
+          destDefn = internal.getProjectionString(opts.match, catalog);
+        } else {
+          destDefn = opts.projection;
+        }
+        api.proj(targ.dataset, srcDefn, destDefn, opts);
       });
-      // TODO: consider updating default dataset.
 
     } else if (name == 'rename-fields') {
       internal.applyCommand(api.renameFields, targetLayers, opts.fields);
@@ -17439,6 +17522,62 @@ internal.applyCommand = function(func, targetLayers) {
   }, []);
 };
 
+internal.findCommandSource = function(sourceName, catalog, opts) {
+  var sources = catalog.findCommandTargets(sourceName);
+  var sourceDataset, source;
+  if (sources.length > 1 || sources.length == 1 && sources[0].layers.length > 1) {
+    stop(utils.format('Source [%s] matched multiple layers', sourceName));
+  } else if (sources.length == 1) {
+    source = {dataset: sources[0].dataset, layer: sources[0].layers[0]};
+  } else {
+    // assuming opts.source is a filename
+    // don't need to build topology, because:
+    //    join -- don't need topology
+    //    clip/erase -- topology is built later, when datasets are combined
+    sourceDataset = api.importFile(sourceName, utils.defaults({no_topology: true}, opts));
+    if (!sourceDataset) {
+      stop(utils.format('Unable to find source [%s]', sourceName));
+    } else if (sourceDataset.layers.length > 1) {
+      stop('Multiple-layer sources are not supported');
+    }
+    // mark as disposable to indicate that data can be mutated
+    source = {dataset: sourceDataset, layer: sourceDataset.layers[0], disposable: true};
+  }
+  return source;
+};
+
+
+
+
+internal.splitShellTokens = function(str) {
+  return internal.splitTokens(str, '\\s');
+};
+
+internal.splitTokens = function(str, delimChars) {
+  var BAREWORD = '([^' + delimChars + '\'"])+'; // TODO: make safer
+  var SINGLE_QUOTE = '"((\\\\"|[^"])*?)"';
+  var DOUBLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
+  var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
+  var matches = str.match(rxp) || [];
+  var chunks = matches.filter(function(chunk) {
+    // single backslashes may be present in multiline commands pasted from a makefile, e.g.
+    return !!chunk && chunk != '\\';
+  }).map(utils.trimQuotes);
+  return chunks;
+};
+
+utils.trimQuotes = function(raw) {
+  var len = raw.length, first, last;
+  if (len >= 2) {
+    first = raw.charAt(0);
+    last = raw.charAt(len-1);
+    if (first == '"' && last == '"' || first == "'" && last == "'") {
+      return raw.substr(1, len-2);
+    }
+  }
+  return raw;
+};
+
 
 
 
@@ -17523,6 +17662,10 @@ function CommandParser() {
         if (cmd._.length > 1 && !cmdDef.multi_arg) {
           error("Command expects a single value. Received:", cmd._.join(' '));
         }
+        if (cmdDef.default && cmd._.length == 1) {
+          // TODO: support multiple-token values, like -i filenames
+          readDefaultOptionValue(cmd, cmdDef);
+        }
         if (cmdDef.validate) {
           cmdDef.validate(cmd);
         }
@@ -17590,39 +17733,44 @@ function CommandParser() {
       }
     }
 
-
-
     // Read an option value for @optDef from @argv
     function readOptionValue(argv, optDef) {
-      var type = optDef.type,
-          val, err, token;
       if (argv.length === 0 || tokenLooksLikeCommand(argv[0])) {
-        err = 'Missing value';
-      } else {
-        token = argv.shift(); // remove token from argv
-        if (type == 'number') {
-          val = Number(token);
-        } else if (type == 'integer') {
-          val = Math.round(Number(token));
-        } else if (type == 'strings') {
-          val = token.split(',');
-        } else if (type == 'colors') {
-          val = token.trim().split(/[, ]+/); // accept space and/or comma delimiter
-        } else if (type == 'bbox' || type == 'numbers') {
-          val = token.split(',').map(parseFloat);
-        } else if (type == 'percent') {
-          val = utils.parsePercent(token);
-        } else {
-          val = token; // assumes string
-        }
+        stop("Missing value for " + optDef.name + " option");
+      }
+      return parseOptionValue(argv.shift(), optDef); // remove token from argv
+    }
 
-        if (val !== val) {
-          err = "Invalid numeric value";
-        }
+    function readDefaultOptionValue(cmd, cmdDef) {
+      var optDef = findOptionDefn(cmdDef.default, cmdDef);
+      cmd.options[cmdDef.default] = readOptionValue(cmd._, optDef);
+    }
+
+    function parseOptionValue(token, optDef) {
+      var type = optDef.type;
+      var val, err;
+      if (type == 'number') {
+        val = Number(token);
+      } else if (type == 'integer') {
+        val = Math.round(Number(token));
+      } else if (type == 'colors') {
+        val = internal.parseColorList(token);
+      } else if (type == 'strings') {
+        val = internal.parseStringList(token);
+      } else if (type == 'bbox' || type == 'numbers') {
+        val = token.split(',').map(parseFloat);
+      } else if (type == 'percent') {
+        val = utils.parsePercent(token);
+      } else {
+        val = token; // assume string type
+      }
+
+      if (val !== val) {
+        err = "Invalid numeric value";
       }
 
       if (err) {
-        stop(err + " for option " + optDef.name + "=<value>");
+        stop(err + " for " + optDef.name + " option");
       }
       return val;
     }
@@ -17644,14 +17792,14 @@ function CommandParser() {
       });
     }
 
-    function findOptionDefn(name, cmd) {
-      return utils.find(cmd.options, function(o) {
+    function findOptionDefn(name, cmdDef) {
+      return utils.find(cmdDef.options, function(o) {
         return o.name === name || o.alias === name;
       });
     }
   };
 
-  this.getHelpMessage = function(commandNames) {
+  this.getHelpMessage = function(commandName) {
     var helpStr = '',
         cmdPre = '  ',
         optPre = '  ',
@@ -17659,45 +17807,37 @@ function CommandParser() {
         gutter = '  ',
         colWidth = 0,
         detailView = false,
-        helpCommands, allCommands;
+        cmd, helpCommands;
 
-    allCommands = getCommands().filter(function(cmd) {
+    helpCommands = getCommands().filter(function(cmd) {
       // hide commands without a description, except section headers
       return !!cmd.describe || cmd.title;
     });
 
-    if (commandNames) {
-      detailView = true;
-      helpCommands = commandNames.reduce(function(memo, name) {
-        var cmd = utils.find(allCommands, function(cmd) {return cmd.name == name;});
-        if (cmd) memo.push(cmd);
-        return memo;
-      }, []);
-
-      allCommands.filter(function(cmd) {
-        return utils.contains(commandNames, cmd.name);
-      });
-      if (helpCommands.length === 0) {
-        detailView = false;
+    if (commandName) {
+      cmd = utils.find(helpCommands, function(cmd) {return cmd.name == commandName;});
+      if (!cmd) {
+        stop(commandName, "is not a known command");
       }
+      detailView = true;
+      helpCommands = [cmd];
     }
 
     if (!detailView) {
       if (_usage) {
         helpStr += _usage + "\n\n";
       }
-      helpCommands = allCommands;
     }
 
     // Format help strings, calc width of left column.
-    colWidth = helpCommands.reduce(function(w, obj) {
-      var help = cmdPre + (obj.name ? "-" + obj.name : "");
-      if (obj.alias) help += ", -" + obj.alias;
-      obj.help = help;
+    colWidth = helpCommands.reduce(function(w, cmd) {
+      var help = cmdPre + (cmd.name ? "-" + cmd.name : "");
+      if (cmd.alias) help += ", -" + cmd.alias;
+      cmd.help = help;
       if (detailView) {
-        w = obj.options.reduce(function(w, opt) {
-          if (opt.describe) {
-            w = Math.max(formatOption(opt), w);
+        w = cmd.options.reduce(function(w, opt) {
+          if (cmd.describe) {
+            w = Math.max(formatOption(opt, cmd), w);
           }
           return w;
         }, w);
@@ -17752,10 +17892,12 @@ function CommandParser() {
       return utils.rpad(help, colWidth, ' ') + gutter + (desc || '') + '\n';
     }
 
-    function formatOption(o) {
+    function formatOption(o, cmd) {
       o.help = optPre;
       if (o.label) {
         o.help += o.label;
+      } else if (o.name == cmd.default) {
+        o.help += '<' + o.name + '>';
       } else {
         o.help += o.name;
         if (o.alias) o.help += ", " + o.alias;
@@ -17766,8 +17908,8 @@ function CommandParser() {
 
   };
 
-  this.printHelp = function(commands) {
-    message(this.getHelpMessage(commands));
+  this.printHelp = function(command) {
+    message(this.getHelpMessage(command));
   };
 
   function getCommands() {
@@ -17781,6 +17923,12 @@ function CommandOptions(name) {
   var _command = {
     name: name,
     options: []
+  };
+
+  // set default option (assign unnamed argument to option of this name)
+  this.default = function(name) {
+    _command.default = name;
+    return this;
   };
 
   this.validate = function(f) {
@@ -17830,6 +17978,27 @@ function CommandOptions(name) {
   };
 }
 
+// Split comma-delimited list, trim quotes from entire list and
+// individual members
+internal.parseStringList = function(token) {
+  var delim = ',';
+  var list = internal.splitTokens(token, delim);
+  if (list.length == 1) {
+    list = internal.splitTokens(list[0], delim);
+  }
+  return list;
+};
+
+// Accept spaces and/or commas as delimiters
+internal.parseColorList = function(token) {
+  var delim = ', ';
+  var list = internal.splitTokens(token, delim);
+  if (list.length == 1) {
+    list = internal.splitTokens(list[0], delim);
+  }
+  return list;
+};
+
 internal.cleanArgv = function(argv) {
   argv = argv.map(function(s) {return s.trim();}); // trim whitespace
   argv = argv.filter(function(s) {return s !== '';}); // remove empty tokens
@@ -17840,13 +18009,6 @@ internal.cleanArgv = function(argv) {
 
 
 
-
-function validateHelpOpts(cmd) {
-  var commands = validateCommaSepNames(cmd._[0]);
-  if (commands) {
-    cmd.options.commands = commands;
-  }
-}
 
 function validateInputOpts(cmd) {
   var o = cmd.options,
@@ -17914,30 +18076,15 @@ function validateProjOpts(cmd) {
   if (_.length > 0) {
     error("Received one or more unexpected parameters: " + _.join(', '));
   }
-  if (!cmd.options.projection && !cmd.options.source) {
-    error("Missing projection data");
+
+  if (!(cmd.options.projection  || cmd.options.match || cmd.options.from)) {
+    stop("Missing projection data");
   }
 }
 
-function validateJoinOpts(cmd) {
-  var o = cmd.options;
-  o.source = o.source || cmd._[0];
-  if (!o.source) {
-    error("Command requires the name of a layer or file to join");
-  }
-}
-
-function validateSplitOpts(cmd) {
-  if (cmd._.length == 1) {
-    cmd.options.field = cmd._[0];
-  }
-}
 
 function validateClipOpts(cmd) {
   var opts = cmd.options;
-  if (cmd._[0]) {
-    opts.source = cmd._[0];
-  }
   // rename old option
   if (opts.cleanup) {
     delete opts.cleanup;
@@ -17946,22 +18093,6 @@ function validateClipOpts(cmd) {
   if (!opts.source && !opts.bbox) {
     error("Command requires a source file, layer id or bbox");
   }
-}
-
-function validateDissolveOpts(cmd) {
-  var _= cmd._,
-      o = cmd.options;
-  if (_.length == 1) {
-    o.field = _[0];
-  }
-}
-
-function validateMergeLayersOpts(cmd) {
-  if (cmd._.length > 0) error("Unexpected option:", cmd._);
-}
-
-function validateRenameLayersOpts(cmd) {
-  cmd.options.names = validateCommaSepNames(cmd._[0]) || null;
 }
 
 function validateGridOpts(cmd) {
@@ -17973,34 +18104,9 @@ function validateGridOpts(cmd) {
   }
 }
 
-function validateLinesOpts(cmd) {
-  try {
-    var fields = validateCommaSepNames(cmd.options.fields || cmd._[0]);
-    if (fields) cmd.options.fields = fields;
-  } catch (e) {
-    error("Command takes a comma-separated list of fields");
-  }
-}
-
-function validateSubdivideOpts(cmd) {
-  if (cmd._.length !== 1) {
+function validateExpressionOpt(cmd) {
+  if (!cmd.options.expression) {
     error("Command requires a JavaScript expression");
-  }
-  cmd.options.expression = cmd._[0];
-}
-
-function validateFilterFieldsOpts(cmd) {
-  try {
-    var fields = validateCommaSepNames(cmd._[0]);
-    cmd.options.fields = fields || [];
-  } catch(e) {
-    error("Command requires a comma-sep. list of fields");
-  }
-}
-
-function validateExpressionOpts(cmd) {
-  if (cmd._.length == 1) {
-    cmd.options.expression = cmd._[0];
   }
 }
 
@@ -18068,48 +18174,6 @@ function validateOutputOpts(cmd) {
   }
 }
 
-// Convert a comma-separated string into an array of trimmed strings
-// Return null if list is empty
-function validateCommaSepNames(str, min) {
-  if (!min && !str) return null; // treat
-  if (!utils.isString(str)) {
-    error("Expected a comma-separated list; found:", str);
-  }
-  var parts = str.split(',').map(utils.trim).filter(function(s) {return !!s;});
-  if (min && min > parts.length < min) {
-    error(utils.format("Expected a list of at least %d member%s; found: %s", min, utils.pluralSuffix(min), str));
-  }
-  return parts.length > 0 ? parts : null;
-}
-
-
-
-
-internal.splitShellTokens = function(str) {
-  var BAREWORD = '([^\\s\'"])+';
-  var SINGLE_QUOTE = '"((\\\\"|[^"])*?)"';
-  var DOUBLE_QUOTE = '\'((\\\\\'|[^\'])*?)\'';
-  var rxp = new RegExp('(' + BAREWORD + '|' + SINGLE_QUOTE + '|' + DOUBLE_QUOTE + ')*', 'g');
-  var matches = str.match(rxp) || [];
-  var chunks = matches.filter(function(chunk) {
-    // single backslashes may be present in multiline commands pasted from a makefile, e.g.
-    return !!chunk && chunk != '\\';
-  }).map(utils.trimQuotes);
-  return chunks;
-};
-
-utils.trimQuotes = function(raw) {
-  var len = raw.length, first, last;
-  if (len >= 2) {
-    first = raw.charAt(0);
-    last = raw.charAt(len-1);
-    if (first == '"' && last == '"' || first == "'" && last == "'") {
-      return raw.substr(1, len-2);
-    }
-  }
-  return raw;
-};
-
 
 
 
@@ -18151,7 +18215,6 @@ internal.getOptionParser = function() {
         type: "strings"
       },
       dissolveFieldOpt = {
-        label: "<field>",
         describe: "(optional) name of a data field to dissolve on"
       },
       bboxOpt = {
@@ -18332,8 +18395,8 @@ internal.getOptionParser = function() {
     .describe("use a polygon layer to clip another layer")
     .example("$ mapshaper states.shp -clip land_area.shp -o clipped.shp")
     .validate(validateClipOpts)
+    .default("source")
     .option("source", {
-      label: "<source>",
       describe: "file or layer containing clip polygons"
     })
     .option('remove-slivers', {
@@ -18348,13 +18411,13 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("dissolve")
-    .validate(validateDissolveOpts)
     .describe("merge features within a layer")
     .example("Dissolve all polygons in a feature layer into a single polygon\n" +
       "$ mapshaper states.shp -dissolve -o country.shp")
     .example("Generate state-level polygons by dissolving a layer of counties\n" +
       "(STATE_FIPS, POPULATION and STATE_NAME are attribute field names)\n" +
       "$ mapshaper counties.shp -dissolve STATE_FIPS copy-fields=STATE_NAME sum-fields=POPULATION -o states.shp")
+    .default("field")
     .option("field", dissolveFieldOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
@@ -18373,8 +18436,8 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("dissolve2")
-    .validate(validateDissolveOpts)
     .describe("merge adjacent and overlapping polygons")
+    .default("field")
     .option("field", dissolveFieldOpt)
     .option("calc", {
       describe: "use a JS expression to aggregate data values"
@@ -18390,9 +18453,8 @@ internal.getOptionParser = function() {
     .describe("create/update/delete data fields using a JS expression")
     .example("Add two calculated data fields to a layer of U.S. counties\n" +
         "$ mapshaper counties.shp -each 'STATE_FIPS=CNTY_FIPS.substr(0, 2), AREA=$.area'")
-    .validate(validateExpressionOpts)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "JS expression to apply to each target feature"
     })
     .option("where", {
@@ -18404,8 +18466,8 @@ internal.getOptionParser = function() {
     .describe("use a polygon layer to erase another layer")
     .example("$ mapshaper land_areas.shp -erase water_bodies.shp -o erased.shp")
     .validate(validateClipOpts)
+    .default("source")
     .option("source", {
-      label: "<source>",
       describe: "file or layer containing erase polygons"
     })
     .option('remove-slivers', {
@@ -18426,9 +18488,8 @@ internal.getOptionParser = function() {
 
   parser.command("filter")
     .describe("delete features using a JS expression")
-    .validate(validateExpressionOpts)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "delete features that evaluate to false"
     })
     .option("remove-empty", {
@@ -18444,17 +18505,15 @@ internal.getOptionParser = function() {
 
   parser.command("filter-fields")
     .describe('retain a subset of data fields')
-    .validate(validateFilterFieldsOpts)
+    .default('fields')
     .option("fields", {
-      label: "<fields>",
+      type: "strings",
       describe: "fields to retain (comma-sep.), e.g. 'fips,name'"
     })
     .option("target", targetOpt);
 
   parser.command("filter-islands")
     .describe("remove small detached polygon rings (islands)")
-    .validate(validateExpressionOpts)
-
     .option("min-area", {
       type: "number",
       describe: "remove small-area islands (sq meters or projected units)"
@@ -18471,8 +18530,6 @@ internal.getOptionParser = function() {
 
   parser.command("filter-slivers")
     .describe("remove small polygon rings")
-    .validate(validateExpressionOpts)
-
     .option("min-area", {
       type: "number",
       describe: "remove small-area rings (sq meters or projected units)"
@@ -18500,9 +18557,13 @@ internal.getOptionParser = function() {
     .example("Join a csv table to a Shapefile\n" +
       "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
       "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
-    .validate(validateJoinOpts)
+    .validate(function(cmd) {
+      if (!cmd.options.source) {
+        error("Command requires the name of a layer or file to join");
+      }
+    })
+    .default("source")
     .option("source", {
-      label: "<source>",
       describe: "file or layer containing data records"
     })
     .option("keys", {
@@ -18544,9 +18605,8 @@ internal.getOptionParser = function() {
 
   parser.command("lines")
     .describe("convert polygons to polylines, classified by edge type")
-    .validate(validateLinesOpts)
+    .default("fields")
     .option("fields", {
-      label: "<fields>",
       describe: "optional comma-sep. list of fields to create a hierarchy",
       type: "strings"
     })
@@ -18556,7 +18616,7 @@ internal.getOptionParser = function() {
 
   parser.command("merge-layers")
     .describe("merge multiple layers into as few layers as possible")
-    .validate(validateMergeLayersOpts)
+    .flag('no_arg')
     .option("name", nameOpt)
     .option("target", targetOpt);
 
@@ -18584,7 +18644,7 @@ internal.getOptionParser = function() {
     .option("name", nameOpt);
 
   parser.command("points")
-    .describe("create a point layer from polygons or attribute data")
+    .describe("create a point layer from polylines, polygons or attribute data")
     .flag("no_arg")
     .option("x", {
       describe: "field containing x coordinate"
@@ -18604,6 +18664,14 @@ internal.getOptionParser = function() {
       describe: "capture unique vertices of polygons and polylines",
       type: "flag"
     })
+    .option("interpolated", {
+      describe: "interpolate points along polylines; requires interval=",
+      type: "flag"
+    })
+    .option("interval", {
+      describe: "distance between interpolated points (meters or projected units)",
+      type: "number"
+    })
     .option("name", nameOpt)
     .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
@@ -18615,11 +18683,15 @@ internal.getOptionParser = function() {
       label: "<projection>",
       describe: "Proj.4 projection definition or mapshaper alias"
     })
+    .option("match", {
+      describe: "set the destination CRS using a .prj file or layer id"
+    })
     .option("source", {
-      describe: "name of .prj file or layer to match"
+      // describe: "(deprecated) alias for match",
+      alias_to: "match"
     })
     .option("from", {
-      describe: "define the source projection"
+      describe: "set the source CRS; takes a projection string, .prj or layer"
     })
     .option("densify", {
       type: "flag",
@@ -18629,19 +18701,18 @@ internal.getOptionParser = function() {
     .validate(validateProjOpts);
 
   parser.command("rename-fields")
+    .default('fields')
     .describe('rename data fields')
-    .validate(validateFilterFieldsOpts)
     .option("fields", {
-      label: "<fields>",
+      type: "strings",
       describe: "fields to rename (comma-sep.), e.g. 'fips=STATE_FIPS,st=state'"
     })
     .option("target", targetOpt);
 
   parser.command("rename-layers")
+    .default('names')
     .describe("assign new names to layers")
-    .validate(validateRenameLayersOpts)
     .option("names", {
-      label: "<names>",
       type: "strings",
       describe: "new layer name(s) (comma-sep. list)"
     })
@@ -18666,12 +18737,12 @@ internal.getOptionParser = function() {
     .option("name", nameOpt);
 
   parser.command('simplify')
+    .default('percentage')
     .validate(validateSimplifyOpts)
     .example("Retain 10% of removable vertices\n$ mapshaper input.shp -simplify 10%")
     .describe("simplify the geometry of polygon and polyline features")
     .option('percentage', {
       alias: 'p',
-      label: "<percentage>",
       type: 'percent',
       describe: "percentage of removable points to retain, e.g. 10%"
     })
@@ -18715,7 +18786,7 @@ internal.getOptionParser = function() {
       type: "flag"
     })
     .option("cartesian", {
-      describe: "(deprecated) alias for planar",
+      // describe: "(deprecated) alias for planar",
       type: "flag",
       alias_to: "planar"
     })
@@ -18738,9 +18809,8 @@ internal.getOptionParser = function() {
 
   parser.command("slice")
     // .describe("slice a layer using polygons in another layer")
-    .validate(validateClipOpts)
+    .default("source")
     .option("source", {
-      label: "<source>",
       describe: "file or layer containing clip polygons"
     })
     /*
@@ -18758,9 +18828,8 @@ internal.getOptionParser = function() {
 
   parser.command("sort")
     .describe("sort features using a JS expression")
-    .validate(validateExpressionOpts)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "JS expression to generate a sort key for each feature"
     })
     .option("ascending", {
@@ -18775,9 +18844,8 @@ internal.getOptionParser = function() {
 
   parser.command("split")
     .describe("split features into separate layers using a data field")
-    .validate(validateSplitOpts)
+    .default("field")
     .option("field", {
-      label: '<field>',
       describe: "name of an attribute field (omit to split all features)"
     })
     .option("no-replace", noReplaceOpt)
@@ -18841,9 +18909,8 @@ internal.getOptionParser = function() {
 
   parser.command("uniq")
     .describe("delete features with the same id as a previous feature")
-    .validate(validateExpressionOpts)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "JS expression to obtain the id of a feature"
     })
     .option("verbose", {
@@ -18955,12 +19022,11 @@ internal.getOptionParser = function() {
 
   parser.command("subdivide")
     .describe("recursively split a layer using a JS expression")
-    .validate(validateSubdivideOpts)
+    .validate(validateExpressionOpt)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "boolean JS expression"
     })
-    // .option("no-replace", noReplaceOpt)
     .option("target", targetOpt);
 
 
@@ -18972,14 +19038,9 @@ internal.getOptionParser = function() {
       "$ mapshaper polygons.shp -calc 'sum($.area)'")
     .example("Count census blocks in NY with zero population\n" +
       "$ mapshaper ny-census-blocks.shp -calc 'count()' where='POPULATION == 0'")
-    .validate(function(cmd) {
-      if (cmd._.length === 0) {
-        error("Missing a JS expression");
-      }
-      validateExpressionOpts(cmd);
-    })
+    .validate(validateExpressionOpt)
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "functions: sum() average() median() max() min() count()"
     })
     .option("where", {
@@ -18992,11 +19053,9 @@ internal.getOptionParser = function() {
 
   parser.command('help')
     .alias('h')
-    .validate(validateHelpOpts)
     .describe("print help; takes optional command name")
-    .option("commands", {
-      label: "<command>",
-      type: "strings",
+    .default('command')
+    .option("command", {
       describe: "view detailed information about a command"
     });
 
@@ -19005,16 +19064,12 @@ internal.getOptionParser = function() {
 
   parser.command('inspect')
     .describe("print information about a feature")
+    .default("expression")
     .option("expression", {
-      label: "<expression>",
       describe: "boolean JS expression for selecting a feature"
     })
     .option("target", targetOpt)
-    .validate(function(cmd) {
-      if (cmd._.length > 0) {
-        cmd.options.expression = cmd._[0];
-      }
-    });
+    .validate(validateExpressionOpt);
 
   parser.command('projections')
     .describe("print list of supported projections");
@@ -19496,8 +19551,6 @@ internal.runAndRemoveInfoCommands = function(commands) {
       internal.printEncodings();
     } else if (cmd.name == 'projections') {
       internal.printProjections();
-    } else if (cmd.name == 'help') {
-      internal.getOptionParser().printHelp(cmd.options.commands);
     } else if (cmd.name == 'verbose') {
       internal.VERBOSE = true;
     } else if (cmd.name == 'quiet') {
