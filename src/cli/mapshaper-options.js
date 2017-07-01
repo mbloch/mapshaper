@@ -472,7 +472,7 @@ internal.getOptionParser = function() {
     .option("name", nameOpt);
 
   parser.command("points")
-    .describe("create a point layer from polygons or attribute data")
+    .describe("create a point layer from polylines, polygons or attribute data")
     .flag("no_arg")
     .option("x", {
       describe: "field containing x coordinate"
@@ -492,8 +492,12 @@ internal.getOptionParser = function() {
       describe: "capture unique vertices of polygons and polylines",
       type: "flag"
     })
-    .option("interpolation-interval", {
-      // describe: "distance between interpolated points (meters or projected units)",
+    .option("interpolated", {
+      describe: "interpolate points along polylines; requires interval=",
+      type: "flag"
+    })
+    .option("interval", {
+      describe: "distance between interpolated points (meters or projected units)",
       type: "number"
     })
     .option("name", nameOpt)

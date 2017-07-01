@@ -2,11 +2,15 @@
 mapshaper-data-table
 mapshaper-dataset-utils
 mapshaper-polygon-centroid
+mapshaper-geom
 */
 
 api.createPointLayer = function(srcLyr, arcs, opts) {
   var destLyr = internal.getOutputLayer(srcLyr, opts);
-  if (opts.vertices) {
+  if (opts.interpolated) {
+    // TODO: consider making attributed points, including distance from origin
+    destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, arcs, opts);
+  } else if (opts.vertices) {
     destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
   } else if (opts.x || opts.y) {
     destLyr.shapes = internal.pointsFromDataTable(srcLyr.data, opts);
@@ -27,6 +31,61 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
     destLyr.data = opts.no_replace ? srcLyr.data.clone() : srcLyr.data;
   }
   return destLyr;
+};
+
+internal.interpolatePoint2D = function(ax, ay, bx, by, k) {
+  var j = 1 - k;
+  return [ax * j + bx * k, ay * j + by * k];
+};
+
+internal.interpolatePointsAlongArc = function(ids, arcs, interval) {
+  var iter = arcs.getShapeIter(ids);
+  var distance = arcs.isPlanar() ? distance2D : greatCircleDistance;
+  var coords = [];
+  var elapsedDist = 0;
+  var prevX, prevY;
+  var segLen, k, p;
+  if (iter.hasNext()) {
+    coords.push([iter.x, iter.y]);
+    prevX = iter.x;
+    prevY = iter.y;
+  }
+  while (iter.hasNext()) {
+    segLen = distance(prevX, prevY, iter.x, iter.y);
+    while (elapsedDist + segLen >= interval) {
+      k = (interval - elapsedDist) / segLen;
+      // TODO: consider using great-arc distance for lat-long points
+      p = internal.interpolatePoint2D(prevX, prevY, iter.x, iter.y, k);
+      elapsedDist = 0;
+      coords.push(p);
+      prevX = p[0];
+      prevY = p[1];
+      segLen = distance(prevX, prevY, iter.x, iter.y);
+    }
+    elapsedDist += segLen;
+    prevX = iter.x;
+    prevY = iter.y;
+  }
+  if (elapsedDist > 0) {
+    coords.push([prevX, prevY]);
+  }
+  return coords;
+};
+
+internal.interpolatedPointsFromVertices = function(lyr, arcs, opts) {
+  var interval = opts.interval;
+  var coords;
+  if (interval > 0 === false) stop("Invalid interpolation interval:", interval);
+  if (lyr.geometry_type != 'polyline') stop("Expected a polyline layer");
+  return lyr.shapes.map(function(shp, shpId) {
+    coords = [];
+    if (shp) shp.forEach(nextPart);
+    return coords.length > 0 ? coords : null;
+  });
+  function nextPart(ids) {
+    var points = internal.interpolatePointsAlongArc(ids, arcs, interval);
+    coords = coords.concat(points);
+  }
 };
 
 internal.pointsFromVertices = function(lyr, arcs, opts) {
