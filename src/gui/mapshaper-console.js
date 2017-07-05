@@ -160,8 +160,9 @@ function Console(model) {
     } else if (_isOpen) {
       capture = true;
       gui.clearMode(); // close any panels that  might be open
+
       if (kc == 13) { // enter
-        submit();
+        onEnter();
       } else if (kc == 9) { // tab
         tabComplete();
       } else if (kc == 38) {
@@ -176,9 +177,13 @@ function Console(model) {
         // or user is typing in a different input area somewhere
         input.node().focus();
         capture = false;
+      } else if (/\n\n$/.test(inputText) && e.key && e.key.length == 1) {
+        // Convert double newline to single on first typing after \ continuation
+        // (for compatibility with Firefox; see onEnter() function)
+        // Assumes that cursor is at end of text (TODO: remove this assumption)
+        toCommandLine(inputText.substr(0, inputText.length - 1) + e.key);
       } else {
-        // normal typing
-        capture = false;
+        capture = false; // normal typing
       }
 
     // various shortcuts (while not typing in an input field or editable el)
@@ -223,11 +228,12 @@ function Console(model) {
   }
 
   function readCommandLine() {
-    return input.node().textContent.trim();
+    // return input.node().textContent.trim();
+    return input.node().textContent;
   }
 
   function toCommandLine(str) {
-    input.node().textContent = str.trim();
+    input.node().textContent = str;
     placeCursor();
   }
 
@@ -283,10 +289,28 @@ function Console(model) {
     }, {});
   }
 
-  function submit() {
-    var cmd = readCommandLine();
+  function onEnter() {
+    var str = readCommandLine();
+    var wrap = /\\\n?$/.test(str); // \n? is to workaround odd Chrome behavior (newline appears after eol backslash)
+    if (wrap) {
+      toCommandLine(str.trim() + '\n\n'); // two newlines needed in all tested browsers
+    } else {
+      submit(str);
+    }
+  }
+
+  // display char codes in string (for debugging console input)
+  function strCodes(str) {
+    return str.split('').map(function(c) {return c.charCodeAt(0);}).join(',');
+  }
+
+  function submit(str) {
+    var cmd;
     toCommandLine('');
-    toLog(CURSOR + cmd);
+    toLog(CURSOR + str);
+    // remove newlines
+    // TODO: remove other whitespace at beginning + end of lines
+    cmd = str.replace(/\\?\n/g, '').trim();
     if (cmd) {
       if (cmd == 'clear') {
         clear();
@@ -300,7 +324,7 @@ function Console(model) {
       } else if (cmd) {
         runMapshaperCommands(cmd);
       }
-      toHistory(cmd);
+      toHistory(str);
     }
   }
 
