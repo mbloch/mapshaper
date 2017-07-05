@@ -1,12 +1,16 @@
+v0.4.28
+* Fixed error when clipping polyline layers containing empty geometries.
+* [web] Support backslash continuation lines in web console.
+
 v0.4.27
-* Add `-points interpolated interval=` options, for interpolating points along polylines at a fixed interval.
+* Added `-points interpolated interval=` options, for interpolating points along polylines at a fixed interval.
 * Updated parsing of list options to accept quoted items, like this: `fields="County FIPS",State`	.
 * Renamed `-proj source=` option to `-proj match=`.
 * Now, `-proj from=` option accepts a .prj file name or layer id as an alternative to a projection string.
 * Now, `-proj from=` sets the target CRS if no destination projection is given.
 
 v0.4.26
-* [web] Update console interface.
+* [web] Updated console interface to display alongside the map.
 
 v0.4.25
 * Added `-proj target=` option, with support for `target=*`.
