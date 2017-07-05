@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.27';
+var VERSION = '0.4.28';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -5789,10 +5789,27 @@ internal.looksLikeWin1252 = function(samples) {
   return totalScore > 0.97 && asciiScore > 0.7;
 };
 
-// Accept string if it doesn't contain the "replacement character"
+// Reject string if it contains the "replacement character" after decoding to UTF-8
+// (But remove the byte sequence for the utf-8-encoded replacement char before decoding)
 internal.looksLikeUtf8 = function(samples) {
+  // samples = samples.map(internal.replaceUtf8ReplacementChar);
   var str = internal.decodeSamples('utf8', samples);
   return str.indexOf('\ufffd') == -1;
+};
+
+internal.replaceUtf8ReplacementChar = function(buf) {
+  var isCopy = false;
+  for (var i=0, n=buf.length; i<n; i++) {
+    // Check for UTF-8 encoded replacement char (0xEF 0xBF 0xBD)
+    if (buf[i] == 0xef && i + 2 < n && buf[i+1] == 0xbf && buf[i+2] == 0xbd) {
+      if (!isCopy) {
+        buf = new Buffer(buf);
+        isCopy = true;
+      }
+      buf[i] = buf[i+1] = buf[i+2] = 63; // ascii question mark
+    }
+  }
+  return buf;
 };
 
 // Calc percentage of chars in a string that are present in a second string
@@ -8531,8 +8548,9 @@ internal.clipPolylines = function(targetShapes, clipShapes, nodes, type) {
   });
 
   function clipPolyline(shp) {
-    var clipped = shp.reduce(clipPath, []);
-    return clipped.length > 0 ? clipped : null;
+    var clipped = null;
+    if (shp) clipped = shp.reduce(clipPath, []);
+    return clipped && clipped.length > 0 ? clipped : null;
   }
 
   function clipPath(memo, path) {
