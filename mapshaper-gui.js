@@ -2005,8 +2005,8 @@ function ImportControl(model, opts) {
     if (type == 'prj') {
       // assumes that .shp has been imported first
       matches.forEach(function(d) {
-        if (!d.info.input_prj) {
-          d.info.input_prj = content;
+        if (!d.info.prj) {
+          d.info.prj = content;
         }
       });
       readNext();

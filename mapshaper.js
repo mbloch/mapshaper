@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.28';
+var VERSION = '0.4.29';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -10917,6 +10917,7 @@ internal.mergeDatasets = function(arr) {
 
 internal.mergeDatasetInfo = function(arr) {
   // Get crs, prevent incompatible CRSs
+  // TODO: handle unparsable prj
   var crs = arr.reduce(function(memo, d) {
     var P = internal.getDatasetProjection(d);
     if (!memo) {
@@ -10938,7 +10939,7 @@ internal.mergeDatasetInfo = function(arr) {
     var info = d.info || {};
     memo.input_files = memo.input_files.concat(info.input_files || []);
     memo.input_formats = memo.input_formats.concat(info.input_formats || []);
-    // merge other info properties (e.g. input_geojson_crs, input_delimiter, input_prj)
+    // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj)
     // TODO: check for incompatibilities
     return utils.defaults(memo, info);
   }, {crs: crs, input_formats: [], input_files: []});
@@ -12941,13 +12942,8 @@ internal.getProjInfo = function(dataset) {
     if (P) {
       info = internal.crsToProj4(P);
     }
-    if (!info) {
-      info = "unknown";
-    }
-  } catch(e) {
-    info = e.message;
-  }
-  return info;
+  } catch(e) {}
+  return info || "[unknown]";
 };
 
 internal.crsToProj4 = function(P) {
@@ -12999,11 +12995,17 @@ internal.getProjection = function(str) {
   return P || null;
 };
 
+internal.setDatasetProjection = function(dataset, info) {
+  dataset.info = dataset.info || {};
+  dataset.info.crs = info.crs;
+  dataset.info.prj = info.prj;
+};
+
 internal.getDatasetProjection = function(dataset) {
   var info = dataset.info || {},
       P = info.crs;
-  if (!P && info.input_prj) {
-    P = internal.parsePrj(info.input_prj);
+  if (!P && info.prj) {
+    P = internal.parsePrj(info.prj);
   }
   if (!P && internal.probablyDecimalDegreeBounds(internal.getDatasetBounds(dataset))) {
     // use wgs84 for probable latlong datasets with unknown datums
@@ -13065,18 +13067,18 @@ internal.exportShapefile = function(dataset, opts) {
 };
 
 internal.exportPrjFile = function(lyr, dataset) {
-  var inputPrj = dataset.info && dataset.info.input_prj;
-  var crs = internal.getDatasetProjection(dataset);
-  var outputPrj;
-
-  if (crs && inputPrj && internal.crsAreEqual(crs, internal.parsePrj(inputPrj))) {
-    outputPrj = inputPrj;
-  } else if (crs) {
-    outputPrj = internal.crsToPrj(crs);
+  var info = dataset.info || {};
+  var prj = info.prj;
+  if (!prj) {
+    try {
+      prj = internal.crsToPrj(internal.getDatasetProjection(dataset));
+    } catch(e) {}
   }
-
-  return outputPrj ? {
-    content: outputPrj,
+  if (!prj) {
+    message("Unable to generate .prj file for", lyr.name + '.shp');
+  }
+  return prj ? {
+    content: prj,
     filename: lyr.name + '.prj'
   } : null;
 };
@@ -14156,7 +14158,7 @@ internal.importContent = function(obj, opts) {
     // added for -proj command source
     fileFmt = 'prj';
     data = obj.prj;
-    dataset = {layers: [], info: {input_prj: data.content}};
+    dataset = {layers: [], info: {prj: data.content}};
   }
 
   if (!dataset) {
@@ -14207,7 +14209,7 @@ internal.importShapefile = function(obj, opts) {
     }
   }
   if (obj.prj) {
-    dataset.info.input_prj = obj.prj.content;
+    dataset.info.prj = obj.prj.content;
   }
   return dataset;
 };
@@ -15877,45 +15879,23 @@ internal.editArcs = function(arcs, onPoint) {
 
 
 
-api.proj = function(dataset, srcDefn, destDefn, opts_) {
+api.proj = function(dataset, destInfo, opts) {
   // modify copy of coordinate data when running in web UI, so original shapes
   // are preserved if an error occurs
   var modifyCopy = !!api.gui,
-      opts = opts_ || {},
       originals = [],
       target = {},
-      src, dest, defn, prj, tmp;
+      src, dest;
 
-  if (!srcDefn && !destDefn) {
+  src = internal.getDatasetProjection(dataset);
+  if (!src) {
+    stop("Unable to project -- source coordinate system is unknown");
+  }
+
+  dest = destInfo.crs;
+  if (!dest) {
     stop("Missing projection data");
   }
-
-  if (srcDefn) {
-    src = internal.getProjection(srcDefn);
-    if (!src) {
-      stop("Unknown projection:", srcDefn);
-    }
-  }
-
-  if (!destDefn) {
-    // just set CRS of dataset
-    dataset.info.crs = src;
-    return;
-  }
-
-  dest = internal.getProjection(destDefn);
-  if (!dest) {
-    stop("Unknown projection:", destDefn);
-  }
-
-  if (!src) {
-    // get from dataset
-    src = internal.getDatasetProjection(dataset);
-    if (!src) {
-      stop("Unable to project -- source coordinate system is unknown");
-    }
-  }
-
   if (internal.crsAreEqual(src, dest)) {
     message("Source and destination CRS are the same");
     return;
@@ -15936,16 +15916,14 @@ api.proj = function(dataset, srcDefn, destDefn, opts_) {
   });
 
   try {
-    internal.projectDataset(target, src, dest, opts);
+    internal.projectDataset(target, src, dest, opts || {});
   } catch(e) {
     stop(utils.format("Projection failure%s (%s)",
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
   }
 
-  if (dataset.info) {
-    dataset.info.crs = dest;
-  }
-
+  dataset.info.crs = dest;
+  dataset.info.prj = destInfo.prj; // may be undefined
   dataset.arcs = target.arcs;
   originals.forEach(function(lyr, i) {
     // replace original layers with modified layers
@@ -15953,28 +15931,31 @@ api.proj = function(dataset, srcDefn, destDefn, opts_) {
   });
 };
 
+
 // @source: a layer identifier, .prj file or projection defn
 // Converts layer ids and .prj files to projection defn
 // Returns projection defn
-internal.getProjectionString = function(sourceName, catalog) {
-  var dataset, sources, defn, P;
-  if (/\.prj$/i.test(sourceName)) {
-    dataset = api.importFile(sourceName, {});
+internal.getProjectionInfo = function(name, catalog) {
+  var dataset, sources, info = {};
+  if (/\.prj$/i.test(name)) {
+    dataset = api.importFile(name, {});
     if (dataset) {
-      defn = internal.translatePrj(dataset.info.input_prj);
+      info.prj = dataset.info.prj;
+      info.crs = internal.parsePrj(info.prj);
     }
   } else {
-    sources = catalog.findCommandTargets(sourceName);
+    sources = catalog.findCommandTargets(name);
     if (sources.length > 0) {
-      P = internal.getDatasetProjection(sources[0].dataset);
-      defn = internal.crsToProj4(P);
+      dataset = sources[0].dataset;
+      info.crs = internal.getDatasetProjection(dataset);
+      info.prj = dataset.info.prj; // may be undefined
+      // defn = internal.crsToProj4(P);
+    } else {
+      // assume name is a projection defn
+      info.crs = internal.getProjection(name);
     }
   }
-  if (!defn) {
-    // assume sourceName is a projection defn
-    defn = sourceName;
-  }
-  return defn;
+  return info;
 };
 
 internal.projectDataset = function(dataset, src, dest, opts) {
@@ -17434,16 +17415,16 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'proj') {
       targets.forEach(function(targ) {
-        var srcDefn, destDefn;
+        var srcInfo, destInfo;
         if (opts.from) {
-          srcDefn = internal.getProjectionString(opts.from, catalog);
+          srcInfo = internal.getProjectionInfo(opts.from, catalog);
+          if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
+          internal.setDatasetProjection(targ.dataset, srcInfo);
         }
-        if (opts.match) {
-          destDefn = internal.getProjectionString(opts.match, catalog);
-        } else {
-          destDefn = opts.projection;
+        if (opts.match || opts.projection) {
+          destInfo = internal.getProjectionInfo(opts.match || opts.projection, catalog);
+          api.proj(targ.dataset, destInfo, opts);
         }
-        api.proj(targ.dataset, srcDefn, destDefn, opts);
       });
 
     } else if (name == 'rename-fields') {
