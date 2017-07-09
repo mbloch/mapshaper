@@ -16,18 +16,18 @@ internal.exportShapefile = function(dataset, opts) {
 };
 
 internal.exportPrjFile = function(lyr, dataset) {
-  var inputPrj = dataset.info && dataset.info.input_prj;
-  var crs = internal.getDatasetProjection(dataset);
-  var outputPrj;
-
-  if (crs && inputPrj && internal.crsAreEqual(crs, internal.parsePrj(inputPrj))) {
-    outputPrj = inputPrj;
-  } else if (crs) {
-    outputPrj = internal.crsToPrj(crs);
+  var info = dataset.info || {};
+  var prj = info.prj;
+  if (!prj) {
+    try {
+      prj = internal.crsToPrj(internal.getDatasetProjection(dataset));
+    } catch(e) {}
   }
-
-  return outputPrj ? {
-    content: outputPrj,
+  if (!prj) {
+    message("Unable to generate .prj file for", lyr.name + '.shp');
+  }
+  return prj ? {
+    content: prj,
     filename: lyr.name + '.prj'
   } : null;
 };

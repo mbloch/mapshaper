@@ -48,6 +48,7 @@ internal.mergeDatasets = function(arr) {
 
 internal.mergeDatasetInfo = function(arr) {
   // Get crs, prevent incompatible CRSs
+  // TODO: handle unparsable prj
   var crs = arr.reduce(function(memo, d) {
     var P = internal.getDatasetProjection(d);
     if (!memo) {
@@ -69,7 +70,7 @@ internal.mergeDatasetInfo = function(arr) {
     var info = d.info || {};
     memo.input_files = memo.input_files.concat(info.input_files || []);
     memo.input_formats = memo.input_formats.concat(info.input_formats || []);
-    // merge other info properties (e.g. input_geojson_crs, input_delimiter, input_prj)
+    // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj)
     // TODO: check for incompatibilities
     return utils.defaults(memo, info);
   }, {crs: crs, input_formats: [], input_files: []});

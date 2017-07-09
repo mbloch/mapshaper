@@ -207,16 +207,16 @@ api.runCommand = function(cmd, catalog, cb) {
 
     } else if (name == 'proj') {
       targets.forEach(function(targ) {
-        var srcDefn, destDefn;
+        var srcInfo, destInfo;
         if (opts.from) {
-          srcDefn = internal.getProjectionString(opts.from, catalog);
+          srcInfo = internal.getProjectionInfo(opts.from, catalog);
+          if (!srcInfo.crs) stop("Unknown projection source:", opts.from);
+          internal.setDatasetProjection(targ.dataset, srcInfo);
         }
-        if (opts.match) {
-          destDefn = internal.getProjectionString(opts.match, catalog);
-        } else {
-          destDefn = opts.projection;
+        if (opts.match || opts.projection) {
+          destInfo = internal.getProjectionInfo(opts.match || opts.projection, catalog);
+          api.proj(targ.dataset, destInfo, opts);
         }
-        api.proj(targ.dataset, srcDefn, destDefn, opts);
       });
 
     } else if (name == 'rename-fields') {

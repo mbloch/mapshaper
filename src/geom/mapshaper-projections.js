@@ -15,13 +15,8 @@ internal.getProjInfo = function(dataset) {
     if (P) {
       info = internal.crsToProj4(P);
     }
-    if (!info) {
-      info = "unknown";
-    }
-  } catch(e) {
-    info = e.message;
-  }
-  return info;
+  } catch(e) {}
+  return info || "[unknown]";
 };
 
 internal.crsToProj4 = function(P) {
@@ -73,11 +68,17 @@ internal.getProjection = function(str) {
   return P || null;
 };
 
+internal.setDatasetProjection = function(dataset, info) {
+  dataset.info = dataset.info || {};
+  dataset.info.crs = info.crs;
+  dataset.info.prj = info.prj;
+};
+
 internal.getDatasetProjection = function(dataset) {
   var info = dataset.info || {},
       P = info.crs;
-  if (!P && info.input_prj) {
-    P = internal.parsePrj(info.input_prj);
+  if (!P && info.prj) {
+    P = internal.parsePrj(info.prj);
   }
   if (!P && internal.probablyDecimalDegreeBounds(internal.getDatasetBounds(dataset))) {
     // use wgs84 for probable latlong datasets with unknown datums

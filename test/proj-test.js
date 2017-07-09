@@ -45,7 +45,6 @@ describe('mapshaper-proj.js', function() {
         done();
       })
     })
-
   })
 
 
@@ -66,12 +65,23 @@ describe('mapshaper-proj.js', function() {
       })
     })
 
-    it('match= argument can be a layer name', function() {
+    it('match= argument can be a layer name', function(done) {
       api.applyCommands('-i test/test_data/two_states_mercator.shp name=states -i test/test_data/three_points.shp -proj match=states -o',
           {}, function(err, output) {
         assert(/Mercator/.test(output['three_points.prj']));
         done();
       })
     })
+
+    it('output copies .prj string from match= source', function(done) {
+      var prj = require('fs').readFileSync('test/test_data/two_states_mercator.prj', 'utf8');
+      api.applyCommands('-i test/test_data/two_states_mercator.shp name=states -i test/test_data/three_points.shp -proj match=states -o',
+          {}, function(err, output) {
+        var prj2 = output['three_points.prj'];
+        assert.equal(prj2, prj);
+        done();
+      })
+    })
+
   })
 });

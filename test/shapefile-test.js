@@ -19,6 +19,16 @@ describe('mapshaper-shapefile.js', function () {
   })
 
   describe('.prj tests', function() {
+
+    it('prj is exported even if mapshaper can not parse it (Issue #193)', function() {
+      var data = api.importFile(fixPath('test_data/issues/193/three_points.shp'), {});
+      var files = api.internal.exportFileContent(data, {});
+      var prj = Utils.find(files, function(o) {
+        return o.filename == 'three_points.prj';
+      });
+      assert.equal(prj && prj.filename, 'three_points.prj');
+    });
+
     it('prj is exported if input prj is present', function() {
       var data = api.importFile(fixPath('test_data/three_points.shp'), {});
       var files = api.internal.exportFileContent(data, {});

@@ -51,7 +51,7 @@ internal.importContent = function(obj, opts) {
     // added for -proj command source
     fileFmt = 'prj';
     data = obj.prj;
-    dataset = {layers: [], info: {input_prj: data.content}};
+    dataset = {layers: [], info: {prj: data.content}};
   }
 
   if (!dataset) {
@@ -102,7 +102,7 @@ internal.importShapefile = function(obj, opts) {
     }
   }
   if (obj.prj) {
-    dataset.info.input_prj = obj.prj.content;
+    dataset.info.prj = obj.prj.content;
   }
   return dataset;
 };

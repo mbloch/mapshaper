@@ -5,45 +5,23 @@ mapshaper-arc-editor
 mapshaper-shape-utils
 */
 
-api.proj = function(dataset, srcDefn, destDefn, opts_) {
+api.proj = function(dataset, destInfo, opts) {
   // modify copy of coordinate data when running in web UI, so original shapes
   // are preserved if an error occurs
   var modifyCopy = !!api.gui,
-      opts = opts_ || {},
       originals = [],
       target = {},
-      src, dest, defn, prj, tmp;
+      src, dest;
 
-  if (!srcDefn && !destDefn) {
+  src = internal.getDatasetProjection(dataset);
+  if (!src) {
+    stop("Unable to project -- source coordinate system is unknown");
+  }
+
+  dest = destInfo.crs;
+  if (!dest) {
     stop("Missing projection data");
   }
-
-  if (srcDefn) {
-    src = internal.getProjection(srcDefn);
-    if (!src) {
-      stop("Unknown projection:", srcDefn);
-    }
-  }
-
-  if (!destDefn) {
-    // just set CRS of dataset
-    dataset.info.crs = src;
-    return;
-  }
-
-  dest = internal.getProjection(destDefn);
-  if (!dest) {
-    stop("Unknown projection:", destDefn);
-  }
-
-  if (!src) {
-    // get from dataset
-    src = internal.getDatasetProjection(dataset);
-    if (!src) {
-      stop("Unable to project -- source coordinate system is unknown");
-    }
-  }
-
   if (internal.crsAreEqual(src, dest)) {
     message("Source and destination CRS are the same");
     return;
@@ -64,16 +42,14 @@ api.proj = function(dataset, srcDefn, destDefn, opts_) {
   });
 
   try {
-    internal.projectDataset(target, src, dest, opts);
+    internal.projectDataset(target, src, dest, opts || {});
   } catch(e) {
     stop(utils.format("Projection failure%s (%s)",
       e.point ? ' at ' + e.point.join(' ') : '', e.message));
   }
 
-  if (dataset.info) {
-    dataset.info.crs = dest;
-  }
-
+  dataset.info.crs = dest;
+  dataset.info.prj = destInfo.prj; // may be undefined
   dataset.arcs = target.arcs;
   originals.forEach(function(lyr, i) {
     // replace original layers with modified layers
@@ -81,28 +57,31 @@ api.proj = function(dataset, srcDefn, destDefn, opts_) {
   });
 };
 
+
 // @source: a layer identifier, .prj file or projection defn
 // Converts layer ids and .prj files to projection defn
 // Returns projection defn
-internal.getProjectionString = function(sourceName, catalog) {
-  var dataset, sources, defn, P;
-  if (/\.prj$/i.test(sourceName)) {
-    dataset = api.importFile(sourceName, {});
+internal.getProjectionInfo = function(name, catalog) {
+  var dataset, sources, info = {};
+  if (/\.prj$/i.test(name)) {
+    dataset = api.importFile(name, {});
     if (dataset) {
-      defn = internal.translatePrj(dataset.info.input_prj);
+      info.prj = dataset.info.prj;
+      info.crs = internal.parsePrj(info.prj);
     }
   } else {
-    sources = catalog.findCommandTargets(sourceName);
+    sources = catalog.findCommandTargets(name);
     if (sources.length > 0) {
-      P = internal.getDatasetProjection(sources[0].dataset);
-      defn = internal.crsToProj4(P);
+      dataset = sources[0].dataset;
+      info.crs = internal.getDatasetProjection(dataset);
+      info.prj = dataset.info.prj; // may be undefined
+      // defn = internal.crsToProj4(P);
+    } else {
+      // assume name is a projection defn
+      info.crs = internal.getProjection(name);
     }
   }
-  if (!defn) {
-    // assume sourceName is a projection defn
-    defn = sourceName;
-  }
-  return defn;
+  return info;
 };
 
 internal.projectDataset = function(dataset, src, dest, opts) {
