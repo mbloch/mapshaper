@@ -1,7 +1,7 @@
 var api = require('../'),
     assert = require('assert');
 
-describe('Issue #174: Error clipping a polyline layer', function () {
+describe('Issue #192: Error clipping a polyline layer', function () {
   it ('clip polyline layer containing null geometry', function(done) {
 
     var a = {

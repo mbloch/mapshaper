@@ -1,3 +1,7 @@
+v0.4.29
+* Fixed error exporting Shapefiles with unparsable .prj files (content of original file is copied to output file).
+* Updated mapshaper-proj to v0.0.11.
+
 v0.4.28
 * Fixed error when clipping polyline layers containing empty geometries.
 * [web] Support backslash continuation lines in web console.
