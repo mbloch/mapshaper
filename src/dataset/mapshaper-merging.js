@@ -15,15 +15,29 @@ internal.mergeDatasets = function(arr) {
   var arcSources = [],
       arcCount = 0,
       mergedLayers = [],
-      mergedInfo = internal.mergeDatasetInfo(arr),
+      mergedInfo = {},
+      mergedIsLatLng = null,
       mergedArcs;
 
-  arr.forEach(function(data) {
-    var n = data.arcs ? data.arcs.size() : 0;
+  arr.forEach(function(dataset) {
+    var bounds = internal.getDatasetBounds(dataset);
+    var n = dataset.arcs ? dataset.arcs.size() : 0;
+    var isLatLng;
     if (n > 0) {
-      arcSources.push(data.arcs);
+      arcSources.push(dataset.arcs);
     }
-    data.layers.forEach(function(lyr) {
+    // check for incompatible CRS
+    if (bounds.hasBounds()) {
+      isLatLng = internal.probablyDecimalDegreeBounds(bounds);
+      if (mergedIsLatLng === null) {
+        mergedIsLatLng = isLatLng;
+      } else if (mergedIsLatLng !== isLatLng) {
+        // TODO: consider stricter CRS rules
+        stop("Unable to combine projected and unprojected datasets");
+      }
+    }
+    internal.mergeDatasetInfo(mergedInfo, dataset);
+    dataset.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
         internal.forEachArcId(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
@@ -46,35 +60,12 @@ internal.mergeDatasets = function(arr) {
   };
 };
 
-internal.mergeDatasetInfo = function(arr) {
-  // Get crs, prevent incompatible CRSs
-  // TODO: handle unparsable prj
-  var crs = arr.reduce(function(memo, d) {
-    var P = internal.getDatasetProjection(d);
-    if (!memo) {
-      memo = P;
-    } else if (memo && P) {
-      if (memo.is_latlong != P.is_latlong) {
-        stop("Unable to combine projected and unprojected datasets");
-      } else if (memo.is_latlong) {
-        // datasets are both unprojected
-        // TODO: check for incompatibility
-      } else {
-        // datasets are both projected
-        // TODO: check for incompatibility
-      }
-    }
-    return memo;
-  }, null);
-  var info = arr.reduce(function(memo, d) {
-    var info = d.info || {};
-    memo.input_files = memo.input_files.concat(info.input_files || []);
-    memo.input_formats = memo.input_formats.concat(info.input_formats || []);
-    // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj)
-    // TODO: check for incompatibilities
-    return utils.defaults(memo, info);
-  }, {crs: crs, input_formats: [], input_files: []});
-  return info;
+internal.mergeDatasetInfo = function(merged, dataset) {
+  var info = dataset.info || {};
+  merged.input_files = utils.uniq((merged.input_files || []).concat(info.input_files || []));
+  merged.input_formats = utils.uniq((merged.input_formats || []).concat(info.input_formats || []));
+  // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
+  utils.defaults(merged, info);
 };
 
 internal.mergeArcs = function(arr) {
