@@ -64,6 +64,6 @@ According to Mozilla's [FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html), "The MPL'
 
 ### Acknowledgements
 
-Gregor Aisch, Mike Bostock, Shan Carter and Zhou Yi, for suggesting improvements and general helpfulness.
+My colleagues at The New York Times, for countless suggestions, bug reports and general helpfulness.
 
 Mark Harrower, for collaborating on the original MapShaper program at the University of Wisconsin&ndash;Madison.
