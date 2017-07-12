@@ -157,7 +157,10 @@ function Console(model) {
       capture = true; // prevent delete from leaving page
 
     // any key while console is open
-    } else if (_isOpen) {
+    // } else if (_isOpen) {
+
+    // any key while console is open and not typing in a non-console field
+    } else if (_isOpen && (typingInConsole || !typing)) {
       capture = true;
       gui.clearMode(); // close any panels that  might be open
 
