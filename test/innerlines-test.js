@@ -82,7 +82,6 @@ describe('mapshaper-innerlines.js', function () {
           [[[1]], [[2]], [[4]], [[5]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
     })
-
   })
 
   describe('lines()', function() {
@@ -91,7 +90,7 @@ describe('mapshaper-innerlines.js', function () {
       assert.deepEqual(lyr2.shapes, [[[1]], [[0]], [[2]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.equal(lyr2.name, 'shape'); // same as original name
-      assert.deepEqual(lyr2.data.getRecords(), [{TYPE: 1}, {TYPE: 0}, {TYPE: 0}]);
+      assert.deepEqual(lyr2.data.getRecords(), [{RANK: 1, TYPE: "inner"}, {RANK: 0, TYPE: "outer"}, {RANK: 0, TYPE: "outer"}]);
     })
 
     it('test 2 with no field', function () {
@@ -106,14 +105,14 @@ describe('mapshaper-innerlines.js', function () {
       assert.deepEqual(lyr2.shapes, [[[1]], [[0]], [[2]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.equal(lyr2.name, 'shape'); // same as original name
-      assert.deepEqual(lyr2.data.getRecords(), [{TYPE: 1}, {TYPE: 0}, {TYPE: 0}]);
+      assert.deepEqual(lyr2.data.getRecords(), [{RANK: 1, TYPE: "inner"}, {RANK: 0, TYPE: "outer"}, {RANK: 0, TYPE: "outer"}]);
     })
 
     it( 'test 2 with one field', function() {
       var lyr2 = api.lines(lyrb, arcsb, {fields:['foo']});
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.deepEqual(lyr2.data.getRecords(),
-          [{TYPE: 2}, {TYPE: 2}, {TYPE: 1}, {TYPE: 1}, {TYPE: 0}, {TYPE: 0}, {TYPE: 0}, {TYPE: 0}]);
+          [{RANK: 2, TYPE: 'inner'}, {RANK: 2, TYPE: 'inner'}, {RANK: 1, TYPE: "foo"}, {RANK: 1, TYPE: "foo"}, {RANK: 0, TYPE: "outer"}, {RANK: 0, TYPE: "outer"}, {RANK: 0, TYPE: "outer"}, {RANK: 0, TYPE: "outer"}]);
       assert.deepEqual(lyr2.shapes,
           [[[1]], [[5]], [[2]], [[4]], [[0]], [[3]], [[6]], [[7]]]);
     })
@@ -123,7 +122,7 @@ describe('mapshaper-innerlines.js', function () {
       var lyr2 = api.lines(lyrc, arcsc, {fields:['foo']});
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.deepEqual(lyr2.data.getRecords(),
-          [{TYPE: 1}, {TYPE: 0}, {TYPE: 0}]);
+          [{RANK: 1, TYPE: "foo"}, {RANK: 0, TYPE: "outer"}, {RANK: 0, TYPE: "outer"}]);
       // Arcs in shapes[1] are rearranged to form a single part
       assert.deepEqual(lyr2.shapes, [[[1, 3]], [[4, 0]], [[2, 5]]]);
     })
@@ -134,7 +133,7 @@ describe('mapshaper-innerlines.js', function () {
           [[[1]], [[5]], [[2]], [[4]], [[0]], [[3]], [[6]], [[7]]]);
       assert.equal(lyr2.geometry_type, 'polyline');
       assert.deepEqual(lyr2.data.getRecords(),
-          [{TYPE: 3}, {TYPE: 2}, {TYPE: 1}, {TYPE: 1}, {TYPE: 0}, {TYPE: 0}, {TYPE: 0}, {TYPE: 0}]);
+          [{RANK: 3, TYPE: 'inner'}, {RANK: 2, TYPE: "bar"}, {RANK: 1, TYPE: "foo"}, {RANK: 1, TYPE: "foo"}, {RANK: 0, TYPE: "outer"}, {RANK: 0, TYPE: "outer"}, {RANK: 0, TYPE: "outer"}, {RANK: 0, TYPE: "outer"}]);
     })
   })
 })

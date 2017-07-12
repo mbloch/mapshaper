@@ -17,7 +17,7 @@ api.lines = function(lyr, arcs, opts) {
   opts = opts || {};
   var classifier = internal.getArcClassifier(lyr.shapes, arcs),
       fields = utils.isArray(opts.fields) ? opts.fields : [],
-      typeId = 0,
+      rankId = 0,
       shapes = [],
       records = [],
       outputLyr;
@@ -27,7 +27,7 @@ api.lines = function(lyr, arcs, opts) {
     stop("Missing a data table");
   }
 
-  addLines(internal.extractOuterLines(lyr.shapes, classifier));
+  addLines(internal.extractOuterLines(lyr.shapes, classifier), 'outer');
 
   fields.forEach(function(field) {
     var data = lyr.data.getRecords();
@@ -43,21 +43,21 @@ api.lines = function(lyr, arcs, opts) {
     if (!lyr.data.fieldExists(field)) {
       stop("Unknown data field:", field);
     }
-    addLines(internal.extractLines(lyr.shapes, classifier(key)));
+    addLines(internal.extractLines(lyr.shapes, classifier(key)), field);
   });
 
-  addLines(internal.extractInnerLines(lyr.shapes, classifier));
+  addLines(internal.extractInnerLines(lyr.shapes, classifier), 'inner');
   outputLyr = internal.createLineLayer(shapes, records);
   outputLyr.name = opts.no_replace ? null : lyr.name;
   return outputLyr;
 
-  function addLines(lines) {
+  function addLines(lines, typeName) {
     var attr = lines.map(function(shp, i) {
-      return {TYPE: typeId};
+      return {RANK: rankId, TYPE: typeName};
     });
     shapes = utils.merge(lines, shapes);
     records = utils.merge(attr, records);
-    typeId++;
+    rankId++;
   }
 };
 
