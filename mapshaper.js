@@ -10884,15 +10884,29 @@ internal.mergeDatasets = function(arr) {
   var arcSources = [],
       arcCount = 0,
       mergedLayers = [],
-      mergedInfo = internal.mergeDatasetInfo(arr),
+      mergedInfo = {},
+      mergedIsLatLng = null,
       mergedArcs;
 
-  arr.forEach(function(data) {
-    var n = data.arcs ? data.arcs.size() : 0;
+  arr.forEach(function(dataset) {
+    var bounds = internal.getDatasetBounds(dataset);
+    var n = dataset.arcs ? dataset.arcs.size() : 0;
+    var isLatLng;
     if (n > 0) {
-      arcSources.push(data.arcs);
+      arcSources.push(dataset.arcs);
     }
-    data.layers.forEach(function(lyr) {
+    // check for incompatible CRS
+    if (bounds.hasBounds()) {
+      isLatLng = internal.probablyDecimalDegreeBounds(bounds);
+      if (mergedIsLatLng === null) {
+        mergedIsLatLng = isLatLng;
+      } else if (mergedIsLatLng !== isLatLng) {
+        // TODO: consider stricter CRS rules
+        stop("Unable to combine projected and unprojected datasets");
+      }
+    }
+    internal.mergeDatasetInfo(mergedInfo, dataset);
+    dataset.layers.forEach(function(lyr) {
       if (lyr.geometry_type == 'polygon' || lyr.geometry_type == 'polyline') {
         internal.forEachArcId(lyr.shapes, function(id) {
           return id < 0 ? id - arcCount : id + arcCount;
@@ -10915,35 +10929,12 @@ internal.mergeDatasets = function(arr) {
   };
 };
 
-internal.mergeDatasetInfo = function(arr) {
-  // Get crs, prevent incompatible CRSs
-  // TODO: handle unparsable prj
-  var crs = arr.reduce(function(memo, d) {
-    var P = internal.getDatasetProjection(d);
-    if (!memo) {
-      memo = P;
-    } else if (memo && P) {
-      if (memo.is_latlong != P.is_latlong) {
-        stop("Unable to combine projected and unprojected datasets");
-      } else if (memo.is_latlong) {
-        // datasets are both unprojected
-        // TODO: check for incompatibility
-      } else {
-        // datasets are both projected
-        // TODO: check for incompatibility
-      }
-    }
-    return memo;
-  }, null);
-  var info = arr.reduce(function(memo, d) {
-    var info = d.info || {};
-    memo.input_files = memo.input_files.concat(info.input_files || []);
-    memo.input_formats = memo.input_formats.concat(info.input_formats || []);
-    // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj)
-    // TODO: check for incompatibilities
-    return utils.defaults(memo, info);
-  }, {crs: crs, input_formats: [], input_files: []});
-  return info;
+internal.mergeDatasetInfo = function(merged, dataset) {
+  var info = dataset.info || {};
+  merged.input_files = utils.uniq((merged.input_files || []).concat(info.input_files || []));
+  merged.input_formats = utils.uniq((merged.input_formats || []).concat(info.input_formats || []));
+  // merge other info properties (e.g. input_geojson_crs, input_delimiter, prj, crs)
+  utils.defaults(merged, info);
 };
 
 internal.mergeArcs = function(arr) {
@@ -14131,6 +14122,9 @@ internal.importContent = function(obj, opts) {
       } catch(e) {
         stop("Unable to parse JSON");
       }
+    } else if (!content) {
+      // need to read from file...
+
     }
     if (content.type == 'Topology') {
       fileFmt = 'topojson';
@@ -14657,7 +14651,7 @@ api.lines = function(lyr, arcs, opts) {
   opts = opts || {};
   var classifier = internal.getArcClassifier(lyr.shapes, arcs),
       fields = utils.isArray(opts.fields) ? opts.fields : [],
-      typeId = 0,
+      rankId = 0,
       shapes = [],
       records = [],
       outputLyr;
@@ -14667,7 +14661,7 @@ api.lines = function(lyr, arcs, opts) {
     stop("Missing a data table");
   }
 
-  addLines(internal.extractOuterLines(lyr.shapes, classifier));
+  addLines(internal.extractOuterLines(lyr.shapes, classifier), 'outer');
 
   fields.forEach(function(field) {
     var data = lyr.data.getRecords();
@@ -14683,21 +14677,21 @@ api.lines = function(lyr, arcs, opts) {
     if (!lyr.data.fieldExists(field)) {
       stop("Unknown data field:", field);
     }
-    addLines(internal.extractLines(lyr.shapes, classifier(key)));
+    addLines(internal.extractLines(lyr.shapes, classifier(key)), field);
   });
 
-  addLines(internal.extractInnerLines(lyr.shapes, classifier));
+  addLines(internal.extractInnerLines(lyr.shapes, classifier), 'inner');
   outputLyr = internal.createLineLayer(shapes, records);
   outputLyr.name = opts.no_replace ? null : lyr.name;
   return outputLyr;
 
-  function addLines(lines) {
+  function addLines(lines, typeName) {
     var attr = lines.map(function(shp, i) {
-      return {TYPE: typeId};
+      return {RANK: rankId, TYPE: typeName};
     });
     shapes = utils.merge(lines, shapes);
     records = utils.merge(attr, records);
-    typeId++;
+    rankId++;
   }
 };
 
@@ -18676,11 +18670,11 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("proj")
-    .describe("project a dataset using a proj4 string or alias")
+    .describe("project your data (using Proj.4)")
     .flag("multi_arg")
     .option("projection", {
       label: "<projection>",
-      describe: "Proj.4 projection definition or mapshaper alias"
+      describe: "set the destination CRS using a Proj.4 definition or alias"
     })
     .option("match", {
       describe: "set the destination CRS using a .prj file or layer id"
@@ -18690,7 +18684,7 @@ internal.getOptionParser = function() {
       alias_to: "match"
     })
     .option("from", {
-      describe: "set the source CRS; takes a projection string, .prj or layer"
+      describe: "set the source CRS (if unset) using a string, .prj or layer id"
     })
     .option("densify", {
       type: "flag",
