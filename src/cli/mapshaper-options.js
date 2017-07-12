@@ -505,11 +505,11 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("proj")
-    .describe("project a dataset using a proj4 string or alias")
+    .describe("project your data (using Proj.4)")
     .flag("multi_arg")
     .option("projection", {
       label: "<projection>",
-      describe: "Proj.4 projection definition or mapshaper alias"
+      describe: "set the destination CRS using a Proj.4 definition or alias"
     })
     .option("match", {
       describe: "set the destination CRS using a .prj file or layer id"
@@ -519,7 +519,7 @@ internal.getOptionParser = function() {
       alias_to: "match"
     })
     .option("from", {
-      describe: "set the source CRS; takes a projection string, .prj or layer"
+      describe: "set the source CRS (if unset) using a string, .prj or layer id"
     })
     .option("densify", {
       type: "flag",

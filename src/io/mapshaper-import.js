@@ -24,6 +24,9 @@ internal.importContent = function(obj, opts) {
       } catch(e) {
         stop("Unable to parse JSON");
       }
+    } else if (!content) {
+      // need to read from file...
+
     }
     if (content.type == 'Topology') {
       fileFmt = 'topojson';
