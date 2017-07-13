@@ -39,14 +39,16 @@ internal.importJSONFile = function(path, opts) {
   var reader = new FileReader(path);
   var str = reader.getBuffer(0, 1000).toString('utf8');
   var type = internal.identifyJSONString(str);
-  var dataset;
+  var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
     dataset = internal.importGeoJSONFile(reader, opts);
+    reader.close();
     return {
       dataset: dataset,
       format: 'geojson'
     };
   } else {
+    reader.close();
     return {content: cli.readFile(path, 'utf8')};
   }
 };
