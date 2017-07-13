@@ -1,15 +1,40 @@
 /* @requires
 geojson-common
 geojson-reader
+mapshaper-file-reader
 mapshaper-path-import
 mapshaper-data-table
 */
 
-internal.importGeoJSON = function(src, opts) {
-  var srcObj = utils.isString(src) ? JSON.parse(src) : src,
-      supportedGeometries = Object.keys(GeoJSON.pathImporters),
-      idField = opts.id_field || GeoJSON.ID_FIELD,
+function GeoJSONParser(opts) {
+  var idField = opts.id_field || GeoJSON.ID_FIELD,
       importer = new PathImporter(opts),
+      dataset;
+
+  this.parseObject = function(o) {
+    var geom, rec;
+    if (o.type == 'Feature') {
+      geom = o.geometry;
+      rec = o.properties || {};
+      if ('id' in o) {
+        rec[idField] = o.id;
+      }
+    } else if (o.type) {
+      geom = o;
+    }
+    importer.startShape(rec);
+    if (geom) GeoJSON.importGeometry(geom, importer);
+  };
+
+  this.done = function() {
+    return importer.done();
+  };
+}
+
+internal.importGeoJSON = function(src, opts) {
+  var supportedGeometries = Object.keys(GeoJSON.pathImporters),
+      srcObj = utils.isString(src) ? JSON.parse(src) : src,
+      importer = new GeoJSONParser(opts),
       srcCollection, dataset;
 
   // Convert single feature or geometry into a collection with one member
@@ -26,27 +51,12 @@ internal.importGeoJSON = function(src, opts) {
   } else {
     srcCollection = srcObj;
   }
-
-  (srcCollection.features || srcCollection.geometries || []).forEach(function(o) {
-    var geom, rec;
-    if (o.type == 'Feature') {
-      geom = o.geometry;
-      rec = o.properties || {};
-      if ('id' in o) {
-        rec[idField] = o.id;
-      }
-    } else if (o.type) {
-      geom = o;
-    }
-    importer.startShape(rec);
-    if (geom) GeoJSON.importGeometry(geom, importer);
-  });
-
+  (srcCollection.features || srcCollection.geometries || []).forEach(importer.parseObject);
   dataset = importer.done();
-
-  internal.importCRS(dataset, srcObj);
+  internal.importCRS(dataset, srcObj); // TODO: remove this
   return dataset;
 };
+
 
 GeoJSON.importGeometry = function(geom, importer) {
   var type = geom.type;

@@ -4,6 +4,7 @@ mapshaper-geojson
 mapshaper-topojson
 mapshaper-shapefile
 mapshaper-json-table
+mapshaper-json-import
 */
 
 // Parse content of one or more input files and return a dataset
@@ -16,28 +17,9 @@ internal.importContent = function(obj, opts) {
   var dataset, content, fileFmt, data;
   opts = opts || {};
   if (obj.json) {
-    data = obj.json;
-    content = data.content;
-    if (utils.isString(content)) {
-      try {
-        content = JSON.parse(content);
-      } catch(e) {
-        stop("Unable to parse JSON");
-      }
-    } else if (!content) {
-      // need to read from file...
-
-    }
-    if (content.type == 'Topology') {
-      fileFmt = 'topojson';
-      dataset = internal.importTopoJSON(content, opts);
-    } else if (content.type) {
-      fileFmt = 'geojson';
-      dataset = internal.importGeoJSON(content, opts);
-    } else if (utils.isArray(content)) {
-      fileFmt = 'json';
-      dataset = internal.importJSONTable(content, opts);
-    }
+    data = internal.importJSON(obj.json, opts);
+    fileFmt = data.format;
+    dataset = data.dataset;
   } else if (obj.text) {
     fileFmt = 'dsv';
     data = obj.text;
@@ -90,6 +72,7 @@ internal.importFileContent = function(content, filename, opts) {
   input[type] = {filename: filename, content: content};
   return internal.importContent(input, opts);
 };
+
 
 internal.importShapefile = function(obj, opts) {
   var shpSrc = obj.shp.content || obj.shp.filename, // content may be missing

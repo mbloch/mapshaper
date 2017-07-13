@@ -31,34 +31,28 @@ api.importFiles = function(opts) {
 
 api.importFile = function(path, opts) {
   var isBinary = internal.isBinaryFile(path),
-      isShp = internal.guessInputFileType(path) == 'shp',
+      apparentType = internal.guessInputFileType(path),
       input = {},
+      encoding = opts && opts.encoding || null,
       cache = opts && opts.input || null,
       cached = cache && (path in cache),
       type, content;
 
   cli.checkFileExists(path, cache);
-  if (isShp && !cached) {
-    content = null; // let ShpReader read the file (supports larger files)
+  if (apparentType == 'shp' && !cached) {
+    // let ShpReader read the file (supports larger files)
+    content = null;
+  } else if (apparentType == 'json' && !cached) {
+    // postpone reading of JSON files, to support incremental parsing of GeoJSON
+    content = null;
   } else if (isBinary) {
     content = cli.readFile(path, null, cache);
-  } else {
-    content = cli.readFile(path, opts && opts.encoding || 'utf-8', cache);
+  } else { // assuming text file
+    content = cli.readFile(path, encoding || 'utf-8', cache);
   }
-  type = internal.guessInputFileType(path) || internal.guessInputContentType(content);
+  type = apparentType || internal.guessInputContentType(content);
   if (!type) {
     stop("Unable to import", path);
-  } else if (type == 'json') {
-    // parsing JSON here so input file can be gc'd before JSON data is imported
-    // TODO: look into incrementally parsing JSON data
-    try {
-      // JSON data may already be parsed if imported via applyCommands()
-      if (utils.isString(content)) {
-        content = JSON.parse(content);
-      }
-    } catch(e) {
-      stop("Unable to parse JSON");
-    }
   }
   input[type] = {filename: path, content: content};
   content = null; // for g.c.
@@ -70,23 +64,6 @@ api.importFile = function(path, opts) {
   }
   return internal.importContent(input, opts);
 };
-
-/*
-api.importDataTable = function(path, opts) {
-  // TODO: avoid the overhead of importing shape data, if present
-  var dataset = api.importFile(path, opts);
-  if (dataset.layers.length > 1) {
-    // if multiple layers are imported (e.g. from multi-type GeoJSON), throw away
-    // the geometry and merge them
-    dataset.layers.forEach(function(lyr) {
-      lyr.shapes = null;
-      lyr.geometry_type = null;
-    });
-    dataset.layers = api.mergeLayers(dataset.layers);
-  }
-  return dataset.layers[0].data;
-};
-*/
 
 internal.readShapefileAuxFiles = function(path, obj, cache) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
