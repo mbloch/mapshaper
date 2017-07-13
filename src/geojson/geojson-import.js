@@ -1,5 +1,6 @@
 /* @requires
 geojson-common
+geojson-reader
 mapshaper-path-import
 mapshaper-data-table
 */

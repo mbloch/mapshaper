@@ -1,4 +1,4 @@
 /* @requires
-geojson-import,
+geojson-import
 geojson-export
 */
