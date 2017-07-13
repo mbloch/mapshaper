@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.29';
+var VERSION = '0.4.30';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -9819,6 +9819,182 @@ GeoJSON.translateGeoJSONType = function(type) {
 
 
 
+internal.FileReader = FileReader;
+
+function FileReader(path, opts) {
+  var fs = require('fs');
+  var DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x2000000, // 32 MB
+      DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x4000, // 32K
+      cacheOffs, cache, fd, fileLen;
+
+  //try {
+    fileLen = fs.statSync(path).size;
+    fd = fs.openSync(path, 'r');
+    updateCache(0);
+  //} catch(e) {}
+
+  this.expandBuffer = function() {
+    DEFAULT_BUFFER_LEN *= 2;
+    return this;
+  };
+
+  this.getBuffer = function(readOffs, len) {
+    var cacheLen = cache.length,
+        bufLen = len || DEFAULT_BUFFER_LEN,
+        cacheHeadroom;
+
+    if (!(readOffs >= 0 && readOffs <= fileLen)) {
+      // out-of-range request: return empty buffer
+      throw new Error("Out-of-range read request:", readOffs);
+    }
+
+    // reduce buffer size if current size exceeds file length
+    if (readOffs + bufLen > fileLen) {
+      bufLen = fileLen - readOffs;
+    }
+
+    // update file cache if requested segment extends beyond the current cache range
+    cacheHeadroom = cacheLen + cacheOffs - readOffs;
+    if (readOffs < cacheOffs || cacheHeadroom < bufLen) {
+      updateCache(readOffs);
+    }
+
+    // return a slice of the file cache
+    return cache.slice(readOffs - cacheOffs, readOffs - cacheOffs + bufLen);
+  };
+
+  this.size = function() {
+    return fileLen;
+  };
+
+  this.close = function() {
+    if (fd) {
+      fs.closeSync(fd);
+      fd = null;
+      cache = null;
+      cacheOffs = 0;
+    }
+  };
+
+  function updateCache(fileOffs) {
+    var headroom = fileLen - fileOffs,
+        cacheLen = DEFAULT_CACHE_LEN,
+        bytesRead;
+    if (DEFAULT_BUFFER_LEN > cacheLen) {
+      cacheLen = DEFAULT_BUFFER_LEN;
+    }
+    if (headroom < cacheLen) {
+      cacheLen = headroom;
+    }
+    cache = new Buffer(cacheLen);
+    cacheOffs = fileOffs;
+    bytesRead = fs.readSync(fd, cache, 0, cacheLen, fileOffs);
+    if (bytesRead != cacheLen) throw new Error("Error reading file");
+  }
+}
+
+FileReader.prototype.findString = function (str, maxLen) {
+  var buf = this.getBuffer(0, maxLen || 256);
+  var strLen = str.length;
+  var n = buf.length - strLen;
+  var firstByte = str.charCodeAt(0);
+  var i;
+  for (i=0; i < n; i++) {
+    if (buf[i] == firstByte) {
+      if (buf.toString('utf8', i, i + strLen) == str) {
+        return {
+          offset: i + strLen,
+          text: buf.toString('utf8', 0, i)
+        };
+      }
+    }
+  }
+  return null;
+};
+
+
+
+
+internal.GeoJSONReader = GeoJSONReader;
+
+// @reader: a FileReader
+function GeoJSONReader(reader) {
+  var LCB = 123, // {
+      RCB = 125, // }
+      LSB = 91,  // [
+      RSB = 93,  // ]
+      BSL = 92,  // \
+      QUO = 34,  // "
+      COM = 39,  // ,
+      SPC = 32,  // <sp>
+      COL = 58;  // :
+
+  // read objects syncronously, with callback
+  this.readObjects = function(onObject) {
+    var start = reader.findString('"features"') || reader.findString('"geometries"');
+    // assume single Feature or geometry if not a collection
+    var offset = start ? start.offset : 0;
+    readObjects(offset, onObject);
+  };
+
+  this.readObject = readObject;
+
+  function readObjects(start, cb) {
+    var obj = readObject(start);
+    while (obj) {
+      cb(JSON.parse(obj.text));
+      obj = readObject(obj.offset);
+    }
+  }
+
+  // Returns {text: "{...}", offset} or null
+  // Skips characters in from of opening curly bracket
+  function readObject(offs) {
+    var buf = reader.getBuffer(offs);
+    var n = buf.length;
+    var indent = 0;
+    var inString = false;
+    var escape = false;
+    var retn = null;
+    var i, c, iStart;
+    for (i=0; i<n; i++) {
+      c = buf[i];
+      if (inString) {
+        if (escape) {
+          escape = false;
+        } else if (c == QUO) {
+          inString = false;
+        } else if (c == BSL) {
+          escape = true;
+        }
+      } else if (c == QUO) {
+        inString = true;
+      } else if (c == LCB) {
+        if (indent === 0) {
+          iStart = i;
+        }
+        indent++;
+      } else if (c == RCB) {
+        indent--;
+        if (indent === 0) {
+          retn = {text: buf.toString('utf8', iStart, i + 1), offset: offs + i + 1};
+          break;
+        } else if (indent == -1) {
+          break; // error -- "}" encountered before "{"
+        }
+      }
+      if (i == n-1) {
+        buf = reader.expandBuffer().getBuffer(offs);
+        n = buf.length;
+      }
+    }
+    return retn;
+  }
+}
+
+
+
+
 // Get function to Hash an x, y point to a non-negative integer
 function getXYHash(size) {
   var buf = new ArrayBuffer(16),
@@ -10662,11 +10838,35 @@ function PathImporter(opts) {
 
 
 
-internal.importGeoJSON = function(src, opts) {
-  var srcObj = utils.isString(src) ? JSON.parse(src) : src,
-      supportedGeometries = Object.keys(GeoJSON.pathImporters),
-      idField = opts.id_field || GeoJSON.ID_FIELD,
+function GeoJSONParser(opts) {
+  var idField = opts.id_field || GeoJSON.ID_FIELD,
       importer = new PathImporter(opts),
+      dataset;
+
+  this.parseObject = function(o) {
+    var geom, rec;
+    if (o.type == 'Feature') {
+      geom = o.geometry;
+      rec = o.properties || {};
+      if ('id' in o) {
+        rec[idField] = o.id;
+      }
+    } else if (o.type) {
+      geom = o;
+    }
+    importer.startShape(rec);
+    if (geom) GeoJSON.importGeometry(geom, importer);
+  };
+
+  this.done = function() {
+    return importer.done();
+  };
+}
+
+internal.importGeoJSON = function(src, opts) {
+  var supportedGeometries = Object.keys(GeoJSON.pathImporters),
+      srcObj = utils.isString(src) ? JSON.parse(src) : src,
+      importer = new GeoJSONParser(opts),
       srcCollection, dataset;
 
   // Convert single feature or geometry into a collection with one member
@@ -10683,27 +10883,12 @@ internal.importGeoJSON = function(src, opts) {
   } else {
     srcCollection = srcObj;
   }
-
-  (srcCollection.features || srcCollection.geometries || []).forEach(function(o) {
-    var geom, rec;
-    if (o.type == 'Feature') {
-      geom = o.geometry;
-      rec = o.properties || {};
-      if ('id' in o) {
-        rec[idField] = o.id;
-      }
-    } else if (o.type) {
-      geom = o;
-    }
-    importer.startShape(rec);
-    if (geom) GeoJSON.importGeometry(geom, importer);
-  });
-
+  (srcCollection.features || srcCollection.geometries || []).forEach(importer.parseObject);
   dataset = importer.done();
-
-  internal.importCRS(dataset, srcObj);
+  internal.importCRS(dataset, srcObj); // TODO: remove this
   return dataset;
 };
+
 
 GeoJSON.importGeometry = function(geom, importer) {
   var type = geom.type;
@@ -14104,6 +14289,102 @@ api.evaluateEachFeature = function(lyr, arcs, exp, opts) {
 
 
 
+// Identify JSON type from the initial subset of a JSON string
+internal.identifyJSONString = function(str) {
+  var maxChars = 1000;
+  var fmt = null;
+  if (str.length > maxChars) str = str.substr(0, maxChars);
+  str = str.replace(/\s/g, '');
+  if (/^\[[{\]]/.test(str)) {
+    // empty array of array of objects
+    fmt = 'json';
+  } else if (/"arcs":\[|"objects":\{|"transform":\{/.test(str)) {
+    fmt =  'topojson';
+  } else if (/^\{"/.test(str)) {
+    fmt = 'geojson';
+  }
+  return fmt;
+};
+
+internal.identifyJSONObject = function(o) {
+  var fmt = null;
+  if (o.type == 'Topology') {
+    fmt = 'topojson';
+  } else if (o.type) {
+    fmt = 'geojson';
+  } else if (utils.isArray(o)) {
+    fmt = 'json';
+  }
+  return fmt;
+};
+
+internal.importGeoJSONFile = function(fileReader, opts) {
+  var importer = new GeoJSONParser(opts);
+  new GeoJSONReader(fileReader).readObjects(importer.parseObject);
+  return importer.done();
+};
+
+internal.importJSONFile = function(path, opts) {
+  var reader = new FileReader(path);
+  var str = reader.getBuffer(0, 1000).toString('utf8');
+  var type = internal.identifyJSONString(str);
+  var dataset, retn;
+  if (type == 'geojson') { // consider only for larger files
+    dataset = internal.importGeoJSONFile(reader, opts);
+    reader.close();
+    return {
+      dataset: dataset,
+      format: 'geojson'
+    };
+  } else {
+    reader.close();
+    return {content: cli.readFile(path, 'utf8')};
+  }
+};
+
+internal.importJSON = function(data, opts) {
+  var content = data.content,
+      filename = data.filename,
+      retn = {filename: filename};
+
+  if (!content) {
+    // need to read from file...
+    try {
+      data = internal.importJSONFile(filename, opts);
+      if (data.dataset) {
+        retn.dataset = data.dataset;
+        retn.format = data.format;
+      } else {
+        content = data.content;
+      }
+    } catch(e) {
+      stop("Unable to import JSON file");
+    }
+  }
+  if (content) {
+    if (utils.isString(content)) {
+      try {
+        content = JSON.parse(content); // ~3sec for 100MB string
+      } catch(e) {
+        stop("Unable to parse JSON");
+      }
+    }
+    retn.format = internal.identifyJSONObject(content);
+    if (retn.format == 'topojson') {
+      retn.dataset = internal.importTopoJSON(content, opts);
+    } else if (retn.format == 'geojson') {
+      retn.dataset = internal.importGeoJSON(content, opts);
+    } else if (retn.format == 'json') {
+      retn.dataset = internal.importJSONTable(content, opts);
+    } else {
+      stop("Unknown JSON format");
+    }
+  }
+  return retn;
+};
+
+
+
 // Parse content of one or more input files and return a dataset
 // @obj: file data, indexed by file type
 // File data objects have two properties:
@@ -14114,28 +14395,9 @@ internal.importContent = function(obj, opts) {
   var dataset, content, fileFmt, data;
   opts = opts || {};
   if (obj.json) {
-    data = obj.json;
-    content = data.content;
-    if (utils.isString(content)) {
-      try {
-        content = JSON.parse(content);
-      } catch(e) {
-        stop("Unable to parse JSON");
-      }
-    } else if (!content) {
-      // need to read from file...
-
-    }
-    if (content.type == 'Topology') {
-      fileFmt = 'topojson';
-      dataset = internal.importTopoJSON(content, opts);
-    } else if (content.type) {
-      fileFmt = 'geojson';
-      dataset = internal.importGeoJSON(content, opts);
-    } else if (utils.isArray(content)) {
-      fileFmt = 'json';
-      dataset = internal.importJSONTable(content, opts);
-    }
+    data = internal.importJSON(obj.json, opts);
+    fileFmt = data.format;
+    dataset = data.dataset;
   } else if (obj.text) {
     fileFmt = 'dsv';
     data = obj.text;
@@ -14188,6 +14450,7 @@ internal.importFileContent = function(content, filename, opts) {
   input[type] = {filename: filename, content: content};
   return internal.importContent(input, opts);
 };
+
 
 internal.importShapefile = function(obj, opts) {
   var shpSrc = obj.shp.content || obj.shp.filename, // content may be missing
@@ -14268,34 +14531,28 @@ api.importFiles = function(opts) {
 
 api.importFile = function(path, opts) {
   var isBinary = internal.isBinaryFile(path),
-      isShp = internal.guessInputFileType(path) == 'shp',
+      apparentType = internal.guessInputFileType(path),
       input = {},
+      encoding = opts && opts.encoding || null,
       cache = opts && opts.input || null,
       cached = cache && (path in cache),
       type, content;
 
   cli.checkFileExists(path, cache);
-  if (isShp && !cached) {
-    content = null; // let ShpReader read the file (supports larger files)
+  if (apparentType == 'shp' && !cached) {
+    // let ShpReader read the file (supports larger files)
+    content = null;
+  } else if (apparentType == 'json' && !cached) {
+    // postpone reading of JSON files, to support incremental parsing of GeoJSON
+    content = null;
   } else if (isBinary) {
     content = cli.readFile(path, null, cache);
-  } else {
-    content = cli.readFile(path, opts && opts.encoding || 'utf-8', cache);
+  } else { // assuming text file
+    content = cli.readFile(path, encoding || 'utf-8', cache);
   }
-  type = internal.guessInputFileType(path) || internal.guessInputContentType(content);
+  type = apparentType || internal.guessInputContentType(content);
   if (!type) {
     stop("Unable to import", path);
-  } else if (type == 'json') {
-    // parsing JSON here so input file can be gc'd before JSON data is imported
-    // TODO: look into incrementally parsing JSON data
-    try {
-      // JSON data may already be parsed if imported via applyCommands()
-      if (utils.isString(content)) {
-        content = JSON.parse(content);
-      }
-    } catch(e) {
-      stop("Unable to parse JSON");
-    }
   }
   input[type] = {filename: path, content: content};
   content = null; // for g.c.
@@ -14307,23 +14564,6 @@ api.importFile = function(path, opts) {
   }
   return internal.importContent(input, opts);
 };
-
-/*
-api.importDataTable = function(path, opts) {
-  // TODO: avoid the overhead of importing shape data, if present
-  var dataset = api.importFile(path, opts);
-  if (dataset.layers.length > 1) {
-    // if multiple layers are imported (e.g. from multi-type GeoJSON), throw away
-    // the geometry and merge them
-    dataset.layers.forEach(function(lyr) {
-      lyr.shapes = null;
-      lyr.geometry_type = null;
-    });
-    dataset.layers = api.mergeLayers(dataset.layers);
-  }
-  return dataset.layers[0].data;
-};
-*/
 
 internal.readShapefileAuxFiles = function(path, obj, cache) {
   var dbfPath = utils.replaceFileExtension(path, 'dbf');
