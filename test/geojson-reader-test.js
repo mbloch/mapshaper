@@ -21,7 +21,7 @@ function Reader(str, chunkLen) {
 }
 
 function toBuf(str) {
-  return Buffer.from(str, 'utf8');
+  return new Buffer(str, 'utf8');
 }
 
 function toString(buf) {
