@@ -1,6 +1,6 @@
 v0.4.30
 * Added support for importing large (>1GB) GeoJSON files using the command line script.
-* 
+* Changed `-line` command to generate two fields: "RANK", containing an integer and "TYPE", containing a human-friendly name.
 
 v0.4.29
 * Fixed error exporting Shapefiles with unparsable .prj files (content of original file is copied to output file).
