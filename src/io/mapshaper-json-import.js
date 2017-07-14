@@ -37,7 +37,7 @@ internal.importGeoJSONFile = function(fileReader, opts) {
 
 internal.importJSONFile = function(path, opts) {
   var reader = new FileReader(path);
-  var str = reader.getBuffer(0, 1000).toString('utf8');
+  var str = reader.readSync(0, 1000).toString('utf8');
   var type = internal.identifyJSONString(str);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files

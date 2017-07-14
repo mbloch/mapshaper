@@ -1,5 +1,6 @@
 /* @requires
 mapshaper-commands
+mapshaper-cli-utils
 */
 
 api.cli = cli;

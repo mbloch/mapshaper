@@ -9,7 +9,7 @@ function Reader(str, chunkLen) {
   var buf = toBuf(str);
   chunkLen = chunkLen || 256;
 
-  this.getBuffer = function(offs) {
+  this.readSync = function(offs) {
     return buf.slice(offs, Math.min(chunkLen, buf.length));
   };
 

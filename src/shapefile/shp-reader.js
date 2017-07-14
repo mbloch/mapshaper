@@ -1,4 +1,4 @@
-/* @requires shp-record, mapshaper-cli-utils */
+/* @requires shp-record, mapshaper-file-reader */
 
 // Read data from a .shp file
 // @src is an ArrayBuffer, Node.js Buffer or filename
@@ -25,8 +25,8 @@ function ShpReader(src) {
     return new ShpReader(src);
   }
 
-  var file = utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
-  var header = parseHeader(file.readBytes(100, 0));
+  var file = utils.isString(src) ? new FileReader(src) : new BufferReader(src);
+  var header = parseHeader(file.readToBinArray(0, 100));
   var fileSize = file.size();
   var RecordClass = new ShpRecordClass(header.type);
   var recordOffs, i, skippedBytes;
@@ -113,7 +113,7 @@ function ShpReader(src) {
         recordSize, recordType, recordId, goodId, goodSize, goodType, bin;
 
     if (recordOffs + 12 <= fileSize) {
-      bin = file.readBytes(12, recordOffs);
+      bin = file.readToBinArray(recordOffs, 12);
       recordId = bin.bigEndian().readUint32();
       // record size is bytes in content section + 8 header bytes
       recordSize = bin.readUint32() * 2 + 8;
@@ -122,7 +122,7 @@ function ShpReader(src) {
       goodSize = recordOffs + recordSize <= fileSize && recordSize >= 12;
       goodType = recordType === 0 || recordType == header.type;
       if (goodSize && goodType) {
-        bin = file.readBytes(recordSize, recordOffs);
+        bin = file.readToBinArray(recordOffs, recordSize);
         shape = new RecordClass(bin, recordSize);
       }
     }
@@ -136,7 +136,7 @@ function ShpReader(src) {
         shape = null,
         bin, recordId, recordType;
     while (offset + 12 <= fileSize) {
-      bin = file.readBytes(12, offset);
+      bin = file.readToBinArray(offset, 12);
       recordId = bin.bigEndian().readUint32();
       recordType = bin.littleEndian().skipBytes(4).readUint32();
       if (recordId == id && (recordType == header.type || recordType === 0)) {
@@ -171,11 +171,11 @@ ShpReader.prototype.getCounts = function() {
   return counts;
 };
 
-// Same interface as FileBytes, for reading from a buffer instead of a file.
-function BufferBytes(buf) {
+// Same interface as FileReader, for reading from a buffer instead of a file.
+function BufferReader(buf) {
   var bin = new BinArray(buf),
       bufSize = bin.size();
-  this.readBytes = function(len, offset) {
+  this.readToBinArray = function(offset, len) {
     if (bufSize < offset + len) error("Out-of-range error");
     bin.position(offset);
     return bin;
@@ -186,47 +186,4 @@ function BufferBytes(buf) {
   };
 
   this.close = function() {};
-}
-
-// Read a binary file in chunks, to support files > 1GB in Node
-function FileBytes(path) {
-  var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
-      fs = require('fs'),
-      fileSize = cli.fileSize(path),
-      cacheOffs = 0,
-      cache, fd;
-
-  this.readBytes = function(len, start) {
-    if (fileSize < start + len) error("Out-of-range error");
-    if (!cache || start < cacheOffs || start + len > cacheOffs + cache.size()) {
-      updateCache(len, start);
-    }
-    cache.position(start - cacheOffs);
-    return cache;
-  };
-
-  this.size = function() {
-    return fileSize;
-  };
-
-  this.close = function() {
-    if (fd) {
-      fs.closeSync(fd);
-      fd = null;
-      cache = null;
-      cacheOffs = 0;
-    }
-  };
-
-  function updateCache(len, start) {
-    var headroom = fileSize - start,
-        bufSize = Math.min(headroom, Math.max(DEFAULT_BUF_SIZE, len)),
-        buf = new Buffer(bufSize),
-        bytesRead;
-    if (!fd) fd = fs.openSync(path, 'r');
-    bytesRead = fs.readSync(fd, buf, 0, bufSize, start);
-    if (bytesRead < bufSize) error("Error reading file");
-    cacheOffs = start;
-    cache = new BinArray(buf);
-  }
 }

@@ -30,7 +30,7 @@ function GeoJSONReader(reader) {
         RCB = 125,
         BSL = 92,
         QUO = 34,
-        buf = reader.getBuffer(offs),
+        buf = reader.readSync(offs),
         n = buf.length,
         indent = 0,
         inString = false,
@@ -64,7 +64,7 @@ function GeoJSONReader(reader) {
         }
       }
       if (i == n-1) {
-        buf = reader.expandBuffer().getBuffer(offs);
+        buf = reader.expandBuffer().readSync(offs);
         n = buf.length;
       }
     }
