@@ -27,15 +27,23 @@ describe('test Reader', function () {
 
 describe('mapshaper-file-reader.js', function () {
 
-  describe('FileReader', function () {
     it('buffer larger than file cache', function () {
       var reader = new FileReader('test/test_data/lorem.txt', {cacheSize: 2, bufferSize: 4});
       assert.equal(toString(reader.getBuffer(2)), 'rem ');
+      assert.equal(toString(reader.getBuffer(4)), 'm ip');
+      assert.equal(toString(reader.getBuffer(7)), 'psum');
       assert.equal(toString(reader.getBuffer(0)), 'lore'); // go back in file
+      assert.equal(toString(reader.getBuffer(4)), 'm ip'); // skip forward
+      assert.equal(toString(reader.getBuffer(1)), 'orem'); // go back in file
+      assert.equal(toString(reader.getBuffer(6)), 'ipsu'); // skip forward
       reader.expandBuffer();
       assert.equal(toString(reader.getBuffer(0)), 'lorem ip');
       assert.equal(toString(reader.expandBuffer().getBuffer(0)), 'lorem ipsum'); // end of file
     })
+
+
+  describe('FileReader', function () {
+
 
     it('file cache larger than file', function () {
       var reader = new FileReader('test/test_data/lorem.txt', {cacheSize: 0x1000, bufferSize: 2});

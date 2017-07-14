@@ -3,16 +3,12 @@
 internal.FileReader = FileReader;
 
 function FileReader(path, opts) {
-  var fs = require('fs');
-  var DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x2000000, // 32 MB
+  var fs = require('fs'),
+      fileLen = fs.statSync(path).size,
+      fd = fs.openSync(path, 'r'),
+      DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x800000, // 8MB
       DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x4000, // 32K
-      cacheOffs, cache, fd, fileLen;
-
-  //try {
-    fileLen = fs.statSync(path).size;
-    fd = fs.openSync(path, 'r');
-    updateCache(0);
-  //} catch(e) {}
+      cacheOffs, cache;
 
   this.expandBuffer = function() {
     DEFAULT_BUFFER_LEN *= 2;
@@ -20,27 +16,18 @@ function FileReader(path, opts) {
   };
 
   this.getBuffer = function(readOffs, len) {
-    var cacheLen = cache.length,
-        bufLen = len || DEFAULT_BUFFER_LEN,
-        cacheHeadroom;
-
+    var bufLen = len || DEFAULT_BUFFER_LEN;
     if (!(readOffs >= 0 && readOffs <= fileLen)) {
-      // out-of-range request: return empty buffer
-      throw new Error("Out-of-range read request:", readOffs);
+      error("Out-of-range byte position:", readOffs);
     }
-
-    // reduce buffer size if current size exceeds file length
     if (readOffs + bufLen > fileLen) {
+      // reduce buffer size if current size exceeds file length
       bufLen = fileLen - readOffs;
     }
-
-    // update file cache if requested segment extends beyond the current cache range
-    cacheHeadroom = cacheLen + cacheOffs - readOffs;
-    if (readOffs < cacheOffs || cacheHeadroom < bufLen) {
-      updateCache(readOffs);
+    if (!cache || cacheOffs > readOffs || cacheOffs + cache.length < readOffs + bufLen) {
+      // update file cache if requested segment extends beyond the current cache range
+      updateCache(readOffs, bufLen);
     }
-
-    // return a slice of the file cache
     return cache.slice(readOffs - cacheOffs, readOffs - cacheOffs + bufLen);
   };
 
@@ -53,24 +40,27 @@ function FileReader(path, opts) {
       fs.closeSync(fd);
       fd = null;
       cache = null;
-      cacheOffs = 0;
     }
   };
 
-  function updateCache(fileOffs) {
+  // Receive offset and length of buffer that must be read from the cache
+  function updateCache(fileOffs, bufLen) {
     var headroom = fileLen - fileOffs,
-        cacheLen = DEFAULT_CACHE_LEN,
+        bytesToRead = DEFAULT_CACHE_LEN,
         bytesRead;
-    if (DEFAULT_BUFFER_LEN > cacheLen) {
-      cacheLen = DEFAULT_BUFFER_LEN;
+    if (bufLen > bytesToRead) {
+      bytesToRead = bufLen;
     }
-    if (headroom < cacheLen) {
-      cacheLen = headroom;
+    if (headroom < bytesToRead) {
+      bytesToRead = headroom;
     }
-    cache = new Buffer(cacheLen);
+    if (!cache || bytesToRead != cache.length) {
+      cache = new Buffer(bytesToRead);
+    }
     cacheOffs = fileOffs;
-    bytesRead = fs.readSync(fd, cache, 0, cacheLen, fileOffs);
-    if (bytesRead != cacheLen) throw new Error("Error reading file");
+    bytesRead = fs.readSync(fd, cache, 0, bytesToRead, fileOffs);
+    if (bytesRead != bytesToRead) throw new Error("Error reading file");
+    // console.log("read from", fileOffs, "to:", fileOffs + bytesToRead);
   }
 }
 
@@ -81,13 +71,11 @@ FileReader.prototype.findString = function (str, maxLen) {
   var firstByte = str.charCodeAt(0);
   var i;
   for (i=0; i < n; i++) {
-    if (buf[i] == firstByte) {
-      if (buf.toString('utf8', i, i + strLen) == str) {
-        return {
-          offset: i + strLen,
-          text: buf.toString('utf8', 0, i)
-        };
-      }
+    if (buf[i] == firstByte && buf.toString('utf8', i, i + strLen) == str) {
+      return {
+        offset: i + strLen,
+        text: buf.toString('utf8', 0, i)
+      };
     }
   }
   return null;

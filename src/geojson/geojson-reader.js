@@ -4,17 +4,8 @@ internal.GeoJSONReader = GeoJSONReader;
 
 // @reader: a FileReader
 function GeoJSONReader(reader) {
-  var LCB = 123, // {
-      RCB = 125, // }
-      LSB = 91,  // [
-      RSB = 93,  // ]
-      BSL = 92,  // \
-      QUO = 34,  // "
-      COM = 39,  // ,
-      SPC = 32,  // <sp>
-      COL = 58;  // :
 
-  // read objects syncronously, with callback
+  // read objects synchronously, with callback
   this.readObjects = function(onObject) {
     var start = reader.findString('"features"') || reader.findString('"geometries"');
     // assume single Feature or geometry if not a collection
@@ -33,15 +24,19 @@ function GeoJSONReader(reader) {
   }
 
   // Returns {text: "{...}", offset} or null
-  // Skips characters in from of opening curly bracket
+  // Skips characters in front of first left curly brace
   function readObject(offs) {
-    var buf = reader.getBuffer(offs);
-    var n = buf.length;
-    var indent = 0;
-    var inString = false;
-    var escape = false;
-    var retn = null;
-    var i, c, iStart;
+    var LCB = 123,
+        RCB = 125,
+        BSL = 92,
+        QUO = 34,
+        buf = reader.getBuffer(offs),
+        n = buf.length,
+        indent = 0,
+        inString = false,
+        escape = false,
+        retn = null,
+        i, c, iStart;
     for (i=0; i<n; i++) {
       c = buf[i];
       if (inString) {
