@@ -2,6 +2,7 @@
 
 internal.GeoJSONReader = GeoJSONReader;
 
+// Read GeoJSON Features or geometry objects from a file
 // @reader: a FileReader
 function GeoJSONReader(reader) {
 
@@ -21,48 +22,49 @@ function GeoJSONReader(reader) {
   function readObjects(start, cb) {
     var obj = readObject(start);
     while (obj) {
-      cb(JSON.parse(obj.text));
+      cb(JSON.parse(obj.text)); // Use JSON.parse to parse object
       obj = readObject(obj.offset);
     }
   }
 
-  // Returns {text: "{...}", offset} or null
+  // Search for a JSON object starting at position @offs
+  // Returns {text: "<object>", offset: <offset>} or null
+  //   <offset> is the file position directly after the object's closing brace
   // Skips characters in front of first left curly brace
   function readObject(offs) {
-    var LCB = 123,
-        RCB = 125,
-        BSL = 92,
-        QUO = 34,
-        buf = reader.readSync(offs),
-        n = buf.length,
-        indent = 0,
+    var LBRACE = 123,
+        RBRACE = 125,
+        BSLASH = 92,
+        DQUOTE = 34,
+        level = 0,
         inString = false,
-        escape = false,
+        escapeNext = false,
+        buf = reader.readSync(offs),
         retn = null,
-        i, c, iStart;
-    for (i=0; i<n; i++) {
+        startPos, i, n, c;
+    for (i=0, n=buf.length; i<n; i++) {
       c = buf[i];
       if (inString) {
-        if (escape) {
-          escape = false;
-        } else if (c == QUO) {
+        if (escapeNext) {
+          escapeNext = false;
+        } else if (c == DQUOTE) {
           inString = false;
-        } else if (c == BSL) {
-          escape = true;
+        } else if (c == BSLASH) {
+          escapeNext = true;
         }
-      } else if (c == QUO) {
+      } else if (c == DQUOTE) {
         inString = true;
-      } else if (c == LCB) {
-        if (indent === 0) {
-          iStart = i;
+      } else if (c == LBRACE) {
+        if (level === 0) {
+          startPos = i;
         }
-        indent++;
-      } else if (c == RCB) {
-        indent--;
-        if (indent === 0) {
-          retn = {text: buf.toString('utf8', iStart, i + 1), offset: offs + i + 1};
+        level++;
+      } else if (c == RBRACE) {
+        level--;
+        if (level === 0) {
+          retn = {text: buf.toString('utf8', startPos, i + 1), offset: offs + i + 1};
           break;
-        } else if (indent == -1) {
+        } else if (level == -1) {
           break; // error -- "}" encountered before "{"
         }
       }
