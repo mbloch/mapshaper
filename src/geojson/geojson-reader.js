@@ -5,10 +5,13 @@ internal.GeoJSONReader = GeoJSONReader;
 // @reader: a FileReader
 function GeoJSONReader(reader) {
 
-  // read objects synchronously, with callback
+  // Read objects synchronously, with callback
   this.readObjects = function(onObject) {
-    var start = reader.findString('"features"') || reader.findString('"geometries"');
-    // assume single Feature or geometry if not a collection
+    // Search first x bytes of file for features|geometries key
+    var bytesToSearch = 300;
+    var start = reader.findString('"features"', bytesToSearch) ||
+        reader.findString('"geometries"', bytesToSearch);
+    // Assume single Feature or geometry if collection not found
     var offset = start ? start.offset : 0;
     readObjects(offset, onObject);
   };

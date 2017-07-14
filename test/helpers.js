@@ -9,11 +9,11 @@ function Reader(str, chunkLen) {
   var buf = toBuf(str);
   chunkLen = chunkLen || 256;
 
+  this.size = function() {return buf.length;};
+
   this.readSync = function(offs) {
     return buf.slice(offs, Math.min(chunkLen, buf.length));
   };
-
-  this.toString = function() {return str;};
 
   this.expandBuffer = function() {
     chunkLen *= 2;

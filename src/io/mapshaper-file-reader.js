@@ -15,23 +15,28 @@ function FileReader(path, opts) {
   };
 
   // Read to BinArray (for compatibility with ShpReader)
-  this.readToBinArray = function(readOffs, len) {
-    if (updateCache(readOffs, len)) {
+  this.readToBinArray = function(start, length) {
+    if (updateCache(start, length)) {
       binArr = new BinArray(cache);
     }
-    binArr.position(readOffs - cacheOffs);
+    binArr.position(start - cacheOffs);
     return binArr;
   };
 
   // Read to Buffer
-  this.readSync = function(readOffs, len) {
-    var bufLen = len || DEFAULT_BUFFER_LEN;
-    if (readOffs + bufLen > fileLen) {
-      // reduce buffer size if current size exceeds file length
-      bufLen = fileLen - readOffs;
+  this.readSync = function(start, length) {
+    if (length > 0 === false) {
+      // use default (but variable) size if length is not specified
+      length = DEFAULT_BUFFER_LEN;
+      if (start + length > fileLen) {
+        length = fileLen - start; // truncate at eof
+      }
+      if (length === 0) {
+        return new Buffer(0); // kludge to allow reading up to eof
+      }
     }
-    updateCache(readOffs, bufLen);
-    return cache.slice(readOffs - cacheOffs, readOffs - cacheOffs + bufLen);
+    updateCache(start, length);
+    return cache.slice(start - cacheOffs, start - cacheOffs + length);
   };
 
   this.size = function() {
@@ -75,7 +80,8 @@ function FileReader(path, opts) {
 }
 
 FileReader.prototype.findString = function (str, maxLen) {
-  var buf = this.readSync(0, maxLen || 256);
+  var len = Math.min(this.size(), maxLen || this.size());
+  var buf = this.readSync(0, len);
   var strLen = str.length;
   var n = buf.length - strLen;
   var firstByte = str.charCodeAt(0);

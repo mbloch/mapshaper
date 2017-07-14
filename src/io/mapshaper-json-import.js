@@ -37,7 +37,7 @@ internal.importGeoJSONFile = function(fileReader, opts) {
 
 internal.importJSONFile = function(path, opts) {
   var reader = new FileReader(path);
-  var str = reader.readSync(0, 1000).toString('utf8');
+  var str = reader.readSync(0, Math.min(1000, reader.size())).toString('utf8');
   var type = internal.identifyJSONString(str);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
@@ -59,17 +59,12 @@ internal.importJSON = function(data, opts) {
       retn = {filename: filename};
 
   if (!content) {
-    // need to read from file...
-    try {
-      data = internal.importJSONFile(filename, opts);
-      if (data.dataset) {
-        retn.dataset = data.dataset;
-        retn.format = data.format;
-      } else {
-        content = data.content;
-      }
-    } catch(e) {
-      stop("Unable to import JSON file");
+    data = internal.importJSONFile(filename, opts);
+    if (data.dataset) {
+      retn.dataset = data.dataset;
+      retn.format = data.format;
+    } else {
+      content = data.content;
     }
   }
   if (content) {
