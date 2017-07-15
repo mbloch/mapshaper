@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.30';
+var VERSION = '0.4.31';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -9822,45 +9822,40 @@ GeoJSON.translateGeoJSONType = function(type) {
 internal.FileReader = FileReader;
 
 function FileReader(path, opts) {
-  var fs = require('fs');
-  var DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x2000000, // 32 MB
+  var fs = require('fs'),
+      fileLen = fs.statSync(path).size,
+      DEFAULT_CACHE_LEN = opts && opts.cacheSize || 0x800000, // 8MB
       DEFAULT_BUFFER_LEN = opts && opts.bufferSize || 0x4000, // 32K
-      cacheOffs, cache, fd, fileLen;
-
-  //try {
-    fileLen = fs.statSync(path).size;
-    fd = fs.openSync(path, 'r');
-    updateCache(0);
-  //} catch(e) {}
+      fd, cacheOffs, cache, binArr;
 
   this.expandBuffer = function() {
     DEFAULT_BUFFER_LEN *= 2;
     return this;
   };
 
-  this.getBuffer = function(readOffs, len) {
-    var cacheLen = cache.length,
-        bufLen = len || DEFAULT_BUFFER_LEN,
-        cacheHeadroom;
-
-    if (!(readOffs >= 0 && readOffs <= fileLen)) {
-      // out-of-range request: return empty buffer
-      throw new Error("Out-of-range read request:", readOffs);
+  // Read to BinArray (for compatibility with ShpReader)
+  this.readToBinArray = function(start, length) {
+    if (updateCache(start, length)) {
+      binArr = new BinArray(cache);
     }
+    binArr.position(start - cacheOffs);
+    return binArr;
+  };
 
-    // reduce buffer size if current size exceeds file length
-    if (readOffs + bufLen > fileLen) {
-      bufLen = fileLen - readOffs;
+  // Read to Buffer
+  this.readSync = function(start, length) {
+    if (length > 0 === false) {
+      // use default (but variable) size if length is not specified
+      length = DEFAULT_BUFFER_LEN;
+      if (start + length > fileLen) {
+        length = fileLen - start; // truncate at eof
+      }
+      if (length === 0) {
+        return new Buffer(0); // kludge to allow reading up to eof
+      }
     }
-
-    // update file cache if requested segment extends beyond the current cache range
-    cacheHeadroom = cacheLen + cacheOffs - readOffs;
-    if (readOffs < cacheOffs || cacheHeadroom < bufLen) {
-      updateCache(readOffs);
-    }
-
-    // return a slice of the file cache
-    return cache.slice(readOffs - cacheOffs, readOffs - cacheOffs + bufLen);
+    updateCache(start, length);
+    return cache.slice(start - cacheOffs, start - cacheOffs + length);
   };
 
   this.size = function() {
@@ -9872,41 +9867,50 @@ function FileReader(path, opts) {
       fs.closeSync(fd);
       fd = null;
       cache = null;
-      cacheOffs = 0;
     }
   };
 
-  function updateCache(fileOffs) {
+  // Receive offset and length of byte string that must be read
+  // Return true if cache was updated, or false
+  function updateCache(fileOffs, bufLen) {
     var headroom = fileLen - fileOffs,
-        cacheLen = DEFAULT_CACHE_LEN,
-        bytesRead;
-    if (DEFAULT_BUFFER_LEN > cacheLen) {
-      cacheLen = DEFAULT_BUFFER_LEN;
+        bytesRead, bytesToRead;
+    if (headroom < bufLen || headroom < 0) {
+      error("Tried to read past end-of-file");
     }
-    if (headroom < cacheLen) {
-      cacheLen = headroom;
+    if (cache && fileOffs >= cacheOffs && cacheOffs + cache.length >= fileOffs + bufLen) {
+      return false;
     }
-    cache = new Buffer(cacheLen);
+    bytesToRead = Math.max(DEFAULT_CACHE_LEN, bufLen);
+    if (headroom < bytesToRead) {
+      bytesToRead = headroom;
+    }
+    if (!cache || bytesToRead != cache.length) {
+      cache = new Buffer(bytesToRead);
+    }
+    if (!fd) {
+      fd = fs.openSync(path, 'r');
+    }
+    bytesRead = fs.readSync(fd, cache, 0, bytesToRead, fileOffs);
     cacheOffs = fileOffs;
-    bytesRead = fs.readSync(fd, cache, 0, cacheLen, fileOffs);
-    if (bytesRead != cacheLen) throw new Error("Error reading file");
+    if (bytesRead != bytesToRead) error("Error reading file");
+    return true;
   }
 }
 
 FileReader.prototype.findString = function (str, maxLen) {
-  var buf = this.getBuffer(0, maxLen || 256);
+  var len = Math.min(this.size(), maxLen || this.size());
+  var buf = this.readSync(0, len);
   var strLen = str.length;
   var n = buf.length - strLen;
   var firstByte = str.charCodeAt(0);
   var i;
   for (i=0; i < n; i++) {
-    if (buf[i] == firstByte) {
-      if (buf.toString('utf8', i, i + strLen) == str) {
-        return {
-          offset: i + strLen,
-          text: buf.toString('utf8', 0, i)
-        };
-      }
+    if (buf[i] == firstByte && buf.toString('utf8', i, i + strLen) == str) {
+      return {
+        offset: i + strLen,
+        text: buf.toString('utf8', 0, i)
+      };
     }
   }
   return null;
@@ -9917,22 +9921,17 @@ FileReader.prototype.findString = function (str, maxLen) {
 
 internal.GeoJSONReader = GeoJSONReader;
 
+// Read GeoJSON Features or geometry objects from a file
 // @reader: a FileReader
 function GeoJSONReader(reader) {
-  var LCB = 123, // {
-      RCB = 125, // }
-      LSB = 91,  // [
-      RSB = 93,  // ]
-      BSL = 92,  // \
-      QUO = 34,  // "
-      COM = 39,  // ,
-      SPC = 32,  // <sp>
-      COL = 58;  // :
 
-  // read objects syncronously, with callback
+  // Read objects synchronously, with callback
   this.readObjects = function(onObject) {
-    var start = reader.findString('"features"') || reader.findString('"geometries"');
-    // assume single Feature or geometry if not a collection
+    // Search first x bytes of file for features|geometries key
+    var bytesToSearch = 300;
+    var start = reader.findString('"features"', bytesToSearch) ||
+        reader.findString('"geometries"', bytesToSearch);
+    // Assume single Feature or geometry if collection not found
     var offset = start ? start.offset : 0;
     readObjects(offset, onObject);
   };
@@ -9942,49 +9941,54 @@ function GeoJSONReader(reader) {
   function readObjects(start, cb) {
     var obj = readObject(start);
     while (obj) {
-      cb(JSON.parse(obj.text));
+      cb(JSON.parse(obj.text)); // Use JSON.parse to parse object
       obj = readObject(obj.offset);
     }
   }
 
-  // Returns {text: "{...}", offset} or null
-  // Skips characters in from of opening curly bracket
+  // Search for a JSON object starting at position @offs
+  // Returns {text: "<object>", offset: <offset>} or null
+  //   <offset> is the file position directly after the object's closing brace
+  // Skips characters in front of first left curly brace
   function readObject(offs) {
-    var buf = reader.getBuffer(offs);
-    var n = buf.length;
-    var indent = 0;
-    var inString = false;
-    var escape = false;
-    var retn = null;
-    var i, c, iStart;
-    for (i=0; i<n; i++) {
+    var LBRACE = 123,
+        RBRACE = 125,
+        BSLASH = 92,
+        DQUOTE = 34,
+        level = 0,
+        inString = false,
+        escapeNext = false,
+        buf = reader.readSync(offs),
+        retn = null,
+        startPos, i, n, c;
+    for (i=0, n=buf.length; i<n; i++) {
       c = buf[i];
       if (inString) {
-        if (escape) {
-          escape = false;
-        } else if (c == QUO) {
+        if (escapeNext) {
+          escapeNext = false;
+        } else if (c == DQUOTE) {
           inString = false;
-        } else if (c == BSL) {
-          escape = true;
+        } else if (c == BSLASH) {
+          escapeNext = true;
         }
-      } else if (c == QUO) {
+      } else if (c == DQUOTE) {
         inString = true;
-      } else if (c == LCB) {
-        if (indent === 0) {
-          iStart = i;
+      } else if (c == LBRACE) {
+        if (level === 0) {
+          startPos = i;
         }
-        indent++;
-      } else if (c == RCB) {
-        indent--;
-        if (indent === 0) {
-          retn = {text: buf.toString('utf8', iStart, i + 1), offset: offs + i + 1};
+        level++;
+      } else if (c == RBRACE) {
+        level--;
+        if (level === 0) {
+          retn = {text: buf.toString('utf8', startPos, i + 1), offset: offs + i + 1};
           break;
-        } else if (indent == -1) {
+        } else if (level == -1) {
           break; // error -- "}" encountered before "{"
         }
       }
       if (i == n-1) {
-        buf = reader.expandBuffer().getBuffer(offs);
+        buf = reader.expandBuffer().readSync(offs);
         n = buf.length;
       }
     }
@@ -11262,7 +11266,7 @@ internal.exportGeoJSON = function(dataset, opts) {
     // Use common part of layer names if multiple layers are being merged
     var name = internal.mergeLayerNames(layers) || 'output';
     return {
-      content: internal.exportLayersAsGeoJSON(layers, dataset, opts, true),
+      content: internal.exportLayersAsGeoJSON(layers, dataset, opts, 'buffer'),
       filename: name + '.' + extension
     };
   });
@@ -11270,46 +11274,49 @@ internal.exportGeoJSON = function(dataset, opts) {
 
 // Return an array of Features or Geometries as objects or strings
 //
-internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, asString) {
+internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
   var properties = internal.exportProperties(lyr.data, opts),
-    shapes = lyr.shapes,
-    ids = internal.exportIds(lyr.data, opts),
-    items, stringify;
+      shapes = lyr.shapes,
+      ids = internal.exportIds(lyr.data, opts),
+      items, stringify;
 
-    if (asString) {
-      stringify = opts.prettify ?
-        internal.getFormattedStringify(['bbox', 'coordinates']) :
-        JSON.stringify;
-    }
+  if (ofmt) {
+    stringify = opts.prettify ?
+      internal.getFormattedStringify(['bbox', 'coordinates']) :
+      JSON.stringify;
+  }
 
-    if (properties && shapes && properties.length !== shapes.length) {
-      error("Mismatch between number of properties and number of shapes");
-    }
+  if (properties && shapes && properties.length !== shapes.length) {
+    error("Mismatch between number of properties and number of shapes");
+  }
 
-    return (shapes || properties || []).reduce(function(memo, o, i) {
-      var shape = shapes ? shapes[i] : null,
-          exporter = GeoJSON.exporters[lyr.geometry_type],
-          obj = shape ? exporter(shape, dataset.arcs) : null;
-      if (asFeatures) {
-        obj = {
-          type: 'Feature',
-          geometry: obj,
-          properties: properties ? properties[i] : null
-        };
-        if (ids) {
-          obj.id = ids[i];
-        }
-      } else if (!obj) {
-        return memo; // don't add null objects to GeometryCollection
+  return (shapes || properties || []).reduce(function(memo, o, i) {
+    var shape = shapes ? shapes[i] : null,
+        exporter = GeoJSON.exporters[lyr.geometry_type],
+        obj = shape ? exporter(shape, dataset.arcs) : null;
+    if (asFeatures) {
+      obj = {
+        type: 'Feature',
+        geometry: obj,
+        properties: properties ? properties[i] : null
+      };
+      if (ids) {
+        obj.id = ids[i];
       }
-      if (asString) {
-        // stringify features as soon as they are generated, to reduce the
-        // number of JS objects in memory (so larger files can be exported)
-        obj = stringify(obj);
+    } else if (!obj) {
+      return memo; // don't add null objects to GeometryCollection
+    }
+    if (ofmt) {
+      // stringify features as soon as they are generated, to reduce the
+      // number of JS objects in memory (so larger files can be exported)
+      obj = stringify(obj);
+      if (ofmt == 'buffer') {
+        obj = new Buffer(obj, 'utf8');
       }
-      memo.push(obj);
-      return memo;
-    }, []);
+    }
+    memo.push(obj);
+    return memo;
+  }, []);
 };
 
 // TODO: remove
@@ -11317,7 +11324,7 @@ internal.exportGeoJSONCollection = function(lyr, dataset, opts) {
   return internal.exportLayersAsGeoJSON([lyr], dataset, opts || {});
 };
 
-internal.exportLayersAsGeoJSON = function(layers, dataset, opts, asString) {
+internal.exportLayersAsGeoJSON = function(layers, dataset, opts, ofmt) {
   var geojson = {};
   var useFeatures = internal.useFeatureCollection(layers, opts);
   var parts, collection, bounds, collname;
@@ -11339,20 +11346,37 @@ internal.exportLayersAsGeoJSON = function(layers, dataset, opts, asString) {
   }
 
   collection = layers.reduce(function(memo, lyr, i) {
-    var items = internal.exportLayerAsGeoJSON(lyr, dataset, opts, useFeatures, asString);
+    var items = internal.exportLayerAsGeoJSON(lyr, dataset, opts, useFeatures, ofmt);
     return memo.length > 0 ? memo.concat(items) : items;
   }, []);
 
-  if (asString) {
-    // collection is an array of individual GeoJSON Feature strings,
-    // need to create complete GeoJSON output by concatenation.
-    geojson[collname] = ["$"];
-    parts = JSON.stringify(geojson).split('"$"');
-    geojson = parts[0] + '\n' + collection.join(',\n') + '\n' + parts[1];
+  if (ofmt) {
+    return GeoJSON.formatGeoJSON(geojson, collection, collname, ofmt);
   } else {
     geojson[collname] = collection;
+    return geojson;
   }
-  return geojson;
+};
+
+GeoJSON.formatGeoJSON = function(container, collection, collType, ofmt) {
+  // collection is an array of individual GeoJSON Feature|geometry strings or buffers
+  var head = JSON.stringify(container).replace(/\}$/, ', "' + collType + '": [\n');
+  var tail = '\n]}';
+  if (ofmt == 'buffer') {
+    return GeoJSON.joinOutputBuffers(head, tail, collection);
+  }
+  return head + collection.join(',\n') + tail;
+};
+
+GeoJSON.joinOutputBuffers = function(head, tail, collection) {
+  var comma = new Buffer(',\n', 'utf8');
+  var parts = collection.reduce(function(memo, buf, i) {
+    if (i > 0) memo.push(comma);
+    memo.push(buf);
+    return memo;
+  }, [new Buffer(head, 'utf8')]);
+  parts.push(new Buffer(tail, 'utf8'));
+  return Buffer.concat(parts);
 };
 
 // export GeoJSON or TopoJSON point geometry
@@ -12437,284 +12461,6 @@ function ShpRecordClass(type) {
 
 
 
-utils.replaceFileExtension = function(path, ext) {
-  var info = utils.parseLocalPath(path);
-  return info.pathbase + '.' + ext;
-};
-
-utils.getPathSep = function(path) {
-  // TODO: improve
-  return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
-};
-
-// Parse the path to a file without using Node
-// Assumes: not a directory path
-utils.parseLocalPath = function(path) {
-  var obj = {},
-      sep = utils.getPathSep(path),
-      parts = path.split(sep),
-      i;
-
-  if (parts.length == 1) {
-    obj.filename = parts[0];
-    obj.directory = "";
-  } else {
-    obj.filename = parts.pop();
-    obj.directory = parts.join(sep);
-  }
-  i = obj.filename.lastIndexOf('.');
-  if (i > -1) {
-    obj.extension = obj.filename.substr(i + 1);
-    obj.basename = obj.filename.substr(0, i);
-    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
-  } else {
-    obj.extension = "";
-    obj.basename = obj.filename;
-    obj.pathbase = path;
-  }
-  return obj;
-};
-
-utils.getFileBase = function(path) {
-  return utils.parseLocalPath(path).basename;
-};
-
-utils.getFileExtension = function(path) {
-  return utils.parseLocalPath(path).extension;
-};
-
-utils.getPathBase = function(path) {
-  return utils.parseLocalPath(path).pathbase;
-};
-
-utils.getCommonFileBase = function(names) {
-  return names.reduce(function(memo, name, i) {
-    if (i === 0) {
-      memo = utils.getFileBase(name);
-    } else {
-      memo = utils.mergeNames(memo, name);
-    }
-    return memo;
-  }, "");
-};
-
-utils.getOutputFileBase = function(dataset) {
-  var inputFiles = dataset.info && dataset.info.input_files;
-  return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
-};
-
-
-
-
-// Guess the type of a data file from file extension, or return null if not sure
-internal.guessInputFileType = function(file) {
-  var ext = utils.getFileExtension(file || '').toLowerCase(),
-      type = null;
-  if (ext == 'dbf' || ext == 'shp' || ext == 'prj') {
-    type = ext;
-  } else if (/json$/.test(ext)) {
-    type = 'json';
-  }
-  return type;
-};
-
-internal.guessInputContentType = function(content) {
-  var type = null;
-  if (utils.isString(content)) {
-    type = internal.stringLooksLikeJSON(content) ? 'json' : 'text';
-  } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
-    type = 'json';
-  }
-  return type;
-};
-
-internal.guessInputType = function(file, content) {
-  return internal.guessInputFileType(file) || internal.guessInputContentType(content);
-};
-
-//
-internal.stringLooksLikeJSON = function(str) {
-  return /^\s*[{[]/.test(String(str));
-};
-
-internal.couldBeDsvFile = function(name) {
-  var ext = utils.getFileExtension(name).toLowerCase();
-  return /csv|tsv|txt$/.test(ext);
-};
-
-// Infer output format by considering file name and (optional) input format
-internal.inferOutputFormat = function(file, inputFormat) {
-  var ext = utils.getFileExtension(file).toLowerCase(),
-      format = null;
-  if (ext == 'shp') {
-    format = 'shapefile';
-  } else if (ext == 'dbf') {
-    format = 'dbf';
-  } else if (ext == 'svg') {
-    format = 'svg';
-  } else if (/json$/.test(ext)) {
-    format = 'geojson';
-    if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
-      format = 'topojson';
-    } else if (ext == 'json' && inputFormat == 'json') {
-      format = 'json'; // JSON table
-    }
-  } else if (internal.couldBeDsvFile(file)) {
-    format = 'dsv';
-  } else if (inputFormat) {
-    format = inputFormat;
-  }
-  return format;
-};
-
-internal.isZipFile = function(file) {
-  return /\.zip$/i.test(file);
-};
-
-internal.isSupportedOutputFormat = function(fmt) {
-  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
-  return types.indexOf(fmt) > -1;
-};
-
-internal.getFormatName = function(fmt) {
-  return {
-    geojson: 'GeoJSON',
-    topojson: 'TopoJSON',
-    json: 'JSON records',
-    dsv: 'CSV',
-    dbf: 'DBF',
-    shapefile: 'Shapefile',
-    svg: 'SVG'
-  }[fmt] || '';
-};
-
-// Assumes file at @path is one of Mapshaper's supported file types
-internal.isBinaryFile = function(path) {
-  var ext = utils.getFileExtension(path).toLowerCase();
-  return ext == 'shp' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
-};
-
-// Detect extensions of some unsupported file types, for cmd line validation
-internal.filenameIsUnsupportedOutputType = function(file) {
-  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
-  return rxp.test(file);
-};
-
-
-
-
-var cli = {};
-
-cli.isFile = function(path, cache) {
-  var ss = cli.statSync(path);
-  return cache && (path in cache) || ss && ss.isFile() || false;
-};
-
-cli.fileSize = function(path) {
-  var ss = cli.statSync(path);
-  return ss && ss.size || 0;
-};
-
-cli.isDirectory = function(path) {
-  var ss = cli.statSync(path);
-  return ss && ss.isDirectory() || false;
-};
-
-// @encoding (optional) e.g. 'utf8'
-cli.readFile = function(fname, encoding, cache) {
-  var content;
-  if (cache && (fname in cache)) {
-    content = cache[fname];
-    delete cache[fname];
-  } else {
-    content = require(fname == '/dev/stdin' ? 'rw' : 'fs').readFileSync(fname);
-  }
-  if (encoding && Buffer.isBuffer(content)) {
-    content = internal.decodeString(content, encoding);
-  }
-  return content;
-};
-
-// @content Buffer or string
-cli.writeFile = function(path, content, cb) {
-  var fs = require('rw');
-  if (cb) {
-    fs.writeFile(path, content, cb);
-  } else {
-    fs.writeFileSync(path, content);
-  }
-};
-
-// Returns Node Buffer
-cli.convertArrayBuffer = function(buf) {
-  var src = new Uint8Array(buf),
-      dest = new Buffer(src.length);
-  for (var i = 0, n=src.length; i < n; i++) {
-    dest[i] = src[i];
-  }
-  return dest;
-};
-
-// Expand any "*" wild cards in file name
-// (For the Windows command line; unix shells do this automatically)
-cli.expandFileName = function(name) {
-  var info = utils.parseLocalPath(name),
-      rxp = utils.wildcardToRegExp(info.filename),
-      dir = info.directory || '.',
-      files = [];
-
-  try {
-    require('fs').readdirSync(dir).forEach(function(item) {
-      var path = require('path').join(dir, item);
-      if (rxp.test(item) && cli.isFile(path)) {
-        files.push(path);
-      }
-    });
-  } catch(e) {}
-
-  if (files.length === 0) {
-    stop('No files matched (' + name + ')');
-  }
-  return files;
-};
-
-// Expand any wildcards.
-cli.expandInputFiles = function(files) {
-  return files.reduce(function(memo, name) {
-    if (name.indexOf('*') > -1) {
-      memo = memo.concat(cli.expandFileName(name));
-    } else {
-      memo.push(name);
-    }
-    return memo;
-  }, []);
-};
-
-cli.validateOutputDir = function(name) {
-  if (!cli.isDirectory(name)) {
-    error("Output directory not found:", name);
-  }
-};
-
-// TODO: rename and improve
-// Want to test if a path is something readable (e.g. file or stdin)
-cli.checkFileExists = function(path, cache) {
-  if (!cli.isFile(path, cache) && path != '/dev/stdin') {
-    stop("File not found (" + path + ")");
-  }
-};
-
-cli.statSync = function(fpath) {
-  var obj = null;
-  try {
-    obj = require('fs').statSync(fpath);
-  } catch(e) {}
-  return obj;
-};
-
-
-
-
 // Read data from a .shp file
 // @src is an ArrayBuffer, Node.js Buffer or filename
 //
@@ -12740,8 +12486,8 @@ function ShpReader(src) {
     return new ShpReader(src);
   }
 
-  var file = utils.isString(src) ? new FileBytes(src) : new BufferBytes(src);
-  var header = parseHeader(file.readBytes(100, 0));
+  var file = utils.isString(src) ? new FileReader(src) : new BufferReader(src);
+  var header = parseHeader(file.readToBinArray(0, 100));
   var fileSize = file.size();
   var RecordClass = new ShpRecordClass(header.type);
   var recordOffs, i, skippedBytes;
@@ -12828,7 +12574,7 @@ function ShpReader(src) {
         recordSize, recordType, recordId, goodId, goodSize, goodType, bin;
 
     if (recordOffs + 12 <= fileSize) {
-      bin = file.readBytes(12, recordOffs);
+      bin = file.readToBinArray(recordOffs, 12);
       recordId = bin.bigEndian().readUint32();
       // record size is bytes in content section + 8 header bytes
       recordSize = bin.readUint32() * 2 + 8;
@@ -12837,7 +12583,7 @@ function ShpReader(src) {
       goodSize = recordOffs + recordSize <= fileSize && recordSize >= 12;
       goodType = recordType === 0 || recordType == header.type;
       if (goodSize && goodType) {
-        bin = file.readBytes(recordSize, recordOffs);
+        bin = file.readToBinArray(recordOffs, recordSize);
         shape = new RecordClass(bin, recordSize);
       }
     }
@@ -12851,7 +12597,7 @@ function ShpReader(src) {
         shape = null,
         bin, recordId, recordType;
     while (offset + 12 <= fileSize) {
-      bin = file.readBytes(12, offset);
+      bin = file.readToBinArray(offset, 12);
       recordId = bin.bigEndian().readUint32();
       recordType = bin.littleEndian().skipBytes(4).readUint32();
       if (recordId == id && (recordType == header.type || recordType === 0)) {
@@ -12886,11 +12632,11 @@ ShpReader.prototype.getCounts = function() {
   return counts;
 };
 
-// Same interface as FileBytes, for reading from a buffer instead of a file.
-function BufferBytes(buf) {
+// Same interface as FileReader, for reading from a buffer instead of a file.
+function BufferReader(buf) {
   var bin = new BinArray(buf),
       bufSize = bin.size();
-  this.readBytes = function(len, offset) {
+  this.readToBinArray = function(offset, len) {
     if (bufSize < offset + len) error("Out-of-range error");
     bin.position(offset);
     return bin;
@@ -12901,49 +12647,6 @@ function BufferBytes(buf) {
   };
 
   this.close = function() {};
-}
-
-// Read a binary file in chunks, to support files > 1GB in Node
-function FileBytes(path) {
-  var DEFAULT_BUF_SIZE = 0xffffff, // 16 MB
-      fs = require('fs'),
-      fileSize = cli.fileSize(path),
-      cacheOffs = 0,
-      cache, fd;
-
-  this.readBytes = function(len, start) {
-    if (fileSize < start + len) error("Out-of-range error");
-    if (!cache || start < cacheOffs || start + len > cacheOffs + cache.size()) {
-      updateCache(len, start);
-    }
-    cache.position(start - cacheOffs);
-    return cache;
-  };
-
-  this.size = function() {
-    return fileSize;
-  };
-
-  this.close = function() {
-    if (fd) {
-      fs.closeSync(fd);
-      fd = null;
-      cache = null;
-      cacheOffs = 0;
-    }
-  };
-
-  function updateCache(len, start) {
-    var headroom = fileSize - start,
-        bufSize = Math.min(headroom, Math.max(DEFAULT_BUF_SIZE, len)),
-        buf = new Buffer(bufSize),
-        bytesRead;
-    if (!fd) fd = fs.openSync(path, 'r');
-    bytesRead = fs.readSync(fd, buf, 0, bufSize, start);
-    if (bytesRead < bufSize) error("Error reading file");
-    cacheOffs = start;
-    cache = new BinArray(buf);
-  }
 }
 
 
@@ -14326,7 +14029,7 @@ internal.importGeoJSONFile = function(fileReader, opts) {
 
 internal.importJSONFile = function(path, opts) {
   var reader = new FileReader(path);
-  var str = reader.getBuffer(0, 1000).toString('utf8');
+  var str = reader.readSync(0, Math.min(1000, reader.size())).toString('utf8');
   var type = internal.identifyJSONString(str);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
@@ -14348,17 +14051,12 @@ internal.importJSON = function(data, opts) {
       retn = {filename: filename};
 
   if (!content) {
-    // need to read from file...
-    try {
-      data = internal.importJSONFile(filename, opts);
-      if (data.dataset) {
-        retn.dataset = data.dataset;
-        retn.format = data.format;
-      } else {
-        content = data.content;
-      }
-    } catch(e) {
-      stop("Unable to import JSON file");
+    data = internal.importJSONFile(filename, opts);
+    if (data.dataset) {
+      retn.dataset = data.dataset;
+      retn.format = data.format;
+    } else {
+      content = data.content;
     }
   }
   if (content) {
@@ -18242,6 +17940,172 @@ internal.cleanArgv = function(argv) {
 
 
 
+utils.replaceFileExtension = function(path, ext) {
+  var info = utils.parseLocalPath(path);
+  return info.pathbase + '.' + ext;
+};
+
+utils.getPathSep = function(path) {
+  // TODO: improve
+  return path.indexOf('/') == -1 && path.indexOf('\\') != -1 ? '\\' : '/';
+};
+
+// Parse the path to a file without using Node
+// Assumes: not a directory path
+utils.parseLocalPath = function(path) {
+  var obj = {},
+      sep = utils.getPathSep(path),
+      parts = path.split(sep),
+      i;
+
+  if (parts.length == 1) {
+    obj.filename = parts[0];
+    obj.directory = "";
+  } else {
+    obj.filename = parts.pop();
+    obj.directory = parts.join(sep);
+  }
+  i = obj.filename.lastIndexOf('.');
+  if (i > -1) {
+    obj.extension = obj.filename.substr(i + 1);
+    obj.basename = obj.filename.substr(0, i);
+    obj.pathbase = path.substr(0, path.lastIndexOf('.'));
+  } else {
+    obj.extension = "";
+    obj.basename = obj.filename;
+    obj.pathbase = path;
+  }
+  return obj;
+};
+
+utils.getFileBase = function(path) {
+  return utils.parseLocalPath(path).basename;
+};
+
+utils.getFileExtension = function(path) {
+  return utils.parseLocalPath(path).extension;
+};
+
+utils.getPathBase = function(path) {
+  return utils.parseLocalPath(path).pathbase;
+};
+
+utils.getCommonFileBase = function(names) {
+  return names.reduce(function(memo, name, i) {
+    if (i === 0) {
+      memo = utils.getFileBase(name);
+    } else {
+      memo = utils.mergeNames(memo, name);
+    }
+    return memo;
+  }, "");
+};
+
+utils.getOutputFileBase = function(dataset) {
+  var inputFiles = dataset.info && dataset.info.input_files;
+  return inputFiles && utils.getCommonFileBase(inputFiles) || 'output';
+};
+
+
+
+
+// Guess the type of a data file from file extension, or return null if not sure
+internal.guessInputFileType = function(file) {
+  var ext = utils.getFileExtension(file || '').toLowerCase(),
+      type = null;
+  if (ext == 'dbf' || ext == 'shp' || ext == 'prj') {
+    type = ext;
+  } else if (/json$/.test(ext)) {
+    type = 'json';
+  }
+  return type;
+};
+
+internal.guessInputContentType = function(content) {
+  var type = null;
+  if (utils.isString(content)) {
+    type = internal.stringLooksLikeJSON(content) ? 'json' : 'text';
+  } else if (utils.isObject(content) && content.type || utils.isArray(content)) {
+    type = 'json';
+  }
+  return type;
+};
+
+internal.guessInputType = function(file, content) {
+  return internal.guessInputFileType(file) || internal.guessInputContentType(content);
+};
+
+//
+internal.stringLooksLikeJSON = function(str) {
+  return /^\s*[{[]/.test(String(str));
+};
+
+internal.couldBeDsvFile = function(name) {
+  var ext = utils.getFileExtension(name).toLowerCase();
+  return /csv|tsv|txt$/.test(ext);
+};
+
+// Infer output format by considering file name and (optional) input format
+internal.inferOutputFormat = function(file, inputFormat) {
+  var ext = utils.getFileExtension(file).toLowerCase(),
+      format = null;
+  if (ext == 'shp') {
+    format = 'shapefile';
+  } else if (ext == 'dbf') {
+    format = 'dbf';
+  } else if (ext == 'svg') {
+    format = 'svg';
+  } else if (/json$/.test(ext)) {
+    format = 'geojson';
+    if (ext == 'topojson' || inputFormat == 'topojson' && ext != 'geojson') {
+      format = 'topojson';
+    } else if (ext == 'json' && inputFormat == 'json') {
+      format = 'json'; // JSON table
+    }
+  } else if (internal.couldBeDsvFile(file)) {
+    format = 'dsv';
+  } else if (inputFormat) {
+    format = inputFormat;
+  }
+  return format;
+};
+
+internal.isZipFile = function(file) {
+  return /\.zip$/i.test(file);
+};
+
+internal.isSupportedOutputFormat = function(fmt) {
+  var types = ['geojson', 'topojson', 'json', 'dsv', 'dbf', 'shapefile', 'svg'];
+  return types.indexOf(fmt) > -1;
+};
+
+internal.getFormatName = function(fmt) {
+  return {
+    geojson: 'GeoJSON',
+    topojson: 'TopoJSON',
+    json: 'JSON records',
+    dsv: 'CSV',
+    dbf: 'DBF',
+    shapefile: 'Shapefile',
+    svg: 'SVG'
+  }[fmt] || '';
+};
+
+// Assumes file at @path is one of Mapshaper's supported file types
+internal.isBinaryFile = function(path) {
+  var ext = utils.getFileExtension(path).toLowerCase();
+  return ext == 'shp' || ext == 'dbf' || ext == 'zip'; // GUI accepts zip files
+};
+
+// Detect extensions of some unsupported file types, for cmd line validation
+internal.filenameIsUnsupportedOutputType = function(file) {
+  var rxp = /\.(shx|prj|xls|xlsx|gdb|sbn|sbx|xml|kml)$/i;
+  return rxp.test(file);
+};
+
+
+
+
 
 function validateInputOpts(cmd) {
   var o = cmd.options,
@@ -19795,6 +19659,118 @@ internal.runAndRemoveInfoCommands = function(commands) {
     }
     return false;
   });
+};
+
+
+
+
+var cli = {};
+
+cli.isFile = function(path, cache) {
+  var ss = cli.statSync(path);
+  return cache && (path in cache) || ss && ss.isFile() || false;
+};
+
+cli.fileSize = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.size || 0;
+};
+
+cli.isDirectory = function(path) {
+  var ss = cli.statSync(path);
+  return ss && ss.isDirectory() || false;
+};
+
+// @encoding (optional) e.g. 'utf8'
+cli.readFile = function(fname, encoding, cache) {
+  var content;
+  if (cache && (fname in cache)) {
+    content = cache[fname];
+    delete cache[fname];
+  } else {
+    content = require(fname == '/dev/stdin' ? 'rw' : 'fs').readFileSync(fname);
+  }
+  if (encoding && Buffer.isBuffer(content)) {
+    content = internal.decodeString(content, encoding);
+  }
+  return content;
+};
+
+// @content Buffer or string
+cli.writeFile = function(path, content, cb) {
+  var fs = require('rw');
+  if (cb) {
+    fs.writeFile(path, content, cb);
+  } else {
+    fs.writeFileSync(path, content);
+  }
+};
+
+// Returns Node Buffer
+cli.convertArrayBuffer = function(buf) {
+  var src = new Uint8Array(buf),
+      dest = new Buffer(src.length);
+  for (var i = 0, n=src.length; i < n; i++) {
+    dest[i] = src[i];
+  }
+  return dest;
+};
+
+// Expand any "*" wild cards in file name
+// (For the Windows command line; unix shells do this automatically)
+cli.expandFileName = function(name) {
+  var info = utils.parseLocalPath(name),
+      rxp = utils.wildcardToRegExp(info.filename),
+      dir = info.directory || '.',
+      files = [];
+
+  try {
+    require('fs').readdirSync(dir).forEach(function(item) {
+      var path = require('path').join(dir, item);
+      if (rxp.test(item) && cli.isFile(path)) {
+        files.push(path);
+      }
+    });
+  } catch(e) {}
+
+  if (files.length === 0) {
+    stop('No files matched (' + name + ')');
+  }
+  return files;
+};
+
+// Expand any wildcards.
+cli.expandInputFiles = function(files) {
+  return files.reduce(function(memo, name) {
+    if (name.indexOf('*') > -1) {
+      memo = memo.concat(cli.expandFileName(name));
+    } else {
+      memo.push(name);
+    }
+    return memo;
+  }, []);
+};
+
+cli.validateOutputDir = function(name) {
+  if (!cli.isDirectory(name)) {
+    error("Output directory not found:", name);
+  }
+};
+
+// TODO: rename and improve
+// Want to test if a path is something readable (e.g. file or stdin)
+cli.checkFileExists = function(path, cache) {
+  if (!cli.isFile(path, cache) && path != '/dev/stdin') {
+    stop("File not found (" + path + ")");
+  }
+};
+
+cli.statSync = function(fpath) {
+  var obj = null;
+  try {
+    obj = require('fs').statSync(fpath);
+  } catch(e) {}
+  return obj;
 };
 
 
