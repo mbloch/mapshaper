@@ -29,10 +29,18 @@ internal.exportDelimTable = function(lyr, delim) {
   var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
   var records = lyr.data.getRecords();
   var str = dsv.formatRows([fields]); // headers
-  // don't copy all data elements
-  // str += dsv.formatRows(records.map(formatRow));
-  for (var i=0, n=records.length; i<n; i++) {
-    str += '\n' + dsv.formatRows([formatRow(records[i])]);
+  var tmp = [];
+  var n = records.length;
+  var i = 0;
+  // Formatting rows in groups avoids a memory allocation error that occured when
+  // generating a file containing 2.8 million rows.
+  while (i < n) {
+    tmp.push(formatRow(records[i]));
+    i++;
+    if (i % 50 === 0 || i == n) {
+      str += '\n' + dsv.formatRows(tmp);
+      tmp = [];
+    }
   }
   return str;
 };
