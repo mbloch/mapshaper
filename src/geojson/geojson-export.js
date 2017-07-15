@@ -25,7 +25,7 @@ internal.exportGeoJSON = function(dataset, opts) {
     // Use common part of layer names if multiple layers are being merged
     var name = internal.mergeLayerNames(layers) || 'output';
     return {
-      content: internal.exportLayersAsGeoJSON(layers, dataset, opts, true),
+      content: internal.exportLayersAsGeoJSON(layers, dataset, opts, 'buffer'),
       filename: name + '.' + extension
     };
   });
@@ -33,46 +33,49 @@ internal.exportGeoJSON = function(dataset, opts) {
 
 // Return an array of Features or Geometries as objects or strings
 //
-internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, asString) {
+internal.exportLayerAsGeoJSON = function(lyr, dataset, opts, asFeatures, ofmt) {
   var properties = internal.exportProperties(lyr.data, opts),
-    shapes = lyr.shapes,
-    ids = internal.exportIds(lyr.data, opts),
-    items, stringify;
+      shapes = lyr.shapes,
+      ids = internal.exportIds(lyr.data, opts),
+      items, stringify;
 
-    if (asString) {
-      stringify = opts.prettify ?
-        internal.getFormattedStringify(['bbox', 'coordinates']) :
-        JSON.stringify;
-    }
+  if (ofmt) {
+    stringify = opts.prettify ?
+      internal.getFormattedStringify(['bbox', 'coordinates']) :
+      JSON.stringify;
+  }
 
-    if (properties && shapes && properties.length !== shapes.length) {
-      error("Mismatch between number of properties and number of shapes");
-    }
+  if (properties && shapes && properties.length !== shapes.length) {
+    error("Mismatch between number of properties and number of shapes");
+  }
 
-    return (shapes || properties || []).reduce(function(memo, o, i) {
-      var shape = shapes ? shapes[i] : null,
-          exporter = GeoJSON.exporters[lyr.geometry_type],
-          obj = shape ? exporter(shape, dataset.arcs) : null;
-      if (asFeatures) {
-        obj = {
-          type: 'Feature',
-          geometry: obj,
-          properties: properties ? properties[i] : null
-        };
-        if (ids) {
-          obj.id = ids[i];
-        }
-      } else if (!obj) {
-        return memo; // don't add null objects to GeometryCollection
+  return (shapes || properties || []).reduce(function(memo, o, i) {
+    var shape = shapes ? shapes[i] : null,
+        exporter = GeoJSON.exporters[lyr.geometry_type],
+        obj = shape ? exporter(shape, dataset.arcs) : null;
+    if (asFeatures) {
+      obj = {
+        type: 'Feature',
+        geometry: obj,
+        properties: properties ? properties[i] : null
+      };
+      if (ids) {
+        obj.id = ids[i];
       }
-      if (asString) {
-        // stringify features as soon as they are generated, to reduce the
-        // number of JS objects in memory (so larger files can be exported)
-        obj = stringify(obj);
+    } else if (!obj) {
+      return memo; // don't add null objects to GeometryCollection
+    }
+    if (ofmt) {
+      // stringify features as soon as they are generated, to reduce the
+      // number of JS objects in memory (so larger files can be exported)
+      obj = stringify(obj);
+      if (ofmt == 'buffer') {
+        obj = new Buffer(obj, 'utf8');
       }
-      memo.push(obj);
-      return memo;
-    }, []);
+    }
+    memo.push(obj);
+    return memo;
+  }, []);
 };
 
 // TODO: remove
@@ -80,7 +83,7 @@ internal.exportGeoJSONCollection = function(lyr, dataset, opts) {
   return internal.exportLayersAsGeoJSON([lyr], dataset, opts || {});
 };
 
-internal.exportLayersAsGeoJSON = function(layers, dataset, opts, asString) {
+internal.exportLayersAsGeoJSON = function(layers, dataset, opts, ofmt) {
   var geojson = {};
   var useFeatures = internal.useFeatureCollection(layers, opts);
   var parts, collection, bounds, collname;
@@ -102,20 +105,37 @@ internal.exportLayersAsGeoJSON = function(layers, dataset, opts, asString) {
   }
 
   collection = layers.reduce(function(memo, lyr, i) {
-    var items = internal.exportLayerAsGeoJSON(lyr, dataset, opts, useFeatures, asString);
+    var items = internal.exportLayerAsGeoJSON(lyr, dataset, opts, useFeatures, ofmt);
     return memo.length > 0 ? memo.concat(items) : items;
   }, []);
 
-  if (asString) {
-    // collection is an array of individual GeoJSON Feature strings,
-    // need to create complete GeoJSON output by concatenation.
-    geojson[collname] = ["$"];
-    parts = JSON.stringify(geojson).split('"$"');
-    geojson = parts[0] + '\n' + collection.join(',\n') + '\n' + parts[1];
+  if (ofmt) {
+    return GeoJSON.formatGeoJSON(geojson, collection, collname, ofmt);
   } else {
     geojson[collname] = collection;
+    return geojson;
   }
-  return geojson;
+};
+
+GeoJSON.formatGeoJSON = function(container, collection, collType, ofmt) {
+  // collection is an array of individual GeoJSON Feature|geometry strings or buffers
+  var head = JSON.stringify(container).replace(/\}$/, ', "' + collType + '": [\n');
+  var tail = '\n]}';
+  if (ofmt == 'buffer') {
+    return GeoJSON.joinOutputBuffers(head, tail, collection);
+  }
+  return head + collection.join(',\n') + tail;
+};
+
+GeoJSON.joinOutputBuffers = function(head, tail, collection) {
+  var comma = new Buffer(',\n', 'utf8');
+  var parts = collection.reduce(function(memo, buf, i) {
+    if (i > 0) memo.push(comma);
+    memo.push(buf);
+    return memo;
+  }, [new Buffer(head, 'utf8')]);
+  parts.push(new Buffer(tail, 'utf8'));
+  return Buffer.concat(parts);
 };
 
 // export GeoJSON or TopoJSON point geometry

@@ -72,9 +72,9 @@ function FileReader(path, opts) {
     if (!fd) {
       fd = fs.openSync(path, 'r');
     }
-    cacheOffs = fileOffs;
     bytesRead = fs.readSync(fd, cache, 0, bytesToRead, fileOffs);
-    if (bytesRead != bytesToRead) throw new Error("Error reading file");
+    cacheOffs = fileOffs;
+    if (bytesRead != bytesToRead) error("Error reading file");
     return true;
   }
 }

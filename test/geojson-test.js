@@ -665,11 +665,11 @@ describe('mapshaper-geojson.js', function () {
 function geoJSONRoundTrip(fname) {
   var data = api.importFile(fixPath(fname));
   var files = api.internal.exportFileContent(data, {format:'geojson'});
-  var data2 = api.internal.importFileContent(files[0].content, 'json');
+  var json = files[0].content.toString();
+  var data2 = api.internal.importFileContent(json, 'json');
   var files2 = api.internal.exportFileContent(data2, {format:'geojson'});
-
-  assert.equal(files2[0].content, files[0].content);
-  // assert.equal(files2[0].filename, files[0].filename); // these are different
+  var json2 = files2[0].content.toString();
+  assert.equal(json, json2);
 }
 
 function importExport(obj, noTopo) {

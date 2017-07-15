@@ -47,7 +47,6 @@ describe('mapshaper-filter.js', function () {
       // filter a layer with no-replace; check that modifying data in the filtered layer does not change the source layer.
       api.applyCommands('-filter \'name == "b"\' + name=filtered -each target=filtered \'name="foo"\'', geojson, function(err, data) {
         if (err) console.log(err);
-        assert.equal(typeof data, 'string');
         var output = JSON.parse(data);
         assert.deepEqual(output.features[0].properties, {name: 'foo'})
         assert.equal(output.features.length, 1);
