@@ -1,3 +1,6 @@
+v0.4.31
+* Added support for exporting large (>1GB) GeoJSON files.
+
 v0.4.30
 * Added support for importing large (>1GB) GeoJSON files using the command line script.
 * Changed `-line` command to generate two fields: "RANK", containing an integer and "TYPE", containing a human-friendly name.
