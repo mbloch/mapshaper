@@ -18,7 +18,7 @@ mapshaper-filter-islands
 mapshaper-filter-slivers
 mapshaper-graticule
 mapshaper-info
-mapshaper-innerlines2
+mapshaper-innerlines
 mapshaper-inspect
 mapshaper-join
 mapshaper-keep-shapes
