@@ -82,21 +82,23 @@ function DisplayCanvas() {
         scaleRatio = getDotScale(_ext),
         size = Math.ceil((style.dotSize || 3) * pixRatio * scaleRatio),
         styler = style.styler || null,
-        shp, p;
-
+        xmax = _canvas.width + size,
+        ymax = _canvas.height + size,
+        shp, x, y, i, j, n, m;
     _ctx.fillStyle = style.dotColor || "black";
-    // TODO: don't try to draw offscreen points
-    for (var i=0, n=shapes.length; i<n; i++) {
-      if (styler !== null) {
+    for (i=0, n=shapes.length; i<n; i++) {
+      if (styler !== null) { // e.g. selected points
         styler(style, i);
         size = style.dotSize * pixRatio;
         _ctx.fillStyle = style.dotColor;
       }
       shp = shapes[i];
-      for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
-        if (!shp) continue;
-        p = shp[j];
-        drawSquare(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, _ctx);
+      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+        x = shp[j][0] * t.mx + t.bx;
+        y = shp[j][1] * t.my + t.by;
+        if (x > -size && y > -size && x < xmax && y < ymax) {
+          drawSquare(x, y, size, _ctx);
+        }
       }
     }
   };
@@ -215,7 +217,7 @@ function getLineScale(ext) {
 }
 
 function getDotScale(ext) {
-  return Math.pow(getLineScale(ext), 0.6);
+  return Math.pow(getLineScale(ext), 0.7);
 }
 
 function getPathStart(ext, lineScale) {
