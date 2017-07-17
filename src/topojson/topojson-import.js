@@ -193,8 +193,9 @@ TopoJSON.GeometryImporter = function(arcs, opts) {
 // TODO: check that rings are closed
 TopoJSON.importPolygonArcs = function(rings, arcs) {
   var ring = rings[0],
-      area = geom.getPlanarPathArea(ring, arcs),
-      imported = null;
+      imported = null, area;
+  if (!arcs) stop("Invalid TopoJSON file: missing arc data.");
+  area = geom.getPlanarPathArea(ring, arcs);
   if (!area) {
     return null;
   }
