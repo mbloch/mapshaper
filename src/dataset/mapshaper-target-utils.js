@@ -1,12 +1,13 @@
 /* @requires mapshaper-common */
 
-internal.findCommandTargets = function(pattern, catalog) {
+internal.findCommandTargets = function(catalog, pattern, type) {
   var targets = [];
   var layers = utils.pluck(catalog.getLayers(), 'layer');
-  internal.findMatchingLayers(layers, pattern);
+  var matches = internal.findMatchingLayers(layers, pattern);
+  if (type) matches = matches.filter(function(lyr) {return lyr.geometry_type == type;});
   catalog.getDatasets().forEach(function(dataset) {
     var layers = dataset.layers.filter(function(lyr) {
-      return lyr.match_id > -1;
+      return matches.indexOf(lyr) > -1;
     });
     if (layers.length > 0) {
       targets.push({
@@ -22,18 +23,20 @@ internal.findCommandTargets = function(pattern, catalog) {
 // An identifier is a literal name, a pattern containing "*" wildcard or
 // a 1-based index (1..n)
 internal.findMatchingLayers = function(layers, pattern) {
-  var matchId = 0;
+  var matches = [];
   pattern.split(',').forEach(function(subpattern, i) {
     var test = internal.getLayerMatch(subpattern);
-    // (kludge) assign a match id to each layer; used to set layer order of SVG output
     layers.forEach(function(lyr, layerId) {
-      if (i === 0) lyr.match_id = -1;
-      if (lyr.match_id == -1 && test(lyr, layerId + 1)) { // layers are 1-indexed
-        lyr.match_id = matchId++;
+      if (matches.indexOf(lyr) > -1) return;
+      if (test(lyr, layerId + 1)) {  // layers are 1-indexed
+        lyr.match_id = matches.length;
+        matches.push(lyr);
+      } else {
+        lyr.match_id = -1;
       }
     });
   });
-  return layers; // for compatibility w/ tests; todo: remove
+  return matches;
 };
 
 internal.getLayerMatch = function(pattern) {

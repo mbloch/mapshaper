@@ -472,7 +472,7 @@ internal.getOptionParser = function() {
     .option("name", nameOpt);
 
   parser.command("points")
-    .describe("create a point layer from polylines, polygons or attribute data")
+    .describe("create a point layer from a different layer type")
     .flag("no_arg")
     .option("x", {
       describe: "field containing x coordinate"
@@ -722,14 +722,12 @@ internal.getOptionParser = function() {
 
   parser.command("target")
     .describe("set active layer")
-    .validate(function(cmd) {
-      if (!cmd.options.target && cmd._.length) {
-        cmd.options.target = cmd._.shift();
-      }
-    })
+    .default('target')
     .option("target", {
-      label: "<target>",
       describe: "name or index of layer to target"
+    })
+    .option('type', {
+      describe: "type of layer to target (polygon|polyline|point)"
     })
     .option("name", {
       describe: 'rename the target layer'

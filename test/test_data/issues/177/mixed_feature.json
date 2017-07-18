@@ -1,0 +1,26 @@
+
+{
+  "type": "FeatureCollection",
+  "features": [{
+    "type": "Feature",
+    "properties": {"name": "A"},
+    "geometry": {
+      "type": "MultiPoint",
+      "coordinates": [[0, 1], [2, 3]]
+    }
+  }, {
+    "type": "Feature",
+    "properties": {"name": "B"},
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [[0, 1], [2, 3], [4, 5]]
+    }
+  },{ 
+    "type": "Feature",
+    "properties": {"name": "C"},
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [[[0, 1], [1, 1], [0, 0], [0, 1]]]
+    }
+  }] 
+}

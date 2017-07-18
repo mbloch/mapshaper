@@ -53,9 +53,9 @@ function Catalog() {
     return found;
   };
 
-  this.findCommandTargets = function(pattern) {
+  this.findCommandTargets = function(pattern, type) {
     if (pattern) {
-      return internal.findCommandTargets(pattern, this);
+      return internal.findCommandTargets(this, pattern, type);
     }
     return target ? [target] : [];
   };

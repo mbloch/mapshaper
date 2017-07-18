@@ -53,4 +53,32 @@ describe('mapshaper-target.js', function () {
       done();
     })
   })
+
+  it('select target by type', function(done) {
+    var cmd = "-i test/test_data/issues/177/mixed_feature.json -target type=point -o point.json";
+    var target = {
+      "type": "FeatureCollection",
+      "features": [{
+        "type": "Feature",
+        "properties": {"name": "A"},
+        "geometry": {
+          "type": "MultiPoint",
+          "coordinates": [[0, 1], [2, 3]]
+        }
+      }]
+    };
+    api.applyCommands(cmd, {}, function(err, output) {
+      assert.deepEqual(JSON.parse(output['point.json']), target);
+      done();
+    })
+  })
+
+  it('select target by type and target=', function(done) {
+    var cmd = "-i test/test_data/issues/177/mixed_feature.json name=features -target features type=point -o point.json";
+    api.applyCommands(cmd, {}, function(err, output) {
+      assert(!!output['point.json']);
+      done();
+    })
+  })
+
 })

@@ -116,7 +116,6 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.applyCommand(api.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clean') {
-      // internal.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
       api.cleanLayers(targetLayers, targetDataset, opts);
 
     } else if (name == 'clip') {
@@ -256,7 +255,7 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.applyCommand(api.uniq, targetLayers, arcs, opts);
 
     } else if (name == 'target') {
-      api.target(catalog, opts.target, opts);
+      internal.target(catalog, opts);
 
     } else {
       error("Unhandled command: [" + name + "]");
