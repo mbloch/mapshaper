@@ -118,6 +118,9 @@ api.runCommand = function(cmd, catalog, cb) {
     } else if (name == 'clean') {
       api.cleanLayers(targetLayers, targetDataset, opts);
 
+    } else if (name == 'clean2') {
+      outputLayers = api.clean2(targetLayers, targetDataset, opts);
+
     } else if (name == 'clip') {
       outputLayers = api.clipLayers(targetLayers, source, targetDataset, opts);
 

@@ -16,10 +16,11 @@ mapshaper-polygon-repair
 // Divide a collection of arcs at points where segments intersect
 // and re-index the paths of all the layers that reference the arc collection.
 // (in-place)
-internal.addIntersectionCuts = function(dataset, opts) {
+internal.addIntersectionCuts = function(dataset, _opts) {
+  var opts = _opts || {};
   var arcs = dataset.arcs;
-  var snapDist = internal.getHighPrecisionSnapInterval(arcs);
-  var snapCount = opts && opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
+  var snapDist = opts.snap_interval || internal.getHighPrecisionSnapInterval(arcs);
+  var snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
   var dupeCount = arcs.dedupCoords();
   if (snapCount > 0 || dupeCount > 0) {
     // Detect topology again if coordinates have changed

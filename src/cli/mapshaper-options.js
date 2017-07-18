@@ -509,17 +509,17 @@ internal.getOptionParser = function() {
     .flag("multi_arg")
     .option("projection", {
       label: "<projection>",
-      describe: "set the destination CRS using a Proj.4 definition or alias"
+      describe: "set destination CRS using a Proj.4 definition or alias"
     })
     .option("match", {
-      describe: "set the destination CRS using a .prj file or layer id"
+      describe: "set destination CRS using a .prj file or layer id"
     })
     .option("source", {
       // describe: "(deprecated) alias for match",
       alias_to: "match"
     })
     .option("from", {
-      describe: "set the source CRS (if unset) using a string, .prj or layer id"
+      describe: "set source CRS (if unset) using a string, .prj or layer id"
     })
     .option("densify", {
       type: "flag",
@@ -776,6 +776,11 @@ internal.getOptionParser = function() {
 
   // Work-in-progress (no .describe(), so hidden from -h)
   parser.command("clean")
+    .option("target", targetOpt);
+
+  parser.command("clean2")
+    .option("snap-interval", snapIntervalOpt)
+    .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
 

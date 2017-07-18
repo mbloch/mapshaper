@@ -9,22 +9,39 @@ internal.buildPolygonMosaic = function(nodes) {
   var arcs = nodes.arcs;
   var flags = new Uint8Array(arcs.size());
   var findPath = internal.getPathFinder(nodes, useRoute);
+  var deadArcs = [];
   var rings = [], ring;
-  for (var i=0, n=flags.length; i<n; i++) {
-    ring = findPath(i);
-    if (ring) rings.push(ring);
-    ring = findPath(~i);
-    if (ring) rings.push(ring);
-  }
-  return rings;
+  var retn = {};
 
-  function useRoute(arcId) {
+  for (var i=0, n=flags.length; i<n; i++) {
+    tryPath(i);
+    tryPath(~i);
+  }
+  retn.rings = rings;
+  if (deadArcs.length > 0) retn.collisions = deadArcs;
+  return retn;
+
+  function tryPath(arcId) {
+    var ring;
+    if (!routeIsOpen(arcId)) return;
+    ring = findPath(arcId);
+    if (ring) {
+      rings.push(ring);
+    } else {
+      deadArcs.push(arcId);
+      console.log("Dead-end arc:", arcId);
+    }
+  }
+
+  function routeIsOpen(arcId, closeRoute) {
     var absId = absArcId(arcId);
     var bit = absId == arcId ? 1 : 2;
-    if ((flags[absId] & bit) === 0) {
-      flags[absId] |= bit;
-      return true;
-    }
-    return false;
+    var isOpen = (flags[absId] & bit) === 0;
+    if (closeRoute && isOpen) flags[absId] |= bit;
+    return isOpen;
+  }
+
+  function useRoute(arcId) {
+    return routeIsOpen(arcId, true);
   }
 };

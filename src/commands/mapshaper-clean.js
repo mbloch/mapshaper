@@ -1,5 +1,26 @@
 /* @requires mapshaper-dissolve2, mapshaper-polygon-mosaic */
 
+api.clean2 = function(layers, dataset, opts) {
+  layers.forEach(internal.requirePolygonLayer);
+  var nodes = internal.addIntersectionCuts(dataset, opts);
+  var out = internal.buildPolygonMosaic(nodes);
+  if (out.collisions) {
+    layers = layers.concat(internal.getCollisionLayer(out.collisions));
+  }
+  return layers;
+};
+
+internal.getCollisionLayer = function(arcs) {
+  var lyr = {geometry_type: 'polyline'};
+  var data = [];
+  lyr.shapes = arcs.map(function(arcId) {
+    data.push({ARCID: arcId});
+    return [[arcId]];
+  });
+  lyr.data = new DataTable(data);
+  return lyr;
+};
+
 // (This doesn't currently do much)
 // TODO: remove small overlaps
 // TODO: patch small gaps
