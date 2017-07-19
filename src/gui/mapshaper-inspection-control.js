@@ -1,10 +1,11 @@
 /* @requires mapshaper-gui-lib, mapshaper-popup, mapshaper-hit-control */
 
 function InspectionControl(model, hit) {
-  var _popup = new Popup();
+  var _popup = new Popup(onNextHit);
   var _inspecting = false;
   var _pinned = false;
   var _highId = -1;
+  var _hoverIds = null;
   var _selectionIds = null;
   var btn = gui.addSidebarButton("#info-icon2").on('click', function() {
     gui.dispatchEvent('inspector_toggle');
@@ -95,22 +96,32 @@ function InspectionControl(model, hit) {
     inspect(id, false, e.ids);
   });
 
-  function showInspector(id, editable) {
+  function onNextHit() {
+    var i = (_hoverIds || []).indexOf(_highId);
+    var nextId;
+    if (i > -1) {
+      nextId = _hoverIds[++i % _hoverIds.length];
+      inspect(nextId, true, _hoverIds);
+    }
+  }
+
+  function showInspector(id, ids, pinned) {
     var o = _lyr.getDisplayLayer();
     var table = o.layer.data || null;
-    var rec = table ? table.getRecordAt(id) : {};
-    _popup.show(rec, table, editable);
+    _popup.show(id, ids, table, pinned);
+
   }
 
   // @id Id of a feature in the active layer, or -1
   function inspect(id, pin, ids) {
     if (!_inspecting) return;
     if (id > -1) {
-      showInspector(id, pin);
+      showInspector(id, ids, pin);
     } else {
       _popup.hide();
     }
     _highId = id;
+    _hoverIds = ids;
     _pinned = pin;
     _self.dispatchEvent('change', {
       selection_ids: _selectionIds || [],

@@ -1,21 +1,34 @@
 /* @requires mapshaper-gui-lib */
 
-
-function Popup() {
+// @onNext: handler for switching between multiple records
+function Popup(onNext) {
   var parent = El('#mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
-  // var head = El('div').addClass('popup-head').appendTo(el).text('Feature 1 of 5  next prev');
   var content = El('div').addClass('popup-content').appendTo(el);
+  // multi-hit display and navigation
+  var tab = El('div').addClass('popup-tab').appendTo(el).hide();
+  var nav = El('div').addClass('popup-nav').appendTo(tab);
+  var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
+  var nextLink = El('span').addClass('popup-nav-next colored-text').appendTo(nav).text('»');
 
-  this.show = function(rec, table, editable) {
+  nextLink.on('click', onNext);
+
+  this.show = function(id, ids, table, pinned) {
+    var rec = table ? table.getRecordAt(id) : {};
     var maxHeight = parent.node().clientHeight - 36;
     this.hide(); // clean up if panel is already open
-    render(content, rec, table, editable);
+    render(content, rec, table, pinned);
+    if (ids && ids.length > 1) {
+      showNav(id, ids, pinned);
+    } else {
+      tab.hide();
+    }
     el.show();
     if (content.node().clientHeight > maxHeight) {
       content.css('height:' + maxHeight + 'px');
     }
   };
+
 
   this.hide = function() {
     // make sure any pending edits are made before re-rendering popup
@@ -25,6 +38,13 @@ function Popup() {
     content.node().removeAttribute('style'); // remove inline height
     el.hide();
   };
+
+  function showNav(id, ids, pinned) {
+    var num = ids.indexOf(id) + 1;
+    navInfo.text(num + ' / ' + ids.length);
+    nextLink.css('display', pinned ? 'inline-block' : 'none');
+    tab.show();
+  }
 
   function render(el, rec, table, editable) {
     var tableEl = El('table').addClass('selectable'),
