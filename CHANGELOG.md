@@ -1,3 +1,7 @@
+v0.4.32
+* [web] The inspector tool now shows multiple hits when hovering over/clicking on overlapping polygons and points with identical coordinates.
+* Added -target type=polygon|polyline|point option, for targeting layers of a given type.
+
 v0.4.31
 * Added support for exporting large (>1GB) GeoJSON files.
 
