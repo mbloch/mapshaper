@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.31';
+var VERSION = '0.4.32';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -5162,10 +5162,11 @@ internal.repairSelfIntersections = function(lyr, nodes) {
 // Divide a collection of arcs at points where segments intersect
 // and re-index the paths of all the layers that reference the arc collection.
 // (in-place)
-internal.addIntersectionCuts = function(dataset, opts) {
+internal.addIntersectionCuts = function(dataset, _opts) {
+  var opts = _opts || {};
   var arcs = dataset.arcs;
-  var snapDist = internal.getHighPrecisionSnapInterval(arcs);
-  var snapCount = opts && opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
+  var snapDist = opts.snap_interval || internal.getHighPrecisionSnapInterval(arcs);
+  var snapCount = opts.no_snap ? 0 : internal.snapCoordsByInterval(arcs, snapDist);
   var dupeCount = arcs.dedupCoords();
   if (snapCount > 0 || dupeCount > 0) {
     // Detect topology again if coordinates have changed
@@ -8253,28 +8254,66 @@ internal.buildPolygonMosaic = function(nodes) {
   var arcs = nodes.arcs;
   var flags = new Uint8Array(arcs.size());
   var findPath = internal.getPathFinder(nodes, useRoute);
+  var deadArcs = [];
   var rings = [], ring;
-  for (var i=0, n=flags.length; i<n; i++) {
-    ring = findPath(i);
-    if (ring) rings.push(ring);
-    ring = findPath(~i);
-    if (ring) rings.push(ring);
-  }
-  return rings;
+  var retn = {};
 
-  function useRoute(arcId) {
+  for (var i=0, n=flags.length; i<n; i++) {
+    tryPath(i);
+    tryPath(~i);
+  }
+  retn.rings = rings;
+  if (deadArcs.length > 0) retn.collisions = deadArcs;
+  return retn;
+
+  function tryPath(arcId) {
+    var ring;
+    if (!routeIsOpen(arcId)) return;
+    ring = findPath(arcId);
+    if (ring) {
+      rings.push(ring);
+    } else {
+      deadArcs.push(arcId);
+      console.log("Dead-end arc:", arcId);
+    }
+  }
+
+  function routeIsOpen(arcId, closeRoute) {
     var absId = absArcId(arcId);
     var bit = absId == arcId ? 1 : 2;
-    if ((flags[absId] & bit) === 0) {
-      flags[absId] |= bit;
-      return true;
-    }
-    return false;
+    var isOpen = (flags[absId] & bit) === 0;
+    if (closeRoute && isOpen) flags[absId] |= bit;
+    return isOpen;
+  }
+
+  function useRoute(arcId) {
+    return routeIsOpen(arcId, true);
   }
 };
 
 
 
+
+api.clean2 = function(layers, dataset, opts) {
+  layers.forEach(internal.requirePolygonLayer);
+  var nodes = internal.addIntersectionCuts(dataset, opts);
+  var out = internal.buildPolygonMosaic(nodes);
+  if (out.collisions) {
+    layers = layers.concat(internal.getCollisionLayer(out.collisions));
+  }
+  return layers;
+};
+
+internal.getCollisionLayer = function(arcs) {
+  var lyr = {geometry_type: 'polyline'};
+  var data = [];
+  lyr.shapes = arcs.map(function(arcId) {
+    data.push({ARCID: arcId});
+    return [[arcId]];
+  });
+  lyr.data = new DataTable(data);
+  return lyr;
+};
 
 // (This doesn't currently do much)
 // TODO: remove small overlaps
@@ -11760,8 +11799,9 @@ TopoJSON.GeometryImporter = function(arcs, opts) {
 // TODO: check that rings are closed
 TopoJSON.importPolygonArcs = function(rings, arcs) {
   var ring = rings[0],
-      area = geom.getPlanarPathArea(ring, arcs),
-      imported = null;
+      imported = null, area;
+  if (!arcs) stop("Invalid TopoJSON file: missing arc data.");
+  area = geom.getPlanarPathArea(ring, arcs);
   if (!area) {
     return null;
   }
@@ -13609,10 +13649,18 @@ internal.exportDelimTable = function(lyr, delim) {
   var formatRow = internal.getDelimRowFormatter(fields, lyr.data);
   var records = lyr.data.getRecords();
   var str = dsv.formatRows([fields]); // headers
-  // don't copy all data elements
-  // str += dsv.formatRows(records.map(formatRow));
-  for (var i=0, n=records.length; i<n; i++) {
-    str += '\n' + dsv.formatRows([formatRow(records[i])]);
+  var tmp = [];
+  var n = records.length;
+  var i = 0;
+  // Formatting rows in groups avoids a memory allocation error that occured when
+  // generating a file containing 2.8 million rows.
+  while (i < n) {
+    tmp.push(formatRow(records[i]));
+    i++;
+    if (i % 50 === 0 || i == n) {
+      str += '\n' + dsv.formatRows(tmp);
+      tmp = [];
+    }
   }
   return str;
 };
@@ -17130,15 +17178,19 @@ api.sortFeatures = function(lyr, arcs, opts) {
 
 
 
-api.target = function(catalog, pattern, opts) {
-  var targets = catalog.findCommandTargets(pattern);
+internal.target = function(catalog, opts) {
+  var type = (opts.type || '').toLowerCase().replace('linestring', 'polyline');
+  var targets = catalog.findCommandTargets(opts.target || '*', type);
   var target = targets[0];
+  if (type && 'polygon,polyline,point'.split(',').indexOf(type) == -1) {
+    stop("Invalid layer type:", opts.type);
+  }
   if (!target || target.layers.length === 0) {
     stop("Target not found (" + pattern + ")");
   } else if (targets.length > 1 || target.layers.length > 1) {
     stop("Matched more than one layer");
   }
-  if (opts && opts.name) {
+  if (opts.name) {
     target.layers[0].name = opts.name;
   }
   catalog.setDefaultTarget(target.layers, target.dataset);
@@ -17256,8 +17308,10 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.applyCommand(api.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clean') {
-      // internal.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
       api.cleanLayers(targetLayers, targetDataset, opts);
+
+    } else if (name == 'clean2') {
+      outputLayers = api.clean2(targetLayers, targetDataset, opts);
 
     } else if (name == 'clip') {
       outputLayers = api.clipLayers(targetLayers, source, targetDataset, opts);
@@ -17396,7 +17450,7 @@ api.runCommand = function(cmd, catalog, cb) {
       internal.applyCommand(api.uniq, targetLayers, arcs, opts);
 
     } else if (name == 'target') {
-      api.target(catalog, opts.target, opts);
+      internal.target(catalog, opts);
 
     } else {
       error("Unhandled command: [" + name + "]");
@@ -18741,7 +18795,7 @@ internal.getOptionParser = function() {
     .option("name", nameOpt);
 
   parser.command("points")
-    .describe("create a point layer from polylines, polygons or attribute data")
+    .describe("create a point layer from a different layer type")
     .flag("no_arg")
     .option("x", {
       describe: "field containing x coordinate"
@@ -18778,17 +18832,17 @@ internal.getOptionParser = function() {
     .flag("multi_arg")
     .option("projection", {
       label: "<projection>",
-      describe: "set the destination CRS using a Proj.4 definition or alias"
+      describe: "set destination CRS using a Proj.4 definition or alias"
     })
     .option("match", {
-      describe: "set the destination CRS using a .prj file or layer id"
+      describe: "set destination CRS using a .prj file or layer id"
     })
     .option("source", {
       // describe: "(deprecated) alias for match",
       alias_to: "match"
     })
     .option("from", {
-      describe: "set the source CRS (if unset) using a string, .prj or layer id"
+      describe: "set source CRS (if unset) using a string, .prj or layer id"
     })
     .option("densify", {
       type: "flag",
@@ -18991,14 +19045,12 @@ internal.getOptionParser = function() {
 
   parser.command("target")
     .describe("set active layer")
-    .validate(function(cmd) {
-      if (!cmd.options.target && cmd._.length) {
-        cmd.options.target = cmd._.shift();
-      }
-    })
+    .default('target')
     .option("target", {
-      label: "<target>",
       describe: "name or index of layer to target"
+    })
+    .option('type', {
+      describe: "type of layer to target (polygon|polyline|point)"
     })
     .option("name", {
       describe: 'rename the target layer'
@@ -19047,6 +19099,11 @@ internal.getOptionParser = function() {
 
   // Work-in-progress (no .describe(), so hidden from -h)
   parser.command("clean")
+    .option("target", targetOpt);
+
+  parser.command("clean2")
+    .option("snap-interval", snapIntervalOpt)
+    .option("no-snap", noSnapOpt)
     .option("target", targetOpt);
 
 
@@ -19237,13 +19294,14 @@ internal.parseConsoleCommands = function(raw) {
 
 
 
-internal.findCommandTargets = function(pattern, catalog) {
+internal.findCommandTargets = function(catalog, pattern, type) {
   var targets = [];
   var layers = utils.pluck(catalog.getLayers(), 'layer');
-  internal.findMatchingLayers(layers, pattern);
+  var matches = internal.findMatchingLayers(layers, pattern);
+  if (type) matches = matches.filter(function(lyr) {return lyr.geometry_type == type;});
   catalog.getDatasets().forEach(function(dataset) {
     var layers = dataset.layers.filter(function(lyr) {
-      return lyr.match_id > -1;
+      return matches.indexOf(lyr) > -1;
     });
     if (layers.length > 0) {
       targets.push({
@@ -19259,18 +19317,20 @@ internal.findCommandTargets = function(pattern, catalog) {
 // An identifier is a literal name, a pattern containing "*" wildcard or
 // a 1-based index (1..n)
 internal.findMatchingLayers = function(layers, pattern) {
-  var matchId = 0;
+  var matches = [];
   pattern.split(',').forEach(function(subpattern, i) {
     var test = internal.getLayerMatch(subpattern);
-    // (kludge) assign a match id to each layer; used to set layer order of SVG output
     layers.forEach(function(lyr, layerId) {
-      if (i === 0) lyr.match_id = -1;
-      if (lyr.match_id == -1 && test(lyr, layerId + 1)) { // layers are 1-indexed
-        lyr.match_id = matchId++;
+      if (matches.indexOf(lyr) > -1) return;
+      if (test(lyr, layerId + 1)) {  // layers are 1-indexed
+        lyr.match_id = matches.length;
+        matches.push(lyr);
+      } else {
+        lyr.match_id = -1;
       }
     });
   });
-  return layers; // for compatibility w/ tests; todo: remove
+  return matches;
 };
 
 internal.getLayerMatch = function(pattern) {
@@ -19337,9 +19397,9 @@ function Catalog() {
     return found;
   };
 
-  this.findCommandTargets = function(pattern) {
+  this.findCommandTargets = function(pattern, type) {
     if (pattern) {
-      return internal.findCommandTargets(pattern, this);
+      return internal.findCommandTargets(this, pattern, type);
     }
     return target ? [target] : [];
   };

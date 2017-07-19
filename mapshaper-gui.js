@@ -2751,21 +2751,23 @@ function DisplayCanvas() {
         scaleRatio = getDotScale(_ext),
         size = Math.ceil((style.dotSize || 3) * pixRatio * scaleRatio),
         styler = style.styler || null,
-        shp, p;
-
+        xmax = _canvas.width + size,
+        ymax = _canvas.height + size,
+        shp, x, y, i, j, n, m;
     _ctx.fillStyle = style.dotColor || "black";
-    // TODO: don't try to draw offscreen points
-    for (var i=0, n=shapes.length; i<n; i++) {
-      if (styler !== null) {
+    for (i=0, n=shapes.length; i<n; i++) {
+      if (styler !== null) { // e.g. selected points
         styler(style, i);
         size = style.dotSize * pixRatio;
         _ctx.fillStyle = style.dotColor;
       }
       shp = shapes[i];
-      for (var j=0, m=shp ? shp.length : 0; j<m; j++) {
-        if (!shp) continue;
-        p = shp[j];
-        drawSquare(p[0] * t.mx + t.bx, p[1] * t.my + t.by, size, _ctx);
+      for (j=0, m=shp ? shp.length : 0; j<m; j++) {
+        x = shp[j][0] * t.mx + t.bx;
+        y = shp[j][1] * t.my + t.by;
+        if (x > -size && y > -size && x < xmax && y < ymax) {
+          drawSquare(x, y, size, _ctx);
+        }
       }
     }
   };
@@ -2884,7 +2886,7 @@ function getLineScale(ext) {
 }
 
 function getDotScale(ext) {
-  return Math.pow(getLineScale(ext), 0.6);
+  return Math.pow(getLineScale(ext), 0.7);
 }
 
 function getPathStart(ext, lineScale) {
@@ -3794,22 +3796,35 @@ function HitControl(ext, mouse) {
 
 
 
-
-function Popup() {
+// @onNext: handler for switching between multiple records
+function Popup(onNext) {
   var parent = El('#mshp-main-map');
   var el = El('div').addClass('popup').appendTo(parent).hide();
-  // var head = El('div').addClass('popup-head').appendTo(el).text('Feature 1 of 5  next prev');
   var content = El('div').addClass('popup-content').appendTo(el);
+  // multi-hit display and navigation
+  var tab = El('div').addClass('popup-tab').appendTo(el).hide();
+  var nav = El('div').addClass('popup-nav').appendTo(tab);
+  var navInfo = El('span').addClass('popup-nav-info').appendTo(nav);
+  var nextLink = El('span').addClass('popup-nav-next colored-text').appendTo(nav).text('»');
 
-  this.show = function(rec, table, editable) {
+  nextLink.on('click', onNext);
+
+  this.show = function(id, ids, table, pinned) {
+    var rec = table ? table.getRecordAt(id) : {};
     var maxHeight = parent.node().clientHeight - 36;
     this.hide(); // clean up if panel is already open
-    render(content, rec, table, editable);
+    render(content, rec, table, pinned);
+    if (ids && ids.length > 1) {
+      showNav(id, ids, pinned);
+    } else {
+      tab.hide();
+    }
     el.show();
     if (content.node().clientHeight > maxHeight) {
       content.css('height:' + maxHeight + 'px');
     }
   };
+
 
   this.hide = function() {
     // make sure any pending edits are made before re-rendering popup
@@ -3819,6 +3834,13 @@ function Popup() {
     content.node().removeAttribute('style'); // remove inline height
     el.hide();
   };
+
+  function showNav(id, ids, pinned) {
+    var num = ids.indexOf(id) + 1;
+    navInfo.text(num + ' / ' + ids.length);
+    nextLink.css('display', pinned ? 'inline-block' : 'none');
+    tab.show();
+  }
 
   function render(el, rec, table, editable) {
     var tableEl = El('table').addClass('selectable'),
@@ -3944,10 +3966,11 @@ internal.getFieldType = function(val, key, table) {
 
 
 function InspectionControl(model, hit) {
-  var _popup = new Popup();
+  var _popup = new Popup(onNextHit);
   var _inspecting = false;
   var _pinned = false;
   var _highId = -1;
+  var _hoverIds = null;
   var _selectionIds = null;
   var btn = gui.addSidebarButton("#info-icon2").on('click', function() {
     gui.dispatchEvent('inspector_toggle');
@@ -4038,22 +4061,32 @@ function InspectionControl(model, hit) {
     inspect(id, false, e.ids);
   });
 
-  function showInspector(id, editable) {
+  function onNextHit() {
+    var i = (_hoverIds || []).indexOf(_highId);
+    var nextId;
+    if (i > -1) {
+      nextId = _hoverIds[++i % _hoverIds.length];
+      inspect(nextId, true, _hoverIds);
+    }
+  }
+
+  function showInspector(id, ids, pinned) {
     var o = _lyr.getDisplayLayer();
     var table = o.layer.data || null;
-    var rec = table ? table.getRecordAt(id) : {};
-    _popup.show(rec, table, editable);
+    _popup.show(id, ids, table, pinned);
+
   }
 
   // @id Id of a feature in the active layer, or -1
   function inspect(id, pin, ids) {
     if (!_inspecting) return;
     if (id > -1) {
-      showInspector(id, pin);
+      showInspector(id, ids, pin);
     } else {
       _popup.hide();
     }
     _highId = id;
+    _hoverIds = ids;
     _pinned = pin;
     _self.dispatchEvent('change', {
       selection_ids: _selectionIds || [],
@@ -4186,7 +4219,7 @@ var MapStyle = (function() {
   };
 
   function calcDotSize(n) {
-    return n < 20 && 5 || n < 500 && 4 || n < 50000 && 3 || 2;
+    return n < 20 && 5 || n < 500 && 4 || n < 10000 && 3 || n < 200000 && 2 || 1;
   }
 
   function getOverlayStyle(lyr, o) {
