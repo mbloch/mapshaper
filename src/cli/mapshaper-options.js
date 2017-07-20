@@ -492,6 +492,10 @@ internal.getOptionParser = function() {
       describe: "capture unique vertices of polygons and polylines",
       type: "flag"
     })
+    //.option("intersections", {
+    //  describe: "capture line segment intersections of polygons and polylines",
+    //  type: "flag"
+    //})
     .option("interpolated", {
       describe: "interpolate points along polylines; requires interval=",
       type: "flag"

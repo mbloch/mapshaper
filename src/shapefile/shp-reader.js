@@ -170,20 +170,3 @@ ShpReader.prototype.getCounts = function() {
   });
   return counts;
 };
-
-// Same interface as FileReader, for reading from a buffer instead of a file.
-function BufferReader(buf) {
-  var bin = new BinArray(buf),
-      bufSize = bin.size();
-  this.readToBinArray = function(offset, len) {
-    if (bufSize < offset + len) error("Out-of-range error");
-    bin.position(offset);
-    return bin;
-  };
-
-  this.size = function() {
-    return bufSize;
-  };
-
-  this.close = function() {};
-}

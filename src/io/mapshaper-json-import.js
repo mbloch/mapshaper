@@ -35,31 +35,46 @@ internal.importGeoJSONFile = function(fileReader, opts) {
   return importer.done();
 };
 
-internal.importJSONFile = function(path, opts) {
-  var reader = new FileReader(path);
+internal.importJSONFile = function(reader, opts) {
   var str = reader.readSync(0, Math.min(1000, reader.size())).toString('utf8');
   var type = internal.identifyJSONString(str);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
     dataset = internal.importGeoJSONFile(reader, opts);
-    reader.close();
-    return {
+    retn = {
       dataset: dataset,
       format: 'geojson'
     };
   } else {
-    reader.close();
-    return {content: cli.readFile(path, 'utf8')};
+    retn = {
+      // content: cli.readFile(path, 'utf8')}
+      content: reader.toString('utf8')
+    };
   }
+  reader.close();
+  return retn;
 };
 
 internal.importJSON = function(data, opts) {
   var content = data.content,
       filename = data.filename,
-      retn = {filename: filename};
+      retn = {filename: filename},
+      reader;
 
   if (!content) {
-    data = internal.importJSONFile(filename, opts);
+    reader = new FileReader(filename);
+  } else if (content instanceof ArrayBuffer) {
+    // Web API imports JSON as ArrayBuffer, to support larger files
+    if (content.byteLength < 1e7) {
+      content = new Buffer(content).toString();
+    } else {
+      reader = new BufferReader(content);
+      content = null;
+    }
+  }
+
+  if (reader) {
+    data = internal.importJSONFile(reader, opts);
     if (data.dataset) {
       retn.dataset = data.dataset;
       retn.format = data.format;
@@ -67,6 +82,7 @@ internal.importJSON = function(data, opts) {
       content = data.content;
     }
   }
+
   if (content) {
     if (utils.isString(content)) {
       try {
@@ -86,5 +102,6 @@ internal.importJSON = function(data, opts) {
       stop("Unknown JSON format");
     }
   }
+
   return retn;
 };

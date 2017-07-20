@@ -61,7 +61,6 @@ internal.importContent = function(obj, opts) {
     dataset.info.input_files = [data.filename];
   }
   dataset.info.input_formats = [fileFmt];
-
   return dataset;
 };
 

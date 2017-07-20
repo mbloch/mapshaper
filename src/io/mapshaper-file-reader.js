@@ -1,6 +1,36 @@
 /* @requires mapshaper-common */
 
 internal.FileReader = FileReader;
+internal.BufferReader = BufferReader;
+
+// Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
+function BufferReader(src) {
+  var buf = (src instanceof ArrayBuffer) ? new Buffer(src) : src,
+      bufSize = buf.length,
+      binArr;
+
+  this.readToBinArray = function(start, length) {
+    if (bufSize < start + length) error("Out-of-range error");
+    if (!binArr) binArr = new BinArray(src);
+    binArr.position(start);
+    return binArr;
+  };
+
+  this.toString = function(enc) {
+    return buf.toString(enc);
+  };
+
+  this.readSync = function(start, length) {
+    // TODO: consider using a default length like FileReader
+    return buf.slice(start, length || bufSize);
+  };
+
+  this.findString = FileReader.prototype.findString;
+  this.expandBuffer = function() {return this;};
+  this.size = function() {return bufSize;};
+  this.close = function() {};
+}
+
 
 function FileReader(path, opts) {
   var fs = require('fs'),
@@ -41,6 +71,11 @@ function FileReader(path, opts) {
 
   this.size = function() {
     return fileLen;
+  };
+
+  this.toString = function(enc) {
+    // TODO: use fd
+    return cli.readFile(path, enc || 'utf8');
   };
 
   this.close = function() {
