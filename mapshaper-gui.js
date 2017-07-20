@@ -1941,14 +1941,18 @@ function ImportControl(model, opts) {
     return opts;
   }
 
-  function loadFile(file, cb) {
-    var reader = new FileReader(),
-        isBinary = internal.isBinaryFile(file.name);
-    // no callback on error -- fix?
-    reader.onload = function(e) {
-      cb(null, reader.result);
+  function readSingleFile(file) {
+    var name = file.name,
+        reader = new FileReader(),
+        useBinary = internal.isBinaryFile(name) || internal.guessInputFileType(name) == 'json';
+
+    // no callback on error -- but result may be empty (e.g. empty string)
+    // TODO: detect this condition
+    reader.onload = function() {
+      var content = reader.result;
+      readFileContent(name, content);
     };
-    if (isBinary) {
+    if (useBinary) {
       reader.readAsArrayBuffer(file);
     } else {
       // TODO: improve to handle encodings, etc.
@@ -1961,13 +1965,7 @@ function ImportControl(model, opts) {
     if (internal.isZipFile(file.name)) {
       readZipFile(file);
     } else {
-      loadFile(file, function(err, content) {
-        if (err) {
-          readNext();
-        } else {
-          readFileContent(file.name, content);
-        }
-      });
+      readSingleFile(file);
     }
   }
 
@@ -2020,6 +2018,7 @@ function ImportControl(model, opts) {
     var size = content.byteLength || content.length, // ArrayBuffer or string
         showMsg = size > 4e7, // don't show message if dataset is small
         delay = 0;
+
     importOpts.files = [path]; // TODO: try to remove this
     if (showMsg) {
       gui.showProgressMessage('Importing');

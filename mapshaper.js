@@ -1,5 +1,5 @@
 (function(){
-var VERSION = '0.4.32';
+var VERSION = '0.4.33';
 
 var error = function() {
   var msg = Utils.toArray(arguments).join(' ');
@@ -1505,6 +1505,57 @@ utils.parsePercent = function(o) {
 
 
 
+// Use a proxy for Buffer if running in browser and using browserify shim
+// (Mostly to improve performance of string conversion)
+var Buffer = (function() {
+  var Buffer = require('buffer').Buffer;
+  var ProxyBuffer;
+  if (typeof TextDecoder == 'undefined' || typeof TextEncoder == 'undefined') {
+    return Buffer;
+  }
+
+  ProxyBuffer = function(arg, encodingOrOffset, length) {
+    var buf;
+    if (typeof arg == "string" && encodingIsUtf8(encodingOrOffset)) {
+      arg = fromUtf8(arg);
+      encodingOrOffset = null;
+    }
+    return init(new Buffer(arg, encodingOrOffset, length));
+  };
+
+  ProxyBuffer.concat = Buffer.concat;
+  ProxyBuffer.from = Buffer.from;
+
+  function encodingIsUtf8(enc) {
+    return !enc || /^utf-?8$/i.test(String(enc));
+  }
+
+  function fromUtf8(str) {
+    // returns ArrayBuffer
+    return new TextEncoder('utf8').encode(str).buffer;
+  }
+
+  function init(buf) {
+    buf.toString = toString;
+    buf.slice = slice;
+    return buf;
+  }
+
+  function slice(start, end) {
+    return init(Buffer.prototype.slice.call(this, start, end));
+  }
+
+  function toString(enc, start, end) {
+    var slice = start || end ? this.slice(start || 0, end) : this;
+    return new TextDecoder(enc || 'utf8').decode(slice); // utf8 is Buffer default encoding
+  }
+
+  return ProxyBuffer;
+}());
+
+
+
+
 var api = {};
 var internal = {
   VERSION: VERSION, // export version
@@ -1517,9 +1568,6 @@ var internal = {
 };
 
 new Float64Array(1); // workaround for https://github.com/nodejs/node/issues/6006
-
-// in case running in browser and loading browserified modules separately
-var Buffer = require('buffer').Buffer;
 
 function error() {
   internal.error.apply(null, utils.toArray(arguments));
@@ -9859,6 +9907,36 @@ GeoJSON.translateGeoJSONType = function(type) {
 
 
 internal.FileReader = FileReader;
+internal.BufferReader = BufferReader;
+
+// Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
+function BufferReader(src) {
+  var buf = (src instanceof ArrayBuffer) ? new Buffer(src) : src,
+      bufSize = buf.length,
+      binArr;
+
+  this.readToBinArray = function(start, length) {
+    if (bufSize < start + length) error("Out-of-range error");
+    if (!binArr) binArr = new BinArray(src);
+    binArr.position(start);
+    return binArr;
+  };
+
+  this.toString = function(enc) {
+    return buf.toString(enc);
+  };
+
+  this.readSync = function(start, length) {
+    // TODO: consider using a default length like FileReader
+    return buf.slice(start, length || bufSize);
+  };
+
+  this.findString = FileReader.prototype.findString;
+  this.expandBuffer = function() {return this;};
+  this.size = function() {return bufSize;};
+  this.close = function() {};
+}
+
 
 function FileReader(path, opts) {
   var fs = require('fs'),
@@ -9899,6 +9977,11 @@ function FileReader(path, opts) {
 
   this.size = function() {
     return fileLen;
+  };
+
+  this.toString = function(enc) {
+    // TODO: use fd
+    return cli.readFile(path, enc || 'utf8');
   };
 
   this.close = function() {
@@ -12672,23 +12755,6 @@ ShpReader.prototype.getCounts = function() {
   return counts;
 };
 
-// Same interface as FileReader, for reading from a buffer instead of a file.
-function BufferReader(buf) {
-  var bin = new BinArray(buf),
-      bufSize = bin.size();
-  this.readToBinArray = function(offset, len) {
-    if (bufSize < offset + len) error("Out-of-range error");
-    bin.position(offset);
-    return bin;
-  };
-
-  this.size = function() {
-    return bufSize;
-  };
-
-  this.close = function() {};
-}
-
 
 
 
@@ -14075,31 +14141,46 @@ internal.importGeoJSONFile = function(fileReader, opts) {
   return importer.done();
 };
 
-internal.importJSONFile = function(path, opts) {
-  var reader = new FileReader(path);
+internal.importJSONFile = function(reader, opts) {
   var str = reader.readSync(0, Math.min(1000, reader.size())).toString('utf8');
   var type = internal.identifyJSONString(str);
   var dataset, retn;
   if (type == 'geojson') { // consider only for larger files
     dataset = internal.importGeoJSONFile(reader, opts);
-    reader.close();
-    return {
+    retn = {
       dataset: dataset,
       format: 'geojson'
     };
   } else {
-    reader.close();
-    return {content: cli.readFile(path, 'utf8')};
+    retn = {
+      // content: cli.readFile(path, 'utf8')}
+      content: reader.toString('utf8')
+    };
   }
+  reader.close();
+  return retn;
 };
 
 internal.importJSON = function(data, opts) {
   var content = data.content,
       filename = data.filename,
-      retn = {filename: filename};
+      retn = {filename: filename},
+      reader;
 
   if (!content) {
-    data = internal.importJSONFile(filename, opts);
+    reader = new FileReader(filename);
+  } else if (content instanceof ArrayBuffer) {
+    // Web API imports JSON as ArrayBuffer, to support larger files
+    if (content.byteLength < 1e7) {
+      content = new Buffer(content).toString();
+    } else {
+      reader = new BufferReader(content);
+      content = null;
+    }
+  }
+
+  if (reader) {
+    data = internal.importJSONFile(reader, opts);
     if (data.dataset) {
       retn.dataset = data.dataset;
       retn.format = data.format;
@@ -14107,6 +14188,7 @@ internal.importJSON = function(data, opts) {
       content = data.content;
     }
   }
+
   if (content) {
     if (utils.isString(content)) {
       try {
@@ -14126,6 +14208,7 @@ internal.importJSON = function(data, opts) {
       stop("Unknown JSON format");
     }
   }
+
   return retn;
 };
 
@@ -14185,7 +14268,6 @@ internal.importContent = function(obj, opts) {
     dataset.info.input_files = [data.filename];
   }
   dataset.info.input_formats = [fileFmt];
-
   return dataset;
 };
 
@@ -18815,6 +18897,10 @@ internal.getOptionParser = function() {
       describe: "capture unique vertices of polygons and polylines",
       type: "flag"
     })
+    //.option("intersections", {
+    //  describe: "capture line segment intersections of polygons and polylines",
+    //  type: "flag"
+    //})
     .option("interpolated", {
       describe: "interpolate points along polylines; requires interval=",
       type: "flag"
