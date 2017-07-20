@@ -80,7 +80,7 @@ function startServer(port) {
 }
 
 function serveFile(filename, response) {
-  fs.readFile(filename, "binary", function(err, content) {
+  fs.readFile(filename, function(err, content) {
     if (err) {
       response.writeHead(404, {"Content-Type": "text/plain"});
       response.write("404 Not Found\n");
