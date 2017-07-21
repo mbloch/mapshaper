@@ -5,9 +5,8 @@ internal.BufferReader = BufferReader;
 
 // Same interface as FileReader, for reading from a Buffer or ArrayBuffer instead of a file.
 function BufferReader(src) {
-  var buf = (src instanceof ArrayBuffer) ? new Buffer(src) : src,
-      bufSize = buf.length,
-      binArr;
+  var bufSize = src.byteLength || src.length,
+      binArr, buf;
 
   this.readToBinArray = function(start, length) {
     if (bufSize < start + length) error("Out-of-range error");
@@ -17,13 +16,20 @@ function BufferReader(src) {
   };
 
   this.toString = function(enc) {
-    return buf.toString(enc);
+    return buffer().toString(enc);
   };
 
   this.readSync = function(start, length) {
     // TODO: consider using a default length like FileReader
-    return buf.slice(start, length || bufSize);
+    return buffer().slice(start, length || bufSize);
   };
+
+  function buffer() {
+    if (!buf) {
+      buf = (src instanceof ArrayBuffer) ? new Buffer(src) : src;
+    }
+    return buf;
+  }
 
   this.findString = FileReader.prototype.findString;
   this.expandBuffer = function() {return this;};

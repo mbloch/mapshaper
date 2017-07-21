@@ -1,3 +1,6 @@
+v0.4.34
+* Fixed an incompatibility with Node versions < 3.0.
+
 v0.4.33
 * [web] Added support for importing and exporting large GeoJSON files (>1GB) to the web interface.
 
