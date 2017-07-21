@@ -11,8 +11,6 @@ mapshaper-map-style
 
 // Test if map should be re-framed to show updated layer
 gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
-  if (!prevBounds) return true;
-  if (prevBounds.xmin === 0 || newBounds.xmin === 0) return true; // kludge to handle tables
   var viewportPct = gui.getIntersectionPct(newBounds, mapBounds);
   var contentPct = gui.getIntersectionPct(mapBounds, newBounds);
   var boundsChanged = !prevBounds.equals(newBounds);
@@ -76,7 +74,8 @@ function MshpMap(model) {
   });
 
   model.on('update', function(e) {
-    var prevBounds = _activeLyr ?_activeLyr.getBounds() : null,
+    // var prevBounds = _activeLyr ?_activeLyr.getBounds() : null,
+    var prevLyr = _activeLyr || null,
         needReset = false;
     if (arcsMayHaveChanged(e.flags)) {
       // regenerate filtered arcs when simplification thresholds are calculated
@@ -91,8 +90,14 @@ function MshpMap(model) {
     }
 
     _activeLyr = initActiveLayer(e);
-    needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevBounds, _ext.getBounds());
-    _ext.setBounds(_activeLyr.getBounds()); // update map extent to match bounds of active group
+    if (!prevLyr) {
+      needReset = true;
+    } else if (isTableLayer(prevLyr) || isTableLayer(_activeLyr)) {
+      needReset = true;
+    } else {
+      needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevLyr.getBounds(), _ext.getBounds());
+    }
+    _ext.setBounds(_activeLyr.getBounds(), getMarginPct(_activeLyr)); // update map extent to match bounds of active group
     if (needReset) {
       // zoom to full view of the active layer and redraw
       _ext.reset(true);
@@ -132,6 +137,25 @@ function MshpMap(model) {
     _activeLyr.setRetainedPct(pct);
     drawLayers();
   };
+
+  function isTableLayer(displayLyr) {
+    return displayLyr.getBounds().xmin === 0; // kludge
+  }
+
+  function getMarginPct(displayLyr) {
+    var pct = 0.025;
+    var n = internal.getFeatureCount(displayLyr.getLayer());
+    if (isTableLayer(displayLyr)) {
+      if (n < 10) {
+        pct = 0.2;
+      } else if (n < 100) {
+        pct = 0.1;
+      } else {
+        pct = 0.04;
+      }
+    }
+    return pct;
+  }
 
   function referenceLayerVisible() {
     if (!_referenceLyr ||
