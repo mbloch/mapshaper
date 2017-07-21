@@ -1546,8 +1546,10 @@ var Buffer = (function() {
   }
 
   function toString(enc, start, end) {
-    var slice = start || end ? this.slice(start || 0, end) : this;
-    return new TextDecoder(enc || 'utf8').decode(slice); // utf8 is Buffer default encoding
+    if (encodingIsUtf8(enc)) {
+      return new TextDecoder('utf8').decode(start || end ? this.slice(start || 0, end) : this);
+    }
+    return Buffer.prototype.toString.call(enc, start, end);
   }
 
   return ProxyBuffer;
