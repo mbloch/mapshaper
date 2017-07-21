@@ -2,9 +2,8 @@
 
 function MapExtent(_position) {
   var _scale = 1,
-      _padPct = 0.2,
       _cx, _cy, // center in geographic units
-      _contentBounds;
+      _contentBounds, _padPct;
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
@@ -86,7 +85,7 @@ function MapExtent(_position) {
   this.setBounds = function(b, padPct) {
     var prev = _contentBounds;
     _contentBounds = b;
-    if (padPct > 0) _padPct = padPct;
+    _padPct = padPct || 0.02;
     if (prev) {
       _scale = _scale * centerAlign(b).width() / centerAlign(prev).width();
     } else {

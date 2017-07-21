@@ -144,8 +144,9 @@ function MshpMap(model) {
 
   function getMarginPct(displayLyr) {
     var pct = 0.025;
-    var n = internal.getFeatureCount(displayLyr.getLayer());
-    if (isTableLayer(displayLyr)) {
+    var lyr = displayLyr.getLayer();
+    var n = internal.getFeatureCount(lyr);
+    if (isTableLayer(displayLyr) || lyr.geometry_type == 'point') {
       if (n < 10) {
         pct = 0.2;
       } else if (n < 100) {
