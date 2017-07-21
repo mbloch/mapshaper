@@ -89,7 +89,7 @@ function DisplayCanvas() {
     for (i=0, n=shapes.length; i<n; i++) {
       if (styler !== null) { // e.g. selected points
         styler(style, i);
-        size = style.dotSize * pixRatio;
+        size = style.dotSize * pixRatio * scaleRatio;
         _ctx.fillStyle = style.dotColor;
       }
       shp = shapes[i];
