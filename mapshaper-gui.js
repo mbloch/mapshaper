@@ -3367,9 +3367,8 @@ function MapNav(root, ext, mouse) {
 
 function MapExtent(_position) {
   var _scale = 1,
-      _padPct = 0.2,
       _cx, _cy, // center in geographic units
-      _contentBounds;
+      _contentBounds, _padPct;
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
@@ -3451,7 +3450,7 @@ function MapExtent(_position) {
   this.setBounds = function(b, padPct) {
     var prev = _contentBounds;
     _contentBounds = b;
-    if (padPct > 0) _padPct = padPct;
+    _padPct = padPct || 0.02;
     if (prev) {
       _scale = _scale * centerAlign(b).width() / centerAlign(prev).width();
     } else {
@@ -4470,8 +4469,9 @@ function MshpMap(model) {
 
   function getMarginPct(displayLyr) {
     var pct = 0.025;
-    var n = internal.getFeatureCount(displayLyr.getLayer());
-    if (isTableLayer(displayLyr)) {
+    var lyr = displayLyr.getLayer();
+    var n = internal.getFeatureCount(lyr);
+    if (isTableLayer(displayLyr) || lyr.geometry_type == 'point') {
       if (n < 10) {
         pct = 0.2;
       } else if (n < 100) {
