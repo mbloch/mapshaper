@@ -50,8 +50,10 @@ function Popup(onNext) {
     var tableEl = El('table').addClass('selectable'),
         rows = 0;
     utils.forEachProperty(rec, function(v, k) {
-      var type = internal.getFieldType(v, k, table);
+      var type;
+      // missing GeoJSON fields are set to undefined on import; skip these
       if (v !== undefined) {
+        type = internal.getFieldType(v, k, table);
         renderRow(tableEl, rec, k, type, editable);
         rows++;
       }

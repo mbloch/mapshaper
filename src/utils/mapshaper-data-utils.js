@@ -66,13 +66,15 @@ internal.patchMissingFields = function(records, fields) {
   }
 };
 
+var c = 0;
 internal.getColumnType = function(key, table) {
   var type = null,
       records = table.getRecords(),
       rec;
   for (var i=0, n=table.size(); i<n; i++) {
-    rec = records[i] || {};
-    type = internal.getValueType(rec[key]);
+    c++;
+    rec = records[i];
+    type = rec ? internal.getValueType(rec[key]) : null;
     if (type) break;
   }
   return type;
