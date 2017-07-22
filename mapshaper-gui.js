@@ -1840,6 +1840,8 @@ function ImportControl(model, opts) {
     } else {
       if (importCount > 0) {
         el.removeClass('first-run');
+      } else {
+        El('#fork-me').show();
       }
       el.show();
     }
@@ -2711,7 +2713,7 @@ function DisplayCanvas() {
     var styleIndex = {};
     var batchSize = 1500;
     var startPath = getPathStart(_ext, getLineScale(_ext));
-    var drawPath = getShapePencil(arcs, _ext);
+    var draw = getShapePencil(arcs, _ext);
     var key, item;
     var styler = style.styler || null;
     for (var i=0; i<shapes.length; i++) {
@@ -2726,20 +2728,20 @@ function DisplayCanvas() {
       item = styleIndex[key];
       item.shapes.push(shapes[i]);
       if (item.shapes.length >= batchSize) {
-        drawPaths(item.shapes, startPath, drawPath, item.style);
+        drawPaths(item.shapes, startPath, draw, item.style);
         item.shapes = [];
       }
     }
     Object.keys(styleIndex).forEach(function(key) {
       var item = styleIndex[key];
-      drawPaths(item.shapes, startPath, drawPath, item.style);
+      drawPaths(item.shapes, startPath, draw, item.style);
     });
   };
 
-  function drawPaths(shapes, startPath, drawPath, style) {
-    startPath(_ctx, style);
+  function drawPaths(shapes, begin, draw, style) {
+    begin(_ctx, style);
     for (var i=0, n=shapes.length; i<n; i++) {
-      drawPath(shapes[i], _ctx);
+      draw(shapes[i], _ctx);
     }
     endPath(_ctx, style);
   }
@@ -2797,6 +2799,7 @@ function DisplayCanvas() {
   _self.drawArcs = function(arcs, style, filter) {
     var startPath = getPathStart(_ext, getLineScale(_ext)),
         t = getScaledTransform(_ext),
+        clipping = _ext.scale() > 2000,
         ctx = _ctx,
         n = 25, // render paths in batches of this size (an optimization)
         count = 0;
@@ -2807,7 +2810,11 @@ function DisplayCanvas() {
         endPath(ctx, style);
         startPath(ctx, style);
       }
-      drawPath(arcs.getArcIter(i), t, ctx, 0.6);
+      if (clipping) {
+        drawPathSafe(arcs.getArcIter(i), t, ctx, _ext.getBounds());
+      } else {
+        drawPath(arcs.getArcIter(i), t, ctx, 0.6);
+      }
     }
     endPath(ctx, style);
   };
@@ -2837,6 +2844,57 @@ function drawSquare(x, y, size, ctx) {
     x = Math.round(x - offs);
     y = Math.round(y - offs);
     ctx.fillRect(x, y, size, size);
+  }
+}
+
+function getClippedSegment(a, b, bounds) {
+  var aIn = bounds.containsPoint(a[0], a[1]),
+      bIn = bounds.containsPoint(b[0], b[1]),
+      hits, i, j, p, xx, yy, seg;
+  if (aIn && bIn) return [a, b];
+  hits = [];
+  xx = [bounds.xmin, bounds.xmin, bounds.xmax, bounds.xmax];
+  yy = [bounds.ymin, bounds.ymax, bounds.ymax, bounds.ymin];
+  for (i=0; i<4; i++) {
+    j = (i + 1) % 4;
+    p = geom.segmentIntersection(a[0], a[1], b[0], b[1], xx[i], yy[i],
+        xx[j], yy[j]);
+    if (p) hits.push(p);
+  }
+  if (hits.length > 0) {
+    if (aIn) {
+      seg = [a, hits[0]];
+    } else if (bIn) {
+      seg = [b, hits[0]];
+    } else if (hits.length == 2) {
+      seg = hits;
+    }
+  }
+  // TODO: handle edge cases (e.g. collinear hits, corner hits)
+  return seg;
+}
+
+// Clip segments if they are too long for the Canvas renderer to display
+function drawPathSafe(vec, t, ctx, bounds) {
+  var pad = 20;
+  var safeLen = 1000;
+  var a, b, ab;
+  if (!vec.hasNext()) return;
+  bounds = bounds.clone().transform(t);
+  bounds.padBounds(pad, pad, pad, pad);
+  a = t.transform(vec.x, vec.y);
+  while (vec.hasNext()) {
+    b = t.transform(vec.x, vec.y);
+    if (geom.distance2D(a[0], a[1], b[0], b[1]) < safeLen) {
+      ab = [a, b];
+    } else {
+      ab = getClippedSegment(a, b, bounds);
+    }
+    if (ab) {
+      ctx.moveTo(ab[0][0], ab[0][1]);
+      ctx.lineTo(ab[1][0], ab[1][1]);
+    }
+    a = b;
   }
 }
 
@@ -2877,9 +2935,8 @@ function getLineScale(ext) {
       s = 1;
   if (mapScale < 0.5) {
     s *= Math.pow(mapScale + 0.5, 0.25);
-  } else if (mapScale > 60) {
-    s *= Math.pow(mapScale - 59, 0.18);
-    s = Math.min(s, 5); // limit max scale
+  } else if (mapScale > 100) {
+    s *= Math.pow(mapScale - 99, 0.10);
   }
   return s;
 }
@@ -3282,14 +3339,19 @@ function MapNav(root, ext, mouse) {
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
       zoomScale = 2.5,
+      inBtn, outBtn,
       dragStartEvt,
       _fx, _fy; // zoom foci, [0,1]
 
   gui.addSidebarButton("#home-icon").on('click', function() {
     gui.dispatchEvent('map_reset');
   });
-  gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
-  gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
+  inBtn = gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
+  outBtn = gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
+
+  ext.on('change', function() {
+    inBtn.classed('disabled', ext.scale() >= ext.maxScale());
+  });
 
   gui.on('map_reset', function() {
     ext.reset();
@@ -3367,6 +3429,7 @@ function MapNav(root, ext, mouse) {
 
 function MapExtent(_position) {
   var _scale = 1,
+      _maxScale = 1e13,
       _cx, _cy, // center in geographic units
       _contentBounds, _padPct;
 
@@ -3381,7 +3444,7 @@ function MapExtent(_position) {
   };
 
   this.recenter = function(cx, cy, scale, force) {
-    if (!scale) scale = _scale;
+    scale = scale ? limitScale(scale) : _scale;
     if (force || !(cx == _cx && cy == _cy && scale == _scale)) {
       _cx = cx;
       _cy = cy;
@@ -3399,6 +3462,7 @@ function MapExtent(_position) {
   // Zoom to @scale (a multiple of the map's full scale)
   // @xpct, @ypct: optional focus, [0-1]...
   this.rescale = function(scale, xpct, ypct) {
+    scale = limitScale(scale);
     if (arguments.length < 3) {
       xpct = 0.5;
       ypct = 0.5;
@@ -3424,6 +3488,10 @@ function MapExtent(_position) {
   // get zoom factor (1 == full extent, 2 == 2x zoom, etc.)
   this.scale = function() {
     return _scale;
+  };
+
+  this.maxScale = function() {
+    return _maxScale;
   };
 
   this.getPixelSize = function() {
@@ -3458,6 +3526,12 @@ function MapExtent(_position) {
       _cy = b.centerY();
     }
   };
+
+  function limitScale(scale) {
+    // stop before rounding errors become visible
+    // may need to take content bounds into account
+    return Math.min(scale, _maxScale);
+  }
 
   function getPadding(size) {
     return size * _padPct + 4;
@@ -3846,8 +3920,10 @@ function Popup(onNext) {
     var tableEl = El('table').addClass('selectable'),
         rows = 0;
     utils.forEachProperty(rec, function(v, k) {
-      var type = internal.getFieldType(v, k, table);
+      var type;
+      // missing GeoJSON fields are set to undefined on import; skip these
       if (v !== undefined) {
+        type = internal.getFieldType(v, k, table);
         renderRow(tableEl, rec, k, type, editable);
         rows++;
       }

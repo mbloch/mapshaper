@@ -5948,13 +5948,15 @@ internal.patchMissingFields = function(records, fields) {
   }
 };
 
+var c = 0;
 internal.getColumnType = function(key, table) {
   var type = null,
       records = table.getRecords(),
       rec;
   for (var i=0, n=table.size(); i<n; i++) {
-    rec = records[i] || {};
-    type = internal.getValueType(rec[key]);
+    c++;
+    rec = records[i];
+    type = rec ? internal.getValueType(rec[key]) : null;
     if (type) break;
   }
   return type;
@@ -14937,7 +14939,7 @@ internal.importDelimTable = function(str, delim, opts) {
     stop("Unable to read any records");
   }
   delete records.columns; // added by d3-dsv
-  internal.adjustRecordTypes(records, opts && opts.field_types);
+  internal.adjustRecordTypes(records, opts);
   table = new DataTable(records);
   internal.deleteFields(table, internal.isInvalidFieldName);
  return table;
@@ -14964,21 +14966,44 @@ internal.getDelimiterRxp = function(delim) {
   return new RegExp(rxp);
 };
 
+internal.getFieldTypeHints = function(opts) {
+  var hints = {};
+  opts = opts || {};
+  if (opts.string_fields) {
+    opts.string_fields.forEach(function(f) {
+      hints[f] = 'string';
+    });
+  }
+  if (opts.field_types) {
+    opts.field_types.forEach(function(raw) {
+      var parts, name, type;
+      if (raw.indexOf(':') != -1) {
+        parts = raw.split(':');
+        name = parts[0];
+        type = internal.validateFieldType(parts[1]);
+      } else if (raw[0] === '+') { // d3-style type hint: unary plus
+        name = raw.substr(1);
+        type = 'number';
+      }
+      if (type) {
+        hints[name] = type;
+      } else {
+        message("Invalid type hint (expected :str or :num) [" + raw + "]");
+      }
+    });
+  }
+  return hints;
+};
+
 // Detect and convert data types of data from csv files.
 // TODO: decide how to handle records with inconstent properties. Mapshaper
 //    currently assumes tabular data
-// @fieldList (optional) array of field names with type hints; may contain
-//    duplicate names with inconsistent type hints.
-internal.adjustRecordTypes = function(records, fieldList) {
-  var hintIndex = {},
+internal.adjustRecordTypes = function(records, opts) {
+  var typeIndex = internal.getFieldTypeHints(opts),
       fields = Object.keys(records[0] || []),
       detectedNumFields = [];
-  if (fieldList) {
-    // parse optional type hints
-    internal.parseFieldHeaders(fieldList, hintIndex);
-  }
   fields.forEach(function(key) {
-    var typeHint = hintIndex[key];
+    var typeHint = typeIndex[key];
     var type = internal.adjustFieldValues(key, records, typeHint);
     if (!typeHint && type == 'number') {
       detectedNumFields.push(key);
@@ -15043,34 +15068,6 @@ internal.validateFieldType = function(hint) {
   return type;
 };
 
-
-// Look for type hints in array of field headers
-// return index of field types
-// modify @fields to remove type hints
-//
-internal.parseFieldHeaders = function(fields, index) {
-  var parsed = fields.map(function(raw) {
-    var parts, name, type;
-    if (raw.indexOf(':') != -1) {
-      parts = raw.split(':');
-      name = parts[0];
-      type = internal.validateFieldType(parts[1]);
-      if (!type) {
-        message("Invalid type hint (expected :str or :num) [" + raw + "]");
-      }
-    } else if (raw[0] === '+') { // d3-style type hint: unary plus
-      name = raw.substr(1);
-      type = 'number';
-    } else {
-      name = raw;
-    }
-    if (type) {
-      index[name] = type;
-    }
-    return name;
-  });
-  return parsed;
-};
 
 // Remove comma separators from strings
 // TODO: accept European-style numbers?
@@ -15334,23 +15331,23 @@ api.join = function(targetLyr, dataset, src, opts) {
   }
 };
 
-internal.removeTypeHints = function(arr) {
-  var arr2 = internal.parseFieldHeaders(arr, {});
-  if (arr.join(',') != arr2.join(',')) {
-    stop("Type hints are no longer supported. Use field-types= option instead");
-  }
-  return arr;
+internal.validateFieldNames = function(arr) {
+  arr.forEach(function(name) {
+    if (/:(str|num)/.test(name)) {
+      stop("Unsupported use of type hints. Use string-fields= or field-types= options instead");
+    }
+  });
 };
 
 api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
-  var keys = internal.removeTypeHints(opts.keys),
+  var keys = opts.keys,
       destKey = keys[0],
       srcKey = keys[1],
       destTable = lyr.data,
       // exclude source key field from join unless explicitly listed
       joinFields = opts.fields || utils.difference(srcTable.getFields(), [srcKey]),
       joinFunction = internal.getJoinByKey(destTable, destKey, srcTable, srcKey);
-
+  internal.validateFieldNames(keys);
   opts = utils.defaults({fields: joinFields}, opts);
   return internal.joinTables(destTable, srcTable, joinFunction, opts);
 };
@@ -15516,7 +15513,8 @@ internal.getFieldsToJoin = function(destFields, srcFields, opts) {
     if (opts.fields.indexOf('*') > -1) {
       joinFields = srcFields;
     } else {
-      joinFields = internal.removeTypeHints(opts.fields);
+      joinFields = opts.fields;
+      internal.validateFieldNames(joinFields);
     }
   } else {
     // If a list of fields to join is not given, try to join all the
@@ -18458,6 +18456,14 @@ internal.getOptionParser = function() {
       dissolveFieldOpt = {
         describe: "(optional) name of a data field to dissolve on"
       },
+      fieldTypesOpt = {
+        describe: "type hints for csv source files, e.g. FIPS:str,STATE_FIPS:str",
+        type: "strings"
+      },
+      stringFieldsOpt = {
+        describe: "csv field(s) to import as strings, e.g. FIPS,ZIPCODE",
+        type: "strings"
+      },
       bboxOpt = {
         type: "bbox",
         describe: "comma-sep. bounding box: xmin,ymin,xmax,ymax"
@@ -18515,10 +18521,8 @@ internal.getOptionParser = function() {
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
     })
-    .option("field-types", {
-      describe: "type hints for csv files, e.g. FIPS:str,STATE_FIPS:str",
-      type: "strings"
-    })
+    .option("string-fields", stringFieldsOpt)
+    .option("field-types", fieldTypesOpt)
     .option("name", {
       describe: "Rename the imported layer(s)"
     });
@@ -18795,9 +18799,8 @@ internal.getOptionParser = function() {
 
   parser.command("join")
     .describe("join data records from a file or layer to a layer")
-    .example("Join a csv table to a Shapefile\n" +
-      "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
-      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
+    .example("Join a csv table to a Shapefile (don't auto-convert FIPS column to numbers)\n" +
+      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS string-fields=FIPS -o joined.shp")
     .validate(function(cmd) {
       if (!cmd.options.source) {
         error("Command requires the name of a layer or file to join");
@@ -18811,23 +18814,21 @@ internal.getOptionParser = function() {
       describe: "join by matching target,source key fields; e.g. keys=FIPS,GEOID",
       type: "strings"
     })
-    .option("fields", {
-      describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
-      type: "strings"
-    })
-    .option("field-types", {
-      describe: "type hints for csv source files, e.g. FIPS:str,STATE_FIPS:str",
-      type: "strings"
-    })
-    .option("sum-fields", {
-      describe: "fields to sum when multiple source records match the same target",
-      type: "strings"
-    })
     .option("calc", {
       describe: "use a JS expression to calculate values for many-to-one joins"
     })
     .option("where", {
       describe: "use a JS expression to filter source records"
+    })
+    .option("fields", {
+      describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
+      type: "strings"
+    })
+    .option("string-fields", stringFieldsOpt)
+    .option("field-types", fieldTypesOpt)
+    .option("sum-fields", {
+      describe: "fields to sum for many-to-one join (consider calc= option instead)",
+      type: "strings"
     })
     .option("force", {
       describe: "replace values from same-named fields",
@@ -19135,6 +19136,22 @@ internal.getOptionParser = function() {
     .option("r", {
       describe: 'radius of circle symbols',
     })
+    /*
+    .option("label", {
+      describe: 'label text'
+    })
+    .option("text-anchor", {
+      describe: 'start|middle|end (default is middle)'
+    })
+    .option("dx", {
+      type: "number",
+      describe: 'x offset'
+    })
+    .option("dy", {
+      type: "number",
+      describe: 'y offset'
+    })
+    */
     .option("target", targetOpt);
 
   parser.command("target")
