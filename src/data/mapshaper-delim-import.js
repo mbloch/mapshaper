@@ -20,7 +20,7 @@ internal.importDelimTable = function(str, delim, opts) {
     stop("Unable to read any records");
   }
   delete records.columns; // added by d3-dsv
-  internal.adjustRecordTypes(records, opts && opts.field_types);
+  internal.adjustRecordTypes(records, opts);
   table = new DataTable(records);
   internal.deleteFields(table, internal.isInvalidFieldName);
  return table;
@@ -47,21 +47,44 @@ internal.getDelimiterRxp = function(delim) {
   return new RegExp(rxp);
 };
 
+internal.getFieldTypeHints = function(opts) {
+  var hints = {};
+  opts = opts || {};
+  if (opts.string_fields) {
+    opts.string_fields.forEach(function(f) {
+      hints[f] = 'string';
+    });
+  }
+  if (opts.field_types) {
+    opts.field_types.forEach(function(raw) {
+      var parts, name, type;
+      if (raw.indexOf(':') != -1) {
+        parts = raw.split(':');
+        name = parts[0];
+        type = internal.validateFieldType(parts[1]);
+      } else if (raw[0] === '+') { // d3-style type hint: unary plus
+        name = raw.substr(1);
+        type = 'number';
+      }
+      if (type) {
+        hints[name] = type;
+      } else {
+        message("Invalid type hint (expected :str or :num) [" + raw + "]");
+      }
+    });
+  }
+  return hints;
+};
+
 // Detect and convert data types of data from csv files.
 // TODO: decide how to handle records with inconstent properties. Mapshaper
 //    currently assumes tabular data
-// @fieldList (optional) array of field names with type hints; may contain
-//    duplicate names with inconsistent type hints.
-internal.adjustRecordTypes = function(records, fieldList) {
-  var hintIndex = {},
+internal.adjustRecordTypes = function(records, opts) {
+  var typeIndex = internal.getFieldTypeHints(opts),
       fields = Object.keys(records[0] || []),
       detectedNumFields = [];
-  if (fieldList) {
-    // parse optional type hints
-    internal.parseFieldHeaders(fieldList, hintIndex);
-  }
   fields.forEach(function(key) {
-    var typeHint = hintIndex[key];
+    var typeHint = typeIndex[key];
     var type = internal.adjustFieldValues(key, records, typeHint);
     if (!typeHint && type == 'number') {
       detectedNumFields.push(key);
@@ -126,34 +149,6 @@ internal.validateFieldType = function(hint) {
   return type;
 };
 
-
-// Look for type hints in array of field headers
-// return index of field types
-// modify @fields to remove type hints
-//
-internal.parseFieldHeaders = function(fields, index) {
-  var parsed = fields.map(function(raw) {
-    var parts, name, type;
-    if (raw.indexOf(':') != -1) {
-      parts = raw.split(':');
-      name = parts[0];
-      type = internal.validateFieldType(parts[1]);
-      if (!type) {
-        message("Invalid type hint (expected :str or :num) [" + raw + "]");
-      }
-    } else if (raw[0] === '+') { // d3-style type hint: unary plus
-      name = raw.substr(1);
-      type = 'number';
-    } else {
-      name = raw;
-    }
-    if (type) {
-      index[name] = type;
-    }
-    return name;
-  });
-  return parsed;
-};
 
 // Remove comma separators from strings
 // TODO: accept European-style numbers?

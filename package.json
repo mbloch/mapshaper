@@ -2,10 +2,18 @@
 	"name": "mapshaper",
 	"version": "0.4.34",
 	"description": "A tool for editing vector datasets for mapping and GIS.",
-	"keywords": ["shapefile","topojson","geojson","cartography","simplification","topology","gis"],
+	"keywords": [
+		"shapefile",
+		"topojson",
+		"geojson",
+		"cartography",
+		"simplification",
+		"topology",
+		"gis"
+	],
 	"author": "Matthew Bloch <masiyou@gmail.com>",
-	"contributors":[],
-	"license":"MPL-2.0",
+	"contributors": [],
+	"license": "MPL-2.0",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/mbloch/mapshaper"

@@ -13,12 +13,25 @@ function fixPath(p) {
 describe('mapshaper-join.js', function () {
 
   describe('-join command', function () {
-    it('test1', function (done) {
+    it('test1, with field-types= option', function (done) {
       var shp = "test/test_data/two_states.shp";
       var csv = "test/test_data/text/states.csv";
       var cmd = api.utils.format("-i %s -join %s keys=FIPS,STATE_FIPS fields=POP2010,SUB_REGION field-types=STATE_FIPS:str", shp, csv),
           target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":3831074,"SUB_REGION":"Pacific"},
           {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":6724540,"SUB_REGION":"Pacific"}];
+      api.internal.testCommands(cmd, function(err, data) {
+        if (err) throw err;
+        assert.deepEqual(data.layers[0].data.getRecords(), target);
+        done();
+      });
+    })
+
+    it('test2, with string-fields= option', function (done) {
+      var shp = "test/test_data/two_states.shp";
+      var csv = "test/test_data/text/states.csv";
+      var cmd = api.utils.format("-i %s -join %s keys=FIPS,STATE_FIPS fields=POP2010,SUB_REGION string-fields=STATE_FIPS,POP2010", shp, csv),
+          target = [{"STATE_NAME":"Oregon","FIPS":"41","STATE":"OR","LAT":43.94,"LONG":-120.55,"POP2010":"3831074","SUB_REGION":"Pacific"},
+          {"STATE_NAME":"Washington","FIPS":"53","STATE":"WA","LAT":47.38,"LONG":-120.00,"POP2010":"6724540","SUB_REGION":"Pacific"}];
       api.internal.testCommands(cmd, function(err, data) {
         if (err) throw err;
         assert.deepEqual(data.layers[0].data.getRecords(), target);
@@ -256,6 +269,12 @@ describe('mapshaper-join.js', function () {
     it('Do not join all fields by default if calc= option is present', function () {
       var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {calc: 'n=count()'})
       assert.deepEqual(fields, []);
+    })
+
+    it('Error if type hints are present', function() {
+      assert.throws(function() {
+        var fields = api.internal.getFieldsToJoin([], ['st', 'co'], {fields: ['st:str']})
+      })
     })
 
   })

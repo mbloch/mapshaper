@@ -45,6 +45,14 @@ internal.getOptionParser = function() {
       dissolveFieldOpt = {
         describe: "(optional) name of a data field to dissolve on"
       },
+      fieldTypesOpt = {
+        describe: "type hints for csv source files, e.g. FIPS:str,STATE_FIPS:str",
+        type: "strings"
+      },
+      stringFieldsOpt = {
+        describe: "csv field(s) to import as strings, e.g. FIPS,ZIPCODE",
+        type: "strings"
+      },
       bboxOpt = {
         type: "bbox",
         describe: "comma-sep. bounding box: xmin,ymin,xmax,ymax"
@@ -102,10 +110,8 @@ internal.getOptionParser = function() {
     .option("id-field", {
       describe: "import Topo/GeoJSON id property to this field"
     })
-    .option("field-types", {
-      describe: "type hints for csv files, e.g. FIPS:str,STATE_FIPS:str",
-      type: "strings"
-    })
+    .option("string-fields", stringFieldsOpt)
+    .option("field-types", fieldTypesOpt)
     .option("name", {
       describe: "Rename the imported layer(s)"
     });
@@ -382,9 +388,8 @@ internal.getOptionParser = function() {
 
   parser.command("join")
     .describe("join data records from a file or layer to a layer")
-    .example("Join a csv table to a Shapefile\n" +
-      "(The :str suffix prevents FIPS field from being converted from strings to numbers)\n" +
-      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS -field-types=FIPS:str -o joined.shp")
+    .example("Join a csv table to a Shapefile (don't auto-convert FIPS column to numbers)\n" +
+      "$ mapshaper states.shp -join data.csv keys=STATE_FIPS,FIPS string-fields=FIPS -o joined.shp")
     .validate(function(cmd) {
       if (!cmd.options.source) {
         error("Command requires the name of a layer or file to join");
@@ -398,23 +403,21 @@ internal.getOptionParser = function() {
       describe: "join by matching target,source key fields; e.g. keys=FIPS,GEOID",
       type: "strings"
     })
-    .option("fields", {
-      describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
-      type: "strings"
-    })
-    .option("field-types", {
-      describe: "type hints for csv source files, e.g. FIPS:str,STATE_FIPS:str",
-      type: "strings"
-    })
-    .option("sum-fields", {
-      describe: "fields to sum when multiple source records match the same target",
-      type: "strings"
-    })
     .option("calc", {
       describe: "use a JS expression to calculate values for many-to-one joins"
     })
     .option("where", {
       describe: "use a JS expression to filter source records"
+    })
+    .option("fields", {
+      describe: "fields to join, e.g. fields=FIPS,POP (default is all fields)",
+      type: "strings"
+    })
+    .option("string-fields", stringFieldsOpt)
+    .option("field-types", fieldTypesOpt)
+    .option("sum-fields", {
+      describe: "fields to sum for many-to-one join (consider calc= option instead)",
+      type: "strings"
     })
     .option("force", {
       describe: "replace values from same-named fields",
@@ -722,6 +725,22 @@ internal.getOptionParser = function() {
     .option("r", {
       describe: 'radius of circle symbols',
     })
+    /*
+    .option("label", {
+      describe: 'label text'
+    })
+    .option("text-anchor", {
+      describe: 'start|middle|end (default is middle)'
+    })
+    .option("dx", {
+      type: "number",
+      describe: 'x offset'
+    })
+    .option("dy", {
+      type: "number",
+      describe: 'y offset'
+    })
+    */
     .option("target", targetOpt);
 
   parser.command("target")

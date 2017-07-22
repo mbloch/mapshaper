@@ -43,23 +43,23 @@ api.join = function(targetLyr, dataset, src, opts) {
   }
 };
 
-internal.removeTypeHints = function(arr) {
-  var arr2 = internal.parseFieldHeaders(arr, {});
-  if (arr.join(',') != arr2.join(',')) {
-    stop("Type hints are no longer supported. Use field-types= option instead");
-  }
-  return arr;
+internal.validateFieldNames = function(arr) {
+  arr.forEach(function(name) {
+    if (/:(str|num)/.test(name)) {
+      stop("Unsupported use of type hints. Use string-fields= or field-types= options instead");
+    }
+  });
 };
 
 api.joinAttributesToFeatures = function(lyr, srcTable, opts) {
-  var keys = internal.removeTypeHints(opts.keys),
+  var keys = opts.keys,
       destKey = keys[0],
       srcKey = keys[1],
       destTable = lyr.data,
       // exclude source key field from join unless explicitly listed
       joinFields = opts.fields || utils.difference(srcTable.getFields(), [srcKey]),
       joinFunction = internal.getJoinByKey(destTable, destKey, srcTable, srcKey);
-
+  internal.validateFieldNames(keys);
   opts = utils.defaults({fields: joinFields}, opts);
   return internal.joinTables(destTable, srcTable, joinFunction, opts);
 };
@@ -225,7 +225,8 @@ internal.getFieldsToJoin = function(destFields, srcFields, opts) {
     if (opts.fields.indexOf('*') > -1) {
       joinFields = srcFields;
     } else {
-      joinFields = internal.removeTypeHints(opts.fields);
+      joinFields = opts.fields;
+      internal.validateFieldNames(joinFields);
     }
   } else {
     // If a list of fields to join is not given, try to join all the

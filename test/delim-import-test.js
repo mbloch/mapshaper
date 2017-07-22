@@ -253,67 +253,63 @@ describe('mapshaper-delim-import.js', function() {
     })
   })
 
-  describe('parseFieldHeaders', function () {
+  describe('getFieldTypeHints()', function () {
     it('identify number and string types', function () {
-      var index = {};
-      var fields = "fips:string,count:number,other".split(',');
-      fields = api.internal.parseFieldHeaders(fields, index);
-      assert.deepEqual(fields, ['fips', 'count', 'other']);
+      var opts = {field_types: "fips:string,count:number,other".split(',')};
+      var index = api.internal.getFieldTypeHints(opts);
       assert.deepEqual(index, {fips: 'string', count: 'number'})
     })
 
     it('accept alternate type names', function () {
-      var fields = "fips:s,count:n,other:STR".split(',');
-      var index = {};
-      fields = api.internal.parseFieldHeaders(fields, index);
-      assert.deepEqual(fields, ['fips', 'count', 'other']);
+      var opts = {field_types: "fips:s,count:n,other:STR".split(',')};
+      var index = api.internal.getFieldTypeHints(opts);
       assert.deepEqual(index, {fips: 'string', count: 'number', other: 'string'})
     })
 
     it('accept + prefix for numeric types', function () {
-      var index = {};
-      var fields = "+count,+other".split(',');
-      fields = api.internal.parseFieldHeaders(fields, index);
-      assert.deepEqual(fields, ['count', 'other']);
+      var opts = {field_types: "+count,+other".split(',')};
+      var index = api.internal.getFieldTypeHints(opts);
       assert.deepEqual(index, {count: 'number', other: 'number'})
     })
 
     it('accept inconsistent type hints', function () {
-      var fields = "fips,count,fips:str".split(',');
-      var index = {};
-      fields = api.internal.parseFieldHeaders(fields, index);
-      assert.deepEqual(fields, ['fips', 'count', 'fips']);
+      var opts = {field_types: "fips,count,fips:str".split(',')};
+      var index = api.internal.getFieldTypeHints(opts);
       assert.deepEqual(index, {fips: 'string'})
     })
 
     it('accept inconsistent type hints 2', function () {
-      var fields = "fips:str,count,fips".split(',');
-      var index = {};
-      fields = api.internal.parseFieldHeaders(fields, index);
-      assert.deepEqual(fields, ['fips', 'count', 'fips']);
+      var opts = {field_types: "fips:str,count,fips".split(',')};
+      var index = api.internal.getFieldTypeHints(opts);
       assert.deepEqual(index, {fips: 'string'})
     })
   })
 
   describe('adjustRecordTypes()', function () {
     it('convert numbers by default', function () {
-      var records = [{foo:"0", bar:"4,000,300", baz: "0xcc", goo: '300 E'}],
-          fields = ['foo', 'bar', 'baz', 'goo']
-      api.internal.adjustRecordTypes(records, fields);
+      var records = [{foo:"0", bar:"4,000,300", baz: "0xcc", goo: '300 E'}];
+      api.internal.adjustRecordTypes(records);
       stringifyEqual(records, [{foo:0, bar:4000300, baz: 0xcc, goo: '300 E'}])
     })
 
     it('protect string-format numbers with type hints', function() {
       var records = [{foo:"001", bar:"001"}],
-          fields = ['foo:string', 'bar'];
-      api.internal.adjustRecordTypes(records, fields);
+          opts = {field_types: ['foo:string', 'bar']};
+      api.internal.adjustRecordTypes(records, opts);
+      stringifyEqual(records, [{foo:"001", bar:1}])
+    })
+
+    it('protect string-format numbers with type hints 2', function() {
+      var records = [{foo:"001", bar:"001"}],
+          opts = {string_fields: ['foo']};
+      api.internal.adjustRecordTypes(records, opts);
       stringifyEqual(records, [{foo:"001", bar:1}])
     })
 
     it('bugfix 1: handle numeric data (e.g. from dbf)', function() {
       var records = [{a: 0, b: 23.2, c: -12}],
-          fields = ['a', 'b:number', 'c'];
-      api.internal.adjustRecordTypes(records, fields);
+          opts = {field_types: ['a', 'b:number', 'c']};
+      api.internal.adjustRecordTypes(records, opts);
       stringifyEqual(records, [{a: 0, b: 23.2, c: -12}])
     })
 
