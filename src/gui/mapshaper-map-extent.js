@@ -2,6 +2,7 @@
 
 function MapExtent(_position) {
   var _scale = 1,
+      _maxScale = 1e13,
       _cx, _cy, // center in geographic units
       _contentBounds, _padPct;
 
@@ -16,7 +17,7 @@ function MapExtent(_position) {
   };
 
   this.recenter = function(cx, cy, scale, force) {
-    if (!scale) scale = _scale;
+    scale = scale ? limitScale(scale) : _scale;
     if (force || !(cx == _cx && cy == _cy && scale == _scale)) {
       _cx = cx;
       _cy = cy;
@@ -34,6 +35,7 @@ function MapExtent(_position) {
   // Zoom to @scale (a multiple of the map's full scale)
   // @xpct, @ypct: optional focus, [0-1]...
   this.rescale = function(scale, xpct, ypct) {
+    scale = limitScale(scale);
     if (arguments.length < 3) {
       xpct = 0.5;
       ypct = 0.5;
@@ -59,6 +61,10 @@ function MapExtent(_position) {
   // get zoom factor (1 == full extent, 2 == 2x zoom, etc.)
   this.scale = function() {
     return _scale;
+  };
+
+  this.maxScale = function() {
+    return _maxScale;
   };
 
   this.getPixelSize = function() {
@@ -93,6 +99,12 @@ function MapExtent(_position) {
       _cy = b.centerY();
     }
   };
+
+  function limitScale(scale) {
+    // stop before rounding errors become visible
+    // may need to take content bounds into account
+    return Math.min(scale, _maxScale);
+  }
 
   function getPadding(size) {
     return size * _padPct + 4;

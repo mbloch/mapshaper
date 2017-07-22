@@ -792,17 +792,22 @@ body.simplify #layer-control-btn {
 }
 
 
-.nav-btn:hover * {
+.nav-btn:hover:not(.disabled) * {
 	fill: black;
 }
 
-.nav-btn.selected * {
+.nav-btn.selected:not(.disabled) * {
 	fill: white;
 }
 
 .nav-btn.selected {
 	background-color: black;
 	border-radius: 4px;
+}
+
+.nav-btn.disabled {
+	opacity: 0.4;
+	cursor: default;
 }
 
 .zoom-box {

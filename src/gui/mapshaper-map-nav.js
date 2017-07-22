@@ -18,14 +18,19 @@ function MapNav(root, ext, mouse) {
       zoomTween = new Tween(Tween.sineInOut),
       shiftDrag = false,
       zoomScale = 2.5,
+      inBtn, outBtn,
       dragStartEvt,
       _fx, _fy; // zoom foci, [0,1]
 
   gui.addSidebarButton("#home-icon").on('click', function() {
     gui.dispatchEvent('map_reset');
   });
-  gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
-  gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
+  inBtn = gui.addSidebarButton("#zoom-in-icon").on('click', zoomIn);
+  outBtn = gui.addSidebarButton("#zoom-out-icon").on('click', zoomOut);
+
+  ext.on('change', function() {
+    inBtn.classed('disabled', ext.scale() >= ext.maxScale());
+  });
 
   gui.on('map_reset', function() {
     ext.reset();

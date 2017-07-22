@@ -43,7 +43,7 @@ function DisplayCanvas() {
     var styleIndex = {};
     var batchSize = 1500;
     var startPath = getPathStart(_ext, getLineScale(_ext));
-    var drawPath = getShapePencil(arcs, _ext);
+    var draw = getShapePencil(arcs, _ext);
     var key, item;
     var styler = style.styler || null;
     for (var i=0; i<shapes.length; i++) {
@@ -58,20 +58,20 @@ function DisplayCanvas() {
       item = styleIndex[key];
       item.shapes.push(shapes[i]);
       if (item.shapes.length >= batchSize) {
-        drawPaths(item.shapes, startPath, drawPath, item.style);
+        drawPaths(item.shapes, startPath, draw, item.style);
         item.shapes = [];
       }
     }
     Object.keys(styleIndex).forEach(function(key) {
       var item = styleIndex[key];
-      drawPaths(item.shapes, startPath, drawPath, item.style);
+      drawPaths(item.shapes, startPath, draw, item.style);
     });
   };
 
-  function drawPaths(shapes, startPath, drawPath, style) {
-    startPath(_ctx, style);
+  function drawPaths(shapes, begin, draw, style) {
+    begin(_ctx, style);
     for (var i=0, n=shapes.length; i<n; i++) {
-      drawPath(shapes[i], _ctx);
+      draw(shapes[i], _ctx);
     }
     endPath(_ctx, style);
   }
@@ -129,6 +129,7 @@ function DisplayCanvas() {
   _self.drawArcs = function(arcs, style, filter) {
     var startPath = getPathStart(_ext, getLineScale(_ext)),
         t = getScaledTransform(_ext),
+        clipping = _ext.scale() > 2000,
         ctx = _ctx,
         n = 25, // render paths in batches of this size (an optimization)
         count = 0;
@@ -139,7 +140,11 @@ function DisplayCanvas() {
         endPath(ctx, style);
         startPath(ctx, style);
       }
-      drawPath(arcs.getArcIter(i), t, ctx, 0.6);
+      if (clipping) {
+        drawPathSafe(arcs.getArcIter(i), t, ctx, _ext.getBounds());
+      } else {
+        drawPath(arcs.getArcIter(i), t, ctx, 0.6);
+      }
     }
     endPath(ctx, style);
   };
@@ -169,6 +174,57 @@ function drawSquare(x, y, size, ctx) {
     x = Math.round(x - offs);
     y = Math.round(y - offs);
     ctx.fillRect(x, y, size, size);
+  }
+}
+
+function getClippedSegment(a, b, bounds) {
+  var aIn = bounds.containsPoint(a[0], a[1]),
+      bIn = bounds.containsPoint(b[0], b[1]),
+      hits, bbox, i, j, p, xx, yy;
+  if (aIn && bIn) return [a, b];
+  hits = [];
+  bbox = bounds.toArray();
+  xx = [0, 0, 2, 2];
+  yy = [1, 3, 3, 1];
+  for (i=0; i<4; i++) {
+    j = (i + 1) % 4;
+    p = geom.segmentIntersection(a[0], a[1], b[0], b[1], bbox[xx[i]], bbox[yy[i]],
+        bbox[xx[j]], bbox[yy[j]]);
+    if (p) hits.push(p);
+  }
+  if (hits.length === 0) return null;
+  if (aIn) {
+    return [a, hits[0]];
+  } else if (bIn) {
+    return [b, hits[0]];
+  } else if (hits.length == 2) {
+    return hits;
+  }
+  // TODO: handle edge cases (e.g. collinear hits, corner hits)
+  return null;
+}
+
+// Clip segments if they are too long for the Canvas renderer to display
+function drawPathSafe(vec, t, ctx, bounds) {
+  var pad = 20;
+  var safeLen = 1000;
+  var a, b, ab;
+  if (!vec.hasNext()) return;
+  bounds = bounds.clone().transform(t);
+  bounds.padBounds(pad, pad, pad, pad);
+  a = t.transform(vec.x, vec.y);
+  while (vec.hasNext()) {
+    b = t.transform(vec.x, vec.y);
+    if (geom.distance2D(a[0], a[1], b[0], b[1]) < safeLen) {
+      ab = [a, b];
+    } else {
+      ab = getClippedSegment(a, b, bounds);
+    }
+    if (ab) {
+      ctx.moveTo(ab[0][0], ab[0][1]);
+      ctx.lineTo(ab[1][0], ab[1][1]);
+    }
+    a = b;
   }
 }
 
