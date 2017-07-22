@@ -266,7 +266,7 @@ div.error-box > div {
 
 #fork-me {
 	background-image: url("images/fork-me-right-graphite@2x.png");
-    background-size: 149px 149px;
+	background-size: 149px 149px;
 	position: absolute;
 	z-index: 110;
 	top: 0;
@@ -274,6 +274,7 @@ div.error-box > div {
 	border: 0;
 	width: 149px;
 	height: 149px;
+	display: none;
 }
 
 #import-options.first-run {
@@ -790,7 +791,6 @@ body.simplify #layer-control-btn {
 	padding: 3px;
 	line-height: 1;
 }
-
 
 .nav-btn:hover:not(.disabled) * {
 	fill: black;

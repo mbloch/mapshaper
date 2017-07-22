@@ -94,6 +94,8 @@ function ImportControl(model, opts) {
     } else {
       if (importCount > 0) {
         el.removeClass('first-run');
+      } else {
+        El('#fork-me').show();
       }
       el.show();
     }
