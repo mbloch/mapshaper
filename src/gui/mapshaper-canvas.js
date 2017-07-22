@@ -180,28 +180,28 @@ function drawSquare(x, y, size, ctx) {
 function getClippedSegment(a, b, bounds) {
   var aIn = bounds.containsPoint(a[0], a[1]),
       bIn = bounds.containsPoint(b[0], b[1]),
-      hits, bbox, i, j, p, xx, yy;
+      hits, i, j, p, xx, yy, seg;
   if (aIn && bIn) return [a, b];
   hits = [];
-  bbox = bounds.toArray();
-  xx = [0, 0, 2, 2];
-  yy = [1, 3, 3, 1];
+  xx = [bounds.xmin, bounds.xmin, bounds.xmax, bounds.xmax];
+  yy = [bounds.ymin, bounds.ymax, bounds.ymax, bounds.ymin];
   for (i=0; i<4; i++) {
     j = (i + 1) % 4;
-    p = geom.segmentIntersection(a[0], a[1], b[0], b[1], bbox[xx[i]], bbox[yy[i]],
-        bbox[xx[j]], bbox[yy[j]]);
+    p = geom.segmentIntersection(a[0], a[1], b[0], b[1], xx[i], yy[i],
+        xx[j], yy[j]);
     if (p) hits.push(p);
   }
-  if (hits.length === 0) return null;
-  if (aIn) {
-    return [a, hits[0]];
-  } else if (bIn) {
-    return [b, hits[0]];
-  } else if (hits.length == 2) {
-    return hits;
+  if (hits.length > 0) {
+    if (aIn) {
+      seg = [a, hits[0]];
+    } else if (bIn) {
+      seg = [b, hits[0]];
+    } else if (hits.length == 2) {
+      seg = hits;
+    }
   }
   // TODO: handle edge cases (e.g. collinear hits, corner hits)
-  return null;
+  return seg;
 }
 
 // Clip segments if they are too long for the Canvas renderer to display
@@ -265,9 +265,8 @@ function getLineScale(ext) {
       s = 1;
   if (mapScale < 0.5) {
     s *= Math.pow(mapScale + 0.5, 0.25);
-  } else if (mapScale > 60) {
-    s *= Math.pow(mapScale - 59, 0.18);
-    s = Math.min(s, 5); // limit max scale
+  } else if (mapScale > 100) {
+    s *= Math.pow(mapScale - 99, 0.10);
   }
   return s;
 }
