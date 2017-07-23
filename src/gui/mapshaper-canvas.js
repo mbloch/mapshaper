@@ -204,14 +204,12 @@ function getClippedSegment(a, b, bounds) {
   return seg;
 }
 
-// Clip segments if they are too long for the Canvas renderer to display
+// Clip segments if they might be too long for the Canvas renderer to display
 function drawPathSafe(vec, t, ctx, bounds) {
-  var pad = 20;
   var safeLen = 1000;
   var a, b, ab;
   if (!vec.hasNext()) return;
   bounds = bounds.clone().transform(t);
-  bounds.padBounds(pad, pad, pad, pad);
   a = t.transform(vec.x, vec.y);
   while (vec.hasNext()) {
     b = t.transform(vec.x, vec.y);

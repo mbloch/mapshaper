@@ -4,7 +4,6 @@ function LayerControl(model, map) {
   var el = El("#layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
   var buttonLabel = El('#layer-control-btn .layer-name');
   var isOpen = false;
-  var pinnedLyr = null;
 
   new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
   gui.addMode('layer_menu', turnOn, turnOff);
@@ -39,7 +38,7 @@ function LayerControl(model, map) {
       model.forEachLayer(function(lyr, dataset) {
         if (isPinnable(lyr)) pinnable++;
       });
-      if (pinnable === 0 && pinnedLyr) {
+      if (pinnable === 0 && map.getReferenceLayer()) {
         clearPin(); // a layer has been deleted...
       }
       model.forEachLayer(function(lyr, dataset) {
@@ -79,27 +78,25 @@ function LayerControl(model, map) {
   }
 
   function setPin(lyr, dataset) {
-    if (pinnedLyr != lyr) {
+    if (map.getReferenceLayer() != lyr) {
       clearPin();
       map.setReferenceLayer(lyr, dataset);
-      pinnedLyr = lyr;
       el.addClass('visible-pin');
     }
   }
 
   function clearPin() {
-    if (pinnedLyr) {
+    if (map.getReferenceLayer()) {
       Elements('.layer-item.pinned').forEach(function(el) {
         el.removeClass('pinned');
       });
       el.removeClass('visible-pin');
-      pinnedLyr = null;
       map.setReferenceLayer(null);
     }
   }
 
   function isPinnable(lyr) {
-    return !!lyr.geometry_type;
+    return internal.layerHasGeometry(lyr);
   }
 
   function renderLayer(lyr, dataset, pinnable) {
@@ -122,14 +119,14 @@ function LayerControl(model, map) {
       });
 
     if (pinnable) {
-      if (pinnedLyr == lyr) {
+      if (map.getReferenceLayer() == lyr) {
         entry.addClass('pinned');
       }
 
       // init pin button
       entry.findChild('img.pinned').on('mouseup', function(e) {
         e.stopPropagation();
-        if (lyr == pinnedLyr) {
+        if (lyr == map.getReferenceLayer()) {
           clearPin();
         } else {
           setPin(lyr, dataset);
@@ -160,7 +157,7 @@ function LayerControl(model, map) {
 
   function deleteLayer(lyr, dataset) {
     var active, flags;
-    if (lyr == pinnedLyr) {
+    if (lyr == map.getReferenceLayer()) {
       clearPin();
     }
     model.deleteLayer(lyr, dataset);

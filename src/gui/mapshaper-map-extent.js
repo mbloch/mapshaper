@@ -4,7 +4,7 @@ function MapExtent(_position) {
   var _scale = 1,
       _maxScale = 1e13,
       _cx, _cy, // center in geographic units
-      _contentBounds, _padPct;
+      _contentBounds;
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
@@ -88,10 +88,9 @@ function MapExtent(_position) {
   };
 
   // Update the extent of 'full' zoom without navigating the current view
-  this.setBounds = function(b, padPct) {
+  this.setBounds = function(b) {
     var prev = _contentBounds;
     _contentBounds = b;
-    _padPct = padPct || 0.02;
     if (prev) {
       _scale = _scale * centerAlign(b).width() / centerAlign(prev).width();
     } else {
@@ -106,9 +105,6 @@ function MapExtent(_position) {
     return Math.min(scale, _maxScale);
   }
 
-  function getPadding(size) {
-    return size * _padPct + 4;
-  }
 
   function calcBounds(cx, cy, scale) {
     var w = _contentBounds.width() / scale,
@@ -123,8 +119,8 @@ function MapExtent(_position) {
     var bounds = _contentBounds.clone(),
         wpix = _position.width(),
         hpix = _position.height(),
-        xmarg = getPadding(wpix),
-        ymarg = getPadding(hpix),
+        xmarg = 4,
+        ymarg = 4,
         xpad, ypad;
     wpix -= 2 * xmarg;
     hpix -= 2 * ymarg;

@@ -71,6 +71,15 @@ function MshpMap(model) {
   model.on('select', function(e) {
     _annotationStyle = null;
     _overlayStyle = null;
+
+    // if reference layer is newly selected, and (old) active layer is usable,
+    // make active layer the reference layer.
+    // this must run before 'update' event, so layer menu is updated correctly
+    if (_referenceLyr && _referenceLyr.getLayer() == e.layer && _activeLyr &&
+        internal.layerHasGeometry(_activeLyr.getLayer())) {
+      updateReferenceLayer(_activeLyr);
+    }
+
   });
 
   model.on('update', function(e) {
@@ -97,7 +106,7 @@ function MshpMap(model) {
     } else {
       needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevLyr.getBounds(), _ext.getBounds());
     }
-    _ext.setBounds(_activeLyr.getBounds(), getMarginPct(_activeLyr)); // update map extent to match bounds of active group
+    _ext.setBounds(_activeLyr.getBounds()); // update map extent to match bounds of active group
     if (needReset) {
       // zoom to full view of the active layer and redraw
       _ext.reset(true);
@@ -107,17 +116,24 @@ function MshpMap(model) {
     }
   });
 
-  this.setReferenceLayer = function(lyr, dataset) {
-    if (lyr) {
-      _referenceLyr = new DisplayLayer(lyr, dataset, _ext);
-      _referenceStyle = MapStyle.getReferenceStyle(lyr);
-    } else if (_referenceLyr) {
-      _referenceStyle = null;
-      _referenceLyr = null;
+  this.getReferenceLayer = function() {
+    return _referenceLyr ? _referenceLyr.getLayer() : null;
+  };
 
+  this.setReferenceLayer = function(lyr, dataset) {
+    if (lyr && internal.layerHasGeometry(lyr)) {
+      updateReferenceLayer(new DisplayLayer(lyr, dataset, _ext));
+    } else if (_referenceLyr) {
+      updateReferenceLayer(null);
     }
     drawLayers(); // draw all layers (reference layer can change how active layer is drawn)
   };
+
+  function updateReferenceLayer(lyr) {
+    _referenceLyr = lyr;
+    _referenceStyle = lyr ? MapStyle.getReferenceStyle(lyr.getLayer()) : null;
+  }
+
 
   // Currently used to show dots at line intersections
   this.setHighlightLayer = function(lyr, dataset) {
@@ -139,23 +155,7 @@ function MshpMap(model) {
   };
 
   function isTableLayer(displayLyr) {
-    return displayLyr.getBounds().xmin === 0; // kludge
-  }
-
-  function getMarginPct(displayLyr) {
-    var pct = 0.025;
-    var lyr = displayLyr.getLayer();
-    var n = internal.getFeatureCount(lyr);
-    if (isTableLayer(displayLyr) || lyr.geometry_type == 'point') {
-      if (n < 10) {
-        pct = 0.2;
-      } else if (n < 100) {
-        pct = 0.1;
-      } else {
-        pct = 0.04;
-      }
-    }
-    return pct;
+    return !displayLyr.getLayer().geometry_type; // kludge
   }
 
   function referenceLayerVisible() {
@@ -163,7 +163,7 @@ function MshpMap(model) {
         // don't show if same as active layer
         _activeLyr && _activeLyr.getLayer() == _referenceLyr.getLayer() ||
         // or if active layer isn't geographic (kludge)
-        _activeLyr && !_activeLyr.getLayer().shapes) {
+        _activeLyr && !internal.layerHasGeometry(_activeLyr.getLayer())) {
       return false;
     }
     return true;

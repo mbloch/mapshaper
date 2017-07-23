@@ -118,6 +118,7 @@ function DisplayLayer(lyr, dataset, ext) {
 
   function init(self) {
     var display = lyr.display = lyr.display || {};
+    var isTable = lyr.data && !lyr.geometry_type;
 
     // init filtered arcs, if needed
     if (internal.layerHasPaths(lyr) && !dataset.filteredArcs) {
@@ -125,7 +126,7 @@ function DisplayLayer(lyr, dataset, ext) {
     }
 
     // init table shapes, if needed
-    if (lyr.data && !lyr.geometry_type) {
+    if (isTable) {
       if (!display.layer || display.layer.shapes.length != lyr.data.size()) {
         utils.extend(display, gui.getDisplayLayerForTable(lyr.data));
       }
@@ -134,15 +135,16 @@ function DisplayLayer(lyr, dataset, ext) {
       delete display.arcs;
     }
 
-    _displayBounds = getDisplayBounds(display.layer || lyr, display.arcs || dataset.arcs);
+    _displayBounds = getDisplayBounds(display.layer || lyr, display.arcs || dataset.arcs, isTable);
     initArcCounts(self);
   }
 
   init(this);
 }
 
-function getDisplayBounds(lyr, arcs) {
+function getDisplayBounds(lyr, arcs, isTable) {
   var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
+      marginPct = isTable ? getVariableMargin(lyr) : 0.025,
       bounds = arcBounds, // default display extent: all arcs in the dataset
       lyrBounds;
 
@@ -168,5 +170,17 @@ function getDisplayBounds(lyr, arcs) {
     bounds.ymin = (bounds.centerY() || 0) - 1;
     bounds.ymax = bounds.ymin + 2;
   }
+  bounds.scale(1 + marginPct * 2);
   return bounds;
+}
+
+function getVariableMargin(lyr) {
+  var n = internal.getFeatureCount(lyr);
+  var pct = 0.04;
+  if (n < 5) {
+    pct = 0.2;
+  } else if (n < 100) {
+    pct = 0.1;
+  }
+  return pct;
 }
