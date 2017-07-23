@@ -2,13 +2,11 @@
 
 function MapExtent(_position) {
   var _scale = 1,
-      _maxScale = 1e13,
       _cx, _cy, // center in geographic units
       _contentBounds;
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
-    // this.dispatchEvent('navigate');
     // this.dispatchEvent('resize');
   }, this);
 
@@ -23,7 +21,6 @@ function MapExtent(_position) {
       _cy = cy;
       _scale = scale;
       this.dispatchEvent('change');
-      // this.dispatchEvent('navigate');
     }
   };
 
@@ -63,9 +60,7 @@ function MapExtent(_position) {
     return _scale;
   };
 
-  this.maxScale = function() {
-    return _maxScale;
-  };
+  this.maxScale = maxScale;
 
   this.getPixelSize = function() {
     return 1 / this.getTransform().mx;
@@ -99,10 +94,15 @@ function MapExtent(_position) {
     }
   };
 
+  // stop zooming before rounding errors become too obvious
+  function maxScale() {
+    var minPixelScale = 1e-14,
+        fullPixelScale = _contentBounds.width() / _position.width();
+    return fullPixelScale / minPixelScale;
+  }
+
   function limitScale(scale) {
-    // stop before rounding errors become visible
-    // may need to take content bounds into account
-    return Math.min(scale, _maxScale);
+    return Math.min(scale, maxScale());
   }
 
 
