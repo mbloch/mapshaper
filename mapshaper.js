@@ -1562,8 +1562,8 @@ var api = {};
 var internal = {
   VERSION: VERSION, // export version
   LOGGING: false,
+  DEBUG: false,
   QUIET: false,
-  TRACING: false,
   VERBOSE: false,
   T: T,
   defs: {}
@@ -1604,11 +1604,12 @@ function verbose() {
   }
 }
 
-function trace() {
-  if (internal.TRACING) {
+function debug() {
+  if (internal.DEBUG) {
     internal.logArgs(arguments);
   }
 }
+var trace = debug; // TODO: rename debug() calls
 
 function absArcId(arcId) {
   return arcId >= 0 ? arcId : ~arcId;
@@ -4549,7 +4550,7 @@ function lineIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
     // tiny denominator = low precision; using one of the endpoints as intersection
     p = findEndpointInRange(ax, ay, bx, by, cx, cy, dx, dy);
     if (!p) {
-      trace('[lineIntersection()]');
+      debug('[lineIntersection()]');
       geom.debugSegmentIntersection([], ax, ay, bx, by, cx, cy, dx, dy);
     }
   } else {
@@ -4613,14 +4614,14 @@ function clampIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy) {
 }
 
 geom.debugSegmentIntersection = function(p, ax, ay, bx, by, cx, cy, dx, dy) {
-  trace('[debugSegmentIntersection()]');
-  trace('  s1\n  dx:', Math.abs(ax - bx), '\n  dy:', Math.abs(ay - by));
-  trace('  s2\n  dx:', Math.abs(cx - dx), '\n  dy:', Math.abs(cy - dy));
-  trace('  s1 xx:', ax, bx);
-  trace('  s2 xx:', cx, dx);
-  trace('  s1 yy:', ay, by);
-  trace('  s2 yy:', cy, dy);
-  trace('  angle:', geom.signedAngle(ax, ay, bx, by, dx - cx + bx, dy - cy + by));
+  debug('[debugSegmentIntersection()]');
+  debug('  s1\n  dx:', Math.abs(ax - bx), '\n  dy:', Math.abs(ay - by));
+  debug('  s2\n  dx:', Math.abs(cx - dx), '\n  dy:', Math.abs(cy - dy));
+  debug('  s1 xx:', ax, bx);
+  debug('  s2 xx:', cx, dx);
+  debug('  s1 yy:', ay, by);
+  debug('  s2 yy:', cy, dy);
+  debug('  angle:', geom.signedAngle(ax, ay, bx, by, dx - cx + bx, dy - cy + by));
 };
 
 // a: coordinate of point
@@ -4643,7 +4644,7 @@ geom.clampToCloseRange = function(a, b, c) {
   if (geom.outsideRange(a, b, c)) {
     lim = Math.abs(a - b) < Math.abs(a - c) ? b : c;
     if (Math.abs(a - lim) > 1e-16) {
-      trace("[clampToCloseRange()] large clamping interval", a, b, c);
+      debug("[clampToCloseRange()] large clamping interval", a, b, c);
     }
     a = lim;
   }
@@ -4705,7 +4706,7 @@ function collinearIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
   }
   if (coords.length != 2 && coords.length != 4) {
     coords = null;
-    trace("Invalid collinear segment intersection", coords);
+    debug("Invalid collinear segment intersection", coords);
   } else if (coords.length == 4 && coords[0] == coords[2] && coords[1] == coords[3]) {
     // segs that meet in the middle don't count
     coords = null;
@@ -5067,7 +5068,7 @@ internal.getHoleDivider = function(nodes, spherical) {
     internal.forEachPath(rings, function(ringIds) {
       var splitRings = split(ringIds);
       if (splitRings.length === 0) {
-        trace("[getRingDivider()] Defective path:", ringIds);
+        debug("[getRingDivider()] Defective path:", ringIds);
       }
       splitRings.forEach(function(ringIds, i) {
         var ringArea = pathArea(ringIds, nodes.arcs);
@@ -5332,7 +5333,7 @@ internal.getCutPoint = function(x, y, i, j, xx, yy) {
   }
   if (geom.outsideRange(x, ix, jx) || geom.outsideRange(y, iy, jy)) {
     // out-of-range issues should have been handled upstream
-    trace("[getCutPoint()] Coordinate range error");
+    debug("[getCutPoint()] Coordinate range error");
     return null;
   }
   return {x: x, y: y, i: i};
@@ -5487,12 +5488,12 @@ internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, 
   var angleB = geom.signedAngle(fromX, fromY, nodeX, nodeY, bx, by);
   var code;
   if (angleA <= 0 || angleB <= 0) {
-    trace("[chooseRighthandPath()] 0 angle(s):", angleA, angleB);
+    debug("[chooseRighthandPath()] 0 angle(s):", angleA, angleB);
     if (angleA <= 0) {
-      trace('  A orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, ax, ay));
+      debug('  A orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, ax, ay));
     }
     if (angleB <= 0) {
-      trace('  B orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, bx, by));
+      debug('  B orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, bx, by));
     }
     // TODO: test against "from" segment
     if (angleA > 0) {
@@ -5512,8 +5513,8 @@ internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, 
   } else {
     // Equal angles: use fallback test that is less sensitive to rounding error
     code = internal.chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
-    trace("[chooseRighthandVector()] code:", code, 'angle:', angleA);
-    trace(fromX, fromY, nodeX, nodeY, ax, ay, bx, by);
+    debug("[chooseRighthandVector()] code:", code, 'angle:', angleA);
+    debug(fromX, fromY, nodeX, nodeY, ax, ay, bx, by);
   }
   return code;
 };
@@ -5582,7 +5583,7 @@ internal.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBit
 
     // error condition: lollipop arcs can cause problems; ignore these
     if (arcs.arcIsLollipop(id)) {
-      trace('lollipop');
+      debug('lollipop');
       newFlag = 0; // unset (i.e. make invisible)
     } else {
       if (openFwd) {
@@ -8326,7 +8327,7 @@ internal.buildPolygonMosaic = function(nodes) {
       rings.push(ring);
     } else {
       deadArcs.push(arcId);
-      console.log("Dead-end arc:", arcId);
+      debug("Dead-end arc:", arcId);
     }
   }
 
@@ -8351,21 +8352,29 @@ api.clean2 = function(layers, dataset, opts) {
   var nodes = internal.addIntersectionCuts(dataset, opts);
   var out = internal.buildPolygonMosaic(nodes);
   if (out.collisions) {
-    layers = layers.concat(internal.getCollisionLayer(out.collisions));
+    layers = layers.concat(getDebugLayers(out.collisions, nodes.arcs));
   }
   return layers;
+
+  function getDebugLayers(collisions, arcs) {
+    var arcLyr = {geometry_type: 'polyline', name: 'debug', shapes: []};
+    var pointLyr = {geometry_type: 'point', name: 'debug', shapes: []};
+    var arcData = [];
+    var pointData = [];
+    collisions.forEach(function(arcId) {
+      var first = arcs.getVertex(arcId, 0);
+      var last = arcs.getVertex(arcId, -1);
+      arcData.push({ARCID: arcId});
+      arcLyr.shapes.push([[arcId]]);
+      pointData.push({ARCID: arcId}, {ARCID: arcId});
+      pointLyr.shapes.push([[first.x, first.y]], [[last.x, last.y]]);
+    });
+    arcLyr.data = new DataTable(arcData);
+    pointLyr.data = new DataTable(pointData);
+    return [arcLyr, pointLyr];
+  }
 };
 
-internal.getCollisionLayer = function(arcs) {
-  var lyr = {geometry_type: 'polyline'};
-  var data = [];
-  lyr.shapes = arcs.map(function(arcId) {
-    data.push({ARCID: arcId});
-    return [[arcId]];
-  });
-  lyr.data = new DataTable(data);
-  return lyr;
-};
 
 // (This doesn't currently do much)
 // TODO: remove small overlaps
@@ -19349,7 +19358,7 @@ internal.getOptionParser = function() {
     .alias('v')
     .describe("print mapshaper version");
 
-  parser.command('tracing');
+  parser.command('debug');
 
   /*
   parser.command("divide")
@@ -19823,8 +19832,8 @@ internal.runAndRemoveInfoCommands = function(commands) {
       internal.VERBOSE = true;
     } else if (cmd.name == 'quiet') {
       internal.QUIET = true;
-    } else if (cmd.name == 'tracing') {
-      internal.TRACING = true;
+    } else if (cmd.name == 'debug') {
+      internal.DEBUG = true;
     } else {
       return true;
     }

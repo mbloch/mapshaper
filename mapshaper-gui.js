@@ -1825,9 +1825,9 @@ function ImportControl(model, opts) {
     // use case-insensitive matching
     var base = utils.getPathBase(filename).toLowerCase();
     return model.getDatasets().filter(function(d) {
-      var fname = (d.info.input_files[0] || '').toLowerCase();
-      var ext = utils.getFileExtension(fname);
-      var base2 = utils.getPathBase(fname);
+      var fname = d.info.input_files && d.info.input_files[0] || "";
+      var ext = utils.getFileExtension(fname).toLowerCase();
+      var base2 = utils.getPathBase(fname).toLowerCase();
       return base == base2 && ext == 'shp';
     });
   }
@@ -2431,7 +2431,6 @@ function LayerControl(model, map) {
   var el = El("#layer-control").on('click', gui.handleDirectEvent(gui.clearMode));
   var buttonLabel = El('#layer-control-btn .layer-name');
   var isOpen = false;
-  var pinnedLyr = null;
 
   new ModeButton('#layer-control-btn .header-btn', 'layer_menu');
   gui.addMode('layer_menu', turnOn, turnOff);
@@ -2466,7 +2465,7 @@ function LayerControl(model, map) {
       model.forEachLayer(function(lyr, dataset) {
         if (isPinnable(lyr)) pinnable++;
       });
-      if (pinnable === 0 && pinnedLyr) {
+      if (pinnable === 0 && map.getReferenceLayer()) {
         clearPin(); // a layer has been deleted...
       }
       model.forEachLayer(function(lyr, dataset) {
@@ -2506,27 +2505,25 @@ function LayerControl(model, map) {
   }
 
   function setPin(lyr, dataset) {
-    if (pinnedLyr != lyr) {
+    if (map.getReferenceLayer() != lyr) {
       clearPin();
       map.setReferenceLayer(lyr, dataset);
-      pinnedLyr = lyr;
       el.addClass('visible-pin');
     }
   }
 
   function clearPin() {
-    if (pinnedLyr) {
+    if (map.getReferenceLayer()) {
       Elements('.layer-item.pinned').forEach(function(el) {
         el.removeClass('pinned');
       });
       el.removeClass('visible-pin');
-      pinnedLyr = null;
       map.setReferenceLayer(null);
     }
   }
 
   function isPinnable(lyr) {
-    return !!lyr.geometry_type;
+    return internal.layerHasGeometry(lyr);
   }
 
   function renderLayer(lyr, dataset, pinnable) {
@@ -2549,14 +2546,14 @@ function LayerControl(model, map) {
       });
 
     if (pinnable) {
-      if (pinnedLyr == lyr) {
+      if (map.getReferenceLayer() == lyr) {
         entry.addClass('pinned');
       }
 
       // init pin button
       entry.findChild('img.pinned').on('mouseup', function(e) {
         e.stopPropagation();
-        if (lyr == pinnedLyr) {
+        if (lyr == map.getReferenceLayer()) {
           clearPin();
         } else {
           setPin(lyr, dataset);
@@ -2587,7 +2584,7 @@ function LayerControl(model, map) {
 
   function deleteLayer(lyr, dataset) {
     var active, flags;
-    if (lyr == pinnedLyr) {
+    if (lyr == map.getReferenceLayer()) {
       clearPin();
     }
     model.deleteLayer(lyr, dataset);
@@ -2847,11 +2844,26 @@ function drawSquare(x, y, size, ctx) {
   }
 }
 
-function getClippedSegment(a, b, bounds) {
-  var aIn = bounds.containsPoint(a[0], a[1]),
-      bIn = bounds.containsPoint(b[0], b[1]),
+//  7 8 9
+//  4 5 6
+//  1 2 3
+function getPointQuadrant(p, bounds) {
+  var x = p[0], y = p[1];
+  var col = x < bounds.xmin && 1 || x <= bounds.xmax && 2 || x > bounds.xmax && 3 || 0;
+  var row = y < bounds.ymin && 1 || y <= bounds.ymax && 2 || y > bounds.ymax && 3 || 0;
+  if (col === 0 || row === 0) return 0;
+  return col + (row - 1) * 3;
+}
+
+function getSafeSegment(a, b, bounds) {
+  var qa = getPointQuadrant(a, bounds),
+      qb = getPointQuadrant(b, bounds),
       hits, i, j, p, xx, yy, seg;
-  if (aIn && bIn) return [a, b];
+  if (qa == 5 && qb == 5) {
+    return [a, b]; // both points are inside box -- no clip
+  } else if (qa == qb) {
+    return null; // both points are in the same outer quadrant -- safely skip
+  }
   hits = [];
   xx = [bounds.xmin, bounds.xmin, bounds.xmax, bounds.xmax];
   yy = [bounds.ymin, bounds.ymax, bounds.ymax, bounds.ymin];
@@ -2862,9 +2874,9 @@ function getClippedSegment(a, b, bounds) {
     if (p) hits.push(p);
   }
   if (hits.length > 0) {
-    if (aIn) {
+    if (qa == 5) {
       seg = [a, hits[0]];
-    } else if (bIn) {
+    } else if (qb == 5) {
       seg = [b, hits[0]];
     } else if (hits.length == 2) {
       seg = hits;
@@ -2874,21 +2886,14 @@ function getClippedSegment(a, b, bounds) {
   return seg;
 }
 
-// Clip segments if they are too long for the Canvas renderer to display
+// Clip segments if they might be too long for the Canvas renderer to display
 function drawPathSafe(vec, t, ctx, bounds) {
-  var pad = 20;
-  var safeLen = 1000;
   var a, b, ab;
-  if (!vec.hasNext()) return;
   bounds = bounds.clone().transform(t);
-  bounds.padBounds(pad, pad, pad, pad);
-  a = t.transform(vec.x, vec.y);
   while (vec.hasNext()) {
     b = t.transform(vec.x, vec.y);
-    if (geom.distance2D(a[0], a[1], b[0], b[1]) < safeLen) {
-      ab = [a, b];
-    } else {
-      ab = getClippedSegment(a, b, bounds);
+    if (a) {
+      ab = getSafeSegment(a, b, bounds);
     }
     if (ab) {
       ctx.moveTo(ab[0][0], ab[0][1]);
@@ -2936,7 +2941,8 @@ function getLineScale(ext) {
   if (mapScale < 0.5) {
     s *= Math.pow(mapScale + 0.5, 0.25);
   } else if (mapScale > 100) {
-    s *= Math.pow(mapScale - 99, 0.10);
+    if (!internal.VERBOSE) // thin lines for debugging
+      s *= Math.pow(mapScale - 99, 0.10);
   }
   return s;
 }
@@ -3246,6 +3252,7 @@ function DisplayLayer(lyr, dataset, ext) {
 
   function init(self) {
     var display = lyr.display = lyr.display || {};
+    var isTable = lyr.data && !lyr.geometry_type;
 
     // init filtered arcs, if needed
     if (internal.layerHasPaths(lyr) && !dataset.filteredArcs) {
@@ -3253,7 +3260,7 @@ function DisplayLayer(lyr, dataset, ext) {
     }
 
     // init table shapes, if needed
-    if (lyr.data && !lyr.geometry_type) {
+    if (isTable) {
       if (!display.layer || display.layer.shapes.length != lyr.data.size()) {
         utils.extend(display, gui.getDisplayLayerForTable(lyr.data));
       }
@@ -3262,15 +3269,16 @@ function DisplayLayer(lyr, dataset, ext) {
       delete display.arcs;
     }
 
-    _displayBounds = getDisplayBounds(display.layer || lyr, display.arcs || dataset.arcs);
+    _displayBounds = getDisplayBounds(display.layer || lyr, display.arcs || dataset.arcs, isTable);
     initArcCounts(self);
   }
 
   init(this);
 }
 
-function getDisplayBounds(lyr, arcs) {
+function getDisplayBounds(lyr, arcs, isTable) {
   var arcBounds = arcs ? arcs.getBounds() : new Bounds(),
+      marginPct = isTable ? getVariableMargin(lyr) : 0.025,
       bounds = arcBounds, // default display extent: all arcs in the dataset
       lyrBounds;
 
@@ -3296,7 +3304,19 @@ function getDisplayBounds(lyr, arcs) {
     bounds.ymin = (bounds.centerY() || 0) - 1;
     bounds.ymax = bounds.ymin + 2;
   }
+  bounds.scale(1 + marginPct * 2);
   return bounds;
+}
+
+function getVariableMargin(lyr) {
+  var n = internal.getFeatureCount(lyr);
+  var pct = 0.04;
+  if (n < 5) {
+    pct = 0.2;
+  } else if (n < 100) {
+    pct = 0.1;
+  }
+  return pct;
 }
 
 
@@ -3429,13 +3449,11 @@ function MapNav(root, ext, mouse) {
 
 function MapExtent(_position) {
   var _scale = 1,
-      _maxScale = 1e13,
       _cx, _cy, // center in geographic units
-      _contentBounds, _padPct;
+      _contentBounds;
 
   _position.on('resize', function() {
     this.dispatchEvent('change');
-    // this.dispatchEvent('navigate');
     // this.dispatchEvent('resize');
   }, this);
 
@@ -3450,7 +3468,6 @@ function MapExtent(_position) {
       _cy = cy;
       _scale = scale;
       this.dispatchEvent('change');
-      // this.dispatchEvent('navigate');
     }
   };
 
@@ -3490,9 +3507,7 @@ function MapExtent(_position) {
     return _scale;
   };
 
-  this.maxScale = function() {
-    return _maxScale;
-  };
+  this.maxScale = maxScale;
 
   this.getPixelSize = function() {
     return 1 / this.getTransform().mx;
@@ -3515,10 +3530,9 @@ function MapExtent(_position) {
   };
 
   // Update the extent of 'full' zoom without navigating the current view
-  this.setBounds = function(b, padPct) {
+  this.setBounds = function(b) {
     var prev = _contentBounds;
     _contentBounds = b;
-    _padPct = padPct || 0.02;
     if (prev) {
       _scale = _scale * centerAlign(b).width() / centerAlign(prev).width();
     } else {
@@ -3527,15 +3541,17 @@ function MapExtent(_position) {
     }
   };
 
-  function limitScale(scale) {
-    // stop before rounding errors become visible
-    // may need to take content bounds into account
-    return Math.min(scale, _maxScale);
+  // stop zooming before rounding errors become too obvious
+  function maxScale() {
+    var minPixelScale = 1e-14,
+        fullPixelScale = _contentBounds.width() / _position.width();
+    return fullPixelScale / minPixelScale;
   }
 
-  function getPadding(size) {
-    return size * _padPct + 4;
+  function limitScale(scale) {
+    return Math.min(scale, maxScale());
   }
+
 
   function calcBounds(cx, cy, scale) {
     var w = _contentBounds.width() / scale,
@@ -3550,8 +3566,8 @@ function MapExtent(_position) {
     var bounds = _contentBounds.clone(),
         wpix = _position.width(),
         hpix = _position.height(),
-        xmarg = getPadding(wpix),
-        ymarg = getPadding(hpix),
+        xmarg = 4,
+        ymarg = 4,
         xpad, ypad;
     wpix -= 2 * xmarg;
     hpix -= 2 * ymarg;
@@ -3703,8 +3719,8 @@ function HitControl(ext, mouse) {
   }
 
   function polygonTest(x, y) {
-    var dist = getHitBuffer2(5),
-        cands = findHitCandidates(x, y, dist),
+    var maxDist = getHitBuffer2(5),
+        cands = findHitCandidates(x, y, maxDist),
         hits = [],
         cand, hitId;
     for (var i=0; i<cands.length; i++) {
@@ -3715,31 +3731,42 @@ function HitControl(ext, mouse) {
     }
     if (cands.length > 0 && hits.length === 0) {
       // secondary detection: proximity, if not inside a polygon
-      hits = findNearestCandidates(x, y, dist, cands, target.dataset.arcs);
+      sortByDistance(x, y, cands, target.dataset.arcs);
+      hits = pickNearestCandidates(cands, 0, maxDist);
+    }
+    return hits;
+  }
+
+  function pickNearestCandidates(sorted, bufDist, maxDist) {
+    var hits = [],
+        cand, minDist;
+    for (var i=0; i<sorted.length; i++) {
+      cand = sorted[i];
+      if (cand.dist < maxDist !== true) {
+        break;
+      } else if (i === 0) {
+        minDist = cand.dist;
+      } else if (cand.dist - minDist > bufDist) {
+        break;
+      }
+      hits.push(cand.id);
     }
     return hits;
   }
 
   function polylineTest(x, y) {
-    var dist = getHitBuffer2(15),
-        cands = findHitCandidates(x, y, dist);
-    return findNearestCandidates(x, y, dist, cands, target.dataset.arcs);
+    var maxDist = getHitBuffer2(15),
+        bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
+        cands = findHitCandidates(x, y, maxDist);
+    sortByDistance(x, y, cands, target.dataset.arcs);
+    return pickNearestCandidates(cands, bufDist, maxDist);
   }
 
-  function findNearestCandidates(x, y, dist, cands, arcs) {
-    var hits = [],
-        cand, candDist;
+  function sortByDistance(x, y, cands, arcs) {
     for (var i=0; i<cands.length; i++) {
-      cand = cands[i];
-      candDist = geom.getPointToShapeDistance(x, y, cand.shape, arcs);
-      if (candDist < dist) {
-        hits = [cand.id];
-        dist = candDist;
-      } else if (candDist == dist) {
-        hits.push(cand.id);
-      }
+      cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
     }
-    return hits;
+    utils.sortOn(cands, 'dist');
   }
 
   function pointTest(x, y) {
@@ -3855,7 +3882,7 @@ function HitControl(ext, mouse) {
         }
         cand = index[shpId];
         if (!cand) {
-          cand = index[shpId] = {shape: [], id: shpId};
+          cand = index[shpId] = {shape: [], id: shpId, dist: 0};
           cands.push(cand);
         }
         cand.shape.push(shp[i]);
@@ -4472,6 +4499,15 @@ function MshpMap(model) {
   model.on('select', function(e) {
     _annotationStyle = null;
     _overlayStyle = null;
+
+    // if reference layer is newly selected, and (old) active layer is usable,
+    // make active layer the reference layer.
+    // this must run before 'update' event, so layer menu is updated correctly
+    if (_referenceLyr && _referenceLyr.getLayer() == e.layer && _activeLyr &&
+        internal.layerHasGeometry(_activeLyr.getLayer())) {
+      updateReferenceLayer(_activeLyr);
+    }
+
   });
 
   model.on('update', function(e) {
@@ -4498,7 +4534,7 @@ function MshpMap(model) {
     } else {
       needReset = gui.mapNeedsReset(_activeLyr.getBounds(), prevLyr.getBounds(), _ext.getBounds());
     }
-    _ext.setBounds(_activeLyr.getBounds(), getMarginPct(_activeLyr)); // update map extent to match bounds of active group
+    _ext.setBounds(_activeLyr.getBounds()); // update map extent to match bounds of active group
     if (needReset) {
       // zoom to full view of the active layer and redraw
       _ext.reset(true);
@@ -4508,17 +4544,24 @@ function MshpMap(model) {
     }
   });
 
-  this.setReferenceLayer = function(lyr, dataset) {
-    if (lyr) {
-      _referenceLyr = new DisplayLayer(lyr, dataset, _ext);
-      _referenceStyle = MapStyle.getReferenceStyle(lyr);
-    } else if (_referenceLyr) {
-      _referenceStyle = null;
-      _referenceLyr = null;
+  this.getReferenceLayer = function() {
+    return _referenceLyr ? _referenceLyr.getLayer() : null;
+  };
 
+  this.setReferenceLayer = function(lyr, dataset) {
+    if (lyr && internal.layerHasGeometry(lyr)) {
+      updateReferenceLayer(new DisplayLayer(lyr, dataset, _ext));
+    } else if (_referenceLyr) {
+      updateReferenceLayer(null);
     }
     drawLayers(); // draw all layers (reference layer can change how active layer is drawn)
   };
+
+  function updateReferenceLayer(lyr) {
+    _referenceLyr = lyr;
+    _referenceStyle = lyr ? MapStyle.getReferenceStyle(lyr.getLayer()) : null;
+  }
+
 
   // Currently used to show dots at line intersections
   this.setHighlightLayer = function(lyr, dataset) {
@@ -4540,23 +4583,7 @@ function MshpMap(model) {
   };
 
   function isTableLayer(displayLyr) {
-    return displayLyr.getBounds().xmin === 0; // kludge
-  }
-
-  function getMarginPct(displayLyr) {
-    var pct = 0.025;
-    var lyr = displayLyr.getLayer();
-    var n = internal.getFeatureCount(lyr);
-    if (isTableLayer(displayLyr) || lyr.geometry_type == 'point') {
-      if (n < 10) {
-        pct = 0.2;
-      } else if (n < 100) {
-        pct = 0.1;
-      } else {
-        pct = 0.04;
-      }
-    }
-    return pct;
+    return !displayLyr.getLayer().geometry_type; // kludge
   }
 
   function referenceLayerVisible() {
@@ -4564,7 +4591,7 @@ function MshpMap(model) {
         // don't show if same as active layer
         _activeLyr && _activeLyr.getLayer() == _referenceLyr.getLayer() ||
         // or if active layer isn't geographic (kludge)
-        _activeLyr && !_activeLyr.getLayer().shapes) {
+        _activeLyr && !internal.layerHasGeometry(_activeLyr.getLayer())) {
       return false;
     }
     return true;
