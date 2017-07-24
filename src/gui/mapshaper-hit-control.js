@@ -132,8 +132,8 @@ function HitControl(ext, mouse) {
   }
 
   function polygonTest(x, y) {
-    var dist = getHitBuffer2(5),
-        cands = findHitCandidates(x, y, dist),
+    var maxDist = getHitBuffer2(5),
+        cands = findHitCandidates(x, y, maxDist),
         hits = [],
         cand, hitId;
     for (var i=0; i<cands.length; i++) {
@@ -144,31 +144,42 @@ function HitControl(ext, mouse) {
     }
     if (cands.length > 0 && hits.length === 0) {
       // secondary detection: proximity, if not inside a polygon
-      hits = findNearestCandidates(x, y, dist, cands, target.dataset.arcs);
+      sortByDistance(x, y, cands, target.dataset.arcs);
+      hits = pickNearestCandidates(cands, 0, maxDist);
+    }
+    return hits;
+  }
+
+  function pickNearestCandidates(sorted, bufDist, maxDist) {
+    var hits = [],
+        cand, minDist;
+    for (var i=0; i<sorted.length; i++) {
+      cand = sorted[i];
+      if (cand.dist < maxDist !== true) {
+        break;
+      } else if (i === 0) {
+        minDist = cand.dist;
+      } else if (cand.dist - minDist > bufDist) {
+        break;
+      }
+      hits.push(cand.id);
     }
     return hits;
   }
 
   function polylineTest(x, y) {
-    var dist = getHitBuffer2(15),
-        cands = findHitCandidates(x, y, dist);
-    return findNearestCandidates(x, y, dist, cands, target.dataset.arcs);
+    var maxDist = getHitBuffer2(15),
+        bufDist = getHitBuffer2(0.05), // tiny threshold for hitting almost-identical lines
+        cands = findHitCandidates(x, y, maxDist);
+    sortByDistance(x, y, cands, target.dataset.arcs);
+    return pickNearestCandidates(cands, bufDist, maxDist);
   }
 
-  function findNearestCandidates(x, y, dist, cands, arcs) {
-    var hits = [],
-        cand, candDist;
+  function sortByDistance(x, y, cands, arcs) {
     for (var i=0; i<cands.length; i++) {
-      cand = cands[i];
-      candDist = geom.getPointToShapeDistance(x, y, cand.shape, arcs);
-      if (candDist < dist) {
-        hits = [cand.id];
-        dist = candDist;
-      } else if (candDist == dist) {
-        hits.push(cand.id);
-      }
+      cands[i].dist = geom.getPointToShapeDistance(x, y, cands[i].shape, arcs);
     }
-    return hits;
+    utils.sortOn(cands, 'dist');
   }
 
   function pointTest(x, y) {
@@ -284,7 +295,7 @@ function HitControl(ext, mouse) {
         }
         cand = index[shpId];
         if (!cand) {
-          cand = index[shpId] = {shape: [], id: shpId};
+          cand = index[shpId] = {shape: [], id: shpId, dist: 0};
           cands.push(cand);
         }
         cand.shape.push(shp[i]);
