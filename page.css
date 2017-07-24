@@ -777,7 +777,6 @@ body.simplify #layer-control-btn {
 }
 
 #nav-buttons {
-	display: none;
 	z-index: 20;
 	position: absolute;
 	top: 6px;
