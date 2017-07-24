@@ -42,31 +42,14 @@ gui.getIntersectionPct = function(bb1, bb2) {
 function MshpMap(model) {
   var _root = El('#mshp-main-map'),
       _layers = El('#map-layers'),
-      _position = new ElementPosition(_layers),
-      _ext = new MapExtent(_position),
-      _mouse = new MouseArea(_layers.node(), _position),
-      _nav = new MapNav(_root, _ext, _mouse),
-      _inspector = new InspectionControl(model, new HitControl(_ext, _mouse));
-
-  var _referenceCanv = new DisplayCanvas().appendTo(_layers), // comparison layer
-      _activeCanv = new DisplayCanvas().appendTo(_layers), // data layer shapes
-      _overlayCanv = new DisplayCanvas().appendTo(_layers), // hover and selection shapes
-      _annotationCanv = new DisplayCanvas().appendTo(_layers), // used for line intersections
+      _referenceCanv = new DisplayCanvas().appendTo(_layers), // comparison layer
+      _activeCanv = new DisplayCanvas().appendTo(_layers),    // data layer shapes
+      _overlayCanv = new DisplayCanvas().appendTo(_layers),   // hover and selection shapes
+      _annotationCanv = new DisplayCanvas().appendTo(_layers), // line intersection dots
       _annotationLyr, _annotationStyle,
       _referenceLyr, _referenceStyle,
-      _activeLyr, _activeStyle, _overlayStyle;
-
-  _ext.on('change', drawLayers);
-
-  gui.on('resize', function() {
-    _position.update(); // kludge to detect new map size after console toggle
-  });
-
-  _inspector.on('change', function(e) {
-    var lyr = _activeLyr.getDisplayLayer().layer;
-    _overlayStyle = MapStyle.getOverlayStyle(lyr, e);
-    drawLayer(_activeLyr, _overlayCanv, _overlayStyle);
-  });
+      _activeLyr, _activeStyle, _overlayStyle,
+      _ext, _inspector;
 
   model.on('select', function(e) {
     _annotationStyle = null;
@@ -79,13 +62,16 @@ function MshpMap(model) {
         internal.layerHasGeometry(_activeLyr.getLayer())) {
       updateReferenceLayer(_activeLyr);
     }
-
   });
 
   model.on('update', function(e) {
-    // var prevBounds = _activeLyr ?_activeLyr.getBounds() : null,
     var prevLyr = _activeLyr || null,
         needReset = false;
+
+    if (!prevLyr) {
+      initMap(); // wait until first layer is added to init map extent, resize events, etc.
+    }
+
     if (arcsMayHaveChanged(e.flags)) {
       // regenerate filtered arcs when simplification thresholds are calculated
       // or arcs are updated
@@ -129,12 +115,6 @@ function MshpMap(model) {
     drawLayers(); // draw all layers (reference layer can change how active layer is drawn)
   };
 
-  function updateReferenceLayer(lyr) {
-    _referenceLyr = lyr;
-    _referenceStyle = lyr ? MapStyle.getReferenceStyle(lyr.getLayer()) : null;
-  }
-
-
   // Currently used to show dots at line intersections
   this.setHighlightLayer = function(lyr, dataset) {
     if (lyr) {
@@ -154,8 +134,33 @@ function MshpMap(model) {
     drawLayers();
   };
 
+  function initMap() {
+    var position = new ElementPosition(_layers);
+    var mouse = new MouseArea(_layers.node(), position);
+    var ext = new MapExtent(position);
+    var nav = new MapNav(_root, ext, mouse);
+    var inspector = new InspectionControl(model, new HitControl(ext, mouse));
+    ext.on('change', drawLayers);
+    inspector.on('change', function(e) {
+      var lyr = _activeLyr.getDisplayLayer().layer;
+      _overlayStyle = MapStyle.getOverlayStyle(lyr, e);
+      drawLayer(_activeLyr, _overlayCanv, _overlayStyle);
+    });
+    gui.on('resize', function() {
+      position.update(); // kludge to detect new map size after console toggle
+    });
+    // export objects that are referenced by other functions
+    _inspector = inspector;
+    _ext = ext;
+  }
+
   function isTableLayer(displayLyr) {
     return !displayLyr.getLayer().geometry_type; // kludge
+  }
+
+  function updateReferenceLayer(lyr) {
+    _referenceLyr = lyr;
+    _referenceStyle = lyr ? MapStyle.getReferenceStyle(lyr.getLayer()) : null;
   }
 
   function referenceLayerVisible() {

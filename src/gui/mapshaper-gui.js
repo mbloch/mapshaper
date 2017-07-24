@@ -57,7 +57,6 @@ gui.startEditing = function() {
     if (!dataLoaded) {
       dataLoaded = true;
       El('#mode-buttons').show();
-      El('#nav-buttons').show();
       new Console(model);
     }
   });
