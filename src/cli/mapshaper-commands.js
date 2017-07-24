@@ -212,8 +212,8 @@ internal.runAndRemoveInfoCommands = function(commands) {
       internal.VERBOSE = true;
     } else if (cmd.name == 'quiet') {
       internal.QUIET = true;
-    } else if (cmd.name == 'tracing') {
-      internal.TRACING = true;
+    } else if (cmd.name == 'debug') {
+      internal.DEBUG = true;
     } else {
       return true;
     }

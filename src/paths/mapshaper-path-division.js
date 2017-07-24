@@ -136,7 +136,7 @@ internal.getCutPoint = function(x, y, i, j, xx, yy) {
   }
   if (geom.outsideRange(x, ix, jx) || geom.outsideRange(y, iy, jy)) {
     // out-of-range issues should have been handled upstream
-    trace("[getCutPoint()] Coordinate range error");
+    debug("[getCutPoint()] Coordinate range error");
     return null;
   }
   return {x: x, y: y, i: i};

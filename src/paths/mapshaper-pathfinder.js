@@ -56,7 +56,7 @@ internal.openArcRoutes = function(arcIds, arcs, flags, fwd, rev, dissolve, orBit
 
     // error condition: lollipop arcs can cause problems; ignore these
     if (arcs.arcIsLollipop(id)) {
-      trace('lollipop');
+      debug('lollipop');
       newFlag = 0; // unset (i.e. make invisible)
     } else {
       if (openFwd) {

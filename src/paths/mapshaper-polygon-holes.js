@@ -11,7 +11,7 @@ internal.getHoleDivider = function(nodes, spherical) {
     internal.forEachPath(rings, function(ringIds) {
       var splitRings = split(ringIds);
       if (splitRings.length === 0) {
-        trace("[getRingDivider()] Defective path:", ringIds);
+        debug("[getRingDivider()] Defective path:", ringIds);
       }
       splitRings.forEach(function(ringIds, i) {
         var ringArea = pathArea(ringIds, nodes.arcs);

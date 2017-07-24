@@ -4,8 +4,8 @@ var api = {};
 var internal = {
   VERSION: VERSION, // export version
   LOGGING: false,
+  DEBUG: false,
   QUIET: false,
-  TRACING: false,
   VERBOSE: false,
   T: T,
   defs: {}
@@ -46,11 +46,12 @@ function verbose() {
   }
 }
 
-function trace() {
-  if (internal.TRACING) {
+function debug() {
+  if (internal.DEBUG) {
     internal.logArgs(arguments);
   }
 }
+var trace = debug; // TODO: rename debug() calls
 
 function absArcId(arcId) {
   return arcId >= 0 ? arcId : ~arcId;

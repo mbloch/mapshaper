@@ -38,7 +38,7 @@ function lineIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
     // tiny denominator = low precision; using one of the endpoints as intersection
     p = findEndpointInRange(ax, ay, bx, by, cx, cy, dx, dy);
     if (!p) {
-      trace('[lineIntersection()]');
+      debug('[lineIntersection()]');
       geom.debugSegmentIntersection([], ax, ay, bx, by, cx, cy, dx, dy);
     }
   } else {
@@ -102,14 +102,14 @@ function clampIntersectionPoint(p, ax, ay, bx, by, cx, cy, dx, dy) {
 }
 
 geom.debugSegmentIntersection = function(p, ax, ay, bx, by, cx, cy, dx, dy) {
-  trace('[debugSegmentIntersection()]');
-  trace('  s1\n  dx:', Math.abs(ax - bx), '\n  dy:', Math.abs(ay - by));
-  trace('  s2\n  dx:', Math.abs(cx - dx), '\n  dy:', Math.abs(cy - dy));
-  trace('  s1 xx:', ax, bx);
-  trace('  s2 xx:', cx, dx);
-  trace('  s1 yy:', ay, by);
-  trace('  s2 yy:', cy, dy);
-  trace('  angle:', geom.signedAngle(ax, ay, bx, by, dx - cx + bx, dy - cy + by));
+  debug('[debugSegmentIntersection()]');
+  debug('  s1\n  dx:', Math.abs(ax - bx), '\n  dy:', Math.abs(ay - by));
+  debug('  s2\n  dx:', Math.abs(cx - dx), '\n  dy:', Math.abs(cy - dy));
+  debug('  s1 xx:', ax, bx);
+  debug('  s2 xx:', cx, dx);
+  debug('  s1 yy:', ay, by);
+  debug('  s2 yy:', cy, dy);
+  debug('  angle:', geom.signedAngle(ax, ay, bx, by, dx - cx + bx, dy - cy + by));
 };
 
 // a: coordinate of point
@@ -132,7 +132,7 @@ geom.clampToCloseRange = function(a, b, c) {
   if (geom.outsideRange(a, b, c)) {
     lim = Math.abs(a - b) < Math.abs(a - c) ? b : c;
     if (Math.abs(a - lim) > 1e-16) {
-      trace("[clampToCloseRange()] large clamping interval", a, b, c);
+      debug("[clampToCloseRange()] large clamping interval", a, b, c);
     }
     a = lim;
   }
@@ -194,7 +194,7 @@ function collinearIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
   }
   if (coords.length != 2 && coords.length != 4) {
     coords = null;
-    trace("Invalid collinear segment intersection", coords);
+    debug("Invalid collinear segment intersection", coords);
   } else if (coords.length == 4 && coords[0] == coords[2] && coords[1] == coords[3]) {
     // segs that meet in the middle don't count
     coords = null;

@@ -57,12 +57,12 @@ internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, 
   var angleB = geom.signedAngle(fromX, fromY, nodeX, nodeY, bx, by);
   var code;
   if (angleA <= 0 || angleB <= 0) {
-    trace("[chooseRighthandPath()] 0 angle(s):", angleA, angleB);
+    debug("[chooseRighthandPath()] 0 angle(s):", angleA, angleB);
     if (angleA <= 0) {
-      trace('  A orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, ax, ay));
+      debug('  A orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, ax, ay));
     }
     if (angleB <= 0) {
-      trace('  B orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, bx, by));
+      debug('  B orient2D:', geom.orient2D(fromX, fromY, nodeX, nodeY, bx, by));
     }
     // TODO: test against "from" segment
     if (angleA > 0) {
@@ -82,8 +82,8 @@ internal.chooseRighthandPath = function(fromX, fromY, nodeX, nodeY, ax, ay, bx, 
   } else {
     // Equal angles: use fallback test that is less sensitive to rounding error
     code = internal.chooseRighthandVector(ax - nodeX, ay - nodeY, bx - nodeX, by - nodeY);
-    trace("[chooseRighthandVector()] code:", code, 'angle:', angleA);
-    trace(fromX, fromY, nodeX, nodeY, ax, ay, bx, by);
+    debug("[chooseRighthandVector()] code:", code, 'angle:', angleA);
+    debug(fromX, fromY, nodeX, nodeY, ax, ay, bx, by);
   }
   return code;
 };

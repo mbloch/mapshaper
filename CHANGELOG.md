@@ -1,3 +1,6 @@
+v0.4.35
+* Add string-fields= option as an more convenient alternative to field-types= in the -i and -join commands.
+
 v0.4.34
 * Fixed an incompatibility with Node versions < 3.0.
 

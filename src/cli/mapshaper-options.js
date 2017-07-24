@@ -938,7 +938,7 @@ internal.getOptionParser = function() {
     .alias('v')
     .describe("print mapshaper version");
 
-  parser.command('tracing');
+  parser.command('debug');
 
   /*
   parser.command("divide")

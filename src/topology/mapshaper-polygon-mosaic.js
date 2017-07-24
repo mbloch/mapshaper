@@ -29,7 +29,7 @@ internal.buildPolygonMosaic = function(nodes) {
       rings.push(ring);
     } else {
       deadArcs.push(arcId);
-      console.log("Dead-end arc:", arcId);
+      debug("Dead-end arc:", arcId);
     }
   }
 

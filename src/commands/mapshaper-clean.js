@@ -5,21 +5,29 @@ api.clean2 = function(layers, dataset, opts) {
   var nodes = internal.addIntersectionCuts(dataset, opts);
   var out = internal.buildPolygonMosaic(nodes);
   if (out.collisions) {
-    layers = layers.concat(internal.getCollisionLayer(out.collisions));
+    layers = layers.concat(getDebugLayers(out.collisions, nodes.arcs));
   }
   return layers;
+
+  function getDebugLayers(collisions, arcs) {
+    var arcLyr = {geometry_type: 'polyline', name: 'debug', shapes: []};
+    var pointLyr = {geometry_type: 'point', name: 'debug', shapes: []};
+    var arcData = [];
+    var pointData = [];
+    collisions.forEach(function(arcId) {
+      var first = arcs.getVertex(arcId, 0);
+      var last = arcs.getVertex(arcId, -1);
+      arcData.push({ARCID: arcId});
+      arcLyr.shapes.push([[arcId]]);
+      pointData.push({ARCID: arcId}, {ARCID: arcId});
+      pointLyr.shapes.push([[first.x, first.y]], [[last.x, last.y]]);
+    });
+    arcLyr.data = new DataTable(arcData);
+    pointLyr.data = new DataTable(pointData);
+    return [arcLyr, pointLyr];
+  }
 };
 
-internal.getCollisionLayer = function(arcs) {
-  var lyr = {geometry_type: 'polyline'};
-  var data = [];
-  lyr.shapes = arcs.map(function(arcId) {
-    data.push({ARCID: arcId});
-    return [[arcId]];
-  });
-  lyr.data = new DataTable(data);
-  return lyr;
-};
 
 // (This doesn't currently do much)
 // TODO: remove small overlaps

@@ -177,11 +177,26 @@ function drawSquare(x, y, size, ctx) {
   }
 }
 
-function getClippedSegment(a, b, bounds) {
-  var aIn = bounds.containsPoint(a[0], a[1]),
-      bIn = bounds.containsPoint(b[0], b[1]),
+//  7 8 9
+//  4 5 6
+//  1 2 3
+function getPointQuadrant(p, bounds) {
+  var x = p[0], y = p[1];
+  var col = x < bounds.xmin && 1 || x <= bounds.xmax && 2 || x > bounds.xmax && 3 || 0;
+  var row = y < bounds.ymin && 1 || y <= bounds.ymax && 2 || y > bounds.ymax && 3 || 0;
+  if (col === 0 || row === 0) return 0;
+  return col + (row - 1) * 3;
+}
+
+function getSafeSegment(a, b, bounds) {
+  var qa = getPointQuadrant(a, bounds),
+      qb = getPointQuadrant(b, bounds),
       hits, i, j, p, xx, yy, seg;
-  if (aIn && bIn) return [a, b];
+  if (qa == 5 && qb == 5) {
+    return [a, b]; // both points are inside box -- no clip
+  } else if (qa == qb) {
+    return null; // both points are in the same outer quadrant -- safely skip
+  }
   hits = [];
   xx = [bounds.xmin, bounds.xmin, bounds.xmax, bounds.xmax];
   yy = [bounds.ymin, bounds.ymax, bounds.ymax, bounds.ymin];
@@ -192,9 +207,9 @@ function getClippedSegment(a, b, bounds) {
     if (p) hits.push(p);
   }
   if (hits.length > 0) {
-    if (aIn) {
+    if (qa == 5) {
       seg = [a, hits[0]];
-    } else if (bIn) {
+    } else if (qb == 5) {
       seg = [b, hits[0]];
     } else if (hits.length == 2) {
       seg = hits;
@@ -206,17 +221,12 @@ function getClippedSegment(a, b, bounds) {
 
 // Clip segments if they might be too long for the Canvas renderer to display
 function drawPathSafe(vec, t, ctx, bounds) {
-  var safeLen = 1000;
   var a, b, ab;
-  if (!vec.hasNext()) return;
   bounds = bounds.clone().transform(t);
-  a = t.transform(vec.x, vec.y);
   while (vec.hasNext()) {
     b = t.transform(vec.x, vec.y);
-    if (geom.distance2D(a[0], a[1], b[0], b[1]) < safeLen) {
-      ab = [a, b];
-    } else {
-      ab = getClippedSegment(a, b, bounds);
+    if (a) {
+      ab = getSafeSegment(a, b, bounds);
     }
     if (ab) {
       ctx.moveTo(ab[0][0], ab[0][1]);
@@ -264,7 +274,8 @@ function getLineScale(ext) {
   if (mapScale < 0.5) {
     s *= Math.pow(mapScale + 0.5, 0.25);
   } else if (mapScale > 100) {
-    s *= Math.pow(mapScale - 99, 0.10);
+    if (!internal.VERBOSE) // thin lines for debugging
+      s *= Math.pow(mapScale - 99, 0.10);
   }
   return s;
 }
