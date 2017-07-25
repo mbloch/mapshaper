@@ -96,15 +96,21 @@ function MapExtent(_position) {
 
   // stop zooming before rounding errors become too obvious
   function maxScale() {
-    var minPixelScale = 1e-14,
-        fullPixelScale = _contentBounds.width() / _position.width();
-    return fullPixelScale / minPixelScale;
+    var minPixelScale = 1e-16;
+    var xmax = maxAbs(_contentBounds.xmin, _contentBounds.xmax, _contentBounds.centerX());
+    var ymax = maxAbs(_contentBounds.ymin, _contentBounds.ymax, _contentBounds.centerY());
+    var xscale = _contentBounds.width() / _position.width() / xmax / minPixelScale;
+    var yscale = _contentBounds.height() / _position.height() / ymax / minPixelScale;
+    return Math.min(xscale, yscale);
+  }
+
+  function maxAbs() {
+    return Math.max.apply(null, utils.toArray(arguments).map(Math.abs));
   }
 
   function limitScale(scale) {
     return Math.min(scale, maxScale());
   }
-
 
   function calcBounds(cx, cy, scale) {
     var w = _contentBounds.width() / scale,
