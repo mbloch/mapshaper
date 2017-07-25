@@ -8,7 +8,6 @@ mapshaper-inspection-control
 mapshaper-map-style
 */
 
-
 // Test if map should be re-framed to show updated layer
 gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
   var viewportPct = gui.getIntersectionPct(newBounds, mapBounds);

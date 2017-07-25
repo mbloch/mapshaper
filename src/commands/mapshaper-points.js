@@ -12,6 +12,8 @@ api.createPointLayer = function(srcLyr, arcs, opts) {
     destLyr.shapes = internal.interpolatedPointsFromVertices(srcLyr, arcs, opts);
   } else if (opts.vertices) {
     destLyr.shapes = internal.pointsFromVertices(srcLyr, arcs, opts);
+  } else if (opts.endpoints) {
+    destLyr.shapes = internal.pointsFromEndpoints(srcLyr, arcs, opts);
   } else if (opts.x || opts.y) {
     destLyr.shapes = internal.pointsFromDataTable(srcLyr.data, opts);
   } else {
@@ -100,15 +102,46 @@ internal.pointsFromVertices = function(lyr, arcs, opts) {
     return coords.length > 0 ? coords : null;
   });
 
+  function addPoint(p) {
+    var key = p.x + '~' + p.y;
+    if (key in index === false) {
+      index[key] = true;
+      coords.push([p.x, p.y]);
+    }
+  }
+
   function nextPart(ids) {
     var iter = arcs.getShapeIter(ids);
-    var key;
     while (iter.hasNext()) {
-      key = iter.x + '~' + iter.y;
-      if (key in index === false) {
-        index[key] = true;
-        coords.push([iter.x, iter.y]);
-      }
+      addPoint(iter);
+    }
+  }
+};
+
+internal.pointsFromEndpoints = function(lyr, arcs) {
+  var coords, index;
+  if (lyr.geometry_type != "polygon" && lyr.geometry_type != 'polyline') {
+    stop("Expected a polygon or polyline layer");
+  }
+  return lyr.shapes.map(function(shp, shpId) {
+    coords = [];
+    index = {}; // TODO: use more efficient index
+    (shp || []).forEach(nextPart);
+    return coords.length > 0 ? coords : null;
+  });
+
+  function addPoint(p) {
+    var key = p.x + '~' + p.y;
+    if (key in index === false) {
+      index[key] = true;
+      coords.push([p.x, p.y]);
+    }
+  }
+
+  function nextPart(ids) {
+    for (var i=0; i<ids.length; i++) {
+      addPoint(arcs.getVertex(ids[i], 0));
+      addPoint(arcs.getVertex(ids[i], -1));
     }
   }
 };
