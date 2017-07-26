@@ -26,6 +26,8 @@ function Console(model) {
   message(PROMPT);
   document.addEventListener('keydown', onKeyDown);
 
+  window.addEventListener('beforeunload', turnOff); // save history if console is open on refresh
+
   gui.onClick(content, function(e) {
     var targ = El(e.target);
     if (gui.getInputElement() || targ.hasClass('console-message')) {
