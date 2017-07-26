@@ -710,12 +710,12 @@ internal.getOptionParser = function() {
     .option("target", targetOpt);
 
   parser.command("svg-style")
-    .describe("set SVG style using JS expressions or literal values")
+    .describe("set SVG properties using JS expressions or literal values")
     .option("class", {
-      describe: 'name of CSS class or classes (space sep.)'
+      describe: 'name of CSS class or classes (space-separated)'
     })
     .option("fill", {
-      describe: 'fill color, examples: #eee pink rgba(0, 0, 0, 0.2)'
+      describe: 'fill color; examples: #eee pink rgba(0, 0, 0, 0.2)'
     })
     .option("stroke", {
       describe: 'stroke color'
@@ -724,27 +724,29 @@ internal.getOptionParser = function() {
       describe: 'stroke width'
     })
     .option("opacity", {
-      describe: 'opacity, example: 0.5'
+      describe: 'opacity; example: 0.5'
     })
     .option("r", {
-      describe: 'radius of circle symbols',
+      describe: 'symbol radius (set this to export points as circles)',
     })
-    /*
-    .option("label", {
-      describe: 'label text'
+    .option("label-text", {
+      describe: 'label text (set this to export points as labels)'
     })
     .option("text-anchor", {
-      describe: 'start|middle|end (default is middle)'
+      describe: 'label alignment; one of: start, end, middle (default)'
     })
     .option("dx", {
-      type: "number",
-      describe: 'x offset'
+      describe: 'x offset of label (default is 0)'
     })
     .option("dy", {
-      type: "number",
-      describe: 'y offset'
+      describe: 'y offset of label (default is baseline-aligned)'
     })
-    */
+    .option("font-family", {
+      describe: 'font family of label text (default is sans-serif)'
+    })
+    .option("font-size", {
+      describe: 'size of label text (default is 12)'
+    })
     .option("target", targetOpt);
 
   parser.command("target")

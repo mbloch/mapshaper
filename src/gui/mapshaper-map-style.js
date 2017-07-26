@@ -184,20 +184,27 @@ internal.wrapOverlayStyle = function(style, hoverStyle) {
 };
 
 internal.getSvgDisplayStyle = function(lyr) {
-  var records = lyr.data.getRecords(),
-      fields = internal.getSvgStyleFields(lyr),
-      index = internal.svgStyles;
+  var styleIndex = {
+        opacity: 'opacity',
+        r: 'radius',
+        fill: 'fillColor',
+        stroke: 'strokeColor',
+        'stroke-width': 'strokeWidth'
+      },
+      // array of field names of relevant svg display properties
+      fields = internal.getSvgStyleFields(lyr).filter(function(f) {return f in styleIndex;}),
+      records = lyr.data.getRecords();
   var styler = function(style, i) {
-    var f, key, val, rec;
+    var rec = records[i];
+    var fname, val;
     for (var j=0; j<fields.length; j++) {
-      f = fields[j];
-      key = index[f];
-      rec = records[i];
-      val = rec && rec[f];
+      fname = fields[j];
+      val = rec && rec[fname];
       if (val == 'none') {
-        val = 'transparent'; // canvas equivalent
+        val = 'transparent'; // canvas equivalent of CSS 'none'
       }
-      style[key] = val;
+      // convert svg property name to mapshaper style equivalent
+      style[styleIndex[fname]] = val;
     }
 
     // TODO: make sure canvas rendering matches svg output
@@ -212,4 +219,18 @@ internal.getSvgDisplayStyle = function(lyr) {
     }
   };
   return {styler: styler, type: 'styled'};
+};
+
+// check if layer should be displayed with styles
+internal.layerHasSvgDisplayStyle = function(lyr) {
+  var fields = internal.getSvgStyleFields(lyr);
+  if (lyr.geometry_type == 'point') {
+    return fields.indexOf('r') > -1; // require 'r' field for point symbols
+  }
+  return utils.difference(fields, ['opacity', 'class']).length > 0;
+};
+
+internal.getSvgStyleFields = function(lyr) {
+  var fields = lyr.data ? lyr.data.getFields() : [];
+  return internal.svg.findPropertiesBySymbolType(fields, lyr.geometry_type);
 };

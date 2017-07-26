@@ -12,7 +12,6 @@ describe('mapshaper-svg-style.js', function () {
       assert(isSvgColor('rgba(0, 255, 92, 0.2)'))
     })
     it('misses', function() {
-      assert.equal(isSvgColor('area', ['population', 'area']), false)
       assert.equal(isSvgColor('#'), false)
       assert.equal(isSvgColor('33'), false)
     })
@@ -42,7 +41,6 @@ describe('mapshaper-svg-style.js', function () {
       assert(isSvgClassName('class-0'))
     })
     it('misses', function () {
-      assert.equal(isSvgClassName('somefield', ['somefield']), false)
       assert.equal(isSvgClassName('-somevar'), false)
       assert.equal(isSvgClassName(''), false)
       assert.equal(isSvgClassName('5'), false)
@@ -57,7 +55,7 @@ describe('mapshaper-svg-style.js', function () {
       };
       var opts = {
         stroke: 'baz',
-        stroke_width: 'foo / 2',
+        'stroke-width': 'foo / 2',
         fill: 'bar == "a" ? "pink" : "green"'
       };
       var target = [{
@@ -65,14 +63,14 @@ describe('mapshaper-svg-style.js', function () {
         bar: 'a',
         baz: 'white',
         stroke: 'white',
-        stroke_width: 1,
+        'stroke-width': 1,
         fill: 'pink'
       }, {
         foo: 0.5,
         bar: 'b',
         baz: 'black',
         stroke: 'black',
-        stroke_width: 0.25,
+        'stroke-width': 0.25,
         fill: 'green'
       }];
       api.svgStyle(lyr, {}, opts);
@@ -86,12 +84,12 @@ describe('mapshaper-svg-style.js', function () {
       };
       var opts = {
         stroke: '#222222',
-        stroke_width: '4',
+        'stroke-width': '4',
         fill: 'rgba(255,255,255,0.2)'
       };
       var target = [{
         stroke: '#222222',
-        stroke_width: 4,
+        'stroke-width': 4,
         fill: 'rgba(255,255,255,0.2)'
       }];
       api.svgStyle(lyr, {}, opts);

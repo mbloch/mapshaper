@@ -4,6 +4,69 @@ var api = require('../'),
 
 describe('mapshaper-svg.js', function () {
 
+  describe('exportLayerForSVG()', function () {
+    it('export label properties', function () {
+      var lyr = {
+        name: 'labels',
+        geometry_type: 'point',
+        shapes: [[[0, 0]], [[1, 1]]],
+        data: new api.internal.DataTable([{
+          dx: 5,
+          dy: -6,
+          'label-text': 'TEXAS',
+          'font-size': '13',
+          'text-anchor': 'start'
+        }, {
+          dx: -5,
+          dy: -6,
+          'label-text': 'OKLA.',
+          'font-size': '13',
+          'text-anchor': 'end'
+       }])
+      };
+      var dataset = {
+        layers: [lyr],
+        info: {}
+      };
+
+      var target= {
+        tag: 'g',
+        properties: {
+          id: 'labels',
+          'font-family': 'sans-serif',
+          'font-size': '12',
+          'text-anchor': 'middle'
+        },
+        children: [{
+          tag: 'text',
+          value: 'TEXAS',
+          properties: {
+            x: 0,
+            y: 0,
+            dx: 5,
+            dy: -6,
+            'font-size': '13',
+            'text-anchor': 'start'
+          }
+        }, {
+          tag: 'text',
+          value: 'OKLA.',
+          properties: {
+            x: 1,
+            y: -1,
+            dx: -5,
+            dy: -6,
+            'font-size': '13',
+            'text-anchor': 'end'
+          }
+        }]
+      };
+
+      var output = api.internal.exportLayerForSVG(lyr, dataset, {});
+      assert.deepEqual(output, target);
+    });
+  })
+
   it ('default scaling w/ 1px margin, single point', function(done) {
     var geo = {
       type: 'Feature',

@@ -58,6 +58,27 @@ describe('geojson-to-svg.js', function () {
       assert.deepEqual(SVG.importGeoJSONFeatures([geo], {r: 2}), target);
     })
 
+    it('label feature', function() {
+      var geo = {
+        type: "Feature",
+        properties: {'label-text': 'TBD'},
+        geometry: {
+          type: "MultiPoint",
+          coordinates: [[0, -1]]
+        }
+      };
+      var target = [{
+        tag: 'g',
+        children: [{
+          tag: 'text',
+          value: 'TBD',
+          properties: {x: 0, y: 1}
+        }]
+      }];
+      var output = SVG.importGeoJSONFeatures([geo]);
+      assert.deepEqual(output, target);
+    })
+
     it('feature collection with ids', function() {
       var geo = {
         type: "FeatureCollection",
@@ -67,7 +88,7 @@ describe('geojson-to-svg.js', function () {
           properties: {
             r: 4,
             stroke: 'black',
-            stroke_width: 2
+            'stroke-width': 2
           },
           geometry: {
             type: 'MultiPoint',
@@ -78,7 +99,7 @@ describe('geojson-to-svg.js', function () {
           id: 'b',
           properties: {
             stroke: 'steelblue',
-            stroke_width: 1
+            'stroke-width': 1
           },
           geometry: {
             type: 'LineString',
@@ -100,7 +121,8 @@ describe('geojson-to-svg.js', function () {
         tag: 'path',
         properties: {d: 'M 1 2 0 2', id: 'b', stroke: 'steelblue', 'stroke-width': 1}
       }];
-      assert.deepEqual(SVG.importGeoJSONFeatures(geo.features), target);
+      var output = SVG.importGeoJSONFeatures(geo.features);
+      assert.deepEqual(output, target);
     })
 
     it('filter out styles that do not match LineString type', function() {

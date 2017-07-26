@@ -1,6 +1,5 @@
-/* @requires geojson-common, mapshaper-svg-style */
+/* @requires geojson-common, svg-common, mapshaper-svg-style */
 
-var SVG = {};
 
 SVG.importGeoJSONFeatures = function(features) {
   return features.map(function(obj, i) {
@@ -8,7 +7,7 @@ SVG.importGeoJSONFeatures = function(features) {
     var geomType = geom && geom.type;
     var svgObj = null;
     if (geomType && geom.coordinates) {
-      svgObj = SVG.geojsonImporters[geomType](geom.coordinates);
+      svgObj = SVG.geojsonImporters[geomType](geom.coordinates, obj.properties);
     }
     if (!svgObj) {
       return {tag: 'g'}; // empty element
@@ -36,6 +35,8 @@ SVG.stringify = function(obj) {
     svg += '>\n';
     svg += obj.children.map(SVG.stringify).join('\n');
     svg += '\n</' + obj.tag + '>';
+  } else if (obj.value) {
+    svg += '>' + obj.value + '</' + obj.tag + '>';
   } else {
     svg += '/>';
   }
@@ -69,13 +70,13 @@ SVG.stringifyProperties = function(o) {
 
 
 SVG.applyStyleAttributes = function(svgObj, geomType, rec) {
-  var properties = svgObj.properties;
-  var invalidStyles = internal.invalidSvgTypes[GeoJSON.translateGeoJSONType(geomType)];
-  var fields = internal.getStyleFields(Object.keys(rec), internal.svgStyles, invalidStyles);
-  var k;
+  var symbolType = GeoJSON.translateGeoJSONType(geomType);
+  if (symbolType == 'point' && ('label-text' in rec)) {
+    symbolType = 'label';
+  }
+  var fields = SVG.findPropertiesBySymbolType(Object.keys(rec), symbolType);
   for (var i=0, n=fields.length; i<n; i++) {
-    k = fields[i];
-    SVG.setAttribute(svgObj, k.replace('_', '-'), rec[k]);
+    SVG.setAttribute(svgObj, fields[i], rec[fields[i]]);
   }
 };
 
@@ -96,10 +97,10 @@ SVG.setAttribute = function(obj, k, v) {
   }
 };
 
-SVG.importMultiGeometry = function(coords, importer) {
+SVG.importMultiGeometry = function(coords, rec, importer) {
   var children = [];
   for (var i=0; i<coords.length; i++) {
-    children.push(importer(coords[i]));
+    children.push(importer(coords[i], rec));
   }
   return children.length > 0 ? {tag: 'g', children: children} : null;
 };
@@ -128,7 +129,22 @@ SVG.importLineString = function(coords) {
   };
 };
 
-SVG.importPoint = function(p) {
+SVG.importLabel = function(p, rec) {
+  var properties = {
+    x: p[0],
+    y: -p[1]
+  };
+  return {
+    tag: 'text',
+    value: rec['label-text'] || '',
+    properties: properties
+  };
+};
+
+SVG.importPoint = function(p, rec) {
+  if (rec && ('label-text' in rec)) {
+    return SVG.importLabel(p, rec);
+  }
   return {
     tag: 'circle',
     properties: {
@@ -152,8 +168,8 @@ SVG.geojsonImporters = {
   Point: SVG.importPoint,
   Polygon: SVG.importPolygon,
   LineString: SVG.importLineString,
-  MultiPoint: function(coords) {
-    return SVG.importMultiGeometry(coords, SVG.importPoint);
+  MultiPoint: function(coords, rec) {
+    return SVG.importMultiGeometry(coords, rec, SVG.importPoint);
   },
   MultiLineString: function(coords) {
     return SVG.importMultiPath(coords, SVG.importLineString);

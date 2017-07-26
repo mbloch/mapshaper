@@ -4,6 +4,7 @@ geojson-export
 geojson-points
 geojson-to-svg
 mapshaper-svg-style
+svg-common
 */
 
 //
@@ -22,7 +23,7 @@ internal.exportSVG = function(dataset, opts) {
 
   b = internal.transformCoordsForSVG(dataset, opts);
   svg = dataset.layers.map(function(lyr) {
-    return internal.exportLayerAsSVG(lyr, dataset, opts);
+    return SVG.stringify(internal.exportLayerForSVG(lyr, dataset, opts));
   }).join('\n');
   svg = utils.format(template, b.width(), b.height(), 0, 0, b.width(), b.height(), svg);
   return [{
@@ -77,15 +78,15 @@ internal.exportGeoJSONForSVG = function(lyr, dataset, opts) {
   return geojson;
 };
 
-internal.exportLayerAsSVG = function(lyr, dataset, opts) {
+internal.exportLayerForSVG = function(lyr, dataset, opts) {
   // TODO: convert geojson features one at a time
   var geojson = internal.exportGeoJSONForSVG(lyr, dataset, opts);
   var features = geojson.features || geojson.geometries || (geojson.type ? [geojson] : []);
   var symbols = SVG.importGeoJSONFeatures(features);
   var layerObj = {
     tag: 'g',
-    children: symbols,
-    properties: {id: lyr.name}
+    properties: {id: lyr.name},
+    children: symbols
   };
 
   // add default display properties to line layers
@@ -96,5 +97,12 @@ internal.exportLayerAsSVG = function(lyr, dataset, opts) {
     layerObj.properties['stroke-width'] = 1;
   }
 
-  return SVG.stringify(layerObj);
+  // add default text properties to label layers
+  if (lyr.data && lyr.data.fieldExists('label-text')) {
+    layerObj.properties['font-family'] = 'sans-serif';
+    layerObj.properties['font-size'] = '12';
+    layerObj.properties['text-anchor'] = 'middle';
+  }
+
+  return layerObj;
 };
