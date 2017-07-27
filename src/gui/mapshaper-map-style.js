@@ -232,5 +232,5 @@ internal.layerHasSvgDisplayStyle = function(lyr) {
 
 internal.getSvgStyleFields = function(lyr) {
   var fields = lyr.data ? lyr.data.getFields() : [];
-  return internal.svg.findPropertiesBySymbolType(fields, lyr.geometry_type);
+  return internal.svg.findPropertiesBySymbolGeom(fields, lyr.geometry_type);
 };
