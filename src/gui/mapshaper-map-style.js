@@ -209,7 +209,7 @@ internal.getSvgDisplayStyle = function(lyr) {
 
     // TODO: make sure canvas rendering matches svg output
     if (('strokeWidth' in style) && !style.strokeColor) {
-      style.strokeColor = 'black';
+      style.strokeColor = 'transparent';
     } else if (!('strokeWidth' in style) && style.strokeColor) {
       style.strokeWidth = 1;
     }
