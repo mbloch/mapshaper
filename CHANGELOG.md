@@ -1,3 +1,7 @@
+v0.4.37
+* Added support for multiline labels. Lines are separated by newline characters (`'\n'`) in the label text.
+* Added -svg-style line-height= option to control the line height of multiline labels.
+
 v0.4.36
 * Setting both r= and label-text= options of -svg-style creates labels with anchor points.
 * Added font-weight= and font-style= options to -svg-style command.
