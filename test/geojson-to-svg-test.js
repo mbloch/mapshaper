@@ -79,11 +79,14 @@ describe('geojson-to-svg.js', function () {
       assert.deepEqual(output, target);
     })
 
-    it('label with dx, dy and font-family properties', function() {
+    it('label with dx, dy and font style properties', function() {
       var geo = {
         type: "Feature",
         properties: {
+          'foo': 'bar', // should not be in output
           'label-text': 'TBD',
+          'font-style': 'italic',
+          'font-weight': 'bold',
           'font-family': 'Gill Sans, sans-serif', // TODO: handle quotes
           dx: '10px',
           dy: '-1em',
@@ -100,7 +103,7 @@ describe('geojson-to-svg.js', function () {
           value: 'TBD',
           properties: {x: 0, y: 1, dx: '10px', dy: '-1em'}
         }],
-        properties: {'font-family': 'Gill Sans, sans-serif'}
+        properties: {'font-family': 'Gill Sans, sans-serif', 'font-style': 'italic', 'font-weight': 'bold'}
       }];
       var output = SVG.importGeoJSONFeatures([geo]);
       assert.deepEqual(output, target);

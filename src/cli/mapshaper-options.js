@@ -741,11 +741,17 @@ internal.getOptionParser = function() {
     .option("dy", {
       describe: 'y offset of label (default is baseline-aligned)'
     })
-    .option("font-family", {
-      describe: 'font family of label text (default is sans-serif)'
-    })
     .option("font-size", {
       describe: 'size of label text (default is 12)'
+    })
+    .option("font-family", {
+      describe: 'CSS font family of label (default is sans-serif)'
+    })
+    .option("font-weight", {
+      describe: 'CSS font weight property of label (e.g. bold, 700)'
+    })
+    .option("font-style", {
+      describe: 'CSS font style property of label (e.g. italic)'
     })
     .option("target", targetOpt);
 

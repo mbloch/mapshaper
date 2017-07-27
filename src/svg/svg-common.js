@@ -5,8 +5,8 @@ SVG.propertyTypes = {
   class: 'classname',
   opacity: 'number',
   r: 'number',
-  dx: 'length',
-  dy: 'length',
+  dx: 'measure',
+  dy: 'measure',
   fill: 'color',
   stroke: 'color',
   'stroke-width': 'number'
@@ -16,14 +16,14 @@ SVG.canvasEquivalents = {
   'stroke-width': 'strokeWidth'
 };
 
-SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor'.split(',');
+SVG.supportedProperties = 'class,opacity,stroke,stroke-width,fill,r,dx,dy,font-family,font-size,text-anchor,font-weight,font-style'.split(',');
 SVG.commonProperties = 'class,opacity,stroke,stroke-width'.split(',');
 
 SVG.propertiesBySymbolType = {
   polygon: SVG.commonProperties.concat('fill'),
   polyline: SVG.commonProperties,
   point: SVG.commonProperties.concat(['fill', 'r']),
-  label: SVG.commonProperties.concat(['fill', 'font-family', 'font-size', 'text-anchor']) // dx, dy applied separately
+  label: SVG.commonProperties.concat(['fill', 'font-family', 'font-size', 'text-anchor', 'font-weight', 'font-style']) // dx, dy applied separately
 };
 
 SVG.findPropertiesBySymbolType = function(fields, type) {
