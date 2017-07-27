@@ -79,6 +79,34 @@ describe('geojson-to-svg.js', function () {
       assert.deepEqual(output, target);
     })
 
+    it('label with dx, dy and font-family properties', function() {
+      var geo = {
+        type: "Feature",
+        properties: {
+          'label-text': 'TBD',
+          'font-family': 'Gill Sans, sans-serif', // TODO: handle quotes
+          dx: '10px',
+          dy: '-1em',
+        },
+        geometry: {
+          type: "MultiPoint",
+          coordinates: [[0, -1]]
+        }
+      };
+      var target = [{
+        tag: 'g',
+        children: [{
+          tag: 'text',
+          value: 'TBD',
+          properties: {x: 0, y: 1, dx: '10px', dy: '-1em'}
+        }],
+        properties: {'font-family': 'Gill Sans, sans-serif'}
+      }];
+      var output = SVG.importGeoJSONFeatures([geo]);
+      assert.deepEqual(output, target);
+
+    });
+
     it('feature collection with ids', function() {
       var geo = {
         type: "FeatureCollection",

@@ -37,6 +37,8 @@ internal.parseSvgValue = function(name, strVal, fields) {
     val = internal.isSvgColor(strVal) ? strVal : null;
   } else if (type == 'classname') {
     val = internal.isSvgClassName(val) ? strVal : null;
+  } else if (type == 'length') { // SVG/CSS length (e.g. 12px, 1em, 4)
+    val = internal.isSvgLength(val) ? strVal : null;
   } else {
     // unknown type -- assume string is an expression if JS syntax chars are found
     // (but not chars like <sp> and ',', which may be in a font-family, e.g.)
@@ -51,6 +53,10 @@ internal.isSvgClassName = function(str) {
 
 internal.isSvgNumber = function(o) {
   return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+$/.test(o);
+};
+
+internal.isSvgLength = function(o) {
+  return utils.isFiniteNumber(o) || utils.isString(o) && /^-?[.0-9]+[a-z]*$/.test(o);
 };
 
 internal.isSvgColor = function(str) {

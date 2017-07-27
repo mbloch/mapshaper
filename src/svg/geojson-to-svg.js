@@ -134,6 +134,9 @@ SVG.importLabel = function(p, rec) {
     x: p[0],
     y: -p[1]
   };
+  if (rec.dx) properties.dx = rec.dx;
+  if (rec.dy) properties.dy = rec.dy;
+
   return {
     tag: 'text',
     value: rec['label-text'] || '',

@@ -5,8 +5,8 @@ SVG.propertyTypes = {
   class: 'classname',
   opacity: 'number',
   r: 'number',
-  dx: 'number',
-  dy: 'number',
+  dx: 'length',
+  dy: 'length',
   fill: 'color',
   stroke: 'color',
   'stroke-width': 'number'
@@ -23,7 +23,7 @@ SVG.propertiesBySymbolType = {
   polygon: SVG.commonProperties.concat('fill'),
   polyline: SVG.commonProperties,
   point: SVG.commonProperties.concat(['fill', 'r']),
-  label: SVG.commonProperties.concat(['fill', 'dx', 'dy', 'font-family', 'font-size', 'text-anchor'])
+  label: SVG.commonProperties.concat(['fill', 'font-family', 'font-size', 'text-anchor']) // dx, dy applied separately
 };
 
 SVG.findPropertiesBySymbolType = function(fields, type) {
