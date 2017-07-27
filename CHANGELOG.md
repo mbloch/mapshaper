@@ -1,4 +1,5 @@
 v0.4.35
+* Add SVG label output, with new options to -svg-style command.
 * Add string-fields= option as an more convenient alternative to field-types= in the -i and -join commands.
 
 v0.4.34

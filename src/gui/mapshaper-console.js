@@ -52,6 +52,7 @@ function Console(model) {
 
   function saveHistory(history) {
     try {
+      history = history.filter(Boolean); // TODO: fix condition that leaves a blank line on the history
       localStorage.setItem('console_history', JSON.stringify(history.slice(-50)));
     } catch(e) {}
   }
